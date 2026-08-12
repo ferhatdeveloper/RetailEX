@@ -1,0 +1,19 @@
+<resources>
+    <string name="app_name">Plu Example</string>
+    <string name="dialog_tip">Tip</string>
+    <string name="dialog_back">Back</string>
+    <string name="refresh">Refresh</string>
+    <string name="name">Name</string>
+    <string name="weight_kg">Weight(Kg)</string>
+    <string name="unitprice">Unit Price</string>
+    <string name="total_price">Total Price</string>
+    <string name="sold_time">Sold Time</string>
+    <string name="llfcode">LlfCode</string>
+    <string name="dialog_cancel">Cancel</string>
+    <string name="hotKey">Hotkey</string>
+    <string name="shelflife">expiration date</string>
+    <string name="WeightUnit">Weight Unit</string>
+    <string name="RTProtocol1">Rongta Protocol1</string>
+    <string name="RTProtocol2">Rongta Protocol2</string>
+    <string name="characterset">character set</string>
+</resources>

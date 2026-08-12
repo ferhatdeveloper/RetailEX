@@ -1,0 +1,55 @@
+body {
+    &.size-chart-show {
+        overflow: hidden;
+        .halo-size-chart-popup {
+            pointer-events: auto;
+            transform: translate(-50%, -50%);
+            opacity: 1;
+            visibility: visible;
+            z-index: 99999;
+        }
+        .background-overlay {
+            z-index: 99999;
+            opacity: 1;
+            visibility: visible;
+        }
+    }
+}
+
+.halo-size-chart-popup {
+    max-width: calc(100% - 30px);
+    .halo-popup-wrapper {
+        padding: 0;
+    }
+    .halo-popup-header {
+        border-bottom: 1px solid #e6e6e6;
+        padding: 16px 15px 13px;
+        margin-bottom: 0;
+    }
+    .wrapper-content {
+        padding: 20px;
+        position: relative;
+        overflow-x: hidden;
+        overflow-y: auto;
+        max-height: 80vh;
+        img {
+            width: 100%;
+        }
+    }
+}
+
+@media(min-width:768px) {
+    .halo-size-chart-popup {
+        max-width: 700px;
+        .wrapper-content {
+            padding: 30px 50px 30px;
+        }
+    }
+}
+@media(min-width:1025px){
+    body {
+        &.size-chart-show {
+            padding-right: 10px;
+        }
+    }
+}

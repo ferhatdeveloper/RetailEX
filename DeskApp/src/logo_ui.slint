@@ -1,0 +1,88 @@
+import { Button, VerticalBox, HorizontalBox, ScrollView } from "std-widgets.slint";
+
+export component LogoWindow inherits Window {
+    title: "RetailEX_Logo - Sync Manager";
+    width: 600px;
+    height: 450px;
+    icon: @image-url("icon.png");
+
+    callback start-service();
+    callback stop-service();
+    callback install-service();
+    callback uninstall-service();
+    callback refresh-logs();
+
+    in property <string> service-status: "Stopped";
+    in property <string> last-sync: "Never";
+    in property <[string]> log-lines: [];
+
+    VerticalBox {
+        padding: 20px;
+        spacing: 15px;
+
+        HorizontalBox {
+            alignment: start;
+            Text {
+                text: "RetailEX_Logo";
+                font-size: 24px;
+                font-weight: 700;
+                color: #2c3e50;
+            }
+        }
+
+        HorizontalBox {
+            spacing: 20px;
+            VerticalBox {
+                alignment: start;
+                Text { text: "Status: " + root.service-status; font-size: 14px; }
+                Text { text: "Last Sync: " + root.last-sync; font-size: 14px; }
+            }
+            
+            HorizontalBox {
+                alignment: end;
+                Button {
+                    text: root.service-status == "Running" ? "Stop" : "Start";
+                    primary: true;
+                    clicked => {
+                        if (root.service-status == "Running") {
+                            root.stop-service();
+                        } else {
+                            root.start-service();
+                        }
+                    }
+                }
+            }
+        }
+
+        Rectangle {
+            background: #f8f9fa;
+            border-radius: 4px;
+            border-width: 1px;
+            border-color: #dee2e6;
+            
+            VerticalBox {
+                padding: 10px;
+                Text { text: "Sync Logs (Past Entries):"; font-weight: 600; }
+                ScrollView {
+                    VerticalBox {
+                        alignment: start;
+                        for line in root.log-lines : Text {
+                            text: line;
+                            font-family: "Consolas";
+                            font-size: 12px;
+                            color: #495057;
+                        }
+                    }
+                }
+            }
+        }
+
+        HorizontalBox {
+            spacing: 10px;
+            alignment: center;
+            Button { text: "Install as Service"; clicked => { root.install-service(); } }
+            Button { text: "Remove Service"; clicked => { root.uninstall-service(); } }
+            Button { text: "Refresh Logs"; clicked => { root.refresh-logs(); } }
+        }
+    }
+}

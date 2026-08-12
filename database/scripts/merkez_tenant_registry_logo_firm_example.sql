@@ -1,0 +1,11 @@
+-- Örnek: kiracı Logo firma/dönem/DB (merkez_db)
+-- Önce: psql -d merkez_db -f database/scripts/merkez_tenant_registry_add_logo_firm_fields.sql
+--
+-- UPDATE public.tenant_registry
+-- SET
+--   logo_rest_api_url = 'http://185.206.80.132:32001/api/v1',
+--   logo_firm_nr = 401,
+--   logo_period_nr = 1,
+--   logo_db = 'TIGER3',
+--   updated_at = now()
+-- WHERE code = 'kasap';

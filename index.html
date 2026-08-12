@@ -1,0 +1,405 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover" />
+  <title>RetailEx</title>
+  <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
+  <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
+
+  <!-- PWA / iOS Add-to-Home-Screen -->
+  <link rel="manifest" href="/manifest.json" />
+  <meta name="theme-color" content="#2563eb" />
+  <meta name="color-scheme" content="light dark" />
+  <script>
+    (function () {
+      if (/^\/(magaza|shop)(\/|$)/.test(location.pathname)) {
+        document.documentElement.classList.add('rex-eticaret-route');
+        document.write('<style>html.rex-eticaret-route,html.rex-eticaret-route body{background:#fff!important;margin:0;padding:0;min-height:100vh}</style>');
+      } else if (/^\/mgz(\/|$)/.test(location.pathname)) {
+        document.documentElement.classList.add('rex-eticaret-admin-route');
+        document.write('<style>html.rex-eticaret-admin-route,html.rex-eticaret-admin-route body{background:#f0f2f5!important;margin:0;padding:0;min-height:100vh}</style>');
+      }
+    })();
+  </script>
+  <!-- iOS Safari: standalone PWA modu, status-bar görünümü ve home-screen başlığı -->
+  <meta name="apple-mobile-web-app-capable" content="yes" />
+  <meta name="mobile-web-app-capable" content="yes" />
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+  <meta name="apple-mobile-web-app-title" content="RetailEX" />
+  <meta name="application-name" content="RetailEX" />
+  <link rel="apple-touch-icon" sizes="180x180" href="/icons/icon-192x192.svg" />
+  <link rel="apple-touch-icon" sizes="152x152" href="/icons/icon-152x152.svg" />
+  <link rel="apple-touch-icon" sizes="144x144" href="/icons/icon-144x144.svg" />
+  <link rel="apple-touch-icon" sizes="120x120" href="/icons/icon-128x128.svg" />
+  <link rel="apple-touch-icon" href="/icons/icon-192x192.svg" />
+  <link rel="mask-icon" href="/favicon.svg" color="#2563eb" />
+
+  <style>
+    body {
+      margin: 0;
+      padding: 0;
+      background: linear-gradient(145deg, #0f172a 0%, #1e293b 50%, #0f172a 100%);
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, 'Open Sans', 'Helvetica Neue', sans-serif;
+      min-height: 100vh;
+    }
+
+    #app-loader {
+      position: fixed;
+      top: 0;
+      left: 0;
+      width: 100%;
+      height: 100%;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      z-index: 9999;
+      background: linear-gradient(145deg, #0f172a 0%, #1e293b 50%, #0f172a 100%);
+      color: #f1f5f9;
+      transition: opacity 0.4s ease-out;
+    }
+
+    .logo-container {
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      gap: 20px;
+      margin-bottom: 40px;
+      position: relative;
+    }
+
+    .logo-glow {
+      position: absolute;
+      width: 150px;
+      height: 150px;
+      background: #3b82f6;
+      filter: blur(80px);
+      opacity: 0.15;
+      border-radius: 50%;
+      top: 50%;
+      left: 50%;
+      transform: translate(-50%, -50%);
+    }
+
+    .logo-svg {
+      width: 80px;
+      height: 80px;
+      filter: drop-shadow(0 0 10px rgba(59, 130, 246, 0.3));
+    }
+
+    .logo-text {
+      font-size: 32px;
+      font-weight: 900;
+      letter-spacing: -0.05em;
+    }
+
+    .logo-text .retail {
+      color: #fff;
+    }
+
+    .logo-text .ex {
+      color: #3b82f6;
+      font-style: italic;
+      margin-left: 2px;
+    }
+
+    .logo-text.splash-clinic .ex {
+      color: #a78bfa;
+    }
+
+    .logo-text.splash-restaurant .ex {
+      color: #fb923c;
+    }
+
+    .loading-bar-container {
+      width: 180px;
+      height: 2px;
+      background: rgba(255, 255, 255, 0.05);
+      border-radius: 10px;
+      overflow: hidden;
+      margin-bottom: 12px;
+    }
+
+    .loading-bar {
+      width: 100%;
+      height: 100%;
+      background: linear-gradient(90deg, transparent, #3b82f6, transparent);
+      animation: loading-slide 1.5s infinite ease-in-out;
+    }
+
+    .pulse-animation {
+      animation: pulse 2s infinite ease-in-out;
+    }
+
+    @keyframes loading-slide {
+      0% {
+        transform: translateX(-100%);
+      }
+
+      100% {
+        transform: translateX(100%);
+      }
+    }
+
+    @keyframes pulse {
+
+      0%,
+      100% {
+        opacity: 1;
+      }
+
+      50% {
+        opacity: 0.5;
+      }
+    }
+
+    /* Logo + spinner birlikte (load ile neon logo birleşik) */
+    .loader-spinner {
+      width: 40px;
+      height: 40px;
+      border: 2px solid rgba(59, 130, 246, 0.2);
+      border-top-color: #3b82f6;
+      border-radius: 50%;
+      animation: loader-spin 0.7s linear infinite;
+      margin-top: 8px;
+    }
+    #app-loader.loader-minimal .loader-spinner {
+      width: 28px;
+      height: 28px;
+      margin-top: 0;
+    }
+    @keyframes loader-spin { to { transform: rotate(360deg); } }
+  </style>
+</head>
+
+<body>
+  <div id="app-loader">
+    <div class="logo-container">
+      <div class="logo-glow"></div>
+      <svg viewBox="0 0 100 100" class="logo-svg">
+        <defs>
+          <linearGradient id="loaderGrad" x1="0%" y1="0%" x2="100%" y2="100%">
+            <stop offset="0%" stop-color="#3b82f6" />
+            <stop offset="100%" stop-color="#8b5cf6" />
+          </linearGradient>
+          <filter id="loaderGlow">
+            <feGaussianBlur stdDeviation="2" result="coloredBlur" />
+            <feMerge>
+              <feMergeNode in="coloredBlur" />
+              <feMergeNode in="SourceGraphic" />
+            </feMerge>
+          </filter>
+        </defs>
+        <path d="M50 5 L89 27.5 L89 72.5 L50 95 L11 72.5 L11 27.5 Z" fill="none" stroke="url(#loaderGrad)"
+          stroke-width="2" stroke-linejoin="round" opacity="0.4" />
+        <path d="M35 35 L65 35 L65 45 L45 45 L45 55 L65 55 L65 65 L35 65 Z" fill="url(#loaderGrad)"
+          filter="url(#loaderGlow)" class="pulse-animation" />
+        <rect x="70" y="35" width="8" height="30" fill="url(#loaderGrad)" rx="2" opacity="0.8" />
+      </svg>
+      <div class="logo-text" id="splash-brand">
+        <span class="retail" id="splash-brand-left">Retail</span><span class="ex" id="splash-brand-ex">Ex</span>
+      </div>
+    </div>
+    <div class="loader-spinner" id="splash-spinner" aria-hidden="true"></div>
+    <div class="loading-text" id="loading-text" style="margin-top: 12px; font-size: 13px; color: rgba(241,245,249,0.85); font-weight: 500;">RetailEX başlatılıyor...</div>
+  </div>
+  <div id="root"><div id="rex-boot-placeholder" aria-busy="true" style="min-height:1px"></div></div>
+  <script>
+    (function () {
+      var RECOVERY_KEY = 'retailex_chunk_auto_recovery';
+      function isChunkMsg(msg) {
+        return /dynamically imported module|ChunkLoadError|Importing a module script failed|Loading chunk/i.test(String(msg || ''));
+      }
+      function recoverOnce() {
+        try {
+          if (sessionStorage.getItem(RECOVERY_KEY) === '1') return;
+          sessionStorage.setItem(RECOVERY_KEY, '1');
+        } catch (e) { return; }
+        var done = function () {
+          var base = location.pathname + location.search;
+          var sep = base.indexOf('?') >= 0 ? '&' : '?';
+          location.replace(base + sep + '_rex_recover=' + Date.now());
+        };
+        var p = Promise.resolve();
+        if ('caches' in window) {
+          p = caches.keys().then(function (keys) {
+            return Promise.all(keys.map(function (k) { return caches.delete(k); }));
+          });
+        }
+        p.then(function () {
+          if ('serviceWorker' in navigator) {
+            return navigator.serviceWorker.getRegistrations().then(function (regs) {
+              return Promise.all(regs.map(function (r) { return r.unregister(); }));
+            });
+          }
+        }).finally(done);
+      }
+      window.addEventListener('unhandledrejection', function (e) {
+        var msg = e.reason && e.reason.message ? e.reason.message : e.reason;
+        if (isChunkMsg(msg)) recoverOnce();
+      });
+      window.addEventListener('error', function (e) {
+        if (isChunkMsg(e.message)) recoverOnce();
+      });
+    })();
+  </script>
+  <script type="module" src="/src/main.tsx"></script>
+  <script>
+    (function () {
+      function landingFromSession() {
+        try {
+          var raw = localStorage.getItem('exretail_session');
+          if (!raw) return null;
+          var session = JSON.parse(raw);
+          var roles = session && session.user && session.user.roles;
+          if (!Array.isArray(roles)) return null;
+          for (var i = 0; i < roles.length; i++) {
+            var lr = roles[i].landingRoute || roles[i].landing_route;
+            if (lr && String(lr).trim()) return String(lr).trim();
+          }
+        } catch (e) { }
+        return null;
+      }
+      function splashProductKind() {
+        try {
+          var mod = (localStorage.getItem('retailex_active_module') || '').trim();
+          if (mod === 'beauty' || mod === 'restaurant') return mod === 'beauty' ? 'clinic' : 'restaurant';
+          var land = landingFromSession();
+          if (land === 'beauty' || land === 'restaurant') return land === 'beauty' ? 'clinic' : 'restaurant';
+        } catch (e2) { }
+        return 'retail';
+      }
+      var kind = splashProductKind();
+      var leftEl = document.getElementById('splash-brand-left');
+      var exEl = document.getElementById('splash-brand-ex');
+      var brandBox = document.getElementById('splash-brand');
+      var spin = document.getElementById('splash-spinner');
+      if (leftEl && exEl && brandBox) {
+        if (kind === 'clinic') {
+          leftEl.textContent = 'Clinic';
+          exEl.textContent = 'Ex';
+          brandBox.classList.add('splash-clinic');
+        } else if (kind === 'restaurant') {
+          leftEl.textContent = 'Rest';
+          exEl.textContent = 'Ex';
+          brandBox.classList.add('splash-restaurant');
+        }
+      }
+      if (spin) {
+        if (kind === 'clinic') {
+          spin.style.borderColor = 'rgba(167, 139, 250, 0.25)';
+          spin.style.borderTopColor = '#a78bfa';
+        } else if (kind === 'restaurant') {
+          spin.style.borderColor = 'rgba(251, 146, 60, 0.25)';
+          spin.style.borderTopColor = '#fb923c';
+        }
+      }
+    })();
+
+    var loaderEl = document.getElementById('app-loader');
+    var loadingTextEl = document.getElementById('loading-text');
+    var isRefresh = !!sessionStorage.getItem('retailex_splash_seen');
+    var msgInterval = null;
+
+    if (loaderEl && isRefresh) {
+      loaderEl.classList.add('loader-minimal');
+      if (loadingTextEl) loadingTextEl.textContent = 'Yükleniyor...';
+    }
+    if (loadingTextEl && !isRefresh) {
+      var loadingMessages = [
+        "RetailEX başlatılıyor...",
+        "Sistem hazırlanıyor...",
+        "Veritabanı bağlantısı bekleniyor...",
+        "Modüller yükleniyor...",
+        "Arayüz hazırlanıyor..."
+      ];
+      var msgIndex = 0;
+      msgInterval = setInterval(function () {
+        msgIndex = (msgIndex + 1) % loadingMessages.length;
+        if (loadingTextEl) loadingTextEl.textContent = loadingMessages[msgIndex];
+      }, 1800);
+    }
+
+    window.removeLoader = function () {
+      sessionStorage.setItem('retailex_splash_seen', '1');
+      try { sessionStorage.removeItem('retailex_chunk_auto_recovery'); } catch (e) {}
+      if (msgInterval) clearInterval(msgInterval);
+      var loader = document.getElementById('app-loader');
+      if (loader) {
+        loader.style.opacity = '0';
+        loader.style.pointerEvents = 'none';
+        setTimeout(function () { loader.remove(); }, 400);
+      }
+    };
+    setTimeout(function () {
+      var loader = document.getElementById('app-loader');
+      if (loader && loadingTextEl) loadingTextEl.textContent = 'Hâlâ yükleniyor, lütfen bekleyin...';
+    }, 8000);
+    var isNativeApp =
+      (typeof window !== 'undefined' &&
+        window.Capacitor &&
+        window.Capacitor.isNativePlatform &&
+        window.Capacitor.isNativePlatform()) ||
+      /;\s*wv\)/i.test(navigator.userAgent || '');
+    var bootTimeoutMs = isNativeApp ? 240000 : 45000;
+    function isRetailExAppReady() {
+      try {
+        if (window.__retailexAppReady) return true;
+        if (document.querySelector('[data-rex-app-ready]')) return true;
+      } catch (e) {}
+      return false;
+    }
+    function isStillBooting() {
+      return !!(
+        document.getElementById('rex-boot-shell') ||
+        document.getElementById('rex-boot-placeholder') ||
+        document.getElementById('rex-erp-inner-loading')
+      );
+    }
+    setTimeout(function () {
+      if (isRetailExAppReady() || isStillBooting()) return;
+      var r = document.getElementById('root');
+      if (r && r.childElementCount > 0) return;
+      var loader = document.getElementById('app-loader');
+      if (loader && loadingTextEl) {
+        loadingTextEl.textContent = isNativeApp
+          ? 'İlk açılış biraz sürebilir…'
+          : 'Hâlâ yükleniyor, lütfen bekleyin...';
+      }
+    }, 20000);
+    setTimeout(function () {
+      if (isRetailExAppReady()) return;
+      // Hâlâ yükleniyorsa hata gösterme — yalnızca splash metnini güncelle
+      if (isStillBooting()) {
+        if (loadingTextEl) {
+          loadingTextEl.textContent = 'Modüller yükleniyor, lütfen bekleyin…';
+        }
+        return;
+      }
+      const loader = document.getElementById('app-loader');
+      if (loader) {
+        console.warn('[Splash] Auto-removing loader after ' + bootTimeoutMs + 'ms');
+        window.removeLoader();
+      }
+      setTimeout(function () {
+        if (isRetailExAppReady() || isStillBooting()) return;
+        var r = document.getElementById('root');
+        if (r && r.childElementCount === 0) {
+          r.innerHTML =
+            '<div style="box-sizing:border-box;max-width:560px;margin:10vh auto;padding:28px 24px;font-family:system-ui,-apple-system,sans-serif;color:#e2e8f0;text-align:center;line-height:1.65;background:rgba(15,23,42,0.85);border-radius:12px;border:1px solid rgba(148,163,184,0.25)">' +
+            '<strong style="font-size:1.05rem;display:block;margin-bottom:12px">Arayüz yüklenemedi</strong>' +
+            'Uygulama zamanında başlamadı veya JavaScript hatası oluştu. Uygulamayı tamamen kapatıp yeniden açın. Güncel APK kullandığınızdan emin olun.' +
+            (isNativeApp
+              ? ' İlk kurulumda 1–2 dakika bekleyip tekrar deneyin.'
+              : ' Sorun sürerse Wi‑Fi üzerinden RetailEX bulutu (api.retailex.app) ile deneyin.') +
+            '<br><br><button type="button" onclick="location.reload()" style="padding:10px 20px;border:0;border-radius:8px;background:#2563eb;color:#fff;font-weight:700;font-size:14px">Yeniden dene</button>' +
+            '</div>';
+        }
+      }, 700);
+    }, bootTimeoutMs);
+  </script>
+</body>
+
+</html>

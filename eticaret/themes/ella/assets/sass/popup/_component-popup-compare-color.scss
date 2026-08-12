@@ -1,0 +1,115 @@
+body {
+    &.compare-color-show {
+        overflow: hidden;
+        .halo-compare-color-popup {
+            pointer-events: auto;
+            transform: translate(-50%, -50%);
+            opacity: 1;
+            visibility: visible;
+            z-index: 99999;
+        }
+        .background-overlay {
+            z-index: 99999;
+            opacity: 1;
+            visibility: visible;
+        }
+    }
+}
+
+.halo-compare-color-popup {
+    max-width: calc(100% - 40px);
+    .halo-popup-wrapper {
+        padding: 0;
+    }
+    .halo-popup-header {
+        border-bottom: 1px solid #e6e6e6;
+        padding: 16px 30px 13px;
+        margin-bottom: 0;
+    }
+    .wrapper-content {
+        padding: 15px 30px 15px;
+        position: relative;
+        overflow-x: hidden;
+        overflow-y: auto;
+        max-height: 80vh;
+        .halo-compareColors {
+            padding: 15px 0;
+            .halo-compareColors-swatch {
+                margin-bottom: 25px;
+            }
+            .compareColors-list {
+                .item {
+                    display: inline-block;
+                    vertical-align: top;
+                    margin: 0 10px 10px 0;
+                    position: relative;
+                }
+            }
+            .swatch-compare-color-option {
+                display: none;
+                &:checked {
+                    &+.swatch-compare-color-label {
+                        border-color: #232323;
+                    }
+                }
+            }
+            .swatch-compare-color-label {
+                display: block;
+                border-radius: 50%;
+                overflow: hidden;
+                position: relative;
+                font-size: 0;
+                letter-spacing: 0;
+                width: 36px;
+                height: 36px;
+                margin: 0 auto;
+                border: 2px solid #e6e6e6;
+                background: 0 0;
+                cursor: pointer;
+                padding: 3px;
+                &::after,
+                &::before {
+                    display: none;
+                }
+                .pattern {
+                    display: block;
+                    width: 100%;
+                    height: 100%;
+                    border-radius: 50%;
+                    overflow: hidden;
+                    position: relative;
+                    background-color: transparent;
+                    background-repeat: no-repeat;
+                    background-size: cover;
+                    background-position: center;
+                }
+            }
+            .halo-compareColors-text {
+                font-size: 12px;
+                font-weight: 400;
+                font-style: italic;
+                color: #969696;
+                text-transform: capitalize;
+                letter-spacing: .02em;
+            }
+            .halo-compareColors-image {
+                text-align: center;
+                .title {
+                    padding: 15px 0 25px;
+                    display: block;
+                }
+            }
+        }
+    }
+}
+
+@media(min-width:1025px){
+    body {
+        &.compare-color-show {
+            padding-right: 10px;
+        }
+    }
+    .halo-compare-color-popup {
+        max-width: 970px;
+    }
+}

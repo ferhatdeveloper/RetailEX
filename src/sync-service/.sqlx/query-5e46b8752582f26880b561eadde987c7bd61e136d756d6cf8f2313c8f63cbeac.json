@@ -1,0 +1,17 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "\n            INSERT INTO public.sync_logs (firm_nr, store_code, sync_type, last_sync_date, detail)\n            VALUES ($1, $2, $3, NOW(), $4)\n            ",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Left": [
+        "Varchar",
+        "Text",
+        "Text",
+        "Jsonb"
+      ]
+    },
+    "nullable": []
+  },
+  "hash": "5e46b8752582f26880b561eadde987c7bd61e136d756d6cf8f2313c8f63cbeac"
+}

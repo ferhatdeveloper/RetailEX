@@ -1,0 +1,1081 @@
+import { create } from 'zustand';
+import { persist } from 'zustand/middleware';
+import {
+    Table, KitchenOrder, MenuItem, Recipe, OrderItem,
+    Region, PrinterRouting, CourseType, PrinterProfile,
+    Staff, LoginResult, Reservation, MergedOrderRef,
+    RestaurantCallerIdConfig
+} from '../types';
+import { defaultRestaurantCallerIdConfig } from '../../../services/restaurantCallerIdService';
+import { useProductStore } from '../../../store/useProductStore';
+import { useSaleStore } from '../../../store/useSaleStore';
+import { useCustomerStore } from '../../../store/useCustomerStore';
+import { RestaurantService } from '../../../services/restaurant';
+import { stockMovementAPI } from '../../../services/stockMovementAPI';
+import { categoryAPI, type Category } from '../../../services/api';
+import { v4 as uuidv4 } from 'uuid';
+import { convertUnit } from '../utils/unitConverter';
+import { printKitchenTicketsAfterSend } from '../../../utils/restaurantKitchenPrint';
+
+/** `closeBill` — kasa/satış kaydı sepetle aynı olsun diye (store gecikmesinde) */
+export type CloseBillSaleOverride = {
+    items: Array<{
+        productId: string;
+        productName: string;
+        quantity: number;
+        price: number;
+        discount: number;
+        total: number;
+    }>;
+    subtotal: number;
+    discount: number;
+    total: number;
+};
+
+interface RestaurantState {
+    tables: Table[];
+    menu: MenuItem[];
+    recipes: Recipe[];
+    regions: Region[];
+    printerRoutes: PrinterRouting[];
+    printerProfiles: PrinterProfile[];
+    commonPrinterId?: string;
+    printViaWindowsService: boolean;
+    categories: Category[];
+    kitchenOrders: KitchenOrder[];
+    currentStaff: Staff | null;
+    staffList: Staff[];
+    isRegisterOpen: boolean;
+    registerOpeningCash: number;
+    registerOpeningNote: string;
+    workDayDate: string | null;
+    isDayActive: boolean;
+    systemPrinters: any[];
+    reservations: Reservation[];
+    callerIdConfig: RestaurantCallerIdConfig;
+    setCallerIdConfig: (partial: Partial<RestaurantCallerIdConfig>) => void;
+
+    // Table Actions
+    openTable: (tableId: string, waiter: string) => Promise<void>;
+    addItemToTable: (tableId: string, item: MenuItem, quantity: number, options?: string) => Promise<string | undefined>;
+    requestBill: (tableId: string) => Promise<void>;
+    closeBill: (tableId: string, paymentData: any, options?: { saleOverride?: CloseBillSaleOverride }) => Promise<void>;
+    markAsClean: (tableId: string) => Promise<void>;
+    /** Masayı servisten çıkarıp temizlik aşamasına alır (served → cleaning) */
+    markAsCleaning: (tableId: string) => Promise<void>;
+    addTable: (table: Omit<Table, 'orders' | 'status' | 'total'>) => Promise<void>;
+    updateTable: (table: Partial<Table>, persist?: boolean) => Promise<void>;
+    removeTable: (tableId: string) => Promise<void>;
+    mergeTables: (sourceTableId: string, targetTableId: string) => Promise<void>;
+    transferTable: (sourceTableId: string, targetTableId: string) => Promise<void>;
+    moveTable: (sourceTableId: string, targetTableId: string) => Promise<void>;
+
+    // Kitchen Actions
+    sendToKitchen: (tableId: string) => Promise<void>;
+    markAsReady: (orderId: string) => Promise<void>;
+    markAsServed: (orderId: string) => Promise<void>;
+
+    // Recipe Actions
+    updateRecipe: (recipe: Recipe) => Promise<void>;
+
+    // Load (DB sync) Actions
+    loadTables: (floorId?: string) => Promise<void>;
+    /** Tek masanın siparişlerini API'den çekip store'u günceller (mutfak sonrası sepet boş gelme düzeltmesi) */
+    refreshTableOrders: (tableId: string) => Promise<void>;
+    /** Arka plan: sadece masa durumlarını senkronize eder; değişiklik varsa gerekirse tam yükleme yapar */
+    syncTableStatuses: (floorId?: string) => Promise<void>;
+    loadMenu: () => Promise<void>;
+    loadCategories: () => Promise<void>;
+    loadRegions: (storeId?: string) => Promise<void>;
+    loadRecipes: () => Promise<void>;
+    loadKitchenOrders: () => Promise<void>;
+
+    // Region & Printer Actions
+    addRegion: (region: Region, storeId: string | null) => Promise<void>;
+    updateRegion: (regionId: string, updates: { name: string }, storeId: string | null) => Promise<void>;
+    removeRegion: (regionId: string) => Promise<void>;
+    /** app_settings’ten yazıcı profilleri ve kategori rotalarını yükler */
+    loadPrinterConfigFromDb: () => Promise<void>;
+    updatePrinterRoute: (route: PrinterRouting) => void;
+    removePrinterRoute: (routeId: string) => void;
+    updatePrinterProfile: (profile: PrinterProfile) => void;
+    removePrinterProfile: (profileId: string) => void;
+    setCommonPrinter: (printerId: string | undefined) => void;
+    setPrintViaWindowsService: (enabled: boolean) => void;
+    setCustomerForTable: (tableId: string, customerId?: string, customerName?: string) => void;
+
+    // Course & Plate Actions
+    setCourseForItem: (tableId: string, itemId: string, course: CourseType) => void;
+    splitOrder: (orderId: string, itemIds: string[], targetTableId?: string) => Promise<void>;
+    updateOrderItemOptions: (itemId: string, options: any) => Promise<void>;
+    /** Sipariş kalemi miktarını güncelle (DB + store) — sepette adet değişince tutarlılık için */
+    updateOrderItemQuantity: (tableId: string, itemId: string, quantity: number) => Promise<void>;
+
+    // Phase 2: Void & Complementary
+    voidOrderItem: (tableId: string, itemId: string, reason: string, voidQuantity?: number) => Promise<void>;
+    markItemAsComplementary: (tableId: string, itemId: string) => Promise<void>;
+    /** Tek ürünü başka masaya taşır (birleştirilmiş masada yanlış giden ürün için) */
+    moveOrderItemToTable: (currentTableId: string, itemId: string, targetTableId: string) => Promise<void>;
+
+    // Phase 3: Staff/PIN
+    loginWithPin: (pin: string) => Promise<LoginResult>;
+    logout: () => void;
+    loadStaff: () => Promise<void>;
+    addStaff: (staff: Omit<Staff, 'id'>) => Promise<void>;
+    removeStaff: (staffId: string) => Promise<void>;
+    setCurrentStaff: (staff: Staff) => void;
+
+    // Phase 4: Financial
+    openRegister: (openingCash: number, note: string) => void;
+    closeRegister: () => void;
+    loadSystemPrinters: () => Promise<void>;
+
+    /** Mali gün: belirlenen saatte otomatik başlat / sonlandır (ayarlar + zamanlayıcı) */
+    workDayAutoStartEnabled: boolean;
+    workDayAutoEndEnabled: boolean;
+    workDayStartTime: string;
+    workDayEndTime: string;
+    workDayAutoOpeningCash: number;
+    /** Aynı gün iki kez otomatik tetiklenmesin */
+    workDayLastAutoStartDate: string | null;
+    workDayLastAutoEndDate: string | null;
+    setWorkDayAutomation: (
+        partial: Partial<{
+            workDayAutoStartEnabled: boolean;
+            workDayAutoEndEnabled: boolean;
+            workDayStartTime: string;
+            workDayEndTime: string;
+            workDayAutoOpeningCash: number;
+            workDayLastAutoStartDate: string | null;
+            workDayLastAutoEndDate: string | null;
+        }>
+    ) => void;
+
+    // Reservation Actions
+    loadReservations: (date?: string) => Promise<void>;
+    addReservation: (res: Omit<Reservation, 'id'>) => Promise<void>;
+    updateReservation: (res: Reservation) => Promise<void>;
+    deleteReservation: (id: string) => Promise<void>;
+    updateReservationStatus: (id: string, status: Reservation['status']) => Promise<void>;
+}
+
+let _printerPersistTimer: ReturnType<typeof setTimeout> | null = null;
+function scheduleRestaurantPrinterPersist(get: () => RestaurantState) {
+    if (_printerPersistTimer) clearTimeout(_printerPersistTimer);
+    _printerPersistTimer = setTimeout(() => {
+        _printerPersistTimer = null;
+        const s = get();
+        void import('../../../services/restaurantPrinterConfigService').then(({ saveRestaurantPrinterConfig }) =>
+            saveRestaurantPrinterConfig({
+                printerProfiles: s.printerProfiles,
+                printerRoutes: s.printerRoutes,
+                commonPrinterId: s.commonPrinterId,
+                printViaWindowsService: s.printViaWindowsService,
+            })
+        ).catch((e) => console.warn('[restaurant] printer persist', e));
+    }, 500);
+}
+
+export const useRestaurantStore = create<RestaurantState>()(
+    persist(
+        (set, get) => ({
+            tables: [],
+            menu: [],
+            recipes: [],
+            regions: [],
+            printerRoutes: [],
+            printerProfiles: [],
+            commonPrinterId: undefined,
+            printViaWindowsService: false,
+            kitchenOrders: [],
+            currentStaff: null,
+            staffList: [],
+            isRegisterOpen: false,
+            registerOpeningCash: 0,
+            registerOpeningNote: '',
+            workDayDate: null,
+            isDayActive: false,
+            workDayAutoStartEnabled: false,
+            workDayAutoEndEnabled: false,
+            workDayStartTime: '06:00',
+            workDayEndTime: '23:00',
+            workDayAutoOpeningCash: 0,
+            workDayLastAutoStartDate: null,
+            workDayLastAutoEndDate: null,
+            systemPrinters: [],
+            reservations: [],
+            categories: [],
+            callerIdConfig: defaultRestaurantCallerIdConfig(),
+
+            setCallerIdConfig: (partial) =>
+                set((state) => ({
+                    callerIdConfig: { ...state.callerIdConfig, ...partial },
+                })),
+
+            openTable: async (tableId, waiter) => {
+                try {
+                    const staffId = get().currentStaff?.id;
+                    await RestaurantService.updateTableStatus(tableId, 'occupied', waiter, staffId, 0);
+                    // Create DB order immediately so items can be persisted before sendToKitchen
+                    const table = get().tables.find(t => t.id === tableId);
+                    const dbOrder = await RestaurantService.createOrder({
+                        tableId,
+                        floorId: table?.floorId,
+                        waiter
+                    });
+                    set(state => ({
+                        tables: state.tables.map(t =>
+                            t.id === tableId
+                                ? {
+                                    ...t, status: 'occupied', waiter, staffId, orders: [], total: 0,
+                                    startTime: new Date().toISOString(),
+                                    activeOrderId: dbOrder.id,
+                                    faturaNo: dbOrder.order_no,
+                                    mergedOrders: []
+                                }
+                                : t
+                        )
+                    }));
+                } catch (err: any) {
+                    console.error('[RestaurantStore] openTable hatası:', err);
+                    throw err;
+                }
+            },
+
+            addItemToTable: async (tableId, item, quantity, options) => {
+                const state0 = get();
+                const table = state0.tables.find(t => t.id === tableId);
+                let orderId = table?.activeOrderId;
+
+                // Create order in DB if not yet created
+                if (!orderId) {
+                    const dbOrder = await RestaurantService.createOrder({
+                        tableId,
+                        floorId: table?.floorId,
+                        waiter: table?.waiter
+                    });
+                    orderId = dbOrder.id;
+                    set(state => ({
+                        tables: state.tables.map(tb =>
+                            tb.id === tableId
+                                ? { ...tb, activeOrderId: dbOrder.id, faturaNo: dbOrder.order_no }
+                                : tb
+                        )
+                    }));
+                }
+
+                // Save item to DB and get back the DB-generated ID
+                const dbItem = await RestaurantService.addOrderItem(orderId!, {
+                    productId: item.id,
+                    productName: item.name,
+                    quantity,
+                    unitPrice: item.price,
+                    note: options,
+                });
+
+                // ✅ Immediate Stock Deduction (Recipe-based)
+                try {
+                    const productStore = useProductStore.getState();
+                    const recipe = state0.recipes.find(r => r.menuItemId === item.id);
+                    if (recipe) {
+                        for (const ingredient of recipe.ingredients) {
+                            if (ingredient.materialId) {
+                                const prod = productStore.products.find(p => p.id === ingredient.materialId);
+                                if (prod) {
+                                    const deduction = convertUnit(ingredient.quantity * quantity, (ingredient.unit || 'gr').toLowerCase(), (prod.unit || 'kg').toLowerCase());
+                                    await productStore.updateStock(prod.id, prod.stock - deduction);
+
+                                    // Log Stock Movement
+                                    await stockMovementAPI.create(
+                                        {
+                                            trcode: 1, // Sarf
+                                            movement_type: 'out',
+                                            description: `Restoran Satış: ${item.name}`,
+                                            document_no: table?.faturaNo || `REST-${table?.number}`
+                                        },
+                                        [{
+                                            product_id: prod.id,
+                                            quantity: deduction,
+                                            unit_price: prod.cost || 0,
+                                            notes: `Reçeteli Satış`
+                                        }]
+                                    );
+                                }
+                            }
+                        }
+                    }
+                } catch (stockErr) {
+                    console.error('[addItemToTable] Stock deduction failed:', stockErr);
+                }
+
+                set(state => ({
+                    tables: state.tables.map(t => {
+                        if (t.id !== tableId) return t;
+                        const newOrder: OrderItem = {
+                            id: dbItem.id,         // Use DB-assigned ID for void/update ops
+                            menuItemId: String(item.id ?? ''),
+                            name: item.name,
+                            quantity,
+                            price: item.price,
+                            status: 'pending',
+                            options
+                        };
+                        const updatedOrders = [...t.orders, newOrder];
+                        const updatedTotal = updatedOrders
+                            .filter(o => !o.isVoid)
+                            .reduce((sum, o) => sum + o.price * o.quantity, 0);
+                        return { ...t, orders: updatedOrders, total: updatedTotal };
+                    })
+                }));
+                return dbItem?.id;
+            },
+
+            requestBill: async (tableId) => {
+                const table = get().tables.find(t => t.id === tableId);
+                await RestaurantService.updateTableStatus(tableId, 'billing', table?.waiter, table?.staffId, table?.total || 0);
+                set(state => ({
+                    tables: state.tables.map(t => t.id === tableId ? { ...t, status: 'billing' } : t)
+                }));
+            },
+
+            sendToKitchen: async (tableId) => {
+                const table = get().tables.find(t => t.id === tableId);
+                if (!table) return;
+                if (get().menu.length === 0) {
+                    await get().loadMenu();
+                }
+                const pendingItems = table.orders.filter(o => o.status === 'pending' && !o.isVoid);
+                if (pendingItems.length === 0) return;
+
+                // Items are already saved to DB in addItemToTable — just need activeOrderId
+                const dbOrderId = table.activeOrderId;
+                if (!dbOrderId) return;
+
+                try {
+                    // Update pending items status to 'cooking' in DB
+                    for (const item of pendingItems) {
+                        await RestaurantService.updateOrderItem(item.id, { status: 'cooking' });
+                    }
+
+                    const kitchenOrderId = await RestaurantService.createKitchenOrder({
+                        orderId: dbOrderId!,
+                        tableNumber: table.number,
+                        floorName: table.location,
+                        waiter: table.waiter,
+                        items: pendingItems.map(i => ({
+                            orderItemId: i.id,
+                            productId: i.menuItemId,
+                            productName: i.name,
+                            quantity: i.quantity,
+                            course: i.course,
+                            note: i.notes,
+                        })),
+                    });
+
+                    const sentAt = new Date().toISOString();
+                    const kitchenOrder: KitchenOrder = {
+                        id: kitchenOrderId,
+                        tableId: table.id,
+                        tableName: table.number,
+                        waiter: table.waiter || 'Genel',
+                        time: new Date().toLocaleTimeString(),
+                        elapsed: 0,
+                        sentAt,
+                        items: pendingItems,
+                        status: 'new'
+                    };
+                    set(state => ({
+                        kitchenOrders: [...state.kitchenOrders, kitchenOrder],
+                        tables: state.tables.map(t =>
+                            t.id === tableId
+                                ? { ...t, status: 'kitchen', orders: t.orders.map(o => o.status === 'pending' ? { ...o, status: 'cooking' } : o) }
+                                : t
+                        )
+                    }));
+                    await RestaurantService.updateTableStatus(tableId, 'kitchen', table.waiter, table.staffId, table.total);
+
+                    const st = get();
+                    // Mutfak fişi dili: fiş ayarı → yazıcı defaultLanguage → UI dili → tr
+                    void (async () => {
+                        let locale: 'tr' | 'en' | 'ar' | 'ku' | 'uz' | undefined;
+                        try {
+                            const { getReceiptSettings, resolveDefaultReceiptLang } = await import(
+                                '../../../services/receiptSettingsService'
+                            );
+                            let printerDefault: string | undefined;
+                            try {
+                                const raw = localStorage.getItem('retailos-printer-settings');
+                                if (raw) {
+                                    const cfg = JSON.parse(raw) as { defaultLanguage?: string };
+                                    printerDefault = cfg.defaultLanguage;
+                                }
+                            } catch {
+                                /* ignore */
+                            }
+                            const uiLang =
+                                (typeof localStorage !== 'undefined' && localStorage.getItem('language')) ||
+                                (typeof localStorage !== 'undefined' && localStorage.getItem('i18nextLng')) ||
+                                'tr';
+                            const rs = await getReceiptSettings().catch(() => ({}));
+                            locale = resolveDefaultReceiptLang(rs, String(uiLang), printerDefault);
+                        } catch {
+                            locale = 'tr';
+                        }
+                        const { enqueueKitchenPrintJobs, isWindowsPrinterServiceEnabled } = await import(
+                            '../../../services/kitchenPrintQueueService'
+                        );
+                        const serviceEnabled = await isWindowsPrinterServiceEnabled();
+                        if (serviceEnabled) {
+                            await enqueueKitchenPrintJobs({
+                                kitchenOrderId,
+                                orderId: dbOrderId,
+                                table,
+                                pendingItems,
+                                menu: st.menu,
+                                locale,
+                                sourceSystem: 'web',
+                            });
+                        } else {
+                            await printKitchenTicketsAfterSend({
+                                table,
+                                pendingItems,
+                                menu: st.menu,
+                                printerProfiles: st.printerProfiles,
+                                printerRoutes: st.printerRoutes,
+                                commonPrinterId: st.commonPrinterId,
+                                locale,
+                            });
+                        }
+                    })().catch((e) => console.warn('[restaurant] kitchen print dispatch', e));
+                } catch (error) {
+                    console.error("Mutfak siparişi gönderilirken hata oluştu:", error);
+                    throw error;
+                }
+            },
+
+            markAsReady: async (orderId) => {
+                await RestaurantService.updateKitchenOrderStatus(orderId, 'ready');
+                set(state => ({ kitchenOrders: state.kitchenOrders.map(ko => ko.id === orderId ? { ...ko, status: 'ready' } : ko) }));
+            },
+
+            markAsServed: async (orderId) => {
+                await RestaurantService.updateKitchenOrderStatus(orderId, 'served');
+                const ko = get().kitchenOrders.find(o => o.id === orderId);
+                if (!ko) return;
+                set(state => ({
+                    kitchenOrders: state.kitchenOrders.filter(o => o.id !== orderId),
+                    tables: state.tables.map(t =>
+                        t.id === ko.tableId
+                            ? { ...t, status: 'served', orders: t.orders.map(o => ko.items.some(ki => ki.id === o.id) ? { ...o, status: 'served' } : o) }
+                            : t
+                    )
+                }));
+                const updatedTable = get().tables.find(t => t.id === ko.tableId);
+                if (updatedTable) {
+                    await RestaurantService.updateTableStatus(ko.tableId, 'served', updatedTable.waiter, updatedTable.staffId, updatedTable.total);
+                }
+            },
+
+            closeBill: async (tableId, paymentData, options) => {
+                const table = get().tables.find(t => t.id === tableId);
+                if (!table) return;
+                try {
+                    let orderId = table.activeOrderId;
+                    if (!orderId) {
+                        const dbOrder = await RestaurantService.createOrder({ tableId, waiter: table.waiter });
+                        orderId = dbOrder.id;
+                        // Parallel insert of items
+                        await Promise.all(table.orders.map(item =>
+                            RestaurantService.addOrderItem(orderId as string, {
+                                productId: item.menuItemId,
+                                productName: item.name,
+                                quantity: item.quantity,
+                                unitPrice: item.price,
+                                course: item.course,
+                                note: item.options
+                            })
+                        ));
+                    }
+                    if (!orderId) throw new Error('Order selection failed');
+                    const linkedOrderIds = (table.mergedOrders || []).map(m => m.orderId);
+                    const paymentMethod =
+                        (paymentData.resolvedPaymentMethod as string | undefined) ||
+                        paymentData.payments?.[0]?.method ||
+                        'cash';
+                    const discountAmount = Number(paymentData.discountAmount ?? 0);
+
+                    // ✅ CRITICAL: Close order + reset table status (must block payment)
+                    await RestaurantService.completeTablePayment({ tableId, orderId, linkedOrderIds, paymentMethod, discountAmount });
+
+                    // ✅ Update local state immediately (unblocks UI)
+                    set(state => ({
+                        tables: state.tables.map(t => t.id === tableId
+                            ? { ...t, status: 'cleaning', orders: [], total: 0, waiter: undefined, startTime: undefined, activeOrderId: undefined, faturaNo: undefined, mergedOrders: [] }
+                            : t)
+                    }));
+
+                    const tableSnapshot = { ...table };
+                    const saleOv = options?.saleOverride;
+                    const orderDiscountAmount = saleOv
+                        ? Number(saleOv.discount ?? 0)
+                        : Number(paymentData.discountAmount ?? 0);
+                    const effectiveTotal = saleOv
+                        ? Number(saleOv.total ?? 0)
+                        : (tableSnapshot.total || 0) - orderDiscountAmount;
+
+                    try {
+                        const salesStore = useSaleStore.getState();
+                        await salesStore.addSale({
+                            id: uuidv4(),
+                            receiptNumber: `REST-${tableSnapshot.number}-${Date.now()}`,
+                            date: new Date().toISOString(),
+                            total: effectiveTotal,
+                            subtotal: saleOv ? saleOv.subtotal : (tableSnapshot.total || 0),
+                            discount: orderDiscountAmount,
+                            items: saleOv?.items ?? tableSnapshot.orders.map(o => ({
+                                productId: o.menuItemId,
+                                productName: o.name,
+                                quantity: o.quantity,
+                                price: o.price,
+                                discount: 0,
+                                total: o.price * o.quantity
+                            })),
+                            paymentMethod,
+                            status: 'completed',
+                            cashier: tableSnapshot.waiter || 'Garson',
+                            /** Günlük raporda ERP fişi silindiğinde aynı işlemin RES-* adisyon satırı tekrar çıkmasın diye */
+                            notes: `RestoranPOS|rest_order_id:${orderId}`,
+                        });
+                    } catch (e: any) {
+                        const msg = e instanceof Error ? e.message : String(e);
+                        console.error('[closeBill] addSale failed:', e);
+                        throw new Error(`ACCOUNTING_POST_FAILED:${msg}`);
+                    }
+
+                    try {
+                        if (tableSnapshot.customerId) {
+                            const customerStore = useCustomerStore.getState();
+                            await customerStore.updatePurchaseHistory(tableSnapshot.customerId, effectiveTotal);
+                            // Veresiye cari borcu salesAPI → invoicesAPI.create içinde tek kez yazılır; burada tekrar ekleme.
+                            const points = Math.floor(effectiveTotal / 100);
+                            if (points > 0) await customerStore.updatePoints(tableSnapshot.customerId, points);
+                        }
+                    } catch (e) { console.error('[closeBill] customer update failed:', e); }
+
+                } catch (error) {
+                    console.error('[RestaurantStore] closeBill error:', error);
+                    throw error;
+                }
+            },
+
+
+            addTable: async (tableData) => {
+                const row = await RestaurantService.addTable({ floor_id: tableData.floorId, number: tableData.number, seats: tableData.seats, is_large: tableData.isLarge });
+                set(state => ({ tables: [...state.tables, { ...tableData, id: row?.id ?? uuidv4(), status: 'empty', orders: [], total: 0 }] }));
+            },
+
+            updateTable: async (tableData, persist = false) => {
+                set(state => ({ tables: state.tables.map(t => t.id === tableData.id ? { ...t, ...tableData } : t) }));
+                if (persist && tableData.id) await RestaurantService.updateTable(tableData.id, tableData);
+            },
+
+            removeTable: async (tableId) => {
+                await RestaurantService.deleteTable(tableId);
+                set(state => ({ tables: state.tables.filter(t => t.id !== tableId) }));
+            },
+
+            mergeTables: async (sourceTableId, targetTableId) => {
+                // Link source order to target table without moving items in DB
+                // Each order keeps its own fatura code
+                const sourceOrder = await RestaurantService.linkOrderToTable(sourceTableId, targetTableId);
+                const sourceTable = get().tables.find(t => t.id === sourceTableId);
+
+                set(state => ({
+                    tables: state.tables.map(t => {
+                        if (t.id === targetTableId) {
+                            const mergedItems = sourceTable?.orders || [];
+                            const allOrders = [...t.orders, ...mergedItems];
+                            const newMergedOrders: MergedOrderRef[] = [
+                                ...(t.mergedOrders || []),
+                                ...(sourceOrder ? [{
+                                    orderId: sourceOrder.id,
+                                    faturaNo: sourceOrder.order_no,
+                                    tableId: sourceTableId,
+                                    tableNumber: sourceTable?.number || ''
+                                }] : [])
+                            ];
+                            return {
+                                ...t,
+                                orders: allOrders,
+                                total: allOrders.filter(o => !o.isVoid).reduce((sum, o) => sum + o.price * o.quantity, 0),
+                                status: t.status === 'empty' ? 'occupied' : t.status,
+                                mergedOrders: newMergedOrders
+                            };
+                        }
+                        if (t.id === sourceTableId) {
+                            return { ...t, status: 'empty', orders: [], total: 0, waiter: undefined, activeOrderId: undefined, faturaNo: undefined, mergedOrders: [] };
+                        }
+                        return t;
+                    })
+                }));
+            },
+
+            transferTable: async (sourceTableId, targetTableId) => {
+                try {
+                    await RestaurantService.transferTable(sourceTableId, targetTableId);
+                    await get().loadTables(undefined);
+                } catch (err) {
+                    console.error('[RestaurantStore] transferTable error:', err);
+                    throw err;
+                }
+            },
+
+            moveTable: async (sourceTableId, targetTableId) => {
+                try {
+                    await RestaurantService.moveTable(sourceTableId, targetTableId);
+                    // Tüm masaları yeniden yükle; sadece bir kat yüklenirse diğer katlar kaybolur
+                    await get().loadTables(undefined);
+                } catch (err) {
+                    console.error('[RestaurantStore] moveTable error:', err);
+                    throw err;
+                }
+            },
+
+            updateRecipe: async (recipe) => {
+                await RestaurantService.saveRecipe({ id: recipe.id, menuItemId: recipe.menuItemId, totalCost: recipe.totalCost, wastagePercent: recipe.wastagePercent, ingredients: recipe.ingredients.map(ing => ({ materialId: ing.materialId ?? '', quantity: ing.quantity, unit: ing.unit, cost: ing.cost })) });
+                await get().loadRecipes();
+            },
+
+            syncTableStatuses: async (floorId) => {
+                try {
+                    const statuses = await RestaurantService.getTableStatuses(floorId);
+                    const state = get();
+                    let needsFullLoad = false;
+                    const hadEmpty = new Set(state.tables.filter(t => t.status === 'empty').map(t => t.id));
+                    if (statuses.length > state.tables.length) needsFullLoad = true;
+                    const nextTables = state.tables.map(t => {
+                        const row = statuses.find((s: any) => s.id === t.id);
+                        if (!row) return t;
+                        const wasEmpty = hadEmpty.has(t.id);
+                        const nowEmpty = (row.status ?? 'empty') === 'empty';
+                        if (wasEmpty && !nowEmpty) needsFullLoad = true;
+                        const nextStatus = (row.status ?? t.status) as Table['status'];
+                        return {
+                            ...t,
+                            status: nextStatus,
+                            waiter: row.waiter ?? t.waiter,
+                            total: Number(row.total ?? 0),
+                            startTime: row.start_time ?? t.startTime
+                        };
+                    });
+                    set({ tables: nextTables });
+                    if (needsFullLoad) await get().loadTables(floorId);
+                } catch (err) {
+                    console.warn('[RestaurantStore] syncTableStatuses failed:', err);
+                }
+            },
+
+            refreshTableOrders: async (tableId) => {
+                const state = get();
+                const table = state.tables.find(t => t.id === tableId);
+                if (!table) return;
+                const activeOrder = await RestaurantService.getActiveOrder(tableId);
+                const mainTableNum = (activeOrder as any)?.table_number ?? table.number;
+                const orders: OrderItem[] = (activeOrder?.items || []).map((i: any): OrderItem => ({
+                    id: i.id,
+                    menuItemId: String(i.product_id ?? ''),
+                    name: i.product_name,
+                    quantity: Number(i.quantity),
+                    price: Number(i.unit_price),
+                    status: (i.status as OrderItem['status']) || 'cooking',
+                    course: i.course,
+                    options: i.note,
+                    isVoid: i.is_void,
+                    voidReason: i.void_reason,
+                    isComplementary: i.is_complementary,
+                    sourceTableId: table.id,
+                    sourceTableNumber: mainTableNum,
+                }));
+                const total = orders.filter((o) => !o.isVoid).reduce((sum, o) => sum + o.price * o.quantity, 0);
+                const orderDiscountPct = Number((activeOrder as any)?.order_discount_pct ?? 0);
+                set(state => ({
+                    tables: state.tables.map(t =>
+                        t.id === tableId
+                            ? {
+                                ...t,
+                                orders,
+                                activeOrderId: activeOrder?.id ?? t.activeOrderId,
+                                faturaNo: (activeOrder as any)?.order_no ?? t.faturaNo,
+                                total,
+                                orderDiscountPct: Number.isFinite(orderDiscountPct) ? orderDiscountPct : 0,
+                            }
+                            : t
+                    )
+                }));
+            },
+
+            loadTables: async (floorId) => {
+                const rows = await RestaurantService.getTables(floorId);
+                const tablesWithOrders = await Promise.all(rows.map(async (r: any) => {
+                    const baseTable: Table = {
+                        id: r.id, number: r.number, seats: r.seats ?? 4,
+                        status: r.status ?? 'empty', floorId: r.floor_id ?? '',
+                        location: r.location, orders: [], startTime: r.start_time,
+                        waiter: r.waiter, total: Number(r.total || 0), isLarge: r.is_large ?? false,
+                        color: r.color ?? null,
+                        faturaNo: undefined, mergedOrders: []
+                    };
+                    if (baseTable.status !== 'empty') {
+                        const activeOrder = await RestaurantService.getActiveOrder(baseTable.id);
+                        if (activeOrder) {
+                            baseTable.activeOrderId = activeOrder.id;
+                            baseTable.faturaNo = activeOrder.order_no;
+                            const odPct = Number((activeOrder as any).order_discount_pct ?? 0);
+                            baseTable.orderDiscountPct = Number.isFinite(odPct) ? odPct : 0;
+                            const mainTableNum = (activeOrder as any).table_number ?? baseTable.number;
+                            baseTable.orders = (activeOrder.items || []).map((i: any) => ({
+                                id: i.id, menuItemId: String(i.product_id ?? ''), name: i.product_name,
+                                quantity: Number(i.quantity), price: Number(i.unit_price),
+                                status: i.status || 'cooking', course: i.course, options: i.note,
+                                isVoid: i.is_void, voidReason: i.void_reason, isComplementary: i.is_complementary,
+                                sourceTableId: baseTable.id, sourceTableNumber: mainTableNum
+                            }));
+                        }
+
+                        // Load linked (merged) orders — her ürüne kaynak masa etiketi
+                        const linkedIds: string[] = r.linked_order_ids || [];
+                        if (linkedIds.length > 0) {
+                            const linkedOrders = await RestaurantService.getLinkedOrders(linkedIds);
+                            const mergedRefs: MergedOrderRef[] = [];
+                            for (const lo of linkedOrders) {
+                                const loTableId = (lo as any).table_id ?? '';
+                                const loTableNum = (lo as any).table_number ?? '';
+                                mergedRefs.push({ orderId: lo.id, faturaNo: lo.order_no, tableId: loTableId, tableNumber: loTableNum });
+                                const loItems = (lo.items || []).map((i: any) => ({
+                                    id: i.id, menuItemId: String(i.product_id ?? ''), name: i.product_name,
+                                    quantity: Number(i.quantity), price: Number(i.unit_price),
+                                    status: i.status || 'cooking', course: i.course, options: i.note,
+                                    isVoid: i.is_void, voidReason: i.void_reason, isComplementary: i.is_complementary,
+                                    sourceTableId: loTableId, sourceTableNumber: loTableNum
+                                }));
+                                baseTable.orders = [...baseTable.orders, ...loItems];
+                            }
+                            baseTable.mergedOrders = mergedRefs;
+                        }
+
+                        baseTable.total = baseTable.orders
+                            .filter(o => !o.isVoid)
+                            .reduce((sum, o) => sum + o.price * o.quantity, 0);
+                    }
+                    return baseTable;
+                }));
+                set({ tables: tablesWithOrders });
+            },
+
+            loadMenu: async () => {
+                let products = useProductStore.getState().products;
+                if (products.length === 0) {
+                    try {
+                        await useProductStore.getState().loadProducts(true);
+                        products = useProductStore.getState().products;
+                    } catch {
+                        /* ağ yok — boş menü */
+                    }
+                }
+                set({
+                    menu: products.map((p: any) => ({
+                        id: String(p.id ?? ''),
+                        name: p.name,
+                        price: p.price ?? p.sale_price ?? 0,
+                        category: String(p.category ?? p.group_name ?? 'Genel').trim() || 'Genel',
+                        image: p.image,
+                    })),
+                });
+            },
+
+            loadCategories: async () => {
+                const categories = await categoryAPI.getAll();
+                set({ categories });
+            },
+
+            loadRegions: async (storeId) => {
+                const rows = await RestaurantService.getFloors(storeId);
+                set({ regions: rows.map((r: any) => ({ id: r.id, name: r.name, order: r.display_order ?? 0 })) });
+            },
+
+            loadRecipes: async () => {
+                const rows = await RestaurantService.getRecipes();
+                set({ recipes: rows.map((r: any) => ({ id: r.id, menuItemId: r.menu_item_id, menuItemName: r.menu_item_name ?? '', totalCost: Number(r.total_cost ?? 0), wastagePercent: Number(r.wastage_percent ?? 0), ingredients: (r.ingredients ?? []).map((ing: any) => ({ id: ing.id, materialId: ing.material_id, materialName: ing.material_name ?? '', quantity: Number(ing.quantity), unit: ing.unit ?? '', cost: Number(ing.cost ?? 0) })) })) });
+            },
+
+            loadKitchenOrders: async () => {
+                try {
+                    const rows = await RestaurantService.getActiveKitchenOrders();
+                    set({ kitchenOrders: rows.map((ko: any) => {
+                    const sentAt = ko.sent_at ?? null;
+                    const elapsed = sentAt ? Math.floor((Date.now() - new Date(sentAt).getTime()) / 60000) : 0;
+                    return { id: ko.id, tableId: ko.table_id ?? ko.order_id ?? '', tableName: ko.table_number ?? '', waiter: ko.waiter ?? '', time: sentAt ? new Date(sentAt).toLocaleTimeString() : new Date().toLocaleTimeString(), elapsed, sentAt: sentAt ?? undefined, items: (ko.items ?? []).map((i: any) => ({ id: i.id, menuItemId: i.order_item_id ?? '', name: i.product_name, quantity: Number(i.quantity), price: 0, status: i.status ?? 'cooking', course: i.course, notes: i.note, startAt: i.start_at, preparationTime: i.preparation_time, estimatedReadyAt: i.estimated_ready_at })), status: ko.status ?? 'new', estimatedReadyAt: ko.estimated_ready_at };
+                }) });
+                } catch (err) {
+                    console.error('[RestaurantStore] loadKitchenOrders failed:', err);
+                    // Hata durumunda mevcut listeyi silme; böylece aynı oturumda gönderilen siparişler kaybolmaz.
+                }
+            },
+
+            addRegion: async (region, storeId) => {
+                try {
+                    const dbRegion = await RestaurantService.saveFloor({ store_id: storeId, name: region.name, display_order: region.order });
+                    if (!dbRegion) throw new Error('Bölge kaydedilemedi — DB satır dönmedi');
+                    set(state => ({ regions: [...state.regions, { id: dbRegion.id, name: dbRegion.name, order: dbRegion.display_order ?? region.order }].sort((a, b) => a.order - b.order) }));
+                } catch (err: any) {
+                    console.error('[RestaurantStore] addRegion hatası:', err?.message ?? String(err));
+                    throw err;
+                }
+            },
+
+            updateRegion: async (regionId, updates, storeId) => {
+                const state = get();
+                const region = state.regions.find(r => r.id === regionId);
+                if (!region) throw new Error('Bölge bulunamadı');
+                try {
+                    const dbRegion = await RestaurantService.saveFloor({
+                        id: regionId,
+                        store_id: storeId,
+                        name: updates.name,
+                        display_order: region.order,
+                    });
+                    if (!dbRegion) throw new Error('Bölge güncellenemedi');
+                    set(s => ({ regions: s.regions.map(r => r.id === regionId ? { ...r, name: dbRegion.name } : r) }));
+                } catch (err: any) {
+                    console.error('[RestaurantStore] updateRegion hatası:', err?.message ?? String(err));
+                    throw err;
+                }
+            },
+
+            removeRegion: async (regionId) => {
+                await RestaurantService.deleteFloor(regionId);
+                set(state => ({ regions: state.regions.filter(r => r.id !== regionId) }));
+            },
+
+            loadPrinterConfigFromDb: async () => {
+                try {
+                    const { getRestaurantPrinterConfig } = await import('../../../services/restaurantPrinterConfigService');
+                    const cfg = await getRestaurantPrinterConfig();
+                    set({
+                        printerProfiles: cfg.printerProfiles,
+                        printerRoutes: cfg.printerRoutes,
+                        commonPrinterId: cfg.commonPrinterId,
+                        printViaWindowsService: cfg.printViaWindowsService === true,
+                    });
+                } catch (e) {
+                    console.warn('[restaurant] loadPrinterConfigFromDb', e);
+                }
+            },
+            updatePrinterRoute: (route) => {
+                set(state => ({ printerRoutes: state.printerRoutes.some(r => r.id === route.id) ? state.printerRoutes.map(r => r.id === route.id ? route : r) : [...state.printerRoutes, route] }));
+                scheduleRestaurantPrinterPersist(get);
+            },
+            removePrinterRoute: (routeId) => {
+                set(state => ({ printerRoutes: state.printerRoutes.filter(r => r.id !== routeId) }));
+                scheduleRestaurantPrinterPersist(get);
+            },
+            updatePrinterProfile: (profile) => {
+                set(state => ({ printerProfiles: state.printerProfiles.some(p => p.id === profile.id) ? state.printerProfiles.map(p => p.id === profile.id ? profile : p) : [...state.printerProfiles, profile] }));
+                scheduleRestaurantPrinterPersist(get);
+            },
+            removePrinterProfile: (profileId) => {
+                set(state => ({ printerProfiles: state.printerProfiles.filter(p => p.id !== profileId) }));
+                scheduleRestaurantPrinterPersist(get);
+            },
+            setCommonPrinter: (printerId) => {
+                set({ commonPrinterId: printerId });
+                scheduleRestaurantPrinterPersist(get);
+            },
+            setPrintViaWindowsService: (enabled) => {
+                set({ printViaWindowsService: enabled });
+                scheduleRestaurantPrinterPersist(get);
+            },
+            setCustomerForTable: (tableId, customerId, customerName) => set(state => ({ tables: state.tables.map(t => t.id === tableId ? { ...t, customerId, customerName } : t) })),
+            setCourseForItem: (tableId, itemId, course) => set(state => ({ tables: state.tables.map(t => t.id === tableId ? { ...t, orders: t.orders.map(o => o.id === itemId ? { ...o, course } : o) } : t) })),
+            splitOrder: async (orderId, itemIds, targetTableId) => {
+                await RestaurantService.splitOrder(orderId, itemIds, targetTableId);
+                const table = get().tables.find(t => t.activeOrderId === orderId);
+                if (table) await get().loadTables(table.floorId);
+            },
+            updateOrderItemOptions: async (itemId, options) => {
+                await RestaurantService.updateOrderItemOptions(itemId, options);
+                set(state => ({ tables: state.tables.map(t => ({ ...t, orders: t.orders.map(o => o.id === itemId ? { ...o, options } : o) })) }));
+            },
+            updateOrderItemQuantity: async (tableId, itemId, quantity) => {
+                await RestaurantService.updateOrderItem(itemId, { quantity });
+                set(state => {
+                    const tables = state.tables.map(t => {
+                        if (t.id !== tableId) return t;
+                        const orders = t.orders.map(o => o.id === itemId ? { ...o, quantity, subtotal: o.price * quantity } : o);
+                        const total = orders.filter(o => !o.isVoid).reduce((s, o) => s + o.price * o.quantity, 0);
+                        return { ...t, orders, total };
+                    });
+                    return { tables };
+                });
+            },
+            voidOrderItem: async (tableId, itemId, reason, voidQuantity) => {
+                const state = get();
+                const table = state.tables.find(t => t.id === tableId);
+                const orderItem = table?.orders.find(o => o.id === itemId);
+                const qtyToVoid = voidQuantity ?? orderItem?.quantity ?? 1;
+
+                // Stok iadesi: Sadece henüz mutfağa GİTMEMİŞ (pending) kalemlerde. Mutfakta üretilmiş (cooking/ready/served)
+                // ürün masadan geri gelirse stok iade edilmez — hammadde zaten kullanıldı.
+                const wasNotProducedYet = orderItem?.status === 'pending';
+                if (orderItem && !orderItem.isVoid && qtyToVoid > 0 && wasNotProducedYet) {
+                    try {
+                        const productStore = useProductStore.getState();
+                        const recipe = state.recipes.find(r => r.menuItemId === orderItem.menuItemId);
+                        if (recipe) {
+                            for (const ingredient of recipe.ingredients) {
+                                if (ingredient.materialId) {
+                                    const prod = productStore.products.find(p => p.id === ingredient.materialId);
+                                    if (prod) {
+                                        const restoration = convertUnit(ingredient.quantity * qtyToVoid, ingredient.unit || 'gr', prod.unit || 'kg');
+                                        await productStore.updateStock(prod.id, prod.stock + restoration);
+                                        await stockMovementAPI.create(
+                                            {
+                                                trcode: 1,
+                                                movement_type: 'in',
+                                                description: `Sipariş İptal (İade): ${orderItem.name} x ${qtyToVoid}`,
+                                                document_no: table?.faturaNo || `VOID-${table?.number}`
+                                            },
+                                            [{ product_id: prod.id, quantity: restoration, unit_price: prod.cost || 0, notes: `Void İptal İadesi (mutfağa gitmeden)` }]
+                                        );
+                                    }
+                                }
+                            }
+                        }
+                    } catch (stockErr) {
+                        console.error('[voidOrderItem] Stock restoration failed:', stockErr);
+                    }
+                }
+
+                await RestaurantService.voidOrderItem(itemId, reason, qtyToVoid);
+                if (table) await get().loadTables(table.floorId);
+            },
+            markItemAsComplementary: async (tableId, itemId) => {
+                await RestaurantService.markItemAsComplementary(itemId);
+                const table = get().tables.find(t => t.id === tableId);
+                if (table) await get().loadTables(table.floorId);
+            },
+            moveOrderItemToTable: async (currentTableId, itemId, targetTableId) => {
+                await RestaurantService.moveOrderItemToTable(itemId, targetTableId);
+                const table = get().tables.find(t => t.id === currentTableId);
+                if (table) await get().loadTables(table.floorId);
+            },
+            loginWithPin: async (pin) => {
+                const result = await RestaurantService.verifyStaffPin(pin, RestaurantService.firmNr);
+                if (result.success && result.staff) set({ currentStaff: result.staff });
+                return result;
+            },
+            logout: () => set({ currentStaff: null }),
+            loadStaff: async () => {
+                const staff = await RestaurantService.getStaffList(RestaurantService.firmNr);
+                set({ staffList: staff });
+            },
+            addStaff: async (staffData) => {
+                const newStaff = await RestaurantService.saveStaff(RestaurantService.firmNr, staffData);
+                set(state => ({ staffList: [...state.staffList, newStaff] }));
+            },
+            removeStaff: async (staffId) => {
+                await RestaurantService.deleteStaff(RestaurantService.firmNr, staffId);
+                set(state => ({ staffList: state.staffList.filter(s => s.id !== staffId) }));
+            },
+            setCurrentStaff: (staff) => set({ currentStaff: staff }),
+            openRegister: (cash, note) => set({ isRegisterOpen: true, registerOpeningCash: cash, registerOpeningNote: note, workDayDate: new Date().toISOString().slice(0, 10), isDayActive: true }),
+            closeRegister: () => set({ isRegisterOpen: false, registerOpeningCash: 0, registerOpeningNote: '', isDayActive: false }),
+            setWorkDayAutomation: (partial) => set((state) => ({ ...state, ...partial })),
+            loadSystemPrinters: async () => {
+                try {
+                    const { invoke } = await import('@tauri-apps/api/core');
+                    set({ systemPrinters: await invoke('list_system_printers') });
+                } catch (error) {
+                    console.error('Failed to load system printers:', error);
+                }
+            },
+
+            loadReservations: async (date) => set({ reservations: await RestaurantService.getReservations({ date }) }),
+            addReservation: async (data) => set(state => ({ reservations: [...state.reservations, data as Reservation] })),
+            updateReservation: async (data) => {
+                await RestaurantService.saveReservation(data);
+                set(state => ({ reservations: state.reservations.map(r => r.id === data.id ? data : r) }));
+            },
+            deleteReservation: async (id) => {
+                await RestaurantService.deleteReservation(id);
+                set(state => ({ reservations: state.reservations.filter(r => r.id !== id) }));
+            },
+            updateReservationStatus: async (id, status) => {
+                await RestaurantService.updateReservationStatus(id, status);
+                set(state => ({ reservations: state.reservations.map(r => r.id === id ? { ...r, status } : r) }));
+            },
+
+            lockTable: async (tableId: string) => {
+                const staff = get().currentStaff;
+                if (!staff) return false;
+                const success = await RestaurantService.lockTable(tableId, staff.id, staff.name);
+                if (success) {
+                    set(state => ({
+                        tables: state.tables.map(t => t.id === tableId ? { ...t, lockedByStaffId: staff.id, lockedByStaffName: staff.name } : t)
+                    }));
+                }
+                return success;
+            },
+
+            unlockTable: async (tableId: string) => {
+                await RestaurantService.unlockTable(tableId);
+                set(state => ({
+                    tables: state.tables.map(t => t.id === tableId ? { ...t, lockedByStaffId: undefined, lockedByStaffName: undefined } : t)
+                }));
+            },
+
+            markAsCleaning: async (tableId: string) => {
+                await RestaurantService.updateTableStatus(tableId, 'cleaning');
+                set(state => ({
+                    tables: state.tables.map(t => t.id === tableId ? { ...t, status: 'cleaning' } : t)
+                }));
+            },
+
+            markAsClean: async (tableId: string) => {
+                await RestaurantService.updateTableStatus(tableId, 'empty', undefined, undefined, 0);
+                set(state => ({
+                    tables: state.tables.map(t => t.id === tableId ? { ...t, status: 'empty', orders: [], total: 0, waiter: undefined } : t)
+                }));
+            }
+        }),
+        {
+            name: 'restaurant-storage',
+            partialize: (state) => ({
+                isRegisterOpen: state.isRegisterOpen,
+                registerOpeningCash: state.registerOpeningCash,
+                registerOpeningNote: state.registerOpeningNote,
+                workDayDate: state.workDayDate,
+                isDayActive: state.isDayActive,
+                callerIdConfig: state.callerIdConfig,
+                workDayAutoStartEnabled: state.workDayAutoStartEnabled,
+                workDayAutoEndEnabled: state.workDayAutoEndEnabled,
+                workDayStartTime: state.workDayStartTime,
+                workDayEndTime: state.workDayEndTime,
+                workDayAutoOpeningCash: state.workDayAutoOpeningCash,
+                workDayLastAutoStartDate: state.workDayLastAutoStartDate,
+                workDayLastAutoEndDate: state.workDayLastAutoEndDate,
+            }),
+            merge: (persisted, current) => {
+                const p = persisted as Partial<RestaurantState> | undefined;
+                return {
+                    ...current,
+                    ...p,
+                    callerIdConfig: {
+                        ...defaultRestaurantCallerIdConfig(),
+                        ...(p?.callerIdConfig ?? {}),
+                    },
+                } as RestaurantState;
+            },
+        }
+    )
+);

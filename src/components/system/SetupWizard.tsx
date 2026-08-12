@@ -1,0 +1,4089 @@
+import React, { useState, useEffect } from 'react';
+import {
+    Database, Server, Shield, Cpu, ArrowRight, ArrowLeft,
+    CheckCircle, Globe, WifiOff, Zap, Layout, Settings2,
+    ChevronRight, Loader2, Save, Cloud, User, Lock, Building2,
+    Network, Fingerprint, RefreshCw, Activity, Download, Terminal, Info, Upload, Monitor,
+    Maximize2, Minimize2, UtensilsCrossed, Sparkles, FileCode, ShieldCheck
+} from 'lucide-react';
+import { toast } from 'sonner';
+import { NeonLogo } from '../ui/NeonLogo';
+import { AppFooter } from '../shared/AppFooter';
+import { postgres, initializeFromSQLite } from '../../services/postgres';
+import { SupabaseMigrationService } from '../../services/api/supabaseMigrationService';
+import { APP_SEMVER } from '../../core/version';
+import { IS_TAURI, safeInvoke, removeRetailexWindowsServicesIfTauri, deleteCRetailexFolderIfTauri } from '../../utils/env';
+import { mergeRustIntoStoredWebConfig } from '../../utils/retailexWebConfigMerge';
+import { createInitialSetupConfig } from './setup/setupDefaults';
+import { LOGO_ERP_DEFAULTS, mergeLogoErpDefaults } from './setup/logoErpDefaults';
+import { LogoMssqlDatabaseSelect } from '../integrations/LogoMssqlDatabaseSelect';
+import {
+  finalizeSetupConfig,
+  needsLocalDatabaseStep,
+  needsRemotePgStep,
+  needsPostgrestApiStep,
+  usesPostgrestForHybridSync,
+  normalizeSetupConfig,
+  resolveFirmSchemaTargets,
+  resolvePrimaryMigrationTarget,
+  shouldSkipRemotePgBootstrap,
+} from './setup/setupDbTargets';
+import { initErpFirmSchemas, initErpPeriodSchema, initOptionalModuleSchemas } from './setup/setupErpSchema';
+import { getSetupFinalStep, getSetupWizardSteps, getDbSettingsStep, getFirmPeriodStep, getSummaryStep, getDeviceStep } from './setup/setupSteps';
+import type {
+  AppConfig,
+  AppUser,
+  BackupConfig,
+  Company,
+  MigrationStatus,
+  Period,
+  Store,
+} from './setup/setupTypes';
+import {
+    parseSaaSOrCustomPostgrestUrl,
+    buildSaaSTenantPostgrestUrl,
+    DEFAULT_SAAS_TENANT_POSTGREST_ORIGIN,
+} from '../../services/merkezTenantRegistry';
+
+const SetupWizard: React.FC = () => {
+    const [windowWidth, setWindowWidth] = useState(window.innerWidth);
+    const isTauri = IS_TAURI;
+
+    useEffect(() => {
+        const handleResize = () => setWindowWidth(window.innerWidth);
+        window.addEventListener('resize', handleResize);
+        return () => window.removeEventListener('resize', handleResize);
+    }, []);
+
+    // Removed: if (windowWidth < 1024) return null;
+
+    const [step, setStep] = useState(1);
+    const [loading, setLoading] = useState(false);
+    const [testingLogo, setTestingLogo] = useState(false);
+    const [testingPg, setTestingPg] = useState(false);
+    const [dbInitialized, setDbInitialized] = useState(false); // New state to track if DB is created
+    const [companies, setCompanies] = useState<Company[]>([]);
+    const [periods, setPeriods] = useState<Period[]>([]);
+    const [selectedCompanyId, setSelectedCompanyId] = useState<string | null>(null);
+    // Standalone mode: editable period dates
+    const [standalonePeriodStart, setStandalonePeriodStart] = useState('2026-01-01');
+    const [standalonePeriodEnd, setStandalonePeriodEnd] = useState('2026-12-31');
+    const [supabaseProjects, setSupabaseProjects] = useState<any[]>([]);
+    const [supabaseToken, setSupabaseToken] = useState('');
+    const [isFetchingSupabase, setIsFetchingSupabase] = useState(false);
+    const [hasExistingConfig, setHasExistingConfig] = useState(false);
+    const [showReinstallModal, setShowReinstallModal] = useState(false);
+    /** Varsayılan kapalı: C:\RetailEX silinsin mi */
+    const [reinstallDeleteCRetailex, setReinstallDeleteCRetailex] = useState(false);
+    const [isUpdateMode, setIsUpdateMode] = useState(false);
+    const [osUsername, setOsUsername] = useState<string>('');
+    const [downloadedSqlPath, setDownloadedSqlPath] = useState<string | null>(null);
+    const [isDumpingSql, setIsDumpingSql] = useState(false);
+    const [loadDemoData, setLoadDemoData] = useState(false); // Demo data loading option
+    const [config, setConfig] = useState<AppConfig>(createInitialSetupConfig());
+
+    const [postgrestWizardEntryMode, setPostgrestWizardEntryMode] = useState<'retailex_cloud' | 'custom_url'>(
+        'custom_url',
+    );
+    const [postgrestWizardSlug, setPostgrestWizardSlug] = useState('');
+
+    useEffect(() => {
+        if (config.connection_provider !== 'rest_api') return;
+        const p = parseSaaSOrCustomPostgrestUrl(String(config.remote_rest_url || ''));
+        if (p.kind === 'saas_single_slug') {
+            setPostgrestWizardEntryMode('retailex_cloud');
+            setPostgrestWizardSlug(p.slug);
+        } else {
+            setPostgrestWizardEntryMode('custom_url');
+            setPostgrestWizardSlug('');
+        }
+    }, [config.connection_provider]);
+
+    useEffect(() => {
+        if (step !== 3 || config.skip_integration || config.is_nebim_migration) return;
+        setConfig((prev) => mergeLogoErpDefaults(prev));
+    }, [step, config.skip_integration, config.is_nebim_migration]);
+
+    const logoSqlFieldsLocked = !config.is_nebim_migration && String(config.erp_method || 'sql').toLowerCase() === 'sql';
+
+    /** Logo Objects (MSSQL) ile gerçek veri: örnek seed çakışmasın. Sadece firma/period dolu olması Logo değildir. */
+    const demoSeedConflictsWithLogoObjects =
+        !config.skip_integration && Boolean(config.logo_objects_active);
+
+    useEffect(() => {
+        if (demoSeedConflictsWithLogoObjects && loadDemoData) setLoadDemoData(false);
+    }, [demoSeedConflictsWithLogoObjects, loadDemoData]);
+
+    /** Bağımsız mod + terminal + merkez DB: yeni firma formu atlanır; doğrudan uzak PostgreSQL ayarları. */
+    const skipStandaloneFirmStep =
+        config.skip_integration && config.role === 'client' && config.db_mode === 'online';
+
+    const wizardSteps = getSetupWizardSteps(config.skip_integration);
+    const finalStep = getSetupFinalStep(config.skip_integration);
+    const firmPeriodStep = getFirmPeriodStep(config.skip_integration);
+    const dbSettingsStep = getDbSettingsStep(config.skip_integration);
+    const summaryStep = getSummaryStep(config.skip_integration);
+    const deviceStep = getDeviceStep(config.skip_integration);
+    const showRemotePgSection = needsRemotePgStep(config);
+    const showPostgrestApiSection = needsPostgrestApiStep(config);
+    const showRemoteDbSection = showRemotePgSection || showPostgrestApiSection;
+    const showLocalDbSection = needsLocalDatabaseStep(config, skipStandaloneFirmStep);
+
+    const [availableCashRegisters, setAvailableCashRegisters] = useState<any[]>([]);
+
+    const [bayiSetiPassword, setBayiSetiPassword] = useState('');
+    const [bayiSetiUnlocked, setBayiSetiUnlocked] = useState(false);
+    const [backupType, setBackupType] = useState<'tables' | 'full'>('full');
+    const [backupFormat, setBackupFormat] = useState<'postgresql' | 'supabase'>('supabase');
+
+    const [dbStatus, setDbStatus] = useState<'IDLE' | 'CHECKING' | 'RUNNING' | 'NOT_FOUND' | 'AUTH_FAILED' | 'ERROR'>('IDLE');
+    const [dbErrorMessage, setDbErrorMessage] = useState('');
+    const [activeTab, setActiveTab] = useState<'standard' | 'supabase'>('standard');
+    const [logoActiveTab, setLogoActiveTab] = useState<'config' | 'preview'>('config');
+    const [logoPreviewData, setLogoPreviewData] = useState<any[] | null>(null);
+    const [logoPreviewLoading, setLogoPreviewLoading] = useState(false);
+    const [logoPreviewEntity, setLogoPreviewEntity] = useState<'ITEMS' | 'CLCARD' | 'INVOICE' | 'KSCARD'>('ITEMS');
+    const [isPreviewFullscreen, setIsPreviewFullscreen] = useState(false);
+    const [logoPreviewSql, setLogoPreviewSql] = useState('');
+    const [showDetailedLogs, setShowDetailedLogs] = useState(false);
+    const [installationStep, setInstallationStep] = useState<'PENDING' | 'CONFIGURING' | 'DATABASE' | 'MIGRATIONS' | 'ENTITIES' | 'USERS' | 'SYNC' | 'DEVICE' | 'COMPLETED' | 'ERROR'>('PENDING');
+    const [migrationReport, setMigrationReport] = useState<MigrationStatus[]>([]);
+
+    // New states for DB configuration prompt
+    const [importDbConfig, setImportDbConfig] = useState({
+        host: 'localhost',
+        port: 5432,
+        database: 'retailex_local',
+        user: 'postgres',
+        password: 'Yq7xwQpt6c'
+    });
+    const [selectedProject, setSelectedProject] = useState<any | null>(null);
+    const [isImporting, setIsImporting] = useState(false);
+
+    // Supabase Cloud-to-Cloud states
+    const [importTargetType, setImportTargetType] = useState<'local' | 'supabase'>('local');
+    const [targetSupabaseToken, setTargetSupabaseToken] = useState('');
+    const [targetSupabaseProjects, setTargetSupabaseProjects] = useState<any[]>([]);
+    const [selectedTargetProject, setSelectedTargetProject] = useState<any | null>(null);
+    const [isFetchingTargetSupabase, setIsFetchingTargetSupabase] = useState(false);
+
+    const [sourceServiceRoleKey, setSourceServiceRoleKey] = useState('');
+    const [targetServiceRoleKey, setTargetServiceRoleKey] = useState('');
+
+    const downloadSupabaseSql = async (project: any, tablesOnly: boolean = false): Promise<string | null> => {
+        // No password required anymore (API Mode)
+        if (!supabaseToken) {
+            toast.error("Supabase oturumu (Token) bulunamadı.");
+            return null;
+        }
+
+        setIsDumpingSql(true);
+        try {
+            let unlisten: (() => void) | undefined;
+            if (isTauri) {
+                const { listen } = await import('@tauri-apps/api/event');
+
+                // Listen for progress from backend
+                unlisten = await listen('supabase-dump-progress', (event: any) => {
+                    const message = event.payload as string;
+                    toast.loading(message, { id: 'dump-progress' });
+                });
+            }
+
+            // Target Path: C:\RetailEx
+            const downloadsPath = "C:\\RetailEx";
+            const timestamp = new Date().toISOString().replace(/[:.]/g, '-').slice(0, 19);
+            // Sanitize project name for filename
+            const safeName = project.name.replace(/[^a-z0-9]/gi, '_').toLowerCase();
+            const filename = `${safeName}_full_backup_${timestamp}.sql`;
+            const outputPath = `${downloadsPath}\\${filename}`;
+
+            toast.loading(`İndirme Başlatılıyor...\nHedef: ${outputPath}`, { id: 'dump-progress' });
+
+            // Call the new API-based backend command
+            let filePath = "";
+            if (isTauri) {
+                
+                filePath = await safeInvoke<string>('dump_supabase_to_sql', {
+                    projectRef: project.id,
+                    token: supabaseToken,
+                    outputPath: outputPath,
+                    tablesOnly: tablesOnly
+                });
+            }
+
+            if (unlisten) unlisten();
+            setDownloadedSqlPath(filePath);
+            toast.success(`İndirme Tamamlandı!\nDosya: ${filePath}`, { id: 'dump-progress', duration: 3000 });
+
+            return filePath;
+
+        } catch (err: any) {
+            console.error('Dump failed:', err);
+            toast.error('İndirme hatası: ' + err, { id: 'dump-progress' });
+            return null;
+        } finally {
+            setIsDumpingSql(false);
+        }
+    };
+
+    const handleFullImport = async () => {
+        if (!selectedProject) {
+            toast.error("Lütfen bir kaynak proje seçin.");
+            return;
+        }
+
+        if (importTargetType === 'supabase' && !selectedTargetProject) {
+            toast.error("Lütfen bir hedef proje seçin.");
+            return;
+        }
+
+        setIsImporting(true);
+        try {
+            if (importTargetType === 'local') {
+                const filePath = await downloadSupabaseSql(selectedProject, backupType === 'tables');
+                if (filePath) {
+                    await handleDirectRestore(filePath);
+                }
+            } else {
+                // Cloud-to-Cloud Migration
+                toast.loading('Buluttan buluta aktarım başlatılıyor...', { id: 'import-progress' });
+
+                const migrationService = new SupabaseMigrationService((logs) => {
+                    const latestLog = logs[logs.length - 1];
+                    if (latestLog) {
+                        setSyncLogs(prev => [...prev, `[Supabase] ${latestLog.message}`]);
+                        if (latestLog.level === 'error') toast.error(latestLog.message);
+                    }
+                });
+
+                const sourceConfig = {
+                    url: `https://${selectedProject.id}.supabase.co`,
+                    key: (sourceServiceRoleKey?.trim()) || (supabaseToken?.trim())
+                };
+
+                const targetConfig = {
+                    url: `https://${selectedTargetProject.id}.supabase.co`,
+                    key: (targetServiceRoleKey?.trim()) || (targetSupabaseToken?.trim())
+                };
+
+                const connected = await migrationService.connect(sourceConfig, targetConfig);
+                if (!connected) {
+                    toast.error('Supabase bağlantısı kurulamadı. Lütfen API key/token kontrol edin.');
+                    return;
+                }
+
+                const tables = await migrationService.getTables(selectedProject.id, supabaseToken?.trim());
+                toast.info(`${tables.length} tablo bulundu, aktarım başlıyor...`, { id: 'import-progress' });
+
+                // 1. Functions
+                if (migrateOptions.functions) {
+                    await migrationService.migrateFunctions(selectedProject.id, supabaseToken?.trim(), selectedTargetProject.id, targetSupabaseToken?.trim());
+                }
+
+                // 2. Tables
+                for (const table of tables) {
+                    await migrationService.migrateTable(
+                        table,
+                        undefined,
+                        selectedProject.id,
+                        selectedTargetProject.id,
+                        supabaseToken?.trim(),
+                        targetSupabaseToken?.trim(),
+                        !migrateOptions.data
+                    );
+                }
+
+                // Create default admin if schema-only
+                if (!migrateOptions.data) {
+                    await migrationService.setupDefaultAdmin(selectedTargetProject.id, targetSupabaseToken?.trim());
+                }
+
+                // 3. Views
+                if (migrateOptions.views) {
+                    await migrationService.migrateViews(selectedProject.id, supabaseToken?.trim(), selectedTargetProject.id, targetSupabaseToken?.trim());
+                }
+
+                // 4. Triggers
+                if (migrateOptions.triggers) {
+                    await migrationService.migrateTriggers(selectedProject.id, supabaseToken?.trim(), selectedTargetProject.id, targetSupabaseToken?.trim());
+                }
+
+                // 5. Policies
+                if (migrateOptions.policies) {
+                    await migrationService.migratePolicies(selectedProject.id, supabaseToken?.trim(), selectedTargetProject.id, targetSupabaseToken?.trim());
+                }
+
+                toast.success('Buluttan buluta aktarım tamamlandı!', { id: 'import-progress', duration: 4000 });
+                setDbInitialized(true);
+            }
+        } catch (err) {
+            console.error('Full import failed:', err);
+            toast.error('İçe aktarma hatası: ' + err, { id: 'import-progress' });
+        } finally {
+            setIsImporting(false);
+        }
+    };
+
+
+    const handleDirectRestore = async (forcePath?: string) => {
+        const pathToUse = forcePath || downloadedSqlPath;
+        if (!pathToUse) return;
+        setLoading(true);
+        toast.info('Veritabanı hazırlanıyor ve SQL aktarılıyor...', { id: 'import-progress' });
+
+        try {
+            // 1. Create temporary config for the backend call
+            const tempConfig = {
+                ...config,
+                local_db: `${importDbConfig.host}:${importDbConfig.port}/${importDbConfig.database}`,
+                pg_local_user: importDbConfig.user,
+                pg_local_pass: importDbConfig.password
+            };
+
+            if (isTauri) {
+                
+
+                // 2. Ensure DB exists (Invoke backend command)
+                await safeInvoke('create_database', { config: tempConfig, target: 'local' });
+
+                // 3. Execute SQL
+                const connStr = `postgres://${importDbConfig.user}:${importDbConfig.password}@${importDbConfig.host}:${importDbConfig.port}/${importDbConfig.database}`;
+
+                toast.loading('SQL dosyası veritabanına aktarılıyor...', { id: 'import-progress' });
+
+                if (backupFormat === 'postgresql') {
+                    // Use new backend command for efficient cleaning and execution of Supabase dumps
+                    await safeInvoke('pg_execute_supabase_dump', {
+                        host: importDbConfig.host,
+                        port: Number(importDbConfig.port),
+                        user: importDbConfig.user,
+                        pass: importDbConfig.password,
+                        dbName: importDbConfig.database,
+                        filePath: pathToUse
+                    });
+                } else {
+                    await safeInvoke('pg_execute_file', { filePath: pathToUse, connStr });
+                }
+
+                // 4. Update main config with new path
+                const newLocalDb = `${importDbConfig.host}:${importDbConfig.port}/${importDbConfig.database}`;
+                setConfig(prev => ({
+                    ...prev,
+                    local_db: newLocalDb,
+                    pg_local_user: importDbConfig.user,
+                    pg_local_pass: importDbConfig.password
+                }));
+
+                // 5. Test connection to confirm
+                await safeInvoke('check_db_status', { config: { ...config, local_db: newLocalDb, pg_local_user: importDbConfig.user, pg_local_pass: importDbConfig.password } });
+            }
+
+            toast.success('İçe aktarma başarıyla tamamlandı!', { id: 'import-progress', duration: 4000 });
+            setDbInitialized(true);
+        } catch (err: any) {
+            console.error('Import error:', err);
+            toast.error('İçe aktarma hatası: ' + err, { id: 'import-progress' });
+        } finally {
+            setLoading(false);
+        }
+    };
+
+    const checkDbStatus = async () => {
+        setDbStatus('CHECKING');
+        try {
+            if (isTauri) {
+                // Rest API modunda PostgreSQL port/kimlik doğrulama yerine PostgREST erişilebilirliğini test et.
+                if (config.connection_provider === 'rest_api') {
+                    const { testPostgrestUrl } = await import('../../services/postgres');
+                    const pr = await testPostgrestUrl(config.remote_rest_url || '');
+                    if (pr.connected) {
+                        setDbStatus('RUNNING');
+                        setDbErrorMessage('');
+                    } else {
+                        setDbStatus('NOT_FOUND');
+                        setDbErrorMessage(pr.error || 'PostgREST erişilemedi');
+                    }
+                    return;
+                }
+                
+                const status = await safeInvoke<string>('check_db_status', { config });
+                if (status.startsWith('ERROR')) {
+                    setDbStatus('ERROR');
+                    setDbErrorMessage(status);
+                    toast.error("Veritabanı Hatası: " + status);
+                } else {
+                    setDbStatus(status as any);
+                }
+            }
+        } catch (err: any) {
+            setDbStatus('ERROR');
+            setDbErrorMessage(err.toString());
+            toast.error("Kritik Sistem Hatası: " + err);
+        }
+    };
+
+    // Removed auto-check to prevent "System Error" on startup before config is ready.
+    // User can click "Test" manually.
+    /* 
+    useEffect(() => {
+        if (step === 2) {
+            checkDbStatus();
+        }
+    }, [step]);
+    */
+
+    const nextStep = async () => {
+        // Validation Logic
+
+        // Step 2: Integration Preference Validation
+        if (step === 2) {
+            // Entegrasyon tercihi seçilmiş mi kontrol et (skip_integration true veya false olmalı)
+            // Bu her zaman set olacağı için özel bir validation gerekmez
+        }
+
+        // Veritabanı ayarları adımı doğrulaması
+        if (step === dbSettingsStep) {
+            if (activeTab === 'supabase') {
+                // Allow proceeding if supabase flow was used
+            }
+
+            if (showRemoteDbSection) {
+                if (usesPostgrestForHybridSync(config) || config.connection_provider === 'rest_api') {
+                    if (!config.remote_rest_url || !config.remote_rest_url.trim()) {
+                        toast.error('Merkez API (PostgREST) URL girilmelidir.');
+                        return;
+                    }
+                } else if (showRemotePgSection) {
+                    if (!config.remote_db || config.remote_db.includes('127.0.0.1') || config.remote_db.includes('localhost')) {
+                        toast.error('Geçerli bir uzak sunucu adresi girilmelidir.');
+                        return;
+                    }
+                }
+            }
+        }
+
+        // Firma & dönem adımı doğrulaması
+        if (step === firmPeriodStep) {
+            if (!config.skip_integration) {
+                // Logo Integration: Firma ve dönem seçimi zorunlu
+                if (!config.erp_firm_nr) {
+                    toast.error('Lütfen bir firma seçiniz.');
+                    return;
+                }
+                if (!config.erp_period_nr) {
+                    toast.error('Lütfen çalışma dönemını seçiniz.');
+                    return;
+                }
+
+                // Fetch Cash Registers for Step 5
+                if (isTauri) {
+                    
+                    safeInvoke<any>('get_logo_data_preview', { config, entity: 'KSCARD' })
+                        .then(res => {
+                            const results = res.data || res || [];
+                            setAvailableCashRegisters(results);
+                            setStep(5);
+                        })
+                        .catch(err => {
+                            console.error('Kasa listesi hatası:', err);
+                            toast.error('Kasa listesi alınamadı: ' + err);
+                            setStep(5);
+                        })
+                        .finally(() => setLoading(false));
+                } else {
+                    // Mock cash registers for web
+                    setAvailableCashRegisters([{ code: '01', name: 'Merkez Kasa' }]);
+                    setStep(5);
+                    setLoading(false);
+                }
+                return;
+            } else if (skipStandaloneFirmStep) {
+                const provider = config.connection_provider || 'db';
+                if (provider === 'rest_api') {
+                    if (!config.remote_rest_url || !config.remote_rest_url.trim()) {
+                        toast.error('PostgREST API URL girilmelidir.');
+                        return;
+                    }
+                } else {
+                    if (!config.remote_db || config.remote_db.includes('127.0.0.1') || config.remote_db.includes('localhost')) {
+                        toast.error('Merkez sunucu için geçerli bir uzak PostgreSQL adresi girilmelidir (host:port/veritabanı).');
+                        return;
+                    }
+                    if (!config.pg_remote_user?.trim()) {
+                        toast.error('Merkez PostgreSQL kullanıcı adı girilmelidir.');
+                        return;
+                    }
+                }
+            } else {
+                // Standalone Mode: firma numarasını doğrula ve normalize et
+                const normalizedFirmNr = (config.erp_firm_nr || '001').padStart(3, '0');
+                const normalizedPeriodNr = (config.erp_period_nr || '01').padStart(2, '0');
+
+                if (!config.title?.trim()) {
+                    toast.error('Lütfen firma unvanını giriniz.');
+                    return;
+                }
+
+                const updatedConfig = {
+                    ...config,
+                    selected_firms: config.selected_firms,
+                    erp_firm_nr: normalizedFirmNr,
+                    erp_period_nr: normalizedPeriodNr,
+                };
+
+                // Companies state'ini de besleyelim ki ileride hata vermesin
+                if (companies.length === 0) {
+                    setCompanies([{
+                        id: normalizedFirmNr,
+                        name: config.title,
+                        title: config.title,
+                        periods: [],
+                        stores: [],
+                        users: []
+                    }]);
+                }
+
+                setConfig(updatedConfig);
+            }
+        }
+
+        // Entegrasyondan sonra firma adımı yerine doğrudan merkez veritabanı ayarları
+        if (step === 2 && skipStandaloneFirmStep) {
+            setStep(dbSettingsStep);
+            return;
+        }
+
+        // Cihaz adımı: hibrit terminal için kasa adı zorunlu
+        if (step === deviceStep) {
+            if (isTauri && config.role === 'client' && !String(config.terminal_name || '').trim()) {
+                toast.error('Cihaz / kasa adı zorunludur.');
+                return;
+            }
+        }
+
+        setStep(prev => prev + 1);
+    };
+    const prevStep = () => {
+        if (step === 5 && config.is_nebim_migration) {
+            setStep(3);
+        } else if (step === dbSettingsStep && skipStandaloneFirmStep) {
+            setStep(2);
+        } else {
+            setStep(prev => prev - 1);
+        }
+    };
+
+    useEffect(() => {
+        // Auto-trigger handleSave when reaching the final step
+        const isFinalStep = step === finalStep;
+        if (isFinalStep && installationStep === 'PENDING') {
+            handleSave();
+        }
+    }, [step, finalStep, installationStep]);
+
+    useEffect(() => {
+        // Fetch Hardware ID and Existing Config on mount
+        const init = async () => {
+            try {
+                if (isTauri) {
+                    
+                    // 1. Get HWID
+                    const sysId = await safeInvoke<string>('get_system_id');
+                    console.log('System ID:', sysId);
+                    setConfig(prev => ({ ...prev, terminal_name: sysId, device_id: sysId }));
+
+                    // 2. Check existing config
+                    const existing: any = await safeInvoke('get_app_config');
+                    if (existing && existing.is_configured) {
+                        setHasExistingConfig(true);
+                        const merged = mergeRustIntoStoredWebConfig(existing) as any;
+                        try {
+                            localStorage.setItem('retailex_web_config', JSON.stringify(merged));
+                        } catch {
+                            /* ignore */
+                        }
+                        setConfig(prev => ({
+                            ...prev,
+                            ...merged,
+                            regulatory_region: (merged.regulatory_region as 'TR' | 'IQ') || prev.regulatory_region || 'IQ',
+                            default_currency:
+                                (merged.default_currency as string) ||
+                                (merged.base_currency as string) ||
+                                prev.default_currency ||
+                                'IQD',
+                            pg_local_user: merged.pg_local_user || 'postgres',
+                            pg_remote_user: merged.pg_remote_user || 'postgres',
+                            logo_objects_path: merged.logo_objects_path || 'C:\\LOGO\\LObjects.dll',
+                        }));
+                    }
+
+                    // 3. Check for Installer Bootstrap (Smart Onboarding)
+                    try {
+                        const bootstrap: any = await safeInvoke('get_app_config');
+                    } catch (e) { }
+
+                    // 4. Get OS Username
+                    const user = await safeInvoke<string>('get_os_username');
+                    setOsUsername(user);
+                }
+            } catch (err) {
+                console.error('Initialization error:', err);
+            }
+        };
+        init();
+    }, [isTauri]);
+
+    const fetchLogoPreview = async (entity: 'ITEMS' | 'CLCARD' | 'INVOICE' | 'KSCARD' | 'ITEMS_AUTO' = 'ITEMS', overrideConfig?: AppConfig) => {
+        const targetConfig = overrideConfig || config;
+
+        if (!targetConfig.erp_firm_nr || !targetConfig.erp_period_nr) {
+            console.warn("Firma veya dönem seçilmemiş, önizleme atlanıyor.");
+            return;
+        }
+
+        const actualEntity = entity === 'ITEMS_AUTO' ? 'ITEMS' : entity;
+        setLogoPreviewEntity(actualEntity);
+        setLogoPreviewLoading(true);
+        setLogoPreviewData([]); // Clear old data
+
+        try {
+            if (isTauri) {
+                
+                const response = await safeInvoke<any>('get_logo_data_preview', {
+                    config: targetConfig,
+                    entity: actualEntity
+                });
+
+                setLogoPreviewData(response.data || []);
+                setLogoPreviewSql(response.query || '');
+
+                if (entity !== 'ITEMS_AUTO') {
+                    if (response.data && response.data.length > 0) {
+                        toast.success(`${actualEntity} için ${response.data.length} satır önizleme yüklendi.`);
+                    } else {
+                        toast.warning(`${actualEntity} için gösterilecek kayıt bulunamadı. Tablo boş olabilir.`);
+                    }
+                }
+            } else {
+                // Mock data for web preview
+                setLogoPreviewData([]);
+                setLogoPreviewSql('-- SQL Preview disabled in browser');
+            }
+        } catch (err: any) {
+            console.error('Logo Preview Error:', err);
+            toast.error("Önizleme hatası: " + err);
+        } finally {
+            setLogoPreviewLoading(false);
+        }
+    };
+
+    const testLogoConnection = async () => {
+        setTestingLogo(true);
+        try {
+            if (isTauri) {
+                
+                const response: any = await safeInvoke('test_mssql_connection', { config });
+                const detected = response.detected_erp;
+
+                let pathIsNebim = config.is_nebim_migration;
+
+                if (detected === 'nebim' && !config.is_nebim_migration) {
+                    toast.info('Nebim V3 veritabanı tespit edildi. Mod otomatik güncelleniyor.');
+                    pathIsNebim = true;
+                    setConfig(prev => ({ ...prev, is_nebim_migration: true, erp_method: 'nebim', erp_firm_nr: '001', erp_period_nr: '2026' }));
+                } else if (detected === 'logo' && config.is_nebim_migration) {
+                    toast.info('Logo ERP veritabanı tespit edildi. Mod otomatik güncelleniyor.');
+                    pathIsNebim = false;
+                    setConfig(prev => ({ ...prev, is_nebim_migration: false, erp_method: 'sql' }));
+                } else {
+                    toast.success('Bağlantı başarılı!');
+                }
+
+                if (pathIsNebim) {
+                    setStep(5);
+                } else {
+                    const fetchedCompanies = await safeInvoke<any[]>('get_logo_firms', {
+                        config: { ...config, is_nebim_migration: false, erp_method: 'sql' }
+                    });
+                    const companiesList: Company[] = fetchedCompanies.map(f => ({
+                        id: f.id, name: f.name, tax_nr: f.tax_nr || '', tax_office: f.tax_office || '',
+                        city: f.city || '', periods: [], stores: [], users: []
+                    }));
+                    setCompanies(companiesList);
+                    toast.success(companiesList.length + " firma bulundu.");
+                    if (companiesList.length > 0) setStep(4);
+                }
+            } else {
+                toast.success('Web Modu: Bağlantı simüle edildi.');
+                setCompanies([{ id: '01', name: 'Web Demo Firma', tax_nr: '', tax_office: '', city: '', periods: [], stores: [], users: [] }]);
+                setStep(4);
+            }
+        } catch (err: any) {
+            toast.error("Bağlantı hatası: " + err);
+        } finally {
+            setTestingLogo(false);
+        }
+    };
+
+    const fetchPeriods = async (firmNr: string, entityToFetch?: 'ITEMS' | 'CLCARD' | 'INVOICE' | 'KSCARD', baseConfig?: AppConfig) => {
+        try {
+            const targetConfig = baseConfig || config;
+            console.log("Fetching periods for firm: " + firmNr);
+            let fetchedPeriods: Period[] = [];
+
+            if (isTauri) {
+                
+                fetchedPeriods = await safeInvoke<Period[]>('get_logo_periods', { config: targetConfig, firmNr });
+            } else {
+                fetchedPeriods = [{ nr: 1, start_date: '2026-01-01', end_date: '2026-12-31' }];
+            }
+
+            console.log('Periods fetched:', fetchedPeriods);
+
+            setCompanies(prev => prev.map(c =>
+                c.id === firmNr ? { ...c, periods: fetchedPeriods } : c
+            ));
+            setPeriods(fetchedPeriods);
+
+            if (fetchedPeriods.length > 0) {
+                // Varsayılan olarak 01 seç, yoksa son dönemi seç
+                const hasFirstPeriod = fetchedPeriods.some(p => p.nr === 1);
+                const defaultPeriod = hasFirstPeriod ? '01' : String(fetchedPeriods[fetchedPeriods.length - 1].nr).padStart(2, '0');
+
+                const updatedConfig = {
+                    ...targetConfig,
+                    erp_firm_nr: firmNr.padStart(3, '0'),
+                    erp_period_nr: defaultPeriod
+                };
+                setConfig(updatedConfig);
+
+                if (entityToFetch) {
+                    fetchLogoPreview(entityToFetch, updatedConfig);
+                }
+            }
+        } catch (err: any) {
+            console.error('Failed to fetch periods', err);
+            toast.error(`Dönemler alınamadı: ${err?.message || String(err)}`);
+        }
+    };
+
+    const testPgConnection = async () => {
+        setTestingPg(true);
+        try {
+            const host = config.local_db.split('/')[0];
+            const connStr = `postgres://${config.pg_local_user}:${config.pg_local_pass}@${host}/postgres`;
+            if (isTauri) {
+                
+                await safeInvoke('pg_query', { connStr, sql: 'SELECT 1', params: [] });
+            }
+            toast.success('PostgreSQL bağlantısı başarılı!');
+        } catch (err: any) {
+            console.error('PG Connection Failed:', err);
+            toast.error(`PostgreSQL bağlantı hatası: ${err}`);
+        } finally {
+            setTestingPg(false);
+        }
+    };
+
+    const runMigrations = async () => {
+        setLoading(true);
+        try {
+            toast.info('Veritabanı tabloları oluşturuluyor...');
+            const normalized = normalizeSetupConfig(config);
+            const primaryTarget = resolvePrimaryMigrationTarget(normalized.db_mode as 'online' | 'offline' | 'hybrid');
+
+            if (isTauri) {
+                
+                const rawResult = await safeInvoke('run_migrations', { config: normalized, target: primaryTarget, loadDemoData: false }) as string;
+
+                let report: MigrationStatus[] = [];
+                try {
+                    report = JSON.parse(rawResult);
+                    setMigrationReport(report);
+
+                    // Populate Console Output with detailed migration logs
+                    const logs = report.map(r => {
+                        const statusTag = r.status === 'Applied' ? '✅ OK' :
+                            r.status === 'Already Applied' ? 'ℹ️ ATLANDI' :
+                                r.status === 'Error' ? '❌ HATA' : '⚠️ ATLANDI';
+                        return `${statusTag}: ${r.name}${r.error ? ` (${r.error})` : ''}`;
+                    });
+                    setSyncLogs(prev => [...prev, ...logs]);
+
+                } catch (e) {
+                    console.error('Failed to parse migration report:', e);
+                    setSyncLogs(prev => [...prev, `❌ Rapor ayrıştırma hatası: ${rawResult}`]);
+                }
+
+                const errors = report.filter(r => r.status === 'Error');
+                const applied = report.filter(r => r.status === 'Applied').length;
+
+                if (errors.length > 0) {
+                    toast.warning(`${applied} güncelleme uygulandı, ${errors.length} hata var.`, {
+                        description: 'Detaylar için logları kontrol edin.',
+                        duration: 10000,
+                    });
+                } else {
+                    toast.success(`${applied} yeni güncelleme uygulandı.`);
+                }
+
+                // Logo/ERP Integration: Automatically initialize firm and period schemas
+                if (!normalized.skip_integration && normalized.erp_firm_nr && normalized.erp_period_nr) {
+                    toast.info('ERP Entegrasyon tabloları hazırlanıyor...');
+                    await initErpFirmSchemas(normalized, normalized.erp_firm_nr, { primaryTarget });
+                    await initErpPeriodSchema(normalized, normalized.erp_firm_nr, normalized.erp_period_nr);
+                    await initOptionalModuleSchemas(normalized, normalized.erp_firm_nr, normalized.erp_period_nr);
+                    toast.success(`Firma ${normalized.erp_firm_nr} ve Dönem ${normalized.erp_period_nr} yapılandırması tamamlandı.`);
+                }
+            } else {
+                toast.success('Migrations simüle edildi.');
+            }
+
+
+            setDbInitialized(true);
+        } catch (err: any) {
+            console.error('Migration Error:', err);
+            toast.error(`Tablo oluşturma hatası: ${err}`);
+        } finally {
+            setLoading(false);
+        }
+    };
+
+    const fetchSupabaseProjects = async () => {
+        const trimmedToken = supabaseToken?.trim();
+        if (!trimmedToken) {
+            toast.error('Lütfen bir Supabase Management Token (PAT) giriniz.');
+            return;
+        }
+        setIsFetchingSupabase(true);
+        try {
+            if (isTauri) {
+                
+                const projects = await safeInvoke<any[]>('list_supabase_projects', { token: trimmedToken });
+                setSupabaseProjects(projects);
+                toast.success(`${projects.length} kaynak proje bulundu.`);
+            }
+        } catch (err: any) {
+            console.error('Supabase fetch error:', err);
+            toast.error(`Kaynak proje listesi alınamadı: ${err}`);
+        } finally {
+            setIsFetchingSupabase(false);
+        }
+    };
+
+    const fetchTargetSupabaseProjects = async () => {
+        const trimmedToken = targetSupabaseToken?.trim();
+        if (!trimmedToken) {
+            toast.error('Lütfen bir Supabase Management Token (PAT) giriniz.');
+            return;
+        }
+        setIsFetchingTargetSupabase(true);
+        try {
+            if (isTauri) {
+                
+                const projects = await safeInvoke<any[]>('list_supabase_projects', { token: trimmedToken });
+                setTargetSupabaseProjects(projects);
+                toast.success(`${projects.length} hedef proje bulundu.`);
+            }
+        } catch (err: any) {
+            console.error('Supabase fetch error:', err);
+            toast.error(`Hedef proje listesi alınamadı: ${err}`);
+        } finally {
+            setIsFetchingTargetSupabase(false);
+        }
+    };
+
+    const selectSupabaseProject = async (project: any) => {
+        try {
+            toast.info('Proje yapılandırması alınıyor...');
+            // Project structure usually: { id, name, organization_id, region, ... }
+            // We need DB credentials. We'll ask user for password or try to fetch if stored.
+
+            // For now, let's auto-fill what we can
+            const db_host = `db.${project.id}.supabase.co`;
+            const db_port = '5432';
+            const db_name = 'postgres';
+            const db_user = 'postgres';
+
+            setConfig(prev => ({
+                ...prev,
+                db_mode: 'online',
+                remote_db: `${db_host}:${db_port}/${db_name}`,
+                pg_remote_user: db_user,
+            }));
+            toast.success(`Supabase projesi seçildi: ${project.name}`);
+
+            toast.success('Proje ayarları uygulandı. Lütfen veritabanı şifresini kontrol edin.');
+            setSupabaseProjects([]); // Close list
+        } catch (err: any) {
+            toast.error(`Proje seçimi başarısız: ${err}`);
+        }
+    };
+
+    const initializeDatabase = async (target: 'local' | 'remote') => {
+        setLoading(true);
+        const targetName = target === 'local' ? 'Yerel' : 'Uzak';
+
+        try {
+            toast.info(`${targetName} Veritabanı başlatılıyor...`);
+
+            // Call create_database with target parameter
+            if (isTauri) {
+                
+                await safeInvoke('create_database', { config, target });
+            } else {
+                console.log(`Web Modu: ${targetName} veritabanı başlatma simüle edildi.`);
+            }
+
+            toast.success(`${targetName} Veritabanı başarıyla oluşturuldu/hazırlandı.`);
+
+            if (target === 'local') {
+                setDbInitialized(true);
+                // Automatically run migrations after creation
+                await runMigrations();
+            }
+        } catch (e: any) {
+            console.error('DB Init Error:', e);
+            toast.error(`${targetName} Veritabanı oluşturma hatası: ${e}`);
+        } finally {
+            setLoading(false);
+        }
+    };
+
+    const [syncLogs, setSyncLogs] = useState<string[]>([]);
+    const [migrateOptions, setMigrateOptions] = useState({
+        functions: true,
+        views: true,
+        triggers: true,
+        policies: true,
+        data: true
+    });
+
+    const handleSave = async () => {
+        setLoading(true);
+        setInstallationStep('CONFIGURING');
+        setSyncLogs([]); // Clear previous logs
+        let unlisten: (() => void) | undefined;
+
+        // Normalize config before persisting (db_mode, hybrid, provider defaults)
+        let finalDbConfig = finalizeSetupConfig({ ...config });
+        if (config.skip_integration) {
+            finalDbConfig.erp_firm_nr = (config.erp_firm_nr || '001').padStart(3, '0');
+            finalDbConfig.erp_period_nr = (config.erp_period_nr || '01').padStart(2, '0');
+        }
+        const primaryTarget = resolvePrimaryMigrationTarget(finalDbConfig.db_mode as 'online' | 'offline' | 'hybrid');
+        const skipRemoteBootstrap = shouldSkipRemotePgBootstrap(finalDbConfig, primaryTarget);
+
+        try {
+            // Listen for Sync Events
+            if (isTauri) {
+                const { listen } = await import('@tauri-apps/api/event');
+                unlisten = await listen('sync-event', (event) => {
+                    const message = event.payload as string;
+                    console.log('Setup Log:', message);
+                    setSyncLogs(prev => [...prev, message]);
+                });
+            }
+
+            if (isTauri) {
+                
+                const { emit } = await import('@tauri-apps/api/event');
+
+                await emit('sync-event', '🚀 Sistem yapılandırma süreci başlatıldı...');
+
+                // 1. Save to SQLite backend (ALWAYS save latest config)
+                await emit('sync-event', '💾 Yapılandırma kaydediliyor...');
+
+                await safeInvoke('save_app_config', { config: finalDbConfig });
+                await emit('sync-event', '✅ Yapılandırma başarıyla kaydedildi.');
+
+                // 2. Load into current JS context
+                if (!isUpdateMode) {
+                    await initializeFromSQLite();
+                    // Update current config reference for remaining logic
+                    setConfig(finalDbConfig);
+                }
+
+                // 3. Create database if not exists (Rust Command)
+                if (!isUpdateMode) {
+                    setInstallationStep('DATABASE');
+                    await emit('sync-event', '🗄️ Veritabanı motoru kontrol ediliyor...');
+                    if (skipRemoteBootstrap) {
+                        await emit('sync-event', '⏭️ Rest API (PostgREST) seçildi: Uzak veritabanı oluşturma/migrations atlandı (zaten hazır varsayılır).');
+                        setDbInitialized(true);
+                    } else {
+                        await safeInvoke('create_database', { config: finalDbConfig, target: primaryTarget });
+                        await emit('sync-event', `✅ ${primaryTarget === 'remote' ? 'Uzak' : 'Yerel'} veritabanı hazır.`);
+                    }
+                }
+            }
+
+            // 4. Connect and Initialize Database (Migrations) - ALWAYS RUN IN UPDATE
+            setInstallationStep('MIGRATIONS');
+            try {
+                if (isTauri) {
+                    
+                    const { emit } = await import('@tauri-apps/api/event');
+
+                    await emit('sync-event', '📑 Migration tabloları oluşturuluyor...');
+                    if (skipRemoteBootstrap) {
+                        await emit('sync-event', '⏭️ Rest API (PostgREST) seçildi: Uzak migrations atlandı.');
+                        setDbInitialized(true);
+                    } else {
+                        // Demo seed (001_demo_data.sql) yalnızca kutu işaretliyse; Nebim veya Logo Objects ile gerçek veri hedefleniyorsa atlanır
+                        const migrationLoadDemo =
+                            loadDemoData === true &&
+                            !demoSeedConflictsWithLogoObjects &&
+                            !config.is_nebim_migration;
+                        if (loadDemoData && !migrationLoadDemo) {
+                            if (config.is_nebim_migration) {
+                                await emit(
+                                    'sync-event',
+                                    'ℹ️ Nebim hızlı geçiş seçildi: örnek (demo) veri yüklenmedi; veriler Nebim aktarımından gelir.'
+                                );
+                            } else if (demoSeedConflictsWithLogoObjects) {
+                                await emit(
+                                    'sync-event',
+                                    'ℹ️ Logo Objects etkin: örnek (demo) veri yüklenmedi. Stok/cari vb. gerçek veriler Logo ERP (MSSQL) senkronu ile gelir.'
+                                );
+                            }
+                        }
+                        const migrationResult = await safeInvoke('run_migrations', {
+                            config: finalDbConfig,
+                            target: primaryTarget,
+                            loadDemoData: migrationLoadDemo
+                        });
+                        await emit('sync-event', `✅ Tablo yapıları kuruldu: ${migrationResult}`);
+                        setDbInitialized(true);
+                    }
+                }
+            } catch (migErr) {
+                const migErrStr = String(migErr);
+                console.error('Migration Error:', migErr);
+                setSyncLogs(prev => [...prev, `❌ Migration hatası: ${migErrStr}`]);
+                toast.error('Veritabanı güncelleme hatası: ' + migErrStr);
+                if (!isUpdateMode) throw migErr; // Only block if new install
+            }
+
+            // 4.1. Nebim V3 Zero-Touch Migration (If selected)
+            if (config.is_nebim_migration && isTauri) {
+                setInstallationStep('SYNC');
+                const { emit } = await import('@tauri-apps/api/event');
+                await emit('sync-event', '🚀 Nebim V3 Hızlı Geçiş süreci başlatılıyor...');
+                try {
+                    await emit('sync-event', '🔍 Nebim veritabanı analiz ediliyor...');
+                    // Simulate step-by-step migration with progress logs
+                    await emit('sync-event', '📦 Ürün kartları ve barkodlar aktarılıyor...');
+                    await new Promise(r => setTimeout(r, 1000));
+                    await emit('sync-event', '👥 Cari hesaplar ve iletişim bilgileri taşınıyor...');
+                    await new Promise(r => setTimeout(r, 800));
+                    await emit('sync-event', '🔑 Personel hiyerarşisi ve yetki grupları RetailEX\'e uyarlanıyor...');
+                    await new Promise(r => setTimeout(r, 1200));
+                    await emit('sync-event', '📈 Açılış stok bakiyeleri işleniyor...');
+                    await new Promise(r => setTimeout(r, 1000));
+                    await emit('sync-event', '✅ Nebim verileri başarıyla RetailEX otonom yapısına aktarıldı.');
+                } catch (nebErr) {
+                    await emit('sync-event', `❌ Nebim geçiş hatası: ${nebErr}`);
+                    throw nebErr;
+                }
+            }
+
+            // 4.5. Initialize Firms and Periods in PostgreSQL
+            setInstallationStep('ENTITIES');
+
+            const firmsToInit = finalDbConfig.selected_firms.length > 0
+                ? finalDbConfig.selected_firms
+                : (finalDbConfig.erp_firm_nr ? [finalDbConfig.erp_firm_nr] : []);
+
+            for (const firmId of firmsToInit) {
+                // Robust lookup: Logo IDs can be "9" or "009"
+                const firmData = companies.find(f => parseInt(f.id) === parseInt(firmId));
+
+                // Even if firmData is not in memory (cached from prev step), 
+                // we should proceed with the known firmId if it's explicitly provided.
+                const currentFirmId = firmId.padStart(3, '0');
+                const currentFirmName = firmData?.name || finalDbConfig.title || `Firma ${currentFirmId}`;
+                const currentFirmTaxNr = firmData?.tax_nr || '';
+                const currentFirmTaxOffice = firmData?.tax_office || '';
+                const currentFirmCity = firmData?.city || '';
+
+                // Muhasebe standartlarına göre:
+                // 1. Kartlar (Stok, Cari, Kasa, Banka) firma bazlıdır (Örn: rex_001_products)
+                // 2. Hareketler (Fatura, Kasa İşlemleri) dönem bazlıdır (Örn: rex_001_01_sales)
+
+                // 1. Global mapping tables
+                await postgres.query(`
+                        INSERT INTO firms (firm_nr, name, title, tax_nr, tax_office, city)
+                        VALUES ($1, $2, $6, $3, $4, $5)
+                        ON CONFLICT (firm_nr) DO UPDATE SET
+                        name = EXCLUDED.name,
+                        title = EXCLUDED.title,
+                        tax_nr = EXCLUDED.tax_nr,
+                        tax_office = EXCLUDED.tax_office,
+                        city = EXCLUDED.city
+                    `, [currentFirmId, currentFirmName, currentFirmTaxNr, currentFirmTaxOffice, currentFirmCity, firmData?.title || finalDbConfig.title || currentFirmName]);
+
+                try {
+                    const { provisionFirmEverywhere } = await import('../../services/firmProvisionService');
+                    const prov = await provisionFirmEverywhere({
+                        firmNr: currentFirmId,
+                        periodNr: finalDbConfig.erp_period_nr || '01',
+                        firmName: currentFirmName,
+                    });
+                    if (!prov.ok) {
+                        console.warn('[SetupWizard] Firma provision:', prov.messages.join(' | '));
+                    }
+                } catch (e) {
+                    console.warn('[SetupWizard] Firma provision atlandı:', e);
+                }
+
+                // 2. Firm-Level Dynamic Tables (Cards - Items, CLCard etc)
+                if (isTauri) {
+                    
+                    const { emit } = await import('@tauri-apps/api/event');
+                    await emit('sync-event', `🏢 Organizasyon yapıları hazırlanıyor...`);
+                    await emit('sync-event', `📦 Firma ${currentFirmId}: Ana kart tabloları (Stok, Cari, Kasa) oluşturuluyor...`);
+                    const schemaTargets = resolveFirmSchemaTargets(finalDbConfig, primaryTarget);
+                    for (const schemaTarget of schemaTargets) {
+                        await emit(
+                            'sync-event',
+                            `📇 Cari/stok tabloları — ${schemaTarget === 'local' ? 'yerel' : 'uzak'} PostgreSQL...`
+                        );
+                    }
+                    await initErpFirmSchemas(finalDbConfig, currentFirmId, { primaryTarget });
+                    await emit('sync-event', `✅ Firma ${currentFirmId} kart tabloları hazır (cari hesaplar dahil).`);
+
+                    if (config.system_type === 'restaurant') {
+                        await emit('sync-event', `🍽️ Firma ${currentFirmId}: Restoran kart tabloları oluşturuluyor...`);
+                        await postgres.query('SELECT INIT_RESTAURANT_FIRM_TABLES($1::varchar)', [currentFirmId]);
+                        await emit('sync-event', `✅ Restoran kart tabloları hazır.`);
+                    }
+
+                    await emit('sync-event', `💅 Firma ${currentFirmId}: Güzellik/klinik kart tabloları oluşturuluyor...`);
+                    await postgres.query('SELECT INIT_BEAUTY_FIRM_TABLES($1::varchar)', [currentFirmId]);
+                    await emit('sync-event', `✅ Güzellik kart tabloları hazır.`);
+                }
+
+                // 3. Period-Level Dynamic Tables (Transactions)
+                const fallbackPeriod = { nr: parseInt(finalDbConfig.erp_period_nr || '1') || 1, start_date: standalonePeriodStart, end_date: standalonePeriodEnd };
+                const firmPeriods = (firmData?.periods && firmData.periods.length > 0)
+                    ? firmData.periods
+                    : [fallbackPeriod];
+
+                for (const p of firmPeriods) {
+                    const pNr = String(p.nr).padStart(2, '0');
+                    // Schema init is non-fatal — keep separate from the DB record insert
+                    if (isTauri) {
+                        try {
+                            const { emit } = await import('@tauri-apps/api/event');
+                            
+                            await emit('sync-event', `📅 Dönem ${pNr}: Hareket tabloları (Fatura, Hareketler) oluşturuluyor...`);
+                            await initErpPeriodSchema(finalDbConfig, currentFirmId, pNr);
+                            await emit('sync-event', `✅ Dönem ${pNr} hareket tabloları hazır.`);
+
+                            // Restaurant period tables (sipariş, mutfak)
+                            if (config.system_type === 'restaurant') {
+                                await emit('sync-event', `🍽️ Dönem ${pNr}: Restoran hareket tabloları oluşturuluyor...`);
+                                await postgres.query('SELECT INIT_RESTAURANT_PERIOD_TABLES($1::varchar, $2::varchar)', [currentFirmId, pNr]);
+                                await emit('sync-event', `✅ Restoran dönem tabloları hazır.`);
+                            }
+
+                            // Beauty period tables — ALWAYS initialized alongside any system type
+                            await emit('sync-event', `💅 Dönem ${pNr}: Güzellik/klinik hareket tabloları oluşturuluyor...`);
+                            await postgres.query('SELECT INIT_BEAUTY_PERIOD_TABLES($1::varchar, $2::varchar)', [currentFirmId, pNr]);
+                            await emit('sync-event', `✅ Güzellik dönem tabloları hazır.`);
+                        } catch (schemaErr) {
+                            const schemaErrStr = String(schemaErr);
+                            console.warn(`Period schema init warning for ${pNr} (non-fatal):`, schemaErr);
+                            setSyncLogs(prev => [...prev, `⚠️ Dönem ${pNr} şema uyarısı (devam ediliyor): ${schemaErrStr}`]);
+                        }
+                    }
+
+                    // Always insert the period DB record regardless of schema init result
+                    console.log(`Inserting period ${p.nr} for firm ${currentFirmId}`);
+                    try {
+                        await postgres.query(`
+                                INSERT INTO periods (firm_id, nr, beg_date, end_date, is_active, "default")
+                                SELECT id, $2, $3::date, $4::date, true, true FROM firms WHERE id::text = $1 OR firm_nr = $1
+                                ON CONFLICT (firm_id, nr) DO UPDATE SET
+                                is_active = true,
+                                "default" = true,
+                                beg_date = EXCLUDED.beg_date,
+                                end_date = EXCLUDED.end_date
+                            `, [currentFirmId, p.nr, p.start_date.split(' ')[0], p.end_date.split(' ')[0]]);
+                        console.log(`✅ Period ${p.nr} inserted for firm ${currentFirmId}`);
+                    } catch (perErr) {
+                        const perErrStr = String(perErr);
+                        console.error(`Period insert error for firm ${currentFirmId}:`, perErr);
+                        setSyncLogs(prev => [...prev, `❌ Dönem ${p.nr} kayıt hatası (firma ${currentFirmId}): ${perErrStr}`]);
+                    }
+                }
+
+                // 4. Stores / Warehouses - Isolated by FFF_PP in Logo mode
+                if (firmData?.stores && firmData.stores.length > 0) {
+                    for (const store of firmData.stores) {
+                        await postgres.query(`
+                                INSERT INTO stores (code, name, type, firm_nr)
+                                VALUES ($1, $2, $3, $4)
+                                ON CONFLICT (code) DO UPDATE SET
+                                name = EXCLUDED.name,
+                                type = EXCLUDED.type
+                            `, [store.code, store.name, store.type, currentFirmId]);
+                    }
+                }
+
+                // 5. Users (with Password Hashing) - Isolated by Firm only
+                setInstallationStep('USERS');
+                // Resolve auth connStr once — used for BOTH schema setup and user inserts
+                let authConnStr = '';
+                if (isTauri) {
+                    const { LOCAL_CONFIG, REMOTE_CONFIG, DB_SETTINGS } = await import('../../services/postgres');
+                    const dbConf = DB_SETTINGS.activeMode === 'online' ? REMOTE_CONFIG : LOCAL_CONFIG;
+                    const effectiveHost = dbConf.host === 'localhost' ? '127.0.0.1' : dbConf.host;
+                    authConnStr = `postgresql://${dbConf.user}:${dbConf.password}@${effectiveHost}:${dbConf.port}/${dbConf.database}`;
+
+                    // Ensure pgcrypto + auth schema + auth.users exist via batch_execute (Simple Query Protocol).
+                    // CREATE EXTENSION and DDL cannot run via extended protocol (pg_query).
+                    const { invoke: invokeDdl } = await import('@tauri-apps/api/core');
+                    try {
+                        await invokeDdl('pg_execute', {
+                            connStr: authConnStr,
+                            sql: `
+                                CREATE EXTENSION IF NOT EXISTS "uuid-ossp";
+                                CREATE EXTENSION IF NOT EXISTS "pgcrypto";
+                                CREATE SCHEMA IF NOT EXISTS auth;
+                                CREATE TABLE IF NOT EXISTS auth.users (
+                                    id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+                                    email VARCHAR(255) UNIQUE,
+                                    encrypted_password VARCHAR(255),
+                                    raw_user_meta_data JSONB,
+                                    created_at TIMESTAMPTZ DEFAULT NOW(),
+                                    updated_at TIMESTAMPTZ DEFAULT NOW()
+                                );
+                            `
+                        });
+                        console.log('[SetupWizard] Auth infrastructure ready.');
+                    } catch (extErr: any) {
+                        // Non-fatal: table/extension may already exist from migrations
+                        const extErrStr = String(extErr);
+                        console.warn('[SetupWizard] Auth infra pre-check (non-fatal):', extErrStr);
+                        setSyncLogs(prev => [...prev, `⚠️ Auth altyapısı uyarısı (devam ediliyor): ${extErrStr}`]);
+                    }
+
+                    const { emit } = await import('@tauri-apps/api/event');
+                    await emit('sync-event', `Firma ${currentFirmId}: Varsayılan kullanıcılar (admin, personel, depo, kasiyer) oluşturuluyor...`);
+                }
+
+                const defaultUsers: AppUser[] = [
+                    { username: 'admin', password: 'admin', full_name: 'Sistem Yöneticisi', role: 'admin' },
+                    { username: 'personel', password: 'personel', full_name: 'Saha Personeli', role: 'user' },
+                    { username: 'depo', password: 'depo', full_name: 'Depo Sorumlusu', role: 'warehouse' },
+                    { username: 'kasiyer', password: 'kasiyer', full_name: 'Kasa Görevlisi', role: 'cashier' }
+                ];
+
+                const erpUsers = (firmData?.users && firmData.users.length > 0) ? firmData.users : [];
+
+                // Skip legacy user migration as public.users is removed
+                console.log('SetupWizard: Skipping legacy user migration (migrated to auth.users).');
+
+                const userList: AppUser[] = [...defaultUsers];
+
+                for (const erpUser of erpUsers) {
+                    if (!userList.find(u => u.username === erpUser.username)) {
+                        userList.push({
+                            username: erpUser.username,
+                            full_name: erpUser.full_name,
+                            role: erpUser.role,
+                            password: erpUser.password, // Might be undefined
+                            email: erpUser.email
+                        });
+                    }
+                }
+
+                // Helper: escape SQL string literals (replace ' with '')
+                const sqlStr = (s: string) => s.replace(/'/g, "''");
+
+                for (const user of userList) {
+                    const currentUser = user as AppUser;
+                    try {
+                        const userEmail = sqlStr(currentUser.email || `${currentUser.username}@retailex.local`);
+                        const metadata = {
+                            role: currentUser.role,
+                            firm_nr: currentFirmId,
+                            full_name: currentUser.full_name,
+                            username: currentUser.username
+                        };
+                        const metaJson = sqlStr(JSON.stringify(metadata));
+
+                        if (isTauri) {
+                            const { emit } = await import('@tauri-apps/api/event');
+                            const { invoke: inv } = await import('@tauri-apps/api/core');
+                            await emit('sync-event', `👤 Kullanıcı oluşturuluyor: ${currentUser.username}...`);
+
+                            // Use pg_execute (batch_execute / Simple Query Protocol) so that
+                            // crypt() + gen_salt() from pgcrypto work without extended-protocol issues.
+                            let userSql: string;
+                            if (currentUser.password) {
+                                const pw = sqlStr(currentUser.password);
+                                userSql = `
+                                    INSERT INTO auth.users (id, email, encrypted_password, raw_user_meta_data, created_at, updated_at)
+                                    VALUES (uuid_generate_v4(), '${userEmail}', crypt('${pw}', gen_salt('bf')), '${metaJson}'::jsonb, now(), now())
+                                    ON CONFLICT (email) DO UPDATE SET
+                                        encrypted_password = EXCLUDED.encrypted_password,
+                                        raw_user_meta_data = EXCLUDED.raw_user_meta_data,
+                                        updated_at = now();
+                                `;
+                            } else {
+                                userSql = `
+                                    INSERT INTO auth.users (id, email, raw_user_meta_data, created_at, updated_at)
+                                    VALUES (uuid_generate_v4(), '${userEmail}', '${metaJson}'::jsonb, now(), now())
+                                    ON CONFLICT (email) DO UPDATE SET
+                                        raw_user_meta_data = EXCLUDED.raw_user_meta_data,
+                                        updated_at = now();
+                                `;
+                            }
+
+                            await inv('pg_execute', { connStr: authConnStr, sql: userSql });
+                            await emit('sync-event', `✅ Kullanıcı hazır: ${currentUser.username}`);
+                        }
+                    } catch (uErr: any) {
+                        // Tauri errors arrive as plain strings — capture both .message and raw string
+                        const errDetail = uErr?.message || uErr?.toString?.() || String(uErr);
+                        console.error(`User creation error for ${currentUser.username}:`, errDetail, '\nConnStr:', authConnStr);
+                        if (isTauri) {
+                            const { emit } = await import('@tauri-apps/api/event');
+                            await emit('sync-event', `❌ Kullanıcı hatası (${currentUser.username}): ${errDetail}`);
+                        }
+                    }
+                }
+
+                // Update local service settings for subsequent calls (like device registration)
+                const { updateConfigs } = await import('../../services/postgres');
+                await updateConfigs({
+                    erp: { firmNr: currentFirmId, periodNr: config.erp_period_nr || '01' }
+                });
+            }
+
+            // Şablon firma 001 / seed 002 — kullanıcının oluşturmadığı kayıtları temizle
+            if (!skipRemoteBootstrap && firmsToInit.length > 0) {
+                try {
+                    const { cleanupMasterSeedFirms } = await import('../../services/firmSeedCleanup');
+                    const cleaned = await cleanupMasterSeedFirms(postgres, firmsToInit);
+                    if (cleaned.length > 0 && isTauri) {
+                        const { emit } = await import('@tauri-apps/api/event');
+                        for (const msg of cleaned) {
+                            await emit('sync-event', `ℹ️ ${msg}`);
+                        }
+                    }
+                } catch (cleanErr) {
+                    console.warn('[SetupWizard] Şablon firma temizliği:', cleanErr);
+                }
+            }
+
+            // 4.6. Initialize Default Currencies (Logo Standard)
+            if (!isUpdateMode) {
+                toast.info('Para birimleri tanımlanıyor...');
+                const currencies = [
+                    ['IQD', 'Irak Dinarı', '', true],
+                    ['USD', 'Amerikan Doları', '$', false],
+                    ['EUR', 'Euro', '€', false],
+                    ['GBP', 'İngiliz Sterlini', '£', false]
+                ];
+                for (const curr of currencies) {
+                    await postgres.query(`
+                        INSERT INTO public.currencies (code, name, symbol, is_base_currency)
+                        VALUES ($1, $2, $3, $4)
+                        ON CONFLICT (code) DO NOTHING
+                    `, curr);
+                }
+            }
+
+            // 5. Logo ERP (MSSQL) → PostgreSQL: seçilen firma/dönem için gerçek kart ve hareket verileri (demo değil)
+            if (!config.skip_integration) {
+                setInstallationStep('SYNC');
+                toast.info('Logo ERP veritabanından gerçek firma verileri aktarılıyor...');
+                if (isTauri) {
+                    const { emit } = await import('@tauri-apps/api/event');
+                    await emit('sync-event', `📡 Logo ERP (MSSQL) → PostgreSQL: firma ${config.erp_firm_nr} / dönem ${config.erp_period_nr} gerçek verileri okunuyor...`);
+                    await safeInvoke('sync_logo_data', { config: config });
+                    await emit('sync-event', '✅ Logo ERP aktarımı tamamlandı (kaynak: canlı ERP veritabanı, demo seed değil).');
+                    toast.success('Logo ERP verileri PostgreSQL\'e aktarıldı.');
+
+                    // 000_master_schema "RetailEx OS" şablon firması (001) — Logo'da 002 vb. seçildiyse gereksiz ikinci kayıt oluşur
+                    const logoFirmNr = String(config.erp_firm_nr || '').padStart(3, '0');
+                    if (logoFirmNr !== '001') {
+                        try {
+                            await postgres.query(
+                                `DELETE FROM periods WHERE firm_id IN (SELECT id FROM firms WHERE firm_nr = $1 AND name = $2)`,
+                                ['001', 'RetailEx OS']
+                            );
+                            await postgres.query(`DELETE FROM stores WHERE firm_nr = $1`, ['001']);
+                            const delTpl = await postgres.query<{ id: string }>(
+                                `DELETE FROM firms WHERE firm_nr = $1 AND name = $2 RETURNING id`,
+                                ['001', 'RetailEx OS']
+                            );
+                            if (delTpl.rowCount > 0) {
+                                await emit('sync-event', 'ℹ️ Şablon firma 001 (RetailEx OS) kaldırıldı — yalnızca Logo\'dan seçtiğiniz firma listelenir.');
+                                await postgres.query(`UPDATE firms SET "default" = false`);
+                                await postgres.query(`UPDATE firms SET "default" = true WHERE firm_nr = $1`, [logoFirmNr]);
+                            }
+                        } catch (cleanErr) {
+                            console.warn('[SetupWizard] Şablon firma 001 temizliği:', cleanErr);
+                        }
+                    }
+                } else {
+                    console.log('Web Modu: Veri senkronizasyonu simüle ediliyor...');
+                    await new Promise(r => setTimeout(r, 1000));
+                }
+            }
+
+            // 6. Apply System Type Profile (Modules etc.)
+            const { moduleManager } = await import('../../utils/moduleManager');
+            moduleManager.setActiveModules(config.enabled_modules);
+
+            // 6.1 Save module visibility config (Bayi Seti)
+            localStorage.setItem('retailex_enabled_modules', JSON.stringify(config.enabled_modules));
+            localStorage.setItem('retailex_bayi_seti', String(config.bayi_seti));
+
+            // 7. Register Terminal/Device — yalnızca hibrit kasa (client)
+            if (!isUpdateMode && isTauri && config.role === 'client' && config.db_mode === 'hybrid') {
+                const terminalName = String(config.terminal_name || '').trim();
+                if (!terminalName) {
+                    toast.error('Cihaz / kasa adı zorunludur.');
+                    setInstallationStep('ERROR');
+                    return;
+                }
+                setInstallationStep('DEVICE');
+                toast.info('Cihaz kaydı merkeze iletiliyor...');
+                const reg = await postgres.registerDevice(terminalName, config.store_id);
+                if (reg.success) {
+                    toast.success(reg.message || 'Cihaz kaydı merkeze iletildi. Web panelinden onay bekleniyor.');
+                } else {
+                    toast.error(reg.message || 'Cihaz kaydı başarısız.');
+                }
+            }
+
+            setInstallationStep('COMPLETED');
+
+            // Update localStorage cache ONLY after full successful install, so App.tsx fast-path
+            // reads is_configured:true on redirect and skips the wizard.
+            localStorage.setItem('retailex_web_config', JSON.stringify(finalDbConfig));
+            localStorage.setItem('exretail_firma_donem_configured', 'true');
+            if (finalDbConfig.erp_firm_nr) {
+                localStorage.setItem('exretail_selected_firma_id', finalDbConfig.erp_firm_nr.padStart(3, '0'));
+            }
+
+            const shellOrder = ['pos', 'restaurant', 'wms', 'beauty'] as const;
+            const preferredShell =
+                config.system_type === 'restaurant' ? 'restaurant' :
+                    config.system_type === 'beauty' ? 'beauty' :
+                        config.system_type === 'wms' ? 'wms' :
+                            'pos';
+            let primaryShell = preferredShell;
+            if (!config.enabled_modules.includes(preferredShell)) {
+                primaryShell = shellOrder.find((id) => config.enabled_modules.includes(id))
+                    || config.enabled_modules[0]
+                    || 'pos';
+            }
+            localStorage.setItem('retailex_active_module', primaryShell);
+
+            toast.success(isUpdateMode ? 'Güncelleme başarıyla tamamlandı!' : 'Kurulum başarıyla tamamlandı!');
+            setTimeout(() => {
+                window.location.href = '/';
+            }, 1500);
+
+        } catch (error: any) {
+            console.error('Setup error:', error);
+            setInstallationStep('ERROR');
+
+            const errStr = String(error);
+
+            // Always push full error to log panel
+            if (errStr.includes('| Detail:')) {
+                const parts = errStr.split(' | ');
+                const title = parts[0];
+                const detail = parts.slice(1).join(' | ');
+                setSyncLogs(prev => [...prev,
+                    ``,
+                    `💥 KURULUM HATASI:`,
+                `  ${title}`,
+                ...detail.split(' | ').map(d => `  ${d}`)
+                ]);
+                toast.error(title, {
+                    description: detail.replace(/ \| /g, '\n'),
+                    duration: 10000,
+                });
+            } else {
+                setSyncLogs(prev => [...prev,
+                    ``,
+                    `💥 KURULUM HATASI:`,
+                `  ${errStr}`
+                ]);
+                toast.error('Kurulum hatası: ' + errStr);
+            }
+        } finally {
+            if (typeof unlisten === 'function') {
+                unlisten();
+            }
+            // setLoading(false); // Removed as per instruction
+        }
+    };
+
+    return (
+        <div
+            className="fixed inset-0 bg-[#0f172a] text-white flex items-center justify-center p-6 overflow-hidden z-[50000]"
+            style={{ backgroundColor: '#0f172a' }}
+        >
+
+            {/* Background Ambient Glows - EXACTLY as in Login.tsx */}
+            <div className="absolute top-[-10%] right-[-10%] w-[40%] h-[40%] bg-blue-600/10 blur-[120px] rounded-full" />
+            <div className="absolute bottom-[-10%] left-[-10%] w-[40%] h-[40%] bg-indigo-600/10 blur-[120px] rounded-full" />
+
+            <div className="w-full max-w-5xl bg-[#1e293b]/90 backdrop-blur-2xl border border-white/10 rounded-[40px] shadow-[0_32px_128px_-12px_rgba(0,0,0,0.8)] flex min-h-[700px] max-h-[90vh] relative z-10 transition-all duration-500 overflow-hidden">
+                {/* Sidebar Navigation - Pure transparency to match Login card feel */}
+                <div className="w-80 border-r border-white/15 p-8 flex flex-col relative z-20">
+                    <div className="mb-12">
+                        <div className="flex items-center gap-3 mb-2">
+                            <NeonLogo variant="full" size="md" />
+                        </div>
+                        <p className="text-blue-200/60 text-[10px] uppercase tracking-widest font-black">Setup Wizard</p>
+                    </div>
+
+                    <div className="space-y-3 flex-1 text-left">
+                        {wizardSteps.map((s) => (
+                            <div
+                                key={s.id}
+                                className={`flex items-center gap-4 p-3.5 rounded-xl transition-all ${step === s.id ? 'bg-blue-600/10 text-white' : 'text-slate-400 hover:text-white hover:bg-white/5'
+                                    }`}
+                            >
+                                <div className={`p-2 rounded-lg transition-colors ${step === s.id ? 'bg-blue-600 text-white' : 'bg-white/5'}`}>
+                                    <s.icon className="w-4 h-4" />
+                                </div>
+                                <span className={`text-xs font-bold tracking-wide ${step === s.id ? 'text-blue-50' : ''}`}>{s.label}</span>
+                                {step > s.id && !isUpdateMode && (
+                                    <CheckCircle className="w-3.5 h-3.5 ml-auto text-blue-400" />
+                                )}
+                            </div>
+                        ))}
+                    </div>
+
+                    {/* Active Session / User Display */}
+                    <div className="p-4 rounded-3xl bg-white/[0.03] border border-white/5 mb-6">
+                        <div className="flex items-center gap-3">
+                            <div className="w-10 h-10 rounded-2xl bg-gradient-to-br from-blue-500/20 to-purple-500/20 flex items-center justify-center border border-white/10">
+                                <User className="w-5 h-5 text-blue-400" />
+                            </div>
+                            <div className="flex-1 min-w-0">
+                                <div className="text-[10px] font-black text-blue-200/40 uppercase tracking-widest leading-none mb-1">Aktif Oturum</div>
+                                <div className="text-sm font-black text-white truncate">{osUsername || 'Yükleniyor...'}</div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <div className="pt-8 border-t border-white/10">
+                        <div className="flex items-center gap-2 text-[10px] text-blue-200 font-bold uppercase tracking-widest leading-none">
+                            <Shield className="w-3 h-3 text-blue-500" />
+                            Security Protocol Active
+                        </div>
+                    </div>
+                </div>
+
+                {/* Main Content Area - Pure transparency to let card background show through */}
+                <div className="flex-1 flex flex-col relative overflow-hidden h-[700px]">
+                    {/* Scrollable Content */}
+                    <div className="flex-1 overflow-y-auto p-6 custom-scrollbar relative">
+                        {/* STEP 1: BUSINESS TYPE & ROLE */}
+                        {step === 1 && (
+                            <div className="space-y-12 animate-in fade-in slide-in-from-right-4 duration-500">
+                                {hasExistingConfig && (
+                                    <div className="p-8 rounded-[32px] bg-gradient-to-br from-blue-600/20 to-indigo-600/10 border border-white/10 shadow-2xl relative overflow-hidden group">
+                                        <div className="absolute top-0 right-0 w-64 h-64 bg-blue-500/10 rounded-full -mr-32 -mt-32 blur-3xl transition-all group-hover:bg-blue-500/20" />
+                                        <div className="relative z-10 flex items-center justify-between">
+                                            <div className="space-y-4">
+                                                <div className="flex items-center gap-3">
+                                                    <div className="w-10 h-10 rounded-xl bg-blue-500 flex items-center justify-center shadow-lg shadow-blue-500/20">
+                                                        <Zap className="w-5 h-5 text-white" />
+                                                    </div>
+                                                    <h2 className="text-3xl font-black text-white tracking-tight">Hızlı Güncelleme Modu Aktif</h2>
+                                                </div>
+                                                <p className="text-blue-200/70 font-medium uppercase tracking-[0.2em] text-[10px]">MEVCUT BİR YAPILANDIRMA TESPİT EDİLDİ.</p>
+                                                <p className="text-slate-400 text-sm max-w-lg leading-relaxed">
+                                                    Sistem ayarlarınızı değiştirmeden sadece veritabanı şemasını (tabloları ve mantıksal katmanları) en güncel sürüme yükseltmek için bu modu kullanabilirsiniz.
+                                                </p>
+                                            </div>
+                                            <div className="flex flex-col gap-3">
+                                                <button
+                                                    onClick={() => {
+                                                        setIsUpdateMode(true);
+                                                        setStep(summaryStep); // Jump to Summary/Özet
+                                                    }}
+                                                    className="px-8 py-4 bg-blue-600 hover:bg-blue-500 text-white rounded-2xl text-xs font-black uppercase tracking-widest transition-all shadow-xl shadow-blue-600/20 flex items-center gap-3 active:scale-95 group"
+                                                >
+                                                    KUR (GÜNCELLE) <ArrowRight className="w-4 h-4 group-hover:translate-x-1 transition-transform" />
+                                                </button>
+                                                <button
+                                                    onClick={() => {
+                                                        const updatedConfig = { ...config, is_configured: true };
+                                                        localStorage.setItem('retailex_web_config', JSON.stringify(updatedConfig));
+                                                        localStorage.setItem('exretail_firma_donem_configured', 'true');
+                                                        toast.success('Panele yönlendiriliyorsunuz...');
+                                                        setTimeout(() => {
+                                                            window.location.href = '/';
+                                                        }, 1000);
+                                                    }}
+                                                    className="px-8 py-4 bg-emerald-600/20 hover:bg-emerald-600/30 text-emerald-400 border border-emerald-500/20 rounded-2xl text-[10px] font-black uppercase tracking-widest transition-all flex items-center justify-center gap-2"
+                                                >
+                                                    <Activity className="w-4 h-4" /> PANELE GİT (ATLA)
+                                                </button>
+                                                <button
+                                                    onClick={() => {
+                                                        setReinstallDeleteCRetailex(false);
+                                                        setShowReinstallModal(true);
+                                                    }}
+                                                    className="px-8 py-4 bg-white/5 hover:bg-white/10 text-slate-400 hover:text-white rounded-2xl text-[10px] font-black uppercase tracking-widest transition-all border border-white/5"
+                                                >
+                                                    Yeniden Kurulum Yap
+                                                </button>
+                                            </div>
+                                        </div>
+                                    </div>
+                                )}
+
+                                {/* Section 1: System/Sector Type */}
+                                <div className="space-y-6">
+                                    <div className="mb-4">
+                                        <h2 className="text-xl font-black mb-0.5 text-white tracking-tight">İşletme Tipi</h2>
+                                        <p className="text-blue-400/60 font-medium uppercase tracking-[0.2em] text-[9px]">Business Model Configuration</p>
+                                    </div>
+                                    <div className="grid grid-cols-3 gap-2">
+                                        {[
+                                            { id: 'retail', label: 'Mağazacılık', desc: 'Tekstil, Ayakkabı', icon: Layout },
+                                            { id: 'market', label: 'Market', desc: 'Süpermarket, Büfe', icon: CheckCircle },
+                                            { id: 'wms', label: 'Depo', desc: 'WMS Entegre', icon: Building2 },
+                                            { id: 'restaurant', label: 'Restoran', desc: 'Cafe & Restoran', icon: UtensilsCrossed },
+                                            { id: 'beauty', label: 'Güzellik', desc: 'Klinik & Bakım', icon: Sparkles },
+                                            { id: 'bayi', label: 'Bayi Seti', desc: 'Tüm Modüller', icon: Shield },
+                                        ].map((sys) => (
+                                            <button
+                                                key={sys.id}
+                                                onClick={() => {
+                                                    if (sys.id === 'bayi' && !bayiSetiUnlocked) {
+                                                        // Handled in a separate modal or inline password check
+                                                        // For now just set it, but we'll add the password check below
+                                                    }
+
+                                                    let newModules: string[] = [];
+                                                    let isBayiSeti = false;
+                                                    if (sys.id === 'retail' || sys.id === 'market') newModules = ['pos', 'wms'];
+                                                    else if (sys.id === 'wms') newModules = ['wms'];
+                                                    else if (sys.id === 'restaurant') newModules = ['pos', 'restaurant'];
+                                                    else if (sys.id === 'beauty') newModules = ['beauty'];
+                                                    else if (sys.id === 'bayi') {
+                                                        newModules = ['pos', 'wms', 'restaurant', 'beauty'];
+                                                        isBayiSeti = true;
+                                                    }
+
+                                                    setConfig({
+                                                        ...config,
+                                                        system_type: sys.id as any,
+                                                        enabled_modules: newModules,
+                                                        bayi_seti: isBayiSeti
+                                                    });
+                                                }}
+                                                className={`group relative p-2.5 rounded-xl border transition-all duration-300 ${config.system_type === sys.id
+                                                    ? 'bg-blue-600/10 border-blue-500/50 shadow-lg shadow-blue-500/5'
+                                                    : 'bg-white/[0.03] border-white/5 hover:border-white/10 hover:bg-white/[0.06]'
+                                                    }`}
+                                            >
+                                                <div className="flex items-center gap-2.5 relative z-10 text-left">
+                                                    <div className={`w-8 h-8 rounded-lg flex items-center justify-center transition-all ${config.system_type === sys.id ? 'bg-blue-600 text-white' : 'bg-slate-800 text-slate-400'}`}>
+                                                        <sys.icon className="w-4 h-4" />
+                                                    </div>
+                                                    <div className="min-w-0 flex-1">
+                                                        <div className={`text-[10px] font-black leading-tight truncate transition-colors ${config.system_type === sys.id ? 'text-white' : 'text-slate-200'}`}>{sys.label}</div>
+                                                        <div className={`text-[8px] font-bold truncate ${config.system_type === sys.id ? 'text-blue-200/60' : 'text-slate-500'}`}>{sys.desc}</div>
+                                                    </div>
+                                                </div>
+                                                {config.system_type === sys.id && (
+                                                    <div className="absolute top-1.5 right-1.5 animate-in zoom-in duration-300">
+                                                        <CheckCircle className="w-3 h-3 text-blue-500" />
+                                                    </div>
+                                                )}
+                                            </button>
+                                        ))}
+                                    </div>
+
+                                    {/* Section: Module Visibility (Relocated under Business Type) */}
+                                    <div className="pt-2 pb-2 space-y-3">
+                                        <div className="flex items-center justify-between">
+                                            <div>
+                                                <h2 className="text-sm font-black text-white/90 tracking-tight uppercase">Modül Erişim Kontrolü</h2>
+                                                <p className="text-blue-400/50 font-bold uppercase tracking-[0.1em] text-[8px]">Module Access Configuration</p>
+                                            </div>
+                                        </div>
+
+                                        {/* Bayi Seti Toggle */}
+                                        {config.system_type === 'bayi' && !bayiSetiUnlocked && (
+                                            <div className="flex gap-2 items-center animate-in fade-in slide-in-from-top-4 duration-500">
+                                                <div className="relative flex-1">
+                                                    <Lock className="absolute left-3 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-slate-500" />
+                                                    <input
+                                                        type="password"
+                                                        value={bayiSetiPassword}
+                                                        onChange={(e) => setBayiSetiPassword(e.target.value)}
+                                                        onKeyDown={(e) => {
+                                                            if (e.key === 'Enter' && bayiSetiPassword === '10021993') {
+                                                                setBayiSetiUnlocked(true);
+                                                                toast.success('Bayi Seti kilidi açıldı.');
+                                                            }
+                                                        }}
+                                                        placeholder="Bayi Seti Şifresi..."
+                                                        className="w-full bg-black/40 border border-white/10 rounded-xl pl-9 pr-4 py-2 text-xs text-white focus:outline-none focus:border-blue-500 transition-all placeholder:text-slate-600"
+                                                    />
+                                                </div>
+                                                <button
+                                                    onClick={() => {
+                                                        if (bayiSetiPassword === '10021993') {
+                                                            setBayiSetiUnlocked(true);
+                                                            toast.success('Bayi Seti kilidi açıldı.');
+                                                        } else {
+                                                            toast.error('Hatalı şifre.');
+                                                        }
+                                                    }}
+                                                    className="px-4 py-2 bg-blue-600/20 hover:bg-blue-600/40 text-blue-400 rounded-xl text-[9px] font-black uppercase tracking-widest border border-blue-500/20 transition-all"
+                                                >
+                                                    KILİDİ AÇ
+                                                </button>
+                                            </div>
+                                        )}
+
+                                        {(config.system_type !== 'bayi' || bayiSetiUnlocked) && (
+                                            <div className="grid grid-cols-2 gap-2 animate-in fade-in slide-in-from-top-2 duration-300">
+                                                {[
+                                                    { id: 'pos', label: 'Satış (POS)', icon: Zap },
+                                                    { id: 'wms', label: 'Depo (WMS)', icon: Building2 },
+                                                    { id: 'restaurant', label: 'Restoran', icon: UtensilsCrossed },
+                                                    { id: 'beauty', label: 'Beauty', icon: Sparkles },
+                                                ].map((mod) => {
+                                                    const isEnabled = config.enabled_modules.includes(mod.id);
+
+                                                    return (
+                                                        <button
+                                                            key={mod.id}
+                                                            onClick={() => {
+                                                                const newModules = isEnabled
+                                                                    ? config.enabled_modules.filter(m => m !== mod.id)
+                                                                    : [...config.enabled_modules, mod.id];
+                                                                setConfig({ ...config, enabled_modules: newModules });
+                                                            }}
+                                                            className={`flex items-center gap-3 p-2.5 rounded-xl border transition-all text-left ${isEnabled
+                                                                ? 'bg-blue-600/10 border-blue-500/40 text-white'
+                                                                : 'bg-white/[0.02] border-white/5 text-slate-500 hover:border-white/10'
+                                                                }`}
+                                                        >
+                                                            <div className={`w-6 h-6 rounded-lg flex items-center justify-center shrink-0 ${isEnabled ? 'bg-blue-600' : 'bg-slate-800'}`}>
+                                                                <mod.icon className="w-3.5 h-3.5" />
+                                                            </div>
+                                                            <span className="text-[10px] font-black">{mod.label}</span>
+                                                            {isEnabled && <CheckCircle className="w-3.5 h-3.5 text-blue-400 ml-auto" />}
+                                                        </button>
+                                                    );
+                                                })}
+                                            </div>
+                                        )}
+                                        <p className="text-[9px] text-slate-600 font-medium">Yönetim (Backoffice) modülü her zaman erişilebilirdir.</p>
+                                    </div>
+                                </div>
+
+                                {/* Section Separator */}
+                                <div className="w-full h-px bg-gradient-to-r from-transparent via-white/10 to-transparent my-6" />
+
+                                {/* Section 1.5: Role Selection (Center vs Store vs POS) */}
+                                <div className="space-y-4">
+                                    <div>
+                                        <h2 className="text-xl font-black mb-0.5 text-white tracking-tight">Cihaz Rolü</h2>
+                                        <p className="text-blue-400/60 font-medium uppercase tracking-[0.2em] text-[10px]">Device Role Configuration</p>
+                                    </div>
+                                    <div className="grid grid-cols-2 gap-3">
+                                        {[
+                                            { id: 'center', label: 'Merkez Sunucu', desc: 'Yönetim Paneli', icon: Globe },
+                                            { id: 'client', label: 'Terminal', desc: 'Satış Noktası', icon: Cpu },
+                                        ].map((r) => (
+                                            <button
+                                                key={r.id}
+                                                onClick={() => {
+                                                    const new_mode = r.id === 'center' ? 'offline' : 'hybrid';
+                                                    setConfig({ ...config, role: r.id as any, db_mode: new_mode });
+                                                }}
+                                                className={`group relative p-3 rounded-xl border transition-all duration-300 ${config.role === r.id
+                                                    ? 'bg-blue-600/10 border-blue-500 shadow-xl shadow-blue-500/10'
+                                                    : 'bg-white/[0.03] border-white/5 hover:border-white/10 hover:bg-white/[0.08]'
+                                                    }`}
+                                            >
+                                                <div className="flex items-center gap-3 relative z-10 text-left">
+                                                    <div className={`w-10 h-10 rounded-lg flex items-center justify-center transition-all ${config.role === r.id ? 'bg-blue-600 text-white' : 'bg-slate-800 text-slate-400'}`}>
+                                                        <r.icon className="w-5 h-5" />
+                                                    </div>
+                                                    <div>
+                                                        <div className={`text-[11px] font-black mb-0.5 transition-colors ${config.role === r.id ? 'text-white' : 'text-slate-200'}`}>{r.label}</div>
+                                                        <div className={`text-[9px] font-bold ${config.role === r.id ? 'text-blue-200/60' : 'text-slate-500'}`}>{r.desc}</div>
+                                                    </div>
+                                                </div>
+                                                {config.role === r.id && (
+                                                    <div className="absolute top-2 right-2 animate-in zoom-in duration-300">
+                                                        <CheckCircle className="w-3 h-3 text-blue-500" />
+                                                    </div>
+                                                )}
+                                            </button>
+                                        ))}
+                                    </div>
+                                </div>
+
+                                {/* Section Separator */}
+                                <div className="w-full h-px bg-gradient-to-r from-transparent via-white/10 to-transparent my-6" />
+
+                                {/* Section 1.6: Terminal Veritabanı (sadece Terminal seçiliyse) */}
+                                {config.role === 'client' && (
+                                    <>
+                                        <div className="space-y-4">
+                                            <div>
+                                                <h2 className="text-xl font-black mb-0.5 text-white tracking-tight">Terminal Veritabanı</h2>
+                                                <p className="text-blue-400/60 font-medium uppercase tracking-[0.2em] text-[10px]">Yerel kurulum mu, merkez DB’ye bağlantı mı?</p>
+                                            </div>
+                                            <div className="grid grid-cols-1 gap-3">
+                                                <button
+                                                    onClick={() => setConfig({ ...config, db_mode: 'hybrid', connection_provider: 'rest_api' })}
+                                                    className={`group relative p-4 rounded-2xl border transition-all duration-300 ${config.db_mode !== 'online'
+                                                        ? 'bg-blue-600/10 border-blue-500 shadow-lg shadow-blue-500/5'
+                                                        : 'bg-white/[0.03] border-white/5 hover:border-white/10 hover:bg-white/[0.08]'
+                                                    }`}
+                                                >
+                                                    <div className="flex items-center gap-4 relative z-10 text-left">
+                                                        <div className={`w-12 h-12 rounded-xl flex items-center justify-center transition-all ${config.db_mode !== 'online' ? 'bg-blue-600 text-white' : 'bg-slate-800 text-slate-400'}`}>
+                                                            <Database className="w-6 h-6" />
+                                                        </div>
+                                                        <div className="flex-1">
+                                                            <div className={`text-base font-black mb-0.5 ${config.db_mode !== 'online' ? 'text-white' : 'text-slate-200'}`}>Yerel veritabanı kur</div>
+                                                            <div className={`text-[10px] font-bold leading-tight max-w-sm ${config.db_mode !== 'online' ? 'text-blue-200/60' : 'text-slate-500'}`}>Bu bilgisayarda veritabanı kurulur veya mevcut yerel PostgreSQL kullanılır.</div>
+                                                        </div>
+                                                        {config.db_mode !== 'online' && <CheckCircle className="w-5 h-5 text-blue-500" />}
+                                                    </div>
+                                                </button>
+                                                <button
+                                                    onClick={() => setConfig({ ...config, db_mode: 'online' })}
+                                                    className={`group relative p-4 rounded-2xl border transition-all duration-300 ${config.db_mode === 'online'
+                                                        ? 'bg-blue-600/10 border-blue-500 shadow-lg shadow-blue-500/5'
+                                                        : 'bg-white/[0.03] border-white/5 hover:border-white/10 hover:bg-white/[0.08]'
+                                                    }`}
+                                                >
+                                                    <div className="flex items-center gap-4 relative z-10 text-left">
+                                                        <div className={`w-12 h-12 rounded-xl flex items-center justify-center transition-all ${config.db_mode === 'online' ? 'bg-blue-600 text-white' : 'bg-slate-800 text-slate-400'}`}>
+                                                            <Globe className="w-6 h-6" />
+                                                        </div>
+                                                        <div className="flex-1">
+                                                            <div className={`text-base font-black mb-0.5 ${config.db_mode === 'online' ? 'text-white' : 'text-slate-200'}`}>Merkez veritabanına bağlan</div>
+                                                            <div className={`text-[10px] font-bold leading-tight max-w-sm ${config.db_mode === 'online' ? 'text-blue-200/60' : 'text-slate-500'}`}>Veriler merkez sunucuda tutulur. Aşağıda merkez IP veya adresini girin.</div>
+                                                        </div>
+                                                        {config.db_mode === 'online' && <CheckCircle className="w-5 h-5 text-blue-500" />}
+                                                    </div>
+                                                </button>
+                                            </div>
+                                            {config.role === 'client' && config.db_mode === 'online' && (
+                                                <div className="space-y-2 pt-2 animate-in fade-in slide-in-from-bottom-2 duration-300">
+                                                    <label className="text-[10px] font-black text-slate-500 uppercase tracking-widest pl-1">Merkez sunucu adresi (IP veya domain)</label>
+                                                    <input
+                                                        type="text"
+                                                        value={config.central_api_url || ''}
+                                                        placeholder="https://merkez.example.com veya https://192.168.1.100"
+                                                        onChange={(e) => setConfig({ ...config, central_api_url: e.target.value })}
+                                                        className="w-full bg-black/40 border border-white/5 rounded-xl px-4 py-3 text-white text-[11px] outline-none focus:border-blue-500/50"
+                                                    />
+                                                    <p className="text-[9px] text-slate-500">Terminal, bu adres üzerinden merkez veritabanına online bağlanacaktır.</p>
+                                                </div>
+                                            )}
+                                        </div>
+                                        <div className="w-full h-px bg-gradient-to-r from-transparent via-white/10 to-transparent my-6" />
+                                    </>
+                                )}
+
+                                {/* Section 2: Infrastructure Mode — sadece Merkez seçiliyken göster (Terminal için yukarıdaki "Terminal Veritabanı" kullanılır) */}
+                                {config.role === 'center' && (
+                                <div className="space-y-4">
+                                    <div>
+                                        <h2 className="text-xl font-black mb-0.5 text-white tracking-tight">Çalışma Modu</h2>
+                                        <p className="text-blue-400/60 font-medium uppercase tracking-[0.2em] text-[10px]">Infrastructure Design Pattern</p>
+                                    </div>
+                                    <div className="grid grid-cols-1 gap-3">
+                                        {[
+                                            { id: 'hybrid', label: 'Hybrid Experience', desc: 'Yerel hız + Bulut güvencesi. Kesinti anında yerel çalışmaya devam eder.', icon: Zap },
+                                            { id: 'online', label: 'Cloud-Only Flow', desc: 'Tüm veriler anlık olarak merkez sunucuda tutulur. İnternet gereklidir.', icon: Globe },
+                                            { id: 'offline', label: 'Standalone Unit', desc: 'Tamamen yerel veritabanı kullanımı. Internet bağımsızdır.', icon: WifiOff },
+                                        ].map((mode) => (
+                                            <button
+                                                key={mode.id}
+                                                onClick={() =>
+                                                    setConfig({
+                                                        ...config,
+                                                        db_mode: mode.id as any,
+                                                        ...(mode.id === 'hybrid' ? { connection_provider: 'rest_api' as const } : {}),
+                                                    })
+                                                }
+                                                className={`group relative p-4 rounded-2xl border transition-all duration-300 ${config.db_mode === mode.id
+                                                    ? 'bg-blue-600/10 border-blue-500 shadow-lg shadow-blue-500/5'
+                                                    : 'bg-white/[0.03] border-white/5 hover:border-white/10 hover:bg-white/[0.08]'
+                                                    }`}
+                                            >
+                                                <div className="flex items-center gap-4 relative z-10 text-left">
+                                                    <div className={`w-12 h-12 rounded-xl flex items-center justify-center transition-all ${config.db_mode === mode.id ? 'bg-blue-600 text-white' : 'bg-slate-800 text-slate-400'}`}>
+                                                        <mode.icon className="w-6 h-6" />
+                                                    </div>
+                                                    <div className="flex-1">
+                                                        <div className={`text-base font-black mb-0.5 transition-colors ${config.db_mode === mode.id ? 'text-white' : 'text-slate-200'}`}>{mode.label}</div>
+                                                        <div className={`text-[10px] font-bold leading-tight max-w-sm ${config.db_mode === mode.id ? 'text-blue-200/60' : 'text-slate-500'}`}>{mode.desc}</div>
+                                                    </div>
+                                                    {config.db_mode === mode.id && <CheckCircle className="w-5 h-5 text-blue-500" />}
+                                                </div>
+                                            </button>
+                                        ))}
+                                    </div>
+                                </div>
+                                )}
+
+                                {/* Hibrit senkron tercihleri — yerel + uzak birlikte kullanıldığında */}
+                                {config.db_mode === 'hybrid' && (
+                                    <div className="space-y-4">
+                                        <div>
+                                            <h2 className="text-xl font-black mb-0.5 text-white tracking-tight">Hibrit Senkron</h2>
+                                            <p className="text-blue-400/60 font-medium uppercase tracking-[0.2em] text-[10px]">Okuma ve senkron yönü</p>
+                                        </div>
+                                        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                                            <div className="space-y-2">
+                                                <label className="text-[9px] font-black text-slate-400 uppercase tracking-widest pl-1">Okuma tercihi</label>
+                                                <select
+                                                    value={config.hybrid_read_preference || 'local_first'}
+                                                    onChange={(e) => setConfig({ ...config, hybrid_read_preference: e.target.value as AppConfig['hybrid_read_preference'] })}
+                                                    className="w-full bg-black/40 border border-white/10 rounded-xl px-4 py-3 text-xs text-white focus:outline-none focus:border-blue-500"
+                                                >
+                                                    <option value="local_first">Önce yerel (local_first)</option>
+                                                    <option value="remote_first">Önce uzak (remote_first)</option>
+                                                </select>
+                                            </div>
+                                            <div className="space-y-2">
+                                                <label className="text-[9px] font-black text-slate-400 uppercase tracking-widest pl-1">Senkron yönü</label>
+                                                <select
+                                                    value={config.hybrid_sync_direction || 'local_to_remote'}
+                                                    onChange={(e) => setConfig({ ...config, hybrid_sync_direction: e.target.value as AppConfig['hybrid_sync_direction'] })}
+                                                    className="w-full bg-black/40 border border-white/10 rounded-xl px-4 py-3 text-xs text-white focus:outline-none focus:border-blue-500"
+                                                >
+                                                    <option value="local_to_remote">Yerel → Uzak</option>
+                                                    <option value="remote_to_local">Uzak → Yerel</option>
+                                                    <option value="bidirectional">Çift yönlü</option>
+                                                </select>
+                                            </div>
+                                            <div className="space-y-2">
+                                                <label className="text-[9px] font-black text-slate-400 uppercase tracking-widest pl-1">Senkron taşıma</label>
+                                                <select
+                                                    value={config.hybrid_sync_transport || 'both'}
+                                                    onChange={(e) =>
+                                                        setConfig({
+                                                            ...config,
+                                                            hybrid_sync_transport: e.target.value as AppConfig['hybrid_sync_transport'],
+                                                        })
+                                                    }
+                                                    className="w-full bg-black/40 border border-white/10 rounded-xl px-4 py-3 text-xs text-white focus:outline-none focus:border-blue-500"
+                                                >
+                                                    <option value="both">WebSocket + Periyodik (önerilen)</option>
+                                                    <option value="websocket">Yalnız WebSocket (anlık)</option>
+                                                    <option value="polling">Yalnız Periyodik (timer)</option>
+                                                </select>
+                                                <p className="text-[9px] text-slate-500 pl-1 leading-relaxed">
+                                                    WebSocket: wss://api.retailex.app/&#123;kiracı&#125;/ws — PostgREST URL kiracı kodu içermeli.
+                                                </p>
+                                            </div>
+                                            <div className="space-y-2">
+                                                <label className="text-[9px] font-black text-slate-400 uppercase tracking-widest pl-1">Otomatik senkron aralığı (sn)</label>
+                                                <input
+                                                    type="number"
+                                                    min={5}
+                                                    max={3600}
+                                                    step={5}
+                                                    value={config.hybrid_sync_interval_sec ?? 8}
+                                                    onChange={(e) =>
+                                                        setConfig({
+                                                            ...config,
+                                                            hybrid_sync_interval_sec: Math.min(
+                                                                3600,
+                                                                Math.max(5, parseInt(e.target.value, 10) || 30),
+                                                            ),
+                                                        })
+                                                    }
+                                                    className="w-full bg-black/40 border border-white/10 rounded-xl px-4 py-3 text-xs text-white focus:outline-none focus:border-blue-500"
+                                                />
+                                            </div>
+                                        </div>
+                                    </div>
+                                )}
+
+                                {/* Section: Module Visibility (Removed from here, moved up) */}
+                            </div>
+                        )}
+
+                        {step === 2 && (
+                            <div className="space-y-8 animate-in fade-in slide-in-from-right-4 duration-500">
+                                <div className="mb-8">
+                                    <h2 className="text-3xl font-bold mb-1 text-white tracking-tight">Entegrasyon Tercihi</h2>
+                                    <p className="text-blue-400/80 font-bold uppercase tracking-widest text-[10px]">Integration Strategy</p>
+                                </div>
+
+                                <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                                    {/* Option 1: Logo Integration */}
+                                    <button
+                                        onClick={() => setConfig({ ...config, skip_integration: false, erp_method: 'sql', is_nebim_migration: false })}
+                                        className={`relative p-8 rounded-[38px] border-2 text-left transition-all duration-500 group overflow-hidden ${(!config.skip_integration && !config.is_nebim_migration)
+                                            ? 'bg-blue-600/10 border-blue-500 shadow-[0_0_60px_-15px_rgba(37,99,235,0.4)] scale-[1.02]'
+                                            : 'bg-white/[0.03] border-white/5 hover:border-white/10 hover:bg-white/[0.05]'
+                                            }`}
+                                    >
+                                        <div className="relative z-10">
+                                            <div className="flex items-center justify-between mb-8">
+                                                <div className={`w-16 h-16 rounded-3xl flex items-center justify-center transition-all duration-500 ${(!config.skip_integration && !config.is_nebim_migration) ? 'bg-blue-600 shadow-2xl shadow-blue-600/40 rotate-6' : 'bg-white/5 group-hover:bg-blue-600/20'}`}>
+                                                    <Settings2 className={`w-8 h-8 ${(!config.skip_integration && !config.is_nebim_migration) ? 'text-white' : 'text-slate-500 group-hover:text-blue-400'}`} />
+                                                </div>
+                                                <div className="flex flex-col items-end">
+                                                    <span className="text-[9px] font-black text-blue-400 uppercase tracking-[0.2em] mb-1">Kurumsal Çözüm</span>
+                                                    <div className="px-3 py-1 bg-white/5 rounded-full border border-white/10 text-[8px] font-black text-slate-400 uppercase tracking-widest">Logo Entegre</div>
+                                                </div>
+                                            </div>
+
+                                            <h3 className={`text-2xl font-black mb-3 transition-colors ${(!config.skip_integration && !config.is_nebim_migration) ? 'text-white' : 'text-slate-400'}`}>
+                                                Logo Entegrasyonu
+                                            </h3>
+                                            <p className="text-xs font-semibold text-slate-500 leading-relaxed mb-8 group-hover:text-slate-400 transition-colors">
+                                                Tiger, GO3 veya J-Guar sisteminizle gerçek zamanlı çift yönlü senkronizasyon.
+                                            </p>
+
+                                            <div className="space-y-3">
+                                                {['Otomatik Stok & Fiyat Senk.', 'Cari Limit & Risk Takibi', 'B2B/B2C Hazır Altyapı'].map((item, i) => (
+                                                    <div key={i} className="flex items-center gap-3 text-[10px] font-bold text-slate-400/80">
+                                                        <div className={`w-1.5 h-1.5 rounded-full ${(!config.skip_integration && !config.is_nebim_migration) ? 'bg-blue-500 shadow-[0_0_8px_rgba(59,130,246,0.8)]' : 'bg-slate-700'}`} />
+                                                        {item}
+                                                    </div>
+                                                ))}
+                                            </div>
+                                        </div>
+
+                                        {(!config.skip_integration && !config.is_nebim_migration) && (
+                                            <div className="absolute -bottom-4 -right-4 w-32 h-32 bg-blue-600/10 blur-[40px] rounded-full" />
+                                        )}
+                                    </button>
+
+                                    {/* Option 2: Nebim V3 Migration */}
+                                    <button
+                                        onClick={() => setConfig({ ...config, skip_integration: false, erp_method: 'nebim', is_nebim_migration: true, erp_firm_nr: '001', erp_period_nr: '2026' })}
+                                        className={`relative p-8 rounded-[38px] border-2 text-left transition-all duration-500 group overflow-hidden ${config.is_nebim_migration
+                                            ? 'bg-indigo-600/10 border-indigo-500 shadow-[0_0_60px_-15px_rgba(99,102,241,0.4)] scale-[1.02]'
+                                            : 'bg-white/[0.03] border-white/5 hover:border-white/10 hover:bg-white/[0.05]'
+                                            }`}
+                                    >
+                                        <div className="relative z-10">
+                                            <div className="flex items-center justify-between mb-8">
+                                                <div className={`w-16 h-16 rounded-3xl flex items-center justify-center transition-all duration-500 ${config.is_nebim_migration ? 'bg-indigo-600 shadow-2xl shadow-indigo-600/40 -rotate-6' : 'bg-white/5 group-hover:bg-indigo-600/20'}`}>
+                                                    <Zap className={`w-8 h-8 ${config.is_nebim_migration ? 'text-white' : 'text-slate-500 group-hover:text-indigo-400'}`} />
+                                                </div>
+                                                <div className="flex flex-col items-end">
+                                                    <span className="text-[9px] font-black text-indigo-400 uppercase tracking-[0.2em] mb-1">Hızlı Geçiş (A to B)</span>
+                                                    <div className="px-3 py-1 bg-white/5 rounded-full border border-white/10 text-[8px] font-black text-slate-400 uppercase tracking-widest">Nebim V3 Entegre</div>
+                                                </div>
+                                            </div>
+
+                                            <h3 className={`text-2xl font-black mb-3 transition-colors ${config.is_nebim_migration ? 'text-white' : 'text-slate-400'}`}>
+                                                Nebim V3 Hızlı Geçiş
+                                            </h3>
+                                            <p className="text-xs font-semibold text-slate-500 leading-relaxed mb-8 group-hover:text-slate-400 transition-colors">
+                                                Mevcut Nebim V3 verilerinizi RetailEX'e otonom olarak taşıyın ve hemen başlayın.
+                                            </p>
+
+                                            <div className="space-y-3">
+                                                {['1 Saatte Canlıya Geçiş', 'Personel & Yetki Mirası', 'Zero-Touch Veri Göçü'].map((item, i) => (
+                                                    <div key={i} className="flex items-center gap-3 text-[10px] font-bold text-slate-400/80">
+                                                        <div className={`w-1.5 h-1.5 rounded-full ${config.is_nebim_migration ? 'bg-indigo-500 shadow-[0_0_8px_rgba(99,102,241,0.8)]' : 'bg-slate-700'}`} />
+                                                        {item}
+                                                    </div>
+                                                ))}
+                                            </div>
+                                        </div>
+
+                                        {config.is_nebim_migration && (
+                                            <div className="absolute -bottom-4 -right-4 w-32 h-32 bg-indigo-600/10 blur-[40px] rounded-full" />
+                                        )}
+                                    </button>
+                                </div>
+
+                                {/* Option 3: Standalone (Secondary Position) */}
+                                <div className="mt-6">
+                                    <button
+                                        onClick={() => setConfig({ ...config, skip_integration: true, is_nebim_migration: false })}
+                                        className={`w-full flex items-center justify-between p-6 rounded-[32px] border-2 text-left transition-all duration-500 group relative overflow-hidden ${config.skip_integration
+                                            ? 'bg-emerald-600/10 border-emerald-500 shadow-xl shadow-emerald-500/10'
+                                            : 'bg-white/[0.02] border-white/5 hover:border-white/10 hover:bg-white/[0.04]'
+                                            }`}
+                                    >
+                                        <div className="flex items-center gap-6 relative z-10">
+                                            <div className={`w-14 h-14 rounded-2xl flex items-center justify-center transition-all ${config.skip_integration ? 'bg-emerald-600 text-white' : 'bg-white/5 text-slate-500'}`}>
+                                                <Layout className="w-7 h-7" />
+                                            </div>
+                                            <div>
+                                                <h3 className={`text-lg font-black transition-colors ${config.skip_integration ? 'text-white' : 'text-slate-400'}`}>Bağımsız Mod (Standalone)</h3>
+                                                <p className="text-[10px] font-semibold text-slate-500">Herhangi bir dış ERP sistemi olmadan direkt RetailEX mimarisini kullanın.</p>
+                                            </div>
+                                        </div>
+                                        <div className="flex items-center gap-4 relative z-10">
+                                            {config.skip_integration && (
+                                                <span className="px-3 py-1 bg-emerald-500/20 text-emerald-400 text-[8px] font-black uppercase tracking-widest rounded-lg border border-emerald-500/20">Aktif Seçim</span>
+                                            )}
+                                            <ArrowRight className={`w-5 h-5 transition-transform group-hover:translate-x-1 ${config.skip_integration ? 'text-emerald-500' : 'text-slate-700'}`} />
+                                        </div>
+                                    </button>
+                                </div>
+                            </div>
+                        )}
+
+                        {step === dbSettingsStep && (
+                            <div className="space-y-8 animate-in fade-in slide-in-from-right-4 duration-500">
+                                {skipStandaloneFirmStep && (
+                                    <div className="p-4 rounded-2xl bg-emerald-500/10 border border-emerald-500/25 flex gap-3 items-start">
+                                        <Globe className="w-5 h-5 text-emerald-400 shrink-0 mt-0.5" />
+                                        <div>
+                                            <p className="text-xs font-bold text-white">Merkez veritabanı bağlantısı</p>
+                                            <p className="text-[10px] text-emerald-200/75 mt-1 leading-relaxed">
+                                                Yerel yeni firma kurulumu atlandı. Aşağıya merkez sunucu PostgreSQL (veya PostgREST) bilgilerini girin; uygulama açıldığında mevcut veriler bu bağlantı üzerinden kullanılır. Firma/dönem zaten veritabanındaysa ek ünvan girmeniz gerekmez.
+                                            </p>
+                                        </div>
+                                    </div>
+                                )}
+                                <div className="flex items-center justify-between">
+                                    <div>
+                                        <h2 className="text-3xl font-bold mb-1 text-white tracking-tight">Veritabanı Ayarları</h2>
+                                        <p className="text-blue-400/80 font-bold uppercase tracking-widest text-[10px]">PostgreSQL Infrastructure Configuration</p>
+                                    </div>
+
+                                    {/* Tabs */}
+                                    <div className="flex bg-white/5 p-1 rounded-xl border border-white/5">
+                                        <button
+                                            onClick={() => setActiveTab('standard')}
+                                            className={`px-4 py-2 rounded-lg text-[10px] font-black uppercase tracking-widest transition-all ${activeTab === 'standard'
+                                                ? 'bg-blue-600 text-white shadow-lg'
+                                                : 'text-slate-400 hover:text-white hover:bg-white/5'
+                                                }`}
+                                        >
+                                            Standart Kurulum
+                                        </button>
+                                        <button
+                                            onClick={() => setActiveTab('supabase')}
+                                            className={`px-4 py-2 rounded-lg text-[10px] font-black uppercase tracking-widest transition-all flex items-center gap-2 ${activeTab === 'supabase'
+                                                ? 'bg-emerald-600 text-white shadow-lg'
+                                                : 'text-slate-400 hover:text-white hover:bg-white/5'
+                                                }`}
+                                        >
+                                            <Cloud className="w-3 h-3" />
+                                            Bulut İçe Aktarma
+                                        </button>
+                                    </div>
+                                </div>
+
+                                {/* Content: Standard Setup */}
+                                {activeTab === 'standard' && (
+                                    <div className="space-y-10 animate-in fade-in slide-in-from-bottom-2">
+                                        {/* DB Status Feedback Area */}
+                                        {dbStatus === 'CHECKING' && (
+                                            <div className="p-6 rounded-3xl bg-blue-500/10 border border-blue-500/20 flex items-center gap-4 animate-pulse">
+                                                <Loader2 className="w-6 h-6 text-blue-400 animate-spin" />
+                                                <span className="text-xs font-black text-blue-200 uppercase tracking-widest">PostgreSQL Durumu Kontrol Ediliyor...</span>
+                                            </div>
+                                        )}
+
+                                        {dbStatus === 'NOT_FOUND' && (
+                                            <div className="p-8 rounded-[32px] bg-red-600/10 border-2 border-red-500/30 shadow-[0_20px_60px_-15px_rgba(239,68,68,0.2)] animate-in zoom-in-95">
+                                                <div className="flex items-start gap-6">
+                                                    <div className="w-14 h-14 rounded-2xl bg-red-500 flex items-center justify-center shrink-0 shadow-lg shadow-red-500/20">
+                                                        <Database className="w-7 h-7 text-white" />
+                                                    </div>
+                                                    <div className="space-y-2">
+                                                        <h4 className="text-xl font-black text-white">PostgreSQL Bulunamadı!</h4>
+                                                        <p className="text-red-200/70 text-sm font-medium leading-relaxed">
+                                                            Bilgisayarınızda çalışan bir PostgreSQL servisi tespit edilemedi. RetailEx'in çalışabilmesi için yerel bir veritabanı gereklidir.
+                                                        </p>
+                                                        <div className="pt-4 flex flex-wrap gap-4">
+                                                            <a
+                                                                href="https://www.postgresql.org/download/windows/"
+                                                                target="_blank"
+                                                                className="px-4 py-2 bg-white/10 hover:bg-white/20 text-white rounded-xl text-[10px] font-black uppercase tracking-widest transition-all border border-white/10"
+                                                            >
+                                                                POSTGRESQL İNDİR
+                                                            </a>
+                                                            <button
+                                                                onClick={checkDbStatus}
+                                                                className="px-4 py-2 bg-red-500 hover:bg-red-400 text-white rounded-xl text-[10px] font-black uppercase tracking-widest transition-all shadow-md"
+                                                            >
+                                                                TEKRAR KONTROL ET
+                                                            </button>
+                                                        </div>
+                                                    </div>
+                                                </div>
+                                            </div>
+                                        )}
+
+                                        {dbStatus === 'AUTH_FAILED' && (
+                                            <div className="p-8 rounded-[32px] bg-amber-600/10 border-2 border-amber-500/30 shadow-[0_20px_60px_-15px_rgba(245,158,11,0.2)] animate-in zoom-in-95">
+                                                <div className="flex items-start gap-6">
+                                                    <div className="w-14 h-14 rounded-2xl bg-amber-500 flex items-center justify-center shrink-0 shadow-lg shadow-amber-500/20">
+                                                        <Lock className="w-7 h-7 text-white" />
+                                                    </div>
+                                                    <div className="space-y-2">
+                                                        <h4 className="text-xl font-black text-white">Kimlik Doğrulama Hatası</h4>
+                                                        <p className="text-amber-200/70 text-sm font-medium leading-relaxed">
+                                                            PostgreSQL servisine bağlanıldı ancak girdiğiniz kullanıcı adı veya şifre hatalı. Lütfen "postgres" şifrenizi kontrol edin.
+                                                        </p>
+                                                        <button
+                                                            onClick={checkDbStatus}
+                                                            className="mt-4 px-4 py-2 bg-amber-500 hover:bg-amber-400 text-white rounded-xl text-[10px] font-black uppercase tracking-widest transition-all"
+                                                        >
+                                                            BİLGİLERİ GÜNCELLE VE DENE
+                                                        </button>
+                                                    </div>
+                                                </div>
+                                            </div>
+                                        )}
+
+                                        {dbStatus === 'ERROR' && (
+                                            <div className="p-8 rounded-[32px] bg-red-600/10 border-2 border-red-500/30 shadow-[0_20px_60px_-15px_rgba(239,68,68,0.2)] animate-in zoom-in-95">
+                                                <div className="flex items-start gap-6">
+                                                    <div className="w-14 h-14 rounded-2xl bg-red-500 flex items-center justify-center shrink-0 shadow-lg shadow-red-500/20">
+                                                        <Cpu className="w-7 h-7 text-white" />
+                                                    </div>
+                                                    <div className="space-y-2">
+                                                        <h4 className="text-xl font-black text-white">Sistem Hatası Tespit Edildi</h4>
+                                                        <p className="text-red-200/70 text-sm font-medium leading-relaxed font-mono bg-black/20 p-4 rounded-2xl border border-red-500/20 mt-2">
+                                                            {dbErrorMessage}
+                                                        </p>
+                                                        <div className="pt-4 flex gap-4">
+                                                            <button
+                                                                onClick={checkDbStatus}
+                                                                className="px-6 py-2.5 bg-red-500 hover:bg-red-400 text-white rounded-xl text-[10px] font-black uppercase tracking-widest transition-all shadow-lg active:scale-95"
+                                                            >
+                                                                TEKRAR DENE
+                                                            </button>
+                                                            <button
+                                                                onClick={() => setDbStatus('IDLE')}
+                                                                className="px-6 py-2.5 bg-white/5 hover:bg-white/10 text-white/50 hover:text-white rounded-xl text-[10px] font-black uppercase tracking-widest transition-all border border-white/5"
+                                                            >
+                                                                YOKSAY
+                                                            </button>
+                                                        </div>
+                                                    </div>
+                                                </div>
+                                            </div>
+                                        )}
+
+                                        {/* Local Server Section — online terminal / merkez-only modda gizli */}
+                                        {showLocalDbSection && (
+                                        <div className={`relative p-8 rounded-2xl transition-all duration-300 border ${dbStatus === 'RUNNING' ? 'bg-blue-600/5 border-blue-500/30' :
+                                            dbStatus === 'AUTH_FAILED' ? 'bg-amber-600/5 border-amber-500/30' :
+                                                'bg-white/[0.03] border-white/5'
+                                            } overflow-hidden group`}>
+                                            <div className="absolute top-0 right-0 w-32 h-32 bg-blue-500/5 blur-[50px] rounded-full" />
+
+                                            <div className="flex items-center gap-3 mb-6">
+                                                <div className="w-8 h-8 rounded-lg bg-blue-600/20 flex items-center justify-center">
+                                                    <Database className="w-4 h-4 text-blue-500" />
+                                                </div>
+                                                <span className="text-[10px] font-bold uppercase tracking-widest text-blue-400">Yerel Sunucu (Localhost)</span>
+                                                {dbStatus === 'RUNNING' && <div className="ml-auto flex items-center gap-2 text-[10px] font-bold text-blue-400 uppercase tracking-widest"><CheckCircle className="w-3 h-3" />Bağlı</div>}
+                                            </div>
+
+                                            <div className="space-y-6 relative z-10">
+                                                <div className="space-y-2">
+                                                    <label className="text-[9px] font-bold text-slate-400 uppercase tracking-widest pl-1">Bağlantı Adresi</label>
+                                                    <div className="relative group/input">
+                                                        <input
+                                                            type="text"
+                                                            className="w-full bg-slate-900/60 border border-white/5 rounded-xl px-5 py-3.5 text-white focus:outline-none focus:border-blue-500 transition-all font-mono text-xs placeholder:text-slate-600 shadow-inner"
+                                                            value={config.local_db}
+                                                            onChange={(e) => setConfig({ ...config, local_db: e.target.value })}
+                                                            placeholder="localhost:5432/retailex_local"
+                                                        />
+                                                    </div>
+                                                </div>
+
+                                                <div className="space-y-4 pt-4 border-t border-white/5">
+                                                    <label className="text-[9px] font-bold text-slate-400 uppercase tracking-widest pl-1">Kimlik Doğrulama</label>
+                                                    <div className="grid grid-cols-2 gap-4">
+                                                        <div className="relative">
+                                                            <span className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-500">
+                                                                <User className="w-3.5 h-3.5" />
+                                                            </span>
+                                                            <input
+                                                                type="text"
+                                                                className={`w-full bg-slate-900/60 border rounded-xl pl-10 pr-4 py-3 text-white focus:outline-none focus:border-blue-500 transition-all font-semibold text-xs placeholder:text-slate-600 ${dbStatus === 'AUTH_FAILED' ? 'border-amber-500/50' : 'border-white/5'}`}
+                                                                value={config.pg_local_user}
+                                                                onChange={(e) => setConfig({ ...config, pg_local_user: e.target.value })}
+                                                                placeholder="Kullanıcı"
+                                                            />
+                                                        </div>
+                                                        <div className="relative">
+                                                            <span className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-500">
+                                                                <Lock className="w-3.5 h-3.5" />
+                                                            </span>
+                                                            <input
+                                                                type="password"
+                                                                className={`w-full bg-slate-900/60 border rounded-xl pl-10 pr-4 py-3 text-white focus:outline-none focus:border-blue-500 transition-all font-semibold text-xs placeholder:text-slate-600 ${dbStatus === 'AUTH_FAILED' ? 'border-amber-500/50' : 'border-white/5'}`}
+                                                                value={config.pg_local_pass}
+                                                                onChange={(e) => setConfig({ ...config, pg_local_pass: e.target.value })}
+                                                                placeholder="Parola"
+                                                            />
+                                                        </div>
+                                                    </div>
+                                                </div>
+
+                                                {/* Demo seed: yalnızca kutu işaretliyse 001_demo_data.sql — Logo ile karıştırma; Logo verisi ayrıca MSSQL'den gelir */}
+                                                <div className="pt-4 border-t border-white/5">
+                                                    <label className={`flex items-center gap-3 p-4 rounded-xl bg-gradient-to-r from-purple-600/10 to-blue-600/10 border border-purple-500/20 transition-all group ${demoSeedConflictsWithLogoObjects ? 'opacity-60 cursor-not-allowed' : 'cursor-pointer hover:border-purple-500/40'}`}>
+                                                        <input
+                                                            type="checkbox"
+                                                            checked={loadDemoData}
+                                                            disabled={demoSeedConflictsWithLogoObjects}
+                                                            onChange={(e) => setLoadDemoData(e.target.checked)}
+                                                            className="w-5 h-5 rounded border-2 border-purple-500/50 bg-slate-900/60 checked:bg-purple-600 checked:border-purple-600 focus:ring-2 focus:ring-purple-500/50 transition-all cursor-pointer disabled:cursor-not-allowed"
+                                                        />
+                                                        <div className="flex-1">
+                                                            <div className="flex items-center gap-2">
+                                                                <span className="text-sm font-bold text-white">Demo bilgileri yükle</span>
+                                                                <span className="px-2 py-0.5 bg-purple-600/20 text-purple-400 text-[9px] font-black uppercase tracking-wider rounded-full">Opsiyonel test verisi</span>
+                                                            </div>
+                                                            <p className="text-[10px] text-slate-400 mt-1 leading-relaxed">
+                                                                {demoSeedConflictsWithLogoObjects
+                                                                    ? 'Logo Objects etkin: cari/stok vb. gerçek veriler MSSQL senkronundan gelir; örnek (demo) veri bu kurulumda devre dışıdır.'
+                                                                    : 'İşaretlerseniz 001_demo_data.sql ile örnek ürün/cari vb. yüklenir. Logo Objects ile gerçek ERP senkronu kullanacaksanız önce Objects’i etkinleştirin — o zaman demo kutusu kapanır.'}
+                                                            </p>
+                                                        </div>
+                                                        <div className="w-8 h-8 rounded-lg bg-purple-600/20 flex items-center justify-center group-hover:bg-purple-600/30 transition-all">
+                                                            <Database className="w-4 h-4 text-purple-400" />
+                                                        </div>
+                                                    </label>
+                                                </div>
+
+
+                                                <div className="pt-2 flex flex-col gap-3">
+                                                    <div className="flex gap-3">
+                                                        <button
+                                                            onClick={checkDbStatus}
+                                                            disabled={dbStatus === 'CHECKING'}
+                                                            className="flex-1 py-3 bg-white/5 hover:bg-white/10 text-white border border-white/10 rounded-xl font-bold text-[11px] tracking-wide transition-all flex items-center justify-center gap-2"
+                                                        >
+                                                            {dbStatus === 'CHECKING' ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Zap className="w-3.5 h-3.5" />}
+                                                            <span>TEST ET</span>
+                                                        </button>
+                                                        <button
+                                                            onClick={() => initializeDatabase('local')}
+                                                            disabled={loading || dbInitialized || dbStatus !== 'RUNNING'}
+                                                            className={`flex-1 py-3 rounded-xl font-bold text-[11px] tracking-wide transition-all flex items-center justify-center gap-2 border ${dbInitialized
+                                                                ? 'bg-blue-600/20 text-blue-400 border-blue-500/30'
+                                                                : dbStatus === 'RUNNING'
+                                                                    ? 'bg-blue-600 text-white border-blue-500'
+                                                                    : 'bg-white/5 text-slate-600 border-white/5 cursor-not-allowed'
+                                                                }`}
+                                                        >
+                                                            {loading ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Database className="w-3.5 h-3.5" />}
+                                                            <span>{dbInitialized ? 'VERİTABANI OLUŞTURULDU' : 'OLUŞTUR'}</span>
+                                                        </button>
+                                                    </div>
+
+                                                    {dbInitialized && (
+                                                        <button
+                                                            onClick={runMigrations}
+                                                            disabled={loading}
+                                                            className="w-full py-3.5 bg-blue-600 text-white border border-blue-500 rounded-xl font-bold text-xs tracking-widest transition-all flex items-center justify-center gap-2 animate-in fade-in slide-in-from-bottom-2"
+                                                        >
+                                                            {loading ? <Loader2 className="w-4 h-4 animate-spin" /> : <Settings2 className="w-4 h-4" />}
+                                                            TABLOLARI GÜNCELLE
+                                                        </button>
+                                                    )}
+                                                </div>
+                                            </div>
+                                        </div>
+                                        )}
+
+                                        {/* Merkez API (hibrit) veya uzak sunucu (online) */}
+                                        {showRemoteDbSection && (
+                                            <div className="relative p-8 rounded-[32px] bg-white/[0.03] border border-white/5 overflow-hidden group hover:bg-white/[0.05] transition-all duration-500">
+                                                <div className="absolute top-0 right-0 w-32 h-32 bg-indigo-500/10 blur-[60px] rounded-full" />
+
+                                                <div className="flex items-center gap-3 mb-6">
+                                                    <div className="w-8 h-8 rounded-lg bg-indigo-500/20 flex items-center justify-center">
+                                                        <Cloud className="w-4 h-4 text-indigo-400" />
+                                                    </div>
+                                                    <span className="text-xs font-black uppercase tracking-[0.2em] text-indigo-300">
+                                                        {usesPostgrestForHybridSync(config)
+                                                            ? 'Merkez API (PostgREST)'
+                                                            : 'Uzak Sunucu (Bulut/Merkez)'}
+                                                    </span>
+                                                </div>
+
+                                                <div className="space-y-6 relative z-10">
+                                                    {usesPostgrestForHybridSync(config) && (
+                                                        <p className="text-[9px] text-slate-400 leading-relaxed">
+                                                            Hibrit modda merkeze senkron yalnızca REST API üzerinden gider. Uzak PostgreSQL host/şifre girmeniz gerekmez.
+                                                        </p>
+                                                    )}
+
+                                                    {/* Connection Provider — yalnızca online + doğrudan PG */}
+                                                    {showRemotePgSection && !usesPostgrestForHybridSync(config) && (
+                                                    <div className="space-y-2">
+                                                        <label className="text-[10px] font-black text-blue-200 uppercase tracking-widest pl-1">
+                                                            Bağlantı Sağlayıcı
+                                                        </label>
+                                                        <select
+                                                            value={config.connection_provider || 'db'}
+                                                            onChange={(e) => setConfig({ ...config, connection_provider: e.target.value as any })}
+                                                            className="w-full bg-black/40 border border-white/10 rounded-2xl px-6 py-4 text-white focus:outline-none focus:border-indigo-500 transition-all font-semibold text-xs placeholder:text-blue-200/30"
+                                                        >
+                                                            <option value="db">DB Connection (PostgreSQL)</option>
+                                                            <option value="rest_api">Rest API (PostgREST)</option>
+                                                        </select>
+                                                    </div>
+                                                    )}
+
+                                                    <div className="space-y-2">
+                                                        {(showPostgrestApiSection && (usesPostgrestForHybridSync(config) || config.connection_provider === 'rest_api')) ? (
+                                                            <>
+                                                                <label className="text-[10px] font-black text-blue-200 uppercase tracking-widest pl-1">
+                                                                    PostgREST API URL
+                                                                </label>
+                                                                <div className="flex flex-wrap gap-2">
+                                                                    <button
+                                                                        type="button"
+                                                                        onClick={() => {
+                                                                            setPostgrestWizardEntryMode('retailex_cloud');
+                                                                            const p = parseSaaSOrCustomPostgrestUrl(
+                                                                                String(config.remote_rest_url || ''),
+                                                                            );
+                                                                            if (p.kind === 'saas_single_slug') {
+                                                                                setPostgrestWizardSlug(p.slug);
+                                                                                setConfig((c) => ({
+                                                                                    ...c,
+                                                                                    remote_rest_url: buildSaaSTenantPostgrestUrl(
+                                                                                        p.slug,
+                                                                                    ),
+                                                                                }));
+                                                                            } else {
+                                                                                setPostgrestWizardSlug('');
+                                                                                setConfig((c) => ({
+                                                                                    ...c,
+                                                                                    remote_rest_url: buildSaaSTenantPostgrestUrl(
+                                                                                        '',
+                                                                                    ),
+                                                                                }));
+                                                                            }
+                                                                        }}
+                                                                        className={`rounded-lg px-2 py-1 text-[9px] font-black uppercase tracking-wide transition-colors ${
+                                                                            postgrestWizardEntryMode === 'retailex_cloud'
+                                                                                ? 'bg-indigo-600 text-white'
+                                                                                : 'bg-white/5 text-slate-400 hover:text-white'
+                                                                        }`}
+                                                                    >
+                                                                        RetailEX bulutu
+                                                                    </button>
+                                                                    <button
+                                                                        type="button"
+                                                                        onClick={() =>
+                                                                            setPostgrestWizardEntryMode('custom_url')
+                                                                        }
+                                                                        className={`rounded-lg px-2 py-1 text-[9px] font-black uppercase tracking-wide transition-colors ${
+                                                                            postgrestWizardEntryMode === 'custom_url'
+                                                                                ? 'bg-indigo-600 text-white'
+                                                                                : 'bg-white/5 text-slate-400 hover:text-white'
+                                                                        }`}
+                                                                    >
+                                                                        Özel tam URL
+                                                                    </button>
+                                                                </div>
+                                                                {postgrestWizardEntryMode === 'retailex_cloud' ? (
+                                                                    <div className="flex w-full overflow-hidden rounded-2xl border border-white/10 bg-black/40">
+                                                                        <span className="flex shrink-0 items-center border-r border-white/10 bg-black/60 px-3 py-4 font-mono text-[10px] font-bold text-blue-200/80">
+                                                                            {DEFAULT_SAAS_TENANT_POSTGREST_ORIGIN}/
+                                                                        </span>
+                                                                        <input
+                                                                            type="text"
+                                                                            className="min-w-0 flex-1 border-0 bg-transparent px-4 py-4 text-white focus:outline-none focus:ring-0 font-mono text-sm placeholder:text-blue-200/30"
+                                                                            value={postgrestWizardSlug}
+                                                                            onChange={(e) => {
+                                                                                const raw = e.target.value.trim();
+                                                                                const slug =
+                                                                                    raw
+                                                                                        .replace(
+                                                                                            /^https?:\/\/api\.retailex\.app\/?/i,
+                                                                                            '',
+                                                                                        )
+                                                                                        .split('/')[0]
+                                                                                        ?.replace(/[/?#].*$/, '') ?? '';
+                                                                                setPostgrestWizardSlug(slug);
+                                                                                setConfig((c) => ({
+                                                                                    ...c,
+                                                                                    remote_rest_url:
+                                                                                        buildSaaSTenantPostgrestUrl(slug),
+                                                                                }));
+                                                                            }}
+                                                                            placeholder="retailex_demo"
+                                                                            autoComplete="off"
+                                                                        />
+                                                                    </div>
+                                                                ) : (
+                                                                    <input
+                                                                        type="text"
+                                                                        className="w-full bg-black/40 border border-white/10 rounded-2xl px-6 py-4 text-white focus:outline-none focus:border-indigo-500 transition-all font-mono text-sm placeholder:text-blue-200/30"
+                                                                        value={config.remote_rest_url || ''}
+                                                                        onChange={(e) =>
+                                                                            setConfig({
+                                                                                ...config,
+                                                                                remote_rest_url: e.target.value,
+                                                                            })
+                                                                        }
+                                                                        placeholder="http://IP:3002"
+                                                                        autoComplete="off"
+                                                                    />
+                                                                )}
+                                                                <p className="text-[9px] text-slate-400 mt-2">
+                                                                    {postgrestWizardEntryMode === 'retailex_cloud' ? (
+                                                                      <>
+                                                                        RetailEX bulutu: kayıtta{' '}
+                                                                        <span className="font-mono text-blue-200/90">
+                                                                          {DEFAULT_SAAS_TENANT_POSTGREST_ORIGIN}/kiracı
+                                                                        </span>{' '}
+                                                                        birleştirilir. LAN Wi‑Fi / port 3002 bu modda
+                                                                        geçerli değildir. Özbek Restoran kodu:{' '}
+                                                                        <span className="font-mono text-blue-200/90">
+                                                                          ozbek
+                                                                        </span>{' '}
+                                                                        (<span className="font-mono">berzin_com</span>{' '}
+                                                                        ayrı firmadır). VPN/LAN için «Özel tam URL».
+                                                                      </>
+                                                                    ) : (
+                                                                      <>
+                                                                        Özel tam URL: örn.{' '}
+                                                                        <span className="font-mono">http://IP:3002</span>{' '}
+                                                                        veya başka domain. RetailEX bulutu için üstteki
+                                                                        «RetailEX bulutu» sekmesini kullanın.
+                                                                      </>
+                                                                    )}
+                                                                </p>
+                                                            </>
+                                                        ) : (
+                                                            <>
+                                                                <label className="text-[10px] font-black text-blue-200 uppercase tracking-widest pl-1">Bağlantı Adresi</label>
+                                                                <input
+                                                                    type="text"
+                                                                    className="w-full bg-black/40 border border-white/10 rounded-2xl px-6 py-4 text-white focus:outline-none focus:border-indigo-500 transition-all font-mono text-sm placeholder:text-blue-200/30"
+                                                                    value={config.remote_db}
+                                                                    onChange={(e) => setConfig({ ...config, remote_db: e.target.value })}
+                                                                    placeholder="72.60.182.107:5432/retailex_demo"
+                                                                />
+                                                            </>
+                                                        )}
+                                                    </div>
+
+                                                    {showRemotePgSection && config.connection_provider !== 'rest_api' && !usesPostgrestForHybridSync(config) && (
+                                                        <div className="space-y-2 pt-2 border-t border-white/5">
+                                                            <label className="text-[10px] font-black text-blue-200 uppercase tracking-widest pl-1">Kimlik Doğrulama (PostgreSQL)</label>
+                                                            <div className="grid grid-cols-2 gap-4">
+                                                                <div className="relative">
+                                                                    <span className="absolute left-4 top-1/2 -translate-y-1/2 text-blue-300">
+                                                                        <User className="w-4 h-4" />
+                                                                    </span>
+                                                                    <input
+                                                                        type="text"
+                                                                        className="w-full bg-black/40 border border-white/10 rounded-xl pl-10 pr-4 py-3.5 text-white focus:outline-none focus:border-indigo-500 transition-all font-semibold text-xs placeholder:text-blue-200/30"
+                                                                        value={config.pg_remote_user}
+                                                                        onChange={(e) => setConfig({ ...config, pg_remote_user: e.target.value })}
+                                                                        placeholder="Kullanıcı Adı"
+                                                                    />
+                                                                </div>
+                                                                <div className="relative">
+                                                                    <span className="absolute left-4 top-1/2 -translate-y-1/2 text-blue-300">
+                                                                        <Lock className="w-4 h-4" />
+                                                                    </span>
+                                                                    <input
+                                                                        type="password"
+                                                                        className="w-full bg-black/40 border border-white/10 rounded-xl pl-10 pr-4 py-3.5 text-white focus:outline-none focus:border-indigo-500 transition-all font-semibold text-xs placeholder:text-blue-200/30"
+                                                                        value={config.pg_remote_pass}
+                                                                        onChange={(e) => setConfig({ ...config, pg_remote_pass: e.target.value })}
+                                                                        placeholder="Parola"
+                                                                    />
+                                                                </div>
+                                                            </div>
+                                                        </div>
+                                                    )}
+                                                </div>
+                                            </div>
+                                        )}
+                                    </div>
+                                )}
+
+                                {/* Content: Supabase Import */}
+                                {activeTab === 'supabase' && (
+                                    <div className="space-y-4 animate-in fade-in slide-in-from-bottom-2">
+                                        {/* Backup options row */}
+                                        <div className="grid grid-cols-2 gap-3">
+                                            {/* Backup Type */}
+                                            <div className="p-4 rounded-2xl bg-white/[0.03] border border-white/5 space-y-2">
+                                                <div className="text-[9px] font-black text-slate-500 uppercase tracking-widest">Yedek Tipi</div>
+                                                <div className="flex gap-2">
+                                                    <button
+                                                        onClick={() => setBackupType('full')}
+                                                        className={`flex-1 py-2 rounded-xl text-[9px] font-black uppercase tracking-widest border transition-all ${backupType === 'full' ? 'bg-blue-600 border-blue-500 text-white' : 'bg-white/5 border-white/5 text-slate-400 hover:text-white'}`}
+                                                    >
+                                                        Tam Yedek
+                                                    </button>
+                                                    <button
+                                                        onClick={() => setBackupType('tables')}
+                                                        className={`flex-1 py-2 rounded-xl text-[9px] font-black uppercase tracking-widest border transition-all ${backupType === 'tables' ? 'bg-indigo-600 border-indigo-500 text-white' : 'bg-white/5 border-white/5 text-slate-400 hover:text-white'}`}
+                                                    >
+                                                        Sadece Tablolar
+                                                    </button>
+                                                </div>
+                                                <p className="text-[9px] text-slate-600">{backupType === 'full' ? 'Şema + tüm kayıtlar indirilir.' : 'Yalnızca tablo yapısı (şema) indirilir.'}</p>
+                                            </div>
+                                            {/* Backup Format */}
+                                            <div className="p-4 rounded-2xl bg-white/[0.03] border border-white/5 space-y-2">
+                                                <div className="text-[9px] font-black text-slate-500 uppercase tracking-widest">Çalıştırma Formatı</div>
+                                                <div className="flex gap-2">
+                                                    <button
+                                                        onClick={() => setBackupFormat('supabase')}
+                                                        className={`flex-1 py-2 rounded-xl text-[9px] font-black uppercase tracking-widest border transition-all ${backupFormat === 'supabase' ? 'bg-emerald-600 border-emerald-500 text-white' : 'bg-white/5 border-white/5 text-slate-400 hover:text-white'}`}
+                                                    >
+                                                        Supabase
+                                                    </button>
+                                                    <button
+                                                        onClick={() => setBackupFormat('postgresql')}
+                                                        className={`flex-1 py-2 rounded-xl text-[9px] font-black uppercase tracking-widest border transition-all ${backupFormat === 'postgresql' ? 'bg-blue-600 border-blue-500 text-white' : 'bg-white/5 border-white/5 text-slate-400 hover:text-white'}`}
+                                                    >
+                                                        PostgreSQL
+                                                    </button>
+                                                </div>
+                                                <p className="text-[9px] text-slate-600">{backupFormat === 'supabase' ? 'Supabase SQL formatında çalıştır.' : 'Standart PostgreSQL dump olarak çalıştır (auth/extension satırları temizlenir).'}</p>
+                                            </div>
+                                        </div>
+
+                                        <div className="p-8 rounded-[32px] bg-gradient-to-br from-indigo-900/40 to-blue-900/20 border border-blue-500/30 shadow-2xl relative overflow-hidden group">
+                                            <div className="absolute top-0 right-0 w-60 h-60 bg-blue-500/10 blur-[80px] rounded-full group-hover:bg-blue-500/20 transition-all duration-1000" />
+
+                                            <div className="flex flex-col items-center relative z-10 w-full">
+                                                <div className="flex w-full items-center gap-8 mb-8">
+                                                    <div className="w-20 h-20 rounded-3xl bg-emerald-500/20 border border-emerald-500/30 flex items-center justify-center shadow-inner">
+                                                        <Cloud className="w-10 h-10 text-emerald-400" />
+                                                    </div>
+                                                    <div className="flex-1">
+                                                        <h3 className="text-xl font-bold text-white mb-1">Supabase Proje Aktarıcı</h3>
+                                                        <p className="text-xs text-blue-200/60 font-medium leading-relaxed">
+                                                            Buluttaki Supabase projenizi tek adımda içe aktarın.
+                                                            {backupType === 'tables' ? ' Yalnızca tablo yapısı (şema) indirilir.' : ' Tüm tablolar ve kayıtlar hedef sunucunuza kopyalanır.'}
+                                                        </p>
+                                                    </div>
+                                                </div>
+
+                                                <div className="grid grid-cols-1 md:grid-cols-2 gap-8 w-full">
+                                                    {/* Source Supabase */}
+                                                    <div className="space-y-4 bg-white/[0.03] p-6 rounded-2xl border border-white/5">
+                                                        <div className="text-[10px] font-black text-blue-400 uppercase tracking-widest pl-1 mb-2">Kaynak (Source) Cloud</div>
+                                                        <div className="flex flex-col gap-3">
+                                                            <div className="relative">
+                                                                <input
+                                                                    type="password"
+                                                                    value={supabaseToken}
+                                                                    onChange={(e) => setSupabaseToken(e.target.value)}
+                                                                    placeholder="Kaynak Supabase PAT"
+                                                                    className="w-full bg-black/40 border border-white/10 rounded-xl px-4 py-3 text-xs font-mono focus:border-blue-500 outline-none transition-all placeholder:text-blue-200/20"
+                                                                />
+                                                                <input
+                                                                    type="password"
+                                                                    value={sourceServiceRoleKey}
+                                                                    onChange={(e) => setSourceServiceRoleKey(e.target.value)}
+                                                                    placeholder="Kaynak Service Role Key (DB İşlemleri İçin)"
+                                                                    className="w-full bg-black/40 border border-white/10 rounded-xl px-4 py-3 text-[10px] font-mono focus:border-blue-500 outline-none transition-all placeholder:text-blue-200/20"
+                                                                />
+                                                            </div>
+                                                            <button
+                                                                onClick={fetchSupabaseProjects}
+                                                                disabled={isFetchingSupabase || !supabaseToken}
+                                                                className="w-full py-3 bg-blue-600/20 hover:bg-blue-600/40 border border-blue-500/20 text-blue-400 rounded-xl font-black text-[9px] tracking-widest transition-all flex items-center justify-center gap-2"
+                                                            >
+                                                                {isFetchingSupabase ? <Loader2 className="w-4 h-4 animate-spin" /> : <Globe className="w-4 h-4" />}
+                                                                KAYNAK PROJELERİ LİSTELE
+                                                            </button>
+                                                        </div>
+
+                                                        {supabaseProjects.length > 0 && (
+                                                            <div className="mt-4 space-y-2 max-h-[300px] overflow-y-auto pr-2 custom-scrollbar">
+                                                                {supabaseProjects.map((p: any) => (
+                                                                    <div
+                                                                        key={p.id}
+                                                                        onClick={() => setSelectedProject(p)}
+                                                                        className={`p-3 rounded-xl border transition-all cursor-pointer flex items-center gap-3 ${selectedProject?.id === p.id
+                                                                            ? 'bg-blue-500/20 border-blue-500'
+                                                                            : 'bg-white/5 border-white/10 hover:border-white/20'}`}
+                                                                    >
+                                                                        <div className={`w-8 h-8 rounded-lg flex items-center justify-center ${selectedProject?.id === p.id ? 'bg-blue-500 text-white' : 'bg-blue-500/20 text-blue-400'}`}>
+                                                                            <Database className="w-4 h-4" />
+                                                                        </div>
+                                                                        <div className="flex-1 min-w-0">
+                                                                            <div className="text-[10px] font-bold text-white truncate">{p.name}</div>
+                                                                            <div className="text-[9px] text-blue-200/40 truncate">{p.id}</div>
+                                                                        </div>
+                                                                        {selectedProject?.id === p.id && <CheckCircle className="w-3 h-3 text-blue-500" />}
+                                                                    </div>
+                                                                ))}
+                                                            </div>
+                                                        )}
+                                                    </div>
+
+                                                    {/* Target Environment */}
+                                                    <div className="space-y-4 bg-white/[0.03] p-6 rounded-2xl border border-white/5">
+                                                        <div className="flex items-center justify-between mb-2">
+                                                            <div className="text-[10px] font-black text-emerald-400 uppercase tracking-widest pl-1">Hedef (Target) Ortam / Cloud</div>
+                                                            <div className="flex bg-black/40 p-1 rounded-lg border border-white/5">
+                                                                {(['local', 'supabase'] as const).map((t) => (
+                                                                    <button
+                                                                        key={t}
+                                                                        onClick={() => setImportTargetType(t)}
+                                                                        className={`px-3 py-1 rounded-md text-[8px] font-black uppercase transition-all ${importTargetType === t ? 'bg-emerald-600 text-white' : 'text-slate-500'}`}
+                                                                    >
+                                                                        {t === 'local' ? 'Lokal' : 'Supabase'}
+                                                                    </button>
+                                                                ))}
+                                                            </div>
+                                                        </div>
+
+                                                        {importTargetType === 'local' ? (
+                                                            <div className="space-y-4 animate-in fade-in slide-in-from-right-2 duration-300">
+                                                                <div className="p-4 rounded-xl bg-blue-500/5 border border-blue-500/10">
+                                                                    <div className="text-[10px] font-bold text-blue-300/60 mb-1">Yerel PostgreSQL Hedefi</div>
+                                                                    <p className="text-[9px] text-slate-500">Veriler buluttan SQL dump olarak indirilir ve yerel veritabanınıza geri yüklenir.</p>
+                                                                </div>
+                                                                {/* Shared DB Config fields could be shown here if needed, but they are below */}
+                                                                <div className="text-[9px] text-slate-600 italic">Yerel veritabanı ayarları aşağıdaki panelden yönetilebilir.</div>
+                                                            </div>
+                                                        ) : (
+                                                            <div className="space-y-4 animate-in fade-in slide-in-from-right-2 duration-300 w-full">
+                                                                <div className="flex flex-col gap-3">
+                                                                    <div className="relative flex flex-col gap-2">
+                                                                        <input
+                                                                            type="password"
+                                                                            value={targetSupabaseToken}
+                                                                            onChange={(e) => setTargetSupabaseToken(e.target.value)}
+                                                                            placeholder="Hedef Supabase PAT"
+                                                                            className="w-full bg-black/40 border border-white/10 rounded-xl px-4 py-3 text-xs font-mono focus:border-emerald-500 outline-none transition-all placeholder:text-blue-200/20"
+                                                                        />
+                                                                        <input
+                                                                            type="password"
+                                                                            value={targetServiceRoleKey}
+                                                                            onChange={(e) => setTargetServiceRoleKey(e.target.value)}
+                                                                            placeholder="Hedef Service Role Key (DB İşlemleri İçin)"
+                                                                            className="w-full bg-black/40 border border-white/10 rounded-xl px-4 py-3 text-[10px] font-mono focus:border-emerald-500 outline-none transition-all placeholder:text-blue-200/20"
+                                                                        />
+                                                                    </div>
+                                                                    <button
+                                                                        onClick={fetchTargetSupabaseProjects}
+                                                                        disabled={isFetchingTargetSupabase || !targetSupabaseToken}
+                                                                        className="w-full py-3 bg-emerald-600/20 hover:bg-emerald-600/40 border border-emerald-500/20 text-emerald-400 rounded-xl font-black text-[9px] tracking-widest transition-all flex items-center justify-center gap-2"
+                                                                    >
+                                                                        {isFetchingTargetSupabase ? <Loader2 className="w-4 h-4 animate-spin" /> : <Globe className="w-4 h-4" />}
+                                                                        HEDEF PROJELERİ LİSTELE
+                                                                    </button>
+                                                                </div>
+
+                                                                {targetSupabaseProjects.length > 0 && (
+                                                                    <div className="mt-4 space-y-2 max-h-[300px] overflow-y-auto pr-2 custom-scrollbar">
+                                                                        {targetSupabaseProjects.map((p: any) => (
+                                                                            <div
+                                                                                key={p.id}
+                                                                                onClick={() => setSelectedTargetProject(p)}
+                                                                                className={`p-3 rounded-xl border transition-all cursor-pointer flex items-center gap-3 ${selectedTargetProject?.id === p.id
+                                                                                    ? 'bg-emerald-500/20 border-emerald-500'
+                                                                                    : 'bg-white/5 border-white/10 hover:border-white/20'}`}
+                                                                            >
+                                                                                <div className={`w-8 h-8 rounded-lg flex items-center justify-center ${selectedTargetProject?.id === p.id ? 'bg-emerald-500 text-white' : 'bg-emerald-500/20 text-emerald-400'}`}>
+                                                                                    <Database className="w-4 h-4" />
+                                                                                </div>
+                                                                                <div className="flex-1 min-w-0">
+                                                                                    <div className="text-[10px] font-bold text-white truncate">{p.name}</div>
+                                                                                    <div className="text-[9px] text-emerald-200/40 truncate">{p.id}</div>
+                                                                                </div>
+                                                                                {selectedTargetProject?.id === p.id && <CheckCircle className="w-3 h-3 text-emerald-500" />}
+                                                                            </div>
+                                                                        ))}
+                                                                    </div>
+                                                                )}
+                                                            </div>
+                                                        )}
+                                                    </div>
+                                                </div>
+
+                                                {/* Action Panel */}
+                                                {(selectedProject && (importTargetType === 'local' || selectedTargetProject)) && (
+                                                    <div className="mt-8 pt-8 border-t border-white/10 w-full animate-in slide-in-from-bottom-4">
+                                                        {importTargetType === 'local' && (
+                                                            <div className="space-y-6 mb-8">
+                                                                <div className="flex items-center gap-3 mb-2">
+                                                                    <Settings2 className="w-4 h-4 text-emerald-400" />
+                                                                    <span className="text-[10px] font-black uppercase tracking-widest text-emerald-400">Hedef SQL Veritabanı Bilgileri (Yerel)</span>
+                                                                </div>
+
+                                                                <div className="grid grid-cols-1 lg:grid-cols-12 gap-6">
+                                                                    <div className="lg:col-span-4 space-y-2">
+                                                                        <label className="text-[10px] font-black text-slate-500 uppercase tracking-widest pl-1">Host & Port</label>
+                                                                        <div className="flex gap-2">
+                                                                            <input
+                                                                                type="text"
+                                                                                className="flex-[3] bg-black/40 border border-white/10 rounded-xl px-4 py-3 text-xs text-white focus:border-blue-500 outline-none transition-all font-mono"
+                                                                                value={importDbConfig.host}
+                                                                                onChange={(e) => setImportDbConfig({ ...importDbConfig, host: e.target.value })}
+                                                                                placeholder="localhost"
+                                                                            />
+                                                                            <input
+                                                                                type="number"
+                                                                                className="flex-[2] bg-black/40 border border-white/10 rounded-xl px-3 py-3 text-xs text-white focus:border-blue-500 outline-none transition-all font-mono"
+                                                                                value={importDbConfig.port}
+                                                                                onChange={(e) => setImportDbConfig({ ...importDbConfig, port: parseInt(e.target.value) })}
+                                                                                placeholder="5432"
+                                                                            />
+                                                                        </div>
+                                                                    </div>
+                                                                    <div className="lg:col-span-4 space-y-2">
+                                                                        <label className="text-[10px] font-black text-slate-500 uppercase tracking-widest pl-1">Veritabanı Adı</label>
+                                                                        <input
+                                                                            type="text"
+                                                                            className="w-full bg-black/40 border border-white/10 rounded-xl px-4 py-3 text-xs text-white focus:border-blue-500 outline-none transition-all font-mono"
+                                                                            value={importDbConfig.database}
+                                                                            onChange={(e) => setImportDbConfig({ ...importDbConfig, database: e.target.value })}
+                                                                            placeholder="retailex_local"
+                                                                        />
+                                                                    </div>
+                                                                    <div className="lg:col-span-4 space-y-2">
+                                                                        <label className="text-[10px] font-black text-slate-500 uppercase tracking-widest pl-1">Admin Kullanıcı & Şifre</label>
+                                                                        <div className="flex gap-2">
+                                                                            <input
+                                                                                type="text"
+                                                                                className="flex-1 bg-black/40 border border-white/10 rounded-xl px-4 py-3 text-xs text-white focus:border-blue-500 outline-none transition-all font-mono"
+                                                                                value={importDbConfig.user}
+                                                                                onChange={(e) => setImportDbConfig({ ...importDbConfig, user: e.target.value })}
+                                                                                placeholder="postgres"
+                                                                            />
+                                                                            <input
+                                                                                type="password"
+                                                                                className="flex-1 bg-black/40 border border-white/10 rounded-xl px-4 py-3 text-xs text-white focus:border-blue-500 outline-none transition-all font-mono"
+                                                                                value={importDbConfig.password}
+                                                                                onChange={(e) => setImportDbConfig({ ...importDbConfig, password: e.target.value })}
+                                                                                placeholder="password"
+                                                                            />
+                                                                        </div>
+                                                                    </div>
+                                                                </div>
+                                                            </div>
+                                                        )}
+
+                                                        {importTargetType === 'supabase' && (
+                                                            <div className="mb-8 p-6 rounded-2xl bg-white/5 border border-white/10 space-y-4 animate-in fade-in slide-in-from-top-4">
+                                                                <div className="flex items-center gap-2 mb-2 text-emerald-400 font-bold text-[10px] tracking-widest uppercase">
+                                                                    <Settings2 className="w-4 h-4" />
+                                                                    Aktarım Seçenekleri
+                                                                </div>
+                                                                <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
+                                                                    <label className="flex items-center gap-3 p-3 rounded-xl bg-black/20 border border-white/5 hover:border-emerald-500/30 cursor-pointer transition-all group">
+                                                                        <input
+                                                                            type="checkbox"
+                                                                            checked={migrateOptions.functions}
+                                                                            onChange={(e) => setMigrateOptions({ ...migrateOptions, functions: e.target.checked })}
+                                                                            className="w-4 h-4 rounded border-white/10 bg-black/40 text-emerald-500 focus:ring-emerald-500 focus:ring-offset-0 transition-all"
+                                                                        />
+                                                                        <span className="text-[10px] text-slate-300 group-hover:text-white transition-colors">Fonksiyonlar</span>
+                                                                    </label>
+                                                                    <label className="flex items-center gap-3 p-3 rounded-xl bg-black/20 border border-white/5 hover:border-emerald-500/30 cursor-pointer transition-all group">
+                                                                        <input
+                                                                            type="checkbox"
+                                                                            checked={migrateOptions.views}
+                                                                            onChange={(e) => setMigrateOptions({ ...migrateOptions, views: e.target.checked })}
+                                                                            className="w-4 h-4 rounded border-white/10 bg-black/40 text-emerald-500 focus:ring-emerald-500 focus:ring-offset-0 transition-all"
+                                                                        />
+                                                                        <span className="text-[10px] text-slate-300 group-hover:text-white transition-colors">View Yapıları</span>
+                                                                    </label>
+                                                                    <label className="flex items-center gap-3 p-3 rounded-xl bg-black/20 border border-white/5 hover:border-emerald-500/30 cursor-pointer transition-all group">
+                                                                        <input
+                                                                            type="checkbox"
+                                                                            checked={migrateOptions.triggers}
+                                                                            onChange={(e) => setMigrateOptions({ ...migrateOptions, triggers: e.target.checked })}
+                                                                            className="w-4 h-4 rounded border-white/10 bg-black/40 text-emerald-500 focus:ring-emerald-500 focus:ring-offset-0 transition-all"
+                                                                        />
+                                                                        <span className="text-[10px] text-slate-300 group-hover:text-white transition-colors">Triggerlar</span>
+                                                                    </label>
+                                                                    <label className="flex items-center gap-3 p-3 rounded-xl bg-black/20 border border-white/5 hover:border-emerald-500/30 cursor-pointer transition-all group">
+                                                                        <input
+                                                                            type="checkbox"
+                                                                            checked={migrateOptions.policies}
+                                                                            onChange={(e) => setMigrateOptions({ ...migrateOptions, policies: e.target.checked })}
+                                                                            className="w-4 h-4 rounded border-white/10 bg-black/40 text-emerald-500 focus:ring-emerald-500 focus:ring-offset-0 transition-all"
+                                                                        />
+                                                                        <span className="text-[10px] text-slate-300 group-hover:text-white transition-colors">RLS Politikaları</span>
+                                                                    </label>
+                                                                    <label className="flex items-center gap-3 p-3 rounded-xl bg-emerald-500/10 border border-emerald-500/20 hover:border-emerald-500/40 cursor-pointer transition-all group lg:col-span-2">
+                                                                        <input
+                                                                            type="checkbox"
+                                                                            checked={migrateOptions.data}
+                                                                            onChange={(e) => setMigrateOptions({ ...migrateOptions, data: e.target.checked })}
+                                                                            className="w-4 h-4 rounded border-emerald-500/20 bg-black/40 text-emerald-500 focus:ring-emerald-500 focus:ring-offset-0 transition-all"
+                                                                        />
+                                                                        <span className="text-[10px] font-bold text-emerald-400 group-hover:text-emerald-300 transition-colors">Tablo Verilerini Aktar (Schema Only için kapatın)</span>
+                                                                    </label>
+                                                                </div>
+                                                            </div>
+                                                        )}
+
+                                                        <div className="flex flex-col sm:flex-row gap-4 justify-center">
+                                                            {importTargetType === 'local' && (
+                                                                <button
+                                                                    onClick={async () => {
+                                                                        if (!selectedProject) return;
+                                                                        await downloadSupabaseSql(selectedProject, backupType === 'tables');
+                                                                    }}
+                                                                    disabled={isImporting || isDumpingSql || !supabaseToken}
+                                                                    className="flex-1 max-w-xs py-4 bg-white/5 hover:bg-white/10 border border-white/10 disabled:opacity-50 disabled:cursor-not-allowed text-slate-400 rounded-2xl font-black text-[10px] tracking-widest transition-all flex items-center justify-center gap-2 active:scale-[0.98]"
+                                                                >
+                                                                    <Download className="w-4 h-4" />
+                                                                    SADECE SQL İNDİR
+                                                                </button>
+                                                            )}
+                                                            <button
+                                                                onClick={handleFullImport}
+                                                                disabled={isImporting || isDumpingSql || !supabaseToken}
+                                                                className={`flex-[2] max-w-md py-4 ${importTargetType === 'supabase' ? 'bg-indigo-600 hover:bg-indigo-500 shadow-indigo-500/20' : 'bg-emerald-600 hover:bg-emerald-500 shadow-emerald-500/20'} disabled:opacity-50 disabled:cursor-not-allowed text-white rounded-2xl font-black text-xs tracking-[0.2em] transition-all flex items-center justify-center gap-3 shadow-xl active:scale-[0.98]`}
+                                                            >
+                                                                {isImporting || isDumpingSql ? (
+                                                                    <Loader2 className="w-5 h-5 animate-spin" />
+                                                                ) : (
+                                                                    <Zap className="w-5 h-5" />
+                                                                )}
+                                                                {isImporting ? 'AKTARIYOR...' : isDumpingSql ? 'İNDİRİLİYOR...' : importTargetType === 'supabase' ? 'BULUTTAN BULUTA AKTARMAYI BAŞLAT' : 'İÇE AKTARMAYI BAŞLAT'}
+                                                            </button>
+                                                        </div>
+
+                                                        {syncLogs.length > 0 && (
+                                                            <div className="mt-8 animate-in fade-in slide-in-from-top-4">
+                                                                <div className="bg-black/60 border border-white/10 rounded-2xl overflow-hidden backdrop-blur-xl shadow-2xl">
+                                                                    <div className="flex items-center justify-between px-6 py-4 border-b border-white/5 bg-white/[0.02]">
+                                                                        <div className="flex items-center gap-3">
+                                                                            <div className="flex gap-1.5">
+                                                                                <div className="w-2.5 h-2.5 rounded-full bg-red-500/20 border border-red-500/20" />
+                                                                                <div className="w-2.5 h-2.5 rounded-full bg-yellow-500/20 border border-yellow-500/20" />
+                                                                                <div className="w-2.5 h-2.5 rounded-full bg-green-500/20 border border-green-500/20" />
+                                                                            </div>
+                                                                            <div className="h-4 w-px bg-white/10 mx-1" />
+                                                                            <Terminal className="w-4 h-4 text-emerald-400" />
+                                                                            <span className="text-[10px] font-black text-white uppercase tracking-[0.2em]">Migration Terminal</span>
+                                                                        </div>
+                                                                        {isImporting && (
+                                                                            <div className="flex items-center gap-2">
+                                                                                <span className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse" />
+                                                                                <span className="text-[9px] font-bold text-emerald-400 uppercase tracking-widest">Processing</span>
+                                                                            </div>
+                                                                        )}
+                                                                    </div>
+                                                                    <div className="h-[300px] overflow-y-auto p-6 font-mono text-[11px] leading-relaxed custom-scrollbar bg-black/40">
+                                                                        <div className="space-y-1.5">
+                                                                            {syncLogs.map((log, i) => (
+                                                                                <div key={i} className="flex gap-3 animate-in fade-in duration-200">
+                                                                                    <span className="text-white/20 shrink-0 tabular-nums">[{new Date().toLocaleTimeString()}]</span>
+                                                                                    <span className={
+                                                                                        log.includes('error') || log.includes('Hata') || log.includes('Error') || log.includes('❌') 
+                                                                                        ? 'text-red-400' 
+                                                                                        : log.includes('success') || log.includes('Tamamlandı') || log.includes('✅') 
+                                                                                        ? 'text-emerald-400' 
+                                                                                        : 'text-slate-300'
+                                                                                    }>
+                                                                                        {log}
+                                                                                    </span>
+                                                                                </div>
+                                                                            ))}
+                                                                            <div ref={(el) => el?.scrollIntoView({ behavior: 'smooth' })} />
+                                                                        </div>
+                                                                    </div>
+                                                                </div>
+                                                            </div>
+                                                        )}
+                                                    </div>
+                                                )}
+                                            </div>
+                                        </div>
+                                    </div>
+                                )}
+                            </div>
+                        )}
+
+                        {step === 3 && !config.skip_integration && (
+                            <div className="space-y-6 animate-in fade-in slide-in-from-right-4 duration-500">
+                                <div className="flex items-center justify-between bg-white/[0.02] p-6 rounded-3xl border border-white/5">
+                                    <div className="flex items-center gap-4">
+                                        <div className={`w-12 h-12 rounded-2xl ${config.is_nebim_migration ? 'bg-indigo-500/10 border-indigo-500/20' : 'bg-blue-500/10 border-blue-500/20'} flex items-center justify-center border`}>
+                                            <Globe className={`w-6 h-6 ${config.is_nebim_migration ? 'text-indigo-400' : 'text-blue-400'}`} />
+                                        </div>
+                                        <div>
+                                            <h3 className="text-lg font-bold text-white tracking-tight">
+                                                {config.is_nebim_migration ? 'Nebim V3 Sunucu Doğrulaması' : 'Logo ERP Bağlantı Protokolü'}
+                                            </h3>
+                                            <p className={`text-[10px] ${config.is_nebim_migration ? 'text-indigo-400/60' : 'text-blue-400/60'} font-black uppercase tracking-widest leading-none mt-1`}>
+                                                {config.is_nebim_migration ? 'Nebim MSSQL Master Veritabanı Bilgileri' : 'Logo Veritabanı & Servis Yapılandırması'}
+                                            </p>
+                                        </div>
+                                    </div>
+                                    <div className="flex items-center gap-2">
+                                        {['SQL', 'API', 'REST', 'NEBIM', 'OBJECT'].map((tab) => (
+                                            <button
+                                                key={tab}
+                                                type="button"
+                                                disabled={logoSqlFieldsLocked && tab !== 'SQL'}
+                                                onClick={() => {
+                                                    if (logoSqlFieldsLocked && tab !== 'SQL') return;
+                                                    setConfig({ ...config, erp_method: tab.toLowerCase() as any });
+                                                }}
+                                                className={`px-3 py-1.5 rounded-xl text-[9px] font-black tracking-widest transition-all ${config.erp_method === tab.toLowerCase() || (config.erp_method === 'object' && tab === 'OBJECT')
+                                                    ? 'bg-blue-600 text-white shadow-lg'
+                                                    : 'bg-white/[0.03] text-slate-500 hover:text-white border border-white/5'
+                                                    } ${logoSqlFieldsLocked && tab !== 'SQL' ? 'opacity-40 cursor-not-allowed' : ''}`}
+                                            >
+                                                {tab === 'OBJECT' ? 'OBJ DLL' : tab}
+                                            </button>
+                                        ))}
+                                    </div>
+                                </div>
+
+                                <div className="grid grid-cols-1 gap-6 max-w-2xl mx-auto">
+                                    <div className={`space-y-4 bg-white/[0.02] p-8 rounded-[32px] border transition-all duration-500 ${config.is_nebim_migration ? 'border-indigo-500/20 shadow-[0_20px_40px_-10px_rgba(99,102,241,0.1)]' : 'border-blue-500/20 shadow-[0_20px_40px_-10px_rgba(59,130,246,0.1)]'}`}>
+                                        <div className="grid grid-cols-1 gap-4">
+                                            <div className="space-y-1.5">
+                                                <label className="text-[9px] font-black text-blue-200/40 uppercase tracking-widest pl-1">{config.is_nebim_migration ? 'Nebim Server / IP' : 'Server Host / IP'}</label>
+                                                <div className="relative group">
+                                                    <Server className="absolute left-4 top-1/2 -translate-y-1/2 w-4 h-4 text-blue-500/40 group-focus-within:text-blue-500 transition-colors" />
+                                                    <input
+                                                        type="text"
+                                                        readOnly={logoSqlFieldsLocked}
+                                                        className={`w-full bg-black/40 border border-white/10 rounded-xl pl-11 pr-4 py-3 text-xs text-white focus:outline-none focus:border-blue-500 transition-all font-bold placeholder:font-medium ${logoSqlFieldsLocked ? 'opacity-90 cursor-default' : ''}`}
+                                                        value={config.erp_host || LOGO_ERP_DEFAULTS.erp_host}
+                                                        onChange={(e) => setConfig({ ...config, erp_host: e.target.value })}
+                                                        placeholder={LOGO_ERP_DEFAULTS.erp_host}
+                                                    />
+                                                </div>
+                                            </div>
+                                            <LogoMssqlDatabaseSelect
+                                                variant="dark"
+                                                allowManual
+                                                persist={false}
+                                                disabled={logoSqlFieldsLocked}
+                                                label="Database Name"
+                                                value={config.erp_db || LOGO_ERP_DEFAULTS.erp_db}
+                                                connectionConfig={{
+                                                    erp_host: config.erp_host || LOGO_ERP_DEFAULTS.erp_host,
+                                                    erp_user: config.erp_user || LOGO_ERP_DEFAULTS.erp_user,
+                                                    erp_pass: config.erp_pass ?? LOGO_ERP_DEFAULTS.erp_pass,
+                                                }}
+                                                onChange={(db) => setConfig({ ...config, erp_db: db })}
+                                            />
+                                        </div>
+
+                                        <div className="grid grid-cols-2 gap-4">
+                                            <div className="space-y-1.5">
+                                                <label className="text-[9px] font-black text-blue-200/40 uppercase tracking-widest pl-1">SQL Username</label>
+                                                <div className="relative group">
+                                                    <User className="absolute left-4 top-1/2 -translate-y-1/2 w-4 h-4 text-blue-500/40 group-focus-within:text-blue-500 transition-colors" />
+                                                    <input
+                                                        type="text"
+                                                        readOnly={logoSqlFieldsLocked}
+                                                        className={`w-full bg-black/40 border border-white/10 rounded-xl pl-11 pr-4 py-3 text-xs text-white focus:outline-none focus:border-blue-500 transition-all font-bold placeholder:font-medium ${logoSqlFieldsLocked ? 'opacity-90 cursor-default' : ''}`}
+                                                        value={config.erp_user || LOGO_ERP_DEFAULTS.erp_user}
+                                                        onChange={(e) => setConfig({ ...config, erp_user: e.target.value })}
+                                                        placeholder={LOGO_ERP_DEFAULTS.erp_user}
+                                                    />
+                                                </div>
+                                            </div>
+                                            <div className="space-y-1.5">
+                                                <label className="text-[9px] font-black text-blue-200/40 uppercase tracking-widest pl-1">SQL Password</label>
+                                                <div className="relative group">
+                                                    <Lock className="absolute left-4 top-1/2 -translate-y-1/2 w-4 h-4 text-blue-500/40 group-focus-within:text-blue-500 transition-colors" />
+                                                    <input
+                                                        type="password"
+                                                        readOnly={logoSqlFieldsLocked}
+                                                        className={`w-full bg-black/40 border border-white/10 rounded-xl pl-11 pr-4 py-3 text-xs text-white focus:outline-none focus:border-blue-500 transition-all font-bold ${logoSqlFieldsLocked ? 'opacity-90 cursor-default' : ''}`}
+                                                        value={config.erp_pass || LOGO_ERP_DEFAULTS.erp_pass}
+                                                        onChange={(e) => setConfig({ ...config, erp_pass: e.target.value })}
+                                                        placeholder="••••••••"
+                                                    />
+                                                </div>
+                                            </div>
+                                        </div>
+
+                                        {config.erp_method === 'object' && (
+                                            <div className="grid grid-cols-2 gap-4 mt-4 pt-4 border-t border-white/5 animate-in slide-in-from-top-2">
+                                                <div className="space-y-1.5">
+                                                    <label className="text-[9px] font-black text-emerald-400/40 uppercase tracking-widest pl-1">Logo OBJ User</label>
+                                                    <div className="relative group">
+                                                        <Fingerprint className="absolute left-4 top-1/2 -translate-y-1/2 w-4 h-4 text-emerald-500/40 group-focus-within:text-emerald-500 transition-colors" />
+                                                        <input
+                                                            type="text"
+                                                            className="w-full bg-black/40 border border-emerald-500/20 rounded-xl pl-11 pr-4 py-3 text-xs text-white focus:outline-none focus:border-emerald-500 transition-all font-bold"
+                                                            value={config.logo_objects_user}
+                                                            onChange={(e) => setConfig({ ...config, logo_objects_user: e.target.value })}
+                                                            placeholder="LOGO_USER"
+                                                        />
+                                                    </div>
+                                                </div>
+                                                <div className="space-y-1.5">
+                                                    <label className="text-[9px] font-black text-emerald-400/40 uppercase tracking-widest pl-1">Logo OBJ Pass</label>
+                                                    <div className="relative group">
+                                                        <Lock className="absolute left-4 top-1/2 -translate-y-1/2 w-4 h-4 text-emerald-500/40 group-focus-within:text-emerald-500 transition-colors" />
+                                                        <input
+                                                            type="password"
+                                                            className="w-full bg-black/40 border border-emerald-500/20 rounded-xl pl-11 pr-4 py-3 text-xs text-white focus:outline-none focus:border-emerald-500 transition-all font-bold"
+                                                            value={config.logo_objects_pass}
+                                                            onChange={(e) => setConfig({ ...config, logo_objects_pass: e.target.value })}
+                                                            placeholder="••••••••"
+                                                        />
+                                                    </div>
+                                                </div>
+                                                <div className="space-y-1.5 col-span-2">
+                                                    <label className="text-[9px] font-black text-emerald-400/40 uppercase tracking-widest pl-1">Logo Objects DLL Path</label>
+                                                    <div className="relative group">
+                                                        <FileCode className="absolute left-4 top-1/2 -translate-y-1/2 w-4 h-4 text-emerald-500/40 group-focus-within:text-emerald-500 transition-colors" />
+                                                        <input
+                                                            type="text"
+                                                            className="w-full bg-black/40 border border-emerald-500/20 rounded-xl pl-11 pr-4 py-3 text-xs text-white focus:outline-none focus:border-emerald-500 transition-all font-mono placeholder:text-emerald-500/30"
+                                                            value={config.logo_objects_path}
+                                                            onChange={(e) => setConfig({ ...config, logo_objects_path: e.target.value })}
+                                                            placeholder="C:\LOGO\LObjects.dll"
+                                                        />
+                                                    </div>
+                                                </div>
+                                            </div>
+                                        )}
+
+                                        <button
+                                            onClick={testLogoConnection}
+                                            disabled={testingLogo}
+                                            className={`w-full mt-6 py-4 rounded-2xl font-black text-xs uppercase tracking-[0.2em] transition-all shadow-xl flex items-center justify-center gap-3 active:scale-[0.98] ${config.is_nebim_migration
+                                                ? 'bg-indigo-600 hover:bg-indigo-500 shadow-indigo-600/20'
+                                                : 'bg-blue-600 hover:bg-blue-500 shadow-blue-600/20'}`}
+                                        >
+                                            {testingLogo ? (
+                                                <>
+                                                    <Loader2 className="w-5 h-5 animate-spin" />
+                                                    {config.is_nebim_migration ? 'NEBİM MSSQL KONTROL EDİLİYOR...' : 'LOGO MSSQL DOĞRULANIYOR...'}
+                                                </>
+                                            ) : (
+                                                <>
+                                                    <Zap className="w-5 h-5" />
+                                                    {config.is_nebim_migration ? 'NEBİM BAĞLANTISINI TEST ET' : 'LOGO BAĞLANTISINI DOĞRULA'}
+                                                </>
+                                            )}
+                                        </button>
+                                    </div>
+                                    <div className="p-4 rounded-2xl bg-amber-500/5 border border-amber-500/10 flex items-center gap-3">
+                                        <Shield className="w-4 h-4 text-amber-500" />
+                                        <p className="text-[10px] font-bold text-amber-200/60 leading-tight">
+                                            RetailEX <span className="text-amber-400">Read-Only</span> modunda bağlanır.
+                                            Orijinal verileriniz üzerinde silme işlemi yapılmaz.
+                                        </p>
+                                    </div>
+                                </div>
+                            </div>
+                        )}
+
+                        {step === firmPeriodStep && (
+                            <div className="space-y-8 animate-in fade-in slide-in-from-right-4 duration-500">
+                                {!config.skip_integration ? (
+                                    <div className="space-y-8">
+                                        <div className="flex items-center justify-between">
+                                            <div>
+                                                <h2 className="text-3xl font-black text-white tracking-tight">Firma Bilgileri</h2>
+                                                <p className="text-blue-400/60 font-black uppercase tracking-[0.2em] text-[10px] mt-1">Lütfen devam etmek için firma ve para birimi ayarlarını yapın</p>
+                                            </div>
+                                            <div className="flex bg-white/5 px-4 py-2 rounded-2xl border border-white/5">
+                                                <div className="text-[10px] font-black text-slate-500 uppercase tracking-widest">{config.skip_integration ? '1 Tanımlı Firma' : `${companies.length} Müsait Firma`}</div>
+                                            </div>
+                                        </div>
+
+                                        <div className="grid grid-cols-2 gap-6">
+                                            <div className="space-y-4">
+                                                <div className="space-y-1.5">
+                                                    <label className="text-[9px] font-black text-amber-400/50 uppercase tracking-widest pl-1">İşletme bölgesi (mevzuat)</label>
+                                                    <div className="relative group">
+                                                        <Globe className="absolute left-4 top-1/2 -translate-y-1/2 w-4 h-4 text-amber-500/40 group-focus-within:text-amber-500 transition-colors" />
+                                                        <select
+                                                            className="w-full bg-black/40 border border-white/10 rounded-xl pl-11 pr-4 py-3 text-xs text-white focus:outline-none focus:border-amber-500 transition-all font-bold appearance-none cursor-pointer"
+                                                            value={config.regulatory_region}
+                                                            onChange={(e) =>
+                                                                setConfig({
+                                                                    ...config,
+                                                                    regulatory_region: e.target.value as 'TR' | 'IQ',
+                                                                })
+                                                            }
+                                                        >
+                                                            <option value="IQ" className="bg-slate-900">Irak (IQ) — GİB e-belge yok</option>
+                                                            <option value="TR" className="bg-slate-900">Türkiye (TR) — e-Fatura / e-Arşiv</option>
+                                                        </select>
+                                                        <ChevronRight className="absolute right-4 top-1/2 -translate-y-1/2 w-4 h-4 text-white/20 pointer-events-none rotate-90" />
+                                                    </div>
+                                                    <p className="text-[9px] text-slate-500 font-medium pl-1">
+                                                        TR seçildiğinde e-dönüşüm modülleri açılır; IQ’da yalnızca yerel/yemek platformu entegrasyonları (Talabat vb.) kullanılır.
+                                                    </p>
+                                                </div>
+                                                <div className="space-y-1.5">
+                                                    <label className="text-[9px] font-black text-blue-200/40 uppercase tracking-widest pl-1">Firma Ünvanı & No</label>
+                                                    <div className="flex gap-2">
+                                                        <div className="relative group flex-1">
+                                                            <Building2 className="absolute left-4 top-1/2 -translate-y-1/2 w-4 h-4 text-blue-500/40 group-focus-within:text-blue-500 transition-colors" />
+                                                            <input
+                                                                type="text"
+                                                                className="w-full bg-black/40 border border-white/10 rounded-xl pl-11 pr-4 py-3 text-xs text-white focus:outline-none focus:border-blue-500 transition-all font-bold"
+                                                                value={config.title}
+                                                                onChange={(e) => setConfig({ ...config, title: e.target.value })}
+                                                                placeholder="Firma Ünvanı"
+                                                            />
+                                                        </div>
+                                                        <div className="relative group w-24">
+                                                            <input
+                                                                type="text"
+                                                                className="w-full bg-black/40 border border-white/10 rounded-xl px-4 py-3 text-xs text-white text-center focus:outline-none focus:border-blue-500 transition-all font-mono font-bold"
+                                                                value={config.erp_firm_nr || '001'}
+                                                                onChange={(e) => setConfig({ ...config, erp_firm_nr: e.target.value.padStart(3, '0').slice(-3) })}
+                                                                placeholder="001"
+                                                            />
+                                                        </div>
+                                                    </div>
+                                                </div>
+                                            </div>
+
+                                            <div className="space-y-4">
+                                                <div className="space-y-1.5">
+                                                    <label className="text-[9px] font-black text-emerald-400/40 uppercase tracking-widest pl-1">Varsayılan para birimi</label>
+                                                    <p className="text-[9px] text-slate-500 pl-1">Firma kartındaki ana para biriminden önce; config.db ile saklanır.</p>
+                                                    <div className="relative group">
+                                                        <Globe className="absolute left-4 top-1/2 -translate-y-1/2 w-4 h-4 text-emerald-500/40 group-focus-within:text-emerald-500 transition-colors" />
+                                                        <select
+                                                            className="w-full bg-black/40 border border-white/10 rounded-xl pl-11 pr-4 py-3 text-xs text-white focus:outline-none focus:border-emerald-500 transition-all font-bold appearance-none cursor-pointer"
+                                                            value={config.default_currency}
+                                                            onChange={(e) => setConfig({ ...config, default_currency: e.target.value })}
+                                                        >
+                                                            <option value="IQD" className="bg-slate-900">Irak Dinarı (IQD)</option>
+                                                            <option value="TRY" className="bg-slate-900">Türk Lirası (TRY)</option>
+                                                            <option value="USD" className="bg-slate-900">Amerikan Doları (USD)</option>
+                                                            <option value="EUR" className="bg-slate-900">Euro (EUR)</option>
+                                                            <option value="GBP" className="bg-slate-900">İngiliz Sterlini (GBP)</option>
+                                                        </select>
+                                                        <ChevronRight className="absolute right-4 top-1/2 -translate-y-1/2 w-4 h-4 text-white/20 pointer-events-none rotate-90" />
+                                                    </div>
+                                                </div>
+                                            </div>
+                                        </div>
+
+                                        <div className="grid grid-cols-3 gap-4 max-h-[320px] overflow-y-auto pr-4 custom-scrollbar">
+                                            {companies.map(firm => (
+                                                <button
+                                                    key={firm.id}
+                                                    onClick={() => {
+                                                        setSelectedCompanyId(firm.id);
+                                                        const updatedConfig = { ...config, erp_firm_nr: firm.id.padStart(3, '0'), erp_period_nr: '' };
+                                                        setConfig(updatedConfig);
+                                                        fetchPeriods(firm.id, (logoPreviewEntity || 'ITEMS') as any, updatedConfig);
+                                                    }}
+                                                    className={`p-5 rounded-3xl text-left transition-all relative overflow-hidden group border ${selectedCompanyId === firm.id
+                                                        ? 'bg-blue-600 border-blue-400 shadow-[0_20px_40px_rgba(37,99,235,0.2)]'
+                                                        : 'bg-white/[0.02] border-white/5 hover:bg-white/[0.05] hover:border-white/10'
+                                                        }`}
+                                                >
+                                                    <div className={`w-10 h-10 rounded-2xl flex items-center justify-center mb-3 transition-colors ${selectedCompanyId === firm.id ? 'bg-white/20' : 'bg-blue-500/10'}`}>
+                                                        <Building2 className={`w-5 h-5 ${selectedCompanyId === firm.id ? 'text-white' : 'text-blue-400'}`} />
+                                                    </div>
+                                                    <div className="relative z-10">
+                                                        <div className={`text-[9px] font-black uppercase tracking-widest mb-1 ${selectedCompanyId === firm.id ? 'text-white/60' : 'text-blue-400/60'}`}>Firma No: {firm.id}</div>
+                                                        <h4 className={`text-xs font-bold leading-tight ${selectedCompanyId === firm.id ? 'text-white' : 'text-slate-200'}`}>{firm.name}</h4>
+                                                    </div>
+                                                </button>
+                                            ))}
+                                        </div>
+
+                                        {selectedCompanyId && (
+                                            <div className="space-y-6 animate-in fade-in slide-in-from-bottom-4 duration-500">
+                                                <div className="space-y-4">
+                                                    <div className="flex flex-col gap-2">
+                                                        <label className="text-[9px] font-black text-blue-200/40 uppercase tracking-widest pl-1">Çalışma Dönemi (Manuel Giriş)</label>
+                                                        <div className="flex items-center gap-3">
+                                                            <div className="relative group w-32">
+                                                                <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
+                                                                    <span className="text-slate-500 font-bold text-xs">#</span>
+                                                                </div>
+                                                                <input
+                                                                    type="text"
+                                                                    value={config.erp_period_nr || '01'}
+                                                                    onChange={(e) => {
+                                                                        const val = e.target.value.replace(/[^0-9]/g, '');
+                                                                        setConfig({ ...config, erp_period_nr: val });
+                                                                    }}
+                                                                    placeholder="01"
+                                                                    className="w-full bg-black/40 border border-white/10 rounded-xl pl-8 pr-4 py-3 text-white font-mono font-bold text-center focus:outline-none focus:border-blue-500 transition-all"
+                                                                    maxLength={2}
+                                                                />
+                                                            </div>
+                                                            <button
+                                                                onClick={() => fetchLogoPreview(logoPreviewEntity || 'ITEMS')}
+                                                                className="px-6 py-3 bg-blue-600/20 hover:bg-blue-600/40 text-blue-400 hover:text-white rounded-xl font-bold text-[10px] tracking-widest uppercase transition-all border border-blue-500/30"
+                                                            >
+                                                                VERİLERİ LİSTELE
+                                                            </button>
+                                                        </div>
+                                                        <p className="text-[9px] text-slate-500 font-medium ml-1">
+                                                            Dönem listesi gelmiyorsa manuel olarak (örn: 01) yazıp listele diyebilirsiniz.
+                                                        </p>
+                                                    </div>
+
+                                                    {periods && periods.length > 0 && (
+                                                        <div className="space-y-3 pt-2 border-t border-white/5">
+                                                            <label className="text-[9px] font-black text-blue-200/40 uppercase tracking-widest pl-1">Bulunan Dönemler</label>
+                                                            <div className="flex flex-wrap gap-2">
+                                                                {periods.map(p => (
+                                                                    <button
+                                                                        key={p.nr}
+                                                                        onClick={() => {
+                                                                            const periodNr = String(p.nr).padStart(2, '0');
+                                                                            const updatedConfig = { ...config, erp_period_nr: periodNr };
+                                                                            setConfig(updatedConfig);
+                                                                            fetchLogoPreview((logoPreviewEntity || 'ITEMS') as any, updatedConfig);
+                                                                        }}
+                                                                        className={`px-3 py-1.5 rounded-xl text-[10px] font-black transition-all ${config.erp_period_nr === String(p.nr).padStart(2, '0')
+                                                                            ? 'bg-emerald-600 text-white shadow-lg'
+                                                                            : 'bg-white/5 text-emerald-400/60 hover:text-emerald-400 hover:bg-emerald-400/10 border border-emerald-400/20'
+                                                                            }`}
+                                                                    >
+                                                                        DÖNEM {String(p.nr).padStart(2, '0')}
+                                                                        {p.start_date && (
+                                                                            <span className="ml-1.5 opacity-70 font-normal">
+                                                                                {p.start_date.slice(0, 10)} → {p.end_date?.slice(0, 10)}
+                                                                            </span>
+                                                                        )}
+                                                                    </button>
+                                                                ))}
+                                                            </div>
+                                                            {/* Seçili dönem tarih düzenleme */}
+                                                            {config.erp_period_nr && (() => {
+                                                                const selPeriod = periods.find(p => String(p.nr).padStart(2, '0') === config.erp_period_nr);
+                                                                if (!selPeriod) return null;
+                                                                return (
+                                                                    <div className="flex items-center gap-3 mt-2 p-3 rounded-xl bg-white/[0.03] border border-white/10">
+                                                                        <span className="text-[9px] font-black text-emerald-400 uppercase tracking-widest shrink-0">Dönem {config.erp_period_nr} Tarihleri</span>
+                                                                        <input
+                                                                            type="date"
+                                                                            value={selPeriod.start_date?.slice(0, 10) || ''}
+                                                                            onChange={(e) => {
+                                                                                const updated = periods.map(p =>
+                                                                                    String(p.nr).padStart(2, '0') === config.erp_period_nr
+                                                                                        ? { ...p, start_date: e.target.value }
+                                                                                        : p
+                                                                                );
+                                                                                setPeriods(updated);
+                                                                                setCompanies(prev => prev.map(c =>
+                                                                                    c.id === selectedCompanyId ? { ...c, periods: updated } : c
+                                                                                ));
+                                                                            }}
+                                                                            className="bg-black/40 border border-white/10 rounded-lg px-2 py-1 text-white text-[11px] focus:outline-none focus:border-emerald-500"
+                                                                        />
+                                                                        <span className="text-slate-500 text-xs">→</span>
+                                                                        <input
+                                                                            type="date"
+                                                                            value={selPeriod.end_date?.slice(0, 10) || ''}
+                                                                            onChange={(e) => {
+                                                                                const updated = periods.map(p =>
+                                                                                    String(p.nr).padStart(2, '0') === config.erp_period_nr
+                                                                                        ? { ...p, end_date: e.target.value }
+                                                                                        : p
+                                                                                );
+                                                                                setPeriods(updated);
+                                                                                setCompanies(prev => prev.map(c =>
+                                                                                    c.id === selectedCompanyId ? { ...c, periods: updated } : c
+                                                                                ));
+                                                                            }}
+                                                                            className="bg-black/40 border border-white/10 rounded-lg px-2 py-1 text-white text-[11px] focus:outline-none focus:border-emerald-500"
+                                                                        />
+                                                                    </div>
+                                                                );
+                                                            })()}
+                                                        </div>
+                                                    )}
+                                                </div>
+
+                                                <div className={`rounded-3xl border transition-all duration-500 overflow-hidden ${isPreviewFullscreen
+                                                    ? 'fixed inset-4 z-[100] bg-[#0c1117]/98 backdrop-blur-2xl border-white/20 shadow-[0_0_50px_rgba(0,0,0,0.5)]'
+                                                    : 'bg-white/[0.02] border-white/10 relative'
+                                                    }`}>
+                                                    <div className="flex items-center justify-between px-5 pt-4 border-b border-white/5">
+                                                        <div className="flex items-center gap-6">
+                                                            {[
+                                                                { id: 'ITEMS', label: 'STOK', icon: Layout },
+                                                                { id: 'CLCARD', label: 'CARİ', icon: Building2 },
+                                                                { id: 'INVOICE', label: 'FATURA', icon: RefreshCw },
+                                                                { id: 'KSCARD', label: 'KASA', icon: Database },
+                                                            ].map((t) => (
+                                                                <button
+                                                                    key={t.id}
+                                                                    onClick={() => fetchLogoPreview(t.id as any)}
+                                                                    className={`pb-3 text-[10px] font-black tracking-widest uppercase flex items-center gap-1.5 transition-all relative ${logoPreviewEntity === t.id ? 'text-blue-400' : 'text-slate-500 hover:text-slate-300'
+                                                                        }`}
+                                                                >
+                                                                    <t.icon className="w-3.5 h-3.5" />
+                                                                    {t.label}
+                                                                    {logoPreviewEntity === t.id && (
+                                                                        <div className="absolute bottom-0 left-0 right-0 h-[2px] bg-blue-500 rounded-full" />
+                                                                    )}
+                                                                </button>
+                                                            ))}
+                                                        </div>
+                                                        <div className="flex items-center gap-2 -mt-2">
+                                                            <button
+                                                                onClick={() => fetchLogoPreview(logoPreviewEntity || 'ITEMS')}
+                                                                disabled={logoPreviewLoading}
+                                                                className="p-2 rounded-xl hover:bg-white/5 text-slate-500 hover:text-white transition-all disabled:opacity-30"
+                                                                title="Yenile"
+                                                            >
+                                                                <RefreshCw className={`w-3.5 h-3.5 ${logoPreviewLoading ? 'animate-spin' : ''}`} />
+                                                            </button>
+                                                            <button
+                                                                onClick={() => setIsPreviewFullscreen(!isPreviewFullscreen)}
+                                                                className="p-2 rounded-xl hover:bg-white/5 text-slate-500 hover:text-white transition-all"
+                                                            >
+                                                                {isPreviewFullscreen ? <Minimize2 className="w-4 h-4" /> : <Maximize2 className="w-4 h-4" />}
+                                                            </button>
+                                                        </div>
+                                                    </div>
+
+                                                    {logoPreviewSql && (
+                                                        <div className="mb-4 mx-5 p-3 rounded-xl bg-black/40 border border-blue-500/20 font-mono text-[9px] text-blue-400/80 break-all select-all hover:text-blue-300 transition-colors">
+                                                            <div className="flex items-center gap-2 mb-1.5 opacity-50">
+                                                                <Terminal className="w-3 h-3" />
+                                                                <span className="font-black uppercase tracking-widest">Çalıştırılan SQL Sorgusu</span>
+                                                            </div>
+                                                            {logoPreviewSql}
+                                                        </div>
+                                                    )}
+
+                                                    <div className={`${isPreviewFullscreen ? 'h-[calc(100vh-160px)]' : 'max-h-[260px]'} overflow-auto custom-scrollbar`}>
+                                                        {logoPreviewLoading ? (
+                                                            <div className="h-48 flex flex-col items-center justify-center gap-4">
+                                                                <Loader2 className="w-8 h-8 text-blue-500 animate-spin opacity-50" />
+                                                                <p className="text-[10px] font-bold tracking-widest text-blue-400/50 uppercase">Veriler Hazırlanıyor...</p>
+                                                            </div>
+                                                        ) : logoPreviewData && logoPreviewData.length > 0 ? (
+                                                            <table className="w-full text-[11px] text-left border-collapse">
+                                                                <thead className="sticky top-0 bg-[#0c1117] z-10">
+                                                                    <tr className="border-b border-white/5">
+                                                                        {Object.keys(logoPreviewData[0]).filter(k =>
+                                                                            isPreviewFullscreen ||
+                                                                            ['CODE', 'NAME', 'DEFINITION_', 'FICHENO', 'TRCODE', 'GROSSTOTAL', 'DATE_', 'SPECODE', 'CAPIBLOCK_CREADEDDATE'].includes(k)
+                                                                        ).map(key => (
+                                                                            <th key={key} className="px-4 py-3 font-black text-slate-500 uppercase tracking-tighter text-[9px]">{key}</th>
+                                                                        ))}
+                                                                    </tr>
+                                                                </thead>
+                                                                <tbody>
+                                                                    {logoPreviewData.map((row, i) => (
+                                                                        <tr key={i} className="border-b border-white/[0.02] hover:bg-white/[0.02] transition-colors">
+                                                                            {Object.entries(row).filter(([k]) =>
+                                                                                isPreviewFullscreen ||
+                                                                                ['CODE', 'NAME', 'DEFINITION_', 'FICHENO', 'TRCODE', 'GROSSTOTAL', 'DATE_', 'SPECODE', 'CAPIBLOCK_CREADEDDATE'].includes(k)
+                                                                            ).map(([k, v], j) => (
+                                                                                <td key={j} className="px-4 py-2.5 text-slate-300 font-medium whitespace-nowrap overflow-hidden text-ellipsis max-w-[200px]">
+                                                                                    {String(v)}
+                                                                                </td>
+                                                                            ))}
+                                                                        </tr>
+                                                                    ))}
+                                                                </tbody>
+                                                            </table>
+                                                        ) : (
+                                                            <div className="h-48 flex flex-col items-center justify-center text-slate-500 gap-4">
+                                                                <Activity className="w-12 h-12 opacity-10 animate-pulse" />
+                                                                <div className="text-center">
+                                                                    <p className="text-[10px] font-bold tracking-widest uppercase opacity-40">FİRMA VE DÖNEM SEÇİLDİĞİNDE</p>
+                                                                    <p className="text-[9px] font-medium opacity-30 mt-1 uppercase">ÖNİZLEME VERİLERİ BURADA GÖRÜNTÜLENENECEK</p>
+                                                                </div>
+                                                            </div>
+                                                        )}
+                                                    </div>
+                                                </div>
+                                            </div>
+                                        )}
+                                    </div>
+                                ) : (
+                                    <div className="space-y-8">
+                                        <div>
+                                            <h2 className="text-4xl font-black mb-2 text-white tracking-tight">Firma ve Dönem Bilgileri</h2>
+                                            <p className="text-blue-200 font-medium font-semibold uppercase tracking-wider text-[10px] mb-8">Firm & Period Details</p>
+                                        </div>
+                                        <div className="p-8 rounded-[32px] bg-emerald-600/10 border border-emerald-500/30 shadow-2xl relative overflow-hidden group">
+                                            <div className="absolute top-0 right-0 w-60 h-60 bg-emerald-500/10 blur-[80px] rounded-full" />
+                                            <div className="flex flex-col md:flex-row gap-8 relative z-10">
+                                                <div className="w-20 h-20 rounded-3xl bg-emerald-500/20 border border-emerald-500/30 flex items-center justify-center shadow-inner">
+                                                    <Building2 className="w-10 h-10 text-emerald-400" />
+                                                </div>
+                                                <div className="flex-1 space-y-6">
+                                                    <div className="space-y-2">
+                                                        <label className="text-[10px] font-black text-emerald-200 uppercase tracking-widest pl-1">Firma Unvanı</label>
+                                                        <input
+                                                            type="text"
+                                                            className="w-full bg-black/40 border border-white/10 rounded-2xl px-6 py-4 text-white focus:outline-none focus:border-emerald-500 transition-all font-bold text-sm"
+                                                            value={config.title}
+                                                            onChange={(e) => setConfig({ ...config, title: e.target.value })}
+                                                            placeholder={
+                                                                config.system_type === 'market' ? "Örn: Seçkin Market Gıda Ltd." :
+                                                                    config.system_type === 'restaurant' ? "Örn: Lezzet Durağı Restoran" :
+                                                                        config.system_type === 'beauty' ? "Örn: Estetik Merkezi Bakım" :
+                                                                            config.system_type === 'wms' ? "Örn: Lojistik Merkez Depo" :
+                                                                                "Örn: Merkez İşletme A.Ş."
+                                                            }
+                                                        />
+                                                    </div>
+
+                                                    <div className="grid grid-cols-1 md:grid-cols-4 gap-4 pt-4 border-t border-white/5">
+                                                        <div className="space-y-2">
+                                                            <label className="text-[10px] font-black text-emerald-200 uppercase tracking-widest pl-1">Firma Numarası</label>
+                                                            <input
+                                                                type="text"
+                                                                className="w-full bg-black/40 border border-white/10 rounded-xl px-4 py-3 text-white focus:outline-none focus:border-emerald-500 transition-all font-mono font-bold text-xs text-center"
+                                                                value={config.erp_firm_nr || '001'}
+                                                                onChange={(e) => {
+                                                                    const val = e.target.value.replace(/[^0-9]/g, '');
+                                                                    setConfig({ ...config, erp_firm_nr: val });
+                                                                }}
+                                                                placeholder="001"
+                                                                maxLength={3}
+                                                            />
+                                                        </div>
+                                                        <div className="space-y-2">
+                                                            <label className="text-[10px] font-black text-emerald-200 uppercase tracking-widest pl-1">Çalışma Dönemi</label>
+                                                            <div className="relative">
+                                                                <input
+                                                                    type="text"
+                                                                    className="w-full bg-black/40 border border-white/10 rounded-xl px-4 py-3 text-white focus:outline-none focus:border-emerald-500 transition-all font-mono font-bold text-xs text-center"
+                                                                    value={config.erp_period_nr || '01'}
+                                                                    onChange={(e) => {
+                                                                        const val = e.target.value.replace(/[^0-9]/g, '');
+                                                                        setConfig({ ...config, erp_period_nr: val });
+                                                                    }}
+                                                                    placeholder="01"
+                                                                    maxLength={2}
+                                                                />
+                                                            </div>
+                                                        </div>
+                                                        <div className="space-y-2">
+                                                            <label className="text-[10px] font-black text-emerald-200 uppercase tracking-widest pl-1">Dönem Başlangıcı</label>
+                                                            <input
+                                                                type="date"
+                                                                className="w-full bg-black/40 border border-white/10 rounded-xl px-4 py-3 text-white focus:outline-none focus:border-emerald-500 transition-all font-mono text-xs"
+                                                                value={standalonePeriodStart}
+                                                                onChange={(e) => setStandalonePeriodStart(e.target.value)}
+                                                            />
+                                                        </div>
+                                                        <div className="space-y-2">
+                                                            <label className="text-[10px] font-black text-emerald-200 uppercase tracking-widest pl-1">Dönem Sonu</label>
+                                                            <input
+                                                                type="date"
+                                                                className="w-full bg-black/40 border border-white/10 rounded-xl px-4 py-3 text-white focus:outline-none focus:border-emerald-500 transition-all font-mono text-xs"
+                                                                value={standalonePeriodEnd}
+                                                                onChange={(e) => setStandalonePeriodEnd(e.target.value)}
+                                                            />
+                                                        </div>
+                                                    </div>
+                                                </div>
+                                            </div>
+                                        </div>
+                                    </div>
+                                )}
+                            </div>
+                        )}
+
+                        {step === 5 && !config.skip_integration && (
+                            <div className="space-y-12 py-6 animate-in fade-in slide-in-from-bottom-8 duration-700">
+                                {config.is_nebim_migration ? (
+                                    <div className="text-center space-y-3">
+                                        <div className="inline-flex items-center gap-2 px-4 py-2 rounded-full bg-indigo-500/10 border border-indigo-500/20 text-indigo-400 text-[10px] font-black tracking-widest uppercase mb-4">
+                                            <Zap className="w-3.5 h-3.5" /> Nebim V3 Analizi
+                                        </div>
+                                        <h2 className="text-4xl font-black text-white tracking-tight">Geçiş Analizi</h2>
+                                        <p className="max-w-xl mx-auto text-slate-400 font-medium leading-relaxed">
+                                            Nebim V3 sisteminizdeki veriler analiz edildi. Aktarılacak kayıtların özeti aşağıdadır.
+                                            "A noktasından B noktasına" en hızlı geçiş için her şey hazır.
+                                        </p>
+
+                                        <div className="grid grid-cols-2 lg:grid-cols-4 gap-6 mt-12 max-w-5xl mx-auto">
+                                            {[
+                                                { label: 'Ürün Kartı', count: '4,842', icon: Layout, color: 'blue' },
+                                                { label: 'Cari Hesap', count: '1,250', icon: Building2, color: 'emerald' },
+                                                { label: 'Personel', count: '48', icon: User, color: 'purple' },
+                                                { label: 'Yetki Grubu', count: '12', icon: Shield, color: 'amber' }
+                                            ].map((item, i) => (
+                                                <div key={i} className="bg-white/[0.03] p-8 rounded-[40px] border border-white/5 relative group hover:bg-white/[0.05] transition-all">
+                                                    <div className={`w-12 h-12 rounded-2xl bg-${item.color}-500/10 flex items-center justify-center mb-4 mx-auto border border-${item.color}-500/20`}>
+                                                        <item.icon className={`w-6 h-6 text-${item.color}-400`} />
+                                                    </div>
+                                                    <div className="text-3xl font-black text-white mb-2">{item.count}</div>
+                                                    <div className="text-[10px] font-black text-slate-500 uppercase tracking-widest">{item.label}</div>
+                                                </div>
+                                            ))}
+                                        </div>
+
+                                        <div className="mt-12 p-8 rounded-[40px] bg-indigo-600/5 border border-indigo-500/20 max-w-2xl mx-auto text-left relative overflow-hidden">
+                                            <div className="absolute top-0 right-0 w-32 h-32 bg-indigo-500/10 blur-[60px] rounded-full" />
+                                            <div className="relative z-10 flex items-start gap-4">
+                                                <div className="w-10 h-10 rounded-2xl bg-indigo-500/20 flex items-center justify-center shrink-0">
+                                                    <CheckCircle className="w-6 h-6 text-indigo-400" />
+                                                </div>
+                                                <div>
+                                                    <h4 className="text-sm font-bold text-white mb-1">Zero-Touch Entegrasyon Aktif</h4>
+                                                    <p className="text-xs text-slate-400 leading-relaxed">
+                                                        Ürün barkodları, cari bakiyeleri ve personel şifreleri RetailEX standartlarına tam uyumlu olarak taşınacaktır. Kurulum sonrası hiçbir ek yapılandırma gerekmez.
+                                                    </p>
+                                                </div>
+                                            </div>
+                                        </div>
+                                    </div>
+                                ) : (
+                                    <>
+                                        <div className="text-center space-y-3">
+                                            <div className="inline-flex items-center gap-2 px-4 py-2 rounded-full bg-emerald-500/10 border border-emerald-500/20 text-emerald-400 text-[10px] font-black tracking-widest uppercase mb-4">
+                                                <Database className="w-3.5 h-3.5" /> Veri Senkronizasyonu
+                                            </div>
+                                            <h2 className="text-4xl font-black text-white tracking-tight">Kasa Seçimi</h2>
+                                            <p className="max-w-xl mx-auto text-slate-400 font-medium leading-relaxed font-bold">
+                                                RetailEX'in hangi kasalardan gelen hareketleri senkronize etmesini istiyorsunuz?
+                                            </p>
+                                        </div>
+
+                                        <div className="max-w-2xl mx-auto">
+                                            <div className="bg-white/5 border border-white/10 rounded-[40px] p-8 relative overflow-hidden group">
+                                                <div className="absolute top-0 right-0 w-64 h-64 bg-emerald-600/10 blur-[90px] rounded-full" />
+
+                                                <div className="relative z-10 space-y-6">
+                                                    <div className="flex items-center justify-between mb-2">
+                                                        <div>
+                                                            <h3 className="text-lg font-bold text-white uppercase tracking-tight">Senkronize Edilecek Kasalar</h3>
+                                                            <p className="text-[10px] text-emerald-400/60 font-black uppercase tracking-widest">Çoklu seçim yapabilirsiniz</p>
+                                                        </div>
+                                                        <button
+                                                            onClick={() => setConfig({
+                                                                ...config,
+                                                                selected_cash_registers: availableCashRegisters.map(k => (k.LOGICALREF || k.logicalref).toString())
+                                                            })}
+                                                            className="px-4 py-2 bg-emerald-500/10 hover:bg-emerald-500/20 text-emerald-400 rounded-xl text-[10px] font-black uppercase tracking-widest transition-all"
+                                                        >
+                                                            TÜMÜNÜ SEÇ
+                                                        </button>
+                                                    </div>
+
+                                                    <div className="grid grid-cols-1 gap-3 max-h-[400px] overflow-y-auto pr-2 custom-scrollbar">
+                                                        {availableCashRegisters.map((k) => {
+                                                            const id = (k.LOGICALREF || k.logicalref || '').toString();
+                                                            const isSelected = config.selected_cash_registers?.includes(id);
+                                                            return (
+                                                                <button
+                                                                    key={id}
+                                                                    onClick={() => {
+                                                                        const current = config.selected_cash_registers || [];
+                                                                        const updated = current.includes(id)
+                                                                            ? current.filter(x => x !== id)
+                                                                            : [...current, id];
+                                                                        setConfig({ ...config, selected_cash_registers: updated });
+                                                                    }}
+                                                                    className={`flex items-center justify-between p-5 rounded-3xl border-2 transition-all ${isSelected
+                                                                        ? 'bg-emerald-600/10 border-emerald-500 shadow-[0_0_20px_rgba(168,185,129,0.1)]'
+                                                                        : 'bg-white/5 border-white/5 hover:border-white/10'
+                                                                        }`}
+                                                                >
+                                                                    <div className="flex items-center gap-4">
+                                                                        <div className={`w-10 h-10 rounded-2xl flex items-center justify-center ${isSelected
+                                                                            ? 'bg-emerald-500 text-white'
+                                                                            : 'bg-white/10 text-slate-400'
+                                                                            }`}>
+                                                                            <Monitor className="w-5 h-5" />
+                                                                        </div>
+                                                                        <div className="text-left">
+                                                                            <div className="text-xs font-bold text-white">{k.NAME || k.name}</div>
+                                                                            <div className="text-[10px] text-slate-500 font-mono font-bold uppercase tracking-widest">{k.CODE || k.code}</div>
+                                                                        </div>
+                                                                    </div>
+                                                                    {isSelected && (
+                                                                        <CheckCircle className="w-5 h-5 text-emerald-500" />
+                                                                    )}
+                                                                </button>
+                                                            );
+                                                        })}
+                                                        {availableCashRegisters.length === 0 && !loading && (
+                                                            <div className="py-20 text-center space-y-4">
+                                                                <Activity className="w-10 h-10 text-emerald-500 animate-pulse mx-auto opacity-20" />
+                                                                <p className="text-xs text-slate-500 font-medium tracking-tight">Seçilecek kasa bulunamadı veya Logo bağlantısında sorun var.</p>
+                                                            </div>
+                                                        )}
+                                                    </div>
+                                                </div>
+                                            </div>
+                                        </div>
+                                    </>
+                                )}
+                            </div>
+                        )}
+
+                        {step === deviceStep && (
+                            <div className="space-y-12 py-6 animate-in fade-in slide-in-from-bottom-8 duration-700">
+                                <div className="text-center space-y-3">
+                                    <div className="inline-flex items-center gap-2 px-4 py-2 rounded-full bg-blue-500/10 border border-blue-500/20 text-blue-400 text-[10px] font-black tracking-widest uppercase mb-4">
+                                        <Monitor className="w-3.5 h-3.5" /> Device Configuration
+                                    </div>
+                                    <h2 className="text-4xl font-black text-white tracking-tight">Cihaz Kaydı ve Terminal Rolü</h2>
+                                    <p className="max-w-xl mx-auto text-slate-400 font-medium leading-relaxed">
+                                        Bu cihazın ismini, donanım kimliğini ve ağdaki rolünü (Merkez vs Terminal) belirleyin.
+                                    </p>
+                                </div>
+
+                                <div className="max-w-2xl mx-auto">
+                                    <div className="p-8 rounded-[40px] bg-white/5 border border-white/5 relative overflow-hidden group">
+                                        <div className="absolute top-0 right-0 w-32 h-32 bg-purple-600/10 blur-[60px] rounded-full" />
+                                        <div className="flex items-center gap-4 mb-8">
+                                            <div className="w-14 h-14 rounded-2xl bg-purple-600/20 flex items-center justify-center">
+                                                <Monitor className="w-7 h-7 text-purple-400" />
+                                            </div>
+                                            <div>
+                                                <div className="text-lg font-bold text-white">Donanım ve Kimlik</div>
+                                                <div className="text-[10px] text-purple-400/60 font-black uppercase tracking-widest">Hardware Identity</div>
+                                            </div>
+                                        </div>
+
+                                        <div className="space-y-6">
+                                            <div className="grid grid-cols-2 gap-3">
+                                                <button onClick={() => setConfig({ ...config, role: 'center' })} className={`p-4 rounded-2xl border-2 transition-all text-left ${config.role === 'center' ? 'bg-purple-600/10 border-purple-500' : 'bg-white/5 border-white/5'}`}>
+                                                    <div className="text-xs font-bold text-white">Merkez Sunucu</div>
+                                                    <div className="text-[9px] text-slate-500">Master Control</div>
+                                                </button>
+                                                <button onClick={() => setConfig({ ...config, role: 'client' })} className={`p-4 rounded-2xl border-2 transition-all text-left ${config.role === 'client' ? 'bg-blue-600/10 border-blue-500' : 'bg-white/5 border-white/5'}`}>
+                                                    <div className="text-xs font-bold text-white">Şube Terminali</div>
+                                                    <div className="text-[9px] text-slate-500">Point of Sale</div>
+                                                </button>
+                                            </div>
+
+                                            <div className="space-y-2">
+                                                <label className="text-[10px] font-black text-slate-500 uppercase tracking-widest pl-1">Cihaz Takma Adı (Terminal Name)</label>
+                                                <input
+                                                    type="text"
+                                                    value={config.terminal_name || ''}
+                                                    onChange={(e) => setConfig({ ...config, terminal_name: e.target.value })}
+                                                    placeholder="Örn: KASA-01, MERKEZ-SRV..."
+                                                    required
+                                                    className="w-full bg-black/40 border border-white/5 rounded-2xl px-5 py-3 text-white text-xs outline-none focus:border-purple-500/50"
+                                                />
+                                            </div>
+
+                                            <div className="p-4 rounded-2xl bg-emerald-500/5 border border-emerald-500/10">
+                                                <div className="flex items-center gap-2 mb-2">
+                                                    <Fingerprint className="w-4 h-4 text-emerald-400" />
+                                                    <span className="text-[10px] font-bold text-white">Donanım Parmak İzi</span>
+                                                </div>
+                                                <div className="text-[9px] font-mono text-emerald-500/60 break-all">{config.device_id || 'ID üretiliyor...'}</div>
+                                            </div>
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+                        )}
+
+                        {step === summaryStep && (
+                            <div className="space-y-8 animate-in fade-in slide-in-from-right-4 duration-500">
+                                <div>
+                                    <h2 className="text-4xl font-black mb-2 text-white tracking-tight">
+                                        {isUpdateMode ? 'Güncelleme Protokolü' : 'Sistem Başlatmaya Hazır'}
+                                    </h2>
+                                    <p className="text-blue-200 font-medium font-semibold uppercase tracking-wider text-[10px]">
+                                        {isUpdateMode ? 'Database Schema Optimization' : 'System Initialization Protocol'}
+                                    </p>
+                                </div>
+
+                                <div className="bg-white/[0.03] border border-white/10 rounded-[40px] p-8 space-y-8 shadow-2xl relative overflow-hidden">
+                                    <div className="absolute top-0 right-0 w-64 h-64 bg-blue-600/10 blur-[100px] rounded-full pointer-events-none" />
+
+                                    <div className="grid grid-cols-2 gap-4 relative z-10">
+                                        <div className="p-6 bg-black/40 rounded-[24px] border border-white/5 group hover:border-blue-500/30 transition-colors">
+                                            <span className="text-blue-300 font-black uppercase text-[10px] tracking-widest block mb-2">Çalışma Modu</span>
+                                            <div className="flex items-center gap-3">
+                                                <div className="w-2 h-2 rounded-full bg-blue-500 shadow-[0_0_10px_rgba(59,130,246,0.8)] animate-pulse" />
+                                                <span className="font-mono text-white font-black text-xl tracking-tight">{config.db_mode.toUpperCase()}</span>
+                                            </div>
+                                        </div>
+                                        <div className="p-6 bg-black/40 rounded-[24px] border border-white/5 group hover:border-indigo-500/30 transition-colors">
+                                            <span className="text-blue-300 font-black uppercase text-[10px] tracking-widest block mb-2">Entegrasyon</span>
+                                            <div className="flex items-center gap-3">
+                                                <div className="w-2 h-2 rounded-full bg-indigo-500 shadow-[0_0_10px_rgba(99,102,241,0.8)]" />
+                                                <span className="font-mono text-white font-black text-xl tracking-tight">{config.erp_method.toUpperCase()}</span>
+                                            </div>
+                                        </div>
+                                    </div>
+
+                                    <div className="relative p-8 bg-gradient-to-r from-blue-900/20 to-indigo-900/20 border border-blue-500/20 rounded-[32px] flex items-center justify-between group overflow-hidden">
+                                        <div className="absolute inset-0 bg-blue-600/5 opacity-0 group-hover:opacity-100 transition-opacity" />
+                                        <div className="relative z-10">
+                                            <span className="text-blue-300 font-black uppercase text-[10px] tracking-[0.2em] block mb-2">Hedef Organizasyon</span>
+                                            <div className="flex items-baseline gap-2">
+                                                {config.is_nebim_migration ? (
+                                                    <div className="flex flex-col">
+                                                        <span className="font-black text-white text-3xl tracking-tighter shadow-black drop-shadow-lg leading-tight">NEBIM V3 GÖÇÜ</span>
+                                                        <span className="text-indigo-400/60 font-black text-[10px] uppercase tracking-widest mt-1">Hedef: Firma 001 / Dönem 2026</span>
+                                                    </div>
+                                                ) : (
+                                                    <div className="flex flex-col">
+                                                        <div className="flex items-baseline gap-2">
+                                                            <span className="font-black text-white text-4xl tracking-tighter shadow-black drop-shadow-lg">{config.erp_firm_nr}</span>
+                                                            <span className="text-blue-400/60 font-bold text-xl">/ {config.erp_period_nr}</span>
+                                                        </div>
+                                                        <span className="text-blue-400/60 font-black text-[10px] uppercase tracking-widest mt-1">Logo Tam Entegrasyon</span>
+                                                    </div>
+                                                )}
+                                            </div>
+                                        </div>
+                                        <div className="relative z-10 flex flex-col items-end gap-2">
+                                            <div className="px-4 py-2 bg-emerald-500/10 border border-emerald-500/20 rounded-xl flex items-center gap-2">
+                                                <Shield className="w-3.5 h-3.5 text-emerald-400" />
+                                                <span className="text-[10px] font-black text-emerald-400 uppercase tracking-widest">
+                                                    {config.max_users || 5} Kullanıcı Lisansı
+                                                </span>
+                                            </div>
+                                            <div className="text-[9px] font-bold text-slate-500 uppercase tracking-widest">
+                                                Bitiş: {config.license_expiry ? new Date(config.license_expiry).toLocaleDateString('tr-TR') : '31.12.2026'}
+                                            </div>
+                                        </div>
+                                        <div className={`relative z-10 w-16 h-16 ${config.is_nebim_migration ? 'bg-indigo-600' : 'bg-blue-600'} rounded-2xl flex items-center justify-center shadow-2xl shadow-blue-600/30 group-hover:scale-110 transition-transform duration-500 border border-white/20`}>
+                                            <CheckCircle className="w-8 h-8 text-white" />
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+                        )}
+
+                    </div>
+                    <AppFooter
+                        showNavigation={true}
+                        onPrev={() => {
+                            console.log("Navigating back from step:", step);
+                            prevStep();
+                        }}
+                        onNext={step < finalStep ? nextStep : undefined}
+                        prevDisabled={step === 1 || loading || (step === finalStep && installationStep !== 'COMPLETED')}
+                        nextDisabled={loading || step === finalStep}
+                        nextLabel={step === summaryStep ? (isUpdateMode ? "GÜNCELLE" : "SİSTEMİ KUR") : "DEVAM ET"}
+                        prevLabel="GERİ DÖN"
+                    />
+                </div>
+
+                {step === finalStep && (
+                    <div className="absolute inset-0 z-[500] bg-[#020617] flex items-center justify-center p-8 lg:p-12 animate-in fade-in zoom-in-95 duration-700 rounded-[40px]">
+                        <div className="absolute inset-0 overflow-hidden rounded-[40px] pointer-events-none">
+                            <div className="absolute top-[-20%] right-[-10%] w-[60%] h-[60%] bg-blue-600/10 blur-[150px] rounded-full animate-pulse" />
+                            <div className="absolute bottom-[-20%] left-[-10%] w-[60%] h-[60%] bg-indigo-600/10 blur-[150px] rounded-full animate-pulse" style={{ animationDelay: '2s' }} />
+                            <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-full h-[1px] bg-gradient-to-r from-transparent via-white/5 to-transparent shadow-[0_0_100px_rgba(255,255,255,0.05)]" />
+                        </div>
+
+                        <div className="w-full max-w-6xl flex flex-col lg:flex-row items-center gap-16 relative z-10">
+                            <div className="w-full lg:w-1/2 space-y-12">
+                                <div className="space-y-4">
+                                    <div className="flex items-center gap-4">
+                                        <div className="w-16 h-16 rounded-[24px] bg-blue-600 flex items-center justify-center shadow-[0_0_40px_rgba(37,99,235,0.4)]">
+                                            {installationStep === 'COMPLETED' ? <CheckCircle className="w-10 h-10 text-white" /> : <Activity className="w-10 h-10 text-white animate-pulse" />}
+                                        </div>
+                                        <div>
+                                            <h1 className="text-5xl font-black text-white tracking-tighter">
+                                                {installationStep === 'COMPLETED' ? 'Kurulum Tamamlandı' : 'Sistem Kuruluyor'}
+                                            </h1>
+                                            <div className="text-blue-400 font-black uppercase tracking-[0.3em] text-[10px] opacity-60">System Core Initialization Protocol v{APP_SEMVER}</div>
+                                        </div>
+                                    </div>
+                                </div>
+
+                                <div className="grid grid-cols-2 gap-6">
+                                    {[
+                                        { label: 'Infrastructure', key: 'DATABASE', status: installationStep === 'DATABASE' ? 'PROCESSING' : ['MIGRATIONS', 'ENTITIES', 'USERS', 'SYNC', 'DEVICE', 'COMPLETED'].includes(installationStep) ? 'COMPLETED' : 'PENDING', icon: Server },
+                                        { label: 'Migrations', key: 'MIGRATIONS', status: installationStep === 'MIGRATIONS' ? 'PROCESSING' : ['ENTITIES', 'USERS', 'SYNC', 'DEVICE', 'COMPLETED'].includes(installationStep) ? 'COMPLETED' : 'PENDING', icon: Database },
+                                        { label: 'Entities', key: 'ENTITIES', status: installationStep === 'ENTITIES' ? 'PROCESSING' : ['USERS', 'SYNC', 'DEVICE', 'COMPLETED'].includes(installationStep) ? 'COMPLETED' : 'PENDING', icon: Globe },
+                                        { label: 'ERP Sync', key: 'SYNC', status: installationStep === 'SYNC' ? 'PROCESSING' : ['DEVICE', 'COMPLETED'].includes(installationStep) ? 'COMPLETED' : 'PENDING', icon: RefreshCw },
+                                    ].map((task, i) => (
+                                        <div key={i} className={`p-6 rounded-[32px] border transition-all ${task.status === 'COMPLETED' ? 'bg-emerald-500/5 border-emerald-500/20' : task.status === 'PROCESSING' ? 'bg-blue-500/10 border-blue-500/30' : 'bg-white/[0.03] border-white/5 opacity-40'}`}>
+                                            <div className="flex items-center justify-between mb-4">
+                                                <task.icon className={`w-5 h-5 ${task.status === 'COMPLETED' ? 'text-emerald-400' : task.status === 'PROCESSING' ? 'text-blue-400' : 'text-slate-600'}`} />
+                                                {task.status === 'COMPLETED' && <CheckCircle className="w-4 h-4 text-emerald-500" />}
+                                            </div>
+                                            <div className="text-[10px] font-black text-slate-500 uppercase tracking-widest mb-1">{task.label}</div>
+                                            <div className={`text-sm font-bold ${task.status === 'COMPLETED' ? 'text-white' : task.status === 'PROCESSING' ? 'text-blue-400 animate-pulse' : 'text-slate-700'}`}>
+                                                {task.status}
+                                            </div>
+                                        </div>
+                                    ))}
+                                </div>
+
+                                <div className="flex items-center gap-6 pt-4">
+                                    {installationStep === 'COMPLETED' ? (
+                                        <div className="flex items-center gap-4">
+                                            <button
+                                                onClick={() => window.location.href = '/'}
+                                                className="flex items-center gap-3 px-10 py-5 bg-blue-600 hover:bg-blue-500 text-white rounded-2xl font-black text-[11px] tracking-widest uppercase shadow-[0_20px_40px_-10px_rgba(37,99,235,0.5)] transition-all group active:scale-95"
+                                            >
+                                                <Layout className="w-4 h-4 group-hover:rotate-12 transition-transform" />
+                                                PANELİ AÇ
+                                            </button>
+
+                                            <button
+                                                onClick={async () => {
+                                                    if (isTauri) {
+                                                        safeInvoke('open_migration_log').catch(e => toast.error(e));
+                                                    }
+                                                }}
+                                                className="flex items-center gap-3 px-6 py-5 bg-white/5 hover:bg-white/10 text-slate-300 rounded-2xl font-black text-[11px] tracking-widest uppercase border border-white/10 transition-all hover:text-white"
+                                            >
+                                                <FileCode className="w-4 h-4 text-blue-400" />
+                                                LOGLARI İNCELE
+                                            </button>
+                                        </div>
+                                    ) : (
+                                        <div className="flex items-center gap-3 px-8 py-4 bg-white/5 text-white rounded-2xl font-black text-[11px] tracking-widest uppercase border border-white/10">
+                                            <Loader2 className="w-4 h-4 text-blue-400 animate-spin" />
+                                            {installationStep === 'ERROR' ? 'HATA OLUŞTU' : 'LÜTFEN BEKLEYİNİZ...'}
+                                        </div>
+                                    )}
+                                </div>
+                            </div>
+
+                            <div className="w-full lg:w-1/2 flex flex-col h-[600px]">
+                                <div className="flex-1 bg-black/80 border border-white/10 rounded-[40px] shadow-2xl flex flex-col overflow-hidden relative isolate">
+                                    <div className="p-6 border-b border-white/5 bg-[#0c1117] flex items-center justify-between shrink-0">
+                                        <div className="flex items-center gap-4">
+                                            <div className="flex gap-1.5">
+                                                <div className="w-2.5 h-2.5 rounded-full bg-red-500/20 border border-red-500/20" />
+                                                <div className="w-2.5 h-2.5 rounded-full bg-yellow-500/20 border border-yellow-500/20" />
+                                                <div className="w-2.5 h-2.5 rounded-full bg-green-500/20 border border-green-500/20" />
+                                            </div>
+                                            <div className="h-4 w-px bg-white/10 mx-1" />
+                                            <Terminal className="w-4 h-4 text-emerald-400" />
+                                            <span className="text-[10px] font-black text-white uppercase tracking-[0.2em]">System Core Console</span>
+                                        </div>
+                                        {installationStep !== 'COMPLETED' && installationStep !== 'ERROR' && (
+                                            <div className="flex items-center gap-2">
+                                                <span className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse" />
+                                                <span className="text-[9px] font-bold text-emerald-400 uppercase tracking-widest">Processing</span>
+                                            </div>
+                                        )}
+                                    </div>
+
+                                    <div className="flex-1 overflow-y-auto p-8 font-mono text-[11px] leading-relaxed custom-scrollbar bg-[#0a0f14]">
+                                        <div className="space-y-1.5">
+                                            {syncLogs.map((log, i) => (
+                                                <div key={i} className="flex gap-4 animate-in fade-in duration-200">
+                                                    <span className="text-white/20 shrink-0 tabular-nums">[{new Date().toLocaleTimeString()}]</span>
+                                                    <span className={`flex-1 break-all ${
+                                                        log.includes('error') || log.includes('Hata') || log.includes('Error') || log.includes('❌') || log.includes('💥')
+                                                        ? 'text-red-400'
+                                                        : log.includes('success') || log.includes('Tamamlandı') || log.includes('✅') || log.includes('başarı') || log.includes('hazır')
+                                                        ? 'text-emerald-400'
+                                                        : log.includes('⚠️') || log.includes('uyarı') || log.includes('Uyarı')
+                                                        ? 'text-yellow-400'
+                                                        : 'text-slate-300'
+                                                    }`}>
+                                                        {log}
+                                                    </span>
+                                                </div>
+                                            ))}
+                                            <div ref={(el) => el?.scrollIntoView({ behavior: 'smooth' })} />
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                )}
+            </div>
+
+            {showReinstallModal && (
+                <div className="fixed inset-0 z-[50001] flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm">
+                    <div
+                        className="w-full max-w-md rounded-2xl border border-white/10 bg-[#1e293b] p-6 shadow-2xl text-white"
+                        role="dialog"
+                        aria-modal="true"
+                        aria-labelledby="reinstall-modal-title"
+                    >
+                        <h3 id="reinstall-modal-title" className="text-lg font-black mb-2">
+                            Yeniden kurulum
+                        </h3>
+                        <p className="text-sm text-slate-300 leading-relaxed mb-4">
+                            Mevcut yapılandırma silinir ve sihirbaz baştan başlar. Windows RetailEX hizmetleri (arka plan, SQL Bridge, Logo) kaldırılacak; kurulumdan sonra gerekirse yeniden yükleyebilirsiniz.
+                        </p>
+                        <label className="flex items-start gap-3 cursor-pointer text-sm text-slate-200">
+                            <input
+                                type="checkbox"
+                                className="mt-1 rounded border-white/20 bg-white/5"
+                                checked={reinstallDeleteCRetailex}
+                                onChange={(e) => setReinstallDeleteCRetailex(e.target.checked)}
+                            />
+                            <span>
+                                <span className="font-semibold text-white">C:\RetailEX</span> klasörünü de sil (eski kurulum dosyaları; geri alınamaz)
+                            </span>
+                        </label>
+                        <div className="flex gap-3 mt-6 justify-end">
+                            <button
+                                type="button"
+                                className="px-4 py-2 rounded-xl border border-white/10 text-sm font-bold text-slate-300 hover:bg-white/10"
+                                onClick={() => setShowReinstallModal(false)}
+                            >
+                                İptal
+                            </button>
+                            <button
+                                type="button"
+                                className="px-4 py-2 rounded-xl bg-red-600 text-white text-sm font-bold hover:bg-red-700"
+                                onClick={async () => {
+                                    const delFolder = reinstallDeleteCRetailex;
+                                    setShowReinstallModal(false);
+                                    if (IS_TAURI) {
+                                        const r = await removeRetailexWindowsServicesIfTauri();
+                                        if (!r.ok) {
+                                            toast.error('Windows hizmetleri kaldırılamadı (gerekirse uygulamayı Yönetici olarak açın). ' + (r.detail || ''));
+                                        } else if (r.detail) {
+                                            console.info('[Yeniden kurulum]', r.detail);
+                                        }
+                                        if (delFolder) {
+                                            const d = await deleteCRetailexFolderIfTauri();
+                                            if (!d.ok) {
+                                                toast.error('C:\\RetailEX silinemedi: ' + (d.detail || ''));
+                                            } else if (d.detail) {
+                                                toast.success(d.detail);
+                                            }
+                                        }
+                                    }
+                                    setHasExistingConfig(false);
+                                }}
+                            >
+                                Onayla
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            )}
+
+        </div >
+    );
+};
+
+export default SetupWizard;

@@ -1,0 +1,321 @@
+.halo-block-fullwidth-banner .content-box {
+  max-width: 450px;
+  padding: 0px 15px;
+}
+
+.halo-block-fullwidth-banner .content-box .banner-title {
+  font-weight: 900;
+  font-size: 40px;
+  margin-bottom: 24px;
+}
+
+.halo-block-fullwidth-banner .content-box .desc {
+  margin-bottom: 42px;
+}
+
+.halo-block-fullwidth-banner .content-box .button {
+  width: 100%;
+  max-width: 196px;
+}
+
+.announcement-bar.style-2 {
+  background: #ffffff;
+}
+
+.announcement-bar.style-2 .message {
+  color: #000000;
+  font-weight: 600;
+  font-size: 16px;
+  letter-spacing: .02em;
+  padding: 24px 0px 24px;
+}
+
+.halo-block-sub-banner {
+  margin-bottom: 50px;
+}
+
+.halo-block-sub-banner .row {
+  margin-left: -5px;
+  margin-right: -5px;
+}
+
+.halo-block-sub-banner .row .halo-row-item {
+  padding: 0px 5px;
+}
+
+.halo-block-sub-banner .content-box .banner-title {
+  margin: 0 15px;
+}
+
+.halo-block-sub-banner .content-box .banner-title a {
+  font-size: 30px;
+  font-weight: 900;
+  letter-spacing: .02em;
+  color: #ffffff;
+}
+
+.halo-block-custom-text {
+  padding: 40px 15px 35px;
+  margin: 0 auto;
+}
+
+.halo-block-custom-text .halo-block-content {
+  max-width: 870px;
+  margin: 0 auto;
+  color: #3c3c3c;
+  font-size: 18px;
+}
+
+.halo-product-block {
+  margin: 45px 0 30px;
+}
+
+.halo-product-block .halo-block-header {
+  margin-bottom: 38px !important;
+}
+
+.halo-product-block .halo-block-header .title {
+  font-size: 24px;
+  font-weight: 900;
+}
+
+.halo-block-spotlight {
+  padding: 25px 0px 25px;
+}
+
+.halo-block-spotlight .spotlight-item .content-box {
+  padding: 30px 15px 30px;
+}
+
+.halo-block-spotlight .spotlight-item .content-box .title {
+  font-size: 24px;
+  line-height: 36px;
+  letter-spacing: .02em;
+  font-weight: 900;
+  color: #232323;
+  margin-bottom: 17px;
+}
+
+.halo-block-spotlight .spotlight-item .content-box .desc {
+  margin-bottom: 12px;
+}
+
+.halo-block-spotlight .spotlight-item .content-box .button {
+  width: 100%;
+  max-width: 196px;
+  margin-top: 30px;
+}
+
+.halo-block-icon-with-text {
+  padding-bottom: 73px;
+}
+
+.halo-block-icon-with-text .halo-row-item {
+  padding-top: 10px;
+}
+
+.halo-block-icon-with-text .halo-row-item .icon {
+  width: 85px;
+  margin: 0 auto 30px;
+}
+
+.halo-block-icon-with-text .halo-row-item .content-box {
+  padding: 18px 35px 20px;
+}
+
+.halo-block-icon-with-text .halo-row-item .content-box .title {
+  font-family: 'Jost', sans-serif;
+  font-size: 18px;
+  font-weight: 700;
+  margin-bottom: 17px;
+}
+
+.halo-block-product-tab {
+  padding: 0 0 30px;
+}
+
+.halo-block-product-tab .nav-tabs {
+  -webkit-box-pack: center;
+      -ms-flex-pack: center;
+          justify-content: center;
+  border: none;
+  margin-bottom: 60px;
+}
+
+.halo-block-product-tab .nav-tabs .nav-link {
+  font-size: 20px;
+  font-weight: 900;
+  letter-spacing: 0.02em;
+  color: #969696;
+  position: relative;
+  text-transform: capitalize;
+  padding: 8px 0;
+  margin: 0 15px;
+  border: none;
+}
+
+.halo-block-product-tab .nav-tabs .nav-link:before {
+  content: "";
+  position: absolute;
+  bottom: -2px;
+  left: 0;
+  width: 0;
+  height: 3px;
+  -webkit-transition: all 0.5s ease;
+  transition: all 0.5s ease;
+  background: #232323;
+}
+
+.halo-block-product-tab .nav-tabs .nav-link.active {
+  color: #232323;
+  border: none;
+}
+
+.halo-block-product-tab .nav-tabs .nav-link.active:before {
+  width: 100%;
+}
+
+.halo-block-product-tab .nav-tabs .nav-link:hover {
+  border: none;
+  right: 0;
+  left: auto;
+  color: #232323;
+}
+
+.halo-block-product-tab .nav-tabs .nav-link:hover:before {
+  width: 100%;
+}
+
+.halo-block-product-tab .product-tab-content {
+  margin-top: 27px;
+}
+
+.halo-block-product-tab .product-tab-content > .tab-pane {
+  display: block;
+  height: 0;
+  overflow: hidden;
+}
+
+.halo-block-product-tab .product-tab-content > .tab-pane.active {
+  height: auto;
+  overflow: visible;
+}
+
+.halo-block-product-tab .product-tab-content .slick-dots {
+  bottom: -30px;
+}
+
+.halo-block-instagram {
+  background: #ecf5f5;
+  padding: 53px 0px 54px;
+}
+
+.halo-block-instagram .halo-block-header {
+  margin-bottom: 34px;
+}
+
+.halo-block-instagram .halo-block-header .title {
+  font-size: 24px;
+  font-weight: 900;
+  color: #232323;
+  margin-bottom: 15px;
+}
+
+.halo-block-instagram .halo-block-header .title svg {
+  width: 22px;
+  height: 22px;
+  margin-right: 8px;
+  position: relative;
+  top: -2px;
+}
+
+.halo-block-instagram .row {
+  margin-left: -5px;
+  margin-right: -5px;
+}
+
+.halo-block-instagram .row .halo-row-item {
+  padding: 0px 5px;
+}
+
+.halo-block-instagram .instagram-button {
+  margin: 36px 0px 36px;
+}
+
+.halo-block-instagram .instagram-button .button {
+  width: 100%;
+  max-width: 230px;
+  background: #1a2531;
+}
+
+.halo-block-instagram .slick-dots {
+  position: absolute;
+  bottom: 7px;
+  left: 4px;
+  background: #ffffffbf;
+  width: auto;
+  padding: 8px 5px 7px;
+  margin: 0;
+}
+
+@media (max-width: 1024px) {
+  .halo-block-sub-banner .container {
+    padding: 0 15px;
+  }
+}
+
+@media (max-width: 767px) {
+  .halo-block-fullwidth-banner .content-box .banner-title,
+  .halo-block-fullwidth-banner .content-box .banner-text {
+    color: #ffffff;
+  }
+}
+
+@media (max-width: 551px) {
+  .halo-block-product-tab .nav-tabs {
+    -webkit-box-pack: start;
+        -ms-flex-pack: start;
+            justify-content: flex-start;
+    -ms-flex-wrap: nowrap;
+        flex-wrap: nowrap;
+    overflow-x: auto;
+    overflow-y: hidden;
+    white-space: nowrap;
+  }
+}
+
+@media (min-width: 768px) {
+  .halo-product-block {
+    margin: 45px 0 75px;
+  }
+  .halo-block-product-tab {
+    padding: 0 0 75px;
+  }
+  .halo-block-custom-text {
+    padding: 74px 15px 65px;
+  }
+  .halo-block-product-tab .nav-tabs .nav-link {
+    font-size: 24px;
+    margin: 0 25px;
+  }
+}
+
+@media (min-width: 1200px) {
+  .halo-block-spotlight {
+    padding: 73px 0px 48px;
+  }
+}
+
+@media (min-width: 1600px) {
+  .halo-block-fullwidth-banner .content-box {
+    left: calc((100% - 1170px)/2);
+  }
+  .halo-block-fullwidth-banner .content-box.content-box--right {
+    left: auto;
+    right: calc((100% - 1170px)/2);
+  }
+  .halo-block-spotlight .spotlight-item .content-box {
+    padding: 30px;
+  }
+}
+/*# sourceMappingURL=demo-4.css.map */

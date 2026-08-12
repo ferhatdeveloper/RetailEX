@@ -1,0 +1,35 @@
+# RetailEX-Sync-Service — kiracı WebSocket + REST (/ws, /sync, /api/broadcasts)
+#
+# Dokploy: git pull origin main sonrası cache’siz build:
+#   docker compose -f docker-compose.dokploy.yml build --no-cache --pull sync_lovan
+# BuildKit cache mount’ları (--mount=type=cache) --no-cache ile bile cargo registry’yi korur.
+#
+# Eski hata (Cargo 1.83 + getrandom 0.4): repo güncel değil veya Docker layer cache.
+FROM rust:1.88.0-bookworm AS builder
+WORKDIR /build
+RUN rustc --version && cargo --version \
+  && rustc --version | grep -qE 'rustc 1\.(8[5-9]|9|[1-9][0-9]{2,})' \
+  || (echo "FATAL: Rust >= 1.85 gerekli (edition2024). Eski rust:bookworm cache mi?" && exit 1)
+RUN apt-get update && apt-get install -y --no-install-recommends pkg-config libssl-dev && rm -rf /var/lib/apt/lists/*
+COPY src/sync-service/Cargo.toml src/sync-service/Cargo.lock ./
+RUN grep -qF '=1.11.0' Cargo.toml \
+  || (echo "FATAL: uuid pin eksik — git pull origin main" && exit 1) \
+  && ! grep -E '^name = "getrandom"$' -A2 Cargo.lock | grep -qE 'version = "0\.4\.' \
+  || (echo "FATAL: Cargo.lock getrandom 0.4.x — git pull origin main" && exit 1)
+COPY src/sync-service/.sqlx ./.sqlx
+COPY src/sync-service/src ./src
+ENV SQLX_OFFLINE=true
+# target cache mount’ta kalır; binary katmana kopyalanır (sonraki build’lerde crate yeniden derlenmez)
+RUN --mount=type=cache,target=/usr/local/cargo/registry,sharing=locked \
+    --mount=type=cache,target=/usr/local/cargo/git,sharing=locked \
+    --mount=type=cache,target=/build/target,sharing=locked \
+    cargo build --locked --release --bin RetailEX-Sync-Service \
+    && cp /build/target/release/RetailEX-Sync-Service /build/RetailEX-Sync-Service
+
+FROM debian:bookworm-slim
+RUN apt-get update && apt-get install -y --no-install-recommends ca-certificates libssl3 && rm -rf /var/lib/apt/lists/*
+WORKDIR /app
+COPY --from=builder /build/RetailEX-Sync-Service /app/RetailEX-Sync-Service
+ENV BIND_ADDRESS=0.0.0.0:8080
+EXPOSE 8080
+CMD ["/app/RetailEX-Sync-Service"]

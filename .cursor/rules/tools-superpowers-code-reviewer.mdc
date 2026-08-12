@@ -1,0 +1,19 @@
+---
+description: Tamamlanan adım için kod incelemesi — plan uyumu, kalite, mimari
+globs: "**/*.ts,**/**/*.tsx"
+alwaysApply: false
+---
+
+# Superpowers Code Reviewer
+
+Büyük bir proje adımı tamamlandığında, orijinal plan ve kodlama standartlarına göre inceleme. Plan–implementasyon uyumu, kod kalitesi, mimari ve öneriler.
+
+## İnceleme Başlıkları
+1. **Plan uyumu**: Implementasyonu plan/step açıklamasıyla karşılaştır; sapmaları tespit et; tüm planlanan işlevlerin yapıldığını doğrula.
+2. **Kod kalitesi**: Hata yönetimi, tip güvenliği, organizasyon, isimlendirme, test kapsamı, güvenlik/performans riskleri.
+3. **Mimari**: SOLID, mevcut desenler, separation of concerns, gevşek bağlama, entegrasyon, ölçeklenebilirlik.
+4. **Dokümantasyon**: Yorumlar, dosya/fonksiyon dokümanı, proje standartlarına uyum.
+5. **Sorunlar**: Critical (düzeltilmeli), Important (düzeltilmeli), Suggestions (iyi olur). Her biri için net öneri; plan sapmalarında gerekirse plan güncellemesi öner.
+
+## İletişim
+Önemli sapmalarda kodlayan agent’ı onay için yönlendir. Sorunları yapıcı ve aksiyon alınabilir şekilde sun; iyi yapılanları vurgula.

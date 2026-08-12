@@ -1,0 +1,16 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "\n            INSERT INTO broadcast_recipients (\n                id, broadcast_id, store_id, status, created_at\n            )\n            VALUES ($1, $2, $3, 'pending', NOW())\n            ",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Left": [
+        "Uuid",
+        "Uuid",
+        "Uuid"
+      ]
+    },
+    "nullable": []
+  },
+  "hash": "f7bdad1a116204330cc73dd45a2567b95ba53a773b42c11af082a0c77b5ecf3e"
+}

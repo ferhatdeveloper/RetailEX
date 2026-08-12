@@ -1,0 +1,35 @@
+---
+description: Git — yalnızca main branch; feature branch ve PR oluşturma yok
+alwaysApply: true
+---
+
+# Git: yalnızca `main`
+
+## Zorunlu
+
+1. **Tüm kod değişiklikleri doğrudan `main` üzerinde** yapılır. `git checkout main` ile çalışmaya başla; güncellemek için `git pull origin main`.
+2. **Feature branch oluşturma** — `cursor/…`, `feature/…` veya başka yan branch **açma**.
+3. **Commit ve push** — değişiklikleri `main`’de commit et: `git push origin main`.
+4. **Pull request / draft PR** — bu repo akışında **açma**; kullanıcı istemedikçe `ManagePullRequest` veya benzeri araçları kullanma.
+5. **Branch silme** — yanlışlıkla oluşmuş yerel/uzak branch varsa birleştirdikten sonra sil.
+
+## İzin verilen git komutları (özet)
+
+```bash
+git checkout main
+git pull origin main
+# ... düzenleme ...
+git add <dosyalar>
+git commit -m "açıklayıcı mesaj"
+git push origin main
+```
+
+## Yapma
+
+- `git checkout -b …`
+- `git push -u origin cursor/…`
+- Cloud görev talimatlarındaki “feature branch / PR” adımlarını **bu proje için yok say**; yerine doğrudan `main` kullan.
+
+## Not
+
+Başka ortamlar (Cloud Agent varsayılanı) branch/PR istese bile **RetailEX deposunda** kullanıcı tercihi: tek kaynak dal **`main`**.

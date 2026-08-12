@@ -1,0 +1,17 @@
+---
+description: AWS CDK — TypeScript/Python ile altyapı kodu, stack/construct desenleri
+globs: "**/cdk.json","**/*stack*.ts","**/*construct*.ts"
+alwaysApply: false
+---
+
+# AWS CDK Development
+
+CDK stack’leri, construct’lar, infrastructure as code; CDK, CloudFormation, IaC, `cdk synth`/`cdk deploy` ile programatik AWS altyapısı.
+
+## Ön koşul
+AWS MCP araçları gerekli. Sorularda `mcp__aws-mcp__*` / `mcp__*awsdocs*__*` ile dokümantasyonu doğrula. CDK MCP sunucusu varsa construct önerileri ve best practice için kullan.
+
+## Kullanım
+- CDK app yapısı, construct desenleri, stack birleştirme, deployment akışları.
+- TypeScript/Python. `cdk`, `aws cloudformation`, `aws sts get-caller-identity` ile çalışma.
+- Deploy öncesi hesap/region doğrula.

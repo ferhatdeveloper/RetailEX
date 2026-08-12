@@ -1,0 +1,62 @@
+<?xml version="1.0" encoding="utf-8"?>
+<Project ToolsVersion="14.0" DefaultTargets="Build" xmlns="http://schemas.microsoft.com/developer/msbuild/2003">
+  <PropertyGroup>
+    <Configuration Condition=" '$(Configuration)' == '' ">Debug</Configuration>
+    <Platform Condition=" '$(Platform)' == '' ">AnyCPU</Platform>
+    <ProjectGuid>{B8E4F2A1-3C5D-4E7F-9A1B-2D4E6F8A0C3E}</ProjectGuid>
+    <OutputType>Library</OutputType>
+    <RootNamespace>TeraziRongta.Core</RootNamespace>
+    <AssemblyName>TeraziRongta.Core</AssemblyName>
+    <TargetFrameworkVersion>v4.8</TargetFrameworkVersion>
+    <FileAlignment>512</FileAlignment>
+  </PropertyGroup>
+  <PropertyGroup Condition=" '$(Configuration)|$(Platform)' == 'Debug|AnyCPU' ">
+    <DebugSymbols>true</DebugSymbols>
+    <DebugType>full</DebugType>
+    <Optimize>false</Optimize>
+    <OutputPath>bin\Debug\</OutputPath>
+    <DefineConstants>DEBUG;TRACE</DefineConstants>
+  </PropertyGroup>
+  <PropertyGroup Condition=" '$(Configuration)|$(Platform)' == 'Release|AnyCPU' ">
+    <DebugType>pdbonly</DebugType>
+    <Optimize>true</Optimize>
+    <OutputPath>bin\Release\</OutputPath>
+    <DefineConstants>TRACE</DefineConstants>
+  </PropertyGroup>
+  <ItemGroup>
+    <Reference Include="Newtonsoft.Json">
+      <HintPath>..\WindowsFormsApplication1\Newtonsoft\Newtonsoft.Json.dll</HintPath>
+    </Reference>
+    <Reference Include="System" />
+    <Reference Include="System.Core" />
+    <Reference Include="System.Net.Http" />
+  </ItemGroup>
+  <ItemGroup>
+    <Compile Include="Config\AppConfig.cs" />
+    <Compile Include="Config\RongtaPaths.cs" />
+    <Compile Include="Helpers\RlsFunctionSetHelper.cs" />
+    <Compile Include="Helpers\SystemCfgPatcher.cs" />
+    <Compile Include="Helpers\LabelSlotHelper.cs" />
+    <Compile Include="Helpers\SaleReportHelper.cs" />
+    <Compile Include="Helpers\PluJsonMapper.cs" />
+    <Compile Include="Helpers\ScalePriceHelper.cs" />
+    <Compile Include="Models\IncrementalSyncModels.cs" />
+    <Compile Include="Models\CentralModels.cs" />
+    <Compile Include="Models\ScaleDeviceConfig.cs" />
+    <Compile Include="Models\ScaleModels.cs" />
+    <Compile Include="Models\SaleReportModels.cs" />
+    <Compile Include="Models\LiveWeightResult.cs" />
+    <Compile Include="Models\ScalePluDefaults.cs" />
+    <Compile Include="Models\ScalePluRecord.cs" />
+    <Compile Include="Native\LabelScaleNative.cs" />
+    <Compile Include="Services\RlsResourceResolver.cs" />
+    <Compile Include="Services\RetailExHttp.cs" />
+    <Compile Include="Services\RetailExCentralService.cs" />
+    <Compile Include="Services\ScaleIncrementalSyncService.cs" />
+    <Compile Include="Services\RetailExApiClient.cs" />
+    <Compile Include="Services\ScaleService.cs" />
+    <Compile Include="Services\SyncEngine.cs" />
+    <Compile Include="Properties\AssemblyInfo.cs" />
+  </ItemGroup>
+  <Import Project="$(MSBuildToolsPath)\Microsoft.CSharp.targets" />
+</Project>

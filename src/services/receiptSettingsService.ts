@@ -1,0 +1,148 @@
+/**
+ * Fiş / Firma bilgisi ve logo ayarları — app_settings tablosu üzerinden firma bazlı.
+ */
+import { postgres, ERP_SETTINGS } from './postgres';
+
+/** Fiş / önizleme dilleri — POS fişi ve çeviri anahtarları ile uyumlu */
+export type ReceiptLangCode = 'tr' | 'en' | 'ar' | 'ku' | 'uz';
+export type PosReceiptPrintFormat = '80mm' | 'A5' | 'A4';
+
+const RECEIPT_LANG_CODES: readonly ReceiptLangCode[] = ['tr', 'en', 'ar', 'ku', 'uz'];
+const POS_RECEIPT_PRINT_FORMATS: readonly PosReceiptPrintFormat[] = ['80mm', 'A5', 'A4'];
+
+export function isReceiptLangCode(s: string | undefined | null): s is ReceiptLangCode {
+  return !!s && (RECEIPT_LANG_CODES as readonly string[]).includes(s);
+}
+
+export function isPosReceiptPrintFormat(
+  s: string | undefined | null
+): s is PosReceiptPrintFormat {
+  return !!s && (POS_RECEIPT_PRINT_FORMATS as readonly string[]).includes(s);
+}
+
+/**
+ * Fiş dil önceliği: Sistem Yönetimi → Fiş / Firma (`defaultReceiptLanguage`) →
+ * yazıcı yerel ayarı (`retailos-printer-settings.defaultLanguage`) → uygulama dili → tr.
+ */
+export function resolveDefaultReceiptLang(
+  receiptSettings: Pick<ReceiptSettings, 'defaultReceiptLanguage'>,
+  uiLanguage: string,
+  printerDefaultLanguage?: string | null
+): ReceiptLangCode {
+  if (isReceiptLangCode(receiptSettings.defaultReceiptLanguage)) {
+    return receiptSettings.defaultReceiptLanguage;
+  }
+  if (isReceiptLangCode(printerDefaultLanguage)) {
+    return printerDefaultLanguage;
+  }
+  if (isReceiptLangCode(uiLanguage)) {
+    return uiLanguage;
+  }
+  return 'tr';
+}
+
+/**
+ * POS satış sonrası varsayılan çıktı formatı:
+ * Fiş/Firma ayarı (`defaultPosReceiptPrintFormat`) → yazıcı yerel ayarı (`paperSize`) → 80mm.
+ */
+export function resolveDefaultPosReceiptPrintFormat(
+  receiptSettings: Pick<ReceiptSettings, 'defaultPosReceiptPrintFormat'>,
+  printerPaperSize?: string | null
+): PosReceiptPrintFormat {
+  if (isPosReceiptPrintFormat(receiptSettings.defaultPosReceiptPrintFormat)) {
+    return receiptSettings.defaultPosReceiptPrintFormat;
+  }
+  if (isPosReceiptPrintFormat(printerPaperSize)) {
+    return printerPaperSize;
+  }
+  return '80mm';
+}
+
+export interface ReceiptSettings {
+  companyName?: string;
+  companyAddress?: string;
+  companyPhone?: string;
+  companyTaxOffice?: string;
+  companyTaxNumber?: string;
+  /** Base64 data URL (data:image/png;base64,...) — fişte gösterilecek logo */
+  logoDataUrl?: string;
+  /**
+   * Varsayılan fiş dili (POS önizleme / yazdır açılışında).
+   * Boşsa uygulama dili kullanılır.
+   */
+  defaultReceiptLanguage?: ReceiptLangCode;
+  /**
+   * Fişte ürün adı için hangi ürün alanı kullanılacak (dil bazlı).
+   * Örn: tr→name, en→description_en. Boş dilde `name` kullanılır.
+   * Anahtarlar `Product` üzerindeki alan adlarıyla aynı olmalıdır.
+   */
+  productNameFieldByLang?: Partial<Record<ReceiptLangCode, string>>;
+  /** POS satışta varsayılan çıktı kağıdı */
+  defaultPosReceiptPrintFormat?: PosReceiptPrintFormat;
+}
+
+const KEY_RECEIPT_SETTINGS = 'receipt_settings';
+
+/** Aynı oturumda tekrar tekrar PG sorgusu önlemek (yazdırma hızı) */
+const RECEIPT_SETTINGS_CACHE_MS = 5 * 60 * 1000;
+let receiptSettingsMemoryCache: { firmKey: string; value: ReceiptSettings; at: number } | null = null;
+
+export function invalidateReceiptSettingsCache(): void {
+  receiptSettingsMemoryCache = null;
+}
+
+export async function getReceiptSettings(firmNr?: string): Promise<ReceiptSettings> {
+  const fn = firmNr || ERP_SETTINGS.firmNr || '001';
+  const now = Date.now();
+  if (
+    receiptSettingsMemoryCache &&
+    receiptSettingsMemoryCache.firmKey === fn &&
+    now - receiptSettingsMemoryCache.at < RECEIPT_SETTINGS_CACHE_MS
+  ) {
+    return receiptSettingsMemoryCache.value;
+  }
+  let result: ReceiptSettings = {};
+  try {
+    const { rows } = await postgres.query<{ value: ReceiptSettings }>(
+      `SELECT value FROM app_settings WHERE key = $1 AND firm_nr = $2`,
+      [KEY_RECEIPT_SETTINGS, fn]
+    );
+    if (rows.length > 0 && rows[0].value) {
+      result = rows[0].value as ReceiptSettings;
+    }
+  } catch (e) {
+    console.warn('[receiptSettings] getReceiptSettings failed', e);
+  }
+  receiptSettingsMemoryCache = { firmKey: fn, value: result, at: now };
+  return result;
+}
+
+export async function saveReceiptSettings(data: ReceiptSettings, firmNr?: string): Promise<void> {
+  const fn = firmNr || ERP_SETTINGS.firmNr || '001';
+  try {
+    let existing: ReceiptSettings = {};
+    try {
+      const { rows } = await postgres.query<{ value: ReceiptSettings }>(
+        `SELECT value FROM app_settings WHERE key = $1 AND firm_nr = $2`,
+        [KEY_RECEIPT_SETTINGS, fn]
+      );
+      if (rows.length > 0 && rows[0].value) {
+        existing = rows[0].value as ReceiptSettings;
+      }
+    } catch {
+      // Okuma hatasında sadece gelen payload ile devam ederiz.
+    }
+
+    const merged: ReceiptSettings = { ...existing, ...data };
+    await postgres.query(
+      `INSERT INTO app_settings (key, value, firm_nr)
+       VALUES ($1, $2::jsonb, $3)
+       ON CONFLICT (key, firm_nr) DO UPDATE SET value = $2::jsonb`,
+      [KEY_RECEIPT_SETTINGS, JSON.stringify(merged), fn]
+    );
+    invalidateReceiptSettingsCache();
+  } catch (e) {
+    console.error('[receiptSettings] saveReceiptSettings failed', e);
+    throw e;
+  }
+}

@@ -1,0 +1,221 @@
+.halo-block-slideshow {
+  margin-bottom: 20px;
+  line-height: 1;
+  font-size: 0;
+}
+
+.halo-block-slideshow .halo-row-carousel {
+  line-height: 1;
+}
+
+.halo-block-slideshow .halo-row-carousel .bannerCarousel-slide {
+  display: none;
+}
+
+.halo-block-slideshow .halo-row-carousel .bannerCarousel-slide:first-child {
+  display: block;
+}
+
+.halo-block-slideshow .halo-row-carousel .slick-dots {
+  position: absolute;
+  bottom: 14px;
+  width: 100%;
+}
+
+.halo-block-slideshow .halo-row-carousel .slick-dots li button {
+  background: #84add0;
+  border-color: #84add0;
+}
+
+.halo-block-slideshow .halo-row-carousel .slick-dots li.slick-active button {
+  border-color: #ffffff;
+  background: transparent;
+}
+
+.halo-block-slideshow .halo-row-carousel.slick-initialized .bannerCarousel-slide {
+  display: block;
+}
+
+.halo-block-four-banner {
+  padding-bottom: 7px;
+}
+
+.halo-block-four-banner .halo-row-item {
+  margin-bottom: 10px;
+}
+
+.halo-block-four-banner .halo-row-item.halo-row-2item {
+  padding: 0;
+}
+
+.halo-block-two-banner {
+  padding-bottom: 8px;
+}
+
+.halo-block-custom {
+  background: #f5f5f5;
+  padding: 30px 0px;
+  margin: 25px 0;
+}
+
+.halo-block-custom .halo-row-item .wrapper-item {
+  -webkit-box-shadow: 0px 2px 20px 0px rgba(0, 0, 0, 0.05);
+          box-shadow: 0px 2px 20px 0px rgba(0, 0, 0, 0.05);
+}
+
+.halo-block-custom .halo-row-item .content-box {
+  background: #ffffff;
+  padding: 23px 0px 25px;
+}
+
+.halo-block-custom .halo-row-item .content-box .title {
+  font-size: 20px;
+  letter-spacing: 0;
+  font-weight: 900;
+  color: #00163a;
+  font-style: italic;
+  margin: 0;
+  padding-bottom: 10px;
+}
+
+.halo-block-custom .halo-row-item .content-box .link {
+  color: #00163a;
+  font-size: 14px;
+  font-weight: 700;
+}
+
+.halo-block-custom .slick-dots {
+  margin-top: 35px;
+}
+
+.halo-block-instagram .halo-block-header {
+  margin-bottom: 30px;
+  padding-top: 3px;
+}
+
+.halo-block-instagram .row {
+  margin-left: -5px;
+  margin-right: -5px;
+}
+
+.halo-block-instagram .row .halo-row-item {
+  padding-left: 5px;
+  padding-right: 5px;
+  width: 20%;
+}
+
+.halo-block-instagram .row .slick-dots {
+  margin-top: 15px;
+  position: absolute;
+}
+
+.halo-block-instagram .halo-block-navigation {
+  width: 100%;
+  padding-top: 48px;
+  padding-bottom: 55px;
+  display: -webkit-box;
+  display: -ms-flexbox;
+  display: flex;
+  place-items: center;
+}
+
+.halo-block-instagram .halo-block-navigation .nav {
+  list-style-type: none;
+  display: -webkit-box;
+  display: -ms-flexbox;
+  display: flex;
+  -webkit-box-pack: start;
+      -ms-flex-pack: start;
+          justify-content: flex-start;
+  -webkit-box-align: center;
+      -ms-flex-align: center;
+          align-items: center;
+  padding: 0;
+  margin: 0 auto;
+  -ms-flex-wrap: nowrap;
+      flex-wrap: nowrap;
+  white-space: nowrap;
+  overflow-x: auto;
+  overflow-y: hidden;
+}
+
+.halo-block-instagram .halo-block-navigation .nav .nav-item {
+  position: relative;
+  padding: 10px 25px 11px;
+  background: #f5f5f5;
+  margin: 0px 5px;
+  border-radius: 30px;
+}
+
+.halo-block-instagram .halo-block-navigation .nav .nav-item a {
+  color: #202020;
+  font-weight: 500;
+  -webkit-transition: color .35s ease-in-out;
+  transition: color .35s ease-in-out;
+}
+
+.halo-block-icon-with-text {
+  background: #f5f5f5;
+  padding: 34px 0px 31px;
+}
+
+.halo-block-icon-with-text .wrapper-item {
+  display: -webkit-box;
+  display: -ms-flexbox;
+  display: flex;
+  -webkit-box-pack: center;
+      -ms-flex-pack: center;
+          justify-content: center;
+  -webkit-box-align: center;
+      -ms-flex-align: center;
+          align-items: center;
+  -ms-flex-wrap: nowrap;
+      flex-wrap: nowrap;
+}
+
+.halo-block-icon-with-text .wrapper-item .icon {
+  margin-right: 9px;
+}
+
+.halo-block-icon-with-text .wrapper-item .title {
+  font-weight: 900;
+  line-height: 24px;
+  font-size: 14px;
+  color: #00163a;
+  font-style: italic;
+  margin: 0;
+}
+
+@media (max-width: 767px) {
+  .halo-block-custom .row .halo-row-item {
+    padding-left: 0;
+    padding-right: 0;
+  }
+}
+
+@media (min-width: 768px) {
+  .halo-block-four-banner .halo-row-item {
+    margin-bottom: 0;
+  }
+  .halo-block-four-banner .halo-row-item .halo-row-2item {
+    margin-bottom: 20px;
+    padding: 0;
+  }
+  .halo-block-custom {
+    padding: 42px 0px;
+    margin: 40px 0;
+  }
+  .halo-block-custom .halo-row-item .content-box .title {
+    font-size: 24px;
+  }
+}
+
+@media (min-width: 1025px) {
+  .halo-block-slideshow {
+    margin-bottom: 30px;
+  }
+  .halo-block-four-banner .halo-row-item .halo-row-2item {
+    margin-bottom: 30px;
+  }
+}
+/*# sourceMappingURL=demo-6.css.map */

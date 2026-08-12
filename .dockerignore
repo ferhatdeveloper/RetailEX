@@ -1,0 +1,14 @@
+node_modules
+build
+dist
+.git
+.claude
+**/.env
+**/.env.*
+!.env.example
+DeskApp/target
+android/app/build
+*.log
+coverage
+.vscode
+.idea

@@ -1,0 +1,2087 @@
+﻿cargo :    Compiling retailex v0.1.36 (D:\Retai
+lEX\src-tauri)
+At line:1 char:1
++ cargo build > errors.txt 2>&1
++ ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+    + CategoryInfo          : NotSpecified: (  
+     Compiling re...ilEX\src-tauri):String) [  
+  ], RemoteException
+    + FullyQualifiedErrorId : NativeCommandErr 
+   or
+ 
+warning: unused import: `wintun::Adapter`
+ --> src\vpn.rs:7:5
+  |
+7 | use wintun::Adapter;
+  |     ^^^^^^^^^^^^^^^
+  |
+  = note: `#[warn(unused_imports)]` (part of `#
+[warn(unused)]`) on by default
+
+warning: unused import: `tokio::sync::mpsc`
+ --> src\vpn.rs:9:5
+  |
+9 | use tokio::sync::mpsc;
+  |     ^^^^^^^^^^^^^^^^^
+
+warning: variable does not need to be mutable
+   --> src\vpn.rs:196:9
+    |
+196 |     let mut buf_tun = [0u8; 2048];
+    |         ----^^^^^^^
+    |         |
+    |         help: remove this `mut`
+    |
+    = note: `#[warn(unused_mut)]` (part of `#[w
+arn(unused)]`) on by default
+
+warning: unused variable: `buf_tun`
+   --> src\vpn.rs:196:9
+    |
+196 |     let mut buf_tun = [0u8; 2048];
+    |         ^^^^^^^^^^^ help: if this is inte
+ntional, prefix it with an underscore: `_buf_tu
+n`
+    |
+    = note: `#[warn(unused_variables)]` (part o
+f `#[warn(unused)]`) on by default
+
+warning: unused variable: `packet`
+   --> src\vpn.rs:207:49
+    |
+207 | ...ToTunnelV4(packet, _) => {
+    |               ^^^^^^ help: if this is int
+entional, prefix it with an underscore: `_packe
+t`
+
+warning: field `vpn_manager` is never read
+  --> src\vpn_tray.rs:34:5
+   |
+33 | struct AppState {
+   |        -------- field in this struct
+34 |     vpn_manager: Arc<VpnManager>,
+   |     ^^^^^^^^^^^
+   |
+   = note: `AppState` has a derived impl for th
+e trait `Clone`, but this is intentionally igno
+red during dead code analysis
+   = note: `#[warn(dead_code)]` (part of `#[war
+n(unused)]`) on by default
+
+warning: struct `VpnStatus` is never constructe
+d
+  --> src\vpn.rs:32:12
+   |
+32 | pub struct VpnStatus {
+   |            ^^^^^^^^^
+
+warning: field `tunnel` is never read
+  --> src\vpn.rs:41:9
+   |
+40 | pub struct VpnManager {
+   |            ---------- field in this struct
+41 |     pub tunnel: Arc<Mutex<Option<VpnSess..
+.
+   |         ^^^^^^
+
+warning: fields `config`, `tx_bytes`, and `rx_b
+ytes` are never read
+  --> src\vpn.rs:45:9
+   |
+44 | pub struct VpnSession {
+   |            ---------- fields in this struc
+t
+45 |     pub config: VpnConfig,
+   |         ^^^^^^
+46 |     pub tx_bytes: u64,
+   |         ^^^^^^^^
+47 |     pub rx_bytes: u64,
+   |         ^^^^^^^^
+
+warning: associated function `from_keys` is nev
+er used
+  --> src\vpn.rs:59:12
+   |
+58 | impl VpnConfig {
+   | -------------- associated function in this
+ implementation
+59 |     pub fn from_keys(private: String, pu..
+.
+   |            ^^^^^^^^^
+
+warning: function `generate_vpn_keys` is never 
+used
+  --> src\vpn.rs:73:8
+   |
+73 | pub fn generate_vpn_keys() -> Result<ser..
+.
+   |        ^^^^^^^^^^^^^^^^^
+
+warning: function `start_vpn_mesh` is never use
+d
+  --> src\vpn.rs:88:14
+   |
+88 | pub async fn start_vpn_mesh(
+   |              ^^^^^^^^^^^^^^
+
+warning: function `get_vpn_status` is never use
+d
+   --> src\vpn.rs:114:8
+    |
+114 | pub fn get_vpn_status(state: State<'_, ..
+.
+    |        ^^^^^^^^^^^^^^
+
+warning: function `get_mesh_peers` is never use
+d
+   --> src\vpn.rs:136:8
+    |
+136 | pub fn get_mesh_peers(state: State<'_, ..
+.
+    |        ^^^^^^^^^^^^^^
+
+warning: function `run_vpn_loop` is never used
+   --> src\vpn.rs:145:10
+    |
+145 | async fn run_vpn_loop(config: VpnConfig..
+.
+    |          ^^^^^^^^^^^^
+
+warning: `retailex` (bin "RetailEX_VPN") genera
+ted 15 warnings (run `cargo fix --bin "RetailEX
+_VPN" -p retailex` to apply 5 suggestions)
+error[E0599]: no method named `emit_all` found 
+for reference `&AppHandle` in the current scope
+   --> src\sync.rs:372:63
+    |
+372 | ...                   let _ = h.emit_all(
+"p2p-signal", &text);
+    |                                 ^^^^^^^^
+    |
+help: there is a method `emit` with a similar n
+ame
+    |
+372 -                                          
+           let _ = h.emit_all("p2p-signal", &te
+xt);
+372 +                                          
+           let _ = h.emit("p2p-signal", &text);
+    |
+
+error[E0599]: no method named `emit_all` found 
+for reference `&AppHandle` in the current scope
+   --> src\sync.rs:381:60
+    |
+381 | ...                   let _ = h.emit_all(
+"p2p-signal", &text);
+    |                                 ^^^^^^^^
+    |
+help: there is a method `emit` with a similar n
+ame
+    |
+381 -                                          
+        let _ = h.emit_all("p2p-signal", &text)
+;
+381 +                                          
+        let _ = h.emit("p2p-signal", &text);
+    |
+
+error[E0425]: cannot find function `init` in cr
+ate `tauri_plugin_updater`
+   --> src\main.rs:668:35
+    |
+668 |     .plugin(tauri_plugin_updater::init())
+    |                                   ^^^^ no
+t found in `tauri_plugin_updater`
+    |
+help: consider importing one of these functions
+    |
+ 20 + use tauri_plugin_dialog::init;
+    |
+ 20 + use tauri_plugin_process::init;
+    |
+ 20 + use tauri_plugin_shell::init;
+    |
+help: if you import `init`, refer to it directl
+y
+    |
+668 -     .plugin(tauri_plugin_updater::init())
+668 +     .plugin(init())
+    |
+
+warning: unused import: `rust_decimal::prelude:
+:FromPrimitive`
+   --> src\main.rs:211:17
+    |
+211 |             use rust_decimal::prelude::Fr
+omPrimitive;
+    |                 ^^^^^^^^^^^^^^^^^^^^^^^^^
+^^^^^^^^^^^
+
+warning: unused variable: `packet`
+   --> src\vpn.rs:207:49
+    |
+207 |                     TunnResult::WriteToTu
+nnelV4(packet, _) => {
+    |                                          
+       ^^^^^^ help: if this is intentional, pre
+fix it with an underscore: `_packet`
+
+error[E0599]: no method named `path` found for 
+reference `&AppHandle` in the current scope
+   --> src\db_ops.rs:178:26
+    |
+178 |     if let Ok(res) = app.path().resolve_r
+esource("database/migrations") {
+    |                          ^^^^ method not 
+found in `&AppHandle`
+    |
+    = help: items from traits can only be used 
+if the trait is in scope
+help: trait `Manager` which provides `path` is 
+implemented but not in scope; perhaps you want 
+to import it
+    |
+  1 + use tauri::Manager;
+    |
+
+error[E0599]: no method named `path` found for 
+reference `&AppHandle` in the current scope
+   --> src\db_ops.rs:183:26
+    |
+183 |     if let Ok(res) = app.path().resolve_r
+esource("_up_/database/migrations") {
+    |                          ^^^^ method not 
+found in `&AppHandle`
+    |
+    = help: items from traits can only be used 
+if the trait is in scope
+help: trait `Manager` which provides `path` is 
+implemented but not in scope; perhaps you want 
+to import it
+    |
+  1 + use tauri::Manager;
+    |
+
+error[E0599]: no method named `path` found for 
+reference `&AppHandle` in the current scope
+   --> src\db_ops.rs:188:35
+    |
+188 |     if let Ok(resource_dir) = app.path().
+resource_dir() {
+    |                                   ^^^^ me
+thod not found in `&AppHandle`
+    |
+    = help: items from traits can only be used 
+if the trait is in scope
+help: trait `Manager` which provides `path` is 
+implemented but not in scope; perhaps you want 
+to import it
+    |
+  1 + use tauri::Manager;
+    |
+
+error[E0282]: type annotations needed
+   --> src\db_ops.rs:189:27
+    |
+189 |         search_paths.push(resource_dir.jo
+in("database").join("migrations"));
+    |                           ^^^^^^^^^^^^ ca
+nnot infer type
+
+For more information about this error, try `rus
+tc --explain E0599`.
+warning: `retailex` (bin "RetailEX_Service") ge
+nerated 5 warnings (4 duplicates)
+error: could not compile `retailex` (bin "Retai
+lEX_Service") due to 2 previous errors; 5 warni
+ngs emitted
+warning: build failed, waiting for other jobs t
+o finish...
+error[E0599]: no method named `emit` found for 
+struct `tauri::Window<R>` in the current scope
+   --> src\mssql.rs:314:24
+    |
+314 |         let _ = window.emit("sync-event",
+ "Ba─ş─▒ms─▒z mod: Logo senkronizasyonu atland─
+▒.");
+    |                        ^^^^
+    |
+   ::: C:\Users\FERHAT\.cargo\registry\src\inde
+x.crates.io-1949cf8c6b5b557f\tauri-2.10.3\src\l
+ib.rs:952:6
+    |
+952 |   fn emit<S: Serialize + Clone>(&self, ev
+ent: &str, payload: S) -> Result<()> {
+    |      ---- the method is available for `ta
+uri::Window` here
+    |
+    = help: items from traits can only be used 
+if the trait is in scope
+help: there is a method `emit_to` with a simila
+r name, but with different arguments
+   --> C:\Users\FERHAT\.cargo\registry\src\inde
+x.crates.io-1949cf8c6b5b557f\tauri-2.10.3\src\l
+ib.rs:987:3
+    |
+987 | /   fn emit_to<I, S>(&self, target: I, ev
+ent: &str, payload: S) -> Result<()>
+988 | |   where
+989 | |     I: Into<EventTarget>,
+990 | |     S: Serialize + Clone,
+    | |_________________________^
+help: trait `Emitter` which provides `emit` is 
+implemented but not in scope; perhaps you want 
+to import it
+    |
+  1 + use tauri::Emitter;
+    |
+
+error[E0599]: no method named `emit` found for 
+struct `tauri::Window<R>` in the current scope
+   --> src\mssql.rs:320:20
+    |
+320 |     let _ = window.emit("sync-event", "Ba
+─şlant─▒lar kuruluyor...");
+    |                    ^^^^
+    |
+   ::: C:\Users\FERHAT\.cargo\registry\src\inde
+x.crates.io-1949cf8c6b5b557f\tauri-2.10.3\src\l
+ib.rs:952:6
+    |
+952 |   fn emit<S: Serialize + Clone>(&self, ev
+ent: &str, payload: S) -> Result<()> {
+    |      ---- the method is available for `ta
+uri::Window` here
+    |
+    = help: items from traits can only be used 
+if the trait is in scope
+help: there is a method `emit_to` with a simila
+r name, but with different arguments
+   --> C:\Users\FERHAT\.cargo\registry\src\inde
+x.crates.io-1949cf8c6b5b557f\tauri-2.10.3\src\l
+ib.rs:987:3
+    |
+987 | /   fn emit_to<I, S>(&self, target: I, ev
+ent: &str, payload: S) -> Result<()>
+988 | |   where
+989 | |     I: Into<EventTarget>,
+990 | |     S: Serialize + Clone,
+    | |_________________________^
+help: trait `Emitter` which provides `emit` is 
+implemented but not in scope; perhaps you want 
+to import it
+    |
+  1 + use tauri::Emitter;
+    |
+
+error[E0599]: no method named `emit` found for 
+struct `tauri::Window<R>` in the current scope
+   --> src\mssql.rs:358:24
+    |
+358 |         let _ = window.emit("sync-event",
+ format!("Firma {} i├ğin veriler al─▒n─▒yor..."
+, current_firm_nr));
+    |                        ^^^^
+    |
+   ::: C:\Users\FERHAT\.cargo\registry\src\inde
+x.crates.io-1949cf8c6b5b557f\tauri-2.10.3\src\l
+ib.rs:952:6
+    |
+952 |   fn emit<S: Serialize + Clone>(&self, ev
+ent: &str, payload: S) -> Result<()> {
+    |      ---- the method is available for `ta
+uri::Window` here
+    |
+    = help: items from traits can only be used 
+if the trait is in scope
+help: there is a method `emit_to` with a simila
+r name, but with different arguments
+   --> C:\Users\FERHAT\.cargo\registry\src\inde
+x.crates.io-1949cf8c6b5b557f\tauri-2.10.3\src\l
+ib.rs:987:3
+    |
+987 | /   fn emit_to<I, S>(&self, target: I, ev
+ent: &str, payload: S) -> Result<()>
+988 | |   where
+989 | |     I: Into<EventTarget>,
+990 | |     S: Serialize + Clone,
+    | |_________________________^
+help: trait `Emitter` which provides `emit` is 
+implemented but not in scope; perhaps you want 
+to import it
+    |
+  1 + use tauri::Emitter;
+    |
+
+error[E0599]: no method named `emit` found for 
+struct `tauri::Window<R>` in the current scope
+   --> src\mssql.rs:380:20
+    |
+380 |     let _ = window.emit("sync-event", "Ve
+ritaban─▒ tablolar─▒ haz─▒rlan─▒yor...");
+    |                    ^^^^
+    |
+   ::: C:\Users\FERHAT\.cargo\registry\src\inde
+x.crates.io-1949cf8c6b5b557f\tauri-2.10.3\src\l
+ib.rs:952:6
+    |
+952 |   fn emit<S: Serialize + Clone>(&self, ev
+ent: &str, payload: S) -> Result<()> {
+    |      ---- the method is available for `ta
+uri::Window` here
+    |
+    = help: items from traits can only be used 
+if the trait is in scope
+help: there is a method `emit_to` with a simila
+r name, but with different arguments
+   --> C:\Users\FERHAT\.cargo\registry\src\inde
+x.crates.io-1949cf8c6b5b557f\tauri-2.10.3\src\l
+ib.rs:987:3
+    |
+987 | /   fn emit_to<I, S>(&self, target: I, ev
+ent: &str, payload: S) -> Result<()>
+988 | |   where
+989 | |     I: Into<EventTarget>,
+990 | |     S: Serialize + Clone,
+    | |_________________________^
+help: trait `Emitter` which provides `emit` is 
+implemented but not in scope; perhaps you want 
+to import it
+    |
+  1 + use tauri::Emitter;
+    |
+
+error[E0599]: no method named `emit` found for 
+struct `tauri::Window<R>` in the current scope
+   --> src\mssql.rs:387:20
+    |
+387 |     let _ = window.emit("sync-event", "D├
+Ânemler senkronize ediliyor...");
+    |                    ^^^^
+    |
+   ::: C:\Users\FERHAT\.cargo\registry\src\inde
+x.crates.io-1949cf8c6b5b557f\tauri-2.10.3\src\l
+ib.rs:952:6
+    |
+952 |   fn emit<S: Serialize + Clone>(&self, ev
+ent: &str, payload: S) -> Result<()> {
+    |      ---- the method is available for `ta
+uri::Window` here
+    |
+    = help: items from traits can only be used 
+if the trait is in scope
+help: there is a method `emit_to` with a simila
+r name, but with different arguments
+   --> C:\Users\FERHAT\.cargo\registry\src\inde
+x.crates.io-1949cf8c6b5b557f\tauri-2.10.3\src\l
+ib.rs:987:3
+    |
+987 | /   fn emit_to<I, S>(&self, target: I, ev
+ent: &str, payload: S) -> Result<()>
+988 | |   where
+989 | |     I: Into<EventTarget>,
+990 | |     S: Serialize + Clone,
+    | |_________________________^
+help: trait `Emitter` which provides `emit` is 
+implemented but not in scope; perhaps you want 
+to import it
+    |
+  1 + use tauri::Emitter;
+    |
+
+error[E0599]: no method named `emit` found for 
+struct `tauri::Window<R>` in the current scope
+   --> src\mssql.rs:420:20
+    |
+420 |     let _ = window.emit("sync-event", "De
+polar ve ┼şubeler g├╝ncelleniyor...");
+    |                    ^^^^
+    |
+   ::: C:\Users\FERHAT\.cargo\registry\src\inde
+x.crates.io-1949cf8c6b5b557f\tauri-2.10.3\src\l
+ib.rs:952:6
+    |
+952 |   fn emit<S: Serialize + Clone>(&self, ev
+ent: &str, payload: S) -> Result<()> {
+    |      ---- the method is available for `ta
+uri::Window` here
+    |
+    = help: items from traits can only be used 
+if the trait is in scope
+help: there is a method `emit_to` with a simila
+r name, but with different arguments
+   --> C:\Users\FERHAT\.cargo\registry\src\inde
+x.crates.io-1949cf8c6b5b557f\tauri-2.10.3\src\l
+ib.rs:987:3
+    |
+987 | /   fn emit_to<I, S>(&self, target: I, ev
+ent: &str, payload: S) -> Result<()>
+988 | |   where
+989 | |     I: Into<EventTarget>,
+990 | |     S: Serialize + Clone,
+    | |_________________________^
+help: trait `Emitter` which provides `emit` is 
+implemented but not in scope; perhaps you want 
+to import it
+    |
+  1 + use tauri::Emitter;
+    |
+
+error[E0599]: no method named `emit` found for 
+struct `tauri::Window<R>` in the current scope
+   --> src\mssql.rs:448:20
+    |
+448 |     let _ = window.emit("sync-event", "St
+ok kartlar─▒ (ITEMS) analiz ediliyor...");
+    |                    ^^^^
+    |
+   ::: C:\Users\FERHAT\.cargo\registry\src\inde
+x.crates.io-1949cf8c6b5b557f\tauri-2.10.3\src\l
+ib.rs:952:6
+    |
+952 |   fn emit<S: Serialize + Clone>(&self, ev
+ent: &str, payload: S) -> Result<()> {
+    |      ---- the method is available for `ta
+uri::Window` here
+    |
+    = help: items from traits can only be used 
+if the trait is in scope
+help: there is a method `emit_to` with a simila
+r name, but with different arguments
+   --> C:\Users\FERHAT\.cargo\registry\src\inde
+x.crates.io-1949cf8c6b5b557f\tauri-2.10.3\src\l
+ib.rs:987:3
+    |
+987 | /   fn emit_to<I, S>(&self, target: I, ev
+ent: &str, payload: S) -> Result<()>
+988 | |   where
+989 | |     I: Into<EventTarget>,
+990 | |     S: Serialize + Clone,
+    | |_________________________^
+help: trait `Emitter` which provides `emit` is 
+implemented but not in scope; perhaps you want 
+to import it
+    |
+  1 + use tauri::Emitter;
+    |
+
+error[E0599]: no method named `emit` found for 
+struct `tauri::Window<R>` in the current scope
+   --> src\mssql.rs:464:20
+    |
+464 |     let _ = window.emit("sync-event", for
+mat!("{} adet stok kart─▒ bulundu. Aktar─▒m ba┼
+şl─▒yor...", total_items));
+    |                    ^^^^
+    |
+   ::: C:\Users\FERHAT\.cargo\registry\src\inde
+x.crates.io-1949cf8c6b5b557f\tauri-2.10.3\src\l
+ib.rs:952:6
+    |
+952 |   fn emit<S: Serialize + Clone>(&self, ev
+ent: &str, payload: S) -> Result<()> {
+    |      ---- the method is available for `ta
+uri::Window` here
+    |
+    = help: items from traits can only be used 
+if the trait is in scope
+help: there is a method `emit_to` with a simila
+r name, but with different arguments
+   --> C:\Users\FERHAT\.cargo\registry\src\inde
+x.crates.io-1949cf8c6b5b557f\tauri-2.10.3\src\l
+ib.rs:987:3
+    |
+987 | /   fn emit_to<I, S>(&self, target: I, ev
+ent: &str, payload: S) -> Result<()>
+988 | |   where
+989 | |     I: Into<EventTarget>,
+990 | |     S: Serialize + Clone,
+    | |_________________________^
+help: trait `Emitter` which provides `emit` is 
+implemented but not in scope; perhaps you want 
+to import it
+    |
+  1 + use tauri::Emitter;
+    |
+
+error[E0599]: no method named `emit` found for 
+struct `tauri::Window<R>` in the current scope
+   --> src\mssql.rs:498:28
+    |
+498 |             let _ = window.emit("sync-err
+or", format!("├£r├╝n kay─▒t hatas─▒ ({}): {}", 
+code, e));
+    |                            ^^^^
+    |
+   ::: C:\Users\FERHAT\.cargo\registry\src\inde
+x.crates.io-1949cf8c6b5b557f\tauri-2.10.3\src\l
+ib.rs:952:6
+    |
+952 |   fn emit<S: Serialize + Clone>(&self, ev
+ent: &str, payload: S) -> Result<()> {
+    |      ---- the method is available for `ta
+uri::Window` here
+    |
+    = help: items from traits can only be used 
+if the trait is in scope
+help: there is a method `emit_to` with a simila
+r name, but with different arguments
+   --> C:\Users\FERHAT\.cargo\registry\src\inde
+x.crates.io-1949cf8c6b5b557f\tauri-2.10.3\src\l
+ib.rs:987:3
+    |
+987 | /   fn emit_to<I, S>(&self, target: I, ev
+ent: &str, payload: S) -> Result<()>
+988 | |   where
+989 | |     I: Into<EventTarget>,
+990 | |     S: Serialize + Clone,
+    | |_________________________^
+help: trait `Emitter` which provides `emit` is 
+implemented but not in scope; perhaps you want 
+to import it
+    |
+  1 + use tauri::Emitter;
+    |
+
+error[E0599]: no method named `emit` found for 
+struct `tauri::Window<R>` in the current scope
+   --> src\mssql.rs:503:29
+    |
+503 |              let _ = window.emit("sync-ev
+ent", format!("Stok Kartlar─▒: {}/{} (Hata: {})
+", processed, total_items, errors));
+    |                             ^^^^
+    |
+   ::: C:\Users\FERHAT\.cargo\registry\src\inde
+x.crates.io-1949cf8c6b5b557f\tauri-2.10.3\src\l
+ib.rs:952:6
+    |
+952 |   fn emit<S: Serialize + Clone>(&self, ev
+ent: &str, payload: S) -> Result<()> {
+    |      ---- the method is available for `ta
+uri::Window` here
+    |
+    = help: items from traits can only be used 
+if the trait is in scope
+help: there is a method `emit_to` with a simila
+r name, but with different arguments
+   --> C:\Users\FERHAT\.cargo\registry\src\inde
+x.crates.io-1949cf8c6b5b557f\tauri-2.10.3\src\l
+ib.rs:987:3
+    |
+987 | /   fn emit_to<I, S>(&self, target: I, ev
+ent: &str, payload: S) -> Result<()>
+988 | |   where
+989 | |     I: Into<EventTarget>,
+990 | |     S: Serialize + Clone,
+    | |_________________________^
+help: trait `Emitter` which provides `emit` is 
+implemented but not in scope; perhaps you want 
+to import it
+    |
+  1 + use tauri::Emitter;
+    |
+
+error[E0599]: no method named `emit` found for 
+struct `tauri::Window<R>` in the current scope
+   --> src\mssql.rs:508:20
+    |
+508 |     let _ = window.emit("sync-event", "Ca
+ri hesaplar (CLCARD) kontrol ediliyor...");
+    |                    ^^^^
+    |
+   ::: C:\Users\FERHAT\.cargo\registry\src\inde
+x.crates.io-1949cf8c6b5b557f\tauri-2.10.3\src\l
+ib.rs:952:6
+    |
+952 |   fn emit<S: Serialize + Clone>(&self, ev
+ent: &str, payload: S) -> Result<()> {
+    |      ---- the method is available for `ta
+uri::Window` here
+    |
+    = help: items from traits can only be used 
+if the trait is in scope
+help: there is a method `emit_to` with a simila
+r name, but with different arguments
+   --> C:\Users\FERHAT\.cargo\registry\src\inde
+x.crates.io-1949cf8c6b5b557f\tauri-2.10.3\src\l
+ib.rs:987:3
+    |
+987 | /   fn emit_to<I, S>(&self, target: I, ev
+ent: &str, payload: S) -> Result<()>
+988 | |   where
+989 | |     I: Into<EventTarget>,
+990 | |     S: Serialize + Clone,
+    | |_________________________^
+help: trait `Emitter` which provides `emit` is 
+implemented but not in scope; perhaps you want 
+to import it
+    |
+  1 + use tauri::Emitter;
+    |
+
+error[E0599]: no method named `emit` found for 
+struct `tauri::Window<R>` in the current scope
+   --> src\mssql.rs:518:20
+    |
+518 |     let _ = window.emit("sync-event", for
+mat!("{} adet cari hesap bulundu. Aktar─▒l─▒yor
+...", total_cl));
+    |                    ^^^^
+    |
+   ::: C:\Users\FERHAT\.cargo\registry\src\inde
+x.crates.io-1949cf8c6b5b557f\tauri-2.10.3\src\l
+ib.rs:952:6
+    |
+952 |   fn emit<S: Serialize + Clone>(&self, ev
+ent: &str, payload: S) -> Result<()> {
+    |      ---- the method is available for `ta
+uri::Window` here
+    |
+    = help: items from traits can only be used 
+if the trait is in scope
+help: there is a method `emit_to` with a simila
+r name, but with different arguments
+   --> C:\Users\FERHAT\.cargo\registry\src\inde
+x.crates.io-1949cf8c6b5b557f\tauri-2.10.3\src\l
+ib.rs:987:3
+    |
+987 | /   fn emit_to<I, S>(&self, target: I, ev
+ent: &str, payload: S) -> Result<()>
+988 | |   where
+989 | |     I: Into<EventTarget>,
+990 | |     S: Serialize + Clone,
+    | |_________________________^
+help: trait `Emitter` which provides `emit` is 
+implemented but not in scope; perhaps you want 
+to import it
+    |
+  1 + use tauri::Emitter;
+    |
+
+error[E0599]: no method named `emit` found for 
+struct `tauri::Window<R>` in the current scope
+   --> src\mssql.rs:545:28
+    |
+545 |             let _ = window.emit("sync-err
+or", format!("Cari kay─▒t hatas─▒ ({}): {}", co
+de, e));
+    |                            ^^^^
+    |
+   ::: C:\Users\FERHAT\.cargo\registry\src\inde
+x.crates.io-1949cf8c6b5b557f\tauri-2.10.3\src\l
+ib.rs:952:6
+    |
+952 |   fn emit<S: Serialize + Clone>(&self, ev
+ent: &str, payload: S) -> Result<()> {
+    |      ---- the method is available for `ta
+uri::Window` here
+    |
+    = help: items from traits can only be used 
+if the trait is in scope
+help: there is a method `emit_to` with a simila
+r name, but with different arguments
+   --> C:\Users\FERHAT\.cargo\registry\src\inde
+x.crates.io-1949cf8c6b5b557f\tauri-2.10.3\src\l
+ib.rs:987:3
+    |
+987 | /   fn emit_to<I, S>(&self, target: I, ev
+ent: &str, payload: S) -> Result<()>
+988 | |   where
+989 | |     I: Into<EventTarget>,
+990 | |     S: Serialize + Clone,
+    | |_________________________^
+help: trait `Emitter` which provides `emit` is 
+implemented but not in scope; perhaps you want 
+to import it
+    |
+  1 + use tauri::Emitter;
+    |
+
+error[E0599]: no method named `emit` found for 
+struct `tauri::Window<R>` in the current scope
+   --> src\mssql.rs:550:29
+    |
+550 |              let _ = window.emit("sync-ev
+ent", format!("Cari Hesaplar: {}/{} (Hata: {})"
+, processed, total_cl, cl_errors));
+    |                             ^^^^
+    |
+   ::: C:\Users\FERHAT\.cargo\registry\src\inde
+x.crates.io-1949cf8c6b5b557f\tauri-2.10.3\src\l
+ib.rs:952:6
+    |
+952 |   fn emit<S: Serialize + Clone>(&self, ev
+ent: &str, payload: S) -> Result<()> {
+    |      ---- the method is available for `ta
+uri::Window` here
+    |
+    = help: items from traits can only be used 
+if the trait is in scope
+help: there is a method `emit_to` with a simila
+r name, but with different arguments
+   --> C:\Users\FERHAT\.cargo\registry\src\inde
+x.crates.io-1949cf8c6b5b557f\tauri-2.10.3\src\l
+ib.rs:987:3
+    |
+987 | /   fn emit_to<I, S>(&self, target: I, ev
+ent: &str, payload: S) -> Result<()>
+988 | |   where
+989 | |     I: Into<EventTarget>,
+990 | |     S: Serialize + Clone,
+    | |_________________________^
+help: trait `Emitter` which provides `emit` is 
+implemented but not in scope; perhaps you want 
+to import it
+    |
+  1 + use tauri::Emitter;
+    |
+
+error[E0599]: no method named `emit` found for 
+struct `tauri::Window<R>` in the current scope
+   --> src\mssql.rs:555:20
+    |
+555 |     let _ = window.emit("sync-event", "Sa
+t─▒┼ş Elemanlar─▒ (SLMAN) senkronize ediliyor..
+.");
+    |                    ^^^^
+    |
+   ::: C:\Users\FERHAT\.cargo\registry\src\inde
+x.crates.io-1949cf8c6b5b557f\tauri-2.10.3\src\l
+ib.rs:952:6
+    |
+952 |   fn emit<S: Serialize + Clone>(&self, ev
+ent: &str, payload: S) -> Result<()> {
+    |      ---- the method is available for `ta
+uri::Window` here
+    |
+    = help: items from traits can only be used 
+if the trait is in scope
+help: there is a method `emit_to` with a simila
+r name, but with different arguments
+   --> C:\Users\FERHAT\.cargo\registry\src\inde
+x.crates.io-1949cf8c6b5b557f\tauri-2.10.3\src\l
+ib.rs:987:3
+    |
+987 | /   fn emit_to<I, S>(&self, target: I, ev
+ent: &str, payload: S) -> Result<()>
+988 | |   where
+989 | |     I: Into<EventTarget>,
+990 | |     S: Serialize + Clone,
+    | |_________________________^
+help: trait `Emitter` which provides `emit` is 
+implemented but not in scope; perhaps you want 
+to import it
+    |
+  1 + use tauri::Emitter;
+    |
+
+error[E0599]: no method named `emit` found for 
+struct `tauri::Window<R>` in the current scope
+   --> src\mssql.rs:580:20
+    |
+580 |     let _ = window.emit("sync-event", "Ba
+rkodlar (UNITBARCODE) g├╝ncelleniyor...");
+    |                    ^^^^
+    |
+   ::: C:\Users\FERHAT\.cargo\registry\src\inde
+x.crates.io-1949cf8c6b5b557f\tauri-2.10.3\src\l
+ib.rs:952:6
+    |
+952 |   fn emit<S: Serialize + Clone>(&self, ev
+ent: &str, payload: S) -> Result<()> {
+    |      ---- the method is available for `ta
+uri::Window` here
+    |
+    = help: items from traits can only be used 
+if the trait is in scope
+help: there is a method `emit_to` with a simila
+r name, but with different arguments
+   --> C:\Users\FERHAT\.cargo\registry\src\inde
+x.crates.io-1949cf8c6b5b557f\tauri-2.10.3\src\l
+ib.rs:987:3
+    |
+987 | /   fn emit_to<I, S>(&self, target: I, ev
+ent: &str, payload: S) -> Result<()>
+988 | |   where
+989 | |     I: Into<EventTarget>,
+990 | |     S: Serialize + Clone,
+    | |_________________________^
+help: trait `Emitter` which provides `emit` is 
+implemented but not in scope; perhaps you want 
+to import it
+    |
+  1 + use tauri::Emitter;
+    |
+
+error[E0599]: no method named `emit` found for 
+struct `tauri::Window<R>` in the current scope
+   --> src\mssql.rs:596:33
+    |
+596 |                  let _ = window.emit("syn
+c-event", format!("{} adet barkod bulundu. ─░┼ş
+leniyor...", total_bc));
+    |                                 ^^^^
+    |
+   ::: C:\Users\FERHAT\.cargo\registry\src\inde
+x.crates.io-1949cf8c6b5b557f\tauri-2.10.3\src\l
+ib.rs:952:6
+    |
+952 |   fn emit<S: Serialize + Clone>(&self, ev
+ent: &str, payload: S) -> Result<()> {
+    |      ---- the method is available for `ta
+uri::Window` here
+    |
+    = help: items from traits can only be used 
+if the trait is in scope
+help: there is a method `emit_to` with a simila
+r name, but with different arguments
+   --> C:\Users\FERHAT\.cargo\registry\src\inde
+x.crates.io-1949cf8c6b5b557f\tauri-2.10.3\src\l
+ib.rs:987:3
+    |
+987 | /   fn emit_to<I, S>(&self, target: I, ev
+ent: &str, payload: S) -> Result<()>
+988 | |   where
+989 | |     I: Into<EventTarget>,
+990 | |     S: Serialize + Clone,
+    | |_________________________^
+help: trait `Emitter` which provides `emit` is 
+implemented but not in scope; perhaps you want 
+to import it
+    |
+  1 + use tauri::Emitter;
+    |
+
+error[E0599]: no method named `emit` found for 
+struct `tauri::Window<R>` in the current scope
+   --> src\mssql.rs:610:40
+    |
+610 |                         let _ = window.em
+it("sync-event", format!("Barkodlar: {}/{}", bc
+_processed, total_bc));
+    |                                        ^^
+^^
+    |
+   ::: C:\Users\FERHAT\.cargo\registry\src\inde
+x.crates.io-1949cf8c6b5b557f\tauri-2.10.3\src\l
+ib.rs:952:6
+    |
+952 |   fn emit<S: Serialize + Clone>(&self, ev
+ent: &str, payload: S) -> Result<()> {
+    |      ---- the method is available for `ta
+uri::Window` here
+    |
+    = help: items from traits can only be used 
+if the trait is in scope
+help: there is a method `emit_to` with a simila
+r name, but with different arguments
+   --> C:\Users\FERHAT\.cargo\registry\src\inde
+x.crates.io-1949cf8c6b5b557f\tauri-2.10.3\src\l
+ib.rs:987:3
+    |
+987 | /   fn emit_to<I, S>(&self, target: I, ev
+ent: &str, payload: S) -> Result<()>
+988 | |   where
+989 | |     I: Into<EventTarget>,
+990 | |     S: Serialize + Clone,
+    | |_________________________^
+help: trait `Emitter` which provides `emit` is 
+implemented but not in scope; perhaps you want 
+to import it
+    |
+  1 + use tauri::Emitter;
+    |
+
+error[E0599]: no method named `emit` found for 
+struct `tauri::Window<R>` in the current scope
+   --> src\mssql.rs:616:29
+    |
+616 |              let _ = window.emit("sync-ev
+ent", format!("Barkod tablosu okunamad─▒ (Eski 
+s├╝r├╝m olabilir): {}", e));
+    |                             ^^^^
+    |
+   ::: C:\Users\FERHAT\.cargo\registry\src\inde
+x.crates.io-1949cf8c6b5b557f\tauri-2.10.3\src\l
+ib.rs:952:6
+    |
+952 |   fn emit<S: Serialize + Clone>(&self, ev
+ent: &str, payload: S) -> Result<()> {
+    |      ---- the method is available for `ta
+uri::Window` here
+    |
+    = help: items from traits can only be used 
+if the trait is in scope
+help: there is a method `emit_to` with a simila
+r name, but with different arguments
+   --> C:\Users\FERHAT\.cargo\registry\src\inde
+x.crates.io-1949cf8c6b5b557f\tauri-2.10.3\src\l
+ib.rs:987:3
+    |
+987 | /   fn emit_to<I, S>(&self, target: I, ev
+ent: &str, payload: S) -> Result<()>
+988 | |   where
+989 | |     I: Into<EventTarget>,
+990 | |     S: Serialize + Clone,
+    | |_________________________^
+help: trait `Emitter` which provides `emit` is 
+implemented but not in scope; perhaps you want 
+to import it
+    |
+  1 + use tauri::Emitter;
+    |
+
+error[E0599]: no method named `emit` found for 
+struct `tauri::Window<R>` in the current scope
+   --> src\mssql.rs:621:20
+    |
+621 |     let _ = window.emit("sync-event", "Sa
+t─▒┼ş Fiyatlar─▒ (PRCLIST) g├╝ncelleniyor...");
+    |                    ^^^^
+    |
+   ::: C:\Users\FERHAT\.cargo\registry\src\inde
+x.crates.io-1949cf8c6b5b557f\tauri-2.10.3\src\l
+ib.rs:952:6
+    |
+952 |   fn emit<S: Serialize + Clone>(&self, ev
+ent: &str, payload: S) -> Result<()> {
+    |      ---- the method is available for `ta
+uri::Window` here
+    |
+    = help: items from traits can only be used 
+if the trait is in scope
+help: there is a method `emit_to` with a simila
+r name, but with different arguments
+   --> C:\Users\FERHAT\.cargo\registry\src\inde
+x.crates.io-1949cf8c6b5b557f\tauri-2.10.3\src\l
+ib.rs:987:3
+    |
+987 | /   fn emit_to<I, S>(&self, target: I, ev
+ent: &str, payload: S) -> Result<()>
+988 | |   where
+989 | |     I: Into<EventTarget>,
+990 | |     S: Serialize + Clone,
+    | |_________________________^
+help: trait `Emitter` which provides `emit` is 
+implemented but not in scope; perhaps you want 
+to import it
+    |
+  1 + use tauri::Emitter;
+    |
+
+error[E0599]: no method named `emit` found for 
+struct `tauri::Window<R>` in the current scope
+   --> src\mssql.rs:637:33
+    |
+637 |                  let _ = window.emit("syn
+c-event", format!("{} adet fiyat kayd─▒ bulundu
+. ─░┼şleniyor...", total_price));
+    |                                 ^^^^
+    |
+   ::: C:\Users\FERHAT\.cargo\registry\src\inde
+x.crates.io-1949cf8c6b5b557f\tauri-2.10.3\src\l
+ib.rs:952:6
+    |
+952 |   fn emit<S: Serialize + Clone>(&self, ev
+ent: &str, payload: S) -> Result<()> {
+    |      ---- the method is available for `ta
+uri::Window` here
+    |
+    = help: items from traits can only be used 
+if the trait is in scope
+help: there is a method `emit_to` with a simila
+r name, but with different arguments
+   --> C:\Users\FERHAT\.cargo\registry\src\inde
+x.crates.io-1949cf8c6b5b557f\tauri-2.10.3\src\l
+ib.rs:987:3
+    |
+987 | /   fn emit_to<I, S>(&self, target: I, ev
+ent: &str, payload: S) -> Result<()>
+988 | |   where
+989 | |     I: Into<EventTarget>,
+990 | |     S: Serialize + Clone,
+    | |_________________________^
+help: trait `Emitter` which provides `emit` is 
+implemented but not in scope; perhaps you want 
+to import it
+    |
+  1 + use tauri::Emitter;
+    |
+
+error[E0599]: no method named `emit` found for 
+struct `tauri::Window<R>` in the current scope
+   --> src\mssql.rs:657:40
+    |
+657 |                         let _ = window.em
+it("sync-event", format!("Fiyatlar: {}/{}", pri
+ce_processed, total_price));
+    |                                        ^^
+^^
+    |
+   ::: C:\Users\FERHAT\.cargo\registry\src\inde
+x.crates.io-1949cf8c6b5b557f\tauri-2.10.3\src\l
+ib.rs:952:6
+    |
+952 |   fn emit<S: Serialize + Clone>(&self, ev
+ent: &str, payload: S) -> Result<()> {
+    |      ---- the method is available for `ta
+uri::Window` here
+    |
+    = help: items from traits can only be used 
+if the trait is in scope
+help: there is a method `emit_to` with a simila
+r name, but with different arguments
+   --> C:\Users\FERHAT\.cargo\registry\src\inde
+x.crates.io-1949cf8c6b5b557f\tauri-2.10.3\src\l
+ib.rs:987:3
+    |
+987 | /   fn emit_to<I, S>(&self, target: I, ev
+ent: &str, payload: S) -> Result<()>
+988 | |   where
+989 | |     I: Into<EventTarget>,
+990 | |     S: Serialize + Clone,
+    | |_________________________^
+help: trait `Emitter` which provides `emit` is 
+implemented but not in scope; perhaps you want 
+to import it
+    |
+  1 + use tauri::Emitter;
+    |
+
+error[E0599]: no method named `emit` found for 
+struct `tauri::Window<R>` in the current scope
+   --> src\mssql.rs:663:29
+    |
+663 |              let _ = window.emit("sync-ev
+ent", format!("Fiyat tablosu okunamad─▒: {}", e
+));
+    |                             ^^^^
+    |
+   ::: C:\Users\FERHAT\.cargo\registry\src\inde
+x.crates.io-1949cf8c6b5b557f\tauri-2.10.3\src\l
+ib.rs:952:6
+    |
+952 |   fn emit<S: Serialize + Clone>(&self, ev
+ent: &str, payload: S) -> Result<()> {
+    |      ---- the method is available for `ta
+uri::Window` here
+    |
+    = help: items from traits can only be used 
+if the trait is in scope
+help: there is a method `emit_to` with a simila
+r name, but with different arguments
+   --> C:\Users\FERHAT\.cargo\registry\src\inde
+x.crates.io-1949cf8c6b5b557f\tauri-2.10.3\src\l
+ib.rs:987:3
+    |
+987 | /   fn emit_to<I, S>(&self, target: I, ev
+ent: &str, payload: S) -> Result<()>
+988 | |   where
+989 | |     I: Into<EventTarget>,
+990 | |     S: Serialize + Clone,
+    | |_________________________^
+help: trait `Emitter` which provides `emit` is 
+implemented but not in scope; perhaps you want 
+to import it
+    |
+  1 + use tauri::Emitter;
+    |
+
+error[E0599]: no method named `emit` found for 
+struct `tauri::Window<R>` in the current scope
+   --> src\mssql.rs:668:20
+    |
+668 |     let _ = window.emit("sync-event", "St
+ok Seviyeleri (Envanter) g├╝ncelleniyor...");
+    |                    ^^^^
+    |
+   ::: C:\Users\FERHAT\.cargo\registry\src\inde
+x.crates.io-1949cf8c6b5b557f\tauri-2.10.3\src\l
+ib.rs:952:6
+    |
+952 |   fn emit<S: Serialize + Clone>(&self, ev
+ent: &str, payload: S) -> Result<()> {
+    |      ---- the method is available for `ta
+uri::Window` here
+    |
+    = help: items from traits can only be used 
+if the trait is in scope
+help: there is a method `emit_to` with a simila
+r name, but with different arguments
+   --> C:\Users\FERHAT\.cargo\registry\src\inde
+x.crates.io-1949cf8c6b5b557f\tauri-2.10.3\src\l
+ib.rs:987:3
+    |
+987 | /   fn emit_to<I, S>(&self, target: I, ev
+ent: &str, payload: S) -> Result<()>
+988 | |   where
+989 | |     I: Into<EventTarget>,
+990 | |     S: Serialize + Clone,
+    | |_________________________^
+help: trait `Emitter` which provides `emit` is 
+implemented but not in scope; perhaps you want 
+to import it
+    |
+  1 + use tauri::Emitter;
+    |
+
+error[E0599]: no method named `emit` found for 
+struct `tauri::Window<R>` in the current scope
+   --> src\mssql.rs:685:33
+    |
+685 |                  let _ = window.emit("syn
+c-event", format!("{} adet stok verisi bulundu.
+ ─░┼şleniyor...", total_stock));
+    |                                 ^^^^
+    |
+   ::: C:\Users\FERHAT\.cargo\registry\src\inde
+x.crates.io-1949cf8c6b5b557f\tauri-2.10.3\src\l
+ib.rs:952:6
+    |
+952 |   fn emit<S: Serialize + Clone>(&self, ev
+ent: &str, payload: S) -> Result<()> {
+    |      ---- the method is available for `ta
+uri::Window` here
+    |
+    = help: items from traits can only be used 
+if the trait is in scope
+help: there is a method `emit_to` with a simila
+r name, but with different arguments
+   --> C:\Users\FERHAT\.cargo\registry\src\inde
+x.crates.io-1949cf8c6b5b557f\tauri-2.10.3\src\l
+ib.rs:987:3
+    |
+987 | /   fn emit_to<I, S>(&self, target: I, ev
+ent: &str, payload: S) -> Result<()>
+988 | |   where
+989 | |     I: Into<EventTarget>,
+990 | |     S: Serialize + Clone,
+    | |_________________________^
+help: trait `Emitter` which provides `emit` is 
+implemented but not in scope; perhaps you want 
+to import it
+    |
+  1 + use tauri::Emitter;
+    |
+
+error[E0599]: no method named `emit` found for 
+struct `tauri::Window<R>` in the current scope
+   --> src\mssql.rs:704:40
+    |
+704 |                         let _ = window.em
+it("sync-event", format!("Stoklar: {}/{}", stoc
+k_processed, total_stock));
+    |                                        ^^
+^^
+    |
+   ::: C:\Users\FERHAT\.cargo\registry\src\inde
+x.crates.io-1949cf8c6b5b557f\tauri-2.10.3\src\l
+ib.rs:952:6
+    |
+952 |   fn emit<S: Serialize + Clone>(&self, ev
+ent: &str, payload: S) -> Result<()> {
+    |      ---- the method is available for `ta
+uri::Window` here
+    |
+    = help: items from traits can only be used 
+if the trait is in scope
+help: there is a method `emit_to` with a simila
+r name, but with different arguments
+   --> C:\Users\FERHAT\.cargo\registry\src\inde
+x.crates.io-1949cf8c6b5b557f\tauri-2.10.3\src\l
+ib.rs:987:3
+    |
+987 | /   fn emit_to<I, S>(&self, target: I, ev
+ent: &str, payload: S) -> Result<()>
+988 | |   where
+989 | |     I: Into<EventTarget>,
+990 | |     S: Serialize + Clone,
+    | |_________________________^
+help: trait `Emitter` which provides `emit` is 
+implemented but not in scope; perhaps you want 
+to import it
+    |
+  1 + use tauri::Emitter;
+    |
+
+error[E0599]: no method named `emit` found for 
+struct `tauri::Window<R>` in the current scope
+   --> src\mssql.rs:710:29
+    |
+710 |              let _ = window.emit("sync-ev
+ent", format!("Stok tablosu (View) okunamad─▒: 
+{}", e));
+    |                             ^^^^
+    |
+   ::: C:\Users\FERHAT\.cargo\registry\src\inde
+x.crates.io-1949cf8c6b5b557f\tauri-2.10.3\src\l
+ib.rs:952:6
+    |
+952 |   fn emit<S: Serialize + Clone>(&self, ev
+ent: &str, payload: S) -> Result<()> {
+    |      ---- the method is available for `ta
+uri::Window` here
+    |
+    = help: items from traits can only be used 
+if the trait is in scope
+help: there is a method `emit_to` with a simila
+r name, but with different arguments
+   --> C:\Users\FERHAT\.cargo\registry\src\inde
+x.crates.io-1949cf8c6b5b557f\tauri-2.10.3\src\l
+ib.rs:987:3
+    |
+987 | /   fn emit_to<I, S>(&self, target: I, ev
+ent: &str, payload: S) -> Result<()>
+988 | |   where
+989 | |     I: Into<EventTarget>,
+990 | |     S: Serialize + Clone,
+    | |_________________________^
+help: trait `Emitter` which provides `emit` is 
+implemented but not in scope; perhaps you want 
+to import it
+    |
+  1 + use tauri::Emitter;
+    |
+
+error[E0599]: no method named `emit` found for 
+struct `tauri::Window<R>` in the current scope
+   --> src\mssql.rs:715:20
+    |
+715 |     let _ = window.emit("sync-event", "Ka
+sa Kartlar─▒ (KSCARD) g├╝ncelleniyor...");
+    |                    ^^^^
+    |
+   ::: C:\Users\FERHAT\.cargo\registry\src\inde
+x.crates.io-1949cf8c6b5b557f\tauri-2.10.3\src\l
+ib.rs:952:6
+    |
+952 |   fn emit<S: Serialize + Clone>(&self, ev
+ent: &str, payload: S) -> Result<()> {
+    |      ---- the method is available for `ta
+uri::Window` here
+    |
+    = help: items from traits can only be used 
+if the trait is in scope
+help: there is a method `emit_to` with a simila
+r name, but with different arguments
+   --> C:\Users\FERHAT\.cargo\registry\src\inde
+x.crates.io-1949cf8c6b5b557f\tauri-2.10.3\src\l
+ib.rs:987:3
+    |
+987 | /   fn emit_to<I, S>(&self, target: I, ev
+ent: &str, payload: S) -> Result<()>
+988 | |   where
+989 | |     I: Into<EventTarget>,
+990 | |     S: Serialize + Clone,
+    | |_________________________^
+help: trait `Emitter` which provides `emit` is 
+implemented but not in scope; perhaps you want 
+to import it
+    |
+  1 + use tauri::Emitter;
+    |
+
+error[E0599]: no method named `emit` found for 
+struct `tauri::Window<R>` in the current scope
+   --> src\mssql.rs:737:20
+    |
+737 |     let _ = window.emit("sync-event", "Ka
+sa Hareketleri (KSLINES) g├╝ncelleniyor...");
+    |                    ^^^^
+    |
+   ::: C:\Users\FERHAT\.cargo\registry\src\inde
+x.crates.io-1949cf8c6b5b557f\tauri-2.10.3\src\l
+ib.rs:952:6
+    |
+952 |   fn emit<S: Serialize + Clone>(&self, ev
+ent: &str, payload: S) -> Result<()> {
+    |      ---- the method is available for `ta
+uri::Window` here
+    |
+    = help: items from traits can only be used 
+if the trait is in scope
+help: there is a method `emit_to` with a simila
+r name, but with different arguments
+   --> C:\Users\FERHAT\.cargo\registry\src\inde
+x.crates.io-1949cf8c6b5b557f\tauri-2.10.3\src\l
+ib.rs:987:3
+    |
+987 | /   fn emit_to<I, S>(&self, target: I, ev
+ent: &str, payload: S) -> Result<()>
+988 | |   where
+989 | |     I: Into<EventTarget>,
+990 | |     S: Serialize + Clone,
+    | |_________________________^
+help: trait `Emitter` which provides `emit` is 
+implemented but not in scope; perhaps you want 
+to import it
+    |
+  1 + use tauri::Emitter;
+    |
+
+error[E0599]: no method named `emit` found for 
+struct `tauri::Window<R>` in the current scope
+   --> src\mssql.rs:777:36
+    |
+777 |                     let _ = window.emit("
+sync-event", format!("Kasa Hareketleri: {}/{}",
+ ksl_processed, total_ksl));
+    |                                    ^^^^
+    |
+   ::: C:\Users\FERHAT\.cargo\registry\src\inde
+x.crates.io-1949cf8c6b5b557f\tauri-2.10.3\src\l
+ib.rs:952:6
+    |
+952 |   fn emit<S: Serialize + Clone>(&self, ev
+ent: &str, payload: S) -> Result<()> {
+    |      ---- the method is available for `ta
+uri::Window` here
+    |
+    = help: items from traits can only be used 
+if the trait is in scope
+help: there is a method `emit_to` with a simila
+r name, but with different arguments
+   --> C:\Users\FERHAT\.cargo\registry\src\inde
+x.crates.io-1949cf8c6b5b557f\tauri-2.10.3\src\l
+ib.rs:987:3
+    |
+987 | /   fn emit_to<I, S>(&self, target: I, ev
+ent: &str, payload: S) -> Result<()>
+988 | |   where
+989 | |     I: Into<EventTarget>,
+990 | |     S: Serialize + Clone,
+    | |_________________________^
+help: trait `Emitter` which provides `emit` is 
+implemented but not in scope; perhaps you want 
+to import it
+    |
+  1 + use tauri::Emitter;
+    |
+
+error[E0599]: no method named `emit` found for 
+struct `tauri::Window<R>` in the current scope
+   --> src\mssql.rs:784:20
+    |
+784 |     let _ = window.emit("sync-event", "St
+ok Hareketleri (STLINE) senkronize ediliyor..."
+);
+    |                    ^^^^
+    |
+   ::: C:\Users\FERHAT\.cargo\registry\src\inde
+x.crates.io-1949cf8c6b5b557f\tauri-2.10.3\src\l
+ib.rs:952:6
+    |
+952 |   fn emit<S: Serialize + Clone>(&self, ev
+ent: &str, payload: S) -> Result<()> {
+    |      ---- the method is available for `ta
+uri::Window` here
+    |
+    = help: items from traits can only be used 
+if the trait is in scope
+help: there is a method `emit_to` with a simila
+r name, but with different arguments
+   --> C:\Users\FERHAT\.cargo\registry\src\inde
+x.crates.io-1949cf8c6b5b557f\tauri-2.10.3\src\l
+ib.rs:987:3
+    |
+987 | /   fn emit_to<I, S>(&self, target: I, ev
+ent: &str, payload: S) -> Result<()>
+988 | |   where
+989 | |     I: Into<EventTarget>,
+990 | |     S: Serialize + Clone,
+    | |_________________________^
+help: trait `Emitter` which provides `emit` is 
+implemented but not in scope; perhaps you want 
+to import it
+    |
+  1 + use tauri::Emitter;
+    |
+
+error[E0599]: no method named `emit` found for 
+struct `tauri::Window<R>` in the current scope
+   --> src\mssql.rs:799:28
+    |
+799 |             let _ = window.emit("sync-eve
+nt", format!("{} adet stok hareketi bulundu. Ak
+tar─▒l─▒yor...", total_stm));
+    |                            ^^^^
+    |
+   ::: C:\Users\FERHAT\.cargo\registry\src\inde
+x.crates.io-1949cf8c6b5b557f\tauri-2.10.3\src\l
+ib.rs:952:6
+    |
+952 |   fn emit<S: Serialize + Clone>(&self, ev
+ent: &str, payload: S) -> Result<()> {
+    |      ---- the method is available for `ta
+uri::Window` here
+    |
+    = help: items from traits can only be used 
+if the trait is in scope
+help: there is a method `emit_to` with a simila
+r name, but with different arguments
+   --> C:\Users\FERHAT\.cargo\registry\src\inde
+x.crates.io-1949cf8c6b5b557f\tauri-2.10.3\src\l
+ib.rs:987:3
+    |
+987 | /   fn emit_to<I, S>(&self, target: I, ev
+ent: &str, payload: S) -> Result<()>
+988 | |   where
+989 | |     I: Into<EventTarget>,
+990 | |     S: Serialize + Clone,
+    | |_________________________^
+help: trait `Emitter` which provides `emit` is 
+implemented but not in scope; perhaps you want 
+to import it
+    |
+  1 + use tauri::Emitter;
+    |
+
+error[E0599]: no method named `emit` found for 
+struct `tauri::Window<R>` in the current scope
+   --> src\mssql.rs:832:36
+    |
+832 |                     let _ = window.emit("
+sync-event", format!("Stok Hareketleri: {}/{}",
+ idx, total_stm));
+    |                                    ^^^^
+    |
+   ::: C:\Users\FERHAT\.cargo\registry\src\inde
+x.crates.io-1949cf8c6b5b557f\tauri-2.10.3\src\l
+ib.rs:952:6
+    |
+952 |   fn emit<S: Serialize + Clone>(&self, ev
+ent: &str, payload: S) -> Result<()> {
+    |      ---- the method is available for `ta
+uri::Window` here
+    |
+    = help: items from traits can only be used 
+if the trait is in scope
+help: there is a method `emit_to` with a simila
+r name, but with different arguments
+   --> C:\Users\FERHAT\.cargo\registry\src\inde
+x.crates.io-1949cf8c6b5b557f\tauri-2.10.3\src\l
+ib.rs:987:3
+    |
+987 | /   fn emit_to<I, S>(&self, target: I, ev
+ent: &str, payload: S) -> Result<()>
+988 | |   where
+989 | |     I: Into<EventTarget>,
+990 | |     S: Serialize + Clone,
+    | |_________________________^
+help: trait `Emitter` which provides `emit` is 
+implemented but not in scope; perhaps you want 
+to import it
+    |
+  1 + use tauri::Emitter;
+    |
+
+error[E0599]: no method named `emit` found for 
+struct `tauri::Window<R>` in the current scope
+   --> src\mssql.rs:839:20
+    |
+839 |     let _ = window.emit("sync-event", "Sa
+t─▒┼ş Faturalar─▒ (INVOICE) senkronize ediliyor
+...");
+    |                    ^^^^
+    |
+   ::: C:\Users\FERHAT\.cargo\registry\src\inde
+x.crates.io-1949cf8c6b5b557f\tauri-2.10.3\src\l
+ib.rs:952:6
+    |
+952 |   fn emit<S: Serialize + Clone>(&self, ev
+ent: &str, payload: S) -> Result<()> {
+    |      ---- the method is available for `ta
+uri::Window` here
+    |
+    = help: items from traits can only be used 
+if the trait is in scope
+help: there is a method `emit_to` with a simila
+r name, but with different arguments
+   --> C:\Users\FERHAT\.cargo\registry\src\inde
+x.crates.io-1949cf8c6b5b557f\tauri-2.10.3\src\l
+ib.rs:987:3
+    |
+987 | /   fn emit_to<I, S>(&self, target: I, ev
+ent: &str, payload: S) -> Result<()>
+988 | |   where
+989 | |     I: Into<EventTarget>,
+990 | |     S: Serialize + Clone,
+    | |_________________________^
+help: trait `Emitter` which provides `emit` is 
+implemented but not in scope; perhaps you want 
+to import it
+    |
+  1 + use tauri::Emitter;
+    |
+
+error[E0599]: no method named `emit` found for 
+struct `tauri::Window<R>` in the current scope
+   --> src\mssql.rs:853:28
+    |
+853 |             let _ = window.emit("sync-eve
+nt", format!("{} adet sat─▒┼ş faturas─▒ bulundu
+. ─░┼şleniyor...", total_inv));
+    |                            ^^^^
+    |
+   ::: C:\Users\FERHAT\.cargo\registry\src\inde
+x.crates.io-1949cf8c6b5b557f\tauri-2.10.3\src\l
+ib.rs:952:6
+    |
+952 |   fn emit<S: Serialize + Clone>(&self, ev
+ent: &str, payload: S) -> Result<()> {
+    |      ---- the method is available for `ta
+uri::Window` here
+    |
+    = help: items from traits can only be used 
+if the trait is in scope
+help: there is a method `emit_to` with a simila
+r name, but with different arguments
+   --> C:\Users\FERHAT\.cargo\registry\src\inde
+x.crates.io-1949cf8c6b5b557f\tauri-2.10.3\src\l
+ib.rs:987:3
+    |
+987 | /   fn emit_to<I, S>(&self, target: I, ev
+ent: &str, payload: S) -> Result<()>
+988 | |   where
+989 | |     I: Into<EventTarget>,
+990 | |     S: Serialize + Clone,
+    | |_________________________^
+help: trait `Emitter` which provides `emit` is 
+implemented but not in scope; perhaps you want 
+to import it
+    |
+  1 + use tauri::Emitter;
+    |
+
+error[E0599]: no method named `emit` found for 
+struct `tauri::Window<R>` in the current scope
+   --> src\mssql.rs:882:36
+    |
+882 |                     let _ = window.emit("
+sync-event", format!("Faturalar: {}/{}", idx, t
+otal_inv));
+    |                                    ^^^^
+    |
+   ::: C:\Users\FERHAT\.cargo\registry\src\inde
+x.crates.io-1949cf8c6b5b557f\tauri-2.10.3\src\l
+ib.rs:952:6
+    |
+952 |   fn emit<S: Serialize + Clone>(&self, ev
+ent: &str, payload: S) -> Result<()> {
+    |      ---- the method is available for `ta
+uri::Window` here
+    |
+    = help: items from traits can only be used 
+if the trait is in scope
+help: there is a method `emit_to` with a simila
+r name, but with different arguments
+   --> C:\Users\FERHAT\.cargo\registry\src\inde
+x.crates.io-1949cf8c6b5b557f\tauri-2.10.3\src\l
+ib.rs:987:3
+    |
+987 | /   fn emit_to<I, S>(&self, target: I, ev
+ent: &str, payload: S) -> Result<()>
+988 | |   where
+989 | |     I: Into<EventTarget>,
+990 | |     S: Serialize + Clone,
+    | |_________________________^
+help: trait `Emitter` which provides `emit` is 
+implemented but not in scope; perhaps you want 
+to import it
+    |
+  1 + use tauri::Emitter;
+    |
+
+error[E0599]: no method named `emit` found for 
+struct `tauri::Window<R>` in the current scope
+   --> src\mssql.rs:889:20
+    |
+889 |     let _ = window.emit("sync-event", "Fa
+tura Sat─▒rlar─▒ (STLINE) senkronize ediliyor..
+.");
+    |                    ^^^^
+    |
+   ::: C:\Users\FERHAT\.cargo\registry\src\inde
+x.crates.io-1949cf8c6b5b557f\tauri-2.10.3\src\l
+ib.rs:952:6
+    |
+952 |   fn emit<S: Serialize + Clone>(&self, ev
+ent: &str, payload: S) -> Result<()> {
+    |      ---- the method is available for `ta
+uri::Window` here
+    |
+    = help: items from traits can only be used 
+if the trait is in scope
+help: there is a method `emit_to` with a simila
+r name, but with different arguments
+   --> C:\Users\FERHAT\.cargo\registry\src\inde
+x.crates.io-1949cf8c6b5b557f\tauri-2.10.3\src\l
+ib.rs:987:3
+    |
+987 | /   fn emit_to<I, S>(&self, target: I, ev
+ent: &str, payload: S) -> Result<()>
+988 | |   where
+989 | |     I: Into<EventTarget>,
+990 | |     S: Serialize + Clone,
+    | |_________________________^
+help: trait `Emitter` which provides `emit` is 
+implemented but not in scope; perhaps you want 
+to import it
+    |
+  1 + use tauri::Emitter;
+    |
+
+error[E0599]: no method named `emit` found for 
+struct `tauri::Window<R>` in the current scope
+   --> src\mssql.rs:900:28
+    |
+900 |             let _ = window.emit("sync-eve
+nt", format!("{} adet fatura sat─▒r─▒ bulundu. 
+Aktar─▒l─▒yor...", total_stl));
+    |                            ^^^^
+    |
+   ::: C:\Users\FERHAT\.cargo\registry\src\inde
+x.crates.io-1949cf8c6b5b557f\tauri-2.10.3\src\l
+ib.rs:952:6
+    |
+952 |   fn emit<S: Serialize + Clone>(&self, ev
+ent: &str, payload: S) -> Result<()> {
+    |      ---- the method is available for `ta
+uri::Window` here
+    |
+    = help: items from traits can only be used 
+if the trait is in scope
+help: there is a method `emit_to` with a simila
+r name, but with different arguments
+   --> C:\Users\FERHAT\.cargo\registry\src\inde
+x.crates.io-1949cf8c6b5b557f\tauri-2.10.3\src\l
+ib.rs:987:3
+    |
+987 | /   fn emit_to<I, S>(&self, target: I, ev
+ent: &str, payload: S) -> Result<()>
+988 | |   where
+989 | |     I: Into<EventTarget>,
+990 | |     S: Serialize + Clone,
+    | |_________________________^
+help: trait `Emitter` which provides `emit` is 
+implemented but not in scope; perhaps you want 
+to import it
+    |
+  1 + use tauri::Emitter;
+    |
+
+error[E0599]: no method named `emit` found for 
+struct `tauri::Window<R>` in the current scope
+   --> src\mssql.rs:939:36
+    |
+939 |                     let _ = window.emit("
+sync-event", format!("Fatura Sat─▒rlar─▒: {}/{}
+", idx, total_stl));
+    |                                    ^^^^
+    |
+   ::: C:\Users\FERHAT\.cargo\registry\src\inde
+x.crates.io-1949cf8c6b5b557f\tauri-2.10.3\src\l
+ib.rs:952:6
+    |
+952 |   fn emit<S: Serialize + Clone>(&self, ev
+ent: &str, payload: S) -> Result<()> {
+    |      ---- the method is available for `ta
+uri::Window` here
+    |
+    = help: items from traits can only be used 
+if the trait is in scope
+help: there is a method `emit_to` with a simila
+r name, but with different arguments
+   --> C:\Users\FERHAT\.cargo\registry\src\inde
+x.crates.io-1949cf8c6b5b557f\tauri-2.10.3\src\l
+ib.rs:987:3
+    |
+987 | /   fn emit_to<I, S>(&self, target: I, ev
+ent: &str, payload: S) -> Result<()>
+988 | |   where
+989 | |     I: Into<EventTarget>,
+990 | |     S: Serialize + Clone,
+    | |_________________________^
+help: trait `Emitter` which provides `emit` is 
+implemented but not in scope; perhaps you want 
+to import it
+    |
+  1 + use tauri::Emitter;
+    |
+
+error[E0599]: no method named `emit` found for 
+struct `tauri::Window<R>` in the current scope
+   --> src\mssql.rs:945:20
+    |
+945 |     let _ = window.emit("sync-event", for
+mat!("Firma {} senkronizasyonu tamamland─▒.", c
+urrent_firm_nr));
+    |                    ^^^^
+    |
+   ::: C:\Users\FERHAT\.cargo\registry\src\inde
+x.crates.io-1949cf8c6b5b557f\tauri-2.10.3\src\l
+ib.rs:952:6
+    |
+952 |   fn emit<S: Serialize + Clone>(&self, ev
+ent: &str, payload: S) -> Result<()> {
+    |      ---- the method is available for `ta
+uri::Window` here
+    |
+    = help: items from traits can only be used 
+if the trait is in scope
+help: there is a method `emit_to` with a simila
+r name, but with different arguments
+   --> C:\Users\FERHAT\.cargo\registry\src\inde
+x.crates.io-1949cf8c6b5b557f\tauri-2.10.3\src\l
+ib.rs:987:3
+    |
+987 | /   fn emit_to<I, S>(&self, target: I, ev
+ent: &str, payload: S) -> Result<()>
+988 | |   where
+989 | |     I: Into<EventTarget>,
+990 | |     S: Serialize + Clone,
+    | |_________________________^
+help: trait `Emitter` which provides `emit` is 
+implemented but not in scope; perhaps you want 
+to import it
+    |
+  1 + use tauri::Emitter;
+    |
+
+error[E0599]: no method named `emit` found for 
+struct `tauri::Window<R>` in the current scope
+   --> src\mssql.rs:948:20
+    |
+948 |     let _ = window.emit("sync-event", "Ô£
+à T├╝m veri aktar─▒m─▒ ba┼şar─▒yla tamamland─▒.
+");
+    |                    ^^^^
+    |
+   ::: C:\Users\FERHAT\.cargo\registry\src\inde
+x.crates.io-1949cf8c6b5b557f\tauri-2.10.3\src\l
+ib.rs:952:6
+    |
+952 |   fn emit<S: Serialize + Clone>(&self, ev
+ent: &str, payload: S) -> Result<()> {
+    |      ---- the method is available for `ta
+uri::Window` here
+    |
+    = help: items from traits can only be used 
+if the trait is in scope
+help: there is a method `emit_to` with a simila
+r name, but with different arguments
+   --> C:\Users\FERHAT\.cargo\registry\src\inde
+x.crates.io-1949cf8c6b5b557f\tauri-2.10.3\src\l
+ib.rs:987:3
+    |
+987 | /   fn emit_to<I, S>(&self, target: I, ev
+ent: &str, payload: S) -> Result<()>
+988 | |   where
+989 | |     I: Into<EventTarget>,
+990 | |     S: Serialize + Clone,
+    | |_________________________^
+help: trait `Emitter` which provides `emit` is 
+implemented but not in scope; perhaps you want 
+to import it
+    |
+  1 + use tauri::Emitter;
+    |
+
+error[E0599]: no method named `resolve_resource
+` found for reference `&PathResolver<tauri_runt
+ime_wry::Wry<EventLoopMessage>>` in the current
+ scope
+  --> src\main.rs:95:33
+   |
+95 |     if let Ok(res) = app.path().resolve_re
+source("database/init") {
+   |                                 ^^^^^^^^^^
+^^^^^^ method not found in `&PathResolver<tauri
+_runtime_wry::Wry<EventLoopMessage>>`
+
+error[E0599]: no method named `resolve_resource
+` found for reference `&PathResolver<tauri_runt
+ime_wry::Wry<EventLoopMessage>>` in the current
+ scope
+   --> src\main.rs:100:33
+    |
+100 |     if let Ok(res) = app.path().resolve_r
+esource("_up_/database/init") {
+    |                                 ^^^^^^^^^
+^^^^^^^ method not found in `&PathResolver<taur
+i_runtime_wry::Wry<EventLoopMessage>>`
+
+error[E0599]: no method named `emit` found for 
+struct `tauri::Window<R>` in the current scope
+   --> src\main.rs:524:20
+    |
+524 |     let _ = window.emit("supabase-dump-pr
+ogress", "Tablo ┼şemalar─▒ analizi yap─▒l─▒yor.
+..");
+    |                    ^^^^
+    |
+   ::: C:\Users\FERHAT\.cargo\registry\src\inde
+x.crates.io-1949cf8c6b5b557f\tauri-2.10.3\src\l
+ib.rs:952:6
+    |
+952 |   fn emit<S: Serialize + Clone>(&self, ev
+ent: &str, payload: S) -> Result<()> {
+    |      ---- the method is available for `ta
+uri::Window` here
+    |
+    = help: items from traits can only be used 
+if the trait is in scope
+help: there is a method `emit_to` with a simila
+r name, but with different arguments
+   --> C:\Users\FERHAT\.cargo\registry\src\inde
+x.crates.io-1949cf8c6b5b557f\tauri-2.10.3\src\l
+ib.rs:987:3
+    |
+987 | /   fn emit_to<I, S>(&self, target: I, ev
+ent: &str, payload: S) -> Result<()>
+988 | |   where
+989 | |     I: Into<EventTarget>,
+990 | |     S: Serialize + Clone,
+    | |_________________________^
+help: trait `Emitter` which provides `emit` is 
+implemented but not in scope; perhaps you want 
+to import it
+    |
+  3 + use tauri::Emitter;
+    |
+
+error[E0599]: no method named `emit` found for 
+struct `tauri::Window<R>` in the current scope
+   --> src\main.rs:566:24
+    |
+566 |         let _ = window.emit("supabase-dum
+p-progress", format!("Tablo ─░┼şleniyor ({}/{})
+: {}...", idx + 1, total_tables, full_table_nam
+e));
+    |                        ^^^^
+    |
+   ::: C:\Users\FERHAT\.cargo\registry\src\inde
+x.crates.io-1949cf8c6b5b557f\tauri-2.10.3\src\l
+ib.rs:952:6
+    |
+952 |   fn emit<S: Serialize + Clone>(&self, ev
+ent: &str, payload: S) -> Result<()> {
+    |      ---- the method is available for `ta
+uri::Window` here
+    |
+    = help: items from traits can only be used 
+if the trait is in scope
+help: there is a method `emit_to` with a simila
+r name, but with different arguments
+   --> C:\Users\FERHAT\.cargo\registry\src\inde
+x.crates.io-1949cf8c6b5b557f\tauri-2.10.3\src\l
+ib.rs:987:3
+    |
+987 | /   fn emit_to<I, S>(&self, target: I, ev
+ent: &str, payload: S) -> Result<()>
+988 | |   where
+989 | |     I: Into<EventTarget>,
+990 | |     S: Serialize + Clone,
+    | |_________________________^
+help: trait `Emitter` which provides `emit` is 
+implemented but not in scope; perhaps you want 
+to import it
+    |
+  3 + use tauri::Emitter;
+    |
+
+error[E0308]: mismatched types
+   --> src\main.rs:753:25
+    |
+753 |         .endpoints(vec![update_url])
+    |                         ^^^^^^^^^^ expect
+ed `Url`, found `String`
+
+error[E0599]: no method named `build` found for
+ enum `Result<T, E>` in the current scope
+   --> src\main.rs:754:10
+    |
+752 |       let updater = app.updater_builder()
+    |                     -   -----------------
+ method `build` is available on `UpdaterBuilder
+`
+    |  ___________________|
+    | |
+753 | |         .endpoints(vec![update_url])
+754 | |         .build()
+    | |         -^^^^^ method not found in `Res
+ult<UpdaterBuilder, tauri_plugin_updater::Error
+>`
+    | |_________|
+    |
+    |
+note: the method `build` exists on the type `Up
+daterBuilder`
+   --> C:\Users\FERHAT\.cargo\registry\src\inde
+x.crates.io-1949cf8c6b5b557f\tauri-plugin-updat
+er-2.10.0\src\updater.rs:306:5
+    |
+306 |     pub fn build(self) -> Result<Updater>
+ {
+    |     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+help: use the `?` operator to extract the `Upda
+terBuilder` value, propagating a `Result::Err` 
+value to the caller
+    |
+753 |         .endpoints(vec![update_url])?
+    |                                     +
+
+error[E0282]: type annotations needed
+   --> src\main.rs:755:19
+    |
+755 |         .map_err(|e| e.to_string())?;
+    |                   ^  - type must be known
+ at this point
+    |
+help: consider giving this closure parameter an
+ explicit type
+    |
+755 |         .map_err(|e: /* Type */| e.to_str
+ing())?;
+    |                    ++++++++++++
+
+error[E0282]: type annotations needed
+   --> src\main.rs:761:17
+    |
+761 |                 update.download_and_insta
+ll(|_, _| {}, || {}).await.map_err(|e| e.to_str
+ing())?;
+    |                 ^^^^^^^^^^^^^^^^^^^^^^^^^
+^^^^^^^^^^^^^^^^^^^^^^^^^^ cannot infer type
+
+error[E0282]: type annotations needed
+   --> src\main.rs:761:78
+    |
+761 |                 update.download_and_insta
+ll(|_, _| {}, || {}).await.map_err(|e| e.to_str
+ing())?;
+    |                                          
+                                    ^  - type m
+ust be known at this point
+    |
+help: consider giving this closure parameter an
+ explicit type
+    |
+761 |                 update.download_and_insta
+ll(|_, _| {}, || {}).await.map_err(|e: /* Type 
+*/| e.to_string())?;
+    |                                          
+                                     ++++++++++
+++
+
+Some errors have detailed explanations: E0282, 
+E0308, E0425, E0599.
+For more information about an error, try `rustc
+ --explain E0282`.
+warning: `retailex` (bin "retailex") generated 
+6 warnings (5 duplicates)
+error: could not compile `retailex` (bin "retai
+lex") due to 57 previous errors; 6 warnings emi
+tted

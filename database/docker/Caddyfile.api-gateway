@@ -1,0 +1,265 @@
+:80 {
+    encode gzip
+
+    @preflight method OPTIONS
+    header @preflight Access-Control-Allow-Methods "GET,POST,PUT,PATCH,DELETE,OPTIONS"
+    header @preflight Access-Control-Allow-Headers "Authorization,Content-Type,apikey,Prefer,Accept,Origin,Content-Profile,Accept-Profile"
+    header @preflight Access-Control-Max-Age "86400"
+    header @preflight Access-Control-Allow-Origin "*"
+    handle @preflight {
+        respond 204
+    }
+
+    @health path / /health /status
+    handle @health {
+        header Content-Type "application/json; charset=utf-8"
+        respond "{\"ok\":true,\"service\":\"retailex-api-gateway\"}" 200
+    }
+
+    handle_path /merkez/* {
+        header Access-Control-Allow-Origin "https://retailex.app"
+        reverse_proxy postgrest_merkez:3000 {
+            header_down -Access-Control-Allow-Origin
+            header_down Access-Control-Allow-Origin "https://retailex.app"
+        }
+    }
+
+    handle /aqua/ws* {
+        uri strip_prefix /aqua
+        header Access-Control-Allow-Origin "https://retailex.app"
+        reverse_proxy sync_aqua:8080
+    }
+    handle /aqua/sync/* {
+        uri strip_prefix /aqua/sync
+        header Access-Control-Allow-Origin "https://retailex.app"
+        reverse_proxy sync_aqua:8080
+    }
+    handle_path /aqua/* {
+        header Access-Control-Allow-Origin "https://retailex.app"
+        reverse_proxy postgrest_aqua_beauty:3000 {
+            header_down -Access-Control-Allow-Origin
+            header_down Access-Control-Allow-Origin "https://retailex.app"
+        }
+    }
+
+    handle /siti_pdks/ws* {
+        uri strip_prefix /siti_pdks
+        header Access-Control-Allow-Origin "https://retailex.app"
+        reverse_proxy sync_siti_pdks:8080
+    }
+    handle /siti_pdks/sync/* {
+        uri strip_prefix /siti_pdks/sync
+        header Access-Control-Allow-Origin "https://retailex.app"
+        reverse_proxy sync_siti_pdks:8080
+    }
+    handle_path /siti_pdks/* {
+        header Access-Control-Allow-Origin "https://retailex.app"
+        reverse_proxy postgrest_siti_pdks:3000 {
+            header_down -Access-Control-Allow-Origin
+            header_down Access-Control-Allow-Origin "https://retailex.app"
+        }
+    }
+
+    handle /pdks_demo/ws* {
+        uri strip_prefix /pdks_demo
+        header Access-Control-Allow-Origin "https://retailex.app"
+        reverse_proxy sync_pdks_demo:8080
+    }
+    handle /pdks_demo/sync/* {
+        uri strip_prefix /pdks_demo/sync
+        header Access-Control-Allow-Origin "https://retailex.app"
+        reverse_proxy sync_pdks_demo:8080
+    }
+    handle_path /pdks_demo/* {
+        header Access-Control-Allow-Origin "https://retailex.app"
+        reverse_proxy postgrest_pdks_demo:3000 {
+            header_down -Access-Control-Allow-Origin
+            header_down Access-Control-Allow-Origin "https://retailex.app"
+        }
+    }
+
+    handle /retailex_demo/ws* {
+        uri strip_prefix /retailex_demo
+        header Access-Control-Allow-Origin "https://retailex.app"
+        reverse_proxy sync_retailex_demo:8080
+    }
+    handle /retailex_demo/sync/* {
+        uri strip_prefix /retailex_demo/sync
+        header Access-Control-Allow-Origin "https://retailex.app"
+        reverse_proxy sync_retailex_demo:8080
+    }
+    handle_path /retailex_demo/* {
+        header Access-Control-Allow-Origin "https://retailex.app"
+        reverse_proxy postgrest_retailex_demo:3000 {
+            header_down -Access-Control-Allow-Origin
+            header_down Access-Control-Allow-Origin "https://retailex.app"
+        }
+    }
+
+    handle /berzin_com/ws* {
+        uri strip_prefix /berzin_com
+        header Access-Control-Allow-Origin "https://retailex.app"
+        reverse_proxy sync_berzin_com:8080
+    }
+    handle /berzin_com/sync/* {
+        uri strip_prefix /berzin_com/sync
+        header Access-Control-Allow-Origin "https://retailex.app"
+        reverse_proxy sync_berzin_com:8080
+    }
+    handle_path /berzin_com/* {
+        header Access-Control-Allow-Origin "https://retailex.app"
+        reverse_proxy postgrest_berzin_com:3000 {
+            header_down -Access-Control-Allow-Origin
+            header_down Access-Control-Allow-Origin "https://retailex.app"
+        }
+    }
+
+    handle /kasap/ws* {
+        uri strip_prefix /kasap
+        header Access-Control-Allow-Origin "https://retailex.app"
+        reverse_proxy sync_kasap:8080
+    }
+    handle /kasap/sync/* {
+        uri strip_prefix /kasap/sync
+        header Access-Control-Allow-Origin "https://retailex.app"
+        reverse_proxy sync_kasap:8080
+    }
+    handle_path /kasap/* {
+        header Access-Control-Allow-Origin "https://retailex.app"
+        reverse_proxy postgrest_kasap:3000 {
+            header_down -Access-Control-Allow-Origin
+            header_down Access-Control-Allow-Origin "https://retailex.app"
+        }
+    }
+
+    handle /testere/ws* {
+        uri strip_prefix /testere
+        header Access-Control-Allow-Origin "https://retailex.app"
+        reverse_proxy sync_testere:8080
+    }
+    handle /testere/sync/* {
+        uri strip_prefix /testere/sync
+        header Access-Control-Allow-Origin "https://retailex.app"
+        reverse_proxy sync_testere:8080
+    }
+    handle_path /testere/* {
+        header Access-Control-Allow-Origin "https://retailex.app"
+        reverse_proxy postgrest_testere:3000 {
+            header_down -Access-Control-Allow-Origin
+            header_down Access-Control-Allow-Origin "https://retailex.app"
+        }
+    }
+
+    handle /mettu/ws* {
+        uri strip_prefix /mettu
+        header Access-Control-Allow-Origin "https://retailex.app"
+        reverse_proxy sync_mettu:8080
+    }
+    handle /mettu/sync/* {
+        uri strip_prefix /mettu/sync
+        header Access-Control-Allow-Origin "https://retailex.app"
+        reverse_proxy sync_mettu:8080
+    }
+    handle_path /mettu/* {
+        header Access-Control-Allow-Origin "https://retailex.app"
+        reverse_proxy postgrest_mettu:3000 {
+            header_down -Access-Control-Allow-Origin
+            header_down Access-Control-Allow-Origin "https://retailex.app"
+        }
+    }
+
+    handle /canon/ws* {
+        uri strip_prefix /canon
+        header Access-Control-Allow-Origin "https://retailex.app"
+        reverse_proxy sync_canon:8080
+    }
+    handle /canon/sync/* {
+        uri strip_prefix /canon/sync
+        header Access-Control-Allow-Origin "https://retailex.app"
+        reverse_proxy sync_canon:8080
+    }
+    handle_path /canon/* {
+        header Access-Control-Allow-Origin "https://retailex.app"
+        reverse_proxy postgrest_canon:3000 {
+            header_down -Access-Control-Allow-Origin
+            header_down Access-Control-Allow-Origin "https://retailex.app"
+        }
+    }
+
+    handle /lovan/ws* {
+        uri strip_prefix /lovan
+        header Access-Control-Allow-Origin "https://retailex.app"
+        reverse_proxy sync_lovan:8080
+    }
+    handle /lovan/sync/* {
+        uri strip_prefix /lovan/sync
+        header Access-Control-Allow-Origin "https://retailex.app"
+        reverse_proxy sync_lovan:8080
+    }
+    handle_path /lovan/* {
+        header Access-Control-Allow-Origin "https://retailex.app"
+        reverse_proxy postgrest_lovan:3000 {
+            header_down -Access-Control-Allow-Origin
+            header_down Access-Control-Allow-Origin "https://retailex.app"
+        }
+    }
+
+    handle /zetem/ws* {
+        uri strip_prefix /zetem
+        header Access-Control-Allow-Origin "https://retailex.app"
+        reverse_proxy sync_zetem:8080
+    }
+    handle /zetem/sync/* {
+        uri strip_prefix /zetem/sync
+        header Access-Control-Allow-Origin "https://retailex.app"
+        reverse_proxy sync_zetem:8080
+    }
+    handle_path /zetem/* {
+        header Access-Control-Allow-Origin "https://retailex.app"
+        reverse_proxy postgrest_zetem:3000 {
+            header_down -Access-Control-Allow-Origin
+            header_down Access-Control-Allow-Origin "https://retailex.app"
+        }
+    }
+
+    handle /ferhat/ws* {
+        uri strip_prefix /ferhat
+        header Access-Control-Allow-Origin "https://retailex.app"
+        reverse_proxy sync_ferhat:8080
+    }
+    handle /ferhat/sync/* {
+        uri strip_prefix /ferhat/sync
+        header Access-Control-Allow-Origin "https://retailex.app"
+        reverse_proxy sync_ferhat:8080
+    }
+    handle_path /ferhat/* {
+        header Access-Control-Allow-Origin "https://retailex.app"
+        reverse_proxy postgrest_ferhat:3000 {
+            header_down -Access-Control-Allow-Origin
+            header_down Access-Control-Allow-Origin "https://retailex.app"
+        }
+    }
+
+    handle /ozbek/ws* {
+        uri strip_prefix /ozbek
+        header Access-Control-Allow-Origin "https://retailex.app"
+        reverse_proxy sync_ozbek:8080
+    }
+    handle /ozbek/sync/* {
+        uri strip_prefix /ozbek/sync
+        header Access-Control-Allow-Origin "https://retailex.app"
+        reverse_proxy sync_ozbek:8080
+    }
+    handle_path /ozbek/* {
+        header Access-Control-Allow-Origin "https://retailex.app"
+        reverse_proxy postgrest_ozbek:3000 {
+            header_down -Access-Control-Allow-Origin
+            header_down Access-Control-Allow-Origin "https://retailex.app"
+        }
+    }
+
+    handle {
+        header Content-Type "application/json; charset=utf-8"
+        respond "{\"ok\":false,\"error\":\"not_found\"}" 404
+    }
+}

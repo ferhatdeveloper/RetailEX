@@ -1,0 +1,18 @@
+{
+  "version": 2,
+  "artifactType": {
+    "type": "APK",
+    "kind": "Directory"
+  },
+  "applicationId": "com.plu.example",
+  "variantName": "release",
+  "elements": [
+    {
+      "type": "SINGLE",
+      "filters": [],
+      "versionCode": 203,
+      "versionName": "2.0.3",
+      "outputFile": "PLU_Example_v2.0.3_2023.11.14_1411.apk"
+    }
+  ]
+}

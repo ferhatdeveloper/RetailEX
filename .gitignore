@@ -1,0 +1,155 @@
+# Dependencies
+node_modules/
+.pnp
+.pnp.js
+
+# Testing
+coverage/
+*.log
+
+# Production
+build/
+dist/
+.next/
+out/
+
+# Cursor / Claude Code — yerel ayar ve worktree gitlink’leri (repoda tutulmaz)
+# Not: Bu yollar bir kez commitlendiyse `git rm -r --cached .claude/` ile indeksten çıkarılmalıdır.
+.claude/
+
+# WhatsApp Baileys oturum dosyaları (yerel köprü)
+scripts/whatsapp-bridge/.wa-auth/
+scripts/whatsapp-bridge/node_modules/
+
+.DS_Store
+*.tsbuildinfo
+*.pem
+.vercel
+.env*.local
+.env
+.env.signing
+
+# Windows kod imzasi (thumbprint yerel; repoya konmaz)
+DeskApp/tauri.windows.conf.json
+DeskApp/tauri.updater-ci.conf.json
+
+# PostgREST Windows x64 — npm run postgrest:fetch ile üretilir (kuruluma gömülür)
+DeskApp/resources/postgrest/postgrest.exe
+
+# Debug
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+
+# Local env files
+.env.local
+.env.development.local
+.env.test.local
+.env.production.local
+
+# Android / React Native (mobil ayrı proje)
+android/app/build/
+android/.gradle/
+android/local.properties
+android/.idea/
+*.iml
+.gradle/
+local.properties
+
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+venv/
+env/
+ENV/
+
+# IDE
+.vscode/
+.idea/
+# .cursor/ — ASLA ignore etme: roller .cursor/rules/*.mdc repoda tutulur
+*.swp
+*.swo
+*~
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Build outputs
+*.apk
+*.aab
+*.ap_
+*.dex
+*.class
+
+# Capacitor
+.capacitor/
+
+# Electron
+dist-electron/
+
+# TypeScript compiler error dumps (yerel)
+tsc-errors*.txt
+
+# Temporary files
+*.tmp
+*.temp
+*.rar
+*.zip
+
+# Yerel kiracı PG yedekleri (pg_dump) — asla commit etme
+/backups/
+
+# Logs
+logs/
+*.log
+
+.vercel
+.env*.local
+
+# Rust
+target/
+src-tauri/target/
+**/*.rs.bk
+
+# Yanlışlıkla commit edilen Windows mutlak yol dosyaları (CI checkout hatası)
+DeskApp/C:/
+**/migration_log.json
+**/schema_gaps.json
+
+# Google Play service account — asla commit (EAS_CHECKLIST.md / PLAY_SUBMIT.md)
+mobile/secrets/**
+!mobile/secrets/.gitkeep
+!mobile/secrets/README.md
+**/google-play-service-account.json
+**/play-store-service-account.json
+mobile/google-service-account.json
+**/google-service-account.json
+
+# SumatraPDF portable (npm run sumatra:fetch — kurulum paketine dahil edilir)
+DeskApp/resources/sumatra/SumatraPDF.exe
+
+# Large binary dependencies (downloaded separately)
+src-tauri/dependencies/*.exe
+src-tauri/dependencies/*.msi
+src-tauri/dependencies/*.dmg
+
+# ExRetailOS Specific
+tools/**/.git
+.agent/skills/**/.git
+add_files.ps1
+add_all_files.ps1
+
+# Separate Repositories (kök dizin; services/logo-connector repoda)
+/logo-connector/
+tools/*/
+!tools/FastReportDesigner/
+!tools/FastReportDesigner/**
+!tools/postgresql-remote-enable/
+!tools/.gitkeep
+
+# Tauri updater private key
+DeskApp/updater.key

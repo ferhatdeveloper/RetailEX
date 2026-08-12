@@ -1,0 +1,18 @@
+---
+description: AWS Bedrock AgentCore — Gateway, Runtime, Memory, Identity, Code Interpreter, Browser
+alwaysApply: false
+---
+
+# AWS Bedrock AgentCore
+
+AgentCore servisleri: REST API’leri MCP aracına dönüştürme (Gateway), sunucusuz runtime (Runtime), konuşma hafızası (Memory), kimlik/credential (Identity), Code Interpreter, Browser, Observability.
+
+## Ön koşul
+AWS MCP araçları gerekli. Yoksa `tools-aws-mcp-setup` kuralına göre yapılandır. Sorularda önce `mcp__aws-mcp__aws___search_documentation` / `read_documentation` veya `mcp__*awsdocs*__*` ile güncel dokümantasyonu kontrol et.
+
+## Servisler
+- **Gateway**: REST API → MCP tools. Detay: `tools/aws-skills-zxkane/plugins/aws-agentic-ai/skills/.../services/gateway/README.md`.
+- **Runtime**: Agent deploy/scale. **Memory**: Konuşma state. **Identity**: Credential/erişim. **Code Interpreter**: Sandbox’ta kod. **Browser**: Web otomasyon. **Observability**: İzleme/tracing.
+
+## Genel akış (Gateway)
+1. OpenAPI şemasını S3’e yükle. 2. IAM ve deployment stratejisine göre Gateway hedefi oluştur. 3. Troubleshooting ve doğrulama için ilgili README’e bak.

@@ -1,0 +1,624 @@
+﻿cargo : warning: unused import: `wintun::Adapte
+r`
+At line:1 char:1
++ cargo build > errors2.txt 2>&1
++ ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+    + CategoryInfo          : NotSpecified: (w 
+   arning: unused...intun::Adapter`:String) [  
+  ], RemoteException
+    + FullyQualifiedErrorId : NativeCommandErr 
+   or
+ 
+ --> src\vpn.rs:7:5
+  |
+7 | use wintun::Adapter;
+  |     ^^^^^^^^^^^^^^^
+  |
+  = note: `#[warn(unused_imports)]` (part of `#
+[warn(unused)]`) on by default
+
+warning: unused import: `tokio::sync::mpsc`
+ --> src\vpn.rs:9:5
+  |
+9 | use tokio::sync::mpsc;
+  |     ^^^^^^^^^^^^^^^^^
+
+warning: variable does not need to be mutable
+   --> src\vpn.rs:196:9
+    |
+196 |     let mut buf_tun = [0u8; 2048];
+    |         ----^^^^^^^
+    |         |
+    |         help: remove this `mut`
+    |
+    = note: `#[warn(unused_mut)]` (part of `#[w
+arn(unused)]`) on by default
+
+warning: unused variable: `buf_tun`
+   --> src\vpn.rs:196:9
+    |
+196 |     let mut buf_tun = [0u8; 2048];
+    |         ^^^^^^^^^^^ help: if this is inte
+ntional, prefix it with an underscore: `_buf_tu
+n`
+    |
+    = note: `#[warn(unused_variables)]` (part o
+f `#[warn(unused)]`) on by default
+
+warning: unused variable: `packet`
+   --> src\vpn.rs:207:49
+    |
+207 | ...ToTunnelV4(packet, _) => {
+    |               ^^^^^^ help: if this is int
+entional, prefix it with an underscore: `_packe
+t`
+
+warning: field `vpn_manager` is never read
+  --> src\vpn_tray.rs:34:5
+   |
+33 | struct AppState {
+   |        -------- field in this struct
+34 |     vpn_manager: Arc<VpnManager>,
+   |     ^^^^^^^^^^^
+   |
+   = note: `AppState` has a derived impl for th
+e trait `Clone`, but this is intentionally igno
+red during dead code analysis
+   = note: `#[warn(dead_code)]` (part of `#[war
+n(unused)]`) on by default
+
+warning: struct `VpnStatus` is never constructe
+d
+  --> src\vpn.rs:32:12
+   |
+32 | pub struct VpnStatus {
+   |            ^^^^^^^^^
+
+warning: field `tunnel` is never read
+  --> src\vpn.rs:41:9
+   |
+40 | pub struct VpnManager {
+   |            ---------- field in this struct
+41 |     pub tunnel: Arc<Mutex<Option<VpnSess..
+.
+   |         ^^^^^^
+
+warning: fields `config`, `tx_bytes`, and `rx_b
+ytes` are never read
+  --> src\vpn.rs:45:9
+   |
+44 | pub struct VpnSession {
+   |            ---------- fields in this struc
+t
+45 |     pub config: VpnConfig,
+   |         ^^^^^^
+46 |     pub tx_bytes: u64,
+   |         ^^^^^^^^
+47 |     pub rx_bytes: u64,
+   |         ^^^^^^^^
+
+warning: associated function `from_keys` is nev
+er used
+  --> src\vpn.rs:59:12
+   |
+58 | impl VpnConfig {
+   | -------------- associated function in this
+ implementation
+59 |     pub fn from_keys(private: String, pu..
+.
+   |            ^^^^^^^^^
+
+warning: function `generate_vpn_keys` is never 
+used
+  --> src\vpn.rs:73:8
+   |
+73 | pub fn generate_vpn_keys() -> Result<ser..
+.
+   |        ^^^^^^^^^^^^^^^^^
+
+warning: function `start_vpn_mesh` is never use
+d
+  --> src\vpn.rs:88:14
+   |
+88 | pub async fn start_vpn_mesh(
+   |              ^^^^^^^^^^^^^^
+
+warning: function `get_vpn_status` is never use
+d
+   --> src\vpn.rs:114:8
+    |
+114 | pub fn get_vpn_status(state: State<'_, ..
+.
+    |        ^^^^^^^^^^^^^^
+
+warning: function `get_mesh_peers` is never use
+d
+   --> src\vpn.rs:136:8
+    |
+136 | pub fn get_mesh_peers(state: State<'_, ..
+.
+    |        ^^^^^^^^^^^^^^
+
+warning: function `run_vpn_loop` is never used
+   --> src\vpn.rs:145:10
+    |
+145 | async fn run_vpn_loop(config: VpnConfig..
+.
+    |          ^^^^^^^^^^^^
+
+   Compiling retailex v0.1.36 (D:\RetailEX\src-
+tauri)
+warning: `retailex` (bin "RetailEX_VPN") genera
+ted 15 warnings (run `cargo fix --bin "RetailEX
+_VPN" -p retailex` to apply 5 suggestions)
+warning: unused import: `AppHandle`
+ --> src\sync.rs:9:13
+  |
+9 | use tauri::{AppHandle, Manager, Emitter};
+  |             ^^^^^^^^^
+
+error[E0425]: cannot find function `init` in cr
+ate `tauri_plugin_updater`
+   --> src\main.rs:669:35
+    |
+669 |     .plugin(tauri_plugin_updater::init())
+    |                                   ^^^^ no
+t found in `tauri_plugin_updater`
+    |
+help: consider importing one of these functions
+    |
+ 20 + use tauri_plugin_dialog::init;
+    |
+ 20 + use tauri_plugin_process::init;
+    |
+ 20 + use tauri_plugin_shell::init;
+    |
+help: if you import `init`, refer to it directl
+y
+    |
+669 -     .plugin(tauri_plugin_updater::init())
+669 +     .plugin(init())
+    |
+
+warning: unused import: `AppHandle`
+ --> src\sync.rs:9:13
+  |
+9 | use tauri::{AppHandle, Manager, Emitter};
+  |             ^^^^^^^^^
+  |
+  = note: `#[warn(unused_imports)]` (part of `#
+[warn(unused)]`) on by default
+
+warning: unused import: `wintun::Adapter`
+ --> src\vpn.rs:7:5
+  |
+7 | use wintun::Adapter;
+  |     ^^^^^^^^^^^^^^^
+
+warning: unused import: `AppHandle`
+  --> src\main.rs:23:13
+   |
+23 | use tauri::{AppHandle, Manager};
+   |             ^^^^^^^^^
+
+warning: unused import: `rust_decimal::prelude:
+:FromPrimitive`
+   --> src\main.rs:212:17
+    |
+212 |             use rust_decimal::prelude::Fr
+omPrimitive;
+    |                 ^^^^^^^^^^^^^^^^^^^^^^^^^
+^^^^^^^^^^^
+
+warning: unused variable: `packet`
+   --> src\vpn.rs:207:49
+    |
+207 |                     TunnResult::WriteToTu
+nnelV4(packet, _) => {
+    |                                          
+       ^^^^^^ help: if this is intentional, pre
+fix it with an underscore: `_packet`
+
+error[E0599]: no method named `path` found for 
+reference `&AppHandle` in the current scope
+   --> src\db_ops.rs:179:26
+    |
+179 |     if let Ok(res) = app.path().resolve("
+database/migrations", BaseDirectory::Resource) 
+{
+    |                          ^^^^ method not 
+found in `&AppHandle`
+    |
+    = help: items from traits can only be used 
+if the trait is in scope
+help: trait `Manager` which provides `path` is 
+implemented but not in scope; perhaps you want 
+to import it
+    |
+  1 + use tauri::Manager;
+    |
+
+error[E0599]: no method named `path` found for 
+reference `&AppHandle` in the current scope
+   --> src\db_ops.rs:184:26
+    |
+184 |     if let Ok(res) = app.path().resolve("
+_up_/database/migrations", BaseDirectory::Resou
+rce) {
+    |                          ^^^^ method not 
+found in `&AppHandle`
+    |
+    = help: items from traits can only be used 
+if the trait is in scope
+help: trait `Manager` which provides `path` is 
+implemented but not in scope; perhaps you want 
+to import it
+    |
+  1 + use tauri::Manager;
+    |
+
+error[E0599]: no method named `path` found for 
+reference `&AppHandle` in the current scope
+   --> src\db_ops.rs:189:35
+    |
+189 |     if let Ok(resource_dir) = app.path().
+resource_dir() {
+    |                                   ^^^^ me
+thod not found in `&AppHandle`
+    |
+    = help: items from traits can only be used 
+if the trait is in scope
+help: trait `Manager` which provides `path` is 
+implemented but not in scope; perhaps you want 
+to import it
+    |
+  1 + use tauri::Manager;
+    |
+
+error[E0282]: type annotations needed
+   --> src\db_ops.rs:190:27
+    |
+190 |         search_paths.push(resource_dir.jo
+in("database").join("migrations"));
+    |                           ^^^^^^^^^^^^ ca
+nnot infer type
+
+warning: struct `VpnStatus` is never constructe
+d
+  --> src\vpn.rs:32:12
+   |
+32 | pub struct VpnStatus {
+   |            ^^^^^^^^^
+   |
+   = note: `#[warn(dead_code)]` (part of `#[war
+n(unused)]`) on by default
+
+warning: fields `tx_bytes` and `rx_bytes` are n
+ever read
+  --> src\vpn.rs:46:9
+   |
+44 | pub struct VpnSession {
+   |            ---------- fields in this struc
+t
+45 |     pub config: VpnConfig,
+46 |     pub tx_bytes: u64,
+   |         ^^^^^^^^
+47 |     pub rx_bytes: u64,
+   |         ^^^^^^^^
+
+warning: associated function `from_keys` is nev
+er used
+  --> src\vpn.rs:59:12
+   |
+58 | impl VpnConfig {
+   | -------------- associated function in this
+ implementation
+59 |     pub fn from_keys(private: String, publ
+ic: String) -> Self {
+   |            ^^^^^^^^^
+
+warning: function `generate_vpn_keys` is never 
+used
+  --> src\vpn.rs:73:8
+   |
+73 | pub fn generate_vpn_keys() -> Result<serde
+_json::Value, String> {
+   |        ^^^^^^^^^^^^^^^^^
+
+warning: function `get_vpn_status` is never use
+d
+   --> src\vpn.rs:114:8
+    |
+114 | pub fn get_vpn_status(state: State<'_, Vp
+nManager>) -> Result<VpnStatus, String> {
+    |        ^^^^^^^^^^^^^^
+
+warning: function `get_mesh_peers` is never use
+d
+   --> src\vpn.rs:136:8
+    |
+136 | pub fn get_mesh_peers(state: State<'_, Vp
+nManager>) -> Result<Vec<PeerConfig>, String> {
+    |        ^^^^^^^^^^^^^^
+
+warning: function `run_vpn_loop` is never used
+   --> src\vpn.rs:145:10
+    |
+145 | async fn run_vpn_loop(config: VpnConfig) 
+-> Result<(), Box<dyn std::error::Error + Send 
++ Sync>> {
+    |          ^^^^^^^^^^^^
+
+warning: function `perform_manual_backup` is ne
+ver used
+  --> src\backup_service.rs:18:8
+   |
+18 | pub fn perform_manual_backup(app_handle: A
+ppHandle) -> Result<String, String> {
+   |        ^^^^^^^^^^^^^^^^^^^^^
+
+warning: method `handle_event_json` is never us
+ed
+  --> src\remote_input.rs:29:12
+   |
+22 | impl RemoteInputManager {
+   | ----------------------- method in this imp
+lementation
+...
+29 |     pub fn handle_event_json(&self, json_s
+tr: &str) -> Result<(), String> {
+   |            ^^^^^^^^^^^^^^^^^
+
+warning: method `stop` is never used
+  --> src\screen_capture.rs:77:12
+   |
+13 | impl ScreenCaptureService {
+   | ------------------------- method in this i
+mplementation
+...
+77 |     pub fn stop(&self) {
+   |            ^^^^
+
+warning: methods `get_sender` and `stop` are ne
+ver used
+   --> src\sync.rs:99:12
+    |
+ 44 | impl BackgroundSyncService {
+    | -------------------------- methods in thi
+s implementation
+...
+ 99 |     pub fn get_sender(&self) -> tokio::sy
+nc::mpsc::Sender<String> {
+    |            ^^^^^^^^^^
+...
+103 |     pub fn stop(&self) {
+    |            ^^^^
+
+warning: function `process_sync_queue` is never
+ used
+   --> src\sync.rs:109:10
+    |
+109 | async fn process_sync_queue(_app: &tauri:
+:AppHandle) -> Result<(), String> {
+    |          ^^^^^^^^^^^^^^^^^^
+
+warning: function `send_websocket_message` is n
+ever used
+   --> src\sync.rs:239:14
+    |
+239 | pub async fn send_websocket_message(messa
+ge: String, state: tauri::State<'_, SyncSender>
+) -> Result<(), String> {
+    |              ^^^^^^^^^^^^^^^^^^^^^^
+
+warning: function `enable_remote_support` is ne
+ver used
+   --> src\sync.rs:450:14
+    |
+450 | pub async fn enable_remote_support(app: t
+auri::AppHandle) -> Result<String, String> {
+    |              ^^^^^^^^^^^^^^^^^^^^^
+
+warning: function `announce_node` is never used
+   --> src\sync.rs:485:14
+    |
+485 | pub async fn announce_node(_app: tauri::A
+ppHandle) -> Result<(), String> {
+    |              ^^^^^^^^^^^^^
+
+warning: struct `SyncInfo` is never constructed
+   --> src\sync.rs:491:12
+    |
+491 | pub struct SyncInfo {
+    |            ^^^^^^^^
+
+warning: function `get_last_sync_info` is never
+ used
+   --> src\sync.rs:498:14
+    |
+498 | pub async fn get_last_sync_info(app: taur
+i::AppHandle) -> Result<SyncInfo, String> {
+    |              ^^^^^^^^^^^^^^^^^^
+
+warning: method `update_policy` is never used
+  --> src\security.rs:76:12
+   |
+12 | impl SecurityService {
+   | -------------------- method in this implem
+entation
+...
+76 |     pub fn update_policy(&self, apps: Vec<
+String>, sites: Vec<String>) {
+   |            ^^^^^^^^^^^^^
+
+warning: function `verify_token` is never used
+   --> src\security.rs:148:14
+    |
+148 | pub async fn verify_token(token: String) 
+-> Result<bool, String> {
+    |              ^^^^^^^^^^^^
+
+warning: function `compact_database` is never u
+sed
+  --> src\maintenance.rs:62:14
+   |
+62 | pub async fn compact_database() -> Result<
+String, String> {
+   |              ^^^^^^^^^^^^^^^^
+
+warning: function `log_system_error` is never u
+sed
+  --> src\logger.rs:38:8
+   |
+38 | pub fn log_system_error(level: &str, conte
+xt: &str, details: &str) {
+   |        ^^^^^^^^^^^^^^^^
+
+warning: function `log_from_frontend` is never 
+used
+  --> src\logger.rs:57:8
+   |
+57 | pub fn log_from_frontend(level: String, co
+ntext: String, details: String) {
+   |        ^^^^^^^^^^^^^^^^^
+
+warning: function `init_db` is never used
+  --> src\db.rs:12:8
+   |
+12 | pub fn init_db(_app_handle: &AppHandle) ->
+ Result<(), String> {
+   |        ^^^^^^^
+
+error[E0599]: no method named `emit` found for 
+struct `tauri::Window<R>` in the current scope
+   --> src\main.rs:525:20
+    |
+525 |     let _ = window.emit("supabase-dump-pr
+ogress", "Tablo ┼şemalar─▒ analizi yap─▒l─▒yor.
+..");
+    |                    ^^^^
+    |
+   ::: C:\Users\FERHAT\.cargo\registry\src\inde
+x.crates.io-1949cf8c6b5b557f\tauri-2.10.3\src\l
+ib.rs:952:6
+    |
+952 |   fn emit<S: Serialize + Clone>(&self, ev
+ent: &str, payload: S) -> Result<()> {
+    |      ---- the method is available for `ta
+uri::Window` here
+    |
+    = help: items from traits can only be used 
+if the trait is in scope
+help: there is a method `emit_to` with a simila
+r name, but with different arguments
+   --> C:\Users\FERHAT\.cargo\registry\src\inde
+x.crates.io-1949cf8c6b5b557f\tauri-2.10.3\src\l
+ib.rs:987:3
+    |
+987 | /   fn emit_to<I, S>(&self, target: I, ev
+ent: &str, payload: S) -> Result<()>
+988 | |   where
+989 | |     I: Into<EventTarget>,
+990 | |     S: Serialize + Clone,
+    | |_________________________^
+help: trait `Emitter` which provides `emit` is 
+implemented but not in scope; perhaps you want 
+to import it
+    |
+  3 + use tauri::Emitter;
+    |
+
+error[E0599]: no method named `emit` found for 
+struct `tauri::Window<R>` in the current scope
+   --> src\main.rs:567:24
+    |
+567 |         let _ = window.emit("supabase-dum
+p-progress", format!("Tablo i┼şleniyor ({}/{}):
+ {}...", idx + 1, total_tables, full_table_name
+));
+    |                        ^^^^
+    |
+   ::: C:\Users\FERHAT\.cargo\registry\src\inde
+x.crates.io-1949cf8c6b5b557f\tauri-2.10.3\src\l
+ib.rs:952:6
+    |
+952 |   fn emit<S: Serialize + Clone>(&self, ev
+ent: &str, payload: S) -> Result<()> {
+    |      ---- the method is available for `ta
+uri::Window` here
+    |
+    = help: items from traits can only be used 
+if the trait is in scope
+help: there is a method `emit_to` with a simila
+r name, but with different arguments
+   --> C:\Users\FERHAT\.cargo\registry\src\inde
+x.crates.io-1949cf8c6b5b557f\tauri-2.10.3\src\l
+ib.rs:987:3
+    |
+987 | /   fn emit_to<I, S>(&self, target: I, ev
+ent: &str, payload: S) -> Result<()>
+988 | |   where
+989 | |     I: Into<EventTarget>,
+990 | |     S: Serialize + Clone,
+    | |_________________________^
+help: trait `Emitter` which provides `emit` is 
+implemented but not in scope; perhaps you want 
+to import it
+    |
+  3 + use tauri::Emitter;
+    |
+
+error[E0599]: no method named `build` found for
+ enum `Result<T, E>` in the current scope
+   --> src\main.rs:757:10
+    |
+755 |       let updater = app.updater_builder()
+    |                     -   -----------------
+ method `build` is available on `UpdaterBuilder
+`
+    |  ___________________|
+    | |
+756 | |         .endpoints(vec![parsed_url])
+757 | |         .build()
+    | |         -^^^^^ method not found in `Res
+ult<UpdaterBuilder, tauri_plugin_updater::Error
+>`
+    | |_________|
+    |
+    |
+note: the method `build` exists on the type `Up
+daterBuilder`
+   --> C:\Users\FERHAT\.cargo\registry\src\inde
+x.crates.io-1949cf8c6b5b557f\tauri-plugin-updat
+er-2.10.0\src\updater.rs:306:5
+    |
+306 |     pub fn build(self) -> Result<Updater>
+ {
+    |     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+help: use the `?` operator to extract the `Upda
+terBuilder` value, propagating a `Result::Err` 
+value to the caller
+    |
+756 |         .endpoints(vec![parsed_url])?
+    |                                     +
+
+error[E0282]: type annotations needed
+   --> src\main.rs:764:17
+    |
+764 |                 update.download_and_insta
+ll(|_, _| {}, || {}).await.map_err(|e: tauri_pl
+ugin_updater::Error| e.to_string())?;
+    |                 ^^^^^^^^^^^^^^^^^^^^^^^^^
+^^^^^^^^^^^^^^^^^^^^^^^^^^ cannot infer type
+
+Some errors have detailed explanations: E0282, 
+E0425, E0599.
+For more information about an error, try `rustc
+ --explain E0282`.
+warning: `retailex` (bin "retailex") generated 
+8 warnings (4 duplicates)
+error: could not compile `retailex` (bin "retai
+lex") due to 9 previous errors; 8 warnings emit
+ted
+warning: build failed, waiting for other jobs t
+o finish...

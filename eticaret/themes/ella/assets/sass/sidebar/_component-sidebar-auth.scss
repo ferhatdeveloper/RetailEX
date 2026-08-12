@@ -1,0 +1,53 @@
+body {
+    &.auth-sidebar-show {
+        overflow: hidden;
+        .halo-auth-sidebar {
+            transform: translate(0);
+            opacity: 1;
+            visibility: visible;
+        }
+        .background-overlay {
+            z-index: 99;
+            opacity: 1;
+            visibility: visible;
+        }
+    }
+}
+
+.auth-form {
+    padding: 22px 20px;
+    .form-field {
+        +.form-field {
+            margin-top: 14px;
+        }
+    }
+}
+
+.auth-actions {
+    margin: 15px 0 0;
+    .button {
+        width: 100%;
+    }
+    .auth-link {
+        font-size: 12px;
+        margin: 14px 0 22px;
+        color: #3c3c3c;
+        text-decoration: underline;
+        text-underline-offset: 0.2rem;
+        &:hover {
+            color: #232323;
+        }
+    }
+}
+
+@media (min-width:1025px) {
+    .auth-form {
+        padding-left: 30px;
+        padding-right: 30px;
+    }
+    body {
+        &.auth-sidebar-show {
+            padding-right: 10px;
+        }
+    }
+}

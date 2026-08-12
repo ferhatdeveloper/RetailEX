@@ -1,0 +1,156 @@
+﻿name: Terazi Build and Release
+
+# RetailEX TeraziManager (WinForms + Inno Setup installer/)
+# Ilk surum:
+#   Actions -> "Terazi Build and Release" -> Run workflow (create_release: true)
+# veya: git tag terazi-v1.0.1 && git push origin terazi-v1.0.1
+
+on:
+  push:
+    branches:
+      - main
+    paths:
+      - 'TeraziRongta/**'
+      - '.github/workflows/terazi-build-release.yml'
+    tags:
+      - 'terazi-v*'
+  workflow_dispatch:
+    inputs:
+      create_release:
+        description: 'GitHub Release olustur (tag: terazi-v<run_number>)'
+        required: false
+        default: true
+        type: boolean
+
+permissions:
+  contents: write
+
+env:
+  TERAZI_DIR: TeraziRongta
+  BUILD_CONFIG: Release
+  BUILD_PLATFORM: x86
+
+jobs:
+  build-windows-setup:
+    runs-on: windows-latest
+    timeout-minutes: 45
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup MSBuild
+        uses: microsoft/setup-msbuild@v2
+
+      - name: Surum ve release bilgisi
+        id: meta
+        shell: pwsh
+        working-directory: ${{ env.TERAZI_DIR }}
+        run: |
+          $info = Get-Content "WindowsFormsApplication1\Properties\AssemblyInfo.cs" -Raw -ErrorAction SilentlyContinue
+          # AssemblyVersion "1.0.7.0" (4 parca) — 3 parcali regex tırnakta basarisiz olup 1.0.0'a dusuyordu
+          if ($info -match 'Assembly(?:File)?Version\("([0-9]+\.[0-9]+\.[0-9]+)(?:\.[0-9]+)?"') {
+            $ver = $Matches[1]
+          } else {
+            $ver = "1.0.0"
+          }
+          echo "APP_VERSION=$ver" >> $env:GITHUB_ENV
+
+          $shouldRelease = $false
+          $releaseTag = ""
+
+          if ("${{ github.ref_type }}" -eq "tag" -and "${{ github.ref_name }}" -like "terazi-v*") {
+            $shouldRelease = $true
+            $releaseTag = "${{ github.ref_name }}"
+          } elseif ("${{ github.event_name }}" -eq "workflow_dispatch" -and "${{ inputs.create_release }}" -eq "true") {
+            $shouldRelease = $true
+            $releaseTag = "terazi-v${{ github.run_number }}"
+          }
+
+          echo "SHOULD_RELEASE=$shouldRelease" >> $env:GITHUB_ENV
+          echo "RELEASE_TAG=$releaseTag" >> $env:GITHUB_ENV
+
+      - name: NuGet restore
+        shell: pwsh
+        working-directory: ${{ env.TERAZI_DIR }}
+        run: nuget restore WindowsFormsApplication1.sln
+
+      - name: MSBuild Rebuild
+        shell: pwsh
+        working-directory: ${{ env.TERAZI_DIR }}
+        run: |
+          msbuild WindowsFormsApplication1.sln `
+            /t:Rebuild `
+            /p:Configuration=${{ env.BUILD_CONFIG }} `
+            /p:Platform=${{ env.BUILD_PLATFORM }} `
+            /p:RestorePackages=false `
+            /m
+
+      - name: Inno Setup kur
+        shell: pwsh
+        run: choco install innosetup -y --no-progress
+
+      - name: Kurulum paketi derle
+        shell: pwsh
+        working-directory: ${{ env.TERAZI_DIR }}
+        run: |
+          $env:Path = "C:\Program Files (x86)\Inno Setup 6;$env:Path"
+          & .\installer\build-installer.ps1
+
+      - name: releases klasorune kopyala
+        shell: pwsh
+        working-directory: ${{ env.TERAZI_DIR }}
+        run: |
+          New-Item -ItemType Directory -Force -Path releases | Out-Null
+          Get-ChildItem installer\output\RetailEX.TeraziManager-Setup-*.exe | ForEach-Object {
+            Copy-Item $_.FullName (Join-Path releases $_.Name) -Force
+          }
+
+      - name: Tasinabilir zip (istege bagli)
+        shell: pwsh
+        working-directory: ${{ env.TERAZI_DIR }}
+        run: |
+          $zipName = "RetailEX.TeraziManager-Portable-$env:APP_VERSION.zip"
+          $zipPath = Join-Path installer\output $zipName
+          if (Test-Path $zipPath) { Remove-Item $zipPath -Force }
+          if (Test-Path installer\payload) {
+            Compress-Archive -Path installer\payload\* -DestinationPath $zipPath
+            Copy-Item $zipPath (Join-Path releases $zipName) -Force
+            echo "PORTABLE_ZIP=$zipName" >> $env:GITHUB_ENV
+          }
+
+      - name: Workflow artifact yukle
+        uses: actions/upload-artifact@v4
+        with:
+          name: RetailEX.TeraziManager-${{ env.APP_VERSION }}-${{ github.run_number }}
+          path: |
+            TeraziRongta/installer/output/RetailEX.TeraziManager-Setup-*.exe
+            TeraziRongta/installer/output/RetailEX.TeraziManager-Portable-*.zip
+            TeraziRongta/releases/*
+          retention-days: 30
+
+      - name: GitHub Release olustur
+        if: env.SHOULD_RELEASE == 'true'
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ env.RELEASE_TAG }}
+          name: RetailEX TeraziManager ${{ env.APP_VERSION }} (${{ env.RELEASE_TAG }})
+          body: |
+            ## RetailEX TeraziManager (Windows)
+
+            Otomatik derleme: `${{ github.workflow }}` (#${{ github.run_number }})
+
+            ### Kurulum
+            1. `RetailEX.TeraziManager-Setup-*.exe` indirin ve yonetici olarak calistirin
+            2. `C:\ProgramData\RetailEX\terazi-sync.json` icinde TenantCode ve ApiToken ayarlayin
+
+            ### Dosyalar
+            - **Setup.exe** — Inno Setup kurulum paketi (Release | x86)
+            - **Portable zip** — varsa kurulumsuz paket
+
+            Surum: `${{ env.APP_VERSION }}`
+          files: |
+            TeraziRongta/installer/output/RetailEX.TeraziManager-Setup-*.exe
+            TeraziRongta/installer/output/RetailEX.TeraziManager-Portable-*.zip
+          draft: false
+          prerelease: false
+          make_latest: true

@@ -1,0 +1,283 @@
+# Berqenas: her PostgreSQL veritabanı için ayrı PostgREST örneği ve ayrı host portu.
+# Kullanım (ana compose ile birlikte):
+#   cd /opt/berqenas-cloud
+#   docker compose -f docker-compose.yml -f database/docker/docker-compose.postgrest-per-db.yml up -d
+# Sunucuda dosya yolu farklıysa bu dosyayı /opt/berqenas-cloud/ altına kopyalayın.
+#
+# Ön koşul: Her hedef DB'de 007_postgrest_anon_role.sql çalışmış olmalı (anon rolü).
+# Şifre: Ana compose ile aynı — .env içinde POSTGRES_PASSWORD veya varsayılan.
+# DB seti: merkez_db … retailex_demo → 3002–3009; berzin_com, sho_aksesuar, kupeli → 3010–3012.
+
+x-postgrest-env: &postgrest-env
+  PGRST_DB_ANON_ROLE: anon
+  PGRST_DB_SCHEMAS: "public,logic,wms,rest,beauty,pos,logistics"
+  PGRST_SERVER_HOST: "0.0.0.0"
+  PGRST_SERVER_PORT: "3000"
+  PGRST_SERVER_CORS_ALLOWED_ORIGINS: "*"
+
+services:
+  postgrest_merkez:
+    image: postgrest/postgrest:v12.2.0
+    container_name: saas_postgrest_merkez
+    restart: always
+    depends_on:
+      - postgres
+    environment:
+      <<: *postgrest-env
+      PGRST_DB_URI: postgres://postgres:${POSTGRES_PASSWORD:-root_password_2026}@postgres:5432/merkez_db
+    ports:
+      - "0.0.0.0:3002:3000"
+    networks:
+      berqenas_net: {}
+
+  postgrest_dismarco_pdks:
+    image: postgrest/postgrest:v12.2.0
+    container_name: saas_postgrest_dismarco_pdks
+    restart: always
+    depends_on:
+      - postgres
+    environment:
+      <<: *postgrest-env
+      PGRST_DB_URI: postgres://postgres:${POSTGRES_PASSWORD:-root_password_2026}@postgres:5432/dismarco_pdks
+    ports:
+      - "0.0.0.0:3003:3000"
+    networks:
+      berqenas_net: {}
+
+  postgrest_aqua_beauty:
+    image: postgrest/postgrest:v12.2.0
+    container_name: saas_postgrest_aqua_beauty
+    restart: always
+    depends_on:
+      - postgres
+    environment:
+      <<: *postgrest-env
+      PGRST_DB_URI: postgres://postgres:${POSTGRES_PASSWORD:-root_password_2026}@postgres:5432/aqua_beauty
+    ports:
+      - "0.0.0.0:3004:3000"
+    networks:
+      berqenas_net: {}
+
+  postgrest_m10_pdks:
+    image: postgrest/postgrest:v12.2.0
+    container_name: saas_postgrest_m10_pdks
+    restart: always
+    depends_on:
+      - postgres
+    environment:
+      <<: *postgrest-env
+      PGRST_DB_URI: postgres://postgres:${POSTGRES_PASSWORD:-root_password_2026}@postgres:5432/m10_pdks
+    ports:
+      - "0.0.0.0:3005:3000"
+    networks:
+      berqenas_net: {}
+
+  postgrest_bestcom:
+    image: postgrest/postgrest:v12.2.0
+    container_name: saas_postgrest_bestcom
+    restart: always
+    depends_on:
+      - postgres
+    environment:
+      <<: *postgrest-env
+      PGRST_DB_URI: postgres://postgres:${POSTGRES_PASSWORD:-root_password_2026}@postgres:5432/bestcom_db
+    ports:
+      - "0.0.0.0:3006:3000"
+    networks:
+      berqenas_net: {}
+
+  postgrest_siti_pdks:
+    image: postgrest/postgrest:v12.2.0
+    container_name: saas_postgrest_siti_pdks
+    restart: always
+    depends_on:
+      - postgres
+    environment:
+      <<: *postgrest-env
+      PGRST_DB_URI: postgres://postgres:${POSTGRES_PASSWORD:-root_password_2026}@postgres:5432/siti_pdks
+    ports:
+      - "0.0.0.0:3007:3000"
+    networks:
+      berqenas_net: {}
+
+  postgrest_pdks_demo:
+    image: postgrest/postgrest:v12.2.0
+    container_name: saas_postgrest_pdks_demo
+    restart: always
+    depends_on:
+      - postgres
+    environment:
+      <<: *postgrest-env
+      PGRST_DB_URI: postgres://postgres:${POSTGRES_PASSWORD:-root_password_2026}@postgres:5432/pdks_demo
+    ports:
+      - "0.0.0.0:3008:3000"
+    networks:
+      berqenas_net: {}
+
+  postgrest_retailex_demo:
+    image: postgrest/postgrest:v12.2.0
+    container_name: saas_postgrest_retailex_demo
+    restart: always
+    depends_on:
+      - postgres
+    environment:
+      <<: *postgrest-env
+      PGRST_DB_URI: postgres://postgres:${POSTGRES_PASSWORD:-root_password_2026}@postgres:5432/retailex_demo
+    ports:
+      - "0.0.0.0:3009:3000"
+    networks:
+      berqenas_net: {}
+
+  postgrest_berzin_com:
+    image: postgrest/postgrest:v12.2.0
+    container_name: saas_postgrest_berzin_com
+    restart: always
+    depends_on:
+      - postgres
+    environment:
+      <<: *postgrest-env
+      PGRST_DB_URI: postgres://postgres:${POSTGRES_PASSWORD:-root_password_2026}@postgres:5432/berzin_com
+    ports:
+      - "0.0.0.0:3010:3000"
+    networks:
+      berqenas_net: {}
+
+  postgrest_sho_aksesuar:
+    image: postgrest/postgrest:v12.2.0
+    container_name: saas_postgrest_sho_aksesuar
+    restart: always
+    depends_on:
+      - postgres
+    environment:
+      <<: *postgrest-env
+      PGRST_DB_URI: postgres://postgres:${POSTGRES_PASSWORD:-root_password_2026}@postgres:5432/sho_aksesuar
+    ports:
+      - "0.0.0.0:3011:3000"
+    networks:
+      berqenas_net: {}
+
+  postgrest_kupeli:
+    image: postgrest/postgrest:v12.2.0
+    container_name: saas_postgrest_kupeli
+    restart: always
+    depends_on:
+      - postgres
+    environment:
+      <<: *postgrest-env
+      PGRST_DB_URI: postgres://postgres:${POSTGRES_PASSWORD:-root_password_2026}@postgres:5432/kupeli
+    ports:
+      - "0.0.0.0:3012:3000"
+    networks:
+      berqenas_net: {}
+
+  postgrest_kasap:
+    image: postgrest/postgrest:v12.2.0
+    container_name: saas_postgrest_kasap
+    restart: always
+    depends_on:
+      - postgres
+    environment:
+      <<: *postgrest-env
+      PGRST_DB_URI: postgres://postgres:${POSTGRES_PASSWORD:-root_password_2026}@postgres:5432/kasap
+    ports:
+      - "0.0.0.0:3013:3000"
+    networks:
+      berqenas_net: {}
+
+  postgrest_testere:
+    image: postgrest/postgrest:v12.2.0
+    container_name: saas_postgrest_testere
+    restart: always
+    depends_on:
+      - postgres
+    environment:
+      <<: *postgrest-env
+      PGRST_DB_URI: postgres://postgres:${POSTGRES_PASSWORD:-root_password_2026}@postgres:5432/testere
+    ports:
+      - "0.0.0.0:3014:3000"
+    networks:
+      berqenas_net: {}
+
+  postgrest_mettu:
+    image: postgrest/postgrest:v12.2.0
+    container_name: saas_postgrest_mettu
+    restart: always
+    depends_on:
+      - postgres
+    environment:
+      <<: *postgrest-env
+      PGRST_DB_URI: postgres://postgres:${POSTGRES_PASSWORD:-root_password_2026}@postgres:5432/mettu
+    ports:
+      - "0.0.0.0:3015:3000"
+    networks:
+      berqenas_net: {}
+
+  postgrest_jiber:
+    image: postgrest/postgrest:v12.2.0
+    container_name: saas_postgrest_jiber
+    restart: always
+    depends_on:
+      - postgres
+    environment:
+      <<: *postgrest-env
+      PGRST_DB_URI: postgres://postgres:${POSTGRES_PASSWORD:-root_password_2026}@postgres:5432/jiber
+    ports:
+      - "0.0.0.0:3016:3000"
+    networks:
+      berqenas_net: {}
+
+  postgrest_canon:
+    image: postgrest/postgrest:v12.2.0
+    container_name: saas_postgrest_canon
+    restart: always
+    depends_on:
+      - postgres
+    environment:
+      <<: *postgrest-env
+      PGRST_DB_URI: postgres://postgres:${POSTGRES_PASSWORD:-root_password_2026}@postgres:5432/canon
+    ports:
+      - "0.0.0.0:3017:3000"
+    networks:
+      berqenas_net: {}
+
+  postgrest_lovan:
+    image: postgrest/postgrest:v12.2.0
+    container_name: saas_postgrest_lovan
+    restart: always
+    depends_on:
+      - postgres
+    environment:
+      <<: *postgrest-env
+      PGRST_DB_URI: postgres://postgres:${POSTGRES_PASSWORD:-root_password_2026}@postgres:5432/lovan
+    ports:
+      - "0.0.0.0:3018:3000"
+    networks:
+      berqenas_net: {}
+
+  postgrest_zetem:
+    image: postgrest/postgrest:v12.2.0
+    container_name: saas_postgrest_zetem
+    restart: always
+    depends_on:
+      - postgres
+    environment:
+      <<: *postgrest-env
+      PGRST_DB_URI: postgres://postgres:${POSTGRES_PASSWORD:-root_password_2026}@postgres:5432/zetem
+    ports:
+      - "0.0.0.0:3019:3000"
+    networks:
+      berqenas_net: {}
+
+  postgrest_ferhat:
+    image: postgrest/postgrest:v12.2.0
+    container_name: saas_postgrest_ferhat
+    restart: always
+    depends_on:
+      - postgres
+    environment:
+      <<: *postgrest-env
+      PGRST_DB_URI: postgres://postgres:${POSTGRES_PASSWORD:-root_password_2026}@postgres:5432/ferhat
+    ports:
+      - "0.0.0.0:3020:3000"
+    networks:
+      berqenas_net: {}

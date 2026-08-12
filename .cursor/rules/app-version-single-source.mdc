@@ -1,0 +1,25 @@
+---
+description: Uygulama semver — tek kaynak package.json, Tauri senkronu, UI’da APP_VERSION
+alwaysApply: true
+---
+
+# Uygulama sürümü (RetailEX)
+
+## Tek doğruluk kaynağı
+- **Yalnızca** kök `package.json` içindeki `"version"` alanını değiştir (örn. `0.1.62`).
+- **`package-lock.json`** kök projedeki `name`/`version` girişleri `package.json` ile aynı olmalı; sürüm artırınca `npm install` veya lock’u buna göre güncelle.
+
+## Asla yapma
+- `App.tsx`, footer, login vb. yerde **sabit semver string** (`'0.1.xx'`, `v0.1.xx`) bırakma.
+- `DeskApp/tauri.conf.json` ve `DeskApp/Cargo.toml` içindeki sürümü **yalnızca elle** değiştirme (script bunu üretir).
+
+## Kodda kullanım
+- UI ve ortak mantık: `src/core/version.ts` → `APP_VERSION.full`, `APP_SEMVER` (içerik `package.json`’dan gelir).
+- Tarayıcı Tauri yedeği: `src/utils/env.ts` içindeki `get_app_version` benzeri fallback’ler `APP_VERSION` tabanlı olmalı.
+
+## Tauri / masaüstü hizalama
+- `npm run build` çalışmadan önce **`prebuild`** → `node scripts/sync-app-version.mjs` kök `package.json` sürümünü **`DeskApp/tauri.conf.json`** ve **`DeskApp/Cargo.toml`** `[package] version` ile eşitler.
+- Sadece Rust/Tauri dosyalarını güncellemek gerekiyorsa: `node scripts/sync-app-version.mjs` çalıştır (kök `version` kaynak olmalı).
+
+## Not
+- `VersionContext` / `APP_VERSION.increment()` çalışma anında sayaç artırabilir; **yayınlanan semver** için her zaman `package.json` esas alınır.

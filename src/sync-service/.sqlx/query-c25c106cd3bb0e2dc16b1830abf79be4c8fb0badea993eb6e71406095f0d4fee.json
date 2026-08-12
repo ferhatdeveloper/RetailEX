@@ -1,0 +1,22 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "\n            SELECT \n                CASE priority\n                    WHEN 'critical' THEN 1\n                    WHEN 'high' THEN 2\n                    WHEN 'normal' THEN 3\n                    WHEN 'low' THEN 4\n                    ELSE 3\n                END as priority_num\n            FROM broadcast_messages\n            WHERE id = $1\n            ",
+  "describe": {
+    "columns": [
+      {
+        "ordinal": 0,
+        "name": "priority_num",
+        "type_info": "Int4"
+      }
+    ],
+    "parameters": {
+      "Left": [
+        "Uuid"
+      ]
+    },
+    "nullable": [
+      null
+    ]
+  },
+  "hash": "c25c106cd3bb0e2dc16b1830abf79be4c8fb0badea993eb6e71406095f0d4fee"
+}

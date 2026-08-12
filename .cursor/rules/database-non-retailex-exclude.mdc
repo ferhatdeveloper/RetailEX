@@ -1,0 +1,37 @@
+---
+description: RetailEX migration ve kiracı DB scriptleri — RetailEX olmayan PostgreSQL veritabanlarını hariç tut
+alwaysApply: true
+---
+
+# RetailEX dışı veritabanları (migration hariç)
+
+Sunucuda (`pg_database`) başka ürünlerin veritabanları da bulunabilir. **`npm run db:migrate:tenants`**, `berqenas-repo-pull-and-migrate.sh` ve benzeri RetailEX şema migration akışları bu DB'lere **asla** uygulanmaz.
+
+## Hariç liste (tek kaynak)
+
+`database/scripts/non-retailex-databases.mjs` — shell için `berqenas-cloud-dbs.inc.sh` ile senkron:
+
+| Veritabanı | Neden |
+|------------|--------|
+| `ilsasupport` | ILSA destek / ayrı ürün |
+| `pagetin_kurye` | Pagetin kurye uygulaması |
+| `siti_pdks` | Bağımsız PDKS kiracısı; RetailEX ERP migration zinciri değil |
+| `aram` | PDKS/İK şeması (employees/attendance); RetailEX ERP değil |
+| `naw` | PDKS/İK şeması (employees/attendance); RetailEX ERP değil |
+
+## Zorunlu davranış
+
+1. Yeni migration toplu uygulama scripti yazarken `isNonRetailExDatabase` / `filterRetailExDatabases` kullan veya `berqenas_filter_retailex_migration_dbs` çağır.
+2. `pg_database` tam listesinden migrate etme — önce hariç listeyi filtrele, sonra `schema_migrations` / `sync_queue` ile RetailEX doğrulaması yap.
+3. Hariç DB'yi “atlandı” logunda **neden** ile yaz: `RetailEX kiracı veritabanı değil`.
+4. Bu DB'ler için RetailEX tabloları (`customer_call_plan_weekly`, `rex_*`, vb.) **oluşturma**.
+
+## RetailEX kiracıları
+
+`tenant_registry` (product `retail` / `erp`) veya `schema_migrations` + `sync_queue` olan DB'ler. `pdks_demo` gibi kalan PDKS demo kiracıları RetailEX altında kalabilir; kalıcı hariç liste: `ilsasupport`, `pagetin_kurye`, `siti_pdks`, `aram`, `naw`.
+
+## Ajan checklist
+
+- [ ] `migrate-all-tenant-dbs.mjs` veya shell migrate döngüsü hariç listeyi kullanıyor mu?
+- [ ] Yeni “tüm DB'lere uygula” komutu aynı listeyi import ediyor mu?
+- [ ] Dokümantasyonda `ilsasupport` / `pagetin_kurye` / `siti_pdks` / `aram` / `naw` RetailEX migration hedefi olarak geçmiyor mu?

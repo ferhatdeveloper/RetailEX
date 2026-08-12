@@ -1,0 +1,365 @@
+﻿cargo :     Checking retailex v0.1.55 (D:\RetailEX\DeskApp)
+At line:1 char:1
++ cargo check 2> build_errors_6.txt
++ ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+    + CategoryInfo          : NotSpecified: (    Checking r 
+   e...tailEX\DeskApp):String) [], RemoteException
+    + FullyQualifiedErrorId : NativeCommandError
+ 
+warning: field `vpn_manager` is never read
+  --> src\vpn_tray.rs:34:5
+   |
+33 | struct AppState {
+   |        -------- field in this struct
+34 |     vpn_manager: Arc<VpnManager>,
+   |     ^^^^^^^^^^^
+   |
+   = note: `AppState` has a derived impl for the trait `Clon
+e`, but this is intentionally ignored during dead code analy
+sis
+   = note: `#[warn(dead_code)]` (part of `#[warn(unused)]`) 
+on by default
+
+warning: struct `VpnStatus` is never constructed
+  --> src\vpn.rs:37:12
+   |
+37 | pub struct VpnStatus {
+   |            ^^^^^^^^^
+
+warning: fields `tunnel`, `running`, and `peer_endpoints` ar
+e never read
+  --> src\vpn.rs:46:9
+   |
+45 | pub struct VpnManager {
+   |            ---------- fields in this struct
+46 |     pub tunnel: Arc<Mutex<Option<VpnSession>>>,
+   |         ^^^^^^
+47 |     pub running: Arc<AtomicBool>,
+   |         ^^^^^^^
+48 |     pub peer_endpoints: Arc<Mutex<HashMap<String, Socke
+tAddr>>>,
+   |         ^^^^^^^^^^^^^^
+
+warning: fields `config`, `tx_bytes`, and `rx_bytes` are nev
+er read
+  --> src\vpn.rs:52:9
+   |
+51 | pub struct VpnSession {
+   |            ---------- fields in this struct
+52 |     pub config: VpnConfig,
+   |         ^^^^^^
+53 |     pub tx_bytes: u64,
+   |         ^^^^^^^^
+54 |     pub rx_bytes: u64,
+   |         ^^^^^^^^
+
+warning: associated function `from_keys` is never used
+  --> src\vpn.rs:68:12
+   |
+67 | impl VpnConfig {
+   | -------------- associated function in this implementati
+on
+68 |     pub fn from_keys(private: String, public: String) -
+> Self {
+   |            ^^^^^^^^^
+
+warning: function `generate_vpn_keys` is never used
+  --> src\vpn.rs:82:8
+   |
+82 | pub fn generate_vpn_keys() -> Result<serde_json::Value,
+ String> {
+   |        ^^^^^^^^^^^^^^^^^
+
+warning: function `start_vpn_mesh` is never used
+  --> src\vpn.rs:97:14
+   |
+97 | pub async fn start_vpn_mesh(
+   |              ^^^^^^^^^^^^^^
+
+warning: function `update_peer_endpoint` is never used
+   --> src\vpn.rs:128:14
+    |
+128 | pub async fn update_peer_endpoint(
+    |              ^^^^^^^^^^^^^^^^^^^^
+
+warning: function `stop_vpn` is never used
+   --> src\vpn.rs:141:14
+    |
+141 | pub async fn stop_vpn(state: State<'_, VpnManager>) ->
+ Result<String, String> {
+    |              ^^^^^^^^
+
+warning: function `get_vpn_status` is never used
+   --> src\vpn.rs:149:8
+    |
+149 | pub fn get_vpn_status(state: State<'_, VpnManager>) ->
+ Result<VpnStatus, String> {
+    |        ^^^^^^^^^^^^^^
+
+warning: function `get_mesh_peers` is never used
+   --> src\vpn.rs:171:8
+    |
+171 | pub fn get_mesh_peers(state: State<'_, VpnManager>) ->
+ Result<Vec<PeerConfig>, String> {
+    |        ^^^^^^^^^^^^^^
+
+warning: function `run_vpn_loop` is never used
+   --> src\vpn.rs:180:10
+    |
+180 | async fn run_vpn_loop(
+    |          ^^^^^^^^^^^^
+
+warning: unused import: `AppHandle`
+ --> src\sync.rs:9:13
+  |
+9 | use tauri::{AppHandle, Manager, Emitter};
+  |             ^^^^^^^^^
+  |
+  = note: `#[warn(unused_imports)]` (part of `#[warn(unused)
+]`) on by default
+
+warning: `retailex` (bin "RetailEX_VPN") generated 12 warnin
+gs
+warning: struct `VpnStatus` is never constructed
+  --> src\vpn.rs:37:12
+   |
+37 | pub struct VpnStatus {
+   |            ^^^^^^^^^
+   |
+   = note: `#[warn(dead_code)]` (part of `#[warn(unused)]`) 
+on by default
+
+warning: field `running` is never read
+  --> src\vpn.rs:47:9
+   |
+45 | pub struct VpnManager {
+   |            ---------- field in this struct
+46 |     pub tunnel: Arc<Mutex<Option<VpnSession>>>,
+47 |     pub running: Arc<AtomicBool>,
+   |         ^^^^^^^
+
+warning: fields `tx_bytes` and `rx_bytes` are never read
+  --> src\vpn.rs:53:9
+   |
+51 | pub struct VpnSession {
+   |            ---------- fields in this struct
+52 |     pub config: VpnConfig,
+53 |     pub tx_bytes: u64,
+   |         ^^^^^^^^
+54 |     pub rx_bytes: u64,
+   |         ^^^^^^^^
+
+warning: function `perform_manual_backup` is never used
+  --> src\backup_service.rs:18:8
+   |
+18 | pub fn perform_manual_backup(app_handle: AppHandle) -> 
+Result<String, String> {
+   |        ^^^^^^^^^^^^^^^^^^^^^
+
+warning: method `handle_event_json` is never used
+  --> src\remote_input.rs:29:12
+   |
+22 | impl RemoteInputManager {
+   | ----------------------- method in this implementation
+...
+29 |     pub fn handle_event_json(&self, json_str: &str) -> 
+Result<(), String> {
+   |            ^^^^^^^^^^^^^^^^^
+
+warning: method `stop` is never used
+  --> src\screen_capture.rs:77:12
+   |
+13 | impl ScreenCaptureService {
+   | ------------------------- method in this implementation
+...
+77 |     pub fn stop(&self) {
+   |            ^^^^
+
+warning: methods `get_sender` and `stop` are never used
+   --> src\sync.rs:100:12
+    |
+ 45 | impl BackgroundSyncService {
+    | -------------------------- methods in this implementat
+ion
+...
+100 |     pub fn get_sender(&self) -> tokio::sync::mpsc::Sen
+der<String> {
+    |            ^^^^^^^^^^
+...
+104 |     pub fn stop(&self) {
+    |            ^^^^
+
+warning: function `process_sync_queue` is never used
+   --> src\sync.rs:110:10
+    |
+110 | async fn process_sync_queue(_app: &tauri::AppHandle) -
+> Result<(), String> {
+    |          ^^^^^^^^^^^^^^^^^^
+
+warning: function `send_websocket_message` is never used
+   --> src\sync.rs:242:14
+    |
+242 | pub async fn send_websocket_message(message: String, s
+tate: tauri::State<'_, SyncSender>) -> Result<(), String> {
+    |              ^^^^^^^^^^^^^^^^^^^^^^
+
+warning: function `enable_remote_support` is never used
+   --> src\sync.rs:471:14
+    |
+471 | pub async fn enable_remote_support(app: tauri::AppHand
+le) -> Result<String, String> {
+    |              ^^^^^^^^^^^^^^^^^^^^^
+
+warning: function `announce_node` is never used
+   --> src\sync.rs:506:14
+    |
+506 | pub async fn announce_node(_app: tauri::AppHandle) -> 
+Result<(), String> {
+    |              ^^^^^^^^^^^^^
+
+warning: struct `SyncInfo` is never constructed
+   --> src\sync.rs:512:12
+    |
+512 | pub struct SyncInfo {
+    |            ^^^^^^^^
+
+warning: function `get_last_sync_info` is never used
+   --> src\sync.rs:519:14
+    |
+519 | pub async fn get_last_sync_info(app: tauri::AppHandle)
+ -> Result<SyncInfo, String> {
+    |              ^^^^^^^^^^^^^^^^^^
+
+warning: method `update_policy` is never used
+  --> src\security.rs:76:12
+   |
+12 | impl SecurityService {
+   | -------------------- method in this implementation
+...
+76 |     pub fn update_policy(&self, apps: Vec<String>, site
+s: Vec<String>) {
+   |            ^^^^^^^^^^^^^
+
+warning: function `verify_token` is never used
+   --> src\security.rs:148:14
+    |
+148 | pub async fn verify_token(token: String) -> Result<boo
+l, String> {
+    |              ^^^^^^^^^^^^
+
+warning: function `compact_database` is never used
+  --> src\maintenance.rs:66:14
+   |
+66 | pub async fn compact_database() -> Result<String, Strin
+g> {
+   |              ^^^^^^^^^^^^^^^^
+
+warning: function `log_system_error` is never used
+  --> src\logger.rs:39:8
+   |
+39 | pub fn log_system_error(level: &str, context: &str, det
+ails: &str) {
+   |        ^^^^^^^^^^^^^^^^
+
+warning: function `log_from_frontend` is never used
+  --> src\logger.rs:58:8
+   |
+58 | pub fn log_from_frontend(level: String, context: String
+, details: String) {
+   |        ^^^^^^^^^^^^^^^^^
+
+warning: function `log_crud_error` is never used
+  --> src\logger.rs:64:8
+   |
+64 | pub fn log_crud_error(payload: String) {
+   |        ^^^^^^^^^^^^^^
+
+warning: function `init_db` is never used
+  --> src\db.rs:12:8
+   |
+12 | pub fn init_db(_app_handle: &AppHandle) -> Result<(), S
+tring> {
+   |        ^^^^^^^
+
+warning: `retailex` (bin "RetailEX_Service") generated 29 wa
+rnings (8 duplicates) (run `cargo fix --bin "RetailEX_Servic
+e" -p retailex` to apply 1 suggestion)
+warning: unused import: `tokio_postgres::NoTls`
+ --> src\db_ops.rs:4:5
+  |
+4 | use tokio_postgres::NoTls;
+  |     ^^^^^^^^^^^^^^^^^^^^^
+  |
+  = note: `#[warn(unused_imports)]` (part of `#[warn(unused)
+]`) on by default
+
+warning: unused import: `AppHandle`
+ --> src\sync.rs:9:13
+  |
+9 | use tauri::{AppHandle, Manager, Emitter};
+  |             ^^^^^^^^^
+
+warning: unused import: `tokio::time::timeout`
+   --> src\main.rs:155:9
+    |
+155 |     use tokio::time::timeout;
+    |         ^^^^^^^^^^^^^^^^^^^^
+
+warning: unused import: `tokio::time::timeout`
+   --> src\main.rs:207:9
+    |
+207 |     use tokio::time::timeout;
+    |         ^^^^^^^^^^^^^^^^^^^^
+
+warning: unused import: `rust_decimal::prelude::FromPrimitiv
+e`
+   --> src\main.rs:224:17
+    |
+224 |             use rust_decimal::prelude::FromPrimitive;
+    |                 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+warning: variant `Num` is never constructed
+   --> src\main.rs:216:9
+    |
+214 |     enum QueryParam {
+    |          ---------- variant in this enum
+215 |         Text(String),
+216 |         Num(rust_decimal::Decimal),
+    |         ^^^
+    |
+    = note: `QueryParam` has a derived impl for the trait `D
+ebug`, but this is intentionally ignored during dead code an
+alysis
+    = note: `#[warn(dead_code)]` (part of `#[warn(unused)]`)
+ on by default
+
+warning: method `stop` is never used
+   --> src\sync.rs:104:12
+    |
+ 45 | impl BackgroundSyncService {
+    | -------------------------- method in this implementati
+on
+...
+104 |     pub fn stop(&self) {
+    |            ^^^^
+
+warning: method `verify` is never used
+  --> src\device_fingerprint.rs:61:12
+   |
+20 | impl DeviceFingerprint {
+   | ---------------------- method in this implementation
+...
+61 |     pub fn verify(&self, stored_id: &str) -> bool {
+   |            ^^^^^^
+
+warning: `retailex` (bin "retailex") generated 12 warnings (
+4 duplicates) (run `cargo fix --bin "retailex" -p retailex` 
+to apply 5 suggestions)
+    Finished `dev` profile [unoptimized + debuginfo] target(
+s) in 5.35s
+warning: the following packages contain code that will be re
+jected by a future version of Rust: net2 v0.2.39, redis v0.2
+3.3, sqlx-postgres v0.7.2
+note: to see what the problems were, use the option `--futur
+e-incompat-report`, or run `cargo report future-incompatibil
+ities --id 1`

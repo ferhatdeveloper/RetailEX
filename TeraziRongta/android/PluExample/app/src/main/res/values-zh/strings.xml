@@ -1,0 +1,19 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="dialog_tip">提示</string>
+    <string name="dialog_back">返回</string>
+    <string name="refresh">刷新</string>
+    <string name="name">品名</string>
+    <string name="weight_kg">重量(Kg)</string>
+    <string name="unitprice">单价</string>
+    <string name="total_price">总价</string>
+    <string name="sold_time">售出时间</string>
+    <string name="llfcode">生鲜码</string>
+    <string name="dialog_cancel">取消</string>
+    <string name="hotKey">热键</string>
+    <string name="shelflife">保质期</string>
+    <string name="WeightUnit">重量单位</string>
+    <string name="RTProtocol1">容大协议1</string>
+    <string name="RTProtocol2">容大协议2</string>
+    <string name="characterset">字符集</string>
+</resources>

@@ -1,0 +1,260 @@
+.announcement-bar{
+    background: #232323;
+    .message{
+        color: #ffffff;
+        font-weight: 400;
+        a{
+            color: #ffffff;
+        }
+    }
+}
+.page-contact-2{
+    padding-bottom: 0;
+    .contact-banner{
+        position: relative;
+        background-image: url(../../images/Pages/contact-us/about-bg-image.png);
+        background-size: cover;
+        background-repeat: repeat-x;
+        background-position: center top;
+        height: 270px;
+        background-attachment: fixed;
+        .breadcrumb{
+            justify-content: center;
+            color:#ffffff;
+            padding: 18px 0px 0px;
+            margin: 0;
+            .separate {
+                svg{
+                    color: #ffffff;
+                    fill: #ffffff;      
+                }
+            }
+            a{
+                color: #ffffff;
+            }
+        }
+        .page-heading{
+            .page-title{
+                display: block;
+                font-size: 24px;
+                font-weight: 700;
+                line-height: 22px;
+                letter-spacing: .05em;
+                color: #ffffff;
+                position: relative;
+                padding: 50px 0 17px;
+                margin: 0;
+            }
+            .desc{
+                margin-top: 5px;
+                max-width: 540px;
+                margin-left: auto;
+                margin-right: auto;
+                color: #ffffff;
+            }
+        }
+    }
+    .contact-navigation{
+        width: 100%;
+        padding-top: 12px;
+        padding-bottom: 12px;
+        padding-right: 10px;
+        background-color: #fafafa;
+        border: 1px solid;
+        border-color: #fafafa;
+        display: flex;
+        place-items: center;
+        .nav{
+            list-style-type: none;
+            display: flex;
+            justify-content: flex-start;
+            align-items: center;
+            padding: 0;
+            margin: 0 auto;
+            flex-wrap: nowrap;
+            white-space: nowrap;
+            overflow-x: auto;
+            overflow-y: hidden;
+            .nav-item{
+                position: relative;
+                padding: 0px 25px;
+                a{
+                    color: #232323;
+                    font-weight: 500;
+                    transition: color .35s ease-in-out;
+                }
+            }
+        }
+    }
+    .page-content{
+        .header-title{
+            font-size: 26px;
+            padding: 35px 15px 10px;
+            letter-spacing: .05em;
+            margin: 0;
+        }
+        .page-subheader{
+            display: block;
+            font-size: 18px;
+            font-weight: 600;
+            letter-spacing: .02em;
+            line-height: 22px;
+            position: relative;
+            color: #232323;
+            padding: 0 0 20px;
+            margin: 0;
+        }
+        .desc{
+            padding: 0;
+            margin: 0 0 30px;
+        }
+        .contact-itemLeft{
+            width: 100%;
+            padding-top: 30px;
+            .page-subheader{
+                padding: 0 0 16px;
+            }
+            .desc{
+                margin: 0 0 36px;
+            }
+            .form-actions{
+                margin-top: 25px;
+                .button {
+                    width: 100%;
+                    max-width:227px
+                }
+            }
+        }
+        .contact-itemRight{
+            width: 100%;
+            padding: 30px 20px;
+            background-color: #fafafa;
+            margin-top: 35px;
+            .button{
+                width:100%;
+                max-width: 205px;
+                text-align: center;
+                margin-top: 5px;
+                margin-bottom: 27px;
+            }
+            .contact-address{
+                padding: 18px 0px 10px;
+                p{
+                    line-height: 26px;
+                    margin-bottom: 9px;
+                }
+            }
+            .contact-store{
+                p{
+                    line-height: 26px;
+                    margin-bottom: 9px;
+                }
+            }
+        }
+    }
+    .contact-map{
+        padding-top: 60px;
+        padding-bottom: 30px;
+        .map-header{
+            padding-bottom: 40px;
+            .title{
+                display: block;
+                font-size: 20px;
+                font-weight: 600;
+                letter-spacing: 0.02em;
+                line-height: 22px;
+                position: relative;
+                color: #232323;
+                margin-bottom: 25px;
+            }
+            .desc{
+                max-width: 400px;
+                margin: 0 auto;
+            }
+            .button{
+                width: 100%;
+                max-width:227px;
+                text-align: center;
+                margin: 38px auto 20px;
+            }
+        }
+        iframe{
+            height: 250px;
+            width: 100%;
+        }
+    }
+}
+
+
+@media(min-width:768px){
+    .page-contact-2{
+        .contact-item{
+            display: inline-block;
+            vertical-align: top;
+        }
+        .page-content{
+            .header-title{
+                font-size: 30px;
+                padding: 52px 15px 50px;
+            }
+            .contact-itemLeft{
+                width: 46%;
+                padding-top: 59px;
+            }
+            .contact-itemRight{
+                width: 48%;
+                margin-left: 30px;
+                padding: 58px 55px 42px;
+                margin-top: 0;
+            }
+        }
+        .contact-map{
+            padding-top: 70px;
+            .map-header{
+                .title{
+                    font-size: 24px;
+                }
+            }
+            iframe{
+                height: 370px;
+            }
+        }
+    }  
+}
+
+@media(min-width:992px){
+    .page-contact-2{
+        .contact-navigation{
+            justify-content: center;
+        }
+        .page-content{
+            .contact-itemLeft{
+                width: calc(100% - 550px);
+                padding-top: 59px;
+            }
+            .contact-itemRight{
+                width: 450px;
+                margin-left: 70px;
+            }
+        }
+    }  
+}
+
+@media(min-width:1350px){
+    .page-contact-2{
+        .page-content{
+            .contact-itemLeft{
+                width: calc(100% - 550px);
+                padding-top: 59px;
+            }
+            .contact-itemRight{
+                width: 470px;
+                margin-left: 76px;
+                padding: 58px 55px 42px;
+            }
+        }
+        .contact-map{
+            padding-top: 138px;
+        }
+    }  
+}

@@ -1,0 +1,13 @@
+# pg_bridge (Hono) — web ortamında SQL proxy (:3001)
+# Node 22: toolchain uyumu; Dockerfile.frontend ile aynı major
+FROM node:22-alpine
+WORKDIR /app
+# Sistem Ayarları → PostgreSQL tam yedek (/api/pg_dump) için pg_dump
+RUN apk add --no-cache postgresql17-client || apk add --no-cache postgresql16-client || apk add --no-cache postgresql-client
+COPY package.json package-lock.json* ./
+# antd 6 + @ant-design/pro-components — Dockerfile.frontend ile aynı (VPS bridge imaji)
+RUN npm ci --legacy-peer-deps
+COPY . .
+ENV NODE_ENV=production
+EXPOSE 3001
+CMD ["npx", "tsx", "src/services/pg_bridge.ts"]

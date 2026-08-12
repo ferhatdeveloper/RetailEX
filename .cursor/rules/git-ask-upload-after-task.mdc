@@ -1,0 +1,49 @@
+---
+description: Her işlem/görev bitince kullanıcıya Git’e yükleme (commit+push main) teklifi — numaralı 1=Evet / 2=Hayır
+alwaysApply: true
+---
+
+# Git: işlem bitince yükleme teklifi
+
+## Zorunlu
+
+Her anlamlı işlem veya görev tamamlandıktan sonra (kod değişikliği, düzeltme, kural ekleme vb.) kullanıcıya Git yükleme onayı sor.
+
+**Yalnızca düz metin soru yetmez.** Kullanıcıya **numaralı seçenekler** sun:
+
+| Seçenek | Anlam |
+|---------|--------|
+| **1** | Evet — `commit` + `push origin main` |
+| **2** | Hayır — yükleme yok |
+
+Kullanıcı yanıt olarak **`1`** / **`2`**, veya eşdeğer **Evet** / **Hayır** yazarsa buna göre davran.
+
+### Nasıl sorulur (öncelik sırası)
+
+1. **Mümkünse** Cursor **AskQuestion** (veya eşdeğer seçenekli UI / accept-button akışı) kullan — label’larda numara: `1 — Evet` ve `2 — Hayır`.
+2. AskQuestion yoksa: düz metinde net numaralı seçenekler sun (Accept / onay = **1** Evet kabul edilebilir).
+3. Soru metni örneği:
+
+**Git’e yükleyeyim mi (commit + push main)?**
+1. Evet
+2. Hayır
+
+Kullanıcı bu turda zaten açıkça “evet / 1 / yükle / commit / push” demişse tekrar sorma; doğrudan uygula.
+
+## Onay sonrası (1 / Evet)
+
+1. `git checkout main` (gerekirse `git pull origin main`)
+2. Secrets hariç ilgili dosyaları stage et (`.env`, şifreli config vb. **commit etme**)
+3. Türkçe, neden odaklı commit mesajı ile commit et
+4. `git push origin main`
+5. Commit hash ve push durumunu kısaca bildir
+6. **Push başarılıysa** hemen ardından CI derleme teklifi sor — `git-ask-ci-build-after-push.mdc` (1 Android RN / 2 DeskApp / 3 Hepsi / 4 Şimdi değil)
+
+## Red (2 / Hayır)
+
+- Commit/push yapma; kısa onay mesajı yeterli (“Yüklenmedi”).
+
+## Yapma
+
+- Kullanıcı onaylamadan (1 / Evet / Accept / açık “yükle”) commit/push yapma
+- Feature branch veya PR açma — yalnızca `main` (`git-main-only-workflow.mdc`)

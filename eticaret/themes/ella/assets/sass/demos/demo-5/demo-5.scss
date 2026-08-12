@@ -1,0 +1,437 @@
+.halo-block-fullwidth-banner {
+    margin-bottom:30px;
+    .content-box--left {
+        left: calc((100% - 1495px) / 2);
+        width: 390px;
+        padding: 0 34px;
+    }
+    .content-box--right {
+        right: calc((100% - 1495px) / 2);
+        width: 390px;
+    }
+    .content-box {
+        .sub-title {
+            font-size:16px;
+            line-height:26px;
+            letter-spacing:0;
+            font-weight: 400;
+            color: #202020;
+            text-decoration: underline;
+            text-underline-offset: 0.2rem;
+        }
+        .banner-title {
+            font-size:40px;
+            font-weight:600;
+            letter-spacing:0;
+            line-height:26px;
+            color: #232323;
+            margin-top:28px;
+            margin-bottom:30px;
+            .text {
+                position: relative;
+                &::before {
+                    content: "";
+                    display: block;
+                    position: absolute;
+                    bottom: 5px;
+                    height: 22px;
+                    left: 0;
+                    right: 0;
+                    width: calc(100% + 20px);
+                    margin-left:  -10px;
+                    background-color: #f7e3dc;
+                    z-index: -1;      
+                }
+            }
+        }
+        .banner-text {
+            font-size:16px;
+            letter-spacing: .02em;
+            line-height: 26px;
+            font-weight:400;
+            color: #232323;
+            margin-bottom: 37px;
+        }
+    }
+
+}// End Block Fullwidth Banner
+
+.halo-block-brand {
+    border-bottom: 1px solid #ececec;
+    padding-bottom: 45px;
+    .img-box {
+        img {
+            margin: 0 auto;
+        }
+    }
+    .slick-arrow {
+        &.slick-prev {
+            svg {
+                top: -6px;
+                left:-1px;
+            }
+        }
+        &.slick-next {
+            svg {
+                top: -6px;
+                right:-1px;
+            }
+        }
+    }
+    .content-box {
+        display: flex;
+        flex-direction: column;
+        .text {
+            margin-top: 13px;
+            margin-bottom: 10px;
+            font-size:16px;
+            font-weight:600;
+            letter-spacing:0;
+            color: #232323;
+            &:hover {
+                color: #8b714a;
+                text-decoration: underline;
+                text-underline-offset: 0.2rem;
+            }
+        }
+        .desc {
+            .text {
+                font-size:16px;
+                font-weight:400;
+                letter-spacing:.02em;
+                line-height: 18px;
+                color: #3c3c3c;
+            }
+        }
+    }
+}// End Block Brand
+
+.halo-product-block {
+    margin-top: 66px;
+    margin-bottom: 50px;
+    .slick-arrow {
+        top: 33%;
+        &.slick-next {
+            right: -8px;
+        }
+        &.slick-prev {
+            left: -9px;
+        }
+    }
+    &.halo-product-block-2 {
+        margin-top: 56px;
+        margin-bottom: 22px;
+    } 
+}// End Block Product
+
+.halo-block-sub-banner {
+    overflow: hidden;
+    .halo-block-header {
+        margin-bottom: 25px;
+    }
+    .row {
+        margin: 0 5px;
+        .halo-row-item {
+            padding: 0 5px;
+        }
+    }
+    .content-box--absolute {
+        top: auto;
+        bottom:56px;
+    }
+    .sub-title {
+        font-size: 16px;
+        letter-spacing:0;
+        font-weight: 400;
+        color:#202020;   
+    }
+    .banner-title {
+        font-size:40px;
+        font-weight: 600;
+        letter-spacing:0;
+        line-height:50px;
+        color: #202020;
+        margin-top: 10px;
+        margin-bottom: 30px;
+        .text {
+            position: relative;
+            &::before {
+                content: "";
+                display: block;
+                position: absolute;
+                bottom: 5px;
+                height: 22px;
+                left: 0;
+                right: 0;
+                width: calc(100% + 20px);
+                margin-left:  -10px;
+                background-color: #f7e3dc;
+                z-index: -1;      
+            }
+        }
+    }
+    .style-2 {
+        .banner-title {
+            margin-top: 14px;
+        }
+    }
+}// End Block Sub Product
+
+.halo-block-policies {
+    margin-top: 51px;
+    margin-bottom:20px;
+    padding-bottom:54px;
+    border-bottom: 1px solid #e6e6e6;
+    .wrapper-item {
+        img {
+            margin: 0 auto;
+        }
+    }
+    .title-policies {
+        font-size:18px;
+        font-weight:600;
+        line-height:28px;
+        letter-spacing:0;
+        margin: 22px 0 6px 0;
+        color: #232323;
+        cursor: pointer;
+        &:hover {
+            color: #8b714a;
+        }
+    }
+    .text-policies,
+    .text {
+        font-size:16px;
+        line-height:28px;
+        font-weight: 400;
+        letter-spacing:0;
+        color: #3c3c3c;
+        margin:2px 0;
+    }
+    .content-box {
+        display: flex;
+        flex-direction: column;
+    }
+}// End Block Policies
+
+.halo-block-instagram {
+    margin-bottom:50px;
+    margin-top:56px;
+    .halo-block-header {
+        margin-bottom:25px;
+        .title {
+            font-size:24px;
+            font-weight:600;
+            letter-spacing:0;
+            color: #232323;
+            margin-bottom:12px;
+            svg {
+                position: relative;
+                top: -3px;
+                width:23px;
+                height:23px;
+            }
+        }
+        .desc {
+            font-size:16px;
+            line-height:18px;
+            letter-spacing:0;
+            font-weight: 400;
+            color: #3c3c3c;
+            margin-bottom: 10px;
+        }
+    }
+    .row {
+        margin: 0 -5px;
+        &.column-5 {
+            .halo-row-item {
+                padding-left: 5px;
+                padding-right: 5px;
+                padding-top: 10px;
+                display: none;
+            }
+        }
+    }
+    .show-more {
+        img {
+            margin: 0 auto;
+        }
+    }
+    .halo-block-content {
+        margin-bottom:40px;
+    }
+}// End Block Instagram
+
+@media (max-width:1800px) {
+    .halo-product-block {
+        .slick-arrow {
+            &.slick-prev {
+                left: 10px;
+            }
+            &.slick-next {
+                right: 10px;
+            }
+        }
+    }// End Block Product
+}
+
+@media  (max-width: 1600px) and (min-width: 1024px) {
+    .halo-block-fullwidth-banner {
+        .content-box--left {
+            left: calc((100% - 995px) / 2);
+            width: 390px;
+            padding: 0 34px;
+        }
+        .content-box--right {
+            right: calc((100% - 995px) / 2);
+            width: 390px;
+        }
+    }// End Block Fullwidth Banner
+}
+
+@media (max-width: 1024px) {
+    .halo-product-block {
+        margin-top: 30px;
+    }// End Block Product
+}
+
+@media (max-width: 1023px) and (min-width: 768px) {
+    .halo-block-fullwidth-banner {
+        .content-box {
+            .banner-title {
+                margin: 15px  0 20px 0;
+            }
+            .banner-text {
+                margin-bottom: 20px;
+            }
+        }
+        .content-box--left {
+            left: calc((100% - 700px) / 2);
+            width: 390px;
+            padding: 0 34px;
+
+        }
+        .content-box--right {
+            right: calc((100% - 700px) / 2);
+            width: 390px;
+        }
+    }// End Block Fullwidth Banner
+}
+
+@media (max-width: 991px) {
+    .halo-block-fullwidth-banner {
+        .banner-item {
+            .image {
+                min-height:400px;
+            }
+        }
+        .content-box {
+            .banner-title {
+                font-size:30px;
+                .text {
+                    &::before {
+                        height: 14px;
+                    }
+                }
+            }
+        }
+    }
+    .halo-block-sub-banner {
+        .halo-row-item {
+            margin-bottom:20px;
+            .content-box--absolute {
+                top:50%;
+                left:50%;
+                bottom:auto;
+                transform: translate3d(-50%, -50%, 0)
+            }
+        }
+        .banner-title {
+            font-size: 30px;
+        }
+    }// End Block Sub Banner
+}
+
+@media (max-width: 767px){
+    .halo-block-fullwidth-banner {
+        overflow: hidden;
+        .content-box {
+            .sub-title,
+            .banner-title,
+            .banner-text {
+                color: #ffffff;
+            }
+            .banner-title {
+                .text {
+                    &::before {
+                        background-color: #232323;
+                    }
+                }
+            }
+        }
+        .content-box--left {
+           top: 50%;
+           left:50%;
+           transform:translate(-50%, -50%)
+        }
+        .content-box--right {
+            top: 50%;
+            left:50%;
+            right: auto;
+            transform:translate(-50%, -50%)
+        }
+    }// End Block Fullwidth Banner
+    .halo-block-brand {
+        .slick-dots { 
+            margin-top: 20px;
+        }
+        padding-bottom: 15px;
+    }// End Block Brand
+    .halo-block-policies {
+        margin-bottom: 0;
+        padding-bottom: 20px;
+        .slick-dots {
+            margin-top: 15px;
+        }
+    }// End Block Policies
+    .halo-block-instagram {
+        margin-top: 30px;
+        .row {
+            margin: 0;
+        }
+        .container {
+            padding: 0 10px;
+        }
+        .show-more {
+            img {
+                width:24px;
+            }
+        }
+    }// End Block Instagram
+}
+
+@media (min-width: 768px){
+    .halo-block-sub-banner {
+        .content-box--absolute {
+            transform:translate3d(-50%, 0, 0)
+        }
+    }// End Block Sub Banner
+}
+
+@media (min-width: 1025px) {
+    .halo-product-block {
+        .row {
+            margin-left: -5px;
+            margin-right: -5px;
+            .halo-row-item {
+                padding: 0px 5px;
+            }
+        }
+    }// End Block Product
+}
+
+@media (min-width: 1600px) {
+    .halo-block-brand {
+        margin-top:34px;
+    }// End Block Brand
+}

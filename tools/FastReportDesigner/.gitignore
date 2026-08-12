@@ -1,0 +1,6 @@
+bin/
+obj/
+designer.config.json
+lib/*.dll
+lib/*.pdb
+lib/*.xml

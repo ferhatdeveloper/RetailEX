@@ -1,0 +1,14 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "\n                UPDATE broadcast_recipients \n                SET status = 'delivered', \n                    delivered_at = NOW(),\n                    updated_at = NOW()\n                WHERE id = $1\n                ",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Left": [
+        "Uuid"
+      ]
+    },
+    "nullable": []
+  },
+  "hash": "244c19d6a96140a320e2dba1a3ec8bcfaa010f57e32725037db95620e8a53b74"
+}

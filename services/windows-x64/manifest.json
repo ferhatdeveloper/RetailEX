@@ -1,0 +1,17 @@
+{
+  "builtAt": "2026-06-19T11:33:35.806Z",
+  "platform": "windows-x64",
+  "target": "x86_64-pc-windows-gnu",
+  "binaries": [
+    {
+      "name": "RetailEX-Logo-Connector.exe",
+      "version": "1.0.0",
+      "role": "Logo MSSQL ↔ PostgreSQL"
+    },
+    {
+      "name": "RetailEX-Sync-Service.exe",
+      "version": "2.0.0",
+      "role": "Mağaza WebSocket senkron"
+    }
+  ]
+}

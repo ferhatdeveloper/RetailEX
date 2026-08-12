@@ -1,0 +1,45 @@
+---
+description: Masaüstü CI derlemesi tetiklenince GitHub Actions ilerleme sayfasını otomatik aç
+alwaysApply: true
+---
+
+# Derleme ilerlemesi — otomatik göster
+
+RetailEX **Desktop App Release** (veya kullanıcı “derle / yeni sürüm”) tetiklendiğinde, ajan **hemen** GitHub Actions çalıştırma sayfasını kullanıcıya **açmalı** ve yanıtta linki vermeli.
+
+## Ne zaman
+
+- `app-v*` tag push sonrası
+- `npm run desktop:ci:build` / `gh workflow run desktop-release.yml` sonrası
+- Kullanıcı “GitHub Action ile derle”, “ilerlemeyi göster” dediğinde
+
+## Zorunlu adımlar (sıra)
+
+1. **Run URL bul** (tag push sonrası 5–15 sn bekleyip bir kez sorgula):
+   - `https://api.github.com/repos/ferhatdeveloper/RetailEX/actions/workflows/desktop-release.yml/runs?per_page=1`
+   - veya `gh run list --workflow=desktop-release.yml --repo ferhatdeveloper/RetailEX --limit 1 --json url,status,conclusion`
+2. **Sayfayı aç** — tercih sırası:
+   - `cursor-app-control` → `open_resource` → `uri`: run `html_url` (örn. `https://github.com/ferhatdeveloper/RetailEX/actions/runs/28670030448`)
+   - Alternatif: `cursor-ide-browser` → `browser_navigate` aynı URL
+3. **Kullanıcıya özet ver:** sürüm, run numarası, durum (`in_progress` / `success` / `failure`), release indirme URL’si (bittiğinde).
+
+## URL kalıpları
+
+| Amaç | URL |
+|------|-----|
+| Son workflow listesi | `https://github.com/ferhatdeveloper/RetailEX/actions/workflows/desktop-release.yml` |
+| Tek run | `https://github.com/ferhatdeveloper/RetailEX/actions/runs/{run_id}` |
+| Release (hazır olunca) | `https://github.com/ferhatdeveloper/RetailEX/releases/tag/app-v{version}` |
+| İndirme | `https://github.com/ferhatdeveloper/RetailEX/releases/download/app-v{version}/RetailEX-Desktop-Setup-{version}.exe` |
+
+## Asla yapma
+
+- Derlemeyi tetikleyip yalnızca “bekleyin” demek — **sayfayı açmadan bitirme**.
+- Yerel terminal çıktısıyla yetinmek; CI ilerlemesi GitHub Actions UI’da izlenir.
+
+## Ajan checklist
+
+- [ ] Run URL alındı mı?
+- [ ] `open_resource` veya tarayıcı ile ilerleme sayfası açıldı mı?
+- [ ] Yanıtta markdown link olarak aynı URL verildi mi?
+- [ ] Başarılı bitince release + doğrudan indirme linki paylaşıldı mı?

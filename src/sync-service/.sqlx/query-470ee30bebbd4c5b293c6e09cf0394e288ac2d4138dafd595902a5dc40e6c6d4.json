@@ -1,0 +1,15 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "\n            UPDATE store_devices\n            SET status = $1, last_seen = NOW(), updated_at = NOW()\n            WHERE device_id = $2\n            ",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Left": [
+        "Text",
+        "Text"
+      ]
+    },
+    "nullable": []
+  },
+  "hash": "470ee30bebbd4c5b293c6e09cf0394e288ac2d4138dafd595902a5dc40e6c6d4"
+}

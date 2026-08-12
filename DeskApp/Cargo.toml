@@ -1,0 +1,101 @@
+[package]
+name = "retailex"
+version = "0.1.239"
+description = "A Tauri App"
+authors = ["you"]
+license = ""
+repository = ""
+default-run = "retailex"
+edition = "2021"
+rust-version = "1.77"
+
+# See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
+
+[build-dependencies]
+tauri-build = { version = "2", features = [] }
+slint-build = "1.15"
+
+[dependencies]
+serde_json = "1.0"
+serde = { version = "1.0", features = ["derive"] }
+tauri = { version = "2", features = [ "devtools"] }
+tauri-plugin-shell = "2"
+tauri-plugin-updater = "2"
+tauri-plugin-process = "2"
+tauri-plugin-dialog = "2"
+tauri-plugin-fs = "2"
+tauri-plugin-http = "2"
+tauri-plugin-notification = "2"
+rusqlite = { version = "0.29.0", features = ["bundled"] }
+bytes = "1.5"
+tokio-postgres = { version = "0.7", features = ["with-uuid-1", "with-chrono-0_4", "with-serde_json-1"] }
+tiberius = { version = "0.12", features = ["chrono", "time", "rust_decimal"] }
+tokio = { version = "1", features = ["full"] }
+tokio-util = { version = "0.7", features = ["compat"] }
+futures = "0.3"
+machine-uid = "0.5.4"
+uuid = { version = "1.4", features = ["v4", "serde"] }
+chrono = { version = "0.4", features = ["serde"] }
+reqwest = { version = "0.11", features = ["json", "blocking"] }
+tokio-tungstenite = { version = "0.20", features = ["native-tls"] }
+url = "2.4"
+base64 = "0.21"
+enigo = "0.1.2" # Input Simulation (Mouse/Keyboard)
+screenshots = "0.8" # Screen Capture
+image = "0.24" # Image Processing (JPEG Encoding)
+
+windows = { version = "0.52", features = ["Win32_UI_Shell", "Win32_UI_WindowsAndMessaging", "Win32_Foundation"] }
+sha2 = "0.10"
+rust_decimal = { version = "1.32", features = ["serde-float", "db-tokio-postgres"] }
+lapin = "2.3" # RabbitMQ Client
+redis = { version = "0.23", features = ["tokio-comp"] } # Redis Client
+deadpool-lapin = "0.12" # RabbitMQ Connection Pooling
+amq-protocol = "7.1"
+slint = "1.15"
+native-dialog = "0.7"
+anyhow = "1.0"
+sqlx = { version = "0.7", features = ["postgres", "runtime-tokio-native-tls", "uuid", "chrono", "json", "bigdecimal"] }
+tracing = "0.1"
+tracing-subscriber = { version = "0.3", features = ["env-filter"] }
+dotenv = "0.15"
+thiserror = "1.0"
+futures-lite = "2.1"
+serialport = "4.6"
+regex = "1.10"
+
+[features]
+default = []
+legacy-logo-bin = []
+
+
+[[bin]]
+name = "retailex"
+path = "src/main.rs"
+
+[[bin]]
+name = "RetailEX_Service"
+path = "src/service_main.rs"
+
+[[bin]]
+name = "RetailEX_Config"
+path = "src/setup_main.rs"
+
+[[bin]]
+name = "RetailEX_Logo"
+path = "src/logo_main.rs"
+required-features = ["legacy-logo-bin"]
+
+[[bin]]
+name = "RetailEX_SQL_Bridge"
+path = "src/sql_bridge_main.rs"
+
+[[bin]]
+name = "RetailEX_Printer"
+path = "src/printer_main.rs"
+
+[[bin]]
+name = "RetailEX_Tools"
+path = "src/tools_main.rs"
+
+[dependencies.windows-service]
+version = "0.7"

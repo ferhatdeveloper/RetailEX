@@ -1,0 +1,42 @@
+---
+description: AWS MCP sunucusu yapılandırması — dokümantasyon ve API erişimi
+alwaysApply: false
+---
+
+# AWS MCP Server Yapılandırması
+
+AWS dokümantasyonu ve API’leri için MCP araçlarının yapılandırılması.
+
+## Seçenekler
+| Seçenek | Gereksinim | Yetenek |
+|--------|------------|---------|
+| **Full AWS MCP Server** | Python 3.10+, uvx, AWS credentials | AWS API çağrıları + dokümantasyon araması |
+| **AWS Documentation MCP** | Yok | Sadece dokümantasyon araması |
+
+## Kontrol
+- Araç adları: `mcp__aws-mcp__*` veya `mcp__aws__*` → Full; `mcp__*awsdocs*__*` → Documentation MCP.
+- Config: `.claude.json` / `.mcp.json` / `~/.claude.json` içinde `mcpServers` → `aws-mcp`, `aws` veya `awsdocs` anahtarları.
+
+## Full AWS MCP (uvx + credentials)
+```json
+"mcpServers": {
+  "aws-mcp": {
+    "command": "uvx",
+    "args": ["mcp-proxy-for-aws@latest", "https://aws-mcp.us-east-1.api.aws/mcp", "--metadata", "AWS_REGION=us-west-2"]
+  }
+}
+```
+IAM: `aws-mcp:InvokeMCP`, `CallReadOnlyTool`, `CallReadWriteTool`. Referans: https://github.com/aws/mcp-proxy-for-aws
+
+## Sadece Dokümantasyon (auth yok)
+```json
+"mcpServers": {
+  "awsdocs": {
+    "type": "http",
+    "url": "https://knowledge-mcp.global.api.aws"
+  }
+}
+```
+
+## Sorun giderme
+- `uvx: command not found` → `pip install uv` veya Documentation MCP kullan. AccessDenied → IAM’e aws-mcp:* ekle. InvalidSignatureException → `aws sts get-caller-identity` ile credential kontrolü.

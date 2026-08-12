@@ -1,0 +1,52 @@
+﻿# MSBuild / Visual Studio
+**/bin/
+**/obj/
+.vs/
+*.user
+*.suo
+UpgradeLog.htm
+
+# Ship Release binaries via releases/ only
+!releases/
+!releases/**
+
+# Secrets (use terazi-sync.example.json)
+terazi-sync.json
+**/.env
+**/.env.*
+!terazi-sync.example.json
+
+# Android build artifacts (keep source)
+android/.gradle/
+**/.gradle/
+android/local.properties
+android/**/build/
+android/**/captures/
+*.apk
+*.aab
+
+# Node
+node_modules/
+
+# OS / IDE
+.DS_Store
+Thumbs.db
+
+# Large/vendor archives
+NETJson.rar
+
+# Local agent probe scratch (not application source)
+/agent-tools-*
+
+# Code signing / installer build scratch
+*.pfx
+**/WindowsFormsApplication1_TemporaryKey.pfx
+setup/staging/
+setup/output/
+
+# Sensitive runtime config (example is tracked)
+!terazi-sync.example.json
+# Inno Setup installer (commit scripts; not payload scratch)
+installer/payload/*
+!installer/payload/.gitkeep
+installer/output/

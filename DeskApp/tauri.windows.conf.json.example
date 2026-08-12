@@ -1,0 +1,7 @@
+{
+  "bundle": {
+    "windows": {
+      "certificateThumbprint": "CERTMGR_PERSONAL_STORE_THUMBPRINT_BURAYA"
+    }
+  }
+}

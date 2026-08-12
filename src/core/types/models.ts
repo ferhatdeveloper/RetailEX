@@ -1,0 +1,454 @@
+// Core Business Models
+
+export interface BranchStock {
+  branchId: string;
+  branchName: string;
+  stock: number;
+}
+
+export interface BranchVariantStock {
+  branchId: string;
+  branchName: string;
+  variants: {
+    variantId: string;
+    color?: string;
+    size?: string;
+    stock: number;
+  }[];
+}
+
+export interface Product {
+  id: string;
+  name: string;
+  /** DB `name2` — alternatif / ikinci ürün adı */
+  name2?: string;
+  /** Çok dilli ürün adları (fiş / menü — `receipt_settings.productNameFieldByLang` ile eşlenir) */
+  name_tr?: string;
+  name_en?: string;
+  name_ar?: string;
+  name_ku?: string;
+  barcode: string;
+  price: number;
+  cost: number;
+  stock: number;
+  category: string;
+  categoryId?: string;
+  unit: string;
+  taxRate: number;
+  variants?: ProductVariant[];
+  branchStocks?: BranchStock[];
+  branchVariantStocks?: BranchVariantStock[];
+  hasVariants?: boolean;
+  totalPurchased?: number;
+  totalSales?: number;
+  // Missing fields fixed for linting
+  code?: string;
+  minStock?: number;
+  min_stock?: number;
+  maxStock?: number;
+  max_stock?: number;
+  image_url?: string;
+  /** Supabase Storage / CDN public URL; öncelikli gösterim için kullanılır */
+  image_url_cdn?: string;
+  sku?: string;
+  description?: string;
+  // Multilingual descriptions
+  description_tr?: string;
+  description_en?: string;
+  description_ar?: string;
+  description_ku?: string;
+  is_active?: boolean;
+  isActive?: boolean;
+  created_at?: string;
+  updated_at?: string;
+  isService?: boolean;
+  materialType?: 'commercial_goods' | 'mixed_parcel' | 'deposit_goods' | 'fixed_asset' | 'raw_material' | 'semi_finished' | 'consumable' | 'service';
+  // Additional fields for professional ERP
+  categoryCode?: string;
+  groupCode?: string;
+  subGroupCode?: string;
+  brand?: string;
+  model?: string;
+  manufacturer?: string;
+  supplier?: string;
+  origin?: string;
+  specialCode1?: string;
+  specialCode2?: string;
+  specialCode3?: string;
+  specialCode4?: string;
+  specialCode5?: string;
+  specialCode6?: string;
+  unit2?: string;
+  unit3?: string;
+  taxType?: string;
+  withholdingRate?: number;
+  currency?: string;
+  purchasePriceUSD?: number;
+  purchasePriceEUR?: number;
+  salePriceUSD?: number;
+  salePriceEUR?: number;
+  criticalStock?: number;
+  shelfLocation?: string;
+  warehouseCode?: string;
+  priceList1?: number;
+  priceList2?: number;
+  priceList3?: number;
+  priceList4?: number;
+  priceList5?: number;
+  priceList6?: number;
+  customExchangeRate?: number;
+  autoCalculateUSD?: boolean;
+  unitsetId?: string;
+  /**
+   * Güzellik: tamamlanan randevuda bu ürün sarf (consumable) olarak düştüyünden
+   * X gün sonra müşteri için takip hatırlatması (null / ≤0 = kapalı).
+   */
+  followUpReminderDays?: number | null;
+  /** Tartı ürünü — teraziye PLU aktarımına dahil edilir */
+  isScaleProduct?: boolean;
+  /** Terazi PLU numarası (LFCode); boşsa senkron otomatik atar */
+  pluCode?: string | null;
+  /** Son kullanma takibi açık */
+  expiryTracking?: boolean;
+  /** SKT (YYYY-MM-DD) */
+  expiryDate?: string | null;
+  /** Raf ömrü (gün) — oluşturma tarihinden itibaren */
+  shelfLifeDays?: number | null;
+}
+
+export interface ProductVariant {
+  id: string;
+  code: string;
+  /** DB `product_variants.product_id` — barkod çözümlemesi vb. */
+  productId?: string;
+  size?: string;
+  color?: string;
+  stock: number;
+  barcode: string;
+  price?: number;
+  cost?: number;  // Alış fiyatı (her varyantın kendi alış fiyatı olabilir)
+  colorHex?: string;
+}
+
+export interface Customer {
+  id: string;
+  code?: string;        // Müşteri kodu (MUS-001, MUS-002, vb.)
+  title?: string;       // Müşteri ünvanı (iş unvanı)
+  company?: string;     // Şirket adı
+  name: string;
+  phone: string;
+  phone2?: string;      // İkinci telefon
+  age?: number | null;
+  file_id?: string | null;
+  gender?: string | null;
+  customer_tier?: 'normal' | 'vip' | string | null;
+  occupation?: string | null;
+  heard_from?: string | null;
+  email: string;
+  address: string;
+  district?: string;    // İlçe
+  city?: string;        // Şehir bilgisi
+  postal_code?: string; // Posta kodu
+  country?: string;     // Ülke
+  balance?: number;     // Bakiye
+  totalPurchases: number;
+  lastPurchase?: string;
+  points?: number;
+  totalSpent?: number;
+  discount_rate?: number;
+  customer_group?: string;
+  tax_number?: string;
+  taxNumber?: string;
+  tax_office?: string;
+  taxOffice?: string;
+  notes?: string;
+  call_plan_enabled?: boolean;
+  call_plan_weekdays?: number[] | null;
+  call_plan_note?: string | null;
+  call_last_status?: string | null;
+  call_last_note?: string | null;
+  call_last_at?: string | null;
+  is_active?: boolean;
+  firma_id?: string;
+  created_at?: string;
+  updated_at?: string;
+  cardType?: 'customer' | 'supplier';
+}
+
+export interface Supplier {
+  id: string;
+  code?: string;        // Tedarikçi kodu (TED-001, vb.)
+  name: string;
+  phone?: string;
+  phone2?: string;
+  email?: string;
+  address?: string;
+  district?: string;
+  neighborhood?: string;
+  city?: string;
+  postal_code?: string;
+  country?: string;
+  contact_person?: string;
+  contact_person_phone?: string;
+  payment_terms?: number | string; // Ödeme vadesi (gün veya metin)
+  credit_limit?: number;
+  balance?: number;
+  points?: number;
+  total_spent?: number;
+  age?: number | null;
+  file_id?: string | null;
+  gender?: string | null;
+  customer_tier?: 'normal' | 'vip' | string | null;
+  occupation?: string | null;
+  heard_from?: string | null;
+  tax_number?: string;
+  taxNumber?: string;
+  tax_office?: string;
+  taxOffice?: string;
+  is_active?: boolean;
+  notes?: string;
+  call_plan_enabled?: boolean;
+  call_plan_weekdays?: number[] | null;
+  call_plan_note?: string | null;
+  call_last_status?: string | null;
+  call_last_note?: string | null;
+  call_last_at?: string | null;
+  ref_id?: number | null;
+  firma_id?: string;
+  created_at?: string;
+  updated_at?: string;
+  cardType?: 'customer' | 'supplier';
+}
+
+export interface Sale {
+  id: string;
+  receiptNumber: string;
+  date: string;
+  customerId?: string;
+  customerName?: string;
+  customerPhone?: string;
+  customerPhone2?: string;
+  customerCode?: string;
+  customerEmail?: string;
+  customerAddress?: string;
+  customerDistrict?: string;
+  customerCity?: string;
+  customerPostalCode?: string;
+  customerCountry?: string;
+  customerCompany?: string;
+  customerTitle?: string;
+  customerTaxNumber?: string;
+  customerTaxOffice?: string;
+  customerOccupation?: string;
+  customerNotes?: string;
+  items: SaleItem[];
+  subtotal: number;
+  discount: number;
+  tax?: number;
+  total: number;
+  paymentMethod: string;
+  /** Çoklu ödeme (POSPaymentModal) — Z raporu kırılımı için */
+  payments?: Array<{ method: string; amount: number; currency?: string }>;
+  paymentStatus?: 'pending' | 'paid' | 'refunded';
+  status?: string;  // 'completed' | 'refunded' | 'cancelled'
+  notes?: string;
+  campaignId?: string;
+  campaignName?: string;      // Kampanya adı
+  campaignDiscount?: number;  // Kampanya indirimi
+  profit?: number;            // Toplam Kar
+  cashier: string;
+  table?: string;
+  discountReason?: string;
+  cashAmount?: number;
+  change?: number;
+  storeId?: string;
+  userId?: string;
+  firmNr?: string;
+  periodNr?: string;
+  created_at?: string;
+  autoPrint?: boolean;
+  language?: string;
+  /** Güzellik POS: randevu/satışta seçilen cihaz adı (fiş üst bilgisi) */
+  beautyDeviceName?: string;
+  /** Güzellik / lazer fişi: tedavi derecesi (ör. cihaz parametresi) */
+  beautyTreatmentDegree?: string;
+  /** Güzellik / lazer fişi: atış sayısı */
+  beautyTreatmentShots?: string;
+}
+
+export interface SaleItem {
+  productId: string;
+  productName: string;
+  productCode?: string;
+  barcode?: string;
+  quantity: number;
+  price: number;
+  discount: number;
+  tax?: number;
+  cost?: number;    // Ürün maliyeti (Birim Alış)
+  profit?: number;  // Brüt Kar
+  total: number;
+  variant?: ProductVariant;
+  unit?: string;
+  multiplier?: number;
+  /** Stok düşüm miktarı (tartılı: quantity × multiplier, normalize) */
+  baseQuantity?: number;
+  /** Fatura satır türü: Malzeme / Hizmet / Promosyon / İndirim */
+  lineType?: string;
+  /** Güzellik: bu satırdaki personel adı (fiş) */
+  beautyStaffName?: string;
+  /** Eski / alternatif POS bileşenleri — camelCase ile birlikte kullanılabilir */
+  product_id?: string;
+  product_name?: string;
+  variant_name?: string;
+  /** Satır indirim tutarı (IQD); yoksa `discount` (yüzde veya tutar, ekrana göre) kullanılır */
+  discount_amount?: number;
+  discount_percentage?: number;
+}
+
+export interface Campaign {
+  id: string;
+  name: string;
+  description: string;
+  type: 'percentage' | 'fixed' | 'buy-x-get-y' | 'category';
+  discountType?: 'percentage' | 'fixed' | 'buyXgetY' | 'priceOverride';
+  discountValue: number;
+  startDate: string;
+  endDate: string;
+  campaignUnit?: string;
+  active: boolean;
+  autoApply?: boolean;
+  minPurchase?: number;
+  categoryId?: string;
+  productIds?: string[];
+  // Extended fields from CreateCampaignPage
+  campaignType?: 'product' | 'category' | 'cart' | 'customer';
+  maxDiscountAmount?: number;
+  minPurchaseAmount?: number;
+  startTime?: string;
+  endTime?: string;
+  selectedCategories?: string[];
+  customerSegments?: string[];
+  applyToAllCustomers?: boolean;
+  usageLimit?: number;
+  usageLimitPerCustomer?: number;
+  stackable?: boolean;
+  nameAr?: string;
+  nameEn?: string;
+  descriptionAr?: string;
+  descriptionEn?: string;
+  buyQuantity?: number;
+  getQuantity?: number;
+  createdAt?: string;
+  updatedAt?: string;
+  priority?: number;
+}
+
+export interface User {
+  id: string;
+  username: string;
+  fullName: string;
+  role: 'cashier' | 'manager' | 'admin';
+  discountLimit?: number; // Maksimum indirim yüzdesi (cashier için 10%, manager için 25%, admin sınırsız)
+  storeId?: string;
+  storeName?: string;
+  phone?: string;
+  email?: string;
+  isActive?: boolean;
+}
+
+export interface CartItem {
+  product: Product;
+  quantity: number;
+  discount: number;
+  subtotal: number;
+  variant?: ProductVariant;
+  unit?: string;
+  multiplier?: number;
+}
+
+export type Module = 'pos' | 'management';
+export type ManagementScreen = 'products' | 'customers' | 'reports' | 'settings';
+
+export type PaymentMethod = 'cash' | 'card' | 'online' | 'veresiye';
+export type DiscountType = 'percentage' | 'fixed';
+
+export interface PurchaseRequestItem {
+  id: string;
+  productId?: string;
+  productCode: string;
+  productName: string;
+  quantity: number;
+  unit: string;
+  requestedDeliveryDate: string;
+  estimatedBudget?: number;
+  projectCode?: string;
+  costCenter?: string;
+  description?: string;
+  status: 'draft' | 'pending' | 'approved' | 'transferred' | 'purchased' | 'partially_fulfilled' | 'completed' | 'cancelled';
+}
+
+export interface PurchaseRequest {
+  id: string;
+  requestNo: string;
+  date: string;
+  department: string;
+  requesterPerson: string;
+  priority: 'normal' | 'urgent' | 'critical';
+  description: string;
+  status: 'draft' | 'pending' | 'approved' | 'transferred' | 'purchased' | 'partially_fulfilled' | 'completed' | 'cancelled';
+  items: PurchaseRequestItem[];
+  totalBudget?: number;
+  projectCode?: string;
+  costCenter?: string;
+  branchId?: string;
+  paymentMethod?: string;
+  created_at?: string;
+  updated_at?: string;
+}
+
+export interface Invoice {
+  id?: string;
+  invoice_no: string;
+  invoice_date: string;
+  invoice_type: number;
+  invoice_category: 'Satis' | 'Alis' | 'Iade' | 'Irsaliye' | 'Siparis' | 'Teklif' | 'Hizmet';
+  customer_id?: string;
+  customer_name?: string;
+  supplier_id?: string;
+  supplier_name?: string;
+  total_amount: number;
+  total?: number;
+  total_cost?: number;
+  gross_profit?: number;
+  profit_margin?: number;
+  subtotal: number;
+  discount: number;
+  tax: number;
+  items: any[];
+  firma_id: string;
+  firma_name: string;
+  donem_id: string;
+  donem_name: string;
+  cashier?: string;
+  cashier_id?: string;
+  created_by_user_id?: string;
+  cash_register_id?: string;
+  payment_method?: string;
+  store_id?: string;
+  status?: string;
+  notes?: string;
+  created_at?: string;
+  is_cancelled?: boolean;
+  campaign_id?: string;
+  campaign_name?: string;
+  campaign_discount?: number;
+  currency?: string;
+  currency_rate?: number;
+  source?: 'pos' | 'invoice';
+  /** Belge no (fiche_no'dan ayrı) */
+  document_no?: string;
+  /** Fatura formu başlık alanları (özel kod, depo, satış elemanı vb.) */
+  header_fields?: Record<string, unknown>;
+}
+

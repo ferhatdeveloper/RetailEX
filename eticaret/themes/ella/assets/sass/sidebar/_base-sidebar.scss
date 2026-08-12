@@ -1,0 +1,102 @@
+.halo-sidebar {
+    position: fixed;
+    top: 0;
+    bottom: 0;
+    padding: 0;
+    height: 100%;
+    z-index: 101;
+    max-width: calc(100% - 40px);
+    width: 100%;
+    opacity: 0;
+    visibility: hidden;
+    transition: opacity .5s, transform 350ms ease, visibility 350ms ease;
+    background-color: #ffffff;
+    &.halo-sidebar-right {
+        right: 0;
+        transform: translate(101%);
+    }
+    &.halo-sidebar-left {
+        left: 0;
+        transform: translate(-101%);
+    }
+    .halo-sidebar-header {
+        position: relative;
+        padding: 24px 20px 0;
+        background-color: #fff;
+        .title {
+            display: block;
+            font-size: 16px;
+            font-style: normal;
+            font-weight: 600;
+            letter-spacing: .02em;
+            line-height: 22px;
+            color: #232323;
+            text-transform: uppercase;
+        }
+        .halo-sidebar-close {
+            position: absolute;
+            top: 16px;
+            right: 17px;
+            width: 40px;
+            height: 40px;
+            font-size: 0;
+            z-index: 10;
+            line-height: 1;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            text-align: center;
+            pointer-events: auto;
+            background-color: transparent;
+            svg {
+                display: block;
+                width: 18px;
+                height: 18px;
+                fill: #5a5a5a;
+                stroke: transparent;
+            }
+        }
+    }
+    .halo-sidebar-wrapper {
+        height: 100%;
+        position: relative;
+        overflow-x: hidden;
+        overflow-y: auto;
+        padding: 0 0 70px;
+    }
+}
+
+@media(max-width:767px){
+    .halo-sidebar{
+        .halo-sidebar-header {
+            padding: 9px 20px 9px;
+            border-bottom: 1px solid #e6e6e6;
+        }
+        .halo-sidebar-close{
+            top: 0px!important;
+            background: #232323!important;
+            svg{
+                fill: #ffffff!important;
+            }
+        }
+        &.halo-sidebar-left{
+            .halo-sidebar-close{
+                right: -40px!important;
+            }
+        }
+        &.halo-sidebar-right{
+            .halo-sidebar-close{
+                left: -40px!important;
+            }
+        }
+    }
+}
+
+@media (min-width: 1025px) {
+    .halo-sidebar{
+        .halo-sidebar-header {
+            padding-left: 30px;
+            padding-right: 30px;
+        }
+    } 
+}

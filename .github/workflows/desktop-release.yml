@@ -1,0 +1,216 @@
+name: Desktop App Release
+
+# RetailEX Tauri masaüstü (Windows NSIS kurulumu)
+# Tetikleme:
+#   git tag app-v0.1.85 && git push origin app-v0.1.85
+# veya Actions → "Desktop App Release" → Run workflow
+
+on:
+  push:
+    tags:
+      - 'app-v*'
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  build-windows:
+    runs-on: windows-latest
+    timeout-minutes: 90
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+
+      - name: Read package version
+        shell: pwsh
+        run: |
+          $v = node -p "require('./package.json').version"
+          echo "PACKAGE_VERSION=$v" >> $env:GITHUB_ENV
+          if ("${{ github.ref_type }}" -eq "tag" -and "${{ github.ref }}" -like "refs/tags/app-v*") {
+            echo "RELEASE_TAG=${{ github.ref_name }}" >> $env:GITHUB_ENV
+          } else {
+            echo "RELEASE_TAG=app-v$v" >> $env:GITHUB_ENV
+          }
+
+      - name: Delete old desktop releases (before build)
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GITHUB_REPOSITORY: ${{ github.repository }}
+        run: node scripts/cleanup-github-desktop-releases.mjs --keep ${{ env.RELEASE_TAG }}
+
+      - name: Install Rust
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          toolchain: stable
+
+      - name: Verify Rust toolchain
+        shell: pwsh
+        run: rustc --version
+
+      - name: Rust cache
+        uses: swatinem/rust-cache@v2
+        with:
+          workspaces: './DeskApp -> target'
+
+      - name: Install dependencies
+        run: npm ci --legacy-peer-deps
+
+      - name: Configure Windows code signing
+        shell: pwsh
+        env:
+          SIGN_THUMB: ${{ secrets.WINDOWS_CODESIGN_THUMBPRINT }}
+          SIGN_PFX_B64: ${{ secrets.WINDOWS_CODESIGN_PFX_BASE64 }}
+          SIGN_PFX_PASS: ${{ secrets.WINDOWS_CODESIGN_PFX_PASSWORD }}
+          SM_API_KEY: ${{ secrets.SM_API_KEY }}
+          SM_CERT_FINGERPRINT: ${{ secrets.SM_CERT_FINGERPRINT }}
+          SM_CLIENT_CERT_FILE_B64: ${{ secrets.SM_CLIENT_CERT_FILE_B64 }}
+          SM_CLIENT_CERT_PASSWORD: ${{ secrets.SM_CLIENT_CERT_PASSWORD }}
+        run: |
+          $hasSign = $false
+          if ($env:SIGN_PFX_B64) {
+            $pfxPath = Join-Path $env:RUNNER_TEMP "codesign.pfx"
+            [IO.File]::WriteAllBytes($pfxPath, [Convert]::FromBase64String($env:SIGN_PFX_B64))
+            $pass = ConvertTo-SecureString $env:SIGN_PFX_PASS -AsPlainText -Force
+            Import-PfxCertificate -FilePath $pfxPath -CertStoreLocation Cert:\CurrentUser\My -Password $pass | Out-Null
+            Write-Host "Kod imza PFX mağazaya aktarıldı."
+            $hasSign = $true
+          }
+          if ($env:SM_CLIENT_CERT_FILE_B64) {
+            $p12Path = Join-Path $env:RUNNER_TEMP "digicert_client.p12"
+            [IO.File]::WriteAllBytes($p12Path, [Convert]::FromBase64String($env:SM_CLIENT_CERT_FILE_B64))
+            $env:SM_CLIENT_CERT_FILE = $p12Path
+            echo "SM_CLIENT_CERT_FILE=$p12Path" >> $env:GITHUB_ENV
+            $hasSign = $true
+          }
+          if ($env:SM_API_KEY) { echo "SM_API_KEY=$env:SM_API_KEY" >> $env:GITHUB_ENV; $hasSign = $true }
+          if ($env:SM_CERT_FINGERPRINT) { echo "SM_CERT_FINGERPRINT=$env:SM_CERT_FINGERPRINT" >> $env:GITHUB_ENV; $hasSign = $true }
+          if ($env:SM_CLIENT_CERT_PASSWORD) { echo "SM_CLIENT_CERT_PASSWORD=$env:SM_CLIENT_CERT_PASSWORD" >> $env:GITHUB_ENV }
+          if ($env:SIGN_THUMB) {
+            echo "WINDOWS_CODESIGN_THUMBPRINT=$env:SIGN_THUMB" >> $env:GITHUB_ENV
+            $hasSign = $true
+          }
+          if ($hasSign) {
+            echo "CODESIGN_ENABLED=1" >> $env:GITHUB_ENV
+            Write-Host "Kod imzalama etkin (GitHub secrets)."
+          } else {
+            echo "WINDOWS_CODESIGN_DISABLE=1" >> $env:GITHUB_ENV
+            echo "CODESIGN_ENABLED=0" >> $env:GITHUB_ENV
+            Write-Host "Imza secret yok; imzasiz build (WINDOWS_CODESIGN_DISABLE=1)."
+          }
+
+      - name: Prepare Tauri updater signing
+        shell: pwsh
+        env:
+          TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
+        run: node scripts/tauri-updater-ci-prep.mjs
+
+      # CARGO_BUILD_JOBS=2: windows-latest uzerinde tam paralellik Rust derlemesinde
+      # CPU/RAM acligi yaratip "hosted runner lost communication" flake'ine yol acabiliyor.
+      - name: Build Tauri (Windows)
+        shell: pwsh
+        env:
+          CI: 'true'
+          CARGO_BUILD_JOBS: '2'
+          CARGO_INCREMENTAL: '0'
+          TAURI_SIGNING_PRIVATE_KEY: ${{ env.TAURI_SIGNING_ENABLED == '1' && secrets.TAURI_SIGNING_PRIVATE_KEY || '' }}
+          TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ env.TAURI_SIGNING_ENABLED == '1' && secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD || '' }}
+          WINDOWS_CODESIGN_DISABLE: ${{ env.WINDOWS_CODESIGN_DISABLE }}
+          WINDOWS_CODESIGN_THUMBPRINT: ${{ env.WINDOWS_CODESIGN_THUMBPRINT }}
+          SM_API_KEY: ${{ env.SM_API_KEY }}
+          SM_CERT_FINGERPRINT: ${{ env.SM_CERT_FINGERPRINT }}
+          SM_CLIENT_CERT_FILE: ${{ env.SM_CLIENT_CERT_FILE }}
+          SM_CLIENT_CERT_PASSWORD: ${{ env.SM_CLIENT_CERT_PASSWORD }}
+        run: npm run tauri:build
+
+      - name: Verify installer signature
+        if: env.CODESIGN_ENABLED == '1'
+        shell: pwsh
+        run: |
+          $setup = Get-ChildItem "dist" -Filter "RetailEX-Desktop-Setup-*.exe" -ErrorAction SilentlyContinue | Select-Object -First 1
+          if (-not $setup) {
+            $nsis = "DeskApp/target/release/bundle/nsis"
+            $setup = Get-ChildItem $nsis -Filter "*setup.exe" | Sort-Object LastWriteTime -Descending | Select-Object -First 1
+          }
+          if (-not $setup) { throw "Kurulum dosyasi bulunamadi" }
+          $sig = Get-AuthenticodeSignature $setup.FullName
+          Write-Host "Imza durumu: $($sig.Status)"
+          if ($sig.SignerCertificate) { Write-Host "Imzalayan: $($sig.SignerCertificate.Subject)" }
+          if ($sig.Status -ne "Valid") { throw "Kurulum dosyasi gecerli imzali degil: $($sig.Status)" }
+
+      - name: Collect installer artifact
+        shell: pwsh
+        run: |
+          $nsis = "DeskApp/target/release/bundle/nsis"
+          if (-not (Test-Path $nsis)) { throw "NSIS klasoru yok: $nsis" }
+          $setup = Get-ChildItem $nsis -Filter "*setup.exe" | Sort-Object LastWriteTime -Descending | Select-Object -First 1
+          if (-not $setup) { throw "setup.exe bulunamadi" }
+          $outName = "RetailEX-Desktop-Setup-$env:PACKAGE_VERSION.exe"
+          echo "INSTALLER_FILENAME=$outName" >> $env:GITHUB_ENV
+          New-Item -ItemType Directory -Force -Path dist | Out-Null
+          Copy-Item $setup.FullName "dist/$outName"
+          (Get-Item "dist/$outName").Length | Out-Host
+
+      - name: Collect updater artifacts
+        shell: pwsh
+        run: |
+          $nsis = "DeskApp/target/release/bundle/nsis"
+          if (-not (Test-Path $nsis)) { throw "NSIS klasoru yok: $nsis" }
+          $zip = Get-ChildItem $nsis -Filter "*.nsis.zip" | Where-Object { $_.Name -notlike "*.sig" } | Sort-Object LastWriteTime -Descending | Select-Object -First 1
+          if (-not $zip) {
+            Write-Host "Updater zip yok (TAURI_SIGNING_PRIVATE_KEY secret eksik olabilir); yalnizca NSIS setup yayinlanacak."
+            echo "UPDATER_ENABLED=0" >> $env:GITHUB_ENV
+            exit 0
+          }
+          Copy-Item $zip.FullName "dist/$($zip.Name)"
+          $sig = "$($zip.FullName).sig"
+          if (Test-Path $sig) { Copy-Item $sig "dist/$($zip.Name).sig" }
+          echo "UPDATER_ZIP=$($zip.Name)" >> $env:GITHUB_ENV
+          echo "UPDATER_ENABLED=1" >> $env:GITHUB_ENV
+
+      - name: Generate latest.json (Tauri updater)
+        if: env.UPDATER_ENABLED == '1'
+        run: |
+          node scripts/publish-desktop-updater-manifest.mjs --version ${{ env.PACKAGE_VERSION }} --tag ${{ env.RELEASE_TAG }} --out dist/latest.json
+
+      - name: Upload workflow artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: RetailEX-Desktop-Setup-${{ env.PACKAGE_VERSION }}
+          path: dist/${{ env.INSTALLER_FILENAME }}
+          retention-days: 30
+
+      - name: Create GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ env.RELEASE_TAG }}
+          name: RetailEX Desktop ${{ env.PACKAGE_VERSION }}
+          body: |
+            ## RetailEX Masaüstü (Windows)
+
+            Tauri 2 + NSIS kurulum paketi.
+
+            ### Kurulum
+            1. `RetailEX-Desktop-Setup-${{ env.PACKAGE_VERSION }}.exe` indirin
+            2. Yönetici olarak çalıştırın (per-machine kurulum)
+            3. Giriş: demo `admin` / `admin` (yerel PostgreSQL yapılandırmasına bağlı)
+
+            ### Notlar
+            - Kod imzasi: GitHub repo secrets (`WINDOWS_CODESIGN_PFX_BASE64` + sifre) ile imzali; secret yoksa imzasiz CI build
+            - Terazi köprüsü ayrı release: **RetailEX Terazi Köprüsü 0.1.91**
+            - Sürüm: `${{ env.PACKAGE_VERSION }}` (kök `package.json`)
+
+            ### Dosyalar
+            - **RetailEX-Desktop-Setup-${{ env.PACKAGE_VERSION }}.exe** — NSIS kurulumu
+            - **latest.json** + imzalı `.nsis.zip` — masaüstü otomatik güncelleme (TAURI_SIGNING_PRIVATE_KEY secret gerekir)
+          files: dist/**
+          draft: false
+          prerelease: false
+          make_latest: true
+          generate_release_notes: false

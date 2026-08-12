@@ -1,0 +1,63 @@
+# Bekleyen migration'ları VPS üzerindeki tüm kiracı PostgreSQL DB'lerine uygular.
+# GitHub → Settings → Secrets: VPS_HOST, VPS_USER, VPS_SSH_KEY (deploy-vps-web ile aynı)
+#
+# Tetikleme: Actions → "Migrate tenant databases" → Run workflow
+
+name: Migrate tenant databases
+
+on:
+  workflow_dispatch:
+    inputs:
+      dry_run:
+        description: 'Yalnızca dry-run (MIGRATE_DRY=1)'
+        required: false
+        default: 'false'
+        type: choice
+        options:
+          - 'false'
+          - 'true'
+      skip_backup:
+        description: 'Yedek alma (BACKUP_BEFORE_MIGRATE=0)'
+        required: false
+        default: 'false'
+        type: choice
+        options:
+          - 'false'
+          - 'true'
+
+concurrency:
+  group: migrate-tenants-db
+  cancel-in-progress: false
+
+jobs:
+  migrate:
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    steps:
+      - name: SSH — git pull + bekleyen migration'lar
+        uses: appleboy/ssh-action@v1.2.0
+        with:
+          host: ${{ secrets.VPS_HOST }}
+          username: ${{ secrets.VPS_USER }}
+          key: ${{ secrets.VPS_SSH_KEY }}
+          command_timeout: 55m
+          script_stop: true
+          script: |
+            set -euo pipefail
+            INSTALL_DIR="${{ secrets.VPS_INSTALL_DIR }}"
+            if [[ -z "${INSTALL_DIR// }" ]]; then
+              INSTALL_DIR="/opt/berqenas-cloud"
+            fi
+            export INSTALL_DIR
+            export RETAILEX_GIT_URL="https://github.com/${{ github.repository }}.git"
+            export RETAILEX_GIT_BRANCH="main"
+            export BACKUP_BEFORE_MIGRATE="${{ inputs.skip_backup == 'true' && '0' || '1' }}"
+            export MIGRATE_DRY="${{ inputs.dry_run == 'true' && '1' || '0' }}"
+            SCRIPT="${INSTALL_DIR}/projects/retailex/database/scripts/berqenas-repo-pull-and-migrate.sh"
+            if [[ ! -f "$SCRIPT" ]]; then
+              echo "Hata: $SCRIPT yok — önce deploy-vps-web ile repo klonlayın." >&2
+              exit 1
+            fi
+            chmod +x "$SCRIPT"
+            bash "$SCRIPT"
+            echo "=== Migration workflow tamamlandı ==="

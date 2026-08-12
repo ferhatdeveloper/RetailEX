@@ -1,0 +1,86 @@
+/**
+ * RetailEX — html.dark altında sabit açık tema sınıflarını nötrleştirir.
+ * Fiş / baskı / bilinçli açık alanlar: class="theme-lock-light" veya data-theme-lock="light"
+ */
+
+.dark {
+  color-scheme: dark;
+}
+
+.dark .bg-white:not(.theme-lock-light):not([data-theme-lock='light']) {
+  background-color: rgb(31 41 55) !important;
+}
+
+.dark .bg-gray-50:not(.theme-lock-light):not([data-theme-lock='light']) {
+  background-color: rgb(17 24 39) !important;
+}
+
+.dark .bg-gray-100:not(.theme-lock-light):not([data-theme-lock='light']) {
+  background-color: rgb(31 41 55) !important;
+}
+
+.dark .bg-slate-50:not(.theme-lock-light):not([data-theme-lock='light']) {
+  background-color: rgb(15 23 42) !important;
+}
+
+.dark .bg-slate-100:not(.theme-lock-light):not([data-theme-lock='light']) {
+  background-color: rgb(30 41 59) !important;
+}
+
+.dark .text-gray-900:not(.theme-lock-light):not([data-theme-lock='light']) {
+  color: rgb(243 244 246) !important;
+}
+
+.dark .text-gray-800:not(.theme-lock-light):not([data-theme-lock='light']) {
+  color: rgb(229 231 235) !important;
+}
+
+.dark .text-gray-700:not(.theme-lock-light):not([data-theme-lock='light']) {
+  color: rgb(209 213 219) !important;
+}
+
+.dark .text-gray-600:not(.theme-lock-light):not([data-theme-lock='light']) {
+  color: rgb(156 163 175) !important;
+}
+
+.dark .text-slate-900:not(.theme-lock-light):not([data-theme-lock='light']) {
+  color: rgb(241 245 249) !important;
+}
+
+.dark .text-slate-800:not(.theme-lock-light):not([data-theme-lock='light']) {
+  color: rgb(226 232 240) !important;
+}
+
+.dark .border-gray-100:not(.theme-lock-light):not([data-theme-lock='light']),
+.dark .border-gray-200:not(.theme-lock-light):not([data-theme-lock='light']) {
+  border-color: rgb(55 65 81) !important;
+}
+
+.dark .border-gray-300:not(.theme-lock-light):not([data-theme-lock='light']) {
+  border-color: rgb(75 85 99) !important;
+}
+
+.dark .border-slate-200:not(.theme-lock-light):not([data-theme-lock='light']) {
+  border-color: rgb(51 65 85) !important;
+}
+
+.dark .divide-gray-200 > :not([hidden]) ~ :not([hidden]):not(.theme-lock-light) {
+  border-color: rgb(55 65 81) !important;
+}
+
+.dark .hover\:bg-gray-50:hover:not(.theme-lock-light):not([data-theme-lock='light']) {
+  background-color: rgb(55 65 81) !important;
+}
+
+.dark .hover\:bg-gray-100:hover:not(.theme-lock-light):not([data-theme-lock='light']) {
+  background-color: rgb(55 65 81) !important;
+}
+
+@media print {
+  .dark .bg-white,
+  .dark .bg-gray-50,
+  .dark .text-gray-900 {
+    background-color: white !important;
+    color: black !important;
+  }
+}

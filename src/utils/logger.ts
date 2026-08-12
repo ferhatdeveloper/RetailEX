@@ -1,0 +1,82 @@
+// Production-Ready Logger Utility
+// Automatically disables console logs in production
+
+import { invoke } from '@tauri-apps/api/core';
+
+const isDevelopment = typeof process !== 'undefined' && process.env.NODE_ENV === 'development';
+
+/**
+ * Smart logger that only outputs in development mode
+ * In production, errors are forwarded to the Rust backend logger.
+ */
+export const logger = {
+  log: (...args: unknown[]) => {
+    if (isDevelopment) console.log(...args);
+  },
+  info: (...args: unknown[]) => {
+    if (isDevelopment) console.info(...args);
+  },
+  warn: (...args: unknown[]) => {
+    if (isDevelopment) console.warn(...args);
+  },
+  error: (...args: any[]) => {
+    console.error(...args);
+    // Forward to Tauri backend
+    try {
+      const context = args.length > 1 ? String(args[0]) : "Global";
+      const details = args.map(a => {
+        if (a instanceof Error) return a.stack || a.message;
+        try {
+          return typeof a === 'object' ? JSON.stringify(a) : String(a);
+        } catch (e) { return String(a); }
+      }).join(' | ');
+
+      invoke('log_from_frontend', { level: 'ERROR', context, details }).catch(() => { });
+    } catch (e) { }
+  },
+  debug: isDevelopment ? console.debug.bind(console) : () => { },
+  group: isDevelopment ? console.group.bind(console) : () => { },
+  groupEnd: isDevelopment ? console.groupEnd.bind(console) : () => { },
+  table: isDevelopment ? console.table.bind(console) : () => { },
+  time: isDevelopment ? console.time.bind(console) : () => { },
+  timeEnd: isDevelopment ? console.timeEnd.bind(console) : () => { },
+};
+
+/**
+ * Performance logger for measuring execution time
+ */
+export class PerformanceLogger {
+  private timers: Map<string, number> = new Map();
+
+  start(label: string): void {
+    if (isDevelopment) {
+      this.timers.set(label, performance.now());
+      logger.log(`?? [${label}] Started`);
+    }
+  }
+
+  end(label: string): void {
+    if (isDevelopment) {
+      const startTime = this.timers.get(label);
+      if (startTime) {
+        const duration = performance.now() - startTime;
+        logger.log(`? [${label}] Completed in ${duration.toFixed(2)}ms`);
+        this.timers.delete(label);
+      }
+    }
+  }
+}
+
+export const perfLogger = new PerformanceLogger();
+
+// Global error boundaries for unhandled frontend exceptions
+if (typeof window !== 'undefined') {
+  window.addEventListener('error', (event) => {
+    logger.error('UncaughtException', event.message, event.error);
+  });
+
+  window.addEventListener('unhandledrejection', (event) => {
+    logger.error('UnhandledRejection', event.reason);
+  });
+}
+

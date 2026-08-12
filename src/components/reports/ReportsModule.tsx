@@ -1,0 +1,8194 @@
+import React, { useState, useEffect, useCallback, useMemo, useRef } from 'react';
+import { BarChart3, TrendingUp, Banknote, ShoppingCart, Calendar, Download, FileText, Clock, User, Package, TrendingDown, Award, PieChart as PieChartIcon, CreditCard, AlertCircle, Percent, AlertTriangle, ClipboardList, MessageSquare, LineChart as LineChartLucide, Users, Scissors, ThumbsUp, PhoneMissed } from 'lucide-react';
+import type { Sale, Product } from '../../App';
+import { MaterialMovementReport } from './MaterialMovementReport';
+import { ProfitLossReport } from './ProfitLossReport';
+import { PeriodSummaryReport } from './PeriodSummaryReport';
+import { ReportChatAI } from './ReportChatAI';
+import { CustomerSalesReport } from './CustomerSalesReport';
+import { SalesTrendReport } from './SalesTrendReport';
+import { SalesTargetReport } from './SalesTargetReport';
+import { formatNumber } from '../../utils/formatNumber';
+import { getReportingCurrency } from '../../utils/currency';
+import { useProductStore } from '../../store';
+import { fetchExpiringSoonLots } from '../../services/api/lots';
+import { useFirmaDonem } from '../../contexts/FirmaDonemContext';
+import { useLanguage } from '../../contexts/LanguageContext';
+import { useTheme } from '../../contexts/ThemeContext';
+import { moduleTranslations, translate as translateModule, type Language as ModuleLanguage } from '../../locales/module-translations';
+import {
+  BarChart, Bar, LineChart, Line, PieChart as RePieChart, Pie, Cell,
+  XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer
+} from 'recharts';
+import { RestaurantService } from '../../services/restaurant';
+import { beautyService } from '../../services/beautyService';
+import { expenseAPI } from '../../services/api/expenses';
+import type { BeautyAppointment, BeautySale, BeautyStaffTreatmentReport } from '../../types/beauty';
+import { beautyServiceMainKey, beautyServiceSubKey } from '../beauty/beautyServiceCategoryUtils';
+import { localCalendarDateKey, localTodayDateKey, formatIsoDateTr } from '../../utils/localCalendarDate';
+import { type ReportDatePreset, type ReportDateRangeValue } from '../../utils/reportDatePresets';
+import { ReportDateRangePresets } from '../shared/ReportDateRangePresets';
+import { buildErpServiceBreakdownGroups, type ErpServiceBreakdownLine } from '../../utils/serviceBreakdownReport';
+import {
+  summarizePurchasePromotionReport,
+  type PurchasePromotionReportLine,
+} from '../../utils/purchasePromotionReport';
+import { buildPosZReportForRange, isReturnSale } from '../../utils/posZReport';
+import { normalizePaymentMethodBucket } from '../../utils/paymentMethodUtils';
+import { BeautyServiceReportCrmModal } from './BeautyServiceReportCrmModal';
+import {
+  CariAgingReport,
+  CariBalanceSummaryReport,
+  CashBankMovementReport,
+  PurchaseSummaryReport,
+  SupplierPurchaseReturnsReport,
+  CollectionDueReport,
+  SalesReturnsReport,
+  ProductGrossProfitReport,
+  CariExtractReport,
+  CriticalStockReport,
+  WarehouseStockReport,
+} from './ErpCoreReports';
+
+import { useBeautyStore } from '../beauty/store/useBeautyStore';
+import { CommissionReport } from '../beauty/components/CommissionReport';
+import { SurveyResultsReport } from '../beauty/components/SurveyResultsReport';
+import {
+  SurveyTrendReport,
+  SurveyStaffReport,
+  SurveyServiceReport,
+  SurveyNpsReport,
+  SurveyCommentsReport,
+} from '../beauty/components/SurveyExtraReports';
+import { OverdueUncalledFollowUpReport } from '../beauty/components/OverdueUncalledFollowUpReport';
+import { Layout, Menu, ConfigProvider, theme, Input, Button, Dropdown, Modal, Table, Spin, Select } from 'antd';
+import { toast } from 'sonner';
+import { usePermission } from '../../shared/hooks/usePermission';
+import { useResponsive } from '../../hooks/useResponsive';
+import { buildReceipt80mmPrintHtml } from '../../utils/receipt80mmPrintHtml';
+import {
+  printReportHtml,
+  shouldPreviewReportPrint,
+} from '../../utils/reportHtmlPrint';
+import { getReceiptSettings } from '../../services/receiptSettingsService';
+import { retailexAntdThemeWithPrimary } from '../../theme/retailexAntdTheme';
+import { ReportHtmlPrintPreviewModal } from './ReportHtmlPrintPreviewModal';
+import type { ColumnsType } from 'antd/es/table';
+import {
+  RobotOutlined,
+  CalendarOutlined,
+  PrinterOutlined,
+  SwapOutlined,
+  LineChartOutlined,
+  PieChartOutlined,
+  ClockCircleOutlined,
+  TeamOutlined,
+  UserOutlined,
+  RiseOutlined,
+  ThunderboltOutlined,
+  AccountBookOutlined,
+  TransactionOutlined,
+  HistoryOutlined,
+  AuditOutlined,
+  DatabaseOutlined,
+  HourglassOutlined,
+  RetweetOutlined,
+  ApartmentOutlined,
+  DeploymentUnitOutlined,
+  ExclamationCircleOutlined,
+  CreditCardOutlined,
+  TagsOutlined,
+  BankOutlined,
+  SafetyCertificateOutlined,
+  SearchOutlined,
+  MenuOutlined,
+  FilterOutlined,
+  MailOutlined,
+  FilePdfOutlined,
+  FileExcelOutlined,
+  CaretDownOutlined,
+  ReloadOutlined,
+} from '@ant-design/icons';
+
+const { Sider, Content } = Layout;
+
+/** Mobil çekmece: yönetim içerik alanı z-[10], üst çubuk z-[100] — menü bunların üstünde */
+const REPORTS_MOBILE_BACKDROP_Z = 105;
+const REPORTS_MOBILE_DRAWER_Z = 110;
+const REPORTS_SELECT_POPUP_Z = 200;
+
+/** Kapalı siparişte `total_amount` bazen güncellenmemiş kalabiliyor; grafik/istatistik için kalemlerden yedek toplam. */
+function sumRestOrderItemsSubtotal(o: { items?: unknown }): number {
+  const items = o.items;
+  if (!Array.isArray(items)) return 0;
+  return items.reduce((sum: number, it: any) => {
+    if (it?.is_void === true) return sum;
+    return sum + Number(it?.subtotal ?? 0);
+  }, 0);
+}
+
+function restOrderNetAmount(o: { total_amount?: unknown; discount_amount?: unknown; items?: unknown }): number {
+  const disc = Number(o.discount_amount ?? 0);
+  const header = Number(o.total_amount ?? 0) - disc;
+  if (Number.isFinite(header) && header > 0) return header;
+  const fromItems = sumRestOrderItemsSubtotal(o) - disc;
+  if (Number.isFinite(fromItems) && fromItems > 0) return fromItems;
+  return Number.isFinite(header) ? header : 0;
+}
+
+/** Adisyon: indirim öncesi tutar (kalem toplamı veya net + indirim). */
+function restOrderBeforeDiscount(o: { total_amount?: unknown; discount_amount?: unknown; items?: unknown }): number {
+  const itemsSum = sumRestOrderItemsSubtotal(o);
+  if (itemsSum > 0) return itemsSum;
+  const net = restOrderNetAmount(o);
+  const disc = Number((o as any).discount_amount ?? (o as any).discountAmount ?? 0) || 0;
+  return net + disc;
+}
+
+/** ERP fişi: indirim öncesi — `subtotal` doluysa o, değilse net + indirim. */
+function erpSaleBeforeDiscount(s: Sale): number {
+  const sub = Number(s.subtotal) || 0;
+  if (sub > 0) return sub;
+  return (Number(s.total) || 0) + (Number(s.discount) || 0);
+}
+
+/** Günlük/Z raporu — adisyon ödeme tipi (ERP `cash` ile hizalı) */
+function isRestaurantPaymentCashLike(m: string): boolean {
+  return /NAK[İI]T|CASH|^cash$/i.test(String(m || ''));
+}
+function isRestaurantPaymentCardLike(m: string): boolean {
+  return /KART|CARD|kredi|credit|gateway/i.test(String(m || ''));
+}
+
+/** Rapor yazdırma / Z başlığı için yerel tarih metni (YYYY-MM-DD takvim anahtarları). */
+function formatReportsDateRangeTr(fromKey: string, toKey: string): string {
+  if (fromKey === toKey) {
+    return new Date(`${fromKey}T12:00:00`).toLocaleDateString('tr-TR', {
+      weekday: 'long',
+      year: 'numeric',
+      month: 'long',
+      day: 'numeric',
+    });
+  }
+  const short: Intl.DateTimeFormatOptions = { day: 'numeric', month: 'long', year: 'numeric' };
+  const a = new Date(`${fromKey}T12:00:00`).toLocaleDateString('tr-TR', short);
+  const b = new Date(`${toKey}T12:00:00`).toLocaleDateString('tr-TR', short);
+  return `${a} – ${b}`;
+}
+
+function reportHtmlTitleDateSegment(fromKey: string, toKey: string): string {
+  return fromKey === toKey ? fromKey : `${fromKey}_${toKey}`;
+}
+
+function restOrderPaymentMethod(o: any): string {
+  const raw = o?.payment_method ?? o?.paymentMethod;
+  if (raw == null || String(raw).trim() === '') return 'NAKİT';
+  return String(raw);
+}
+
+/** Kapalı adisyon satırı → 80mm fiş HTML’i için `Sale` (ERP fişi yokken). */
+function restOrderToSaleForReceipt(o: any): Sale {
+  const items = (Array.isArray(o?.items) ? o.items : [])
+    .filter((it: any) => it?.is_void !== true)
+    .map((it: any) => ({
+      productId: String(it.product_id ?? it.productId ?? ''),
+      productName: String(it.product_name ?? it.productName ?? 'Ürün'),
+      quantity: Number(it.quantity) || 0,
+      price: Number(it.unit_price ?? it.unitPrice ?? it.price) || 0,
+      discount: Number(it.discount_pct ?? it.discount ?? 0) || 0,
+      total: Number(it.subtotal ?? it.total) || 0,
+    }));
+  const pm = restOrderPaymentMethod(o);
+  let paymentMethod = 'cash';
+  if (isRestaurantPaymentCardLike(pm)) paymentMethod = 'card';
+  else if (!isRestaurantPaymentCashLike(pm) && String(pm).trim()) paymentMethod = 'transfer';
+  const id = String(o.id || '');
+  return {
+    id,
+    receiptNumber: String(o.order_no || o.orderNo || `ADİSYON-${id.slice(0, 8)}`),
+    date: String(o.closed_at ?? o.closedAt ?? o.opened_at ?? new Date().toISOString()),
+    customerName: o.customer_name || o.customerName,
+    items,
+    subtotal: restOrderBeforeDiscount(o),
+    discount: Number(o.discount_amount ?? o.discountAmount ?? 0) || 0,
+    total: restOrderNetAmount(o),
+    paymentMethod,
+    cashier: o.waiter || '-',
+    status: 'completed',
+  } as Sale;
+}
+
+function isSaleRowUuid(id: string): boolean {
+  return /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(String(id || '').trim());
+}
+
+function isRemovedSaleStatus(status: unknown): boolean {
+  const st = String(status ?? '').toLowerCase();
+  return st === 'cancelled' || st === 'canceled' || st === 'refunded';
+}
+
+function extractCancelReason(notes: unknown): string {
+  const text = String(notes ?? '').trim();
+  if (!text) return '';
+  const tagged = text.match(/\[CANCEL_REASON\]\s*(.+)$/im);
+  if (tagged?.[1]) return tagged[1].trim();
+  const labeled = text.match(/iptal nedeni\s*:\s*(.+)$/im);
+  if (labeled?.[1]) return labeled[1].trim();
+  return '';
+}
+
+function extractBeautyAppointmentIdFromSaleNotes(notes: unknown): string {
+  const text = String(notes ?? '');
+  if (!text) return '';
+  const match = text.match(/rex_appt\s*[:=]\s*([0-9a-fA-F-]+)/i);
+  return match?.[1]?.trim().toLowerCase() || '';
+}
+
+function resolveDailyRowDeviceName(value: unknown): string {
+  const raw = String(value ?? '').trim();
+  return raw || '-';
+}
+
+/** `closed_at` / `opened_at` null iken `new Date(null)` epoch (1970) üretir; raporda gösterme. */
+/** Stok raporu: DB’de `name` boş veya eski cache’te eksikse name2 / kod / barkod */
+function productLabelForReport(p: Product): string {
+  const parts: (string | undefined)[] = [p.name, p.name2, p.name_tr, p.name_en, p.code, p.barcode];
+  for (const x of parts) {
+    if (typeof x === 'string' && x.trim()) return x.trim();
+  }
+  return 'İsimsiz ürün';
+}
+
+function productCategoryForReport(p: Product): string {
+  const c = (p.category && String(p.category).trim()) || (p.categoryCode && String(p.categoryCode).trim()) || '';
+  return c || '—';
+}
+
+function formatRestReportDateTime(value: unknown): string {
+  if (value == null || value === '') return '—';
+  if (typeof value === 'string' && value.trim() === '') return '—';
+  const d = value instanceof Date ? value : new Date(value as string | number);
+  const t = d.getTime();
+  if (!Number.isFinite(t) || t <= 0) return '—';
+  if (t < 86400000) return '—';
+  return d.toLocaleString('tr-TR', {
+    day: '2-digit',
+    month: '2-digit',
+    year: 'numeric',
+    hour: '2-digit',
+    minute: '2-digit',
+  });
+}
+
+type AnalysisReportKind =
+  | 'sales-by-month'
+  | 'user-turnover'
+  | 'category-monthly-revenue'
+  | 'product-monthly-qty'
+  | 'product-sales-range'
+  | 'category-monthly-qty'
+  | 'section-turnover'
+  | 'region-turnover'
+  | 'table-turnover'
+  | 'collections-by-month';
+
+function analysisMonthKeyFromOrder(o: { closed_at?: unknown; opened_at?: unknown }): string {
+  const raw = o.closed_at ?? o.opened_at;
+  if (raw == null || raw === '') return '';
+  const d = raw instanceof Date ? raw : new Date(raw as string | number);
+  const t = d.getTime();
+  if (!Number.isFinite(t) || t <= 0 || t < 86400000) return '';
+  const y = d.getFullYear();
+  const m = String(d.getMonth() + 1).padStart(2, '0');
+  return `${y}-${m}`;
+}
+
+function formatAnalysisMonthTr(ym: string): string {
+  const parts = ym.split('-');
+  const y = Number(parts[0]);
+  const mo = Number(parts[1]) || 1;
+  const names = ['Oca', 'Şub', 'Mar', 'Nis', 'May', 'Haz', 'Tem', 'Ağu', 'Eyl', 'Eki', 'Kas', 'Ara'];
+  return `${names[mo - 1] ?? ym} ${Number.isFinite(y) ? y : ''}`.trim();
+}
+
+function saleMonthKeyFromDate(date: string): string {
+  const k = localCalendarDateKey(date);
+  if (k.length < 7) return '';
+  return k.slice(0, 7);
+}
+
+function eachRestOrderItem(order: any, fn: (item: any) => void) {
+  for (const it of order?.items || []) {
+    if (it?.is_void === true) continue;
+    fn(it);
+  }
+}
+
+/** Yerel takvim günü anahtarına gün ekler (YYYY-MM-DD). */
+function calendarKeyAddDays(isoKey: string, deltaDays: number): string {
+  const parts = isoKey.split('-').map((x) => parseInt(x, 10));
+  const y = parts[0];
+  const m = parts[1] || 1;
+  const d = parts[2] || 1;
+  const dt = new Date(y, m - 1, d + deltaDays);
+  return localCalendarDateKey(dt);
+}
+
+type ComparisonWindows = {
+  currentFrom: string;
+  currentTo: string;
+  previousFrom: string;
+  previousTo: string;
+  currentPeriodLabel: string;
+  previousPeriodLabel: string;
+};
+
+/** Hafta: son 7 gün vs önceki 7 gün. Ay: aybaşı–bugün vs geçen ayın aynı gün aralığı. */
+function buildComparisonWindows(period: 'week' | 'month', todayKey: string): ComparisonWindows {
+  if (period === 'week') {
+    const currentTo = todayKey;
+    const currentFrom = calendarKeyAddDays(todayKey, -6);
+    const previousTo = calendarKeyAddDays(todayKey, -7);
+    const previousFrom = calendarKeyAddDays(todayKey, -13);
+    return {
+      currentFrom,
+      currentTo,
+      previousFrom,
+      previousTo,
+      currentPeriodLabel: 'Bu hafta',
+      previousPeriodLabel: 'Geçen hafta',
+    };
+  }
+  const [y, m, d] = todayKey.split('-').map(Number);
+  const currentFrom = `${y}-${String(m).padStart(2, '0')}-01`;
+  const currentTo = todayKey;
+  const prevRef = new Date(y, m - 1, 0);
+  const py = prevRef.getFullYear();
+  const pm = prevRef.getMonth() + 1;
+  const dimPrev = prevRef.getDate();
+  const dayClamped = Math.min(d, dimPrev);
+  const previousFrom = `${py}-${String(pm).padStart(2, '0')}-01`;
+  const previousTo = `${py}-${String(pm).padStart(2, '0')}-${String(dayClamped).padStart(2, '0')}`;
+  return {
+    currentFrom,
+    currentTo,
+    previousFrom,
+    previousTo,
+    currentPeriodLabel: 'Bu ay',
+    previousPeriodLabel: 'Geçen ay (aynı gün aralığı)',
+  };
+}
+
+type BusinessType = 'retail' | 'market' | 'restaurant' | 'beauty';
+
+const REPORTS_BUSINESS_TYPE_STORAGE_KEY = 'retailex_reports_business_type';
+
+function parseStoredReportsBusinessType(): BusinessType | null {
+  if (typeof window === 'undefined') return null;
+  try {
+    const v = localStorage.getItem(REPORTS_BUSINESS_TYPE_STORAGE_KEY);
+    if (v === 'retail' || v === 'market' || v === 'restaurant' || v === 'beauty') return v;
+  } catch {
+    /* ignore */
+  }
+  return null;
+}
+
+function resolveInitialReportsBusinessType(initial: BusinessType): BusinessType {
+  if (initial !== 'retail') return initial;
+  return parseStoredReportsBusinessType() ?? 'retail';
+}
+
+/** ERP fişlerinden detaylı satış grupları (perakende / market / güzellik). */
+function buildErpDetailedSaleGroups(salesDay: Sale[], tm: (key: string) => string) {
+  return salesDay.map((sale) => {
+    const orderId = String(sale.receiptNumber ?? sale.id ?? '—');
+    const open = formatRestReportDateTime(sale.date);
+    const close = sale.created_at ? formatRestReportDateTime(sale.created_at) : open;
+    const tableLabel = sale.table != null && String(sale.table).trim() !== '' ? String(sale.table) : '—';
+    const cari =
+      sale.customerName != null && String(sale.customerName).trim() !== ''
+        ? String(sale.customerName)
+        : tm('resTicketWalkIn');
+    let statusLabel = tm('reportsDetStatusCompleted');
+    if (sale.status === 'cancelled') statusLabel = tm('reportsDetStatusCancelled');
+    else if (sale.status === 'refunded') statusLabel = tm('reportsDetStatusRefunded');
+    const rows = (sale.items || []).map((it) => ({
+      open,
+      close,
+      table: tableLabel,
+      product: String(it.productName ?? '—'),
+      cari,
+      qty: Number(it.quantity ?? 0),
+      price: Number(it.price ?? 0),
+      total: Number(it.total ?? 0),
+      status: statusLabel,
+      statusClosed: false,
+    }));
+    const qtySum = rows.reduce((s, r) => s + r.qty, 0);
+    const lineTotal = rows.reduce((s, r) => s + r.total, 0);
+    const discount = Number(sale.discount ?? 0);
+    const totalForSummary = lineTotal > 0 ? lineTotal : Number(sale.total ?? 0);
+    return {
+      id: orderId,
+      items: rows,
+      summary: {
+        qty: qtySum,
+        total: totalForSummary,
+        discount,
+        count: rows.length,
+      },
+    };
+  });
+}
+
+/** Kasa durumu: yalnızca seçili gün bugünse POS/restoran persist açılış tutarı. */
+function readOpeningCashForReports(businessType: BusinessType): number {
+  if (typeof window === 'undefined') return 0;
+  try {
+    if (businessType === 'restaurant') {
+      const raw = localStorage.getItem('restaurant-storage');
+      if (!raw) return 0;
+      const j = JSON.parse(raw) as { state?: { registerOpeningCash?: unknown } };
+      const v = j?.state?.registerOpeningCash;
+      return typeof v === 'number' && Number.isFinite(v) ? v : 0;
+    }
+    const r = localStorage.getItem('retailos_opening_cash');
+    if (r == null || String(r).trim() === '') return 0;
+    const n = parseFloat(String(r).replace(/\s/g, '').replace(',', '.'));
+    return Number.isFinite(n) ? n : 0;
+  } catch {
+    return 0;
+  }
+}
+
+/** Günlük rapor tablosu satırı — fiş önizleme / ERP silme için kaynak bilgisi */
+type DailyUnifiedRow = {
+  key: string;
+  source: 'erp' | 'rest';
+  receiptNumber: string;
+  date: string;
+  cashier?: string;
+  deviceName?: string;
+  customerName?: string;
+  beforeDiscount: number;
+  total: number;
+  discount: number;
+  paymentMethod: string;
+  status?: string;
+  cancelReason?: string;
+  erpSale?: Sale;
+  restOrder?: any;
+};
+
+type BeautyAppointmentProductRow = {
+  key: string;
+  saleId: string;
+  appointmentId: string;
+  createdAt: string;
+  appointmentDate: string;
+  appointmentTime: string;
+  customerName: string;
+  productId: string;
+  productName: string;
+  productCode: string;
+  productBarcode: string;
+  quantity: number;
+  unitPrice: number;
+  total: number;
+  staffName: string;
+  paymentMethod: string;
+  crmAppointment: BeautyAppointment | null;
+};
+
+type BeautyAppointmentProductGroup = {
+  groupKey: string;
+  productName: string;
+  productCode: string;
+  lineCount: number;
+  transactionCount: number;
+  totalQty: number;
+  totalRevenue: number;
+  items: BeautyAppointmentProductRow[];
+};
+
+type BeautyProductReportSearchMode = 'all' | 'name' | 'code';
+type BeautyProductReportViewMode = 'detail' | 'grouped';
+
+function beautyProductCatalogLookup(products: Product[]): Map<string, { code: string; barcode: string }> {
+  const map = new Map<string, { code: string; barcode: string }>();
+  for (const p of products) {
+    const id = String(p.id ?? '').trim().toLowerCase();
+    if (!id) continue;
+    map.set(id, {
+      code: String(p.code ?? p.sku ?? '').trim(),
+      barcode: String(p.barcode ?? '').trim(),
+    });
+  }
+  return map;
+}
+
+interface ReportsModuleProps {
+  sales: Sale[];
+  products: Product[];
+  /** Gömülü modül için iş kolu (varsayılan: perakende ERP satışları). Restoran modülü `restaurant` geçmeli. */
+  initialBusinessType?: BusinessType;
+  /** Güzellik gömülü modda açılış sekmesi (örn. anket sonuç raporu) */
+  initialReportTab?: ReportTab;
+}
+
+type ReportTab =
+  // AI & Genel
+  'chat-ai' | 'daily' | 'daily-sales-executive' | 'monthly-days-summary' | 'yearly-months-summary' | 'z-report' | 'comparison' |
+  // Restoran Otomasyon Özel
+  'end-of-day' | 'cash-report' | 'product-reports' | 'category-reports' | 'staff-reports' | 'table-reports' | 'payment-reports' | 'discount-reports' | 'detailed-sales' | 'sales-movements' | 'receipts' | 'courier-reports' | 'cash-register-reports' | 'turnover-reports' | 'analysis' |
+  // Satış Raporları
+  'top-products' | 'category-analysis' | 'hourly-analysis' | 'cashiers' | 'customer-sales' | 'sales-trend' | 'sales-target' | 'sales-returns' | 'product-gross-profit' |
+  // Finansal Raporlar
+  'profit-loss' | 'cash-flow' | 'debt-aging' | 'check-tracking' | 'current-account' | 'purchase-summary' | 'supplier-purchase-returns' | 'collection-due' | 'cari-extract' |
+  // Stok Raporları
+  'stock-status' | 'stock-aging' | 'stock-turnover' | 'stock-abc' | 'materials' | 'purchase-promotion-report' | 'expiring-products' | 'critical-stock' | 'warehouse-stock' |
+  // Ödeme & İşlem
+  'payment-distribution' | 'discount-report' | 'cash-status' | 'commission' |
+  // Güzellik özel
+  'beauty-service-report' | 'beauty-cancelled-report' | 'beauty-appointment-product-report' | 'beauty-commission-report' | 'beauty-staff-treatment-report' | 'beauty-survey-report' | 'beauty-survey-trend-report' | 'beauty-survey-staff-report' | 'beauty-survey-service-report' | 'beauty-survey-nps-report' | 'beauty-survey-comments-report' | 'beauty-overdue-uncalled-report';
+
+/** Sol menüde gösterilmez: ekranı yok veya yalnızca “yakında” placeholder idi. */
+const REPORT_TABS_HIDDEN_FROM_MENU = new Set<string>([
+  'design-center',
+  'check-tracking',
+  'commission',
+  'staff-reports',
+  'staff-performance',
+  'table-reports',
+  'payment-reports',
+  'discount-reports',
+  'sales-movements',
+  'receipts',
+  'courier-reports',
+  'cash-register-reports',
+  'turnover-reports',
+]);
+
+/** Yalnızca iş kolu Restoran iken menüde / sekmede anlamlı */
+const RESTAURANT_ONLY_REPORT_KEYS = new Set<string>([
+  'product-reports',
+  'category-reports',
+  'staff-reports',
+  'staff-performance',
+  'table-reports',
+  'payment-reports',
+  'discount-reports',
+  'sales-movements',
+  'receipts',
+  'courier-reports',
+  'cash-register-reports',
+  'turnover-reports',
+]);
+
+const BEAUTY_ONLY_REPORT_KEYS = new Set<string>([
+  'beauty-cancelled-report',
+  'beauty-appointment-product-report',
+  'beauty-commission-report',
+  'beauty-staff-treatment-report',
+  'beauty-survey-report',
+  'beauty-survey-trend-report',
+  'beauty-survey-staff-report',
+  'beauty-survey-service-report',
+  'beauty-survey-nps-report',
+  'beauty-survey-comments-report',
+  'beauty-overdue-uncalled-report',
+]);
+
+function beautyReportMenuItems(tm: (key: string) => string) {
+  return [
+    { key: 'beauty-service-report', label: tm('beautyServiceBreakdownReport'), icon: <DeploymentUnitOutlined /> },
+    { key: 'beauty-cancelled-report', label: tm('beautyCancelledOnlyReport'), icon: <AlertTriangle /> },
+    { key: 'beauty-appointment-product-report', label: tm('beautyAppointmentProductSalesReport'), icon: <ShoppingCart className="w-4 h-4" /> },
+    { key: 'beauty-commission-report', label: tm('bShellNavCommissionReport'), icon: <SafetyCertificateOutlined /> },
+    { key: 'beauty-staff-treatment-report', label: tm('beautyStaffTreatmentReport'), icon: <Users className="w-4 h-4" /> },
+    { key: 'beauty-overdue-uncalled-report', label: tm('bOverdueUncalledReportMenu'), icon: <PhoneMissed className="w-4 h-4" /> },
+    { key: 'beauty-survey-report', label: tm('bShellNavSurveyReport'), icon: <ClipboardList className="w-4 h-4" /> },
+    { key: 'beauty-survey-trend-report', label: tm('bSurveyTrendReportMenu'), icon: <LineChartLucide className="w-4 h-4" /> },
+    { key: 'beauty-survey-staff-report', label: tm('bSurveyStaffReportMenu'), icon: <Users className="w-4 h-4" /> },
+    { key: 'beauty-survey-service-report', label: tm('bSurveyServiceReportMenu'), icon: <Scissors className="w-4 h-4" /> },
+    { key: 'beauty-survey-nps-report', label: tm('bSurveyNpsReportMenu'), icon: <ThumbsUp className="w-4 h-4" /> },
+    { key: 'beauty-survey-comments-report', label: tm('bSurveyCommentsReportMenu'), icon: <MessageSquare className="w-4 h-4" /> },
+  ];
+}
+
+function resolveInitialReportTab(
+  initialBusinessType: BusinessType,
+  initialReportTab?: ReportTab,
+): ReportTab {
+  if (initialReportTab) return initialReportTab;
+  if (initialBusinessType === 'beauty') return 'beauty-service-report';
+  if (initialBusinessType === 'restaurant') return 'product-reports';
+  return 'daily';
+}
+
+function filterReportMenuGroups(groups: { type?: string; children?: { key?: string }[]; [k: string]: unknown }[]): any[] {
+  return groups.map((group) => {
+    if (group?.type === 'group' && Array.isArray(group.children)) {
+      return {
+        ...group,
+        children: group.children.filter(
+          (child) => child?.key != null && !REPORT_TABS_HIDDEN_FROM_MENU.has(String(child.key))
+        ),
+      };
+    }
+    return group;
+  });
+}
+
+/** Menü etiketi → arama metni (ReactNode / string). */
+function reportMenuLabelText(label: unknown): string {
+  if (label == null || label === false) return '';
+  if (typeof label === 'string' || typeof label === 'number') return String(label);
+  if (typeof label === 'object' && label !== null && 'props' in (label as object)) {
+    const kids = (label as { props?: { children?: unknown } }).props?.children;
+    if (typeof kids === 'string' || typeof kids === 'number') return String(kids);
+    if (Array.isArray(kids)) return kids.map(reportMenuLabelText).join(' ');
+  }
+  return '';
+}
+
+/** Rapor menüsünü grup / öğe adına göre filtrele (tr locale). */
+function filterReportMenuBySearch(
+  groups: { type?: string; label?: unknown; children?: { label?: unknown; key?: string }[]; [k: string]: unknown }[],
+  query: string,
+): any[] {
+  const q = query.trim().toLocaleLowerCase('tr');
+  if (!q) return groups;
+  return groups
+    .map((group) => {
+      if (group?.type === 'group' && Array.isArray(group.children)) {
+        const groupLabel = reportMenuLabelText(group.label).toLocaleLowerCase('tr');
+        const groupMatches = groupLabel.includes(q);
+        const children = groupMatches
+          ? group.children
+          : group.children.filter((child) =>
+              reportMenuLabelText(child?.label).toLocaleLowerCase('tr').includes(q),
+            );
+        if (children.length === 0) return null;
+        return { ...group, children };
+      }
+      const label = reportMenuLabelText(group?.label).toLocaleLowerCase('tr');
+      return label.includes(q) ? group : null;
+    })
+    .filter(Boolean);
+}
+
+export function ReportsModule({
+  sales,
+  products,
+  initialBusinessType = 'retail',
+  initialReportTab,
+}: ReportsModuleProps) {
+  const { language, t, tm: globalTm } = useLanguage();
+  const { darkMode } = useTheme();
+  const { isMobile } = useResponsive();
+  const tm = useCallback((key: string) => moduleTranslations[key]?.[language] || globalTm(key), [language, globalTm]);
+  const { hasPermission } = usePermission();
+  const canDeleteErpSale = hasPermission('sales-invoices', 'DELETE');
+
+  const { selectedFirm } = useFirmaDonem();
+  const reportCurrency =
+    (selectedFirm?.raporlama_para_birimi && String(selectedFirm.raporlama_para_birimi).trim()) ||
+    (selectedFirm?.ana_para_birimi && String(selectedFirm.ana_para_birimi).trim()) ||
+    getReportingCurrency();
+  const [selectedTab, setSelectedTab] = useState<ReportTab>(() =>
+    resolveInitialReportTab(initialBusinessType, initialReportTab),
+  );
+  const [selectedDateFrom, setSelectedDateFrom] = useState(localTodayDateKey);
+  const [selectedDateTo, setSelectedDateTo] = useState(localTodayDateKey);
+  const [dailyReportDatePreset, setDailyReportDatePreset] = useState<ReportDatePreset>('today');
+  const [dailyReportMonthOffset, setDailyReportMonthOffset] = useState(0);
+  const dailyReportDateRange = useMemo<ReportDateRangeValue>(
+    () => ({
+      preset: dailyReportDatePreset,
+      monthOffset: dailyReportMonthOffset,
+      from: selectedDateFrom,
+      to: selectedDateTo,
+    }),
+    [dailyReportDatePreset, dailyReportMonthOffset, selectedDateFrom, selectedDateTo],
+  );
+  const setDailyReportDateRange = useCallback((next: ReportDateRangeValue) => {
+    setDailyReportDatePreset(next.preset);
+    setDailyReportMonthOffset(next.monthOffset);
+    setSelectedDateFrom(next.from);
+    setSelectedDateTo(next.to);
+  }, []);
+  const reportDateInputMin = '1990-01-01';
+  const reportDateInputMax = '2100-12-31';
+  /** Günlük/Z raporu: seçili tarih aralığı — bellekteki son N satış değil, DB sorgusu */
+  const [reportRangeSales, setReportRangeSales] = useState<Sale[]>([]);
+  const [loadingReportRangeSales, setLoadingReportRangeSales] = useState(false);
+  /** Karşılaştırma / analiz sekmeleri — bellekteki son 500 satış yerine DB */
+  const [comparisonSales, setComparisonSales] = useState<Sale[]>([]);
+  const [analysisRangeSales, setAnalysisRangeSales] = useState<Sale[]>([]);
+  /** Trend/hedef/müşteri raporları — son 12 ay DB (bellekteki son 500 kayıt yeterli değil) */
+  const [catalogSales, setCatalogSales] = useState<Sale[]>([]);
+  const [refreshingReports, setRefreshingReports] = useState(false);
+  const [lastReportRefreshAt, setLastReportRefreshAt] = useState<Date | null>(null);
+  const [dailyShowOnlyRemoved, setDailyShowOnlyRemoved] = useState(false);
+  const [reportConfirmOpen, setReportConfirmOpen] = useState(false);
+  const [reportConfirmMessage, setReportConfirmMessage] = useState('');
+  const [reportConfirmReason, setReportConfirmReason] = useState('');
+  const reportConfirmResolverRef = useRef<((result: { approved: boolean; reason: string }) => void) | null>(null);
+  const [cashExpensesForSelectedDate, setCashExpensesForSelectedDate] = useState(0);
+  const [totalExpensesForSelectedDate, setTotalExpensesForSelectedDate] = useState(0);
+  const [comparisonPeriod, setComparisonPeriod] = useState<'week' | 'month'>('week');
+  const [comparisonOrders, setComparisonOrders] = useState<any[]>([]);
+  const [loadingComparisonOrders, setLoadingComparisonOrders] = useState(false);
+  const [expiringProducts, setExpiringProducts] = useState<any[]>([]);
+  const [expiringDays, setExpiringDays] = useState<number>(30);
+  const [loadingExpiring, setLoadingExpiring] = useState(false);
+  const [collapsed, setCollapsed] = useState(false);
+  const [reportMenuSearch, setReportMenuSearch] = useState('');
+  const prevIsMobileRef = useRef(false);
+  useEffect(() => {
+    if (isMobile && !prevIsMobileRef.current) {
+      setCollapsed(true);
+    }
+    prevIsMobileRef.current = isMobile;
+  }, [isMobile]);
+  const [businessType, setBusinessType] = useState<BusinessType>(() =>
+    resolveInitialReportsBusinessType(initialBusinessType)
+  );
+
+  useEffect(() => {
+    if (initialReportTab) {
+      setSelectedTab(initialReportTab);
+    }
+  }, [initialReportTab]);
+
+  useEffect(() => {
+    if (initialBusinessType !== 'retail') {
+      setBusinessType(initialBusinessType);
+      if (!initialReportTab) {
+        setSelectedTab(resolveInitialReportTab(initialBusinessType));
+      }
+    }
+  }, [initialBusinessType, initialReportTab]);
+
+  useEffect(() => {
+    try {
+      localStorage.setItem(REPORTS_BUSINESS_TYPE_STORAGE_KEY, businessType);
+    } catch {
+      /* ignore */
+    }
+  }, [businessType]);
+
+  useEffect(() => {
+    if (RESTAURANT_ONLY_REPORT_KEYS.has(selectedTab) && businessType !== 'restaurant') {
+      setSelectedTab('daily');
+      return;
+    }
+    if (BEAUTY_ONLY_REPORT_KEYS.has(selectedTab) && businessType !== 'beauty') {
+      setSelectedTab('daily');
+    }
+  }, [businessType, selectedTab]);
+
+  const [restOrders, setRestOrders] = useState<any[]>([]);
+  const [loadingOrders, setLoadingOrders] = useState(false);
+
+  const loadReportRangeSales = useCallback(async () => {
+    setLoadingReportRangeSales(true);
+    try {
+      const { salesAPI } = await import('../../services/api/sales');
+      const rows = await salesAPI.getByDateRange(selectedDateFrom, selectedDateTo);
+      setReportRangeSales(Array.isArray(rows) ? rows : []);
+    } catch (err) {
+      console.error('[ReportsModule] Seçili dönem satışları yüklenemedi:', err);
+      setReportRangeSales([]);
+    } finally {
+      setLoadingReportRangeSales(false);
+    }
+  }, [selectedDateFrom, selectedDateTo]);
+
+  const loadComparisonSales = useCallback(async () => {
+    try {
+      const { salesAPI } = await import('../../services/api/sales');
+      const todayKey = localTodayDateKey();
+      const w = buildComparisonWindows(comparisonPeriod, todayKey);
+      const rows = await salesAPI.getByDateRange(w.previousFrom, w.currentTo);
+      setComparisonSales(Array.isArray(rows) ? rows : []);
+    } catch (err) {
+      console.error('[ReportsModule] Karşılaştırma satışları yüklenemedi:', err);
+      setComparisonSales([]);
+    }
+  }, [comparisonPeriod]);
+
+  const loadCashExpenses = useCallback(async () => {
+    try {
+      const rows = await expenseAPI.getAll({ startDate: selectedDateFrom, endDate: selectedDateTo });
+      const allRows = Array.isArray(rows) ? rows : [];
+      const totalCash = allRows.reduce((sum, row) => {
+        const method = String((row as any)?.payment_method ?? '').trim().toLowerCase();
+        const isCash = method === 'cash' || method === 'nakit';
+        return isCash ? sum + (Number((row as any)?.amount) || 0) : sum;
+      }, 0);
+      const totalAll = allRows.reduce((sum, row) => sum + (Number((row as any)?.amount) || 0), 0);
+      setCashExpensesForSelectedDate(totalCash);
+      setTotalExpensesForSelectedDate(totalAll);
+    } catch {
+      setCashExpensesForSelectedDate(0);
+      setTotalExpensesForSelectedDate(0);
+    }
+  }, [selectedDateFrom, selectedDateTo]);
+
+  /** ERP satışları: DB aralığı esas; yükleme bitince boş dizi de geçerli (bellek yedeği yalnızca yükleme sırasında) */
+  const erpSalesForReportPeriod = useMemo(() => {
+    if (!loadingReportRangeSales) return reportRangeSales;
+    if (!sales?.length) return [] as Sale[];
+    return sales.filter((s) => {
+      const k = localCalendarDateKey(s.date);
+      return k >= selectedDateFrom && k <= selectedDateTo;
+    });
+  }, [reportRangeSales, sales, selectedDateFrom, selectedDateTo, loadingReportRangeSales]);
+
+  /** Trend/hedef/müşteri — DB katalog; yedek bellek */
+  const effectiveCatalogSales = useMemo(() => {
+    if (catalogSales.length > 0) return catalogSales;
+    return sales ?? [];
+  }, [catalogSales, sales]);
+
+  /** Restoran — Ürün Satış Adedi: kapalı adisyon, tarih aralığı (DB) */
+  const [restProductQtyFrom, setRestProductQtyFrom] = useState(() => {
+    const d = new Date();
+    return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-01`;
+  });
+  const [restProductQtyTo, setRestProductQtyTo] = useState(() => localTodayDateKey());
+  const [restProductQtyPreset, setRestProductQtyPreset] = useState<ReportDatePreset>('month');
+  const [restProductQtyMonthOffset, setRestProductQtyMonthOffset] = useState(0);
+  const restProductQtyDateRange = useMemo<ReportDateRangeValue>(
+    () => ({
+      preset: restProductQtyPreset,
+      monthOffset: restProductQtyMonthOffset,
+      from: restProductQtyFrom,
+      to: restProductQtyTo,
+    }),
+    [restProductQtyPreset, restProductQtyMonthOffset, restProductQtyFrom, restProductQtyTo],
+  );
+  const setRestProductQtyDateRange = useCallback((next: ReportDateRangeValue) => {
+    setRestProductQtyPreset(next.preset);
+    setRestProductQtyMonthOffset(next.monthOffset);
+    setRestProductQtyFrom(next.from);
+    setRestProductQtyTo(next.to);
+  }, []);
+  const [restProductQtyRows, setRestProductQtyRows] = useState<
+    Array<{ productId: string | null; productName: string; quantity: number; revenue: number }>
+  >([]);
+  const [loadingRestProductQty, setLoadingRestProductQty] = useState(false);
+  const [restProductQtyError, setRestProductQtyError] = useState<string | null>(null);
+
+  /** Günlük satış satırı — fiş önizleme / yetkili silme */
+  const [dailyRowReceiptModal, setDailyRowReceiptModal] = useState<DailyUnifiedRow | null>(null);
+  const [dailyRowReceiptHtml, setDailyRowReceiptHtml] = useState('');
+  const [dailyRowReceiptLoading, setDailyRowReceiptLoading] = useState(false);
+  /** Fiş önizleme iframe yüksekliği (tam belge; iç içe HTML hatası düzeltildi) */
+  const [dailyRowReceiptPreviewH, setDailyRowReceiptPreviewH] = useState(520);
+  /** Mobil: yazdırmadan önce rapor HTML önizlemesi */
+  const [reportPrintPreview, setReportPrintPreview] = useState<{ html: string; title: string } | null>(null);
+
+  const [analysisDateFrom, setAnalysisDateFrom] = useState(() => {
+    const d = new Date();
+    d.setMonth(d.getMonth() - 11);
+    d.setDate(1);
+    return localCalendarDateKey(d);
+  });
+  const [analysisDateTo, setAnalysisDateTo] = useState(() => localTodayDateKey());
+  const [analysisDatePreset, setAnalysisDatePreset] = useState<ReportDatePreset>('custom');
+  const [analysisMonthOffset, setAnalysisMonthOffset] = useState(0);
+  const analysisDateRange = useMemo<ReportDateRangeValue>(
+    () => ({
+      preset: analysisDatePreset,
+      monthOffset: analysisMonthOffset,
+      from: analysisDateFrom,
+      to: analysisDateTo,
+    }),
+    [analysisDatePreset, analysisMonthOffset, analysisDateFrom, analysisDateTo],
+  );
+  const setAnalysisDateRange = useCallback((next: ReportDateRangeValue) => {
+    setAnalysisDatePreset(next.preset);
+    setAnalysisMonthOffset(next.monthOffset);
+    setAnalysisDateFrom(next.from);
+    setAnalysisDateTo(next.to);
+  }, []);
+  const [analysisOrders, setAnalysisOrders] = useState<any[]>([]);
+  const [loadingAnalysisOrders, setLoadingAnalysisOrders] = useState(false);
+  const [floorNameById, setFloorNameById] = useState<Record<string, string>>({});
+  const [analysisModal, setAnalysisModal] = useState<{ kind: AnalysisReportKind; title: string } | null>(null);
+
+  const [beautyServiceFrom, setBeautyServiceFrom] = useState(() => {
+    const d = new Date();
+    d.setDate(1);
+    return localCalendarDateKey(d);
+  });
+  const [beautyServiceTo, setBeautyServiceTo] = useState(() => localTodayDateKey());
+  const [beautyServicePreset, setBeautyServicePreset] = useState<ReportDatePreset>('month');
+  const [beautyServiceMonthOffset, setBeautyServiceMonthOffset] = useState(0);
+  const beautyServiceDateRange = useMemo<ReportDateRangeValue>(
+    () => ({
+      preset: beautyServicePreset,
+      monthOffset: beautyServiceMonthOffset,
+      from: beautyServiceFrom,
+      to: beautyServiceTo,
+    }),
+    [beautyServicePreset, beautyServiceMonthOffset, beautyServiceFrom, beautyServiceTo],
+  );
+  const setBeautyServiceDateRange = useCallback((next: ReportDateRangeValue) => {
+    setBeautyServicePreset(next.preset);
+    setBeautyServiceMonthOffset(next.monthOffset);
+    setBeautyServiceFrom(next.from);
+    setBeautyServiceTo(next.to);
+  }, []);
+  const [beautySurveyReloadKey, setBeautySurveyReloadKey] = useState(0);
+  const [beautyServiceAppointments, setBeautyServiceAppointments] = useState<BeautyAppointment[]>([]);
+  const [beautyServiceSales, setBeautyServiceSales] = useState<BeautySale[]>([]);
+  const [erpServiceBreakdownSales, setErpServiceBreakdownSales] = useState<Sale[]>([]);
+  const [erpHizmetSaleIds, setErpHizmetSaleIds] = useState<Set<string>>(() => new Set());
+  const [erpServiceCards, setErpServiceCards] = useState<Array<{ id: string; code: string; name: string }>>([]);
+  const [loadingBeautyServiceReport, setLoadingBeautyServiceReport] = useState(false);
+  const [purchasePromoFrom, setPurchasePromoFrom] = useState(() => {
+    const d = new Date();
+    d.setDate(1);
+    return localCalendarDateKey(d);
+  });
+  const [purchasePromoTo, setPurchasePromoTo] = useState(() => localTodayDateKey());
+  const [purchasePromoPreset, setPurchasePromoPreset] = useState<ReportDatePreset>('month');
+  const [purchasePromoMonthOffset, setPurchasePromoMonthOffset] = useState(0);
+  const purchasePromoDateRange = useMemo<ReportDateRangeValue>(
+    () => ({
+      preset: purchasePromoPreset,
+      monthOffset: purchasePromoMonthOffset,
+      from: purchasePromoFrom,
+      to: purchasePromoTo,
+    }),
+    [purchasePromoPreset, purchasePromoMonthOffset, purchasePromoFrom, purchasePromoTo],
+  );
+  const setPurchasePromoDateRange = useCallback((next: ReportDateRangeValue) => {
+    setPurchasePromoPreset(next.preset);
+    setPurchasePromoMonthOffset(next.monthOffset);
+    setPurchasePromoFrom(next.from);
+    setPurchasePromoTo(next.to);
+  }, []);
+  const [purchasePromoLines, setPurchasePromoLines] = useState<PurchasePromotionReportLine[]>([]);
+  const [loadingPurchasePromoReport, setLoadingPurchasePromoReport] = useState(false);
+  const [beautyCrmModalAppointment, setBeautyCrmModalAppointment] = useState<BeautyAppointment | null>(null);
+  /** Boş = tüm ana kategoriler; aksi halde parent_category / category anahtarı */
+  const [beautyMainCategoryFilter, setBeautyMainCategoryFilter] = useState('');
+  const [beautySubCategoryFilter, setBeautySubCategoryFilter] = useState('');
+  const [beautyStaffTreatmentFrom, setBeautyStaffTreatmentFrom] = useState(() => {
+    const d = new Date();
+    d.setDate(1);
+    return localCalendarDateKey(d);
+  });
+  const [beautyStaffTreatmentTo, setBeautyStaffTreatmentTo] = useState(() => localTodayDateKey());
+  const [beautyStaffTreatmentPreset, setBeautyStaffTreatmentPreset] = useState<ReportDatePreset>('month');
+  const [beautyStaffTreatmentMonthOffset, setBeautyStaffTreatmentMonthOffset] = useState(0);
+  const beautyStaffTreatmentDateRange = useMemo<ReportDateRangeValue>(
+    () => ({
+      preset: beautyStaffTreatmentPreset,
+      monthOffset: beautyStaffTreatmentMonthOffset,
+      from: beautyStaffTreatmentFrom,
+      to: beautyStaffTreatmentTo,
+    }),
+    [beautyStaffTreatmentPreset, beautyStaffTreatmentMonthOffset, beautyStaffTreatmentFrom, beautyStaffTreatmentTo],
+  );
+  const setBeautyStaffTreatmentDateRange = useCallback((next: ReportDateRangeValue) => {
+    setBeautyStaffTreatmentPreset(next.preset);
+    setBeautyStaffTreatmentMonthOffset(next.monthOffset);
+    setBeautyStaffTreatmentFrom(next.from);
+    setBeautyStaffTreatmentTo(next.to);
+  }, []);
+  const [staffTreatmentReport, setStaffTreatmentReport] = useState<BeautyStaffTreatmentReport | null>(null);
+  const [loadingStaffTreatmentReport, setLoadingStaffTreatmentReport] = useState(false);
+  /** Boş = tüm ürünler; aksi halde product id */
+  const [beautyProductFilterId, setBeautyProductFilterId] = useState('');
+  const [beautyProductSearchQuery, setBeautyProductSearchQuery] = useState('');
+  const [beautyProductSearchMode, setBeautyProductSearchMode] = useState<BeautyProductReportSearchMode>('all');
+  const [beautyProductViewMode, setBeautyProductViewMode] = useState<BeautyProductReportViewMode>('detail');
+  const beautyServicesCatalog = useBeautyStore((s) => s.services);
+  const storeProducts = useProductStore((s) => s.products);
+  const catalogProducts = storeProducts.length > 0 ? storeProducts : products;
+  const beautyMainCategoryOptions = useMemo(() => {
+    const keys = new Set<string>();
+    for (const s of beautyServicesCatalog) {
+      if (s.is_active === false) continue;
+      keys.add(beautyServiceMainKey(s));
+    }
+    return [...keys]
+      .sort((a, b) => a.localeCompare(b, 'tr'))
+      .map((k) => ({ value: k, label: k }));
+  }, [beautyServicesCatalog]);
+
+  const beautySubCategoryOptions = useMemo(() => {
+    if (!beautyMainCategoryFilter) return [];
+    const keys = new Set<string>();
+    for (const s of beautyServicesCatalog) {
+      if (s.is_active === false) continue;
+      if (beautyServiceMainKey(s) !== beautyMainCategoryFilter) continue;
+      keys.add(beautyServiceSubKey(s));
+    }
+    return [...keys]
+      .sort((a, b) => a.localeCompare(b, 'tr'))
+      .map((k) => ({ value: k, label: k }));
+  }, [beautyServicesCatalog, beautyMainCategoryFilter]);
+
+  useEffect(() => {
+    setBeautySubCategoryFilter('');
+  }, [beautyMainCategoryFilter]);
+
+  const appointmentMatchesMainCategory = useCallback(
+    (apt: BeautyAppointment) => {
+      if (!beautyMainCategoryFilter && !beautySubCategoryFilter) return true;
+      const svc = beautyServicesCatalog.find((s) => String(s.id) === String(apt.service_id ?? ''));
+      if (!svc) return false;
+      if (beautyMainCategoryFilter && beautyServiceMainKey(svc) !== beautyMainCategoryFilter) return false;
+      if (beautySubCategoryFilter && beautyServiceSubKey(svc) !== beautySubCategoryFilter) return false;
+      return true;
+    },
+    [beautyMainCategoryFilter, beautySubCategoryFilter, beautyServicesCatalog],
+  );
+
+  const reloadStaffTreatmentReport = useCallback((): Promise<void> => {
+    if (businessType !== 'beauty' || selectedTab !== 'beauty-staff-treatment-report' || !selectedFirm) {
+      return Promise.resolve();
+    }
+    setLoadingStaffTreatmentReport(true);
+    return beautyService
+      .getStaffTreatmentReport(beautyStaffTreatmentFrom, beautyStaffTreatmentTo)
+      .then((r) => setStaffTreatmentReport(r))
+      .catch((err: unknown) => {
+        console.error('[ReportsModule] Personel shot/derece raporu:', err);
+        setStaffTreatmentReport(null);
+      })
+      .finally(() => setLoadingStaffTreatmentReport(false));
+  }, [businessType, selectedTab, selectedFirm, beautyStaffTreatmentFrom, beautyStaffTreatmentTo]);
+
+  const loadBeautyServicesCatalog = useBeautyStore((s) => s.loadServices);
+
+  useEffect(() => {
+    if (REPORT_TABS_HIDDEN_FROM_MENU.has(selectedTab)) {
+      setSelectedTab('daily');
+    }
+  }, [selectedTab]);
+
+  const reloadBeautyServiceReport = useCallback((): Promise<void> => {
+    const isServiceReportTab = selectedTab === 'beauty-service-report';
+    const isOtherBeautyReportTab =
+      selectedTab === 'beauty-cancelled-report' ||
+      selectedTab === 'beauty-appointment-product-report' ||
+      selectedTab === 'beauty-commission-report';
+
+    if (!selectedFirm) {
+      return Promise.resolve();
+    }
+
+    if (isServiceReportTab && businessType !== 'beauty') {
+      setLoadingBeautyServiceReport(true);
+      return (async () => {
+        try {
+          const { salesAPI } = await import('../../services/api/sales');
+          const { serviceAPI } = await import('../../services/serviceAPI');
+          const [source, cards] = await Promise.all([
+            salesAPI.getServiceBreakdownSource(beautyServiceFrom, beautyServiceTo),
+            serviceAPI.getAll(),
+          ]);
+          setErpServiceBreakdownSales(source.sales);
+          setErpHizmetSaleIds(source.hizmetSaleIds);
+          setErpServiceCards(
+            cards.map((c) => ({
+              id: String(c.id ?? ''),
+              code: String(c.code ?? ''),
+              name: String(c.name ?? ''),
+            })),
+          );
+          setBeautyServiceAppointments([]);
+          setBeautyServiceSales([]);
+        } catch (err) {
+          console.error('[ReportsModule] Hizmet bazlı rapor (ERP):', err);
+          setErpServiceBreakdownSales([]);
+          setErpHizmetSaleIds(new Set());
+        } finally {
+          setLoadingBeautyServiceReport(false);
+        }
+      })();
+    }
+
+    if (businessType !== 'beauty' || (!isServiceReportTab && !isOtherBeautyReportTab)) {
+      return Promise.resolve();
+    }
+    setLoadingBeautyServiceReport(true);
+    return Promise.allSettled([
+      beautyService.getAppointmentsInRange(beautyServiceFrom, beautyServiceTo),
+      beautyService.getSalesWithItemsForExportRange(beautyServiceFrom, beautyServiceTo),
+    ])
+      .then(([appointmentsResult, salesResult]) => {
+        if (appointmentsResult.status === 'fulfilled') {
+          setBeautyServiceAppointments(Array.isArray(appointmentsResult.value) ? appointmentsResult.value : []);
+        } else {
+          setBeautyServiceAppointments([]);
+        }
+
+        if (salesResult.status === 'fulfilled') {
+          setBeautyServiceSales(Array.isArray(salesResult.value) ? salesResult.value : []);
+        } else {
+          setBeautyServiceSales([]);
+        }
+        setErpServiceBreakdownSales([]);
+        setErpHizmetSaleIds(new Set());
+      })
+      .finally(() => setLoadingBeautyServiceReport(false));
+  }, [businessType, selectedTab, selectedFirm, beautyServiceFrom, beautyServiceTo]);
+
+  const reloadPurchasePromoReport = useCallback((): Promise<void> => {
+    if (selectedTab !== 'purchase-promotion-report' || !selectedFirm) {
+      return Promise.resolve();
+    }
+    setLoadingPurchasePromoReport(true);
+    return (async () => {
+      try {
+        const { invoicesAPI } = await import('../../services/api/invoices');
+        const rows = await invoicesAPI.getPurchasePromotionReport(purchasePromoFrom, purchasePromoTo, {
+          firmNr: selectedFirm.logicalref,
+        });
+        setPurchasePromoLines(Array.isArray(rows) ? rows : []);
+      } catch (err) {
+        console.error('[ReportsModule] Alış promosyon raporu:', err);
+        setPurchasePromoLines([]);
+      } finally {
+        setLoadingPurchasePromoReport(false);
+      }
+    })();
+  }, [selectedTab, selectedFirm, purchasePromoFrom, purchasePromoTo]);
+
+  const purchasePromoSummary = useMemo(
+    () => summarizePurchasePromotionReport(purchasePromoLines),
+    [purchasePromoLines],
+  );
+
+  const getBusinessConfig = () => {
+    switch (businessType) {
+      case 'market':
+        return {
+          color: '#10b981',
+          lightColor: '#ecfdf5',
+          icon: <ShoppingCart className="text-white w-5 h-5" />,
+          title: tm('marketAutomation'),
+          groupLabel: tm('marketSpecial')
+        };
+      case 'restaurant':
+        return {
+          color: '#f59e0b',
+          lightColor: '#fffbeb',
+          icon: <BarChart3 className="text-white w-5 h-5" />,
+          title: tm('reportsAnalysis'),
+          groupLabel: tm('restaurantSpecial')
+        };
+      case 'beauty':
+        return {
+          color: '#ec4899',
+          lightColor: '#fdf2f8',
+          icon: <User className="text-white w-5 h-5" />,
+          title: tm('beautyCenter'),
+          groupLabel: tm('beautySpecial')
+        };
+      default:
+        return {
+          color: '#2563eb',
+          lightColor: '#eff6ff',
+          icon: <BarChart3 className="text-white w-5 h-5" />,
+          title: tm('retailSales'),
+          groupLabel: tm('storeSpecial')
+        };
+    }
+  };
+
+  const bizConfig = getBusinessConfig();
+  const { token } = theme.useToken();
+
+  const loadProducts = useProductStore((s) => s.loadProducts);
+  const stockReportLoading = useProductStore((s) => s.isLoading);
+
+  // Stok raporlarında ürünleri DB’den tazele (isim/stok mağaza cache’inden sapmasın)
+  useEffect(() => {
+    if (
+      selectedTab === 'stock-status' ||
+      selectedTab === 'stock-aging' ||
+      selectedTab === 'stock-turnover' ||
+      selectedTab === 'stock-abc' ||
+      selectedTab === 'beauty-appointment-product-report'
+    ) {
+      void loadProducts(true);
+    }
+  }, [selectedTab, loadProducts]);
+
+  // Fetch expiring products
+  useEffect(() => {
+    if (selectedTab === 'expiring-products' && selectedFirm?.id) {
+      setLoadingExpiring(true);
+      fetchExpiringSoonLots(selectedFirm.id.toString(), expiringDays)
+        .then((data: any) => {
+          setExpiringProducts(data);
+          setLoadingExpiring(false);
+        })
+        .catch((error: any) => {
+          console.error('Error fetching expiring products:', error);
+          setExpiringProducts([]);
+          setLoadingExpiring(false);
+        });
+    }
+  }, [selectedTab, selectedFirm, expiringDays, selectedFirm?.id]);
+
+  const loadRestOrdersForSelectedDate = useCallback(() => {
+    if (businessType !== 'restaurant' || !selectedFirm) {
+      return Promise.resolve();
+    }
+    setLoadingOrders(true);
+    const fromDate = selectedDateFrom + 'T00:00:00Z';
+    const toDate = selectedDateTo + 'T23:59:59Z';
+    return RestaurantService.getOrderHistory({
+      fromDate,
+      toDate,
+      status: 'closed',
+      dateField: 'closed_at',
+    })
+      .then((data: any) => {
+        setRestOrders(Array.isArray(data) ? data : []);
+      })
+      .catch((err: any) => {
+        console.error('[ReportsModule] Error fetching rest orders:', err);
+        setRestOrders([]);
+      })
+      .finally(() => {
+        setLoadingOrders(false);
+      });
+  }, [businessType, selectedDateFrom, selectedDateTo, selectedFirm]);
+
+  const loadAnalysisRangeSales = useCallback(async () => {
+    try {
+      const { salesAPI } = await import('../../services/api/sales');
+      const rows = await salesAPI.getByDateRange(analysisDateFrom, analysisDateTo);
+      setAnalysisRangeSales(Array.isArray(rows) ? rows : []);
+    } catch (err) {
+      console.error('[ReportsModule] Analiz dönemi satışları yüklenemedi:', err);
+      setAnalysisRangeSales([]);
+    }
+  }, [analysisDateFrom, analysisDateTo]);
+
+  const loadCatalogSales = useCallback(async () => {
+    try {
+      const { salesAPI } = await import('../../services/api/sales');
+      const todayKey = localTodayDateKey();
+      const d = new Date(`${todayKey}T12:00:00`);
+      d.setMonth(d.getMonth() - 12);
+      d.setDate(1);
+      const fromKey = localCalendarDateKey(d);
+      const rows = await salesAPI.getByDateRange(fromKey, todayKey);
+      setCatalogSales(Array.isArray(rows) ? rows : []);
+    } catch (err) {
+      console.error('[ReportsModule] Katalog satışları yüklenemedi:', err);
+      setCatalogSales([]);
+    }
+  }, []);
+
+  useEffect(() => {
+    void loadReportRangeSales();
+    void loadCatalogSales();
+  }, [loadReportRangeSales, loadCatalogSales, selectedFirm?.firm_nr]);
+
+  const refreshAllReportsData = useCallback(async () => {
+    setRefreshingReports(true);
+    try {
+      const { useSaleStore } = await import('../../store');
+      const tasks: Promise<unknown>[] = [
+        loadReportRangeSales(),
+        useSaleStore.getState().loadSales(500),
+        loadCatalogSales(),
+        loadCashExpenses(),
+        loadProducts(true),
+      ];
+      if (businessType === 'restaurant') {
+        tasks.push(loadRestOrdersForSelectedDate());
+      }
+      tasks.push(loadComparisonSales());
+      if (businessType !== 'restaurant') {
+        tasks.push(loadAnalysisRangeSales());
+      }
+      if (
+        selectedTab === 'beauty-service-report' ||
+        (businessType === 'beauty' &&
+          (selectedTab === 'beauty-cancelled-report' ||
+            selectedTab === 'beauty-appointment-product-report' ||
+            selectedTab === 'beauty-commission-report'))
+      ) {
+        tasks.push(reloadBeautyServiceReport());
+      }
+      if (selectedTab === 'purchase-promotion-report') {
+        tasks.push(reloadPurchasePromoReport());
+      }
+      if (selectedTab === 'expiring-products' && selectedFirm?.id) {
+        tasks.push(
+          fetchExpiringSoonLots(selectedFirm.id.toString(), expiringDays)
+            .then((data: any) => setExpiringProducts(Array.isArray(data) ? data : []))
+            .catch(() => setExpiringProducts([])),
+        );
+      }
+      await Promise.all(tasks);
+      setLastReportRefreshAt(new Date());
+      toast.success(tm('reportsDataRefreshed'));
+    } catch (e) {
+      console.error('[ReportsModule] refreshAllReportsData:', e);
+      toast.error(tm('reportsRefreshFailed'));
+    } finally {
+      setRefreshingReports(false);
+    }
+  }, [
+    businessType,
+    expiringDays,
+    loadAnalysisRangeSales,
+    loadCashExpenses,
+    loadCatalogSales,
+    loadComparisonSales,
+    loadProducts,
+    loadReportRangeSales,
+    loadRestOrdersForSelectedDate,
+    reloadBeautyServiceReport,
+    reloadPurchasePromoReport,
+    selectedFirm?.id,
+    selectedTab,
+    tm,
+  ]);
+
+  // Fetch Restaurant Orders (günlük rapor + iptal sonrası tazeleme)
+  useEffect(() => {
+    void loadRestOrdersForSelectedDate();
+  }, [loadRestOrdersForSelectedDate]);
+
+  // Gün sonu / kasa durumu / Z raporu için: seçili gün gider toplamları
+  useEffect(() => {
+    void loadCashExpenses();
+  }, [loadCashExpenses, selectedTab, selectedFirm?.firm_nr]);
+
+  useEffect(() => {
+    if (selectedTab === 'comparison') {
+      void loadComparisonSales();
+    }
+  }, [selectedTab, loadComparisonSales, comparisonPeriod]);
+
+  useEffect(() => {
+    if (selectedTab === 'analysis' && businessType !== 'restaurant') {
+      void loadAnalysisRangeSales();
+    }
+  }, [selectedTab, businessType, loadAnalysisRangeSales, analysisDateFrom, analysisDateTo]);
+
+  // Restoran — Ürün Satış Adedi (ürün raporları sekmesi)
+  useEffect(() => {
+    if (selectedTab !== 'product-reports' || businessType !== 'restaurant' || !selectedFirm) {
+      return;
+    }
+    let cancelled = false;
+    setLoadingRestProductQty(true);
+    setRestProductQtyError(null);
+    RestaurantService.getProductSalesByClosedDateRange(restProductQtyFrom, restProductQtyTo)
+      .then((data) => {
+        if (!cancelled) setRestProductQtyRows(Array.isArray(data) ? data : []);
+      })
+      .catch((e: unknown) => {
+        if (!cancelled) {
+          setRestProductQtyRows([]);
+          setRestProductQtyError(e instanceof Error ? e.message : String(e));
+        }
+      })
+      .finally(() => {
+        if (!cancelled) setLoadingRestProductQty(false);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [selectedTab, businessType, selectedFirm, restProductQtyFrom, restProductQtyTo]);
+
+  // Dönem karşılaştırması: restoranda ERP fişi yoksa kapalı adisyonları dönem aralığında çek
+  useEffect(() => {
+    if (selectedTab !== 'comparison' || businessType !== 'restaurant' || !selectedFirm) {
+      setComparisonOrders([]);
+      setLoadingComparisonOrders(false);
+      return;
+    }
+    const todayKey = localTodayDateKey();
+    const w = buildComparisonWindows(comparisonPeriod, todayKey);
+    const salesInUnion = comparisonSales.length > 0
+      ? comparisonSales
+      : (sales || []).filter((s) => {
+          const k = localCalendarDateKey(s.date);
+          return k >= w.previousFrom && k <= w.currentTo;
+        });
+    if (salesInUnion.length > 0) {
+      setComparisonOrders([]);
+      setLoadingComparisonOrders(false);
+      return;
+    }
+    setLoadingComparisonOrders(true);
+    const fromDate = `${w.previousFrom}T00:00:00.000Z`;
+    const toDate = `${w.currentTo}T23:59:59.999Z`;
+    RestaurantService.getOrderHistory({
+      fromDate,
+      toDate,
+      status: 'closed',
+      dateField: 'closed_at',
+    })
+      .then((data: any) => setComparisonOrders(Array.isArray(data) ? data : []))
+      .catch(() => setComparisonOrders([]))
+      .finally(() => setLoadingComparisonOrders(false));
+  }, [selectedTab, businessType, selectedFirm, comparisonPeriod, comparisonSales, sales]);
+
+  useEffect(() => {
+    if (selectedTab !== 'analysis') {
+      setAnalysisModal(null);
+      return;
+    }
+    if (!selectedFirm || businessType !== 'restaurant') {
+      setAnalysisOrders([]);
+      setLoadingAnalysisOrders(false);
+      return;
+    }
+    setLoadingAnalysisOrders(true);
+    const fromDate = `${analysisDateFrom}T00:00:00.000Z`;
+    const toDate = `${analysisDateTo}T23:59:59.999Z`;
+    Promise.all([
+      RestaurantService.getOrderHistory({ fromDate, toDate, status: 'closed' }),
+      RestaurantService.getFloors(),
+    ])
+      .then(([orders, floors]) => {
+        setAnalysisOrders(Array.isArray(orders) ? orders : []);
+        const m: Record<string, string> = {};
+        for (const f of floors || []) {
+          if (f?.id != null) m[String(f.id)] = String(f.name ?? f.id);
+        }
+        setFloorNameById(m);
+      })
+      .catch((err: unknown) => {
+        console.error('[ReportsModule] Analiz siparişleri yüklenemedi:', err);
+        setAnalysisOrders([]);
+      })
+      .finally(() => setLoadingAnalysisOrders(false));
+  }, [selectedTab, businessType, selectedFirm, analysisDateFrom, analysisDateTo]);
+
+  useEffect(() => {
+    reloadBeautyServiceReport();
+  }, [reloadBeautyServiceReport]);
+
+  useEffect(() => {
+    void reloadPurchasePromoReport();
+  }, [reloadPurchasePromoReport]);
+
+  useEffect(() => {
+    void reloadStaffTreatmentReport();
+  }, [reloadStaffTreatmentReport]);
+
+  useEffect(() => {
+    if (
+      businessType !== 'beauty' ||
+      (selectedTab !== 'beauty-service-report' &&
+        selectedTab !== 'beauty-cancelled-report' &&
+        selectedTab !== 'beauty-appointment-product-report' &&
+        selectedTab !== 'beauty-commission-report')
+    ) return;
+    void loadBeautyServicesCatalog();
+  }, [businessType, selectedTab, loadBeautyServicesCatalog]);
+
+  const beautyServiceGrouped = useMemo(() => {
+    const rows = beautyServiceAppointments.filter((a) => {
+      const st = String(a.status ?? '').toLowerCase();
+      if (st === 'cancelled' || st === 'no_show') return false;
+      if (beautyMainCategoryFilter && !appointmentMatchesMainCategory(a)) return false;
+      return true;
+    });
+    const map = new Map<string, BeautyAppointment[]>();
+    for (const a of rows) {
+      const name = (a.service_name && String(a.service_name).trim()) || '—';
+      if (!map.has(name)) map.set(name, []);
+      map.get(name)!.push(a);
+    }
+    for (const arr of map.values()) {
+      arr.sort((x, y) => {
+        const dx = String(x.date ?? x.appointment_date ?? '');
+        const dy = String(y.date ?? y.appointment_date ?? '');
+        if (dx !== dy) return dx.localeCompare(dy);
+        return String(x.time ?? x.appointment_time ?? '').localeCompare(String(y.time ?? y.appointment_time ?? ''));
+      });
+    }
+    return Array.from(map.entries())
+      .sort((a, b) => a[0].localeCompare(b[0], 'tr'))
+      .map(([serviceName, items]) => ({
+        serviceName,
+        items,
+        sum: items.reduce((s, it) => s + Number(it.total_price ?? 0), 0),
+      }));
+  }, [beautyServiceAppointments, beautyMainCategoryFilter, beautySubCategoryFilter, appointmentMatchesMainCategory]);
+
+  const erpServiceBreakdownGrouped = useMemo(
+    () =>
+      buildErpServiceBreakdownGroups(
+        erpServiceBreakdownSales,
+        catalogProducts,
+        erpServiceCards,
+        beautyServiceFrom,
+        beautyServiceTo,
+        erpHizmetSaleIds,
+      ),
+    [
+      erpServiceBreakdownSales,
+      catalogProducts,
+      erpServiceCards,
+      beautyServiceFrom,
+      beautyServiceTo,
+      erpHizmetSaleIds,
+    ],
+  );
+
+  const serviceBreakdownGrouped = businessType === 'beauty' ? beautyServiceGrouped : erpServiceBreakdownGrouped;
+
+  /** Randevu iptalleri (ciro raporundan ayrı; ödeme alınmış olsa bile iptal statüsü) */
+  const beautyCancelledGrouped = useMemo(() => {
+    const rows = beautyServiceAppointments.filter((a) => {
+      const st = String(a.status ?? '').toLowerCase();
+      if (st !== 'cancelled') return false;
+      if (beautyMainCategoryFilter && !appointmentMatchesMainCategory(a)) return false;
+      return true;
+    });
+    const map = new Map<string, BeautyAppointment[]>();
+    for (const a of rows) {
+      const name = (a.service_name && String(a.service_name).trim()) || '—';
+      if (!map.has(name)) map.set(name, []);
+      map.get(name)!.push(a);
+    }
+    for (const arr of map.values()) {
+      arr.sort((x, y) => {
+        const dx = String(x.date ?? x.appointment_date ?? '');
+        const dy = String(y.date ?? y.appointment_date ?? '');
+        if (dx !== dy) return dx.localeCompare(dy);
+        return String(x.time ?? x.appointment_time ?? '').localeCompare(String(y.time ?? y.appointment_time ?? ''));
+      });
+    }
+    return Array.from(map.entries())
+      .sort((a, b) => a[0].localeCompare(b[0], 'tr'))
+      .map(([serviceName, items]) => ({
+        serviceName,
+        items,
+        sum: items.reduce((s, it) => s + Number(it.total_price ?? 0), 0),
+      }));
+  }, [beautyServiceAppointments, beautyMainCategoryFilter, beautySubCategoryFilter, appointmentMatchesMainCategory]);
+
+  /** İptal edilen ödemeler (beauty_sales.payment_status = cancelled/refunded) */
+  const beautyCancelledPayments = useMemo(() => {
+    const isCancelledPayment = (raw: unknown) => {
+      const st = String(raw ?? '').trim().toLowerCase();
+      return st === 'cancelled' || st === 'canceled' || st === 'refunded';
+    };
+
+    return (beautyServiceSales || [])
+      .filter((s) => {
+        if (!isCancelledPayment((s as any).payment_status)) return false;
+        if (beautyMainCategoryFilter || beautySubCategoryFilter) {
+          const items = Array.isArray(s.items) ? s.items : [];
+          const hasService = items.some((it) => {
+            if (String(it.item_type ?? '').toLowerCase() !== 'service') return false;
+            const svc = beautyServicesCatalog.find((x) => String(x.id) === String(it.item_id ?? ''));
+            if (!svc) return false;
+            if (beautyMainCategoryFilter && beautyServiceMainKey(svc) !== beautyMainCategoryFilter) return false;
+            if (beautySubCategoryFilter && beautyServiceSubKey(svc) !== beautySubCategoryFilter) return false;
+            return true;
+          });
+          if (!hasService) return false;
+        }
+        return true;
+      })
+      .sort((a, b) => String(b.created_at ?? '').localeCompare(String(a.created_at ?? '')));
+  }, [beautyServiceSales, beautyMainCategoryFilter, beautySubCategoryFilter, beautyServicesCatalog]);
+
+  const beautyProductCatalogById = useMemo(
+    () => beautyProductCatalogLookup(catalogProducts),
+    [catalogProducts],
+  );
+
+  const beautyAppointmentProductRowsRaw = useMemo<BeautyAppointmentProductRow[]>(() => {
+    const appointmentById = new Map<string, BeautyAppointment>();
+    const specialistNameById = new Map<string, string>();
+    for (const appt of beautyServiceAppointments) {
+      const apptId = String(appt.id ?? '').trim().toLowerCase();
+      if (apptId) appointmentById.set(apptId, appt);
+      const sid = String(appt.staff_id ?? appt.specialist_id ?? '').trim().toLowerCase();
+      const sname = String(appt.specialist_name ?? appt.staff_name ?? '').trim();
+      if (sid && sname && !specialistNameById.has(sid)) {
+        specialistNameById.set(sid, sname);
+      }
+    }
+
+    const rows: BeautyAppointmentProductRow[] = [];
+    for (const sale of beautyServiceSales || []) {
+      const paymentStatus = String(sale.payment_status ?? '').trim().toLowerCase();
+      if (paymentStatus !== 'paid') continue;
+
+      const appointmentId = extractBeautyAppointmentIdFromSaleNotes(sale.notes);
+      const appointment = appointmentId ? appointmentById.get(appointmentId) ?? null : null;
+      const createdAt = String(sale.created_at ?? '');
+      const createdDate = createdAt.slice(0, 10);
+      const createdTime = createdAt.slice(11, 16);
+      const customerName =
+        String(appointment?.customer_name ?? '').trim() ||
+        String(sale.customer_name ?? '').trim() ||
+        '—';
+      const paymentMethod = String(sale.payment_method ?? '').trim() || '—';
+      const appointmentDate = appointment
+        ? String(appointment?.date ?? appointment?.appointment_date ?? '').trim() || createdDate || '—'
+        : createdDate || '—';
+      const appointmentTimeRaw = appointment
+        ? String(appointment?.time ?? appointment?.appointment_time ?? '').trim()
+        : '';
+      const appointmentTime = appointmentTimeRaw
+        ? appointmentTimeRaw.slice(0, 5)
+        : createdTime || '—';
+
+      for (const [idx, item] of (sale.items ?? []).entries()) {
+        if (String(item.item_type ?? '').toLowerCase() !== 'product') continue;
+        const sid = String(item.staff_id ?? '').trim().toLowerCase();
+        const staffName =
+          (sid && specialistNameById.get(sid)) ||
+          String(appointment?.specialist_name ?? appointment?.staff_name ?? '').trim() ||
+          '—';
+        const productId = String(item.item_id ?? '').trim();
+        const productName = String(item.name ?? '').trim() || productId || '—';
+        const catalog = productId ? beautyProductCatalogById.get(productId.toLowerCase()) : undefined;
+        const productCode = catalog?.code ?? '';
+        const productBarcode = catalog?.barcode ?? '';
+        rows.push({
+          key: `${sale.id}-${item.id || idx}`,
+          saleId: String(sale.id),
+          appointmentId,
+          createdAt,
+          appointmentDate,
+          appointmentTime,
+          customerName,
+          productId,
+          productName,
+          productCode,
+          productBarcode,
+          quantity: Number(item.quantity ?? 0) || 0,
+          unitPrice: Number(item.unit_price ?? 0) || 0,
+          total: Number(item.total ?? 0) || 0,
+          staffName,
+          paymentMethod,
+          crmAppointment: appointment,
+        });
+      }
+    }
+
+    rows.sort((a, b) => {
+      if (a.appointmentDate !== b.appointmentDate) {
+        return b.appointmentDate.localeCompare(a.appointmentDate);
+      }
+      if (a.appointmentTime !== b.appointmentTime) {
+        return b.appointmentTime.localeCompare(a.appointmentTime);
+      }
+      return String(b.createdAt).localeCompare(String(a.createdAt));
+    });
+    return rows;
+  }, [beautyServiceSales, beautyServiceAppointments, beautyProductCatalogById]);
+
+  const beautyProductFilterOptions = useMemo(
+    () =>
+      Array.from(
+        beautyAppointmentProductRowsRaw.reduce((map, row) => {
+          if (!row.productId) return map;
+          if (!map.has(row.productId)) {
+            const code = row.productCode.trim();
+            const label = code ? `${row.productName} · ${code}` : row.productName;
+            map.set(row.productId, label);
+          }
+          return map;
+        }, new Map<string, string>())
+      )
+        .sort((a, b) => String(a[1]).localeCompare(String(b[1]), 'tr'))
+        .map(([value, label]) => ({ value, label })),
+    [beautyAppointmentProductRowsRaw]
+  );
+
+  const beautyAppointmentProductRows = useMemo(() => {
+    const q = beautyProductSearchQuery.trim().toLocaleLowerCase('tr');
+    return beautyAppointmentProductRowsRaw.filter((row) => {
+      if (beautyProductFilterId && row.productId !== beautyProductFilterId) return false;
+      if (!q) return true;
+      const name = String(row.productName ?? '').toLocaleLowerCase('tr');
+      const code = String(row.productCode ?? '').toLocaleLowerCase('tr');
+      const barcode = String(row.productBarcode ?? '').toLocaleLowerCase('tr');
+      const id = String(row.productId ?? '').toLocaleLowerCase('tr');
+      if (beautyProductSearchMode === 'name') return name.includes(q);
+      if (beautyProductSearchMode === 'code') {
+        return code.includes(q) || barcode.includes(q) || id.includes(q);
+      }
+      return name.includes(q) || code.includes(q) || barcode.includes(q) || id.includes(q);
+    });
+  }, [
+    beautyAppointmentProductRowsRaw,
+    beautyProductFilterId,
+    beautyProductSearchQuery,
+    beautyProductSearchMode,
+  ]);
+
+  const beautyAppointmentProductGrouped = useMemo<BeautyAppointmentProductGroup[]>(() => {
+    const map = new Map<string, BeautyAppointmentProductGroup>();
+    for (const row of beautyAppointmentProductRows) {
+      const groupKey =
+        row.productId.trim() ||
+        row.productName.trim().toLocaleLowerCase('tr') ||
+        row.key;
+      const existing = map.get(groupKey);
+      if (!existing) {
+        map.set(groupKey, {
+          groupKey,
+          productName: row.productName,
+          productCode: row.productCode,
+          lineCount: 1,
+          transactionCount: 0,
+          totalQty: row.quantity,
+          totalRevenue: row.total,
+          items: [row],
+        });
+      } else {
+        existing.lineCount += 1;
+        existing.totalQty += row.quantity;
+        existing.totalRevenue += row.total;
+        existing.items.push(row);
+        if (!existing.productCode && row.productCode) existing.productCode = row.productCode;
+      }
+    }
+    for (const g of map.values()) {
+      g.transactionCount = new Set(g.items.map((r) => `${r.saleId}|${r.appointmentId}`)).size;
+      g.items.sort((a, b) => {
+        if (a.appointmentDate !== b.appointmentDate) {
+          return b.appointmentDate.localeCompare(a.appointmentDate);
+        }
+        return b.appointmentTime.localeCompare(a.appointmentTime);
+      });
+    }
+    return Array.from(map.values()).sort((a, b) =>
+      a.productName.localeCompare(b.productName, 'tr', { sensitivity: 'base' }),
+    );
+  }, [beautyAppointmentProductRows]);
+
+  const beautyAppointmentProductSourceInfo = useMemo(() => {
+    let paidSales = 0;
+    let noProductLine = 0;
+    for (const sale of beautyServiceSales || []) {
+      const paymentStatus = String(sale.payment_status ?? '').trim().toLowerCase();
+      if (paymentStatus !== 'paid') continue;
+      paidSales += 1;
+      const hasProductLine = (sale.items ?? []).some(
+        (item) => String(item.item_type ?? '').toLowerCase() === 'product'
+      );
+      if (!hasProductLine) noProductLine += 1;
+    }
+    return {
+      paidSales,
+      noProductLine,
+    };
+  }, [beautyServiceSales]);
+
+  const beautyAppointmentProductSummary = useMemo(() => {
+    const transactionCount = new Set(
+      beautyAppointmentProductRows.map((row) => `${row.saleId}|${row.appointmentId}`)
+    ).size;
+    return {
+      transactionCount,
+      totalQty: beautyAppointmentProductRows.reduce((sum, row) => sum + row.quantity, 0),
+      totalRevenue: beautyAppointmentProductRows.reduce((sum, row) => sum + row.total, 0),
+    };
+  }, [beautyAppointmentProductRows]);
+
+  /** Dönem karşılaştırması: ERP `sales` veya (restoran) fiş yoksa `comparisonOrders` */
+  const comparisonBundle = useMemo(() => {
+    const todayKey = localTodayDateKey();
+    const windowsRaw = buildComparisonWindows(comparisonPeriod, todayKey);
+    const lang = language as ModuleLanguage;
+    const windows = {
+      ...windowsRaw,
+      currentPeriodLabel: translateModule(
+        comparisonPeriod === 'week' ? 'reportsPeriodThisWeek' : 'reportsPeriodThisMonth',
+        lang
+      ),
+      previousPeriodLabel: translateModule(
+        comparisonPeriod === 'week' ? 'reportsPeriodLastWeek' : 'reportsPeriodLastMonthSameRange',
+        lang
+      ),
+    };
+    const { currentFrom, currentTo, previousFrom, previousTo, currentPeriodLabel, previousPeriodLabel } = windows;
+
+    const salesInUnion = comparisonSales.length > 0
+      ? comparisonSales
+      : (sales || []).filter((s) => {
+          const k = localCalendarDateKey(s.date);
+          return k >= previousFrom && k <= currentTo;
+        });
+    const useErp = businessType !== 'restaurant' || salesInUnion.length > 0;
+
+    type Agg = {
+      totalSales: number;
+      totalRevenue: number;
+      avgSale: number;
+      customerCount: number;
+      productMap: Map<string, { qty: number; revenue: number }>;
+    };
+
+    const aggregateErpRange = (from: string, to: string): Agg => {
+      const list = salesInUnion.filter((s) => {
+        const k = localCalendarDateKey(s.date);
+        return k >= from && k <= to;
+      });
+      const totalSales = list.length;
+      const totalRevenue = list.reduce((sum, s) => sum + (Number(s.total) || 0), 0);
+      const ids = new Set<string>();
+      for (const s of list) {
+        const id =
+          (s.customerId && String(s.customerId).trim()) ||
+          (s.customerName && String(s.customerName).trim()) ||
+          '';
+        if (id) ids.add(id);
+      }
+      const customerCount = ids.size > 0 ? ids.size : totalSales;
+      const avgSale = totalSales > 0 ? totalRevenue / totalSales : 0;
+      const productMap = new Map<string, { qty: number; revenue: number }>();
+      for (const s of list) {
+        for (const it of s.items || []) {
+          const name = (it.productName && String(it.productName).trim()) || String(it.productId || '—');
+          const cur = productMap.get(name) || { qty: 0, revenue: 0 };
+          cur.qty += Number(it.quantity) || 0;
+          cur.revenue += Number(it.total) || 0;
+          productMap.set(name, cur);
+        }
+      }
+      return { totalSales, totalRevenue, avgSale, customerCount, productMap };
+    };
+
+    const aggregateRestRange = (orders: any[], from: string, to: string): Agg => {
+      const list = orders.filter((o: any) => {
+        const raw = o.closed_at ?? o.closedAt ?? o.opened_at;
+        const k = localCalendarDateKey(raw);
+        return k >= from && k <= to;
+      });
+      const totalSales = list.length;
+      const totalRevenue = list.reduce((sum, o) => sum + restOrderNetAmount(o), 0);
+      const ids = new Set<string>();
+      for (const o of list) {
+        const id =
+          (o.customer_id && String(o.customer_id).trim()) ||
+          (o.customer_name && String(o.customer_name).trim()) ||
+          '';
+        if (id) ids.add(id);
+      }
+      const customerCount = ids.size > 0 ? ids.size : totalSales;
+      const avgSale = totalSales > 0 ? totalRevenue / totalSales : 0;
+      const productMap = new Map<string, { qty: number; revenue: number }>();
+      for (const o of list) {
+        eachRestOrderItem(o, (it: any) => {
+          const name =
+            (it.product_name && String(it.product_name).trim()) ||
+            (it.productName && String(it.productName).trim()) ||
+            String(it.product_id || '—');
+          const cur = productMap.get(name) || { qty: 0, revenue: 0 };
+          cur.qty += Number(it.quantity) || 0;
+          cur.revenue += Number(it.subtotal ?? it.total ?? 0) || 0;
+          productMap.set(name, cur);
+        });
+      }
+      return { totalSales, totalRevenue, avgSale, customerCount, productMap };
+    };
+
+    let dataSource: 'erp' | 'restaurant_orders' = 'erp';
+    let curr: Agg;
+    let prev: Agg;
+    if (useErp) {
+      curr = aggregateErpRange(currentFrom, currentTo);
+      prev = aggregateErpRange(previousFrom, previousTo);
+    } else {
+      dataSource = 'restaurant_orders';
+      const orders = comparisonOrders || [];
+      curr = aggregateRestRange(orders, currentFrom, currentTo);
+      prev = aggregateRestRange(orders, previousFrom, previousTo);
+    }
+
+    const pct = (a: number, b: number) => {
+      if (!Number.isFinite(a) || !Number.isFinite(b)) return 0;
+      if (a === 0) return b === 0 ? 0 : 100;
+      return Math.round(((b - a) / a) * 1000) / 10;
+    };
+
+    const chartCountData = [
+      { name: translateModule('reportsComparisonChartSalesQty', lang), onceki: prev.totalSales, guncel: curr.totalSales },
+      { name: translateModule('reportsComparisonChartCustomer', lang), onceki: prev.customerCount, guncel: curr.customerCount },
+    ];
+    const chartMoneyData = [
+      { name: translateModule('reportsComparisonChartRevenue', lang), onceki: prev.totalRevenue, guncel: curr.totalRevenue },
+      { name: translateModule('reportsComparisonChartAvgTicket', lang), onceki: prev.avgSale, guncel: curr.avgSale },
+    ];
+
+    const productKeys = new Set<string>();
+    curr.productMap.forEach((_, k) => productKeys.add(k));
+    prev.productMap.forEach((_, k) => productKeys.add(k));
+    const productRows = Array.from(productKeys)
+      .map((key) => {
+        const c = curr.productMap.get(key) || { qty: 0, revenue: 0 };
+        const p = prev.productMap.get(key) || { qty: 0, revenue: 0 };
+        const maxRev = Math.max(c.revenue, p.revenue);
+        return {
+          key,
+          name: key,
+          currQty: c.qty,
+          prevQty: p.qty,
+          currRev: c.revenue,
+          prevRev: p.revenue,
+          revPct: pct(p.revenue, c.revenue),
+          qtyPct: pct(p.qty, c.qty),
+          maxRev,
+        };
+      })
+      .sort((a, b) => b.maxRev - a.maxRev)
+      .slice(0, 60);
+
+    return {
+      windows,
+      dataSource,
+      current: {
+        period: currentPeriodLabel,
+        totalSales: curr.totalSales,
+        totalRevenue: curr.totalRevenue,
+        avgSale: curr.avgSale,
+        customerCount: curr.customerCount,
+      },
+      previous: {
+        period: previousPeriodLabel,
+        totalSales: prev.totalSales,
+        totalRevenue: prev.totalRevenue,
+        avgSale: prev.avgSale,
+        customerCount: prev.customerCount,
+      },
+      change: {
+        sales: pct(prev.totalSales, curr.totalSales),
+        revenue: pct(prev.totalRevenue, curr.totalRevenue),
+        avgSale: pct(prev.avgSale, curr.avgSale),
+        customerCount: pct(prev.customerCount, curr.customerCount),
+      },
+      chartCountData,
+      chartMoneyData,
+      productRows,
+    };
+  }, [comparisonSales, sales, comparisonPeriod, businessType, comparisonOrders, language]);
+
+  const salesForAnalysis = useMemo(() => {
+    if (analysisRangeSales.length > 0) return analysisRangeSales;
+    if (!sales?.length) return [] as Sale[];
+    return sales.filter(s => {
+      const k = localCalendarDateKey(s.date);
+      return k >= analysisDateFrom && k <= analysisDateTo;
+    });
+  }, [analysisRangeSales, sales, analysisDateFrom, analysisDateTo]);
+
+  // Daily sales — seçili aralık DB'den; yükleme bitince yalnızca o aralık (varsayılan bugün)
+  const getDailySales = () => {
+    const source = erpSalesForReportPeriod;
+    if (!source || !Array.isArray(source)) return [];
+    return source.filter((s) => {
+      const k = localCalendarDateKey(s.date);
+      return k >= selectedDateFrom && k <= selectedDateTo;
+    });
+  };
+
+  const dailySales = getDailySales();
+  const dailySalesActive = useMemo(
+    () => dailySales.filter((s) => !isRemovedSaleStatus(s.status)),
+    [dailySales]
+  );
+
+  /** Seçili takvim gününde kapanan adisyonlar (Z raporu ile aynı mantık; opened_at aralığından bağımsız) */
+  const restOrdersClosedOnSelectedDate = useMemo(() => {
+    if (businessType !== 'restaurant') return [] as any[];
+    return restOrders.filter((o: any) => {
+      const d = o.closed_at ?? o.closedAt ?? o.date;
+      if (!d) return false;
+      const k = localCalendarDateKey(d);
+      return k >= selectedDateFrom && k <= selectedDateTo;
+    });
+  }, [businessType, restOrders, selectedDateFrom, selectedDateTo]);
+
+  let dailyTotal: number;
+  let dailyCash: number;
+  let dailyCard: number;
+  let dailyDiscount: number;
+  if (businessType === 'restaurant') {
+    /** Perakende Satışlar / fatura listesi ile aynı tutar: önce ERP `sales` (REST-* dahil); yoksa yalnız kapalı adisyon */
+    if (dailySalesActive.length > 0) {
+      dailyTotal = dailySalesActive.reduce((sum, s) => sum + (Number(s.total) || 0), 0);
+      dailyCash = dailySalesActive
+        .filter((s) => normalizePaymentMethodBucket(s.paymentMethod) === 'cash')
+        .reduce((sum, s) => sum + (Number(s.total) || 0), 0);
+      dailyCard = dailySalesActive
+        .filter((s) => {
+          const b = normalizePaymentMethodBucket(s.paymentMethod);
+          return b === 'card';
+        })
+        .reduce((sum, s) => sum + (Number(s.total) || 0), 0);
+      dailyDiscount = dailySalesActive.reduce((sum, s) => sum + (Number(s.discount) || 0), 0);
+    } else {
+      dailyTotal = restOrdersClosedOnSelectedDate.reduce((sum, o) => sum + restOrderNetAmount(o), 0);
+      let restCash = 0;
+      let restCard = 0;
+      restOrdersClosedOnSelectedDate.forEach((o: any) => {
+        const n = restOrderNetAmount(o);
+        const pm = String(o.payment_method ?? 'NAKİT');
+        if (isRestaurantPaymentCashLike(pm)) restCash += n;
+        else if (isRestaurantPaymentCardLike(pm)) restCard += n;
+      });
+      dailyCash = restCash;
+      dailyCard = restCard;
+      dailyDiscount = restOrdersClosedOnSelectedDate.reduce(
+        (sum, o) => sum + Number((o as any).discount_amount || 0),
+        0
+      );
+    }
+  } else {
+    dailyTotal = dailySalesActive.reduce((sum, s) => sum + s.total, 0);
+    dailyCash = dailySalesActive
+      .filter((s) => normalizePaymentMethodBucket(s.paymentMethod) === 'cash')
+      .reduce((sum, s) => sum + s.total, 0);
+    dailyCard = dailySalesActive
+      .filter((s) => normalizePaymentMethodBucket(s.paymentMethod) === 'card')
+      .reduce((sum, s) => sum + s.total, 0);
+    dailyDiscount = dailySalesActive.reduce((sum, s) => sum + s.discount, 0);
+  }
+
+  /** Günlük tablo + özet kartlar: restoranda Perakende Satışlar (ERP) ile birebir; ERP yoksa kapalı adisyonlar */
+  const dailyUnifiedRows = useMemo((): DailyUnifiedRow[] => {
+    if (businessType !== 'restaurant') {
+      return dailySales.map((s) => ({
+        key: `erp-${s.id}`,
+        source: 'erp' as const,
+        receiptNumber: s.receiptNumber,
+        date: s.date,
+        cashier: s.cashier,
+        deviceName: resolveDailyRowDeviceName(
+          (s as any).beautyDeviceName ?? (s as any).device_name ?? (s as any).terminal_name ?? s.storeId
+        ),
+        customerName: s.customerName,
+        beforeDiscount: erpSaleBeforeDiscount(s),
+        total: Number(s.total) || 0,
+        discount: Number(s.discount) || 0,
+        paymentMethod: normalizePaymentMethodBucket(s.paymentMethod),
+        status: String(s.status ?? 'completed'),
+        cancelReason: extractCancelReason(s.notes),
+        erpSale: s,
+      }));
+    }
+    if (dailySales.length > 0) {
+      return dailySales
+        .map((s) => ({
+          key: `erp-${s.id}`,
+          source: 'erp' as const,
+          receiptNumber: s.receiptNumber,
+          date: s.date,
+          cashier: s.cashier,
+          deviceName: resolveDailyRowDeviceName(
+            (s as any).beautyDeviceName ?? (s as any).device_name ?? (s as any).terminal_name ?? s.storeId
+          ),
+          customerName: s.customerName,
+          beforeDiscount: erpSaleBeforeDiscount(s),
+          total: Number(s.total) || 0,
+          discount: Number(s.discount) || 0,
+          paymentMethod: normalizePaymentMethodBucket(s.paymentMethod),
+          status: String(s.status ?? 'completed'),
+          cancelReason: extractCancelReason(s.notes),
+          erpSale: s,
+        }))
+        .sort((a, b) => new Date(a.date).getTime() - new Date(b.date).getTime());
+    }
+    return restOrdersClosedOnSelectedDate
+      .map((o: any) => {
+        const pm = String(o.payment_method ?? 'NAKİT');
+        let paymentMethod = 'other';
+        if (isRestaurantPaymentCashLike(pm)) paymentMethod = 'cash';
+        else if (isRestaurantPaymentCardLike(pm)) paymentMethod = 'card';
+        const disc = Number(o.discount_amount ?? o.discountAmount ?? 0) || 0;
+        const net = restOrderNetAmount(o);
+        return {
+          key: `rest-${o.id}`,
+          source: 'rest' as const,
+          receiptNumber: String(o.order_no || `ADİSYON-${String(o.id).slice(0, 8)}`),
+          date: o.closed_at || o.closedAt || o.opened_at,
+          cashier: o.waiter || '-',
+          deviceName: resolveDailyRowDeviceName((o as any).device_name ?? (o as any).terminal_name ?? (o as any).table_no),
+          customerName: o.customer_name || '-',
+          beforeDiscount: restOrderBeforeDiscount(o),
+          total: net,
+          discount: disc,
+          paymentMethod,
+          status: 'completed',
+          restOrder: o,
+        };
+      })
+      .sort((a, b) => new Date(a.date).getTime() - new Date(b.date).getTime());
+  }, [businessType, dailySales, restOrdersClosedOnSelectedDate]);
+
+  const dailySalesForAi = useMemo((): Sale[] => {
+    if (businessType !== 'restaurant') return dailySales;
+    return dailyUnifiedRows.map(
+      (r) =>
+        ({
+          id: r.key,
+          receiptNumber: r.receiptNumber,
+          date: r.date,
+          customerName: r.customerName,
+          items: [],
+          subtotal: r.beforeDiscount ?? ((Number(r.total) || 0) + (Number(r.discount) || 0)),
+          discount: r.discount ?? 0,
+          total: r.total,
+          paymentMethod: r.paymentMethod === 'other' ? 'transfer' : r.paymentMethod,
+          cashier: r.cashier || '-',
+          status: 'completed',
+        }) as Sale
+    );
+  }, [businessType, dailySales, dailyUnifiedRows]);
+
+  const dailyVisibleRows = useMemo(() => {
+    if (!dailyShowOnlyRemoved) return dailyUnifiedRows.filter((r) => !isRemovedSaleStatus(r.status));
+    return dailyUnifiedRows.filter((r) => isRemovedSaleStatus(r.status));
+  }, [dailyUnifiedRows, dailyShowOnlyRemoved]);
+
+  const dailyActiveRows = useMemo(
+    () => dailyUnifiedRows.filter((r) => !isRemovedSaleStatus(r.status)),
+    [dailyUnifiedRows]
+  );
+
+  const dailyReturnRows = useMemo(
+    () => dailySales.filter((s) => isReturnSale(s)),
+    [dailySales],
+  );
+  const dailyReturnTotal = useMemo(
+    () => dailyReturnRows.reduce((sum, s) => sum + Math.abs(Number(s.total) || 0), 0),
+    [dailyReturnRows],
+  );
+
+  const closeDailyRowReceiptModal = useCallback(() => {
+    setDailyRowReceiptModal(null);
+    setDailyRowReceiptHtml('');
+    setDailyRowReceiptLoading(false);
+    setDailyRowReceiptPreviewH(520);
+  }, []);
+
+  const openDailyRowReceiptModal = useCallback(
+    async (row: DailyUnifiedRow) => {
+      setDailyRowReceiptModal(row);
+      setDailyRowReceiptLoading(true);
+      setDailyRowReceiptHtml('');
+      try {
+        const sale: Sale | null =
+          row.source === 'erp' && row.erpSale
+            ? row.erpSale
+            : row.source === 'rest' && row.restOrder
+              ? restOrderToSaleForReceipt(row.restOrder)
+              : null;
+        if (!sale) {
+          toast.error(tm('reportToastReceiptMissing'));
+          closeDailyRowReceiptModal();
+          return;
+        }
+        const firmNrForReceipt =
+          (selectedFirm?.firm_nr && String(selectedFirm.firm_nr).trim()) ||
+          (selectedFirm?.nr != null ? String(selectedFirm.nr).padStart(3, '0') : undefined);
+        const rs = await getReceiptSettings(firmNrForReceipt);
+        const total = Number(sale.total) || 0;
+        const pm = String(sale.paymentMethod || 'cash').toLowerCase();
+        const methodForReceipt = pm === 'card' || pm === 'gateway' ? 'card' : pm === 'veresiye' ? 'veresiye' : 'cash';
+        const html = buildReceipt80mmPrintHtml({
+          sale,
+          paymentData: {
+            payments: [{ method: methodForReceipt, amount: total, currency: reportCurrency || 'IQD' }],
+            totalPaid: total,
+            change: Number(sale.change) || 0,
+          },
+          receiptSettings: rs,
+          companyNameFallback: selectedFirm?.name?.trim() || selectedFirm?.title?.trim() || 'RetailEX',
+          firmTitle: selectedFirm?.title?.trim() || selectedFirm?.name?.trim() || '',
+          locale: language === 'en' || language === 'ar' || language === 'ku' ? language : 'tr',
+          currencyCode: reportCurrency || selectedFirm?.ana_para_birimi || undefined,
+        });
+        setDailyRowReceiptHtml(html);
+        setDailyRowReceiptPreviewH(400);
+      } catch (e: any) {
+        console.error('[ReportsModule] Fiş önizleme:', e);
+        toast.error(e?.message || tm('reportToastReceiptLoadFail'));
+        closeDailyRowReceiptModal();
+      } finally {
+        setDailyRowReceiptLoading(false);
+      }
+    },
+    [closeDailyRowReceiptModal, language, reportCurrency, selectedFirm, tm]
+  );
+
+  const printDailyRowReceipt = useCallback(() => {
+    if (!dailyRowReceiptHtml) return;
+    void printReportHtml(dailyRowReceiptHtml, {
+      preferMainDocument: shouldPreviewReportPrint(isMobile),
+    }).catch(() => toast.error(tm('reportToastPrintFrameFail')));
+  }, [dailyRowReceiptHtml, isMobile, tm]);
+
+  const confirmReportAction = useCallback((message: string) => {
+    return new Promise<{ approved: boolean; reason: string }>((resolve) => {
+      reportConfirmResolverRef.current = resolve;
+      setReportConfirmMessage(message);
+      setReportConfirmReason('');
+      setReportConfirmOpen(true);
+    });
+  }, []);
+
+  const resolveReportConfirm = useCallback((approved: boolean) => {
+    setReportConfirmOpen(false);
+    const resolver = reportConfirmResolverRef.current;
+    reportConfirmResolverRef.current = null;
+    if (resolver) resolver({ approved, reason: reportConfirmReason.trim() });
+    setReportConfirmReason('');
+  }, [reportConfirmReason]);
+
+  const handleDeleteDailyErpSale = useCallback(async () => {
+    const inv = dailyRowReceiptModal?.erpSale;
+    const id = inv?.id && isSaleRowUuid(String(inv.id)) ? String(inv.id).trim() : '';
+    if (!id || !inv?.receiptNumber) return;
+    const { approved, reason } = await confirmReportAction(
+      tm('reportConfirmDeleteErpSale').replace('{n}', String(inv.receiptNumber))
+    );
+    if (!approved) return;
+    try {
+      const { invoicesAPI } = await import('../../services/api/invoices');
+      // Fiziksel silme yerine iade/iptal: kayıt raporlarda görünmeye devam eder.
+      const ok = await invoicesAPI.refund(id, {
+        firmNr: (inv as any).firmNr,
+        periodNr: (inv as any).periodNr,
+        receiptNumber: inv.receiptNumber,
+        reason,
+      });
+      if (!ok) {
+        console.error('[ReportsModule] refund returned false', { id, receipt: inv.receiptNumber });
+        toast.error(tm('reportToastCancelOrderFail'));
+        return;
+      }
+      const { useSaleStore } = await import('../../store');
+      await Promise.all([
+        useSaleStore.getState().loadSales(500),
+        loadReportRangeSales(),
+      ]);
+      if (businessType === 'restaurant') {
+        await loadRestOrdersForSelectedDate();
+      }
+      toast.success(tm('invoiceCancelled'));
+      closeDailyRowReceiptModal();
+    } catch (e: any) {
+      console.error('[ReportsModule] Fatura silme:', e);
+      toast.error(e?.message || tm('reportToastDeleteFail'));
+    }
+  }, [businessType, closeDailyRowReceiptModal, confirmReportAction, dailyRowReceiptModal?.erpSale, loadReportRangeSales, loadRestOrdersForSelectedDate, tm]);
+
+  const handleDeleteDailyRestOrder = useCallback(async () => {
+    const o = dailyRowReceiptModal?.restOrder;
+    const id = o?.id != null ? String(o.id).trim() : '';
+    const orderNo = dailyRowReceiptModal?.receiptNumber || id;
+    if (!id) return;
+    const { approved } = await confirmReportAction(
+      tm('reportConfirmCancelRestOrder').replace('{n}', String(orderNo))
+    );
+    if (!approved) {
+      return;
+    }
+    try {
+      await RestaurantService.cancelOrder(id);
+      toast.success(tm('reportToastOrderCancelled'));
+      closeDailyRowReceiptModal();
+      await loadRestOrdersForSelectedDate();
+    } catch (e: any) {
+      console.error('[ReportsModule] Adisyon iptal:', e);
+      toast.error(e?.message || tm('reportToastCancelOrderFail'));
+    }
+  }, [closeDailyRowReceiptModal, confirmReportAction, dailyRowReceiptModal, loadRestOrdersForSelectedDate, tm]);
+
+  // Z Report — ERP satış + satış iade (trcode 3); restoranda adisyon yedek
+  const generateZReport = () => {
+    const inReportPeriod = (k: string) => k >= selectedDateFrom && k <= selectedDateTo;
+    const dateLabel = formatReportsDateRangeTr(selectedDateFrom, selectedDateTo);
+    const allDaySales = reportRangeSales.filter((s) => inReportPeriod(localCalendarDateKey(s.date)));
+    const canceledSalesRows = allDaySales.filter((s) => isRemovedSaleStatus(s.status) && !isReturnSale(s));
+
+    const buildFromErpSales = () => {
+      const base = buildPosZReportForRange(reportRangeSales, selectedDateFrom, selectedDateTo, dateLabel);
+      const netSales = base.totalAmount - base.refundAmount;
+      return {
+        dateFrom: selectedDateFrom,
+        dateTo: selectedDateTo,
+        dateLabel,
+        totalSales: base.totalSales,
+        returnCount: allDaySales.filter((s) => isReturnSale(s)).length,
+        amountBeforeDiscount: base.amountBeforeDiscount,
+        totalAmount: base.totalAmount,
+        netSales,
+        totalExpenses: totalExpensesForSelectedDate,
+        netAfterExpenses: netSales - totalExpensesForSelectedDate,
+        cashAmount: base.cashAmount,
+        cardAmount: base.cardAmount,
+        creditAmount: base.creditAmount,
+        otherAmount: base.otherAmount,
+        totalDiscount: base.totalDiscount,
+        refundAmount: base.refundAmount,
+        canceledSales: canceledSalesRows.length,
+        canceledAmount: canceledSalesRows.reduce((sum, s) => sum + Math.abs(Number(s.total) || 0), 0),
+        firstSale: base.firstSale,
+        lastSale: base.lastSale,
+        cashierStats: base.cashierStats,
+      };
+    };
+
+    if (businessType === 'restaurant') {
+      const erpPositive = allDaySales.filter((s) => !isReturnSale(s) && !isRemovedSaleStatus(s.status));
+      const erpReturns = allDaySales.filter(isReturnSale);
+      if (erpPositive.length > 0 || erpReturns.length > 0) {
+        return buildFromErpSales();
+      }
+      const totalAmount = restOrdersClosedOnSelectedDate.reduce((sum, o) => sum + restOrderNetAmount(o), 0);
+      const cashAmount = restOrdersClosedOnSelectedDate
+        .filter((o: any) => isRestaurantPaymentCashLike(String(o.payment_method ?? 'NAKİT')))
+        .reduce((sum, o) => sum + restOrderNetAmount(o), 0);
+      const cardAmount = restOrdersClosedOnSelectedDate
+        .filter((o: any) => isRestaurantPaymentCardLike(String(o.payment_method ?? '')))
+        .reduce((sum, o) => sum + restOrderNetAmount(o), 0);
+      const totalDiscount = restOrdersClosedOnSelectedDate.reduce(
+        (sum, o) => sum + Number((o as any).discount_amount || 0),
+        0
+      );
+      const amountBeforeDiscount = totalAmount + totalDiscount;
+      const ro = [...restOrdersClosedOnSelectedDate].sort(
+        (a: any, b: any) =>
+          new Date(a.closed_at || a.closedAt || a.opened_at).getTime() -
+          new Date(b.closed_at || b.closedAt || b.opened_at).getTime()
+      );
+      return {
+        dateFrom: selectedDateFrom,
+        dateTo: selectedDateTo,
+        dateLabel,
+        totalSales: ro.length,
+        returnCount: 0,
+        amountBeforeDiscount,
+        totalAmount,
+        netSales: totalAmount,
+        totalExpenses: totalExpensesForSelectedDate,
+        netAfterExpenses: totalAmount - totalExpensesForSelectedDate,
+        cashAmount,
+        cardAmount,
+        totalDiscount,
+        firstSale: ro.length > 0 ? String(ro[0].order_no || ro[0].id || '-') : '-',
+        lastSale: ro.length > 0 ? String(ro[ro.length - 1].order_no || ro[ro.length - 1].id || '-') : '-',
+        canceledSales: canceledSalesRows.length,
+        refundAmount: 0,
+        canceledAmount: 0,
+        cashierStats: [],
+      };
+    }
+
+    return buildFromErpSales();
+  };
+
+  // Product sales analysis
+  const getProductSales = () => {
+    if (businessType === 'restaurant') {
+      const productMap = new Map<string, {
+        product: any;
+        quantity: number;
+        revenue: number;
+        discount: number;
+      }>();
+
+      restOrders.forEach(order => {
+        (order.items || []).forEach((item: any) => {
+          if (item?.is_void === true) return;
+          const pid = item.product_id != null && String(item.product_id).trim() !== '' ? String(item.product_id) : '';
+          const key = pid || `name:${String(item.product_name ?? '—')}`;
+          const existing = productMap.get(key);
+          if (existing) {
+            existing.quantity += Number(item.quantity || 0);
+            existing.revenue += Number(item.subtotal || 0);
+            existing.discount += Number(item.discount_amount || 0);
+          } else {
+            productMap.set(key, {
+              product: { id: item.product_id, name: item.product_name, category: item.category_name },
+              quantity: Number(item.quantity || 0),
+              revenue: Number(item.subtotal || 0),
+              discount: Number(item.discount_amount || 0)
+            });
+          }
+        });
+      });
+      return Array.from(productMap.values()).sort((a, b) => b.revenue - a.revenue);
+    }
+
+    if (!erpSalesForReportPeriod || !Array.isArray(erpSalesForReportPeriod)) return [];
+    const productMap = new Map<string, {
+      product: Product;
+      quantity: number;
+      revenue: number;
+      discount: number;
+    }>();
+
+    erpSalesForReportPeriod.forEach(sale => {
+      sale.items.forEach(item => {
+        const existing = productMap.get(item.productId);
+        if (existing) {
+          existing.quantity += item.quantity;
+          existing.revenue += item.total;
+          existing.discount += (item.quantity * item.price * item.discount) / 100;
+        } else {
+          const product = products.find(p => p.id === item.productId);
+          if (product) {
+            productMap.set(item.productId, {
+              product,
+              quantity: item.quantity,
+              revenue: item.total,
+              discount: (item.quantity * item.price * item.discount) / 100
+            });
+          }
+        }
+      });
+    });
+
+    return Array.from(productMap.values()).sort((a, b) => b.revenue - a.revenue);
+  };
+
+  const getPaymentDistribution = () => {
+    const emptyBucket = () => ({ amount: 0, count: 0, percentage: 0 });
+    const finalize = (
+      cashAmt: number,
+      cashCnt: number,
+      cardAmt: number,
+      cardCnt: number,
+      transferAmt: number,
+      transferCnt: number
+    ) => {
+      const totalAmt = cashAmt + cardAmt + transferAmt;
+      const pct = (n: number) => (totalAmt > 0 ? (n / totalAmt) * 100 : 0);
+      const cash = { amount: cashAmt, count: cashCnt, percentage: pct(cashAmt) };
+      const card = { amount: cardAmt, count: cardCnt, percentage: pct(cardAmt) };
+      const transfer = { amount: transferAmt, count: transferCnt, percentage: pct(transferAmt) };
+      const chartData = [
+        { name: tm('reportsPaymentPieCash'), value: cashAmt, count: cashCnt },
+        { name: tm('reportsPaymentPieCard'), value: cardAmt, count: cardCnt },
+        { name: tm('reportsPaymentPieTransfer'), value: transferAmt, count: transferCnt },
+      ].filter((d) => d.value > 0);
+      return { chartData, cash, card, transfer };
+    };
+
+    let cashAmt = 0;
+    let cardAmt = 0;
+    let transferAmt = 0;
+    let cashCnt = 0;
+    let cardCnt = 0;
+    let transferCnt = 0;
+    for (const row of dailyActiveRows) {
+      const n = Number(row.total) || 0;
+      if (n <= 0) continue;
+      if (row.paymentMethod === 'cash') {
+        cashAmt += n;
+        cashCnt += 1;
+      } else if (row.paymentMethod === 'card' || row.paymentMethod === 'gateway') {
+        cardAmt += n;
+        cardCnt += 1;
+      } else {
+        transferAmt += n;
+        transferCnt += 1;
+      }
+    }
+    return finalize(cashAmt, cashCnt, cardAmt, cardCnt, transferAmt, transferCnt);
+  };
+
+  const getCashierPerformance = () => {
+    const cashierMap = new Map<string, any>();
+    dailyActiveRows.forEach((row) => {
+      const name = String(row.cashier || '').trim() || 'Bilinmeyen Kasiyer';
+      const existing = cashierMap.get(name) || { name, salesCount: 0, totalRevenue: 0, avgSale: 0, cashSales: 0, cardSales: 0 };
+      existing.salesCount += 1;
+      existing.totalRevenue += row.total;
+      existing.avgSale = existing.totalRevenue / existing.salesCount;
+      if (row.paymentMethod === 'cash') existing.cashSales += row.total;
+      else if (row.paymentMethod === 'card' || row.paymentMethod === 'gateway') existing.cardSales += row.total;
+      cashierMap.set(name, existing);
+    });
+    return Array.from(cashierMap.values()).sort((a, b) => b.totalRevenue - a.totalRevenue);
+  };
+
+  /** Seçili günün birleşik satırından özet — tüm iş kolu yapıları (ERP + gerekiyorsa restoran). */
+  const computeDayReportStats = () => {
+    const totalSales = dailyActiveRows.reduce((sum, r) => sum + r.total, 0);
+    const payments = dailyActiveRows.reduce((acc: Record<string, number>, r) => {
+      const bucket =
+        r.paymentMethod === 'cash'
+          ? 'NAKİT'
+          : r.paymentMethod === 'card' || r.paymentMethod === 'gateway'
+            ? 'POS'
+            : String(r.paymentMethod || 'DİĞER').toUpperCase();
+      acc[bucket] = (acc[bucket] || 0) + r.total;
+      return acc;
+    }, {});
+    const discountTotal = dailyActiveRows.reduce((sum, r) => sum + (Number(r.discount) || 0), 0);
+    return {
+      totalSales,
+      payments,
+      discountTotal,
+      orderCount: dailyActiveRows.length,
+    };
+  };
+
+  const restStats = computeDayReportStats();
+  const zReport = generateZReport();
+  const productSales = getProductSales();
+  const cashierPerformance = getCashierPerformance();
+
+  // Top Products Report (En Çok Satan Ürünler) — yalnızca gerçek satış/kalem verisi; sahte örnek yok
+  const getTopProducts = (limit: number = 20) => {
+    return productSales
+      .sort((a, b) => b.quantity - a.quantity)
+      .slice(0, limit)
+      .map((item, index) => {
+        const pid = item.product?.id;
+        const catalog = Array.isArray(products) && pid ? products.find(p => p.id === pid) : undefined;
+        const qty = Number(item.quantity || 0);
+        const rev = Number(item.revenue || 0);
+        return {
+          id: String(pid ?? `${item.product?.name}-${index}`),
+          rank: index + 1,
+          name: String(item.product?.name ?? '—'),
+          category: String(item.product?.category ?? '—'),
+          quantity: qty,
+          revenue: rev,
+          avgPrice: qty > 0 ? rev / qty : 0,
+          stock: catalog?.stock ?? (item.product as any)?.stock ?? 0,
+        };
+      });
+  };
+
+  // Category Analysis
+  type CategoryAnalysisItem = { product_name: string; quantity: number; subtotal: number };
+  type CategoryAnalysis = {
+    name: string;
+    totalRevenue: number;
+    totalQuantity: number;
+    productCount: number;
+    avgPrice: number;
+    items?: CategoryAnalysisItem[];
+  };
+
+  const getCategoryAnalysis = (): CategoryAnalysis[] => {
+    if (businessType === 'restaurant') {
+      const categoryMap = new Map<string, {
+        name: string;
+        totalRevenue: number;
+        totalQuantity: number;
+        productCount: number;
+        avgPrice: number;
+        items?: CategoryAnalysisItem[];
+      }>();
+
+      restOrders.forEach(order => {
+        (order.items || []).forEach((item: any) => {
+          const categoryName = item.category_name || 'Diğer';
+          const existing = categoryMap.get(categoryName);
+          if (existing) {
+            existing.totalRevenue += Number(item.subtotal || 0);
+            existing.totalQuantity += Number(item.quantity || 0);
+            existing.avgPrice = existing.totalRevenue / existing.totalQuantity;
+            if (!existing.items) existing.items = [];
+            existing.items.push({
+              product_name: String(item.product_name ?? item.productName ?? '—'),
+              quantity: Number(item.quantity ?? 0),
+              subtotal: Number(item.subtotal ?? 0),
+            });
+          } else {
+            categoryMap.set(categoryName, {
+              name: categoryName,
+              totalRevenue: Number(item.subtotal || 0),
+              totalQuantity: Number(item.quantity || 0),
+              productCount: 1,
+              avgPrice: Number(item.unit_price || 0),
+              items: [
+                {
+                  product_name: String(item.product_name ?? item.productName ?? '—'),
+                  quantity: Number(item.quantity ?? 0),
+                  subtotal: Number(item.subtotal ?? 0),
+                },
+              ],
+            });
+          }
+        });
+      });
+      return Array.from(categoryMap.values()).sort((a, b) => b.totalRevenue - a.totalRevenue);
+    }
+
+    if (!erpSalesForReportPeriod || !Array.isArray(erpSalesForReportPeriod) || !products || !Array.isArray(products)) return [];
+    const categoryMap = new Map<
+      string,
+      {
+        name: string;
+        totalRevenue: number;
+        totalQuantity: number;
+        avgPrice: number;
+        productIds: Set<string>;
+        items: CategoryAnalysisItem[];
+      }
+    >();
+
+    erpSalesForReportPeriod.forEach(sale => {
+      sale.items.forEach(item => {
+        const product = products.find(p => p.id === item.productId);
+        if (product) {
+          const categoryName = String(product.category || 'Diğer');
+          const existing = categoryMap.get(categoryName);
+          const qty = Number(item.quantity || 0);
+          const subtotal = Number(item.total || 0);
+          const productName = String(product.name || (item as any).productName || '—');
+
+          if (existing) {
+            existing.totalRevenue += subtotal;
+            existing.totalQuantity += qty;
+            existing.avgPrice = existing.totalQuantity > 0 ? existing.totalRevenue / existing.totalQuantity : 0;
+            existing.productIds.add(String(product.id));
+
+            const idx = existing.items.findIndex((i) => i.product_name === productName);
+            if (idx >= 0) {
+              existing.items[idx].quantity += qty;
+              existing.items[idx].subtotal += subtotal;
+            } else {
+              existing.items.push({ product_name: productName, quantity: qty, subtotal });
+            }
+          } else {
+            categoryMap.set(categoryName, {
+              name: categoryName,
+              totalRevenue: subtotal,
+              totalQuantity: qty,
+              avgPrice: qty > 0 ? subtotal / qty : 0,
+              productIds: new Set([String(product.id)]),
+              items: [{ product_name: productName, quantity: qty, subtotal }],
+            });
+          }
+        }
+      });
+    });
+
+    return Array.from(categoryMap.values())
+      .map((c) => ({
+        name: c.name,
+        totalRevenue: c.totalRevenue,
+        totalQuantity: c.totalQuantity,
+        productCount: c.productIds.size,
+        avgPrice: c.avgPrice,
+        items: c.items.sort((a, b) => b.subtotal - a.subtotal),
+      }))
+      .sort((a, b) => b.totalRevenue - a.totalRevenue);
+  };
+
+  // Hourly Analysis — seçili güne göre (restoranda günlük birleşik satır saatleri)
+  const getHourlyAnalysis = () => {
+    const hourlyMap = new Map<number, { hour: number; sales: number; revenue: number; count: number }>();
+
+    const bump = (hour: number, total: number) => {
+      const existing = hourlyMap.get(hour);
+      if (existing) {
+        existing.sales += 1;
+        existing.revenue += total;
+        existing.count += 1;
+      } else {
+        hourlyMap.set(hour, { hour, sales: 1, revenue: total, count: 1 });
+      }
+    };
+
+    for (const row of dailyUnifiedRows) {
+      const t = new Date(row.date).getTime();
+      if (!Number.isFinite(t) || t <= 0) continue;
+      const hour = new Date(row.date).getHours();
+      bump(hour, Number(row.total) || 0);
+    }
+
+    return Array.from(hourlyMap.entries())
+      .sort((a, b) => a[0] - b[0])
+      .map(([, v]) => ({
+        ...v,
+        label: `${v.hour.toString().padStart(2, '0')}:00`,
+      }));
+  };
+
+  // Cash Status Report — seçili gün + getPaymentDistribution ile aynı nakit/kart/havale; açılış: bugünse persist
+  const getCashStatus = () => {
+    const dist = getPaymentDistribution();
+    const cashTotal = dist.cash.amount;
+    const cardTotal = dist.card.amount;
+    const transferTotal = dist.transfer.amount;
+    const todayTotal = cashTotal + cardTotal + transferTotal;
+
+    const todayKey = localTodayDateKey();
+    const openingCash =
+      selectedDateFrom === todayKey && selectedDateTo === todayKey
+        ? readOpeningCashForReports(businessType)
+        : 0;
+    const expenses = cashExpensesForSelectedDate;
+    const closingCash = openingCash + cashTotal - expenses;
+
+    const map = new Map<string, number>();
+    for (const row of dailyUnifiedRows) {
+      if (row.paymentMethod !== 'card' && row.paymentMethod !== 'gateway') continue;
+      const label = row.paymentMethod === 'gateway' ? 'Sanal POS' : 'Kredi kartı';
+      map.set(label, (map.get(label) || 0) + (Number(row.total) || 0));
+    }
+
+    let cards = Array.from(map.entries())
+      .map(([name, amount]) => ({ name, amount }))
+      .sort((a, b) => b.amount - a.amount);
+
+    if (cardTotal > 0 && cards.length === 0) {
+      cards = [{ name: 'Kredi kartı', amount: cardTotal }];
+    }
+
+    return {
+      openingCash,
+      todayCash: cashTotal,
+      todayCard: cardTotal,
+      todayTransfer: transferTotal,
+      todayTotal,
+      expenses,
+      closingCash,
+      cashDifference: 0,
+      cards,
+    };
+  };
+
+  // Discount Report
+  const getDiscountReport = () => {
+    if (!erpSalesForReportPeriod || !Array.isArray(erpSalesForReportPeriod)) return [];
+    const discountMap = new Map<string, {
+      name: string;
+      discountAmount: number;
+      salesCount: number;
+      avgDiscount: number;
+    }>();
+
+    erpSalesForReportPeriod.forEach(sale => {
+      if (sale.discount > 0) {
+        const discountReason = (sale as any).discountReason || 'Genel İndirim';
+        const existing = discountMap.get(discountReason);
+        if (existing) {
+          existing.discountAmount += sale.discount;
+          existing.salesCount += 1;
+          existing.avgDiscount = existing.discountAmount / existing.salesCount;
+        } else {
+          discountMap.set(discountReason, {
+            name: discountReason,
+            discountAmount: sale.discount,
+            salesCount: 1,
+            avgDiscount: sale.discount
+          });
+        }
+      }
+    });
+
+    return Array.from(discountMap.values()).sort((a, b) => b.discountAmount - a.discountAmount);
+  };
+
+  // Stock Status Report
+  const getStockStatus = () => {
+    const lowStockThreshold = 30;
+
+    const safeNumber = (v: unknown): number => {
+      if (typeof v === 'number' && Number.isFinite(v)) return v;
+      const n = parseFloat(String(v ?? '').replace(',', '.'));
+      return Number.isFinite(n) ? n : 0;
+    };
+
+    const minLevelFor = (p: Product) => {
+      const m = p.minStock ?? p.min_stock ?? p.criticalStock;
+      const mm = safeNumber(m);
+      return mm > 0 ? mm : lowStockThreshold;
+    };
+
+    const stockOf = (p: Product) => safeNumber(p.stock);
+
+    const outOfStock = products.filter(p => stockOf(p) <= 0);
+    const lowStock = products.filter(p => {
+      const s = stockOf(p);
+      return s > 0 && s <= minLevelFor(p);
+    });
+    const normalStock = products.filter(p => stockOf(p) > minLevelFor(p));
+
+    // Negatif / fazla satış stoku envanter tutarını eksiye düşürmesin; kartta fiziki stok değeri
+    const totalStockValue = products.reduce((sum, p) => {
+      const s = stockOf(p);
+      const price = safeNumber(p.price);
+      return sum + Math.max(0, s) * price;
+    }, 0);
+
+    const lowStockItems = lowStock.slice(0, 20).map(p => {
+      const s = stockOf(p);
+      const price = safeNumber(p.price);
+      const minStock = minLevelFor(p);
+      return {
+        name: productLabelForReport(p),
+        category: productCategoryForReport(p),
+        stock: s,
+        minStock,
+        price,
+        value: s * price
+      };
+    });
+
+    return {
+      totalProducts: products.length,
+      totalStockValue: Number.isFinite(totalStockValue) ? totalStockValue : 0,
+      outOfStock: outOfStock.length,
+      lowStock: lowStock.length,
+      normalStock: normalStock.length,
+      lowStockItems,
+      lowStockThreshold
+    };
+  };
+
+  /** Raporlarda satış verisinin kaç güne yayıldığı (devir yıllıklandırma için) */
+  const getSalesPeriodDays = (): number => {
+    if (businessType === 'restaurant') {
+      if (restOrders.length === 0) return 1;
+      const keys = new Set<string>();
+      restOrders.forEach((o: any) => {
+        const d = o.closed_at ?? o.closedAt ?? o.date;
+        const k = d ? localCalendarDateKey(d) : '';
+        if (k) keys.add(k);
+      });
+      return Math.max(1, keys.size);
+    }
+    if (!erpSalesForReportPeriod || erpSalesForReportPeriod.length === 0) return 1;
+    const keys = new Set<string>();
+    erpSalesForReportPeriod.forEach(s => {
+      const k = localCalendarDateKey(s.date);
+      if (k) keys.add(k);
+    });
+    return Math.max(1, keys.size);
+  };
+
+  const getLastSaleTimeByProductId = (): Map<string, number> => {
+    const map = new Map<string, number>();
+    const upd = (id: string, ms: number) => {
+      if (!id || !Number.isFinite(ms) || ms < 86400000) return;
+      const p = map.get(id);
+      if (p == null || ms > p) map.set(id, ms);
+    };
+    if (businessType === 'restaurant') {
+      restOrders.forEach((o: any) => {
+        const raw = o.closed_at ?? o.closedAt ?? o.date;
+        const t = raw instanceof Date ? raw.getTime() : new Date(raw).getTime();
+        if (!Number.isFinite(t)) return;
+        eachRestOrderItem(o, (it: any) => upd(String(it.product_id ?? ''), t));
+      });
+    } else {
+      effectiveCatalogSales.forEach(s => {
+        const t = new Date(s.date).getTime();
+        if (!Number.isFinite(t)) return;
+        s.items.forEach(it => upd(String(it.productId), t));
+      });
+    }
+    return map;
+  };
+
+  const getStockAgingReport = () => {
+    const lowStockThreshold = 30;
+    const safeNumber = (v: unknown): number => {
+      if (typeof v === 'number' && Number.isFinite(v)) return v;
+      const n = parseFloat(String(v ?? '').replace(',', '.'));
+      return Number.isFinite(n) ? n : 0;
+    };
+    const stockOf = (p: Product) => safeNumber(p.stock);
+    const lastSale = getLastSaleTimeByProductId();
+    const now = Date.now();
+    const dayMs = 86400000;
+
+    const rows = products
+      .filter(p => !(p as any).isService && !(p as any).is_service)
+      .filter(p => stockOf(p) > 0)
+      .map(p => {
+        const sid = String(p.id);
+        const last = lastSale.get(sid);
+        let days: number;
+        if (last != null) days = Math.floor((now - last) / dayMs);
+        else if (p.updated_at) {
+          const t = new Date(p.updated_at).getTime();
+          days = Number.isFinite(t) ? Math.floor((now - t) / dayMs) : 3650;
+        } else if (p.created_at) {
+          const t = new Date(p.created_at).getTime();
+          days = Number.isFinite(t) ? Math.floor((now - t) / dayMs) : 3650;
+        } else days = 9999;
+
+        let bucket: string;
+        let bucketKey: 'fresh' | 'normal' | 'slow' | 'critical';
+        if (days <= 30) {
+          bucket = tm('reportsStockAgeBucketFreshLong');
+          bucketKey = 'fresh';
+        } else if (days <= 90) {
+          bucket = tm('reportsStockAgeBucket31');
+          bucketKey = 'normal';
+        } else if (days <= 180) {
+          bucket = tm('reportsStockAgeBucket91180');
+          bucketKey = 'slow';
+        } else {
+          bucket = tm('reportsStockAgeBucket180');
+          bucketKey = 'critical';
+        }
+
+        const stk = stockOf(p);
+        const price = safeNumber(p.price);
+        return {
+          id: sid,
+          name: productLabelForReport(p),
+          category: productCategoryForReport(p),
+          stock: stk,
+          daysSinceMovement: days,
+          bucket,
+          bucketKey,
+          value: stk * price,
+        };
+      })
+      .sort((a, b) => b.daysSinceMovement - a.daysSinceMovement);
+
+    const summary = {
+      fresh: rows.filter(r => r.bucketKey === 'fresh').length,
+      normal: rows.filter(r => r.bucketKey === 'normal').length,
+      slow: rows.filter(r => r.bucketKey === 'slow').length,
+      critical: rows.filter(r => r.bucketKey === 'critical').length,
+      totalSkus: rows.length,
+      totalValue: rows.reduce((s, r) => s + r.value, 0),
+      hint:
+        businessType === 'restaurant' ? tm('reportsStockAgeHintRest') : tm('reportsStockAgeHintRetail'),
+    };
+    return { rows, summary, lowStockThreshold };
+  };
+
+  const getStockTurnoverReport = () => {
+    const periodDays = getSalesPeriodDays();
+    const safeNumber = (v: unknown): number => {
+      if (typeof v === 'number' && Number.isFinite(v)) return v;
+      const n = parseFloat(String(v ?? '').replace(',', '.'));
+      return Number.isFinite(n) ? n : 0;
+    };
+    const stockOf = (p: Product) => safeNumber(p.stock);
+
+    const soldById = new Map<string, { qty: number; revenue: number }>();
+    productSales.forEach(item => {
+      const id = String(item.product?.id ?? '');
+      if (!id) return;
+      soldById.set(id, {
+        qty: Number(item.quantity || 0),
+        revenue: Number(item.revenue || 0),
+      });
+    });
+
+    const seen = new Set<string>();
+    type TurnRow = {
+      id: string;
+      name: string;
+      category: string;
+      soldQty: number;
+      revenue: number;
+      stock: number;
+      periodDays: number;
+      ratio: number | null;
+      annualizedTurnover: number | null;
+      daysCover: number | null;
+    };
+    const rows: TurnRow[] = [];
+
+    productSales.forEach(item => {
+      const id = String(item.product?.id ?? '');
+      if (!id) return;
+      seen.add(id);
+      const catalog = products.find(p => p.id === id);
+      const soldQty = Number(item.quantity || 0);
+      const revenue = Number(item.revenue || 0);
+      const stock = catalog ? Math.max(0, stockOf(catalog)) : 0;
+      const ratio = stock > 0 ? soldQty / stock : soldQty > 0 ? null : 0;
+      const dailySales = soldQty / periodDays;
+      const annualizedTurnover =
+        stock > 0 && dailySales > 0 ? (dailySales * 365) / stock : stock > 0 && soldQty === 0 ? 0 : null;
+      const daysCover = dailySales > 0 ? stock / dailySales : null;
+      rows.push({
+        id,
+        name: catalog ? productLabelForReport(catalog) : String(item.product?.name ?? '—'),
+        category: catalog ? productCategoryForReport(catalog) : String(item.product?.category ?? '—'),
+        soldQty,
+        revenue,
+        stock,
+        periodDays,
+        ratio,
+        annualizedTurnover,
+        daysCover,
+      });
+    });
+
+    products.forEach(p => {
+      if ((p as any).isService || (p as any).is_service) return;
+      const id = p.id;
+      if (seen.has(id)) return;
+      const stk = Math.max(0, stockOf(p));
+      if (stk <= 0) return;
+      seen.add(id);
+      rows.push({
+        id,
+        name: productLabelForReport(p),
+        category: productCategoryForReport(p),
+        soldQty: 0,
+        revenue: 0,
+        stock: stk,
+        periodDays,
+        ratio: 0,
+        annualizedTurnover: 0,
+        daysCover: null,
+      });
+    });
+
+    rows.sort((a, b) => (b.annualizedTurnover ?? -1) - (a.annualizedTurnover ?? -1));
+
+    return {
+      rows,
+      periodDays,
+      hint:
+        businessType === 'restaurant'
+          ? tm('reportsStockTurnHintRest').replace('{n}', String(periodDays))
+          : tm('reportsStockTurnHintRetail').replace('{n}', String(periodDays)),
+    };
+  };
+
+  const getStockAbcReport = () => {
+    const safeNumber = (v: unknown): number => {
+      if (typeof v === 'number' && Number.isFinite(v)) return v;
+      const n = parseFloat(String(v ?? '').replace(',', '.'));
+      return Number.isFinite(n) ? n : 0;
+    };
+    const stockOf = (p: Product) => safeNumber(p.stock);
+
+    const revenueById = new Map<string, number>();
+    productSales.forEach(item => {
+      const id = String(item.product?.id ?? '');
+      if (!id) return;
+      revenueById.set(id, Number(item.revenue || 0));
+    });
+
+    type AbcRow = {
+      id: string;
+      name: string;
+      category: string;
+      revenue: number;
+      stock: number;
+      stockValue: number;
+      metric: number;
+      cumPct: number;
+      abc: 'A' | 'B' | 'C';
+    };
+
+    const rowsRaw = products
+      .filter(p => !(p as any).isService && !(p as any).is_service)
+      .map(p => {
+        const revenue = revenueById.get(p.id) || 0;
+        const stk = Math.max(0, stockOf(p));
+        const price = safeNumber(p.price);
+        const stockValue = stk * price;
+        const metric = revenue > 0 ? revenue : stockValue;
+        return {
+          id: p.id,
+          name: productLabelForReport(p),
+          category: productCategoryForReport(p),
+          revenue,
+          stock: stk,
+          stockValue,
+          metric,
+        };
+      })
+      .filter(r => r.metric > 0)
+      .sort((a, b) => b.metric - a.metric);
+
+    const totalMetric = rowsRaw.reduce((s, r) => s + r.metric, 0);
+    let running = 0;
+    const rows: AbcRow[] = rowsRaw.map(r => {
+      running += r.metric;
+      const cumPct = totalMetric > 0 ? (running / totalMetric) * 100 : 100;
+      let abc: 'A' | 'B' | 'C' = 'C';
+      if (totalMetric <= 0) abc = 'C';
+      else if (cumPct <= 80) abc = 'A';
+      else if (cumPct <= 95) abc = 'B';
+      else abc = 'C';
+      return { ...r, cumPct, abc };
+    });
+
+    const valueByClass = { A: 0, B: 0, C: 0 };
+    rows.forEach(r => {
+      valueByClass[r.abc] += r.metric;
+    });
+
+    const chartData = [
+      { name: tm('reportsAbcClassGroupA'), value: valueByClass.A, fill: '#16a34a' },
+      { name: tm('reportsAbcClassGroupB'), value: valueByClass.B, fill: '#ca8a04' },
+      { name: tm('reportsAbcClassGroupC'), value: valueByClass.C, fill: '#64748b' },
+    ].filter(d => d.value > 0);
+
+    return {
+      rows,
+      totalMetric,
+      valueByClass,
+      chartData,
+      hint: tm('reportsAbcHint'),
+    };
+  };
+
+  // Payment Distribution Summary — seçili gün, birleşik satır (tüm yapılar)
+  const getPaymentSummary = () => {
+    const stats = restStats;
+    const totalSales = stats.totalSales;
+    const cashAmount = stats.payments['NAKİT'] || 0;
+    const cardAmount = stats.payments['POS'] || 0;
+    const otherAmount = Math.max(0, totalSales - cashAmount - cardAmount);
+
+    return {
+      total: stats.orderCount,
+      cash: { count: 0, amount: cashAmount, percentage: totalSales > 0 ? (cashAmount / totalSales) * 100 : 0 },
+      card: { count: 0, amount: cardAmount, percentage: totalSales > 0 ? (cardAmount / totalSales) * 100 : 0 },
+      transfer: { count: 0, amount: otherAmount, percentage: totalSales > 0 ? (otherAmount / totalSales) * 100 : 0 },
+      chartData: [
+        { name: tm('reportsPaymentPieCash'), value: cashAmount, count: 0, fill: '#10b981' },
+        { name: tm('reportsPaymentPieCard'), value: cardAmount, count: 0, fill: '#3b82f6' },
+        { name: tm('reportsPaymentOther'), value: otherAmount, count: 0, fill: '#f59e0b' },
+      ],
+    };
+  };
+
+  const escHtml = (s: string) =>
+    String(s ?? '')
+      .replace(/&/g, '&amp;')
+      .replace(/</g, '&lt;')
+      .replace(/>/g, '&gt;')
+      .replace(/"/g, '&quot;');
+
+  type DailyReportPrintFormat = 'a4' | '80mm';
+
+  /** Günlük rapor — A4 veya 80 mm termal */
+  const printDailySalesReport = (format: DailyReportPrintFormat) => {
+    const lang = language as ModuleLanguage;
+    const L = (key: string) => translateModule(key, lang);
+    const dateLabel = formatReportsDateRangeTr(selectedDateFrom, selectedDateTo);
+    const titleDates = reportHtmlTitleDateSegment(selectedDateFrom, selectedDateTo);
+    const restBlockDateParam =
+      selectedDateFrom === selectedDateTo ? selectedDateFrom : `${selectedDateFrom} – ${selectedDateTo}`;
+
+    const removedRows = dailyUnifiedRows.filter((r) => isRemovedSaleStatus(r.status));
+
+    const saleRowsA4 = dailyActiveRows
+      .map((row) => {
+        const pmLabel =
+          row.paymentMethod === 'cash'
+            ? L('cashLabel')
+            : row.paymentMethod === 'card' || row.paymentMethod === 'gateway'
+              ? L('cardLabel')
+              : L('reportsPaymentOther');
+        const before = row.beforeDiscount ?? ((Number(row.total) || 0) + (Number(row.discount) || 0));
+        return `
+        <tr>
+          <td>${escHtml(row.receiptNumber)}</td>
+          <td>${escHtml(new Date(row.date).toLocaleTimeString('tr-TR'))}</td>
+          <td>${escHtml(row.cashier || '—')}</td>
+          <td>${escHtml(row.deviceName || '—')}</td>
+          <td>${escHtml(row.customerName || '—')}</td>
+          <td style="text-align:right">${formatNumber(before, 2, false)}</td>
+          <td style="text-align:right">${formatNumber(row.discount ?? 0, 2, false)}</td>
+          <td style="text-align:right">${formatNumber(row.total, 2, false)}</td>
+          <td>${pmLabel}</td>
+        </tr>`;
+      })
+      .join('');
+
+    let restBlockA4 = '';
+    if (businessType !== 'restaurant' && restOrders.length > 0) {
+      const oRows = restOrders
+        .map(
+          (o: any) => `
+        <tr>
+          <td>${escHtml(String(o.order_no || o.id || '—'))}</td>
+          <td style="text-align:right">${formatNumber(Number(o.total_amount || 0), 2, false)}</td>
+          <td>${escHtml(String(o.payment_method || '—'))}</td>
+        </tr>`
+        )
+        .join('');
+      restBlockA4 = `
+        <h3 style="margin-top:20px;font-size:14px">${escHtml(L('reportsPrintRestOrdersBlock').replace('{date}', restBlockDateParam))}</h3>
+        <table class="t">
+          <thead><tr><th>${escHtml(L('reportsPrintReceiptSlashNo'))}</th><th style="text-align:right">${escHtml(L('reportsPrintAmount'))}</th><th>${escHtml(L('paymentLabel_rep'))}</th></tr></thead>
+          <tbody>${oRows}</tbody>
+        </table>`;
+    }
+
+    const saleBlocks80 = dailyActiveRows
+      .map((row) => {
+        const pm =
+          row.paymentMethod === 'cash'
+            ? L('cashLabel')
+            : row.paymentMethod === 'card' || row.paymentMethod === 'gateway'
+              ? L('cardLabel')
+              : L('reportsPaymentOther');
+        const net = formatNumber(row.total, 2, false);
+        const disc = formatNumber(row.discount ?? 0, 2, false);
+        const before = formatNumber(row.beforeDiscount ?? ((Number(row.total) || 0) + (Number(row.discount) || 0)), 2, false);
+        return `
+    <div class="sale-block">
+      <div class="row"><span class="wrap">${escHtml(row.receiptNumber)}</span><span>${escHtml(new Date(row.date).toLocaleTimeString('tr-TR'))}</span></div>
+      <div class="sub wrap">${escHtml(row.cashier || '—')} · ${escHtml(row.deviceName || '—')} · ${escHtml(row.customerName || '—')}</div>
+      <div class="row"><span>${escHtml(L('reportsPrintBefore'))}</span><span>${before}</span></div>
+      <div class="row"><span>${escHtml(L('reportsColDiscount'))}</span><span>${disc}</span></div>
+      <div class="row bold"><span>${escHtml(L('reportsPrintNetWithPm').replace('{pm}', pm))}</span><span>${net}</span></div>
+    </div>
+    <div class="divider light"></div>`;
+      })
+      .join('');
+
+    let restBlock80 = '';
+    if (businessType !== 'restaurant' && restOrders.length > 0) {
+      const oBlocks = restOrders
+        .map((o: any) => {
+          const no = escHtml(String(o.order_no || o.id || '—'));
+          const pay = escHtml(String(o.payment_method || '—'));
+          const tot = formatNumber(Number(o.total_amount || 0), 2, false);
+          return `<div class="row"><span class="wrap">${no}</span><span>${tot}</span></div>
+      <div class="row sub"><span></span><span>${pay}</span></div>
+      <div class="divider light"></div>`;
+        })
+        .join('');
+      restBlock80 = `
+        <div class="divider"></div>
+        <div class="center bold">${escHtml(L('reportsPrintRestOrdersBlock80').replace('{date}', restBlockDateParam))}</div>
+        ${oBlocks}`;
+    }
+
+    const removedRowsA4 = removedRows
+      .map((row) => {
+        const before = row.beforeDiscount ?? ((Number(row.total) || 0) + (Number(row.discount) || 0));
+        const st = String(row.status ?? '').toLowerCase();
+        const statusLabel = st === 'refunded' ? L('reportsDetStatusRefunded') : L('reportsDetStatusCancelled');
+        return `
+        <tr>
+          <td>${escHtml(row.receiptNumber)}</td>
+          <td>${escHtml(new Date(row.date).toLocaleTimeString('tr-TR'))}</td>
+          <td>${escHtml(statusLabel)}</td>
+          <td style="text-align:right">${formatNumber(before, 2, false)}</td>
+          <td style="text-align:right">${formatNumber(row.total, 2, false)}</td>
+        </tr>`;
+      })
+      .join('');
+
+    const emptySales80 =
+      dailyActiveRows.length === 0
+        ? `<div class="center muted" style="margin:3mm 0">${escHtml(L('reportsPrintNoRecords'))}</div>`
+        : saleBlocks80;
+
+    const htmlA4 = `<!DOCTYPE html>
+<html><head><meta charset="UTF-8"><title>${escHtml(L('reportsPrintDailyTitle'))} — ${escHtml(titleDates)}</title>
+<style>
+  @media print {
+    @page { size: A4 portrait; margin: 12mm; }
+    body { margin: 0; -webkit-print-color-adjust: exact; print-color-adjust: exact; }
+  }
+  body { font-family: system-ui, sans-serif; font-size: 12px; color: #111; padding: 16px; max-width: 210mm; margin: 0 auto; }
+  h1 { font-size: 18px; margin: 0 0 8px; }
+  .muted { color: #64748b; font-size: 11px; margin-bottom: 16px; }
+  .grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(130px, 1fr)); gap: 10px; margin-bottom: 16px; }
+  .card { border: 1px solid #e2e8f0; border-radius: 8px; padding: 10px; }
+  .t { width: 100%; border-collapse: collapse; margin-top: 8px; font-size: 11px; }
+  .t th, .t td { border: 1px solid #e2e8f0; padding: 6px 8px; text-align: left; }
+  .t thead { background: #f8fafc; }
+</style></head><body>
+  <h1>${escHtml(L('reportsPrintDailyTitle'))}</h1>
+  <p class="muted">${escHtml(dateLabel)}</p>
+  <div class="grid">
+    <div class="card"><div>${escHtml(L('reportsPrintSummaryTxnCount'))}</div><strong>${dailyActiveRows.length}</strong></div>
+    <div class="card"><div>${escHtml(`${L('reportsDetStatusCancelled')} / ${L('reportsDetStatusRefunded')}`)}</div><strong>${removedRows.length}</strong></div>
+    <div class="card"><div>${escHtml(L('reportsPrintSummaryTotalRev'))}</div><strong>${formatNumber(dailyTotal, 2, false)}</strong></div>
+    <div class="card"><div>${escHtml(L('reportsPrintSummaryTotalDisc'))}</div><strong>${formatNumber(dailyDiscount, 2, false)}</strong></div>
+    <div class="card"><div>${escHtml(L('cashLabel'))}</div><strong>${formatNumber(dailyCash, 2, false)}</strong></div>
+    <div class="card"><div>${escHtml(L('cardLabel'))}</div><strong>${formatNumber(dailyCard, 2, false)}</strong></div>
+  </div>
+  <h3 style="font-size:14px;margin:0 0 8px">${escHtml(L('reportsPrintPosLinesTitle'))}</h3>
+  <table class="t">
+    <thead><tr><th>${escHtml(L('receiptFicheNo'))}</th><th>${escHtml(L('hourLabel'))}</th><th>${escHtml(L('cashierLabel'))}</th><th>${escHtml(L('reportsDeviceLabel'))}</th><th>${escHtml(L('customerLabel_rep'))}</th><th style="text-align:right">${escHtml(L('reportsBeforeDiscount'))}</th><th style="text-align:right">${escHtml(L('reportsColDiscount'))}</th><th style="text-align:right">${escHtml(L('reportsNetAmount'))}</th><th>${escHtml(L('paymentLabel_rep'))}</th></tr></thead>
+    <tbody>${saleRowsA4 || `<tr><td colspan="9" style="text-align:center;color:#64748b">${escHtml(L('reportsPrintNoRecords'))}</td></tr>`}</tbody>
+  </table>
+  ${
+    removedRowsA4
+      ? `<h3 style="font-size:14px;margin:16px 0 8px">${escHtml(`${L('reportsDetStatusCancelled')} / ${L('reportsDetStatusRefunded')}`)}</h3>
+  <table class="t">
+    <thead><tr><th>${escHtml(L('receiptFicheNo'))}</th><th>${escHtml(L('hourLabel'))}</th><th>${escHtml(L('status'))}</th><th style="text-align:right">${escHtml(L('reportsBeforeDiscount'))}</th><th style="text-align:right">${escHtml(L('reportsNetAmount'))}</th></tr></thead>
+    <tbody>${removedRowsA4}</tbody>
+  </table>`
+      : ''
+  }
+  ${restBlockA4}
+  <p class="muted" style="margin-top:20px;font-size:10px;text-align:center">${escHtml(L('reportsPrintFooter'))}</p>
+</body></html>`;
+
+    const html80 = `<!DOCTYPE html>
+<html><head><meta charset="UTF-8"><title>${escHtml(L('reportsPrintDailyTitle'))} — ${escHtml(titleDates)}</title>
+<style>
+  /* 80 mm termal: ortada durmasın — önizleme ve yazdırmada sola yaslı tek sütun */
+  html {
+    width: 80mm;
+    max-width: 80mm;
+    margin: 0;
+    padding: 0;
+  }
+  @media print {
+    @page { size: 80mm auto; margin: 0; }
+    html, body {
+      width: 80mm !important;
+      max-width: 80mm !important;
+      margin: 0 !important;
+      padding-left: 0 !important;
+      padding-right: 0 !important;
+      -webkit-print-color-adjust: exact;
+      print-color-adjust: exact;
+    }
+  }
+  body {
+    box-sizing: border-box;
+    width: 100%;
+    max-width: 80mm;
+    font-family: 'Courier New', Courier, monospace;
+    font-size: 11px;
+    line-height: 1.35;
+    padding: 4mm 3mm;
+    margin: 0;
+    color: #000;
+    text-align: left;
+    word-break: break-word;
+    overflow-wrap: anywhere;
+  }
+  .center { text-align: center; }
+  .bold { font-weight: bold; }
+  .large { font-size: 13px; }
+  .small { font-size: 10px; margin-top: 1mm; }
+  .muted { color: #444; }
+  .wrap { overflow-wrap: anywhere; word-break: break-word; }
+  .divider { border-top: 1px dashed #000; margin: 3mm 0; }
+  .divider.light { border-top: 1px dotted #666; margin: 2mm 0; }
+  .row { display: flex; justify-content: space-between; gap: 2mm; margin: 0.5mm 0; }
+  .row span:first-child { flex: 1; min-width: 0; }
+  .row span:last-child { flex-shrink: 0; text-align: right; }
+  .sub { font-size: 10px; color: #333; margin: 0.5mm 0 1mm; }
+  .sale-block { margin-top: 2mm; }
+  .section-title { margin: 3mm 0 2mm; text-align: center; font-weight: bold; font-size: 11px; }
+</style></head><body>
+  <div class="center bold large">${escHtml(L('reportsPrintDailyTitle80'))}</div>
+  <div class="center small">${escHtml(dateLabel)}</div>
+  <div class="divider"></div>
+  <div class="row"><span>${escHtml(L('reportsPrintSummaryTxnCount'))}</span><span class="bold">${dailyActiveRows.length}</span></div>
+  <div class="row"><span>${escHtml(`${L('reportsDetStatusCancelled')} / ${L('reportsDetStatusRefunded')}`)}</span><span class="bold">${removedRows.length}</span></div>
+  <div class="row"><span>${escHtml(L('reportsPrintSummaryTotalRev'))}</span><span class="bold">${formatNumber(dailyTotal, 2, false)}</span></div>
+  <div class="row"><span>${escHtml(L('reportsPrintSummaryTotalDisc'))}</span><span>${formatNumber(dailyDiscount, 2, false)}</span></div>
+  <div class="row"><span>${escHtml(L('cashLabel'))}</span><span>${formatNumber(dailyCash, 2, false)}</span></div>
+  <div class="row"><span>${escHtml(L('cardLabel'))}</span><span>${formatNumber(dailyCard, 2, false)}</span></div>
+  <div class="divider"></div>
+  <div class="section-title">${escHtml(L('reportsPrintPosDetail80'))}</div>
+  ${emptySales80}
+  ${restBlock80}
+  <div class="divider"></div>
+  <div class="center small" style="margin-top:2mm">${escHtml(L('reportsPrintFooter'))}</div>
+</body></html>`;
+
+    const html = format === 'a4' ? htmlA4 : html80;
+    const previewTitle = `${L('reportsPrintDailyTitle')} — ${titleDates}`;
+    if (shouldPreviewReportPrint(isMobile)) {
+      setReportPrintPreview({ html, title: previewTitle });
+      return;
+    }
+    void printReportHtml(html).catch(() => toast.error(tm('reportToastPrintFrameFail')));
+  };
+
+  // Print Z Report
+  const printZReport = () => {
+    const restaurantProductBlock =
+      businessType === 'restaurant' && productSales.length > 0
+        ? `
+        <div class="divider"></div>
+        <div class="center bold">SATILAN URUNLER</div>
+        ${productSales
+          .map((item: any) => {
+            const name = escHtml(item.product?.name || '—');
+            const qty = formatNumber(item.quantity, 2, false);
+            const rev = formatNumber(item.revenue, 2, false);
+            return `<div class="row"><span>${name}</span><span>${qty} / ${rev}</span></div>`;
+          })
+          .join('')}
+        `
+        : '';
+
+    const reportHTML = `
+      <!DOCTYPE html>
+      <html>
+      <head>
+        <meta charset="UTF-8">
+        <title>Z Raporu - ${escHtml(zReport.dateLabel)}</title>
+        <style>
+          html {
+            width: 80mm;
+            max-width: 80mm;
+            margin: 0;
+            padding: 0;
+          }
+          @media print {
+            @page { size: 80mm auto; margin: 0; }
+            html, body {
+              width: 80mm !important;
+              max-width: 80mm !important;
+              margin: 0 !important;
+            }
+          }
+          body {
+            box-sizing: border-box;
+            width: 100%;
+            max-width: 80mm;
+            font-family: 'Courier New', monospace;
+            font-size: 11px;
+            line-height: 1.3;
+            padding: 5mm;
+            margin: 0;
+            color: #000;
+            text-align: left;
+          }
+          .center { text-align: center; }
+          .bold { font-weight: bold; }
+          .large { font-size: 14px; }
+          .divider { border-top: 1px dashed #000; margin: 3mm 0; }
+          .row { display: flex; justify-content: space-between; margin: 1mm 0; }
+          .row .label { color: #111; }
+          .row .value { font-weight: 700; }
+          .header { margin-bottom: 3mm; }
+          .small { font-size: 9px; color: #444; }
+          .section-title { text-align: center; font-weight: 700; margin: 1mm 0 2mm; }
+          .muted { color: #555; }
+          .formula { border: 1px dashed #222; padding: 2mm; border-radius: 2mm; margin-top: 2mm; }
+          .formula .row { margin: 0.8mm 0; }
+          .final { border-top: 1px solid #000; padding-top: 1.2mm; margin-top: 1.2mm; font-size: 13px; font-weight: 700; }
+        </style>
+      </head>
+      <body>
+        <div class="header center">
+          <div class="bold large">Z RAPORU</div>
+          <div>RetailOS Mağaza Sistemi</div>
+        </div>
+        
+        <div class="divider"></div>
+        
+        <div class="row">
+          <span>Tarih:</span>
+          <span class="bold">${escHtml(zReport.dateLabel)}</span>
+        </div>
+        <div class="row">
+          <span>Rapor Saati:</span>
+          <span>${new Date().toLocaleTimeString('tr-TR')}</span>
+        </div>
+        
+        <div class="divider"></div>
+        
+        <div class="section-title">SATIŞ ÖZETİ</div>
+        
+        <div class="row">
+          <span class="label">Toplam İşlem:</span>
+          <span class="value">${zReport.totalSales}</span>
+        </div>
+        <div class="row">
+          <span class="label">Brüt Satış:</span>
+          <span class="value">${formatNumber(zReport.amountBeforeDiscount, 2, false)}</span>
+        </div>
+        <div class="row">
+          <span class="label">İndirim (-):</span>
+          <span>${formatNumber(zReport.totalDiscount, 2, false)}</span>
+        </div>
+        <div class="row">
+          <span class="label">Satış iade (-):</span>
+          <span>${formatNumber(zReport.refundAmount, 2, false)} (${zReport.returnCount ?? 0} adet)</span>
+        </div>
+        <div class="row">
+          <span class="label">İptal adet:</span>
+          <span>${zReport.canceledSales}</span>
+        </div>
+        <div class="row">
+          <span class="label">Toplam gider (-):</span>
+          <span>${formatNumber(zReport.totalExpenses, 2, false)}</span>
+        </div>
+        <div class="row">
+          <span class="label">Net ciro:</span>
+          <span>${formatNumber(zReport.netSales ?? (zReport.totalAmount - zReport.refundAmount), 2, false)}</span>
+        </div>
+        <div class="row">
+          <span class="label">İlk Fiş No:</span>
+          <span>${zReport.firstSale}</span>
+        </div>
+        <div class="row">
+          <span class="label">Son Fiş No:</span>
+          <span>${zReport.lastSale}</span>
+        </div>
+        
+        <div class="divider"></div>
+        ${restaurantProductBlock}
+        <div class="section-title">ÖDEME ÖZETİ</div>
+        
+        <div class="row">
+          <span class="label">Nakit:</span>
+          <span class="value">${formatNumber(zReport.cashAmount, 2, false)}</span>
+        </div>
+        <div class="row">
+          <span class="label">Kart:</span>
+          <span>${formatNumber(zReport.cardAmount, 2, false)}</span>
+        </div>
+        
+        <div class="divider"></div>
+
+        <div class="section-title">HESAP ÖZETİ</div>
+        <div class="formula">
+          <div class="row"><span class="label">Nakit + Kart tahsilat</span><span>${formatNumber(zReport.totalAmount, 2, false)}</span></div>
+          <div class="row"><span class="label">Toplam gider</span><span>- ${formatNumber(zReport.totalExpenses, 2, false)}</span></div>
+          <div class="row final"><span>GİDER SONRASI NET</span><span>${formatNumber(zReport.netAfterExpenses, 2, false)}</span></div>
+        </div>
+        <div class="center small muted" style="margin-top:1mm">Bu tutar günlük tahsilat eksi günlük giderdir.</div>
+        
+        <div class="divider"></div>
+        
+        <div class="center" style="margin-top: 5mm; font-size: 10px;">
+          <div>Bu rapor otomatik oluşturulmuştur</div>
+          <div>RetailOS v1.0</div>
+        </div>
+      </body>
+      </html>
+    `;
+
+    const previewTitle = `Z Raporu — ${zReport.dateLabel}`;
+    if (shouldPreviewReportPrint(isMobile)) {
+      setReportPrintPreview({ html: reportHTML, title: previewTitle });
+      return;
+    }
+    void printReportHtml(reportHTML).catch(() => toast.error(tm('reportToastPrintFrameFail')));
+  };
+
+  const getAnalysisColumnsAndData = (kind: AnalysisReportKind): {
+    columns: ColumnsType<Record<string, unknown>>;
+    dataSource: Record<string, unknown>[];
+    chartData?: { name: string; value: number }[];
+  } => {
+    const moneyCol = (title: string, key: string): ColumnsType<Record<string, unknown>>[number] => ({
+      title,
+      dataIndex: key,
+      key,
+      align: 'right',
+      render: (v: unknown) => formatNumber(Number(v ?? 0), 2, false),
+    });
+
+    if (businessType === 'restaurant') {
+      const orders = analysisOrders;
+      switch (kind) {
+        case 'sales-by-month': {
+          const map = new Map<string, number>();
+          for (const o of orders) {
+            const mk = analysisMonthKeyFromOrder(o);
+            if (!mk) continue;
+            map.set(mk, (map.get(mk) || 0) + restOrderNetAmount(o));
+          }
+          const rows = Array.from(map.entries())
+            .sort((a, b) => a[0].localeCompare(b[0]))
+            .map(([mk, total]) => ({ key: mk, month: formatAnalysisMonthTr(mk), total }));
+          return {
+            columns: [
+              { title: 'Ay', dataIndex: 'month', key: 'month' },
+              moneyCol(`Tutar (${reportCurrency})`, 'total'),
+            ],
+            dataSource: rows,
+            chartData: rows.map(r => ({ name: String(r.month), value: Number(r.total) })),
+          };
+        }
+        case 'user-turnover': {
+          const map = new Map<string, number>();
+          for (const o of orders) {
+            const w = String(o.waiter ?? 'Genel').trim() || 'Genel';
+            map.set(w, (map.get(w) || 0) + restOrderNetAmount(o));
+          }
+          const rows = Array.from(map.entries())
+            .sort((a, b) => b[1] - a[1])
+            .map(([user, total]) => ({ key: user, user, total }));
+          return {
+            columns: [{ title: 'Kullanıcı / Garson', dataIndex: 'user', key: 'user' }, moneyCol('Ciro', 'total')],
+            dataSource: rows,
+            chartData: rows.slice(0, 16).map(r => ({ name: String(r.user), value: Number(r.total) })),
+          };
+        }
+        case 'category-monthly-revenue': {
+          const map = new Map<string, number>();
+          for (const o of orders) {
+            const mk = analysisMonthKeyFromOrder(o);
+            if (!mk) continue;
+            eachRestOrderItem(o, (it: any) => {
+              const cat = String(it.category_name ?? 'Diğer').trim() || 'Diğer';
+              const k = `${mk}\t${cat}`;
+              map.set(k, (map.get(k) || 0) + Number(it.subtotal ?? 0));
+            });
+          }
+          const rows = Array.from(map.entries())
+            .sort((a, b) => a[0].localeCompare(b[0]))
+            .map(([compound, total]) => {
+              const [ym, cat] = compound.split('\t');
+              return { key: compound, month: formatAnalysisMonthTr(ym), category: cat, total };
+            });
+          return {
+            columns: [
+              { title: 'Ay', dataIndex: 'month', key: 'month' },
+              { title: 'Kategori', dataIndex: 'category', key: 'category' },
+              moneyCol(`Tutar (${reportCurrency})`, 'total'),
+            ],
+            dataSource: rows,
+          };
+        }
+        case 'product-monthly-qty': {
+          const map = new Map<string, number>();
+          for (const o of orders) {
+            const mk = analysisMonthKeyFromOrder(o);
+            if (!mk) continue;
+            eachRestOrderItem(o, (it: any) => {
+              const name = String(it.product_name ?? '—').trim() || '—';
+              const k = `${mk}\t${name}`;
+              map.set(k, (map.get(k) || 0) + Number(it.quantity ?? 0));
+            });
+          }
+          const rows = Array.from(map.entries())
+            .sort((a, b) => a[0].localeCompare(b[0]))
+            .map(([compound, qty]) => {
+              const [ym, name] = compound.split('\t');
+              return { key: compound, month: formatAnalysisMonthTr(ym), product: name, qty };
+            });
+          return {
+            columns: [
+              { title: 'Ay', dataIndex: 'month', key: 'month' },
+              { title: 'Ürün', dataIndex: 'product', key: 'product' },
+              { title: 'Miktar', dataIndex: 'qty', key: 'qty', align: 'right', render: (v: unknown) => formatNumber(Number(v ?? 0), 2, false) },
+            ],
+            dataSource: rows,
+          };
+        }
+        case 'product-sales-range': {
+          const map = new Map<string, { product: string; qty: number; revenue: number }>();
+          for (const o of orders) {
+            eachRestOrderItem(o, (it: any) => {
+              const pid = it.product_id != null && String(it.product_id).trim() !== '' ? String(it.product_id) : '';
+              const pname = String(it.product_name ?? '—').trim() || '—';
+              const k = pid || `name:${pname}`;
+              const cur = map.get(k) || { product: pname, qty: 0, revenue: 0 };
+              cur.qty += Number(it.quantity ?? 0);
+              cur.revenue += Number(it.subtotal ?? 0);
+              cur.product = pname;
+              map.set(k, cur);
+            });
+          }
+          const rows = Array.from(map.values())
+            .sort((a, b) => b.qty - a.qty)
+            .map((r, i) => ({
+              key: `p-${i}`,
+              product: r.product,
+              qty: r.qty,
+              revenue: r.revenue,
+              avg: r.qty > 0 ? r.revenue / r.qty : 0,
+            }));
+          return {
+            columns: [
+              { title: tm('resProductColProduct'), dataIndex: 'product', key: 'product' },
+              {
+                title: tm('resProductColQty'),
+                dataIndex: 'qty',
+                key: 'qty',
+                align: 'right',
+                render: (v: unknown) => formatNumber(Number(v ?? 0), 2, false),
+              },
+              moneyCol(tm('resProductColRevenue'), 'revenue'),
+              moneyCol(tm('resProductColAvgPrice'), 'avg'),
+            ],
+            dataSource: rows,
+            chartData: rows.slice(0, 16).map((r) => ({ name: String(r.product), value: Number(r.qty) })),
+          };
+        }
+        case 'category-monthly-qty': {
+          const map = new Map<string, number>();
+          for (const o of orders) {
+            const mk = analysisMonthKeyFromOrder(o);
+            if (!mk) continue;
+            eachRestOrderItem(o, (it: any) => {
+              const cat = String(it.category_name ?? 'Diğer').trim() || 'Diğer';
+              const k = `${mk}\t${cat}`;
+              map.set(k, (map.get(k) || 0) + Number(it.quantity ?? 0));
+            });
+          }
+          const rows = Array.from(map.entries())
+            .sort((a, b) => a[0].localeCompare(b[0]))
+            .map(([compound, qty]) => {
+              const [ym, cat] = compound.split('\t');
+              return { key: compound, month: formatAnalysisMonthTr(ym), category: cat, qty };
+            });
+          return {
+            columns: [
+              { title: 'Ay', dataIndex: 'month', key: 'month' },
+              { title: 'Kategori', dataIndex: 'category', key: 'category' },
+              { title: 'Miktar', dataIndex: 'qty', key: 'qty', align: 'right', render: (v: unknown) => formatNumber(Number(v ?? 0), 2, false) },
+            ],
+            dataSource: rows,
+          };
+        }
+        case 'section-turnover': {
+          const map = new Map<string, number>();
+          for (const o of orders) {
+            eachRestOrderItem(o, (it: any) => {
+              const sec = String(it.course ?? 'Genel').trim() || 'Genel';
+              map.set(sec, (map.get(sec) || 0) + Number(it.subtotal ?? 0));
+            });
+          }
+          const rows = Array.from(map.entries())
+            .sort((a, b) => b[1] - a[1])
+            .map(([section, total]) => ({ key: section, section, total }));
+          return {
+            columns: [{ title: 'Bölüm (course)', dataIndex: 'section', key: 'section' }, moneyCol(`Tutar (${reportCurrency})`, 'total')],
+            dataSource: rows,
+            chartData: rows.map(r => ({ name: String(r.section), value: Number(r.total) })),
+          };
+        }
+        case 'region-turnover': {
+          const map = new Map<string, number>();
+          for (const o of orders) {
+            const fid = o.floor_id != null ? String(o.floor_id) : '';
+            const label = fid ? floorNameById[fid] || `Kat ${fid.slice(0, 8)}…` : 'Kat atanmamış';
+            map.set(label, (map.get(label) || 0) + restOrderNetAmount(o));
+          }
+          const rows = Array.from(map.entries())
+            .sort((a, b) => b[1] - a[1])
+            .map(([region, total]) => ({ key: region, region, total }));
+          return {
+            columns: [{ title: 'Kat / Bölge', dataIndex: 'region', key: 'region' }, moneyCol(`Ciro (${reportCurrency})`, 'total')],
+            dataSource: rows,
+            chartData: rows.map(r => ({ name: String(r.region), value: Number(r.total) })),
+          };
+        }
+        case 'table-turnover': {
+          const map = new Map<string, number>();
+          for (const o of orders) {
+            const t = String(o.table_number ?? '—').trim() || '—';
+            map.set(t, (map.get(t) || 0) + restOrderNetAmount(o));
+          }
+          const rows = Array.from(map.entries())
+            .sort((a, b) => b[1] - a[1])
+            .map(([table, total]) => ({ key: table, table, total }));
+          return {
+            columns: [{ title: 'Masa', dataIndex: 'table', key: 'table' }, moneyCol(`Ciro (${reportCurrency})`, 'total')],
+            dataSource: rows,
+            chartData: rows.slice(0, 20).map(r => ({ name: String(r.table), value: Number(r.total) })),
+          };
+        }
+        case 'collections-by-month': {
+          const map = new Map<string, { total: number; cash: number; card: number; other: number }>();
+          for (const o of orders) {
+            const mk = analysisMonthKeyFromOrder(o);
+            if (!mk) continue;
+            const net = restOrderNetAmount(o);
+            const row = map.get(mk) || { total: 0, cash: 0, card: 0, other: 0 };
+            row.total += net;
+            const pm = restOrderPaymentMethod(o);
+            if (isRestaurantPaymentCashLike(pm)) row.cash += net;
+            else if (isRestaurantPaymentCardLike(pm)) row.card += net;
+            else row.other += net;
+            map.set(mk, row);
+          }
+          const rows = Array.from(map.entries())
+            .sort((a, b) => a[0].localeCompare(b[0]))
+            .map(([mk, v]) => ({
+              key: mk,
+              month: formatAnalysisMonthTr(mk),
+              cash: v.cash,
+              card: v.card,
+              other: v.other,
+              total: v.total,
+            }));
+          return {
+            columns: [
+              { title: 'Ay', dataIndex: 'month', key: 'month' },
+              moneyCol(`Nakit (${reportCurrency})`, 'cash'),
+              moneyCol(`Kart (${reportCurrency})`, 'card'),
+              moneyCol(`Diğer (${reportCurrency})`, 'other'),
+              moneyCol(`Toplam (${reportCurrency})`, 'total'),
+            ],
+            dataSource: rows,
+            chartData: rows.map(r => ({ name: String(r.month), value: Number(r.total) })),
+          };
+        }
+        default:
+          return { columns: [], dataSource: [] };
+      }
+    }
+
+    const retailSales = salesForAnalysis;
+    const categoryOf = (productId: string) => {
+      const p = products.find(x => x.id === productId);
+      return String(p?.category ?? 'Diğer').trim() || 'Diğer';
+    };
+
+    switch (kind) {
+      case 'sales-by-month': {
+        const map = new Map<string, number>();
+        for (const s of retailSales) {
+          const mk = saleMonthKeyFromDate(s.date);
+          if (!mk) continue;
+          map.set(mk, (map.get(mk) || 0) + Number(s.total ?? 0));
+        }
+        const rows = Array.from(map.entries())
+          .sort((a, b) => a[0].localeCompare(b[0]))
+          .map(([mk, total]) => ({ key: mk, month: formatAnalysisMonthTr(mk), total }));
+        return {
+          columns: [{ title: 'Ay', dataIndex: 'month', key: 'month' }, moneyCol(`Tutar (${reportCurrency})`, 'total')],
+          dataSource: rows,
+          chartData: rows.map(r => ({ name: String(r.month), value: Number(r.total) })),
+        };
+      }
+      case 'user-turnover': {
+        const map = new Map<string, number>();
+        for (const s of retailSales) {
+          const w = String(s.cashier ?? 'Genel').trim() || 'Genel';
+          map.set(w, (map.get(w) || 0) + Number(s.total ?? 0));
+        }
+        const rows = Array.from(map.entries())
+          .sort((a, b) => b[1] - a[1])
+          .map(([user, total]) => ({ key: user, user, total }));
+        return {
+          columns: [{ title: 'Kasiyer', dataIndex: 'user', key: 'user' }, moneyCol('Ciro', 'total')],
+          dataSource: rows,
+          chartData: rows.slice(0, 16).map(r => ({ name: String(r.user), value: Number(r.total) })),
+        };
+      }
+      case 'category-monthly-revenue': {
+        const map = new Map<string, number>();
+        for (const s of retailSales) {
+          const mk = saleMonthKeyFromDate(s.date);
+          if (!mk) continue;
+          for (const it of s.items || []) {
+            const cat = categoryOf(it.productId);
+            const k = `${mk}\t${cat}`;
+            map.set(k, (map.get(k) || 0) + Number(it.total ?? 0));
+          }
+        }
+        const rows = Array.from(map.entries())
+          .sort((a, b) => a[0].localeCompare(b[0]))
+          .map(([compound, total]) => {
+            const [ym, cat] = compound.split('\t');
+            return { key: compound, month: formatAnalysisMonthTr(ym), category: cat, total };
+          });
+        return {
+          columns: [
+            { title: 'Ay', dataIndex: 'month', key: 'month' },
+            { title: 'Kategori', dataIndex: 'category', key: 'category' },
+            moneyCol(`Tutar (${reportCurrency})`, 'total'),
+          ],
+          dataSource: rows,
+        };
+      }
+      case 'product-monthly-qty': {
+        const map = new Map<string, number>();
+        for (const s of retailSales) {
+          const mk = saleMonthKeyFromDate(s.date);
+          if (!mk) continue;
+          for (const it of s.items || []) {
+            const name = String(it.productName ?? '—').trim() || '—';
+            const k = `${mk}\t${name}`;
+            map.set(k, (map.get(k) || 0) + Number(it.quantity ?? 0));
+          }
+        }
+        const rows = Array.from(map.entries())
+          .sort((a, b) => a[0].localeCompare(b[0]))
+          .map(([compound, qty]) => {
+            const [ym, name] = compound.split('\t');
+            return { key: compound, month: formatAnalysisMonthTr(ym), product: name, qty };
+          });
+        return {
+          columns: [
+            { title: 'Ay', dataIndex: 'month', key: 'month' },
+            { title: 'Ürün', dataIndex: 'product', key: 'product' },
+            { title: 'Miktar', dataIndex: 'qty', key: 'qty', align: 'right', render: (v: unknown) => formatNumber(Number(v ?? 0), 2, false) },
+          ],
+          dataSource: rows,
+        };
+      }
+      case 'product-sales-range': {
+        const map = new Map<string, { product: string; qty: number; revenue: number }>();
+        for (const s of retailSales) {
+          for (const it of s.items || []) {
+            const pid = it.productId != null && String(it.productId).trim() !== '' ? String(it.productId) : '';
+            const pname = String(it.productName ?? '—').trim() || '—';
+            const k = pid || `name:${pname}`;
+            const cur = map.get(k) || { product: pname, qty: 0, revenue: 0 };
+            cur.qty += Number(it.quantity ?? 0);
+            cur.revenue += Number(it.total ?? 0);
+            cur.product = pname;
+            map.set(k, cur);
+          }
+        }
+        const rows = Array.from(map.values())
+          .sort((a, b) => b.qty - a.qty)
+          .map((r, i) => ({
+            key: `rp-${i}`,
+            product: r.product,
+            qty: r.qty,
+            revenue: r.revenue,
+            avg: r.qty > 0 ? r.revenue / r.qty : 0,
+          }));
+        return {
+          columns: [
+            { title: tm('resProductColProduct'), dataIndex: 'product', key: 'product' },
+            {
+              title: tm('resProductColQty'),
+              dataIndex: 'qty',
+              key: 'qty',
+              align: 'right',
+              render: (v: unknown) => formatNumber(Number(v ?? 0), 2, false),
+            },
+            moneyCol(tm('resProductColRevenue'), 'revenue'),
+            moneyCol(tm('resProductColAvgPrice'), 'avg'),
+          ],
+          dataSource: rows,
+          chartData: rows.slice(0, 16).map((r) => ({ name: String(r.product), value: Number(r.qty) })),
+        };
+      }
+      case 'category-monthly-qty': {
+        const map = new Map<string, number>();
+        for (const s of retailSales) {
+          const mk = saleMonthKeyFromDate(s.date);
+          if (!mk) continue;
+          for (const it of s.items || []) {
+            const cat = categoryOf(it.productId);
+            const k = `${mk}\t${cat}`;
+            map.set(k, (map.get(k) || 0) + Number(it.quantity ?? 0));
+          }
+        }
+        const rows = Array.from(map.entries())
+          .sort((a, b) => a[0].localeCompare(b[0]))
+          .map(([compound, qty]) => {
+            const [ym, cat] = compound.split('\t');
+            return { key: compound, month: formatAnalysisMonthTr(ym), category: cat, qty };
+          });
+        return {
+          columns: [
+            { title: 'Ay', dataIndex: 'month', key: 'month' },
+            { title: 'Kategori', dataIndex: 'category', key: 'category' },
+            { title: 'Miktar', dataIndex: 'qty', key: 'qty', align: 'right', render: (v: unknown) => formatNumber(Number(v ?? 0), 2, false) },
+          ],
+          dataSource: rows,
+        };
+      }
+      case 'section-turnover': {
+        const map = new Map<string, number>();
+        for (const s of retailSales) {
+          for (const it of s.items || []) {
+            const sec = categoryOf(it.productId);
+            map.set(sec, (map.get(sec) || 0) + Number(it.total ?? 0));
+          }
+        }
+        const rows = Array.from(map.entries())
+          .sort((a, b) => b[1] - a[1])
+          .map(([section, total]) => ({ key: section, section, total }));
+        return {
+          columns: [{ title: 'Kategori (bölüm)', dataIndex: 'section', key: 'section' }, moneyCol(`Tutar (${reportCurrency})`, 'total')],
+          dataSource: rows,
+          chartData: rows.map(r => ({ name: String(r.section), value: Number(r.total) })),
+        };
+      }
+      case 'region-turnover': {
+        const map = new Map<string, number>();
+        for (const s of retailSales) {
+          const label = s.storeId ? String(s.storeId) : 'Mağaza';
+          map.set(label, (map.get(label) || 0) + Number(s.total ?? 0));
+        }
+        const rows = Array.from(map.entries())
+          .sort((a, b) => b[1] - a[1])
+          .map(([region, total]) => ({ key: region, region, total }));
+        return {
+          columns: [{ title: 'Mağaza / Alan', dataIndex: 'region', key: 'region' }, moneyCol(`Ciro (${reportCurrency})`, 'total')],
+          dataSource: rows,
+          chartData: rows.map(r => ({ name: String(r.region), value: Number(r.total) })),
+        };
+      }
+      case 'table-turnover': {
+        const map = new Map<string, number>();
+        for (const s of retailSales) {
+          const t = String(s.table ?? '—').trim() || '—';
+          map.set(t, (map.get(t) || 0) + Number(s.total ?? 0));
+        }
+        const rows = Array.from(map.entries())
+          .sort((a, b) => b[1] - a[1])
+          .map(([table, total]) => ({ key: table, table, total }));
+        return {
+          columns: [{ title: 'Masa / Not', dataIndex: 'table', key: 'table' }, moneyCol(`Tutar (${reportCurrency})`, 'total')],
+          dataSource: rows,
+          chartData: rows.slice(0, 20).map(r => ({ name: String(r.table), value: Number(r.total) })),
+        };
+      }
+      case 'collections-by-month': {
+        const map = new Map<string, { total: number; cash: number; card: number; other: number }>();
+        for (const s of retailSales) {
+          const mk = saleMonthKeyFromDate(s.date);
+          if (!mk) continue;
+          const net = Number(s.total ?? 0);
+          const row = map.get(mk) || { total: 0, cash: 0, card: 0, other: 0 };
+          row.total += net;
+          const pm = String(s.paymentMethod ?? '');
+          if (pm === 'cash') row.cash += net;
+          else if (pm === 'card' || pm === 'gateway') row.card += net;
+          else row.other += net;
+          map.set(mk, row);
+        }
+        const rows = Array.from(map.entries())
+          .sort((a, b) => a[0].localeCompare(b[0]))
+          .map(([mk, v]) => ({
+            key: mk,
+            month: formatAnalysisMonthTr(mk),
+            cash: v.cash,
+            card: v.card,
+            other: v.other,
+            total: v.total,
+          }));
+        return {
+          columns: [
+            { title: 'Ay', dataIndex: 'month', key: 'month' },
+            moneyCol(`Nakit (${reportCurrency})`, 'cash'),
+            moneyCol(`Kart (${reportCurrency})`, 'card'),
+            moneyCol(`Diğer (${reportCurrency})`, 'other'),
+            moneyCol(`Toplam (${reportCurrency})`, 'total'),
+          ],
+          dataSource: rows,
+          chartData: rows.map(r => ({ name: String(r.month), value: Number(r.total) })),
+        };
+      }
+      default:
+        return { columns: [], dataSource: [] };
+    }
+  };
+
+  // Menu Groups Based on Business Type
+  const getMenuItems = (): any[] => {
+    const commonGroups = [
+      {
+        key: 'grp-general',
+        label: tm('genelYapayZeka'),
+        type: 'group',
+        children: [
+          { key: 'chat-ai', label: tm('aiAsistan'), icon: <RobotOutlined /> },
+          { key: 'daily-sales-executive', label: tm('yoneticiGunlukSatis'), icon: <RiseOutlined /> },
+          { key: 'daily', label: tm('gunlukRapor'), icon: <CalendarOutlined /> },
+          { key: 'monthly-days-summary', label: tm('aylikGunOzeti'), icon: <CalendarOutlined /> },
+          { key: 'yearly-months-summary', label: tm('yillikAyOzeti'), icon: <BarChart3 /> },
+          { key: 'end-of-day', label: tm('gunSonuRaporu'), icon: <HistoryOutlined /> },
+          { key: 'z-report', label: tm('zRaporu'), icon: <PrinterOutlined /> },
+          { key: 'comparison', label: tm('donemKarsilastirma'), icon: <SwapOutlined /> },
+        ],
+      },
+      {
+        key: 'grp-sales',
+        label: tm('satisAnalizleri'),
+        type: 'group',
+        children: [
+          { key: 'top-products', label: tm('enCokSatanlar'), icon: <LineChartOutlined /> },
+          { key: 'category-analysis', label: tm('kategoriAnalizi'), icon: <PieChartOutlined /> },
+          { key: 'hourly-analysis', label: tm('saatlikAnaliz'), icon: <ClockCircleOutlined /> },
+          { key: 'cashiers', label: tm('kasiyerPerformansi'), icon: <TeamOutlined /> },
+          { key: 'customer-sales', label: tm('musteriSatis'), icon: <UserOutlined /> },
+          { key: 'sales-trend', label: tm('satisTrendAnalizi'), icon: <RiseOutlined /> },
+          { key: 'sales-target', label: tm('hedefVsGerceklesen'), icon: <ThunderboltOutlined /> },
+          { key: 'sales-returns', label: tm('erpSalesReturnsTitle'), icon: <RetweetOutlined /> },
+          { key: 'product-gross-profit', label: tm('erpProductProfitTitle'), icon: <AccountBookOutlined /> },
+          ...(businessType !== 'beauty'
+            ? [{ key: 'beauty-service-report', label: tm('beautyServiceBreakdownReport'), icon: <DeploymentUnitOutlined /> }]
+            : []),
+          { key: 'detailed-sales', label: tm('detayliSatisRaporu'), icon: <LineChartOutlined /> },
+          { key: 'analysis', label: tm('analiz'), icon: <BarChart3 /> },
+        ],
+      },
+      {
+        key: 'grp-financial',
+        label: tm('finansalRaporlar'),
+        type: 'group',
+        children: [
+          { key: 'profit-loss', label: tm('karZararRaporu'), icon: <AccountBookOutlined /> },
+          { key: 'monthly-days-summary', label: tm('aylikGunOzeti'), icon: <CalendarOutlined /> },
+          { key: 'yearly-months-summary', label: tm('yillikAyOzeti'), icon: <BarChart3 /> },
+          { key: 'cash-flow', label: tm('nakitAkisRaporu'), icon: <TransactionOutlined /> },
+          { key: 'debt-aging', label: tm('borcAlacakYaslandirma'), icon: <HistoryOutlined /> },
+          { key: 'current-account', label: tm('cariHesapOzeti'), icon: <BankOutlined /> },
+          { key: 'cari-extract', label: tm('erpCariExtractTitle'), icon: <AuditOutlined /> },
+          { key: 'collection-due', label: tm('erpCollectionDueTitle'), icon: <HourglassOutlined /> },
+          { key: 'check-tracking', label: tm('cekSenetTakibi'), icon: <AuditOutlined /> },
+        ],
+      },
+      {
+        key: 'grp-purchase',
+        label: tm('erpPurchaseReportsGroup'),
+        type: 'group',
+        children: [
+          { key: 'purchase-summary', label: tm('erpPurchaseSummaryTitle'), icon: <TagsOutlined /> },
+          { key: 'supplier-purchase-returns', label: tm('erpSupplierPurchaseReturnsTitle'), icon: <TagsOutlined /> },
+        ],
+      },
+      {
+        key: 'grp-inventory',
+        label: tm('stokRaporlari'),
+        type: 'group',
+        children: [
+          { key: 'stock-status', label: tm('stockStatus'), icon: <DatabaseOutlined /> },
+          { key: 'critical-stock', label: tm('erpCriticalStockTitle'), icon: <ExclamationCircleOutlined /> },
+          { key: 'warehouse-stock', label: tm('erpWarehouseStockTitle'), icon: <ApartmentOutlined /> },
+          { key: 'stock-aging', label: tm('stokYaslandirma'), icon: <HourglassOutlined /> },
+          { key: 'stock-turnover', label: tm('stokDonusHizi'), icon: <RetweetOutlined /> },
+          { key: 'stock-abc', label: tm('stokAbcAnalizi'), icon: <ApartmentOutlined /> },
+          { key: 'materials', label: tm('malHareketRaporu'), icon: <DeploymentUnitOutlined /> },
+          { key: 'purchase-promotion-report', label: tm('purchasePromotionReport'), icon: <TagsOutlined /> },
+          { key: 'expiring-products', label: tm('sktYaklasanlar'), icon: <ExclamationCircleOutlined /> },
+        ],
+      },
+      {
+        key: 'grp-payment',
+        label: tm('odemeVeIslemler'),
+        type: 'group',
+        children: [
+          { key: 'payment-distribution', label: tm('odemeDagilimi'), icon: <CreditCardOutlined /> },
+          { key: 'discount-report', label: tm('indirimRaporu'), icon: <TagsOutlined /> },
+          { key: 'cash-status', label: tm('kasaDurumu'), icon: <BankOutlined /> },
+          { key: 'commission', label: tm('komisyonRaporu'), icon: <SafetyCertificateOutlined /> },
+          { key: 'cash-report', label: tm('kasaRaporu'), icon: <BankOutlined /> },
+        ],
+      },
+    ];
+
+    return filterReportMenuGroups([
+      ...(businessType === 'beauty'
+        ? [
+            {
+              key: 'grp-beauty-reports',
+              label: tm('bBeautyReportsMenu'),
+              type: 'group',
+              children: beautyReportMenuItems(tm),
+            },
+          ]
+        : []),
+      ...commonGroups,
+      {
+        key: 'grp-business-specific',
+        label: bizConfig.groupLabel,
+        type: 'group',
+        children: businessType === 'restaurant' ? [
+          { key: 'product-reports', label: tm('resProductQtyReportTitle'), icon: <ShoppingCart className="w-4 h-4" /> },
+          { key: 'category-reports', label: tm('kategoriRaporlari'), icon: <PieChartIcon className="w-4 h-4" /> },
+          { key: 'staff-reports', label: tm('personelRaporlari'), icon: <User className="w-4 h-4" /> },
+          { key: 'staff-performance', label: tm('staffPerformance'), icon: <TrendingUp className="w-4 h-4" /> },
+          { key: 'table-reports', label: tm('masaRaporlari'), icon: <ApartmentOutlined /> },
+          { key: 'payment-reports', label: tm('odemeRaporlari'), icon: <CreditCard className="w-4 h-4" /> },
+          { key: 'discount-reports', label: tm('indirimRaporlari'), icon: <Percent className="w-4 h-4" /> },
+          { key: 'sales-movements', label: tm('satisHareketRaporu'), icon: <RiseOutlined /> },
+          { key: 'receipts', label: tm('adisyonlar'), icon: <FileText className="w-4 h-4" /> },
+          { key: 'courier-reports', label: tm('kuryeRaporlari'), icon: <Package className="w-4 h-4" /> },
+          { key: 'cash-register-reports', label: tm('yazarkasaRaporlari'), icon: <PrinterOutlined /> },
+          { key: 'turnover-reports', label: tm('ciroRaporlari'), icon: <Banknote className="w-4 h-4" /> },
+        ] : []
+      }
+    ]);
+  };
+
+  const allMenuItems = getMenuItems();
+  const menuItems = filterReportMenuBySearch(allMenuItems, reportMenuSearch);
+  const isBeautyServiceReportTab = selectedTab === 'beauty-service-report';
+  const isErpServiceBreakdown = businessType !== 'beauty' && isBeautyServiceReportTab;
+  const isBeautyCancelledReportTab = selectedTab === 'beauty-cancelled-report';
+  const isBeautyAppointmentProductReportTab = selectedTab === 'beauty-appointment-product-report';
+  const isBeautyCommissionReportTab = selectedTab === 'beauty-commission-report';
+  const isBeautyStaffTreatmentReportTab = selectedTab === 'beauty-staff-treatment-report';
+  const isBeautySurveyReportTab = selectedTab === 'beauty-survey-report';
+  const isBeautySurveyTrendReportTab = selectedTab === 'beauty-survey-trend-report';
+  const isBeautySurveyStaffReportTab = selectedTab === 'beauty-survey-staff-report';
+  const isBeautySurveyServiceReportTab = selectedTab === 'beauty-survey-service-report';
+  const isBeautySurveyNpsReportTab = selectedTab === 'beauty-survey-nps-report';
+  const isBeautySurveyCommentsReportTab = selectedTab === 'beauty-survey-comments-report';
+  const isBeautyOverdueUncalledReportTab = selectedTab === 'beauty-overdue-uncalled-report';
+  const isAnyBeautySurveyReportTab =
+    isBeautySurveyReportTab ||
+    isBeautySurveyTrendReportTab ||
+    isBeautySurveyStaffReportTab ||
+    isBeautySurveyServiceReportTab ||
+    isBeautySurveyNpsReportTab ||
+    isBeautySurveyCommentsReportTab;
+  const beautySurveyEmbed = useMemo(
+    () => ({
+      startYmd: beautyServiceFrom,
+      endYmd: beautyServiceTo,
+      embedded: true as const,
+      reloadKey: beautySurveyReloadKey,
+    }),
+    [beautyServiceFrom, beautyServiceTo, beautySurveyReloadKey],
+  );
+  const defaultOpenKeys = businessType === 'beauty'
+    ? ['grp-beauty-reports', 'grp-general', 'grp-sales']
+    : ['grp-general', 'grp-design', 'grp-sales'];
+
+  const mobileMenuOpen = isMobile && !collapsed;
+
+  return (
+    <ConfigProvider
+      theme={retailexAntdThemeWithPrimary(bizConfig.color, darkMode)}
+      select={{ styles: { popup: { root: { zIndex: REPORTS_SELECT_POPUP_Z } as React.CSSProperties } } }}
+    >
+      <Layout className={`h-full min-w-0 overflow-hidden ${darkMode ? 'bg-slate-900' : 'bg-slate-50'}`}>
+        {mobileMenuOpen && (
+          <button
+            type="button"
+            className="fixed inset-0 border-0 p-0 md:hidden bg-black/45 cursor-default"
+            style={{ zIndex: REPORTS_MOBILE_BACKDROP_Z }}
+            aria-label={tm('close')}
+            onClick={() => setCollapsed(true)}
+          />
+        )}
+        {/* Sol Sidebar */}
+        <Sider
+          collapsible
+          collapsed={collapsed}
+          onCollapse={(value) => setCollapsed(value)}
+          width={280}
+          collapsedWidth={isMobile ? 0 : 80}
+          breakpoint="md"
+          trigger={isMobile ? null : undefined}
+          theme={darkMode ? 'dark' : 'light'}
+          className={`shadow-sm ${mobileMenuOpen ? 'fixed left-0 top-0 bottom-0 h-full' : 'relative z-10'} ${darkMode ? 'border-r border-slate-700' : 'border-r border-slate-200'}`}
+          style={{
+            overflow: 'auto',
+            height: '100%',
+            zIndex: mobileMenuOpen ? REPORTS_MOBILE_DRAWER_Z : undefined,
+          }}
+        >
+          <div className={`p-4 border-b flex items-center gap-3 sticky top-0 z-20 h-[72px] ${darkMode ? 'bg-slate-900 border-slate-700' : 'bg-white border-slate-100'}`}>
+            <div className="w-10 h-10 rounded-xl flex items-center justify-center shadow-lg shrink-0"
+              style={{ backgroundColor: bizConfig.color, boxShadow: `0 10px 15px -3px ${bizConfig.color}44` }}>
+              {bizConfig.icon}
+            </div>
+            {!collapsed && (
+              <div className="overflow-hidden">
+                <h2 className={`text-base font-black leading-tight truncate ${darkMode ? 'text-slate-100' : 'text-slate-800'}`}>{bizConfig.title}</h2>
+                <p className={`text-[10px] font-bold uppercase tracking-wider truncate ${darkMode ? 'text-slate-400' : 'text-slate-500'}`}>{tm('analizStats')}</p>
+              </div>
+            )}
+          </div>
+          {!collapsed && (
+            <div className={`px-3 py-2 border-b sticky top-[72px] z-20 ${darkMode ? 'bg-slate-900 border-slate-700' : 'bg-white border-slate-100'}`}>
+              <Input
+                allowClear
+                size="middle"
+                value={reportMenuSearch}
+                onChange={(e) => setReportMenuSearch(e.target.value)}
+                placeholder={tm('reportsMenuSearchPlaceholder')}
+                prefix={<SearchOutlined className={darkMode ? 'text-slate-500' : 'text-slate-400'} />}
+                aria-label={tm('reportsMenuSearchPlaceholder')}
+              />
+            </div>
+          )}
+          {menuItems.length === 0 && !collapsed && reportMenuSearch.trim() ? (
+            <p className={`px-4 py-3 text-xs ${darkMode ? 'text-slate-400' : 'text-slate-500'}`}>
+              {tm('reportsMenuSearchEmpty')}
+            </p>
+          ) : (
+            <Menu
+              mode="inline"
+              selectedKeys={[selectedTab]}
+              defaultOpenKeys={defaultOpenKeys}
+              onClick={({ key }) => {
+                setSelectedTab(key as ReportTab);
+                if (isMobile) setCollapsed(true);
+              }}
+              items={menuItems}
+              className="border-none py-2"
+            />
+          )}
+        </Sider>
+
+        <Layout className="h-full min-w-0 flex flex-col overflow-hidden bg-slate-50 relative z-0">
+          {/* Header */}
+          <div className="bg-white border-b border-slate-200 px-3 py-3 sm:px-6 sm:py-4 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between shadow-sm shrink-0 sm:h-[72px] min-h-0 relative z-[1]">
+            <div className="flex items-start gap-2 min-w-0 w-full sm:w-auto">
+              {isMobile && (
+                <Button
+                  type="text"
+                  className="shrink-0 !px-2"
+                  icon={<MenuOutlined className="text-lg" />}
+                  onClick={() => setCollapsed((c) => !c)}
+                  aria-label={tm('mainMenu')}
+                  title={tm('mainMenu')}
+                />
+              )}
+              <div className="min-w-0 flex-1">
+                <h1 className="text-lg sm:text-xl font-black text-slate-800 flex items-center gap-2 leading-tight">
+                  {allMenuItems.flatMap(g => g.children).find(i => i?.key === selectedTab)?.label || tm('report')}
+                </h1>
+                <p className="text-xs text-slate-500 font-medium mt-0.5">{tm('checkDataAndPerformance')}</p>
+              </div>
+            </div>
+            <div className="flex flex-wrap items-center gap-2 sm:gap-3 w-full sm:w-auto justify-end">
+              {lastReportRefreshAt && (
+                <span className="text-[10px] text-slate-400 w-full sm:w-auto text-right sm:text-left order-last sm:order-none">
+                  {tm('reportsLastRefreshed').replace(
+                    '{time}',
+                    lastReportRefreshAt.toLocaleTimeString(tm('localeCode'), { hour: '2-digit', minute: '2-digit' }),
+                  )}
+                </span>
+              )}
+              <Button
+                type="default"
+                icon={<ReloadOutlined spin={refreshingReports} />}
+                loading={refreshingReports}
+                onClick={() => void refreshAllReportsData()}
+                className="shrink-0"
+                aria-label={tm('reportsRefresh')}
+              >
+                {tm('reportsRefresh')}
+              </Button>
+              <label className="flex flex-wrap items-center gap-2 text-xs text-slate-600 min-w-0 flex-1 sm:flex-initial">
+                <span className="font-semibold shrink-0">{tm('reportsBusinessLine')}</span>
+                <Select<BusinessType>
+                  value={businessType}
+                  onChange={(v) => setBusinessType(v)}
+                  className="min-w-0 flex-1 sm:flex-initial"
+                  style={{ minWidth: isMobile ? 0 : 152 }}
+                  options={[
+                    { value: 'retail', label: tm('resTileRetail') },
+                    { value: 'market', label: tm('reportsBizMarket') },
+                    { value: 'restaurant', label: tm('restaurant') },
+                    { value: 'beauty', label: tm('bCatBeauty') },
+                  ]}
+                />
+              </label>
+            </div>
+          </div>
+
+          <Content className="flex-1 overflow-y-auto p-3 sm:p-6 min-w-0" style={{ scrollbarWidth: 'thin' }}>
+            {(refreshingReports || loadingReportRangeSales) && (
+              <div className="mb-3 flex items-center gap-2 rounded-lg border border-blue-100 bg-blue-50 px-3 py-2 text-sm text-blue-800">
+                <Spin size="small" />
+                <span>{tm('reportsRefresh')}</span>
+              </div>
+            )}
+
+            {selectedTab === 'daily' && (
+              <div className="space-y-4">
+                {/* Date Selector */}
+                <div className="bg-white rounded-lg border p-4">
+                  <div className="flex flex-row flex-wrap items-center justify-between gap-3">
+                    <div className="flex flex-row flex-wrap items-center gap-3 sm:gap-4 min-w-0 flex-1">
+                      <Calendar className="w-5 h-5 text-gray-600 shrink-0 hidden sm:block" aria-hidden />
+                      <ReportDateRangePresets
+                        value={dailyReportDateRange}
+                        onChange={setDailyReportDateRange}
+                        tm={tm}
+                        min={reportDateInputMin}
+                        max={reportDateInputMax}
+                        className="min-w-0 flex-1"
+                      />
+                    </div>
+                    <div className="flex flex-row flex-nowrap items-center gap-2 shrink-0">
+                      <Button
+                        icon={<ReloadOutlined spin={refreshingReports || loadingReportRangeSales} />}
+                        loading={refreshingReports || loadingReportRangeSales}
+                        onClick={() => void refreshAllReportsData()}
+                        className="shrink-0"
+                      >
+                        {tm('reportsRefresh')}
+                      </Button>
+                      <Dropdown
+                        menu={{
+                          items: [
+                            { key: 'a4', label: tm('reportsPrintA4') },
+                            { key: '80mm', label: tm('reportsPrint80mm') },
+                          ],
+                          onClick: ({ key }) =>
+                            printDailySalesReport(key as 'a4' | '80mm'),
+                        }}
+                        trigger={['click']}
+                      >
+                        <Button type="primary" icon={<PrinterOutlined />} className="shrink-0">
+                          {t.print} <CaretDownOutlined />
+                        </Button>
+                      </Dropdown>
+                    </div>
+                  </div>
+                </div>
+
+                {/* Stats */}
+                <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-6 gap-4">
+                  <div className="bg-white rounded-lg p-4 border-2" style={{ borderColor: `${bizConfig.color}44` }}>
+                    <div className="flex items-center justify-between">
+                      <div>
+                        <p className="text-sm text-gray-600">{tm('totalSales')}</p>
+                        <p className="text-3xl font-bold mt-1" style={{ color: bizConfig.color }}>{dailyActiveRows.filter((r) => r.status !== 'return').length}</p>
+                        <p className="text-xs text-slate-500 mt-1">
+                          Satış iade: {dailyReturnRows.length}
+                          {dailyReturnTotal > 0 ? ` · −${formatNumber(dailyReturnTotal, 2, false)}` : ''}
+                        </p>
+                        <p className="text-xs text-slate-500">
+                          {tm('reportsDetStatusCancelled')} / {tm('reportsDetStatusRefunded')}: {dailyUnifiedRows.length - dailyActiveRows.length}
+                        </p>
+                      </div>
+                      <ShoppingCart className="w-12 h-12 opacity-20" style={{ color: bizConfig.color }} />
+                    </div>
+                  </div>
+
+                  <div className="bg-white rounded-lg p-4 border-2" style={{ borderColor: `${bizConfig.color}44` }}>
+                    <div className="flex items-center justify-between">
+                      <div>
+                        <p className="text-sm text-gray-600">{tm('totalRevenueLabel')}</p>
+                        <p className="text-2xl font-bold mt-1" style={{ color: bizConfig.color }}>{formatNumber(dailyTotal, 2, false)}</p>
+                      </div>
+                      <Banknote className="w-12 h-12 opacity-20" style={{ color: bizConfig.color }} />
+                    </div>
+                  </div>
+
+                  <div className="bg-white rounded-lg p-4 border-2 border-orange-100">
+                    <div className="flex items-center justify-between">
+                      <div>
+                        <p className="text-sm text-gray-600">{tm('reportsTotalDiscount')}</p>
+                        <p className="text-2xl font-bold mt-1 text-orange-600">{formatNumber(dailyDiscount, 2, false)}</p>
+                      </div>
+                      <Percent className="w-12 h-12 text-orange-400 opacity-30" />
+                    </div>
+                  </div>
+
+                  <div className="bg-white rounded-lg p-4 border-2" style={{ borderColor: `${bizConfig.color}44` }}>
+                    <div className="flex items-center justify-between">
+                      <div>
+                        <p className="text-sm text-gray-600">{tm('cashLabel')}</p>
+                        <p className="text-2xl font-bold mt-1" style={{ color: bizConfig.color }}>{formatNumber(dailyCash, 2, false)}</p>
+                      </div>
+                      <Banknote className="w-12 h-12 opacity-20" style={{ color: bizConfig.color }} />
+                    </div>
+                  </div>
+
+                  <div className="bg-white rounded-lg p-4 border-2" style={{ borderColor: `${bizConfig.color}44` }}>
+                    <div className="flex items-center justify-between">
+                      <div>
+                        <p className="text-sm text-gray-600">{tm('cardLabel')}</p>
+                        <p className="text-2xl font-bold mt-1" style={{ color: bizConfig.color }}>{formatNumber(dailyCard, 2, false)}</p>
+                      </div>
+                      <CreditCard className="w-12 h-12 opacity-20" style={{ color: bizConfig.color }} />
+                    </div>
+                  </div>
+
+                  <div className="bg-white rounded-lg p-4 border-2 border-red-100">
+                    <div className="flex items-center justify-between">
+                      <div>
+                        <p className="text-sm text-gray-600">Satış iade</p>
+                        <p className="text-2xl font-bold mt-1 text-red-600">{formatNumber(dailyReturnTotal, 2, false)}</p>
+                        <p className="text-xs text-slate-500 mt-1">{dailyReturnRows.length} işlem</p>
+                      </div>
+                      <TrendingDown className="w-12 h-12 text-red-400 opacity-40" />
+                    </div>
+                  </div>
+                </div>
+
+                {/* Sales List */}
+                <div className="bg-white rounded-lg border">
+                  <div className="p-4 border-b flex flex-wrap items-center justify-between gap-2">
+                    <div>
+                      <h3 className="text-lg">{tm('salesDetails')}</h3>
+                      <p className="text-xs text-slate-500 mt-1">{tm('reportsClickRowReceiptPreview')}</p>
+                    </div>
+                    <label className="inline-flex items-center gap-2 text-xs font-medium text-slate-700">
+                      <input
+                        type="checkbox"
+                        checked={dailyShowOnlyRemoved}
+                        onChange={(e) => setDailyShowOnlyRemoved(e.target.checked)}
+                      />
+                      {tm('reportsDetStatusCancelled')} / {tm('reportsDetStatusRefunded')}
+                    </label>
+                  </div>
+                  <div className="overflow-x-auto overflow-y-auto max-h-[600px]" style={{ scrollbarWidth: 'thin', scrollbarColor: '#cbd5e1 #f1f5f9' }}>
+                    <table className="w-full min-w-[1020px]">
+                      <thead className="bg-gray-50 border-b">
+                        <tr>
+                          <th className="px-4 py-3 text-left text-sm">{tm('receiptFicheNo')}</th>
+                          <th className="px-4 py-3 text-left text-sm">{tm('hourLabel')}</th>
+                          <th className="px-4 py-3 text-left text-sm">{tm('cashierLabel')}</th>
+                          <th className="px-4 py-3 text-left text-sm">{tm('reportsDeviceLabel')}</th>
+                          <th className="px-4 py-3 text-left text-sm">{tm('customerLabel_rep')}</th>
+                          <th className="px-4 py-3 text-right text-sm">{tm('reportsBeforeDiscount')}</th>
+                          <th className="px-4 py-3 text-right text-sm">{tm('reportsColDiscount')}</th>
+                          <th className="px-4 py-3 text-right text-sm font-semibold">{tm('reportsNetAmount')}</th>
+                          <th className="px-4 py-3 text-left text-sm">{tm('paymentLabel_rep')}</th>
+                          <th className="px-4 py-3 text-left text-sm">{tm('status')}</th>
+                        </tr>
+                      </thead>
+                      <tbody className="divide-y">
+                        {dailyVisibleRows.map((row) => (
+                          <tr
+                            key={row.key}
+                            role="button"
+                            tabIndex={0}
+                            className="hover:bg-blue-50/80 cursor-pointer transition-colors outline-none focus-visible:ring-2 focus-visible:ring-blue-400 focus-visible:ring-inset"
+                            onClick={() => void openDailyRowReceiptModal(row)}
+                            onKeyDown={(e) => {
+                              if (e.key === 'Enter' || e.key === ' ') {
+                                e.preventDefault();
+                                void openDailyRowReceiptModal(row);
+                              }
+                            }}
+                          >
+                            <td className="px-4 py-3 text-sm font-medium text-blue-700 underline-offset-2">{row.receiptNumber}</td>
+                            <td className="px-4 py-3 text-sm">
+                              {new Date(row.date).toLocaleTimeString('tr-TR')}
+                            </td>
+                            <td className="px-4 py-3 text-sm">{row.cashier || '-'}</td>
+                            <td className="px-4 py-3 text-sm">{row.deviceName || '-'}</td>
+                            <td className="px-4 py-3 text-sm">{row.customerName || '-'}</td>
+                            <td className="px-4 py-3 text-right text-sm text-slate-700 tabular-nums">
+                              {formatNumber(row.beforeDiscount ?? (row.total + (row.discount ?? 0)), 2, false)}
+                            </td>
+                            <td className="px-4 py-3 text-right text-sm text-orange-700 tabular-nums">
+                              {formatNumber(row.discount ?? 0, 2, false)}
+                            </td>
+                            <td className="px-4 py-3 text-right text-sm font-medium tabular-nums">{formatNumber(row.total, 2, false)}</td>
+                            <td className="px-4 py-3">
+                              {(() => {
+                                const bucket = normalizePaymentMethodBucket(row.paymentMethod);
+                                const label =
+                                  bucket === 'cash'
+                                    ? tm('cashLabel')
+                                    : bucket === 'card'
+                                      ? tm('cardLabel')
+                                      : bucket === 'transfer'
+                                        ? tm('reportsPaymentPieTransfer')
+                                        : tm('reportsPaymentOther');
+                                const cls =
+                                  bucket === 'cash'
+                                    ? 'bg-green-100 text-green-700'
+                                    : bucket === 'card'
+                                      ? 'bg-blue-100 text-blue-700'
+                                      : 'bg-slate-100 text-slate-700';
+                                return (
+                                  <span className={`px-2 py-1 rounded text-xs ${cls}`}>{label}</span>
+                                );
+                              })()}
+                            </td>
+                            <td className="px-4 py-3">
+                              {(() => {
+                                const st = String(row.status ?? 'completed').toLowerCase();
+                                const isCancelled = st === 'cancelled' || st === 'canceled';
+                                const isRefunded = st === 'refunded';
+                                const isReturn = st === 'return';
+                                const label = isReturn
+                                  ? 'Satış İade'
+                                  : isCancelled
+                                    ? tm('reportsDetStatusCancelled')
+                                    : isRefunded
+                                      ? tm('reportsDetStatusRefunded')
+                                      : tm('reportsDetStatusCompleted');
+                                const cls = isReturn
+                                  ? 'bg-red-100 text-red-700'
+                                  : isCancelled
+                                    ? 'bg-red-100 text-red-700'
+                                    : isRefunded
+                                      ? 'bg-amber-100 text-amber-700'
+                                      : 'bg-emerald-100 text-emerald-700';
+                                const reasonText = row.cancelReason?.trim();
+                                return (
+                                  <div className="space-y-1">
+                                    <span className={`inline-block px-2 py-1 rounded text-xs font-semibold ${cls}`}>{label}</span>
+                                    {(isCancelled || isRefunded) && reasonText && (
+                                      <div
+                                        className="max-w-[240px] truncate text-[11px] text-slate-500"
+                                        title={reasonText}
+                                      >
+                                        {reasonText}
+                                      </div>
+                                    )}
+                                  </div>
+                                );
+                              })()}
+                            </td>
+                          </tr>
+                        ))}
+                        {dailyVisibleRows.length === 0 && (
+                          <tr>
+                            <td colSpan={10} className="px-4 py-8 text-center text-sm text-slate-500">
+                              {tm('noDataFound')}
+                            </td>
+                          </tr>
+                        )}
+                      </tbody>
+                    </table>
+                  </div>
+                </div>
+              </div>
+            )}
+
+            <Modal
+              open={reportConfirmOpen}
+              title="Onay"
+              onOk={() => resolveReportConfirm(true)}
+              onCancel={() => resolveReportConfirm(false)}
+              okText="Evet"
+              cancelText="Vazgeç"
+              okButtonProps={{ disabled: !reportConfirmReason.trim() }}
+              destroyOnClose
+            >
+              <div className="whitespace-pre-line text-sm text-slate-700">{reportConfirmMessage}</div>
+              <div className="mt-4">
+                <label className="mb-1 block text-xs font-semibold text-slate-600">
+                  İptal nedeni (zorunlu)
+                </label>
+                <Input.TextArea
+                  value={reportConfirmReason}
+                  onChange={(e) => setReportConfirmReason(e.target.value)}
+                  placeholder="Lütfen iptal nedenini yazın..."
+                  autoSize={{ minRows: 3, maxRows: 5 }}
+                />
+              </div>
+            </Modal>
+
+            <Modal
+              title={
+                dailyRowReceiptModal
+                  ? `${t.receiptTitle} — ${dailyRowReceiptModal.receiptNumber}`
+                  : t.receiptTitle
+              }
+              open={dailyRowReceiptModal != null}
+              onCancel={closeDailyRowReceiptModal}
+              width={560}
+              styles={{ body: { maxHeight: 'min(88vh, 900px)', overflow: 'auto' } }}
+              destroyOnClose
+              footer={
+                <div className="flex flex-wrap items-center justify-end gap-2">
+                  {canDeleteErpSale &&
+                    dailyRowReceiptModal?.source === 'erp' &&
+                    dailyRowReceiptModal.erpSale &&
+                    isSaleRowUuid(String(dailyRowReceiptModal.erpSale.id)) && (
+                      <Button danger onClick={() => void handleDeleteDailyErpSale()}>
+                        {tm('reportsDeleteInvoiceBtn')}
+                      </Button>
+                    )}
+                  {canDeleteErpSale &&
+                    dailyRowReceiptModal?.source === 'rest' &&
+                    dailyRowReceiptModal.restOrder?.id != null &&
+                    String(dailyRowReceiptModal.restOrder.id).trim() !== '' && (
+                      <Button danger onClick={() => void handleDeleteDailyRestOrder()}>
+                        {tm('reportsCancelRestOrderBtn')}
+                      </Button>
+                    )}
+                  <Button onClick={printDailyRowReceipt} disabled={!dailyRowReceiptHtml || dailyRowReceiptLoading}>
+                    {t.print}
+                  </Button>
+                  <Button type="primary" onClick={closeDailyRowReceiptModal}>
+                    {t.close}
+                  </Button>
+                </div>
+              }
+            >
+              {dailyRowReceiptLoading ? (
+                <div className="flex justify-center py-12">
+                  <Spin />
+                </div>
+              ) : dailyRowReceiptModal?.source === 'rest' ? (
+                <p className="text-xs text-amber-700 mb-2">
+                  Bu satır yalnızca adisyon kaydıdır (ERP satış faturası yok). Yetkiliyseniz aşağıdan adisyon kaydını iptal edebilirsiniz; iptal edilen kayıt kapalı sipariş
+                  listesinde görünmez. ERP fişi olan satırlarda silme, alttaki «Faturayı sil» düğmesiyle yapılır.
+                </p>
+              ) : null}
+              {dailyRowReceiptHtml ? (
+                <div
+                  className="border border-slate-200 rounded-lg bg-white"
+                  style={{ maxWidth: '100%' }}
+                >
+                  <iframe
+                    key={`${dailyRowReceiptModal?.receiptNumber ?? 'r'}-${dailyRowReceiptHtml.length}`}
+                    title={tm('reportsReceiptPreviewTitle')}
+                    className="w-full border-0 bg-white"
+                    style={{ height: dailyRowReceiptPreviewH, minHeight: 280, display: 'block' }}
+                    srcDoc={dailyRowReceiptHtml}
+                    onLoad={(e) => {
+                      const iframe = e.currentTarget;
+                      requestAnimationFrame(() => {
+                        try {
+                          const d = iframe.contentDocument;
+                          const inner =
+                            d?.documentElement?.scrollHeight ?? d?.body?.scrollHeight ?? 520;
+                          const cap =
+                            typeof window !== 'undefined'
+                              ? Math.floor(window.innerHeight * 0.82)
+                              : 720;
+                          setDailyRowReceiptPreviewH(Math.min(Math.max(inner + 24, 320), cap));
+                        } catch {
+                          setDailyRowReceiptPreviewH(720);
+                        }
+                      });
+                    }}
+                  />
+                </div>
+              ) : !dailyRowReceiptLoading ? (
+                <p className="text-sm text-slate-500">{tm('reportsNoPreview')}</p>
+              ) : null}
+            </Modal>
+
+            {selectedTab === 'z-report' && (
+              <div className="space-y-4">
+                <div className="bg-white rounded-lg border">
+                  <div className="p-6 border-b flex items-center justify-between">
+                    <div>
+                      <h3 className="text-xl">{tm('reportsZReportDayEndTitle')}</h3>
+                      <p className="text-sm text-gray-600 mt-1">{zReport.dateLabel}</p>
+                    </div>
+                    <button
+                      onClick={printZReport}
+                      className="flex items-center gap-2 px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700"
+                    >
+                      <Download className="w-5 h-5" />
+                      {t.print}
+                    </button>
+                  </div>
+
+                  <div className="p-6 space-y-6">
+                    {/* Sales Summary */}
+                    <div>
+                      <h4 className="text-sm text-gray-600 mb-3">{tm('reportsSalesSummarySection')}</h4>
+                      <p className="text-xs text-slate-500 mb-3">
+                        {tm('reportsSalesSummaryFootnote')}
+                      </p>
+                      <div className="grid grid-cols-2 lg:grid-cols-7 gap-4">
+                        <div className="p-4 bg-gray-50 rounded-lg">
+                          <p className="text-sm text-gray-600">{tm('reportsTotalTransactions')}</p>
+                          <p className="text-3xl text-blue-600 mt-1">{zReport.totalSales}</p>
+                        </div>
+                        <div className="p-4 bg-slate-50 rounded-lg border border-slate-200">
+                          <p className="text-sm text-gray-600">{tm('reportsBeforeDiscountGross')}</p>
+                          <p className="text-2xl font-bold text-slate-800 mt-1">{formatNumber(zReport.amountBeforeDiscount, 2, false)}</p>
+                        </div>
+                        <div className="p-4 bg-orange-50 rounded-lg border border-orange-100">
+                          <p className="text-sm text-gray-600">{tm('reportsTotalDiscount')}</p>
+                          <p className="text-2xl font-bold text-orange-600 mt-1">{formatNumber(zReport.totalDiscount, 2, false)}</p>
+                        </div>
+                        <div className="p-4 bg-red-50 rounded-lg border border-red-100">
+                          <p className="text-sm text-gray-600">Satış iade (-)</p>
+                          <p className="text-2xl font-bold text-red-700 mt-1">{formatNumber(zReport.refundAmount, 2, false)}</p>
+                          <p className="text-xs text-slate-500 mt-1">{zReport.returnCount ?? 0} işlem</p>
+                        </div>
+                        <div className="p-4 bg-green-50 rounded-lg border border-green-100">
+                          <p className="text-sm text-gray-600">{tm('reportsNetTurnover')}</p>
+                          <p className="text-2xl font-bold text-green-700 mt-1">{formatNumber(zReport.netSales ?? (zReport.totalAmount - zReport.refundAmount), 2, false)}</p>
+                        </div>
+                        <div className="p-4 bg-rose-50 rounded-lg border border-rose-100">
+                          <p className="text-sm text-gray-600">Toplam gider</p>
+                          <p className="text-2xl font-bold text-rose-700 mt-1">{formatNumber(zReport.totalExpenses, 2, false)}</p>
+                        </div>
+                        <div className="p-4 bg-indigo-50 rounded-lg border border-indigo-100">
+                          <p className="text-sm text-gray-600">Gider sonrası net</p>
+                          <p className="text-2xl font-bold text-indigo-700 mt-1">{formatNumber(zReport.netAfterExpenses, 2, false)}</p>
+                        </div>
+                      </div>
+                    </div>
+
+                    {/* Payment Summary */}
+                    <div>
+                      <h4 className="text-sm text-gray-600 mb-3">{tm('reportsPaymentSummarySection')}</h4>
+                      <div className="space-y-2">
+                        <div className="flex items-center justify-between p-4 bg-gray-50 rounded-lg">
+                          <span>{tm('reportsCashPayments')}</span>
+                          <span className="text-lg">{formatNumber(zReport.cashAmount, 2, false)}</span>
+                        </div>
+                        <div className="flex items-center justify-between p-4 bg-gray-50 rounded-lg">
+                          <span>{tm('reportsCardPayments')}</span>
+                          <span className="text-lg">{formatNumber(zReport.cardAmount, 2, false)}</span>
+                        </div>
+                        {(zReport.cashierStats?.length ?? 0) > 0 && (
+                          <div className="mt-4 overflow-x-auto">
+                            <h4 className="text-sm text-gray-600 mb-3">Kasiyer / personel cirosu</h4>
+                            <table className="w-full text-sm min-w-[640px]">
+                              <thead>
+                                <tr className="text-left text-xs text-gray-500 border-b">
+                                  <th className="py-2 pr-3">Kasiyer</th>
+                                  <th className="py-2 pr-3 text-right">Fiş</th>
+                                  <th className="py-2 pr-3 text-right">Brüt</th>
+                                  <th className="py-2 pr-3 text-right">İade</th>
+                                  <th className="py-2 text-right">Net</th>
+                                </tr>
+                              </thead>
+                              <tbody>
+                                {zReport.cashierStats.map((row) => (
+                                  <tr key={row.name} className="border-b border-gray-100 last:border-0">
+                                    <td className="py-2 pr-3 font-medium">{row.name}</td>
+                                    <td className="py-2 pr-3 text-right tabular-nums">{row.salesCount}</td>
+                                    <td className="py-2 pr-3 text-right tabular-nums">{formatNumber(row.grossRevenue, 2, false)}</td>
+                                    <td className="py-2 pr-3 text-right tabular-nums text-red-600">{formatNumber(row.returnTotal, 2, false)}</td>
+                                    <td className="py-2 text-right tabular-nums font-semibold">{formatNumber(row.netRevenue, 2, false)}</td>
+                                  </tr>
+                                ))}
+                              </tbody>
+                            </table>
+                          </div>
+                        )}
+                      </div>
+                    </div>
+
+                    {/* Receipt Range */}
+                    <div>
+                      <h4 className="text-sm text-gray-600 mb-3">{tm('reportsReceiptRangeSection')}</h4>
+                      <div className="grid grid-cols-2 gap-4">
+                        <div className="p-4 bg-gray-50 rounded-lg">
+                          <p className="text-sm text-gray-600">{tm('reportsFirstReceipt')}</p>
+                          <p className="text-lg mt-1">{zReport.firstSale}</p>
+                        </div>
+                        <div className="p-4 bg-gray-50 rounded-lg">
+                          <p className="text-sm text-gray-600">{tm('reportsLastReceipt')}</p>
+                          <p className="text-lg mt-1">{zReport.lastSale}</p>
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            )}
+
+            {selectedTab === 'cashiers' && (
+              <div className="bg-white rounded-lg border">
+                <div className="p-4 border-b">
+                  <h3 className="text-lg">{tm('cashierPerformanceReport')}</h3>
+                </div>
+                <div className="overflow-x-auto overflow-y-auto max-h-[600px]" style={{ scrollbarWidth: 'thin', scrollbarColor: '#cbd5e1 #f1f5f9' }}>
+                  <table className="w-full min-w-[800px]">
+                    <thead className="bg-gray-50 border-b sticky top-0">
+                      <tr>
+                        <th className="px-4 py-3 text-left text-sm">{tm('cashierLabel')}</th>
+                        <th className="px-4 py-3 text-right text-sm">{tm('transactionCount')}</th>
+                        <th className="px-4 py-3 text-right text-sm">{tm('totalRevenueLabel')}</th>
+                        <th className="px-4 py-3 text-right text-sm">{tm('avgSaleLabel')}</th>
+                        <th className="px-4 py-3 text-right text-sm">{tm('cashLabel')}</th>
+                        <th className="px-4 py-3 text-right text-sm">{tm('cardLabel')}</th>
+                      </tr>
+                    </thead>
+                    <tbody className="divide-y">
+                      {cashierPerformance.map(cashier => (
+                        <tr key={cashier.name} className="hover:bg-gray-50">
+                          <td className="px-4 py-3">
+                            <div className="flex items-center gap-2">
+                              <div className="w-8 h-8 bg-blue-600 rounded flex items-center justify-center text-white text-sm">
+                                {cashier.name && cashier.name.length > 0 ? cashier.name.charAt(0).toUpperCase() : '?'}
+                              </div>
+                              <span>{cashier.name}</span>
+                            </div>
+                          </td>
+                          <td className="px-4 py-3 text-right">
+                            <span className="px-2 py-1 bg-blue-100 text-blue-700 rounded text-sm">
+                              {cashier.salesCount}
+                            </span>
+                          </td>
+                          <td className="px-4 py-3 text-right text-lg text-green-600">
+                            {formatNumber(cashier.totalRevenue, 2, false)}
+                          </td>
+                          <td className="px-4 py-3 text-right text-sm">
+                            {formatNumber(cashier.avgSale, 2, false)}
+                          </td>
+                          <td className="px-4 py-3 text-right text-sm">
+                            {formatNumber(cashier.cashSales, 2, false)}
+                          </td>
+                          <td className="px-4 py-3 text-right text-sm">
+                            {formatNumber(cashier.cardSales, 2, false)}
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              </div>
+            )}
+
+            {selectedTab === 'top-products' && (() => {
+              const topProducts = getTopProducts(20);
+              return (
+                <div className="space-y-4">
+                  <div className="bg-white rounded-lg border p-4">
+                    <h3 className="text-lg mb-4 flex items-center gap-2">
+                      <Award className="w-5 h-5 text-yellow-600" />
+                      {tm('enCokSatanlar')} (TOP 20)
+                    </h3>
+                    {topProducts.length === 0 ? (
+                      <p className="text-sm text-slate-500 py-8 text-center">
+                        Seçili güne ait satış kalemi yok. Tarihi değiştirin veya restoran modunda kapalı siparişlerin yüklendiğinden emin olun.
+                      </p>
+                    ) : (
+                    <div className="overflow-x-auto overflow-y-auto max-h-[600px]" style={{ scrollbarWidth: 'thin', scrollbarColor: '#cbd5e1 #f1f5f9' }}>
+                      <table className="w-full min-w-[900px]">
+                        <thead className="bg-gray-50 border-b sticky top-0">
+                          <tr>
+                            <th className="px-4 py-3 text-left text-sm">{tm('rankLabel')}</th>
+                            <th className="px-4 py-3 text-left text-sm">{tm('productNameLabel')}</th>
+                            <th className="px-4 py-3 text-left text-sm">{tm('categoryLabel')}</th>
+                            <th className="px-4 py-3 text-right text-sm">{tm('salesQuantityLabel')}</th>
+                            <th className="px-4 py-3 text-right text-sm">{tm('totalRevenueLabel')}</th>
+                            <th className="px-4 py-3 text-right text-sm">{tm('avgPriceLabel')}</th>
+                            <th className="px-4 py-3 text-right text-sm">{tm('stockLabel')}</th>
+                          </tr>
+                        </thead>
+                        <tbody className="divide-y">
+                          {topProducts.map((product) => (
+                            <tr key={product.id} className="hover:bg-gray-50">
+                              <td className="px-4 py-3">
+                                <div className={`w-8 h-8 rounded flex items-center justify-center text-white text-sm font-bold ${product.rank <= 3 ? 'bg-yellow-500' : 'bg-gray-400'
+                                  }`}>
+                                  {product.rank}
+                                </div>
+                              </td>
+                              <td className="px-4 py-3 font-medium">{product.name}</td>
+                              <td className="px-4 py-3 text-sm text-gray-600">{product.category}</td>
+                              <td className="px-4 py-3 text-right">
+                                <span className="px-2 py-1 bg-blue-100 text-blue-700 rounded text-sm font-semibold">
+                                  {product.quantity}
+                                </span>
+                              </td>
+                              <td className="px-4 py-3 text-right text-green-600 font-semibold">
+                                {formatNumber(product.revenue, 2, false)} {reportCurrency}
+                              </td>
+                              <td className="px-4 py-3 text-right text-sm">{formatNumber(product.avgPrice, 2, false)} {reportCurrency}</td>
+                              <td className="px-4 py-3 text-right">
+                                <span className={`px-2 py-1 rounded text-sm ${product.stock < 30 ? 'bg-red-100 text-red-700' : 'bg-green-100 text-green-700'
+                                  }`}>
+                                  {product.stock}
+                                </span>
+                              </td>
+                            </tr>
+                          ))}
+                        </tbody>
+                      </table>
+                    </div>
+                    )}
+                  </div>
+                </div>
+              );
+            })()}
+
+            {selectedTab === 'category-analysis' && (() => {
+              const categories = getCategoryAnalysis();
+              const COLORS = ['#0088FE', '#00C49F', '#FFBB28', '#FF8042', '#8884D8', '#82CA9D', '#FFC658', '#FF7300'];
+              return (
+                <div className="space-y-4">
+                  <p className="text-sm text-slate-600 bg-slate-50 border border-slate-100 rounded-lg px-3 py-2">
+                    {tm('reportsCategoryByDateHint')}
+                  </p>
+                  {categories.length === 0 ? (
+                    <div className="bg-white rounded-lg border p-12 text-center text-slate-500">
+                      {tm('reportsCategoryNoSalesEmpty')}
+                    </div>
+                  ) : (
+                  <div className="grid grid-cols-2 gap-4">
+                    <div className="bg-white rounded-lg border p-4">
+                      <h3 className="text-lg mb-4 flex items-center gap-2">
+                        <PieChartIcon className="w-5 h-5 text-blue-600" />
+                        {tm('categoryDistributionRevenue')}
+                      </h3>
+                      <ResponsiveContainer width="100%" height={300}>
+                        <RePieChart>
+                          <Pie
+                            data={categories.slice(0, 8).map((c, i) => ({ name: c.name, value: c.totalRevenue, fill: COLORS[i % COLORS.length] }))}
+                            cx="50%"
+                            cy="50%"
+                            labelLine={false}
+                            label={({ name, percent }) => `${name} ${(percent * 100).toFixed(0)}%`}
+                            outerRadius={100}
+                            fill="#8884d8"
+                            dataKey="value"
+                          >
+                            {categories.slice(0, 8).map((_, index) => (
+                              <Cell key={`cell-${index}`} fill={COLORS[index % COLORS.length]} />
+                            ))}
+                          </Pie>
+                          <Tooltip formatter={(value: number) => formatNumber(value, 2, false)} />
+                        </RePieChart>
+                      </ResponsiveContainer>
+                    </div>
+                    <div className="bg-white rounded-lg border p-4">
+                      <h3 className="text-lg mb-4 flex items-center gap-2">
+                        <BarChart3 className="w-5 h-5 text-green-600" />
+                        {tm('categoryPerformance')}
+                      </h3>
+                      <div className="overflow-x-auto overflow-y-auto max-h-[300px]" style={{ scrollbarWidth: 'thin', scrollbarColor: '#cbd5e1 #f1f5f9' }}>
+                        <table className="w-full min-w-[700px]">
+                          <thead className="bg-gray-50 border-b sticky top-0">
+                            <tr>
+                              <th className="px-4 py-2 text-left text-sm">{tm('categoryLabel')}</th>
+                              <th className="px-4 py-2 text-right text-sm">{tm('totalRevenueLabel')}</th>
+                              <th className="px-4 py-2 text-right text-sm">{tm('salesQuantityLabel')}</th>
+                              <th className="px-4 py-2 text-right text-sm">{tm('avgPriceLabel')}</th>
+                            </tr>
+                          </thead>
+                          <tbody className="divide-y">
+                            {categories.map((cat, idx) => (
+                              <tr key={cat.name} className="hover:bg-gray-50">
+                                <td className="px-4 py-2">
+                                  <div className="flex items-center gap-2">
+                                    <div className="w-3 h-3 rounded" style={{ backgroundColor: COLORS[idx % COLORS.length] }}></div>
+                                    {cat.name}
+                                  </div>
+                                </td>
+                                <td className="px-4 py-2 text-right font-semibold text-green-600">
+                                  {formatNumber(cat.totalRevenue, 2, false)} {reportCurrency}
+                                </td>
+                                <td className="px-4 py-2 text-right">
+                                  <span className="px-2 py-1 bg-blue-100 text-blue-700 rounded text-sm">
+                                    {cat.totalQuantity}
+                                  </span>
+                                </td>
+                                <td className="px-4 py-2 text-right text-sm">{formatNumber(cat.avgPrice, 2, false)} {reportCurrency}</td>
+                              </tr>
+                            ))}
+                          </tbody>
+                        </table>
+                      </div>
+                    </div>
+                  </div>
+                  )}
+                </div>
+              );
+            })()}
+
+            {selectedTab === 'hourly-analysis' && (() => {
+              const hourlyData = getHourlyAnalysis();
+              return (
+                <div className="space-y-4">
+                  <p className="text-sm text-slate-600 bg-slate-50 border border-slate-100 rounded-lg px-3 py-2">
+                    {tm('reportsHourlyByDateHint')}
+                  </p>
+                  {hourlyData.length === 0 ? (
+                    <div className="bg-white rounded-lg border p-12 text-center text-slate-500">
+                      {tm('reportsHourlyNoSalesEmpty')}
+                    </div>
+                  ) : (
+                  <>
+                  <div className="bg-white rounded-lg border p-4">
+                    <h3 className="text-lg mb-4 flex items-center gap-2">
+                      <Clock className="w-5 h-5 text-purple-600" />
+                      {tm('hourlySalesAnalysis')}
+                    </h3>
+                    <ResponsiveContainer width="100%" height={400}>
+                      <BarChart data={hourlyData}>
+                        <CartesianGrid strokeDasharray="3 3" />
+                        <XAxis dataKey="label" />
+                        <YAxis yAxisId="left" orientation="left" stroke="#8884d8" />
+                        <YAxis yAxisId="right" orientation="right" stroke="#82ca9d" />
+                        <Tooltip />
+                        <Legend />
+                        <Bar yAxisId="left" dataKey="sales" fill="#3b82f6" name={tm('transactionCount')} />
+                        <Bar yAxisId="right" dataKey="revenue" fill="#10b981" name={tm('totalRevenueLabel') + ' (' + reportCurrency + ')'} />
+                      </BarChart>
+                    </ResponsiveContainer>
+                  </div>
+                  <div className="bg-white rounded-lg border">
+                    <div className="p-4 border-b">
+                      <h4 className="text-md">{tm('detailedHourlyData')}</h4>
+                    </div>
+                    <div className="overflow-x-auto overflow-y-auto max-h-[600px]" style={{ scrollbarWidth: 'thin', scrollbarColor: '#cbd5e1 #f1f5f9' }}>
+                      <table className="w-full min-w-[700px]">
+                        <thead className="bg-gray-50 border-b sticky top-0">
+                          <tr>
+                            <th className="px-4 py-3 text-left text-sm">{tm('hourLabel')}</th>
+                            <th className="px-4 py-3 text-right text-sm">{tm('transactionCount')}</th>
+                            <th className="px-4 py-3 text-right text-sm">{tm('totalRevenueLabel')}</th>
+                            <th className="px-4 py-3 text-right text-sm">{tm('avgSaleLabel')}</th>
+                          </tr>
+                        </thead>
+                        <tbody className="divide-y">
+                          {hourlyData.map((hour) => (
+                            <tr key={hour.hour} className="hover:bg-gray-50">
+                              <td className="px-4 py-3 font-medium">{hour.label}</td>
+                              <td className="px-4 py-3 text-right">
+                                <span className="px-2 py-1 bg-blue-100 text-blue-700 rounded text-sm">
+                                  {hour.sales}
+                                </span>
+                              </td>
+                              <td className="px-4 py-3 text-right text-green-600 font-semibold">
+                                {formatNumber(hour.revenue, 2, false)} {reportCurrency}
+                              </td>
+                              <td className="px-4 py-3 text-right text-sm">
+                                {hour.sales > 0 ? formatNumber(hour.revenue / hour.sales, 2, false) : '0'} {reportCurrency}
+                              </td>
+                            </tr>
+                          ))}
+                        </tbody>
+                      </table>
+                    </div>
+                  </div>
+                  </>
+                  )}
+                </div>
+              );
+            })()}
+
+            {selectedTab === 'cash-status' && (() => {
+              const cashStatus = getCashStatus();
+              return (
+                <div className="space-y-4">
+                  <div className="grid grid-cols-4 gap-4">
+                    <div className="bg-white rounded-lg border-2 border-blue-200 p-4">
+                      <div className="flex items-center justify-between">
+                        <div>
+                          <p className="text-sm text-gray-600">{tm('openingCash')}</p>
+                          <p className="text-2xl text-blue-600 mt-1 font-bold">{formatNumber(cashStatus.openingCash, 2, false)} {reportCurrency}</p>
+                          {(selectedDateFrom !== localTodayDateKey() || selectedDateTo !== localTodayDateKey()) && (
+                            <p className="text-xs text-amber-700 mt-1 max-w-[14rem] leading-snug">
+                              Geçmiş gün seçili: açılış tutarı yalnızca bugün ve bu cihazdaki kasa açılışından okunur.
+                            </p>
+                          )}
+                        </div>
+                        <Banknote className="w-12 h-12 text-blue-600 opacity-20" />
+                      </div>
+                    </div>
+                    <div className="bg-white rounded-lg border-2 border-green-200 p-4">
+                      <div className="flex items-center justify-between">
+                        <div>
+                          <p className="text-sm text-gray-600">{tm('todayCash')}</p>
+                          <p className="text-2xl text-green-600 mt-1 font-bold">{formatNumber(cashStatus.todayCash, 2, false)} {reportCurrency}</p>
+                        </div>
+                        <Banknote className="w-12 h-12 text-green-600 opacity-20" />
+                      </div>
+                    </div>
+                    <div className="bg-white rounded-lg border-2 border-purple-200 p-4">
+                      <div className="flex items-center justify-between">
+                        <div>
+                          <p className="text-sm text-gray-600">{tm('todayCard')}</p>
+                          <p className="text-2xl text-purple-600 mt-1 font-bold">{formatNumber(cashStatus.todayCard, 2, false)} {reportCurrency}</p>
+                        </div>
+                        <CreditCard className="w-12 h-12 text-purple-600 opacity-20" />
+                      </div>
+                    </div>
+                    <div className="bg-white rounded-lg border-2 border-orange-200 p-4">
+                      <div className="flex items-center justify-between">
+                        <div>
+                          <p className="text-sm text-gray-600">{tm('closingCash')}</p>
+                          <p className="text-2xl text-orange-600 mt-1 font-bold">{formatNumber(cashStatus.closingCash, 2, false)} {reportCurrency}</p>
+                        </div>
+                        <Banknote className="w-12 h-12 text-orange-600 opacity-20" />
+                      </div>
+                    </div>
+                  </div>
+
+                  <div className="grid grid-cols-2 gap-4">
+                    <div className="bg-white rounded-lg border p-4">
+                      <h3 className="text-lg mb-4">{tm('paymentDistribution')}</h3>
+                      <div className="space-y-3">
+                        <div className="flex items-center justify-between p-3 bg-gray-50 rounded-lg">
+                          <span className="flex items-center gap-2">
+                            <div className="w-3 h-3 bg-green-500 rounded"></div>
+                            {tm('cashLabel')}
+                          </span>
+                          <span className="font-semibold text-green-600">{formatNumber(cashStatus.todayCash, 2, false)} {reportCurrency}</span>
+                        </div>
+                        <div className="flex items-center justify-between p-3 bg-gray-50 rounded-lg">
+                          <span className="flex items-center gap-2">
+                            <div className="w-3 h-3 bg-blue-500 rounded"></div>
+                            {tm('cardLabel')}
+                          </span>
+                          <span className="font-semibold text-blue-600">{formatNumber(cashStatus.todayCard, 2, false)} {reportCurrency}</span>
+                        </div>
+                        <div className="flex items-center justify-between p-3 bg-gray-50 rounded-lg">
+                          <span className="flex items-center gap-2">
+                            <div className="w-3 h-3 bg-orange-500 rounded"></div>
+                            {tm('transferLabel')}
+                          </span>
+                          <span className="font-semibold text-orange-600">{formatNumber(cashStatus.todayTransfer, 2, false)} {reportCurrency}</span>
+                        </div>
+                        <div className="flex items-center justify-between p-3 bg-green-50 rounded-lg border-2 border-green-200">
+                          <span className="font-semibold">{tm('totalLabel_rep')}</span>
+                          <span className="font-bold text-green-700 text-lg">{formatNumber(cashStatus.todayTotal, 2, false)} {reportCurrency}</span>
+                        </div>
+                      </div>
+                    </div>
+
+                    <div className="bg-white rounded-lg border p-4">
+                      <h3 className="text-lg mb-4">{tm('cardTypes')}</h3>
+                      <p className="text-xs text-gray-500 mb-3">
+                        Fişlerde kart markası yok; ödeme tipine göre (kredi kartı / sanal POS) gruplanır.
+                      </p>
+                      <div className="space-y-3">
+                        {cashStatus.cards.length === 0 ? (
+                          <div className="p-4 text-center text-sm text-gray-500 bg-gray-50 rounded-lg">
+                            Seçili günde kartlı ödeme yok veya tutar sıfır.
+                          </div>
+                        ) : (
+                          cashStatus.cards.map((card) => (
+                            <div key={card.name} className="flex items-center justify-between p-3 bg-gray-50 rounded-lg">
+                              <span>{card.name}</span>
+                              <span className="font-semibold text-blue-600">{formatNumber(card.amount, 2, false)} {reportCurrency}</span>
+                            </div>
+                          ))
+                        )}
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              );
+            })()}
+
+            {selectedTab === 'payment-distribution' && (() => {
+              const paymentDist: any = getPaymentDistribution();
+              const COLORS = ['#10b981', '#3b82f6', '#f59e0b'];
+              return (
+                <div className="space-y-4">
+                  <div className="grid grid-cols-3 gap-4">
+                    <div className="bg-white rounded-lg border-2 border-green-200 p-4">
+                      <div className="flex items-center justify-between">
+                        <div>
+                          <p className="text-sm text-gray-600">{tm('cashLabel')}</p>
+                          <p className="text-2xl text-green-600 mt-1 font-bold">{formatNumber(paymentDist.cash.amount, 2, false)} {reportCurrency}</p>
+                          <p className="text-xs text-gray-500 mt-1">
+                            {tm('reportsPaymentTxnLine')
+                              .replace('{count}', String(paymentDist.cash.count))
+                              .replace('{pct}', paymentDist.cash.percentage.toFixed(1))}
+                          </p>
+                        </div>
+                        <Banknote className="w-12 h-12 text-green-600 opacity-20" />
+                      </div>
+                    </div>
+                    <div className="bg-white rounded-lg border-2 border-blue-200 p-4">
+                      <div className="flex items-center justify-between">
+                        <div>
+                          <p className="text-sm text-gray-600">{tm('cardLabel')}</p>
+                          <p className="text-2xl text-blue-600 mt-1 font-bold">{formatNumber(paymentDist.card.amount, 2, false)} {reportCurrency}</p>
+                          <p className="text-xs text-gray-500 mt-1">
+                            {tm('reportsPaymentTxnLine')
+                              .replace('{count}', String(paymentDist.card.count))
+                              .replace('{pct}', paymentDist.card.percentage.toFixed(1))}
+                          </p>
+                        </div>
+                        <CreditCard className="w-12 h-12 text-blue-600 opacity-20" />
+                      </div>
+                    </div>
+                    <div className="bg-white rounded-lg border-2 border-orange-200 p-4">
+                      <div className="flex items-center justify-between">
+                        <div>
+                          <p className="text-sm text-gray-600">{tm('transferLabel')}</p>
+                          <p className="text-2xl text-orange-600 mt-1 font-bold">{formatNumber(paymentDist.transfer.amount, 2, false)} {reportCurrency}</p>
+                          <p className="text-xs text-gray-500 mt-1">
+                            {tm('reportsPaymentTxnLine')
+                              .replace('{count}', String(paymentDist.transfer.count))
+                              .replace('{pct}', paymentDist.transfer.percentage.toFixed(1))}
+                          </p>
+                        </div>
+                        <CreditCard className="w-12 h-12 text-orange-600 opacity-20" />
+                      </div>
+                    </div>
+                  </div>
+
+                  <div className="bg-white rounded-lg border p-4">
+                    <h3 className="text-lg mb-4 flex items-center gap-2">
+                      <PieChartIcon className="w-5 h-5 text-blue-600" />
+                      {t.paymentMethodDistribution}
+                    </h3>
+                    <div className="grid grid-cols-2 gap-4">
+                      <ResponsiveContainer width="100%" height={300}>
+                        <RePieChart>
+                          <Pie
+                            data={paymentDist.chartData}
+                            cx="50%"
+                            cy="50%"
+                            labelLine={false}
+                            label={({ name, percent }) => `${name} ${(percent * 100).toFixed(0)}%`}
+                            outerRadius={100}
+                            fill="#8884d8"
+                            dataKey="value"
+                          >
+                            {paymentDist.chartData.map((entry: any, index: number) => (
+                              <Cell key={`cell-${index}`} fill={COLORS[index % COLORS.length]} />
+                            ))}
+                          </Pie>
+                          <Tooltip formatter={(value: number) => formatNumber(value, 2, false)} />
+                        </RePieChart>
+                      </ResponsiveContainer>
+                      <div className="space-y-3">
+                        {paymentDist.chartData.map((item: any, idx: number) => (
+                          <div key={item.name} className="flex items-center justify-between p-3 bg-gray-50 rounded-lg">
+                            <div className="flex items-center gap-3">
+                              <div className="w-4 h-4 rounded" style={{ backgroundColor: COLORS[idx] }}></div>
+                              <span className="font-medium">{item.name}</span>
+                            </div>
+                            <div className="text-right">
+                              <p className="font-semibold">{formatNumber(item.value, 2, false)} {reportCurrency}</p>
+                              <p className="text-xs text-gray-500">{tm('reportsPaymentTxnShort').replace('{n}', String(item.count))}</p>
+                            </div>
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              );
+            })()}
+
+            {selectedTab === 'discount-report' && (() => {
+              const discounts = getDiscountReport();
+              const totalDiscount = discounts.reduce((sum, d) => sum + d.discountAmount, 0);
+              const totalCount = discounts.reduce((sum, d) => sum + d.salesCount, 0);
+              return (
+                <div className="space-y-4">
+                  <p className="text-sm text-slate-600 bg-slate-50 border border-slate-100 rounded-lg px-3 py-2">
+                    {tm('reportsDiscountReportIntro')}
+                  </p>
+                  <div className="bg-white rounded-lg border-2 border-orange-200 p-4">
+                    <div className="flex items-center justify-between">
+                      <div>
+                        <p className="text-sm text-gray-600">{tm('reportsDiscountTotalAmountCol')}</p>
+                        <p className="text-3xl text-orange-600 mt-1 font-bold">{formatNumber(totalDiscount, 2, false)} {reportCurrency}</p>
+                        <p className="text-xs text-gray-500 mt-1">{tm('reportsDiscountAppliedCount').replace('{count}', String(totalCount))}</p>
+                      </div>
+                      <Percent className="w-16 h-16 text-orange-600 opacity-20" />
+                    </div>
+                  </div>
+
+                  {discounts.length === 0 ? (
+                    <div className="bg-white rounded-lg border p-12 text-center text-slate-500">
+                      {tm('reportsDiscountNoLinesEmpty')}
+                    </div>
+                  ) : (
+                  <div className="bg-white rounded-lg border">
+                    <div className="p-4 border-b">
+                      <h3 className="text-lg flex items-center gap-2">
+                        <Percent className="w-5 h-5 text-orange-600" />
+                        {tm('reportsDiscountDetailsTitle')}
+                      </h3>
+                    </div>
+                    <div className="overflow-x-auto overflow-y-auto max-h-[600px]" style={{ scrollbarWidth: 'thin', scrollbarColor: '#cbd5e1 #f1f5f9' }}>
+                      <table className="w-full min-w-[800px]">
+                        <thead className="bg-gray-50 border-b sticky top-0">
+                          <tr>
+                            <th className="px-4 py-3 text-left text-sm">{tm('reportsDiscountTypeCol')}</th>
+                            <th className="px-4 py-3 text-right text-sm">{tm('transactionCount')}</th>
+                            <th className="px-4 py-3 text-right text-sm">{tm('reportsTotalDiscount')}</th>
+                            <th className="px-4 py-3 text-right text-sm">{tm('reportsAverageDiscountCol')}</th>
+                            <th className="px-4 py-3 text-right text-sm">{tm('reportsRatePercentCol')}</th>
+                          </tr>
+                        </thead>
+                        <tbody className="divide-y">
+                          {discounts.map((discount) => (
+                            <tr key={discount.name} className="hover:bg-gray-50">
+                              <td className="px-4 py-3 font-medium">{discount.name}</td>
+                              <td className="px-4 py-3 text-right">
+                                <span className="px-2 py-1 bg-blue-100 text-blue-700 rounded text-sm">
+                                  {discount.salesCount}
+                                </span>
+                              </td>
+                              <td className="px-4 py-3 text-right text-orange-600 font-semibold">
+                                {formatNumber(discount.discountAmount, 2, false)} {reportCurrency}
+                              </td>
+                              <td className="px-4 py-3 text-right text-sm">
+                                {formatNumber(discount.avgDiscount, 2, false)} {reportCurrency}
+                              </td>
+                              <td className="px-4 py-3 text-right">
+                                <span className="px-2 py-1 bg-green-100 text-green-700 rounded text-sm">
+                                  {totalDiscount > 0 ? ((discount.discountAmount / totalDiscount) * 100).toFixed(1) : '0.0'}%
+                                </span>
+                              </td>
+                            </tr>
+                          ))}
+                          <tr className="bg-gray-50 font-bold">
+                            <td className="px-4 py-3">{tm('reportsTotalUpper')}</td>
+                            <td className="px-4 py-3 text-right">{totalCount}</td>
+                            <td className="px-4 py-3 text-right text-orange-600">{formatNumber(totalDiscount, 2, false)} {reportCurrency}</td>
+                            <td className="px-4 py-3 text-right">
+                              {totalCount > 0 ? formatNumber(totalDiscount / totalCount, 2, false) : '0'} {reportCurrency}
+                            </td>
+                            <td className="px-4 py-3 text-right">100%</td>
+                          </tr>
+                        </tbody>
+                      </table>
+                    </div>
+                  </div>
+                  )}
+                </div>
+              );
+            })()}
+
+            {selectedTab === 'stock-status' && (() => {
+              const stockStatus = getStockStatus();
+              return (
+                <div className="space-y-4">
+                  {stockReportLoading && (
+                    <div className="flex items-center gap-2 text-sm text-gray-600 bg-amber-50 border border-amber-100 rounded-lg px-3 py-2">
+                      <Spin size="small" />
+                      {tm('reportsStockLoadingProducts')}
+                    </div>
+                  )}
+                  <div className="grid grid-cols-4 gap-4">
+                    <div className="bg-white rounded-lg border-2 border-blue-200 p-4">
+                      <div className="flex items-center justify-between">
+                        <div>
+                          <p className="text-sm text-gray-600">{tm('reportsTotalProducts')}</p>
+                          <p className="text-3xl text-blue-600 mt-1 font-bold">{stockStatus.totalProducts}</p>
+                        </div>
+                        <Package className="w-12 h-12 text-blue-600 opacity-20" />
+                      </div>
+                    </div>
+                    <div className="bg-white rounded-lg border-2 border-red-200 p-4">
+                      <div className="flex items-center justify-between">
+                        <div>
+                          <p className="text-sm text-gray-600">{tm('reportsOutOfStock')}</p>
+                          <p className="text-3xl text-red-600 mt-1 font-bold">{stockStatus.outOfStock}</p>
+                        </div>
+                        <AlertCircle className="w-12 h-12 text-red-600 opacity-20" />
+                      </div>
+                    </div>
+                    <div className="bg-white rounded-lg border-2 border-orange-200 p-4">
+                      <div className="flex items-center justify-between">
+                        <div>
+                          <p className="text-sm text-gray-600">{tm('reportsLowStock')}</p>
+                          <p className="text-3xl text-orange-600 mt-1 font-bold">{stockStatus.lowStock}</p>
+                        </div>
+                        <TrendingDown className="w-12 h-12 text-orange-600 opacity-20" />
+                      </div>
+                    </div>
+                    <div className="bg-white rounded-lg border-2 border-green-200 p-4">
+                      <div className="flex items-center justify-between">
+                        <div>
+                          <p className="text-sm text-gray-600">{tm('reportsStockValue')}</p>
+                          <p className="text-xl text-green-600 mt-1 font-bold">{formatNumber(stockStatus.totalStockValue, 2, false)} {reportCurrency}</p>
+                        </div>
+                        <Banknote className="w-12 h-12 text-green-600 opacity-20" />
+                      </div>
+                    </div>
+                  </div>
+
+                  <div className="bg-white rounded-lg border">
+                    <div className="p-4 border-b flex items-center justify-between">
+                      <h3 className="text-lg flex items-center gap-2">
+                        <AlertCircle className="w-5 h-5 text-orange-600" />
+                        {tm('reportsLowStockAlertsTitle')}
+                      </h3>
+                      <span className="text-sm text-gray-600">
+                        {tm('reportsLowStockThresholdHint').replace('{n}', String(stockStatus.lowStockThreshold))}
+                      </span>
+                    </div>
+                    <div className="overflow-x-auto overflow-y-auto max-h-[600px]" style={{ scrollbarWidth: 'thin', scrollbarColor: '#cbd5e1 #f1f5f9' }}>
+                      <table className="w-full min-w-[900px]">
+                        <thead className="bg-gray-50 border-b sticky top-0">
+                          <tr>
+                            <th className="px-4 py-3 text-left text-sm">{tm('productNameLabel')}</th>
+                            <th className="px-4 py-3 text-left text-sm">{tm('categoryLabel')}</th>
+                            <th className="px-4 py-3 text-right text-sm">{tm('reportsCurrentStock')}</th>
+                            <th className="px-4 py-3 text-right text-sm">{tm('reportsMinStockCol')}</th>
+                            <th className="px-4 py-3 text-right text-sm">{tm('reportsPriceCol')}</th>
+                            <th className="px-4 py-3 text-right text-sm">{tm('reportsStockValue')}</th>
+                            <th className="px-4 py-3 text-center text-sm">{tm('reportsStatusCol')}</th>
+                          </tr>
+                        </thead>
+                        <tbody className="divide-y">
+                          {stockStatus.lowStockItems.length === 0 ? (
+                            <tr>
+                              <td colSpan={7} className="px-4 py-10 text-center text-gray-500 text-sm">
+                                {tm('reportsNoLowStockProducts')}
+                              </td>
+                            </tr>
+                          ) : (
+                            stockStatus.lowStockItems.map((item, idx) => (
+                              <tr key={idx} className="hover:bg-gray-50">
+                                <td className="px-4 py-3 font-medium">{item.name}</td>
+                                <td className="px-4 py-3 text-sm text-gray-600">{item.category}</td>
+                                <td className="px-4 py-3 text-right">
+                                  <span className={`px-2 py-1 rounded text-sm font-semibold ${item.stock === 0
+                                    ? 'bg-red-100 text-red-700'
+                                    : item.stock <= item.minStock
+                                      ? 'bg-orange-100 text-orange-700'
+                                      : 'bg-green-100 text-green-700'
+                                    }`}>
+                                    {item.stock}
+                                  </span>
+                                </td>
+                                <td className="px-4 py-3 text-right text-sm">{item.minStock}</td>
+                                <td className="px-4 py-3 text-right text-sm">{formatNumber(item.price, 2, false)} {reportCurrency}</td>
+                                <td className="px-4 py-3 text-right text-sm">{formatNumber(item.value, 2, false)} {reportCurrency}</td>
+                                <td className="px-4 py-3 text-center">
+                                  {item.stock === 0 ? (
+                                    <span className="px-2 py-1 bg-red-100 text-red-700 rounded text-xs">{tm('reportsOutOfStock')}</span>
+                                  ) : (
+                                    <span className="px-2 py-1 bg-orange-100 text-orange-700 rounded text-xs">{tm('reportsLowBadge')}</span>
+                                  )}
+                                </td>
+                              </tr>
+                            ))
+                          )}
+                        </tbody>
+                      </table>
+                    </div>
+                  </div>
+                </div>
+              );
+            })()}
+
+            {selectedTab === 'comparison' && (() => {
+              const comparison = comparisonBundle;
+              const w = comparison.windows;
+              const rangeLine = `${formatIsoDateTr(w.previousFrom)} – ${formatIsoDateTr(w.previousTo)} · ${formatIsoDateTr(w.currentFrom)} – ${formatIsoDateTr(w.currentTo)}`;
+              const srcLabel =
+                comparison.dataSource === 'erp'
+                  ? tm('reportsComparisonSourceErp')
+                  : tm('reportsComparisonSourceRest');
+              const trendClass = (ch: number) =>
+                ch > 0 ? 'text-green-600' : ch < 0 ? 'text-red-600' : 'text-gray-500';
+              const trendArrow = (ch: number) => (ch > 0 ? '↑' : ch < 0 ? '↓' : '→');
+
+              return (
+                <div className="space-y-4">
+                  {businessType === 'restaurant' && loadingComparisonOrders && (
+                    <div className="flex items-center gap-2 text-sm text-gray-600 bg-slate-50 border border-slate-200 rounded-lg px-3 py-2">
+                      <Spin size="small" />
+                      {tm('reportsLoadingClosedOrders')}
+                    </div>
+                  )}
+                  <div className="bg-white rounded-lg border p-4">
+                    <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 mb-4">
+                      <div>
+                        <h3 className="text-lg flex items-center gap-2">
+                          <BarChart3 className="w-5 h-5 text-purple-600" />
+                          {tm('reportsPeriodComparisonTitle')}
+                        </h3>
+                        <p className="text-xs text-gray-500 mt-1">{rangeLine}</p>
+                        <p className="text-xs text-gray-400 mt-0.5">{srcLabel}</p>
+                      </div>
+                      <select
+                        value={comparisonPeriod}
+                        onChange={(e) => setComparisonPeriod(e.target.value as 'week' | 'month')}
+                        className="px-4 py-2 border rounded-lg focus:outline-none focus:border-blue-500 shrink-0"
+                      >
+                        <option value="week">{tm('reportsPeriodWeekly')}</option>
+                        <option value="month">{tm('reportsPeriodMonthly')}</option>
+                      </select>
+                    </div>
+
+                    <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-4 gap-4">
+                      <div className="bg-gray-50 rounded-lg p-4 border-2 border-blue-200">
+                        <p className="text-sm text-gray-600 mb-2">{tm('totalSales')}</p>
+                        <div className="flex items-baseline gap-2">
+                          <p className="text-2xl font-bold text-blue-600">{comparison.current.totalSales}</p>
+                          <span className={`text-sm font-semibold ${trendClass(comparison.change.sales)}`}>
+                            {trendArrow(comparison.change.sales)} {Math.abs(comparison.change.sales)}%
+                          </span>
+                        </div>
+                        <p className="text-xs text-gray-500 mt-1">{comparison.previous.period}: {comparison.previous.totalSales}</p>
+                      </div>
+
+                      <div className="bg-gray-50 rounded-lg p-4 border-2 border-green-200">
+                        <p className="text-sm text-gray-600 mb-2">{tm('totalRevenueLabel')}</p>
+                        <div className="flex items-baseline gap-2">
+                          <p className="text-2xl font-bold text-green-600">{formatNumber(comparison.current.totalRevenue, 0, false)} {reportCurrency}</p>
+                          <span className={`text-sm font-semibold ${trendClass(comparison.change.revenue)}`}>
+                            {trendArrow(comparison.change.revenue)} {Math.abs(comparison.change.revenue)}%
+                          </span>
+                        </div>
+                        <p className="text-xs text-gray-500 mt-1">{comparison.previous.period}: {formatNumber(comparison.previous.totalRevenue, 0, false)} {reportCurrency}</p>
+                      </div>
+
+                      <div className="bg-gray-50 rounded-lg p-4 border-2 border-purple-200">
+                        <p className="text-sm text-gray-600 mb-2">{tm('reportsAvgSaleShort')}</p>
+                        <div className="flex items-baseline gap-2">
+                          <p className="text-2xl font-bold text-purple-600">{formatNumber(comparison.current.avgSale, 0, false)} {reportCurrency}</p>
+                          <span className={`text-sm font-semibold ${trendClass(comparison.change.avgSale)}`}>
+                            {trendArrow(comparison.change.avgSale)} {Math.abs(comparison.change.avgSale)}%
+                          </span>
+                        </div>
+                        <p className="text-xs text-gray-500 mt-1">{comparison.previous.period}: {formatNumber(comparison.previous.avgSale, 0, false)} {reportCurrency}</p>
+                      </div>
+
+                      <div className="bg-gray-50 rounded-lg p-4 border-2 border-orange-200">
+                        <p className="text-sm text-gray-600 mb-2">{tm('reportsCustomerCountLabel')}</p>
+                        <div className="flex items-baseline gap-2">
+                          <p className="text-2xl font-bold text-orange-600">{comparison.current.customerCount}</p>
+                          <span className={`text-sm font-semibold ${trendClass(comparison.change.customerCount)}`}>
+                            {trendArrow(comparison.change.customerCount)} {Math.abs(comparison.change.customerCount)}%
+                          </span>
+                        </div>
+                        <p className="text-xs text-gray-500 mt-1">{comparison.previous.period}: {comparison.previous.customerCount}</p>
+                      </div>
+                    </div>
+
+                    <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 mt-6">
+                      <div>
+                        <p className="text-sm font-medium text-gray-700 mb-2">{tm('reportCompareQtyChartTitle')}</p>
+                        <div className="h-56 w-full min-h-[14rem]">
+                          <ResponsiveContainer width="100%" height="100%">
+                            <BarChart data={comparison.chartCountData} margin={{ top: 8, right: 12, left: 4, bottom: 4 }}>
+                              <CartesianGrid strokeDasharray="3 3" stroke="#e2e8f0" />
+                              <XAxis dataKey="name" tick={{ fontSize: 11 }} />
+                              <YAxis tick={{ fontSize: 11 }} />
+                              <Tooltip />
+                              <Legend wrapperStyle={{ fontSize: 12 }} />
+                              <Bar dataKey="onceki" name={tm('reportChartPrevPeriod')} fill="#94a3b8" radius={[4, 4, 0, 0]} />
+                              <Bar dataKey="guncel" name={tm('reportChartCurrentPeriod')} fill="#6366f1" radius={[4, 4, 0, 0]} />
+                            </BarChart>
+                          </ResponsiveContainer>
+                        </div>
+                      </div>
+                      <div>
+                        <p className="text-sm font-medium text-gray-700 mb-2">{tm('reportCompareAmountChartTitle').replace('{c}', reportCurrency)}</p>
+                        <div className="h-56 w-full min-h-[14rem]">
+                          <ResponsiveContainer width="100%" height="100%">
+                            <BarChart data={comparison.chartMoneyData} margin={{ top: 8, right: 12, left: 4, bottom: 4 }}>
+                              <CartesianGrid strokeDasharray="3 3" stroke="#e2e8f0" />
+                              <XAxis dataKey="name" tick={{ fontSize: 11 }} />
+                              <YAxis tick={{ fontSize: 11 }} />
+                              <Tooltip formatter={(v: number | string) => formatNumber(Number(v), 2, false)} />
+                              <Legend wrapperStyle={{ fontSize: 12 }} />
+                              <Bar dataKey="onceki" name={tm('reportChartPrevPeriod')} fill="#94a3b8" radius={[4, 4, 0, 0]} />
+                              <Bar dataKey="guncel" name={tm('reportChartCurrentPeriod')} fill="#10b981" radius={[4, 4, 0, 0]} />
+                            </BarChart>
+                          </ResponsiveContainer>
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+
+                  <div className="bg-white rounded-lg border overflow-hidden">
+                    <div className="p-4 border-b flex items-center justify-between gap-2">
+                      <h3 className="text-lg font-semibold text-gray-800">{tm('reportProductCompareTitle')}</h3>
+                      <span className="text-xs text-gray-500">{tm('reportProductCompareSubtitle')}</span>
+                    </div>
+                    <div className="overflow-x-auto max-h-[420px] overflow-y-auto" style={{ scrollbarWidth: 'thin', scrollbarColor: '#cbd5e1 #f1f5f9' }}>
+                      <table className="w-full min-w-[720px] text-sm">
+                        <thead className="bg-gray-50 border-b sticky top-0 z-10">
+                          <tr>
+                            <th className="px-3 py-2 text-left font-medium text-gray-700">{tm('reportColProduct')}</th>
+                            <th className="px-3 py-2 text-right font-medium text-gray-700">{tm('reportColPrevQty')}</th>
+                            <th className="px-3 py-2 text-right font-medium text-gray-700">{tm('reportColCurrQty')}</th>
+                            <th className="px-3 py-2 text-right font-medium text-gray-700">{tm('reportColQtyDelta')}</th>
+                            <th className="px-3 py-2 text-right font-medium text-gray-700">{tm('reportColPrevRev')}</th>
+                            <th className="px-3 py-2 text-right font-medium text-gray-700">{tm('reportColCurrRev')}</th>
+                            <th className="px-3 py-2 text-right font-medium text-gray-700">{tm('reportColRevDelta')}</th>
+                          </tr>
+                        </thead>
+                        <tbody className="divide-y divide-gray-100">
+                          {comparison.productRows.length === 0 ? (
+                            <tr>
+                              <td colSpan={7} className="px-4 py-8 text-center text-gray-500">
+                                {tm('reportCompareNoProductRows')}
+                              </td>
+                            </tr>
+                          ) : (
+                            comparison.productRows.map((row) => (
+                              <tr key={row.key} className="hover:bg-gray-50">
+                                <td className="px-3 py-2 font-medium text-gray-900 max-w-[220px] truncate" title={row.name}>
+                                  {row.name}
+                                </td>
+                                <td className="px-3 py-2 text-right tabular-nums">{formatNumber(row.prevQty, 2, false)}</td>
+                                <td className="px-3 py-2 text-right tabular-nums">{formatNumber(row.currQty, 2, false)}</td>
+                                <td className={`px-3 py-2 text-right tabular-nums font-medium ${trendClass(row.qtyPct)}`}>
+                                  {trendArrow(row.qtyPct)} {Math.abs(row.qtyPct)}%
+                                </td>
+                                <td className="px-3 py-2 text-right tabular-nums">{formatNumber(row.prevRev, 2, false)}</td>
+                                <td className="px-3 py-2 text-right tabular-nums">{formatNumber(row.currRev, 2, false)}</td>
+                                <td className={`px-3 py-2 text-right tabular-nums font-medium ${trendClass(row.revPct)}`}>
+                                  {trendArrow(row.revPct)} {Math.abs(row.revPct)}%
+                                </td>
+                              </tr>
+                            ))
+                          )}
+                        </tbody>
+                      </table>
+                    </div>
+                  </div>
+                </div>
+              );
+            })()}
+
+            {selectedTab === 'materials' && <MaterialMovementReport />}
+
+            {selectedTab === 'purchase-promotion-report' && (
+              <div className="space-y-4">
+                <div className="bg-white rounded-xl border border-slate-200 p-4 flex flex-wrap items-end gap-4 shadow-sm">
+                  <ReportDateRangePresets
+                    value={purchasePromoDateRange}
+                    onChange={setPurchasePromoDateRange}
+                    tm={tm}
+                  />
+                  <Button type="primary" loading={loadingPurchasePromoReport} onClick={() => void reloadPurchasePromoReport()}>
+                    {tm('refresh')}
+                  </Button>
+                  <p className="text-xs text-slate-500 flex-1 min-w-[200px]">{tm('purchasePromotionReportHint')}</p>
+                </div>
+
+                <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3">
+                  <div className="bg-white rounded-xl border border-slate-200 p-4 shadow-sm">
+                    <p className="text-xs text-slate-500">{tm('purchasePromotionReport')}</p>
+                    <p className="text-2xl font-bold text-slate-800">{purchasePromoSummary.lineCount}</p>
+                  </div>
+                  <div className="bg-white rounded-xl border border-slate-200 p-4 shadow-sm">
+                    <p className="text-xs text-slate-500">{tm('purchasePromotionInvoiceCount')}</p>
+                    <p className="text-2xl font-bold text-slate-800">{purchasePromoSummary.invoiceCount}</p>
+                  </div>
+                  <div className="bg-white rounded-xl border border-slate-200 p-4 shadow-sm">
+                    <p className="text-xs text-slate-500">{tm('quantity')}</p>
+                    <p className="text-2xl font-bold text-slate-800">{formatNumber(purchasePromoSummary.totalQuantity, 2, false)}</p>
+                  </div>
+                  <div className="bg-white rounded-xl border border-slate-200 p-4 shadow-sm">
+                    <p className="text-xs text-slate-500">{tm('purchasePromotionAllocatedCost')}</p>
+                    <p className="text-2xl font-bold text-slate-800">
+                      {formatNumber(purchasePromoSummary.totalAllocatedCost, 2, false)} {reportCurrency}
+                    </p>
+                  </div>
+                </div>
+
+                <Spin spinning={loadingPurchasePromoReport}>
+                  <div className="bg-white rounded-xl border border-slate-200 overflow-hidden shadow-sm">
+                    <div className="overflow-x-auto">
+                      <table className="min-w-full text-sm">
+                        <thead className="bg-slate-50 text-slate-600">
+                          <tr>
+                            <th className="px-3 py-2 text-left">{tm('date')}</th>
+                            <th className="px-3 py-2 text-left">{tm('invoiceNo')}</th>
+                            <th className="px-3 py-2 text-left">{tm('supplier')}</th>
+                            <th className="px-3 py-2 text-left">{tm('productGridColCode')}</th>
+                            <th className="px-3 py-2 text-left">{tm('productName')}</th>
+                            <th className="px-3 py-2 text-right">{tm('quantity')}</th>
+                            <th className="px-3 py-2 text-right">{tm('unitCost')}</th>
+                            <th className="px-3 py-2 text-right">{tm('purchasePromotionAllocatedCost')}</th>
+                            <th className="px-3 py-2 text-right">{tm('purchasePromotionInvoicePaid')}</th>
+                          </tr>
+                        </thead>
+                        <tbody>
+                          {purchasePromoLines.length === 0 ? (
+                            <tr>
+                              <td colSpan={9} className="px-3 py-10 text-center text-slate-500">
+                                {tm('noDataFound')}
+                              </td>
+                            </tr>
+                          ) : (
+                            purchasePromoLines.map((row) => (
+                              <tr key={row.id} className="border-t border-slate-100 hover:bg-slate-50/80">
+                                <td className="px-3 py-2 whitespace-nowrap">{row.invoiceDate}</td>
+                                <td className="px-3 py-2 whitespace-nowrap font-medium">{row.invoiceNo}</td>
+                                <td className="px-3 py-2">{row.supplierName}</td>
+                                <td className="px-3 py-2 font-mono text-xs">{row.productCode}</td>
+                                <td className="px-3 py-2">{row.productName}</td>
+                                <td className="px-3 py-2 text-right tabular-nums">
+                                  {formatNumber(row.quantity, 2, false)} {row.unit}
+                                </td>
+                                <td className="px-3 py-2 text-right tabular-nums">
+                                  {formatNumber(row.allocatedUnitCost, 2, false)} {reportCurrency}
+                                </td>
+                                <td className="px-3 py-2 text-right tabular-nums">
+                                  {formatNumber(row.allocatedTotalCost, 2, false)} {reportCurrency}
+                                </td>
+                                <td className="px-3 py-2 text-right tabular-nums">
+                                  {formatNumber(row.invoicePaidTotal, 2, false)} {reportCurrency}
+                                </td>
+                              </tr>
+                            ))
+                          )}
+                        </tbody>
+                      </table>
+                    </div>
+                  </div>
+                </Spin>
+              </div>
+            )}
+
+            {selectedTab === 'expiring-products' && (() => {
+              const getDaysUntilExpiry = (expiryDate: string) => {
+                const today = new Date();
+                const expiry = new Date(expiryDate);
+                const diffTime = expiry.getTime() - today.getTime();
+                const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
+                return diffDays;
+              };
+
+              const getExpiryStatus = (expiryDate: string) => {
+                const days = getDaysUntilExpiry(expiryDate);
+                if (days < 0) return { status: 'expired', color: 'red', label: tm('reportsExpiringStatusExpired') };
+                if (days <= 7) return { status: 'critical', color: 'red', label: tm('reportsExpiringStatusCritical') };
+                if (days <= 30) return { status: 'warning', color: 'orange', label: tm('reportsExpiringStatusSoon') };
+                return { status: 'normal', color: 'yellow', label: tm('reportsExpiringStatusNormal') };
+              };
+
+              const expiredCount = expiringProducts.filter(p => p.expiry_date && getDaysUntilExpiry(p.expiry_date) < 0).length;
+              const criticalCount = expiringProducts.filter(p => {
+                if (!p.expiry_date) return false;
+                const days = getDaysUntilExpiry(p.expiry_date);
+                return days >= 0 && days <= 7;
+              }).length;
+              const warningCount = expiringProducts.filter(p => {
+                if (!p.expiry_date) return false;
+                const days = getDaysUntilExpiry(p.expiry_date);
+                return days > 7 && days <= 30;
+              }).length;
+
+              const totalValue = expiringProducts.reduce((sum, p) => {
+                return sum + ((p.unit_cost || 0) * (p.available_quantity || 0));
+              }, 0);
+
+              return (
+                <div className="space-y-4">
+                  {/* Filter & Stats */}
+                  <div className="bg-white rounded-lg border p-4">
+                    <div className="flex items-center justify-between mb-4">
+                      <h3 className="text-lg flex items-center gap-2">
+                        <AlertTriangle className="w-5 h-5 text-orange-600" />
+                        {tm('reportsExpiringTitle')}
+                      </h3>
+                      <div className="flex items-center gap-3">
+                        <label className="text-sm text-gray-600">{tm('reportsExpiringDayColon')}</label>
+                        <select
+                          value={expiringDays}
+                          onChange={(e) => setExpiringDays(Number(e.target.value))}
+                          className="px-3 py-2 border rounded-lg focus:outline-none focus:border-blue-500 text-sm"
+                        >
+                          <option value={7}>{tm('reportsExpiringDaysOption').replace('{n}', '7')}</option>
+                          <option value={15}>{tm('reportsExpiringDaysOption').replace('{n}', '15')}</option>
+                          <option value={30}>{tm('reportsExpiringDaysOption').replace('{n}', '30')}</option>
+                          <option value={60}>{tm('reportsExpiringDaysOption').replace('{n}', '60')}</option>
+                          <option value={90}>{tm('reportsExpiringDaysOption').replace('{n}', '90')}</option>
+                        </select>
+                      </div>
+                    </div>
+
+                    <div className="grid grid-cols-4 gap-4">
+                      <div className="bg-red-50 rounded-lg border-2 border-red-200 p-4">
+                        <div className="flex items-center justify-between">
+                          <div>
+                            <p className="text-sm text-gray-600">{tm('reportsExpiringExpired')}</p>
+                            <p className="text-3xl text-red-600 mt-1 font-bold">{expiredCount}</p>
+                          </div>
+                          <AlertCircle className="w-12 h-12 text-red-600 opacity-20" />
+                        </div>
+                      </div>
+                      <div className="bg-orange-50 rounded-lg border-2 border-orange-200 p-4">
+                        <div className="flex items-center justify-between">
+                          <div>
+                            <p className="text-sm text-gray-600">{tm('reportsExpiringCritical7')}</p>
+                            <p className="text-3xl text-orange-600 mt-1 font-bold">{criticalCount}</p>
+                          </div>
+                          <AlertTriangle className="w-12 h-12 text-orange-600 opacity-20" />
+                        </div>
+                      </div>
+                      <div className="bg-yellow-50 rounded-lg border-2 border-yellow-200 p-4">
+                        <div className="flex items-center justify-between">
+                          <div>
+                            <p className="text-sm text-gray-600">{tm('reportsExpiringSoon30')}</p>
+                            <p className="text-3xl text-yellow-600 mt-1 font-bold">{warningCount}</p>
+                          </div>
+                          <Clock className="w-12 h-12 text-yellow-600 opacity-20" />
+                        </div>
+                      </div>
+                      <div className="bg-blue-50 rounded-lg border-2 border-blue-200 p-4">
+                        <div className="flex items-center justify-between">
+                          <div>
+                            <p className="text-sm text-gray-600">{tm('reportsExpiringTotalValue')}</p>
+                            <p className="text-xl text-blue-600 mt-1 font-bold">{formatNumber(totalValue, 2, false)} {reportCurrency}</p>
+                          </div>
+                          <Banknote className="w-12 h-12 text-blue-600 opacity-20" />
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* Products Table */}
+                  <div className="bg-white rounded-lg border">
+                    <div className="p-4 border-b flex items-center justify-between">
+                      <h4 className="text-md font-semibold">{tm('reportsExpiringProductList')}</h4>
+                      {loadingExpiring && (
+                        <div className="flex items-center gap-2 text-sm text-gray-600">
+                          <div className="w-4 h-4 border-2 border-blue-600 border-t-transparent rounded-full animate-spin"></div>
+                          {tm('reportsExpiringLoading')}
+                        </div>
+                      )}
+                    </div>
+                    {loadingExpiring ? (
+                      <div className="p-8 text-center">
+                        <div className="w-12 h-12 border-4 border-blue-600 border-t-transparent rounded-full animate-spin mx-auto mb-4"></div>
+                        <p className="text-gray-600">{tm('reportsExpiringLoading')}</p>
+                      </div>
+                    ) : expiringProducts.length === 0 ? (
+                      <div className="p-8 text-center">
+                        <Package className="w-12 h-12 text-gray-400 mx-auto mb-4" />
+                        <p className="text-gray-600">{tm('reportsExpiringEmpty').replace('{n}', String(expiringDays))}</p>
+                      </div>
+                    ) : (
+                      <div className="overflow-x-auto overflow-y-auto max-h-[600px]" style={{ scrollbarWidth: 'thin', scrollbarColor: '#cbd5e1 #f1f5f9' }}>
+                        <table className="w-full min-w-[1000px]">
+                          <thead className="bg-gray-50 border-b sticky top-0">
+                            <tr>
+                              <th className="px-4 py-3 text-left text-sm">{tm('reportsExpiringThProductCode')}</th>
+                              <th className="px-4 py-3 text-left text-sm">{tm('reportsThProductName')}</th>
+                              <th className="px-4 py-3 text-left text-sm">{tm('reportsExpiringThLotSerial')}</th>
+                              <th className="px-4 py-3 text-left text-sm">{tm('warehouse')}</th>
+                              <th className="px-4 py-3 text-right text-sm">{tm('reportsThQty')}</th>
+                              <th className="px-4 py-3 text-left text-sm">{tm('reportsExpiringThExpiryDate')}</th>
+                              <th className="px-4 py-3 text-right text-sm">{tm('reportsExpiringThRemainingDays')}</th>
+                              <th className="px-4 py-3 text-right text-sm">{tm('reportsColUnitCost')}</th>
+                              <th className="px-4 py-3 text-right text-sm">{tm('reportsExpiringTotalValue')}</th>
+                              <th className="px-4 py-3 text-center text-sm">{tm('rptTargetColStatus')}</th>
+                            </tr>
+                          </thead>
+                          <tbody className="divide-y">
+                            {expiringProducts
+                              .sort((a, b) => {
+                                if (!a.expiry_date) return 1;
+                                if (!b.expiry_date) return -1;
+                                return new Date(a.expiry_date).getTime() - new Date(b.expiry_date).getTime();
+                              })
+                              .map((product, idx) => {
+                                if (!product.expiry_date) return null;
+                                const days = getDaysUntilExpiry(product.expiry_date);
+                                const status = getExpiryStatus(product.expiry_date);
+                                const productValue = (product.unit_cost || 0) * (product.available_quantity || 0);
+
+                                return (
+                                  <tr key={product.id || idx} className="hover:bg-gray-50">
+                                    <td className="px-4 py-3 text-sm font-medium">{product.product_code || '-'}</td>
+                                    <td className="px-4 py-3">
+                                      <div>
+                                        <p className="font-medium">{product.product_name || '-'}</p>
+                                      </div>
+                                    </td>
+                                    <td className="px-4 py-3 text-sm">
+                                      {product.lot_no && (
+                                        <span className="px-2 py-1 bg-blue-100 text-blue-700 rounded text-xs">
+                                          {tm('reportsExpiringLotPrefix')} {product.lot_no}
+                                        </span>
+                                      )}
+                                      {product.serial_no && (
+                                        <span className="px-2 py-1 bg-purple-100 text-purple-700 rounded text-xs ml-1">
+                                          {tm('reportsExpiringSerialPrefix')} {product.serial_no}
+                                        </span>
+                                      )}
+                                    </td>
+                                    <td className="px-4 py-3 text-sm">{product.warehouse_name || '-'}</td>
+                                    <td className="px-4 py-3 text-right">
+                                      <span className="px-2 py-1 bg-gray-100 text-gray-700 rounded text-sm font-semibold">
+                                        {product.available_quantity || 0}
+                                      </span>
+                                    </td>
+                                    <td className="px-4 py-3">
+                                      <div className="flex items-center gap-2">
+                                        <Calendar className="w-4 h-4 text-gray-400" />
+                                        <span className="text-sm">
+                                          {new Date(product.expiry_date).toLocaleDateString(tm('localeCode'))}
+                                        </span>
+                                      </div>
+                                    </td>
+                                    <td className="px-4 py-3 text-right">
+                                      <span className={`px-2 py-1 rounded text-sm font-semibold ${days < 0
+                                        ? 'bg-red-100 text-red-700'
+                                        : days <= 7
+                                          ? 'bg-orange-100 text-orange-700'
+                                          : days <= 30
+                                            ? 'bg-yellow-100 text-yellow-700'
+                                            : 'bg-green-100 text-green-700'
+                                        }`}>
+                                        {days < 0
+                                          ? tm('reportsExpiringDaysOverdue').replace('{n}', String(Math.abs(days)))
+                                          : tm('reportsDaysWithN').replace('{n}', String(days))}
+                                      </span>
+                                    </td>
+                                    <td className="px-4 py-3 text-right text-sm">{formatNumber(product.unit_cost || 0, 2, false)} {reportCurrency}</td>
+                                    <td className="px-4 py-3 text-right text-sm font-semibold">{formatNumber(productValue, 2, false)} {reportCurrency}</td>
+                                    <td className="px-4 py-3 text-center">
+                                      <span className={`px-2 py-1 rounded text-xs font-semibold ${status.color === 'red'
+                                        ? 'bg-red-100 text-red-700'
+                                        : status.color === 'orange'
+                                          ? 'bg-orange-100 text-orange-700'
+                                          : 'bg-yellow-100 text-yellow-700'
+                                        }`}>
+                                        {status.label}
+                                      </span>
+                                    </td>
+                                  </tr>
+                                );
+                              })}
+                            {expiringProducts.filter(p => !p.expiry_date).length > 0 && (
+                              <tr className="bg-gray-50">
+                                <td colSpan={10} className="px-4 py-3 text-center text-sm text-gray-500">
+                                  {tm('reportsExpiringNoExpiryNote').replace(
+                                    '{n}',
+                                    String(expiringProducts.filter(p => !p.expiry_date).length)
+                                  )}
+                                </td>
+                              </tr>
+                            )}
+                          </tbody>
+                          <tfoot className="bg-gray-50 border-t">
+                            <tr>
+                              <td colSpan={8} className="px-4 py-3 text-right font-semibold">{tm('reportsFooterTotalUpper')}</td>
+                              <td className="px-4 py-3 text-right font-bold text-green-600">{formatNumber(totalValue, 2, false)} {reportCurrency}</td>
+                              <td></td>
+                            </tr>
+                          </tfoot>
+                        </table>
+                      </div>
+                    )}
+                  </div>
+                </div>
+              );
+            })()}
+
+            {selectedTab === 'monthly-days-summary' && (
+              <PeriodSummaryReport mode="monthly-days" currency={reportCurrency} />
+            )}
+
+            {selectedTab === 'yearly-months-summary' && (
+              <PeriodSummaryReport mode="yearly-months" currency={reportCurrency} />
+            )}
+
+            {selectedTab === 'profit-loss' && <ProfitLossReport />}
+
+            {selectedTab === 'debt-aging' && <CariAgingReport />}
+            {selectedTab === 'current-account' && <CariBalanceSummaryReport />}
+            {selectedTab === 'cash-flow' && <CashBankMovementReport />}
+            {selectedTab === 'purchase-summary' && <PurchaseSummaryReport />}
+            {selectedTab === 'supplier-purchase-returns' && <SupplierPurchaseReturnsReport />}
+            {selectedTab === 'collection-due' && <CollectionDueReport />}
+            {selectedTab === 'sales-returns' && <SalesReturnsReport />}
+            {selectedTab === 'product-gross-profit' && <ProductGrossProfitReport />}
+            {selectedTab === 'cari-extract' && <CariExtractReport />}
+            {selectedTab === 'critical-stock' && <CriticalStockReport />}
+            {selectedTab === 'warehouse-stock' && <WarehouseStockReport />}
+
+            {selectedTab === 'customer-sales' && (
+              <CustomerSalesReport sales={effectiveCatalogSales} customers={[]} />
+            )}
+
+            {selectedTab === 'sales-trend' && (
+              <SalesTrendReport sales={effectiveCatalogSales} />
+            )}
+
+            {selectedTab === 'sales-target' && (
+              <SalesTargetReport sales={effectiveCatalogSales} />
+            )}
+
+            {selectedTab === 'stock-aging' && (() => {
+              const ag = getStockAgingReport();
+              const bucketStyle = (k: string) =>
+                k === 'critical'
+                  ? 'bg-red-100 text-red-800'
+                  : k === 'slow'
+                    ? 'bg-orange-100 text-orange-800'
+                    : k === 'normal'
+                      ? 'bg-amber-100 text-amber-800'
+                      : 'bg-green-100 text-green-800';
+              return (
+                <div className="space-y-4">
+                  {stockReportLoading && (
+                    <div className="flex items-center gap-2 text-sm text-gray-600 bg-amber-50 border border-amber-100 rounded-lg px-3 py-2">
+                      <Spin size="small" />
+                      {tm('reportsStockListUpdating')}
+                    </div>
+                  )}
+                  <p className="text-sm text-slate-600 bg-slate-50 border border-slate-100 rounded-lg px-3 py-2">{ag.summary.hint}</p>
+                  <div className="grid grid-cols-2 md:grid-cols-5 gap-3">
+                    <div className="bg-white rounded-lg border border-green-200 p-3">
+                      <p className="text-xs text-gray-600">{tm('reportsStockAgeCard03')}</p>
+                      <p className="text-2xl font-bold text-green-700">{ag.summary.fresh}</p>
+                      <p className="text-[10px] text-gray-500">{tm('reportsStockAgeSkuLabel')}</p>
+                    </div>
+                    <div className="bg-white rounded-lg border border-amber-200 p-3">
+                      <p className="text-xs text-gray-600">{tm('reportsStockAgeCard3190')}</p>
+                      <p className="text-2xl font-bold text-amber-700">{ag.summary.normal}</p>
+                    </div>
+                    <div className="bg-white rounded-lg border border-orange-200 p-3">
+                      <p className="text-xs text-gray-600">{tm('reportsStockAgeCard91180')}</p>
+                      <p className="text-2xl font-bold text-orange-700">{ag.summary.slow}</p>
+                    </div>
+                    <div className="bg-white rounded-lg border border-red-200 p-3">
+                      <p className="text-xs text-gray-600">{tm('reportsStockAgeCard180Plus')}</p>
+                      <p className="text-2xl font-bold text-red-700">{ag.summary.critical}</p>
+                    </div>
+                    <div className="bg-white rounded-lg border border-blue-200 p-3 md:col-span-1 col-span-2">
+                      <p className="text-xs text-gray-600">{tm('reportsStockAgeSkuValue')}</p>
+                      <p className="text-lg font-bold text-blue-700">{ag.summary.totalSkus}</p>
+                      <p className="text-sm font-semibold text-slate-700">{formatNumber(ag.summary.totalValue, 2, false)} {reportCurrency}</p>
+                    </div>
+                  </div>
+                  <div className="bg-white rounded-lg border">
+                    <div className="p-4 border-b flex items-center gap-2">
+                      <Clock className="w-5 h-5 text-red-600" />
+                      <h3 className="text-lg font-semibold">{tm('reportsStockAgeDetailTitle')}</h3>
+                    </div>
+                    <div className="overflow-x-auto overflow-y-auto max-h-[560px]" style={{ scrollbarWidth: 'thin', scrollbarColor: '#cbd5e1 #f1f5f9' }}>
+                      <table className="w-full min-w-[880px]">
+                        <thead className="bg-gray-50 border-b sticky top-0">
+                          <tr>
+                            <th className="px-4 py-3 text-left text-sm">{tm('reportColProduct')}</th>
+                            <th className="px-4 py-3 text-left text-sm">{tm('reportsColCategory')}</th>
+                            <th className="px-4 py-3 text-right text-sm">{tm('reportsColStock')}</th>
+                            <th className="px-4 py-3 text-right text-sm">{tm('reportsStockAgeThLastMove')}</th>
+                            <th className="px-4 py-3 text-right text-sm">{tm('reportsColStockValue')}</th>
+                            <th className="px-4 py-3 text-center text-sm">{tm('reportsStockAgeThBucket')}</th>
+                          </tr>
+                        </thead>
+                        <tbody className="divide-y">
+                          {ag.rows.length === 0 ? (
+                            <tr>
+                              <td colSpan={6} className="px-4 py-12 text-center text-gray-500 text-sm">
+                                {tm('reportsStockAgeEmpty')}
+                              </td>
+                            </tr>
+                          ) : (
+                            ag.rows.map(r => (
+                              <tr key={r.id} className="hover:bg-gray-50">
+                                <td className="px-4 py-3 font-medium">{r.name}</td>
+                                <td className="px-4 py-3 text-sm text-gray-600">{r.category}</td>
+                                <td className="px-4 py-3 text-right tabular-nums">{r.stock}</td>
+                                <td className="px-4 py-3 text-right tabular-nums">
+                                  {tm('reportsDaysWithN').replace('{n}', String(r.daysSinceMovement))}
+                                </td>
+                                <td className="px-4 py-3 text-right tabular-nums">{formatNumber(r.value, 2, false)} {reportCurrency}</td>
+                                <td className="px-4 py-3 text-center">
+                                  <span className={`px-2 py-1 rounded text-xs font-medium ${bucketStyle(r.bucketKey)}`}>{r.bucket}</span>
+                                </td>
+                              </tr>
+                            ))
+                          )}
+                        </tbody>
+                      </table>
+                    </div>
+                  </div>
+                </div>
+              );
+            })()}
+
+            {selectedTab === 'stock-turnover' && (() => {
+              const to = getStockTurnoverReport();
+              return (
+                <div className="space-y-4">
+                  {stockReportLoading && (
+                    <div className="flex items-center gap-2 text-sm text-gray-600 bg-amber-50 border border-amber-100 rounded-lg px-3 py-2">
+                      <Spin size="small" />
+                      {tm('reportsStockListUpdating')}
+                    </div>
+                  )}
+                  <p className="text-sm text-slate-600 bg-slate-50 border border-slate-100 rounded-lg px-3 py-2">{to.hint}</p>
+                  <div className="bg-white rounded-lg border">
+                    <div className="p-4 border-b flex items-center gap-2">
+                      <TrendingUp className="w-5 h-5 text-blue-600" />
+                      <h3 className="text-lg font-semibold">{tm('reportsStockTurnTitle')}</h3>
+                      <span className="text-sm text-gray-500 ml-auto">
+                        {tm('reportsStockTurnPeriodApprox').replace('{n}', String(to.periodDays))}
+                      </span>
+                    </div>
+                    <div className="overflow-x-auto overflow-y-auto max-h-[560px]" style={{ scrollbarWidth: 'thin', scrollbarColor: '#cbd5e1 #f1f5f9' }}>
+                      <table className="w-full min-w-[960px]">
+                        <thead className="bg-gray-50 border-b sticky top-0">
+                          <tr>
+                            <th className="px-4 py-3 text-left text-sm">{tm('reportColProduct')}</th>
+                            <th className="px-4 py-3 text-left text-sm">{tm('reportsColCategory')}</th>
+                            <th className="px-4 py-3 text-right text-sm">{tm('reportsStockTurnThSoldQty')}</th>
+                            <th className="px-4 py-3 text-right text-sm">{tm('totalRevenueLabel')}</th>
+                            <th className="px-4 py-3 text-right text-sm">{tm('invCurrentStockLbl')}</th>
+                            <th className="px-4 py-3 text-right text-sm">{tm('reportsStockTurnThSalesStockRatio')}</th>
+                            <th className="px-4 py-3 text-right text-sm">{tm('reportsStockTurnThAnnualTurn')}</th>
+                            <th className="px-4 py-3 text-right text-sm">{tm('reportsStockTurnThStockDays')}</th>
+                          </tr>
+                        </thead>
+                        <tbody className="divide-y">
+                          {to.rows.length === 0 ? (
+                            <tr>
+                              <td colSpan={8} className="px-4 py-12 text-center text-gray-500 text-sm">
+                                {tm('reportsStockTurnEmpty')}
+                              </td>
+                            </tr>
+                          ) : (
+                            to.rows.map(r => (
+                              <tr key={r.id} className="hover:bg-gray-50">
+                                <td className="px-4 py-3 font-medium">{r.name}</td>
+                                <td className="px-4 py-3 text-sm text-gray-600">{r.category}</td>
+                                <td className="px-4 py-3 text-right tabular-nums">{r.soldQty}</td>
+                                <td className="px-4 py-3 text-right tabular-nums">{formatNumber(r.revenue, 2, false)} {reportCurrency}</td>
+                                <td className="px-4 py-3 text-right tabular-nums">{r.stock}</td>
+                                <td className="px-4 py-3 text-right tabular-nums">
+                                  {r.ratio == null ? '—' : formatNumber(r.ratio, 2, false)}
+                                </td>
+                                <td className="px-4 py-3 text-right tabular-nums">
+                                  {r.annualizedTurnover == null ? '—' : formatNumber(r.annualizedTurnover, 2, false)}
+                                </td>
+                                <td className="px-4 py-3 text-right tabular-nums text-sm text-slate-600">
+                                  {r.daysCover == null
+                                    ? '—'
+                                    : tm('reportsDaysWithN').replace('{n}', formatNumber(r.daysCover, 1, false))}
+                                </td>
+                              </tr>
+                            ))
+                          )}
+                        </tbody>
+                      </table>
+                    </div>
+                  </div>
+                </div>
+              );
+            })()}
+
+            {selectedTab === 'stock-abc' && (() => {
+              const abc = getStockAbcReport();
+              const pieColors = ['#16a34a', '#ca8a04', '#64748b'];
+              return (
+                <div className="space-y-4">
+                  {stockReportLoading && (
+                    <div className="flex items-center gap-2 text-sm text-gray-600 bg-amber-50 border border-amber-100 rounded-lg px-3 py-2">
+                      <Spin size="small" />
+                      {tm('reportsStockListUpdating')}
+                    </div>
+                  )}
+                  <p className="text-sm text-slate-600 bg-slate-50 border border-slate-100 rounded-lg px-3 py-2">{abc.hint}</p>
+                  <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
+                    <div className="bg-white rounded-lg border p-4">
+                      <h3 className="text-lg mb-2 flex items-center gap-2">
+                        <PieChartIcon className="w-5 h-5 text-amber-600" />
+                        {tm('reportsAbcChartTitle')}
+                      </h3>
+                      {abc.chartData.length === 0 ? (
+                        <p className="text-sm text-gray-500 py-8 text-center">{tm('reportsAbcNoChartData')}</p>
+                      ) : (
+                        <div className="h-[300px] w-full min-w-0">
+                          <ResponsiveContainer width="100%" height="100%">
+                            <RePieChart>
+                              <Pie
+                                data={abc.chartData}
+                                cx="50%"
+                                cy="50%"
+                                innerRadius={56}
+                                outerRadius={96}
+                                paddingAngle={2}
+                                dataKey="value"
+                                nameKey="name"
+                                label={({ name, percent }) => `${name} ${(percent * 100).toFixed(0)}%`}
+                              >
+                                {abc.chartData.map((entry, index) => (
+                                  <Cell key={entry.name} fill={entry.fill || pieColors[index % pieColors.length]} />
+                                ))}
+                              </Pie>
+                              <Tooltip formatter={(value: number) => formatNumber(value, 2, false) + ' ' + reportCurrency} />
+                              <Legend />
+                            </RePieChart>
+                          </ResponsiveContainer>
+                        </div>
+                      )}
+                    </div>
+                    <div className="bg-white rounded-lg border p-4">
+                      <h3 className="text-lg mb-4 flex items-center gap-2">
+                        <Award className="w-5 h-5 text-yellow-600" />
+                        {tm('reportsAbcSummaryTitle')}
+                      </h3>
+                      <div className="space-y-3 text-sm">
+                        <div className="flex justify-between border-b pb-2">
+                          <span className="text-gray-600">{tm('reportsAbcTotalMetric')}</span>
+                          <span className="font-semibold">{formatNumber(abc.totalMetric, 2, false)} {reportCurrency}</span>
+                        </div>
+                        <div className="flex justify-between">
+                          <span className="text-green-700 font-medium">{tm('reportsAbcClassGroupA')}</span>
+                          <span>{formatNumber(abc.valueByClass.A, 2, false)} {reportCurrency}</span>
+                        </div>
+                        <div className="flex justify-between">
+                          <span className="text-amber-700 font-medium">{tm('reportsAbcClassGroupB')}</span>
+                          <span>{formatNumber(abc.valueByClass.B, 2, false)} {reportCurrency}</span>
+                        </div>
+                        <div className="flex justify-between">
+                          <span className="text-slate-600 font-medium">{tm('reportsAbcClassGroupC')}</span>
+                          <span>{formatNumber(abc.valueByClass.C, 2, false)} {reportCurrency}</span>
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+                  <div className="bg-white rounded-lg border">
+                    <div className="p-4 border-b flex items-center gap-2">
+                      <ApartmentOutlined className="text-lg text-orange-500" />
+                      <h3 className="text-lg font-semibold">{tm('reportsAbcTableTitle')}</h3>
+                    </div>
+                    <div className="overflow-x-auto overflow-y-auto max-h-[400px]" style={{ scrollbarWidth: 'thin', scrollbarColor: '#cbd5e1 #f1f5f9' }}>
+                      <table className="w-full min-w-[800px]">
+                        <thead className="bg-gray-50 border-b sticky top-0">
+                          <tr>
+                            <th className="px-4 py-3 text-left text-sm">{tm('reportsAbcThClass')}</th>
+                            <th className="px-4 py-3 text-left text-sm">{tm('reportColProduct')}</th>
+                            <th className="px-4 py-3 text-left text-sm">{tm('reportsColCategory')}</th>
+                            <th className="px-4 py-3 text-right text-sm">{tm('reportsAbcThRevenuePeriod')}</th>
+                            <th className="px-4 py-3 text-right text-sm">{tm('reportsColStock')}</th>
+                            <th className="px-4 py-3 text-right text-sm">{tm('reportsColStockValue')}</th>
+                            <th className="px-4 py-3 text-right text-sm">{tm('reportsAbcThMetric')}</th>
+                            <th className="px-4 py-3 text-right text-sm">{tm('reportsAbcThCumPct')}</th>
+                          </tr>
+                        </thead>
+                        <tbody className="divide-y">
+                          {abc.rows.length === 0 ? (
+                            <tr>
+                              <td colSpan={8} className="px-4 py-12 text-center text-gray-500 text-sm">
+                                {tm('reportsAbcEmptyRows')}
+                              </td>
+                            </tr>
+                          ) : (
+                            abc.rows.map(r => (
+                              <tr key={r.id} className="hover:bg-gray-50">
+                                <td className="px-4 py-3">
+                                  <span
+                                    className={`px-2 py-1 rounded text-xs font-bold ${
+                                      r.abc === 'A'
+                                        ? 'bg-green-100 text-green-800'
+                                        : r.abc === 'B'
+                                          ? 'bg-amber-100 text-amber-800'
+                                          : 'bg-slate-100 text-slate-700'
+                                    }`}
+                                  >
+                                    {r.abc}
+                                  </span>
+                                </td>
+                                <td className="px-4 py-3 font-medium">{r.name}</td>
+                                <td className="px-4 py-3 text-sm text-gray-600">{r.category}</td>
+                                <td className="px-4 py-3 text-right tabular-nums">{formatNumber(r.revenue, 2, false)} {reportCurrency}</td>
+                                <td className="px-4 py-3 text-right tabular-nums">{r.stock}</td>
+                                <td className="px-4 py-3 text-right tabular-nums">{formatNumber(r.stockValue, 2, false)} {reportCurrency}</td>
+                                <td className="px-4 py-3 text-right tabular-nums font-medium">{formatNumber(r.metric, 2, false)} {reportCurrency}</td>
+                                <td className="px-4 py-3 text-right tabular-nums">{formatNumber(r.cumPct, 1, false)}%</td>
+                              </tr>
+                            ))
+                          )}
+                        </tbody>
+                      </table>
+                    </div>
+                  </div>
+                </div>
+              );
+            })()}
+
+            {(isBeautyServiceReportTab ||
+              (businessType === 'beauty' &&
+                (isBeautyCancelledReportTab || isBeautyAppointmentProductReportTab || isAnyBeautySurveyReportTab))) && (
+              <div className="space-y-4">
+                <div className="bg-white rounded-xl border border-slate-200 p-4 flex flex-wrap items-end gap-4 shadow-sm">
+                  <ReportDateRangePresets
+                    value={beautyServiceDateRange}
+                    onChange={setBeautyServiceDateRange}
+                    tm={tm}
+                  />
+                  {businessType === 'beauty' && (isBeautyServiceReportTab || isBeautyCancelledReportTab) && (
+                    <div className="flex flex-col gap-1 min-w-[220px]">
+                      <span className="text-xs font-semibold text-slate-500">{tm('beautyMainCategoryFilterLabel')}</span>
+                      <Select
+                        allowClear
+                        showSearch
+                        optionFilterProp="label"
+                        placeholder={tm('beautyMainCategoryFilterPlaceholder')}
+                        value={beautyMainCategoryFilter || undefined}
+                        onChange={(v) => setBeautyMainCategoryFilter(v != null && String(v).length > 0 ? String(v) : '')}
+                        className="min-w-[220px]"
+                        options={beautyMainCategoryOptions}
+                      />
+                    </div>
+                  )}
+                  {(isBeautyServiceReportTab || isBeautyCancelledReportTab) && businessType === 'beauty' && beautyMainCategoryFilter && beautySubCategoryOptions.length > 0 && (
+                    <div className="flex flex-col gap-1 min-w-[220px]">
+                      <span className="text-xs font-semibold text-slate-500">{tm('beautySubCategoryFilterLabel')}</span>
+                      <Select
+                        allowClear
+                        showSearch
+                        optionFilterProp="label"
+                        placeholder={tm('beautySubCategoryFilterPlaceholder')}
+                        value={beautySubCategoryFilter || undefined}
+                        onChange={(v) => setBeautySubCategoryFilter(v != null && String(v).length > 0 ? String(v) : '')}
+                        className="min-w-[220px]"
+                        options={beautySubCategoryOptions}
+                      />
+                    </div>
+                  )}
+                  {businessType === 'beauty' && isBeautyAppointmentProductReportTab && (
+                    <>
+                      <div className="flex flex-col gap-1 min-w-[200px] flex-1 sm:max-w-[260px]">
+                        <span className="text-xs font-semibold text-slate-500">
+                          {tm('beautyAppointmentProductSearchLabel')}
+                        </span>
+                        <Input
+                          allowClear
+                          prefix={<SearchOutlined className="text-slate-400" />}
+                          placeholder={
+                            beautyProductSearchMode === 'code'
+                              ? tm('beautyAppointmentProductSearchPlaceholderCode')
+                              : beautyProductSearchMode === 'name'
+                                ? tm('beautyAppointmentProductSearchPlaceholderName')
+                                : tm('beautyAppointmentProductSearchPlaceholder')
+                          }
+                          value={beautyProductSearchQuery}
+                          onChange={(e) => setBeautyProductSearchQuery(e.target.value)}
+                          className="min-w-[200px]"
+                        />
+                      </div>
+                      <div className="flex flex-col gap-1 min-w-[160px]">
+                        <span className="text-xs font-semibold text-slate-500">
+                          {tm('beautyAppointmentProductSearchModeLabel')}
+                        </span>
+                        <Select<BeautyProductReportSearchMode>
+                          value={beautyProductSearchMode}
+                          onChange={(v) => setBeautyProductSearchMode(v)}
+                          className="min-w-[160px]"
+                          options={[
+                            { value: 'all', label: tm('beautyAppointmentProductSearchModeAll') },
+                            { value: 'name', label: tm('beautyAppointmentProductSearchModeName') },
+                            { value: 'code', label: tm('beautyAppointmentProductSearchModeCode') },
+                          ]}
+                        />
+                      </div>
+                      <div className="flex flex-col gap-1 min-w-[180px]">
+                        <span className="text-xs font-semibold text-slate-500">
+                          {tm('beautyAppointmentProductViewModeLabel')}
+                        </span>
+                        <Select<BeautyProductReportViewMode>
+                          value={beautyProductViewMode}
+                          onChange={(v) => setBeautyProductViewMode(v)}
+                          className="min-w-[180px]"
+                          options={[
+                            { value: 'detail', label: tm('beautyAppointmentProductViewDetail') },
+                            { value: 'grouped', label: tm('beautyAppointmentProductViewGrouped') },
+                          ]}
+                        />
+                      </div>
+                      <div className="flex flex-col gap-1 min-w-[220px]">
+                        <span className="text-xs font-semibold text-slate-500">
+                          {tm('beautyAppointmentProductFilterLabel')}
+                        </span>
+                        <Select
+                          allowClear
+                          showSearch
+                          optionFilterProp="label"
+                          placeholder={tm('beautyAppointmentProductFilterPlaceholder')}
+                          value={beautyProductFilterId || undefined}
+                          onChange={(v) => setBeautyProductFilterId(v != null && String(v).length > 0 ? String(v) : '')}
+                          className="min-w-[220px]"
+                          options={beautyProductFilterOptions}
+                        />
+                      </div>
+                    </>
+                  )}
+                  <Button
+                    type="primary"
+                    loading={isAnyBeautySurveyReportTab ? false : loadingBeautyServiceReport}
+                    onClick={() => {
+                      if (isAnyBeautySurveyReportTab) {
+                        setBeautySurveyReloadKey((k) => k + 1);
+                        return;
+                      }
+                      reloadBeautyServiceReport();
+                    }}
+                  >
+                    {tm('refresh')}
+                  </Button>
+                  <p className="text-xs text-slate-500 flex-1 min-w-[200px]">
+                    {isAnyBeautySurveyReportTab
+                      ? tm('bSurveyReportDateHint')
+                      : isBeautyCancelledReportTab
+                      ? `${tm('beautyCancelledAppointmentsHint')} ${tm('beautyCancelledPaymentsHint')}`
+                      : isBeautyAppointmentProductReportTab
+                        ? tm('beautyAppointmentProductSalesHint')
+                      : isErpServiceBreakdown
+                        ? tm('serviceBreakdownHintErp')
+                      : `${tm('beautyServiceBreakdownHint')} ${tm('beautyServiceRowCrmHint')} ${tm('beautyServiceHeaderCrmHint')}`}
+                  </p>
+                </div>
+
+                {isBeautyServiceReportTab && (
+                  <Spin spinning={loadingBeautyServiceReport}>
+                    {serviceBreakdownGrouped.length === 0 ? (
+                      <div className="bg-white rounded-xl border border-slate-200 p-12 text-center text-slate-500">
+                        {tm('noDataFound')}
+                      </div>
+                    ) : (
+                      <div className="space-y-6">
+                        {serviceBreakdownGrouped.map((g) => (
+                          <div
+                            key={g.serviceName}
+                            className="bg-white rounded-xl border border-slate-200 overflow-hidden shadow-sm"
+                          >
+                            <div
+                              role={isErpServiceBreakdown ? undefined : 'button'}
+                              tabIndex={isErpServiceBreakdown ? undefined : 0}
+                              className={`px-4 py-3 flex flex-wrap items-center justify-between gap-2 text-white font-bold select-none ${
+                                isErpServiceBreakdown ? '' : 'cursor-pointer hover:brightness-110 transition-[filter]'
+                              }`}
+                              style={{ backgroundColor: bizConfig.color }}
+                              title={isErpServiceBreakdown ? undefined : tm('beautyServiceHeaderCrmHint')}
+                              onClick={
+                                isErpServiceBreakdown
+                                  ? undefined
+                                  : () => {
+                                      const first = g.items[0] as BeautyAppointment;
+                                      if (first) setBeautyCrmModalAppointment(first);
+                                    }
+                              }
+                              onKeyDown={
+                                isErpServiceBreakdown
+                                  ? undefined
+                                  : (e) => {
+                                      if (e.key === 'Enter' || e.key === ' ') {
+                                        e.preventDefault();
+                                        const first = g.items[0] as BeautyAppointment;
+                                        if (first) setBeautyCrmModalAppointment(first);
+                                      }
+                                    }
+                              }
+                            >
+                              <span className="text-base">{g.serviceName}</span>
+                              <span className="text-sm font-semibold opacity-95">
+                                {tm('subTotal')}: {formatNumber(g.sum, 2, false)} {reportCurrency}
+                              </span>
+                            </div>
+                            <div className="overflow-x-auto">
+                              <table className="w-full text-[13px]">
+                                <thead>
+                                  <tr className="bg-slate-300 border-b border-slate-400 text-left text-[14px] uppercase tracking-wide text-slate-950">
+                                    <th className="px-4 py-3 font-black">{tm('date')}</th>
+                                    <th className="px-4 py-3 font-black">{tm('customer')}</th>
+                                    {isErpServiceBreakdown ? (
+                                      <>
+                                        <th className="px-4 py-3 font-black">{tm('cashier')}</th>
+                                        <th className="px-4 py-3 font-black">{tm('reportsThOrderNo')}</th>
+                                      </>
+                                    ) : (
+                                      <>
+                                        <th className="px-4 py-3 font-black">{tm('bStaffView')}</th>
+                                        <th className="px-4 py-3 font-black">{tm('bDeviceView')}</th>
+                                      </>
+                                    )}
+                                    <th className="px-4 py-3 font-black text-right">{tm('amount')}</th>
+                                    <th className="px-4 py-3 font-black">{tm('status')}</th>
+                                  </tr>
+                                </thead>
+                                <tbody className="divide-y divide-slate-100">
+                                  {g.items.map((row) => {
+                                    if (isErpServiceBreakdown) {
+                                      const a = row as ErpServiceBreakdownLine;
+                                      return (
+                                        <tr key={a.id} className="hover:bg-slate-50/90">
+                                          <td className="px-4 py-3 tabular-nums text-slate-900 whitespace-nowrap font-medium">
+                                            {a.date}
+                                          </td>
+                                          <td className="px-4 py-3 text-slate-900 font-medium">{a.customerName}</td>
+                                          <td className="px-4 py-3 text-slate-900 font-medium">{a.staffName}</td>
+                                          <td className="px-4 py-3 text-slate-900 font-medium">{a.receiptNumber}</td>
+                                          <td className="px-4 py-3 text-right tabular-nums font-semibold text-slate-950">
+                                            {formatNumber(a.amount, 2, false)} {reportCurrency}
+                                          </td>
+                                          <td className="px-4 py-3">
+                                            <span className="inline-flex items-center rounded-md border border-slate-200 bg-slate-50 px-2 py-0.5 text-xs font-bold capitalize text-slate-700">
+                                              {a.status}
+                                            </span>
+                                          </td>
+                                        </tr>
+                                      );
+                                    }
+                                    const a = row as BeautyAppointment;
+                                    return (
+                                      <tr
+                                        key={a.id}
+                                        role="button"
+                                        tabIndex={0}
+                                        onClick={() => setBeautyCrmModalAppointment(a)}
+                                        onKeyDown={(e) => {
+                                          if (e.key === 'Enter' || e.key === ' ') {
+                                            e.preventDefault();
+                                            setBeautyCrmModalAppointment(a);
+                                          }
+                                        }}
+                                        className="cursor-pointer hover:bg-pink-50/90"
+                                      >
+                                        <td className="px-4 py-3 tabular-nums text-slate-900 whitespace-nowrap font-medium">
+                                          {String(a.date ?? a.appointment_date ?? '—')}
+                                          {a.time || a.appointment_time
+                                            ? ` · ${String(a.time ?? a.appointment_time).slice(0, 5)}`
+                                            : ''}
+                                        </td>
+                                        <td className="px-4 py-3 text-slate-900 font-medium">
+                                          {String(a.customer_name ?? '').trim() || '—'}
+                                        </td>
+                                        <td className="px-4 py-3 text-slate-900 font-medium">
+                                          {String(a.specialist_name ?? a.staff_name ?? '').trim() || '—'}
+                                        </td>
+                                        <td className="px-4 py-3 text-slate-900 font-medium">
+                                          {String(a.device_name ?? '').trim() || '—'}
+                                        </td>
+                                        <td className="px-4 py-3 text-right tabular-nums font-semibold text-slate-950">
+                                          {formatNumber(Number(a.total_price ?? 0), 2, false)} {reportCurrency}
+                                        </td>
+                                        <td className="px-4 py-3">
+                                          <span className="inline-flex items-center rounded-md border border-red-200 bg-red-50 px-2 py-0.5 text-xs font-bold capitalize text-red-700">
+                                            {String(a.status ?? '—')}
+                                          </span>
+                                        </td>
+                                      </tr>
+                                    );
+                                  })}
+                                </tbody>
+                              </table>
+                            </div>
+                          </div>
+                        ))}
+                      </div>
+                    )}
+                  </Spin>
+                )}
+
+                {isBeautyAppointmentProductReportTab && (
+                  <Spin spinning={loadingBeautyServiceReport}>
+                    {beautyAppointmentProductRows.length === 0 ? (
+                      <div className="space-y-3">
+                        {(beautyProductFilterId || beautyProductSearchQuery.trim()) &&
+                          beautyAppointmentProductRowsRaw.length > 0 && (
+                          <div className="bg-amber-50 rounded-xl border border-amber-200 p-3 text-sm text-amber-900">
+                            {tm('beautyAppointmentProductFilterNoMatch')}
+                          </div>
+                        )}
+                        {!beautyProductFilterId && beautyAppointmentProductRowsRaw.length === 0 && beautyAppointmentProductSourceInfo.paidSales > 0 && (
+                          <div className="bg-amber-50 rounded-xl border border-amber-200 p-4 text-sm text-amber-900 space-y-1">
+                            <p className="font-semibold">{tm('beautyAppointmentProductDataQualityHint')}</p>
+                            <p>
+                              {tm('beautyAppointmentProductStatPaidSales')}: {formatNumber(beautyAppointmentProductSourceInfo.paidSales, 0, false)} ·{' '}
+                              {tm('beautyAppointmentProductStatNoProductLine')}: {formatNumber(beautyAppointmentProductSourceInfo.noProductLine, 0, false)}
+                            </p>
+                          </div>
+                        )}
+                        <div className="bg-white rounded-xl border border-slate-200 p-12 text-center text-slate-500">
+                          {tm('noDataFound')}
+                        </div>
+                      </div>
+                    ) : (
+                      <div className="space-y-4">
+                        <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+                          <div className="bg-white rounded-xl border border-slate-200 p-4">
+                            <p className="text-xs font-semibold text-slate-500">{tm('transactionCount')}</p>
+                            <p className="mt-1 text-2xl font-black text-slate-900">
+                              {formatNumber(beautyAppointmentProductSummary.transactionCount, 0, false)}
+                            </p>
+                          </div>
+                          <div className="bg-white rounded-xl border border-slate-200 p-4">
+                            <p className="text-xs font-semibold text-slate-500">{tm('quantity')}</p>
+                            <p className="mt-1 text-2xl font-black text-slate-900">
+                              {formatNumber(beautyAppointmentProductSummary.totalQty, 2, false)}
+                            </p>
+                          </div>
+                          <div className="bg-white rounded-xl border border-slate-200 p-4">
+                            <p className="text-xs font-semibold text-slate-500">{tm('totalRevenueLabel')}</p>
+                            <p className="mt-1 text-2xl font-black text-slate-900">
+                              {formatNumber(beautyAppointmentProductSummary.totalRevenue, 2, false)} {reportCurrency}
+                            </p>
+                          </div>
+                        </div>
+
+                        {beautyProductViewMode === 'grouped' ? (
+                          <div className="space-y-6">
+                            {beautyAppointmentProductGrouped.map((g) => (
+                              <div
+                                key={g.groupKey}
+                                className="bg-white rounded-xl border border-slate-200 overflow-hidden shadow-sm"
+                              >
+                                <div
+                                  className="px-4 py-3 flex flex-wrap items-center justify-between gap-2 text-white font-bold"
+                                  style={{ backgroundColor: bizConfig.color }}
+                                >
+                                  <div className="min-w-0">
+                                    <span className="text-base block truncate">{g.productName}</span>
+                                    {g.productCode ? (
+                                      <span className="text-xs font-semibold opacity-90">
+                                        {tm('code')}: {g.productCode}
+                                        {g.lineCount > 1
+                                          ? ` · ${formatNumber(g.lineCount, 0, false)} ${tm('beautyAppointmentProductLineCount')}`
+                                          : ''}
+                                      </span>
+                                    ) : null}
+                                  </div>
+                                  <span className="text-sm font-semibold opacity-95 shrink-0">
+                                    {tm('quantity')}: {formatNumber(g.totalQty, 2, false)} · {tm('subTotal')}:{' '}
+                                    {formatNumber(g.totalRevenue, 2, false)} {reportCurrency}
+                                  </span>
+                                </div>
+                                <div className="overflow-x-auto">
+                                  <table className="w-full text-[13px]">
+                                    <thead>
+                                      <tr className="bg-slate-100 border-b border-slate-200 text-left text-[12px] uppercase tracking-wide text-slate-800">
+                                        <th className="px-4 py-2 font-black">{tm('date')}</th>
+                                        <th className="px-4 py-2 font-black">{tm('customer')}</th>
+                                        <th className="px-4 py-2 font-black text-right">{tm('quantity')}</th>
+                                        <th className="px-4 py-2 font-black text-right">{tm('amount')}</th>
+                                        <th className="px-4 py-2 font-black">{tm('bStaffView')}</th>
+                                        <th className="px-4 py-2 font-black">{tm('paymentType')}</th>
+                                      </tr>
+                                    </thead>
+                                    <tbody className="divide-y divide-slate-100">
+                                      {g.items.map((row) => {
+                                        const canOpenCrm = row.crmAppointment != null;
+                                        return (
+                                          <tr
+                                            key={row.key}
+                                            role={canOpenCrm ? 'button' : undefined}
+                                            tabIndex={canOpenCrm ? 0 : undefined}
+                                            onClick={() => {
+                                              if (row.crmAppointment) {
+                                                setBeautyCrmModalAppointment(row.crmAppointment);
+                                              }
+                                            }}
+                                            onKeyDown={(e) => {
+                                              if (!row.crmAppointment) return;
+                                              if (e.key === 'Enter' || e.key === ' ') {
+                                                e.preventDefault();
+                                                setBeautyCrmModalAppointment(row.crmAppointment);
+                                              }
+                                            }}
+                                            className={canOpenCrm ? 'cursor-pointer hover:bg-pink-50/90' : undefined}
+                                          >
+                                            <td className="px-4 py-2 tabular-nums text-slate-900 whitespace-nowrap">
+                                              {row.appointmentDate}
+                                              {row.appointmentTime ? ` · ${row.appointmentTime}` : ''}
+                                            </td>
+                                            <td className="px-4 py-2 text-slate-900">{row.customerName}</td>
+                                            <td className="px-4 py-2 text-right tabular-nums font-semibold">
+                                              {formatNumber(row.quantity, 2, false)}
+                                            </td>
+                                            <td className="px-4 py-2 text-right tabular-nums font-semibold">
+                                              {formatNumber(row.total, 2, false)} {reportCurrency}
+                                            </td>
+                                            <td className="px-4 py-2 text-slate-900">{row.staffName}</td>
+                                            <td className="px-4 py-2 text-slate-900">{row.paymentMethod}</td>
+                                          </tr>
+                                        );
+                                      })}
+                                    </tbody>
+                                  </table>
+                                </div>
+                              </div>
+                            ))}
+                          </div>
+                        ) : (
+                          <div className="bg-white rounded-xl border border-slate-200 overflow-hidden shadow-sm">
+                            <div className="overflow-x-auto">
+                              <table className="w-full text-[13px]">
+                                <thead>
+                                  <tr className="bg-slate-300 border-b border-slate-400 text-left text-[14px] uppercase tracking-wide text-slate-950">
+                                    <th className="px-4 py-3 font-black">{tm('date')}</th>
+                                    <th className="px-4 py-3 font-black">{tm('customer')}</th>
+                                    <th className="px-4 py-3 font-black">{tm('product')}</th>
+                                    <th className="px-4 py-3 font-black">{tm('code')}</th>
+                                    <th className="px-4 py-3 font-black text-right">{tm('quantity')}</th>
+                                    <th className="px-4 py-3 font-black text-right">{tm('price')}</th>
+                                    <th className="px-4 py-3 font-black text-right">{tm('amount')}</th>
+                                    <th className="px-4 py-3 font-black">{tm('bStaffView')}</th>
+                                    <th className="px-4 py-3 font-black">{tm('paymentType')}</th>
+                                  </tr>
+                                </thead>
+                                <tbody className="divide-y divide-slate-100">
+                                  {beautyAppointmentProductRows.map((row) => {
+                                    const canOpenCrm = row.crmAppointment != null;
+                                    return (
+                                      <tr
+                                        key={row.key}
+                                        role={canOpenCrm ? 'button' : undefined}
+                                        tabIndex={canOpenCrm ? 0 : undefined}
+                                        onClick={() => {
+                                          if (row.crmAppointment) setBeautyCrmModalAppointment(row.crmAppointment);
+                                        }}
+                                        onKeyDown={(e) => {
+                                          if (!row.crmAppointment) return;
+                                          if (e.key === 'Enter' || e.key === ' ') {
+                                            e.preventDefault();
+                                            setBeautyCrmModalAppointment(row.crmAppointment);
+                                          }
+                                        }}
+                                        className={canOpenCrm ? 'cursor-pointer hover:bg-pink-50/90' : undefined}
+                                      >
+                                        <td className="px-4 py-3 tabular-nums text-slate-900 whitespace-nowrap font-medium">
+                                          {row.appointmentDate}
+                                          {row.appointmentTime ? ` · ${row.appointmentTime}` : ''}
+                                        </td>
+                                        <td className="px-4 py-3 text-slate-900 font-medium">{row.customerName}</td>
+                                        <td className="px-4 py-3 text-slate-900 font-medium">{row.productName}</td>
+                                        <td className="px-4 py-3 text-slate-700 font-medium tabular-nums">
+                                          {row.productCode || row.productBarcode || '—'}
+                                        </td>
+                                        <td className="px-4 py-3 text-right tabular-nums font-semibold text-slate-950">
+                                          {formatNumber(row.quantity, 2, false)}
+                                        </td>
+                                        <td className="px-4 py-3 text-right tabular-nums text-slate-900">
+                                          {formatNumber(row.unitPrice, 2, false)} {reportCurrency}
+                                        </td>
+                                        <td className="px-4 py-3 text-right tabular-nums font-semibold text-slate-950">
+                                          {formatNumber(row.total, 2, false)} {reportCurrency}
+                                        </td>
+                                        <td className="px-4 py-3 text-slate-900 font-medium">{row.staffName}</td>
+                                        <td className="px-4 py-3 text-slate-900 font-medium">{row.paymentMethod}</td>
+                                      </tr>
+                                    );
+                                  })}
+                                </tbody>
+                              </table>
+                            </div>
+                          </div>
+                        )}
+                      </div>
+                    )}
+                  </Spin>
+                )}
+
+                {isBeautyCancelledReportTab && beautyCancelledGrouped.length === 0 && beautyCancelledPayments.length === 0 && (
+                  <div className="bg-white rounded-xl border border-slate-200 p-12 text-center text-slate-500">
+                    {tm('noDataFound')}
+                  </div>
+                )}
+
+                {isBeautyCancelledReportTab && beautyCancelledGrouped.length > 0 && (
+                  <div className="space-y-4 mt-10">
+                    <div>
+                      <h3 className="text-xl font-extrabold tracking-tight text-slate-900">{tm('beautyCancelledAppointmentsSection')}</h3>
+                      <p className="text-sm font-medium text-slate-700 mt-1">{tm('beautyCancelledAppointmentsHint')}</p>
+                    </div>
+                    <div className="space-y-6">
+                      {beautyCancelledGrouped.map((g) => (
+                        <div
+                          key={`cx-${g.serviceName}`}
+                          className="bg-rose-50 rounded-xl border border-red-200 overflow-hidden shadow-sm"
+                        >
+                          <div
+                            className="px-4 py-3 flex flex-wrap items-center justify-between gap-2 text-white font-bold bg-red-700/90"
+                            title={tm('beautyCancelledAppointmentsHint')}
+                          >
+                            <span className="text-base">{g.serviceName}</span>
+                            <span className="text-sm font-semibold opacity-95">
+                              {tm('subTotal')}: {formatNumber(g.sum, 2, false)} {reportCurrency}
+                            </span>
+                          </div>
+                          <div className="overflow-x-auto">
+                            <table className="w-full text-[13px]">
+                              <thead>
+                                <tr className="bg-slate-300 border-b border-slate-400 text-left text-[14px] uppercase tracking-wide text-slate-950">
+                                  <th className="px-4 py-3 font-black">{tm('date')}</th>
+                                  <th className="px-4 py-3 font-black">{tm('customer')}</th>
+                                  <th className="px-4 py-3 font-black">{tm('bStaffView')}</th>
+                                  <th className="px-4 py-3 font-black">{tm('bDeviceView')}</th>
+                                  <th className="px-4 py-3 font-black text-right">{tm('amount')}</th>
+                                  <th className="px-4 py-3 font-black">{tm('status')}</th>
+                                </tr>
+                              </thead>
+                              <tbody className="divide-y divide-slate-100">
+                                {g.items.map((a) => (
+                                  <tr
+                                    key={a.id}
+                                    role="button"
+                                    tabIndex={0}
+                                    onClick={() => setBeautyCrmModalAppointment(a)}
+                                    onKeyDown={(e) => {
+                                      if (e.key === 'Enter' || e.key === ' ') {
+                                        e.preventDefault();
+                                        setBeautyCrmModalAppointment(a);
+                                      }
+                                    }}
+                                    className="cursor-pointer hover:bg-red-50/80"
+                                  >
+                                    <td className="px-4 py-3 tabular-nums text-slate-900 whitespace-nowrap font-medium">
+                                      {String(a.date ?? a.appointment_date ?? '—')}
+                                      {a.time || a.appointment_time
+                                        ? ` · ${String(a.time ?? a.appointment_time).slice(0, 5)}`
+                                        : ''}
+                                    </td>
+                                    <td className="px-4 py-3 text-slate-900 font-medium">
+                                      {String(a.customer_name ?? '').trim() || '—'}
+                                    </td>
+                                    <td className="px-4 py-3 text-slate-900 font-medium">
+                                      {String(a.specialist_name ?? a.staff_name ?? '').trim() || '—'}
+                                    </td>
+                                    <td className="px-4 py-3 text-slate-900 font-medium">
+                                      {String(a.device_name ?? '').trim() || '—'}
+                                    </td>
+                                    <td className="px-4 py-3 text-right tabular-nums font-semibold text-slate-950">
+                                      {formatNumber(Number(a.total_price ?? 0), 2, false)} {reportCurrency}
+                                    </td>
+                                    <td className="px-4 py-3">
+                                      <span className="inline-flex items-center rounded-md border border-red-200 bg-red-50 px-2 py-0.5 text-xs font-bold capitalize text-red-700">
+                                        {String(a.status ?? '—')}
+                                      </span>
+                                    </td>
+                                  </tr>
+                                ))}
+                              </tbody>
+                            </table>
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                )}
+
+                {isBeautyCancelledReportTab && beautyCancelledPayments.length > 0 && (
+                  <div className="space-y-4 mt-10">
+                    <div>
+                      <h3 className="text-xl font-extrabold tracking-tight text-slate-900">{tm('beautyCancelledPaymentsSection')}</h3>
+                      <p className="text-sm font-medium text-slate-700 mt-1">{tm('beautyCancelledPaymentsHint')}</p>
+                    </div>
+                    <div className="bg-rose-50 rounded-xl border border-red-200 overflow-hidden shadow-sm">
+                      <div className="overflow-x-auto">
+                        <table className="w-full text-[13px]">
+                          <thead>
+                            <tr className="bg-slate-300 border-b border-slate-400 text-left text-[14px] uppercase tracking-wide text-slate-950">
+                              <th className="px-4 py-3 font-black">{tm('date')}</th>
+                              <th className="px-4 py-3 font-black">{tm('customer')}</th>
+                              <th className="px-4 py-3 font-black">{tm('paymentType')}</th>
+                              <th className="px-4 py-3 font-black text-right">{tm('amount')}</th>
+                              <th className="px-4 py-3 font-black">{tm('status')}</th>
+                            </tr>
+                          </thead>
+                          <tbody className="divide-y divide-slate-100">
+                            {beautyCancelledPayments.map((s) => {
+                              const rawSt = String((s as any).payment_status ?? '').toLowerCase();
+                              const statusLabel = rawSt === 'refunded' ? tm('reportsDetStatusRefunded') : tm('cancelled');
+                              return (
+                                <tr key={s.id} className="hover:bg-red-50/70">
+                                  <td className="px-4 py-3 tabular-nums text-slate-900 whitespace-nowrap font-medium">
+                                    {String(s.created_at ?? '').replace('T', ' ').slice(0, 16)}
+                                  </td>
+                                  <td className="px-4 py-3 text-slate-900 font-medium">
+                                    {String(s.customer_name ?? '').trim() || '—'}
+                                  </td>
+                                  <td className="px-4 py-3 text-slate-900 font-medium">
+                                    {String(s.payment_method ?? '—')}
+                                  </td>
+                                  <td className="px-4 py-3 text-right tabular-nums font-semibold text-slate-950">
+                                    {formatNumber(Number(s.total ?? 0), 2, false)} {reportCurrency}
+                                  </td>
+                                  <td className="px-4 py-3">
+                                    <span className="inline-flex items-center rounded-md border border-red-200 bg-red-50 px-2 py-0.5 text-xs font-bold capitalize text-red-700">
+                                      {statusLabel}
+                                    </span>
+                                  </td>
+                                </tr>
+                              );
+                            })}
+                          </tbody>
+                        </table>
+                      </div>
+                    </div>
+                  </div>
+                )}
+
+                <BeautyServiceReportCrmModal
+                  open={beautyCrmModalAppointment != null}
+                  onClose={() => setBeautyCrmModalAppointment(null)}
+                  appointment={beautyCrmModalAppointment}
+                  accentColor={bizConfig.color}
+                  onSaved={reloadBeautyServiceReport}
+                />
+              </div>
+            )}
+
+            {isBeautyStaffTreatmentReportTab && (
+              <div className="space-y-4">
+                <div className="bg-white rounded-xl border border-slate-200 p-4 flex flex-wrap items-end gap-4 shadow-sm">
+                  <ReportDateRangePresets
+                    value={beautyStaffTreatmentDateRange}
+                    onChange={setBeautyStaffTreatmentDateRange}
+                    tm={tm}
+                  />
+                  <Button type="primary" loading={loadingStaffTreatmentReport} onClick={() => void reloadStaffTreatmentReport()}>
+                    {tm('refresh')}
+                  </Button>
+                  <p className="text-xs text-slate-500 flex-1 min-w-[200px]">{tm('beautyStaffTreatmentReportHint')}</p>
+                </div>
+                <Spin spinning={loadingStaffTreatmentReport}>
+                  <div className="bg-white rounded-xl border border-slate-200 overflow-hidden shadow-sm">
+                    <Table
+                      size="middle"
+                      bordered
+                      rowKey={(r) => `${r.staff_id}-${r.day_ymd}`}
+                      pagination={{ pageSize: 20, showSizeChanger: true }}
+                      locale={{ emptyText: tm('noDataFound') }}
+                      dataSource={staffTreatmentReport?.rows ?? []}
+                      columns={[
+                        { title: tm('date'), dataIndex: 'day_ymd', width: 120 },
+                        { title: tm('bStaffView'), dataIndex: 'staff_name' },
+                        { title: tm('beautyStaffTreatmentApptCount'), dataIndex: 'appointment_count', align: 'right' as const, width: 110 },
+                        { title: tm('bReceiptTreatmentShots'), dataIndex: 'shots_count', align: 'right' as const, width: 100 },
+                        { title: tm('bReceiptTreatmentDegree'), dataIndex: 'degree_count', align: 'right' as const, width: 100 },
+                        {
+                          title: tm('beautyStaffTreatmentSamples'),
+                          key: 'samples',
+                          render: (_, r) => {
+                            const parts = [
+                              ...(r.shots_samples ?? []).map((s) => `${tm('bReceiptTreatmentShots')}: ${s}`),
+                              ...(r.degree_samples ?? []).map((d) => `${tm('bReceiptTreatmentDegree')}: ${d}`),
+                            ];
+                            return parts.length ? parts.join(' · ') : '—';
+                          },
+                        },
+                      ]}
+                    />
+                  </div>
+                </Spin>
+              </div>
+            )}
+
+            {isBeautyCommissionReportTab && (
+              <CommissionReport />
+            )}
+
+            {isBeautyOverdueUncalledReportTab && (
+              <OverdueUncalledFollowUpReport />
+            )}
+
+            {isBeautySurveyReportTab && (
+              <SurveyResultsReport {...beautySurveyEmbed} />
+            )}
+
+            {isBeautySurveyTrendReportTab && (
+              <SurveyTrendReport {...beautySurveyEmbed} />
+            )}
+
+            {isBeautySurveyStaffReportTab && (
+              <SurveyStaffReport {...beautySurveyEmbed} />
+            )}
+
+            {isBeautySurveyServiceReportTab && (
+              <SurveyServiceReport {...beautySurveyEmbed} />
+            )}
+
+            {isBeautySurveyNpsReportTab && (
+              <SurveyNpsReport {...beautySurveyEmbed} />
+            )}
+
+            {isBeautySurveyCommentsReportTab && (
+              <SurveyCommentsReport {...beautySurveyEmbed} />
+            )}
+
+            {selectedTab === 'chat-ai' && (
+              <ReportChatAI
+                sales={effectiveCatalogSales}
+                products={products}
+                dailySales={dailySalesForAi}
+                dailyTotal={dailyTotal}
+                dailyCash={dailyCash}
+                dailyCard={dailyCard}
+                productSales={productSales}
+                cashierPerformance={cashierPerformance}
+                categoryAnalysis={getCategoryAnalysis()}
+                hourlyAnalysis={getHourlyAnalysis()}
+              />
+            )}
+
+            {selectedTab === 'daily-sales-executive' && (() => {
+              const paymentDist = getPaymentDistribution();
+              const categories = getCategoryAnalysis();
+              const COLORS = ['#3b82f6', '#10b981', '#f59e0b', '#ef4444', '#8b5cf6', '#ec4899', '#f97316'];
+
+              return (
+                <div className="space-y-6 w-full min-w-0">
+                  {/* Upper Section: Pie Chart & Financial Totals */}
+                  <div className="grid grid-cols-1 xl:grid-cols-12 gap-6 w-full min-w-0">
+                    {/* Left: Pie Chart */}
+                    <div className="xl:col-span-5 min-w-0 bg-white rounded-2xl border border-slate-200 p-6 shadow-sm">
+                      <h3 className="text-sm font-bold text-slate-500 uppercase tracking-wider mb-6">{tm('reportsPaymentTypeDistribution')}</h3>
+                      <div className="h-[350px] min-h-[280px] w-full min-w-0">
+                        {paymentDist.chartData.length === 0 ? (
+                          <div className="flex h-full items-center justify-center px-4 text-center text-sm text-slate-400">
+                            {tm('reportsPaymentDistNoPositive')}
+                          </div>
+                        ) : (
+                          <ResponsiveContainer width="100%" height="100%">
+                            <RePieChart>
+                              <Pie
+                                data={paymentDist.chartData}
+                                cx="50%"
+                                cy="50%"
+                                innerRadius={80}
+                                outerRadius={120}
+                                paddingAngle={5}
+                                dataKey="value"
+                                nameKey="name"
+                              >
+                                {paymentDist.chartData.map((entry: any, index: number) => (
+                                  <Cell key={`cell-${entry.name}-${index}`} fill={COLORS[index % COLORS.length]} />
+                                ))}
+                              </Pie>
+                              <Tooltip formatter={(value: number) => formatNumber(value, 2, false)} />
+                              <Legend verticalAlign="bottom" height={36} />
+                            </RePieChart>
+                          </ResponsiveContainer>
+                        )}
+                      </div>
+                    </div>
+
+                    {/* Right: Detailed Totals */}
+                    <div className="xl:col-span-7 min-w-0 bg-white rounded-2xl border border-slate-200 p-6 shadow-sm">
+                      <div className="space-y-1">
+                        {(() => {
+                          const stats = restStats;
+                          const multinet = stats?.payments?.['MULTİNET'] || 0;
+                          const mv = (salesAmt: number) =>
+                            tm('reportsExecMovementLine')
+                              .replace('{sales}', formatNumber(salesAmt, 2, false))
+                              .replace('{out}', '0,00')
+                              .replace('{in}', '0,00');
+                          const items = [
+                            {
+                              label: tm('reportsExecTransferredToCurrent'),
+                              value: 0,
+                              sub: tm('reportsExecNoIntegrationData'),
+                              color: 'text-slate-600',
+                            },
+                            { label: tm('reportsExecCashUpper'), value: stats?.payments?.['NAKİT'] || 0, sub: mv(stats?.payments?.['NAKİT'] || 0), color: 'text-slate-800 font-bold' },
+                            { label: tm('reportsExecPos'), value: stats?.payments?.['POS'] || 0, sub: mv(stats?.payments?.['POS'] || 0), color: 'text-slate-800' },
+                            { label: tm('reportsExecMultinet'), value: multinet, sub: mv(multinet), color: 'text-slate-800' },
+                            { label: tm('reportsExecServiceFee'), value: 0.00, color: 'text-red-500' },
+                            {
+                              label: tm('reportsExecOpenTables'),
+                              value: 0.0,
+                              sub: tm('reportsExecOpenTablesSub'),
+                              color: 'text-green-500',
+                            },
+                            { label: tm('reportsExecGrandTotal'), value: stats?.totalSales || 0, color: 'text-amber-500 font-black' },
+                            { label: tm('reportsExecCollectionTotal'), value: stats?.totalSales || 0, color: 'text-red-500' },
+                            {
+                              label: tm('reportsEodSalesGrossTotal'),
+                              value: stats?.totalSales || 0,
+                              sub: tm('reportsEodNetTurnoverPlusDiscount'),
+                              color: 'text-blue-500',
+                            },
+                          ];
+
+                          return items.map((item, i) => (
+                            <div
+                              key={i}
+                              className={`grid grid-cols-[minmax(0,1fr)_auto] gap-x-4 gap-y-0.5 border-b border-slate-50 py-2 items-start ${item.color}`}
+                            >
+                              <div className="min-w-0">
+                                <p className="text-sm leading-snug">{item.label}</p>
+                                {item.sub && (
+                                  <p className="text-[10px] text-slate-400 italic leading-snug mt-0.5">{item.sub}</p>
+                                )}
+                              </div>
+                              <p className="text-sm tabular-nums text-right whitespace-nowrap shrink-0 self-center">
+                                {formatNumber(item.value, 2, false)}
+                              </p>
+                            </div>
+                          ));
+                        })()}
+                        <div className="grid grid-cols-[minmax(0,1fr)_auto] gap-x-4 items-center pt-3 border-t border-slate-100 text-purple-600 font-bold">
+                          <div className="flex items-center gap-2 min-w-0">
+                            <TagsOutlined className="shrink-0" />
+                            <span className="text-sm">{tm('reportsExecDiscountTotal')}</span>
+                          </div>
+                          <span className="text-sm tabular-nums text-right whitespace-nowrap shrink-0">
+                            {formatNumber(restStats.discountTotal, 2, false)}
+                          </span>
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* Middle: Yemek Entegrasyonları (Bar Chart) */}
+                  <div className="bg-white rounded-2xl border border-slate-200 p-6 shadow-sm">
+                    <h3 className="text-sm font-bold text-slate-500 uppercase tracking-wider mb-6">{tm('reportsFoodIntegrationSalesDist')}</h3>
+                    <div className="h-[200px]">
+                      <ResponsiveContainer width="100%" height="100%">
+                        <BarChart data={[
+                          { name: 'Yemek Sepeti', value: 0 },
+                          { name: 'Getir Yemek', value: 0 },
+                          { name: 'Trendyol Yemek', value: 0 }
+                        ]}>
+                          <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#f1f5f9" />
+                          <XAxis dataKey="name" axisLine={false} tickLine={false} tick={{ fill: '#64748b', fontSize: 12 }} />
+                          <YAxis axisLine={false} tickLine={false} tick={{ fill: '#64748b', fontSize: 12 }} />
+                          <Tooltip cursor={{ fill: '#f8fafc' }} />
+                          <Bar dataKey="value" fill="#d1d5db" radius={[4, 4, 0, 0]} barSize={40} />
+                        </BarChart>
+                      </ResponsiveContainer>
+                    </div>
+                  </div>
+
+                  {/* Lower Section: Category Sales (Bar Chart) */}
+                  <div className="bg-white rounded-2xl border border-slate-200 p-6 shadow-sm">
+                    <h3 className="text-sm font-bold text-slate-500 uppercase tracking-wider mb-6">{tm('reportsCategorySalesDist')}</h3>
+                    <div className="h-[300px]">
+                      <ResponsiveContainer width="100%" height="100%">
+                        <BarChart data={categories.slice(0, 5).map(c => ({ name: c.name, value: c.totalRevenue }))}>
+                          <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#f1f5f9" />
+                          <XAxis dataKey="name" axisLine={false} tickLine={false} tick={{ fill: '#64748b', fontSize: 12 }} />
+                          <YAxis axisLine={false} tickLine={false} tick={{ fill: '#64748b', fontSize: 12 }} />
+                          <Tooltip cursor={{ fill: '#f8fafc' }} />
+                          <Bar dataKey="value" fill="#e2e8f0" radius={[4, 4, 0, 0]} barSize={60}>
+                            {categories.slice(0, 5).map((_entry, index) => (
+                              <Cell key={`cell-${index}`} fill={index === 0 ? '#e1f57d' : '#f9a825'} />
+                            ))}
+                          </Bar>
+                        </BarChart>
+                      </ResponsiveContainer>
+                    </div>
+                  </div>
+
+                  {/* Region Table Section (Bar Chart) */}
+                  <div className="bg-white rounded-2xl border border-slate-200 p-6 shadow-sm">
+                    <h3 className="text-sm font-bold text-slate-500 uppercase tracking-wider mb-6">{tm('reportsRegionTableChart')}</h3>
+                    <div className="h-[300px]">
+                      <ResponsiveContainer width="100%" height="100%">
+                        <BarChart data={[
+                          { name: 'SALON', value: 18145.00, color: '#a7f3d0' },
+                          { name: 'TERAS', value: 9060.00, color: '#c084fc' },
+                          { name: 'BAHÇE', value: 840.00, color: '#bcaaa4' },
+                          { name: 'Perakende', value: 651.00, color: '#cfd8dc' },
+                          { name: 'Paket Servis', value: 130.00, color: '#fff9c4' }
+                        ]}>
+                          <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#f1f5f9" />
+                          <XAxis dataKey="name" axisLine={false} tickLine={false} tick={{ fill: '#64748b', fontSize: 12 }} />
+                          <YAxis axisLine={false} tickLine={false} tick={{ fill: '#64748b', fontSize: 12 }} />
+                          <Tooltip cursor={{ fill: '#f8fafc' }} />
+                          <Bar dataKey="value" radius={[4, 4, 0, 0]} barSize={50}>
+                            {[
+                              { name: 'SALON', value: 18145.00, color: '#a7f3d0' },
+                              { name: 'TERAS', value: 9060.00, color: '#c084fc' },
+                              { name: 'BAHÇE', value: 840.00, color: '#bcaaa4' },
+                              { name: 'Perakende', value: 651.00, color: '#cfd8dc' },
+                              { name: 'Paket Servis', value: 130.00, color: '#fff9c4' }
+                            ].map((entry, index) => (
+                              <Cell key={`cell-${index}`} fill={entry.color} />
+                            ))}
+                          </Bar>
+                        </BarChart>
+                      </ResponsiveContainer>
+                    </div>
+                  </div>
+
+                  {/* Footer Section: Cashier and Department Summaries */}
+                  <div className="grid grid-cols-2 gap-6 pb-6">
+                    <div className="bg-white rounded-2xl border border-slate-200 p-6 shadow-sm">
+                      <h3 className="text-sm font-bold text-slate-500 uppercase tracking-wider mb-6">{tm('reportsCashierTxnSummary')}</h3>
+                      <div className="h-[300px]">
+                        <ResponsiveContainer width="100%" height="100%">
+                          <RePieChart>
+                            <Pie
+                              data={[{ name: 'YONETICİ', value: 28826.00 }]}
+                              cx="50%"
+                              cy="50%"
+                              outerRadius={100}
+                              dataKey="value"
+                            >
+                              <Cell fill="#ffab91" />
+                            </Pie>
+                            <Tooltip formatter={(value: number) => formatNumber(value, 2, false)} />
+                            <Legend />
+                          </RePieChart>
+                        </ResponsiveContainer>
+                      </div>
+                    </div>
+                    <div className="bg-white rounded-2xl border border-slate-200 p-6 shadow-sm">
+                      <h3 className="text-sm font-bold text-slate-500 uppercase tracking-wider mb-6">{tm('reportsDeptTxnSummary')}</h3>
+                      <div className="h-[300px]">
+                        <ResponsiveContainer width="100%" height="100%">
+                          <RePieChart>
+                            <Pie
+                              data={[
+                                { name: 'BARİSTA', value: 225.00 },
+                                { name: 'IZGARA', value: 28601.00 }
+                              ] as any[]}
+                              cx="50%"
+                              cy="50%"
+                              outerRadius={100}
+                              dataKey="value"
+                            >
+                              <Cell fill="#90caf9" />
+                              <Cell fill="#80cbc4" />
+                            </Pie>
+                            <Tooltip formatter={(value: any) => formatNumber(value, 2, false)} />
+                            <Legend />
+                          </RePieChart>
+                        </ResponsiveContainer>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              );
+            })()}
+
+            {selectedTab === 'end-of-day' && (() => {
+              const paymentDist: any = getPaymentDistribution();
+              const pieData = paymentDist.chartData as { name: string; value: number }[];
+              const st = restStats;
+              const paySum = Object.values(st.payments).reduce((a: number, v: any) => a + Number(v || 0), 0);
+              const grossSales = st.totalSales + st.discountTotal;
+              const paymentRows = Object.entries(st.payments)
+                .filter(([, v]) => Number(v) > 0)
+                .sort((a, b) => Number(b[1]) - Number(a[1]));
+              const COLORS = ['#90caf9', '#81c784', '#ce93d8', '#ffab91', '#4db6ac'];
+              const paymentBucketLabel = (rawKey: string) => {
+                const x = String(rawKey || '').trim();
+                if (isRestaurantPaymentCashLike(x)) return tm('reportsExecCashUpper');
+                if (x.toUpperCase() === 'POS') return tm('reportsExecPos');
+                if (/MULT[İI]NET/i.test(x)) return tm('reportsExecMultinet');
+                if (isRestaurantPaymentCardLike(x)) return tm('reportsPaymentPieCard');
+                return x;
+              };
+              return (
+                <div className="space-y-6 w-full min-w-0">
+                  {/* Top Summary Cards — restoran: adisyon kanalı; diğer yapılar: seçili gün ERP birleşik özet */}
+                  <div
+                    className={
+                      businessType === 'restaurant'
+                        ? 'grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-4'
+                        : 'grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-4'
+                    }
+                  >
+                    {businessType === 'restaurant'
+                      ? (() => {
+                          const totalGuests = restOrders.reduce((sum, o) => sum + (o.guest_count || 2), 0);
+                          const totalItems = restOrders.reduce((sum, o) => sum + (o.items?.length || 0), 0);
+                          const takeawayOrders = restOrders.filter((o) => o.table_id === 'TAKEAWAY');
+                          const tableOrders = restOrders.filter((o) => o.table_id !== 'TAKEAWAY' && o.table_id !== 'RETAIL');
+                          const retailOrders = restOrders.filter((o) => o.table_id === 'RETAIL');
+
+                          return [
+                            { label: tm('reportsEodGuestCount'), value: totalGuests, icon: <TeamOutlined className="text-blue-200" />, color: 'border-blue-50' },
+                            {
+                              label: tm('reportsEodTotalOrders'),
+                              value: dailyUnifiedRows.length,
+                              sub: tm('reportsEodProductCountTicket').replace('{n}', String(totalItems)),
+                              icon: <HistoryOutlined className="text-purple-200" />,
+                              color: 'border-purple-50',
+                            },
+                            {
+                              label: tm('reportsEodChannelTableService'),
+                              value: tableOrders.length,
+                              sub: tm('reportsEodProductCountOnly').replace(
+                                '{n}',
+                                String(tableOrders.reduce((s, o) => s + (o.items?.length || 0), 0))
+                              ),
+                              icon: <ApartmentOutlined className="text-orange-200" />,
+                              color: 'border-orange-50',
+                            },
+                            {
+                              label: tm('reportsEodChannelPackage'),
+                              value: takeawayOrders.length,
+                              sub: tm('reportsEodProductCountOnly').replace(
+                                '{n}',
+                                String(takeawayOrders.reduce((s, o) => s + (o.items?.length || 0), 0))
+                              ),
+                              icon: <Package className="text-red-200" />,
+                              color: 'border-red-50',
+                            },
+                            {
+                              label: tm('reportsEodChannelRetail'),
+                              value: retailOrders.length,
+                              sub: tm('reportsEodProductCountOnly').replace(
+                                '{n}',
+                                String(retailOrders.reduce((s, o) => s + (o.items?.length || 0), 0))
+                              ),
+                              icon: <ShoppingCart className="text-green-200" />,
+                              color: 'border-green-50',
+                            },
+                            {
+                              label: tm('reportsEodChannelSelfService'),
+                              value: '0',
+                              sub: tm('reportsEodProductCountZero'),
+                              icon: <PieChartIcon className="text-pink-200" />,
+                              color: 'border-pink-50',
+                            },
+                          ].map((card, i) => (
+                            <div
+                              key={i}
+                              className={`bg-white rounded-xl border-2 ${card.color} p-4 shadow-sm text-center relative overflow-hidden group hover:scale-105 transition-transform`}
+                            >
+                              <div className="absolute -right-2 -top-2 opacity-10 group-hover:opacity-20 transition-opacity">
+                                {React.cloneElement(card.icon as any, { className: 'w-16 h-16' })}
+                              </div>
+                              <p className="text-[11px] font-bold text-slate-400 mb-1">{card.label}</p>
+                              <p className="text-2xl font-black text-blue-600">{card.value}</p>
+                              {card.sub && <p className="text-[10px] text-slate-400 font-medium">{card.sub}</p>}
+                              <div className="mt-2 flex justify-center">{React.cloneElement(card.icon as any, { className: 'w-4 h-4' })}</div>
+                            </div>
+                          ));
+                        })()
+                      : [
+                          {
+                            label: tm('reportsEodErpSlipLines'),
+                            value: dailyUnifiedRows.length,
+                            sub: tm('reportsEodSelectedDay'),
+                            icon: <HistoryOutlined className="text-purple-200" />,
+                            color: 'border-purple-50',
+                          },
+                          {
+                            label: tm('reportsEodNetRevenue'),
+                            value: formatNumber(st.totalSales, 2, false),
+                            sub: reportCurrency,
+                            icon: <Banknote className="text-amber-200" />,
+                            color: 'border-amber-50',
+                          },
+                          {
+                            label: tm('reportsPaymentPieCash'),
+                            value: formatNumber(st.payments['NAKİT'] || 0, 2, false),
+                            sub: reportCurrency,
+                            icon: <Banknote className="text-green-200" />,
+                            color: 'border-green-50',
+                          },
+                          {
+                            label: tm('reportsEodCardPosShort'),
+                            value: formatNumber(st.payments['POS'] || 0, 2, false),
+                            sub: reportCurrency,
+                            icon: <CreditCard className="text-blue-200" />,
+                            color: 'border-blue-50',
+                          },
+                          {
+                            label: tm('reportsEodDiscountShort'),
+                            value: formatNumber(st.discountTotal, 2, false),
+                            sub: reportCurrency,
+                            icon: <TagsOutlined className="text-orange-200" />,
+                            color: 'border-orange-50',
+                          },
+                        ].map((card, i) => (
+                          <div
+                            key={`erp-${i}`}
+                            className={`bg-white rounded-xl border-2 ${card.color} p-4 shadow-sm text-center relative overflow-hidden group hover:scale-105 transition-transform`}
+                          >
+                            <div className="absolute -right-2 -top-2 opacity-10 group-hover:opacity-20 transition-opacity">
+                              {React.cloneElement(card.icon as any, { className: 'w-16 h-16' })}
+                            </div>
+                            <p className="text-[11px] font-bold text-slate-400 mb-1">{card.label}</p>
+                            <p className="text-2xl font-black text-blue-600">{card.value}</p>
+                            {card.sub && <p className="text-[10px] text-slate-400 font-medium">{card.sub}</p>}
+                            <div className="mt-2 flex justify-center">{React.cloneElement(card.icon as any, { className: 'w-4 h-4' })}</div>
+                          </div>
+                        ))}
+                  </div>
+
+                  <div className="grid grid-cols-1 xl:grid-cols-12 gap-6 w-full min-w-0">
+                    <div className="xl:col-span-6 min-w-0 bg-white rounded-2xl border border-slate-200 p-6 shadow-sm">
+                      <h3 className="text-sm font-bold text-slate-500 tracking-wider mb-6">{tm('reportsPaymentTypeDistribution')}</h3>
+                      <div className="h-[350px] min-h-[280px] w-full min-w-0">
+                        {pieData.length === 0 ? (
+                          <div className="flex h-full items-center justify-center px-4 text-center text-sm text-slate-400">
+                            {businessType === 'restaurant' ? tm('reportsEodPieEmptyRestaurant') : tm('reportsEodPieEmptyRetail')}
+                          </div>
+                        ) : (
+                          <ResponsiveContainer width="100%" height="100%">
+                            <RePieChart>
+                              <Pie
+                                data={pieData}
+                                cx="50%"
+                                cy="50%"
+                                outerRadius={120}
+                                paddingAngle={2}
+                                dataKey="value"
+                                nameKey="name"
+                              >
+                                {pieData.map((entry: any, index: number) => (
+                                  <Cell key={`cell-${entry.name}-${index}`} fill={COLORS[index % COLORS.length]} />
+                                ))}
+                              </Pie>
+                              <Tooltip formatter={(value: number) => formatNumber(value, 2, false)} />
+                              <Legend />
+                            </RePieChart>
+                          </ResponsiveContainer>
+                        )}
+                      </div>
+                    </div>
+                    <div className="xl:col-span-6 min-w-0 bg-white rounded-2xl border border-slate-200 p-6 shadow-sm">
+                      <div className="space-y-1">
+                        {[
+                          {
+                            label: tm('reportsExecTransferredToCurrent'),
+                            value: 0,
+                            sub: tm('reportsExecNoIntegrationData'),
+                            color: 'text-slate-600',
+                          },
+                          ...paymentRows.map(([label, val]) => ({
+                            label: paymentBucketLabel(label),
+                            value: Number(val),
+                            sub: tm('reportsEodRowSubTahsilat').replace('{amount}', formatNumber(Number(val), 2, false)),
+                            color: isRestaurantPaymentCashLike(label) ? 'text-slate-800 font-black' : 'text-slate-800',
+                          })),
+                          { label: tm('reportsExecServiceFee'), value: 0, color: 'text-red-500' },
+                          {
+                            label: tm('reportsExecOpenTables'),
+                            value: 0,
+                            sub: tm('reportsExecOpenTablesSub'),
+                            color: 'text-green-500',
+                          },
+                          { label: tm('reportsExecGrandTotal'), value: st.totalSales, color: 'text-amber-500 font-black' },
+                          { label: tm('reportsExecCollectionTotal'), value: paySum, color: 'text-red-500' },
+                          {
+                            label: tm('reportsEodSalesGrossTotal'),
+                            value: grossSales,
+                            sub: tm('reportsEodNetTurnoverPlusDiscount'),
+                            color: 'text-blue-500',
+                          },
+                        ].map((item, i) => (
+                          <div
+                            key={i}
+                            className={`grid grid-cols-[minmax(0,1fr)_auto] gap-x-4 gap-y-0.5 border-b border-slate-50 py-2 items-start ${item.color}`}
+                          >
+                            <div className="min-w-0">
+                              <p className="text-sm leading-snug">{item.label}</p>
+                              {item.sub && (
+                                <p className="text-[10px] text-slate-400 italic leading-snug mt-0.5">{item.sub}</p>
+                              )}
+                            </div>
+                            <p className="text-sm tabular-nums text-right whitespace-nowrap shrink-0 self-center">
+                              {formatNumber(item.value, 2, false)}
+                            </p>
+                          </div>
+                        ))}
+                        <div className="grid grid-cols-[minmax(0,1fr)_auto] gap-x-4 items-center pt-3 border-t border-slate-100 text-purple-600 font-bold">
+                          <div className="flex items-center gap-2 min-w-0">
+                            <TagsOutlined className="shrink-0" />
+                            <span className="text-sm font-black">{tm('reportsExecDiscountTotal')}</span>
+                          </div>
+                          <span className="text-sm tabular-nums text-right whitespace-nowrap shrink-0">
+                            {formatNumber(st.discountTotal, 2, false)}
+                          </span>
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              );
+            })()}
+
+            {selectedTab === 'cash-report' && (() => {
+              const payments = restStats.payments;
+
+              const chartData = Object.entries(payments).map(([name, value]: [string, any]) => ({
+                name,
+                value: Number(value || 0),
+                fill: name === 'NAKİT' ? '#64b5f6' : name === 'POS' ? '#b39ddb' : '#9575cd'
+              }));
+
+              return (
+                <div className="space-y-6">
+                  <div className="bg-white rounded-2xl border border-slate-200 p-6 shadow-sm">
+                    <h3 className="text-sm font-bold text-slate-500 uppercase tracking-wider mb-6">{tm('reportsCashMovementTitle')}</h3>
+                    <div className="h-[250px]">
+                      <ResponsiveContainer width="100%" height="100%">
+                        <BarChart data={chartData}>
+                          <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#f1f5f9" />
+                          <XAxis dataKey="name" axisLine={false} tickLine={false} />
+                          <YAxis axisLine={false} tickLine={false} />
+                          <Tooltip formatter={(val: number) => formatNumber(val, 2, false)} />
+                          <Bar dataKey="value" radius={[4, 4, 0, 0]} barSize={50} />
+                        </BarChart>
+                      </ResponsiveContainer>
+                    </div>
+                  </div>
+
+                  <div className="bg-white rounded-2xl border border-slate-200 overflow-hidden shadow-sm">
+                    <div className="p-3 flex justify-between items-center text-white font-bold" style={{ backgroundColor: bizConfig.color }}>
+                      <div className="flex items-center gap-2">
+                        <HistoryOutlined />
+                        <span>{tm('reportsCashColDesc')}</span>
+                      </div>
+                      <div className="flex gap-20">
+                        <span>{tm('reportsCashColQty')}</span>
+                        <span>{tm('reportsCashColAmount')}</span>
+                      </div>
+                    </div>
+                    <div className="divide-y divide-slate-100">
+                      {Object.entries(payments).map(([method, total], i) => (
+                        <div key={i} className={`p-3 flex justify-between items-center ${i % 2 === 0 ? 'bg-orange-50' : 'bg-white'}`}>
+                          <span className="text-sm font-bold text-slate-700">{method}</span>
+                          <div className="flex gap-20">
+                            <span className="text-sm font-bold">-</span>
+                            <span className="text-sm font-bold">{formatNumber(total as number, 2, false)}</span>
+                          </div>
+                        </div>
+                      ))}
+                      <div className="p-3 flex justify-between items-center bg-purple-100 font-bold">
+                        <span className="text-sm font-bold text-slate-700">{tm('reportsTotalsRow')}</span>
+                        <div className="flex gap-20">
+                          <span className="text-sm font-bold">-</span>
+                          <span className="text-sm font-bold">{formatNumber(Object.values(payments).reduce((s: number, v: any) => s + Number(v || 0), 0), 2, false)}</span>
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              );
+            })()}
+
+            {selectedTab === 'product-reports' && (() => {
+              if (businessType === 'restaurant') {
+                const chartData = restProductQtyRows.slice(0, 14).map((r, i) => ({
+                  name:
+                    r.productName.length > 22 ? `${r.productName.slice(0, 20)}…` : r.productName,
+                  value: r.quantity,
+                  fill: `hsl(${22 + i * 16}, 72%, 52%)`,
+                }));
+                const totalQ = restProductQtyRows.reduce((s, r) => s + r.quantity, 0);
+                const totalRev = restProductQtyRows.reduce((s, r) => s + r.revenue, 0);
+                return (
+                  <div className="space-y-6">
+                    <div className="bg-white rounded-xl border border-slate-200 p-4 flex flex-wrap items-end gap-4 shadow-sm">
+                      <ReportDateRangePresets
+                        value={restProductQtyDateRange}
+                        onChange={setRestProductQtyDateRange}
+                        tm={tm}
+                      />
+                      <p className="text-xs text-slate-500 pb-1 max-w-xl leading-relaxed">{tm('resProductQtyReportSubtitle')}</p>
+                    </div>
+                    {restProductQtyError && (
+                      <div className="rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-800">{restProductQtyError}</div>
+                    )}
+                    {loadingRestProductQty ? (
+                      <div className="flex flex-col items-center justify-center gap-3 py-24 text-slate-500">
+                        <Spin size="large" />
+                        <span>{tm('loading')}</span>
+                      </div>
+                    ) : (
+                      <>
+                        <div className="bg-white rounded-2xl border border-slate-200 p-6 shadow-sm">
+                          <h3 className="text-sm font-bold text-slate-500 uppercase tracking-wider mb-4">
+                            {tm('resProductQtyReportTitle')} — {tm('enCokSatanlar')}
+                          </h3>
+                          <div className="h-[300px]">
+                            {chartData.length === 0 ? (
+                              <div className="h-full flex items-center justify-center text-slate-400 text-sm">{tm('resProductNoData')}</div>
+                            ) : (
+                              <ResponsiveContainer width="100%" height="100%">
+                                <BarChart data={chartData}>
+                                  <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#f1f5f9" />
+                                  <XAxis dataKey="name" axisLine={false} tickLine={false} tick={{ fontSize: 9 }} interval={0} angle={-28} textAnchor="end" height={68} />
+                                  <YAxis axisLine={false} tickLine={false} />
+                                  <Tooltip
+                                    formatter={(val: number) => [
+                                      formatNumber(val, 2, false),
+                                      tm('resProductColQty'),
+                                    ]}
+                                  />
+                                  <Bar dataKey="value" radius={[4, 4, 0, 0]} barSize={22} />
+                                </BarChart>
+                              </ResponsiveContainer>
+                            )}
+                          </div>
+                        </div>
+
+                        <div className="bg-white rounded-2xl border border-slate-200 overflow-hidden shadow-sm">
+                          <div
+                            className="p-3 flex justify-between items-center text-white font-bold"
+                            style={{ backgroundColor: bizConfig.color }}
+                          >
+                            <div className="flex items-center gap-2">
+                              <ShoppingCart className="w-4 h-4" />
+                              <span>{tm('resProductColProduct')}</span>
+                            </div>
+                            <div className="flex gap-20">
+                              <span>{tm('resProductColQty')}</span>
+                              <span>{tm('resProductColRevenue')}</span>
+                            </div>
+                          </div>
+                          <div className="divide-y divide-slate-100">
+                            {restProductQtyRows.map((row, i) => (
+                              <div
+                                key={`${row.productId ?? 'x'}-${row.productName}-${i}`}
+                                className="p-3 flex justify-between items-center gap-4 hover:bg-slate-50/90"
+                              >
+                                <span className="font-semibold text-slate-800 text-sm flex-1 min-w-0 break-words">{row.productName}</span>
+                                <div className="flex gap-16 shrink-0 font-bold text-sm tabular-nums">
+                                  <span>{formatNumber(row.quantity, 2, false)}</span>
+                                  <span>{formatNumber(row.revenue, 2, false)}</span>
+                                </div>
+                              </div>
+                            ))}
+                            <div className="p-3 flex justify-between items-center bg-slate-100 font-bold border-t-2 border-slate-200">
+                              <span className="text-sm text-slate-700">{tm('totalUppercase')}</span>
+                              <div className="flex gap-16 shrink-0">
+                                <span className="text-sm">{formatNumber(totalQ, 2, false)}</span>
+                                <span className="text-sm">{formatNumber(totalRev, 2, false)}</span>
+                              </div>
+                            </div>
+                          </div>
+                        </div>
+                      </>
+                    )}
+                  </div>
+                );
+              }
+
+              const productSalesData = getProductSales();
+              const chartData = productSalesData.slice(0, 10).map((p, i) => ({
+                name: p.product.name,
+                value: p.revenue,
+                fill: `hsl(${25 + i * 20}, 70%, 60%)`
+              }));
+
+              return (
+                <div className="space-y-6">
+                  <div className="bg-white rounded-2xl border border-slate-200 p-6 shadow-sm">
+                    <h3 className="text-sm font-bold text-slate-500 uppercase tracking-wider mb-6">{tm('reportsTopSellingProductsTitle')}</h3>
+                    <div className="h-[300px]">
+                      <ResponsiveContainer width="100%" height="100%">
+                        <BarChart data={chartData}>
+                          <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#f1f5f9" />
+                          <XAxis dataKey="name" axisLine={false} tickLine={false} tick={{ fontSize: 10 }} />
+                          <YAxis axisLine={false} tickLine={false} />
+                          <Tooltip formatter={(val: number) => formatNumber(val, 2, false)} />
+                          <Bar dataKey="value" radius={[4, 4, 0, 0]} barSize={25} />
+                        </BarChart>
+                      </ResponsiveContainer>
+                    </div>
+                  </div>
+
+                  <div className="bg-white rounded-2xl border border-slate-200 overflow-hidden shadow-sm">
+                    <div className="p-3 flex justify-between items-center text-white font-bold" style={{ backgroundColor: bizConfig.color }}>
+                      <div className="flex items-center gap-2">
+                        <ShoppingCart className="w-4 h-4" />
+                        <span>{tm('reportsThProductName')}</span>
+                      </div>
+                      <div className="flex gap-20">
+                        <span>{tm('reportsThQty')}</span>
+                        <span>{tm('reportsTotalAmountQty')}</span>
+                      </div>
+                    </div>
+                    <div className="divide-y divide-slate-100">
+                      {productSalesData.map((prod, i) => (
+                        <React.Fragment key={i}>
+                          <div className="p-2 text-white font-bold text-[10px] uppercase pl-4" style={{ backgroundColor: `${bizConfig.color}cc` }}>{prod.product.name}</div>
+                          <div className="p-2 flex justify-between items-center pl-8 border-b" style={{ backgroundColor: `${bizConfig.color}11`, borderColor: `${bizConfig.color}22` }}>
+                            <span className="text-xs font-bold text-slate-500">{tm('reportsProductSalesRowLabel')}</span>
+                            <div className="flex gap-20 font-bold text-xs">
+                              <span>{tm('reportsQtyWithUnit').replace('{n}', formatNumber(prod.quantity, 2, false))}</span>
+                              <span>{formatNumber(prod.revenue, 2, false)}</span>
+                            </div>
+                          </div>
+                        </React.Fragment>
+                      ))}
+                      <div className="p-3 flex justify-between items-center bg-slate-100 font-bold border-t-2 border-slate-200">
+                        <span className="text-sm font-bold text-slate-700">{tm('reportsGrandTotal')}</span>
+                        <div className="flex gap-20">
+                          <span className="text-sm font-bold">{formatNumber(productSalesData.reduce((s: number, p: any) => s + (p.quantity || 0), 0), 2, false)}</span>
+                          <span className="text-sm font-bold">{formatNumber(productSalesData.reduce((s: number, p: any) => s + (p.revenue || 0), 0), 2, false)}</span>
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              );
+            })()}
+
+            {selectedTab === 'category-reports' && (() => {
+              const categories = getCategoryAnalysis();
+              const COLORS = ['#f06292', '#d4e157', '#64b5f6', '#9575cd', '#4db6ac', '#ffb74d'];
+
+              return (
+                <div className="space-y-6">
+                  <div className="bg-white rounded-2xl border border-slate-200 p-6 shadow-sm">
+                    <h3 className="text-sm font-bold text-slate-500 uppercase tracking-wider mb-6">{tm('kategoriRaporlari')}</h3>
+                    <div className="h-[300px]">
+                      <ResponsiveContainer width="100%" height="100%">
+                        <BarChart data={categories.map((c, i) => ({ name: c.name, value: c.totalRevenue, fill: COLORS[i % COLORS.length] }))}>
+                          <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#f1f5f9" />
+                          <XAxis dataKey="name" axisLine={false} tickLine={false} tick={{ fontSize: 10 }} />
+                          <YAxis axisLine={false} tickLine={false} />
+                          <Tooltip formatter={(val: number) => formatNumber(val, 2, false)} />
+                          <Bar dataKey="value" radius={[4, 4, 0, 0]} barSize={40} />
+                        </BarChart>
+                      </ResponsiveContainer>
+                    </div>
+                  </div>
+
+                  <div className="bg-white rounded-2xl border border-slate-200 overflow-hidden shadow-sm">
+                    <div className="p-3 flex justify-between items-center text-white font-bold" style={{ backgroundColor: bizConfig.color }}>
+                      <div className="flex items-center gap-2">
+                        <PieChartIcon className="w-4 h-4" />
+                        <span>{tm('reportsCategoryNameCol')}</span>
+                      </div>
+                      <div className="flex gap-20">
+                        <span>{tm('reportsThQty')}</span>
+                        <span>{tm('reportsTotalAmountQty')}</span>
+                      </div>
+                    </div>
+                    <div className="divide-y divide-slate-100">
+                      {categories.map((cat, i) => (
+                        <React.Fragment key={i}>
+                          <div className="bg-orange-400 p-2 text-white font-bold text-xs uppercase pl-4">{cat.name}</div>
+                          {cat.items && cat.items.slice(0, 3).map((item, j) => (
+                            <div key={j} className="p-2 flex justify-between items-center bg-orange-50 pl-8 border-b border-orange-100 border-l-4 border-l-orange-200">
+                              <span className="text-[11px] font-medium text-slate-600">{item.product_name}</span>
+                              <div className="flex gap-20 font-bold text-[11px]">
+                                <span>{formatNumber(item.quantity, 0, false)}</span>
+                                <span>{formatNumber(item.subtotal, 2, false)}</span>
+                              </div>
+                            </div>
+                          ))}
+                          <div className="p-2 flex justify-between items-center bg-amber-50 pl-8 font-bold border-b border-amber-200">
+                            <span className="text-xs text-amber-700">{tm('reportsCategoryTotalLine')}</span>
+                            <div className="flex gap-20 text-xs text-amber-700">
+                              <span>{formatNumber(cat.totalQuantity, 2, false)}</span>
+                              <span>{formatNumber(cat.totalRevenue, 2, false)}</span>
+                            </div>
+                          </div>
+                        </React.Fragment>
+                      ))}
+                      <div className="p-3 flex justify-between items-center bg-purple-100 font-bold">
+                        <span className="text-sm">{tm('reportsGrandTotal')}</span>
+                        <div className="flex gap-20">
+                          <span>{formatNumber(categories.reduce((s, c) => s + c.totalQuantity, 0), 2, false)}</span>
+                          <span>{formatNumber(categories.reduce((s, c) => s + c.totalRevenue, 0), 2, false)}</span>
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              );
+            })()}
+
+            {selectedTab === 'detailed-sales' && (() => {
+              const detailedGroups =
+                businessType === 'restaurant'
+                  ? restOrders.map((order: any) => {
+                      const rawItems = Array.isArray(order.items) ? order.items : [];
+                      const visibleItems = rawItems.filter((it: any) => it?.is_void !== true);
+                      const open = formatRestReportDateTime(order.opened_at ?? order.openedAt);
+                      const close = formatRestReportDateTime(order.closed_at ?? order.closedAt);
+                      const tableLabel =
+                        order.table_number != null && String(order.table_number).trim() !== ''
+                          ? String(order.table_number)
+                          : order.table_id != null
+                            ? String(order.table_id)
+                            : '—';
+                      const orderId = String(order.order_no ?? order.id ?? '—');
+                      const cari =
+                        order.customer_name != null && String(order.customer_name).trim() !== ''
+                          ? String(order.customer_name)
+                          : tm('resTicketWalkIn');
+                      const statusClosed = order.status === 'closed';
+                      const statusLabel = statusClosed ? tm('closed') : tm('active');
+                      type DetailedSaleRow = {
+                        open: string;
+                        close: string;
+                        table: string;
+                        product: string;
+                        cari: string;
+                        qty: number;
+                        price: number;
+                        total: number;
+                        status: string;
+                        statusClosed: boolean;
+                      };
+
+                      const rows: DetailedSaleRow[] = visibleItems.map((it: any): DetailedSaleRow => ({
+                        open,
+                        close,
+                        table: tableLabel,
+                        product: String(it.product_name ?? it.productName ?? '—'),
+                        cari,
+                        qty: Number(it.quantity ?? 0),
+                        price: Number(it.unit_price ?? it.unitPrice ?? 0),
+                        total: Number(it.subtotal ?? 0),
+                        status: statusLabel,
+                        statusClosed,
+                      }));
+                      const qtySum = rows.reduce((s, r) => s + r.qty, 0);
+                      const lineTotal = rows.reduce((s, r) => s + r.total, 0);
+                      const discount = Number(order.discount_amount ?? 0);
+                      const totalForSummary = lineTotal > 0 ? lineTotal : restOrderNetAmount(order);
+                      return {
+                        id: orderId,
+                        items: rows,
+                        summary: {
+                          qty: qtySum,
+                          total: totalForSummary,
+                          discount,
+                          count: rows.length,
+                        },
+                      };
+                    })
+                  : buildErpDetailedSaleGroups(dailySales, tm);
+
+              const totalLineCount = detailedGroups.reduce((s, g) => s + g.items.length, 0);
+
+              return (
+                <div className="space-y-4">
+                  <div className="flex items-center justify-between bg-white p-3 rounded-xl border border-slate-200 shadow-sm">
+                    <div className="flex items-center gap-4 flex-1 flex-wrap">
+                      <ReportDateRangePresets
+                        value={dailyReportDateRange}
+                        onChange={setDailyReportDateRange}
+                        tm={tm}
+                        min={reportDateInputMin}
+                        max={reportDateInputMax}
+                      />
+                      <Input
+                        placeholder={tm('reportsSearchKeywordPlaceholder')}
+                        prefix={<SearchOutlined className="text-slate-400" />}
+                        className="max-w-md border-slate-200"
+                      />
+                      <Button icon={<FilterOutlined />}>{tm('resFloorFilterLabel')}</Button>
+                    </div>
+                    <div className="flex items-center gap-2">
+                      <Button icon={<MailOutlined />} type="text" />
+                      <Button icon={<FilePdfOutlined />} type="text" />
+                      <Button icon={<FileExcelOutlined />} type="text" />
+                      <Button icon={<PrinterOutlined />} type="text" />
+                    </div>
+                  </div>
+
+                  <div className="bg-white rounded-xl border border-slate-200 shadow-sm overflow-hidden text-[11px]">
+                    <div className="flex items-center gap-2 p-2 bg-slate-50 border-b border-slate-100 italic text-slate-500">
+                      <HistoryOutlined className="w-3 h-3" />
+                      <span>{tm('reportsSectionDetails')}</span>
+                      {loadingOrders && businessType === 'restaurant' && (
+                        <span className="text-amber-600 not-italic">{tm('reportsLoadingShort')}</span>
+                      )}
+                    </div>
+
+                    {/* Table Header */}
+                    <div className="grid grid-cols-12 gap-2 p-2 bg-slate-50 border-b border-slate-200 font-bold text-blue-600 uppercase tracking-tighter">
+                      <div className="col-span-1">{tm('reportsThOpenTime')}</div>
+                      <div className="col-span-1">{tm('reportsThCloseTime')}</div>
+                      <div className="col-span-1">{tm('reportsThOrderNo')}</div>
+                      <div className="col-span-1">{tm('reportsThTableName')}</div>
+                      <div className="col-span-1">{tm('reportsThProductName')}</div>
+                      <div className="col-span-1">{tm('reportsThCari')}</div>
+                      <div className="col-span-1 text-center">{tm('reportsThQty')}</div>
+                      <div className="col-span-1">{tm('reportsThUnitPrice')}</div>
+                      <div className="col-span-1">{tm('reportsThLineTotal')}</div>
+                      <div className="col-span-1">{tm('rptTargetColStatus')}</div>
+                      <div className="col-span-2">{tm('reportsThLineNote')}</div>
+                    </div>
+
+                    {businessType === 'restaurant' && loadingOrders ? (
+                      <div className="p-8 text-center text-slate-500 text-sm">{tm('reportsOrdersLoading')}</div>
+                    ) : detailedGroups.length === 0 ? (
+                      <div className="p-8 text-center text-slate-500 text-sm">
+                        {businessType === 'restaurant'
+                          ? tm('reportsNoOrdersForDate')
+                          : tm('reportsNoSalesForDate')}
+                      </div>
+                    ) : (
+                      detailedGroups.map((group, idx) => (
+                        <div key={`${group.id}-${idx}`} className="border-b border-slate-100 last:border-0">
+                          <div className="bg-slate-50/50 p-2 flex justify-between items-center">
+                            <div className="flex items-center gap-2">
+                              <CaretDownOutlined className="text-red-500 w-3 h-3" />
+                              <span className="text-red-600 font-bold">
+                                {tm('reportsOrderNoLine').replace('{id}', group.id)}
+                              </span>
+                            </div>
+                            <div className="flex items-center gap-4 text-[10px]">
+                              <span className="text-green-600 font-bold">
+                                {tm('reportsOrderLineSummary')
+                                  .replace('{qty}', group.summary.qty.toFixed(1))
+                                  .replace('{total}', group.summary.total.toFixed(2))
+                                  .replace('{disc}', group.summary.discount.toFixed(1))}
+                              </span>
+                              <span className="bg-red-500 text-white w-4 h-4 rounded-full flex items-center justify-center font-black">
+                                {group.summary.count}
+                              </span>
+                            </div>
+                          </div>
+                          {group.items.length === 0 ? (
+                            <div className="p-3 text-slate-400 italic border-b border-slate-50">{tm('reportsNoLineItems')}</div>
+                          ) : (
+                            group.items.map((item: any, i: number) => (
+                              <div
+                                key={i}
+                                className="grid grid-cols-12 gap-2 p-2 hover:bg-red-50/10 text-slate-600 transition-colors border-b border-slate-50 last:border-0"
+                              >
+                                <div className="col-span-1">{item.open}</div>
+                                <div className="col-span-1">{item.close}</div>
+                                <div className="col-span-1">{group.id}</div>
+                                <div className="col-span-1">{item.table}</div>
+                                <div className="col-span-1 font-bold text-slate-800">{item.product}</div>
+                                <div className="col-span-1">{item.cari}</div>
+                                <div className="col-span-1 text-center font-bold">{item.qty}</div>
+                                <div className="col-span-1 font-bold">{formatNumber(Number(item.price), 2, false)}</div>
+                                <div className="col-span-1 font-black">{formatNumber(Number(item.total), 2, false)}</div>
+                                <div
+                                  className={`col-span-1 font-bold ${
+                                    item.statusClosed ? 'text-slate-600' : 'text-green-500'
+                                  }`}
+                                >
+                                  {item.status}
+                                </div>
+                                <div className="col-span-2">---</div>
+                              </div>
+                            ))
+                          )}
+                        </div>
+                      ))
+                    )}
+                    <div className="p-2 bg-slate-100 flex justify-end items-center font-bold text-slate-500 border-t border-slate-200">
+                      <span>{tm('reportsTotalRecordsCount').replace('{n}', String(totalLineCount))}</span>
+                    </div>
+                  </div>
+                </div>
+              );
+            })()}
+
+            {selectedTab === 'analysis' && (() => {
+              const baseCards: { title: string; kind: AnalysisReportKind }[] = [
+                { title: tm('rptAnalysisSalesByMonth'), kind: 'sales-by-month' },
+                { title: tm('rptAnalysisUserTurnover'), kind: 'user-turnover' },
+                { title: tm('rptAnalysisCategoryMonthlyRevenue'), kind: 'category-monthly-revenue' },
+                { title: tm('rptAnalysisProductMonthlyQty'), kind: 'product-monthly-qty' },
+                { title: tm('resProductQtyAnalysisCard'), kind: 'product-sales-range' },
+                { title: tm('rptAnalysisCategoryMonthlyQty'), kind: 'category-monthly-qty' },
+                { title: tm('rptAnalysisSectionTurnover'), kind: 'section-turnover' },
+                { title: tm('rptAnalysisRegionTurnover'), kind: 'region-turnover' },
+                { title: tm('rptAnalysisTableTurnover'), kind: 'table-turnover' },
+                { title: tm('rptAnalysisCollectionsByMonth'), kind: 'collections-by-month' },
+              ];
+              const cards =
+                businessType === 'restaurant'
+                  ? baseCards
+                  : businessType === 'beauty'
+                    ? baseCards.map((c) =>
+                        c.kind === 'user-turnover'
+                          ? { ...c, title: tm('rptAnalysisBeautyStaffTurnover') }
+                          : c
+                      )
+                    : baseCards.map((c) => {
+                        if (c.kind === 'section-turnover')
+                          return { ...c, title: tm('rptAnalysisErpCategoryProductTurnover') };
+                        if (c.kind === 'table-turnover') return { ...c, title: tm('rptAnalysisErpTableNoteTurnover') };
+                        if (c.kind === 'user-turnover') return { ...c, title: tm('rptAnalysisErpCashierTurnover') };
+                        return c;
+                      });
+              return (
+                <div className="space-y-4">
+                  <div className="bg-white rounded-xl border border-slate-200 p-4 flex flex-wrap items-end gap-4">
+                    <ReportDateRangePresets
+                      value={analysisDateRange}
+                      onChange={setAnalysisDateRange}
+                      tm={tm}
+                    />
+                    {businessType === 'restaurant' && loadingAnalysisOrders && (
+                      <span className="text-xs text-slate-500 flex items-center gap-2 pb-2">
+                        <Spin size="small" /> {tm('reportsAnalysisDataLoading')}
+                      </span>
+                    )}
+                  </div>
+                  <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4">
+                    {cards.map(({ title, kind }) => (
+                      <button
+                        key={kind}
+                        type="button"
+                        onClick={() => setAnalysisModal({ kind, title })}
+                        className="bg-white p-8 rounded-2xl border border-slate-100 shadow-sm flex flex-col items-center justify-center gap-4 hover:shadow-md hover:border-red-200 transition-all cursor-pointer group text-left"
+                      >
+                        <div className="w-12 h-12 bg-red-50 rounded-full flex items-center justify-center group-hover:scale-110 transition-transform">
+                          <PieChartIcon className="text-red-600 w-6 h-6" />
+                        </div>
+                        <span className="text-[13px] font-bold text-slate-600 text-center leading-snug">{title}</span>
+                      </button>
+                    ))}
+                  </div>
+                </div>
+              );
+            })()}
+
+            <Modal
+              open={!!analysisModal}
+              title={<span className="text-lg font-black text-slate-800">{analysisModal?.title}</span>}
+              onCancel={() => setAnalysisModal(null)}
+              footer={
+                <div className="flex justify-end border-t border-slate-100 pt-3">
+                  <Button type="primary" size="large" onClick={() => setAnalysisModal(null)}>
+                    {tm('close')}
+                  </Button>
+                </div>
+              }
+              closable
+              destroyOnHidden
+              centered={false}
+              width="100%"
+              style={{ top: 0, margin: 0, padding: 0, maxWidth: '100vw' }}
+              styles={{
+                wrapper: { padding: 0, overflow: 'hidden' },
+                container: {
+                  width: '100vw',
+                  maxWidth: '100vw',
+                  height: '100vh',
+                  margin: 0,
+                  top: 0,
+                  paddingBottom: 0,
+                  borderRadius: 0,
+                  display: 'flex',
+                  flexDirection: 'column',
+                  overflow: 'hidden',
+                },
+                header: { flexShrink: 0 },
+                body: { flex: 1, minHeight: 0, overflow: 'auto', padding: 20 },
+                footer: { flexShrink: 0, marginTop: 0 },
+              }}
+              maskClosable
+            >
+              {analysisModal &&
+                (() => {
+                  const showRestaurantSpinner = businessType === 'restaurant' && loadingAnalysisOrders;
+                  const { columns, dataSource, chartData } = showRestaurantSpinner
+                    ? { columns: [] as ColumnsType<Record<string, unknown>>, dataSource: [], chartData: undefined as { name: string; value: number }[] | undefined }
+                    : getAnalysisColumnsAndData(analysisModal.kind);
+                  return (
+                    <div className="space-y-4">
+                      {showRestaurantSpinner ? (
+                        <div className="flex flex-col items-center justify-center gap-3 py-24 text-slate-500">
+                          <Spin size="large" />
+                          <span>Siparişler yükleniyor…</span>
+                        </div>
+                      ) : (
+                        <>
+                          {chartData && chartData.length > 0 && (
+                            <div className="bg-white rounded-xl border border-slate-100 p-4 h-[min(320px,40vh)]">
+                              <ResponsiveContainer width="100%" height="100%">
+                                <BarChart data={chartData} margin={{ top: 8, right: 8, left: 0, bottom: 0 }}>
+                                  <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#f1f5f9" />
+                                  <XAxis dataKey="name" axisLine={false} tickLine={false} tick={{ fontSize: 10 }} interval={0} angle={-35} textAnchor="end" height={70} />
+                                  <YAxis axisLine={false} tickLine={false} width={48} />
+                                  <Tooltip formatter={(val: number) => formatNumber(val, 2, false)} />
+                                  <Bar dataKey="value" fill={bizConfig.color} radius={[4, 4, 0, 0]} maxBarSize={48} />
+                                </BarChart>
+                              </ResponsiveContainer>
+                            </div>
+                          )}
+                          <Table<Record<string, unknown>>
+                            columns={columns}
+                            dataSource={dataSource}
+                            rowKey="key"
+                            pagination={{ pageSize: 50, showSizeChanger: true, pageSizeOptions: [25, 50, 100, 200] }}
+                            scroll={{ x: 'max-content', y: 'calc(100vh - 380px)' }}
+                            size="small"
+                            locale={{ emptyText: tm('reportTableEmptyPeriod') }}
+                          />
+                        </>
+                      )}
+                    </div>
+                  );
+                })()}
+            </Modal>
+          </Content>
+        </Layout>
+      </Layout>
+      {reportPrintPreview && (
+        <ReportHtmlPrintPreviewModal
+          html={reportPrintPreview.html}
+          title={reportPrintPreview.title}
+          onClose={() => setReportPrintPreview(null)}
+          darkMode={darkMode}
+          printLabel={t.print}
+          closeLabel={t.close}
+          hintLabel={tm('reportsPrintPreviewHint')}
+        />
+      )}
+    </ConfigProvider>
+  );
+}
+
+export default ReportsModule;

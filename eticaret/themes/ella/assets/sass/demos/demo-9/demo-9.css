@@ -1,0 +1,379 @@
+.halo-block-banner {
+  margin-bottom: 30px;
+}
+
+.halo-block-banner .content-box {
+  max-width: 340px;
+}
+
+.halo-block-banner .content-box .banner-title {
+  font-size: 50px;
+  font-weight: 700;
+  color: #000000;
+  margin-bottom: 8px;
+  letter-spacing: 0;
+}
+
+.halo-block-banner .content-box .banner-sub-title {
+  font-size: 18px;
+  font-weight: 700;
+  color: #000000;
+  letter-spacing: 0;
+  margin-bottom: 30px;
+}
+
+.halo-block-banner .content-box .banner-button {
+  margin-top: 48px;
+  width: 100%;
+  max-width: 178px;
+}
+
+.halo-block-icon-with-text {
+  background: #f6f6f6;
+  padding: 50px 0px 80px;
+  margin-bottom: 30px;
+}
+
+.halo-block-icon-with-text .row:not(.slick-slider) {
+  -ms-flex-wrap: nowrap;
+      flex-wrap: nowrap;
+  overflow: hidden;
+}
+
+.halo-block-icon-with-text .wrapper-item .icon {
+  margin: 0px auto 25px;
+  width: 50px;
+}
+
+.halo-block-icon-with-text .wrapper-item .content-box {
+  margin-left: 28px;
+  text-align: center;
+}
+
+.halo-block-icon-with-text .wrapper-item .content-box .title {
+  font-size: 20px;
+  font-weight: 700;
+  margin-bottom: 15px;
+}
+
+.halo-block-icon-with-text .wrapper-item .content-box .desc {
+  margin-bottom: 2px;
+}
+
+.halo-block-icon-with-text.style-2 {
+  background: transparent;
+  padding: 24px 0px 30px;
+}
+
+.halo-block-icon-with-text.style-2 .row {
+  -webkit-box-pack: center;
+      -ms-flex-pack: center;
+          justify-content: center;
+}
+
+.halo-block-icon-with-text.style-2 .wrapper-item {
+  -ms-flex-wrap: wrap;
+      flex-wrap: wrap;
+}
+
+.halo-block-icon-with-text.style-2 .wrapper-item .icon {
+  width: 100%;
+  margin-bottom: 35px;
+}
+
+.halo-block-icon-with-text.style-2 .wrapper-item .icon img {
+  margin: 0 auto;
+}
+
+.halo-block-icon-with-text.style-2 .wrapper-item .content-box {
+  width: 100%;
+  margin: 0;
+}
+
+.halo-block-icon-with-text.style-2 .wrapper-item .content-box .title {
+  font-size: 18px;
+  margin-bottom: 13px;
+}
+
+.halo-block-icon-with-text.style-2 .wrapper-item .content-box .desc {
+  line-height: 26px;
+}
+
+.halo-block-icon-with-text.style-2 .wrapper-item .content-box .button {
+  width: 100%;
+  max-width: 178px;
+  margin: 23px auto 0;
+}
+
+.halo-block-where-ride {
+  margin: 115px 0px 75px;
+}
+
+.halo-block-where-ride .halo-wrapper {
+  background: #72d1c6;
+  padding: 0px 0px 70px;
+}
+
+.halo-block-where-ride .halo-block-header {
+  top: -19px;
+  margin-bottom: 22px !important;
+  padding-left: 15px;
+  padding-right: 15px;
+}
+
+.halo-block-where-ride .halo-block-header .title .text {
+  font-size: 50px;
+  font-weight: 700;
+  color: #000000;
+  margin-bottom: 25px;
+}
+
+.halo-block-where-ride .halo-block-header .title .desc {
+  font-size: 28px;
+  line-height: 28px;
+  color: #000000;
+}
+
+.halo-block-where-ride .wrapper-content {
+  max-width: 1170px;
+  padding-left: 20px;
+  padding-right: 20px;
+  margin: 0 auto;
+}
+
+.halo-block-where-ride .wrapper-content .content-box {
+  background: #ffffff;
+  padding: 27px 15px 26px;
+}
+
+.halo-block-where-ride .wrapper-content .content-box .title {
+  margin: 0;
+}
+
+.halo-block-where-ride .wrapper-content .content-box .title a {
+  font-size: 24px;
+  font-weight: 700;
+  margin-bottom: 17px;
+  color: #000000;
+  display: block;
+}
+
+.halo-block-where-ride .wrapper-content .content-box .title .desc {
+  color: #000000;
+}
+
+.halo-block-where-ride .wrapper-content .button-booking {
+  width: 100%;
+  max-width: 370px;
+  margin: 70px auto 10px;
+}
+
+.halo-block-where-ride .wrapper-content .slick-arrow {
+  display: none !important;
+  width: 70px;
+  height: 70px;
+  background: transparent;
+  border: none;
+  padding: 0 !important;
+}
+
+.halo-block-where-ride .wrapper-content .slick-arrow.slick-next {
+  right: -105px;
+}
+
+.halo-block-where-ride .wrapper-content .slick-arrow.slick-prev {
+  left: -105px;
+}
+
+.halo-block-where-ride .wrapper-content .slick-arrow:hover {
+  background: transparent;
+}
+
+.halo-block-customer-review {
+  margin-bottom: 56px;
+  padding-bottom: 110px;
+  border-bottom: 5px solid #f6f6f6;
+}
+
+.halo-block-customer-review .halo-block-header .title {
+  margin-bottom: 13px;
+}
+
+.halo-block-customer-review .slick-dots {
+  bottom: -70px !important;
+}
+
+.halo-block-customer-review .img-box {
+  margin-bottom: 44px;
+}
+
+.halo-block-customer-review .img-box img {
+  margin: 0 auto;
+}
+
+.halo-block-customer-review .content-box {
+  max-width: 430px;
+  margin: 0 auto;
+  padding: 0px 15px;
+}
+
+.halo-block-customer-review .content-box .review-rating {
+  margin-bottom: 12px;
+}
+
+.halo-block-customer-review .content-box .review-rating .spr-icon.spr-icon-star::before {
+  color: #f8c646;
+}
+
+.halo-block-customer-review .content-box .review-rating .spr-icon::before,
+.halo-block-customer-review .content-box .review-rating .spr-icon ::after {
+  font-size: 32px;
+}
+
+.halo-block-customer-review .content-box .desc {
+  color: #000000;
+  line-height: 26px;
+}
+
+.halo-block-customer-review .content-box .name {
+  margin-top: 16px;
+  font-size: 15px;
+  font-weight: 600;
+  color: #787878;
+}
+
+.halo-product-block .halo-block-header {
+  margin-bottom: 40px !important;
+}
+
+.halo-product-block .halo-block-header .title {
+  color: #282f36;
+}
+
+.halo-product-block .slick-arrow {
+  top: 35%;
+}
+
+.halo-product-block .slick-dots {
+  bottom: -37px !important;
+}
+
+.halo-product-block .product-infinite-scroll {
+  margin: 23px 0px 80px;
+}
+
+.halo-product-block .product-infinite-scroll .button {
+  max-width: 248px;
+}
+
+.halo-block-brands {
+  background: #000000;
+  padding: 30px 0px 27px;
+  margin-top: 93px;
+}
+
+.halo-block-brands .halo-block-content .img-box img {
+  margin: 0 auto;
+}
+
+.halo-block-brands .halo-block-content .slick-arrow {
+  background: transparent;
+  top: 45%;
+}
+
+.halo-block-brands .halo-block-content .slick-arrow svg {
+  fill: #ffffff;
+}
+
+.halo-block-brands .halo-block-content .slick-dots {
+  bottom: -20px;
+}
+
+.halo-block-brands .halo-block-content .slick-dots li button {
+  background: transparent;
+  border-color: #ffffff;
+}
+
+.halo-block-brands .halo-block-content .slick-dots li.slick-active button {
+  background: #ffffff;
+}
+
+@media (max-width: 991px) {
+  .halo-block-banner .content-box .banner-title {
+    font-size: 30px;
+    margin-bottom: 8px;
+  }
+  .halo-block-banner .content-box .banner-sub-title {
+    margin-bottom: 20px;
+  }
+  .halo-block-banner .content-box .banner-button {
+    margin-top: 25px;
+  }
+  .halo-block-banner .content-box.content-box--right {
+    padding-right: 15px;
+    max-width: 350px;
+  }
+  .halo-block-brands .halo-block-content .slick-arrow.slick-next {
+    right: 0;
+  }
+  .halo-block-brands .halo-block-content .slick-arrow.slick-prev {
+    left: 0;
+  }
+}
+
+@media (max-width: 767px) {
+  .halo-block-banner .content-box {
+    padding: 0px 15px;
+    left: 15px;
+  }
+  .halo-block-banner .content-box .banner-title {
+    color: #ffffff;
+  }
+  .halo-block-banner .content-box .banner-sub-title,
+  .halo-block-banner .content-box .desc {
+    color: #ffffff;
+  }
+  .halo-block-banner .content-box .banner-button {
+    background: #ffffff;
+    color: #000000;
+  }
+  .halo-block-where-ride .halo-block-header .title .text {
+    font-size: 40px;
+  }
+}
+
+@media (min-width: 992px) {
+  .halo-block-icon-with-text {
+    padding: 80px 0px 73px;
+  }
+  .halo-block-icon-with-text .wrapper-item {
+    display: -webkit-box;
+    display: -ms-flexbox;
+    display: flex;
+    -webkit-box-pack: center;
+        -ms-flex-pack: center;
+            justify-content: center;
+  }
+  .halo-block-icon-with-text .wrapper-item .icon {
+    position: relative;
+    top: 3px;
+    margin: 0;
+  }
+  .halo-block-icon-with-text .wrapper-item .content-box {
+    text-align: left;
+  }
+  .halo-block-banner .content-box.content-box--right {
+    right: 8%;
+  }
+}
+
+@media (min-width: 1600px) {
+  .halo-block-where-ride .wrapper-content {
+    padding-left: 0;
+    padding-right: 0;
+  }
+  .halo-block-where-ride .halo-wrapper .slick-arrow {
+    display: inline-block !important;
+  }
+}
+/*# sourceMappingURL=demo-9.css.map */

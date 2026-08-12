@@ -1,0 +1,14 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "UPDATE broadcast_delivery_queue SET status = 'processing', updated_at = NOW() WHERE id = $1",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Left": [
+        "Uuid"
+      ]
+    },
+    "nullable": []
+  },
+  "hash": "bf31fa571a923134ffdb3c373f5daff4b3efc3b29f8a42e59aaf878a753a25cf"
+}

@@ -1,0 +1,28 @@
+---
+description: Ant Design 6.x / Pro / X — bileşen seçimi, tema, SSR, a11y, performans
+globs: "**/*.tsx,**/*.ts"
+alwaysApply: false
+---
+
+# Ant Design (antd 6, Pro, X)
+
+Ant Design 6.x, Ant Design Pro 5 / ProComponents ve Ant Design X v2 ile karar rehberi. Bileşen seçimi, theming/tokens, SSR, a11y, performans, routing/erişim/CRUD ve AI/chat UI desenleri için kullan.
+
+## Kapsam
+- **Hedef**: `antd@^6` + React 18–19, gerektiğinde `@ant-design/pro-components`, `@ant-design/x@^2`.
+- **Dil**: TypeScript. **Stil**: Önce tokens, sonra `classNames`/`styles`; global override’lardan kaçın.
+- **Provider**: Tek kök `ConfigProvider` (sıkı izolasyon gerekmedikçe).
+
+## Zorunlu Kurallar
+- Bileşen sorusunda önce resmi route slug’a eşle: `{components}` (kebab-case, örn. `TreeSelect` → `tree-select`). Doküman sırası: `https://ant.design/components/{components}-cn` (CN önce), sonra `https://ant.design/components/{components}`.
+- Sadece dokümante edilmiş antd/Pro/X API’lerini kullan; prop/event/bileşen adı uydurma.
+- İç DOM veya `.ant-*` selector’lara güvenme. Tema önceliği: global tokens → component tokens → alias tokens.
+
+## Süreç
+1. **Sınıflandır**: Katman (core antd / Pro / X), sürüm, render modu (CSR/SSR/streaming), veri ölçeği.
+2. **Karar**: CSR → `ConfigProvider`; SSR → `ConfigProvider` + `StyleProvider`. Theming: global tokens → component tokens → `classNames`/`styles`. Çıktıda kısa gerekçe + SSR/a11y/perf kontrol noktaları.
+3. **Pro**: route/menu/access ve CRUD şema yönü. **X**: mesaj/tool şema ve streaming state yönü.
+
+## Regresyon Kontrolü
+- Tek kök `ConfigProvider`; SSR’da style order/hydration doğrulanmış olsun.
+- Tokens önce; geniş global `.ant-*` override yok. Table’da sabit `rowKey`; Select remote modda remote search kullanılıyorsa local filter kapalı. Upload controlled/uncontrolled açık; failure/retry yolu tanımlı.

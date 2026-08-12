@@ -1,0 +1,100 @@
+﻿cargo :     Checking app v0.1.8 (D:\Exretailosv1\src-tauri)
+At line:1 char:1
++ cargo check > check_output.txt 2>&1
++ ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+    + CategoryInfo          : NotSpecified: (    Checking ap...osv1\src-tauri) 
+   :String) [], RemoteException
+    + FullyQualifiedErrorId : NativeCommandError
+ 
+warning: unused import: `std::cmp::Ordering`
+  --> src\db_ops.rs:79:9
+   |
+79 |     use std::cmp::Ordering;
+   |         ^^^^^^^^^^^^^^^^^^
+   |
+   = note: `#[warn(unused_imports)]` (part of `#[warn(unused)]`) on by default
+
+warning: unused import: `Deserialize`
+ --> src\mssql.rs:5:13
+  |
+5 | use serde::{Deserialize, Serialize};
+  |             ^^^^^^^^^^^
+
+warning: unused import: `crate::logger`
+  --> src\sync.rs:15:5
+   |
+15 | use crate::logger;
+   |     ^^^^^^^^^^^^^
+
+warning: unused import: `image::EncodableLayout`
+ --> src\screen_capture.rs:1:5
+  |
+1 | use image::EncodableLayout;
+  |     ^^^^^^^^^^^^^^^^^^^^^^
+
+warning: unused import: `OpenOptions`
+ --> src\security.rs:1:21
+  |
+1 | use std::fs::{self, OpenOptions};
+  |                     ^^^^^^^^^^^
+
+warning: unused import: `Write`
+ --> src\security.rs:2:21
+  |
+2 | use std::io::{Read, Write};
+  |                     ^^^^^
+
+warning: use of deprecated function `base64::encode`: Use Engine::encode
+  --> src\screen_capture.rs:57:56
+   |
+57 | ...                   let b64 = base64::encode(&jpeg_buffer);
+   |                                         ^^^^^^
+   |
+   = note: `#[warn(deprecated)]` on by default
+
+error[E0599]: no method named `to_png` found for struct `ImageBuffer<image::Rgb
+a<u8>, Vec<u8>>` in the current scope
+  --> src\screen_capture.rs:46:60
+   |
+46 | ...                   if let Ok(png_buffer) = image.to_png() {
+   |                                                     ^^^^^^ method not foun
+d in `ImageBuffer<image::Rgba<u8>, Vec<u8>>`
+
+error[E0277]: the size for values of type `[u8]` cannot be known at compilation
+ time
+  --> src\screen_capture.rs:46:37
+   |
+46 | ...                   if let Ok(png_buffer) = image.to_png() {
+   |                              ^^^^^^^^^^^^^^ doesn't have a size known at c
+ompile-time
+   |
+   = help: the trait `Sized` is not implemented for `[u8]`
+note: required by a bound in `std::prelude::v1::Ok`
+  --> /rustc/254b59607d4417e9dffbc307138ae5c86280fe4c\library\core\src\result.r
+s:561:5
+
+warning: variable `dirty` is assigned to, but never used
+   --> src\security.rs:105:13
+    |
+105 |         let mut dirty = false;
+    |             ^^^^^^^^^
+    |
+    = note: consider using `_dirty` instead
+    = note: `#[warn(unused_variables)]` (part of `#[warn(unused)]`) on by defau
+lt
+
+warning: value assigned to `dirty` is never read
+   --> src\security.rs:112:13
+    |
+112 |             dirty = true;
+    |             ^^^^^^^^^^^^
+    |
+    = help: maybe it is overwritten before being read?
+    = note: `#[warn(unused_assignments)]` (part of `#[warn(unused)]`) on by def
+ault
+
+Some errors have detailed explanations: E0277, E0599.
+For more information about an error, try `rustc --explain E0277`.
+warning: `app` (bin "app") generated 9 warnings
+error: could not compile `app` (bin "app") due to 2 previous errors; 9 warnings
+ emitted

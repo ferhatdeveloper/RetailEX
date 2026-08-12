@@ -1,0 +1,17 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "\n            INSERT INTO store_devices (\n                id, store_id, device_id, device_name, app_version,\n                status, registered_at, updated_at\n            )\n            VALUES (uuid_generate_v4(), $1, $2, $3, $4, 'online', NOW(), NOW())\n            ON CONFLICT (device_id) \n            DO UPDATE SET \n                status = 'online',\n                last_seen = NOW(),\n                app_version = $4,\n                updated_at = NOW()\n            ",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Left": [
+        "Uuid",
+        "Text",
+        "Text",
+        "Text"
+      ]
+    },
+    "nullable": []
+  },
+  "hash": "7e6cb0eb698df034f6d155366fc3bf4050af7e39864407fc6b9838d99a3864f2"
+}

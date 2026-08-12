@@ -1,0 +1,75 @@
+/**
+ * RetailEX E-Ticaret Admin (/mgz) — ERP Tailwind ve global stillerden izole.
+ * Yalnızca admin bootstrap bu dosyayı yükler.
+ */
+
+html.rex-eticaret-admin,
+html.rex-eticaret-admin body {
+  margin: 0 !important;
+  padding: 0 !important;
+  min-height: 100vh;
+  background: #f0f2f5 !important;
+  color: rgba(0, 0, 0, 0.88);
+  font-family:
+    -apple-system,
+    BlinkMacSystemFont,
+    'Segoe UI',
+    Roboto,
+    'Helvetica Neue',
+    Arial,
+    'Noto Sans',
+    sans-serif;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+  line-height: 1.5715;
+}
+
+html.rex-eticaret-admin #root {
+  margin: 0;
+  padding: 0;
+  min-height: 100vh;
+}
+
+html.rex-eticaret-admin #app-loader {
+  display: none !important;
+}
+
+/* Stacking context — ERP layout/header z-index çakışmasını önler */
+.rex-eticaret-admin-root {
+  min-height: 100vh;
+  isolation: isolate;
+  position: relative;
+  z-index: 0;
+}
+
+.rex-eticaret-admin-root *,
+.rex-eticaret-admin-root *::before,
+.rex-eticaret-admin-root *::after {
+  box-sizing: border-box;
+}
+
+.rex-eticaret-admin-root .ant-layout {
+  background: #f0f2f5;
+}
+
+.rex-eticaret-admin-root .ant-layout-sider {
+  box-shadow: 2px 0 8px rgba(0, 0, 0, 0.06);
+}
+
+.rex-eticaret-admin-root .ant-layout-header {
+  line-height: 1.5;
+  height: auto;
+  min-height: 56px;
+}
+
+.rex-eticaret-admin-root .ant-table-wrapper {
+  background: #fff;
+}
+
+.rex-eticaret-admin-loading {
+  min-height: 100vh;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: #f0f2f5;
+}

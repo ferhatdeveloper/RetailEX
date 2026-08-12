@@ -1,0 +1,25 @@
+---
+description: Türkçe karakter ve UTF-8 güvenliği — dosya düzenlemelerinde kodlama kuralları
+alwaysApply: true
+---
+
+# Turkish Encoding & Character Safety
+
+Tüm dosya düzenlemeleri ve string işlemlerinde Türkçe karakterlerin bütünlüğü korunmalı; **UTF-8 (BOM’suz)** kullanılmalı.
+
+## Temel Kurallar
+
+1. **UTF-8**: Tüm proje dosyaları UTF-8, BOM’suz.
+2. **Türkçe karakterler**: **İ, ı, Ğ, ğ, Ü, ü, Ş, ş, Ö, ö, Ç, ç** ile dikkatli ol.
+3. **Büyük/küçük harf**: Türkçe stringlerde `.toLowerCase()` / `.toUpperCase()` locale-farkında olmadan kullanma. JS’te `İ` → `i`, `I` → `ı`.
+4. **Düzenleme öncesi**: Türkçe metin içeren dosyayı okuyup mevcut karakter bütünlüğünü doğrula.
+5. **Düzenleme sonrası**: Her `replace`/edit sonrası ilgili bölümde Türkçe karakterlerin bozulmadığını kontrol et.
+
+## Karakter Tablosu
+- İ (U+0130) / ı (U+0131)
+- Ğ (U+011E) / ğ (U+011F), Ş (U+015E) / ş (U+015F)
+- Ç (U+00C7) / ç (U+00E7), Ö (U+00D6) / ö (U+00F6), Ü (U+00DC) / ü (U+00FC)
+
+## Önlem
+- `grep`/`find` kullanırken terminal UTF-8 desteklesin.
+- Windows-1254 veya eski kodlamalara düşme. Garbled string (örn. `Ã¼` = `ü` bozulması) görürsen **kaydetme**; dosyayı açık UTF-8 ile tekrar oku.

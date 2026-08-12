@@ -1,0 +1,45 @@
+<?xml version="1.0" encoding="utf-8"?>
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="108dp"
+    android:height="108dp"
+    android:viewportWidth="108"
+    android:viewportHeight="108">
+
+    <!-- Dış altıgen: köprü / ağ düğümü -->
+    <path
+        android:fillColor="@android:color/transparent"
+        android:strokeColor="#CBD5E1"
+        android:strokeWidth="2.5"
+        android:pathData="M54,24 L79,40 L79,68 L54,84 L29,68 L29,40 Z" />
+
+    <!-- İç altıgen -->
+    <path
+        android:fillColor="#0F766E"
+        android:pathData="M54,33 L73,45 L73,63 L54,75 L35,63 L35,45 Z" />
+
+    <path
+        android:fillColor="#14B8A6"
+        android:fillAlpha="0.45"
+        android:pathData="M54,37 L68,46 L68,54 L54,46 L40,54 L40,46 Z" />
+
+    <!-- Telefon gövdesi (minimal) -->
+    <path
+        android:fillColor="#F1F5F9"
+        android:pathData="M47,44 L61,44 Q63,44 63,46 L63,58 Q63,60 61,60 L47,60 Q45,60 45,58 L45,46 Q45,44 47,44 Z" />
+    <path
+        android:fillColor="#0D9488"
+        android:pathData="M48,47 L60,47 L60,55 L48,55 Z" />
+
+    <!-- ID -->
+    <path
+        android:fillColor="#F8FAFC"
+        android:pathData="M40,63 L40,70 L42.5,70 L42.5,63 Z" />
+    <path
+        android:fillColor="#F8FAFC"
+        android:pathData="M45,63 L45,70 L49,70 Q52,70 52,66.5 Q52,63 49,63 Z M47.2,64.8 L47.2,68.2 L48.8,68.2 Q50.2,68.2 50.2,66.5 Q50.2,64.8 48.8,64.8 Z" />
+
+    <!-- Sinyal noktası -->
+    <path
+        android:fillColor="#F59E0B"
+        android:pathData="M54,22 A3.5,3.5 0 1,1 54.01,22 Z" />
+</vector>

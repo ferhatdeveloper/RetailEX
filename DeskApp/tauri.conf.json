@@ -1,0 +1,105 @@
+{
+  "$schema": "../node_modules/@tauri-apps/cli/schema.json",
+  "build": {
+    "beforeBuildCommand": "npm run build",
+    "beforeDevCommand": "npm run dev",
+    "frontendDist": "../build",
+    "devUrl": "http://localhost:6173"
+  },
+  "bundle": {
+    "active": true,
+    "category": "DeveloperTool",
+    "publisher": "RetailEX",
+    "copyright": "",
+    "targets": [
+      "nsis",
+      "dmg",
+      "app",
+      "deb",
+      "appimage"
+    ],
+    "externalBin": [],
+    "icon": [
+      "icons/32x32.png",
+      "icons/128x128.png",
+      "icons/128x128@2x.png",
+      "icons/icon.icns",
+      "icons/icon.ico"
+    ],
+    "windows": {
+      "allowDowngrades": true,
+      "digestAlgorithm": "sha256",
+      "timestampUrl": "http://timestamp.digicert.com",
+      "nsis": {
+        "displayLanguageSelector": false,
+        "installMode": "perMachine",
+        "installerIcon": "icons/icon.ico",
+        "headerImage": "branding/header.bmp",
+        "sidebarImage": "branding/sidebar.bmp",
+        "template": "./installer.nsi"
+      }
+    },
+    "longDescription": "",
+    "macOS": {
+      "entitlements": null,
+      "exceptionDomain": "",
+      "frameworks": [],
+      "providerShortName": null,
+      "signingIdentity": null
+    },
+    "resources": [
+      "../database/init/**/*",
+      "../database/migrations/**/*",
+      "../database/sys/**/*",
+      "../config/postgrest.conf",
+      "resources/install-postgrest.ps1",
+      "resources/pg-windows-expose-remote.ps1",
+      "resources/postgrest-windows-expose-lan.ps1",
+      "resources/start-postgrest-lan.ps1",
+      "resources/install-postgrest-service.ps1",
+      "resources/bridge.cjs",
+      "resources/kitchen-print-service.mjs",
+      "resources/README_PRINTER_SERVICE.md",
+      "resources/package.json",
+      "resources/install-bridge.ps1",
+      "resources/install-bridge-npm.ps1",
+      "resources/sumatra/**/*"
+    ],
+    "shortDescription": "",
+    "linux": {
+      "deb": {
+        "depends": []
+      }
+    },
+    "createUpdaterArtifacts": true
+  },
+  "productName": "retailex",
+  "mainBinaryName": "retailex",
+  "version": "0.1.239",
+  "identifier": "com.retailex.app",
+  "plugins": {
+    "updater": {
+      "pubkey": "dW50cnVzdGVkIGNvbW1lbnQ6IG1pbmlzaWduIHB1YmxpYyBrZXk6IDIyNUNEMDQ5MjcyRUM2RTMKUldUanhpNG5TZEJjSXA1VllKVENrQUNXdGw2aG1oYm8rVER6L2xnR2lJNjdWdWVmcStyL3hKcHAK",
+      "endpoints": [
+        "https://github.com/ferhatdeveloper/RetailEX/releases/latest/download/latest.json"
+      ]
+    }
+  },
+  "app": {
+    "windows": [
+      {
+        "fullscreen": false,
+        "maximized": true,
+        "decorations": true,
+        "resizable": true,
+        "title": "RetailEX",
+        "width": 1024,
+        "height": 768,
+        "useHttpsScheme": true
+      }
+    ],
+    "security": {
+      "csp": null
+    }
+  }
+}

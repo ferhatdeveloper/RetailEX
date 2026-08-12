@@ -1,0 +1,125 @@
+name: Android App Release
+
+# RetailEX React Native / Expo Android APK (mobile/)
+# Capacitor / kök android/ DEĞİL — bkz. .cursor/rules/retailex-mobile-react-native.mdc
+# Tetikleme:
+#   git tag android-v0.1.224 && git push origin android-v0.1.224
+# veya Actions → "Android App Release" → Run workflow
+# veya: npm run android:ci:build
+#
+# Önemli: assembleRelease — JS bundle APK içine gömülür (telefonda Metro gerekmez).
+# assembleDebug Metro bekler; fiziksel cihazda "Unable to load script" verir.
+
+on:
+  push:
+    tags:
+      - 'android-v*'
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  build-android:
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    defaults:
+      run:
+        working-directory: mobile
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: mobile/package-lock.json
+
+      - name: Setup Java
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: 17
+
+      - name: Setup Android SDK
+        uses: android-actions/setup-android@v3
+
+      - name: Read package version
+        working-directory: .
+        run: |
+          v=$(node -p "require('./package.json').version")
+          echo "PACKAGE_VERSION=$v" >> "$GITHUB_ENV"
+          if [ "${{ github.ref_type }}" = "tag" ] && [[ "${{ github.ref }}" == refs/tags/android-v* ]]; then
+            echo "RELEASE_TAG=${{ github.ref_name }}" >> "$GITHUB_ENV"
+          else
+            echo "RELEASE_TAG=android-v$v" >> "$GITHUB_ENV"
+          fi
+
+      - name: Sync mobile app version
+        working-directory: .
+        run: node scripts/sync-mobile-version.mjs
+
+      - name: Install mobile dependencies
+        run: npm ci
+
+      - name: Expo prebuild (Android)
+        run: npx expo prebuild --platform android --non-interactive
+
+      - name: Build release APK (embedded JS bundle)
+        working-directory: mobile/android
+        run: |
+          chmod +x gradlew
+          # Expo varsayılan: release debug keystore ile imzalanır (secret yokken sideload için).
+          # assembleRelease → index.android.bundle APK assets içine gömülür; Metro gerekmez.
+          ./gradlew assembleRelease --no-daemon -x lint
+
+      - name: Collect APK artifact
+        working-directory: .
+        run: |
+          APK_SRC=$(find mobile/android/app/build/outputs/apk/release -name '*.apk' 2>/dev/null | head -n 1)
+          if [ -z "$APK_SRC" ] || [ ! -f "$APK_SRC" ]; then
+            APK_SRC=$(find mobile/android/app/build/outputs/apk -name '*.apk' | head -n 1)
+          fi
+          if [ -z "$APK_SRC" ] || [ ! -f "$APK_SRC" ]; then
+            echo "APK bulunamadı"
+            find mobile/android/app/build/outputs -type f -ls || true
+            exit 1
+          fi
+          APK_DST="RetailEX-Android-${PACKAGE_VERSION}.apk"
+          cp "$APK_SRC" "$APK_DST"
+          echo "APK_PATH=$APK_DST" >> "$GITHUB_ENV"
+          ls -la "$APK_DST"
+          # Bundle gömülü mü diye kaba kontrol (unzip varsa)
+          if command -v unzip >/dev/null 2>&1; then
+            unzip -l "$APK_DST" | grep -E 'index.android.bundle|assets/index' || echo "UYARI: bundle listede görünmedi (yine de denenebilir)"
+          fi
+
+      - name: Upload workflow artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: RetailEX-Android-${{ env.PACKAGE_VERSION }}
+          path: RetailEX-Android-${{ env.PACKAGE_VERSION }}.apk
+          if-no-files-found: error
+
+      - name: Create GitHub Release
+        if: (github.event_name == 'push' && startsWith(github.ref, 'refs/tags/android-v')) || github.event_name == 'workflow_dispatch'
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ env.RELEASE_TAG }}
+          name: RetailEX Android ${{ env.PACKAGE_VERSION }}
+          body: |
+            RetailEX Android APK (**React Native / Expo** — `mobile/`)
+
+            **Sürüm:** ${{ env.PACKAGE_VERSION }}
+            **Dosya:** `RetailEX-Android-${{ env.PACKAGE_VERSION }}.apk`
+            **Build:** `assembleRelease` (JS bundle APK içinde — Metro / USB gerekmez)
+            **İmza:** CI secret yokken Expo varsayılan debug keystore (sideload / dahili dağıtım)
+
+            Kurulum: APK’yı telefona indirip yükleyin (bilinmeyen kaynaklara izin gerekebilir).
+            Eski debug APK’larda görülen "Unable to load script" bu release build ile düzelir.
+          files: RetailEX-Android-${{ env.PACKAGE_VERSION }}.apk
+          draft: false
+          prerelease: false

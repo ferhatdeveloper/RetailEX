@@ -1,0 +1,20 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "SELECT COALESCE(MAX(sequence_number), 0) + 1 as next_seq FROM broadcast_delivery_queue",
+  "describe": {
+    "columns": [
+      {
+        "ordinal": 0,
+        "name": "next_seq",
+        "type_info": "Int8"
+      }
+    ],
+    "parameters": {
+      "Left": []
+    },
+    "nullable": [
+      null
+    ]
+  },
+  "hash": "6c704d0884e59c07027b54fe181df5f50455c2f306c6acc4d563309464e676cc"
+}

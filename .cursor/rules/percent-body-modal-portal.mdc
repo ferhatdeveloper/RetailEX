@@ -1,0 +1,97 @@
+---
+description: Zorunlu modal portalı — PercentBodyModal, sabit % boyut, liste scrollbar (MainLayout z-index)
+globs: "**/*Modal*.tsx,**/components/**/*.tsx"
+alwaysApply: true
+---
+
+# PercentBodyModal — zorunlu modal portalı
+
+RetailEX’te **MainLayout üst çubuğu `z-[100]`** ve iç içe `fixed` katmanlar nedeniyle, modal doğrudan sayfa/layout ağacında (`fixed inset-0 z-50`) render edilirse **mavi çubuk üstte kalır**, boyut sınırı uygulanmaz, uzun listeler ekranı taşar.
+
+**Çözüm:** Ortalanmış, sabit boyutlu modallar için **`PercentBodyModal`** kullan (`src/components/shared/PercentBodyModal.tsx`).
+
+## Ne zaman zorunlu
+
+- POS, fatura, cari seçim, liste seçim, detay önizleme vb. **ortalanmış diyalog** modalları
+- `MainLayout`, `UniversalInvoiceForm`, `MarketPOS` veya başka **yüksek z-index** bağlamı içinde açılan modallar
+- Uzun müşteri / cari / ürün / fatura listesi olan modallar
+
+## Ne zaman farklı desen
+
+- **Tam ekran iş akışı** (ör. `POSProductCatalogModal`, fatura formu tam ekran): `FullscreenBodyPortal` + `MODAL_OVERLAY_Z`, içerik `100dvh` olabilir — `PercentBodyModal` değil
+- **İç içe detay** (katalog üstünde ürün detayı): `MODAL_OVERLAY_NESTED_Z`
+
+## Asla yapma
+
+```tsx
+// YANLIŞ — layout stacking context’inde kalır, z-50 yetersiz
+<div className="fixed inset-0 bg-black/60 z-50 flex items-center justify-center p-4">
+  <div className="max-h-[80vh] ...">
+```
+
+```tsx
+// YANLIŞ — Tailwind z-index sınıfı, parent transform/stacking’de güvenilmez
+<div className={POS_MODAL_OVERLAY}>...</div>
+```
+
+## Zorunlu desen
+
+```tsx
+import { PercentBodyModal, PercentBodyModalScrollBody } from '../shared/PercentBodyModal';
+
+return (
+  <PercentBodyModal onClose={onClose} size="list" ariaLabel={t.title}>
+    <div className="... shrink-0">{/* header */}</div>
+    <div className="... shrink-0">{/* arama / sabit üst satır */}</div>
+    <PercentBodyModalScrollBody className="p-4">
+      {/* uzun liste — yalnızca burada scroll */}
+    </PercentBodyModalScrollBody>
+    <div className="... shrink-0">{/* footer */}</div>
+  </PercentBodyModal>
+);
+```
+
+## Boyut (`size`)
+
+| `size` | Kullanım | Kabuk |
+|--------|----------|--------|
+| `list` | Cari/müşteri, ambar, satış elemanı, yetki, liste seçim | 92vw × 85vh (max 56rem) |
+| `wide` | Fatura detay, tür seçimi, işlem menüsü, geniş tablo | 94vw × 88vh (max 72rem) |
+| `compact` | Tarih, ödeme bilgisi, kısa form | 92vw (max 28rem), yükseklik içeriğe göre |
+
+Boyutlar `PERCENT_BODY_MODAL_SIZES` içinde tanımlı; **yeni modal için rastgele `max-w-*` / `max-h-*` uydurma**.
+
+## Scroll ve sabit kabuk (zorunlu)
+
+1. **Kabuk** sabit `vh` yüksekliği — içerik kabuğu büyütmez
+2. **Header, arama, footer:** `shrink-0`
+3. **Liste/gövde:** `PercentBodyModalScrollBody` veya `flex-1 min-h-0 overflow-y-auto`
+4. Flex zincirinde **`min-h-0` olmadan scroll çalışmaz** — atlama
+
+## Portal ve z-index
+
+- `PercentBodyModal` → `FullscreenBodyPortal` + **`MODAL_OVERLAY_Z`** (inline style, `2147483646`)
+- Açılışta `document.body.style.overflow = 'hidden'` (bileşen içinde)
+- Dış overlay tıklanınca kapatma: `onClose` prop’u
+- Kabuk tıklaması: `stopPropagation` (bileşen içinde)
+
+## Görsel stil
+
+Flat modal görünümü (gradient header, rounded-xl, footer) için: `.cursor/rules/ui-flat-modal-standard.mdc` — **portal katmanı her zaman `PercentBodyModal`**.
+
+## Referans uygulamalar
+
+- `src/components/pos/POSCustomerModal.tsx`
+- `src/components/trading/invoices/InvoiceCariSelectModal.tsx`
+- `src/components/trading/invoices/InvoiceListModule.tsx` (detay / tür seçimi)
+- `src/components/pos/POSProductCatalogModal.tsx` (tam ekran — karşı örnek)
+
+## Ajan kontrol listesi
+
+Yeni veya düzenlenen modalda:
+
+- [ ] `PercentBodyModal` (veya bilinçli tam ekran `FullscreenBodyPortal`) kullanıldı mı?
+- [ ] `fixed inset-0 z-50` kaldırıldı mı?
+- [ ] Uzun liste `PercentBodyModalScrollBody` içinde mi?
+- [ ] Header/footer `shrink-0` mı?
+- [ ] Doğru `size` (`list` / `wide` / `compact`) seçildi mi?

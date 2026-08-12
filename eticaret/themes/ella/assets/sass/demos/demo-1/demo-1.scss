@@ -1,0 +1,321 @@
+/* START: Section Full With Banner */
+.halo-block-fullwidth-banner {
+    margin-bottom: 30px;
+    .banner-item {
+        .banner-title {
+            letter-spacing: .05em;
+            font-weight: 700;
+            margin-bottom: 24px;
+            text-transform: uppercase;
+            position: relative;
+            padding-bottom: 17px;
+            font-size: 40px;
+            margin-bottom: 18px;
+            .line {
+                position: absolute;
+                left: 50%;
+                bottom: 0;
+                transform: translate(-50%);
+                height: 2px;
+                width: 40px;
+                background: #232323;
+                display: inline-block
+            }
+        }
+        .banner-text {
+            margin-bottom: 33px;
+            max-width: 425px;
+            margin-left: auto;
+            margin-right: auto;
+            font-size: 12px;
+            color: #232323;
+            line-height: 22px;
+        }
+    }
+    .button {
+        min-width: 195px;
+    }
+    .content-box--left {
+        left: calc((100% - 1200px)/2);
+        padding: 25px 25px 30px;
+        width: 475px;
+        padding-top: 0;
+        padding-bottom: 30px;
+    }
+    .content-box--right {
+        right: calc((100% - 1200px)/2);
+        padding: 25px 25px 30px;
+        width: 475px;
+        padding-top: 0;
+        padding-bottom: 30px;
+    }
+}
+
+/* START: Section Sub Banner */
+
+.halo-block-sub-banner {
+    .banner-title {
+        margin: 0;
+        a {
+            color: #ffffff;
+            font-size: 16px;
+            letter-spacing: .05em;
+        }
+    }
+}
+
+/* START: Section  spotlight*/
+.halo-block-spotlight {
+    padding-top: 24px;
+    .content {
+        padding-top: 28px;
+        .title {
+            margin-bottom: 18px;
+            font-size: 20px;
+            letter-spacing: .05em;
+        }
+        .des {
+            font-size: 12px;
+            line-height: 22px;
+            letter-spacing: .02em;
+            min-width: 350px;
+        }
+        .spotlight-button {
+            margin-top: 30px;
+        }
+    }
+}
+/* START: Section  brands*/
+
+.halo-block-brands {
+    border-top: 1px solid #ebebeb;
+    padding: 15px 0px 15px;
+    margin-top: 65px;
+    .halo-row-item {
+        padding: 0px 15px;
+        display: none;
+        a {
+            display: block;
+            img{
+                padding: 10px;
+            }
+        }
+    }
+    .slick-initialized {
+        .halo-row-item {
+            display: block;
+            padding-top: 5px;
+        }
+    }
+}
+/* START: Instagram*/
+.halo-block-instagram {
+    background-color: #fafafa;
+    padding: 35px 0 40px;
+    .halo-block-header {
+        margin-bottom: 13px;
+        .title {
+            display: flex;
+            justify-content: center;
+            margin-bottom: 13px;
+            &::before {
+                display: none;
+            }
+            svg {
+                width: 22px;
+                height: 22px;
+                margin-right: 13px;
+            }
+        }
+        .desc {
+            padding-bottom: 22px;
+        }
+    }
+    .halo-block-content {
+        .row {
+            margin-left: -2.5px;
+            margin-right: -2.5px;
+            .halo-row-item {
+                padding: 0px 2.5px;
+                display: none;
+            }
+            &.slick-initialized {
+                .halo-row-item {
+                    display: block;
+                }
+            }
+        }
+        .row>* {
+            padding: 0;
+        }
+    }
+    .instagram-button {
+        margin-top: 26px;
+        .button {
+            min-width: 230px;
+        }
+    }
+}
+
+@media (max-width: 1024px) {
+    /* START: Section Full With Banner */
+    .halo-block-content {
+        .content-box--absolute {
+            .banner-title {
+                font-size: 30px;
+                margin-bottom: 15px;
+            }
+        }
+    }
+    /* START: Section  spotlight*/
+    .halo-block-spotlight {
+        .content {
+            .des {
+                min-width: 300px;
+            }
+        }
+    }
+}
+
+@media (max-width: 767px) {
+    /* START: Section Full With Banner-1 */
+    .content-box--left,
+    .content-box--right {
+        padding-top: 0;
+        width: 475px;
+        padding-bottom: 30px;
+    }
+    .halo-block-fullwidth-banner {
+        margin-bottom: 15px;
+    }
+    .halo-block-content {
+        .content-box--left {
+            position: absolute;
+            top: 50%;
+            left: 50%;
+            z-index: 1;
+            padding: 25px 25px 30px;
+            transform: translate(-50%, -50%);
+            max-width: 100%;
+            .banner-title {
+                color: #ffffff !important;
+                font-style: normal !important;
+                padding-bottom: 10px;
+                margin-bottom: 10px;
+                .line {
+                    background-color: #ffffff !important;
+                }
+            }
+            .banner-text {
+                color: #ffffff !important;
+                font-size: 12px !important;
+                line-height: 22px;
+            }
+        }
+    }
+    /* START: Section Sub Banner */
+    .halo-block-sub-banner {
+        .halo-row-item {
+            width: 100%;
+            &+.halo-row-item {
+                margin-top: 15px;
+            }
+        }
+    }
+    /* START: Section Sub Banner-2 */
+    .halo-block-content .content-box--right {
+        position: absolute;
+        top: 50%;
+        left: auto;
+        right: 50%;
+        padding: 25px 25px 30px;
+        -webkit-transform: translate(50%, -50%);
+        transform: translate(50%, -50%);
+        max-width: 100%;
+        .banner-title {
+            font-style: normal !important;
+            padding-bottom: 10px;
+            margin-bottom: 10px;
+        }
+        .banner-text {
+            font-size: 12px !important;
+            line-height: 22px;
+        }
+    }
+}
+
+@media(min-width:768px){
+    .halo-block-brands {
+        .halo-row-item {
+            a {
+                img{
+                    padding: 25px;
+                }
+            }
+        }
+    }
+}
+
+@media (min-width: 768px) and (max-width: 991px) {
+    /* START: Section Sub Banner */
+    .halo-block-content {
+        .content-box--left {
+            left: calc((100% - 730px)/2);
+            width: 475px;
+            padding-top: 25px;
+            padding-bottom: 30px;
+        }
+    }
+    .halo-block-content {
+        .content-box--right {
+            right: calc((100% - 730px)/2);
+            width: 475px;
+            padding-top: 25px;
+            padding-bottom: 30px;
+        }
+    }
+}
+
+@media (min-width: 992px) and (max-width: 1199px) {
+    /* START: Section Sub Banner */
+    .halo-block-content {
+        .content-box--left {
+            left: calc( (100% - 950px) / 2);
+        }
+    }
+}
+
+@media (min-Width: 1200px) {
+    /* START: Section Sub Banner */
+    .halo-block-sub-banner {
+        .halo-row-item {
+            .banner-title {
+                font-size: 16px;
+            }
+        }
+    }
+    .halo-block-fullwidth-banner .button {
+        min-width: 237px;
+    }
+    .halo-block-instagram {
+        padding-bottom: 70px;
+    }
+    .halo-block-fullwidth-banner .button {
+        min-width: 237px;
+    }
+}
+
+@media(min-width:1600px) {
+    .halo-block-instagram {
+        .halo-block-content {
+            .slick-arrow {
+                &.slick-next {
+                    right: -15px;
+                }
+                &.slick-prev {
+                    left: -15px;
+                }
+            }
+        }
+    }
+}

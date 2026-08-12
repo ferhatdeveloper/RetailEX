@@ -1,0 +1,80 @@
+---
+description: RetailEX standart modal stili — görsel flat tip + PercentBodyModal portal (zorunlu)
+globs: "**/*Modal*.tsx,**/*Modal*.tsx,**/components/**/*.tsx"
+alwaysApply: false
+---
+
+# RetailEX Flat Modal Standardı
+
+Yeni oluşturulacak veya mevcut bir modal üzerinde işlem yapılacaksa **bu modal tipi baz alınmalı**. Portal ve z-index için **`.cursor/rules/percent-body-modal-portal.mdc`** zorunludur — kabuk **`PercentBodyModal`** ile sarılır.
+
+Referans bileşenler: `PercentBodyModal`, `POSCustomerModal`, `InvoiceCariSelectModal`, `RestaurantStaffPinModal`, `POSPaymentModal`.
+
+## Genel yapı
+
+- **Portal (zorunlu):** `PercentBodyModal` — `document.body`, `MODAL_OVERLAY_Z`. Ayrıntı: `percent-body-modal-portal.mdc`.
+- **Overlay:** Bulanık koyu arka plan, ortalanmış kutu, `overflow-hidden` (dış scroll yok).
+- **Kutu:** Beyaz, `rounded-xl`, sabit `vh` boyut (`size`: list / wide / compact). İç liste **gövdede** scroll.
+- **Header:** Gradient arka plan (mavi–indigo), beyaz metin, sağ üstte kapatma (X) butonu — `shrink-0`.
+- **Body:** `PercentBodyModalScrollBody` veya `flex-1 min-h-0 overflow-y-auto`.
+- **Footer:** Alt çizgi + hafif arka plan, İptal + birincil aksiyon — `shrink-0`.
+
+## Zorunlu sınıflar ve yapı
+
+```tsx
+import { PercentBodyModal, PercentBodyModalScrollBody } from '../shared/PercentBodyModal';
+
+<PercentBodyModal onClose={onClose} size="list" ariaLabel="Başlık">
+  <div className="bg-gradient-to-r from-blue-600 to-indigo-600 px-8 py-6 text-white shrink-0">
+    {/* header + X */}
+  </div>
+  <PercentBodyModalScrollBody className="p-8">
+    {/* form / liste — yalnızca burada scroll */}
+  </PercentBodyModalScrollBody>
+  <div className="p-6 border-t border-slate-100 bg-slate-50/50 flex gap-4 shrink-0">
+    {/* footer butonları */}
+  </div>
+</PercentBodyModal>
+```
+
+Eski `fixed inset-0 z-[…]` şablonu **yeni modallarda kullanılmaz**; yalnızca tam ekran akışlar için `FullscreenBodyPortal` + `MODAL_OVERLAY_Z` (ör. ürün kataloğu).
+
+## Form alanları
+
+- **Label:** `text-[11px] font-bold text-slate-500 uppercase tracking-wider mb-1.5`
+- **Input:** `px-4 py-3 border border-slate-200 rounded-2xl focus:ring-2 focus:ring-blue-500 focus:border-blue-400 outline-none ... text-slate-800 font-medium`
+- **Select:** `appearance-none bg-white` + sağda **tek bir** chevron ikonu (Lucide `ChevronDown`), inline `backgroundImage` ile chevron **kullanılmamalı** (tekrarlama/çakışma olur).
+
+## Select + Chevron (tek ikon)
+
+Dropdown’da çoklu chevron hatasını önlemek için:
+
+- Select’i bir `relative` div içine al.
+- Select’e: `pr-11 appearance-none` (sağda ikon için boşluk).
+- Sağda tek ikon: `<ChevronDown className="absolute right-3 top-1/2 -translate-y-1/2 w-5 h-5 text-slate-400 pointer-events-none" aria-hidden />`
+- Select üzerinde **backgroundImage / data URI chevron kullanma**.
+
+## Butonlar (footer)
+
+- İptal: `rounded-2xl border-2 border-slate-200 text-slate-600 font-bold uppercase text-sm tracking-wider hover:bg-slate-100 active:scale-[0.98]`
+- Birincil: `rounded-2xl bg-blue-600 text-white font-bold uppercase text-sm tracking-wider shadow-lg shadow-blue-200/50 hover:bg-blue-700 disabled:opacity-50 active:scale-[0.98]`
+
+## Viewport — modal her zaman ekrana sığmalı (zorunlu)
+
+Uzun liste veya çok satır içerikte modal **viewport’u taşmamalı**; başlık ve footer **her zaman görünür** kalmalı, kaydırma **yalnızca gövde**de olmalı.
+
+1. **Dış sarmalayıcı (overlay):** `fixed inset-0 z-[…] overflow-y-auto overflow-x-hidden` + arka plan. Gerekirse içte `flex min-h-[100dvh] min-h-screen items-center justify-center p-3 sm:p-4 py-6` ile kutu ortalanır; taşma durumunda **sayfa (overlay) kayar**, kutu yine `max-h` ile sınırlı kalır.
+2. **Modal kutusu:** `w-full max-w-{…} max-h-[min(90vh,100dvh)] flex flex-col min-h-0 overflow-hidden` — üst sınır mutlaka `vh` / `dvh` ile verilmeli.
+3. **Header + ara toolbar + footer:** `shrink-0` (sabit yükseklik; taşmaz).
+4. **Gövde (liste/form):** `flex-1 min-h-0 overflow-y-auto overscroll-contain` — yalnızca bu alan scroll olur; `min-h-0` flex zincirinde **zorunlu** (aksi halde içerik kutuyu şişirip başlık/altı ekran dışına iter).
+5. Küçük hücrelerde uzun hata metni: `line-clamp-*`, `break-words`, gerekirse `max-w-*` ile satır yüksekliği patlamasın.
+
+Yeni veya güncellenen her modal bu viewport kuralına uygun olmalı; `max-h-[90vh]` tek başına yetmez — **`flex flex-col` + gövdede `flex-1 min-h-0 overflow-y-auto`** birlikte kullanılmalı.
+
+## Kurallar
+
+1. Yeni modal eklendiğinde veya eski modal düzenlendiğinde **`PercentBodyModal`** + bu görsel yapı uygulanmalı.
+2. Z-index: **`MODAL_OVERLAY_Z`** (`PercentBodyModal` / `FullscreenBodyPortal` inline style); `z-50` veya yalnızca Tailwind `z-[…]` **yeterli değil**.
+3. Kapatma: Header’da X; overlay tıklanınca `onClose` (isteğe bağlı devre dışı bırakılabilir).
+4. Animasyon: İsteğe bağlı `animate-in` — portal davranışını bozmayacak şekilde.
+5. **Viewport:** Sabit `size` + gövdede scroll — `percent-body-modal-portal.mdc` kontrol listesi.

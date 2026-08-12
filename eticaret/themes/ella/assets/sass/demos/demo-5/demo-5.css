@@ -1,0 +1,438 @@
+.halo-block-fullwidth-banner {
+  margin-bottom: 30px;
+}
+
+.halo-block-fullwidth-banner .content-box--left {
+  left: calc((100% - 1495px) / 2);
+  width: 390px;
+  padding: 0 34px;
+}
+
+.halo-block-fullwidth-banner .content-box--right {
+  right: calc((100% - 1495px) / 2);
+  width: 390px;
+}
+
+.halo-block-fullwidth-banner .content-box .sub-title {
+  font-size: 16px;
+  line-height: 26px;
+  letter-spacing: 0;
+  font-weight: 400;
+  color: #202020;
+  text-decoration: underline;
+  text-underline-offset: 0.2rem;
+}
+
+.halo-block-fullwidth-banner .content-box .banner-title {
+  font-size: 40px;
+  font-weight: 600;
+  letter-spacing: 0;
+  line-height: 26px;
+  color: #232323;
+  margin-top: 28px;
+  margin-bottom: 30px;
+}
+
+.halo-block-fullwidth-banner .content-box .banner-title .text {
+  position: relative;
+}
+
+.halo-block-fullwidth-banner .content-box .banner-title .text::before {
+  content: "";
+  display: block;
+  position: absolute;
+  bottom: 5px;
+  height: 22px;
+  left: 0;
+  right: 0;
+  width: calc(100% + 20px);
+  margin-left: -10px;
+  background-color: #f7e3dc;
+  z-index: -1;
+}
+
+.halo-block-fullwidth-banner .content-box .banner-text {
+  font-size: 16px;
+  letter-spacing: .02em;
+  line-height: 26px;
+  font-weight: 400;
+  color: #232323;
+  margin-bottom: 37px;
+}
+
+.halo-block-brand {
+  border-bottom: 1px solid #ececec;
+  padding-bottom: 45px;
+}
+
+.halo-block-brand .img-box img {
+  margin: 0 auto;
+}
+
+.halo-block-brand .slick-arrow.slick-prev svg {
+  top: -6px;
+  left: -1px;
+}
+
+.halo-block-brand .slick-arrow.slick-next svg {
+  top: -6px;
+  right: -1px;
+}
+
+.halo-block-brand .content-box {
+  display: -webkit-box;
+  display: -ms-flexbox;
+  display: flex;
+  -webkit-box-orient: vertical;
+  -webkit-box-direction: normal;
+      -ms-flex-direction: column;
+          flex-direction: column;
+}
+
+.halo-block-brand .content-box .text {
+  margin-top: 13px;
+  margin-bottom: 10px;
+  font-size: 16px;
+  font-weight: 600;
+  letter-spacing: 0;
+  color: #232323;
+}
+
+.halo-block-brand .content-box .text:hover {
+  color: #8b714a;
+  text-decoration: underline;
+  text-underline-offset: 0.2rem;
+}
+
+.halo-block-brand .content-box .desc .text {
+  font-size: 16px;
+  font-weight: 400;
+  letter-spacing: .02em;
+  line-height: 18px;
+  color: #3c3c3c;
+}
+
+.halo-product-block {
+  margin-top: 66px;
+  margin-bottom: 50px;
+}
+
+.halo-product-block .slick-arrow {
+  top: 33%;
+}
+
+.halo-product-block .slick-arrow.slick-next {
+  right: -8px;
+}
+
+.halo-product-block .slick-arrow.slick-prev {
+  left: -9px;
+}
+
+.halo-product-block.halo-product-block-2 {
+  margin-top: 56px;
+  margin-bottom: 22px;
+}
+
+.halo-block-sub-banner {
+  overflow: hidden;
+}
+
+.halo-block-sub-banner .halo-block-header {
+  margin-bottom: 25px;
+}
+
+.halo-block-sub-banner .row {
+  margin: 0 5px;
+}
+
+.halo-block-sub-banner .row .halo-row-item {
+  padding: 0 5px;
+}
+
+.halo-block-sub-banner .content-box--absolute {
+  top: auto;
+  bottom: 56px;
+}
+
+.halo-block-sub-banner .sub-title {
+  font-size: 16px;
+  letter-spacing: 0;
+  font-weight: 400;
+  color: #202020;
+}
+
+.halo-block-sub-banner .banner-title {
+  font-size: 40px;
+  font-weight: 600;
+  letter-spacing: 0;
+  line-height: 50px;
+  color: #202020;
+  margin-top: 10px;
+  margin-bottom: 30px;
+}
+
+.halo-block-sub-banner .banner-title .text {
+  position: relative;
+}
+
+.halo-block-sub-banner .banner-title .text::before {
+  content: "";
+  display: block;
+  position: absolute;
+  bottom: 5px;
+  height: 22px;
+  left: 0;
+  right: 0;
+  width: calc(100% + 20px);
+  margin-left: -10px;
+  background-color: #f7e3dc;
+  z-index: -1;
+}
+
+.halo-block-sub-banner .style-2 .banner-title {
+  margin-top: 14px;
+}
+
+.halo-block-policies {
+  margin-top: 51px;
+  margin-bottom: 20px;
+  padding-bottom: 54px;
+  border-bottom: 1px solid #e6e6e6;
+}
+
+.halo-block-policies .wrapper-item img {
+  margin: 0 auto;
+}
+
+.halo-block-policies .title-policies {
+  font-size: 18px;
+  font-weight: 600;
+  line-height: 28px;
+  letter-spacing: 0;
+  margin: 22px 0 6px 0;
+  color: #232323;
+  cursor: pointer;
+}
+
+.halo-block-policies .title-policies:hover {
+  color: #8b714a;
+}
+
+.halo-block-policies .text-policies,
+.halo-block-policies .text {
+  font-size: 16px;
+  line-height: 28px;
+  font-weight: 400;
+  letter-spacing: 0;
+  color: #3c3c3c;
+  margin: 2px 0;
+}
+
+.halo-block-policies .content-box {
+  display: -webkit-box;
+  display: -ms-flexbox;
+  display: flex;
+  -webkit-box-orient: vertical;
+  -webkit-box-direction: normal;
+      -ms-flex-direction: column;
+          flex-direction: column;
+}
+
+.halo-block-instagram {
+  margin-bottom: 50px;
+  margin-top: 56px;
+}
+
+.halo-block-instagram .halo-block-header {
+  margin-bottom: 25px;
+}
+
+.halo-block-instagram .halo-block-header .title {
+  font-size: 24px;
+  font-weight: 600;
+  letter-spacing: 0;
+  color: #232323;
+  margin-bottom: 12px;
+}
+
+.halo-block-instagram .halo-block-header .title svg {
+  position: relative;
+  top: -3px;
+  width: 23px;
+  height: 23px;
+}
+
+.halo-block-instagram .halo-block-header .desc {
+  font-size: 16px;
+  line-height: 18px;
+  letter-spacing: 0;
+  font-weight: 400;
+  color: #3c3c3c;
+  margin-bottom: 10px;
+}
+
+.halo-block-instagram .row {
+  margin: 0 -5px;
+}
+
+.halo-block-instagram .row.column-5 .halo-row-item {
+  padding-left: 5px;
+  padding-right: 5px;
+  padding-top: 10px;
+  display: none;
+}
+
+.halo-block-instagram .show-more img {
+  margin: 0 auto;
+}
+
+.halo-block-instagram .halo-block-content {
+  margin-bottom: 40px;
+}
+
+@media (max-width: 1800px) {
+  .halo-product-block .slick-arrow.slick-prev {
+    left: 10px;
+  }
+  .halo-product-block .slick-arrow.slick-next {
+    right: 10px;
+  }
+}
+
+@media (max-width: 1600px) and (min-width: 1024px) {
+  .halo-block-fullwidth-banner .content-box--left {
+    left: calc((100% - 995px) / 2);
+    width: 390px;
+    padding: 0 34px;
+  }
+  .halo-block-fullwidth-banner .content-box--right {
+    right: calc((100% - 995px) / 2);
+    width: 390px;
+  }
+}
+
+@media (max-width: 1024px) {
+  .halo-product-block {
+    margin-top: 30px;
+  }
+}
+
+@media (max-width: 1023px) and (min-width: 768px) {
+  .halo-block-fullwidth-banner .content-box .banner-title {
+    margin: 15px  0 20px 0;
+  }
+  .halo-block-fullwidth-banner .content-box .banner-text {
+    margin-bottom: 20px;
+  }
+  .halo-block-fullwidth-banner .content-box--left {
+    left: calc((100% - 700px) / 2);
+    width: 390px;
+    padding: 0 34px;
+  }
+  .halo-block-fullwidth-banner .content-box--right {
+    right: calc((100% - 700px) / 2);
+    width: 390px;
+  }
+}
+
+@media (max-width: 991px) {
+  .halo-block-fullwidth-banner .banner-item .image {
+    min-height: 400px;
+  }
+  .halo-block-fullwidth-banner .content-box .banner-title {
+    font-size: 30px;
+  }
+  .halo-block-fullwidth-banner .content-box .banner-title .text::before {
+    height: 14px;
+  }
+  .halo-block-sub-banner .halo-row-item {
+    margin-bottom: 20px;
+  }
+  .halo-block-sub-banner .halo-row-item .content-box--absolute {
+    top: 50%;
+    left: 50%;
+    bottom: auto;
+    -webkit-transform: translate3d(-50%, -50%, 0);
+            transform: translate3d(-50%, -50%, 0);
+  }
+  .halo-block-sub-banner .banner-title {
+    font-size: 30px;
+  }
+}
+
+@media (max-width: 767px) {
+  .halo-block-fullwidth-banner {
+    overflow: hidden;
+  }
+  .halo-block-fullwidth-banner .content-box .sub-title,
+  .halo-block-fullwidth-banner .content-box .banner-title,
+  .halo-block-fullwidth-banner .content-box .banner-text {
+    color: #ffffff;
+  }
+  .halo-block-fullwidth-banner .content-box .banner-title .text::before {
+    background-color: #232323;
+  }
+  .halo-block-fullwidth-banner .content-box--left {
+    top: 50%;
+    left: 50%;
+    -webkit-transform: translate(-50%, -50%);
+            transform: translate(-50%, -50%);
+  }
+  .halo-block-fullwidth-banner .content-box--right {
+    top: 50%;
+    left: 50%;
+    right: auto;
+    -webkit-transform: translate(-50%, -50%);
+            transform: translate(-50%, -50%);
+  }
+  .halo-block-brand {
+    padding-bottom: 15px;
+  }
+  .halo-block-brand .slick-dots {
+    margin-top: 20px;
+  }
+  .halo-block-policies {
+    margin-bottom: 0;
+    padding-bottom: 20px;
+  }
+  .halo-block-policies .slick-dots {
+    margin-top: 15px;
+  }
+  .halo-block-instagram {
+    margin-top: 30px;
+  }
+  .halo-block-instagram .row {
+    margin: 0;
+  }
+  .halo-block-instagram .container {
+    padding: 0 10px;
+  }
+  .halo-block-instagram .show-more img {
+    width: 24px;
+  }
+}
+
+@media (min-width: 768px) {
+  .halo-block-sub-banner .content-box--absolute {
+    -webkit-transform: translate3d(-50%, 0, 0);
+            transform: translate3d(-50%, 0, 0);
+  }
+}
+
+@media (min-width: 1025px) {
+  .halo-product-block .row {
+    margin-left: -5px;
+    margin-right: -5px;
+  }
+  .halo-product-block .row .halo-row-item {
+    padding: 0px 5px;
+  }
+}
+
+@media (min-width: 1600px) {
+  .halo-block-brand {
+    margin-top: 34px;
+  }
+}
+/*# sourceMappingURL=demo-5.css.map */

@@ -1,0 +1,104 @@
+name: Android Play Submit
+
+# EAS Submit → Google Play internal track (production profili).
+# Debug APK CI (android-release.yml) DEĞİL — bkz. mobile/PLAY_SUBMIT.md
+#
+# Secrets:
+#   EXPO_TOKEN (zorunlu)
+#   GOOGLE_SERVICE_ACCOUNT_JSON (tercih) veya GOOGLE_SERVICE_ACCOUNT_KEY_JSON (alias)
+#   — isteğe bağlı; EAS Credentials'ta key varsa gerekmez
+# Service account JSON asla commit edilmez / artifact olarak yüklenmez.
+
+on:
+  workflow_dispatch:
+    inputs:
+      build_id:
+        description: 'EAS build UUID (boş = son başarılı Android production build)'
+        required: false
+        type: string
+      profile:
+        description: 'eas.json submit profili'
+        required: false
+        default: production
+        type: string
+      dry_run:
+        description: 'Yalnızca komutu yazdır (submit yok)'
+        required: false
+        default: false
+        type: boolean
+
+permissions:
+  contents: read
+
+jobs:
+  submit-play:
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    defaults:
+      run:
+        working-directory: mobile
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: mobile/package-lock.json
+
+      - name: Require EXPO_TOKEN
+        working-directory: .
+        run: |
+          if [ -z "${{ secrets.EXPO_TOKEN }}" ]; then
+            echo "EXPO_TOKEN secret tanımlı değil. Bkz. mobile/PLAY_SUBMIT.md"
+            exit 1
+          fi
+
+      - name: Install mobile dependencies
+        run: npm ci
+
+      - name: Write Google service account (optional)
+        working-directory: .
+        env:
+          GOOGLE_SERVICE_ACCOUNT_JSON: ${{ secrets.GOOGLE_SERVICE_ACCOUNT_JSON }}
+          GOOGLE_SERVICE_ACCOUNT_KEY_JSON: ${{ secrets.GOOGLE_SERVICE_ACCOUNT_KEY_JSON }}
+        run: |
+          SA_JSON="${GOOGLE_SERVICE_ACCOUNT_JSON:-$GOOGLE_SERVICE_ACCOUNT_KEY_JSON}"
+          if [ -n "$SA_JSON" ]; then
+            mkdir -p mobile/secrets
+            umask 077
+            printf '%s' "$SA_JSON" > mobile/secrets/google-play-service-account.json
+            echo "Service account JSON geçici olarak yazıldı (gitignore; artifact yok)."
+          else
+            echo "GOOGLE_SERVICE_ACCOUNT_JSON / KEY_JSON yok — EAS dashboard Credentials kullanılacak."
+          fi
+
+      - name: EAS submit (Play internal)
+        working-directory: .
+        env:
+          EXPO_TOKEN: ${{ secrets.EXPO_TOKEN }}
+        run: |
+          set -e
+          CMD=(node scripts/eas-mobile-submit.mjs --profile "${{ inputs.profile }}")
+          if [ -f mobile/secrets/google-play-service-account.json ]; then
+            export GOOGLE_SERVICE_ACCOUNT_KEY_PATH=mobile/secrets/google-play-service-account.json
+          fi
+          if [ -n "${{ inputs.build_id }}" ]; then
+            CMD+=(--id "${{ inputs.build_id }}")
+          else
+            CMD+=(--latest)
+          fi
+          if [ "${{ inputs.dry_run }}" = "true" ]; then
+            CMD+=(--dry-run)
+          fi
+          "${CMD[@]}"
+
+      - name: Scrub local key file
+        if: always()
+        working-directory: .
+        run: |
+          rm -f mobile/secrets/google-play-service-account.json
+          echo "Geçici service account dosyası silindi."

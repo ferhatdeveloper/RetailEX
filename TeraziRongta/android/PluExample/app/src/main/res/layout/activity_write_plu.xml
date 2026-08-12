@@ -1,0 +1,275 @@
+<?xml version="1.0" encoding="utf-8"?>
+<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    android:layout_width="match_parent"
+    android:layout_height="match_parent"
+    android:orientation="vertical">
+
+    <LinearLayout
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:background="@color/tag_blue_bg"
+        android:gravity="center_vertical"
+        android:orientation="horizontal"
+        android:padding="5dp">
+
+        <LinearLayout
+            android:id="@+id/lin_back"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginEnd="5dp"
+            android:layout_weight="3"
+            android:background="@drawable/btn_back_selector"
+            android:gravity="center_vertical"
+            android:onClick="onClick"
+            android:orientation="horizontal"
+            android:paddingBottom="5dp"
+            android:paddingEnd="10dp"
+            android:paddingStart="5dp"
+            android:paddingTop="5dp">
+
+            <ImageView
+                android:layout_width="20dp"
+                android:layout_height="40dp"
+                android:src="@drawable/back" />
+
+
+        </LinearLayout>
+
+        <TextView
+            android:layout_width="match_parent"
+            android:layout_height="36dp"
+            android:layout_weight="2"
+            android:gravity="center"
+            android:padding="5dp"
+            android:text="PLU"
+            android:textColor="@color/white"
+            android:textSize="25sp" />
+
+        <TextView
+            android:id="@+id/img_add_plu"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginEnd="5dp"
+            android:layout_marginStart="10dp"
+            android:layout_weight="3"
+            android:background="@drawable/btn_back_selector"
+            android:clickable="true"
+            android:gravity="center"
+            android:onClick="onClick"
+            android:padding="5dp"
+            android:text="Save"
+            android:textColor="@color/white"
+            android:textSize="25sp" />
+
+    </LinearLayout>
+
+    <ScrollView
+        android:layout_width="match_parent"
+        android:layout_height="match_parent"
+        android:scrollbars="vertical">
+
+        <LinearLayout
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:orientation="vertical"
+            android:paddingEnd="10dp"
+            android:paddingStart="10dp">
+
+            <TextView
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:layout_margin="5dp"
+                android:text="Tips:if the Llfcode is exist, it will update it, otherwise, it will create."
+                android:textColor="@color/red" />
+
+
+            <!--生鲜码 llfcode start-->
+            <LinearLayout
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:layout_marginBottom="20dp"
+                android:gravity="center_vertical"
+                android:orientation="horizontal">
+
+                <TextView
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:layout_weight="2"
+                    android:gravity="right"
+                    android:padding="10dp"
+                    android:text="LlfCode"
+                    android:textSize="18sp" />
+
+                <EditText
+                    android:id="@+id/et_plu_llfcode"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:layout_weight="1"
+                    android:digits="0123456798"
+                    android:gravity="center"
+                    android:hint="Up to 6 digits"
+                    android:inputType="numberDecimal"
+                    android:maxLength="6"
+                    android:padding="10dp" />
+            </LinearLayout>
+            <!--生鲜码 llfcode end-->
+
+            <!--品名 plu name start-->
+            <LinearLayout
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:layout_marginBottom="20dp"
+                android:gravity="center_vertical"
+                android:orientation="horizontal">
+
+                <TextView
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:layout_weight="2"
+                    android:gravity="right"
+                    android:padding="10dp"
+                    android:text="Name"
+                    android:textSize="18sp" />
+
+                <EditText
+                    android:id="@+id/et_plu_name"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:layout_weight="1"
+                    android:gravity="center"
+                    android:hint="Up to 18 characters"
+                    android:maxLength="18"
+                    android:padding="10dp" />
+            </LinearLayout>
+            <!--品名 plu name end-->
+
+            <!--货号 item code start-->
+            <LinearLayout
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:layout_marginBottom="20dp"
+                android:gravity="center_vertical"
+                android:orientation="horizontal">
+
+                <TextView
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:layout_weight="2"
+                    android:gravity="right"
+                    android:padding="10dp"
+                    android:text="ItemCode"
+                    android:textSize="18sp" />
+
+                <EditText
+                    android:id="@+id/et_plu_itemcode"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:layout_weight="1"
+                    android:digits="0123456789"
+                    android:gravity="center"
+                    android:hint="Up to 10 digits"
+                    android:inputType="numberDecimal"
+                    android:maxLength="10"
+                    android:padding="10dp" />
+            </LinearLayout>
+            <!--货号 item code end-->
+
+            <!--unit price start-->
+            <LinearLayout
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:layout_marginBottom="20dp"
+                android:gravity="center_vertical"
+                android:orientation="horizontal">
+
+                <TextView
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:layout_weight="2"
+                    android:gravity="right"
+                    android:padding="10dp"
+                    android:text="Unit Price"
+                    android:textSize="18sp" />
+
+                <EditText
+                    android:id="@+id/et_plu_unitprice"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:layout_weight="1"
+                    android:digits="0123456789."
+                    android:gravity="center"
+                    android:hint="Up to 8 digits"
+                    android:inputType="numberDecimal"
+                    android:maxLength="8"
+                    android:padding="10dp" />
+            </LinearLayout>
+            <!--unit price end-->
+
+            <!--Weight Unit start-->
+            <LinearLayout
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:layout_marginBottom="20dp"
+                android:gravity="center_vertical"
+                android:orientation="horizontal">
+
+                <TextView
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:layout_weight="2"
+                    android:gravity="right"
+                    android:padding="10dp"
+                    android:text="Weight Unit"
+                    android:textSize="18sp" />
+
+                <TextView
+                    android:id="@+id/tv_plu_unitweight"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:layout_weight="1"
+                    android:background="@drawable/btn_orange_gray_selector"
+                    android:gravity="center"
+                    android:padding="10dp"
+                    android:text="KG"
+                    android:textSize="18sp" />
+            </LinearLayout>
+            <!--Weight Unit end-->
+
+
+            <!--Shelf Days start-->
+            <LinearLayout
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:layout_marginBottom="20dp"
+                android:gravity="center_vertical"
+                android:orientation="horizontal">
+
+                <TextView
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:layout_weight="2"
+                    android:gravity="right"
+                    android:padding="10dp"
+                    android:text="Shelf Days"
+                    android:textSize="18sp" />
+
+                <EditText
+                    android:id="@+id/et_plu_shelfdays"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:layout_weight="1"
+                    android:digits="0123456798"
+                    android:gravity="center"
+                    android:hint="Up to 3 digits"
+                    android:inputType="numberDecimal"
+                    android:maxLength="3"
+                    android:padding="10dp" />
+            </LinearLayout>
+            <!--Shelf Days end-->
+
+
+        </LinearLayout>
+    </ScrollView>
+
+
+</LinearLayout>
