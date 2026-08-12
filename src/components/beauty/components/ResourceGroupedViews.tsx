@@ -814,7 +814,8 @@ export function ResourceGroupedWeekMatrix({
                                 }).sort((a, b) =>
                                     queueMode
                                         ? compareBeautyQueueOrder(a, b)
-                                        : aptTimeRaw(a).localeCompare(aptTimeRaw(b))
+                                        : (parseTimeToMinutes(aptTimeRaw(a)) ?? Number.MAX_SAFE_INTEGER)
+                                            - (parseTimeToMinutes(aptTimeRaw(b)) ?? Number.MAX_SAFE_INTEGER)
                                 );
                                 const cellGroups = queueMode
                                     ? groupBeautyQueueByCustomer(cellApts)

@@ -1,0 +1,48 @@
+---
+description: Uzak PG kiracı migration'ları artık otomatik — kullanıcıya onay sorma
+alwaysApply: false
+---
+
+# Otomatik kiracı migration
+
+Kullanıcı **bir kez `tum kiracılara uzak pg uzerinden yükle`** veya eşdeğer bir niyet belirttikten sonra, aynı oturumda (ve aynı commit/release kapsamında) **tekrar "Tüm kiracılara uygulayayım mı?" diye sorma**. Direkt dry-run + gerçek migrate çalıştır.
+
+## Ne zaman otomatik
+
+- Kullanıcı commit/push sonrası veya görev başında "kiracılara yükle", "tüm kiracılar", "remote PG'de migrate", "uzak PG'ye uygula" gibi niyet belirttiğinde
+- Aynı commit için tek seferlik `npm run db:migrate:tenants -- --dry-run` özetini raporla, sonra **doğrudan `npm run db:migrate:tenants`** ile devam et
+- Şifre hâlâ `.env` veya `config/remote-pg.defaults.json` üzerinden okunabilir durumda olmalı
+
+## Ne zaman yine sor
+
+- **Kiracı listesi değiştiyse** (yeni DB eklendi, çıkarıldı)
+- **Migration dosyaları değiştiyse** (yeni dosyalar eklendiyse, düzeltme yapıldıysa)
+- **Yeni bir commit/release kapsamı** (kullanıcı başka bir gün yeni iş istediğinde)
+- **Çok büyük / yıkıcı migration** (DROP TABLE, ALTER COLUMN TYPE, vb. — idempotent değil)
+- **Kullanıcı "dur"** veya "durdur" derse
+
+## Şifre güvenliği (KRİTİK)
+
+- Şifreyi **hiçbir zaman** `console.log` ile yazma, **hiçbir dosyaya** kaydetme
+- Tüm log çıktılarında `[mask]` ile sansürle
+- Yalnızca `process.env.PGPASSWORD` veya `config/remote-pg.defaults.json` üzerinden oku
+- Kullanıcı şifreyi sohbette paylaşırsa şifreyi tekrarlama, `Şifre alındı, mask'lendi` gibi kısa teyit ver
+
+## Hariç liste (RetailEX dışı DB'lere dokunma)
+
+`database/scripts/non-retailex-databases.mjs` → `filterRetailExDatabases` ile:
+- `ilsasupport`, `pagetin_kurye`, `siti_pdks`, `aram`, `naw` otomatik atlanır
+- `finpos_crm`, `sitigroup` gibi `schema_migrations` olmayan DB'ler yine atlanır
+
+## İlgili kurallar
+
+- `.cursor/rules/database-migrate-config-db.mdc` — `npm run db:migrate` kullanımı
+- `.cursor/rules/database-non-retailex-exclude.mdc` — non-retailex DB filtresi
+- `.cursor/rules/asin-retailex-product-separation.mdc` — AsinERP / RetailEX ayrımı
+
+## Yapma
+
+- "Tüm kiracılara uygulayayım mı?" diye tekrar sorma (aynı işlem için)
+- Şifreyi log'a yazma
+- `schema_migrations` olmayan DB'lere migrate etme
+- DROP / ALTER TYPE yıkıcı işlemleri idempotent olmadan otomatik çalıştırma

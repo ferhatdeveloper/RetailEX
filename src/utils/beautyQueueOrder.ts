@@ -1,8 +1,18 @@
 import type { BeautyAppointment } from '../types/beauty';
 import { beautyAppointmentDateKey } from './dateLocal';
 
-/** Sıra modu: önce oluşturulma zamanı, yoksa randevu saati, yoksa id. */
+/** Sıra modu: önce randevu saatine göre kronolojik, yoksa oluşturulma zamanı, yoksa id. */
 export function compareBeautyQueueOrder(a: BeautyAppointment, b: BeautyAppointment): number {
+    // 1) Birincil anahtar: randevu saati (HH:MM → dakika tuple).
+    const ta = parseHhmmToMin(a.appointment_time ?? a.time);
+    const tb = parseHhmmToMin(b.appointment_time ?? b.time);
+    const aHas = ta !== null;
+    const bHas = tb !== null;
+    if (aHas && bHas && ta !== tb) return (ta as number) - (tb as number);
+    if (aHas && !bHas) return -1;
+    if (!aHas && bHas) return 1;
+
+    // 2) Saat yoksa/aynıysa → oluşturulma zamanına göre fallback.
     const ca = a.created_at?.trim();
     const cb = b.created_at?.trim();
     if (ca && cb) {
@@ -10,8 +20,8 @@ export function compareBeautyQueueOrder(a: BeautyAppointment, b: BeautyAppointme
         if (c !== 0) return c;
     } else if (ca && !cb) return -1;
     else if (!ca && cb) return 1;
-    const ta = (a.appointment_time ?? a.time ?? '').localeCompare(b.appointment_time ?? b.time ?? '');
-    if (ta !== 0) return ta;
+
+    // 3) Son çare: id.
     return String(a.id).localeCompare(String(b.id));
 }
 
