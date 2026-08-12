@@ -22,6 +22,7 @@ import { AppointmentStatus, appointmentStatusMatches } from '../../../types/beau
 import { beautyServiceMainKey, beautyServiceSubKey } from '../beautyServiceCategoryUtils';
 import type { BeautyAppointment, BeautyAppointmentClinicalData, BeautyCustomer } from '../../../types/beauty';
 import { beautyService } from '../../../services/beautyService';
+import { BeautyManagerAuthModal } from './BeautyManagerAuthModal';
 import { useLanguage } from '../../../contexts/LanguageContext';
 import { useResponsive } from '../../../hooks/useResponsive';
 import { logger } from '../../../services/loggingService';
@@ -520,6 +521,10 @@ export function AppointmentPOS({
     const [monthlyBusy, setMonthlyBusy] = useState(false);
     const [cancelAptConfirmOpen, setCancelAptConfirmOpen] = useState(false);
     const [cancelAptBusy, setCancelAptBusy] = useState(false);
+    /** Ödeme alınmış randevuyu düzenlemek için yönetici şifresi doğrulama guard'ı */
+    const [managerAuthOpen, setManagerAuthOpen] = useState(false);
+    /** Yönetici şifresi onaylandıktan sonra bir sonraki update çağrısında ödeme kontrolünü atla */
+    const paidEditAuthorizedRef = useRef(false);
 
     // ── Payment modal ─────────────────────────────────────────────────────
     const [showPay, setShowPay] = useState(false);
@@ -1869,6 +1874,7 @@ export function AppointmentPOS({
         }
     };
 
+    const handleUpdateExistingAppointmentRef = useRef<() => Promise<void>>(async () => {});
     const handleUpdateExistingAppointment = async () => {
         if (!existingAppointment?.id || updateExistingBusy) return;
 
@@ -1920,6 +1926,24 @@ export function AppointmentPOS({
             openBookingBlockModal('no_specialists');
             return;
         }
+        // Ödeme alınmış randevu → yönetici şifresi iste (iptal akışı yukarıda zaten ayrı kontrol ediliyor).
+        // Modal onayı sonrası tekrar denemede `paidEditAuthorizedRef` flag'i bypass sağlar.
+        if (existingAppointment?.id && !paidEditAuthorizedRef.current) {
+            try {
+                const paid = await beautyService.hasAppointmentPayment(existingAppointment.id);
+                if (paid) {
+                    setManagerAuthOpen(true);
+                    return;
+                }
+            } catch (e: unknown) {
+                logger.warn('AppointmentPOS', 'hasAppointmentPayment check failed', e);
+                // Hata durumunda güvenli tarafta kal: yine şifre iste
+                setManagerAuthOpen(true);
+                return;
+            }
+        }
+        // Bu çağrı için guard geçildi; flag'i sıfırla (sonraki manuel "Kaydet" tıklamasında yeniden sorsun)
+        paidEditAuthorizedRef.current = false;
         setUpdateExistingBusy(true);
         try {
             if (
@@ -1971,6 +1995,7 @@ export function AppointmentPOS({
             setUpdateExistingBusy(false);
         }
     };
+    handleUpdateExistingAppointmentRef.current = handleUpdateExistingAppointment;
 
     const runToolbarAppointmentCancel = useCallback(async () => {
         if (!existingAppointment?.id) return;
@@ -4598,6 +4623,29 @@ export function AppointmentPOS({
                     }}
                 />
             )}
+
+            {managerAuthOpen && existingAppointment?.id ? (
+                <BeautyManagerAuthModal
+                    onClose={() => setManagerAuthOpen(false)}
+                    onAuthorized={() => {
+                        setManagerAuthOpen(false);
+                        // Şifre doğrulandı → bir sonraki update çağrısında ödeme kontrolünü atla.
+                        paidEditAuthorizedRef.current = true;
+                        // Modal kapanmasını bekle, sonra düzenleme akışını tetikle.
+                        window.setTimeout(() => {
+                            void handleUpdateExistingAppointmentRef.current();
+                        }, 50);
+                    }}
+                    context={{
+                        appointmentId: existingAppointment.id,
+                        action: 'edit_paid_appointment',
+                        payload: {
+                            customer_id: existingAppointment.customer_id ?? existingAppointment.client_id ?? null,
+                            previous_status: existingAppointment.status ?? null,
+                        },
+                    }}
+                />
+            ) : null}
 
             <RetailExFlatModal
                 open={cancelAptConfirmOpen}

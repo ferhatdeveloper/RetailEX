@@ -3,7 +3,7 @@ import React, { useState, useEffect, useMemo, useCallback, useRef } from 'react'
 import { createPortal } from 'react-dom';
 import {
     ChevronLeft, ChevronRight, Plus, Clock,
-    User, Cpu, List, Search, X,
+    User, UserRound, Cpu, List, Search, X,
     CalendarDays, Banknote, Undo2, Phone, MessageSquare, Send,
 } from 'lucide-react';
 import { useBeautyStore } from '../store/useBeautyStore';
@@ -54,6 +54,7 @@ import {
 } from '../../../utils/beautySchedulerDragDrop';
 import { RetailExFlatModal } from '../../shared/RetailExFlatModal';
 import { BeautyFeedbackSurveyModal } from './BeautyFeedbackSurveyModal';
+import { AppointmentChangeCustomerModal } from './AppointmentChangeCustomerModal';
 import { usePermission } from '../../../shared/hooks/usePermission';
 import { ClinicDetailClinicalEmbed } from '../specialty/ClinicDetailClinicalEmbed';
 import { ServiceCategoryDateBoard, type ServiceBoardMainLayout } from './ServiceCategoryDateBoard';
@@ -285,6 +286,8 @@ export function SmartScheduler() {
     const [selectedApt, setSelectedApt] = useState<BeautyAppointment | null>(null);
     /** Randevu yan paneli: özet alanları vs. uzmanlık şeması */
     const [aptDetailTab, setAptDetailTab] = useState<'summary' | 'clinical'>('summary');
+    /** Randevu yan panelinden müşteri değiştirme modalı */
+    const [changeCustomerOpen, setChangeCustomerOpen] = useState(false);
 
     // Full-page new appointment state
     const [showNewPage,     setShowNewPage]     = useState(false);
@@ -1101,7 +1104,9 @@ export function SmartScheduler() {
         return y && m && d ? `${d}.${m}.${y}` : ymd;
     };
 
-    const renderAptCard = (apt: BeautyAppointment) => {
+    const renderAptCard = (apt: BeautyAppointment, groupedItems?: BeautyAppointment[]) => {
+        const serviceItems = groupedItems && groupedItems.length > 1 ? groupedItems : [apt];
+        const isGroupedCard = serviceItems.length > 1;
         const color = apt.service_color ?? '#7c3aed';
         const cfg   = STATUS_CFG[apt.status] ?? STATUS_CFG.scheduled;
         const done  = appointmentStatusMatches(apt.status, AppointmentStatus.COMPLETED);
@@ -1147,7 +1152,39 @@ export function SmartScheduler() {
                         <span style={{ fontSize: 10, fontWeight: 600, color: '#6b7280', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{phone}</span>
                     </div>
                 ) : null}
-                <p style={{ fontSize: 11, fontWeight: 600, color: '#9ca3af', marginBottom: 6 }}>{resolveServiceName(apt)}</p>
+                {isGroupedCard ? (
+                    <div style={{ display: 'flex', flexDirection: 'column', gap: 4, marginBottom: 6 }}>
+                        {serviceItems.map(item => (
+                            <div
+                                key={item.id}
+                                style={{
+                                    display: 'grid',
+                                    gridTemplateColumns: 'minmax(0, 1fr) auto',
+                                    gap: '2px 8px',
+                                    padding: '5px 6px',
+                                    borderRadius: 4,
+                                    background: '#faf9fd',
+                                    border: '1px solid #f0edf7',
+                                }}
+                            >
+                                <span style={{ fontSize: 10, fontWeight: 700, color: '#374151', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                                    {resolveServiceName(item)}
+                                </span>
+                                <span style={{ fontSize: 10, fontWeight: 700, color: '#6b7280', fontFamily: 'monospace' }}>
+                                    {(item.appointment_time ?? item.time ?? '').slice(0, 5)}
+                                </span>
+                                <span style={{ fontSize: 9, fontWeight: 600, color: '#9ca3af' }}>
+                                    {item.specialist_name ?? item.staff_name ?? '—'}
+                                </span>
+                                <span style={{ fontSize: 9, fontWeight: 600, color: '#9ca3af', textAlign: 'right' }}>
+                                    {Math.max(1, Number(item.duration) || 30)}{tm('bDkSuffix')}
+                                </span>
+                            </div>
+                        ))}
+                    </div>
+                ) : (
+                    <p style={{ fontSize: 11, fontWeight: 600, color: '#9ca3af', marginBottom: 6 }}>{resolveServiceName(apt)}</p>
+                )}
                 {productLabels.length > 0 ? (
                     <p style={{ fontSize: 10, fontWeight: 600, color: '#0d9488', marginBottom: 6, lineHeight: 1.35 }}>
                         {tm('bAptCardProducts')}: {productLabels.join(', ')}
@@ -2479,9 +2516,25 @@ export function SmartScheduler() {
                         onClick={e => e.stopPropagation()}
                     >
                         <div style={{ padding: '16px 20px', borderBottom: '1px solid #e5e7eb', background: '#f7f6fb', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
-                            <div>
-                                <p style={{ fontSize: 14, fontWeight: 800, color: '#111827' }}>{selectedApt.customer_name ?? '—'}</p>
-                                <p style={{ fontSize: 11, color: '#9ca3af', fontWeight: 600 }}>{resolveServiceName(selectedApt)} · {(selectedApt.appointment_time ?? selectedApt.time ?? '').slice(0, 5)}</p>
+                            <div style={{ minWidth: 0 }}>
+                                <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
+                                    <p style={{ fontSize: 14, fontWeight: 800, color: '#111827', margin: 0 }}>{selectedApt.customer_name ?? '—'}</p>
+                                    <button
+                                        type="button"
+                                        onClick={() => setChangeCustomerOpen(true)}
+                                        title={tm('changeAppointmentCustomer')}
+                                        style={{
+                                            display: 'inline-flex', alignItems: 'center', gap: 4,
+                                            padding: '3px 8px', borderRadius: 6,
+                                            border: '1px solid #c7d2fe', background: '#eef2ff',
+                                            color: '#3730a3', fontSize: 11, fontWeight: 700, cursor: 'pointer',
+                                        }}
+                                    >
+                                        <UserRound size={12} />
+                                        {tm('changeAppointmentCustomer')}
+                                    </button>
+                                </div>
+                                <p style={{ fontSize: 11, color: '#9ca3af', fontWeight: 600, marginTop: 4 }}>{resolveServiceName(selectedApt)} · {(selectedApt.appointment_time ?? selectedApt.time ?? '').slice(0, 5)}</p>
                             </div>
                             <button onClick={() => setSelectedApt(null)} style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#9ca3af' }}><X size={18} /></button>
                         </div>
@@ -2951,6 +3004,28 @@ export function SmartScheduler() {
                         [feedbackApt.customer_name, feedbackApt.service_name].filter(Boolean).join(' — ') || null
                     }
                     variant="appointment_completed"
+                />
+            ) : null}
+
+            {selectedApt && changeCustomerOpen ? (
+                <AppointmentChangeCustomerModal
+                    open={changeCustomerOpen}
+                    onClose={() => setChangeCustomerOpen(false)}
+                    appointmentId={selectedApt.id}
+                    currentCustomerId={selectedApt.customer_id ?? selectedApt.client_id ?? null}
+                    currentCustomerName={selectedApt.customer_name ?? null}
+                    onChanged={(c) => {
+                        setSelectedApt(prev => {
+                            if (!prev || prev.id !== selectedApt.id) return prev;
+                            return {
+                                ...prev,
+                                customer_id: c.id,
+                                client_id: c.id,
+                                customer_name: c.name ?? prev.customer_name,
+                            };
+                        });
+                        toast.success(tm('changeAppointmentCustomerSuccess'));
+                    }}
                 />
             ) : null}
 

@@ -75,6 +75,8 @@ const EMPTY_FORM: Partial<BeautyService> = {
     requires_device: false,
     default_sessions: 1,
     follow_up_reminder_days: undefined,
+    requires_followup_call: false,
+    control_period_days: undefined,
     is_active: true,
 };
 
@@ -188,10 +190,31 @@ export function ServiceManagement() {
             toast.error(tm('bFillServiceNameToSave'));
             throw new Error('validation');
         }
+        const requiresFollowup = Boolean(editing.requires_followup_call);
+        const rawControl = editing.control_period_days;
+        let normalizedControl: number | undefined;
+        if (requiresFollowup) {
+            const n = Number(rawControl);
+            if (!Number.isFinite(n) || !Number.isInteger(n) || n <= 0) {
+                toast.error(tm('bServiceControlPeriodRequired'));
+                throw new Error('validation');
+            }
+            normalizedControl = Math.min(3650, Math.max(1, n));
+        } else {
+            normalizedControl =
+                rawControl != null && Number.isFinite(Number(rawControl)) && Number(rawControl) > 0
+                    ? Math.min(3650, Math.max(1, Math.round(Number(rawControl))))
+                    : undefined;
+        }
+        const payload: Partial<BeautyService> = {
+            ...editing,
+            requires_followup_call: requiresFollowup,
+            control_period_days: normalizedControl,
+        };
         setSaving(true);
         try {
-            if (isEdit && editing.id) await updateService(editing.id, editing);
-            else await createService(editing);
+            if (isEdit && editing.id) await updateService(editing.id, payload);
+            else await createService(payload);
             setShowModal(false);
             toast.success(tm('bServiceSaved'));
         } catch (e: unknown) {
@@ -811,6 +834,74 @@ export function ServiceManagement() {
                         <div className="h-px shrink-0 bg-slate-100 dark:bg-slate-700/80" aria-hidden />
 
                         <section className="space-y-4">
+                            <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 sm:items-start">
+                                <div className="min-w-0 sm:col-span-2">
+                                    <Checkbox
+                                        checked={Boolean(editing.requires_followup_call)}
+                                        onChange={e =>
+                                            setEditing(p => ({
+                                                ...p,
+                                                requires_followup_call: e.target.checked,
+                                                control_period_days: e.target.checked
+                                                    ? p.control_period_days ?? 7
+                                                    : undefined,
+                                            }))
+                                        }
+                                    >
+                                        <span className="inline-flex items-center gap-1.5 text-sm font-medium text-slate-700 dark:text-slate-200">
+                                            {tm('bServiceRequiresFollowupCall')}
+                                            <Tooltip title={tm('bServiceRequiresFollowupCallHint')}>
+                                                <InfoCircleOutlined
+                                                    className="text-slate-400 hover:text-blue-500 transition-colors"
+                                                    aria-label={tm('bServiceRequiresFollowupCallHint')}
+                                                />
+                                            </Tooltip>
+                                        </span>
+                                    </Checkbox>
+                                </div>
+                                <div className="min-w-0">
+                                    <RetailExFlatFieldLabel useSentenceCase>
+                                        <span className="inline-flex items-center gap-1.5">
+                                            {tm('bServiceControlPeriodDays')}
+                                            <Tooltip title={tm('bServiceControlPeriodDaysHint')}>
+                                                <InfoCircleOutlined
+                                                    className="text-slate-400 hover:text-blue-500 transition-colors"
+                                                    aria-label={tm('bServiceControlPeriodDaysHint')}
+                                                />
+                                            </Tooltip>
+                                        </span>
+                                    </RetailExFlatFieldLabel>
+                                    <InputNumber
+                                        className="w-full !rounded-2xl"
+                                        min={1}
+                                        max={3650}
+                                        disabled={!editing.requires_followup_call}
+                                        placeholder={editing.requires_followup_call ? '7' : '—'}
+                                        value={
+                                            editing.control_period_days != null &&
+                                            Number.isFinite(Number(editing.control_period_days)) &&
+                                            Number(editing.control_period_days) > 0
+                                                ? Math.round(Number(editing.control_period_days))
+                                                : null
+                                        }
+                                        onChange={v => {
+                                            if (v == null || !Number.isFinite(Number(v)) || Number(v) <= 0) {
+                                                setEditing(p => ({ ...p, control_period_days: undefined }));
+                                                return;
+                                            }
+                                            setEditing(p => ({
+                                                ...p,
+                                                control_period_days: Math.min(3650, Math.max(1, Math.round(Number(v)))),
+                                            }));
+                                        }}
+                                    />
+                                </div>
+                            </div>
+                        </section>
+
+                        <div className="h-px shrink-0 bg-slate-100 dark:bg-slate-700/80" aria-hidden />
+
+                        <section className="space-y-4">
                             <div className="flex flex-col gap-3 sm:flex-row sm:items-end">
                                 <div className="min-w-0 shrink-0 sm:w-48">
                                     <RetailExFlatFieldLabel useSentenceCase>
@@ -848,7 +939,7 @@ export function ServiceManagement() {
                                     checked={editing.requires_device ?? false}
                                     onChange={e => setEditing(p => ({ ...p, requires_device: e.target.checked }))}
                                 >
-                                    {tm('bDeviceZorunlu') ?? 'Cihaz zorunlu'}
+                                    {tm('bDeviceRequiredCheckbox')}
                                 </Checkbox>
                                 <Checkbox
                                     checked={editing.is_active ?? true}

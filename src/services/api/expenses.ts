@@ -33,6 +33,8 @@ function cashRegistersPathRest(): string {
   return `/rex_${padExpenseFirmNr()}_cash_registers`;
 }
 
+export type ExpenseStatus = 'draft' | 'approved' | 'cancelled';
+
 export interface Expense {
   id: string;
   category: string;
@@ -51,6 +53,17 @@ export interface Expense {
   cash_line_id?: string;
   cash_register_id?: string;
   created_at?: string;
+  status?: ExpenseStatus;
+  approved_by?: string;
+  approved_at?: string;
+  cancelled_by?: string;
+  cancelled_at?: string;
+  cancelled_reason?: string;
+  last_edited_by?: string;
+  last_edited_at?: string;
+  reopened_by?: string;
+  reopened_at?: string;
+  reopen_reason?: string;
 }
 
 function emptyUuidToNull(value: unknown): string | null {
@@ -152,12 +165,46 @@ export const expenseAPI = {
         firm_nr VARCHAR(10) NOT NULL,
         cash_line_id UUID,
         cash_register_id UUID,
+        status VARCHAR(20) NOT NULL DEFAULT 'draft',
+        approved_by UUID,
+        approved_at TIMESTAMPTZ,
+        cancelled_by UUID,
+        cancelled_at TIMESTAMPTZ,
+        cancelled_reason TEXT,
+        last_edited_by UUID,
+        last_edited_at TIMESTAMPTZ,
+        reopened_by UUID,
+        reopened_at TIMESTAMPTZ,
+        reopen_reason TEXT,
         created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
       )
     `);
     // Backward compatibility for existing databases
     await postgres.query(`ALTER TABLE ${tableName} ADD COLUMN IF NOT EXISTS cash_line_id UUID`);
     await postgres.query(`ALTER TABLE ${tableName} ADD COLUMN IF NOT EXISTS cash_register_id UUID`);
+    // Migration 119: status + audit sütunları
+    await postgres.query(`ALTER TABLE ${tableName} ADD COLUMN IF NOT EXISTS status VARCHAR(20) NOT NULL DEFAULT 'draft'`);
+    await postgres.query(`ALTER TABLE ${tableName} ADD COLUMN IF NOT EXISTS approved_by UUID`);
+    await postgres.query(`ALTER TABLE ${tableName} ADD COLUMN IF NOT EXISTS approved_at TIMESTAMPTZ`);
+    await postgres.query(`ALTER TABLE ${tableName} ADD COLUMN IF NOT EXISTS cancelled_by UUID`);
+    await postgres.query(`ALTER TABLE ${tableName} ADD COLUMN IF NOT EXISTS cancelled_at TIMESTAMPTZ`);
+    await postgres.query(`ALTER TABLE ${tableName} ADD COLUMN IF NOT EXISTS cancelled_reason TEXT`);
+    await postgres.query(`ALTER TABLE ${tableName} ADD COLUMN IF NOT EXISTS last_edited_by UUID`);
+    await postgres.query(`ALTER TABLE ${tableName} ADD COLUMN IF NOT EXISTS last_edited_at TIMESTAMPTZ`);
+    await postgres.query(`ALTER TABLE ${tableName} ADD COLUMN IF NOT EXISTS reopened_by UUID`);
+    await postgres.query(`ALTER TABLE ${tableName} ADD COLUMN IF NOT EXISTS reopened_at TIMESTAMPTZ`);
+    await postgres.query(`ALTER TABLE ${tableName} ADD COLUMN IF NOT EXISTS reopen_reason TEXT`);
+    await postgres.query(`ALTER TABLE ${tableName} DROP CONSTRAINT IF EXISTS rex_expenses_status_chk`);
+    await postgres.query(
+      `ALTER TABLE ${tableName} ADD CONSTRAINT rex_expenses_status_chk CHECK (status IN ('draft','approved','cancelled'))`
+    );
+    await postgres.query(`CREATE INDEX IF NOT EXISTS ${tableName}_status_idx ON ${tableName} (status)`);
+    await postgres.query(`CREATE INDEX IF NOT EXISTS ${tableName}_firm_status_idx ON ${tableName} (firm_nr, status)`);
+
+    // Geriye dönük uyum: cash_line_id bağlı tüm giderler 'approved' sayılır.
+    await postgres.query(
+      `UPDATE ${tableName} SET status = 'approved', approved_at = COALESCE(approved_at, created_at) WHERE cash_line_id IS NOT NULL AND status = 'draft'`
+    );
   },
 
   /**
@@ -707,6 +754,330 @@ export const expenseAPI = {
         // ignore rollback errors
       }
       return false;
+    }
+  },
+
+  /**
+   * Status state machine doğrulama:
+   *   draft → approved (approve)
+   *   approved → cancelled (cancel)
+   *   cancelled → draft (reopen; audit korunur)
+   *   draft → cancelled (cancel — henüz onaylanmadan iptal)
+   *   approved → draft (geri alma: reverseApprove; sadece draft ile sınırlı
+   *     cash_line iptali / düzeltmesi için)
+   */
+  isValidStatusTransition(from: ExpenseStatus, to: ExpenseStatus): boolean {
+    const allowed: Record<ExpenseStatus, ExpenseStatus[]> = {
+      draft: ['approved', 'cancelled'],
+      approved: ['cancelled', 'draft'],
+      cancelled: ['draft'],
+    };
+    return allowed[from]?.includes(to) ?? false;
+  },
+
+  /**
+   * Gideri onayla (draft → approved).
+   *   * Nakit ödemede cash_line yeniden oluşturulmaz; mevcut cash_line korunur.
+   *   * approved_by / approved_at set edilir.
+   */
+  async approve(
+    id: string,
+    actorId: string | null,
+    options?: { allowReverse?: boolean }
+  ): Promise<Expense | null> {
+    try {
+      await this.ensureTableExists();
+      const tableName = expenseTableName();
+      const firm = padExpenseFirmNr();
+
+      const { rows: existingRows } = await postgres.query(
+        `SELECT * FROM ${tableName} WHERE id = $1 AND firm_nr = $2 LIMIT 1`,
+        [id, firm]
+      );
+      const existing = existingRows[0] as Expense | undefined;
+      if (!existing) return null;
+
+      const current = (existing.status ?? 'draft') as ExpenseStatus;
+      const target: ExpenseStatus = 'approved';
+      if (!this.isValidStatusTransition(current, target)) {
+        throw new Error(
+          `Geçersiz durum geçişi: ${current} → ${target}. Beklenen: draft → approved.`
+        );
+      }
+
+      await postgres.query('BEGIN');
+
+      // draft → approved: cash_line henüz oluşturulmamış olabilir (nakit ise).
+      const payMethod = String(existing.payment_method || '').trim().toLowerCase();
+      const isCashExpense = payMethod === 'cash' || payMethod === 'nakit';
+
+      if (isCashExpense && !existing.cash_line_id) {
+        // Kasa hareketini oluştur, linkle
+        const kasaQuery = existing.cash_register_id
+          ? `SELECT id, code, currency_code FROM cash_registers WHERE is_active = true AND id = $1::text::uuid LIMIT 1`
+          : `SELECT id, code, currency_code FROM cash_registers WHERE is_active = true ORDER BY CASE WHEN UPPER(COALESCE(code,'')) LIKE '%ANA%' THEN 0 ELSE 1 END, created_at ASC LIMIT 1`;
+        const kasaParams = existing.cash_register_id ? [existing.cash_register_id] : [];
+        const { rows: kasaRows } = await postgres.query(kasaQuery, kasaParams);
+        const kasa = kasaRows[0];
+        if (!kasa?.id) {
+          await postgres.query('ROLLBACK');
+          throw new ExpenseSaveError(
+            'Onay yapılamadı: aktif kasa bulunamadı.',
+            false
+          );
+        }
+
+        const ficheNo = `EXP-${ERP_SETTINGS.firmNr}-${Date.now()}-${Math.floor(Math.random() * 10000)}`;
+        const { rows: lineRows } = await postgres.query(
+          `INSERT INTO cash_lines (
+             firm_nr, period_nr, register_id, fiche_no, date, amount, sign, definition, transaction_type,
+             currency_code, exchange_rate, f_amount, transfer_status, special_code, tax_rate, withholding_tax_rate
+           ) VALUES (
+             $1::text, $2::text, $3::text::uuid, $4::text, $5::text::date, $6::text::numeric, -1,
+             $7::text, 'GIDER_PUSULASI', $8::text, 1, $9::text::numeric, 0, $10::text, 0, 0
+           ) RETURNING id`,
+          [
+            firm,
+            padExpensePeriodNr(),
+            kasa.id,
+            ficheNo,
+            existing.expense_date,
+            existing.amount,
+            existing.description || 'Gider',
+            kasa.currency_code || 'IQD',
+            existing.amount,
+            existing.category || '',
+          ]
+        );
+        const cashLineId = lineRows[0]?.id;
+        if (!cashLineId) {
+          await postgres.query('ROLLBACK');
+          throw new ExpenseSaveError('Onay yapılamadı: kasa satırı oluşturulamadı.', false);
+        }
+
+        await postgres.query(
+          `UPDATE cash_registers SET balance = balance - $1::text::numeric WHERE id = $2::text::uuid`,
+          [existing.amount, kasa.id]
+        );
+
+        await postgres.query(
+          `UPDATE ${tableName} SET status = 'approved', approved_by = $1::text::uuid, approved_at = NOW(), cash_line_id = $2::text::uuid, cash_register_id = $3::text::uuid, last_edited_at = NOW(), last_edited_by = $1::text::uuid WHERE id = $4::text::uuid AND firm_nr = $5 RETURNING *`,
+          [actorId || null, cashLineId, kasa.id, id, firm]
+        );
+      } else {
+        await postgres.query(
+          `UPDATE ${tableName} SET status = 'approved', approved_by = $1::text::uuid, approved_at = NOW(), last_edited_at = NOW(), last_edited_by = $1::text::uuid WHERE id = $2::text::uuid AND firm_nr = $3 RETURNING *`,
+          [actorId || null, id, firm]
+        );
+      }
+
+      const { rows } = await postgres.query(
+        `SELECT * FROM ${tableName} WHERE id = $1 AND firm_nr = $2`,
+        [id, firm]
+      );
+      await postgres.query('COMMIT');
+      return rows[0] as Expense;
+    } catch (error) {
+      console.error('[ExpenseAPI] approve failed:', error);
+      try {
+        await postgres.query('ROLLBACK');
+      } catch {
+        /* ignore */
+      }
+      throw formatExpenseApiError(error);
+    }
+  },
+
+  /**
+   * Gideri iptal et (draft|approved → cancelled).
+   *   * approved ise: cash_line silinir, kasa bakiyesi geri alınır (sign=-1
+   *     olduğu için bakiye +amount artırılır).
+   *   * draft ise: sadece status değişir.
+   */
+  async cancel(
+    id: string,
+    actorId: string | null,
+    reason: string | null
+  ): Promise<Expense | null> {
+    try {
+      await this.ensureTableExists();
+      const tableName = expenseTableName();
+      const firm = padExpenseFirmNr();
+
+      const { rows: existingRows } = await postgres.query(
+        `SELECT * FROM ${tableName} WHERE id = $1 AND firm_nr = $2 LIMIT 1`,
+        [id, firm]
+      );
+      const existing = existingRows[0] as Expense | undefined;
+      if (!existing) return null;
+
+      const current = (existing.status ?? 'draft') as ExpenseStatus;
+      if (!this.isValidStatusTransition(current, 'cancelled')) {
+        throw new Error(
+          `Geçersiz durum geçişi: ${current} → cancelled. cancelled gider tekrar iptal edilemez.`
+        );
+      }
+
+      await postgres.query('BEGIN');
+
+      // approved → cancelled: cash_line etkisini geri al
+      if (current === 'approved' && existing.cash_line_id && existing.cash_register_id) {
+        await postgres.query(
+          `UPDATE cash_registers SET balance = balance + $1::text::numeric WHERE id = $2::text::uuid`,
+          [existing.amount, existing.cash_register_id]
+        );
+        await postgres.query(
+          `DELETE FROM cash_lines WHERE id = $1::text::uuid`,
+          [existing.cash_line_id]
+        );
+      }
+
+      await postgres.query(
+        `UPDATE ${tableName}
+         SET status = 'cancelled',
+             cancelled_by = $1::text::uuid,
+             cancelled_at = NOW(),
+             cancelled_reason = $2::text,
+             last_edited_at = NOW(),
+             last_edited_by = $1::text::uuid
+         WHERE id = $3::text::uuid AND firm_nr = $4
+         RETURNING *`,
+        [actorId || null, reason || null, id, firm]
+      );
+
+      const { rows } = await postgres.query(
+        `SELECT * FROM ${tableName} WHERE id = $1 AND firm_nr = $2`,
+        [id, firm]
+      );
+      await postgres.query('COMMIT');
+      return rows[0] as Expense;
+    } catch (error) {
+      console.error('[ExpenseAPI] cancel failed:', error);
+      try {
+        await postgres.query('ROLLBACK');
+      } catch {
+        /* ignore */
+      }
+      throw formatExpenseApiError(error);
+    }
+  },
+
+  /**
+   * İptal edilmiş gideri yeniden aç (cancelled → draft).
+   *   * Bu işlem approved gider oluşturmaz; yeniden taslak olarak işaretlenir.
+   *   * reopen_reason opsiyonel olarak saklanır (audit).
+   *   * approved → cancelled → draft zinciri olabilir; her geçiş auditlenir.
+   */
+  async reopen(
+    id: string,
+    actorId: string | null,
+    reason: string | null
+  ): Promise<Expense | null> {
+    try {
+      await this.ensureTableExists();
+      const tableName = expenseTableName();
+      const firm = padExpenseFirmNr();
+
+      const { rows: existingRows } = await postgres.query(
+        `SELECT * FROM ${tableName} WHERE id = $1 AND firm_nr = $2 LIMIT 1`,
+        [id, firm]
+      );
+      const existing = existingRows[0] as Expense | undefined;
+      if (!existing) return null;
+
+      const current = (existing.status ?? 'draft') as ExpenseStatus;
+      if (!this.isValidStatusTransition(current, 'draft')) {
+        throw new Error(`Geçersiz durum geçişi: ${current} → draft.`);
+      }
+
+      await postgres.query('BEGIN');
+      await postgres.query(
+        `UPDATE ${tableName}
+         SET status = 'draft',
+             reopened_by = $1::text::uuid,
+             reopened_at = NOW(),
+             reopen_reason = $2::text,
+             last_edited_at = NOW(),
+             last_edited_by = $1::text::uuid
+         WHERE id = $3::text::uuid AND firm_nr = $4
+         RETURNING *`,
+        [actorId || null, reason || null, id, firm]
+      );
+      const { rows } = await postgres.query(
+        `SELECT * FROM ${tableName} WHERE id = $1 AND firm_nr = $2`,
+        [id, firm]
+      );
+      await postgres.query('COMMIT');
+      return rows[0] as Expense;
+    } catch (error) {
+      console.error('[ExpenseAPI] reopen failed:', error);
+      try {
+        await postgres.query('ROLLBACK');
+      } catch {
+        /* ignore */
+      }
+      throw formatExpenseApiError(error);
+    }
+  },
+
+  /**
+   * Onay geri alma (approved → draft). Cash_line korunur ama status geri
+   * çekilir; tekrar approve edilirse yeni cash_line oluşturulmaz (mevcut
+   * cash_line_id ile devam eder). Bu yöntem, onay sonrası düzeltme yapılıp
+   * tekrar onay verilmesi gereken senaryolar içindir.
+   */
+  async reverseApprove(
+    id: string,
+    actorId: string | null,
+    reason: string | null
+  ): Promise<Expense | null> {
+    try {
+      await this.ensureTableExists();
+      const tableName = expenseTableName();
+      const firm = padExpenseFirmNr();
+
+      const { rows: existingRows } = await postgres.query(
+        `SELECT * FROM ${tableName} WHERE id = $1 AND firm_nr = $2 LIMIT 1`,
+        [id, firm]
+      );
+      const existing = existingRows[0] as Expense | undefined;
+      if (!existing) return null;
+
+      const current = (existing.status ?? 'draft') as ExpenseStatus;
+      if (!this.isValidStatusTransition(current, 'draft')) {
+        throw new Error(`Geçersiz durum geçişi: ${current} → draft.`);
+      }
+
+      await postgres.query('BEGIN');
+      // approved → draft: cash_line etkisi GERİ ALINMAZ; bu geçici bir geri
+      // çekmedir. Ancak cash_line_id bağlı kalır; yeniden approve edilirse
+      // approve() metodu bunu fark eder ve yeniden oluşturmaz.
+      await postgres.query(
+        `UPDATE ${tableName}
+         SET status = 'draft',
+             last_edited_at = NOW(),
+             last_edited_by = $1::text::uuid,
+             reopened_by = $1::text::uuid,
+             reopened_at = NOW(),
+             reopen_reason = $2::text
+         WHERE id = $3::text::uuid AND firm_nr = $4
+         RETURNING *`,
+        [actorId || null, reason || null, id, firm]
+      );
+      const { rows } = await postgres.query(
+        `SELECT * FROM ${tableName} WHERE id = $1 AND firm_nr = $2`,
+        [id, firm]
+      );
+      await postgres.query('COMMIT');
+      return rows[0] as Expense;
+    } catch (error) {
+      console.error('[ExpenseAPI] reverseApprove failed:', error);
+      try {
+        await postgres.query('ROLLBACK');
+      } catch {
+        /* ignore */
+      }
+      throw formatExpenseApiError(error);
     }
   }
 };

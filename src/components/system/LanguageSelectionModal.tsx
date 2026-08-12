@@ -2,9 +2,6 @@
 import { useLanguage } from '../../contexts/LanguageContext';
 import { useTheme } from '../../contexts/ThemeContext';
 import { translations } from '../../locales/translations';
-import Turkey from 'country-flag-icons/react/3x2/TR';
-import UnitedKingdom from 'country-flag-icons/react/3x2/GB';
-import SaudiArabia from 'country-flag-icons/react/3x2/SA';
 
 interface LanguageSelectionModalProps {
   onClose: () => void;
@@ -72,13 +69,30 @@ export function LanguageSelectionModal({ onClose, rtlMode, setRtlMode }: Languag
               {/* Language Code Badge or Flag */}
               <div className="w-8 h-8 rounded shrink-0 flex items-center justify-center overflow-hidden border border-gray-200 shadow-sm">
                 {lang.code === 'tr' ? (
-                  <Turkey className="w-full h-full object-cover" />
+                  <svg className="w-full h-full object-cover" viewBox="0 0 3 2" xmlns="http://www.w3.org/2000/svg" aria-label="Türkiye bayrağı">
+                    <rect width="3" height="2" fill="#E30A17" />
+                    <circle cx="1.2" cy="1" r="0.5" fill="#FFFFFF" />
+                    <circle cx="1.28" cy="1" r="0.4" fill="#E30A17" />
+                    <path d="M1.55 0.7 L1.62 0.9 L1.83 0.9 L1.67 1.02 L1.74 1.22 L1.55 1.1 L1.36 1.22 L1.43 1.02 L1.27 0.9 L1.48 0.9 Z" fill="#FFFFFF" />
+                  </svg>
                 ) : lang.code === 'en' ? (
-                  <UnitedKingdom className="w-full h-full object-cover" />
+                  <svg className="w-full h-full object-cover" viewBox="0 0 60 30" xmlns="http://www.w3.org/2000/svg" aria-label="United Kingdom bayrağı">
+                    <clipPath id="uk-c"><path d="M0,0 v30 h60 v-30 z"/></clipPath>
+                    <path d="M0,0 v30 h60 v-30 z" fill="#012169"/>
+                    <path d="M0,0 L60,30 M60,0 L0,30" stroke="#FFFFFF" strokeWidth="6"/>
+                    <path d="M0,0 L60,30 M60,0 L0,30" stroke="#C8102E" strokeWidth="4" clipPath="url(#uk-c)"/>
+                    <path d="M30,0 v30 M0,15 h60" stroke="#FFFFFF" strokeWidth="10"/>
+                    <path d="M30,0 v30 M0,15 h60" stroke="#C8102E" strokeWidth="6"/>
+                  </svg>
                 ) : lang.code === 'ar' ? (
-                  <SaudiArabia className="w-full h-full object-cover" />
+                  <svg className="w-full h-full object-cover" viewBox="0 0 3 2" xmlns="http://www.w3.org/2000/svg" aria-label="Irak bayrağı">
+                    <rect width="3" height="0.667" y="0" fill="#CE1126" />
+                    <rect width="3" height="0.667" y="0.667" fill="#FFFFFF" />
+                    <rect width="3" height="0.666" y="1.334" fill="#000000" />
+                    <text x="1.5" y="1.18" textAnchor="middle" fontFamily="'Amiri','Traditional Arabic',serif" fontSize="0.32" fontWeight="700" fill="#007A3D">الله أكبر</text>
+                  </svg>
                 ) : lang.code === 'ku' ? (
-                  <svg className="w-full h-full" viewBox="0 0 3 2" xmlns="http://www.w3.org/2000/svg">
+                  <svg className="w-full h-full" viewBox="0 0 3 2" xmlns="http://www.w3.org/2000/svg" aria-label="Kürdistan bayrağı">
                     <rect width="3" height="0.67" y="0" fill="#E31837" />
                     <rect width="3" height="0.67" y="0.67" fill="#FFFFFF" />
                     <circle cx="1.5" cy="1" r="0.2" fill="#FCD116" />

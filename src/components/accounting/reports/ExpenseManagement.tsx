@@ -1,8 +1,9 @@
 /**
  * Expense Management Module - Gider Yönetimi
- * 
+ *
  * Features:
  * - Gider CRUD operations (Ekle, Düzenle, Sil, Listele)
+ * - Status state machine (draft → approved → cancelled) + reopen
  * - Kategori bazlı filtreleme
  * - Tarih aralığı filtreleme
  * - Mağaza bazlı filtreleme
@@ -12,18 +13,26 @@
  */
 
 import { useState, useEffect, useCallback, useMemo } from 'react';
-import { createPortal } from 'react-dom';
 import {
   Receipt, Plus, Edit, Trash2, Search, Calendar,
-  Banknote, TrendingUp, Filter, X, Upload, ChevronDown
+  Banknote, TrendingUp, Filter, X, Upload, ChevronDown,
+  CheckCircle2, Ban, RotateCcw, Lock
 } from 'lucide-react';
 import { DevExDataGrid } from '../../shared/DevExDataGrid';
 import { createColumnHelper } from '@tanstack/react-table';
 import { formatCurrency } from '../../../utils/formatNumber';
 import { InlineLanguageSwitcher } from '../../shared/InlineLanguageSwitcher';
-import { expenseAPI, ExpenseSaveError, type Expense } from '../../../services/api/expenses';
+import {
+  expenseAPI, ExpenseSaveError, type Expense, type ExpenseStatus,
+} from '../../../services/api/expenses';
 import { fetchKasalar, type Kasa } from '../../../services/api/kasa';
 import { useLanguage } from '../../../contexts/LanguageContext';
+import { useAuth } from '../../../contexts/AuthContext';
+import { PeriodControlService } from '../../../services/periodControl';
+import {
+  PercentBodyModal,
+  PercentBodyModalScrollBody,
+} from '../../shared/PercentBodyModal';
 
 interface ExpenseLocal extends Expense {
   store_name?: string;
@@ -64,6 +73,12 @@ function parseExpenseAmount(value: unknown): number {
   return Number.isFinite(n) ? n : 0;
 }
 
+function normalizeStatus(value: unknown): ExpenseStatus {
+  const s = String(value || '').trim().toLowerCase();
+  if (s === 'approved' || s === 'cancelled') return s;
+  return 'draft';
+}
+
 const getCurrentMonthDateRange = () => {
   const now = new Date();
   const year = now.getFullYear();
@@ -77,6 +92,7 @@ const getCurrentMonthDateRange = () => {
 
 export function ExpenseManagement({ embeddedInPos = false }: { embeddedInPos?: boolean }) {
   const { tm } = useLanguage();
+  const { user } = useAuth();
   const defaultDateRange = getCurrentMonthDateRange();
   const [expenses, setExpenses] = useState<Expense[]>([]);
   const [loading, setLoading] = useState(true);
@@ -86,6 +102,7 @@ export function ExpenseManagement({ embeddedInPos = false }: { embeddedInPos?: b
 
   // Filters
   const [filterCategory, setFilterCategory] = useState<string>('all');
+  const [filterStatus, setFilterStatus] = useState<string>('all');
   const [filterStore] = useState<string>('all');
   const [filterDateFrom, setFilterDateFrom] = useState<string>(defaultDateRange.from);
   const [filterDateTo, setFilterDateTo] = useState<string>(defaultDateRange.to);
@@ -105,8 +122,17 @@ export function ExpenseManagement({ embeddedInPos = false }: { embeddedInPos?: b
     notes: '',
   });
 
+  // Cancel/reopen reason modal state
+  const [reasonModal, setReasonModal] = useState<{
+    open: boolean;
+    kind: 'cancel' | 'reopen' | 'reverseApprove' | null;
+    target: Expense | null;
+    reason: string;
+  }>({ open: false, kind: null, target: null, reason: '' });
+
   const [kasalar, setKasalar] = useState<Kasa[]>([]);
   const [savingExpense, setSavingExpense] = useState(false);
+  const [actionBusy, setActionBusy] = useState(false);
 
   useEffect(() => {
     void loadKasalar();
@@ -137,6 +163,7 @@ export function ExpenseManagement({ embeddedInPos = false }: { embeddedInPos?: b
         (data as ExpenseLocal[]).map(row => ({
           ...row,
           amount: parseExpenseAmount(row.amount),
+          status: normalizeStatus(row.status),
         })),
       );
     } catch (error) {
@@ -168,7 +195,39 @@ export function ExpenseManagement({ embeddedInPos = false }: { embeddedInPos?: b
     setShowExpenseModal(true);
   };
 
+  const isPeriodClosedForDate = useCallback((dateStr: string): boolean => {
+    if (!dateStr) return false;
+    try {
+      const opDate = new Date(dateStr);
+      if (Number.isNaN(opDate.getTime())) return false;
+      // Mevcut `PeriodControlService` API'si `periodInfo` parametresi ile çalışır;
+      // runtime'da period bilgisi bir hook veya context'ten gelebilir. Burada
+      // bilgi alınamıyorsa kapalı dönem yok sayılır (graceful degradation).
+      // Tip güvenliği için `unknown` üzerinden dinamik erişim.
+      const svc = PeriodControlService as unknown as {
+        getCurrentPeriodInfo?: () => { closedMonths?: number[] } | null;
+      };
+      if (typeof svc.getCurrentPeriodInfo !== 'function') return false;
+      const periodInfo = svc.getCurrentPeriodInfo();
+      const closedMonths = periodInfo?.closedMonths;
+      if (!Array.isArray(closedMonths) || closedMonths.length === 0) return false;
+      const opMonth = opDate.getMonth() + 1;
+      return closedMonths.includes(opMonth);
+    } catch {
+      return false;
+    }
+  }, []);
+
   const handleEditExpense = (expense: Expense) => {
+    const status = normalizeStatus(expense.status);
+    if (status !== 'draft') {
+      alert(tm('expenseApprovedNote'));
+      return;
+    }
+    if (isPeriodClosedForDate(expense.expense_date)) {
+      alert(tm('expensePeriodLocked'));
+      return;
+    }
     setEditingExpense(expense);
     setFormData({
       category: expense.category,
@@ -218,6 +277,7 @@ export function ExpenseManagement({ embeddedInPos = false }: { embeddedInPos?: b
         (data as ExpenseLocal[]).map(row => ({
           ...row,
           amount: parseExpenseAmount(row.amount),
+          status: normalizeStatus(row.status),
         })),
       );
     } catch (error) {
@@ -254,6 +314,12 @@ export function ExpenseManagement({ embeddedInPos = false }: { embeddedInPos?: b
       setSavingExpense(true);
 
       if (editingExpense) {
+        const status = normalizeStatus(editingExpense.status);
+        if (status !== 'draft') {
+          alert(tm('expenseApprovedNote'));
+          setSavingExpense(false);
+          return;
+        }
         await expenseAPI.update(editingExpense.id, data as any);
         setShowExpenseModal(false);
         await reloadExpensesForDate(data.expense_date);
@@ -273,6 +339,93 @@ export function ExpenseManagement({ embeddedInPos = false }: { embeddedInPos?: b
       alert(msg);
     } finally {
       setSavingExpense(false);
+    }
+  };
+
+  const handleApprove = async (expense: Expense) => {
+    if (actionBusy) return;
+    const status = normalizeStatus(expense.status);
+    if (status !== 'draft') {
+      alert(tm('expenseApprovedNote'));
+      return;
+    }
+    if (isPeriodClosedForDate(expense.expense_date)) {
+      alert(tm('expensePeriodLocked'));
+      return;
+    }
+    if (!confirm(tm('expenseApproveConfirm'))) return;
+    setActionBusy(true);
+    try {
+      await expenseAPI.approve(expense.id, (user?.id as string) || null);
+      await reloadExpensesForDate(expense.expense_date);
+    } catch (error) {
+      console.error('Error approving expense:', error);
+      const msg = (error as Error)?.message || tm('expenseSaveError');
+      alert(msg);
+    } finally {
+      setActionBusy(false);
+    }
+  };
+
+  const handleCancel = (expense: Expense) => {
+    if (actionBusy) return;
+    const status = normalizeStatus(expense.status);
+    if (!expenseAPI.isValidStatusTransition(status, 'cancelled')) {
+      alert(tm('expenseSaveError'));
+      return;
+    }
+    if (isPeriodClosedForDate(expense.expense_date)) {
+      alert(tm('expensePeriodLocked'));
+      return;
+    }
+    if (!confirm(tm('expenseCancelConfirm'))) return;
+    setReasonModal({ open: true, kind: 'cancel', target: expense, reason: '' });
+  };
+
+  const handleReopen = (expense: Expense) => {
+    if (actionBusy) return;
+    const status = normalizeStatus(expense.status);
+    if (status !== 'cancelled') return;
+    if (!confirm(tm('expenseReopenConfirm'))) return;
+    setReasonModal({ open: true, kind: 'reopen', target: expense, reason: '' });
+  };
+
+  const handleReverseApprove = (expense: Expense) => {
+    if (actionBusy) return;
+    const status = normalizeStatus(expense.status);
+    if (status !== 'approved') return;
+    if (isPeriodClosedForDate(expense.expense_date)) {
+      alert(tm('expensePeriodLocked'));
+      return;
+    }
+    if (!confirm(tm('expenseReverseApproveConfirm'))) return;
+    setReasonModal({ open: true, kind: 'reverseApprove', target: expense, reason: '' });
+  };
+
+  const submitReasonAction = async () => {
+    const { kind, target, reason } = reasonModal;
+    if (!kind || !target) return;
+    if (!reason.trim()) {
+      alert(tm('expenseReasonRequired'));
+      return;
+    }
+    setActionBusy(true);
+    try {
+      if (kind === 'cancel') {
+        await expenseAPI.cancel(target.id, (user?.id as string) || null, reason.trim());
+      } else if (kind === 'reopen') {
+        await expenseAPI.reopen(target.id, (user?.id as string) || null, reason.trim());
+      } else if (kind === 'reverseApprove') {
+        await expenseAPI.reverseApprove(target.id, (user?.id as string) || null, reason.trim());
+      }
+      setReasonModal({ open: false, kind: null, target: null, reason: '' });
+      await reloadExpensesForDate(target.expense_date);
+    } catch (error) {
+      console.error(`Error ${kind}:`, error);
+      const msg = (error as Error)?.message || tm('expenseSaveError');
+      alert(msg);
+    } finally {
+      setActionBusy(false);
     }
   };
 
@@ -304,6 +457,39 @@ export function ExpenseManagement({ embeddedInPos = false }: { embeddedInPos?: b
     if (!trimmed) return '';
     const info = getCategoryInfo(trimmed);
     return info.id === 'custom' ? normalizeCategory(trimmed) : info.id;
+  };
+
+  const statusBadge = (status: ExpenseStatus) => {
+    if (status === 'approved') {
+      return (
+        <span className="px-2 py-1 inline-flex items-center gap-1 rounded-full text-xs font-semibold bg-emerald-100 text-emerald-700">
+          <CheckCircle2 className="w-3 h-3" />
+          {tm('expenseStatusBadgeApproved')}
+        </span>
+      );
+    }
+    if (status === 'cancelled') {
+      return (
+        <span className="px-2 py-1 inline-flex items-center gap-1 rounded-full text-xs font-semibold bg-rose-100 text-rose-700">
+          <Ban className="w-3 h-3" />
+          {tm('expenseStatusBadgeCancelled')}
+        </span>
+      );
+    }
+    return (
+      <span className="px-2 py-1 inline-flex items-center gap-1 rounded-full text-xs font-semibold bg-amber-100 text-amber-700">
+        <Receipt className="w-3 h-3" />
+        {tm('expenseStatusBadgeDraft')}
+      </span>
+    );
+  };
+
+  const formatAuditDate = (value: unknown): string => {
+    const s = String(value || '').trim();
+    if (!s) return '-';
+    const d = new Date(s);
+    if (Number.isNaN(d.getTime())) return s;
+    return d.toLocaleString('tr-TR');
   };
 
   const columnHelper = createColumnHelper<ExpenseLocal>();
@@ -374,43 +560,111 @@ export function ExpenseManagement({ embeddedInPos = false }: { embeddedInPos?: b
       cell: info => info.getValue() || '-',
       size: 120
     }),
+    columnHelper.accessor('status', {
+      header: tm('expenseStatus').toUpperCase(),
+      cell: info => statusBadge(normalizeStatus(info.getValue())),
+      size: 110
+    }),
     columnHelper.display({
       id: 'actions',
       header: tm('actions').toUpperCase(),
-      cell: ({ row }) => (
-        <div className="flex items-center gap-2">
-          <button
-            onClick={() => handleEditExpense(row.original)}
-            className="p-2 hover:bg-blue-50 rounded transition-colors"
-            title={tm('edit')}
-          >
-            <Edit className="w-4 h-4 text-blue-600" />
-          </button>
-          <button
-            onClick={() => handleDeleteExpense(row.original.id)}
-            className="p-2 hover:bg-red-50 rounded transition-colors"
-            title={tm('delete')}
-          >
-            <Trash2 className="w-4 h-4 text-red-600" />
-          </button>
-        </div>
-      ),
-      size: 100
+      cell: ({ row }) => {
+        const exp = row.original;
+        const status = normalizeStatus(exp.status);
+        const isDraft = status === 'draft';
+        const isApproved = status === 'approved';
+        const isCancelled = status === 'cancelled';
+        const periodLocked = isPeriodClosedForDate(exp.expense_date);
+
+        return (
+          <div className="flex items-center gap-1">
+            {isDraft ? (
+              <button
+                onClick={() => handleEditExpense(exp)}
+                disabled={periodLocked}
+                className="p-2 hover:bg-blue-50 rounded transition-colors disabled:opacity-40 disabled:hover:bg-transparent disabled:cursor-not-allowed"
+                title={periodLocked ? tm('expensePeriodLocked') : tm('edit')}
+              >
+                <Edit className="w-4 h-4 text-blue-600" />
+              </button>
+            ) : (
+              <button
+                disabled
+                className="p-2 rounded opacity-30 cursor-not-allowed"
+                title={tm('expenseReadonlyBadge')}
+              >
+                <Lock className="w-4 h-4 text-gray-400" />
+              </button>
+            )}
+            {isDraft && !periodLocked ? (
+              <button
+                onClick={() => handleApprove(exp)}
+                disabled={actionBusy}
+                className="p-2 hover:bg-emerald-50 rounded transition-colors disabled:opacity-40"
+                title={tm('expenseApprove')}
+              >
+                <CheckCircle2 className="w-4 h-4 text-emerald-600" />
+              </button>
+            ) : null}
+            {(isDraft || isApproved) && !periodLocked ? (
+              <button
+                onClick={() => handleCancel(exp)}
+                disabled={actionBusy}
+                className="p-2 hover:bg-rose-50 rounded transition-colors disabled:opacity-40"
+                title={tm('expenseCancel')}
+              >
+                <Ban className="w-4 h-4 text-rose-600" />
+              </button>
+            ) : null}
+            {isApproved && !periodLocked ? (
+              <button
+                onClick={() => handleReverseApprove(exp)}
+                disabled={actionBusy}
+                className="p-2 hover:bg-amber-50 rounded transition-colors disabled:opacity-40"
+                title={tm('expenseReverseApprove')}
+              >
+                <RotateCcw className="w-4 h-4 text-amber-600" />
+              </button>
+            ) : null}
+            {isCancelled ? (
+              <button
+                onClick={() => handleReopen(exp)}
+                disabled={actionBusy}
+                className="p-2 hover:bg-blue-50 rounded transition-colors disabled:opacity-40"
+                title={tm('expenseReopen')}
+              >
+                <RotateCcw className="w-4 h-4 text-blue-600" />
+              </button>
+            ) : null}
+            <button
+              onClick={() => handleDeleteExpense(exp.id)}
+              disabled={actionBusy}
+              className="p-2 hover:bg-red-50 rounded transition-colors disabled:opacity-40"
+              title={tm('delete')}
+            >
+              <Trash2 className="w-4 h-4 text-red-600" />
+            </button>
+          </div>
+        );
+      },
+      size: 220
     }),
   ];
 
-  // Filter expenses (tarih aralığı DB'den yüklenir; kategori/arama istemci tarafında)
+  // Filter expenses
   const filteredExpenses = useMemo(() => expenses.filter(expense => {
+    const status = normalizeStatus(expense.status);
     const matchesSearch = expense.description.toLowerCase().includes(searchQuery.toLowerCase()) ||
       expense.document_number?.toLowerCase().includes(searchQuery.toLowerCase());
     const matchesCategory = filterCategory === 'all' || categoryKey(expense.category) === categoryKey(filterCategory);
     const matchesStore = filterStore === 'all' || expense.store_id === filterStore;
+    const matchesStatus = filterStatus === 'all' || status === filterStatus;
     const expenseDay = String(expense.expense_date || '').slice(0, 10);
     const matchesDate = (!filterDateFrom || expenseDay >= filterDateFrom) &&
       (!filterDateTo || expenseDay <= filterDateTo);
 
-    return matchesSearch && matchesCategory && matchesStore && matchesDate;
-  }), [expenses, searchQuery, filterCategory, filterStore, filterDateFrom, filterDateTo]);
+    return matchesSearch && matchesCategory && matchesStore && matchesStatus && matchesDate;
+  }), [expenses, searchQuery, filterCategory, filterStore, filterStatus, filterDateFrom, filterDateTo]);
 
   const totalExpenses = useMemo(
     () => filteredExpenses.reduce((sum, e) => sum + parseExpenseAmount(e.amount), 0),
@@ -431,11 +685,12 @@ export function ExpenseManagement({ embeddedInPos = false }: { embeddedInPos?: b
     const monthRange = getCurrentMonthDateRange();
     return (
       filterCategory !== 'all' ||
+      filterStatus !== 'all' ||
       searchQuery.trim().length > 0 ||
       filterDateFrom !== monthRange.from ||
       filterDateTo !== monthRange.to
     );
-  }, [filterCategory, searchQuery, filterDateFrom, filterDateTo]);
+  }, [filterCategory, filterStatus, searchQuery, filterDateFrom, filterDateTo]);
 
   const filterSummaryText = useMemo(() => {
     const parts: string[] = [];
@@ -449,11 +704,14 @@ export function ExpenseManagement({ embeddedInPos = false }: { embeddedInPos?: b
     if (filterCategory !== 'all') {
       parts.push(`${tm('category')}: ${categoryLabel(filterCategory)}`);
     }
+    if (filterStatus !== 'all') {
+      parts.push(`${tm('expenseStatus')}: ${tm(`expenseStatusBadge${filterStatus.charAt(0).toUpperCase()}${filterStatus.slice(1)}`)}`);
+    }
     if (searchQuery.trim()) {
       parts.push(`${tm('search')}: "${searchQuery.trim()}"`);
     }
     return parts.length ? parts.join(' · ') : tm('expenseFilterAllRecords');
-  }, [filterDateFrom, filterDateTo, filterCategory, searchQuery, tm]);
+  }, [filterDateFrom, filterDateTo, filterCategory, filterStatus, searchQuery, tm]);
 
   return (
     <div className="relative flex h-full min-h-0 flex-col bg-white overscroll-y-contain touch-pan-y">
@@ -526,7 +784,7 @@ export function ExpenseManagement({ embeddedInPos = false }: { embeddedInPos?: b
         {/* Filter Panel */}
         {showFilters && (
           <div className="mt-3 rounded-lg border border-gray-200 bg-white p-3 sm:mt-4 sm:p-4">
-            <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-4 lg:gap-4">
+            <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-5 lg:gap-4">
               <div>
                 <label className="block text-sm font-medium text-gray-700 mb-1">{tm('category')}</label>
                 <select
@@ -538,6 +796,19 @@ export function ExpenseManagement({ embeddedInPos = false }: { embeddedInPos?: b
                   {EXPENSE_CATEGORIES.map(cat => (
                     <option key={cat.id} value={cat.id}>{tm(`expenseCategory_${cat.id}`)}</option>
                   ))}
+                </select>
+              </div>
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">{tm('expenseStatus')}</label>
+                <select
+                  value={filterStatus}
+                  onChange={(e) => setFilterStatus(e.target.value)}
+                  className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-red-500"
+                >
+                  <option value="all">{tm('allCategories')}</option>
+                  <option value="draft">{tm('expenseStatusBadgeDraft')}</option>
+                  <option value="approved">{tm('expenseStatusBadgeApproved')}</option>
+                  <option value="cancelled">{tm('expenseStatusBadgeCancelled')}</option>
                 </select>
               </div>
               <div>
@@ -562,6 +833,7 @@ export function ExpenseManagement({ embeddedInPos = false }: { embeddedInPos?: b
                 <button
                   onClick={() => {
                     setFilterCategory('all');
+                    setFilterStatus('all');
                     const currentMonthRange = getCurrentMonthDateRange();
                     setFilterDateFrom(currentMonthRange.from);
                     setFilterDateTo(currentMonthRange.to);
@@ -672,16 +944,21 @@ export function ExpenseManagement({ embeddedInPos = false }: { embeddedInPos?: b
       </div>
       </div>
 
-      {showExpenseModal && typeof document !== 'undefined' && createPortal(
-        <div className="fixed inset-0 z-[2147483647] flex flex-col bg-white min-h-0 overflow-hidden animate-in fade-in duration-200">
+      {/* Edit / New Expense modal — PercentBodyModal (portal) */}
+      {showExpenseModal && editingExpense ? (
+        <PercentBodyModal
+          onClose={() => setShowExpenseModal(false)}
+          size="wide"
+          ariaLabel={tm('expenseEditTitle')}
+        >
           <div className="bg-gradient-to-r from-red-600 to-orange-600 px-6 py-5 text-white shrink-0 sm:px-8">
             <div className="flex items-center justify-between gap-4">
-              <div>
-                <h2 className="text-xl font-black uppercase tracking-tight">
-                  {editingExpense ? tm('editExpense') : tm('newExpense')}
+              <div className="min-w-0">
+                <h2 className="text-xl font-black uppercase tracking-tight truncate">
+                  {tm('expenseEditTitle')}
                 </h2>
                 <p className="text-red-100 text-xs font-semibold uppercase tracking-wider mt-0.5 opacity-90">
-                  {tm('expenseManagementSubtitle')}
+                  {categoryLabel(editingExpense.category)} · {parseExpenseAmount(editingExpense.amount).toLocaleString('tr-TR')}
                 </p>
               </div>
               <div className="flex items-center gap-2 shrink-0">
@@ -698,8 +975,36 @@ export function ExpenseManagement({ embeddedInPos = false }: { embeddedInPos?: b
             </div>
           </div>
 
-          <div className="flex-1 min-h-0 overflow-y-auto overscroll-contain p-6 sm:p-8">
+          <PercentBodyModalScrollBody className="p-6 sm:p-8">
             <div className="mx-auto w-full max-w-4xl space-y-5">
+              {/* Read-only audit banner */}
+              {normalizeStatus(editingExpense.status) === 'approved' ? (
+                <div className="rounded-2xl border-2 border-emerald-200 bg-emerald-50 p-4 flex items-start gap-3">
+                  <CheckCircle2 className="w-5 h-5 text-emerald-600 mt-0.5 shrink-0" />
+                  <div className="text-sm text-emerald-800">
+                    <p className="font-semibold">{tm('expenseStatusBadgeApproved')}</p>
+                    <p className="mt-1 text-xs opacity-80">
+                      {editingExpense.approved_at ? `${tm('expenseApprovedAtLabel')}: ${formatAuditDate(editingExpense.approved_at)}` : ''}
+                    </p>
+                    <p className="mt-2">{tm('expenseApprovedNote')}</p>
+                  </div>
+                </div>
+              ) : normalizeStatus(editingExpense.status) === 'cancelled' ? (
+                <div className="rounded-2xl border-2 border-rose-200 bg-rose-50 p-4 flex items-start gap-3">
+                  <Ban className="w-5 h-5 text-rose-600 mt-0.5 shrink-0" />
+                  <div className="text-sm text-rose-800">
+                    <p className="font-semibold">{tm('expenseStatusBadgeCancelled')}</p>
+                    <p className="mt-1 text-xs opacity-80">
+                      {editingExpense.cancelled_at ? `${tm('expenseCancelledAtLabel')}: ${formatAuditDate(editingExpense.cancelled_at)}` : ''}
+                    </p>
+                    {editingExpense.cancelled_reason ? (
+                      <p className="mt-1 text-xs opacity-80">{editingExpense.cancelled_reason}</p>
+                    ) : null}
+                    <p className="mt-2">{tm('expenseCancelledNote')}</p>
+                  </div>
+                </div>
+              ) : null}
+
               <div className="grid grid-cols-1 gap-5 md:grid-cols-2">
                 <div>
                   <label className="block text-[11px] font-bold text-slate-500 uppercase tracking-wider mb-1.5">
@@ -831,7 +1136,7 @@ export function ExpenseManagement({ embeddedInPos = false }: { embeddedInPos?: b
                 </button>
               </div>
             </div>
-          </div>
+          </PercentBodyModalScrollBody>
 
           <div className="p-6 border-t border-slate-100 bg-slate-50/50 flex gap-4 shrink-0">
             <button
@@ -847,13 +1152,89 @@ export function ExpenseManagement({ embeddedInPos = false }: { embeddedInPos?: b
               disabled={savingExpense}
               className="flex-1 px-4 py-3 rounded-2xl bg-red-600 text-white font-bold uppercase text-sm tracking-wider shadow-lg shadow-red-200/50 hover:bg-red-700 active:scale-[0.98] transition-colors disabled:opacity-60 disabled:pointer-events-none"
             >
-              {savingExpense ? tm('loading') : (editingExpense ? tm('update') : tm('save'))}
+              {savingExpense ? tm('loading') : tm('update')}
             </button>
           </div>
-        </div>,
-        document.body
-      )}
+        </PercentBodyModal>
+      ) : null}
+
+      {/* Reason modal — cancel / reopen / reverseApprove */}
+      {reasonModal.open && reasonModal.target ? (
+        <PercentBodyModal
+          onClose={() => !actionBusy && setReasonModal({ open: false, kind: null, target: null, reason: '' })}
+          size="compact"
+          ariaLabel={tm('expenseReasonPrompt')}
+        >
+          <div className="bg-gradient-to-r from-slate-700 to-slate-900 px-6 py-5 text-white shrink-0">
+            <div className="flex items-center justify-between gap-3">
+              <h2 className="text-lg font-black uppercase tracking-tight">
+                {reasonModal.kind === 'cancel'
+                  ? tm('expenseCancel')
+                  : reasonModal.kind === 'reopen'
+                  ? tm('expenseReopen')
+                  : tm('expenseReverseApprove')}
+              </h2>
+              <button
+                type="button"
+                onClick={() => setReasonModal({ open: false, kind: null, target: null, reason: '' })}
+                disabled={actionBusy}
+                className="w-10 h-10 rounded-xl bg-white/20 hover:bg-white/30 flex items-center justify-center transition-colors disabled:opacity-40"
+                aria-label={tm('close')}
+              >
+                <X className="w-4 h-4" />
+              </button>
+            </div>
+          </div>
+
+          <PercentBodyModalScrollBody className="p-6">
+            <div className="space-y-4">
+              <div className="rounded-xl border border-slate-200 bg-slate-50 p-3 text-xs text-slate-700">
+                <div className="flex items-center justify-between gap-2">
+                  <span className="font-semibold">{categoryLabel(reasonModal.target.category)}</span>
+                  <span className="text-red-600 font-bold">
+                    {formatCurrency(parseExpenseAmount(reasonModal.target.amount))}
+                  </span>
+                </div>
+                <div className="mt-1 text-slate-500">
+                  {reasonModal.target.description} · {new Date(reasonModal.target.expense_date).toLocaleDateString('tr-TR')}
+                </div>
+              </div>
+
+              <div>
+                <label className="block text-[11px] font-bold text-slate-500 uppercase tracking-wider mb-1.5">
+                  {tm('expenseReasonPrompt')} *
+                </label>
+                <textarea
+                  value={reasonModal.reason}
+                  onChange={(e) => setReasonModal({ ...reasonModal, reason: e.target.value })}
+                  rows={4}
+                  className="w-full px-4 py-3 border border-slate-200 rounded-2xl focus:ring-2 focus:ring-red-500 focus:border-red-400 outline-none text-slate-800 font-medium resize-none"
+                  autoFocus
+                />
+              </div>
+            </div>
+          </PercentBodyModalScrollBody>
+
+          <div className="p-4 border-t border-slate-100 bg-slate-50/50 flex gap-3 shrink-0">
+            <button
+              type="button"
+              onClick={() => setReasonModal({ open: false, kind: null, target: null, reason: '' })}
+              disabled={actionBusy}
+              className="flex-1 px-4 py-3 rounded-2xl border-2 border-slate-200 text-slate-600 font-bold uppercase text-sm tracking-wider hover:bg-slate-100 active:scale-[0.98] transition-colors disabled:opacity-40"
+            >
+              {tm('cancel')}
+            </button>
+            <button
+              type="button"
+              onClick={submitReasonAction}
+              disabled={actionBusy || !reasonModal.reason.trim()}
+              className="flex-1 px-4 py-3 rounded-2xl bg-red-600 text-white font-bold uppercase text-sm tracking-wider shadow-lg shadow-red-200/50 hover:bg-red-700 active:scale-[0.98] transition-colors disabled:opacity-60 disabled:pointer-events-none"
+            >
+              {actionBusy ? tm('loading') : tm('save')}
+            </button>
+          </div>
+        </PercentBodyModal>
+      ) : null}
     </div>
   );
 }
-

@@ -180,6 +180,7 @@ export function mergeFollowUpRemindersWithActions(
       follow_up_status: status,
       note: act?.note?.trim() || undefined,
       show_natural_when_postponed: act?.show_natural_when_postponed,
+      call_status: act?.call_status ?? row.call_status,
       postponed_due_date: postponed,
       is_natural_shadow: isShadow || undefined,
     });

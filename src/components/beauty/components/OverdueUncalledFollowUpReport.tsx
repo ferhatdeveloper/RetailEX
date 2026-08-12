@@ -1,18 +1,39 @@
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
-import { Download, Loader2, PhoneMissed, RefreshCw, CalendarDays } from 'lucide-react';
+import { Download, Loader2, PhoneMissed, RefreshCw, CalendarDays, PhoneOff } from 'lucide-react';
+import { Select } from 'antd';
 import { toast } from 'sonner';
 import { beautyService } from '../../../services/beautyService';
 import { useLanguage } from '../../../contexts/LanguageContext';
 import { useTheme } from '../../../contexts/ThemeContext';
 import { formatLocalYmd } from '../../../utils/dateLocal';
 import { localTodayDateKey } from '../../../utils/localCalendarDate';
-import type { BeautyFollowUpReminder } from '../../../types/beauty';
+import type { BeautyFollowUpReminder, BeautyFollowupCallStatus } from '../../../types/beauty';
+import { BEAUTY_FOLLOWUP_CALL_STATUSES } from '../../../types/beauty';
 import {
   filterOverdueUncalledFollowUps,
   followUpDaysOverdue,
 } from '../../../utils/beautyFollowUpReminderUtils';
 import { FollowUpReminderActionModal } from './FollowUpReminderActionModal';
 import { cn } from '../../ui/utils';
+
+type CallStatusFilter = 'all' | BeautyFollowupCallStatus;
+type ReportMode = 'overdue' | 'no_answer';
+
+function callStatusLabel(status: BeautyFollowupCallStatus | undefined, tm: (k: string) => string): string {
+  switch (status) {
+    case 'called':
+      return tm('bFollowUpCallCalled');
+    case 'no_answer':
+      return tm('bFollowUpCallNoAnswer');
+    case 'callback_requested':
+      return tm('bFollowUpCallCallback');
+    case 'cancelled':
+      return tm('bFollowUpCallCancelled');
+    case 'pending':
+    default:
+      return tm('bFollowUpCallPending');
+  }
+}
 
 function defaultRange(): { start: string; end: string } {
   const today = new Date();
@@ -52,6 +73,8 @@ export function OverdueUncalledFollowUpReport() {
   const [error, setError] = useState<string | null>(null);
   const [rows, setRows] = useState<BeautyFollowUpReminder[]>([]);
   const [actionTarget, setActionTarget] = useState<BeautyFollowUpReminder | null>(null);
+  const [mode, setMode] = useState<ReportMode>('overdue');
+  const [callStatusFilter, setCallStatusFilter] = useState<CallStatusFilter>('all');
 
   const todayYmd = localTodayDateKey();
 
@@ -80,7 +103,19 @@ export function OverdueUncalledFollowUpReport() {
       const from = startYmd <= endYmd ? startYmd : endYmd;
       const to = startYmd <= endYmd ? endYmd : startYmd;
       const all = await beautyService.getFollowUpRemindersInRange(from, to);
-      setRows(filterOverdueUncalledFollowUps(all, todayYmd));
+      let next: BeautyFollowUpReminder[];
+      if (mode === 'no_answer') {
+        next = all
+          .filter(r => (r.call_status ?? 'pending') === 'no_answer')
+          .sort((a, b) => {
+            const d = a.due_date.localeCompare(b.due_date);
+            if (d !== 0) return d;
+            return (a.customer_name ?? '').localeCompare(b.customer_name ?? '', 'tr');
+          });
+      } else {
+        next = filterOverdueUncalledFollowUps(all, todayYmd);
+      }
+      setRows(next);
     } catch (e: unknown) {
       const msg = e instanceof Error ? e.message : String(e);
       setError(msg);
@@ -89,7 +124,12 @@ export function OverdueUncalledFollowUpReport() {
     } finally {
       setLoading(false);
     }
-  }, [startYmd, endYmd, todayYmd]);
+  }, [startYmd, endYmd, todayYmd, mode]);
+
+  const visibleRows = useMemo(() => {
+    if (callStatusFilter === 'all') return rows;
+    return rows.filter(r => (r.call_status ?? 'pending') === callStatusFilter);
+  }, [rows, callStatusFilter]);
 
   useEffect(() => {
     void load();
@@ -139,15 +179,67 @@ export function OverdueUncalledFollowUpReport() {
       <div className={cn('rounded-3xl border p-6 shadow-sm', panel)}>
         <div className="flex flex-wrap items-start justify-between gap-4">
           <div className="flex items-center gap-3 min-w-0">
-            <div className="w-11 h-11 rounded-2xl bg-rose-100 text-rose-700 flex items-center justify-center shrink-0">
-              <PhoneMissed size={22} />
+            <div
+              className={cn(
+                'w-11 h-11 rounded-2xl flex items-center justify-center shrink-0',
+                mode === 'no_answer' ? 'bg-amber-100 text-amber-700' : 'bg-rose-100 text-rose-700',
+              )}
+            >
+              {mode === 'no_answer' ? <PhoneOff size={22} /> : <PhoneMissed size={22} />}
             </div>
             <div className="min-w-0">
-              <h2 className="text-xl font-black truncate">{tm('bOverdueUncalledReportTitle')}</h2>
-              <p className={cn('text-xs font-semibold', muted)}>{tm('bOverdueUncalledReportSubtitle')}</p>
+              <h2 className="text-xl font-black truncate">
+                {mode === 'no_answer' ? tm('bOverdueUncalledNoAnswerTitle') : tm('bOverdueUncalledReportTitle')}
+              </h2>
+              <p className={cn('text-xs font-semibold', muted)}>
+                {mode === 'no_answer' ? tm('bOverdueUncalledNoAnswerSubtitle') : tm('bOverdueUncalledReportSubtitle')}
+              </p>
             </div>
           </div>
           <div className="flex flex-wrap items-end gap-2">
+            <div
+              role="tablist"
+              aria-label={tm('bFollowUpCallStatusLabel')}
+              className={cn(
+                'flex h-10 items-center rounded-xl border p-1 text-xs font-extrabold',
+                darkMode ? 'border-gray-600 bg-gray-900' : 'border-gray-200 bg-white',
+              )}
+            >
+              <button
+                type="button"
+                role="tab"
+                aria-selected={mode === 'overdue'}
+                onClick={() => setMode('overdue')}
+                className={cn(
+                  'h-8 rounded-lg px-3 flex items-center gap-1.5 transition-colors',
+                  mode === 'overdue'
+                    ? 'bg-rose-600 text-white shadow'
+                    : darkMode
+                      ? 'text-gray-300 hover:bg-gray-800'
+                      : 'text-gray-600 hover:bg-gray-100',
+                )}
+              >
+                <PhoneMissed size={13} />
+                {tm('bOverdueUncalledOverdueMode')}
+              </button>
+              <button
+                type="button"
+                role="tab"
+                aria-selected={mode === 'no_answer'}
+                onClick={() => setMode('no_answer')}
+                className={cn(
+                  'h-8 rounded-lg px-3 flex items-center gap-1.5 transition-colors',
+                  mode === 'no_answer'
+                    ? 'bg-amber-600 text-white shadow'
+                    : darkMode
+                      ? 'text-gray-300 hover:bg-gray-800'
+                      : 'text-gray-600 hover:bg-gray-100',
+                )}
+              >
+                <PhoneOff size={13} />
+                {tm('bOverdueUncalledNoAnswer')}
+              </button>
+            </div>
             <label className="flex flex-col gap-1">
               <span className={cn('text-[10px] font-bold uppercase tracking-wider', muted)}>{tm('date')}</span>
               <div className={cn('flex items-center gap-2 border rounded-xl px-3 py-2', inputCls)}>
@@ -176,7 +268,12 @@ export function OverdueUncalledFollowUpReport() {
               type="button"
               onClick={() => void load()}
               disabled={loading}
-              className="h-10 px-4 rounded-xl bg-rose-600 hover:bg-rose-700 disabled:bg-rose-300 text-white text-xs font-extrabold flex items-center gap-2"
+              className={cn(
+                'h-10 px-4 rounded-xl text-white text-xs font-extrabold flex items-center gap-2',
+                mode === 'no_answer'
+                  ? 'bg-amber-600 hover:bg-amber-700 disabled:bg-amber-300'
+                  : 'bg-rose-600 hover:bg-rose-700 disabled:bg-rose-300',
+              )}
             >
               {loading ? <Loader2 size={14} className="animate-spin" /> : <RefreshCw size={14} />}
               {loading ? tm('bLoading') : tm('bRunReport')}
@@ -184,13 +281,36 @@ export function OverdueUncalledFollowUpReport() {
             <button
               type="button"
               onClick={handleExport}
-              disabled={rows.length === 0}
+              disabled={visibleRows.length === 0}
               className="h-10 px-4 rounded-xl bg-emerald-600 hover:bg-emerald-700 disabled:opacity-40 text-white text-xs font-extrabold flex items-center gap-2"
             >
               <Download size={14} />
               Excel / CSV
             </button>
           </div>
+        </div>
+        <div className="mt-4 flex flex-wrap items-center gap-3">
+          <span className={cn('text-[10px] font-black uppercase tracking-wider', muted)}>
+            {tm('bFollowUpCallStatusLabel')}
+          </span>
+          <Select<CallStatusFilter>
+            value={callStatusFilter}
+            onChange={setCallStatusFilter}
+            size="middle"
+            className="min-w-[180px]"
+            options={[
+              { value: 'all', label: tm('bFollowUpCallStatusAll') },
+              ...BEAUTY_FOLLOWUP_CALL_STATUSES.map(s => ({
+                value: s,
+                label: callStatusLabel(s, tm),
+              })),
+            ]}
+          />
+          {callStatusFilter !== 'all' && (
+            <span className={cn('text-xs font-semibold', muted)}>
+              ({visibleRows.length} / {rows.length})
+            </span>
+          )}
         </div>
       </div>
 
@@ -199,17 +319,25 @@ export function OverdueUncalledFollowUpReport() {
           <p className={cn('text-[10px] font-black uppercase tracking-[0.18em]', muted)}>
             {tm('bOverdueUncalledTotal')}
           </p>
-          <p className="text-2xl font-black text-rose-600 mt-2 tabular-nums">{rows.length}</p>
+          <p
+            className={cn(
+              'text-2xl font-black mt-2 tabular-nums',
+              mode === 'no_answer' ? 'text-amber-600' : 'text-rose-600',
+            )}
+          >
+            {visibleRows.length}
+          </p>
         </div>
         <div className={cn('rounded-2xl border p-5 shadow-sm', panel)}>
           <p className={cn('text-[10px] font-black uppercase tracking-[0.18em]', muted)}>
             {tm('bOverdueUncalledAvgDays')}
           </p>
           <p className="text-2xl font-black mt-2 tabular-nums">
-            {rows.length === 0
+            {visibleRows.length === 0
               ? '—'
               : Math.round(
-                  rows.reduce((s, r) => s + followUpDaysOverdue(r.due_date, todayYmd), 0) / rows.length,
+                  visibleRows.reduce((s, r) => s + followUpDaysOverdue(r.due_date, todayYmd), 0) /
+                    visibleRows.length,
                 )}
           </p>
         </div>
@@ -217,8 +345,12 @@ export function OverdueUncalledFollowUpReport() {
 
       <div className={cn('rounded-3xl border shadow-sm overflow-hidden', tableWrap)}>
         <div className={cn('px-6 py-4 border-b flex items-center gap-2 font-black', darkMode ? 'border-gray-700' : 'border-gray-100')}>
-          <PhoneMissed size={16} className="text-rose-600" />
-          {tm('bOverdueUncalledListTitle')}
+          {mode === 'no_answer' ? (
+            <PhoneOff size={16} className="text-amber-600" />
+          ) : (
+            <PhoneMissed size={16} className="text-rose-600" />
+          )}
+          {mode === 'no_answer' ? tm('bOverdueUncalledNoAnswerListTitle') : tm('bOverdueUncalledListTitle')}
         </div>
         {error ? (
           <div className="p-6 text-sm font-semibold text-red-600">{error}</div>
@@ -227,8 +359,14 @@ export function OverdueUncalledFollowUpReport() {
             <Loader2 size={18} className="animate-spin" />
             {tm('bLoadingReport')}
           </div>
-        ) : rows.length === 0 ? (
-          <div className={cn('p-10 text-center text-sm font-bold', muted)}>{tm('bOverdueUncalledEmpty')}</div>
+        ) : visibleRows.length === 0 ? (
+          <div className={cn('p-10 text-center text-sm font-bold', muted)}>
+            {callStatusFilter !== 'all' && rows.length > 0
+              ? tm('bOverdueUncalledFilteredEmpty')
+              : mode === 'no_answer'
+                ? tm('bOverdueUncalledNoAnswerEmpty')
+                : tm('bOverdueUncalledEmpty')}
+          </div>
         ) : (
           <div className="overflow-x-auto">
             <table className="w-full text-left min-w-[960px]">
@@ -241,15 +379,16 @@ export function OverdueUncalledFollowUpReport() {
                   <th className="px-4 py-3 text-[10px] font-black uppercase tracking-[0.16em]">{tm('bOverdueUncalledSubjectCol')}</th>
                   <th className="px-4 py-3 text-[10px] font-black uppercase tracking-[0.16em]">{tm('bOverdueUncalledKindCol')}</th>
                   <th className="px-4 py-3 text-[10px] font-black uppercase tracking-[0.16em]">{tm('bFollowUpStatusLabel')}</th>
+                  <th className="px-4 py-3 text-[10px] font-black uppercase tracking-[0.16em]">{tm('bFollowUpCallStatusLabel')}</th>
                   <th className="px-4 py-3 text-[10px] font-black uppercase tracking-[0.16em]">{tm('bFollowUpNoteLabel')}</th>
                   <th className="px-4 py-3 text-[10px] font-black uppercase tracking-[0.16em]">{tm('bOverdueUncalledLastCompletedCol')}</th>
                   <th className="px-4 py-3 text-[10px] font-black uppercase tracking-[0.16em]" />
                 </tr>
               </thead>
               <tbody className={cn('divide-y', borderRow)}>
-                {rows.map((r) => {
+                {visibleRows.map((r) => {
                   const days = followUpDaysOverdue(r.due_date, todayYmd);
-                  const key = `${r.customer_id}|${r.service_id}|${r.product_id ?? ''}|${r.last_completed_date}|${r.due_date}|${r.reminder_kind ?? 'service'}`;
+                  const key = `${r.customer_id}|${r.service_id}|${r.product_id ?? ''}|${r.last_completed_date}|${r.due_date}|${r.reminder_kind ?? 'service'}|${r.call_status ?? 'pending'}`;
                   return (
                     <tr key={key} className={rowHover}>
                       <td className="px-4 py-3 font-semibold tabular-nums">{r.due_date}</td>
@@ -263,6 +402,26 @@ export function OverdueUncalledFollowUpReport() {
                           : tm('bOverdueUncalledKindService')}
                       </td>
                       <td className="px-4 py-3 text-xs font-bold">{statusLabel(r.follow_up_status)}</td>
+                      <td className="px-4 py-3 text-xs font-bold">
+                        <span
+                          className={cn(
+                            'inline-flex items-center gap-1 rounded-full px-2 py-0.5',
+                            r.call_status === 'no_answer'
+                              ? 'bg-amber-100 text-amber-800'
+                              : r.call_status === 'called'
+                                ? 'bg-emerald-100 text-emerald-800'
+                                : r.call_status === 'callback_requested'
+                                  ? 'bg-blue-100 text-blue-800'
+                                  : r.call_status === 'cancelled'
+                                    ? 'bg-gray-200 text-gray-700'
+                                    : darkMode
+                                      ? 'bg-gray-700 text-gray-200'
+                                      : 'bg-slate-100 text-slate-700',
+                          )}
+                        >
+                          {callStatusLabel(r.call_status, tm)}
+                        </span>
+                      </td>
                       <td className={cn('px-4 py-3 text-xs max-w-[220px] truncate', muted)} title={r.note}>
                         {r.note?.trim() || '—'}
                       </td>
