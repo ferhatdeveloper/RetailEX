@@ -10,7 +10,6 @@ import {
     Tag,
     Select,
     Segmented,
-    Checkbox,
 } from 'antd';
 import {
     RETAILEX_BORDER_SUBTLE,
@@ -30,7 +29,6 @@ import { User } from 'lucide-react';
 import { RetailExFlatModal, RetailExFlatFieldLabel } from '../../shared/RetailExFlatModal';
 import { useBeautyStore } from '../store/useBeautyStore';
 import { useLanguage } from '../../../contexts/LanguageContext';
-import { beautyService } from '../../../services/beautyService';
 import { logger } from '../../../services/loggingService';
 import type { BeautyCustomer } from '../../../types/beauty';
 import { formatMoneyAmount } from '../../../utils/formatMoney';
@@ -60,10 +58,6 @@ export function ClientCRM({ onOpenCustomer }: ClientCRMProps) {
     const [isEdit, setIsEdit] = useState(false);
     const [saving, setSaving] = useState(false);
     const [currentAccountCustomers, setCurrentAccountCustomers] = useState<BeautyCustomer[]>([]);
-    const [pendingFollowupOnly, setPendingFollowupOnly] = useState(false);
-    const [controlFollowupByCustomer, setControlFollowupByCustomer] = useState<
-        Map<string, Array<{ service_id: string; due_date: string; call_status: string; status: string; service_name: string | null }>>
-    >(new Map());
 
     useEffect(() => { loadCustomers(); }, []);
 
@@ -101,63 +95,16 @@ export function ClientCRM({ onOpenCustomer }: ClientCRMProps) {
         return Array.from(map.values()).sort((a, b) => (a.name ?? '').localeCompare(b.name ?? '', 'tr'));
     }, [customers, currentAccountCustomers]);
 
-    useEffect(() => {
-        if (mergedCustomers.length === 0) {
-            setControlFollowupByCustomer(new Map());
-            return;
-        }
-        let mounted = true;
-        (async () => {
-            try {
-                const ids = mergedCustomers.map(c => c.id);
-                const rows = await beautyService.listControlFollowupByCustomerIds(ids);
-                if (!mounted) return;
-                const next = new Map<
-                    string,
-                    Array<{ service_id: string; due_date: string; call_status: string; status: string; service_name: string | null }>
-                >();
-                for (const row of rows) {
-                    const list = next.get(row.customer_id) ?? [];
-                    list.push({
-                        service_id: row.service_id,
-                        due_date: row.due_date,
-                        call_status: row.call_status,
-                        status: row.status,
-                        service_name: row.service_name,
-                    });
-                    next.set(row.customer_id, list);
-                }
-                setControlFollowupByCustomer(next);
-            } catch {
-                if (!mounted) return;
-                setControlFollowupByCustomer(new Map());
-            }
-        })();
-        return () => {
-            mounted = false;
-        };
-    }, [mergedCustomers]);
-
     const filtered = useMemo(() => {
         const q = search.trim().toLowerCase();
-        let base = mergedCustomers;
-        if (q) {
-            base = base.filter(c =>
-                c.name?.toLowerCase().includes(q) ||
-                (c.phone ?? '').includes(search.trim()) ||
-                c.email?.toLowerCase().includes(q) ||
-                (c.code ?? '').toLowerCase().includes(q)
-            );
-        }
-        if (pendingFollowupOnly) {
-            base = base.filter(c => {
-                const items = controlFollowupByCustomer.get(c.id);
-                if (!items || items.length === 0) return false;
-                return items.some(it => it.call_status !== 'done' && it.status !== 'done');
-            });
-        }
-        return base;
-    }, [mergedCustomers, search, pendingFollowupOnly, controlFollowupByCustomer]);
+        if (!q) return mergedCustomers;
+        return mergedCustomers.filter(c =>
+            c.name?.toLowerCase().includes(q) ||
+            (c.phone ?? '').includes(search.trim()) ||
+            c.email?.toLowerCase().includes(q) ||
+            (c.code ?? '').toLowerCase().includes(q)
+        );
+    }, [mergedCustomers, search]);
 
     const openCreate = () => {
         setEditing(EMPTY_FORM);
@@ -366,15 +313,6 @@ export function ClientCRM({ onOpenCustomer }: ClientCRMProps) {
                                 className="w-full"
                                 size="middle"
                             />
-                            <Checkbox
-                                className="!mt-2"
-                                checked={pendingFollowupOnly}
-                                onChange={e => setPendingFollowupOnly(e.target.checked)}
-                            >
-                                <span className="text-sm text-slate-700 dark:text-slate-200">
-                                    {tm('bClientPendingFollowupFilter')}
-                                </span>
-                            </Checkbox>
                         </div>
 
                         <Table<BeautyCustomer>
@@ -406,11 +344,7 @@ export function ClientCRM({ onOpenCustomer }: ClientCRMProps) {
 
                 <RetailExFlatModal
                     open={showModal}
-                    onClose={() => {
-                        setShowModal(false);
-                        setEditing(EMPTY_FORM);
-                        setIsEdit(false);
-                    }}
+                    onClose={() => setShowModal(false)}
                     title={isEdit ? tm('bEditCustomer') : tm('bNewCustomer')}
                     headerIcon={<User className="h-5 w-5" aria-hidden />}
                     cancelLabel={tm('cancel')}

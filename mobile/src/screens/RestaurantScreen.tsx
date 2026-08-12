@@ -1343,11 +1343,6 @@ export function RestaurantScreen({ navigation, route }: Props) {
         showBack={tab !== 'dashboard'}
         onBack={() => setTab('dashboard')}
         below={regionBelow}
-        right={
-          <HeaderIconButton onPress={() => navigation.navigate('RestaurantSettings')}>
-            <Settings size={18} color={palette.white} />
-          </HeaderIconButton>
-        }
       />
 
       {tab !== 'tables' ? (

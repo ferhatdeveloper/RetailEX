@@ -57,7 +57,7 @@ import { formatMoneyAmount } from '../../../utils/formatMoney';
 import { fetchCurrentAccounts } from '../../../services/api/currentAccounts';
 import { ERP_SETTINGS } from '../../../services/postgres';
 import { toast } from 'sonner';
-import { User, Package, Loader2 } from 'lucide-react';
+import { User, Package } from 'lucide-react';
 import { RetailExFlatModal, RetailExFlatFieldLabel } from '../../shared/RetailExFlatModal';
 import { BeautyFeedbackSurveyModal } from './BeautyFeedbackSurveyModal';
 import {
@@ -66,9 +66,6 @@ import {
     RETAILEX_PRIMARY,
     RETAILEX_TEXT_PRIMARY,
 } from '../../../theme/retailexAntdTheme';
-import type { BeautyFollowupCallStatus } from '../../../types/beauty';
-import { BEAUTY_FOLLOWUP_CALL_STATUSES } from '../../../types/beauty';
-import { FollowUpReminderActionModal } from './FollowUpReminderActionModal';
 
 const EMPTY_FORM: Partial<BeautyCustomer> = {
     name: '',
@@ -160,37 +157,6 @@ export function ClientCustomerDetailPage({ customerId, onBack }: ClientCustomerD
     const [historyKindFilter, setHistoryKindFilter] = useState<
         'all' | 'appointment' | 'service_fee' | 'sale' | 'package'
     >('service_fee');
-
-    const [customerFollowups, setCustomerFollowups] = useState<
-        Array<{
-            id: string;
-            customer_id: string;
-            service_id: string;
-            service_name: string | null;
-            due_date: string;
-            natural_due_date: string;
-            last_completed_date: string;
-            reminder_kind: 'service' | 'product';
-            call_status: BeautyFollowupCallStatus;
-            follow_up_status?: string;
-            note: string | null;
-        }>
-    >([]);
-    const [customerFollowupsLoading, setCustomerFollowupsLoading] = useState(false);
-    const [followupCallSavingId, setFollowupCallSavingId] = useState<string | null>(null);
-    const [followupActionTarget, setFollowupActionTarget] = useState<{
-        id: string;
-        customer_id: string;
-        service_id: string;
-        product_id?: string | null;
-        last_completed_date: string;
-        natural_due_date: string;
-        reminder_kind: 'service' | 'product';
-        customer_name?: string;
-        customer_phone?: string;
-        service_name?: string;
-        product_name?: string;
-    } | null>(null);
 
     useEffect(() => {
         loadCustomers();
@@ -330,63 +296,6 @@ export function ClientCustomerDetailPage({ customerId, onBack }: ClientCustomerD
         }
         void beautyService.getCustomerHealth(selected.id).then(h => setHealthForm(h ?? {}));
     }, [selected?.id]);
-
-    const reloadCustomerFollowups = useCallback(async (cid: string) => {
-        if (!cid) {
-            setCustomerFollowups([]);
-            return;
-        }
-        setCustomerFollowupsLoading(true);
-        try {
-            const rows = await beautyService.listCustomerFollowupRemindersByCustomerId(cid);
-            setCustomerFollowups(rows);
-        } catch (e) {
-            logger.error('ClientCustomerDetailPage', 'listCustomerFollowupRemindersByCustomerId failed', e);
-            setCustomerFollowups([]);
-        } finally {
-            setCustomerFollowupsLoading(false);
-        }
-    }, []);
-
-    useEffect(() => {
-        if (selected) {
-            void reloadCustomerFollowups(selected.id);
-        } else {
-            setCustomerFollowups([]);
-        }
-    }, [selected?.id, reloadCustomerFollowups]);
-
-    const handleFollowupCallStatusChange = useCallback(
-        async (
-            reminderId: string,
-            newStatus: BeautyFollowupCallStatus,
-            currentNote?: string | null,
-        ) => {
-            setFollowupCallSavingId(reminderId);
-            try {
-                const ok = await beautyService.updateFollowupCallStatus(
-                    reminderId,
-                    newStatus,
-                    currentNote ?? undefined,
-                );
-                if (ok) {
-                    setCustomerFollowups(prev =>
-                        prev.map(r => (r.id === reminderId ? { ...r, call_status: newStatus } : r)),
-                    );
-                    toast.success(tm('bFollowUpCallStatusUpdated'));
-                } else {
-                    toast.warning(tm('bFollowUpCallStatusUpdateFailed'));
-                }
-            } catch (e: unknown) {
-                const msg = e instanceof Error ? e.message : String(e);
-                logger.error('ClientCustomerDetailPage', 'updateFollowupCallStatus failed', e);
-                toast.error(tm('bFollowUpCallStatusUpdateFailed'), { description: msg, duration: 8000 });
-            } finally {
-                setFollowupCallSavingId(null);
-            }
-        },
-        [tm],
-    );
 
     const handleBuyPackage = async () => {
         if (!selected || !selectedPkg) return;
@@ -1584,150 +1493,10 @@ export function ClientCustomerDetailPage({ customerId, onBack }: ClientCustomerD
                                 )}
                             </Card>
 
-                            <Card bordered className="!shadow-none">
-                                <div className="mb-3 flex items-center gap-2">
-                                    <PhoneOutlined style={{ color: RETAILEX_PRIMARY }} />
-                                    <Typography.Text strong>{tm('bFollowUpCardTitle')}</Typography.Text>
-                                </div>
-                                {customerFollowupsLoading && customerFollowups.length === 0 ? (
-                                    <Typography.Text type="secondary">{tm('bLoading')}</Typography.Text>
-                                ) : customerFollowups.length === 0 ? (
-                                    <Typography.Text type="secondary">{tm('bFollowUpCardEmpty')}</Typography.Text>
-                                ) : (
-                                    <Space direction="vertical" size="middle" className="w-full">
-                                        {customerFollowups.map(r => {
-                                            const isSaving = followupCallSavingId === r.id;
-                                            const currentStatus: BeautyFollowupCallStatus =
-                                                r.call_status ?? 'pending';
-                                            return (
-                                                <Card
-                                                    key={r.id}
-                                                    size="small"
-                                                    bordered
-                                                    className="!shadow-none"
-                                                    style={{ background: '#fafafa' }}
-                                                >
-                                                    <div className="flex flex-wrap items-start justify-between gap-2">
-                                                        <div className="min-w-0">
-                                                            <Typography.Text strong>
-                                                                {r.service_name ?? r.service_id}
-                                                            </Typography.Text>
-                                                            <div>
-                                                                <Typography.Text type="secondary" className="text-xs">
-                                                                    {`${tm('date')}: ${r.due_date} · ${tm('bOverdueUncalledLastCompletedCol')}: ${r.last_completed_date}`}
-                                                                </Typography.Text>
-                                                            </div>
-                                                            {r.note && (
-                                                                <Typography.Paragraph className="!mb-0 mt-1 text-xs text-[#595959]">
-                                                                    {r.note}
-                                                                </Typography.Paragraph>
-                                                            )}
-                                                        </div>
-                                                        <Button
-                                                            size="small"
-                                                            type="link"
-                                                            onClick={() => {
-                                                                setFollowupActionTarget({
-                                                                    id: r.id,
-                                                                    customer_id: r.customer_id,
-                                                                    service_id: r.service_id,
-                                                                    last_completed_date: r.last_completed_date,
-                                                                    natural_due_date: r.natural_due_date,
-                                                                    reminder_kind: r.reminder_kind,
-                                                                    customer_name: selected?.name,
-                                                                    customer_phone: selected?.phone,
-                                                                    service_name: r.service_name ?? undefined,
-                                                                });
-                                                            }}
-                                                        >
-                                                            {tm('bFollowUpManage')}
-                                                        </Button>
-                                                    </div>
-                                                    <div className="mt-3 flex flex-wrap items-center gap-2">
-                                                        <Typography.Text type="secondary" className="text-xs">
-                                                            {tm('bFollowUpCallStatusLabel')}:
-                                                        </Typography.Text>
-                                                        <Segmented<BeautyFollowupCallStatus>
-                                                            size="small"
-                                                            value={currentStatus}
-                                                            onChange={v =>
-                                                                void handleFollowupCallStatusChange(
-                                                                    r.id,
-                                                                    v as BeautyFollowupCallStatus,
-                                                                    r.note,
-                                                                )
-                                                            }
-                                                            options={BEAUTY_FOLLOWUP_CALL_STATUSES.map(s => ({
-                                                                value: s,
-                                                                label:
-                                                                    s === 'pending'
-                                                                        ? tm('bFollowUpCallPending')
-                                                                        : s === 'called'
-                                                                            ? tm('bFollowUpCallCalled')
-                                                                            : s === 'no_answer'
-                                                                                ? tm('bFollowUpCallNoAnswer')
-                                                                                : s === 'callback_requested'
-                                                                                    ? tm('bFollowUpCallCallback')
-                                                                                    : tm('bFollowUpCallCancelled'),
-                                                            }))}
-                                                            disabled={isSaving}
-                                                        />
-                                                        {isSaving && <Loader2 size={12} className="animate-spin" />}
-                                                    </div>
-                                                </Card>
-                                            );
-                                        })}
-                                    </Space>
-                                )}
-                            </Card>
-
                             <Tabs activeKey={detailTab} onChange={k => setDetailTab(k as typeof detailTab)} items={tabItems} />
                         </Space>
                     </div>
                 )}
-
-                <FollowUpReminderActionModal
-                    open={followupActionTarget != null}
-                    reminder={
-                        followupActionTarget
-                            ? {
-                                due_date: followupActionTarget.natural_due_date,
-                                natural_due_date: followupActionTarget.natural_due_date,
-                                last_completed_date: followupActionTarget.last_completed_date,
-                                reminder_days: 1,
-                                service_id: followupActionTarget.service_id,
-                                service_name: followupActionTarget.service_name ?? '',
-                                customer_id: followupActionTarget.customer_id,
-                                customer_name: followupActionTarget.customer_name ?? '',
-                                customer_phone: followupActionTarget.customer_phone,
-                                reminder_kind: followupActionTarget.reminder_kind,
-                                follow_up_status: 'due',
-                            }
-                            : null
-                    }
-                    onClose={() => setFollowupActionTarget(null)}
-                    onSaved={() => {
-                        if (selected) void reloadCustomerFollowups(selected.id);
-                    }}
-                    labels={{
-                        title: tm('bFollowUpModalTitle'),
-                        status: tm('bFollowUpStatusLabel'),
-                        statusDue: tm('bFollowUpStatusDue'),
-                        statusPostponed: tm('bFollowUpStatusPostponed'),
-                        statusContacted: tm('bFollowUpStatusContacted'),
-                        statusOther: tm('bFollowUpStatusOther'),
-                        statusDismissed: tm('bFollowUpStatusDismissed'),
-                        note: tm('bFollowUpNoteLabel'),
-                        notePlaceholder: tm('bFollowUpNotePlaceholder'),
-                        postponeDate: tm('bFollowUpPostponeDate'),
-                        naturalDueLabel: tm('bFollowUpNaturalDueLabel'),
-                        showNaturalWhenPostponed: tm('bFollowUpShowNaturalWhenPostponed'),
-                        showNaturalWhenPostponedHint: tm('bFollowUpShowNaturalWhenPostponedHint'),
-                        cancel: tm('bFollowUpModalCancel'),
-                        save: tm('bFollowUpModalSave'),
-                        saving: tm('bFollowUpModalSaving'),
-                    }}
-                />
 
                 <RetailExFlatModal
                     open={showPkgModal}

@@ -118,9 +118,6 @@ export interface BeautyService {
     expected_shots?: number;
     /** Çok seanslı tedaviler için tipik seans sayısı (1 = tek seans) */
     default_sessions?: number;
-    /** Follow-up arama emri için hizmet ayarları. */
-    requires_followup_call?: boolean;
-    control_period_days?: number;
     /**
      * Tamamlanan randevudan kaç gün sonra tekrar hatırlatılacak (null veya ≤0 = kapalı).
      * Yalnızca `beauty_services` kartında kalıcıdır.
@@ -135,22 +132,6 @@ export type BeautyFollowUpReminderStatus =
     | 'contacted'
     | 'other'
     | 'dismissed';
-
-/** Müşteriyle yapılan telefon/arama denemesinin sonucu. */
-export type BeautyFollowupCallStatus =
-    | 'pending'
-    | 'called'
-    | 'no_answer'
-    | 'callback_requested'
-    | 'cancelled';
-
-export const BEAUTY_FOLLOWUP_CALL_STATUSES: readonly BeautyFollowupCallStatus[] = [
-    'pending',
-    'called',
-    'no_answer',
-    'callback_requested',
-    'cancelled',
-] as const;
 
 /** `follow_up_reminder_days` tanımlı hizmette son tamamlanan işlemden sonra gelen hatırlatma satırı */
 export interface BeautyFollowUpReminder {
@@ -178,8 +159,6 @@ export interface BeautyFollowUpReminder {
     is_natural_shadow?: boolean;
     /** Orijinal vade tarihinde de (soluk) gösterilsin mi */
     show_natural_when_postponed?: boolean;
-    /** Müşteriyle yapılan telefon/arama denemesinin sonucu */
-    call_status?: BeautyFollowupCallStatus;
 }
 
 /** Takvim panosunda hatırlatma kartına eklenen not / erteleme kaydı */
@@ -201,8 +180,6 @@ export interface BeautyFollowUpReminderAction {
     postponed_due_date?: string;
     /** true: erteleme sonrası orijinal vade tarihinde de (soluk) göster */
     show_natural_when_postponed?: boolean;
-    /** Müşteriyle yapılan telefon/arama denemesinin sonucu */
-    call_status?: BeautyFollowupCallStatus;
     note?: string;
 }
 

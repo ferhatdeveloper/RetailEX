@@ -1925,7 +1925,7 @@ export const RestPOS: React.FC<RestPOSProps> = ({
             <div className="flex-1 flex overflow-hidden min-h-0 min-w-0">
 
                 {/* ── LEFT SIDEBAR ────────────────────────────────────── */}
-                <aside className="w-[200px] lg:w-[220px] bg-slate-50 border-r border-slate-200 overflow-y-auto shrink-0 flex flex-col pb-6 content-start max-md:hidden">
+                <aside className="w-[220px] bg-slate-50 border-r border-slate-200 overflow-y-auto shrink-0 flex flex-col shadow-inner z-10 pb-8 content-start max-md:hidden">
                     <div className="px-3 mt-6 mb-3 space-y-2">
                         {catMain !== null && (
                             <button
@@ -2055,8 +2055,8 @@ export const RestPOS: React.FC<RestPOSProps> = ({
                 </aside>
 
                 {/* ── PRODUCTS GRID ────────────────────────────────────── */}
-                <main className="flex-1 min-w-0 overflow-y-auto overflow-x-hidden p-4 lg:p-5 bg-slate-100">
-                    <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 2xl:grid-cols-6 gap-4 content-start">
+                <main className="flex-1 min-w-0 overflow-y-auto p-4 bg-[#f4f6fb]">
+                    <div className="grid grid-cols-4 xl:grid-cols-5 2xl:grid-cols-6 gap-3 content-start max-xl:grid-cols-3 max-lg:grid-cols-2 max-md:grid-cols-2 max-md:gap-2 max-md:p-2">
                         {filtered.map(product => {
                             const pm = parseMainSub(product);
                             const cat = pm.sub ? `${pm.main} › ${pm.sub}` : pm.main;
@@ -2099,10 +2099,10 @@ export const RestPOS: React.FC<RestPOSProps> = ({
                                         if (t) handleProductClick(product, t.clientX, t.clientY);
                                     }}
                                     onTouchCancel={cancelLongPress}
-                                    className="bg-white rounded-2xl border border-slate-200 flex flex-col text-left cursor-pointer hover:shadow-lg hover:border-blue-400 transition-all overflow-hidden group hover:-translate-y-0.5 select-none relative active:scale-[0.98]"
+                                    className="bg-white rounded-[24px] border border-slate-200 flex flex-col text-left cursor-pointer hover:shadow-2xl hover:border-blue-400 transition-all overflow-hidden group hover:-translate-y-1.5 select-none relative active:scale-95"
                                 >
                                     {/* Product image — kompakt masaüstü yükseklik */}
-                                    <div className="w-full h-[80px] overflow-hidden bg-slate-100 shrink-0 relative">
+                                    <div className="w-full h-[90px] overflow-hidden bg-slate-100 shrink-0 relative">
                                         {imgSrc ? (
                                             <img
                                                 src={imgSrc}
@@ -2122,7 +2122,7 @@ export const RestPOS: React.FC<RestPOSProps> = ({
                                     </div>
 
                                     {/* Card body */}
-                                    <div className="px-3.5 py-3 flex flex-col gap-1.5 flex-1 bg-white relative">
+                                    <div className="px-3.5 py-3 flex flex-col gap-1.5 flex-1 justify-between bg-white relative">
                                         <div>
                                             <div className="text-[10px] font-black text-blue-500/80 mb-1 flex items-center gap-1.5">
                                                 <div className="w-1.5 h-1.5 rounded-full bg-blue-500" />
@@ -2155,7 +2155,7 @@ export const RestPOS: React.FC<RestPOSProps> = ({
 
                 {/* ── RIGHT ORDER PANEL ────────────────────────────────── */}
                 <aside
-                    className="bg-white border-l border-gray-200 flex flex-col overflow-hidden w-[360px] md:w-[400px] xl:w-[440px] 2xl:w-[460px] shrink-0"
+                    className="bg-white border-l border-gray-200 flex flex-col overflow-hidden w-[520px] shrink-0"
                 >
 
                     {/* ── CART ITEMS ── */}

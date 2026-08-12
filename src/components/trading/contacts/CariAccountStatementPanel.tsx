@@ -46,7 +46,6 @@ export function CariAccountStatementPanel({ account, onClose }: CariAccountState
   const [ekstresiLoading, setEkstresiLoading] = useState(false);
   const [ekstresiStart, setEkstresiStart] = useState(defaultEkstre.start);
   const [ekstresiEnd, setEkstresiEnd] = useState(defaultEkstre.end);
-  const [statusFilter, setStatusFilter] = useState<'all' | 'paid' | 'unpaid' | 'partial' | 'open'>('all');
 
   const mainDec = preferIntegerAmountDisplay(mainCurrency) ? 0 : 2;
   const mainShowDec = !preferIntegerAmountDisplay(mainCurrency);
@@ -118,20 +117,6 @@ export function CariAccountStatementPanel({ account, onClose }: CariAccountState
     () => buildEkstreRows(ekstresiData, account.cardType),
     [ekstresiData, account.cardType],
   );
-
-  const filteredEkstresiRows = useMemo(() => {
-    if (statusFilter === 'all') return ekstresiRows;
-    return ekstresiRows.filter((row) => {
-      const cancelled = row.is_cancelled === true;
-      if (cancelled) return false;
-      const hasBorc = row.borcAmount > 0;
-      const hasAlacak = row.alacakAmount > 0;
-      if (statusFilter === 'paid') return !hasBorc;
-      if (statusFilter === 'unpaid' || statusFilter === 'open') return hasBorc && !hasAlacak;
-      if (statusFilter === 'partial') return hasBorc && hasAlacak;
-      return true;
-    });
-  }, [ekstresiRows, statusFilter]);
 
   const totalBorc = ekstresiRows.reduce((s, r) => s + r.borcAmount, 0);
   const totalAlacak = ekstresiRows.reduce((s, r) => s + r.alacakAmount, 0);
@@ -225,18 +210,6 @@ export function CariAccountStatementPanel({ account, onClose }: CariAccountState
               title={currentBalanceDir.hint}
             >
               {tm('custColBalance')}: {currentBalanceHdr.primary} {currentBalanceHdr.code}
-              {currentBalanceDir.side ? (
-                <span
-                  className={`ml-1 inline-block rounded px-1 text-[10px] font-black ${
-                    currentBalanceDir.side === 'A'
-                      ? 'bg-emerald-200 text-emerald-900'
-                      : 'bg-red-200 text-red-900'
-                  }`}
-                  title={currentBalanceDir.hint}
-                >
-                  {currentBalanceDir.side}
-                </span>
-              ) : null}
               {currentBalanceDir.sideLabel ? ` · ${currentBalanceDir.sideLabel}` : ''}
             </span>
           </div>
@@ -261,42 +234,16 @@ export function CariAccountStatementPanel({ account, onClose }: CariAccountState
             >
               {tm('bring')}
             </button>
-            <select
-              value={statusFilter}
-              onChange={(e) => setStatusFilter(e.target.value as typeof statusFilter)}
-              className="rounded border border-gray-300 px-2 py-1.5 text-xs font-bold focus:outline-none focus:ring-2 focus:ring-blue-500"
-              title={tm('cariStatusFilter')}
-              aria-label={tm('cariStatusFilter')}
-            >
-              <option value="all">{tm('cariStatusAll')}</option>
-              <option value="paid">{tm('cariStatusPaid')}</option>
-              <option value="unpaid">{tm('cariStatusUnpaid')}</option>
-              <option value="partial">{tm('cariStatusPartial')}</option>
-              <option value="open">{tm('cariStatusOpen')}</option>
-            </select>
             <div className="hidden flex-wrap items-center gap-1.5 sm:flex">
               <span className="rounded border border-red-200 bg-red-50 px-2 py-0.5 text-xs font-black text-red-600">B: {borcHdr.primary} {borcHdr.code}</span>
               <span className="rounded border border-orange-200 bg-orange-50 px-2 py-0.5 text-xs font-black text-orange-600">A: {alacHdr.primary} {alacHdr.code}</span>
               <span
                 className={`rounded border px-2 py-0.5 text-xs font-black ${
-                  netBalanceDir.side === 'B' ? 'border-red-200 bg-red-50 text-red-700' : netBalanceDir.side === 'A' ? 'border-emerald-200 bg-emerald-50 text-emerald-700' : 'border-gray-200 bg-gray-50 text-gray-500'
+                  netBalanceDir.side === 'B' ? 'border-red-200 bg-red-50 text-red-700' : netBalanceDir.side === 'A' ? 'border-orange-200 bg-orange-50 text-orange-700' : 'border-gray-200 bg-gray-50 text-gray-500'
                 }`}
                 title={netBalanceDir.hint}
               >
-                {tm('netAmount')}: {netHdr.primary} {netHdr.code}
-                {netBalanceDir.side ? (
-                  <span
-                    className={`ml-1 inline-block rounded px-1 text-[10px] font-black ${
-                      netBalanceDir.side === 'A'
-                        ? 'bg-emerald-200 text-emerald-900'
-                        : 'bg-red-200 text-red-900'
-                    }`}
-                    title={netBalanceDir.hint}
-                  >
-                    {netBalanceDir.side}
-                  </span>
-                ) : null}
-                {netBalanceDir.sideLabel ? ` · ${netBalanceDir.sideLabel}` : ''}
+                {tm('netAmount')}: {netHdr.primary} {netHdr.code}{netBalanceDir.sideLabel ? ` · ${netBalanceDir.sideLabel}` : ''}
               </span>
             </div>
             {reportingCurrency !== mainCurrency ? (
@@ -330,7 +277,7 @@ export function CariAccountStatementPanel({ account, onClose }: CariAccountState
             <Loader2 className="h-6 w-6 animate-spin" />
             <span className="text-sm">{tm('loading')}</span>
           </div>
-        ) : filteredEkstresiRows.length === 0 ? (
+        ) : ekstresiRows.length === 0 ? (
           <div className="flex min-h-[40vh] flex-col items-center justify-center gap-3 px-6 text-center text-gray-500">
             <FileText className="h-10 w-10 text-gray-300" />
             <p className="text-sm font-medium">{tm('noRecordFound')}</p>
@@ -360,7 +307,7 @@ export function CariAccountStatementPanel({ account, onClose }: CariAccountState
               </tr>
             </thead>
             <tbody>
-              {filteredEkstresiRows.map((row, idx) => {
+              {ekstresiRows.map((row, idx) => {
                 const { label, color } = ficheTypeToInfo(String(row.fiche_type ?? ''), Number(row.trcode), row.is_cancelled === true);
                 const borcD = row.borcAmount > 0 ? fmtEkstreAmount(row.borcAmount) : null;
                 const alacD = row.alacakAmount > 0 ? fmtEkstreAmount(row.alacakAmount) : null;
@@ -403,24 +350,15 @@ export function CariAccountStatementPanel({ account, onClose }: CariAccountState
                       ) : ''}
                     </td>
                     <td className={`whitespace-nowrap px-4 py-2 text-right font-black ${row.balance > 0 ? 'text-red-600' : row.balance < 0 ? 'text-green-600' : 'text-gray-400'}`}>
-                      <div className="flex flex-col items-end gap-0.5">
+                      <div className="flex flex-col items-end">
                         {balD ? (
                           <>
-                            <div className="flex items-center gap-1">
-                              {rowBalDir.side ? (
-                                <span
-                                  className={`shrink-0 rounded px-1.5 py-0.5 text-[10px] font-black leading-none ${
-                                    rowBalDir.side === 'A'
-                                      ? 'bg-emerald-100 text-emerald-700 ring-1 ring-emerald-300'
-                                      : 'bg-red-100 text-red-700 ring-1 ring-red-300'
-                                  }`}
-                                  title={rowBalDir.hint}
-                                >
-                                  {rowBalDir.side}
-                                </span>
+                            <span>
+                              {balD.primary} {balD.code}
+                              {rowBalDir.sideLabel ? (
+                                <span className="ml-1 whitespace-nowrap text-[9px] font-black" title={rowBalDir.hint}>{rowBalDir.sideLabel}</span>
                               ) : null}
-                              <span>{balD.primary} {balD.code}</span>
-                            </div>
+                            </span>
                             {balD.secondary ? <span className="text-[10px] font-normal opacity-50">{balD.secondary}</span> : null}
                           </>
                         ) : (

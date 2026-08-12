@@ -714,7 +714,7 @@ function RestaurantContent({
     const [moveTargetTableId, setMoveTargetTableId] = useState<string | null>(null);
 
     return (
-        <div className="h-full bg-slate-50">
+        <div className="h-full bg-[#020617]">
             {activeTab === 'floor' && (
                 <RestaurantFloorPlan
                     onSelectTable={handleSelectTable}

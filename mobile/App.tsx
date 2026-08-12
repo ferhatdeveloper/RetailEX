@@ -2,7 +2,6 @@ import React, { Suspense, useEffect } from 'react';
 import { ActivityIndicator, View } from 'react-native';
 import { StatusBar } from 'expo-status-bar';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
-import Toast from 'react-native-toast-message';
 import './src/i18n';
 import { RootNavigator } from './src/navigation/RootNavigator';
 import { AppErrorBoundary } from './src/components/AppErrorBoundary';
@@ -125,7 +124,6 @@ export default function App() {
           <RootNavigator />
         </Suspense>
       </AppErrorBoundary>
-      <Toast />
     </SafeAreaProvider>
   );
 }

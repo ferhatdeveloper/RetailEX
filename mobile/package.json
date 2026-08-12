@@ -31,7 +31,6 @@
     "react-native-screens": "4.25.2",
     "react-native-svg": "15.15.4",
     "react-native-tcp-socket": "^6.4.1",
-    "react-native-toast-message": "^2.4.0",
     "react-native-webview": "13.16.1",
     "zustand": "^5.0.14"
   },

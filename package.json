@@ -109,7 +109,6 @@
     "@vercel/node": "^5.1.6",
     "@vitejs/plugin-react-swc": "^3.10.2",
     "better-sqlite3": "^11.10.0",
-    "eas-cli": "^21.8.0",
     "jsdom": "^29.1.1",
     "node-windows": "^1.0.0-beta.8",
     "ts-node": "^10.9.2",

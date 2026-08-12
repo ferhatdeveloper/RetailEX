@@ -72,8 +72,6 @@ import {
     type BeautyFollowUpReminder,
     type BeautyFollowUpReminderAction,
     type BeautyFollowUpReminderStatus,
-    type BeautyFollowupCallStatus,
-    BEAUTY_FOLLOWUP_CALL_STATUSES,
 } from '../types/beauty';
 import { mergeFollowUpRemindersWithActions } from '../utils/beautyFollowUpReminderUtils';
 
@@ -205,15 +203,6 @@ function normalizeFollowUpReminderDays(v: unknown): number | null {
     const n = Math.round(Number(v));
     if (!Number.isFinite(n) || n <= 0) return null;
     return Math.min(3650, n);
-}
-
-function normalizeFollowupCallStatus(v: unknown): BeautyFollowupCallStatus | null {
-    if (v == null) return null;
-    const s = String(v).trim().toLowerCase();
-    if (!s) return null;
-    return (BEAUTY_FOLLOWUP_CALL_STATUSES as readonly string[]).includes(s)
-        ? (s as BeautyFollowupCallStatus)
-        : null;
 }
 
 function normalizeParentCategory(v: unknown): string | null {
@@ -2337,7 +2326,6 @@ export const beautyService = {
                 status: String(r.status ?? 'due') as BeautyFollowUpReminderStatus,
                 postponed_due_date: r.postponed_due_date ? pgCellToYmd(r.postponed_due_date) : undefined,
                 show_natural_when_postponed: Boolean(r.show_natural_when_postponed),
-                call_status: normalizeFollowupCallStatus(r.call_status),
                 note: r.note != null ? String(r.note) : undefined,
             }));
         } catch (e: unknown) {
@@ -2347,138 +2335,6 @@ export const beautyService = {
             );
             return [];
         }
-    },
-
-    /**
-     * Bir müşterinin takip hatırlatması satırlarını `call_status` dahil
-     * getirir. CRM müşteri kartındaki segmentli toggle için kullanılır.
-     */
-    async listCustomerFollowupRemindersByCustomerId(
-        customerId: string,
-    ): Promise<
-        Array<{
-            id: string;
-            customer_id: string;
-            service_id: string;
-            service_name: string | null;
-            due_date: string;
-            natural_due_date: string;
-            last_completed_date: string;
-            reminder_kind: 'service' | 'product';
-            call_status: BeautyFollowupCallStatus;
-            follow_up_status: string;
-            note: string | null;
-        }>
-    > {
-        const id = String(customerId ?? '').trim();
-        if (!id) return [];
-        const fn = erpFirmNrForRow();
-        const table = postgres.getCardTableName('follow_up_reminder_actions', 'beauty');
-        try {
-            const { rows } = await postgres.query<Record<string, unknown>>(
-                `SELECT id::text AS id,
-                        customer_id::text AS customer_id,
-                        service_id::text AS service_id,
-                        service_name,
-                        natural_due_date::text AS natural_due_date,
-                        last_completed_date::text AS last_completed_date,
-                        COALESCE(reminder_kind, 'service') AS reminder_kind,
-                        COALESCE(call_status, 'pending') AS call_status,
-                        COALESCE(status, 'due') AS follow_up_status,
-                        COALESCE(postponed_due_date::text, natural_due_date::text) AS due_date,
-                        note
-                 FROM ${table}
-                 WHERE firm_nr = $1
-                   AND customer_id = $2::uuid
-                   AND COALESCE(status, 'due') <> 'dismissed'
-                 ORDER BY due_date ASC, last_completed_date ASC`,
-                [fn, id],
-            );
-            return rows.map(r => ({
-                id: String(r.id),
-                customer_id: String(r.customer_id),
-                service_id: String(r.service_id),
-                service_name: r.service_name == null ? null : String(r.service_name),
-                due_date: pgCellToYmd(r.due_date) || pgCellToYmd(r.natural_due_date),
-                natural_due_date: pgCellToYmd(r.natural_due_date),
-                last_completed_date: pgCellToYmd(r.last_completed_date),
-                reminder_kind: String(r.reminder_kind) === 'product' ? 'product' : 'service',
-                call_status: normalizeFollowupCallStatus(r.call_status) ?? 'pending',
-                follow_up_status: String(r.follow_up_status ?? 'due'),
-                note: r.note == null ? null : String(r.note),
-            }));
-        } catch (e) {
-            console.warn(
-                '[beautyService] listCustomerFollowupRemindersByCustomerId skipped:',
-                e instanceof Error ? e.message : String(e),
-            );
-            return [];
-        }
-    },
-
-    /**
-     * `beauty.rex_{firmNr}_follow_up_reminder_actions` tablosunda tek bir
-     * hatırlatmanın `call_status` (arama durumu) alanını günceller.
-     * İsteğe bağlı `note` alanı da aynı transaction’da yazılabilir.
-     * `reminderId` bulunamazsa Postgres `0 rows affected` döner; servis sessizce
-     * atlar ve `false` ile biter.
-     */
-    async updateFollowupCallStatus(
-        reminderId: string,
-        status: BeautyFollowupCallStatus | string,
-        note?: string,
-    ): Promise<boolean> {
-        const normalized = normalizeFollowupCallStatus(status);
-        if (!normalized) {
-            throw new Error(
-                `[beautyService] updateFollowupCallStatus: geçersiz arama durumu (${String(status)})`,
-            );
-        }
-        const id = String(reminderId ?? '').trim();
-        if (!id) return false;
-        const fn = erpFirmNrForRow();
-        const table = postgres.getCardTableName('follow_up_reminder_actions', 'beauty');
-        const trimmedNote = note == null ? null : String(note).trim() || null;
-
-        if (shouldUseTenantPostgrestApi()) {
-            try {
-                const { postgrest } = await import('./api/postgrestClient');
-                const patch: Record<string, unknown> = {
-                    call_status: normalized,
-                    updated_at: new Date().toISOString(),
-                };
-                if (trimmedNote !== null) patch.note = trimmedNote;
-                const path = `/rex_${fn}_follow_up_reminder_actions?id=eq.${encodeURIComponent(id)}`;
-                const res = await postgrest.patch(path, patch, {
-                    schema: 'beauty',
-                    prefer: 'return=minimal',
-                });
-                return res != null;
-            } catch (e) {
-                console.warn(
-                    '[beautyService] updateFollowupCallStatus PostgREST denemesi başarısız, SQL fallback:',
-                    e instanceof Error ? e.message : String(e),
-                );
-            }
-        }
-
-        const params: unknown[] = [normalized, fn, id];
-        const sql = trimmedNote != null
-            ? `UPDATE ${table}
-                 SET call_status = $1,
-                     note = $4,
-                     updated_at = NOW()
-               WHERE firm_nr = $2
-                 AND id = $3::uuid`
-            : `UPDATE ${table}
-                 SET call_status = $1,
-                     updated_at = NOW()
-               WHERE firm_nr = $2
-                 AND id = $3::uuid`;
-        if (trimmedNote != null) params.push(trimmedNote);
-        const result = await postgres.query(sql, params);
-        const affected = (result as { rowCount?: number }).rowCount ?? 0;
-        return affected > 0;
     },
 
     async upsertFollowUpReminderAction(
@@ -2491,25 +2347,23 @@ export const beautyService = {
             status === 'postponed' && payload.postponed_due_date
                 ? payload.postponed_due_date
                 : null;
-        const callStatus = normalizeFollowupCallStatus(payload.call_status) ?? 'pending';
         const sql = `
           INSERT INTO ${table} (
             firm_nr, customer_id, service_id, product_id, reminder_kind,
             last_completed_date, natural_due_date, reminder_days,
             customer_name, customer_phone, service_name, product_name,
-            status, postponed_due_date, show_natural_when_postponed, call_status, note, updated_at
+            status, postponed_due_date, show_natural_when_postponed, note, updated_at
           ) VALUES (
             $1, $2::uuid, $3::uuid, $4::uuid, $5,
             $6::date, $7::date, $8,
             $9, $10, $11, $12,
-            $13, $14::date, $15, $16, $17, NOW()
+            $13, $14::date, $15, $16, NOW()
           )
           ON CONFLICT (customer_id, service_id, COALESCE(product_id, '00000000-0000-0000-0000-000000000000'::uuid), last_completed_date, natural_due_date, reminder_kind)
           DO UPDATE SET
             status = EXCLUDED.status,
             postponed_due_date = EXCLUDED.postponed_due_date,
             show_natural_when_postponed = EXCLUDED.show_natural_when_postponed,
-            call_status = EXCLUDED.call_status,
             note = EXCLUDED.note,
             customer_name = EXCLUDED.customer_name,
             customer_phone = EXCLUDED.customer_phone,
@@ -2534,199 +2388,8 @@ export const beautyService = {
             status,
             postponed,
             status === 'postponed' && Boolean(payload.show_natural_when_postponed),
-            callStatus,
             payload.note?.trim() || null,
         ]);
-    },
-
-    /**
-     * Tamamlanan randevu için hizmet kartında `requires_followup_call=true` ve
-     * `control_period_days` tanımlıysa `beauty.rex_{firmNr}_control_followup_calls`
-     * tablosuna bir satır yazar. Aynı müşteri+hizmet+randevu için tekrar tetiklendiğinde
-     * mevcut satır `due_date` ve `note` ile güncellenir.
-     */
-    async scheduleControlFollowupForAppointment(appointmentId: string): Promise<void> {
-        const apt = await beautyService.getAppointmentById(appointmentId);
-        if (!apt) return;
-        const serviceId = String(apt.service_id ?? '').trim();
-        const customerId = String(apt.customer_id ?? apt.client_id ?? '').trim();
-        if (!serviceId || !customerId) return;
-        const fn = erpFirmNrForRow();
-        const svcTbl = postgres.getCardTableName('beauty_services', 'beauty');
-        let followupEnabled = false;
-        let controlDays = 0;
-        let serviceName = '';
-        let customerName = '';
-        let customerPhone = '';
-        try {
-            const { rows } = await postgres.query<Record<string, unknown>>(
-                `SELECT id, name, requires_followup_call, control_period_days
-                 FROM ${svcTbl}
-                 WHERE id = $1::uuid
-                 LIMIT 1`,
-                [serviceId],
-            );
-            const r = rows[0];
-            if (!r) return;
-            followupEnabled = r.requires_followup_call === true;
-            controlDays = Math.round(Number(r.control_period_days ?? 0));
-            serviceName = String(r.name ?? '').trim();
-        } catch (e) {
-            console.warn(
-                '[beautyService] scheduleControlFollowupForAppointment: hizmet kartı okunamadı:',
-                e instanceof Error ? e.message : String(e),
-            );
-            return;
-        }
-        if (!followupEnabled || !Number.isFinite(controlDays) || controlDays <= 0) return;
-        const dueDate = addDaysYmd(pgCellToYmd(apt.appointment_date ?? apt.date), controlDays);
-        const note =
-            `Randevu ${pgCellToYmd(apt.appointment_date ?? apt.date)} tarihinde tamamlandı; ` +
-            `${controlDays} gün sonra kontrol araması planlandı.`;
-        const table = postgres.getCardTableName('control_followup_calls', 'beauty');
-        if (shouldUseTenantPostgrestApi()) {
-            try {
-                const { postgrest } = await import('./api/postgrestClient');
-                const existing = await postgrest.get<{ id: string; status: string }[]>(
-                    `/rex_${fn}_control_followup_calls`,
-                    {
-                        select: 'id,status',
-                        customer_id: `eq.${customerId}`,
-                        service_id: `eq.${serviceId}`,
-                        appointment_id: `eq.${appointmentId}`,
-                        limit: 1,
-                    },
-                    { schema: 'beauty' },
-                );
-                const row = Array.isArray(existing) ? existing[0] : undefined;
-                if (row?.id && row.status === 'done') {
-                    return; /* tamamlanmış aramayı yeniden tetikleme */
-                }
-                const patch = {
-                    firm_nr: fn,
-                    customer_id: customerId,
-                    service_id: serviceId,
-                    appointment_id: appointmentId,
-                    due_date: dueDate,
-                    status: 'pending',
-                    call_status: 'pending',
-                    note,
-                    customer_name: customerName || null,
-                    customer_phone: customerPhone || null,
-                    service_name: serviceName || null,
-                    updated_at: new Date().toISOString(),
-                };
-                if (row?.id) {
-                    await postgrest.patch(
-                        `/rex_${fn}_control_followup_calls?id=eq.${encodeURIComponent(row.id)}`,
-                        patch,
-                        { schema: 'beauty', prefer: 'return=minimal' },
-                    );
-                } else {
-                    await postgrest.post(
-                        `/rex_${fn}_control_followup_calls`,
-                        { id: uuidv4(), ...patch },
-                        { schema: 'beauty', prefer: 'return=minimal' },
-                    );
-                }
-                return;
-            } catch (e) {
-                console.warn(
-                    '[beautyService] scheduleControlFollowupForAppointment PostgREST denemesi başarısız, SQL fallback:',
-                    e instanceof Error ? e.message : String(e),
-                );
-            }
-        }
-        const customerInfo = await postgres.query<{ name: string; phone: string; phone2: string | null }>(
-            `SELECT name, phone, phone2 FROM ${postgres.getCardTableName('customers')}
-             WHERE id = $1::uuid LIMIT 1`,
-            [customerId],
-        );
-        const cRow = customerInfo.rows[0];
-        customerName = String(cRow?.name ?? '').trim();
-        customerPhone = String(cRow?.phone ?? '').trim() || String(cRow?.phone2 ?? '').trim();
-        const id = uuidv4();
-        await postgres.query(
-            `INSERT INTO ${table} (
-                id, firm_nr, customer_id, service_id, appointment_id,
-                due_date, status, call_status, customer_name, customer_phone, service_name, note
-             ) VALUES ($1, $2, $3::uuid, $4::uuid, $5::uuid, $6::date, 'pending', 'pending', $7, $8, $9, $10)
-             ON CONFLICT (customer_id, service_id, COALESCE(appointment_id, '00000000-0000-0000-0000-000000000000'::uuid))
-             DO UPDATE SET
-                due_date = EXCLUDED.due_date,
-                status = CASE WHEN ${table}.status = 'done' THEN ${table}.status ELSE 'pending' END,
-                call_status = CASE WHEN ${table}.call_status = 'done' THEN ${table}.call_status ELSE 'pending' END,
-                note = EXCLUDED.note,
-                customer_name = COALESCE(EXCLUDED.customer_name, ${table}.customer_name),
-                customer_phone = COALESCE(EXCLUDED.customer_phone, ${table}.customer_phone),
-                service_name = COALESCE(EXCLUDED.service_name, ${table}.service_name),
-                updated_at = NOW()`,
-            [
-                id,
-                fn,
-                customerId,
-                serviceId,
-                appointmentId,
-                dueDate,
-                customerName || null,
-                customerPhone || null,
-                serviceName || null,
-                note,
-            ],
-        );
-    },
-
-    async listControlFollowupByCustomerIds(customerIds: string[]): Promise<
-        Array<{
-            id: string;
-            customer_id: string;
-            service_id: string;
-            appointment_id: string | null;
-            due_date: string;
-            status: string;
-            call_status: string;
-            note: string | null;
-            service_name: string | null;
-        }>
-    > {
-        const uuids = filterUuidIds(customerIds);
-        if (!uuids.length) return [];
-        const fn = erpFirmNrForRow();
-        const table = postgres.getCardTableName('control_followup_calls', 'beauty');
-        try {
-            const { rows } = await postgres.query<Record<string, unknown>>(
-                `SELECT id::text AS id,
-                        customer_id::text AS customer_id,
-                        service_id::text AS service_id,
-                        appointment_id::text AS appointment_id,
-                        due_date::text AS due_date,
-                        COALESCE(status, 'pending') AS status,
-                        COALESCE(call_status, 'pending') AS call_status,
-                        note,
-                        service_name
-                 FROM ${table}
-                 WHERE firm_nr = $1
-                   AND customer_id = ANY($2::uuid[])`,
-                [fn, uuids],
-            );
-            return rows.map((r) => ({
-                id: String(r.id),
-                customer_id: String(r.customer_id),
-                service_id: String(r.service_id),
-                appointment_id: r.appointment_id ? String(r.appointment_id) : null,
-                due_date: pgCellToYmd(r.due_date),
-                status: String(r.status ?? 'pending'),
-                call_status: String(r.call_status ?? 'pending'),
-                note: r.note == null ? null : String(r.note),
-                service_name: r.service_name == null ? null : String(r.service_name),
-            }));
-        } catch (e) {
-            console.warn(
-                '[beautyService] listControlFollowupByCustomerIds skipped:',
-                e instanceof Error ? e.message : String(e),
-            );
-            return [];
-        }
     },
 
     async getFollowUpRemindersInRange(startDate: string, endDate: string): Promise<BeautyFollowUpReminder[]> {
@@ -3158,94 +2821,6 @@ export const beautyService = {
         }
     },
 
-    /**
-     * Randevuya bağlı herhangi bir ödeme/fiş kaydı var mı?
-     * - `rex_{firm}_{period}_beauty_sales` üzerinde not bağlantısı (`rex_appt:<uuid>`) veya
-     *   `appointment_id` alanıyla eşleşen `payment_status = 'paid'` kayıt sayısı.
-     * - İptal edilmiş (`payment_status = 'cancelled'`) satırlar hesaba katılmaz.
-     * UI tarafında "ödeme alınmış randevu düzenlenemez" guard’ı için kullanılır.
-     */
-    async hasAppointmentPayment(appointmentId: string): Promise<boolean> {
-        const aid = String(appointmentId ?? '').trim();
-        if (!aid) return false;
-        try {
-            if (shouldUseTenantPostgrestApi()) {
-                const { postgrest } = await import('./api/postgrestClient');
-                const fn = erpFirmNrForRow();
-                const pn = erpPeriodNrForRow();
-                // PostgREST `or` sözdizimi; `appointment_id` uuid olduğundan eq kullanıyoruz.
-                const rows = await postgrest.get<{ id: string }[]>(
-                    `/rex_${fn}_${pn}_beauty_sales`,
-                    {
-                        select: 'id',
-                        payment_status: 'eq.paid',
-                        or: `(appointment_id.eq.${aid},notes.like.*rex_appt:${aid}*)`,
-                        limit: 1,
-                    },
-                    { schema: 'beauty' }
-                );
-                return Array.isArray(rows) && rows.length > 0;
-            }
-        } catch (e) {
-            console.warn('[beautyService] hasAppointmentPayment PostgREST failed, fallback SQL:', e);
-        }
-        try {
-            const table = postgres.getMovementTableName('beauty_sales', 'beauty');
-            const { rows } = await postgres.query<{ c: string | number }>(
-                `SELECT COUNT(*)::int AS c
-                 FROM ${table}
-                 WHERE COALESCE(payment_status, 'paid') = 'paid'
-                   AND (
-                     appointment_id::text = $1
-                     OR COALESCE(notes, '') LIKE $2
-                   )
-                 LIMIT 1`,
-                [aid, `%rex_appt:${aid}%`]
-            );
-            const c = Number(rows?.[0]?.c ?? 0);
-            return c > 0;
-        } catch (e) {
-            console.warn('[beautyService] hasAppointmentPayment SQL failed:', e);
-            return false;
-        }
-    },
-
-    /** Yönetici / şube müdürü şifresinin `public.users` üzerinde geçerli olup olmadığını doğrular.
-     *  bcrypt’li veya düz metin saklanan parolaları kabul eder (POSManagerAuthModal ile aynı semantik).
-     *  `users.role` admin / manager / yönetici / yonetici olmalı; aksi halde reddedilir. */
-    async verifyManagerPassword(opts: {
-        firmNr: string;
-        username?: string | null;
-        password: string;
-    }): Promise<boolean> {
-        const firm = String(opts.firmNr ?? '').trim();
-        const pw = String(opts.password ?? '');
-        if (!firm || !pw) return false;
-        try {
-            const username = String(opts.username ?? '').trim();
-            const params: unknown[] = username ? [firm, username, pw] : [firm, pw];
-            const whereUser = username
-                ? `AND LOWER(COALESCE(NULLIF(u.username, ''), '')) = LOWER($2)`
-                : '';
-            const { rows } = await postgres.query(
-                `SELECT 1 FROM public.users u
-                 LEFT JOIN public.roles r ON r.id = u.role_id
-                 WHERE LPAD(TRIM(COALESCE(u.firm_nr, '')), 3, '0') = LPAD(TRIM($1), 3, '0')
-                   AND u.is_active = true
-                   AND LOWER(COALESCE(NULLIF(u.role, ''), r.name, '')) IN ('admin','manager','yonetici','yönetici')
-                   AND u.password_hash IS NOT NULL
-                   AND (u.password_hash = crypt($${username ? 3 : 2}, u.password_hash) OR u.password_hash = $${username ? 3 : 2})
-                   ${whereUser}
-                 LIMIT 1`,
-                params
-            );
-            return rows.length > 0;
-        } catch (e) {
-            console.warn('[beautyService] verifyManagerPassword failed:', e);
-            return false;
-        }
-    },
-
     /** POS satış notlarında `rex_appt:<uuid>` ile eşlenen ödenmiş kayıtları iptal (ciro dışı). */
     async voidPaidBeautySalesLinkedToAppointment(appointmentId: string): Promise<void> {
         const aid = String(appointmentId ?? '').trim();
@@ -3376,74 +2951,6 @@ export const beautyService = {
         );
     },
 
-    /**
-     * Randevunun müşterisini (client_id) değiştirir; eski müşteri kimliğini
-     * `*_beauty_appointments_customer_changes` audit log tablosuna yazar.
-     * - Aynı müşteriye değişim no-op kabul edilir.
-     * - Not opsiyoneldir; serbest metin (max 500 karakter).
-     * - changedBy yoksa (anonim) null yazılır.
-     */
-    async changeAppointmentCustomer(
-        appointmentId: string,
-        newCustomerId: string,
-        oldCustomerId: string | null,
-        opts: { note?: string | null; changedBy?: string | null } = {},
-    ): Promise<void> {
-        const aid = String(appointmentId ?? '').trim();
-        const newCid = String(newCustomerId ?? '').trim();
-        const oldCid = oldCustomerId == null ? null : String(oldCustomerId).trim() || null;
-        if (!aid) throw new Error('changeAppointmentCustomer: appointmentId gerekli');
-        if (!newCid) throw new Error('changeAppointmentCustomer: newCustomerId gerekli');
-        if (oldCid && oldCid === newCid) return;
-        const note = opts.note ? String(opts.note).trim().slice(0, 500) || null : null;
-        const changedBy = opts.changedBy ? String(opts.changedBy).trim() || null : null;
-
-        if (shouldUseTenantPostgrestApi()) {
-            const { postgrest } = await import('./api/postgrestClient');
-            const fn = erpFirmNrForRow();
-            const pn = erpPeriodNrForRow();
-            await postgrest.patch(
-                `/rex_${fn}_${pn}_beauty_appointments?id=eq.${encodeURIComponent(aid)}`,
-                { client_id: pgUuidOrNull(newCid), updated_at: new Date().toISOString() },
-                { schema: 'beauty', prefer: 'return=minimal' },
-            );
-            await postgrest.post(
-                `/rex_${fn}_${pn}_beauty_appointments_customer_changes`,
-                {
-                    appointment_id: aid,
-                    old_customer_id: pgUuidOrNull(oldCid),
-                    new_customer_id: pgUuidOrNull(newCid),
-                    changed_by: pgUuidOrNull(changedBy),
-                    note,
-                },
-                { schema: 'beauty', prefer: 'return=minimal' },
-            );
-            return;
-        }
-
-        const table = postgres.getMovementTableName('beauty_appointments', 'beauty');
-        const logTable = postgres.getMovementTableName('beauty_appointments_customer_changes', 'beauty');
-        await postgres.query('BEGIN');
-        try {
-            await postgres.query(
-                `UPDATE ${table}
-                 SET client_id = $2, updated_at = NOW()
-                 WHERE id = $1`,
-                [aid, pgUuidOrNull(newCid)],
-            );
-            await postgres.query(
-                `INSERT INTO ${logTable}
-                    (appointment_id, old_customer_id, new_customer_id, changed_by, note)
-                 VALUES ($1, $2, $3, $4, $5)`,
-                [aid, pgUuidOrNull(oldCid), pgUuidOrNull(newCid), pgUuidOrNull(changedBy), note],
-            );
-            await postgres.query('COMMIT');
-        } catch (e) {
-            try { await postgres.query('ROLLBACK'); } catch { /* yutuldu */ }
-            throw e;
-        }
-    },
-
     async updateAppointmentStatus(id: string, status: string): Promise<void> {
         const table = postgres.getMovementTableName('beauty_appointments', 'beauty');
         if (shouldUseTenantPostgrestApi()) {
@@ -3466,14 +2973,6 @@ export const beautyService = {
                 await beautyService.applyConsumableDeductionForAppointment(id);
             } catch {
                 /* stok/sarf yoksa sessizce geç */
-            }
-            try {
-                await beautyService.scheduleControlFollowupForAppointment(id);
-            } catch (e) {
-                console.warn(
-                    '[beautyService] scheduleControlFollowupForAppointment skipped:',
-                    e instanceof Error ? e.message : String(e),
-                );
             }
         }
         if (status === 'cancelled') {

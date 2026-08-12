@@ -2480,9 +2480,7 @@ BEGIN
   EXECUTE format('CREATE TABLE IF NOT EXISTS %I (id UUID PRIMARY KEY DEFAULT gen_random_uuid(), firm_nr VARCHAR(10) NOT NULL, code VARCHAR(50) UNIQUE, name VARCHAR(255) NOT NULL, description TEXT, is_active BOOLEAN DEFAULT true, created_at TIMESTAMPTZ DEFAULT NOW(), updated_at TIMESTAMPTZ DEFAULT NOW());', v_prefix || '_expense_cards');
   EXECUTE format('CREATE TABLE IF NOT EXISTS %I (id UUID PRIMARY KEY DEFAULT gen_random_uuid(), firm_nr VARCHAR(10) NOT NULL, code VARCHAR(50) UNIQUE, name VARCHAR(255) NOT NULL, phone VARCHAR(50), email VARCHAR(255), is_active BOOLEAN DEFAULT true, created_at TIMESTAMPTZ DEFAULT NOW(), updated_at TIMESTAMPTZ DEFAULT NOW());', v_prefix || '_sales_reps');
   EXECUTE format('CREATE TABLE IF NOT EXISTS %I (id UUID PRIMARY KEY DEFAULT gen_random_uuid(), code VARCHAR(50) NOT NULL, name VARCHAR(100) NOT NULL, description TEXT, is_active BOOLEAN DEFAULT true, firm_nr VARCHAR(10) NOT NULL, created_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP, UNIQUE(code, firm_nr));', v_prefix || '_cost_centers');
-  EXECUTE format('CREATE TABLE IF NOT EXISTS %I (id UUID PRIMARY KEY DEFAULT gen_random_uuid(), category VARCHAR(50) NOT NULL, description TEXT NOT NULL, amount DECIMAL(18,2) NOT NULL, payment_method VARCHAR(50) NOT NULL, document_number VARCHAR(100), document_url TEXT, store_id UUID, cost_center_id UUID, expense_date DATE NOT NULL, notes TEXT, created_by UUID, firm_nr VARCHAR(10) NOT NULL, cash_line_id UUID, cash_register_id UUID, status VARCHAR(20) NOT NULL DEFAULT ''draft'', approved_by UUID, approved_at TIMESTAMPTZ, cancelled_by UUID, cancelled_at TIMESTAMPTZ, cancelled_reason TEXT, last_edited_by UUID, last_edited_at TIMESTAMPTZ, reopened_by UUID, reopened_at TIMESTAMPTZ, reopen_reason TEXT, created_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP, CONSTRAINT rex_expenses_status_chk CHECK (status IN (''draft'',''approved'',''cancelled'')));', v_prefix || '_expenses');
-  EXECUTE format('CREATE INDEX IF NOT EXISTS %I ON %I (status)', v_prefix || '_expenses_status_idx', v_prefix || '_expenses');
-  EXECUTE format('CREATE INDEX IF NOT EXISTS %I ON %I (firm_nr, status)', v_prefix || '_expenses_firm_status_idx', v_prefix || '_expenses');
+  EXECUTE format('CREATE TABLE IF NOT EXISTS %I (id UUID PRIMARY KEY DEFAULT gen_random_uuid(), category VARCHAR(50) NOT NULL, description TEXT NOT NULL, amount DECIMAL(18,2) NOT NULL, payment_method VARCHAR(50) NOT NULL, document_number VARCHAR(100), document_url TEXT, store_id UUID, cost_center_id UUID, expense_date DATE NOT NULL, notes TEXT, created_by UUID, firm_nr VARCHAR(10) NOT NULL, cash_line_id UUID, cash_register_id UUID, created_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP);', v_prefix || '_expenses');
   EXECUTE format('GRANT SELECT, INSERT, UPDATE, DELETE ON %I TO anon', v_prefix || '_cost_centers');
   EXECUTE format('GRANT SELECT, INSERT, UPDATE, DELETE ON %I TO anon', v_prefix || '_expenses');
 
@@ -3400,7 +3398,7 @@ RETURNS void AS $$
 DECLARE v_prefix TEXT := lower('rex_' || p_firm_nr);
 BEGIN
   EXECUTE format('CREATE TABLE IF NOT EXISTS beauty.%I (id UUID PRIMARY KEY DEFAULT gen_random_uuid(), name VARCHAR(255) NOT NULL, phone VARCHAR(50), email VARCHAR(255), specialty VARCHAR(100), color VARCHAR(20) DEFAULT ''#9333ea'', commission_rate DECIMAL(5,2) DEFAULT 0, product_unit_commission DECIMAL(15,2) NOT NULL DEFAULT 0, avatar_url TEXT, working_hours JSONB, is_active BOOLEAN DEFAULT true, created_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP, updated_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP)', v_prefix || '_beauty_specialists');
-  EXECUTE format('CREATE TABLE IF NOT EXISTS beauty.%I (id UUID PRIMARY KEY DEFAULT gen_random_uuid(), name VARCHAR(255) NOT NULL, category VARCHAR(50) DEFAULT ''beauty'', parent_category VARCHAR(100), duration_min INTEGER DEFAULT 30, price DECIMAL(15,2) DEFAULT 0, cost_price DECIMAL(15,2) DEFAULT 0, color VARCHAR(20) DEFAULT ''#9333ea'', commission_rate DECIMAL(5,2) DEFAULT 0, description TEXT, requires_device BOOLEAN DEFAULT false, expected_shots INTEGER DEFAULT 0, default_sessions INTEGER NOT NULL DEFAULT 1, follow_up_reminder_days INTEGER, requires_followup_call BOOLEAN NOT NULL DEFAULT false, control_period_days INTEGER, is_active BOOLEAN DEFAULT true, created_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP, updated_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP)', v_prefix || '_beauty_services');
+  EXECUTE format('CREATE TABLE IF NOT EXISTS beauty.%I (id UUID PRIMARY KEY DEFAULT gen_random_uuid(), name VARCHAR(255) NOT NULL, category VARCHAR(50) DEFAULT ''beauty'', parent_category VARCHAR(100), duration_min INTEGER DEFAULT 30, price DECIMAL(15,2) DEFAULT 0, cost_price DECIMAL(15,2) DEFAULT 0, color VARCHAR(20) DEFAULT ''#9333ea'', commission_rate DECIMAL(5,2) DEFAULT 0, description TEXT, requires_device BOOLEAN DEFAULT false, expected_shots INTEGER DEFAULT 0, default_sessions INTEGER NOT NULL DEFAULT 1, follow_up_reminder_days INTEGER, is_active BOOLEAN DEFAULT true, created_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP, updated_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP)', v_prefix || '_beauty_services');
   EXECUTE format('CREATE TABLE IF NOT EXISTS beauty.%I (id UUID PRIMARY KEY DEFAULT gen_random_uuid(), name VARCHAR(255) NOT NULL, description TEXT, service_id UUID, total_sessions INTEGER DEFAULT 1, price DECIMAL(15,2) DEFAULT 0, cost_price DECIMAL(15,2) DEFAULT 0, discount_pct DECIMAL(5,2) DEFAULT 0, validity_days INTEGER DEFAULT 365, color VARCHAR(20) DEFAULT ''#6366f1'', is_active BOOLEAN DEFAULT true, created_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP, updated_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP)', v_prefix || '_beauty_packages');
   EXECUTE format('CREATE TABLE IF NOT EXISTS beauty.%I (id UUID PRIMARY KEY DEFAULT gen_random_uuid(), name VARCHAR(255) NOT NULL, device_type VARCHAR(50) DEFAULT ''laser'', serial_number VARCHAR(100), manufacturer VARCHAR(100), model VARCHAR(100), total_shots BIGINT DEFAULT 0, max_shots BIGINT DEFAULT 500000, maintenance_due DATE, last_maintenance DATE, purchase_date DATE, warranty_expiry DATE, status VARCHAR(20) DEFAULT ''active'', notes TEXT, is_active BOOLEAN DEFAULT true, created_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP, updated_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP)', v_prefix || '_beauty_devices');
   EXECUTE format('CREATE TABLE IF NOT EXISTS beauty.%I (id UUID PRIMARY KEY DEFAULT gen_random_uuid(), name VARCHAR(255) NOT NULL, phone VARCHAR(50), email VARCHAR(255), source VARCHAR(30) DEFAULT ''other'', status VARCHAR(30) DEFAULT ''new'', interested_services JSONB DEFAULT ''[]'', notes TEXT, assigned_to UUID, first_contact_date DATE DEFAULT CURRENT_DATE, last_contact_date DATE, converted_customer_id UUID, lost_reason TEXT, created_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP, updated_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP)', v_prefix || '_beauty_leads');
@@ -3436,7 +3434,6 @@ BEGIN
       status VARCHAR(30) NOT NULL DEFAULT ''due'',
       postponed_due_date DATE,
       show_natural_when_postponed BOOLEAN NOT NULL DEFAULT false,
-      call_status VARCHAR(20) NOT NULL DEFAULT ''pending'',
       note TEXT,
       created_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP,
       updated_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP
@@ -3455,52 +3452,6 @@ BEGIN
     'CREATE INDEX IF NOT EXISTS %I ON beauty.%I (postponed_due_date)',
     v_prefix || '_follow_up_reminder_actions_postponed_idx',
     v_prefix || '_follow_up_reminder_actions'
-  );
-  EXECUTE format(
-    'CREATE TABLE IF NOT EXISTS beauty.%I (
-      id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-      firm_nr VARCHAR(10) NOT NULL,
-      customer_id UUID NOT NULL,
-      service_id UUID NOT NULL,
-      appointment_id UUID,
-      due_date DATE NOT NULL,
-      status VARCHAR(20) NOT NULL DEFAULT ''pending'',
-      call_status VARCHAR(20) NOT NULL DEFAULT ''pending'',
-      customer_name VARCHAR(255),
-      customer_phone VARCHAR(50),
-      service_name VARCHAR(255),
-      note TEXT,
-      created_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP,
-      updated_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP
-    )',
-    v_prefix || '_control_followup_calls'
-  );
-  EXECUTE format(
-    'CREATE INDEX IF NOT EXISTS %I ON beauty.%I (customer_id)',
-    v_prefix || '_control_followup_calls_customer_idx',
-    v_prefix || '_control_followup_calls'
-  );
-  EXECUTE format(
-    'CREATE INDEX IF NOT EXISTS %I ON beauty.%I (service_id)',
-    v_prefix || '_control_followup_calls_service_idx',
-    v_prefix || '_control_followup_calls'
-  );
-  EXECUTE format(
-    'CREATE INDEX IF NOT EXISTS %I ON beauty.%I (due_date)',
-    v_prefix || '_control_followup_calls_due_date_idx',
-    v_prefix || '_control_followup_calls'
-  );
-  EXECUTE format(
-    'CREATE INDEX IF NOT EXISTS %I ON beauty.%I (status)',
-    v_prefix || '_control_followup_calls_status_idx',
-    v_prefix || '_control_followup_calls'
-  );
-  EXECUTE format(
-    'CREATE UNIQUE INDEX IF NOT EXISTS %I ON beauty.%I (
-      customer_id, service_id, COALESCE(appointment_id, ''00000000-0000-0000-0000-000000000000''::uuid)
-    )',
-    v_prefix || '_control_followup_calls_uniq',
-    v_prefix || '_control_followup_calls'
   );
 END;
 $$ LANGUAGE plpgsql;
@@ -3528,9 +3479,6 @@ BEGIN
   EXECUTE format('CREATE TABLE IF NOT EXISTS beauty.%I (id UUID PRIMARY KEY DEFAULT gen_random_uuid(), customer_id UUID NOT NULL, membership_id UUID NOT NULL, start_date DATE, end_date DATE, status VARCHAR(20) DEFAULT ''active'', auto_renew BOOLEAN DEFAULT false, created_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP)', v_prefix || '_beauty_membership_subscriptions');
   EXECUTE format('CREATE TABLE IF NOT EXISTS beauty.%I (id UUID PRIMARY KEY DEFAULT gen_random_uuid(), table_name VARCHAR(80) NOT NULL, record_id UUID, action VARCHAR(40) NOT NULL, user_id UUID, payload_json JSONB DEFAULT ''{}''::jsonb, created_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP)', v_prefix || '_beauty_audit_log');
   EXECUTE format('CREATE TABLE IF NOT EXISTS beauty.%I (id UUID PRIMARY KEY DEFAULT gen_random_uuid(), appointment_id UUID, product_id UUID NOT NULL, qty DECIMAL(15,4) NOT NULL, batch_id UUID, created_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP)', v_prefix || '_beauty_consumable_usage_log');
-  -- Randevu müşteri değişikliği audit log (sıfır kurulum)
-  EXECUTE format('CREATE TABLE IF NOT EXISTS beauty.%I (id UUID PRIMARY KEY DEFAULT gen_random_uuid(), appointment_id UUID NOT NULL, old_customer_id UUID, new_customer_id UUID NOT NULL, changed_by UUID, note TEXT, changed_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP)', v_prefix || '_beauty_appointments_customer_changes');
-  EXECUTE format('CREATE INDEX IF NOT EXISTS %I ON beauty.%I (appointment_id, changed_at DESC)', 'idx_' || v_prefix || '_beauty_appt_cc_apt', v_prefix || '_beauty_appointments_customer_changes');
 END;
 $$ LANGUAGE plpgsql;
 

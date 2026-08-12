@@ -57,19 +57,6 @@ function servicesToSubSections(
     return keys.map(subKey => ({ subKey, items: m.get(subKey) ?? [] }));
 }
 
-export interface AppointmentCustomerDateGroup {
-    customer: string;
-    date: string;
-    items: BeautyAppointment[];
-}
-
-function appointmentCustomerDateGroupKey(apt: BeautyAppointment): string {
-    const date = beautyAppointmentDateKey(apt);
-    const customer = String(apt.customer_id ?? apt.client_id ?? '').trim();
-    if (!customer) return `appointment:${apt.id}`;
-    return `${customer}::${date || 'nodate'}`;
-}
-
 export interface ServiceCategoryDateBoardProps {
     services: BeautyService[];
     appointments: BeautyAppointment[];
@@ -80,7 +67,7 @@ export interface ServiceCategoryDateBoardProps {
     categoryLabels: Record<string, string>;
     /** Gün başlığı için `toLocaleDateString` locale (örn. tr-TR). */
     dayHeaderLocale: string;
-    renderAppointment: (apt: BeautyAppointment, groupedItems?: BeautyAppointment[]) => React.ReactNode;
+    renderAppointment: (apt: BeautyAppointment) => React.ReactNode;
     onAddClick: (dateYmd: string, serviceId: string, opts?: { customerId?: string }) => void;
     followUpBadgeLabel: string;
     followUpBookCtaLabel: string;
@@ -124,13 +111,12 @@ function ServiceBoardServiceCell({
     formatFollowUpPostponedLine,
     noAppointmentsInSlotLabel,
     appointmentsCountTemplate,
-    appointmentGroups,
 }: {
     svc: BeautyService;
     dayStr: string;
     dayApts: BeautyAppointment[];
     followUpReminders: BeautyFollowUpReminder[];
-    renderAppointment: (apt: BeautyAppointment, groupedItems?: BeautyAppointment[]) => React.ReactNode;
+    renderAppointment: (apt: BeautyAppointment) => React.ReactNode;
     onAddClick: (dateYmd: string, serviceId: string, opts?: { customerId?: string }) => void;
     followUpBadgeLabel: string;
     followUpBookCtaLabel: string;
@@ -144,7 +130,6 @@ function ServiceBoardServiceCell({
     formatFollowUpPostponedLine?: (dueDate: string) => string;
     noAppointmentsInSlotLabel: string;
     appointmentsCountTemplate: string;
-    appointmentGroups: Map<string, AppointmentCustomerDateGroup>;
 }) {
     const followUpPhoneLine = (phoneRaw: string | undefined) => String(phoneRaw ?? '').trim();
     const svcApts = dayApts
@@ -155,10 +140,6 @@ function ServiceBoardServiceCell({
             if (ma !== mb) return ma - mb;
             return String(a.id).localeCompare(String(b.id));
         });
-    const groupedSvcApts = svcApts.filter(apt => {
-        const group = appointmentGroups.get(appointmentCustomerDateGroupKey(apt));
-        return group?.items[0]?.id === apt.id && appointmentMatchesService(group.items[0], svc);
-    });
     const svcFollowUps = followUpReminders.filter(
         r => r.due_date === dayStr && r.service_id === String(svc.id),
     );
@@ -344,15 +325,12 @@ function ServiceBoardServiceCell({
                         {noAppointmentsInSlotLabel}
                     </div>
                 ) : (
-                    groupedSvcApts.map((apt, idx) => {
-                        const group = appointmentGroups.get(appointmentCustomerDateGroupKey(apt));
-                        return (
-                            <div key={apt.id} style={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
-                                <span style={{ fontSize: 9, fontWeight: 800, color: '#9ca3af' }}>#{idx + 1}</span>
-                                {renderAppointment(apt, group?.items)}
-                            </div>
-                        );
-                    })
+                    svcApts.map((apt, idx) => (
+                        <div key={apt.id} style={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
+                            <span style={{ fontSize: 9, fontWeight: 800, color: '#9ca3af' }}>#{idx + 1}</span>
+                            {renderAppointment(apt)}
+                        </div>
+                    ))
                 )}
                 <button
                     type="button"
@@ -411,40 +389,6 @@ export function ServiceCategoryDateBoard({
         [appointments],
     );
 
-    const appointmentGroups = useMemo<Map<string, AppointmentCustomerDateGroup>>(() => {
-        const serviceOrder = new Map<string, number>();
-        services.filter(beautyServiceActive).forEach((service, index) => {
-            serviceOrder.set(String(service.id), index);
-        });
-        const groups = new Map<string, AppointmentCustomerDateGroup>();
-        for (const apt of visibleApts) {
-            const date = beautyAppointmentDateKey(apt);
-            const key = appointmentCustomerDateGroupKey(apt);
-            const existing = groups.get(key);
-            if (existing) {
-                existing.items.push(apt);
-                continue;
-            }
-            groups.set(key, {
-                customer: String(apt.customer_name ?? '').trim() || '—',
-                date,
-                items: [apt],
-            });
-        }
-        for (const group of groups.values()) {
-            group.items.sort((a, b) => {
-                const serviceRankA = serviceOrder.get(String(a.service_id ?? '')) ?? Number.MAX_SAFE_INTEGER;
-                const serviceRankB = serviceOrder.get(String(b.service_id ?? '')) ?? Number.MAX_SAFE_INTEGER;
-                if (serviceRankA !== serviceRankB) return serviceRankA - serviceRankB;
-                const ma = parseHhmmToMinutes(a.appointment_time ?? a.time) ?? 0;
-                const mb = parseHhmmToMinutes(b.appointment_time ?? b.time) ?? 0;
-                if (ma !== mb) return ma - mb;
-                return String(a.id).localeCompare(String(b.id));
-            });
-        }
-        return groups;
-    }, [services, visibleApts]);
-
     const groupedMain = useMemo(() => {
         const active = services.filter(beautyServiceActive);
         const byMain = new Map<string, BeautyService[]>();
@@ -489,7 +433,6 @@ export function ServiceCategoryDateBoard({
     const cellProps = {
         followUpReminders,
         renderAppointment,
-        appointmentGroups,
         onAddClick,
         followUpBadgeLabel,
         followUpBookCtaLabel,
