@@ -15,8 +15,15 @@ export interface ScaleCartLineAmounts {
 }
 
 function resolvePricePerKg(product: Product, exchangeRate: number): number {
-  const priceList1 = Number((product as Product & { priceList1?: number }).priceList1 ?? 0);
-  const basePrice = Number(product.price) || 0;
+  const priceLists: number[] = [];
+  for (let i = 1; i <= 6; i++) {
+    const key = `priceList${i}` as keyof Product;
+    priceLists.push(Number((product as Record<string, unknown>)[key as string] ?? 0));
+  }
+  for (const v of priceLists) {
+    if (v > 0) return v;
+  }
+
   const isAutoCalc =
     (product as Product & { autoCalculateUSD?: boolean }).autoCalculateUSD ||
     (product as Product & { auto_calculate_usd?: boolean }).auto_calculate_usd;
@@ -34,11 +41,11 @@ function resolvePricePerKg(product: Product, exchangeRate: number): number {
     ) || exchangeRate;
   if (customRate > 0 && customRate < 10) customRate *= 1000;
 
-  if (priceList1 > 0) return priceList1;
   if (isAutoCalc && saleUsd > 0 && customRate > 0) {
     return saleUsd * customRate;
   }
-  return basePrice;
+
+  return Number(product.price) || 0;
 }
 
 /**

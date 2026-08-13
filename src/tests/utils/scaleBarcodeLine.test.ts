@@ -86,6 +86,50 @@ describe('scaleBarcodeLine', () => {
     const line = buildScaleCartLineAmounts(product, parsed, 1310);
     expect(line!.unitPrice).toBe(13100);
   });
+
+  it('priceList1=0, priceList2>0: etiket/liste fiyatı liste 2\'den gelir', () => {
+    const product = {
+      ...baseProduct,
+      price: 13750,
+      priceList1: 0,
+      priceList2: 14000,
+    } as Product;
+    const parsed: ParsedBarcode = { ...code10Parsed, weight: 380 };
+    const line = buildScaleCartLineAmounts(product, parsed, 1310);
+    expect(line!.unitPrice).toBe(14000);
+  });
+
+  it('priceList1..6 hep 0: price (geriye dönük) kullanılır', () => {
+    const product = {
+      ...baseProduct,
+      price: 13750,
+      priceList1: 0,
+      priceList2: 0,
+      priceList3: 0,
+      priceList4: 0,
+      priceList5: 0,
+      priceList6: 0,
+    } as Product;
+    const parsed: ParsedBarcode = { ...code10Parsed, weight: 380 };
+    const line = buildScaleCartLineAmounts(product, parsed, 1310);
+    expect(line!.unitPrice).toBe(13750);
+  });
+
+  it('priceList önceliği: hangi doluysa ilk onu alır (1 > 2 > ... > 6)', () => {
+    const product = {
+      ...baseProduct,
+      price: 1000,
+      priceList1: 0,
+      priceList2: 0,
+      priceList3: 14000,
+      priceList4: 15000,
+      priceList5: 16000,
+      priceList6: 17000,
+    } as Product;
+    const parsed: ParsedBarcode = { ...code10Parsed, weight: 380 };
+    const line = buildScaleCartLineAmounts(product, parsed, 1310);
+    expect(line!.unitPrice).toBe(14000);
+  });
 });
 
 function roundToStep(value: number, step: number): number {
