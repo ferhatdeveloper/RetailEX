@@ -6,6 +6,7 @@ import React, { useMemo } from 'react';
 import { Plus, Layers, Bell, Phone, CalendarClock, MessageCircle } from 'lucide-react';
 import type { BeautyAppointment, BeautyFollowUpReminder, BeautyService } from '../../../types/beauty';
 import { getFollowUpReminderCardTheme } from '../../../utils/beautyFollowUpReminderUtils';
+import { formatLongDate } from '../../../utils/dateLocale';
 import { beautyAppointmentDateKey } from '../../../utils/dateLocal';
 import { beautyAptVisibleOnSchedule } from '../../../utils/beautyAppointmentVisibility';
 import { beautyServiceMainKey, beautyServiceSubKey, beautyServiceActive } from '../beautyServiceCategoryUtils';
@@ -460,12 +461,7 @@ export function ServiceCategoryDateBoard({
             >
                 {dateKeys.map(dayStr => {
                     const [y, mo, da] = dayStr.split('-').map(Number);
-                    const header = new Date(y, mo - 1, da).toLocaleDateString(dayHeaderLocale, {
-                        weekday: 'long',
-                        day: 'numeric',
-                        month: 'long',
-                        year: 'numeric',
-                    });
+                    const header = formatLongDate(new Date(y, mo - 1, da), dayHeaderLocale);
                     const dayApts = visibleApts.filter(a => beautyAppointmentDateKey(a) === dayStr);
 
                     const mainBlocks = groupedMain.mainKeys.map(mainKey => {

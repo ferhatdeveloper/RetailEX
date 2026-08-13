@@ -4,6 +4,8 @@
 import React, { useMemo, useRef } from 'react';
 import { Plus } from 'lucide-react';
 import { AppointmentStatus, appointmentStatusMatches, BeautyAppointment, BeautyDevice, BeautySpecialist } from '../../../types/beauty';
+import { useLanguage } from '../../../contexts/LanguageContext';
+import { formatWeekdayShort } from '../../../utils/dateLocale';
 import { beautyAppointmentDateKey, formatLocalYmd } from '../../../utils/dateLocal';
 import {
     compareBeautyQueueOrder,
@@ -213,6 +215,8 @@ export function ResourceGroupedDayView({
     dragResourceTitle,
     onResourceColumnDrop,
 }: ResourceGroupedDayViewProps) {
+    const { tm } = useLanguage();
+    const dayHeaderLocale = tm('localeCode');
     const dayStr = formatLocalYmd(currentDate);
     const scheduleApts = useMemo(
         () => appointments.filter(beautyAptVisibleOnSchedule),
@@ -661,6 +665,8 @@ export function ResourceGroupedWeekMatrix({
     dragResourceTitle,
     onResourceCellDrop,
 }: ResourceGroupedWeekMatrixProps) {
+    const { tm } = useLanguage();
+    const dayHeaderLocale = tm('localeCode');
     const suppressCellClickRef = useRef(0);
     const gridApts = useMemo(
         () => appointments.filter(beautyAptVisibleOnSchedule),
@@ -772,7 +778,7 @@ export function ResourceGroupedWeekMatrix({
                                     }}
                                 >
                                     <div style={{ fontSize: 10, fontWeight: 800, color: isToday ? CLINIC.violet : CLINIC.textSub }}>
-                                        {day.toLocaleDateString('tr-TR', { weekday: 'short' })}
+                                        {formatWeekdayShort(day, dayHeaderLocale)}
                                     </div>
                                     <div style={{ fontSize: 15, fontWeight: 800, color: isToday ? CLINIC.violet : CLINIC.textPrimary }}>{day.getDate()}</div>
                                 </div>

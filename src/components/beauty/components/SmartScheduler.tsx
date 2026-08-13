@@ -1,6 +1,7 @@
 
 import React, { useState, useEffect, useMemo, useCallback, useRef } from 'react';
 import { createPortal } from 'react-dom';
+import { formatLongDate, formatMediumDate, formatShortMonthDay, formatWeekdayShort, formatDateTimeMedium } from '../../../utils/dateLocale';
 import {
     ChevronLeft, ChevronRight, Plus, Clock,
     User, Cpu, List, Search, X,
@@ -1016,18 +1017,19 @@ export function SmartScheduler() {
     }, []);
 
     const toolbarDateLabel = useMemo(() => {
+        const loc = scheduleDayHeaderLocale;
         if (view === 'svcboard') {
             const [ys, ms, ds] = serviceBoardRange.start.split('-').map(Number);
             const [ye, me, de] = serviceBoardRange.end.split('-').map(Number);
             const da = new Date(ys, ms - 1, ds);
             const db = new Date(ye, me - 1, de);
-            return `${da.toLocaleDateString('tr-TR', { day: 'numeric', month: 'short' })} – ${db.toLocaleDateString('tr-TR', { day: 'numeric', month: 'short', year: 'numeric' })}`;
+            return `${formatShortMonthDay(da, loc)} – ${formatMediumDate(db, loc)}`;
         }
         if (view === 'agenda') {
             const end = new Date(currentDate.getFullYear(), currentDate.getMonth(), currentDate.getDate());
             end.setDate(end.getDate() + 6);
-            const a = currentDate.toLocaleDateString('tr-TR', { day: 'numeric', month: 'short' });
-            const b = end.toLocaleDateString('tr-TR', { day: 'numeric', month: 'short', year: 'numeric' });
+            const a = formatShortMonthDay(currentDate, loc);
+            const b = formatMediumDate(end, loc);
             return `${a} – ${b}`;
         }
         if (view === 'workweek') {
@@ -1036,10 +1038,10 @@ export function SmartScheduler() {
             const [ye, me, de] = end.split('-').map(Number);
             const da = new Date(ys, ms - 1, ds);
             const db = new Date(ye, me - 1, de);
-            return `${da.toLocaleDateString('tr-TR', { day: 'numeric', month: 'short' })} – ${db.toLocaleDateString('tr-TR', { day: 'numeric', month: 'short', year: 'numeric' })}`;
+            return `${formatShortMonthDay(da, loc)} – ${formatMediumDate(db, loc)}`;
         }
-        return currentDate.toLocaleDateString('tr-TR', { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' });
-    }, [view, currentDate, serviceBoardRange.start, serviceBoardRange.end]);
+        return formatLongDate(currentDate, loc);
+    }, [view, currentDate, serviceBoardRange.start, serviceBoardRange.end, scheduleDayHeaderLocale]);
 
     const saveAptNotesFromPanel = useCallback(async () => {
         if (!selectedApt) return;
@@ -2530,34 +2532,11 @@ export function SmartScheduler() {
                             <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))', gap: 8, marginBottom: 14 }}>
                                 {(() => {
                                     const dk = beautyAppointmentDateKey(selectedApt);
-                                    let dateShown = '—';
-                                    if (dk) {
-                                        try {
-                                            dateShown = new Date(`${dk}T12:00:00`).toLocaleDateString('tr-TR', {
-                                                weekday: 'short',
-                                                day: 'numeric',
-                                                month: 'short',
-                                                year: 'numeric',
-                                            });
-                                        } catch {
-                                            dateShown = dk;
-                                        }
-                                    }
+                                    const dateShown = dk ? formatWeekdayShort(new Date(`${dk}T12:00:00`), scheduleDayHeaderLocale, { fallback: dk }) : '—';
                                     const st = STATUS_CFG[String(selectedApt.status)]?.label ?? String(selectedApt.status ?? '');
                                     const created =
                                         selectedApt.created_at &&
-                                        (() => {
-                                            try {
-                                                return new Date(selectedApt.created_at!).toLocaleString('tr-TR', {
-                                                    day: 'numeric',
-                                                    month: 'short',
-                                                    hour: '2-digit',
-                                                    minute: '2-digit',
-                                                });
-                                            } catch {
-                                                return selectedApt.created_at;
-                                            }
-                                        })();
+                                        formatDateTimeMedium(new Date(selectedApt.created_at), scheduleDayHeaderLocale, { fallback: selectedApt.created_at });
                                     return (
                                         <>
                                             {[
