@@ -908,6 +908,7 @@ export default function MarketPOS({
         scaleSale.unitPrice,
         scaleSale.lineTotal,
         true,
+        true,
       );
       if (added) {
         logger.log(
@@ -955,6 +956,7 @@ export default function MarketPOS({
     customPrice?: number,
     lineSubtotal?: number,
     preserveExactQuantity = false,
+    preserveCustomPrice = false,
   ): boolean => {
     if (isProductExpired(product)) {
       showNotif(tm('productExpiredCannotSell').replace('{name}', product.name || ''), 'error');
@@ -1007,7 +1009,7 @@ export default function MarketPOS({
       lineSubtotal != null
         ? roundPosMoneyAmount(lineSubtotal, saleCurrency)
         : roundPosMoneyAmount(price * normalizedQty, saleCurrency);
-    if (lineSubtotal != null && normalizedQty > 0) {
+    if (lineSubtotal != null && normalizedQty > 0 && !preserveCustomPrice) {
       price = roundPosMoneyAmount(lineGross / normalizedQty, saleCurrency);
     }
 
