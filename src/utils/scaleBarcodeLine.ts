@@ -15,7 +15,8 @@ export interface ScaleCartLineAmounts {
 }
 
 function resolvePricePerKg(product: Product, exchangeRate: number): number {
-  let pricePerKg = Number(product.price) || 0;
+  const priceList1 = Number((product as Product & { priceList1?: number }).priceList1 ?? 0);
+  const basePrice = Number(product.price) || 0;
   const isAutoCalc =
     (product as Product & { autoCalculateUSD?: boolean }).autoCalculateUSD ||
     (product as Product & { auto_calculate_usd?: boolean }).auto_calculate_usd;
@@ -24,23 +25,27 @@ function resolvePricePerKg(product: Product, exchangeRate: number): number {
       (product as Product & { sale_price_usd?: number }).sale_price_usd ??
       0,
   );
-  if (isAutoCalc && saleUsd > 0) {
-    let rate =
-      Number(
-        (product as Product & { customExchangeRate?: number }).customExchangeRate ??
-          (product as Product & { custom_exchange_rate?: number }).custom_exchange_rate ??
-          0,
-      ) || exchangeRate;
-    if (rate > 0 && rate < 10) rate *= 1000;
-    if (rate > 0) pricePerKg = saleUsd * rate;
-  } else {
-    const priceList1 = Number((product as Product & { priceList1?: number }).priceList1 ?? 0);
-    if (priceList1 > 0) pricePerKg = priceList1;
+
+  let customRate =
+    Number(
+      (product as Product & { customExchangeRate?: number }).customExchangeRate ??
+        (product as Product & { custom_exchange_rate?: number }).custom_exchange_rate ??
+        0,
+    ) || exchangeRate;
+  if (customRate > 0 && customRate < 10) customRate *= 1000;
+
+  if (priceList1 > 0) return priceList1;
+  if (isAutoCalc && saleUsd > 0 && customRate > 0) {
+    return saleUsd * customRate;
   }
-  return pricePerKg;
+  return basePrice;
 }
 
-/** Birim fiyat × miktar = satır tutarı; satır toplamı 250 IQD kademesine yuvarlanır. */
+/**
+ * Birim fiyat × miktar = satır tutarı.
+ * Satır toplamı IQD 250 kademesine yuvarlanır; **ürün kartındaki birim fiyat**
+ * (kg başına) **yuvarlanmadan** döner — etiket ve POS kart fiyatı aynı görünür.
+ */
 export function buildScaleCartLineAmounts(
   product: Product,
   parsed: ParsedBarcode,
@@ -63,14 +68,12 @@ export function buildScaleCartLineAmounts(
       const pricePerGr = pricePerKg > 0 ? roundMoneyAmount(pricePerKg / 1000, currency) : 0;
       const quantity =
         pricePerGr > 0 ? Math.max(1, Math.round(lineTotal / pricePerGr)) : 1;
-      const unitPrice =
-        quantity > 0 ? roundPosMoneyAmount(lineTotal / quantity, currency) : lineTotal;
+      const unitPrice = quantity > 0 ? Math.round((lineTotal / quantity) * 1000) / 1000 : 0;
       return { quantity, unitName: 'GR', unitPrice, lineTotal };
     }
     const quantity =
       pricePerKg > 0 ? Math.round((lineTotal / pricePerKg) * 1000) / 1000 : 1;
-    const unitPrice =
-      quantity > 0 ? roundPosMoneyAmount(lineTotal / quantity, currency) : lineTotal;
+    const unitPrice = quantity > 0 ? Math.round((lineTotal / quantity) * 1000) / 1000 : 0;
     return { quantity, unitName: 'KG', unitPrice, lineTotal };
   }
 
@@ -87,8 +90,6 @@ export function buildScaleCartLineAmounts(
     ? roundMoneyAmount(pricePerKg / 1000, currency)
     : pricePerKg;
   const lineTotal = roundPosMoneyAmount(unitPriceBase * quantity, currency);
-  const unitPrice =
-    quantity > 0 ? roundPosMoneyAmount(lineTotal / quantity, currency) : unitPriceBase;
 
-  return { quantity, unitName, unitPrice, lineTotal };
+  return { quantity, unitName, unitPrice: unitPriceBase, lineTotal };
 }
