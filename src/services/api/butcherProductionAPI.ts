@@ -5,6 +5,11 @@
 
 import { postgres, ERP_SETTINGS, DB_SETTINGS } from '../postgres';
 import type { ButcherCostMethod } from '../../utils/butcherCost';
+import type {
+  ButcherRecipeExcelRow,
+  RecipeGroup,
+} from '../../utils/butcherRecipeExcelImport';
+import { productAPI } from './products';
 
 function padFirmNr(): string {
   return String(ERP_SETTINGS.firmNr || '001').trim().padStart(3, '0').slice(0, 10);
@@ -371,6 +376,74 @@ export const butcherProductionAPI = {
       `UPDATE ${px}_butcher_recipes SET is_active = false, updated_at = CURRENT_TIMESTAMP WHERE id = $1`,
       [id],
     );
+  },
+
+  /**
+   * Excel'den gelen grupları (her biri = bir tarif + çıktılar) reçete olarak kaydeder.
+   * Ürün kodları `productAPI.getByCode` ile DB'den çözümlenir; bulunamayan satırlar
+   * `missingCodes` listesinde raporlanır (DB yazımı atlanır).
+   * Idempotent: aynı tarif adı `is_active=true` olarak güncellenir, çıktılar
+   * silinip yeniden yazılır.
+   */
+  async importRecipesFromExcel(groups: RecipeGroup[]): Promise<{
+    created: number;
+    updated: number;
+    missingCodes: string[];
+  }> {
+    await this.ensureTables();
+    const px = firmTablePrefix();
+    const result = { created: 0, updated: 0, missingCodes: [] as string[] };
+
+    const allCodes = [...new Set(groups.flatMap((g) => g.rows.map((r) => r.outputProductCode)))];
+    const codeMap = new Map<string, string>();
+    for (const code of allCodes) {
+      const p = await productAPI.getByCode(code);
+      if (p?.id) codeMap.set(code, p.id);
+      else result.missingCodes.push(code);
+    }
+    if (result.missingCodes.length) {
+      result.missingCodes = [...new Set(result.missingCodes)];
+    }
+
+    for (const group of groups) {
+      const outputs = group.rows
+        .map((r: ButcherRecipeExcelRow, i: number) => {
+          const id = codeMap.get(r.outputProductCode);
+          if (!id) return null;
+          return {
+            productId: id,
+            sortOrder: i,
+            coefficient: 1,
+            standardRatioPercent: r.standardRatioPercent ?? null,
+          };
+        })
+        .filter((o): o is NonNullable<typeof o> => o !== null);
+
+      if (!outputs.length) continue;
+
+      const { rows: existing } = await postgres.query(
+        `SELECT id FROM ${px}_butcher_recipes WHERE name = $1 AND is_active = true LIMIT 1`,
+        [group.recipeName],
+      );
+      const existingId: string | undefined = existing[0]?.id;
+
+      const recipe: ButcherRecipe = {
+        id: existingId,
+        code: null,
+        name: group.recipeName,
+        animalType: group.animalType,
+        inputProductId: null,
+        wasteProductId: null,
+        costMethod: null,
+        isActive: true,
+        outputs,
+      };
+      await this.saveRecipe(recipe);
+      if (existingId) result.updated += 1;
+      else result.created += 1;
+    }
+
+    return result;
   },
 
   async getOrders(limit = 100): Promise<ButcherOrder[]> {

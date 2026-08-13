@@ -51,6 +51,14 @@ import {
 } from '@/utils/butcherCost';
 import { PercentBodyModal, PercentBodyModalScrollBody } from '@/components/shared/PercentBodyModal';
 import { InvoiceCariSelectModal, type InvoiceCariItem } from '@/components/trading/invoices/InvoiceCariSelectModal';
+import {
+  parseButcherRecipeExcelFromBuffer,
+  groupRowsByRecipe,
+  type ButcherRecipeExcelRow,
+  type RecipeGroup,
+} from '@/utils/butcherRecipeExcelImport';
+import { FileSpreadsheet, Upload } from 'lucide-react';
+import type { Product } from '@/core/types/models';
 
 type TabId = 'voucher' | 'recipes' | 'list' | 'reports' | 'settings';
 type ReportId = 'history' | 'waste' | 'yield';
@@ -973,6 +981,13 @@ function RecipeManager({
   const { tm } = useLanguage();
   const [modalOpen, setModalOpen] = useState(false);
   const [editing, setEditing] = useState<ButcherRecipe | null>(null);
+  const [importOpen, setImportOpen] = useState(false);
+  const [importRows, setImportRows] = useState<ButcherRecipeExcelRow[]>([]);
+  const [importGroups, setImportGroups] = useState<RecipeGroup[]>([]);
+  const [importWarnings, setImportWarnings] = useState<string[]>([]);
+  const [importErrors, setImportErrors] = useState<string[]>([]);
+  const [importBusy, setImportBusy] = useState(false);
+  const [importFileName, setImportFileName] = useState('');
   const [name, setName] = useState('');
   const [code, setCode] = useState('');
   const [animalType, setAnimalType] = useState<AnimalType>('sheep');
@@ -1018,6 +1033,58 @@ function RecipeManager({
     setModalOpen(true);
   };
 
+  const closeImport = () => {
+    setImportOpen(false);
+    setImportRows([]);
+    setImportGroups([]);
+    setImportWarnings([]);
+    setImportErrors([]);
+    setImportFileName('');
+  };
+
+  const handleImportFile = async (file: File) => {
+    setImportBusy(true);
+    setImportFileName(file.name);
+    try {
+      const buf = await file.arrayBuffer();
+      const v = await parseButcherRecipeExcelFromBuffer(buf);
+      setImportRows(v.rows);
+      setImportGroups(groupRowsByRecipe(v.rows));
+      setImportWarnings(v.warnings);
+      setImportErrors(v.errors);
+      setImportOpen(true);
+    } catch (e: any) {
+      toast.error(`Excel okunamadı: ${e?.message || String(e)}`);
+    } finally {
+      setImportBusy(false);
+    }
+  };
+
+  const applyImport = async () => {
+    if (!importGroups.length) {
+      toast.error('İçe aktarılacak geçerli grup yok.');
+      return;
+    }
+    setImportBusy(true);
+    try {
+      const r = await butcherProductionAPI.importRecipesFromExcel(importGroups);
+      const miss = r.missingCodes.length;
+      if (miss) {
+        toast.warning(
+          `${r.created} yeni, ${r.updated} güncellendi. ${miss} ürün kodu DB'de bulunamadı (atlandı): ${r.missingCodes.slice(0, 6).join(', ')}${miss > 6 ? '…' : ''}`,
+        );
+      } else {
+        toast.success(`${r.created} yeni, ${r.updated} güncellendi.`);
+      }
+      closeImport();
+      onSaved();
+    } catch (e: any) {
+      toast.error(`İçe aktarım hatası: ${e?.message || String(e)}`);
+    } finally {
+      setImportBusy(false);
+    }
+  };
+
   const save = async () => {
     if (!name.trim()) {
       toast.error(tm('butcherRecipeNameRequired'));
@@ -1061,9 +1128,33 @@ function RecipeManager({
         <p className={cn('text-sm', darkMode ? 'text-gray-400' : 'text-slate-500')}>
           {tm('butcherRecipesHint')}
         </p>
-        <Button type="button" className="bg-amber-600 hover:bg-amber-700 text-white" onClick={openNew}>
-          <Plus className="w-4 h-4 mr-1" /> {tm('butcherNewRecipe')}
-        </Button>
+        <div className="flex gap-2">
+          <label
+            className={cn(
+              'inline-flex items-center cursor-pointer rounded-md border px-3 py-2 text-sm font-medium transition-colors',
+              darkMode
+                ? 'border-gray-700 bg-gray-800 text-gray-200 hover:bg-gray-700'
+                : 'border-slate-200 bg-white text-slate-700 hover:bg-slate-50',
+              importBusy && 'opacity-60 pointer-events-none',
+            )}
+          >
+            <input
+              type="file"
+              accept=".xlsx,.xls"
+              className="hidden"
+              onChange={(e) => {
+                const f = e.target.files?.[0];
+                if (f) void handleImportFile(f);
+                e.target.value = '';
+              }}
+            />
+            <FileSpreadsheet className="w-4 h-4 mr-1 text-emerald-600" />
+            {importBusy ? 'Yükleniyor…' : "Excel'den İçe Aktar"}
+          </label>
+          <Button type="button" className="bg-amber-600 hover:bg-amber-700 text-white" onClick={openNew}>
+            <Plus className="w-4 h-4 mr-1" /> {tm('butcherNewRecipe')}
+          </Button>
+        </div>
       </div>
       <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-3">
         {recipes.map((r) => (
@@ -1168,6 +1259,121 @@ function RecipeManager({
             <Button type="button" variant="outline" onClick={() => setModalOpen(false)}>{tm('cancel')}</Button>
             <Button type="button" className="bg-amber-600 hover:bg-amber-700 text-white" disabled={saving} onClick={() => void save()}>
               <Save className="w-4 h-4 mr-1" /> {tm('save')}
+            </Button>
+          </div>
+        </PercentBodyModal>
+      )}
+
+      {importOpen && (
+        <PercentBodyModal onClose={closeImport} size="wide" ariaLabel="Excel'den Reçete İçe Aktar">
+          <div
+            className={cn(
+              'shrink-0 px-5 py-4 border-b flex justify-between items-center',
+              darkMode ? 'bg-gray-800 border-gray-700' : 'bg-white',
+            )}
+          >
+            <h3 className="font-bold flex items-center gap-2">
+              <Upload className="w-4 h-4 text-emerald-600" /> Excel'den Reçete İçe Aktar
+            </h3>
+            <Button type="button" variant="ghost" size="sm" onClick={closeImport}>
+              ✕
+            </Button>
+          </div>
+          <PercentBodyModalScrollBody className={cn('p-5 space-y-4', darkMode ? 'bg-gray-900' : 'bg-slate-50')}>
+            {importFileName && (
+              <div className={cn('text-xs', darkMode ? 'text-gray-400' : 'text-slate-500')}>
+                Dosya: <span className="font-mono">{importFileName}</span> · {importRows.length} satır · {importGroups.length} reçete
+              </div>
+            )}
+
+            {importErrors.length > 0 && (
+              <div className="rounded-md border border-red-300 bg-red-50 dark:bg-red-900/30 dark:border-red-700 p-3 text-sm">
+                <div className="font-semibold text-red-700 dark:text-red-300 mb-1">Hatalar</div>
+                <ul className="list-disc pl-5 space-y-1">
+                  {importErrors.map((e, i) => (
+                    <li key={i}>{e}</li>
+                  ))}
+                </ul>
+              </div>
+            )}
+
+            {importWarnings.length > 0 && (
+              <details className="rounded-md border border-amber-300 bg-amber-50 dark:bg-amber-900/20 dark:border-amber-700 p-3 text-sm">
+                <summary className="cursor-pointer font-semibold text-amber-800 dark:text-amber-200">
+                  Uyarılar ({importWarnings.length})
+                </summary>
+                <ul className="list-disc pl-5 mt-2 space-y-1 max-h-40 overflow-y-auto">
+                  {importWarnings.slice(0, 50).map((w, i) => (
+                    <li key={i}>{w}</li>
+                  ))}
+                  {importWarnings.length > 50 && <li>…ve {importWarnings.length - 50} uyarı daha.</li>}
+                </ul>
+              </details>
+            )}
+
+            <div className="space-y-2">
+              {importGroups.map((g) => (
+                <div
+                  key={g.recipeName}
+                  className={cn(
+                    'rounded-lg border p-3',
+                    darkMode ? 'bg-gray-800 border-gray-700' : 'bg-white border-slate-200',
+                  )}
+                >
+                  <div className="flex justify-between items-center mb-2">
+                    <div className="font-semibold text-sm">{g.recipeName}</div>
+                    <div className={cn('text-xs', darkMode ? 'text-gray-400' : 'text-slate-500')}>
+                      {g.rows.length} çıktı · {g.animalType} · toplam % {g.totalPercent.toFixed(2)}
+                      {g.totalKg > 0 && ` · ${g.totalKg.toFixed(2)} kg`}
+                    </div>
+                  </div>
+                  <div className="overflow-x-auto">
+                    <table className="w-full text-xs">
+                      <thead className={darkMode ? 'text-gray-400' : 'text-slate-500'}>
+                        <tr className="border-b">
+                          <th className="text-left py-1 pr-2">Kod</th>
+                          <th className="text-left py-1 pr-2">Ad</th>
+                          <th className="text-right py-1 pr-2">Yüzde</th>
+                          <th className="text-right py-1">Kg</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {g.rows.map((r) => (
+                          <tr key={r.rowIndex} className={cn('border-t', darkMode ? 'border-gray-700' : 'border-slate-100')}>
+                            <td className="py-1 pr-2 font-mono">{r.outputProductCode}</td>
+                            <td className="py-1 pr-2">{r.outputProductName}</td>
+                            <td className="py-1 pr-2 text-right">{r.standardRatioPercent ?? '—'}</td>
+                            <td className="py-1 text-right">{r.outputKg ?? '—'}</td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+                </div>
+              ))}
+            </div>
+
+            <div className={cn('text-xs', darkMode ? 'text-gray-400' : 'text-slate-500')}>
+              Kayıt sonrası her tarif için <strong>girdi ürünü</strong> ve <strong>maliyet yöntemi</strong>ni
+              manuel seçmeniz gerekir (Excel'de yok). Kayıttan sonra listeye dönüp her tarif kartına tıklayabilirsiniz.
+            </div>
+          </PercentBodyModalScrollBody>
+          <div
+            className={cn(
+              'shrink-0 px-5 py-3 border-t flex justify-end gap-2',
+              darkMode ? 'bg-gray-800 border-gray-700' : 'bg-white',
+            )}
+          >
+            <Button type="button" variant="outline" onClick={closeImport}>
+              İptal
+            </Button>
+            <Button
+              type="button"
+              className="bg-emerald-600 hover:bg-emerald-700 text-white"
+              disabled={importBusy || !!importErrors.length || !importGroups.length}
+              onClick={() => void applyImport()}
+            >
+              <Upload className="w-4 h-4 mr-1" /> İçe Aktar ({importGroups.length})
             </Button>
           </div>
         </PercentBodyModal>
