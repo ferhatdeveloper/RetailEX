@@ -2179,7 +2179,7 @@ export const RestPOS: React.FC<RestPOSProps> = ({
 
                 {/* ── RIGHT ORDER PANEL ────────────────────────────────── */}
                 <aside
-                    className="bg-white border-l border-gray-200 flex flex-col overflow-hidden w-[440px] md:w-[460px] xl:w-[520px] 2xl:w-[560px] shrink-0"
+                    className="bg-white border-l border-gray-200 flex flex-col overflow-hidden w-[480px] md:w-[520px] lg:w-[560px] xl:w-[620px] 2xl:w-[680px] shrink-0"
                 >
 
                     {/* ── CART ITEMS ── */}
