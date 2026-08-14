@@ -150,6 +150,7 @@ export default function RestaurantModule({
         loadRegions();
         loadRecipes();
         void loadPrinterConfigFromDb();
+        void loadCategories();
     }, []);
 
     useEffect(() => {

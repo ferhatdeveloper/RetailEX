@@ -6,6 +6,13 @@ import {
   printRestaurantHtmlNoPreview,
   type KitchenReceiptLocale,
 } from './restaurantReceiptPrint';
+import {
+  categoryMatchKey,
+  expandCategoryLabels,
+  findCategoryRecord,
+} from './restaurantPrinterCategories';
+
+export { categoryMatchKey, expandCategoryLabels } from './restaurantPrinterCategories';
 
 /** Rota ve menü kategorisi karşılaştırması (trim + NFC); ayarlar ekranı ile aynı olmalı. */
 export function normKitchenCategory(s: string | undefined | null): string {
@@ -21,23 +28,37 @@ function kitchenMenuItemKey(menuItemId: string | undefined | null): string {
   return String(menuItemId ?? '').trim();
 }
 
-export function categoryMatchKey(s: string | undefined | null): string {
-  return normKitchenCategory(s).replace(/\s+/g, ' ').toLocaleLowerCase('tr-TR');
-}
-
-/** Kategori adı / UUID / "ANA › alt" etiketlerini rota kaydıyla eşle. */
+/** Kategori adı / UUID / "ANA › alt" etiketlerini rota kaydıyla eşle; alt kategori ana kategoriden öncelikli. */
 export function findPrinterRouteForLabels(
   printerRoutes: PrinterRouting[],
   labels: Array<string | undefined | null>,
 ): PrinterRouting | undefined {
-  const keys = [...new Set(labels.map(categoryMatchKey).filter((k) => k.length > 0))];
-  if (keys.length === 0) return undefined;
-  const exact = printerRoutes.find((r) => keys.includes(categoryMatchKey(r.categoryId)));
-  if (exact) return exact;
+  const itemKeys = new Set(expandCategoryLabels(labels).map(categoryMatchKey).filter((k) => k.length > 0));
+  if (itemKeys.size === 0 || printerRoutes.length === 0) return undefined;
+
+  let best: { route: PrinterRouting; score: number } | undefined;
+  for (const route of printerRoutes) {
+    const routeKeys = new Set(
+      expandCategoryLabels([route.categoryId]).map(categoryMatchKey).filter((k) => k.length > 0),
+    );
+    let hit = false;
+    for (const rk of routeKeys) {
+      if (itemKeys.has(rk)) {
+        hit = true;
+        break;
+      }
+    }
+    if (!hit) continue;
+    const rec = findCategoryRecord(route.categoryId);
+    const score = rec?.parent_id ? 200 : 100;
+    if (!best || score > best.score) best = { route, score };
+  }
+  if (best) return best.route;
+
   return printerRoutes.find((r) => {
     const rk = categoryMatchKey(r.categoryId);
     if (!rk) return false;
-    return keys.some(
+    return [...itemKeys].some(
       (k) =>
         k === rk ||
         k.startsWith(`${rk} `) ||
@@ -57,13 +78,27 @@ function collectCategoryLabels(item: OrderItem, menu: MenuItem[]): Array<string 
     const menuRow = menu.find((m) => kitchenMenuItemKey(m.id) === idKey);
     if (menuRow?.category) labels.push(menuRow.category);
     const p = useProductStore.getState().products.find((pr) => kitchenMenuItemKey(pr.id) === idKey) as
-      | { category?: string; group_name?: string; categoryId?: string }
+      | {
+          category?: string;
+          group_name?: string;
+          categoryId?: string;
+          categoryCode?: string;
+          groupCode?: string;
+          subGroupCode?: string;
+        }
       | undefined;
     if (p) {
-      labels.push(p.category, p.group_name, p.categoryId != null ? String(p.categoryId) : undefined);
+      labels.push(
+        p.category,
+        p.group_name,
+        p.categoryCode,
+        p.groupCode,
+        p.subGroupCode,
+        p.categoryId != null ? String(p.categoryId) : undefined,
+      );
     }
   }
-  return labels;
+  return expandCategoryLabels(labels);
 }
 
 export function findPrinterRouteForOrderItem(

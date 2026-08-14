@@ -795,6 +795,8 @@ export const useRestaurantStore = create<RestaurantState>()(
 
             loadCategories: async () => {
                 const categories = await categoryAPI.getAll();
+                const { rememberRestaurantCategories } = await import('../../../utils/restaurantPrinterCategories');
+                rememberRestaurantCategories(categories);
                 set({ categories });
             },
 

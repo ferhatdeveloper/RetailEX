@@ -5,8 +5,6 @@ import {
     Trash2,
     Settings,
     RefreshCcw,
-    Save,
-    Check,
     AlertCircle,
     Network,
     Usb,
@@ -17,8 +15,13 @@ import { useProductStore } from '../../../store/useProductStore';
 import { PrinterProfile, PrinterRouting } from '../types';
 import { v4 as uuidv4 } from 'uuid';
 import { cn } from '@/components/ui/utils';
+import { PercentBodyModal, PercentBodyModalScrollBody } from '../../shared/PercentBodyModal';
 import { mergeWindowsPrinterNameIntoLocalStorage } from '@/utils/tauriPrintSettings';
-import { categoryMatchKey } from '@/utils/restaurantKitchenPrint';
+import {
+    buildPrinterCategoryRouteRows,
+    findRouteForCategoryRow,
+    rememberRestaurantCategories,
+} from '@/utils/restaurantPrinterCategories';
 import { useRestaurantModuleTm } from '../hooks/useRestaurantModuleTm';
 
 export const RestaurantPrinterSettings: React.FC = () => {
@@ -35,9 +38,11 @@ export const RestaurantPrinterSettings: React.FC = () => {
         setCommonPrinter,
         setPrintViaWindowsService,
         menu,
+        categories: masterCategories,
         systemPrinters,
         loadSystemPrinters,
         loadMenu,
+        loadCategories,
     } = useRestaurantStore();
 
     const refreshMenuFromProducts = useCallback(async () => {
@@ -46,29 +51,30 @@ export const RestaurantPrinterSettings: React.FC = () => {
         } catch {
             /* ağ yoksa bile menüyü mevcut stokla türet */
         }
-        await loadMenu();
-    }, [loadMenu]);
+        await Promise.all([loadMenu(), loadCategories()]);
+    }, [loadMenu, loadCategories]);
 
     useEffect(() => {
         loadSystemPrinters();
         void refreshMenuFromProducts();
     }, [loadSystemPrinters, refreshMenuFromProducts]);
 
+    useEffect(() => {
+        if (masterCategories.length > 0) rememberRestaurantCategories(masterCategories);
+    }, [masterCategories]);
+
     const [editingProfile, setEditingProfile] = useState<Partial<PrinterProfile> | null>(null);
 
-    /** Menü ürünlerinden + DB’de kayıtlı rotalardan (yetim kategori kaybolmasın) */
-    const categories = useMemo(() => {
-        const set = new Set<string>();
-        for (const item of menu) {
-            const c = item.category != null ? String(item.category).trim() : '';
-            if (c) set.add(c);
-        }
-        for (const r of printerRoutes) {
-            const c = r.categoryId != null ? String(r.categoryId).trim() : '';
-            if (c) set.add(c);
-        }
-        return Array.from(set).sort((a, b) => a.localeCompare(b, 'tr'));
-    }, [menu, printerRoutes]);
+    /** Kategori kartı + ürün stoğu + kayıtlı rotalar (yetim satır kaybolmasın) */
+    const categoryRows = useMemo(
+        () =>
+            buildPrinterCategoryRouteRows({
+                categories: masterCategories,
+                extraLabels: menu.map((item) => String(item.category ?? '').trim()).filter(Boolean),
+                existingRouteIds: printerRoutes.map((r) => String(r.categoryId ?? '').trim()).filter(Boolean),
+            }),
+        [masterCategories, menu, printerRoutes],
+    );
 
     /** Silinmiş profile kalan ortak yazıcı id’si — seçim boş görünmesin */
     const commonPrinterSelectValue =
@@ -241,20 +247,23 @@ export const RestaurantPrinterSettings: React.FC = () => {
 
                 {/* 4. Kategori rotalama — ortak yazıcının altında */}
                 <div className="bg-white rounded-[32px] p-8 shadow-sm border border-slate-100">
-                        <div className="flex items-center gap-3 mb-8">
+                        <div className="flex items-center gap-3 mb-4">
                             <div className="p-3 bg-emerald-50 rounded-2xl text-emerald-600">
                                 <Tag className="w-6 h-6" />
                             </div>
-                            <h2 className="text-xl font-black text-slate-800 tracking-tight">{tm('restPrintRouteTitle')}</h2>
+                            <div className="min-w-0">
+                                <h2 className="text-xl font-black text-slate-800 tracking-tight">{tm('restPrintRouteTitle')}</h2>
+                                <p className="text-sm text-slate-600 mt-1 leading-snug">{tm('restPrintRouteHint')}</p>
+                            </div>
                         </div>
 
-                        <p className="text-sm text-slate-600 mb-2 leading-relaxed">{tm('restPrintRouteHint')}</p>
                         <p className="text-xs text-amber-900 bg-amber-50 border border-amber-200 rounded-xl px-3 py-2 mb-4 leading-relaxed">
                             {tm('restPrintRouteDispatchBanner')}
                         </p>
+                        <p className="text-xs text-slate-500 font-semibold mb-4">{tm('restPrintRouteMainHint')}</p>
 
-                        <div className="space-y-4">
-                            {categories.length === 0 ? (
+                        <div className="space-y-2">
+                            {categoryRows.length === 0 ? (
                                 <div className="rounded-2xl border-2 border-dashed border-slate-200 bg-slate-50/80 px-4 py-8 text-center">
                                     <AlertCircle className="w-10 h-10 text-amber-500 mx-auto mb-3" />
                                     <p className="text-slate-800 font-semibold text-sm mb-1">{tm('restPrintNoCategoriesTitle')}</p>
@@ -269,17 +278,28 @@ export const RestaurantPrinterSettings: React.FC = () => {
                                     </button>
                                 </div>
                             ) : (
-                                categories.map((cat) => {
-                                    const route = printerRoutes.find(
-                                        (r) => categoryMatchKey(r.categoryId) === categoryMatchKey(cat)
-                                    );
+                                categoryRows.map((row) => {
+                                    const route = findRouteForCategoryRow(printerRoutes, row);
                                     const selectValue =
                                         route?.printerId && printerProfiles.some((p) => p.id === route.printerId)
                                             ? route.printerId
                                             : '';
                                     return (
-                                        <div key={cat} className="space-y-2">
-                                            <label className="text-xs font-bold text-slate-600 uppercase tracking-wide pl-1">{cat}</label>
+                                        <div
+                                            key={row.key}
+                                            className={cn(
+                                                'flex flex-col sm:flex-row sm:items-center gap-2 sm:gap-4 rounded-2xl border px-3 py-2.5',
+                                                row.depth === 0
+                                                    ? 'bg-slate-50 border-slate-200'
+                                                    : 'bg-white border-slate-100 ml-4 sm:ml-8',
+                                            )}
+                                        >
+                                            <label className={cn(
+                                                'min-w-0 flex-1 text-sm font-bold text-slate-800',
+                                                row.depth === 0 ? 'uppercase tracking-wide' : 'font-semibold normal-case',
+                                            )}>
+                                                {row.label}
+                                            </label>
                                             <select
                                                 value={selectValue}
                                                 onChange={(e) => {
@@ -288,7 +308,7 @@ export const RestaurantPrinterSettings: React.FC = () => {
                                                         const profile = printerProfiles.find((p) => p.id === pId);
                                                         updatePrinterRoute({
                                                             id: route?.id || uuidv4(),
-                                                            categoryId: cat,
+                                                            categoryId: row.key,
                                                             printerId: pId,
                                                             printerName: profile?.name || '',
                                                             printerType: profile?.type || 'thermal',
@@ -298,7 +318,7 @@ export const RestaurantPrinterSettings: React.FC = () => {
                                                         removePrinterRoute(route.id);
                                                     }
                                                 }}
-                                                className="w-full bg-slate-50 border border-slate-200 rounded-2xl min-h-12 px-4 py-2 text-sm font-semibold text-slate-900 focus:ring-2 focus:ring-emerald-500 outline-none transition-all"
+                                                className="w-full sm:w-72 shrink-0 bg-white border border-slate-200 rounded-xl min-h-11 px-3 py-2 text-sm font-semibold text-slate-900 focus:ring-2 focus:ring-emerald-500 outline-none transition-all"
                                             >
                                                 <option value="">{tm('restPrintStationPlaceholder')}</option>
                                                 {printerProfiles.map((p) => (
@@ -320,13 +340,12 @@ export const RestaurantPrinterSettings: React.FC = () => {
                 </div>
             </div>
 
-            {/* Edit Modal Placeholder */}
             {editingProfile && (
-                <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-sm z-[100] flex items-center justify-center p-4">
-                    <div className="bg-white rounded-[40px] w-full max-w-md p-10 shadow-2xl animate-in zoom-in-95 duration-300">
-                        <h3 className="text-2xl font-black text-slate-800 tracking-tight mb-8">{tm('restPrintModalTitle')}</h3>
-
-                        <div className="space-y-6">
+                <PercentBodyModal onClose={() => setEditingProfile(null)} size="compact" ariaLabel={tm('restPrintModalTitle')}>
+                    <div className="shrink-0 px-8 pt-8 pb-2">
+                        <h3 className="text-2xl font-black text-slate-800 tracking-tight">{tm('restPrintModalTitle')}</h3>
+                    </div>
+                    <PercentBodyModalScrollBody className="px-8 py-4 space-y-6">
                             <div className="space-y-2">
                                 <label className="text-[10px] font-black text-slate-400 tracking-[0.2em] pl-1">{tm('restPrintNameLabel')}</label>
                                 <input
@@ -365,7 +384,7 @@ export const RestaurantPrinterSettings: React.FC = () => {
                             </div>
 
                             {editingProfile.connection === 'system' && (
-                                <div className="space-y-2 animate-in slide-in-from-top-2 duration-300">
+                                <div className="space-y-2">
                                     <label className="text-[10px] font-black text-slate-400 tracking-[0.2em] pl-1">{tm('restPrintWinList')}</label>
                                     <select
                                         value={editingProfile.systemName || ''}
@@ -381,7 +400,7 @@ export const RestaurantPrinterSettings: React.FC = () => {
                             )}
 
                             {editingProfile.connection === 'network' && (
-                                <div className="space-y-4 animate-in slide-in-from-top-2 duration-300">
+                                <div className="space-y-4">
                                     <div className="space-y-2">
                                         <label className="text-[10px] font-black text-slate-400 tracking-[0.2em] pl-1">{tm('restPrintIpLabel')}</label>
                                         <input
@@ -411,8 +430,8 @@ export const RestaurantPrinterSettings: React.FC = () => {
                                     </div>
                                 </div>
                             )}
-
-                            <div className="flex gap-4 mt-10">
+                    </PercentBodyModalScrollBody>
+                    <div className="shrink-0 flex gap-4 px-8 pb-8 pt-2">
                                 <button
                                     onClick={() => setEditingProfile(null)}
                                     className="flex-1 px-6 py-4 bg-slate-100 hover:bg-slate-200 text-slate-600 rounded-2xl font-black uppercase text-xs transition-all"
@@ -425,10 +444,8 @@ export const RestaurantPrinterSettings: React.FC = () => {
                                 >
                                     {tm('restPrintSave')}
                                 </button>
-                            </div>
-                        </div>
                     </div>
-                </div>
+                </PercentBodyModal>
             )}
         </div>
     );

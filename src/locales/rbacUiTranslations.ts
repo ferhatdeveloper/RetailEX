@@ -293,10 +293,16 @@ export const restPrinterUiTranslations: Record<string, Entry> = {
   },
   restPrintRouteTitle: { tr: 'Kategori rotalama', en: 'Category routing', ar: 'توجيه الفئات', ku: 'ڕێڕەوی هاوپۆل' },
   restPrintRouteHint: {
-    tr: 'Her ürün kategorisi için mutfak fişinin gideceği profili seçin. Liste, ürün stoğundaki kategori alanlarından oluşur.',
-    en: 'Choose the printer profile for each category’s kitchen ticket. The list comes from product categories in stock.',
-    ar: 'اختر ملف الطابعة لكل فئة لإيصال المطبخ. تُبنى القائمة من فئات المنتجات.',
-    ku: 'بۆ هەر هاوپۆلێک پڕۆفایلی چاپکەر هەڵبژێرە.',
+    tr: 'Her kategori (ve alt kategori) için mutfak fişinin gideceği yazıcıyı seçin. Liste stok kategori kartlarından gelir; alt kategori yoksa ana kategori yazıcısı kullanılır.',
+    en: 'Pick a printer for each category and subcategory kitchen ticket. The list comes from stock categories; parent printer is used when a subcategory has no route.',
+    ar: 'اختر طابعة لكل فئة وفئة فرعية لإيصال المطبخ. تُبنى القائمة من فئات المخزون.',
+    ku: 'بۆ هەر هاوپۆل و ژێرهاوپۆلێک چاپکەر هەڵبژێرە.',
+  },
+  restPrintRouteMainHint: {
+    tr: 'Alt kategoriye özel yazıcı yoksa ana kategorinin yazıcısı kullanılır. İkisi de boşsa ortak yazıcıya düşer.',
+    en: 'If a subcategory has no printer, the parent category printer is used. If both are empty, the shared printer is used.',
+    ar: 'إن لم تُحدد طابعة للفئة الفرعية تُستخدم طابعة الفئة الرئيسية، وإلا الطابعة المشتركة.',
+    ku: 'ئەگەر ژێرهاوپۆل بەتاڵ بێت، هاوپۆلی سەرەکی؛ هەردووکیان بەتاڵ بن چاپکەری هاوبەش.',
   },
   restPrintRouteDispatchBanner: {
     tr: 'DeskApp mutfak fişi: «Sistem yazıcısı» → Windows’ta HTML fiş (Edge+PDF). «Ağ (IP)» → aynı ağdaki termale ham ESC/POS (varsayılan port 9100). Web tarayıcısında yalnızca HTML yazdırma kullanılabilir.',
@@ -306,7 +312,7 @@ export const restPrinterUiTranslations: Record<string, Entry> = {
   },
   restPrintNoCategoriesTitle: { tr: 'Henüz kategori yok', en: 'No categories yet', ar: 'لا فئات بعد', ku: 'هاوپۆل نییە' },
   restPrintNoCategoriesBody: {
-    tr: 'Ürünler yüklenmediyse veya tüm ürünlerde kategori alanı boşsa bu liste görünmez. Stokta kategorisi olan ürünler yüklendikten sonra burada satırlar belirir.',
+    tr: 'Kategori kartı yoksa veya ürünlerde kategori boşsa bu liste görünmez. Stok → Kategoriler tanımlayın veya ürünlere kategori bağlayın, ardından «Yeniden yükle» deyin.',
     en: 'If products are not loaded or categories are empty, this list stays empty.',
     ar: 'إذا لم تُحمَّل المنتجات أو كانت الفئات فارغة، تبقى القائمة فارغة.',
     ku: 'ئەگەر بەرهەم نەبێت لیست بەتاڵە.',
@@ -318,7 +324,7 @@ export const restPrinterUiTranslations: Record<string, Entry> = {
     ku: 'دووبارەی بارکردنی مێنو',
   },
   restPrintStationPlaceholder: {
-    tr: 'İstasyon seçin…',
+    tr: 'Ortak yazıcı (yedek)…',
     en: 'Select station…',
     ar: 'اختر المحطة…',
     ku: 'وەستگە هەڵبژێرە…',
