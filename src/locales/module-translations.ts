@@ -2095,6 +2095,18 @@ export const moduleTranslations: Record<string, Record<Language, string>> = {
     ar: 'ابحث عن صنف أو فئة...',
     ku: 'بگەڕێ بۆ بەرهەم یان پۆل...',
   },
+  resPosEmptyTitle: {
+    tr: 'Gösterilecek ürün yok',
+    en: 'No products to show',
+    ar: 'لا توجد أصناف للعرض',
+    ku: 'هیچ بەرهەمێک نییە بۆ پیشاندن',
+  },
+  resPosEmptySubtitle: {
+    tr: 'Soldaki kategorilerden birini seçin ya da üstteki arama kutusuna ürün adı yazın.',
+    en: 'Pick a category on the left or type a product name in the search box above.',
+    ar: 'اختر فئة من اليسار أو اكتب اسم الصنف في مربع البحث أعلاه.',
+    ku: 'پۆلێک لە چەپ هەڵبژێرە یان ناوی بەرهەم لە سندوقی گەڕان لە سەرەوە بنووسە.',
+  },
   resPosStaffSelect: { tr: 'Personel Seç', en: 'Select staff', ar: 'اختر موظفًا', ku: 'کارمەند هەڵبژێرە' },
   resPosReceiptList: { tr: 'FİŞ LİSTESİ', en: 'RECEIPT LIST', ar: 'قائمة الإيصالات', ku: 'لیستی پسوڵە' },
   resPosPrint80: { tr: 'YAZDIR (80mm)', en: 'PRINT (80mm)', ar: 'طباعة (80مم)', ku: 'چاپ (80mm)' },

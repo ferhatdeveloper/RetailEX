@@ -2056,6 +2056,29 @@ export const RestPOS: React.FC<RestPOSProps> = ({
 
                 {/* ── PRODUCTS GRID ────────────────────────────────────── */}
                 <main className="flex-1 min-w-0 overflow-y-auto overflow-x-hidden p-4 lg:p-5 bg-slate-100">
+                    {filtered.length === 0 && (
+                        <div className="h-full min-h-[60vh] flex flex-col items-center justify-center text-center px-6 py-10 select-none">
+                            <div className="relative">
+                                <div className="absolute inset-0 blur-3xl opacity-30 bg-blue-300 rounded-full" aria-hidden />
+                                <div className="relative w-44 h-44 lg:w-56 lg:h-56 rounded-full bg-gradient-to-br from-blue-50 via-white to-slate-100 border border-slate-200/80 shadow-xl flex items-center justify-center">
+                                    <UtensilsCrossed
+                                        className="w-20 h-20 lg:w-28 lg:h-28 text-blue-500/80 drop-shadow-sm"
+                                        strokeWidth={1.4}
+                                    />
+                                    <span className="absolute -bottom-1 -right-1 w-12 h-12 lg:w-14 lg:h-14 rounded-full bg-white border border-slate-200 shadow-md flex items-center justify-center">
+                                        <Search className="w-5 h-5 lg:w-6 lg:h-6 text-slate-400" strokeWidth={2} />
+                                    </span>
+                                </div>
+                            </div>
+                            <h3 className="mt-6 text-[18px] lg:text-[20px] font-black text-slate-700 tracking-tight">
+                                {tmR('resPosEmptyTitle')}
+                            </h3>
+                            <p className="mt-2 text-[12px] lg:text-[13px] text-slate-500 max-w-md leading-relaxed">
+                                {tmR('resPosEmptySubtitle')}
+                            </p>
+                        </div>
+                    )}
+                    {filtered.length > 0 && (
                     <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 2xl:grid-cols-6 gap-4 content-start">
                         {filtered.map(product => {
                             const pm = parseMainSub(product);
@@ -2151,11 +2174,12 @@ export const RestPOS: React.FC<RestPOSProps> = ({
                             );
                         })}
                     </div>
+                    )}
                 </main>
 
                 {/* ── RIGHT ORDER PANEL ────────────────────────────────── */}
                 <aside
-                    className="bg-white border-l border-gray-200 flex flex-col overflow-hidden w-[360px] md:w-[400px] xl:w-[440px] 2xl:w-[460px] shrink-0"
+                    className="bg-white border-l border-gray-200 flex flex-col overflow-hidden w-[380px] md:w-[460px] xl:w-[520px] 2xl:w-[560px] shrink-0"
                 >
 
                     {/* ── CART ITEMS ── */}
