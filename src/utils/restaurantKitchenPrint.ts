@@ -21,6 +21,59 @@ function kitchenMenuItemKey(menuItemId: string | undefined | null): string {
   return String(menuItemId ?? '').trim();
 }
 
+export function categoryMatchKey(s: string | undefined | null): string {
+  return normKitchenCategory(s).replace(/\s+/g, ' ').toLocaleLowerCase('tr-TR');
+}
+
+/** Kategori adı / UUID / "ANA › alt" etiketlerini rota kaydıyla eşle. */
+export function findPrinterRouteForLabels(
+  printerRoutes: PrinterRouting[],
+  labels: Array<string | undefined | null>,
+): PrinterRouting | undefined {
+  const keys = [...new Set(labels.map(categoryMatchKey).filter((k) => k.length > 0))];
+  if (keys.length === 0) return undefined;
+  const exact = printerRoutes.find((r) => keys.includes(categoryMatchKey(r.categoryId)));
+  if (exact) return exact;
+  return printerRoutes.find((r) => {
+    const rk = categoryMatchKey(r.categoryId);
+    if (!rk) return false;
+    return keys.some(
+      (k) =>
+        k === rk ||
+        k.startsWith(`${rk} `) ||
+        k.includes(` › ${rk}`) ||
+        k.includes(`> ${rk}`) ||
+        k.startsWith(`${rk}›`) ||
+        rk.startsWith(`${k} `) ||
+        rk.includes(` › ${k}`),
+    );
+  });
+}
+
+function collectCategoryLabels(item: OrderItem, menu: MenuItem[]): Array<string | undefined> {
+  const labels: Array<string | undefined> = [resolveOrderItemCategoryLabel(item, menu)];
+  const idKey = kitchenMenuItemKey(item.menuItemId);
+  if (idKey) {
+    const menuRow = menu.find((m) => kitchenMenuItemKey(m.id) === idKey);
+    if (menuRow?.category) labels.push(menuRow.category);
+    const p = useProductStore.getState().products.find((pr) => kitchenMenuItemKey(pr.id) === idKey) as
+      | { category?: string; group_name?: string; categoryId?: string }
+      | undefined;
+    if (p) {
+      labels.push(p.category, p.group_name, p.categoryId != null ? String(p.categoryId) : undefined);
+    }
+  }
+  return labels;
+}
+
+export function findPrinterRouteForOrderItem(
+  item: OrderItem,
+  menu: MenuItem[],
+  printerRoutes: PrinterRouting[],
+): PrinterRouting | undefined {
+  return findPrinterRouteForLabels(printerRoutes, collectCategoryLabels(item, menu));
+}
+
 /** loadMenu ile aynı kategori türetimi; menü satırı yoksa ürün stoğundan yedek. */
 function resolveOrderItemCategoryLabel(item: OrderItem, menu: MenuItem[]): string {
   const idKey = kitchenMenuItemKey(item.menuItemId);
@@ -74,19 +127,7 @@ function resolveKitchenPrintTarget(
   printerRoutes: PrinterRouting[],
   commonProfile: PrinterProfile | undefined
 ): KitchenResolvedTarget {
-  const idKey = kitchenMenuItemKey(item.menuItemId);
-  const cat = resolveOrderItemCategoryLabel(item, menu);
-
-  let route = cat ? printerRoutes.find((r) => normKitchenCategory(r.categoryId) === cat) : undefined;
-  if (!route && idKey) {
-    const p = useProductStore.getState().products.find((pr) => kitchenMenuItemKey(pr.id) === idKey) as
-      | { categoryId?: string }
-      | undefined;
-    const pid = p?.categoryId != null ? normKitchenCategory(String(p.categoryId)) : '';
-    if (pid) {
-      route = printerRoutes.find((r) => normKitchenCategory(r.categoryId) === pid);
-    }
-  }
+  const route = findPrinterRouteForOrderItem(item, menu, printerRoutes);
 
   const profRoute = route ? printerProfiles.find((p) => p.id === route.printerId) : undefined;
 
@@ -95,7 +136,7 @@ function resolveKitchenPrintTarget(
     if (p.connection === 'network' && p.address?.trim()) {
       return { kind: 'network', host: p.address.trim(), port: clampEscPosPort(p.port) };
     }
-    if (p.connection === 'system' && p.systemName?.trim()) {
+    if (p.systemName?.trim()) {
       return { kind: 'system', windowsPrinter: p.systemName.trim() };
     }
     return null;

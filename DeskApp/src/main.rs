@@ -1593,14 +1593,122 @@ fn get_default_printer_name_windows() -> Option<String> {
     }
 }
 
-/// `printer_name` doluysa onu kullan; değilse Windows varsayılan yazıcı adını çöz (fiziksel yazıcı için gerekli).
+/// Windows'ta yüklü yazıcı adları (Get-Printer).
+#[cfg(windows)]
+fn list_windows_printer_names() -> Vec<String> {
+    use std::process::Command;
+    let ps = "[Console]::OutputEncoding = [Text.UTF8Encoding]::new($false); @(Get-Printer | Select-Object -ExpandProperty Name) | ConvertTo-Json -Compress";
+    let output = Command::new("powershell")
+        .args([
+            "-NoProfile",
+            "-NonInteractive",
+            "-ExecutionPolicy",
+            "Bypass",
+            "-Command",
+            ps,
+        ])
+        .platform_no_window()
+        .output()
+        .ok();
+    let Some(output) = output else {
+        return vec![];
+    };
+    if !output.status.success() {
+        return vec![];
+    }
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    let trimmed = stdout.trim();
+    if trimmed.is_empty() {
+        return vec![];
+    }
+    if let Ok(v) = serde_json::from_str::<serde_json::Value>(trimmed) {
+        if let Some(arr) = v.as_array() {
+            return arr
+                .iter()
+                .filter_map(|x| x.as_str().map(|s| s.trim().to_string()))
+                .filter(|s| !s.is_empty())
+                .collect();
+        }
+        if let Some(s) = v.as_str() {
+            let t = s.trim();
+            if !t.is_empty() {
+                return vec![t.to_string()];
+            }
+        }
+    }
+    vec![]
+}
+
+fn printer_name_key(s: &str) -> String {
+    s.trim().to_lowercase()
+}
+
+fn is_windows_copy_suffix(inner: &str) -> bool {
+    let t = inner.trim();
+    let parts: Vec<&str> = t.split_whitespace().collect();
+    if parts.len() == 1 {
+        return parts[0].chars().all(|c| c.is_ascii_digit());
+    }
+    if parts.len() == 2 && parts[1].chars().all(|c| c.is_ascii_digit()) {
+        let w = parts[0];
+        return w == "copy" || w == "kopya" || w.starts_with("kopya") || w == "copia";
+    }
+    false
+}
+
+fn printer_base_name(s: &str) -> String {
+    let mut k = printer_name_key(s);
+    if let Some(i) = k.rfind('(') {
+        if k.ends_with(')') {
+            let inner = &k[i + 1..k.len() - 1];
+            if is_windows_copy_suffix(inner) {
+                k = k[..i].trim().to_string();
+            }
+        }
+    }
+    k
+}
+
+/// Kayıtlı adı mevcut tarama listesinde tam / kopya soneki / içerme ile eşle.
+#[cfg(windows)]
+fn match_windows_printer_name(wanted: &str, names: &[String]) -> Option<String> {
+    let w = wanted.trim();
+    if w.is_empty() {
+        return None;
+    }
+    if let Some(e) = names.iter().find(|n| n.as_str() == w) {
+        return Some(e.clone());
+    }
+    let wk = printer_name_key(w);
+    if let Some(e) = names.iter().find(|n| printer_name_key(n) == wk) {
+        return Some(e.clone());
+    }
+    let wb = printer_base_name(w);
+    if wb.len() >= 4 {
+        if let Some(e) = names.iter().find(|n| printer_base_name(n) == wb) {
+            return Some(e.clone());
+        }
+    }
+    names.iter().find(|n| {
+        let nk = printer_name_key(n);
+        let nb = printer_base_name(n);
+        (wk.len() >= 5 && (nk.contains(&wk) || wk.contains(&nk)))
+            || (wb.len() >= 5 && (nb.contains(&wb) || wb.contains(&nb)))
+    }).cloned()
+}
+
+/// `printer_name` doluysa onu (gerekirse taramadan eşleyerek) kullan; değilse Windows varsayılanı.
 #[cfg(windows)]
 fn resolve_target_printer_name(printer_name: Option<String>) -> Option<String> {
+    let names = list_windows_printer_names();
     let trimmed = printer_name
         .map(|s| s.trim().to_string())
         .filter(|s| !s.is_empty());
-    if trimmed.is_some() {
-        return trimmed;
+    if let Some(wanted) = trimmed {
+        if let Some(matched) = match_windows_printer_name(&wanted, &names) {
+            return Some(matched);
+        }
+        return Some(wanted);
     }
     get_default_printer_name_windows()
 }

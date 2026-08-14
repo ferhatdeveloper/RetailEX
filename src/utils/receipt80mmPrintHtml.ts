@@ -396,7 +396,7 @@ export function buildReceipt80mmPrintHtml(input: BuildReceipt80mmPrintHtmlInput)
       const beautyCtx = !!(staff || deviceRow);
       const nameBlock = beautyCtx
         ? `<div><span style="font-size:8px;font-weight:800;color:#4b5563">${escapeHtml(T.operation)}: </span><span style="font-weight:800;font-size:10px">${escapeHtml(item.productName || '')}</span>${staff ? `<div style="font-size:9px;font-weight:800;margin-top:3px;color:#111">${escapeHtml(T.staff)}: ${escapeHtml(staff)}</div>` : ''}</div>`
-        : `<span style="font-weight:800;font-size:10px;display:block">${escapeHtml(item.productName || '')}</span>`;
+        : `<span style="font-weight:900;font-size:13px;display:block">${escapeHtml(item.productName || '')}</span>`;
       return `<tr>
 <td style="padding:5px 2px;vertical-align:top;text-align:${ta};word-break:break-word;border-bottom:1px solid #e5e7eb">
 ${nameBlock}
@@ -409,7 +409,7 @@ ${variantExtra}
     })
     .join('');
 
-  const itemsTableHtml = `<table role="presentation" style="width:100%;table-layout:fixed;border-collapse:collapse;font-size:10px;font-weight:600;margin:0 0 8px">
+  const itemsTableHtml = `<table role="presentation" style="width:100%;table-layout:fixed;border-collapse:collapse;font-size:13px;font-weight:800;margin:0 0 8px">
 <colgroup><col style="width:52%" /><col style="width:14%" /><col style="width:34%" /></colgroup>
 <thead><tr style="font-weight:800;border-bottom:2px solid #000">
 <td style="padding:5px 2px;text-align:${ta}">${escapeHtml(T.productLabel)}</td>
@@ -456,10 +456,10 @@ ${variantExtra}
     .join('')}</svg>`;
 
   const bodyInner = `
-<div style="width:100%;max-width:100%;box-sizing:border-box;margin:0;padding:2mm 3mm 3mm;font-family:'Courier New',Courier,monospace;font-size:10px;font-weight:600;color:#000;direction:${dir};text-align:${ta};-webkit-print-color-adjust:exact;print-color-adjust:exact">
+<div style="width:100%;max-width:100%;box-sizing:border-box;margin:0;padding:2mm 3mm 3mm;font-family:'Courier New',Courier,monospace;font-size:13px;font-weight:800;color:#000;direction:${dir};text-align:${ta};-webkit-print-color-adjust:exact;print-color-adjust:exact">
   <div style="text-align:center;border-bottom:2px dashed #000;padding-bottom:8px;margin-bottom:8px">
     ${logoHtml}
-    <div style="font-size:15px;font-weight:800;margin-bottom:4px">${escapeHtml(companyName)}</div>
+    <div style="font-size:18px;font-weight:900;margin-bottom:4px">${escapeHtml(companyName)}</div>
     ${addrBlock}
     ${titleLine}
   </div>
@@ -470,15 +470,15 @@ ${variantExtra}
   <div style="border-top:2px dashed #000;margin:10px 0"></div>
   ${itemsTableHtml}
   <div style="border-top:2px dashed #000;margin:10px 0"></div>
-  <div style="font-size:10px;margin-bottom:8px">
-    <div style="display:flex;justify-content:space-between;font-weight:700;margin:3px 0"><span>${escapeHtml(T.subtotal)}:</span><span>${escapeHtml(fmtMoney(sale.subtotal ?? 0))}</span></div>
+  <div style="font-size:13px;margin-bottom:8px">
+    <div style="display:flex;justify-content:space-between;font-weight:800;margin:3px 0"><span>${escapeHtml(T.subtotal)}:</span><span>${escapeHtml(fmtMoney(sale.subtotal ?? 0))}</span></div>
     ${discBlock}
     ${campaignBlock}
     <div style="border-top:1px solid #000;margin:8px 0"></div>
-    <div style="display:flex;justify-content:space-between;font-size:12px;font-weight:800;margin-top:4px"><span>${escapeHtml(T.total)}:</span><span>${escapeHtml(fmtMoney(sale.total ?? 0))}</span></div>
+    <div style="display:flex;justify-content:space-between;font-size:16px;font-weight:900;margin-top:4px"><span>${escapeHtml(T.total)}:</span><span>${escapeHtml(fmtMoney(sale.total ?? 0))}</span></div>
   </div>
   <div style="border-top:2px dashed #000;margin:10px 0"></div>
-  <div style="font-size:10px;margin-bottom:8px">
+  <div style="font-size:13px;margin-bottom:8px">
     <div style="font-weight:800;margin-bottom:8px">${escapeHtml(T.paymentDetails)}:</div>
     ${payLines}
     <div style="border-top:1px solid #000;margin:8px 0"></div>
@@ -497,7 +497,7 @@ ${variantExtra}
       <div style="font-size:10px;margin-top:4px;font-family:system-ui,sans-serif;font-weight:800">${escapeHtml(sale.receiptNumber)}</div>
     </div>
   </div>
-  <div style="text-align:center;font-size:10px;font-weight:700;margin-top:8px">*** ${escapeHtml(T.thanks)} ***</div>
+  <div style="text-align:center;font-size:13px;font-weight:800;margin-top:8px">*** ${escapeHtml(T.thanks)} ***</div>
   <div style="border-top:2px dashed #000;margin-top:10px"></div>
 </div>`;
 

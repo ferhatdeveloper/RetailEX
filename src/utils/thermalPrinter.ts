@@ -171,6 +171,8 @@ export async function printThermalReceipt(sale: any, companyName: string = 'Reta
     }
   }
   const receiptHTML = generateReceiptHTML(sale, companyName, finalLanguage, receiptSettings);
+  const { resolveSystemPrinterName } = await import('./resolveSystemPrinterName');
+  const printerName = await resolveSystemPrinterName(getStoredWindowsPrinterNameForPrint());
 
   try {
     if (await isWindowsPrinterServiceEnabled()) {
@@ -182,7 +184,7 @@ export async function printThermalReceipt(sale: any, companyName: string = 'Reta
           scope: 'pos_receipt',
           data: buildPosReceiptPrintData(sale, companyName, finalLanguage, receiptSettings),
           connection: 'system',
-          printerName: getStoredWindowsPrinterNameForPrint(),
+          printerName,
           refType: 'pos_sale',
           refId: sale?.id ?? sale?.receiptNumber ?? null,
           sourceSystem: 'web',
@@ -196,7 +198,7 @@ export async function printThermalReceipt(sale: any, companyName: string = 'Reta
           type: 'receipt',
           data: buildPosReceiptPrintData(sale, companyName, finalLanguage, receiptSettings),
           connection: 'system',
-          printerName: getStoredWindowsPrinterNameForPrint(),
+          printerName,
           refType: 'pos_sale',
           refId: sale?.id ?? sale?.receiptNumber ?? null,
           sourceSystem: 'web',
@@ -207,7 +209,7 @@ export async function printThermalReceipt(sale: any, companyName: string = 'Reta
       await enqueuePrintJob({
         jobType: 'pos_receipt_80',
         connection: 'system',
-        printerName: getStoredWindowsPrinterNameForPrint(),
+        printerName,
         locale: finalLanguage,
         refType: 'pos_sale',
         refId: sale?.id ?? sale?.receiptNumber ?? null,
@@ -227,7 +229,6 @@ export async function printThermalReceipt(sale: any, companyName: string = 'Reta
   if (options?.autoPrint && (window as any).__TAURI_INTERNALS__) {
     try {
       const { invoke } = await import('@tauri-apps/api/core');
-      const printerName = getStoredWindowsPrinterNameForPrint();
       await invoke('print_html_silent', { html: receiptHTML, printerName: printerName ?? null });
       return;
     } catch (e) { 
@@ -264,7 +265,10 @@ export async function printReturnReceipt(returnReceipt: ReturnReceipt, companyNa
       await enqueuePrintJob({
         jobType: 'pos_receipt_80',
         connection: 'system',
-        printerName: getStoredWindowsPrinterNameForPrint(),
+        printerName: await (async () => {
+          const { resolveSystemPrinterName } = await import('./resolveSystemPrinterName');
+          return resolveSystemPrinterName(getStoredWindowsPrinterNameForPrint());
+        })(),
         refType: 'pos_return',
         refId: returnReceipt.id || returnReceipt.returnNumber,
         payload: {

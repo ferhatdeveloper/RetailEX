@@ -144,3 +144,56 @@
   -ms-overflow-style: none;
   scrollbar-width: none;
 }
+
+/* POS sipariş ekranı — Tailwind arbitrary width (w-[600px] vb.) index.css ön-derlemesinde yok */
+.res-pos-cat-sidebar {
+  width: 13.75rem;
+  flex-shrink: 0;
+}
+
+.res-pos-cart-panel {
+  width: 32%;
+  min-width: 22rem;
+  max-width: 26.5rem;
+  flex-shrink: 0;
+}
+
+.res-pos-product-thumb {
+  height: 7.5rem;
+}
+
+.res-pos-product-thumb-placeholder {
+  width: 100%;
+  height: 100%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: linear-gradient(145deg, #f1f5f9 0%, #e0e7ff 55%, #dbeafe 100%);
+}
+
+@media (min-width: 1536px) {
+  .res-pos-cart-panel {
+    width: 28%;
+    max-width: 28rem;
+  }
+}
+
+@media (max-width: 1023px) {
+  .res-pos-cart-panel {
+    width: 36%;
+    min-width: 20rem;
+    max-width: 24rem;
+  }
+}
+
+@media (max-width: 767px) {
+  .res-pos-cat-sidebar {
+    display: none;
+  }
+
+  .res-pos-cart-panel {
+    width: 42%;
+    min-width: 18rem;
+    max-width: 22rem;
+  }
+}

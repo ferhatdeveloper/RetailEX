@@ -26,5 +26,11 @@ export const RECEIPT_80MM_DOCUMENT_CSS = `
     margin: 0 auto;
     padding: 0;
     box-sizing: border-box;
+    color: #000;
+    font-weight: 800;
+    -webkit-font-smoothing: none;
+    -moz-osx-font-smoothing: grayscale;
+    text-rendering: geometricPrecision;
+    -webkit-text-stroke: 0.25px #000;
   }
 `.trim();

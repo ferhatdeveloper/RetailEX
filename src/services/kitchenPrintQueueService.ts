@@ -1,5 +1,5 @@
 import type { MenuItem, OrderItem, PrinterProfile, PrinterRouting, Table } from '../components/restaurant/types';
-import { useProductStore } from '../store/useProductStore';
+import { findPrinterRouteForOrderItem } from '../utils/restaurantKitchenPrint';
 import type { KitchenReceiptLocale } from '../utils/restaurantReceiptPrint';
 import { DB_SETTINGS, ERP_SETTINGS, postgres } from './postgres';
 import { getBindingForScope } from './printDesignBindingService';
@@ -39,41 +39,6 @@ export type EnqueueKitchenPrintJobsResult = {
   itemCount: number;
 };
 
-function normKitchenCategory(s: string | undefined | null): string {
-  if (s == null) return '';
-  try {
-    return String(s).trim().normalize('NFC');
-  } catch {
-    return String(s).trim();
-  }
-}
-
-function kitchenMenuItemKey(menuItemId: string | undefined | null): string {
-  return String(menuItemId ?? '').trim();
-}
-
-function resolveOrderItemCategoryLabel(item: OrderItem, menu: MenuItem[]): string {
-  const idKey = kitchenMenuItemKey(item.menuItemId);
-  if (!idKey) return '';
-
-  const menuRow = menu.find((m) => kitchenMenuItemKey(m.id) === idKey);
-  if (menuRow) {
-    const c = String(menuRow.category ?? '').trim();
-    return normKitchenCategory(c || 'Genel');
-  }
-
-  const products = useProductStore.getState().products as Array<{
-    id: string;
-    category?: string;
-    group_name?: string;
-  }>;
-  const p = products.find((pr) => kitchenMenuItemKey(pr.id) === idKey);
-  if (!p) return normKitchenCategory('Genel');
-
-  const c = String(p.category ?? p.group_name ?? '').trim() || 'Genel';
-  return normKitchenCategory(c);
-}
-
 function clampEscPosPort(p: number | undefined): number {
   const n = Number(p);
   if (!Number.isFinite(n) || n < 1 || n > 65535) return 9100;
@@ -93,19 +58,7 @@ function resolveKitchenPrintTarget(
   printerRoutes: PrinterRouting[],
   commonProfile: PrinterProfile | undefined,
 ): KitchenResolvedTarget {
-  const idKey = kitchenMenuItemKey(item.menuItemId);
-  const cat = resolveOrderItemCategoryLabel(item, menu);
-
-  let route = cat ? printerRoutes.find((r) => normKitchenCategory(r.categoryId) === cat) : undefined;
-  if (!route && idKey) {
-    const p = useProductStore.getState().products.find((pr) => kitchenMenuItemKey(pr.id) === idKey) as
-      | { categoryId?: string }
-      | undefined;
-    const pid = p?.categoryId != null ? normKitchenCategory(String(p.categoryId)) : '';
-    if (pid) {
-      route = printerRoutes.find((r) => normKitchenCategory(r.categoryId) === pid);
-    }
-  }
+  const route = findPrinterRouteForOrderItem(item, menu, printerRoutes);
 
   const profRoute = route ? printerProfiles.find((p) => p.id === route.printerId) : undefined;
   const fromProfile = (p: PrinterProfile | undefined): KitchenResolvedTarget | null => {
@@ -119,7 +72,7 @@ function resolveKitchenPrintTarget(
         port: clampEscPosPort(p.port),
       };
     }
-    if (p.connection === 'system' && p.systemName?.trim()) {
+    if (p.systemName?.trim()) {
       return {
         connection: 'system',
         profile: p,
@@ -157,6 +110,8 @@ export async function enqueueKitchenPrintJobs(
     ? cfg.printerProfiles.find((p) => p.id === cfg.commonPrinterId)
     : undefined;
   const groups = new Map<string, { target: KitchenResolvedTarget; items: OrderItem[] }>();
+  const { resolveSystemPrinterName } = await import('../utils/resolveSystemPrinterName');
+  const resolvedNameCache = new Map<string, string>();
 
   for (const item of pendingItems) {
     const target = resolveKitchenPrintTarget(
@@ -166,6 +121,13 @@ export async function enqueueKitchenPrintJobs(
       cfg.printerRoutes,
       commonProfile,
     );
+    if (target.connection === 'system' && target.printerName) {
+      const raw = target.printerName;
+      if (!resolvedNameCache.has(raw)) {
+        resolvedNameCache.set(raw, (await resolveSystemPrinterName(raw)) || raw);
+      }
+      target.printerName = resolvedNameCache.get(raw);
+    }
     const key = targetKey(target);
     if (!groups.has(key)) groups.set(key, { target, items: [] });
     groups.get(key)!.items.push(item);

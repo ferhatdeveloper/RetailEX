@@ -361,7 +361,7 @@ export function Receipt80mm({
       const fullHtml = `<!DOCTYPE html><html dir="${isRTL ? 'rtl' : 'ltr'}"><head><meta charset="utf-8">${viewportMeta}<title>${t.receipt?.title || 'Fiş'} - ${sale.receiptNumber}</title><style>
       ${documentBaseCss}
       @page { size: ${printPageSize}; margin: ${printPageMargin}; }
-      body { padding: ${isThermalFormat ? '2mm 3mm 3mm' : '6mm'}; font-family: 'Courier New', Courier, monospace; font-size: 11px; font-weight: 700; color: #000; direction: ${isRTL ? 'rtl' : 'ltr'}; -webkit-print-color-adjust: exact; print-color-adjust: exact; overflow-x: hidden; }
+      body { padding: ${isThermalFormat ? '2mm 3mm 3mm' : '6mm'}; font-family: 'Courier New', Courier, monospace; font-size: ${isThermalFormat ? '13px' : '11px'}; font-weight: 800; color: #000; direction: ${isRTL ? 'rtl' : 'ltr'}; -webkit-print-color-adjust: exact; print-color-adjust: exact; overflow-x: hidden; -webkit-font-smoothing: none; text-rendering: geometricPrecision; }
       .receipt-80mm, .receipt-a5, .receipt-a4, #receipt-content { width: 100% !important; max-width: 100% !important; box-sizing: border-box; }
       ${receiptVariantCss}
       * { box-sizing: border-box; }
@@ -374,6 +374,9 @@ export function Receipt80mm({
       .border-dashed { border-style: dashed; }
     </style></head><body>${fragment}</body></html>`;
 
+      const { resolveSystemPrinterName } = await import('../../utils/resolveSystemPrinterName');
+      const resolvedPrinterName = await resolveSystemPrinterName(getAccountReceiptSystemPrinterName());
+
       try {
         if (await isWindowsPrinterServiceEnabled()) {
           const scope: PrintDesignScope = headerBanner || sale.table ? 'account_receipt' : 'pos_receipt';
@@ -385,7 +388,7 @@ export function Receipt80mm({
               scope,
               data: buildBoundReceiptData(),
               connection: 'system',
-              printerName: getAccountReceiptSystemPrinterName(),
+              printerName: resolvedPrinterName,
               refType: scope,
               refId: sale.id ?? sale.receiptNumber ?? null,
               sourceSystem: 'web',
@@ -401,7 +404,7 @@ export function Receipt80mm({
               type: 'receipt',
               data: buildBoundReceiptData(),
               connection: 'system',
-              printerName: getAccountReceiptSystemPrinterName(),
+              printerName: resolvedPrinterName,
               refType: scope,
               refId: sale.id ?? sale.receiptNumber ?? null,
               sourceSystem: 'web',
@@ -419,8 +422,7 @@ export function Receipt80mm({
       if (typeof (window as any).__TAURI_INTERNALS__ !== 'undefined' || (window as any).__TAURI__) {
         try {
           const { invoke } = await import('@tauri-apps/api/core');
-          const printerName = getAccountReceiptSystemPrinterName();
-          await invoke('print_html_silent', { html: fullHtml, printerName: printerName ?? null });
+          await invoke('print_html_silent', { html: fullHtml, printerName: resolvedPrinterName ?? null });
           setIsPrinting(false);
           onFinished?.();
           return;
@@ -1017,8 +1019,8 @@ export function Receipt80mm({
             width: 100% !important;
             max-width: 100% !important;
             direction: ${isRTL ? 'rtl' : 'ltr'};
-            font-size: 11px;
-            font-weight: 700;
+            font-size: ${isThermalFormat ? '13px' : '11px'};
+            font-weight: 800;
             overflow: visible;
             min-height: auto !important;
             page-break-after: avoid;

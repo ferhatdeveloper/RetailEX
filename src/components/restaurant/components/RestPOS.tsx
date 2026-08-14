@@ -47,7 +47,6 @@ import { cn } from '../../ui/utils';
 import { POSPaymentModal, type POSPaymentModalDraftContext } from '../../pos/POSPaymentModal';
 import {
     buildRestaurantAdisyonHtml,
-    buildRestaurantKitchenTicketHtml,
     printRestaurantHtmlNoPreview,
     type KitchenReceiptLocale,
 } from '../../../utils/restaurantReceiptPrint';
@@ -710,6 +709,10 @@ export const RestPOS: React.FC<RestPOSProps> = ({
         loadCategories();
     }, [loadCategories]);
 
+    useEffect(() => {
+        void useRestaurantStore.getState().loadSystemPrinters();
+    }, []);
+
     const loadSalesHistory = useCallback(async () => {
         try {
             const rows = await RestaurantService.getOrderHistory({ status: 'closed', limit: 100 });
@@ -787,25 +790,61 @@ export const RestPOS: React.FC<RestPOSProps> = ({
             const rs = await getReceiptSettings(receiptFirmNr).catch((): ReceiptSettings => ({}));
             const waiterName =
                 typeof currentStaff === 'object' ? (currentStaff as { name?: string })?.name : (currentStaff || waiter || '');
-            const html = buildRestaurantKitchenTicketHtml({
-                tableNumber: resolveTableLabelForPrint(),
-                floorName: table?.location ?? (posMode === 'retail' ? tmR('resPosRetailFloor') : undefined),
+            const st = useRestaurantStore.getState();
+            if (st.menu.length === 0) {
+                await st.loadMenu();
+            }
+            const tableInfo = {
+                number: resolveTableLabelForPrint(),
+                location: table?.location ?? (posMode === 'retail' ? tmR('resPosRetailFloor') : undefined),
                 waiter: waiterName?.trim() || undefined,
-                orderNote: orderNote?.trim() || undefined,
-                locale: print80Lang,
-                items: cart.map((ci) => ({
-                    name:
-                        resolveProductNameForReceipt(ci.product ?? null, print80Lang, rs) ||
-                        ci.product?.name ||
-                        (ci as { name?: string }).name ||
-                        tmR('resPosProductFallback'),
-                    quantity: ci.quantity,
-                    course: (ci as { course?: string }).course,
-                    notes: typeof (ci as { note?: string }).note === 'string' ? (ci as { note?: string }).note : undefined,
-                    options: typeof (ci as { options?: string }).options === 'string' ? (ci as { options?: string }).options : undefined,
-                })),
-            });
-            await printRestaurantHtmlNoPreview(html);
+            };
+            const lines = cart.map((ci) => ({
+                menuItemId: String(ci.product?.id || ''),
+                name:
+                    resolveProductNameForReceipt(ci.product ?? null, print80Lang, rs) ||
+                    ci.product?.name ||
+                    (ci as { name?: string }).name ||
+                    tmR('resPosProductFallback'),
+                quantity: ci.quantity,
+                course: (ci as { course?: string }).course,
+                notes: typeof (ci as { note?: string }).note === 'string' ? (ci as { note?: string }).note : undefined,
+                options: typeof (ci as { options?: string }).options === 'string' ? (ci as { options?: string }).options : undefined,
+            }));
+            const { enqueueKitchenPrintJobs, isWindowsPrinterServiceEnabled } = await import(
+                '../../../services/kitchenPrintQueueService'
+            );
+            if (await isWindowsPrinterServiceEnabled()) {
+                await enqueueKitchenPrintJobs({
+                    table: tableInfo,
+                    pendingItems: lines.map((l, i) => ({
+                        id: `pos-kitchen-${i}`,
+                        menuItemId: l.menuItemId,
+                        name: l.name,
+                        quantity: l.quantity,
+                        price: 0,
+                        status: 'pending',
+                        course: l.course as never,
+                        notes: l.notes,
+                        options: l.options,
+                    })),
+                    menu: useRestaurantStore.getState().menu,
+                    orderNote: orderNote?.trim() || undefined,
+                    locale: print80Lang,
+                    sourceSystem: 'web',
+                });
+            } else {
+                await printKitchenTicketsFromLines({
+                    table: tableInfo,
+                    lines,
+                    menu: useRestaurantStore.getState().menu,
+                    printerProfiles: st.printerProfiles,
+                    printerRoutes: st.printerRoutes,
+                    commonPrinterId: st.commonPrinterId,
+                    orderNote: orderNote?.trim() || undefined,
+                    locale: print80Lang,
+                });
+            }
             notify(tmR('resPosKitchenPrinted'));
         } catch (e) {
             console.error('[RestPOS] mutfak fişi:', e);
@@ -1550,6 +1589,43 @@ export const RestPOS: React.FC<RestPOSProps> = ({
         }
     };
 
+    const handleReprintHistorySale = async (sale: Sale) => {
+        try {
+            invalidateReceiptSettingsCache();
+            const receiptSettings = await getReceiptSettings(receiptFirmNr).catch((): ReceiptSettings => ({}));
+            const companyName =
+                receiptSettings.companyName?.trim()
+                || selectedFirm?.title?.trim()
+                || selectedFirm?.name?.trim()
+                || (sale.cashier ? String(sale.cashier).split(' ')[0] : null)
+                || 'Firma';
+            const html = buildRestaurantAdisyonHtml({
+                sale,
+                ctx: {
+                    payments: [],
+                    totalPaid: Number(sale.total) || 0,
+                    change: 0,
+                    remaining: 0,
+                    finalTotal: Number(sale.total) || 0,
+                    discount: Number(sale.discount) || 0,
+                },
+                companyName,
+                logoDataUrl: receiptSettings.logoDataUrl,
+                companyAddress: receiptSettings.companyAddress,
+                companyPhone: receiptSettings.companyPhone,
+                companyTaxOffice: receiptSettings.companyTaxOffice,
+                companyTaxNumber: receiptSettings.companyTaxNumber,
+                firmTitle: selectedFirm?.title?.trim() || selectedFirm?.name?.trim() || '',
+                locale: resolveDefaultReceiptLang(receiptSettings, uiLanguage),
+            });
+            await printRestaurantHtmlNoPreview(html);
+            notify(tmR('resPosDraftPrinted'));
+        } catch (e) {
+            console.error('[RestPOS] history reprint:', e);
+            notify(tmR('resPosPrintFailed'), 'error');
+        }
+    };
+
     /* ---------- ödeme başlatma — masa billing durumuna geç ---------- */
     const handleOpenPayment = async () => {
         if (cart.length === 0) return;
@@ -1575,6 +1651,8 @@ export const RestPOS: React.FC<RestPOSProps> = ({
             const q = query.trim().toLowerCase();
             if (!q) return true;
             if (p.name.toLowerCase().includes(q)) return true;
+            const barcode = String((p as { barcode?: string }).barcode ?? '').toLowerCase();
+            if (barcode && barcode.includes(q)) return true;
             const catRaw = rawCategoryString(p).toLowerCase();
             if (catRaw.includes(q)) return true;
             if (main.toLowerCase().includes(q)) return true;
@@ -1925,7 +2003,7 @@ export const RestPOS: React.FC<RestPOSProps> = ({
             <div className="flex-1 flex overflow-hidden min-h-0 min-w-0">
 
                 {/* ── LEFT SIDEBAR ────────────────────────────────────── */}
-                <aside className="w-[200px] lg:w-[220px] bg-slate-50 border-r border-slate-200 overflow-y-auto shrink-0 flex flex-col pb-6 content-start max-md:hidden">
+                <aside className="res-pos-cat-sidebar bg-slate-50 border-r border-slate-200 overflow-y-auto flex flex-col pb-6 content-start">
                     <div className="px-3 mt-6 mb-3 space-y-2">
                         {catMain !== null && (
                             <button
@@ -2125,7 +2203,7 @@ export const RestPOS: React.FC<RestPOSProps> = ({
                                     className="bg-white rounded-2xl border border-slate-200 flex flex-col text-left cursor-pointer hover:shadow-lg hover:border-blue-400 transition-all overflow-hidden group hover:-translate-y-0.5 select-none relative active:scale-[0.98]"
                                 >
                                     {/* Product image — kompakt masaüstü yükseklik */}
-                                    <div className="w-full h-[80px] overflow-hidden bg-slate-100 shrink-0 relative">
+                                    <div className="res-pos-product-thumb w-full overflow-hidden bg-slate-100 shrink-0 relative">
                                         {imgSrc ? (
                                             <img
                                                 src={imgSrc}
@@ -2135,7 +2213,11 @@ export const RestPOS: React.FC<RestPOSProps> = ({
                                                     (e.target as HTMLImageElement).style.display = 'none';
                                                 }}
                                             />
-                                        ) : null}
+                                        ) : (
+                                            <div className="res-pos-product-thumb-placeholder" aria-hidden>
+                                                <UtensilsCrossed className="w-12 h-12 text-blue-400/70" strokeWidth={1.35} />
+                                            </div>
+                                        )}
                                         <div className="absolute inset-x-0 bottom-0 h-2/3 bg-gradient-to-t from-black/40 via-black/10 to-transparent opacity-0 group-hover:opacity-100 transition-all duration-300" />
 
                                         {/* Quick Add Badge */}
@@ -2179,7 +2261,7 @@ export const RestPOS: React.FC<RestPOSProps> = ({
 
                 {/* ── RIGHT ORDER PANEL ────────────────────────────────── */}
                 <aside
-                    className="bg-white border-l border-gray-200 flex flex-col overflow-hidden w-[600px] md:w-[680px] lg:w-[780px] xl:w-[880px] 2xl:w-[1000px] shrink-0"
+                    className="res-pos-cart-panel bg-white border-l border-gray-200 flex flex-col overflow-hidden"
                 >
 
                     {/* ── CART ITEMS ── */}
@@ -2884,6 +2966,9 @@ export const RestPOS: React.FC<RestPOSProps> = ({
                 <POSSalesHistoryModal
                     sales={salesHistory}
                     onClose={() => setShowHistoryModal(false)}
+                    onPrintReceipt={(sale) => {
+                        void handleReprintHistorySale(sale);
+                    }}
                 />
             )}
 

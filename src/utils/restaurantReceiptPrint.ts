@@ -401,25 +401,25 @@ export function buildRestaurantKitchenTicketHtml(input: {
     const detailText = detailParts.join(' · ');
     const qty = `${it.quantity}x`;
     const mainRow = `<tr>
-<td style="${cellBorder};width:16%;min-width:14mm;text-align:center;font-size:11px;font-weight:900;white-space:nowrap">${escapeHtml(qty)}</td>
-<td style="${cellBorder};font-size:11px;font-weight:900;word-break:break-word;vertical-align:top">${escapeHtml(it.name)}</td>
+<td style="${cellBorder};width:16%;min-width:14mm;text-align:center;font-size:14px;font-weight:900;white-space:nowrap">${escapeHtml(qty)}</td>
+<td style="${cellBorder};font-size:14px;font-weight:900;word-break:break-word;vertical-align:top">${escapeHtml(it.name)}</td>
 </tr>`;
     const descRow =
       detailParts.length > 0
         ? `<tr>
-<td colspan="2" style="${cellBorder};font-size:10px;font-weight:700;font-style:italic;line-height:1.35;word-break:break-word;text-align:start" role="note" aria-label="${escapeHtml(detailText)}">${escapeHtml(detailText)}</td>
+<td colspan="2" style="${cellBorder};font-size:12px;font-weight:800;font-style:italic;line-height:1.35;word-break:break-word;text-align:start" role="note" aria-label="${escapeHtml(detailText)}">${escapeHtml(detailText)}</td>
 </tr>`
         : '';
     return mainRow + descRow;
   }).join('');
 
   const thead = `<thead><tr>
-<th style="${cellBorder};width:16%;text-align:center;font-size:8px;font-weight:800">${escapeHtml(L.colQty)}</th>
-<th style="${cellBorder};text-align:left;font-size:8px;font-weight:800">${escapeHtml(L.colProduct)}</th>
+<th style="${cellBorder};width:16%;text-align:center;font-size:11px;font-weight:800">${escapeHtml(L.colQty)}</th>
+<th style="${cellBorder};text-align:left;font-size:11px;font-weight:800">${escapeHtml(L.colProduct)}</th>
 </tr></thead>`;
 
-  const metaTdLabel = `${cellBorder};width:38%;font-size:10px;font-weight:800;word-break:break-word`;
-  const metaTdValue = `${cellBorder};text-align:right;font-size:10px;font-weight:800;word-break:break-word`;
+  const metaTdLabel = `${cellBorder};width:38%;font-size:12px;font-weight:800;word-break:break-word`;
+  const metaTdValue = `${cellBorder};text-align:right;font-size:12px;font-weight:800;word-break:break-word`;
   const metaRows = [
     `<tr><td style="${metaTdLabel}">${escapeHtml(L.tableSource)}</td><td style="${metaTdValue};font-weight:900">${escapeHtml(tableNumber)}</td></tr>`,
     floorName
@@ -439,9 +439,9 @@ export function buildRestaurantKitchenTicketHtml(input: {
 <style>
 ${RECEIPT_80MM_DOCUMENT_CSS}
   html, body { height: auto !important; min-height: 0 !important; }
-  body{font-family:'Courier New',Courier,monospace;padding:3mm 3mm 2mm 3mm;font-size:11px;line-height:1.25;box-sizing:border-box;color:#000;font-weight:700;-webkit-print-color-adjust:exact;print-color-adjust:exact}
+  body{font-family:'Courier New',Courier,monospace;padding:3mm 3mm 2mm 3mm;font-size:14px;line-height:1.3;box-sizing:border-box;color:#000;font-weight:800;-webkit-print-color-adjust:exact;print-color-adjust:exact;-webkit-font-smoothing:none;text-rendering:geometricPrecision;-webkit-text-stroke:0.25px #000}
   *{color:#000 !important;box-sizing:border-box}
-  h2{text-align:center;margin:4px 0 6px 0;font-size:15px;font-weight:900;letter-spacing:0.06em}
+  h2{text-align:center;margin:4px 0 6px 0;font-size:18px;font-weight:900;letter-spacing:0.06em}
   hr{border:0;border-top:1.5px dashed #000;margin:6px 0}
   table.kitchen-lines{width:100%;border-collapse:collapse;table-layout:fixed;border:1px solid #000;margin-bottom:4px}
   table.kitchen-lines th,table.kitchen-lines td{border:1px solid #000}
@@ -449,11 +449,11 @@ ${RECEIPT_80MM_DOCUMENT_CSS}
 </head><body dir="${dir}">
 <h2>${escapeHtml(L.title)}</h2>
 <table class="kitchen-lines"><tbody>${metaRows}</tbody></table>
-${orderNote?.trim() ? `<p style="margin:4px 0 6px 0;font-size:10px;font-weight:800;border:1px dashed #000;padding:4px">${escapeHtml(orderNote.trim())}</p>` : ''}
+${orderNote?.trim() ? `<p style="margin:4px 0 6px 0;font-size:13px;font-weight:800;border:1px dashed #000;padding:4px">${escapeHtml(orderNote.trim())}</p>` : ''}
 <hr/>
 <table class="kitchen-lines">${thead}<tbody>${rows || `<tr><td colspan="2" style="border:1px solid #000;padding:6px;font-size:10px;text-align:center">${escapeHtml(L.empty)}</td></tr>`}</tbody></table>
 <hr/>
-<p style="text-align:center;font-size:9px;font-weight:600;margin:4px 0 0 0">${escapeHtml(L.footer)}</p>
+<p style="text-align:center;font-size:12px;font-weight:800;margin:4px 0 0 0">${escapeHtml(L.footer)}</p>
 </body></html>`;
 }
 
@@ -521,13 +521,14 @@ export async function printHtmlInHiddenIframe(html: string): Promise<void> {
  */
 export async function printRestaurantHtmlNoPreview(html: string, explicitPrinter?: string | null): Promise<void> {
   const resolvePrinterName = async (): Promise<string | null> => {
+    if (explicitPrinter === null) return null;
+    const { resolveSystemPrinterName } = await import('./resolveSystemPrinterName');
     if (explicitPrinter === undefined || explicitPrinter === '') {
       const { getAccountReceiptSystemPrinterName } = await import('./restaurantAccountReceiptPrinter');
-      return getAccountReceiptSystemPrinterName();
+      return resolveSystemPrinterName(getAccountReceiptSystemPrinterName());
     }
-    if (explicitPrinter === null) return null;
     const t = String(explicitPrinter).trim();
-    return t.length > 0 ? t : null;
+    return t.length > 0 ? resolveSystemPrinterName(t) : null;
   };
 
   try {

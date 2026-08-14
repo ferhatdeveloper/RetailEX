@@ -994,7 +994,10 @@ export const useRestaurantStore = create<RestaurantState>()(
             loadSystemPrinters: async () => {
                 try {
                     const { invoke } = await import('@tauri-apps/api/core');
-                    set({ systemPrinters: await invoke('list_system_printers') });
+                    const list = await invoke('list_system_printers');
+                    const { cacheSystemPrinterScan } = await import('../../../utils/resolveSystemPrinterName');
+                    cacheSystemPrinterScan(list);
+                    set({ systemPrinters: list as any[] });
                 } catch (error) {
                     console.error('Failed to load system printers:', error);
                 }

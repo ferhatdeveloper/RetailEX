@@ -18,7 +18,7 @@ import { PrinterProfile, PrinterRouting } from '../types';
 import { v4 as uuidv4 } from 'uuid';
 import { cn } from '@/components/ui/utils';
 import { mergeWindowsPrinterNameIntoLocalStorage } from '@/utils/tauriPrintSettings';
-import { normKitchenCategory } from '@/utils/restaurantKitchenPrint';
+import { categoryMatchKey } from '@/utils/restaurantKitchenPrint';
 import { useRestaurantModuleTm } from '../hooks/useRestaurantModuleTm';
 
 export const RestaurantPrinterSettings: React.FC = () => {
@@ -271,7 +271,7 @@ export const RestaurantPrinterSettings: React.FC = () => {
                             ) : (
                                 categories.map((cat) => {
                                     const route = printerRoutes.find(
-                                        (r) => normKitchenCategory(r.categoryId) === normKitchenCategory(cat)
+                                        (r) => categoryMatchKey(r.categoryId) === categoryMatchKey(cat)
                                     );
                                     const selectValue =
                                         route?.printerId && printerProfiles.some((p) => p.id === route.printerId)

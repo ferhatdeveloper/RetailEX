@@ -74,6 +74,7 @@ export function buildKitchenTicketEscPosBuffer(input: {
   const boldOff = u8(0x1b, 0x45, 0);
   const doubleOn = u8(0x1b, 0x21, 0x30);
   const doubleOff = u8(0x1b, 0x21, 0);
+  const doubleHeight = u8(0x1b, 0x21, 0x18);
   const nl = u8(0x0a);
   const dash = txt(`${'-'.repeat(LINE_W)}\n`);
 
@@ -102,7 +103,7 @@ export function buildKitchenTicketEscPosBuffer(input: {
       const qty = `${it.quantity}x`;
       const nameLines = wrapText(it.name, LINE_W - 7);
       const first = nameLines[0] ?? '';
-      parts.push(boldOn, txt(`${padEnd(qty, 6)} ${first}\n`), boldOff);
+      parts.push(doubleHeight, txt(`${padEnd(qty, 6)} ${first}\n`), doubleOff);
       for (let i = 1; i < nameLines.length; i++) {
         parts.push(txt(`${padEnd('', 6)} ${nameLines[i]}\n`));
       }

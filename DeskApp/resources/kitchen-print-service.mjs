@@ -630,7 +630,7 @@ function buildKitchenTicketEscPos(input) {
     for (const item of items) {
       const qty = `${item.quantity}x`;
       const nameLines = wrapText(item.name, lineWidth - 7);
-      parts.push(esc(0x1b, 0x45, 1), enc(`${padEndText(qty, 6)} ${nameLines[0] || ''}\n`), esc(0x1b, 0x45, 0));
+      parts.push(esc(0x1b, 0x21, 0x18), enc(`${padEndText(qty, 6)} ${nameLines[0] || ''}\n`), esc(0x1b, 0x21, 0));
       for (const line of nameLines.slice(1)) parts.push(enc(`${padEndText('', 6)} ${line}\n`));
       const details = [item.notes, item.options, item.course ? `(${item.course})` : ''].filter(Boolean).join(' · ');
       for (const line of wrapText(details, lineWidth)) parts.push(enc(`  ${line}\n`));
@@ -639,6 +639,68 @@ function buildKitchenTicketEscPos(input) {
 
   parts.push(enc(dash), esc(0x1b, 0x61, 1), enc(`${labels.footer}\n\n\n`), esc(0x1d, 0x56, 0x00));
   return Buffer.concat(parts);
+}
+
+function buildKitchenTicketHtml(job) {
+  const ticket = job.ticket || {};
+  const locale = normalizeLocale(ticket.locale || job.payload?.locale);
+  const labels = KITCHEN_I18N[locale];
+  const tableNumber =
+    firstString(
+      ticket.tableNumber,
+      ticket.table_number,
+      ticket.table,
+      ticket.source,
+      job.payload?.tableNumber,
+      job.payload?.table_number,
+    ) || 'Mutfak';
+  const floorName = firstString(ticket.floorName, ticket.floor_name, ticket.location, ticket.area);
+  const waiter = firstString(ticket.waiter, ticket.server, ticket.staffName, ticket.staff_name);
+  const orderNote = firstString(ticket.orderNote, ticket.order_note, ticket.note, job.payload?.orderNote);
+  const items = ticketItems(ticket);
+  const printedAt = new Date().toLocaleString(locale === 'en' ? 'en-GB' : 'tr-TR');
+  const cell = 'border:1px solid #000;padding:4px 5px;vertical-align:top';
+  const rows = items
+    .map((item) => {
+      const details = [item.notes, item.options, item.course ? `(${item.course})` : ''].filter(Boolean).join(' · ');
+      const main = `<tr><td style="${cell};width:16%;text-align:center;font-size:14px;font-weight:900">${htmlEscape(`${item.quantity}x`)}</td><td style="${cell};font-size:14px;font-weight:900">${htmlEscape(item.name)}</td></tr>`;
+      const extra = details
+        ? `<tr><td colspan="2" style="${cell};font-size:12px;font-weight:800;font-style:italic">${htmlEscape(details)}</td></tr>`
+        : '';
+      return main + extra;
+    })
+    .join('');
+  const meta = [
+    `<tr><td style="${cell};width:38%;font-size:12px;font-weight:800">${htmlEscape(labels.tableSource)}</td><td style="${cell};text-align:right;font-size:12px;font-weight:900">${htmlEscape(tableNumber)}</td></tr>`,
+    floorName
+      ? `<tr><td style="${cell};font-size:12px;font-weight:800">${htmlEscape(labels.floor)}</td><td style="${cell};text-align:right;font-size:12px;font-weight:800">${htmlEscape(floorName)}</td></tr>`
+      : '',
+    waiter
+      ? `<tr><td style="${cell};font-size:12px;font-weight:800">${htmlEscape(labels.waiter)}</td><td style="${cell};text-align:right;font-size:12px;font-weight:800">${htmlEscape(waiter)}</td></tr>`
+      : '',
+    `<tr><td style="${cell};font-size:12px;font-weight:800">${htmlEscape(labels.time)}</td><td style="${cell};text-align:right;font-size:12px;font-weight:800">${htmlEscape(printedAt)}</td></tr>`,
+  ]
+    .filter(Boolean)
+    .join('');
+  const dir = locale === 'ar' || locale === 'ku' ? 'rtl' : 'ltr';
+  return `<!doctype html><html lang="${htmlEscape(locale)}"><head><meta charset="utf-8">
+<style>
+@page{size:80mm auto;margin:0}
+html,body{width:80mm;max-width:80mm;margin:0;padding:0;box-sizing:border-box;color:#000;font-weight:800;-webkit-font-smoothing:none;text-rendering:geometricPrecision;-webkit-text-stroke:0.25px #000}
+body{font-family:'Courier New',Courier,monospace;padding:3mm;font-size:14px;line-height:1.3}
+h2{text-align:center;margin:4px 0 6px;font-size:18px;font-weight:900;letter-spacing:.06em}
+table{width:100%;border-collapse:collapse;table-layout:fixed;border:1px solid #000;margin-bottom:4px}
+hr{border:0;border-top:1.5px dashed #000;margin:6px 0}
+</style></head><body dir="${dir}">
+<h2>${htmlEscape(labels.title)}</h2>
+<table><tbody>${meta}</tbody></table>
+${orderNote ? `<p style="margin:4px 0 6px;font-size:13px;font-weight:800;border:1px dashed #000;padding:4px">${htmlEscape(orderNote)}</p>` : ''}
+<hr/>
+<table><thead><tr><th style="${cell};width:16%;text-align:center;font-size:11px">${htmlEscape(labels.colQty)}</th><th style="${cell};text-align:left;font-size:11px">${htmlEscape(labels.colProduct)}</th></tr></thead>
+<tbody>${rows || `<tr><td colspan="2" style="${cell};text-align:center;font-size:12px">${htmlEscape(labels.empty)}</td></tr>`}</tbody></table>
+<hr/>
+<p style="text-align:center;font-size:12px;font-weight:800;margin:4px 0 0">${htmlEscape(labels.footer)}</p>
+</body></html>`;
 }
 
 async function sendEscPosTcp(host, port, payload) {
@@ -959,10 +1021,119 @@ async function powershellStartPrintHtml(htmlPath) {
   await execFileAsync('powershell.exe', ps, { windowsHide: true, timeout: 30_000 });
 }
 
+const PRINTER_SCAN_CACHE = path.join(
+  process.env.PROGRAMDATA || 'C:\\ProgramData',
+  'RetailEX',
+  'printer_scan_cache.json',
+);
+
+function normPrinterKey(s) {
+  return String(s || '')
+    .trim()
+    .replace(/\s+/g, ' ')
+    .toLocaleLowerCase('tr-TR');
+}
+
+function printerBaseName(s) {
+  let k = normPrinterKey(s);
+  k = k.replace(/\s*\((?:copy|kopya|kopyası|kopyasi|copia)\s*\d+\)\s*$/i, '').trim();
+  k = k.replace(/\s*\(\d+\)\s*$/, '').trim();
+  return k;
+}
+
+function matchPrinterNameAmong(wanted, candidates) {
+  const w = String(wanted || '').trim();
+  if (!w || !Array.isArray(candidates) || candidates.length === 0) return '';
+  const wn = normPrinterKey(w);
+  const wb = printerBaseName(w);
+  const exact = candidates.find((n) => n === w);
+  if (exact) return exact;
+  const ci = candidates.find((n) => normPrinterKey(n) === wn);
+  if (ci) return ci;
+  if (wb.length >= 4) {
+    const base = candidates.find((n) => printerBaseName(n) === wb);
+    if (base) return base;
+  }
+  const loose = candidates.find((n) => {
+    const nk = normPrinterKey(n);
+    const nb = printerBaseName(n);
+    if (wn.length >= 5 && (nk.includes(wn) || wn.includes(nk))) return true;
+    if (wb.length >= 5 && (nb.includes(wb) || wb.includes(nb))) return true;
+    return false;
+  });
+  return loose || '';
+}
+
+async function readPrinterScanCache() {
+  try {
+    const raw = await fs.promises.readFile(PRINTER_SCAN_CACHE, 'utf8');
+    const parsed = JSON.parse(raw);
+    const names = Array.isArray(parsed?.names) ? parsed.names : [];
+    return names.map((n) => String(n).trim()).filter(Boolean);
+  } catch {
+    return [];
+  }
+}
+
+async function writePrinterScanCache(liveNames) {
+  try {
+    const prev = await readPrinterScanCache();
+    const merged = [...liveNames];
+    for (const p of prev) {
+      if (!merged.some((n) => normPrinterKey(n) === normPrinterKey(p))) merged.push(p);
+    }
+    await fs.promises.mkdir(path.dirname(PRINTER_SCAN_CACHE), { recursive: true });
+    await fs.promises.writeFile(
+      PRINTER_SCAN_CACHE,
+      JSON.stringify({ at: Date.now(), names: merged.slice(0, 80) }),
+      'utf8',
+    );
+  } catch {
+    /* ignore */
+  }
+}
+
+async function listWindowsPrinterNamesLive() {
+  if (!IS_WIN) return [];
+  try {
+    const { stdout } = await execFileAsync(
+      'powershell.exe',
+      [
+        '-NoProfile',
+        '-NonInteractive',
+        '-ExecutionPolicy',
+        'Bypass',
+        '-Command',
+        "[Console]::OutputEncoding = [Text.UTF8Encoding]::new($false); @(Get-Printer | Select-Object -ExpandProperty Name) | ConvertTo-Json -Compress",
+      ],
+      { windowsHide: true, timeout: 15_000 },
+    );
+    const trimmed = String(stdout || '').trim();
+    if (!trimmed) return [];
+    const parsed = JSON.parse(trimmed);
+    if (Array.isArray(parsed)) return parsed.map((n) => String(n).trim()).filter(Boolean);
+    if (typeof parsed === 'string' && parsed.trim()) return [parsed.trim()];
+    return [];
+  } catch {
+    return [];
+  }
+}
+
+async function resolveWindowsPrinterName(wanted) {
+  const w = firstString(wanted);
+  const live = await listWindowsPrinterNamesLive();
+  if (live.length > 0) await writePrinterScanCache(live);
+  const cached = await readPrinterScanCache();
+  if (!w) return live[0] || cached[0] || '';
+  return matchPrinterNameAmong(w, live) || matchPrinterNameAmong(w, cached) || w;
+}
+
 async function printHtmlDocument(html, printerName, settings = {}) {
   if (!html || typeof html !== 'string') throw new Error('HTML yazdirma icin payload.html zorunlu.');
   if (!IS_WIN) throw new Error('HTML sistem yazdirma yalnizca Windows servis host uzerinde desteklenir.');
-  const targetPrinter = firstString(printerName, settings.defaultSystemPrinterName);
+  const targetPrinter = await resolveWindowsPrinterName(
+    firstString(printerName, settings.defaultSystemPrinterName),
+  );
   const temp = await writeTempHtml(html);
   const browserPath = findBrowserPath(settings);
   const sumatraPath = findSumatraPath(settings);
@@ -999,7 +1170,9 @@ async function printFastReportFrx(job, context) {
   const dir = await fs.promises.mkdtemp(path.join(os.tmpdir(), 'retailex-frx-'));
   const frxPath = path.join(dir, 'design.frx');
   const dataPath = path.join(dir, 'data.json');
-  const targetPrinter = firstString(job.systemName, context.settings.defaultSystemPrinterName);
+  const targetPrinter = await resolveWindowsPrinterName(
+    firstString(job.systemName, context.settings.defaultSystemPrinterName),
+  );
   await fs.promises.writeFile(frxPath, frxText, 'utf8');
   await fs.promises.writeFile(dataPath, JSON.stringify(firstObject(job.payload.data), null, 2), 'utf8');
   const args = ['print', '--template', frxPath, '--data', dataPath];
@@ -1038,13 +1211,16 @@ async function printJob(row, context) {
   const job = normalizeJob(row, context);
   const jobType = job.jobType || LEGACY_JOB_TYPE;
   if (jobType === LEGACY_JOB_TYPE || job.payload?.kind === LEGACY_JOB_TYPE) {
-    if (job.connection && job.connection !== 'network') {
-      throw new Error(`Mutfak fisi ESC/POS icin network baglanti gerekir: ${job.connection || 'bos'}`);
+    const useNetwork = job.connection === 'network';
+    if (useNetwork) {
+      if (!job.address) throw new Error('Ag yazicisi adresi yok.');
+      const payload = buildKitchenTicketEscPos(job);
+      await sendEscPosTcp(job.address, job.port, payload);
+      return `${job.address}:${job.port} kitchen_ticket (${payload.length} bayt)`;
     }
-    if (!job.address) throw new Error('Ag yazicisi adresi yok.');
-    const payload = buildKitchenTicketEscPos(job);
-    await sendEscPosTcp(job.address, job.port, payload);
-    return `${job.address}:${job.port} kitchen_ticket (${payload.length} bayt)`;
+    const html = firstString(job.payload?.html) || buildKitchenTicketHtml(job);
+    const info = await printHtmlDocument(html, job.systemName, context.settings);
+    return `kitchen_ticket -> ${info}`;
   }
 
   if (jobType === 'escpos_raw' || job.payload?.escposBase64) {
