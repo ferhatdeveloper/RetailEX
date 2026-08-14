@@ -186,7 +186,62 @@
   }
 }
 
+/* Yazıcı ayarları — kategori adı select'in altında ezilmesin (Tailwind dump w-full + flex satır) */
+.rest-print-route-row {
+  display: grid;
+  grid-template-columns: minmax(10rem, 1fr) minmax(12rem, 18rem);
+  align-items: center;
+  gap: 0.5rem 1rem;
+  padding: 0.7rem 1rem;
+  border-radius: 1rem;
+  border: 1px solid #e2e8f0;
+  background: #f8fafc;
+  min-width: 0;
+}
+
+.rest-print-route-row--sub {
+  background: #fff;
+  margin-left: 1.25rem;
+}
+
+.rest-print-route-row__label {
+  display: block;
+  min-width: 0;
+  max-width: 100%;
+  overflow: visible;
+  white-space: normal;
+  word-break: break-word;
+  line-height: 1.35;
+  font-size: 0.9375rem;
+  font-weight: 800;
+  color: #0f172a;
+}
+
+.rest-print-route-row--sub .rest-print-route-row__label {
+  font-weight: 600;
+}
+
+.rest-print-route-row__select {
+  width: 100%;
+  max-width: 18rem;
+  justify-self: end;
+  min-height: 2.75rem;
+}
+
 @media (max-width: 767px) {
+  .rest-print-route-row {
+    grid-template-columns: 1fr;
+  }
+
+  .rest-print-route-row--sub {
+    margin-left: 0.5rem;
+  }
+
+  .rest-print-route-row__select {
+    max-width: none;
+    justify-self: stretch;
+  }
+
   .res-pos-cat-sidebar {
     display: none;
   }

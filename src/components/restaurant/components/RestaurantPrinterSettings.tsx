@@ -288,20 +288,16 @@ export const RestaurantPrinterSettings: React.FC = () => {
                                         <div
                                             key={row.key}
                                             className={cn(
-                                                'flex flex-col sm:flex-row sm:items-center gap-2 sm:gap-4 rounded-2xl border px-3 py-2.5',
-                                                row.depth === 0
-                                                    ? 'bg-slate-50 border-slate-200'
-                                                    : 'bg-white border-slate-100 ml-4 sm:ml-8',
+                                                'rest-print-route-row',
+                                                row.depth === 1 && 'rest-print-route-row--sub',
                                             )}
                                         >
-                                            <label className={cn(
-                                                'min-w-0 flex-1 text-sm font-bold text-slate-800',
-                                                row.depth === 0 ? 'uppercase tracking-wide' : 'font-semibold normal-case',
-                                            )}>
+                                            <label className="rest-print-route-row__label">
                                                 {row.label}
                                             </label>
                                             <select
                                                 value={selectValue}
+                                                className="rest-print-route-row__select bg-white border border-slate-200 rounded-xl px-3 py-2 text-sm font-semibold text-slate-900 focus:ring-2 focus:ring-emerald-500 outline-none"
                                                 onChange={(e) => {
                                                     const pId = e.target.value;
                                                     if (pId) {
@@ -318,7 +314,6 @@ export const RestaurantPrinterSettings: React.FC = () => {
                                                         removePrinterRoute(route.id);
                                                     }
                                                 }}
-                                                className="w-full sm:w-72 shrink-0 bg-white border border-slate-200 rounded-xl min-h-11 px-3 py-2 text-sm font-semibold text-slate-900 focus:ring-2 focus:ring-emerald-500 outline-none transition-all"
                                             >
                                                 <option value="">{tm('restPrintStationPlaceholder')}</option>
                                                 {printerProfiles.map((p) => (
