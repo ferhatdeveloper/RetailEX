@@ -19,6 +19,7 @@ import { postgres, ERP_SETTINGS } from '../postgres';
 import { normalizeFirmTableNr } from './accountBalance';
 import { createKasaIslemi } from './kasa';
 import { partyAPI } from './parties';
+import { ensurePartyPeriodTables } from './ensurePartyPeriodTables';
 import type { PartyLedgerMovement, PartyEmployee } from '../../core/types/models';
 
 function ledgerTable(): string {
@@ -73,6 +74,7 @@ export const employeeAPI = {
   },
 
   async listPayrollMonth(periodStart: string, periodEnd: string): Promise<PayrollMonthLine[]> {
+    await ensurePartyPeriodTables();
     const employees = await this.list();
     if (!employees.length) return [];
     const ids = employees.map((e) => e.id);
@@ -227,6 +229,7 @@ export const employeeAPI = {
   },
 
   async getLedger(employeeId: string, opts?: { startDate?: string; endDate?: string; limit?: number }): Promise<PartyLedgerMovement[]> {
+    await ensurePartyPeriodTables();
     const limit = opts?.limit ?? 200;
     const { rows } = await postgres.query(
       `SELECT * FROM ${ledgerTable()}
@@ -270,6 +273,7 @@ interface WritePartyLedgerOpts {
 }
 
 async function writePartyLedger(opts: WritePartyLedgerOpts): Promise<PartyLedgerMovement> {
+  await ensurePartyPeriodTables();
   const firmNr = normalizeFirmTableNr(ERP_SETTINGS.firmNr);
   const period = String(ERP_SETTINGS.periodNr || '01').padStart(2, '0').slice(0, 10);
   const { rows } = await postgres.query(

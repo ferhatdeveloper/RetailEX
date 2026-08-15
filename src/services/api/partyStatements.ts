@@ -16,6 +16,7 @@
 
 import { postgres, ERP_SETTINGS } from '../postgres';
 import { normalizeFirmTableNr } from './accountBalance';
+import { ensurePartyPeriodTables } from './ensurePartyPeriodTables';
 import type { PartyCardType } from '../../core/types/models';
 
 export interface PartyStatementLine {
@@ -68,6 +69,7 @@ export async function getPartyStatement(
   start?: string,
   end?: string,
 ): Promise<PartyStatement> {
+  await ensurePartyPeriodTables();
   const party = await postgres.query(
     `SELECT id, card_type, balance FROM rex_${firm()}_parties WHERE id = $1::text::uuid LIMIT 1`,
     [partyId],

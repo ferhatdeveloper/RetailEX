@@ -21,6 +21,7 @@
 import { postgres, ERP_SETTINGS } from '../postgres';
 import { normalizeFirmTableNr } from './accountBalance';
 import { createKasaIslemi, computePartyBalanceDelta } from './kasa';
+import { ensurePartyPeriodTables } from './ensurePartyPeriodTables';
 import type {
   PartyPartner,
   PartyLedgerMovement,
@@ -256,6 +257,7 @@ async function executeDistributionInternal(opts: ExecuteInternal): Promise<Partn
   const firmNr = normalizeFirmTableNr(ERP_SETTINGS.firmNr);
   const period = String(ERP_SETTINGS.periodNr || '01').padStart(2, '0').slice(0, 10);
 
+  await ensurePartyPeriodTables(firmNr, period);
   await postgres.query('BEGIN');
   try {
     // 1) Üst dağıtım kaydı
@@ -364,6 +366,7 @@ async function executeDistributionInternal(opts: ExecuteInternal): Promise<Partn
  * Dağıtım geçmişi
  */
 export async function getDistributionHistory(opts?: { startDate?: string; endDate?: string; limit?: number }): Promise<PartnerDistribution[]> {
+  await ensurePartyPeriodTables();
   const limit = opts?.limit ?? 100;
   const { rows } = await postgres.query(
     `SELECT d.*, COALESCE(json_agg(json_build_object(
@@ -400,6 +403,7 @@ export async function getDistributionHistory(opts?: { startDate?: string; endDat
  * Ortağın party_ledger hareketleri
  */
 export async function getPartnerLedger(partnerId: string, opts?: { startDate?: string; endDate?: string; limit?: number }): Promise<PartyLedgerMovement[]> {
+  await ensurePartyPeriodTables();
   const limit = opts?.limit ?? 200;
   const { rows } = await postgres.query(
     `SELECT * FROM ${ledgerTable()}
@@ -436,6 +440,7 @@ export async function reverseDistribution(distributionId: string, opts: { create
   const firmNr = normalizeFirmTableNr(ERP_SETTINGS.firmNr);
   const period = String(ERP_SETTINGS.periodNr || '01').padStart(2, '0').slice(0, 10);
 
+  await ensurePartyPeriodTables(firmNr, period);
   await postgres.query('BEGIN');
   try {
     const prevRes = await postgres.query(
