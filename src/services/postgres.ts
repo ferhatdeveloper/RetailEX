@@ -1513,6 +1513,8 @@ export class PostgresConnection {
     'unitsets', 'unitsetl',
     'campaigns', 'product_variants', 'product_barcodes', 'product_unit_conversions', 'lots', 'bank_registers', 'expense_cards',
     'services',
+    // Parties (cari polymorphism — customer/supplier/employee/partner)
+    'parties', 'partner_settings',
     // Restaurant card tables (rest schema)
     'rest_tables', 'rest_recipes', 'rest_recipe_ingredients', 'rest_staff',
     // Beauty card tables (beauty schema)
@@ -1526,6 +1528,8 @@ export class PostgresConnection {
   private static MOVEMENT_TABLES = [
     'sales', 'sale_items', 'stock_moves', 'cash_lines', 'stock_movements', 'stock_movement_items', 'invoices', 'invoice_items', 'bank_lines',
     'virman_operations', 'virman_items',
+    // Party ledger + partner distributions (period-düzey)
+    'party_ledger_movements', 'partner_distributions', 'partner_distribution_items',
     // Restaurant movement tables (rest schema)
     'rest_orders', 'rest_order_items', 'rest_kitchen_orders', 'rest_kitchen_items', 'rest_reservations',
     'kitchen_print_jobs', 'print_jobs',
@@ -1557,7 +1561,9 @@ export class PostgresConnection {
     'beauty_waitlist': 'beauty', 'beauty_booking_requests': 'beauty', 'beauty_notification_queue': 'beauty',
     'beauty_consent_submissions': 'beauty', 'beauty_clinical_notes': 'beauty', 'beauty_patient_photos': 'beauty',
     'beauty_membership_subscriptions': 'beauty', 'beauty_audit_log': 'beauty', 'beauty_consumable_usage_log': 'beauty',
-    'products': 'public', 'customers': 'public', 'suppliers': 'public', 'categories': 'public'
+    'products': 'public', 'customers': 'public', 'suppliers': 'public', 'categories': 'public',
+    'parties': 'public', 'partner_settings': 'public',
+    'party_ledger_movements': 'public', 'partner_distributions': 'public', 'partner_distribution_items': 'public'
   };
 
   /** Returns schema-qualified prefixed name for a firm-level card table.

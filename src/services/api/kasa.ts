@@ -17,6 +17,41 @@ function padKasaPeriodNr(): string {
   return String(ERP_SETTINGS.periodNr || '01').trim().padStart(2, '0').slice(0, 10);
 }
 
+/**
+ * Parties (Personel / Şirket Ortağı) için bakiye delta hesabı.
+ *
+ * Bakiye yönü:
+ *   Personel pozitif = işletmenin personele avans borcu (negatif etki yok).
+ *   Ortağı pozitif = ortağın işletmeden alacağı (dağıtılmamış kâr payı).
+ *
+ * İşlem       | Kasa sign | Party balance delta
+ * -----------|-----------|--------------------
+ * MAAS_ODEME  |   -1      |   +tutar (işletme borçlandı)
+ * AVANS_ODEME |   -1      |   +tutar (işletme borçlandı)
+ * AVANS_MAHSUP|    0      |   -tutar (mahsup, borç düşer)
+ * ORTAK_DAGITIM_KAR  | -1 | +tutar (ortağın alacağı)
+ * ORTAK_DAGITIM_ZARAR| +1 | -tutar (ortağın zarar katkısı)
+ * ORTAK_SERMAYE_TAHSILAT | +1 | -tutar (sermaye çekme)
+ * ORTAK_SERMAYE_ODEME    | -1 | +tutar (sermaye koyma)
+ */
+export function computePartyBalanceDelta(tutar: number, islemTipi: string): number {
+  const amt = Math.abs(parseFloat(String(tutar ?? 0)) || 0);
+  if (!amt) return 0;
+  switch (String(islemTipi || '').toUpperCase().trim()) {
+    case 'MAAS_ODEME':
+    case 'AVANS_ODEME':
+    case 'ORTAK_DAGITIM_KAR':
+    case 'ORTAK_SERMAYE_ODEME':
+      return amt;
+    case 'AVANS_MAHSUP':
+    case 'ORTAK_DAGITIM_ZARAR':
+    case 'ORTAK_SERMAYE_TAHSILAT':
+      return -amt;
+    default:
+      return 0;
+  }
+}
+
 // ===== TYPES =====
 
 export interface Kasa {
@@ -75,6 +110,10 @@ export interface KasaIslemi {
   expense_card_id?: string;
   tax_rate?: number;
   withholding_tax_rate?: number;
+  /** Polimorfik cari ref — Personel/Şirket Ortağı işlemleri için (customer_id ayrı tutulur) */
+  party_id?: string;
+  party_code?: string;
+  party_name?: string;
 }
 
 // ===== API FUNCTIONS =====
@@ -599,6 +638,7 @@ export async function createKasaIslemi(incoming: KasaIslemi): Promise<KasaIslemi
       case 'ALINAN_SERBEST_MESLEK':
       case 'ACILIS_BORC':
       case 'KUR_FARKI_BORC':
+      case 'ORTAK_DAGITIM_ZARAR':
         sign = 1;
         break;
       case 'CH_ODEME':
@@ -610,7 +650,13 @@ export async function createKasaIslemi(incoming: KasaIslemi): Promise<KasaIslemi
       case 'MUSTAHSIL_MAKBUZU':
       case 'ACILIS_ALACAK':
       case 'KUR_FARKI_ALACAK':
+      case 'MAAS_ODEME':
+      case 'AVANS_ODEME':
+      case 'ORTAK_DAGITIM_KAR':
         sign = -1;
+        break;
+      case 'AVANS_MAHSUP':
+        sign = 0;
         break;
       default:
         sign = islem.islem_tipi.includes('CIKIS') || islem.islem_tipi.includes('ODEME') ? -1 : 1;
@@ -630,7 +676,7 @@ export async function createKasaIslemi(incoming: KasaIslemi): Promise<KasaIslemi
     const { rows } = await postgres.query(
       `INSERT INTO ${table} (
          firm_nr, period_nr, register_id, fiche_no, date, amount, sign, definition, transaction_type,
-         customer_id, currency_code, exchange_rate, f_amount, transfer_status, special_code,
+         customer_id, party_id, currency_code, exchange_rate, f_amount, transfer_status, special_code,
          target_register_id, bank_id, bank_account_id, expense_card_id, tax_rate, withholding_tax_rate
        )
          VALUES (
@@ -644,17 +690,18 @@ export async function createKasaIslemi(incoming: KasaIslemi): Promise<KasaIslemi
            $8::text,
            $9::text,
            $10::text::uuid,
-           $11::text,
-           $12::text::numeric,
+           $11::text::uuid,
+           $12::text,
            $13::text::numeric,
+           $14::text::numeric,
            0,
-           $14::text,
-           $15::text::uuid,
+           $15::text,
            $16::text::uuid,
            $17::text::uuid,
            $18::text::uuid,
-           $19::text::numeric,
-           $20::text::numeric
+           $19::text::uuid,
+           $20::text::numeric,
+           $21::text::numeric
          ) RETURNING *`,
       [
         ERP_SETTINGS.firmNr,
@@ -667,6 +714,7 @@ export async function createKasaIslemi(incoming: KasaIslemi): Promise<KasaIslemi
         islem.islem_aciklamasi || '',
         islem.islem_tipi || '',
         islem.cari_hesap_id || null,
+        islem.party_id || null,
         islem.doviz_kodu || 'YEREL',
         1,
         islem.dovizli_tutar || 0,
@@ -704,6 +752,22 @@ export async function createKasaIslemi(incoming: KasaIslemi): Promise<KasaIslemi
             [deltaStr, islem.cari_hesap_id],
           );
         }
+      }
+    }
+
+    // Parties (Personel / Şirket Ortağı) — party_id ile polymorphic bakiye güncelleme.
+    // Personel: MAAS_ODEME (−tutar, personel cari balance: işletmenin personele avans borcu ↑),
+    //           AVANS_ODEME (−tutar, party balance ↑),
+    //           AVANS_MAHSUP (sign=0, party balance ↑ mahsup yönünde).
+    // Ortağı: ORTAK_DAGITIM_KAR (−tutar, party balance ↑ = dağıtılmamış kâr payı alacağı),
+    //         ORTAK_DAGITIM_ZARAR (+tutar, party balance ↓ = ortağın zarara katılımı).
+    if (islem.party_id) {
+      const partyDelta = computePartyBalanceDelta(islem.tutar, islem.islem_tipi);
+      if (partyDelta !== 0) {
+        await postgres.query(
+          `UPDATE rex_${normalizeFirmTableNr(ERP_SETTINGS.firmNr)}_parties SET balance = balance + $1::numeric, updated_at = NOW() WHERE id = $2::text::uuid`,
+          [partyDelta, islem.party_id],
+        );
       }
     }
 
@@ -858,6 +922,7 @@ function mapDbIslemToIslem(row: any): KasaIslemi {
     expense_card_id: row.expense_card_id || undefined,
     tax_rate: row.tax_rate !== undefined ? parseFloat(row.tax_rate || 0) : undefined,
     withholding_tax_rate: row.withholding_tax_rate !== undefined ? parseFloat(row.withholding_tax_rate || 0) : undefined,
+    party_id: row.party_id || undefined,
     olusturma_tarihi: row.created_at,
   };
 }
@@ -893,6 +958,7 @@ export async function deleteKasaIslemi(id: string): Promise<void> {
   const trType = row.transaction_type || '';
   const customerId = row.customer_id;
   const bankId = row.bank_id;
+  const partyId = row.party_id;
 
   await postgres.query('BEGIN');
   try {
@@ -922,7 +988,18 @@ export async function deleteKasaIslemi(id: string): Promise<void> {
       }
     }
 
-    // 4) VIRMAN karşı satırını ve hedef kasa bakiyesini temizle
+    // 4) Party bakiyesini tersine al (Personel / Şirket Ortağı)
+    if (partyId) {
+      const partyDelta = computePartyBalanceDelta(amount, trType);
+      if (partyDelta !== 0) {
+        await postgres.query(
+          `UPDATE rex_${normalizeFirmTableNr(ERP_SETTINGS.firmNr)}_parties SET balance = balance - $1::numeric, updated_at = NOW() WHERE id = $2::text::uuid`,
+          [partyDelta, partyId],
+        );
+      }
+    }
+
+    // 5) VIRMAN karşı satırını ve hedef kasa bakiyesini temizle
     if (trType === 'VIRMAN' && targetRegisterId && sign === -1) {
       // Kaynak satırı: ficheNo / sign=-1. Karşı satır fiche_no = `${ficheNo}-VRM`
       const counterFiche = `${ficheNo}-VRM`;

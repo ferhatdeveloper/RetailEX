@@ -67,12 +67,16 @@ export const STANDARD_CHART_OF_ACCOUNTS = [
   { hesap_kodu: '108', hesap_adi: 'KREDİ KARTI ALACAKLARI', tip: 'AKTIF', seviye: 1, borc_alacak: 'BORC' },
   { hesap_kodu: '120', hesap_adi: 'ALICILAR (MÜŞTERİLER)', tip: 'AKTIF', seviye: 1, borc_alacak: 'BORC' },
   { hesap_kodu: '121', hesap_adi: 'VERİLEN ÇEK VE SENETLER', tip: 'AKTIF', seviye: 1, borc_alacak: 'BORC' },
+  { hesap_kodu: '136', hesap_adi: 'PERSONEL BORÇLANMALARI (AVANSLAR)', tip: 'AKTIF', seviye: 1, borc_alacak: 'BORC' },
   { hesap_kodu: '153', hesap_adi: 'TİCARİ MALLAR', tip: 'AKTIF', seviye: 1, borc_alacak: 'BORC' },
   { hesap_kodu: '180', hesap_adi: 'GELECEK AYLARA AİT GİDERLER', tip: 'AKTIF', seviye: 1, borc_alacak: 'BORC' },
 
   // PASİF (Liability Accounts)
   { hesap_kodu: '300', hesap_adi: 'BANKA KREDİLERİ', tip: 'PASIF', seviye: 1, borc_alacak: 'ALACAK' },
   { hesap_kodu: '320', hesap_adi: 'SATICILAR', tip: 'PASIF', seviye: 1, borc_alacak: 'ALACAK' },
+  { hesap_kodu: '335', hesap_adi: 'ORTAKLAR (ŞİRKET ORTAKLARI)', tip: 'PASIF', seviye: 1, borc_alacak: 'ALACAK' },
+  { hesap_kodu: '335.10', hesap_adi: 'Ana Ortak (Sermaye)', tip: 'PASIF', seviye: 2, borc_alacak: 'ALACAK' },
+  { hesap_kodu: '335.20', hesap_adi: 'Diğer Ortaklar', tip: 'PASIF', seviye: 2, borc_alacak: 'ALACAK' },
   { hesap_kodu: '360', hesap_adi: 'ÖDENECEK VERGİLER', tip: 'PASIF', seviye: 1, borc_alacak: 'ALACAK' },
 
   // SERMAYE (Equity Accounts)

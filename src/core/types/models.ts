@@ -220,6 +220,153 @@ export interface Supplier {
   cardType?: 'customer' | 'supplier';
 }
 
+// ============================================================================
+// CARI POLYMORPHISM — parties (Personel + Şirket Ortağı)
+// ============================================================================
+
+export type PartyCardType = 'customer' | 'supplier' | 'employee' | 'partner';
+
+export interface Party {
+  id: string;
+  firm_nr?: string;
+  code?: string;
+  name: string;
+  card_type: PartyCardType;
+  phone?: string;
+  email?: string;
+  address?: string;
+  tax_nr?: string;
+  tax_office?: string;
+  balance?: number;
+  is_active?: boolean;
+  notes?: string;
+  /** Employee-specific */
+  salary_base?: number;
+  hire_date?: string | null;
+  department?: string;
+  position?: string;
+  /** Partner-specific */
+  share_pct?: number;
+  capital_contribution?: number;
+  partner_role?: 'major' | 'minor' | string;
+  partner_since?: string | null;
+  iban?: string;
+  /** Merge alanları — eski kart hedefe bağlandığında dolar */
+  merged_into_id?: string | null;
+  merged_at?: string | null;
+  merged_by?: string | null;
+  merge_notes?: string | null;
+  created_at?: string;
+  updated_at?: string;
+}
+
+export interface PartyEmployee {
+  id: string;
+  code?: string;
+  name: string;
+  phone?: string;
+  email?: string;
+  salary_base: number;
+  hire_date?: string | null;
+  department?: string;
+  position?: string;
+  /** Pozitif = personele avans borcu (işletmenin personele borcu) */
+  balance?: number;
+  is_active?: boolean;
+}
+
+export interface PartyPartner {
+  id: string;
+  code?: string;
+  name: string;
+  share_pct: number;
+  capital_contribution: number;
+  partner_role?: 'major' | 'minor' | string;
+  partner_since?: string | null;
+  iban?: string;
+  /** Pozitif = ortağın işletmeden alacağı (dağıtılmamış kâr payı); negatif = sermaye borcu */
+  balance?: number;
+  is_active?: boolean;
+}
+
+// ============================================================================
+// PARTY LEDGER + PARTNER DISTRIBUTION
+// ============================================================================
+
+export type PartyLedgerTxType =
+  | 'MAAS_ODEME'
+  | 'AVANS_ODEME'
+  | 'AVANS_MAHSUP'
+  | 'KAR_DAGITIMI'
+  | 'ZARAR_DAGITIMI'
+  | 'SERMAYE_TAHSILAT'
+  | 'SERMAYE_ODEME'
+  | 'DEVIR';
+
+export interface PartyLedgerMovement {
+  id: string;
+  firm_nr: string;
+  period_nr: string;
+  party_id: string;
+  card_type: PartyCardType;
+  trcode?: number;
+  transaction_type: PartyLedgerTxType | string;
+  date: string;
+  amount: number;
+  sign: number;
+  definition?: string;
+  source_module?: string;
+  source_id?: string;
+  cash_line_id?: string;
+  created_at?: string;
+}
+
+export type PartnerDistributionMode = 'daily' | 'period' | 'manual';
+export type PartnerDistributionBase = 'net_profit' | 'cash_net' | 'manual';
+
+export interface PartnerSettings {
+  firm_nr: string;
+  distribution_mode: PartnerDistributionMode;
+  distribution_base: PartnerDistributionBase;
+  expense_share_enabled: boolean;
+  updated_at?: string;
+}
+
+export interface PartnerDistributionItem {
+  id: string;
+  distribution_id: string;
+  partner_id: string;
+  share_pct: number;
+  amount: number;
+  cash_line_id?: string;
+  party_ledger_movement_id?: string;
+  created_at?: string;
+}
+
+export interface PartnerDistribution {
+  id: string;
+  firm_nr: string;
+  period_nr: string;
+  distribution_date: string;
+  base_type: PartnerDistributionBase;
+  base_amount: number;
+  total_partner_pct: number;
+  trigger_type: PartnerDistributionMode;
+  created_by?: string;
+  notes?: string;
+  reversed_by_id?: string;
+  items?: PartnerDistributionItem[];
+  created_at?: string;
+}
+
+export interface PartnerDistributionPreview {
+  baseType: PartnerDistributionBase;
+  baseAmount: number;
+  partners: { partner: PartyPartner; sharePct: number; amount: number }[];
+  totalPct: number;
+  warnings: string[];
+}
+
 export interface Sale {
   id: string;
   receiptNumber: string;

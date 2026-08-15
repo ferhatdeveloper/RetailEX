@@ -102,6 +102,13 @@
 98. **113_logo_outbound_banks_stock_sync.sql** – Kasa/banka (`cash_registers`) ve malzeme fişi (`stock_movements`) `logo_sync_*` kolonları (Logo REST banks / itemSlips gönderimi).
 99. **114_rest_reservations.sql** – Restoran rezervasyon: dönem bazlı `rest.rex_{f}_{p}_rest_reservations` + `INIT_RESTAURANT_RESERVATIONS_TABLE`.
 100. **115_logic_pay_plans.sql** – `logic.pay_plans` / `logic.pay_plan_lines` (ödeme planı); mevcut firmalara `ensure_firm_expense_tables` (masraf merkezi / gider).
+101. **116_beauty_appointment_customer_change_log.sql** – Beauty: müşteri değişikliği logu (`beauty.rex_{firm}_appointment_customer_log`).
+102. **117_beauty_followup_calls.sql** – Beauty kontrol takip aramaları tablosu (`beauty.rex_{firm}_followup_calls`).
+103. **118_beauty_followup_call_status.sql** – Beauty takip aramaları durum alanları (planned/done/cancelled).
+104. **119_expense_status_audit.sql** – Gider (`rex_*_expenses`) `status` (draft/approved/cancelled) ve onay/iptal audit sütunları.
+105. **120_*.sql** – diğer ara migration'lar (boş yer tutucu; 121 ile çakışmadığı sürece sıralı).
+106. **121_parties_employee_partner.sql** – `rex_*_parties` (cari polymorphism: customer/supplier/employee/partner — 4 tip tek tabloda); `rex_*_partner_settings` (firma düzeyinde kâr dağıtım ayarları); dönem `rex_*_*_party_ledger_movements` (maaş/avans/kâr-zarar dağıtım hareketleri); dönem `rex_*_*_partner_distributions` ve `_partner_distribution_items` (dağıtım geçmişi); mevcut `cash_lines.party_id` (polimorfik referans); mizan: 335 ORTAKLAR / 335.10 Ana Ortak / 335.20 Diğer Ortaklar / 136 PERSONEL BORÇLANMALARI (Avanslar).
+107. **122_party_merge.sql** – `rex_*_parties` kartına `merged_into_id` (UUID, hedef cari), `merged_at`, `merged_by`, `merge_notes` (cari birleştirme audit zinciri). Birleştirilen eski kart `is_active=false` ile arşivlenir; hedef kartın tüm party/cash/account/ledger hareketleri `party_id`/`customer_id` üzerinden otomatik olarak hedefe yönlendirilir.
 
 **099 tüm kiracılara (tek dosya):**
 ```bash

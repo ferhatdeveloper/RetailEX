@@ -2,7 +2,7 @@ import React, { useState, useEffect, useMemo } from 'react';
 import { formatNumber } from '../../../utils/formatNumber';
 import {
   Truck, Users, X, Search, Edit, Trash2, Mail, Phone, MapPin, Wallet,
-  FileText, Loader2, Printer, RefreshCw, Download, CalendarClock, ArrowRightLeft
+  FileText, Loader2, Printer, RefreshCw, Download, CalendarClock, ArrowRightLeft, Copy
 } from 'lucide-react';
 import { supplierAPI, type Supplier } from '../../../services/api/suppliers';
 import { toast } from 'sonner';
@@ -21,6 +21,7 @@ import {
 } from '../../../services/api/masterData';
 import { DEMO_CUSTOMER_CODES, DEMO_SUPPLIER_CODES } from '../../../utils/demoSeedCodes';
 import { mapUnifiedSupplierToCurrentAccountExcelRow, saveCurrentAccountsAsXlsx } from '../../../utils/currentAccountsExcelExport';
+import { SupplierEditModal } from './SupplierEditModal';
 import { FullscreenBodyPortal, MODAL_OVERLAY_Z } from '../../shared/FullscreenBodyPortal';
 import { KasaIslemModal } from '../../accounting/cash-ops/KasaIslemModal';
 import { fetchKasalar, type Kasa } from '../../../services/api/kasa';
@@ -62,6 +63,8 @@ export function SupplierModule({ initialFilter = 'all' }: { initialFilter?: 'all
   const [searchQuery, setSearchQuery] = useState('');
   const [showAddModal, setShowAddModal] = useState(false);
   const [editingSupplier, setEditingSupplier] = useState<Supplier | null>(null);
+  /** CallerID ile açılırken önceden doldurulacak telefon. */
+  const [callerIdPhone, setCallerIdPhone] = useState<string | null>(null);
   const [latestRates, setLatestRates] = useState<ExchangeRate[]>([]);
   /** Ekstre tablosunda birincil sütunları raporlama dövizinde göster */
   const [showReportingPrimary, setShowReportingPrimary] = useState(false);
@@ -112,15 +115,7 @@ export function SupplierModule({ initialFilter = 'all' }: { initialFilter?: 'all
   const [ekstresiStart, setEkstresiStart] = useState(defaultEkstre.start);
   const [ekstresiEnd, setEkstresiEnd] = useState(defaultEkstre.end);
 
-  // Form state
-  const [formData, setFormData] = useState({
-    code: '', name: '', phone: '', email: '', address: '', city: '',
-    payment_terms: 30, credit_limit: 0, tax_number: '', tax_office: '', notes: '',
-    call_plan_enabled: false,
-    call_plan_weekdays: [] as number[],
-    call_plan_note: '',
-    cardType: 'supplier' as 'customer' | 'supplier',
-  });
+  // Form state artık SupplierEditModal içinde — parent sadece aç/sinyal.
 
   useEffect(() => { loadSuppliers(); }, []);
 
@@ -149,31 +144,10 @@ export function SupplierModule({ initialFilter = 'all' }: { initialFilter?: 'all
       if (!forceCreate) {
         setSearchQuery(phone);
       }
-      setFormData({
-        code: '',
-        name: '',
-        phone,
-        email: '',
-        address: '',
-        city: '',
-        payment_terms: 30,
-        credit_limit: 0,
-        tax_number: '',
-        tax_office: '',
-        notes: '',
-        call_plan_enabled: false,
-        call_plan_weekdays: [],
-        call_plan_note: '',
-        cardType: 'customer',
-      });
       setEditingSupplier(null);
+      setCallerIdPhone(phone);
+      setPendingCardType('customer');
       setShowAddModal(true);
-      try {
-        const code = await supplierAPI.generateCode('customer');
-        setFormData(prev => ({ ...prev, code }));
-      } catch {
-        // no-op
-      }
     };
 
     const fromStorage = localStorage.getItem('callerid_customer_phone')?.trim();
@@ -291,7 +265,8 @@ export function SupplierModule({ initialFilter = 'all' }: { initialFilter?: 'all
     return (s.name?.toLowerCase() || '').includes(q) ||
       (s.code?.toLowerCase() || '').includes(q) ||
       (s.phone || '').includes(searchQuery) ||
-      (s.email?.toLowerCase() || '').includes(q);
+      (s.email?.toLowerCase() || '').includes(q) ||
+      (s.id?.toLowerCase() || '').includes(q);
   });
 
   /** Cari listesindeki demo kayıtlar (müşteri + tedarikçi) */
@@ -305,85 +280,40 @@ export function SupplierModule({ initialFilter = 'all' }: { initialFilter?: 'all
     });
   }, [suppliers]);
 
+  const [pendingCardType, setPendingCardType] = useState<'customer' | 'supplier'>('supplier');
+
   const openAddModal = (cardType: 'customer' | 'supplier') => {
-    setFormData({
-      code: '',
-      name: '',
-      phone: '',
-      email: '',
-      address: '',
-      city: '',
-      payment_terms: 30,
-      credit_limit: 0,
-      tax_number: '',
-      tax_office: '',
-      notes: '',
-      call_plan_enabled: false,
-      call_plan_weekdays: [],
-      call_plan_note: '',
-      cardType,
-    });
     setEditingSupplier(null);
+    setCallerIdPhone(null);
+    setPendingCardType(cardType);
     setShowAddModal(true);
-    void supplierAPI.generateCode(cardType).then((code) => setFormData((prev) => ({ ...prev, code }))).catch(() => { });
   };
 
   const handleAddCustomerClick = () => openAddModal('customer');
   const handleAddSupplierClick = () => openAddModal('supplier');
 
   const handleEditClick = (supplier: Supplier) => {
-    setFormData({
-      code: supplier.code || '', name: supplier.name, phone: supplier.phone || '',
-      email: supplier.email || '', address: supplier.address || '', city: supplier.city || '',
-      payment_terms: supplier.payment_terms || 30, credit_limit: supplier.credit_limit || 0,
-      tax_number: supplier.tax_number || '', tax_office: supplier.tax_office || '',
-      notes: supplier.notes || '',
-      call_plan_enabled: supplier.call_plan_enabled === true,
-      call_plan_weekdays: normalizeCustomerCallWeekdays(supplier.call_plan_weekdays),
-      call_plan_note: supplier.call_plan_note || '',
-      cardType: supplier.cardType || 'supplier',
-    });
     setEditingSupplier(supplier);
+    setCallerIdPhone(null);
     setShowAddModal(true);
   };
 
-  const handleSave = async () => {
-    if (!formData.name.trim()) { toast.error('Ad zorunludur'); return; }
-    const saveData = {
-      ...formData,
-      call_plan_enabled:
-        formData.cardType === 'customer' &&
-        formData.call_plan_enabled === true &&
-        normalizeCustomerCallWeekdays(formData.call_plan_weekdays).length > 0,
-      call_plan_weekdays:
-        formData.cardType === 'customer' && formData.call_plan_enabled
-          ? normalizeCustomerCallWeekdays(formData.call_plan_weekdays)
-          : [],
-      call_plan_note:
-        formData.cardType === 'customer' && formData.call_plan_enabled
-          ? formData.call_plan_note.trim() || null
-          : null,
-    };
-    try {
-      if (editingSupplier) {
-        const prevType = editingSupplier.cardType || 'supplier';
-        if (prevType !== saveData.cardType) {
-          await supplierAPI.transferCardType(editingSupplier.id, prevType, saveData.cardType, saveData);
-          toast.success(tm('accountTypeChanged') || 'Cari tipi değiştirildi');
-        } else {
-          await supplierAPI.update(editingSupplier.id, saveData);
-          toast.success('Güncellendi');
-        }
-        setShowAddModal(false);
-        await loadSuppliers();
-      } else {
-        const created = await supplierAPI.create(saveData);
-        toast.success(saveData.cardType === 'customer' ? 'Müşteri cari hesabı eklendi' : 'Satıcı cari hesabı eklendi');
-        setShowAddModal(false);
-        await loadSuppliers();
-        void selectAccount({ ...created, cardType: saveData.cardType, balance: 0 });
-      }
-    } catch (e: any) { toast.error(e.message || 'Kayıt başarısız'); }
+  const handleModalSaved = async (saved: Supplier, cardType: 'customer' | 'supplier') => {
+    const wasEdit = !!editingSupplier;
+    setShowAddModal(false);
+    setEditingSupplier(null);
+    setCallerIdPhone(null);
+    const all = await loadSuppliers();
+    if (!wasEdit && saved?.id) {
+      const fresh = all.find((s) => s.id === saved.id) ?? saved;
+      void selectAccount({ ...fresh, cardType, balance: 0 });
+    }
+  };
+
+  const handleModalClose = () => {
+    setShowAddModal(false);
+    setEditingSupplier(null);
+    setCallerIdPhone(null);
   };
 
   const handleDelete = async (id: string, name: string, cardType: 'customer' | 'supplier') => {
@@ -527,6 +457,41 @@ export function SupplierModule({ initialFilter = 'all' }: { initialFilter?: 'all
           header: tm('code'),
           cell: info => <span className="font-mono text-xs text-blue-600 font-bold">{info.getValue() || '-'}</span>,
           size: 100
+        })
+      );
+    }
+    if (isColumnVisible('id')) {
+      const shortUuid = (id: unknown) => {
+        const v = String(id || '').replace(/-/g, '');
+        if (!v) return '—';
+        if (v.length < 12) return String(id).slice(0, 8);
+        return `${v.slice(0, 8)}…${v.slice(-4)}`;
+      };
+      const copyId = async (id: string) => {
+        try {
+          await navigator.clipboard.writeText(id);
+        } catch {
+          /* ignore */
+        }
+      };
+      cols.push(
+        columnHelper.accessor('id', {
+          header: tm('custColUniqueId') || tm('cariColRefId') || 'ID',
+          cell: info => {
+            const id = info.getValue() as string;
+            return (
+              <button
+                type="button"
+                onClick={(e) => { e.stopPropagation(); void copyId(id); }}
+                title={`${id} — Kopyala`}
+                className="inline-flex items-center gap-1 font-mono text-[10px] text-slate-500 hover:text-blue-600"
+              >
+                <span>{shortUuid(id)}</span>
+                <Copy className="w-3 h-3" />
+              </button>
+            );
+          },
+          size: 110,
         })
       );
     }
@@ -1337,150 +1302,15 @@ export function SupplierModule({ initialFilter = 'all' }: { initialFilter?: 'all
         />
       )}
 
-      {/* Add/Edit Modal */}
+      {/* Add/Edit Modal — PercentBodyModal standardına uygun ayrı bileşen */}
       {showAddModal && (
-        <FullscreenBodyPortal
-          className="bg-black/40 flex items-center justify-center p-4 backdrop-blur-sm"
-          zIndex={MODAL_OVERLAY_Z}
-          onClick={e => { if (e.target === e.currentTarget) setShowAddModal(false); }}
-        >
-          <div
-            className="bg-white rounded-xl w-full max-w-2xl max-h-[min(90vh,100dvh)] overflow-hidden shadow-2xl flex flex-col"
-            onClick={e => e.stopPropagation()}
-          >
-            <div className="p-4 border-b bg-gray-50 flex items-center justify-between">
-              <div>
-                <h3 className="text-base font-black text-slate-800 uppercase tracking-tighter">{editingSupplier ? tm('edit') : tm('newCurrentAccount')}</h3>
-                <p className="text-[10px] text-gray-400 font-bold uppercase">{formData.cardType === 'customer' ? tm('customer') : tm('supplierLabel')}</p>
-              </div>
-              <button onClick={() => setShowAddModal(false)} className="p-2 hover:bg-gray-200 rounded-lg"><X className="w-5 h-5 text-gray-400" /></button>
-            </div>
-
-            <div className="p-5 space-y-4 overflow-y-auto">
-              <div className="grid grid-cols-2 gap-3">
-                <button type="button" onClick={async () => {
-                  if (!editingSupplier) {
-                    const c = await supplierAPI.generateCode('customer');
-                    setFormData((prev) => ({ ...prev, cardType: 'customer', code: c }));
-                    return;
-                  }
-                  setFormData((prev) => ({ ...prev, cardType: 'customer' }));
-                }}
-                  className={`flex items-center gap-2 p-3 rounded-xl border-2 transition-all ${formData.cardType === 'customer' ? 'border-blue-600 bg-blue-50' : 'border-gray-200'}`}>
-                  <Users className={`w-5 h-5 ${formData.cardType === 'customer' ? 'text-blue-600' : 'text-gray-400'}`} />
-                  <span className={`text-sm font-bold ${formData.cardType === 'customer' ? 'text-blue-700' : 'text-gray-500'}`}>{tm('customer')}</span>
-                </button>
-                <button type="button" onClick={async () => {
-                  if (!editingSupplier) {
-                    const c = await supplierAPI.generateCode('supplier');
-                    setFormData((prev) => ({ ...prev, cardType: 'supplier', code: c }));
-                    return;
-                  }
-                  setFormData((prev) => ({ ...prev, cardType: 'supplier' }));
-                }}
-                  className={`flex items-center gap-2 p-3 rounded-xl border-2 transition-all ${formData.cardType === 'supplier' ? 'border-orange-500 bg-orange-50' : 'border-gray-200'}`}>
-                  <Truck className={`w-5 h-5 ${formData.cardType === 'supplier' ? 'text-orange-500' : 'text-gray-400'}`} />
-                  <span className={`text-sm font-bold ${formData.cardType === 'supplier' ? 'text-orange-700' : 'text-gray-500'}`}>{tm('supplierLabel')}</span>
-                </button>
-              </div>
-              {editingSupplier && editingSupplier.cardType !== formData.cardType && (
-                <p className="text-xs text-amber-700 bg-amber-50 border border-amber-200 rounded-lg px-3 py-2">
-                  {tm('accountTypeChanged') || 'Kayıt yeni tipe taşınacak; fişler yeni cari kartına aktarılır.'}
-                </p>
-              )}
-              {formData.cardType === 'customer' && (
-                <div className="rounded-2xl border border-amber-200 bg-amber-50/70 p-4">
-                  <div className="mb-3 flex items-start gap-2">
-                    <CalendarClock className="mt-0.5 h-4 w-4 text-amber-700" />
-                    <div>
-                      <p className="text-xs font-black uppercase tracking-wide text-amber-900">Müşteri arama planı</p>
-                      <p className="text-[11px] font-medium text-amber-700">Bu müşteri haftanın hangi günü aranacak?</p>
-                    </div>
-                  </div>
-                  <div>
-                    <p className="mb-2 text-[11px] font-black uppercase tracking-wide text-amber-900">Aranacak günler</p>
-                    <div className="flex flex-wrap gap-2">
-                      {CUSTOMER_CALL_WEEKDAYS.map(day => {
-                        const selectedDays = normalizeCustomerCallWeekdays(formData.call_plan_weekdays);
-                        const selected = selectedDays.includes(day.value);
-                        return (
-                          <button
-                            key={day.value}
-                            type="button"
-                            onClick={() => {
-                              const nextDays = selected
-                                ? formData.call_plan_weekdays.filter(v => v !== day.value)
-                                : [...formData.call_plan_weekdays, day.value].sort((a, b) => a - b);
-                              setFormData({
-                                ...formData,
-                                call_plan_enabled: nextDays.length > 0,
-                                call_plan_weekdays: nextDays,
-                              });
-                            }}
-                            aria-pressed={selected}
-                            className={`rounded-full border px-3 py-1.5 text-xs font-black transition-all ${
-                              selected
-                                ? 'border-blue-600 bg-blue-600 text-white shadow-md ring-2 ring-blue-200'
-                                : 'border-amber-200 bg-white text-amber-700 hover:bg-amber-100'
-                            }`}
-                          >
-                            {selected ? `✓ ${day.tr}` : day.tr}
-                          </button>
-                        );
-                      })}
-                    </div>
-                    {normalizeCustomerCallWeekdays(formData.call_plan_weekdays).length > 0 ? (
-                      <p className="mt-2 rounded-lg bg-blue-50 px-3 py-2 text-[11px] font-bold text-blue-700">
-                        Seçili günler: {customerCallWeekdaysLabel(formData.call_plan_weekdays)}
-                      </p>
-                    ) : null}
-                    <div className="mt-3">
-                      <label className="mb-1 block text-[11px] font-black uppercase tracking-wide text-amber-900">Plan notu</label>
-                      <textarea
-                        value={formData.call_plan_note}
-                        onChange={e => setFormData({ ...formData, call_plan_note: e.target.value })}
-                        rows={2}
-                        placeholder="Örn. Kampanya, rutin kontrol veya özel arama sebebi"
-                        className="w-full rounded-lg border border-amber-200 bg-white px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-amber-500"
-                      />
-                    </div>
-                    <p className="mt-2 text-[11px] text-amber-700">Birden fazla gün seçebilirsiniz; seçili müşteriler Arama Listesi ekranında görünür.</p>
-                  </div>
-                </div>
-              )}
-              <div className="grid grid-cols-2 gap-4">
-                <Field label={tm('code')}><input type="text" value={formData.code} onChange={e => setFormData({ ...formData, code: e.target.value })} placeholder="Otomatik" /></Field>
-                <Field label={`${tm('currentAccountTitle')} *`}><input type="text" value={formData.name} onChange={e => setFormData({ ...formData, name: e.target.value })} /></Field>
-              </div>
-              <div className="grid grid-cols-2 gap-4">
-                <Field label={tm('phoneLabel')}><input type="tel" value={formData.phone} onChange={e => setFormData({ ...formData, phone: e.target.value })} /></Field>
-                <Field label={tm('emailLabel')}><input type="email" value={formData.email} onChange={e => setFormData({ ...formData, email: e.target.value })} /></Field>
-              </div>
-              <Field label={tm('address')}><input type="text" value={formData.address} onChange={e => setFormData({ ...formData, address: e.target.value })} /></Field>
-              <div className="grid grid-cols-2 gap-4">
-                <Field label={tm('city')}><input type="text" value={formData.city} onChange={e => setFormData({ ...formData, city: e.target.value })} /></Field>
-                {formData.cardType === 'supplier' && (
-                  <Field label={tm('paymentTermDays')}><input type="number" value={formData.payment_terms} onChange={e => setFormData({ ...formData, payment_terms: parseInt(e.target.value) || 30 })} /></Field>
-                )}
-              </div>
-              {formData.cardType === 'supplier' && (
-              <div className="grid grid-cols-2 gap-4">
-                <Field label={tm('creditLimit')}><input type="number" value={formData.credit_limit} onChange={e => setFormData({ ...formData, credit_limit: parseFloat(e.target.value) || 0 })} /></Field>
-                <Field label={tm('taxNumberLabel')}><input type="text" value={formData.tax_number} onChange={e => setFormData({ ...formData, tax_number: e.target.value })} /></Field>
-              </div>
-              )}
-              {formData.cardType === 'customer' && (
-              <Field label={tm('taxNumberLabel')}><input type="text" value={formData.tax_number} onChange={e => setFormData({ ...formData, tax_number: e.target.value })} /></Field>
-              )}
-              <Field label={tm('notesLabel')}><textarea value={formData.notes} onChange={e => setFormData({ ...formData, notes: e.target.value })} rows={2} /></Field>
-            </div>
-
-            <div className="p-4 border-t bg-gray-50 flex gap-3 justify-end">
-              <button onClick={() => setShowAddModal(false)} className="px-4 py-2 text-sm bg-white border border-gray-300 text-gray-700 rounded-lg hover:bg-gray-50">{tm('cancel')}</button>
-              <button onClick={handleSave} className="px-4 py-2 text-sm bg-blue-600 text-white rounded-lg hover:bg-blue-700 font-bold">{editingSupplier ? tm('save') : tm('add')}</button>
-            </div>
-          </div>
-        </FullscreenBodyPortal>
+        <SupplierEditModal
+          initial={editingSupplier}
+          defaultCardType={pendingCardType}
+          initialPhone={callerIdPhone ?? undefined}
+          onClose={handleModalClose}
+          onSaved={handleModalSaved}
+        />
       )}
       {cashAction && defaultKasa && (
         <KasaIslemModal
@@ -1510,14 +1340,4 @@ export function SupplierModule({ initialFilter = 'all' }: { initialFilter?: 'all
   );
 }
 
-// Small helper to reduce input boilerplate
-function Field({ label, children }: { label: string; children: React.ReactElement<React.HTMLAttributes<HTMLElement>> }) {
-  return (
-    <div>
-      <label className="block text-xs font-bold text-gray-400 uppercase mb-1">{label}</label>
-      {React.cloneElement(children, {
-        className: 'w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500',
-      } satisfies React.HTMLAttributes<HTMLElement>)}
-    </div>
-  );
-}
+// Field helper SupplierEditModal.tsx'e taşındı.

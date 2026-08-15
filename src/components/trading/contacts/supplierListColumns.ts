@@ -8,6 +8,7 @@ export const SUPPLIER_LIST_COLUMN_VISIBILITY_KEY = 'retailex_supplierList_column
  */
 export type SupplierListColumnId =
   | 'code'
+  | 'id'
   | 'cardType'
   | 'name'
   | 'contact'
@@ -53,6 +54,7 @@ type ColumnMeta = {
 
 export const SUPPLIER_LIST_COLUMN_META: Record<SupplierListColumnId, ColumnMeta> = {
   code: { id: 'code', labelKey: 'code', defaultVisible: true },
+  id: { id: 'id', labelKey: 'custColUniqueId', defaultVisible: true },
   cardType: { id: 'cardType', labelKey: 'type', defaultVisible: true },
   name: { id: 'name', labelKey: 'currentAccountTitle', defaultVisible: true },
   contact: { id: 'contact', labelKey: 'contact', defaultVisible: true },

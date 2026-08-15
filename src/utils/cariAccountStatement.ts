@@ -1,12 +1,14 @@
 /** Cari hesap ekstresi — ortak yardımcılar */
 
+export type ExtCardType = 'customer' | 'supplier' | 'employee' | 'partner' | undefined;
+
 export function preferIntegerAmountDisplay(code: string): boolean {
   const c = (code || '').trim().toUpperCase();
   return c === 'IQD' || c === 'JPY' || c === 'VND' || c === 'KHR' || c === 'UZS';
 }
 
 export function getCariBalanceDirection(
-  cardType: 'customer' | 'supplier' | undefined,
+  cardType: ExtCardType,
   balance: number,
   tm: (key: string) => string,
 ): { side: 'B' | 'A' | ''; sideLabel: string; hint: string } {
@@ -19,6 +21,26 @@ export function getCariBalanceDirection(
       side,
       sideLabel,
       hint: balance > 0 ? tm('balanceHintSupplierPayable') : tm('balanceHintSupplierReceivable'),
+    };
+  }
+
+  if (cardType === 'employee') {
+    const side: 'B' | 'A' = balance > 0 ? 'B' : 'A';
+    const sideLabel = balance > 0 ? tm('party.employee.balanceLabel') : tm('party.employee.balanceLabelZero');
+    return {
+      side,
+      sideLabel,
+      hint: balance > 0 ? tm('party.employee.balanceHintAvans') : tm('party.employee.balanceHintZero'),
+    };
+  }
+
+  if (cardType === 'partner') {
+    const side: 'B' | 'A' = balance > 0 ? 'B' : 'A';
+    const sideLabel = balance > 0 ? tm('party.partner.balanceLabel') : tm('party.partner.balanceLabelNegative');
+    return {
+      side,
+      sideLabel,
+      hint: balance > 0 ? tm('party.partner.balanceHintReceivable') : tm('party.partner.balanceHintPayable'),
     };
   }
 
@@ -67,9 +89,11 @@ export type EkstreRow = {
 
 export function buildEkstreRows(
   data: Array<Record<string, unknown>>,
-  cardType: 'customer' | 'supplier' | undefined,
+  cardType: ExtCardType,
 ): EkstreRow[] {
   const isSupplierAccount = cardType === 'supplier';
+  const isEmployeeAccount = cardType === 'employee';
+  const isPartnerAccount = cardType === 'partner';
   let runningBalance = 0;
 
   return data.map(row => {
@@ -89,6 +113,8 @@ export function buildEkstreRows(
     }
     runningBalance += delta;
     const absAmt = Math.abs(amount);
+    // Personel/Ortağı: working'de amount her zaman + (zaten yön ayarlı);
+    // borc/alacak sütunları için normal müşteri/tedarikçi mantığı kullanılır.
     const isBorcEntry = isOpening ? amount > 0 : isSupplierAccount ? isReturn : !isReturn;
     return {
       ...row,

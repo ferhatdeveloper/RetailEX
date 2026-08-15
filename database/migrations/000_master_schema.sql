@@ -2481,8 +2481,71 @@ BEGIN
   EXECUTE format('CREATE TABLE IF NOT EXISTS %I (id UUID PRIMARY KEY DEFAULT gen_random_uuid(), firm_nr VARCHAR(10) NOT NULL, code VARCHAR(50) UNIQUE, name VARCHAR(255) NOT NULL, phone VARCHAR(50), email VARCHAR(255), is_active BOOLEAN DEFAULT true, created_at TIMESTAMPTZ DEFAULT NOW(), updated_at TIMESTAMPTZ DEFAULT NOW());', v_prefix || '_sales_reps');
   EXECUTE format('CREATE TABLE IF NOT EXISTS %I (id UUID PRIMARY KEY DEFAULT gen_random_uuid(), code VARCHAR(50) NOT NULL, name VARCHAR(100) NOT NULL, description TEXT, is_active BOOLEAN DEFAULT true, firm_nr VARCHAR(10) NOT NULL, created_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP, UNIQUE(code, firm_nr));', v_prefix || '_cost_centers');
   EXECUTE format('CREATE TABLE IF NOT EXISTS %I (id UUID PRIMARY KEY DEFAULT gen_random_uuid(), category VARCHAR(50) NOT NULL, description TEXT NOT NULL, amount DECIMAL(18,2) NOT NULL, payment_method VARCHAR(50) NOT NULL, document_number VARCHAR(100), document_url TEXT, store_id UUID, cost_center_id UUID, expense_date DATE NOT NULL, notes TEXT, created_by UUID, firm_nr VARCHAR(10) NOT NULL, cash_line_id UUID, cash_register_id UUID, created_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP);', v_prefix || '_expenses');
+
+  -- 9. Parties (cari polymorphism — müşteri/tedarikçi/personel/şirket ortağı)
+  EXECUTE format('CREATE TABLE IF NOT EXISTS %I (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    firm_nr VARCHAR(10) NOT NULL DEFAULT ''001'',
+    code VARCHAR(50),
+    name VARCHAR(255) NOT NULL DEFAULT '''',
+    card_type VARCHAR(20) NOT NULL DEFAULT ''customer'',
+    phone VARCHAR(50),
+    email VARCHAR(255),
+    address TEXT,
+    tax_nr VARCHAR(50),
+    tax_office VARCHAR(100),
+    balance DECIMAL(15,2) NOT NULL DEFAULT 0,
+    is_active BOOLEAN NOT NULL DEFAULT true,
+    notes TEXT,
+    salary_base DECIMAL(15,2) NOT NULL DEFAULT 0,
+    hire_date DATE,
+    department VARCHAR(100),
+    position VARCHAR(100),
+    share_pct NUMERIC(5,2) NOT NULL DEFAULT 0,
+    capital_contribution DECIMAL(15,2) NOT NULL DEFAULT 0,
+    partner_role VARCHAR(50),
+    partner_since DATE,
+    iban VARCHAR(50),
+    merged_into_id UUID,
+    merged_at TIMESTAMPTZ,
+    merged_by TEXT,
+    merge_notes TEXT,
+    created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+  );', v_prefix || '_parties');
+
+  EXECUTE format('CREATE UNIQUE INDEX IF NOT EXISTS %I ON %I (firm_nr, code) WHERE code IS NOT NULL',
+    v_prefix || '_parties_firm_code_uniq', v_prefix || '_parties');
+  EXECUTE format('CREATE INDEX IF NOT EXISTS %I ON %I (firm_nr, card_type)',
+    v_prefix || '_parties_firm_card_type_idx', v_prefix || '_parties');
+  EXECUTE format('CREATE INDEX IF NOT EXISTS %I ON %I (firm_nr, is_active)',
+    v_prefix || '_parties_firm_active_idx', v_prefix || '_parties');
+  EXECUTE format('CREATE INDEX IF NOT EXISTS %I ON %I (merged_into_id) WHERE merged_into_id IS NOT NULL',
+    v_prefix || '_parties_merged_into_idx', v_prefix || '_parties');
+  EXECUTE format('ALTER TABLE %I DROP CONSTRAINT IF EXISTS rex_parties_card_type_chk', v_prefix || '_parties');
+  EXECUTE format('ALTER TABLE %I ADD CONSTRAINT rex_parties_card_type_chk CHECK (card_type IN (''customer'',''supplier'',''employee'',''partner''))', v_prefix || '_parties');
+
+  -- 10. Partner Settings (firma-düzey)
+  EXECUTE format('CREATE TABLE IF NOT EXISTS %I (
+    firm_nr VARCHAR(10) PRIMARY KEY,
+    distribution_mode VARCHAR(20) NOT NULL DEFAULT ''manual'',
+    distribution_base VARCHAR(20) NOT NULL DEFAULT ''manual'',
+    expense_share_enabled BOOLEAN NOT NULL DEFAULT false,
+    updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+  );', v_prefix || '_partner_settings');
+
+  EXECUTE format('ALTER TABLE %I DROP CONSTRAINT IF EXISTS rex_partner_settings_mode_chk', v_prefix || '_partner_settings');
+  EXECUTE format('ALTER TABLE %I ADD CONSTRAINT rex_partner_settings_mode_chk CHECK (distribution_mode IN (''daily'',''period'',''manual''))', v_prefix || '_partner_settings');
+  EXECUTE format('ALTER TABLE %I DROP CONSTRAINT IF EXISTS rex_partner_settings_base_chk', v_prefix || '_partner_settings');
+  EXECUTE format('ALTER TABLE %I ADD CONSTRAINT rex_partner_settings_base_chk CHECK (distribution_base IN (''net_profit'',''cash_net'',''manual''))', v_prefix || '_partner_settings');
+
+  -- Default partner_settings row
+  EXECUTE format('INSERT INTO %I (firm_nr, distribution_mode, distribution_base, expense_share_enabled) VALUES (%L, ''manual'', ''manual'', false) ON CONFLICT (firm_nr) DO NOTHING;', v_prefix || '_partner_settings', p_firm_nr);
+
   EXECUTE format('GRANT SELECT, INSERT, UPDATE, DELETE ON %I TO anon', v_prefix || '_cost_centers');
   EXECUTE format('GRANT SELECT, INSERT, UPDATE, DELETE ON %I TO anon', v_prefix || '_expenses');
+  EXECUTE format('GRANT SELECT, INSERT, UPDATE, DELETE ON %I TO anon', v_prefix || '_parties');
+  EXECUTE format('GRANT SELECT, INSERT, UPDATE, DELETE ON %I TO anon', v_prefix || '_partner_settings');
 
   -- Sync Triggers
   PERFORM public.try_apply_sync_triggers(v_prefix || '_products');
@@ -2748,6 +2811,7 @@ BEGIN
       bank_account_id      UUID,
       target_register_id   UUID,
       expense_card_id      UUID,
+      party_id             UUID,
       currency_code        VARCHAR(10) DEFAULT ''IQD'',
       exchange_rate        DECIMAL(15,6) DEFAULT 1,
       f_amount             DECIMAL(15,2) DEFAULT 0,
@@ -2780,6 +2844,73 @@ BEGIN
       created_at   TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP
     );
   ', v_prefix || '_account_movements');
+
+  -- 3c. Party Ledger Movements (Personel + Şirket Ortağı hareketleri)
+  EXECUTE format('
+    CREATE TABLE IF NOT EXISTS %I (
+      id              UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+      firm_nr         VARCHAR(10) NOT NULL,
+      period_nr       VARCHAR(10) NOT NULL,
+      party_id        UUID NOT NULL,
+      card_type       VARCHAR(20) NOT NULL,
+      trcode          INTEGER,
+      transaction_type VARCHAR(50) NOT NULL,
+      date            TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP,
+      amount          DECIMAL(15,2) DEFAULT 0,
+      sign            INTEGER DEFAULT 0,
+      definition      TEXT,
+      source_module   VARCHAR(50),
+      source_id       UUID,
+      cash_line_id    UUID,
+      created_at      TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP
+    );
+  ', v_prefix || '_party_ledger_movements');
+
+  EXECUTE format('CREATE INDEX IF NOT EXISTS %I ON %I (firm_nr, period_nr, party_id, date)',
+    v_prefix || '_party_ledger_firm_period_party_date_idx', v_prefix || '_party_ledger_movements');
+  EXECUTE format('CREATE INDEX IF NOT EXISTS %I ON %I (transaction_type)',
+    v_prefix || '_party_ledger_trtype_idx', v_prefix || '_party_ledger_movements');
+
+  -- 3d. Partner Distributions (kâr/zarar dağıtım geçmişi)
+  EXECUTE format('
+    CREATE TABLE IF NOT EXISTS %I (
+      id                  UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+      firm_nr             VARCHAR(10) NOT NULL,
+      period_nr           VARCHAR(10) NOT NULL,
+      distribution_date   DATE NOT NULL,
+      base_type           VARCHAR(20) NOT NULL,
+      base_amount         DECIMAL(15,2) NOT NULL DEFAULT 0,
+      total_partner_pct   NUMERIC(5,2) NOT NULL DEFAULT 0,
+      trigger_type        VARCHAR(20) NOT NULL,
+      created_by          VARCHAR(100),
+      notes               TEXT,
+      reversed_by_id      UUID,
+      created_at          TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP
+    );
+  ', v_prefix || '_partner_distributions');
+
+  EXECUTE format('CREATE INDEX IF NOT EXISTS %I ON %I (distribution_date)',
+    v_prefix || '_partner_distributions_date_idx', v_prefix || '_partner_distributions');
+  EXECUTE format('CREATE INDEX IF NOT EXISTS %I ON %I (firm_nr, trigger_type)',
+    v_prefix || '_partner_distributions_firm_trigger_idx', v_prefix || '_partner_distributions');
+
+  EXECUTE format('
+    CREATE TABLE IF NOT EXISTS %I (
+      id                       UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+      distribution_id          UUID NOT NULL REFERENCES %I(id) ON DELETE CASCADE,
+      partner_id               UUID NOT NULL,
+      share_pct                NUMERIC(5,2) NOT NULL,
+      amount                   DECIMAL(15,2) NOT NULL,
+      cash_line_id             UUID,
+      party_ledger_movement_id UUID,
+      created_at               TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP
+    );
+  ', v_prefix || '_partner_distribution_items', v_prefix || '_partner_distributions');
+
+  EXECUTE format('CREATE INDEX IF NOT EXISTS %I ON %I (distribution_id)',
+    v_prefix || '_partner_distribution_items_dist_idx', v_prefix || '_partner_distribution_items');
+  EXECUTE format('CREATE INDEX IF NOT EXISTS %I ON %I (partner_id)',
+    v_prefix || '_partner_distribution_items_partner_idx', v_prefix || '_partner_distribution_items');
 
   -- 4. Bank Transactions
   EXECUTE format('
