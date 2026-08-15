@@ -6,7 +6,8 @@ import {
 } from '../../shared/PercentBodyModal';
 import { employeeAPI } from '../../../services/api/partiesEmployees';
 import { fetchKasalar, type Kasa } from '../../../services/api/kasa';
-import { ChevronDown, X, Loader2 } from 'lucide-react';
+import { printPayrollVoucher } from '../../../utils/printPayrollVoucher';
+import { ChevronDown, FileText, Loader2, Printer, X } from 'lucide-react';
 import { toast } from 'sonner';
 import type { Party, PartyLedgerMovement } from '../../../core/types/models';
 
@@ -14,11 +15,12 @@ export interface EmployeePayrollModalProps {
   employee: Party;
   onClose: () => void;
   onSaved: () => void;
+  onOpenStatement?: () => void;
 }
 
 type Action = 'salary' | 'advance' | 'reconcile';
 
-export function EmployeePayrollModal({ employee, onClose, onSaved }: EmployeePayrollModalProps) {
+export function EmployeePayrollModal({ employee, onClose, onSaved, onOpenStatement }: EmployeePayrollModalProps) {
   const t = useNestedT();
   const [action, setAction] = useState<Action>('salary');
   const [amount, setAmount] = useState('');
@@ -28,6 +30,11 @@ export function EmployeePayrollModal({ employee, onClose, onSaved }: EmployeePay
   const [loading, setLoading] = useState(false);
   const [recent, setRecent] = useState<PartyLedgerMovement[]>([]);
   const [error, setError] = useState<string | null>(null);
+  const [balance, setBalance] = useState(employee.balance || 0);
+
+  useEffect(() => {
+    setBalance(employee.balance || 0);
+  }, [employee.id, employee.balance]);
 
   useEffect(() => {
     fetchKasalar({ aktif: true }).then(setRegisters).catch(() => setRegisters([]));
@@ -66,30 +73,54 @@ export function EmployeePayrollModal({ employee, onClose, onSaved }: EmployeePay
     }
     setLoading(true);
     try {
+      let result: { ficheNo?: string | null; balance: number } | null = null;
       if (action === 'salary') {
-        await employeeAPI.paySalary({
+        result = await employeeAPI.paySalary({
           employeeId: employee.id,
           amount: amt,
           registerId,
           definition: definition || undefined,
         });
       } else if (action === 'advance') {
-        await employeeAPI.payAdvance({
+        result = await employeeAPI.payAdvance({
           employeeId: employee.id,
           amount: amt,
           registerId,
           definition: definition || undefined,
         });
       } else {
-        await employeeAPI.reconcileAdvance({
+        result = await employeeAPI.reconcileAdvance({
           employeeId: employee.id,
           amount: amt,
           definition: definition || undefined,
         });
       }
+      if (result) setBalance(result.balance);
       toast.success(t('party.payroll.saveSuccess'));
       await loadRecent();
       onSaved();
+      if (action !== 'reconcile') {
+        const titles = {
+          salary: t('party.payroll.voucherTitleSalary'),
+          advance: t('party.payroll.voucherTitleAdvance'),
+        } as const;
+        try {
+          await printPayrollVoucher({
+            kind: action,
+            title: titles[action],
+            employeeName: employee.name,
+            employeeCode: employee.code,
+            amount: amt,
+            ficheNo: result?.ficheNo,
+            date: new Date().toISOString(),
+            definition: definition || undefined,
+            balanceAfter: result?.balance,
+            balanceLabel: t('party.fields.balance'),
+          });
+        } catch (printErr: any) {
+          toast.error(printErr?.message || t('party.statement.printError'));
+        }
+      }
     } catch (err: any) {
       setError(err?.message || String(err));
     } finally {
@@ -105,13 +136,25 @@ export function EmployeePayrollModal({ employee, onClose, onSaved }: EmployeePay
             <h2 className="text-2xl font-bold">{t('party.payroll.title')}</h2>
             <p className="text-emerald-100 text-sm mt-1">{employee.name}</p>
           </div>
-          <button
-            type="button"
-            onClick={onClose}
-            className="p-2 rounded-xl hover:bg-white/10 transition"
-          >
-            <X className="w-5 h-5" />
-          </button>
+          <div className="flex items-center gap-1">
+            {onOpenStatement && (
+              <button
+                type="button"
+                onClick={onOpenStatement}
+                className="p-2 rounded-xl hover:bg-white/10 transition"
+                title={t('party.payroll.openStatement')}
+              >
+                <FileText className="w-5 h-5" />
+              </button>
+            )}
+            <button
+              type="button"
+              onClick={onClose}
+              className="p-2 rounded-xl hover:bg-white/10 transition"
+            >
+              <X className="w-5 h-5" />
+            </button>
+          </div>
         </div>
 
         <PercentBodyModalScrollBody className="p-6">
@@ -178,7 +221,7 @@ export function EmployeePayrollModal({ employee, onClose, onSaved }: EmployeePay
 
             <div className="p-3 rounded-2xl bg-slate-50 border border-slate-200 text-xs text-slate-600">
               <div className="flex justify-between"><span>{t('party.employee.salaryBase')}</span><strong>{formatMoney(employee.salary_base)}</strong></div>
-              <div className="flex justify-between mt-1"><span>{t('party.fields.balance')}</span><strong>{formatMoney(employee.balance)}</strong></div>
+              <div className="flex justify-between mt-1"><span>{t('party.fields.balance')}</span><strong>{formatMoney(balance)}</strong></div>
             </div>
 
             {recent.length > 0 && (
@@ -188,9 +231,42 @@ export function EmployeePayrollModal({ employee, onClose, onSaved }: EmployeePay
                 </div>
                 <div className="space-y-1 max-h-40 overflow-y-auto">
                   {recent.map((r) => (
-                    <div key={r.id} className="flex justify-between text-xs p-2 rounded-lg bg-slate-50">
-                      <span>{r.date?.slice(0, 10)} • {r.transaction_type}</span>
-                      <span className="font-mono">{formatMoney(r.amount)}</span>
+                    <div key={r.id} className="flex justify-between items-center gap-2 text-xs p-2 rounded-lg bg-slate-50">
+                      <span>{r.date?.slice(0, 10)} • {r.transaction_type}{r.fiche_no ? ` · ${r.fiche_no}` : ''}</span>
+                      <span className="inline-flex items-center gap-1">
+                        <span className="font-mono">{formatMoney(r.amount)}</span>
+                        <button
+                          type="button"
+                          className="p-1 rounded hover:bg-white text-emerald-700"
+                          title={t('party.statement.printVoucher')}
+                          onClick={() => {
+                            const kind =
+                              r.transaction_type === 'AVANS_ODEME'
+                                ? 'advance'
+                                : r.transaction_type === 'AVANS_MAHSUP'
+                                  ? 'reconcile'
+                                  : 'salary';
+                            const titles = {
+                              salary: t('party.payroll.voucherTitleSalary'),
+                              advance: t('party.payroll.voucherTitleAdvance'),
+                              reconcile: t('party.payroll.voucherTitleReconcile'),
+                            } as const;
+                            void printPayrollVoucher({
+                              kind,
+                              title: titles[kind],
+                              employeeName: employee.name,
+                              employeeCode: employee.code,
+                              amount: r.amount,
+                              ficheNo: r.fiche_no,
+                              date: r.date,
+                              definition: r.definition,
+                              balanceLabel: t('party.fields.balance'),
+                            }).catch((err: any) => toast.error(err?.message || t('party.statement.printError')));
+                          }}
+                        >
+                          <Printer className="w-3.5 h-3.5" />
+                        </button>
+                      </span>
                     </div>
                   ))}
                 </div>

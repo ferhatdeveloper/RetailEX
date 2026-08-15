@@ -28,6 +28,19 @@ function ledgerTable(): string {
   return `rex_${firm}_${period}_party_ledger_movements`;
 }
 
+function cashLinesTable(): string {
+  const firm = normalizeFirmTableNr(ERP_SETTINGS.firmNr);
+  const period = String(ERP_SETTINGS.periodNr || '01').padStart(2, '0').slice(0, 10);
+  return `rex_${firm}_${period}_cash_lines`;
+}
+
+export interface PayrollWriteResult {
+  ledger: PartyLedgerMovement;
+  ficheNo?: string | null;
+  cashLineId?: string | null;
+  balance: number;
+}
+
 export interface PayrollMonthLine {
   employee_id: string;
   employee_name: string;
@@ -118,7 +131,7 @@ export const employeeAPI = {
     amount: number;
     registerId: string;
     definition?: string;
-  }): Promise<{ ledger: PartyLedgerMovement }> {
+  }): Promise<PayrollWriteResult> {
     if (!input.employeeId) throw new Error('Personel seçilmedi.');
     if (!(input.amount > 0)) throw new Error('Maaş tutarı pozitif olmalı.');
     if (!input.registerId) throw new Error('Kasa/banka seçilmedi.');
@@ -150,7 +163,13 @@ export const employeeAPI = {
       sourceId: cih.id,
       cashLineId: cih.id,
     });
-    return { ledger };
+    const fresh = await this.getById(emp.id);
+    return {
+      ledger: { ...ledger, fiche_no: cih.islem_no || null, cash_line_id: cih.id },
+      ficheNo: cih.islem_no || null,
+      cashLineId: cih.id || null,
+      balance: fresh?.balance ?? (emp.balance || 0) + input.amount,
+    };
   },
 
   async payAdvance(input: {
@@ -158,7 +177,7 @@ export const employeeAPI = {
     amount: number;
     registerId: string;
     definition?: string;
-  }): Promise<{ ledger: PartyLedgerMovement }> {
+  }): Promise<PayrollWriteResult> {
     if (!input.employeeId) throw new Error('Personel seçilmedi.');
     if (!(input.amount > 0)) throw new Error('Avans tutarı pozitif olmalı.');
     if (!input.registerId) throw new Error('Kasa/banka seçilmedi.');
@@ -190,7 +209,13 @@ export const employeeAPI = {
       sourceId: cih.id,
       cashLineId: cih.id,
     });
-    return { ledger };
+    const fresh = await this.getById(emp.id);
+    return {
+      ledger: { ...ledger, fiche_no: cih.islem_no || null, cash_line_id: cih.id },
+      ficheNo: cih.islem_no || null,
+      cashLineId: cih.id || null,
+      balance: fresh?.balance ?? (emp.balance || 0) + input.amount,
+    };
   },
 
   async reconcileAdvance(input: {
@@ -198,7 +223,7 @@ export const employeeAPI = {
     amount: number;
     relatedCashLineId?: string;
     definition?: string;
-  }): Promise<{ ledger: PartyLedgerMovement }> {
+  }): Promise<PayrollWriteResult> {
     if (!input.employeeId) throw new Error('Personel seçilmedi.');
     if (!(input.amount > 0)) throw new Error('Mahsup tutarı pozitif olmalı.');
     const emp = await this.getById(input.employeeId);
@@ -225,18 +250,26 @@ export const employeeAPI = {
       [delta.toString(), emp.id],
     );
 
-    return { ledger };
+    const fresh = await this.getById(emp.id);
+    return {
+      ledger,
+      ficheNo: null,
+      cashLineId: input.relatedCashLineId || null,
+      balance: fresh?.balance ?? (emp.balance || 0) - input.amount,
+    };
   },
 
   async getLedger(employeeId: string, opts?: { startDate?: string; endDate?: string; limit?: number }): Promise<PartyLedgerMovement[]> {
     await ensurePartyPeriodTables();
     const limit = opts?.limit ?? 200;
     const { rows } = await postgres.query(
-      `SELECT * FROM ${ledgerTable()}
-       WHERE party_id = $1::text::uuid
-         AND ($2::text IS NULL OR date >= $2::date)
-         AND ($3::text IS NULL OR date <= $3::date)
-       ORDER BY date DESC, created_at DESC
+      `SELECT pl.*, cl.fiche_no
+       FROM ${ledgerTable()} pl
+       LEFT JOIN ${cashLinesTable()} cl ON cl.id = pl.cash_line_id
+       WHERE pl.party_id = $1::text::uuid
+         AND ($2::text IS NULL OR pl.date >= $2::date)
+         AND ($3::text IS NULL OR pl.date <= $3::date)
+       ORDER BY pl.date DESC, pl.created_at DESC
        LIMIT $4::integer`,
       [employeeId, opts?.startDate || null, opts?.endDate || null, limit],
     );
@@ -255,6 +288,7 @@ export const employeeAPI = {
       source_module: r.source_module,
       source_id: r.source_id,
       cash_line_id: r.cash_line_id,
+      fiche_no: r.fiche_no || null,
       created_at: r.created_at,
     }));
   },

@@ -318,6 +318,7 @@ export interface PartyLedgerMovement {
   source_module?: string;
   source_id?: string;
   cash_line_id?: string;
+  fiche_no?: string | null;
   created_at?: string;
 }
 

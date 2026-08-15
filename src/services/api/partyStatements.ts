@@ -35,7 +35,10 @@ export interface PartyStatement {
   party_id: string;
   card_type: PartyCardType;
   opening_balance: number;
+  /** Dönem sonu (açılış + hareketler). Kart bakiyesi ile karıştırılmaz. */
   closing_balance: number;
+  /** parties.balance — maaş/avans/mahsup sonrası canlı kart bakiyesi */
+  card_balance: number;
   rows: PartyStatementLine[];
 }
 
@@ -123,8 +126,22 @@ export async function getPartyStatement(
       WHERE cl.customer_id = $1::text::uuid${dateCond('cl.date')}
     `;
   } else {
-    // employee / partner: cash_lines.party_id + party_ledger_movements
+    // Personel/ortak: ledger kaynak; kasa satırı yalnızca fiş no için JOIN.
+    // UNION ALL cash_lines + ledger maaş/avansı çift yazardı (paySalary her ikisine yazar).
     sql = `
+      SELECT
+        pl.date,
+        'party_ledger'::text AS source,
+        pl.transaction_type,
+        cl.fiche_no,
+        pl.definition,
+        pl.amount,
+        COALESCE(pl.sign, 0) AS sign,
+        pl.id
+      FROM ${partyLedgerTable()} pl
+      LEFT JOIN ${cashLinesTable()} cl ON cl.id = pl.cash_line_id
+      WHERE pl.party_id = $1::text::uuid${dateCond('pl.date')}
+      UNION ALL
       SELECT
         cl.date,
         'cash_line'::text AS source,
@@ -140,18 +157,9 @@ export async function getPartyStatement(
         cl.id
       FROM ${cashLinesTable()} cl
       WHERE cl.party_id = $1::text::uuid${dateCond('cl.date')}
-      UNION ALL
-      SELECT
-        pl.date,
-        'party_ledger'::text AS source,
-        pl.transaction_type,
-        NULL::text AS fiche_no,
-        pl.definition,
-        pl.amount,
-        COALESCE(pl.sign, 0) AS sign,
-        pl.id
-      FROM ${partyLedgerTable()} pl
-      WHERE pl.party_id = $1::text::uuid${dateCond('pl.date')}
+        AND NOT EXISTS (
+          SELECT 1 FROM ${partyLedgerTable()} pl2 WHERE pl2.cash_line_id = cl.id
+        )
     `;
   }
 
@@ -187,13 +195,16 @@ export async function getPartyStatement(
           ? `SELECT COALESCE(SUM(CASE WHEN transaction_type IN ('ODEME','TAHSILAT_CIKIS','VIRMAN_CIKIS') THEN f_amount ELSE 0 END), 0) AS t
              FROM ${cashLinesTable()} WHERE customer_id = $1::text::uuid AND date < $2::date`
           : `SELECT
-              (SELECT COALESCE(SUM(CASE
+              (SELECT COALESCE(SUM(amount * sign), 0) FROM ${partyLedgerTable()}
+               WHERE party_id = $1::text::uuid AND date < $2::date)
+             + (SELECT COALESCE(SUM(CASE
                  WHEN transaction_type IN ('MAAS_ODEME','AVANS_ODEME','ORTAK_DAGITIM_KAR') THEN f_amount
                  WHEN transaction_type IN ('ORTAK_DAGITIM_ZARAR','AVANS_MAHSUP','ORTAK_SERMAYE_CIKIS') THEN -f_amount
-                 ELSE 0 END), 0) FROM ${cashLinesTable()}
-               WHERE party_id = $1::text::uuid AND date < $2::date)
-             + (SELECT COALESCE(SUM(amount * sign), 0) FROM ${partyLedgerTable()}
-               WHERE party_id = $1::text::uuid AND date < $2::date) AS t`;
+                 ELSE 0 END), 0) FROM ${cashLinesTable()} cl
+               WHERE cl.party_id = $1::text::uuid AND cl.date < $2::date
+                 AND NOT EXISTS (
+                   SELECT 1 FROM ${partyLedgerTable()} pl2 WHERE pl2.cash_line_id = cl.id
+                 )) AS t`;
     const op = await postgres.query(opSql, [partyId, start]);
     opening = parseFloat(op?.rows?.[0]?.t || 0);
   }
@@ -209,7 +220,8 @@ export async function getPartyStatement(
     party_id: partyId,
     card_type: resolvedType,
     opening_balance: opening,
-    closing_balance: currentBalance,
+    closing_balance: running,
+    card_balance: currentBalance,
     rows: lines,
   };
 }

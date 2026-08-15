@@ -6,6 +6,7 @@ import { PartnerDistributionModal } from './PartnerDistributionModal';
 import { EmployeePayrollModal } from './EmployeePayrollModal';
 import { PartyEditModal } from './PartyEditModal';
 import { PartyMergeModal } from './PartyMergeModal';
+import { PartyStatementPanel } from './PartyStatementPanel';
 import { toast } from 'sonner';
 import {
   PercentBodyModal,
@@ -23,6 +24,7 @@ import {
   HandCoins,
   Briefcase,
   GitMerge,
+  FileText,
 } from 'lucide-react';
 import type { Party, PartyCardType } from '../../../core/types/models';
 import { shortUuid } from './PartyMergeModal';
@@ -56,6 +58,7 @@ export function PartiesModule({
   const [editing, setEditing] = useState<Party | null>(null);
   const [creating, setCreating] = useState<PartyCardType | null>(null);
   const [payrollEmployee, setPayrollEmployee] = useState<Party | null>(null);
+  const [statementParty, setStatementParty] = useState<Party | null>(null);
   const [distributionOpen, setDistributionOpen] = useState(false);
   const [validationWarning, setValidationWarning] = useState<string | null>(null);
   const [mergeOpen, setMergeOpen] = useState(false);
@@ -331,7 +334,10 @@ export function PartiesModule({
                   </td>
                   <td className="px-4 py-3 text-slate-600">{p.phone || '—'}</td>
                   <td className="px-4 py-3 text-right font-mono">
-                    {formatMoney(p.balance)}
+                    <div>{formatMoney(p.balance)}</div>
+                    {p.card_type === 'employee' && Number(p.balance) > 0 ? (
+                      <div className="text-[9px] font-bold uppercase text-emerald-700">{t('party.employee.balanceLabel')}</div>
+                    ) : null}
                   </td>
                   <td className="px-4 py-3 text-slate-600">
                     {p.card_type === 'partner' ? `${Number(p.share_pct || 0).toFixed(2)}%` : '—'}
@@ -346,6 +352,16 @@ export function PartiesModule({
                           title={t('party.payroll.openPayroll')}
                         >
                           <Briefcase className="w-4 h-4" />
+                        </button>
+                      )}
+                      {(p.card_type === 'employee' || p.card_type === 'partner') && (
+                        <button
+                          type="button"
+                          onClick={() => setStatementParty(p)}
+                          className="p-2 rounded-lg hover:bg-indigo-50 text-indigo-600"
+                          title={t('party.payroll.openStatement')}
+                        >
+                          <FileText className="w-4 h-4" />
                         </button>
                       )}
                       <button
@@ -395,9 +411,18 @@ export function PartiesModule({
           employee={payrollEmployee}
           onClose={() => setPayrollEmployee(null)}
           onSaved={() => {
-            setPayrollEmployee(null);
             load();
           }}
+          onOpenStatement={() => {
+            setStatementParty(payrollEmployee);
+          }}
+        />
+      )}
+
+      {statementParty && (
+        <PartyStatementPanel
+          party={statementParty}
+          onClose={() => setStatementParty(null)}
         />
       )}
 
