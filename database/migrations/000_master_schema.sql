@@ -783,16 +783,23 @@ CREATE TABLE IF NOT EXISTS logic.pay_plan_lines (
 -- ============================================================================
 
 CREATE TABLE IF NOT EXISTS wms.bins (
-  id          UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-  store_id    UUID REFERENCES public.stores(id),
-  code        VARCHAR(50) NOT NULL,
-  zone        VARCHAR(50),
-  aisle       VARCHAR(50),
-  shelf       VARCHAR(50),
-  bin         VARCHAR(50),
-  capacity_m3 DECIMAL(15,3),
-  max_weight  DECIMAL(15,2),
-  is_active   BOOLEAN DEFAULT true,
+  id            UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  store_id      UUID REFERENCES public.stores(id),
+  firm_nr       VARCHAR(10),
+  code          VARCHAR(50) NOT NULL,
+  zone          VARCHAR(50),
+  aisle         VARCHAR(50),
+  shelf         VARCHAR(50),
+  bin           VARCHAR(50),
+  rack          VARCHAR(50),
+  bin_type      VARCHAR(30) DEFAULT 'storage',
+  barcode       VARCHAR(100),
+  pick_sequence INTEGER,
+  capacity_m3   DECIMAL(15,3),
+  max_weight    DECIMAL(15,2),
+  is_active     BOOLEAN DEFAULT true,
+  created_at    TIMESTAMPTZ DEFAULT NOW(),
+  updated_at    TIMESTAMPTZ DEFAULT NOW(),
   UNIQUE(store_id, code)
 );
 
@@ -806,20 +813,22 @@ CREATE TABLE IF NOT EXISTS wms.personnel (
 
 -- Sayım Fişleri (Inventory Counting Slips)
 CREATE TABLE IF NOT EXISTS wms.counting_slips (
-  id           UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-  firm_nr      VARCHAR(10) NOT NULL,
-  store_id     UUID NOT NULL,
-  fiche_no     VARCHAR(50) NOT NULL,
-  date         TIMESTAMPTZ DEFAULT NOW(),
-  status       VARCHAR(20) DEFAULT 'draft',
-  count_type   VARCHAR(20) DEFAULT 'full',
-  location_code VARCHAR(50),
-  description  TEXT,
-  created_by   UUID,
-  started_at   TIMESTAMPTZ,
-  completed_at TIMESTAMPTZ,
-  created_at   TIMESTAMPTZ DEFAULT NOW(),
-  updated_at   TIMESTAMPTZ DEFAULT NOW(),
+  id               UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  firm_nr          VARCHAR(10) NOT NULL,
+  store_id         UUID NOT NULL,
+  fiche_no         VARCHAR(50) NOT NULL,
+  date             TIMESTAMPTZ DEFAULT NOW(),
+  status           VARCHAR(20) DEFAULT 'draft',
+  count_type       VARCHAR(20) DEFAULT 'full',
+  location_code    VARCHAR(50),
+  description      TEXT,
+  created_by       UUID,
+  started_at       TIMESTAMPTZ,
+  completed_at     TIMESTAMPTZ,
+  logo_ref         INTEGER,
+  logo_sync_status VARCHAR(20) DEFAULT 'pending',
+  created_at       TIMESTAMPTZ DEFAULT NOW(),
+  updated_at       TIMESTAMPTZ DEFAULT NOW(),
   UNIQUE(firm_nr, fiche_no)
 );
 
@@ -840,6 +849,8 @@ CREATE TABLE IF NOT EXISTS wms.counting_lines (
   expected_qty  DECIMAL(15,2),
   counted_qty   DECIMAL(15,2),
   variance      DECIMAL(15,2),
+  lot_no        VARCHAR(120),
+  expiry_date   DATE,
   counted_by    VARCHAR(255),
   counted_at    TIMESTAMPTZ,
   notes         TEXT,
@@ -856,32 +867,47 @@ CREATE TABLE IF NOT EXISTS wms.transfers (
   target_store_id UUID NOT NULL,
   date            TIMESTAMPTZ DEFAULT NOW(),
   status          VARCHAR(20) DEFAULT 'pending',
+  shipped_at      TIMESTAMPTZ,
+  received_at     TIMESTAMPTZ,
+  logo_ref        INTEGER,
+  logo_sync_status VARCHAR(20) DEFAULT 'pending',
   created_at      TIMESTAMPTZ DEFAULT NOW(),
   UNIQUE(firm_nr, fiche_no)
 );
 
 CREATE TABLE IF NOT EXISTS wms.transfer_items (
-  id          UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-  transfer_id UUID REFERENCES wms.transfers(id) ON DELETE CASCADE,
-  product_id  UUID,
-  quantity    DECIMAL(15,2) DEFAULT 0,
-  notes       TEXT,
-  created_at  TIMESTAMPTZ DEFAULT NOW(),
-  updated_at  TIMESTAMPTZ DEFAULT NOW()
+  id            UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  transfer_id   UUID REFERENCES wms.transfers(id) ON DELETE CASCADE,
+  product_id    UUID,
+  source_bin_id UUID,
+  target_bin_id UUID,
+  quantity      DECIMAL(15,2) DEFAULT 0,
+  received_qty  NUMERIC(18,4) DEFAULT 0,
+  lot_no        VARCHAR(120),
+  expiry_date   DATE,
+  notes         TEXT,
+  created_at    TIMESTAMPTZ DEFAULT NOW(),
+  updated_at    TIMESTAMPTZ DEFAULT NOW()
 );
 
 -- Mal Kabul Fişleri (Receiving Slips)
 CREATE TABLE IF NOT EXISTS wms.receiving_slips (
-  id            UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-  firm_nr       VARCHAR(10) NOT NULL,
-  store_id      UUID REFERENCES public.stores(id),
-  slip_no       VARCHAR(50) UNIQUE NOT NULL,
-  supplier_name VARCHAR(255),
-  notes         TEXT,
-  status        VARCHAR(20) DEFAULT 'draft',
-  created_by    VARCHAR(100),
-  created_at    TIMESTAMPTZ DEFAULT NOW(),
-  updated_at    TIMESTAMPTZ DEFAULT NOW()
+  id               UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  firm_nr          VARCHAR(10) NOT NULL,
+  store_id         UUID REFERENCES public.stores(id),
+  slip_no          VARCHAR(50) UNIQUE NOT NULL,
+  asn_no           VARCHAR(80),
+  po_ref           VARCHAR(80),
+  eta              DATE,
+  dock_door_id     UUID,
+  supplier_name    VARCHAR(255),
+  notes            TEXT,
+  status           VARCHAR(20) DEFAULT 'draft',
+  logo_ref         INTEGER,
+  logo_sync_status VARCHAR(20) DEFAULT 'pending',
+  created_by       VARCHAR(100),
+  created_at       TIMESTAMPTZ DEFAULT NOW(),
+  updated_at       TIMESTAMPTZ DEFAULT NOW()
 );
 
 CREATE TABLE IF NOT EXISTS wms.receiving_lines (
@@ -891,26 +917,36 @@ CREATE TABLE IF NOT EXISTS wms.receiving_lines (
   product_code  VARCHAR(100),
   product_name  VARCHAR(255),
   barcode       VARCHAR(100),
+  bin_id        UUID,
+  putaway_status VARCHAR(30) DEFAULT 'pending',
   ordered_qty   DECIMAL(15,3) DEFAULT 0,
   received_qty  DECIMAL(15,3) DEFAULT 0,
   unit          VARCHAR(20),
+  lot_no        VARCHAR(120),
+  expiry_date   DATE,
   notes         TEXT,
   created_at    TIMESTAMPTZ DEFAULT NOW()
 );
 
 -- Sevkiyat Fişleri (Dispatch Slips)
 CREATE TABLE IF NOT EXISTS wms.dispatch_slips (
-  id            UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-  firm_nr       VARCHAR(10) NOT NULL,
-  store_id      UUID REFERENCES public.stores(id),
-  slip_no       VARCHAR(50) UNIQUE NOT NULL,
-  customer_name VARCHAR(255),
-  priority      VARCHAR(20) DEFAULT 'normal',
-  notes         TEXT,
-  status        VARCHAR(20) DEFAULT 'draft',
-  created_by    VARCHAR(100),
-  created_at    TIMESTAMPTZ DEFAULT NOW(),
-  updated_at    TIMESTAMPTZ DEFAULT NOW()
+  id               UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  firm_nr          VARCHAR(10) NOT NULL,
+  store_id         UUID REFERENCES public.stores(id),
+  slip_no          VARCHAR(50) UNIQUE NOT NULL,
+  delivery_id      UUID,
+  customer_name    VARCHAR(255),
+  carrier_name     VARCHAR(120),
+  tracking_no      VARCHAR(80),
+  freight_cost     NUMERIC(14,2),
+  priority         VARCHAR(20) DEFAULT 'normal',
+  notes            TEXT,
+  status           VARCHAR(20) DEFAULT 'draft',
+  logo_ref         INTEGER,
+  logo_sync_status VARCHAR(20) DEFAULT 'pending',
+  created_by       VARCHAR(100),
+  created_at       TIMESTAMPTZ DEFAULT NOW(),
+  updated_at       TIMESTAMPTZ DEFAULT NOW()
 );
 
 CREATE TABLE IF NOT EXISTS wms.dispatch_lines (
@@ -920,9 +956,14 @@ CREATE TABLE IF NOT EXISTS wms.dispatch_lines (
   product_code  VARCHAR(100),
   product_name  VARCHAR(255),
   barcode       VARCHAR(100),
+  bin_id        UUID,
   requested_qty DECIMAL(15,3) DEFAULT 0,
   picked_qty    DECIMAL(15,3) DEFAULT 0,
+  packed_qty    NUMERIC(18,4) DEFAULT 0,
+  shipped_qty   NUMERIC(18,4) DEFAULT 0,
   unit          VARCHAR(20),
+  lot_no        VARCHAR(120),
+  expiry_date   DATE,
   notes         TEXT,
   created_at    TIMESTAMPTZ DEFAULT NOW()
 );
@@ -933,6 +974,8 @@ CREATE TABLE IF NOT EXISTS wms.pick_waves (
   wave_no      VARCHAR(50) UNIQUE NOT NULL,
   firm_nr      VARCHAR(10),
   warehouse_id UUID REFERENCES public.stores(id) ON DELETE SET NULL,
+  delivery_id  UUID,
+  sales_ids    UUID[],
   status       VARCHAR(20) DEFAULT 'draft',
   priority     INTEGER DEFAULT 5,
   wave_type    VARCHAR(30) DEFAULT 'standard',
@@ -4250,9 +4293,13 @@ CREATE TABLE IF NOT EXISTS wms.pick_tasks (
   product_id       UUID,
   product_code     VARCHAR(100),
   product_name     VARCHAR(255),
+  bin_id           UUID,
   bin_code         VARCHAR(50),
   qty_to_pick      NUMERIC(18,4) NOT NULL DEFAULT 0,
   qty_picked       NUMERIC(18,4) NOT NULL DEFAULT 0,
+  uom              VARCHAR(30) DEFAULT 'Adet',
+  lot_no           VARCHAR(120),
+  expiry_date      DATE,
   status           VARCHAR(30) NOT NULL DEFAULT 'open',
   assigned_user    VARCHAR(100),
   firm_nr          VARCHAR(10) NOT NULL,
