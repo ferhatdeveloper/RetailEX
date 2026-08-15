@@ -23,6 +23,8 @@ import {
     rememberRestaurantCategories,
 } from '@/utils/restaurantPrinterCategories';
 import { useRestaurantModuleTm } from '../hooks/useRestaurantModuleTm';
+import { IS_TAURI } from '@/utils/env';
+import { cacheSystemPrinterScan } from '@/utils/resolveSystemPrinterName';
 
 export const RestaurantPrinterSettings: React.FC = () => {
     const tm = useRestaurantModuleTm();
@@ -64,6 +66,7 @@ export const RestaurantPrinterSettings: React.FC = () => {
     }, [masterCategories]);
 
     const [editingProfile, setEditingProfile] = useState<Partial<PrinterProfile> | null>(null);
+    const [manualSystemName, setManualSystemName] = useState<string>('');
 
     /** Kategori kartı + ürün stoğu + kayıtlı rotalar (yetim satır kaybolmasın) */
     const categoryRows = useMemo(
@@ -101,6 +104,14 @@ export const RestaurantPrinterSettings: React.FC = () => {
                 mergeWindowsPrinterNameIntoLocalStorage(editingProfile.systemName);
             }
             setEditingProfile(null);
+            // Yazıcı adı önbelleğe alınsın — bir sonraki listede öneri olarak görünsün
+            if (conn === 'system' && (editingProfile.systemName ?? '').trim()) {
+                try {
+                    cacheSystemPrinterScan([{ Name: (editingProfile.systemName ?? '').trim() }]);
+                } catch {
+                    /* ignore */
+                }
+            }
         }
     };
 
@@ -381,16 +392,58 @@ export const RestaurantPrinterSettings: React.FC = () => {
                             {editingProfile.connection === 'system' && (
                                 <div className="space-y-2">
                                     <label className="text-[10px] font-black text-slate-400 tracking-[0.2em] pl-1">{tm('restPrintWinList')}</label>
-                                    <select
-                                        value={editingProfile.systemName || ''}
-                                        onChange={(e) => setEditingProfile({ ...editingProfile, systemName: e.target.value, name: editingProfile.name || e.target.value })}
-                                        className="w-full bg-blue-50 border border-blue-100 rounded-2xl h-14 px-6 font-bold outline-none focus:ring-2 focus:ring-blue-500"
-                                    >
-                                        <option value="">{tm('restPrintWinPick')}</option>
-                                        {systemPrinters.map((p: any) => (
-                                            <option key={p.Name} value={p.Name}>{p.Name}</option>
-                                        ))}
-                                    </select>
+                                    {systemPrinters.length > 0 ? (
+                                        <select
+                                            value={editingProfile.systemName || ''}
+                                            onChange={(e) => setEditingProfile({ ...editingProfile, systemName: e.target.value, name: editingProfile.name || e.target.value })}
+                                            className="w-full bg-blue-50 border border-blue-100 rounded-2xl h-14 px-6 font-bold outline-none focus:ring-2 focus:ring-blue-500"
+                                        >
+                                            <option value="">{tm('restPrintWinPick')}</option>
+                                            {systemPrinters.map((p: any) => (
+                                                <option key={p.Name} value={p.Name}>{p.Name}</option>
+                                            ))}
+                                        </select>
+                                    ) : (
+                                        <div className="space-y-2">
+                                            <input
+                                                type="text"
+                                                value={editingProfile.systemName || manualSystemName}
+                                                onChange={(e) => {
+                                                    const v = e.target.value;
+                                                    setManualSystemName(v);
+                                                    setEditingProfile({ ...editingProfile, systemName: v, name: editingProfile.name || v });
+                                                }}
+                                                placeholder={IS_TAURI
+                                                    ? 'Yazıcı adı (Örn: EPSON TM-T20III)'
+                                                    : 'Windows yazıcı adı (kendi makinenizde Yükle-yazıcılar listesinden bakın)'}
+                                                className="w-full bg-blue-50 border border-blue-100 rounded-2xl h-14 px-6 font-bold outline-none focus:ring-2 focus:ring-blue-500"
+                                                list="retailex-system-printers-suggest"
+                                            />
+                                            <datalist id="retailex-system-printers-suggest">
+                                                {/* Önceki taramalardan / profillerden gelen isimler — autocomplete */}
+                                                {(typeof window !== 'undefined'
+                                                    ? Array.from(
+                                                        new Set(
+                                                            (JSON.parse(window.localStorage.getItem('retailex_system_printers_scan') || '{"names":[]}')?.names || [])
+                                                                .concat(
+                                                                    printerProfiles
+                                                                        .map((p) => (typeof p?.systemName === 'string' ? p.systemName.trim() : ''))
+                                                                        .filter(Boolean),
+                                                                ),
+                                                        ),
+                                                    )
+                                                    : [])
+                                                    .map((name) => (
+                                                        <option key={name} value={name} />
+                                                    ))}
+                                            </datalist>
+                                            <p className="text-[11px] text-slate-500 pl-1">
+                                                {IS_TAURI
+                                                    ? 'Yazıcılar otomatik listelenemedi — elle adı girebilirsiniz. Yazıcılar listelendikten sonra önbelleğe alınır.'
+                                                    : 'Web modunda Windows yazıcı listesi okunamaz. Kullandığınız yazıcının tam adını girin (Denetim Masası → Yazıcılar). Aynı ad REST yazıcı hizmeti tarafından çözümlenir.'}
+                                            </p>
+                                        </div>
+                                    )}
                                 </div>
                             )}
 

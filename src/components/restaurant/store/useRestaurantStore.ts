@@ -1000,8 +1000,22 @@ export const useRestaurantStore = create<RestaurantState>()(
                     const { cacheSystemPrinterScan } = await import('../../../utils/resolveSystemPrinterName');
                     cacheSystemPrinterScan(list);
                     set({ systemPrinters: list as any[] });
+                    return;
                 } catch (error) {
-                    console.error('Failed to load system printers:', error);
+                    // Tauri yoksa veya kullanıcı yetkisi yoksa: localStorage tarama önbelleği + profile.systemName
+                    // eklenmeli ki web'de de yazıcı adı listesi boş görünmesin.
+                    console.warn('[loadSystemPrinters] list_system_printers başarısız, fallback:', error);
+                }
+                try {
+                    const { getCachedSystemPrinterScanNames } = await import('../../../utils/resolveSystemPrinterName');
+                    const cachedNames = getCachedSystemPrinterScanNames();
+                    const profileNames = (get().printerProfiles || [])
+                        .map((p) => (typeof p?.systemName === 'string' ? p.systemName.trim() : ''))
+                        .filter(Boolean);
+                    const merged = [...new Set([...cachedNames, ...profileNames])].map((name) => ({ Name: name }));
+                    if (merged.length > 0) set({ systemPrinters: merged });
+                } catch (error) {
+                    console.warn('[loadSystemPrinters] fallback yazıcı listesi yüklenemedi:', error);
                 }
             },
 
