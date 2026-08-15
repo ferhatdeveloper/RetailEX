@@ -2,7 +2,7 @@
   "expo": {
     "name": "RetailEX",
     "slug": "retailex-mobile",
-    "version": "0.1.245",
+    "version": "0.1.246",
     "orientation": "portrait",
     "icon": "./assets/icon.png",
     "userInterfaceStyle": "automatic",
@@ -25,7 +25,7 @@
         "NSLocationAlwaysAndWhenInUseUsageDescription": "RetailEX teslimat sırasında konum güncellemesi ister.",
         "NSBluetoothAlwaysUsageDescription": "RetailEX BLE tartı terazisine bağlanmak için Bluetooth ister."
       },
-      "buildNumber": "1245"
+      "buildNumber": "1246"
     },
     "android": {
       "package": "app.retailex.mobile",
@@ -38,7 +38,7 @@
       "icon": "./assets/icon.png",
       "predictiveBackGestureEnabled": false,
       "usesCleartextTraffic": true,
-      "versionCode": 1245,
+      "versionCode": 1246,
       "permissions": [
         "ACCESS_COARSE_LOCATION",
         "ACCESS_FINE_LOCATION",
