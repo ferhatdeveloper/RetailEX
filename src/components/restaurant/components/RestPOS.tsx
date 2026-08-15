@@ -51,6 +51,8 @@ import {
     type KitchenReceiptLocale,
 } from '../../../utils/restaurantReceiptPrint';
 import { printKitchenTicketsFromLines } from '../../../utils/restaurantKitchenPrint';
+import { rememberRestaurantCategories, getRememberedRestaurantCategories } from '../../../utils/restaurantPrinterCategories';
+import type { Category } from '../../../services/api/masterData';
 import { Receipt80mm } from '../../pos/Receipt80mm';
 import { POSSalesHistoryModal } from '../../pos/POSSalesHistoryModal';
 import { salesAPI } from '../../../services/api/sales';
@@ -794,6 +796,45 @@ export const RestPOS: React.FC<RestPOSProps> = ({
             const st = useRestaurantStore.getState();
             if (st.menu.length === 0) {
                 await st.loadMenu();
+            }
+            // Yazıcı rotası kategori UUID'si ile eşleşebilsin diye mutfak yazdırma öncesi
+            // kategori listesi kesin yüklü olmalı (RestPOS ilk açılışta printerRoutes DB'den
+            // yüklendi ama remembered kategori map'i boş kalırsa route UUID'si ad token'a
+            // genişletilemez → tüm ürünler ortak yazıcıya düşer).
+            let resolvedCategories = st.categories;
+            if (!resolvedCategories || resolvedCategories.length === 0) {
+                try {
+                    await st.loadCategories();
+                    resolvedCategories = useRestaurantStore.getState().categories;
+                } catch {
+                    resolvedCategories = [];
+                }
+            }
+            if (resolvedCategories && resolvedCategories.length > 0) {
+                rememberRestaurantCategories(resolvedCategories);
+            } else if (getRememberedRestaurantCategories().length === 0) {
+                // Yüklenemedi; hatırlanan da yok → son çare: ürün stoğundaki category alanlarından
+                // sentetik kategori kayıtları türet (en azından ad ile eşleşebilsin).
+                const products = useProductStore.getState().products as Array<{
+                    category?: string;
+                    group_name?: string;
+                    categoryId?: string;
+                    categoryCode?: string;
+                }>;
+                const synth: Category[] = [];
+                const seenNames = new Set<string>();
+                for (const p of products) {
+                    const nm = String(p.category ?? p.group_name ?? '').trim();
+                    if (!nm || seenNames.has(nm.toLocaleLowerCase('tr-TR'))) continue;
+                    seenNames.add(nm.toLocaleLowerCase('tr-TR'));
+                    synth.push({
+                        id: p.categoryId ? String(p.categoryId) : `synth-${nm}`,
+                        code: p.categoryCode || '',
+                        name: nm,
+                        is_active: true,
+                    });
+                }
+                if (synth.length > 0) rememberRestaurantCategories(synth);
             }
             const tableInfo = {
                 number: resolveTableLabelForPrint(),
