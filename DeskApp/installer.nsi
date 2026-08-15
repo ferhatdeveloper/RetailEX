@@ -960,7 +960,7 @@ Section Install
     ; Gomulu Node.js + bridge node_modules (musteride Node kurulumu gerekmez)
     CreateDirectory "$INSTDIR\runtime\node"
     SetOutPath "$INSTDIR\runtime\node"
-    File /nonfatal /r "__REPO_ROOT__\DeskApp\resources\nodejs-runtime\*.*"
+    File /nonfatal /a "/oname=node.exe" "__REPO_ROOT__\DeskApp\resources\nodejs-runtime\node.exe"
     SetOutPath "$INSTDIR\node_modules"
     File /nonfatal /r "__REPO_ROOT__\DeskApp\resources\node_modules\*.*"
     SetOutPath "$INSTDIR"
