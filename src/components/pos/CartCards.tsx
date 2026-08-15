@@ -6,6 +6,7 @@ import { useLanguage } from '../../contexts/LanguageContext';
 import { POSCartItemActionModal } from './POSCartItemActionModal';
 import { CampaignResult } from '../../utils/campaignEngine';
 import { cn } from '../ui/utils';
+import { ModalLayer } from '../shared/FullscreenBodyPortal';
 import { productUsesDecimalQuantity } from '../../utils/productUnits';
 import { formatScaleQuantityDisplay } from '../../utils/scaleQuantity';
 
@@ -451,8 +452,9 @@ export function CartCards({
 
                   {/* Delete Confirmation Modal */}
                   {deleteConfirmIndex === index && (
-                    <div
-                      className="fixed inset-0 z-[9999] bg-black/45 backdrop-blur-sm flex items-center justify-center p-4"
+                    <ModalLayer
+                      nested
+                      className="bg-black/45 backdrop-blur-sm flex items-center justify-center p-4"
                       onClick={() => setDeleteConfirmIndex(null)}
                     >
                       <div
@@ -492,7 +494,7 @@ export function CartCards({
                           </button>
                         </div>
                       </div>
-                    </div>
+                    </ModalLayer>
                   )}
 
                   {/* Inline Variant Panel - C# Panel Mantığı */}

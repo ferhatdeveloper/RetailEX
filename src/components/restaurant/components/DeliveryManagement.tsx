@@ -11,6 +11,7 @@ import { formatMoneyAmount } from '../../../utils/formatMoney';
 import type { FoodDeliveryChannelId } from '../../../config/foodDeliveryChannels';
 import { FOOD_DELIVERY_CHANNELS, getFoodDeliveryChannelMeta } from '../../../config/foodDeliveryChannels';
 import { useRestaurantModuleTm } from '../hooks/useRestaurantModuleTm';
+import { ModalLayer } from '../../shared/FullscreenBodyPortal';
 
 type DeliveryStatus = 'pending' | 'preparing' | 'on_way' | 'delivered';
 
@@ -430,7 +431,7 @@ export const DeliveryManagement: React.FC<DeliveryManagementProps> = ({ onBack }
 
             {/* New Order Modal */}
             {showNewModal && (
-                <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
+                <ModalLayer className="bg-black/50 flex items-center justify-center p-4">
                     <div className="bg-white rounded-3xl w-full max-w-md shadow-2xl">
                         <div className="flex items-center justify-between p-6 border-b">
                             <h3 className="text-lg font-black text-slate-800">{tmR('resDelModalTitle')}</h3>
@@ -554,7 +555,7 @@ export const DeliveryManagement: React.FC<DeliveryManagementProps> = ({ onBack }
                             </button>
                         </div>
                     </div>
-                </div>
+                </ModalLayer>
             )}
         </div>
     );

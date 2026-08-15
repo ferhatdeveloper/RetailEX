@@ -1,6 +1,7 @@
 import React from 'react';
 import { X, BookmarkCheck, BookmarkPlus, RotateCcw, Trash2, Info } from 'lucide-react';
 import { cn } from '../../ui/utils';
+import { ModalLayer } from '../../shared/FullscreenBodyPortal';
 
 interface ParkedOrder {
     id: string;
@@ -27,7 +28,7 @@ export function RestaurantParkedOrdersModal({
     fmt
 }: RestaurantParkedOrdersModalProps) {
     return (
-        <div className="fixed inset-0 bg-black/60 backdrop-blur-sm z-[5000] overflow-y-auto overflow-x-hidden animate-in fade-in duration-300">
+        <ModalLayer className="bg-black/60 backdrop-blur-sm overflow-y-auto overflow-x-hidden animate-in fade-in duration-300">
             <div className="flex min-h-[100dvh] min-h-screen w-full items-center justify-center p-4 py-6">
                 <div
                     className="bg-white rounded-[32px] w-full max-w-2xl max-h-[min(85vh,100dvh)] min-h-0 flex flex-col shadow-2xl animate-in zoom-in-95 duration-300 overflow-hidden"
@@ -145,6 +146,6 @@ export function RestaurantParkedOrdersModal({
                 </div>
                 </div>
             </div>
-        </div>
+        </ModalLayer>
     );
 }

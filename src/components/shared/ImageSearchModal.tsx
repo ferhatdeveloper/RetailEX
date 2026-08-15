@@ -3,6 +3,7 @@ import { X, Search, Loader2, AlertCircle, Download } from 'lucide-react';
 import { imageSearchService, type ImageSearchResult } from '../../services/imageSearchService';
 import { toast } from 'sonner';
 import { formatBytes, getBase64Size } from '../../utils/imageUtils';
+import { ModalLayer } from './FullscreenBodyPortal';
 
 interface ImageSearchModalProps {
     onSelect: (base64Image: string) => void;
@@ -89,7 +90,7 @@ export const ImageSearchModal: React.FC<ImageSearchModalProps> = ({
     };
 
     return (
-        <div className="fixed inset-0 z-[10001] flex items-center justify-center p-4 bg-black/40 backdrop-blur-md">
+        <ModalLayer className="flex items-center justify-center p-4 bg-black/40 backdrop-blur-md">
             <div className="bg-white rounded-xl shadow-2xl w-full max-w-5xl max-h-[90vh] flex flex-col">
                 {/* Header */}
                 <div className="flex items-center justify-between px-6 py-4 border-b border-gray-200">
@@ -277,7 +278,7 @@ export const ImageSearchModal: React.FC<ImageSearchModalProps> = ({
                     </p>
                 </div>
             </div>
-        </div>
+        </ModalLayer>
     );
 };
 

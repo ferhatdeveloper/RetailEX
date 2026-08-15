@@ -13,6 +13,7 @@ import {
 } from '../../services/receiptSettingsService';
 import { useTheme } from '../../contexts/ThemeContext';
 import { paymentGateway, type PaymentProvider } from '../../services/paymentGateway';
+import { ModalLayer } from '../shared/FullscreenBodyPortal';
 import { formatCurrency, formatNumber, formatMoneyWithCode, getGlobalCurrency } from '../../utils/currency';
 import { formatNumber as formatNumberTR } from '../../utils/formatNumber';
 import { posPaymentAdditionalDiscount, roundPosMoneyAmount, posMoneyEpsilon, getPosQuickDiscountAmountPresets } from '../../utils/discountRounding';
@@ -397,7 +398,7 @@ export function POSPaymentModal({
   ];
 
   return (
-    <div className="fixed inset-0 bg-black/60 backdrop-blur-sm flex items-center justify-center z-50 p-4">
+    <ModalLayer className="bg-black/60 backdrop-blur-sm flex items-center justify-center p-4">
       <div
         className={`w-full ${showNumpad ? 'max-w-6xl' : 'max-w-4xl'} max-h-[95vh] flex flex-col shadow-2xl transition-all duration-300 ${darkMode ? 'bg-gray-900' : 'bg-white'
           }`}
@@ -1126,7 +1127,7 @@ export function POSPaymentModal({
 
       {/* QR Code Modal */}
       {showQRCode && (
-        <div className="fixed inset-0 bg-black/95 backdrop-blur-sm flex flex-col items-center justify-center z-[60]">
+        <ModalLayer nested className="bg-black/95 backdrop-blur-sm flex flex-col items-center justify-center">
           <button
             onClick={() => setShowQRCode(false)}
             className="absolute top-6 right-6 text-white/80 hover:text-white p-2 rounded-full bg-white/10 hover:bg-white/20 transition-colors"
@@ -1190,7 +1191,7 @@ export function POSPaymentModal({
               </div>
             </div>
           </div>
-        </div>
+        </ModalLayer>
       )}
 
       {showCancelReasonModal && (
@@ -1199,6 +1200,6 @@ export function POSPaymentModal({
           onConfirm={handleCancelConfirm}
         />
       )}
-    </div>
+    </ModalLayer>
   );
 }

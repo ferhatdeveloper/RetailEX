@@ -10,6 +10,7 @@ import { useLanguage } from '../../contexts/LanguageContext';
 import { aggregatePosPayments, aggregateReturnPayments, buildPosZReport, isReturnSale, printPosZReport } from '../../utils/posZReport';
 import type { PosCashSession } from '../../utils/posCashSession';
 import { buildSessionCashBreakdown, filterSalesForCashSession } from '../../utils/posCashSession';
+import { ModalLayer } from '../shared/FullscreenBodyPortal';
 
 interface POSCloseCashRegisterModalProps {
   onClose: () => void;
@@ -143,7 +144,7 @@ export function POSCloseCashRegisterModal({
   };
 
   return (
-    <div className="fixed inset-0 bg-black/60 backdrop-blur-sm flex items-center justify-center z-50 p-4">
+    <ModalLayer className="bg-black/60 backdrop-blur-sm flex items-center justify-center p-4">
       <div className={`bg-white w-full ${showNumpad ? 'max-w-6xl' : 'max-w-4xl'} max-h-[95vh] flex flex-col shadow-2xl transition-all duration-300`}>
         {/* Header */}
         <div className="p-4 border-b border-gray-200 bg-gradient-to-r from-red-600 to-red-700 flex items-center justify-between">
@@ -553,6 +554,6 @@ export function POSCloseCashRegisterModal({
           note={note}
         />
       )}
-    </div>
+    </ModalLayer>
   );
 }

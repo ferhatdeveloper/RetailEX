@@ -1,6 +1,7 @@
 import React from 'react';
 import { Shield, Zap, RefreshCw, X } from 'lucide-react';
 import { invoke } from '@tauri-apps/api/core';
+import { ModalLayer } from '../shared/FullscreenBodyPortal';
 
 interface AdminElevationPromptProps {
     isOpen: boolean;
@@ -21,7 +22,7 @@ export const AdminElevationPrompt: React.FC<AdminElevationPromptProps> = ({ isOp
     };
 
     return (
-        <div className="fixed inset-0 z-[999] flex items-center justify-center p-4 bg-black/80 backdrop-blur-md animate-in fade-in duration-300">
+        <ModalLayer className="flex items-center justify-center p-4 bg-black/80 backdrop-blur-md animate-in fade-in duration-300">
             <div className="w-full max-w-md bg-[#0c1117] border border-blue-500/30 rounded-[32px] shadow-[0_0_50px_rgba(37,99,235,0.2)] overflow-hidden relative">
                 {/* Decorative background */}
                 <div className="absolute top-0 right-0 w-32 h-32 bg-blue-600/10 blur-[50px] rounded-full" />
@@ -64,6 +65,6 @@ export const AdminElevationPrompt: React.FC<AdminElevationPromptProps> = ({ isOp
                     </p>
                 </div>
             </div>
-        </div>
+        </ModalLayer>
     );
 };

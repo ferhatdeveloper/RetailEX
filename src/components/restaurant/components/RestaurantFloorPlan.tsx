@@ -28,6 +28,7 @@ import {
 } from 'lucide-react';
 import { v4 as uuidv4 } from 'uuid';
 import { cn } from '../../ui/utils';
+import { ModalLayer } from '../../shared/FullscreenBodyPortal';
 import { useRestaurantStore } from '../store/useRestaurantStore';
 import { Table, RESTAURANT_FLOOR_ALL_ID } from '../types';
 import { useRestaurantModuleTm } from '../hooks/useRestaurantModuleTm';
@@ -654,9 +655,8 @@ export function RestaurantFloorPlan({ onSelectTable, onBack, moveTableSource, mo
 
             {/* Yönetici: uzun basma — masa menüsü (standart modal, z-index masa açılışı ile aynı) */}
             {tableAdminMenu && (
-                <div
-                    className="fixed inset-0 flex items-center justify-center p-4 animate-in fade-in duration-200"
-                    style={{ zIndex: 2147483647, isolation: 'isolate', transform: 'translateZ(0)' }}
+                <ModalLayer
+                    className="flex items-center justify-center p-4 animate-in fade-in duration-200"
                     onClick={() => setTableAdminMenu(null)}
                 >
                     <div className="absolute inset-0 bg-black/60 backdrop-blur-sm" aria-hidden style={{ zIndex: 0 }} />
@@ -742,14 +742,13 @@ export function RestaurantFloorPlan({ onSelectTable, onBack, moveTableSource, mo
                             </button>
                         </div>
                     </div>
-                </div>
+                </ModalLayer>
             )}
 
             {/* Bölge adını güncelle (masa yönetimi menüsünden açılır) */}
             {regionEditFromMenu && (
-                <div
-                    className="fixed inset-0 flex items-center justify-center p-4 animate-in fade-in duration-200"
-                    style={{ zIndex: 2147483647, isolation: 'isolate', transform: 'translateZ(0)' }}
+                <ModalLayer
+                    className="flex items-center justify-center p-4 animate-in fade-in duration-200"
                     onClick={() => !regionEditSaving && setRegionEditFromMenu(null)}
                 >
                     <div className="absolute inset-0 bg-black/60 backdrop-blur-sm" aria-hidden style={{ zIndex: 0 }} />
@@ -848,14 +847,13 @@ export function RestaurantFloorPlan({ onSelectTable, onBack, moveTableSource, mo
                             </button>
                         </div>
                     </div>
-                </div>
+                </ModalLayer>
             )}
 
             {/* Bölge silme modalı — yönetici bölge ekleyebiliyorsa silebilir */}
             {showRegionDeleteModal && (
-                <div
-                    className="fixed inset-0 flex items-center justify-center p-4 animate-in fade-in duration-200"
-                    style={{ zIndex: 2147483647, isolation: 'isolate', transform: 'translateZ(0)' }}
+                <ModalLayer
+                    className="flex items-center justify-center p-4 animate-in fade-in duration-200"
                     onClick={() => !regionDeleteSaving && setShowRegionDeleteModal(false)}
                 >
                     <div className="absolute inset-0 bg-black/60 backdrop-blur-sm" aria-hidden style={{ zIndex: 0 }} />
@@ -947,14 +945,13 @@ export function RestaurantFloorPlan({ onSelectTable, onBack, moveTableSource, mo
                             </button>
                         </div>
                     </div>
-                </div>
+                </ModalLayer>
             )}
 
             {/* Masa düzenleme modalı (standart modal, z-index masa açılışı ile aynı) */}
             {tableAdminEdit && (
-                <div
-                    className="fixed inset-0 flex items-center justify-center p-4 animate-in fade-in duration-200"
-                    style={{ zIndex: 2147483647, isolation: 'isolate', transform: 'translateZ(0)' }}
+                <ModalLayer
+                    className="flex items-center justify-center p-4 animate-in fade-in duration-200"
                     onClick={() => !editTableSaving && setTableAdminEdit(null)}
                 >
                     <div className="absolute inset-0 bg-black/60 backdrop-blur-sm" aria-hidden style={{ zIndex: 0 }} />
@@ -1093,7 +1090,7 @@ export function RestaurantFloorPlan({ onSelectTable, onBack, moveTableSource, mo
                             </button>
                         </div>
                     </div>
-                </div>
+                </ModalLayer>
             )}
 
             {showManageModal && manageType && isAdmin() && (

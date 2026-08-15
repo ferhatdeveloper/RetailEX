@@ -2,6 +2,7 @@ import { X, Search, Package, Barcode, Tag, Boxes, TrendingUp, Banknote, Building
 import { useState, useMemo } from 'react';
 import type { Product, BranchStock } from '../../core/types';
 import { useLanguage } from '../../contexts/LanguageContext';
+import { ModalLayer } from '../shared/FullscreenBodyPortal';
 
 interface POSStockQueryModalProps {
   products: Product[];
@@ -79,7 +80,7 @@ export function POSStockQueryModal({ products, onClose, onAddToCart }: POSStockQ
   };
 
   return (
-    <div className="fixed inset-0 bg-gradient-to-br from-blue-50/30 via-white to-blue-50/20 z-50 flex flex-col">
+    <ModalLayer className="bg-gradient-to-br from-blue-50/30 via-white to-blue-50/20 flex flex-col">
       {/* Header */}
       <div className="bg-gradient-to-r from-blue-600 to-blue-700 text-white px-6 py-4 flex items-center justify-between border-b-2 border-blue-800 shadow-lg">
         <div className="flex items-center gap-4">
@@ -290,7 +291,7 @@ export function POSStockQueryModal({ products, onClose, onAddToCart }: POSStockQ
 
       {/* Right Panel - Product Detail (Modal Overlay) */}
       {selectedProduct && (
-        <div className="fixed inset-0 bg-black/60 backdrop-blur-sm flex items-center justify-center z-[60] p-8">
+        <ModalLayer nested className="bg-black/60 backdrop-blur-sm flex items-center justify-center p-8">
           <div className="bg-white w-full max-w-2xl max-h-[90vh] rounded-lg shadow-2xl flex flex-col">
             <div className="p-4 border-b border-gray-300 bg-gradient-to-r from-blue-600 to-blue-700">
               <div className="flex items-start justify-between">
@@ -498,8 +499,8 @@ export function POSStockQueryModal({ products, onClose, onAddToCart }: POSStockQ
               )}
             </div>
           </div>
-        </div>
+        </ModalLayer>
       )}
-    </div>
+    </ModalLayer>
   );
 }

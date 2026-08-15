@@ -9,6 +9,7 @@ import { Reservation } from '../types';
 import { cn } from '@/components/ui/utils';
 import { v4 as uuidv4 } from 'uuid';
 import { useRestaurantModuleTm } from '../hooks/useRestaurantModuleTm';
+import { ModalLayer } from '../../shared/FullscreenBodyPortal';
 
 interface RestaurantReservationsProps {
     onBack: () => void;
@@ -217,7 +218,7 @@ export function RestaurantReservations({ onBack }: RestaurantReservationsProps) 
 
             {/* Add/Edit Modal */}
             {isAddModalOpen && (
-                <div className="fixed inset-0 z-[100] flex items-center justify-center p-4">
+                <ModalLayer className="flex items-center justify-center p-4">
                     <div className="absolute inset-0 bg-slate-900/40 backdrop-blur-sm" onClick={() => setIsAddModalOpen(false)} />
                     <div className="bg-white rounded-[2.5rem] w-full max-w-lg relative z-10 shadow-3xl overflow-hidden animate-in fade-in zoom-in duration-200">
                         <div className="bg-gradient-to-r from-[#2563eb] to-[#3b82f6] p-6 flex justify-between items-center text-white">
@@ -344,7 +345,7 @@ export function RestaurantReservations({ onBack }: RestaurantReservationsProps) 
                             </div>
                         </form>
                     </div>
-                </div>
+                </ModalLayer>
             )}
         </div>
     );

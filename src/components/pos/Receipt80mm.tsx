@@ -16,6 +16,7 @@ import { getAccountReceiptSystemPrinterName } from '../../utils/restaurantAccoun
 import { printHtmlInHiddenIframe } from '../../utils/restaurantReceiptPrint';
 import { receiptNotesForDisplay } from '../../utils/receiptNotes';
 import { RECEIPT_80MM_DOCUMENT_CSS, RECEIPT_80MM_VIEWPORT_FOR_HEADLESS } from '../../utils/receipt80mmDocumentCss';
+import { ModalLayer } from '../shared/FullscreenBodyPortal';
 import { RECEIPT_A4_DOCUMENT_CSS } from '../../utils/receiptA4DocumentCss';
 import { RECEIPT_A5_DOCUMENT_CSS } from '../../utils/receiptA5DocumentCss';
 import { ReceiptStandardDocument } from './ReceiptStandardDocument';
@@ -301,7 +302,7 @@ export function Receipt80mm({
   // Add null/undefined checks
   if (!sale || !paymentData) {
     return (
-      <div className="fixed inset-0 bg-black/80 backdrop-blur-sm flex items-center justify-center z-[100] p-4">
+      <ModalLayer className="bg-black/80 backdrop-blur-sm flex items-center justify-center p-4">
         <div className="bg-white p-6 rounded-lg shadow-xl">
           <p className="text-red-600 font-bold mb-4">Fiş verileri yüklenemedi</p>
           <button
@@ -311,7 +312,7 @@ export function Receipt80mm({
             Kapat
           </button>
         </div>
-      </div>
+      </ModalLayer>
     );
   }
 
@@ -540,8 +541,8 @@ export function Receipt80mm({
   ];
 
   return (
-    <div
-      className={`fixed inset-0 z-[100] flex items-center justify-center p-2 sm:p-3 overflow-hidden ${printImmediately ? 'bg-black/50' : 'bg-black/80 backdrop-blur-sm'}`}
+    <ModalLayer
+      className={`flex items-center justify-center p-2 sm:p-3 overflow-hidden ${printImmediately ? 'bg-black/50' : 'bg-black/80 backdrop-blur-sm'}`}
     >
       {printImmediately && (
         <div className="absolute inset-0 z-20 flex items-center justify-center pointer-events-none">
@@ -1037,6 +1038,6 @@ export function Receipt80mm({
           }
         }
       `}</style>
-    </div>
+    </ModalLayer>
   );
 }

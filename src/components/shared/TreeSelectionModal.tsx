@@ -2,6 +2,7 @@
 import { X, Search, Database, ChevronRight, ChevronDown, Folder, FolderOpen, Check, Package, Plus } from 'lucide-react';
 import { createMasterDataQuickAddItem, suggestQuickAddCode } from '../../utils/masterDataQuickAdd';
 import { toast } from 'sonner';
+import { ModalLayer } from './FullscreenBodyPortal';
 
 export interface TreeDataItem {
     id: string;
@@ -229,7 +230,7 @@ export function TreeSelectionModal({
     };
 
     return (
-        <div className="fixed inset-0 bg-black/40 backdrop-blur-md flex items-center justify-center z-[10001] p-4">
+        <ModalLayer nested className="bg-black/40 backdrop-blur-md flex items-center justify-center p-4">
             <div className="bg-white w-full max-w-lg shadow-2xl rounded-lg flex flex-col max-h-[85vh] animate-in fade-in zoom-in duration-200">
                 {/* Header */}
                 <div className="p-3 border-b border-gray-200 flex items-center justify-between bg-gradient-to-r from-blue-700 to-blue-800 rounded-t-lg">
@@ -339,6 +340,6 @@ export function TreeSelectionModal({
                     </button>
                 </div>
             </div>
-        </div>
+        </ModalLayer>
     );
 }

@@ -89,6 +89,7 @@ import { lineNetAfterPercentDiscount, posPaymentAdditionalDiscount } from '../..
 import { parsePosQuantityForProduct } from '../../../utils/numberFormatter';
 import { formatPosQuantityDisplay } from '../../../utils/productUnits';
 import { MainCategoryIcon, SubCategoryIcon } from '../utils/restaurantCategoryIcons';
+import { ModalLayer } from '../../shared/FullscreenBodyPortal';
 
 interface RestPOSProps {
     products: Product[];
@@ -2801,7 +2802,7 @@ export const RestPOS: React.FC<RestPOSProps> = ({
 
             {/* 80mm: önce fiş türü + dil (hesap fişi önizlemede formatCurrency ile uyumlu) */}
             {showPrint80ChoiceModal && (
-                <div className="fixed inset-0 z-[10050] flex items-center justify-center p-4 bg-black/50 backdrop-blur-sm">
+                <ModalLayer className="flex items-center justify-center p-4 bg-black/50 backdrop-blur-sm">
                     <div className="bg-white rounded-2xl shadow-2xl max-w-md w-full overflow-hidden border border-slate-200">
                         <div className="px-5 py-4 border-b border-slate-100 bg-gradient-to-r from-blue-600 to-blue-500 text-white">
                             <h3 className="text-lg font-black tracking-tight">{tmR('resPosPrint80Header')}</h3>
@@ -2889,7 +2890,7 @@ export const RestPOS: React.FC<RestPOSProps> = ({
                             </button>
                         </div>
                     </div>
-                </div>
+                </ModalLayer>
             )}
 
             {/* Print Preview Modal (80mm) — ödeme öncesi adisyon */}

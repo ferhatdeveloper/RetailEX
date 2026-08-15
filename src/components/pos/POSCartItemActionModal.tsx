@@ -10,6 +10,7 @@ import { productUsesDecimalQuantity } from '../../utils/productUnits';
 import { normalizeWeightProductQuantity } from '../../utils/scaleQuantity';
 import { useTheme } from '../../contexts/ThemeContext';
 import { useLanguage } from '../../contexts/LanguageContext';
+import { ModalLayer } from '../shared/FullscreenBodyPortal';
 import { useFirmaDonem } from '../../contexts/FirmaDonemContext';
 import { getGlobalCurrency } from '../../utils/currency';
 import { confirm as confirmDialog } from '../shared/ConfirmDialog';
@@ -164,7 +165,7 @@ export function POSCartItemActionModal({
   const quickDiscounts = [0, 5, 10, 15, 20, 25, 30, 50];
 
   return (
-    <div className="fixed inset-0 bg-black/60 backdrop-blur-sm flex items-center justify-center z-50 p-4">
+    <ModalLayer className="bg-black/60 backdrop-blur-sm flex items-center justify-center p-4">
       <div className={`${darkMode ? 'bg-gray-800' : 'bg-white'} w-full max-w-5xl max-h-[95vh] flex flex-col shadow-2xl rounded-2xl overflow-hidden`}>
         <div className={`p-5 border-b ${darkMode ? 'border-gray-700 bg-gray-800' : 'border-gray-200 bg-gradient-to-r from-blue-700 to-indigo-800'}`}>
           <div className="flex items-center justify-between">
@@ -579,6 +580,6 @@ export function POSCartItemActionModal({
           </div>
         </div>
       </div>
-    </div>
+    </ModalLayer>
   );
 }

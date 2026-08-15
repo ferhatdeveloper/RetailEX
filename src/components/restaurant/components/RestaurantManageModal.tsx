@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
 import { X, LayoutGrid, Plus, PlusCircle, CheckCircle, Info } from 'lucide-react';
 import { cn } from '../../ui/utils';
+import { ModalLayer } from '../../shared/FullscreenBodyPortal';
 import { Region } from '../types';
 
 interface RestaurantManageModalProps {
@@ -66,10 +67,7 @@ export function RestaurantManageModal({
     };
 
     return (
-        <div
-            className="fixed inset-0 flex items-center justify-center p-4 animate-in fade-in duration-300"
-            style={{ zIndex: 2147483647, isolation: 'isolate', transform: 'translateZ(0)' }}
-        >
+        <ModalLayer className="flex items-center justify-center p-4 animate-in fade-in duration-300">
             <div className="absolute inset-0 bg-black/60 backdrop-blur-sm" aria-hidden style={{ zIndex: 0 }} />
             <div
                 className="relative bg-white rounded-[32px] w-full max-w-lg overflow-hidden shadow-2xl animate-in zoom-in-95 duration-300 flex flex-col max-h-[90vh]"
@@ -234,6 +232,6 @@ export function RestaurantManageModal({
                     </button>
                 </div>
             </div>
-        </div>
+        </ModalLayer>
     );
 }

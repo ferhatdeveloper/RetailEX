@@ -8,6 +8,7 @@ import { productAPI } from '../../services/api/products';
 import { formatScaleQuantityDisplay, normalizeWeightProductQuantity } from '../../utils/scaleQuantity';
 import { isWeightBasedUnit } from '../../utils/productUnits';
 import { parsePosQuantityForProduct } from '../../utils/numberFormatter';
+import { ModalLayer } from '../shared/FullscreenBodyPortal';
 
 interface POSReturnModalProps {
   sales: Sale[];
@@ -420,7 +421,7 @@ export function POSReturnModal({
       : returnType === 'product' && Object.keys(returnItems).length > 0;
 
   return (
-    <div className="fixed inset-0 bg-black/60 backdrop-blur-sm flex items-center justify-center z-50 p-4">
+    <ModalLayer className="bg-black/60 backdrop-blur-sm flex items-center justify-center p-4">
       <div className="bg-white w-full max-w-5xl max-h-[90vh] flex flex-col shadow-2xl rounded-xl overflow-hidden">
         <div className="p-3 border-b border-gray-200 flex items-center justify-between bg-gradient-to-r from-blue-600 to-blue-700">
           <h3 className="text-base text-white flex items-center gap-2">
@@ -800,6 +801,6 @@ export function POSReturnModal({
           </div>
         </div>
       </div>
-    </div>
+    </ModalLayer>
   );
 }

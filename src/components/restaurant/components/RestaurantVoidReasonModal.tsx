@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
 import { X, Trash2, Info } from 'lucide-react';
 import { cn } from '../../ui/utils';
+import { ModalLayer } from '../../shared/FullscreenBodyPortal';
 import { moduleTranslations } from '../../../locales/module-translations';
 import { useRestaurantModuleTm } from '../hooks/useRestaurantModuleTm';
 
@@ -60,7 +61,7 @@ export function RestaurantVoidReasonModal({
     };
 
     return (
-        <div className="fixed inset-0 bg-black/60 backdrop-blur-sm z-[5000] flex items-center justify-center p-4 animate-in fade-in duration-300">
+        <ModalLayer className="bg-black/60 backdrop-blur-sm flex items-center justify-center p-4 animate-in fade-in duration-300">
             <div
                 className="bg-white rounded-[32px] w-full max-w-md overflow-hidden shadow-2xl animate-in zoom-in-95 duration-200 flex flex-col"
                 onClick={e => e.stopPropagation()}
@@ -193,6 +194,6 @@ export function RestaurantVoidReasonModal({
                     </button>
                 </div>
             </div>
-        </div>
+        </ModalLayer>
     );
 }

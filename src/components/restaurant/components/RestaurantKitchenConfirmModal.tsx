@@ -1,6 +1,7 @@
 import React, { useMemo } from 'react';
 import { ChefHat, CheckCircle, Info, Clock, Utensils } from 'lucide-react';
 import { cn } from '../../ui/utils';
+import { ModalLayer } from '../../shared/FullscreenBodyPortal';
 import { useRestaurantModuleTm } from '../hooks/useRestaurantModuleTm';
 
 type KitchenStatus = 'pending' | 'cooking' | 'ready' | 'served';
@@ -107,10 +108,7 @@ export function RestaurantKitchenConfirmModal({
     };
 
     return (
-        <div
-            className="fixed inset-0 bg-black/60 backdrop-blur-sm flex items-center justify-center p-4 animate-in fade-in duration-300"
-            style={{ zIndex: 2147483647, isolation: 'isolate', transform: 'translateZ(0)' }}
-        >
+        <ModalLayer className="bg-black/60 backdrop-blur-sm flex items-center justify-center p-4 animate-in fade-in duration-300">
             <div
                 className="bg-white rounded-[32px] w-full max-w-sm max-h-[90vh] overflow-hidden shadow-2xl animate-in zoom-in-95 duration-300 flex flex-col relative"
                 style={{ zIndex: 10 }}
@@ -186,6 +184,6 @@ export function RestaurantKitchenConfirmModal({
                     </button>
                 </div>
             </div>
-        </div>
+        </ModalLayer>
     );
 }

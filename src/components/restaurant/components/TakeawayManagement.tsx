@@ -8,6 +8,7 @@ import { Badge } from '@/components/ui/badge';
 import { RestaurantService } from '../../../services/restaurant';
 import { formatMoneyAmount } from '../../../utils/formatMoney';
 import { useRestaurantModuleTm } from '../hooks/useRestaurantModuleTm';
+import { ModalLayer } from '../../shared/FullscreenBodyPortal';
 
 type TakeawayStatus = 'pending' | 'preparing' | 'ready' | 'picked_up';
 
@@ -296,7 +297,7 @@ export const TakeawayManagement: React.FC<TakeawayManagementProps> = ({ onBack }
 
             {/* New Order Modal */}
             {showNewModal && (
-                <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
+                <ModalLayer className="bg-black/50 flex items-center justify-center p-4">
                     <div className="bg-white rounded-3xl w-full max-w-sm shadow-2xl">
                         <div className="flex items-center justify-between p-6 border-b">
                             <h3 className="text-lg font-black text-slate-800">{tmR('resTkwModalTitle')}</h3>
@@ -329,7 +330,7 @@ export const TakeawayManagement: React.FC<TakeawayManagementProps> = ({ onBack }
                             </button>
                         </div>
                     </div>
-                </div>
+                </ModalLayer>
             )}
         </div>
     );

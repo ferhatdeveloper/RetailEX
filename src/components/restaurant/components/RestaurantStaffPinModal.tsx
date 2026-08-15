@@ -3,6 +3,7 @@ import { useRestaurantStore } from '../store/useRestaurantStore';
 import { Staff } from '../types';
 import { X, User, CheckCircle, Info } from 'lucide-react';
 import { cn } from '../../ui/utils';
+import { ModalLayer } from '../../shared/FullscreenBodyPortal';
 
 interface RestaurantStaffPinModalProps {
     onClose: () => void;
@@ -87,9 +88,9 @@ export const RestaurantStaffPinModal: React.FC<RestaurantStaffPinModalProps> = (
     }, [loadStaff]);
 
     return (
-        <div
-            className="fixed inset-0 bg-black/60 backdrop-blur-md flex items-center justify-center p-4 animate-in fade-in duration-300"
-            style={{ zIndex: 2147483647 }}
+        <ModalLayer
+            className="bg-black/60 backdrop-blur-md flex items-center justify-center p-4 animate-in fade-in duration-300"
+            nested
             onClick={mandatory ? undefined : onClose}
             role="presentation"
         >
@@ -247,7 +248,7 @@ export const RestaurantStaffPinModal: React.FC<RestaurantStaffPinModalProps> = (
                     </div>
                 )}
             </div>
-        </div>
+        </ModalLayer>
     );
 };
 

@@ -1,6 +1,7 @@
 ﻿import { X, Users, Printer, CheckCircle, AlertCircle } from 'lucide-react';
 import { useState } from 'react';
 import { formatCurrency, formatNumber } from '../../utils/formatNumber';
+import { ModalLayer } from '../shared/FullscreenBodyPortal';
 
 interface POSCashHandoverModalProps {
   onClose: () => void;
@@ -63,7 +64,7 @@ export function POSCashHandoverModal({
 
   return (
     <>
-      <div className="fixed inset-0 bg-black/60 backdrop-blur-sm flex items-center justify-center z-50 p-4">
+      <ModalLayer className="bg-black/60 backdrop-blur-sm flex items-center justify-center p-4">
         <div className="bg-white w-full max-w-2xl max-h-[90vh] flex flex-col shadow-2xl rounded-lg overflow-hidden">
           {/* Header */}
           <div className="p-4 border-b border-gray-200 bg-gradient-to-r from-purple-600 to-purple-700 flex items-center justify-between">
@@ -185,11 +186,11 @@ export function POSCashHandoverModal({
             </button>
           </div>
         </div>
-      </div>
+      </ModalLayer>
 
       {/* Devir Fişi Yazdırma Önizlemesi */}
       {showPrintPreview && (
-        <div className="fixed inset-0 bg-black/70 backdrop-blur-sm flex items-center justify-center z-[60] p-4">
+        <ModalLayer nested className="bg-black/70 backdrop-blur-sm flex items-center justify-center p-4">
           <div className="bg-white w-full max-w-2xl max-h-[90vh] flex flex-col shadow-2xl rounded-lg overflow-hidden">
             {/* Header */}
             <div className="p-4 border-b border-gray-200 flex items-center justify-between">
@@ -300,7 +301,7 @@ export function POSCashHandoverModal({
               </button>
             </div>
           </div>
-        </div>
+        </ModalLayer>
       )}
 
       {/* Print Styles */}

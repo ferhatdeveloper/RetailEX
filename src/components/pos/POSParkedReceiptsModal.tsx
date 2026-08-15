@@ -1,6 +1,7 @@
 import { X, Save, Trash2, Eye, RotateCcw, Coffee } from 'lucide-react';
 import type { CartItem } from './types';
 import { useLanguage } from '../../contexts/LanguageContext';
+import { ModalLayer } from '../shared/FullscreenBodyPortal';
 
 export interface ParkedReceipt {
   id: string;
@@ -36,7 +37,7 @@ export function POSParkedReceiptsModal({
   };
 
   return (
-    <div className="fixed inset-0 bg-black/60 backdrop-blur-sm flex items-center justify-center z-50 p-4">
+    <ModalLayer className="bg-black/60 backdrop-blur-sm flex items-center justify-center p-4">
       <div className="bg-white w-full max-w-4xl max-h-[90vh] flex flex-col shadow-2xl">
         {/* Header */}
         <div className="p-3 border-b border-gray-200 flex items-center justify-between bg-gradient-to-r from-blue-600 to-blue-700">
@@ -167,7 +168,7 @@ export function POSParkedReceiptsModal({
           </button>
         </div>
       </div>
-    </div>
+    </ModalLayer>
   );
 }
 

@@ -6,6 +6,7 @@ import {
   suggestQuickAddCode,
   type MasterDataQuickAddVariant,
 } from '../../utils/masterDataQuickAdd';
+import { ModalLayer } from './FullscreenBodyPortal';
 
 export interface MasterDataItem {
     id: string;
@@ -158,7 +159,7 @@ export function MasterDataSelectionModal({
     };
 
     return (
-        <div className="fixed inset-0 bg-black/40 backdrop-blur-md flex items-center justify-center z-[10001] p-4">
+        <ModalLayer nested className="bg-black/40 backdrop-blur-md flex items-center justify-center p-4">
             <div className="bg-white w-full max-w-lg shadow-2xl rounded-lg flex flex-col max-h-[85vh]">
                 <div className="p-3 border-b border-gray-200 flex items-center justify-between bg-gradient-to-r from-blue-700 to-blue-800 rounded-t-lg">
                     <h3 className="text-sm font-semibold text-white flex items-center gap-2">
@@ -311,6 +312,6 @@ export function MasterDataSelectionModal({
                     )}
                 </div>
             </div>
-        </div>
+        </ModalLayer>
     );
 }

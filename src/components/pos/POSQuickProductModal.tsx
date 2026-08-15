@@ -1,6 +1,7 @@
 ﻿import React, { useState, useEffect } from 'react';
 import { Search, X } from 'lucide-react';
 import type { Product } from '../../core/types';
+import { ModalLayer } from '../shared/FullscreenBodyPortal';
 
 interface POSQuickProductModalProps {
   products: Product[];
@@ -34,7 +35,7 @@ export function POSQuickProductModal({
   }, [searchTerm, products]);
 
   return (
-    <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50">
+    <ModalLayer className="bg-black/50 flex items-center justify-center">
       <div className="bg-white w-[900px] max-h-[80vh] flex flex-col shadow-xl">
         {/* Header */}
         <div className="flex items-center justify-between px-4 py-3 bg-gradient-to-r from-blue-600 to-blue-700 text-white">
@@ -124,6 +125,6 @@ export function POSQuickProductModal({
           </button>
         </div>
       </div>
-    </div>
+    </ModalLayer>
   );
 }

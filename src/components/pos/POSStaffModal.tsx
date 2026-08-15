@@ -6,6 +6,7 @@ import { useAuth } from '../../contexts/AuthContext';
 import { toast } from 'sonner';
 import { cn } from '../ui/utils';
 import { PinNumpadInput } from '../shared/PinNumpadInput';
+import { ModalLayer } from '../shared/FullscreenBodyPortal';
 
 interface POSStaffModalProps {
   currentStaff: string;
@@ -76,7 +77,7 @@ export function POSStaffModal({ currentStaff, onSelect, onClose }: POSStaffModal
   };
 
   return (
-    <div className="fixed inset-0 bg-black/50 backdrop-blur-sm flex items-center justify-center z-[200] p-4">
+    <ModalLayer className="bg-black/50 backdrop-blur-sm flex items-center justify-center p-4">
       <div className="bg-white rounded-2xl w-full max-w-sm shadow-2xl overflow-hidden border border-slate-200">
         <div className="flex items-center justify-between px-4 py-3 border-b border-slate-100 bg-slate-50">
           <div>
@@ -187,6 +188,6 @@ export function POSStaffModal({ currentStaff, onSelect, onClose }: POSStaffModal
           )}
         </div>
       </div>
-    </div>
+    </ModalLayer>
   );
 }

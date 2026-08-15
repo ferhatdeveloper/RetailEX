@@ -8,6 +8,7 @@ import { Building2, Calendar, Check, X, AlertCircle, Plus, Loader2 } from 'lucid
 import { projectId, publicAnonKey } from '../../utils/supabase/info';
 import { toast } from 'sonner';
 import { logger } from '../../services/loggingService';
+import { ModalLayer } from '../shared/FullscreenBodyPortal';
 
 interface FirmaDonemQuickSetupProps {
   onComplete: () => void;
@@ -149,7 +150,7 @@ export function FirmaDonemQuickSetup({ onComplete, onCancel }: FirmaDonemQuickSe
   };
 
   return (
-    <div className="fixed inset-0 bg-[#0f172a]/80 backdrop-blur-md flex items-center justify-center z-50 p-4">
+    <ModalLayer className="bg-[#0f172a]/80 backdrop-blur-md flex items-center justify-center p-4">
       <div className="bg-[#1e293b] border border-white/10 rounded-[32px] shadow-[0_32px_128px_-12px_rgba(0,0,0,0.8)] w-full max-w-lg overflow-hidden relative">
         {/* Background Decoration */}
         <div className="absolute top-0 right-0 w-32 h-32 bg-blue-600/10 blur-[60px] rounded-full pointer-events-none" />
@@ -344,6 +345,6 @@ export function FirmaDonemQuickSetup({ onComplete, onCancel }: FirmaDonemQuickSe
           )}
         </div>
       </div>
-    </div>
+    </ModalLayer>
   );
 }

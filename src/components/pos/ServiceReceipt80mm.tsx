@@ -2,6 +2,7 @@ import { X, Printer } from 'lucide-react';
 import { useTheme } from '../../contexts/ThemeContext';
 import { useLanguage } from '../../contexts/LanguageContext';
 import { formatNumber } from '../../utils/formatNumber';
+import { ModalLayer } from '../shared/FullscreenBodyPortal';
 
 interface ServiceReceiptProps {
     data: {
@@ -34,7 +35,7 @@ export function ServiceReceipt80mm({ data, onClose }: ServiceReceiptProps) {
     };
 
     return (
-        <div className="fixed inset-0 bg-black/80 backdrop-blur-sm flex items-center justify-center z-[110] p-4">
+        <ModalLayer className="bg-black/80 backdrop-blur-sm flex items-center justify-center p-4">
             <div className={`w-full max-w-sm max-h-[95vh] flex flex-col shadow-2xl ${darkMode ? 'bg-gray-900 border border-gray-700' : 'bg-white'}`}>
 
                 {/* Header */}
@@ -154,7 +155,7 @@ export function ServiceReceipt80mm({ data, onClose }: ServiceReceiptProps) {
           }
         }
       `}</style>
-        </div>
+        </ModalLayer>
     );
 }
 

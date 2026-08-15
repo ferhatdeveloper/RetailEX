@@ -1,6 +1,7 @@
 import React from 'react';
 import { X, Grid3x3 } from 'lucide-react';
 import { useLanguage } from '../../contexts/LanguageContext';
+import { ModalLayer } from '../shared/FullscreenBodyPortal';
 
 interface POSPageSelectorModalProps {
   currentPage: number;
@@ -18,7 +19,7 @@ export function POSPageSelectorModal({ currentPage, onSelectPage, onClose }: POS
   ];
 
   return (
-    <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50">
+    <ModalLayer className="bg-black/50 flex items-center justify-center">
       <div className="bg-white w-[400px] shadow-lg border border-gray-300">
         {/* Header */}
         <div className="bg-gradient-to-r from-blue-600 to-blue-700 text-white px-4 py-3 flex items-center justify-between">
@@ -66,7 +67,7 @@ export function POSPageSelectorModal({ currentPage, onSelectPage, onClose }: POS
           </button>
         </div>
       </div>
-    </div>
+    </ModalLayer>
   );
 }
 

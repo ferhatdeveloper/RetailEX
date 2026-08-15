@@ -1,5 +1,6 @@
 ﻿import { X, Package, Grid3x3 } from 'lucide-react';
 import { useEffect } from 'react';
+import { ModalLayer } from '../shared/FullscreenBodyPortal';
 
 interface POSCategoryModalProps {
   categories: string[];
@@ -41,7 +42,7 @@ export function POSCategoryModal({
   }, [safeCategories, onSelect, onClose]);
 
   return (
-    <div className="fixed inset-0 bg-black/60 backdrop-blur-sm flex items-center justify-center z-50 p-4">
+    <ModalLayer className="bg-black/60 backdrop-blur-sm flex items-center justify-center p-4">
       <div className="bg-white w-full max-w-5xl max-h-[90vh] flex flex-col shadow-2xl">
         {/* Header */}
         <div className="p-3 border-b border-gray-200 flex items-center justify-between bg-gradient-to-r from-blue-600 to-blue-700">
@@ -134,6 +135,6 @@ export function POSCategoryModal({
           </button>
         </div>
       </div>
-    </div>
+    </ModalLayer>
   );
 }

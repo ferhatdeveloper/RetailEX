@@ -27,7 +27,7 @@ export function FullscreenBodyPortal({
   children,
   className,
   style,
-  zIndex = FULLSCREEN_BODY_PORTAL_Z,
+  zIndex = MODAL_OVERLAY_Z,
   ...rest
 }: FullscreenBodyPortalProps) {
   if (typeof document === 'undefined') return null;
@@ -36,5 +36,21 @@ export function FullscreenBodyPortal({
       {children}
     </div>,
     document.body,
+  );
+}
+
+/** Ortalanmış diyalog overlay — her zaman document.body + en üst z-index. */
+export function ModalLayer({
+  nested = false,
+  zIndex,
+  className,
+  ...rest
+}: FullscreenBodyPortalProps & { nested?: boolean }) {
+  return (
+    <FullscreenBodyPortal
+      zIndex={zIndex ?? (nested ? MODAL_OVERLAY_NESTED_Z : MODAL_OVERLAY_Z)}
+      className={className}
+      {...rest}
+    />
   );
 }

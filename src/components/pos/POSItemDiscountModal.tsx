@@ -6,6 +6,7 @@ import { formatNumber } from '../../utils/formatNumber';
 import { useFirmaDonem } from '../../contexts/FirmaDonemContext';
 import { getGlobalCurrency } from '../../utils/currency';
 import { lineDiscountMoneyFromPercent, lineNetAfterPercentDiscount } from '../../utils/discountRounding';
+import { ModalLayer } from '../shared/FullscreenBodyPortal';
 
 interface POSItemDiscountModalProps {
   item: CartItem;
@@ -36,7 +37,7 @@ export function POSItemDiscountModal({ item, onClose, onApplyDiscount }: POSItem
   const quickDiscounts = [0, 5, 10, 15, 20, 25, 30, 50];
 
   return (
-    <div className="fixed inset-0 bg-black/60 backdrop-blur-sm flex items-center justify-center z-50 p-4">
+    <ModalLayer className="bg-black/60 backdrop-blur-sm flex items-center justify-center p-4">
       <div className={`bg-white w-full ${showNumpad ? 'max-w-4xl' : 'max-w-md'} max-h-[90vh] flex flex-col shadow-2xl transition-all duration-300`}>
         {/* Header */}
         <div className="p-3 border-b border-gray-200 flex items-center justify-between bg-gradient-to-r from-red-600 to-red-700">
@@ -176,6 +177,6 @@ export function POSItemDiscountModal({ item, onClose, onApplyDiscount }: POSItem
           </button>
         </div>
       </div>
-    </div>
+    </ModalLayer>
   );
 }

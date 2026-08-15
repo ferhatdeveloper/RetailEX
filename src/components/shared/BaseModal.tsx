@@ -1,5 +1,6 @@
 import React, { useEffect } from 'react';
 import { X } from 'lucide-react';
+import { ModalLayer } from './FullscreenBodyPortal';
 
 interface BaseModalProps {
     isOpen: boolean;
@@ -38,7 +39,7 @@ export function BaseModal({
     if (!isOpen) return null;
 
     return (
-        <div className="fixed inset-0 z-[10000] flex items-center justify-center p-4">
+        <ModalLayer className="flex items-center justify-center p-4">
             {/* Backdrop */}
             <div
                 className="absolute inset-0 bg-black/40 backdrop-blur-md transition-opacity"
@@ -72,7 +73,7 @@ export function BaseModal({
                     </div>
                 )}
             </div>
-        </div>
+        </ModalLayer>
     );
 }
 

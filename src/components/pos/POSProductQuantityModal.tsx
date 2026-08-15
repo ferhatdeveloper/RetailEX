@@ -5,6 +5,7 @@ import { useLanguage } from '../../contexts/LanguageContext';
 import { formatPosQuantityInput, parsePosQuantityForProduct } from '../../utils/numberFormatter';
 import { productUnitLabel, productUsesDecimalQuantity } from '../../utils/productUnits';
 import { formatMoneyWithCode, getGlobalCurrency } from '../../utils/currency';
+import { ModalLayer } from '../shared/FullscreenBodyPortal';
 
 interface POSProductQuantityModalProps {
   product: Product;
@@ -57,7 +58,7 @@ export function POSProductQuantityModal({
   );
 
   return (
-    <div className="fixed inset-0 bg-black/60 backdrop-blur-sm z-[6000] flex items-center justify-center p-4">
+    <ModalLayer className="bg-black/60 backdrop-blur-sm flex items-center justify-center p-4">
       <div
         className={`w-full max-w-sm rounded-2xl shadow-2xl overflow-hidden ${
           darkMode ? 'bg-gray-800 text-white' : 'bg-white text-slate-900'
@@ -151,6 +152,6 @@ export function POSProductQuantityModal({
           </div>
         </div>
       </div>
-    </div>
+    </ModalLayer>
   );
 }

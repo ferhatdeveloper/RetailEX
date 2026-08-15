@@ -1,6 +1,7 @@
 import { X, FileX } from 'lucide-react';
 import { useState, useEffect } from 'react';
 import { useLanguage } from '../../contexts/LanguageContext';
+import { ModalLayer } from '../shared/FullscreenBodyPortal';
 
 interface POSCancelReasonModalProps {
   onConfirm: (reason: string) => void;
@@ -57,7 +58,7 @@ export function POSCancelReasonModal({ onConfirm, onClose }: POSCancelReasonModa
   }, [selectedReason, cancelNote]);
 
   return (
-    <div className="fixed inset-0 bg-black/60 backdrop-blur-sm flex items-center justify-center z-50">
+    <ModalLayer nested className="bg-black/60 backdrop-blur-sm flex items-center justify-center">
       <div className="bg-white w-full max-w-md shadow-2xl">
         {/* Header */}
         <div className="p-3 border-b border-gray-300 flex items-center justify-between bg-gradient-to-r from-red-600 to-red-700">
@@ -124,7 +125,7 @@ export function POSCancelReasonModal({ onConfirm, onClose }: POSCancelReasonModa
           </button>
         </div>
       </div>
-    </div>
+    </ModalLayer>
   );
 }
 

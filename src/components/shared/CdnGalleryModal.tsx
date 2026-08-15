@@ -1,5 +1,6 @@
 import React, { useState, useMemo } from 'react';
 import { X, ImageIcon, Loader2, Search, List, Lightbulb, RefreshCw } from 'lucide-react';
+import { ModalLayer } from './FullscreenBodyPortal';
 
 export interface CdnGalleryImage {
   url: string;
@@ -48,7 +49,7 @@ export const CdnGalleryModal: React.FC<CdnGalleryModalProps> = ({
   if (!open) return null;
 
   return (
-    <div className="fixed inset-0 z-[10001] flex items-center justify-center p-4 bg-black/40 backdrop-blur-sm">
+    <ModalLayer nested className="flex items-center justify-center p-4 bg-black/40 backdrop-blur-sm">
       <div className="bg-white rounded-xl shadow-2xl w-full max-w-4xl max-h-[85vh] flex flex-col">
         <div className="flex items-center justify-between px-6 py-4 border-b border-gray-200">
           <div>
@@ -188,6 +189,6 @@ export const CdnGalleryModal: React.FC<CdnGalleryModalProps> = ({
           )}
         </div>
       </div>
-    </div>
+    </ModalLayer>
   );
 };

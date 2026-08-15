@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { createPortal } from 'react-dom';
+import { ModalLayer } from '../../shared/FullscreenBodyPortal';
 import { X, Utensils, Plus, Minus, Users, CheckCircle, Calendar, RefreshCcw } from 'lucide-react';
 import { cn } from '../../ui/utils';
 import { Table, Reservation } from '../types';
@@ -59,15 +59,8 @@ export function RestaurantTableOpenModal({
         (!r.tableId || r.tableId === table.id)
     );
 
-    const modalContent = (
-        <div
-            className="fixed inset-0 flex items-center justify-center p-4 animate-in fade-in duration-300"
-            style={{
-                zIndex: 2147483647,
-                isolation: 'isolate',
-                transform: 'translateZ(0)',
-            }}
-        >
+    return (
+        <ModalLayer className="flex items-center justify-center p-4 animate-in fade-in duration-300">
             <div className="absolute inset-0 bg-black/60 backdrop-blur-sm" aria-hidden style={{ zIndex: 0 }} />
                 <div
                     className="relative bg-white w-full max-w-md rounded-[32px] overflow-hidden shadow-2xl flex flex-col animate-in zoom-in-95 duration-300 max-h-[90vh]"
@@ -211,10 +204,6 @@ export function RestaurantTableOpenModal({
                     skipConfirmation
                 />
             )}
-        </div>
+        </ModalLayer>
     );
-
-    return typeof document !== 'undefined' && document.body
-        ? createPortal(modalContent, document.body)
-        : modalContent;
 }

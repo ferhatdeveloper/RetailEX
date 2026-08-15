@@ -3,6 +3,7 @@ import { Trash2, Copy, Barcode, Save } from 'lucide-react';
 import { useLanguage } from '../../contexts/LanguageContext';
 import { useTheme } from '../../contexts/ThemeContext';
 import { POS_MODAL_OVERLAY, POS_MODAL_SHELL, POS_MODAL_HEADER } from './posUiConstants';
+import { ModalLayer } from '../shared/FullscreenBodyPortal';
 import { playBarcodeNotFoundBeep } from '../../utils/posFeedbackSounds';
 
 interface POSMissingBarcodesModalProps {
@@ -66,7 +67,7 @@ export function POSMissingBarcodesModal({ onClose, barcodes, highlightBarcode, o
     };
 
     return (
-        <div className={POS_MODAL_OVERLAY} role="dialog" aria-modal="true">
+        <ModalLayer className={POS_MODAL_OVERLAY} role="dialog" aria-modal="true">
             <div className={POS_MODAL_SHELL(darkMode)}>
                 <div className={POS_MODAL_HEADER}>
                     <h3 className="text-base text-white flex items-center gap-2">
@@ -190,6 +191,6 @@ export function POSMissingBarcodesModal({ onClose, barcodes, highlightBarcode, o
                     </div>
                 </div>
             </div>
-        </div>
+        </ModalLayer>
     );
 }

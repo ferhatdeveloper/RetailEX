@@ -1,5 +1,6 @@
 import React from 'react';
 import { Percent, CheckCircle, Info } from 'lucide-react';
+import { ModalLayer } from '../../shared/FullscreenBodyPortal';
 import { translate } from '../../../shared/i18n';
 import { useLanguage } from '../../../contexts/LanguageContext';
 
@@ -20,7 +21,7 @@ export function RestaurantDiscountModal({
     const t = (key: string) => translate(key as any, language);
 
     return (
-        <div className="fixed inset-0 bg-black/60 backdrop-blur-sm z-[5000] overflow-y-auto overflow-x-hidden animate-in fade-in duration-300">
+        <ModalLayer className="bg-black/60 backdrop-blur-sm overflow-y-auto overflow-x-hidden animate-in fade-in duration-300">
             <div className="flex min-h-[100dvh] min-h-screen w-full items-center justify-center p-4 py-6">
             <div
                 className="bg-white rounded-[32px] w-full max-w-sm max-h-[min(90vh,100dvh)] min-h-0 overflow-hidden shadow-2xl animate-in zoom-in-95 duration-300 flex flex-col"
@@ -95,6 +96,6 @@ export function RestaurantDiscountModal({
                 </div>
             </div>
             </div>
-        </div>
+        </ModalLayer>
     );
 }

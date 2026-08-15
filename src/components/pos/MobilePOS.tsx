@@ -13,6 +13,7 @@ import { productAPI } from '../../services/api/products';
 import { mergeScaleCartQuantity, normalizeWeightProductQuantity } from '../../utils/scaleQuantity';
 import { parsePosQuantityForProduct, formatDecimalForTrInput } from '../../utils/numberFormatter';
 import { resolveScaleBarcodeSale } from '../../utils/scaleBarcodeSale';
+import { ModalLayer } from '../shared/FullscreenBodyPortal';
 import { isCompositeScaleBarcode } from '../../utils/barcodeParser';
 import {
   BARCODE_SCANNER_DEBOUNCE_MS,
@@ -885,7 +886,7 @@ export function MobilePOS({ products, customers, campaigns, onSaleComplete, onBa
 
       {/* Products Modal */}
       {showProductsModal && (
-        <div className="fixed inset-0 bg-white z-50 flex flex-col">
+        <ModalLayer className="bg-white flex flex-col">
           {/* Header */}
           <div className="bg-gradient-to-r from-blue-600 to-blue-700 text-white p-4 flex items-center justify-between shadow-lg">
             <h3 className="font-medium text-lg">Ürünler</h3>
@@ -958,12 +959,12 @@ export function MobilePOS({ products, customers, campaigns, onSaleComplete, onBa
               ))}
             </div>
           </div>
-        </div>
+        </ModalLayer>
       )}
 
       {/* Payment Modal */}
       {showPayment && (
-        <div className="fixed inset-0 bg-black/60 flex items-center justify-center z-50 p-4">
+        <ModalLayer className="bg-black/60 flex items-center justify-center p-4">
           <div className="bg-white rounded-2xl w-full max-w-md shadow-2xl overflow-hidden">
             <div className="bg-gradient-to-r from-green-500 to-green-600 text-white px-6 py-4">
               <h3 className="font-medium text-lg">Ödeme</h3>
@@ -1080,12 +1081,12 @@ export function MobilePOS({ products, customers, campaigns, onSaleComplete, onBa
               </button>
             </div>
           </div>
-        </div>
+        </ModalLayer>
       )}
 
       {/* Customer Modal */}
       {showCustomerModal && (
-        <div className="fixed inset-0 bg-black/60 flex items-center justify-center z-50 p-4">
+        <ModalLayer className="bg-black/60 flex items-center justify-center p-4">
           <div className="bg-white rounded-2xl w-full max-w-md shadow-2xl max-h-[80vh] flex flex-col overflow-hidden">
             <div className="bg-gradient-to-r from-blue-600 to-blue-700 text-white px-6 py-4">
               <h3 className="font-medium text-lg">Müşteri Seç</h3>
@@ -1129,7 +1130,7 @@ export function MobilePOS({ products, customers, campaigns, onSaleComplete, onBa
               </button>
             </div>
           </div>
-        </div>
+        </ModalLayer>
       )}
 
       {/* Notification Modal */}

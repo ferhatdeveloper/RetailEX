@@ -1,6 +1,7 @@
 import React from 'react';
 import { FileText, Printer, X, Clock, Banknote, CreditCard } from 'lucide-react';
 import { cn } from '../../ui/utils';
+import { ModalLayer } from '../../shared/FullscreenBodyPortal';
 import { formatCurrency } from '../../../utils/currency';
 
 interface ZReportData {
@@ -122,7 +123,7 @@ export const RestaurantZReport: React.FC<RestaurantZReportProps> = ({ data, onCl
     };
 
     return (
-        <div className="fixed inset-0 bg-black/50 flex items-center justify-center p-4 z-[5000]">
+        <ModalLayer className="bg-black/50 flex items-center justify-center p-4">
             <div className="bg-white rounded-2xl w-full max-w-lg shadow-xl flex flex-col max-h-[90vh] overflow-hidden">
                 {/* Başlık */}
                 <div className="flex items-center justify-between px-6 py-4 border-b border-slate-200 bg-slate-50 shrink-0">
@@ -253,6 +254,6 @@ export const RestaurantZReport: React.FC<RestaurantZReportProps> = ({ data, onCl
                     </button>
                 </div>
             </div>
-        </div>
+        </ModalLayer>
     );
 };

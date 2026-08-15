@@ -48,7 +48,8 @@ const BeautyMain = lazyWithChunkRecovery(() => import('../beauty/index'));
 import { FirmSelector } from './FirmSelector';
 import { HybridSyncToolbarButtons } from './HybridSyncToolbarButtons';
 import { MarketRatesToolbarButton } from './MarketRatesToolbarButton';
-import { POS_MASTER_OVERRIDE_PASSWORD, POS_MODAL_Z } from '../pos/posUiConstants';
+import { POS_MASTER_OVERRIDE_PASSWORD } from '../pos/posUiConstants';
+import { ModalLayer } from '../shared/FullscreenBodyPortal';
 import { cn } from '../ui/utils';
 import {
   getPrimaryShellModuleForCallerId,
@@ -1695,7 +1696,7 @@ export function MainLayout({
 
       {/* Date Modal */}
       {showDateModal && (
-        <div className="fixed inset-0 bg-blue-900/20 backdrop-blur-sm flex items-center justify-center z-50 p-3 sm:p-4">
+        <ModalLayer className="bg-blue-900/20 backdrop-blur-sm flex items-center justify-center p-3 sm:p-4">
           <div className={`rounded-lg sm:rounded-xl w-full max-w-md shadow-2xl max-h-[90vh] overflow-y-auto ${darkMode ? 'bg-gray-800 border border-gray-700' : 'bg-white'}`}>
             <div className="p-3 border-b border-gray-200 flex items-center justify-between bg-gradient-to-r from-blue-600 to-blue-700">
               <h3 className="text-base text-white flex items-center gap-2">
@@ -1777,7 +1778,7 @@ export function MainLayout({
               </button>
             </div>
           </div>
-        </div>
+        </ModalLayer>
       )}
 
       {/* POS Customer Modal */}
@@ -1841,7 +1842,7 @@ export function MainLayout({
 
       {/* Yönetim Parola Modal */}
       {showManagementPasswordModal && (
-        <div className={`fixed inset-0 bg-black/60 backdrop-blur-sm flex items-center justify-center ${POS_MODAL_Z} p-3 sm:p-4`}>
+        <ModalLayer className="bg-black/60 backdrop-blur-sm flex items-center justify-center p-3 sm:p-4">
           <div className="bg-white rounded-lg sm:rounded-xl w-full max-w-sm shadow-2xl max-h-[90vh] overflow-y-auto">
             <div className="p-3 border-b border-gray-200 flex items-center bg-gradient-to-r from-blue-600 to-blue-700">
               <h3 className="text-base text-white flex items-center gap-2">
@@ -1904,7 +1905,7 @@ export function MainLayout({
               </button>
             </div>
           </div>
-        </div>
+        </ModalLayer>
       )}
 
       {/* Firma/Dönem Quick Setup Modal */}
@@ -1921,7 +1922,7 @@ export function MainLayout({
 
       {/* Firma Bilgi Modal */}
       {showFirmaInfoModal && (
-        <div className="fixed inset-0 bg-black/60 backdrop-blur-sm flex items-center justify-center z-50 p-3 sm:p-4" onClick={() => setShowFirmaInfoModal(false)}>
+        <ModalLayer className="bg-black/60 backdrop-blur-sm flex items-center justify-center p-3 sm:p-4" onClick={() => setShowFirmaInfoModal(false)}>
           <div className="bg-white rounded-lg sm:rounded-xl w-full max-w-md shadow-2xl overflow-hidden" onClick={e => e.stopPropagation()}>
             <div className="p-3 border-b border-gray-200 flex items-center justify-between bg-gradient-to-r from-blue-700 to-blue-800">
               <h3 className="text-base text-white flex items-center gap-2">
@@ -2068,7 +2069,7 @@ export function MainLayout({
               </div>
             </div>
           </div>
-        </div>
+        </ModalLayer>
       )}
     </div>
   );

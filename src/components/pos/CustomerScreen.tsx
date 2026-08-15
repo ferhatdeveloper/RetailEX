@@ -9,6 +9,7 @@ import { useState, useEffect } from 'react';
 import type { Customer } from '../../App';
 import { formatCurrency } from '../../utils/formatNumber';
 import { toast } from 'sonner';
+import { ModalLayer } from '../shared/FullscreenBodyPortal';
 
 interface Product {
   id: string;
@@ -312,7 +313,7 @@ function QRScannerModal({ onClose, onScan }: QRScannerModalProps) {
   }, [onScan]);
 
   return (
-    <div className="fixed inset-0 bg-black/80 backdrop-blur-sm flex items-center justify-center z-50">
+    <ModalLayer className="bg-black/80 backdrop-blur-sm flex items-center justify-center">
       <div className="bg-white rounded-3xl p-8 max-w-lg w-full mx-4">
         <div className="text-center mb-6">
           <QrCode className="w-20 h-20 mx-auto text-purple-600 mb-4" />
@@ -331,6 +332,6 @@ function QRScannerModal({ onClose, onScan }: QRScannerModalProps) {
           İptal
         </button>
       </div>
-    </div>
+    </ModalLayer>
   );
 }

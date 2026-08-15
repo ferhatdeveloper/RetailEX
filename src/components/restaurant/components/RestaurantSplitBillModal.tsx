@@ -1,6 +1,7 @@
 import React from 'react';
 import { X, UtensilsCrossed, CheckCircle, Info } from 'lucide-react';
 import { cn } from '../../ui/utils';
+import { ModalLayer } from '../../shared/FullscreenBodyPortal';
 
 interface RestaurantSplitBillModalProps {
     cart: any[];
@@ -20,7 +21,7 @@ export function RestaurantSplitBillModal({
     fmt
 }: RestaurantSplitBillModalProps) {
     return (
-        <div className="fixed inset-0 z-[5000] bg-black/60 backdrop-blur-md overflow-y-auto overflow-x-hidden animate-in fade-in duration-300">
+        <ModalLayer className="bg-black/60 backdrop-blur-md overflow-y-auto overflow-x-hidden animate-in fade-in duration-300">
             <div className="flex min-h-[100dvh] min-h-screen w-full items-center justify-center p-4 sm:p-6 py-6">
                 <div
                     className="bg-white rounded-[32px] shadow-2xl w-full max-w-2xl max-h-[min(90vh,100dvh)] min-h-0 overflow-hidden border border-white/20 animate-in zoom-in-95 duration-300 flex flex-col"
@@ -105,6 +106,6 @@ export function RestaurantSplitBillModal({
                 </div>
                 </div>
             </div>
-        </div>
+        </ModalLayer>
     );
 }

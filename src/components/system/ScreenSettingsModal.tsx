@@ -1,6 +1,7 @@
 ﻿import { X, ZoomIn, ZoomOut, Monitor, Moon, Sun, ArrowLeftRight, TrendingUp } from 'lucide-react';
 import { STORAGE_KEYS } from '../../core/config/constants';
 import { useState } from 'react';
+import { ModalLayer } from '../shared/FullscreenBodyPortal';
 
 const ZOOM_MIN = 50;
 const ZOOM_MAX = 200;
@@ -107,7 +108,7 @@ export function ScreenSettingsModal({
   };
 
   return (
-    <div className="fixed inset-0 bg-black/50 backdrop-blur-sm flex items-center justify-center z-50 p-2 sm:p-4">
+    <ModalLayer className="bg-black/50 backdrop-blur-sm flex items-center justify-center p-2 sm:p-4">
       <div className={`rounded-lg sm:rounded-xl w-full max-w-[95vw] sm:max-w-6xl shadow-2xl max-h-[95vh] sm:max-h-[90vh] overflow-hidden flex flex-col ${darkMode ? 'bg-gray-900 text-white' : 'bg-white'
         }`}>
         {/* Header */}
@@ -605,6 +606,6 @@ export function ScreenSettingsModal({
           </button>
         </div>
       </div>
-    </div>
+    </ModalLayer>
   );
 }

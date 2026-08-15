@@ -1,6 +1,7 @@
 import React from 'react';
 import { X, RotateCcw, Info, Merge, ArrowRightLeft, FileText } from 'lucide-react';
 import { cn } from '../../ui/utils';
+import { ModalLayer } from '../../shared/FullscreenBodyPortal';
 import { Table } from '../types';
 import { translate } from '../../../shared/i18n';
 import { useLanguage } from '../../../contexts/LanguageContext';
@@ -73,10 +74,10 @@ export function RestaurantMoveTableModal({
     };
 
     return (
-        <div className={cn(
-            "fixed inset-0 bg-black/60 backdrop-blur-md overflow-y-auto overflow-x-hidden animate-in fade-in duration-300",
-            fullScreen ? "z-[5010]" : "z-[5000]"
-        )}>
+        <ModalLayer
+            className="bg-black/60 backdrop-blur-md overflow-y-auto overflow-x-hidden animate-in fade-in duration-300"
+            nested={fullScreen}
+        >
             <div className={cn("flex min-h-[100dvh] min-h-screen w-full items-center justify-center py-6", fullScreen ? "p-4" : "p-4 sm:p-6")}>
                 <div
                     className={cn(
@@ -247,6 +248,6 @@ export function RestaurantMoveTableModal({
                 </div>
                 </div>
             </div>
-        </div>
+        </ModalLayer>
     );
 }

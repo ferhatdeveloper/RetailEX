@@ -5,6 +5,7 @@ import { useRestaurantStore } from '../store/useRestaurantStore';
 import { Table, RESTAURANT_FLOOR_ALL_ID } from '../types';
 import { useRestaurantModuleTm } from '../hooks/useRestaurantModuleTm';
 import { RestaurantService } from '@/services/restaurant';
+import { ModalLayer } from '../../shared/FullscreenBodyPortal';
 
 const fmt = (num: number) => {
     return new Intl.NumberFormat('tr-TR', {
@@ -178,7 +179,7 @@ function PinModal({ onSuccess, onClose }: { onSuccess: () => void; onClose: () =
     const digits = [1, 2, 3, 4, 5, 6, 7, 8, 9, null, 0, 'del'];
 
     return (
-        <div className="fixed inset-0 z-[100] flex items-center justify-center bg-black/40 backdrop-blur-sm p-4 animate-in fade-in duration-300">
+        <ModalLayer className="flex items-center justify-center bg-black/40 backdrop-blur-sm p-4 animate-in fade-in duration-300">
             <div className="bg-white rounded-[48px] w-full max-w-sm shadow-2xl overflow-hidden flex flex-col animate-in zoom-in-95 duration-300 relative border border-white/50">
                 {/* Header with Blue Gradient */}
                 <div className="bg-gradient-to-r from-blue-600 to-indigo-700 p-8 flex items-center gap-6 text-white relative overflow-hidden shrink-0">
@@ -250,7 +251,7 @@ function PinModal({ onSuccess, onClose }: { onSuccess: () => void; onClose: () =
                     <span className="text-[8px] font-black text-slate-900 uppercase tracking-[0.5em]">RETAILEX SECURE ACCESS</span>
                 </div>
             </div>
-        </div>
+        </ModalLayer>
     );
 }
 
@@ -266,7 +267,7 @@ function TableSettingsPopup({
 }) {
     const tmR = useRestaurantModuleTm();
     return (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-md" onClick={onClose}>
+        <ModalLayer className="flex items-center justify-center bg-black/60 backdrop-blur-md" onClick={onClose}>
             <div onClick={e => e.stopPropagation()} className="bg-slate-900 rounded-[32px] p-8 w-[400px] border border-white/10 shadow-2xl shadow-black/50">
                 <div className="flex justify-between items-start mb-8">
                     <div>
@@ -335,7 +336,7 @@ function TableSettingsPopup({
                     {tmR('resKrokiOk')}
                 </button>
             </div>
-        </div>
+        </ModalLayer>
     );
 }
 

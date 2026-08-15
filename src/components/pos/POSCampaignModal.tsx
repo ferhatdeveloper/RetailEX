@@ -3,6 +3,7 @@ import { useState, useMemo, useEffect } from 'react';
 import { formatNumber } from '../../utils/formatNumber';
 import type { Campaign } from '../../core/types';
 import { useLanguage } from '../../contexts/LanguageContext';
+import { ModalLayer } from '../shared/FullscreenBodyPortal';
 
 interface POSCampaignModalProps {
   campaigns: Campaign[];
@@ -68,7 +69,7 @@ export function POSCampaignModal({
   }, [campaigns, filter, search]);
 
   return (
-    <div className="fixed inset-0 bg-black/60 backdrop-blur-sm flex items-center justify-center z-50 p-4">
+    <ModalLayer className="bg-black/60 backdrop-blur-sm flex items-center justify-center p-4">
       <div className="bg-white w-full max-w-5xl max-h-[90vh] flex flex-col shadow-2xl">
         {/* Header */}
         <div className="p-3 border-b border-gray-200 flex items-center justify-between bg-gradient-to-r from-orange-500 to-orange-600">
@@ -221,6 +222,6 @@ export function POSCampaignModal({
           </button>
         </div>
       </div>
-    </div>
+    </ModalLayer>
   );
 }

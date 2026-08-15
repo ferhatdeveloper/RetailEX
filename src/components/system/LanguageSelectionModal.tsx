@@ -2,6 +2,7 @@
 import { useLanguage } from '../../contexts/LanguageContext';
 import { useTheme } from '../../contexts/ThemeContext';
 import { translations } from '../../locales/translations';
+import { ModalLayer } from '../shared/FullscreenBodyPortal';
 import Turkey from 'country-flag-icons/react/3x2/TR';
 import UnitedKingdom from 'country-flag-icons/react/3x2/GB';
 import SaudiArabia from 'country-flag-icons/react/3x2/SA';
@@ -41,7 +42,7 @@ export function LanguageSelectionModal({ onClose, rtlMode, setRtlMode }: Languag
   };
 
   return (
-    <div className="fixed inset-0 bg-black/50 backdrop-blur-sm flex items-center justify-center z-50 p-4">
+    <ModalLayer className="bg-black/50 backdrop-blur-sm flex items-center justify-center p-4">
       <div className={`rounded-lg sm:rounded-xl w-full max-w-sm max-h-[90vh] overflow-y-auto shadow-2xl transition-all ${darkMode ? 'bg-gray-900 border border-gray-800' : 'bg-white'
         } ${rtlMode ? 'rtl' : 'ltr'}`}>
         {/* Header */}
@@ -167,6 +168,6 @@ export function LanguageSelectionModal({ onClose, rtlMode, setRtlMode }: Languag
           </button>
         </div>
       </div>
-    </div>
+    </ModalLayer>
   );
 }

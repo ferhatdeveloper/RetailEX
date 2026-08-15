@@ -3,6 +3,7 @@ import type { Sale } from '../../core/types';
 import { formatNumber } from '../../utils/formatNumber';
 import { aggregatePosPayments, buildPosZReport } from '../../utils/posZReport';
 import type { PosCashSession, PosSessionCashBreakdown } from '../../utils/posCashSession';
+import { ModalLayer } from '../shared/FullscreenBodyPortal';
 
 interface POSClosePrintPreviewProps {
   onClose: () => void;
@@ -58,7 +59,7 @@ export function POSClosePrintPreview({
   return (
     <>
       {/* Screen Version - No Print */}
-      <div className="fixed inset-0 bg-black/60 backdrop-blur-sm flex items-center justify-center z-[70] p-4 print:hidden">
+      <ModalLayer className="bg-black/60 backdrop-blur-sm flex items-center justify-center p-4 print:hidden">
         <div className="bg-white w-full max-w-4xl shadow-2xl max-h-[90vh] overflow-hidden flex flex-col">
           {/* Header */}
           <div className="p-4 border-b border-gray-200 bg-gradient-to-r from-blue-600 to-blue-700 flex items-center justify-between">
@@ -451,7 +452,7 @@ export function POSClosePrintPreview({
             </button>
           </div>
         </div>
-      </div>
+      </ModalLayer>
 
       {/* Print Version - Only Prints */}
       <div className="hidden print:block">

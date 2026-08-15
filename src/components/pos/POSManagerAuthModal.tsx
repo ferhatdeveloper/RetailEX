@@ -1,7 +1,8 @@
 ﻿import { Shield, RefreshCcw } from 'lucide-react';
 import { useState, useEffect } from 'react';
 import { cn } from '../ui/utils';
-import { POS_MASTER_OVERRIDE_PASSWORD, POS_MODAL_Z } from './posUiConstants';
+import { POS_MASTER_OVERRIDE_PASSWORD } from './posUiConstants';
+import { ModalLayer } from '../shared/FullscreenBodyPortal';
 
 interface POSManagerAuthModalProps {
   onClose: () => void;
@@ -72,7 +73,7 @@ export function POSManagerAuthModal({ onClose, onAuthorized }: POSManagerAuthMod
   };
 
   return (
-    <div className={`fixed inset-0 bg-slate-950/80 backdrop-blur-md flex items-center justify-center ${POS_MODAL_Z} p-4`}>
+    <ModalLayer className="bg-slate-950/80 backdrop-blur-md flex items-center justify-center p-4">
       <div className="bg-white rounded-[2rem] w-full max-w-sm overflow-hidden shadow-2xl flex flex-col border border-slate-200/80">
 
         <div className="bg-gradient-to-r from-blue-600 to-indigo-700 p-6 text-white shrink-0">
@@ -130,6 +131,6 @@ export function POSManagerAuthModal({ onClose, onAuthorized }: POSManagerAuthMod
           </div>
         </div>
       </div>
-    </div>
+    </ModalLayer>
   );
 }
