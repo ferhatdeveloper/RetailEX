@@ -21,8 +21,10 @@ import {
 } from '../../../services/api/masterData';
 import { DEMO_CUSTOMER_CODES, DEMO_SUPPLIER_CODES } from '../../../utils/demoSeedCodes';
 import { mapUnifiedSupplierToCurrentAccountExcelRow, saveCurrentAccountsAsXlsx } from '../../../utils/currentAccountsExcelExport';
+import { SupplierEditModal } from './SupplierEditModal';
 import { PartiesModule } from '../parties/PartiesModule';
 import { PartyMergeModal } from '../parties/PartyMergeModal';
+import type { Party, PartyCardType } from '../../../core/types/models';
 import { FullscreenBodyPortal, MODAL_OVERLAY_Z } from '../../shared/FullscreenBodyPortal';
 import { KasaIslemModal } from '../../accounting/cash-ops/KasaIslemModal';
 import { fetchKasalar, type Kasa } from '../../../services/api/kasa';
@@ -76,6 +78,10 @@ export function SupplierModule({ initialFilter = 'all' }: { initialFilter?: Cari
   const [accountTypeFilter, setAccountTypeFilter] = useState<CariListFilter>(initialFilter);
   const [columnVisibility, setColumnVisibility] = useState(loadSupplierListColumnVisibility);
   const [mergeOpen, setMergeOpen] = useState(false);
+  const [mergeSource, setMergeSource] = useState<Party | null>(null);
+  const [mergeTarget, setMergeTarget] = useState<Party | null>(null);
+  const [gridSelected, setGridSelected] = useState<Supplier[]>([]);
+  const [partySelected, setPartySelected] = useState<Party[]>([]);
 
   useEffect(() => {
     setAccountTypeFilter(initialFilter);
@@ -947,6 +953,29 @@ export function SupplierModule({ initialFilter = 'all' }: { initialFilter?: Cari
 
   const isPartyTab = accountTypeFilter === 'employee' || accountTypeFilter === 'partner';
 
+  const supplierToParty = (s: Supplier): Party => ({
+    id: s.id,
+    name: s.name,
+    code: s.code,
+    card_type: (s.cardType || 'customer') as PartyCardType,
+    phone: s.phone,
+    email: s.email,
+    address: s.address,
+    balance: s.balance,
+    is_active: s.is_active !== false,
+  });
+
+  const openMerge = () => {
+    const selected = isPartyTab ? partySelected : gridSelected.map(supplierToParty);
+    if (selected.length > 2) {
+      toast.error('Birleştirme için en fazla 2 cari işaretleyin');
+      return;
+    }
+    setMergeSource(selected[0] || null);
+    setMergeTarget(selected[1] || null);
+    setMergeOpen(true);
+  };
+
   return (
     <div className="h-full min-h-0 flex flex-col" onClick={() => setContextMenu(null)}>
       {/* Header */}
@@ -984,12 +1013,12 @@ export function SupplierModule({ initialFilter = 'all' }: { initialFilter?: Cari
             </button>
             <button
               type="button"
-              onClick={() => setMergeOpen(true)}
+              onClick={openMerge}
               className="flex items-center gap-1 px-2 py-1 bg-rose-100 text-rose-800 hover:bg-rose-50 transition-colors text-[10px] font-bold"
-              title="İki cariyi birleştir"
+              title="Listeden 2 cari işaretleyip birleştirin"
             >
               <GitMerge className="w-3 h-3" />
-              <span>Birleştir</span>
+              <span>Birleştir{(isPartyTab ? partySelected : gridSelected).length > 0 ? ` (${(isPartyTab ? partySelected : gridSelected).length})` : ''}</span>
             </button>
             <button
               type="button"
@@ -1062,12 +1091,14 @@ export function SupplierModule({ initialFilter = 'all' }: { initialFilter?: Cari
 
         {isPartyTab ? (
           <div className="flex-1 min-h-0 overflow-hidden bg-white rounded border border-gray-200 p-3">
-            <PartiesModule embedded initialTab={accountTypeFilter} />
+            <PartiesModule embedded initialTab={accountTypeFilter} onSelectionChange={setPartySelected} />
           </div>
         ) : (
         <div className="flex-1 min-h-0 flex flex-col rounded border border-gray-200 bg-white overflow-hidden">
           <p className="text-[10px] text-gray-500 px-3 py-1.5 border-b border-gray-100 bg-gray-50 shrink-0">
             {tm('accountStatementClickHint') || 'Ekstre için satıra tıklayın veya dosya ikonuna basın'}
+            {' · '}
+            Birleştirmek için soldaki kutudan 2 cari işaretleyin
           </p>
           {loading ? (
             <div className="flex items-center justify-center h-full">
@@ -1082,6 +1113,15 @@ export function SupplierModule({ initialFilter = 'all' }: { initialFilter?: Cari
               enableFiltering={false}
               enableColumnResizing={true}
               enableExcelExport={false}
+              enableSelection
+              onSelectionChange={(rows) => {
+                if (rows.length > 2) {
+                  toast.error('Birleştirme için en fazla 2 cari işaretleyin');
+                  setGridSelected(rows.slice(0, 2));
+                  return;
+                }
+                setGridSelected(rows);
+              }}
               onRowClick={selectAccount}
               onRowContextMenu={(e, supplier) => { e.preventDefault(); setContextMenu({ x: e.clientX, y: e.clientY, supplier }); }}
               onRowDoubleClick={selectAccount}
@@ -1343,9 +1383,19 @@ export function SupplierModule({ initialFilter = 'all' }: { initialFilter?: Cari
       )}
       {mergeOpen && (
         <PartyMergeModal
-          onClose={() => setMergeOpen(false)}
+          initialSource={mergeSource}
+          initialTarget={mergeTarget}
+          onClose={() => {
+            setMergeOpen(false);
+            setMergeSource(null);
+            setMergeTarget(null);
+          }}
           onSaved={() => {
             setMergeOpen(false);
+            setMergeSource(null);
+            setMergeTarget(null);
+            setGridSelected([]);
+            setPartySelected([]);
             void loadSuppliers();
           }}
         />

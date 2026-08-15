@@ -41,10 +41,12 @@ const TABS: { value: Tab; labelKey: string; color: string }[] = [
 export function PartiesModule({
   initialTab = 'all',
   embedded = false,
+  onSelectionChange,
 }: {
   initialTab?: Tab;
   /** Cari Hesaplar üst ekranı sekmeleri gösteriyorsa iç sekme şeridini gizle */
   embedded?: boolean;
+  onSelectionChange?: (selected: Party[]) => void;
 }) {
   const t = useNestedT();
   const [tab, setTab] = useState<Tab>(initialTab);
@@ -58,6 +60,7 @@ export function PartiesModule({
   const [validationWarning, setValidationWarning] = useState<string | null>(null);
   const [mergeOpen, setMergeOpen] = useState(false);
   const [copiedId, setCopiedId] = useState<string | null>(null);
+  const [selectedIds, setSelectedIds] = useState<string[]>([]);
 
   const load = async () => {
     setLoading(true);
@@ -74,9 +77,11 @@ export function PartiesModule({
 
   useEffect(() => {
     setTab(initialTab);
+    setSelectedIds([]);
   }, [initialTab]);
 
   useEffect(() => {
+    setSelectedIds([]);
     load();
   }, [tab]);
 
@@ -142,6 +147,43 @@ export function PartiesModule({
     return c;
   }, [items]);
 
+  const selectedParties = useMemo(
+    () => filtered.filter((p) => selectedIds.includes(p.id)),
+    [filtered, selectedIds]
+  );
+
+  useEffect(() => {
+    onSelectionChange?.(selectedParties);
+  }, [selectedParties, onSelectionChange]);
+
+  const toggleSelected = (p: Party) => {
+    setSelectedIds((prev) => {
+      if (prev.includes(p.id)) return prev.filter((id) => id !== p.id);
+      if (prev.length >= 2) {
+        toast.error('Birleştirme için en fazla 2 cari işaretleyin');
+        return prev;
+      }
+      return [...prev, p.id];
+    });
+  };
+
+  const allFilteredSelected = filtered.length > 0 && filtered.every((p) => selectedIds.includes(p.id));
+  const toggleAllFiltered = () => {
+    if (allFilteredSelected) {
+      setSelectedIds([]);
+      return;
+    }
+    const next = filtered.slice(0, 2).map((p) => p.id);
+    if (filtered.length > 2) {
+      toast.error('Birleştirme için en fazla 2 cari işaretleyin');
+    }
+    setSelectedIds(next);
+  };
+
+  const openMerge = () => {
+    setMergeOpen(true);
+  };
+
   return (
     <div className={`flex flex-col h-full min-h-0 gap-3 ${embedded ? '' : 'p-4'}`}>
       {!embedded && (
@@ -178,7 +220,7 @@ export function PartiesModule({
           {!embedded && (
           <button
             type="button"
-            onClick={() => setMergeOpen(true)}
+            onClick={openMerge}
             className="px-4 py-2.5 rounded-2xl bg-rose-100 text-rose-800 text-xs font-bold uppercase tracking-wider hover:bg-rose-200 active:scale-[0.98] flex items-center gap-2 border border-rose-200"
             title={t('party.merge.openButton') || 'İki cariyi birleştir'}
           >
@@ -229,6 +271,16 @@ export function PartiesModule({
           <table className="w-full text-sm">
             <thead className="bg-slate-50 text-slate-600 text-xs uppercase tracking-wider">
               <tr>
+                <th className="text-left px-3 py-3 w-10">
+                  <input
+                    type="checkbox"
+                    checked={allFilteredSelected}
+                    onChange={toggleAllFiltered}
+                    className="w-4 h-4 rounded border-slate-300 text-blue-600 focus:ring-blue-500"
+                    title="İki cari işaretle"
+                    aria-label="Seç"
+                  />
+                </th>
                 <th className="text-left px-4 py-3">{t('party.table.code')}</th>
                 <th className="text-left px-4 py-3">{t('party.table.id') || 'ID'}</th>
                 <th className="text-left px-4 py-3">{t('party.table.name')}</th>
@@ -242,6 +294,15 @@ export function PartiesModule({
             <tbody>
               {filtered.map((p) => (
                 <tr key={p.id} className="border-t border-slate-100 hover:bg-slate-50">
+                  <td className="px-3 py-3">
+                    <input
+                      type="checkbox"
+                      checked={selectedIds.includes(p.id)}
+                      onChange={() => toggleSelected(p)}
+                      className="w-4 h-4 rounded border-slate-300 text-blue-600 focus:ring-blue-500"
+                      aria-label={p.name}
+                    />
+                  </td>
                   <td className="px-4 py-3 font-mono text-xs">{p.code || '—'}</td>
                   <td className="px-4 py-3">
                     <button
@@ -352,9 +413,12 @@ export function PartiesModule({
 
       {mergeOpen && (
         <PartyMergeModal
+          initialSource={selectedParties[0] || null}
+          initialTarget={selectedParties[1] || null}
           onClose={() => setMergeOpen(false)}
           onSaved={() => {
             setMergeOpen(false);
+            setSelectedIds([]);
             load();
           }}
         />

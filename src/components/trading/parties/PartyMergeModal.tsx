@@ -82,7 +82,11 @@ export function PartyMergeModal({
       if (targetParty?.card_type) filter.cardType = targetParty.card_type;
       if (sourceSearch) filter.search = sourceSearch;
       const list = await partyAPI.getAll(filter);
-      setSourceList(list);
+      setSourceList(
+        initialSource && !list.some((p) => p.id === initialSource.id)
+          ? [initialSource, ...list]
+          : list
+      );
     } catch (err: any) {
       toast.error(err?.message || String(err));
     } finally {
@@ -97,7 +101,11 @@ export function PartyMergeModal({
       if (sourceParty?.card_type) filter.cardType = sourceParty.card_type;
       if (targetSearch) filter.search = targetSearch;
       const list = await partyAPI.getAll(filter);
-      setTargetList(list);
+      setTargetList(
+        initialTarget && !list.some((p) => p.id === initialTarget.id)
+          ? [initialTarget, ...list]
+          : list
+      );
     } catch (err: any) {
       toast.error(err?.message || String(err));
     } finally {
@@ -172,6 +180,10 @@ export function PartyMergeModal({
       <PercentBodyModalScrollBody className="p-6">
         {step === 'select' && (
           <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
+            <p className="lg:col-span-2 text-xs text-slate-600 bg-slate-50 border border-slate-200 rounded-xl px-3 py-2">
+              Kaynak ve hedef kartı listedeki <span className="font-bold">checkbox</span> ile işaretleyin.
+              Kaynak arşivlenir; hareketler hedefte toplanır.
+            </p>
             <PartyPicker
               label={t('party.merge.source') || 'Kaynak (Arşivlenecek)'}
               icon={<Archive className="w-4 h-4 text-rose-600" />}
@@ -415,10 +427,8 @@ function PartyPicker({
               const isSelected = p.id === selectedId;
               return (
                 <li key={p.id}>
-                  <button
-                    type="button"
-                    onClick={() => onSelect(p)}
-                    className={`w-full text-left px-3 py-2 flex items-center gap-2 ${
+                  <label
+                    className={`w-full text-left px-3 py-2 flex items-center gap-2 cursor-pointer ${
                       isSelected
                         ? partyType === 'source'
                           ? 'bg-rose-100'
@@ -426,6 +436,13 @@ function PartyPicker({
                         : 'hover:bg-slate-50'
                     }`}
                   >
+                    <input
+                      type="checkbox"
+                      checked={isSelected}
+                      onChange={() => onSelect(p)}
+                      className="w-4 h-4 shrink-0 rounded border-slate-300 text-blue-600 focus:ring-blue-500"
+                      aria-label={`${p.code || ''} ${p.name}`}
+                    />
                     <span className="font-mono text-[10px] text-slate-500">{p.code || '—'}</span>
                     <span className="flex-1 min-w-0">
                       <span className="block text-xs font-medium truncate">{p.name}</span>
@@ -434,7 +451,7 @@ function PartyPicker({
                       </span>
                     </span>
                     <PartyTypeBadge type={p.card_type} />
-                  </button>
+                  </label>
                 </li>
               );
             })}

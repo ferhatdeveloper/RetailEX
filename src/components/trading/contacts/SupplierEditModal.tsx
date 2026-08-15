@@ -69,7 +69,7 @@ export function SupplierEditModal({
   onClose,
   onSaved,
 }: SupplierEditModalProps) {
-  const { t, tm } = useLanguage();
+  const { tm } = useLanguage();
   const isEdit = !!initial;
   const [formData, setFormData] = useState<FormState>(() => {
     if (initial) {
@@ -148,18 +148,16 @@ export function SupplierEditModal({
       toast.error('Ad zorunludur');
       return;
     }
+    const weekdays =
+      formData.cardType === 'customer' && formData.call_plan_weekdays.length > 0
+        ? normalizeCustomerCallWeekdays(formData.call_plan_weekdays)
+        : [];
     const saveData = {
       ...formData,
-      call_plan_enabled:
-        formData.cardType === 'customer' &&
-        formData.call_plan_enabled === true &&
-        normalizeCustomerCallWeekdays(formData.call_plan_weekdays).length > 0,
-      call_plan_weekdays:
-        formData.cardType === 'customer' && formData.call_plan_enabled
-          ? normalizeCustomerCallWeekdays(formData.call_plan_weekdays)
-          : [],
+      call_plan_enabled: weekdays.length > 0,
+      call_plan_weekdays: weekdays,
       call_plan_note:
-        formData.cardType === 'customer' && formData.call_plan_enabled
+        formData.cardType === 'customer' && weekdays.length > 0
           ? formData.call_plan_note.trim() || null
           : null,
     };
@@ -197,297 +195,289 @@ export function SupplierEditModal({
     }
   };
 
-  const modalTitle = isEdit ? tm('edit') : tm('newCurrentAccount');
-  const submitLabel = isEdit ? tm('save') : tm('add');
+  const modalTitle = isEdit
+    ? formData.cardType === 'customer'
+      ? tm('editCustomer') || 'Müşteri düzenle'
+      : tm('editSupplier') || 'Tedarikçi düzenle'
+    : tm('newCurrentAccount') || 'Yeni cari hesap';
+  const submitLabel = isEdit ? tm('save') || 'Kaydet' : tm('add') || 'Ekle';
+  const isCustomer = formData.cardType === 'customer';
+  const headerGrad = isCustomer
+    ? 'bg-gradient-to-r from-blue-600 to-indigo-600'
+    : 'bg-gradient-to-r from-orange-500 to-amber-600';
+  const inputClass =
+    'w-full px-4 py-3 border border-slate-200 rounded-2xl focus:ring-2 focus:ring-blue-500 focus:border-blue-400 outline-none text-slate-800 font-medium bg-white';
 
   return (
-    <PercentBodyModal
-      onClose={onClose}
-      size="wide"
-      ariaLabel={modalTitle}
-      shellClassName="bg-white dark:bg-gray-800 rounded-xl shadow-2xl flex flex-col overflow-hidden"
-    >
-      <div className="px-5 py-4 border-b border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-gray-900/50 flex items-center justify-between shrink-0">
-        <div className="min-w-0">
-          <h3 className="text-base font-black text-slate-800 dark:text-slate-100 uppercase tracking-tighter truncate">
-            {modalTitle}
-          </h3>
-          <p className="text-[10px] text-gray-400 dark:text-gray-500 font-bold uppercase mt-0.5">
-            {formData.cardType === 'customer' ? tm('customer') : tm('supplierLabel')}
-          </p>
-        </div>
-        <button
-          type="button"
-          onClick={onClose}
-          className="p-2 hover:bg-gray-200 dark:hover:bg-gray-700 rounded-lg transition-colors"
-          aria-label={tm('cancel')}
-        >
-          <X className="w-5 h-5 text-gray-400" />
-        </button>
-      </div>
-
-      <PercentBodyModalScrollBody className="p-5 space-y-4">
-        <div className="grid grid-cols-2 gap-3">
-          <button
-            type="button"
-            onClick={() => handleCardTypeChange('customer')}
-            className={`flex items-center gap-2 p-3 rounded-xl border-2 transition-all ${
-              formData.cardType === 'customer'
-                ? 'border-blue-600 bg-blue-50 dark:bg-blue-900/30'
-                : 'border-gray-200 dark:border-gray-700 hover:border-blue-300'
-            }`}
-          >
-            <Users
-              className={`w-5 h-5 ${formData.cardType === 'customer' ? 'text-blue-600' : 'text-gray-400'}`}
-            />
-            <span
-              className={`text-sm font-bold ${
-                formData.cardType === 'customer' ? 'text-blue-700 dark:text-blue-300' : 'text-gray-500'
-              }`}
-            >
-              {tm('customer')}
-            </span>
-          </button>
-          <button
-            type="button"
-            onClick={() => handleCardTypeChange('supplier')}
-            className={`flex items-center gap-2 p-3 rounded-xl border-2 transition-all ${
-              formData.cardType === 'supplier'
-                ? 'border-orange-500 bg-orange-50 dark:bg-orange-900/30'
-                : 'border-gray-200 dark:border-gray-700 hover:border-orange-300'
-            }`}
-          >
-            <Truck
-              className={`w-5 h-5 ${formData.cardType === 'supplier' ? 'text-orange-500' : 'text-gray-400'}`}
-            />
-            <span
-              className={`text-sm font-bold ${
-                formData.cardType === 'supplier' ? 'text-orange-700 dark:text-orange-300' : 'text-gray-500'
-              }`}
-            >
-              {tm('supplierLabel')}
-            </span>
-          </button>
-        </div>
-
-        {initial && initial.cardType !== formData.cardType && (
-          <div className="text-xs text-amber-700 dark:text-amber-300 bg-amber-50 dark:bg-amber-900/30 border border-amber-200 dark:border-amber-800 rounded-lg px-3 py-2">
-            {tm('accountTypeChanged') || 'Kayıt yeni tipe taşınacak; fişler yeni cari kartına aktarılır.'}
+    <PercentBodyModal onClose={onClose} size="wide" ariaLabel={modalTitle}>
+      <form
+        onSubmit={(e) => {
+          e.preventDefault();
+          void handleSave();
+        }}
+        className="flex flex-col min-h-0 max-h-full"
+      >
+        <div className={`${headerGrad} px-8 py-6 text-white shrink-0 flex items-center justify-between`}>
+          <div className="min-w-0">
+            <h2 className="text-2xl font-bold truncate">{modalTitle}</h2>
+            <p className="text-white/80 text-sm mt-1">
+              {isCustomer
+                ? tm('customer') || 'Müşteri (Alıcı)'
+                : tm('supplierLabel') || 'Tedarikçi (Satıcı)'}
+              {formData.code ? ` · ${formData.code}` : ''}
+            </p>
           </div>
-        )}
+          <button
+            type="button"
+            onClick={onClose}
+            className="p-2 rounded-xl hover:bg-white/10 transition shrink-0"
+            aria-label={tm('cancel')}
+          >
+            <X className="w-5 h-5" />
+          </button>
+        </div>
 
-        {formData.cardType === 'customer' && (
-          <div className="rounded-2xl border border-amber-200 dark:border-amber-800 bg-amber-50/70 dark:bg-amber-900/20 p-4">
-            <div className="mb-3 flex items-start gap-2">
-              <CalendarClock className="mt-0.5 h-4 w-4 text-amber-700 dark:text-amber-400" />
-              <div>
-                <p className="text-xs font-black uppercase tracking-wide text-amber-900 dark:text-amber-200">
-                  Müşteri arama planı
-                </p>
-                <p className="text-[11px] font-medium text-amber-700 dark:text-amber-300">
-                  Bu müşteri haftanın hangi günü aranacak?
-                </p>
+        <PercentBodyModalScrollBody className="p-8">
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+            <div className="sm:col-span-2">
+              <p className="block text-[11px] font-bold text-slate-500 uppercase tracking-wider mb-1.5">
+                {tm('accountType') || 'Cari tipi'}
+              </p>
+              <div className="grid grid-cols-2 gap-2">
+                <button
+                  type="button"
+                  onClick={() => handleCardTypeChange('customer')}
+                  className={`flex items-center justify-center gap-2 px-3 py-3 rounded-2xl text-xs font-bold uppercase tracking-wider transition border-2 ${
+                    isCustomer
+                      ? 'bg-blue-100 text-blue-700 border-transparent shadow-md'
+                      : 'border-slate-200 text-slate-500 hover:border-slate-300'
+                  }`}
+                >
+                  <Users className="w-4 h-4" />
+                  {tm('customer') || 'Müşteri'}
+                </button>
+                <button
+                  type="button"
+                  onClick={() => handleCardTypeChange('supplier')}
+                  className={`flex items-center justify-center gap-2 px-3 py-3 rounded-2xl text-xs font-bold uppercase tracking-wider transition border-2 ${
+                    !isCustomer
+                      ? 'bg-amber-100 text-amber-800 border-transparent shadow-md'
+                      : 'border-slate-200 text-slate-500 hover:border-slate-300'
+                  }`}
+                >
+                  <Truck className="w-4 h-4" />
+                  {tm('supplierLabel') || 'Tedarikçi'}
+                </button>
               </div>
             </div>
-            <div>
-              <p className="mb-2 text-[11px] font-black uppercase tracking-wide text-amber-900 dark:text-amber-200">
-                Aranacak günler
-              </p>
-              <div className="flex flex-wrap gap-2">
-                {CUSTOMER_CALL_WEEKDAYS.map((day) => {
-                  const selected = formData.call_plan_weekdays.includes(day.value);
-                  return (
-                    <button
-                      key={day.value}
-                      type="button"
-                      onClick={() => toggleWeekday(day.value)}
-                      aria-pressed={selected}
-                      className={`rounded-full border px-3 py-1.5 text-xs font-black transition-all ${
-                        selected
-                          ? 'border-blue-600 bg-blue-600 text-white shadow-md ring-2 ring-blue-200'
-                          : 'border-amber-200 dark:border-amber-700 bg-white dark:bg-gray-800 text-amber-700 dark:text-amber-300 hover:bg-amber-100 dark:hover:bg-amber-900/40'
-                      }`}
-                    >
-                      {selected ? `✓ ${day.tr}` : day.tr}
-                    </button>
-                  );
-                })}
+
+            {initial && initial.cardType !== formData.cardType && (
+              <div className="sm:col-span-2 text-xs text-amber-800 bg-amber-50 border border-amber-200 rounded-2xl px-4 py-3">
+                {tm('accountTypeChanged') ||
+                  'Kayıt yeni tipe taşınacak; fişler yeni cari kartına aktarılır.'}
               </div>
-              {formData.call_plan_weekdays.length > 0 ? (
-                <p className="mt-2 rounded-lg bg-blue-50 dark:bg-blue-900/30 px-3 py-2 text-[11px] font-bold text-blue-700 dark:text-blue-300">
-                  Seçili günler: {customerCallWeekdaysLabel(formData.call_plan_weekdays)}
-                </p>
-              ) : null}
-              <div className="mt-3">
-                <label className="mb-1 block text-[11px] font-black uppercase tracking-wide text-amber-900 dark:text-amber-200">
+            )}
+
+            <Field label={tm('code') || 'Kod'}>
+              <div className="flex">
+                <input
+                  type="text"
+                  value={formData.code}
+                  onChange={(e) => setFormData({ ...formData, code: e.target.value })}
+                  placeholder="Otomatik"
+                  className={`${inputClass} rounded-r-none`}
+                />
+                {formData.code ? (
+                  <button
+                    type="button"
+                    onClick={() => void handleCopyCode()}
+                    className="px-4 border border-l-0 border-slate-200 rounded-r-2xl text-slate-500 hover:bg-slate-50 transition-colors"
+                    title="Kodu kopyala"
+                    aria-label="Kodu kopyala"
+                  >
+                    {codeCopied ? (
+                      <Check className="w-4 h-4 text-emerald-600" />
+                    ) : (
+                      <Copy className="w-4 h-4" />
+                    )}
+                  </button>
+                ) : null}
+              </div>
+            </Field>
+            <Field label={`${tm('currentAccountTitle') || 'Unvan'} *`}>
+              <input
+                type="text"
+                required
+                value={formData.name}
+                onChange={(e) => setFormData({ ...formData, name: e.target.value })}
+                placeholder={tm('namePlaceholder') || 'Ad / ünvan'}
+                className={inputClass}
+              />
+            </Field>
+
+            <Field label={tm('phoneLabel') || 'Telefon'}>
+              <input
+                type="tel"
+                value={formData.phone}
+                onChange={(e) => setFormData({ ...formData, phone: e.target.value })}
+                className={inputClass}
+              />
+            </Field>
+            <Field label={tm('emailLabel') || 'E-posta'}>
+              <input
+                type="email"
+                value={formData.email}
+                onChange={(e) => setFormData({ ...formData, email: e.target.value })}
+                className={inputClass}
+              />
+            </Field>
+
+            <div className="sm:col-span-2">
+              <label className="block text-[11px] font-bold text-slate-500 uppercase tracking-wider mb-1.5">
+                {tm('address') || 'Adres'}
+              </label>
+              <textarea
+                value={formData.address}
+                onChange={(e) => setFormData({ ...formData, address: e.target.value })}
+                rows={2}
+                className={`${inputClass} resize-none`}
+              />
+            </div>
+
+            <Field label={tm('city') || 'Şehir'}>
+              <input
+                type="text"
+                value={formData.city}
+                onChange={(e) => setFormData({ ...formData, city: e.target.value })}
+                className={inputClass}
+              />
+            </Field>
+            <Field label={tm('taxNumberLabel') || 'Vergi no'}>
+              <input
+                type="text"
+                value={formData.tax_number}
+                onChange={(e) => setFormData({ ...formData, tax_number: e.target.value })}
+                className={inputClass}
+              />
+            </Field>
+            <Field label={tm('taxOffice') || 'Vergi dairesi'}>
+              <input
+                type="text"
+                value={formData.tax_office}
+                onChange={(e) => setFormData({ ...formData, tax_office: e.target.value })}
+                className={inputClass}
+              />
+            </Field>
+
+            {!isCustomer && (
+              <>
+                <Field label={tm('paymentTermDays') || 'Vade (gün)'}>
+                  <input
+                    type="number"
+                    value={formData.payment_terms}
+                    onChange={(e) =>
+                      setFormData({ ...formData, payment_terms: parseInt(e.target.value, 10) || 30 })
+                    }
+                    className={inputClass}
+                  />
+                </Field>
+                <Field label={tm('creditLimit') || 'Kredi limiti'}>
+                  <input
+                    type="number"
+                    value={formData.credit_limit}
+                    onChange={(e) =>
+                      setFormData({ ...formData, credit_limit: parseFloat(e.target.value) || 0 })
+                    }
+                    className={inputClass}
+                  />
+                </Field>
+              </>
+            )}
+
+            <div className="sm:col-span-2">
+              <label className="block text-[11px] font-bold text-slate-500 uppercase tracking-wider mb-1.5">
+                {tm('notesLabel') || 'Notlar'}
+              </label>
+              <textarea
+                value={formData.notes}
+                onChange={(e) => setFormData({ ...formData, notes: e.target.value })}
+                rows={2}
+                className={`${inputClass} resize-none`}
+              />
+            </div>
+
+            {isCustomer && (
+              <div className="sm:col-span-2 rounded-2xl border border-slate-200 bg-slate-50/80 p-4">
+                <div className="mb-3 flex items-start gap-2">
+                  <CalendarClock className="mt-0.5 h-4 w-4 text-blue-600" />
+                  <div>
+                    <p className="text-[11px] font-black uppercase tracking-wider text-slate-700">
+                      Müşteri arama planı
+                    </p>
+                    <p className="text-[11px] font-medium text-slate-500">
+                      Haftanın hangi günü aranacak? Birden fazla gün seçilebilir.
+                    </p>
+                  </div>
+                </div>
+                <div className="flex flex-wrap gap-2">
+                  {CUSTOMER_CALL_WEEKDAYS.map((day) => {
+                    const selected = formData.call_plan_weekdays.includes(day.value);
+                    return (
+                      <button
+                        key={day.value}
+                        type="button"
+                        onClick={() => toggleWeekday(day.value)}
+                        aria-pressed={selected}
+                        className={`rounded-full border px-3 py-1.5 text-xs font-black uppercase tracking-wide transition-all ${
+                          selected
+                            ? 'border-blue-600 bg-blue-600 text-white shadow-md'
+                            : 'border-slate-200 bg-white text-slate-600 hover:border-slate-300'
+                        }`}
+                      >
+                        {day.tr}
+                      </button>
+                    );
+                  })}
+                </div>
+                {formData.call_plan_weekdays.length > 0 ? (
+                  <p className="mt-2 text-[11px] font-bold text-blue-700">
+                    Seçili: {customerCallWeekdaysLabel(formData.call_plan_weekdays)}
+                  </p>
+                ) : null}
+                <label className="mt-3 mb-1 block text-[11px] font-bold text-slate-500 uppercase tracking-wider">
                   Plan notu
                 </label>
                 <textarea
                   value={formData.call_plan_note}
                   onChange={(e) => setFormData({ ...formData, call_plan_note: e.target.value })}
                   rows={2}
-                  placeholder="Örn. Kampanya, rutin kontrol veya özel arama sebebi"
-                  className="w-full rounded-lg border border-amber-200 dark:border-amber-700 bg-white dark:bg-gray-800 px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-amber-500"
+                  placeholder="Örn. Kampanya, rutin kontrol"
+                  className={`${inputClass} resize-none`}
                 />
               </div>
-              <p className="mt-2 text-[11px] text-amber-700 dark:text-amber-300">
-                Birden fazla gün seçebilirsiniz; seçili müşteriler Arama Listesi ekranında görünür.
-              </p>
-            </div>
+            )}
           </div>
-        )}
+        </PercentBodyModalScrollBody>
 
-        <div className="grid grid-cols-2 gap-4">
-          <Field label={tm('code')}>
-            <div className="flex">
-              <input
-                type="text"
-                value={formData.code}
-                onChange={(e) => setFormData({ ...formData, code: e.target.value })}
-                placeholder="Otomatik"
-                className="flex-1 px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-l-lg text-sm bg-white dark:bg-gray-800 focus:outline-none focus:ring-2 focus:ring-blue-500"
-              />
-              {formData.code ? (
-                <button
-                  type="button"
-                  onClick={handleCopyCode}
-                  className="px-3 border border-l-0 border-gray-300 dark:border-gray-600 rounded-r-lg text-gray-500 hover:bg-gray-100 dark:hover:bg-gray-700 transition-colors"
-                  title="Kodu kopyala"
-                  aria-label="Kodu kopyala"
-                >
-                  {codeCopied ? (
-                    <Check className="w-4 h-4 text-emerald-600" />
-                  ) : (
-                    <Copy className="w-4 h-4" />
-                  )}
-                </button>
-              ) : null}
-            </div>
-          </Field>
-          <Field label={`${tm('currentAccountTitle')} *`}>
-            <input
-              type="text"
-              value={formData.name}
-              onChange={(e) => setFormData({ ...formData, name: e.target.value })}
-              className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg text-sm bg-white dark:bg-gray-800 focus:outline-none focus:ring-2 focus:ring-blue-500"
-            />
-          </Field>
+        <div className="p-6 border-t border-slate-100 bg-slate-50/50 flex gap-4 shrink-0">
+          <button
+            type="button"
+            onClick={onClose}
+            disabled={saving}
+            className="flex-1 rounded-2xl border-2 border-slate-200 text-slate-600 font-bold uppercase text-sm tracking-wider py-3 hover:bg-slate-100 active:scale-[0.98] transition disabled:opacity-50"
+          >
+            {tm('cancel') || 'İptal'}
+          </button>
+          <button
+            type="submit"
+            disabled={saving}
+            className="flex-1 rounded-2xl bg-blue-600 text-white font-bold uppercase text-sm tracking-wider py-3 shadow-lg shadow-blue-200/50 hover:bg-blue-700 disabled:opacity-50 active:scale-[0.98] transition inline-flex items-center justify-center gap-2"
+          >
+            {saving ? <Loader2 className="w-4 h-4 animate-spin" /> : null}
+            {submitLabel}
+          </button>
         </div>
-
-        <div className="grid grid-cols-2 gap-4">
-          <Field label={tm('phoneLabel')}>
-            <input
-              type="tel"
-              value={formData.phone}
-              onChange={(e) => setFormData({ ...formData, phone: e.target.value })}
-              className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg text-sm bg-white dark:bg-gray-800 focus:outline-none focus:ring-2 focus:ring-blue-500"
-            />
-          </Field>
-          <Field label={tm('emailLabel')}>
-            <input
-              type="email"
-              value={formData.email}
-              onChange={(e) => setFormData({ ...formData, email: e.target.value })}
-              className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg text-sm bg-white dark:bg-gray-800 focus:outline-none focus:ring-2 focus:ring-blue-500"
-            />
-          </Field>
-        </div>
-
-        <Field label={tm('address')}>
-          <input
-            type="text"
-            value={formData.address}
-            onChange={(e) => setFormData({ ...formData, address: e.target.value })}
-            className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg text-sm bg-white dark:bg-gray-800 focus:outline-none focus:ring-2 focus:ring-blue-500"
-          />
-        </Field>
-
-        <div className="grid grid-cols-2 gap-4">
-          <Field label={tm('city')}>
-            <input
-              type="text"
-              value={formData.city}
-              onChange={(e) => setFormData({ ...formData, city: e.target.value })}
-              className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg text-sm bg-white dark:bg-gray-800 focus:outline-none focus:ring-2 focus:ring-blue-500"
-            />
-          </Field>
-          {formData.cardType === 'supplier' && (
-            <Field label={tm('paymentTermDays')}>
-              <input
-                type="number"
-                value={formData.payment_terms}
-                onChange={(e) =>
-                  setFormData({ ...formData, payment_terms: parseInt(e.target.value) || 30 })
-                }
-                className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg text-sm bg-white dark:bg-gray-800 focus:outline-none focus:ring-2 focus:ring-blue-500"
-              />
-            </Field>
-          )}
-        </div>
-
-        {formData.cardType === 'supplier' && (
-          <div className="grid grid-cols-2 gap-4">
-            <Field label={tm('creditLimit')}>
-              <input
-                type="number"
-                value={formData.credit_limit}
-                onChange={(e) =>
-                  setFormData({ ...formData, credit_limit: parseFloat(e.target.value) || 0 })
-                }
-                className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg text-sm bg-white dark:bg-gray-800 focus:outline-none focus:ring-2 focus:ring-blue-500"
-              />
-            </Field>
-            <Field label={tm('taxNumberLabel')}>
-              <input
-                type="text"
-                value={formData.tax_number}
-                onChange={(e) => setFormData({ ...formData, tax_number: e.target.value })}
-                className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg text-sm bg-white dark:bg-gray-800 focus:outline-none focus:ring-2 focus:ring-blue-500"
-              />
-            </Field>
-          </div>
-        )}
-
-        {formData.cardType === 'customer' && (
-          <Field label={tm('taxNumberLabel')}>
-            <input
-              type="text"
-              value={formData.tax_number}
-              onChange={(e) => setFormData({ ...formData, tax_number: e.target.value })}
-              className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg text-sm bg-white dark:bg-gray-800 focus:outline-none focus:ring-2 focus:ring-blue-500"
-            />
-          </Field>
-        )}
-
-        <Field label={tm('notesLabel')}>
-          <textarea
-            value={formData.notes}
-            onChange={(e) => setFormData({ ...formData, notes: e.target.value })}
-            rows={2}
-            className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg text-sm bg-white dark:bg-gray-800 focus:outline-none focus:ring-2 focus:ring-blue-500"
-          />
-        </Field>
-      </PercentBodyModalScrollBody>
-
-      <div className="px-5 py-4 border-t border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-gray-900/50 flex gap-3 justify-end shrink-0">
-        <button
-          type="button"
-          onClick={onClose}
-          disabled={saving}
-          className="px-4 py-2 text-sm bg-white dark:bg-gray-800 border border-gray-300 dark:border-gray-600 text-gray-700 dark:text-gray-200 rounded-lg hover:bg-gray-50 dark:hover:bg-gray-700 transition-colors disabled:opacity-50"
-        >
-          {tm('cancel')}
-        </button>
-        <button
-          type="button"
-          onClick={handleSave}
-          disabled={saving}
-          className="px-4 py-2 text-sm bg-blue-600 text-white rounded-lg hover:bg-blue-700 font-bold transition-colors disabled:opacity-50 inline-flex items-center gap-2"
-        >
-          {saving ? <Loader2 className="w-4 h-4 animate-spin" /> : null}
-          {submitLabel}
-        </button>
-      </div>
+      </form>
     </PercentBodyModal>
   );
 }
@@ -497,11 +487,11 @@ function Field({
   children,
 }: {
   label: string;
-  children: React.ReactElement<React.HTMLAttributes<HTMLElement>>;
+  children: React.ReactNode;
 }) {
   return (
     <div>
-      <label className="block text-xs font-bold text-gray-400 dark:text-gray-500 uppercase mb-1">
+      <label className="block text-[11px] font-bold text-slate-500 uppercase tracking-wider mb-1.5">
         {label}
       </label>
       {children}
