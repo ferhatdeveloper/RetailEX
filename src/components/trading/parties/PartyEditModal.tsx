@@ -4,7 +4,15 @@ import {
   PercentBodyModal,
   PercentBodyModalScrollBody,
 } from '../../shared/PercentBodyModal';
-import { ChevronDown, X, Loader2 } from 'lucide-react';
+import {
+  Briefcase,
+  ChevronDown,
+  HandCoins,
+  Loader2,
+  Truck,
+  Users,
+  X,
+} from 'lucide-react';
 import { partyAPI } from '../../../services/api/parties';
 import type { Party, PartyCardType } from '../../../core/types/models';
 
@@ -37,12 +45,31 @@ interface FormState {
   iban: string;
 }
 
-const CARD_TYPE_OPTIONS: { value: PartyCardType; labelKey: string; color: string }[] = [
-  { value: 'customer', labelKey: 'party.cardType.customer', color: 'bg-blue-100 text-blue-700' },
-  { value: 'supplier', labelKey: 'party.cardType.supplier', color: 'bg-amber-100 text-amber-700' },
-  { value: 'employee', labelKey: 'party.cardType.employee', color: 'bg-emerald-100 text-emerald-700' },
-  { value: 'partner', labelKey: 'party.cardType.partner', color: 'bg-purple-100 text-purple-700' },
+const CARD_TYPE_OPTIONS: {
+  value: PartyCardType;
+  labelKey: string;
+  active: string;
+  icon: typeof Users;
+}[] = [
+  { value: 'customer', labelKey: 'party.cardType.customer', active: 'bg-blue-100 text-blue-700', icon: Users },
+  { value: 'supplier', labelKey: 'party.cardType.supplier', active: 'bg-amber-100 text-amber-800', icon: Truck },
+  { value: 'employee', labelKey: 'party.cardType.employee', active: 'bg-emerald-100 text-emerald-800', icon: Briefcase },
+  { value: 'partner', labelKey: 'party.cardType.partner', active: 'bg-purple-100 text-purple-800', icon: HandCoins },
 ];
+
+const HEADER_GRAD: Record<PartyCardType, string> = {
+  customer: 'bg-gradient-to-r from-blue-600 to-indigo-600',
+  supplier: 'bg-gradient-to-r from-orange-500 to-amber-600',
+  employee: 'bg-gradient-to-r from-emerald-600 to-teal-600',
+  partner: 'bg-gradient-to-r from-violet-600 to-purple-600',
+};
+
+const CODE_PREFIX: Record<PartyCardType, string> = {
+  customer: 'MUS',
+  supplier: 'TED',
+  employee: 'PER',
+  partner: 'ORT',
+};
 
 export function PartyEditModal({ initial, defaultCardType, onClose, onSaved }: PartyEditModalProps) {
   const t = useNestedT();
@@ -78,19 +105,29 @@ export function PartyEditModal({ initial, defaultCardType, onClose, onSaved }: P
     }
   }, [defaultCardType, isEdit]);
 
+  useEffect(() => {
+    if (isEdit || form.code) return;
+    let cancelled = false;
+    void partyAPI
+      .getNextCode(form.card_type, CODE_PREFIX[form.card_type])
+      .then((code) => {
+        if (!cancelled) setForm((f) => (f.code ? f : { ...f, code }));
+      })
+      .catch(() => {});
+    return () => {
+      cancelled = true;
+    };
+  }, [form.card_type, form.code, isEdit]);
+
   const update = (patch: Partial<FormState>) => setForm((f) => ({ ...f, ...patch }));
 
-  const handleCardTypeChange = async (ct: PartyCardType) => {
+  const handleCardTypeChange = (ct: PartyCardType) => {
     if (ct === form.card_type) return;
-    update({ card_type: ct });
-    if (!form.code && !isEdit) {
-      try {
-        const nextCode = await partyAPI.getNextCode(ct, ct.toUpperCase().slice(0, 3));
-        update({ code: nextCode });
-      } catch {
-        // ignore
-      }
+    if (isEdit) {
+      update({ card_type: ct });
+      return;
     }
+    update({ card_type: ct, code: '' });
   };
 
   const handleSubmit = async (e: React.FormEvent) => {
@@ -102,7 +139,7 @@ export function PartyEditModal({ initial, defaultCardType, onClose, onSaved }: P
     setError(null);
     setSaving(true);
     try {
-      const payload: any = {
+      const payload: Record<string, unknown> = {
         card_type: form.card_type,
         code: form.code || null,
         name: form.name.trim(),
@@ -127,9 +164,10 @@ export function PartyEditModal({ initial, defaultCardType, onClose, onSaved }: P
         payload.partner_since = form.partner_since || null;
         payload.iban = form.iban || null;
       }
-      const saved = isEdit && initial
-        ? await partyAPI.update(initial.id, payload)
-        : await partyAPI.create(payload);
+      const saved =
+        isEdit && initial
+          ? await partyAPI.update(initial.id, payload)
+          : await partyAPI.create(payload);
       onSaved(saved);
     } catch (err: any) {
       setError(err?.message || String(err));
@@ -138,55 +176,68 @@ export function PartyEditModal({ initial, defaultCardType, onClose, onSaved }: P
     }
   };
 
+  const typeLabel = t(`party.cardType.${form.card_type}`);
+  const title = isEdit
+    ? t('party.editModal.titleEdit') || 'Cari düzenle'
+    : t('party.editModal.titleNew') || 'Yeni cari';
+
   return (
-    <PercentBodyModal onClose={onClose} size="wide" ariaLabel={t('party.editModal.title')}>
+    <PercentBodyModal onClose={onClose} size="list" ariaLabel={title}>
       <form onSubmit={handleSubmit} className="flex flex-col min-h-0 max-h-full">
-        <div className="bg-gradient-to-r from-blue-600 to-indigo-600 px-8 py-6 text-white shrink-0 flex items-center justify-between">
-          <div>
-            <h2 className="text-2xl font-bold">
-              {isEdit ? t('party.editModal.titleEdit') : t('party.editModal.titleNew')}
-            </h2>
-            <p className="text-blue-100 text-sm mt-1">{t('party.editModal.subtitle')}</p>
+        <div
+          className={`${HEADER_GRAD[form.card_type]} px-6 py-4 text-white shrink-0 flex items-center justify-between gap-3`}
+        >
+          <div className="min-w-0">
+            <h2 className="text-xl font-bold truncate">{title}</h2>
+            <p className="text-white/80 text-sm mt-0.5 truncate">
+              {typeLabel}
+              {form.code ? ` · ${form.code}` : ''}
+            </p>
           </div>
           <button
             type="button"
             onClick={onClose}
-            className="p-2 rounded-xl hover:bg-white/10 transition"
+            className="p-2 rounded-xl hover:bg-white/10 transition shrink-0"
             aria-label={t('common.close')}
           >
             <X className="w-5 h-5" />
           </button>
         </div>
 
-        <PercentBodyModalScrollBody className="p-8">
-          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-            <div className="sm:col-span-2">
-              <label className="block text-[11px] font-bold text-slate-500 uppercase tracking-wider mb-1.5">
-                {t('party.fields.cardType')}
-              </label>
-              <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
-                {CARD_TYPE_OPTIONS.map((opt) => (
+        <PercentBodyModalScrollBody className="p-6 space-y-5">
+          <section>
+            <p className="block text-[11px] font-bold text-slate-500 uppercase tracking-wider mb-1.5">
+              {t('party.fields.cardType')}
+            </p>
+            <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
+              {CARD_TYPE_OPTIONS.map((opt) => {
+                const Icon = opt.icon;
+                const selected = form.card_type === opt.value;
+                return (
                   <button
                     key={opt.value}
                     type="button"
                     onClick={() => handleCardTypeChange(opt.value)}
-                    className={`px-3 py-3 rounded-2xl text-xs font-bold uppercase tracking-wider transition border-2 ${
-                      form.card_type === opt.value
-                        ? `${opt.color} border-transparent shadow-md`
-                        : 'border-slate-200 text-slate-500 hover:border-slate-300'
+                    className={`flex items-center justify-center gap-1.5 px-2 py-2.5 rounded-xl text-[11px] font-bold uppercase tracking-wide transition border-2 ${
+                      selected
+                        ? `${opt.active} border-transparent shadow-sm`
+                        : 'border-slate-200 text-slate-500 hover:border-slate-300 bg-white'
                     }`}
                   >
-                    {t(opt.labelKey)}
+                    <Icon className="w-3.5 h-3.5 shrink-0" />
+                    <span className="truncate">{t(opt.labelKey)}</span>
                   </button>
-                ))}
-              </div>
+                );
+              })}
             </div>
+          </section>
 
+          <section className="grid grid-cols-1 sm:grid-cols-2 gap-4">
             <Field
               label={t('party.fields.code')}
               value={form.code}
               onChange={(v) => update({ code: v })}
-              placeholder={t('party.fields.codePlaceholder')}
+              placeholder={t('party.fields.codePlaceholder') || 'Otomatik'}
             />
             <Field
               label={t('party.fields.name')}
@@ -195,7 +246,6 @@ export function PartyEditModal({ initial, defaultCardType, onClose, onSaved }: P
               required
               placeholder={t('party.fields.namePlaceholder')}
             />
-
             <Field
               label={t('party.fields.phone')}
               value={form.phone}
@@ -207,7 +257,6 @@ export function PartyEditModal({ initial, defaultCardType, onClose, onSaved }: P
               onChange={(v) => update({ email: v })}
               type="email"
             />
-
             <Field
               label={t('party.fields.taxNr')}
               value={form.tax_nr}
@@ -218,24 +267,20 @@ export function PartyEditModal({ initial, defaultCardType, onClose, onSaved }: P
               value={form.tax_office}
               onChange={(v) => update({ tax_office: v })}
             />
+            <Field
+              label={t('party.fields.address')}
+              value={form.address}
+              onChange={(v) => update({ address: v })}
+              className="sm:col-span-2"
+            />
+          </section>
 
-            <div className="sm:col-span-2">
-              <label className="block text-[11px] font-bold text-slate-500 uppercase tracking-wider mb-1.5">
-                {t('party.fields.address')}
-              </label>
-              <textarea
-                value={form.address}
-                onChange={(e) => update({ address: e.target.value })}
-                rows={2}
-                className="w-full px-4 py-3 border border-slate-200 rounded-2xl focus:ring-2 focus:ring-blue-500 focus:border-blue-400 outline-none text-slate-800 font-medium resize-none"
-              />
-            </div>
-
-            {form.card_type === 'employee' && (
-              <div className="sm:col-span-2 grid grid-cols-1 sm:grid-cols-2 gap-4 pt-4 border-t border-slate-100">
-                <div className="sm:col-span-2 text-sm font-bold text-emerald-700 uppercase tracking-wider">
-                  {t('party.employeeSection')}
-                </div>
+          {form.card_type === 'employee' && (
+            <section className="rounded-2xl border border-emerald-100 bg-emerald-50/60 p-4">
+              <p className="text-[11px] font-black uppercase tracking-wider text-emerald-800 mb-3">
+                {t('party.employeeSection')}
+              </p>
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                 <Field
                   label={t('party.employee.salaryBase')}
                   value={form.salary_base}
@@ -259,13 +304,15 @@ export function PartyEditModal({ initial, defaultCardType, onClose, onSaved }: P
                   onChange={(v) => update({ position: v })}
                 />
               </div>
-            )}
+            </section>
+          )}
 
-            {form.card_type === 'partner' && (
-              <div className="sm:col-span-2 grid grid-cols-1 sm:grid-cols-2 gap-4 pt-4 border-t border-slate-100">
-                <div className="sm:col-span-2 text-sm font-bold text-purple-700 uppercase tracking-wider">
-                  {t('party.partnerSection')}
-                </div>
+          {form.card_type === 'partner' && (
+            <section className="rounded-2xl border border-purple-100 bg-purple-50/60 p-4">
+              <p className="text-[11px] font-black uppercase tracking-wider text-purple-800 mb-3">
+                {t('party.partnerSection')}
+              </p>
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                 <Field
                   label={t('party.partner.sharePct')}
                   value={form.share_pct}
@@ -302,42 +349,34 @@ export function PartyEditModal({ initial, defaultCardType, onClose, onSaved }: P
                   className="sm:col-span-2"
                 />
               </div>
-            )}
+            </section>
+          )}
 
-            <div className="sm:col-span-2">
-              <label className="block text-[11px] font-bold text-slate-500 uppercase tracking-wider mb-1.5">
-                {t('party.fields.notes')}
-              </label>
-              <textarea
-                value={form.notes}
-                onChange={(e) => update({ notes: e.target.value })}
-                rows={2}
-                className="w-full px-4 py-3 border border-slate-200 rounded-2xl focus:ring-2 focus:ring-blue-500 focus:border-blue-400 outline-none text-slate-800 font-medium resize-none"
-              />
-            </div>
-
-            <div className="sm:col-span-2 flex items-center gap-2">
+          <section>
+            <Field
+              label={t('party.fields.notes')}
+              value={form.notes}
+              onChange={(v) => update({ notes: v })}
+            />
+            <label className="mt-4 flex items-center gap-2 cursor-pointer">
               <input
                 type="checkbox"
-                id="is_active"
                 checked={form.is_active}
                 onChange={(e) => update({ is_active: e.target.checked })}
                 className="w-4 h-4 rounded border-slate-300 text-blue-600 focus:ring-blue-500"
               />
-              <label htmlFor="is_active" className="text-sm font-medium text-slate-700">
-                {t('party.fields.active')}
-              </label>
-            </div>
+              <span className="text-sm font-medium text-slate-700">{t('party.fields.active')}</span>
+            </label>
+          </section>
 
-            {error && (
-              <div className="sm:col-span-2 p-4 rounded-2xl bg-rose-50 border border-rose-200 text-rose-700 text-sm">
-                {error}
-              </div>
-            )}
-          </div>
+          {error && (
+            <div className="p-3 rounded-xl bg-rose-50 border border-rose-200 text-rose-700 text-sm break-words">
+              {error}
+            </div>
+          )}
         </PercentBodyModalScrollBody>
 
-        <div className="p-6 border-t border-slate-100 bg-slate-50/50 flex gap-4 shrink-0">
+        <div className="p-4 border-t border-slate-100 bg-slate-50/50 flex gap-3 shrink-0">
           <button
             type="button"
             onClick={onClose}
@@ -348,9 +387,9 @@ export function PartyEditModal({ initial, defaultCardType, onClose, onSaved }: P
           <button
             type="submit"
             disabled={saving}
-            className="flex-1 rounded-2xl bg-blue-600 text-white font-bold uppercase text-sm tracking-wider py-3 shadow-lg shadow-blue-200/50 hover:bg-blue-700 disabled:opacity-50 active:scale-[0.98] transition flex items-center justify-center gap-2"
+            className="flex-1 rounded-2xl bg-blue-600 text-white font-bold uppercase text-sm tracking-wider py-3 shadow-lg shadow-blue-200/50 hover:bg-blue-700 disabled:opacity-50 active:scale-[0.98] transition inline-flex items-center justify-center gap-2"
           >
-            {saving && <Loader2 className="w-4 h-4 animate-spin" />}
+            {saving ? <Loader2 className="w-4 h-4 animate-spin" /> : null}
             {isEdit ? t('common.update') : t('common.create')}
           </button>
         </div>
@@ -359,7 +398,19 @@ export function PartyEditModal({ initial, defaultCardType, onClose, onSaved }: P
   );
 }
 
-interface FieldProps {
+const INPUT_CLASS =
+  'w-full px-4 py-2.5 border border-slate-200 rounded-xl focus:ring-2 focus:ring-blue-500 focus:border-blue-400 outline-none text-slate-800 font-medium bg-white';
+
+function Field({
+  label,
+  value,
+  onChange,
+  type = 'text',
+  required,
+  placeholder,
+  hint,
+  className = '',
+}: {
   label: string;
   value: string;
   onChange: (v: string) => void;
@@ -368,13 +419,12 @@ interface FieldProps {
   placeholder?: string;
   hint?: string;
   className?: string;
-}
-
-function Field({ label, value, onChange, type = 'text', required, placeholder, hint, className = '' }: FieldProps) {
+}) {
   return (
     <div className={className}>
       <label className="block text-[11px] font-bold text-slate-500 uppercase tracking-wider mb-1.5">
-        {label}{required && <span className="text-rose-500"> *</span>}
+        {label}
+        {required ? <span className="text-rose-500"> *</span> : null}
       </label>
       <input
         type={type}
@@ -382,38 +432,50 @@ function Field({ label, value, onChange, type = 'text', required, placeholder, h
         onChange={(e) => onChange(e.target.value)}
         required={required}
         placeholder={placeholder}
-        className="w-full px-4 py-3 border border-slate-200 rounded-2xl focus:ring-2 focus:ring-blue-500 focus:border-blue-400 outline-none text-slate-800 font-medium"
+        className={INPUT_CLASS}
       />
-      {hint && <p className="text-xs text-slate-400 mt-1">{hint}</p>}
+      {hint ? <p className="text-xs text-slate-400 mt-1">{hint}</p> : null}
     </div>
   );
 }
 
-interface SelectFieldProps {
+function SelectField({
+  label,
+  value,
+  onChange,
+  options,
+  required,
+}: {
   label: string;
   value: string;
   onChange: (v: string) => void;
   options: { value: string; label: string }[];
   required?: boolean;
-}
-
-function SelectField({ label, value, onChange, options, required }: SelectFieldProps) {
+}) {
   return (
-    <div className="relative">
+    <div>
       <label className="block text-[11px] font-bold text-slate-500 uppercase tracking-wider mb-1.5">
-        {label}{required && <span className="text-rose-500"> *</span>}
+        {label}
+        {required ? <span className="text-rose-500"> *</span> : null}
       </label>
-      <select
-        value={value}
-        onChange={(e) => onChange(e.target.value)}
-        required={required}
-        className="w-full px-4 py-3 pr-11 border border-slate-200 rounded-2xl focus:ring-2 focus:ring-blue-500 focus:border-blue-400 outline-none text-slate-800 font-medium appearance-none bg-white"
-      >
-        {options.map((o) => (
-          <option key={o.value} value={o.value}>{o.label}</option>
-        ))}
-      </select>
-      <ChevronDown className="absolute right-3 top-[42px] -translate-y-1/2 w-5 h-5 text-slate-400 pointer-events-none" />
+      <div className="relative">
+        <select
+          value={value}
+          onChange={(e) => onChange(e.target.value)}
+          required={required}
+          className={`${INPUT_CLASS} pr-11 appearance-none`}
+        >
+          {options.map((o) => (
+            <option key={o.value} value={o.value}>
+              {o.label}
+            </option>
+          ))}
+        </select>
+        <ChevronDown
+          className="absolute right-3 top-1/2 -translate-y-1/2 w-5 h-5 text-slate-400 pointer-events-none"
+          aria-hidden
+        />
+      </div>
     </div>
   );
 }
