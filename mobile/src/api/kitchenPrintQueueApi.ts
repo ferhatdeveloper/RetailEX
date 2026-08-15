@@ -1,4 +1,4 @@
-import { newUuid, restKitchenPrintJobsTable } from './erpTables';
+import { newUuid, restKitchenPrintJobsTable, restPrintJobsTable } from './erpTables';
 import { pgQuery } from './pgClient';
 import { postgrestPost } from './postgrestClient';
 import { runDataTransport, rethrowTransportInfra } from './dataTransport';
@@ -176,6 +176,58 @@ async function insertKitchenPrintJobViaRest(job: KitchenJobInsert): Promise<void
   });
 }
 
+function unifiedPrintConnection(target: KitchenResolvedTarget): string {
+  return target.connection === 'html_fallback' ? 'auto' : target.connection;
+}
+
+async function insertUnifiedPrintJobViaRest(job: KitchenJobInsert): Promise<void> {
+  const table = restTableBare(restPrintJobsTable());
+  const body: Record<string, unknown> = {
+    id: newUuid(),
+    job_type: 'kitchen_ticket',
+    status: 'pending',
+    priority: 50,
+    connection: unifiedPrintConnection(job.target),
+    address: job.target.address ?? null,
+    port: job.target.port ?? null,
+    printer_name: job.target.printerName ?? null,
+    printer_profile_id: job.target.profile?.id ?? null,
+    locale: job.locale,
+    copies: 1,
+    payload: job.payload,
+    ref_type: job.kitchenOrderId ? 'kitchen_order' : 'order',
+    ref_id: job.kitchenOrderId ?? job.orderId,
+    source_system: 'mobile',
+    source_db: job.sourceDb,
+  };
+  await postgrestPost(`/${table}`, body, {
+    schema: 'rest',
+    prefer: 'return=minimal',
+  });
+}
+
+async function insertUnifiedPrintJobViaBridge(job: KitchenJobInsert): Promise<void> {
+  const jobs = restPrintJobsTable();
+  await pgQuery(
+    `INSERT INTO ${jobs}
+      (job_type, status, priority, connection, address, port, printer_name, printer_profile_id,
+       locale, copies, payload, ref_type, ref_id, source_system, source_db)
+     VALUES ('kitchen_ticket', 'pending', 50, $1, $2, $3, $4, $5, $6, 1, $7::jsonb, $8, $9, 'mobile', $10)`,
+    [
+      unifiedPrintConnection(job.target),
+      job.target.address ?? null,
+      job.target.port ?? null,
+      job.target.printerName ?? null,
+      job.target.profile?.id ?? null,
+      job.locale,
+      JSON.stringify(job.payload),
+      job.kitchenOrderId ? 'kitchen_order' : 'order',
+      job.kitchenOrderId ?? job.orderId,
+      job.sourceDb,
+    ],
+  );
+}
+
 async function insertKitchenPrintJobViaBridge(job: KitchenJobInsert): Promise<void> {
   const jobs = restKitchenPrintJobsTable();
   await pgQuery(
@@ -227,6 +279,7 @@ export async function enqueueKitchenPrintJobs(
   for (const { target, items } of groups.values()) {
     const lines = items.map(itemToKitchenLine);
     const payload = {
+      kind: 'kitchen_ticket',
       tableNumber: tableName,
       floorName: undefined,
       waiter: request.order.waiter ?? undefined,
@@ -243,6 +296,16 @@ export async function enqueueKitchenPrintJobs(
       payload,
       sourceDb,
     };
+
+    try {
+      await runDataTransport({
+        label: 'enqueueUnifiedPrintJob',
+        viaRest: () => insertUnifiedPrintJobViaRest(job),
+        viaBridge: () => insertUnifiedPrintJobViaBridge(job),
+      });
+    } catch (e) {
+      console.warn('[kitchenPrint] unified print_jobs yazılamadı:', e);
+    }
 
     try {
       await runDataTransport({

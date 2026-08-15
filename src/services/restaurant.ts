@@ -1,4 +1,4 @@
-import { PostgresConnection, ERP_SETTINGS } from './postgres';
+import { PostgresConnection, ERP_SETTINGS, DB_SETTINGS } from './postgres';
 import { Table, Staff, LoginResult } from '../components/restaurant/types';
 import type { FoodDeliveryChannelId } from '../config/foodDeliveryChannels';
 import { normalizeFoodDeliveryChannel } from '../config/foodDeliveryChannels';
@@ -814,7 +814,24 @@ export class RestaurantService {
             ORDER BY ko.sent_at ASC
         `;
         const { rows } = await this.db.query(sql);
-        return rows;
+        if (DB_SETTINGS.activeMode !== 'hybrid') return rows;
+        try {
+            const remote = await this.db.query(sql, [], { sqlTarget: 'remote' });
+            const byId = new Map<string, (typeof rows)[number]>();
+            for (const row of rows) byId.set(String((row as { id?: string }).id), row);
+            for (const row of remote.rows) {
+                const id = String((row as { id?: string }).id);
+                if (id && !byId.has(id)) byId.set(id, row);
+            }
+            return [...byId.values()].sort((a, b) => {
+                const ta = new Date((a as { sent_at?: string }).sent_at || 0).getTime();
+                const tb = new Date((b as { sent_at?: string }).sent_at || 0).getTime();
+                return ta - tb;
+            });
+        } catch (err) {
+            console.warn('[Restaurant] Hibrit KDS uzak siparişler okunamadı:', err);
+            return rows;
+        }
     }
 
     static async updateKitchenOrderStatus(

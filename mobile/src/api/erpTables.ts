@@ -156,6 +156,10 @@ export function restKitchenPrintJobsTable(fn = firmNr(), pn = periodNr()): strin
   return `rest.rex_${fn}_${pn}_kitchen_print_jobs`;
 }
 
+export function restPrintJobsTable(fn = firmNr(), pn = periodNr()): string {
+  return `rest.rex_${fn}_${pn}_print_jobs`;
+}
+
 export function restReservationsTable(fn = firmNr(), pn = periodNr()): string {
   return `rest.rex_${fn}_${pn}_rest_reservations`;
 }

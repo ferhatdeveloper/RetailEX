@@ -655,7 +655,6 @@ async function sendRestaurantItemsToKitchenViaRest(orderId: string): Promise<Sen
   }
 
   const sentItemIds = pendingItems.map((item) => item.id);
-  await markOrderItemsCookingViaRest(sentItemIds);
 
   let activeItemCount = 0;
   try {
@@ -744,9 +743,12 @@ async function sendRestaurantItemsToKitchenViaRest(orderId: string): Promise<Sen
       );
     }
     kitchenOrderCreated = true;
-  } catch {
-    kitchenOrderCreated = false;
+  } catch (err) {
+    console.error('[kitchen] rest_kitchen_orders (PostgREST) yazılamadı:', err);
+    throw err;
   }
+
+  await markOrderItemsCookingViaRest(sentItemIds);
 
   try {
     await postgrestPatch(
@@ -800,7 +802,6 @@ async function sendRestaurantItemsToKitchenViaBridge(orderId: string): Promise<S
   }
 
   const sentItemIds = pendingItems.map((item) => item.id);
-  await markOrderItemsCooking(sentItemIds);
 
   let activeItemCount = 0;
   try {
@@ -876,9 +877,12 @@ async function sendRestaurantItemsToKitchenViaBridge(orderId: string): Promise<S
       );
     }
     kitchenOrderCreated = true;
-  } catch {
-    kitchenOrderCreated = false;
+  } catch (err) {
+    console.error('[kitchen] rest_kitchen_orders (bridge) yazılamadı:', err);
+    throw err;
   }
+
+  await markOrderItemsCooking(sentItemIds);
 
   try {
     await pgQuery(

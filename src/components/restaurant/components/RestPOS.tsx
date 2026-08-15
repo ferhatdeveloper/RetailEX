@@ -790,6 +790,30 @@ export const RestPOS: React.FC<RestPOSProps> = ({
             return;
         }
         try {
+            if (table?.id && posMode === 'table') {
+                const live = useRestaurantStore.getState().tables.find((t) => t.id === table.id);
+                const pending = live?.orders.filter((o) => o.status === 'pending' && !o.isVoid) ?? [];
+                if (pending.length > 0 && live?.activeOrderId) {
+                    try {
+                        await sendToKitchen(table.id);
+                        setCart((prev) =>
+                            prev.map((item) =>
+                                !item.kitchenStatus || item.kitchenStatus === 'pending'
+                                    ? { ...item, kitchenStatus: 'cooking' as const }
+                                    : item,
+                            ),
+                        );
+                        notify(tmR('resPosOrderSentKitchen'));
+                        void useRestaurantStore.getState().loadKitchenOrders();
+                        return;
+                    } catch (err: unknown) {
+                        console.error('[RestPOS] mutfak fişi / sendToKitchen:', err);
+                        const msg = err instanceof Error ? err.message : String(err);
+                        notify(tmR('resPosErrKitchenSend').replace('{msg}', msg).replace('{hint}', ''), 'error');
+                        return;
+                    }
+                }
+            }
             const rs = await getReceiptSettings(receiptFirmNr).catch((): ReceiptSettings => ({}));
             const waiterName =
                 typeof currentStaff === 'object' ? (currentStaff as { name?: string })?.name : (currentStaff || waiter || '');

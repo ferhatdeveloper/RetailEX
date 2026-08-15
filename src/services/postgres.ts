@@ -218,8 +218,16 @@ function isSqlWriteStatement(sql: string): boolean {
   );
 }
 
+export type SqlTargetOverride = 'auto' | 'local' | 'remote';
+
 /** Online/Offline tek uç; hibritte yalnızca yerel PG (merkez = API). */
-export function getDbSqlTargetChain(opts?: { write?: boolean }): PgEndpointConfig[] {
+export function getDbSqlTargetChain(opts?: { write?: boolean; sqlTarget?: SqlTargetOverride }): PgEndpointConfig[] {
+  if (opts?.sqlTarget === 'remote') {
+    return [normalizeBridgePgEndpoint(getCentralRemotePgConfig())];
+  }
+  if (opts?.sqlTarget === 'local') {
+    return [normalizeBridgePgEndpoint(LOCAL_CONFIG)];
+  }
   if (DB_SETTINGS.activeMode === 'hybrid') {
     return [LOCAL_CONFIG];
   }
@@ -1588,7 +1596,7 @@ export class PostgresConnection {
     return schema === 'public' ? prefixed : `${schema}.${prefixed}`;
   }
 
-  async query<T = any>(sql: string, params: any[] = [], options?: { firmNr?: string, periodNr?: string }): Promise<{ rows: T[]; rowCount: number }> {
+  async query<T = any>(sql: string, params: any[] = [], options?: { firmNr?: string, periodNr?: string, sqlTarget?: SqlTargetOverride }): Promise<{ rows: T[]; rowCount: number }> {
     // Production webte tenant_registry çözülmeden tablo/sorgu trafiğini başlatma.
     if (!IS_TAURI && IS_PRODUCTION && !isTenantResolvedForWeb()) {
       throw new Error('Kiracı bağlantısı yapılmadan sorgu çalıştırılamaz. Önce "Merkezden bağlan" ile tenant_registry kaydını uygulayın.');
@@ -1658,7 +1666,10 @@ export class PostgresConnection {
 
     const startTime = Date.now();
     try {
-      const chain = getDbSqlTargetChain({ write: isSqlWriteStatement(resolvedSql) });
+      const chain = getDbSqlTargetChain({
+        write: isSqlWriteStatement(resolvedSql),
+        sqlTarget: options?.sqlTarget,
+      });
       let lastError: unknown;
       let rows: any[] | undefined;
 
