@@ -25,6 +25,23 @@ const PARTY_DB_COLUMNS = new Set([
 
 const ALLOWED_CARD_TYPES: PartyCardType[] = ['customer', 'supplier', 'employee', 'partner'];
 
+const BOOLEAN_COLS = new Set(['is_active']);
+const NUMERIC_COLS = new Set(['balance', 'salary_base', 'share_pct', 'capital_contribution']);
+const DATE_COLS = new Set(['hire_date', 'partner_since']);
+const TIMESTAMPTZ_COLS = new Set(['merged_at']);
+const UUID_COLS = new Set(['merged_into_id']);
+
+/** Tauri/bridge parametreleri metin gelebilir; hedef kolon tipine göre cast. */
+function sqlExpr(col: string, index: number): string {
+  const p = `$${index}`;
+  if (BOOLEAN_COLS.has(col)) return `${p}::text::boolean`;
+  if (NUMERIC_COLS.has(col)) return `${p}::text::numeric`;
+  if (DATE_COLS.has(col)) return `NULLIF(${p}::text, '')::date`;
+  if (TIMESTAMPTZ_COLS.has(col)) return `NULLIF(${p}::text, '')::timestamptz`;
+  if (UUID_COLS.has(col)) return `NULLIF(${p}::text, '')::uuid`;
+  return `${p}::text`;
+}
+
 export interface PartyListFilter {
   cardType?: PartyCardType | 'all';
   isActive?: boolean;
@@ -70,8 +87,8 @@ export const partyAPI = {
     }
     const payload = filterDbColumns(input);
     const cols = Object.keys(payload);
-    const placeholders = cols.map((c, i) => `$${i + 1}::text`).join(', ');
-    const values = cols.map((c) => formatValue(payload[c]));
+    const placeholders = cols.map((c, i) => sqlExpr(c, i + 1)).join(', ');
+    const values = cols.map((c) => formatValue(c, payload[c]));
     const { rows } = await postgres.query(
       `INSERT INTO ${partiesTable()} (${cols.join(', ')}) VALUES (${placeholders}) RETURNING *`,
       values,
@@ -89,8 +106,8 @@ export const partyAPI = {
       const cur = await this.getById(id);
       return cur as Party;
     }
-    const setClause = cols.map((c, i) => `${c} = $${i + 1}::text`).join(', ');
-    const values = cols.map((c) => formatValue(payload[c]));
+    const setClause = cols.map((c, i) => `${c} = ${sqlExpr(c, i + 1)}`).join(', ');
+    const values = cols.map((c) => formatValue(c, payload[c]));
     const { rows } = await postgres.query(
       `UPDATE ${partiesTable()} SET ${setClause}, updated_at = NOW() WHERE id = $${values.length + 1}::text::uuid RETURNING *`,
       [...values, id],
@@ -150,10 +167,17 @@ function filterDbColumns(input: any): Record<string, any> {
   return out;
 }
 
-function formatValue(v: any): string {
-  if (v === null || v === undefined) return '';
+function formatValue(col: string, v: any): string | null {
+  if (BOOLEAN_COLS.has(col)) {
+    if (v === false || v === 'false' || v === 'f' || v === 0 || v === '0') return 'false';
+    return 'true';
+  }
+  if (v === null || v === undefined || v === '') {
+    if (NUMERIC_COLS.has(col)) return '0';
+    return null;
+  }
   if (typeof v === 'boolean') return v ? 'true' : 'false';
-  if (typeof v === 'number') return v.toString();
+  if (typeof v === 'number') return String(v);
   return String(v);
 }
 

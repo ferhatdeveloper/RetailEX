@@ -1,6 +1,6 @@
 [package]
 name = "retailex"
-version = "0.1.253"
+version = "0.1.254"
 description = "A Tauri App"
 authors = ["you"]
 license = ""
