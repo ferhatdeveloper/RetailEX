@@ -109,7 +109,91 @@ export async function isWindowsPrinterServiceEnabled(): Promise<boolean> {
   return restaurantConfig?.printViaWindowsService === true || globalEnabled;
 }
 
+const ensuredPrintQueueKeys = new Set<string>();
+
+function currentFirmPeriod(): { firm: string; period: string; key: string } {
+  const firm = String(ERP_SETTINGS.firmNr || '001').trim().padStart(3, '0').slice(0, 10);
+  const period = String(ERP_SETTINGS.periodNr || '01').trim().padStart(2, '0').slice(0, 10);
+  return { firm, period, key: `${firm}:${period}` };
+}
+
+function isMissingRelationOrFunction(error: unknown): boolean {
+  const msg = error instanceof Error ? error.message : String(error);
+  return /42P01|42883|does not exist/i.test(msg);
+}
+
+/** 109/110 atlanmış yerel veya yeni dönem DB'lerinde kuyruk tablolarını oluşturur. */
+export async function ensurePrintQueueTables(): Promise<void> {
+  const { firm, period, key } = currentFirmPeriod();
+  if (ensuredPrintQueueKeys.has(key)) return;
+
+  try {
+    await postgres.query('SELECT public.INIT_RESTAURANT_PRINT_JOBS_TABLE($1::varchar, $2::varchar)', [
+      firm,
+      period,
+    ]);
+    ensuredPrintQueueKeys.add(key);
+    return;
+  } catch (error) {
+    if (!isMissingRelationOrFunction(error)) throw error;
+  }
+
+  await postgres.query('CREATE SCHEMA IF NOT EXISTS rest');
+  const printJobs = postgres.getMovementTableName('print_jobs', 'rest');
+  const kitchenJobs = postgres.getMovementTableName('kitchen_print_jobs', 'rest');
+  await postgres.query(`
+    CREATE TABLE IF NOT EXISTS ${printJobs} (
+      id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+      job_type VARCHAR(40) NOT NULL DEFAULT 'kitchen_ticket',
+      status VARCHAR(20) NOT NULL DEFAULT 'pending',
+      priority INT NOT NULL DEFAULT 100,
+      connection TEXT,
+      address TEXT,
+      port INT,
+      printer_name TEXT,
+      printer_profile_id TEXT,
+      locale TEXT DEFAULT 'tr',
+      copies INT NOT NULL DEFAULT 1,
+      payload JSONB NOT NULL DEFAULT '{}'::jsonb,
+      ref_type TEXT,
+      ref_id TEXT,
+      attempts INT DEFAULT 0,
+      last_error TEXT,
+      claimed_by TEXT,
+      claimed_at TIMESTAMPTZ,
+      printed_at TIMESTAMPTZ,
+      source_system TEXT,
+      source_db TEXT,
+      created_at TIMESTAMPTZ DEFAULT NOW()
+    )`);
+  await postgres.query(`
+    CREATE TABLE IF NOT EXISTS ${kitchenJobs} (
+      id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+      job_type VARCHAR(40) NOT NULL DEFAULT 'kitchen_ticket',
+      kitchen_order_id UUID,
+      order_id UUID,
+      printer_profile_id TEXT,
+      printer_name TEXT,
+      connection TEXT,
+      address TEXT,
+      port INT,
+      locale TEXT DEFAULT 'tr',
+      payload JSONB NOT NULL DEFAULT '{}'::jsonb,
+      status VARCHAR(20) NOT NULL DEFAULT 'pending',
+      attempts INT NOT NULL DEFAULT 0,
+      last_error TEXT,
+      claimed_by TEXT,
+      claimed_at TIMESTAMPTZ,
+      printed_at TIMESTAMPTZ,
+      source_system TEXT,
+      source_db TEXT,
+      created_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP
+    )`);
+  ensuredPrintQueueKeys.add(key);
+}
+
 export async function enqueuePrintJob(params: EnqueuePrintJobParams): Promise<{ id?: string }> {
+  await ensurePrintQueueTables();
   const jobsTable = postgres.getMovementTableName('print_jobs', 'rest');
   const payload = params.payload && typeof params.payload === 'object' ? params.payload : {};
   const { rows } = await postgres.query<{ id: string }>(

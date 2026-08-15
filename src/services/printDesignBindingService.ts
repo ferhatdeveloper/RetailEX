@@ -21,6 +21,26 @@ type BindingRow = {
 
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 
+let bindingsTableEnsured = false;
+
+async function ensurePrintDesignBindingsTable(): Promise<void> {
+  if (bindingsTableEnsured) return;
+  await postgres.query(`
+    CREATE TABLE IF NOT EXISTS public.print_design_bindings (
+      id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+      firm_nr VARCHAR(10) NOT NULL,
+      scope VARCHAR(64) NOT NULL,
+      design_kind VARCHAR(32) NOT NULL DEFAULT 'fastreport_frx',
+      design_id UUID,
+      design_ref TEXT,
+      design_name TEXT,
+      is_active BOOLEAN DEFAULT true,
+      updated_at TIMESTAMPTZ DEFAULT NOW(),
+      UNIQUE(firm_nr, scope)
+    )`);
+  bindingsTableEnsured = true;
+}
+
 function normalizeFirmNr(firmNr?: string | null): string {
   const raw = String(firmNr || ERP_SETTINGS.firmNr || '001').trim();
   return raw.length <= 3 ? raw.padStart(3, '0') : raw.slice(0, 10);
@@ -45,6 +65,7 @@ function rowToBinding(row: BindingRow): PrintDesignBinding {
 }
 
 export async function getBindings(firmNr?: string | null): Promise<PrintDesignBinding[]> {
+  await ensurePrintDesignBindingsTable();
   const fn = normalizeFirmNr(firmNr);
   const { rows } = await postgres.query<BindingRow>(
     `SELECT id, firm_nr, scope, design_kind, design_id::text, design_ref, design_name, is_active, updated_at::text
@@ -60,6 +81,7 @@ export async function getBindingForScope(
   firmNr: string | null | undefined,
   scope: PrintDesignScope,
 ): Promise<Pick<PrintDesignBinding, 'designKind' | 'designId' | 'designName'> | null> {
+  await ensurePrintDesignBindingsTable();
   const fn = normalizeFirmNr(firmNr);
   const { rows } = await postgres.query<BindingRow>(
     `SELECT id, firm_nr, scope, design_kind, design_id::text, design_ref, design_name, is_active, updated_at::text
@@ -83,6 +105,7 @@ export async function saveBindings(
   firmNr: string | null | undefined,
   rows: Array<Pick<PrintDesignBinding, 'scope' | 'designKind' | 'designId' | 'designName' | 'isActive'>>,
 ): Promise<void> {
+  await ensurePrintDesignBindingsTable();
   const fn = normalizeFirmNr(firmNr);
   for (const row of rows) {
     const designKind = normalizeKind(row.designKind);

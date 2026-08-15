@@ -8,6 +8,7 @@ import {
   enqueueFastReportFrxJob,
   enqueueFastReportTemplateJob,
   enqueuePrintJob,
+  ensurePrintQueueTables,
   isWindowsPrinterServiceEnabled as isUnifiedWindowsPrinterServiceEnabled,
 } from './unifiedPrintQueueService';
 
@@ -135,6 +136,7 @@ export async function enqueueKitchenPrintJobs(
 
   const locale = params.locale ?? 'tr';
   const sourceDb = currentSourceDb();
+  await ensurePrintQueueTables();
   const jobsTable = postgres.getMovementTableName('kitchen_print_jobs', 'rest');
   const designBinding = await (async () => {
     try {

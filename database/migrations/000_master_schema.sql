@@ -3093,6 +3093,8 @@ BEGIN
   PERFORM public.try_apply_sync_triggers(v_prefix || '_stock_movements');
   PERFORM public.try_apply_sync_triggers(v_prefix || '_stock_movement_items');
   PERFORM public.try_apply_sync_triggers(v_prefix || '_account_movements');
+  PERFORM public.INIT_RESTAURANT_KITCHEN_PRINT_JOBS_TABLE(p_firm_nr, p_period_nr);
+  PERFORM public.INIT_RESTAURANT_PRINT_JOBS_TABLE(p_firm_nr, p_period_nr);
 END;
 $$ LANGUAGE plpgsql;
 
