@@ -113,6 +113,18 @@ jobs:
 
       # CARGO_BUILD_JOBS=2: windows-latest uzerinde tam paralellik Rust derlemesinde
       # CPU/RAM acligi yaratip "hosted runner lost communication" flake'ine yol acabiliyor.
+      # Fetch adimlari tauri:build icinde de var; burada ayri tutuyoruz ki hata
+      # NSIS/Rust'tan once net gorunsun. node-runtime GHA'yi dusurmemeli.
+      - name: Fetch Windows extras (Sumatra, PostgREST, Node)
+        shell: pwsh
+        run: |
+          npm run sumatra:fetch
+          if ($LASTEXITCODE -ne 0) { throw "sumatra:fetch failed: $LASTEXITCODE" }
+          npm run postgrest:fetch
+          if ($LASTEXITCODE -ne 0) { throw "postgrest:fetch failed: $LASTEXITCODE" }
+          npm run node-runtime:fetch
+          if ($LASTEXITCODE -ne 0) { throw "node-runtime:fetch failed: $LASTEXITCODE" }
+
       - name: Build Tauri (Windows)
         shell: pwsh
         env:
