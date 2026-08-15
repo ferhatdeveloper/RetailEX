@@ -212,7 +212,7 @@ const MENU_CACHE_KEY = 'retailos_menu_structure';
 const MENU_CACHE_TTL = 1000 * 60 * 5; // 5 dakika
 
 type ExtendedScreen = ManagementScreen | 'dashboard' | 'finance' | 'stock' | 'purchase' | 'salesorder' | 'kasalar' |
-  'accounting' | 'suppliers' | 'parties' | 'pricing' | 'crm' | 'hr' | 'logistics' |
+  'accounting' | 'suppliers' | 'cari-yonetimi' | 'pricing' | 'crm' | 'hr' | 'logistics' |
   'salesinvoice' | 'sales-invoice-view' | 'sales-invoice-standard' | 'sales-invoice-retail' | 'sales-invoice-wholesale' | 'sales-invoice-consignment' | 'sales-invoice-return' |
   'purchaseinvoice' | 'purchase-invoice-standard' | 'purchase-invoice-return' |
   'serviceinvoice' | 'serviceinvoice-given' | 'serviceinvoice-received' |
@@ -1108,8 +1108,8 @@ export function ManagementModule({
         case 'suppliers_def':
         case 'suppliers':
           return <SupplierModule key="suppliers" />;
-        case 'parties':
-          return <PartiesModule key="parties" />;
+        case 'cari-yonetimi':
+          return <PartiesModule key="cari-yonetimi" />;
         case 'cari-devir':
           return <CariDevirFisiModule />;
         case 'stok-devir':

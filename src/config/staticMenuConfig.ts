@@ -204,7 +204,7 @@ export const getStaticMenuSections = (t: Translations) => [
                 icon: FileText,
                 children: [
                     { label: t.menu.currentAccounts, screen: 'suppliers', icon: Building },
-                    { label: 'Tüm Cariler (Müşteri/Tedarikçi/Personel/Ortak)', screen: 'parties', icon: Users },
+                    { label: 'Cari Yönetimi', screen: 'cari-yonetimi', icon: Users },
                     { label: 'Müşteri Arama Planı', screen: 'customer-call-plan', icon: CalendarClock },
                     { label: t.menu.cashCards, screen: 'cashbank', icon: Wallet },
                     // { label: 'Banka Kartları', screen: 'banks', icon: Landmark },
