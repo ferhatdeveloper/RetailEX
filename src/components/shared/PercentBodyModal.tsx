@@ -2,7 +2,7 @@ import { useEffect, useState, type CSSProperties, type ReactNode } from 'react';
 import { FullscreenBodyPortal, MODAL_OVERLAY_Z } from './FullscreenBodyPortal';
 
 export const PERCENT_BODY_MODAL_PORTAL_CLASS =
-  'overflow-hidden bg-black/60 backdrop-blur-sm flex items-center justify-center p-4';
+  'overflow-y-auto overflow-x-hidden bg-black/60 backdrop-blur-sm flex items-center justify-center p-3 sm:p-4 py-6';
 
 export const PERCENT_BODY_MODAL_SIZES = {
   list: {
@@ -14,6 +14,11 @@ export const PERCENT_BODY_MODAL_SIZES = {
     width: 'min(94vw, 72rem)',
     height: 'min(88vh, calc(100dvh - 2rem))',
     maxHeight: 'calc(100dvh - 2rem)',
+  },
+  /** Form: yükseklik içeriğe göre; taşınca gövde kayar, başlık/footer sabit */
+  form: {
+    width: 'min(92vw, 42rem)',
+    maxHeight: 'min(90vh, calc(100dvh - 2rem))',
   },
   compact: {
     width: 'min(92vw, 28rem)',

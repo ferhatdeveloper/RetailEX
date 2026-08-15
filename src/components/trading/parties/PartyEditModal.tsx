@@ -182,8 +182,8 @@ export function PartyEditModal({ initial, defaultCardType, onClose, onSaved }: P
     : t('party.editModal.titleNew') || 'Yeni cari';
 
   return (
-    <PercentBodyModal onClose={onClose} size="list" ariaLabel={title}>
-      <form onSubmit={handleSubmit} className="flex flex-col h-full min-h-0 overflow-hidden">
+    <PercentBodyModal onClose={onClose} size="form" ariaLabel={title}>
+      <form onSubmit={handleSubmit} className="contents">
         <div
           className={`${HEADER_GRAD[form.card_type]} px-6 py-4 text-white shrink-0 flex items-center justify-between gap-3`}
         >
@@ -204,7 +204,7 @@ export function PartyEditModal({ initial, defaultCardType, onClose, onSaved }: P
           </button>
         </div>
 
-        <PercentBodyModalScrollBody className="p-6 space-y-5">
+        <PercentBodyModalScrollBody className="p-4 sm:p-5 space-y-4">
           <section>
             <p className="block text-[11px] font-bold text-slate-500 uppercase tracking-wider mb-1.5">
               {t('party.fields.cardType')}

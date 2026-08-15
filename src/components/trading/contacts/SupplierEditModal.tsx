@@ -209,13 +209,13 @@ export function SupplierEditModal({
     'w-full px-4 py-3 border border-slate-200 rounded-2xl focus:ring-2 focus:ring-blue-500 focus:border-blue-400 outline-none text-slate-800 font-medium bg-white';
 
   return (
-    <PercentBodyModal onClose={onClose} size="wide" ariaLabel={modalTitle}>
+    <PercentBodyModal onClose={onClose} size="form" ariaLabel={modalTitle}>
       <form
         onSubmit={(e) => {
           e.preventDefault();
           void handleSave();
         }}
-        className="flex flex-col h-full min-h-0 overflow-hidden"
+        className="contents"
       >
         <div className={`${headerGrad} px-8 py-6 text-white shrink-0 flex items-center justify-between`}>
           <div className="min-w-0">
