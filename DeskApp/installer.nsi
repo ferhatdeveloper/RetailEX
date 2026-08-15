@@ -957,6 +957,13 @@ Section Install
     File /a "/oname=bridge.cjs" "__REPO_ROOT__\DeskApp\resources\bridge.cjs"
     File /a "/oname=kitchen-print-service.mjs" "__REPO_ROOT__\DeskApp\resources\kitchen-print-service.mjs"
     File /a "/oname=package.json" "__REPO_ROOT__\DeskApp\resources\package.json"
+    ; Gomulu Node.js + bridge node_modules (musteride Node kurulumu gerekmez)
+    CreateDirectory "$INSTDIR\runtime\node"
+    SetOutPath "$INSTDIR\runtime\node"
+    File /nonfatal /r "__REPO_ROOT__\DeskApp\resources\nodejs-runtime\*.*"
+    SetOutPath "$INSTDIR\node_modules"
+    File /nonfatal /r "__REPO_ROOT__\DeskApp\resources\node_modules\*.*"
+    SetOutPath "$INSTDIR"
     File /a "/oname=install-bridge.ps1" "__REPO_ROOT__\DeskApp\resources\install-bridge.ps1"
     File /a "/oname=install-bridge.cmd" "__REPO_ROOT__\DeskApp\resources\install-bridge.cmd"
     File /a "/oname=install-bridge-npm.ps1" "__REPO_ROOT__\DeskApp\resources\install-bridge-npm.ps1"
@@ -999,7 +1006,7 @@ Section Install
   ExecWait '"powershell.exe" -NoProfile -ExecutionPolicy Bypass -File "$INSTDIR\install-services-setup.ps1"' $0
   ${If} $0 == 2
     DetailPrint "install-services-setup.ps1 PARTIAL (exit 2): Sync OK, SQL Bridge eksik olabilir"
-    MessageBox MB_OK|MB_ICONINFORMATION "RetailEX çekirdek senkron hizmeti kuruldu; SQL Bridge kaydı eksik veya gecikti (çıkış 2).$\r$\n$\r$\nUygulama kullanılabilir. SQL Bridge (port 3001) için:$\r$\n1) '$INSTDIR\install-services-manual.cmd' (Yönetici)$\r$\n2) Node.js LTS varsa: '$INSTDIR\install-bridge-npm.cmd'$\r$\n$\r$\nPostgREST (3002) ayrıdır: '$INSTDIR\install-postgrest-service.cmd'$\r$\n$\r$\nLog: C:\ProgramData\RetailEX\install_services_setup_last.log"
+    MessageBox MB_OK|MB_ICONINFORMATION "RetailEX çekirdek senkron hizmeti kuruldu; SQL Bridge kaydı eksik veya gecikti (çıkış 2).$\r$\n$\r$\nUygulama kullanılabilir. SQL Bridge (port 3001) için:$\r$\n1) '$INSTDIR\install-services-manual.cmd' (Yönetici)$\r$\n2) '$INSTDIR\install-bridge-npm.cmd' (gomulu Node: runtime\node)$\r$\n$\r$\nPostgREST (3002) ayrıdır: '$INSTDIR\install-postgrest-service.cmd'$\r$\n$\r$\nLog: C:\ProgramData\RetailEX\install_services_setup_last.log"
   ${ElseIf} $0 != 0
     DetailPrint "install-services-setup.ps1 FAILED, exit code $0"
     MessageBox MB_OK|MB_ICONEXCLAMATION "RetailEX Windows hizmetleri kurulamadı (çıkış kodu $0).$\r$\n$\r$\nSık nedenler:$\r$\n- UAC'de İzin Ver seçilmedi$\r$\n- Eski hizmet kilitli (yeniden başlatıp install-services-manual.cmd)$\r$\n- PowerShell script parse (em-dash/kodlama; bu sürümde düzeltildi)$\r$\n$\r$\nLoglar:$\r$\nC:\ProgramData\RetailEX\install_services_setup_last.log$\r$\nC:\ProgramData\RetailEX\RetailEX_Service_install_last_error.txt$\r$\nC:\ProgramData\RetailEX\RetailEX_SQL_Bridge_install_last_error.txt$\r$\nC:\ProgramData\RetailEX\RetailEX_Printer_install_last_error.txt$\r$\n%TEMP%\retailex_postgrest_service_install.log$\r$\n$\r$\nKurtarma (Yönetici): '$INSTDIR\install-services-manual.cmd'$\r$\nPostgREST ayrıca: '$INSTDIR\install-postgrest-service.cmd'"
@@ -1060,7 +1067,7 @@ Section Install
   FileWrite $9 "3. Güvenlik duvarından (Firewall) 8000, 5432 portlarına izin verildiğinden emin olun.$\r$\n"
   FileWrite $9 "4. WebSocket adresi ($WSUrl) uygulama ve merkez senkron için kullanılır; ağ/firewall ayarlarını buna göre doğrulayın.$\r$\n"
   FileWrite $9 "5. Servisler kurulmadıysa '$INSTDIR\install-services-manual.cmd' (veya .ps1) dosyasını Yönetici olarak çalıştırın.$\r$\n"
-  FileWrite $9 "6. SQL Bridge (port 3001) ve Printer servisi: Node.js LTS gerekir (https://nodejs.org). Kurulumdan sonra: '$INSTDIR\install-bridge-npm.cmd'$\r$\n"
+  FileWrite $9 "6. SQL Bridge (port 3001) ve Printer: kurulumdaki gomulu Node (runtime\node) kullanilir; ayri Node.js gerekmez. Sorun olursa: '$INSTDIR\install-bridge-npm.cmd'$\r$\n"
   FileWrite $9 "7. Mutfak yazdırma: Restoran yazıcı ayarlarında Windows servisi + Ağ (IP) ESC/POS kullanın.$\r$\n"
   FileWrite $9 "8. Gelişmiş yönetim için '$INSTDIR\retailex-admin.cmd' (veya .ps1) veya '$INSTDIR\RetailEXTools\RetailEX_Tools.exe' menüsünü kullanın.$\r$\n"
   FileWrite $9 "9. PostgreSQL'i LAN'dan erişime açmak (yönetici): '$INSTDIR\RetailEX_PostgreSQLRemote.exe' veya pg-windows-expose-remote.cmd$\r$\n"
@@ -1245,6 +1252,7 @@ Section Uninstall
     Delete "$INSTDIR\install-bridge-npm.ps1"
     Delete "$INSTDIR\install-bridge-npm.cmd"
     RMDir /r /REBOOTOK "$INSTDIR\node_modules"
+    RMDir /r /REBOOTOK "$INSTDIR\runtime"
     Delete "$INSTDIR\install-services-manual.ps1"
     Delete "$INSTDIR\install-services-manual.cmd"
     Delete "$INSTDIR\install-services-setup.ps1"

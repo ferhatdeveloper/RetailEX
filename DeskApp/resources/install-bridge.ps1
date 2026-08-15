@@ -20,22 +20,24 @@ $BaseDir = Split-Path -LiteralPath $ScriptPath
 $BridgePath = Join-Path $BaseDir "bridge.cjs"
 $PkgJson = Join-Path $BaseDir "package.json"
 
-$NodePath = "C:\Program Files\nodejs\node.exe"
+$NodePath = Join-Path $BaseDir "runtime\node\node.exe"
+if (-not (Test-Path -LiteralPath $NodePath)) {
+    $NodePath = Join-Path $BaseDir "nodejs-runtime\node.exe"
+}
+if (-not (Test-Path -LiteralPath $NodePath)) {
+    $NodePath = "C:\Program Files\nodejs\node.exe"
+}
 if (-not (Test-Path -LiteralPath $NodePath)) {
     $w = Get-Command node.exe -ErrorAction SilentlyContinue
     if ($w) { $NodePath = $w.Source }
 }
 if (-not (Test-Path -LiteralPath $NodePath)) {
-    Write-Log "ERROR: node.exe not found. Install Node.js LTS."
+    Write-Log "ERROR: node.exe not found (runtime\node veya sistem Node)."
     exit 1
 }
 Write-Log "Using Node: $NodePath"
 
 $NpmPath = Join-Path (Split-Path $NodePath) "npm.cmd"
-if (-not (Test-Path -LiteralPath $NpmPath)) {
-    Write-Log "ERROR: npm.cmd not found next to node."
-    exit 1
-}
 
 if (-not (Test-Path -LiteralPath $BridgePath)) {
     Write-Log "ERROR: bridge.cjs not found: $BridgePath"
@@ -47,17 +49,26 @@ if (-not (Test-Path -LiteralPath $PkgJson)) {
     exit 1
 }
 
-Write-Log "npm install (bridge dependencies)..."
-Push-Location $BaseDir
-try {
-    & $NpmPath install --omit=dev --no-audit --no-fund 2>&1 | Out-File $LogFile -Append
-    if ($LASTEXITCODE -ne 0) {
-        Write-Log "ERROR: npm install failed (exit $LASTEXITCODE)."
+if (Test-Path -LiteralPath (Join-Path $BaseDir "node_modules\pg")) {
+    Write-Log "node_modules\pg mevcut, npm install atlandi."
+}
+else {
+    if (-not (Test-Path -LiteralPath $NpmPath)) {
+        Write-Log "ERROR: npm.cmd not found next to node."
         exit 1
     }
-}
-finally {
-    Pop-Location
+    Write-Log "npm install (bridge dependencies)..."
+    Push-Location $BaseDir
+    try {
+        & $NpmPath install --omit=dev --no-audit --no-fund 2>&1 | Out-File $LogFile -Append
+        if ($LASTEXITCODE -ne 0) {
+            Write-Log "ERROR: npm install failed (exit $LASTEXITCODE)."
+            exit 1
+        }
+    }
+    finally {
+        Pop-Location
+    }
 }
 
 if (-not (Test-Path -LiteralPath (Join-Path $BaseDir "node_modules\pg"))) {

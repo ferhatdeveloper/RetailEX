@@ -36,6 +36,10 @@ DeskApp/tauri.updater-ci.conf.json
 # PostgREST Windows x64 — npm run postgrest:fetch ile üretilir (kuruluma gömülür)
 DeskApp/resources/postgrest/postgrest.exe
 
+# Gömülü Node.js (npm run node-runtime:fetch) — node.exe/npm; README kalsın
+DeskApp/resources/nodejs-runtime/*
+!DeskApp/resources/nodejs-runtime/README.txt
+
 # Debug
 npm-debug.log*
 yarn-debug.log*

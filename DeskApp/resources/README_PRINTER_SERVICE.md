@@ -7,7 +7,8 @@
 1. Uygulamada Windows servisinden yazdırma seçeneğini etkinleştirin. Restoran mutfak fişleri için mevcut `printViaWindowsService` bayrağı kullanılmaya devam eder.
 2. Termal ESC/POS için yazıcı profilinde **Ağ (IP)**, adres ve port girin. Varsayılan port `9100`.
 3. HTML, fatura, rapor, ürün etiketi ve Design Center şablonları için Windows üzerinde yüklü bir **sistem yazıcısı** kullanın. İş satırında `printer_name` / `system_name` yoksa `app_settings` içinde `key='printer_service'` ayarındaki varsayılan sistem yazıcısı kullanılır.
-4. Kurulumdan sonra servisleri yönetici olarak kurun:
+4. Kurulumdaki gömülü Node (`runtime\node\node.exe`) kullanılır; müşteri PC'de ayrı Node.js gerekmez.
+   Servisleri yönetici olarak kurun:
    - `install-services-manual.cmd`
    - veya kurulum sihirbazının otomatik servis adımı
 

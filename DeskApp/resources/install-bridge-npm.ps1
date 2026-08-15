@@ -15,8 +15,17 @@ if (-not (Test-Path -LiteralPath "package.json")) {
     exit 0
 }
 
+if (Test-Path -LiteralPath (Join-Path (Get-Location) "node_modules\pg")) {
+    Write-Host "[install-bridge-npm] node_modules\pg mevcut, npm install atlandi."
+    exit 0
+}
+
 function Resolve-NpmCmd {
     $candidates = New-Object System.Collections.Generic.List[string]
+
+    $here = (Get-Location).Path
+    $candidates.Add((Join-Path $here "runtime\node\npm.cmd"))
+    $candidates.Add((Join-Path $here "nodejs-runtime\npm.cmd"))
 
     foreach ($root in @($env:ProgramFiles, ${env:ProgramFiles(x86)})) {
         if ($root) {
@@ -61,7 +70,8 @@ if (-not $npm) {
     Write-Host ""
     Write-Host "============================================================" -ForegroundColor Yellow
     Write-Host "[install-bridge-npm] Node.js / npm bulunamadi." -ForegroundColor Yellow
-    Write-Host "SQL Bridge (port 3001) ve Printer servisi icin Node.js LTS gerekir." -ForegroundColor Yellow
+    Write-Host "SQL Bridge (port 3001) ve Printer servisi icin Node gerekir." -ForegroundColor Yellow
+    Write-Host "Kurulum paketi gomulu Node tasimali: runtime\node\node.exe"
     Write-Host ""
     Write-Host "  1) https://nodejs.org  adresinden LTS kurun (onerilen)."
     Write-Host "  2) Kurulumdan sonra bu scripti yeniden calistirin:"

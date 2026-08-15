@@ -2404,12 +2404,13 @@ fn ensure_bridge_service(_handle: &tauri::AppHandle) {
     println!("🛠️ Startup: SQL Bridge node_modules eksik; npm install deneniyor ({})", dir.display());
     #[cfg(windows)]
     let npm_cmd = {
-        let candidates = [
+        let mut candidates = vec![
+            dir.join("runtime").join("node").join("npm.cmd"),
+            dir.join("nodejs-runtime").join("npm.cmd"),
             std::path::PathBuf::from(r"C:\Program Files\nodejs\npm.cmd"),
             std::path::PathBuf::from(r"C:\Program Files (x86)\nodejs\npm.cmd"),
         ];
         candidates.into_iter().find(|p| p.exists()).or_else(|| {
-            // PATH'te npm (kurulum sonrasi PATH guncellenmis olabilir)
             Some(std::path::PathBuf::from("npm.cmd"))
         })
     };

@@ -20,6 +20,8 @@ use windows_service::service_manager::{ServiceManager, ServiceManagerAccess};
 
 #[path = "windows_service_install.rs"]
 mod windows_service_install;
+#[path = "windows_node.rs"]
+mod windows_node;
 
 const SERVICE_NAME: &str = "RetailEX_Printer";
 const DISPLAY_NAME: &str = "RetailEX Printer Service";
@@ -207,7 +209,7 @@ fn spawn_printer_child() -> Result<Child, Box<dyn std::error::Error>> {
         .ok_or("Cannot resolve install directory")?
         .to_path_buf();
 
-    let node = resolve_node_path().ok_or("node.exe not found")?;
+    let node = windows_node::resolve_node_path().ok_or("node.exe not found (gomulu runtime\\node veya sistem Node)")?;
     let worker = base.join("kitchen-print-service.mjs");
     if !worker.exists() {
         return Err("kitchen-print-service.mjs not found beside service executable".into());
@@ -220,37 +222,8 @@ fn spawn_printer_child() -> Result<Child, Box<dyn std::error::Error>> {
         .creation_flags(CREATE_NO_WINDOW)
         .spawn()?;
 
-    log_line(&format!("Spawned printer worker, pid={}", child.id()));
+    log_line(&format!("Spawned printer worker, pid={} node={}", child.id(), node.display()));
     Ok(child)
-}
-
-fn resolve_node_path() -> Option<PathBuf> {
-    let candidates = [
-        PathBuf::from(r"C:\Program Files\nodejs\node.exe"),
-        PathBuf::from(r"C:\Program Files (x86)\nodejs\node.exe"),
-    ];
-    for p in &candidates {
-        if p.exists() {
-            return Some(p.clone());
-        }
-    }
-    if let Ok(local) = env::var("LOCALAPPDATA") {
-        let nvm_current = PathBuf::from(&local).join(r"Programs\node\node.exe");
-        if nvm_current.exists() {
-            return Some(nvm_current);
-        }
-    }
-
-    let out = Command::new("where").arg("node.exe").output().ok()?;
-    if !out.status.success() {
-        return None;
-    }
-    let first = String::from_utf8_lossy(&out.stdout).lines().next()?.trim().to_string();
-    if first.is_empty() {
-        None
-    } else {
-        Some(PathBuf::from(first))
-    }
 }
 
 fn stop_child(child: &mut Child) -> Result<(), Box<dyn std::error::Error>> {

@@ -66,7 +66,13 @@ if (Test-Path -LiteralPath $npmScript) {
         $npmCode = $LASTEXITCODE
         if ($null -eq $npmCode) { $npmCode = 0 }
         if ($npmCode -eq 2) {
-            $msg = "Node.js/npm yok - SQL Bridge (3001) ve Printer servisi calismaz. https://nodejs.org LTS kurun, sonra: $npmScript -Prefix `"$Prefix`". PostgREST (3002) bundan bagimsizdir."
+            $bundled = Join-Path $Prefix "runtime\node\node.exe"
+            if (Test-Path -LiteralPath $bundled) {
+                $msg = "npm bulunamadi ama gomulu Node var ($bundled). Bridge node_modules paketle gelmediyse install-bridge-npm.cmd deneyin."
+            }
+            else {
+                $msg = "Node.js/npm yok - SQL Bridge (3001) ve Printer servisi calismaz. Bu surum gomulu Node tasimali; yoksa https://nodejs.org LTS kurun, sonra: $npmScript -Prefix `"$Prefix`". PostgREST (3002) bundan bagimsizdir."
+            }
             $warnings += $msg
             Write-RetailExSetupLog -LogFile $logFile -Message "UYARI: $msg"
             Write-Warning $msg
