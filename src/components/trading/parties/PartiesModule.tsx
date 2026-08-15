@@ -38,9 +38,16 @@ const TABS: { value: Tab; labelKey: string; color: string }[] = [
   { value: 'partner', labelKey: 'party.cardType.partner', color: 'bg-purple-100 text-purple-700' },
 ];
 
-export function PartiesModule() {
+export function PartiesModule({
+  initialTab = 'all',
+  embedded = false,
+}: {
+  initialTab?: Tab;
+  /** Cari Hesaplar üst ekranı sekmeleri gösteriyorsa iç sekme şeridini gizle */
+  embedded?: boolean;
+}) {
   const t = useNestedT();
-  const [tab, setTab] = useState<Tab>('all');
+  const [tab, setTab] = useState<Tab>(initialTab);
   const [items, setItems] = useState<Party[]>([]);
   const [loading, setLoading] = useState(false);
   const [search, setSearch] = useState('');
@@ -64,6 +71,10 @@ export function PartiesModule() {
       setLoading(false);
     }
   };
+
+  useEffect(() => {
+    setTab(initialTab);
+  }, [initialTab]);
 
   useEffect(() => {
     load();
@@ -132,7 +143,8 @@ export function PartiesModule() {
   }, [items]);
 
   return (
-    <div className="flex flex-col h-full p-4 gap-3">
+    <div className={`flex flex-col h-full min-h-0 gap-3 ${embedded ? '' : 'p-4'}`}>
+      {!embedded && (
       <div className="flex flex-wrap items-center gap-2">
         {TABS.map((tt) => (
           <button
@@ -149,6 +161,7 @@ export function PartiesModule() {
           </button>
         ))}
       </div>
+      )}
 
       <div className="flex flex-wrap items-center gap-3 justify-between">
         <div className="relative flex-1 min-w-[16rem]">
@@ -162,6 +175,7 @@ export function PartiesModule() {
         </div>
 
         <div className="flex flex-wrap gap-2">
+          {!embedded && (
           <button
             type="button"
             onClick={() => setMergeOpen(true)}
@@ -171,6 +185,7 @@ export function PartiesModule() {
             <GitMerge className="w-4 h-4" />
             {t('party.merge.openButton') || 'Birleştir'}
           </button>
+          )}
           {tab === 'partner' && (
             <button
               type="button"

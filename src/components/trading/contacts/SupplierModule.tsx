@@ -2,7 +2,7 @@ import React, { useState, useEffect, useMemo } from 'react';
 import { formatNumber } from '../../../utils/formatNumber';
 import {
   Truck, Users, X, Search, Edit, Trash2, Mail, Phone, MapPin, Wallet,
-  FileText, Loader2, Printer, RefreshCw, Download, CalendarClock, ArrowRightLeft, Copy
+  FileText, Loader2, Printer, RefreshCw, Download, CalendarClock, ArrowRightLeft, Copy, GitMerge
 } from 'lucide-react';
 import { supplierAPI, type Supplier } from '../../../services/api/suppliers';
 import { toast } from 'sonner';
@@ -21,7 +21,8 @@ import {
 } from '../../../services/api/masterData';
 import { DEMO_CUSTOMER_CODES, DEMO_SUPPLIER_CODES } from '../../../utils/demoSeedCodes';
 import { mapUnifiedSupplierToCurrentAccountExcelRow, saveCurrentAccountsAsXlsx } from '../../../utils/currentAccountsExcelExport';
-import { SupplierEditModal } from './SupplierEditModal';
+import { PartiesModule } from '../parties/PartiesModule';
+import { PartyMergeModal } from '../parties/PartyMergeModal';
 import { FullscreenBodyPortal, MODAL_OVERLAY_Z } from '../../shared/FullscreenBodyPortal';
 import { KasaIslemModal } from '../../accounting/cash-ops/KasaIslemModal';
 import { fetchKasalar, type Kasa } from '../../../services/api/kasa';
@@ -46,7 +47,9 @@ import {
   type SupplierListColumnId,
 } from './supplierListColumns';
 
-export function SupplierModule({ initialFilter = 'all' }: { initialFilter?: 'all' | 'customer' | 'supplier' | 'duplicates' }) {
+type CariListFilter = 'all' | 'customer' | 'supplier' | 'duplicates' | 'employee' | 'partner';
+
+export function SupplierModule({ initialFilter = 'all' }: { initialFilter?: CariListFilter }) {
   const { t, tm } = useLanguage();
   const { selectedFirm } = useFirmaDonem();
   const mainCurrency = useMemo(
@@ -69,9 +72,10 @@ export function SupplierModule({ initialFilter = 'all' }: { initialFilter?: 'all
   /** Ekstre tablosunda birincil sütunları raporlama dövizinde göster */
   const [showReportingPrimary, setShowReportingPrimary] = useState(false);
   const [exportingExcel, setExportingExcel] = useState(false);
-  /** Liste filtresi: tümü / müşteri (alıcı) / satıcı (tedarikçi) */
-  const [accountTypeFilter, setAccountTypeFilter] = useState<'all' | 'customer' | 'supplier' | 'duplicates'>(initialFilter);
+  /** Liste filtresi: tümü / müşteri / tedarikçi / personel / ortak / mükerrer */
+  const [accountTypeFilter, setAccountTypeFilter] = useState<CariListFilter>(initialFilter);
   const [columnVisibility, setColumnVisibility] = useState(loadSupplierListColumnVisibility);
+  const [mergeOpen, setMergeOpen] = useState(false);
 
   useEffect(() => {
     setAccountTypeFilter(initialFilter);
@@ -941,6 +945,8 @@ export function SupplierModule({ initialFilter = 'all' }: { initialFilter?: 'all
       )
     : { side: '' as const, sideLabel: '', hint: '' };
 
+  const isPartyTab = accountTypeFilter === 'employee' || accountTypeFilter === 'partner';
+
   return (
     <div className="h-full min-h-0 flex flex-col" onClick={() => setContextMenu(null)}>
       {/* Header */}
@@ -948,7 +954,7 @@ export function SupplierModule({ initialFilter = 'all' }: { initialFilter?: 'all
         <div className="flex items-center justify-between">
           <div className="flex items-center gap-2">
             <Users className="w-4 h-4" />
-            <h2 className="text-sm font-semibold">{t.menu?.currentAccounts || 'Cari Hesap / Personel'}</h2>
+            <h2 className="text-sm font-semibold">{t.menu?.currentAccounts || 'Cari Hesap Yönetimi'}</h2>
             <span className="text-blue-100 text-[10px] ml-2">• {suppliers.length} {tm('account')}</span>
           </div>
           <div className="flex gap-1.5 items-center">
@@ -975,6 +981,15 @@ export function SupplierModule({ initialFilter = 'all' }: { initialFilter?: 'all
             >
               <Download className={`w-3 h-3 ${exportingExcel ? 'animate-pulse' : ''}`} />
               <span>{tm('export')} Excel</span>
+            </button>
+            <button
+              type="button"
+              onClick={() => setMergeOpen(true)}
+              className="flex items-center gap-1 px-2 py-1 bg-rose-100 text-rose-800 hover:bg-rose-50 transition-colors text-[10px] font-bold"
+              title="İki cariyi birleştir"
+            >
+              <GitMerge className="w-3 h-3" />
+              <span>Birleştir</span>
             </button>
             <button
               type="button"
@@ -1005,6 +1020,8 @@ export function SupplierModule({ initialFilter = 'all' }: { initialFilter?: 'all
                 { key: 'customer' as const, label: tm('buyersLabel') || `${tm('customer')} (Alıcı)` },
                 { key: 'duplicates' as const, label: 'Mükerrerler' },
                 { key: 'supplier' as const, label: tm('sellersLabel') || `${tm('supplierLabel')} (Satıcı)` },
+                { key: 'employee' as const, label: (t as { party?: { cardType?: { employee?: string } } }).party?.cardType?.employee || 'Personel' },
+                { key: 'partner' as const, label: (t as { party?: { cardType?: { partner?: string } } }).party?.cardType?.partner || 'Şirket Ortağı' },
               ] as const
             ).map((tab) => (
               <button
@@ -1017,6 +1034,10 @@ export function SupplierModule({ initialFilter = 'all' }: { initialFilter?: 'all
                       ? 'bg-orange-600 text-white'
                       : tab.key === 'duplicates'
                         ? 'bg-red-600 text-white'
+                        : tab.key === 'employee'
+                          ? 'bg-emerald-600 text-white'
+                          : tab.key === 'partner'
+                            ? 'bg-purple-600 text-white'
                       : 'bg-blue-600 text-white'
                     : 'bg-gray-100 text-gray-600 hover:bg-gray-200'
                 }`}
@@ -1025,6 +1046,7 @@ export function SupplierModule({ initialFilter = 'all' }: { initialFilter?: 'all
               </button>
             ))}
           </div>
+          {!isPartyTab && (
           <div className="relative">
             <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" />
             <input
@@ -1035,8 +1057,14 @@ export function SupplierModule({ initialFilter = 'all' }: { initialFilter?: 'all
               className="w-full pl-10 pr-4 py-1.5 text-sm border border-gray-300 rounded focus:outline-none focus:ring-2 focus:ring-blue-500"
             />
           </div>
+          )}
         </div>
 
+        {isPartyTab ? (
+          <div className="flex-1 min-h-0 overflow-hidden bg-white rounded border border-gray-200 p-3">
+            <PartiesModule embedded initialTab={accountTypeFilter} />
+          </div>
+        ) : (
         <div className="flex-1 min-h-0 flex flex-col rounded border border-gray-200 bg-white overflow-hidden">
           <p className="text-[10px] text-gray-500 px-3 py-1.5 border-b border-gray-100 bg-gray-50 shrink-0">
             {tm('accountStatementClickHint') || 'Ekstre için satıra tıklayın veya dosya ikonuna basın'}
@@ -1062,6 +1090,7 @@ export function SupplierModule({ initialFilter = 'all' }: { initialFilter?: 'all
             />
           )}
         </div>
+        )}
       </div>
 
       {/* Tam ekran — hesap hareketleri / ekstre (body portalı — üst layout üstünde) */}
@@ -1310,6 +1339,15 @@ export function SupplierModule({ initialFilter = 'all' }: { initialFilter?: 'all
           initialPhone={callerIdPhone ?? undefined}
           onClose={handleModalClose}
           onSaved={handleModalSaved}
+        />
+      )}
+      {mergeOpen && (
+        <PartyMergeModal
+          onClose={() => setMergeOpen(false)}
+          onSaved={() => {
+            setMergeOpen(false);
+            void loadSuppliers();
+          }}
         />
       )}
       {cashAction && defaultKasa && (

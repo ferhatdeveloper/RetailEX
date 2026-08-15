@@ -440,7 +440,8 @@ export function DashboardModule({ products, customers, sales, setCurrentScreen, 
                   onClick={() => {
                     if (action.id === 'newsale') setCurrentScreen('salesinvoice');
                     else if (action.id === 'addproduct') setCurrentScreen('products');
-                    else if (action.id === 'addcustomer') setCurrentScreen('customers');
+                    else if (action.id === 'addcustomer') setCurrentScreen('suppliers');
+                    else if (action.id === 'customers') setCurrentScreen('suppliers');
                     else setCurrentScreen(action.id);
                   }}
                   className={`group bg-gradient-to-br ${action.color} rounded-lg p-2 text-white transition-all duration-300 hover:scale-105 hover:shadow-lg`}

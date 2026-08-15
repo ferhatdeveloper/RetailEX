@@ -54,7 +54,6 @@ const MizanReportModule = lazyWithChunkRecovery(() => import('../accounting/repo
 const IncomeStatementReport = lazyWithChunkRecovery(() => import('../accounting/reports/IncomeStatementReport').then(m => ({ default: m.IncomeStatementReport })));
 const BalanceSheetReport = lazyWithChunkRecovery(() => import('../accounting/reports/BalanceSheetReport').then(m => ({ default: m.BalanceSheetReport })));
 const SupplierModule = lazyWithChunkRecovery(() => import('../trading/contacts/SupplierModule').then(m => ({ default: m.SupplierModule })));
-const PartiesModule = lazyWithChunkRecovery(() => import('../trading/parties/PartiesModule').then(m => ({ default: m.PartiesModule })));
 const CariDevirFisiModule = lazyWithChunkRecovery(() => import('../trading/contacts/CariDevirFisiModule').then(m => ({ default: m.CariDevirFisiModule })));
 const StokDevirFisiModule = lazyWithChunkRecovery(() => import('../inventory/stock/StokDevirFisiModule').then(m => ({ default: m.StokDevirFisiModule })));
 const CustomerCallPlanModule = lazyWithChunkRecovery(() => import('../trading/contacts/CustomerCallPlanModule').then(m => ({ default: m.CustomerCallPlanModule })));
@@ -1107,9 +1106,8 @@ export function ManagementModule({
 
         case 'suppliers_def':
         case 'suppliers':
-          return <SupplierModule key="suppliers" />;
         case 'cari-yonetimi':
-          return <PartiesModule key="cari-yonetimi" />;
+          return <SupplierModule key="suppliers" />;
         case 'cari-devir':
           return <CariDevirFisiModule />;
         case 'stok-devir':
