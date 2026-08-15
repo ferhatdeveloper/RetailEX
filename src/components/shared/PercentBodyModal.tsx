@@ -61,7 +61,7 @@ export function PercentBodyModal({
       onClick={overlayCloseArmed ? onClose : undefined}
     >
       <div
-        className={`flex flex-col shadow-2xl overflow-hidden rounded-xl isolate bg-white text-gray-900 min-h-0 ${shellClassName}`}
+        className={`flex flex-col shadow-2xl overflow-hidden rounded-xl isolate bg-white text-gray-900 min-h-0 [&>form]:flex [&>form]:h-full [&>form]:min-h-0 [&>form]:flex-col [&>form]:overflow-hidden ${shellClassName}`}
         style={PERCENT_BODY_MODAL_SIZES[size]}
         onClick={(e) => e.stopPropagation()}
       >

@@ -183,7 +183,7 @@ export function PartyEditModal({ initial, defaultCardType, onClose, onSaved }: P
 
   return (
     <PercentBodyModal onClose={onClose} size="list" ariaLabel={title}>
-      <form onSubmit={handleSubmit} className="flex flex-col min-h-0 max-h-full">
+      <form onSubmit={handleSubmit} className="flex flex-col h-full min-h-0 overflow-hidden">
         <div
           className={`${HEADER_GRAD[form.card_type]} px-6 py-4 text-white shrink-0 flex items-center justify-between gap-3`}
         >
@@ -376,13 +376,13 @@ export function PartyEditModal({ initial, defaultCardType, onClose, onSaved }: P
           )}
         </PercentBodyModalScrollBody>
 
-        <div className="p-4 border-t border-slate-100 bg-slate-50/50 flex gap-3 shrink-0">
+        <div className="p-4 border-t border-slate-100 bg-slate-50 flex gap-3 shrink-0 mt-auto">
           <button
             type="button"
             onClick={onClose}
             className="flex-1 rounded-2xl border-2 border-slate-200 text-slate-600 font-bold uppercase text-sm tracking-wider py-3 hover:bg-slate-100 active:scale-[0.98] transition"
           >
-            {t('common.cancel')}
+            {t('common.cancel', 'İptal')}
           </button>
           <button
             type="submit"
@@ -390,7 +390,7 @@ export function PartyEditModal({ initial, defaultCardType, onClose, onSaved }: P
             className="flex-1 rounded-2xl bg-blue-600 text-white font-bold uppercase text-sm tracking-wider py-3 shadow-lg shadow-blue-200/50 hover:bg-blue-700 disabled:opacity-50 active:scale-[0.98] transition inline-flex items-center justify-center gap-2"
           >
             {saving ? <Loader2 className="w-4 h-4 animate-spin" /> : null}
-            {isEdit ? t('common.update') : t('common.create')}
+            {isEdit ? t('common.update', 'Güncelle') : t('common.create', 'Kaydet')}
           </button>
         </div>
       </form>

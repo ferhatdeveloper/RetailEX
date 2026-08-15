@@ -215,7 +215,7 @@ export function SupplierEditModal({
           e.preventDefault();
           void handleSave();
         }}
-        className="flex flex-col min-h-0 max-h-full"
+        className="flex flex-col h-full min-h-0 overflow-hidden"
       >
         <div className={`${headerGrad} px-8 py-6 text-white shrink-0 flex items-center justify-between`}>
           <div className="min-w-0">
@@ -459,7 +459,7 @@ export function SupplierEditModal({
           </div>
         </PercentBodyModalScrollBody>
 
-        <div className="p-6 border-t border-slate-100 bg-slate-50/50 flex gap-4 shrink-0">
+        <div className="p-6 border-t border-slate-100 bg-slate-50 flex gap-4 shrink-0 mt-auto">
           <button
             type="button"
             onClick={onClose}
