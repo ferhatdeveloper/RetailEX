@@ -1,5 +1,5 @@
 import React, { useEffect, useState } from 'react';
-import { useLanguage } from '../../../contexts/LanguageContext';
+import { useNestedT } from './useNestedT';
 import {
   PercentBodyModal,
   PercentBodyModalScrollBody,
@@ -45,7 +45,7 @@ const CARD_TYPE_OPTIONS: { value: PartyCardType; labelKey: string; color: string
 ];
 
 export function PartyEditModal({ initial, defaultCardType, onClose, onSaved }: PartyEditModalProps) {
-  const { t } = useLanguage();
+  const t = useNestedT();
   const isEdit = !!initial;
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);

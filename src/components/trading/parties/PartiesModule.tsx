@@ -1,5 +1,4 @@
 import React, { useEffect, useMemo, useState } from 'react';
-import { useLanguage } from '../../../contexts/LanguageContext';
 import { partyAPI } from '../../../services/api/parties';
 import { partnerAPI } from '../../../services/api/partiesPartners';
 import { employeeAPI } from '../../../services/api/partiesEmployees';
@@ -27,21 +26,7 @@ import {
 } from 'lucide-react';
 import type { Party, PartyCardType } from '../../../core/types/models';
 import { shortUuid } from './PartyMergeModal';
-
-/** useLanguage `t` objesi için nokta-sözdizimli getter (t('a.b.c') → t.a.b.c). */
-function makeT(t: any): (key: string, fallback?: string) => string {
-  return (key: string, fallback?: string) => {
-    const parts = key.split('.');
-    let cur: any = t;
-    for (const p of parts) {
-      if (cur == null) return fallback ?? key;
-      cur = cur[p];
-    }
-    if (cur == null) return fallback ?? key;
-    if (typeof cur === 'string') return cur;
-    return fallback ?? key;
-  };
-}
+import { useNestedT } from './useNestedT';
 
 type Tab = 'all' | PartyCardType;
 
@@ -54,8 +39,7 @@ const TABS: { value: Tab; labelKey: string; color: string }[] = [
 ];
 
 export function PartiesModule() {
-  const { t: tObj } = useLanguage();
-  const t = useMemo(() => makeT(tObj), [tObj]);
+  const t = useNestedT();
   const [tab, setTab] = useState<Tab>('all');
   const [items, setItems] = useState<Party[]>([]);
   const [loading, setLoading] = useState(false);
@@ -274,7 +258,7 @@ export function PartiesModule() {
                     {formatMoney(p.balance)}
                   </td>
                   <td className="px-4 py-3 text-slate-600">
-                    {p.card_type === 'partner' ? `${p.share_pct?.toFixed(2) || 0}%` : '—'}
+                    {p.card_type === 'partner' ? `${Number(p.share_pct || 0).toFixed(2)}%` : '—'}
                   </td>
                   <td className="px-4 py-3 text-right">
                     <div className="inline-flex items-center gap-1">
@@ -364,16 +348,19 @@ export function PartiesModule() {
   );
 }
 
-function formatMoney(n?: number): string {
-  if (n == null) return '—';
-  return new Intl.NumberFormat('tr-TR', { maximumFractionDigits: 2 }).format(n);
+function formatMoney(n?: number | string | null): string {
+  if (n == null || n === '') return '—';
+  const num = Number(n);
+  if (!Number.isFinite(num)) return '—';
+  return new Intl.NumberFormat('tr-TR', { maximumFractionDigits: 2 }).format(num);
 }
 
-function typeColor(ct: PartyCardType): string {
+function typeColor(ct: PartyCardType | string | null | undefined): string {
   switch (ct) {
     case 'customer': return 'bg-blue-100 text-blue-700';
     case 'supplier': return 'bg-amber-100 text-amber-700';
     case 'employee': return 'bg-emerald-100 text-emerald-700';
     case 'partner': return 'bg-purple-100 text-purple-700';
+    default: return 'bg-slate-100 text-slate-700';
   }
 }

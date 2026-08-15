@@ -1,5 +1,5 @@
 import React, { useEffect, useMemo, useState } from 'react';
-import { useLanguage } from '../../../contexts/LanguageContext';
+import { useNestedT } from './useNestedT';
 import {
   PercentBodyModal,
   PercentBodyModalScrollBody,
@@ -42,7 +42,7 @@ const TRIGGER_OPTIONS: { value: PartnerDistributionMode; labelKey: string }[] = 
 ];
 
 export function PartnerDistributionModal({ onClose, onSaved }: PartnerDistributionModalProps) {
-  const { t } = useLanguage();
+  const t = useNestedT();
   const [settings, setSettings] = useState<PartnerSettings | null>(null);
   const [partners, setPartners] = useState<PartyPartner[]>([]);
   const [registers, setRegisters] = useState<Kasa[]>([]);
@@ -258,7 +258,7 @@ export function PartnerDistributionModal({ onClose, onSaved }: PartnerDistributi
                   {t('party.distribution.previewTitle')}
                 </span>
                 <span className="text-xs text-slate-500">
-                  {t('party.distribution.totalPct')}: <strong>{preview.totalPct.toFixed(2)}%</strong>
+                  {t('party.distribution.totalPct')}: <strong>{Number(preview.totalPct).toFixed(2)}%</strong>
                 </span>
               </div>
               <table className="w-full text-sm">
@@ -273,13 +273,13 @@ export function PartnerDistributionModal({ onClose, onSaved }: PartnerDistributi
                   {preview.partners.map((p) => (
                     <tr key={p.partner.id} className="border-t border-slate-100">
                       <td className="px-4 py-2 font-medium">{p.partner.name}</td>
-                      <td className="px-4 py-2 text-right font-mono">{p.sharePct.toFixed(2)}%</td>
+                      <td className="px-4 py-2 text-right font-mono">{Number(p.sharePct).toFixed(2)}%</td>
                       <td className="px-4 py-2 text-right font-mono font-bold">{formatMoney(p.amount)}</td>
                     </tr>
                   ))}
                   <tr className="border-t-2 border-slate-200 bg-slate-50 font-bold">
                     <td className="px-4 py-2 text-right">{t('party.distribution.total')}</td>
-                    <td className="px-4 py-2 text-right font-mono">{preview.totalPct.toFixed(2)}%</td>
+                    <td className="px-4 py-2 text-right font-mono">{Number(preview.totalPct).toFixed(2)}%</td>
                     <td className="px-4 py-2 text-right font-mono">{formatMoney(totalAllocated)}</td>
                   </tr>
                 </tbody>
@@ -341,6 +341,8 @@ export function PartnerDistributionModal({ onClose, onSaved }: PartnerDistributi
   );
 }
 
-function formatMoney(n: number): string {
-  return new Intl.NumberFormat('tr-TR', { maximumFractionDigits: 2 }).format(n);
+function formatMoney(n: number | string | null | undefined): string {
+  const num = Number(n);
+  if (!Number.isFinite(num)) return '—';
+  return new Intl.NumberFormat('tr-TR', { maximumFractionDigits: 2 }).format(num);
 }

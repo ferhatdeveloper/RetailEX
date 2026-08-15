@@ -9,7 +9,7 @@
  */
 
 import React, { useEffect, useMemo, useState } from 'react';
-import { useLanguage } from '../../../contexts/LanguageContext';
+import { useNestedT } from './useNestedT';
 import { partyAPI, type Party } from '../../../services/api/parties';
 import {
   executeMerge,
@@ -49,21 +49,7 @@ export function PartyMergeModal({
   onClose,
   onSaved,
 }: PartyMergeModalProps) {
-  const { t: tObj } = useLanguage();
-  const t = useMemo(
-    () => (key: string, fallback?: string) => {
-      const parts = key.split('.');
-      let cur: any = tObj;
-      for (const p of parts) {
-        if (cur == null) return fallback ?? key;
-        cur = cur[p];
-      }
-      if (cur == null) return fallback ?? key;
-      if (typeof cur === 'string') return cur;
-      return fallback ?? key;
-    },
-    [tObj]
-  );
+  const t = useNestedT();
   const [sourceId, setSourceId] = useState<string | null>(initialSource?.id ?? null);
   const [targetId, setTargetId] = useState<string | null>(initialTarget?.id ?? null);
   const [sourceSearch, setSourceSearch] = useState('');
@@ -248,11 +234,11 @@ export function PartyMergeModal({
               </p>
               <div className="flex items-center gap-2 font-mono">
                 <span className="text-slate-500">
-                  {(preview.sourceParty.balance ?? 0).toFixed(2)} (kaynak)
+                  {Number(preview.sourceParty.balance ?? 0).toFixed(2)} (kaynak)
                 </span>
                 <span className="text-slate-400">+</span>
                 <span className="text-slate-500">
-                  {(preview.targetParty.balance ?? 0).toFixed(2)} (hedef)
+                  {Number(preview.targetParty.balance ?? 0).toFixed(2)} (hedef)
                 </span>
                 <span className="text-slate-400">=</span>
                 <span
@@ -260,7 +246,7 @@ export function PartyMergeModal({
                     preview.projectedTargetBalance >= 0 ? 'text-emerald-700' : 'text-rose-700'
                   }`}
                 >
-                  {preview.projectedTargetBalance.toFixed(2)}
+                  {Number(preview.projectedTargetBalance).toFixed(2)}
                 </span>
               </div>
               {!preview.sameCardType && (
@@ -465,7 +451,7 @@ function PartyPicker({
         >
           <span className="font-bold">{selected.name}</span>{' '}
           <span className="font-mono text-[10px] opacity-70">({selected.code || '—'})</span>{' '}
-          <span className="opacity-60">— Bakiye {(selected.balance ?? 0).toFixed(2)}</span>
+          <span className="opacity-60">— Bakiye {Number(selected.balance ?? 0).toFixed(2)}</span>
         </div>
       )}
     </div>
@@ -498,7 +484,7 @@ function PartyCard({ party, accent }: { party: Party; accent: 'rose' | 'emerald'
             (party.balance ?? 0) >= 0 ? 'text-emerald-700' : 'text-rose-700'
           }`}
         >
-          {(party.balance ?? 0).toFixed(2)}
+          {Number(party.balance ?? 0).toFixed(2)}
         </span>
       </div>
     </div>
@@ -523,7 +509,7 @@ function PartyTypeBadge({ type }: { type: PartyCardType }) {
     employee: { label: 'Personel', cls: 'bg-emerald-100 text-emerald-700' },
     partner: { label: 'Ortak', cls: 'bg-purple-100 text-purple-700' },
   };
-  const m = map[type];
+  const m = map[type] ?? { label: String(type || '—'), cls: 'bg-slate-100 text-slate-700' };
   return (
     <span className={`shrink-0 px-2 py-0.5 rounded-full text-[9px] font-black uppercase ${m.cls}`}>
       {m.label}

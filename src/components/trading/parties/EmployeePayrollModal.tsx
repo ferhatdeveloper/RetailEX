@@ -1,5 +1,5 @@
-import React, { useEffect, useMemo, useState } from 'react';
-import { useLanguage } from '../../../contexts/LanguageContext';
+import React, { useEffect, useState } from 'react';
+import { useNestedT } from './useNestedT';
 import {
   PercentBodyModal,
   PercentBodyModalScrollBody,
@@ -19,7 +19,7 @@ export interface EmployeePayrollModalProps {
 type Action = 'salary' | 'advance' | 'reconcile';
 
 export function EmployeePayrollModal({ employee, onClose, onSaved }: EmployeePayrollModalProps) {
-  const { t } = useLanguage();
+  const t = useNestedT();
   const [action, setAction] = useState<Action>('salary');
   const [amount, setAmount] = useState('');
   const [registerId, setRegisterId] = useState('');
@@ -237,7 +237,9 @@ function ActionButton({ active, onClick, label }: { active: boolean; onClick: ()
   );
 }
 
-function formatMoney(n?: number): string {
-  if (n == null) return '—';
-  return new Intl.NumberFormat('tr-TR', { maximumFractionDigits: 2 }).format(n);
+function formatMoney(n?: number | string | null): string {
+  if (n == null || n === '') return '—';
+  const num = Number(n);
+  if (!Number.isFinite(num)) return '—';
+  return new Intl.NumberFormat('tr-TR', { maximumFractionDigits: 2 }).format(num);
 }
