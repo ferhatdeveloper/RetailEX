@@ -65,6 +65,7 @@ export function WhatsAppBulkSendPreviewModal({
     initialMessageLang ?? normalizeWhatsAppMessageLang(language),
   );
   const [localItems, setLocalItems] = useState<WhatsAppBulkPreviewItem[]>(items);
+  const [selectedIds, setSelectedIds] = useState<string[]>(() => items.map((i) => i.id));
   const [rebuilding, setRebuilding] = useState(false);
   const [intervalMs, setIntervalMs] = useState(DEFAULT_WHATSAPP_BULK_INTERVAL_MS);
   const [running, setRunning] = useState(false);
@@ -148,6 +149,7 @@ export function WhatsAppBulkSendPreviewModal({
       return;
     }
     setLocalItems(items);
+    setSelectedIds(items.map((i) => i.id));
     setMessageLang(initialMessageLang ?? normalizeWhatsAppMessageLang(language));
     void refreshConnection();
   }, [open, items, initialMessageLang, language, refreshConnection]);
@@ -159,6 +161,10 @@ export function WhatsAppBulkSendPreviewModal({
     try {
       const next = await onRebuildItems(lang);
       setLocalItems(next);
+      setSelectedIds((prev) => {
+        const keep = next.map((i) => i.id).filter((id) => prev.includes(id));
+        return keep.length ? keep : next.map((i) => i.id);
+      });
     } catch (e: unknown) {
       toast.error(e instanceof Error ? e.message : String(e));
     } finally {
@@ -166,9 +172,25 @@ export function WhatsAppBulkSendPreviewModal({
     }
   };
 
+  const selectedItems = useMemo(
+    () => localItems.filter((i) => selectedIds.includes(i.id)),
+    [localItems, selectedIds],
+  );
+
+  const allPreviewSelected = localItems.length > 0 && selectedItems.length === localItems.length;
+
+  const togglePreviewItem = (id: string) => {
+    setSelectedIds((prev) => (prev.includes(id) ? prev.filter((x) => x !== id) : [...prev, id]));
+  };
+
+  const togglePreviewAll = () => {
+    if (allPreviewSelected) setSelectedIds([]);
+    else setSelectedIds(localItems.map((i) => i.id));
+  };
+
   const estSec = useMemo(
-    () => estimateBulkDurationSec(localItems.length, intervalMs),
-    [localItems.length, intervalMs],
+    () => estimateBulkDurationSec(selectedItems.length, intervalMs),
+    [selectedItems.length, intervalMs],
   );
 
   const connectionBadge = useMemo(() => {
@@ -185,11 +207,11 @@ export function WhatsAppBulkSendPreviewModal({
   }, [waConn, tm]);
 
   const handleEnqueueOnly = async () => {
-    if (!localItems.length || running) return;
+    if (!selectedItems.length || running) return;
     setRunning(true);
     abortRef.current = false;
     try {
-      const result = await runWhatsAppBulkCampaign(localItems, {
+      const result = await runWhatsAppBulkCampaign(selectedItems, {
         enqueueOnly: true,
         onProgress: setProgress,
       });
@@ -206,7 +228,7 @@ export function WhatsAppBulkSendPreviewModal({
   };
 
   const handleAutoSend = async () => {
-    if (!localItems.length || running) return;
+    if (!selectedItems.length || running) return;
     if (!waConn.connected && waConn.provider === 'EMBEDDED') {
       toast.error(tm('msgNotifyBulkWaNeedQr'));
       setActiveTab('connection');
@@ -215,7 +237,7 @@ export function WhatsAppBulkSendPreviewModal({
     setRunning(true);
     abortRef.current = false;
     try {
-      const result = await runWhatsAppBulkCampaign(localItems, {
+      const result = await runWhatsAppBulkCampaign(selectedItems, {
         intervalMs,
         shouldAbort: () => abortRef.current,
         onProgress: setProgress,
@@ -270,7 +292,7 @@ export function WhatsAppBulkSendPreviewModal({
           </h2>
           <div className="flex flex-wrap items-center gap-2 mt-1">
             <p className="text-xs text-gray-500">
-              {tm('msgNotifyBulkPreviewCount').replace('{n}', String(localItems.length))}
+              {tm('msgNotifyBulkPreviewCount').replace('{n}', String(selectedItems.length))}
             </p>
             <span
               className={`inline-flex items-center gap-1 rounded-full border px-2 py-0.5 text-[10px] font-bold ${badgeCls}`}
@@ -461,6 +483,16 @@ export function WhatsAppBulkSendPreviewModal({
                 <table className="w-full text-xs">
                   <thead>
                     <tr className="bg-gray-50/90 text-left text-[10px] font-black uppercase tracking-wider text-gray-400 border-b border-gray-100 sticky top-0 z-10">
+                      <th className="py-2.5 px-3 w-10">
+                        <input
+                          type="checkbox"
+                          className="w-3.5 h-3.5 rounded border-gray-300 text-emerald-600"
+                          checked={allPreviewSelected}
+                          onChange={togglePreviewAll}
+                          disabled={running}
+                          title={tm('msgNotifySelectAll')}
+                        />
+                      </th>
                       <th className="py-2.5 px-3 w-8">#</th>
                       <th className="py-2.5 px-3">{tm('customer')}</th>
                       <th className="py-2.5 px-3">{tm('msgNotifyBulkPhone')}</th>
@@ -472,8 +504,19 @@ export function WhatsAppBulkSendPreviewModal({
                     {localItems.map((item, idx) => (
                       <tr
                         key={item.id}
-                        className="border-b border-gray-50 align-top hover:bg-emerald-50/20"
+                        className={`border-b border-gray-50 align-top hover:bg-emerald-50/20 ${
+                          selectedIds.includes(item.id) ? 'bg-emerald-50/40' : ''
+                        }`}
                       >
+                        <td className="py-2.5 px-3">
+                          <input
+                            type="checkbox"
+                            className="w-3.5 h-3.5 rounded border-gray-300 text-emerald-600"
+                            checked={selectedIds.includes(item.id)}
+                            disabled={running}
+                            onChange={() => togglePreviewItem(item.id)}
+                          />
+                        </td>
                         <td className="py-2.5 px-3 text-gray-400 tabular-nums">{idx + 1}</td>
                         <td className="py-2.5 px-3 font-medium text-gray-800 whitespace-nowrap">
                           {item.name}
@@ -513,7 +556,7 @@ export function WhatsAppBulkSendPreviewModal({
               <>
                 <button
                   type="button"
-                  disabled={!localItems.length || rebuilding}
+                  disabled={!selectedItems.length || rebuilding}
                   onClick={() => void handleEnqueueOnly()}
                   className="inline-flex items-center gap-2 rounded-xl border border-gray-200 bg-white text-gray-700 font-bold px-4 py-2.5 text-sm disabled:opacity-50"
                 >
@@ -521,7 +564,7 @@ export function WhatsAppBulkSendPreviewModal({
                 </button>
                 <button
                   type="button"
-                  disabled={!localItems.length || rebuilding}
+                  disabled={!selectedItems.length || rebuilding}
                   onClick={() => void handleAutoSend()}
                   className="inline-flex items-center gap-2 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white font-bold px-4 py-2.5 text-sm disabled:opacity-50"
                 >

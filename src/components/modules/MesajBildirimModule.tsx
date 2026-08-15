@@ -1,7 +1,7 @@
 /**
  * Mesaj Bildirim — müşterilere WhatsApp ile tekli / çoklu / toplu / grup bildirimi.
  */
-import React, { useCallback, useEffect, useMemo, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
   Send,
   Users,
@@ -36,6 +36,7 @@ import type { BeautyFollowUpReminder } from '../../types/beauty';
 import {
   filterFollowUpRemindersForBulk,
   buildFollowUpBulkPreviewList,
+  followUpReminderKey,
 } from '../../utils/followUpWhatsAppSend';
 import { WhatsAppBulkSendPreviewModal } from '../shared/WhatsAppBulkSendPreviewModal';
 import type { WhatsAppBulkPreviewItem } from '../../utils/whatsappBulkSend';
@@ -102,8 +103,9 @@ export function MesajBildirimModule({
   const [provider, setProvider] = useState('NONE');
   const [stats, setStats] = useState({ pending: 0, sent: 0, failed: 0 });
 
-  const [mode, setMode] = useState<NotifyMode>(hasFollowUpContext ? 'follow_up_range' : 'single');
+  const [mode, setMode] = useState<NotifyMode>(hasFollowUpContext ? 'follow_up_range' : 'multiple');
   const [selectedIds, setSelectedIds] = useState<string[]>([]);
+  const [selectedFollowUpKeys, setSelectedFollowUpKeys] = useState<string[]>([]);
   const [groupFilter, setGroupFilter] = useState<CustomerGroupFilter>({});
   const [messageText, setMessageText] = useState(() =>
     getFreeTextPresetTemplate('customer_greeting', normalizeWhatsAppMessageLang(language)),
@@ -204,11 +206,29 @@ export function MesajBildirimModule({
     [followUpReminders],
   );
 
+  const followUpClearedRef = useRef(false);
+
+  useEffect(() => {
+    const keys = followUpBulkRows.map(followUpReminderKey);
+    setSelectedFollowUpKeys((prev) => {
+      if (followUpClearedRef.current) return prev.filter((k) => keys.includes(k));
+      if (prev.length === 0) return keys;
+      const allowed = new Set(keys);
+      const keep = prev.filter((k) => allowed.has(k));
+      return keep.length ? keep : keys;
+    });
+  }, [followUpBulkRows]);
+
+  const selectedFollowUpRows = useMemo(
+    () => followUpBulkRows.filter((r) => selectedFollowUpKeys.includes(followUpReminderKey(r))),
+    [followUpBulkRows, selectedFollowUpKeys],
+  );
+
   const [resolvedCount, setResolvedCount] = useState(0);
 
   useEffect(() => {
     if (mode === 'follow_up_range') {
-      setResolvedCount(followUpBulkRows.length);
+      setResolvedCount(selectedFollowUpRows.length);
       return;
     }
     let cancelled = false;
@@ -220,7 +240,7 @@ export function MesajBildirimModule({
     return () => {
       cancelled = true;
     };
-  }, [mode, selectedIds, groupFilter, customers, followUpBulkRows.length]);
+  }, [mode, selectedIds, groupFilter, customers, selectedFollowUpRows.length]);
 
   const previewMessage = useMemo(() => {
     if (mode === 'follow_up_range' && followUpBulkRows[0]) {
@@ -275,13 +295,37 @@ export function MesajBildirimModule({
   ]);
 
   const toggleCustomer = (id: string) => {
-    if (mode === 'single' || mode === 'follow_up_range') {
+    if (mode === 'single') {
       setSelectedIds([id]);
       return;
     }
     setSelectedIds((prev) =>
       prev.includes(id) ? prev.filter((x) => x !== id) : [...prev, id],
     );
+  };
+
+  const toggleFollowUp = (key: string) => {
+    setSelectedFollowUpKeys((prev) => {
+      const next = prev.includes(key) ? prev.filter((x) => x !== key) : [...prev, key];
+      followUpClearedRef.current = next.length === 0;
+      return next;
+    });
+  };
+
+  const selectAllFilteredCustomers = () => {
+    setSelectedIds(filteredCustomers.map((c) => c.id));
+    if (mode === 'single') setMode('multiple');
+  };
+
+  const clearCustomerSelection = () => setSelectedIds([]);
+
+  const selectAllFollowUps = () => {
+    followUpClearedRef.current = false;
+    setSelectedFollowUpKeys(followUpBulkRows.map(followUpReminderKey));
+  };
+  const clearFollowUpSelection = () => {
+    followUpClearedRef.current = true;
+    setSelectedFollowUpKeys([]);
   };
 
   const handlePrepareSend = async () => {
@@ -293,11 +337,11 @@ export function MesajBildirimModule({
     try {
       let items: WhatsAppBulkPreviewItem[] = [];
       if (mode === 'follow_up_range') {
-        if (followUpBulkRows.length === 0) {
+        if (selectedFollowUpRows.length === 0) {
           toast.warning(tm('msgNotifyNoRecipients'));
           return;
         }
-        items = await buildFollowUpBulkPreviewList(followUpReminders, { lang: messageLang });
+        items = await buildFollowUpBulkPreviewList(selectedFollowUpRows, { lang: messageLang });
         setBulkPreviewTitle(tm('msgNotifyModeFollowUpRange'));
       } else {
         const recipients = await customerNotificationService.resolveRecipients({
@@ -339,7 +383,7 @@ export function MesajBildirimModule({
   const rebuildBulkPreviewItems = useCallback(
     async (lang: WhatsAppMessageLang): Promise<WhatsAppBulkPreviewItem[]> => {
       if (mode === 'follow_up_range') {
-        return buildFollowUpBulkPreviewList(followUpReminders, { lang });
+        return buildFollowUpBulkPreviewList(selectedFollowUpRows, { lang });
       }
       const recipients = await customerNotificationService.resolveRecipients({
         mode: mode as CustomerNotifyAudience,
@@ -366,7 +410,7 @@ export function MesajBildirimModule({
         eventType: 'customer_broadcast',
       });
     },
-    [mode, followUpReminders, selectedIds, groupFilter, isMeta, metaParams, freeTextPreset, messageText],
+    [mode, followUpReminders, selectedFollowUpRows, selectedIds, groupFilter, isMeta, metaParams, freeTextPreset, messageText],
   );
 
   const handleProcessQueue = async () => {
@@ -557,25 +601,56 @@ export function MesajBildirimModule({
                   {tm('msgNotifyFollowUpRangeEmpty')}
                 </p>
               ) : (
-                <div className="max-h-52 overflow-y-auto rounded-lg border border-gray-200 divide-y divide-gray-100">
-                  {followUpBulkRows.map((r) => {
-                    const service =
-                      r.reminder_kind === 'product' && r.product_name?.trim()
-                        ? r.product_name.trim()
-                        : r.service_name?.trim() || '—';
-                    return (
-                      <div
-                        key={`${r.customer_id}-${r.service_id}-${r.due_date}-${r.product_id ?? ''}`}
-                        className="flex items-center gap-3 px-3 py-2 text-sm"
-                      >
-                        <span className="font-medium truncate">{r.customer_name ?? '—'}</span>
-                        <span className="text-xs text-gray-500 truncate">{service}</span>
-                        <span className="text-xs text-gray-400 shrink-0">{r.due_date}</span>
-                        <span className="text-xs text-gray-500 ml-auto shrink-0">{r.customer_phone}</span>
-                      </div>
-                    );
-                  })}
-                </div>
+                <>
+                  <div className="flex flex-wrap items-center gap-2">
+                    <button
+                      type="button"
+                      onClick={selectAllFollowUps}
+                      className="text-xs font-bold text-emerald-700 hover:underline"
+                    >
+                      {tm('msgNotifySelectAll')}
+                    </button>
+                    <span className="text-gray-300">·</span>
+                    <button
+                      type="button"
+                      onClick={clearFollowUpSelection}
+                      className="text-xs font-bold text-gray-500 hover:underline"
+                    >
+                      {tm('msgNotifyClearSelection')}
+                    </button>
+                    <span className={`text-xs ml-auto ${darkMode ? 'text-gray-400' : 'text-gray-500'}`}>
+                      {tm('msgNotifySelectedCount').replace('{n}', String(selectedFollowUpRows.length))}
+                    </span>
+                  </div>
+                  <div className="max-h-52 overflow-y-auto rounded-lg border border-gray-200 divide-y divide-gray-100">
+                    {followUpBulkRows.map((r) => {
+                      const key = followUpReminderKey(r);
+                      const checked = selectedFollowUpKeys.includes(key);
+                      const service =
+                        r.reminder_kind === 'product' && r.product_name?.trim()
+                          ? r.product_name.trim()
+                          : r.service_name?.trim() || '—';
+                      return (
+                        <label
+                          key={key}
+                          className={`flex items-center gap-3 px-3 py-2 cursor-pointer text-sm ${
+                            checked ? 'bg-emerald-50' : ''
+                          }`}
+                        >
+                          <input
+                            type="checkbox"
+                            checked={checked}
+                            onChange={() => toggleFollowUp(key)}
+                          />
+                          <span className="font-medium truncate">{r.customer_name ?? '—'}</span>
+                          <span className="text-xs text-gray-500 truncate">{service}</span>
+                          <span className="text-xs text-gray-400 shrink-0">{r.due_date}</span>
+                          <span className="text-xs text-gray-500 ml-auto shrink-0">{r.customer_phone}</span>
+                        </label>
+                      );
+                    })}
+                  </div>
+                </>
               )}
               <p className={`text-[11px] ${darkMode ? 'text-gray-500' : 'text-gray-400'}`}>
                 {tm('msgNotifyFollowUpRangeAutoMsg')}
@@ -591,8 +666,28 @@ export function MesajBildirimModule({
                 className={inputCls}
                 placeholder={tm('msgNotifySearchCustomer')}
               />
-              <div className="max-h-52 overflow-y-auto rounded-lg border border-gray-200 divide-y divide-gray-100">
-                {filteredCustomers.slice(0, 80).map((c) => {
+              <div className="flex flex-wrap items-center gap-2">
+                <button
+                  type="button"
+                  onClick={selectAllFilteredCustomers}
+                  className="text-xs font-bold text-emerald-700 hover:underline"
+                >
+                  {tm('msgNotifySelectAll')}
+                </button>
+                <span className="text-gray-300">·</span>
+                <button
+                  type="button"
+                  onClick={clearCustomerSelection}
+                  className="text-xs font-bold text-gray-500 hover:underline"
+                >
+                  {tm('msgNotifyClearSelection')}
+                </button>
+                <span className={`text-xs ml-auto ${darkMode ? 'text-gray-400' : 'text-gray-500'}`}>
+                  {tm('msgNotifySelectedCount').replace('{n}', String(selectedIds.length))}
+                </span>
+              </div>
+              <div className="max-h-64 overflow-y-auto rounded-lg border border-gray-200 divide-y divide-gray-100">
+                {filteredCustomers.map((c) => {
                   const checked = selectedIds.includes(c.id);
                   return (
                     <label

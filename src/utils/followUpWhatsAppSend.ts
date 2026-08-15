@@ -31,6 +31,10 @@ function reminderKey(r: BeautyFollowUpReminder): string {
   return `${r.customer_id}|${r.service_id}|${r.due_date}|${r.product_id ?? ''}`;
 }
 
+export function followUpReminderKey(r: BeautyFollowUpReminder): string {
+  return reminderKey(r);
+}
+
 export type FollowUpWhatsAppBuild = {
   phone: string;
   name: string;

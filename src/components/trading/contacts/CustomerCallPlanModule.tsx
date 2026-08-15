@@ -61,6 +61,7 @@ export function CustomerCallPlanModule() {
   const [waBulkOpen, setWaBulkOpen] = useState(false);
   const [waBulkItems, setWaBulkItems] = useState<WhatsAppBulkPreviewItem[]>([]);
   const [waBulkPreparing, setWaBulkPreparing] = useState(false);
+  const [gridSelected, setGridSelected] = useState<Supplier[]>([]);
   const [ekstreAccount, setEkstreAccount] = useState<Supplier | null>(null);
   const [ekstreLoading, setEkstreLoading] = useState(false);
   const [saleInvoiceCustomer, setSaleInvoiceCustomer] = useState<Supplier | null>(null);
@@ -339,7 +340,8 @@ export function CustomerCallPlanModule() {
   };
 
   const prepareBulkWhatsApp = async () => {
-    const withPhone = filtered.filter(supplierHasWhatsAppPhone);
+    const pool = gridSelected.length > 0 ? gridSelected : filtered;
+    const withPhone = pool.filter(supplierHasWhatsAppPhone);
     if (withPhone.length === 0) {
       toast.error(tm('callPlanWaNoPhone'));
       return;
@@ -364,9 +366,10 @@ export function CustomerCallPlanModule() {
   };
 
   const rebuildWaBulkItems = useCallback(async (lang: typeof messageLang) => {
-    const withPhone = filtered.filter(supplierHasWhatsAppPhone);
+    const pool = gridSelected.length > 0 ? gridSelected : filtered;
+    const withPhone = pool.filter(supplierHasWhatsAppPhone);
     return buildCallPlanBulkPreviewList(withPhone, { preset: 'call_reminder', lang });
-  }, [filtered, messageLang]);
+  }, [filtered, gridSelected, messageLang]);
 
   const reportWeekOptions = useMemo(() => {
     const current = customerCallPlanWeeklyAPI.getCurrentWeekStart();
@@ -600,7 +603,11 @@ export function CustomerCallPlanModule() {
                 className="inline-flex items-center gap-2 rounded-lg bg-emerald-600 px-3 py-2 text-xs font-bold text-white hover:bg-emerald-700 disabled:opacity-50"
               >
                 <Send className={`h-4 w-4 ${waBulkPreparing ? 'animate-pulse' : ''}`} />
-                {waBulkPreparing ? tm('saving') : tm('callPlanWaBulk')}
+                {waBulkPreparing
+                  ? tm('saving')
+                  : gridSelected.length > 0
+                    ? tm('callPlanWaBulkSelected').replace('{n}', String(gridSelected.length))
+                    : tm('callPlanWaBulk')}
               </button>
             ) : null}
             <button
@@ -726,6 +733,8 @@ export function CustomerCallPlanModule() {
             enableSorting
             enableFiltering
             enableColumnResizing
+            enableSelection
+            onSelectionChange={setGridSelected}
             pageSize={50}
             onRowContextMenu={handleRowContextMenu}
             onRowDoubleClick={openEdit}
