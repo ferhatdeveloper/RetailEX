@@ -270,7 +270,7 @@ export interface PartyEmployee {
   hire_date?: string | null;
   department?: string;
   position?: string;
-  /** Pozitif = personele avans borcu (işletmenin personele borcu) */
+  /** Pozitif = ödenmemiş maaş alacağı (işletmenin personele borcu) */
   balance?: number;
   is_active?: boolean;
 }
@@ -294,6 +294,7 @@ export interface PartyPartner {
 // ============================================================================
 
 export type PartyLedgerTxType =
+  | 'MAAS_HAKKEDIS'
   | 'MAAS_ODEME'
   | 'AVANS_ODEME'
   | 'AVANS_MAHSUP'

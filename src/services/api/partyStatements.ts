@@ -5,18 +5,19 @@
  *   - customer: sales + cash_lines (customer_id) — müşteri kartı ekstresi
  *   - supplier: cash_lines (customer_id ile tedarikçi olarak) + purchase_invoices
  *               (mevcut customers/suppliers mantığı — burada basitleştirilmiş)
- *   - employee: cash_lines.party_id + party_ledger_movements (MAAS_ODEME/AVANS_ODEME/AVANS_MAHSUP)
+ *   - employee: party_ledger_movements (MAAS_HAKKEDIS / MAAS_ODEME / AVANS_ODEME / AVANS_MAHSUP)
  *   - partner : cash_lines.party_id + party_ledger_movements (ORTAK_DAGITIM_KAR/ZARAR/SERMAYE)
  *
  * 90 yıllık muhasebeci denetimi:
- *   - Personel pozitif balance = işletmenin personele avans borcu.
+ *   - Personel pozitif balance = ödenmemiş maaş alacağı (hakkediş − ödeme/avans).
  *   - Ortağı pozitif balance = dağıtılmamış kâr payı (işletme ortağa borçlu).
- *   - sign alanı +1 / −1 / 0 (mahsup) ile yön; abs * sign toplama yansır.
+ *   - Personel yönü transaction_type ile hesaplanır (eski sign alanına güvenilmez).
  */
 
 import { postgres, ERP_SETTINGS } from '../postgres';
 import { normalizeFirmTableNr } from './accountBalance';
 import { ensurePartyPeriodTables } from './ensurePartyPeriodTables';
+import { employeeStatementSides } from './partyEmployeeBalance';
 import type { PartyCardType } from '../../core/types/models';
 
 export interface PartyStatementLine {
@@ -166,13 +167,28 @@ export async function getPartyStatement(
   const { rows } = await postgres.query(sql, params);
   const lines: PartyStatementLine[] = (rows || []).map((r: any) => {
     const amount = parseFloat(r.amount || 0);
+    const type = String(r.transaction_type || '');
+    if (resolvedType === 'employee') {
+      const sides = employeeStatementSides(type, amount);
+      return {
+        date: r.date,
+        source: r.source,
+        transaction_type: type,
+        fiche_no: r.fiche_no,
+        definition: r.definition,
+        debit: sides.debit,
+        credit: sides.credit,
+        balance_after: 0,
+        id: r.id,
+      };
+    }
     const sign = parseInt(r.sign || 0, 10);
     const debit = sign > 0 ? amount : 0;
     const credit = sign < 0 ? amount : 0;
     return {
       date: r.date,
       source: r.source,
-      transaction_type: r.transaction_type,
+      transaction_type: type,
       fiche_no: r.fiche_no,
       definition: r.definition,
       debit,
@@ -194,12 +210,26 @@ export async function getPartyStatement(
         : resolvedType === 'supplier'
           ? `SELECT COALESCE(SUM(CASE WHEN transaction_type IN ('ODEME','TAHSILAT_CIKIS','VIRMAN_CIKIS') THEN f_amount ELSE 0 END), 0) AS t
              FROM ${cashLinesTable()} WHERE customer_id = $1::text::uuid AND date < $2::date`
+          : resolvedType === 'employee'
+          ? `SELECT
+              (SELECT COALESCE(SUM(CASE
+                 WHEN transaction_type = 'MAAS_HAKKEDIS' THEN amount
+                 WHEN transaction_type IN ('MAAS_ODEME','AVANS_ODEME') THEN -amount
+                 ELSE 0 END), 0) FROM ${partyLedgerTable()}
+               WHERE party_id = $1::text::uuid AND date < $2::date)
+             + (SELECT COALESCE(SUM(CASE
+                 WHEN transaction_type IN ('MAAS_ODEME','AVANS_ODEME') THEN -f_amount
+                 ELSE 0 END), 0) FROM ${cashLinesTable()} cl
+               WHERE cl.party_id = $1::text::uuid AND cl.date < $2::date
+                 AND NOT EXISTS (
+                   SELECT 1 FROM ${partyLedgerTable()} pl2 WHERE pl2.cash_line_id = cl.id
+                 )) AS t`
           : `SELECT
               (SELECT COALESCE(SUM(amount * sign), 0) FROM ${partyLedgerTable()}
                WHERE party_id = $1::text::uuid AND date < $2::date)
              + (SELECT COALESCE(SUM(CASE
-                 WHEN transaction_type IN ('MAAS_ODEME','AVANS_ODEME','ORTAK_DAGITIM_KAR') THEN f_amount
-                 WHEN transaction_type IN ('ORTAK_DAGITIM_ZARAR','AVANS_MAHSUP','ORTAK_SERMAYE_CIKIS') THEN -f_amount
+                 WHEN transaction_type IN ('ORTAK_DAGITIM_KAR') THEN f_amount
+                 WHEN transaction_type IN ('ORTAK_DAGITIM_ZARAR','ORTAK_SERMAYE_CIKIS') THEN -f_amount
                  ELSE 0 END), 0) FROM ${cashLinesTable()} cl
                WHERE cl.party_id = $1::text::uuid AND cl.date < $2::date
                  AND NOT EXISTS (
@@ -211,7 +241,10 @@ export async function getPartyStatement(
 
   let running = opening;
   for (const line of lines) {
-    const signed = line.debit - line.credit;
+    const signed =
+      resolvedType === 'employee'
+        ? line.credit - line.debit
+        : line.debit - line.credit;
     running += signed;
     line.balance_after = running;
   }

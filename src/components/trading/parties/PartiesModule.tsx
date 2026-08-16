@@ -8,6 +8,7 @@ import { PartyEditModal } from './PartyEditModal';
 import { PartyMergeModal } from './PartyMergeModal';
 import { PartyStatementPanel } from './PartyStatementPanel';
 import { toast } from 'sonner';
+import { ContextMenu } from '../../shared/ContextMenu';
 import {
   PercentBodyModal,
   PercentBodyModalScrollBody,
@@ -25,6 +26,7 @@ import {
   Briefcase,
   GitMerge,
   FileText,
+  CalendarPlus,
 } from 'lucide-react';
 import type { Party, PartyCardType } from '../../../core/types/models';
 import { shortUuid } from './PartyMergeModal';
@@ -64,10 +66,15 @@ export function PartiesModule({
   const [mergeOpen, setMergeOpen] = useState(false);
   const [copiedId, setCopiedId] = useState<string | null>(null);
   const [selectedIds, setSelectedIds] = useState<string[]>([]);
+  const [contextMenu, setContextMenu] = useState<{ x: number; y: number; party: Party } | null>(null);
+  const [accruing, setAccruing] = useState(false);
 
   const load = async () => {
     setLoading(true);
     try {
+      if (tab === 'employee') {
+        await employeeAPI.ensureMonthlySalaryAccrual();
+      }
       const filter = tab === 'all' ? {} : { cardType: tab };
       const list = await partyAPI.getAll(filter);
       setItems(list);
@@ -75,6 +82,25 @@ export function PartiesModule({
       toast.error(err?.message || String(err));
     } finally {
       setLoading(false);
+    }
+  };
+
+  const handleAccrueMonth = async () => {
+    setAccruing(true);
+    try {
+      const res = await employeeAPI.ensureMonthlySalaryAccrual();
+      if (res.created > 0) {
+        toast.success(`${t('party.payroll.accrueSuccess')} (${res.created})`);
+      } else if (res.skipped > 0) {
+        toast.success(t('party.payroll.accrueExists'));
+      } else {
+        toast.error(t('party.payroll.accrueNone'));
+      }
+      await load();
+    } catch (err: any) {
+      toast.error(err?.message || String(err));
+    } finally {
+      setAccruing(false);
     }
   };
 
@@ -231,6 +257,17 @@ export function PartiesModule({
             {t('party.merge.openButton') || 'Birleştir'}
           </button>
           )}
+          {tab === 'employee' && (
+            <button
+              type="button"
+              onClick={() => void handleAccrueMonth()}
+              disabled={accruing}
+              className="px-4 py-2.5 rounded-2xl bg-emerald-600 text-white text-xs font-bold uppercase tracking-wider hover:bg-emerald-700 active:scale-[0.98] flex items-center gap-2 disabled:opacity-50"
+            >
+              {accruing ? <Loader2 className="w-4 h-4 animate-spin" /> : <CalendarPlus className="w-4 h-4" />}
+              {t('party.payroll.accrueMonth')}
+            </button>
+          )}
           {tab === 'partner' && (
             <button
               type="button"
@@ -289,6 +326,9 @@ export function PartiesModule({
                 <th className="text-left px-4 py-3">{t('party.table.name')}</th>
                 <th className="text-left px-4 py-3">{t('party.table.type')}</th>
                 <th className="text-left px-4 py-3">{t('party.table.phone')}</th>
+                {(tab === 'employee' || tab === 'all') && (
+                  <th className="text-right px-4 py-3">{t('party.table.salary')}</th>
+                )}
                 <th className="text-right px-4 py-3">{t('party.table.balance')}</th>
                 <th className="text-left px-4 py-3">{t('party.table.share')}</th>
                 <th className="text-right px-4 py-3">{t('party.table.actions')}</th>
@@ -296,7 +336,17 @@ export function PartiesModule({
             </thead>
             <tbody>
               {filtered.map((p) => (
-                <tr key={p.id} className="border-t border-slate-100 hover:bg-slate-50">
+                <tr
+                  key={p.id}
+                  className="border-t border-slate-100 hover:bg-slate-50 cursor-context-menu"
+                  onContextMenu={(e) => {
+                    e.preventDefault();
+                    setContextMenu({ x: e.clientX, y: e.clientY, party: p });
+                  }}
+                  onDoubleClick={() => {
+                    if (p.card_type === 'employee' || p.card_type === 'partner') setStatementParty(p);
+                  }}
+                >
                   <td className="px-3 py-3">
                     <input
                       type="checkbox"
@@ -333,10 +383,20 @@ export function PartiesModule({
                     </span>
                   </td>
                   <td className="px-4 py-3 text-slate-600">{p.phone || '—'}</td>
+                  {(tab === 'employee' || tab === 'all') && (
+                    <td className="px-4 py-3 text-right font-mono">
+                      {p.card_type === 'employee' ? formatMoney(p.salary_base) : '—'}
+                    </td>
+                  )}
                   <td className="px-4 py-3 text-right font-mono">
-                    <div>{formatMoney(p.balance)}</div>
+                    <div className={Number(p.balance) > 0 ? 'text-emerald-700 font-bold' : Number(p.balance) < 0 ? 'text-amber-700 font-bold' : ''}>
+                      {formatMoney(p.balance)}
+                    </div>
                     {p.card_type === 'employee' && Number(p.balance) > 0 ? (
                       <div className="text-[9px] font-bold uppercase text-emerald-700">{t('party.employee.balanceLabel')}</div>
+                    ) : null}
+                    {p.card_type === 'employee' && Number(p.balance) < 0 ? (
+                      <div className="text-[9px] font-bold uppercase text-amber-700">{t('party.employee.balanceLabelAdvance')}</div>
                     ) : null}
                   </td>
                   <td className="px-4 py-3 text-slate-600">
@@ -446,6 +506,57 @@ export function PartiesModule({
             setSelectedIds([]);
             load();
           }}
+        />
+      )}
+
+      {contextMenu && (
+        <ContextMenu
+          x={contextMenu.x}
+          y={contextMenu.y}
+          onClose={() => setContextMenu(null)}
+          items={[
+            ...(contextMenu.party.card_type === 'employee'
+              ? [{
+                  id: 'payroll',
+                  label: t('party.payroll.openPayroll'),
+                  icon: Briefcase,
+                  onClick: () => {
+                    setPayrollEmployee(contextMenu.party);
+                    setContextMenu(null);
+                  },
+                }]
+              : []),
+            ...((contextMenu.party.card_type === 'employee' || contextMenu.party.card_type === 'partner')
+              ? [{
+                  id: 'statement',
+                  label: t('party.payroll.openStatement'),
+                  icon: FileText,
+                  onClick: () => {
+                    setStatementParty(contextMenu.party);
+                    setContextMenu(null);
+                  },
+                }]
+              : []),
+            {
+              id: 'edit',
+              label: t('common.edit', 'Düzenle'),
+              icon: Pencil,
+              onClick: () => {
+                setEditing(contextMenu.party);
+                setContextMenu(null);
+              },
+            },
+            {
+              id: 'delete',
+              label: t('common.delete', 'Sil'),
+              icon: Trash2,
+              variant: 'danger' as const,
+              onClick: () => {
+                void handleDelete(contextMenu.party);
+                setContextMenu(null);
+              },
+            },
+          ]}
         />
       )}
     </div>

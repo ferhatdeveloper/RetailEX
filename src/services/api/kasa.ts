@@ -21,14 +21,15 @@ function padKasaPeriodNr(): string {
  * Parties (Personel / Şirket Ortağı) için bakiye delta hesabı.
  *
  * Bakiye yönü:
- *   Personel pozitif = işletmenin personele avans borcu (negatif etki yok).
+ *   Personel pozitif = ödenmemiş maaş alacağı (hakkediş − ödeme/avans).
  *   Ortağı pozitif = ortağın işletmeden alacağı (dağıtılmamış kâr payı).
  *
  * İşlem       | Kasa sign | Party balance delta
  * -----------|-----------|--------------------
- * MAAS_ODEME  |   -1      |   +tutar (işletme borçlandı)
- * AVANS_ODEME |   -1      |   +tutar (işletme borçlandı)
- * AVANS_MAHSUP|    0      |   -tutar (mahsup, borç düşer)
+ * MAAS_HAKKEDIS |  0      |   +tutar (kasa yok; payroll API yazar)
+ * MAAS_ODEME  |   -1      |   −tutar (ödenen maaş)
+ * AVANS_ODEME |   -1      |   −tutar (avans)
+ * AVANS_MAHSUP|    0      |    0     (belge; avans zaten düştü)
  * ORTAK_DAGITIM_KAR  | -1 | +tutar (ortağın alacağı)
  * ORTAK_DAGITIM_ZARAR| +1 | -tutar (ortağın zarar katkısı)
  * ORTAK_SERMAYE_TAHSILAT | +1 | -tutar (sermaye çekme)
@@ -38,12 +39,16 @@ export function computePartyBalanceDelta(tutar: number, islemTipi: string): numb
   const amt = Math.abs(parseFloat(String(tutar ?? 0)) || 0);
   if (!amt) return 0;
   switch (String(islemTipi || '').toUpperCase().trim()) {
-    case 'MAAS_ODEME':
-    case 'AVANS_ODEME':
+    case 'MAAS_HAKKEDIS':
+      return amt;
     case 'ORTAK_DAGITIM_KAR':
     case 'ORTAK_SERMAYE_ODEME':
       return amt;
+    case 'MAAS_ODEME':
+    case 'AVANS_ODEME':
+      return -amt;
     case 'AVANS_MAHSUP':
+      return 0;
     case 'ORTAK_DAGITIM_ZARAR':
     case 'ORTAK_SERMAYE_TAHSILAT':
       return -amt;
@@ -454,6 +459,7 @@ async function createKasaIslemiViaPostgrest(
     definition: islem.islem_aciklamasi || '',
     transaction_type: islem.islem_tipi || '',
     customer_id: islem.cari_hesap_id || null,
+    party_id: islem.party_id || null,
     currency_code: islem.doviz_kodu || 'YEREL',
     exchange_rate: 1,
     f_amount: islem.dovizli_tutar || 0,
@@ -491,6 +497,31 @@ async function createKasaIslemiViaPostgrest(
   };
 
   await bumpKasaBalance(islem.kasa_id, Number(islem.tutar || 0) * sign);
+
+  if (islem.party_id) {
+    const partyDelta = computePartyBalanceDelta(islem.tutar, islem.islem_tipi);
+    if (partyDelta !== 0) {
+      try {
+        const firmNr = normalizeFirmTableNr(ERP_SETTINGS.firmNr);
+        const partyPath = `/rex_${firmNr}_parties`;
+        const rs = await postgrest.get<any[]>(
+          partyPath,
+          { select: 'balance', id: `eq.${islem.party_id}`, limit: '1' },
+          { schema: 'public' },
+        );
+        const r = Array.isArray(rs) ? rs[0] : null;
+        if (r) {
+          await postgrest.patch(
+            `${partyPath}?id=eq.${encodeURIComponent(String(islem.party_id))}`,
+            { balance: Number(r.balance ?? 0) + partyDelta },
+            { schema: 'public', prefer: 'return=minimal' },
+          );
+        }
+      } catch {
+        /* payroll API ledger recomputes card balance */
+      }
+    }
+  }
 
   if (islem.cari_hesap_id && (islem.islem_tipi === 'CH_ODEME' || islem.islem_tipi === 'CH_TAHSILAT')) {
     const delta = cariCashStoredBalanceDelta(islem.tutar, islem.islem_tipi);
@@ -756,17 +787,15 @@ export async function createKasaIslemi(incoming: KasaIslemi): Promise<KasaIslemi
     }
 
     // Parties (Personel / Şirket Ortağı) — party_id ile polymorphic bakiye güncelleme.
-    // Personel: MAAS_ODEME (−tutar, personel cari balance: işletmenin personele avans borcu ↑),
-    //           AVANS_ODEME (−tutar, party balance ↑),
-    //           AVANS_MAHSUP (sign=0, party balance ↑ mahsup yönünde).
+    // Personel: MAAS_ODEME/AVANS_ODEME (−tutar, ödenmemiş maaş alacağı ↓).
     // Ortağı: ORTAK_DAGITIM_KAR (−tutar, party balance ↑ = dağıtılmamış kâr payı alacağı),
     //         ORTAK_DAGITIM_ZARAR (+tutar, party balance ↓ = ortağın zarara katılımı).
     if (islem.party_id) {
       const partyDelta = computePartyBalanceDelta(islem.tutar, islem.islem_tipi);
       if (partyDelta !== 0) {
         await postgres.query(
-          `UPDATE rex_${normalizeFirmTableNr(ERP_SETTINGS.firmNr)}_parties SET balance = balance + $1::numeric, updated_at = NOW() WHERE id = $2::text::uuid`,
-          [partyDelta, islem.party_id],
+          `UPDATE rex_${normalizeFirmTableNr(ERP_SETTINGS.firmNr)}_parties SET balance = balance + $1::text::numeric, updated_at = NOW() WHERE id = $2::text::uuid`,
+          [partyDelta.toString(), islem.party_id],
         );
       }
     }
@@ -993,8 +1022,8 @@ export async function deleteKasaIslemi(id: string): Promise<void> {
       const partyDelta = computePartyBalanceDelta(amount, trType);
       if (partyDelta !== 0) {
         await postgres.query(
-          `UPDATE rex_${normalizeFirmTableNr(ERP_SETTINGS.firmNr)}_parties SET balance = balance - $1::numeric, updated_at = NOW() WHERE id = $2::text::uuid`,
-          [partyDelta, partyId],
+          `UPDATE rex_${normalizeFirmTableNr(ERP_SETTINGS.firmNr)}_parties SET balance = balance - $1::text::numeric, updated_at = NOW() WHERE id = $2::text::uuid`,
+          [partyDelta.toString(), partyId],
         );
       }
     }

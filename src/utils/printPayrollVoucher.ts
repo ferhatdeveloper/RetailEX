@@ -47,7 +47,7 @@ async function firmHeader(): Promise<{ name: string; address: string; phone: str
   };
 }
 
-export type PayrollVoucherKind = 'salary' | 'advance' | 'reconcile';
+export type PayrollVoucherKind = 'salary' | 'advance' | 'reconcile' | 'accrual';
 
 export async function printPayrollVoucher(opts: {
   kind: PayrollVoucherKind;
@@ -111,6 +111,7 @@ export async function printPayrollVoucher(opts: {
 
 function txLabel(type: string): string {
   const u = String(type || '').toUpperCase();
+  if (u === 'MAAS_HAKKEDIS') return 'Hakkediş';
   if (u === 'MAAS_ODEME') return 'Maaş';
   if (u === 'AVANS_ODEME') return 'Avans';
   if (u === 'AVANS_MAHSUP') return 'Mahsup';

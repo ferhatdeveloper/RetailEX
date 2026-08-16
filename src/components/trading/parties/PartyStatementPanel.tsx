@@ -2,6 +2,7 @@ import { useEffect, useMemo, useState } from 'react';
 import { FileText, Loader2, Printer, X } from 'lucide-react';
 import { toast } from 'sonner';
 import { FullscreenBodyPortal, MODAL_OVERLAY_Z } from '../../shared/FullscreenBodyPortal';
+import { ContextMenu } from '../../shared/ContextMenu';
 import { getPartyStatement, type PartyStatement } from '../../../services/api/partyStatements';
 import { printPartyStatementDoc, printPayrollVoucher } from '../../../utils/printPayrollVoucher';
 import { defaultEkstreDateRange, ficheTypeToInfo } from '../../../utils/cariAccountStatement';
@@ -19,8 +20,9 @@ function formatMoney(n?: number | null): string {
   return new Intl.NumberFormat('tr-TR', { maximumFractionDigits: 2 }).format(Number(n));
 }
 
-function txKind(type: string): 'salary' | 'advance' | 'reconcile' | null {
+function txKind(type: string): 'salary' | 'advance' | 'reconcile' | 'accrual' | null {
   const u = String(type || '').toUpperCase();
+  if (u === 'MAAS_HAKKEDIS') return 'accrual';
   if (u === 'MAAS_ODEME') return 'salary';
   if (u === 'AVANS_ODEME') return 'advance';
   if (u === 'AVANS_MAHSUP') return 'reconcile';
@@ -36,6 +38,7 @@ export function PartyStatementPanel({ party, onClose }: PartyStatementPanelProps
   const [loading, setLoading] = useState(false);
   const [printing, setPrinting] = useState(false);
   const [data, setData] = useState<PartyStatement | null>(null);
+  const [contextMenu, setContextMenu] = useState<{ x: number; y: number; row: PartyStatement['rows'][number] } | null>(null);
 
   const load = async (s: string, e: string) => {
     setLoading(true);
@@ -83,10 +86,11 @@ export function PartyStatementPanel({ party, onClose }: PartyStatementPanelProps
       toast.error(t('party.statement.printRowHint'));
       return;
     }
-    const titles: Record<typeof kind, string> = {
+    const titles: Record<NonNullable<ReturnType<typeof txKind>>, string> = {
       salary: t('party.payroll.voucherTitleSalary'),
       advance: t('party.payroll.voucherTitleAdvance'),
       reconcile: t('party.payroll.voucherTitleReconcile'),
+      accrual: t('party.payroll.voucherTitleAccrual'),
     };
     try {
       await printPayrollVoucher({
@@ -110,6 +114,7 @@ export function PartyStatementPanel({ party, onClose }: PartyStatementPanelProps
   const cardBal = data?.card_balance ?? party.balance ?? 0;
 
   return (
+    <>
     <FullscreenBodyPortal
       className="flex flex-col bg-white"
       zIndex={MODAL_OVERLAY_Z}
@@ -217,7 +222,14 @@ export function PartyStatementPanel({ party, onClose }: PartyStatementPanelProps
                 const { label, color } = ficheTypeToInfo(row.transaction_type, 0, false);
                 const amt = row.debit || row.credit;
                 return (
-                  <tr key={row.id || idx} className={`border-b border-gray-100 hover:bg-emerald-50/40 ${idx % 2 ? 'bg-gray-50/50' : ''}`}>
+                  <tr
+                    key={row.id || idx}
+                    className={`border-b border-gray-100 hover:bg-emerald-50/40 cursor-context-menu ${idx % 2 ? 'bg-gray-50/50' : ''}`}
+                    onContextMenu={(e) => {
+                      e.preventDefault();
+                      setContextMenu({ x: e.clientX, y: e.clientY, row });
+                    }}
+                  >
                     <td className="px-4 py-2 font-mono text-gray-600">{row.date ? String(row.date).split('T')[0] : '—'}</td>
                     <td className="px-4 py-2">
                       {row.fiche_no ? (
@@ -260,5 +272,25 @@ export function PartyStatementPanel({ party, onClose }: PartyStatementPanelProps
         )}
       </div>
     </FullscreenBodyPortal>
+      {contextMenu && (
+        <ContextMenu
+          x={contextMenu.x}
+          y={contextMenu.y}
+          onClose={() => setContextMenu(null)}
+          items={[
+            {
+              id: 'print',
+              label: t('party.statement.printVoucher'),
+              icon: Printer,
+              onClick: () => {
+                const r = contextMenu.row;
+                void printRow(r.transaction_type, r.debit || r.credit, r.fiche_no, r.date, r.definition, r.balance_after);
+                setContextMenu(null);
+              },
+            },
+          ]}
+        />
+      )}
+    </>
   );
 }

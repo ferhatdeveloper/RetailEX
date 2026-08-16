@@ -1,18 +1,18 @@
 /**
- * Parties Employees — maaş, avans, personel cari işlemleri.
+ * Parties Employees — maaş hakkedişi, ödeme, avans.
  *
  * Akış:
- *   paySalary: kasa çıkışı (MAAS_ODEME) + party_ledger_movements (MAAS_ODEME)
- *   payAdvance: kasa çıkışı (AVANS_ODEME) + party_ledger_movements (AVANS_ODEME)
- *   reconcileAdvance: AVANS_MAHSUP (kasa etkisiz) + party_ledger_movements (AVANS_MAHSUP)
- *     → party balance'ı düşürür (borç kapama).
+ *   ensureMonthlySalaryAccrual: ay başı MAAS_HAKKEDIS (kasa yok) + bakiye yeniden hesap
+ *   paySalary: kasa çıkışı (MAAS_ODEME) + party_ledger
+ *   payAdvance: kasa çıkışı (AVANS_ODEME) + party_ledger
+ *   reconcileAdvance: AVANS_MAHSUP (kasa etkisiz, bakiye 0 — avans zaten düştü)
  *
  * 90 yıllık muhasebeci denetimi:
- *   - Personel pozitif balance = işletmenin personele avans borcu.
- *   - MAAS_ODEME: kasa −tutar, party balance +tutar (işletme borçlandı).
- *   - AVANS_ODEME: kasa −tutar, party balance +tutar (işletme borçlandı).
- *   - AVANS_MAHSUP: kasa 0, party balance −tutar (avans kapandı).
- *   - Yön ters çevrilirse BDV (borç defter değeri) bozulur; bu yüzden switch tek doğrultuda.
+ *   - Pozitif party balance = ödenmemiş maaş alacağı (işletme personele borçlu).
+ *   - MAAS_HAKKEDIS: kasa 0, party balance +tutar.
+ *   - MAAS_ODEME / AVANS_ODEME: kasa −tutar, party balance −tutar.
+ *   - AVANS_MAHSUP: kasa 0, party balance 0 (belge).
+ *   - Kart bakiyesi ledger toplamından türetilir (denormalize kolon tek başına kaynak değil).
  */
 
 import { postgres, ERP_SETTINGS } from '../postgres';
@@ -20,6 +20,10 @@ import { normalizeFirmTableNr } from './accountBalance';
 import { createKasaIslemi } from './kasa';
 import { partyAPI } from './parties';
 import { ensurePartyPeriodTables } from './ensurePartyPeriodTables';
+import {
+  currentPayrollMonthRange,
+  employeeLedgerBalanceDelta,
+} from './partyEmployeeBalance';
 import type { PartyLedgerMovement, PartyEmployee } from '../../core/types/models';
 
 function ledgerTable(): string {
@@ -32,6 +36,10 @@ function cashLinesTable(): string {
   const firm = normalizeFirmTableNr(ERP_SETTINGS.firmNr);
   const period = String(ERP_SETTINGS.periodNr || '01').padStart(2, '0').slice(0, 10);
   return `rex_${firm}_${period}_cash_lines`;
+}
+
+function partiesTable(): string {
+  return `rex_${normalizeFirmTableNr(ERP_SETTINGS.firmNr)}_parties`;
 }
 
 export interface PayrollWriteResult {
@@ -50,40 +58,127 @@ export interface PayrollMonthLine {
   last_payment_date?: string;
 }
 
+export interface AccrualEnsureResult {
+  created: number;
+  skipped: number;
+}
+
+function mapEmployee(p: {
+  id: string;
+  code?: string;
+  name: string;
+  phone?: string;
+  email?: string;
+  salary_base?: number;
+  hire_date?: string | null;
+  department?: string;
+  position?: string;
+  balance?: number;
+  is_active?: boolean;
+}): PartyEmployee {
+  return {
+    id: p.id,
+    code: p.code,
+    name: p.name,
+    phone: p.phone,
+    email: p.email,
+    salary_base: p.salary_base || 0,
+    hire_date: p.hire_date,
+    department: p.department,
+    position: p.position,
+    balance: p.balance || 0,
+    is_active: p.is_active,
+  };
+}
+
 export const employeeAPI = {
   async list(): Promise<PartyEmployee[]> {
     const parties = await partyAPI.getAll({ cardType: 'employee' });
-    return parties.map((p) => ({
-      id: p.id,
-      code: p.code,
-      name: p.name,
-      phone: p.phone,
-      email: p.email,
-      salary_base: p.salary_base || 0,
-      hire_date: p.hire_date,
-      department: p.department,
-      position: p.position,
-      balance: p.balance || 0,
-      is_active: p.is_active,
-    }));
+    return parties.map(mapEmployee);
   },
 
   async getById(id: string): Promise<PartyEmployee | null> {
     const p = await partyAPI.getById(id);
     if (!p || p.card_type !== 'employee') return null;
-    return {
-      id: p.id,
-      code: p.code,
-      name: p.name,
-      phone: p.phone,
-      email: p.email,
-      salary_base: p.salary_base || 0,
-      hire_date: p.hire_date,
-      department: p.department,
-      position: p.position,
-      balance: p.balance || 0,
-      is_active: p.is_active,
-    };
+    return mapEmployee(p);
+  },
+
+  async recomputeEmployeeBalances(ids: string[]): Promise<Map<string, number>> {
+    const unique = [...new Set(ids.filter(Boolean))];
+    const result = new Map<string, number>();
+    if (!unique.length) return result;
+    await ensurePartyPeriodTables();
+    const { rows } = await postgres.query(
+      `SELECT party_id, transaction_type, COALESCE(SUM(amount), 0) AS total
+       FROM ${ledgerTable()}
+       WHERE party_id = ANY($1::text::uuid[])
+       GROUP BY party_id, transaction_type`,
+      [unique],
+    );
+    for (const id of unique) result.set(id, 0);
+    for (const r of rows || []) {
+      const id = String(r.party_id);
+      const prev = result.get(id) || 0;
+      result.set(id, prev + employeeLedgerBalanceDelta(r.transaction_type, parseFloat(r.total || 0)));
+    }
+    for (const [id, bal] of result) {
+      await postgres.query(
+        `UPDATE ${partiesTable()}
+         SET balance = $1::text::numeric, updated_at = NOW()
+         WHERE id = $2::text::uuid`,
+        [bal.toString(), id],
+      );
+    }
+    return result;
+  },
+
+  async ensureMonthlySalaryAccrual(opts?: { year?: number; month?: number }): Promise<AccrualEnsureResult> {
+    await ensurePartyPeriodTables();
+    const range = currentPayrollMonthRange();
+    const year = opts?.year ?? range.year;
+    const month = opts?.month ?? range.month;
+    const monthStart = `${year}-${String(month).padStart(2, '0')}-01`;
+    const next = new Date(year, month, 1);
+    const nextMonthStart = `${next.getFullYear()}-${String(next.getMonth() + 1).padStart(2, '0')}-01`;
+
+    const employees = await this.list();
+    const active = employees.filter((e) => e.is_active !== false);
+    const withSalary = active.filter((e) => (e.salary_base || 0) > 0);
+    let created = 0;
+    let skipped = 0;
+
+    if (withSalary.length) {
+      const ids = withSalary.map((e) => e.id);
+      const { rows } = await postgres.query(
+        `SELECT party_id FROM ${ledgerTable()}
+         WHERE party_id = ANY($1::text::uuid[])
+           AND transaction_type = 'MAAS_HAKKEDIS'
+           AND date >= $2::date AND date < $3::date`,
+        [ids, monthStart, nextMonthStart],
+      );
+      const already = new Set((rows || []).map((r: { party_id: string }) => String(r.party_id)));
+      const ym = `${year}-${String(month).padStart(2, '0')}`;
+      for (const e of withSalary) {
+        if (already.has(e.id)) {
+          skipped += 1;
+          continue;
+        }
+        await writePartyLedger({
+          partyId: e.id,
+          cardType: 'employee',
+          transactionType: 'MAAS_HAKKEDIS',
+          amount: e.salary_base,
+          sign: 1,
+          date: `${monthStart}T12:00:00`,
+          definition: `Maaş hakkedişi ${ym} — ${e.name}`,
+          sourceModule: 'payroll_accrual',
+        });
+        created += 1;
+      }
+    }
+
+    await this.recomputeEmployeeBalances(active.map((e) => e.id));
+    return { created, skipped };
   },
 
   async listPayrollMonth(periodStart: string, periodEnd: string): Promise<PayrollMonthLine[]> {
@@ -100,13 +195,15 @@ export const employeeAPI = {
       [ids, periodStart, periodEnd],
     );
 
-    const stats = new Map<string, { advance: number; last: string | null }>();
+    const stats = new Map<string, { advance: number; paid: number; accrued: number; last: string | null }>();
     for (const r of rows || []) {
       const key = String(r.party_id);
-      const prev = stats.get(key) || { advance: 0, last: null };
-      if (r.transaction_type === 'AVANS_ODEME') {
-        prev.advance += parseFloat(r.total || 0);
-      }
+      const prev = stats.get(key) || { advance: 0, paid: 0, accrued: 0, last: null };
+      const total = parseFloat(r.total || 0);
+      const typ = String(r.transaction_type || '').toUpperCase();
+      if (typ === 'AVANS_ODEME') prev.advance += total;
+      if (typ === 'MAAS_ODEME') prev.paid += total;
+      if (typ === 'MAAS_HAKKEDIS') prev.accrued += total;
       if (r.last_date && (!prev.last || String(r.last_date) > prev.last)) {
         prev.last = String(r.last_date);
       }
@@ -114,13 +211,14 @@ export const employeeAPI = {
     }
 
     return employees.map((e) => {
-      const s = stats.get(e.id) || { advance: 0, last: null };
+      const s = stats.get(e.id) || { advance: 0, paid: 0, accrued: 0, last: null };
+      const hakkedis = s.accrued || (e.salary_base || 0);
       return {
         employee_id: e.id,
         employee_name: e.name,
         salary_base: e.salary_base || 0,
         total_advance: s.advance,
-        net_payable: (e.salary_base || 0) - s.advance,
+        net_payable: hakkedis - s.advance - s.paid,
         last_payment_date: s.last || undefined,
       };
     });
@@ -157,18 +255,19 @@ export const employeeAPI = {
       cardType: 'employee',
       transactionType: 'MAAS_ODEME',
       amount: input.amount,
-      sign: 1,
+      sign: -1,
       definition: input.definition || `Maaş ödemesi — ${emp.name}`,
       sourceModule: 'payroll',
       sourceId: cih.id,
       cashLineId: cih.id,
     });
-    const fresh = await this.getById(emp.id);
+    const balances = await this.recomputeEmployeeBalances([emp.id]);
+    const balance = balances.get(emp.id) ?? (emp.balance || 0) - input.amount;
     return {
       ledger: { ...ledger, fiche_no: cih.islem_no || null, cash_line_id: cih.id },
       ficheNo: cih.islem_no || null,
       cashLineId: cih.id || null,
-      balance: fresh?.balance ?? (emp.balance || 0) + input.amount,
+      balance,
     };
   },
 
@@ -203,18 +302,19 @@ export const employeeAPI = {
       cardType: 'employee',
       transactionType: 'AVANS_ODEME',
       amount: input.amount,
-      sign: 1,
+      sign: -1,
       definition: input.definition || `Avans ödemesi — ${emp.name}`,
       sourceModule: 'payroll',
       sourceId: cih.id,
       cashLineId: cih.id,
     });
-    const fresh = await this.getById(emp.id);
+    const balances = await this.recomputeEmployeeBalances([emp.id]);
+    const balance = balances.get(emp.id) ?? (emp.balance || 0) - input.amount;
     return {
       ledger: { ...ledger, fiche_no: cih.islem_no || null, cash_line_id: cih.id },
       ficheNo: cih.islem_no || null,
       cashLineId: cih.id || null,
-      balance: fresh?.balance ?? (emp.balance || 0) + input.amount,
+      balance,
     };
   },
 
@@ -234,28 +334,19 @@ export const employeeAPI = {
       cardType: 'employee',
       transactionType: 'AVANS_MAHSUP',
       amount: input.amount,
-      sign: -1,
+      sign: 0,
       definition: input.definition || `Avans mahsup — ${emp.name}`,
       sourceModule: 'payroll',
       sourceId: input.relatedCashLineId,
     });
 
-    // AVANS_MAHSUP — kasa etkisiz; party balance düşürülür (createKasaIslemi kullanmıyoruz)
-    // computePartyBalanceDelta(AVANS_MAHSUP) = -tutar
-    const delta = -input.amount;
-    await postgres.query(
-      `UPDATE ${`rex_${normalizeFirmTableNr(ERP_SETTINGS.firmNr)}_parties`}
-       SET balance = balance + $1::text::numeric, updated_at = NOW()
-       WHERE id = $2::text::uuid`,
-      [delta.toString(), emp.id],
-    );
-
-    const fresh = await this.getById(emp.id);
+    const balances = await this.recomputeEmployeeBalances([emp.id]);
+    const balance = balances.get(emp.id) ?? (emp.balance || 0);
     return {
       ledger,
       ficheNo: null,
       cashLineId: input.relatedCashLineId || null,
-      balance: fresh?.balance ?? (emp.balance || 0) - input.amount,
+      balance,
     };
   },
 
@@ -269,7 +360,7 @@ export const employeeAPI = {
        WHERE pl.party_id = $1::text::uuid
          AND ($2::text IS NULL OR pl.date >= $2::date)
          AND ($3::text IS NULL OR pl.date <= $3::date)
-       ORDER BY pl.date DESC, pl.created_at DESC
+       ORDER BY pl.date ASC, pl.created_at ASC
        LIMIT $4::integer`,
       [employeeId, opts?.startDate || null, opts?.endDate || null, limit],
     );
@@ -304,6 +395,7 @@ interface WritePartyLedgerOpts {
   sourceModule?: string;
   sourceId?: string;
   cashLineId?: string;
+  date?: string;
 }
 
 async function writePartyLedger(opts: WritePartyLedgerOpts): Promise<PartyLedgerMovement> {
@@ -316,7 +408,7 @@ async function writePartyLedger(opts: WritePartyLedgerOpts): Promise<PartyLedger
        date, amount, sign, definition, source_module, source_id, cash_line_id
      ) VALUES (
        $1::text, $2::text, $3::text::uuid, $4::text, 0, $5::text,
-       NOW(), $6::text::numeric, $7::integer, $8::text, $9::text, $10::text::uuid, $11::text::uuid
+       COALESCE(NULLIF($12::text, '')::timestamptz, NOW()), $6::text::numeric, $7::integer, $8::text, $9::text, $10::text::uuid, $11::text::uuid
      ) RETURNING *`,
     [
       firmNr,
@@ -330,6 +422,7 @@ async function writePartyLedger(opts: WritePartyLedgerOpts): Promise<PartyLedger
       opts.sourceModule || null,
       opts.sourceId || null,
       opts.cashLineId || null,
+      opts.date || null,
     ],
   );
   const r = rows?.[0];
