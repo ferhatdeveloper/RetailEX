@@ -23,6 +23,7 @@ export interface EmployeePayrollModalProps {
 }
 
 type Action = 'salary' | 'advance' | 'reconcile';
+type ViewTab = 'form' | 'movements';
 
 type MovementRow = PartyLedgerMovement & {
   debit: number;
@@ -33,6 +34,7 @@ type MovementRow = PartyLedgerMovement & {
 export function EmployeePayrollModal({ employee, onClose, onSaved, onOpenStatement }: EmployeePayrollModalProps) {
   const t = useNestedT();
   const { tm } = useLanguage();
+  const [viewTab, setViewTab] = useState<ViewTab>('form');
   const [action, setAction] = useState<Action>('salary');
   const [amount, setAmount] = useState('');
   const [registerId, setRegisterId] = useState('');
@@ -83,6 +85,10 @@ export function EmployeePayrollModal({ employee, onClose, onSaved, onOpenStateme
     }
     setError(null);
   }, [action, salaryBase]);
+
+  useEffect(() => {
+    setContextMenu(null);
+  }, [viewTab]);
 
   const rows = useMemo(() => withRunning(recent), [recent]);
 
@@ -155,6 +161,7 @@ export function EmployeePayrollModal({ employee, onClose, onSaved, onOpenStateme
       if (result) setBalance(result.balance);
       toast.success(t('party.payroll.saveSuccess'));
       await loadRecent();
+      setViewTab('movements');
       onSaved();
       if (action !== 'reconcile') {
         const titles = {
@@ -214,7 +221,21 @@ export function EmployeePayrollModal({ employee, onClose, onSaved, onOpenStateme
           </div>
         </div>
 
-        <form onSubmit={submit} className="shrink-0 p-5 space-y-3 border-b border-slate-100">
+        <div className="shrink-0 px-5 pt-3 flex gap-2 border-b border-slate-100 bg-white">
+          <ViewTabButton
+            active={viewTab === 'form'}
+            onClick={() => setViewTab('form')}
+            label={t('party.payroll.tabForm')}
+          />
+          <ViewTabButton
+            active={viewTab === 'movements'}
+            onClick={() => setViewTab('movements')}
+            label={t('party.payroll.movements')}
+          />
+        </div>
+
+        {viewTab === 'form' && (
+        <form onSubmit={submit} className="flex-1 min-h-0 overflow-y-auto p-5 space-y-3">
             <div className="flex gap-2">
               <ActionButton active={action === 'salary'} onClick={() => setAction('salary')} label={t('party.payroll.paySalary')} />
               <ActionButton active={action === 'advance'} onClick={() => setAction('advance')} label={t('party.payroll.payAdvance')} />
@@ -308,12 +329,18 @@ export function EmployeePayrollModal({ employee, onClose, onSaved, onOpenStateme
               </button>
             </div>
           </form>
+        )}
 
-          <div className="min-h-0 flex-1 flex flex-col px-5 pb-5 pt-3">
+        {viewTab === 'movements' && (
+          <div className="min-h-0 flex-1 flex flex-col p-5">
             <div className="min-h-0 flex-1 flex flex-col border border-slate-200 rounded-2xl overflow-hidden bg-white">
             <div className="shrink-0 px-4 py-2 border-b border-slate-100 flex items-center justify-between bg-slate-50">
               <div className="text-[11px] font-bold text-slate-500 uppercase tracking-wider">
                 {t('party.payroll.movements')}
+                <span className="ml-2 font-mono text-slate-700">
+                  {formatMoney(balance)}
+                  {balance > 0 ? ` · ${t('party.employee.balanceLabel')}` : balance < 0 ? ` · ${t('party.employee.balanceLabelAdvance')}` : ''}
+                </span>
               </div>
               {onOpenStatement && (
                 <button
@@ -375,6 +402,7 @@ export function EmployeePayrollModal({ employee, onClose, onSaved, onOpenStateme
             )}
             </div>
           </div>
+        )}
       </div>
 
       {contextMenu && (
@@ -431,6 +459,22 @@ function txKind(type: string): PayrollVoucherKind | null {
   if (u === 'AVANS_ODEME') return 'advance';
   if (u === 'AVANS_MAHSUP') return 'reconcile';
   return null;
+}
+
+function ViewTabButton({ active, onClick, label }: { active: boolean; onClick: () => void; label: string }) {
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      className={`px-4 py-2.5 rounded-t-xl text-xs font-bold uppercase tracking-wider border-b-2 -mb-px ${
+        active
+          ? 'border-emerald-600 text-emerald-700 bg-emerald-50'
+          : 'border-transparent text-slate-500 hover:text-slate-700'
+      }`}
+    >
+      {label}
+    </button>
+  );
 }
 
 function ActionButton({ active, onClick, label }: { active: boolean; onClick: () => void; label: string }) {
