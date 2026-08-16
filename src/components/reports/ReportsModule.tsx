@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useCallback, useMemo, useRef } from 'react';
-import { BarChart3, TrendingUp, Banknote, ShoppingCart, Calendar, Download, FileText, Clock, User, Package, TrendingDown, Award, PieChart as PieChartIcon, CreditCard, AlertCircle, Percent, AlertTriangle, ClipboardList, MessageSquare, LineChart as LineChartLucide, Users, Scissors, ThumbsUp, PhoneMissed } from 'lucide-react';
+import { BarChart3, TrendingUp, Banknote, ShoppingCart, Calendar, Download, FileText, Clock, User, Package, TrendingDown, Award, PieChart as PieChartIcon, CreditCard, AlertCircle, Percent, AlertTriangle, ClipboardList, MessageSquare, LineChart as LineChartLucide, Users, Scissors, ThumbsUp, PhoneMissed, Wallet } from 'lucide-react';
 import type { Sale, Product } from '../../App';
 import { MaterialMovementReport } from './MaterialMovementReport';
 import { ProfitLossReport } from './ProfitLossReport';
@@ -23,6 +23,7 @@ import {
 import { RestaurantService } from '../../services/restaurant';
 import { beautyService } from '../../services/beautyService';
 import { expenseAPI } from '../../services/api/expenses';
+import { fetchKasaIslemleri } from '../../services/api/kasa';
 import type { BeautyAppointment, BeautySale, BeautyStaffTreatmentReport } from '../../types/beauty';
 import { beautyServiceMainKey, beautyServiceSubKey } from '../beauty/beautyServiceCategoryUtils';
 import { localCalendarDateKey, localTodayDateKey, formatIsoDateTr } from '../../utils/localCalendarDate';
@@ -481,6 +482,30 @@ type DailyUnifiedRow = {
   restOrder?: any;
 };
 
+/** Günlük rapor gider satırı: gider pusulası + kasa çıkışları (maaş/avans/cari). */
+type DailyExpenseRow = {
+  key: string;
+  date: string;
+  ficheNo: string;
+  typeCode: string;
+  category: string;
+  description: string;
+  partyName: string;
+  amount: number;
+  paymentMethod: string;
+  isCash: boolean;
+};
+
+const DAILY_CASH_OUT_TYPES = new Set([
+  'GIDER_PUSULASI',
+  'MAAS_ODEME',
+  'AVANS_ODEME',
+  'CH_ODEME',
+  'KASA_CIKIS',
+  'ORTAK_DAGITIM_KAR',
+  'ORTAK_SERMAYE_ODEME',
+]);
+
 type BeautyAppointmentProductRow = {
   key: string;
   saleId: string;
@@ -689,6 +714,27 @@ export function ReportsModule({
   const { darkMode } = useTheme();
   const { isMobile } = useResponsive();
   const tm = useCallback((key: string) => moduleTranslations[key]?.[language] || globalTm(key), [language, globalTm]);
+
+  const labelDailyExpenseType = useCallback((code: string) => {
+    switch (String(code || '').toUpperCase()) {
+      case 'GIDER_PUSULASI':
+        return tm('dailyExpenseTypeVoucher');
+      case 'MAAS_ODEME':
+        return tm('dailyExpenseTypeSalary');
+      case 'AVANS_ODEME':
+        return tm('dailyExpenseTypeAdvance');
+      case 'CH_ODEME':
+        return tm('dailyExpenseTypeCariPay');
+      case 'KASA_CIKIS':
+        return tm('dailyExpenseTypeCashOut');
+      case 'ORTAK_DAGITIM_KAR':
+        return tm('dailyExpenseTypePartnerDist');
+      case 'ORTAK_SERMAYE_ODEME':
+        return tm('dailyExpenseTypePartnerCapital');
+      default:
+        return code || tm('dailyExpenseTypeVoucher');
+    }
+  }, [tm]);
   const { hasPermission } = usePermission();
   const canDeleteErpSale = hasPermission('sales-invoices', 'DELETE');
 
@@ -738,6 +784,7 @@ export function ReportsModule({
   const reportConfirmResolverRef = useRef<((result: { approved: boolean; reason: string }) => void) | null>(null);
   const [cashExpensesForSelectedDate, setCashExpensesForSelectedDate] = useState(0);
   const [totalExpensesForSelectedDate, setTotalExpensesForSelectedDate] = useState(0);
+  const [dailyExpenseRows, setDailyExpenseRows] = useState<DailyExpenseRow[]>([]);
   const [comparisonPeriod, setComparisonPeriod] = useState<'week' | 'month'>('week');
   const [comparisonOrders, setComparisonOrders] = useState<any[]>([]);
   const [loadingComparisonOrders, setLoadingComparisonOrders] = useState(false);
@@ -822,17 +869,67 @@ export function ReportsModule({
 
   const loadCashExpenses = useCallback(async () => {
     try {
-      const rows = await expenseAPI.getAll({ startDate: selectedDateFrom, endDate: selectedDateTo });
-      const allRows = Array.isArray(rows) ? rows : [];
-      const totalCash = allRows.reduce((sum, row) => {
-        const method = String((row as any)?.payment_method ?? '').trim().toLowerCase();
-        const isCash = method === 'cash' || method === 'nakit';
-        return isCash ? sum + (Number((row as any)?.amount) || 0) : sum;
-      }, 0);
-      const totalAll = allRows.reduce((sum, row) => sum + (Number((row as any)?.amount) || 0), 0);
+      const [expenseRows, cashLines] = await Promise.all([
+        expenseAPI.getAll({ startDate: selectedDateFrom, endDate: selectedDateTo }),
+        fetchKasaIslemleri({
+          baslangic_tarihi: selectedDateFrom,
+          bitis_tarihi: `${selectedDateTo}T23:59:59`,
+        }).catch(() => []),
+      ]);
+      const allExpenses = Array.isArray(expenseRows) ? expenseRows : [];
+      const linkedCashIds = new Set(
+        allExpenses
+          .map((e) => String(e.cash_line_id || '').trim())
+          .filter(Boolean)
+      );
+
+      const unified: DailyExpenseRow[] = [];
+      for (const e of allExpenses) {
+        const method = String(e.payment_method ?? '').trim();
+        const methodLc = method.toLowerCase();
+        const isCash = methodLc === 'cash' || methodLc === 'nakit';
+        unified.push({
+          key: `exp-${e.id}`,
+          date: String(e.expense_date || e.created_at || ''),
+          ficheNo: String(e.document_number || '').trim() || '—',
+          typeCode: 'GIDER_PUSULASI',
+          category: String(e.category || ''),
+          description: String(e.description || ''),
+          partyName: String(e.cost_center_name || ''),
+          amount: Number(e.amount) || 0,
+          paymentMethod: method || 'cash',
+          isCash,
+        });
+      }
+
+      for (const cl of Array.isArray(cashLines) ? cashLines : []) {
+        const type = String(cl.islem_tipi || '').trim().toUpperCase();
+        if (!DAILY_CASH_OUT_TYPES.has(type)) continue;
+        if (cl.id && linkedCashIds.has(String(cl.id))) continue;
+        const amt = Math.abs(Number(cl.tutar) || 0);
+        if (!amt) continue;
+        unified.push({
+          key: `cash-${cl.id}`,
+          date: String(cl.islem_tarihi || ''),
+          ficheNo: String(cl.islem_no || '').trim() || '—',
+          typeCode: type,
+          category: '',
+          description: String(cl.islem_aciklamasi || ''),
+          partyName: String(cl.cari_hesap_unvani || ''),
+          amount: amt,
+          paymentMethod: 'cash',
+          isCash: true,
+        });
+      }
+
+      unified.sort((a, b) => String(b.date).localeCompare(String(a.date)));
+      const totalAll = unified.reduce((sum, row) => sum + row.amount, 0);
+      const totalCash = unified.reduce((sum, row) => sum + (row.isCash ? row.amount : 0), 0);
+      setDailyExpenseRows(unified);
       setCashExpensesForSelectedDate(totalCash);
       setTotalExpensesForSelectedDate(totalAll);
     } catch {
+      setDailyExpenseRows([]);
       setCashExpensesForSelectedDate(0);
       setTotalExpensesForSelectedDate(0);
     }
@@ -3301,6 +3398,54 @@ export function ReportsModule({
         ? `<div class="center muted" style="margin:3mm 0">${escHtml(L('reportsPrintNoRecords'))}</div>`
         : saleBlocks80;
 
+    const expenseRowsA4 = dailyExpenseRows
+      .map((row) => {
+        const bucket = normalizePaymentMethodBucket(row.paymentMethod);
+        const payLabel =
+          row.isCash || bucket === 'cash'
+            ? L('cashLabel')
+            : bucket === 'card'
+              ? L('cardLabel')
+              : L('reportsPaymentOther');
+        return `
+        <tr>
+          <td>${escHtml(row.ficheNo)}</td>
+          <td>${escHtml(labelDailyExpenseType(row.typeCode))}</td>
+          <td>${escHtml(row.category || row.partyName || '—')}</td>
+          <td>${escHtml(row.description || '—')}</td>
+          <td style="text-align:right">${formatNumber(row.amount, 2, false)}</td>
+          <td>${escHtml(payLabel)}</td>
+        </tr>`;
+      })
+      .join('');
+
+    const expenseBlockA4 = `
+  <h3 style="font-size:14px;margin:16px 0 8px">${escHtml(L('expenseDetails'))}</h3>
+  <table class="t">
+    <thead><tr>
+      <th>${escHtml(L('receiptFicheNo'))}</th>
+      <th>${escHtml(L('type'))}</th>
+      <th>${escHtml(L('category'))}</th>
+      <th>${escHtml(L('description'))}</th>
+      <th style="text-align:right">${escHtml(L('amountLabel_rep'))}</th>
+      <th>${escHtml(L('paymentLabel_rep'))}</th>
+    </tr></thead>
+    <tbody>${expenseRowsA4 || `<tr><td colspan="6" style="text-align:center;color:#64748b">${escHtml(L('reportsPrintNoRecords'))}</td></tr>`}</tbody>
+  </table>`;
+
+    const expenseBlocks80 =
+      dailyExpenseRows.length === 0
+        ? `<div class="center muted" style="margin:3mm 0">${escHtml(L('reportsPrintNoRecords'))}</div>`
+        : dailyExpenseRows
+            .map(
+              (row) => `
+  <div class="sale-block">
+    <div class="row"><span class="wrap">${escHtml(row.ficheNo)}</span><span>${formatNumber(row.amount, 2, false)}</span></div>
+    <div class="sub">${escHtml(labelDailyExpenseType(row.typeCode))}${row.description ? ` · ${escHtml(row.description)}` : ''}</div>
+  </div>`
+            )
+            .join('');
+
     const htmlA4 = `<!DOCTYPE html>
 <html><head><meta charset="UTF-8"><title>${escHtml(L('reportsPrintDailyTitle'))} — ${escHtml(titleDates)}</title>
 <style>
@@ -3326,6 +3471,8 @@ export function ReportsModule({
     <div class="card"><div>${escHtml(L('reportsPrintSummaryTotalDisc'))}</div><strong>${formatNumber(dailyDiscount, 2, false)}</strong></div>
     <div class="card"><div>${escHtml(L('cashLabel'))}</div><strong>${formatNumber(dailyCash, 2, false)}</strong></div>
     <div class="card"><div>${escHtml(L('cardLabel'))}</div><strong>${formatNumber(dailyCard, 2, false)}</strong></div>
+    <div class="card"><div>${escHtml(L('totalExpense'))}</div><strong>${formatNumber(totalExpensesForSelectedDate, 2, false)}</strong></div>
+    <div class="card"><div>${escHtml(L('dailyNetAfterExpense'))}</div><strong>${formatNumber(dailyTotal - totalExpensesForSelectedDate, 2, false)}</strong></div>
   </div>
   <h3 style="font-size:14px;margin:0 0 8px">${escHtml(L('reportsPrintPosLinesTitle'))}</h3>
   <table class="t">
@@ -3341,6 +3488,7 @@ export function ReportsModule({
   </table>`
       : ''
   }
+  ${expenseBlockA4}
   ${restBlockA4}
   <p class="muted" style="margin-top:20px;font-size:10px;text-align:center">${escHtml(L('reportsPrintFooter'))}</p>
 </body></html>`;
@@ -3405,10 +3553,15 @@ export function ReportsModule({
   <div class="row"><span>${escHtml(L('reportsPrintSummaryTotalDisc'))}</span><span>${formatNumber(dailyDiscount, 2, false)}</span></div>
   <div class="row"><span>${escHtml(L('cashLabel'))}</span><span>${formatNumber(dailyCash, 2, false)}</span></div>
   <div class="row"><span>${escHtml(L('cardLabel'))}</span><span>${formatNumber(dailyCard, 2, false)}</span></div>
+  <div class="row"><span>${escHtml(L('totalExpense'))}</span><span class="bold">${formatNumber(totalExpensesForSelectedDate, 2, false)}</span></div>
+  <div class="row"><span>${escHtml(L('dailyNetAfterExpense'))}</span><span class="bold">${formatNumber(dailyTotal - totalExpensesForSelectedDate, 2, false)}</span></div>
   <div class="divider"></div>
   <div class="section-title">${escHtml(L('reportsPrintPosDetail80'))}</div>
   ${emptySales80}
   ${restBlock80}
+  <div class="divider"></div>
+  <div class="section-title">${escHtml(L('expenseDetails'))}</div>
+  ${expenseBlocks80}
   <div class="divider"></div>
   <div class="center small" style="margin-top:2mm">${escHtml(L('reportsPrintFooter'))}</div>
 </body></html>`;
@@ -4511,6 +4664,41 @@ export function ReportsModule({
                   </div>
                 </div>
 
+                <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
+                  <div className="bg-white rounded-lg p-4 border-2 border-rose-100">
+                    <div className="flex items-center justify-between">
+                      <div>
+                        <p className="text-sm text-gray-600">{tm('totalExpense')}</p>
+                        <p className="text-2xl font-bold mt-1 text-rose-600">{formatNumber(totalExpensesForSelectedDate, 2, false)}</p>
+                        <p className="text-xs text-slate-500 mt-1">
+                          {tm('expenseCount')}: {dailyExpenseRows.length}
+                        </p>
+                      </div>
+                      <Wallet className="w-12 h-12 text-rose-400 opacity-40" />
+                    </div>
+                  </div>
+                  <div className="bg-white rounded-lg p-4 border-2 border-orange-100">
+                    <div className="flex items-center justify-between">
+                      <div>
+                        <p className="text-sm text-gray-600">{tm('expenseCashTotal')}</p>
+                        <p className="text-2xl font-bold mt-1 text-orange-700">{formatNumber(cashExpensesForSelectedDate, 2, false)}</p>
+                      </div>
+                      <Banknote className="w-12 h-12 text-orange-400 opacity-30" />
+                    </div>
+                  </div>
+                  <div className="bg-white rounded-lg p-4 border-2 border-emerald-100">
+                    <div className="flex items-center justify-between">
+                      <div>
+                        <p className="text-sm text-gray-600">{tm('dailyNetAfterExpense')}</p>
+                        <p className={`text-2xl font-bold mt-1 ${dailyTotal - totalExpensesForSelectedDate >= 0 ? 'text-emerald-700' : 'text-rose-600'}`}>
+                          {formatNumber(dailyTotal - totalExpensesForSelectedDate, 2, false)}
+                        </p>
+                      </div>
+                      <TrendingUp className="w-12 h-12 text-emerald-400 opacity-30" />
+                    </div>
+                  </div>
+                </div>
+
                 {/* Sales List */}
                 <div className="bg-white rounded-lg border">
                   <div className="p-4 border-b flex flex-wrap items-center justify-between gap-2">
@@ -4637,6 +4825,88 @@ export function ReportsModule({
                             <td colSpan={10} className="px-4 py-8 text-center text-sm text-slate-500">
                               {tm('noDataFound')}
                             </td>
+                          </tr>
+                        )}
+                      </tbody>
+                    </table>
+                  </div>
+                </div>
+
+                <div className="bg-white rounded-lg border">
+                  <div className="p-4 border-b">
+                    <h3 className="text-lg">{tm('expenseDetails')}</h3>
+                    <p className="text-xs text-slate-500 mt-1">{tm('dailyExpenseDetailsHint')}</p>
+                  </div>
+                  <div className="overflow-x-auto overflow-y-auto max-h-[480px]" style={{ scrollbarWidth: 'thin', scrollbarColor: '#cbd5e1 #f1f5f9' }}>
+                    <table className="w-full min-w-[920px]">
+                      <thead className="bg-gray-50 border-b">
+                        <tr>
+                          <th className="px-4 py-3 text-left text-sm">{tm('receiptFicheNo')}</th>
+                          <th className="px-4 py-3 text-left text-sm">{tm('hourLabel')}</th>
+                          <th className="px-4 py-3 text-left text-sm">{tm('type')}</th>
+                          <th className="px-4 py-3 text-left text-sm">{tm('category')}</th>
+                          <th className="px-4 py-3 text-left text-sm">{tm('description')}</th>
+                          <th className="px-4 py-3 text-right text-sm font-semibold">{tm('amountLabel_rep')}</th>
+                          <th className="px-4 py-3 text-left text-sm">{tm('paymentLabel_rep')}</th>
+                        </tr>
+                      </thead>
+                      <tbody className="divide-y">
+                        {dailyExpenseRows.map((row) => {
+                          const dateRaw = String(row.date || '');
+                          const parsed = new Date(dateRaw);
+                          const timeLabel = Number.isNaN(parsed.getTime())
+                            ? (dateRaw.slice(11, 19) || dateRaw.slice(0, 10) || '—')
+                            : selectedDateFrom !== selectedDateTo
+                              ? parsed.toLocaleString('tr-TR')
+                              : /^\d{4}-\d{2}-\d{2}$/.test(dateRaw.slice(0, 10)) && dateRaw.length <= 10
+                                ? '—'
+                                : parsed.toLocaleTimeString('tr-TR');
+                          const partyOrCat = row.category || row.partyName || '—';
+                          const bucket = normalizePaymentMethodBucket(row.paymentMethod);
+                          const payLabel =
+                            row.isCash || bucket === 'cash'
+                              ? tm('cashLabel')
+                              : bucket === 'card'
+                                ? tm('cardLabel')
+                                : bucket === 'transfer'
+                                  ? tm('reportsPaymentPieTransfer')
+                                  : tm('reportsPaymentOther');
+                          const payCls =
+                            row.isCash || bucket === 'cash'
+                              ? 'bg-green-100 text-green-700'
+                              : bucket === 'card'
+                                ? 'bg-blue-100 text-blue-700'
+                                : 'bg-slate-100 text-slate-700';
+                          return (
+                            <tr key={row.key} className="hover:bg-rose-50/60">
+                              <td className="px-4 py-3 text-sm font-medium">{row.ficheNo}</td>
+                              <td className="px-4 py-3 text-sm">{timeLabel}</td>
+                              <td className="px-4 py-3 text-sm">{labelDailyExpenseType(row.typeCode)}</td>
+                              <td className="px-4 py-3 text-sm">{partyOrCat}</td>
+                              <td className="px-4 py-3 text-sm text-slate-600">{row.description || '—'}</td>
+                              <td className="px-4 py-3 text-right text-sm font-medium text-rose-700 tabular-nums">
+                                {formatNumber(row.amount, 2, false)}
+                              </td>
+                              <td className="px-4 py-3">
+                                <span className={`px-2 py-1 rounded text-xs ${payCls}`}>{payLabel}</span>
+                              </td>
+                            </tr>
+                          );
+                        })}
+                        {dailyExpenseRows.length === 0 && (
+                          <tr>
+                            <td colSpan={7} className="px-4 py-8 text-center text-sm text-slate-500">
+                              {tm('noDataFound')}
+                            </td>
+                          </tr>
+                        )}
+                        {dailyExpenseRows.length > 0 && (
+                          <tr className="bg-slate-50 font-semibold">
+                            <td colSpan={5} className="px-4 py-3 text-sm">{tm('totalExpense')}</td>
+                            <td className="px-4 py-3 text-right text-sm text-rose-700 tabular-nums">
+                              {formatNumber(totalExpensesForSelectedDate, 2, false)}
+                            </td>
+                            <td />
                           </tr>
                         )}
                       </tbody>

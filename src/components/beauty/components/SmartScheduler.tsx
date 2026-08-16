@@ -5,7 +5,7 @@ import { formatLongDate, formatMediumDate, formatShortMonthDay, formatWeekdaySho
 import {
     ChevronLeft, ChevronRight, Plus, Clock,
     User, Cpu, List, Search, X,
-    CalendarDays, Banknote, Undo2, Phone, MessageSquare, Send,
+    CalendarDays, Banknote, Undo2, Phone, MessageSquare, Send, Users,
 } from 'lucide-react';
 import { useBeautyStore } from '../store/useBeautyStore';
 import {
@@ -79,6 +79,7 @@ const LS_BEAUTY_QUEUE = 'retailex.beauty.queueMode';
 const LS_BEAUTY_SEP = 'retailex.beauty.separateLineInvoices';
 const LS_BEAUTY_SVC_ONLY_BOOKED = 'retailex.beauty.serviceBoardOnlyBooked';
 const LS_BEAUTY_MAIN_LAYOUT = 'retailex.beauty.serviceBoardMainLayout';
+const LS_BEAUTY_FU_GROUP = 'retailex.beauty.followUpGroupByCustomer';
 
 function parseHhmmToMinutes(raw: string | undefined): number | null {
     const s = String(raw ?? '').trim();
@@ -279,6 +280,16 @@ export function SmartScheduler() {
             return 'stack';
         }
     });
+    /** Hizmet & tarih: aynı gün aynı müşteri tek hatırlatma kartı */
+    const [followUpGroupByCustomer, setFollowUpGroupByCustomer] = useState(() => {
+        if (typeof window === 'undefined' || !IS_BROWSER) return true;
+        try {
+            const v = window.localStorage.getItem(LS_BEAUTY_FU_GROUP);
+            return !(v === '0' || v === 'false');
+        } catch {
+            return true;
+        }
+    });
     /** Takvim kartından işlem tutarı düzenleme */
     const [priceEditApt, setPriceEditApt] = useState<BeautyAppointment | null>(null);
     const [priceEditDraft, setPriceEditDraft] = useState('');
@@ -399,6 +410,7 @@ export function SmartScheduler() {
                 window.localStorage.setItem(LS_BEAUTY_SEP, beautySeparateLineInvoices ? 'true' : 'false');
                 window.localStorage.setItem(LS_BEAUTY_SVC_ONLY_BOOKED, serviceBoardOnlyBooked ? 'true' : 'false');
                 window.localStorage.setItem(LS_BEAUTY_MAIN_LAYOUT, serviceBoardMainLayout);
+                window.localStorage.setItem(LS_BEAUTY_FU_GROUP, followUpGroupByCustomer ? 'true' : 'false');
             } catch {
                 // no-op
             }
@@ -419,7 +431,7 @@ export function SmartScheduler() {
                 // no-op
             }
         })();
-    }, [slotIntervalMin, beautyQueueMode, beautySeparateLineInvoices, serviceBoardOnlyBooked, serviceBoardMainLayout]);
+    }, [slotIntervalMin, beautyQueueMode, beautySeparateLineInvoices, serviceBoardOnlyBooked, serviceBoardMainLayout, followUpGroupByCustomer]);
 
     useEffect(() => {
         if (view === 'svcboard') {
@@ -1554,6 +1566,31 @@ export function SmartScheduler() {
                                     ? tm('bServiceDateBoardMainStack')
                                     : tm('bServiceDateBoardMainRow')}
                             </button>
+                            <button
+                                type="button"
+                                onClick={() => setFollowUpGroupByCustomer(v => !v)}
+                                title={tm('bFollowUpGroupToggleHint')}
+                                style={{
+                                    height: 30,
+                                    padding: '0 10px',
+                                    borderRadius: 6,
+                                    border: followUpGroupByCustomer ? '1px solid #6d28d9' : '1px solid #e5e7eb',
+                                    background: followUpGroupByCustomer ? '#ede9fe' : '#fff',
+                                    color: followUpGroupByCustomer ? '#5b21b6' : '#4b5563',
+                                    fontSize: 11,
+                                    fontWeight: 700,
+                                    cursor: 'pointer',
+                                    whiteSpace: 'nowrap',
+                                    display: 'flex',
+                                    alignItems: 'center',
+                                    gap: 6,
+                                }}
+                            >
+                                <Users size={13} />
+                                {followUpGroupByCustomer
+                                    ? tm('bFollowUpGroupByCustomerOn')
+                                    : tm('bFollowUpSequentialMode')}
+                            </button>
                         </>
                     )}
                     <div style={{ display: 'flex', alignItems: 'center', gap: 6, background: '#f9fafb', border: '1px solid #e5e7eb', borderRadius: 5, padding: '0 8px', height: 30 }}>
@@ -2314,6 +2351,8 @@ export function SmartScheduler() {
                                 showOnlyServicesWithBookings={serviceBoardOnlyBooked}
                                 emptyDayWhenFilteredLabel={tm('bServiceDateBoardDayEmptyFiltered')}
                                 mainCategoryLayout={serviceBoardMainLayout}
+                                groupFollowUpsByCustomer={followUpGroupByCustomer}
+                                followUpOpsCountTemplate={tm('bFollowUpOpsCount')}
                             />
                         )}
 
