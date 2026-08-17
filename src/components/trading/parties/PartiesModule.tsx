@@ -3,6 +3,7 @@ import { partyAPI } from '../../../services/api/parties';
 import { partnerAPI } from '../../../services/api/partiesPartners';
 import { employeeAPI } from '../../../services/api/partiesEmployees';
 import { PartnerDistributionModal } from './PartnerDistributionModal';
+import { PartnerCashModal } from './PartnerCashModal';
 import { EmployeePayrollModal } from './EmployeePayrollModal';
 import { PartyEditModal } from './PartyEditModal';
 import { PartyMergeModal } from './PartyMergeModal';
@@ -23,6 +24,7 @@ import {
   Trash2,
   Users,
   HandCoins,
+  Wallet,
   Briefcase,
   GitMerge,
   FileText,
@@ -60,6 +62,7 @@ export function PartiesModule({
   const [editing, setEditing] = useState<Party | null>(null);
   const [creating, setCreating] = useState<PartyCardType | null>(null);
   const [payrollEmployee, setPayrollEmployee] = useState<Party | null>(null);
+  const [cashPartner, setCashPartner] = useState<Party | null>(null);
   const [statementParty, setStatementParty] = useState<Party | null>(null);
   const [distributionOpen, setDistributionOpen] = useState(false);
   const [validationWarning, setValidationWarning] = useState<string | null>(null);
@@ -398,6 +401,12 @@ export function PartiesModule({
                     {p.card_type === 'employee' && Number(p.balance) < 0 ? (
                       <div className="text-[9px] font-bold uppercase text-amber-700">{t('party.employee.balanceLabelAdvance')}</div>
                     ) : null}
+                    {p.card_type === 'partner' && Number(p.balance) > 0 ? (
+                      <div className="text-[9px] font-bold uppercase text-emerald-700">{t('party.partner.balanceLabel')}</div>
+                    ) : null}
+                    {p.card_type === 'partner' && Number(p.balance) < 0 ? (
+                      <div className="text-[9px] font-bold uppercase text-amber-700">{t('party.partner.balanceLabelNegative')}</div>
+                    ) : null}
                   </td>
                   <td className="px-4 py-3 text-slate-600">
                     {p.card_type === 'partner' ? `${Number(p.share_pct || 0).toFixed(2)}%` : '—'}
@@ -412,6 +421,16 @@ export function PartiesModule({
                           title={t('party.payroll.openPayroll')}
                         >
                           <Briefcase className="w-4 h-4" />
+                        </button>
+                      )}
+                      {p.card_type === 'partner' && (
+                        <button
+                          type="button"
+                          onClick={() => setCashPartner(p)}
+                          className="p-2 rounded-lg hover:bg-purple-50 text-purple-600"
+                          title={t('party.partnerCash.openCash')}
+                        >
+                          <Wallet className="w-4 h-4" />
                         </button>
                       )}
                       {(p.card_type === 'employee' || p.card_type === 'partner') && (
@@ -479,6 +498,19 @@ export function PartiesModule({
         />
       )}
 
+      {cashPartner && (
+        <PartnerCashModal
+          partner={cashPartner}
+          onClose={() => setCashPartner(null)}
+          onSaved={() => {
+            load();
+          }}
+          onOpenStatement={() => {
+            setStatementParty(cashPartner);
+          }}
+        />
+      )}
+
       {statementParty && (
         <PartyStatementPanel
           party={statementParty}
@@ -522,6 +554,17 @@ export function PartiesModule({
                   icon: Briefcase,
                   onClick: () => {
                     setPayrollEmployee(contextMenu.party);
+                    setContextMenu(null);
+                  },
+                }]
+              : []),
+            ...(contextMenu.party.card_type === 'partner'
+              ? [{
+                  id: 'partner-cash',
+                  label: t('party.partnerCash.openCash'),
+                  icon: Wallet,
+                  onClick: () => {
+                    setCashPartner(contextMenu.party);
                     setContextMenu(null);
                   },
                 }]

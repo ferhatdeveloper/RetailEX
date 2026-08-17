@@ -151,8 +151,8 @@ export async function getPartyStatement(
         cl.definition,
         cl.f_amount AS amount,
         CASE
-          WHEN cl.transaction_type IN ('MAAS_ODEME','AVANS_ODEME','ORTAK_DAGITIM_KAR') THEN 1
-          WHEN cl.transaction_type IN ('ORTAK_DAGITIM_ZARAR','AVANS_MAHSUP','ORTAK_SERMAYE_CIKIS') THEN -1
+          WHEN cl.transaction_type IN ('MAAS_ODEME','AVANS_ODEME','ORTAK_DAGITIM_KAR','ORTAK_SERMAYE_TAHSILAT','ORTAK_PARA_GIRIS','SERMAYE_TAHSILAT') THEN 1
+          WHEN cl.transaction_type IN ('ORTAK_DAGITIM_ZARAR','AVANS_MAHSUP','ORTAK_SERMAYE_CIKIS','ORTAK_SERMAYE_ODEME','ORTAK_PARA_CIKIS','SERMAYE_ODEME') THEN -1
           ELSE 0
         END AS sign,
         cl.id
@@ -228,8 +228,8 @@ export async function getPartyStatement(
               (SELECT COALESCE(SUM(amount * sign), 0) FROM ${partyLedgerTable()}
                WHERE party_id = $1::text::uuid AND date < $2::date)
              + (SELECT COALESCE(SUM(CASE
-                 WHEN transaction_type IN ('ORTAK_DAGITIM_KAR') THEN f_amount
-                 WHEN transaction_type IN ('ORTAK_DAGITIM_ZARAR','ORTAK_SERMAYE_CIKIS') THEN -f_amount
+                 WHEN transaction_type IN ('ORTAK_DAGITIM_KAR','ORTAK_SERMAYE_TAHSILAT','ORTAK_PARA_GIRIS','SERMAYE_TAHSILAT') THEN f_amount
+                 WHEN transaction_type IN ('ORTAK_DAGITIM_ZARAR','ORTAK_SERMAYE_CIKIS','ORTAK_SERMAYE_ODEME','ORTAK_PARA_CIKIS','SERMAYE_ODEME') THEN -f_amount
                  ELSE 0 END), 0) FROM ${cashLinesTable()} cl
                WHERE cl.party_id = $1::text::uuid AND cl.date < $2::date
                  AND NOT EXISTS (

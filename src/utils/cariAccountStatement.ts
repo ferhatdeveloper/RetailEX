@@ -78,8 +78,14 @@ export function ficheTypeToInfo(ficheType: string, trcode: number, cancelled?: b
   if (ftUpper === 'MAAS_ODEME') return { label: 'Maaş', color: 'bg-emerald-100 text-emerald-700', isReturn: true };
   if (ftUpper === 'AVANS_ODEME') return { label: 'Avans', color: 'bg-amber-100 text-amber-700', isReturn: true };
   if (ftUpper === 'AVANS_MAHSUP') return { label: 'Mahsup', color: 'bg-slate-100 text-slate-600', isReturn: false };
-  if (ftUpper === 'ORTAK_DAGITIM_KAR') return { label: 'Kâr Dağıtım', color: 'bg-purple-100 text-purple-700', isReturn: false };
-  if (ftUpper === 'ORTAK_DAGITIM_ZARAR') return { label: 'Zarar Dağıtım', color: 'bg-rose-100 text-rose-700', isReturn: true };
+  if (ftUpper === 'ORTAK_DAGITIM_KAR' || ftUpper === 'KAR_DAGITIMI') return { label: 'Kâr Dağıtım', color: 'bg-purple-100 text-purple-700', isReturn: false };
+  if (ftUpper === 'ORTAK_DAGITIM_ZARAR' || ftUpper === 'ZARAR_DAGITIMI') return { label: 'Zarar Dağıtım', color: 'bg-rose-100 text-rose-700', isReturn: true };
+  if (ftUpper === 'SERMAYE_TAHSILAT' || ftUpper === 'ORTAK_SERMAYE_TAHSILAT' || ftUpper === 'ORTAK_PARA_GIRIS') {
+    return { label: 'Para girişi', color: 'bg-teal-100 text-teal-700', isReturn: false };
+  }
+  if (ftUpper === 'SERMAYE_ODEME' || ftUpper === 'ORTAK_SERMAYE_ODEME' || ftUpper === 'ORTAK_PARA_CIKIS' || ftUpper === 'ORTAK_SERMAYE_CIKIS') {
+    return { label: 'Para çıkışı', color: 'bg-amber-100 text-amber-800', isReturn: true };
+  }
   if (ft === 'opening_balance') return { label: 'Devir', color: 'bg-indigo-100 text-indigo-800', isReturn: false, isOpening: true };
   if (trcode === 9) return { label: 'Hizmet', color: 'bg-indigo-100 text-indigo-700', isReturn: false };
   return { label: 'Satış', color: 'bg-blue-100 text-blue-700', isReturn: false };

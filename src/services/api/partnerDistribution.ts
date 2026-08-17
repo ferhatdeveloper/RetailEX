@@ -11,16 +11,16 @@
  *   - cash_net: kasa + banka net pozisyonu (işaret dahil)
  *   - manual: kullanıcı tutarı girer
  *
- * Muhasebe yönü:
- *   - Kâr dağıtımı: ORTAK_DAGITIM_KAR (kasa sign=-1, party balance +)
- *   - Zarar dağıtımı: ORTAK_DAGITIM_ZARAR (kasa sign=+1, party balance -)
+ * Muhasebe yönü (personel hakkediş analogu):
+ *   - Kâr dağıtımı: KAR_DAGITIMI ledger sign=+1, parties.balance +  (kasa yok)
+ *   - Zarar dağıtımı: ZARAR_DAGITIMI ledger sign=-1, parties.balance − (kasa yok)
+ *   Nakit ortak para girişi / çıkışı ayrı işlemdir (partnerAPI.cashIn / cashOut).
  *
  * Yuvarlama: son ortak total - Σ(önceki paylar) ile hesaplanır (kuruş farkı yansımasın).
  */
 
 import { postgres, ERP_SETTINGS } from '../postgres';
 import { normalizeFirmTableNr } from './accountBalance';
-import { createKasaIslemi, computePartyBalanceDelta } from './kasa';
 import { ensurePartyPeriodTables } from './ensurePartyPeriodTables';
 import type {
   PartyPartner,
@@ -196,8 +196,7 @@ export async function previewDistribution(opts: {
  * Akış:
  *  1) partner_distributions kaydı (parent row)
  *  2) Her ortağa:
- *     - cash_line yazılır (ORTAK_DAGITIM_KAR veya ORTAK_DAGITIM_ZARAR)
- *     - party_ledger_movements kaydı yazılır
+ *     - party_ledger_movements kaydı yazılır (kasa yok)
  *     - parties.balance güncellenir
  *     - partner_distribution_items kaydı yazılır
  *  3) negatif dağıtım tutarı (zarar) için sign ters
@@ -206,12 +205,12 @@ export async function executeDistribution(opts: {
   baseType: PartnerDistributionBase;
   baseAmount: number;
   triggerType: PartnerDistributionMode;
-  registerId: string;
+  /** @deprecated Dağıtım kasa yazmaz; geriye dönük imza için opsiyonel. */
+  registerId?: string;
   createdBy?: string;
   notes?: string;
   distributionDate?: string;
 }): Promise<PartnerDistribution> {
-  if (!opts.registerId) throw new Error('Kasa/banka seçilmeden dağıtım yapılamaz.');
   const preview = await previewDistribution({ baseType: opts.baseType, baseAmount: opts.baseAmount });
   if (preview.warnings.length > 0) {
     throw new Error(preview.warnings.join(' '));
@@ -245,7 +244,6 @@ interface ExecuteInternal {
   baseType: PartnerDistributionBase;
   baseAmount: number;
   triggerType: PartnerDistributionMode;
-  registerId: string;
   createdBy?: string;
   notes?: string;
   distDate: string;
@@ -274,7 +272,7 @@ async function executeDistributionInternal(opts: ExecuteInternal): Promise<Partn
         period,
         opts.distDate,
         opts.baseType,
-        opts.baseAmount.toString(),
+        (opts.isLoss ? -opts.baseAmount : opts.baseAmount).toString(),
         opts.preview.totalPct.toString(),
         opts.triggerType,
         opts.createdBy || null,
@@ -285,34 +283,18 @@ async function executeDistributionInternal(opts: ExecuteInternal): Promise<Partn
     if (!distRow) throw new Error('Dağıtım parent kaydı oluşturulamadı.');
 
     const txType = opts.isLoss ? 'ZARAR_DAGITIMI' : 'KAR_DAGITIMI';
-    const kasaIslemTipi = opts.isLoss ? 'ORTAK_DAGITIM_ZARAR' : 'ORTAK_DAGITIM_KAR';
+    const signedDelta = opts.isLoss ? -1 : 1;
 
     const items: PartnerDistributionItem[] = [];
 
     for (const item of opts.preview.partners) {
-      // 2) Her ortak için cash_line + party_ledger + bakiye
-      const cih = await createKasaIslemi({
-        firma_id: firmNr,
-        kasa_id: opts.registerId,
-        islem_tarihi: new Date(`${opts.distDate}T12:00:00`).toISOString(),
-        tutar: item.amount,
-        islem_tipi: kasaIslemTipi,
-        islem_aciklamasi: `${opts.isLoss ? 'Zarar' : 'Kâr'} dağıtımı — %${item.sharePct} (${item.partner.name})`,
-        party_id: item.partner.id,
-        party_code: item.partner.code,
-        party_name: item.partner.name,
-        doviz_kodu: 'YEREL',
-        dovizli_tutar: item.amount,
-      });
-
-      // 3) party_ledger_movements
       const ledgerIns = await postgres.query(
         `INSERT INTO ${ledgerTable()} (
            firm_nr, period_nr, party_id, card_type, trcode, transaction_type,
            date, amount, sign, definition, source_module, source_id, cash_line_id
          ) VALUES (
            $1::text, $2::text, $3::text::uuid, 'partner', 64, $4::text,
-           $5::text::timestamptz, $6::text::numeric, $7::integer, $8::text, 'partner_distribution', $9::text::uuid, $10::text::uuid
+           $5::text::timestamptz, $6::text::numeric, $7::integer, $8::text, 'partner_distribution', $9::text::uuid, NULL
          ) RETURNING id`,
         [
           firmNr,
@@ -321,20 +303,25 @@ async function executeDistributionInternal(opts: ExecuteInternal): Promise<Partn
           txType,
           new Date(`${opts.distDate}T12:00:00`).toISOString(),
           item.amount.toString(),
-          opts.isLoss ? -1 : 1,
+          signedDelta,
           `${txType} — %${item.sharePct}`,
           distRow.id,
-          cih.id || null,
         ],
       );
       const ledgerId = ledgerIns.rows?.[0]?.id;
 
-      // 4) partner_distribution_items
+      await postgres.query(
+        `UPDATE ${partnersTable()}
+         SET balance = COALESCE(balance, 0) + $1::text::numeric, updated_at = NOW()
+         WHERE id = $2::text::uuid`,
+        [(item.amount * signedDelta).toString(), item.partner.id],
+      );
+
       const itemIns = await postgres.query(
         `INSERT INTO ${distributionItemsTable()} (
            distribution_id, partner_id, share_pct, amount, cash_line_id, party_ledger_movement_id
-         ) VALUES ($1::text::uuid, $2::text::uuid, $3::text::numeric, $4::text::numeric, $5::text::uuid, $6::text::uuid) RETURNING *`,
-        [distRow.id, item.partner.id, item.sharePct.toString(), item.amount.toString(), cih.id || null, ledgerId || null],
+         ) VALUES ($1::text::uuid, $2::text::uuid, $3::text::numeric, $4::text::numeric, NULL, $5::text::uuid) RETURNING *`,
+        [distRow.id, item.partner.id, item.sharePct.toString(), item.amount.toString(), ledgerId || null],
       );
 
       items.push(itemIns.rows[0]);
@@ -348,7 +335,7 @@ async function executeDistributionInternal(opts: ExecuteInternal): Promise<Partn
       period_nr: period,
       distribution_date: opts.distDate,
       base_type: opts.baseType,
-      base_amount: opts.baseAmount,
+      base_amount: opts.isLoss ? -opts.baseAmount : opts.baseAmount,
       total_partner_pct: opts.preview.totalPct,
       trigger_type: opts.triggerType,
       created_by: opts.createdBy,
@@ -479,51 +466,47 @@ export async function reverseDistribution(distributionId: string, opts: { create
     const newDistRow = newDist.rows?.[0];
     if (!newDistRow) throw new Error('Ters kayıt oluşturulamadı.');
 
-    // Her item için tersledger + ters bakiye
-    const txType = parseFloat(prev.base_amount || 0) >= 0 ? 'ZARAR_DAGITIMI' : 'KAR_DAGITIMI';
-    const kasaIslemTipi = parseFloat(prev.base_amount || 0) >= 0 ? 'ORTAK_DAGITIM_ZARAR' : 'ORTAK_DAGITIM_KAR';
+    const origSigned = parseFloat(prev.base_amount || 0);
+    const origWasProfit = origSigned >= 0;
+    const txType = origWasProfit ? 'KAR_DAGITIMI' : 'ZARAR_DAGITIMI';
+    const reverseSign = origWasProfit ? -1 : 1;
 
     const reversedItems: PartnerDistributionItem[] = [];
     for (const it of items) {
-      const cih = await createKasaIslemi({
-        firma_id: firmNr,
-        kasa_id: prev.notes || '00000000-0000-0000-0000-000000000000', // placeholder; gerçek registerId row'dan gelecek
-        islem_tarihi: new Date().toISOString(),
-        tutar: parseFloat(it.amount || 0),
-        islem_tipi: kasaIslemTipi,
-        islem_aciklamasi: `Dağıtım iptali — ${prev.id}`,
-        party_id: it.partner_id,
-        doviz_kodu: 'YEREL',
-        dovizli_tutar: parseFloat(it.amount || 0),
-      });
-
+      const amt = Math.abs(parseFloat(it.amount || 0));
       const ledgerIns = await postgres.query(
         `INSERT INTO ${ledgerTable()} (
            firm_nr, period_nr, party_id, card_type, trcode, transaction_type,
            date, amount, sign, definition, source_module, source_id, cash_line_id
          ) VALUES (
            $1::text, $2::text, $3::text::uuid, 'partner', 65, $4::text,
-           NOW(), $5::text::numeric, $6::integer, $7::text, 'partner_distribution_reversal', $8::text::uuid, $9::text::uuid
+           NOW(), $5::text::numeric, $6::integer, $7::text, 'partner_distribution_reversal', $8::text::uuid, NULL
          ) RETURNING id`,
         [
           firmNr,
           period,
           it.partner_id,
           txType,
-          parseFloat(it.amount || 0).toString(),
-          -1,
+          amt.toString(),
+          reverseSign,
           `İptal: ${prev.id}`,
           newDistRow.id,
-          cih.id || null,
         ],
       );
       const ledgerId = ledgerIns.rows?.[0]?.id;
 
+      await postgres.query(
+        `UPDATE ${partnersTable()}
+         SET balance = COALESCE(balance, 0) + $1::text::numeric, updated_at = NOW()
+         WHERE id = $2::text::uuid`,
+        [(amt * reverseSign).toString(), it.partner_id],
+      );
+
       const itemIns = await postgres.query(
         `INSERT INTO ${distributionItemsTable()} (
            distribution_id, partner_id, share_pct, amount, cash_line_id, party_ledger_movement_id
-         ) VALUES ($1::text::uuid, $2::text::uuid, $3::text::numeric, $4::text::numeric, $5::text::uuid, $6::text::uuid) RETURNING *`,
-        [newDistRow.id, it.partner_id, (-parseFloat(it.share_pct || 0)).toString(), (-parseFloat(it.amount || 0)).toString(), cih.id || null, ledgerId || null],
+         ) VALUES ($1::text::uuid, $2::text::uuid, $3::text::numeric, $4::text::numeric, NULL, $5::text::uuid) RETURNING *`,
+        [newDistRow.id, it.partner_id, (-parseFloat(it.share_pct || 0)).toString(), (-amt).toString(), ledgerId || null],
       );
       reversedItems.push(itemIns.rows[0]);
     }

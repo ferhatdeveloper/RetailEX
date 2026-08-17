@@ -30,28 +30,29 @@ function padKasaPeriodNr(): string {
  * MAAS_ODEME  |   -1      |   −tutar (ödenen maaş)
  * AVANS_ODEME |   -1      |   −tutar (avans)
  * AVANS_MAHSUP|    0      |    0     (belge; avans zaten düştü)
- * ORTAK_DAGITIM_KAR  | -1 | +tutar (ortağın alacağı)
- * ORTAK_DAGITIM_ZARAR| +1 | -tutar (ortağın zarar katkısı)
- * ORTAK_SERMAYE_TAHSILAT | +1 | -tutar (sermaye çekme)
- * ORTAK_SERMAYE_ODEME    | -1 | +tutar (sermaye koyma)
+ * ORTAK_DAGITIM_KAR  |  0 | +tutar (hesaba kâr payı; kasa yok)
+ * ORTAK_DAGITIM_ZARAR|  0 | -tutar (hesaba zarar; kasa yok)
+ * ORTAK_SERMAYE_TAHSILAT | +1 | +tutar (para girişi: ortak kasaya koyar)
+ * ORTAK_SERMAYE_ODEME    | -1 | -tutar (para çıkışı: ortak kasadan çeker)
  */
 export function computePartyBalanceDelta(tutar: number, islemTipi: string): number {
   const amt = Math.abs(parseFloat(String(tutar ?? 0)) || 0);
   if (!amt) return 0;
   switch (String(islemTipi || '').toUpperCase().trim()) {
     case 'MAAS_HAKKEDIS':
-      return amt;
     case 'ORTAK_DAGITIM_KAR':
-    case 'ORTAK_SERMAYE_ODEME':
+    case 'ORTAK_SERMAYE_TAHSILAT':
+    case 'ORTAK_PARA_GIRIS':
       return amt;
     case 'MAAS_ODEME':
     case 'AVANS_ODEME':
+    case 'ORTAK_DAGITIM_ZARAR':
+    case 'ORTAK_SERMAYE_ODEME':
+    case 'ORTAK_PARA_CIKIS':
+    case 'ORTAK_SERMAYE_CIKIS':
       return -amt;
     case 'AVANS_MAHSUP':
       return 0;
-    case 'ORTAK_DAGITIM_ZARAR':
-    case 'ORTAK_SERMAYE_TAHSILAT':
-      return -amt;
     default:
       return 0;
   }
@@ -670,6 +671,8 @@ export async function createKasaIslemi(incoming: KasaIslemi): Promise<KasaIslemi
       case 'ACILIS_BORC':
       case 'KUR_FARKI_BORC':
       case 'ORTAK_DAGITIM_ZARAR':
+      case 'ORTAK_SERMAYE_TAHSILAT':
+      case 'ORTAK_PARA_GIRIS':
         sign = 1;
         break;
       case 'CH_ODEME':
@@ -684,6 +687,9 @@ export async function createKasaIslemi(incoming: KasaIslemi): Promise<KasaIslemi
       case 'MAAS_ODEME':
       case 'AVANS_ODEME':
       case 'ORTAK_DAGITIM_KAR':
+      case 'ORTAK_SERMAYE_ODEME':
+      case 'ORTAK_PARA_CIKIS':
+      case 'ORTAK_SERMAYE_CIKIS':
         sign = -1;
         break;
       case 'AVANS_MAHSUP':
@@ -788,8 +794,8 @@ export async function createKasaIslemi(incoming: KasaIslemi): Promise<KasaIslemi
 
     // Parties (Personel / Şirket Ortağı) — party_id ile polymorphic bakiye güncelleme.
     // Personel: MAAS_ODEME/AVANS_ODEME (−tutar, ödenmemiş maaş alacağı ↓).
-    // Ortağı: ORTAK_DAGITIM_KAR (−tutar, party balance ↑ = dağıtılmamış kâr payı alacağı),
-    //         ORTAK_DAGITIM_ZARAR (+tutar, party balance ↓ = ortağın zarara katılımı).
+    // Ortağı nakit: ORTAK_SERMAYE_TAHSILAT (kasa +, bakiye +), ORTAK_SERMAYE_ODEME (kasa −, bakiye −).
+    // Kâr/zarar dağıtımı kasa yazmaz; ledger + parties.balance partnerDistribution içinde güncellenir.
     if (islem.party_id) {
       const partyDelta = computePartyBalanceDelta(islem.tutar, islem.islem_tipi);
       if (partyDelta !== 0) {

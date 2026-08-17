@@ -115,8 +115,10 @@ function txLabel(type: string): string {
   if (u === 'MAAS_ODEME') return 'Maaş';
   if (u === 'AVANS_ODEME') return 'Avans';
   if (u === 'AVANS_MAHSUP') return 'Mahsup';
-  if (u === 'ORTAK_DAGITIM_KAR') return 'Kâr Dağıtım';
-  if (u === 'ORTAK_DAGITIM_ZARAR') return 'Zarar Dağıtım';
+  if (u === 'ORTAK_DAGITIM_KAR' || u === 'KAR_DAGITIMI') return 'Kâr Dağıtım';
+  if (u === 'ORTAK_DAGITIM_ZARAR' || u === 'ZARAR_DAGITIMI') return 'Zarar Dağıtım';
+  if (u === 'SERMAYE_TAHSILAT' || u === 'ORTAK_SERMAYE_TAHSILAT' || u === 'ORTAK_PARA_GIRIS') return 'Para girişi';
+  if (u === 'SERMAYE_ODEME' || u === 'ORTAK_SERMAYE_ODEME' || u === 'ORTAK_PARA_CIKIS' || u === 'ORTAK_SERMAYE_CIKIS') return 'Para çıkışı';
   return type || '—';
 }
 

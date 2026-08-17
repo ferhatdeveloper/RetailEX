@@ -62,7 +62,7 @@ export function PartyStatementPanel({ party, onClose }: PartyStatementPanelProps
     setPrinting(true);
     try {
       await printPartyStatementDoc({
-        title: t('party.statement.title'),
+        title: party.card_type === 'partner' ? t('party.partnerCash.statementTitle') : t('party.statement.title'),
         partyName: party.name,
         partyCode: party.code,
         cardTypeLabel: t(`party.cardType.${party.card_type}`),
@@ -199,7 +199,9 @@ export function PartyStatementPanel({ party, onClose }: PartyStatementPanelProps
           <div className="flex min-h-[40vh] flex-col items-center justify-center gap-3 px-6 text-center text-gray-500">
             <FileText className="h-10 w-10 text-gray-300" />
             <p className="text-sm font-medium">{tm('noRecordFound')}</p>
-            <p className="max-w-md text-xs text-gray-400">{t('party.statement.empty')}</p>
+            <p className="max-w-md text-xs text-gray-400">
+              {party.card_type === 'partner' ? t('party.partnerCash.statementEmpty') : t('party.statement.empty')}
+            </p>
           </div>
         ) : (
           <table className="w-full text-sm">

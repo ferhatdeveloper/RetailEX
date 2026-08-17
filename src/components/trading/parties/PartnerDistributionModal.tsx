@@ -14,14 +14,12 @@ import {
 } from '../../../services/api/partnerDistribution';
 import { getPartnerSettings } from '../../../services/api/partnerSettings';
 import { partnerAPI } from '../../../services/api/partiesPartners';
-import { fetchKasalar, type Kasa } from '../../../services/api/kasa';
 import type {
   PartyPartner,
   PartnerDistribution,
   PartnerDistributionBase,
   PartnerDistributionMode,
   PartnerDistributionPreview,
-  PartnerSettings,
 } from '../../../core/types/models';
 
 export interface PartnerDistributionModalProps {
@@ -43,14 +41,11 @@ const TRIGGER_OPTIONS: { value: PartnerDistributionMode; labelKey: string }[] = 
 
 export function PartnerDistributionModal({ onClose, onSaved }: PartnerDistributionModalProps) {
   const t = useNestedT();
-  const [settings, setSettings] = useState<PartnerSettings | null>(null);
   const [partners, setPartners] = useState<PartyPartner[]>([]);
-  const [registers, setRegisters] = useState<Kasa[]>([]);
   const [baseType, setBaseType] = useState<PartnerDistributionBase>('manual');
   const [triggerType, setTriggerType] = useState<PartnerDistributionMode>('manual');
   const [manualAmount, setManualAmount] = useState('');
   const [computedAmount, setComputedAmount] = useState<number | null>(null);
-  const [registerId, setRegisterId] = useState('');
   const [notes, setNotes] = useState('');
   const [preview, setPreview] = useState<PartnerDistributionPreview | null>(null);
   const [history, setHistory] = useState<PartnerDistribution[]>([]);
@@ -60,17 +55,13 @@ export function PartnerDistributionModal({ onClose, onSaved }: PartnerDistributi
   useEffect(() => {
     (async () => {
       try {
-        const [s, p, r] = await Promise.all([
+        const [s, p] = await Promise.all([
           getPartnerSettings(),
           partnerAPI.getActive(),
-          fetchKasalar({ aktif: true }),
         ]);
-        setSettings(s);
         setPartners(p);
-        setRegisters(r);
         setBaseType(s.distribution_base);
         setTriggerType(s.distribution_mode);
-        if (r.length) setRegisterId(r[0].id);
         const h = await getDistributionHistory({ limit: 20 });
         setHistory(h);
       } catch (err: any) {
@@ -117,7 +108,6 @@ export function PartnerDistributionModal({ onClose, onSaved }: PartnerDistributi
 
   const handleExecute = async () => {
     if (!preview) return;
-    if (!registerId) { setError(t('party.distribution.registerRequired')); return; }
     if (preview.warnings.length) { setError(preview.warnings.join(' ')); return; }
     setLoading(true);
     setError(null);
@@ -126,7 +116,6 @@ export function PartnerDistributionModal({ onClose, onSaved }: PartnerDistributi
         baseType,
         baseAmount,
         triggerType,
-        registerId,
         notes: notes || undefined,
       });
       toast.success(t('party.distribution.executeSuccess'));
@@ -219,23 +208,8 @@ export function PartnerDistributionModal({ onClose, onSaved }: PartnerDistributi
               </div>
             )}
 
-            <div className="relative">
-              <label className="block text-[11px] font-bold text-slate-500 uppercase tracking-wider mb-1.5">
-                {t('party.distribution.register')}
-              </label>
-              <select
-                value={registerId}
-                onChange={(e) => setRegisterId(e.target.value)}
-                className="w-full px-4 py-3 pr-11 border border-slate-200 rounded-2xl focus:ring-2 focus:ring-purple-500 focus:border-purple-400 outline-none text-slate-800 font-medium appearance-none bg-white"
-              >
-                <option value="">{t('party.distribution.chooseRegister')}</option>
-                {registers.map((r) => (
-                  <option key={r.id} value={r.id}>
-                    {r.kasa_adi} ({r.kasa_kodu})
-                  </option>
-                ))}
-              </select>
-              <ChevronDown className="absolute right-3 top-[42px] -translate-y-1/2 w-5 h-5 text-slate-400 pointer-events-none" />
+            <div className="sm:col-span-2 p-4 rounded-2xl bg-indigo-50 border border-indigo-100 text-sm text-indigo-900">
+              {t('party.distribution.accountOnlyHint')}
             </div>
 
             <div className="sm:col-span-2">
