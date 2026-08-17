@@ -36,6 +36,7 @@ export type LogoRestConfig = {
 
 export type LogoRestSession = {
   accessToken: string;
+  refreshToken?: string;
   tokenType: string;
   expiresAt: number;
   firmNr: number;
@@ -554,6 +555,9 @@ export async function logoObtainToken(
   cfg: LogoRestConfig,
   firmNrHint?: number,
 ): Promise<LogoRestSession> {
+  const existing = await loadLogoRestSession();
+  if (existing) return existing;
+
   const baseUrl = requireBaseUrl(cfg);
   const { firmNr, periodNr } = resolveFirmPeriod(cfg);
   const fNr = firmNrHint ?? firmNr;
@@ -619,6 +623,7 @@ export async function logoObtainToken(
 
   const tok = tokenRes.data as {
     access_token?: string;
+    refresh_token?: string;
     token_type?: string;
     expires_in?: number;
     logoDB?: string;
@@ -626,14 +631,17 @@ export async function logoObtainToken(
   if (!tok?.access_token) throw new Error('Logo access_token alınamadı');
 
   const expiresIn = typeof tok.expires_in === 'number' ? tok.expires_in : 3600;
-  return {
+  const session: LogoRestSession = {
     accessToken: tok.access_token,
+    refreshToken: tok.refresh_token,
     tokenType: String(tok.token_type || 'Bearer'),
     expiresAt: Date.now() + expiresIn * 1000 - 30_000,
     firmNr: fNr,
     periodNr,
     logoDb: tok.logoDB || cfg.logoDb || undefined,
   };
+  await saveLogoRestSession(session);
+  return session;
 }
 
 /** Alias — görev sözleşmesi */
@@ -702,6 +710,9 @@ export async function logoEnsureSession(cfg: LogoRestConfig): Promise<LogoRestSe
     (existing.logoDb || '') === (cfg.logoDb || '').trim()
   ) {
     return existing;
+  }
+  if (existing) {
+    return logoCompanyLogin(cfg, existing, ctx.firmNr, ctx.periodNr);
   }
   const token = await logoObtainToken(cfg, ctx.firmNr);
   return logoCompanyLogin(cfg, token, ctx.firmNr, ctx.periodNr);

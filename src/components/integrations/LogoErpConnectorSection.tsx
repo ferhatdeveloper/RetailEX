@@ -716,6 +716,14 @@ export function LogoErpConnectorSection() {
                   )}
                 </div>
 
+                <Alert
+                  type="info"
+                  showIcon
+                  style={{ marginBottom: 16 }}
+                  message="LObjects yeniden kullanılır"
+                  description="Veri çekiminde açık Logo REST oturumu varsa aynı LObjects.exe kullanılır; yeni süreç açılmaz. Diğer uygulamalar LogoObjects kullanıyorsa Servis Yönetim Paneli'nde Object havuzunu (eşzamanlı kopya sayısını) artırın."
+                />
+
                 <div style={subsectionTitleStyle}>Sunucu</div>
                 <Form.Item
                   name={['rest', 'baseUrl']}

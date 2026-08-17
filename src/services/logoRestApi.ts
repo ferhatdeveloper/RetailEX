@@ -3,9 +3,10 @@
  * Dokümantasyon: {baseUrl}/services/help?expandLevel=full&api_key=...
  *
  * Oturum akışı:
- * 1) POST /token  (firmno + kullanıcı; Basic client_id:client_secret)
- * 2) GET  /methods/CompanyLogin/{firmNr}/{periodNr}  — RetailEX ERP_SETTINGS'ten
- * 3) CRUD /items, /Arps, /salesInvoices, ...
+ * 1) Mevcut REST token varsa aynı LObjects.exe yeniden kullanılır (yeni süreç açılmaz)
+ * 2) Yoksa POST /token (firmno + kullanıcı) — yalnızca havuzda boş kopya varken
+ * 3) GET /methods/CompanyLogin/{firmNr}/{periodNr}
+ * 4) CRUD /items, /Arps, /salesInvoices, ...
  */
 
 import { ERP_SETTINGS } from './postgres';
@@ -14,6 +15,7 @@ import { parseStoredRetailexWebConfig } from '../utils/retailexWebConfigMerge';
 
 const STORAGE_CONFIG = 'retailex_logo_rest_config';
 const STORAGE_SESSION = 'retailex_logo_rest_session';
+const STORAGE_SESSION_PERSIST = 'retailex_logo_rest_session_persist';
 const STORAGE_MANUAL_URL = 'retailex_logo_rest_manual_url';
 
 export const LOGO_API_URL_EXAMPLE = 'http://185.206.175.241:32001';
@@ -116,6 +118,9 @@ export interface LogoRestSession {
   periodNr: number;
   userName?: string;
   logoDb?: string;
+  /** Token hangi REST sunucusundaki LObjects.exe'ye bağlı */
+  boundBaseUrl?: string;
+  boundUsername?: string;
 }
 
 export interface LogoDescribeEntry {
@@ -298,19 +303,19 @@ export function formatLogoIdleLObjectsMessage(detail?: string): string {
 
   if (loginDenied) {
     return (
-      'Logo REST: Giriş reddedildi ve boşta LObjects.exe yok. RetailEX bunu sunucuda çözemez. ' +
+      'Logo REST: Giriş reddedildi ve boşta LObjects.exe yok. ' +
+      'Çalışan LObjects.exe başka uygulamanın oturumuna bağlıysa RetailEX ona bağlanamaz; aynı REST token yeniden kullanılır. ' +
       '1) Entegrasyonda Logo kullanıcı/şifre (Tiger REST kullanıcısı) doğru mu? ' +
       '2) Token firmno = Logo firma numarası mı (RetailEX 001 ≠ Logo 401 olabilir — Firma alanına Logo no yazın)? ' +
-      '3) Logo sunucusunda Servis Yönetim Paneli → aynı kullanıcı/şifre/firma ile LObjects havuzu ayağa kalkıyor mu; ' +
+      '3) Servis Yönetim Paneli → Object havuzu diğer LogoObjects uygulamaları + RetailEX için yeterli mi; ' +
       "Görev Yöneticisi'nde LObjects.exe görünmeli; RESTServis\\Logs kontrol edin. " +
       (desc ? `(${desc})` : '')
     ).trim();
   }
 
   return (
-    'Logo REST: Boşta LObjects.exe yok. Bu hata RetailEX kodundan çözülmez — Logo sunucusunda ' +
-    'Servis Yönetim Panelindeki Tiger kullanıcısı/şifre/firma ile LObjects havuzunun ayağa kalktığını doğrulayın; ' +
-    "Görev Yöneticisi'nde LObjects.exe oluşmalı; RESTServis\\Logs dosyasına bakın. " +
+    'Logo REST: Boşta LObjects.exe yok. Görev Yöneticisi\'nde süreç görünmesi yetmez — havuzdaki kopya başka uygulamada meşgul olabilir. ' +
+    'RetailEX yeni LObjects açmaz, mevcut REST oturumunu kullanır. Servis Yönetim Paneli\'nde Object sayısını artırın veya diğer LogoObjects uygulaması bitince tekrar deneyin. ' +
     (desc ? `(${desc})` : '')
   ).trim();
 }
@@ -772,36 +777,97 @@ export function saveLogoRestConfig(cfg: LogoRestConfig): void {
   );
 }
 
-export function loadLogoRestSession(): LogoRestSession | null {
-  if (typeof window === 'undefined') return null;
+/** Paralel isteklerde tek LObjects oturumu */
+let logoRestSessionMemory: LogoRestSession | null = null;
+let logoObtainTokenInflight: Promise<LogoRestSession> | null = null;
+let logoEnsureSessionInflight: Promise<LogoRestSession> | null = null;
+let logoContextValidatedAt = 0;
+let logoLastValidatedContextKey = '';
+const LOGO_CONTEXT_VALIDATE_TTL_MS = 90_000;
+
+function canUseBrowserSessionStorage(): boolean {
+  return typeof window !== 'undefined' && typeof sessionStorage !== 'undefined';
+}
+
+function parseLogoRestSessionJson(raw: string | null): LogoRestSession | null {
+  if (!raw) return null;
   try {
-    const raw = sessionStorage.getItem(STORAGE_SESSION);
-    if (!raw) return null;
     const s = JSON.parse(raw) as LogoRestSession;
-    if (!s.accessToken || !s.expiresAt) return null;
-    if (Date.now() >= s.expiresAt) return null;
+    if (!s?.accessToken) return null;
     return s;
   } catch {
     return null;
   }
 }
 
-function saveLogoRestSession(session: LogoRestSession | null): void {
-  if (typeof window === 'undefined') return;
-  if (!session) {
-    sessionStorage.removeItem(STORAGE_SESSION);
-    logoContextValidatedAt = 0;
-    logoLastValidatedContextKey = '';
-    return;
-  }
-  sessionStorage.setItem(STORAGE_SESSION, JSON.stringify(session));
+function sessionBoundToConfig(session: LogoRestSession, cfg: LogoRestConfig): boolean {
+  const url = normalizeBaseUrl(cfg.baseUrl);
+  const user = (cfg.username || '').trim();
+  if (session.boundBaseUrl && normalizeBaseUrl(session.boundBaseUrl) !== url) return false;
+  if (session.boundUsername && session.boundUsername.trim() !== user) return false;
+  return true;
 }
 
-/** Paralel logoListResource çağrılarında tek oturum doğrulaması */
-let logoEnsureSessionInflight: Promise<LogoRestSession> | null = null;
-let logoContextValidatedAt = 0;
-let logoLastValidatedContextKey = '';
-const LOGO_CONTEXT_VALIDATE_TTL_MS = 90_000;
+function stampSessionIdentity(session: LogoRestSession, cfg: LogoRestConfig): LogoRestSession {
+  return {
+    ...session,
+    boundBaseUrl: normalizeBaseUrl(cfg.baseUrl),
+    boundUsername: (cfg.username || '').trim(),
+  };
+}
+
+function accessTokenUsable(session: LogoRestSession): boolean {
+  return Boolean(session.accessToken) && Date.now() < session.expiresAt;
+}
+
+/** Süre dolmuş olsa bile kayıtlı oturum (refresh_token / bağlı LObjects). */
+function readStoredLogoRestSession(): LogoRestSession | null {
+  if (logoRestSessionMemory?.accessToken) return logoRestSessionMemory;
+  if (!canUseBrowserSessionStorage()) return null;
+  try {
+    const fromTab = parseLogoRestSessionJson(sessionStorage.getItem(STORAGE_SESSION));
+    if (fromTab?.accessToken) {
+      logoRestSessionMemory = fromTab;
+      return fromTab;
+    }
+    const persisted = parseLogoRestSessionJson(localStorage.getItem(STORAGE_SESSION_PERSIST));
+    if (persisted?.accessToken) {
+      logoRestSessionMemory = persisted;
+      sessionStorage.setItem(STORAGE_SESSION, JSON.stringify(persisted));
+      return persisted;
+    }
+  } catch {
+    /* depolama yok */
+  }
+  return null;
+}
+
+export function loadLogoRestSession(): LogoRestSession | null {
+  const s = readStoredLogoRestSession();
+  if (!s || !accessTokenUsable(s)) return null;
+  return s;
+}
+
+function saveLogoRestSession(session: LogoRestSession | null): void {
+  logoRestSessionMemory = session;
+  if (!session) {
+    logoContextValidatedAt = 0;
+    logoLastValidatedContextKey = '';
+  }
+  if (!canUseBrowserSessionStorage()) return;
+  try {
+    if (!session) {
+      sessionStorage.removeItem(STORAGE_SESSION);
+      localStorage.removeItem(STORAGE_SESSION_PERSIST);
+      return;
+    }
+    const json = JSON.stringify(session);
+    sessionStorage.setItem(STORAGE_SESSION, json);
+    localStorage.setItem(STORAGE_SESSION_PERSIST, json);
+  } catch {
+    /* kota / gizli mod */
+  }
+}
 
 function logoContextValidationKey(ctx: LogoContextSelection, cfg: LogoRestConfig): string {
   return `${normalizeBaseUrl(cfg.baseUrl)}|${ctx.logoDb}|${ctx.firmNr}|${ctx.periodNr}`;
@@ -819,10 +885,14 @@ function isLogoContextRecentlyValidated(ctx: LogoContextSelection, cfg: LogoRest
   );
 }
 
-/** Senkron öncesi taze Logo oturumu (bayat token / firma-dönem kayması önlenir) */
+/** Senkron öncesi oturumu doğrula — yeni LObjects.exe açmadan mevcut REST bağını kullan. */
 export async function logoRefreshSession(cfg: LogoRestConfig): Promise<LogoRestSession> {
-  saveLogoRestSession(null);
   const ctx = resolveLogoContext(cfg);
+  const existing = readStoredLogoRestSession();
+  if (existing && sessionBoundToConfig(existing, cfg) && accessTokenUsable(existing)) {
+    logoContextValidatedAt = 0;
+    return logoCompanyLogin(cfg, existing, ctx.firmNr, ctx.periodNr);
+  }
   return logoAuthenticate(cfg, ctx.firmNr, ctx.periodNr);
 }
 
@@ -1039,42 +1109,20 @@ function extractItems<T>(data: unknown): T[] {
   return [];
 }
 
-export async function logoObtainToken(
+type LogoTokenHttpResult = Awaited<ReturnType<typeof logoHttp>>;
+
+async function logoPostOAuthToken(
+  baseUrl: string,
   cfg: LogoRestConfig,
-  firmNrHint?: number
-): Promise<LogoRestSession> {
-  const baseUrl = requireBaseUrl(cfg);
-  const ctx = resolveLogoContext(cfg);
-  const fNr = firmNrHint ?? ctx.firmNr ?? 1;
-
-  if (!cfg.username?.trim() || !cfg.password) {
-    throw new Error('Logo kullanıcı adı ve şifre gerekli');
-  }
-  if (!cfg.clientId?.trim()) {
-    throw new Error('Logo client_id gerekli');
-  }
-
+  tokenBody: URLSearchParams
+): Promise<LogoTokenHttpResult> {
   const clientId = cfg.clientId.trim();
   const clientSecret = cfg.clientSecret || '';
-
-  const tokenBody = new URLSearchParams({
-    grant_type: 'password',
-    username: cfg.username.trim(),
-    password: cfg.password,
-    firmno: String(fNr),
-  });
-  if (ctx.logoDb) tokenBody.set('logodb', ctx.logoDb);
-
   const tokenHeaders: Record<string, string> = {
     'Content-Type': 'application/x-www-form-urlencoded',
   };
 
-  /**
-   * Logo REST token (Postman: grant_type=password&username&firmno&password).
-   * 185.206.80.132 kurulumu Secret Post ister: client_id + client_secret gövdede.
-   * Eski kurulumlar için Basic Authorization yedek denenir.
-   */
-  let tokenRes: Awaited<ReturnType<typeof logoHttp>>;
+  let tokenRes: LogoTokenHttpResult;
   if (clientId && clientSecret) {
     const bodyPost = new URLSearchParams(tokenBody);
     bodyPost.set('client_id', clientId);
@@ -1093,39 +1141,155 @@ export async function logoObtainToken(
   if (!tokenRes.ok && clientId && clientSecret) {
     const err = tokenRes.data as { error?: string };
     if (err?.error === 'invalid_client') {
-      const basicBody = new URLSearchParams(tokenBody);
       tokenRes = await logoHttp(baseUrl, 'POST', '/token', {
         headers: {
           ...tokenHeaders,
           Authorization: basicAuth(clientId, clientSecret),
         },
-        body: basicBody.toString(),
-      });
-    }
-  }
-
-  // Geçici havuz doluluğu: kısa aralıklarla aynı firmno ile yeniden dene (firma değiştirme yok).
-  for (let idleRetry = 0; idleRetry < 2 && !tokenRes.ok; idleRetry++) {
-    const failMsg = formatLogoHttpFailure(baseUrl, tokenRes.status, tokenRes.data, tokenRes.text);
-    if (!isLogoIdleLObjectsError(failMsg)) break;
-    await new Promise((r) => setTimeout(r, 3500 + idleRetry * 1500));
-    if (clientId && clientSecret) {
-      const bodyRetry = new URLSearchParams(tokenBody);
-      bodyRetry.set('client_id', clientId);
-      bodyRetry.set('client_secret', clientSecret);
-      tokenRes = await logoHttp(baseUrl, 'POST', '/token', {
-        headers: tokenHeaders,
-        body: bodyRetry.toString(),
-      });
-    } else {
-      tokenRes = await logoHttp(baseUrl, 'POST', '/token', {
-        headers: { ...tokenHeaders, Authorization: basicAuth(clientId, clientSecret) },
         body: tokenBody.toString(),
       });
     }
   }
+  return tokenRes;
+}
+
+function sessionFromTokenPayload(
+  tok: {
+    access_token?: string;
+    refresh_token?: string;
+    expires_in?: number;
+    userName?: string;
+    logoDB?: string;
+  },
+  cfg: LogoRestConfig,
+  fNr: number,
+  periodNr: number,
+  fallbackDb: string,
+  prev?: LogoRestSession
+): LogoRestSession {
+  if (!tok?.access_token) throw new Error('Logo access_token alınamadı');
+  const expiresIn = typeof tok.expires_in === 'number' ? tok.expires_in : 3600;
+  return stampSessionIdentity(
+    {
+      accessToken: tok.access_token,
+      refreshToken: tok.refresh_token || prev?.refreshToken,
+      expiresAt: Date.now() + expiresIn * 1000 - 30_000,
+      firmNr: fNr,
+      periodNr,
+      userName: tok.userName || prev?.userName,
+      logoDb: tok.logoDB || fallbackDb || prev?.logoDb,
+    },
+    cfg
+  );
+}
+
+async function logoProbeTokenAlive(cfg: LogoRestConfig, session: LogoRestSession): Promise<boolean> {
+  try {
+    const baseUrl = requireBaseUrl(cfg);
+    const res = await logoHttp(baseUrl, 'GET', '/methods/CurrentFirm', {
+      headers: { Authorization: `Bearer ${session.accessToken}` },
+    });
+    if (res.status === 401 || res.status === 403) return false;
+    return res.status > 0;
+  } catch {
+    return false;
+  }
+}
+
+async function logoRefreshBoundToken(
+  cfg: LogoRestConfig,
+  session: LogoRestSession,
+  fNr: number
+): Promise<LogoRestSession | null> {
+  if (!session.refreshToken) return null;
+  const baseUrl = requireBaseUrl(cfg);
+  const ctx = resolveLogoContext(cfg);
+  const body = new URLSearchParams({
+    grant_type: 'refresh_token',
+    refresh_token: session.refreshToken,
+  });
+  const tokenRes = await logoPostOAuthToken(baseUrl, cfg, body);
+  if (!tokenRes.ok) return null;
+  const tok = tokenRes.data as {
+    access_token?: string;
+    refresh_token?: string;
+    expires_in?: number;
+    userName?: string;
+    logoDB?: string;
+  };
+  if (!tok?.access_token) return null;
+  const next = sessionFromTokenPayload(tok, cfg, fNr, ctx.periodNr, ctx.logoDb, session);
+  saveLogoRestSession(next);
+  return next;
+}
+
+/** Çalışan REST-LObjects oturumunu yeniden kullan; yeni exe açma. */
+async function tryReuseBoundLogoSession(
+  cfg: LogoRestConfig,
+  fNr: number
+): Promise<LogoRestSession | null> {
+  const stored = readStoredLogoRestSession();
+  if (!stored || !sessionBoundToConfig(stored, cfg)) return null;
+
+  if (accessTokenUsable(stored)) {
+    return stampSessionIdentity({ ...stored, firmNr: stored.firmNr || fNr }, cfg);
+  }
+
+  const refreshed = await logoRefreshBoundToken(cfg, stored, fNr);
+  if (refreshed) return refreshed;
+
+  // Süre dolmuş görünen token hâlâ aynı LObjects.exe'ye bağlı olabilir.
+  if (Date.now() < stored.expiresAt + 15 * 60_000 && (await logoProbeTokenAlive(cfg, stored))) {
+    const kept = stampSessionIdentity(
+      { ...stored, expiresAt: Date.now() + 10 * 60_000, firmNr: stored.firmNr || fNr },
+      cfg
+    );
+    saveLogoRestSession(kept);
+    return kept;
+  }
+  return null;
+}
+
+async function logoObtainPasswordGrant(
+  cfg: LogoRestConfig,
+  fNr: number
+): Promise<LogoRestSession> {
+  const baseUrl = requireBaseUrl(cfg);
+  const ctx = resolveLogoContext(cfg);
+
+  if (!cfg.username?.trim() || !cfg.password) {
+    throw new Error('Logo kullanıcı adı ve şifre gerekli');
+  }
+  if (!cfg.clientId?.trim()) {
+    throw new Error('Logo client_id gerekli');
+  }
+
+  const tokenBody = new URLSearchParams({
+    grant_type: 'password',
+    username: cfg.username.trim(),
+    password: cfg.password,
+    firmno: String(fNr),
+  });
+  if (ctx.logoDb) tokenBody.set('logodb', ctx.logoDb);
+
+  /**
+   * Logo REST token (Postman: grant_type=password&username&firmno&password).
+   * Yeni LObjects.exe yalnızca havuzda boş kopya varken açılır.
+   */
+  let tokenRes = await logoPostOAuthToken(baseUrl, cfg, tokenBody);
+
+  for (let idleRetry = 0; idleRetry < 5 && !tokenRes.ok; idleRetry++) {
+    const failMsg = formatLogoHttpFailure(baseUrl, tokenRes.status, tokenRes.data, tokenRes.text);
+    if (!isLogoIdleLObjectsError(failMsg)) break;
+    const reused = await tryReuseBoundLogoSession(cfg, fNr);
+    if (reused && (await logoProbeTokenAlive(cfg, reused))) return reused;
+    await new Promise((r) => setTimeout(r, 4000 + idleRetry * 2000));
+    tokenRes = await logoPostOAuthToken(baseUrl, cfg, tokenBody);
+  }
 
   if (!tokenRes.ok) {
+    const reused = await tryReuseBoundLogoSession(cfg, fNr);
+    if (reused && (await logoProbeTokenAlive(cfg, reused))) return reused;
     throw new Error(formatLogoHttpFailure(baseUrl, tokenRes.status, tokenRes.data, tokenRes.text));
   }
 
@@ -1136,19 +1300,39 @@ export async function logoObtainToken(
     userName?: string;
     logoDB?: string;
   };
-  if (!tok?.access_token) throw new Error('Logo access_token alınamadı');
+  const session = sessionFromTokenPayload(tok, cfg, fNr, ctx.periodNr, ctx.logoDb);
+  saveLogoRestSession(session);
+  return session;
+}
 
-  const expiresIn = typeof tok.expires_in === 'number' ? tok.expires_in : 3600;
-  const resolvedDb = tok.logoDB || ctx.logoDb;
-  return {
-    accessToken: tok.access_token,
-    refreshToken: tok.refresh_token,
-    expiresAt: Date.now() + expiresIn * 1000 - 30_000,
-    firmNr: fNr,
-    periodNr: ctx.periodNr,
-    userName: tok.userName,
-    logoDb: resolvedDb,
-  };
+export async function logoObtainToken(
+  cfg: LogoRestConfig,
+  firmNrHint?: number
+): Promise<LogoRestSession> {
+  const ctx = resolveLogoContext(cfg);
+  const fNr = firmNrHint ?? ctx.firmNr ?? 1;
+
+  if (logoObtainTokenInflight) {
+    try {
+      const pending = await logoObtainTokenInflight;
+      if (sessionBoundToConfig(pending, cfg) && accessTokenUsable(pending)) return pending;
+    } catch {
+      /* yeni deneme */
+    }
+  }
+
+  const task = (async () => {
+    const reused = await tryReuseBoundLogoSession(cfg, fNr);
+    if (reused) return reused;
+    return logoObtainPasswordGrant(cfg, fNr);
+  })();
+
+  logoObtainTokenInflight = task;
+  try {
+    return await task;
+  } finally {
+    if (logoObtainTokenInflight === task) logoObtainTokenInflight = null;
+  }
 }
 
 async function logoGetCurrentFirmPeriod(
@@ -1190,7 +1374,7 @@ export async function logoCompanyLogin(
 
   const current = await logoGetCurrentFirmPeriod(cfg, session);
   if (current.firm === firmNr && current.period === periodNr) {
-    const next: LogoRestSession = { ...session, firmNr, periodNr };
+    const next: LogoRestSession = stampSessionIdentity({ ...session, firmNr, periodNr }, cfg);
     saveLogoRestSession(next);
     markLogoContextValidated(resolveLogoContext(cfg), cfg);
     return next;
@@ -1210,7 +1394,7 @@ export async function logoCompanyLogin(
   if (!login.ok && isAlreadyConnectedError(login.text, login.data)) {
     const after = await logoGetCurrentFirmPeriod(cfg, session);
     if (after.firm === firmNr && after.period === periodNr) {
-      const next: LogoRestSession = { ...session, firmNr, periodNr };
+      const next: LogoRestSession = stampSessionIdentity({ ...session, firmNr, periodNr }, cfg);
       saveLogoRestSession(next);
       markLogoContextValidated(resolveLogoContext(cfg), cfg);
       return next;
@@ -1225,7 +1409,7 @@ export async function logoCompanyLogin(
     );
   }
 
-  const next: LogoRestSession = { ...session, firmNr, periodNr };
+  const next: LogoRestSession = stampSessionIdentity({ ...session, firmNr, periodNr }, cfg);
   saveLogoRestSession(next);
   markLogoContextValidated(resolveLogoContext(cfg), cfg);
   return next;
@@ -1249,19 +1433,20 @@ async function logoEnsureSessionInner(cfg: LogoRestConfig): Promise<LogoRestSess
   assertLogoReachableInWebContext(baseUrl);
   const ctx = resolveLogoContext(cfg);
   const existing = loadLogoRestSession();
-  if (existing && Date.now() < existing.expiresAt && sessionMatchesContext(existing, ctx, cfg)) {
-    if (isLogoContextRecentlyValidated(ctx, cfg)) {
+  if (existing && sessionBoundToConfig(existing, cfg) && accessTokenUsable(existing)) {
+    if (sessionMatchesContext(existing, ctx, cfg) && isLogoContextRecentlyValidated(ctx, cfg)) {
       return existing;
     }
-    // Firma kataloğu (CAPI/Firms) CompanyLogout sonrası token geçerli kalır; Logo tarafında firma oturumu kapanmış olabilir.
     try {
       const current = await logoGetCurrentFirmPeriod(cfg, existing);
       if (current.firm === ctx.firmNr && current.period === ctx.periodNr) {
+        const next = stampSessionIdentity({ ...existing, firmNr: ctx.firmNr, periodNr: ctx.periodNr }, cfg);
+        saveLogoRestSession(next);
         markLogoContextValidated(ctx, cfg);
-        return existing;
+        return next;
       }
     } catch {
-      /* CurrentFirm/Period okunamadı — yeniden CompanyLogin */
+      /* CurrentFirm/Period okunamadı — aynı LObjects üzerinde CompanyLogin */
     }
     return logoCompanyLogin(cfg, existing, ctx.firmNr, ctx.periodNr);
   }
@@ -1298,8 +1483,7 @@ export async function logoSwitchContext(
     useErpContext: patch.useErpContext ?? cfg.useErpContext,
   };
   saveLogoRestConfig(nextCfg);
-  saveLogoRestSession(null);
-  return logoAuthenticate(nextCfg);
+  return logoEnsureSession(nextCfg);
 }
 
 export async function logoListFirmCatalog(cfg: LogoRestConfig): Promise<LogoFirmOption[]> {
@@ -1307,46 +1491,58 @@ export async function logoListFirmCatalog(cfg: LogoRestConfig): Promise<LogoFirm
   assertLogoReachableInWebContext(baseUrl);
   const tokenFirm = getLogoMappingForErp(cfg)?.logoFirmNr ?? logoFirmNrFromErp();
   const session = await logoObtainToken(cfg, tokenFirm > 0 ? tokenFirm : 1);
+  saveLogoRestSession(stampSessionIdentity(session, cfg));
   const auth = { Authorization: `Bearer ${session.accessToken}` };
   const apiKey = cfg.clientId || LOGO_DEFAULT_CLIENT_ID;
   const query = { api_key: apiKey, expandLevel: 'full' };
   const path = '/methods/CAPI/Firms';
 
-  // CAPI firma listesi firma oturumundan bağımsız; aktif CompanyLogin bazen yanıtı geciktirir.
-  await logoCompanyLogout(cfg, session);
-  saveLogoRestSession(null);
-
-  let lastErr = '';
-  for (let attempt = 0; attempt < 2; attempt++) {
-    const res = await logoHttp(baseUrl, 'GET', path, { headers: auth, query });
-    if (res.ok) {
-      const firms = parseLogoFirmsResponse(res.data);
-      if (firms.length > 0) return firms;
-      lastErr = `${path} boş firma listesi`;
+  const fetchFirms = async (): Promise<{ firms: LogoFirmOption[]; lastErr: string }> => {
+    let lastErr = '';
+    for (let attempt = 0; attempt < 2; attempt++) {
+      const res = await logoHttp(baseUrl, 'GET', path, { headers: auth, query });
+      if (res.ok) {
+        const firms = parseLogoFirmsResponse(res.data);
+        if (firms.length > 0) return { firms, lastErr: '' };
+        lastErr = `${path} boş firma listesi`;
+        break;
+      }
+      const upstream =
+        res.data && typeof res.data === 'object'
+          ? String(
+              (res.data as { upstreamError?: string; Message?: string }).upstreamError ||
+                (res.data as { Message?: string }).Message ||
+                ''
+            )
+          : '';
+      const statusLabel = res.status > 0 ? String(res.status) : '0';
+      lastErr = upstream
+        ? `${path} HTTP ${statusLabel} — ${upstream}`
+        : `${path} HTTP ${statusLabel}`;
+      if (attempt === 0 && (res.status === 0 || res.status >= 500)) {
+        await new Promise((r) => setTimeout(r, 2000));
+        continue;
+      }
       break;
     }
+    return { firms: [], lastErr };
+  };
 
-    const upstream =
-      res.data && typeof res.data === 'object'
-        ? String((res.data as { upstreamError?: string; Message?: string }).upstreamError
-            || (res.data as { Message?: string }).Message
-            || '')
-        : '';
-    const statusLabel = res.status > 0 ? String(res.status) : '0';
-    lastErr = upstream
-      ? `${path} HTTP ${statusLabel} — ${upstream}`
-      : `${path} HTTP ${statusLabel}`;
-
-    if (attempt === 0 && (res.status === 0 || res.status >= 500)) {
-      await new Promise((r) => setTimeout(r, 2000));
-      continue;
+  let result = await fetchFirms();
+  if (result.firms.length === 0) {
+    // Aynı LObjects.exe üzerinde firma oturumunu bırak (tokeni iptal etme).
+    await logoCompanyLogout(cfg, session);
+    result = await fetchFirms();
+    if (session.firmNr > 0 && session.periodNr > 0) {
+      await logoCompanyLogin(cfg, session, session.firmNr, session.periodNr).catch(() => {});
     }
-    break;
   }
 
+  if (result.firms.length > 0) return result.firms;
+
   throw new Error(
-    lastErr
-      ? `Logo firma listesi alınamadı: ${lastErr}. Bu Logo kurulumunda doğru uç GET /methods/CAPI/Firms; GetFirms yoktur. Logo LObjects (REST servisi) çalışıyor mu kontrol edin.`
+    result.lastErr
+      ? `Logo firma listesi alınamadı: ${result.lastErr}. Bu Logo kurulumunda doğru uç GET /methods/CAPI/Firms; GetFirms yoktur. Logo LObjects (REST servisi) çalışıyor mu kontrol edin.`
       : 'Logo firma listesi boş döndü. GET /methods/CAPI/Firms yanıtını kontrol edin.'
   );
 }
@@ -1441,7 +1637,7 @@ export function saveLogoDatabaseList(
 }
 
 export async function logoRevokeSession(cfg: LogoRestConfig): Promise<void> {
-  const session = loadLogoRestSession();
+  const session = readStoredLogoRestSession();
   if (session?.accessToken) {
     await logoCompanyLogout(cfg, session).catch(() => {});
     await logoHttp(requireBaseUrl(cfg), 'GET', '/revoke', {
@@ -1462,7 +1658,7 @@ export async function logoTestConnection(cfg: LogoRestConfig): Promise<{
 }> {
   try {
     const ctx = resolveLogoContext(cfg);
-    const session = await logoAuthenticate(cfg, ctx.firmNr, ctx.periodNr);
+    const session = await logoEnsureSession(cfg);
     const baseUrl = requireBaseUrl(cfg);
     const auth = { Authorization: `Bearer ${session.accessToken}` };
 
