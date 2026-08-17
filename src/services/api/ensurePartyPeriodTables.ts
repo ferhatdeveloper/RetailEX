@@ -7,6 +7,12 @@
 import { postgres, ERP_SETTINGS } from '../postgres';
 import { normalizeFirmTableNr } from './accountBalance';
 
+function isMissingInitFunction(err: unknown): boolean {
+  const msg = String((err as { message?: unknown })?.message ?? err ?? '');
+  const code = String((err as { code?: unknown })?.code ?? '');
+  return /42883|undefined_function|does not exist/i.test(`${code} ${msg}`);
+}
+
 const ready = new Set<string>();
 const inflight = new Map<string, Promise<void>>();
 
@@ -38,8 +44,8 @@ async function createPartyPeriodTables(firm: string, period: string): Promise<vo
   try {
     await postgres.query('SELECT public.INIT_PARTY_PERIOD_TABLES($1, $2)', [firm, period]);
     return;
-  } catch {
-    /* 125 henüz uygulanmamış — yerel CREATE */
+  } catch (err) {
+    if (!isMissingInitFunction(err)) throw err;
   }
 
   const prefix = `rex_${firm}_${period}`;

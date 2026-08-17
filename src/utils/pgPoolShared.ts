@@ -1,7 +1,7 @@
 import { Pool } from 'pg';
 
-const POOL_MAX = Math.min(20, Math.max(2, Number(process.env.PG_BRIDGE_POOL_MAX || 5)));
-const POOL_MAX_ENTRIES = Math.min(32, Math.max(4, Number(process.env.PG_BRIDGE_MAX_POOLS || 10)));
+const POOL_MAX = Math.min(8, Math.max(2, Number(process.env.PG_BRIDGE_POOL_MAX || 4)));
+const POOL_MAX_ENTRIES = Math.min(16, Math.max(4, Number(process.env.PG_BRIDGE_MAX_POOLS || 8)));
 
 type PoolEntry = { pool: Pool; lastUsed: number };
 

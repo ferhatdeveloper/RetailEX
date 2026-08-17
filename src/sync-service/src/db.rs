@@ -6,6 +6,7 @@ use crate::models::*;
 
 use tokio::sync::RwLock;
 use std::collections::{HashSet, HashMap};
+use std::time::Duration;
 
 pub struct Database {
     pub pool: PgPool,
@@ -20,10 +21,19 @@ pub struct Database {
 
 impl Database {
     pub async fn new(database_url: &str) -> Result<Self> {
+        let max = std::env::var("DATABASE_MAX_CONNECTIONS")
+            .ok()
+            .and_then(|s| s.parse::<u32>().ok())
+            .unwrap_or(5)
+            .clamp(1, 20);
         let pool = PgPoolOptions::new()
-            .max_connections(50)
+            .max_connections(max)
+            .min_connections(1)
+            .acquire_timeout(Duration::from_secs(8))
+            .idle_timeout(Duration::from_secs(30))
             .connect(database_url)
             .await?;
+        info!("PostgreSQL pool max_connections={}", max);
         
         Ok(Self { 
             pool,

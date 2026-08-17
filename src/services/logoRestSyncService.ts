@@ -158,11 +158,15 @@ export function saveLogoRestSyncSettings(patch: Partial<LogoRestSyncSettings>): 
       patch.modules !== undefined ||
       patch.pullMode !== undefined;
     if (structural) {
-      void import('./logoRestBridgeAutosync').then((m) =>
-        m.pushLogoAutosyncJobToBridge(next).then((r) => {
-          if (!r.ok) console.warn('[LogoAutosync]', r.message);
-        }),
-      );
+      void import('./logoRestAutosyncClient')
+        .then((m) => {
+          if (typeof m.pushLogoAutosyncJobToBridge !== 'function') return;
+          return m.pushLogoAutosyncJobToBridge(next);
+        })
+        .then((r) => {
+          if (r && !r.ok) console.warn('[LogoAutosync]', r.message);
+        })
+        .catch((err) => console.warn('[LogoAutosync]', err));
     }
   }
   return next;
@@ -309,8 +313,14 @@ export function startLogoRestAutoSync(): () => void {
   const syncBridgeJob = () => {
     const s = loadLogoRestSyncSettings();
     if (typeof window === 'undefined') return;
-    void import('./logoRestBridgeAutosync').then((m) =>
-      m.pushLogoAutosyncJobToBridge(s).then((r) => {
+    void import('./logoRestAutosyncClient')
+      .then((m) => {
+        if (typeof m.pushLogoAutosyncJobToBridge !== 'function') {
+          return { ok: false, message: 'Logo köprü kaydı yüklenemedi.' };
+        }
+        return m.pushLogoAutosyncJobToBridge(s);
+      })
+      .then((r) => {
         if (r.ok && s.enabled) {
           bridgeCronOk = true;
           stopLogoRestAutoSync();
@@ -324,8 +334,12 @@ export function startLogoRestAutoSync(): () => void {
             schedule();
           }
         }
-      }),
-    );
+      })
+      .catch((err) => {
+        console.warn('[LogoAutosync]', err);
+        bridgeCronOk = false;
+        if (s.enabled) schedule();
+      });
   };
 
   syncBridgeJob();

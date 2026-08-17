@@ -57,10 +57,14 @@ x-postgrest-env: &postgrest-env
   PGRST_SERVER_HOST: "0.0.0.0"
   PGRST_SERVER_PORT: "3000"
   PGRST_SERVER_CORS_ALLOWED_ORIGINS: "*"
+  # Küme max_connections paylaşılır; kiracı başına 10 varsayılan havuz 15 örnekte 150 bağlantı eder.
+  PGRST_DB_POOL: "4"
+  PGRST_DB_POOL_ACQUISITION_TIMEOUT: "8"
 
 x-sync-env: &sync-env
   BIND_ADDRESS: 0.0.0.0:8080
   RUST_LOG: retailex_sync_service=info,tower_http=info
+  DATABASE_MAX_CONNECTIONS: "5"
 
 # Tüm sync_* servisleri BİLİNÇLİ olarak aynı imajı paylaşır (tek Rust binary; DATABASE_URL farklı).
 # Kiracı başına ayrı tag üretmek disk/build israfıdır ve Vite OOM’unu çözmez — dokploy-deploy.sh bir kez build eder.
@@ -117,6 +121,10 @@ services:
       - "${POSTGRES_PORT:-5432}:5432"
     volumes:
       - saas_postgres_data:/var/lib/postgresql/data
+    command:
+      - postgres
+      - -c
+      - max_connections=200
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U postgres -d postgres"]
       interval: 10s

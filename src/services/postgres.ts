@@ -100,10 +100,15 @@ function isLikelyConnectivityFailure(err: unknown): boolean {
   const msg = String((err as { message?: unknown })?.message ?? err ?? '').toLowerCase();
   const code = String((err as { code?: unknown })?.code ?? '').toUpperCase();
   if (/^(08|57P01|53300)/.test(code)) return true;
-  if (/too many clients/i.test(msg)) return true;
   return /connect|connection refused|econnrefused|etimedout|enetunreach|enotfound|timeout|connection terminated|could not|broken pipe|closed unexpectedly|no route|network|unreachable|refused|fetch failed/i.test(
     msg
   );
+}
+
+function isTooManyClients(err: unknown): boolean {
+  const msg = String((err as { message?: unknown })?.message ?? err ?? '');
+  const code = String((err as { code?: unknown })?.code ?? '');
+  return /too many clients/i.test(msg) || code === '53300';
 }
 
 function sleepMs(ms: number): Promise<void> {
@@ -321,11 +326,14 @@ async function executePgQueryRows(
           `PostgreSQL köprüsüne ulaşılamadı (${getBridgeUrl()}/api/pg_query). retailex_bridge çalışıyor mu?`
         );
       }
-      const canRetry =
+      const tooMany = isTooManyClients(err);
+      const canRetryTooMany = tooMany && attempt < 2;
+      const canRetryNet =
+        !tooMany &&
         attempt < PG_WEB_QUERY_MAX_ATTEMPTS &&
-        (isLikelyConnectivityFailure(err) || /too many clients/i.test(msg));
-      if (canRetry) {
-        const wait = PG_WEB_QUERY_RETRY_BASE_MS * attempt;
+        isLikelyConnectivityFailure(err);
+      if (canRetryTooMany || canRetryNet) {
+        const wait = tooMany ? 3000 * attempt : PG_WEB_QUERY_RETRY_BASE_MS * attempt;
         console.warn(
           `[Postgres] pg_query denemesi ${attempt}/${PG_WEB_QUERY_MAX_ATTEMPTS} başarısız (${String((err as Error)?.message || err)}), ${wait}ms sonra tekrar…`,
         );
