@@ -4,11 +4,13 @@ import { toast } from 'sonner';
 import { FullscreenBodyPortal, MODAL_OVERLAY_Z } from '../../shared/FullscreenBodyPortal';
 import { ContextMenu } from '../../shared/ContextMenu';
 import { getPartyStatement, type PartyStatement } from '../../../services/api/partyStatements';
+import { partnerAPI } from '../../../services/api/partiesPartners';
 import { printPartyStatementDoc, printPayrollVoucher } from '../../../utils/printPayrollVoucher';
 import { defaultEkstreDateRange, ficheTypeToInfo } from '../../../utils/cariAccountStatement';
 import { useNestedT } from './useNestedT';
 import { useLanguage } from '../../../contexts/LanguageContext';
 import type { Party } from '../../../core/types/models';
+import { PartyLedgerDipFooter } from './PartyLedgerDipFooter';
 
 export interface PartyStatementPanelProps {
   party: Party;
@@ -43,6 +45,13 @@ export function PartyStatementPanel({ party, onClose }: PartyStatementPanelProps
   const load = async (s: string, e: string) => {
     setLoading(true);
     try {
+      if (party.card_type === 'partner') {
+        try {
+          await partnerAPI.syncBalancesFromYearNet();
+        } catch {
+          /* ekstre yine yüklensin */
+        }
+      }
       setData(await getPartyStatement(party.id, party.card_type, s, e));
     } catch (err: unknown) {
       setData(null);
@@ -112,6 +121,12 @@ export function PartyStatementPanel({ party, onClose }: PartyStatementPanelProps
 
   const rows = data?.rows || [];
   const cardBal = data?.card_balance ?? party.balance ?? 0;
+  const dip = useMemo(() => {
+    const debit = rows.reduce((s, r) => s + (Number(r.debit) || 0), 0);
+    const credit = rows.reduce((s, r) => s + (Number(r.credit) || 0), 0);
+    const last = rows.length ? rows[rows.length - 1].balance_after : data?.closing_balance || 0;
+    return { debit, credit, last };
+  }, [rows, data?.closing_balance]);
 
   return (
     <>
@@ -270,6 +285,13 @@ export function PartyStatementPanel({ party, onClose }: PartyStatementPanelProps
                 );
               })}
             </tbody>
+            <PartyLedgerDipFooter
+              count={rows.length}
+              debit={dip.debit}
+              credit={dip.credit}
+              balance={dip.last}
+              label={tm('invoiceListDipTotal')}
+            />
           </table>
         )}
       </div>

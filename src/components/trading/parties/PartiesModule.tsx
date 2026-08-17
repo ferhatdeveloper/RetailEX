@@ -33,6 +33,7 @@ import {
 import type { Party, PartyCardType } from '../../../core/types/models';
 import { shortUuid } from './PartyMergeModal';
 import { useNestedT } from './useNestedT';
+import { useLanguage } from '../../../contexts/LanguageContext';
 
 type Tab = 'all' | PartyCardType;
 
@@ -55,6 +56,7 @@ export function PartiesModule({
   onSelectionChange?: (selected: Party[]) => void;
 }) {
   const t = useNestedT();
+  const { tm } = useLanguage();
   const [tab, setTab] = useState<Tab>(initialTab);
   const [items, setItems] = useState<Party[]>([]);
   const [loading, setLoading] = useState(false);
@@ -155,6 +157,11 @@ export function PartiesModule({
       (p.id || '').toLowerCase().includes(q)
     );
   }, [items, search]);
+
+  const listDip = useMemo(() => {
+    const balance = filtered.reduce((s, p) => s + (Number(p.balance) || 0), 0);
+    return { count: filtered.length, balance };
+  }, [filtered]);
 
   const handleDelete = async (p: Party) => {
     const ok = await confirmDialog({
@@ -481,6 +488,22 @@ export function PartiesModule({
                 </tr>
               ))}
             </tbody>
+            <tfoot className="sticky bottom-0 z-[2] border-t-2 border-blue-300 bg-blue-50">
+              <tr>
+                <td
+                  colSpan={tab === 'employee' || tab === 'all' ? 7 : 6}
+                  className="px-4 py-2.5 text-[11px] font-black uppercase tracking-wider text-blue-800"
+                >
+                  {tm('invoiceListDipTotal')}
+                  <span className="ml-1 font-semibold text-blue-600/80">({listDip.count})</span>
+                </td>
+                <td className="px-4 py-2.5 text-right font-bold tabular-nums text-blue-900">
+                  {formatMoney(listDip.balance)}
+                </td>
+                <td className="px-4 py-2.5" />
+                <td className="px-4 py-2.5" />
+              </tr>
+            </tfoot>
           </table>
         )}
       </div>

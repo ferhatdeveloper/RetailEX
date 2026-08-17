@@ -19,6 +19,7 @@ import {
   splitAmountByPartners,
   type PeriodSummaryPartnerSplitPrefs,
 } from '../../utils/periodSummaryPartnerSplit';
+import { PeriodExpenseShareDetailModal } from './PeriodExpenseShareDetailModal';
 
 export type PeriodSummaryMode = 'monthly-days' | 'yearly-months';
 
@@ -34,6 +35,7 @@ interface PeriodSummaryRow {
   expenses: number;
   netRemaining: number;
   partnerShares: Record<string, number>;
+  expenseShares: Record<string, number>;
 }
 
 function hasPeriodActivity(row: Pick<PeriodSummaryRow, 'saleCount' | 'revenue' | 'expenses'>): boolean {
@@ -137,6 +139,7 @@ export function PeriodSummaryReport({ mode, currency }: PeriodSummaryReportProps
     loadPeriodSummaryPartnerSplitPrefs(),
   );
   const [partners, setPartners] = useState<PartyPartner[]>([]);
+  const [expenseDetail, setExpenseDetail] = useState<{ title: string; periodKey: string | null } | null>(null);
 
   const partnerSlices = useMemo(
     () =>
@@ -254,6 +257,9 @@ export function PeriodSummaryReport({ mode, currency }: PeriodSummaryReportProps
       const shareList = splitAmountByPartners(netRemaining, partnerSlices);
       const partnerShareMap: Record<string, number> = {};
       for (const s of shareList) partnerShareMap[s.id] = s.amount;
+      const expShareList = splitAmountByPartners(exp, partnerSlices);
+      const expenseShareMap: Record<string, number> = {};
+      for (const s of expShareList) expenseShareMap[s.id] = s.amount;
       return {
         key: periodKey,
         periodKey,
@@ -266,6 +272,7 @@ export function PeriodSummaryReport({ mode, currency }: PeriodSummaryReportProps
         expenses: exp,
         netRemaining,
         partnerShares: partnerShareMap,
+        expenseShares: expenseShareMap,
       };
     });
   }, [mode, periodRange, sales, expenses, selectedMonth, selectedYear, tm, partnerSlices]);
@@ -286,9 +293,13 @@ export function PeriodSummaryReport({ mode, currency }: PeriodSummaryReportProps
     const shareList = splitAmountByPartners(base.netRemaining, partnerSlices);
     const partnerShares: Record<string, number> = {};
     for (const s of shareList) partnerShares[s.id] = s.amount;
+    const expShareList = splitAmountByPartners(base.expenses, partnerSlices);
+    const expenseShares: Record<string, number> = {};
+    for (const s of expShareList) expenseShares[s.id] = s.amount;
     return {
       ...base,
       partnerShares,
+      expenseShares,
     };
   }, [rows, partnerSlices]);
 
@@ -348,7 +359,21 @@ export function PeriodSummaryReport({ mode, currency }: PeriodSummaryReportProps
         align: 'right',
         render: (v: number, row) => {
           if (!hasPeriodActivity(row)) return '—';
-          return <span className="text-red-600">{money(v)}</span>;
+          return (
+            <button
+              type="button"
+              className="text-red-600 underline-offset-2 hover:underline"
+              onClick={(e) => {
+                e.stopPropagation();
+                setExpenseDetail({
+                  title: `${tm('rptPeriodExpenseDetailTitle')} · ${row.periodLabel}`,
+                  periodKey: row.periodKey,
+                });
+              }}
+            >
+              {money(v)}
+            </button>
+          );
         },
       },
       {
@@ -376,8 +401,18 @@ export function PeriodSummaryReport({ mode, currency }: PeriodSummaryReportProps
         render: (_: unknown, row: PeriodSummaryRow) => {
           if (!hasPeriodActivity(row)) return '—';
           const v = row.partnerShares[p.id] ?? 0;
+          const expShare = row.expenseShares[p.id] ?? 0;
           const cls = partnerColColors[idx % partnerColColors.length];
-          return <span className={`${cls} font-medium`}>{money(v)}</span>;
+          return (
+            <div className="leading-tight">
+              <span className={`${cls} font-medium`}>{money(v)}</span>
+              {expShare ? (
+                <div className="text-[10px] font-semibold text-red-600">
+                  {tm('rptPeriodExpenseShare')}: {money(expShare)}
+                </div>
+              ) : null}
+            </div>
+          );
         },
       })),
     ];
@@ -477,6 +512,17 @@ export function PeriodSummaryReport({ mode, currency }: PeriodSummaryReportProps
             {tm('rptPeriodTotalExpenses')}
           </div>
           <p className="text-2xl font-bold text-red-600">{money(totals.expenses)}</p>
+          {partnerSlices.length > 0 ? (
+            <button
+              type="button"
+              className="mt-2 text-xs font-bold uppercase tracking-wider text-rose-700 hover:underline"
+              onClick={() =>
+                setExpenseDetail({ title: tm('rptPeriodExpenseDetailTitle'), periodKey: null })
+              }
+            >
+              {tm('rptPeriodOpenExpenseDetail')}
+            </button>
+          ) : null}
         </div>
         <div className="bg-white rounded-lg border p-4">
           <div className="flex items-center gap-2 text-slate-500 text-sm mb-1">
@@ -495,6 +541,9 @@ export function PeriodSummaryReport({ mode, currency }: PeriodSummaryReportProps
               </p>
               <p className={`text-2xl font-bold ${partnerColColors[idx % partnerColColors.length]}`}>
                 {money(totals.partnerShares[p.id] ?? 0)}
+              </p>
+              <p className="text-xs font-semibold text-red-600 mt-1">
+                {tm('rptPeriodExpenseShare')}: {money(totals.expenseShares[p.id] ?? 0)}
               </p>
             </div>
           ))
@@ -517,7 +566,17 @@ export function PeriodSummaryReport({ mode, currency }: PeriodSummaryReportProps
             dataSource={rows}
             pagination={false}
             size="small"
-            scroll={{ x: showPartnerCols ? 1280 + partnerSlices.length * 160 : 1280 }}
+            scroll={{ x: showPartnerCols ? 1280 + partnerSlices.length * 180 : 1280 }}
+            onRow={(row) => ({
+              onClick: () => {
+                if (!hasPeriodActivity(row) || !(row.expenses > 0) || !partnerSlices.length) return;
+                setExpenseDetail({
+                  title: `${tm('rptPeriodExpenseDetailTitle')} · ${row.periodLabel}`,
+                  periodKey: row.periodKey,
+                });
+              },
+              className: row.expenses > 0 && partnerSlices.length ? 'cursor-pointer' : undefined,
+            })}
             summary={() => (
               <Table.Summary fixed>
                 <Table.Summary.Row className="bg-slate-50 font-semibold">
@@ -538,9 +597,14 @@ export function PeriodSummaryReport({ mode, currency }: PeriodSummaryReportProps
                   {showPartnerCols
                     ? partnerSlices.map((p, idx) => (
                         <Table.Summary.Cell key={p.id} align="right">
-                          <span className={partnerColColors[idx % partnerColColors.length]}>
-                            {money(totals.partnerShares[p.id] ?? 0)}
-                          </span>
+                          <div className="leading-tight">
+                            <span className={partnerColColors[idx % partnerColColors.length]}>
+                              {money(totals.partnerShares[p.id] ?? 0)}
+                            </span>
+                            <div className="text-[10px] font-semibold text-red-600">
+                              {tm('rptPeriodExpenseShare')}: {money(totals.expenseShares[p.id] ?? 0)}
+                            </div>
+                          </div>
                         </Table.Summary.Cell>
                       ))
                     : null}
@@ -550,6 +614,17 @@ export function PeriodSummaryReport({ mode, currency }: PeriodSummaryReportProps
           />
         </Spin>
       </div>
+
+      {expenseDetail && partnerSlices.length > 0 ? (
+        <PeriodExpenseShareDetailModal
+          expenses={expenses}
+          partners={partnerSlices}
+          periodKey={expenseDetail.periodKey}
+          title={expenseDetail.title}
+          currency={currency}
+          onClose={() => setExpenseDetail(null)}
+        />
+      ) : null}
     </div>
   );
 }

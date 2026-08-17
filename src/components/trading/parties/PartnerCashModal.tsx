@@ -7,10 +7,11 @@ import {
 import { partnerAPI } from '../../../services/api/partiesPartners';
 import { fetchKasalar, type Kasa } from '../../../services/api/kasa';
 import { ficheTypeToInfo } from '../../../utils/cariAccountStatement';
-import { ChevronDown, FileText, Loader2, X } from 'lucide-react';
+import { ChevronDown, FileText, Loader2, Search, X } from 'lucide-react';
 import { toast } from 'sonner';
 import { useLanguage } from '../../../contexts/LanguageContext';
 import type { Party, PartyLedgerMovement } from '../../../core/types/models';
+import { PartyLedgerDipFooter } from './PartyLedgerDipFooter';
 
 export interface PartnerCashModalProps {
   partner: Party;
@@ -31,7 +32,7 @@ type MovementRow = PartyLedgerMovement & {
 export function PartnerCashModal({ partner, onClose, onSaved, onOpenStatement }: PartnerCashModalProps) {
   const t = useNestedT();
   const { tm } = useLanguage();
-  const [viewTab, setViewTab] = useState<ViewTab>('form');
+  const [viewTab, setViewTab] = useState<ViewTab>('movements');
   const [action, setAction] = useState<Action>('in');
   const [amount, setAmount] = useState('');
   const [registerId, setRegisterId] = useState('');
@@ -41,6 +42,10 @@ export function PartnerCashModal({ partner, onClose, onSaved, onOpenStatement }:
   const [recent, setRecent] = useState<PartyLedgerMovement[]>([]);
   const [error, setError] = useState<string | null>(null);
   const [balance, setBalance] = useState(partner.balance || 0);
+  const [mvSearch, setMvSearch] = useState('');
+  const [mvKind, setMvKind] = useState<'all' | 'share' | 'cash'>('all');
+  const [mvFrom, setMvFrom] = useState('');
+  const [mvTo, setMvTo] = useState('');
 
   const refreshCard = async () => {
     try {
@@ -53,8 +58,9 @@ export function PartnerCashModal({ partner, onClose, onSaved, onOpenStatement }:
 
   const loadRecent = async () => {
     try {
-      const rows = await partnerAPI.getLedger(partner.id, { limit: 500 });
-      setRecent(rows);
+      await partnerAPI.syncBalancesFromYearNet();
+      const list = await partnerAPI.getLedger(partner.id, { limit: 500 });
+      setRecent(list);
     } catch {
       setRecent([]);
     }
@@ -71,7 +77,27 @@ export function PartnerCashModal({ partner, onClose, onSaved, onOpenStatement }:
     })();
   }, [partner.id]);
 
-  const rows = useMemo(() => withRunning(recent), [recent]);
+  const allRows = useMemo(() => withRunning(recent), [recent]);
+  const rows = useMemo(() => {
+    const q = mvSearch.trim().toLocaleLowerCase('tr-TR');
+    return allRows.filter((r) => {
+      const kind = partnerMovementKind(r.transaction_type);
+      if (mvKind === 'share' && kind !== 'share') return false;
+      if (mvKind === 'cash' && kind !== 'cash') return false;
+      const day = String(r.date || '').slice(0, 10);
+      if (mvFrom && day && day < mvFrom) return false;
+      if (mvTo && day && day > mvTo) return false;
+      if (!q) return true;
+      const blob = `${r.definition || ''} ${r.transaction_type || ''} ${r.fiche_no || ''}`.toLocaleLowerCase('tr-TR');
+      return blob.includes(q);
+    });
+  }, [allRows, mvSearch, mvKind, mvFrom, mvTo]);
+  const dip = useMemo(() => {
+    const debit = rows.reduce((s, r) => s + (r.debit || 0), 0);
+    const credit = rows.reduce((s, r) => s + (r.credit || 0), 0);
+    const last = rows.length ? rows[rows.length - 1].balance_after : 0;
+    return { debit, credit, last };
+  }, [rows]);
 
   const submit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -257,7 +283,8 @@ export function PartnerCashModal({ partner, onClose, onSaved, onOpenStatement }:
         {viewTab === 'movements' && (
           <div className="min-h-0 flex-1 flex flex-col p-5">
             <div className="min-h-0 flex-1 flex flex-col border border-slate-200 rounded-2xl overflow-hidden bg-white">
-            <div className="shrink-0 px-4 py-2 border-b border-slate-100 flex items-center justify-between bg-slate-50">
+            <div className="shrink-0 px-4 py-2 border-b border-slate-100 flex flex-col gap-2 bg-slate-50">
+              <div className="flex items-center justify-between">
               <div className="text-[11px] font-bold text-slate-500 uppercase tracking-wider">
                 {t('party.partnerCash.movements')}
                 <span className="ml-2 font-mono text-slate-700">
@@ -274,9 +301,44 @@ export function PartnerCashModal({ partner, onClose, onSaved, onOpenStatement }:
                   {t('party.payroll.openStatement')}
                 </button>
               )}
+              </div>
+              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-2">
+                <label className="relative">
+                  <Search className="absolute left-2.5 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-slate-400" />
+                  <input
+                    value={mvSearch}
+                    onChange={(e) => setMvSearch(e.target.value)}
+                    placeholder={tm('rptPeriodFilterSearch')}
+                    className="w-full rounded-lg border border-slate-200 bg-white py-1.5 pl-8 pr-2 text-xs"
+                  />
+                </label>
+                <select
+                  value={mvKind}
+                  onChange={(e) => setMvKind(e.target.value as 'all' | 'share' | 'cash')}
+                  className="w-full rounded-lg border border-slate-200 bg-white px-2 py-1.5 text-xs"
+                >
+                  <option value="all">{tm('rptPeriodMovementsFilterAll')}</option>
+                  <option value="share">{tm('rptPeriodMovementsFilterShare')}</option>
+                  <option value="cash">{tm('rptPeriodMovementsFilterCash')}</option>
+                </select>
+                <input
+                  type="date"
+                  value={mvFrom}
+                  onChange={(e) => setMvFrom(e.target.value)}
+                  className="w-full rounded-lg border border-slate-200 bg-white px-2 py-1.5 text-xs"
+                />
+                <input
+                  type="date"
+                  value={mvTo}
+                  onChange={(e) => setMvTo(e.target.value)}
+                  className="w-full rounded-lg border border-slate-200 bg-white px-2 py-1.5 text-xs"
+                />
+              </div>
             </div>
-            {rows.length === 0 ? (
+            {allRows.length === 0 ? (
               <div className="p-8 text-center text-sm text-slate-400">{t('party.partnerCash.statementEmpty')}</div>
+            ) : rows.length === 0 ? (
+              <div className="p-8 text-center text-sm text-slate-400">{tm('noRecordFound')}</div>
             ) : (
               <PercentBodyModalScrollBody>
                 <table className="w-full text-sm">
@@ -309,6 +371,13 @@ export function PartnerCashModal({ partner, onClose, onSaved, onOpenStatement }:
                       );
                     })}
                   </tbody>
+                  <PartyLedgerDipFooter
+                    count={rows.length}
+                    debit={dip.debit}
+                    credit={dip.credit}
+                    balance={dip.last}
+                    label={tm('invoiceListDipTotal')}
+                  />
                 </table>
               </PercentBodyModalScrollBody>
             )}
@@ -318,6 +387,20 @@ export function PartnerCashModal({ partner, onClose, onSaved, onOpenStatement }:
       </div>
     </PercentBodyModal>
   );
+}
+
+function partnerMovementKind(type: string): 'share' | 'cash' | 'other' {
+  const u = String(type || '').toUpperCase();
+  if (
+    u.includes('KAR_DAGITIM') ||
+    u.includes('ZARAR_DAGITIM') ||
+    u.includes('DAGITIM_KAR') ||
+    u.includes('DAGITIM_ZARAR')
+  ) {
+    return 'share';
+  }
+  if (u.includes('SERMAYE') || u.includes('PARA_GIRIS') || u.includes('PARA_CIKIS')) return 'cash';
+  return 'other';
 }
 
 function withRunning(rows: PartyLedgerMovement[]): MovementRow[] {

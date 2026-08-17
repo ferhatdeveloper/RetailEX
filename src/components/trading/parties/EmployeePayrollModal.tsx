@@ -14,6 +14,7 @@ import { ChevronDown, FileText, Loader2, Printer, X } from 'lucide-react';
 import { toast } from 'sonner';
 import { useLanguage } from '../../../contexts/LanguageContext';
 import type { Party, PartyLedgerMovement } from '../../../core/types/models';
+import { PartyLedgerDipFooter } from './PartyLedgerDipFooter';
 
 export interface EmployeePayrollModalProps {
   employee: Party;
@@ -91,6 +92,12 @@ export function EmployeePayrollModal({ employee, onClose, onSaved, onOpenStateme
   }, [viewTab]);
 
   const rows = useMemo(() => withRunning(recent), [recent]);
+  const dip = useMemo(() => {
+    const debit = rows.reduce((s, r) => s + (r.debit || 0), 0);
+    const credit = rows.reduce((s, r) => s + (r.credit || 0), 0);
+    const last = rows.length ? rows[rows.length - 1].balance_after : 0;
+    return { debit, credit, last };
+  }, [rows]);
 
   const printRow = async (r: MovementRow) => {
     const kind = txKind(r.transaction_type);
@@ -397,6 +404,13 @@ export function EmployeePayrollModal({ employee, onClose, onSaved, onOpenStateme
                       );
                     })}
                   </tbody>
+                  <PartyLedgerDipFooter
+                    count={rows.length}
+                    debit={dip.debit}
+                    credit={dip.credit}
+                    balance={dip.last}
+                    label={tm('invoiceListDipTotal')}
+                  />
                 </table>
               </PercentBodyModalScrollBody>
             )}
