@@ -78,9 +78,23 @@ export function PartiesModule({
       if (tab === 'employee') {
         await employeeAPI.ensureMonthlySalaryAccrual();
       }
+      let partnerBalances = new Map<string, number>();
+      if (tab === 'partner' || tab === 'all') {
+        try {
+          partnerBalances = await partnerAPI.syncBalancesFromYearNet();
+        } catch (err) {
+          console.warn('[PartiesModule] ortak bakiye yazılamadı', err);
+        }
+      }
       const filter = tab === 'all' ? {} : { cardType: tab };
       const list = await partyAPI.getAll(filter);
-      setItems(list);
+      setItems(
+        list.map((p) =>
+          p.card_type === 'partner' && partnerBalances.has(p.id)
+            ? { ...p, balance: partnerBalances.get(p.id) as number }
+            : p,
+        ),
+      );
     } catch (err: any) {
       toast.error(err?.message || String(err));
     } finally {
@@ -406,6 +420,9 @@ export function PartiesModule({
                     ) : null}
                     {p.card_type === 'partner' && Number(p.balance) < 0 ? (
                       <div className="text-[9px] font-bold uppercase text-amber-700">{t('party.partner.balanceLabelNegative')}</div>
+                    ) : null}
+                    {p.card_type === 'partner' && Number(p.balance) === 0 ? (
+                      <div className="text-[9px] font-bold uppercase text-slate-400">{t('party.fields.balance')}</div>
                     ) : null}
                   </td>
                   <td className="px-4 py-3 text-slate-600">

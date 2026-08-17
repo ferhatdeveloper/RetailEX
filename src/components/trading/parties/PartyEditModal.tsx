@@ -321,6 +321,18 @@ export function PartyEditModal({ initial, defaultCardType, onClose, onSaved }: P
                   hint="%"
                 />
                 <Field
+                  label={t('party.fields.balance')}
+                  value={initial?.balance != null ? String(initial.balance) : '0'}
+                  onChange={() => {}}
+                  type="number"
+                  readOnly
+                  hint={
+                    Number(initial?.balance) < 0
+                      ? t('party.partner.balanceHintPayable')
+                      : t('party.partner.balanceHintReceivable')
+                  }
+                />
+                <Field
                   label={t('party.partner.capitalContribution')}
                   value={form.capital_contribution}
                   onChange={(v) => update({ capital_contribution: v })}
@@ -410,6 +422,7 @@ function Field({
   placeholder,
   hint,
   className = '',
+  readOnly,
 }: {
   label: string;
   value: string;
@@ -419,6 +432,7 @@ function Field({
   placeholder?: string;
   hint?: string;
   className?: string;
+  readOnly?: boolean;
 }) {
   return (
     <div className={className}>
@@ -432,7 +446,8 @@ function Field({
         onChange={(e) => onChange(e.target.value)}
         required={required}
         placeholder={placeholder}
-        className={INPUT_CLASS}
+        readOnly={readOnly}
+        className={readOnly ? `${INPUT_CLASS} bg-slate-50 text-slate-600 cursor-not-allowed` : INPUT_CLASS}
       />
       {hint ? <p className="text-xs text-slate-400 mt-1">{hint}</p> : null}
     </div>

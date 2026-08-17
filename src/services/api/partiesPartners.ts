@@ -13,7 +13,41 @@ import { normalizeFirmTableNr } from './accountBalance';
 import { createKasaIslemi } from './kasa';
 import { partyAPI } from './parties';
 import { ensurePartyPeriodTables } from './ensurePartyPeriodTables';
+import { salesAPI } from './sales';
+import { expenseAPI } from './expenses';
+import { splitAmountByPartners } from '../../utils/periodSummaryPartnerSplit';
+import { localTodayDateKey } from '../../utils/localCalendarDate';
 import type { PartyLedgerMovement, PartyPartner } from '../../core/types/models';
+
+const PARTNER_CASH_TX = [
+  'SERMAYE_TAHSILAT',
+  'SERMAYE_ODEME',
+  'ORTAK_SERMAYE_TAHSILAT',
+  'ORTAK_SERMAYE_ODEME',
+  'ORTAK_PARA_GIRIS',
+  'ORTAK_PARA_CIKIS',
+  'ORTAK_SERMAYE_CIKIS',
+];
+
+function partiesTable(): string {
+  return `rex_${normalizeFirmTableNr(ERP_SETTINGS.firmNr)}_parties`;
+}
+
+function isRemovedSaleStatus(status: unknown): boolean {
+  const st = String(status ?? '').toLowerCase();
+  return st === 'cancelled' || st === 'canceled' || st === 'refunded';
+}
+
+let yearNetSyncCache: { key: string; at: number; map: Map<string, number> } | null = null;
+const YEAR_NET_SYNC_TTL_MS = 60_000;
+
+function yearNetSyncCacheKey(year: number): string {
+  return `${normalizeFirmTableNr(ERP_SETTINGS.firmNr)}:${ERP_SETTINGS.periodNr || '01'}:${year}`;
+}
+
+function invalidateYearNetSyncCache(): void {
+  yearNetSyncCache = null;
+}
 
 function ledgerTable(): string {
   const firm = normalizeFirmTableNr(ERP_SETTINGS.firmNr);
@@ -145,6 +179,101 @@ export const partnerAPI = {
     return { ok: Math.abs(rounded - 100) <= 0.01 && partners.length > 0, totalPct: rounded, warnings };
   },
 
+  /**
+   * Yıllık ay özeti ile aynı net kalan × pay % + para giriş/çıkışı.
+   * Sonucu parties.balance alanına yazar (cari listede görünsün).
+   */
+  async syncBalancesFromYearNet(): Promise<Map<string, number>> {
+    const result = new Map<string, number>();
+    const year = parseInt(localTodayDateKey().slice(0, 4), 10) || new Date().getFullYear();
+    const cacheKey = yearNetSyncCacheKey(year);
+    if (
+      yearNetSyncCache &&
+      yearNetSyncCache.key === cacheKey &&
+      Date.now() - yearNetSyncCache.at < YEAR_NET_SYNC_TTL_MS
+    ) {
+      return yearNetSyncCache.map;
+    }
+
+    const partners = await this.getActive();
+    if (!partners.length) return result;
+
+    const start = `${year}-01-01`;
+    const end = `${year}-12-31`;
+
+    let netRemaining = 0;
+    let sales: unknown[] = [];
+    let expenses: { amount?: number }[] = [];
+    try {
+      const [saleRows, expenseRows] = await Promise.all([
+        salesAPI.getByDateRange(start, end),
+        expenseAPI.getAll({ startDate: start, endDate: end }),
+      ]);
+      sales = Array.isArray(saleRows) ? saleRows : [];
+      expenses = Array.isArray(expenseRows) ? expenseRows : [];
+      const revenue = sales
+        .filter((s) => !isRemovedSaleStatus((s as { status?: unknown }).status))
+        .reduce((sum, s) => sum + (Number((s as { total?: number }).total) || 0), 0);
+      const expenseTotal = expenses.reduce((sum, e) => sum + (Number(e.amount) || 0), 0);
+      netRemaining = revenue - expenseTotal;
+    } catch (err) {
+      console.warn('[partnerAPI] dönem neti hesaplanamadı, bakiye güncellenmedi', err);
+      return result;
+    }
+
+    if (!sales.length && !expenses.length) {
+      return result;
+    }
+
+    const shares = splitAmountByPartners(
+      netRemaining,
+      partners.map((p) => ({
+        id: p.id,
+        name: p.name || p.code || p.id,
+        sharePct: p.share_pct || 0,
+      })),
+    );
+    const shareById = new Map(shares.map((s) => [s.id, s.amount]));
+
+    const cashById = new Map<string, number>();
+    try {
+      await ensurePartyPeriodTables();
+      const ids = partners.map((p) => p.id);
+      const { rows } = await postgres.query(
+        `SELECT party_id::text AS party_id, COALESCE(SUM(amount * sign), 0) AS cash_net
+         FROM ${ledgerTable()}
+         WHERE party_id = ANY($1::text::uuid[])
+           AND UPPER(transaction_type) = ANY($2::text[])
+         GROUP BY party_id`,
+        [ids, PARTNER_CASH_TX],
+      );
+      for (const r of rows || []) {
+        cashById.set(String(r.party_id), parseFloat(String(r.cash_net || 0)) || 0);
+      }
+    } catch {
+      /* ledger yoksa yalnız dönem payı yazılır */
+    }
+
+    for (const p of partners) {
+      const share = shareById.get(p.id) ?? 0;
+      const cash = cashById.get(p.id) ?? 0;
+      const balance = Math.round((share + cash) * 100) / 100;
+      result.set(p.id, balance);
+      try {
+        await postgres.query(
+          `UPDATE ${partiesTable()}
+           SET balance = $1::text::numeric, updated_at = NOW()
+           WHERE id = $2::text::uuid`,
+          [balance.toString(), p.id],
+        );
+      } catch (err) {
+        console.warn('[partnerAPI] bakiye yazılamadı', p.id, err);
+      }
+    }
+    yearNetSyncCache = { key: cacheKey, at: Date.now(), map: result };
+    return result;
+  },
+
   async getLedger(
     partnerId: string,
     opts?: { startDate?: string; endDate?: string; limit?: number },
@@ -232,6 +361,7 @@ export const partnerAPI = {
       dovizli_tutar: input.amount,
     });
 
+    invalidateYearNetSyncCache();
     const ledger = await writePartnerLedger({
       partyId: partner.id,
       transactionType: ledgerTipi,
