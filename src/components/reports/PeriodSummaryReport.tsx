@@ -1,11 +1,14 @@
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
-import { Calendar, TrendingDown, TrendingUp, Wallet } from 'lucide-react';
+import { Calendar, Landmark, TrendingDown, TrendingUp, Wallet } from 'lucide-react';
 import { Table, Spin } from 'antd';
 import type { ColumnsType } from 'antd/es/table';
 import { formatNumber } from '../../utils/formatNumber';
 import { expenseAPI } from '../../services/api/expenses';
 import { salesAPI } from '../../services/api/sales';
+import { invoicesAPI } from '../../services/api/invoices';
+import { supplierAPI } from '../../services/api/suppliers';
 import type { Sale } from '../../App';
+import type { Invoice, Supplier } from '../../core/types/models';
 import { localCalendarDateKey, localTodayDateKey, formatIsoDateTr, toSqlDateInputString } from '../../utils/localCalendarDate';
 import { useFirmaDonem } from '../../contexts/FirmaDonemContext';
 import { useLanguage } from '../../contexts/LanguageContext';
@@ -20,6 +23,7 @@ import {
   type PeriodSummaryPartnerSplitPrefs,
 } from '../../utils/periodSummaryPartnerSplit';
 import { PeriodExpenseShareDetailModal } from './PeriodExpenseShareDetailModal';
+import { PeriodSupplierPayablesDetailModal } from './PeriodSupplierPayablesDetailModal';
 
 export type PeriodSummaryMode = 'monthly-days' | 'yearly-months';
 
@@ -33,13 +37,14 @@ interface PeriodSummaryRow {
   card: number;
   discount: number;
   expenses: number;
+  purchases: number;
   netRemaining: number;
   partnerShares: Record<string, number>;
   expenseShares: Record<string, number>;
 }
 
-function hasPeriodActivity(row: Pick<PeriodSummaryRow, 'saleCount' | 'revenue' | 'expenses'>): boolean {
-  return row.saleCount > 0 || row.revenue > 0 || row.expenses > 0;
+function hasPeriodActivity(row: Pick<PeriodSummaryRow, 'saleCount' | 'revenue' | 'expenses' | 'purchases'>): boolean {
+  return row.saleCount > 0 || row.revenue > 0 || row.expenses > 0 || row.purchases > 0;
 }
 
 function isRemovedSaleStatus(status: unknown): boolean {
@@ -118,6 +123,38 @@ function aggregateExpenses(
   return map;
 }
 
+function aggregatePurchases(invoices: Invoice[], bucketKey: (inv: Invoice) => string) {
+  const map = new Map<string, number>();
+  for (const inv of invoices) {
+    if (inv.is_cancelled || isRemovedSaleStatus(inv.status)) continue;
+    const key = bucketKey(inv);
+    if (!key) continue;
+    map.set(key, (map.get(key) || 0) + (Number(inv.total_amount ?? inv.total) || 0));
+  }
+  return map;
+}
+
+async function fetchPeriodPurchases(start: string, end: string): Promise<Invoice[]> {
+  const all: Invoice[] = [];
+  let page = 1;
+  let totalPages = 1;
+  while (page <= totalPages) {
+    const result = await invoicesAPI.getPaginated({
+      page,
+      pageSize: 5000,
+      startDate: start,
+      endDate: end,
+      invoiceCategory: 'Alis',
+      includeCancelled: false,
+    });
+    all.push(...(result.data || []));
+    totalPages = Math.max(1, result.totalPages || 1);
+    if (!result.data?.length) break;
+    page += 1;
+  }
+  return all;
+}
+
 interface PeriodSummaryReportProps {
   mode: PeriodSummaryMode;
   currency: string;
@@ -135,6 +172,9 @@ export function PeriodSummaryReport({ mode, currency }: PeriodSummaryReportProps
   const [loading, setLoading] = useState(false);
   const [sales, setSales] = useState<Sale[]>([]);
   const [expenses, setExpenses] = useState<Awaited<ReturnType<typeof expenseAPI.getAll>>>([]);
+  const [purchases, setPurchases] = useState<Invoice[]>([]);
+  const [suppliers, setSuppliers] = useState<Supplier[]>([]);
+  const [supplierDetailOpen, setSupplierDetailOpen] = useState(false);
   const [partnerSplit, setPartnerSplit] = useState<PeriodSummaryPartnerSplitPrefs>(() =>
     loadPeriodSummaryPartnerSplitPrefs(),
   );
@@ -186,20 +226,26 @@ export function PeriodSummaryReport({ mode, currency }: PeriodSummaryReportProps
     if (!periodRange) {
       setSales([]);
       setExpenses([]);
+      setPurchases([]);
       return;
     }
     setLoading(true);
     try {
-      const [saleRows, expenseRows] = await Promise.all([
+      const [saleRows, expenseRows, purchaseRows, supplierRows] = await Promise.all([
         salesAPI.getByDateRange(periodRange.start, periodRange.end),
         expenseAPI.getAll({ startDate: periodRange.start, endDate: periodRange.end }),
+        fetchPeriodPurchases(periodRange.start, periodRange.end),
+        supplierAPI.getAll({ cardType: 'supplier' }),
       ]);
       setSales(Array.isArray(saleRows) ? saleRows : []);
       setExpenses(Array.isArray(expenseRows) ? expenseRows : []);
+      setPurchases(Array.isArray(purchaseRows) ? purchaseRows : []);
+      setSuppliers(Array.isArray(supplierRows) ? supplierRows : []);
     } catch (err) {
       console.error('[PeriodSummaryReport] yükleme hatası:', err);
       setSales([]);
       setExpenses([]);
+      setPurchases([]);
     } finally {
       setLoading(false);
     }
@@ -238,6 +284,11 @@ export function PeriodSummaryReport({ mode, currency }: PeriodSummaryReportProps
         ? aggregateExpenses(expenses, (e) => expenseDayKey(e.expense_date))
         : aggregateExpenses(expenses, (e) => expenseDayKey(e.expense_date).slice(0, 7));
 
+    const purchaseMap =
+      mode === 'monthly-days'
+        ? aggregatePurchases(purchases, (inv) => localCalendarDateKey(inv.invoice_date))
+        : aggregatePurchases(purchases, (inv) => saleMonthKey(inv.invoice_date));
+
     const periodKeys =
       mode === 'monthly-days'
         ? daysInMonthKeys(parseInt(selectedMonth.slice(0, 4), 10), parseInt(selectedMonth.slice(5, 7), 10))
@@ -248,6 +299,7 @@ export function PeriodSummaryReport({ mode, currency }: PeriodSummaryReportProps
     return periodKeys.map((periodKey) => {
       const sale = saleMap.get(periodKey) || { saleCount: 0, revenue: 0, cash: 0, card: 0, discount: 0 };
       const exp = expenseMap.get(periodKey) || 0;
+      const purch = purchaseMap.get(periodKey) || 0;
       const periodLabel =
         mode === 'monthly-days'
           ? formatIsoDateTr(periodKey)
@@ -270,12 +322,13 @@ export function PeriodSummaryReport({ mode, currency }: PeriodSummaryReportProps
         card: sale.card,
         discount: sale.discount,
         expenses: exp,
+        purchases: purch,
         netRemaining,
         partnerShares: partnerShareMap,
         expenseShares: expenseShareMap,
       };
     });
-  }, [mode, periodRange, sales, expenses, selectedMonth, selectedYear, tm, partnerSlices]);
+  }, [mode, periodRange, sales, expenses, purchases, selectedMonth, selectedYear, tm, partnerSlices]);
 
   const totals = useMemo(() => {
     const base = rows.reduce(
@@ -286,9 +339,10 @@ export function PeriodSummaryReport({ mode, currency }: PeriodSummaryReportProps
         card: acc.card + r.card,
         discount: acc.discount + r.discount,
         expenses: acc.expenses + r.expenses,
+        purchases: acc.purchases + r.purchases,
         netRemaining: acc.netRemaining + r.netRemaining,
       }),
-      { saleCount: 0, revenue: 0, cash: 0, card: 0, discount: 0, expenses: 0, netRemaining: 0 }
+      { saleCount: 0, revenue: 0, cash: 0, card: 0, discount: 0, expenses: 0, purchases: 0, netRemaining: 0 }
     );
     const shareList = splitAmountByPartners(base.netRemaining, partnerSlices);
     const partnerShares: Record<string, number> = {};
@@ -302,6 +356,18 @@ export function PeriodSummaryReport({ mode, currency }: PeriodSummaryReportProps
       expenseShares,
     };
   }, [rows, partnerSlices]);
+
+  const supplierPayables = useMemo(() => {
+    const payable = suppliers.reduce((s, r) => s + Math.max(Number(r.balance) || 0, 0), 0);
+    const shares = splitAmountByPartners(payable, partnerSlices);
+    const byId: Record<string, number> = {};
+    for (const sh of shares) byId[sh.id] = sh.amount;
+    return {
+      payable,
+      byId,
+      count: suppliers.filter((s) => Number(s.balance) > 0).length,
+    };
+  }, [suppliers, partnerSlices]);
 
   const money = (v: number) => `${formatNumber(v, 0, false)} ${currency}`;
   const showPartnerCols = partnerSplit.enabled && partnerSlices.length > 0;
@@ -374,6 +440,16 @@ export function PeriodSummaryReport({ mode, currency }: PeriodSummaryReportProps
               {money(v)}
             </button>
           );
+        },
+      },
+      {
+        title: `${tm('rptPeriodColPurchases')} (${currency})`,
+        dataIndex: 'purchases',
+        key: 'purchases',
+        align: 'right',
+        render: (v: number, row) => {
+          if (!hasPeriodActivity(row)) return '—';
+          return v > 0 ? <span className="text-amber-700">{money(v)}</span> : '—';
         },
       },
       {
@@ -526,6 +602,39 @@ export function PeriodSummaryReport({ mode, currency }: PeriodSummaryReportProps
         </div>
         <div className="bg-white rounded-lg border p-4">
           <div className="flex items-center gap-2 text-slate-500 text-sm mb-1">
+            <Landmark className="w-4 h-4 text-amber-600" />
+            {tm('rptPeriodTotalPurchases')}
+          </div>
+          <p className="text-2xl font-bold text-amber-700">{money(totals.purchases)}</p>
+          <p className="text-xs text-slate-400 mt-1">{tm('rptPeriodPurchasesHint')}</p>
+        </div>
+        <div className="bg-white rounded-lg border p-4 border-amber-100">
+          <div className="flex items-center gap-2 text-slate-500 text-sm mb-1">
+            <Landmark className="w-4 h-4 text-amber-700" />
+            {tm('rptPeriodSupplierOpenDebt')}
+          </div>
+          <p className="text-2xl font-bold text-amber-800">{money(supplierPayables.payable)}</p>
+          <p className="text-xs text-slate-400 mt-1">
+            {supplierPayables.count} {tm('rptPeriodSupplierDetailKicker').toLocaleLowerCase('tr-TR')}
+          </p>
+          {showPartnerCols
+            ? partnerSlices.map((p) => (
+                <p key={p.id} className="text-xs font-semibold text-amber-800 mt-1">
+                  {p.name} · {tm('rptPeriodSupplierDebtShare')}: {money(supplierPayables.byId[p.id] ?? 0)}
+                </p>
+              ))
+            : null}
+          <button
+            type="button"
+            className="mt-2 text-xs font-bold uppercase tracking-wider text-amber-800 hover:underline"
+            onClick={() => setSupplierDetailOpen(true)}
+          >
+            {tm('rptPeriodOpenSupplierDetail')}
+          </button>
+          <p className="text-[11px] text-slate-500 mt-2">{tm('rptPeriodSupplierDetailHint')}</p>
+        </div>
+        <div className="bg-white rounded-lg border p-4">
+          <div className="flex items-center gap-2 text-slate-500 text-sm mb-1">
             <Wallet className="w-4 h-4 text-blue-600" />
             {tm('rptPeriodColNet')}
           </div>
@@ -590,6 +699,9 @@ export function PeriodSummaryReport({ mode, currency }: PeriodSummaryReportProps
                     <span className="text-red-600">{money(totals.expenses)}</span>
                   </Table.Summary.Cell>
                   <Table.Summary.Cell align="right">
+                    <span className="text-amber-700">{money(totals.purchases)}</span>
+                  </Table.Summary.Cell>
+                  <Table.Summary.Cell align="right">
                     <span className={totals.netRemaining >= 0 ? 'text-emerald-700' : 'text-red-600'}>
                       {money(totals.netRemaining)}
                     </span>
@@ -623,6 +735,14 @@ export function PeriodSummaryReport({ mode, currency }: PeriodSummaryReportProps
           title={expenseDetail.title}
           currency={currency}
           onClose={() => setExpenseDetail(null)}
+        />
+      ) : null}
+      {supplierDetailOpen ? (
+        <PeriodSupplierPayablesDetailModal
+          suppliers={suppliers}
+          partners={partnerSlices}
+          currency={currency}
+          onClose={() => setSupplierDetailOpen(false)}
         />
       ) : null}
     </div>
