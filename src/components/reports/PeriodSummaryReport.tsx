@@ -10,11 +10,13 @@ import { localCalendarDateKey, localTodayDateKey, formatIsoDateTr, toSqlDateInpu
 import { useFirmaDonem } from '../../contexts/FirmaDonemContext';
 import { useLanguage } from '../../contexts/LanguageContext';
 
+import { partnerAPI } from '../../services/api/partiesPartners';
+import type { PartyPartner } from '../../core/types/models';
 import {
   loadPeriodSummaryPartnerSplitPrefs,
   normalizePartnerSplitPrefs,
-  partnerShareAmounts,
   savePeriodSummaryPartnerSplitPrefs,
+  splitAmountByPartners,
   type PeriodSummaryPartnerSplitPrefs,
 } from '../../utils/periodSummaryPartnerSplit';
 
@@ -31,8 +33,7 @@ interface PeriodSummaryRow {
   discount: number;
   expenses: number;
   netRemaining: number;
-  partnerShareMajor: number;
-  partnerShareMinor: number;
+  partnerShares: Record<string, number>;
 }
 
 function hasPeriodActivity(row: Pick<PeriodSummaryRow, 'saleCount' | 'revenue' | 'expenses'>): boolean {
@@ -135,6 +136,21 @@ export function PeriodSummaryReport({ mode, currency }: PeriodSummaryReportProps
   const [partnerSplit, setPartnerSplit] = useState<PeriodSummaryPartnerSplitPrefs>(() =>
     loadPeriodSummaryPartnerSplitPrefs(),
   );
+  const [partners, setPartners] = useState<PartyPartner[]>([]);
+
+  const partnerSlices = useMemo(
+    () =>
+      partners.map((p) => ({
+        id: p.id,
+        name: p.name || p.code || p.id,
+        sharePct: Number(p.share_pct) || 0,
+      })),
+    [partners],
+  );
+  const partnerPctTotal = useMemo(
+    () => Math.round(partnerSlices.reduce((s, p) => s + p.sharePct, 0) * 100) / 100,
+    [partnerSlices],
+  );
 
   const updatePartnerSplit = useCallback((patch: Partial<PeriodSummaryPartnerSplitPrefs>) => {
     setPartnerSplit((prev) => {
@@ -190,6 +206,22 @@ export function PeriodSummaryReport({ mode, currency }: PeriodSummaryReportProps
     void loadData();
   }, [loadData, selectedFirm?.firm_nr]);
 
+  useEffect(() => {
+    let cancelled = false;
+    void (async () => {
+      try {
+        const list = await partnerAPI.getActive();
+        if (!cancelled) setPartners(Array.isArray(list) ? list : []);
+      } catch (err) {
+        console.error('[PeriodSummaryReport] ortak listesi:', err);
+        if (!cancelled) setPartners([]);
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [selectedFirm?.firm_nr]);
+
   const rows = useMemo((): PeriodSummaryRow[] => {
     if (!periodRange) return [];
 
@@ -219,7 +251,9 @@ export function PeriodSummaryReport({ mode, currency }: PeriodSummaryReportProps
           : new Date(`${periodKey}-01T12:00:00`).toLocaleDateString(locale, { month: 'long', year: 'numeric' });
 
       const netRemaining = sale.revenue - exp;
-      const shares = partnerShareAmounts(netRemaining, partnerSplit.majorPct, partnerSplit.minorPct);
+      const shareList = splitAmountByPartners(netRemaining, partnerSlices);
+      const partnerShareMap: Record<string, number> = {};
+      for (const s of shareList) partnerShareMap[s.id] = s.amount;
       return {
         key: periodKey,
         periodKey,
@@ -231,11 +265,10 @@ export function PeriodSummaryReport({ mode, currency }: PeriodSummaryReportProps
         discount: sale.discount,
         expenses: exp,
         netRemaining,
-        partnerShareMajor: shares.major,
-        partnerShareMinor: shares.minor,
+        partnerShares: partnerShareMap,
       };
     });
-  }, [mode, periodRange, sales, expenses, selectedMonth, selectedYear, tm, partnerSplit.majorPct, partnerSplit.minorPct]);
+  }, [mode, periodRange, sales, expenses, selectedMonth, selectedYear, tm, partnerSlices]);
 
   const totals = useMemo(() => {
     const base = rows.reduce(
@@ -250,18 +283,18 @@ export function PeriodSummaryReport({ mode, currency }: PeriodSummaryReportProps
       }),
       { saleCount: 0, revenue: 0, cash: 0, card: 0, discount: 0, expenses: 0, netRemaining: 0 }
     );
-    const shares = partnerShareAmounts(base.netRemaining, partnerSplit.majorPct, partnerSplit.minorPct);
+    const shareList = splitAmountByPartners(base.netRemaining, partnerSlices);
+    const partnerShares: Record<string, number> = {};
+    for (const s of shareList) partnerShares[s.id] = s.amount;
     return {
       ...base,
-      partnerShareMajor: shares.major,
-      partnerShareMinor: shares.minor,
+      partnerShares,
     };
-  }, [rows, partnerSplit.majorPct, partnerSplit.minorPct]);
+  }, [rows, partnerSlices]);
 
   const money = (v: number) => `${formatNumber(v, 0, false)} ${currency}`;
-
-  const partnerMajorLabel = tm('rptPeriodColPartnerShare').replace('{pct}', String(partnerSplit.majorPct));
-  const partnerMinorLabel = tm('rptPeriodColPartnerShare').replace('{pct}', String(partnerSplit.minorPct));
+  const showPartnerCols = partnerSplit.enabled && partnerSlices.length > 0;
+  const partnerColColors = ['text-blue-700', 'text-indigo-700', 'text-violet-700', 'text-cyan-700', 'text-teal-700'];
 
   const columns: ColumnsType<PeriodSummaryRow> = useMemo(() => {
     const base: ColumnsType<PeriodSummaryRow> = [
@@ -331,40 +364,24 @@ export function PeriodSummaryReport({ mode, currency }: PeriodSummaryReportProps
       },
     ];
 
-    if (!partnerSplit.enabled) return base;
+    if (!showPartnerCols) return base;
 
     return [
       ...base,
-      {
-        title: `${partnerMajorLabel} (${currency})`,
-        dataIndex: 'partnerShareMajor',
-        key: 'partnerShareMajor',
-        align: 'right',
-        render: (v: number, row) => {
+      ...partnerSlices.map((p, idx) => ({
+        title: `${p.name} (%${p.sharePct}) (${currency})`,
+        dataIndex: ['partnerShares', p.id] as unknown as string,
+        key: `partner-${p.id}`,
+        align: 'right' as const,
+        render: (_: unknown, row: PeriodSummaryRow) => {
           if (!hasPeriodActivity(row)) return '—';
-          return <span className="text-blue-700 font-medium">{money(v)}</span>;
+          const v = row.partnerShares[p.id] ?? 0;
+          const cls = partnerColColors[idx % partnerColColors.length];
+          return <span className={`${cls} font-medium`}>{money(v)}</span>;
         },
-      },
-      {
-        title: `${partnerMinorLabel} (${currency})`,
-        dataIndex: 'partnerShareMinor',
-        key: 'partnerShareMinor',
-        align: 'right',
-        render: (v: number, row) => {
-          if (!hasPeriodActivity(row)) return '—';
-          return <span className="text-indigo-700 font-medium">{money(v)}</span>;
-        },
-      },
+      })),
     ];
-  }, [
-    mode,
-    currency,
-    tm,
-    money,
-    partnerSplit.enabled,
-    partnerMajorLabel,
-    partnerMinorLabel,
-  ]);
+  }, [mode, currency, tm, money, showPartnerCols, partnerSlices]);
 
   const title = mode === 'monthly-days' ? tm('aylikGunOzeti') : tm('yillikAyOzeti');
   const subtitle = mode === 'monthly-days' ? tm('aylikGunOzetiDesc') : tm('yillikAyOzetiDesc');
@@ -424,37 +441,16 @@ export function PeriodSummaryReport({ mode, currency }: PeriodSummaryReportProps
           {tm('rptPeriodPartnerSplitEnable')}
         </label>
         {partnerSplit.enabled ? (
-          <>
-            <span className="inline-flex items-center gap-1.5">
-              <span className="text-slate-600">{tm('rptPeriodPartnerShareMajorPct')}</span>
-              <input
-                type="number"
-                min={0}
-                max={100}
-                value={partnerSplit.majorPct}
-                onChange={(e) => updatePartnerSplit({ majorPct: Number(e.target.value) })}
-                className="w-16 px-2 py-1 border rounded text-sm text-center"
-              />
-              <span>%</span>
-            </span>
-            <span className="inline-flex items-center gap-1.5">
-              <span className="text-slate-600">{tm('rptPeriodPartnerShareMinorPct')}</span>
-              <input
-                type="number"
-                min={0}
-                max={100}
-                value={partnerSplit.minorPct}
-                onChange={(e) => updatePartnerSplit({ minorPct: Number(e.target.value) })}
-                className="w-16 px-2 py-1 border rounded text-sm text-center"
-              />
-              <span>%</span>
-            </span>
+          partnerSlices.length > 0 ? (
             <span className="text-slate-500">
-              {tm('rptPeriodPartnerSplitNoteDynamic')
-                .replace('{major}', String(partnerSplit.majorPct))
-                .replace('{minor}', String(partnerSplit.minorPct))}
+              {tm('rptPeriodPartnerSplitFromCards')}
+              {Math.abs(partnerPctTotal - 100) > 0.01
+                ? ` ${tm('rptPeriodPartnerPctWarn').replace('{total}', String(partnerPctTotal))}`
+                : ''}
             </span>
-          </>
+          ) : (
+            <span className="text-amber-700">{tm('rptPeriodPartnerNoPartners')}</span>
+          )
         ) : (
           <span>{tm('rptPeriodPartnerSplitDisabledHint')}</span>
         )}
@@ -462,7 +458,7 @@ export function PeriodSummaryReport({ mode, currency }: PeriodSummaryReportProps
 
       <div
         className={`grid grid-cols-1 sm:grid-cols-2 gap-4 ${
-          partnerSplit.enabled ? 'lg:grid-cols-3 xl:grid-cols-6' : 'lg:grid-cols-2 xl:grid-cols-4'
+          showPartnerCols ? 'lg:grid-cols-3 xl:grid-cols-4' : 'lg:grid-cols-2 xl:grid-cols-4'
         }`}
       >
         <div className="bg-white rounded-lg border p-4">
@@ -491,17 +487,17 @@ export function PeriodSummaryReport({ mode, currency }: PeriodSummaryReportProps
             {money(totals.netRemaining)}
           </p>
         </div>
-        {partnerSplit.enabled ? (
-          <>
-            <div className="bg-white rounded-lg border p-4 border-blue-100 bg-blue-50/40">
-              <p className="text-slate-500 text-sm mb-1">{partnerMajorLabel}</p>
-              <p className="text-2xl font-bold text-blue-700">{money(totals.partnerShareMajor)}</p>
+        {showPartnerCols ? (
+          partnerSlices.map((p, idx) => (
+            <div key={p.id} className="bg-white rounded-lg border p-4 border-blue-100 bg-blue-50/40">
+              <p className="text-slate-500 text-sm mb-1">
+                {p.name} (%{p.sharePct})
+              </p>
+              <p className={`text-2xl font-bold ${partnerColColors[idx % partnerColColors.length]}`}>
+                {money(totals.partnerShares[p.id] ?? 0)}
+              </p>
             </div>
-            <div className="bg-white rounded-lg border p-4 border-indigo-100 bg-indigo-50/40">
-              <p className="text-slate-500 text-sm mb-1">{partnerMinorLabel}</p>
-              <p className="text-2xl font-bold text-indigo-700">{money(totals.partnerShareMinor)}</p>
-            </div>
-          </>
+          ))
         ) : null}
         <div className="bg-white rounded-lg border p-4">
           <p className="text-slate-500 text-sm mb-1">{tm('rptPeriodPaymentSplit')}</p>
@@ -521,7 +517,7 @@ export function PeriodSummaryReport({ mode, currency }: PeriodSummaryReportProps
             dataSource={rows}
             pagination={false}
             size="small"
-            scroll={{ x: 1280 }}
+            scroll={{ x: showPartnerCols ? 1280 + partnerSlices.length * 160 : 1280 }}
             summary={() => (
               <Table.Summary fixed>
                 <Table.Summary.Row className="bg-slate-50 font-semibold">
@@ -539,16 +535,15 @@ export function PeriodSummaryReport({ mode, currency }: PeriodSummaryReportProps
                       {money(totals.netRemaining)}
                     </span>
                   </Table.Summary.Cell>
-                  {partnerSplit.enabled ? (
-                    <>
-                      <Table.Summary.Cell align="right">
-                        <span className="text-blue-700">{money(totals.partnerShareMajor)}</span>
-                      </Table.Summary.Cell>
-                      <Table.Summary.Cell align="right">
-                        <span className="text-indigo-700">{money(totals.partnerShareMinor)}</span>
-                      </Table.Summary.Cell>
-                    </>
-                  ) : null}
+                  {showPartnerCols
+                    ? partnerSlices.map((p, idx) => (
+                        <Table.Summary.Cell key={p.id} align="right">
+                          <span className={partnerColColors[idx % partnerColColors.length]}>
+                            {money(totals.partnerShares[p.id] ?? 0)}
+                          </span>
+                        </Table.Summary.Cell>
+                      ))
+                    : null}
                 </Table.Summary.Row>
               </Table.Summary>
             )}

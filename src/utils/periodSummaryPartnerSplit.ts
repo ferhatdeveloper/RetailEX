@@ -121,3 +121,40 @@ export function partnerShareAmounts(
     minor: netRemaining * minor,
   };
 }
+
+export type PeriodPartnerShareSlice = {
+  id: string;
+  name: string;
+  sharePct: number;
+};
+
+export type PeriodPartnerShareAmount = PeriodPartnerShareSlice & { amount: number };
+
+/**
+ * Net kalanı aktif ortak paylarına böler.
+ * Son ortağa yuvarlama farkı verilir (kâr dağıtım motoru ile aynı).
+ */
+export function splitAmountByPartners(
+  amount: number,
+  partners: PeriodPartnerShareSlice[],
+): PeriodPartnerShareAmount[] {
+  if (!partners.length) return [];
+  const totalPct = partners.reduce((s, p) => s + (Number(p.sharePct) || 0), 0);
+  if (!(totalPct > 0) || !Number.isFinite(amount)) {
+    return partners.map((p) => ({ ...p, amount: 0 }));
+  }
+  const working = partners
+    .slice()
+    .sort((a, b) => (b.sharePct || 0) - (a.sharePct || 0) || a.name.localeCompare(b.name, 'tr'));
+  let allocated = 0;
+  return working.map((p, i) => {
+    let share: number;
+    if (i === working.length - 1) {
+      share = amount - allocated;
+    } else {
+      share = Math.round(((amount * (p.sharePct || 0)) / totalPct) * 100) / 100;
+      allocated += share;
+    }
+    return { ...p, amount: share };
+  });
+}
