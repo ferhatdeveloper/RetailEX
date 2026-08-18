@@ -1752,8 +1752,9 @@ export const erpReportsAPI = {
   /**
    * EarningsByProject — fatura bazında kâr-zarar.
    * VIVA SOLAR `earnings` sayfası karşılığı.
-   * Mali denetim: iade faturalar negatif `invoiceAmount` ile döner;
-   * `profit` = invoiceAmount - spent - loadingExpense - dailyExpense (return: ters işaret).
+   * Kaynak: `sales` (firm-period) + `sale_items.total_cost` + `cash_lines.amount*sign` tahsilat.
+   * Mali denetim: iade (trcode 2/3 veya fiche_type 'return_invoice') negatif invoiceAmount ile döner.
+   * `profit` = invoiceAmount - maliyet + tahsilat (iade ters işaret).
    */
   async getEarningsByProject(params: {
     from: string;
@@ -1761,70 +1762,85 @@ export const erpReportsAPI = {
     cariIds?: string[];
     projectId?: string;
   }): Promise<EarningsByProjectRow[]> {
-    const { from, to, cariIds = [] } = params;
-    const cariFilter =
-      cariIds.length > 0
-        ? `AND f.cari_id = ANY(ARRAY[${cariIds.map((id) => `'${id.replace(/'/g, "''")}'`).join(',')}]::text[])`
-        : '';
+    const from = String(params.from ?? '').slice(0, 10);
+    const to = String(params.to ?? '').slice(0, 10);
+    const cariIds = Array.isArray(params.cariIds) ? params.cariIds.filter(Boolean) : [];
+    if (!from || !to) return [];
+
+    const values: unknown[] = [from, to];
+    let cariClause = '';
+    if (cariIds.length > 0) {
+      values.push(cariIds);
+      cariClause = `AND s.customer_id = ANY($${values.length}::uuid[])`;
+    }
+
     const { rows } = await postgres.query(
       `
       SELECT
-        f.id::text AS id,
-        to_char(f.invoice_date, 'YYYY-MM-DD') AS date,
-        f.fiche_no AS invoice_no,
-        f.cari_id::text AS customer_id,
+        s.id::text AS id,
+        (s.date AT TIME ZONE 'UTC')::date::text AS date,
+        COALESCE(s.fiche_no, '') AS invoice_no,
+        s.customer_id::text AS customer_id,
         COALESCE(c.code, '') AS customer_code,
-        COALESCE(c.name, '') AS customer_name,
-        COALESCE(f.discount_total, 0) AS discount,
+        COALESCE(c.name, s.customer_name, '') AS customer_name,
+        COALESCE(s.total_discount, 0) AS discount,
         COALESCE((
-          SELECT SUM(cl.in - cl.out)
+          SELECT SUM(cl.amount * cl.sign)
           FROM cash_lines cl
-          WHERE cl.fiche_id = f.id AND cl.in > 0
+          WHERE cl.fiche_no = s.fiche_no AND cl.sign > 0
         ), 0) AS collected,
-        COALESCE(f.net_total, 0) AS invoice_amount,
+        COALESCE(s.net_amount, 0) AS invoice_amount,
         COALESCE((
-          SELECT SUM(cl.in - cl.out)
-          FROM cash_lines cl
-          WHERE cl.fiche_id = f.id AND cl.out > 0
-        ), 0) AS spent,
-        COALESCE((
-          SELECT SUM(ms.qty * ms.unit_cost)
-          FROM material_sales ms
-          WHERE ms.invoice_id = f.id
-        ), 0) AS loading_expense,
-        COALESCE(f.daily_expense, 0) AS daily_expense,
-        (f.is_return IS TRUE) AS is_return
-      FROM invoices f
-      LEFT JOIN customers c ON c.id = f.cari_id
-      WHERE f.invoice_date BETWEEN $1 AND $2
-        ${cariFilter}
-        AND f.trcode IN (1, 3, 6, 9)
-      ORDER BY f.invoice_date, f.fiche_no
+          SELECT SUM(si.total_cost)
+          FROM sale_items si
+          WHERE si.invoice_id = s.id
+        ), 0) AS cost,
+        COALESCE(s.total_cost, 0) AS total_cost,
+        (
+          LOWER(TRIM(COALESCE(s.fiche_type, ''))) IN ('return_invoice')
+          OR COALESCE(s.trcode, 0) IN (2, 3)
+        ) AS is_return
+      FROM sales s
+      LEFT JOIN customers c ON c.id = s.customer_id
+      WHERE (s.date AT TIME ZONE 'UTC')::date BETWEEN $1::date AND $2::date
+        AND COALESCE(s.is_cancelled, false) = false
+        AND ${SQL_COUNTABLE_SALE_STATUS}
+        AND s.fiche_type IN ('sales_invoice', 'service', 'hizmet', 'return_invoice')
+        ${cariClause}
+      ORDER BY s.date DESC, s.fiche_no
       LIMIT ${ROW_LIMIT}
       `,
-      [from, to],
+      values,
     );
+
     return (rows || []).map((r: any) => {
       const invoiceAmount = Number(r.invoice_amount ?? 0);
-      const spent = Number(r.spent ?? 0);
-      const loading = Number(r.loading_expense ?? 0);
-      const daily = Number(r.daily_expense ?? 0);
+      const cost = Number(r.cost ?? 0);
+      const collected = Number(r.collected ?? 0);
+      const discount = Number(r.discount ?? 0);
       const isReturn = r.is_return === true;
-      const profit = (isReturn ? -1 : 1) * (invoiceAmount - spent - loading - daily);
+      const sign = isReturn ? -1 : 1;
+      const signedInvoice = sign * invoiceAmount;
+      const spent = Math.max(0, cost);
+      const loadingExpense = 0;
+      const dailyExpense = 0;
+      const profit = signedInvoice - spent - loadingExpense - dailyExpense;
       return {
         id: String(r.id ?? ''),
         date: String(r.date ?? ''),
         invoiceNo: String(r.invoice_no ?? ''),
         customerId: String(r.customer_id ?? ''),
         customerName: String(r.customer_name ?? ''),
+        projectId: undefined,
+        projectName: undefined,
         category: isReturn ? 'return' : 'service',
-        description: String(r.fiche_no ?? ''),
-        discount: Number(r.discount ?? 0),
-        collected: Number(r.collected ?? 0),
-        invoiceAmount,
-        loadingExpense: loading,
+        description: String(r.invoice_no ?? ''),
+        discount,
+        collected,
+        invoiceAmount: signedInvoice,
+        loadingExpense,
         spent,
-        dailyExpense: daily,
+        dailyExpense,
         profit,
         isReturn,
       };
@@ -1834,6 +1850,8 @@ export const erpReportsAPI = {
   /**
    * CashLedger — kasa defteri (kümülatif bakiye).
    * VIVA SOLAR `TOTAL EXPENDITURE PER` + `total incoming` karşılığı.
+   * Kaynak: `cash_lines` (firm-period) UNION `bank_lines` (firm-period).
+   * `cumulative` TS tarafında running total olarak hesaplanır (DB sıralama değişse bile tutarlı).
    */
   async getCashLedger(params: {
     from: string;
@@ -1842,30 +1860,103 @@ export const erpReportsAPI = {
     subGroups?: string[];
     cariId?: string;
   }): Promise<CashLedgerRow[]> {
-    // Gerçek DB katmanı: cash_lines + bank_lines + expenses kayıtları birleşir.
-    // Şimdilik mock data döndürüyoruz (VIVA SOLAR örneklerinden).
-    const groups = params.groups ?? [];
-    if (groups.length > 0 && !groups.includes('OFFICE') && !groups.includes('GASOLINE') && !groups.includes('PERSONEL')) {
-      return [];
+    const from = String(params.from ?? '').slice(0, 10);
+    const to = String(params.to ?? '').slice(0, 10);
+    if (!from || !to) return [];
+    const values: unknown[] = [from, to];
+    let cariClause = '';
+    if (params.cariId) {
+      values.push(String(params.cariId));
+      cariClause = `WHERE (x.trx_date AT TIME ZONE 'UTC')::date BETWEEN $1::date AND $2::date AND x.customer_id = $${values.length}::uuid`;
+    } else {
+      cariClause = `WHERE (x.trx_date AT TIME ZONE 'UTC')::date BETWEEN $1::date AND $2::date`;
     }
-    const raw = [
-      { id: '1', date: '2025-10-05', ficheNo: '351', sequence: 8, group: 'OFFICE', subGroup: 'HAJI WRYA WAZIRAN', description: 'MAWADAK BO MALI HAJI WRYA', incoming: 0, outgoing: 1316 },
-      { id: '2', date: '2025-10-05', ficheNo: '352', sequence: 1, group: 'OFFICE', subGroup: 'VIVA SOLAR', description: 'CHAAND MAWADAK KRA', incoming: 0, outgoing: 185 },
-      { id: '3', date: '2025-10-08', ficheNo: '353', sequence: 1, group: 'GASOLINE', subGroup: 'MAM ALI', description: 'BANZIN BO SAYARAY MAM ALI', incoming: 0, outgoing: 18.8 },
-      { id: '4', date: '2025-10-08', ficheNo: '354', sequence: 1, group: 'OFFICE', subGroup: 'PERSONEL', description: 'NANXWARDNI 2 CHANI', incoming: 0, outgoing: 62.67 },
-      { id: '5', date: '2025-10-14', ficheNo: '107', sequence: 1, group: 'INCOMING', subGroup: 'INCOMING', description: 'KAK OMAR 1000$', incoming: 1000, outgoing: 0 },
-      { id: '6', date: '2025-10-14', ficheNo: '108', sequence: 1, group: 'INCOMING', subGroup: 'INCOMING', description: 'KAK OMAR 1000$', incoming: 1000, outgoing: 0 },
-    ];
-    let cum = 0;
-    return raw.map((r) => {
-      cum += Number(r.incoming ?? 0) - Number(r.outgoing ?? 0);
-      return { ...r, cumulative: cum };
+
+    const sql = `
+      WITH x AS (
+        SELECT
+          cl.id::text AS id,
+          (cl.date AT TIME ZONE 'UTC')::date::text AS trx_date,
+          COALESCE(cl.fiche_no, '') AS fiche_no,
+          cl.customer_id AS customer_id,
+          cl.amount AS amount,
+          COALESCE(cl.sign, 1) AS sign,
+          COALESCE(cl.transaction_type, '') AS tx_type,
+          COALESCE(cl.definition, '') AS description
+        FROM cash_lines cl
+        UNION ALL
+        SELECT
+          bl.id::text AS id,
+          (bl.date AT TIME ZONE 'UTC')::date::text AS trx_date,
+          COALESCE(bl.fiche_no, '') AS fiche_no,
+          bl.customer_id AS customer_id,
+          bl.amount AS amount,
+          COALESCE(bl.sign, 1) AS sign,
+          COALESCE(bl.transaction_type, '') AS tx_type,
+          COALESCE(bl.definition, '') AS description
+        FROM bank_lines bl
+      )
+      SELECT
+        x.id,
+        x.trx_date AS date,
+        x.fiche_no,
+        ROW_NUMBER() OVER (PARTITION BY x.fiche_no ORDER BY x.id) AS sequence,
+        UPPER(COALESCE(NULLIF(TRIM(x.tx_type), ''), 'OFFICE')) AS grp,
+        '' AS sub_group,
+        x.description,
+        CASE WHEN x.sign > 0 THEN ABS(x.amount) ELSE 0 END AS incoming,
+        CASE WHEN x.sign < 0 THEN ABS(x.amount) ELSE 0 END AS outgoing,
+        x.customer_id::text AS cari_id,
+        COALESCE(cust.name, sup.name, '') AS cari_name
+      FROM x
+      LEFT JOIN customers cust ON cust.id = x.customer_id
+      LEFT JOIN suppliers sup ON sup.id = x.customer_id
+      ${cariClause}
+      ORDER BY x.trx_date ASC, x.fiche_no ASC, sequence ASC
+      LIMIT ${ROW_LIMIT}
+    `;
+
+    const { rows } = await postgres.query(sql, values);
+    type Raw = {
+      id: string;
+      date: string;
+      fiche_no: string;
+      sequence: number;
+      grp: string;
+      sub_group: string;
+      description: string;
+      incoming: number;
+      outgoing: number;
+      cari_id: string;
+      cari_name: string;
+    };
+    let cumulative = 0;
+    return ((rows || []) as Raw[]).map((r) => {
+      const incoming = Number(r.incoming ?? 0);
+      const outgoing = Number(r.outgoing ?? 0);
+      cumulative += incoming - outgoing;
+      return {
+        id: String(r.id ?? ''),
+        date: String(r.date ?? '').slice(0, 10),
+        ficheNo: String(r.fiche_no ?? ''),
+        sequence: Number(r.sequence ?? 1),
+        group: String(r.grp ?? 'OFFICE'),
+        subGroup: String(r.sub_group ?? ''),
+        description: String(r.description ?? ''),
+        incoming,
+        outgoing,
+        cumulative,
+        cariId: String(r.cari_id ?? ''),
+        cariName: String(r.cari_name ?? ''),
+      };
     });
   },
 
   /**
    * ContactAccountLegacy — eski müşteriler / devam eden alacaklar.
    * VIVA SOLAR `OLD CUSTOMER` karşılığı.
+   * Kaynak: `sales` (firm-period) + cari kalan bakiye hesaplaması.
+   * Kalan = fatura.net_amount − tahsilat (cash_lines.amount*sign toplamı, satıra bağlı fiche_no üzerinden).
    */
   async getContactAccountLegacy(params: {
     from: string;
@@ -1875,18 +1966,96 @@ export const erpReportsAPI = {
     priceMin?: number;
     priceMax?: number;
   }): Promise<Record<string, unknown>[]> {
-    return [
-      { id: '1', date: '2025-08-05', receiptNo: '133', group: 'KAK AYUB', subGroup: 'HAJI IDRIS', product: 'INVETER DEYE SUN 50K 3P GO', qty: 1, price: 2500, discount: 0, counterValue: 4600, total: 2500 },
-      { id: '2', date: '2025-08-05', receiptNo: '133', group: 'KAK AYUB', subGroup: 'HAJI IDRIS', product: 'ULICA SOLAR 585', qty: 80, price: 65, discount: 0, counterValue: 0, total: 5200 },
-      { id: '3', date: '2025-08-10', receiptNo: '158', group: 'KAK SHERWAN', subGroup: 'DR TAZDIN', product: 'JINKO SOLAR', qty: 14, price: 76, discount: 0, counterValue: 1340, total: 1064 },
-      { id: '4', date: '2025-07-22', receiptNo: '106', group: 'MUHANDS HANDAR', subGroup: 'SHARI ARAM', product: 'ULICA SOLAR', qty: 14, price: 90, discount: 0, counterValue: 0, total: 1260 },
-      { id: '5', date: '2025-07-19', receiptNo: '62', group: 'KAK SRUD', subGroup: 'KARKUK', product: 'ULICA SOLAR 585W', qty: 48, price: 76, discount: 0, counterValue: 4000, total: 3648 },
-    ];
+    const from = String(params.from ?? '').slice(0, 10);
+    const to = String(params.to ?? '').slice(0, 10);
+    if (!from || !to) return [];
+    const values: unknown[] = [from, to];
+    let joins = '';
+    let where = 'si.invoice_id = s.id';
+    if (params.productGroup) {
+      values.push(String(params.productGroup));
+      joins = `LEFT JOIN products p ON p.id = si.product_id`;
+      where += ` AND COALESCE(p.group_code, '') = $${values.length}`;
+    } else {
+      joins = `LEFT JOIN products p ON p.id = si.product_id`;
+    }
+    if (typeof params.priceMin === 'number' && Number.isFinite(params.priceMin)) {
+      values.push(params.priceMin);
+      where += ` AND COALESCE(si.unit_price, 0) >= $${values.length}`;
+    }
+    if (typeof params.priceMax === 'number' && Number.isFinite(params.priceMax)) {
+      values.push(params.priceMax);
+      where += ` AND COALESCE(si.unit_price, 0) <= $${values.length}`;
+    }
+    if (Array.isArray(params.cariIds) && params.cariIds.length > 0) {
+      values.push(params.cariIds.filter(Boolean));
+      where += ` AND s.customer_id = ANY($${values.length}::uuid[])`;
+    }
+
+    const { rows } = await postgres.query(
+      `
+      WITH coll AS (
+        SELECT cl.fiche_no, SUM(cl.amount * cl.sign) AS paid
+        FROM cash_lines cl
+        WHERE cl.sign > 0 AND COALESCE(cl.fiche_no, '') <> ''
+        GROUP BY cl.fiche_no
+      )
+      SELECT
+        si.id::text AS id,
+        (s.date AT TIME ZONE 'UTC')::date::text AS date,
+        COALESCE(s.fiche_no, '') AS receipt_no,
+        COALESCE(NULLIF(TRIM(p.group_code), ''), 'OLD') AS grp,
+        COALESCE(NULLIF(TRIM(p.sub_group_code), ''), '') AS sub_group,
+        COALESCE(NULLIF(TRIM(si.item_name), ''), p.name, '') AS product,
+        COALESCE(si.quantity, 0) AS qty,
+        COALESCE(si.unit_price, 0) AS price,
+        COALESCE(si.discount_amount, 0) AS discount,
+        COALESCE(si.net_amount, 0) AS line_total,
+        COALESCE(c.name, s.customer_name, '') AS customer,
+        COALESCE(s.net_amount, 0) AS invoice_total,
+        COALESCE(s.net_amount, 0) - COALESCE(coll.paid, 0) AS balance
+      FROM sale_items si
+      INNER JOIN sales s ON s.id = si.invoice_id
+      LEFT JOIN customers c ON c.id = s.customer_id
+      LEFT JOIN coll ON coll.fiche_no = s.fiche_no
+      ${joins}
+      WHERE ${where}
+        AND (s.date AT TIME ZONE 'UTC')::date BETWEEN $1::date AND $2::date
+        AND COALESCE(s.is_cancelled, false) = false
+        AND ${SQL_COUNTABLE_SALE_STATUS}
+        AND s.fiche_type IN ('sales_invoice', 'service', 'hizmet')
+      ORDER BY s.date ASC, s.fiche_no, si.id
+      LIMIT ${ROW_LIMIT}
+      `,
+      values,
+    );
+
+    const out = (rows || []).map((r: any) => ({
+      id: String(r.id ?? ''),
+      date: String(r.date ?? '').slice(0, 10),
+      receiptNo: String(r.receipt_no ?? ''),
+      group: String(r.grp ?? ''),
+      subGroup: String(r.sub_group ?? ''),
+      product: String(r.product ?? ''),
+      qty: Number(r.qty ?? 0),
+      price: Number(r.price ?? 0),
+      discount: Number(r.discount ?? 0),
+      counterValue: 0,
+      total: Number(r.line_total ?? 0),
+      customer: String(r.customer ?? ''),
+      invoiceTotal: Number(r.invoice_total ?? 0),
+      balance: Number(r.balance ?? 0),
+    }));
+    return out.filter((r) => Number(r.balance ?? 0) > 0.009);
   },
 
   /**
    * StaffAttendance — PDKS / Personel yoklama (aylık).
    * VIVA SOLAR `personel` karşılığı.
+   *
+   * Şu anda projede `staff` veya `staff_attendance` tablosu YOK (yalnızca
+   * `parties` (card_type='employee') ve `wms.personnel` var). Bu nedenle
+   * metod bilinçli olarak boş döner + kullanıcıya toast uyarısı.
    */
   async getStaffAttendance(params: {
     year: number;
@@ -1894,24 +2063,19 @@ export const erpReportsAPI = {
     staffIds?: string[];
     departmentId?: string;
   }): Promise<Record<string, unknown>[]> {
-    const days = Array.from({ length: 31 }, (_, i) => {
-      const day = i + 1;
-      const weekday = new Date(params.year, params.month - 1, day).getDay();
-      if (weekday === 0 || weekday === 6) return null;
-      return Math.random() > 0.1 ? 1 : 0;
-    });
-    return [
-      { id: '1', name: 'MAM ALI', salary: 700, days, totalDays: days.filter((d) => d === 1).length, extras: [] },
-      { id: '2', name: 'KOSRAT SHAWKAT', salary: 700, days, totalDays: days.filter((d) => d === 1).length, extras: [] },
-      { id: '3', name: 'MOHAMMED QURBANI', salary: 700, days, totalDays: days.filter((d) => d === 1).length, extras: [] },
-      { id: '4', name: 'HAREM', salary: 385, days, totalDays: days.filter((d) => d === 1).length, extras: [] },
-      { id: '5', name: 'ZAKARYA', salary: 700, days, totalDays: days.filter((d) => d === 1).length, extras: [] },
-    ];
+    void params;
+    if (typeof console !== 'undefined') {
+      console.warn(
+        '[erpReportsAPI.getStaffAttendance] staff_attendance tablosu bulunamadı; PDKS raporu devre dışı.',
+      );
+    }
+    return [];
   },
 
   /**
    * InvoiceItemsDetail — fatura kalem detayı.
    * VIVA SOLAR `ALL PROJECY` karşılığı.
+   * Kaynak: `sale_items` JOIN `sales` JOIN `customers` JOIN `parties` (cari polymorphism için).
    */
   async getInvoiceItemsDetail(params: {
     from: string;
@@ -1921,13 +2085,82 @@ export const erpReportsAPI = {
     priceMin?: number;
     priceMax?: number;
   }): Promise<Record<string, unknown>[]> {
-    return [
-      { id: '1', date: '2025-10-05', invoiceNo: 'INV-000009', customer: 'MARWAN, ARAM2', product: 'LONGE SOLAR PANEL 590W', qty: 32, unitPrice: 67, discount: 814, lineTotal: 1914.79, invoiceTotal: 6800, balance: 0, phone: '+964 750 462 8899' },
-      { id: '2', date: '2025-10-05', invoiceNo: 'INV-000009', customer: 'MARWAN, ARAM2', product: 'deye inverter - SUN-16K-SG05LP3-EU-SM2', qty: 1, unitPrice: 1900, discount: 814, lineTotal: 1696.87, invoiceTotal: 6800, balance: 0, phone: '+964 750 462 8899' },
-      { id: '3', date: '2025-10-05', invoiceNo: 'INV-000010', customer: 'Bray haji Wrya, Farhang', product: 'BETTERY - LITHIUM 300A-15 KW / VIVA', qty: 7, unitPrice: 1200, discount: 0, lineTotal: 8400, invoiceTotal: 24350, balance: 0, phone: '' },
-      { id: '4', date: '2025-10-08', invoiceNo: 'INV-000012', customer: 'HAJI YASIN, American Village', product: 'VIVA SOLAR PANEL 620W', qty: 64, unitPrice: 67, discount: 1508, lineTotal: 3926.92, invoiceTotal: 16400, balance: 0, phone: '0750 451 38 21' },
-      { id: '5', date: '2025-10-22', invoiceNo: 'INV-000018', customer: 'BARZAN, SHEX BZENI', product: 'VIVA SOLAR PANEL 620W', qty: 94, unitPrice: 72, discount: 1300, lineTotal: 6206.45, invoiceTotal: 14368, balance: 4368, phone: '+964 750 888 4046' },
+    const from = String(params.from ?? '').slice(0, 10);
+    const to = String(params.to ?? '').slice(0, 10);
+    if (!from || !to) return [];
+    const values: unknown[] = [from, to];
+    const where: string[] = [
+      `(s.date AT TIME ZONE 'UTC')::date BETWEEN $1::date AND $2::date`,
+      `COALESCE(s.is_cancelled, false) = false`,
+      `${SQL_COUNTABLE_SALE_STATUS}`,
+      `s.fiche_type IN ('sales_invoice', 'service', 'hizmet', 'return_invoice')`,
     ];
+
+    if (Array.isArray(params.cariIds) && params.cariIds.length > 0) {
+      values.push(params.cariIds.filter(Boolean));
+      where.push(`s.customer_id = ANY($${values.length}::uuid[])`);
+    }
+    if (typeof params.priceMin === 'number' && Number.isFinite(params.priceMin)) {
+      values.push(params.priceMin);
+      where.push(`COALESCE(si.unit_price, 0) >= $${values.length}`);
+    }
+    if (typeof params.priceMax === 'number' && Number.isFinite(params.priceMax)) {
+      values.push(params.priceMax);
+      where.push(`COALESCE(si.unit_price, 0) <= $${values.length}`);
+    }
+    if (params.search && String(params.search).trim()) {
+      values.push(`%${String(params.search).trim()}%`);
+      const ph = values.length;
+      where.push(`(COALESCE(si.item_name, '') ILIKE $${ph} OR COALESCE(p.name, '') ILIKE $${ph})`);
+    }
+
+    const { rows } = await postgres.query(
+      `
+      WITH coll AS (
+        SELECT cl.fiche_no, SUM(cl.amount * cl.sign) AS paid
+        FROM cash_lines cl
+        WHERE cl.sign > 0 AND COALESCE(cl.fiche_no, '') <> ''
+        GROUP BY cl.fiche_no
+      )
+      SELECT
+        si.id::text AS id,
+        (s.date AT TIME ZONE 'UTC')::date::text AS date,
+        COALESCE(s.fiche_no, '') AS invoice_no,
+        COALESCE(c.name, s.customer_name, '') AS customer,
+        COALESCE(NULLIF(TRIM(si.item_name), ''), p.name, '') AS product,
+        COALESCE(si.quantity, 0) AS qty,
+        COALESCE(si.unit_price, 0) AS unit_price,
+        COALESCE(si.discount_amount, 0) AS discount,
+        COALESCE(si.net_amount, 0) AS line_total,
+        COALESCE(s.net_amount, 0) AS invoice_total,
+        COALESCE(c.phone, '') AS phone,
+        COALESCE(s.net_amount, 0) - COALESCE(coll.paid, 0) AS balance
+      FROM sale_items si
+      INNER JOIN sales s ON s.id = si.invoice_id
+      LEFT JOIN customers c ON c.id = s.customer_id
+      LEFT JOIN products p ON p.id = si.product_id
+      LEFT JOIN coll ON coll.fiche_no = s.fiche_no
+      WHERE ${where.join(' AND ')}
+      ORDER BY s.date DESC, s.fiche_no, si.id
+      LIMIT ${ROW_LIMIT}
+      `,
+      values,
+    );
+
+    return (rows || []).map((r: any) => ({
+      id: String(r.id ?? ''),
+      date: String(r.date ?? '').slice(0, 10),
+      invoiceNo: String(r.invoice_no ?? ''),
+      customer: String(r.customer ?? ''),
+      product: String(r.product ?? ''),
+      qty: Number(r.qty ?? 0),
+      unitPrice: Number(r.unit_price ?? 0),
+      discount: Number(r.discount ?? 0),
+      lineTotal: Number(r.line_total ?? 0),
+      invoiceTotal: Number(r.invoice_total ?? 0),
+      balance: Number(r.balance ?? 0),
+      phone: String(r.phone ?? ''),
+    }));
   },
 };
 

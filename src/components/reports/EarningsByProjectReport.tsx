@@ -29,6 +29,10 @@ import {
 } from '../../utils/reportDatePresets';
 import { ReportDateRangePresets } from '../shared/ReportDateRangePresets';
 import { erpReportsAPI, type EarningsByProjectRow } from '../../services/api/erpReports';
+import { supplierAPI } from '../../services/api/suppliers';
+import type { Supplier } from '../../core/types';
+
+type SelectOption = { value: string; label: string };
 
 function exportCsv(fileName: string, headers: string[], rows: string[][]): void {
   const esc = (v: string) => `"${String(v ?? '').replace(/"/g, '""')}"`;
@@ -105,13 +109,6 @@ function ReportShell({
     </div>
   );
 }
-
-const MOCK_CARIS: { id: string; name: string }[] = [
-  { id: 'c-001', name: 'MARWAN ARAM2' },
-  { id: 'c-002', name: 'BLACKOUT SOLAR' },
-  { id: 'c-003', name: 'KURDISTAN ELECTRIC' },
-  { id: 'c-004', name: 'ERBIL ENERGY' },
-];
 
 const MOCK_PROJECTS: { id: string; name: string }[] = [
   { id: 'p-100', name: 'SOLAR FARM ERBIL' },
@@ -231,10 +228,36 @@ export function EarningsByProjectReport() {
 
   const [dateRange, setDateRange] = useState<ReportDateRangeValue>(() => defaultReportDateRange('month'));
   const [cariIds, setCariIds] = useState<string[]>([]);
+  const [cariOptions, setCariOptions] = useState<SelectOption[]>([]);
+  const [cariLoading, setCariLoading] = useState(false);
   const [projectId, setProjectId] = useState<string | undefined>(undefined);
   const [category, setCategory] = useState<string | undefined>(undefined);
   const [rows, setRows] = useState<EarningsByProjectRow[]>([]);
   const [loading, setLoading] = useState(false);
+
+  useEffect(() => {
+    let cancelled = false;
+    (async () => {
+      try {
+        setCariLoading(true);
+        const list: Supplier[] = await supplierAPI.getAll({ cardType: 'customer' });
+        if (cancelled) return;
+        const opts: SelectOption[] = (Array.isArray(list) ? list : []).map((c) => ({
+          value: String(c.id),
+          label: c.code ? `${c.code} — ${c.name}` : c.name,
+        }));
+        setCariOptions(opts);
+      } catch (err) {
+        console.error('[EarningsByProjectReport] cari load failed', err);
+        if (!cancelled) setCariOptions([]);
+      } finally {
+        if (!cancelled) setCariLoading(false);
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [selectedFirm?.firm_nr]);
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -355,7 +378,8 @@ export function EarningsByProjectReport() {
             placeholder={tm('rprFilterCustomer') || 'Müşteri'}
             value={cariIds}
             onChange={(v) => setCariIds(v as string[])}
-            options={MOCK_CARIS.map((c) => ({ label: c.name, value: c.id }))}
+            loading={cariLoading}
+            options={cariOptions}
             maxTagCount="responsive"
           />
           <Select

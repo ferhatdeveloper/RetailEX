@@ -27,6 +27,10 @@ import {
 } from '../../utils/reportDatePresets';
 import { ReportDateRangePresets } from '../shared/ReportDateRangePresets';
 import { erpReportsAPI, type CashLedgerRow, type CashLedgerGroup } from '../../services/api/erpReports';
+import { supplierAPI } from '../../services/api/suppliers';
+import type { Supplier } from '../../core/types';
+
+type SelectOption = { value: string; label: string };
 
 function exportCsv(fileName: string, headers: string[], rows: string[][]): void {
   const esc = (v: string) => `"${String(v ?? '').replace(/"/g, '""')}"`;
