@@ -53,6 +53,9 @@ const PARTY_CANCEL_TYPES = new Set<string>([
   'ORTAK_PARA_GIRIS',
   'ORTAK_PARA_CIKIS',
   'ORTAK_SERMAYE_CIKIS',
+  // CH_ODEME_PARTNER: CH_ODEME satırına party_id eklendiğinde createKasaIslemi içinde
+  // party_ledger_movements'a CH_ODEME_PARTNER kaydı açılır. deleteKasaIslemi'de ters yazılır.
+  'CH_ODEME_PARTNER',
 ]);
 
 async function writePartyLedgerCancel(opts: {
@@ -115,6 +118,12 @@ async function writePartyLedgerCancel(opts: {
  * ORTAK_DAGITIM_ZARAR|  0 | -tutar (hesaba zarar; kasa yok)
  * ORTAK_SERMAYE_TAHSILAT | +1 | +tutar (para girişi: ortak kasaya koyar)
  * ORTAK_SERMAYE_ODEME    | -1 | -tutar (para çıkışı: ortak kasadan çeker)
+ * CH_ODEME_PARTNER       | -1 | -tutar (tedarikçi ödemesi firma ortak adına yapıldı;
+ *                                     ortağın firmadan alacağı azalır).
+ *
+ * CH_ODEME_PARTNER cash_lines.transaction_type='CH_ODEME' olan bir satıra party_id eklendiğinde
+ * uygulanır. Kasa sign = -1 (mevcut CH_ODEME davranışı) korunur; ek olarak party_ledger_movements'a
+ * CH_ODEME_PARTNER kaydı açılır. Silme anında CANCELLED_CH_ODEME_PARTNER ile ters yazılır.
  */
 export function computePartyBalanceDelta(tutar: number, islemTipi: string): number {
   const amt = Math.abs(parseFloat(String(tutar ?? 0)) || 0);
@@ -131,6 +140,7 @@ export function computePartyBalanceDelta(tutar: number, islemTipi: string): numb
     case 'ORTAK_SERMAYE_ODEME':
     case 'ORTAK_PARA_CIKIS':
     case 'ORTAK_SERMAYE_CIKIS':
+    case 'CH_ODEME_PARTNER':
       return -amt;
     case 'AVANS_MAHSUP':
       return 0;
@@ -581,7 +591,12 @@ async function createKasaIslemiViaPostgrest(
   await bumpKasaBalance(islem.kasa_id, Number(islem.tutar || 0) * sign);
 
   if (islem.party_id) {
-    const partyDelta = computePartyBalanceDelta(islem.tutar, islem.islem_tipi);
+    let partyDelta = computePartyBalanceDelta(islem.tutar, islem.islem_tipi);
+    let ledgerTrType: string | null = null;
+    if (islem.islem_tipi === 'CH_ODEME') {
+      ledgerTrType = 'CH_ODEME_PARTNER';
+      partyDelta = -Math.abs(Number(islem.tutar || 0));
+    }
     if (partyDelta !== 0) {
       try {
         const firmNr = normalizeFirmTableNr(ERP_SETTINGS.firmNr);
@@ -601,6 +616,36 @@ async function createKasaIslemiViaPostgrest(
         }
       } catch {
         /* payroll API ledger recomputes card balance */
+      }
+    }
+    // CH_ODEME_PARTNER ledger kaydı (audit + hesap ekstresinde görünür)
+    if (ledgerTrType) {
+      try {
+        await ensurePartyPeriodTables();
+        const cardType = await resolvePartyCardType(islem.party_id);
+        const ledgerPath = `/rex_${fn}_${pn}_party_ledger_movements`;
+        const mainRowId = (Array.isArray(mainRow) ? mainRow : (mainRow as any))?.id || null;
+        await postgrest.post(
+          ledgerPath,
+          {
+            firm_nr: String(ERP_SETTINGS.firmNr || ''),
+            period_nr: String(ERP_SETTINGS.periodNr || '01').padStart(2, '0').slice(0, 10),
+            party_id: islem.party_id,
+            card_type: cardType,
+            trcode: 0,
+            transaction_type: ledgerTrType,
+            date: new Date().toISOString(),
+            amount: Math.abs(Number(islem.tutar || 0)),
+            sign: -1,
+            definition: `Ortak adına tedarikçi ödemesi: ${islem.islem_aciklamasi || ''}`.trim(),
+            source_module: 'cash_create',
+            source_id: mainRowId,
+            cash_line_id: mainRowId,
+          },
+          { schema: 'public', prefer: 'return=minimal' },
+        );
+      } catch (e) {
+        console.warn('[Kasa] CH_ODEME_PARTNER ledger insert (PostgREST) failed:', (e as any)?.message || e);
       }
     }
   }
@@ -876,13 +921,44 @@ export async function createKasaIslemi(incoming: KasaIslemi): Promise<KasaIslemi
     // Parties (Personel / Şirket Ortağı) — party_id ile polymorphic bakiye güncelleme.
     // Personel: MAAS_ODEME/AVANS_ODEME (−tutar, ödenmemiş maaş alacağı ↓).
     // Ortağı nakit: ORTAK_SERMAYE_TAHSILAT (kasa +, bakiye +), ORTAK_SERMAYE_ODEME (kasa −, bakiye −).
+    // CH_ODEME + party_id → tedarikçi ödemesi firma ortak adına yapıldı; ortağın firmadan alacağı azalır.
     // Kâr/zarar dağıtımı kasa yazmaz; ledger + parties.balance partnerDistribution içinde güncellenir.
     if (islem.party_id) {
-      const partyDelta = computePartyBalanceDelta(islem.tutar, islem.islem_tipi);
+      let partyDelta = computePartyBalanceDelta(islem.tutar, islem.islem_tipi);
+      let ledgerTrType: string | null = null;
+      // CH_ODEME_PARTNER: cash_lines.transaction_type CH_ODEME kalır; ek ledger CH_ODEME_PARTNER yazılır
+      if (islem.islem_tipi === 'CH_ODEME') {
+        ledgerTrType = 'CH_ODEME_PARTNER';
+        partyDelta = -Math.abs(islem.tutar || 0);
+      }
       if (partyDelta !== 0) {
         await postgres.query(
           `UPDATE rex_${normalizeFirmTableNr(ERP_SETTINGS.firmNr)}_parties SET balance = balance + $1::text::numeric, updated_at = NOW() WHERE id = $2::text::uuid`,
           [partyDelta.toString(), islem.party_id],
+        );
+      }
+      if (ledgerTrType) {
+        await ensurePartyPeriodTables();
+        const cardType = await resolvePartyCardType(islem.party_id);
+        await postgres.query(
+          `INSERT INTO ${partyLedgerTable()} (
+             firm_nr, period_nr, party_id, card_type, trcode, transaction_type,
+             date, amount, sign, definition, source_module, source_id, cash_line_id
+           ) VALUES (
+             $1::text, $2::text, $3::text::uuid, $4::text, 0, $5::text,
+             NOW(), $6::text::numeric, $7::integer, $8::text, 'cash_create', $9::text::uuid, $9::text::uuid
+           )`,
+          [
+            String(ERP_SETTINGS.firmNr || ''),
+            String(ERP_SETTINGS.periodNr || '01').padStart(2, '0').slice(0, 10),
+            islem.party_id,
+            cardType,
+            ledgerTrType,
+            Math.abs(islem.tutar || 0).toString(),
+            -1,
+            `Ortak adına tedarikçi ödemesi: ${islem.islem_aciklamasi || ''}`.trim(),
+            rows[0]?.id,
+          ],
         );
       }
     }
@@ -1106,10 +1182,14 @@ export async function deleteKasaIslemi(id: string): Promise<void> {
 
     // 4) Party bakiyesini tersine al (Personel / Şirket Ortağı)
     if (partyId) {
-      const partyDelta = computePartyBalanceDelta(amount, trType);
+      let partyDelta = -computePartyBalanceDelta(amount, trType);
+      // CH_ODEME + party_id ise CH_ODEME_PARTNER ledger kaydı yazılmıştı; ters yönde al
+      if (trType === 'CH_ODEME') {
+        partyDelta = Math.abs(amount || 0);
+      }
       if (partyDelta !== 0) {
         await postgres.query(
-          `UPDATE rex_${normalizeFirmTableNr(ERP_SETTINGS.firmNr)}_parties SET balance = balance - $1::text::numeric, updated_at = NOW() WHERE id = $2::text::uuid`,
+          `UPDATE rex_${normalizeFirmTableNr(ERP_SETTINGS.firmNr)}_parties SET balance = balance + $1::text::numeric, updated_at = NOW() WHERE id = $2::text::uuid`,
           [partyDelta.toString(), partyId],
         );
       }
@@ -1180,17 +1260,24 @@ export async function deleteKasaIslemi(id: string): Promise<void> {
     // 6) Party ledger iptal kaydı — Personel/Şirket Ortağı kasa işlemleri için.
     // createKasaIslemi + writePartyLedger çift-ayaklı yazıyor; silme ledger'ı yalnız bırakıyordu.
     // Burada aynı cash_line_id'ye ters işaretli yeni bir ledger satırı açıyoruz (audit trail korunur).
-    if (partyId && PARTY_CANCEL_TYPES.has(trType)) {
-      const cardType = await resolvePartyCardType(partyId);
-      await writePartyLedgerCancel({
-        partyId,
-        cardType,
-        trType,
-        amount,
-        sign,
-        definition: row.definition,
-        cashLineId: id,
-      });
+    // CH_ODEME + party_id ise createKasaIslemi'de CH_ODEME_PARTNER kaydı açılmıştı → iptalde bu sanal tip kullanılır.
+    if (partyId) {
+      let cancelType = trType;
+      if (trType === 'CH_ODEME' && PARTY_CANCEL_TYPES.has('CH_ODEME_PARTNER')) {
+        cancelType = 'CH_ODEME_PARTNER';
+      }
+      if (PARTY_CANCEL_TYPES.has(cancelType)) {
+        const cardType = await resolvePartyCardType(partyId);
+        await writePartyLedgerCancel({
+          partyId,
+          cardType,
+          trType: cancelType,
+          amount,
+          sign,
+          definition: row.definition,
+          cashLineId: id,
+        });
+      }
     }
 
     // 7) Ana satırı sil
@@ -1354,45 +1441,79 @@ async function deleteKasaIslemiViaPostgrest(id: string): Promise<void> {
   // createKasaIslemi + writePartyLedger çift-ayaklı yazıyor; silme ledger'ı yalnız bırakıyordu.
   // Burada aynı cash_line_id'ye ters işaretli yeni bir ledger satırı açıyoruz.
   const partyId = row.party_id;
-  if (partyId && PARTY_CANCEL_TYPES.has(String(trType))) {
-    try {
-      const cardType = await resolvePartyCardType(partyId);
-      const ledgerPath = `/rex_${fn}_${pn}_party_ledger_movements`;
-      // Idempotent kontrol
-      const existing = await postgrest.get<any[]>(
-        ledgerPath,
-        {
-          select: 'id',
-          cash_line_id: `eq.${id}`,
-          source_module: 'eq.cash_delete',
-          limit: 1,
-        },
-        { schema: 'public' },
-      );
-      if (!Array.isArray(existing) || existing.length === 0) {
-        await postgrest.post(
+  if (partyId) {
+    // Party bakiyesini tersine al
+    let partyDelta = -computePartyBalanceDelta(amount, trType);
+    if (trType === 'CH_ODEME') {
+      // CH_ODEME + party_id ise createKasaIslemi'de CH_ODEME_PARTNER ledger kaydı yazılmıştı
+      // (party bakiyesi -ABS olarak düşmüştü); geri al
+      partyDelta = Math.abs(amount || 0);
+    }
+    if (partyDelta !== 0) {
+      try {
+        const firmNr = normalizeFirmTableNr(ERP_SETTINGS.firmNr);
+        const partyPath = `/rex_${firmNr}_parties`;
+        const rs = await postgrest.get<any[]>(
+          partyPath,
+          { select: 'balance', id: `eq.${partyId}`, limit: 1 },
+          { schema: 'public' },
+        );
+        const r = Array.isArray(rs) ? rs[0] : null;
+        if (r) {
+          await postgrest.patch(
+            `${partyPath}?id=eq.${encodeURIComponent(String(partyId))}`,
+            { balance: Number(r.balance ?? 0) + partyDelta },
+            { schema: 'public', prefer: 'return=minimal' },
+          );
+        }
+      } catch (err) {
+        console.warn('[Kasa] deleteKasaIslemiViaPostgrest: party balance revert failed:', err);
+      }
+    }
+
+    // Ledger cancel kaydı
+    let cancelType = trType;
+    if (trType === 'CH_ODEME') cancelType = 'CH_ODEME_PARTNER';
+    if (PARTY_CANCEL_TYPES.has(String(cancelType))) {
+      try {
+        const cardType = await resolvePartyCardType(partyId);
+        const ledgerPath = `/rex_${fn}_${pn}_party_ledger_movements`;
+        // Idempotent kontrol
+        const existing = await postgrest.get<any[]>(
           ledgerPath,
           {
-            firm_nr: fn,
-            period_nr: pn,
-            party_id: partyId,
-            card_type: cardType,
-            trcode: 0,
-            transaction_type: `CANCELLED_${String(trType)}`,
-            date: new Date().toISOString(),
-            amount: Math.abs(Number(row.amount || 0)),
-            sign: -Number(row.sign || 0),
-            definition: `İptal: ${row.definition || ''}`.trim(),
-            source_module: 'cash_delete',
-            source_id: id,
-            cash_line_id: id,
+            select: 'id',
+            cash_line_id: `eq.${id}`,
+            source_module: 'eq.cash_delete',
+            limit: 1,
           },
-          { schema: 'public', prefer: 'return=minimal' },
+          { schema: 'public' },
         );
+        if (!Array.isArray(existing) || existing.length === 0) {
+          await postgrest.post(
+            ledgerPath,
+            {
+              firm_nr: fn,
+              period_nr: pn,
+              party_id: partyId,
+              card_type: cardType,
+              trcode: 0,
+              transaction_type: `CANCELLED_${String(cancelType)}`,
+              date: new Date().toISOString(),
+              amount: Math.abs(Number(row.amount || 0)),
+              sign: -Number(row.sign || 0),
+              definition: `İptal: ${row.definition || ''}`.trim(),
+              source_module: 'cash_delete',
+              source_id: id,
+              cash_line_id: id,
+            },
+            { schema: 'public', prefer: 'return=minimal' },
+          );
+        }
+      } catch (err) {
+        // Ledger iptal kaydı başarısız olursa cash_lines silinmesini engellememeli — audit log'a düş.
+        console.warn('[Kasa] deleteKasaIslemiViaPostgrest: ledger cancel yazılamadı', err);
       }
-    } catch (err) {
-      // Ledger iptal kaydı başarısız olursa cash_lines silinmesini engellememeli — audit log'a düş.
-      console.warn('[Kasa] deleteKasaIslemiViaPostgrest: ledger cancel yazılamadı', err);
     }
   }
 

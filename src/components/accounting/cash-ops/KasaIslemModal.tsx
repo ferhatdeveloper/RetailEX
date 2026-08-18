@@ -12,6 +12,8 @@ import { toast } from 'sonner';
 import { createKasaIslemi, updateKasaIslemi, fetchKasalar, type Kasa, type KasaIslemi } from '../../../services/api/kasa';
 import { fetchBankalar, type Banka } from '../../../services/api/banka';
 import { fetchCurrentAccounts } from '../../../services/api/currentAccounts';
+import { partnerAPI } from '../../../services/api/partiesPartners';
+import type { PartyPartner } from '../../../core/types/models';
 import { formatNumber, parseNumber } from '../../../utils/formatNumber';
 import { formatCurrency, formatMoneyWithCode, getGlobalCurrency } from '../../../utils/currency';
 import { getCariBalanceDirection } from '../../../utils/cariAccountStatement';
@@ -159,6 +161,10 @@ export function KasaIslemModal({
   const [selectedCariBakiye, setSelectedCariBakiye] = useState<number | null>(initialCari?.ledgerBalance ?? initialCari?.bakiye ?? null);
   const [selectedCariCardType, setSelectedCariCardType] = useState<CariHesap['cardType']>(initialCari?.cardType);
 
+  // Ortak adına ödeme (CH_ODEME_PARTNER): firma ortak adına tedarikçiye ödeme yapıyor
+  const [ortakAdina, setOrtakAdina] = useState(false);
+  const [ortaklar, setOrtaklar] = useState<PartyPartner[]>([]);
+
 
 
   useEffect(() => {
@@ -171,7 +177,19 @@ export function KasaIslemModal({
     if (selectedFirma && islemTipi === 'VIRMAN') {
       loadDigerKasalar();
     }
+    if (selectedFirma && islemTipi === 'CH_ODEME') {
+      loadOrtaklar();
+    }
   }, [selectedFirma, islemTipi]);
+
+  const loadOrtaklar = async () => {
+    try {
+      const data = await partnerAPI.getActive();
+      setOrtaklar(data);
+    } catch (err) {
+      console.warn('[KasaIslemModal] Ortaklar yüklenemedi:', err);
+    }
+  };
 
   const loadCariHesaplar = async () => {
     try {
@@ -221,17 +239,27 @@ export function KasaIslemModal({
       return;
     }
 
+    if (islemTipi === 'CH_ODEME' && ortakAdina && !formData.party_id) {
+      toast.error('Ortak seçmediniz — "Ortak adına" seçili ise ortak seçimi zorunludur.');
+      return;
+    }
+
     setLoading(true);
     try {
       console.log('[KasaIslemModal] Submitting formData:', formData, 'isEdit:', isEdit);
       if (!formData.kasa_id) {
         throw new Error(t['missingKasaId']);
       }
+      // CH_ODEME_PARTNER: party_id ekle (veya kaldır)
+      const submitFormData: KasaIslemi = {
+        ...(formData as KasaIslemi),
+        party_id: islemTipi === 'CH_ODEME' && ortakAdina ? formData.party_id : undefined,
+      };
       if (isEdit && editingIslem?.id) {
-        await updateKasaIslemi(editingIslem.id, formData as KasaIslemi);
+        await updateKasaIslemi(editingIslem.id, submitFormData);
         toast.success(tm('operationUpdatedSuccessfully') || 'İşlem güncellendi');
       } else {
-        await createKasaIslemi(formData as KasaIslemi);
+        await createKasaIslemi(submitFormData);
         toast.success(t['operationSavedSuccessfully']);
       }
       onSuccess();
@@ -391,6 +419,58 @@ export function KasaIslemModal({
                     ledgerBalance: selectedCariBakiye,
                     bakiye: selectedCariBakiye,
                   })}
+                </div>
+              )}
+            </div>
+          )}
+
+          {/* Ortak adına ödeme — CH_ODEME_PARTNER. Firma ortak adına tedarikçiye ödeme yapıyor.
+              Ortak hesabı bakiyesi düşer (ortağın firmadan alacağı azalır). */}
+          {islemTipi === 'CH_ODEME' && (
+            <div className="space-y-2 p-3 rounded border border-amber-300 dark:border-amber-700 bg-amber-50 dark:bg-amber-900/20">
+              <label className="flex items-center gap-2 text-sm font-bold text-amber-800 dark:text-amber-200 cursor-pointer select-none">
+                <input
+                  type="checkbox"
+                  checked={ortakAdina}
+                  onChange={(e) => {
+                    const on = e.target.checked;
+                    setOrtakAdina(on);
+                    if (!on) {
+                      setFormData(prev => ({ ...prev, party_id: undefined, party_code: undefined, party_name: undefined }));
+                    }
+                  }}
+                  className="w-4 h-4 accent-amber-600"
+                />
+                <span>Ortak adına ödeme (tedarikçi ödemesi firma kasasından ortak adına yapılıyor)</span>
+              </label>
+              {ortakAdina && (
+                <div className="space-y-1.5">
+                  <label className="text-xs font-medium text-amber-700 dark:text-amber-300">Ortak</label>
+                  <select
+                    value={formData.party_id || ''}
+                    onChange={(e) => {
+                      const sel = ortaklar.find(o => o.id === e.target.value);
+                      setFormData(prev => ({
+                        ...prev,
+                        party_id: e.target.value || undefined,
+                        party_code: sel?.code,
+                        party_name: sel?.name,
+                      }));
+                    }}
+                    className="w-full px-3 py-2 bg-white dark:bg-gray-800 border border-amber-300 dark:border-amber-700 rounded text-sm focus:ring-1 focus:ring-amber-500 outline-none"
+                  >
+                    <option value="">Ortak seçin...</option>
+                    {ortaklar.map(o => (
+                      <option key={o.id} value={o.id}>
+                        {o.code} - {o.name} (%{o.share_pct})
+                      </option>
+                    ))}
+                  </select>
+                  {ortaklar.length === 0 && (
+                    <p className="text-xs text-amber-700 dark:text-amber-300">
+                      Aktif ortak bulunamadı. Ortak tanımı için Ortaklar modülünü kullanın.
+                    </p>
+                  )}
                 </div>
               )}
             </div>
