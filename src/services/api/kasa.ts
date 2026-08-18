@@ -9,12 +9,93 @@ import {
   normalizeFirmTableNr,
 } from './accountBalance';
 import { ensureCariAccountInCurrentFirm } from './cariAccountResolve';
+import { ensurePartyPeriodTables } from './ensurePartyPeriodTables';
 
 function padKasaFirmNr(): string {
   return String(ERP_SETTINGS.firmNr || '001').trim().padStart(3, '0').slice(0, 10);
 }
 function padKasaPeriodNr(): string {
   return String(ERP_SETTINGS.periodNr || '01').trim().padStart(2, '0').slice(0, 10);
+}
+
+function partyLedgerTable(): string {
+  const firm = normalizeFirmTableNr(ERP_SETTINGS.firmNr);
+  const period = String(ERP_SETTINGS.periodNr || '01').padStart(2, '0').slice(0, 10);
+  return `rex_${firm}_${period}_party_ledger_movements`;
+}
+
+/**
+ * Personel/Şirket Ortağı için party_id → card_type ('employee' | 'partner' | 'customer' | 'supplier') çözümler.
+ * Bulunamazsa varsayılan 'employee' döner — silme ters kayıt audit için yine de yazılır.
+ */
+async function resolvePartyCardType(partyId: string): Promise<string> {
+  try {
+    const tbl = `rex_${normalizeFirmTableNr(ERP_SETTINGS.firmNr)}_parties`;
+    const { rows } = await postgres.query(
+      `SELECT card_type FROM ${tbl} WHERE id = $1::text::uuid LIMIT 1`,
+      [partyId],
+    );
+    return String(rows?.[0]?.card_type || 'employee');
+  } catch {
+    return 'employee';
+  }
+}
+
+const PARTY_CANCEL_TYPES = new Set<string>([
+  'MAAS_ODEME',
+  'MAAS_HAKKEDIS',
+  'AVANS_ODEME',
+  'AVANS_MAHSUP',
+  'ORTAK_DAGITIM_KAR',
+  'ORTAK_DAGITIM_ZARAR',
+  'ORTAK_SERMAYE_TAHSILAT',
+  'ORTAK_SERMAYE_ODEME',
+  'ORTAK_PARA_GIRIS',
+  'ORTAK_PARA_CIKIS',
+  'ORTAK_SERMAYE_CIKIS',
+]);
+
+async function writePartyLedgerCancel(opts: {
+  partyId: string;
+  cardType: string;
+  trType: string;
+  amount: number;
+  sign: number;
+  definition?: string | null;
+  cashLineId: string;
+}): Promise<void> {
+  await ensurePartyPeriodTables();
+  const firmNr = normalizeFirmTableNr(ERP_SETTINGS.firmNr);
+  const period = String(ERP_SETTINGS.periodNr || '01').padStart(2, '0').slice(0, 10);
+  // Idempotent: aynı cash_line_id için daha önce CANCELLED kaydı açıldıysa yeniden açma
+  const { rows: existing } = await postgres.query(
+    `SELECT 1 FROM ${partyLedgerTable()}
+       WHERE cash_line_id = $1::text::uuid AND source_module = 'cash_delete' LIMIT 1`,
+    [opts.cashLineId],
+  );
+  if (existing?.length) return;
+
+  await postgres.query(
+    `INSERT INTO ${partyLedgerTable()} (
+       firm_nr, period_nr, party_id, card_type, trcode, transaction_type,
+       date, amount, sign, definition, source_module, source_id, cash_line_id
+     ) VALUES (
+       $1::text, $2::text, $3::text::uuid, $4::text, 0, $5::text,
+       NOW(), $6::text::numeric, $7::integer, $8::text, 'cash_delete', $9::text::uuid, $10::text::uuid
+     )`,
+    [
+      firmNr,
+      period,
+      opts.partyId,
+      opts.cardType,
+      `CANCELLED_${opts.trType}`,
+      Math.abs(opts.amount).toString(),
+      -opts.sign,
+      `İptal: ${opts.definition || ''}`.trim(),
+      opts.cashLineId,
+      opts.cashLineId,
+    ],
+  );
 }
 
 /**
@@ -1096,7 +1177,23 @@ export async function deleteKasaIslemi(id: string): Promise<void> {
       );
     }
 
-    // 6) Ana satırı sil
+    // 6) Party ledger iptal kaydı — Personel/Şirket Ortağı kasa işlemleri için.
+    // createKasaIslemi + writePartyLedger çift-ayaklı yazıyor; silme ledger'ı yalnız bırakıyordu.
+    // Burada aynı cash_line_id'ye ters işaretli yeni bir ledger satırı açıyoruz (audit trail korunur).
+    if (partyId && PARTY_CANCEL_TYPES.has(trType)) {
+      const cardType = await resolvePartyCardType(partyId);
+      await writePartyLedgerCancel({
+        partyId,
+        cardType,
+        trType,
+        amount,
+        sign,
+        definition: row.definition,
+        cashLineId: id,
+      });
+    }
+
+    // 7) Ana satırı sil
     await postgres.query(`DELETE FROM ${table} WHERE id = $1::text::uuid`, [id]);
 
     await postgres.query('COMMIT');
@@ -1250,6 +1347,52 @@ async function deleteKasaIslemiViaPostgrest(id: string): Promise<void> {
         { balance: Number(br.balance ?? 0) - amount * bankSign },
         { schema: 'public', prefer: 'return=minimal' }
       );
+    }
+  }
+
+  // Party ledger iptal kaydı — Personel/Şirket Ortağı kasa işlemleri için.
+  // createKasaIslemi + writePartyLedger çift-ayaklı yazıyor; silme ledger'ı yalnız bırakıyordu.
+  // Burada aynı cash_line_id'ye ters işaretli yeni bir ledger satırı açıyoruz.
+  const partyId = row.party_id;
+  if (partyId && PARTY_CANCEL_TYPES.has(String(trType))) {
+    try {
+      const cardType = await resolvePartyCardType(partyId);
+      const ledgerPath = `/rex_${fn}_${pn}_party_ledger_movements`;
+      // Idempotent kontrol
+      const existing = await postgrest.get<any[]>(
+        ledgerPath,
+        {
+          select: 'id',
+          cash_line_id: `eq.${id}`,
+          source_module: 'eq.cash_delete',
+          limit: 1,
+        },
+        { schema: 'public' },
+      );
+      if (!Array.isArray(existing) || existing.length === 0) {
+        await postgrest.post(
+          ledgerPath,
+          {
+            firm_nr: fn,
+            period_nr: pn,
+            party_id: partyId,
+            card_type: cardType,
+            trcode: 0,
+            transaction_type: `CANCELLED_${String(trType)}`,
+            date: new Date().toISOString(),
+            amount: Math.abs(Number(row.amount || 0)),
+            sign: -Number(row.sign || 0),
+            definition: `İptal: ${row.definition || ''}`.trim(),
+            source_module: 'cash_delete',
+            source_id: id,
+            cash_line_id: id,
+          },
+          { schema: 'public', prefer: 'return=minimal' },
+        );
+      }
+    } catch (err) {
+      // Ledger iptal kaydı başarısız olursa cash_lines silinmesini engellememeli — audit log'a düş.
+      console.warn('[Kasa] deleteKasaIslemiViaPostgrest: ledger cancel yazılamadı', err);
     }
   }
 
