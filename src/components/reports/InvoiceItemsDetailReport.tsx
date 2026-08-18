@@ -26,6 +26,10 @@ import {
 } from '../../utils/reportDatePresets';
 import { ReportDateRangePresets } from '../shared/ReportDateRangePresets';
 import { erpReportsAPI } from '../../services/api/erpReports';
+import { supplierAPI } from '../../services/api/suppliers';
+import type { Supplier } from '../../core/types';
+
+type SelectOption = { value: string; label: string };
 
 export interface InvoiceItemsDetailRow {
   id: string;
@@ -119,59 +123,6 @@ function ReportShell({
   );
 }
 
-const MOCK_CARIS: { id: string; name: string; phone: string }[] = [
-  { id: 'c-001', name: 'MARWAN ARAM2', phone: '+964 750 123 4567' },
-  { id: 'c-002', name: 'BLACKOUT SOLAR', phone: '+964 770 555 1212' },
-  { id: 'c-003', name: 'KURDISTAN ELECTRIC', phone: '+964 750 888 9090' },
-  { id: 'c-004', name: 'ERBIL ENERGY', phone: '+964 750 444 3322' },
-];
-
-function buildMockDetail(): InvoiceItemsDetailRow[] {
-  // VIVA SOLAR'dan gerçekçi satırlar
-  return [
-    {
-      id: 'd-1', date: '2025-10-05', invoiceNo: 'INV-000009', customerId: 'c-001', customerName: 'MARWAN ARAM2',
-      productName: 'LONGE SOLAR PANEL 590W', quantity: 96, unitPrice: 145, discount: 1.5,
-      lineTotal: 96 * 145 * (1 - 0.015), invoiceTotal: 14200, balance: 1700, phone: '+964 750 123 4567',
-    },
-    {
-      id: 'd-2', date: '2025-10-05', invoiceNo: 'INV-000009', customerId: 'c-001', customerName: 'MARWAN ARAM2',
-      productName: 'ALÜMİNYUM RAY 2.1M', quantity: 60, unitPrice: 18, discount: 0,
-      lineTotal: 60 * 18, invoiceTotal: 14200, balance: 1700, phone: '+964 750 123 4567',
-    },
-    {
-      id: 'd-3', date: '2025-10-07', invoiceNo: 'INV-000011', customerId: 'c-002', customerName: 'BLACKOUT SOLAR',
-      productName: 'HUAWEI SUN2000-100KTL', quantity: 4, unitPrice: 2200, discount: 0,
-      lineTotal: 4 * 2200, invoiceTotal: 8800, balance: 600, phone: '+964 770 555 1212',
-    },
-    {
-      id: 'd-4', date: '2025-10-10', invoiceNo: 'INV-000012', customerId: 'c-003', customerName: 'KURDISTAN ELECTRIC',
-      productName: 'LITHIUM 10KWH', quantity: 6, unitPrice: 1150, discount: 3,
-      lineTotal: 6 * 1150 * (1 - 0.03), invoiceTotal: 6900, balance: 6900, phone: '+964 750 888 9090',
-    },
-    {
-      id: 'd-5', date: '2025-10-14', invoiceNo: 'INV-000014', customerId: 'c-001', customerName: 'MARWAN ARAM2',
-      productName: 'ALÜMİNYUM RAY 2.1M', quantity: 200, unitPrice: 18, discount: 0,
-      lineTotal: 200 * 18, invoiceTotal: 4500, balance: 0, phone: '+964 750 123 4567',
-    },
-    {
-      id: 'd-6', date: '2025-10-14', invoiceNo: 'INV-000014', customerId: 'c-001', customerName: 'MARWAN ARAM2',
-      productName: 'MC4 KONNEKTÖR', quantity: 100, unitPrice: 9, discount: 0,
-      lineTotal: 100 * 9, invoiceTotal: 4500, balance: 0, phone: '+964 750 123 4567',
-    },
-    {
-      id: 'd-7', date: '2025-10-15', invoiceNo: 'INV-000015', customerId: 'c-004', customerName: 'ERBIL ENERGY',
-      productName: 'JINKO SOLAR 550W', quantity: 50, unitPrice: 130, discount: 2,
-      lineTotal: 50 * 130 * (1 - 0.02), invoiceTotal: 6500, balance: 3250, phone: '+964 750 444 3322',
-    },
-    {
-      id: 'd-8', date: '2025-10-18', invoiceNo: 'INV-000017', customerId: 'c-004', customerName: 'ERBIL ENERGY',
-      productName: 'JINKO SOLAR 550W', quantity: 16, unitPrice: 130, discount: 0,
-      lineTotal: 16 * 130, invoiceTotal: -2200, balance: -2200, phone: '+964 750 444 3322',
-    },
-  ];
-}
-
 export function InvoiceItemsDetailReport() {
   const { tm } = useLanguage();
   const { darkMode } = useTheme();
@@ -180,17 +131,47 @@ export function InvoiceItemsDetailReport() {
 
   const [dateRange, setDateRange] = useState<ReportDateRangeValue>(() => defaultReportDateRange('month'));
   const [cariIds, setCariIds] = useState<string[]>([]);
+  const [cariOptions, setCariOptions] = useState<SelectOption[]>([]);
+  const [cariLoading, setCariLoading] = useState(false);
   const [search, setSearch] = useState<string>('');
   const [priceMin, setPriceMin] = useState<number | null>(null);
   const [priceMax, setPriceMax] = useState<number | null>(null);
   const [rows, setRows] = useState<InvoiceItemsDetailRow[]>([]);
   const [loading, setLoading] = useState(false);
 
+  useEffect(() => {
+    let cancelled = false;
+    (async () => {
+      try {
+        setCariLoading(true);
+        const list: Supplier[] = await supplierAPI.getAll({ cardType: 'customer' });
+        if (cancelled) return;
+        const opts: SelectOption[] = (Array.isArray(list) ? list : []).map((c) => ({
+          value: String(c.id),
+          label: c.code ? `${c.code} — ${c.name}` : c.name,
+        }));
+        setCariOptions(opts);
+      } catch (err) {
+        console.error('[InvoiceItemsDetailReport] cari load failed', err);
+        if (!cancelled) setCariOptions([]);
+      } finally {
+        if (!cancelled) setCariLoading(false);
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [selectedFirm?.firm_nr]);
+
   const load = useCallback(async () => {
     setLoading(true);
     try {
-      // TODO: erpReportsAPI.invoiceItemsDetail
-      const data = buildMockDetail();
+      const raw = await erpReportsAPI.getInvoiceItemsDetail({
+        from: dateRange.from,
+        to: dateRange.to,
+        cariIds: cariIds.length > 0 ? cariIds : undefined,
+      });
+      const data = (Array.isArray(raw) ? raw : []) as unknown as InvoiceItemsDetailRow[];
       setRows(data);
     } catch (err: unknown) {
       const msg = err instanceof Error ? err.message : String(err);
@@ -200,7 +181,7 @@ export function InvoiceItemsDetailReport() {
     } finally {
       setLoading(false);
     }
-  }, []);
+  }, [dateRange.from, dateRange.to, cariIds]);
 
   useEffect(() => {
     void load();
@@ -277,11 +258,14 @@ export function InvoiceItemsDetailReport() {
           <Select
             mode="multiple"
             allowClear
+            showSearch
+            optionFilterProp="label"
+            loading={cariLoading}
             style={{ minWidth: 220 }}
             placeholder={tm('rprFilterCustomer') || 'Müşteri'}
             value={cariIds}
             onChange={(v) => setCariIds(v as string[])}
-            options={MOCK_CARIS.map((c) => ({ label: c.name, value: c.id }))}
+            options={cariOptions}
             maxTagCount="responsive"
           />
           <Input

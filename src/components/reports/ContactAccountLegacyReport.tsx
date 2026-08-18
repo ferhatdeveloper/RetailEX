@@ -26,6 +26,10 @@ import {
 } from '../../utils/reportDatePresets';
 import { ReportDateRangePresets } from '../shared/ReportDateRangePresets';
 import { erpReportsAPI } from '../../services/api/erpReports';
+import { supplierAPI } from '../../services/api/suppliers';
+import type { Supplier } from '../../core/types';
+
+type SelectOption = { value: string; label: string };
 
 export interface ContactAccountLegacyRow {
   id: string;
@@ -120,55 +124,7 @@ function ReportShell({
   );
 }
 
-const MOCK_CARIS: { id: string; name: string }[] = [
-  { id: 'c-001', name: 'MARWAN ARAM2' },
-  { id: 'c-002', name: 'BLACKOUT SOLAR' },
-  { id: 'c-003', name: 'KURDISTAN ELECTRIC' },
-  { id: 'c-004', name: 'ERBIL ENERGY' },
-  { id: 'c-005', name: 'OLD CUSTOMER — AHMAD CO.' },
-];
-
 const MOCK_GROUPS: string[] = ['SOLAR', 'INVERTER', 'BATTERY', 'MOUNTING', 'CABLE'];
-
-function buildMockLegacy(): ContactAccountLegacyRow[] {
-  return [
-    {
-      id: 'l-1', date: '2023-06-12', invoiceNo: 'INV-2023-0142', customerId: 'c-005', customerName: 'OLD CUSTOMER — AHMAD CO.',
-      group: 'SOLAR', subGroup: 'PANEL', productName: 'LONGE SOLAR PANEL 590W',
-      exitQuantity: 64, purchasePrice: 110, discount: 0, counterMoney: 7040, totalAmount: 7040, remainingBalance: 0,
-    },
-    {
-      id: 'l-2', date: '2023-08-04', invoiceNo: 'INV-2023-0201', customerId: 'c-005', customerName: 'OLD CUSTOMER — AHMAD CO.',
-      group: 'INVERTER', subGroup: 'STRING', productName: 'HUAWEI SUN2000-100KTL',
-      exitQuantity: 2, purchasePrice: 1900, discount: 200, counterMoney: 3600, totalAmount: 3800, remainingBalance: 200,
-    },
-    {
-      id: 'l-3', date: '2024-01-22', invoiceNo: 'INV-2024-0017', customerId: 'c-001', customerName: 'MARWAN ARAM2',
-      group: 'SOLAR', subGroup: 'PANEL', productName: 'JINKO SOLAR 550W',
-      exitQuantity: 32, purchasePrice: 105, discount: 0, counterMoney: 3360, totalAmount: 3360, remainingBalance: 0,
-    },
-    {
-      id: 'l-4', date: '2024-03-15', invoiceNo: 'INV-2024-0045', customerId: 'c-002', customerName: 'BLACKOUT SOLAR',
-      group: 'BATTERY', subGroup: 'LITHIUM', productName: 'LITHIUM 10KWH',
-      exitQuantity: 4, purchasePrice: 680, discount: 100, counterMoney: 2620, totalAmount: 2720, remainingBalance: 100,
-    },
-    {
-      id: 'l-5', date: '2024-07-09', invoiceNo: 'INV-2024-0098', customerId: 'c-003', customerName: 'KURDISTAN ELECTRIC',
-      group: 'MOUNTING', subGroup: 'RAY', productName: 'ALÜMİNYUM RAY 2.1M',
-      exitQuantity: 120, purchasePrice: 14, discount: 0, counterMoney: 1680, totalAmount: 1680, remainingBalance: 0,
-    },
-    {
-      id: 'l-6', date: '2024-09-21', invoiceNo: 'INV-2024-0124', customerId: 'c-004', customerName: 'ERBIL ENERGY',
-      group: 'CABLE', subGroup: 'DC', productName: 'SOLAR CABLE 6mm',
-      exitQuantity: 500, purchasePrice: 1.2, discount: 0, counterMoney: 600, totalAmount: 600, remainingBalance: 0,
-    },
-    {
-      id: 'l-7', date: '2025-02-08', invoiceNo: 'INV-2025-0028', customerId: 'c-005', customerName: 'OLD CUSTOMER — AHMAD CO.',
-      group: 'SOLAR', subGroup: 'PANEL', productName: 'LONGE SOLAR PANEL 590W',
-      exitQuantity: 16, purchasePrice: 112, discount: 0, counterMoney: 1792, totalAmount: 1792, remainingBalance: 0,
-    },
-  ];
-}
 
 export function ContactAccountLegacyReport() {
   const { tm } = useLanguage();
@@ -178,17 +134,47 @@ export function ContactAccountLegacyReport() {
 
   const [dateRange, setDateRange] = useState<ReportDateRangeValue>(() => defaultReportDateRange('lastMonth'));
   const [cariIds, setCariIds] = useState<string[]>([]);
+  const [cariOptions, setCariOptions] = useState<SelectOption[]>([]);
+  const [cariLoading, setCariLoading] = useState(false);
   const [productGroup, setProductGroup] = useState<string | undefined>(undefined);
   const [priceMin, setPriceMin] = useState<number | null>(null);
   const [priceMax, setPriceMax] = useState<number | null>(null);
   const [rows, setRows] = useState<ContactAccountLegacyRow[]>([]);
   const [loading, setLoading] = useState(false);
 
+  useEffect(() => {
+    let cancelled = false;
+    (async () => {
+      try {
+        setCariLoading(true);
+        const list: Supplier[] = await supplierAPI.getAll({ cardType: 'customer' });
+        if (cancelled) return;
+        const opts: SelectOption[] = (Array.isArray(list) ? list : []).map((c) => ({
+          value: String(c.id),
+          label: c.code ? `${c.code} — ${c.name}` : c.name,
+        }));
+        setCariOptions(opts);
+      } catch (err) {
+        console.error('[ContactAccountLegacyReport] cari load failed', err);
+        if (!cancelled) setCariOptions([]);
+      } finally {
+        if (!cancelled) setCariLoading(false);
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [selectedFirm?.firm_nr]);
+
   const load = useCallback(async () => {
     setLoading(true);
     try {
-      // TODO: erpReportsAPI.contactAccountLegacy
-      const data = buildMockLegacy();
+      const raw = await erpReportsAPI.getContactAccountLegacy({
+        from: dateRange.from,
+        to: dateRange.to,
+        cariIds: cariIds.length > 0 ? cariIds : undefined,
+      });
+      const data = (Array.isArray(raw) ? raw : []) as unknown as ContactAccountLegacyRow[];
       setRows(data);
     } catch (err: unknown) {
       const msg = err instanceof Error ? err.message : String(err);
@@ -198,7 +184,7 @@ export function ContactAccountLegacyReport() {
     } finally {
       setLoading(false);
     }
-  }, []);
+  }, [dateRange.from, dateRange.to, cariIds]);
 
   useEffect(() => {
     void load();
@@ -269,11 +255,14 @@ export function ContactAccountLegacyReport() {
           <Select
             mode="multiple"
             allowClear
+            showSearch
+            optionFilterProp="label"
+            loading={cariLoading}
             style={{ minWidth: 220 }}
             placeholder={tm('rprFilterCustomer') || 'Cari'}
             value={cariIds}
             onChange={(v) => setCariIds(v as string[])}
-            options={MOCK_CARIS.map((c) => ({ label: c.name, value: c.id }))}
+            options={cariOptions}
             maxTagCount="responsive"
           />
           <Select

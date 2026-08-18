@@ -129,31 +129,6 @@ const MOCK_SUBGROUPS: string[] = [
   'TEDARIK ODEME',
 ];
 
-const MOCK_CARIS: { id: string; name: string }[] = [
-  { id: 'c-001', name: 'MARWAN ARAM2' },
-  { id: 'c-002', name: 'BLACKOUT SOLAR' },
-  { id: 'c-003', name: 'KURDISTAN ELECTRIC' },
-];
-
-function buildMockCashLedger(): CashLedgerRow[] {
-  const rows: Omit<CashLedgerRow, 'cumulative'>[] = [
-    { id: 'cl-1', date: '2025-10-01', ficheNo: 'CSH-202510-001', sequence: 1, group: 'INCOMING', subGroup: 'MUSTERI TAHSILAT', description: 'MARWAN ARAM2 — fatura tahsilatı', incoming: 12500, outgoing: 0, cariId: 'c-001', cariName: 'MARWAN ARAM2' },
-    { id: 'cl-2', date: '2025-10-03', ficheNo: 'CSH-202510-002', sequence: 2, group: 'GASOLINE', subGroup: 'YAKIT', description: 'SEYRAN — yakıt', incoming: 0, outgoing: 180 },
-    { id: 'cl-3', date: '2025-10-05', ficheNo: 'CSH-202510-003', sequence: 3, group: 'OFFICE', subGroup: 'KIRTASIYE', description: 'Kırtasiye alımı', incoming: 0, outgoing: 95 },
-    { id: 'cl-4', date: '2025-10-07', ficheNo: 'CSH-202510-004', sequence: 4, group: 'PERSONEL', subGroup: 'PERSONEL MAAS', description: 'AHMET — maaş avansı', incoming: 0, outgoing: 500 },
-    { id: 'cl-5', date: '2025-10-09', ficheNo: 'CSH-202510-005', sequence: 5, group: 'INCOMING', subGroup: 'MUSTERI TAHSILAT', description: 'BLACKOUT SOLAR — banka havalesi', incoming: 8200, outgoing: 0, cariId: 'c-002', cariName: 'BLACKOUT SOLAR' },
-    { id: 'cl-6', date: '2025-10-12', ficheNo: 'CSH-202510-006', sequence: 6, group: 'WAREHOUSE', subGroup: 'DEPO', description: 'Depo raf sistemi', incoming: 0, outgoing: 1200 },
-    { id: 'cl-7', date: '2025-10-14', ficheNo: 'CSH-202510-007', sequence: 7, group: 'OUT', subGroup: 'TEDARIK ODEME', description: 'KURDISTAN ELECTRIC — tedarik ödeme', incoming: 0, outgoing: 4200, cariId: 'c-003', cariName: 'KURDISTAN ELECTRIC' },
-    { id: 'cl-8', date: '2025-10-18', ficheNo: 'CSH-202510-008', sequence: 8, group: 'PERSONEL', subGroup: 'SGK', description: 'SGK primi', incoming: 0, outgoing: 650 },
-  ];
-
-  let running = 0;
-  return rows.map((r) => {
-    running += r.incoming - r.outgoing;
-    return { ...r, cumulative: running };
-  });
-}
-
 export function CashLedgerReport() {
   const { tm } = useLanguage();
   const { darkMode } = useTheme();
@@ -164,22 +139,46 @@ export function CashLedgerReport() {
   const [groups, setGroups] = useState<CashLedgerGroup[]>([]);
   const [subGroups, setSubGroups] = useState<string[]>([]);
   const [cariId, setCariId] = useState<string | undefined>(undefined);
+  const [cariOptions, setCariOptions] = useState<SelectOption[]>([]);
+  const [cariLoading, setCariLoading] = useState(false);
   const [rows, setRows] = useState<CashLedgerRow[]>([]);
   const [loading, setLoading] = useState(false);
+
+  useEffect(() => {
+    let cancelled = false;
+    (async () => {
+      try {
+        setCariLoading(true);
+        const list: Supplier[] = await supplierAPI.getAll({ cardType: 'customer' });
+        if (cancelled) return;
+        const opts: SelectOption[] = (Array.isArray(list) ? list : []).map((c) => ({
+          value: String(c.id),
+          label: c.code ? `${c.code} — ${c.name}` : c.name,
+        }));
+        setCariOptions(opts);
+      } catch (err) {
+        console.error('[CashLedgerReport] cari load failed', err);
+        if (!cancelled) setCariOptions([]);
+      } finally {
+        if (!cancelled) setCariLoading(false);
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [selectedFirm?.firm_nr]);
 
   const load = useCallback(async () => {
     setLoading(true);
     try {
-      // TODO: gerçek API bağlandığında
-      // const data = await erpReportsAPI.cashLedger({
-      //   from: dateRange.from,
-      //   to: dateRange.to,
-      //   groups,
-      //   subGroups,
-      //   cariId,
-      // });
-      const data = buildMockCashLedger();
-      setRows(data);
+      const data = await erpReportsAPI.getCashLedger({
+        from: dateRange.from,
+        to: dateRange.to,
+        groups: groups.length > 0 ? groups : undefined,
+        subGroups: subGroups.length > 0 ? subGroups : undefined,
+        cariId: cariId || undefined,
+      });
+      setRows(Array.isArray(data) ? data : []);
     } catch (err: unknown) {
       const msg = err instanceof Error ? err.message : String(err);
       console.error('[CashLedgerReport]', err);
@@ -284,11 +283,14 @@ export function CashLedgerReport() {
           />
           <Select
             allowClear
+            showSearch
+            optionFilterProp="label"
+            loading={cariLoading}
             style={{ minWidth: 200 }}
             placeholder={tm('rprFilterCustomer') || 'Cari'}
             value={cariId}
             onChange={(v) => setCariId(v as string | undefined)}
-            options={MOCK_CARIS.map((c) => ({ label: c.name, value: c.id }))}
+            options={cariOptions}
           />
         </div>
       }

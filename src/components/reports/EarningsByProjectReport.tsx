@@ -21,7 +21,6 @@ import { useTheme } from '../../contexts/ThemeContext';
 import { useFirmaDonem } from '../../contexts/FirmaDonemContext';
 import { formatNumber } from '../../utils/formatNumber';
 import { getReportingCurrency } from '../../utils/currency';
-import { localTodayDateKey } from '../../utils/localCalendarDate';
 import {
   buildReportDateRangeChange,
   defaultReportDateRange,
@@ -110,116 +109,6 @@ function ReportShell({
   );
 }
 
-const MOCK_PROJECTS: { id: string; name: string }[] = [
-  { id: 'p-100', name: 'SOLAR FARM ERBIL' },
-  { id: 'p-101', name: 'DUHOK 500KW' },
-  { id: 'p-102', name: 'SULAIMANI RESIDENTIAL' },
-];
-
-function buildMockEarnings(from: string, to: string): EarningsByProjectRow[] {
-  // VIVA SOLAR'dan gerçekçi 5 satır.
-  const today = localTodayDateKey();
-  void from; void to; // TODO: gerçek API bağlandığında from/to filtreyi uygulayacak
-  void today;
-  return [
-    {
-      id: 'e-1',
-      date: '2025-10-05',
-      invoiceNo: 'INV-000009',
-      customerId: 'c-001',
-      customerName: 'MARWAN ARAM2',
-      projectId: 'p-100',
-      projectName: 'SOLAR FARM ERBIL',
-      category: 'SOLAR',
-      description: 'LONGE SOLAR PANEL 590W — 96 adet',
-      discount: 150,
-      collected: 12500,
-      invoiceAmount: 14200,
-      loadingExpense: 200,
-      spent: 9050,
-      dailyExpense: 180,
-      profit: 14200 - 9050 - 200 - 180,
-      isReturn: false,
-    },
-    {
-      id: 'e-2',
-      date: '2025-10-07',
-      invoiceNo: 'INV-000011',
-      customerId: 'c-002',
-      customerName: 'BLACKOUT SOLAR',
-      projectId: 'p-101',
-      projectName: 'DUHOK 500KW',
-      category: 'INVERTER',
-      description: 'HUAWEI SUN2000-100KTL — 4 adet',
-      discount: 0,
-      collected: 8200,
-      invoiceAmount: 8800,
-      loadingExpense: 350,
-      spent: 6200,
-      dailyExpense: 220,
-      profit: 8800 - 6200 - 350 - 220,
-      isReturn: false,
-    },
-    {
-      id: 'e-3',
-      date: '2025-10-10',
-      invoiceNo: 'INV-000012',
-      customerId: 'c-003',
-      customerName: 'KURDISTAN ELECTRIC',
-      projectId: 'p-102',
-      projectName: 'SULAIMANI RESIDENTIAL',
-      category: 'BATTERY',
-      description: 'LITHIUM 10KWH — 6 adet',
-      discount: 250,
-      collected: 0,
-      invoiceAmount: 6900,
-      loadingExpense: 150,
-      spent: 4200,
-      dailyExpense: 120,
-      profit: 6900 - 4200 - 150 - 120,
-      isReturn: false,
-    },
-    {
-      id: 'e-4',
-      date: '2025-10-14',
-      invoiceNo: 'INV-000014',
-      customerId: 'c-001',
-      customerName: 'MARWAN ARAM2',
-      projectId: 'p-100',
-      projectName: 'SOLAR FARM ERBIL',
-      category: 'MOUNTING',
-      description: 'ALÜMİNYUM RAY 2.1M — 200 adet',
-      discount: 0,
-      collected: 4500,
-      invoiceAmount: 4500,
-      loadingExpense: 100,
-      spent: 3100,
-      dailyExpense: 90,
-      profit: 4500 - 3100 - 100 - 90,
-      isReturn: false,
-    },
-    {
-      id: 'e-5',
-      date: '2025-10-18',
-      invoiceNo: 'INV-000017',
-      customerId: 'c-004',
-      customerName: 'ERBIL ENERGY',
-      projectId: 'p-101',
-      projectName: 'DUHOK 500KW',
-      category: 'RETURN',
-      description: 'JINKO PANEL — iade (hasarlı sevkiyat)',
-      discount: 0,
-      collected: 0,
-      invoiceAmount: -2200,
-      loadingExpense: 80,
-      spent: 1850,
-      dailyExpense: 0,
-      profit: -2200 - 1850 - 80 - 0,
-      isReturn: true,
-    },
-  ];
-}
-
 export function EarningsByProjectReport() {
   const { tm } = useLanguage();
   const { darkMode } = useTheme();
@@ -262,16 +151,13 @@ export function EarningsByProjectReport() {
   const load = useCallback(async () => {
     setLoading(true);
     try {
-      // TODO: gerçek API bağlantısı
-      // const data = await erpReportsAPI.earningsByProject({
-      //   from: dateRange.from,
-      //   to: dateRange.to,
-      //   cariIds,
-      //   projectId,
-      //   category,
-      // });
-      const data = buildMockEarnings(dateRange.from, dateRange.to);
-      setRows(data);
+      const data = await erpReportsAPI.getEarningsByProject({
+        from: dateRange.from,
+        to: dateRange.to,
+        cariIds: cariIds.length > 0 ? cariIds : undefined,
+        projectId: projectId || undefined,
+      });
+      setRows(Array.isArray(data) ? data : []);
     } catch (err: unknown) {
       const msg = err instanceof Error ? err.message : String(err);
       console.error('[EarningsByProjectReport]', err);
@@ -280,7 +166,7 @@ export function EarningsByProjectReport() {
     } finally {
       setLoading(false);
     }
-  }, [dateRange.from, dateRange.to, cariIds, projectId, category]);
+  }, [dateRange.from, dateRange.to, cariIds, projectId]);
 
   useEffect(() => {
     void load();
@@ -381,14 +267,6 @@ export function EarningsByProjectReport() {
             loading={cariLoading}
             options={cariOptions}
             maxTagCount="responsive"
-          />
-          <Select
-            allowClear
-            style={{ minWidth: 200 }}
-            placeholder={tm('rprFilterProject') || 'Proje'}
-            value={projectId}
-            onChange={(v) => setProjectId(v as string | undefined)}
-            options={MOCK_PROJECTS.map((p) => ({ label: p.name, value: p.id }))}
           />
           <Select
             allowClear

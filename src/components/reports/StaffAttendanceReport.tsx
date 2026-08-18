@@ -19,6 +19,9 @@ import { useFirmaDonem } from '../../contexts/FirmaDonemContext';
 import { formatNumber } from '../../utils/formatNumber';
 import { getReportingCurrency } from '../../utils/currency';
 import { erpReportsAPI } from '../../services/api/erpReports';
+import { beautyService } from '../../services/beautyService';
+
+type SelectOption = { value: string; label: string };
 
 export type AttendanceStatus = 1 | 0 | null;
 
@@ -108,54 +111,8 @@ function ReportShell({
   );
 }
 
-const MOCK_STAFF: { id: string; name: string; department: string; salary: number }[] = [
-  { id: 's-01', name: 'AHMET YILMAZ', department: 'DEPO', salary: 850 },
-  { id: 's-02', name: 'AYŞE KARACA', department: 'MUHASEBE', salary: 1100 },
-  { id: 's-03', name: 'MAHMOOD RAMADAN', department: 'SAHA', salary: 950 },
-  { id: 's-04', name: 'BERIVAN ALI', department: 'SAHA', salary: 900 },
-  { id: 's-05', name: 'JOHN DOE', department: 'YÖNETİM', salary: 1500 },
-  { id: 's-06', name: 'HAZAL ÇELİK', department: 'PAZARLAMA', salary: 980 },
-];
-
-const MOCK_DEPARTMENTS: string[] = ['DEPO', 'MUHASEBE', 'SAHA', 'YÖNETİM', 'PAZARLAMA'];
-
 function getDaysInMonth(year: number, month: number): number {
   return new Date(year, month, 0).getDate();
-}
-
-function buildMockAttendance(year: number, month: number): StaffAttendanceRow[] {
-  const days = getDaysInMonth(year, month);
-  const pad = (n: number) => String(n).padStart(2, '0');
-
-  const random = (seed: number) => {
-    // deterministik mock: seed karıştırıcı
-    let x = seed;
-    return () => {
-      x = (x * 9301 + 49297) % 233280;
-      return x / 233280;
-    };
-  };
-
-  return MOCK_STAFF.map((s, idx) => {
-    const r = random(idx * 7 + month * 31 + year);
-    const dayArr: AttendanceStatus[] = [];
-    for (let d = 1; d <= 31; d++) {
-      if (d > days) {
-        dayArr.push(null);
-      } else {
-        const v = r();
-        dayArr.push(v > 0.18 ? 1 : 0);
-      }
-    }
-    return {
-      staffId: s.id,
-      staffName: s.name,
-      department: s.department,
-      salary: s.salary,
-      days: dayArr,
-      extraPayment: idx % 3 === 0 ? 50 : 0,
-    };
-  });
 }
 
 export function StaffAttendanceReport() {
@@ -169,16 +126,58 @@ export function StaffAttendanceReport() {
   const [month, setMonth] = useState<number>(now.getMonth() + 1);
   const [department, setDepartment] = useState<string | undefined>(undefined);
   const [staffIds, setStaffIds] = useState<string[]>([]);
+  const [staffOptions, setStaffOptions] = useState<SelectOption[]>([]);
+  const [departmentOptions, setDepartmentOptions] = useState<SelectOption[]>([]);
+  const [staffLoading, setStaffLoading] = useState(false);
   const [rows, setRows] = useState<StaffAttendanceRow[]>([]);
   const [loading, setLoading] = useState(false);
+
+  useEffect(() => {
+    let cancelled = false;
+    (async () => {
+      try {
+        setStaffLoading(true);
+        const list = await beautyService.getSpecialists();
+        if (cancelled) return;
+        const staffOpts: SelectOption[] = (Array.isArray(list) ? list : []).map((s: any) => ({
+          value: String(s.id ?? s.specialist_id ?? s.code ?? ''),
+          label: s.name ?? s.full_name ?? s.title ?? String(s.id ?? ''),
+        })).filter((o) => o.value);
+        setStaffOptions(staffOpts);
+        const deptSet = new Set<string>();
+        for (const s of list ?? []) {
+          const d = (s as any).department ?? (s as any).dept ?? null;
+          if (typeof d === 'string' && d.trim()) deptSet.add(d.trim());
+        }
+        setDepartmentOptions(Array.from(deptSet).sort().map((d) => ({ value: d, label: d })));
+      } catch (err) {
+        console.error('[StaffAttendanceReport] staff load failed', err);
+        if (!cancelled) {
+          setStaffOptions([]);
+          setDepartmentOptions([]);
+        }
+      } finally {
+        if (!cancelled) setStaffLoading(false);
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [selectedFirm?.firm_nr]);
 
   const daysInMonth = useMemo(() => getDaysInMonth(year, month), [year, month]);
 
   const load = useCallback(async () => {
     setLoading(true);
     try {
-      // TODO: erpReportsAPI.staffAttendance
-      const data = buildMockAttendance(year, month);
+      // erpReportsAPI.getStaffAttendance şu anda staff_attendance tablosu yoksa [] döner;
+      // kullanıcı yine de API'yi çağıracak; staff listesini ayrıca yüklüyoruz.
+      const raw = await erpReportsAPI.getStaffAttendance({
+        year,
+        month,
+        staffIds: staffIds.length > 0 ? staffIds : undefined,
+      });
+      const data = (Array.isArray(raw) ? raw : []) as unknown as StaffAttendanceRow[];
       setRows(data);
     } catch (err: unknown) {
       const msg = err instanceof Error ? err.message : String(err);
@@ -188,7 +187,7 @@ export function StaffAttendanceReport() {
     } finally {
       setLoading(false);
     }
-  }, [year, month]);
+  }, [year, month, staffIds]);
 
   useEffect(() => {
     void load();
@@ -319,17 +318,20 @@ export function StaffAttendanceReport() {
               value={department}
               onChange={(v) => setDepartment(v as string | undefined)}
               style={{ width: 170 }}
-              options={MOCK_DEPARTMENTS.map((d) => ({ label: d, value: d }))}
+              options={departmentOptions}
             />
           </div>
           <Select
             mode="multiple"
             allowClear
+            showSearch
+            optionFilterProp="label"
+            loading={staffLoading}
             style={{ minWidth: 220 }}
             placeholder={tm('rprFilterStaff') || 'Personel'}
             value={staffIds}
             onChange={(v) => setStaffIds(v as string[])}
-            options={MOCK_STAFF.map((s) => ({ label: s.name, value: s.id }))}
+            options={staffOptions}
             maxTagCount="responsive"
           />
         </div>
