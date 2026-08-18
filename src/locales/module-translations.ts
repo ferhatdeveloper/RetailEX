@@ -6535,6 +6535,12 @@ export const excelModuleTranslations = {
     ar: 'تحصيلات التجميل',
     ku: 'وەرگرتنەکانی جوانکاری',
   },
+  cariDevirEntities: {
+    tr: 'Cari Devir (Açılış Fişi)',
+    en: 'Opening Balances',
+    ar: 'الأرصدة الافتتاحية',
+    ku: 'باڵانسی کردنەوە',
+  },
   excelExportOnlyPaymentsNote: {
     tr: 'Bu sekme yalnızca dışa aktarım içindir. Tahsilat kayıtları muhasebe tutarlılığı için Excel’den içe alınmaz.',
     en: 'This tab is export-only. Payment records are not imported from Excel (accounting integrity).',

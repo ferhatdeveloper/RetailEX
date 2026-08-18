@@ -10,7 +10,7 @@ import {
   FileSpreadsheet, Download, Upload, CheckCircle, XCircle,
   AlertCircle, Loader2, Package, Users, Layers, Wrench,
   Truck, Tag, BarChart3, ChevronRight, RefreshCw, Info, Calendar, CreditCard,
-  TrendingUp
+  TrendingUp, ArrowRightLeft
 } from 'lucide-react';
 import { useLanguage } from '../../contexts/LanguageContext';
 import { productAPI } from '../../services/api/products';
@@ -29,6 +29,7 @@ import { beautyService } from '../../services/beautyService';
 import type { BeautyService } from '../../types/beauty';
 import type { Product } from '../../core/types';
 import { stockMovementAPI } from '../../services/stockMovementAPI';
+import { CariDevirExcelImportModule } from '../trading/contacts/CariDevirExcelImportModule';
 
 // ─── Tip tanımları ────────────────────────────────────────────────────────────
 
@@ -41,7 +42,8 @@ type EntityType =
   | 'suppliers'
   | 'categories'
   | 'beauty-appointments'
-  | 'beauty-sales';
+  | 'beauty-sales'
+  | 'cari-devir';
 
 interface ImportResult {
   total: number;
@@ -380,6 +382,24 @@ const TEMPLATES: Record<EntityType, { label: string; sheetName: string; sample: 
       },
     ],
   },
+  'cari-devir': {
+    label: 'Cari Devir (Açılış Fişi)',
+    sheetName: 'Cari Devir',
+    sample: [
+      {
+        'Hesap Kodu*': 'CARI-001',
+        'Hesap Adı': 'Örnek Müşteri A.Ş.',
+        'Bakiye*': 1500,
+        'Yön': 'Borç',
+      },
+      {
+        'Hesap Kodu*': 'CARI-002',
+        'Hesap Adı': 'Tedarikçi Ltd.',
+        'Bakiye*': -800,
+        'Yön': 'Alacak',
+      },
+    ],
+  },
 };
 
 // ─── Yardımcı fonksiyonlar ────────────────────────────────────────────────────
@@ -445,6 +465,8 @@ function normalizeRowKeys(row: Record<string, any>, entityType: EntityType): Rec
     keyMap['default_sessions'] = COL_BEAUTY_APPT_DEFAULT_SESSIONS;
   } else if (entityType === 'beauty-sales') {
     /* yalnızca dışa aktarım */
+  } else if (entityType === 'cari-devir') {
+    /* cari devir normalize — kendi modülünde işlenir */
   }
   const out: Record<string, any> = {};
   for (const [k, v] of Object.entries(row)) {
@@ -1967,6 +1989,16 @@ const TABS: TabConfig[] = [
     importNote:
       'Yalnızca dışa aktarım: Güzellik POS / tahsilat kayıtları Excel’e aktarılır. Ödeme satırları içe aktarılmaz (çift kayıt ve muhasebe tutarlılığı).',
   },
+  {
+    id: 'cari-devir',
+    label: 'cariDevirEntities',
+    icon: ArrowRightLeft,
+    color: 'text-violet-600',
+    bgColor: 'bg-violet-50',
+    borderColor: 'border-violet-200',
+    importNote:
+      'Eski program cari devir bakiyelerini toplu içe aktarır. Yön (Borç/Alacak) boşsa bakiye işaretinden otomatik çözümlenir. Modal: açıklama + tarih + önceki devirleri değiştir modu.',
+  },
 ];
 
 export function ExcelModule() {
@@ -2237,6 +2269,34 @@ export function ExcelModule() {
   }, []);
 
   const Icon = tab.icon;
+
+  // Cari devir sekmesi kendi içinde modal/şablon/aktarım döngüsünü yönetir.
+  // Ortak wizard akışına bağlanmaz; tab header + notification sistemi yine paylaşılır.
+  if (activeTab === 'cari-devir') {
+    return (
+      <div className="space-y-5">
+        <div className="bg-white dark:bg-gray-800 rounded-xl shadow-sm border border-gray-200 dark:border-gray-700 overflow-hidden">
+          <div className={`px-5 py-4 ${tab.bgColor} dark:bg-opacity-10 border-b ${tab.borderColor}`}>
+            <div className="flex items-center gap-2">
+              <Icon className={`w-5 h-5 ${tab.color}`} />
+              <div className="flex-1">
+                <h2 className={`text-base font-semibold ${tab.color}`}>
+                  {tm(tab.label as any) || tab.label}
+                </h2>
+                {tab.importNote && (
+                  <p className="text-xs text-gray-600 dark:text-gray-400 mt-1">{tab.importNote}</p>
+                )}
+              </div>
+              <FileSpreadsheet className={`w-5 h-5 ${tab.color} opacity-50`} />
+            </div>
+          </div>
+          <div className="p-5">
+            <CariDevirExcelImportModule />
+          </div>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="h-full flex flex-col bg-gray-50 dark:bg-gray-900">
