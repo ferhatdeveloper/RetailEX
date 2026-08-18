@@ -172,6 +172,10 @@ interface InvoiceItemsGridProps {
     handleShowProductHistory: (code: string, name: string, id: string) => void;
     setSelectedRowForProduct: (index: number) => void;
     setShowProductCatalogModal: (show: boolean) => void;
+    /** Hizmet katalog modalı (Hizmet tipi satırlarda çift tıklama). */
+    setShowServiceCatalogModal?: (show: boolean) => void;
+    /** Satır tipinin "Hizmet" olup olmadığını anlamak için — opsiyonel. */
+    isServiceLineType?: (type: string | undefined) => boolean;
     searchingRowIndex: number;
     productDropdownRef: React.RefObject<HTMLDivElement | null>;
     gridRefs: React.MutableRefObject<{ [key: string]: HTMLInputElement | null }>;
@@ -202,6 +206,8 @@ export const InvoiceItemsGrid = React.memo(({
     handleShowProductHistory,
     setSelectedRowForProduct,
     setShowProductCatalogModal,
+    setShowServiceCatalogModal,
+    isServiceLineType,
     searchingRowIndex,
     productDropdownRef,
     gridRefs,
@@ -246,6 +252,47 @@ export const InvoiceItemsGrid = React.memo(({
         },
         [globalUnitOptions, unitSets]
     );
+
+    /** Açıklama alanı çift tıklaması: satır Hizmet ise Service katalog, değilse Ürün katalog. */
+    const openCatalogForRow = useCallback((rowIndex: number) => {
+        setSelectedRowForProduct(rowIndex);
+        const itemType = items[rowIndex]?.type;
+        const isService = isServiceLineType ? isServiceLineType(itemType) : false;
+        if (isService && setShowServiceCatalogModal) {
+            setShowServiceCatalogModal(true);
+        } else {
+            setShowProductCatalogModal(true);
+        }
+    }, [items, isServiceLineType, setShowProductCatalogModal, setShowServiceCatalogModal, setSelectedRowForProduct]);
+
+    /** Kod alanı dropdown render — Hizmet/Malzeme tipine göre etiket ekler. */
+    const renderProductDropdownItems = (rowIndex: number) => {
+        const isService = isServiceLineType ? isServiceLineType(items[rowIndex]?.type) : false;
+        return filteredProducts.map((product) => {
+            const kind = (product as any).type;
+            const isServiceRow = isService || kind === 'Hizmet';
+            return (
+                <div
+                    key={product.code}
+                    onClick={() => selectProduct(product, rowIndex)}
+                    className={`px-3 py-2 cursor-pointer text-sm hover:bg-gray-50 text-gray-900 border-b border-gray-50 last:border-0 ${isServiceRow ? 'bg-indigo-50/40' : ''}`}
+                >
+                    <div className="flex items-center gap-2 min-w-0">
+                        <span className="font-medium truncate">{product.code}</span>
+                        {isServiceRow && (
+                            <span className="shrink-0 px-1.5 py-0.5 rounded text-[10px] font-semibold bg-indigo-100 text-indigo-700">
+                                {tm('itemTypeService')}
+                            </span>
+                        )}
+                    </div>
+                    <div className="text-xs opacity-90 truncate">{product.name}</div>
+                    <div className="text-xs opacity-75 mt-0.5">
+                        {product.unit} • {formatNumber(product.price, 2, true)} {ledgerCurrency}
+                    </div>
+                </div>
+            );
+        });
+    };
 
     const cariTextColor = useMemo(() => {
         switch (invoiceType.category) {
@@ -328,10 +375,7 @@ export const InvoiceItemsGrid = React.memo(({
                                         value={item.description}
                                         onChange={(e) => updateItem(index, 'description', e.target.value)}
                                         onFocus={() => setCurrentRowIndex(index)}
-                                        onDoubleClick={() => {
-                                            setSelectedRowForProduct(index);
-                                            setShowProductCatalogModal(true);
-                                        }}
+                                        onDoubleClick={() => openCatalogForRow(index)}
                                         className="flex-1 min-w-0 border-0 bg-transparent font-semibold text-[13px] text-gray-900 leading-snug py-0.5 focus:ring-0 focus:outline-none placeholder:text-gray-400"
                                         placeholder={tm('itemDescription')}
                                     />
@@ -373,19 +417,7 @@ export const InvoiceItemsGrid = React.memo(({
                                             ref={productDropdownRef}
                                             className="absolute left-0 right-0 top-full z-[60] mt-1 bg-white border border-gray-300 rounded-lg shadow-lg max-h-56 overflow-auto"
                                         >
-                                            {filteredProducts.map((product) => (
-                                                <div
-                                                    key={product.code}
-                                                    onClick={() => selectProduct(product, index)}
-                                                    className="px-3 py-2 cursor-pointer text-sm hover:bg-gray-50 text-gray-900 border-b border-gray-50 last:border-0"
-                                                >
-                                                    <div className="font-medium truncate">{product.code}</div>
-                                                    <div className="text-xs opacity-90 truncate">{product.name}</div>
-                                                    <div className="text-xs opacity-75 mt-0.5">
-                                                        {product.unit} • {formatNumber(product.price)} {ledgerCurrency}
-                                                    </div>
-                                                </div>
-                                            ))}
+                                            {renderProductDropdownItems(index)}
                                         </div>
                                     )}
                                 </div>
@@ -606,17 +638,7 @@ export const InvoiceItemsGrid = React.memo(({
                                                 ref={productDropdownRef}
                                                 className="absolute top-full left-0 w-96 bg-white border border-gray-300 rounded shadow-lg z-50 max-h-64 overflow-auto"
                                             >
-                                                {filteredProducts.map((product) => (
-                                                    <div
-                                                        key={product.code}
-                                                        onClick={() => selectProduct(product, index)}
-                                                        className="px-3 py-2 cursor-pointer text-sm hover:bg-gray-50 text-gray-900"
-                                                    >
-                                                        <div className="font-medium truncate">{product.code}</div>
-                                                        <div className="text-xs opacity-90 truncate">{product.name}</div>
-                                                        <div className="text-xs opacity-75 mt-0.5">{product.unit} • {formatNumber(product.price)} {ledgerCurrency}</div>
-                                                    </div>
-                                                ))}
+                                                {renderProductDropdownItems(index)}
                                             </div>
                                         )}
                                     </td>
@@ -628,10 +650,7 @@ export const InvoiceItemsGrid = React.memo(({
                                             value={item.description}
                                             onChange={(e) => updateItem(index, 'description', e.target.value)}
                                             onFocus={() => setCurrentRowIndex(index)}
-                                            onDoubleClick={() => {
-                                                setSelectedRowForProduct(index);
-                                                setShowProductCatalogModal(true);
-                                            }}
+                                            onDoubleClick={() => openCatalogForRow(index)}
                                             className="w-full px-1.5 py-1 border-0 focus:outline-none text-sm bg-transparent cursor-pointer"
                                         />
                                     </td>
@@ -643,10 +662,7 @@ export const InvoiceItemsGrid = React.memo(({
                                             value={item.description2}
                                             onChange={(e) => updateItem(index, 'description2', e.target.value)}
                                             onFocus={() => setCurrentRowIndex(index)}
-                                            onDoubleClick={() => {
-                                                setSelectedRowForProduct(index);
-                                                setShowProductCatalogModal(true);
-                                            }}
+                                            onDoubleClick={() => openCatalogForRow(index)}
                                             className="w-full px-1.5 py-1 border-0 focus:outline-none text-sm bg-transparent cursor-pointer"
                                         />
                                     </td>

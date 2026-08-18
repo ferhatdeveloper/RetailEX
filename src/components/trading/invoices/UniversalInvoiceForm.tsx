@@ -26,6 +26,7 @@ import { ColumnVisibilityMenu } from '../../shared/ColumnVisibilityMenu';
 import { batchCalculateFIFOCost } from '../../../hooks/useFIFOCost';
 import { CostAccountingService } from '../../../services/costAccountingService';
 import { POSProductCatalogModal } from '../../pos/POSProductCatalogModal';
+import { ServiceCatalogModal } from './ServiceCatalogModal';
 import { useProductStore } from '../../../store/useProductStore';
 import type { Customer, Product } from '../../../App';
 import { InvoiceEditDateModal } from './InvoiceEditDateModal';
@@ -706,6 +707,7 @@ export function UniversalInvoiceForm({
   const [selectedProductForHistory, setSelectedProductForHistory] = useState<{ code: string; name: string; id: string } | null>(null);
   const [bulkPriceIncreasePercent, setBulkPriceIncreasePercent] = useState<number | ''>('');
   const [showProductCatalogModal, setShowProductCatalogModal] = useState(false);
+  const [showServiceCatalogModal, setShowServiceCatalogModal] = useState(false);
   const [totalCost, setTotalCost] = useState(0);
   const [totalGrossProfit, setTotalGrossProfit] = useState(0);
   const [profitMargin, setProfitMargin] = useState(0);
@@ -2226,6 +2228,92 @@ export function UniversalInvoiceForm({
         gridRefs.current[`code-${rowIndex + 1}`]?.focus();
       }, 50);
     }, 50);
+  };
+
+  /**
+   * Hizmet katalog modalından tekli seçim: hedef satıra yaz + satır sonuna boş
+   * Hizmet satırı ekle (otomatik alt satır).
+   */
+  const handleServiceSelectForRow = (service: Service, rowIndex?: number) => {
+    const targetRow = rowIndex !== undefined ? rowIndex : (selectedRowForProduct ?? currentRowIndex);
+    setShowServiceCatalogModal(false);
+    setSelectedRowForProduct(null);
+    selectService(service, targetRow);
+  };
+
+  /**
+   * Hizmet katalog modalından çoklu seçim (Ctrl+Click + "Seçilenleri Ekle"):
+   * ilk hizmeti hedef satıra, kalanlarını sonraki satırlara yaz.
+   */
+  const handleServicesBulkSelectForRow = (selectedServices: Service[], rowIndex?: number) => {
+    if (selectedServices.length === 0) return;
+    const targetRow = rowIndex !== undefined ? rowIndex : (selectedRowForProduct ?? currentRowIndex);
+
+    setShowServiceCatalogModal(false);
+    setSelectedRowForProduct(null);
+
+    setItems(prev => {
+      const next = [...prev];
+      const ensureRow = (idx: number): InvoiceItem => {
+        if (!next[idx]) {
+          next[idx] = createEmptyInvoiceLine('Hizmet');
+        } else if (lineIsBlank(next[idx])) {
+          next[idx] = { ...next[idx], type: 'Hizmet' };
+        }
+        return next[idx];
+      };
+      const [first, ...rest] = selectedServices;
+      const firstRowIdx = targetRow;
+
+      // İlk hizmeti hedef satıra yaz (selectService'in mantığını satır içi yap)
+      const writeService = (idx: number, svc: Service) => {
+        const row = ensureRow(idx);
+        let servicePrice = 0;
+        if (invoiceType.category === 'Alis') {
+          if (currency === 'USD' && svc.purchase_price_usd) servicePrice = svc.purchase_price_usd;
+          else if (currency === 'EUR' && svc.purchase_price_eur) servicePrice = svc.purchase_price_eur;
+          else servicePrice = svc.purchase_price || svc.unit_price || 0;
+        } else {
+          if (currency === 'USD' && svc.unit_price_usd) servicePrice = svc.unit_price_usd;
+          else if (currency === 'EUR' && svc.unit_price_eur) servicePrice = svc.unit_price_eur;
+          else servicePrice = svc.unit_price || (svc as any).price || 0;
+        }
+        const qty = row.quantity > 0 ? row.quantity : 1;
+        const gross = qty * servicePrice;
+        const discount = gross * ((row.discountPercent || 0) / 100);
+        next[idx] = {
+          ...row,
+          type: 'Hizmet',
+          code: svc.code,
+          description: svc.name,
+          unit: svc.unit || 'Adet',
+          unitPrice: servicePrice,
+          quantity: qty,
+          amount: gross,
+          netAmount: gross - discount,
+          discountAmount: discount,
+        };
+        if (svc.withholding_rate) {
+          (next[idx] as any).withholdingRate = svc.withholding_rate;
+        }
+      };
+
+      writeService(firstRowIdx, first);
+      rest.forEach((svc, i) => writeService(firstRowIdx + 1 + i, svc));
+
+      // Son boş hizmet satırı ekle (otomatik devam)
+      const lastIdx = firstRowIdx + rest.length;
+      const lastRow = next[lastIdx];
+      if (!lastRow || !lineIsBlank(lastRow)) {
+        next.push(createEmptyInvoiceLine('Hizmet'));
+      }
+
+      return next;
+    });
+
+    toast.success(`${selectedServices.length} hizmet eklendi`);
+    setShowProductDropdown(false);
+    setProductSearch('');
   };
 
   const handleProductKeyDown = (e: React.KeyboardEvent, rowIndex: number) => {
@@ -3849,6 +3937,8 @@ export function UniversalInvoiceForm({
                     handleShowProductHistory={handleShowProductHistory}
                     setSelectedRowForProduct={setSelectedRowForProduct}
                     setShowProductCatalogModal={setShowProductCatalogModal}
+                    setShowServiceCatalogModal={setShowServiceCatalogModal}
+                    isServiceLineType={isInvoiceServiceLineType}
                     searchingRowIndex={searchingRowIndex}
                     productDropdownRef={productDropdownRef}
                     gridRefs={gridRefs}
@@ -4722,6 +4812,27 @@ export function UniversalInvoiceForm({
                   handleProductsBulkSelectForRow(selected, selectedRowForProduct);
                 } else {
                   handleProductsBulkSelectForRow(selected, currentRowIndex);
+                }
+              }}
+            />
+          )}
+
+          {showServiceCatalogModal && (
+            <ServiceCatalogModal
+              services={services}
+              onClose={() => { setShowServiceCatalogModal(false); setSelectedRowForProduct(null); }}
+              onSelect={(service) => {
+                if (selectedRowForProduct !== null) {
+                  handleServiceSelectForRow(service, selectedRowForProduct);
+                } else {
+                  handleServiceSelectForRow(service, currentRowIndex);
+                }
+              }}
+              onAddMultiple={(selected) => {
+                if (selectedRowForProduct !== null) {
+                  handleServicesBulkSelectForRow(selected, selectedRowForProduct);
+                } else {
+                  handleServicesBulkSelectForRow(selected, currentRowIndex);
                 }
               }}
             />

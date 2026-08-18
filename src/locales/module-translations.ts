@@ -4127,6 +4127,12 @@ export const moduleTranslations: Record<string, Record<Language, string>> = {
   catalogClearSelection: { tr: 'Seçimi Kaldır', en: 'Clear Selection', ar: 'إلغاء التحديد', ku: 'هەڵبژاردن بسڕەوە' },
   catalogAddSelected: { tr: 'Seçilenleri Ekle ({count})', en: 'Add Selected ({count})', ar: 'إضافة المحدد ({count})', ku: 'هەڵبژێردراو زیاد بکە ({count})' },
   catalogProductsSelected: { tr: '{count} ürün seçildi', en: '{count} products selected', ar: 'تم تحديد {count} منتج', ku: '{count} بەرهەم هەڵبژێردرا' },
+  serviceSelection: { tr: 'Hizmet Seçimi', en: 'Service Selection', ar: 'اختيار الخدمة', ku: 'هەڵبژاردنی خزمەتگوزاری' },
+  serviceSearchPlaceholder: { tr: 'Hizmet kodu, adı veya kategori ara...', en: 'Search service code, name or category...', ar: 'ابحث عن رمز الخدمة أو الاسم أو الفئة...', ku: 'گەڕان بەدوای کۆد، ناو یان پۆلی خزمەتگوزاری...' },
+  serviceCatalogMultiSelectHint: { tr: 'Çoklu seçim · Ctrl+Click ile işaretleyin', en: 'Multi-select · Ctrl+Click to check items', ar: 'تحديد متعدد · Ctrl+Click للتحديد', ku: 'هەڵبژاردنی چەندین · Ctrl+Click بۆ نیشانکردن' },
+  catalogServicesSelected: { tr: '{count} hizmet seçildi', en: '{count} services selected', ar: 'تم تحديد {count} خدمة', ku: '{count} خزمەتگوزاری هەڵبژێردرا' },
+  noServicesFound: { tr: 'Hizmet bulunamadı', en: 'No services found', ar: 'لم يتم العثور على خدمات', ku: 'هیچ خزمەتگوزارییەک نەدۆزرایەوە' },
+
   searchProductPlaceholder: { tr: 'Ürün ara...', en: 'Search product...', ar: 'بحث عن منتج...', ku: 'گەڕان بۆ بەرهەم...' },
   productNotFound: { tr: 'Ürün bulunamadı', en: 'Product not found', ar: 'المنتج غير موجود', ku: 'بەرهەم نەدۆزرایەوە' },
 
