@@ -50,6 +50,11 @@ import {
   CriticalStockReport,
   WarehouseStockReport,
 } from './ErpCoreReports';
+import { EarningsByProjectReport } from './EarningsByProjectReport';
+import { CashLedgerReport } from './CashLedgerReport';
+import { ContactAccountLegacyReport } from './ContactAccountLegacyReport';
+import { StaffAttendanceReport } from './StaffAttendanceReport';
+import { InvoiceItemsDetailReport } from './InvoiceItemsDetailReport';
 
 import { useBeautyStore } from '../beauty/store/useBeautyStore';
 import { CommissionReport } from '../beauty/components/CommissionReport';
@@ -571,6 +576,8 @@ type ReportTab =
   'top-products' | 'category-analysis' | 'hourly-analysis' | 'cashiers' | 'customer-sales' | 'sales-trend' | 'sales-target' | 'sales-returns' | 'product-gross-profit' |
   // Finansal Raporlar
   'profit-loss' | 'cash-flow' | 'debt-aging' | 'check-tracking' | 'current-account' | 'purchase-summary' | 'supplier-purchase-returns' | 'collection-due' | 'cari-extract' |
+  // VIVA SOLAR — yeni ERP raporları
+  'earnings-by-project' | 'cash-ledger' | 'contact-account-legacy' | 'staff-attendance' | 'invoice-items-detail' |
   // Stok Raporları
   'stock-status' | 'stock-aging' | 'stock-turnover' | 'stock-abc' | 'materials' | 'purchase-promotion-report' | 'expiring-products' | 'critical-stock' | 'warehouse-stock' |
   // Ödeme & İşlem
@@ -4295,6 +4302,11 @@ export function ReportsModule({
           { key: 'cari-extract', label: tm('erpCariExtractTitle'), icon: <AuditOutlined /> },
           { key: 'collection-due', label: tm('erpCollectionDueTitle'), icon: <HourglassOutlined /> },
           { key: 'check-tracking', label: tm('cekSenetTakibi'), icon: <AuditOutlined /> },
+          { key: 'cash-ledger', label: tm('rprCashLedgerTitle') || 'Kasa Defteri', icon: <TransactionOutlined /> },
+          { key: 'earnings-by-project', label: tm('rprEarningsByProjectTitle') || 'Proje Kârlılığı', icon: <RiseOutlined /> },
+          { key: 'contact-account-legacy', label: tm('rprContactLegacyTitle') || 'Eski Cari / Alacak', icon: <AuditOutlined /> },
+          { key: 'staff-attendance', label: tm('rprStaffAttendanceTitle') || 'PDKS / Personel Yoklama', icon: <TeamOutlined /> },
+          { key: 'invoice-items-detail', label: tm('rprInvoiceItemsDetailTitle') || 'Fatura Kalem Detayı', icon: <ShoppingCart className="w-4 h-4" /> },
         ],
       },
       {
@@ -6337,6 +6349,12 @@ export function ReportsModule({
             {selectedTab === 'cari-extract' && <CariExtractReport />}
             {selectedTab === 'critical-stock' && <CriticalStockReport />}
             {selectedTab === 'warehouse-stock' && <WarehouseStockReport />}
+
+            {selectedTab === 'earnings-by-project' && <EarningsByProjectReport />}
+            {selectedTab === 'cash-ledger' && <CashLedgerReport />}
+            {selectedTab === 'contact-account-legacy' && <ContactAccountLegacyReport />}
+            {selectedTab === 'staff-attendance' && <StaffAttendanceReport />}
+            {selectedTab === 'invoice-items-detail' && <InvoiceItemsDetailReport />}
 
             {selectedTab === 'customer-sales' && (
               <CustomerSalesReport sales={effectiveCatalogSales} customers={[]} />
