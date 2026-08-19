@@ -6954,6 +6954,12 @@ export const excelModuleTranslations = {
   reportsAverageDiscountCol: { tr: 'Ortalama İndirim', en: 'Average discount', ar: 'متوسط الخصم', ku: 'تێکڕای داشکاندن' },
   reportsRatePercentCol: { tr: 'Oran', en: 'Rate', ar: 'النسبة', ku: 'ڕێژە' },
   reportsTotalUpper: { tr: 'TOPLAM', en: 'TOTAL', ar: 'الإجمالي', ku: 'کۆی گشتی' },
+  reportsFilterBarTitle: { tr: 'Filtreler', en: 'Filters', ar: 'المرشحات', ku: 'فلتەرەکان' },
+  reportsFilterBarClear: { tr: 'Filtreleri temizle', en: 'Clear filters', ar: 'مسح المرشحات', ku: 'فلتەرەکان بسڕەوە' },
+  reportsFilterBarStartDate: { tr: 'Başlangıç tarihi', en: 'Start date', ar: 'تاريخ البدء', ku: 'بەرواری دەستپێک' },
+  reportsFilterBarEndDate: { tr: 'Bitiş tarihi', en: 'End date', ar: 'تاريخ الانتهاء', ku: 'بەرواری کۆتایی' },
+  reportsFilterBarWarehouse: { tr: 'Ambar', en: 'Warehouse', ar: 'المستودع', ku: 'کۆگا' },
+  reportsFilterBarAllWarehouses: { tr: 'Tüm ambarlar', en: 'All warehouses', ar: 'كل المستودعات', ku: 'هەموو کۆگاکان' },
   reportsStockLoadingProducts: {
     tr: 'Ürün listesi veritabanından güncelleniyor…',
     en: 'Refreshing product list from database…',

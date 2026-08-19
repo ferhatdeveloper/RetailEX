@@ -69,6 +69,8 @@ import {
 import { OverdueUncalledFollowUpReport } from '../beauty/components/OverdueUncalledFollowUpReport';
 import { ReportColumnFilters, type ReportColumnFilterDef } from './shared/ReportColumnFilters';
 import { useReportColumnFiltersPool } from './shared/useReportColumnFilters';
+import { ReportFilterBar } from './shared/ReportFilterBar';
+import { ReportTableFooter } from './shared/ReportTableFooter';
 import { Layout, Menu, ConfigProvider, theme, Input, Button, Dropdown, Modal, Table, Spin, Select } from 'antd';
 import { toast } from 'sonner';
 import { usePermission } from '../../shared/hooks/usePermission';
@@ -5313,6 +5315,17 @@ export function ReportsModule({
                           ))
                         )}
                       </tbody>
+                      <ReportTableFooter
+                        rows={visible}
+                        columns={[
+                          { key: 'name', label: tm('cashierLabel'), align: 'left' },
+                          { key: 'salesCount', label: tm('transactionCount'), aggregate: 'sum', align: 'right' },
+                          { key: 'totalRevenue', label: tm('totalRevenueLabel'), aggregate: 'sum', align: 'right', formatter: (v) => `${formatNumber(v, 2, false)} ${reportCurrency}` },
+                          { key: 'avgSale', label: tm('avgSaleLabel'), aggregate: 'avg', align: 'right', formatter: (v) => `${formatNumber(v, 2, false)} ${reportCurrency}` },
+                          { key: 'cashSales', label: tm('cashLabel'), aggregate: 'sum', align: 'right', formatter: (v) => `${formatNumber(v, 2, false)} ${reportCurrency}` },
+                          { key: 'cardSales', label: tm('cardLabel'), aggregate: 'sum', align: 'right', formatter: (v) => `${formatNumber(v, 2, false)} ${reportCurrency}` },
+                        ]}
+                      />
                     </table>
                   </div>
                 </div>
@@ -5409,6 +5422,18 @@ export function ReportsModule({
                             ))
                           )}
                         </tbody>
+                        <ReportTableFooter
+                          rows={visible}
+                          columns={[
+                            { key: 'rank', label: tm('rankLabel'), align: 'center' },
+                            { key: 'name', label: tm('productNameLabel'), align: 'left' },
+                            { key: 'category', label: tm('categoryLabel'), align: 'left' },
+                            { key: 'quantity', label: tm('salesQuantityLabel'), aggregate: 'sum', align: 'right' },
+                            { key: 'revenue', label: tm('totalRevenueLabel'), aggregate: 'sum', align: 'right', formatter: (v) => `${formatNumber(v, 2, false)} ${reportCurrency}` },
+                            { key: 'avgPrice', label: tm('avgPriceLabel'), aggregate: 'avg', align: 'right', formatter: (v) => `${formatNumber(v, 2, false)} ${reportCurrency}` },
+                            { key: 'stock', label: tm('stockLabel'), aggregate: 'sum', align: 'right' },
+                          ]}
+                        />
                       </table>
                     </div>
                     )}
@@ -5524,6 +5549,15 @@ export function ReportsModule({
                                   })
                                 )}
                               </tbody>
+                              <ReportTableFooter
+                                rows={visible}
+                                columns={[
+                                  { key: 'name', label: tm('categoryLabel'), align: 'left' },
+                                  { key: 'totalRevenue', label: tm('totalRevenueLabel'), aggregate: 'sum', align: 'right', formatter: (v) => `${formatNumber(v, 2, false)} ${reportCurrency}` },
+                                  { key: 'totalQuantity', label: tm('salesQuantityLabel'), aggregate: 'sum', align: 'right' },
+                                  { key: 'avgPrice', label: tm('avgPriceLabel'), aggregate: 'avg', align: 'right', formatter: (v) => `${formatNumber(v, 2, false)} ${reportCurrency}` },
+                                ]}
+                              />
                             </table>
                           </div>
                         );
@@ -5625,6 +5659,28 @@ export function ReportsModule({
                             );
                           })}
                         </tbody>
+                        {(() => {
+                          const rptFooter = reportFilters.forTab('hourly-analysis');
+                          const allHourlyRows = hourlyData.map((h) => ({
+                            hour: h.hour,
+                            label: h.label,
+                            sales: h.sales,
+                            revenue: h.revenue,
+                            avgSale: h.sales > 0 ? h.revenue / h.sales : 0,
+                          }));
+                          const visibleHourly = rptFooter.filtered(allHourlyRows);
+                          return (
+                            <ReportTableFooter
+                              rows={visibleHourly}
+                              columns={[
+                                { key: 'label', label: tm('hourLabel'), align: 'left' },
+                                { key: 'sales', label: tm('transactionCount'), aggregate: 'sum', align: 'right' },
+                                { key: 'revenue', label: tm('totalRevenueLabel'), aggregate: 'sum', align: 'right', formatter: (v) => `${formatNumber(v, 2, false)} ${reportCurrency}` },
+                                { key: 'avgSale', label: tm('avgSaleLabel'), aggregate: 'avg', align: 'right', formatter: (v) => `${formatNumber(v, 2, false)} ${reportCurrency}` },
+                              ]}
+                            />
+                          );
+                        })()}
                       </table>
                     </div>
                   </div>
@@ -5930,16 +5986,17 @@ export function ReportsModule({
                                   </tr>
                                 ))
                               )}
-                              <tr className="bg-gray-50 font-bold">
-                                <td className="px-4 py-3">{tm('reportsTotalUpper')}</td>
-                                <td className="px-4 py-3 text-right">{totalCount}</td>
-                                <td className="px-4 py-3 text-right text-orange-600">{formatNumber(totalDiscount, 2, false)} {reportCurrency}</td>
-                                <td className="px-4 py-3 text-right">
-                                  {totalCount > 0 ? formatNumber(totalDiscount / totalCount, 2, false) : '0'} {reportCurrency}
-                                </td>
-                                <td className="px-4 py-3 text-right">100%</td>
-                              </tr>
                             </tbody>
+                            <ReportTableFooter
+                              rows={visible}
+                              columns={[
+                                { key: 'name', label: tm('reportsDiscountTypeCol'), align: 'left' },
+                                { key: 'salesCount', label: tm('transactionCount'), aggregate: 'sum', align: 'right' },
+                                { key: 'discountAmount', label: tm('reportsTotalDiscount'), aggregate: 'sum', align: 'right', formatter: (v) => `${formatNumber(v, 2, false)} ${reportCurrency}` },
+                                { key: 'avgDiscount', label: tm('reportsAverageDiscountCol'), aggregate: 'avg', align: 'right', formatter: (v) => `${formatNumber(v, 2, false)} ${reportCurrency}` },
+                                { key: 'ratePct', label: tm('reportsRatePercentCol'), aggregate: 'sum', align: 'right', formatter: (v) => `${formatNumber(v, 1, false)}%` },
+                              ]}
+                            />
                           </table>
                         </div>
                       );
@@ -6085,6 +6142,18 @@ export function ReportsModule({
                                 ))
                               )}
                             </tbody>
+                            <ReportTableFooter
+                              rows={visible}
+                              columns={[
+                                { key: 'name', label: tm('productNameLabel'), align: 'left' },
+                                { key: 'category', label: tm('categoryLabel'), align: 'left' },
+                                { key: 'stock', label: tm('reportsCurrentStock'), aggregate: 'sum', align: 'right' },
+                                { key: 'minStock', label: tm('reportsMinStockCol'), aggregate: 'sum', align: 'right' },
+                                { key: 'price', label: tm('reportsPriceCol'), aggregate: 'avg', align: 'right', formatter: (v) => `${formatNumber(v, 2, false)} ${reportCurrency}` },
+                                { key: 'value', label: tm('reportsStockValue'), aggregate: 'sum', align: 'right', formatter: (v) => `${formatNumber(v, 2, false)} ${reportCurrency}` },
+                                { key: 'status', label: tm('reportsStatusCol'), align: 'center' },
+                              ]}
+                            />
                           </table>
                         </div>
                       );
@@ -6288,6 +6357,18 @@ export function ReportsModule({
                                 ))
                               )}
                             </tbody>
+                            <ReportTableFooter
+                              rows={visible}
+                              columns={[
+                                { key: 'name', label: tm('reportColProduct'), align: 'left' },
+                                { key: 'prevQty', label: tm('reportColPrevQty'), aggregate: 'sum', align: 'right' },
+                                { key: 'currQty', label: tm('reportColCurrQty'), aggregate: 'sum', align: 'right' },
+                                { key: 'qtyPct', label: tm('reportColQtyDelta'), aggregate: 'avg', align: 'right', formatter: (v) => `${formatNumber(v, 1, false)}%` },
+                                { key: 'prevRev', label: tm('reportColPrevRev'), aggregate: 'sum', align: 'right', formatter: (v) => `${formatNumber(v, 2, false)} ${reportCurrency}` },
+                                { key: 'currRev', label: tm('reportColCurrRev'), aggregate: 'sum', align: 'right', formatter: (v) => `${formatNumber(v, 2, false)} ${reportCurrency}` },
+                                { key: 'revPct', label: tm('reportColRevDelta'), aggregate: 'avg', align: 'right', formatter: (v) => `${formatNumber(v, 1, false)}%` },
+                              ]}
+                            />
                           </table>
                         </div>
                       );
@@ -6413,6 +6494,20 @@ export function ReportsModule({
                                 ))
                               )}
                             </tbody>
+                            <ReportTableFooter
+                              rows={visible}
+                              columns={[
+                                { key: 'invoiceDate', label: tm('date'), align: 'left' },
+                                { key: 'invoiceNo', label: tm('invoiceNo'), align: 'left' },
+                                { key: 'supplierName', label: tm('supplier'), align: 'left' },
+                                { key: 'productCode', label: tm('productGridColCode'), align: 'left' },
+                                { key: 'productName', label: tm('productName'), align: 'left' },
+                                { key: 'quantity', label: tm('quantity'), aggregate: 'sum', align: 'right' },
+                                { key: 'allocatedUnitCost', label: tm('unitCost'), aggregate: 'avg', align: 'right', formatter: (v) => `${formatNumber(v, 2, false)} ${reportCurrency}` },
+                                { key: 'allocatedTotalCost', label: tm('purchasePromotionAllocatedCost'), aggregate: 'sum', align: 'right', formatter: (v) => `${formatNumber(v, 2, false)} ${reportCurrency}` },
+                                { key: 'invoicePaidTotal', label: tm('purchasePromotionInvoicePaid'), aggregate: 'sum', align: 'right', formatter: (v) => `${formatNumber(v, 2, false)} ${reportCurrency}` },
+                              ]}
+                            />
                           </table>
                         </div>
                       </div>
@@ -6832,6 +6927,17 @@ export function ReportsModule({
                                 ))
                               )}
                             </tbody>
+                            <ReportTableFooter
+                              rows={visible}
+                              columns={[
+                                { key: 'name', label: tm('reportColProduct'), align: 'left' },
+                                { key: 'category', label: tm('reportsColCategory'), align: 'left' },
+                                { key: 'stock', label: tm('reportsColStock'), aggregate: 'sum', align: 'right' },
+                                { key: 'daysSinceMovement', label: tm('reportsStockAgeThLastMove'), aggregate: 'avg', align: 'right', formatter: (v) => tm('reportsDaysWithN').replace('{n}', formatNumber(v, 1, false)) },
+                                { key: 'value', label: tm('reportsColStockValue'), aggregate: 'sum', align: 'right', formatter: (v) => `${formatNumber(v, 2, false)} ${reportCurrency}` },
+                                { key: 'bucket', label: tm('reportsStockAgeThBucket'), align: 'center' },
+                              ]}
+                            />
                           </table>
                         </div>
                       );
@@ -6933,6 +7039,19 @@ export function ReportsModule({
                                 ))
                               )}
                             </tbody>
+                            <ReportTableFooter
+                              rows={visible}
+                              columns={[
+                                { key: 'name', label: tm('reportColProduct'), align: 'left' },
+                                { key: 'category', label: tm('reportsColCategory'), align: 'left' },
+                                { key: 'soldQty', label: tm('reportsStockTurnThSoldQty'), aggregate: 'sum', align: 'right' },
+                                { key: 'revenue', label: tm('totalRevenueLabel'), aggregate: 'sum', align: 'right', formatter: (v) => `${formatNumber(v, 2, false)} ${reportCurrency}` },
+                                { key: 'stock', label: tm('invCurrentStockLbl'), aggregate: 'sum', align: 'right' },
+                                { key: 'ratio', label: tm('reportsStockTurnThSalesStockRatio'), aggregate: 'avg', align: 'right' },
+                                { key: 'annualizedTurnover', label: tm('reportsStockTurnThAnnualTurn'), aggregate: 'avg', align: 'right' },
+                                { key: 'daysCover', label: tm('reportsStockTurnThStockDays'), aggregate: 'avg', align: 'right', formatter: (v) => tm('reportsDaysWithN').replace('{n}', formatNumber(v, 1, false)) },
+                              ]}
+                            />
                           </table>
                         </div>
                       );
@@ -7095,6 +7214,19 @@ export function ReportsModule({
                                 ))
                               )}
                             </tbody>
+                            <ReportTableFooter
+                              rows={visible}
+                              columns={[
+                                { key: 'abc', label: tm('reportsAbcThClass'), align: 'left' },
+                                { key: 'name', label: tm('reportColProduct'), align: 'left' },
+                                { key: 'category', label: tm('reportsColCategory'), align: 'left' },
+                                { key: 'revenue', label: tm('reportsAbcThRevenuePeriod'), aggregate: 'sum', align: 'right', formatter: (v) => `${formatNumber(v, 2, false)} ${reportCurrency}` },
+                                { key: 'stock', label: tm('reportsColStock'), aggregate: 'sum', align: 'right' },
+                                { key: 'stockValue', label: tm('reportsColStockValue'), aggregate: 'sum', align: 'right', formatter: (v) => `${formatNumber(v, 2, false)} ${reportCurrency}` },
+                                { key: 'metric', label: tm('reportsAbcThMetric'), aggregate: 'sum', align: 'right', formatter: (v) => `${formatNumber(v, 2, false)} ${reportCurrency}` },
+                                { key: 'cumPct', label: tm('reportsAbcThCumPct'), aggregate: 'max', align: 'right', formatter: (v) => `${formatNumber(v, 1, false)}%` },
+                              ]}
+                            />
                           </table>
                         </div>
                       );
@@ -7442,6 +7574,28 @@ export function ReportsModule({
                                     );
                                   })}
                                 </tbody>
+                                <ReportTableFooter
+                                  rows={visibleItems as any[]}
+                                  columns={
+                                    isErpServiceBreakdown
+                                      ? [
+                                          { key: 'date', label: tm('date'), align: 'left' },
+                                          { key: 'customerName', label: tm('customer'), align: 'left' },
+                                          { key: 'staffName', label: tm('cashier'), align: 'left' },
+                                          { key: 'receiptNumber', label: tm('reportsThOrderNo'), align: 'left' },
+                                          { key: 'amount', label: tm('amount'), aggregate: 'sum', align: 'right', formatter: (v) => `${formatNumber(v, 2, false)} ${reportCurrency}` },
+                                          { key: 'status', label: tm('status'), align: 'left' },
+                                        ]
+                                      : [
+                                          { key: 'date', label: tm('date'), align: 'left' },
+                                          { key: 'customer_name', label: tm('customer'), align: 'left' },
+                                          { key: 'specialist_name', label: tm('bStaffView'), align: 'left' },
+                                          { key: 'device_name', label: tm('bDeviceView'), align: 'left' },
+                                          { key: 'total_price', label: tm('amount'), aggregate: 'sum', align: 'right', formatter: (v) => `${formatNumber(v, 2, false)} ${reportCurrency}` },
+                                          { key: 'status', label: tm('status'), align: 'left' },
+                                        ]
+                                  }
+                                />
                               </table>
                             </div>
                           </div>
