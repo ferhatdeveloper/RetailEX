@@ -1,5 +1,7 @@
 import React, { useState, useMemo } from 'react';
 import { Users } from 'lucide-react';
+import { SearchOutlined } from '@ant-design/icons';
+import { Input } from 'antd';
 import type { Sale, Customer } from '../../App';
 import { formatNumber } from '../../utils/formatNumber';
 import { BarChart, Bar, LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer } from 'recharts';
@@ -17,6 +19,7 @@ export function CustomerSalesReport({ sales, customers }: CustomerSalesReportPro
     start: new Date(Date.now() - 30 * 24 * 60 * 60 * 1000).toISOString().split('T')[0],
     end: new Date().toISOString().split('T')[0],
   });
+  const [customerFilter, setCustomerFilter] = useState('');
 
   const unknownCustomerLabel = tm('rptCustUnknown');
   const unknownShort = tm('rptCustUnknownShort');
@@ -65,8 +68,32 @@ export function CustomerSalesReport({ sales, customers }: CustomerSalesReportPro
       .slice(0, 20);
   }, [sales, customers, unknownCustomerLabel]);
 
-  const totalCustomers = new Set(sales.map((s) => s.customerId)).size;
-  const totalRevenue = customerSales.reduce((sum, c) => sum + c.totalRevenue, 0);
+  const filterTerm = customerFilter.trim().toLowerCase();
+  const filteredCustomerSales = useMemo(() => {
+    if (!filterTerm) return customerSales;
+    return customerSales.filter((item) => {
+      const name = (item.customer?.name || unknownCustomerLabel).toLowerCase();
+      const id = String(item.customer?.id ?? '').toLowerCase();
+      return name.includes(filterTerm) || id.includes(filterTerm);
+    });
+  }, [customerSales, filterTerm, unknownCustomerLabel]);
+
+  const filteredSales = useMemo(() => {
+    if (!filterTerm) return sales;
+    return sales.filter((sale) => {
+      const cid = String(sale.customerId ?? '').toLowerCase();
+      const cname = String(sale.customerName ?? '').toLowerCase();
+      const matchedCustomer = customers?.find((c) => String(c.id).toLowerCase() === cid);
+      const resolvedName = String(matchedCustomer?.name ?? cname).toLowerCase();
+      return cid.includes(filterTerm) || cname.includes(filterTerm) || resolvedName.includes(filterTerm);
+    });
+  }, [sales, customers, filterTerm]);
+
+  const totalCustomers = useMemo(() => new Set(filteredSales.map((s) => s.customerId)).size, [filteredSales]);
+  const totalRevenue = useMemo(
+    () => filteredCustomerSales.reduce((sum, c) => sum + c.totalRevenue, 0),
+    [filteredCustomerSales],
+  );
 
   return (
     <div className="space-y-4">
@@ -79,7 +106,17 @@ export function CustomerSalesReport({ sales, customers }: CustomerSalesReportPro
               <p className="text-sm text-gray-600">{tm('rptCustSubtitle')}</p>
             </div>
           </div>
-          <div className="flex gap-2">
+          <div className="flex flex-wrap gap-2 items-center">
+            <Input
+              allowClear
+              size="middle"
+              value={customerFilter}
+              onChange={(e) => setCustomerFilter(e.target.value)}
+              placeholder={tm('rptCustFilterPlaceholder')}
+              prefix={<SearchOutlined className="text-slate-400" />}
+              className="w-64"
+              style={{ width: 260 }}
+            />
             <input
               type="date"
               value={dateRange.start}
@@ -118,9 +155,14 @@ export function CustomerSalesReport({ sales, customers }: CustomerSalesReportPro
       </div>
 
       <div className="bg-white rounded-lg border p-4">
-        <h4 className="text-lg font-semibold mb-4">{tm('rptCustTop10Chart')}</h4>
+        <div className="flex items-center justify-between mb-4">
+          <h4 className="text-lg font-semibold">{tm('rptCustTop10Chart')}</h4>
+          <span className="text-xs text-slate-500">
+            {filterTerm ? `${tm('rptCustFilteredCount')}: ${filteredCustomerSales.length}` : ''}
+          </span>
+        </div>
         <ResponsiveContainer width="100%" height={400}>
-          <BarChart data={customerSales.slice(0, 10)}>
+          <BarChart data={filteredCustomerSales.slice(0, 10)}>
             <CartesianGrid strokeDasharray="3 3" />
             <XAxis dataKey="customer.name" angle={-45} textAnchor="end" height={100} />
             <YAxis />
@@ -151,28 +193,36 @@ export function CustomerSalesReport({ sales, customers }: CustomerSalesReportPro
               </tr>
             </thead>
             <tbody className="divide-y">
-              {customerSales.map((item, index) => (
-                <tr key={index} className="hover:bg-gray-50">
-                  <td className="px-4 py-3">
-                    <div className="flex items-center gap-2">
-                      <div className="w-8 h-8 bg-blue-600 rounded flex items-center justify-center text-white text-sm">
-                        {(item.customer?.name || unknownShort).charAt(0).toUpperCase()}
-                      </div>
-                      <span className="font-medium">{item.customer?.name || unknownCustomerLabel}</span>
-                    </div>
-                  </td>
-                  <td className="px-4 py-3 text-right">
-                    <span className="px-2 py-1 bg-blue-100 text-blue-700 rounded text-sm">{item.salesCount}</span>
-                  </td>
-                  <td className="px-4 py-3 text-right text-green-600 font-semibold">
-                    {formatNumber(item.totalRevenue, 2, false)} IQD
-                  </td>
-                  <td className="px-4 py-3 text-right text-sm">{formatNumber(item.avgSale, 2, false)} IQD</td>
-                  <td className="px-4 py-3 text-sm text-gray-600">
-                    {new Date(item.lastSaleDate).toLocaleDateString(dateLocale)}
+              {filteredCustomerSales.length === 0 ? (
+                <tr>
+                  <td colSpan={5} className="px-4 py-10 text-center text-slate-500 text-sm">
+                    {tm('noDataFound')}
                   </td>
                 </tr>
-              ))}
+              ) : (
+                filteredCustomerSales.map((item, index) => (
+                  <tr key={index} className="hover:bg-gray-50">
+                    <td className="px-4 py-3">
+                      <div className="flex items-center gap-2">
+                        <div className="w-8 h-8 bg-blue-600 rounded flex items-center justify-center text-white text-sm">
+                          {(item.customer?.name || unknownShort).charAt(0).toUpperCase()}
+                        </div>
+                        <span className="font-medium">{item.customer?.name || unknownCustomerLabel}</span>
+                      </div>
+                    </td>
+                    <td className="px-4 py-3 text-right">
+                      <span className="px-2 py-1 bg-blue-100 text-blue-700 rounded text-sm">{item.salesCount}</span>
+                    </td>
+                    <td className="px-4 py-3 text-right text-green-600 font-semibold">
+                      {formatNumber(item.totalRevenue, 2, false)} IQD
+                    </td>
+                    <td className="px-4 py-3 text-right text-sm">{formatNumber(item.avgSale, 2, false)} IQD</td>
+                    <td className="px-4 py-3 text-sm text-gray-600">
+                      {new Date(item.lastSaleDate).toLocaleDateString(dateLocale)}
+                    </td>
+                  </tr>
+                ))
+              )}
             </tbody>
           </table>
         </div>

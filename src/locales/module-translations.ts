@@ -7776,6 +7776,18 @@ export const excelModuleTranslations = {
     ar: 'أعلى العملاء مبيعات (أفضل 10)',
     ku: 'سەرترین کڕیارەکان (10)',
   },
+  rptCustFilterPlaceholder: {
+    tr: 'Müşteri ara...',
+    en: 'Search customer...',
+    ar: 'بحث عن عميل...',
+    ku: 'گەڕان بەدوای کڕیاردا...',
+  },
+  rptCustFilteredCount: {
+    tr: 'Eşleşen müşteri',
+    en: 'Matched customers',
+    ar: 'العملاء المتطابقون',
+    ku: 'کڕیارە هاوبەشەکان',
+  },
   rptCustDetailsSection: { tr: 'Müşteri Satış Detayları', en: 'Customer sales details', ar: 'تفاصيل مبيعات العملاء', ku: 'وردەکاری فرۆشتنی کڕیار' },
   rptCustLastSale: { tr: 'Son Satış', en: 'Last sale', ar: 'آخر بيع', ku: 'دوایین فرۆشتن' },
   rptCustUnknown: { tr: 'Bilinmeyen Müşteri', en: 'Unknown customer', ar: 'عميل غير معروف', ku: 'کڕیاری نەناسراو' },
