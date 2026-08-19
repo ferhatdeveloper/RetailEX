@@ -37,12 +37,14 @@ export function PartyStatementPanel({ party, onClose }: PartyStatementPanelProps
   const defaultRange = useMemo(() => defaultEkstreDateRange(), []);
   const [start, setStart] = useState(defaultRange.start);
   const [end, setEnd] = useState(defaultRange.end);
+  const [showCancelled, setShowCancelled] = useState(false);
+  const [excludeCompanyDebts, setExcludeCompanyDebts] = useState(false);
   const [loading, setLoading] = useState(false);
   const [printing, setPrinting] = useState(false);
   const [data, setData] = useState<PartyStatement | null>(null);
   const [contextMenu, setContextMenu] = useState<{ x: number; y: number; row: PartyStatement['rows'][number] } | null>(null);
 
-  const load = async (s: string, e: string) => {
+  const load = async (s: string, e: string, showCancelledArg = showCancelled, excludeCompanyDebtsArg = excludeCompanyDebts) => {
     setLoading(true);
     try {
       if (party.card_type === 'partner') {
@@ -52,7 +54,12 @@ export function PartyStatementPanel({ party, onClose }: PartyStatementPanelProps
           /* ekstre yine yüklensin */
         }
       }
-      setData(await getPartyStatement(party.id, party.card_type, s, e));
+      setData(
+        await getPartyStatement(party.id, party.card_type, s, e, {
+          showCancelled: showCancelledArg,
+          excludeCompanyDebts: excludeCompanyDebtsArg,
+        }),
+      );
     } catch (err: unknown) {
       setData(null);
       toast.error(err instanceof Error ? err.message : t('party.statement.loadError'));
@@ -65,6 +72,11 @@ export function PartyStatementPanel({ party, onClose }: PartyStatementPanelProps
     void load(start, end);
     // eslint-disable-next-line react-hooks/exhaustive-deps -- party değişince yeniden yükle
   }, [party.id]);
+
+  useEffect(() => {
+    void load(start, end, showCancelled, excludeCompanyDebts);
+    // toggle değişiminde tarih değişmese bile yeniden yükle
+  }, [showCancelled, excludeCompanyDebts]);
 
   const printAll = async () => {
     if (!data) return;
@@ -175,6 +187,50 @@ export function PartyStatementPanel({ party, onClose }: PartyStatementPanelProps
             </button>
             <button
               type="button"
+              onClick={() => setShowCancelled((v) => !v)}
+              aria-pressed={showCancelled}
+              title={t('party.statement.showCancelledHint')}
+              className={`flex items-center gap-1 rounded-lg border px-2.5 py-1.5 text-[11px] font-bold transition-colors ${
+                showCancelled
+                  ? 'border-emerald-600 bg-emerald-600 text-white shadow-sm'
+                  : 'border-gray-300 bg-white text-gray-600 hover:bg-gray-50'
+              }`}
+            >
+              <span
+                className={`inline-block h-2 w-2 rounded-full ${
+                  showCancelled ? 'bg-white' : 'bg-rose-400'
+                }`}
+                aria-hidden="true"
+              />
+              {showCancelled
+                ? t('party.statement.showCancelled')
+                : t('party.statement.hideCancelled')}
+            </button>
+            <button
+              type="button"
+              onClick={() => setExcludeCompanyDebts((v) => !v)}
+              aria-pressed={excludeCompanyDebts}
+              title={
+                party.card_type === 'partner' || party.card_type === 'employee'
+                  ? t('party.statement.excludeCompanyDebtsHint')
+                  : t('party.statement.excludeCompanyDebtsNoEffect')
+              }
+              className={`flex items-center gap-1 rounded-lg border px-2.5 py-1.5 text-[11px] font-bold transition-colors ${
+                excludeCompanyDebts
+                  ? 'border-amber-600 bg-amber-500 text-white shadow-sm'
+                  : 'border-gray-300 bg-white text-gray-600 hover:bg-gray-50'
+              }`}
+            >
+              <span
+                className={`inline-block h-2 w-2 rounded-full ${
+                  excludeCompanyDebts ? 'bg-white' : 'bg-amber-400'
+                }`}
+                aria-hidden="true"
+              />
+              {t('party.statement.excludeCompanyDebts')}
+            </button>
+            <button
+              type="button"
               onClick={() => void printAll()}
               disabled={!data || printing}
               className="rounded-lg border border-transparent p-2 hover:border-gray-300 hover:bg-gray-200 disabled:opacity-40"
@@ -236,12 +292,13 @@ export function PartyStatementPanel({ party, onClose }: PartyStatementPanelProps
             </thead>
             <tbody>
               {rows.map((row, idx) => {
-                const { label, color } = ficheTypeToInfo(row.transaction_type, 0, false);
+                const isCancelled = String(row.transaction_type || '').toUpperCase().startsWith('CANCELLED_');
+                const { label, color } = ficheTypeToInfo(row.transaction_type, 0, isCancelled);
                 const amt = row.debit || row.credit;
                 return (
                   <tr
                     key={row.id || idx}
-                    className={`border-b border-gray-100 hover:bg-emerald-50/40 cursor-context-menu ${idx % 2 ? 'bg-gray-50/50' : ''}`}
+                    className={`border-b border-gray-100 hover:bg-emerald-50/40 cursor-context-menu ${idx % 2 ? 'bg-gray-50/50' : ''} ${isCancelled ? 'opacity-60' : ''}`}
                     onContextMenu={(e) => {
                       e.preventDefault();
                       setContextMenu({ x: e.clientX, y: e.clientY, row });
@@ -269,7 +326,9 @@ export function PartyStatementPanel({ party, onClose }: PartyStatementPanelProps
                       )}
                     </td>
                     <td className="px-4 py-2">
-                      <span className={`rounded-full px-2 py-0.5 text-[10px] font-black uppercase ${color}`}>{label}</span>
+                      <span className={`rounded-full px-2 py-0.5 text-[10px] font-black uppercase ${color}`}>
+                        {isCancelled ? t('party.statement.cancelledBadge') : label}
+                      </span>
                     </td>
                     <td className="max-w-md break-words px-4 py-2 text-gray-700">{row.definition || ''}</td>
                     <td className="whitespace-nowrap px-4 py-2 text-right font-bold text-red-600">

@@ -66,12 +66,28 @@ function partyLedgerTable(): string {
 /**
  * partyId + cardType için tarih aralığında UNION ALL ekstresi döner.
  * start/end: 'YYYY-MM-DD' (veya tam ISO). Boş bırakılırsa dönemin tamamı.
+ *
+ * opts:
+ *   - showCancelled        : default false. true ise iptal edilen (CANCELLED_*) ve
+ *                            source_module='cash_delete' ledger satırları da döner.
+ *   - excludeCompanyDebts  : default false. true ise "işletmenin ortağa/personele
+ *                            borçlandığı" transaction_type'lar filtrelenir
+ *                            (KAR_DAGITIMI, ORTAK_DAGITIM_KAR, SERMAYE_TAHSILAT,
+ *                            ORTAK_SERMAYE_TAHSILAT, ORTAK_PARA_GIRIS).
+ *                            Açılış bakiyesine de aynı filtre uygulanır; running
+ *                            balance tutarlı kalır.
  */
+export interface GetPartyStatementOptions {
+  showCancelled?: boolean;
+  excludeCompanyDebts?: boolean;
+}
+
 export async function getPartyStatement(
   partyId: string,
   cardType: PartyCardType,
   start?: string,
   end?: string,
+  opts: GetPartyStatementOptions = {},
 ): Promise<PartyStatement> {
   await ensurePartyPeriodTables();
   const party = await postgres.query(
@@ -89,6 +105,28 @@ export async function getPartyStatement(
     return clauses.length ? ` AND ${clauses.join(' AND ')}` : '';
   };
 
+  const showCancelled = opts.showCancelled === true;
+  const excludeCompanyDebts = opts.excludeCompanyDebts === true;
+
+  /** İptal edilenleri gizle: source_module='cash_delete' (ledger) veya CANCELLED_* (cash_lines) */
+  const cancelledSql = showCancelled ? '' : ` AND cl.source_module IS DISTINCT FROM 'cash_delete' AND cl.transaction_type NOT LIKE 'CANCELLED_%'`;
+  const cancelledLedgerSql = showCancelled ? '' : ` AND pl.source_module IS DISTINCT FROM 'cash_delete' AND pl.transaction_type NOT LIKE 'CANCELLED_%'`;
+
+  /** "İşletmenin ortağa/personele borçlandığı" transaction_type'lar (sign > 0 partner hareketleri) */
+  const COMPANY_DEBT_TYPES = [
+    'KAR_DAGITIMI',
+    'ORTAK_DAGITIM_KAR',
+    'SERMAYE_TAHSILAT',
+    'ORTAK_SERMAYE_TAHSILAT',
+    'ORTAK_PARA_GIRIS',
+  ] as const;
+  const companyDebtSql = excludeCompanyDebts
+    ? ` AND cl.transaction_type NOT IN (${COMPANY_DEBT_TYPES.map((t) => `'${t}'`).join(',')})`
+    : '';
+  const companyDebtLedgerSql = excludeCompanyDebts
+    ? ` AND pl.transaction_type NOT IN (${COMPANY_DEBT_TYPES.map((t) => `'${t}'`).join(',')})`
+    : '';
+
   const params: any[] = [partyId];
   if (start) params.push(start);
   if (end) params.push(end);
@@ -97,6 +135,8 @@ export async function getPartyStatement(
 
   if (resolvedType === 'customer') {
     // Müşteri ekstresi: sales + cash_lines.customer_id
+    // showCancelled açıkken iptal edilen sales kayıtları da döner.
+    // excludeCompanyDebts müşteri için NO-OP (müşteriye kâr dağıtımı yazılmaz).
     sql = `
       SELECT
         s.date,
@@ -109,10 +149,12 @@ export async function getPartyStatement(
         s.id
       FROM ${salesTable()} s
       WHERE s.customer_id = $1::text::uuid
-        AND s.is_cancelled = false${dateCond('s.date')}
+        ${showCancelled ? '' : 'AND s.is_cancelled = false'}${dateCond('s.date')}
     `;
   } else if (resolvedType === 'supplier') {
-    // Tedarikçi: cash_lines (müşteri olarak bağlanmışsa) — mevcut supplier ekstresiyle hizalanır
+    // Tedarikçi: cash_lines (müşteri olarak bağlanmışsa) — mevcut supplier ekstresiyle hizalanır.
+    // showCancelled: cash_lines iptal satırları (CANCELLED_* / source_module='cash_delete') filtrelenir.
+    // excludeCompanyDebts tedarikçi için NO-OP.
     sql = `
       SELECT
         cl.date,
@@ -125,6 +167,8 @@ export async function getPartyStatement(
         cl.id
       FROM ${cashLinesTable()} cl
       WHERE cl.customer_id = $1::text::uuid${dateCond('cl.date')}
+        ${cancelledSql}
+        ${companyDebtSql}
     `;
   } else {
     // Personel/ortak: ledger kaynak; kasa satırı yalnızca fiş no için JOIN.
@@ -142,6 +186,8 @@ export async function getPartyStatement(
       FROM ${partyLedgerTable()} pl
       LEFT JOIN ${cashLinesTable()} cl ON cl.id = pl.cash_line_id
       WHERE pl.party_id = $1::text::uuid${dateCond('pl.date')}
+        ${cancelledLedgerSql}
+        ${companyDebtLedgerSql}
       UNION ALL
       SELECT
         cl.date,
@@ -161,6 +207,8 @@ export async function getPartyStatement(
         AND NOT EXISTS (
           SELECT 1 FROM ${partyLedgerTable()} pl2 WHERE pl2.cash_line_id = cl.id
         )
+        ${cancelledSql}
+        ${companyDebtSql}
     `;
   }
 
@@ -201,6 +249,13 @@ export async function getPartyStatement(
   lines.sort((a, b) => new Date(a.date).getTime() - new Date(b.date).getTime());
 
   // Açılış balance: tarih aralığından önceki tüm hareketlerin toplamı
+  // showCancelled/excludeCompanyDebts filtreleri ana sorgu ile aynı uygulanır
+  // (running balance tutarlılığı için gerekli).
+  const opCancelledSql = showCancelled ? '' : ` AND source_module IS DISTINCT FROM 'cash_delete' AND transaction_type NOT LIKE 'CANCELLED_%'`;
+  const opCompanyDebtSql = excludeCompanyDebts
+    ? ` AND transaction_type NOT IN (${COMPANY_DEBT_TYPES.map((t) => `'${t}'`).join(',')})`
+    : '';
+
   let opening = 0;
   if (start) {
     const opSql =
@@ -209,32 +264,36 @@ export async function getPartyStatement(
            FROM ${salesTable()} WHERE customer_id = $1::text::uuid AND date < $2::date`
         : resolvedType === 'supplier'
           ? `SELECT COALESCE(SUM(CASE WHEN transaction_type IN ('ODEME','TAHSILAT_CIKIS','VIRMAN_CIKIS') THEN f_amount ELSE 0 END), 0) AS t
-             FROM ${cashLinesTable()} WHERE customer_id = $1::text::uuid AND date < $2::date`
+             FROM ${cashLinesTable()} WHERE customer_id = $1::text::uuid AND date < $2::date${opCancelledSql}`
           : resolvedType === 'employee'
           ? `SELECT
               (SELECT COALESCE(SUM(CASE
                  WHEN transaction_type = 'MAAS_HAKKEDIS' THEN amount
                  WHEN transaction_type IN ('MAAS_ODEME','AVANS_ODEME') THEN -amount
                  ELSE 0 END), 0) FROM ${partyLedgerTable()}
-               WHERE party_id = $1::text::uuid AND date < $2::date)
-             + (SELECT COALESCE(SUM(CASE
-                 WHEN transaction_type IN ('MAAS_ODEME','AVANS_ODEME') THEN -f_amount
-                 ELSE 0 END), 0) FROM ${cashLinesTable()} cl
-               WHERE cl.party_id = $1::text::uuid AND cl.date < $2::date
-                 AND NOT EXISTS (
-                   SELECT 1 FROM ${partyLedgerTable()} pl2 WHERE pl2.cash_line_id = cl.id
-                 )) AS t`
+               WHERE party_id = $1::text::uuid AND date < $2::date${opCancelledSql}${opCompanyDebtSql})
+            + (SELECT COALESCE(SUM(CASE
+                WHEN transaction_type IN ('MAAS_ODEME','AVANS_ODEME') THEN -f_amount
+                ELSE 0 END), 0) FROM ${cashLinesTable()} cl
+              WHERE cl.party_id = $1::text::uuid AND cl.date < $2::date
+                AND NOT EXISTS (
+                  SELECT 1 FROM ${partyLedgerTable()} pl2 WHERE pl2.cash_line_id = cl.id
+                )
+                ${opCancelledSql}
+                ${opCompanyDebtSql}) AS t`
           : `SELECT
               (SELECT COALESCE(SUM(amount * sign), 0) FROM ${partyLedgerTable()}
-               WHERE party_id = $1::text::uuid AND date < $2::date)
-             + (SELECT COALESCE(SUM(CASE
-                 WHEN transaction_type IN ('ORTAK_DAGITIM_KAR','ORTAK_SERMAYE_TAHSILAT','ORTAK_PARA_GIRIS','SERMAYE_TAHSILAT') THEN f_amount
-                 WHEN transaction_type IN ('ORTAK_DAGITIM_ZARAR','ORTAK_SERMAYE_CIKIS','ORTAK_SERMAYE_ODEME','ORTAK_PARA_CIKIS','SERMAYE_ODEME') THEN -f_amount
-                 ELSE 0 END), 0) FROM ${cashLinesTable()} cl
-               WHERE cl.party_id = $1::text::uuid AND cl.date < $2::date
-                 AND NOT EXISTS (
-                   SELECT 1 FROM ${partyLedgerTable()} pl2 WHERE pl2.cash_line_id = cl.id
-                 )) AS t`;
+               WHERE party_id = $1::text::uuid AND date < $2::date${opCancelledSql}${opCompanyDebtSql})
+            + (SELECT COALESCE(SUM(CASE
+                WHEN transaction_type IN ('ORTAK_DAGITIM_KAR','ORTAK_SERMAYE_TAHSILAT','ORTAK_PARA_GIRIS','SERMAYE_TAHSILAT') THEN f_amount
+                WHEN transaction_type IN ('ORTAK_DAGITIM_ZARAR','ORTAK_SERMAYE_CIKIS','ORTAK_SERMAYE_ODEME','ORTAK_PARA_CIKIS','SERMAYE_ODEME') THEN -f_amount
+                ELSE 0 END), 0) FROM ${cashLinesTable()} cl
+              WHERE cl.party_id = $1::text::uuid AND cl.date < $2::date
+                AND NOT EXISTS (
+                  SELECT 1 FROM ${partyLedgerTable()} pl2 WHERE pl2.cash_line_id = cl.id
+                )
+                ${opCancelledSql}
+                ${opCompanyDebtSql}) AS t`;
     const op = await postgres.query(opSql, [partyId, start]);
     opening = parseFloat(op?.rows?.[0]?.t || 0);
   }

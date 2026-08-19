@@ -1127,6 +1127,18 @@ export function SupplierModule({ initialFilter = 'all' }: { initialFilter?: Cari
               onRowDoubleClick={selectAccount}
               pageSize={50}
               height="100%"
+              footerSumColumns={[
+                {
+                  columnId: 'balance',
+                  getValue: (r: Supplier) => Number(r.balance) || 0,
+                  format: (sum: number) => (
+                    <span className="tabular-nums font-bold">
+                      {formatNumber(sum, 2)} {mainCurrency}
+                    </span>
+                  ),
+                },
+              ]}
+              footerLabel={tm('invoiceListDipTotal')}
             />
           )}
         </div>
