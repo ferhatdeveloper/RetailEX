@@ -4760,8 +4760,8 @@ export function ReportsModule({
                             { key: 'total', label: tm('reportsNetAmount'), type: 'number', align: 'right', width: 'min-w-[120px]' },
                             { key: 'status', label: tm('status'), type: 'text', width: 'min-w-[120px]' },
                           ]}
-                          values={reportFilters.forTab('daily').filters}
-                          onChange={reportFilters.forTab('daily').setFilters}
+                          values={reportFilters.forTab('daily').values}
+                          onFilterChange={reportFilters.forTab('daily').setFilter}
                           onClear={reportFilters.forTab('daily').clearAll}
                         />
                       </thead>
@@ -4899,8 +4899,8 @@ export function ReportsModule({
                             { key: 'amount', label: tm('amountLabel_rep'), type: 'number', align: 'right', width: 'min-w-[120px]' },
                             { key: 'paymentMethod', label: tm('paymentLabel_rep'), type: 'text', width: 'min-w-[120px]' },
                           ]}
-                          values={reportFilters.forTab('daily-expense').filters}
-                          onChange={reportFilters.forTab('daily-expense').setFilters}
+                          values={reportFilters.forTab('daily-expense').values}
+                          onFilterChange={reportFilters.forTab('daily-expense').setFilter}
                           onClear={reportFilters.forTab('daily-expense').clearAll}
                         />
                       </thead>
@@ -5179,8 +5179,8 @@ export function ReportsModule({
                                     { key: 'returnTotal', label: tm('reportsThReturn'), type: 'number', align: 'right', width: 'min-w-[120px]' },
                                     { key: 'netRevenue', label: tm('reportsThNet'), type: 'number', align: 'right', width: 'min-w-[120px]' },
                                   ]}
-                                  values={reportFilters.forTab('z-report').filters}
-                                  onChange={reportFilters.forTab('z-report').setFilters}
+                                  values={reportFilters.forTab('z-report').values}
+                                  onFilterChange={reportFilters.forTab('z-report').setFilter}
                                   onClear={reportFilters.forTab('z-report').clearAll}
                                 />
                               </thead>
@@ -5269,8 +5269,8 @@ export function ReportsModule({
                             { key: 'cashSales', label: tm('cashLabel'), type: 'number', align: 'right', width: 'min-w-[120px]' },
                             { key: 'cardSales', label: tm('cardLabel'), type: 'number', align: 'right', width: 'min-w-[120px]' },
                           ]}
-                          values={rpt.filters}
-                          onChange={rpt.setFilters}
+                          values={rpt.values}
+                          onFilterChange={rpt.setFilter}
                           onClear={rpt.clearAll}
                         />
                       </thead>
@@ -5367,8 +5367,8 @@ export function ReportsModule({
                               { key: 'avgPrice', label: tm('avgPriceLabel'), type: 'number', align: 'right', width: 'min-w-[120px]' },
                               { key: 'stock', label: tm('stockLabel'), type: 'number', align: 'right', width: 'min-w-[110px]' },
                             ]}
-                            values={rpt.filters}
-                            onChange={rpt.setFilters}
+                            values={rpt.values}
+                            onFilterChange={rpt.setFilter}
                             onClear={rpt.clearAll}
                           />
                         </thead>
@@ -5487,8 +5487,8 @@ export function ReportsModule({
                                     { key: 'totalQuantity', label: tm('salesQuantityLabel'), type: 'number', align: 'right', width: 'min-w-[120px]' },
                                     { key: 'avgPrice', label: tm('avgPriceLabel'), type: 'number', align: 'right', width: 'min-w-[120px]' },
                                   ]}
-                                  values={rpt.filters}
-                                  onChange={rpt.setFilters}
+                                  values={rpt.values}
+                                  onFilterChange={rpt.setFilter}
                                   onClear={rpt.clearAll}
                                 />
                               </thead>
@@ -5586,8 +5586,8 @@ export function ReportsModule({
                               { key: 'revenue', label: tm('totalRevenueLabel'), type: 'number', align: 'right', width: 'min-w-[140px]' },
                               { key: 'avgSale', label: tm('avgSaleLabel'), type: 'number', align: 'right', width: 'min-w-[140px]' },
                             ]}
-                            values={reportFilters.forTab('hourly-analysis').filters}
-                            onChange={reportFilters.forTab('hourly-analysis').setFilters}
+                            values={reportFilters.forTab('hourly-analysis').values}
+                            onFilterChange={reportFilters.forTab('hourly-analysis').setFilter}
                             onClear={reportFilters.forTab('hourly-analysis').clearAll}
                           />
                         </thead>
@@ -5602,7 +5602,7 @@ export function ReportsModule({
                               avgSale: hour.revenue && hour.sales ? hour.revenue / hour.sales : 0,
                             };
                             if (
-                              Object.values(rpt.filters).some((v) => !!v) &&
+                              rpt.activeCount > 0 &&
                               rpt.filtered([row]).length === 0
                             ) {
                               return null;
@@ -5895,8 +5895,8 @@ export function ReportsModule({
                                   { key: 'avgDiscount', label: tm('reportsAverageDiscountCol'), type: 'number', align: 'right', width: 'min-w-[140px]' },
                                   { key: 'ratePct', label: tm('reportsRatePercentCol'), type: 'number', align: 'right', width: 'min-w-[120px]' },
                                 ]}
-                                values={rpt.filters}
-                                onChange={rpt.setFilters}
+                                values={rpt.values}
+                                onFilterChange={rpt.setFilter}
                                 onClear={rpt.clearAll}
                               />
                             </thead>
@@ -6044,8 +6044,8 @@ export function ReportsModule({
                                   { key: 'value', label: tm('reportsStockValue'), type: 'number', align: 'right', width: 'min-w-[120px]' },
                                   { key: 'status', label: tm('reportsStatusCol'), type: 'text', align: 'center', width: 'min-w-[120px]' },
                                 ]}
-                                values={rpt.filters}
-                                onChange={rpt.setFilters}
+                                values={rpt.values}
+                                onFilterChange={rpt.setFilter}
                                 onClear={rpt.clearAll}
                               />
                             </thead>
@@ -6256,8 +6256,8 @@ export function ReportsModule({
                                   { key: 'currRev', label: tm('reportColCurrRev'), type: 'number', align: 'right', width: 'min-w-[120px]' },
                                   { key: 'revPct', label: tm('reportColRevDelta'), type: 'number', align: 'right', width: 'min-w-[120px]' },
                                 ]}
-                                values={rpt.filters}
-                                onChange={rpt.setFilters}
+                                values={rpt.values}
+                                onFilterChange={rpt.setFilter}
                                 onClear={rpt.clearAll}
                               />
                             </thead>
@@ -6377,8 +6377,8 @@ export function ReportsModule({
                                   { key: 'allocatedTotalCost', label: tm('purchasePromotionAllocatedCost'), type: 'number', align: 'right', width: 'min-w-[140px]' },
                                   { key: 'invoicePaidTotal', label: tm('purchasePromotionInvoicePaid'), type: 'number', align: 'right', width: 'min-w-[140px]' },
                                 ]}
-                                values={rpt.filters}
-                                onChange={rpt.setFilters}
+                                values={rpt.values}
+                                onFilterChange={rpt.setFilter}
                                 onClear={rpt.clearAll}
                               />
                             </thead>
@@ -6573,8 +6573,8 @@ export function ReportsModule({
                                     { key: 'productValue', label: tm('reportsExpiringTotalValue'), type: 'number', align: 'right', width: 'min-w-[140px]' },
                                     { key: 'statusLabel', label: tm('rptTargetColStatus'), type: 'text', align: 'center', width: 'min-w-[120px]' },
                                   ]}
-                                  values={rpt.filters}
-                                  onChange={rpt.setFilters}
+                                  values={rpt.values}
+                                  onFilterChange={rpt.setFilter}
                                   onClear={rpt.clearAll}
                                 />
                               );
@@ -6803,8 +6803,8 @@ export function ReportsModule({
                                   { key: 'value', label: tm('reportsColStockValue'), type: 'number', align: 'right', width: 'min-w-[120px]' },
                                   { key: 'bucket', label: tm('reportsStockAgeThBucket'), type: 'text', align: 'center', width: 'min-w-[140px]' },
                                 ]}
-                                values={rpt.filters}
-                                onChange={rpt.setFilters}
+                                values={rpt.values}
+                                onFilterChange={rpt.setFilter}
                                 onClear={rpt.clearAll}
                               />
                             </thead>
@@ -6898,8 +6898,8 @@ export function ReportsModule({
                                   { key: 'annualizedTurnover', label: tm('reportsStockTurnThAnnualTurn'), type: 'number', align: 'right', width: 'min-w-[120px]' },
                                   { key: 'daysCover', label: tm('reportsStockTurnThStockDays'), type: 'number', align: 'right', width: 'min-w-[120px]' },
                                 ]}
-                                values={rpt.filters}
-                                onChange={rpt.setFilters}
+                                values={rpt.values}
+                                onFilterChange={rpt.setFilter}
                                 onClear={rpt.clearAll}
                               />
                             </thead>
@@ -7056,8 +7056,8 @@ export function ReportsModule({
                                   { key: 'metric', label: tm('reportsAbcThMetric'), type: 'number', align: 'right', width: 'min-w-[120px]' },
                                   { key: 'cumPct', label: tm('reportsAbcThCumPct'), type: 'number', align: 'right', width: 'min-w-[120px]' },
                                 ]}
-                                values={rpt.filters}
-                                onChange={rpt.setFilters}
+                                values={rpt.values}
+                                onFilterChange={rpt.setFilter}
                                 onClear={rpt.clearAll}
                               />
                             </thead>
@@ -7349,8 +7349,8 @@ export function ReportsModule({
                                   </tr>
                                   <ReportColumnFilters
                                     columns={columnDefs}
-                                    values={rpt.filters}
-                                    onChange={rpt.setFilters}
+                                    values={rpt.values}
+                                    onFilterChange={rpt.setFilter}
                                     onClear={rpt.clearAll}
                                   />
                                 </thead>
@@ -7545,8 +7545,8 @@ export function ReportsModule({
                                           { key: 'staffName', label: tm('bStaffView'), type: 'text', width: 'min-w-[120px]' },
                                           { key: 'paymentMethod', label: tm('paymentType'), type: 'text', width: 'min-w-[120px]' },
                                         ]}
-                                        values={reportFilters.forTab('beauty-appointment-product-report').filters}
-                                        onChange={reportFilters.forTab('beauty-appointment-product-report').setFilters}
+                                        values={reportFilters.forTab('beauty-appointment-product-report').values}
+                                        onFilterChange={reportFilters.forTab('beauty-appointment-product-report').setFilter}
                                         onClear={reportFilters.forTab('beauty-appointment-product-report').clearAll}
                                       />
                                     </thead>
@@ -7622,8 +7622,8 @@ export function ReportsModule({
                                       { key: 'staffName', label: tm('bStaffView'), type: 'text', width: 'min-w-[120px]' },
                                       { key: 'paymentMethod', label: tm('paymentType'), type: 'text', width: 'min-w-[120px]' },
                                     ]}
-                                    values={reportFilters.forTab('beauty-appointment-product-report').filters}
-                                    onChange={reportFilters.forTab('beauty-appointment-product-report').setFilters}
+                                    values={reportFilters.forTab('beauty-appointment-product-report').values}
+                                    onFilterChange={reportFilters.forTab('beauty-appointment-product-report').setFilter}
                                     onClear={reportFilters.forTab('beauty-appointment-product-report').clearAll}
                                   />
                                 </thead>
@@ -7727,8 +7727,8 @@ export function ReportsModule({
                                     { key: 'total_price', label: tm('amount'), type: 'number', align: 'right', width: 'min-w-[120px]' },
                                     { key: 'status', label: tm('status'), type: 'text', width: 'min-w-[120px]' },
                                   ]}
-                                  values={reportFilters.forTab('beauty-cancelled-report').filters}
-                                  onChange={reportFilters.forTab('beauty-cancelled-report').setFilters}
+                                  values={reportFilters.forTab('beauty-cancelled-report').values}
+                                  onFilterChange={reportFilters.forTab('beauty-cancelled-report').setFilter}
                                   onClear={reportFilters.forTab('beauty-cancelled-report').clearAll}
                                 />
                               </thead>
@@ -7806,8 +7806,8 @@ export function ReportsModule({
                                 { key: 'total', label: tm('amount'), type: 'number', align: 'right', width: 'min-w-[120px]' },
                                 { key: 'payment_status', label: tm('status'), type: 'text', width: 'min-w-[120px]' },
                               ]}
-                              values={reportFilters.forTab('beauty-cancelled-report').filters}
-                              onChange={reportFilters.forTab('beauty-cancelled-report').setFilters}
+                              values={reportFilters.forTab('beauty-cancelled-report').values}
+                              onFilterChange={reportFilters.forTab('beauty-cancelled-report').setFilter}
                               onClear={reportFilters.forTab('beauty-cancelled-report').clearAll}
                             />
                           </thead>
