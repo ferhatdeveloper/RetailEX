@@ -2239,6 +2239,18 @@ export const moduleTranslations: Record<string, Record<Language, string>> = {
     ar: 'تقرير حسب الخدمة',
     ku: 'ڕاپۆرت بەپێی خزمەت',
   },
+  reportColumnFiltersFilter: {
+    tr: 'Filtrele',
+    en: 'Filter',
+    ar: 'تصفية',
+    ku: 'فلتەر',
+  },
+  reportColumnFiltersClearAll: {
+    tr: 'Filtreleri temizle',
+    en: 'Clear filters',
+    ar: 'مسح التصفية',
+    ku: 'سرتەکردنی فلتەر',
+  },
   beautyCancelledOnlyReport: {
     tr: 'İptal İşlem/Ödeme Raporu',
     en: 'Cancelled Transaction/Payment Report',

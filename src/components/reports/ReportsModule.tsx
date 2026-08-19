@@ -67,6 +67,8 @@ import {
   SurveyCommentsReport,
 } from '../beauty/components/SurveyExtraReports';
 import { OverdueUncalledFollowUpReport } from '../beauty/components/OverdueUncalledFollowUpReport';
+import { ReportColumnFilters, type ReportColumnFilterDef } from './shared/ReportColumnFilters';
+import { useReportColumnFiltersPool } from './shared/useReportColumnFilters';
 import { Layout, Menu, ConfigProvider, theme, Input, Button, Dropdown, Modal, Table, Spin, Select } from 'antd';
 import { toast } from 'sonner';
 import { usePermission } from '../../shared/hooks/usePermission';
@@ -1084,6 +1086,13 @@ export function ReportsModule({
   /** Boş = tüm ana kategoriler; aksi halde parent_category / category anahtarı */
   const [beautyMainCategoryFilter, setBeautyMainCategoryFilter] = useState('');
   const [beautySubCategoryFilter, setBeautySubCategoryFilter] = useState('');
+
+  /**
+   * Tüm rapor tabloları için kolon-bazlı filtre state pool'u.
+   * Her rapor sekmesi (selectedTab) kendi filtre sözlüğünü paylaşımsız tutar.
+   * Bileşen render edildiğinde `rpt = reportFilters.forTab(selectedTab)` ile API alınır.
+   */
+  const reportFilters = useReportColumnFiltersPool();
   const [beautyStaffTreatmentFrom, setBeautyStaffTreatmentFrom] = useState(() => {
     const d = new Date();
     d.setDate(1);
@@ -4742,9 +4751,35 @@ export function ReportsModule({
                           <th className="px-4 py-3 text-left text-sm">{tm('paymentLabel_rep')}</th>
                           <th className="px-4 py-3 text-left text-sm">{tm('status')}</th>
                         </tr>
+                        <ReportColumnFilters
+                          columns={[
+                            { key: 'receiptNumber', label: tm('receiptFicheNo'), type: 'text', width: 'min-w-[120px]' },
+                            { key: 'hour', label: tm('hourLabel'), type: 'text', width: 'min-w-[120px]' },
+                            { key: 'cashier', label: tm('cashierLabel'), type: 'text', width: 'min-w-[140px]' },
+                            { key: 'deviceName', label: tm('reportsDeviceLabel'), type: 'text', width: 'min-w-[120px]' },
+                            { key: 'customerName', label: tm('customerLabel_rep'), type: 'text', width: 'min-w-[140px]' },
+                            { key: 'total', label: tm('reportsNetAmount'), type: 'number', align: 'right', width: 'min-w-[120px]' },
+                            { key: 'status', label: tm('status'), type: 'text', width: 'min-w-[120px]' },
+                          ]}
+                          values={reportFilters.forTab('daily').filters}
+                          onChange={reportFilters.forTab('daily').setFilters}
+                          onClear={reportFilters.forTab('daily').clearAll}
+                        />
                       </thead>
                       <tbody className="divide-y">
-                        {dailyVisibleRows.map((row) => (
+                        {(() => {
+                          const rpt = reportFilters.forTab('daily');
+                          const visibleRows = rpt.filtered(dailyVisibleRows as any);
+                          if (visibleRows.length === 0) {
+                            return (
+                              <tr>
+                                <td colSpan={10} className="px-4 py-10 text-center text-slate-500 text-sm">
+                                  {tm('noDataFound')}
+                                </td>
+                              </tr>
+                            );
+                          }
+                          return visibleRows.map((row: any) => (
                           <tr
                             key={row.key}
                             role="button"
@@ -4831,14 +4866,8 @@ export function ReportsModule({
                               })()}
                             </td>
                           </tr>
-                        ))}
-                        {dailyVisibleRows.length === 0 && (
-                          <tr>
-                            <td colSpan={10} className="px-4 py-8 text-center text-sm text-slate-500">
-                              {tm('noDataFound')}
-                            </td>
-                          </tr>
-                        )}
+                        ));
+                        })()}
                       </tbody>
                     </table>
                   </div>
@@ -4861,9 +4890,35 @@ export function ReportsModule({
                           <th className="px-4 py-3 text-right text-sm font-semibold">{tm('amountLabel_rep')}</th>
                           <th className="px-4 py-3 text-left text-sm">{tm('paymentLabel_rep')}</th>
                         </tr>
+                        <ReportColumnFilters
+                          columns={[
+                            { key: 'ficheNo', label: tm('receiptFicheNo'), type: 'text', width: 'min-w-[120px]' },
+                            { key: 'date', label: tm('hourLabel'), type: 'date', width: 'min-w-[120px]' },
+                            { key: 'type', label: tm('type'), type: 'text', width: 'min-w-[120px]' },
+                            { key: 'category', label: tm('category'), type: 'text', width: 'min-w-[120px]' },
+                            { key: 'description', label: tm('description'), type: 'text', width: 'min-w-[160px]' },
+                            { key: 'amount', label: tm('amountLabel_rep'), type: 'number', align: 'right', width: 'min-w-[120px]' },
+                            { key: 'paymentMethod', label: tm('paymentLabel_rep'), type: 'text', width: 'min-w-[120px]' },
+                          ]}
+                          values={reportFilters.forTab('daily-expense').filters}
+                          onChange={reportFilters.forTab('daily-expense').setFilters}
+                          onClear={reportFilters.forTab('daily-expense').clearAll}
+                        />
                       </thead>
                       <tbody className="divide-y">
-                        {dailyExpenseRows.map((row) => {
+                        {(() => {
+                          const rpt = reportFilters.forTab('daily-expense');
+                          const visibleRows = rpt.filtered(dailyExpenseRows as any);
+                          if (visibleRows.length === 0) {
+                            return (
+                              <tr>
+                                <td colSpan={7} className="px-4 py-10 text-center text-slate-500 text-sm">
+                                  {tm('noDataFound')}
+                                </td>
+                              </tr>
+                            );
+                          }
+                          return visibleRows.map((row: any) => {
                           const dateRaw = String(row.date || '');
                           const parsed = new Date(dateRaw);
                           const timeLabel = Number.isNaN(parsed.getTime())
@@ -4904,7 +4959,8 @@ export function ReportsModule({
                               </td>
                             </tr>
                           );
-                        })}
+                          });
+                        })()}
                         {dailyExpenseRows.length === 0 && (
                           <tr>
                             <td colSpan={7} className="px-4 py-8 text-center text-sm text-slate-500">
@@ -5116,9 +5172,33 @@ export function ReportsModule({
                                   <th className="py-2 pr-3 text-right">İade</th>
                                   <th className="py-2 text-right">Net</th>
                                 </tr>
+                                <ReportColumnFilters
+                                  columns={[
+                                    { key: 'name', label: tm('cashierLabel'), type: 'text', width: 'min-w-[140px]' },
+                                    { key: 'salesCount', label: tm('reportsThReceipts'), type: 'number', align: 'right', width: 'min-w-[100px]' },
+                                    { key: 'grossRevenue', label: tm('reportsThGross'), type: 'number', align: 'right', width: 'min-w-[120px]' },
+                                    { key: 'returnTotal', label: tm('reportsThReturn'), type: 'number', align: 'right', width: 'min-w-[120px]' },
+                                    { key: 'netRevenue', label: tm('reportsThNet'), type: 'number', align: 'right', width: 'min-w-[120px]' },
+                                  ]}
+                                  values={reportFilters.forTab('z-report').filters}
+                                  onChange={reportFilters.forTab('z-report').setFilters}
+                                  onClear={reportFilters.forTab('z-report').clearAll}
+                                />
                               </thead>
                               <tbody>
-                                {zReport.cashierStats.map((row) => (
+                                {(() => {
+                                  const rpt = reportFilters.forTab('z-report');
+                                  const visibleRows = rpt.filtered(zReport.cashierStats as any);
+                                  if (visibleRows.length === 0) {
+                                    return (
+                                      <tr>
+                                        <td colSpan={5} className="py-6 text-center text-slate-500 text-sm">
+                                          {tm('noDataFound')}
+                                        </td>
+                                      </tr>
+                                    );
+                                  }
+                                  return visibleRows.map((row: any) => (
                                   <tr key={row.name} className="border-b border-gray-100 last:border-0">
                                     <td className="py-2 pr-3 font-medium">{row.name}</td>
                                     <td className="py-2 pr-3 text-right tabular-nums">{row.salesCount}</td>
@@ -5126,7 +5206,8 @@ export function ReportsModule({
                                     <td className="py-2 pr-3 text-right tabular-nums text-red-600">{formatNumber(row.returnTotal, 2, false)}</td>
                                     <td className="py-2 text-right tabular-nums font-semibold">{formatNumber(row.netRevenue, 2, false)}</td>
                                   </tr>
-                                ))}
+                                  ));
+                                })()}
                               </tbody>
                             </table>
                           </div>
@@ -5153,61 +5234,106 @@ export function ReportsModule({
               </div>
             )}
 
-            {selectedTab === 'cashiers' && (
-              <div className="bg-white rounded-lg border">
-                <div className="p-4 border-b">
-                  <h3 className="text-lg">{tm('cashierPerformanceReport')}</h3>
-                </div>
-                <div className="overflow-x-auto overflow-y-auto max-h-[600px]" style={{ scrollbarWidth: 'thin', scrollbarColor: '#cbd5e1 #f1f5f9' }}>
-                  <table className="w-full min-w-[800px]">
-                    <thead className="bg-gray-50 border-b sticky top-0">
-                      <tr>
-                        <th className="px-4 py-3 text-left text-sm">{tm('cashierLabel')}</th>
-                        <th className="px-4 py-3 text-right text-sm">{tm('transactionCount')}</th>
-                        <th className="px-4 py-3 text-right text-sm">{tm('totalRevenueLabel')}</th>
-                        <th className="px-4 py-3 text-right text-sm">{tm('avgSaleLabel')}</th>
-                        <th className="px-4 py-3 text-right text-sm">{tm('cashLabel')}</th>
-                        <th className="px-4 py-3 text-right text-sm">{tm('cardLabel')}</th>
-                      </tr>
-                    </thead>
-                    <tbody className="divide-y">
-                      {cashierPerformance.map(cashier => (
-                        <tr key={cashier.name} className="hover:bg-gray-50">
-                          <td className="px-4 py-3">
-                            <div className="flex items-center gap-2">
-                              <div className="w-8 h-8 bg-blue-600 rounded flex items-center justify-center text-white text-sm">
-                                {cashier.name && cashier.name.length > 0 ? cashier.name.charAt(0).toUpperCase() : '?'}
-                              </div>
-                              <span>{cashier.name}</span>
-                            </div>
-                          </td>
-                          <td className="px-4 py-3 text-right">
-                            <span className="px-2 py-1 bg-blue-100 text-blue-700 rounded text-sm">
-                              {cashier.salesCount}
-                            </span>
-                          </td>
-                          <td className="px-4 py-3 text-right text-lg text-green-600">
-                            {formatNumber(cashier.totalRevenue, 2, false)}
-                          </td>
-                          <td className="px-4 py-3 text-right text-sm">
-                            {formatNumber(cashier.avgSale, 2, false)}
-                          </td>
-                          <td className="px-4 py-3 text-right text-sm">
-                            {formatNumber(cashier.cashSales, 2, false)}
-                          </td>
-                          <td className="px-4 py-3 text-right text-sm">
-                            {formatNumber(cashier.cardSales, 2, false)}
-                          </td>
+            {selectedTab === 'cashiers' && (() => {
+              const rpt = reportFilters.forTab('cashiers');
+              const rows = cashierPerformance.map((c) => ({
+                name: c.name,
+                salesCount: c.salesCount,
+                totalRevenue: c.totalRevenue,
+                avgSale: c.avgSale,
+                cashSales: c.cashSales,
+                cardSales: c.cardSales,
+              }));
+              const visible = rpt.filtered(rows);
+              return (
+                <div className="bg-white rounded-lg border">
+                  <div className="p-4 border-b">
+                    <h3 className="text-lg">{tm('cashierPerformanceReport')}</h3>
+                  </div>
+                  <div className="overflow-x-auto overflow-y-auto max-h-[600px]" style={{ scrollbarWidth: 'thin', scrollbarColor: '#cbd5e1 #f1f5f9' }}>
+                    <table className="w-full min-w-[800px]">
+                      <thead className="bg-gray-50 border-b sticky top-0">
+                        <tr>
+                          <th className="px-4 py-3 text-left text-sm">{tm('cashierLabel')}</th>
+                          <th className="px-4 py-3 text-right text-sm">{tm('transactionCount')}</th>
+                          <th className="px-4 py-3 text-right text-sm">{tm('totalRevenueLabel')}</th>
+                          <th className="px-4 py-3 text-right text-sm">{tm('avgSaleLabel')}</th>
+                          <th className="px-4 py-3 text-right text-sm">{tm('cashLabel')}</th>
+                          <th className="px-4 py-3 text-right text-sm">{tm('cardLabel')}</th>
                         </tr>
-                      ))}
-                    </tbody>
-                  </table>
+                        <ReportColumnFilters
+                          columns={[
+                            { key: 'name', label: tm('cashierLabel'), type: 'text', align: 'left', width: 'min-w-[160px]' },
+                            { key: 'salesCount', label: tm('transactionCount'), type: 'number', align: 'right', width: 'min-w-[120px]' },
+                            { key: 'totalRevenue', label: tm('totalRevenueLabel'), type: 'number', align: 'right', width: 'min-w-[140px]' },
+                            { key: 'avgSale', label: tm('avgSaleLabel'), type: 'number', align: 'right', width: 'min-w-[140px]' },
+                            { key: 'cashSales', label: tm('cashLabel'), type: 'number', align: 'right', width: 'min-w-[120px]' },
+                            { key: 'cardSales', label: tm('cardLabel'), type: 'number', align: 'right', width: 'min-w-[120px]' },
+                          ]}
+                          values={rpt.filters}
+                          onChange={rpt.setFilters}
+                          onClear={rpt.clearAll}
+                        />
+                      </thead>
+                      <tbody className="divide-y">
+                        {visible.length === 0 ? (
+                          <tr>
+                            <td colSpan={6} className="px-4 py-10 text-center text-slate-500 text-sm">
+                              {tm('noDataFound')}
+                            </td>
+                          </tr>
+                        ) : (
+                          visible.map((cashier) => (
+                            <tr key={cashier.name} className="hover:bg-gray-50">
+                              <td className="px-4 py-3">
+                                <div className="flex items-center gap-2">
+                                  <div className="w-8 h-8 bg-blue-600 rounded flex items-center justify-center text-white text-sm">
+                                    {cashier.name && cashier.name.length > 0 ? cashier.name.charAt(0).toUpperCase() : '?'}
+                                  </div>
+                                  <span>{cashier.name}</span>
+                                </div>
+                              </td>
+                              <td className="px-4 py-3 text-right">
+                                <span className="px-2 py-1 bg-blue-100 text-blue-700 rounded text-sm">
+                                  {cashier.salesCount}
+                                </span>
+                              </td>
+                              <td className="px-4 py-3 text-right text-lg text-green-600">
+                                {formatNumber(cashier.totalRevenue, 2, false)}
+                              </td>
+                              <td className="px-4 py-3 text-right text-sm">
+                                {formatNumber(cashier.avgSale, 2, false)}
+                              </td>
+                              <td className="px-4 py-3 text-right text-sm">
+                                {formatNumber(cashier.cashSales, 2, false)}
+                              </td>
+                              <td className="px-4 py-3 text-right text-sm">
+                                {formatNumber(cashier.cardSales, 2, false)}
+                              </td>
+                            </tr>
+                          ))
+                        )}
+                      </tbody>
+                    </table>
+                  </div>
                 </div>
-              </div>
-            )}
+              );
+            })()}
 
             {selectedTab === 'top-products' && (() => {
-              const topProducts = getTopProducts(20);
+              const rpt = reportFilters.forTab('top-products');
+              const topProductsAll = getTopProducts(20);
+              const rows = topProductsAll.map((p) => ({
+                id: p.id,
+                rank: p.rank,
+                name: p.name,
+                category: p.category,
+                quantity: p.quantity,
+                revenue: p.revenue,
+                avgPrice: p.avgPrice,
+                stock: p.stock,
+              }));
+              const visible = rpt.filtered(rows);
               return (
                 <div className="space-y-4">
                   <div className="bg-white rounded-lg border p-4">
@@ -5215,7 +5341,7 @@ export function ReportsModule({
                       <Award className="w-5 h-5 text-yellow-600" />
                       {tm('enCokSatanlar')} (TOP 20)
                     </h3>
-                    {topProducts.length === 0 ? (
+                    {topProductsAll.length === 0 ? (
                       <p className="text-sm text-slate-500 py-8 text-center">
                         Seçili güne ait satış kalemi yok. Tarihi değiştirin veya restoran modunda kapalı siparişlerin yüklendiğinden emin olun.
                       </p>
@@ -5232,35 +5358,57 @@ export function ReportsModule({
                             <th className="px-4 py-3 text-right text-sm">{tm('avgPriceLabel')}</th>
                             <th className="px-4 py-3 text-right text-sm">{tm('stockLabel')}</th>
                           </tr>
+                          <ReportColumnFilters
+                            columns={[
+                              { key: 'rank', label: tm('rankLabel'), type: 'number', align: 'right', width: 'min-w-[90px]' },
+                              { key: 'name', label: tm('productNameLabel'), type: 'text', width: 'min-w-[180px]' },
+                              { key: 'category', label: tm('categoryLabel'), type: 'text', width: 'min-w-[140px]' },
+                              { key: 'quantity', label: tm('salesQuantityLabel'), type: 'number', align: 'right', width: 'min-w-[120px]' },
+                              { key: 'revenue', label: tm('totalRevenueLabel'), type: 'number', align: 'right', width: 'min-w-[140px]' },
+                              { key: 'avgPrice', label: tm('avgPriceLabel'), type: 'number', align: 'right', width: 'min-w-[120px]' },
+                              { key: 'stock', label: tm('stockLabel'), type: 'number', align: 'right', width: 'min-w-[110px]' },
+                            ]}
+                            values={rpt.filters}
+                            onChange={rpt.setFilters}
+                            onClear={rpt.clearAll}
+                          />
                         </thead>
                         <tbody className="divide-y">
-                          {topProducts.map((product) => (
-                            <tr key={product.id} className="hover:bg-gray-50">
-                              <td className="px-4 py-3">
-                                <div className={`w-8 h-8 rounded flex items-center justify-center text-white text-sm font-bold ${product.rank <= 3 ? 'bg-yellow-500' : 'bg-gray-400'
-                                  }`}>
-                                  {product.rank}
-                                </div>
-                              </td>
-                              <td className="px-4 py-3 font-medium">{product.name}</td>
-                              <td className="px-4 py-3 text-sm text-gray-600">{product.category}</td>
-                              <td className="px-4 py-3 text-right">
-                                <span className="px-2 py-1 bg-blue-100 text-blue-700 rounded text-sm font-semibold">
-                                  {product.quantity}
-                                </span>
-                              </td>
-                              <td className="px-4 py-3 text-right text-green-600 font-semibold">
-                                {formatNumber(product.revenue, 2, false)} {reportCurrency}
-                              </td>
-                              <td className="px-4 py-3 text-right text-sm">{formatNumber(product.avgPrice, 2, false)} {reportCurrency}</td>
-                              <td className="px-4 py-3 text-right">
-                                <span className={`px-2 py-1 rounded text-sm ${product.stock < 30 ? 'bg-red-100 text-red-700' : 'bg-green-100 text-green-700'
-                                  }`}>
-                                  {product.stock}
-                                </span>
+                          {visible.length === 0 ? (
+                            <tr>
+                              <td colSpan={7} className="px-4 py-10 text-center text-slate-500 text-sm">
+                                {tm('noDataFound')}
                               </td>
                             </tr>
-                          ))}
+                          ) : (
+                            visible.map((product) => (
+                              <tr key={product.id} className="hover:bg-gray-50">
+                                <td className="px-4 py-3">
+                                  <div className={`w-8 h-8 rounded flex items-center justify-center text-white text-sm font-bold ${product.rank <= 3 ? 'bg-yellow-500' : 'bg-gray-400'
+                                    }`}>
+                                    {product.rank}
+                                  </div>
+                                </td>
+                                <td className="px-4 py-3 font-medium">{product.name}</td>
+                                <td className="px-4 py-3 text-sm text-gray-600">{product.category}</td>
+                                <td className="px-4 py-3 text-right">
+                                  <span className="px-2 py-1 bg-blue-100 text-blue-700 rounded text-sm font-semibold">
+                                    {product.quantity}
+                                  </span>
+                                </td>
+                                <td className="px-4 py-3 text-right text-green-600 font-semibold">
+                                  {formatNumber(product.revenue, 2, false)} {reportCurrency}
+                                </td>
+                                <td className="px-4 py-3 text-right text-sm">{formatNumber(product.avgPrice, 2, false)} {reportCurrency}</td>
+                                <td className="px-4 py-3 text-right">
+                                  <span className={`px-2 py-1 rounded text-sm ${product.stock < 30 ? 'bg-red-100 text-red-700' : 'bg-green-100 text-green-700'
+                                    }`}>
+                                    {product.stock}
+                                  </span>
+                                </td>
+                              </tr>
+                            ))
+                          )}
                         </tbody>
                       </table>
                     </div>
@@ -5314,39 +5462,73 @@ export function ReportsModule({
                         <BarChart3 className="w-5 h-5 text-green-600" />
                         {tm('categoryPerformance')}
                       </h3>
-                      <div className="overflow-x-auto overflow-y-auto max-h-[300px]" style={{ scrollbarWidth: 'thin', scrollbarColor: '#cbd5e1 #f1f5f9' }}>
-                        <table className="w-full min-w-[700px]">
-                          <thead className="bg-gray-50 border-b sticky top-0">
-                            <tr>
-                              <th className="px-4 py-2 text-left text-sm">{tm('categoryLabel')}</th>
-                              <th className="px-4 py-2 text-right text-sm">{tm('totalRevenueLabel')}</th>
-                              <th className="px-4 py-2 text-right text-sm">{tm('salesQuantityLabel')}</th>
-                              <th className="px-4 py-2 text-right text-sm">{tm('avgPriceLabel')}</th>
-                            </tr>
-                          </thead>
-                          <tbody className="divide-y">
-                            {categories.map((cat, idx) => (
-                              <tr key={cat.name} className="hover:bg-gray-50">
-                                <td className="px-4 py-2">
-                                  <div className="flex items-center gap-2">
-                                    <div className="w-3 h-3 rounded" style={{ backgroundColor: COLORS[idx % COLORS.length] }}></div>
-                                    {cat.name}
-                                  </div>
-                                </td>
-                                <td className="px-4 py-2 text-right font-semibold text-green-600">
-                                  {formatNumber(cat.totalRevenue, 2, false)} {reportCurrency}
-                                </td>
-                                <td className="px-4 py-2 text-right">
-                                  <span className="px-2 py-1 bg-blue-100 text-blue-700 rounded text-sm">
-                                    {cat.totalQuantity}
-                                  </span>
-                                </td>
-                                <td className="px-4 py-2 text-right text-sm">{formatNumber(cat.avgPrice, 2, false)} {reportCurrency}</td>
-                              </tr>
-                            ))}
-                          </tbody>
-                        </table>
-                      </div>
+                      {(() => {
+                        const rpt = reportFilters.forTab('category-analysis');
+                        const rows = categories.map((c) => ({
+                          name: c.name,
+                          totalRevenue: c.totalRevenue,
+                          totalQuantity: c.totalQuantity,
+                          avgPrice: c.avgPrice,
+                        }));
+                        const visible = rpt.filtered(rows);
+                        return (
+                          <div className="overflow-x-auto overflow-y-auto max-h-[300px]" style={{ scrollbarWidth: 'thin', scrollbarColor: '#cbd5e1 #f1f5f9' }}>
+                            <table className="w-full min-w-[700px]">
+                              <thead className="bg-gray-50 border-b sticky top-0">
+                                <tr>
+                                  <th className="px-4 py-2 text-left text-sm">{tm('categoryLabel')}</th>
+                                  <th className="px-4 py-2 text-right text-sm">{tm('totalRevenueLabel')}</th>
+                                  <th className="px-4 py-2 text-right text-sm">{tm('salesQuantityLabel')}</th>
+                                  <th className="px-4 py-2 text-right text-sm">{tm('avgPriceLabel')}</th>
+                                </tr>
+                                <ReportColumnFilters
+                                  columns={[
+                                    { key: 'name', label: tm('categoryLabel'), type: 'text', width: 'min-w-[180px]' },
+                                    { key: 'totalRevenue', label: tm('totalRevenueLabel'), type: 'number', align: 'right', width: 'min-w-[140px]' },
+                                    { key: 'totalQuantity', label: tm('salesQuantityLabel'), type: 'number', align: 'right', width: 'min-w-[120px]' },
+                                    { key: 'avgPrice', label: tm('avgPriceLabel'), type: 'number', align: 'right', width: 'min-w-[120px]' },
+                                  ]}
+                                  values={rpt.filters}
+                                  onChange={rpt.setFilters}
+                                  onClear={rpt.clearAll}
+                                />
+                              </thead>
+                              <tbody className="divide-y">
+                                {visible.length === 0 ? (
+                                  <tr>
+                                    <td colSpan={4} className="px-4 py-10 text-center text-slate-500 text-sm">
+                                      {tm('noDataFound')}
+                                    </td>
+                                  </tr>
+                                ) : (
+                                  visible.map((cat) => {
+                                    const idx = rows.findIndex((r) => r.name === cat.name);
+                                    return (
+                                      <tr key={cat.name} className="hover:bg-gray-50">
+                                        <td className="px-4 py-2">
+                                          <div className="flex items-center gap-2">
+                                            <div className="w-3 h-3 rounded" style={{ backgroundColor: COLORS[(idx >= 0 ? idx : 0) % COLORS.length] }}></div>
+                                            {cat.name}
+                                          </div>
+                                        </td>
+                                        <td className="px-4 py-2 text-right font-semibold text-green-600">
+                                          {formatNumber(cat.totalRevenue, 2, false)} {reportCurrency}
+                                        </td>
+                                        <td className="px-4 py-2 text-right">
+                                          <span className="px-2 py-1 bg-blue-100 text-blue-700 rounded text-sm">
+                                            {cat.totalQuantity}
+                                          </span>
+                                        </td>
+                                        <td className="px-4 py-2 text-right text-sm">{formatNumber(cat.avgPrice, 2, false)} {reportCurrency}</td>
+                                      </tr>
+                                    );
+                                  })
+                                )}
+                              </tbody>
+                            </table>
+                          </div>
+                        );
+                      })()}
                     </div>
                   </div>
                   )}
@@ -5398,24 +5580,51 @@ export function ReportsModule({
                             <th className="px-4 py-3 text-right text-sm">{tm('totalRevenueLabel')}</th>
                             <th className="px-4 py-3 text-right text-sm">{tm('avgSaleLabel')}</th>
                           </tr>
+                          <ReportColumnFilters
+                            columns={[
+                              { key: 'label', label: tm('hourLabel'), type: 'text', width: 'min-w-[140px]' },
+                              { key: 'sales', label: tm('transactionCount'), type: 'number', align: 'right', width: 'min-w-[140px]' },
+                              { key: 'revenue', label: tm('totalRevenueLabel'), type: 'number', align: 'right', width: 'min-w-[140px]' },
+                              { key: 'avgSale', label: tm('avgSaleLabel'), type: 'number', align: 'right', width: 'min-w-[140px]' },
+                            ]}
+                            values={reportFilters.forTab('hourly-analysis').filters}
+                            onChange={reportFilters.forTab('hourly-analysis').setFilters}
+                            onClear={reportFilters.forTab('hourly-analysis').clearAll}
+                          />
                         </thead>
                         <tbody className="divide-y">
-                          {hourlyData.map((hour) => (
-                            <tr key={hour.hour} className="hover:bg-gray-50">
-                              <td className="px-4 py-3 font-medium">{hour.label}</td>
-                              <td className="px-4 py-3 text-right">
-                                <span className="px-2 py-1 bg-blue-100 text-blue-700 rounded text-sm">
-                                  {hour.sales}
-                                </span>
-                              </td>
-                              <td className="px-4 py-3 text-right text-green-600 font-semibold">
-                                {formatNumber(hour.revenue, 2, false)} {reportCurrency}
-                              </td>
-                              <td className="px-4 py-3 text-right text-sm">
-                                {hour.sales > 0 ? formatNumber(hour.revenue / hour.sales, 2, false) : '0'} {reportCurrency}
-                              </td>
-                            </tr>
-                          ))}
+                          {hourlyData.map((hour) => {
+                            const rpt = reportFilters.forTab('hourly-analysis');
+                            const row = {
+                              hour: hour.hour,
+                              label: hour.label,
+                              sales: hour.sales,
+                              revenue: hour.revenue,
+                              avgSale: hour.revenue && hour.sales ? hour.revenue / hour.sales : 0,
+                            };
+                            if (
+                              Object.values(rpt.filters).some((v) => !!v) &&
+                              rpt.filtered([row]).length === 0
+                            ) {
+                              return null;
+                            }
+                            return (
+                              <tr key={hour.hour} className="hover:bg-gray-50">
+                                <td className="px-4 py-3 font-medium">{hour.label}</td>
+                                <td className="px-4 py-3 text-right">
+                                  <span className="px-2 py-1 bg-blue-100 text-blue-700 rounded text-sm">
+                                    {hour.sales}
+                                  </span>
+                                </td>
+                                <td className="px-4 py-3 text-right text-green-600 font-semibold">
+                                  {formatNumber(hour.revenue, 2, false)} {reportCurrency}
+                                </td>
+                                <td className="px-4 py-3 text-right text-sm">
+                                  {hour.sales > 0 ? formatNumber(hour.revenue / hour.sales, 2, false) : '0'} {reportCurrency}
+                                </td>
+                              </tr>
+                            );
+                          })}
                         </tbody>
                       </table>
                     </div>
@@ -5658,51 +5867,84 @@ export function ReportsModule({
                         {tm('reportsDiscountDetailsTitle')}
                       </h3>
                     </div>
-                    <div className="overflow-x-auto overflow-y-auto max-h-[600px]" style={{ scrollbarWidth: 'thin', scrollbarColor: '#cbd5e1 #f1f5f9' }}>
-                      <table className="w-full min-w-[800px]">
-                        <thead className="bg-gray-50 border-b sticky top-0">
-                          <tr>
-                            <th className="px-4 py-3 text-left text-sm">{tm('reportsDiscountTypeCol')}</th>
-                            <th className="px-4 py-3 text-right text-sm">{tm('transactionCount')}</th>
-                            <th className="px-4 py-3 text-right text-sm">{tm('reportsTotalDiscount')}</th>
-                            <th className="px-4 py-3 text-right text-sm">{tm('reportsAverageDiscountCol')}</th>
-                            <th className="px-4 py-3 text-right text-sm">{tm('reportsRatePercentCol')}</th>
-                          </tr>
-                        </thead>
-                        <tbody className="divide-y">
-                          {discounts.map((discount) => (
-                            <tr key={discount.name} className="hover:bg-gray-50">
-                              <td className="px-4 py-3 font-medium">{discount.name}</td>
-                              <td className="px-4 py-3 text-right">
-                                <span className="px-2 py-1 bg-blue-100 text-blue-700 rounded text-sm">
-                                  {discount.salesCount}
-                                </span>
-                              </td>
-                              <td className="px-4 py-3 text-right text-orange-600 font-semibold">
-                                {formatNumber(discount.discountAmount, 2, false)} {reportCurrency}
-                              </td>
-                              <td className="px-4 py-3 text-right text-sm">
-                                {formatNumber(discount.avgDiscount, 2, false)} {reportCurrency}
-                              </td>
-                              <td className="px-4 py-3 text-right">
-                                <span className="px-2 py-1 bg-green-100 text-green-700 rounded text-sm">
-                                  {totalDiscount > 0 ? ((discount.discountAmount / totalDiscount) * 100).toFixed(1) : '0.0'}%
-                                </span>
-                              </td>
-                            </tr>
-                          ))}
-                          <tr className="bg-gray-50 font-bold">
-                            <td className="px-4 py-3">{tm('reportsTotalUpper')}</td>
-                            <td className="px-4 py-3 text-right">{totalCount}</td>
-                            <td className="px-4 py-3 text-right text-orange-600">{formatNumber(totalDiscount, 2, false)} {reportCurrency}</td>
-                            <td className="px-4 py-3 text-right">
-                              {totalCount > 0 ? formatNumber(totalDiscount / totalCount, 2, false) : '0'} {reportCurrency}
-                            </td>
-                            <td className="px-4 py-3 text-right">100%</td>
-                          </tr>
-                        </tbody>
-                      </table>
-                    </div>
+                    {(() => {
+                      const rpt = reportFilters.forTab('discount-report');
+                      const rows = discounts.map((d) => ({
+                        name: d.name,
+                        salesCount: d.salesCount,
+                        discountAmount: d.discountAmount,
+                        avgDiscount: d.avgDiscount,
+                        ratePct: totalDiscount > 0 ? (d.discountAmount / totalDiscount) * 100 : 0,
+                      }));
+                      const visible = rpt.filtered(rows);
+                      return (
+                        <div className="overflow-x-auto overflow-y-auto max-h-[600px]" style={{ scrollbarWidth: 'thin', scrollbarColor: '#cbd5e1 #f1f5f9' }}>
+                          <table className="w-full min-w-[800px]">
+                            <thead className="bg-gray-50 border-b sticky top-0">
+                              <tr>
+                                <th className="px-4 py-3 text-left text-sm">{tm('reportsDiscountTypeCol')}</th>
+                                <th className="px-4 py-3 text-right text-sm">{tm('transactionCount')}</th>
+                                <th className="px-4 py-3 text-right text-sm">{tm('reportsTotalDiscount')}</th>
+                                <th className="px-4 py-3 text-right text-sm">{tm('reportsAverageDiscountCol')}</th>
+                                <th className="px-4 py-3 text-right text-sm">{tm('reportsRatePercentCol')}</th>
+                              </tr>
+                              <ReportColumnFilters
+                                columns={[
+                                  { key: 'name', label: tm('reportsDiscountTypeCol'), type: 'text', width: 'min-w-[180px]' },
+                                  { key: 'salesCount', label: tm('transactionCount'), type: 'number', align: 'right', width: 'min-w-[120px]' },
+                                  { key: 'discountAmount', label: tm('reportsTotalDiscount'), type: 'number', align: 'right', width: 'min-w-[140px]' },
+                                  { key: 'avgDiscount', label: tm('reportsAverageDiscountCol'), type: 'number', align: 'right', width: 'min-w-[140px]' },
+                                  { key: 'ratePct', label: tm('reportsRatePercentCol'), type: 'number', align: 'right', width: 'min-w-[120px]' },
+                                ]}
+                                values={rpt.filters}
+                                onChange={rpt.setFilters}
+                                onClear={rpt.clearAll}
+                              />
+                            </thead>
+                            <tbody className="divide-y">
+                              {visible.length === 0 ? (
+                                <tr>
+                                  <td colSpan={5} className="px-4 py-10 text-center text-slate-500 text-sm">
+                                    {tm('noDataFound')}
+                                  </td>
+                                </tr>
+                              ) : (
+                                visible.map((discount) => (
+                                  <tr key={discount.name} className="hover:bg-gray-50">
+                                    <td className="px-4 py-3 font-medium">{discount.name}</td>
+                                    <td className="px-4 py-3 text-right">
+                                      <span className="px-2 py-1 bg-blue-100 text-blue-700 rounded text-sm">
+                                        {discount.salesCount}
+                                      </span>
+                                    </td>
+                                    <td className="px-4 py-3 text-right text-orange-600 font-semibold">
+                                      {formatNumber(discount.discountAmount, 2, false)} {reportCurrency}
+                                    </td>
+                                    <td className="px-4 py-3 text-right text-sm">
+                                      {formatNumber(discount.avgDiscount, 2, false)} {reportCurrency}
+                                    </td>
+                                    <td className="px-4 py-3 text-right">
+                                      <span className="px-2 py-1 bg-green-100 text-green-700 rounded text-sm">
+                                        {discount.ratePct.toFixed(1)}%
+                                      </span>
+                                    </td>
+                                  </tr>
+                                ))
+                              )}
+                              <tr className="bg-gray-50 font-bold">
+                                <td className="px-4 py-3">{tm('reportsTotalUpper')}</td>
+                                <td className="px-4 py-3 text-right">{totalCount}</td>
+                                <td className="px-4 py-3 text-right text-orange-600">{formatNumber(totalDiscount, 2, false)} {reportCurrency}</td>
+                                <td className="px-4 py-3 text-right">
+                                  {totalCount > 0 ? formatNumber(totalDiscount / totalCount, 2, false) : '0'} {reportCurrency}
+                                </td>
+                                <td className="px-4 py-3 text-right">100%</td>
+                              </tr>
+                            </tbody>
+                          </table>
+                        </div>
+                      );
+                    })()}
                   </div>
                   )}
                 </div>
@@ -5768,57 +6010,86 @@ export function ReportsModule({
                         {tm('reportsLowStockThresholdHint').replace('{n}', String(stockStatus.lowStockThreshold))}
                       </span>
                     </div>
-                    <div className="overflow-x-auto overflow-y-auto max-h-[600px]" style={{ scrollbarWidth: 'thin', scrollbarColor: '#cbd5e1 #f1f5f9' }}>
-                      <table className="w-full min-w-[900px]">
-                        <thead className="bg-gray-50 border-b sticky top-0">
-                          <tr>
-                            <th className="px-4 py-3 text-left text-sm">{tm('productNameLabel')}</th>
-                            <th className="px-4 py-3 text-left text-sm">{tm('categoryLabel')}</th>
-                            <th className="px-4 py-3 text-right text-sm">{tm('reportsCurrentStock')}</th>
-                            <th className="px-4 py-3 text-right text-sm">{tm('reportsMinStockCol')}</th>
-                            <th className="px-4 py-3 text-right text-sm">{tm('reportsPriceCol')}</th>
-                            <th className="px-4 py-3 text-right text-sm">{tm('reportsStockValue')}</th>
-                            <th className="px-4 py-3 text-center text-sm">{tm('reportsStatusCol')}</th>
-                          </tr>
-                        </thead>
-                        <tbody className="divide-y">
-                          {stockStatus.lowStockItems.length === 0 ? (
-                            <tr>
-                              <td colSpan={7} className="px-4 py-10 text-center text-gray-500 text-sm">
-                                {tm('reportsNoLowStockProducts')}
-                              </td>
-                            </tr>
-                          ) : (
-                            stockStatus.lowStockItems.map((item, idx) => (
-                              <tr key={idx} className="hover:bg-gray-50">
-                                <td className="px-4 py-3 font-medium">{item.name}</td>
-                                <td className="px-4 py-3 text-sm text-gray-600">{item.category}</td>
-                                <td className="px-4 py-3 text-right">
-                                  <span className={`px-2 py-1 rounded text-sm font-semibold ${item.stock === 0
-                                    ? 'bg-red-100 text-red-700'
-                                    : item.stock <= item.minStock
-                                      ? 'bg-orange-100 text-orange-700'
-                                      : 'bg-green-100 text-green-700'
-                                    }`}>
-                                    {item.stock}
-                                  </span>
-                                </td>
-                                <td className="px-4 py-3 text-right text-sm">{item.minStock}</td>
-                                <td className="px-4 py-3 text-right text-sm">{formatNumber(item.price, 2, false)} {reportCurrency}</td>
-                                <td className="px-4 py-3 text-right text-sm">{formatNumber(item.value, 2, false)} {reportCurrency}</td>
-                                <td className="px-4 py-3 text-center">
-                                  {item.stock === 0 ? (
-                                    <span className="px-2 py-1 bg-red-100 text-red-700 rounded text-xs">{tm('reportsOutOfStock')}</span>
-                                  ) : (
-                                    <span className="px-2 py-1 bg-orange-100 text-orange-700 rounded text-xs">{tm('reportsLowBadge')}</span>
-                                  )}
-                                </td>
+                    {(() => {
+                      const rpt = reportFilters.forTab('stock-status');
+                      const rows = stockStatus.lowStockItems.map((it) => ({
+                        name: it.name,
+                        category: it.category,
+                        stock: it.stock,
+                        minStock: it.minStock,
+                        price: it.price,
+                        value: it.value,
+                        status: it.stock === 0 ? tm('reportsOutOfStock') : tm('reportsLowBadge'),
+                      }));
+                      const visible = rpt.filtered(rows);
+                      return (
+                        <div className="overflow-x-auto overflow-y-auto max-h-[600px]" style={{ scrollbarWidth: 'thin', scrollbarColor: '#cbd5e1 #f1f5f9' }}>
+                          <table className="w-full min-w-[900px]">
+                            <thead className="bg-gray-50 border-b sticky top-0">
+                              <tr>
+                                <th className="px-4 py-3 text-left text-sm">{tm('productNameLabel')}</th>
+                                <th className="px-4 py-3 text-left text-sm">{tm('categoryLabel')}</th>
+                                <th className="px-4 py-3 text-right text-sm">{tm('reportsCurrentStock')}</th>
+                                <th className="px-4 py-3 text-right text-sm">{tm('reportsMinStockCol')}</th>
+                                <th className="px-4 py-3 text-right text-sm">{tm('reportsPriceCol')}</th>
+                                <th className="px-4 py-3 text-right text-sm">{tm('reportsStockValue')}</th>
+                                <th className="px-4 py-3 text-center text-sm">{tm('reportsStatusCol')}</th>
                               </tr>
-                            ))
-                          )}
-                        </tbody>
-                      </table>
-                    </div>
+                              <ReportColumnFilters
+                                columns={[
+                                  { key: 'name', label: tm('productNameLabel'), type: 'text', width: 'min-w-[180px]' },
+                                  { key: 'category', label: tm('categoryLabel'), type: 'text', width: 'min-w-[140px]' },
+                                  { key: 'stock', label: tm('reportsCurrentStock'), type: 'number', align: 'right', width: 'min-w-[120px]' },
+                                  { key: 'minStock', label: tm('reportsMinStockCol'), type: 'number', align: 'right', width: 'min-w-[120px]' },
+                                  { key: 'price', label: tm('reportsPriceCol'), type: 'number', align: 'right', width: 'min-w-[120px]' },
+                                  { key: 'value', label: tm('reportsStockValue'), type: 'number', align: 'right', width: 'min-w-[120px]' },
+                                  { key: 'status', label: tm('reportsStatusCol'), type: 'text', align: 'center', width: 'min-w-[120px]' },
+                                ]}
+                                values={rpt.filters}
+                                onChange={rpt.setFilters}
+                                onClear={rpt.clearAll}
+                              />
+                            </thead>
+                            <tbody className="divide-y">
+                              {visible.length === 0 ? (
+                                <tr>
+                                  <td colSpan={7} className="px-4 py-10 text-center text-gray-500 text-sm">
+                                    {tm('reportsNoLowStockProducts')}
+                                  </td>
+                                </tr>
+                              ) : (
+                                visible.map((item, idx) => (
+                                  <tr key={`${item.name}-${idx}`} className="hover:bg-gray-50">
+                                    <td className="px-4 py-3 font-medium">{item.name}</td>
+                                    <td className="px-4 py-3 text-sm text-gray-600">{item.category}</td>
+                                    <td className="px-4 py-3 text-right">
+                                      <span className={`px-2 py-1 rounded text-sm font-semibold ${item.stock === 0
+                                        ? 'bg-red-100 text-red-700'
+                                        : item.stock <= item.minStock
+                                          ? 'bg-orange-100 text-orange-700'
+                                          : 'bg-green-100 text-green-700'
+                                        }`}>
+                                        {item.stock}
+                                      </span>
+                                    </td>
+                                    <td className="px-4 py-3 text-right text-sm">{item.minStock}</td>
+                                    <td className="px-4 py-3 text-right text-sm">{formatNumber(item.price, 2, false)} {reportCurrency}</td>
+                                    <td className="px-4 py-3 text-right text-sm">{formatNumber(item.value, 2, false)} {reportCurrency}</td>
+                                    <td className="px-4 py-3 text-center">
+                                      {item.stock === 0 ? (
+                                        <span className="px-2 py-1 bg-red-100 text-red-700 rounded text-xs">{tm('reportsOutOfStock')}</span>
+                                      ) : (
+                                        <span className="px-2 py-1 bg-orange-100 text-orange-700 rounded text-xs">{tm('reportsLowBadge')}</span>
+                                      )}
+                                    </td>
+                                  </tr>
+                                ))
+                              )}
+                            </tbody>
+                          </table>
+                        </div>
+                      );
+                    })()}
                   </div>
                 </div>
               );
@@ -5951,48 +6222,77 @@ export function ReportsModule({
                       <h3 className="text-lg font-semibold text-gray-800">{tm('reportProductCompareTitle')}</h3>
                       <span className="text-xs text-gray-500">{tm('reportProductCompareSubtitle')}</span>
                     </div>
-                    <div className="overflow-x-auto max-h-[420px] overflow-y-auto" style={{ scrollbarWidth: 'thin', scrollbarColor: '#cbd5e1 #f1f5f9' }}>
-                      <table className="w-full min-w-[720px] text-sm">
-                        <thead className="bg-gray-50 border-b sticky top-0 z-10">
-                          <tr>
-                            <th className="px-3 py-2 text-left font-medium text-gray-700">{tm('reportColProduct')}</th>
-                            <th className="px-3 py-2 text-right font-medium text-gray-700">{tm('reportColPrevQty')}</th>
-                            <th className="px-3 py-2 text-right font-medium text-gray-700">{tm('reportColCurrQty')}</th>
-                            <th className="px-3 py-2 text-right font-medium text-gray-700">{tm('reportColQtyDelta')}</th>
-                            <th className="px-3 py-2 text-right font-medium text-gray-700">{tm('reportColPrevRev')}</th>
-                            <th className="px-3 py-2 text-right font-medium text-gray-700">{tm('reportColCurrRev')}</th>
-                            <th className="px-3 py-2 text-right font-medium text-gray-700">{tm('reportColRevDelta')}</th>
-                          </tr>
-                        </thead>
-                        <tbody className="divide-y divide-gray-100">
-                          {comparison.productRows.length === 0 ? (
-                            <tr>
-                              <td colSpan={7} className="px-4 py-8 text-center text-gray-500">
-                                {tm('reportCompareNoProductRows')}
-                              </td>
-                            </tr>
-                          ) : (
-                            comparison.productRows.map((row) => (
-                              <tr key={row.key} className="hover:bg-gray-50">
-                                <td className="px-3 py-2 font-medium text-gray-900 max-w-[220px] truncate" title={row.name}>
-                                  {row.name}
-                                </td>
-                                <td className="px-3 py-2 text-right tabular-nums">{formatNumber(row.prevQty, 2, false)}</td>
-                                <td className="px-3 py-2 text-right tabular-nums">{formatNumber(row.currQty, 2, false)}</td>
-                                <td className={`px-3 py-2 text-right tabular-nums font-medium ${trendClass(row.qtyPct)}`}>
-                                  {trendArrow(row.qtyPct)} {Math.abs(row.qtyPct)}%
-                                </td>
-                                <td className="px-3 py-2 text-right tabular-nums">{formatNumber(row.prevRev, 2, false)}</td>
-                                <td className="px-3 py-2 text-right tabular-nums">{formatNumber(row.currRev, 2, false)}</td>
-                                <td className={`px-3 py-2 text-right tabular-nums font-medium ${trendClass(row.revPct)}`}>
-                                  {trendArrow(row.revPct)} {Math.abs(row.revPct)}%
-                                </td>
+                    {(() => {
+                      const rpt = reportFilters.forTab('comparison');
+                      const rows = comparison.productRows.map((r) => ({
+                        name: r.name,
+                        prevQty: r.prevQty,
+                        currQty: r.currQty,
+                        qtyPct: r.qtyPct,
+                        prevRev: r.prevRev,
+                        currRev: r.currRev,
+                        revPct: r.revPct,
+                      }));
+                      const visible = rpt.filtered(rows);
+                      return (
+                        <div className="overflow-x-auto max-h-[420px] overflow-y-auto" style={{ scrollbarWidth: 'thin', scrollbarColor: '#cbd5e1 #f1f5f9' }}>
+                          <table className="w-full min-w-[720px] text-sm">
+                            <thead className="bg-gray-50 border-b sticky top-0 z-10">
+                              <tr>
+                                <th className="px-3 py-2 text-left font-medium text-gray-700">{tm('reportColProduct')}</th>
+                                <th className="px-3 py-2 text-right font-medium text-gray-700">{tm('reportColPrevQty')}</th>
+                                <th className="px-3 py-2 text-right font-medium text-gray-700">{tm('reportColCurrQty')}</th>
+                                <th className="px-3 py-2 text-right font-medium text-gray-700">{tm('reportColQtyDelta')}</th>
+                                <th className="px-3 py-2 text-right font-medium text-gray-700">{tm('reportColPrevRev')}</th>
+                                <th className="px-3 py-2 text-right font-medium text-gray-700">{tm('reportColCurrRev')}</th>
+                                <th className="px-3 py-2 text-right font-medium text-gray-700">{tm('reportColRevDelta')}</th>
                               </tr>
-                            ))
-                          )}
-                        </tbody>
-                      </table>
-                    </div>
+                              <ReportColumnFilters
+                                columns={[
+                                  { key: 'name', label: tm('reportColProduct'), type: 'text', width: 'min-w-[180px]' },
+                                  { key: 'prevQty', label: tm('reportColPrevQty'), type: 'number', align: 'right', width: 'min-w-[120px]' },
+                                  { key: 'currQty', label: tm('reportColCurrQty'), type: 'number', align: 'right', width: 'min-w-[120px]' },
+                                  { key: 'qtyPct', label: tm('reportColQtyDelta'), type: 'number', align: 'right', width: 'min-w-[120px]' },
+                                  { key: 'prevRev', label: tm('reportColPrevRev'), type: 'number', align: 'right', width: 'min-w-[120px]' },
+                                  { key: 'currRev', label: tm('reportColCurrRev'), type: 'number', align: 'right', width: 'min-w-[120px]' },
+                                  { key: 'revPct', label: tm('reportColRevDelta'), type: 'number', align: 'right', width: 'min-w-[120px]' },
+                                ]}
+                                values={rpt.filters}
+                                onChange={rpt.setFilters}
+                                onClear={rpt.clearAll}
+                              />
+                            </thead>
+                            <tbody className="divide-y divide-gray-100">
+                              {visible.length === 0 ? (
+                                <tr>
+                                  <td colSpan={7} className="px-4 py-8 text-center text-gray-500">
+                                    {tm('reportCompareNoProductRows')}
+                                  </td>
+                                </tr>
+                              ) : (
+                                visible.map((row) => (
+                                  <tr key={row.name} className="hover:bg-gray-50">
+                                    <td className="px-3 py-2 font-medium text-gray-900 max-w-[220px] truncate" title={row.name}>
+                                      {row.name}
+                                    </td>
+                                    <td className="px-3 py-2 text-right tabular-nums">{formatNumber(row.prevQty, 2, false)}</td>
+                                    <td className="px-3 py-2 text-right tabular-nums">{formatNumber(row.currQty, 2, false)}</td>
+                                    <td className={`px-3 py-2 text-right tabular-nums font-medium ${trendClass(row.qtyPct)}`}>
+                                      {trendArrow(row.qtyPct)} {Math.abs(row.qtyPct)}%
+                                    </td>
+                                    <td className="px-3 py-2 text-right tabular-nums">{formatNumber(row.prevRev, 2, false)}</td>
+                                    <td className="px-3 py-2 text-right tabular-nums">{formatNumber(row.currRev, 2, false)}</td>
+                                    <td className={`px-3 py-2 text-right tabular-nums font-medium ${trendClass(row.revPct)}`}>
+                                      {trendArrow(row.revPct)} {Math.abs(row.revPct)}%
+                                    </td>
+                                  </tr>
+                                ))
+                              )}
+                            </tbody>
+                          </table>
+                        </div>
+                      );
+                    })()}
                   </div>
                 </div>
               );
@@ -6036,56 +6336,89 @@ export function ReportsModule({
                 </div>
 
                 <Spin spinning={loadingPurchasePromoReport}>
-                  <div className="bg-white rounded-xl border border-slate-200 overflow-hidden shadow-sm">
-                    <div className="overflow-x-auto">
-                      <table className="min-w-full text-sm">
-                        <thead className="bg-slate-50 text-slate-600">
-                          <tr>
-                            <th className="px-3 py-2 text-left">{tm('date')}</th>
-                            <th className="px-3 py-2 text-left">{tm('invoiceNo')}</th>
-                            <th className="px-3 py-2 text-left">{tm('supplier')}</th>
-                            <th className="px-3 py-2 text-left">{tm('productGridColCode')}</th>
-                            <th className="px-3 py-2 text-left">{tm('productName')}</th>
-                            <th className="px-3 py-2 text-right">{tm('quantity')}</th>
-                            <th className="px-3 py-2 text-right">{tm('unitCost')}</th>
-                            <th className="px-3 py-2 text-right">{tm('purchasePromotionAllocatedCost')}</th>
-                            <th className="px-3 py-2 text-right">{tm('purchasePromotionInvoicePaid')}</th>
-                          </tr>
-                        </thead>
-                        <tbody>
-                          {purchasePromoLines.length === 0 ? (
-                            <tr>
-                              <td colSpan={9} className="px-3 py-10 text-center text-slate-500">
-                                {tm('noDataFound')}
-                              </td>
-                            </tr>
-                          ) : (
-                            purchasePromoLines.map((row) => (
-                              <tr key={row.id} className="border-t border-slate-100 hover:bg-slate-50/80">
-                                <td className="px-3 py-2 whitespace-nowrap">{row.invoiceDate}</td>
-                                <td className="px-3 py-2 whitespace-nowrap font-medium">{row.invoiceNo}</td>
-                                <td className="px-3 py-2">{row.supplierName}</td>
-                                <td className="px-3 py-2 font-mono text-xs">{row.productCode}</td>
-                                <td className="px-3 py-2">{row.productName}</td>
-                                <td className="px-3 py-2 text-right tabular-nums">
-                                  {formatNumber(row.quantity, 2, false)} {row.unit}
-                                </td>
-                                <td className="px-3 py-2 text-right tabular-nums">
-                                  {formatNumber(row.allocatedUnitCost, 2, false)} {reportCurrency}
-                                </td>
-                                <td className="px-3 py-2 text-right tabular-nums">
-                                  {formatNumber(row.allocatedTotalCost, 2, false)} {reportCurrency}
-                                </td>
-                                <td className="px-3 py-2 text-right tabular-nums">
-                                  {formatNumber(row.invoicePaidTotal, 2, false)} {reportCurrency}
-                                </td>
+                  {(() => {
+                    const rpt = reportFilters.forTab('purchase-promotion-report');
+                    const rows = purchasePromoLines.map((r) => ({
+                      invoiceDate: r.invoiceDate,
+                      invoiceNo: r.invoiceNo,
+                      supplierName: r.supplierName,
+                      productCode: r.productCode,
+                      productName: r.productName,
+                      quantity: r.quantity,
+                      allocatedUnitCost: r.allocatedUnitCost,
+                      allocatedTotalCost: r.allocatedTotalCost,
+                      invoicePaidTotal: r.invoicePaidTotal,
+                    }));
+                    const visible = rpt.filtered(rows);
+                    return (
+                      <div className="bg-white rounded-xl border border-slate-200 overflow-hidden shadow-sm">
+                        <div className="overflow-x-auto">
+                          <table className="min-w-full text-sm">
+                            <thead className="bg-slate-50 text-slate-600">
+                              <tr>
+                                <th className="px-3 py-2 text-left">{tm('date')}</th>
+                                <th className="px-3 py-2 text-left">{tm('invoiceNo')}</th>
+                                <th className="px-3 py-2 text-left">{tm('supplier')}</th>
+                                <th className="px-3 py-2 text-left">{tm('productGridColCode')}</th>
+                                <th className="px-3 py-2 text-left">{tm('productName')}</th>
+                                <th className="px-3 py-2 text-right">{tm('quantity')}</th>
+                                <th className="px-3 py-2 text-right">{tm('unitCost')}</th>
+                                <th className="px-3 py-2 text-right">{tm('purchasePromotionAllocatedCost')}</th>
+                                <th className="px-3 py-2 text-right">{tm('purchasePromotionInvoicePaid')}</th>
                               </tr>
-                            ))
-                          )}
-                        </tbody>
-                      </table>
-                    </div>
-                  </div>
+                              <ReportColumnFilters
+                                columns={[
+                                  { key: 'invoiceDate', label: tm('date'), type: 'date', width: 'min-w-[140px]' },
+                                  { key: 'invoiceNo', label: tm('invoiceNo'), type: 'text', width: 'min-w-[120px]' },
+                                  { key: 'supplierName', label: tm('supplier'), type: 'text', width: 'min-w-[160px]' },
+                                  { key: 'productCode', label: tm('productGridColCode'), type: 'text', width: 'min-w-[120px]' },
+                                  { key: 'productName', label: tm('productName'), type: 'text', width: 'min-w-[160px]' },
+                                  { key: 'quantity', label: tm('quantity'), type: 'number', align: 'right', width: 'min-w-[100px]' },
+                                  { key: 'allocatedUnitCost', label: tm('unitCost'), type: 'number', align: 'right', width: 'min-w-[120px]' },
+                                  { key: 'allocatedTotalCost', label: tm('purchasePromotionAllocatedCost'), type: 'number', align: 'right', width: 'min-w-[140px]' },
+                                  { key: 'invoicePaidTotal', label: tm('purchasePromotionInvoicePaid'), type: 'number', align: 'right', width: 'min-w-[140px]' },
+                                ]}
+                                values={rpt.filters}
+                                onChange={rpt.setFilters}
+                                onClear={rpt.clearAll}
+                              />
+                            </thead>
+                            <tbody>
+                              {visible.length === 0 ? (
+                                <tr>
+                                  <td colSpan={9} className="px-3 py-10 text-center text-slate-500">
+                                    {tm('noDataFound')}
+                                  </td>
+                                </tr>
+                              ) : (
+                                visible.map((row) => (
+                                  <tr key={row.invoiceNo + '|' + row.productCode} className="border-t border-slate-100 hover:bg-slate-50/80">
+                                    <td className="px-3 py-2 whitespace-nowrap">{row.invoiceDate}</td>
+                                    <td className="px-3 py-2 whitespace-nowrap font-medium">{row.invoiceNo}</td>
+                                    <td className="px-3 py-2">{row.supplierName}</td>
+                                    <td className="px-3 py-2 font-mono text-xs">{row.productCode}</td>
+                                    <td className="px-3 py-2">{row.productName}</td>
+                                    <td className="px-3 py-2 text-right tabular-nums">
+                                      {formatNumber(row.quantity, 2, false)} {purchasePromoLines.find((l) => l.productCode === row.productCode)?.unit ?? ''}
+                                    </td>
+                                    <td className="px-3 py-2 text-right tabular-nums">
+                                      {formatNumber(row.allocatedUnitCost, 2, false)} {reportCurrency}
+                                    </td>
+                                    <td className="px-3 py-2 text-right tabular-nums">
+                                      {formatNumber(row.allocatedTotalCost, 2, false)} {reportCurrency}
+                                    </td>
+                                    <td className="px-3 py-2 text-right tabular-nums">
+                                      {formatNumber(row.invoicePaidTotal, 2, false)} {reportCurrency}
+                                    </td>
+                                  </tr>
+                                ))
+                              )}
+                            </tbody>
+                          </table>
+                        </div>
+                      </div>
+                    );
+                  })()}
                 </Spin>
               </div>
             )}
@@ -6225,6 +6558,28 @@ export function ReportsModule({
                               <th className="px-4 py-3 text-right text-sm">{tm('reportsExpiringTotalValue')}</th>
                               <th className="px-4 py-3 text-center text-sm">{tm('rptTargetColStatus')}</th>
                             </tr>
+                            {(() => {
+                              const rpt = reportFilters.forTab('expiring-products');
+                              return (
+                                <ReportColumnFilters
+                                  columns={[
+                                    { key: 'product_code', label: tm('reportsExpiringThProductCode'), type: 'text', width: 'min-w-[140px]' },
+                                    { key: 'product_name', label: tm('reportsThProductName'), type: 'text', width: 'min-w-[180px]' },
+                                    { key: 'lot_no', label: tm('reportsExpiringThLotSerial'), type: 'text', width: 'min-w-[120px]' },
+                                    { key: 'warehouse', label: tm('warehouse'), type: 'text', width: 'min-w-[120px]' },
+                                    { key: 'available_quantity', label: tm('reportsThQty'), type: 'number', align: 'right', width: 'min-w-[100px]' },
+                                    { key: 'expiry_date', label: tm('reportsExpiringThExpiryDate'), type: 'date', width: 'min-w-[140px]' },
+                                    { key: 'remainingDays', label: tm('reportsExpiringThRemainingDays'), type: 'number', align: 'right', width: 'min-w-[120px]' },
+                                    { key: 'unit_cost', label: tm('reportsColUnitCost'), type: 'number', align: 'right', width: 'min-w-[120px]' },
+                                    { key: 'productValue', label: tm('reportsExpiringTotalValue'), type: 'number', align: 'right', width: 'min-w-[140px]' },
+                                    { key: 'statusLabel', label: tm('rptTargetColStatus'), type: 'text', align: 'center', width: 'min-w-[120px]' },
+                                  ]}
+                                  values={rpt.filters}
+                                  onChange={rpt.setFilters}
+                                  onClear={rpt.clearAll}
+                                />
+                              );
+                            })()}
                           </thead>
                           <tbody className="divide-y">
                             {expiringProducts
@@ -6416,44 +6771,72 @@ export function ReportsModule({
                       <Clock className="w-5 h-5 text-red-600" />
                       <h3 className="text-lg font-semibold">{tm('reportsStockAgeDetailTitle')}</h3>
                     </div>
-                    <div className="overflow-x-auto overflow-y-auto max-h-[560px]" style={{ scrollbarWidth: 'thin', scrollbarColor: '#cbd5e1 #f1f5f9' }}>
-                      <table className="w-full min-w-[880px]">
-                        <thead className="bg-gray-50 border-b sticky top-0">
-                          <tr>
-                            <th className="px-4 py-3 text-left text-sm">{tm('reportColProduct')}</th>
-                            <th className="px-4 py-3 text-left text-sm">{tm('reportsColCategory')}</th>
-                            <th className="px-4 py-3 text-right text-sm">{tm('reportsColStock')}</th>
-                            <th className="px-4 py-3 text-right text-sm">{tm('reportsStockAgeThLastMove')}</th>
-                            <th className="px-4 py-3 text-right text-sm">{tm('reportsColStockValue')}</th>
-                            <th className="px-4 py-3 text-center text-sm">{tm('reportsStockAgeThBucket')}</th>
-                          </tr>
-                        </thead>
-                        <tbody className="divide-y">
-                          {ag.rows.length === 0 ? (
-                            <tr>
-                              <td colSpan={6} className="px-4 py-12 text-center text-gray-500 text-sm">
-                                {tm('reportsStockAgeEmpty')}
-                              </td>
-                            </tr>
-                          ) : (
-                            ag.rows.map(r => (
-                              <tr key={r.id} className="hover:bg-gray-50">
-                                <td className="px-4 py-3 font-medium">{r.name}</td>
-                                <td className="px-4 py-3 text-sm text-gray-600">{r.category}</td>
-                                <td className="px-4 py-3 text-right tabular-nums">{r.stock}</td>
-                                <td className="px-4 py-3 text-right tabular-nums">
-                                  {tm('reportsDaysWithN').replace('{n}', String(r.daysSinceMovement))}
-                                </td>
-                                <td className="px-4 py-3 text-right tabular-nums">{formatNumber(r.value, 2, false)} {reportCurrency}</td>
-                                <td className="px-4 py-3 text-center">
-                                  <span className={`px-2 py-1 rounded text-xs font-medium ${bucketStyle(r.bucketKey)}`}>{r.bucket}</span>
-                                </td>
+                    {(() => {
+                      const rpt = reportFilters.forTab('stock-aging');
+                      const rows = ag.rows.map((r) => ({
+                        name: r.name,
+                        category: r.category,
+                        stock: r.stock,
+                        daysSinceMovement: r.daysSinceMovement,
+                        value: r.value,
+                        bucket: r.bucket,
+                        bucketKey: r.bucketKey,
+                      }));
+                      const visible = rpt.filtered(rows);
+                      return (
+                        <div className="overflow-x-auto overflow-y-auto max-h-[560px]" style={{ scrollbarWidth: 'thin', scrollbarColor: '#cbd5e1 #f1f5f9' }}>
+                          <table className="w-full min-w-[880px]">
+                            <thead className="bg-gray-50 border-b sticky top-0">
+                              <tr>
+                                <th className="px-4 py-3 text-left text-sm">{tm('reportColProduct')}</th>
+                                <th className="px-4 py-3 text-left text-sm">{tm('reportsColCategory')}</th>
+                                <th className="px-4 py-3 text-right text-sm">{tm('reportsColStock')}</th>
+                                <th className="px-4 py-3 text-right text-sm">{tm('reportsStockAgeThLastMove')}</th>
+                                <th className="px-4 py-3 text-right text-sm">{tm('reportsColStockValue')}</th>
+                                <th className="px-4 py-3 text-center text-sm">{tm('reportsStockAgeThBucket')}</th>
                               </tr>
-                            ))
-                          )}
-                        </tbody>
-                      </table>
-                    </div>
+                              <ReportColumnFilters
+                                columns={[
+                                  { key: 'name', label: tm('reportColProduct'), type: 'text', width: 'min-w-[180px]' },
+                                  { key: 'category', label: tm('reportsColCategory'), type: 'text', width: 'min-w-[140px]' },
+                                  { key: 'stock', label: tm('reportsColStock'), type: 'number', align: 'right', width: 'min-w-[110px]' },
+                                  { key: 'daysSinceMovement', label: tm('reportsStockAgeThLastMove'), type: 'number', align: 'right', width: 'min-w-[120px]' },
+                                  { key: 'value', label: tm('reportsColStockValue'), type: 'number', align: 'right', width: 'min-w-[120px]' },
+                                  { key: 'bucket', label: tm('reportsStockAgeThBucket'), type: 'text', align: 'center', width: 'min-w-[140px]' },
+                                ]}
+                                values={rpt.filters}
+                                onChange={rpt.setFilters}
+                                onClear={rpt.clearAll}
+                              />
+                            </thead>
+                            <tbody className="divide-y">
+                              {visible.length === 0 ? (
+                                <tr>
+                                  <td colSpan={6} className="px-4 py-12 text-center text-gray-500 text-sm">
+                                    {tm('reportsStockAgeEmpty')}
+                                  </td>
+                                </tr>
+                              ) : (
+                                visible.map((r) => (
+                                  <tr key={r.name} className="hover:bg-gray-50">
+                                    <td className="px-4 py-3 font-medium">{r.name}</td>
+                                    <td className="px-4 py-3 text-sm text-gray-600">{r.category}</td>
+                                    <td className="px-4 py-3 text-right tabular-nums">{r.stock}</td>
+                                    <td className="px-4 py-3 text-right tabular-nums">
+                                      {tm('reportsDaysWithN').replace('{n}', String(r.daysSinceMovement))}
+                                    </td>
+                                    <td className="px-4 py-3 text-right tabular-nums">{formatNumber(r.value, 2, false)} {reportCurrency}</td>
+                                    <td className="px-4 py-3 text-center">
+                                      <span className={`px-2 py-1 rounded text-xs font-medium ${bucketStyle(r.bucketKey)}`}>{r.bucket}</span>
+                                    </td>
+                                  </tr>
+                                ))
+                              )}
+                            </tbody>
+                          </table>
+                        </div>
+                      );
+                    })()}
                   </div>
                 </div>
               );
@@ -6478,52 +6861,83 @@ export function ReportsModule({
                         {tm('reportsStockTurnPeriodApprox').replace('{n}', String(to.periodDays))}
                       </span>
                     </div>
-                    <div className="overflow-x-auto overflow-y-auto max-h-[560px]" style={{ scrollbarWidth: 'thin', scrollbarColor: '#cbd5e1 #f1f5f9' }}>
-                      <table className="w-full min-w-[960px]">
-                        <thead className="bg-gray-50 border-b sticky top-0">
-                          <tr>
-                            <th className="px-4 py-3 text-left text-sm">{tm('reportColProduct')}</th>
-                            <th className="px-4 py-3 text-left text-sm">{tm('reportsColCategory')}</th>
-                            <th className="px-4 py-3 text-right text-sm">{tm('reportsStockTurnThSoldQty')}</th>
-                            <th className="px-4 py-3 text-right text-sm">{tm('totalRevenueLabel')}</th>
-                            <th className="px-4 py-3 text-right text-sm">{tm('invCurrentStockLbl')}</th>
-                            <th className="px-4 py-3 text-right text-sm">{tm('reportsStockTurnThSalesStockRatio')}</th>
-                            <th className="px-4 py-3 text-right text-sm">{tm('reportsStockTurnThAnnualTurn')}</th>
-                            <th className="px-4 py-3 text-right text-sm">{tm('reportsStockTurnThStockDays')}</th>
-                          </tr>
-                        </thead>
-                        <tbody className="divide-y">
-                          {to.rows.length === 0 ? (
-                            <tr>
-                              <td colSpan={8} className="px-4 py-12 text-center text-gray-500 text-sm">
-                                {tm('reportsStockTurnEmpty')}
-                              </td>
-                            </tr>
-                          ) : (
-                            to.rows.map(r => (
-                              <tr key={r.id} className="hover:bg-gray-50">
-                                <td className="px-4 py-3 font-medium">{r.name}</td>
-                                <td className="px-4 py-3 text-sm text-gray-600">{r.category}</td>
-                                <td className="px-4 py-3 text-right tabular-nums">{r.soldQty}</td>
-                                <td className="px-4 py-3 text-right tabular-nums">{formatNumber(r.revenue, 2, false)} {reportCurrency}</td>
-                                <td className="px-4 py-3 text-right tabular-nums">{r.stock}</td>
-                                <td className="px-4 py-3 text-right tabular-nums">
-                                  {r.ratio == null ? '—' : formatNumber(r.ratio, 2, false)}
-                                </td>
-                                <td className="px-4 py-3 text-right tabular-nums">
-                                  {r.annualizedTurnover == null ? '—' : formatNumber(r.annualizedTurnover, 2, false)}
-                                </td>
-                                <td className="px-4 py-3 text-right tabular-nums text-sm text-slate-600">
-                                  {r.daysCover == null
-                                    ? '—'
-                                    : tm('reportsDaysWithN').replace('{n}', formatNumber(r.daysCover, 1, false))}
-                                </td>
+                    {(() => {
+                      const rpt = reportFilters.forTab('stock-turnover');
+                      const rows = to.rows.map((r) => ({
+                        name: r.name,
+                        category: r.category,
+                        soldQty: r.soldQty,
+                        revenue: r.revenue,
+                        stock: r.stock,
+                        ratio: r.ratio,
+                        annualizedTurnover: r.annualizedTurnover,
+                        daysCover: r.daysCover,
+                      }));
+                      const visible = rpt.filtered(rows);
+                      return (
+                        <div className="overflow-x-auto overflow-y-auto max-h-[560px]" style={{ scrollbarWidth: 'thin', scrollbarColor: '#cbd5e1 #f1f5f9' }}>
+                          <table className="w-full min-w-[960px]">
+                            <thead className="bg-gray-50 border-b sticky top-0">
+                              <tr>
+                                <th className="px-4 py-3 text-left text-sm">{tm('reportColProduct')}</th>
+                                <th className="px-4 py-3 text-left text-sm">{tm('reportsColCategory')}</th>
+                                <th className="px-4 py-3 text-right text-sm">{tm('reportsStockTurnThSoldQty')}</th>
+                                <th className="px-4 py-3 text-right text-sm">{tm('totalRevenueLabel')}</th>
+                                <th className="px-4 py-3 text-right text-sm">{tm('invCurrentStockLbl')}</th>
+                                <th className="px-4 py-3 text-right text-sm">{tm('reportsStockTurnThSalesStockRatio')}</th>
+                                <th className="px-4 py-3 text-right text-sm">{tm('reportsStockTurnThAnnualTurn')}</th>
+                                <th className="px-4 py-3 text-right text-sm">{tm('reportsStockTurnThStockDays')}</th>
                               </tr>
-                            ))
-                          )}
-                        </tbody>
-                      </table>
-                    </div>
+                              <ReportColumnFilters
+                                columns={[
+                                  { key: 'name', label: tm('reportColProduct'), type: 'text', width: 'min-w-[180px]' },
+                                  { key: 'category', label: tm('reportsColCategory'), type: 'text', width: 'min-w-[140px]' },
+                                  { key: 'soldQty', label: tm('reportsStockTurnThSoldQty'), type: 'number', align: 'right', width: 'min-w-[110px]' },
+                                  { key: 'revenue', label: tm('totalRevenueLabel'), type: 'number', align: 'right', width: 'min-w-[120px]' },
+                                  { key: 'stock', label: tm('invCurrentStockLbl'), type: 'number', align: 'right', width: 'min-w-[110px]' },
+                                  { key: 'ratio', label: tm('reportsStockTurnThSalesStockRatio'), type: 'number', align: 'right', width: 'min-w-[120px]' },
+                                  { key: 'annualizedTurnover', label: tm('reportsStockTurnThAnnualTurn'), type: 'number', align: 'right', width: 'min-w-[120px]' },
+                                  { key: 'daysCover', label: tm('reportsStockTurnThStockDays'), type: 'number', align: 'right', width: 'min-w-[120px]' },
+                                ]}
+                                values={rpt.filters}
+                                onChange={rpt.setFilters}
+                                onClear={rpt.clearAll}
+                              />
+                            </thead>
+                            <tbody className="divide-y">
+                              {visible.length === 0 ? (
+                                <tr>
+                                  <td colSpan={8} className="px-4 py-12 text-center text-gray-500 text-sm">
+                                    {tm('reportsStockTurnEmpty')}
+                                  </td>
+                                </tr>
+                              ) : (
+                                visible.map((r) => (
+                                  <tr key={r.name} className="hover:bg-gray-50">
+                                    <td className="px-4 py-3 font-medium">{r.name}</td>
+                                    <td className="px-4 py-3 text-sm text-gray-600">{r.category}</td>
+                                    <td className="px-4 py-3 text-right tabular-nums">{r.soldQty}</td>
+                                    <td className="px-4 py-3 text-right tabular-nums">{formatNumber(r.revenue, 2, false)} {reportCurrency}</td>
+                                    <td className="px-4 py-3 text-right tabular-nums">{r.stock}</td>
+                                    <td className="px-4 py-3 text-right tabular-nums">
+                                      {r.ratio == null ? '—' : formatNumber(r.ratio, 2, false)}
+                                    </td>
+                                    <td className="px-4 py-3 text-right tabular-nums">
+                                      {r.annualizedTurnover == null ? '—' : formatNumber(r.annualizedTurnover, 2, false)}
+                                    </td>
+                                    <td className="px-4 py-3 text-right tabular-nums text-sm text-slate-600">
+                                      {r.daysCover == null
+                                        ? '—'
+                                        : tm('reportsDaysWithN').replace('{n}', formatNumber(r.daysCover, 1, false))}
+                                    </td>
+                                  </tr>
+                                ))
+                              )}
+                            </tbody>
+                          </table>
+                        </div>
+                      );
+                    })()}
                   </div>
                 </div>
               );
@@ -6605,56 +7019,87 @@ export function ReportsModule({
                       <ApartmentOutlined className="text-lg text-orange-500" />
                       <h3 className="text-lg font-semibold">{tm('reportsAbcTableTitle')}</h3>
                     </div>
-                    <div className="overflow-x-auto overflow-y-auto max-h-[400px]" style={{ scrollbarWidth: 'thin', scrollbarColor: '#cbd5e1 #f1f5f9' }}>
-                      <table className="w-full min-w-[800px]">
-                        <thead className="bg-gray-50 border-b sticky top-0">
-                          <tr>
-                            <th className="px-4 py-3 text-left text-sm">{tm('reportsAbcThClass')}</th>
-                            <th className="px-4 py-3 text-left text-sm">{tm('reportColProduct')}</th>
-                            <th className="px-4 py-3 text-left text-sm">{tm('reportsColCategory')}</th>
-                            <th className="px-4 py-3 text-right text-sm">{tm('reportsAbcThRevenuePeriod')}</th>
-                            <th className="px-4 py-3 text-right text-sm">{tm('reportsColStock')}</th>
-                            <th className="px-4 py-3 text-right text-sm">{tm('reportsColStockValue')}</th>
-                            <th className="px-4 py-3 text-right text-sm">{tm('reportsAbcThMetric')}</th>
-                            <th className="px-4 py-3 text-right text-sm">{tm('reportsAbcThCumPct')}</th>
-                          </tr>
-                        </thead>
-                        <tbody className="divide-y">
-                          {abc.rows.length === 0 ? (
-                            <tr>
-                              <td colSpan={8} className="px-4 py-12 text-center text-gray-500 text-sm">
-                                {tm('reportsAbcEmptyRows')}
-                              </td>
-                            </tr>
-                          ) : (
-                            abc.rows.map(r => (
-                              <tr key={r.id} className="hover:bg-gray-50">
-                                <td className="px-4 py-3">
-                                  <span
-                                    className={`px-2 py-1 rounded text-xs font-bold ${
-                                      r.abc === 'A'
-                                        ? 'bg-green-100 text-green-800'
-                                        : r.abc === 'B'
-                                          ? 'bg-amber-100 text-amber-800'
-                                          : 'bg-slate-100 text-slate-700'
-                                    }`}
-                                  >
-                                    {r.abc}
-                                  </span>
-                                </td>
-                                <td className="px-4 py-3 font-medium">{r.name}</td>
-                                <td className="px-4 py-3 text-sm text-gray-600">{r.category}</td>
-                                <td className="px-4 py-3 text-right tabular-nums">{formatNumber(r.revenue, 2, false)} {reportCurrency}</td>
-                                <td className="px-4 py-3 text-right tabular-nums">{r.stock}</td>
-                                <td className="px-4 py-3 text-right tabular-nums">{formatNumber(r.stockValue, 2, false)} {reportCurrency}</td>
-                                <td className="px-4 py-3 text-right tabular-nums font-medium">{formatNumber(r.metric, 2, false)} {reportCurrency}</td>
-                                <td className="px-4 py-3 text-right tabular-nums">{formatNumber(r.cumPct, 1, false)}%</td>
+                    {(() => {
+                      const rpt = reportFilters.forTab('stock-abc');
+                      const rows = abc.rows.map((r) => ({
+                        abc: r.abc,
+                        name: r.name,
+                        category: r.category,
+                        revenue: r.revenue,
+                        stock: r.stock,
+                        stockValue: r.stockValue,
+                        metric: r.metric,
+                        cumPct: r.cumPct,
+                      }));
+                      const visible = rpt.filtered(rows);
+                      return (
+                        <div className="overflow-x-auto overflow-y-auto max-h-[400px]" style={{ scrollbarWidth: 'thin', scrollbarColor: '#cbd5e1 #f1f5f9' }}>
+                          <table className="w-full min-w-[800px]">
+                            <thead className="bg-gray-50 border-b sticky top-0">
+                              <tr>
+                                <th className="px-4 py-3 text-left text-sm">{tm('reportsAbcThClass')}</th>
+                                <th className="px-4 py-3 text-left text-sm">{tm('reportColProduct')}</th>
+                                <th className="px-4 py-3 text-left text-sm">{tm('reportsColCategory')}</th>
+                                <th className="px-4 py-3 text-right text-sm">{tm('reportsAbcThRevenuePeriod')}</th>
+                                <th className="px-4 py-3 text-right text-sm">{tm('reportsColStock')}</th>
+                                <th className="px-4 py-3 text-right text-sm">{tm('reportsColStockValue')}</th>
+                                <th className="px-4 py-3 text-right text-sm">{tm('reportsAbcThMetric')}</th>
+                                <th className="px-4 py-3 text-right text-sm">{tm('reportsAbcThCumPct')}</th>
                               </tr>
-                            ))
-                          )}
-                        </tbody>
-                      </table>
-                    </div>
+                              <ReportColumnFilters
+                                columns={[
+                                  { key: 'abc', label: tm('reportsAbcThClass'), type: 'text', align: 'left', width: 'min-w-[80px]' },
+                                  { key: 'name', label: tm('reportColProduct'), type: 'text', width: 'min-w-[180px]' },
+                                  { key: 'category', label: tm('reportsColCategory'), type: 'text', width: 'min-w-[140px]' },
+                                  { key: 'revenue', label: tm('reportsAbcThRevenuePeriod'), type: 'number', align: 'right', width: 'min-w-[140px]' },
+                                  { key: 'stock', label: tm('reportsColStock'), type: 'number', align: 'right', width: 'min-w-[100px]' },
+                                  { key: 'stockValue', label: tm('reportsColStockValue'), type: 'number', align: 'right', width: 'min-w-[120px]' },
+                                  { key: 'metric', label: tm('reportsAbcThMetric'), type: 'number', align: 'right', width: 'min-w-[120px]' },
+                                  { key: 'cumPct', label: tm('reportsAbcThCumPct'), type: 'number', align: 'right', width: 'min-w-[120px]' },
+                                ]}
+                                values={rpt.filters}
+                                onChange={rpt.setFilters}
+                                onClear={rpt.clearAll}
+                              />
+                            </thead>
+                            <tbody className="divide-y">
+                              {visible.length === 0 ? (
+                                <tr>
+                                  <td colSpan={8} className="px-4 py-12 text-center text-gray-500 text-sm">
+                                    {tm('reportsAbcEmptyRows')}
+                                  </td>
+                                </tr>
+                              ) : (
+                                visible.map((r) => (
+                                  <tr key={r.name + r.abc} className="hover:bg-gray-50">
+                                    <td className="px-4 py-3">
+                                      <span
+                                        className={`px-2 py-1 rounded text-xs font-bold ${
+                                          r.abc === 'A'
+                                            ? 'bg-green-100 text-green-800'
+                                            : r.abc === 'B'
+                                              ? 'bg-amber-100 text-amber-800'
+                                              : 'bg-slate-100 text-slate-700'
+                                        }`}
+                                      >
+                                        {r.abc}
+                                      </span>
+                                    </td>
+                                    <td className="px-4 py-3 font-medium">{r.name}</td>
+                                    <td className="px-4 py-3 text-sm text-gray-600">{r.category}</td>
+                                    <td className="px-4 py-3 text-right tabular-nums">{formatNumber(r.revenue, 2, false)} {reportCurrency}</td>
+                                    <td className="px-4 py-3 text-right tabular-nums">{r.stock}</td>
+                                    <td className="px-4 py-3 text-right tabular-nums">{formatNumber(r.stockValue, 2, false)} {reportCurrency}</td>
+                                    <td className="px-4 py-3 text-right tabular-nums font-medium">{formatNumber(r.metric, 2, false)} {reportCurrency}</td>
+                                    <td className="px-4 py-3 text-right tabular-nums">{formatNumber(r.cumPct, 1, false)}%</td>
+                                  </tr>
+                                ))
+                              )}
+                            </tbody>
+                          </table>
+                        </div>
+                      );
+                    })()}
                   </div>
                 </div>
               );
@@ -6801,7 +7246,51 @@ export function ReportsModule({
                       </div>
                     ) : (
                       <div className="space-y-6">
-                        {serviceBreakdownGrouped.map((g) => (
+                        {serviceBreakdownGrouped.map((g) => {
+                          const rpt = reportFilters.forTab('beauty-service-report');
+                          const columnDefs = isErpServiceBreakdown
+                            ? [
+                                { key: 'date', label: tm('date'), type: 'date' as const, width: 'min-w-[140px]' },
+                                { key: 'customerName', label: tm('customer'), type: 'text' as const, width: 'min-w-[140px]' },
+                                { key: 'staffName', label: tm('cashier'), type: 'text' as const, width: 'min-w-[140px]' },
+                                { key: 'receiptNumber', label: tm('reportsThOrderNo'), type: 'text' as const, width: 'min-w-[120px]' },
+                                { key: 'amount', label: tm('amount'), type: 'number' as const, align: 'right' as const, width: 'min-w-[120px]' },
+                                { key: 'status', label: tm('status'), type: 'text' as const, width: 'min-w-[120px]' },
+                              ]
+                            : [
+                                { key: 'date', label: tm('date'), type: 'date' as const, width: 'min-w-[140px]' },
+                                { key: 'customer_name', label: tm('customer'), type: 'text' as const, width: 'min-w-[140px]' },
+                                { key: 'specialist_name', label: tm('bStaffView'), type: 'text' as const, width: 'min-w-[140px]' },
+                                { key: 'device_name', label: tm('bDeviceView'), type: 'text' as const, width: 'min-w-[140px]' },
+                                { key: 'total_price', label: tm('amount'), type: 'number' as const, align: 'right' as const, width: 'min-w-[120px]' },
+                                { key: 'status', label: tm('status'), type: 'text' as const, width: 'min-w-[120px]' },
+                              ];
+                          const visibleItems = rpt.filtered(
+                            g.items.map((it: any) => {
+                              if (isErpServiceBreakdown) {
+                                const a = it as ErpServiceBreakdownLine;
+                                return {
+                                  date: a.date,
+                                  customerName: a.customerName,
+                                  staffName: a.staffName,
+                                  receiptNumber: a.receiptNumber,
+                                  amount: a.amount,
+                                  status: a.status,
+                                };
+                              }
+                              const a = it as BeautyAppointment;
+                              return {
+                                date: a.date ?? a.appointment_date ?? '',
+                                customer_name: a.customer_name ?? '',
+                                specialist_name: a.specialist_name ?? a.staff_name ?? '',
+                                device_name: a.device_name ?? '',
+                                total_price: a.total_price ?? 0,
+                                status: a.status ?? '',
+                              };
+                            }),
+                          );
+                          const visibleIndexes = new Set(visibleItems.map((v: any) => JSON.stringify(v)));
+                          return (
                           <div
                             key={g.serviceName}
                             className="bg-white rounded-xl border border-slate-200 overflow-hidden shadow-sm"
@@ -6859,9 +7348,38 @@ export function ReportsModule({
                                     <th className="px-4 py-3 font-black text-right">{tm('amount')}</th>
                                     <th className="px-4 py-3 font-black">{tm('status')}</th>
                                   </tr>
+                                  <ReportColumnFilters
+                                    columns={columnDefs}
+                                    values={rpt.filters}
+                                    onChange={rpt.setFilters}
+                                    onClear={rpt.clearAll}
+                                  />
                                 </thead>
                                 <tbody className="divide-y divide-slate-100">
-                                  {g.items.map((row) => {
+                                  {g.items.filter((row: any) => {
+                                    if (isErpServiceBreakdown) {
+                                      const a = row as ErpServiceBreakdownLine;
+                                      const v = {
+                                        date: a.date,
+                                        customerName: a.customerName,
+                                        staffName: a.staffName,
+                                        receiptNumber: a.receiptNumber,
+                                        amount: a.amount,
+                                        status: a.status,
+                                      };
+                                      return visibleIndexes.has(JSON.stringify(v));
+                                    }
+                                    const a = row as BeautyAppointment;
+                                    const v = {
+                                      date: a.date ?? a.appointment_date ?? '',
+                                      customer_name: a.customer_name ?? '',
+                                      specialist_name: a.specialist_name ?? a.staff_name ?? '',
+                                      device_name: a.device_name ?? '',
+                                      total_price: a.total_price ?? 0,
+                                      status: a.status ?? '',
+                                    };
+                                    return visibleIndexes.has(JSON.stringify(v));
+                                  }).map((row) => {
                                     if (isErpServiceBreakdown) {
                                       const a = row as ErpServiceBreakdownLine;
                                       return (
@@ -6928,7 +7446,8 @@ export function ReportsModule({
                               </table>
                             </div>
                           </div>
-                        ))}
+                          );
+                        })}
                       </div>
                     )}
                   </Spin>
@@ -7018,6 +7537,19 @@ export function ReportsModule({
                                         <th className="px-4 py-2 font-black">{tm('bStaffView')}</th>
                                         <th className="px-4 py-2 font-black">{tm('paymentType')}</th>
                                       </tr>
+                                      <ReportColumnFilters
+                                        columns={[
+                                          { key: 'appointmentDate', label: tm('date'), type: 'date', width: 'min-w-[140px]' },
+                                          { key: 'customerName', label: tm('customer'), type: 'text', width: 'min-w-[140px]' },
+                                          { key: 'quantity', label: tm('quantity'), type: 'number', align: 'right', width: 'min-w-[100px]' },
+                                          { key: 'total', label: tm('amount'), type: 'number', align: 'right', width: 'min-w-[120px]' },
+                                          { key: 'staffName', label: tm('bStaffView'), type: 'text', width: 'min-w-[120px]' },
+                                          { key: 'paymentMethod', label: tm('paymentType'), type: 'text', width: 'min-w-[120px]' },
+                                        ]}
+                                        values={reportFilters.forTab('beauty-appointment-product-report').filters}
+                                        onChange={reportFilters.forTab('beauty-appointment-product-report').setFilters}
+                                        onClear={reportFilters.forTab('beauty-appointment-product-report').clearAll}
+                                      />
                                     </thead>
                                     <tbody className="divide-y divide-slate-100">
                                       {g.items.map((row) => {
@@ -7079,6 +7611,22 @@ export function ReportsModule({
                                     <th className="px-4 py-3 font-black">{tm('bStaffView')}</th>
                                     <th className="px-4 py-3 font-black">{tm('paymentType')}</th>
                                   </tr>
+                                  <ReportColumnFilters
+                                    columns={[
+                                      { key: 'appointmentDate', label: tm('date'), type: 'date', width: 'min-w-[140px]' },
+                                      { key: 'customerName', label: tm('customer'), type: 'text', width: 'min-w-[140px]' },
+                                      { key: 'productName', label: tm('product'), type: 'text', width: 'min-w-[140px]' },
+                                      { key: 'productCodeOrBarcode', label: tm('code'), type: 'text', width: 'min-w-[120px]' },
+                                      { key: 'quantity', label: tm('quantity'), type: 'number', align: 'right', width: 'min-w-[100px]' },
+                                      { key: 'unitPrice', label: tm('price'), type: 'number', align: 'right', width: 'min-w-[100px]' },
+                                      { key: 'total', label: tm('amount'), type: 'number', align: 'right', width: 'min-w-[120px]' },
+                                      { key: 'staffName', label: tm('bStaffView'), type: 'text', width: 'min-w-[120px]' },
+                                      { key: 'paymentMethod', label: tm('paymentType'), type: 'text', width: 'min-w-[120px]' },
+                                    ]}
+                                    values={reportFilters.forTab('beauty-appointment-product-report').filters}
+                                    onChange={reportFilters.forTab('beauty-appointment-product-report').setFilters}
+                                    onClear={reportFilters.forTab('beauty-appointment-product-report').clearAll}
+                                  />
                                 </thead>
                                 <tbody className="divide-y divide-slate-100">
                                   {beautyAppointmentProductRows.map((row) => {
@@ -7171,6 +7719,19 @@ export function ReportsModule({
                                   <th className="px-4 py-3 font-black text-right">{tm('amount')}</th>
                                   <th className="px-4 py-3 font-black">{tm('status')}</th>
                                 </tr>
+                                <ReportColumnFilters
+                                  columns={[
+                                    { key: 'date', label: tm('date'), type: 'date', width: 'min-w-[140px]' },
+                                    { key: 'customer_name', label: tm('customer'), type: 'text', width: 'min-w-[140px]' },
+                                    { key: 'specialist_name', label: tm('bStaffView'), type: 'text', width: 'min-w-[140px]' },
+                                    { key: 'device_name', label: tm('bDeviceView'), type: 'text', width: 'min-w-[140px]' },
+                                    { key: 'total_price', label: tm('amount'), type: 'number', align: 'right', width: 'min-w-[120px]' },
+                                    { key: 'status', label: tm('status'), type: 'text', width: 'min-w-[120px]' },
+                                  ]}
+                                  values={reportFilters.forTab('beauty-cancelled-report').filters}
+                                  onChange={reportFilters.forTab('beauty-cancelled-report').setFilters}
+                                  onClear={reportFilters.forTab('beauty-cancelled-report').clearAll}
+                                />
                               </thead>
                               <tbody className="divide-y divide-slate-100">
                                 {g.items.map((a) => (
@@ -7238,6 +7799,18 @@ export function ReportsModule({
                               <th className="px-4 py-3 font-black text-right">{tm('amount')}</th>
                               <th className="px-4 py-3 font-black">{tm('status')}</th>
                             </tr>
+                            <ReportColumnFilters
+                              columns={[
+                                { key: 'created_at', label: tm('date'), type: 'date', width: 'min-w-[140px]' },
+                                { key: 'customer_name', label: tm('customer'), type: 'text', width: 'min-w-[140px]' },
+                                { key: 'payment_method', label: tm('paymentType'), type: 'text', width: 'min-w-[140px]' },
+                                { key: 'total', label: tm('amount'), type: 'number', align: 'right', width: 'min-w-[120px]' },
+                                { key: 'payment_status', label: tm('status'), type: 'text', width: 'min-w-[120px]' },
+                              ]}
+                              values={reportFilters.forTab('beauty-cancelled-report').filters}
+                              onChange={reportFilters.forTab('beauty-cancelled-report').setFilters}
+                              onClear={reportFilters.forTab('beauty-cancelled-report').clearAll}
+                            />
                           </thead>
                           <tbody className="divide-y divide-slate-100">
                             {beautyCancelledPayments.map((s) => {
