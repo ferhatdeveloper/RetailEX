@@ -6563,7 +6563,6 @@ export const excelModuleTranslations = {
   // Reports Sidebar & UI
   genelYapayZeka: { tr: 'GENEL & YAPAY ZEKA', en: 'GENERAL & AI', ar: 'العامة والذكاء الاصطناعي', ku: 'گشتی ve زیرەکی دەستکرد' },
   aiAsistan: { tr: 'AI Asistan', en: 'AI Assistant', ar: 'مساعد الذكاء الاصطناعي', ku: 'یارمەتیدەری زیرەکی دەستکرد' },
-  yoneticiGunlukSatis: { tr: 'Yönetici Günlük Satış', en: 'Executive Daily Sales', ar: 'مبيعات المدير اليومية', ku: 'فرۆشتنی ڕۆژانەی بەڕێوەبەر' },
   gunlukRapor: { tr: 'Günlük Rapor', en: 'Daily Report', ar: 'تقرير يومي', ku: 'ڕاپۆرتی ڕۆژانە' },
   aylikGunOzeti: { tr: 'Aylık Gün Özeti', en: 'Monthly Day Summary', ar: 'ملخص أيام الشهر', ku: 'پوختەی ڕۆژەکانی مانگ' },
   aylikGunOzetiDesc: {
