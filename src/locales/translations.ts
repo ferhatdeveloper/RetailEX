@@ -36,6 +36,10 @@ export interface MenuTranslations {
   currentAccounts: string;
   customReports: string;
   customerAnalysis: string;
+  /** Finans > Kartlar — Müşteri Arama Planı menü öğesi */
+  customerCallPlan: string;
+  /** Finans > Hareketler — Cari Devir Fişi menü öğesi */
+  cariDevirVoucher: string;
   dashboard: string;
   dataBroadcast: string;
   databaseInfrastructure: string;
@@ -1885,6 +1889,8 @@ export const translations: any = {
       currentAccounts: 'Cari Hesaplar',
       customReports: 'Özel Raporlar',
       customerAnalysis: 'Müşteri Analizi',
+      customerCallPlan: 'Müşteri Arama Planı',
+      cariDevirVoucher: 'Cari Devir Fişi',
       dashboard: 'Dashboard',
       dataBroadcast: 'Bilgi Gönder/Al',
       databaseInfrastructure: 'Database Altyapısı',
@@ -3570,6 +3576,8 @@ export const translations: any = {
       currentAccounts: 'Current Accounts',
       customReports: 'Custom Reports',
       customerAnalysis: 'Customer Analysis',
+      customerCallPlan: 'Customer Call Plan',
+      cariDevirVoucher: 'Account Carry-Over Voucher',
       dashboard: 'Dashboard',
       dataBroadcast: 'Data Broadcast',
       databaseInfrastructure: 'Database Infrastructure',
@@ -5131,6 +5139,8 @@ export const translations: any = {
       currentAccounts: 'الحسابات الجارية',
       customReports: 'تقارير مخصصة',
       customerAnalysis: 'تحليل العملاء',
+      customerCallPlan: 'خطة اتصال العملاء',
+      cariDevirVoucher: 'سند ترحيل الحساب',
       dashboard: 'لوحة التحكم',
       dataBroadcast: 'بث البيانات',
       databaseInfrastructure: 'بنية قاعدة البيانات',
@@ -6695,6 +6705,8 @@ export const translations: any = {
       currentAccounts: 'حیسابە جارییەکان',
       customReports: 'ڕاپۆرتە تایبەتەکان',
       customerAnalysis: 'شیکاری کڕیار',
+      customerCallPlan: 'پلانی پەیوەندی کڕیار',
+      cariDevirVoucher: 'پسوڵەی گواستنەوەی حیساب',
       dashboard: 'داشبۆرد',
       dataBroadcast: 'ناردن/وەرگرتنی زانیاری',
       databaseInfrastructure: 'بنیاتنانی بنکەدراوە',

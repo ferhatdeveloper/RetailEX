@@ -204,7 +204,7 @@ export const getStaticMenuSections = (t: Translations) => [
                 icon: FileText,
                 children: [
                     { label: t.menu.currentAccounts, screen: 'suppliers', icon: Building },
-                    { label: 'Müşteri Arama Planı', screen: 'customer-call-plan', icon: CalendarClock },
+                    { label: t.menu.customerCallPlan, screen: 'customer-call-plan', icon: CalendarClock },
                     { label: t.menu.cashCards, screen: 'cashbank', icon: Wallet },
                     // { label: 'Banka Kartları', screen: 'banks', icon: Landmark },
                     // { label: t.menu.bankAccounts, screen: 'bank-accounts', icon: CreditCard }
@@ -216,7 +216,7 @@ export const getStaticMenuSections = (t: Translations) => [
                 icon: TrendingDown,
                 children: [
                     // { label: t.menu.currentAccountSlips, screen: 'currentaccounts', icon: Receipt },
-                    { label: 'Cari Devir Fişi', screen: 'cari-devir', icon: ArrowRightLeft },
+                    { label: t.menu.cariDevirVoucher, screen: 'cari-devir', icon: ArrowRightLeft },
                     { label: t.menu.cashOperations, screen: 'kasalar', icon: Wallet },
                     // { label: 'Banka İşlemleri', screen: 'banks', icon: Landmark },
                     { label: t.menu.cashSlips, screen: 'cash-slips', icon: Receipt },

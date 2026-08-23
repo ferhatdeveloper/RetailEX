@@ -939,7 +939,7 @@ export function CustomerCallPlanModule() {
       ) : null}
 
       {editing ? (
-        <PercentBodyModal onClose={() => setEditing(null)} size="list" ariaLabel={tm('callPlanEditTitle')}>
+        <PercentBodyModal onClose={() => setEditing(null)} size="wide" ariaLabel={tm('callPlanEditTitle')}>
           <div className="flex shrink-0 items-center justify-between bg-gradient-to-r from-blue-600 to-indigo-600 px-6 py-5 text-white sm:px-8 sm:py-6">
             <div className="min-w-0">
               <p className="text-xs font-black uppercase tracking-wide text-blue-100">{tm('callPlanEditTitle')}</p>
@@ -952,7 +952,7 @@ export function CustomerCallPlanModule() {
 
           <PercentBodyModalScrollBody className="p-6 sm:p-8">
             <p className="mb-3 text-[11px] font-bold uppercase tracking-wider text-slate-500">{tm('callPlanSelectDays')}</p>
-            <div className="flex flex-wrap gap-2">
+            <div className="grid grid-cols-4 gap-2 sm:grid-cols-7">
               {getLocalizedWeekdayLabels(dateLocale).map(day => {
                 const selected = selectedDays.includes(day.value);
                 return (
@@ -961,7 +961,7 @@ export function CustomerCallPlanModule() {
                     type="button"
                     aria-pressed={selected}
                     onClick={() => toggleDay(day.value)}
-                    className={`rounded-full border px-3 py-1.5 text-xs font-black transition-all ${
+                    className={`min-h-[44px] rounded-2xl border px-2 py-2 text-xs font-black transition-all sm:text-sm ${
                       selected
                         ? 'border-blue-600 bg-blue-600 text-white shadow-md ring-2 ring-blue-200'
                         : 'border-amber-200 bg-white text-amber-700 hover:bg-amber-100'

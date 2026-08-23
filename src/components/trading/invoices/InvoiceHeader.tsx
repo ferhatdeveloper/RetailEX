@@ -215,6 +215,32 @@ export const InvoiceHeader: React.FC<InvoiceHeaderProps> = ({
                 >
                     <MoreVertical className="w-3.5 h-3.5 text-gray-600" />
                 </button>
+                {invoiceType.category === 'Alis' && (supplierCode || supplierTitle) && (
+                    <button
+                        type="button"
+                        onClick={() => {
+                            setSelectedSupplierHistory({ id: supplierCode, name: supplierTitle });
+                            setShowSupplierHistory(true);
+                        }}
+                        className="shrink-0 px-1.5 py-1 border border-blue-200 bg-blue-50 hover:bg-blue-100 text-blue-600 rounded transition-colors"
+                        title={tm('supplierHistoryTitle')}
+                    >
+                        <History className="w-3.5 h-3.5" />
+                    </button>
+                )}
+                {invoiceType.category !== 'Alis' && (customerCode || customerTitle) && (
+                    <button
+                        type="button"
+                        onClick={() => {
+                            setSelectedCustomerHistory({ id: customerCode, name: customerTitle, uuid: customerId || customerCode });
+                            setShowCustomerHistory(true);
+                        }}
+                        className="shrink-0 px-1.5 py-1 border border-blue-200 bg-blue-50 hover:bg-blue-100 text-blue-600 rounded transition-colors"
+                        title={tm('customerHistoryTitle')}
+                    >
+                        <History className="w-3.5 h-3.5" />
+                    </button>
+                )}
             </div>
         </div>
     );
