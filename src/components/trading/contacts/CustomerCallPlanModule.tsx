@@ -939,7 +939,7 @@ export function CustomerCallPlanModule() {
       ) : null}
 
       {editing ? (
-        <PercentBodyModal onClose={() => setEditing(null)} size="wide" ariaLabel={tm('callPlanEditTitle')}>
+        <PercentBodyModal onClose={() => setEditing(null)} size="full" ariaLabel={tm('callPlanEditTitle')}>
           <div className="flex shrink-0 items-center justify-between bg-gradient-to-r from-blue-600 to-indigo-600 px-6 py-5 text-white sm:px-8 sm:py-6">
             <div className="min-w-0">
               <p className="text-xs font-black uppercase tracking-wide text-blue-100">{tm('callPlanEditTitle')}</p>
@@ -952,7 +952,7 @@ export function CustomerCallPlanModule() {
 
           <PercentBodyModalScrollBody className="p-6 sm:p-8">
             <p className="mb-3 text-[11px] font-bold uppercase tracking-wider text-slate-500">{tm('callPlanSelectDays')}</p>
-            <div className="grid grid-cols-4 gap-2 sm:grid-cols-7">
+            <div className="flex w-full flex-wrap gap-2 md:flex-nowrap">
               {getLocalizedWeekdayLabels(dateLocale).map(day => {
                 const selected = selectedDays.includes(day.value);
                 return (
@@ -961,7 +961,7 @@ export function CustomerCallPlanModule() {
                     type="button"
                     aria-pressed={selected}
                     onClick={() => toggleDay(day.value)}
-                    className={`min-h-[44px] rounded-2xl border px-2 py-2 text-xs font-black transition-all sm:text-sm ${
+                    className={`min-h-[48px] min-w-[5rem] flex-1 basis-[calc((100%-3rem)/7)] rounded-2xl border px-2 py-2 text-sm font-black transition-all md:text-base ${
                       selected
                         ? 'border-blue-600 bg-blue-600 text-white shadow-md ring-2 ring-blue-200'
                         : 'border-amber-200 bg-white text-amber-700 hover:bg-amber-100'
@@ -982,19 +982,19 @@ export function CustomerCallPlanModule() {
               </p>
             )}
 
-            <div className="mt-6">
-              <label className="mb-1.5 block text-[11px] font-bold uppercase tracking-wider text-slate-500">{tm('callPlanNote')}</label>
-              <textarea
-                value={planNote}
-                onChange={e => setPlanNote(e.target.value)}
-                rows={3}
-                placeholder={tm('callPlanNote')}
-                className="w-full rounded-2xl border border-slate-200 px-4 py-3 text-sm font-medium text-slate-800 outline-none focus:border-blue-400 focus:ring-2 focus:ring-blue-500"
-              />
-            </div>
+            <div className="mt-6 grid grid-cols-12 gap-4">
+              <div className="col-span-12 md:col-span-12">
+                <label className="mb-1.5 block text-[11px] font-bold uppercase tracking-wider text-slate-500">{tm('callPlanNote')}</label>
+                <textarea
+                  value={planNote}
+                  onChange={e => setPlanNote(e.target.value)}
+                  rows={3}
+                  placeholder={tm('callPlanNote')}
+                  className="w-full rounded-2xl border border-slate-200 px-4 py-3 text-sm font-medium text-slate-800 outline-none focus:border-blue-400 focus:ring-2 focus:ring-blue-500"
+                />
+              </div>
 
-            <div className="mt-6 grid grid-cols-1 gap-4 md:grid-cols-2">
-              <div>
+              <div className="col-span-12 md:col-span-6">
                 <label className="mb-1.5 block text-[11px] font-bold uppercase tracking-wider text-slate-500">{tm('callPlanLastStatus')}</label>
                 <div className="relative">
                   <select
@@ -1009,7 +1009,7 @@ export function CustomerCallPlanModule() {
                   <ChevronDown className="pointer-events-none absolute right-3 top-1/2 h-5 w-5 -translate-y-1/2 text-slate-400" aria-hidden />
                 </div>
               </div>
-              <div>
+              <div className="col-span-12 md:col-span-6">
                 <label className="mb-1.5 block text-[11px] font-bold uppercase tracking-wider text-slate-500">{tm('callPlanLastStatusNote')}</label>
                 <input
                   value={lastNote}

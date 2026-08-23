@@ -15,6 +15,12 @@ export const PERCENT_BODY_MODAL_SIZES = {
     height: 'min(88vh, calc(100dvh - 2rem))',
     maxHeight: 'calc(100dvh - 2rem)',
   },
+  /** Tam ekrana yakın genişlik — fatura/cari düzenleme gibi sıkışık formlarda 12-col hissi verir */
+  full: {
+    width: 'min(98vw, 96rem)',
+    height: 'min(92vh, calc(100dvh - 2rem))',
+    maxHeight: 'calc(100dvh - 2rem)',
+  },
   /** Form: yükseklik içeriğe göre; taşınca gövde kayar, başlık/footer sabit */
   form: {
     width: 'min(92vw, 42rem)',

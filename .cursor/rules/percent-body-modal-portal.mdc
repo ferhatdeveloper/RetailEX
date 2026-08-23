@@ -57,6 +57,7 @@ return (
 |--------|----------|--------|
 | `list` | Cari/müşteri, ambar, satış elemanı, yetki, liste seçim | 92vw × 85vh (max 56rem) |
 | `wide` | Fatura detay, tür seçimi, işlem menüsü, geniş tablo | 94vw × 88vh (max 72rem) |
+| `full` | Müşteri arama planı gibi 12-kolon grid isteyen sıkışık formlar | 98vw × 92vh (max 96rem) |
 | `compact` | Tarih, ödeme bilgisi, kısa form | 92vw (max 28rem), yükseklik içeriğe göre |
 
 Boyutlar `PERCENT_BODY_MODAL_SIZES` içinde tanımlı; **yeni modal için rastgele `max-w-*` / `max-h-*` uydurma**.
