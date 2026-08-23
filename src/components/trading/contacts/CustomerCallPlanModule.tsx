@@ -73,6 +73,11 @@ export function CustomerCallPlanModule() {
   const currentWeekStartRef = useRef<string>(customerCallPlanWeeklyAPI.getCurrentWeekStart());
   const [currentWeekStart, setCurrentWeekStart] = useState(() => customerCallPlanWeeklyAPI.getCurrentWeekStart());
   const [reportWeekStart, setReportWeekStart] = useState(() => customerCallPlanWeeklyAPI.getCurrentWeekStart());
+  /** List tab hafta filtresi — Pazartesi rollover kuralı yalnızca mevcut haftada uygulanır */
+  const [listWeekStart, setListWeekStart] = useState<string>(() => customerCallPlanWeeklyAPI.getCurrentWeekStart());
+  /** List tab hafta filtresi DB verisi (geçmiş haftalar için) */
+  const [listWeekRows, setListWeekRows] = useState<CustomerCallPlanWeeklyRow[] | null>(null);
+  const [listWeekLoading, setListWeekLoading] = useState(false);
   const [archivedWeeks, setArchivedWeeks] = useState<string[]>([]);
   const [reportRows, setReportRows] = useState<CustomerCallPlanWeeklyRow[]>([]);
   const [reportLoading, setReportLoading] = useState(false);
@@ -101,6 +106,8 @@ export function CustomerCallPlanModule() {
         if (!prev || prev === oldCurrent) return rollover.currentWeekStart;
         return prev;
       });
+      // List tab hafta filtresi: mevcut haftayı izliyorsa yeni haftaya atla; geçmiş haftayı inceliyorsa kalsın.
+      setListWeekStart(prev => (prev === currentWeekStart ? rollover.currentWeekStart : prev));
       if (rollover.archivedWeeks > 0) {
         toast.success(
           tm('callPlanWeekRolled').replace('{weeks}', String(rollover.archivedWeeks)),
@@ -154,6 +161,8 @@ export function CustomerCallPlanModule() {
         currentWeekStartRef.current = fresh;
         setCurrentWeekStart(fresh);
         setReportWeekStart(prev => (prev === currentWeekStartRef.current ? fresh : prev));
+        // Kullanıcı mevcut haftayı izliyorsa otomatik yeni haftaya atla; geçmiş haftayı inceliyorsa olduğu yerde kalsın.
+        setListWeekStart(prev => (prev === currentWeekStartRef.current ? fresh : prev));
         void load();
       }
     }, intervalMs);
@@ -206,9 +215,62 @@ export function CustomerCallPlanModule() {
     });
   }, [customers, currentWeekStart]);
 
+  /**
+    * Geçmiş hafta seçildiğinde DB'den arşivlenmiş kayıtları çek.
+    * Mevcut haftada ise canlı veri (currentWeekCustomers) kullanılır.
+    */
+  const isListCurrentWeek = listWeekStart === currentWeekStart;
+
+  useEffect(() => {
+    if (isListCurrentWeek) {
+      setListWeekRows(null);
+      return;
+    }
+    let cancelled = false;
+    setListWeekLoading(true);
+    void (async () => {
+      try {
+        const rows = await customerCallPlanWeeklyAPI.getWeeklyReport(listWeekStart);
+        if (!cancelled) setListWeekRows(rows);
+      } catch (error: any) {
+        if (!cancelled) {
+          toast.error(error?.message || tm('callPlanReportLoadFailed'));
+          setListWeekRows([]);
+        }
+      } finally {
+        if (!cancelled) setListWeekLoading(false);
+      }
+    })();
+    return () => { cancelled = true; };
+  }, [listWeekStart, isListCurrentWeek, tm]);
+
+  /**
+    * Hafta filtresine göre görüntülenecek müşteri listesi. Pazartesi rollover
+    * kuralı yalnızca mevcut haftada uygulanır; geçmiş haftalarda arşiv DB verisi
+    * olduğu gibi gösterilir.
+    */
+  const displayedCustomers = useMemo(() => {
+    if (isListCurrentWeek) return currentWeekCustomers;
+    if (!listWeekRows) return [];
+    return listWeekRows
+      .filter(r => r.call_plan_weekdays && r.call_plan_weekdays.length > 0)
+      .map(r => ({
+        id: r.customer_id,
+        code: r.customer_code ?? '',
+        name: r.customer_name,
+        call_plan_enabled: true,
+        call_plan_weekdays: r.call_plan_weekdays,
+        call_plan_note: r.call_plan_note ?? '',
+        call_last_status: r.call_last_status,
+        call_last_note: r.call_last_note ?? undefined,
+        call_last_at: r.call_last_at ?? undefined,
+        cardType: 'customer' as const,
+      })) as unknown as Supplier[];
+  }, [isListCurrentWeek, currentWeekCustomers, listWeekRows]);
+
   const currentWeekFiltered = useMemo(() => {
     const q = search.trim().toLocaleLowerCase('tr-TR');
-    return currentWeekCustomers.filter(customer => {
+    return displayedCustomers.filter(customer => {
       const days = normalizeCustomerCallWeekdays(customer.call_plan_weekdays);
       if (dayFilter !== 'all' && !days.includes(dayFilter as any)) return false;
       if (!q) return true;
@@ -219,7 +281,7 @@ export function CustomerCallPlanModule() {
         String(customer.email || '').toLocaleLowerCase('tr-TR').includes(q)
       );
     });
-  }, [currentWeekCustomers, dayFilter, search]);
+  }, [displayedCustomers, dayFilter, search]);
 
   useEffect(() => {
     if (activeTab !== 'report') return;
@@ -434,6 +496,13 @@ export function CustomerCallPlanModule() {
     return merged;
   }, [archivedWeeks, currentWeekStart]);
 
+  /** List tab hafta filtresi için seçenekler — mevcut hafta + arşivlenmiş haftalar */
+  const listWeekOptions = useMemo(() => {
+    const current = customerCallPlanWeeklyAPI.getCurrentWeekStart();
+    const merged = Array.from(new Set([current, ...archivedWeeks])).sort((a, b) => b.localeCompare(a));
+    return merged;
+  }, [archivedWeeks, currentWeekStart]);
+
   const reportSummary = useMemo(() => {
     const counts: Record<string, number> = { total: reportRows.length };
     for (const row of reportRows) {
@@ -628,7 +697,7 @@ export function CustomerCallPlanModule() {
               </h2>
               <p className="text-xs font-semibold text-slate-500">
                 {activeTab === 'list'
-                  ? `${tm('customerCallListSubtitle')} · ${formatCallPlanWeekRange(currentWeekStart)}`
+                  ? `${tm('customerCallListSubtitle')} · ${formatCallPlanWeekRange(listWeekStart)}`
                   : tm('callPlanReportSubtitle').replace('{week}', formatCallPlanWeekRange(reportWeekStart))}
               </p>
             </div>
@@ -683,13 +752,20 @@ export function CustomerCallPlanModule() {
         {activeTab === 'list' ? (() => {
           const today = new Date();
           const isMonday = today.getDay() === 1;
-          const bannerKey = isMonday ? 'callPlanWeekStartedMonday' : 'callPlanCurrentWeekBanner';
+          const bannerKey = isListCurrentWeek
+            ? (isMonday ? 'callPlanWeekStartedMonday' : 'callPlanCurrentWeekBanner')
+            : 'callPlanArchivedWeekBanner';
+          const bannerTone = isListCurrentWeek
+            ? 'border-emerald-200 bg-emerald-50 text-emerald-800'
+            : 'border-slate-200 bg-slate-50 text-slate-700';
           return (
-            <div className="flex items-center gap-2 rounded-xl border border-emerald-200 bg-emerald-50 px-3 py-2 text-xs font-semibold text-emerald-800">
-              <RefreshCw className="h-3.5 w-3.5 text-emerald-600" />
+            <div className={`flex items-center gap-2 rounded-xl border px-3 py-2 text-xs font-semibold ${bannerTone}`}>
+              {isListCurrentWeek
+                ? <RefreshCw className="h-3.5 w-3.5 text-emerald-600" />
+                : <CalendarClock className="h-3.5 w-3.5 text-slate-500" />}
               <span>
                 {tm(bannerKey)
-                  .replace('{week}', formatCallPlanWeekRange(currentWeekStart))}
+                  .replace('{week}', formatCallPlanWeekRange(listWeekStart))}
               </span>
             </div>
           );
@@ -767,6 +843,33 @@ export function CustomerCallPlanModule() {
         ) : (
           <>
         <div className="rounded-xl border border-slate-200 bg-white p-3 shadow-sm">
+          <div className="mb-3 flex flex-wrap items-end gap-3">
+            <div className="min-w-[200px] flex-1">
+              <label className="mb-1 block text-[10px] font-bold uppercase tracking-wider text-slate-500">{tm('callPlanWeekSelect')}</label>
+              <select
+                value={listWeekStart}
+                onChange={e => setListWeekStart(e.target.value)}
+                className="w-full rounded-lg border border-slate-200 px-3 py-2 text-sm font-semibold text-slate-800 outline-none focus:ring-2 focus:ring-amber-500"
+              >
+                {listWeekOptions.map(week => (
+                  <option key={week} value={week}>
+                    {week === customerCallPlanWeeklyAPI.getCurrentWeekStart()
+                      ? `${tm('callPlanCurrentWeek')} (${formatCallPlanWeekRange(week)})`
+                      : formatCallPlanWeekRange(week)}
+                  </option>
+                ))}
+              </select>
+            </div>
+            {isListCurrentWeek ? (
+              <span className="rounded-full bg-amber-50 px-3 py-1 text-[10px] font-black uppercase tracking-wide text-amber-700">
+                {tm('callPlanLiveWeekBadge')}
+              </span>
+            ) : (
+              <span className="rounded-full bg-slate-100 px-3 py-1 text-[10px] font-black uppercase tracking-wide text-slate-600">
+                {tm('callPlanArchivedBadge')}
+              </span>
+            )}
+          </div>
           <div className="mb-3 flex flex-wrap gap-2">
             <button
               type="button"
@@ -798,18 +901,29 @@ export function CustomerCallPlanModule() {
         </div>
 
         <div className="min-h-0 flex-1 overflow-hidden rounded-xl border border-slate-200 bg-white shadow-sm">
-          <DevExDataGrid
-            data={currentWeekFiltered}
-            columns={columns}
-            enableSorting
-            enableFiltering
-            enableColumnResizing
-            enableSelection
-            onSelectionChange={setGridSelected}
-            pageSize={50}
-            onRowContextMenu={handleRowContextMenu}
-            onRowDoubleClick={openEdit}
-          />
+          {listWeekLoading ? (
+            <div className="flex h-full min-h-[240px] items-center justify-center text-sm font-semibold text-slate-500">
+              {tm('loading')}
+            </div>
+          ) : currentWeekFiltered.length === 0 ? (
+            <div className="flex h-full min-h-[240px] flex-col items-center justify-center gap-2 px-6 text-center text-slate-500">
+              <CalendarClock className="h-10 w-10 text-slate-300" />
+              <p className="text-sm font-semibold">{tm('callPlanReportEmpty')}</p>
+            </div>
+          ) : (
+            <DevExDataGrid
+              data={currentWeekFiltered}
+              columns={columns}
+              enableSorting
+              enableFiltering
+              enableColumnResizing
+              enableSelection={isListCurrentWeek}
+              onSelectionChange={setGridSelected}
+              pageSize={50}
+              onRowContextMenu={handleRowContextMenu}
+              onRowDoubleClick={openEdit}
+            />
+          )}
         </div>
           </>
         )}

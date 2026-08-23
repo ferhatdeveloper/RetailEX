@@ -1327,6 +1327,10 @@ export const moduleTranslations: Record<string, Record<Language, string>> = {
   customerCallListSubtitle: { tr: 'Haftalık arama planına alınan müşteriler', en: 'Customers included in the weekly call plan', ar: 'العملاء ضمن خطة الاتصال الأسبوعية', ku: 'کڕیارانی ناو پلانی هەفتانە' },
   callPlanEditTitle: { tr: 'Arama Planı Düzenle', en: 'Edit call plan', ar: 'تعديل خطة الاتصال', ku: 'دەستکاری پلانی پەیوەندی' },
   callPlanSelectDays: { tr: 'Aranacak günleri seçin', en: 'Select call days', ar: 'اختر أيام الاتصال', ku: 'ڕۆژەکانی پەیوەندی هەڵبژێرە' },
+  /** Tedarikçi/Müşteri düzenleme modalı — Müşteri arama planı bölüm başlığı (hardcoded TR kaldırıldı) */
+  customerCallPlanSectionTitle: { tr: 'Müşteri arama planı', en: 'Customer call plan', ar: 'خطة اتصال العملاء', ku: 'پلانی پەیوەندی کڕیار' },
+  /** Tedarikçi/Müşteri düzenleme modalı — gün seçimi ipucu (hardcoded TR kaldırıldı) */
+  customerCallPlanSectionHint: { tr: 'Haftanın hangi günü aranacak? Birden fazla gün seçilebilir.', en: 'Which day of the week should we call? Multiple days can be selected.', ar: 'في أي يوم من الأسبوع يجب الاتصال؟ يمكن اختيار عدة أيام.', ku: 'لە کام ڕۆژی هەفتە پەیوەندی بکرێت؟ دەتوانیت چەند ڕۆژ هەڵبژێریت.' },
   callPlanSelectedDays: { tr: 'Seçili günler: {days}', en: 'Selected days: {days}', ar: 'الأيام المحددة: {days}', ku: 'ڕۆژە هەڵبژێردراوەکان: {days}' },
   callPlanNoDaysHint: { tr: 'Gün seçmezseniz müşteri arama listesinden çıkar.', en: 'If no day is selected, the customer is removed from the call list.', ar: 'إذا لم يتم اختيار يوم، سيُزال العميل من قائمة الاتصال.', ku: 'ئەگەر ڕۆژ هەڵنەبژێریت، کڕیار لە لیستی پەیوەندی دەردەچێت.' },
   callPlanUpdated: { tr: 'Arama planı güncellendi', en: 'Call plan updated', ar: 'تم تحديث خطة الاتصال', ku: 'پلانی پەیوەندی نوێکرایەوە' },
@@ -1373,7 +1377,9 @@ export const moduleTranslations: Record<string, Record<Language, string>> = {
   callPlanWeekSelect: { tr: 'Hafta seçin', en: 'Select week', ar: 'اختر الأسبوع', ku: 'هەفتە هەڵبژێرە' },
   callPlanCurrentWeek: { tr: 'Bu hafta', en: 'This week', ar: 'هذا الأسبوع', ku: 'ئەم هەفتەیە' },
   callPlanLiveWeekBadge: { tr: 'Canlı hafta', en: 'Live week', ar: 'أسبوع حي', ku: 'هەفتەی زیندوو' },
+  callPlanArchivedBadge: { tr: 'Geçmiş hafta', en: 'Archived week', ar: 'أسبوع مؤرشف', ku: 'هەفتەی ئەرشیفکراو' },
   callPlanCurrentWeekBanner: { tr: 'Bu hafta ({week}) gösteriliyor — Pazartesi başlangıç, geçen haftanın kayıtları filtrelenir', en: 'Showing this week ({week}) — starts Monday, last week\'s records are filtered', ar: 'عرض هذا الأسبوع ({week}) — يبدأ يوم الاثنين، سجلات الأسبوع الماضي مفلترة', ku: 'ئەم هەفتەیە پیشاندراوە ({week}) — لە دووشەممەوە دەستپێدەکات، تۆمارەکانی هەفتەی ڕابردوو فلتەرکراون' },
+  callPlanArchivedWeekBanner: { tr: 'Geçmiş hafta ({week}) gösteriliyor — sadece okunabilir arşiv görünümü', en: 'Showing archived week ({week}) — read-only archive view', ar: 'عرض الأسبوع المؤرشف ({week}) — عرض أرشيف للقراءة فقط', ku: 'هەفتەی ئەرشیفکراو ({week}) پیشاندراوە — تەنها بینینی ئەرشیف' },
   callPlanWeekStartedMonday: { tr: 'Yeni hafta başladı: {week} — Pazartesi itibarıyla tüm kayıtlar sıfırlandı', en: 'New week started: {week} — all records reset as of Monday', ar: 'بدأ أسبوع جديد: {week} — تمت إعادة تعيين جميع السجلات اعتبارًا من الاثنين', ku: 'هەفتەیەکی نوێ دەستیپا: {week} — هەموو تۆمارەکان لە دووشەممەوە ڕێکخراونەتەوە' },
   callPlanReportTotal: { tr: 'Toplam', en: 'Total', ar: 'الإجمالي', ku: 'کۆ' },
   callPlanReportEmpty: { tr: 'Seçilen hafta için kayıt bulunamadı', en: 'No records for the selected week', ar: 'لا سجلات للأسبوع المحدد', ku: 'بۆ هەفتەی هەڵبژێردراو تۆمار نییە' },

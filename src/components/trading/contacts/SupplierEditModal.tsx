@@ -413,10 +413,10 @@ export function SupplierEditModal({
                   <CalendarClock className="mt-0.5 h-4 w-4 text-blue-600" />
                   <div>
                     <p className="text-[11px] font-black uppercase tracking-wider text-slate-700">
-                      Müşteri arama planı
+                      {tm('customerCallPlanSectionTitle')}
                     </p>
                     <p className="text-[11px] font-medium text-slate-500">
-                      Haftanın hangi günü aranacak? Birden fazla gün seçilebilir.
+                      {tm('customerCallPlanSectionHint')}
                     </p>
                   </div>
                 </div>
