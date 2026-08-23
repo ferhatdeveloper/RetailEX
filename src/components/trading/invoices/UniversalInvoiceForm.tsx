@@ -22,6 +22,7 @@ import { printInvoice } from '../../../utils/printUtils';
 import type { Invoice } from '../../../core/types';
 import { ProductHistoryModal } from '../purchase/PurchaseInvoiceLineEnhanced';
 import { SupplierHistoryModal } from '../contacts/SupplierHistoryModal';
+import { CustomerHistoryModal } from '../contacts/CustomerHistoryModal';
 import { ColumnVisibilityMenu } from '../../shared/ColumnVisibilityMenu';
 import { batchCalculateFIFOCost } from '../../../hooks/useFIFOCost';
 import { CostAccountingService } from '../../../services/costAccountingService';
@@ -742,6 +743,10 @@ export function UniversalInvoiceForm({
   // Global Supplier History
   const [showSupplierHistory, setShowSupplierHistory] = useState(false);
   const [selectedSupplierHistory, setSelectedSupplierHistory] = useState<{ id: string, name: string } | null>(null);
+
+  // Global Customer History (sales side)
+  const [showCustomerHistory, setShowCustomerHistory] = useState(false);
+  const [selectedCustomerHistory, setSelectedCustomerHistory] = useState<{ id: string; name: string; uuid: string } | null>(null);
 
   // Column visibility for invoice items grid
   const [itemColumnVisibility, setItemColumnVisibility] = useState(() => {
@@ -1814,6 +1819,72 @@ export function UniversalInvoiceForm({
     }
 
     toast.success(`${newItems.length} ürün geçmişten eklendi`);
+  };
+
+  const handleCustomerHistoryAddItems = (historyItems: Array<{
+    productId: string;
+    productCode: string;
+    productName: string;
+    unit: string;
+    quantity: number;
+    unitPrice: number;
+  }>) => {
+    const newItems = historyItems.map((hItem, index) => ({
+      id: Date.now().toString() + Math.random().toString().slice(2, 5) + index,
+      type: 'Malzeme',
+      code: hItem.productCode || '',
+      description: hItem.productName,
+      description2: '',
+      quantity: hItem.quantity,
+      unit: hItem.unit,
+      unitPrice: hItem.unitPrice,
+      discountPercent: 0,
+      discountAmount: 0,
+      amount: hItem.unitPrice * hItem.quantity,
+      netAmount: hItem.unitPrice * hItem.quantity,
+      unitCost: hItem.unitPrice,
+      totalCost: hItem.unitPrice * hItem.quantity,
+      grossProfit: 0,
+      profitMargin: 0,
+      cogs: 0
+    }));
+
+    const currentItems = [...items];
+    const lastItem = currentItems.length > 0 ? currentItems[currentItems.length - 1] : undefined;
+    const isLastItemEmpty =
+      !lastItem || (!lastItem.code && lastItem.quantity === 0 && lastItem.unitPrice === 0);
+
+    if (isLastItemEmpty && lastItem) {
+      const updatedItems = [...currentItems.slice(0, -1), ...newItems, lastItem];
+      setItems(withTrailingEmptyLine(updatedItems));
+    } else {
+      setItems(withTrailingEmptyLine([...currentItems, ...newItems]));
+    }
+
+    toast.success(`${newItems.length} ürün müşteri geçmişinden eklendi`);
+  };
+
+  const handleRepeatInvoice = async (invoiceId: string) => {
+    try {
+      const targetUuid = selectedCustomerHistory?.uuid || customerId;
+      if (!targetUuid) {
+        toast.error('Fatura tekrarı için müşteri seçili değil');
+        return;
+      }
+      const fullHistory = await invoicesAPI.getCustomerPurchaseFullHistory(targetUuid);
+      const invoice = fullHistory.invoices.find((i) => i.id === invoiceId);
+      if (!invoice) {
+        toast.error('Fatura bulunamadı');
+        return;
+      }
+      // Satır bazlı tekrar henüz uygulanmadı — kullanıcıya bilgi ver, modal kapat.
+      toast.info(`Fatura #${invoice.invoiceNo || invoice.id} tekrar için seçildi. (Satır bazlı tekrar henüz uygulanmadı)`);
+      setShowCustomerHistory(false);
+      setSelectedCustomerHistory(null);
+    } catch (e) {
+      console.error('Repeat invoice failed:', e);
+      toast.error('Fatura tekrarlanamadı');
+    }
   };
 
   // Ürün seçimi (modal'dan)
@@ -3732,6 +3803,9 @@ export function UniversalInvoiceForm({
 
                   setSelectedSupplierHistory={setSelectedSupplierHistory}
                   setShowSupplierHistory={setShowSupplierHistory}
+                  setSelectedCustomerHistory={setSelectedCustomerHistory}
+                  setShowCustomerHistory={setShowCustomerHistory}
+                  customerId={customerId}
 
                   cariBorderColor={cariBorderColor}
                   cariTextColor={cariTextColor}
@@ -4861,6 +4935,20 @@ export function UniversalInvoiceForm({
               onClose={() => setShowSupplierHistory(false)}
               supplierName={selectedSupplierHistory?.name || ''}
               onAddItems={handleInvoiceAddFromHistory}
+            />
+          )}
+
+          {showCustomerHistory && selectedCustomerHistory && (
+            <CustomerHistoryModal
+              isOpen={showCustomerHistory}
+              onClose={() => {
+                setShowCustomerHistory(false);
+                setSelectedCustomerHistory(null);
+              }}
+              customerId={selectedCustomerHistory.uuid || selectedCustomerHistory.id}
+              customerName={selectedCustomerHistory.name}
+              onAddItems={handleCustomerHistoryAddItems}
+              onRepeatInvoice={handleRepeatInvoice}
             />
           )}
 

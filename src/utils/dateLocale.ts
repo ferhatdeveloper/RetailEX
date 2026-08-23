@@ -12,6 +12,8 @@
  *
  * `Intl.DateTimeFormat` önbelleği (locale+options başına tek) sayesinde
  * binlerce render'da yeniden kurulum maliyeti önlenir.
+ *
+ * `getLocalizedWeekdayLabels(locale, short)` Pazartesi=1..Pazar=7 etiketleri döner.
  */
 
 export type DateInput = Date | string | number | null | undefined;
@@ -213,4 +215,31 @@ export function formatDateTimeMedium(
         hour: '2-digit',
         minute: '2-digit',
     }).format(d);
+}
+
+// Pazartesi=1..Pazar=7 sıralı referans tarihler (1 Ocak 2024 Pazartesi)
+const WEEKDAY_REFERENCE_DATES: Date[] = (() => {
+    const base = new Date(2024, 0, 1);
+    return Array.from({ length: 7 }, (_, i) => new Date(2024, 0, 1 + i));
+})();
+
+export interface LocalizedWeekdayLabel {
+    value: 1 | 2 | 3 | 4 | 5 | 6 | 7;
+    label: string;
+}
+
+/**
+ * Pazartesi=1..Pazar=7 sırasıyla locale'e göre gün etiketleri.
+ * TR: Pazartesi/Salı/... EN: Monday/Tuesday/...
+ * Intl.DateTimeFormat kullanır — manuel tablo yok.
+ */
+export function getLocalizedWeekdayLabels(
+    locale: string,
+    short = false,
+): LocalizedWeekdayLabel[] {
+    const fmt = getFormatter(safeLocale(locale), { weekday: short ? 'short' : 'long' });
+    return WEEKDAY_REFERENCE_DATES.map((d, idx) => ({
+        value: (idx + 1) as 1 | 2 | 3 | 4 | 5 | 6 | 7,
+        label: fmt.format(d),
+    }));
 }

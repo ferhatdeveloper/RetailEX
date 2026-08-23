@@ -8575,6 +8575,31 @@ export const excelModuleTranslations = {
   rprExportCSV: { tr: 'CSV', en: 'CSV', ar: 'سي إس في', ku: 'CSV' },
   rprExportPDF: { tr: 'PDF', en: 'PDF', ar: 'بي دي إف', ku: 'PDF' },
   rprExportPrint: { tr: 'Yazdır', en: 'Print', ar: 'طباعة', ku: 'Çapkirin' },
+
+  // Customer / Supplier History Modal (Tur 3C)
+  customerHistoryTitle: { tr: 'Müşteri Geçmişi', en: 'Customer History', ar: 'سجل العميل', ku: 'مێژووی کڕیار' },
+  historyTabInvoices: { tr: 'Faturalar', en: 'Invoices', ar: 'الفواتیر', ku: 'وەسڵەکان' },
+  historyTabProducts: { tr: 'Ürünler', en: 'Products', ar: 'المنتجات', ku: 'بەرهەمەکان' },
+  historyTabForecast: { tr: 'Tüketim Tahmini', en: 'Consumption Forecast', ar: 'توقع الاستهلاك', ku: 'پێشبینی بەکاربردن' },
+  historyAvgPerDay: { tr: 'Günlük Ort.', en: 'Avg Daily', ar: 'متوسط یومي', ku: 'تێکڕای ڕۆژانە' },
+  historyDaysSinceLast: { tr: 'Son alımdan bugüne', en: 'Days since last', ar: 'أيام منذ آخر شراء', ku: 'ڕۆژ لە دوایین' },
+  historyRecommended: { tr: 'Önerilen', en: 'Recommended', ar: 'الموصى به', ku: 'پێشنیارکراو' },
+  historyAddToInvoice: { tr: 'Faturaya Ekle', en: 'Add to Invoice', ar: 'إضافة للفاتورة', ku: 'زیادکردن بۆ وەسڵ' },
+  historyRepeatInvoice: { tr: 'Faturayı Tekrarla', en: 'Repeat Invoice', ar: 'تكرار الفاتورة', ku: 'دووبارەکردنەوەی وەسڵ' },
+  historyNoData: { tr: 'Geçmiş bulunamadı', en: 'No history found', ar: 'لا يوجد سجل', ku: 'مێژوو نەدۆزرایەوە' },
+  historyMayBeOut: { tr: 'Bu ürün bitmiş olabilir', en: 'May be out of stock', ar: 'قد ينفد', ku: 'لەوانەیە تەواو بووبێت' },
+  historyAddSelectedCount: { tr: '{n} Seçileni Ekle', en: 'Add {n} Selected', ar: 'إضافة {n} محدد', ku: '{n} دیاریکراو زیادبکە' },
+  supplierHistoryNone: { tr: 'Seçilen Tedarikçi', en: 'Selected Supplier', ar: 'المورد المحدد', ku: 'دابینکەری دیاریکراو' },
+  supplierHistoryFilterAll: { tr: 'Tümü', en: 'All', ar: 'الكل', ku: 'هەموو' },
+  supplierHistoryFilterMost: { tr: 'Sık Alınanlar', en: 'Most Purchased', ar: 'الأكثر شراءاً', ku: 'زۆرترین کڕین' },
+  supplierHistoryFilterHighValue: { tr: 'Yüksek Tutar', en: 'High Value', ar: 'قيمة عالية', ku: 'بەهای بەرز' },
+  supplierHistoryFilterRecent: { tr: 'Son Alımlar', en: 'Recent', ar: 'حديث', ku: 'دوایین' },
+  supplierHistoryFilterLowStock: { tr: 'Stoğu Azalanlar', en: 'Low Stock', ar: 'مخزون منخفض', ku: 'کەمبوونەوەی stock' },
+  stockStatusLow: { tr: 'Kritik', en: 'Critical', ar: 'حرج', ku: 'مەترسیدار' },
+  stockStatusNormal: { tr: 'Normal', en: 'Normal', ar: 'عادي', ku: 'ئاسایی' },
+  ficheTypeBadgeSale: { tr: 'Satış', en: 'Sale', ar: 'بيع', ku: 'فرۆشتن' },
+  ficheTypeBadgePurchase: { tr: 'Alış', en: 'Purchase', ar: 'شراء', ku: 'کڕین' },
+  ficheTypeBadgeReturn: { tr: 'İade', en: 'Return', ar: 'إرجاع', ku: 'گەڕاندنەوە' },
 };
 
 Object.assign(moduleTranslations, rbacUiTranslations);

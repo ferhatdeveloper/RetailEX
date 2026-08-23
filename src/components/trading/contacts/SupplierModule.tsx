@@ -29,7 +29,6 @@ import { FullscreenBodyPortal, MODAL_OVERLAY_Z } from '../../shared/FullscreenBo
 import { KasaIslemModal } from '../../accounting/cash-ops/KasaIslemModal';
 import { fetchKasalar, type Kasa } from '../../../services/api/kasa';
 import {
-  CUSTOMER_CALL_WEEKDAYS,
   normalizeCustomerCallWeekdays,
   customerCallWeekdaysLabel,
 } from '../../../utils/customerCallPlan';
@@ -53,6 +52,7 @@ type CariListFilter = 'all' | 'customer' | 'supplier' | 'duplicates' | 'employee
 
 export function SupplierModule({ initialFilter = 'all' }: { initialFilter?: CariListFilter }) {
   const { t, tm } = useLanguage();
+  const dateLocale = tm('localeCode');
   const { selectedFirm } = useFirmaDonem();
   const mainCurrency = useMemo(
     () => String(selectedFirm?.ana_para_birimi || getAppDefaultCurrency()).trim().toUpperCase().slice(0, 10) || 'IQD',
@@ -717,7 +717,7 @@ export function SupplierModule({ initialFilter = 'all' }: { initialFilter?: Cari
         header: tm('cariColCallPlanWeekdays'),
         cell: info => {
           const days = normalizeCustomerCallWeekdays(info.getValue());
-          return textCell(days.length ? customerCallWeekdaysLabel(days, true) : '—');
+          return textCell(days.length ? customerCallWeekdaysLabel(days, dateLocale, true) : '—');
         },
         size: 140,
       }));

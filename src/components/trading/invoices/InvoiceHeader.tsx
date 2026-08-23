@@ -69,6 +69,11 @@ interface InvoiceHeaderProps {
     setSelectedSupplierHistory: (val: { id: string, name: string } | null) => void;
     setShowSupplierHistory: (val: boolean) => void;
 
+    // Customer History
+    setSelectedCustomerHistory: (val: { id: string; name: string; uuid: string } | null) => void;
+    setShowCustomerHistory: (val: boolean) => void;
+    customerId?: string;
+
     // Styling (computed in parent or we can move logic here)
     cariBorderColor: string;
     cariTextColor: string;
@@ -128,6 +133,9 @@ export const InvoiceHeader: React.FC<InvoiceHeaderProps> = ({
 
     setSelectedSupplierHistory,
     setShowSupplierHistory,
+    setSelectedCustomerHistory,
+    setShowCustomerHistory,
+    customerId,
     cariBorderColor,
     cariTextColor,
     setSupplierCode,
@@ -470,6 +478,18 @@ export const InvoiceHeader: React.FC<InvoiceHeaderProps> = ({
                                         }}
                                         className="px-2 py-1 border border-blue-200 bg-blue-50 hover:bg-blue-100 text-blue-600 rounded transition-colors"
                                         title={tm('supplierHistoryTitle')}
+                                    >
+                                        <History className="w-4 h-4" />
+                                    </button>
+                                )}
+                                {invoiceType.category !== 'Alis' && (customerCode || customerTitle) && (
+                                    <button
+                                        onClick={() => {
+                                            setSelectedCustomerHistory({ id: customerCode, name: customerTitle, uuid: customerId || customerCode });
+                                            setShowCustomerHistory(true);
+                                        }}
+                                        className="px-2 py-1 border border-blue-200 bg-blue-50 hover:bg-blue-100 text-blue-600 rounded transition-colors"
+                                        title={tm('customerHistoryTitle')}
                                     >
                                         <History className="w-4 h-4" />
                                     </button>

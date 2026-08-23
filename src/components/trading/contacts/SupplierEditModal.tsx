@@ -9,10 +9,10 @@ import {
   PercentBodyModalScrollBody,
 } from '../../shared/PercentBodyModal';
 import {
-  CUSTOMER_CALL_WEEKDAYS,
   normalizeCustomerCallWeekdays,
   customerCallWeekdaysLabel,
 } from '../../../utils/customerCallPlan';
+import { getLocalizedWeekdayLabels } from '../../../utils/dateLocale';
 
 export type SupplierCardType = 'customer' | 'supplier';
 
@@ -70,6 +70,7 @@ export function SupplierEditModal({
   onSaved,
 }: SupplierEditModalProps) {
   const { tm } = useLanguage();
+  const dateLocale = tm('localeCode');
   const isEdit = !!initial;
   const [formData, setFormData] = useState<FormState>(() => {
     if (initial) {
@@ -420,7 +421,7 @@ export function SupplierEditModal({
                   </div>
                 </div>
                 <div className="flex flex-wrap gap-2">
-                  {CUSTOMER_CALL_WEEKDAYS.map((day) => {
+                  {getLocalizedWeekdayLabels(dateLocale).map((day) => {
                     const selected = formData.call_plan_weekdays.includes(day.value);
                     return (
                       <button
@@ -434,14 +435,14 @@ export function SupplierEditModal({
                             : 'border-slate-200 bg-white text-slate-600 hover:border-slate-300'
                         }`}
                       >
-                        {day.tr}
+                        {day.label}
                       </button>
                     );
                   })}
                 </div>
                 {formData.call_plan_weekdays.length > 0 ? (
                   <p className="mt-2 text-[11px] font-bold text-blue-700">
-                    Seçili: {customerCallWeekdaysLabel(formData.call_plan_weekdays)}
+                    Seçili: {customerCallWeekdaysLabel(formData.call_plan_weekdays, dateLocale)}
                   </p>
                 ) : null}
                 <label className="mt-3 mb-1 block text-[11px] font-bold text-slate-500 uppercase tracking-wider">

@@ -24,6 +24,48 @@ import {
 } from '../../utils/paymentMethodUtils';
 export type { Invoice };
 
+/**
+ * Müşterinin son N faturası — özet başlık (satır içermez).
+ * PostgREST RPC `get_customer_recent_invoices` snake_case döner; camelCase'e map edilir.
+ */
+export interface CustomerRecentInvoice {
+  id: string;
+  invoiceNo: string;
+  date: string;             // ISO
+  ficheType: string | null; // sale / purchase / return
+  totalGross: number;
+  totalNet: number;
+  itemCount: number;
+}
+
+/**
+ * Müşterinin ürün-bazlı satın alma özeti + tahmin.
+ * PostgREST RPC `get_customer_product_purchase_summary` snake_case döner.
+ */
+export interface CustomerPurchaseProduct {
+  productId: string;
+  productCode: string;
+  productName: string;
+  unit: string;
+  totalQuantity: number;          // mutlak (pozitif)
+  totalSpent: number;             // mutlak (pozitif)
+  lastPurchaseDate: string;       // ISO
+  lastPurchaseInvoiceNo: string | null;
+  purchaseCount: number;
+  averageIntervalDays: number | null;
+  averageDailyConsumption: number;
+  daysSinceLastPurchase: number;
+  predictedNextNeedDays: number | null;
+  recommendedQty: number;         // tahmini yeniden satın alma miktarı
+}
+
+/** Birleşik müşteri satın alma geçmişi. */
+export interface CustomerPurchaseHistory {
+  invoices: CustomerRecentInvoice[];
+  products: CustomerPurchaseProduct[];
+  forecast: CustomerPurchaseProduct[];
+}
+
 export {
   paymentMethodImpliesCustomerDebt,
   paymentMethodImpliesSupplierDebt,
@@ -2409,6 +2451,144 @@ export const invoicesAPI = {
   },
 
   /**
+   * Müşterinin son N faturası (başlık özeti) — PostgREST RPC tabanlı.
+   * Tauri/yerel SQL path'i desteklenmez; postgrest aktif değilse boş dizi döner (graceful).
+   */
+  async getCustomerRecentInvoices(
+    customerId: string,
+    opts?: { firmNr?: string; periodNr?: string; limit?: number }
+  ): Promise<CustomerRecentInvoice[]> {
+    try {
+      const cid = String(customerId || '').trim();
+      if (!cid) return [];
+
+      const { shouldUseTenantPostgrestApi } = await import('../../config/postgrest.config');
+      if (!shouldUseTenantPostgrestApi()) {
+        console.warn(
+          '[InvoicesAPI] getCustomerRecentInvoices: PostgREST devre dışı, boş liste döndürülüyor.'
+        );
+        return [];
+      }
+
+      const { postgrest } = await import('./postgrestClient');
+      const firmNr = normalizeFirmNrForRow(opts?.firmNr ?? ERP_SETTINGS.firmNr);
+      const periodNr = normalizePeriodNrForRow(opts?.periodNr ?? ERP_SETTINGS.periodNr);
+      const limit = Math.max(1, Math.min(500, Number(opts?.limit ?? 50) || 50));
+
+      // PostgREST: POST /rpc/<fn_name> body { args }
+      const raw = await postgrest.post<unknown>(
+        '/rpc/get_customer_recent_invoices',
+        {
+          p_customer_id: cid,
+          p_firm_nr: firmNr,
+          p_period_nr: periodNr,
+          p_limit: limit,
+        },
+        { prefer: 'return=representation' }
+      );
+
+      const rows = Array.isArray(raw) ? raw : [];
+      return rows.map((r) => {
+        const row = (r ?? {}) as Record<string, unknown>;
+        return {
+          id: String(row.id ?? row.invoice_id ?? ''),
+          invoiceNo: String(row.invoice_no ?? row.invoiceNo ?? ''),
+          date: String(row.date ?? row.invoice_date ?? ''),
+          ficheType:
+            row.fiche_type != null
+              ? String(row.fiche_type)
+              : row.ficheType != null
+              ? String(row.ficheType)
+              : null,
+          totalGross: Number(row.total_gross ?? row.totalGross ?? 0) || 0,
+          totalNet: Number(row.total_net ?? row.totalNet ?? 0) || 0,
+          itemCount: Number(row.item_count ?? row.itemCount ?? 0) || 0,
+        };
+      });
+    } catch (error) {
+      console.error('[InvoicesAPI] getCustomerRecentInvoices failed:', error);
+      return [];
+    }
+  },
+
+  /**
+   * Müşterinin ürün-bazlı satın alma özeti + tahmin (PostgREST RPC).
+   * Tauri/yerel SQL path'i desteklenmez; postgrest aktif değilse boş dizi döner.
+   */
+  async getCustomerPurchaseHistory(
+    customerId: string,
+    opts?: { firmNr?: string; periodNr?: string; lookbackDays?: number }
+  ): Promise<CustomerPurchaseProduct[]> {
+    try {
+      const cid = String(customerId || '').trim();
+      if (!cid) return [];
+
+      const { shouldUseTenantPostgrestApi } = await import('../../config/postgrest.config');
+      if (!shouldUseTenantPostgrestApi()) {
+        console.warn(
+          '[InvoicesAPI] getCustomerPurchaseHistory: PostgREST devre dışı, boş liste döndürülüyor.'
+        );
+        return [];
+      }
+
+      const { postgrest } = await import('./postgrestClient');
+      const firmNr = normalizeFirmNrForRow(opts?.firmNr ?? ERP_SETTINGS.firmNr);
+      const periodNr = normalizePeriodNrForRow(opts?.periodNr ?? ERP_SETTINGS.periodNr);
+      const lookbackDays = Math.max(1, Math.min(3650, Number(opts?.lookbackDays ?? 365) || 365));
+
+      const raw = await postgrest.post<unknown>(
+        '/rpc/get_customer_product_purchase_summary',
+        {
+          p_customer_id: cid,
+          p_firm_nr: firmNr,
+          p_period_nr: periodNr,
+          p_lookback_days: lookbackDays,
+        },
+        { prefer: 'return=representation' }
+      );
+
+      const rows = Array.isArray(raw) ? raw : [];
+      return rows.map((r) => {
+        const row = (r ?? {}) as Record<string, unknown>;
+        return {
+          productId: String(row.product_id ?? row.productId ?? ''),
+          productCode: String(row.product_code ?? row.productCode ?? ''),
+          productName: String(row.product_name ?? row.productName ?? ''),
+          unit: String(row.unit ?? ''),
+          totalQuantity: Math.abs(Number(row.total_quantity ?? row.totalQuantity ?? 0) || 0),
+          totalSpent: Math.abs(Number(row.total_spent ?? row.totalSpent ?? 0) || 0),
+          lastPurchaseDate: String(row.last_purchase_date ?? row.lastPurchaseDate ?? ''),
+          lastPurchaseInvoiceNo:
+            row.last_purchase_invoice_no != null
+              ? String(row.last_purchase_invoice_no)
+              : row.lastPurchaseInvoiceNo != null
+              ? String(row.lastPurchaseInvoiceNo)
+              : null,
+          purchaseCount: Number(row.purchase_count ?? row.purchaseCount ?? 0) || 0,
+          averageIntervalDays:
+            row.average_interval_days != null || row.averageIntervalDays != null
+              ? Number(row.average_interval_days ?? row.averageIntervalDays) || 0
+              : null,
+          averageDailyConsumption:
+            Number(row.average_daily_consumption ?? row.averageDailyConsumption ?? 0) || 0,
+          daysSinceLastPurchase:
+            Number(row.days_since_last_purchase ?? row.daysSinceLastPurchase ?? 0) || 0,
+          predictedNextNeedDays:
+            row.predicted_next_need_days != null || row.predictedNextNeedDays != null
+              ? Number(row.predicted_next_need_days ?? row.predictedNextNeedDays) || 0
+              : null,
+          recommendedQty: Math.abs(
+            Number(row.recommended_qty ?? row.recommendedQty ?? 0) || 0
+          ),
+        };
+      });
+    } catch (error) {
+      console.error('[InvoicesAPI] getCustomerPurchaseHistory failed:', error);
+      return [];
+    }
+  },
+
+  /**
    * Alış faturalarındaki promosyon (hediye) satırları — stok girişi, dağıtılmış maliyet, borçsuz kayıt özeti.
    */
   async getPurchasePromotionReport(
@@ -2890,6 +3070,132 @@ export const invoicesAPI = {
     } catch (error) {
       console.error('[InvoicesAPI] delete failed:', error);
       return false;
+    }
+  },
+
+  /**
+   * Müşterinin tüm alım geçmişini (faturalar + ürünler + tüketim tahmini) tek sorguda getirir.
+   * Müşteri Geçmişi modalı için kullanılır.
+   */
+  async getCustomerPurchaseFullHistory(customerId: string): Promise<CustomerPurchaseHistory> {
+    const firmNr = ERP_SETTINGS.firmNr;
+    const periodNr = ERP_SETTINGS.periodNr;
+    const empty: CustomerPurchaseHistory = { invoices: [], products: [], forecast: [] };
+
+    if (!customerId || !isValidUuid(customerId)) return empty;
+
+    const itemsTable = `rex_${String(firmNr).padStart(3, '0')}_${String(periodNr).padStart(2, '0')}_sale_items`;
+    const salesTable = `rex_${String(firmNr).padStart(3, '0')}_${String(periodNr).padStart(2, '0')}_sales`;
+
+    try {
+      const { rows: invRows } = await postgres.query(
+        `SELECT s.id, s.fiche_no, s.date,
+                COALESCE(s.total_net, 0) AS total_net,
+                COALESCE(s.net_amount, 0) AS net_amount,
+                s.fiche_type,
+                COALESCE(si.cnt, 0) AS item_count
+           FROM ${salesTable} s
+           LEFT JOIN (
+             SELECT invoice_id, COUNT(*)::int AS cnt
+               FROM ${itemsTable}
+              WHERE invoice_id IS NOT NULL
+              GROUP BY invoice_id
+           ) si ON si.invoice_id::text = s.id::text
+          WHERE s.customer_id::text = $1::text
+            AND COALESCE(s.is_cancelled, false) = false
+          ORDER BY s.date DESC
+          LIMIT 200`,
+        [customerId]
+      );
+
+      const invoices: CustomerRecentInvoice[] = (invRows || []).map((r: any) => ({
+        id: String(r.id ?? ''),
+        invoiceNo: String(r.fiche_no ?? '').trim(),
+        date: r.date ? new Date(r.date).toISOString().slice(0, 10) : '',
+        ficheType: String(r.fiche_type ?? '').trim().toLowerCase() || null,
+        totalGross: parseFloat(r.total_net ?? 0) || 0,
+        totalNet: parseFloat(r.net_amount ?? 0) || 0,
+        itemCount: Number(r.item_count ?? 0) || 0,
+      }));
+
+      const { rows: prodRows } = await postgres.query(
+        `SELECT si.product_id,
+                COALESCE(si.item_code, '') AS item_code,
+                MAX(COALESCE(si.item_name, '')) AS product_name,
+                MAX(COALESCE(si.unit, '')) AS unit,
+                (SELECT s2.fiche_no FROM ${itemsTable} si2
+                   JOIN ${salesTable} s2 ON s2.id::text = si2.invoice_id::text
+                  WHERE COALESCE(si2.product_id::text, si2.item_code::text) = COALESCE(si.product_id::text, si.item_code::text)
+                    AND s2.customer_id::text = $1::text
+                    AND COALESCE(s2.is_cancelled, false) = false
+                  ORDER BY s2.date DESC LIMIT 1) AS last_purchase_invoice_no,
+                MAX(s.date::text) AS last_purchase_date,
+                SUM(COALESCE(si.quantity, 0))::numeric AS total_quantity,
+                SUM(COALESCE(si.quantity, 0) * COALESCE(si.unit_price, 0))::numeric AS total_spent,
+                COUNT(DISTINCT s.id)::int AS purchase_count,
+                MIN(s.date::text) AS first_purchase_date
+           FROM ${itemsTable} si
+           JOIN ${salesTable} s ON s.id::text = si.invoice_id::text
+          WHERE s.customer_id::text = $1::text
+            AND COALESCE(s.is_cancelled, false) = false
+          GROUP BY si.product_id, si.item_code
+          ORDER BY total_spent DESC
+          LIMIT 100`,
+        [customerId]
+      );
+
+      const now = Date.now();
+      const products: CustomerPurchaseProduct[] = (prodRows || []).map((r: any) => {
+        const productId = r.product_id != null ? String(r.product_id) : '';
+        const productCode = String(r.item_code ?? '').trim();
+        const productName = String(r.product_name ?? '').trim();
+        const unit = String(r.unit ?? '').trim();
+        const lastPurchase = r.last_purchase_date ? new Date(r.last_purchase_date).getTime() : 0;
+        const firstPurchase = r.first_purchase_date ? new Date(r.first_purchase_date).getTime() : lastPurchase;
+        const daysSinceLastPurchase = lastPurchase > 0
+          ? Math.max(0, Math.floor((now - lastPurchase) / (1000 * 60 * 60 * 24)))
+          : 0;
+        const totalQty = parseFloat(r.total_quantity ?? 0) || 0;
+        const totalSpent = parseFloat(r.total_spent ?? 0) || 0;
+        const purchaseCount = Number(r.purchase_count ?? 0) || 0;
+        const daysSpan = firstPurchase > 0 && lastPurchase > 0 && lastPurchase > firstPurchase
+          ? Math.max(1, Math.floor((lastPurchase - firstPurchase) / (1000 * 60 * 60 * 24)))
+          : 0;
+        const averageIntervalDays = purchaseCount > 1 ? Math.floor(daysSpan / (purchaseCount - 1)) : null;
+        const averageDailyConsumption = daysSpan > 0 ? totalQty / daysSpan : 0;
+        const predictedNextNeedDays = averageIntervalDays != null ? averageIntervalDays - daysSinceLastPurchase : null;
+        const recommendedQty = averageIntervalDays != null && daysSinceLastPurchase >= averageIntervalDays && averageDailyConsumption > 0
+          ? Math.max(1, Math.round(averageDailyConsumption * Math.max(averageIntervalDays, 30)))
+          : 0;
+
+        return {
+          productId,
+          productCode,
+          productName,
+          unit,
+          totalQuantity: totalQty,
+          totalSpent,
+          lastPurchaseDate: r.last_purchase_date ? new Date(r.last_purchase_date).toISOString().slice(0, 10) : '',
+          lastPurchaseInvoiceNo: r.last_purchase_invoice_no ? String(r.last_purchase_invoice_no).trim() : null,
+          purchaseCount,
+          averageIntervalDays,
+          averageDailyConsumption,
+          daysSinceLastPurchase,
+          predictedNextNeedDays,
+          recommendedQty,
+        };
+      });
+
+      const forecast = [...products].sort((a, b) => {
+        if (b.recommendedQty > 0 && a.recommendedQty === 0) return 1;
+        if (a.recommendedQty > 0 && b.recommendedQty === 0) return -1;
+        return b.recommendedQty - a.recommendedQty;
+      });
+
+      return { invoices, products, forecast };
+    } catch (error) {
+      console.error('[InvoicesAPI] getCustomerPurchaseFullHistory failed:', error);
+      return empty;
     }
   }
 };

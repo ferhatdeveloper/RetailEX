@@ -27,7 +27,6 @@ import {
 } from '../../../services/api/customerCallPlanWeekly';
 import { formatCallPlanWeekRange } from '../../../utils/customerCallPlanWeek';
 import {
-  CUSTOMER_CALL_WEEKDAYS,
   CUSTOMER_CALL_STATUSES,
   customerCallStatusMeta,
   customerCallWeekdaysLabel,
@@ -35,12 +34,14 @@ import {
   normalizeCustomerCallWeekdays,
   type CustomerCallStatus,
 } from '../../../utils/customerCallPlan';
+import { getLocalizedWeekdayLabels } from '../../../utils/dateLocale';
 
 type DayFilter = 'all' | number;
 type CallPlanTab = 'list' | 'report';
 
 export function CustomerCallPlanModule() {
   const { tm, language } = useLanguage();
+  const dateLocale = tm('localeCode');
   const [customers, setCustomers] = useState<Supplier[]>([]);
   const [loading, setLoading] = useState(true);
   const [search, setSearch] = useState('');
@@ -427,7 +428,7 @@ export function CustomerCallPlanModule() {
       cell: ({ row }) => (
         <span className="inline-flex items-center gap-1 rounded-full bg-amber-100 px-2.5 py-1 text-xs font-black text-amber-800">
           <CalendarClock className="h-3.5 w-3.5" />
-          {customerCallWeekdaysLabel(row.original.call_plan_weekdays, true)}
+          {customerCallWeekdaysLabel(row.original.call_plan_weekdays, dateLocale, true)}
         </span>
       ),
       size: 180,
@@ -510,7 +511,7 @@ export function CustomerCallPlanModule() {
       cell: ({ row }) => (
         <span className="inline-flex items-center gap-1 rounded-full bg-amber-100 px-2.5 py-1 text-xs font-black text-amber-800">
           <CalendarClock className="h-3.5 w-3.5" />
-          {customerCallWeekdaysLabel(row.original.call_plan_weekdays, true)}
+          {customerCallWeekdaysLabel(row.original.call_plan_weekdays, dateLocale, true)}
         </span>
       ),
       size: 160,
@@ -704,14 +705,14 @@ export function CustomerCallPlanModule() {
             >
               {tm('all')}
             </button>
-            {CUSTOMER_CALL_WEEKDAYS.map(day => (
+            {getLocalizedWeekdayLabels(dateLocale).map(day => (
               <button
                 key={day.value}
                 type="button"
                 onClick={() => setDayFilter(day.value)}
                 className={`rounded-full px-3 py-1.5 text-xs font-black ${dayFilter === day.value ? 'bg-blue-600 text-white' : 'bg-slate-100 text-slate-600 hover:bg-slate-200'}`}
               >
-                {day.tr}
+                {day.label}
               </button>
             ))}
           </div>
@@ -952,7 +953,7 @@ export function CustomerCallPlanModule() {
           <PercentBodyModalScrollBody className="p-6 sm:p-8">
             <p className="mb-3 text-[11px] font-bold uppercase tracking-wider text-slate-500">{tm('callPlanSelectDays')}</p>
             <div className="flex flex-wrap gap-2">
-              {CUSTOMER_CALL_WEEKDAYS.map(day => {
+              {getLocalizedWeekdayLabels(dateLocale).map(day => {
                 const selected = selectedDays.includes(day.value);
                 return (
                   <button
@@ -966,14 +967,14 @@ export function CustomerCallPlanModule() {
                         : 'border-amber-200 bg-white text-amber-700 hover:bg-amber-100'
                     }`}
                   >
-                    {selected ? `✓ ${day.tr}` : day.tr}
+                    {selected ? `✓ ${day.label}` : day.label}
                   </button>
                 );
               })}
             </div>
             {selectedDays.length > 0 ? (
               <p className="mt-3 rounded-2xl bg-blue-50 px-4 py-2.5 text-xs font-bold text-blue-700">
-                {tm('callPlanSelectedDays').replace('{days}', customerCallWeekdaysLabel(selectedDays))}
+                {tm('callPlanSelectedDays').replace('{days}', customerCallWeekdaysLabel(selectedDays, dateLocale))}
               </p>
             ) : (
               <p className="mt-3 rounded-2xl bg-slate-50 px-4 py-2.5 text-xs font-bold text-slate-500">
