@@ -17,6 +17,22 @@ export function getCallPlanWeekStart(date: Date = new Date()): string {
   return formatDateLocal(d);
 }
 
+/**
+ * Verilen ISO timestamp (veya date) verilen haftanın başlangıcından **önce mi**?
+ * Pazartesi rollover: eğer `lastCallAt` bu haftanın Pazartesi'sinden önce ise
+ * UI tarafında "geçen hafta" sayılır → listede gizlenir / planned'a sıfırlanır.
+ */
+export function isBeforeCallPlanWeekStart(
+  timestamp: string | null | undefined,
+  weekStart: string,
+): boolean {
+  if (!timestamp) return false;
+  const t = new Date(timestamp);
+  if (Number.isNaN(t.getTime())) return false;
+  const tsLocal = formatDateLocal(t);
+  return tsLocal < weekStart;
+}
+
 export function getCallPlanWeekEnd(weekStart: string): string {
   const d = new Date(`${weekStart}T00:00:00`);
   d.setDate(d.getDate() + 6);

@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { CalendarClock, ChevronDown, Edit, FileText, MessageSquare, MessageSquarePlus, Phone, Plus, RefreshCw, Search, Send, Settings, StickyNote, User, Wallet, X, BarChart3, List } from 'lucide-react';
 import { toast } from 'sonner';
 import { DevExDataGrid } from '../../shared/DevExDataGrid';
@@ -25,7 +25,7 @@ import {
   customerCallPlanWeeklyAPI,
   type CustomerCallPlanWeeklyRow,
 } from '../../../services/api/customerCallPlanWeekly';
-import { formatCallPlanWeekRange } from '../../../utils/customerCallPlanWeek';
+import { formatCallPlanWeekRange, isBeforeCallPlanWeekStart } from '../../../utils/customerCallPlanWeek';
 import {
   CUSTOMER_CALL_STATUSES,
   customerCallStatusMeta,
@@ -70,6 +70,7 @@ export function CustomerCallPlanModule() {
   const [defaultKasa, setDefaultKasa] = useState<Kasa | null>(null);
   const [cashAction, setCashAction] = useState<{ type: 'CH_TAHSILAT'; account: Supplier } | null>(null);
   const [activeTab, setActiveTab] = useState<CallPlanTab>('list');
+  const currentWeekStartRef = useRef<string>(customerCallPlanWeeklyAPI.getCurrentWeekStart());
   const [currentWeekStart, setCurrentWeekStart] = useState(() => customerCallPlanWeeklyAPI.getCurrentWeekStart());
   const [reportWeekStart, setReportWeekStart] = useState(() => customerCallPlanWeeklyAPI.getCurrentWeekStart());
   const [archivedWeeks, setArchivedWeeks] = useState<string[]>([]);
@@ -94,6 +95,7 @@ export function CustomerCallPlanModule() {
     try {
       const rollover = await customerCallPlanWeeklyAPI.ensureWeekRollover();
       setCurrentWeekStart(rollover.currentWeekStart);
+      currentWeekStartRef.current = rollover.currentWeekStart;
       setReportWeekStart(prev => {
         const oldCurrent = currentWeekStart;
         if (!prev || prev === oldCurrent) return rollover.currentWeekStart;
@@ -139,10 +141,24 @@ export function CustomerCallPlanModule() {
     void load();
   }, []);
 
+  /**
+   * Pazartesi rollover kuralı — uzun süre açık kalan sekmede yeni haftaya geçildiğinde
+   * `currentWeekStart` değişince otomatik `load()` çağırır. Böylece geçen haftanın
+   * kaydı gizlenir, bulunulan haftanın kayıtları taze başlar.
+   */
   useEffect(() => {
-    if (activeTab !== 'report') return;
-    void loadReport(reportWeekStart, customers);
-  }, [activeTab, reportWeekStart, customers, loadReport]);
+    const intervalMs = 60 * 1000; // 1 dk kontrol — haftanın gece yarısı geçişini kaçırmamak için
+    const handle = window.setInterval(() => {
+      const fresh = customerCallPlanWeeklyAPI.getCurrentWeekStart();
+      if (fresh !== currentWeekStartRef.current) {
+        currentWeekStartRef.current = fresh;
+        setCurrentWeekStart(fresh);
+        setReportWeekStart(prev => (prev === currentWeekStartRef.current ? fresh : prev));
+        void load();
+      }
+    }, intervalMs);
+    return () => window.clearInterval(handle);
+  }, []);
 
   useEffect(() => {
     void (async () => {
@@ -169,6 +185,46 @@ export function CustomerCallPlanModule() {
       );
     });
   }, [customers, dayFilter, search]);
+
+  /**
+   * Pazartesi rollover kuralı: call_last_at bu haftanın Pazartesi'sinden önceyse,
+   * UI tarafında "planned"a sıfırlarız — geçen haftanın kaydı görünmez, her
+   * Pazartesi yeni hafta başlar. DB tarafında ensureWeekRollover bunu kalıcı
+   * yapar; bu UI override'ı sayfa açılışı ile DB reset arasındaki tutarsızlığı
+   * da kapatır.
+   */
+  const currentWeekCustomers = useMemo(() => {
+    const weekStart = currentWeekStart;
+    return customers.map(c => {
+      if (!isBeforeCallPlanWeekStart(c.call_last_at, weekStart)) return c;
+      return {
+        ...c,
+        call_last_status: 'planned' as const,
+        call_last_note: undefined,
+        call_last_at: undefined,
+      };
+    });
+  }, [customers, currentWeekStart]);
+
+  const currentWeekFiltered = useMemo(() => {
+    const q = search.trim().toLocaleLowerCase('tr-TR');
+    return currentWeekCustomers.filter(customer => {
+      const days = normalizeCustomerCallWeekdays(customer.call_plan_weekdays);
+      if (dayFilter !== 'all' && !days.includes(dayFilter as any)) return false;
+      if (!q) return true;
+      return (
+        String(customer.name || '').toLocaleLowerCase('tr-TR').includes(q) ||
+        String(customer.code || '').toLocaleLowerCase('tr-TR').includes(q) ||
+        String(customer.phone || '').includes(search.trim()) ||
+        String(customer.email || '').toLocaleLowerCase('tr-TR').includes(q)
+      );
+    });
+  }, [currentWeekCustomers, dayFilter, search]);
+
+  useEffect(() => {
+    if (activeTab !== 'report') return;
+    void loadReport(reportWeekStart, currentWeekCustomers);
+  }, [activeTab, reportWeekStart, currentWeekCustomers, loadReport]);
 
   const openEdit = (customer: Supplier) => {
     setEditing(customer);
@@ -341,7 +397,7 @@ export function CustomerCallPlanModule() {
   };
 
   const prepareBulkWhatsApp = async () => {
-    const pool = gridSelected.length > 0 ? gridSelected : filtered;
+    const pool = gridSelected.length > 0 ? gridSelected : currentWeekFiltered;
     const withPhone = pool.filter(supplierHasWhatsAppPhone);
     if (withPhone.length === 0) {
       toast.error(tm('callPlanWaNoPhone'));
@@ -367,10 +423,10 @@ export function CustomerCallPlanModule() {
   };
 
   const rebuildWaBulkItems = useCallback(async (lang: typeof messageLang) => {
-    const pool = gridSelected.length > 0 ? gridSelected : filtered;
+    const pool = gridSelected.length > 0 ? gridSelected : currentWeekFiltered;
     const withPhone = pool.filter(supplierHasWhatsAppPhone);
     return buildCallPlanBulkPreviewList(withPhone, { preset: 'call_reminder', lang });
-  }, [filtered, gridSelected, messageLang]);
+  }, [currentWeekFiltered, gridSelected, messageLang]);
 
   const reportWeekOptions = useMemo(() => {
     const current = customerCallPlanWeeklyAPI.getCurrentWeekStart();
@@ -572,7 +628,7 @@ export function CustomerCallPlanModule() {
               </h2>
               <p className="text-xs font-semibold text-slate-500">
                 {activeTab === 'list'
-                  ? tm('customerCallListSubtitle')
+                  ? `${tm('customerCallListSubtitle')} · ${formatCallPlanWeekRange(currentWeekStart)}`
                   : tm('callPlanReportSubtitle').replace('{week}', formatCallPlanWeekRange(reportWeekStart))}
               </p>
             </div>
@@ -600,7 +656,7 @@ export function CustomerCallPlanModule() {
               <button
                 type="button"
                 onClick={() => void prepareBulkWhatsApp()}
-                disabled={waBulkPreparing || filtered.length === 0}
+                disabled={waBulkPreparing || currentWeekFiltered.length === 0}
                 className="inline-flex items-center gap-2 rounded-lg bg-emerald-600 px-3 py-2 text-xs font-bold text-white hover:bg-emerald-700 disabled:opacity-50"
               >
                 <Send className={`h-4 w-4 ${waBulkPreparing ? 'animate-pulse' : ''}`} />
@@ -624,6 +680,20 @@ export function CustomerCallPlanModule() {
       </div>
 
       <div className="flex flex-1 min-h-0 flex-col gap-3 p-4">
+        {activeTab === 'list' ? (() => {
+          const today = new Date();
+          const isMonday = today.getDay() === 1;
+          const bannerKey = isMonday ? 'callPlanWeekStartedMonday' : 'callPlanCurrentWeekBanner';
+          return (
+            <div className="flex items-center gap-2 rounded-xl border border-emerald-200 bg-emerald-50 px-3 py-2 text-xs font-semibold text-emerald-800">
+              <RefreshCw className="h-3.5 w-3.5 text-emerald-600" />
+              <span>
+                {tm(bannerKey)
+                  .replace('{week}', formatCallPlanWeekRange(currentWeekStart))}
+              </span>
+            </div>
+          );
+        })() : null}
         {activeTab === 'report' ? (
           <>
             <div className="rounded-xl border border-slate-200 bg-white p-3 shadow-sm">
@@ -729,7 +799,7 @@ export function CustomerCallPlanModule() {
 
         <div className="min-h-0 flex-1 overflow-hidden rounded-xl border border-slate-200 bg-white shadow-sm">
           <DevExDataGrid
-            data={filtered}
+            data={currentWeekFiltered}
             columns={columns}
             enableSorting
             enableFiltering

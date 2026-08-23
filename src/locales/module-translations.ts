@@ -1373,6 +1373,8 @@ export const moduleTranslations: Record<string, Record<Language, string>> = {
   callPlanWeekSelect: { tr: 'Hafta seçin', en: 'Select week', ar: 'اختر الأسبوع', ku: 'هەفتە هەڵبژێرە' },
   callPlanCurrentWeek: { tr: 'Bu hafta', en: 'This week', ar: 'هذا الأسبوع', ku: 'ئەم هەفتەیە' },
   callPlanLiveWeekBadge: { tr: 'Canlı hafta', en: 'Live week', ar: 'أسبوع حي', ku: 'هەفتەی زیندوو' },
+  callPlanCurrentWeekBanner: { tr: 'Bu hafta ({week}) gösteriliyor — Pazartesi başlangıç, geçen haftanın kayıtları filtrelenir', en: 'Showing this week ({week}) — starts Monday, last week\'s records are filtered', ar: 'عرض هذا الأسبوع ({week}) — يبدأ يوم الاثنين، سجلات الأسبوع الماضي مفلترة', ku: 'ئەم هەفتەیە پیشاندراوە ({week}) — لە دووشەممەوە دەستپێدەکات، تۆمارەکانی هەفتەی ڕابردوو فلتەرکراون' },
+  callPlanWeekStartedMonday: { tr: 'Yeni hafta başladı: {week} — Pazartesi itibarıyla tüm kayıtlar sıfırlandı', en: 'New week started: {week} — all records reset as of Monday', ar: 'بدأ أسبوع جديد: {week} — تمت إعادة تعيين جميع السجلات اعتبارًا من الاثنين', ku: 'هەفتەیەکی نوێ دەستیپا: {week} — هەموو تۆمارەکان لە دووشەممەوە ڕێکخراونەتەوە' },
   callPlanReportTotal: { tr: 'Toplam', en: 'Total', ar: 'الإجمالي', ku: 'کۆ' },
   callPlanReportEmpty: { tr: 'Seçilen hafta için kayıt bulunamadı', en: 'No records for the selected week', ar: 'لا سجلات للأسبوع المحدد', ku: 'بۆ هەفتەی هەڵبژێردراو تۆمار نییە' },
   callPlanReportLoadFailed: { tr: 'Arama raporu yüklenemedi', en: 'Could not load call report', ar: 'تعذر تحميل تقرير الاتصال', ku: 'ڕاپۆرتی پەیوەندی بارنەکرا' },
