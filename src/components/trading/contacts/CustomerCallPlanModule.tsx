@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { CalendarClock, ChevronDown, Edit, FileText, MessageSquare, MessageSquarePlus, Phone, Plus, RefreshCw, Search, Send, Settings, StickyNote, User, Wallet, X, BarChart3, List } from 'lucide-react';
+import { CalendarClock, ChevronDown, Clock, Edit, FileText, MessageSquare, MessageSquarePlus, Phone, Plus, RefreshCw, Search, Send, Settings, StickyNote, User, Wallet, X, BarChart3, List } from 'lucide-react';
 import { toast } from 'sonner';
 import { DevExDataGrid } from '../../shared/DevExDataGrid';
 import { ContextMenu } from '../../shared/ContextMenu';
@@ -25,7 +25,7 @@ import {
   customerCallPlanWeeklyAPI,
   type CustomerCallPlanWeeklyRow,
 } from '../../../services/api/customerCallPlanWeekly';
-import { formatCallPlanWeekRange, isBeforeCallPlanWeekStart } from '../../../utils/customerCallPlanWeek';
+import { formatCallPlanLastAt, formatCallPlanWeekRange, isBeforeCallPlanWeekStart } from '../../../utils/customerCallPlanWeek';
 import {
   CUSTOMER_CALL_STATUSES,
   customerCallStatusMeta,
@@ -582,11 +582,19 @@ export function CustomerCallPlanModule() {
               <span className={`w-fit rounded-full px-2 py-0.5 text-[10px] font-black uppercase ${meta.tone}`}>
                 {tm(meta.label)}
               </span>
-              {row.original.call_last_at ? (
-                <span className="text-[10px] font-semibold text-slate-400">
-                  {new Date(row.original.call_last_at).toLocaleString('tr-TR', { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' })}
-                </span>
-              ) : null}
+              {(() => {
+                const parts = formatCallPlanLastAt(row.original.call_last_at, dateLocale);
+                if (!parts) return null;
+                return (
+                  <div className="flex items-center gap-1 text-[10px] font-semibold text-slate-500">
+                    <span>{parts.date}</span>
+                    <span className="inline-flex items-center gap-0.5 rounded-full bg-slate-100 px-1.5 py-0.5 text-[10px] font-black text-slate-700">
+                      <Clock className="h-2.5 w-2.5" />
+                      {parts.time}
+                    </span>
+                  </div>
+                );
+              })()}
               {row.original.call_last_note ? (
                 <span className="max-w-[180px] truncate text-[10px] text-slate-500" title={row.original.call_last_note}>
                   {row.original.call_last_note}
@@ -665,11 +673,19 @@ export function CustomerCallPlanModule() {
               <span className={`w-fit rounded-full px-2 py-0.5 text-[10px] font-black uppercase ${meta.tone}`}>
                 {tm(meta.label)}
               </span>
-              {row.original.call_last_at ? (
-                <span className="text-[10px] font-semibold text-slate-400">
-                  {new Date(row.original.call_last_at).toLocaleString('tr-TR', { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' })}
-                </span>
-              ) : null}
+              {(() => {
+                const parts = formatCallPlanLastAt(row.original.call_last_at, dateLocale);
+                if (!parts) return null;
+                return (
+                  <div className="flex items-center gap-1 text-[10px] font-semibold text-slate-500">
+                    <span>{parts.date}</span>
+                    <span className="inline-flex items-center gap-0.5 rounded-full bg-slate-100 px-1.5 py-0.5 text-[10px] font-black text-slate-700">
+                      <Clock className="h-2.5 w-2.5" />
+                      {parts.time}
+                    </span>
+                  </div>
+                );
+              })()}
               {row.original.call_last_note ? (
                 <span className="max-w-[180px] truncate text-[10px] text-slate-500" title={row.original.call_last_note}>
                   {row.original.call_last_note}

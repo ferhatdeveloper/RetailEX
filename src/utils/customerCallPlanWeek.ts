@@ -33,6 +33,29 @@ export function isBeforeCallPlanWeekStart(
   return tsLocal < weekStart;
 }
 
+/**
+ * Müşteri arama planı — son arama zamanını tarih + saat olarak ayrı parçalara
+ * böler. UI'da tarih ve saat ayrı render edilir (saat Clock ikonu ile vurgulanır).
+ * `locale` parametresi verilirse o yerel ayar kullanılır; yoksa 'tr-TR'.
+ */
+export interface CallPlanLastAtParts {
+  date: string;
+  time: string;
+  full: string;
+}
+
+export function formatCallPlanLastAt(
+  timestamp: string | null | undefined,
+  locale = 'tr-TR',
+): CallPlanLastAtParts | null {
+  if (!timestamp) return null;
+  const t = new Date(timestamp);
+  if (Number.isNaN(t.getTime())) return null;
+  const date = t.toLocaleDateString(locale, { day: '2-digit', month: '2-digit', year: 'numeric' });
+  const time = t.toLocaleTimeString(locale, { hour: '2-digit', minute: '2-digit' });
+  return { date, time, full: `${date} ${time}` };
+}
+
 export function getCallPlanWeekEnd(weekStart: string): string {
   const d = new Date(`${weekStart}T00:00:00`);
   d.setDate(d.getDate() + 6);
