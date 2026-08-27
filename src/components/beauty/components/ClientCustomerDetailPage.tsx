@@ -78,6 +78,14 @@ const EMPTY_FORM: Partial<BeautyCustomer> = {
     gender: null,
 };
 
+/** RetailExFlatModal (body portal) içindeki Select dropdown'ı overlay'in altında kalmadan
+ *  en yüksek z-index'te gösterir. ServiceManagement.tsx ile aynı kalıp. */
+const ANT_SELECT_POPUP_Z = 2147483647;
+const antSelectInFlatModal = {
+    getPopupContainer: () => document.body,
+    styles: { popup: { root: { zIndex: ANT_SELECT_POPUP_Z } as React.CSSProperties } },
+} as const;
+
 const APT_STATUS_TM: Record<string, string> = {
     scheduled: 'bAppointmentScheduled',
     confirmed: 'bAppointmentConfirmed',
@@ -1597,6 +1605,7 @@ export function ClientCustomerDetailPage({ customerId, onBack }: ClientCustomerD
                             <div>
                                 <RetailExFlatFieldLabel>{tm('bGender')}</RetailExFlatFieldLabel>
                                 <Select
+                                    {...antSelectInFlatModal}
                                     className="w-full [&_.ant-select-selector]:!rounded-2xl [&_.ant-select-selector]:!py-1"
                                     allowClear
                                     placeholder={tm('bGenderPlaceholder')}
