@@ -86,6 +86,23 @@ const antSelectInFlatModal = {
     styles: { popup: { root: { zIndex: ANT_SELECT_POPUP_Z } as React.CSSProperties } },
 } as const;
 
+/** DB'den gelen cinsiyet değerini Select'in beklediği 3 değerden birine map'ler.
+ *  Eski/uyumsuz stringler (örn. "Kadın", "K", "F") için en yakın anlamlı karşılığı döner. */
+function normalizeGender(
+    raw: unknown
+): 'female' | 'male' | 'other' | null {
+    const s = String(raw ?? '').trim().toLowerCase();
+    if (!s) return null;
+    if (s === 'female' || s === 'f' || s === 'kadın' || s === 'kadin' || s === 'k') return 'female';
+    if (s === 'male' || s === 'm' || s === 'erkek' || s === 'e') return 'male';
+    if (s === 'other' || s === 'diğer' || s === 'diger' || s === 'd') return 'other';
+    return null;
+}
+
+function genderRawLabel(raw: unknown): string {
+    return String(raw ?? '').trim();
+}
+
 const APT_STATUS_TM: Record<string, string> = {
     scheduled: 'bAppointmentScheduled',
     confirmed: 'bAppointmentConfirmed',
@@ -1609,7 +1626,7 @@ export function ClientCustomerDetailPage({ customerId, onBack }: ClientCustomerD
                                     className="w-full [&_.ant-select-selector]:!rounded-2xl [&_.ant-select-selector]:!py-1"
                                     allowClear
                                     placeholder={tm('bGenderPlaceholder')}
-                                    value={editing.gender ?? undefined}
+                                    value={normalizeGender(editing.gender) ?? undefined}
                                     onChange={v =>
                                         setEditing(p => ({
                                             ...p,
@@ -1622,6 +1639,12 @@ export function ClientCustomerDetailPage({ customerId, onBack }: ClientCustomerD
                                         { value: 'other', label: tm('bGenderOther') },
                                     ]}
                                 />
+                                {genderRawLabel(editing.gender) &&
+                                    normalizeGender(editing.gender) === null && (
+                                        <p className="mt-1 text-[11px] font-semibold text-amber-600 dark:text-amber-400">
+                                            DB'de kayıtlı değer: <b>"{genderRawLabel(editing.gender)}"</b> — lütfen listeden tekrar seçin.
+                                        </p>
+                                    )}
                             </div>
                             <div>
                                 <RetailExFlatFieldLabel>{tm('bCustomerTier')}</RetailExFlatFieldLabel>
