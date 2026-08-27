@@ -1812,34 +1812,6 @@ export function AppointmentPOS({
         });
     };
 
-    /**
-     * Çakışma yakalandığında en yakın uygun saati otomatik uygular; modal yine de
-     * açık kalır ki kullanıcı isterse farklı bir saat seçebilsin. Hiç öneri yoksa
-     * sadece modal açılır.
-     */
-    const autoPickNearestSuggestedSlot = (opts: {
-        sameDeviceSlots: string[];
-        otherDeviceSuggestions: Array<{ deviceId: string; deviceLabel: string; time: string }>;
-        silent?: boolean;
-    }) => {
-        const { sameDeviceSlots, otherDeviceSuggestions, silent } = opts;
-        const next = sameDeviceSlots[0]
-            ? { time: sameDeviceSlots[0], deviceId: undefined as string | undefined }
-            : otherDeviceSuggestions[0]
-                ? { time: otherDeviceSuggestions[0].time, deviceId: otherDeviceSuggestions[0].deviceId }
-                : null;
-        if (!next) return false;
-        const t = safeTimeHHmm(next.time);
-        flushSync(() => {
-            setAptTime(t);
-            if (next.deviceId) setAptDevice(String(next.deviceId));
-        });
-        if (!silent) {
-            toast.success(tm('bSlotAutoAppliedToast').replace('{time}', t));
-        }
-        return true;
-    };
-
     const browseFreeSlots = async () => {
         if (appointmentBookLines.length === 0 || !allBookLinesStaffed) {
             toast.info(tm('bSlotBrowseNeedStaff'));
@@ -1982,17 +1954,10 @@ export function AppointmentPOS({
             setExistingEditBaselineFlush((f) => f + 1);
         } catch (e: unknown) {
             if (e instanceof SlotConflictError) {
-                autoPickNearestSuggestedSlot({
-                    sameDeviceSlots: e.detail.sameDeviceSlots,
-                    otherDeviceSuggestions: e.detail.otherDeviceSuggestions,
-                });
                 setSlotSuggestModal({
                     open: true,
-                    title: tm('bSlotAutoAppliedTitle'),
-                    subtitle: tm('bSlotAutoAppliedSubtitle').replace(
-                        '{time}',
-                        safeTimeHHmm(aptTime),
-                    ),
+                    title: tm('bSlotConflictTitle'),
+                    subtitle: e.message,
                     sameDeviceSlots: e.detail.sameDeviceSlots,
                     otherDeviceSuggestions: e.detail.otherDeviceSuggestions,
                     conflictKind: e.detail.kind,
@@ -2134,17 +2099,10 @@ export function AppointmentPOS({
             toast.success(tm('bAppointmentCreated'));
         } catch (e: unknown) {
             if (e instanceof SlotConflictError) {
-                autoPickNearestSuggestedSlot({
-                    sameDeviceSlots: e.detail.sameDeviceSlots,
-                    otherDeviceSuggestions: e.detail.otherDeviceSuggestions,
-                });
                 setSlotSuggestModal({
                     open: true,
-                    title: tm('bSlotAutoAppliedTitle'),
-                    subtitle: tm('bSlotAutoAppliedSubtitle').replace(
-                        '{time}',
-                        safeTimeHHmm(aptTime),
-                    ),
+                    title: tm('bSlotConflictTitle'),
+                    subtitle: e.message,
                     sameDeviceSlots: e.detail.sameDeviceSlots,
                     otherDeviceSuggestions: e.detail.otherDeviceSuggestions,
                     conflictKind: e.detail.kind,
@@ -2601,17 +2559,10 @@ export function AppointmentPOS({
         } catch (e: unknown) {
             setShowPay(false);
             if (e instanceof SlotConflictError) {
-                autoPickNearestSuggestedSlot({
-                    sameDeviceSlots: e.detail.sameDeviceSlots,
-                    otherDeviceSuggestions: e.detail.otherDeviceSuggestions,
-                });
                 setSlotSuggestModal({
                     open: true,
-                    title: tm('bSlotAutoAppliedTitle'),
-                    subtitle: tm('bSlotAutoAppliedSubtitle').replace(
-                        '{time}',
-                        safeTimeHHmm(aptTime),
-                    ),
+                    title: tm('bSlotConflictTitle'),
+                    subtitle: e.message,
                     sameDeviceSlots: e.detail.sameDeviceSlots,
                     otherDeviceSuggestions: e.detail.otherDeviceSuggestions,
                     conflictKind: e.detail.kind,
@@ -2697,71 +2648,16 @@ export function AppointmentPOS({
                     </div>
                     <div style={{ display: 'flex', flexDirection: 'column', gap: 3 }}>
                         <Label>{tm('time')}</Label>
-                        <div style={{ display: 'flex', alignItems: 'stretch', gap: 6, flexWrap: 'wrap' }}>
-                            <div
-                                style={{
-                                    position: 'relative',
-                                    display: 'flex',
-                                    alignItems: 'center',
-                                    gap: 8,
-                                    background:
-                                        'linear-gradient(135deg, #ede9fe 0%, #f5f3ff 60%, #fff 100%)',
-                                    border: '1.5px solid #c4b5fd',
-                                    borderRadius: 10,
-                                    padding: '4px 10px 4px 12px',
-                                    minWidth: 124,
-                                    boxShadow:
-                                        '0 1px 0 rgba(124,58,237,0.04), inset 0 1px 0 rgba(255,255,255,0.6)',
-                                }}
-                            >
-                                <Clock size={16} color="#7c3aed" strokeWidth={2.4} />
+                        <div style={{ display: 'flex', alignItems: 'center', gap: 6, flexWrap: 'wrap' }}>
+                            <div style={{ display: 'flex', alignItems: 'center', gap: 6, background: '#f5f3ff', border: '1px solid #ddd6fe', borderRadius: 5, padding: '6px 10px' }}>
+                                <Clock size={12} color="#7c3aed" />
                                 <input
                                     type="time"
                                     value={aptTime}
                                     onChange={e => setAptTime(e.target.value)}
                                     aria-label={tm('time')}
-                                    onClick={() => {
-                                        if (
-                                            appointmentBookLines.length > 0 &&
-                                            allBookLinesStaffed &&
-                                            !slotBrowseLoading
-                                        ) {
-                                            void browseFreeSlots();
-                                        }
-                                    }}
-                                    style={{
-                                        border: 'none',
-                                        background: 'transparent',
-                                        fontSize: 18,
-                                        fontWeight: 800,
-                                        color: '#4c1d95',
-                                        outline: 'none',
-                                        padding: '4px 0',
-                                        letterSpacing: 0.3,
-                                        cursor: 'pointer',
-                                        minWidth: 84,
-                                    }}
+                                    style={{ border: 'none', background: 'transparent', fontSize: 12, fontWeight: 700, color: '#4c1d95', outline: 'none' }}
                                 />
-                                <span
-                                    aria-hidden
-                                    title={tm('bSlotPickHint')}
-                                    style={{
-                                        display: 'inline-flex',
-                                        alignItems: 'center',
-                                        gap: 4,
-                                        fontSize: 10,
-                                        fontWeight: 700,
-                                        color: '#6d28d9',
-                                        background: '#fff',
-                                        border: '1px solid #ddd6fe',
-                                        borderRadius: 999,
-                                        padding: '2px 7px',
-                                        whiteSpace: 'nowrap',
-                                    }}
-                                >
-                                    <CalendarClock size={11} color="#6d28d9" />
-                                    {tm('bSlotBrowseShort')}
-                                </span>
                             </div>
                             <button
                                 type="button"
@@ -2773,7 +2669,7 @@ export function AppointmentPOS({
                                     alignItems: 'center',
                                     gap: 5,
                                     padding: '6px 10px',
-                                    borderRadius: 10,
+                                    borderRadius: 5,
                                     border: '1px solid #c4b5fd',
                                     background: appointmentBookLines.length > 0 && allBookLinesStaffed ? '#fff' : '#f3f4f6',
                                     color: appointmentBookLines.length > 0 && allBookLinesStaffed ? '#5b21b6' : '#9ca3af',
@@ -2784,7 +2680,7 @@ export function AppointmentPOS({
                                 }}
                             >
                                 <CalendarClock size={13} color="currentColor" />
-                                {slotBrowseLoading ? tm('bLoading') : tm('bSlotBrowseTitle')}
+                                {slotBrowseLoading ? tm('bLoading') : tm('bSlotBrowseShort')}
                             </button>
                         </div>
                     </div>

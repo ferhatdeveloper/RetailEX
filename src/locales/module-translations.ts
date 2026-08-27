@@ -7592,30 +7592,6 @@ export const excelModuleTranslations = {
     ar: 'بعد اختيار الوقت تأكد من الشريط العلوي. عند تفعيل السماح بعدة مواعيد لنفس الموظف، تُحدَّث الإعدادات تلقائياً عند العودة.',
     ku: 'دوای هەڵبژاردنی کات سەرەوەی پەڕە بپشکنە. ئەگەر ئێستا «ڕێگە بە چەند ژمێرە»ت کردەوە، دوای گەڕانەوە ڕێکدەخرێت.',
   },
-  bSlotAutoAppliedTitle: {
-    tr: 'En yakın uygun saate atandı',
-    en: 'Moved to nearest available time',
-    ar: 'نُقل إلى أقرب وقت متاح',
-    ku: 'گوازرایەوە بۆ نزیکترین کاتی بەردەست',
-  },
-  bSlotAutoAppliedSubtitle: {
-    tr: 'Randevu {time} saatine taşındı. İsterseniz aşağıdan farklı bir saat seçebilirsiniz.',
-    en: 'Appointment moved to {time}. You can pick a different time below if needed.',
-    ar: 'نُقل الموعد إلى {time}. يمكنك اختيار وقت آخر أدناه إن رغبت.',
-    ku: 'ژمێرە گوازرایەوە بۆ {time}. دەتوانیت کاتێکی جیاواز لە خوارەوە هەڵبژێریت ئەگەر بتەوێت.',
-  },
-  bSlotAutoAppliedToast: {
-    tr: 'Randevu {time} saatine taşındı',
-    en: 'Appointment moved to {time}',
-    ar: 'نُقل الموعد إلى {time}',
-    ku: 'ژمێرە گوازرایەوە بۆ {time}',
-  },
-  bSlotPickHint: {
-    tr: 'Saati değiştirmek için tıklayın',
-    en: 'Click to change the time',
-    ar: 'انقر لتغيير الوقت',
-    ku: 'کلیک بکە بۆ گۆڕینی کات',
-  },
   bCustomerFallbackName: { tr: 'Müşteri', en: 'Customer', ar: 'عميل', ku: 'کڕیار' },
 
   bClinicPanelTitle: { tr: 'Klinik Paneli', en: 'Clinic Dashboard', ar: 'لوحة العيادة', ku: 'داشبۆردی کلینیک' },
