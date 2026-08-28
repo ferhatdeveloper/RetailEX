@@ -95,6 +95,9 @@ function aggregateSales(sales: Sale[], bucketKey: (s: Sale) => string) {
   const map = new Map<string, { saleCount: number; revenue: number; cash: number; card: number; discount: number }>();
   for (const s of sales) {
     if (isRemovedSaleStatus(s.status)) continue;
+    // Muhasebe açılış bakiyeleri (devir) ciroya dahil edilmez; ayrı muhasebe kalemidir.
+    const ft = String((s as any).fiche_type ?? '');
+    if (ft === 'opening_balance') continue;
     const key = bucketKey(s);
     if (!key) continue;
     const row = map.get(key) || { saleCount: 0, revenue: 0, cash: 0, card: 0, discount: 0 };
@@ -103,7 +106,8 @@ function aggregateSales(sales: Sale[], bucketKey: (s: Sale) => string) {
     row.revenue += total;
     row.discount += Number(s.discount) || 0;
     const pm = String(s.paymentMethod ?? '');
-    if (pm === 'cash') row.cash += total;
+    // Veresiye de cironun parçasıdır; nakit akıştan ayrı izlense de brüt gelire dahil edilir.
+    if (pm === 'cash' || pm === 'Veresiye') row.cash += total;
     else if (pm === 'card' || pm === 'gateway') row.card += total;
     map.set(key, row);
   }
@@ -305,7 +309,7 @@ export function PeriodSummaryReport({ mode, currency }: PeriodSummaryReportProps
           ? formatIsoDateTr(periodKey)
           : new Date(`${periodKey}-01T12:00:00`).toLocaleDateString(locale, { month: 'long', year: 'numeric' });
 
-      const netRemaining = sale.revenue - exp;
+      const netRemaining = sale.revenue - exp - purch;
       const shareList = splitAmountByPartners(netRemaining, partnerSlices);
       const partnerShareMap: Record<string, number> = {};
       for (const s of shareList) partnerShareMap[s.id] = s.amount;
