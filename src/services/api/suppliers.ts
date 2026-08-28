@@ -131,7 +131,7 @@ export const supplierAPI = {
             limit: '10000',
           }),
           safeGet(cashPath, {
-            select: 'customer_id,amount,transaction_type',
+            select: 'customer_id,party_id,amount,transaction_type',
             transaction_type: 'in.(CH_ODEME,CH_TAHSILAT)',
             limit: '50000',
           }),
@@ -638,8 +638,9 @@ export const supplierAPI = {
         }
 
         const cashByIdQuery: Record<string, string> = {
-          select: 'fiche_no,date,transaction_type,amount,currency_code,definition',
-          customer_id: `eq.${accountId}`,
+          select: 'fiche_no,date,transaction_type,amount,currency_code,definition,customer_id,party_id',
+          // Tedarikçi ödemeleri party_id ile yazılır; eski müşteri tarafı verileri için customer_id fallback.
+          or: `(customer_id.eq.${accountId},party_id.eq.${accountId})`,
           transaction_type: 'in.(CH_ODEME,CH_TAHSILAT)',
           order: 'date.asc',
         };
@@ -760,7 +761,7 @@ export const supplierAPI = {
                ABS(amount) AS total_amount, currency_code AS currency, definition AS notes,
                false AS is_cancelled
         FROM cash_lines t
-        WHERE t.customer_id::text = $1::text${dateFilter}
+        WHERE (t.customer_id::text = $1::text OR t.party_id::text = $1::text)${dateFilter}
           AND UPPER(TRIM(t.transaction_type)) IN ('CH_ODEME', 'CH_TAHSILAT')
         ORDER BY date ASC`;
 
