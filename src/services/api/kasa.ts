@@ -1570,3 +1570,165 @@ export async function updateKasaIslemi(id: string, islem: KasaIslemi): Promise<K
   return created;
 }
 
+// ===== CASH BREAKDOWN =====
+/**
+ * Kasa bakiye breakdown — kart üzerinde hover'da gösterilecek matematik özeti.
+ *
+ * 50 yıllık muhasebeci gözüyle: "Bu kasa neden bu kadar?" sorusuna tek bakışta yanıt verir.
+ * - Açılış bakiyesi (legacy register_id NULL olan kayıtların toplamı)
+ * - Toplam giriş / çıkış (tüm zaman)
+ * - Aylık net
+ * - En büyük gider kalemleri (son 5)
+ * - Negatif bakiye uyarısı
+ */
+export interface CashBreakdown {
+  registerId: string;
+  registerName: string;
+  registerCode: string;
+  currentBalance: number;
+  openingBalance: number; // legacy kayıtlardan hesaplanan gerçek açılış
+  totalIn: number;
+  totalOut: number;
+  netMovement: number; // totalIn - totalOut (legacy hariç)
+  transactionCount: number;
+  monthlyBreakdown: Array<{
+    month: string;
+    inAmount: number;
+    outAmount: number;
+    net: number;
+  }>;
+  topExpenses: Array<{
+    date: string;
+    amount: number;
+    definition: string;
+    transactionType: string;
+  }>;
+  warnings: string[];
+}
+
+export async function fetchCashBreakdown(registerId: string): Promise<CashBreakdown> {
+  const table = 'cash_registers';
+  const linesTable = 'cash_lines';
+  const firm = padKasaFirmNr();
+  const period = padKasaPeriodNr();
+
+  // Register bilgisi
+  const regRes = await postgres.query(
+    `SELECT id, code, name, balance FROM ${table} WHERE id = $1::text::uuid LIMIT 1`,
+    [registerId]
+  );
+  const reg = regRes.rows?.[0];
+  if (!reg) {
+    throw new Error('Kasa bulunamadı');
+  }
+
+  // Legacy açılış (register_id NULL olanlar)
+  const legacyRes = await postgres.query(
+    `SELECT COALESCE(SUM(amount * sign), 0) AS legacy_net,
+            COUNT(*) AS legacy_count
+       FROM ${linesTable}
+      WHERE register_id IS NULL
+        AND firm_nr = $1::text
+        AND period_nr = $2::text`,
+    [firm, period]
+  );
+  const legacyNet = Number(legacyRes.rows?.[0]?.legacy_net || 0);
+
+  // Toplam giriş / çıkış (bu kasa için)
+  const totalsRes = await postgres.query(
+    `SELECT
+       COALESCE(SUM(CASE WHEN sign = 1 THEN amount ELSE 0 END), 0) AS total_in,
+       COALESCE(SUM(CASE WHEN sign = -1 THEN amount ELSE 0 END), 0) AS total_out,
+       COUNT(*) AS tx_count
+     FROM ${linesTable}
+     WHERE register_id = $1::text::uuid
+       AND firm_nr = $2::text
+       AND period_nr = $3::text`,
+    [registerId, firm, period]
+  );
+  const totalIn = Number(totalsRes.rows?.[0]?.total_in || 0);
+  const totalOut = Number(totalsRes.rows?.[0]?.total_out || 0);
+  const txCount = Number(totalsRes.rows?.[0]?.tx_count || 0);
+
+  // Aylık breakdown (son 6 ay)
+  const monthlyRes = await postgres.query(
+    `SELECT
+       TO_CHAR(date, 'YYYY-MM') AS month,
+       COALESCE(SUM(CASE WHEN sign = 1 THEN amount ELSE 0 END), 0) AS in_amount,
+       COALESCE(SUM(CASE WHEN sign = -1 THEN amount ELSE 0 END), 0) AS out_amount
+     FROM ${linesTable}
+     WHERE register_id = $1::text::uuid
+       AND firm_nr = $2::text
+       AND period_nr = $3::text
+       AND date >= (CURRENT_DATE - INTERVAL '6 months')
+     GROUP BY 1
+     ORDER BY 1 DESC`,
+    [registerId, firm, period]
+  );
+  const monthlyBreakdown = (monthlyRes.rows || []).map((r: any) => ({
+    month: String(r.month),
+    inAmount: Number(r.in_amount),
+    outAmount: Number(r.out_amount),
+    net: Number(r.in_amount) - Number(r.out_amount),
+  }));
+
+  // En büyük 5 gider
+  const topRes = await postgres.query(
+    `SELECT
+       TO_CHAR(date, 'YYYY-MM-DD') AS date,
+       amount,
+       COALESCE(definition, '') AS definition,
+       transaction_type
+     FROM ${linesTable}
+     WHERE register_id = $1::text::uuid
+       AND firm_nr = $2::text
+       AND period_nr = $3::text
+       AND sign = -1
+     ORDER BY amount DESC
+     LIMIT 5`,
+    [registerId, firm, period]
+  );
+  const topExpenses = (topRes.rows || []).map((r: any) => ({
+    date: String(r.date),
+    amount: Number(r.amount),
+    definition: String(r.definition || ''),
+    transactionType: String(r.transaction_type || ''),
+  }));
+
+  // Uyarılar
+  const warnings: string[] = [];
+  const currentBalance = Number(reg.balance || 0);
+  if (currentBalance < 0) {
+    warnings.push(
+      `⚠️ Kasa bakiyesi negatif (${currentBalance.toLocaleString('tr-TR')} IQD). Açılış bakiyesi eksik veya fazla gider girilmiş olabilir.`,
+    );
+  }
+  if (legacyNet !== 0) {
+    warnings.push(
+      `📋 ${legacyRes.rows?.[0]?.legacy_count || 0} adet açılış öncesi kayıt (${legacyNet.toLocaleString('tr-TR')} IQD) register_id NULL olarak duruyor. Devir için düzeltme önerilir.`,
+    );
+  }
+  // Negatif aylık net kontrolü
+  const negativeMonths = monthlyBreakdown.filter((m) => m.net < 0);
+  if (negativeMonths.length >= 3) {
+    warnings.push(
+      `📉 Son 6 ayda ${negativeMonths.length} ay negatif kapandı. Sürdürülebilirlik riski.`,
+    );
+  }
+
+  return {
+    registerId: reg.id,
+    registerName: reg.name,
+    registerCode: reg.code,
+    currentBalance,
+    openingBalance: legacyNet,
+    totalIn,
+    totalOut,
+    netMovement: totalIn - totalOut,
+    transactionCount: txCount,
+    monthlyBreakdown,
+    topExpenses,
+    warnings,
+  };
+}
+

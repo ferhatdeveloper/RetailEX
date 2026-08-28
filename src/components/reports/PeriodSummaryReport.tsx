@@ -24,6 +24,8 @@ import {
 } from '../../utils/periodSummaryPartnerSplit';
 import { PeriodExpenseShareDetailModal } from './PeriodExpenseShareDetailModal';
 import { PeriodSupplierPayablesDetailModal } from './PeriodSupplierPayablesDetailModal';
+import { PartnerDetailReportModal } from './PartnerDetailReportModal';
+import { Eye } from 'lucide-react';
 
 export type PeriodSummaryMode = 'monthly-days' | 'yearly-months';
 
@@ -184,6 +186,7 @@ export function PeriodSummaryReport({ mode, currency }: PeriodSummaryReportProps
   );
   const [partners, setPartners] = useState<PartyPartner[]>([]);
   const [expenseDetail, setExpenseDetail] = useState<{ title: string; periodKey: string | null } | null>(null);
+  const [partnerDetail, setPartnerDetail] = useState<PartyPartner | null>(null);
 
   const partnerSlices = useMemo(
     () =>
@@ -647,19 +650,39 @@ export function PeriodSummaryReport({ mode, currency }: PeriodSummaryReportProps
           </p>
         </div>
         {showPartnerCols ? (
-          partnerSlices.map((p, idx) => (
-            <div key={p.id} className="bg-white rounded-lg border p-4 border-blue-100 bg-blue-50/40">
-              <p className="text-slate-500 text-sm mb-1">
-                {p.name} (%{p.sharePct})
-              </p>
-              <p className={`text-2xl font-bold ${partnerColColors[idx % partnerColColors.length]}`}>
-                {money(totals.partnerShares[p.id] ?? 0)}
-              </p>
-              <p className="text-xs font-semibold text-red-600 mt-1">
-                {tm('rptPeriodExpenseShare')}: {money(totals.expenseShares[p.id] ?? 0)}
-              </p>
-            </div>
-          ))
+          partnerSlices.map((p, idx) => {
+            const fullPartner = partners.find((x) => x.id === p.id);
+            const partnerBalance = Number(fullPartner?.balance || 0);
+            const isNeg = partnerBalance < 0;
+            return (
+              <div key={p.id} className="bg-white rounded-lg border p-4 border-blue-100 bg-blue-50/40">
+                <p className="text-slate-500 text-sm mb-1">
+                  {p.name} (%{p.sharePct})
+                </p>
+                <p className={`text-2xl font-bold ${partnerColColors[idx % partnerColColors.length]}`}>
+                  {money(totals.partnerShares[p.id] ?? 0)}
+                </p>
+                <p className="text-xs font-semibold text-red-600 mt-1">
+                  {tm('rptPeriodExpenseShare')}: {money(totals.expenseShares[p.id] ?? 0)}
+                </p>
+                {fullPartner ? (
+                  <>
+                    <p className={`text-xs mt-2 font-mono font-bold ${isNeg ? 'text-red-700' : 'text-emerald-700'}`}>
+                      DB Bakiye: {money(partnerBalance)}
+                    </p>
+                    <button
+                      type="button"
+                      onClick={() => setPartnerDetail(fullPartner)}
+                      className="mt-2 inline-flex items-center gap-1 text-[11px] font-bold uppercase tracking-wider text-indigo-700 hover:text-indigo-900 hover:underline"
+                    >
+                      <Eye className="w-3 h-3" />
+                      Detay Raporu Aç
+                    </button>
+                  </>
+                ) : null}
+              </div>
+            );
+          })
         ) : null}
         <div className="bg-white rounded-lg border p-4">
           <p className="text-slate-500 text-sm mb-1">{tm('rptPeriodPaymentSplit')}</p>
@@ -747,6 +770,15 @@ export function PeriodSummaryReport({ mode, currency }: PeriodSummaryReportProps
           partners={partnerSlices}
           currency={currency}
           onClose={() => setSupplierDetailOpen(false)}
+        />
+      ) : null}
+      {partnerDetail && periodRange ? (
+        <PartnerDetailReportModal
+          partner={partnerDetail}
+          periodStart={periodRange.start}
+          periodEnd={periodRange.end}
+          currency={currency}
+          onClose={() => setPartnerDetail(null)}
         />
       ) : null}
     </div>

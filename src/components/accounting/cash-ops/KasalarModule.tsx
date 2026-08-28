@@ -41,8 +41,10 @@ import {
   updateKasa,
   deleteKasa,
   deleteKasaIslemi,
+  fetchCashBreakdown,
   type Kasa,
-  type KasaIslemi
+  type KasaIslemi,
+  type CashBreakdown
 } from '../../../services/api/kasa';
 import { DevExDataGrid } from '../../shared/DevExDataGrid';
 import { createColumnHelper } from '@tanstack/react-table';
@@ -50,8 +52,15 @@ import { KasaIslemModal } from './KasaIslemModal';
 import { KasaIslemDetayModal } from './KasaIslemDetayModal';
 import { KasaIslemTurleriModal } from './KasaIslemTurleriModal';
 import { KasaIslemleriModal } from './KasaIslemleriModal';
+import { CashCard } from './CashCard';
 import { ContextMenu } from '../../shared/ContextMenu';
 import { confirm as confirmDialog } from '../../shared/ConfirmDialog';
+import {
+  Tooltip,
+  TooltipContent,
+  TooltipProvider,
+  TooltipTrigger,
+} from '../../ui/tooltip';
 
 // ===== COMPONENT =====
 
@@ -76,6 +85,8 @@ export function KasalarModule({ initialKasaId, onBack }: Props) {
   const [kasalar, setKasalar] = useState<Kasa[]>([]);
   const [selectedKasa, setSelectedKasa] = useState<Kasa | null>(null);
   const [kasaIslemleri, setKasaIslemleri] = useState<KasaIslemi[]>([]);
+  const [kasaBreakdowns, setKasaBreakdowns] = useState<Record<string, CashBreakdown | null>>({});
+  const [breakdownLoading, setBreakdownLoading] = useState<Record<string, boolean>>({});
   const [loading, setLoading] = useState(false);
   const [searchQuery, setSearchQuery] = useState('');
   const [showIslemModal, setShowIslemModal] = useState(false);
@@ -161,6 +172,23 @@ export function KasalarModule({ initialKasaId, onBack }: Props) {
         aktif: true,
       });
       setKasalar(data);
+      // Her kasa için breakdown arka planda yükle (tooltip için)
+      data.forEach((k) => {
+        if (!k.id) return;
+        if (kasaBreakdowns[k.id] !== undefined) return; // zaten yüklü
+        setBreakdownLoading((prev) => ({ ...prev, [k.id]: true }));
+        fetchCashBreakdown(k.id)
+          .then((bd) => {
+            setKasaBreakdowns((prev) => ({ ...prev, [k.id]: bd }));
+          })
+          .catch((err) => {
+            console.warn('[Kasalar] Breakdown load error:', err);
+            setKasaBreakdowns((prev) => ({ ...prev, [k.id]: null }));
+          })
+          .finally(() => {
+            setBreakdownLoading((prev) => ({ ...prev, [k.id]: false }));
+          });
+      });
     } catch (error: any) {
       console.error('[Kasalar] Load error:', error);
       toast.error(tm('loadingError'));
@@ -387,36 +415,19 @@ export function KasalarModule({ initialKasaId, onBack }: Props) {
             </div>
           ) : (
             filteredKasalar.map((kasa) => (
-              <button
+              <CashCard
                 key={kasa.id}
+                kasa={kasa}
+                breakdown={kasaBreakdowns[kasa.id]}
+                breakdownLoading={breakdownLoading[kasa.id]}
+                ledgerCurrency={ledgerCurrency}
+                tm={tm}
                 onClick={() => {
                   setSelectedKasa(kasa);
                   loadKasaIslemleri(kasa.id);
                 }}
                 onContextMenu={(e) => handleContextMenu(e, kasa)}
-                className="bg-white p-5 rounded-xl border border-gray-200 shadow-sm hover:shadow-md hover:border-purple-300 transition-all text-left flex flex-col items-start gap-4 group"
-              >
-                <div className="w-full flex items-start justify-between">
-                  <div className="w-10 h-10 bg-purple-50 rounded-lg flex items-center justify-center group-hover:bg-purple-600 group-hover:text-white transition-colors">
-                    <Wallet className="w-5 h-5" />
-                  </div>
-                  <div className={`px-2.5 py-1 rounded-full text-[10px] font-bold uppercase ${kasa.aktif ? 'bg-green-100 text-green-700' : 'bg-gray-100 text-gray-500'}`}>
-                    {kasa.aktif ? tm('active') : tm('passive')}
-                  </div>
-                </div>
-                <div className="flex-1">
-                  <h3 className="font-bold text-gray-900 group-hover:text-purple-700 transition-colors">{kasa.kasa_kodu}</h3>
-                  <p className="text-sm text-gray-500 mt-0.5 line-clamp-1">{kasa.kasa_adi}</p>
-                </div>
-                <div className="w-full pt-4 border-t border-gray-50 flex items-center justify-between">
-                  <div>
-                    <span className="text-[10px] text-gray-400 uppercase tracking-wider font-bold">{tm('crmBalance')}</span>
-                    <p className="text-lg font-black text-gray-900 leading-none mt-1">
-                      {formatMoneyWithCode(kasa.bakiye || 0, kasa.id_doviz_kodu || ledgerCurrency)}
-                    </p>
-                  </div>
-                </div>
-              </button>
+              />
             ))
           )}
         </div>
