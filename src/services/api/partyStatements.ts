@@ -108,8 +108,14 @@ export async function getPartyStatement(
   const showCancelled = opts.showCancelled === true;
   const excludeCompanyDebts = opts.excludeCompanyDebts === true;
 
-  /** İptal edilenleri gizle: source_module='cash_delete' (ledger) veya CANCELLED_* (cash_lines) */
-  const cancelledSql = showCancelled ? '' : ` AND cl.source_module IS DISTINCT FROM 'cash_delete' AND cl.transaction_type NOT LIKE 'CANCELLED_%'`;
+  /** İptal edilenleri gizle:
+   *   - cash_lines tablosunda 'source_module' kolonu YOK; sadece transaction_type LIKE 'CANCELLED_%'
+   *     kullanılır (iptal edilen kasa satırları bu prefix ile yazılır).
+   *   - party_ledger_movements (pl) tablosunda hem source_module='cash_delete' filtresi hem
+   *     CANCELLED_ transaction_type filtresi uygulanır (iptal edilen kasa satırından
+   *     üretilen ledger iptal kaydı).
+   */
+  const cancelledSql = showCancelled ? '' : ` AND cl.transaction_type NOT LIKE 'CANCELLED_%'`;
   const cancelledLedgerSql = showCancelled ? '' : ` AND pl.source_module IS DISTINCT FROM 'cash_delete' AND pl.transaction_type NOT LIKE 'CANCELLED_%'`;
 
   /** "İşletmenin ortağa/personele borçlandığı" transaction_type'lar (sign > 0 partner hareketleri) */
@@ -251,8 +257,14 @@ export async function getPartyStatement(
   // Açılış balance: tarih aralığından önceki tüm hareketlerin toplamı
   // showCancelled/excludeCompanyDebts filtreleri ana sorgu ile aynı uygulanır
   // (running balance tutarlılığı için gerekli).
+  // party_ledger_movements tablosu için: source_module='cash_delete' + CANCELLED_ transaction_type
   const opCancelledSql = showCancelled ? '' : ` AND source_module IS DISTINCT FROM 'cash_delete' AND transaction_type NOT LIKE 'CANCELLED_%'`;
+  // cash_lines tablosu için: SADECE transaction_type LIKE 'CANCELLED_%' (source_module kolonu yok)
+  const opCancelledCashLinesSql = showCancelled ? '' : ` AND transaction_type NOT LIKE 'CANCELLED_%'`;
   const opCompanyDebtSql = excludeCompanyDebts
+    ? ` AND transaction_type NOT IN (${COMPANY_DEBT_TYPES.map((t) => `'${t}'`).join(',')})`
+    : '';
+  const opCompanyDebtCashLinesSql = excludeCompanyDebts
     ? ` AND transaction_type NOT IN (${COMPANY_DEBT_TYPES.map((t) => `'${t}'`).join(',')})`
     : '';
 
@@ -264,7 +276,7 @@ export async function getPartyStatement(
            FROM ${salesTable()} WHERE customer_id = $1::text::uuid AND date < $2::date`
         : resolvedType === 'supplier'
           ? `SELECT COALESCE(SUM(CASE WHEN transaction_type IN ('ODEME','TAHSILAT_CIKIS','VIRMAN_CIKIS') THEN f_amount ELSE 0 END), 0) AS t
-             FROM ${cashLinesTable()} WHERE customer_id = $1::text::uuid AND date < $2::date${opCancelledSql}`
+             FROM ${cashLinesTable()} WHERE customer_id = $1::text::uuid AND date < $2::date${opCancelledCashLinesSql}`
           : resolvedType === 'employee'
           ? `SELECT
               (SELECT COALESCE(SUM(CASE
@@ -279,8 +291,8 @@ export async function getPartyStatement(
                 AND NOT EXISTS (
                   SELECT 1 FROM ${partyLedgerTable()} pl2 WHERE pl2.cash_line_id = cl.id
                 )
-                ${opCancelledSql}
-                ${opCompanyDebtSql}) AS t`
+                ${opCancelledCashLinesSql}
+                ${opCompanyDebtCashLinesSql}) AS t`
           : `SELECT
               (SELECT COALESCE(SUM(amount * sign), 0) FROM ${partyLedgerTable()}
                WHERE party_id = $1::text::uuid AND date < $2::date${opCancelledSql}${opCompanyDebtSql})
@@ -292,8 +304,8 @@ export async function getPartyStatement(
                 AND NOT EXISTS (
                   SELECT 1 FROM ${partyLedgerTable()} pl2 WHERE pl2.cash_line_id = cl.id
                 )
-                ${opCancelledSql}
-                ${opCompanyDebtSql}) AS t`;
+                ${opCancelledCashLinesSql}
+                ${opCompanyDebtCashLinesSql}) AS t`;
     const op = await postgres.query(opSql, [partyId, start]);
     opening = parseFloat(op?.rows?.[0]?.t || 0);
   }
