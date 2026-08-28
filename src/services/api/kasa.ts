@@ -1732,3 +1732,60 @@ export async function fetchCashBreakdown(registerId: string): Promise<CashBreakd
   };
 }
 
+/**
+ * Aylık kasa net akışı (tüm registerlar toplamı veya belirli register).
+ * PeriodSummary raporunda "Kasa Bakiyesi" kolonu için kullanılır.
+ *
+ * @param startDate YYYY-MM-DD (dahil)
+ * @param endDate YYYY-MM-DD (dahil)
+ * @param registerCode Opsiyonel: belirli register (ör. 'KASA.001'); null = tüm registerlar
+ * @returns Her ay için { month: 'YYYY-MM', inAmount, outAmount, net }
+ */
+export interface CashMonthlyNetRow {
+  month: string;
+  inAmount: number;
+  outAmount: number;
+  net: number;
+}
+
+export async function getMonthlyCashNetFlow(
+  startDate: string,
+  endDate: string,
+  registerCode?: string | null,
+): Promise<CashMonthlyNetRow[]> {
+  const firmNr = String(ERP_SETTINGS.firmNr ?? '001').padStart(3, '0');
+  const periodNr = String(ERP_SETTINGS.periodNr ?? '01').padStart(2, '0');
+  const linesTable = `rex_${firmNr}_${periodNr}_cash_lines`;
+
+  let sql = `
+    SELECT TO_CHAR(l.created_at, 'YYYY-MM') AS month,
+           SUM(CASE WHEN l.sign = 1 THEN l.amount ELSE 0 END)::bigint AS in_amount,
+           SUM(CASE WHEN l.sign = -1 THEN l.amount ELSE 0 END)::bigint AS out_amount,
+           SUM(l.amount * l.sign)::bigint AS net
+    FROM ${linesTable} l
+    WHERE l.created_at::date >= $1::date
+      AND l.created_at::date <= $2::date
+  `;
+  const params: any[] = [startDate, endDate];
+
+  if (registerCode) {
+    sql += `
+      AND l.register_id IN (
+        SELECT id FROM rex_${firmNr}_cash_registers WHERE code = $3
+      )
+    `;
+    params.push(registerCode);
+  }
+
+  sql += ` GROUP BY 1 ORDER BY 1`;
+
+  const { rows } = await postgres.query(sql, params);
+
+  return rows.map((r: any) => ({
+    month: String(r.month || ''),
+    inAmount: Number(r.in_amount || 0),
+    outAmount: Number(r.out_amount || 0),
+    net: Number(r.net || 0),
+  }));
+}
+
