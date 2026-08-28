@@ -157,3 +157,12 @@ tools/*/
 
 # Tauri updater private key
 DeskApp/updater.key
+
+# Tenant DB yedekleri / audit JSON'ları (pg_dump, cash_fix, customer-payment-audit, supplier-fix vb.)
+# Üretimde bu dosyalar repoya girmemeli; hassas veri + repo kirliliği.
+aqua_beauty_*.sql
+aqua_beauty_*.json
+auto_reconcile_*_BACKUP_*.sql
+customer-payment-audit*.json
+supplier-payment-fix*.json
+scripts/_*.mjs
