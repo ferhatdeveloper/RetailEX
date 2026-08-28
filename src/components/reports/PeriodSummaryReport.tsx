@@ -7,7 +7,6 @@ import { expenseAPI } from '../../services/api/expenses';
 import { salesAPI } from '../../services/api/sales';
 import { invoicesAPI } from '../../services/api/invoices';
 import { supplierAPI } from '../../services/api/suppliers';
-import { getMonthlyCashNetFlow } from '../../services/api/kasa';
 import { postgres } from '../../services/postgres';
 import { normalizePaymentMethodBucket } from '../../utils/paymentMethodUtils';
 import type { Sale } from '../../App';
@@ -46,10 +45,6 @@ interface PeriodSummaryRow {
   expenses: number;
   purchases: number;
   netRemaining: number;
-  // Kasa köprüsü — DB cash_lines ile satış-gider farkı arasındaki mutabakatı görselleştirmek için
-  cashNet: number;       // ay içi Σ(amount × sign) — cash_lines net akış
-  cashInAmount: number;  // ay içi toplam giriş
-  cashOutAmount: number; // ay içi toplam çıkış
   partnerShares: Record<string, number>;
   expenseShares: Record<string, number>;
 }
@@ -212,8 +207,6 @@ export function PeriodSummaryReport({ mode, currency }: PeriodSummaryReportProps
   const [expenses, setExpenses] = useState<Awaited<ReturnType<typeof expenseAPI.getAll>>>([]);
   const [purchases, setPurchases] = useState<Invoice[]>([]);
   const [suppliers, setSuppliers] = useState<Supplier[]>([]);
-  const [cashByMonth, setCashByMonth] = useState<Record<string, { net: number; inAmount: number; outAmount: number }>>({});
-  const [cashRegisterBalance, setCashRegisterBalance] = useState<number | null>(null);
   const [supplierDetailOpen, setSupplierDetailOpen] = useState(false);
   const [partnerSplit, setPartnerSplit] = useState<PeriodSummaryPartnerSplitPrefs>(() =>
     loadPeriodSummaryPartnerSplitPrefs(),
@@ -272,34 +265,16 @@ export function PeriodSummaryReport({ mode, currency }: PeriodSummaryReportProps
     }
     setLoading(true);
     try {
-      const [saleRows, expenseRows, purchaseRows, supplierRows, cashMonthly] = await Promise.all([
+      const [saleRows, expenseRows, purchaseRows, supplierRows] = await Promise.all([
         salesAPI.getByDateRange(periodRange.start, periodRange.end),
         expenseAPI.getAll({ startDate: periodRange.start, endDate: periodRange.end }),
         fetchPeriodPurchases(periodRange.start, periodRange.end),
         supplierAPI.getAll({ cardType: 'supplier' }),
-        getMonthlyCashNetFlow(periodRange.start, periodRange.end, 'KASA.001').catch(() => [] as Awaited<ReturnType<typeof getMonthlyCashNetFlow>>),
       ]);
       setSales(Array.isArray(saleRows) ? saleRows : []);
       setExpenses(Array.isArray(expenseRows) ? expenseRows : []);
       setPurchases(Array.isArray(purchaseRows) ? purchaseRows : []);
       setSuppliers(Array.isArray(supplierRows) ? supplierRows : []);
-
-      // Kasa aylık net akışı → monthKey map (YYYY-MM → { net, inAmount, outAmount })
-      const cashMap: Record<string, { net: number; inAmount: number; outAmount: number }> = {};
-      for (const c of cashMonthly) {
-        cashMap[c.month] = { net: c.net, inAmount: c.inAmount, outAmount: c.outAmount };
-      }
-      setCashByMonth(cashMap);
-
-      // MERKEZ KASA cari bakiye
-      try {
-        const regResp = await postgres.query(
-          `SELECT balance FROM rex_001_cash_registers WHERE code = 'KASA.001' LIMIT 1`,
-        );
-        if (regResp.rows?.[0] != null) setCashRegisterBalance(Number(regResp.rows[0].balance || 0));
-      } catch {
-        // ignore
-      }
     } catch (err) {
       console.error('[PeriodSummaryReport] yükleme hatası:', err);
       setSales([]);
@@ -369,11 +344,6 @@ export function PeriodSummaryReport({ mode, currency }: PeriodSummaryReportProps
 
       const netRemaining = sale.revenue - exp - purch;
 
-      // Kasa köprüsü: cash_lines'dan ayın net akışı (sign=+1 GIRIS, sign=-1 CIKIS)
-      // Daily mode'da periodKey 'YYYY-MM-DD' formatında, monthly mode'da 'YYYY-MM' formatında.
-      const cashKey = mode === 'monthly-days' ? periodKey.slice(0, 7) : periodKey;
-      const cash = cashByMonth[cashKey] || { net: 0, inAmount: 0, outAmount: 0 };
-
       const shareList = splitAmountByPartners(netRemaining, partnerSlices);
       const partnerShareMap: Record<string, number> = {};
       for (const s of shareList) partnerShareMap[s.id] = s.amount;
@@ -394,14 +364,11 @@ export function PeriodSummaryReport({ mode, currency }: PeriodSummaryReportProps
         expenses: exp,
         purchases: purch,
         netRemaining,
-        cashNet: cash.net,
-        cashInAmount: cash.inAmount,
-        cashOutAmount: cash.outAmount,
         partnerShares: partnerShareMap,
         expenseShares: expenseShareMap,
       };
     });
-  }, [mode, periodRange, sales, expenses, purchases, cashByMonth, selectedMonth, selectedYear, tm, partnerSlices]);
+  }, [mode, periodRange, sales, expenses, purchases, selectedMonth, selectedYear, tm, partnerSlices]);
 
   const totals = useMemo(() => {
     const base = rows.reduce(
@@ -416,15 +383,11 @@ export function PeriodSummaryReport({ mode, currency }: PeriodSummaryReportProps
         expenses: acc.expenses + r.expenses,
         purchases: acc.purchases + r.purchases,
         netRemaining: acc.netRemaining + r.netRemaining,
-        cashNet: acc.cashNet + r.cashNet,
-        cashInAmount: acc.cashInAmount + r.cashInAmount,
-        cashOutAmount: acc.cashOutAmount + r.cashOutAmount,
       }),
       {
         saleCount: 0, revenue: 0, cash: 0, card: 0, discount: 0,
         returnsCount: 0, returnsAmount: 0,
         expenses: 0, purchases: 0, netRemaining: 0,
-        cashNet: 0, cashInAmount: 0, cashOutAmount: 0,
       }
     );
     const shareList = splitAmountByPartners(base.netRemaining, partnerSlices);
@@ -560,31 +523,6 @@ export function PeriodSummaryReport({ mode, currency }: PeriodSummaryReportProps
           if (!hasPeriodActivity(row)) return '—';
           const cls = v >= 0 ? 'text-emerald-700 font-semibold' : 'text-red-600 font-semibold';
           return <span className={cls}>{money(v)}</span>;
-        },
-      },
-      {
-        title: `${tm('rptPeriodColCashNet') || 'Kasa Net'} (${currency})`,
-        dataIndex: 'cashNet',
-        key: 'cashNet',
-        align: 'right',
-        render: (v: number, row) => {
-          if (!hasPeriodActivity(row)) return '—';
-          // Köprü: Net Balance vs Kasa Net arasındaki fark muhasebe "veresiye/bekleyen tahsilat"
-          // veya "henüz ödenmemiş alışlar" işaretidir.
-          const delta = row.netRemaining - row.cashNet;
-          const tooltip = [
-            `Brüt satışlardan giderler ve alışlar düşünce: ${money(row.netRemaining)}`,
-            `Kasa nakit akışı (Σgiriş − Σçıkış): ${money(row.cashNet)}`,
-            `Fark (henüz tahsil edilmemiş / ödenmemiş): ${money(delta)}`,
-            `Kasa giriş: ${money(row.cashInAmount)}`,
-            `Kasa çıkış: ${money(row.cashOutAmount)}`,
-          ].join('\n');
-          const cls = v >= 0 ? 'text-blue-700' : 'text-red-600';
-          return (
-            <span className={cls} title={tooltip} data-testid="cash-net-cell">
-              {money(v)}
-            </span>
-          );
         },
       },
     ];
@@ -855,14 +793,9 @@ export function PeriodSummaryReport({ mode, currency }: PeriodSummaryReportProps
                       {money(totals.netRemaining)}
                     </span>
                   </Table.Summary.Cell>
-                  <Table.Summary.Cell index={10} align="right">
-                    <span className={totals.cashNet >= 0 ? 'text-blue-700' : 'text-red-600'} title={`Kasa cari bakiye (rex_001_cash_registers.balance): ${cashRegisterBalance != null ? money(cashRegisterBalance) : '—'}`}>
-                      {money(totals.cashNet)}
-                    </span>
-                  </Table.Summary.Cell>
                   {showPartnerCols
                     ? partnerSlices.map((p, idx) => (
-                        <Table.Summary.Cell key={p.id} index={11 + idx} align="right">
+                        <Table.Summary.Cell key={p.id} index={10 + idx} align="right">
                           <div className="leading-tight">
                             <span className={partnerColColors[idx % partnerColColors.length]}>
                               {money(totals.partnerShares[p.id] ?? 0)}
