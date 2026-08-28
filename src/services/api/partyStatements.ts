@@ -158,7 +158,8 @@ export async function getPartyStatement(
         ${showCancelled ? '' : 'AND s.is_cancelled = false'}${dateCond('s.date')}
     `;
   } else if (resolvedType === 'supplier') {
-    // Tedarikçi: cash_lines (müşteri olarak bağlanmışsa) — mevcut supplier ekstresiyle hizalanır.
+    // Tedarikçi: cash_lines.party_id ile bağlanır (CH_ODEME supplier ödemeleri bu kolonda).
+    // Geriye uyumluluk: customer_id ile yazılmış eski tedarikçi ödemelerini de dahil et.
     // showCancelled: cash_lines iptal satırları (CANCELLED_* / source_module='cash_delete') filtrelenir.
     // excludeCompanyDebts tedarikçi için NO-OP.
     sql = `
@@ -172,7 +173,9 @@ export async function getPartyStatement(
         CASE WHEN cl.transaction_type IN ('ODEME','TAHSILAT_CIKIS','VIRMAN_CIKIS') THEN 1 ELSE 0 END AS sign,
         cl.id
       FROM ${cashLinesTable()} cl
-      WHERE cl.customer_id = $1::text::uuid${dateCond('cl.date')}
+      WHERE (cl.party_id = $1::text::uuid
+             OR (cl.customer_id = $1::text::uuid AND cl.party_id IS NULL))
+        ${dateCond('cl.date')}
         ${cancelledSql}
         ${companyDebtSql}
     `;

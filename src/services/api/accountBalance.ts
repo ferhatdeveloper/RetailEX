@@ -63,6 +63,15 @@ export function sqlCustomerAccountBalancesCte(custTable: string, firmNrBind: str
         FROM cash_lines
         WHERE customer_id IS NOT NULL
           AND UPPER(TRIM(transaction_type)) IN ('CH_ODEME', 'CH_TAHSILAT')
+        UNION ALL
+        -- Tedarikçi ödemeleri party_id ile yazılır; müşteri kartına düşmesin diye
+        -- COALESCE ile customer_id'ye taşı, ancak sadece customer_id boşsa
+        SELECT party_id AS id,
+          (CASE WHEN UPPER(TRIM(transaction_type)) IN ('CH_ODEME', 'CH_TAHSILAT') THEN -ABS(amount) ELSE 0 END) AS line_contrib
+        FROM cash_lines
+        WHERE party_id IS NOT NULL
+          AND customer_id IS NULL
+          AND UPPER(TRIM(transaction_type)) IN ('CH_ODEME', 'CH_TAHSILAT')
       ) customer_tx
       GROUP BY id
     )`;
@@ -113,6 +122,14 @@ export function sqlSupplierAccountBalancesCte(suppTable: string): string {
         FROM cash_lines
         WHERE customer_id IS NOT NULL
           AND UPPER(TRIM(transaction_type)) IN ('CH_ODEME', 'CH_TAHSILAT')
+        UNION ALL
+        -- Tedarikçi ödemeleri cash_lines.party_id ile yazılır
+        SELECT party_id AS id,
+          (CASE WHEN UPPER(TRIM(transaction_type)) IN ('CH_ODEME', 'CH_TAHSILAT') THEN -ABS(amount) ELSE 0 END) AS line_contrib
+        FROM cash_lines
+        WHERE party_id IS NOT NULL
+          AND customer_id IS NULL
+          AND UPPER(TRIM(transaction_type)) IN ('CH_ODEME', 'CH_TAHSILAT')
       ) supplier_tx
       GROUP BY id
     )`;
@@ -142,9 +159,20 @@ export type LedgerSaleRow = {
 
 export type LedgerCashRow = {
   customer_id?: string | null;
+  party_id?: string | null;
   amount?: number | string | null;
   transaction_type?: string | null;
 };
+
+/** Tedarikçi ödemeleri cash_lines.party_id, müşteri ödemeleri cash_lines.customer_id ile yazılır.
+ * İki kolondan hangisi doluysa onu kabul et (geriye uyumluluk + veri farkı köprüleme). */
+function cashLineMatchesParty(cl: LedgerCashRow, idStr: string): boolean {
+  const cid = cl.customer_id ? String(cl.customer_id) : '';
+  const pid = cl.party_id ? String(cl.party_id) : '';
+  if (cid && cid === idStr) return true;
+  if (pid && pid === idStr) return true;
+  return false;
+}
 
 /**
  * Kasa CH_TAHSILAT / CH_ODEME satırının cari bakiyeye katkısı.
@@ -310,8 +338,7 @@ export function computeCustomerBalanceFromLedger(
   for (const cl of cashLines) {
     const tt = String(cl.transaction_type || '').trim().toUpperCase();
     if (tt !== 'CH_ODEME' && tt !== 'CH_TAHSILAT') continue;
-    const cid = cl.customer_id ? String(cl.customer_id) : '';
-    if (!cid || cid !== idStr) continue;
+    if (!cashLineMatchesParty(cl, idStr)) continue;
     const contrib = cariCashLineLedgerContrib(cl.amount, tt);
     if (!contrib) continue;
     cashTxn += 1;
@@ -335,8 +362,7 @@ export function computeSupplierBalanceFromLedger(
   for (const cl of cashLines) {
     const tt = String(cl.transaction_type || '').trim().toUpperCase();
     if (tt !== 'CH_ODEME' && tt !== 'CH_TAHSILAT') continue;
-    const cid = cl.customer_id ? String(cl.customer_id) : '';
-    if (!cid || cid !== idStr) continue;
+    if (!cashLineMatchesParty(cl, idStr)) continue;
     const contrib = cariCashLineLedgerContrib(cl.amount, tt);
     if (!contrib) continue;
     sum += contrib;
