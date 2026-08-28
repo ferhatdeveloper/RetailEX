@@ -150,6 +150,105 @@ export function computePartyBalanceDelta(tutar: number, islemTipi: string): numb
   }
 }
 
+/**
+ * cari_hesap_id verilen bir UUID'nin hangi tabloya ait olduğunu tespit eder.
+ * CH_ODEME / CH_TAHSILAT işlemlerinde hangi kolona (`customer_id` mı `party_id` mi)
+ * yazılacağını ve hangi tablonun `balance` alanının güncelleneceğini belirler.
+ *
+ *   - 'customer' → cash_lines.customer_id'ye yaz, customers.balance güncelle
+ *   - 'supplier' → cash_lines.party_id'ye yaz, suppliers.balance güncelle
+ *   - 'employee' | 'partner' → cash_lines.party_id'ye yaz, parties.balance güncelle
+ *   - null      → UUID hiçbir yerde yok; insert'i yine de yap ama balance güncelleme
+ *
+ * ESKİ MİRAS DÜZELTMESİ: Daha önce tedarikçi ödemeleri `customer_id` kolonuna
+ * yanlışlıkla yazılıyordu (ARZENGROUP vakası). Bu tespit sayesinde INSERT'ten
+ * önce doğru kolon seçilir ve `customer_id` ile `party_id` artık karışmaz.
+ */
+type CariAccountKind = 'customer' | 'supplier' | 'employee' | 'partner' | null;
+
+export async function resolveCariAccountKind(accountId: string | null | undefined): Promise<CariAccountKind> {
+  if (!accountId) return null;
+  const id = String(accountId).trim();
+  if (!id) return null;
+  const firmNr = normalizeFirmTableNr(ERP_SETTINGS.firmNr);
+
+  if (DB_SETTINGS.connectionProvider === 'rest_api') {
+    try {
+      const { postgrest } = await import('./postgrestClient');
+      // Müşteri tablosunda ara
+      const c = await postgrest.get<any[]>(
+        `/rex_${firmNr}_customers`,
+        { select: 'id', id: `eq.${id}`, limit: '1' },
+        { schema: 'public' },
+      );
+      if (Array.isArray(c) && c.length > 0) return 'customer';
+      // Tedarikçi tablosunda ara
+      const s = await postgrest.get<any[]>(
+        `/rex_${firmNr}_suppliers`,
+        { select: 'id', id: `eq.${id}`, limit: '1' },
+        { schema: 'public' },
+      );
+      if (Array.isArray(s) && s.length > 0) return 'supplier';
+      // parties tablosunda ara (employee / partner)
+      const p = await postgrest.get<any[]>(
+        `/rex_${firmNr}_parties`,
+        { select: 'id,card_type', id: `eq.${id}`, limit: '1' },
+        { schema: 'public' },
+      );
+      if (Array.isArray(p) && p.length > 0) {
+        const ct = String(p[0]?.card_type || '').toLowerCase();
+        return (ct === 'partner' ? 'partner' : 'employee');
+      }
+      return null;
+    } catch {
+      return null;
+    }
+  }
+
+  try {
+    const { rows } = await postgres.query(
+      `SELECT
+         EXISTS(SELECT 1 FROM rex_${firmNr}_customers WHERE id = $1::uuid) AS is_customer,
+         EXISTS(SELECT 1 FROM rex_${firmNr}_suppliers WHERE id = $1::uuid) AS is_supplier,
+         (SELECT card_type FROM rex_${firmNr}_parties WHERE id = $1::uuid LIMIT 1) AS party_card_type`,
+      [id],
+    );
+    const r = rows?.[0] || {};
+    if (r.is_customer) return 'customer';
+    if (r.is_supplier) return 'supplier';
+    if (r.party_card_type) {
+      return String(r.party_card_type).toLowerCase() === 'partner' ? 'partner' : 'employee';
+    }
+    return null;
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * cash_lines INSERT body'sinde `customer_id` ve `party_id` kolonlarını cari türüne göre doldurur.
+ * Tedarikçi ödemelerinde party_id, müşteri tahsilatlarında customer_id set edilir.
+ */
+export function splitCariAccountForCashLine(
+  kind: CariAccountKind,
+  accountId: string | null | undefined
+): { customer_id: string | null; party_id: string | null } {
+  if (!accountId) return { customer_id: null, party_id: null };
+  const id = String(accountId).trim();
+  if (!id) return { customer_id: null, party_id: null };
+  switch (kind) {
+    case 'customer':
+      return { customer_id: id, party_id: null };
+    case 'supplier':
+    case 'employee':
+    case 'partner':
+      return { customer_id: null, party_id: id };
+    default:
+      // Tür tespit edilemedi — geriye dönük uyumluluk için customer_id'ye yaz (eski davranış).
+      return { customer_id: id, party_id: null };
+  }
+}
+
 // ===== TYPES =====
 
 export interface Kasa {
@@ -458,15 +557,23 @@ export async function fetchKasaIslemleri(params?: {
     // customers ve suppliers tablolarını join yap
     // Not: Dinamik tablo isimleri postgres.ts içindeki rewriter tarafından halledilir (rex_ prefixleri)
     let sql = `
-      SELECT 
+      SELECT
         cl.*,
-        COALESCE(c.name, s.name) as current_account_name,
-        COALESCE(c.code, s.code) as current_account_code,
+        COALESCE(c.name, s.name, p.name) as current_account_name,
+        COALESCE(c.code, s.code, p.code) as current_account_code,
+        COALESCE(c.id, s.id, p.id) as current_account_resolved_id,
+        CASE
+          WHEN c.id IS NOT NULL THEN 'customer'
+          WHEN s.id IS NOT NULL THEN 'supplier'
+          WHEN p.id IS NOT NULL THEN COALESCE(p.card_type, 'employee')
+          ELSE NULL
+        END as current_account_kind,
         target_kasa.name as target_register_name,
         target_kasa.code as target_register_code
       FROM ${table} cl
       LEFT JOIN customers c ON cl.customer_id = c.id
-      LEFT JOIN suppliers s ON cl.customer_id = s.id
+      LEFT JOIN suppliers s ON cl.party_id = s.id AND cl.transaction_type = 'CH_ODEME'
+      LEFT JOIN parties p ON cl.party_id = p.id AND cl.transaction_type <> 'CH_ODEME'
       LEFT JOIN cash_registers target_kasa ON cl.target_register_id = target_kasa.id
       WHERE 1=1
     `;
@@ -541,6 +648,13 @@ async function createKasaIslemiViaPostgrest(
   const bankLinesPath = `/rex_${fn}_${pn}_bank_lines`;
   const bankRegPath = `/rex_${fn}_bank_registers`;
 
+  // cari_hesap_id türünü INSERT'ten ÖNCE tespit et (tedarikçi → party_id, müşteri → customer_id)
+  const cariKind = await resolveCariAccountKind(islem.cari_hesap_id);
+  // Caller zaten party_id gönderdiyse (örn. CH_ODEME_PARTNER), onu koru; aksi halde türüne göre ayır.
+  const cariSplit = islem.party_id
+    ? { customer_id: null, party_id: islem.party_id }
+    : splitCariAccountForCashLine(cariKind, islem.cari_hesap_id);
+
   const lineBody: Record<string, unknown> = {
     firm_nr: String(ERP_SETTINGS.firmNr),
     period_nr: String(ERP_SETTINGS.periodNr || '01'),
@@ -551,8 +665,8 @@ async function createKasaIslemiViaPostgrest(
     sign,
     definition: islem.islem_aciklamasi || '',
     transaction_type: islem.islem_tipi || '',
-    customer_id: islem.cari_hesap_id || null,
-    party_id: islem.party_id || null,
+    customer_id: cariSplit.customer_id,
+    party_id: cariSplit.party_id,
     currency_code: islem.doviz_kodu || 'YEREL',
     exchange_rate: 1,
     f_amount: islem.dovizli_tutar || 0,
@@ -655,12 +769,11 @@ async function createKasaIslemiViaPostgrest(
     const delta = cariCashStoredBalanceDelta(islem.tutar, islem.islem_tipi);
     if (delta !== 0) {
       const firmNr = normalizeFirmTableNr(ERP_SETTINGS.firmNr);
-      const custPath = `/rex_${firmNr}_customers`;
-      const supPath = `/rex_${firmNr}_suppliers`;
-      const patchPartner = async (path: string, withFirm: boolean) => {
+      const partnerId = String(islem.cari_hesap_id).trim();
+      // Tespit sonucuna göre DOĞRU tabloya yaz. "Önce customer dene" stratejisi tedarikçi
+      // ödemelerini müşteri tablosuna düşürüyordu. Şimdi INSERT'te de doğru kolona yazıldı.
+      const tryPatch = async (path: string, withFirm: boolean): Promise<boolean> => {
         try {
-          const { stripPostgrestOpPrefix } = await import('./postgrestClient');
-          const partnerId = stripPostgrestOpPrefix(String(islem.cari_hesap_id));
           const q: Record<string, string> = {
             select: 'balance',
             id: `eq.${partnerId}`,
@@ -680,9 +793,16 @@ async function createKasaIslemiViaPostgrest(
           return false;
         }
       };
-      const patchedCustomer = await patchPartner(custPath, true);
-      if (!patchedCustomer) {
-        await patchPartner(supPath, false);
+      if (cariKind === 'customer') {
+        await tryPatch(`/rex_${firmNr}_customers`, true);
+      } else if (cariKind === 'supplier') {
+        await tryPatch(`/rex_${firmNr}_suppliers`, false);
+      } else if (cariKind === 'employee' || cariKind === 'partner') {
+        // Parties için balance güncellemesi yukarıdaki party_id bloğunda yapıldı.
+      } else {
+        // Tür tespit edilemedi — fallback: önce customer, yoksa supplier (geriye dönük uyumluluk).
+        const patched = await tryPatch(`/rex_${firmNr}_customers`, true);
+        if (!patched) await tryPatch(`/rex_${firmNr}_suppliers`, false);
       }
     }
   }
@@ -865,6 +985,17 @@ export async function createKasaIslemi(incoming: KasaIslemi): Promise<KasaIslemi
 
     const ficheNo = islem.islem_no || `KL-${ERP_SETTINGS.firmNr}-${Date.now()}`;
 
+    // cari_hesap_id türünü INSERT'ten ÖNCE tespit et (tedarikçi → party_id, müşteri → customer_id)
+    const cariKind = await resolveCariAccountKind(islem.cari_hesap_id);
+    const cariSplit = islem.party_id
+      ? { customer_id: null as string | null, party_id: islem.party_id }
+      : (() => {
+          const s = splitCariAccountForCashLine(cariKind, islem.cari_hesap_id);
+          return { customer_id: s.customer_id, party_id: s.party_id };
+        })();
+    if (cariSplit.customer_id) islem = { ...islem, cari_hesap_id: cariSplit.customer_id };
+    if (cariSplit.party_id && !islem.party_id) islem = { ...islem, party_id: cariSplit.party_id };
+
     if (DB_SETTINGS.connectionProvider === 'rest_api') {
       console.log('[Kasa] PostgREST işlem. Type:', islem.islem_tipi, 'Target:', islem.target_register_id);
       return await createKasaIslemiViaPostgrest(islem, sign, ficheNo);
@@ -914,8 +1045,8 @@ export async function createKasaIslemi(incoming: KasaIslemi): Promise<KasaIslemi
         sign,
         islem.islem_aciklamasi || '',
         islem.islem_tipi || '',
-        islem.cari_hesap_id || null,
-        islem.party_id || null,
+        cariSplit.customer_id || islem.cari_hesap_id || null,
+        cariSplit.party_id || islem.party_id || null,
         islem.doviz_kodu || 'YEREL',
         1,
         islem.dovizli_tutar || 0,
@@ -939,19 +1070,38 @@ export async function createKasaIslemi(incoming: KasaIslemi): Promise<KasaIslemi
     // Önemli: Kasa sign (+1/-1) cariye uygulanmaz. Tahsilat/ödeme açık bakiyeyi düşürür (-ABS).
     // CH_TAHSILAT: müşteriden tahsilat → alacak → borç ↓
     // CH_ODEME: tedarikçiye/müşteriye ödeme → açık ↓
+    // TÜR TESPİTİ: INSERT'te olduğu gibi burada da cariKind'e göre doğru tabloya yaz.
+    // Eski "önce customer dene, yoksa supplier" yaklaşımı supplier ödemelerini müşteri tablosuna
+    // düşürüyordu. cariKind=null ise (UUID hiçbir yerde yok) yine de fallback denenir.
     if (islem.cari_hesap_id && (islem.islem_tipi === 'CH_ODEME' || islem.islem_tipi === 'CH_TAHSILAT')) {
       const delta = cariCashStoredBalanceDelta(islem.tutar, islem.islem_tipi);
       if (delta !== 0) {
         const deltaStr = delta.toString();
-        const { rowCount: custCount } = await postgres.query(
-          `UPDATE customers SET balance = balance + $1::text::numeric WHERE id = $2::text::uuid AND firm_nr = $3::text`,
-          [deltaStr, islem.cari_hesap_id, normalizeFirmTableNr(ERP_SETTINGS.firmNr)],
-        );
-        if (!custCount) {
+        const partnerId = islem.cari_hesap_id;
+        if (cariKind === 'customer') {
+          await postgres.query(
+            `UPDATE customers SET balance = balance + $1::text::numeric WHERE id = $2::text::uuid AND firm_nr = $3::text`,
+            [deltaStr, partnerId, normalizeFirmTableNr(ERP_SETTINGS.firmNr)],
+          );
+        } else if (cariKind === 'supplier') {
           await postgres.query(
             `UPDATE suppliers SET balance = balance + $1::text::numeric WHERE id = $2::text::uuid`,
-            [deltaStr, islem.cari_hesap_id],
+            [deltaStr, partnerId],
           );
+        } else if (cariKind === 'employee' || cariKind === 'partner') {
+          // Parties bakiyesi yukarıdaki party_id bloğunda güncelleniyor.
+        } else {
+          // Tür tespit edilemedi — geriye dönük uyumluluk: önce customer, yoksa supplier.
+          const { rowCount: custCount } = await postgres.query(
+            `UPDATE customers SET balance = balance + $1::text::numeric WHERE id = $2::text::uuid AND firm_nr = $3::text`,
+            [deltaStr, partnerId, normalizeFirmTableNr(ERP_SETTINGS.firmNr)],
+          );
+          if (!custCount) {
+            await postgres.query(
+              `UPDATE suppliers SET balance = balance + $1::text::numeric WHERE id = $2::text::uuid`,
+              [deltaStr, partnerId],
+            );
+          }
         }
       }
     }
@@ -1142,7 +1292,13 @@ function mapDbIslemToIslem(row: any): KasaIslemi {
     islem_tipi: row.transaction_type,
     tutar: parseFloat(row.amount || 0),
     islem_aciklamasi: row.definition,
-    cari_hesap_id: row.customer_id || undefined,
+    // cari_hesap_id: customer_id öncelikli; tedarikçi/personel için party_id fallback.
+    // Bu sayede eski müşteri tahsilatları ve yeni tedarikçi ödemelerinin ikisi de
+    // CariHesapSelector / CariHesapPicker bileşeninde doğru şekilde görünür.
+    cari_hesap_id:
+      row.current_account_resolved_id || row.customer_id || row.party_id || undefined,
+    cari_hesap_unvani: row.current_account_name || undefined,
+    cari_hesap_kodu: row.current_account_code || undefined,
     doviz_kodu: row.currency_code || undefined,
     dovizli_tutar: row.f_amount !== undefined ? parseFloat(row.f_amount || 0) : undefined,
     ozel_kod: row.special_code || undefined,
@@ -1201,19 +1357,47 @@ export async function deleteKasaIslemi(id: string): Promise<void> {
     }
 
     // 3) Cari hesap entegrasyonu — orijinal işlem cari bakiyeyi -tutar ile değiştirmişti, geri al
-    if (customerId && (trType === 'CH_ODEME' || trType === 'CH_TAHSILAT')) {
+    // DELETE tarafında da INSERT tarafıyla simetrik olmalı: customer_id → customers,
+    // party_id (supplier/employee/partner) → suppliers veya parties. customerId+partyId
+    // aynı satırda ikisi birden olamaz, ama eski veride yanlışlıkla customer_id'ye
+    // tedarikçi UUID'si yazılmış olabilir — bu durumda partyId NULL'dır ve customerId
+    // üzerinden tespit yaparız.
+    if ((customerId || partyId) && (trType === 'CH_ODEME' || trType === 'CH_TAHSILAT')) {
       const delta = -cariCashStoredBalanceDelta(amount, trType);
       if (delta !== 0) {
         const deltaStr = delta.toString();
-        const { rowCount: custCount } = await postgres.query(
-          `UPDATE customers SET balance = balance + $1::text::numeric WHERE id = $2::text::uuid AND firm_nr = $3::text`,
-          [deltaStr, customerId, normalizeFirmTableNr(ERP_SETTINGS.firmNr)],
-        );
-        if (!custCount) {
+        // Tedarikçi ödemelerinde party_id dolu (yeni davranış). Müşteri tahsilatlarında
+        // customer_id dolu. Eski veride customer_id'ye tedarikçi UUID'si yazılmışsa
+        // türü yeniden tespit edip doğru tabloya geri al.
+        let delKind: ReturnType<typeof resolveCariAccountKind> extends Promise<infer T> ? T : never = null;
+        const probeId = String(partyId || customerId || '');
+        delKind = await resolveCariAccountKind(probeId);
+        await ensurePartyPeriodTables();
+        if (partyId && (delKind === 'employee' || delKind === 'partner')) {
+          // Personel/Şirket ortağı kasa işlemleri için party bakiyesi zaten aşağıdaki
+          // 4) adımda ters çevriliyor; burada ek bir şey yapma.
+        } else if (delKind === 'supplier') {
           await postgres.query(
             `UPDATE suppliers SET balance = balance + $1::text::numeric WHERE id = $2::text::uuid`,
-            [deltaStr, customerId],
+            [deltaStr, probeId],
           );
+        } else if (delKind === 'customer') {
+          await postgres.query(
+            `UPDATE customers SET balance = balance + $1::text::numeric WHERE id = $2::text::uuid AND firm_nr = $3::text`,
+            [deltaStr, probeId, normalizeFirmTableNr(ERP_SETTINGS.firmNr)],
+          );
+        } else if (customerId) {
+          // Fallback: eski davranış (önce customer, yoksa supplier)
+          const { rowCount: custCount } = await postgres.query(
+            `UPDATE customers SET balance = balance + $1::text::numeric WHERE id = $2::text::uuid AND firm_nr = $3::text`,
+            [deltaStr, customerId, normalizeFirmTableNr(ERP_SETTINGS.firmNr)],
+          );
+          if (!custCount) {
+            await postgres.query(
+              `UPDATE suppliers SET balance = balance + $1::text::numeric WHERE id = $2::text::uuid`,
+              [deltaStr, customerId],
+            );
+          }
         }
       }
     }
@@ -1353,6 +1537,7 @@ async function deleteKasaIslemiViaPostgrest(id: string): Promise<void> {
   const ficheNo = row.fiche_no || '';
   const trType = row.transaction_type || '';
   const customerId = row.customer_id;
+  const partyIdFromRow = row.party_id;
   const bankId = row.bank_id;
 
   const bumpKasa = async (rid: string | undefined, delta: number) => {
@@ -1375,16 +1560,16 @@ async function deleteKasaIslemiViaPostgrest(id: string): Promise<void> {
   await bumpKasa(registerId, -(amount * sign));
 
   // Cari hesap geri al
-  if (customerId && (trType === 'CH_ODEME' || trType === 'CH_TAHSILAT')) {
+  // Tedarikçi ödemelerinde party_id dolu; müşteri tahsilatlarında customer_id dolu.
+  // customerId veya partyIdFromRow → tür tespiti → doğru tablo.
+  if ((customerId || partyIdFromRow) && (trType === 'CH_ODEME' || trType === 'CH_TAHSILAT')) {
     const delta = -cariCashStoredBalanceDelta(amount, trType);
     if (delta !== 0) {
+      const probeId = String(partyIdFromRow || customerId || '');
+      const delKind = await resolveCariAccountKind(probeId);
       const firmNr = normalizeFirmTableNr(ERP_SETTINGS.firmNr);
-      const custPath = `/rex_${firmNr}_customers`;
-      const supPath = `/rex_${firmNr}_suppliers`;
-      const patchPartner = async (path: string, withFirm: boolean) => {
+      const patchPartner = async (path: string, withFirm: boolean, partnerId: string) => {
         try {
-          const { stripPostgrestOpPrefix } = await import('./postgrestClient');
-          const partnerId = stripPostgrestOpPrefix(String(customerId));
           const q: Record<string, string> = { select: 'balance', id: `eq.${partnerId}`, limit: '1' };
           if (withFirm) q.firm_nr = `eq.${firmNr}`;
           const rsP = await postgrest.get<any[]>(path, q, { schema: 'public' });
@@ -1403,9 +1588,16 @@ async function deleteKasaIslemiViaPostgrest(id: string): Promise<void> {
           return false;
         }
       };
-      const patchedCustomer = await patchPartner(custPath, true);
-      if (!patchedCustomer) {
-        await patchPartner(supPath, false);
+      if (delKind === 'supplier') {
+        await patchPartner(`/rex_${firmNr}_suppliers`, false, probeId);
+      } else if (delKind === 'customer') {
+        await patchPartner(`/rex_${firmNr}_customers`, true, probeId);
+      } else if (delKind === 'employee' || delKind === 'partner') {
+        // parties bakiyesi aşağıdaki party_id bloğunda güncelleniyor.
+      } else if (customerId) {
+        // Fallback eski davranış
+        const patched = await patchPartner(`/rex_${firmNr}_customers`, true, String(customerId));
+        if (!patched) await patchPartner(`/rex_${firmNr}_suppliers`, false, String(customerId));
       }
     }
   }

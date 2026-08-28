@@ -1489,35 +1489,104 @@ export const erpReportsAPI = {
       const { postgrest } = await import('./postgrestClient');
       const fn = padFirm();
       const pn = padPeriod();
-      const movements = await postgrest
-        .get<Record<string, unknown>[]>(
-          `/rex_${fn}_${pn}_account_movements`,
-          {
-            select: 'id,fiche_no,date,amount,sign,definition,customer_id,supplier_id',
-            order: 'date.asc',
-            limit: String(ROW_LIMIT),
-          },
-          { schema: 'public' },
-        )
-        .catch(() => [] as Record<string, unknown>[]);
 
-      const filtered = (movements || []).filter((m) => {
+      // 3 kaynaktan birleştirme: account_movements (eski) + party_ledger_movements
+      // (CH_ODEME / CH_TAHSILAT dahil) + cash_lines (yedek). Aynı hareket birden fazla
+      // tabloda tutulmuş olabilir; tarih + fiche_no + amount + sign ile dedupe edilir.
+      const [movements, ledgerMovs, cashLines] = await Promise.all([
+        postgrest
+          .get<Record<string, unknown>[]>(
+            `/rex_${fn}_${pn}_account_movements`,
+            {
+              select: 'id,fiche_no,date,amount,sign,definition,customer_id,supplier_id',
+              order: 'date.asc',
+              limit: String(ROW_LIMIT),
+            },
+            { schema: 'public' },
+          )
+          .catch(() => [] as Record<string, unknown>[]),
+        postgrest
+          .get<Record<string, unknown>[]>(
+            `/rex_${fn}_${pn}_party_ledger_movements`,
+            {
+              select: 'id,date,amount,sign,definition,transaction_type,cash_line_id,party_id,card_type',
+              card_type: `eq.${isCustomer ? 'customer' : 'supplier'}`,
+              party_id: `eq.${accountId}`,
+              order: 'date.asc',
+              limit: String(ROW_LIMIT),
+            },
+            { schema: 'public' },
+          )
+          .catch(() => [] as Record<string, unknown>[]),
+        postgrest
+          .get<Record<string, unknown>[]>(
+            `/rex_${fn}_${pn}_cash_lines`,
+            {
+              select: 'id,fiche_no,date,amount,sign,definition,transaction_type,customer_id,party_id',
+              transaction_type: 'in.(CH_ODEME,CH_TAHSILAT)',
+              order: 'date.asc',
+              limit: String(ROW_LIMIT),
+            },
+            { schema: 'public' },
+          )
+          .catch(() => [] as Record<string, unknown>[]),
+      ]);
+
+      const allMovs: Array<Record<string, unknown> & { _src: string }> = [];
+      (movements || []).forEach((m) => {
         const d = String(m.date || '').slice(0, 10);
-        if (d < start || d > end) return false;
+        if (d < start || d > end) return;
         const id = isCustomer ? String(m.customer_id || '') : String(m.supplier_id || m.customer_id || '');
-        return id === accountId;
+        if (id !== accountId) return;
+        allMovs.push({ ...m, _src: 'account_movements' });
+      });
+      (ledgerMovs || []).forEach((m) => {
+        const d = String(m.date || '').slice(0, 10);
+        if (d < start || d > end) return;
+        const tt = String(m.transaction_type || '');
+        if (tt.startsWith('CANCELLED_')) return;
+        allMovs.push({ ...m, _src: 'party_ledger' });
+      });
+      (cashLines || []).forEach((m) => {
+        const d = String(m.date || '').slice(0, 10);
+        if (d < start || d > end) return;
+        const tt = String(m.transaction_type || '');
+        if (tt.startsWith('CANCELLED_')) return;
+        const cashIdCol = isCustomer ? 'customer_id' : 'party_id';
+        const id = String(m[cashIdCol] || '');
+        if (id !== accountId) return;
+        allMovs.push({ ...m, _src: 'cash_lines' });
       });
 
-      if (filtered.length) {
+      // Dedupe: tarih + fiche_no + amount + sign — aynı hareket birden çok tabloda duruyorsa
+      // party_ledger > account_movements > cash_lines önceliği ile tek satır tutulur.
+      const seen = new Map<string, Record<string, unknown> & { _src: string }>();
+      const prio = (src: string) => ({ party_ledger: 2, account_movements: 1, cash_lines: 0 } as Record<string, number>)[src] || 0;
+      for (const m of allMovs) {
+        const d = String(m.date || '').slice(0, 10);
+        const fn_ = String(m.fiche_no || '');
+        const amt = Number(m.amount ?? 0);
+        const sg = Number(m.sign ?? 0);
+        const key = `${d}|${fn_}|${amt}|${sg}`;
+        const existing = seen.get(key);
+        if (!existing || prio(m._src) > prio(existing._src)) {
+          seen.set(key, m);
+        }
+      }
+      const dedup = Array.from(seen.values()).sort(
+        (a, b) => String(a.date || '').localeCompare(String(b.date || '')),
+      );
+
+      if (dedup.length) {
         return mapRunning(
-          filtered.map((m) => ({
+          dedup.map((m) => ({
             id: String(m.id ?? `${m.fiche_no}-${m.date}`),
             date: String(m.date || '').slice(0, 10),
             ficheNo: String(m.fiche_no ?? ''),
             definition: String(m.definition ?? ''),
             amount: Number(m.amount ?? 0),
             sign: Number(m.sign ?? 1) || 1,
-            source: 'movement' as const,
+            source: (m._src === 'sale' ? 'sale' : 'movement') as CariExtractRow['source'],
           })),
         ).slice(0, ROW_LIMIT);
       }
@@ -1570,26 +1639,84 @@ export const erpReportsAPI = {
     }
 
     const idCol = isCustomer ? 'customer_id' : 'supplier_id';
+    const cashIdCol = isCustomer ? 'customer_id' : 'party_id';
+    const ledgerCardType = isCustomer ? 'customer' : 'supplier';
+    const fn = padFirm();
+    const pn = padPeriod();
     let rows: any[] = [];
     try {
+      // 3 kaynaktan UNION ALL + dedupe (party_ledger öncelikli → account_movements → cash_lines).
+      // CH_ODEME / CH_TAHSILAT hareketleri çoğunlukla yalnızca party_ledger_movements veya
+      // cash_lines'ta tutulduğundan, yalnızca account_movements okumak tedarikçi ödemelerini
+      // cari ekstresinde göstermiyordu.
       const res = await postgres.query(
         `
-        SELECT
-          am.id::text AS id,
-          (am.date AT TIME ZONE 'UTC')::date::text AS date,
-          COALESCE(am.fiche_no, '') AS fiche_no,
-          COALESCE(am.definition, '') AS definition,
-          ABS(COALESCE(am.amount, 0)) AS amount,
-          COALESCE(am.sign, 1) AS sign,
-          'movement'::text AS source
-        FROM account_movements am
-        WHERE am.${idCol}::text = $1
-          AND (am.date AT TIME ZONE 'UTC')::date >= $2::date
-          AND (am.date AT TIME ZONE 'UTC')::date <= $3::date
-        ORDER BY am.date ASC, am.created_at ASC NULLS LAST
+        WITH all_movs AS (
+          SELECT
+            am.id::text AS id,
+            (am.date AT TIME ZONE 'UTC')::date::text AS date,
+            COALESCE(am.fiche_no, '') AS fiche_no,
+            COALESCE(am.definition, '') AS definition,
+            ABS(COALESCE(am.amount, 0)) AS amount,
+            COALESCE(am.sign, 1) AS sign,
+            'movement'::text AS source,
+            1 AS _prio
+          FROM rex_${fn}_${pn}_account_movements am
+          WHERE am.${idCol}::text = $1
+            AND (am.date AT TIME ZONE 'UTC')::date >= $2::date
+            AND (am.date AT TIME ZONE 'UTC')::date <= $3::date
+
+          UNION ALL
+
+          SELECT
+            pl.id::text AS id,
+            (pl.date AT TIME ZONE 'UTC')::date::text AS date,
+            COALESCE(cl.fiche_no, pl.transaction_type, '') AS fiche_no,
+            COALESCE(pl.definition, '') AS definition,
+            ABS(COALESCE(pl.amount, 0)) AS amount,
+            COALESCE(pl.sign, 1) AS sign,
+            'movement'::text AS source,
+            2 AS _prio
+          FROM rex_${fn}_${pn}_party_ledger_movements pl
+          LEFT JOIN rex_${fn}_${pn}_cash_lines cl ON cl.id = pl.cash_line_id
+          WHERE pl.party_id::text = $1
+            AND pl.card_type = $4
+            AND pl.transaction_type NOT LIKE 'CANCELLED_%'
+            AND (pl.date AT TIME ZONE 'UTC')::date >= $2::date
+            AND (pl.date AT TIME ZONE 'UTC')::date <= $3::date
+
+          UNION ALL
+
+          SELECT
+            cl.id::text AS id,
+            (cl.date AT TIME ZONE 'UTC')::date::text AS date,
+            COALESCE(cl.fiche_no, '') AS fiche_no,
+            COALESCE(cl.definition, '') AS definition,
+            ABS(COALESCE(cl.amount, 0)) AS amount,
+            COALESCE(cl.sign, 1) AS sign,
+            'movement'::text AS source,
+            0 AS _prio
+          FROM rex_${fn}_${pn}_cash_lines cl
+          WHERE cl.${cashIdCol}::text = $1
+            AND cl.transaction_type IN ('CH_ODEME', 'CH_TAHSILAT')
+            AND cl.transaction_type NOT LIKE 'CANCELLED_%'
+            AND (cl.date AT TIME ZONE 'UTC')::date >= $2::date
+            AND (cl.date AT TIME ZONE 'UTC')::date <= $3::date
+        ),
+        ranked AS (
+          SELECT *, ROW_NUMBER() OVER (
+            PARTITION BY date, fiche_no, amount, sign
+            ORDER BY _prio DESC
+          ) AS rn
+          FROM all_movs
+        )
+        SELECT id, date, fiche_no, definition, amount, sign, source
+        FROM ranked
+        WHERE rn = 1
+        ORDER BY date ASC
         LIMIT ${ROW_LIMIT}
         `,
-        [accountId, start, end],
+        [accountId, start, end, ledgerCardType],
       );
       rows = res.rows || [];
     } catch {
