@@ -943,15 +943,30 @@ export async function createKasaIslemi(incoming: KasaIslemi): Promise<KasaIslemi
       const delta = cariCashStoredBalanceDelta(islem.tutar, islem.islem_tipi);
       if (delta !== 0) {
         const deltaStr = delta.toString();
-        const { rowCount: custCount } = await postgres.query(
-          `UPDATE customers SET balance = balance + $1::text::numeric WHERE id = $2::text::uuid AND firm_nr = $3::text`,
-          [deltaStr, islem.cari_hesap_id, normalizeFirmTableNr(ERP_SETTINGS.firmNr)],
+        // Önce cari ID'nin hangi tabloda olduğunu tespit et — böylece tedarikçi UUID'si
+        // yanlışlıkla customers tablosuna yazılmaz (eskiden olan veri hatası önlemi).
+        const firmPrefix = normalizeFirmTableNr(ERP_SETTINGS.firmNr);
+        const detectQ = await postgres.query(
+          `SELECT
+             EXISTS(SELECT 1 FROM rex_${firmPrefix}_customers WHERE id = $1::uuid) AS is_customer,
+             EXISTS(SELECT 1 FROM rex_${firmPrefix}_suppliers WHERE id = $1::uuid) AS is_supplier`,
+          [islem.cari_hesap_id],
         );
-        if (!custCount) {
+        const isCustomer = !!detectQ.rows[0]?.is_customer;
+        const isSupplier = !!detectQ.rows[0]?.is_supplier;
+        if (isCustomer) {
           await postgres.query(
-            `UPDATE suppliers SET balance = balance + $1::text::numeric WHERE id = $2::text::uuid`,
+            `UPDATE rex_${firmPrefix}_customers SET balance = balance + $1::numeric WHERE id = $2::uuid`,
             [deltaStr, islem.cari_hesap_id],
           );
+        } else if (isSupplier) {
+          await postgres.query(
+            `UPDATE rex_${firmPrefix}_suppliers SET balance = balance + $1::numeric WHERE id = $2::uuid`,
+            [deltaStr, islem.cari_hesap_id],
+          );
+        } else {
+          // Hiçbirinde yoksa uyarı logla (muhtemel veri hatası)
+          console.warn('[Kasa] CH_ODEME/TAHSILAT: cari_hesap_id müşteri/tedarikçide bulunamadı:', islem.cari_hesap_id);
         }
       }
     }
@@ -1201,19 +1216,33 @@ export async function deleteKasaIslemi(id: string): Promise<void> {
     }
 
     // 3) Cari hesap entegrasyonu — orijinal işlem cari bakiyeyi -tutar ile değiştirmişti, geri al
-    if (customerId && (trType === 'CH_ODEME' || trType === 'CH_TAHSILAT')) {
+    if ((customerId || partyId) && (trType === 'CH_ODEME' || trType === 'CH_TAHSILAT')) {
       const delta = -cariCashStoredBalanceDelta(amount, trType);
       if (delta !== 0) {
         const deltaStr = delta.toString();
-        const { rowCount: custCount } = await postgres.query(
-          `UPDATE customers SET balance = balance + $1::text::numeric WHERE id = $2::text::uuid AND firm_nr = $3::text`,
-          [deltaStr, customerId, normalizeFirmTableNr(ERP_SETTINGS.firmNr)],
+        // Önce ID'nin hangi tabloda olduğunu tespit et (düzeltme sonrası tedarikçi UUID'si party_id'de)
+        const firmPrefix = normalizeFirmTableNr(ERP_SETTINGS.firmNr);
+        const targetId = customerId || partyId;
+        const detectQ = await postgres.query(
+          `SELECT
+             EXISTS(SELECT 1 FROM rex_${firmPrefix}_customers WHERE id = $1::uuid) AS is_customer,
+             EXISTS(SELECT 1 FROM rex_${firmPrefix}_suppliers WHERE id = $1::uuid) AS is_supplier`,
+          [targetId],
         );
-        if (!custCount) {
+        const isCustomer = !!detectQ.rows[0]?.is_customer;
+        const isSupplier = !!detectQ.rows[0]?.is_supplier;
+        if (isCustomer) {
           await postgres.query(
-            `UPDATE suppliers SET balance = balance + $1::text::numeric WHERE id = $2::text::uuid`,
-            [deltaStr, customerId],
+            `UPDATE rex_${firmPrefix}_customers SET balance = balance + $1::numeric WHERE id = $2::uuid`,
+            [deltaStr, targetId],
           );
+        } else if (isSupplier) {
+          await postgres.query(
+            `UPDATE rex_${firmPrefix}_suppliers SET balance = balance + $1::numeric WHERE id = $2::uuid`,
+            [deltaStr, targetId],
+          );
+        } else {
+          console.warn('[Kasa.deleteCashLine] Cari ID müşteri/tedarikçide bulunamadı:', targetId);
         }
       }
     }
