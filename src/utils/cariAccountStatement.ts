@@ -132,7 +132,8 @@ export function buildEkstreRows(
     const absAmt = Math.abs(amount);
     // Personel/Ortağı: working'de amount her zaman + (zaten yön ayarlı);
     // borc/alacak sütunları için normal müşteri/tedarikçi mantığı kullanılır.
-    const isBorcEntry = isOpening ? amount > 0 : isSupplierAccount ? isReturn : !isReturn;
+    // Tedarikçi alışı borç artırır (Debit), ödeme/iade borç azaltır (Credit) — müşteriyle aynı mantık.
+    const isBorcEntry = isOpening ? amount > 0 : !isReturn;
     return {
       ...row,
       borcAmount: cancelled ? 0 : (isBorcEntry ? absAmt : 0),
