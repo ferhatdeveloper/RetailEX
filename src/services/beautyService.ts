@@ -2953,6 +2953,22 @@ export const beautyService = {
 
     async updateAppointmentStatus(id: string, status: string): Promise<void> {
         const table = postgres.getMovementTableName('beauty_appointments', 'beauty');
+        // Önce randevunun paket bağlantısını ve mevcut durumunu oku — paket tüketimi
+        // için `package_purchase_id` gerekli, "zaten completed" ise tekrar artırma
+        // yapmamak için mevcut durum da gerekli.
+        let packagePurchaseId: string | null = null;
+        let prevStatus: string | null = null;
+        try {
+            const { rows } = await postgres.query(
+                `SELECT package_purchase_id, status FROM ${table} WHERE id = $1`,
+                [id]
+            );
+            const row = rows[0] as { package_purchase_id?: string | null; status?: string | null } | undefined;
+            packagePurchaseId = row?.package_purchase_id ? String(row.package_purchase_id) : null;
+            prevStatus = row?.status ? String(row.status) : null;
+        } catch {
+            /* şema yoksa paket tüketimi atlanır */
+        }
         if (shouldUseTenantPostgrestApi()) {
             const { postgrest } = await import('./api/postgrestClient');
             const fn = erpFirmNrForRow();
@@ -2974,9 +2990,54 @@ export const beautyService = {
             } catch {
                 /* stok/sarf yoksa sessizce geç */
             }
+            // Paket seans tüketimi — D2 kök sebep düzeltmesi
+            if (packagePurchaseId) {
+                try {
+                    await beautyService.consumeBeautyPackageSession({
+                        packagePurchaseId,
+                        appointmentId: id,
+                        delta: 1,
+                    });
+                } catch (e) {
+                    console.warn('[updateAppointmentStatus] package consume failed:', e);
+                }
+            }
         }
-        if (status === 'cancelled') {
-            await beautyService.voidPaidBeautySalesLinkedToAppointment(id);
+        if (status === 'cancelled' || status === 'no_show') {
+            // Paket seans geri alma — işletme politikası: no_show da geri alınır
+            // (müşteri gelmediyse paket seansı tüketilmiş sayılmaz). Eğer işletme
+            // "no_show da tüketilir" politikası uygulayacaksa burası no_show'u
+            // atlayacak şekilde genişletilebilir.
+            if (packagePurchaseId && status === 'cancelled') {
+                try {
+                    await beautyService.consumeBeautyPackageSession({
+                        packagePurchaseId,
+                        appointmentId: id,
+                        delta: -1,
+                    });
+                } catch (e) {
+                    console.warn('[updateAppointmentStatus] package refund failed:', e);
+                }
+            }
+            if (status === 'cancelled') {
+                await beautyService.voidPaidBeautySalesLinkedToAppointment(id);
+                // İptal randevuya bağlı satış kalemlerinin komisyonunu da sıfırla; aksi halde
+                // history_rows raporu iptal edilen randevunun komisyonunu gösterebilir.
+                try {
+                    const itemsT = postgres.getMovementTableName('beauty_sale_items', 'beauty');
+                    const salesT = postgres.getMovementTableName('beauty_sales', 'beauty');
+                    await postgres.query(
+                        `UPDATE ${itemsT} si
+                           SET commission_amount = 0
+                          FROM ${salesT} s
+                         WHERE si.sale_id = s.id
+                           AND COALESCE(s.notes, '') LIKE $1`,
+                        [`%rex_appt:${id}%`]
+                    );
+                } catch (e) {
+                    console.warn('[updateAppointmentStatus] commission zero-out failed:', e);
+                }
+            }
         }
     },
 
@@ -3635,6 +3696,12 @@ export const beautyService = {
             purchase_id: string | null;
             total_sessions: number;
             completed_sessions: number;
+            cancelled_sessions: number;
+            pending_sessions: number;
+            /** Paket üzerindeki gerçek tüketim sayısı (D2 kök sebep düzeltmesi). */
+            used_sessions: number | null;
+            /** Paket üzerindeki kalan seans sayısı (iptaller geri alınmış). */
+            remaining_sessions: number | null;
             next_appointment_date: string | null;
             last_appointment_date: string | null;
         }[]
@@ -3644,6 +3711,14 @@ export const beautyService = {
         const ppt = postgres.getMovementTableName('beauty_package_purchases', 'beauty');
         const pkgT = postgres.getCardTableName('beauty_packages', 'beauty');
         const bs = postgres.getCardTableName('beauty_services', 'beauty');
+        // İptal edilen seanslar "completed_sessions" sayısına DAHİL EDİLMEZ; ayrı
+        // gösterilir (cancelled_sessions) ki yönetim paket iadesi gerekip
+        // gerekmediğini görebilsin.
+        //
+        // `pp.used_sessions / remaining_sessions` paketin gerçek tüketimini
+        // gösterir — D2 kök sebep düzeltmesinden sonra `consumeBeautyPackageSession`
+        // tarafından güncellenir. NULL olabilir (paket bağlı değilse veya
+        // bilinmiyorsa); UI bu durumu eski davranışa (completed_sessions) düşer.
         const { rows } = await postgres.query(`
             SELECT
               a.session_series_id::text AS session_series_id,
@@ -3653,6 +3728,10 @@ export const beautyService = {
               MAX(pp.id::text) AS purchase_id,
               COUNT(*)::int AS total_sessions,
               COUNT(*) FILTER (WHERE a.status = 'completed')::int AS completed_sessions,
+              COUNT(*) FILTER (WHERE a.status IN ('cancelled','no_show'))::int AS cancelled_sessions,
+              COUNT(*) FILTER (WHERE a.status IN ('scheduled','confirmed','in_progress'))::int AS pending_sessions,
+              MAX(pp.used_sessions)::int AS used_sessions,
+              MAX(pp.remaining_sessions)::int AS remaining_sessions,
               MIN(a.appointment_date) FILTER (WHERE a.status IN ('scheduled','confirmed','in_progress')) AS next_appointment_date,
               MAX(a.appointment_date) AS last_appointment_date
             FROM ${apt} a
@@ -3674,6 +3753,10 @@ export const beautyService = {
             purchase_id: string | null;
             total_sessions: number;
             completed_sessions: number;
+            cancelled_sessions: number;
+            pending_sessions: number;
+            used_sessions: number | null;
+            remaining_sessions: number | null;
             next_appointment_date: string | null;
             last_appointment_date: string | null;
         }[];
@@ -5225,6 +5308,8 @@ export const beautyService = {
                 LIMIT 6
             `, [String(ERP_SETTINGS.firmNr ?? '001').trim()]),
             // Staff performance (current month) — staff_id = kullanıcı veya eski uzman kartı UUID
+            // İptal edilen randevuya bağlı satışlar `voidPaidBeautySalesLinkedToAppointment` ile
+            // payment_status='cancelled' yapılır; burada JOIN ile bunları dışarıda bırakıyoruz.
             postgres.query(`
                 SELECT
                     si.staff_id AS specialist_id,
@@ -5238,11 +5323,13 @@ export const beautyService = {
                     COALESCE(SUM(si.total), 0)::float       AS revenue,
                     COALESCE(SUM(si.commission_amount), 0)::float AS commission
                 FROM ${it} si
+                JOIN ${st} s ON s.id = si.sale_id
                 LEFT JOIN ${spt} sp ON si.staff_id = sp.id
                 LEFT JOIN public.users u ON si.staff_id = u.id
                   AND lpad(trim(u.firm_nr::text), 3, '0') = $1
                 WHERE si.created_at >= date_trunc('month', CURRENT_DATE)
                   AND si.staff_id IS NOT NULL
+                  AND COALESCE(s.payment_status, 'paid') = 'paid'
                 GROUP BY si.staff_id, COALESCE(sp.name, u.full_name, u.username), COALESCE(sp.commission_rate, 0)
                 ORDER BY revenue DESC
                 LIMIT 10
@@ -5260,12 +5347,14 @@ export const beautyService = {
                     COALESCE(SUM(si.total), 0)::float       AS revenue,
                     COALESCE(SUM(si.commission_amount), 0)::float AS commission
                 FROM ${it} si
+                JOIN ${st} s ON s.id = si.sale_id
                 LEFT JOIN ${spt} sp ON si.staff_id = sp.id
                 LEFT JOIN public.users u ON si.staff_id = u.id
                   AND lpad(trim(u.firm_nr::text), 3, '0') = $1
                 WHERE si.created_at >= date_trunc('month', CURRENT_DATE)
                   AND si.staff_id IS NOT NULL
                   AND si.item_type = 'product'
+                  AND COALESCE(s.payment_status, 'paid') = 'paid'
                 GROUP BY si.staff_id, COALESCE(sp.name, u.full_name, u.username), COALESCE(sp.commission_rate, 0)
                 ORDER BY revenue DESC
                 LIMIT 20
@@ -7053,6 +7142,188 @@ export const beautyService = {
         await beautyService.appendAuditLog('beauty_appointments', 'consumable_deduct', appointmentId, null, {
             service_id: apt.service_id,
         });
+    },
+
+    /**
+     * Bir randevu tamamlandığında veya paket hizmeti kullanıldığında
+     * `beauty_package_purchases.used_sessions` alanını artırır / azaltır.
+     *
+     * Kök sebep (D2): `used_sessions` hiç artırılmıyordu — bu fonksiyon eksik
+     * parçayı doldurur.
+     *
+     * Idempotency: `beauty_session_logs` tablosu (master şemada zaten var)
+     * her (package_purchase_id, appointment_id) çifti için tek bir log satırı
+     * tutar. delta=+1 ile aynı appointment için ikinci kez çağrıldır
+     * "zaten tüketilmiş" sayılır, used_sessions iki kez artırılmaz. delta=-1
+     * ile çağrıldığında log silinir; böylece tekrar completed yapılırsa
+     * tekrar tüketim uygulanabilir.
+     *
+     * Güvenli sınırlar:
+     *   - delta=+1 → used_sessions += 1 (total_sessions'ı aşamaz)
+     *   - delta=-1 → used_sessions -= 1 (0'ın altına inemez)
+     *   - Paket bulunamazsa veya customer_id uyuşmazsa sessizce no-op.
+     */
+    async consumeBeautyPackageSession(params: {
+        packagePurchaseId: string;
+        appointmentId: string;
+        delta?: 1 | -1;
+    }): Promise<{ ok: boolean; newUsedSessions?: number; newRemainingSessions?: number; error?: string }> {
+        const delta: 1 | -1 = params.delta === -1 ? -1 : 1;
+        const apt = await beautyService.getAppointmentById(params.appointmentId);
+        const saleTable = postgres.getMovementTableName('beauty_package_purchases', 'beauty');
+        const sessionLogT = postgres.getMovementTableName('beauty_session_logs', 'beauty');
+        try {
+            const { rows: prow } = await postgres.query(
+                `SELECT id, customer_id, total_sessions, used_sessions, remaining_sessions, status
+                 FROM ${saleTable} WHERE id = $1`,
+                [params.packagePurchaseId]
+            );
+            const purchase = prow[0] as Record<string, unknown> | undefined;
+            if (!purchase) {
+                return { ok: false, error: 'Paket satış kaydı bulunamadı' };
+            }
+            // Müşteri doğrulaması — yanlış pakete tüketim yazılmasın
+            if (apt) {
+                const aptCust = String(apt.customer_id ?? apt.client_id ?? '').trim();
+                const pkgCust = String(purchase.customer_id ?? '').trim();
+                if (aptCust && pkgCust && aptCust !== pkgCust) {
+                    return { ok: false, error: 'Randevu ve paket farklı müşterilere ait' };
+                }
+            }
+            const total = Math.max(0, Math.round(Number(purchase.total_sessions ?? 0)));
+            let used = Math.max(0, Math.round(Number(purchase.used_sessions ?? 0)));
+
+            // İdempotency: aynı appointment için mevcut log var mı?
+            const { rows: logRows } = await postgres.query(
+                `SELECT id FROM ${sessionLogT}
+                  WHERE package_purchase_id = $1
+                    AND appointment_id     = $2
+                  LIMIT 1`,
+                [params.packagePurchaseId, params.appointmentId]
+            );
+            const existingLog = logRows[0] as { id: string } | undefined;
+
+            if (delta === 1) {
+                if (existingLog) {
+                    // Zaten tüketilmiş — no-op (idempotent)
+                    return {
+                        ok: true,
+                        newUsedSessions: used,
+                        newRemainingSessions: Math.max(0, total - used),
+                    };
+                }
+                if (used >= total) {
+                    return { ok: false, error: 'Paket seansları tükenmiş', newUsedSessions: used };
+                }
+                used = used + 1;
+
+                // Önce log INSERT yap — başarısız olursa UPDATE'e hiç gitme.
+                let newLogId: string;
+                try {
+                    const newId = uuidv4();
+                    await postgres.query(
+                        `INSERT INTO ${sessionLogT} (id, package_purchase_id, appointment_id, session_number, recorded_at)
+                         VALUES ($1, $2, $3, $4, NOW())`,
+                        [newId, params.packagePurchaseId, params.appointmentId, used]
+                    );
+                    newLogId = newId;
+                } catch (e: unknown) {
+                    return { ok: false, error: `Log insert başarısız: ${e instanceof Error ? e.message : String(e)}` };
+                }
+
+                // Sonra UPDATE — başarısız olursa log'u geri al (DELETE).
+                const remaining = Math.max(0, total - used);
+                try {
+                    await postgres.query(
+                        `UPDATE ${saleTable}
+                            SET used_sessions = $2,
+                                remaining_sessions = $3,
+                                updated_at = NOW()
+                          WHERE id = $1`,
+                        [params.packagePurchaseId, used, remaining]
+                    );
+                } catch (e: unknown) {
+                    // Rollback: yazılan log'u geri al; bakiye tutarlı kalsın.
+                    try {
+                        await postgres.query(
+                            `DELETE FROM ${sessionLogT} WHERE id = $1`,
+                            [newLogId]
+                        );
+                    } catch (rbErr) {
+                        console.warn('[consumeBeautyPackageSession] log rollback delete failed:', rbErr);
+                    }
+                    return {
+                        ok: false,
+                        error: `Update başarısız, log rollback yapıldı: ${e instanceof Error ? e.message : String(e)}`,
+                    };
+                }
+
+                return {
+                    ok: true,
+                    newUsedSessions: used,
+                    newRemainingSessions: remaining,
+                };
+            }
+
+            // delta === -1: geri al
+            if (!existingLog) {
+                // Hiç tüketilmemiş — geri alınacak bir şey yok
+                return {
+                    ok: true,
+                    newUsedSessions: used,
+                    newRemainingSessions: Math.max(0, total - used),
+                };
+            }
+            used = Math.max(0, used - 1);
+
+            // Önce log DELETE — başarısız olursa bakiye düşürme.
+            try {
+                await postgres.query(
+                    `DELETE FROM ${sessionLogT} WHERE id = $1`,
+                    [existingLog.id]
+                );
+            } catch (e: unknown) {
+                return { ok: false, error: `Log delete başarısız: ${e instanceof Error ? e.message : String(e)}` };
+            }
+
+            // Sonra UPDATE — başarısız olursa log'u geri ekle (INSERT).
+            const remaining = Math.max(0, total - used);
+            try {
+                await postgres.query(
+                    `UPDATE ${saleTable}
+                        SET used_sessions = $2,
+                            remaining_sessions = $3,
+                            updated_at = NOW()
+                      WHERE id = $1`,
+                    [params.packagePurchaseId, used, remaining]
+                );
+            } catch (e: unknown) {
+                // Rollback: silinen log'u geri yaz (eski id ile).
+                try {
+                    await postgres.query(
+                        `INSERT INTO ${sessionLogT} (id, package_purchase_id, appointment_id, session_number, recorded_at)
+                         VALUES ($1, $2, $3, $4, NOW())`,
+                        [existingLog.id, params.packagePurchaseId, params.appointmentId, used + 1]
+                    );
+                } catch (rbErr) {
+                    console.warn('[consumeBeautyPackageSession] log rollback insert failed:', rbErr);
+                }
+                return {
+                    ok: false,
+                    error: `Update başarısız, log rollback yapıldı: ${e instanceof Error ? e.message : String(e)}`,
+                };
+            }
+
+            return {
+                ok: true,
+                newUsedSessions: used,
+                newRemainingSessions: remaining,
+            };
+        } catch (e: unknown) {
+            const msg = e instanceof Error ? e.message : String(e);
+            console.warn('[consumeBeautyPackageSession] failed:', msg);
+            return { ok: false, error: msg };
+        }
     },
 
     async getSurveyResultsReport(

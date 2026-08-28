@@ -145,6 +145,44 @@ CREATE TABLE IF NOT EXISTS stores (
   updated_at       TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP
 );
 
+-- ============================================================================
+-- Cheque / Senet Tracking (128_cheques_tracking.sql ile senkron — IRAK KDV'siz)
+-- Per-firma kart tablosu (period-prefix yok): rex_${firmNr}_cheques
+-- Frontend `getCardTableName('cheques')` ile erişir.
+-- ============================================================================
+CREATE TABLE IF NOT EXISTS rex_001_cheques (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    firm_nr TEXT NOT NULL,
+    period_nr TEXT NOT NULL,
+    type TEXT NOT NULL CHECK (type IN ('cek', 'senet')),
+    cari_type TEXT NOT NULL CHECK (cari_type IN ('customer', 'supplier')),
+    cari_id TEXT NOT NULL,
+    cari_name TEXT,
+    amount NUMERIC(18,2) NOT NULL DEFAULT 0,
+    currency TEXT DEFAULT 'IQD',
+    issue_date DATE NOT NULL,
+    due_date DATE NOT NULL,
+    status TEXT NOT NULL DEFAULT 'pending'
+        CHECK (status IN ('pending', 'collected', 'endorsed', 'bounced', 'protested')),
+    bank_name TEXT,
+    serial_no TEXT,
+    document_no TEXT,
+    notes TEXT,
+    created_at TIMESTAMPTZ DEFAULT NOW(),
+    updated_at TIMESTAMPTZ DEFAULT NOW(),
+    created_by TEXT,
+    closed_at TIMESTAMPTZ,
+    closed_by TEXT
+);
+CREATE INDEX IF NOT EXISTS idx_rex_001_cheques_due_date
+    ON rex_001_cheques (due_date);
+CREATE INDEX IF NOT EXISTS idx_rex_001_cheques_status
+    ON rex_001_cheques (status);
+CREATE INDEX IF NOT EXISTS idx_rex_001_cheques_cari
+    ON rex_001_cheques (cari_type, cari_id);
+CREATE INDEX IF NOT EXISTS idx_rex_001_cheques_firm_period
+    ON rex_001_cheques (firm_nr, period_nr);
+
 CREATE TABLE IF NOT EXISTS currencies (
   id               UUID PRIMARY KEY DEFAULT gen_random_uuid(),
   code             VARCHAR(10) NOT NULL UNIQUE,

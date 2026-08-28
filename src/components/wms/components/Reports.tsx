@@ -1,4 +1,11 @@
 ﻿// Reports Module - Enterprise WMS
+// TODO: Bu modül için aşağıdaki raporlar sırayla implemente edilecek:
+//   1. Stok Hareket Raporu (B2 ile zaten ProductProfitabilityReport/MaterialMovementReport içinde)
+//   2. Kâr-Zarar Raporu (ProfitLossReports.tsx'e bak — gerçek SQL bağlandı, hâlâ WMS'e ayrı bir hub gerekebilir)
+//   3. Ambar Bazlı Stok Özet Raporu
+//   4. Sayım Farkı (Sayım Fazlası / Eksiği) Raporu
+//   5. Tedarikçi Alış Performans Raporu
+// Şimdilik açıkça "Yakında" placeholder'ı gösteriliyor — müşteriye yanlış veri gösterilmiyor.
 
 import { ArrowLeft, FileText } from 'lucide-react';
 
@@ -32,12 +39,19 @@ export default function Reports({ darkMode, onNavigate }: ReportsProps) {
           </div>
         </div>
       </div>
-      
+
       <div className="p-6">
         <div className={`${cardClass} border rounded-xl p-12 text-center`}>
           <FileText className={`w-16 h-16 ${textMutedClass} mx-auto mb-4`} />
-          <h3 className={`text-lg ${textClass} mb-2`}>Raporlar Modülü</h3>
-          <p className={`${textMutedClass}`}>Yakında eklenecek...</p>
+          <h3 className={`text-lg ${textClass} mb-2`}>WMS Raporlar Modülü</h3>
+          <p className={`${textMutedClass} mb-3`}>Yakında — aşağıdaki raporlar sırayla eklenecek.</p>
+          <ul className={`text-xs ${textMutedClass} space-y-1 inline-block text-left`}>
+            <li>• Stok Hareket Özeti</li>
+            <li>• Ambar Bazlı Stok Raporu</li>
+            <li>• Sayım Fazlası / Eksiği Raporu</li>
+            <li>• Tedarikçi Alış Performansı</li>
+          </ul>
+          <p className={`text-xs text-amber-600 mt-4 font-semibold`}>TODO: Her rapor için ayrı SQL sorgusu ve UI bileşeni eklenecek.</p>
         </div>
       </div>
     </div>

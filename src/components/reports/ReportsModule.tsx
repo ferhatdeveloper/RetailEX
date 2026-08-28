@@ -55,6 +55,7 @@ import { CashLedgerReport } from './CashLedgerReport';
 import { ContactAccountLegacyReport } from './ContactAccountLegacyReport';
 import { StaffAttendanceReport } from './StaffAttendanceReport';
 import { InvoiceItemsDetailReport } from './InvoiceItemsDetailReport';
+import { ChequeTrackingReport } from './ChequeTrackingReport';
 
 import { useBeautyStore } from '../beauty/store/useBeautyStore';
 import { CommissionReport } from '../beauty/components/CommissionReport';
@@ -592,7 +593,6 @@ type ReportTab =
 /** Sol menüde gösterilmez: ekranı yok veya yalnızca “yakında” placeholder idi. */
 const REPORT_TABS_HIDDEN_FROM_MENU = new Set<string>([
   'design-center',
-  'check-tracking',
   'commission',
   'staff-reports',
   'staff-performance',
@@ -1963,8 +1963,13 @@ export function ReportsModule({
         const k = localCalendarDateKey(s.date);
         return k >= from && k <= to;
       });
-      const totalSales = list.length;
-      const totalRevenue = list.reduce((sum, s) => sum + (Number(s.total) || 0), 0);
+      // B1: Net ciro = brüt − iade (iade satırları negatif değil, ayrı tutulur)
+      const positiveSales = list.filter((s) => !isReturnSale(s));
+      const returnSales = list.filter(isReturnSale);
+      const totalSales = positiveSales.length;
+      const grossRevenue = positiveSales.reduce((sum, s) => sum + (Number(s.total) || 0), 0);
+      const returnTotal = returnSales.reduce((sum, s) => sum + Math.abs(Number(s.total) || 0), 0);
+      const totalRevenue = grossRevenue - returnTotal;
       const ids = new Set<string>();
       for (const s of list) {
         const id =
@@ -2142,21 +2147,38 @@ export function ReportsModule({
   let dailyCash: number;
   let dailyCard: number;
   let dailyDiscount: number;
+  // B1: Net ciro = brüt − iade (iade satırları `dailySalesActive` içinde kalmaya devam eder;
+  // burada `dailyReturnTotal` ile brüt satış toplamından düşürülür).
+  const dailyReturnRowsLocal = dailySalesActive.filter((s) => isReturnSale(s));
+  const dailyReturnTotalLocal = dailyReturnRowsLocal.reduce(
+    (sum, s) => sum + Math.abs(Number(s.total) || 0),
+    0,
+  );
+  const dailyReturnCashLocal = dailyReturnRowsLocal
+    .filter((s) => normalizePaymentMethodBucket(s.paymentMethod) === 'cash')
+    .reduce((sum, s) => sum + Math.abs(Number(s.total) || 0), 0);
+  const dailyReturnCardLocal = dailyReturnRowsLocal
+    .filter((s) => normalizePaymentMethodBucket(s.paymentMethod) === 'card')
+    .reduce((sum, s) => sum + Math.abs(Number(s.total) || 0), 0);
   if (businessType === 'restaurant') {
     /** Perakende Satışlar / fatura listesi ile aynı tutar: önce ERP `sales` (REST-* dahil); yoksa yalnız kapalı adisyon */
     if (dailySalesActive.length > 0) {
-      dailyTotal = dailySalesActive.reduce((sum, s) => sum + (Number(s.total) || 0), 0);
-      dailyCash = dailySalesActive
+      const grossTotal = dailySalesActive.reduce((sum, s) => sum + (Number(s.total) || 0), 0);
+      dailyTotal = grossTotal - dailyReturnTotalLocal;
+      const grossCash = dailySalesActive
         .filter((s) => normalizePaymentMethodBucket(s.paymentMethod) === 'cash')
         .reduce((sum, s) => sum + (Number(s.total) || 0), 0);
-      dailyCard = dailySalesActive
+      const grossCard = dailySalesActive
         .filter((s) => {
           const b = normalizePaymentMethodBucket(s.paymentMethod);
           return b === 'card';
         })
         .reduce((sum, s) => sum + (Number(s.total) || 0), 0);
+      dailyCash = grossCash - dailyReturnCashLocal;
+      dailyCard = grossCard - dailyReturnCardLocal;
       dailyDiscount = dailySalesActive.reduce((sum, s) => sum + (Number(s.discount) || 0), 0);
     } else {
+      // Restoran adisyonlarında iade kavramı `trcode=3` ile ayrı ele alınmaz; mevcut brüt toplam korunur.
       dailyTotal = restOrdersClosedOnSelectedDate.reduce((sum, o) => sum + restOrderNetAmount(o), 0);
       let restCash = 0;
       let restCard = 0;
@@ -2174,13 +2196,16 @@ export function ReportsModule({
       );
     }
   } else {
-    dailyTotal = dailySalesActive.reduce((sum, s) => sum + s.total, 0);
-    dailyCash = dailySalesActive
+    const grossTotal = dailySalesActive.reduce((sum, s) => sum + s.total, 0);
+    dailyTotal = grossTotal - dailyReturnTotalLocal;
+    const grossCash = dailySalesActive
       .filter((s) => normalizePaymentMethodBucket(s.paymentMethod) === 'cash')
       .reduce((sum, s) => sum + s.total, 0);
-    dailyCard = dailySalesActive
+    const grossCard = dailySalesActive
       .filter((s) => normalizePaymentMethodBucket(s.paymentMethod) === 'card')
       .reduce((sum, s) => sum + s.total, 0);
+    dailyCash = grossCash - dailyReturnCashLocal;
+    dailyCard = grossCard - dailyReturnCardLocal;
     dailyDiscount = dailySalesActive.reduce((sum, s) => sum + s.discount, 0);
   }
 
@@ -2636,10 +2661,14 @@ export function ReportsModule({
       const name = String(row.cashier || '').trim() || 'Bilinmeyen Kasiyer';
       const existing = cashierMap.get(name) || { name, salesCount: 0, totalRevenue: 0, avgSale: 0, cashSales: 0, cardSales: 0 };
       existing.salesCount += 1;
-      existing.totalRevenue += row.total;
+      // B1: Kasiyer cirosu net (iade düşülmüş) — `dailyActiveRows` zaten iadeleri
+      // barındırıyor olabilir (refundAmount negatif değil pozitif kayıt); negatif
+      // gelenleri ters işaretle düş.
+      const net = Number(row.total) || 0;
+      existing.totalRevenue += net;
       existing.avgSale = existing.totalRevenue / existing.salesCount;
-      if (row.paymentMethod === 'cash') existing.cashSales += row.total;
-      else if (row.paymentMethod === 'card' || row.paymentMethod === 'gateway') existing.cardSales += row.total;
+      if (row.paymentMethod === 'cash') existing.cashSales += net;
+      else if (row.paymentMethod === 'card' || row.paymentMethod === 'gateway') existing.cardSales += net;
       cashierMap.set(name, existing);
     });
     return Array.from(cashierMap.values()).sort((a, b) => b.totalRevenue - a.totalRevenue);
@@ -2858,7 +2887,14 @@ export function ReportsModule({
         ? readOpeningCashForReports(businessType)
         : 0;
     const expenses = cashExpensesForSelectedDate;
+
+    // E1: Kapanış bakiyesi — açılış + bugünkü tahsilatlar (nakit + kart + banka transferi)
+    // - nakit dışı giderler. Kart ve banka virmanları kasaya fiziki olarak girmediği için
+    // nakit kapanışından ayrı tutulur; burada `closingCash` yalnız nakit bakiye.
+    // Operatör için ayrıca brüt tahsilat + kart + virman toplamı da döndürülür.
     const closingCash = openingCash + cashTotal - expenses;
+    const netCashMovement = cashTotal - expenses;
+    const totalCollection = cashTotal + cardTotal + transferTotal;
 
     const map = new Map<string, number>();
     for (const row of dailyUnifiedRows) {
@@ -2881,6 +2917,8 @@ export function ReportsModule({
       todayCard: cardTotal,
       todayTransfer: transferTotal,
       todayTotal,
+      totalCollection,
+      netCashMovement,
       expenses,
       closingCash,
       cashDifference: 0,
@@ -2896,22 +2934,34 @@ export function ReportsModule({
       discountAmount: number;
       salesCount: number;
       avgDiscount: number;
+      isFallback: boolean;
     }>();
+
+    // E3: "Genel İndirim" tek fallback tüm indirimleri yutuyordu; kategori
+    // belirsizse artık ayrı "Diğer İndirim" sütununda göster. Yalnızca gerçekten
+    // boş string/null/undefined için fallback uygulanır.
+    const FALLBACK_KEY = 'Diğer İndirim';
 
     erpSalesForReportPeriod.forEach(sale => {
       if (sale.discount > 0) {
-        const discountReason = (sale as any).discountReason || 'Genel İndirim';
+        const rawReason = (sale as any).discountReason;
+        const isUnset =
+          rawReason == null ||
+          (typeof rawReason === 'string' && rawReason.trim() === '');
+        const discountReason = isUnset ? FALLBACK_KEY : String(rawReason);
         const existing = discountMap.get(discountReason);
         if (existing) {
           existing.discountAmount += sale.discount;
           existing.salesCount += 1;
           existing.avgDiscount = existing.discountAmount / existing.salesCount;
+          if (isUnset) existing.isFallback = true;
         } else {
           discountMap.set(discountReason, {
             name: discountReason,
             discountAmount: sale.discount,
             salesCount: 1,
-            avgDiscount: sale.discount
+            avgDiscount: sale.discount,
+            isFallback: isUnset,
           });
         }
       }
@@ -2945,16 +2995,23 @@ export function ReportsModule({
     });
     const normalStock = products.filter(p => stockOf(p) > minLevelFor(p));
 
-    // Negatif / fazla satış stoku envanter tutarını eksiye düşürmesin; kartta fiziki stok değeri
+    // B5: Bilanço ile uyumlu stok değeri — alış fiyatı (maliyet) üzerinden.
+    // Backend `erpReports.ts` zaten `stock * cost` kullanıyor; UI da maliyet üzerinden
+    // hesaplanmalı, aksi halde mali tablo (bilanço) ile rapor arasında tutarsızlık olur.
+    const costOf = (p: Product): number => {
+      const c = safeNumber((p as Product & { cost?: number }).cost);
+      return c > 0 ? c : safeNumber(p.price);
+    };
     const totalStockValue = products.reduce((sum, p) => {
       const s = stockOf(p);
-      const price = safeNumber(p.price);
-      return sum + Math.max(0, s) * price;
+      const unitCost = costOf(p);
+      return sum + Math.max(0, s) * unitCost;
     }, 0);
 
     const lowStockItems = lowStock.slice(0, 20).map(p => {
       const s = stockOf(p);
       const price = safeNumber(p.price);
+      const unitCost = costOf(p);
       const minStock = minLevelFor(p);
       return {
         name: productLabelForReport(p),
@@ -2962,7 +3019,8 @@ export function ReportsModule({
         stock: s,
         minStock,
         price,
-        value: s * price
+        unitCost,
+        value: s * unitCost
       };
     });
 
@@ -3068,6 +3126,9 @@ export function ReportsModule({
 
         const stk = stockOf(p);
         const price = safeNumber(p.price);
+        // B5: Stok yaşlandırma raporu — değer sütunu maliyet üzerinden
+        const c = safeNumber((p as Product & { cost?: number }).cost);
+        const unitCost = c > 0 ? c : price;
         return {
           id: sid,
           name: productLabelForReport(p),
@@ -3076,7 +3137,8 @@ export function ReportsModule({
           daysSinceMovement: days,
           bucket,
           bucketKey,
-          value: stk * price,
+          unitCost,
+          value: stk * unitCost,
         };
       })
       .sort((a, b) => b.daysSinceMovement - a.daysSinceMovement);
@@ -6804,6 +6866,7 @@ export function ReportsModule({
             {selectedTab === 'contact-account-legacy' && <ContactAccountLegacyReport />}
             {selectedTab === 'staff-attendance' && <StaffAttendanceReport />}
             {selectedTab === 'invoice-items-detail' && <InvoiceItemsDetailReport />}
+            {selectedTab === 'check-tracking' && <ChequeTrackingReport />}
 
             {selectedTab === 'customer-sales' && (
               <CustomerSalesReport sales={effectiveCatalogSales} customers={[]} />

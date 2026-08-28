@@ -382,7 +382,27 @@ export function MonthlySessionSeriesModule() {
                                             </td>
                                             <td className="py-3 px-4 text-gray-700">{row.package_name || '—'}</td>
                                             <td className="py-3 px-4">
-                                                {row.completed_sessions}/{row.total_sessions}
+                                                <div className="flex flex-col gap-0.5">
+                                                    <span className="font-medium">
+                                                        {row.used_sessions ?? row.completed_sessions}/{row.total_sessions}
+                                                    </span>
+                                                    {typeof row.remaining_sessions === 'number' && (
+                                                        <span
+                                                            className="text-xs text-emerald-700 font-semibold"
+                                                            title={tm('bMonthlySeriesRemainingHint')}
+                                                        >
+                                                            {tm('bMonthlySeriesRemainingLabel')}: {row.remaining_sessions}
+                                                        </span>
+                                                    )}
+                                                    {row.cancelled_sessions > 0 && (
+                                                        <span
+                                                            className="text-xs text-red-600 font-bold"
+                                                            title={tm('bMonthlySeriesCancelledHint')}
+                                                        >
+                                                            {row.cancelled_sessions} iptal
+                                                        </span>
+                                                    )}
+                                                </div>
                                             </td>
                                             <td className="py-3 px-4 text-gray-700">
                                                 {row.next_appointment_date

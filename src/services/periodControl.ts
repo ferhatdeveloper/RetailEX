@@ -354,3 +354,86 @@ export const isPeriodDependent = PeriodControlService.isPeriodDependent.bind(Per
 export const isPeriodIndependent = PeriodControlService.isPeriodIndependent.bind(PeriodControlService);
 export const validateOperation = PeriodControlService.validateOperation.bind(PeriodControlService);
 
+/**
+ * Yazma noktasında dönem açık mı kontrol eder. Kapalı dönemde hata fırlatır —
+ * yazma engellenir. Public.periods tablosunu kullanır (master şema).
+ *
+ * @param firmNr firma numarası
+ * @param periodNr dönem numarası
+ * @param date işlem tarihi (YYYY-MM-DD veya ISO) — dönem aralığıyla çakışıyor mu?
+ * @throws Error 'PERIOD_CLOSED' — dönem kapalı (is_active=false)
+ * @throws Error 'PERIOD_BEFORE_START' — tarih dönem başlangıcından önce
+ * @throws Error 'PERIOD_AFTER_END' — tarih dönem bitişinden sonra
+ */
+export async function assertPeriodOpen(
+  firmNr: string | number | null | undefined,
+  periodNr: string | number | null | undefined,
+  date: string | Date | null | undefined,
+): Promise<void> {
+  if (firmNr == null || periodNr == null) {
+    return; // firma/dönem seçilmemişse sessizce geç (UI guard'ı ayrı katmanda)
+  }
+
+  // Postgres lazy import — periodControl birçok yerde import ediliyor; circular guard.
+  const { postgres } = await import('./postgres');
+
+  const f = String(firmNr).trim();
+  const p = String(periodNr).trim();
+
+  // Dönem bilgisini çek — `public.periods` `firm_id` (UUID) ile firms tablosuna bağlı.
+  // firm_nr üzerinden firm_id bulup period'u sorgulamak en sağlam yol.
+  let periodInfo: { is_active: boolean | null; beg_date: string; end_date: string } | null = null;
+  try {
+    const { rows } = await postgres.query(
+      `SELECT pr.is_active,
+              pr.beg_date::text AS beg_date,
+              pr.end_date::text AS end_date
+         FROM public.periods pr
+         JOIN public.firms f ON pr.firm_id = f.id
+        WHERE f.firm_nr = $1
+          AND pr.nr = $2
+        LIMIT 1`,
+      [f, p],
+    );
+    periodInfo = (rows[0] as any) ?? null;
+  } catch {
+    // Tablo yoksa veya hata — master şema henüz kurulmamış olabilir; bloklama.
+    return;
+  }
+
+  if (!periodInfo) {
+    // Dönem kaydı yok → genelde aktif kabul et (yeni kurulum).
+    return;
+  }
+
+  // 1. Status kontrolü: periods tablosunda `status` kolonu yok; `is_active=false` kapalı demek.
+  // Gelecekte eklenebilecek `status` alanı için de esnek kontrol.
+  const isActive = periodInfo.is_active !== false;
+  if (!isActive) {
+    const err = new Error(`PERIOD_CLOSED: Dönem ${p} kapalı. Yeni hareket girilemez.`);
+    (err as any).code = 'PERIOD_CLOSED';
+    throw err;
+  }
+
+  // 2. Tarih aralığı kontrolü (txDate verilmişse)
+  if (date) {
+    const tx = (typeof date === 'string' ? date : date.toISOString()).slice(0, 10);
+    const start = String(periodInfo.beg_date).slice(0, 10);
+    const end = String(periodInfo.end_date).slice(0, 10);
+    if (start && tx < start) {
+      const err = new Error(
+        `PERIOD_BEFORE_START: İşlem tarihi ${tx} dönem başlangıcından (${start}) önce.`,
+      );
+      (err as any).code = 'PERIOD_BEFORE_START';
+      throw err;
+    }
+    if (end && tx > end) {
+      const err = new Error(
+        `PERIOD_AFTER_END: İşlem tarihi ${tx} dönem bitişinden (${end}) sonra.`,
+      );
+      (err as any).code = 'PERIOD_AFTER_END';
+      throw err;
+    }
+  }
+}
+

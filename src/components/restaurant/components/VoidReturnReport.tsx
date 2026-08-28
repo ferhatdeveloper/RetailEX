@@ -104,6 +104,17 @@ export function VoidReturnReport({ onBack }: VoidReturnReportProps) {
             return;
         }
 
+        // Muhasebeci notu: void kayıtları silindiğinde stok zaten iade anında (void
+        // sırasında) geri alındı; bu toplu silme ek bir stok hareketi tetiklemez.
+        // Ancak denetim izi (audit log) silinmiş olur. Sorumluluk kullanıcıdadır.
+        const stockRefundedCount = isVoidTab
+            ? voids.filter(v => (v.itemStatus || 'pending') === 'pending').length
+            : 0;
+        if (isVoidTab && stockRefundedCount > 0) {
+            const stockWarn = `${tm('resVoidStockYesHint') || 'Stok iade edildi'} — ${stockRefundedCount} kayıt. ${tm('resVoidDeleteAuditWarn') || 'Bu kayıtları silmek denetim izini kalıcı olarak siler.'}`;
+            window.alert(stockWarn);
+        }
+
         const rangeSuffix =
             fromDate || toDate
                 ? tm('resVoidDateFilterSuffix')

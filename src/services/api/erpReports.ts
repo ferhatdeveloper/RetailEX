@@ -3,7 +3,7 @@
  * Yeni view/tablo yok; LIMIT ile ağır sorgular sınırlanır.
  */
 import { postgres, ERP_SETTINGS, DB_SETTINGS } from '../postgres';
-import { normalizeFirmTableNr } from './accountBalance';
+import { normalizeFirmTableNr, normalizeTrText } from './accountBalance';
 import { SQL_COUNTABLE_SALE_STATUS } from '../../utils/saleInvoiceStatus';
 import { localTodayDateKey } from '../../utils/localCalendarDate';
 import {
@@ -260,6 +260,7 @@ function mapAgingRow(r: Record<string, unknown>, cardType: 'customer' | 'supplie
 async function fetchAgingViaRest(
   cardType: 'customer' | 'supplier',
   today: string,
+  cariFilter?: string,
 ): Promise<CariAgingRow[]> {
   const { postgrest } = await import('./postgrestClient');
   const fn = padFirm();
@@ -271,6 +272,9 @@ async function fetchAgingViaRest(
     cardType === 'customer'
       ? 'in.(sales_invoice,service,hizmet,return_invoice)'
       : 'in.(purchase_invoice,return_invoice)';
+
+const rawFilter = String(cariFilter ?? '').trim();
+    const hasFilter = rawFilter.length > 0;
 
   const sales = await postgrest.get<Record<string, unknown>[]>(
     salesPath,
@@ -310,6 +314,9 @@ async function fetchAgingViaRest(
             select: 'id,code,name,payment_terms,balance',
             id: `in.(${ids.join(',')})`,
             limit: '2000',
+            ...(hasFilter
+              ? { or: `(code.ilike.*${rawFilter}*,name.ilike.*${rawFilter}*)` }
+              : {}),
           },
           { schema: 'public' },
         )
@@ -320,6 +327,8 @@ async function fetchAgingViaRest(
   return openSales
     .map((s) => {
       const card = byId.get(String(s.customer_id || ''));
+      // Sadece borç bakiyeli carileri yaşlandır (alacak bakiyeli cariler hariç)
+      if (card && Number(card.balance ?? 0) <= 0.009) return null;
       const amount = Number(s.net_amount ?? 0);
       const signed =
         String(s.fiche_type || '').toLowerCase() === 'return_invoice' ? -Math.abs(amount) : Math.abs(amount);
@@ -337,28 +346,50 @@ async function fetchAgingViaRest(
         today,
       );
     })
-    .filter((r) => Math.abs(r.amount) > 0.009);
+    .filter((r): r is CariAgingRow => r !== null && Math.abs(r.amount) > 0.009);
 }
 
 export const erpReportsAPI = {
   async getCariAging(opts?: {
     cardType?: 'customer' | 'supplier' | 'all';
+    cariFilter?: string;
   }): Promise<CariAgingRow[]> {
     const today = localTodayDateKey();
     const want = opts?.cardType ?? 'all';
+    const rawFilter = String(opts?.cariFilter ?? '').trim();
+    const filterKey = normalizeTrText(rawFilter); // JS tarafı normalize (unaccent yoksa)
+    const filterExactCode = rawFilter; // cari_kodu tam eşleşme için ham hali
+    const filterLike = `%${filterKey}%`; // ad/kod contains
 
     if (DB_SETTINGS.connectionProvider === 'rest_api') {
       const parts: CariAgingRow[] = [];
       if (want === 'all' || want === 'customer') {
-        parts.push(...(await fetchAgingViaRest('customer', today)));
+        parts.push(...(await fetchAgingViaRest('customer', today, rawFilter)));
       }
       if (want === 'all' || want === 'supplier') {
-        parts.push(...(await fetchAgingViaRest('supplier', today)));
+        parts.push(...(await fetchAgingViaRest('supplier', today, rawFilter)));
       }
       return parts.sort((a, b) => b.daysOverdue - a.daysOverdue || b.amount - a.amount).slice(0, ROW_LIMIT);
     }
 
     const rows: CariAgingRow[] = [];
+    const hasFilter = filterKey.length > 0;
+    const filterParams = hasFilter ? [filterExactCode, filterLike] : [];
+
+    // Filtre koşulu: önce cari_kodu tam eşleşme (normalize edilmiş), yoksa ad/kod LIKE
+    const buildFilterClause = (alias: string): string => {
+      if (!hasFilter) return '';
+      // Hem alias.code hem alias.name normalize edilmiş değerlerle karşılaştırılır
+      return ` AND (
+          LOWER(TRIM(COALESCE(${alias}.code, ''))) = LOWER(TRIM($1))
+          OR LOWER(TRIM(COALESCE(${alias}.code, ''))) LIKE LOWER(TRIM($2))
+          OR LOWER(TRIM(COALESCE(${alias}.name, ''))) LIKE LOWER(TRIM($2))
+        )`;
+    };
+
+    // Sadece borç bakiyesi > 0 carileri yaşlandır (alacak bakiyeli cariler hariç)
+    const buildBalanceClause = (alias: string): string =>
+      ` AND COALESCE(${alias}.balance, 0) > 0`;
 
     if (want === 'all' || want === 'customer') {
       const { rows: custRows } = await postgres.query(
@@ -383,11 +414,11 @@ export const erpReportsAPI = {
           AND (
             s.fiche_type = 'return_invoice'
             OR ${OPEN_ACCOUNT_SQL}
-          )
+          )${buildBalanceClause('c')}${buildFilterClause('c')}
         ORDER BY s.date DESC
         LIMIT ${ROW_LIMIT}
         `,
-        [],
+        filterParams,
       );
       for (const r of custRows || []) {
         rows.push(mapAgingRow(r as Record<string, unknown>, 'customer', today));
@@ -422,11 +453,11 @@ export const erpReportsAPI = {
           AND (
             s.fiche_type = 'return_invoice'
             OR ${PURCHASE_NOT_CASH_SQL}
-          )
+          )${buildBalanceClause('sup')}${buildFilterClause('sup')}
         ORDER BY s.date DESC
         LIMIT ${ROW_LIMIT}
         `,
-        [],
+        filterParams,
       );
       for (const r of supRows || []) {
         rows.push(mapAgingRow(r as Record<string, unknown>, 'supplier', today));
@@ -442,30 +473,49 @@ export const erpReportsAPI = {
   async getCariBalances(opts?: {
     cardType?: 'customer' | 'supplier' | 'all';
     onlyNonZero?: boolean;
+    /** true ise yalnızca borç bakiyeli (balance > 0) cariler — muhasebe denetimi */
+    onlyDebit?: boolean;
+    cariFilter?: string;
   }): Promise<CariBalanceRow[]> {
     const want = opts?.cardType ?? 'all';
     const onlyNonZero = opts?.onlyNonZero !== false;
-    const balFilter = onlyNonZero ? 'AND ABS(COALESCE(balance, 0)) > 0.009' : '';
+    const onlyDebit = opts?.onlyDebit === true;
+    const rawFilter = String(opts?.cariFilter ?? '').trim();
+    const filterKey = normalizeTrText(rawFilter);
+    const filterExactCode = rawFilter;
+    const filterLike = `%${filterKey}%`;
+    const hasFilter = filterKey.length > 0;
+
+    // balance filtresi: yalnız borç bakiyeli cariler (muhasebe denetimi)
+    const balFilter = onlyDebit
+      ? 'AND COALESCE(balance, 0) > 0.009'
+      : onlyNonZero
+        ? 'AND ABS(COALESCE(balance, 0)) > 0.009'
+        : '';
 
     if (DB_SETTINGS.connectionProvider === 'rest_api') {
       const { postgrest } = await import('./postgrestClient');
       const fn = padFirm();
       const out: CariBalanceRow[] = [];
       const load = async (path: string, cardType: 'customer' | 'supplier') => {
+        const qs = new URLSearchParams();
+        qs.set('select', 'id,code,name,balance,credit_limit,payment_terms,is_active');
+        qs.set('is_active', 'eq.true');
+        qs.set('order', 'balance.desc');
+        qs.set('limit', '2000');
+        if (onlyDebit) qs.append('balance', 'gt.0.009');
+        else if (onlyNonZero) qs.append('balance', 'neq.0');
+        if (hasFilter) qs.append('or', `(code.ilike.*${rawFilter}*,name.ilike.*${rawFilter}*)`);
         const rows = await postgrest
           .get<Record<string, unknown>[]>(
-            path,
-            {
-              select: 'id,code,name,balance,credit_limit,payment_terms,is_active',
-              is_active: 'eq.true',
-              order: 'name.asc',
-              limit: '2000',
-            },
+            `${path}?${qs.toString()}`,
+            undefined,
             { schema: 'public' },
           )
           .catch(() => [] as Record<string, unknown>[]);
         for (const r of rows || []) {
           const balance = Number(r.balance ?? 0);
+          if (onlyDebit && balance <= 0.009) continue;
           if (onlyNonZero && Math.abs(balance) <= 0.009) continue;
           out.push({
             accountId: String(r.id ?? ''),
@@ -480,17 +530,28 @@ export const erpReportsAPI = {
       };
       if (want === 'all' || want === 'customer') await load(`/rex_${fn}_customers`, 'customer');
       if (want === 'all' || want === 'supplier') await load(`/rex_${fn}_suppliers`, 'supplier');
-      return out.sort((a, b) => Math.abs(b.balance) - Math.abs(a.balance)).slice(0, ROW_LIMIT);
+      return out.sort((a, b) => b.balance - a.balance).slice(0, ROW_LIMIT);
     }
 
     const parts: string[] = [];
+    const filterParams: unknown[] = [];
+    if (hasFilter) {
+      filterParams.push(filterExactCode, filterLike);
+    }
+    const filterClause = hasFilter
+      ? ` AND (
+            LOWER(TRIM(COALESCE(code, ''))) = LOWER(TRIM($1))
+            OR LOWER(TRIM(COALESCE(code, ''))) LIKE LOWER(TRIM($2))
+            OR LOWER(TRIM(COALESCE(name, ''))) LIKE LOWER(TRIM($2))
+          )`
+      : '';
     if (want === 'all' || want === 'customer') {
       parts.push(`
         SELECT id::text AS account_id, COALESCE(code,'') AS account_code, COALESCE(name,'') AS account_name,
                'customer'::text AS card_type, COALESCE(balance,0) AS balance,
                COALESCE(credit_limit,0) AS credit_limit, COALESCE(payment_terms::text,'') AS payment_terms
         FROM customers
-        WHERE COALESCE(is_active, true) = true ${balFilter}
+        WHERE COALESCE(is_active, true) = true ${balFilter}${filterClause}
       `);
     }
     if (want === 'all' || want === 'supplier') {
@@ -499,13 +560,13 @@ export const erpReportsAPI = {
                'supplier'::text AS card_type, COALESCE(balance,0) AS balance,
                COALESCE(credit_limit,0) AS credit_limit, COALESCE(payment_terms::text,'') AS payment_terms
         FROM suppliers
-        WHERE COALESCE(is_active, true) = true ${balFilter}
+        WHERE COALESCE(is_active, true) = true ${balFilter}${filterClause}
       `);
     }
     if (!parts.length) return [];
     const { rows } = await postgres.query(
-      `${parts.join(' UNION ALL ')} ORDER BY ABS(balance) DESC LIMIT ${ROW_LIMIT}`,
-      [],
+      `${parts.join(' UNION ALL ')} ORDER BY balance DESC LIMIT ${ROW_LIMIT}`,
+      filterParams,
     );
     return (rows || []).map((r: any) => ({
       accountId: String(r.account_id ?? ''),
@@ -624,8 +685,12 @@ export const erpReportsAPI = {
           COALESCE(c.name, s.name, '') AS account_name
         FROM cash_lines cl
         LEFT JOIN cash_registers cr ON cr.id = cl.register_id
-        LEFT JOIN customers c ON c.id = cl.customer_id
-        LEFT JOIN suppliers s ON s.id = cl.customer_id
+        LEFT JOIN LATERAL (
+          SELECT name FROM customers WHERE id = cl.customer_id LIMIT 1
+        ) c ON TRUE
+        LEFT JOIN LATERAL (
+          SELECT name FROM suppliers WHERE id = cl.customer_id LIMIT 1
+        ) s ON TRUE
         WHERE (cl.date AT TIME ZONE 'UTC')::date >= $1::date
           AND (cl.date AT TIME ZONE 'UTC')::date <= $2::date
       `);
@@ -645,8 +710,12 @@ export const erpReportsAPI = {
           COALESCE(c.name, s.name, '') AS account_name
         FROM bank_lines bl
         LEFT JOIN bank_registers br ON br.id = bl.register_id
-        LEFT JOIN customers c ON c.id = bl.customer_id
-        LEFT JOIN suppliers s ON s.id = bl.customer_id
+        LEFT JOIN LATERAL (
+          SELECT name FROM customers WHERE id = bl.customer_id LIMIT 1
+        ) c ON TRUE
+        LEFT JOIN LATERAL (
+          SELECT name FROM suppliers WHERE id = bl.customer_id LIMIT 1
+        ) s ON TRUE
         WHERE (bl.date AT TIME ZONE 'UTC')::date >= $1::date
           AND (bl.date AT TIME ZONE 'UTC')::date <= $2::date
       `);
@@ -1110,7 +1179,8 @@ export const erpReportsAPI = {
           date: String(s.date || '').slice(0, 10),
           accountName: String(s.customer_name ?? ''),
           paymentMethod: String(s.payment_method ?? ''),
-          netAmount: Math.abs(Number(s.net_amount ?? 0)),
+          // İade tutarı işaretli bırakılır (negatif); UI Math.abs gösterebilir.
+          netAmount: Number(s.net_amount ?? 0),
           cashier: String(s.cashier ?? ''),
           notes: String(s.notes ?? ''),
         }))
@@ -1125,7 +1195,7 @@ export const erpReportsAPI = {
         (s.date AT TIME ZONE 'UTC')::date::text AS date,
         COALESCE(s.customer_name, '') AS account_name,
         COALESCE(s.payment_method, '') AS payment_method,
-        ABS(COALESCE(s.net_amount, 0)) AS net_amount,
+        COALESCE(s.net_amount, 0) AS net_amount,
         COALESCE(s.cashier, '') AS cashier,
         COALESCE(s.notes, '') AS notes
       FROM sales s
@@ -1148,6 +1218,7 @@ export const erpReportsAPI = {
       date: String(r.date ?? '').slice(0, 10),
       accountName: String(r.account_name ?? ''),
       paymentMethod: String(r.payment_method ?? ''),
+      // İade tutarı işaretli bırakılır (negatif); UI Math.abs gösterebilir.
       netAmount: Number(r.net_amount ?? 0),
       cashier: String(r.cashier ?? ''),
       notes: String(r.notes ?? ''),
@@ -1766,8 +1837,9 @@ export const erpReportsAPI = {
     const to = String(params.to ?? '').slice(0, 10);
     const cariIds = Array.isArray(params.cariIds) ? params.cariIds.filter(Boolean) : [];
     if (!from || !to) return [];
+    const firmNr = padFirm();
 
-    const values: unknown[] = [from, to];
+    const values: unknown[] = [firmNr, from, to];
     let cariClause = '';
     if (cariIds.length > 0) {
       values.push(cariIds);
@@ -1787,7 +1859,8 @@ export const erpReportsAPI = {
         COALESCE((
           SELECT SUM(cl.amount * cl.sign)
           FROM cash_lines cl
-          WHERE cl.fiche_no = s.fiche_no AND cl.sign > 0
+          WHERE cl.fiche_no = s.fiche_no
+            AND UPPER(TRIM(COALESCE(cl.transaction_type, ''))) = 'CH_TAHSILAT'
         ), 0) AS collected,
         COALESCE(s.net_amount, 0) AS invoice_amount,
         COALESCE((
@@ -1802,7 +1875,8 @@ export const erpReportsAPI = {
         ) AS is_return
       FROM sales s
       LEFT JOIN customers c ON c.id = s.customer_id
-      WHERE (s.date AT TIME ZONE 'UTC')::date BETWEEN $1::date AND $2::date
+      WHERE s.firm_nr = $1::text
+        AND (s.date AT TIME ZONE 'UTC')::date BETWEEN $2::date AND $3::date
         AND COALESCE(s.is_cancelled, false) = false
         AND ${SQL_COUNTABLE_SALE_STATUS}
         AND s.fiche_type IN ('sales_invoice', 'service', 'hizmet', 'return_invoice')
@@ -1969,7 +2043,8 @@ export const erpReportsAPI = {
     const from = String(params.from ?? '').slice(0, 10);
     const to = String(params.to ?? '').slice(0, 10);
     if (!from || !to) return [];
-    const values: unknown[] = [from, to];
+    const firmNr = padFirm();
+    const values: unknown[] = [firmNr, from, to];
     let joins = '';
     let where = 'si.invoice_id = s.id';
     if (params.productGroup) {
@@ -1979,13 +2054,16 @@ export const erpReportsAPI = {
     } else {
       joins = `LEFT JOIN products p ON p.id = si.product_id`;
     }
+    // Alış fiyatı filtresi: products.last_purchase_price tercih edilir; yoksa satır maliyeti (unit_cost).
+    // Etiket "Alış Fiyatı" olduğundan eski unit_price (satış fiyatı) yerine alış maliyeti baz alınır.
+    const purchasePriceExpr = `COALESCE(NULLIF(p.last_purchase_price, 0), NULLIF(si.unit_cost, 0), si.unit_price)`;
     if (typeof params.priceMin === 'number' && Number.isFinite(params.priceMin)) {
       values.push(params.priceMin);
-      where += ` AND COALESCE(si.unit_price, 0) >= $${values.length}`;
+      where += ` AND ${purchasePriceExpr} >= $${values.length}`;
     }
     if (typeof params.priceMax === 'number' && Number.isFinite(params.priceMax)) {
       values.push(params.priceMax);
-      where += ` AND COALESCE(si.unit_price, 0) <= $${values.length}`;
+      where += ` AND ${purchasePriceExpr} <= $${values.length}`;
     }
     if (Array.isArray(params.cariIds) && params.cariIds.length > 0) {
       values.push(params.cariIds.filter(Boolean));
@@ -1997,7 +2075,8 @@ export const erpReportsAPI = {
       WITH coll AS (
         SELECT cl.fiche_no, SUM(cl.amount * cl.sign) AS paid
         FROM cash_lines cl
-        WHERE cl.sign > 0 AND COALESCE(cl.fiche_no, '') <> ''
+        WHERE UPPER(TRIM(COALESCE(cl.transaction_type, ''))) = 'CH_TAHSILAT'
+          AND COALESCE(cl.fiche_no, '') <> ''
         GROUP BY cl.fiche_no
       )
       SELECT
@@ -2008,7 +2087,7 @@ export const erpReportsAPI = {
         COALESCE(NULLIF(TRIM(p.sub_group_code), ''), '') AS sub_group,
         COALESCE(NULLIF(TRIM(si.item_name), ''), p.name, '') AS product,
         COALESCE(si.quantity, 0) AS qty,
-        COALESCE(si.unit_price, 0) AS price,
+        ${purchasePriceExpr} AS price,
         COALESCE(si.discount_amount, 0) AS discount,
         COALESCE(si.net_amount, 0) AS line_total,
         COALESCE(c.name, s.customer_name, '') AS customer,
@@ -2020,7 +2099,8 @@ export const erpReportsAPI = {
       LEFT JOIN coll ON coll.fiche_no = s.fiche_no
       ${joins}
       WHERE ${where}
-        AND (s.date AT TIME ZONE 'UTC')::date BETWEEN $1::date AND $2::date
+        AND s.firm_nr = $1::text
+        AND (s.date AT TIME ZONE 'UTC')::date BETWEEN $2::date AND $3::date
         AND COALESCE(s.is_cancelled, false) = false
         AND ${SQL_COUNTABLE_SALE_STATUS}
         AND s.fiche_type IN ('sales_invoice', 'service', 'hizmet')
@@ -2088,9 +2168,11 @@ export const erpReportsAPI = {
     const from = String(params.from ?? '').slice(0, 10);
     const to = String(params.to ?? '').slice(0, 10);
     if (!from || !to) return [];
-    const values: unknown[] = [from, to];
+    const firmNr = padFirm();
+    const values: unknown[] = [firmNr, from, to];
     const where: string[] = [
-      `(s.date AT TIME ZONE 'UTC')::date BETWEEN $1::date AND $2::date`,
+      `s.firm_nr = $1::text`,
+      `(s.date AT TIME ZONE 'UTC')::date BETWEEN $2::date AND $3::date`,
       `COALESCE(s.is_cancelled, false) = false`,
       `${SQL_COUNTABLE_SALE_STATUS}`,
       `s.fiche_type IN ('sales_invoice', 'service', 'hizmet', 'return_invoice')`,

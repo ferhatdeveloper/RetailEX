@@ -4,6 +4,8 @@
  */
 
 import { supabase, SUPABASE_CONFIGURED } from '../../utils/supabase/client';
+import { assertPeriodOpen } from '../periodControl';
+import { ERP_SETTINGS } from '../postgres';
 
 const isDemo = () => !SUPABASE_CONFIGURED;
 
@@ -102,6 +104,12 @@ export const cashRegistersAPI = {
     if (isDemo()) {
       return null;
     }
+    // Dönem kontrolü — kapalı dönemde oturum açılmasın.
+    await assertPeriodOpen(
+      ERP_SETTINGS.firmNr,
+      ERP_SETTINGS.periodNr,
+      new Date().toISOString(),
+    );
 
     try {
       // Eğer registerId verilmemişse, kasiyer için kasa oluştur veya bul
@@ -197,6 +205,12 @@ export const cashRegistersAPI = {
     if (isDemo()) {
       return false;
     }
+    // Dönem kontrolü — kapalı dönemde oturum kapatılmasın.
+    await assertPeriodOpen(
+      ERP_SETTINGS.firmNr,
+      ERP_SETTINGS.periodNr,
+      new Date().toISOString(),
+    );
 
     try {
       // Oturumu kapat
@@ -252,6 +266,12 @@ export const cashRegistersAPI = {
     if (isDemo()) {
       return false;
     }
+    // Dönem kontrolü — kapalı dönemde virman yapılmasın.
+    await assertPeriodOpen(
+      ERP_SETTINGS.firmNr,
+      ERP_SETTINGS.periodNr,
+      new Date().toISOString(),
+    );
 
     try {
       // Merkez kasayı bul

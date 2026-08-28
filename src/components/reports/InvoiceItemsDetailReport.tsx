@@ -204,15 +204,29 @@ export function InvoiceItemsDetailReport() {
   const totals = useMemo(() => {
     let qty = 0;
     let lineTotal = 0;
+    // A6: Footer'da "fatura toplamı" her satırda tekrar ettiği için 3-5× şişiyordu.
+    // Burada yalnızca benzersiz faturaların `invoiceTotal` toplamı "gerçek fatura
+    // toplamı" olarak hesaplanır; `lineTotal` ise kalem satırı toplamıdır.
+    const seenInvoices = new Set<string>();
     let invoiceTotal = 0;
     let balance = 0;
     for (const r of filtered) {
       qty += r.quantity;
       lineTotal += r.lineTotal;
-      invoiceTotal += r.invoiceTotal;
       balance += r.balance;
+      const key = r.invoiceNo || r.id;
+      if (!seenInvoices.has(key)) {
+        seenInvoices.add(key);
+        invoiceTotal += r.invoiceTotal;
+      }
     }
-    return { qty, lineTotal, invoiceTotal, balance };
+    return {
+      qty,
+      lineTotal,
+      invoiceTotal,
+      balance,
+      invoiceCount: seenInvoices.size,
+    };
   }, [filtered]);
 
   const tableCls = darkMode ? 'bg-gray-800 border-gray-700' : 'bg-white border-gray-200';
@@ -302,7 +316,11 @@ export function InvoiceItemsDetailReport() {
         </div>
       }
     >
-      <div className="grid grid-cols-2 gap-3 md:grid-cols-4">
+      <div className="grid grid-cols-2 gap-3 md:grid-cols-5">
+        <div className={`rounded-lg border p-3 ${tableCls}`}>
+          <p className="text-xs opacity-60">{tm('rprInvoiceCount') || 'Fatura Sayısı'}</p>
+          <p className="text-xl font-bold">{totals.invoiceCount}</p>
+        </div>
         <div className={`rounded-lg border p-3 ${tableCls}`}>
           <p className="text-xs opacity-60">{tm('rprColQuantity') || 'Miktar'}</p>
           <p className="text-xl font-bold">{formatNumber(totals.qty, 2, false)}</p>
@@ -380,6 +398,9 @@ export function InvoiceItemsDetailReport() {
               <tr className={`font-bold ${tfootCls}`}>
                 <td className="px-3 py-2" colSpan={5}>
                   {tm('rprTotal') || 'TOPLAM'}
+                  <span className="ml-2 text-xs font-normal opacity-70">
+                    {`(${filtered.length} ${tm('rprRowCount') || 'satır'} · ${totals.invoiceCount} ${tm('rprInvoiceCount') || 'fatura'})`}
+                  </span>
                 </td>
                 <td className="px-3 py-2 text-right">{formatNumber(totals.qty, 2, false)}</td>
                 <td className="px-3 py-2" colSpan={2} />

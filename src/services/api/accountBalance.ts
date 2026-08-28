@@ -151,28 +151,60 @@ export type LedgerCashRow = {
  * Pozitif bakiye: müşteri bize borçlu / tedarikçiye biz borçluyuz.
  * Tahsilat (müşteri alacak) ve ödeme (tedarikçi borç kapanışı) açık bakiyeyi düşürür.
  * Not: Kasa `sign` (+1 tahsilat / -1 ödeme) cari yönü değildir — asla amount*sign kullanma.
+ *
+ * Müşteri simetrisi: tahsilat → borç ↓ (−amt), ödeme → borç ↑ (+amt).
+ * Tedarikçi simetrisi: tahsilat → borç ↑ (+amt), ödeme → borç ↓ (−amt).
+ * Cari türü verilmezse varsayılan müşteri (geriye uyumluluk).
  */
 export function cariCashLineLedgerContrib(
   amount: number | string | null | undefined,
   transactionType: string | null | undefined,
+  cariType: 'customer' | 'supplier' | null | undefined = 'customer',
 ): number {
   const tt = String(transactionType || '').trim().toUpperCase();
   if (tt !== 'CH_ODEME' && tt !== 'CH_TAHSILAT') return 0;
   const amt = Math.abs(parseFloat(String(amount ?? 0)) || 0);
   if (!amt) return 0;
-  return -amt;
+  const isSupplier = String(cariType || '').toLowerCase() === 'supplier';
+  if (tt === 'CH_ODEME') {
+    return isSupplier ? -amt : amt;
+  }
+  // CH_TAHSILAT
+  return isSupplier ? amt : -amt;
 }
 
 /** createKasaIslemi / silme — saklanan balance alanına uygulanacak delta */
 export function cariCashStoredBalanceDelta(
   amount: number | string | null | undefined,
   transactionType: string | null | undefined,
+  cariType: 'customer' | 'supplier' | null | undefined = 'customer',
 ): number {
-  return cariCashLineLedgerContrib(amount, transactionType);
+  return cariCashLineLedgerContrib(amount, transactionType, cariType);
 }
 
 export function normalizeAccountName(name: string | null | undefined): string {
   return String(name || '').trim().toLocaleLowerCase('tr-TR');
+}
+
+/**
+ * Türkçe karakter farkındalığı için metin normalizasyonu.
+ * Hem büyük/küçük harf hem aksanlı karakterleri düzleştirir.
+ * - İ → i, I → ı (TR locale)
+ * - Ğ→g, Ü→u, Ş→s, Ö→o, Ç→c ve küçük karşılıkları
+ * - DB'de `unaccent` extension varsa tercih et, yoksa JS tarafında normalize et.
+ */
+export function normalizeTrText(input: string | null | undefined): string {
+  if (input == null) return '';
+  let s = String(input).toLocaleLowerCase('tr-TR');
+  // TR-locale `toLocaleLowerCase` İ→i ve I→ı dönüşümünü zaten yapar.
+  return s
+    .replace(/ı/g, 'i').replace(/i/g, 'i')   // İ→i, I→i (güvenlik)
+    .replace(/ğ/g, 'g')
+    .replace(/ü/g, 'u')
+    .replace(/ş/g, 's')
+    .replace(/ö/g, 'o')
+    .replace(/ç/g, 'c')
+    .replace(/â/g, 'a').replace(/î/g, 'i').replace(/û/g, 'u');
 }
 
 /** Ekstre / bakiye: ünvan eşleşmesi (Türkçe locale) */

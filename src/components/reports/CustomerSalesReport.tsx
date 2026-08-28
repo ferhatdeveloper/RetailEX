@@ -4,6 +4,7 @@ import { SearchOutlined } from '@ant-design/icons';
 import { Input } from 'antd';
 import type { Sale, Customer } from '../../App';
 import { formatNumber } from '../../utils/formatNumber';
+import { isReturnSale } from '../../utils/posZReport';
 import { BarChart, Bar, LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer } from 'recharts';
 import { useLanguage } from '../../contexts/LanguageContext';
 
@@ -44,10 +45,16 @@ export function CustomerSalesReport({ sales, customers }: CustomerSalesReportPro
       const customerName = sale.customerName || customer?.name || unknownCustomerLabel;
       const existing = customerMap.get(customerId);
 
+      // B1: Müşteri cirosu net (brüt − iade)
+      const isReturn = isReturnSale(sale);
+      const saleContribution = isReturn
+        ? -Math.abs(Number(sale.total) || 0)
+        : Number(sale.total) || 0;
+
       if (existing) {
-        existing.salesCount += 1;
-        existing.totalRevenue += sale.total;
-        existing.avgSale = existing.totalRevenue / existing.salesCount;
+        if (!isReturn) existing.salesCount += 1;
+        existing.totalRevenue += saleContribution;
+        existing.avgSale = existing.totalRevenue / Math.max(1, existing.salesCount);
         const saleDate = new Date(sale.date).toISOString().split('T')[0];
         if (saleDate > existing.lastSaleDate) {
           existing.lastSaleDate = saleDate;
@@ -55,9 +62,9 @@ export function CustomerSalesReport({ sales, customers }: CustomerSalesReportPro
       } else {
         customerMap.set(customerId, {
           customer: customer || ({ id: customerId, name: customerName } as Customer),
-          salesCount: 1,
-          totalRevenue: sale.total,
-          avgSale: sale.total,
+          salesCount: isReturn ? 0 : 1,
+          totalRevenue: saleContribution,
+          avgSale: saleContribution,
           lastSaleDate: new Date(sale.date).toISOString().split('T')[0],
         });
       }

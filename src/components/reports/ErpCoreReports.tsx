@@ -442,11 +442,41 @@ export function CashBankMovementReport() {
   const totals = useMemo(() => {
     let inflow = 0;
     let outflow = 0;
+    let transfer = 0;
     for (const r of rows) {
-      if (r.netAmount >= 0) inflow += r.netAmount;
-      else outflow += Math.abs(r.netAmount);
+      // B7: Backend hem `sign` hem `transaction_type` döndürüyor
+      // (CH_TAHSILAT/CH_ODEME/BANKA_GIRIS/BANKA_CIKIS/HAVALE/EFT/VIRMAN).
+      // Tek `netAmount` üzerinden sınıflandırma yerine transaction_type'a göre ayır;
+      // virman ayrı sütunda — kasa-banka nakit akışında giriş/çıkış olarak sayılmaz.
+      const tt = String(r.transactionType || '').toUpperCase();
+      const amount = Math.abs(Number(r.amount) || 0);
+      if (tt === 'VIRMAN') {
+        transfer += amount;
+      } else if (
+        tt === 'CH_TAHSILAT' ||
+        tt === 'BANKA_GIRIS' ||
+        tt === 'SERMAYE_TAHSILAT' ||
+        tt === 'ORTAK_SERMAYE_TAHSILAT' ||
+        tt === 'ORTAK_PARA_GIRIS'
+      ) {
+        inflow += amount;
+      } else if (
+        tt === 'CH_ODEME' ||
+        tt === 'BANKA_CIKIS' ||
+        tt === 'HAVALE' ||
+        tt === 'EFT' ||
+        tt === 'MAAS_ODEME' ||
+        tt === 'AVANS_ODEME'
+      ) {
+        outflow += amount;
+      } else {
+        // Bilinmeyen tip: işaret alanına güven (sign = +1 / -1)
+        const net = Number(r.netAmount) || 0;
+        if (net >= 0) inflow += amount;
+        else outflow += amount;
+      }
     }
-    return { inflow, outflow, net: inflow - outflow };
+    return { inflow, outflow, transfer, net: inflow - outflow };
   }, [rows]);
 
   const tableCls = darkMode ? 'bg-gray-800 border-gray-700' : 'bg-white border-gray-200';
@@ -491,7 +521,7 @@ export function CashBankMovementReport() {
         </>
       }
     >
-      <div className="grid grid-cols-1 gap-3 md:grid-cols-3">
+      <div className="grid grid-cols-1 gap-3 md:grid-cols-4">
         <div className={`rounded-lg border p-3 ${tableCls}`}>
           <p className="text-xs opacity-60">{tm('erpInflow')}</p>
           <p className="text-xl font-bold text-emerald-500">
@@ -502,6 +532,12 @@ export function CashBankMovementReport() {
           <p className="text-xs opacity-60">{tm('erpOutflow')}</p>
           <p className="text-xl font-bold text-red-500">
             {formatNumber(totals.outflow, 2, false)} {currency}
+          </p>
+        </div>
+        <div className={`rounded-lg border p-3 ${tableCls}`}>
+          <p className="text-xs opacity-60">Virman</p>
+          <p className="text-xl font-bold text-blue-500">
+            {formatNumber(totals.transfer, 2, false)} {currency}
           </p>
         </div>
         <div className={`rounded-lg border p-3 ${tableCls}`}>

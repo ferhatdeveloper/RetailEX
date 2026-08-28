@@ -103,6 +103,8 @@ export function MaterialMovementReport() {
   const loadMovements = useCallback(async () => {
     setLoading(true);
     try {
+      // direction kolonu yoksa transfer için kaynak/hedef ambar karşılaştırması yapacağız;
+      // SELECT'te target_warehouse_id ve seçilen ambarı da çekiyoruz.
       let sql = `
         SELECT
           mi.id,
@@ -110,6 +112,8 @@ export function MaterialMovementReport() {
           p.code           AS product_code,
           p.name           AS product_name,
           m.movement_type  AS type,
+          m.warehouse_id   AS warehouse_id,
+          m.target_warehouse_id AS target_warehouse_id,
           mi.quantity,
           COALESCE(p.unit, 'Adet') AS unit,
           COALESCE(mi.unit_price, 0) AS unit_cost,
@@ -141,7 +145,8 @@ export function MaterialMovementReport() {
 
       if (selectedWarehouse !== 'all') {
         params.push(selectedWarehouse);
-        sql += ` AND m.warehouse_id = $${params.length}`;
+        // Transfer için hem kaynak hem hedef ambarı eşleştir; böylece her iki taraf da görünür.
+        sql += ` AND (m.warehouse_id = $${params.length} OR m.target_warehouse_id = $${params.length})`;
       }
 
       sql += ` ORDER BY m.movement_date DESC, m.created_at DESC LIMIT 500`;
@@ -151,8 +156,38 @@ export function MaterialMovementReport() {
       setMovements(
         rows.map((r) => {
           const qty = parseFloat(r.quantity) || 0;
-          const dbTypeRow = r.type as string;
-          const displayQty = dbTypeRow === 'out' ? -qty : qty;
+          const dbTypeRow = (r.type as string) || 'in';
+          const sourceWh = r.warehouse_id != null ? String(r.warehouse_id) : '';
+          const targetWh = r.target_warehouse_id != null ? String(r.target_warehouse_id) : '';
+          // İşaret kuralları (muhasebeci gözü):
+          //  - 'in'         => +qty
+          //  - 'out'        => -qty
+          //  - 'transfer'   => kaynak ambar için -qty, hedef ambar için +qty (seçili ambar üzerinden)
+          //  - 'adjustment' => sayım farkı kendi işaretini taşır; negatifse olduğu gibi, pozitifse +qty
+          let displayQty = qty;
+          if (dbTypeRow === 'in') {
+            displayQty = qty;
+          } else if (dbTypeRow === 'out') {
+            displayQty = -qty;
+          } else if (dbTypeRow === 'transfer') {
+            // selectedWarehouse 'all' ise: kaynak tarafını (negatif) göster, hedefi ayrı satır olarak bırak.
+            if (selectedWarehouse === 'all') {
+              displayQty = -qty;
+            } else if (sourceWh && sourceWh === selectedWarehouse) {
+              // Bu satır seçili ambar için kaynak (çıkış)
+              displayQty = -qty;
+            } else if (targetWh && targetWh === selectedWarehouse) {
+              // Bu satır seçili ambar için hedef (giriş)
+              displayQty = qty;
+            } else {
+              displayQty = -qty;
+            }
+          } else if (dbTypeRow === 'adjustment') {
+            // adjustment: DB'deki miktar zaten işaretli (+ fazla, − eksik); olduğu gibi bırak.
+            displayQty = qty;
+          } else {
+            displayQty = qty;
+          }
           const unitCost = parseFloat(r.unit_cost) || 0;
           const totalCost = displayQty * unitCost;
           const rawUnit = r.unit || 'Adet';
@@ -200,6 +235,8 @@ export function MaterialMovementReport() {
     }
   };
 
+  // displayQty zaten işaretli (+ giriş, − çıkış); totalCost = displayQty * unitCost yine işaretli.
+  // Bu yüzden Math.abs gerekmez; toplamlar zaten doğru yönde birikiyor.
   const totalInflow = movements.filter((m) => m.quantity > 0).reduce((sum, m) => sum + m.totalCost, 0);
 
   const totalOutflow = movements.filter((m) => m.quantity < 0).reduce((sum, m) => sum + Math.abs(m.totalCost), 0);

@@ -10,6 +10,7 @@ import {
 } from './accountBalance';
 import { ensureCariAccountInCurrentFirm } from './cariAccountResolve';
 import { ensurePartyPeriodTables } from './ensurePartyPeriodTables';
+import { assertPeriodOpen } from '../periodControl';
 
 function padKasaFirmNr(): string {
   return String(ERP_SETTINGS.firmNr || '001').trim().padStart(3, '0').slice(0, 10);
@@ -705,8 +706,39 @@ async function createKasaIslemiViaPostgrest(
       special_code: islem.ozel_kod || '',
       target_register_id: islem.kasa_id,
     };
-    await postgrest.post(linesPath, counterBody, { schema: 'public', prefer: 'return=minimal' });
-    await bumpKasaBalance(islem.target_register_id, Number(islem.tutar || 0));
+    // Çift ayak atomikliği: karşı satır INSERT başarısızsa ana INSERT'i geri al.
+    try {
+      await postgrest.post(linesPath, counterBody, { schema: 'public', prefer: 'return=minimal' });
+    } catch (e) {
+      try {
+        await postgrest.delete(
+          `${linesPath}?id=eq.${encodeURIComponent(String(mainRow?.id || ''))}`,
+          { schema: 'public', prefer: 'return=minimal' },
+        );
+      } catch { /* best-effort rollback */ }
+      throw new Error('Virman karşı satırı yazılamadı; ana satır geri alındı: ' + ((e as any)?.message || e));
+    }
+    // Hedef kasa bakiyesini güncelle; başarısız olursa her iki satırı temizle ve kaynak kasayı geri al.
+    try {
+      await bumpKasaBalance(islem.target_register_id, Number(islem.tutar || 0));
+    } catch (e) {
+      try {
+        await bumpKasaBalance(islem.kasa_id, -Number(islem.tutar || 0) * sign);
+      } catch { /* ignore */ }
+      try {
+        await postgrest.delete(
+          `${linesPath}?id=eq.${encodeURIComponent(String(mainRow?.id || ''))}`,
+          { schema: 'public', prefer: 'return=minimal' },
+        );
+      } catch { /* ignore */ }
+      try {
+        await postgrest.delete(
+          `${linesPath}?fiche_no=eq.${encodeURIComponent(`${ficheNo}-VRM`)}`,
+          { schema: 'public', prefer: 'return=minimal' },
+        );
+      } catch { /* ignore */ }
+      throw new Error('Virman hedef kasa bakiyesi güncellenemedi; işlem geri alındı: ' + ((e as any)?.message || e));
+    }
   } else if (islem.islem_tipi === 'VIRMAN') {
     console.warn('[Kasa] VIRMAN logic SKIPPED. Target register ID missing or falsy:', islem.target_register_id);
   }
@@ -765,6 +797,12 @@ export async function createKasaIslemi(incoming: KasaIslemi): Promise<KasaIslemi
       islem_tipi: String(incoming.islem_tipi || '').trim().toUpperCase(),
       tutar: Math.abs(Number(incoming.tutar) || 0),
     };
+    // Dönem kontrolü — kapalı dönemde yazma engellenir (PeriodControl entegrasyonu).
+    await assertPeriodOpen(
+      ERP_SETTINGS.firmNr,
+      ERP_SETTINGS.periodNr,
+      islem.islem_tarihi || new Date().toISOString(),
+    );
     if (
       (islem.islem_tipi === 'CH_TAHSILAT' || islem.islem_tipi === 'CH_ODEME') &&
       !islem.cari_hesap_id

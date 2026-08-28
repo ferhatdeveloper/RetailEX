@@ -1,13 +1,14 @@
 // 📊 Profit & Loss Reports - Kar-Zarar Raporları
-// Detailed financial reports with discounts, returns, damages
+// Detaylı finansal raporlar (gerçek `stock_movements` verisinden hesaplanır).
 
 import { useState, useEffect } from 'react';
 import {
-  TrendingUp, TrendingDown, Banknote, Package, RotateCcw,
-  AlertCircle, Download, Calendar, BarChart3, PieChart,
-  Filter, X, ChevronRight, Eye
+  TrendingUp, TrendingDown, Banknote, Package,
+  Download, Calendar, BarChart3,
+  X, Eye, AlertCircle
 } from 'lucide-react';
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer, PieChart as RechartsPieChart, Pie, Cell } from 'recharts';
+import { postgres } from '../../../services/postgres';
 
 interface ProfitLossReportsProps {
   darkMode: boolean;
@@ -21,13 +22,13 @@ interface ProductPL {
   sales_revenue: number;
   total_cost: number;
   gross_profit: number;
-  
+
   // Deductions
   discounts: number;
   returns: number;
   damages: number;
   total_deductions: number;
-  
+
   // Net
   net_profit: number;
   profit_margin_percent: number;
@@ -49,6 +50,8 @@ export function ProfitLossReports({ darkMode, onBack }: ProfitLossReportsProps) 
   const [categoryPL, setCategoryPL] = useState<CategoryPL[]>([]);
   const [showDetailModal, setShowDetailModal] = useState(false);
   const [selectedItem, setSelectedItem] = useState<ProductPL | null>(null);
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState<string | null>(null);
 
   const bgClass = darkMode ? 'bg-gray-900' : 'bg-gray-50';
   const cardClass = darkMode ? 'bg-gray-800 border-gray-700' : 'bg-white border-gray-200';
@@ -59,78 +62,154 @@ export function ProfitLossReports({ darkMode, onBack }: ProfitLossReportsProps) 
   }, [timeRange]);
 
   const loadReports = async () => {
-    // Mock data - Product level
-    const mockProductPL: ProductPL[] = [
-      {
-        product_name: 'Zeytinyağı 1L',
-        category: 'Yağlar',
-        sales_quantity: 450,
-        sales_revenue: 15750000,
-        total_cost: 11250000,
-        gross_profit: 4500000,
-        discounts: 787500,
-        returns: 225000,
-        damages: 112500,
-        total_deductions: 1125000,
-        net_profit: 3375000,
-        profit_margin_percent: 21.4
-      },
-      {
-        product_name: 'Un 1kg',
-        category: 'Unlar',
-        sales_quantity: 820,
-        sales_revenue: 9840000,
-        total_cost: 6970000,
-        gross_profit: 2870000,
-        discounts: 984000,
-        returns: 164000,
-        damages: 82000,
-        total_deductions: 1230000,
-        net_profit: 1640000,
-        profit_margin_percent: 16.7
-      },
-      {
-        product_name: 'Makarna 500g',
-        category: 'Bakliyat',
-        sales_quantity: 650,
-        sales_revenue: 4225000,
-        total_cost: 2730000,
-        gross_profit: 1495000,
-        discounts: 211250,
-        returns: 84500,
-        damages: 42250,
-        total_deductions: 338000,
-        net_profit: 1157000,
-        profit_margin_percent: 27.4
-      },
-    ];
-    setProductPL(mockProductPL);
+    setLoading(true);
+    setError(null);
+    try {
+      const since = (() => {
+        const now = new Date();
+        if (timeRange === 'today') {
+          return new Date(now.getFullYear(), now.getMonth(), now.getDate()).toISOString();
+        }
+        if (timeRange === 'week') {
+          const d = new Date(now);
+          d.setDate(d.getDate() - 7);
+          return d.toISOString();
+        }
+        if (timeRange === 'year') {
+          return new Date(now.getFullYear() - 1, now.getMonth(), now.getDate()).toISOString();
+        }
+        // month default
+        return new Date(now.getFullYear(), now.getMonth(), 1).toISOString();
+      })();
 
-    // Mock data - Category level
-    const categoryMap = new Map<string, CategoryPL>();
-    mockProductPL.forEach(p => {
-      if (!categoryMap.has(p.category)) {
-        categoryMap.set(p.category, {
-          category: p.category,
-          total_revenue: 0,
-          total_cost: 0,
-          gross_profit: 0,
-          net_profit: 0,
-          profit_percent: 0
-        });
-      }
-      const cat = categoryMap.get(p.category)!;
-      cat.total_revenue += p.sales_revenue;
-      cat.total_cost += p.total_cost;
-      cat.gross_profit += p.gross_profit;
-      cat.net_profit += p.net_profit;
-    });
+// 1) Ürün bazlı: 'out' hareketlerini (satış) ürün ve kategoriye göre topla.
+//    Maliyet kolonu stock_movement_items.cost_price varsa oradan; yoksa 0.
+// Ürün tablosu firmNr-prefixli (`rex_001_products`) — postgres.getCardTableName firma prefix'ini otomatik ekler.
+const productsTable = postgres.getCardTableName('products');
 
-    categoryMap.forEach(cat => {
-      cat.profit_percent = (cat.net_profit / cat.total_revenue) * 100;
-    });
+// 1a) Satış (movement_type='out') — gelir + maliyet
+const productRes = await postgres.query(
+  `SELECT
+      p.name::text           AS product_name,
+      COALESCE(p.category, p.category_code, 'Diğer') AS category,
+      COALESCE(SUM(mi.quantity), 0)::float AS sales_quantity,
+      COALESCE(SUM(mi.quantity * COALESCE(mi.unit_price, 0)), 0)::float AS sales_revenue,
+      COALESCE(SUM(mi.quantity * COALESCE(mi.cost_price, 0)), 0)::float AS total_cost
+   FROM stock_movement_items mi
+   JOIN stock_movements m ON mi.movement_id = m.id
+   JOIN ${productsTable} p ON mi.product_id = p.id
+   WHERE m.movement_type = 'out'
+     AND m.movement_date >= $1::timestamptz
+   GROUP BY p.name, COALESCE(p.category, p.category_code, 'Diğer')
+   ORDER BY sales_revenue DESC
+   LIMIT 100`,
+  [since]
+);
 
-    setCategoryPL(Array.from(categoryMap.values()));
+// Toplam gelir — kesinti paylaştırma oranı için (ürün bazlı).
+const rawRows = productRes.rows as any[];
+const totalSalesRevenueRaw = rawRows.reduce(
+  (sum, r) => sum + (Number(r.sales_revenue) || 0),
+  0,
+);
+
+// 1b) İadeler — sales_returns tablosundan (periodNr-prefixli hareket tablosu).
+// Tablo yoksa 0 döner (geriye uyumlu).
+let totalReturnsValue = 0;
+try {
+  const salesReturnsTable = postgres.getMovementTableName('sales_returns');
+  const r = await postgres.query(
+    `SELECT COALESCE(SUM(amount), 0)::float AS total
+       FROM ${salesReturnsTable}
+      WHERE return_date >= $1::timestamptz`,
+    [since]
+  );
+  totalReturnsValue = Number((r.rows[0] as any)?.total || 0);
+} catch {
+  totalReturnsValue = 0;
+}
+
+// 1c) Hasar — movement_type='adjustment' (düzeltme/hasar kayıtları).
+// amount = quantity * unit_price olarak hesaplanır; ürün satış fiyatı üzerinden değer.
+const damagesRes = await postgres.query(
+  `SELECT COALESCE(SUM(mi.quantity * COALESCE(mi.unit_price, 0)), 0)::float AS damages_value
+     FROM stock_movement_items mi
+     JOIN stock_movements m ON mi.movement_id = m.id
+    WHERE m.movement_type = 'adjustment'
+      AND m.movement_date >= $1::timestamptz`,
+  [since]
+);
+const totalDamagesValue = Number((damagesRes.rows[0] as any)?.damages_value || 0);
+
+// 1d) İndirimler — RetailEX'te indirim genelde fatura kaleminde tutulur;
+// product bazlı birebir eşleşmediğinden şimdilik 0 (fatura indirimi ayrı raporda).
+const totalDiscounts = 0;
+
+const products: ProductPL[] = rawRows.map((r) => {
+  const salesQty = Number(r.sales_quantity) || 0;
+  const salesRev = Number(r.sales_revenue) || 0;
+  const totalCost = Number(r.total_cost) || 0;
+  const grossProfit = salesRev - totalCost;
+  // Ürün bazlı dağıtım: iade/hasar/indirim tek satır toplamıdır.
+  // Oran (sales_revenue / totalSalesRevenue) ile paylaştırılır.
+  const ratio = totalSalesRevenueRaw > 0 ? salesRev / totalSalesRevenueRaw : 0;
+  const damages = totalDamagesValue * ratio;
+  const returns = totalReturnsValue * ratio;
+  const discounts = totalDiscounts * ratio;
+  const totalDeductions = damages + returns + discounts;
+  const netProfit = grossProfit - totalDeductions;
+  const margin = salesRev > 0 ? (netProfit / salesRev) * 100 : 0;
+  return {
+    product_name: String(r.product_name ?? ''),
+    category: String(r.category ?? 'Diğer'),
+    sales_quantity: salesQty,
+    sales_revenue: salesRev,
+    total_cost: totalCost,
+    gross_profit: grossProfit,
+    discounts,
+    returns,
+    damages,
+    total_deductions: totalDeductions,
+    net_profit: netProfit,
+    profit_margin_percent: margin,
+  };
+});
+
+      setProductPL(products);
+
+      // 2) Kategori bazlı
+      const categoryMap = new Map<string, CategoryPL>();
+      products.forEach(p => {
+        if (!categoryMap.has(p.category)) {
+          categoryMap.set(p.category, {
+            category: p.category,
+            total_revenue: 0,
+            total_cost: 0,
+            gross_profit: 0,
+            net_profit: 0,
+            profit_percent: 0
+          });
+        }
+        const cat = categoryMap.get(p.category)!;
+        cat.total_revenue += p.sales_revenue;
+        cat.total_cost += p.total_cost;
+        cat.gross_profit += p.gross_profit;
+        cat.net_profit += p.net_profit;
+      });
+
+      categoryMap.forEach(cat => {
+        cat.profit_percent = cat.total_revenue > 0 ? (cat.net_profit / cat.total_revenue) * 100 : 0;
+      });
+
+      setCategoryPL(Array.from(categoryMap.values()));
+    } catch (err: unknown) {
+      console.error('[ProfitLossReports] load error:', err);
+      setError('Rapor verisi yüklenemedi. Satış hareketleri henüz oluşmamış olabilir.');
+      setProductPL([]);
+      setCategoryPL([]);
+    } finally {
+      setLoading(false);
+    }
   };
 
   // Calculate totals
@@ -139,7 +218,7 @@ export function ProfitLossReports({ darkMode, onBack }: ProfitLossReportsProps) 
   const totalGrossProfit = productPL.reduce((sum, p) => sum + p.gross_profit, 0);
   const totalDeductions = productPL.reduce((sum, p) => sum + p.total_deductions, 0);
   const totalNetProfit = productPL.reduce((sum, p) => sum + p.net_profit, 0);
-  const avgProfitMargin = (totalNetProfit / totalRevenue) * 100;
+  const avgProfitMargin = totalRevenue > 0 ? (totalNetProfit / totalRevenue) * 100 : 0;
 
   // Chart data
   const categoryChartData = categoryPL.map(c => ({
@@ -174,7 +253,10 @@ export function ProfitLossReports({ darkMode, onBack }: ProfitLossReportsProps) 
             </h1>
             <p className="text-gray-500">İndirim, iade ve hasar dahil detaylı finansal analiz</p>
           </div>
-          <button className="flex items-center gap-2 px-4 py-2 bg-green-500 hover:bg-green-600 text-white rounded-lg">
+          <button
+            disabled={productPL.length === 0}
+            className="flex items-center gap-2 px-4 py-2 bg-green-500 hover:bg-green-600 text-white rounded-lg disabled:opacity-50"
+          >
             <Download className="w-5 h-5" />
             Excel İndir
           </button>
@@ -200,6 +282,28 @@ export function ProfitLossReports({ darkMode, onBack }: ProfitLossReportsProps) 
           </button>
         ))}
       </div>
+
+      {error && (
+        <div className={`${cardClass} border rounded-xl p-4 mb-6 flex items-start gap-3`}>
+          <AlertCircle className="w-5 h-5 text-amber-500 shrink-0 mt-0.5" />
+          <div>
+            <div className={`font-semibold ${textClass}`}>Veri bulunamadı</div>
+            <div className="text-sm text-gray-500">{error}</div>
+          </div>
+        </div>
+      )}
+
+      {!loading && productPL.length === 0 && !error && (
+        <div className={`${cardClass} border rounded-xl p-12 text-center`}>
+          <BarChart3 className="w-12 h-12 text-gray-400 mx-auto mb-3" />
+          <h3 className={`text-lg font-bold ${textClass} mb-2`}>Henüz satış verisi yok</h3>
+          <p className="text-sm text-gray-500">
+            Bu rapor <code className="font-mono">stock_movements</code> tablosundaki <code className="font-mono">movement_type = 'out'</code> kayıtlarından hesaplanır.
+            Seçili tarih aralığında satış fişi oluştuğunda burada görüntülenecektir.
+          </p>
+          <p className="text-xs text-gray-400 mt-3">TODO: iade/hasar kesintileri için ayrı SQL sorguları eklenmeli.</p>
+        </div>
+      )}
 
       {/* Summary Cards */}
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-5 gap-4 mb-6">
@@ -260,60 +364,62 @@ export function ProfitLossReports({ darkMode, onBack }: ProfitLossReportsProps) 
       </div>
 
       {/* Charts */}
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 mb-6">
-        {/* Bar Chart */}
-        <div className={`${cardClass} border rounded-xl p-6`}>
-          <h3 className={`text-lg font-bold ${textClass} mb-4`}>Kategori Bazlı Analiz</h3>
-          <ResponsiveContainer width="100%" height={300}>
-            <BarChart data={categoryChartData}>
-              <CartesianGrid strokeDasharray="3 3" stroke={darkMode ? '#374151' : '#e5e7eb'} />
-              <XAxis dataKey="name" stroke={darkMode ? '#9ca3af' : '#6b7280'} />
-              <YAxis stroke={darkMode ? '#9ca3af' : '#6b7280'} />
-              <Tooltip 
-                contentStyle={{ 
-                  backgroundColor: darkMode ? '#1f2937' : '#ffffff',
-                  border: `1px solid ${darkMode ? '#374151' : '#e5e7eb'}`,
-                  borderRadius: '8px'
-                }}
-              />
-              <Legend />
-              <Bar dataKey="Gelir" fill="#3b82f6" />
-              <Bar dataKey="Maliyet" fill="#ef4444" />
-              <Bar dataKey="Net Kar" fill="#10b981" />
-            </BarChart>
-          </ResponsiveContainer>
-        </div>
+      {categoryPL.length > 0 && (
+        <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 mb-6">
+          {/* Bar Chart */}
+          <div className={`${cardClass} border rounded-xl p-6`}>
+            <h3 className={`text-lg font-bold ${textClass} mb-4`}>Kategori Bazlı Analiz</h3>
+            <ResponsiveContainer width="100%" height={300}>
+              <BarChart data={categoryChartData}>
+                <CartesianGrid strokeDasharray="3 3" stroke={darkMode ? '#374151' : '#e5e7eb'} />
+                <XAxis dataKey="name" stroke={darkMode ? '#9ca3af' : '#6b7280'} />
+                <YAxis stroke={darkMode ? '#9ca3af' : '#6b7280'} />
+                <Tooltip
+                  contentStyle={{
+                    backgroundColor: darkMode ? '#1f2937' : '#ffffff',
+                    border: `1px solid ${darkMode ? '#374151' : '#e5e7eb'}`,
+                    borderRadius: '8px'
+                  }}
+                />
+                <Legend />
+                <Bar dataKey="Gelir" fill="#3b82f6" />
+                <Bar dataKey="Maliyet" fill="#ef4444" />
+                <Bar dataKey="Net Kar" fill="#10b981" />
+              </BarChart>
+            </ResponsiveContainer>
+          </div>
 
-        {/* Pie Chart */}
-        <div className={`${cardClass} border rounded-xl p-6`}>
-          <h3 className={`text-lg font-bold ${textClass} mb-4`}>Gelir Dağılımı</h3>
-          <ResponsiveContainer width="100%" height={300}>
-            <RechartsPieChart>
-              <Pie
-                data={pieChartData}
-                cx="50%"
-                cy="50%"
-                labelLine={false}
-                label={(entry) => `${entry.name}: ${((entry.value / totalRevenue) * 100).toFixed(1)}%`}
-                outerRadius={100}
-                fill="#8884d8"
-                dataKey="value"
-              >
-                {pieChartData.map((entry, index) => (
-                  <Cell key={`cell-${index}`} fill={COLORS[index % COLORS.length]} />
-                ))}
-              </Pie>
-              <Tooltip 
-                contentStyle={{ 
-                  backgroundColor: darkMode ? '#1f2937' : '#ffffff',
-                  border: `1px solid ${darkMode ? '#374151' : '#e5e7eb'}`,
-                  borderRadius: '8px'
-                }}
-              />
-            </RechartsPieChart>
-          </ResponsiveContainer>
+          {/* Pie Chart */}
+          <div className={`${cardClass} border rounded-xl p-6`}>
+            <h3 className={`text-lg font-bold ${textClass} mb-4`}>Gelir Dağılımı</h3>
+            <ResponsiveContainer width="100%" height={300}>
+              <RechartsPieChart>
+                <Pie
+                  data={pieChartData}
+                  cx="50%"
+                  cy="50%"
+                  labelLine={false}
+                  label={(entry) => `${entry.name}: ${((entry.value / Math.max(totalRevenue, 1)) * 100).toFixed(1)}%`}
+                  outerRadius={100}
+                  fill="#8884d8"
+                  dataKey="value"
+                >
+                  {pieChartData.map((entry, index) => (
+                    <Cell key={`cell-${index}`} fill={COLORS[index % COLORS.length]} />
+                  ))}
+                </Pie>
+                <Tooltip
+                  contentStyle={{
+                    backgroundColor: darkMode ? '#1f2937' : '#ffffff',
+                    border: `1px solid ${darkMode ? '#374151' : '#e5e7eb'}`,
+                    borderRadius: '8px'
+                  }}
+                />
+              </RechartsPieChart>
+            </ResponsiveContainer>
+          </div>
         </div>
-      </div>
+      )}
 
       {/* View Toggle */}
       <div className="flex items-center gap-3 mb-4">
@@ -468,7 +574,6 @@ export function ProfitLossReports({ darkMode, onBack }: ProfitLossReportsProps) 
             </div>
 
             <div className="space-y-4">
-              {/* Revenue */}
               <div className={`p-4 rounded-xl ${darkMode ? 'bg-blue-900/20' : 'bg-blue-50'}`}>
                 <div className="text-sm text-gray-500 mb-2">Satış Geliri</div>
                 <div className="flex items-baseline gap-2">
@@ -478,7 +583,6 @@ export function ProfitLossReports({ darkMode, onBack }: ProfitLossReportsProps) 
                 <div className="text-xs text-gray-500 mt-1">{selectedItem.sales_quantity} adet</div>
               </div>
 
-              {/* Cost */}
               <div className={`p-4 rounded-xl ${darkMode ? 'bg-red-900/20' : 'bg-red-50'}`}>
                 <div className="text-sm text-gray-500 mb-2">Toplam Maliyet</div>
                 <div className="flex items-baseline gap-2">
@@ -487,7 +591,6 @@ export function ProfitLossReports({ darkMode, onBack }: ProfitLossReportsProps) 
                 </div>
               </div>
 
-              {/* Gross Profit */}
               <div className={`p-4 rounded-xl ${darkMode ? 'bg-green-900/20' : 'bg-green-50'}`}>
                 <div className="text-sm text-gray-500 mb-2">Brüt Kar</div>
                 <div className="flex items-baseline gap-2">
@@ -496,7 +599,6 @@ export function ProfitLossReports({ darkMode, onBack }: ProfitLossReportsProps) 
                 </div>
               </div>
 
-              {/* Deductions Breakdown */}
               <div className={`p-4 rounded-xl ${darkMode ? 'bg-orange-900/20' : 'bg-orange-50'}`}>
                 <div className="text-sm text-gray-500 mb-3">Kesintiler Detayı</div>
                 <div className="space-y-2">
@@ -519,7 +621,6 @@ export function ProfitLossReports({ darkMode, onBack }: ProfitLossReportsProps) 
                 </div>
               </div>
 
-              {/* Net Profit */}
               <div className={`p-4 rounded-xl ${darkMode ? 'bg-purple-900/20' : 'bg-purple-50'}`}>
                 <div className="text-sm text-gray-500 mb-2">Net Kar</div>
                 <div className="flex items-baseline gap-3">

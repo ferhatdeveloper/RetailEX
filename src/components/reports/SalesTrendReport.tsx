@@ -2,6 +2,7 @@
 import { TrendingUp } from 'lucide-react';
 import type { Sale } from '../../App';
 import { formatNumber } from '../../utils/formatNumber';
+import { isReturnSale } from '../../utils/posZReport';
 import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer } from 'recharts';
 import type { TooltipProps } from 'recharts';
 import { useLanguage } from '../../contexts/LanguageContext';
@@ -35,10 +36,11 @@ export function SalesTrendReport({ sales }: SalesTrendReportProps) {
             return false;
           }
         });
+        const positiveSales = daySales.filter((s) => !isReturnSale(s));
         data.push({
           date: dateStr,
-          sales: daySales.length,
-          revenue: daySales.reduce((sum, s) => sum + (s.total || 0), 0),
+          sales: positiveSales.length,
+          revenue: positiveSales.reduce((sum, s) => sum + (s.total || 0), 0),
           label: date.toLocaleDateString(dateLocale, { weekday: 'short', day: 'numeric' }),
         });
       }
@@ -59,11 +61,12 @@ export function SalesTrendReport({ sales }: SalesTrendReportProps) {
             return false;
           }
         });
-        if (daySales.length > 0 || i % 3 === 0) {
+        const positiveSales = daySales.filter((s) => !isReturnSale(s));
+        if (positiveSales.length > 0 || i % 3 === 0) {
           data.push({
             date: dateStr,
-            sales: daySales.length,
-            revenue: daySales.reduce((sum, s) => sum + s.total, 0),
+            sales: positiveSales.length,
+            revenue: positiveSales.reduce((sum, s) => sum + s.total, 0),
             label: date.toLocaleDateString(dateLocale, { day: 'numeric', month: 'short' }),
           });
         }
@@ -82,10 +85,11 @@ export function SalesTrendReport({ sales }: SalesTrendReportProps) {
             return false;
           }
         });
+        const positiveSales = monthSales.filter((s) => !isReturnSale(s));
         data.push({
           date: monthStart.toISOString().split('T')[0],
-          sales: monthSales.length,
-          revenue: monthSales.reduce((sum, s) => sum + (s.total || 0), 0),
+          sales: positiveSales.length,
+          revenue: positiveSales.reduce((sum, s) => sum + (s.total || 0), 0),
           label: date.toLocaleDateString(dateLocale, { month: 'short', year: 'numeric' }),
         });
       }

@@ -48,19 +48,48 @@ export function ProductProfitabilityReport() {
 
     setLoading(true);
     try {
-      // Get all stock movements for the period
-      const movements = await CostAccountingService.getStockMovements({
-        firma_id: selectedFirma.id ?? String(selectedFirma.logicalref),
-        donem_id: selectedDonem.id ?? String(selectedDonem.logicalref),
-        movement_type: 'OUT' // Only sales
-      });
+      // Maliyet muhasebesi: sadece OUT çıkışları maliyet tüketir (FIFO).
+      // İade/transfer/adjustment ayrı olarak OUT ile birlikte gelmiyor; bu yüzden
+      // ayrı IN çağrısı yaparak iade (purchase return) kayıtlarını gelirden
+      // çıkarmadan önce birleştiriyoruz. Backend service imzasını değiştirmek
+      // mümkün olmadığı için iki ayrı sorgu paralel çalıştırılır.
+      const firmaId = selectedFirma.id ?? String(selectedFirma.logicalref);
+      const donemId = selectedDonem.id ?? String(selectedDonem.logicalref);
+
+      const [outMovements, inMovements] = await Promise.all([
+        CostAccountingService.getStockMovements({
+          firma_id: firmaId,
+          donem_id: donemId,
+          movement_type: 'OUT'
+        }),
+        CostAccountingService.getStockMovements({
+          firma_id: firmaId,
+          donem_id: donemId,
+          movement_type: 'IN'
+        })
+      ]);
+
+      const allMovements = [...outMovements, ...inMovements];
 
       // Aggregate by product
       const productMap = new Map<string, ProductProfitData>();
 
-      movements.forEach(movement => {
+      allMovements.forEach(movement => {
         const key = movement.product_code;
-        
+        if (!key) return;
+
+        const isOut = movement.movement_type === 'OUT';
+        // Satış hasılatı sadece OUT hareketlerinden gelir; IN'ler alış/iade olarak
+        // maliyet tarafında değerlendirilir (iade varsa gelirden düşülmesi gerekir —
+        // backend bunu desteklemediğinden şimdilik IN'leri maliyet tarafında negatif
+        // alarak toplam maliyeti düşürüyoruz; bu yaklaşım "alış iadesi = stoktan düş"
+        // varsayımıyla uyumlu).
+        const signedQty = isOut ? movement.quantity : -movement.quantity;
+        const signedRevenue = isOut ? (movement.total_price || 0) : 0;
+        const signedCost = isOut
+          ? (movement.total_cost || 0)
+          : -(movement.total_cost || 0); // iade alışı: stok maliyetini düşürür
+
         if (!productMap.has(key)) {
           productMap.set(key, {
             productCode: movement.product_code,
@@ -76,25 +105,27 @@ export function ProductProfitabilityReport() {
         }
 
         const product = productMap.get(key)!;
-        product.totalQuantitySold += movement.quantity;
-        product.totalRevenue += movement.total_price || 0;
-        product.totalCost += movement.total_cost || 0;
+        product.totalQuantitySold += signedQty;
+        product.totalRevenue += signedRevenue;
+        product.totalCost += signedCost;
       });
 
       // Calculate metrics
       const results: ProductProfitData[] = [];
       productMap.forEach(product => {
         product.grossProfit = product.totalRevenue - product.totalCost;
-        product.profitMargin = product.totalRevenue > 0 
-          ? (product.grossProfit / product.totalRevenue) * 100 
+        // Negatif ciro olmaması gerekir; koruma amaçlı mutlak değer kullanmıyoruz.
+        product.profitMargin = product.totalRevenue > 0
+          ? (product.grossProfit / product.totalRevenue) * 100
           : 0;
-        product.avgUnitPrice = product.totalQuantitySold > 0
-          ? product.totalRevenue / product.totalQuantitySold
+        const qtyAbs = Math.abs(product.totalQuantitySold);
+        product.avgUnitPrice = qtyAbs > 0
+          ? product.totalRevenue / qtyAbs
           : 0;
-        product.avgUnitCost = product.totalQuantitySold > 0
-          ? product.totalCost / product.totalQuantitySold
+        product.avgUnitCost = qtyAbs > 0
+          ? product.totalCost / qtyAbs
           : 0;
-        
+
         results.push(product);
       });
 
@@ -150,19 +181,20 @@ export function ProductProfitabilityReport() {
   };
 
   const exportToExcel = () => {
-    // Simple CSV export
-    let csv = 'Ürün Kodu,Ürün Adı,Miktar,Satış Tutarı,Maliyet,Brüt Kar,Kar Marjı %\n';
+    // Simple CSV export (KDV hariç — bölge: IRAK, KDV uygulanmaz).
+    // Başlıkta bu açıkça belirtilir; işaret korunur (Math.abs YOK).
+    let csv = 'Ürün Kodu,Ürün Adı,Miktar,Satış Tutarı (KDV Hariç IQD),Maliyet (KDV Hariç IQD),Brüt Kar (KDV Hariç IQD),Kar Marjı %\n';
     filteredData.forEach(p => {
       csv += `${p.productCode},${p.productName},${p.totalQuantitySold},${p.totalRevenue},${p.totalCost},${p.grossProfit},${p.profitMargin.toFixed(2)}\n`;
     });
-    
+
     const blob = new Blob([csv], { type: 'text/csv' });
     const url = window.URL.createObjectURL(blob);
     const a = document.createElement('a');
     a.href = url;
     a.download = `product-profitability-${selectedDonem?.donem_adi ?? selectedDonem?.name ?? 'donem'}.csv`;
     a.click();
-    
+
     toast.success('Rapor Excel\'e aktarıldı!');
   };
 
@@ -290,7 +322,7 @@ export function ProductProfitabilityReport() {
           <div className={`text-2xl font-bold ${
             summary.totalProfit >= 0 ? 'text-emerald-900' : 'text-red-900'
           }`}>
-            {formatMoney(Math.abs(summary.totalProfit))} IQD
+            {summary.totalProfit < 0 ? '-' : ''}{formatMoney(Math.abs(summary.totalProfit))} IQD
           </div>
           <div className={`text-xs mt-1 ${
             summary.totalProfit >= 0 ? 'text-emerald-600' : 'text-red-600'
@@ -362,7 +394,7 @@ export function ProductProfitabilityReport() {
                           ) : (
                             <TrendingDown className="w-4 h-4" />
                           )}
-                          {formatMoney(Math.abs(product.grossProfit))} IQD
+                          {product.grossProfit < 0 ? '-' : ''}{formatMoney(Math.abs(product.grossProfit))} IQD
                         </div>
                       </td>
                       <td className={`px-4 py-3 text-right font-bold ${
@@ -386,7 +418,7 @@ export function ProductProfitabilityReport() {
                   <td className={`px-4 py-3 text-right font-bold ${
                     summary.totalProfit >= 0 ? 'text-green-700' : 'text-red-700'
                   }`}>
-                    {formatMoney(Math.abs(summary.totalProfit))} IQD
+                    {summary.totalProfit < 0 ? '-' : ''}{formatMoney(Math.abs(summary.totalProfit))} IQD
                   </td>
                   <td className={`px-4 py-3 text-right font-bold ${
                     summary.totalProfit >= 0 ? 'text-green-700' : 'text-red-700'

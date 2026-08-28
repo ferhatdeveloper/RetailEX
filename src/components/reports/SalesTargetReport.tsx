@@ -2,6 +2,7 @@
 import { Target, CheckCircle, XCircle } from 'lucide-react';
 import type { Sale } from '../../App';
 import { formatNumber } from '../../utils/formatNumber';
+import { isReturnSale } from '../../utils/posZReport';
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer, Cell } from 'recharts';
 import { useLanguage } from '../../contexts/LanguageContext';
 
@@ -36,7 +37,12 @@ export function SalesTargetReport({ sales }: SalesTargetReportProps) {
         return saleDate >= monthStart && saleDate <= monthEnd;
       });
 
-      const actual = monthSales.reduce((sum, s) => sum + s.total, 0);
+      // B1: Aylık gerçekleşme = brüt − iade (net ciro)
+      const positiveSales = monthSales.filter((s) => !isReturnSale(s));
+      const returnSales = monthSales.filter(isReturnSale);
+      const grossActual = positiveSales.reduce((sum, s) => sum + s.total, 0);
+      const returnActual = returnSales.reduce((sum, s) => sum + Math.abs(Number(s.total) || 0), 0);
+      const actual = grossActual - returnActual;
       const target = targetAmount;
       const difference = actual - target;
       const percentage = target > 0 ? (actual / target) * 100 : 0;
