@@ -6686,6 +6686,8 @@ export const excelModuleTranslations = {
   rptPeriodColCard: { tr: 'Kart', en: 'Card', ar: 'بطاقة', ku: 'کارت' },
   rptPeriodColDiscount: { tr: 'İndirim', en: 'Discount', ar: 'خصم', ku: 'داشکاندن' },
   rptPeriodColExpenses: { tr: 'Masraflar', en: 'Expenses', ar: 'المصروفات', ku: 'خەرجییەکان' },
+  rptPeriodColReturns: { tr: 'İade', en: 'Returns', ar: 'مرتجعات', ku: 'گەڕانەوەکان' },
+  rptPeriodColReturnsCount: { tr: 'iade adedi', en: 'return count', ar: 'عدد المرتجعات', ku: 'ژمارەی گەڕانەوە' },
   rptPeriodColNet: { tr: 'Net Kalan', en: 'Net balance', ar: 'الصافي المتبقي', ku: 'ماوەی خالص' },
   rptPeriodTotalRevenue: { tr: 'Toplam Ciro', en: 'Total revenue', ar: 'إجمالي الإيرادات', ku: 'کۆی داهات' },
   rptPeriodTotalExpenses: { tr: 'Toplam Masraf', en: 'Total expenses', ar: 'إجمالي المصروفات', ku: 'کۆی خەرجی' },

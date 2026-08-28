@@ -3206,7 +3206,13 @@ export const invoicesAPI = {
  */
 function normalizeSalesHeaderNetAmount(dbInv: any, category: Invoice['invoice_category']): number {
   const rawNet = parseFloat(dbInv.net_amount || 0);
+  const totalGross = parseFloat(dbInv.total_gross || 0);
   if (category !== 'Satis') return rawNet;
+
+  // Muhasebe açısından ciro = brüt tutar (total_gross). net_amount eski/eksik alanlar için
+  // INSERT sırasında hesaplanmamış olabilir (örn. eski verilerde net_amount = 0). Bu durumda
+  // total_gross'a geri düş — brüt gelir ciro için doğru kaynak.
+  if (!(rawNet > 0) && totalGross > 0) return totalGross;
 
   const totalNet = parseFloat(dbInv.total_net || 0);
   const totalDisc = parseFloat(dbInv.total_discount || 0);
@@ -3274,7 +3280,7 @@ function mapDatabaseInvoiceToInvoice(dbInv: any): Invoice {
     supplier_id: dbInv.customer_id,
     supplier_name: category === 'Alis' ? partnerNameAlis : (joinSup || dbInv.supplier_name || ''),
     trcode: inferredType || undefined,
-    subtotal: parseFloat(dbInv.total_net || 0),
+    subtotal: parseFloat(dbInv.total_net || 0) || parseFloat(dbInv.total_gross || 0),
     tax: parseFloat(dbInv.total_vat || 0),
     discount: parseFloat(dbInv.total_discount || 0),
     total_amount: netAmount,

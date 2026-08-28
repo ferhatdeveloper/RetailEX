@@ -7,6 +7,7 @@ import { expenseAPI } from '../../services/api/expenses';
 import { salesAPI } from '../../services/api/sales';
 import { invoicesAPI } from '../../services/api/invoices';
 import { supplierAPI } from '../../services/api/suppliers';
+import { normalizePaymentMethodBucket } from '../../utils/paymentMethodUtils';
 import type { Sale } from '../../App';
 import type { Invoice, Supplier } from '../../core/types/models';
 import { localCalendarDateKey, localTodayDateKey, formatIsoDateTr, toSqlDateInputString } from '../../utils/localCalendarDate';
@@ -38,6 +39,8 @@ interface PeriodSummaryRow {
   cash: number;
   card: number;
   discount: number;
+  returnsCount: number;
+  returnsAmount: number;
   expenses: number;
   purchases: number;
   netRemaining: number;
@@ -94,23 +97,46 @@ function expenseDayKey(raw: string | undefined | null): string {
 }
 
 function aggregateSales(sales: Sale[], bucketKey: (s: Sale) => string) {
-  const map = new Map<string, { saleCount: number; revenue: number; cash: number; card: number; discount: number }>();
+  const map = new Map<string, {
+    saleCount: number; revenue: number; cash: number; card: number; discount: number;
+    returnsCount: number; returnsAmount: number;
+  }>();
   for (const s of sales) {
-    if (isRemovedSaleStatus(s.status)) continue;
+    // Tamamen iptal (cancelled) — cirodan düşürülür, izi kalmaz (muhasebe tamamen yok sayar)
+    const st = String(s.status ?? '').toLowerCase();
+    if (st === 'cancelled' || st === 'canceled' || st === 'silindi' || st === 'iptal') continue;
     // Muhasebe açılış bakiyeleri (devir) ciroya dahil edilmez; ayrı muhasebe kalemidir.
     const ft = String((s as any).fiche_type ?? '');
     if (ft === 'opening_balance') continue;
     const key = bucketKey(s);
     if (!key) continue;
-    const row = map.get(key) || { saleCount: 0, revenue: 0, cash: 0, card: 0, discount: 0 };
+    const row = map.get(key) || {
+      saleCount: 0, revenue: 0, cash: 0, card: 0, discount: 0,
+      returnsCount: 0, returnsAmount: 0,
+    };
     const total = Number(s.total) || 0;
-    row.saleCount += 1;
-    row.revenue += total;
-    row.discount += Number(s.discount) || 0;
-    const pm = String(s.paymentMethod ?? '');
-    // Veresiye de cironun parçasıdır; nakit akıştan ayrı izlense de brüt gelire dahil edilir.
-    if (pm === 'cash' || pm === 'Veresiye') row.cash += total;
-    else if (pm === 'card' || pm === 'gateway') row.card += total;
+    const isReturn = st === 'refunded';
+    if (isReturn) {
+      // İade/refund: cirodan düş, ayrı sayaç — muhasebe brüt gelir = net satış − iade
+      row.returnsCount += 1;
+      row.returnsAmount += Math.abs(total);
+      row.revenue -= Math.abs(total);
+    } else {
+      row.saleCount += 1;
+      row.revenue += total;
+      row.discount += Number(s.discount) || 0;
+    }
+    // payment_method bucket'ını normalize et: DB'de 'cash', 'Nakit', 'nakit' gibi varyantlar olabilir;
+    // 'Veresiye' ise normalizePaymentMethodBucket tarafından 'credit' bucket'ına dönüşür.
+    // Cash sütunu = peşin tahsil edilen (nakit + kart + havale); 'credit' (veresiye) ayrı izlenir.
+    const pmBucket = normalizePaymentMethodBucket((s as any).payment_method ?? s.paymentMethod);
+    if (pmBucket === 'cash' || pmBucket === 'card' || pmBucket === 'transfer') {
+      // Peşin tahsilat — cash sütununa brüt tutarı yaz (muhasebe brüt gelir görünümü)
+      row.cash += Math.abs(total);
+    } else if (pmBucket === 'credit') {
+      // Veresiye — cironun parçası (revenue'ya zaten eklendi) ama nakit akışa değil;
+      // burada ayrı bucket'a koymak yerine revenue ile bırakıyoruz (PeriodSummaryReport'ta ayrı kolon yok).
+    }
     map.set(key, row);
   }
   return map;
@@ -304,7 +330,10 @@ export function PeriodSummaryReport({ mode, currency }: PeriodSummaryReportProps
     const locale = tm('localeCode') || 'tr-TR';
 
     return periodKeys.map((periodKey) => {
-      const sale = saleMap.get(periodKey) || { saleCount: 0, revenue: 0, cash: 0, card: 0, discount: 0 };
+      const sale = saleMap.get(periodKey) || {
+        saleCount: 0, revenue: 0, cash: 0, card: 0, discount: 0,
+        returnsCount: 0, returnsAmount: 0,
+      };
       const exp = expenseMap.get(periodKey) || 0;
       const purch = purchaseMap.get(periodKey) || 0;
       const periodLabel =
@@ -328,6 +357,8 @@ export function PeriodSummaryReport({ mode, currency }: PeriodSummaryReportProps
         cash: sale.cash,
         card: sale.card,
         discount: sale.discount,
+        returnsCount: sale.returnsCount,
+        returnsAmount: sale.returnsAmount,
         expenses: exp,
         purchases: purch,
         netRemaining,
@@ -345,11 +376,17 @@ export function PeriodSummaryReport({ mode, currency }: PeriodSummaryReportProps
         cash: acc.cash + r.cash,
         card: acc.card + r.card,
         discount: acc.discount + r.discount,
+        returnsCount: acc.returnsCount + r.returnsCount,
+        returnsAmount: acc.returnsAmount + r.returnsAmount,
         expenses: acc.expenses + r.expenses,
         purchases: acc.purchases + r.purchases,
         netRemaining: acc.netRemaining + r.netRemaining,
       }),
-      { saleCount: 0, revenue: 0, cash: 0, card: 0, discount: 0, expenses: 0, purchases: 0, netRemaining: 0 }
+      {
+        saleCount: 0, revenue: 0, cash: 0, card: 0, discount: 0,
+        returnsCount: 0, returnsAmount: 0,
+        expenses: 0, purchases: 0, netRemaining: 0,
+      }
     );
     const shareList = splitAmountByPartners(base.netRemaining, partnerSlices);
     const partnerShares: Record<string, number> = {};
@@ -424,6 +461,22 @@ export function PeriodSummaryReport({ mode, currency }: PeriodSummaryReportProps
         key: 'discount',
         align: 'right',
         render: (v: number) => (v > 0 ? money(v) : '—'),
+      },
+      {
+        title: `${tm('rptPeriodColReturns') || 'İade'} (${currency})`,
+        dataIndex: 'returnsAmount',
+        key: 'returnsAmount',
+        align: 'right',
+        render: (v: number, row) => {
+          if (!hasPeriodActivity(row)) return '—';
+          return v > 0 ? (
+            <span className="text-orange-600" title={`${row.returnsCount} ${tm('rptPeriodColReturnsCount') || 'iade adedi'}`}>
+              {money(v)}
+            </span>
+          ) : (
+            '—'
+          );
+        },
       },
       {
         title: `${tm('rptPeriodColExpenses')} (${currency})`,
@@ -717,25 +770,30 @@ export function PeriodSummaryReport({ mode, currency }: PeriodSummaryReportProps
               <Table.Summary fixed>
                 <Table.Summary.Row className="bg-slate-50 font-semibold">
                   <Table.Summary.Cell index={0}>{tm('rptPeriodTotalRow')}</Table.Summary.Cell>
-                  <Table.Summary.Cell align="right">{totals.saleCount}</Table.Summary.Cell>
-                  <Table.Summary.Cell align="right">{money(totals.revenue)}</Table.Summary.Cell>
-                  <Table.Summary.Cell align="right">{money(totals.cash)}</Table.Summary.Cell>
-                  <Table.Summary.Cell align="right">{money(totals.card)}</Table.Summary.Cell>
-                  <Table.Summary.Cell align="right">{money(totals.discount)}</Table.Summary.Cell>
-                  <Table.Summary.Cell align="right">
+                  <Table.Summary.Cell index={1} align="right">{totals.saleCount}</Table.Summary.Cell>
+                  <Table.Summary.Cell index={2} align="right">{money(totals.revenue)}</Table.Summary.Cell>
+                  <Table.Summary.Cell index={3} align="right">{money(totals.cash)}</Table.Summary.Cell>
+                  <Table.Summary.Cell index={4} align="right">{money(totals.card)}</Table.Summary.Cell>
+                  <Table.Summary.Cell index={5} align="right">{money(totals.discount)}</Table.Summary.Cell>
+                  <Table.Summary.Cell index={6} align="right">
+                    <span className="text-orange-600" title={`${totals.returnsCount} ${tm('rptPeriodColReturnsCount') || 'iade adedi'}`}>
+                      {totals.returnsAmount > 0 ? money(totals.returnsAmount) : '—'}
+                    </span>
+                  </Table.Summary.Cell>
+                  <Table.Summary.Cell index={7} align="right">
                     <span className="text-red-600">{money(totals.expenses)}</span>
                   </Table.Summary.Cell>
-                  <Table.Summary.Cell align="right">
+                  <Table.Summary.Cell index={8} align="right">
                     <span className="text-amber-700">{money(totals.purchases)}</span>
                   </Table.Summary.Cell>
-                  <Table.Summary.Cell align="right">
+                  <Table.Summary.Cell index={9} align="right">
                     <span className={totals.netRemaining >= 0 ? 'text-emerald-700' : 'text-red-600'}>
                       {money(totals.netRemaining)}
                     </span>
                   </Table.Summary.Cell>
                   {showPartnerCols
                     ? partnerSlices.map((p, idx) => (
-                        <Table.Summary.Cell key={p.id} align="right">
+                        <Table.Summary.Cell key={p.id} index={10 + idx} align="right">
                           <div className="leading-tight">
                             <span className={partnerColColors[idx % partnerColColors.length]}>
                               {money(totals.partnerShares[p.id] ?? 0)}
