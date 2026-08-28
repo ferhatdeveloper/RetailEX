@@ -1489,9 +1489,6 @@ export const erpReportsAPI = {
       const { postgrest } = await import('./postgrestClient');
       const fn = padFirm();
       const pn = padPeriod();
-      const ledgerCardType = isCustomer ? 'customer' : 'supplier';
-
-      // 1) account_movements (eski)
       const movements = await postgrest
         .get<Record<string, unknown>[]>(
           `/rex_${fn}_${pn}_account_movements`,
@@ -1504,71 +1501,12 @@ export const erpReportsAPI = {
         )
         .catch(() => [] as Record<string, unknown>[]);
 
-      // 2) party_ledger_movements (yeni — CH_ODEME/CH_TAHSILAT dahil)
-      const ledgerMovs = await postgrest
-        .get<Record<string, unknown>[]>(
-          `/rex_${fn}_${pn}_party_ledger_movements`,
-          {
-            select: 'id,fiche_no,date,amount,sign,definition,transaction_type,cash_line_id,party_id,card_type',
-            card_type: `eq.${ledgerCardType}`,
-            party_id: `eq.${accountId}`,
-            order: 'date.asc',
-            limit: String(ROW_LIMIT),
-          },
-          { schema: 'public' },
-        )
-        .catch(() => [] as Record<string, unknown>[]);
-
-      // 3) cash_lines (CH_ODEME / CH_TAHSILAT — yedek)
-      const cashIdCol = isCustomer ? 'customer_id' : 'party_id';
-      const cashLines = await postgrest
-        .get<Record<string, unknown>[]>(
-          `/rex_${fn}_${pn}_cash_lines`,
-          {
-            select: 'id,fiche_no,date,amount,sign,definition,transaction_type,customer_id,party_id',
-            transaction_type: 'in.(CH_ODEME,CH_TAHSILAT)',
-            order: 'date.asc',
-            limit: String(ROW_LIMIT),
-          },
-          { schema: 'public' },
-        )
-        .catch(() => [] as Record<string, unknown>[]);
-
-      // Tümünü birleştir + dedupe
-      const allMovs: Array<Record<string, unknown> & { _src: string }> = [];
-      (movements || []).forEach((m) => {
+      const filtered = (movements || []).filter((m) => {
         const d = String(m.date || '').slice(0, 10);
-        if (d < start || d > end) return;
+        if (d < start || d > end) return false;
         const id = isCustomer ? String(m.customer_id || '') : String(m.supplier_id || m.customer_id || '');
-        if (id !== accountId) return;
-        allMovs.push({ ...m, _src: 'account_movements' });
+        return id === accountId;
       });
-      (ledgerMovs || []).forEach((m) => {
-        const d = String(m.date || '').slice(0, 10);
-        if (d < start || d > end) return;
-        const tt = String(m.transaction_type || '');
-        if (tt.startsWith('CANCELLED_')) return;
-        allMovs.push({ ...m, _src: 'party_ledger' });
-      });
-      (cashLines || []).forEach((m) => {
-        const d = String(m.date || '').slice(0, 10);
-        if (d < start || d > end) return;
-        const tt = String(m.transaction_type || '');
-        if (tt.startsWith('CANCELLED_')) return;
-        const id = String(m[cashIdCol] || '');
-        if (id !== accountId) return;
-        allMovs.push({ ...m, _src: 'cash_lines' });
-      });
-
-      // Deduplicate: tarih + fiche_no + amount + sign
-      const seen = new Map<string, Record<string, unknown> & { _src: string }>();
-      const prio = (src: string) => ({ party_ledger: 2, account_movements: 1, cash_lines: 0 } as Record<string, number>)[src] || 0;
-      for (const m of allMovs) {
-        const key = `${String(m.date).slice(0,10)}|${String(m.fiche_no || '')}|${Number(m.amount || 0)}|${Number(m.sign || 1)}`;
-        const cur = seen.get(key);
-        if (!cur || prio(m._src) > prio(cur._src)) seen.set(key, m);
-      }
-      const filtered = Array.from(seen.values());
 
       if (filtered.length) {
         return mapRunning(
@@ -1576,7 +1514,7 @@ export const erpReportsAPI = {
             id: String(m.id ?? `${m.fiche_no}-${m.date}`),
             date: String(m.date || '').slice(0, 10),
             ficheNo: String(m.fiche_no ?? ''),
-            definition: String(m.definition ?? m.transaction_type ?? ''),
+            definition: String(m.definition ?? ''),
             amount: Number(m.amount ?? 0),
             sign: Number(m.sign ?? 1) || 1,
             source: 'movement' as const,
@@ -1632,108 +1570,28 @@ export const erpReportsAPI = {
     }
 
     const idCol = isCustomer ? 'customer_id' : 'supplier_id';
-    // party_ledger_movements'ta aramak için card_type değeri (müşteri/tedarikçi)
-    const ledgerCardType = isCustomer ? 'customer' : 'supplier';
-    // Cash_lines tarafında aranacak kolon: customer_id veya party_id (tedarikçi için party_id)
-    const cashIdCol = isCustomer ? 'customer_id' : 'party_id';
     let rows: any[] = [];
     try {
-      // UNION: account_movements (eski) + party_ledger_movements (yeni) + cash_lines (CH_ODEME/CH_TAHSILAT)
-      // Mükerrer kayıt önlemek için DISTINCT yerine tarih+fiche_no+tutar+sign kombinasyonuna güveniyoruz.
-      // cash_line_id eşleşmesi varsa party_ledger_movements tercih edilir (daha zengin bilgi içerir).
       const res = await postgres.query(
         `
-        SELECT * FROM (
-          -- 1) Eski account_movements tablosu
-          SELECT
-            am.id::text AS id,
-            (am.date AT TIME ZONE 'UTC')::date::text AS date,
-            COALESCE(am.fiche_no, '') AS fiche_no,
-            COALESCE(am.definition, '') AS definition,
-            ABS(COALESCE(am.amount, 0)) AS amount,
-            COALESCE(am.sign, 1) AS sign,
-            'movement'::text AS source,
-            COALESCE(am.created_at, am.date) AS created_at,
-            NULL::uuid AS cash_line_id
-          FROM account_movements am
-          WHERE am.${idCol}::text = $1
-            AND (am.date AT TIME ZONE 'UTC')::date >= $2::date
-            AND (am.date AT TIME ZONE 'UTC')::date <= $3::date
-
-          UNION ALL
-
-          -- 2) Yeni party_ledger_movements (CH_ODEME / CH_TAHSILAT düzeltmeleri dahil)
-          SELECT
-            pl.id::text AS id,
-            (pl.date AT TIME ZONE 'UTC')::date::text AS date,
-            COALESCE(cl_ref.fiche_no, '') AS fiche_no,
-            COALESCE(pl.definition, pl.transaction_type, '') AS definition,
-            ABS(COALESCE(pl.amount, 0)) AS amount,
-            COALESCE(pl.sign, 1) AS sign,
-            'movement'::text AS source,
-            COALESCE(pl.created_at, pl.date) AS created_at,
-            pl.cash_line_id AS cash_line_id
-          FROM party_ledger_movements pl
-          LEFT JOIN cash_lines cl_ref ON cl_ref.id = pl.cash_line_id
-          WHERE pl.card_type = $4
-            AND pl.party_id::text = $1
-            AND pl.transaction_type NOT LIKE 'CANCELLED_%'
-            AND (pl.date AT TIME ZONE 'UTC')::date >= $2::date
-            AND (pl.date AT TIME ZONE 'UTC')::date <= $3::date
-            -- Eğer cash_line_id varsa ve account_movements ile çakışabilecekse (aynı fiche_no + tutar + tarih)
-            -- parti_ledger_movements zaten daha zengin olduğu için onu kullanıyoruz (UNION ALL ile ikisi de gelir).
-            -- Front-end tekrar edenleri göstermesin diye sonradan deduplicate edeceğiz.
-
-          UNION ALL
-
-          -- 3) cash_lines (CH_ODEME / CH_TAHSILAT) — account_movements ve party_ledger_movements'a yazılmamış eski hareketler için yedek
-          SELECT
-            cl.id::text AS id,
-            (cl.date AT TIME ZONE 'UTC')::date::text AS date,
-            COALESCE(cl.fiche_no, '') AS fiche_no,
-            COALESCE(cl.definition, cl.transaction_type, '') AS definition,
-            ABS(COALESCE(cl.amount, 0)) AS amount,
-            COALESCE(cl.sign, 1) AS sign,
-            'movement'::text AS source,
-            COALESCE(cl.created_at, cl.date) AS created_at,
-            cl.id AS cash_line_id
-          FROM cash_lines cl
-          WHERE cl.${cashIdCol}::text = $1
-            AND cl.transaction_type IN ('CH_ODEME', 'CH_TAHSILAT')
-            AND cl.transaction_type NOT LIKE 'CANCELLED_%'
-            AND (cl.date AT TIME ZONE 'UTC')::date >= $2::date
-            AND (cl.date AT TIME ZONE 'UTC')::date <= $3::date
-        ) combined
-        ORDER BY combined.date ASC, combined.created_at ASC NULLS LAST
+        SELECT
+          am.id::text AS id,
+          (am.date AT TIME ZONE 'UTC')::date::text AS date,
+          COALESCE(am.fiche_no, '') AS fiche_no,
+          COALESCE(am.definition, '') AS definition,
+          ABS(COALESCE(am.amount, 0)) AS amount,
+          COALESCE(am.sign, 1) AS sign,
+          'movement'::text AS source
+        FROM account_movements am
+        WHERE am.${idCol}::text = $1
+          AND (am.date AT TIME ZONE 'UTC')::date >= $2::date
+          AND (am.date AT TIME ZONE 'UTC')::date <= $3::date
+        ORDER BY am.date ASC, am.created_at ASC NULLS LAST
         LIMIT ${ROW_LIMIT}
         `,
-        [accountId, start, end, ledgerCardType],
+        [accountId, start, end],
       );
-      const rawRows = res.rows || [];
-
-      // Deduplicate: aynı tarih + fiche_no + amount + sign varsa önce party_ledger_movements tercih edilir,
-      // sonra account_movements, sonra cash_lines. Source önceliği: ledger > account > cash_lines.
-      const priority = (source: string, hasCashLineId: boolean) => {
-        if (source === 'movement' && hasCashLineId) return 2; // party_ledger
-        if (source === 'movement') return 1; // account_movements
-        return 0;
-      };
-      const seen = new Map<string, any>();
-      for (const r of rawRows) {
-        const key = `${String(r.date).slice(0,10)}|${String(r.fiche_no)}|${Number(r.amount)}|${Number(r.sign)}`;
-        const cur = seen.get(key);
-        const curPrio = cur ? priority(cur.source, !!cur.cash_line_id) : -1;
-        const newPrio = priority(r.source, !!r.cash_line_id);
-        if (newPrio > curPrio) seen.set(key, r);
-      }
-      rows = Array.from(seen.values()).sort((a, b) => {
-        const ad = String(a.date).slice(0, 10);
-        const bd = String(b.date).slice(0, 10);
-        if (ad !== bd) return ad < bd ? -1 : 1;
-        const at = a.created_at ? new Date(a.created_at).getTime() : 0;
-        const bt = b.created_at ? new Date(b.created_at).getTime() : 0;
-        return at - bt;
-      });
+      rows = res.rows || [];
     } catch {
       rows = [];
     }
