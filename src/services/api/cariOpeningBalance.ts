@@ -16,12 +16,25 @@ export type CariDevirLineInput = {
   cardType: 'customer' | 'supplier';
   accountCode?: string;
   accountName?: string;
-  /** Mutlak devir tutarı (0'dan büyük) */
+  /** Mutlak devir tutarı (0'dan büyük) — kullanıcının girdiği para biriminde */
   amount: number;
   direction: CariDevirDirection;
   lineNotes?: string;
   /** Var olan devir fişi — güncelleme modu */
   existingDevirId?: string;
+  /**
+   * Devir tutarının para birimi. Boşsa `ana_para_birimi` (ledger currency) kullanılır.
+   * Geçmişe kayıt: Bu alan INSERT sonrası değiştirilmez, ekstre/mizan sorgularında
+   * `currency_rate` ile birlikte kalıcı olarak okunur.
+   */
+  currency?: string;
+  /**
+   * Kullanıcının girdiği `currency` → `ledgerCurrency` çevrim kuru.
+   * Ledger = ledgerCurrency ise 1; aksi halde kullanıcının girdiği tarihsel kur.
+   * Geçmişe kayıt: İlk INSERT anındaki değer korunur; güncelleme yapılırsa
+   * manuel `updateCariDevirRecord` ile kullanıcı onayıyla değişir.
+   */
+  currencyRate?: number;
 };
 
 export type CariDevirBatchInput = {
@@ -29,6 +42,11 @@ export type CariDevirBatchInput = {
   batchNotes?: string;
   replaceExisting?: boolean;
   lines: CariDevirLineInput[];
+  /**
+   * Ledger (sistem) para birimi. Satır başında boş `currency` olanlar için
+   * bu değer kullanılır; kur dönüşümü `currencyRate` üzerinden yapılır.
+   */
+  ledgerCurrency?: string;
 };
 
 export type CariDevirBatchResult = {
@@ -47,6 +65,10 @@ export type CariDevirRecord = {
   customer_name: string;
   net_amount: number;
   notes?: string;
+  /** INSERT anındaki para birimi (geçmişe kayıt için kalıcı) */
+  currency?: string;
+  /** INSERT anındaki kur — ledger (sistem) para birimine çevrim oranı (geçmişe kayıt) */
+  currency_rate?: number;
 };
 
 export function devirDirectionFromNet(net: number): CariDevirDirection {
@@ -55,6 +77,38 @@ export function devirDirectionFromNet(net: number): CariDevirDirection {
 
 export function devirAmountFromNet(net: number): number {
   return Math.abs(Number(net) || 0);
+}
+
+/** Para birimi kodunu normalize et — boş/null/çok uzun değerleri ele. */
+function normalizeCurrencyCode(raw: unknown, fallback = 'IQD'): string {
+  const s = String(raw ?? '').trim().toUpperCase().slice(0, 10);
+  return s || fallback;
+}
+
+/**
+ * Devir fişinin **ledger (sistem) para birimi karşılığını** hesapla.
+ *
+ * - Tutar kullanıcının girdiği `currency` para biriminde.
+ * - Ledger = ledgerCurrency ise: `effectiveLedger` = amount (kur anlamsız, 1).
+ * - Aksi halde: `effectiveLedger` = amount × currency_rate.
+ *
+ * Geçmişe kayıt: Bu fonksiyon yalnızca INSERT öncesi hesaplama için kullanılır;
+ * ekstre/mizan sorguları `currency_rate` kolonundaki kalıcı değeri kullanır.
+ */
+export function cariDevirLedgerEquivalent(
+  amount: number,
+  currency: string,
+  currencyRate: number,
+  ledgerCurrency: string,
+): number {
+  const abs = Math.abs(Number(amount) || 0);
+  const cur = normalizeCurrencyCode(currency, ledgerCurrency);
+  const ledger = normalizeCurrencyCode(ledgerCurrency, 'IQD');
+  const rate = Number(currencyRate);
+  if (!abs) return 0;
+  if (cur === ledger) return abs;
+  if (!Number.isFinite(rate) || rate <= 0) return abs;
+  return abs * rate;
 }
 
 function salesTablePath(firmNr: string, periodNr: string): string {
@@ -94,7 +148,7 @@ async function generateDevirFicheNo(
         select: 'fiche_no',
         fiche_no: `like.${like}`,
         order: 'fiche_no.desc',
-        limit: '1',
+        limit: 1,
       },
       { schema: 'public' },
     ).catch(() => [] as any[]);
@@ -159,11 +213,26 @@ async function insertOpeningRow(
   ficheNo: string,
   dateIso: string,
   batchNotes?: string,
+  ledgerCurrency?: string,
 ): Promise<string> {
   const net = signedNetAmount(line.amount, line.direction, line.cardType);
   const notes = [batchNotes, line.lineNotes, 'Cari devir fişi — eski program açılış bakiyesi']
     .filter(Boolean)
     .join(' | ');
+
+  const ledger = normalizeCurrencyCode(ledgerCurrency, 'IQD');
+  const cur = normalizeCurrencyCode(line.currency, ledger);
+  const rateNum = Number(line.currencyRate);
+  /**
+   * Muhasebe denetimi: net_amount (ledger/sistem para biriminde) tutulur.
+   * Kullanıcı yabancı döviz girdiyse ledger karşılığı = amount × rate.
+   * Aksi halde net_amount = amount (kur anlamsız).
+   */
+  const ledgerEquivalent =
+    cur === ledger ? Math.abs(line.amount) : Number.isFinite(rateNum) && rateNum > 0
+      ? Math.abs(line.amount) * rateNum
+      : Math.abs(line.amount);
+  const finalRate = cur === ledger ? 1 : Number.isFinite(rateNum) && rateNum > 0 ? rateNum : 1;
 
   const payload = {
     firm_nr: String(firmNr),
@@ -175,16 +244,16 @@ async function insertOpeningRow(
     trcode: CARI_OPENING_TRCODE,
     customer_id: line.accountId,
     customer_name: line.accountName || '',
-    total_net: Math.abs(net),
+    total_net: ledgerEquivalent,
     total_vat: 0,
-    total_gross: Math.abs(net),
+    total_gross: ledgerEquivalent,
     total_discount: 0,
-    net_amount: net,
+    net_amount: net < 0 ? -ledgerEquivalent : ledgerEquivalent,
     total_cost: 0,
     gross_profit: 0,
     profit_margin: 0,
-    currency: 'IQD',
-    currency_rate: 1,
+    currency: cur,
+    currency_rate: finalRate,
     status: 'completed',
     payment_method: 'devir',
     is_cancelled: false,
@@ -211,8 +280,8 @@ async function insertOpeningRow(
     ) VALUES (
       $1, $2, $3, $4, $5::timestamptz, $6, $7,
       $8::uuid, $9, $10, 0, $10, 0,
-      $11, 0, 0, 0, 'IQD', 1,
-      'completed', 'devir', false, 0, $12
+      $11, 0, 0, 0, $12, $13,
+      'completed', 'devir', false, 0, $14
     ) RETURNING id`,
     [
       String(firmNr),
@@ -224,8 +293,10 @@ async function insertOpeningRow(
       CARI_OPENING_TRCODE,
       line.accountId,
       line.accountName || '',
-      Math.abs(net),
-      net,
+      ledgerEquivalent,
+      net < 0 ? -ledgerEquivalent : ledgerEquivalent,
+      cur,
+      finalRate,
       notes,
     ],
     { firmNr, periodNr },
@@ -243,11 +314,11 @@ export async function listCariDevirRecords(): Promise<CariDevirRecord[]> {
     const rows = await postgrest.get<any[]>(
       salesTablePath(firmNr, periodNr),
       {
-        select: 'id,fiche_no,date,customer_id,customer_name,net_amount,notes',
+        select: 'id,fiche_no,date,customer_id,customer_name,net_amount,notes,currency,currency_rate',
         fiche_type: `eq.${CARI_OPENING_FICHE_TYPE}`,
         is_cancelled: 'eq.false',
         order: 'date.desc',
-        limit: '5000',
+        limit: 5000,
       },
       { schema: 'public' },
     );
@@ -255,7 +326,8 @@ export async function listCariDevirRecords(): Promise<CariDevirRecord[]> {
   }
 
   const { rows } = await postgres.query(
-    `SELECT id, fiche_no, date, customer_id, customer_name, net_amount, notes
+    `SELECT id, fiche_no, date, customer_id, customer_name, net_amount, notes,
+            currency, currency_rate
      FROM sales
      WHERE fiche_type = $1 AND COALESCE(is_cancelled, false) = false
      ORDER BY date DESC`,
@@ -266,6 +338,7 @@ export async function listCariDevirRecords(): Promise<CariDevirRecord[]> {
 }
 
 function mapDevirRow(r: any): CariDevirRecord {
+  const cr = parseFloat(String(r.currency_rate ?? 1));
   return {
     id: String(r.id),
     fiche_no: String(r.fiche_no || ''),
@@ -274,6 +347,8 @@ function mapDevirRow(r: any): CariDevirRecord {
     customer_name: String(r.customer_name || ''),
     net_amount: parseFloat(String(r.net_amount ?? 0)) || 0,
     notes: r.notes ? String(r.notes) : undefined,
+    currency: r.currency ? String(r.currency) : undefined,
+    currency_rate: Number.isFinite(cr) ? cr : undefined,
   };
 }
 
@@ -298,18 +373,33 @@ export async function updateCariDevirRecord(
     direction: CariDevirDirection;
     date?: string;
     notes?: string;
+    currency?: string;
+    currencyRate?: number;
+    /** Ledger (sistem) para birimi — kur dönüşümü için zorunlu */
+    ledgerCurrency?: string;
   },
 ): Promise<void> {
   const firmNr = normalizeFirmTableNr(ERP_SETTINGS.firmNr);
   const periodNr = String(ERP_SETTINGS.periodNr ?? '01').padStart(2, '0');
+  const ledger = normalizeCurrencyCode(input.ledgerCurrency, 'IQD');
+  const cur = input.currency ? normalizeCurrencyCode(input.currency, ledger) : ledger;
+  const rateNum = Number(input.currencyRate);
+  const finalRate = cur === ledger ? 1 : Number.isFinite(rateNum) && rateNum > 0 ? rateNum : 1;
+  /**
+   * Muhasebe denetimi: güncelleme sırasında da ledger karşılığı üzerinden
+   * `net_amount` yeniden hesaplanır. Yön (borç/alacak) korunur.
+   */
+  const ledgerEquivalent = Math.abs(input.amount);
   const net = signedNetAmount(input.amount, input.direction, 'customer');
   const dateIso = input.date
     ? (input.date.includes('T') ? input.date : `${input.date}T12:00:00.000Z`)
     : undefined;
   const patch: Record<string, unknown> = {
-    net_amount: net,
-    total_net: Math.abs(net),
-    total_gross: Math.abs(net),
+    net_amount: net < 0 ? -ledgerEquivalent : ledgerEquivalent,
+    total_net: ledgerEquivalent,
+    total_gross: ledgerEquivalent,
+    currency: cur,
+    currency_rate: finalRate,
     updated_at: new Date().toISOString(),
   };
   if (dateIso) patch.date = dateIso;
@@ -330,11 +420,21 @@ export async function updateCariDevirRecord(
       net_amount = $1::numeric,
       total_net = $2::numeric,
       total_gross = $2::numeric,
+      currency = $6,
+      currency_rate = $7,
       date = COALESCE($3::timestamptz, date),
       notes = COALESCE($4, notes),
       updated_at = NOW()
      WHERE id = $5::uuid`,
-    [net, Math.abs(net), dateIso || null, input.notes ?? null, id],
+    [
+      net < 0 ? -ledgerEquivalent : ledgerEquivalent,
+      ledgerEquivalent,
+      dateIso || null,
+      input.notes ?? null,
+      id,
+      cur,
+      finalRate,
+    ],
     { firmNr, periodNr },
   );
 }
@@ -367,6 +467,7 @@ export async function createCariDevirBatch(input: CariDevirBatchInput): Promise<
   const periodNr = String(ERP_SETTINGS.periodNr ?? '01').padStart(2, '0');
   const dateIso = input.date.includes('T') ? input.date : `${input.date}T12:00:00.000Z`;
   const replaceExisting = input.replaceExisting !== false;
+  const ledgerCurrency = normalizeCurrencyCode(input.ledgerCurrency, 'IQD');
 
   const result: CariDevirBatchResult = {
     created: 0,
@@ -389,6 +490,9 @@ export async function createCariDevirBatch(input: CariDevirBatchInput): Promise<
           direction: line.direction,
           date: input.date,
           notes: [input.batchNotes, line.lineNotes].filter(Boolean).join(' | ') || undefined,
+          currency: line.currency,
+          currencyRate: line.currencyRate,
+          ledgerCurrency,
         });
         result.updated += 1;
         continue;
@@ -397,7 +501,15 @@ export async function createCariDevirBatch(input: CariDevirBatchInput): Promise<
         result.replaced += await cancelExistingOpeningRows(firmNr, periodNr, line.accountId);
       }
       const ficheNo = await generateDevirFicheNo(firmNr, periodNr, line.accountCode);
-      await insertOpeningRow(firmNr, periodNr, { ...line, amount }, ficheNo, dateIso, input.batchNotes);
+      await insertOpeningRow(
+        firmNr,
+        periodNr,
+        { ...line, amount },
+        ficheNo,
+        dateIso,
+        input.batchNotes,
+        ledgerCurrency,
+      );
       result.created += 1;
     } catch (err: any) {
       result.errors.push({
@@ -415,13 +527,20 @@ export async function createSingleCariDevir(
   account: Pick<Supplier, 'id' | 'code' | 'name' | 'cardType'>,
   amount: number,
   direction: CariDevirDirection,
-  options?: { date?: string; notes?: string },
+  options?: {
+    date?: string;
+    notes?: string;
+    currency?: string;
+    currencyRate?: number;
+    ledgerCurrency?: string;
+  },
 ): Promise<void> {
   const cardType = account.cardType === 'supplier' ? 'supplier' : 'customer';
   const batch = await createCariDevirBatch({
     date: options?.date || new Date().toISOString().slice(0, 10),
     batchNotes: options?.notes,
     replaceExisting: true,
+    ledgerCurrency: options?.ledgerCurrency,
     lines: [
       {
         accountId: account.id,
@@ -430,6 +549,8 @@ export async function createSingleCariDevir(
         accountName: account.name,
         amount,
         direction,
+        currency: options?.currency,
+        currencyRate: options?.currencyRate,
       },
     ],
   });

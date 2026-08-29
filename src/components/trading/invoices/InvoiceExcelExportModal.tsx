@@ -5,6 +5,10 @@ import { PercentBodyModal, PercentBodyModalScrollBody } from '../../shared/Perce
 import { useLanguage } from '../../../contexts/LanguageContext';
 import { toast } from 'sonner';
 import type { ListInvoice } from './invoiceListColumns';
+import {
+  buildStyledWorksheet,
+  type StyledWorksheetOptions,
+} from '../../../utils/excelStyles';
 
 export type InvoiceExcelGroupMode = 'line' | 'customer' | 'product';
 
@@ -351,30 +355,50 @@ function buildProductRows(invoices: ListInvoice[], fallbackCurrency: string): Re
   return rows;
 }
 
-function rowsToWorksheet(rows: Record<string, unknown>[]): XLSX.WorkSheet {
+interface RowsToWorksheetOptions {
+  /** Sheet başlığı (1. satırda merged olarak görünür) */
+  title: string;
+  /** Alt başlık (2. satırda merged olarak görünür — ör. "Satır Bazında Rapor") */
+  subtitle: string;
+  /** Müşteri/ürün modunda grup satırlarının indeksleri (0-indexed, AOA içinde) */
+  groupRowIndices?: number[];
+  /** Toplam satırı (en altta) */
+  totalRow?: unknown[];
+}
+
+function rowsToWorksheet(
+  rows: Record<string, unknown>[],
+  options: RowsToWorksheetOptions,
+): XLSX.WorkSheet {
   if (rows.length === 0) {
-    // Boş satırla bile başlıkları koruyalım
     const ws = XLSX.utils.aoa_to_sheet([['Veri yok']]);
+    ws['!cols'] = [{ wch: 30 }];
     return ws;
   }
+
   const headers = Object.keys(rows[0]);
   const aoa: unknown[][] = [headers];
   for (const row of rows) {
     aoa.push(headers.map((h) => row[h] ?? ''));
   }
-  const ws = XLSX.utils.aoa_to_sheet(aoa);
-  // Sütun genişlikleri — basit heuristic
-  const colWidths = headers.map((h) => {
-    let max = String(h).length;
-    for (const row of rows) {
-      const v = row[h];
-      const len = typeof v === 'number' ? String(v).length : String(v ?? '').length;
-      if (len > max) max = len;
-    }
-    return { wch: Math.min(Math.max(max + 2, 10), 60) };
-  });
-  (ws as any)['!cols'] = colWidths;
-  return ws;
+
+  // Para birimi kolonları — başlık adına göre tespit
+  const currencyColumns = headers.filter((h) =>
+    /(tutar|fiyat|toplam|harcama|amount|price|total|borç|alacak|bakiye)/i.test(h),
+  );
+
+  const options2: StyledWorksheetOptions = {
+    title: options.title,
+    subtitle: options.subtitle,
+    headerRowIndex: 1, // AOA'nın 1. satırı (0-indexed = 0) veri başlığı
+    columnCount: headers.length,
+    currencyColumns,
+    totalRow: options.totalRow,
+    groupRowIndices: options.groupRowIndices,
+    dataStartIndex: 1, // AOA'nın 1. satırı (0-indexed = 1) veri başlangıcı
+  };
+
+  return buildStyledWorksheet(aoa, options2);
 }
 
 export function InvoiceExcelExportModal({
@@ -421,18 +445,122 @@ export function InvoiceExcelExportModal({
 
       let rows: Record<string, unknown>[] = [];
       let sheetName = 'Faturalar';
+      let sheetTitle = title || tm('invoices') || 'Fatura Listesi';
+      let sheetSubtitle = '';
+      let totalRow: unknown[] | undefined = undefined;
+      let groupRowIndices: number[] | undefined = undefined;
+
       if (mode === 'line') {
         rows = buildLineRows(enriched, fallbackCurrency);
         sheetName = 'Satır Bazında';
+        sheetSubtitle = tm('invoiceExcelModeLine') || 'Satır Bazında Rapor';
+        // Toplam: tüm satır toplamlarını topla
+        const totalAmount = rows.reduce(
+          (s, r) => s + Number(r['Satır Toplam'] || 0),
+          0,
+        );
+        const totalQty = rows.reduce((s, r) => s + Number(r['Miktar'] || 0), 0);
+        const totalInvoice = rows.reduce(
+          (s, r) => s + Number(r['Fatura Toplam'] || 0),
+          0,
+        );
+        if (rows.length > 0) {
+          const headers = Object.keys(rows[0]);
+          totalRow = headers.map((h) => {
+            if (h === 'Fatura No') return 'TOPLAM';
+            if (h === 'Satır Toplam') return totalAmount;
+            if (h === 'Fatura Toplam') return totalInvoice;
+            if (h === 'Miktar') return totalQty;
+            return '';
+          });
+          // toplam satırı AOA'ya eklemek için push
+          rows.push(
+            Object.fromEntries(headers.map((h, i) => [h, totalRow![i] ?? ''])) as Record<string, unknown>,
+          );
+        }
       } else if (mode === 'customer') {
         rows = buildCustomerRows(enriched, fallbackCurrency);
         sheetName = 'Müşteri Bazında';
+        sheetSubtitle = tm('invoiceExcelModeCustomer') || 'Müşteri Bazında Rapor';
+        // Grup satırları: her müşteri grubu başlığı (ilk satırı "Müşteri Toplam" dolu, diğerleri ürün alt satırları)
+        groupRowIndices = [];
+        let i = 0;
+        // Bucket yapısı korunmadığı için tekrar çıkarmamız gerekiyor
+        // buildCustomerRows iç yapısını kullanmak yerine burada basit yaklaşım:
+        // "Müşteri Toplam" alanı dolu olan ve "Fatura Sayısı" dolu olan satırlar grup başlığı
+        for (const r of rows) {
+          if (r['Müşteri Toplam'] !== '' && r['Fatura Sayısı'] !== '') {
+            groupRowIndices.push(i);
+          }
+          i++;
+        }
+        // Toplam
+        if (rows.length > 0) {
+          const headers = Object.keys(rows[0]);
+          const grandTotal = rows.reduce(
+            (s, r) => s + (typeof r['Müşteri Toplam'] === 'number' ? Number(r['Müşteri Toplam']) : 0),
+            0,
+          );
+          const totalQty = rows.reduce(
+            (s, r) => s + (typeof r['Toplam Miktar'] === 'number' ? Number(r['Toplam Miktar']) : 0),
+            0,
+          );
+          totalRow = headers.map((h) => {
+            if (h === 'Müşteri/Tedarikçi') return 'GENEL TOPLAM';
+            if (h === 'Müşteri Toplam') return grandTotal;
+            if (h === 'Toplam Miktar') return totalQty;
+            return '';
+          });
+          rows.push(
+            Object.fromEntries(headers.map((h, idx) => [h, totalRow![idx] ?? ''])) as Record<string, unknown>,
+          );
+        }
       } else {
         rows = buildProductRows(enriched, fallbackCurrency);
         sheetName = 'Ürün Bazında';
+        sheetSubtitle = tm('invoiceExcelModeProduct') || 'Ürün Bazında Rapor';
+        groupRowIndices = [];
+        let i = 0;
+        for (const r of rows) {
+          if (
+            typeof r['Toplam Miktar'] === 'number' &&
+            r['Müşteri/Tedarikçi'] === ''
+          ) {
+            groupRowIndices.push(i);
+          }
+          i++;
+        }
+        // Toplam
+        if (rows.length > 0) {
+          const headers = Object.keys(rows[0]);
+          const grandRevenue = rows.reduce(
+            (s, r) =>
+              s + (typeof r['Toplam Harcama'] === 'number' ? Number(r['Toplam Harcama']) : 0),
+            0,
+          );
+          const grandQty = rows.reduce(
+            (s, r) =>
+              s + (typeof r['Toplam Miktar'] === 'number' ? Number(r['Toplam Miktar']) : 0),
+            0,
+          );
+          totalRow = headers.map((h) => {
+            if (h === 'Ürün/Hizmet') return 'GENEL TOPLAM';
+            if (h === 'Toplam Harcama') return grandRevenue;
+            if (h === 'Toplam Miktar') return grandQty;
+            return '';
+          });
+          rows.push(
+            Object.fromEntries(headers.map((h, idx) => [h, totalRow![idx] ?? ''])) as Record<string, unknown>,
+          );
+        }
       }
 
-      const ws = rowsToWorksheet(rows);
+      const ws = rowsToWorksheet(rows, {
+        title: sheetTitle,
+        subtitle: sheetSubtitle,
+        groupRowIndices,
+        totalRow,
+      });
       const wb = XLSX.utils.book_new();
       XLSX.utils.book_append_sheet(wb, ws, sanitizeSheetName(sheetName));
 

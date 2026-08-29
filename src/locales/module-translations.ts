@@ -3437,6 +3437,50 @@ export const moduleTranslations: Record<string, Record<Language, string>> = {
   directionCreditShort: { tr: 'Alacak', en: 'Credit', ar: 'دائن', ku: 'قەرزدار' },
   cancelAction: { tr: 'İptal et', en: 'Cancel slip', ar: 'إلغاء السند', ku: 'هەڵوەشاندنەوە' },
 
+  // Devir fişinde exchange rate (kur) alanı — geçmişe kayıt
+  openingCurrency: {
+    tr: 'Devir Para Birimi',
+    en: 'Opening Currency',
+    ar: 'عملة الرصيد الافتتاحي',
+    ku: 'دراوی گواستنەوە',
+  },
+  openingCurrencyRate: {
+    tr: 'Kur (Geçmişe Kayıt)',
+    en: 'Exchange Rate (Historical)',
+    ar: 'سعر الصرف (تسجيل تاريخي)',
+    ku: 'نرخی گۆڕینەوە (تۆمارکردنی مێژوویی)',
+  },
+  openingSystemEquivalent: {
+    tr: 'Sistem Karşılığı',
+    en: 'System Equivalent',
+    ar: 'المكافئ بالنظام',
+    ku: 'هاوتای سیستەم',
+  },
+  openingRateHint: {
+    tr: '1 {currency} = {rate} {ledger}',
+    en: '1 {currency} = {rate} {ledger}',
+    ar: '1 {currency} = {rate} {ledger}',
+    ku: '1 {currency} = {rate} {ledger}',
+  },
+  openingRateRequired: {
+    tr: 'Kur 0’dan büyük olmalı',
+    en: 'Rate must be greater than 0',
+    ar: 'يجب أن يكون السعر أكبر من 0',
+    ku: 'نرخ دەبێت لە 0 گەورەتر بێت',
+  },
+  openingLedgerCurrencyNote: {
+    tr: 'Sistem para birimi: {currency}',
+    en: 'System currency: {currency}',
+    ar: 'عملة النظام: {currency}',
+    ku: 'دراوی سیستەم: {currency}',
+  },
+  openingHistoricalBadge: {
+    tr: 'Geçmiş kur',
+    en: 'Historical rate',
+    ar: 'سعر تاريخي',
+    ku: 'نرخی مێژوویی',
+  },
+
   // Cari devir Excel import
   excelCariDevirTitle: {
     tr: 'Cari Devir Excel Aktarımı',

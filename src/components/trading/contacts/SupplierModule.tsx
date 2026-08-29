@@ -66,6 +66,8 @@ export function SupplierModule({ initialFilter = 'all' }: { initialFilter?: Cari
   const [suppliers, setSuppliers] = useState<Supplier[]>([]);
   const [loading, setLoading] = useState(true);
   const [searchQuery, setSearchQuery] = useState('');
+  /** Cari listesinde "Açıklama / Not" kolonuna göre ek filtre */
+  const [notesFilter, setNotesFilter] = useState('');
   const [showAddModal, setShowAddModal] = useState(false);
   const [editingSupplier, setEditingSupplier] = useState<Supplier | null>(null);
   /** CallerID ile açılırken önceden doldurulacak telefon. */
@@ -272,11 +274,15 @@ export function SupplierModule({ initialFilter = 'all' }: { initialFilter?: Cari
     if (accountTypeFilter === 'customer' && s.cardType !== 'customer') return false;
     if (accountTypeFilter === 'supplier' && s.cardType !== 'supplier') return false;
     const q = searchQuery.toLowerCase();
-    return (s.name?.toLowerCase() || '').includes(q) ||
+    const nq = notesFilter.toLowerCase().trim();
+    const matchesMain =
+      (s.name?.toLowerCase() || '').includes(q) ||
       (s.code?.toLowerCase() || '').includes(q) ||
       (s.phone || '').includes(searchQuery) ||
       (s.email?.toLowerCase() || '').includes(q) ||
       (s.id?.toLowerCase() || '').includes(q);
+    const matchesNotes = !nq || (s.notes?.toLowerCase() || '').includes(nq);
+    return matchesMain && matchesNotes;
   });
 
   /** Cari listesindeki demo kayıtlar (müşteri + tedarikçi) */
@@ -1076,15 +1082,40 @@ export function SupplierModule({ initialFilter = 'all' }: { initialFilter?: Cari
             ))}
           </div>
           {!isPartyTab && (
-          <div className="relative">
-            <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" />
-            <input
-              type="text"
-              placeholder={tm('searchCurrentAccountPlaceholder')}
-              value={searchQuery}
-              onChange={e => setSearchQuery(e.target.value)}
-              className="w-full pl-10 pr-4 py-1.5 text-sm border border-gray-300 rounded focus:outline-none focus:ring-2 focus:ring-blue-500"
-            />
+          <div className="flex flex-wrap items-center gap-2">
+            <div className="relative flex-1 min-w-[180px]">
+              <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" />
+              <input
+                type="text"
+                placeholder={tm('searchCurrentAccountPlaceholder')}
+                value={searchQuery}
+                onChange={e => setSearchQuery(e.target.value)}
+                className="w-full pl-10 pr-4 py-1.5 text-sm border border-gray-300 rounded focus:outline-none focus:ring-2 focus:ring-blue-500"
+              />
+            </div>
+            <div className="relative w-full sm:w-72">
+              <FileText className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-amber-500" />
+              <input
+                type="text"
+                placeholder={tm('description') + '…'}
+                value={notesFilter}
+                onChange={e => setNotesFilter(e.target.value)}
+                title={tm('description')}
+                aria-label={tm('description')}
+                className="w-full pl-10 pr-4 py-1.5 text-sm border border-gray-300 rounded focus:outline-none focus:ring-2 focus:ring-amber-400 bg-amber-50/30 placeholder:text-amber-700/60"
+              />
+              {notesFilter && (
+                <button
+                  type="button"
+                  onClick={() => setNotesFilter('')}
+                  className="absolute right-2 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-700 text-xs"
+                  title="Temizle"
+                  aria-label="Açıklama filtresini temizle"
+                >
+                  ✕
+                </button>
+              )}
+            </div>
           </div>
           )}
         </div>

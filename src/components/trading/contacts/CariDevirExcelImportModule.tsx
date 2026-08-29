@@ -59,6 +59,11 @@ export function CariDevirExcelImportModule() {
   const { tm } = useLanguage();
   const { selectedFirm } = useFirmaDonem();
 
+  const mainCurrency = useMemo(
+    () => String(selectedFirm?.ana_para_birimi || 'IQD').trim().toUpperCase().slice(0, 10) || 'IQD',
+    [selectedFirm?.ana_para_birimi],
+  );
+
   const fileInputRef = useRef<HTMLInputElement>(null);
   const [parsing, setParsing] = useState(false);
   const [showImportModal, setShowImportModal] = useState(false);
@@ -233,6 +238,7 @@ export function CariDevirExcelImportModule() {
       date,
       batchNotes: batchNotes.trim() || undefined,
       replaceExisting,
+      ledgerCurrency: mainCurrency,
       lines,
     });
 
@@ -294,11 +300,6 @@ export function CariDevirExcelImportModule() {
   const failedCount = previewRows.filter((r) =>
     ['missing', 'invalid', 'failed'].includes(r.status),
   ).length;
-
-  const mainCurrency = useMemo(
-    () => String(selectedFirm?.ana_para_birimi || 'IQD').trim().toUpperCase().slice(0, 10) || 'IQD',
-    [selectedFirm?.ana_para_birimi],
-  );
 
   return (
     <div className="space-y-6" data-testid="cari-devir-excel-import">

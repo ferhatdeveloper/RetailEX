@@ -12,6 +12,7 @@ import {
   Trash2,
   X,
 } from 'lucide-react';
+import { PercentBodyModal, PercentBodyModalScrollBody } from '../../shared/PercentBodyModal';
 import { toast } from 'sonner';
 import { useLanguage } from '../../../contexts/LanguageContext';
 import { useFirmaDonem } from '../../../contexts/FirmaDonemContext';
@@ -19,6 +20,7 @@ import { supplierAPI } from '../../../services/api/suppliers';
 import type { Supplier } from '../../../services/api/suppliers';
 import {
   cancelCariDevirRecord,
+  cariDevirLedgerEquivalent,
   createCariDevirBatch,
   devirAmountFromNet,
   devirDirectionFromNet,
@@ -58,6 +60,10 @@ type RowDraft = {
   direction: CariDevirDirection;
   selected: boolean;
   existingDevirId?: string;
+  /** Kullanıcının seçtiği para birimi (boşsa ledger'a düşer) */
+  currency?: string;
+  /** Kullanıcının girdiği kur (boşsa 1) */
+  currencyRate?: string;
 };
 
 type EditForm = {
@@ -67,7 +73,28 @@ type EditForm = {
   direction: CariDevirDirection;
   date: string;
   notes: string;
+  currency: string;
+  currencyRate: string;
 };
+
+function normalizeCurrencyCode(raw: unknown, fallback = 'IQD'): string {
+  const s = String(raw ?? '').trim().toUpperCase().slice(0, 10);
+  return s || fallback;
+}
+
+function parseCariDevirRate(raw: string): number {
+  const n = parseDecimalStringForInput(raw);
+  if (!Number.isFinite(n) || n <= 0) return 0;
+  // Kur için 6 ondalık yeterli (DECIMAL(15,6) ile uyumlu)
+  return Math.round(n * 1e6) / 1e6;
+}
+
+function formatCariDevirRateInput(raw: string): string {
+  const n = parseDecimalStringForInput(raw);
+  if (!Number.isFinite(n) || n <= 0) return '';
+  // TR ondalık: 6 hane göster, sondaki sıfırları kırp
+  return formatDecimalForTrInput(n, 6).replace(/0+$/g, '').replace(/,$/, '');
+}
 
 export function CariDevirFisiModule() {
   const { tm } = useLanguage();
@@ -77,6 +104,12 @@ export function CariDevirFisiModule() {
     [selectedFirm?.ana_para_birimi],
   );
   const amountDecimals = useMemo(() => cariDevirAmountDecimals(mainCurrency), [mainCurrency]);
+
+  /** Cari devirde kullanıcının seçebileceği para birimi kodları (ledger + yaygın). */
+  const availableCurrencies = useMemo(() => {
+    const set = new Set<string>([mainCurrency, 'TRY', 'USD', 'EUR', 'GBP', 'IQD', 'IRR', 'AED']);
+    return Array.from(set).sort((a, b) => a.localeCompare(b));
+  }, [mainCurrency]);
 
   const [activeTab, setActiveTab] = useState<'entry' | 'records'>('entry');
   const [accounts, setAccounts] = useState<Supplier[]>([]);
@@ -100,6 +133,14 @@ export function CariDevirFisiModule() {
       for (const acc of rows) {
         const existing = devirMap.get(acc.id);
         const prevRow = prev?.[acc.id];
+        // Geçmişe kayıt: existing varsa INSERT anındaki currency/rate'i geri yükle.
+        // Kullanıcı yeni değer yazmadıysa prev'i tercih et; aksi halde DB'deki değer.
+        const existingCurrency = normalizeCurrencyCode(existing?.currency, mainCurrency);
+        const existingRateNum = Number(existing?.currency_rate ?? 1);
+        const existingRateStr =
+          existing && Number.isFinite(existingRateNum) && existingRateNum > 0
+            ? formatCariDevirRateInput(String(existingRateNum))
+            : '';
         if (existing) {
           const amt = devirAmountFromNet(existing.net_amount);
           next[acc.id] = {
@@ -112,6 +153,8 @@ export function CariDevirFisiModule() {
             direction: prevRow?.selected ? prevRow.direction : devirDirectionFromNet(existing.net_amount),
             selected: prevRow?.selected ?? false,
             existingDevirId: existing.id,
+            currency: prevRow?.currency || existingCurrency,
+            currencyRate: prevRow?.currencyRate || existingRateStr,
           };
         } else if (!next[acc.id]) {
           next[acc.id] = {
@@ -119,14 +162,20 @@ export function CariDevirFisiModule() {
             amount: prevRow?.amount || '',
             direction: prevRow?.direction || 'borc',
             selected: prevRow?.selected ?? false,
+            currency: prevRow?.currency || mainCurrency,
+            currencyRate: prevRow?.currencyRate || '',
           };
         } else {
-          next[acc.id] = { ...next[acc.id], account: acc };
+          next[acc.id] = {
+            ...next[acc.id],
+            account: acc,
+            currency: next[acc.id].currency || mainCurrency,
+          };
         }
       }
       return next;
     },
-    [amountDecimals],
+    [amountDecimals, mainCurrency],
   );
 
   const loadAccounts = useCallback(async () => {
@@ -203,17 +252,37 @@ export function CariDevirFisiModule() {
   const handleSave = async () => {
     const lines = Object.values(drafts)
       .filter((d) => d.selected && parseCariDevirAmount(d.amount || '') > 0)
-      .map((d) => ({
-        accountId: d.account.id,
-        cardType: (d.account.cardType === 'supplier' ? 'supplier' : 'customer') as 'customer' | 'supplier',
-        accountCode: d.account.code,
-        accountName: d.account.name,
-        amount: parseCariDevirAmount(d.amount),
-        direction: d.direction,
-        existingDevirId: d.existingDevirId,
-      }));
+      .map((d) => {
+        const cur = normalizeCurrencyCode(d.currency, mainCurrency);
+        const rate = parseCariDevirRate(d.currencyRate || '');
+        if (cur !== mainCurrency && (!rate || rate <= 0)) {
+          // Yabancı döviz seçildi ama kur 0 — sonradan kontrol altında toplayacağız
+          return {
+            _invalid: true as const,
+            accountName: d.account?.name || '',
+          };
+        }
+        return {
+          accountId: d.account.id,
+          cardType: (d.account.cardType === 'supplier' ? 'supplier' : 'customer') as 'customer' | 'supplier',
+          accountCode: d.account.code,
+          accountName: d.account.name,
+          amount: parseCariDevirAmount(d.amount),
+          direction: d.direction,
+          existingDevirId: d.existingDevirId,
+          currency: cur,
+          currencyRate: rate > 0 ? rate : undefined,
+        };
+      });
 
-    if (lines.length === 0) {
+    const invalid = lines.filter((l): l is { _invalid: true; accountName: string } => '_invalid' in l);
+    if (invalid.length > 0) {
+      toast.error(tm('openingRateRequired'));
+      return;
+    }
+    const validLines = lines.filter((l): l is Exclude<typeof lines[number], { _invalid: true }> => !('_invalid' in l));
+
+    if (validLines.length === 0) {
       toast.error(tm('minOneCariRequired'));
       return;
     }
@@ -224,7 +293,8 @@ export function CariDevirFisiModule() {
         date: devirDate,
         batchNotes,
         replaceExisting,
-        lines,
+        ledgerCurrency: mainCurrency,
+        lines: validLines,
       });
       if (result.errors.length > 0) {
         toast.error(`${result.errors.length} ${tm('rowsSaveFailed')}`, {
@@ -257,13 +327,21 @@ export function CariDevirFisiModule() {
 
   const openEdit = (rec: CariDevirRecord) => {
     const amt = devirAmountFromNet(rec.net_amount);
+    const cur = normalizeCurrencyCode(rec.currency, mainCurrency);
+    const rateNum = Number(rec.currency_rate ?? 1);
+    const rateStr =
+      cur !== mainCurrency && Number.isFinite(rateNum) && rateNum > 0
+        ? formatCariDevirRateInput(String(rateNum))
+        : '';
     setEditForm({
       id: rec.id,
       accountName: rec.customer_name,
-      amount: amt > 0 ? formatDecimalForTrInput(amt, amountDecimals) : '',
+      amount: amt > 0 ? formatDecimalForTrInput(amt, cariDevirAmountDecimals(cur)) : '',
       direction: devirDirectionFromNet(rec.net_amount),
       date: rec.date ? rec.date.slice(0, 10) : new Date().toISOString().slice(0, 10),
       notes: rec.notes || '',
+      currency: cur,
+      currencyRate: rateStr,
     });
   };
 
@@ -274,6 +352,12 @@ export function CariDevirFisiModule() {
       toast.error(tm('validAmountRequired'));
       return;
     }
+    const cur = normalizeCurrencyCode(editForm.currency, mainCurrency);
+    const rateNum = cur === mainCurrency ? 0 : parseCariDevirRate(editForm.currencyRate);
+    if (cur !== mainCurrency && (!rateNum || rateNum <= 0)) {
+      toast.error(tm('openingRateRequired'));
+      return;
+    }
     setEditSaving(true);
     try {
       await updateCariDevirRecord(editForm.id, {
@@ -281,6 +365,9 @@ export function CariDevirFisiModule() {
         direction: editForm.direction,
         date: editForm.date,
         notes: editForm.notes || undefined,
+        currency: cur,
+        currencyRate: rateNum > 0 ? rateNum : undefined,
+        ledgerCurrency: mainCurrency,
       });
       toast.success(tm('openingUpdated'));
       setEditForm(null);
@@ -456,7 +543,10 @@ export function CariDevirFisiModule() {
                         <th className="px-3 py-2 text-left">{tm('type')}</th>
                         <th className="px-3 py-2 text-right">{tm('currentBalance')}</th>
                         <th className="px-3 py-2 text-left">{tm('direction')}</th>
+                        <th className="px-3 py-2 text-left">{tm('openingCurrency')}</th>
+                        <th className="px-3 py-2 text-right">{tm('openingCurrencyRate')}</th>
                         <th className="px-3 py-2 text-right">{tm('openingAmount')}</th>
+                        <th className="px-3 py-2 text-right">{tm('openingSystemEquivalent')}</th>
                       </tr>
                     </thead>
                     <tbody>
@@ -509,6 +599,59 @@ export function CariDevirFisiModule() {
                               </select>
                             </td>
                             <td className="px-3 py-2">
+                              <select
+                                value={normalizeCurrencyCode(draft.currency, mainCurrency)}
+                                onChange={(e) =>
+                                  updateDraft(acc.id, {
+                                    currency: e.target.value,
+                                    selected: true,
+                                  })
+                                }
+                                className="border border-gray-300 rounded px-2 py-1 text-xs"
+                                title={tm('openingCurrency')}
+                              >
+                                {availableCurrencies.map((code) => (
+                                  <option key={code} value={code}>
+                                    {code}
+                                  </option>
+                                ))}
+                              </select>
+                            </td>
+                            <td className="px-3 py-2">
+                              {normalizeCurrencyCode(draft.currency, mainCurrency) === mainCurrency ? (
+                                <span className="text-xs text-gray-400">—</span>
+                              ) : (
+                                <div className="flex items-center justify-end gap-1">
+                                  <span className="text-[10px] text-gray-500 whitespace-nowrap">1 {normalizeCurrencyCode(draft.currency, mainCurrency)} =</span>
+                                  <input
+                                    type="text"
+                                    inputMode="decimal"
+                                    autoComplete="off"
+                                    value={draft.currencyRate || ''}
+                                    onChange={(e) =>
+                                      updateDraft(acc.id, {
+                                        currencyRate: formatDecimalForTrInput(
+                                          parseDecimalStringForInput(e.target.value) || 0,
+                                          6,
+                                        ),
+                                        selected: true,
+                                      })
+                                    }
+                                    onBlur={() => {
+                                      const n = parseCariDevirRate(draft.currencyRate || '');
+                                      updateDraft(acc.id, {
+                                        currencyRate: n > 0 ? formatCariDevirRateInput(String(n)) : '',
+                                      });
+                                    }}
+                                    placeholder="1,00"
+                                    className="w-20 border border-orange-300 rounded px-2 py-1 text-xs text-right font-medium"
+                                    title={tm('openingCurrencyRate')}
+                                  />
+                                  <span className="text-[10px] text-gray-500">{mainCurrency}</span>
+                                </div>
+                              )}
+                            </td>
+                            <td className="px-3 py-2">
                               <input
                                 type="text"
                                 inputMode="decimal"
@@ -516,19 +659,45 @@ export function CariDevirFisiModule() {
                                 value={draft.amount}
                                 onChange={(e) =>
                                   updateDraft(acc.id, {
-                                    amount: formatCariDevirAmountInput(e.target.value, mainCurrency),
+                                    amount: formatCariDevirAmountInput(
+                                      e.target.value,
+                                      normalizeCurrencyCode(draft.currency, mainCurrency),
+                                    ),
                                     selected: true,
                                   })
                                 }
                                 onBlur={() => {
                                   const n = parseCariDevirAmount(draft.amount);
+                                  const cur = normalizeCurrencyCode(draft.currency, mainCurrency);
                                   updateDraft(acc.id, {
-                                    amount: n > 0 ? formatDecimalForTrInput(n, amountDecimals) : draft.amount,
+                                    amount:
+                                      n > 0
+                                        ? formatDecimalForTrInput(n, cariDevirAmountDecimals(cur))
+                                        : draft.amount,
                                   });
                                 }}
                                 placeholder={amountDecimals > 0 ? '0,00' : '0'}
                                 className="w-full max-w-[140px] ml-auto block border border-gray-300 rounded px-2 py-1 text-sm text-right"
                               />
+                            </td>
+                            <td className="px-3 py-2 text-right text-xs font-medium text-indigo-700">
+                              {(() => {
+                                const cur = normalizeCurrencyCode(draft.currency, mainCurrency);
+                                const rateNum = parseCariDevirRate(draft.currencyRate || '');
+                                const eq = cariDevirLedgerEquivalent(
+                                  parseCariDevirAmount(draft.amount),
+                                  cur,
+                                  rateNum,
+                                  mainCurrency,
+                                );
+                                if (!eq) return <span className="text-gray-400">—</span>;
+                                return (
+                                  <span className="font-mono tabular-nums">
+                                    {formatNumber(eq, cariDevirAmountDecimals(mainCurrency), true)}{' '}
+                                    <span className="text-[10px] text-gray-500">{mainCurrency}</span>
+                                  </span>
+                                );
+                              })()}
                             </td>
                           </tr>
                         );
@@ -575,6 +744,8 @@ export function CariDevirFisiModule() {
                         <th className="px-3 py-2 text-left">{tm('date')}</th>
                         <th className="px-3 py-2 text-left">{tm('currentAccountTitle')}</th>
                         <th className="px-3 py-2 text-left">{tm('direction')}</th>
+                        <th className="px-3 py-2 text-left">{tm('openingCurrency')}</th>
+                        <th className="px-3 py-2 text-right">{tm('openingCurrencyRate')}</th>
                         <th className="px-3 py-2 text-right">{tm('amountLabel')}</th>
                         <th className="px-3 py-2 text-right w-24">{tm('operation')}</th>
                       </tr>
@@ -583,6 +754,8 @@ export function CariDevirFisiModule() {
                       {filteredRecords.map((rec) => {
                         const dir = devirDirectionFromNet(rec.net_amount);
                         const amt = devirAmountFromNet(rec.net_amount);
+                        const recCurrency = normalizeCurrencyCode(rec.currency, mainCurrency);
+                        const recRate = Number(rec.currency_rate ?? 1);
                         return (
                           <tr key={rec.id} className="border-b border-gray-100 hover:bg-gray-50/80">
                             <td className="px-3 py-2 font-mono text-xs">{rec.fiche_no}</td>
@@ -595,8 +768,30 @@ export function CariDevirFisiModule() {
                                 {dir === 'borc' ? tm('directionDebtShort') : tm('directionCreditShort')}
                               </span>
                             </td>
+                            <td className="px-3 py-2 font-mono text-xs">
+                              {recCurrency}
+                              {recCurrency !== mainCurrency && (
+                                <span className="ml-1 text-[9px] uppercase font-black px-1 py-0.5 rounded bg-amber-100 text-amber-700">
+                                  {tm('openingHistoricalBadge')}
+                                </span>
+                              )}
+                            </td>
+                            <td className="px-3 py-2 text-right font-mono text-xs">
+                              {recCurrency === mainCurrency ? (
+                                <span className="text-gray-400">1,00</span>
+                              ) : (
+                                <span title={`1 ${recCurrency} = ${recRate} ${mainCurrency}`}>
+                                  {formatNumber(recRate, 4, true)}
+                                </span>
+                              )}
+                            </td>
                             <td className="px-3 py-2 text-right font-bold">
-                              {formatNumber(amt, 2, true)} {mainCurrency}
+                              {formatNumber(amt, cariDevirAmountDecimals(recCurrency), true)} {recCurrency}
+                              {recCurrency !== mainCurrency && (
+                                <div className="text-[10px] text-indigo-700 mt-0.5">
+                                  = {formatNumber(amt * (Number.isFinite(recRate) ? recRate : 1), cariDevirAmountDecimals(mainCurrency), true)} {mainCurrency}
+                                </div>
+                              )}
                             </td>
                             <td className="px-3 py-2 text-right">
                               <div className="flex justify-end gap-1">
@@ -637,91 +832,177 @@ export function CariDevirFisiModule() {
       </div>
 
       {editForm && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4">
-          <div className="bg-white rounded-xl shadow-xl w-full max-w-md">
-            <div className="flex items-center justify-between px-4 py-3 border-b">
-              <h3 className="font-bold text-gray-900">{tm('editOpeningSlip')}</h3>
-              <button type="button" onClick={() => setEditForm(null)} className="p-1 rounded hover:bg-gray-100">
-                <X className="w-5 h-5" />
-              </button>
+        <PercentBodyModal onClose={() => setEditForm(null)} size="compact" ariaLabel={tm('editOpeningSlip')}>
+          <div className="flex shrink-0 items-center justify-between border-b border-slate-200 bg-gradient-to-r from-indigo-600 to-blue-600 px-4 py-3 text-white">
+            <h3 className="flex items-center gap-2 text-base font-semibold">
+              <Pencil className="w-4 h-4" />
+              {tm('editOpeningSlip')}
+            </h3>
+            <button
+              type="button"
+              onClick={() => setEditForm(null)}
+              className="rounded p-1 text-white/80 transition hover:bg-white/10 hover:text-white"
+              aria-label="close"
+            >
+              <X className="w-5 h-5" />
+            </button>
+          </div>
+          <PercentBodyModalScrollBody className="p-5 space-y-3">
+            <p className="text-sm text-gray-700 font-medium">{editForm.accountName}</p>
+            <p className="text-xs text-slate-500">
+              {tm('openingLedgerCurrencyNote').replace('{currency}', mainCurrency)}
+            </p>
+            <div>
+              <label className="block text-xs font-bold text-gray-500 uppercase mb-1">{tm('date')}</label>
+              <input
+                type="date"
+                value={editForm.date}
+                onChange={(e) => setEditForm({ ...editForm, date: e.target.value })}
+                className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm"
+              />
             </div>
-            <div className="p-4 space-y-3">
-              <p className="text-sm text-gray-600">{editForm.accountName}</p>
+            <div>
+              <label className="block text-xs font-bold text-gray-500 uppercase mb-1">{tm('direction')}</label>
+              <select
+                value={editForm.direction}
+                onChange={(e) => setEditForm({ ...editForm, direction: e.target.value as CariDevirDirection })}
+                className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm"
+              >
+                <option value="borc">{tm('directionDebtShort')}</option>
+                <option value="alacak">{tm('directionCreditShort')}</option>
+              </select>
+            </div>
+            <div className="grid grid-cols-2 gap-3">
               <div>
-                <label className="block text-xs font-bold text-gray-500 uppercase mb-1">{tm('date')}</label>
-                <input
-                  type="date"
-                  value={editForm.date}
-                  onChange={(e) => setEditForm({ ...editForm, date: e.target.value })}
-                  className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm"
-                />
-              </div>
-              <div>
-                <label className="block text-xs font-bold text-gray-500 uppercase mb-1">{tm('direction')}</label>
+                <label className="block text-xs font-bold text-gray-500 uppercase mb-1">{tm('openingCurrency')}</label>
                 <select
-                  value={editForm.direction}
-                  onChange={(e) => setEditForm({ ...editForm, direction: e.target.value as CariDevirDirection })}
+                  value={editForm.currency}
+                  onChange={(e) => setEditForm({ ...editForm, currency: e.target.value })}
                   className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm"
                 >
-                  <option value="borc">{tm('directionDebtShort')}</option>
-                  <option value="alacak">{tm('directionCreditShort')}</option>
+                  {availableCurrencies.map((code) => (
+                    <option key={code} value={code}>
+                      {code}
+                    </option>
+                  ))}
                 </select>
               </div>
               <div>
-                <label className="block text-xs font-bold text-gray-500 uppercase mb-1">{tm('amountLabel')}</label>
-                <input
-                  type="text"
-                  inputMode="decimal"
-                  autoComplete="off"
-                  value={editForm.amount}
-                  onChange={(e) =>
+                <label className="block text-xs font-bold text-gray-500 uppercase mb-1">
+                  {tm('openingCurrencyRate')}
+                </label>
+                {editForm.currency === mainCurrency ? (
+                  <div className="w-full border border-gray-200 bg-gray-50 text-gray-400 rounded-lg px-3 py-2 text-sm text-right">
+                    1,00
+                  </div>
+                ) : (
+                  <div className="flex items-center gap-1">
+                    <span className="text-[10px] text-gray-500 whitespace-nowrap">1 {editForm.currency} =</span>
+                    <input
+                      type="text"
+                      inputMode="decimal"
+                      autoComplete="off"
+                      value={editForm.currencyRate}
+                      onChange={(e) =>
+                        setEditForm({
+                          ...editForm,
+                          currencyRate: formatDecimalForTrInput(
+                            parseDecimalStringForInput(e.target.value) || 0,
+                            6,
+                          ),
+                        })
+                      }
+                      onBlur={() => {
+                        const n = parseCariDevirRate(editForm.currencyRate);
+                        setEditForm({
+                          ...editForm,
+                          currencyRate: n > 0 ? formatCariDevirRateInput(String(n)) : '',
+                        });
+                      }}
+                      placeholder="1,00"
+                      className="w-full border border-orange-300 rounded-lg px-3 py-2 text-sm text-right font-medium"
+                    />
+                  </div>
+                )}
+                {editForm.currency !== mainCurrency && editForm.currencyRate && (
+                  <p className="mt-1 text-[10px] text-amber-700">
+                    {tm('openingHistoricalBadge')} · {tm('openingRateHint')
+                      .replace('{currency}', editForm.currency)
+                      .replace('{rate}', editForm.currencyRate)
+                      .replace('{ledger}', mainCurrency)}
+                  </p>
+                )}
+              </div>
+            </div>
+            <div>
+              <label className="block text-xs font-bold text-gray-500 uppercase mb-1">{tm('amountLabel')}</label>
+              <input
+                type="text"
+                inputMode="decimal"
+                autoComplete="off"
+                value={editForm.amount}
+                onChange={(e) =>
+                  setEditForm({
+                    ...editForm,
+                    amount: formatCariDevirAmountInput(e.target.value, editForm.currency),
+                  })
+                }
+                onBlur={() => {
+                  const n = parseCariDevirAmount(editForm.amount);
+                  if (n > 0) {
                     setEditForm({
                       ...editForm,
-                      amount: formatCariDevirAmountInput(e.target.value, mainCurrency),
-                    })
+                      amount: formatDecimalForTrInput(n, cariDevirAmountDecimals(editForm.currency)),
+                    });
                   }
-                  onBlur={() => {
-                    const n = parseCariDevirAmount(editForm.amount);
-                    if (n > 0) {
-                      setEditForm({
-                        ...editForm,
-                        amount: formatDecimalForTrInput(n, amountDecimals),
-                      });
-                    }
-                  }}
-                  placeholder={amountDecimals > 0 ? '0,00' : '0'}
-                  className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm text-right"
-                />
-              </div>
-              <div>
-                <label className="block text-xs font-bold text-gray-500 uppercase mb-1">{tm('description')}</label>
-                <input
-                  type="text"
-                  value={editForm.notes}
-                  onChange={(e) => setEditForm({ ...editForm, notes: e.target.value })}
-                  className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm"
-                />
-              </div>
+                }}
+                placeholder={cariDevirAmountDecimals(editForm.currency) > 0 ? '0,00' : '0'}
+                className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm text-right"
+              />
             </div>
-            <div className="flex justify-end gap-2 px-4 py-3 border-t bg-gray-50 rounded-b-xl">
-              <button
-                type="button"
-                onClick={() => setEditForm(null)}
-                className="px-4 py-2 text-sm rounded-lg border border-gray-300 hover:bg-white"
-              >
-                {tm('giveUp')}
-              </button>
-              <button
-                type="button"
-                disabled={editSaving}
-                onClick={() => void handleEditSave()}
-                className="px-4 py-2 text-sm rounded-lg bg-indigo-600 text-white font-bold hover:bg-indigo-700 disabled:opacity-50"
-              >
-                {editSaving ? tm('saving') : tm('save')}
-              </button>
+            {(() => {
+              const amt = parseCariDevirAmount(editForm.amount);
+              const cur = normalizeCurrencyCode(editForm.currency, mainCurrency);
+              const rate = parseCariDevirRate(editForm.currencyRate);
+              const eq = cariDevirLedgerEquivalent(amt, cur, rate, mainCurrency);
+              if (!eq) return null;
+              return (
+                <div className="rounded-lg border border-indigo-100 bg-indigo-50/60 px-3 py-2 text-xs text-indigo-900">
+                  <span className="font-bold">{tm('openingSystemEquivalent')}:</span>{' '}
+                  <span className="font-mono tabular-nums">
+                    {formatNumber(eq, cariDevirAmountDecimals(mainCurrency), true)} {mainCurrency}
+                  </span>
+                </div>
+              );
+            })()}
+            <div>
+              <label className="block text-xs font-bold text-gray-500 uppercase mb-1">{tm('description')}</label>
+              <input
+                type="text"
+                value={editForm.notes}
+                onChange={(e) => setEditForm({ ...editForm, notes: e.target.value })}
+                className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm"
+              />
             </div>
+          </PercentBodyModalScrollBody>
+          <div className="flex shrink-0 justify-end gap-2 border-t border-slate-100 bg-slate-50 px-4 py-3">
+            <button
+              type="button"
+              onClick={() => setEditForm(null)}
+              className="rounded-lg border border-slate-200 px-4 py-2 text-sm font-bold uppercase tracking-wider text-slate-600 hover:bg-slate-100 active:scale-[0.98]"
+            >
+              {tm('giveUp')}
+            </button>
+            <button
+              type="button"
+              disabled={editSaving}
+              onClick={() => void handleEditSave()}
+              className="rounded-lg bg-blue-600 px-4 py-2 text-sm font-bold uppercase tracking-wider text-white shadow-lg shadow-blue-200/50 hover:bg-blue-700 disabled:opacity-50 active:scale-[0.98]"
+            >
+              {editSaving ? tm('saving') : tm('save')}
+            </button>
           </div>
-        </div>
+        </PercentBodyModal>
       )}
     </div>
   );
