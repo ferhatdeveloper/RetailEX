@@ -250,22 +250,14 @@ export function POSPaymentModal({
     };
   }, []);
 
-  // Ödeme tipine göre kasayı otomatik öner.
-  // Eşleme: kasa adı/kodu içinde geçen anahtar kelimeler.
+  // Varsayılan kasa: her zaman listenin ilk öğesi (DB'ye ilk eklenmiş kasa,
+  // fetchKasalar created_at'e göre sıralı döner). Ödeme tipine göre anahtar
+  // kelime eşleşmesi (nakit/kart otomatik önerisi) kaldırıldı.
   // Kullanıcı isterse dropdown'dan elle değiştirebilir.
   useEffect(() => {
     if (cashRegisters.length === 0) return;
     if (selectedCashRegisterId && cashRegisters.some((k) => k.id === selectedCashRegisterId)) return;
-    const hint = currentMethod === 'cash' ? ['nakit', 'cash', 'kasa', 'genel']
-      : currentMethod === 'card' ? ['kart', 'card', 'pos']
-      : currentMethod === 'gateway' ? ['gateway', 'qr', 'online']
-      : ['veresiye', 'cari', 'open'];
-    const norm = (s: string) => String(s || '').toLocaleLowerCase('tr-TR');
-    const match = cashRegisters.find((k) => {
-      const hay = `${norm(k.kasa_adi)} ${norm(k.kasa_kodu)}`;
-      return hint.some((h) => hay.includes(h));
-    });
-    setSelectedCashRegisterId(match?.id || '');
+    setSelectedCashRegisterId(cashRegisters[0]?.id || '');
   }, [currentMethod, cashRegisters, selectedCashRegisterId]);
 
   const selectedCashRegister = cashRegisters.find((k) => k.id === selectedCashRegisterId) || null;

@@ -365,7 +365,19 @@ export async function fetchKasalar(params?: {
 
     console.log(`[KasaService] Rows found: ${rows?.length || 0}`);
 
-    return (rows || []).map(mapDbKasaToKasa);
+    const mapped = (rows || []).map(mapDbKasaToKasa);
+    // "İlk eklenen kasa varsayılan" kuralı: DB ORDER BY code ASC ile gelir, ancak
+    // code manuel verilebildiği için sıra DB'ye eklenme sırasıyla eşleşmez.
+    // Burada created_at (yoksa guncelleme_tarihi) artan şekilde sıralayıp
+    // deterministik bir "ilk eklenen kasa" listesini tüm tüketicilere (modal,
+    // POS, fatura formu) aynı biçimde sunuyoruz.
+    return [...mapped].sort((a, b) => {
+      const ta = Date.parse(a.olusturma_tarihi || a.guncelleme_tarihi || '') || 0;
+      const tb = Date.parse(b.olusturma_tarihi || b.guncelleme_tarihi || '') || 0;
+      if (ta !== tb) return ta - tb;
+      // Son çare: id'ye göre artan (UUID sıralaması tahmin edilebilirliği bozar ama tutarlı)
+      return String(a.id).localeCompare(String(b.id));
+    });
   } catch (error: any) {
     console.error('[Kasa] Fetch error:', error);
     // Throw error so component catch block handles it (e.g. mock data or toast)

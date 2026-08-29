@@ -101,7 +101,9 @@ export function InvoicePaymentInfoModal({
     [retailPosMode],
   );
 
-  // Nakit / kart seçildiğinde otomatik kasa öner; açık cari / diğer seçildiğinde seçim sıfırlanır
+  // Nakit / kart seçildiğinde varsayılan olarak listenin ilk kasa öğesi seçilir
+  // (DB'ye ilk eklenen kasa — fetchKasalar created_at'e göre sıralı döner).
+  // Anahtar kelime eşleşmesi (nakit/kart otomatik önerisi) kaldırıldı.
   const showCashRegisterPicker = paymentMethodImpliesPaidNow(selectedMethod);
 
   useEffect(() => {
@@ -111,21 +113,8 @@ export function InvoicePaymentInfoModal({
     }
     if (cashRegisters.length === 0) return;
     if (selectedCashRegisterId && cashRegisters.some((k) => k.id === selectedCashRegisterId)) return;
-    const hint =
-      selectedMethod === 'NAKIT'
-        ? ['nakit', 'cash', 'kasa', 'genel']
-        : selectedMethod === 'KREDIKARTI'
-          ? ['kart', 'card', 'pos']
-          : [];
-    const norm = (s: string) => String(s || '').toLocaleLowerCase('tr-TR');
-    const match =
-      hint.length > 0
-        ? cashRegisters.find((k) => {
-            const hay = `${norm(k.kasa_adi)} ${norm(k.kasa_kodu)}`;
-            return hint.some((h) => hay.includes(h));
-          })
-        : undefined;
-    setSelectedCashRegisterId(match?.id || '');
+    // Varsayılan: listenin ilk öğesi (DB'ye ilk eklenmiş kasa)
+    setSelectedCashRegisterId(cashRegisters[0]?.id || '');
   }, [selectedMethod, cashRegisters, selectedCashRegisterId, showCashRegisterPicker]);
 
   const selectedCashRegister = cashRegisters.find((k) => k.id === selectedCashRegisterId) || null;
@@ -158,23 +147,25 @@ export function InvoicePaymentInfoModal({
           <div className="mb-4">
             <label className="block text-sm font-medium text-gray-700 mb-2">{tm('paymentMethodLabel')}</label>
             <div className="mb-2 text-xs text-gray-500">{tm('paymentMethodOpenAccountHint')}</div>
-            <div className="grid grid-cols-2 gap-2">
+            <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
               {paymentMethods.map((method) => {
                 const Icon = method.icon;
                 return (
                   <button
                     key={method.code}
                     onClick={() => setSelectedMethod(method.code)}
-                    className={`px-4 py-3 border-2 rounded-lg text-left transition-all flex items-center gap-2 ${
+                    className={`w-full min-h-[60px] px-3 py-2.5 border-2 rounded-lg text-left transition-all flex items-center gap-2 ${
                       selectedMethod === method.code
                         ? 'border-blue-500 bg-blue-50'
                         : 'border-gray-300 hover:border-blue-500 hover:bg-blue-50'
                     }`}
                   >
-                    <Icon className="w-5 h-5 text-gray-600" />
-                    <span className="font-medium text-gray-900">{tm(method.nameKey)}</span>
+                    <Icon className="w-5 h-5 shrink-0 text-gray-600" />
+                    <span className="font-medium text-gray-900 text-sm leading-tight break-words flex-1">
+                      {tm(method.nameKey)}
+                    </span>
                     {selectedMethod === method.code && (
-                      <div className="ml-auto w-5 h-5 rounded-full border-2 border-blue-600 flex items-center justify-center">
+                      <div className="ml-auto w-5 h-5 rounded-full border-2 border-blue-600 flex items-center justify-center shrink-0">
                         <div className="w-2.5 h-2.5 rounded-full bg-blue-600" />
                       </div>
                     )}

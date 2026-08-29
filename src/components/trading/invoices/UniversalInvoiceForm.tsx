@@ -573,25 +573,16 @@ export function UniversalInvoiceForm({
       .finally(() => { if (!cancelled) setCashRegistersLoading(false); });
     return () => { cancelled = true; };
   }, []);
-  // Ödeme tipi değiştiğinde uygun kasayı otomatik öner
+  // Varsayılan kasa: her zaman listenin ilk öğesi (DB'ye ilk eklenmiş kasa —
+  // fetchKasalar created_at'e göre sıralı döner). Ödeme tipine göre anahtar
+  // kelime eşleşmesi (nakit/kart otomatik önerisi) kaldırıldı.
   useEffect(() => {
     if (cashRegisters.length === 0) return;
     if (cashRegisterId && cashRegisters.some((k) => k.id === cashRegisterId)) return;
-    const hint =
-      paymentMethod === 'NAKIT' || paymentMethod === 'CASH' ? ['nakit', 'cash', 'kasa', 'genel']
-      : paymentMethod === 'KREDIKARTI' || paymentMethod === 'CREDIT_CARD' || paymentMethod === 'KART' ? ['kart', 'card', 'pos']
-      : paymentMethod === 'BANKA_HAVALESI' || paymentMethod === 'BANK_TRANSFER' ? ['banka', 'bank', 'havale', 'transfer']
-      : paymentMethod === 'CEK' || paymentMethod === 'CHECK' ? ['çek', 'cek', 'check']
-      : paymentMethod === 'ACIK_CARI' || paymentMethod === 'CREDIT' ? ['veresiye', 'cari', 'open', 'vadeli']
-      : ['nakit', 'cash', 'genel'];
-    const norm = (s: string) => String(s || '').toLocaleLowerCase('tr-TR');
-    const match = cashRegisters.find((k) => {
-      const hay = `${norm(k.kasa_adi)} ${norm(k.kasa_kodu)}`;
-      return hint.some((h) => hay.includes(h));
-    });
-    if (match) {
-      setCashRegisterId(match.id);
-      setCashRegisterName(match.kasa_adi);
+    const first = cashRegisters[0];
+    if (first) {
+      setCashRegisterId(first.id);
+      setCashRegisterName(first.kasa_adi);
     }
   }, [paymentMethod, cashRegisters, cashRegisterId]);
   const isSalesReturnForm = invoiceType.code === 3;
