@@ -1,8 +1,12 @@
 ﻿import { X, CreditCard, Wallet, Banknote, Building2, Users } from 'lucide-react';
 import { useEffect, useMemo, useState } from 'react';
 import { useLanguage } from '../../../contexts/LanguageContext';
-import { dbPaymentMethodToFormCode } from '../../../utils/paymentMethodUtils';
+import {
+  dbPaymentMethodToFormCode,
+  paymentMethodImpliesPaidNow,
+} from '../../../utils/paymentMethodUtils';
 import { PercentBodyModal } from '../../shared/PercentBodyModal';
+import { fetchKasalar, type Kasa } from '../../../services/api/kasa';
 
 interface PaymentMethod {
   code: string;
@@ -10,9 +14,23 @@ interface PaymentMethod {
   icon: typeof CreditCard;
 }
 
+export interface InvoicePaymentInfoSelection {
+  paymentMethod: string;
+  /** Nakit / kart seçildiğinde seçilen kasa ID'si (açık cari / veresiye için null) */
+  cashRegisterId: string | null;
+  cashRegisterName?: string | null;
+  cashRegisterCode?: string | null;
+  notes?: string;
+}
+
 interface InvoicePaymentInfoModalProps {
   currentPaymentMethod: string;
-  onSelect: (method: string) => void;
+  /**
+   * Eski çağrı biçimi: `onSelect(method: string)`.
+   * Yeni imza: `onSelect(method, extra)` — extra.notes ve extra.cashRegister* alanlarını içerir.
+   * Parent ikinci parametreyi kullanmıyorsa yalnızca method işlenir.
+   */
+  onSelect: (method: string, extra?: InvoicePaymentInfoSelection) => void;
   onClose: () => void;
   /** Perakende POS: yalnızca nakit / kart */
   retailPosMode?: boolean;
@@ -30,11 +48,41 @@ export function InvoicePaymentInfoModal({
   const [selectedMethod, setSelectedMethod] = useState(initialCode);
   const [notes, setNotes] = useState('');
 
+  // Aktif kasalar — nakit / kart seçildiğinde kullanıcıya kasa seçtirilir
+  const [cashRegisters, setCashRegisters] = useState<Kasa[]>([]);
+  const [cashRegistersLoading, setCashRegistersLoading] = useState(false);
+  const [selectedCashRegisterId, setSelectedCashRegisterId] = useState<string>('');
+
   useEffect(() => {
     setSelectedMethod(
       dbPaymentMethodToFormCode(currentPaymentMethod) || currentPaymentMethod || 'ACIK_CARI',
     );
   }, [currentPaymentMethod]);
+
+  // Aktif kasaları yükle
+  useEffect(() => {
+    let cancelled = false;
+    setCashRegistersLoading(true);
+    fetchKasalar({ aktif: true })
+      .then((rows) => {
+        if (cancelled) return;
+        setCashRegisters(Array.isArray(rows) ? rows : []);
+      })
+      .catch((e) => {
+        if (cancelled) return;
+        // sessizce geç — kasa seçimi opsiyonel (uyarı konsola)
+        // eslint-disable-next-line no-console
+        console.warn('[InvoicePaymentInfoModal] fetchKasalar failed:', e);
+        setCashRegisters([]);
+      })
+      .finally(() => {
+        if (cancelled) return;
+        setCashRegistersLoading(false);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, []);
 
   const paymentMethods: PaymentMethod[] = useMemo(
     () => {
@@ -53,8 +101,44 @@ export function InvoicePaymentInfoModal({
     [retailPosMode],
   );
 
+  // Nakit / kart seçildiğinde otomatik kasa öner; açık cari / diğer seçildiğinde seçim sıfırlanır
+  const showCashRegisterPicker = paymentMethodImpliesPaidNow(selectedMethod);
+
+  useEffect(() => {
+    if (!showCashRegisterPicker) {
+      setSelectedCashRegisterId('');
+      return;
+    }
+    if (cashRegisters.length === 0) return;
+    if (selectedCashRegisterId && cashRegisters.some((k) => k.id === selectedCashRegisterId)) return;
+    const hint =
+      selectedMethod === 'NAKIT'
+        ? ['nakit', 'cash', 'kasa', 'genel']
+        : selectedMethod === 'KREDIKARTI'
+          ? ['kart', 'card', 'pos']
+          : [];
+    const norm = (s: string) => String(s || '').toLocaleLowerCase('tr-TR');
+    const match =
+      hint.length > 0
+        ? cashRegisters.find((k) => {
+            const hay = `${norm(k.kasa_adi)} ${norm(k.kasa_kodu)}`;
+            return hint.some((h) => hay.includes(h));
+          })
+        : undefined;
+    setSelectedCashRegisterId(match?.id || '');
+  }, [selectedMethod, cashRegisters, selectedCashRegisterId, showCashRegisterPicker]);
+
+  const selectedCashRegister = cashRegisters.find((k) => k.id === selectedCashRegisterId) || null;
+
   const handleSave = () => {
-    onSelect(selectedMethod || 'ACIK_CARI');
+    const method = selectedMethod || 'ACIK_CARI';
+    onSelect(method, {
+      paymentMethod: method,
+      cashRegisterId: showCashRegisterPicker ? selectedCashRegister?.id || null : null,
+      cashRegisterName: showCashRegisterPicker ? selectedCashRegister?.kasa_adi || null : null,
+      cashRegisterCode: showCashRegisterPicker ? selectedCashRegister?.kasa_kodu || null : null,
+      notes,
+    });
     onClose();
   };
 
@@ -99,6 +183,54 @@ export function InvoicePaymentInfoModal({
               })}
             </div>
           </div>
+
+          {showCashRegisterPicker && (
+            <div className="mb-4">
+              <label className="block text-sm font-medium text-gray-700 mb-1">
+                {tm('cashRegisterLabel')}
+              </label>
+              <div className="mb-1 text-xs text-gray-500">
+                {tm('cashRegisterSelectHint')}
+              </div>
+              <div className="relative">
+                <select
+                  aria-label={tm('cashRegisterLabel')}
+                  value={selectedCashRegisterId}
+                  onChange={(e) => setSelectedCashRegisterId(e.target.value)}
+                  disabled={cashRegistersLoading || cashRegisters.length === 0}
+                  className="w-full px-3 py-2 pr-9 border border-gray-300 rounded appearance-none bg-white focus:outline-none focus:border-blue-600 disabled:bg-gray-100 disabled:cursor-not-allowed"
+                >
+                  <option value="">
+                    {cashRegistersLoading
+                      ? tm('loading')
+                      : tm('selectCashRegister')}
+                  </option>
+                  {cashRegisters.map((k) => (
+                    <option key={k.id} value={k.id}>
+                      {`${k.kasa_adi} — ${k.kasa_kodu}`}
+                    </option>
+                  ))}
+                </select>
+                <svg
+                  aria-hidden
+                  className="absolute right-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400 pointer-events-none"
+                  viewBox="0 0 20 20"
+                  fill="currentColor"
+                >
+                  <path
+                    fillRule="evenodd"
+                    d="M5.23 7.21a.75.75 0 011.06.02L10 11.06l3.71-3.83a.75.75 0 111.08 1.04l-4.25 4.39a.75.75 0 01-1.08 0L5.21 8.27a.75.75 0 01.02-1.06z"
+                    clipRule="evenodd"
+                  />
+                </svg>
+              </div>
+              {selectedCashRegister && (
+                <p className="mt-1 text-[11px] text-gray-600">
+                  {`${selectedCashRegister.kasa_adi} · ${selectedCashRegister.kasa_kodu}`}
+                </p>
+              )}
+            </div>
+          )}
 
           <div className="mb-4">
             <label className="block text-sm font-medium text-gray-700 mb-2">{tm('notes')}</label>

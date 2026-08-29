@@ -380,6 +380,8 @@ export const moduleTranslations: Record<string, Record<Language, string>> = {
   cashRegisterCode: { tr: 'Kasa Kodu', en: 'Cash Register Code', ar: 'رمز الصندوق', ku: 'کۆدی سندووق' },
   cashRegisterName: { tr: 'Kasa Adı', en: 'Cash Register Name', ar: 'اسم الصندوق', ku: 'ناوی سندووق' },
   cashRegisterLabel: { tr: 'Kasa Seçimi', en: 'Cash Register', ar: 'اختيار الصندوق', ku: 'هەڵبژاردنی سندوق' },
+  cashRegisterSelectHint: { tr: 'Nakit veya kart ödemeleri için kasa seçin', en: 'Select a cash register for cash or card payments', ar: 'اختر صندوقًا للمدفوعات النقدية أو ببطاقة', ku: 'بۆ پارەدانی نەقد یان کارت سندوقێک هەڵبژێرە' },
+  cashRegisterRequired: { tr: 'Nakit veya kart ödemesi için kasa seçimi zorunludur', en: 'A cash register is required for cash or card payments', ar: 'اختيار الصندوق مطلوب للمدفوعات النقدية أو ببطاقة', ku: 'بۆ پارەدانی نەقد یان کارت هەڵبژاردنی سندوق پێویستە' },
   cashRegisterPaymentTypeLabel: { tr: 'Ödeme Türü: {type}', en: 'Payment Type: {type}', ar: 'نوع الدفع: {type}', ku: 'جۆری پارەدان: {type}' },
   selectCashRegister: { tr: 'Kasa seçin (opsiyonel)', en: 'Select cash register (optional)', ar: 'اختر الصندوق (اختياري)', ku: 'سندوق هەڵبژێرە (ئارەزوومەندانە)' },
   transactionHistory: { tr: 'İşlem Geçmişi', en: 'Transaction History', ar: 'سجل المعاملات', ku: 'مێژووی کارەکان' },

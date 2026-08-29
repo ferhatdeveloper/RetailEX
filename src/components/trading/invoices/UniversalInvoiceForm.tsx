@@ -557,6 +557,10 @@ export function UniversalInvoiceForm({
     const v = (editData as any)?.cash_register_name;
     return typeof v === 'string' ? v : '';
   });
+  const [cashRegisterCode, setCashRegisterCode] = useState<string>(() => {
+    const v = (editData as any)?.cash_register_code;
+    return typeof v === 'string' ? v : '';
+  });
   // Kasa listesi — ödeme tipi seçildiğinde uygun kasaları önermek için
   const [cashRegisters, setCashRegisters] = useState<KasaRow[]>([]);
   const [cashRegistersLoading, setCashRegistersLoading] = useState(false);
@@ -4994,7 +4998,14 @@ export function UniversalInvoiceForm({
             <InvoicePaymentInfoModal
               currentPaymentMethod={paymentMethod}
               retailPosMode={isPosRetail}
-              onSelect={setPaymentMethod}
+              onSelect={(method, extra) => {
+                setPaymentMethod(method);
+                if (extra) {
+                  setCashRegisterId(extra.cashRegisterId || '');
+                  setCashRegisterName(extra.cashRegisterName || '');
+                  setCashRegisterCode(extra.cashRegisterCode || '');
+                }
+              }}
               onClose={() => setShowPaymentInfoModal(false)}
             />
           )}
