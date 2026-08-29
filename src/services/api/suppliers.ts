@@ -31,7 +31,13 @@ export type CariListFilter = 'all' | 'customer' | 'supplier';
 function dedupeEkstreRows(rows: any[]): any[] {
   const seen = new Set<string>();
   return rows.filter((r) => {
-    const key = `${r.fiche_no ?? ''}|${r.date ?? ''}|${r.fiche_type ?? ''}|${r.total_amount ?? ''}`;
+    // Dedupe anahtarı: tablo kimliği (id) varsa öncelikli — aynı kayıt (sales satırı veya
+    // cash_lines satırı) ekstre sorgusu sırasında iki kere geldiğinde tekilleştirir.
+    // id yoksa işlem kimliği (fiche_no + date + fiche_type + total_amount + cancelled) yeterli.
+    // cancelled=true olan iptal fişleri ayrı tutulur (iptal edilmemiş satırın üstüne yazmaz).
+    const idKey = r.id != null ? `id:${r.id}` : null;
+    const fallbackKey = `${r.fiche_no ?? ''}|${r.date ?? ''}|${r.fiche_type ?? ''}|${r.total_amount ?? ''}|${r.is_cancelled ? '1' : '0'}`;
+    const key = idKey || fallbackKey;
     if (seen.has(key)) return false;
     seen.add(key);
     return true;

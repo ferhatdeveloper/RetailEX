@@ -2,6 +2,29 @@
 
 export type ExtCardType = 'customer' | 'supplier' | 'employee' | 'partner' | undefined;
 
+/**
+ * Kasa (cash_lines) satırının cari bakiyeye katkısı.
+ * - CH_TAHSILAT (müşteriden tahsilat) → müşteri borcu ↓ (−amt), tedarikçi borcu ↑ (+amt).
+ * - CH_ODEME (tedarikçiye/müşteriye ödeme) → müşteri alacağı ↑ (+amt), tedarikçi borcu ↓ (−amt).
+ *
+ * `accountBalance.ts → cariCashLineLedgerContrib` ile uyumlu; ekstre tarafında
+ * "ABS + her zaman +1" kısayoluna düşmemek için işareti koruyarak kullanıyoruz.
+ */
+function cashLineLedgerDelta(
+  amount: number,
+  transactionType: string | null | undefined,
+  cardType: ExtCardType,
+): number {
+  const tt = String(transactionType || '').trim().toUpperCase();
+  if (tt !== 'CH_ODEME' && tt !== 'CH_TAHSILAT') return 0;
+  const amt = Math.abs(Number(amount) || 0);
+  if (!amt) return 0;
+  const isSupplier = cardType === 'supplier';
+  if (tt === 'CH_ODEME') return isSupplier ? -amt : amt;
+  // CH_TAHSILAT
+  return isSupplier ? amt : -amt;
+}
+
 export function preferIntegerAmountDisplay(code: string): boolean {
   const c = (code || '').trim().toUpperCase();
   return c === 'IQD' || c === 'JPY' || c === 'VND' || c === 'KHR' || c === 'UZS';
@@ -109,18 +132,23 @@ export function buildEkstreRows(
   cardType: ExtCardType,
 ): EkstreRow[] {
   const isSupplierAccount = cardType === 'supplier';
-  const isEmployeeAccount = cardType === 'employee';
-  const isPartnerAccount = cardType === 'partner';
   let runningBalance = 0;
 
   return data.map(row => {
     const amount = parseFloat(String(row.total_amount ?? 0));
     const cancelled = row.is_cancelled === true;
+    const ficheType = String(row.fiche_type ?? '').trim().toUpperCase();
     const typeInfo = ficheTypeToInfo(String(row.fiche_type ?? ''), Number(row.trcode), cancelled);
     const { isReturn, isOpening } = typeInfo as { isReturn: boolean; isOpening?: boolean };
     let delta = 0;
     if (!cancelled) {
-      if (isOpening) {
+      // Kasa satırları (CH_TAHSILAT / CH_ODEME) ayrı imza ile işlenir —
+      // tahsilat müşteri bakiyesini düşürür, ödeme tedarikçi bakiyesini düşürür.
+      // "ABS + her zaman +1" kısayolu burada YASAK (muhasebe denetimi).
+      if (ficheType === 'CH_TAHSILAT' || ficheType === 'CH_ODEME') {
+        delta = cashLineLedgerDelta(amount, ficheType, cardType);
+      } else if (isOpening) {
+        // Açılış/devir fişi: kullanıcının girdiği yön (borç + / alacak −) korunur.
         delta = amount;
       } else if (isSupplierAccount) {
         delta = isReturn ? -Math.abs(amount) : Math.abs(amount);
@@ -133,7 +161,21 @@ export function buildEkstreRows(
     // Personel/Ortağı: working'de amount her zaman + (zaten yön ayarlı);
     // borc/alacak sütunları için normal müşteri/tedarikçi mantığı kullanılır.
     // Tedarikçi alışı borç artırır (Debit), ödeme/iade borç azaltır (Credit) — müşteriyle aynı mantık.
-    const isBorcEntry = isOpening ? amount > 0 : !isReturn;
+    // Kasa satırlarında işaret cari türüne göre doğru sütuna yazılır:
+    //   müşteri CH_TAHSILAT → alacak (−delta); tedarikçi CH_ODEME → alacak (−delta).
+    const isCashLine = ficheType === 'CH_TAHSILAT' || ficheType === 'CH_ODEME';
+    let isBorcEntry: boolean;
+    if (cancelled) {
+      isBorcEntry = false;
+    } else if (isOpening) {
+      isBorcEntry = amount > 0;
+    } else if (isCashLine) {
+      // Kasa satırı: işaret cari türüyle tutarlı → müşteri CH_TAHSILAT alacak,
+      // tedarikçi CH_ODEME alacak; tersi borç sütununda.
+      isBorcEntry = delta > 0;
+    } else {
+      isBorcEntry = !isReturn;
+    }
     return {
       ...row,
       borcAmount: cancelled ? 0 : (isBorcEntry ? absAmt : 0),
