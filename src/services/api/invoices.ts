@@ -687,14 +687,22 @@ async function createInvoiceViaPostgrest(invoice: Invoice, opts: {
     profit_margin: Number(invoice.profit_margin || 0),
     currency: String(invoice.currency || 'IQD'),
     currency_rate: Number(invoice.currency_rate || 1),
-    status: 'approved',
+    status: String((invoice as any).status || 'completed'),
     notes: String(invoice.notes || ''),
     document_no: String((invoice as any).document_no || invoice.invoice_no || ''),
     payment_method: String((invoice as any).payment_method || 'Nakit'),
     cashier: String((invoice as any).cashier || ''),
     store_id: isValidUuid((invoice as any).store_id) ? (invoice as any).store_id : null,
     created_by_user_id: isValidUuid((invoice as any).created_by_user_id) ? (invoice as any).created_by_user_id : null,
-    header_fields: (invoice as any).header_fields ?? {},
+    header_fields: {
+      ...(((invoice as any).header_fields as Record<string, unknown>) ?? {}),
+      ...((invoice as any).cash_register_id
+        ? { cash_register_id: String((invoice as any).cash_register_id) }
+        : {}),
+      ...((invoice as any).cash_register_name
+        ? { cash_register_name: String((invoice as any).cash_register_name) }
+        : {}),
+    },
   };
 
   const legacyPayload: Record<string, unknown> = {
@@ -716,7 +724,7 @@ async function createInvoiceViaPostgrest(invoice: Invoice, opts: {
     profit_margin: Number(invoice.profit_margin || 0),
     currency: String(invoice.currency || 'IQD'),
     currency_rate: Number(invoice.currency_rate || 1),
-    status: 'approved',
+    status: String((invoice as any).status || 'completed'),
     notes: String(invoice.notes || ''),
   };
 
@@ -1095,7 +1103,7 @@ export const invoicesAPI = {
             Number(invoice.profit_margin || 0),
             String(invoice.currency || 'IQD'),
             Number(invoice.currency_rate || 1),
-            'approved',
+            String((invoice as any).status || 'completed'),
             String(invoice.notes || ''),
             String((invoice as any).document_no || invoice.invoice_no || ''),
             String((invoice as any).payment_method || 'Nakit'),
@@ -1148,7 +1156,7 @@ export const invoicesAPI = {
             Number(invoice.profit_margin || 0),
             String(invoice.currency || 'IQD'),
             Number(invoice.currency_rate || 1),
-            'approved',
+            String((invoice as any).status || 'completed'),
             String(invoice.notes || '')
           ],
           queryOptions
@@ -1965,6 +1973,35 @@ export const invoicesAPI = {
         }
         if ((invoice as Record<string, unknown>).header_fields !== undefined) {
           patchBody.header_fields = (invoice as Record<string, unknown>).header_fields;
+        }
+        // cash_register_id / cash_register_name — header_fields JSON'unda saklanır
+        if ((invoice as any).cash_register_id || (invoice as any).cash_register_name) {
+          try {
+            const existing = (await postgrest.get<any[]>(
+              `${salesTable}?id=eq.${encodeURIComponent(cleanId)}&select=header_fields&limit=1`,
+              { schema: 'public' },
+            )) as any[];
+            const prev = (existing?.[0]?.header_fields as Record<string, unknown>) || {};
+            patchBody.header_fields = {
+              ...prev,
+              ...((invoice as any).cash_register_id
+                ? { cash_register_id: String((invoice as any).cash_register_id) }
+                : {}),
+              ...((invoice as any).cash_register_name
+                ? { cash_register_name: String((invoice as any).cash_register_name) }
+                : {}),
+            };
+          } catch {
+            patchBody.header_fields = {
+              ...((invoice as any).header_fields as Record<string, unknown> | undefined ?? {}),
+              ...((invoice as any).cash_register_id
+                ? { cash_register_id: String((invoice as any).cash_register_id) }
+                : {}),
+              ...((invoice as any).cash_register_name
+                ? { cash_register_name: String((invoice as any).cash_register_name) }
+                : {}),
+            };
+          }
         }
         if ((invoice as Record<string, unknown>).cashier !== undefined) {
           patchBody.cashier = String((invoice as Record<string, unknown>).cashier || '');

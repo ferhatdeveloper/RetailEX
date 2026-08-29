@@ -43,6 +43,7 @@ import {
   saveInvoiceListPrefs,
 } from '../../../utils/invoiceListPrefs';
 import { PercentBodyModal, PercentBodyModalScrollBody } from '../../shared/PercentBodyModal';
+import { InvoiceExcelExportModal } from './InvoiceExcelExportModal';
 
 export type CountPurchaseDraftPrefill = {
   editData: Record<string, unknown>;
@@ -373,6 +374,7 @@ export function InvoiceListModule({
     makeDefault: boolean;
   } | null>(null);
   const [specialPrintLoading, setSpecialPrintLoading] = useState(false);
+  const [showExcelModal, setShowExcelModal] = useState(false);
 
   // Sayfalama state
   const [currentPage, setCurrentPage] = useState(1);
@@ -1074,6 +1076,16 @@ export function InvoiceListModule({
               <span>{tm('refresh')}</span>
             </button>
             <button
+              type="button"
+              onClick={() => setShowExcelModal(true)}
+              disabled={isLoading || invoices.length === 0}
+              title={tm('exportExcel') || 'Excel'}
+              className="flex items-center gap-1 px-2 py-1 bg-emerald-500/90 hover:bg-emerald-500 disabled:opacity-40 disabled:cursor-not-allowed transition-colors text-[10px] font-bold rounded"
+            >
+              <Download className="w-3 h-3" />
+              <span>{tm('exportExcel') || 'Excel'}</span>
+            </button>
+            <button
               onClick={handleCreateInvoice}
               className="flex items-center gap-1 px-3 py-1 bg-white text-blue-700 hover:bg-blue-50 transition-colors text-[10px] font-bold"
             >
@@ -1421,6 +1433,7 @@ export function InvoiceListModule({
               enableColumnResizing
               enablePagination={false}
               enableSelection={defaultCategory === 'Alis' && !isMobile}
+              enableExcelExport={false}
               onSelectionChange={(rows) => setBulkSelectedInvoices(rows as ListInvoice[])}
               onRowDoubleClick={(invoice) => handleEditInvoice(invoice)}
               onRowContextMenu={handleRowRightClick}
@@ -2151,6 +2164,14 @@ export function InvoiceListModule({
           }}
         />
       )}
+
+      <InvoiceExcelExportModal
+        open={showExcelModal}
+        onClose={() => setShowExcelModal(false)}
+        invoices={invoices}
+        title={title || tm('invoices')}
+        fileNameBase={title || tm('invoices')}
+      />
     </div>
   );
 }

@@ -19,6 +19,7 @@ import { formatNumber as formatNumberTR } from '../../utils/formatNumber';
 import { posPaymentAdditionalDiscount, roundPosMoneyAmount, posMoneyEpsilon, getPosQuickDiscountAmountPresets } from '../../utils/discountRounding';
 import { getCurrencyDecimalPlaces } from '../../utils/currency';
 import { POSCancelReasonModal } from './POSCancelReasonModal';
+import { fetchKasalar, type Kasa } from '../../services/api/kasa';
 
 // Helper function to format number with Turkish formatting (nokta binlik, virgül ondalık)
 const formatNumberInput = (value: string): string => {
@@ -74,6 +75,10 @@ export interface POSPaymentModalPaymentRow {
   currency: 'IQD' | 'USD' | 'EUR';
   gatewayProvider?: string;
   transactionId?: string;
+  /** Seçilen kasa bilgisi — kasada ödeme türü gösterimi için */
+  cash_register_id?: string;
+  cash_register_name?: string;
+  cash_register_code?: string;
 }
 
 /** Hesabı kapatmadan ön fiş / adisyon yazdırırken modal içi özet */
@@ -121,7 +126,7 @@ export function POSPaymentModal({
   onClose,
   onComplete
 }: POSPaymentModalProps) {
-  const { t, language: uiLanguage } = useLanguage();
+  const { t, tm, language: uiLanguage } = useLanguage();
   const { selectedFirm } = useFirmaDonem();
   const baseCurrency = useMemo(
     () => (selectedFirm?.ana_para_birimi?.trim().toUpperCase() || getGlobalCurrency()) as 'IQD' | 'USD' | 'EUR',
@@ -133,6 +138,10 @@ export function POSPaymentModal({
   const [currentAmount, setCurrentAmount] = useState('');
   const [currentCurrency, setCurrentCurrency] = useState<'IQD' | 'USD' | 'EUR'>(baseCurrency);
   const [discountType, setDiscountType] = useState<'percentage' | 'amount'>('percentage');
+  // Kasa listesi ve seçilen kasa (ödeme tipi değiştiğinde uygun kasalar önerilir)
+  const [cashRegisters, setCashRegisters] = useState<Kasa[]>([]);
+  const [cashRegistersLoading, setCashRegistersLoading] = useState(false);
+  const [selectedCashRegisterId, setSelectedCashRegisterId] = useState<string>('');
   const [discountValue, setDiscountValue] = useState('');
   const [showNumpad, setShowNumpad] = useState(false);
   const [selectedGateway, setSelectedGateway] = useState<string>('');
@@ -218,6 +227,49 @@ export function POSPaymentModal({
     }
   }, []);
 
+  // Kasa listesini yükle (aktif kasalar)
+  useEffect(() => {
+    let cancelled = false;
+    setCashRegistersLoading(true);
+    fetchKasalar({ aktif: true })
+      .then((rows) => {
+        if (cancelled) return;
+        setCashRegisters(Array.isArray(rows) ? rows : []);
+      })
+      .catch((e) => {
+        if (cancelled) return;
+        console.warn('[POSPaymentModal] fetchKasalar failed:', e);
+        setCashRegisters([]);
+      })
+      .finally(() => {
+        if (cancelled) return;
+        setCashRegistersLoading(false);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
+  // Ödeme tipine göre kasayı otomatik öner.
+  // Eşleme: kasa adı/kodu içinde geçen anahtar kelimeler.
+  // Kullanıcı isterse dropdown'dan elle değiştirebilir.
+  useEffect(() => {
+    if (cashRegisters.length === 0) return;
+    if (selectedCashRegisterId && cashRegisters.some((k) => k.id === selectedCashRegisterId)) return;
+    const hint = currentMethod === 'cash' ? ['nakit', 'cash', 'kasa', 'genel']
+      : currentMethod === 'card' ? ['kart', 'card', 'pos']
+      : currentMethod === 'gateway' ? ['gateway', 'qr', 'online']
+      : ['veresiye', 'cari', 'open'];
+    const norm = (s: string) => String(s || '').toLocaleLowerCase('tr-TR');
+    const match = cashRegisters.find((k) => {
+      const hay = `${norm(k.kasa_adi)} ${norm(k.kasa_kodu)}`;
+      return hint.some((h) => hay.includes(h));
+    });
+    setSelectedCashRegisterId(match?.id || '');
+  }, [currentMethod, cashRegisters, selectedCashRegisterId]);
+
+  const selectedCashRegister = cashRegisters.find((k) => k.id === selectedCashRegisterId) || null;
+
   // Currency exchange rates (base: IQD)
   const exchangeRates: Record<string, number> = {
     IQD: 1,
@@ -275,7 +327,12 @@ export function POSPaymentModal({
       method: currentMethod,
       amount: normalizedAmount,
       currency: currentCurrency,
-      ...(currentMethod === 'gateway' && { gatewayProvider: selectedGateway })
+      ...(currentMethod === 'gateway' && { gatewayProvider: selectedGateway }),
+      ...(selectedCashRegister && {
+        cash_register_id: selectedCashRegister.id,
+        cash_register_name: selectedCashRegister.kasa_adi,
+        cash_register_code: selectedCashRegister.kasa_kodu,
+      }),
     };
 
     // If gateway payment, show QR code
@@ -349,6 +406,10 @@ export function POSPaymentModal({
       language: receiptLanguage,
       printFormat,
       showReceiptPreview,
+      // Ödeme tipi başına seçilen kasaları payload'a ekle
+      cash_register_id: selectedCashRegister?.id,
+      cash_register_name: selectedCashRegister?.kasa_adi,
+      cash_register_code: selectedCashRegister?.kasa_kodu,
     };
     const PAYMENT_TIMEOUT_MS = 45_000;
     try {
@@ -648,6 +709,11 @@ export function POSPaymentModal({
                               {payment.gatewayProvider.toUpperCase()}
                             </span>
                           )}
+                          {payment.cash_register_name && (
+                            <span className={`text-[10px] px-1.5 py-0.5 rounded ${darkMode ? 'bg-emerald-900/40 text-emerald-300' : 'bg-emerald-100 text-emerald-700'}`}>
+                              {payment.cash_register_name}
+                            </span>
+                          )}
                         </div>
                         <button
                           onClick={() => handleRemovePayment(index)}
@@ -694,6 +760,47 @@ export function POSPaymentModal({
                     </button>
                   ))}
                 </div>
+              </div>
+
+              {/* Cash Register Selection — ödeme tipine göre bağlı kasayı seç */}
+              <div className={`border p-3 ${darkMode ? 'bg-gray-800 border-gray-700' : 'bg-emerald-50 border-emerald-200'}`}>
+                <div className="flex items-center justify-between mb-2">
+                  <h4 className={`text-sm flex items-center gap-2 ${darkMode ? 'text-emerald-400' : 'text-emerald-800'}`}>
+                    <Wallet className="w-4 h-4" />
+                    {tm('cashRegisterLabel') || 'Kasa Seçimi'}
+                  </h4>
+                  {selectedCashRegister && (
+                    <span className={`text-[10px] px-2 py-0.5 rounded-full ${darkMode ? 'bg-emerald-900/40 text-emerald-300' : 'bg-emerald-100 text-emerald-700'}`}>
+                      {(tm('cashRegisterPaymentTypeLabel') || 'Ödeme Türü: {type}').replace('{type}', currentMethod === 'cash' ? (t.cashLabel || 'Nakit')
+                        : currentMethod === 'card' ? (t.cardLabel || 'Kart')
+                        : currentMethod === 'gateway' ? (t.gatewayLabel || 'QR Ödeme')
+                        : (t.veresiyeLabel || 'Veresiye'))}
+                    </span>
+                  )}
+                </div>
+                <select
+                  aria-label={tm('cashRegisterLabel') || 'Kasa Seçimi'}
+                  value={selectedCashRegisterId}
+                  onChange={(e) => setSelectedCashRegisterId(e.target.value)}
+                  disabled={cashRegistersLoading || cashRegisters.length === 0}
+                  className={`w-full px-3 py-2 text-sm border focus:outline-none focus:border-emerald-600 ${darkMode ? 'bg-gray-700 border-gray-600 text-white' : 'bg-white border-gray-300'}`}
+                >
+                  <option value="">
+                    {cashRegistersLoading
+                      ? (tm('loading') || 'Yükleniyor...')
+                      : (tm('selectCashRegister') || 'Kasa seçin (opsiyonel)')}
+                  </option>
+                  {cashRegisters.map((k) => (
+                    <option key={k.id} value={k.id}>
+                      {`${k.kasa_adi} (${k.kasa_kodu}) — ${k.id_doviz_kodu} · ${k.bakiye.toLocaleString('tr-TR')}`}
+                    </option>
+                  ))}
+                </select>
+                {selectedCashRegister && (
+                  <p className={`text-[11px] mt-1 ${darkMode ? 'text-gray-400' : 'text-gray-600'}`}>
+                    {`${selectedCashRegister.kasa_adi} · Bakiye: ${selectedCashRegister.bakiye.toLocaleString('tr-TR')} ${selectedCashRegister.id_doviz_kodu}`}
+                  </p>
+                )}
               </div>
 
               {/* Currency Selector */}
@@ -800,7 +907,12 @@ export function POSPaymentModal({
                       method: currentMethod,
                       amount: amountToAdd,
                       currency: currentCurrency,
-                      ...(currentMethod === 'gateway' && { gatewayProvider: selectedGateway })
+                      ...(currentMethod === 'gateway' && { gatewayProvider: selectedGateway }),
+                      ...(selectedCashRegister && {
+                        cash_register_id: selectedCashRegister.id,
+                        cash_register_name: selectedCashRegister.kasa_adi,
+                        cash_register_code: selectedCashRegister.kasa_kodu,
+                      }),
                     };
                     if (currentMethod === 'gateway' && selectedGateway) {
                       const result = await paymentGateway.initiatePayment(

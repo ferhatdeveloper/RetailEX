@@ -42,6 +42,12 @@ interface InvoiceHeaderProps {
     paymentMethod: string;
     /** Gösterim etiketi (çevrilmiş); yoksa paymentMethod ham değeri kullanılır */
     paymentMethodLabel?: string;
+    // Kasa seçimi — ödeme tipi değiştiğinde bağlı kasayı seçmek için
+    cashRegisters?: Array<{ id: string; kasa_adi: string; kasa_kodu: string; id_doviz_kodu: string }>;
+    cashRegistersLoading?: boolean;
+    cashRegisterId?: string;
+    cashRegisterName?: string;
+    onCashRegisterChange?: (id: string, name: string) => void;
     warehouse: string;
     workplace: string;
     salespersonCode: string;
@@ -110,6 +116,11 @@ export const InvoiceHeader: React.FC<InvoiceHeaderProps> = ({
     customerTitle,
     paymentMethod,
     paymentMethodLabel,
+    cashRegisters = [],
+    cashRegistersLoading = false,
+    cashRegisterId = '',
+    cashRegisterName = '',
+    onCashRegisterChange,
     warehouse,
     workplace,
     salespersonCode,
@@ -533,6 +544,42 @@ export const InvoiceHeader: React.FC<InvoiceHeaderProps> = ({
                             {paymentExtraLabel ? (
                                 <p className="mt-1 text-[11px] text-blue-600 font-medium truncate">{paymentExtraLabel}</p>
                             ) : null}
+                        </div>
+
+                        {/* Kasa seçimi — ödeme tipine göre bağlı kasayı seç */}
+                        <div>
+                            <div className="flex items-center justify-between mb-1">
+                                <label className="block text-gray-700 text-xs">{tm('cashRegisterLabel') || 'Kasa Seçimi'}</label>
+                                {cashRegisterName && (
+                                    <span className="text-[10px] px-1.5 py-0.5 rounded-full bg-emerald-100 text-emerald-700">
+                                        {tm('cashRegisterPaymentTypeLabel')
+                                          ? (tm('cashRegisterPaymentTypeLabel') || 'Ödeme Türü: {type}').replace('{type}', String(paymentMethod || ''))
+                                          : `Ödeme Türü: ${paymentMethod || ''}`}
+                                    </span>
+                                )}
+                            </div>
+                            <select
+                                aria-label={tm('cashRegisterLabel') || 'Kasa Seçimi'}
+                                value={cashRegisterId}
+                                onChange={(e) => {
+                                    const id = e.target.value;
+                                    const found = cashRegisters.find((k) => k.id === id);
+                                    onCashRegisterChange?.(id, found?.kasa_adi || '');
+                                }}
+                                disabled={cashRegistersLoading || cashRegisters.length === 0}
+                                className="w-full px-2 py-1.5 text-sm border border-gray-300 dark:border-gray-600 rounded bg-white dark:bg-gray-800"
+                            >
+                                <option value="">
+                                    {cashRegistersLoading
+                                      ? (tm('loading') || 'Yükleniyor...')
+                                      : (tm('selectCashRegister') || 'Kasa seçin (opsiyonel)')}
+                                </option>
+                                {cashRegisters.map((k) => (
+                                    <option key={k.id} value={k.id}>
+                                        {`${k.kasa_adi} (${k.kasa_kodu}) — ${k.id_doviz_kodu}`}
+                                    </option>
+                                ))}
+                            </select>
                         </div>
 
                         <div>

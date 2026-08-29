@@ -72,10 +72,10 @@ import {
   formCodeToDbPaymentMethod,
   isPosRetailPaymentContext,
   paymentFormCodeTranslationKey,
-  paymentMethodImpliesPaidNow,
   RETAIL_SALES_INVOICE_TRCODE,
 } from '../../../utils/paymentMethodUtils';
 import { buildInvoiceHeaderFieldsFromForm, readInvoiceHeaderFields } from '../../../utils/invoiceHeaderFields';
+import { fetchKasalar as fetchKasaListForRegister, type Kasa as KasaRow } from '../../../services/api/kasa';
 
 // Electron API tip tanımı
 declare global {
@@ -549,6 +549,47 @@ export function UniversalInvoiceForm({
     return 'ACIK_CARI';
   }); // Form kodu: NAKIT, KREDIKARTI, ACIK_CARI, …
   const [cashierName, setCashierName] = useState(() => editData?.cashier || ''); // Kasiyer / iade yapan
+  const [cashRegisterId, setCashRegisterId] = useState<string>(() => {
+    const v = (editData as any)?.cash_register_id;
+    return typeof v === 'string' ? v : '';
+  });
+  const [cashRegisterName, setCashRegisterName] = useState<string>(() => {
+    const v = (editData as any)?.cash_register_name;
+    return typeof v === 'string' ? v : '';
+  });
+  // Kasa listesi — ödeme tipi seçildiğinde uygun kasaları önermek için
+  const [cashRegisters, setCashRegisters] = useState<KasaRow[]>([]);
+  const [cashRegistersLoading, setCashRegistersLoading] = useState(false);
+  useEffect(() => {
+    let cancelled = false;
+    setCashRegistersLoading(true);
+    fetchKasaListForRegister({ aktif: true })
+      .then((rows) => { if (!cancelled) setCashRegisters(Array.isArray(rows) ? rows : []); })
+      .catch((e) => { if (!cancelled) { console.warn('[UniversalInvoiceForm] fetchKasalar:', e); setCashRegisters([]); } })
+      .finally(() => { if (!cancelled) setCashRegistersLoading(false); });
+    return () => { cancelled = true; };
+  }, []);
+  // Ödeme tipi değiştiğinde uygun kasayı otomatik öner
+  useEffect(() => {
+    if (cashRegisters.length === 0) return;
+    if (cashRegisterId && cashRegisters.some((k) => k.id === cashRegisterId)) return;
+    const hint =
+      paymentMethod === 'NAKIT' || paymentMethod === 'CASH' ? ['nakit', 'cash', 'kasa', 'genel']
+      : paymentMethod === 'KREDIKARTI' || paymentMethod === 'CREDIT_CARD' || paymentMethod === 'KART' ? ['kart', 'card', 'pos']
+      : paymentMethod === 'BANKA_HAVALESI' || paymentMethod === 'BANK_TRANSFER' ? ['banka', 'bank', 'havale', 'transfer']
+      : paymentMethod === 'CEK' || paymentMethod === 'CHECK' ? ['çek', 'cek', 'check']
+      : paymentMethod === 'ACIK_CARI' || paymentMethod === 'CREDIT' ? ['veresiye', 'cari', 'open', 'vadeli']
+      : ['nakit', 'cash', 'genel'];
+    const norm = (s: string) => String(s || '').toLocaleLowerCase('tr-TR');
+    const match = cashRegisters.find((k) => {
+      const hay = `${norm(k.kasa_adi)} ${norm(k.kasa_kodu)}`;
+      return hint.some((h) => hay.includes(h));
+    });
+    if (match) {
+      setCashRegisterId(match.id);
+      setCashRegisterName(match.kasa_adi);
+    }
+  }, [paymentMethod, cashRegisters, cashRegisterId]);
   const isSalesReturnForm = invoiceType.code === 3;
   const isPosRetail = useMemo(
     () =>
@@ -695,6 +736,8 @@ export function UniversalInvoiceForm({
   };
 
   const [items, setItems] = useState<InvoiceItem[]>(initializeItems());
+  /** Son kullanıcının seçtiği satır tipi — yeni boş satırlarda varsayılan olur. */
+  const [defaultLineType, setDefaultLineType] = useState<string>('Malzeme');
   const [productSearch, setProductSearch] = useState('');
   const [showProductDropdown, setShowProductDropdown] = useState(false);
   const [selectedProductIndex, setSelectedProductIndex] = useState(-1);
@@ -1292,7 +1335,7 @@ export function UniversalInvoiceForm({
   const withTrailingEmptyLine = (list: InvoiceItem[]): InvoiceItem[] => {
     const last = list[list.length - 1];
     if (!last || !lineIsBlank(last)) {
-      return [...list, createEmptyInvoiceLine()];
+      return [...list, createEmptyInvoiceLine(defaultLineType || 'Malzeme')];
     }
     return list;
   };
@@ -1502,7 +1545,7 @@ export function UniversalInvoiceForm({
           );
           continue;
         }
-        const base = createEmptyInvoiceLine();
+        const base = createEmptyInvoiceLine(defaultLineType || 'Malzeme');
         base.quantity = pr.quantity;
         base.discountPercent = pr.discountPercent;
         let item = applyLookupResultToInvoiceItem(base, resolved.product, resolved.unitInfo);
@@ -1667,6 +1710,10 @@ export function UniversalInvoiceForm({
 
   // Item güncelleme
   const updateItem = useCallback((index: number, field: keyof InvoiceItem, value: any) => {
+    if (field === 'type' && typeof value === 'string' && value) {
+      const canonical = canonicalInvoiceLineType(value);
+      setDefaultLineType(canonical);
+    }
     setItems(prev => {
       const updated = [...prev];
       const prevRow = updated[index];
@@ -1997,18 +2044,18 @@ export function UniversalInvoiceForm({
         : [...items];
 
     if (targetRowIndex >= withoutTrailing.length) {
-      withoutTrailing.push(...Array.from({ length: targetRowIndex - withoutTrailing.length + 1 }, () => createEmptyInvoiceLine()));
+      withoutTrailing.push(...Array.from({ length: targetRowIndex - withoutTrailing.length + 1 }, () => createEmptyInvoiceLine(defaultLineType || 'Malzeme')));
     }
 
     const [firstProduct, ...restProducts] = selectedProducts;
-    const baseRow = withoutTrailing[targetRowIndex] || createEmptyInvoiceLine();
+    const baseRow = withoutTrailing[targetRowIndex] || createEmptyInvoiceLine(defaultLineType || 'Malzeme');
     withoutTrailing[targetRowIndex] = applyLookupResultToInvoiceItem(
       { ...baseRow, quantity: baseRow.quantity > 0 ? baseRow.quantity : 1 },
       firstProduct
     );
 
     const extraRows = restProducts.map((product) =>
-      applyLookupResultToInvoiceItem(createEmptyInvoiceLine('Malzeme'), product)
+      applyLookupResultToInvoiceItem(createEmptyInvoiceLine(defaultLineType || 'Malzeme'), product)
     );
 
     const merged = [
@@ -2210,7 +2257,7 @@ export function UniversalInvoiceForm({
     setProductSearch('');
 
     setTimeout(() => {
-      const newItem: InvoiceItem = createEmptyInvoiceLine('Malzeme');
+      const newItem: InvoiceItem = createEmptyInvoiceLine(defaultLineType || 'Malzeme');
       setItems(prev => [...prev, newItem]);
 
       setTimeout(() => {
@@ -2291,7 +2338,7 @@ export function UniversalInvoiceForm({
     setTimeout(() => {
       setItems(prev => {
         if (rowIndex !== prev.length - 1) return prev;
-        const newItem: InvoiceItem = createEmptyInvoiceLine('Hizmet');
+        const newItem: InvoiceItem = createEmptyInvoiceLine(defaultLineType || 'Malzeme');
         return [...prev, newItem];
       });
       setTimeout(() => {
@@ -2559,6 +2606,20 @@ export function UniversalInvoiceForm({
       } else if ((editData as any).cashier) {
         setCashierName(String((editData as any).cashier).trim());
       }
+
+      // cash_register_id — header_fields veya kök alandan yüklenir
+      const loadedCashId = String(
+        (editData as any).cash_register_id
+          || (readInvoiceHeaderFields((editData as any).header_fields) as Record<string, unknown>).cash_register_id
+          || '',
+      );
+      const loadedCashName = String(
+        (editData as any).cash_register_name
+          || (readInvoiceHeaderFields((editData as any).header_fields) as Record<string, unknown>).cash_register_name
+          || '',
+      );
+      if (loadedCashId) setCashRegisterId(loadedCashId);
+      if (loadedCashName) setCashRegisterName(loadedCashName);
 
       if ((editData as any).id) {
         const loadedPayment = dbPaymentMethodToFormCode(
@@ -3427,11 +3488,15 @@ export function UniversalInvoiceForm({
         donem_name: selectedPeriod?.donem_adi || '',
         payment_method: resolvePaymentMethodForDb(),
         cashier: effectiveCashierName,
+        cash_register_id: cashRegisterId || undefined,
+        cash_register_name: cashRegisterName || undefined,
         created_by_user_id: (editData as any)?.created_by_user_id || user?.id || undefined,
         store_id: (editData as any)?.store_id || undefined,
         status: (() => {
-          if (invoiceType.category === 'Alis' || invoiceType.category === 'Iade') return 'completed';
-          return paymentMethodImpliesPaidNow(resolvePaymentMethodForDb()) ? 'completed' : 'unpaid';
+          // Yeni kaydedilen fatura doğrudan "tamamlandı" (completed) olur.
+          // Açık hesap (veresiye) veya ödemesiz işlem olsa bile kullanıcı
+          // ilk kayıttan itibaren "tamamlandı" görmek istiyor — ara statü yok.
+          return 'completed';
         })(),
         notes: description,
         document_no: documentNo.trim() || invoiceNo,
@@ -3788,6 +3853,14 @@ export function UniversalInvoiceForm({
                   cashierReadOnly={(editData as any)?.source === 'pos'}
                   showCashierField={isSalesReturnForm}
                   cashierFieldLabel={tm('salesReturnProcessedBy')}
+                  cashRegisters={cashRegisters}
+                  cashRegistersLoading={cashRegistersLoading}
+                  cashRegisterId={cashRegisterId}
+                  cashRegisterName={cashRegisterName}
+                  onCashRegisterChange={(id, name) => {
+                    setCashRegisterId(id);
+                    setCashRegisterName(name);
+                  }}
 
                   setShowTransactionDateModal={setShowTransactionDateModal}
                   setShowEditDateModal={setShowEditDateModal}

@@ -379,6 +379,9 @@ export const moduleTranslations: Record<string, Record<Language, string>> = {
   editCashRegister: { tr: 'Kasa Düzenle', en: 'Edit Cash Register', ar: 'تعديل الصندوق', ku: 'دەستکاریکردنی سندووق' },
   cashRegisterCode: { tr: 'Kasa Kodu', en: 'Cash Register Code', ar: 'رمز الصندوق', ku: 'کۆدی سندووق' },
   cashRegisterName: { tr: 'Kasa Adı', en: 'Cash Register Name', ar: 'اسم الصندوق', ku: 'ناوی سندووق' },
+  cashRegisterLabel: { tr: 'Kasa Seçimi', en: 'Cash Register', ar: 'اختيار الصندوق', ku: 'هەڵبژاردنی سندوق' },
+  cashRegisterPaymentTypeLabel: { tr: 'Ödeme Türü: {type}', en: 'Payment Type: {type}', ar: 'نوع الدفع: {type}', ku: 'جۆری پارەدان: {type}' },
+  selectCashRegister: { tr: 'Kasa seçin (opsiyonel)', en: 'Select cash register (optional)', ar: 'اختر الصندوق (اختياري)', ku: 'سندوق هەڵبژێرە (ئارەزوومەندانە)' },
   transactionHistory: { tr: 'İşlem Geçmişi', en: 'Transaction History', ar: 'سجل المعاملات', ku: 'مێژووی کارەکان' },
   transactionNo: { tr: 'İşlem No', en: 'Transaction No', ar: 'رقم المعاملة', ku: 'ژمارەی کردار' },
   cashRegisters: { tr: 'Kasalar', en: 'Cash Registers', ar: 'صناديق نقدية', ku: 'سندوقەکانی پارە' },
@@ -8614,6 +8617,90 @@ export const excelModuleTranslations = {
   ficheTypeBadgeSale: { tr: 'Satış', en: 'Sale', ar: 'بيع', ku: 'فرۆشتن' },
   ficheTypeBadgePurchase: { tr: 'Alış', en: 'Purchase', ar: 'شراء', ku: 'کڕین' },
   ficheTypeBadgeReturn: { tr: 'İade', en: 'Return', ar: 'إرجاع', ku: 'گەڕاندنەوە' },
+
+  // Fatura listesi — Excel'e Aktar modalı (gruplama tercihi)
+  exportExcel: { tr: 'Excel', en: 'Excel', ar: 'إكسل', ku: 'ئێکسڵ' },
+  invoiceExcelExportTitle: {
+    tr: 'Excel\'e Aktar',
+    en: 'Export to Excel',
+    ar: 'تصدير إلى إكسل',
+    ku: 'ناردن بۆ ئێکسڵ',
+  },
+  invoiceExcelExportChooseMode: {
+    tr: 'Listeyi Excel olarak indirmek için bir gruplama tercihi seçin. İçerik ürün veya hizmet fark etmez — tüm fatura kalemleri dahil edilir.',
+    en: 'Choose a grouping preference to export this list to Excel. Items and services are both included — every invoice line is exported.',
+    ar: 'اختر طريقة التجميع لتصدير هذه القائمة إلى إكسل. يتم تضمين المنتجات والخدمات وكل بنود الفاتورة.',
+    ku: 'ئەم لیستە بۆ ئێکسڵ بنێرە بە هەڵبژاردنی شێوازی دابەشکردن. بەرهەم و خزمەتگوزاری هەموو لەخۆ دەگرێت.',
+  },
+  invoiceExcelModeLine: {
+    tr: 'Fatura satır bazında',
+    en: 'Per invoice line',
+    ar: 'حسب سطر الفاتورة',
+    ku: 'بەپێی هێڵی وەسڵ',
+  },
+  invoiceExcelModeLineDesc: {
+    tr: 'Her fatura kalemi ayrı satır olarak listelenir — fatura bilgileri (no, tarih, müşteri) her satırda tekrar edilir.',
+    en: 'Each invoice line becomes one row — invoice header info (no, date, customer) repeats on every row.',
+    ar: 'كل بند فاتورة يصبح صفاً — تتكرر معلومات رأس الفاتورة (الرقم، التاريخ، العميل) في كل صف.',
+    ku: 'هەر هێڵێکی وەسڵ دەبێتە ڕیزێک — زانیارییەکانی سەرەوەی وەسڵ لە هەر ڕیزێکدا دووبارە دەبنەوە.',
+  },
+  invoiceExcelModeCustomer: {
+    tr: 'Müşteri bazında',
+    en: 'Per customer',
+    ar: 'حسب العميل',
+    ku: 'بەپێی کڕیار',
+  },
+  invoiceExcelModeCustomerDesc: {
+    tr: 'Müşteriler gruplanır; her müşterinin aldığı ürünler ve toplam harcama altında listelenir.',
+    en: 'Customers are grouped; under each customer the products/services they purchased and total spend are listed.',
+    ar: 'يتم تجميع العملاء؛ تحت كل عميل تُدرج المنتجات/الخدمات التي اشتراها وإجمالي إنفاقه.',
+    ku: 'کڕیارەکان دادەبەزێندرێن؛ بەرهەم و خزمەتگوزاری و کۆی خەرجی هەر کڕیارێک لەژێر ناوی خۆیدا دەنووسرێت.',
+  },
+  invoiceExcelModeProduct: {
+    tr: 'Ürün bazında',
+    en: 'Per product',
+    ar: 'حسب المنتج',
+    ku: 'بەپێی بەرهەم',
+  },
+  invoiceExcelModeProductDesc: {
+    tr: 'Ürün/hizmetler gruplanır; her ürünü hangi müşterilerin aldığı ve toplam miktar listelenir.',
+    en: 'Products/services are grouped; under each item the customers who bought it and the total quantity are listed.',
+    ar: 'يتم تجميع المنتجات/الخدمات؛ تحت كل عنصر تُدرج العملاء الذين اشتروه والكمية الإجمالية.',
+    ku: 'بەرهەم و خزمەتگوزاری دادەبەزێندرێن؛ لەژێر هەر بەرهەمێکدا ئەو کڕیارانەی کڕیویانە و کۆی بڕ دەنووسرێت',
+
+  },
+  invoiceExcelExportInfoTitle: { tr: 'Bilgi', en: 'Info', ar: 'معلومات', ku: 'زانیاری' },
+  invoiceExcelExportInfoBody: {
+    tr: 'Ürün/hizmet kalemi bilgisi olmayan faturalar için arka planda detaylar yüklenir. Excel dosyası .xlsx formatında indirilir; Türkçe karakterler UTF-8 olarak korunur.',
+    en: 'Invoices without item details are fetched in the background. The Excel file is downloaded in .xlsx format with UTF-8 Turkish characters.',
+    ar: 'يتم جلب تفاصيل الفواتير التي تفتقر إلى بنود في الخلفية. يتم تنزيل ملف الإكسل بصيغة .xlsx مع دعم UTF-8.',
+    ku: 'وردەکاری وەسڵەکانی بێ هێڵ لە پشتەوە دەهێندرێن. فایلی ئێکسڵ بە شێوازی .xlsx دادەبەزێندرێت لەگەڵ پشتیوانی UTF-8.',
+  },
+  invoiceExcelExportFetchedNote: {
+    tr: '{count} fatura için kalem bilgisi arka planda yüklenmiştir.',
+    en: 'Item details were fetched in the background for {count} invoices.',
+    ar: 'تم جلب تفاصيل البنود في الخلفية لـ {count} فاتورة.',
+    ku: 'وردەکاری هێڵەکان لە پشتەوە بۆ {count} وەسڵ هێنرانەوە.',
+  },
+  invoiceExcelExportDownload: {
+    tr: 'İndir',
+    en: 'Download',
+    ar: 'تنزيل',
+    ku: 'دابەزاندن',
+  },
+  excelExportSuccess: {
+    tr: 'Excel dosyası indirildi.',
+    en: 'Excel file downloaded.',
+    ar: 'تم تنزيل ملف إكسل.',
+    ku: 'فایلی ئێکسڵ دابەزێنرا.',
+  },
+  excelExportError: {
+    tr: 'Excel oluşturulamadı',
+    en: 'Could not create Excel file',
+    ar: 'تعذّر إنشاء ملف إكسل',
+    ku: 'نەیتوانی فایلی ئێکسڵ دروست بکات',
+  },
+  selected: { tr: 'Seçili', en: 'Selected', ar: 'محدد', ku: 'دیاریکراو' },
 };
 
 Object.assign(moduleTranslations, rbacUiTranslations);
