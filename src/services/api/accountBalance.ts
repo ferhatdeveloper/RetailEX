@@ -30,6 +30,48 @@ const customerDebtPmSqlS = sqlPaymentMethodImpliesCustomerDebtExpr('s');
 const supplierDebtPmSql = sqlPaymentMethodImpliesSupplierDebtExpr();
 const supplierDebtPmSqlSl = sqlPaymentMethodImpliesSupplierDebtExpr('sl');
 
+/**
+ * cash_lines satırı için cari türüne göre işaretli line_contrib.
+ * `cariCashLineLedgerContrib` ile aynı muhasebe kuralları:
+ *   customer + CH_TAHSILAT → -ABS
+ *   customer + CH_ODEME    → +ABS
+ *   supplier + CH_TAHSILAT → +ABS
+ *   supplier + CH_ODEME    → -ABS
+ *
+ * `alias` verilirse `alias.transaction_type` ve `alias.amount` kullanılır.
+ * CTE içinde kullanım için tasarlanmıştır; alias bağlamında çalışır.
+ *
+ * Not: CTE'de `customer_id` ve `party_id` ayrı sütunlar olduğundan, "bu satır
+ * hangi cari kartına yazıldı?" bilgisi caller'dan `cariSide` ile bildirilir.
+ *   cariSide = 'customer' → müşteri CTE'si
+ *   cariSide = 'supplier' → tedarikçi CTE'si
+ */
+export function sqlCashLineLedgerContribExpr(
+  cariSide: 'customer' | 'supplier',
+  alias = '',
+): string {
+  const tt = alias ? `UPPER(TRIM(COALESCE(${alias}.transaction_type, '')))` : `UPPER(TRIM(COALESCE(transaction_type, '')))`;
+  const amt = alias ? `COALESCE(${alias}.amount, 0)` : `COALESCE(amount, 0)`;
+  // customer: CH_TAHSILAT → -ABS, CH_ODEME → +ABS
+  // supplier: CH_TAHSILAT → +ABS, CH_ODEME → -ABS
+  if (cariSide === 'customer') {
+    return `(
+      CASE
+        WHEN ${tt} = 'CH_TAHSILAT' THEN -ABS(${amt})
+        WHEN ${tt} = 'CH_ODEME'    THEN  ABS(${amt})
+        ELSE 0
+      END
+    )`;
+  }
+  return `(
+    CASE
+      WHEN ${tt} = 'CH_TAHSILAT' THEN  ABS(${amt})
+      WHEN ${tt} = 'CH_ODEME'    THEN -ABS(${amt})
+      ELSE 0
+    END
+  )`;
+}
+
 /** Liste/ekstre ile uyumlu müşteri bakiye CTE (postgres.query içinde sales/cash_lines otomatik prefixlenir) */
 export function sqlCustomerAccountBalancesCte(custTable: string, firmNrBind: string): string {
   return `
@@ -59,7 +101,7 @@ export function sqlCustomerAccountBalancesCte(custTable: string, firmNrBind: str
           )
         UNION ALL
         SELECT customer_id AS id,
-          (CASE WHEN UPPER(TRIM(transaction_type)) IN ('CH_ODEME', 'CH_TAHSILAT') THEN -ABS(amount) ELSE 0 END) AS line_contrib
+          ${sqlCashLineLedgerContribExpr('customer')}
         FROM cash_lines
         WHERE customer_id IS NOT NULL
           AND UPPER(TRIM(transaction_type)) IN ('CH_ODEME', 'CH_TAHSILAT')
@@ -67,7 +109,7 @@ export function sqlCustomerAccountBalancesCte(custTable: string, firmNrBind: str
         -- Tedarikçi ödemeleri party_id ile yazılır; müşteri kartına düşmesin diye
         -- COALESCE ile customer_id'ye taşı, ancak sadece customer_id boşsa
         SELECT party_id AS id,
-          (CASE WHEN UPPER(TRIM(transaction_type)) IN ('CH_ODEME', 'CH_TAHSILAT') THEN -ABS(amount) ELSE 0 END) AS line_contrib
+          ${sqlCashLineLedgerContribExpr('customer')}
         FROM cash_lines
         WHERE party_id IS NOT NULL
           AND customer_id IS NULL
@@ -118,14 +160,14 @@ export function sqlSupplierAccountBalancesCte(suppTable: string): string {
           )
         UNION ALL
         SELECT customer_id AS id,
-          (CASE WHEN UPPER(TRIM(transaction_type)) IN ('CH_ODEME', 'CH_TAHSILAT') THEN -ABS(amount) ELSE 0 END) AS line_contrib
+          ${sqlCashLineLedgerContribExpr('supplier')}
         FROM cash_lines
         WHERE customer_id IS NOT NULL
           AND UPPER(TRIM(transaction_type)) IN ('CH_ODEME', 'CH_TAHSILAT')
         UNION ALL
         -- Tedarikçi ödemeleri cash_lines.party_id ile yazılır
         SELECT party_id AS id,
-          (CASE WHEN UPPER(TRIM(transaction_type)) IN ('CH_ODEME', 'CH_TAHSILAT') THEN -ABS(amount) ELSE 0 END) AS line_contrib
+          ${sqlCashLineLedgerContribExpr('supplier')}
         FROM cash_lines
         WHERE party_id IS NOT NULL
           AND customer_id IS NULL
@@ -339,7 +381,9 @@ export function computeCustomerBalanceFromLedger(
     const tt = String(cl.transaction_type || '').trim().toUpperCase();
     if (tt !== 'CH_ODEME' && tt !== 'CH_TAHSILAT') continue;
     if (!cashLineMatchesParty(cl, idStr)) continue;
-    const contrib = cariCashLineLedgerContrib(cl.amount, tt);
+    // cari türü 'customer' simetrisini kullan — CH_ODEME müşteriye ödeme ise
+    // borcu artırır, CH_TAHSILAT müşteriden tahsilat ise borcu azaltır.
+    const contrib = cariCashLineLedgerContrib(cl.amount, tt, 'customer');
     if (!contrib) continue;
     cashTxn += 1;
     cashSum += contrib;
@@ -363,7 +407,11 @@ export function computeSupplierBalanceFromLedger(
     const tt = String(cl.transaction_type || '').trim().toUpperCase();
     if (tt !== 'CH_ODEME' && tt !== 'CH_TAHSILAT') continue;
     if (!cashLineMatchesParty(cl, idStr)) continue;
-    const contrib = cariCashLineLedgerContrib(cl.amount, tt);
+    // cari türü 'supplier' simetrisini kullan — CH_ODEME tedarikçiye ödeme ise
+    // borcu azaltır, CH_TAHSILAT tedarikçiden tahsilat ise borcu artırır.
+    // Eski davranış customer varsayılanını kullanıyordu; bu CH_TAHSILAT için
+    // bakiyeyi yanlış yönde düşürüyordu (muhasebe denetimi düzeltmesi).
+    const contrib = cariCashLineLedgerContrib(cl.amount, tt, 'supplier');
     if (!contrib) continue;
     sum += contrib;
   }
