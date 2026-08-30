@@ -4704,6 +4704,21 @@ export const moduleTranslations: Record<string, Record<Language, string>> = {
   // Invoice Grid Item Types
   itemTypeMaterial: { tr: 'Malzeme', en: 'Material', ar: 'مادة', ku: 'ماددە' },
   itemTypeService: { tr: 'Hizmet', en: 'Service', ar: 'خدمة', ku: 'خزمەتگوزاری' },
+  // Quick create (kod alanında eşleşme yokken minimal ürün/hizmet ekleme)
+  quickCreateProduct: { tr: 'Eşleşen ürün yok — yeni ürün ekle', en: 'No matching product — add new product', ar: 'لا يوجد منتج مطابق — أضف منتجًا جديدًا', ku: 'بەرهەمی گونجاو نییە — بەرهەمی نوێ زیاد بکە' },
+  quickCreateService: { tr: 'Eşleşen hizmet yok — yeni hizmet ekle', en: 'No matching service — add new service', ar: 'لا توجد خدمة مطابقة — أضف خدمة جديدة', ku: 'خزمەتگوزاری گونجاو نییە — خزمەتگوزاری نوێ زیاد بکە' },
+  quickCreateProductTitle: { tr: 'Yeni Ürün', en: 'New Product', ar: 'منتج جديد', ku: 'بەرهەمی نوێ' },
+  quickCreateServiceTitle: { tr: 'Yeni Hizmet', en: 'New Service', ar: 'خدمة جديدة', ku: 'خزمەتگوزاری نوێ' },
+  quickCreateFieldCode: { tr: 'Kod', en: 'Code', ar: 'الرمز', ku: 'کۆد' },
+  quickCreateFieldName: { tr: 'Ad', en: 'Name', ar: 'الاسم', ku: 'ناو' },
+  quickCreateFieldUnit: { tr: 'Birim', en: 'Unit', ar: 'الوحدة', ku: 'یەکە' },
+  quickCreateFieldPrice: { tr: 'Satış Fiyatı', en: 'Sale Price', ar: 'سعر البيع', ku: 'نرخی فرۆشتن' },
+  quickCreateFieldVat: { tr: 'KDV (%)', en: 'VAT (%)', ar: 'ضريبة (%)', ku: 'باج (%)' },
+  quickCreateFieldBarcode: { tr: 'Barkod', en: 'Barcode', ar: 'الباركود', ku: 'بارکۆد' },
+  quickCreateSave: { tr: 'Kaydet ve Satıra Ekle', en: 'Save and Add to Row', ar: 'حفظ وإضافة إلى السطر', ku: 'پاشەکەوت بکە و زیاد بکە بۆ دێڕ' },
+  quickCreateSaving: { tr: 'Kaydediliyor…', en: 'Saving…', ar: 'جارٍ الحفظ…', ku: 'پاشەکەوت دەکرێت…' },
+  quickCreateErrorRequired: { tr: 'Kod ve ad zorunludur', en: 'Code and name are required', ar: 'الرمز والاسم مطلوبان', ku: 'کۆد و ناو پێویستن' },
+  quickCreateErrorCreate: { tr: 'Kayıt oluşturulamadı', en: 'Could not create record', ar: 'تعذر إنشاء السجل', ku: 'تۆمار نەکرا' },
   itemTypePromotion: { tr: 'Promosyon', en: 'Promotion', ar: 'ترويج', ku: 'پڕۆمۆشن' },
   itemTypeDiscount: { tr: 'İndirim', en: 'Discount', ar: 'خصم', ku: 'داشکاندن' },
 

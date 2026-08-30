@@ -39,6 +39,7 @@ import { InvoiceWorkplaceModal } from './InvoiceWorkplaceModal';
 import { InvoiceWarehouseModal } from './InvoiceWarehouseModal';
 import { InvoiceSalespersonModal } from './InvoiceSalespersonModal';
 import { InvoiceCariSelectModal, type InvoiceCariItem } from './InvoiceCariSelectModal';
+import { QuickProductCreateModal } from './QuickProductCreateModal';
 import { useCampaignStore } from '../../../store/useCampaignStore';
 import { BarcodeScanner as InventoryBarcodeScanner } from '../../inventory/stock/BarcodeScanner';
 import { useResponsive } from '../../../hooks/useResponsive';
@@ -389,6 +390,7 @@ export function UniversalInvoiceForm({
   const firmId = selectedFirm?.logicalref;
   const periodId = selectedPeriod?.logicalref;
   const storeProducts = useProductStore((state) => state.products);
+  const storeSetProducts = useProductStore((state) => state.setProducts);
   const campaigns = useCampaignStore((state) => state.campaigns || []);
 
   const { isReady, createSalesJournal, createPurchaseJournal } = useAutoJournal();
@@ -747,6 +749,15 @@ export function UniversalInvoiceForm({
   const [bulkPriceIncreasePercent, setBulkPriceIncreasePercent] = useState<number | ''>('');
   const [showProductCatalogModal, setShowProductCatalogModal] = useState(false);
   const [showServiceCatalogModal, setShowServiceCatalogModal] = useState(false);
+
+  // Quick create — kod alanında eşleşme yoksa açılan minimal ürün/hizmet ekleme modalı
+  const [quickCreate, setQuickCreate] = useState<{
+    rowIndex: number;
+    kind: 'product' | 'service';
+    initialCode: string;
+    initialName: string;
+  } | null>(null);
+  const [quickCreateSaving, setQuickCreateSaving] = useState(false);
   const [totalCost, setTotalCost] = useState(0);
   const [totalGrossProfit, setTotalGrossProfit] = useState(0);
   const [profitMargin, setProfitMargin] = useState(0);
@@ -2534,6 +2545,113 @@ export function UniversalInvoiceForm({
     window.setTimeout(() => quickBarcodeRef.current?.focus(), 50);
   }, [quickBarcodeInput, handleCameraBarcodeScan]);
 
+  /** Kod alanı dropdown'ında "Eşleşen yok — yeni ekle" tıklanınca çağrılır. */
+  const handleQuickCreateRequest = useCallback(
+    (rowIndex: number, kind: 'product' | 'service') => {
+      const item = items[rowIndex];
+      const currentCode = String(item?.code || productSearch || '').trim();
+      const currentName = String(item?.description || '').trim();
+      setQuickCreate({ rowIndex, kind, initialCode: currentCode, initialName: currentName });
+      setShowProductDropdown(false);
+    },
+    [items, productSearch],
+  );
+
+  /** Quick create form submit — productAPI.create / serviceAPI.create çağırır, satıra yerleştirir. */
+  const handleQuickCreateSave = useCallback(
+    async (form: {
+      code: string;
+      name: string;
+      unit: string;
+      price: number;
+      vatRate: number;
+      barcode?: string;
+    }) => {
+      if (!quickCreate) return;
+      const code = form.code.trim();
+      const name = form.name.trim();
+      if (!code || !name) {
+        toast.error(tm('quickCreateErrorRequired') || 'Kod ve ad zorunludur');
+        return;
+      }
+      setQuickCreateSaving(true);
+      try {
+        if (quickCreate.kind === 'product') {
+          const created = await productAPI.create({
+            code,
+            name,
+            barcode: form.barcode?.trim() || '',
+            unit: form.unit || 'Adet',
+            price: form.price || 0,
+            cost: 0,
+            stock: 0,
+            minStock: 0,
+            criticalStock: 0,
+            vatRate: form.vatRate || 0,
+            currency: ledgerCurrency || 'IQD',
+          } as any);
+          if (!created) {
+            throw new Error(tm('quickCreateErrorCreate') || 'Ürün kaydedilemedi');
+          }
+          const createdProduct: Product = created;
+          storeSetProducts(
+            storeProducts.some((p) => p.id === createdProduct.id || p.code === createdProduct.code)
+              ? storeProducts.map((p) =>
+                  p.id === createdProduct.id ? createdProduct : p,
+                )
+              : [createdProduct, ...storeProducts],
+          );
+          selectProduct(
+            {
+              code: createdProduct.code || code,
+              name: createdProduct.name || name,
+              unit: createdProduct.unit || form.unit || 'Adet',
+              price: createdProduct.price || form.price || 0,
+              barcode: createdProduct.barcode || form.barcode || '',
+              lastPurchasePrice: createdProduct.cost || 0,
+              unitsetId: (createdProduct as any).unitsetId || (createdProduct as any).unitset_id,
+            },
+            quickCreate.rowIndex,
+          );
+        } else {
+          const created = await serviceAPI.create({
+            code,
+            name,
+            description: name,
+            unit_price: form.price || 0,
+            purchase_price: 0,
+            tax_rate: form.vatRate || 0,
+            unit: form.unit || 'Adet',
+            is_active: true,
+          } as any);
+          setServices((prev) => {
+            const exists = prev.find((s) => s.id === created.id || s.code === created.code);
+            if (exists) return prev.map((s) => (s.id === created.id ? created : s));
+            return [created, ...prev];
+          });
+          selectProduct(
+            {
+              code: created.code,
+              name: created.name,
+              unit: created.unit || form.unit || 'Adet',
+              price: created.unit_price || form.price || 0,
+              barcode: created.code,
+              lastPurchasePrice: 0,
+            },
+            quickCreate.rowIndex,
+          );
+        }
+        setQuickCreate(null);
+      } catch (err: any) {
+        const msg = err?.message || String(err) || (tm('quickCreateErrorCreate') || 'Kayıt oluşturulamadı');
+        toast.error(msg);
+      } finally {
+        setQuickCreateSaving(false);
+      }
+    },
+    [quickCreate, ledgerCurrency, tm, storeSetProducts, storeProducts, setServices, selectProduct],
+  );
+
   const handleImageToInvoice = useCallback(
     async (file: File) => {
       try {
@@ -4093,6 +4211,8 @@ export function UniversalInvoiceForm({
                     currencyRate={effectiveInvoiceCurrencyRate}
                     ledgerCurrency={ledgerCurrency}
                     onCodeFieldFocus={handleInvoiceCodeFieldFocus}
+                    onRequestQuickCreate={handleQuickCreateRequest}
+                    productSearch={productSearch}
                   />
                 </div>
 
@@ -4979,6 +5099,18 @@ export function UniversalInvoiceForm({
                   handleServicesBulkSelectForRow(selected, currentRowIndex);
                 }
               }}
+            />
+          )}
+
+          {quickCreate && (
+            <QuickProductCreateModal
+              kind={quickCreate.kind}
+              initialCode={quickCreate.initialCode}
+              initialName={quickCreate.initialName}
+              saving={quickCreateSaving}
+              masterUnits={masterUnits}
+              onClose={() => { if (!quickCreateSaving) setQuickCreate(null); }}
+              onSave={handleQuickCreateSave}
             />
           )}
 

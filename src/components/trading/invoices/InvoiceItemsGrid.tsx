@@ -189,6 +189,10 @@ interface InvoiceItemsGridProps {
     ledgerCurrency?: string;
     /** Kod alanı odak: satır indeksi + inputta görünen metin (ürün arama state senkronu) */
     onCodeFieldFocus?: (rowIndex: number, displayCode: string) => void;
+    /** Arama sonucu boş: minimal ürün/hizmet ekleme modalı açma callback'i */
+    onRequestQuickCreate?: (rowIndex: number, kind: 'product' | 'service') => void;
+    /** Aktif arama metni — sonuç yok CTA'sı için */
+    productSearch?: string;
 }
 
 export const InvoiceItemsGrid = React.memo(({
@@ -217,7 +221,9 @@ export const InvoiceItemsGrid = React.memo(({
     currency = 'IQD',
     currencyRate = 1,
     ledgerCurrency = 'IQD',
-    onCodeFieldFocus
+    onCodeFieldFocus,
+    onRequestQuickCreate,
+    productSearch,
 }: InvoiceItemsGridProps) => {
     const { language } = useLanguage();
     const { isMobile } = useResponsive();
@@ -292,6 +298,37 @@ export const InvoiceItemsGrid = React.memo(({
                 </div>
             );
         });
+    };
+
+    /**
+     * Arama sonucu boşken "yeni ekle" CTA'sı.
+     * Hem mobil hem desktop dropdown'larında aynı görünür.
+     */
+    const renderEmptySearchCTA = (rowIndex: number) => {
+        if (!onRequestQuickCreate) return null;
+        if (filteredProducts.length > 0) return null;
+        const query = (productSearch || '').trim();
+        if (!query) return null;
+        const isService = isServiceLineType ? isServiceLineType(items[rowIndex]?.type) : false;
+        const kind: 'product' | 'service' = isService ? 'service' : 'product';
+        const label = isService
+            ? (tm('quickCreateService') || 'Eşleşen hizmet yok — yeni hizmet ekle')
+            : (tm('quickCreateProduct') || 'Eşleşen ürün yok — yeni ürün ekle');
+        return (
+            <button
+                type="button"
+                onMouseDown={(e) => {
+                    // input'tan focus kaçırmamak için mousedown'da prevent
+                    e.preventDefault();
+                    onRequestQuickCreate(rowIndex, kind);
+                }}
+                className="w-full text-left px-3 py-2 text-sm bg-blue-50/60 hover:bg-blue-100 text-blue-700 border-t border-blue-100 flex items-center gap-2"
+            >
+                <span className="inline-flex w-5 h-5 items-center justify-center rounded-full bg-blue-600 text-white text-xs font-bold leading-none">+</span>
+                <span className="font-medium truncate">{label}</span>
+                <span className="ml-auto text-xs text-blue-500/80 font-mono truncate max-w-[40%]">{query}</span>
+            </button>
+        );
     };
 
     const cariTextColor = useMemo(() => {
@@ -418,6 +455,14 @@ export const InvoiceItemsGrid = React.memo(({
                                             className="absolute left-0 right-0 top-full z-[60] mt-1 bg-white border border-gray-300 rounded-lg shadow-lg max-h-56 overflow-auto"
                                         >
                                             {renderProductDropdownItems(index)}
+                                        </div>
+                                    )}
+                                    {searchingRowIndex === index && filteredProducts.length === 0 && (productSearch || '').trim().length > 0 && (
+                                        <div
+                                            ref={productDropdownRef}
+                                            className="absolute left-0 right-0 top-full z-[60] mt-1 bg-white border border-blue-200 rounded-lg shadow-lg overflow-hidden"
+                                        >
+                                            {renderEmptySearchCTA(index)}
                                         </div>
                                     )}
                                 </div>
@@ -639,6 +684,14 @@ export const InvoiceItemsGrid = React.memo(({
                                                 className="absolute top-full left-0 w-96 bg-white border border-gray-300 rounded shadow-lg z-50 max-h-64 overflow-auto"
                                             >
                                                 {renderProductDropdownItems(index)}
+                                            </div>
+                                        )}
+                                        {searchingRowIndex === index && filteredProducts.length === 0 && (productSearch || '').trim().length > 0 && (
+                                            <div
+                                                ref={productDropdownRef}
+                                                className="absolute top-full left-0 w-96 bg-white border border-blue-200 rounded shadow-lg z-50 overflow-hidden"
+                                            >
+                                                {renderEmptySearchCTA(index)}
                                             </div>
                                         )}
                                     </td>
