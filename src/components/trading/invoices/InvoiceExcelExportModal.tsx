@@ -112,6 +112,7 @@ function buildLineRows(invoices: ListInvoice[], fallbackCurrency: string): Recor
   for (const inv of invoices) {
     const items = Array.isArray(inv.items) ? inv.items : [];
     const cur = getRowCurrency(inv, fallbackCurrency);
+    const description = String(inv.notes ?? '').trim();
     if (items.length === 0) {
       rows.push({
         'Fatura No': safeText(inv.invoice_no),
@@ -126,6 +127,7 @@ function buildLineRows(invoices: ListInvoice[], fallbackCurrency: string): Recor
         'Satır Toplam': 0,
         'Para Birimi': cur,
         'Fatura Toplam': Number(inv.total_amount ?? inv.total ?? 0),
+        'Açıklama': description,
         'Durum': safeText(inv.status),
       });
       continue;
@@ -148,6 +150,7 @@ function buildLineRows(invoices: ListInvoice[], fallbackCurrency: string): Recor
         'Satır Toplam': lineTotal,
         'Para Birimi': cur,
         'Fatura Toplam': Number(inv.total_amount ?? inv.total ?? 0),
+        'Açıklama': description,
         'Durum': safeText(inv.status),
       });
     }
@@ -165,8 +168,10 @@ function buildCustomerRows(invoices: ListInvoice[], fallbackCurrency: string): R
     lastDate: string | null;
     productTotals: Map<
       string,
-      { name: string; code: string; qty: number; revenue: number; lines: number }
+      { name: string; code: string; qty: number; revenue: number; lines: number; descriptions: string[] }
     >;
+    /** Müşterinin tüm açıklamaları (her kalemden) — başlık satırında benzersiz olarak gösterilir. */
+    descriptions: Set<string>;
     grandTotal: number;
     currency: string;
   };
@@ -185,6 +190,7 @@ function buildCustomerRows(invoices: ListInvoice[], fallbackCurrency: string): R
         firstDate: null,
         lastDate: null,
         productTotals: new Map(),
+        descriptions: new Set<string>(),
         grandTotal: 0,
         currency: cur,
       };
@@ -197,6 +203,8 @@ function buildCustomerRows(invoices: ListInvoice[], fallbackCurrency: string): R
     }
     bucket.invoiceCount += 1;
     if (inv.invoice_no) bucket.invoiceNos.add(String(inv.invoice_no));
+    const invDescription = String(inv.notes ?? '').trim();
+    if (invDescription) bucket.descriptions.add(invDescription);
     const items = Array.isArray(inv.items) ? inv.items : [];
     for (const it of items as any[]) {
       const name = String(it.productName ?? it.product_name ?? it.name ?? '(tanımsız)');
@@ -209,8 +217,16 @@ function buildCustomerRows(invoices: ListInvoice[], fallbackCurrency: string): R
         existing.qty += qty;
         existing.revenue += lineTotal;
         existing.lines += 1;
+        if (invDescription) existing.descriptions.push(invDescription);
       } else {
-        bucket.productTotals.set(productKey, { name, code, qty, revenue: lineTotal, lines: 1 });
+        bucket.productTotals.set(productKey, {
+          name,
+          code,
+          qty,
+          revenue: lineTotal,
+          lines: 1,
+          descriptions: invDescription ? [invDescription] : [],
+        });
       }
     }
     bucket.grandTotal += Number(inv.total_amount ?? inv.total ?? 0);
@@ -222,6 +238,7 @@ function buildCustomerRows(invoices: ListInvoice[], fallbackCurrency: string): R
     a.customer.localeCompare(b.customer, 'tr'),
   );
   for (const bucket of sortedBuckets) {
+    const headerDescription = Array.from(bucket.descriptions).join(' | ');
     rows.push({
       'Müşteri/Tedarikçi': bucket.customer,
       'Fatura Sayısı': bucket.invoiceCount,
@@ -233,14 +250,17 @@ function buildCustomerRows(invoices: ListInvoice[], fallbackCurrency: string): R
       'Toplam Harcama': '',
       'Satır Sayısı': '',
       'Para Birimi': bucket.currency,
+      'Açıklama': headerDescription,
       'Müşteri Toplam': bucket.grandTotal,
     });
     const products = Array.from(bucket.productTotals.values()).sort((a, b) =>
       a.name.localeCompare(b.name, 'tr'),
     );
     for (const p of products) {
+      // Alt satırda: kaleme denk gelen tüm açıklamaları benzersiz birleştir
+      const subDescriptions = Array.from(new Set(p.descriptions));
       rows.push({
-        'Müşteri/Tedarikçi': '  � ' + bucket.customer,
+        'Müşteri/Tedarikçi': '  • ' + bucket.customer,
         'Fatura Sayısı': '',
         'İlk Tarih': '',
         'Son Tarih': '',
@@ -250,6 +270,7 @@ function buildCustomerRows(invoices: ListInvoice[], fallbackCurrency: string): R
         'Toplam Harcama': p.revenue,
         'Satır Sayısı': p.lines,
         'Para Birimi': bucket.currency,
+        'Açıklama': subDescriptions.join(' | '),
         'Müşteri Toplam': '',
       });
     }
@@ -265,16 +286,19 @@ function buildProductRows(invoices: ListInvoice[], fallbackCurrency: string): Re
     unit: string;
     customerTotals: Map<
       string,
-      { name: string; qty: number; revenue: number; lines: number }
+      { name: string; qty: number; revenue: number; lines: number; descriptions: string[] }
     >;
     totalQty: number;
     totalRevenue: number;
     currency: string;
+    /** Ürünün geçtiği tüm faturaların açıklamaları (benzersiz, başlık satırı için). */
+    descriptions: Set<string>;
   };
 
   const buckets = new Map<string, Bucket>();
   for (const inv of invoices) {
     const cur = getRowCurrency(inv, fallbackCurrency);
+    const invDescription = String(inv.notes ?? '').trim();
     const items = Array.isArray(inv.items) ? inv.items : [];
     for (const it of items as any[]) {
       const name = String(it.productName ?? it.product_name ?? it.name ?? '(tanımsız)');
@@ -296,22 +320,26 @@ function buildProductRows(invoices: ListInvoice[], fallbackCurrency: string): Re
           totalQty: 0,
           totalRevenue: 0,
           currency: cur,
+          descriptions: new Set<string>(),
         };
         buckets.set(productKey, bucket);
       }
       bucket.totalQty += qty;
       bucket.totalRevenue += lineTotal;
+      if (invDescription) bucket.descriptions.add(invDescription);
       const existingCust = bucket.customerTotals.get(custKey);
       if (existingCust) {
         existingCust.qty += qty;
         existingCust.revenue += lineTotal;
         existingCust.lines += 1;
+        if (invDescription) existingCust.descriptions.push(invDescription);
       } else {
         bucket.customerTotals.set(custKey, {
           name: customerName,
           qty,
           revenue: lineTotal,
           lines: 1,
+          descriptions: invDescription ? [invDescription] : [],
         });
       }
     }
@@ -322,6 +350,7 @@ function buildProductRows(invoices: ListInvoice[], fallbackCurrency: string): Re
     a.productName.localeCompare(b.productName, 'tr'),
   );
   for (const bucket of sortedBuckets) {
+    const headerDescription = Array.from(bucket.descriptions).join(' | ');
     rows.push({
       'Ürün/Hizmet': bucket.productName,
       'Barkod/Kod': bucket.productCode,
@@ -333,11 +362,13 @@ function buildProductRows(invoices: ListInvoice[], fallbackCurrency: string): Re
       'Müşteri Harcama': '',
       'Satır Sayısı': '',
       'Para Birimi': bucket.currency,
+      'Açıklama': headerDescription,
     });
     const customers = Array.from(bucket.customerTotals.values()).sort((a, b) =>
       a.name.localeCompare(b.name, 'tr'),
     );
     for (const c of customers) {
+      const subDescriptions = Array.from(new Set(c.descriptions));
       rows.push({
         'Ürün/Hizmet': '  ↳ ' + bucket.productName,
         'Barkod/Kod': '',
@@ -349,6 +380,7 @@ function buildProductRows(invoices: ListInvoice[], fallbackCurrency: string): Re
         'Müşteri Harcama': c.revenue,
         'Satır Sayısı': c.lines,
         'Para Birimi': bucket.currency,
+        'Açıklama': subDescriptions.join(' | '),
       });
     }
   }
