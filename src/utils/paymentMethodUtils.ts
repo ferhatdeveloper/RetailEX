@@ -158,6 +158,19 @@ export function paymentMethodImpliesPaidNow(raw: unknown): boolean {
 }
 
 /**
+ * Ödeme yöntemi fatura DB kaydında bir kasaya bağlanmayı hak ediyor mu?
+ *  - ACIK_CARI / veresiye → false (kasaya düşmemeli, cariye yazılır)
+ *  - NAKIT/KREDIKARTI/HAVALE vb. → true (nakit kasaya, kart bankaya bağlanır)
+ *
+ * Bu helper, formdaki kasa auto-assign ve DB payload koşullaması için
+ * tek doğruluk kaynağı olarak kullanılır. `paymentMethodImpliesPaidNow`
+ * ile simetri kurar; muhasebe cari borç semantiği ile karıştırılmamalıdır.
+ */
+export function paymentMethodImpliesCashRegisterOnInvoice(pm: unknown): boolean {
+  return paymentMethodImpliesPaidNow(pm);
+}
+
+/**
  * Satışta cari borç (müşteri bize borçlu) yalnızca veresiye / açık hesap.
  * Nakit, kart, havale için balance artırılmaz.
  */

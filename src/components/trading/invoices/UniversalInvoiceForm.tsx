@@ -73,6 +73,7 @@ import {
   formCodeToDbPaymentMethod,
   isPosRetailPaymentContext,
   paymentFormCodeTranslationKey,
+  paymentMethodImpliesCashRegisterOnInvoice,
   RETAIL_SALES_INVOICE_TRCODE,
 } from '../../../utils/paymentMethodUtils';
 import { buildInvoiceHeaderFieldsFromForm, readInvoiceHeaderFields } from '../../../utils/invoiceHeaderFields';
@@ -575,11 +576,20 @@ export function UniversalInvoiceForm({
       .finally(() => { if (!cancelled) setCashRegistersLoading(false); });
     return () => { cancelled = true; };
   }, []);
-  // Varsayılan kasa: her zaman listenin ilk öğesi (DB'ye ilk eklenmiş kasa —
-  // fetchKasalar created_at'e göre sıralı döner). Ödeme tipine göre anahtar
-  // kelime eşleşmesi (nakit/kart otomatik önerisi) kaldırıldı.
+  // Varsayılan kasa: ödeme tipi bir kasaya bağlanmayı gerektiriyorsa listenin
+  // ilk öğesi (DB'ye ilk eklenmiş kasa — fetchKasalar created_at'e göre sıralı
+  // döner). Açık cari / veresiye gibi cariye yazılan ödemelerde kasa alanı
+  // temizlenir; bu sayede DB'deki `cash_register_id` null kalır ve kasa
+  // defterine yanlışlıkla yansımaz.
   useEffect(() => {
     if (cashRegisters.length === 0) return;
+    if (!paymentMethodImpliesCashRegisterOnInvoice(paymentMethod)) {
+      if (cashRegisterId) {
+        setCashRegisterId('');
+        setCashRegisterName('');
+      }
+      return;
+    }
     if (cashRegisterId && cashRegisters.some((k) => k.id === cashRegisterId)) return;
     const first = cashRegisters[0];
     if (first) {
@@ -3601,8 +3611,18 @@ export function UniversalInvoiceForm({
         donem_name: selectedPeriod?.donem_adi || '',
         payment_method: resolvePaymentMethodForDb(),
         cashier: effectiveCashierName,
-        cash_register_id: cashRegisterId || undefined,
-        cash_register_name: cashRegisterName || undefined,
+        // Açık cari / veresiye ödemede kasaya bağlanmamalı — DB'de null kalmalı
+        // ve kasa defterine yansımamalı. Nakit/kart gibi kasaya bağlanan
+        // ödemelerde seçilen (veya otomatik atanan) kasa yazılır.
+        ...(paymentMethodImpliesCashRegisterOnInvoice(paymentMethod)
+          ? {
+              cash_register_id: cashRegisterId || undefined,
+              cash_register_name: cashRegisterName || undefined,
+            }
+          : {
+              cash_register_id: undefined,
+              cash_register_name: undefined,
+            }),
         created_by_user_id: (editData as any)?.created_by_user_id || user?.id || undefined,
         store_id: (editData as any)?.store_id || undefined,
         status: (() => {
