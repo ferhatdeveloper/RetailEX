@@ -3880,6 +3880,8 @@ export function UniversalInvoiceForm({
                   selectedCariBalance={selectedCariBalance}
                   selectedCariPhone={selectedCariPhone}
                   selectedCariCurrency={currency || 'IQD'}
+                  description={description}
+                  setDescription={setDescription}
                 />
 
                 {invoiceType.category === 'Alis' && createSaveOptions?.skipProductStockUpdate && (

@@ -86,6 +86,10 @@ interface InvoiceHeaderProps {
     selectedCariBalance?: number | null;
     selectedCariPhone?: string | null;
     selectedCariCurrency?: string;
+
+    // Detay tab açıklama alanı — collapsed görünümde cari alanının yanında gösterilir
+    description?: string;
+    setDescription?: (val: string) => void;
 }
 
 export const InvoiceHeader: React.FC<InvoiceHeaderProps> = ({
@@ -153,6 +157,8 @@ export const InvoiceHeader: React.FC<InvoiceHeaderProps> = ({
     selectedCariBalance,
     selectedCariPhone,
     selectedCariCurrency = 'IQD',
+    description,
+    setDescription,
 }) => {
     const { tm } = useLanguage();
     const cashierLabel = cashierFieldLabel || tm('cashier');
@@ -662,6 +668,20 @@ export const InvoiceHeader: React.FC<InvoiceHeaderProps> = ({
                             {paymentModalTriggerEl}
                         </div>
                         {cariSummaryEl}
+                        {setDescription ? (
+                            <div className="inline-flex items-center gap-1.5 flex-1 min-w-[10rem] max-w-md">
+                                <span className="text-[11px] font-semibold text-gray-500 uppercase whitespace-nowrap shrink-0">
+                                    {tm('description')}
+                                </span>
+                                <input
+                                    type="text"
+                                    value={description ?? ''}
+                                    onChange={(e) => setDescription(e.target.value)}
+                                    placeholder={`${tm('description')}...`}
+                                    className="flex-1 min-w-0 px-2 py-1 border border-gray-300 rounded text-sm bg-white focus:outline-none focus:ring-1 focus:ring-blue-500 truncate"
+                                />
+                            </div>
+                        ) : null}
                     </div>
 
                     <div className="flex flex-wrap items-center gap-x-4 gap-y-2 shrink-0 order-2 sm:ml-auto">
