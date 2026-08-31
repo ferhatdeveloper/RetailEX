@@ -237,7 +237,7 @@ export function StaffAttendanceReport() {
 
   // Her gün için kaç kişi geldi
   const perDayCounts = useMemo(() => {
-    const counts = new Array(31).fill(0);
+    const counts = new Array(daysInMonth).fill(0);
     for (const r of filtered) {
       for (let d = 0; d < daysInMonth; d++) {
         if (r.days[d] === 1) counts[d] += 1;
@@ -303,11 +303,11 @@ export function StaffAttendanceReport() {
       onRefresh={() => void load()}
       onExport={() => {
         const header = ['No', 'İsim', 'Departman', 'Maaş'];
-        for (let d = 1; d <= 31; d++) header.push(`Gün ${d}`);
+        for (let d = 1; d <= daysInMonth; d++) header.push(`Gün ${d}`);
         header.push('Toplam Gün', 'Toplam Maaş', 'Ek Ödeme', 'Brüt Hak');
         const out = enriched.map((r, i) => {
           const row: string[] = [String(i + 1), r.staffName, r.department, String(r.salary)];
-          for (let d = 0; d < 31; d++) {
+          for (let d = 0; d < daysInMonth; d++) {
             row.push(r.days[d] == null ? '' : String(r.days[d]));
           }
           row.push(String(r.totalDays), String(r.totalSalary), String(r.extraPayment), String(r.gross));
@@ -369,7 +369,7 @@ export function StaffAttendanceReport() {
               <th className="px-2 py-2 text-left">{tm('rprColStaffName') || 'İsim'}</th>
               <th className="px-2 py-2 text-left">{tm('rprColDepartment') || 'Departman'}</th>
               <th className="px-2 py-2 text-right">{tm('rprColSalary') || 'Maaş'}</th>
-              {Array.from({ length: 31 }).map((_, i) => (
+              {Array.from({ length: daysInMonth }).map((_, i) => (
                 <th key={i} className="px-1 py-2 text-center w-7">
                   {i + 1}
                 </th>
@@ -383,7 +383,7 @@ export function StaffAttendanceReport() {
           <tbody>
             {enriched.length === 0 && !loading && (
               <tr>
-                <td colSpan={38} className="px-3 py-8 text-center opacity-60">
+                <td colSpan={daysInMonth + 7} className="px-3 py-8 text-center opacity-60">
                   {tm('erpNoRows') || 'Veri yok'}
                 </td>
               </tr>
@@ -394,7 +394,7 @@ export function StaffAttendanceReport() {
                 <td className="px-2 py-2 font-medium whitespace-nowrap">{r.staffName}</td>
                 <td className="px-2 py-2 text-xs">{r.department}</td>
                 <td className="px-2 py-2 text-right">{formatNumber(r.salary, 2, false)}</td>
-                {r.days.map((d, i) => (
+                {r.days.slice(0, daysInMonth).map((d, i) => (
                   <td key={i} className={`px-1 py-1 text-center w-7 ${cellCls(d)}`}>
                     {d == null ? '' : d}
                   </td>

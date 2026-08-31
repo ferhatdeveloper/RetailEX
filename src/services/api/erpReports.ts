@@ -2285,7 +2285,8 @@ export const erpReportsAPI = {
     const periodNr = padPeriod();
     const staffIds = Array.isArray(params.staffIds) ? params.staffIds.filter(Boolean) : null;
 
-    // PostgreSQL: 31 günlük tablo için generate_series ile join — performanslı
+    // PostgreSQL: 31 günlük tablo için generate_series ile join — performanslı.
+    // Her zaman 31 sabit döner; frontend `daysInMonth` filtresiyle görünür kolon sayısını kırpar.
     if (DB_SETTINGS.connectionProvider !== 'rest_api') {
       try {
         const values: unknown[] = [firmNr, year, month, periodNr];
@@ -2298,15 +2299,13 @@ export const erpReportsAPI = {
           values.push(String(params.departmentId));
           filterSql += ` AND COALESCE(s.department, d.name, '') = $${values.length}`;
         }
-        const daysInMonth = new Date(year, month, 0).getDate();
-        values.push(daysInMonth);
         const sql = `
           WITH days AS (
-            SELECT generate_series(1, $${values.length}::int) AS day
+            SELECT generate_series(1, 31) AS day
           ),
           staff_base AS (
             SELECT s.id, s.full_name, COALESCE(s.department, d.name, '') AS department,
-                   COALESCE(s.base_salary, 0) AS salary
+                   COALESCE(s.base_salary, 0) AS salary, s.created_at
               FROM public.staff s
               LEFT JOIN public.staff_departments d ON d.id = s.department_id
              WHERE s.firm_nr = $1 AND s.is_active = TRUE${filterSql}
@@ -2334,8 +2333,8 @@ export const erpReportsAPI = {
            AND EXTRACT(DAY FROM a.attendance_date)::int = d.day
            AND EXTRACT(MONTH FROM a.attendance_date)::int = $3
            AND EXTRACT(YEAR FROM a.attendance_date)::int = $2
-          GROUP BY sb.id, sb.full_name, sb.department, sb.salary
-          ORDER BY sb.full_name
+          GROUP BY sb.id, sb.full_name, sb.department, sb.salary, sb.created_at
+          ORDER BY sb.created_at DESC NULLS LAST, sb.full_name ASC
           LIMIT ${ROW_LIMIT}`;
         const { rows } = await postgres.query(sql, values);
         return (rows || []).map((r: any) => ({
@@ -2373,9 +2372,10 @@ export const erpReportsAPI = {
           .get<Record<string, unknown>[]>(
             `/staff`,
             {
-              select: 'id,full_name,department,base_salary,is_active,firm_nr',
+              select: 'id,full_name,department,base_salary,is_active,firm_nr,created_at',
               firm_nr: `eq.${firmNr}`,
               is_active: 'eq.true',
+              order: 'created_at.desc',
               limit: String(ROW_LIMIT),
               ...(staffIds && staffIds.length > 0
                 ? { id: `in.(${staffIds.join(',')})` }
