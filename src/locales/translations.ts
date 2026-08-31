@@ -157,6 +157,15 @@ export interface MenuTranslations {
   wasteWaybill: string;
   waybills: string;
   whatsappIntegration: string;
+  humanResources: string;
+  personnelManagement: string;
+  attendanceLeave: string;
+  salaryPayroll: string;
+  performanceEvaluation: string;
+  hrTabList: string;
+  hrTabAttendance: string;
+  hrTabPayroll: string;
+  hrTabPerformance: string;
   mesajBildirim: string;
   wholesaleSales: string;
   supabaseDataTransfer: string;
@@ -2011,6 +2020,15 @@ export const translations: any = {
       workflowAutomation: 'Workflow Otomasyonu',
       salesOrders: 'Satış Siparişleri',
       currentAccountPersonel: 'Cari Hesap / Personel',
+      humanResources: 'İnsan Kaynakları',
+      personnelManagement: 'Personel Yönetimi',
+      attendanceLeave: 'Puantaj & İzin',
+      salaryPayroll: 'Maaş & Bordro',
+      performanceEvaluation: 'Performans Değerlendirme',
+      hrTabList: 'Personel Listesi',
+      hrTabAttendance: 'PDKS / Puantaj',
+      hrTabPayroll: 'Maaş & Bordro',
+      hrTabPerformance: 'Performans',
     },
     receipt: {
       title: 'SATIŞ FİŞİ',
@@ -3743,6 +3761,15 @@ export const translations: any = {
       multiCurrency: 'Multi-Currency',
       salesOrders: 'Sales Orders',
       currentAccountPersonel: 'Current Account / Personnel',
+      humanResources: 'Human Resources',
+      personnelManagement: 'Personnel Management',
+      attendanceLeave: 'Attendance & Leave',
+      salaryPayroll: 'Salary & Payroll',
+      performanceEvaluation: 'Performance Evaluation',
+      hrTabList: 'Staff List',
+      hrTabAttendance: 'Attendance / Timekeeping',
+      hrTabPayroll: 'Salary & Payroll',
+      hrTabPerformance: 'Performance',
     },
     menuManagement: 'Menu Management',
     min1Shortcut: 'You must select at least 1 shortcut',

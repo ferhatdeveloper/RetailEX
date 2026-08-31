@@ -266,6 +266,34 @@ export const getStaticMenuSections = (t: Translations) => [
         ]
     },
     {
+        id: 'human-resources',
+        title: t.menu.humanResources,
+        icon: UserCog,
+        items: [
+            {
+                label: t.menu.personnelManagement,
+                screen: 'hr',
+                icon: Users,
+                badge: t.menu.newBadge
+            },
+            {
+                label: t.menu.attendanceLeave,
+                screen: 'attendance',
+                icon: CalendarClock
+            },
+            {
+                label: t.menu.salaryPayroll,
+                screen: 'payroll',
+                icon: Wallet
+            },
+            {
+                label: t.menu.performanceEvaluation,
+                screen: 'performance',
+                icon: Award
+            }
+        ]
+    },
+    {
         id: 'communication-notifications',
         title: t.menu.communicationAndNotifications,
         items: [
@@ -465,7 +493,17 @@ export const staticMenuSections = getStaticMenuSections({
         inventoryCountOps: 'Sayım İşlemleri',
         mobileCount: 'Mobil Sayım / Fiş Oluştur',
         countDeficitSlips: 'Sayım Eksiği Fişleri',
-        countSurplusSlips: 'Sayım Fazlası Fişleri'
+        countSurplusSlips: 'Sayım Fazlası Fişleri',
+        humanResources: 'İnsan Kaynakları',
+        personnelManagement: 'Personel Yönetimi',
+        attendanceLeave: 'Puantaj & İzin',
+        salaryPayroll: 'Maaş & Bordro',
+        performanceEvaluation: 'Performans Değerlendirme',
+        hrTabList: 'Personel Listesi',
+        hrTabAttendance: 'PDKS / Puantaj',
+        hrTabPayroll: 'Maaş & Bordro',
+        hrTabPerformance: 'Performans',
+        newBadge: 'Yeni'
     }
 } as any);
 
