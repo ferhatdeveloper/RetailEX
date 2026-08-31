@@ -4,6 +4,7 @@
  * Features: Shift management, commission calculation, performance tracking
  */
 
+import { postgres, ERP_SETTINGS } from './postgres';
 import { Sale } from '../App';
 
 // Shift
@@ -566,4 +567,230 @@ export class StaffManagementService {
 
 // Singleton instance
 export const staffManagementService = new StaffManagementService();
+
+// =========================================================================
+// PDKS — public.staff üzerinde çalışan DB sorguları (migration 137)
+// =========================================================================
+
+export interface StaffRow {
+  id: string;
+  firmNr: string;
+  code: string | null;
+  fullName: string;
+  tcKimlik: string | null;
+  phone: string | null;
+  email: string | null;
+  departmentId: string | null;
+  department: string | null;
+  position: string | null;
+  hireDate: string | null;
+  terminationDate: string | null;
+  employmentType: string | null;
+  baseSalary: number;
+  hourlyRate: number;
+  isActive: boolean;
+  notes: string | null;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface StaffUpsertInput {
+  id?: string;
+  code?: string | null;
+  fullName: string;
+  tcKimlik?: string | null;
+  phone?: string | null;
+  email?: string | null;
+  departmentId?: string | null;
+  department?: string | null;
+  position?: string | null;
+  hireDate?: string | null;
+  terminationDate?: string | null;
+  employmentType?: string | null;
+  baseSalary?: number;
+  hourlyRate?: number;
+  isActive?: boolean;
+  notes?: string | null;
+}
+
+function padFirmNr(): string {
+  const raw = String(ERP_SETTINGS.firmNr ?? '001').padStart(3, '0').slice(0, 4);
+  return raw || '001';
+}
+
+function mapStaffRow(r: Record<string, unknown>): StaffRow {
+  return {
+    id: String(r.id ?? ''),
+    firmNr: String(r.firm_nr ?? ''),
+    code: r.code == null ? null : String(r.code),
+    fullName: String(r.full_name ?? ''),
+    tcKimlik: r.tc_kimlik == null ? null : String(r.tc_kimlik),
+    phone: r.phone == null ? null : String(r.phone),
+    email: r.email == null ? null : String(r.email),
+    departmentId: r.department_id == null ? null : String(r.department_id),
+    department: r.department == null ? null : String(r.department),
+    position: r.position == null ? null : String(r.position),
+    hireDate: r.hire_date == null ? null : String(r.hire_date).slice(0, 10),
+    terminationDate: r.termination_date == null ? null : String(r.termination_date).slice(0, 10),
+    employmentType: r.employment_type == null ? null : String(r.employment_type),
+    baseSalary: Number(r.base_salary ?? 0),
+    hourlyRate: Number(r.hourly_rate ?? 0),
+    isActive: Boolean(r.is_active ?? true),
+    notes: r.notes == null ? null : String(r.notes),
+    createdAt: String(r.created_at ?? ''),
+    updatedAt: String(r.updated_at ?? ''),
+  };
+}
+
+export const staffDbApi = {
+  async listStaff(opts?: { onlyActive?: boolean; department?: string; search?: string }): Promise<StaffRow[]> {
+    const firmNr = padFirmNr();
+    const values: unknown[] = [firmNr];
+    let where = 'WHERE firm_nr = $1';
+    if (opts?.onlyActive !== false) where += ' AND is_active = TRUE';
+    if (opts?.department) {
+      values.push(String(opts.department));
+      where += ` AND COALESCE(department, '') = $${values.length}`;
+    }
+    if (opts?.search) {
+      const term = `%${String(opts.search).toLowerCase()}%`;
+      values.push(term);
+      where += ` AND (LOWER(full_name) LIKE $${values.length} OR LOWER(COALESCE(code,'')) LIKE $${values.length})`;
+    }
+    const sql = `
+      SELECT id::text, firm_nr, code, full_name, tc_kimlik, phone, email,
+             department_id::text, department, position, hire_date::text, termination_date::text,
+             employment_type, base_salary, hourly_rate, is_active, notes,
+             created_at::text, updated_at::text
+        FROM public.staff
+        ${where}
+       ORDER BY full_name
+       LIMIT 2000`;
+    try {
+      const { rows } = await postgres.query(sql, values);
+      return (rows || []).map((r) => mapStaffRow(r as Record<string, unknown>));
+    } catch (err) {
+      console.warn('[staffDbApi.listStaff]', err);
+      return [];
+    }
+  },
+
+  async listDepartments(): Promise<Array<{ id: string; code: string; name: string }>> {
+    const firmNr = padFirmNr();
+    try {
+      const { rows } = await postgres.query(
+        `SELECT id::text AS id, code, name
+           FROM public.staff_departments
+          WHERE firm_nr = $1 AND is_active = TRUE
+          ORDER BY name
+          LIMIT 500`,
+        [firmNr],
+      );
+      return (rows || []).map((r: Record<string, unknown>) => ({
+        id: String(r.id ?? ''),
+        code: String(r.code ?? ''),
+        name: String(r.name ?? ''),
+      }));
+    } catch (err) {
+      console.warn('[staffDbApi.listDepartments]', err);
+      return [];
+    }
+  },
+
+  async upsertStaff(input: StaffUpsertInput): Promise<{ ok: boolean; id?: string; error?: string }> {
+    const firmNr = padFirmNr();
+    try {
+      if (input.id) {
+        const { rows } = await postgres.query(
+          `UPDATE public.staff SET
+             code            = $2,
+             full_name       = $3,
+             tc_kimlik       = $4,
+             phone           = $5,
+             email           = $6,
+             department_id   = $7,
+             department      = $8,
+             position        = $9,
+             hire_date       = $10::date,
+             termination_date = $11::date,
+             employment_type = $12,
+             base_salary     = $13,
+             hourly_rate     = $14,
+             is_active       = $15,
+             notes           = $16
+           WHERE id = $1::uuid AND firm_nr = $17
+           RETURNING id::text`,
+          [
+            input.id,
+            input.code ?? null,
+            input.fullName,
+            input.tcKimlik ?? null,
+            input.phone ?? null,
+            input.email ?? null,
+            input.departmentId ?? null,
+            input.department ?? null,
+            input.position ?? null,
+            input.hireDate ?? null,
+            input.terminationDate ?? null,
+            input.employmentType ?? 'full_time',
+            Number(input.baseSalary ?? 0),
+            Number(input.hourlyRate ?? 0),
+            input.isActive !== false,
+            input.notes ?? null,
+            firmNr,
+          ],
+        );
+        return { ok: true, id: String((rows as Array<Record<string, unknown>>)?.[0]?.id ?? input.id) };
+      }
+      const { rows } = await postgres.query(
+        `INSERT INTO public.staff (
+          firm_nr, code, full_name, tc_kimlik, phone, email,
+          department_id, department, position, hire_date, termination_date,
+          employment_type, base_salary, hourly_rate, is_active, notes
+         ) VALUES (
+          $1, $2, $3, $4, $5, $6,
+          $7, $8, $9, $10::date, $11::date,
+          $12, $13, $14, $15, $16
+         )
+         RETURNING id::text`,
+        [
+          firmNr,
+          input.code ?? null,
+          input.fullName,
+          input.tcKimlik ?? null,
+          input.phone ?? null,
+          input.email ?? null,
+          input.departmentId ?? null,
+          input.department ?? null,
+          input.position ?? null,
+          input.hireDate ?? null,
+          input.terminationDate ?? null,
+          input.employmentType ?? 'full_time',
+          Number(input.baseSalary ?? 0),
+          Number(input.hourlyRate ?? 0),
+          input.isActive !== false,
+          input.notes ?? null,
+        ],
+      );
+      return { ok: true, id: String((rows as Array<Record<string, unknown>>)?.[0]?.id ?? '') };
+    } catch (err: unknown) {
+      const msg = err instanceof Error ? err.message : String(err);
+      return { ok: false, error: msg };
+    }
+  },
+
+  async deleteStaff(id: string): Promise<{ ok: boolean; error?: string }> {
+    try {
+      await postgres.query(
+        `UPDATE public.staff SET is_active = FALSE, termination_date = CURRENT_DATE
+          WHERE id = $1::uuid`,
+        [id],
+      );
+      return { ok: true };
+    } catch (err: unknown) {
+      const msg = err instanceof Error ? err.message : String(err);
+      return { ok: false, error: msg };
+    }
+  },
+};
 

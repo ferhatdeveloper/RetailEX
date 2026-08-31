@@ -2260,9 +2260,15 @@ export const erpReportsAPI = {
    * StaffAttendance — PDKS / Personel yoklama (aylık).
    * VIVA SOLAR `personel` karşılığı.
    *
-   * Şu anda projede `staff` veya `staff_attendance` tablosu YOK (yalnızca
-   * `parties` (card_type='employee') ve `wms.personnel` var). Bu nedenle
-   * metod bilinçli olarak boş döner + kullanıcıya toast uyarısı.
+   * Kaynaklar (migration 137):
+   *   • public.staff                    → personel kartları
+   *   • rex_<f>_<p>_staff_attendance    → günlük giriş/çıkış (dönemsel)
+   *   • rex_<f>_<p>_staff_leaves        → izinler
+   *
+   * Çıktı: StaffAttendanceRow[] — `days[0..30]` dizisinde
+   *   1 = PRESENT/LATE/HALF_DAY, 0 = ABSENT, null = veri yok.
+   * `salary` = public.staff.base_salary (aylık brüt); `extraPayment` şimdilik
+   * mesai/prim için 0 (ileride ek sütun eklenecek).
    */
   async getStaffAttendance(params: {
     year: number;
@@ -2270,13 +2276,168 @@ export const erpReportsAPI = {
     staffIds?: string[];
     departmentId?: string;
   }): Promise<Record<string, unknown>[]> {
-    void params;
-    if (typeof console !== 'undefined') {
-      console.warn(
-        '[erpReportsAPI.getStaffAttendance] staff_attendance tablosu bulunamadı; PDKS raporu devre dışı.',
-      );
+    const year = Number(params.year);
+    const month = Number(params.month);
+    if (!Number.isFinite(year) || !Number.isFinite(month) || month < 1 || month > 12) {
+      return [];
     }
-    return [];
+    const firmNr = padFirm();
+    const periodNr = padPeriod();
+    const staffIds = Array.isArray(params.staffIds) ? params.staffIds.filter(Boolean) : null;
+
+    // PostgreSQL: 31 günlük tablo için generate_series ile join — performanslı
+    if (DB_SETTINGS.connectionProvider !== 'rest_api') {
+      try {
+        const values: unknown[] = [firmNr, year, month, periodNr];
+        let filterSql = '';
+        if (staffIds && staffIds.length > 0) {
+          values.push(staffIds);
+          filterSql += ` AND s.id = ANY($${values.length}::uuid[])`;
+        }
+        if (params.departmentId) {
+          values.push(String(params.departmentId));
+          filterSql += ` AND COALESCE(s.department, d.name, '') = $${values.length}`;
+        }
+        const daysInMonth = new Date(year, month, 0).getDate();
+        values.push(daysInMonth);
+        const sql = `
+          WITH days AS (
+            SELECT generate_series(1, $${values.length}::int) AS day
+          ),
+          staff_base AS (
+            SELECT s.id, s.full_name, COALESCE(s.department, d.name, '') AS department,
+                   COALESCE(s.base_salary, 0) AS salary
+              FROM public.staff s
+              LEFT JOIN public.staff_departments d ON d.id = s.department_id
+             WHERE s.firm_nr = $1 AND s.is_active = TRUE${filterSql}
+          )
+          SELECT
+            sb.id::text AS staff_id,
+            sb.full_name AS staff_name,
+            sb.department,
+            sb.salary,
+            array_agg(
+              CASE
+                WHEN a.status IN ('PRESENT','LATE','HALF_DAY') THEN 1
+                WHEN a.status = 'ABSENT' THEN 0
+                ELSE NULL
+              END
+              ORDER BY d.day
+            ) AS days,
+            0::numeric AS extra_payment
+          FROM staff_base sb
+          CROSS JOIN days d
+          LEFT JOIN public.staff_attendance a
+            ON a.staff_id = sb.id
+           AND a.firm_nr = $1
+           AND a.period_nr = $4
+           AND EXTRACT(DAY FROM a.attendance_date)::int = d.day
+           AND EXTRACT(MONTH FROM a.attendance_date)::int = $3
+           AND EXTRACT(YEAR FROM a.attendance_date)::int = $2
+          GROUP BY sb.id, sb.full_name, sb.department, sb.salary
+          ORDER BY sb.full_name
+          LIMIT ${ROW_LIMIT}`;
+        const { rows } = await postgres.query(sql, values);
+        return (rows || []).map((r: any) => ({
+          staffId: String(r.staff_id ?? ''),
+          staffName: String(r.staff_name ?? ''),
+          department: String(r.department ?? ''),
+          salary: Number(r.salary ?? 0),
+          days: Array.from({ length: 31 }, (_, i) => {
+            const raw = r.days?.[i];
+            if (raw === 1 || raw === '1') return 1;
+            if (raw === 0 || raw === '0') return 0;
+            return null;
+          }),
+          extraPayment: Number(r.extra_payment ?? 0),
+        }));
+      } catch (err: unknown) {
+        // Tablo yoksa (henüz migration çalışmadıysa) boş dön + UI uyarısı
+        const msg = err instanceof Error ? err.message : String(err);
+        if (typeof console !== 'undefined') {
+          console.warn(
+            '[erpReportsAPI.getStaffAttendance] staff_attendance sorgusu başarısız:',
+            msg,
+          );
+        }
+        return [];
+      }
+    }
+
+    // REST API (postgrest) yolu — postgrest üzerinden firm-period tablosu
+    try {
+      const { postgrest } = await import('./postgrestClient');
+      const daysInMonth = new Date(year, month, 0).getDate();
+      const [staffRows, attRows] = await Promise.all([
+        postgrest
+          .get<Record<string, unknown>[]>(
+            `/staff`,
+            {
+              select: 'id,full_name,department,base_salary,is_active,firm_nr',
+              firm_nr: `eq.${firmNr}`,
+              is_active: 'eq.true',
+              limit: String(ROW_LIMIT),
+              ...(staffIds && staffIds.length > 0
+                ? { id: `in.(${staffIds.join(',')})` }
+                : {}),
+              ...(params.departmentId
+                ? { department: `eq.${String(params.departmentId)}` }
+                : {}),
+            },
+            { schema: 'public' },
+          )
+          .catch(() => [] as Record<string, unknown>[]),
+        postgrest
+          .get<Record<string, unknown>[]>(
+            `/staff_attendance`,
+            {
+              select: 'staff_id,attendance_date,status',
+              firm_nr: `eq.${firmNr}`,
+              period_nr: `eq.${periodNr}`,
+              attendance_date: `gte.${year}-${String(month).padStart(2, '0')}-01`,
+              limit: String(ROW_LIMIT),
+            },
+            { schema: 'public' },
+          )
+          .catch(() => [] as Record<string, unknown>[]),
+      ]);
+      const byStaff = new Map<string, Map<number, string>>();
+      for (const a of attRows || []) {
+        const sid = String(a.staff_id || '');
+        if (!sid) continue;
+        const d = String(a.attendance_date || '').slice(0, 10);
+        const day = Number(d.slice(8, 10));
+        if (!Number.isFinite(day) || day < 1 || day > daysInMonth) continue;
+        const m = byStaff.get(sid) || new Map<number, string>();
+        m.set(day, String(a.status || ''));
+        byStaff.set(sid, m);
+      }
+      return (staffRows || []).map((s) => {
+        const sid = String(s.id ?? '');
+        const m = byStaff.get(sid) || new Map<number, string>();
+        const days: (1 | 0 | null)[] = Array.from({ length: 31 }, (_, i) => {
+          const status = m.get(i + 1);
+          if (!status) return null;
+          if (status === 'ABSENT') return 0;
+          if (status === 'PRESENT' || status === 'LATE' || status === 'HALF_DAY') return 1;
+          return null;
+        });
+        return {
+          staffId: sid,
+          staffName: String(s.full_name ?? ''),
+          department: String(s.department ?? ''),
+          salary: Number(s.base_salary ?? 0),
+          days,
+          extraPayment: 0,
+        };
+      });
+    } catch (err: unknown) {
+      const msg = err instanceof Error ? err.message : String(err);
+      if (typeof console !== 'undefined') {
+        console.warn('[erpReportsAPI.getStaffAttendance] REST sorgusu başarısız:', msg);
+      }
+      return [];
+    }
   },
 
   /**

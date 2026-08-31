@@ -137,16 +137,40 @@ export function StaffAttendanceReport() {
     (async () => {
       try {
         setStaffLoading(true);
-        const list = await beautyService.getSpecialists();
+        // Önce yeni PDKS tablosu (public.staff), bulamazsa beauty uzmanlarından düş.
+        let list: Array<Record<string, unknown>> = [];
+        try {
+          const fn = (selectedFirm?.firm_nr ?? '001').toString().padStart(3, '0');
+          const res = await fetch('/api/pg_query', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              sql:
+                `SELECT id::text AS id, full_name, department, base_salary ` +
+                `FROM staff WHERE firm_nr = $1 AND is_active = TRUE ORDER BY full_name LIMIT 500`,
+              params: [fn],
+            }),
+          });
+          if (res.ok) {
+            const json = (await res.json()) as { rows?: Array<Record<string, unknown>> };
+            if (Array.isArray(json?.rows)) list = json.rows;
+          }
+        } catch {
+          /* bridge yoksa specialist fallback'e düş */
+        }
+        if (!list.length) {
+          const fb = await beautyService.getSpecialists();
+          list = (Array.isArray(fb) ? (fb as unknown as Array<Record<string, unknown>>) : []);
+        }
         if (cancelled) return;
-        const staffOpts: SelectOption[] = (Array.isArray(list) ? list : []).map((s: any) => ({
+        const staffOpts: SelectOption[] = list.map((s) => ({
           value: String(s.id ?? s.specialist_id ?? s.code ?? ''),
-          label: s.name ?? s.full_name ?? s.title ?? String(s.id ?? ''),
+          label: String(s.full_name ?? s.name ?? s.title ?? s.id ?? ''),
         })).filter((o) => o.value);
         setStaffOptions(staffOpts);
         const deptSet = new Set<string>();
-        for (const s of list ?? []) {
-          const d = (s as any).department ?? (s as any).dept ?? null;
+        for (const s of list) {
+          const d = s.department ?? (s as any).dept ?? null;
           if (typeof d === 'string' && d.trim()) deptSet.add(d.trim());
         }
         setDepartmentOptions(Array.from(deptSet).sort().map((d) => ({ value: d, label: d })));
