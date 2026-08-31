@@ -325,6 +325,8 @@ export function SmartScheduler() {
     const [treatmentFieldsSaving, setTreatmentFieldsSaving] = useState(false);
     const [aptNotesDraft, setAptNotesDraft] = useState('');
     const [aptNotesSaving, setAptNotesSaving] = useState(false);
+    const [aptTimeDraft, setAptTimeDraft] = useState('');
+    const [aptTimeSaving, setAptTimeSaving] = useState(false);
 
     useEffect(() => {
         setSelectedApt(prev => {
@@ -349,6 +351,7 @@ export function SmartScheduler() {
             setTreatmentShotsDraft('');
             setTreatmentDurationDraft('');
             setAptNotesDraft('');
+            setAptTimeDraft('');
             return;
         }
         setTreatmentDegreeDraft(String(selectedApt.treatment_degree ?? ''));
@@ -359,7 +362,9 @@ export function SmartScheduler() {
                 : '',
         );
         setAptNotesDraft(String(selectedApt.notes ?? ''));
-    }, [selectedApt?.id, selectedApt?.treatment_degree, selectedApt?.treatment_shots, selectedApt?.duration, selectedApt?.notes]);
+        const t = String(selectedApt.appointment_time ?? selectedApt.time ?? '').slice(0, 5);
+        setAptTimeDraft(/^\d{2}:\d{2}$/.test(t) ? t : '');
+    }, [selectedApt?.id, selectedApt?.treatment_degree, selectedApt?.treatment_shots, selectedApt?.duration, selectedApt?.notes, selectedApt?.appointment_time]);
 
     useEffect(() => {
         loadSpecialists();
@@ -1072,6 +1077,27 @@ export function SmartScheduler() {
             setAptNotesSaving(false);
         }
     }, [selectedApt, aptNotesDraft, updateAppointment]);
+
+    const saveAptTimeFromPanel = useCallback(async () => {
+        if (!selectedApt) return;
+        const draft = aptTimeDraft.trim();
+        if (!/^\d{2}:\d{2}$/.test(draft)) return;
+        const prev = String(selectedApt.appointment_time ?? selectedApt.time ?? '').slice(0, 5);
+        if (draft === prev) return;
+        setAptTimeSaving(true);
+        try {
+            await updateAppointment(selectedApt.id, { appointment_time: draft, time: draft });
+            setSelectedApt(prevApt =>
+                prevApt && prevApt.id === selectedApt.id
+                    ? { ...prevApt, appointment_time: draft, time: draft }
+                    : prevApt,
+            );
+        } catch (e: unknown) {
+            logger.crudError('SmartScheduler', 'saveAptTime', e, { id: selectedApt.id });
+        } finally {
+            setAptTimeSaving(false);
+        }
+    }, [selectedApt, aptTimeDraft, updateAppointment]);
 
     const saveAppointmentPriceFromCard = useCallback(async () => {
         if (!isAdmin()) return;
@@ -2580,10 +2606,6 @@ export function SmartScheduler() {
                                         <>
                                             {[
                                                 { label: tm('bPanelAppointmentDate'), value: dateShown },
-                                                {
-                                                    label: tm('bPanelAppointmentTime'),
-                                                    value: (selectedApt.appointment_time ?? selectedApt.time ?? '—').slice(0, 5),
-                                                },
                                                 { label: tm('bPanelAppointmentStatus'), value: st || '—' },
                                                 {
                                                     label: tm('bPanelAppointmentId'),
@@ -2616,6 +2638,53 @@ export function SmartScheduler() {
                                         <p style={{ fontSize: 12, fontWeight: 700, color: '#111827' }}>{value}</p>
                                     </div>
                                 ))}
+                            </div>
+                            <div style={{ background: '#f5f3ff', border: '1px solid #ddd6fe', borderRadius: 8, padding: '10px 12px', marginBottom: 16 }}>
+                                <label
+                                    htmlFor="beauty-panel-apt-time"
+                                    style={{ fontSize: 10, fontWeight: 700, color: '#5b21b6', textTransform: 'uppercase', letterSpacing: '0.08em', marginBottom: 6, display: 'block' }}
+                                >
+                                    {tm('bPanelAppointmentTime')}
+                                </label>
+                                <input
+                                    id="beauty-panel-apt-time"
+                                    type="time"
+                                    value={aptTimeDraft}
+                                    onChange={e => setAptTimeDraft(e.target.value)}
+                                    onPointerDown={e => e.stopPropagation()}
+                                    onClick={e => e.stopPropagation()}
+                                    style={{
+                                        width: '100%',
+                                        boxSizing: 'border-box',
+                                        border: '1px solid #c4b5fd',
+                                        borderRadius: 6,
+                                        padding: '8px 10px',
+                                        fontSize: 13,
+                                        fontWeight: 700,
+                                        color: '#4c1d95',
+                                        backgroundColor: '#ffffff',
+                                        outline: 'none',
+                                    }}
+                                />
+                                <button
+                                    type="button"
+                                    onClick={() => void saveAptTimeFromPanel()}
+                                    disabled={aptTimeSaving}
+                                    style={{
+                                        width: '100%',
+                                        height: 34,
+                                        marginTop: 8,
+                                        borderRadius: 6,
+                                        border: '1px solid #c4b5fd',
+                                        background: '#ede9fe',
+                                        color: '#5b21b6',
+                                        fontSize: 12,
+                                        fontWeight: 800,
+                                        cursor: aptTimeSaving ? 'wait' : 'pointer',
+                                    }}
+                                >
+                                    {aptTimeSaving ? tm('bSaving') : tm('save')}
+                                </button>
                             </div>
                             <div style={{ marginBottom: 16 }}>
                                 <p style={{ fontSize: 10, fontWeight: 700, color: '#9ca3af', textTransform: 'uppercase', letterSpacing: '0.08em', marginBottom: 8 }}>{tm('bPanelTreatmentFieldsTitle')}</p>

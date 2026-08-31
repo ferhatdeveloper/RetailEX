@@ -1671,8 +1671,10 @@ export function AppointmentPOS({
             return empty;
         }
         const exId = existingAppointment?.id;
-        const WORK_START = 8 * 60;
-        const WORK_END = 20 * 60;
+        // Personel bazlı saat sınırı devre dışı — kullanıcı istediği saate randevu girebilir.
+        // Çakışma hâlâ `ensureAppointmentSlotOk` ile aynı personel/cihaz üstünde denetleniyor.
+        const WORK_START = 0;
+        const WORK_END = 24 * 60;
         const STEP = 15;
         const multi = appointmentBookLines.length > 1;
         const anchor = hint?.anchorStartMin != null && !Number.isNaN(hint.anchorStartMin) ? hint.anchorStartMin : null;
