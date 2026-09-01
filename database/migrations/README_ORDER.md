@@ -114,6 +114,7 @@
 110. **125_ensure_party_ledger_period_tables.sql** – Personel/ortak dönem catch-up: `INIT_PARTY_PERIOD_TABLES` + mevcut `cash_lines`/`sales` dönemlerinde `rex_{f}_{p}_party_ledger_movements`, `_partner_distributions`, `_partner_distribution_items`. 121 yalnızca var olan ledger tablolarına indeks ekliyordu; eski dönemlerde tablo yoktu (`relation "rex_001_01_party_ledger_movements" does not exist`).
 111. **137_pdks_attendance_full.sql** – PDKS personel yoklama (attendance) tam altyapı.
 112. **138_badia_orphan_supplier_redirect.sql** – Kasap DB özel veri düzeltmesi: BADIA duplicate (`customers.MUS-002` orphan vs. `suppliers.TED-005` gerçek tedarikçi) birleştirme. Bugünkü yanlış yazılan CH_ODEME `customer_id → party_id` yönlendirildi, orphan sales `customer_id` bağlandı, sync queue stale event silindi. İdempotent. Bkz. commit `2ae6e602 feat(db): kasap müşteri/tedarikçi duplicate birleştirme` ve `cc111b13 fix(ledger): SQL CTE cash_lines cari türüne göre işaret`.
+113. **139_kasap_full_cari_dedup.sql** – Kasap DB kapsamlı cari/tedarikçi düzeltmesi: TAZA (MUS-009→TED-002) duplicate merge, MEGAL COM (MUS-024→MUS-015 supplier) merge, kod çakışması çözümü. 192 orphan `purchase_invoice/return_invoice/opening_balance` satırı ünvan eşleşmesiyle tedarikçi UUID'lerine bağlandı (TED-001/002/003/006/007/008/009/010/017/018/GENEL). sync_queue stale event'ler silindi. MEGAL MARKET (MUS-003↔TED-004) **dokunulmadı** (gerçek müşteri, 22 sales_invoice + 3 KASA_GIRIS). Yedek: `database/backups/kasap_pre_139_*.dump`.
 
 **099 tüm kiracılara (tek dosya):**
 ```bash
