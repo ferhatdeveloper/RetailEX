@@ -52,6 +52,8 @@ export interface Service {
     priceList6?: number;
     created_at: string;
     updated_at: string;
+    /** Hizmetin yer aldığı farklı satış fişi sayısı (distinct invoice_id) — listeleme için */
+    sale_count?: number;
 }
 
 export type CreateServiceInput = Omit<Service, 'id' | 'created_at' | 'updated_at'>;
@@ -117,6 +119,7 @@ function mapRow(row: Record<string, unknown>): Service {
         priceList6: row.price_list_6 != null ? num(row.price_list_6) : undefined,
         created_at: row.created_at != null ? String(row.created_at) : '',
         updated_at: row.updated_at != null ? String(row.updated_at) : '',
+        sale_count: row.sale_count != null ? num(row.sale_count) : undefined,
     };
 }
 
@@ -317,6 +320,34 @@ class ServiceAPI {
              AND (code ILIKE $2 OR name ILIKE $2 OR COALESCE(category,'') ILIKE $2)
              ORDER BY name ASC`,
             [ERP_SETTINGS.firmNr, q]
+        );
+        return (rows as Record<string, unknown>[]).map(mapRow);
+    }
+
+    /**
+     * Hizmet kartları listesi + her hizmetin yer aldığı farklı satış fişi sayısı
+     * (distinct invoice_id, item_type='Hizmet'). Tek sorgu, N+1 yok.
+     *
+     * periodNr verilirse o dönemdeki satışlar sayılır; verilmezse aktif dönem kullanılır.
+     */
+    async getAllWithSaleStats(opts?: { periodNr?: string }): Promise<Service[]> {
+        const periodNr = String(opts?.periodNr ?? ERP_SETTINGS.periodNr ?? '01').trim();
+        // sale_items otomatik rex_{firm}_{period}_sale_items'e çevrilir (MOVEMENT_TABLES)
+        const { rows } = await postgres.query(
+            `SELECT s.*,
+                    COALESCE(sc.sale_count, 0)::int AS sale_count
+               FROM ${tableName()} s
+               LEFT JOIN (
+                 SELECT product_id, COUNT(DISTINCT invoice_id) AS sale_count
+                   FROM sale_items
+                  WHERE firm_nr = $1
+                    AND period_nr = $2
+                    AND item_type = 'Hizmet'
+                  GROUP BY product_id
+               ) sc ON sc.product_id = s.id
+              WHERE s.firm_nr = $1
+              ORDER BY s.is_active DESC, s.name ASC`,
+            [ERP_SETTINGS.firmNr, periodNr]
         );
         return (rows as Record<string, unknown>[]).map(mapRow);
     }

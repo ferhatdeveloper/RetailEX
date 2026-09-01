@@ -24,7 +24,7 @@ export function ServiceManagement() {
   const loadServices = async (silent = false) => {
     try {
       if (!silent) setIsLoading(true);
-      const data = await serviceAPI.getAll();
+      const data = await serviceAPI.getAllWithSaleStats();
       setServices(data);
     } catch (error) {
       console.error('Error loading services:', error);
@@ -108,6 +108,28 @@ export function ServiceManagement() {
         </div>
       ),
       size: 120
+    }),
+    columnHelper.accessor('sale_count', {
+      header: tm('saleFichesCount') || 'SATIŞ FİŞİ',
+      cell: info => {
+        const count = Number(info.getValue() || 0);
+        return (
+          <div className="flex items-center justify-center">
+            <span
+              className={`px-2.5 py-1 rounded-full text-xs font-black ${
+                count > 0
+                  ? 'bg-emerald-100 text-emerald-700 ring-1 ring-emerald-200'
+                  : 'bg-slate-100 text-slate-400'
+              }`}
+              title={`Bu hizmetin yer aldığı farklı satış fişi sayısı: ${count}`}
+            >
+              {count}
+            </span>
+          </div>
+        );
+      },
+      size: 110,
+      sortingFn: 'basic',
     }),
     columnHelper.accessor('tax_rate', {
       header: 'TAX',
