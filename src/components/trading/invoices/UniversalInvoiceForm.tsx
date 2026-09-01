@@ -667,7 +667,7 @@ export function UniversalInvoiceForm({
   const [waybillType, setWaybillType] = useState(''); // İrsaliye Türü
   const [waybillNo, setWaybillNo] = useState(''); // İrsaliye No
   const [waybillDocumentNo, setWaybillDocumentNo] = useState(''); // İrsaliye Belge No
-  const [description, setDescription] = useState(''); // Açıklama
+  const [description, setDescription] = useState(() => String((editData as any)?.notes || '')); // Açıklama
   const [documentTrackingNo, setDocumentTrackingNo] = useState(''); // Doküman İzleme Numarası
   const [paymentType, setPaymentType] = useState('İşlem Yapılmayacak'); // Ödeme Tipi
   const [isElectronicDoc, setIsElectronicDoc] = useState(false); // Elektronik Belge
@@ -2726,8 +2726,15 @@ export function UniversalInvoiceForm({
         if (draftCashier != null && String(draftCashier).trim() !== '') {
           setCashierName(String(draftCashier).trim());
         }
-      } else if ((editData as any).cashier) {
-        setCashierName(String((editData as any).cashier).trim());
+      } else {
+        // Edit: DB'deki notes → state'e hidrasyon; kullanıcı elle değiştirmediyse uygula
+        const editNotes = (editData as any).notes;
+        if (editNotes != null && String(editNotes).trim() !== '') {
+          setDescription((prev) => (prev.trim() ? prev : String(editNotes)));
+        }
+        if ((editData as any).cashier) {
+          setCashierName(String((editData as any).cashier).trim());
+        }
       }
 
       // cash_register_id — header_fields veya kök alandan yüklenir
