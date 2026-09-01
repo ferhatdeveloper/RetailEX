@@ -489,11 +489,25 @@ export function InvoiceListModule({
     };
   }, [searchQuery]);
 
-  // Sync state with props when they change — kayıtlı tercih varsa üzerine yazma
+  // Sayfa bağlamı (defaultInvoiceTypeFilter) ile senkronize — prop değiştiğinde
+  // her zaman uygula; eski kullanıcı tercihi (initialPrefs) yalnızca sayfa
+  // bağlamı belirsiz (defaultInvoiceTypeFilter yok/"all") iken geçerlidir.
+  //
+  // Skandal (2026-09-01 kasap): kullanıcı "Alınan Hizmet" sayfasına girdi
+  // (defaultInvoiceTypeFilter="4"), fakat sağ üstteki dropdown "Retail Sale"
+  // (value="7") görünüyordu. Kök neden: initialPrefs başka bir sayfadan
+  // (Satis) gelen eski tercihi içeriyordu ve "4" bağlamı uygulanmıyordu.
   useEffect(() => {
-    if (!initialPrefs?.invoiceTypeFilter) {
-      setInvoiceTypeFilter(defaultInvoiceTypeFilter || 'all');
+    if (defaultInvoiceTypeFilter && defaultInvoiceTypeFilter !== 'all') {
+      // Sayfa bağlamı zorunlu bir filtre veriyor → kullanıcının eski
+      // tercihi (başka sayfadan kalmış olabilir) burada geçersiz.
+      setInvoiceTypeFilter(defaultInvoiceTypeFilter);
+    } else if (!initialPrefs?.invoiceTypeFilter) {
+      // Bağlam belirsiz ve kayıtlı tercih yok → "all".
+      setInvoiceTypeFilter('all');
     }
+    // initialPrefs?.invoiceTypeFilter doluysa VE bağlam belirsizse
+    // (defaultInvoiceTypeFilter yok), kullanıcının kendi tercihi korunur.
   }, [defaultInvoiceTypeFilter, initialPrefs?.invoiceTypeFilter]);
 
   useEffect(() => {
@@ -1204,7 +1218,9 @@ export function InvoiceListModule({
 
             {columnVisibilityControl}
 
-            {/* Type Filter */}
+            {/* Type Filter — sayfa bağlamına (defaultCategory) göre sadece
+                ilgili fatura türlerini gösterir; örn. Hizmet sayfasında
+                dropdown'dan "Retail Sale" görünmesin (2026-09-01 kasap). */}
             <div className="flex items-center gap-1.5 bg-gray-50 border border-gray-200 rounded px-2">
               <FileText className="w-3.5 h-3.5 text-gray-500" />
               <select
@@ -1215,38 +1231,56 @@ export function InvoiceListModule({
                 }}
                 className="bg-transparent py-1.5 text-xs focus:outline-none min-w-[140px]"
               >
-                <option value="all">{tm('allInvoiceTypes')}</option>
-                <optgroup label={tm('salesInvoices')}>
-                  <option value="8">{tm('salesInvoices')}</option>
-                  <option value="7">{tm('retailSale')}</option>
-                  <option value="8">{tm('wholesale')}</option>
-                  <option value="8">{tm('consignmentSale')}</option>
-                </optgroup>
-                <optgroup label={tm('purchaseInvoices')}>
-                  <option value="1">{tm('purchaseInvoices')}</option>
-                </optgroup>
-                <optgroup label={tm('return')}>
-                  <option value="3">{tm('salesReturn')}</option>
-                  <option value="6">{tm('purchaseReturn')}</option>
-                </optgroup>
-                <optgroup label={tm('service')}>
-                  <option value="9">{tm('serviceGiven')}</option>
-                  <option value="4">{tm('serviceReceived')}</option>
-                </optgroup>
-                <optgroup label={tm('waybill')}>
-                  <option value="10">{tm('salesWaybill')}</option>
-                  <option value="11">{tm('purchaseWaybill')}</option>
-                  <option value="12">{tm('warehouseTransferWaybill')}</option>
-                  <option value="13">{tm('wastageWaybill')}</option>
-                </optgroup>
-                <optgroup label={tm('order')}>
-                  <option value="20">{tm('salesOrder')}</option>
-                  <option value="21">{tm('purchaseOrder')}</option>
-                </optgroup>
-                <optgroup label={tm('quote')}>
-                  <option value="30">{tm('salesQuote')}</option>
-                  <option value="31">{tm('purchaseQuote')}</option>
-                </optgroup>
+                {/* defaultCategory varsa "all" gösterme — kullanıcıyı sayfanın
+                    bağlamı içinde tut (örn. Hizmet → sadece Hizmet türleri). */}
+                {!defaultCategory && (
+                  <option value="all">{tm('allInvoiceTypes')}</option>
+                )}
+                {(!defaultCategory || defaultCategory === 'Satis') && (
+                  <optgroup label={tm('salesInvoices')}>
+                    <option value="8">{tm('salesInvoices')}</option>
+                    <option value="7">{tm('retailSale')}</option>
+                    <option value="8">{tm('wholesale')}</option>
+                    <option value="8">{tm('consignmentSale')}</option>
+                  </optgroup>
+                )}
+                {(!defaultCategory || defaultCategory === 'Alis') && (
+                  <optgroup label={tm('purchaseInvoices')}>
+                    <option value="1">{tm('purchaseInvoices')}</option>
+                  </optgroup>
+                )}
+                {(!defaultCategory || defaultCategory === 'Iade') && (
+                  <optgroup label={tm('return')}>
+                    <option value="3">{tm('salesReturn')}</option>
+                    <option value="6">{tm('purchaseReturn')}</option>
+                  </optgroup>
+                )}
+                {(!defaultCategory || defaultCategory === 'Hizmet') && (
+                  <optgroup label={tm('service')}>
+                    <option value="9">{tm('serviceGiven')}</option>
+                    <option value="4">{tm('serviceReceived')}</option>
+                  </optgroup>
+                )}
+                {(!defaultCategory || defaultCategory === 'Irsaliye') && (
+                  <optgroup label={tm('waybill')}>
+                    <option value="10">{tm('salesWaybill')}</option>
+                    <option value="11">{tm('purchaseWaybill')}</option>
+                    <option value="12">{tm('warehouseTransferWaybill')}</option>
+                    <option value="13">{tm('wastageWaybill')}</option>
+                  </optgroup>
+                )}
+                {(!defaultCategory || defaultCategory === 'Siparis') && (
+                  <optgroup label={tm('order')}>
+                    <option value="20">{tm('salesOrder')}</option>
+                    <option value="21">{tm('purchaseOrder')}</option>
+                  </optgroup>
+                )}
+                {(!defaultCategory || defaultCategory === 'Teklif') && (
+                  <optgroup label={tm('quote')}>
+                    <option value="30">{tm('salesQuote')}</option>
+                    <option value="31">{tm('purchaseQuote')}</option>
+                  </optgroup>
+                )}
               </select>
             </div>
           </div>
