@@ -317,7 +317,10 @@ function normalizePeriodNrForRow(v: string | number | undefined | null): string 
 
 /** Logo trcode grupları — getPaginated SQL ile birebir; liste ekranı istemci filtresi burayı kullanmalı (INVOICE_TYPES ile değil). */
 export const TRCODES_BY_INVOICE_CATEGORY: Record<string, readonly number[]> = {
-  Alis: [1, 4, 5, 6, 13, 26, 41, 42],
+  // trcode 6 = Alış İade → Iade (Alis'ten çıkarıldı; 2026-09-01 kasap
+  // BADIA skandalı: trcode 6 purchase_invoice olarak işaretleniyordu,
+  // alış iade tedarikçi bakiyesini artırıyordu).
+  Alis: [1, 4, 5, 13, 26, 41, 42],
   Satis: [7, 8, 9, 14, 29, 30, 31, 32],
   Iade: [2, 3, 6],
   Irsaliye: [10, 11, 12, 13, 25],
@@ -383,7 +386,10 @@ function legacyFicheTypesByInvoiceType(invoiceType?: number | null): string[] {
       return ['purchase_invoice', 'A'];
     case 8:
       return ['sales_invoice', 'S'];
+    // trcode 2/3/6 iade (return_invoice); 3 Logo sales_return, 6 purchase_return, 2 genel iade
+    case 2:
     case 3:
+    case 6:
       return ['return_invoice', 'I'];
     default:
       return [];
@@ -409,11 +415,15 @@ function trcodeAndFicheTypesForCategories(categories: string[]): {
   return { trcodes: [...trcodeSet], ficheTypes: [...ficheSet], includesAlis };
 }
 
-function deriveFicheTypeFromTrcode(trcode: number): string {
-  if ([1, 4, 5, 6, 13, 26, 41, 42].includes(trcode)) return 'purchase_invoice';
+export function deriveFicheTypeFromTrcode(trcode: number): string {
+  // trcode 6 = Alış İade (Logo: purchase_return) → return_invoice
+  // trcode 2/3 = Satış/Satış İade → return_invoice (geriye uyumlu)
+  // trcode 13 hem alış hem irsaliye listesinde görünebilir; kategori
+  // katmanı (resolveTrcodeFromInvoice + invoice_category) ile ayrışır.
+  if ([1, 4, 5, 13, 26, 41, 42].includes(trcode)) return 'purchase_invoice';
   if ([7, 8, 9, 14, 29, 30, 31, 32].includes(trcode)) return 'sales_invoice';
-  if ([2, 3].includes(trcode)) return 'return_invoice';
-  if ([10, 11, 12, 13, 25].includes(trcode)) return 'waybill';
+  if ([2, 3, 6].includes(trcode)) return 'return_invoice';
+  if ([10, 11, 12, 25].includes(trcode)) return 'waybill';
   if ([20, 21].includes(trcode)) return 'order';
   if ([30, 31].includes(trcode)) return 'quote';
   return 'sales_invoice';
@@ -1097,11 +1107,12 @@ export const invoicesAPI = {
         }
       } else {
         // Infer ficheType from trcode (Logo standards)
-        if ([1, 4, 5, 6, 13, 26, 41, 42].includes(trcode)) ficheType = 'purchase_invoice';
+        // trcode 6 = Alış İade → return_invoice (purchase_invoice DEĞİL)
+        if ([1, 4, 5, 13, 26, 41, 42].includes(trcode)) ficheType = 'purchase_invoice';
         else if ([7, 8, 9, 14, 29, 30, 31, 32].includes(trcode)) ficheType = 'sales_invoice';
-        else if ([2, 3].includes(trcode)) ficheType = 'return_invoice';
+        else if ([2, 3, 6].includes(trcode)) ficheType = 'return_invoice';
         // Waybills (Irsaliye)
-        else if ([10, 11, 12, 13, 25].includes(trcode)) ficheType = 'waybill';
+        else if ([10, 11, 12, 25].includes(trcode)) ficheType = 'waybill';
         // Orders (Siparis)
         else if ([20, 21].includes(trcode)) ficheType = 'order';
         // Quotes (Teklif)
