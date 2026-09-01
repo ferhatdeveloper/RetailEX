@@ -345,6 +345,21 @@ export function InvoiceListModule({
   const prefsKey = invoiceListPrefsKey(defaultCategory, defaultInvoiceTypeFilter);
   const initialPrefs = useMemo(() => loadInvoiceListPrefs(prefsKey), [prefsKey]);
 
+  /**
+   * Kullanıcının son manuel seçimini takip eden ref. Sayfa bağlamı
+   * (defaultInvoiceTypeFilter) değiştiğinde BİLE kullanıcının son
+   * seçimi ezilmesin; yalnızca prop değiştiğinde ve kullanıcı henüz
+   * override etmediyse yeni bağlam uygulansın.
+   *
+   * Skandal (2026-09-01): Alınan Hizmet sayfasında kullanıcı dropdown'dan
+   * "Verilen Hizmet" (value="9") seçtiğinde bazen eski bağlam "4"
+   * ile eziliyordu — kök neden useEffect dependency'sinin
+   * `initialPrefs?.invoiceTypeFilter` olmasıydı; initialPrefs referansı
+   * değiştiğinde effect yeniden tetikleniyordu.
+   */
+  const userOverrideRef = useRef<string | null>(null);
+  const lastAppliedContextRef = useRef<string | null>(null);
+
   const [isLoading, setIsLoading] = useState(true);
   const [searchQuery, setSearchQuery] = useState('');
   const [statusFilter, setStatusFilter] = useState<string>(initialPrefs?.statusFilter ?? 'all');
@@ -489,25 +504,47 @@ export function InvoiceListModule({
     };
   }, [searchQuery]);
 
-  // Sayfa bağlamı (defaultInvoiceTypeFilter) ile senkronize — prop değiştiğinde
-  // her zaman uygula; eski kullanıcı tercihi (initialPrefs) yalnızca sayfa
-  // bağlamı belirsiz (defaultInvoiceTypeFilter yok/"all") iken geçerlidir.
+  // Sayfa bağlamı (defaultInvoiceTypeFilter) ile senkronize.
   //
-  // Skandal (2026-09-01 kasap): kullanıcı "Alınan Hizmet" sayfasına girdi
-  // (defaultInvoiceTypeFilter="4"), fakat sağ üstteki dropdown "Retail Sale"
-  // (value="7") görünüyordu. Kök neden: initialPrefs başka bir sayfadan
-  // (Satis) gelen eski tercihi içeriyordu ve "4" bağlamı uygulanmıyordu.
+  // Davranış (skandal 2026-09-01 kasap + 2026-09-01 takip):
+  //  - defaultInvoiceTypeFilter ZORUNLU ise ("4" gibi):
+  //    * Sayfa ilk açılışında uygulanır (lastAppliedContextRef tutar).
+  //    * Kullanıcı dropdown'dan başka bir tür seçerse userOverrideRef'e
+  //      kaydedilir; sonraki render'larda sayfa bağlamı KULLANICININ
+  //      seçimini EZMEsin.
+  //    * Yalnızca prop GERÇEKTEN değişirse (sayfa değişikliği) yeni
+  //      bağlam uygulanır.
+  //  - defaultInvoiceTypeFilter yoksa / "all" ise:
+  //    * initialPrefs varsa kullanıcının eski tercihi korunur.
+  //    * Yoksa "all".
   useEffect(() => {
-    if (defaultInvoiceTypeFilter && defaultInvoiceTypeFilter !== 'all') {
-      // Sayfa bağlamı zorunlu bir filtre veriyor → kullanıcının eski
-      // tercihi (başka sayfadan kalmış olabilir) burada geçersiz.
-      setInvoiceTypeFilter(defaultInvoiceTypeFilter);
-    } else if (!initialPrefs?.invoiceTypeFilter) {
-      // Bağlam belirsiz ve kayıtlı tercih yok → "all".
-      setInvoiceTypeFilter('all');
+    const ctx = defaultInvoiceTypeFilter && defaultInvoiceTypeFilter !== 'all'
+      ? defaultInvoiceTypeFilter
+      : null;
+
+    if (ctx) {
+      // Sayfa bağlamı zorunlu.
+      // Eğer bağlam değişmediyse VE kullanıcı override ettiyse → koru.
+      if (
+        lastAppliedContextRef.current === ctx &&
+        userOverrideRef.current !== null &&
+        userOverrideRef.current !== ctx
+      ) {
+        // Kullanıcı manuel seçim yaptı, bağlam değişmedi → dokunma.
+        return;
+      }
+      // İlk uygulama veya bağlam değişti → yeni bağlamı uygula.
+      lastAppliedContextRef.current = ctx;
+      userOverrideRef.current = null;
+      setInvoiceTypeFilter(ctx);
+    } else {
+      // Bağlam belirsiz.
+      lastAppliedContextRef.current = null;
+      userOverrideRef.current = null;
+      if (!initialPrefs?.invoiceTypeFilter) {
+        setInvoiceTypeFilter('all');
+      }
     }
-    // initialPrefs?.invoiceTypeFilter doluysa VE bağlam belirsizse
-    // (defaultInvoiceTypeFilter yok), kullanıcının kendi tercihi korunur.
   }, [defaultInvoiceTypeFilter, initialPrefs?.invoiceTypeFilter]);
 
   useEffect(() => {
@@ -1226,7 +1263,11 @@ export function InvoiceListModule({
               <select
                 value={invoiceTypeFilter}
                 onChange={(e) => {
-                  setInvoiceTypeFilter(e.target.value);
+                  const next = e.target.value;
+                  // Kullanıcı manuel seçim yaptı → ref'e kaydet ki sayfa
+                  // bağlamı effect'i bunu ezmeye çalışmasın.
+                  userOverrideRef.current = next;
+                  setInvoiceTypeFilter(next);
                   setCurrentPage(1);
                 }}
                 className="bg-transparent py-1.5 text-xs focus:outline-none min-w-[140px]"
