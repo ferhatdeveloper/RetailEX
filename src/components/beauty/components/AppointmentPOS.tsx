@@ -10,10 +10,10 @@
  *   [Ödeme Tamamla]   → hizmet/ürün varsa randevu + satış; yalnızca paket ise beauty satışı (+ ürün stok düşümü)
  */
 import React, { useCallback, useEffect, useState, useMemo, useRef } from 'react';
-import { createPortal, flushSync } from 'react-dom';
+import { createPortal } from 'react-dom';
 import {
     ArrowLeft, Plus, Minus, X, Search, User, UserPlus, UserRound, Users, Banknote,
-    CalendarDays, CalendarClock, Clock, Cpu, Activity, AlertTriangle, CheckCircle2, Scissors, Package,
+    CalendarDays, Clock, Cpu, Activity, AlertTriangle, CheckCircle2, Scissors, Package,
     Sparkles, Receipt, ChevronDown, ChevronUp, MoreHorizontal, ShoppingBag, RefreshCw,
     PanelLeft, Repeat,
 } from 'lucide-react';
@@ -47,7 +47,6 @@ import { RetailExFlatModal } from '../../shared/RetailExFlatModal';
 import { beautyAppointmentDateKey, formatLocalYmd } from '../../../utils/dateLocal';
 import { findBeautyAppointmentsSameQueueGroup } from '../../../utils/beautyQueueOrder';
 import { beautyAptVisibleOnSchedule } from '../../../utils/beautyAppointmentVisibility';
-import { normalizeAllowStaffSlotOverlap } from '../../../utils/beautyPortalOverlap';
 import { safeInvoke } from '../../../utils/env';
 import { splitProportionalLineDiscount } from '../../../utils/beautySaleLineDiscount';
 import { usePermission } from '../../../shared/hooks/usePermission';
@@ -157,28 +156,6 @@ interface BookingBlockModalState {
     steps: string[];
     technical?: string;
     diagnostics: { label: string; ok: boolean }[];
-}
-
-/** Takvim çakışması: iptal / gelmedi kayıtları slotu meşgul sayma */
-function beautyAptBlocksCalendarSlot(e: BeautyAppointment): boolean {
-    return beautyAptVisibleOnSchedule(e);
-}
-
-type SlotConflictDetail = {
-    kind: 'staff' | 'device';
-    staffName?: string;
-    deviceName?: string;
-    sameDeviceSlots: string[];
-    otherDeviceSuggestions: Array<{ deviceId: string; deviceLabel: string; time: string }>;
-};
-
-class SlotConflictError extends Error {
-    readonly detail: SlotConflictDetail;
-    constructor(message: string, detail: SlotConflictDetail) {
-        super(message);
-        this.name = 'SlotConflictError';
-        this.detail = detail;
-    }
 }
 
 // ─── Helpers ─────────────────────────────────────────────────────────────────
@@ -436,20 +413,6 @@ export function AppointmentPOS({
         steps: [],
         diagnostics: [],
     });
-    const [slotSuggestModal, setSlotSuggestModal] = useState<{
-        open: boolean;
-        title: string;
-        subtitle?: string;
-        sameDeviceSlots: string[];
-        otherDeviceSuggestions: Array<{ deviceId: string; deviceLabel: string; time: string }>;
-        conflictKind?: 'staff' | 'device';
-    }>({
-        open: false,
-        title: '',
-        sameDeviceSlots: [],
-        otherDeviceSuggestions: [],
-    });
-    const [slotBrowseLoading, setSlotBrowseLoading] = useState(false);
     /** Sepet satırındaki hizmet için personel — liste modalı (uid) */
     const [staffLinePickerUid, setStaffLinePickerUid] = useState<string | null>(null);
     /** Sepet satırı hizmet birim fiyatı — düzenleme modalı (uid) */
@@ -555,38 +518,11 @@ export function AppointmentPOS({
     /** prefillServiceId ile otomatik eklenen satırı yalnızca bir kez */
     const didAddPrefillServiceRef = useRef(false);
     const [bookingBusy, setBookingBusy] = useState(false);
-    /** Firma ayarı: aynı personele aynı saatte birden fazla randevu / işlem */
-    const [allowStaffSlotOverlap, setAllowStaffSlotOverlap] = useState(false);
-
-    const refreshPortalOverlapSetting = useCallback(() => {
-        void (async () => {
-            try {
-                const ps = await beautyService.getPortalSettings();
-                setAllowStaffSlotOverlap(normalizeAllowStaffSlotOverlap(ps));
-            } catch {
-                setAllowStaffSlotOverlap(false);
-            }
-        })();
-    }, []);
-
-    useEffect(() => {
-        const onPortalUpdated = () => refreshPortalOverlapSetting();
-        const onVis = () => {
-            if (document.visibilityState === 'visible') refreshPortalOverlapSetting();
-        };
-        window.addEventListener('retailex-beauty-portal-updated', onPortalUpdated);
-        document.addEventListener('visibilitychange', onVis);
-        return () => {
-            window.removeEventListener('retailex-beauty-portal-updated', onPortalUpdated);
-            document.removeEventListener('visibilitychange', onVis);
-        };
-    }, [refreshPortalOverlapSetting]);
 
     useEffect(() => {
         loadServices(); loadPackages(); loadSpecialists();
         loadCustomers(); loadDevices();
         void loadProducts(true);
-        refreshPortalOverlapSetting();
         void (async () => {
             try {
                 const accounts = await fetchCurrentAccounts(ERP_SETTINGS.firmNr, 'MUSTERI');
@@ -1553,11 +1489,6 @@ export function AppointmentPOS({
         const mm = (n % 60).toString().padStart(2, '0');
         return `${hh}:${mm}`;
     };
-    const overlaps = (aStart: number, aDur: number, bStart: number, bDur: number): boolean => {
-        const aEnd = aStart + Math.max(1, aDur);
-        const bEnd = bStart + Math.max(1, bDur);
-        return aStart < bEnd && bStart < aEnd;
-    };
 
     const buildServiceAppointmentPayloads = (statusForCreate?: AppointmentStatus) => {
         const dateSafe = safeDateYmd(aptDate);
@@ -1604,271 +1535,6 @@ export function AppointmentPOS({
             });
         }
         return planned;
-    };
-
-    /** Seçilen gün + personel + cihaz için segment serbest mi (mevcut kayıt hariç) */
-    const slotSegmentFree = (
-        startMin: number,
-        dur: number,
-        staffId: string,
-        deviceId: string,
-        existing: BeautyAppointment[],
-        excludeAptId?: string,
-        staffOverlapAllowed: boolean = allowStaffSlotOverlap,
-    ): boolean => {
-        for (const e of existing) {
-            if (!beautyAptBlocksCalendarSlot(e)) continue;
-            if (excludeAptId && String(e.id) === String(excludeAptId)) continue;
-            const eStart = hhmmToMin(String(e.appointment_time ?? e.time ?? ''));
-            if (eStart == null) continue;
-            const eDur = Math.max(1, Number(e.duration ?? 30));
-            if (!overlaps(startMin, dur, eStart, eDur)) continue;
-            const eSid = String(e.staff_id ?? e.specialist_id ?? '').trim();
-            const eDev = String(e.device_id ?? '').trim();
-            if (staffId && eSid === staffId && !staffOverlapAllowed) return false;
-            if (String(deviceId ?? '').trim() && eDev === String(deviceId).trim()) return false;
-        }
-        return true;
-    };
-
-    /** Çakışan segment veya tek satır sepetten: aynı gün boş saatler + diğer cihazlarda ilk uygun aralık */
-    type SlotSegHint = { staffId: string; deviceId: string; durationMin: number; anchorStartMin?: number | null };
-    const buildSlotSuggestionsSync = (
-        existing: BeautyAppointment[],
-        hint?: SlotSegHint,
-        staffOverlapAllowed: boolean = allowStaffSlotOverlap,
-    ): { sameDeviceSlots: string[]; otherDeviceSuggestions: Array<{ deviceId: string; deviceLabel: string; time: string }> } => {
-        const empty = {
-            sameDeviceSlots: [] as string[],
-            otherDeviceSuggestions: [] as Array<{ deviceId: string; deviceLabel: string; time: string }>,
-        };
-        let staffId = '';
-        let devId = '';
-        let dur = 30;
-        if (hint && String(hint.staffId ?? '').trim()) {
-            staffId = String(hint.staffId ?? '').trim();
-            devId = String(hint.deviceId ?? '').trim();
-            dur = Math.max(1, Math.round(hint.durationMin));
-        } else if (appointmentBookLines.length === 1) {
-            const line = appointmentBookLines[0];
-            staffId = String(line.staff_id ?? '').trim();
-            if (!staffId) return empty;
-            dur = Math.max(1, Math.round(lineBookingDurations[0] ?? aptActualDurationMin));
-            devId = String(aptDevice ?? '').trim();
-        } else if (appointmentBookLines.length > 1) {
-            const line = appointmentBookLines[0];
-            staffId = String(line.staff_id ?? '').trim();
-            if (!staffId) return empty;
-            dur = Math.max(
-                1,
-                Math.round(
-                    lineBookingDurations[0] ??
-                        Number(line.duration_min ?? 30) * Math.max(1, Number(line.qty ?? 1)),
-                ),
-            );
-            devId = String(aptDevice ?? '').trim();
-        } else {
-            return empty;
-        }
-        const exId = existingAppointment?.id;
-        // Personel bazlı saat sınırı devre dışı — kullanıcı istediği saate randevu girebilir.
-        // Çakışma hâlâ `ensureAppointmentSlotOk` ile aynı personel/cihaz üstünde denetleniyor.
-        const WORK_START = 0;
-        const WORK_END = 24 * 60;
-        const STEP = 15;
-        const multi = appointmentBookLines.length > 1;
-        const anchor = hint?.anchorStartMin != null && !Number.isNaN(hint.anchorStartMin) ? hint.anchorStartMin : null;
-        const scanFrom = multi && anchor != null ? Math.max(WORK_START, anchor - 90) : WORK_START;
-        const scanTo = multi && anchor != null ? Math.min(WORK_END, anchor + 120 + dur) : WORK_END;
-        const sameDeviceSlots: string[] = [];
-        for (let t = scanFrom; t + dur <= scanTo; t += STEP) {
-            if (slotSegmentFree(t, dur, staffId, devId, existing, exId, staffOverlapAllowed)) {
-                sameDeviceSlots.push(minToHhmm(t));
-                if (sameDeviceSlots.length >= 40) break;
-            }
-        }
-        const other: Array<{ deviceId: string; deviceLabel: string; time: string }> = [];
-        for (const d of devices.filter((x) => x.is_active)) {
-            const did = String(d.id);
-            if (devId && did === devId) continue;
-            for (let t = scanFrom; t + dur <= scanTo; t += STEP) {
-                if (slotSegmentFree(t, dur, staffId, did, existing, exId, staffOverlapAllowed)) {
-                    other.push({
-                        deviceId: d.id,
-                        deviceLabel: (d.name && String(d.name).trim()) || did,
-                        time: minToHhmm(t),
-                    });
-                    break;
-                }
-            }
-            if (other.length >= 12) break;
-        }
-        return { sameDeviceSlots, otherDeviceSuggestions: other };
-    };
-
-    /** Personel ve cihaz üzerinde çakışma kontrolü; önerilerle SlotConflictError */
-    const ensureAppointmentSlotOk = async (planned: ReturnType<typeof buildAptPayload>[]) => {
-        if (planned.length === 0) return;
-        let overlapLive = allowStaffSlotOverlap;
-        try {
-            const ps = await beautyService.getPortalSettings();
-            overlapLive = normalizeAllowStaffSlotOverlap(ps);
-            setAllowStaffSlotOverlap(overlapLive);
-        } catch {
-            /* mevcut state */
-        }
-        const day = safeDateYmd(aptDate);
-        const existingRaw = await beautyService.getAppointmentsInRange(day, day);
-        const existing = existingRaw.filter(beautyAptBlocksCalendarSlot);
-        const exId = existingAppointment?.id;
-        const excludedIds = new Set<string>();
-        if (exId) excludedIds.add(String(exId));
-        if (existingAppointment?.id) {
-            const siblings = findBeautyAppointmentsSameQueueGroup(
-                existingAppointment,
-                existingRaw.length > 0 ? existingRaw : [existingAppointment],
-            );
-            for (const sib of siblings) {
-                if (!sib?.id) continue;
-                excludedIds.add(String(sib.id));
-            }
-        }
-
-        for (const p of planned) {
-            const sid = String(p.staff_id ?? '').trim();
-            const dev = String(p.device_id ?? '').trim();
-            const pStart = hhmmToMin(String(p.time ?? p.appointment_time ?? ''));
-            const pDur = Math.max(1, Number(p.duration ?? 30));
-            if (pStart == null) continue;
-
-            const clash = existing.find((e) => {
-                if (excludedIds.has(String(e.id))) return false;
-                const eStart = hhmmToMin(String(e.appointment_time ?? e.time ?? ''));
-                if (eStart == null) return false;
-                const eDur = Math.max(1, Number(e.duration ?? 30));
-                if (!overlaps(pStart, pDur, eStart, eDur)) return false;
-                const eSid = String(e.staff_id ?? e.specialist_id ?? '').trim();
-                const eDev = String(e.device_id ?? '').trim();
-                const staffClash = !!(sid && eSid === sid);
-                const devClash = !!(dev && eDev === dev);
-                if (overlapLive) return devClash;
-                return staffClash || devClash;
-            });
-
-            if (clash) {
-                const sug = buildSlotSuggestionsSync(
-                    existing,
-                    {
-                        staffId: sid,
-                        deviceId: dev,
-                        durationMin: pDur,
-                        anchorStartMin: pStart,
-                    },
-                    overlapLive,
-                );
-                const eSid = String(clash.staff_id ?? clash.specialist_id ?? '').trim();
-                const eDev = String(clash.device_id ?? '').trim();
-                const overlapStaff = !!(sid && eSid === sid);
-                const overlapDev = !!(dev && eDev === dev);
-                const throwStaff = () => {
-                    const staffName = specialists.find((s) => s.id === sid)?.name ?? sid;
-                    throw new SlotConflictError(
-                        tm('bErrTimeConflict').replace('{staff}', staffName).replace('{time}', String(p.time)),
-                        {
-                            kind: 'staff',
-                            staffName,
-                            sameDeviceSlots: sug.sameDeviceSlots,
-                            otherDeviceSuggestions: sug.otherDeviceSuggestions,
-                        },
-                    );
-                };
-                const throwDev = () => {
-                    const dname = devices.find((d) => String(d.id) === dev)?.name ?? dev;
-                    throw new SlotConflictError(
-                        tm('bErrSlotDeviceBusy').replace('{device}', dname).replace('{time}', String(p.time)),
-                        {
-                            kind: 'device',
-                            deviceName: dname,
-                            sameDeviceSlots: sug.sameDeviceSlots,
-                            otherDeviceSuggestions: sug.otherDeviceSuggestions,
-                        },
-                    );
-                };
-                if (overlapLive) {
-                    if (overlapDev) throwDev();
-                    else if (overlapStaff) throwStaff();
-                } else {
-                    if (overlapStaff) throwStaff();
-                    else if (overlapDev) throwDev();
-                }
-            }
-        }
-    };
-
-    const applySuggestedSlot = (time: string, deviceId?: string) => {
-        const t = safeTimeHHmm(time);
-        flushSync(() => {
-            setAptTime(t);
-            if (deviceId) setAptDevice(String(deviceId));
-            setSlotSuggestModal((s) => ({ ...s, open: false }));
-        });
-    };
-
-    const browseFreeSlots = async () => {
-        if (appointmentBookLines.length === 0 || !allBookLinesStaffed) {
-            toast.info(tm('bSlotBrowseNeedStaff'));
-            return;
-        }
-        if (!String(appointmentBookLines[0].staff_id ?? '').trim()) {
-            toast.info(tm('bSlotBrowseNeedStaff'));
-            return;
-        }
-        setSlotBrowseLoading(true);
-        try {
-            let overlapLive = allowStaffSlotOverlap;
-            try {
-                const ps = await beautyService.getPortalSettings();
-                overlapLive = normalizeAllowStaffSlotOverlap(ps);
-                setAllowStaffSlotOverlap(overlapLive);
-            } catch {
-                /* state */
-            }
-            const day = safeDateYmd(aptDate);
-            const existingRaw = await beautyService.getAppointmentsInRange(day, day);
-            const existing = existingRaw.filter(beautyAptBlocksCalendarSlot);
-            const firstLine = appointmentBookLines[0];
-            const baseMin = hhmmToMin(safeTimeHHmm(aptTime));
-            const hint: SlotSegHint | undefined =
-                appointmentBookLines.length === 1
-                    ? undefined
-                    : {
-                          staffId: String(firstLine.staff_id ?? '').trim(),
-                          deviceId: String(aptDevice ?? '').trim(),
-                          durationMin: Math.max(
-                              1,
-                              Math.round(
-                                  lineBookingDurations[0] ??
-                                      Number(firstLine.duration_min ?? 30) *
-                                          Math.max(1, Number(firstLine.qty ?? 1)),
-                              ),
-                          ),
-                          anchorStartMin: baseMin ?? undefined,
-                      };
-            const sug = buildSlotSuggestionsSync(existing, hint, overlapLive);
-            setSlotSuggestModal({
-                open: true,
-                title: tm('bSlotBrowseTitle'),
-                subtitle: tm('bSlotBrowseSubtitle'),
-                sameDeviceSlots: sug.sameDeviceSlots,
-                otherDeviceSuggestions: sug.otherDeviceSuggestions,
-                conflictKind: undefined,
-            });
-        } catch (e: unknown) {
-            logger.crudError('AppointmentPOS', 'browseFreeSlots', e);
-            toast.error(extractTechnicalError(e) || tm('bBookingErrorGeneric'));
-        } finally {
-            setSlotBrowseLoading(false);
-        }
     };
 
     const handleUpdateExistingAppointment = async () => {
@@ -1930,7 +1596,6 @@ export function AppointmentPOS({
                 aptStatus !== AppointmentStatus.NO_SHOW
             ) {
                 const planned = buildServiceAppointmentPayloads(aptStatus);
-                await ensureAppointmentSlotOk(planned);
             }
             const firstBook = appointmentBookLines[0];
             const firstBookTotal =
@@ -1955,20 +1620,9 @@ export function AppointmentPOS({
             toast.success(tm('bAppointmentUpdatedOk'));
             setExistingEditBaselineFlush((f) => f + 1);
         } catch (e: unknown) {
-            if (e instanceof SlotConflictError) {
-                setSlotSuggestModal({
-                    open: true,
-                    title: tm('bSlotConflictTitle'),
-                    subtitle: e.message,
-                    sameDeviceSlots: e.detail.sameDeviceSlots,
-                    otherDeviceSuggestions: e.detail.otherDeviceSuggestions,
-                    conflictKind: e.detail.kind,
-                });
-            } else {
-                logger.crudError('AppointmentPOS', 'updateExistingAppointment', e);
-                const msg = extractTechnicalError(e);
-                openBookingBlockModal('api_error', msg || tm('bBookingErrorGeneric'));
-            }
+            logger.crudError('AppointmentPOS', 'updateExistingAppointment', e);
+            const msg = extractTechnicalError(e);
+            openBookingBlockModal('api_error', msg || tm('bBookingErrorGeneric'));
         } finally {
             setUpdateExistingBusy(false);
         }
@@ -2031,7 +1685,6 @@ export function AppointmentPOS({
         setBookingBusy(true);
         try {
             const planned = buildServiceAppointmentPayloads(aptStatus);
-            await ensureAppointmentSlotOk(planned);
             const createdIds: string[] = [];
             for (const p of planned) {
                 createdIds.push(await createAppointment(p));
@@ -2100,20 +1753,9 @@ export function AppointmentPOS({
             setShowReceiptModal(true);
             toast.success(tm('bAppointmentCreated'));
         } catch (e: unknown) {
-            if (e instanceof SlotConflictError) {
-                setSlotSuggestModal({
-                    open: true,
-                    title: tm('bSlotConflictTitle'),
-                    subtitle: e.message,
-                    sameDeviceSlots: e.detail.sameDeviceSlots,
-                    otherDeviceSuggestions: e.detail.otherDeviceSuggestions,
-                    conflictKind: e.detail.kind,
-                });
-            } else {
-                logger.crudError('AppointmentPOS', 'bookAppointment', e);
-                const msg = extractTechnicalError(e);
-                openBookingBlockModal('api_error', msg || tm('bBookingErrorGeneric'));
-            }
+            logger.crudError('AppointmentPOS', 'bookAppointment', e);
+            const msg = extractTechnicalError(e);
+            openBookingBlockModal('api_error', msg || tm('bBookingErrorGeneric'));
         } finally {
             bookingSubmitRef.current = false;
             setBookingBusy(false);
@@ -2303,7 +1945,6 @@ export function AppointmentPOS({
                         : finalTotalSale;
                 if (appointmentBookLines.length > 0) {
                     const plannedPay = buildServiceAppointmentPayloads(AppointmentStatus.COMPLETED);
-                    await ensureAppointmentSlotOk(plannedPay);
                 }
                 await updateAppointment(existingAppointment.id, {
                     appointment_date: safeDateYmd(aptDate),
@@ -2345,7 +1986,6 @@ export function AppointmentPOS({
             } else if (!isStandaloneProductSales && canBookApt) {
                 // Direkt ödeme ile açılan işlemde randevu da kapalı (completed) oluşturulmalı.
                 const planned = buildServiceAppointmentPayloads(AppointmentStatus.COMPLETED);
-                await ensureAppointmentSlotOk(planned);
                 if (planned.length > 0) {
                     const ids = await Promise.all(planned.map((p) => createAppointment(p)));
                     for (const id of ids) {
@@ -2560,20 +2200,9 @@ export function AppointmentPOS({
             }
         } catch (e: unknown) {
             setShowPay(false);
-            if (e instanceof SlotConflictError) {
-                setSlotSuggestModal({
-                    open: true,
-                    title: tm('bSlotConflictTitle'),
-                    subtitle: e.message,
-                    sameDeviceSlots: e.detail.sameDeviceSlots,
-                    otherDeviceSuggestions: e.detail.otherDeviceSuggestions,
-                    conflictKind: e.detail.kind,
-                });
-            } else {
-                logger.crudError('AppointmentPOS', 'payAndBook', e);
-                const msg = extractTechnicalError(e);
-                openBookingBlockModal('api_error', msg || tm('bBookingErrorGeneric'));
-            }
+            logger.crudError('AppointmentPOS', 'payAndBook', e);
+            const msg = extractTechnicalError(e);
+            openBookingBlockModal('api_error', msg || tm('bBookingErrorGeneric'));
         } finally {
             checkoutSubmitRef.current = false;
         }
@@ -2650,40 +2279,15 @@ export function AppointmentPOS({
                     </div>
                     <div style={{ display: 'flex', flexDirection: 'column', gap: 3 }}>
                         <Label>{tm('time')}</Label>
-                        <div style={{ display: 'flex', alignItems: 'center', gap: 6, flexWrap: 'wrap' }}>
-                            <div style={{ display: 'flex', alignItems: 'center', gap: 6, background: '#f5f3ff', border: '1px solid #ddd6fe', borderRadius: 5, padding: '6px 10px' }}>
-                                <Clock size={12} color="#7c3aed" />
-                                <input
-                                    type="time"
-                                    value={aptTime}
-                                    onChange={e => setAptTime(e.target.value)}
-                                    aria-label={tm('time')}
-                                    style={{ border: 'none', background: 'transparent', fontSize: 12, fontWeight: 700, color: '#4c1d95', outline: 'none' }}
-                                />
-                            </div>
-                            <button
-                                type="button"
-                                onClick={() => void browseFreeSlots()}
-                                disabled={slotBrowseLoading || appointmentBookLines.length === 0 || !allBookLinesStaffed}
-                                title={tm('bSlotBrowseTitle')}
-                                style={{
-                                    display: 'inline-flex',
-                                    alignItems: 'center',
-                                    gap: 5,
-                                    padding: '6px 10px',
-                                    borderRadius: 5,
-                                    border: '1px solid #c4b5fd',
-                                    background: appointmentBookLines.length > 0 && allBookLinesStaffed ? '#fff' : '#f3f4f6',
-                                    color: appointmentBookLines.length > 0 && allBookLinesStaffed ? '#5b21b6' : '#9ca3af',
-                                    fontSize: 11,
-                                    fontWeight: 800,
-                                    cursor: appointmentBookLines.length > 0 && allBookLinesStaffed && !slotBrowseLoading ? 'pointer' : 'not-allowed',
-                                    whiteSpace: 'nowrap',
-                                }}
-                            >
-                                <CalendarClock size={13} color="currentColor" />
-                                {slotBrowseLoading ? tm('bLoading') : tm('bSlotBrowseShort')}
-                            </button>
+                        <div style={{ display: 'flex', alignItems: 'center', gap: 6, background: '#f5f3ff', border: '1px solid #ddd6fe', borderRadius: 5, padding: '6px 10px' }}>
+                            <Clock size={12} color="#7c3aed" />
+                            <input
+                                type="time"
+                                value={aptTime}
+                                onChange={e => setAptTime(e.target.value)}
+                                aria-label={tm('time')}
+                                style={{ border: 'none', background: 'transparent', fontSize: 12, fontWeight: 700, color: '#4c1d95', outline: 'none' }}
+                            />
                         </div>
                     </div>
                     <div style={{ display: 'flex', flexDirection: 'column', gap: 3, minWidth: 0, maxWidth: 220 }}>
@@ -4713,87 +4317,6 @@ export function AppointmentPOS({
                     </Field>
                     <p style={{ fontSize: 11, color: '#6b7280', margin: 0, lineHeight: 1.45 }}>
                         {tm('bMonthlyFromCartDeviceHint')}
-                    </p>
-                </div>
-            </RetailExFlatModal>
-
-            <RetailExFlatModal
-                open={slotSuggestModal.open}
-                onClose={() => setSlotSuggestModal((s) => ({ ...s, open: false }))}
-                title={slotSuggestModal.title}
-                subtitle={slotSuggestModal.subtitle}
-                maxWidthClass="max-w-lg"
-                headerIcon={<CalendarClock size={20} />}
-            >
-                <div style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
-                    {slotSuggestModal.sameDeviceSlots.length > 0 && (
-                        <div>
-                            <p style={{ fontSize: 11, fontWeight: 800, color: '#64748b', textTransform: 'uppercase', margin: '0 0 8px' }}>
-                                {tm('bSlotFreeOnSelection')}
-                            </p>
-                            <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8 }}>
-                                {slotSuggestModal.sameDeviceSlots.slice(0, 28).map((t) => {
-                                    const sel = t === safeTimeHHmm(aptTime);
-                                    return (
-                                    <button
-                                        key={t}
-                                        type="button"
-                                        onClick={() => applySuggestedSlot(t)}
-                                        style={{
-                                            padding: '6px 12px',
-                                            borderRadius: 8,
-                                            border: sel ? '2px solid #7c3aed' : '1px solid #ddd6fe',
-                                            background: sel ? '#ede9fe' : '#f5f3ff',
-                                            color: '#5b21b6',
-                                            fontSize: 13,
-                                            fontWeight: 800,
-                                            cursor: 'pointer',
-                                            boxShadow: sel ? '0 0 0 1px rgba(124,58,237,0.25)' : undefined,
-                                        }}
-                                    >
-                                        {t}
-                                    </button>
-                                    );
-                                })}
-                            </div>
-                        </div>
-                    )}
-                    {slotSuggestModal.otherDeviceSuggestions.length > 0 && (
-                        <div>
-                            <p style={{ fontSize: 11, fontWeight: 800, color: '#64748b', textTransform: 'uppercase', margin: '0 0 8px' }}>
-                                {tm('bSlotOnOtherDevices')}
-                            </p>
-                            <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
-                                {slotSuggestModal.otherDeviceSuggestions.map((o) => (
-                                    <button
-                                        key={`${o.deviceId}-${o.time}`}
-                                        type="button"
-                                        onClick={() => applySuggestedSlot(o.time, o.deviceId)}
-                                        style={{
-                                            display: 'flex',
-                                            justifyContent: 'space-between',
-                                            alignItems: 'center',
-                                            padding: '10px 12px',
-                                            borderRadius: 10,
-                                            border: '1px solid #e5e7eb',
-                                            background: '#fafafa',
-                                            cursor: 'pointer',
-                                            textAlign: 'left',
-                                        }}
-                                    >
-                                        <span style={{ fontWeight: 700, color: '#111827' }}>{o.deviceLabel}</span>
-                                        <span style={{ fontWeight: 800, color: '#7c3aed' }}>{o.time}</span>
-                                    </button>
-                                ))}
-                            </div>
-                        </div>
-                    )}
-                    {slotSuggestModal.sameDeviceSlots.length === 0 &&
-                        slotSuggestModal.otherDeviceSuggestions.length === 0 && (
-                        <p style={{ fontSize: 13, color: '#64748b', margin: 0 }}>{tm('bSlotNoFreeFound')}</p>
-                    )}
-                    <p style={{ fontSize: 11, color: '#94a3b8', margin: '8px 0 0', lineHeight: 1.45 }}>
-                        {tm('bSlotConflictHintFooter')}
                     </p>
                 </div>
             </RetailExFlatModal>
