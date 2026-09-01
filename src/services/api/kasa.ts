@@ -1114,6 +1114,88 @@ export async function createKasaIslemi(incoming: KasaIslemi): Promise<KasaIslemi
       [(islem.tutar * sign).toString(), islem.kasa_id]
     );
 
+    /**
+     * Virman (KASALAR ARASI VİRMAN): tek satırlık kayıt iki kasayı etkiler
+     * ama şu ana kadar yalnızca kaynak kasaya −tutar yazılıyordu. Muhasebe
+     * gereği hedef kasaya da +tutar yazılmalı, atomik (BEGIN/COMMIT) bir
+     * çift-satır INSERT olmalı.
+     *
+     * Bu blok:
+     *  1) Target kasada ters sign'li (sign=+1) bir cash_lines INSERT eder
+     *     (kayıt: target_register_id = source kasası, register_id = target).
+     *  2) Target kasa bakiyesini +tutar artırır.
+     *  3) Fiche_no'ya `-VRM` soneki eklenir (cash_lines UNIQUE(fiche_no)
+     *     kısıtı nedeniyle). Ana satırda fiche_no korunur; karşı satır
+     *     ana fiche + `-VRM` soneki ile ayırt edilir. (PostgREST tarafıyla
+     *     aynı convention — bkz. createKasaIslemiViaPostgrest.)
+     *
+     * Idempotent: hedef INSERT aynı fiche_no+(-VRM) ile UNIQUE çakışırsa
+     * sessizce devam eder.
+     */
+    if (islem.islem_tipi === 'VIRMAN' && islem.target_register_id) {
+      // Aynı kasa virmanı (kendi kendine transfer) mantıksız — engelle.
+      if (islem.target_register_id === islem.kasa_id) {
+        throw new Error('Kaynak ve hedef kasa aynı olamaz (virman)');
+      }
+      // Hedef kasada +tutar (sign=+1) karşılık INSERT'i.
+      const targetDesc = (islem.islem_aciklamasi || '')
+        ? `${islem.islem_aciklamasi} (Virman)`
+        : `Virman — ${islem.islem_no || ficheNo}`;
+      const targetFicheNo = `${ficheNo}-VRM`;
+      const { rows: targetRows } = await postgres.query(
+        `INSERT INTO ${table} (
+           firm_nr, period_nr, register_id, fiche_no, date, amount, sign, definition, transaction_type,
+           customer_id, party_id, currency_code, exchange_rate, f_amount, transfer_status, special_code,
+           target_register_id, bank_id, bank_account_id, expense_card_id, tax_rate, withholding_tax_rate
+         )
+           VALUES (
+             $1::text,
+             $2::text,
+             $3::text::uuid,
+             $4::text,
+             $5::text::date,
+             $6::text::numeric,
+             1, -- sign=+1 (KASA_GIRIS yönü)
+             $7::text,
+             'VIRMAN_TARGET',
+             NULL,
+             NULL,
+             $8::text,
+             $9::text::numeric,
+             $10::text::numeric,
+             0,
+             $11::text,
+             $12::text::uuid,
+             NULL,
+             NULL,
+             NULL,
+             0,
+             0
+           ) RETURNING id`,
+        [
+          ERP_SETTINGS.firmNr,
+          ERP_SETTINGS.periodNr || '01',
+          islem.target_register_id,
+          targetFicheNo,
+          islem.islem_tarihi || new Date().toISOString(),
+          islem.tutar || 0,
+          targetDesc,
+          islem.doviz_kodu || 'YEREL',
+          1,
+          islem.dovizli_tutar || 0,
+          islem.ozel_kod || '',
+          islem.kasa_id,
+        ]
+      );
+      // Hedef kasa bakiyesi: +tutar.
+      await postgres.query(
+        `UPDATE ${kasaTable} SET balance = balance + $1::text::numeric WHERE id = $2::text::uuid`,
+        [(islem.tutar).toString(), islem.target_register_id]
+      );
+      // eslint-disable-next-line no-console
+      console.log('[Kasa] Virman hedef INSERT:', targetRows?.[0]?.id, 'fiche_no=', targetFicheNo);
+    }
+
     // Update current account balance for CH_ODEME and CH_TAHSILAT
     // Önemli: Kasa sign (+1/-1) cariye uygulanmaz. Tahsilat/ödeme açık bakiyeyi düşürür (-ABS).
     // CH_TAHSILAT: müşteriden tahsilat → alacak → borç ↓
