@@ -2902,48 +2902,58 @@ export function UniversalInvoiceForm({
   }, [editData, editData?.items?.length]);
 
   // Load suppliers and customers from database
+  // Cari yükleme artık fatura türünün KATEGORİSİNE değil İADE YÖNÜNE bakıyor:
+  //   - Satış İade (code 3) → müşteri
+  //   - Alış İade  (code 6) → tedarikçi
+  //   - Satış      (Alış İade ile karışmasın) → müşteri
+  //   - Alış       (Satış İade ile karışmasın) → tedarikçi
+  // Eski davranış: category === 'Iade' koşulu her iki iadeyi de müşteri kabul ediyordu
+  // (Alış İade müşteri listesi açıyordu — bkz. kasap BADIA ödeme skandalı).
   useEffect(() => {
+    const wantsSuppliers =
+      invoiceType.category === 'Alis' || invoiceType.code === 6; // alış + alış iade
+    const wantsCustomers =
+      invoiceType.category === 'Satis' || invoiceType.code === 3; // satış + satış iade
+
     const loadSuppliers = async () => {
-      if (invoiceType.category === 'Alis') {
-        setLoadingSuppliers(true);
-        try {
-          const data = await supplierAPI.getAll({ cardType: 'supplier' });
-          setSuppliers(data);
-          console.log('[UniversalInvoiceForm] ✅ Suppliers loaded from database:', data.length);
-        } catch (error) {
-          console.error('[UniversalInvoiceForm] ❌ Failed to load suppliers:', error);
-          toast.error(tm('suppliersNotLoaded'));
-        } finally {
-          setLoadingSuppliers(false);
-        }
+      if (!wantsSuppliers) return;
+      setLoadingSuppliers(true);
+      try {
+        const data = await supplierAPI.getAll({ cardType: 'supplier' });
+        setSuppliers(data);
+        console.log('[UniversalInvoiceForm] ✅ Suppliers loaded from database:', data.length);
+      } catch (error) {
+        console.error('[UniversalInvoiceForm] ❌ Failed to load suppliers:', error);
+        toast.error(tm('suppliersNotLoaded'));
+      } finally {
+        setLoadingSuppliers(false);
       }
     };
 
     const loadCustomers = async () => {
-      if (invoiceType.category === 'Satis' || invoiceType.category === 'Iade') {
-        // Eğer customers prop boşsa, veritabanından yükle
-        if (customersProp.length === 0) {
-          setLoadingCustomers(true);
-          try {
-            const data = await customerAPI.getAll();
-            setCustomers(data);
-            console.log('[UniversalInvoiceForm] ✅ Customers loaded from database:', data.length);
-          } catch (error) {
-            console.error('[UniversalInvoiceForm] ❌ Failed to load customers:', error);
-            toast.error(tm('customersNotLoaded'));
-          } finally {
-            setLoadingCustomers(false);
-          }
-        } else {
-          // Prop'tan gelen customers'ı kullan
-          setCustomers(customersProp);
+      if (!wantsCustomers) return;
+      // Eğer customers prop boşsa, veritabanından yükle
+      if (customersProp.length === 0) {
+        setLoadingCustomers(true);
+        try {
+          const data = await customerAPI.getAll();
+          setCustomers(data);
+          console.log('[UniversalInvoiceForm] ✅ Customers loaded from database:', data.length);
+        } catch (error) {
+          console.error('[UniversalInvoiceForm] ❌ Failed to load customers:', error);
+          toast.error(tm('customersNotLoaded'));
+        } finally {
+          setLoadingCustomers(false);
         }
+      } else {
+        // Prop'tan gelen customers'ı kullan
+        setCustomers(customersProp);
       }
     };
 
     loadSuppliers();
     loadCustomers();
-  }, [invoiceType.category, customersProp]);
+  }, [invoiceType.category, invoiceType.code, customersProp]);
 
   /** Seçili cari bakiye + telefon (defter bakiyesi) */
   useEffect(() => {
@@ -3404,17 +3414,17 @@ export function UniversalInvoiceForm({
       return;
     }
 
-    // Cari kontrol
-    if (invoiceType.category === 'Alis' && !supplierTitle) {
+    // Cari kontrol — iade yönüne göre:
+    //   Alış (code 5)        + Alış İade (code 6)  → tedarikçi zorunlu
+    //   Satış (code 0,1,2,4) + Satış İade (code 3) → müşteri zorunlu
+    const isPurchaseSide =
+      invoiceType.category === 'Alis' || invoiceType.code === 6;
+    const isSalesReturnInvoice = invoiceType.category === 'Iade' && invoiceType.code === 3;
+    if (isPurchaseSide && !supplierTitle) {
       toast.error('❌ ' + tm('supplierNotSelected'));
       return;
     }
-    const isSalesReturnInvoice = invoiceType.category === 'Iade' && invoiceType.code === 3;
-    if (invoiceType.category === 'Satis' && !customerTitle) {
-      toast.error('❌ ' + tm('customerNotSelected'));
-      return;
-    }
-    if (invoiceType.category === 'Iade' && !isSalesReturnInvoice && !customerTitle) {
+    if (!isPurchaseSide && !isSalesReturnInvoice && !customerTitle) {
       toast.error('❌ ' + tm('customerNotSelected'));
       return;
     }
@@ -3593,11 +3603,13 @@ export function UniversalInvoiceForm({
         invoice_date: transactionDate,
         invoice_type: invoiceType.code,
         invoice_category: invoiceType.category as any,
-        customer_id: invoiceType.category === 'Alis' ? (resolvedSupplierId || customerId || undefined) : (customerId || undefined),
+        // Tedarikçi tarafı (Alış + Alış İade) → customer_id = supplierId (sales tablosunda tek cari alanı)
+        // Müşteri tarafı (Satış + Satış İade) → customer_id = customerId
+        customer_id: isPurchaseSide ? (resolvedSupplierId || customerId || undefined) : (customerId || undefined),
         supplier_id: resolvedSupplierId || undefined,
         supplier_name: supplierTitle || '',
-        /* Alış: tedarikçi ünvanı sales.customer_name'e de yazılmalı (liste / join) */
-        customer_name: invoiceType.category === 'Alis' ? (supplierTitle || customerTitle || '') : (customerTitle || ''),
+        // sales.customer_name de cariyi yansıtmalı (liste / join için)
+        customer_name: isPurchaseSide ? (supplierTitle || customerTitle || '') : (customerTitle || ''),
         subtotal: totals.subtotalIQD,   // IQD
         discount: totals.totalDiscountIQD,
         tax: 0,

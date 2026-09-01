@@ -162,7 +162,10 @@ export const InvoiceHeader: React.FC<InvoiceHeaderProps> = ({
 }) => {
     const { tm } = useLanguage();
     const cashierLabel = cashierFieldLabel || tm('cashier');
-    const cariTitle = invoiceType.category === 'Alis' ? supplierTitle : customerTitle;
+    // iade yönüne göre cari tarafı (Alış + Alış İade → tedarikçi)
+    const isPurchaseSide =
+        invoiceType.category === 'Alis' || invoiceType.code === 6;
+    const cariTitle = isPurchaseSide ? supplierTitle : customerTitle;
     const showCariMeta = Boolean(cariTitle?.trim());
 
     const primaryPaymentCodes = ['ACIK_CARI', 'NAKIT', 'KREDIKARTI'] as const;
@@ -204,7 +207,7 @@ export const InvoiceHeader: React.FC<InvoiceHeaderProps> = ({
             : null;
 
     const openCariModal = () => {
-        if (invoiceType.category === 'Alis') {
+        if (isPurchaseSide) {
             setShowSupplierModal(true);
         } else {
             setShowCustomerModal(true);
@@ -214,12 +217,12 @@ export const InvoiceHeader: React.FC<InvoiceHeaderProps> = ({
     const cariSummaryEl = (
         <div className="inline-flex items-center gap-1.5 flex-1 min-w-[10rem] max-w-sm">
             <span className={`text-[11px] font-semibold uppercase whitespace-nowrap shrink-0 ${cariTextColor}`}>
-                {invoiceType.category === 'Alis' ? tm('supplier') : tm('customer')}
+                {isPurchaseSide ? tm('supplier') : tm('customer')}
             </span>
             <div className="flex gap-1 min-w-0 flex-1">
                 <input
                     type="text"
-                    value={invoiceType.category === 'Alis' ? supplierTitle : customerTitle}
+                    value={isPurchaseSide ? supplierTitle : customerTitle}
                     readOnly
                     placeholder={`${tm('selectCurrent')}...`}
                     className={`flex-1 min-w-0 px-2 py-1 border-2 rounded text-sm bg-white cursor-pointer font-medium hover:border-gray-400 transition-colors truncate ${cariBorderColor}`}
@@ -232,7 +235,7 @@ export const InvoiceHeader: React.FC<InvoiceHeaderProps> = ({
                 >
                     <MoreVertical className="w-3.5 h-3.5 text-gray-600" />
                 </button>
-                {invoiceType.category === 'Alis' && (supplierCode || supplierTitle) && (
+                {isPurchaseSide && (supplierCode || supplierTitle) && (
                     <button
                         type="button"
                         onClick={() => {
@@ -245,7 +248,7 @@ export const InvoiceHeader: React.FC<InvoiceHeaderProps> = ({
                         <History className="w-3.5 h-3.5" />
                     </button>
                 )}
-                {invoiceType.category !== 'Alis' && (customerCode || customerTitle) && (
+                {!isPurchaseSide && (customerCode || customerTitle) && (
                     <button
                         type="button"
                         onClick={() => {
@@ -456,9 +459,9 @@ export const InvoiceHeader: React.FC<InvoiceHeaderProps> = ({
                             <div className="flex gap-1">
                                 <input
                                     type="text"
-                                    value={invoiceType.category === 'Alis' ? supplierCode : (customerCode || '')}
+                                    value={isPurchaseSide ? supplierCode : (customerCode || '')}
                                     onChange={(e) => {
-                                        if (invoiceType.category === 'Alis') {
+                                        if (isPurchaseSide) {
                                             if (setSupplierCode) {
                                                 setSupplierCode(e.target.value);
                                             }
@@ -471,7 +474,7 @@ export const InvoiceHeader: React.FC<InvoiceHeaderProps> = ({
                                 />
                                 <button
                                     onClick={() => {
-                                        if (invoiceType.category === 'Alis') {
+                                        if (isPurchaseSide) {
                                             setShowSupplierModal(true);
                                         } else {
                                             setShowCustomerModal(true);
@@ -489,12 +492,12 @@ export const InvoiceHeader: React.FC<InvoiceHeaderProps> = ({
                             <div className="flex gap-1">
                                 <input
                                     type="text"
-                                    value={invoiceType.category === 'Alis' ? supplierTitle : customerTitle}
+                                    value={isPurchaseSide ? supplierTitle : customerTitle}
                                     readOnly
                                     placeholder={tm('selectShortPlaceholder')}
                                     className="flex-1 px-2 py-1 border border-gray-300 rounded text-sm bg-white cursor-pointer"
                                     onClick={() => {
-                                        if (invoiceType.category === 'Alis') {
+                                        if (isPurchaseSide) {
                                             setShowSupplierModal(true);
                                         } else {
                                             setShowCustomerModal(true);
@@ -503,7 +506,7 @@ export const InvoiceHeader: React.FC<InvoiceHeaderProps> = ({
                                 />
                                 <button
                                     onClick={() => {
-                                        if (invoiceType.category === 'Alis') {
+                                        if (isPurchaseSide) {
                                             setShowSupplierModal(true);
                                         } else {
                                             setShowCustomerModal(true);
@@ -513,7 +516,7 @@ export const InvoiceHeader: React.FC<InvoiceHeaderProps> = ({
                                 >
                                     <MoreVertical className="w-4 h-4 text-gray-600" />
                                 </button>
-                                {invoiceType.category === 'Alis' && (supplierCode || supplierTitle) && (
+                                {isPurchaseSide && (supplierCode || supplierTitle) && (
                                     <button
                                         onClick={() => {
                                             setSelectedSupplierHistory({ id: supplierCode, name: supplierTitle });
@@ -525,7 +528,7 @@ export const InvoiceHeader: React.FC<InvoiceHeaderProps> = ({
                                         <History className="w-4 h-4" />
                                     </button>
                                 )}
-                                {invoiceType.category !== 'Alis' && (customerCode || customerTitle) && (
+                                {!isPurchaseSide && (customerCode || customerTitle) && (
                                     <button
                                         onClick={() => {
                                             setSelectedCustomerHistory({ id: customerCode, name: customerTitle, uuid: customerId || customerCode });

@@ -166,38 +166,58 @@ export function computePartyBalanceDelta(tutar: number, islemTipi: string): numb
  */
 type CariAccountKind = 'customer' | 'supplier' | 'employee' | 'partner' | null;
 
-export async function resolveCariAccountKind(accountId: string | null | undefined): Promise<CariAccountKind> {
+export async function resolveCariAccountKind(
+  accountId: string | null | undefined,
+  callerHint?: 'supplier' | 'customer' | null,
+): Promise<CariAccountKind> {
   if (!accountId) return null;
   const id = String(accountId).trim();
   if (!id) return null;
   const firmNr = normalizeFirmTableNr(ERP_SETTINGS.firmNr);
 
+  // callerHint === 'supplier' ise müşteri yerine önce tedarikçi tablosuna bak.
+  // Sebep: aynı UUID hem customers hem suppliers tablosunda olabilir (legacy merge
+  // yapılmamış cariler — ör. kasap BADIA). CH_ODEME bağlamında caller zaten
+  // "bu tedarikçi ödemesidir" biliyor; müşteri tarafı öncelik kazanmamalı.
+  const probeOrder: CariAccountKind[] =
+    callerHint === 'supplier'
+      ? ['supplier', 'customer', 'partner', 'employee']
+      : callerHint === 'customer'
+      ? ['customer', 'supplier', 'partner', 'employee']
+      : ['customer', 'supplier', 'partner', 'employee'];
+
   if (DB_SETTINGS.connectionProvider === 'rest_api') {
     try {
       const { postgrest } = await import('./postgrestClient');
-      // Müşteri tablosunda ara
-      const c = await postgrest.get<any[]>(
-        `/rex_${firmNr}_customers`,
-        { select: 'id', id: `eq.${id}`, limit: '1' },
-        { schema: 'public' },
-      );
-      if (Array.isArray(c) && c.length > 0) return 'customer';
-      // Tedarikçi tablosunda ara
-      const s = await postgrest.get<any[]>(
-        `/rex_${firmNr}_suppliers`,
-        { select: 'id', id: `eq.${id}`, limit: '1' },
-        { schema: 'public' },
-      );
-      if (Array.isArray(s) && s.length > 0) return 'supplier';
-      // parties tablosunda ara (employee / partner)
-      const p = await postgrest.get<any[]>(
-        `/rex_${firmNr}_parties`,
-        { select: 'id,card_type', id: `eq.${id}`, limit: '1' },
-        { schema: 'public' },
-      );
-      if (Array.isArray(p) && p.length > 0) {
-        const ct = String(p[0]?.card_type || '').toLowerCase();
-        return (ct === 'partner' ? 'partner' : 'employee');
+      // Sırayla ara: callerHint varsa ona göre, yoksa müşteri önce
+      for (const kind of probeOrder) {
+        if (kind === 'customer') {
+          const c = await postgrest.get<any[]>(
+            `/rex_${firmNr}_customers`,
+            { select: 'id', id: `eq.${id}`, limit: '1' },
+            { schema: 'public' },
+          );
+          if (Array.isArray(c) && c.length > 0) return 'customer';
+        } else if (kind === 'supplier') {
+          const s = await postgrest.get<any[]>(
+            `/rex_${firmNr}_suppliers`,
+            { select: 'id', id: `eq.${id}`, limit: '1' },
+            { schema: 'public' },
+          );
+          if (Array.isArray(s) && s.length > 0) return 'supplier';
+        } else if (kind === 'employee' || kind === 'partner') {
+          const p = await postgrest.get<any[]>(
+            `/rex_${firmNr}_parties`,
+            { select: 'id,card_type', id: `eq.${id}`, limit: '1' },
+            { schema: 'public' },
+          );
+          if (Array.isArray(p) && p.length > 0) {
+            const ct = String(p[0]?.card_type || '').toLowerCase();
+            if (kind === 'partner' && ct === 'partner') return 'partner';
+            if (kind === 'employee' && ct !== 'partner') return 'employee';
+            return ct === 'partner' ? 'partner' : 'employee';
+          }
+        }
       }
       return null;
     } catch {
@@ -214,8 +234,13 @@ export async function resolveCariAccountKind(accountId: string | null | undefine
       [id],
     );
     const r = rows?.[0] || {};
-    if (r.is_customer) return 'customer';
-    if (r.is_supplier) return 'supplier';
+    if (callerHint === 'supplier') {
+      if (r.is_supplier) return 'supplier';
+      if (r.is_customer) return 'customer';
+    } else {
+      if (r.is_customer) return 'customer';
+      if (r.is_supplier) return 'supplier';
+    }
     if (r.party_card_type) {
       return String(r.party_card_type).toLowerCase() === 'partner' ? 'partner' : 'employee';
     }
@@ -660,8 +685,14 @@ async function createKasaIslemiViaPostgrest(
   const bankLinesPath = `/rex_${fn}_${pn}_bank_lines`;
   const bankRegPath = `/rex_${fn}_bank_registers`;
 
-  // cari_hesap_id türünü INSERT'ten ÖNCE tespit et (tedarikçi → party_id, müşteri → customer_id)
-  const cariKind = await resolveCariAccountKind(islem.cari_hesap_id);
+  // cari_hesap_id türünü INSERT'ten ÖNCE tespit et (tedarikçi → party_id, müşteri → customer_id).
+  // CH_ODEME bağlamında caller "bu tedarikçi ödemesidir" bildiği için supplier hint'i veriyoruz;
+  // aynı UUID hem customers hem suppliers tablosunda olsa bile doğru tablo seçilir.
+  const callerHint: 'supplier' | 'customer' | null =
+    islem.islem_tipi === 'CH_ODEME' ? 'supplier'
+    : islem.islem_tipi === 'CH_TAHSILAT' ? 'customer'
+    : null;
+  const cariKind = await resolveCariAccountKind(islem.cari_hesap_id, callerHint);
   // Caller zaten party_id gönderdiyse (örn. CH_ODEME_PARTNER), onu koru; aksi halde türüne göre ayır.
   const cariSplit = islem.party_id
     ? { customer_id: null, party_id: islem.party_id }
@@ -997,8 +1028,13 @@ export async function createKasaIslemi(incoming: KasaIslemi): Promise<KasaIslemi
 
     const ficheNo = islem.islem_no || `KL-${ERP_SETTINGS.firmNr}-${Date.now()}`;
 
-    // cari_hesap_id türünü INSERT'ten ÖNCE tespit et (tedarikçi → party_id, müşteri → customer_id)
-    const cariKind = await resolveCariAccountKind(islem.cari_hesap_id);
+    // cari_hesap_id türünü INSERT'ten ÖNCE tespit et (tedarikçi → party_id, müşteri → customer_id).
+    // CH_ODEME bağlamında caller supplier hint'i verir; UUID her iki tabloda olsa bile doğru yazılır.
+    const callerHint: 'supplier' | 'customer' | null =
+      islem.islem_tipi === 'CH_ODEME' ? 'supplier'
+      : islem.islem_tipi === 'CH_TAHSILAT' ? 'customer'
+      : null;
+    const cariKind = await resolveCariAccountKind(islem.cari_hesap_id, callerHint);
     const cariSplit = islem.party_id
       ? { customer_id: null as string | null, party_id: islem.party_id }
       : (() => {
@@ -1383,7 +1419,14 @@ export async function deleteKasaIslemi(id: string): Promise<void> {
         // türü yeniden tespit edip doğru tabloya geri al.
         let delKind: ReturnType<typeof resolveCariAccountKind> extends Promise<infer T> ? T : never = null;
         const probeId = String(partyId || customerId || '');
-        delKind = await resolveCariAccountKind(probeId);
+        // CH_ODEME → tedarikçi ödemesi, CH_TAHSILAT → müşteri tahsilatı.
+        // Her iki yönde aynı UUID hem customers hem suppliers'da olabilir; caller hint
+        // doğru tabloyu seçmeyi garantiler.
+        const delHint: 'supplier' | 'customer' | null =
+          trType === 'CH_ODEME' ? 'supplier'
+          : trType === 'CH_TAHSILAT' ? 'customer'
+          : null;
+        delKind = await resolveCariAccountKind(probeId, delHint);
         await ensurePartyPeriodTables();
         if (partyId && (delKind === 'employee' || delKind === 'partner')) {
           // Personel/Şirket ortağı kasa işlemleri için party bakiyesi zaten aşağıdaki
@@ -1578,7 +1621,13 @@ async function deleteKasaIslemiViaPostgrest(id: string): Promise<void> {
     const delta = -cariCashStoredBalanceDelta(amount, trType);
     if (delta !== 0) {
       const probeId = String(partyIdFromRow || customerId || '');
-      const delKind = await resolveCariAccountKind(probeId);
+      // CH_ODEME → tedarikçi ödemesi, CH_TAHSILAT → müşteri tahsilatı.
+      // aynı UUID her iki tabloda olabilir → caller hint ile doğru tablo.
+      const delHint: 'supplier' | 'customer' | null =
+        trType === 'CH_ODEME' ? 'supplier'
+        : trType === 'CH_TAHSILAT' ? 'customer'
+        : null;
+      const delKind = await resolveCariAccountKind(probeId, delHint);
       const firmNr = normalizeFirmTableNr(ERP_SETTINGS.firmNr);
       const patchPartner = async (path: string, withFirm: boolean, partnerId: string) => {
         try {
