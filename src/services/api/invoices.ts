@@ -593,6 +593,77 @@ async function revertInvoiceLedgerSideEffects(existing: Invoice, firmNr: string,
   }
 }
 
+async function writeCashRegisterLineForInvoice(inv: Invoice, firmNr: string): Promise<void> {
+  if (
+    inv.invoice_category !== 'Satis'
+    || !paymentMethodImpliesCashInKasa((inv as any).payment_method)
+    || Number(inv.total_amount || 0) === 0
+    || String(inv.status || '').toLowerCase() === 'cancelled'
+  ) {
+    return;
+  }
+  try {
+    const { fetchKasalar, createKasaIslemi } = await import('./kasa');
+    let targetKasaId = (ERP_SETTINGS as any).selected_cash_registers?.[0] as string | undefined;
+    if (!targetKasaId) {
+      const kasalar = await fetchKasalar({ firm_nr: String(firmNr), aktif: true });
+      if (kasalar.length > 0) targetKasaId = kasalar[0].id;
+    }
+    if (!targetKasaId) return;
+    const total = Number(inv.total_amount || 0);
+    const ficheNo = String(inv.invoice_no || '').trim() || `INV-${String(inv.id || '').slice(0, 8)}`;
+    const tarih = inv.invoice_date || inv.created_at || new Date().toISOString();
+    const aciklama = `Satış faturası — ${inv.invoice_no || ''}`;
+
+    // Idempotent: aynı firma + dönem + kasa + fiş no için mevcut satır varsa güncelle,
+    // böylece edit+save'de kasaya çift para yazılmaz.
+    if (ficheNo && !ficheNo.startsWith('INV-')) {
+      try {
+        const periodNr = String((ERP_SETTINGS as any).periodNr ?? '01');
+        const lookup = await postgres.query<{ id: string }>(
+          `SELECT id FROM cash_lines
+             WHERE firm_nr = $1::text
+               AND period_nr = $2::text
+               AND register_id = $3::text::uuid
+               AND fiche_no = $4::text
+             LIMIT 1`,
+          [String(firmNr), periodNr, targetKasaId, ficheNo]
+        );
+        const existingId = lookup.rows?.[0]?.id;
+        if (existingId) {
+          await postgres.query(
+            `UPDATE cash_lines SET
+                amount = $1::numeric,
+                date = $2::text::date,
+                definition = $3::text
+              WHERE id = $4::text::uuid`,
+            [Math.abs(total), tarih, aciklama, existingId]
+          );
+          return;
+        }
+      } catch (lookupErr: any) {
+        console.warn('[InvoicesAPI] Kasa satırı tekilleme kontrolü:', lookupErr?.message || String(lookupErr));
+      }
+    }
+
+    await createKasaIslemi({
+      firma_id: String(firmNr),
+      kasa_id: targetKasaId,
+      islem_no: ficheNo,
+      islem_tarihi: tarih,
+      islem_tipi: 'KASA_GIRIS',
+      tutar: total,
+      islem_aciklamasi: aciklama,
+      cari_hesap_id: inv.customer_id && isValidUuid(inv.customer_id) ? inv.customer_id : undefined,
+      cari_hesap_unvani: inv.customer_name || '',
+      doviz_kodu: 'YEREL',
+      dovizli_tutar: 0,
+    });
+  } catch (e: any) {
+    console.warn('[InvoicesAPI] Kasa satırı (fatura):', e?.message || String(e));
+  }
+}
+
 async function applyInvoiceLedgerSideEffects(merged: Invoice, firmNr: string, periodNr: string): Promise<void> {
   const trcode = resolveTrcodeFromInvoice(merged);
   const ficheType = deriveFicheTypeFromTrcode(trcode);
@@ -606,39 +677,7 @@ async function applyInvoiceLedgerSideEffects(merged: Invoice, firmNr: string, pe
     await applyInvoiceBalanceSideEffectsSql(merged, firmNr, queryOpts, 1);
   }
 
-  if (
-    merged.invoice_category === 'Satis'
-    && paymentMethodImpliesCashInKasa((merged as any).payment_method)
-    && Number(merged.total_amount || 0) !== 0
-    && String(merged.status || '').toLowerCase() !== 'cancelled'
-  ) {
-    try {
-      const { fetchKasalar, createKasaIslemi } = await import('./kasa');
-      let targetKasaId = (ERP_SETTINGS as any).selected_cash_registers?.[0] as string | undefined;
-      if (!targetKasaId) {
-        const kasalar = await fetchKasalar({ firm_nr: String(firmNr), aktif: true });
-        if (kasalar.length > 0) targetKasaId = kasalar[0].id;
-      }
-      if (targetKasaId) {
-        const total = Number(merged.total_amount || 0);
-        await createKasaIslemi({
-          firma_id: String(firmNr),
-          kasa_id: targetKasaId,
-          islem_no: String(merged.invoice_no || '').trim() || `INV-${String(merged.id || '').slice(0, 8)}`,
-          islem_tarihi: merged.invoice_date || merged.created_at || new Date().toISOString(),
-          islem_tipi: 'KASA_GIRIS',
-          tutar: total,
-          islem_aciklamasi: `Satış faturası — ${merged.invoice_no || ''}`,
-          cari_hesap_id: merged.customer_id && isValidUuid(merged.customer_id) ? merged.customer_id : undefined,
-          cari_hesap_unvani: merged.customer_name || '',
-          doviz_kodu: 'YEREL',
-          dovizli_tutar: 0,
-        });
-      }
-    } catch (e: any) {
-      console.warn('[InvoicesAPI] Kasa satırı (fatura güncelleme):', e?.message || String(e));
-    }
-  }
+  await writeCashRegisterLineForInvoice(merged, firmNr);
 }
 
 function shouldTryRestApiCreateFallback(error: unknown): boolean {
@@ -1059,6 +1098,7 @@ export const invoicesAPI = {
         if (!saved?.id) throw new Error('Fatura PostgREST ile oluşturulamadı');
         await applyInvoiceStockUpdatesRestApi(invoice, createOptions, trcode);
         await applyInvoiceBalanceUpdatesRestApi(invoice, firmNr, trcode, ficheType);
+        await writeCashRegisterLineForInvoice({ ...invoice, id: saved.id }, firmNr);
         void import('../messaging/messagingService').then(({ messagingService }) =>
           messagingService.maybeEnqueueInvoiceNotification(invoice, saved.id!, firmNr, periodNr)
         ).catch((e) => console.warn('[InvoicesAPI] WhatsApp kuyruk:', e));
@@ -1372,6 +1412,10 @@ export const invoicesAPI = {
         }
       }
 
+      // 5. Nakit ödeme: kasaya tahsilat satırı yaz (insert anında)
+      const createdInvoice: Invoice = { ...invoice, id: invoiceId };
+      await writeCashRegisterLineForInvoice(createdInvoice, firmNr);
+
       void import('../messaging/messagingService').then(({ messagingService }) =>
         messagingService.maybeEnqueueInvoiceNotification(invoice, invoiceId, firmNr, periodNr)
       ).catch((e) => console.warn('[InvoicesAPI] WhatsApp kuyruk:', e));
@@ -1404,6 +1448,10 @@ export const invoicesAPI = {
           console.warn('[InvoicesAPI] PostgreSQL timeout; trying PostgREST create fallback...');
           const saved = await createInvoiceViaPostgrest(invoice, { firmNr, periodNr, trcode, ficheType });
           if (saved?.id) {
+            await applyInvoiceBalanceUpdatesRestApi(invoice, firmNr, trcode, ficheType).catch((e) =>
+              console.warn('[InvoicesAPI] Fallback cari/kasa bakiye:', e)
+            );
+            await writeCashRegisterLineForInvoice({ ...invoice, id: saved.id }, firmNr);
             void import('../messaging/messagingService').then(({ messagingService }) =>
               messagingService.maybeEnqueueInvoiceNotification(invoice, saved.id!, firmNr, periodNr)
             ).catch((e) => console.warn('[InvoicesAPI] WhatsApp kuyruk:', e));
