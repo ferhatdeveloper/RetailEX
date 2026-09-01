@@ -631,112 +631,116 @@ async function writeCashRegisterLineForInvoice(inv: Invoice, firmNr: string): Pr
     }
     return;
   }
+
+  // Hedef kasa: öncelik sırasıyla
+  //  1) header_fields.cash_register_id (kullanıcının formda seçtiği kasa)
+  //  2) ERP_SETTINGS.selected_cash_registers[0] (oturum için seçili kasa)
+  //  3) Aktif kasalardan MERKEZ KASA / PATRON KASA tercihli ilki
+  // Her biri için rex_001_cash_registers.is_active doğrulanır.
+  const headerCashRegisterId = isValidUuid((inv as any)?.header_fields?.cash_register_id)
+    ? String((inv as any).header_fields.cash_register_id)
+    : null;
+  const configuredCashRegisterId = isValidUuid((ERP_SETTINGS as any).selected_cash_registers?.[0])
+    ? String((ERP_SETTINGS as any).selected_cash_registers[0])
+    : null;
+
+  const total = Number(inv.total_amount || 0);
+  const amount = Math.abs(total);
+  const ficheNo = String(inv.invoice_no || '').trim() || `INV-${String(inv.id || '').slice(0, 8)}`;
+  const tarih = inv.invoice_date || inv.created_at || new Date().toISOString();
+  const aciklama = `Satış faturası — ${inv.invoice_no || ''}`;
+  const customerId = inv.customer_id && isValidUuid(inv.customer_id) ? inv.customer_id : null;
+
+  /**
+   * Skandal (2026-09-01): Önceki kod `createKasaIslemi` üzerinden gidiyordu;
+   * bu fonksiyonun içinde BEGIN/COMMIT, `assertPeriodOpen`,
+   * `resolveCariAccountKind`, `ensureCariAccountInCurrentFirm` ve
+   * `bumpKasaBalance` gibi birçok adım var. Geçici DB hatası veya
+   * `resolveCariAccountKind`'in hybrid müşteri/tedarikçi UUID'sini
+   * çözemediği durumlarda INSERT sessizce başarısız oluyordu; hata
+   * `console.warn` ile yutuluyordu → fatura "başarılı" görünüyordu ama
+   * kasaya para düşmüyordu.
+   *
+   * Düzeltme: doğrudan cash_lines INSERT + cash_registers balance UPDATE.
+   * Tek statement, transaction yok. UNIQUE(fiche_no) çakışmasında
+   * ON CONFLICT ile UPDATE'e düşer (edit senkronizasyonu). Hata durumunda
+   * console.error ile payload bağlamı yazılır.
+   */
+  let targetRegisterId: string | null = null;
   try {
-    const { fetchKasalar, createKasaIslemi } = await import('./kasa');
-    let targetKasaId = (ERP_SETTINGS as any).selected_cash_registers?.[0] as string | undefined;
-    if (!targetKasaId) {
-      const kasalar = await fetchKasalar({ firm_nr: String(firmNr), aktif: true });
-      if (kasalar.length > 0) targetKasaId = kasalar[0].id;
-    }
-    if (!targetKasaId) {
-      console.warn('[InvoicesAPI] Kasa satırı yazılamadı: hedef kasa bulunamadı (firmNr=%s).', firmNr);
-      return;
-    }
-    const total = Number(inv.total_amount || 0);
-    const ficheNo = String(inv.invoice_no || '').trim() || `INV-${String(inv.id || '').slice(0, 8)}`;
-    const tarih = inv.invoice_date || inv.created_at || new Date().toISOString();
-    const aciklama = `Satış faturası — ${inv.invoice_no || ''}`;
-
-    // Idempotent: aynı firma + dönem + kasa + fiş no için mevcut satır varsa güncelle,
-    // böylece edit+save'de kasaya çift para yazılmaz.
-    if (ficheNo && !ficheNo.startsWith('INV-')) {
-      try {
-        const periodNr = String((ERP_SETTINGS as any).periodNr ?? '01');
-        const lookup = await postgres.query<{ id: string }>(
-          `SELECT id FROM cash_lines
-             WHERE firm_nr = $1::text
-               AND period_nr = $2::text
-               AND fiche_id = $3::text::uuid
-               AND fiche_no = $4::text
-             LIMIT 1`,
-          [String(firmNr), periodNr, targetKasaId, ficheNo]
-        );
-        const existingId = lookup.rows?.[0]?.id;
-        if (existingId) {
-          await postgres.query(
-            `UPDATE cash_lines SET
-                amount = $1::numeric,
-                date = $2::text,
-                definition = $3::text
-              WHERE id = $4::text::uuid`,
-            [Math.abs(total), tarih, aciklama, existingId]
-          );
-          return;
-        }
-      } catch (lookupErr: any) {
-        // Tekilleme kontrolü başarısız — INSERT'i yine de dene.
-        console.warn('[InvoicesAPI] Kasa satırı tekilleme kontrolü:', lookupErr?.message || String(lookupErr));
-      }
-    }
-
-    // ⚠️ Skandal (2026-09-01): yeni fatura create'inde kasa INSERT'i sessizce
-    // başarısız oluyordu. Düzeltme: 3 denemeli retry + UNIQUE(fiche_no) ihlali
-    // durumunda otomatik UPDATE fallback. Son hata yukarı fırlatılır ki
-    // aşağıdaki catch bloğu verbose loglasın.
-    const insertPayload = {
-      firma_id: String(firmNr),
-      kasa_id: targetKasaId,
-      islem_no: ficheNo,
-      islem_tarihi: tarih,
-      islem_tipi: 'KASA_GIRIS',
-      tutar: total,
-      islem_aciklamasi: aciklama,
-      cari_hesap_id: inv.customer_id && isValidUuid(inv.customer_id) ? inv.customer_id : undefined,
-      cari_hesap_unvani: inv.customer_name || '',
-      doviz_kodu: 'YEREL',
-      dovizli_tutar: 0,
-    };
-    let lastErr: any = null;
-    for (let attempt = 1; attempt <= 3; attempt++) {
-      try {
-        await createKasaIslemi(insertPayload);
-        return; // başarılı
-      } catch (e: any) {
-        lastErr = e;
-        const msg = String(e?.message || e || '');
-        const code = (e as any)?.code;
-        if (code === '23505' || /duplicate key/i.test(msg)) {
-          // UNIQUE(fiche_no) ihlali → mevcut satırı UPDATE et.
-          try {
-            await postgres.query(
-              `UPDATE cash_lines SET
-                  amount = $1::numeric,
-                  date = $2::text,
-                  definition = $3::text
-                WHERE firm_nr = $4::text
-                  AND register_id = $5::text::uuid
-                  AND fiche_no = $6::text`,
-              [Math.abs(total), tarih, aciklama, String(firmNr), targetKasaId, ficheNo]
-            );
-            return;
-          } catch (updErr: any) {
-            console.warn('[InvoicesAPI] UNIQUE → UPDATE fallback başarısız:', updErr?.message || String(updErr));
-          }
-        }
-        const isTransient = /timeout|connection|terminated|bad gateway|ETIMEDOUT/i.test(msg);
-        if (attempt < 3 && isTransient) {
-          await new Promise((r) => setTimeout(r, 250 * attempt));
-          continue;
-        }
+    const candidates = [headerCashRegisterId, configuredCashRegisterId].filter(Boolean) as string[];
+    for (const cand of candidates) {
+      const verify = await postgres.query<{ id: string }>(
+        `SELECT id FROM rex_001_cash_registers
+          WHERE id = $1::text::uuid AND is_active = true
+          LIMIT 1`,
+        [cand]
+      );
+      if (verify.rows?.[0]?.id) {
+        targetRegisterId = verify.rows[0].id;
         break;
       }
     }
-    throw lastErr;
+    if (!targetRegisterId) {
+      const fallback = await postgres.query<{ id: string }>(
+        `SELECT id FROM rex_001_cash_registers
+          WHERE firm_nr = $1::text AND is_active = true
+          ORDER BY (name ILIKE 'MERKEZ KASA') DESC,
+                   (name ILIKE 'PATRON KASA') DESC,
+                   code ASC
+          LIMIT 1`,
+        [String(firmNr)]
+      );
+      targetRegisterId = fallback.rows?.[0]?.id || null;
+    }
+    if (!targetRegisterId) {
+      console.warn('[InvoicesAPI] Kasa satırı yazılamadı: aktif kasa bulunamadı (firmNr=%s).', firmNr);
+      return;
+    }
+
+    const periodNr = String((ERP_SETTINGS as any).periodNr ?? '01');
+    const upsertResult = await postgres.query<{ id: string; inserted: boolean }>(
+      `INSERT INTO cash_lines (
+         firm_nr, period_nr, register_id, fiche_no, date, amount, sign,
+         definition, transaction_type,
+         customer_id, party_id, currency_code, exchange_rate, f_amount,
+         transfer_status, special_code,
+         target_register_id, bank_id, bank_account_id, expense_card_id,
+         tax_rate, withholding_tax_rate
+       ) VALUES (
+         $1::text, $2::text, $3::text::uuid, $4::text, $5::text,
+         $6::numeric, 1,
+         $7::text, 'KASA_GIRIS',
+         $8::text::uuid, NULL, 'YEREL', 1, 0,
+         0, '',
+         NULL, NULL, NULL, NULL,
+         0, 0
+       )
+       ON CONFLICT (fiche_no) DO UPDATE
+         SET amount = EXCLUDED.amount,
+             date = EXCLUDED.date,
+             definition = EXCLUDED.definition,
+             register_id = EXCLUDED.register_id,
+             customer_id = COALESCE(EXCLUDED.customer_id, cash_lines.customer_id),
+             updated_at = NOW()
+       RETURNING id, (xmax = 0) AS inserted`,
+      [String(firmNr), periodNr, targetRegisterId, ficheNo, tarih,
+       amount, aciklama, customerId]
+    );
+    const inserted = upsertResult.rows?.[0]?.inserted === true;
+
+    // Yalnızca yeni INSERT ise kasa bakiyesini güncelle; UPDATE'te amount
+    // değişmemişse çift ekleme olur (önceki davranış).
+    if (inserted) {
+      await postgres.query(
+        `UPDATE rex_001_cash_registers
+            SET balance = COALESCE(balance, 0) + $1::numeric,
+                updated_at = NOW()
+          WHERE id = $2::text::uuid`,
+        [amount, targetRegisterId]
+      );
+    }
   } catch (e: any) {
-    // ⚠️ KRİTİK: Bu hata önceden sadece console.warn ile yutuluyordu — fatura
-    // başarıyla kaydedilmiş görünüyordu ama kasaya tahsilat düşmüyordu.
-    // Artık görünür log + payload bağlamı yazıyoruz ki kök neden hızla teşhis
-    // edilebilsin. UI tarafında bu hata ayrıca bir uyarı olarak gösterilebilir.
     console.error('[InvoicesAPI] ⚠️ Kasa satırı (fatura) yazılamadı:', {
       error: e?.message || String(e),
       code: (e as any)?.code,
@@ -748,6 +752,7 @@ async function writeCashRegisterLineForInvoice(inv: Invoice, firmNr: string): Pr
       total_amount: inv.total_amount,
       status: inv.status,
       firmNr,
+      target_register_id: targetRegisterId,
     });
   }
 }
