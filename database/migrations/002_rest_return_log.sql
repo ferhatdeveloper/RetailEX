@@ -1,4 +1,7 @@
 -- İade işlemlerini kayıt altına almak için log tablosu (sebep zorunlu, rapor için)
+-- rest şeması restoran özelliği kullanmayan tenant'larda yok; idempotent oluştur.
+CREATE SCHEMA IF NOT EXISTS rest;
+
 CREATE TABLE IF NOT EXISTS rest.return_log (
     id              UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
     return_number   VARCHAR(50) NOT NULL,

@@ -10,7 +10,11 @@ export const NON_RETAILEX_DATABASES = Object.freeze([
   'pagetin_kurye', // kurye uygulaması (RetailEX ERP değil)
   'siti_pdks',     // bağımsız PDKS kiracısı — RetailEX şema/migration zinciri yok
   'aram',          // PDKS/İK şeması (employees/attendance) — RetailEX ERP değil
+  'aram_pre_rebuild',          // aram PDKS yedek snapshot'ı
+  'aram_pre_rebuild_20260827', // aram PDKS yedek snapshot'ı (tarihli)
+  'aram_shift_test',           // aram PDKS vardiya test snapshot'ı
   'naw',           // PDKS/İK şeması (employees/attendance) — RetailEX ERP değil
+  'bestnaw',       // naw PDKS tenant'ı (bestnaw adıyla) — RetailEX ERP değil
 ]);
 
 const NON_RETAILEX_SET = new Set(NON_RETAILEX_DATABASES);
