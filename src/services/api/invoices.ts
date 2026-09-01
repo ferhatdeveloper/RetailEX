@@ -650,95 +650,33 @@ async function writeCashRegisterLineForInvoice(inv: Invoice, firmNr: string): Pr
   const tarih = inv.invoice_date || inv.created_at || new Date().toISOString();
   const aciklama = `Satış faturası — ${inv.invoice_no || ''}`;
   const customerId = inv.customer_id && isValidUuid(inv.customer_id) ? inv.customer_id : null;
+  const periodNr = String((ERP_SETTINGS as any).periodNr ?? '01');
 
   /**
-   * Skandal (2026-09-01): Önceki kod `createKasaIslemi` üzerinden gidiyordu;
-   * bu fonksiyonun içinde BEGIN/COMMIT, `assertPeriodOpen`,
-   * `resolveCariAccountKind`, `ensureCariAccountInCurrentFirm` ve
-   * `bumpKasaBalance` gibi birçok adım var. Geçici DB hatası veya
-   * `resolveCariAccountKind`'in hybrid müşteri/tedarikçi UUID'sini
-   * çözemediği durumlarda INSERT sessizce başarısız oluyordu; hata
-   * `console.warn` ile yutuluyordu → fatura "başarılı" görünüyordu ama
-   * kasaya para düşmüyordu.
+   * Skandal (2026-09-01, 2. dalga): `rest_api` modunda `postgres.query`
+   * SQL köprüsüne bağlıdır; web prod'da SQL erişimi yoksa sessizce
+   * başarısız olur → fatura kaydedilir ama kasa satırı yazılmaz.
    *
-   * Düzeltme: doğrudan cash_lines INSERT + cash_registers balance UPDATE.
-   * Tek statement, transaction yok. UNIQUE(fiche_no) çakışmasında
-   * ON CONFLICT ile UPDATE'e düşer (edit senkronizasyonu). Hata durumunda
-   * console.error ile payload bağlamı yazılır.
+   * Düzeltme: bağlantı moduna göre dal.
+   *  - `db` modu: doğrudan `postgres.query` ile SQL INSERT + UPDATE.
+   *  - `rest_api` modu: `postgrest.post` ile `/cash_lines` ve
+   *    `/rex_001_cash_registers` endpoint'leri (PostgREST tarafında
+   *    UNIQUE(fiche_no) → INSERT'e bırakılır; idempotent için önce
+   *    mevcut kayıt aranır, varsa PATCH).
+   *
+   * Her iki yolda da UNIQUE(fiche_no) çakışması güvenle handle edilir.
+   * Hata console.error ile payload bağlamıyla yazılır.
    */
   let targetRegisterId: string | null = null;
   try {
+    const isRest = DB_SETTINGS.connectionProvider === 'rest_api'
+      && !(IS_TAURI && DB_SETTINGS.activeMode === 'hybrid');
     const candidates = [headerCashRegisterId, configuredCashRegisterId].filter(Boolean) as string[];
-    for (const cand of candidates) {
-      const verify = await postgres.query<{ id: string }>(
-        `SELECT id FROM rex_001_cash_registers
-          WHERE id = $1::text::uuid AND is_active = true
-          LIMIT 1`,
-        [cand]
-      );
-      if (verify.rows?.[0]?.id) {
-        targetRegisterId = verify.rows[0].id;
-        break;
-      }
-    }
-    if (!targetRegisterId) {
-      const fallback = await postgres.query<{ id: string }>(
-        `SELECT id FROM rex_001_cash_registers
-          WHERE firm_nr = $1::text AND is_active = true
-          ORDER BY (name ILIKE 'MERKEZ KASA') DESC,
-                   (name ILIKE 'PATRON KASA') DESC,
-                   code ASC
-          LIMIT 1`,
-        [String(firmNr)]
-      );
-      targetRegisterId = fallback.rows?.[0]?.id || null;
-    }
-    if (!targetRegisterId) {
-      console.warn('[InvoicesAPI] Kasa satırı yazılamadı: aktif kasa bulunamadı (firmNr=%s).', firmNr);
-      return;
-    }
 
-    const periodNr = String((ERP_SETTINGS as any).periodNr ?? '01');
-    const upsertResult = await postgres.query<{ id: string; inserted: boolean }>(
-      `INSERT INTO cash_lines (
-         firm_nr, period_nr, register_id, fiche_no, date, amount, sign,
-         definition, transaction_type,
-         customer_id, party_id, currency_code, exchange_rate, f_amount,
-         transfer_status, special_code,
-         target_register_id, bank_id, bank_account_id, expense_card_id,
-         tax_rate, withholding_tax_rate
-       ) VALUES (
-         $1::text, $2::text, $3::text::uuid, $4::text, $5::text,
-         $6::numeric, 1,
-         $7::text, 'KASA_GIRIS',
-         $8::text::uuid, NULL, 'YEREL', 1, 0,
-         0, '',
-         NULL, NULL, NULL, NULL,
-         0, 0
-       )
-       ON CONFLICT (fiche_no) DO UPDATE
-         SET amount = EXCLUDED.amount,
-             date = EXCLUDED.date,
-             definition = EXCLUDED.definition,
-             register_id = EXCLUDED.register_id,
-             customer_id = COALESCE(EXCLUDED.customer_id, cash_lines.customer_id),
-             updated_at = NOW()
-       RETURNING id, (xmax = 0) AS inserted`,
-      [String(firmNr), periodNr, targetRegisterId, ficheNo, tarih,
-       amount, aciklama, customerId]
-    );
-    const inserted = upsertResult.rows?.[0]?.inserted === true;
-
-    // Yalnızca yeni INSERT ise kasa bakiyesini güncelle; UPDATE'te amount
-    // değişmemişse çift ekleme olur (önceki davranış).
-    if (inserted) {
-      await postgres.query(
-        `UPDATE rex_001_cash_registers
-            SET balance = COALESCE(balance, 0) + $1::numeric,
-                updated_at = NOW()
-          WHERE id = $2::text::uuid`,
-        [amount, targetRegisterId]
-      );
+    if (isRest) {
+      await writeCashRegisterLineRest(inv, firmNr, periodNr, candidates, amount, ficheNo, tarih, aciklama, customerId);
+    } else {
+      await writeCashRegisterLineSql(firmNr, periodNr, candidates, amount, ficheNo, tarih, aciklama, customerId, targetRegisterId);
     }
   } catch (e: any) {
     console.error('[InvoicesAPI] ⚠️ Kasa satırı (fatura) yazılamadı:', {
@@ -754,6 +692,252 @@ async function writeCashRegisterLineForInvoice(inv: Invoice, firmNr: string): Pr
       firmNr,
       target_register_id: targetRegisterId,
     });
+  }
+}
+
+/**
+ * SQL modu: tek statement INSERT (ON CONFLICT → UPDATE) + bakiye UPDATE.
+ */
+async function writeCashRegisterLineSql(
+  firmNr: string,
+  periodNr: string,
+  candidates: string[],
+  amount: number,
+  ficheNo: string,
+  tarih: string,
+  aciklama: string,
+  customerId: string | null,
+  targetRegisterIdRef: string | null
+): Promise<void> {
+  let targetRegisterId = targetRegisterIdRef;
+  for (const cand of candidates) {
+    const verify = await postgres.query<{ id: string }>(
+      `SELECT id FROM rex_001_cash_registers
+        WHERE id = $1::text::uuid AND is_active = true
+        LIMIT 1`,
+      [cand]
+    );
+    if (verify.rows?.[0]?.id) {
+      targetRegisterId = verify.rows[0].id;
+      break;
+    }
+  }
+  if (!targetRegisterId) {
+    const fallback = await postgres.query<{ id: string }>(
+      `SELECT id FROM rex_001_cash_registers
+        WHERE firm_nr = $1::text AND is_active = true
+        ORDER BY (name ILIKE 'MERKEZ KASA') DESC,
+                 (name ILIKE 'PATRON KASA') DESC,
+                 code ASC
+        LIMIT 1`,
+      [String(firmNr)]
+    );
+    targetRegisterId = fallback.rows?.[0]?.id || null;
+  }
+  if (!targetRegisterId) {
+    console.warn('[InvoicesAPI] Kasa satırı yazılamadı: aktif kasa bulunamadı (firmNr=%s).', firmNr);
+    return;
+  }
+
+  const upsertResult = await postgres.query<{ id: string; inserted: boolean }>(
+    `INSERT INTO cash_lines (
+       firm_nr, period_nr, register_id, fiche_no, date, amount, sign,
+       definition, transaction_type,
+       customer_id, party_id, currency_code, exchange_rate, f_amount,
+       transfer_status, special_code,
+       target_register_id, bank_id, bank_account_id, expense_card_id,
+       tax_rate, withholding_tax_rate
+     ) VALUES (
+       $1::text, $2::text, $3::text::uuid, $4::text, $5::text,
+       $6::numeric, 1,
+       $7::text, 'KASA_GIRIS',
+       $8::text::uuid, NULL, 'YEREL', 1, 0,
+       0, '',
+       NULL, NULL, NULL, NULL,
+       0, 0
+     )
+     ON CONFLICT (fiche_no) DO UPDATE
+       SET amount = EXCLUDED.amount,
+           date = EXCLUDED.date,
+           definition = EXCLUDED.definition,
+           register_id = EXCLUDED.register_id,
+           customer_id = COALESCE(EXCLUDED.customer_id, cash_lines.customer_id),
+           updated_at = NOW()
+     RETURNING id, (xmax = 0) AS inserted`,
+    [String(firmNr), periodNr, targetRegisterId, ficheNo, tarih,
+     amount, aciklama, customerId]
+  );
+  const inserted = upsertResult.rows?.[0]?.inserted === true;
+
+  if (inserted) {
+    await postgres.query(
+      `UPDATE rex_001_cash_registers
+          SET balance = COALESCE(balance, 0) + $1::numeric,
+              updated_at = NOW()
+        WHERE id = $2::text::uuid`,
+      [amount, targetRegisterId]
+    );
+  }
+}
+
+/**
+ * rest_api modu: PostgREST üzerinden cash_lines INSERT ve kasa bakiye PATCH.
+ * PostgREST'te ON CONFLICT yok; idempotent için önce mevcut satırı
+ * sorgulayıp varsa PATCH, yoksa POST yapıyoruz.
+ */
+async function writeCashRegisterLineRest(
+  inv: Invoice,
+  firmNr: string,
+  periodNr: string,
+  candidates: string[],
+  amount: number,
+  ficheNo: string,
+  tarih: string,
+  aciklama: string,
+  customerId: string | null
+): Promise<void> {
+  const { postgrest } = await import('./postgrestClient');
+  const firmPad = String(firmNr).padStart(3, '0');
+  const periodPad = String(periodNr).padStart(2, '0');
+  const cashLinesTable = `/rex_${firmPad}_${periodPad}_cash_lines`;
+
+  // 1) Hedef kasa: önce candidates'tan PostgREST GET ile doğrula
+  let targetRegisterId: string | null = null;
+  for (const cand of candidates) {
+    try {
+      const rows = await postgrest.get<any[]>(
+        `/rex_001_cash_registers`,
+        {
+          params: { id: `eq.${cand}`, is_active: 'eq.true', limit: 1 },
+          schema: 'public',
+        }
+      );
+      if (rows?.[0]?.id) {
+        targetRegisterId = rows[0].id;
+        break;
+      }
+    } catch (_e) { /* sonraki adaya geç */ }
+  }
+  if (!targetRegisterId) {
+    // Fallback: aktif kasalardan ilki (PostgREST filter + order)
+    try {
+      const rows = await postgrest.get<any[]>(
+        `/rex_001_cash_registers`,
+        {
+          params: {
+            select: 'id,name,code',
+            firm_nr: `eq.${firmNr}`,
+            is_active: 'eq.true',
+            order: 'code.asc',
+            limit: 10,
+          },
+          schema: 'public',
+        }
+      );
+      // MERKEZ KASA / PATRON KASA tercihli
+      const sorted = (rows || []).slice().sort((a, b) => {
+        const aIsMerkez = String(a.name || '').toUpperCase().includes('MERKEZ KASA') ? 0 : 1;
+        const bIsMerkez = String(b.name || '').toUpperCase().includes('MERKEZ KASA') ? 0 : 1;
+        if (aIsMerkez !== bIsMerkez) return aIsMerkez - bIsMerkez;
+        return String(a.code || '').localeCompare(String(b.code || ''));
+      });
+      targetRegisterId = sorted[0]?.id || null;
+    } catch (_e) { /* ignore */ }
+  }
+  if (!targetRegisterId) {
+    console.warn('[InvoicesAPI] rest_api: aktif kasa bulunamadı (firmNr=%s).', firmNr);
+    return;
+  }
+
+  // 2) Mevcut cash_lines var mı? (idempotent edit senkronizasyonu)
+  let existing: { id: string } | null = null;
+  try {
+    const rows = await postgrest.get<any[]>(
+      cashLinesTable,
+      {
+        params: { fiche_no: `eq.${ficheNo}`, select: 'id', limit: 1 },
+        schema: 'public',
+      }
+    );
+    if (rows?.[0]?.id) existing = rows[0];
+  } catch (_e) { /* yeni INSERT kabul */ }
+
+  const cashLineBody: Record<string, unknown> = {
+    firm_nr: String(firmNr),
+    period_nr: String(periodNr),
+    register_id: targetRegisterId,
+    fiche_no: ficheNo,
+    date: tarih,
+    amount: amount,
+    sign: 1,
+    definition: aciklama,
+    transaction_type: 'KASA_GIRIS',
+    customer_id: customerId,
+    party_id: null,
+    currency_code: 'YEREL',
+    exchange_rate: 1,
+    f_amount: 0,
+    transfer_status: 0,
+    special_code: '',
+    target_register_id: null,
+    bank_id: null,
+    bank_account_id: null,
+    expense_card_id: null,
+    tax_rate: 0,
+    withholding_tax_rate: 0,
+  };
+
+  if (existing?.id) {
+    try {
+      await postgrest.patch(
+        `${cashLinesTable}?id=eq.${existing.id}`,
+        { amount, date: tarih, definition: aciklama, register_id: targetRegisterId, customer_id: customerId },
+        { schema: 'public' }
+      );
+      return; // UPDATE → bakiye değişmedi
+    } catch (_e) { /* PATCH başarısız, INSERT'i dene */ }
+  }
+
+  // 3) INSERT (UNIQUE çakışması için PostgREST Prefer: resolution=ignore-duplicates)
+  let insertedOk = false;
+  try {
+    await postgrest.post<any>(cashLinesTable, cashLineBody, {
+      schema: 'public',
+      prefer: 'return=minimal',
+    });
+    insertedOk = true;
+  } catch (_e) {
+    // Çakışma → PATCH'e düş
+    try {
+      await postgrest.patch(
+        `${cashLinesTable}?fiche_no=eq.${ficheNo}`,
+        { amount, date: tarih, definition: aciklama, register_id: targetRegisterId, customer_id: customerId },
+        { schema: 'public' }
+      );
+    } catch (_e2) {
+      // skip — log error caller'da
+      throw _e;
+    }
+  }
+
+  if (insertedOk) {
+    // 4) Kasa bakiyesi PATCH (artı amount). PostgREST'te balance += yok;
+    // mevcut balance'ı GET edip SET ediyoruz.
+    try {
+      const cur = await postgrest.get<any[]>(
+        `/rex_001_cash_registers`,
+        { params: { id: `eq.${targetRegisterId}`, select: 'balance', limit: 1 }, schema: 'public' }
+      );
+      const curBalance = Number(cur?.[0]?.balance ?? 0);
+      await postgrest.patch(
+        `/rex_001_cash_registers?id=eq.${targetRegisterId}`,
+        { balance: curBalance + amount, updated_at: new Date().toISOString() },
+        { schema: 'public' }
+      );
+    } catch (_e) {
+      // bakiye PATCH başarısız → cash_lines yazıldı, bakiye tutmuyor olabilir.
+      console.warn('[InvoicesAPI] rest_api: kasa bakiyesi güncellenemedi:', (_e as any)?.message || String(_e));
+    }
   }
 }
 

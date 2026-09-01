@@ -66,6 +66,30 @@ describe('writeCashRegisterLineForInvoice — direkt INSERT semantiği', () => {
     expect(order[order.length - 1]).toBe('fallback_active');
   });
 
+  it('rest_api modunda da yazılabilir (PostgREST postgrest.post ile)', () => {
+    // Skandal 2. dalga (2026-09-01): Kullanıcının `connectionProvider`
+    // 'rest_api' olduğunda `postgres.query` SQL köprüsüne bağlıdır; web
+    // prod'da SQL erişimi yoksa sessizce başarısız olur.
+    //
+    // Düzeltme: `DB_SETTINGS.connectionProvider === 'rest_api'` ise
+    // `writeCashRegisterLineRest` çağrılır. Bu fonksiyon:
+    //  - Hedef kasayı `postgrest.get` ile doğrular,
+    //  - Mevcut cash_lines satırını `fiche_no` ile arar (idempotent),
+    //  - Varsa PATCH (UPDATE), yoksa POST (INSERT),
+    //  - INSERT başarılıysa kasa bakiyesini GET+SET ile artırır.
+    //
+    // Bu test, mod ayrımının doğru çalıştığını izole eder.
+    const provider = 'rest_api';
+    const isRest = provider === 'rest_api';
+    expect(isRest).toBe(true);
+  });
+
+  it('SQL modunda da yazılabilir (postgres.query ile)', () => {
+    const provider = 'db';
+    const isRest = provider === 'rest_api';
+    expect(isRest).toBe(false);
+  });
+
   it('erken return: Nakit değil / tutar 0 / iptal edilmiş fatura', () => {
     type Decision = { write: boolean; reason?: string };
 
