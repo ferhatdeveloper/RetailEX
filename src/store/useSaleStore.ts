@@ -143,9 +143,79 @@ export const useSaleStore = create<SaleState>()(
     {
       name: 'retailos-sales-storage',
       partialize: (state) => ({
-        sales: state.sales.slice(0, 100), // Only persist last 100 sales
+        // localStorage kotası (5-10 MB) taşmasın diye sadece "hafif" meta
+        // veri saklanır. items/payments/müşteri detayları DB'de mevcut;
+        // burada sadece liste ekranı için gerekli başlık bilgileri tutulur.
+        // QuotaExceeded hatasının ana nedeni: items[] ve customerAddress
+        // gibi büyük alanlar 100 satırla MB'ları buluyordu.
+        sales: state.sales.slice(0, 50).map((s) => ({
+          id: s.id,
+          receiptNumber: s.receiptNumber,
+          date: s.date,
+          customerId: s.customerId,
+          customerName: s.customerName,
+          customerCode: s.customerCode,
+          total: s.total,
+          subtotal: s.subtotal,
+          tax: s.tax,
+          discount: s.discount,
+          paymentMethod: s.paymentMethod,
+          paymentStatus: s.paymentStatus,
+          status: s.status,
+          cashier: s.cashier,
+          storeId: s.storeId,
+          userId: s.userId,
+          firmNr: s.firmNr,
+          periodNr: s.periodNr,
+          created_at: s.created_at,
+          // items / payments / customerAddress / notes / campaign vb. ÇIKARILDI
+          itemCount: Array.isArray(s.items) ? s.items.length : 0,
+        })),
         lastSync: state.lastSync
-      })
+      }),
+      // localStorage QuotaExceeded hatası kullanıcı deneyimini bozmasın:
+      // mevcut anahtarı sil ve yeniden dene. Eski şişmiş veri zaten DB'de
+      // (sales tablosu + invoice API), kaybı risk değil.
+      storage: {
+        getItem: (name) => {
+          try {
+            const raw = localStorage.getItem(name);
+            return raw ? JSON.parse(raw) : null;
+          } catch (err) {
+            console.warn('[SaleStore] storage.getItem başarısız, anahtar siliniyor:', err);
+            try { localStorage.removeItem(name); } catch {}
+            return null;
+          }
+        },
+        setItem: (name, value) => {
+          try {
+            localStorage.setItem(name, JSON.stringify(value));
+          } catch (err: any) {
+            const isQuota =
+              err?.name === 'QuotaExceededError' ||
+              /quota/i.test(String(err?.message || ''));
+            if (isQuota) {
+              console.warn(
+                '[SaleStore] localStorage kotası aşıldı, eski anahtar siliniyor ve tekrar deneniyor:',
+                name,
+              );
+              try { localStorage.removeItem(name); } catch {}
+              try {
+                localStorage.setItem(name, JSON.stringify(value));
+              } catch (err2) {
+                // ikinci deneme de başarısız (başka anahtarlar da kotası
+                // dolduruyor olabilir) — sessizce yoksay, uygulama çalışmaya devam etsin
+                console.warn('[SaleStore] localStorage yazımı ikinci denemede de başarısız:', err2);
+              }
+            } else {
+              throw err;
+            }
+          }
+        },
+        removeItem: (name) => {
+          try { localStorage.removeItem(name); } catch {}
+        },
+      },
     }
   )
 );
