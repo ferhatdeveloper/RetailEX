@@ -1,4 +1,4 @@
-﻿import { X, CreditCard, Wallet, Banknote, Building2, Users } from 'lucide-react';
+﻿import { X, CreditCard, Wallet, Banknote, Building2, Users, Plus, Trash2, ShoppingCart } from 'lucide-react';
 import { useEffect, useMemo, useState } from 'react';
 import { useLanguage } from '../../../contexts/LanguageContext';
 import {
@@ -20,6 +20,25 @@ export interface InvoicePaymentInfoSelection {
   cashRegisterId: string | null;
   cashRegisterName?: string | null;
   cashRegisterCode?: string | null;
+  notes?: string;
+  /**
+   * Çoklu ödeme (Market POS pattern). Boşsa yalnızca tek-ödeme modu
+   * kullanılır ve bilgiler paymentMethod / cashRegisterId alanlarından alınır.
+   * Doluysa her satır bağımsız bir ödeme olarak işlenir; her biri kendi
+   * yöntemini, tutarını, kasasını taşır. Tek-ödeme alanları geriye dönük
+   * uyumluluk için ilk satırla doldurulur.
+   */
+  payments?: InvoicePaymentRow[];
+}
+
+export interface InvoicePaymentRow {
+  method: string;
+  amount: number;
+  currency: 'IQD' | 'USD' | 'EUR';
+  cashRegisterId: string | null;
+  cashRegisterName?: string | null;
+  cashRegisterCode?: string | null;
+  /** Opsiyonel serbest not (Market POS'taki 'transactionId' karşılığı değil) */
   notes?: string;
 }
 
@@ -53,8 +72,23 @@ export function InvoicePaymentInfoModal({
   const [cashRegistersLoading, setCashRegistersLoading] = useState(false);
   const [selectedCashRegisterId, setSelectedCashRegisterId] = useState<string>('');
 
+  // Çoklu ödeme (Market POS pattern). enabled=true ise kullanıcı
+  // birden fazla ödeme satırı ekleyebilir; false ise mevcut tek-ödeme
+  // akışı korunur (geriye dönük uyumluluk).
+  const [multiPaymentEnabled, setMultiPaymentEnabled] = useState(false);
+  // Geçici "yeni satır" form state'i
+  const [draftAmount, setDraftAmount] = useState('');
+  const [draftMethod, setDraftMethod] = useState(initialCode);
+  const [draftCurrency, setDraftCurrency] = useState<'IQD' | 'USD' | 'EUR'>('IQD');
+  const [draftRegisterId, setDraftRegisterId] = useState<string>('');
+  // Eklenen ödeme satırları
+  const [addedPayments, setAddedPayments] = useState<InvoicePaymentRow[]>([]);
+
   useEffect(() => {
     setSelectedMethod(
+      dbPaymentMethodToFormCode(currentPaymentMethod) || currentPaymentMethod || 'ACIK_CARI',
+    );
+    setDraftMethod(
       dbPaymentMethodToFormCode(currentPaymentMethod) || currentPaymentMethod || 'ACIK_CARI',
     );
   }, [currentPaymentMethod]);
@@ -119,7 +153,71 @@ export function InvoicePaymentInfoModal({
 
   const selectedCashRegister = cashRegisters.find((k) => k.id === selectedCashRegisterId) || null;
 
+  // Çoklu ödeme için "yeni satır ekle" — Market POS pattern.
+  // Yalnızca kasa bağlantısı olan yöntemler (nakit / kart / havale / çek / senet)
+  // kasaya yazılır; ACIK_CARI kasaya yansımaz (cari borç olarak işlenir).
+  const parseAmount = (raw: string): number => {
+    if (!raw) return 0;
+    const s = String(raw).replace(/\./g, '').replace(/,/g, '.').trim();
+    const n = parseFloat(s);
+    return Number.isFinite(n) ? n : 0;
+  };
+
+  const handleAddPaymentRow = () => {
+    const amount = parseAmount(draftAmount);
+    if (amount <= 0) return;
+    const method = draftMethod || 'NAKIT';
+    const impliesCash = paymentMethodImpliesPaidNow(method);
+    const regId = impliesCash
+      ? draftRegisterId || cashRegisters[0]?.id || null
+      : null;
+    const reg = cashRegisters.find((k) => k.id === regId) || null;
+    setAddedPayments((prev) => [
+      ...prev,
+      {
+        method,
+        amount,
+        currency: draftCurrency,
+        cashRegisterId: reg?.id || null,
+        cashRegisterName: reg?.kasa_adi || null,
+        cashRegisterCode: reg?.kasa_kodu || null,
+      },
+    ]);
+    setDraftAmount('');
+    // Sonraki satır için varsayılan: aynı yöntem + kasa, sıfır tutar.
+    setDraftMethod(method);
+    if (reg?.id) setDraftRegisterId(reg.id);
+  };
+
+  const handleRemovePaymentRow = (index: number) => {
+    setAddedPayments((prev) => prev.filter((_, i) => i !== index));
+  };
+
+  // Çoklu ödeme taslak tutarı (referans para biriminde kabaca)
+  const totalDraftAmount = useMemo(
+    () => addedPayments.reduce((s, p) => s + (Number.isFinite(p.amount) ? p.amount : 0), 0),
+    [addedPayments],
+  );
+
   const handleSave = () => {
+    // Çoklu ödeme modu açıksa ve en az 1 satır eklendiyse, bu satırlar
+    // birincil bilgi kaynağıdır. Tek-ödeme alanları (paymentMethod /
+    // cashRegisterId) yalnızca geriye dönük uyumluluk için ilk satırdan
+    // doldurulur — yeni createInvoice akışı payments[] dizisini kullanır.
+    if (multiPaymentEnabled && addedPayments.length > 0) {
+      const first = addedPayments[0];
+      const method = first.method;
+      onSelect(method, {
+        paymentMethod: method,
+        cashRegisterId: first.cashRegisterId || null,
+        cashRegisterName: first.cashRegisterName || null,
+        cashRegisterCode: first.cashRegisterCode || null,
+        notes,
+        payments: addedPayments,
+      });
+      onClose();
+      return;
+    }
     const method = selectedMethod || 'ACIK_CARI';
     onSelect(method, {
       paymentMethod: method,
@@ -132,7 +230,7 @@ export function InvoicePaymentInfoModal({
   };
 
   return (
-    <PercentBodyModal onClose={onClose} size="compact" ariaLabel={tm('paymentInfo')}>
+    <PercentBodyModal onClose={onClose} size={multiPaymentEnabled ? 'list' : 'compact'} ariaLabel={tm('paymentInfo')}>
         <div className="p-3 border-b border-gray-200 flex items-center justify-between shrink-0 bg-gradient-to-r from-blue-600 to-blue-700">
           <h3 className="text-base text-white flex items-center gap-2">
             <CreditCard className="w-5 h-5" />
@@ -222,6 +320,146 @@ export function InvoicePaymentInfoModal({
               )}
             </div>
           )}
+
+          {/* Çoklu ödeme (Market POS pattern) — opsiyonel */}
+          <div className="mb-4 border border-gray-200 rounded-lg p-3 bg-gray-50">
+            <label className="flex items-center gap-2 text-sm font-medium text-gray-700 mb-2 cursor-pointer select-none">
+              <input
+                type="checkbox"
+                checked={multiPaymentEnabled}
+                onChange={(e) => {
+                  setMultiPaymentEnabled(e.target.checked);
+                  if (!e.target.checked) {
+                    setAddedPayments([]);
+                    setDraftAmount('');
+                  }
+                }}
+                className="w-4 h-4 rounded border-gray-300 text-blue-600 focus:ring-blue-500"
+              />
+              <ShoppingCart className="w-4 h-4 text-gray-500" />
+              <span>{tm('multiplePaymentToggle') || 'Birden fazla ödeme yöntemi kullan'}</span>
+            </label>
+
+            {multiPaymentEnabled && (
+              <div className="space-y-2">
+                <div className="text-xs text-gray-500">
+                  {tm('multiplePaymentHint') ||
+                    'Birden fazla yöntemle ödeme alabilirsiniz (ör. yarısı nakit, yarısı kart). Her satır kendi kasasına yazılır.'}
+                </div>
+
+                {/* Eklenen ödemeler listesi */}
+                {addedPayments.length > 0 && (
+                  <div className="space-y-1">
+                    {addedPayments.map((p, idx) => {
+                      const regLabel = p.cashRegisterName
+                        ? `${p.cashRegisterName}`
+                        : '—';
+                      const methodLabel =
+                        paymentMethods.find((m) => m.code === p.method)?.nameKey
+                          ? tm(paymentMethods.find((m) => m.code === p.method)!.nameKey)
+                          : p.method;
+                      return (
+                        <div
+                          key={idx}
+                          className="flex items-center justify-between gap-2 px-2 py-1.5 bg-white border border-gray-200 rounded text-xs"
+                        >
+                          <div className="flex items-center gap-2 min-w-0 flex-1">
+                            <span className="font-medium text-gray-900 truncate">
+                              {methodLabel}
+                            </span>
+                            <span className="text-gray-500">·</span>
+                            <span className="font-mono font-semibold text-gray-900">
+                              {p.amount.toLocaleString('tr-TR', { minimumFractionDigits: 0, maximumFractionDigits: 2 })} {p.currency}
+                            </span>
+                            {paymentMethodImpliesPaidNow(p.method) && (
+                              <>
+                                <span className="text-gray-500">·</span>
+                                <span className="text-emerald-700 truncate">{regLabel}</span>
+                              </>
+                            )}
+                          </div>
+                          <button
+                            type="button"
+                            onClick={() => handleRemovePaymentRow(idx)}
+                            className="text-red-500 hover:text-red-700 shrink-0"
+                            aria-label="Satırı sil"
+                          >
+                            <Trash2 className="w-3.5 h-3.5" />
+                          </button>
+                        </div>
+                      );
+                    })}
+                    <div className="text-[11px] text-gray-600 text-right pt-1 border-t border-gray-200">
+                      {tm('total') || 'Toplam'}: <span className="font-mono font-semibold">{totalDraftAmount.toLocaleString('tr-TR', { minimumFractionDigits: 0, maximumFractionDigits: 2 })} IQD</span>
+                    </div>
+                  </div>
+                )}
+
+                {/* Yeni satır formu */}
+                <div className="grid grid-cols-12 gap-2 pt-2 border-t border-gray-200">
+                  <select
+                    aria-label="Yöntem"
+                    value={draftMethod}
+                    onChange={(e) => setDraftMethod(e.target.value)}
+                    className="col-span-4 px-2 py-1.5 text-xs border border-gray-300 rounded bg-white"
+                  >
+                    {paymentMethods.map((m) => (
+                      <option key={m.code} value={m.code}>
+                        {tm(m.nameKey)}
+                      </option>
+                    ))}
+                  </select>
+                  <input
+                    type="text"
+                    aria-label="Tutar"
+                    value={draftAmount}
+                    onChange={(e) => setDraftAmount(e.target.value)}
+                    placeholder="0"
+                    className="col-span-3 px-2 py-1.5 text-xs border border-gray-300 rounded text-right font-mono bg-white"
+                  />
+                  <select
+                    aria-label="Para birimi"
+                    value={draftCurrency}
+                    onChange={(e) => setDraftCurrency(e.target.value as 'IQD' | 'USD' | 'EUR')}
+                    className="col-span-2 px-2 py-1.5 text-xs border border-gray-300 rounded bg-white"
+                  >
+                    <option value="IQD">IQD</option>
+                    <option value="USD">USD</option>
+                    <option value="EUR">EUR</option>
+                  </select>
+                  {paymentMethodImpliesPaidNow(draftMethod) ? (
+                    <select
+                      aria-label="Kasa"
+                      value={draftRegisterId}
+                      onChange={(e) => setDraftRegisterId(e.target.value)}
+                      disabled={cashRegistersLoading || cashRegisters.length === 0}
+                      className="col-span-2 px-2 py-1.5 text-xs border border-gray-300 rounded bg-white"
+                    >
+                      <option value="">
+                        {cashRegistersLoading ? '…' : tm('selectCashRegister') || 'Kasa seçin'}
+                      </option>
+                      {cashRegisters.map((k) => (
+                        <option key={k.id} value={k.id}>
+                          {k.kasa_adi}
+                        </option>
+                      ))}
+                    </select>
+                  ) : (
+                    <div className="col-span-2" />
+                  )}
+                  <button
+                    type="button"
+                    onClick={handleAddPaymentRow}
+                    disabled={parseAmount(draftAmount) <= 0}
+                    className="col-span-1 px-2 py-1.5 text-xs bg-emerald-600 text-white rounded hover:bg-emerald-700 disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center"
+                    aria-label="Ödeme ekle"
+                  >
+                    <Plus className="w-3.5 h-3.5" />
+                  </button>
+                </div>
+              </div>
+            )}
+          </div>
 
           <div className="mb-4">
             <label className="block text-sm font-medium text-gray-700 mb-2">{tm('notes')}</label>

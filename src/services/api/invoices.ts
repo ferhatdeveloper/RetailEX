@@ -615,7 +615,6 @@ async function writeCashRegisterLineForInvoice(inv: Invoice, firmNr: string): Pr
     || cat === 'sales_invoice' || cat === 'satış' || cat === 'hizmet' || cat === 'service';
   if (
     !isSaleCategory
-    || !paymentMethodImpliesCashInKasa((inv as any).payment_method)
     || Number(inv.total_amount || 0) === 0
     || String(inv.status || '').toLowerCase() === 'cancelled'
   ) {
@@ -624,7 +623,6 @@ async function writeCashRegisterLineForInvoice(inv: Invoice, firmNr: string): Pr
         invoice_category: inv.invoice_category,
         isSaleCategory,
         payment_method: (inv as any).payment_method,
-        pm_implies_cash: paymentMethodImpliesCashInKasa((inv as any).payment_method),
         total_amount: inv.total_amount,
         status: inv.status,
       });
@@ -632,25 +630,25 @@ async function writeCashRegisterLineForInvoice(inv: Invoice, firmNr: string): Pr
     return;
   }
 
-  // Hedef kasa: öncelik sırasıyla
-  //  1) header_fields.cash_register_id (kullanıcının formda seçtiği kasa)
-  //  2) ERP_SETTINGS.selected_cash_registers[0] (oturum için seçili kasa)
-  //  3) Aktif kasalardan MERKEZ KASA / PATRON KASA tercihli ilki
-  // Her biri için rex_001_cash_registers.is_active doğrulanır.
-  const headerCashRegisterId = isValidUuid((inv as any)?.header_fields?.cash_register_id)
-    ? String((inv as any).header_fields.cash_register_id)
+  // Çoklu ödeme (Market POS pattern): header_fields.payments doluysa
+  // her satır bağımsız bir cash_lines INSERT'i olarak işlenir. Tek-ödeme
+  // modunda (payments boş) eski davranış korunur: payment_method nakit/
+  // kart ise tek satır yazılır.
+  const headerFields = (inv as any)?.header_fields ?? {};
+  const paymentsRaw = Array.isArray(headerFields.payments) ? headerFields.payments : null;
+  const periodNr = String((ERP_SETTINGS as any).periodNr ?? '01');
+  const ficheNo = String(inv.invoice_no || '').trim() || `INV-${String(inv.id || '').slice(0, 8)}`;
+  const tarih = inv.invoice_date || inv.created_at || new Date().toISOString();
+  const customerId = inv.customer_id && isValidUuid(inv.customer_id) ? inv.customer_id : null;
+
+  // Tek-ödeme fallback aday kasaları
+  const headerCashRegisterId = isValidUuid(headerFields.cash_register_id)
+    ? String(headerFields.cash_register_id)
     : null;
   const configuredCashRegisterId = isValidUuid((ERP_SETTINGS as any).selected_cash_registers?.[0])
     ? String((ERP_SETTINGS as any).selected_cash_registers[0])
     : null;
-
-  const total = Number(inv.total_amount || 0);
-  const amount = Math.abs(total);
-  const ficheNo = String(inv.invoice_no || '').trim() || `INV-${String(inv.id || '').slice(0, 8)}`;
-  const tarih = inv.invoice_date || inv.created_at || new Date().toISOString();
-  const aciklama = `Satış faturası — ${inv.invoice_no || ''}`;
-  const customerId = inv.customer_id && isValidUuid(inv.customer_id) ? inv.customer_id : null;
-  const periodNr = String((ERP_SETTINGS as any).periodNr ?? '01');
+  const defaultCandidates = [headerCashRegisterId, configuredCashRegisterId].filter(Boolean) as string[];
 
   /**
    * Skandal (2026-09-01, 2. dalga): `rest_api` modunda `postgres.query`
@@ -667,16 +665,75 @@ async function writeCashRegisterLineForInvoice(inv: Invoice, firmNr: string): Pr
    * Her iki yolda da UNIQUE(fiche_no) çakışması güvenle handle edilir.
    * Hata console.error ile payload bağlamıyla yazılır.
    */
-  let targetRegisterId: string | null = null;
-  try {
-    const isRest = DB_SETTINGS.connectionProvider === 'rest_api'
-      && !(IS_TAURI && DB_SETTINGS.activeMode === 'hybrid');
-    const candidates = [headerCashRegisterId, configuredCashRegisterId].filter(Boolean) as string[];
+  const isRest = DB_SETTINGS.connectionProvider === 'rest_api'
+    && !(IS_TAURI && DB_SETTINGS.activeMode === 'hybrid');
 
+  // Çoklu ödeme: her payment satırı kendi kasa INSERT'ini yapar.
+  if (paymentsRaw && paymentsRaw.length > 0) {
+    for (let i = 0; i < paymentsRaw.length; i++) {
+      const row = paymentsRaw[i] || {};
+      const rowMethod = String(row.method || '').toLowerCase().trim();
+      // Yalnızca nakit/kart kasaya yazılır (havale, çek, senet vs. farklı
+      // tablolara işlenir; burada sadece kasa hareketi oluşturulur).
+      if (!paymentMethodImpliesCashInKasa(rowMethod)) {
+        continue;
+      }
+      const rowAmount = Math.abs(Number(row.amount || 0));
+      if (!Number.isFinite(rowAmount) || rowAmount <= 0) continue;
+      // Satır kendi kasasını taşır; yoksa defaultCandidates fallback
+      const rowCandidates: string[] = [];
+      const rowRegisterId = isValidUuid(row.cash_register_id)
+        ? String(row.cash_register_id)
+        : null;
+      if (rowRegisterId) rowCandidates.push(rowRegisterId);
+      for (const c of defaultCandidates) {
+        if (!rowCandidates.includes(c)) rowCandidates.push(c);
+      }
+      const subFicheNo = paymentsRaw.length > 1
+        ? `${ficheNo}-${i + 1}`
+        : ficheNo;
+      const subAciklama = paymentsRaw.length > 1
+        ? `${inv.invoice_no || ''} — Ödeme ${i + 1}/${paymentsRaw.length}`
+        : `Satış faturası — ${inv.invoice_no || ''}`;
+      try {
+        if (isRest) {
+          await writeCashRegisterLineRest(
+            inv, firmNr, periodNr, rowCandidates, rowAmount, subFicheNo, tarih, subAciklama, customerId,
+          );
+        } else {
+          await writeCashRegisterLineSql(
+            firmNr, periodNr, rowCandidates, rowAmount, subFicheNo, tarih, subAciklama, customerId, null,
+          );
+        }
+      } catch (e: any) {
+        console.error('[InvoicesAPI] ⚠️ Kasa satırı (çoklu ödeme) yazılamadı:', {
+          error: e?.message || String(e),
+          code: (e as any)?.code,
+          detail: (e as any)?.detail,
+          hint: (e as any)?.hint,
+          invoice_no: inv.invoice_no,
+          row_index: i,
+          row_method: rowMethod,
+          row_amount: rowAmount,
+          row_cash_register_id: rowRegisterId,
+        });
+      }
+    }
+    return;
+  }
+
+  // Tek-ödeme modu: paymentMethod nakit/kart değilse atla
+  if (!paymentMethodImpliesCashInKasa((inv as any).payment_method)) return;
+
+  const total = Number(inv.total_amount || 0);
+  const amount = Math.abs(total);
+  const aciklama = `Satış faturası — ${inv.invoice_no || ''}`;
+
+  try {
     if (isRest) {
-      await writeCashRegisterLineRest(inv, firmNr, periodNr, candidates, amount, ficheNo, tarih, aciklama, customerId);
+      await writeCashRegisterLineRest(inv, firmNr, periodNr, defaultCandidates, amount, ficheNo, tarih, aciklama, customerId);
     } else {
-      await writeCashRegisterLineSql(firmNr, periodNr, candidates, amount, ficheNo, tarih, aciklama, customerId, targetRegisterId);
+      await writeCashRegisterLineSql(firmNr, periodNr, defaultCandidates, amount, ficheNo, tarih, aciklama, customerId, null);
     }
   } catch (e: any) {
     console.error('[InvoicesAPI] ⚠️ Kasa satırı (fatura) yazılamadı:', {
@@ -690,7 +747,6 @@ async function writeCashRegisterLineForInvoice(inv: Invoice, firmNr: string): Pr
       total_amount: inv.total_amount,
       status: inv.status,
       firmNr,
-      target_register_id: targetRegisterId,
     });
   }
 }

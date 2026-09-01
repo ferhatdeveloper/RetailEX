@@ -18,6 +18,24 @@ export type InvoiceHeaderFields = {
   footerDiscountPercent?: string;
   /** Dip indirim tutarı — fatura dövizinde */
   footerDiscountAmount?: string;
+  /** Ödeme sırasında seçilen kasa bilgisi (Market POS pattern, JSON) */
+  cash_register_id?: string;
+  cash_register_name?: string;
+  cash_register_code?: string;
+  /**
+   * Çoklu ödeme satırları (Market POS pattern). Her satır kendi yöntemini,
+   * tutarını, kasasını taşır. Boşsa tek-ödeme modu kullanılır ve bilgi
+   * `cash_register_id` alanından çıkarılır.
+   */
+  payments?: Array<{
+    method: string;
+    amount: number;
+    currency: 'IQD' | 'USD' | 'EUR';
+    cash_register_id: string | null;
+    cash_register_name?: string | null;
+    cash_register_code?: string | null;
+    notes?: string;
+  }>;
 };
 
 export function readInvoiceHeaderFields(raw: unknown): InvoiceHeaderFields {
@@ -49,11 +67,13 @@ export function buildInvoiceHeaderFieldsFromForm(input: {
   footerDiscountMode?: string;
   footerDiscountPercent?: string | number;
   footerDiscountAmount?: string | number;
+  cashRegister?: { id?: string | null; name?: string | null; code?: string | null };
+  payments?: InvoiceHeaderFields['payments'];
 }): InvoiceHeaderFields {
   const out: InvoiceHeaderFields = {};
-  const set = (key: keyof InvoiceHeaderFields, val?: string) => {
+  const set = (key: keyof InvoiceHeaderFields, val?: string | null) => {
     const v = String(val ?? '').trim();
-    if (v) out[key] = v;
+    if (v) (out as Record<string, unknown>)[key] = v;
   };
   set('documentNo', input.documentNo);
   set('specialCode', input.specialCode);
@@ -78,6 +98,22 @@ export function buildInvoiceHeaderFieldsFromForm(input: {
   }
   if (Number.isFinite(amt) && amt > 0) {
     out.footerDiscountAmount = String(amt);
+  }
+  if (input.cashRegister) {
+    set('cash_register_id', input.cashRegister.id);
+    set('cash_register_name', input.cashRegister.name);
+    set('cash_register_code', input.cashRegister.code);
+  }
+  if (Array.isArray(input.payments) && input.payments.length > 0) {
+    out.payments = input.payments.map((p) => ({
+      method: String(p?.method ?? ''),
+      amount: Number(p?.amount ?? 0) || 0,
+      currency: (p?.currency ?? 'IQD') as 'IQD' | 'USD' | 'EUR',
+      cash_register_id: p?.cash_register_id ?? null,
+      cash_register_name: p?.cash_register_name ?? null,
+      cash_register_code: p?.cash_register_code ?? null,
+      notes: p?.notes,
+    }));
   }
   return out;
 }

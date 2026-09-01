@@ -564,6 +564,24 @@ export function UniversalInvoiceForm({
     const v = (editData as any)?.cash_register_code;
     return typeof v === 'string' ? v : '';
   });
+  /**
+   * Çoklu ödeme satırları (Market POS pattern). Boşsa tek-ödeme (NAKIT /
+   * KREDIKARTI / ACIK_CARI) kullanılır ve yalnızca cashRegisterId alanı
+   * üzerinden writeCashRegisterLineForInvoice çalışır. Doluysa her satır
+   * için ayrı cash_lines INSERT + cash_registers.balance UPDATE yapılır.
+   */
+  const [paymentRows, setPaymentRows] = useState<Array<{
+    method: string;
+    amount: number;
+    currency: 'IQD' | 'USD' | 'EUR';
+    cashRegisterId: string | null;
+    cashRegisterName?: string | null;
+    cashRegisterCode?: string | null;
+    notes?: string;
+  }>>(() => {
+    const raw = (editData as any)?.payments ?? (editData as any)?.payment_rows;
+    return Array.isArray(raw) ? raw : [];
+  });
   // Kasa listesi — ödeme tipi seçildiğinde uygun kasaları önermek için
   const [cashRegisters, setCashRegisters] = useState<KasaRow[]>([]);
   const [cashRegistersLoading, setCashRegistersLoading] = useState(false);
@@ -3668,6 +3686,20 @@ export function UniversalInvoiceForm({
           footerDiscountMode,
           footerDiscountPercent: totals.footerDiscountPercent,
           footerDiscountAmount: totals.footerDiscount,
+          cashRegister: {
+            id: cashRegisterId || null,
+            name: cashRegisterName || null,
+            code: cashRegisterCode || null,
+          },
+          payments: paymentRows.map((p) => ({
+            method: p.method,
+            amount: p.amount,
+            currency: p.currency,
+            cash_register_id: p.cashRegisterId,
+            cash_register_name: p.cashRegisterName,
+            cash_register_code: p.cashRegisterCode,
+            notes: p.notes,
+          })),
         }),
         currency: currency || ledgerCurrency,
         currency_rate: effectiveInvoiceCurrencyRate || 1,
@@ -5168,6 +5200,11 @@ export function UniversalInvoiceForm({
                   setCashRegisterId(extra.cashRegisterId || '');
                   setCashRegisterName(extra.cashRegisterName || '');
                   setCashRegisterCode(extra.cashRegisterCode || '');
+                  if (Array.isArray(extra.payments)) {
+                    setPaymentRows(extra.payments);
+                  } else {
+                    setPaymentRows([]);
+                  }
                 }
               }}
               onClose={() => setShowPaymentInfoModal(false)}

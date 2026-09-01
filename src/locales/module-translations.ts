@@ -382,6 +382,8 @@ export const moduleTranslations: Record<string, Record<Language, string>> = {
   cashRegisterLabel: { tr: 'Kasa Seçimi', en: 'Cash Register', ar: 'اختيار الصندوق', ku: 'هەڵبژاردنی سندوق' },
   cashRegisterSelectHint: { tr: 'Nakit veya kart ödemeleri için kasa seçin', en: 'Select a cash register for cash or card payments', ar: 'اختر صندوقًا للمدفوعات النقدية أو ببطاقة', ku: 'بۆ پارەدانی نەقد یان کارت سندوقێک هەڵبژێرە' },
   cashRegisterRequired: { tr: 'Nakit veya kart ödemesi için kasa seçimi zorunludur', en: 'A cash register is required for cash or card payments', ar: 'اختيار الصندوق مطلوب للمدفوعات النقدية أو ببطاقة', ku: 'بۆ پارەدانی نەقد یان کارت هەڵبژاردنی سندوق پێویستە' },
+  multiplePaymentToggle: { tr: 'Birden fazla ödeme yöntemi kullan', en: 'Use multiple payment methods', ar: 'استخدام طرق دفع متعددة', ku: 'بەکارهێنانی چەند شێوازی پارەدان' },
+  multiplePaymentHint: { tr: 'Birden fazla yöntemle ödeme alabilirsiniz (ör. yarısı nakit, yarısı kart). Her satır kendi kasasına yazılır.', en: 'You can accept payment with multiple methods (e.g. half cash, half card). Each line is posted to its own cash register.', ar: 'يمكنك قبول الدفع بطرق متعددة (مثلاً نصف نقدي ونصف بطاقة). كل سطر يُسجَّل في صندوقه الخاص.', ku: 'دەتوانیت پارە بە چەند شێوازێک وەربگریت (نموونە نیوەی نەقد، نیوەی کارت). هەر هێڵێک دەنووسرێتە سندوقەکەی.' },
   cashRegisterPaymentTypeLabel: { tr: 'Ödeme Türü: {type}', en: 'Payment Type: {type}', ar: 'نوع الدفع: {type}', ku: 'جۆری پارەدان: {type}' },
   selectCashRegister: { tr: 'Kasa seçin (opsiyonel)', en: 'Select cash register (optional)', ar: 'اختر الصندوق (اختياري)', ku: 'سندوق هەڵبژێرە (ئارەزوومەندانە)' },
   transactionHistory: { tr: 'İşlem Geçmişi', en: 'Transaction History', ar: 'سجل المعاملات', ku: 'مێژووی کارەکان' },

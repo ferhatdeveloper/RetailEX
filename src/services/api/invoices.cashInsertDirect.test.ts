@@ -113,3 +113,86 @@ describe('writeCashRegisterLineForInvoice — direkt INSERT semantiği', () => {
     expect(decide({ isSaleCategory: true, pmImpliesCash: true, totalAmount: 5000, status: 'cancelled' }).write).toBe(false);
   });
 });
+
+describe('writeCashRegisterLineForInvoice — çoklu ödeme (Market POS pattern)', () => {
+  // Yardımcı: header_fields.payments'tan hangi satırların kasaya yazılacağını
+  // seçen filtre mantığını izole eder. paymentMethodImpliesCashInKasa
+  // fonksiyonunun birebir aynısı (iç implementasyon).
+  function pmImpliesCash(pm: string): boolean {
+    const p = String(pm || '').trim().toLowerCase();
+    if (!p) return false;
+    if (p === 'cash' || p === 'nakit') return true;
+    if (p === 'nakit' || p.includes('nakit') || p.startsWith('nak')) return true;
+    if (p === 'n' || p === 'na' || p === 'nak') return true;
+    return false;
+  }
+
+  function selectCashLines(payments: Array<any> | undefined) {
+    if (!Array.isArray(payments) || payments.length === 0) return null;
+    const out: Array<{ method: string; amount: number; ficheNo: string }> = [];
+    for (let i = 0; i < payments.length; i++) {
+      const row = payments[i] || {};
+      const method = String(row.method || '').toLowerCase().trim();
+      if (!pmImpliesCash(method)) continue;
+      const amount = Math.abs(Number(row.amount || 0));
+      if (!Number.isFinite(amount) || amount <= 0) continue;
+      out.push({
+        method,
+        amount,
+        ficheNo: payments.length > 1 ? `BASE-${i + 1}` : 'BASE',
+      });
+    }
+    return out;
+  }
+
+  it('payments array doluysa çoklu INSERT listesi döner', () => {
+    const result = selectCashLines([
+      { method: 'NAKIT', amount: 100000, currency: 'IQD', cash_register_id: 'r1' },
+      { method: 'NAKIT', amount: 50000, currency: 'IQD', cash_register_id: 'r2' },
+    ]);
+    expect(result).not.toBeNull();
+    expect(result?.length).toBe(2);
+    expect(result?.[0].amount).toBe(100000);
+    expect(result?.[1].amount).toBe(50000);
+  });
+
+  it('payments boşsa null döner (tek-ödeme fallback aktif)', () => {
+    expect(selectCashLines([])).toBeNull();
+    expect(selectCashLines(undefined)).toBeNull();
+  });
+
+  it('ACIK_CARI / HAVALE satırları atlanır (cari borç olarak işlenir)', () => {
+    const result = selectCashLines([
+      { method: 'ACIK_CARI', amount: 50000, currency: 'IQD' },
+      { method: 'NAKIT', amount: 30000, currency: 'IQD' },
+    ]);
+    expect(result?.length).toBe(1);
+    expect(result?.[0].method).toBe('nakit');
+  });
+
+  it('geçersiz tutar (≤0 veya NaN) satırları atlanır', () => {
+    const result = selectCashLines([
+      { method: 'NAKIT', amount: 0, currency: 'IQD' },
+      { method: 'NAKIT', amount: 'abc', currency: 'IQD' },
+      { method: 'NAKIT', amount: 100, currency: 'IQD' },
+    ]);
+    expect(result?.length).toBe(1);
+    expect(result?.[0].amount).toBe(100);
+  });
+
+  it('çoklu ödeme: her satır için ayrı fiche_no türetilir (1, 2, ...)', () => {
+    const result = selectCashLines([
+      { method: 'NAKIT', amount: 100, currency: 'IQD' },
+      { method: 'NAKIT', amount: 50, currency: 'IQD' },
+    ]);
+    expect(result?.[0].ficheNo).toMatch(/-1$/);
+    expect(result?.[1].ficheNo).toMatch(/-2$/);
+  });
+
+  it('tek ödeme: tek satırda fiche_no eklemesi olmaz', () => {
+    const result = selectCashLines([
+      { method: 'NAKIT', amount: 100, currency: 'IQD' },
+    ]);
+    expect(result?.[0].ficheNo).toBe('BASE');
+  });
+});
