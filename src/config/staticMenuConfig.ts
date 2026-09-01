@@ -101,7 +101,7 @@ export const getStaticMenuSections = (t: Translations) => [
             },
             { label: t.menu.excelOperations, screen: 'excel', icon: FileSpreadsheet },
             { label: t.menu.smartMaterialAdd, screen: 'smart-material-add', icon: Sparkles },
-            { label: 'Üretim Reçeteleri', screen: 'production', icon: PackagePlus },
+            { label: 'Üretim Reçeteleri', screen: 'production-recipe', icon: PackagePlus },
             { label: 'Kasap Üretim', screen: 'butcher-production', icon: Beef }
         ]
     },

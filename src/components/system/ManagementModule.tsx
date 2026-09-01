@@ -70,6 +70,7 @@ const InvoiceListModule = lazyWithChunkRecovery(() => import('../trading/invoice
 const ETransformModule = lazyWithChunkRecovery(() => import('../modules/ETransformModule').then(m => ({ default: m.ETransformModule })));
 const ReturnModule = lazyWithChunkRecovery(() => import('../trading/invoices/ReturnModule').then(m => ({ default: m.ReturnModule })));
 const ProductionModule = lazyWithChunkRecovery(() => import('../modules/ProductionModule').then(m => ({ default: m.ProductionModule })));
+const ProductionRecipeModule = lazyWithChunkRecovery(() => import('../modules/ProductionRecipeModule').then(m => ({ default: m.ProductionRecipeModule })));
 const ButcherProductionModule = lazyWithChunkRecovery(() => import('../modules/butcher/ButcherProductionModule').then(m => ({ default: m.ButcherProductionModule })));
 const AssetManagementModule = lazyWithChunkRecovery(() => import('../modules/AssetManagementModule').then(m => ({ default: m.AssetManagementModule })));
 const BudgetModule = lazyWithChunkRecovery(() => import('../modules/BudgetModule').then(m => ({ default: m.BudgetModule })));
@@ -219,7 +220,7 @@ type ExtendedScreen = ManagementScreen | 'dashboard' | 'finance' | 'stock' | 'pu
   'etransform' | 'return' | 'production' | 'assets' | 'budget' | 'contracts' | 'quality' | 'service' | 'projects' | 'excel' | 'scale' |
   'multistore' | 'regional' | 'storeconfig' | 'campaigns_mgmt' | 'roles_mgmt' | 'loyalty' | 'giftcard' | 'notifications' | 'multicurrency' | 'commission' | 'usermanagement' | 'whatsapp' | 'mesaj-bildirim' | 'restaurant' | 'appointment' | 'bi-dashboard' | 'ecommerce' | 'cargo' | 'marketplace' | 'payment' | 'accounting-integration' | 'proforma' | 'einvoice' | 'ewaybill' | 'eledger' |
   'salesquote' | 'purchaserequest' | 'stockmovements' | 'stock-dashboard' | 'warehousetransfer' | 'stockcount' | 'barcode' | 'seriallot' | 'warehouse-definitions' | 'service-cards' | 'virman' | 'firm-period-definitions' | 'payment-plans' | 'bank-payment-plans' |
-  'productionrecipe' | 'capacityplan' | 'butcher-production' | 'cashbank' | 'banks' | 'checkpromissory' | 'collectionpayment' | 'currentaccounts' | 'revenueexpense' | 'customer-call-plan' |
+  'productionrecipe' | 'production-recipe' | 'capacityplan' | 'butcher-production' | 'cashbank' | 'banks' | 'checkpromissory' | 'collectionpayment' | 'currentaccounts' | 'revenueexpense' | 'customer-call-plan' |
   'storetransfer' | 'mobile-inventory-count' | 'interstore-transfer' | 'store-controlled-count' |
   'pricelists' | 'discounts' | 'promotions' | 'shipping' | 'cargotrack' | 'waybillops' | 'routeplan' | 'delivery-management' | 'delivery' |
   'servicemaint' | 'warranty' | 'fieldservice' | 'fixedasset' | 'depreciation' | 'maintplan' |
@@ -1423,6 +1424,8 @@ export function ManagementModule({
         case 'productionrecipe':
         case 'capacityplan':
           return <ProductionModule />;
+        case 'production-recipe':
+          return <ProductionRecipeModule />;
         case 'butcher-production':
           return <ButcherProductionModule />;
         case 'wave-picking':
