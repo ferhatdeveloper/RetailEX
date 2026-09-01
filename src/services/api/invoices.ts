@@ -164,7 +164,12 @@ function salesHeaderRowToRevertInvoice(h: Record<string, unknown>, id: string): 
 export function paymentMethodImpliesCashInKasa(pm: string | undefined | null): boolean {
   const p = String(pm || '').trim().toLowerCase();
   if (!p) return false;
-  return p === 'cash' || p === 'nakit';
+  if (p === 'cash' || p === 'nakit') return true;
+  // Form kodu (NAKIT/KREDIKARTI vb.) bazen DB'ye ham yazılabilir — esnek eşleme
+  if (p === 'nakit' || p.includes('nakit') || p.startsWith('nak')) return true;
+  // Kısaltmalar ve eski kodlar
+  if (p === 'n' || p === 'na' || p === 'nak') return true;
+  return false;
 }
 
 /** Kasa hareketleri `rex_{firma}_{dönem}_cash_lines` tablosunda; silme sorgusu satışın dönemine göre çözülmeli */
@@ -594,12 +599,26 @@ async function revertInvoiceLedgerSideEffects(existing: Invoice, firmNr: string,
 }
 
 async function writeCashRegisterLineForInvoice(inv: Invoice, firmNr: string): Promise<void> {
+  // Kategori: 'Satis' / 'sale' / 'sales' / 'SalesInvoice' gibi varyasyonları kabul et
+  const cat = String(inv.invoice_category || '').toLowerCase();
+  const isSaleCategory = cat === 'satis' || cat === 'sale' || cat === 'sales'
+    || cat === 'sales_invoice' || cat === 'satış' || cat === 'hizmet' || cat === 'service';
   if (
-    inv.invoice_category !== 'Satis'
+    !isSaleCategory
     || !paymentMethodImpliesCashInKasa((inv as any).payment_method)
     || Number(inv.total_amount || 0) === 0
     || String(inv.status || '').toLowerCase() === 'cancelled'
   ) {
+    if (import.meta.env.DEV) {
+      console.log('[InvoicesAPI] kasa yazımı atlandı:', {
+        invoice_category: inv.invoice_category,
+        isSaleCategory,
+        payment_method: (inv as any).payment_method,
+        pm_implies_cash: paymentMethodImpliesCashInKasa((inv as any).payment_method),
+        total_amount: inv.total_amount,
+        status: inv.status,
+      });
+    }
     return;
   }
   try {
@@ -1412,9 +1431,25 @@ export const invoicesAPI = {
         }
       }
 
-      // 5. Nakit ödeme: kasaya tahsilat satırı yaz (insert anında)
-      const createdInvoice: Invoice = { ...invoice, id: invoiceId };
-      await writeCashRegisterLineForInvoice(createdInvoice, firmNr);
+      // 5. Nakit ödeme: kasaya tahsilat satırı yaz (insert anında).
+      // Edit path'i ile birebir aynı helper; tekilleme (fiche_no) sayesinde edit+save'de
+      // aynı fiş no için çift kasa satırı oluşmaz.
+      try {
+        const createdInvoice: Invoice = { ...invoice, id: invoiceId };
+        if (import.meta.env.DEV) {
+          console.log('[InvoicesAPI] create → kasa helper input:', {
+            invoice_category: createdInvoice.invoice_category,
+            payment_method: (createdInvoice as any).payment_method,
+            total_amount: createdInvoice.total_amount,
+            status: createdInvoice.status,
+            invoice_no: createdInvoice.invoice_no,
+            pm_implies_cash: paymentMethodImpliesCashInKasa((createdInvoice as any).payment_method),
+          });
+        }
+        await writeCashRegisterLineForInvoice(createdInvoice, firmNr);
+      } catch (cashErr: any) {
+        console.warn('[InvoicesAPI] create → kasa helper hata:', cashErr?.message || String(cashErr));
+      }
 
       void import('../messaging/messagingService').then(({ messagingService }) =>
         messagingService.maybeEnqueueInvoiceNotification(invoice, invoiceId, firmNr, periodNr)
