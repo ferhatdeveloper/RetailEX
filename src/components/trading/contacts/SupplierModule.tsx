@@ -938,7 +938,7 @@ export function SupplierModule({ initialFilter = 'all' }: { initialFilter?: Cari
     }));
   };
 
-  const typeInfo = (row: any) => ficheTypeToInfo(row.fiche_type || '', Number(row.trcode), row.is_cancelled === true);
+  const typeInfo = (row: any) => ficheTypeToInfo(row.fiche_type || '', Number(row.trcode), row.is_cancelled === true, tm);
 
   const borcHdr = fmtEkstreAmount(totalBorc);
   const alacHdr = fmtEkstreAmount(totalAlacak);

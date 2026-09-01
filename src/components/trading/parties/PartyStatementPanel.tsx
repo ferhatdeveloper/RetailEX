@@ -293,7 +293,7 @@ export function PartyStatementPanel({ party, onClose }: PartyStatementPanelProps
             <tbody>
               {rows.map((row, idx) => {
                 const isCancelled = String(row.transaction_type || '').toUpperCase().startsWith('CANCELLED_');
-                const { label, color } = ficheTypeToInfo(row.transaction_type, 0, isCancelled);
+                const { label, color } = ficheTypeToInfo(row.transaction_type, 0, isCancelled, tm);
                 const amt = row.debit || row.credit;
                 return (
                   <tr

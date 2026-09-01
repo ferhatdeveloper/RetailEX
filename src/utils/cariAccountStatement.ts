@@ -86,31 +86,95 @@ export function defaultEkstreDateRange(): { start: string; end: string } {
   return { start: `${year}-01-01`, end: `${year}-12-31` };
 }
 
-export function ficheTypeToInfo(ficheType: string, trcode: number, cancelled?: boolean) {
-  if (cancelled) return { label: 'Silindi', color: 'bg-gray-200 text-gray-600 line-through', isReturn: false };
+/**
+ * Fiche type etiket çevirisi için i18n key eşlemesi.
+ *
+ * Her anahtar `module-translations.ts` içinde tanımlı (tr/en/ar/ku).
+ * `t` fonksiyonu verilmezse eski hardcoded Türkçe etiketler korunur
+ * (geriye uyumluluk — test ve eski kod yolları için).
+ *
+ * Kullanım (component tarafı):
+ *   const tm = useT('invoices', 'common');
+ *   const { label, color } = ficheTypeToInfo(ft, trcode, cancelled, tm);
+ */
+const FICHE_TYPE_I18N_KEYS: Record<string, string> = {
+  purchase_invoice: 'ficheTypePurchaseInvoice',
+  return_invoice: 'ficheTypeReturnInvoice',
+  waybill: 'ficheTypeWaybill',
+  order: 'ficheTypeOrder',
+  sales_invoice: 'ficheTypeSalesInvoice',
+  CH_ODEME: 'ficheTypePaymentOut',
+  CH_TAHSILAT: 'ficheTypePaymentIn',
+  MAAS_HAKKEDIS: 'ficheTypeSalaryAccrual',
+  MAAS_ODEME: 'ficheTypeSalaryPayment',
+  AVANS_ODEME: 'ficheTypeAdvancePayment',
+  AVANS_MAHSUP: 'ficheTypeAdvanceOffset',
+  KAR_DAGITIMI: 'ficheTypeProfitDistribution',
+  ORTAK_DAGITIM_KAR: 'ficheTypeProfitDistribution',
+  ZARAR_DAGITIMI: 'ficheTypeLossDistribution',
+  ORTAK_DAGITIM_ZARAR: 'ficheTypeLossDistribution',
+  SERMAYE_TAHSILAT: 'ficheTypeCapitalIn',
+  ORTAK_SERMAYE_TAHSILAT: 'ficheTypeCapitalIn',
+  ORTAK_PARA_GIRIS: 'ficheTypeCapitalIn',
+  SERMAYE_ODEME: 'ficheTypeCapitalOut',
+  ORTAK_SERMAYE_ODEME: 'ficheTypeCapitalOut',
+  ORTAK_PARA_CIKIS: 'ficheTypeCapitalOut',
+  ORTAK_SERMAYE_CIKIS: 'ficheTypeCapitalOut',
+  opening_balance: 'ficheTypeOpeningBalance',
+  CANCELLED: 'ficheTypeCancelled',
+  // trcode 9 = Hizmet
+  HIZMET_TRCODE_9: 'ficheTypeService',
+};
+
+export type TFunction = (key: string) => string;
+
+export function ficheTypeToInfo(
+  ficheType: string,
+  trcode: number,
+  cancelled?: boolean,
+  t?: TFunction,
+) {
+  // İptal: en başta, çeviri ile
+  if (cancelled) {
+    const label = t ? t(FICHE_TYPE_I18N_KEYS.CANCELLED) : 'Silindi';
+    return { label, color: 'bg-gray-200 text-gray-600 line-through', isReturn: false };
+  }
   const ft = String(ficheType || '').trim();
   const ftUpper = ft.toUpperCase();
-  if (ft === 'purchase_invoice') return { label: 'Alış', color: 'bg-orange-100 text-orange-700', isReturn: false };
-  if (ft === 'return_invoice') return { label: 'İade', color: 'bg-red-100 text-red-700', isReturn: true };
-  if (ft === 'waybill') return { label: 'İrsaliye', color: 'bg-purple-100 text-purple-700', isReturn: false };
-  if (ft === 'order') return { label: 'Sipariş', color: 'bg-gray-100 text-gray-600', isReturn: false };
+
+  // Önce fiche_type anahtarı (büyük/küçük harf duyarsız eşleme için
+  // büyütülmüş anahtarı ara)
+  const ftKey = FICHE_TYPE_I18N_KEYS[ft];
+  const ftUpperKey = FICHE_TYPE_I18N_KEYS[ftUpper];
+  const key = ftKey || ftUpperKey;
+  const trcodeKey = trcode === 9 ? FICHE_TYPE_I18N_KEYS.HIZMET_TRCODE_9 : undefined;
+
+  const resolve = (k: string): string | null => (t ? (() => { try { return t(k); } catch { return null; } })() : null);
+
+  if (ft === 'purchase_invoice') return { label: resolve(key!) || 'Alış', color: 'bg-orange-100 text-orange-700', isReturn: false };
+  if (ft === 'return_invoice') return { label: resolve(key!) || 'İade', color: 'bg-red-100 text-red-700', isReturn: true };
+  if (ft === 'waybill') return { label: resolve(key!) || 'İrsaliye', color: 'bg-purple-100 text-purple-700', isReturn: false };
+  if (ft === 'order') return { label: resolve(key!) || 'Sipariş', color: 'bg-gray-100 text-gray-600', isReturn: false };
   // Tahsilat/ödeme: müşteri/tedarikçi açık bakiyesini düşürür (asla satış gibi borç yazılmaz)
-  if (ftUpper === 'CH_ODEME') return { label: 'Ödeme', color: 'bg-green-100 text-green-700', isReturn: true };
-  if (ftUpper === 'CH_TAHSILAT') return { label: 'Tahsilat', color: 'bg-teal-100 text-teal-700', isReturn: true };
-  if (ftUpper === 'MAAS_HAKKEDIS') return { label: 'Hakkediş', color: 'bg-indigo-100 text-indigo-700', isReturn: false };
-  if (ftUpper === 'MAAS_ODEME') return { label: 'Maaş', color: 'bg-emerald-100 text-emerald-700', isReturn: true };
-  if (ftUpper === 'AVANS_ODEME') return { label: 'Avans', color: 'bg-amber-100 text-amber-700', isReturn: true };
-  if (ftUpper === 'AVANS_MAHSUP') return { label: 'Mahsup', color: 'bg-slate-100 text-slate-600', isReturn: false };
-  if (ftUpper === 'ORTAK_DAGITIM_KAR' || ftUpper === 'KAR_DAGITIMI') return { label: 'Kâr Dağıtım', color: 'bg-purple-100 text-purple-700', isReturn: false };
-  if (ftUpper === 'ORTAK_DAGITIM_ZARAR' || ftUpper === 'ZARAR_DAGITIMI') return { label: 'Zarar Dağıtım', color: 'bg-rose-100 text-rose-700', isReturn: true };
+  if (ftUpper === 'CH_ODEME') return { label: resolve(key!) || 'Ödeme', color: 'bg-green-100 text-green-700', isReturn: true };
+  if (ftUpper === 'CH_TAHSILAT') return { label: resolve(key!) || 'Tahsilat', color: 'bg-teal-100 text-teal-700', isReturn: true };
+  if (ftUpper === 'MAAS_HAKKEDIS') return { label: resolve(key!) || 'Hakkediş', color: 'bg-indigo-100 text-indigo-700', isReturn: false };
+  if (ftUpper === 'MAAS_ODEME') return { label: resolve(key!) || 'Maaş', color: 'bg-emerald-100 text-emerald-700', isReturn: true };
+  if (ftUpper === 'AVANS_ODEME') return { label: resolve(key!) || 'Avans', color: 'bg-amber-100 text-amber-700', isReturn: true };
+  if (ftUpper === 'AVANS_MAHSUP') return { label: resolve(key!) || 'Mahsup', color: 'bg-slate-100 text-slate-600', isReturn: false };
+  if (ftUpper === 'ORTAK_DAGITIM_KAR' || ftUpper === 'KAR_DAGITIMI') return { label: resolve(key!) || 'Kâr Dağıtım', color: 'bg-purple-100 text-purple-700', isReturn: false };
+  if (ftUpper === 'ORTAK_DAGITIM_ZARAR' || ftUpper === 'ZARAR_DAGITIMI') return { label: resolve(key!) || 'Zarar Dağıtım', color: 'bg-rose-100 text-rose-700', isReturn: true };
   if (ftUpper === 'SERMAYE_TAHSILAT' || ftUpper === 'ORTAK_SERMAYE_TAHSILAT' || ftUpper === 'ORTAK_PARA_GIRIS') {
-    return { label: 'Para girişi', color: 'bg-teal-100 text-teal-700', isReturn: false };
+    return { label: resolve(key!) || 'Para girişi', color: 'bg-teal-100 text-teal-700', isReturn: false };
   }
   if (ftUpper === 'SERMAYE_ODEME' || ftUpper === 'ORTAK_SERMAYE_ODEME' || ftUpper === 'ORTAK_PARA_CIKIS' || ftUpper === 'ORTAK_SERMAYE_CIKIS') {
-    return { label: 'Para çıkışı', color: 'bg-amber-100 text-amber-800', isReturn: true };
+    return { label: resolve(key!) || 'Para çıkışı', color: 'bg-amber-100 text-amber-800', isReturn: true };
   }
-  if (ft === 'opening_balance') return { label: 'Devir', color: 'bg-indigo-100 text-indigo-800', isReturn: false, isOpening: true };
-  if (trcode === 9) return { label: 'Hizmet', color: 'bg-indigo-100 text-indigo-700', isReturn: false };
+  if (ft === 'opening_balance') return { label: resolve(key!) || 'Devir', color: 'bg-indigo-100 text-indigo-800', isReturn: false, isOpening: true };
+  if (trcode === 9) return { label: resolve(trcodeKey!) || 'Hizmet', color: 'bg-indigo-100 text-indigo-700', isReturn: false };
+  // Default (sales_invoice vb.): fiche_type = 'sales_invoice' ise onu kullan, yoksa "Satış"
+  const salesKey = FICHE_TYPE_I18N_KEYS.sales_invoice;
+  if (ft === 'sales_invoice') return { label: resolve(salesKey) || 'Satış', color: 'bg-blue-100 text-blue-700', isReturn: false };
   return { label: 'Satış', color: 'bg-blue-100 text-blue-700', isReturn: false };
 }
 

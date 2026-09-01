@@ -377,7 +377,7 @@ export function EmployeePayrollModal({ employee, onClose, onSaved, onOpenStateme
                   </thead>
                   <tbody>
                     {rows.map((r, idx) => {
-                      const { label, color } = ficheTypeToInfo(r.transaction_type, 0, false);
+                      const { label, color } = ficheTypeToInfo(r.transaction_type, 0, false, tm);
                       return (
                         <tr
                           key={r.id}

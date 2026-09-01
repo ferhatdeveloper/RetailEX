@@ -355,7 +355,7 @@ export function PartnerCashModal({ partner, onClose, onSaved, onOpenStatement }:
                   </thead>
                   <tbody>
                     {rows.map((r) => {
-                      const { label, color } = ficheTypeToInfo(r.transaction_type, 0, false);
+                      const { label, color } = ficheTypeToInfo(r.transaction_type, 0, false, tm);
                       return (
                         <tr key={r.id} className="border-t border-slate-100">
                           <td className="px-3 py-2 whitespace-nowrap">{formatDate(r.date)}</td>

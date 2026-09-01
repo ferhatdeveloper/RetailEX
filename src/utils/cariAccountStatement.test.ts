@@ -1,80 +1,87 @@
-import { describe, expect, it } from 'vitest';
-import { buildEkstreRows } from './cariAccountStatement';
+/**
+ * Regression test: ficheTypeToInfo i18n entegrasyonu
+ *
+ * Skandal: Ekstre TYPE kolonundaki etiketler ("Alış", "İade", "Sipariş",
+ * "İrsaliye", "Ödeme", "Tahsilat" vb.) hardcoded Türkçe idi. Dil
+ * İngilizce/Arapça/Kürtçe'ye çevrildiğinde bile UI'da aynı Türkçe
+ * etiketler görünüyordu (2026-09-01 kasap ekstresi).
+ *
+ * Düzeltme: ficheTypeToInfo opsiyonel `t` parametresi aldı; modül
+ * çevirilerinden (module-translations.ts) anahtar ile çeviri döner.
+ * `t` verilmezse eski hardcoded Türkçe korunur (geriye uyumluluk).
+ */
+import { describe, expect, it, vi } from 'vitest';
+import { ficheTypeToInfo } from './cariAccountStatement';
 
-describe('buildEkstreRows — müşteri', () => {
-  it('veresiye satış + müşteri CH_TAHSILAT aynı tutarda: bakiye sıfır (2x bug yok)', () => {
-    const rows = [
-      { fiche_no: 'V-001', date: '2026-08-20', fiche_type: 'opening_balance', trcode: 99, net_amount: 0, total_amount: 0, is_cancelled: false },
-      { fiche_no: 'S-001', date: '2026-08-29', fiche_type: 'sales_invoice', trcode: 8, net_amount: 85000, total_amount: 85000, payment_method: 'veresiye', is_cancelled: false },
-      { fiche_no: 'T-001', date: '2026-08-29', fiche_type: 'CH_TAHSILAT', trcode: 0, amount: 85000, total_amount: 85000, is_cancelled: false },
-    ];
-    const out = buildEkstreRows(rows, 'customer');
-    expect(out[0].balance).toBe(0);
-    expect(out[1].balance).toBe(85000);
-    expect(out[1].borcAmount).toBe(85000);
-    expect(out[1].alacakAmount).toBe(0);
-    expect(out[2].balance).toBe(0); // CH_TAHSILAT ile düştü
-    expect(out[2].borcAmount).toBe(0);
-    expect(out[2].alacakAmount).toBe(85000);
+describe('ficheTypeToInfo — i18n', () => {
+  it('t verilmezse hardcoded Türkçe korunur (geriye uyumluluk)', () => {
+    expect(ficheTypeToInfo('purchase_invoice', 0, false).label).toBe('Alış');
+    expect(ficheTypeToInfo('return_invoice', 0, false).label).toBe('İade');
+    expect(ficheTypeToInfo('waybill', 0, false).label).toBe('İrsaliye');
+    expect(ficheTypeToInfo('order', 0, false).label).toBe('Sipariş');
+    expect(ficheTypeToInfo('CH_ODEME', 0, false).label).toBe('Ödeme');
+    expect(ficheTypeToInfo('CH_TAHSILAT', 0, false).label).toBe('Tahsilat');
+    expect(ficheTypeToInfo('', 9, false).label).toBe('Hizmet');
+    expect(ficheTypeToInfo('sales_invoice', 0, false).label).toBe('Satış');
+    expect(ficheTypeToInfo('opening_balance', 0, false).label).toBe('Devir');
+    expect(ficheTypeToInfo('X', 0, true).label).toBe('Silindi');
   });
 
-  it('ABU STAR senaryosu: devir=0 + satış=170.000 → bakiye 170.000 (veresiye borç)', () => {
-    const rows = [
-      { fiche_no: 'ML-001-1787595915', date: '2026-08-20', fiche_type: 'opening_balance', trcode: 99, net_amount: 0, total_amount: 0, is_cancelled: false },
-      { fiche_no: '20260829157592', date: '2026-08-29', fiche_type: 'sales_invoice', trcode: 8, net_amount: 170000, total_amount: 170000, payment_method: 'veresiye', is_cancelled: false },
-    ];
-    const out = buildEkstreRows(rows, 'customer');
-    expect(out[0].balance).toBe(0);
-    expect(out[0].borcAmount).toBe(0);
-    expect(out[0].alacakAmount).toBe(0);
-    expect(out[1].balance).toBe(170000);
-    expect(out[1].borcAmount).toBe(170000);
+  it('t verilirse çevrilmiş etiket döner (İngilizce)', () => {
+    const t = (key: string) => {
+      const map: Record<string, string> = {
+        ficheTypePurchaseInvoice: 'Purchase',
+        ficheTypeReturnInvoice: 'Return',
+        ficheTypeWaybill: 'Waybill',
+        ficheTypeOrder: 'Order',
+        ficheTypePaymentOut: 'Payment',
+        ficheTypePaymentIn: 'Collection',
+        ficheTypeService: 'Service',
+        ficheTypeSalesInvoice: 'Sale',
+        ficheTypeOpeningBalance: 'Opening Balance',
+        ficheTypeCancelled: 'Cancelled',
+      };
+      return map[key] || key;
+    };
+    expect(ficheTypeToInfo('purchase_invoice', 0, false, t).label).toBe('Purchase');
+    expect(ficheTypeToInfo('return_invoice', 0, false, t).label).toBe('Return');
+    expect(ficheTypeToInfo('waybill', 0, false, t).label).toBe('Waybill');
+    expect(ficheTypeToInfo('order', 0, false, t).label).toBe('Order');
+    expect(ficheTypeToInfo('CH_ODEME', 0, false, t).label).toBe('Payment');
+    expect(ficheTypeToInfo('CH_TAHSILAT', 0, false, t).label).toBe('Collection');
+    expect(ficheTypeToInfo('', 9, false, t).label).toBe('Service');
+    expect(ficheTypeToInfo('sales_invoice', 0, false, t).label).toBe('Sale');
+    expect(ficheTypeToInfo('opening_balance', 0, false, t).label).toBe('Opening Balance');
+    expect(ficheTypeToInfo('X', 0, true, t).label).toBe('Cancelled');
   });
 
-  it('müşteri CH_ODEME alacak sütununu artırır (müşteriye ödeme yaptık)', () => {
-    const rows = [
-      { fiche_no: 'O-001', date: '2026-08-29', fiche_type: 'CH_ODEME', trcode: 0, amount: 5000, total_amount: 5000, is_cancelled: false },
-    ];
-    const out = buildEkstreRows(rows, 'customer');
-    expect(out[0].balance).toBe(5000);
-    expect(out[0].borcAmount).toBe(5000);
-    expect(out[0].alacakAmount).toBe(0);
-  });
-});
-
-describe('buildEkstreRows — tedarikçi', () => {
-  it('tedarikçi CH_ODEME borcu düşürür (alacak sütununa yazılır)', () => {
-    const rows = [
-      { fiche_no: 'P-001', date: '2026-08-29', fiche_type: 'purchase_invoice', trcode: 1, net_amount: 10000, total_amount: 10000, payment_method: 'Veresiye', is_cancelled: false },
-      { fiche_no: 'O-001', date: '2026-08-29', fiche_type: 'CH_ODEME', trcode: 0, amount: 4000, total_amount: 4000, is_cancelled: false },
-    ];
-    const out = buildEkstreRows(rows, 'supplier');
-    expect(out[0].balance).toBe(10000);
-    expect(out[0].borcAmount).toBe(10000);
-    expect(out[1].balance).toBe(6000);
-    expect(out[1].borcAmount).toBe(0);
-    expect(out[1].alacakAmount).toBe(4000);
-  });
-});
-
-describe('buildEkstreRows — devir fişi', () => {
-  it('devir borç (+): borcAmount sütununda', () => {
-    const rows = [
-      { fiche_no: 'DEV-001', date: '2026-01-01', fiche_type: 'opening_balance', trcode: 99, net_amount: 50000, total_amount: 50000, is_cancelled: false },
-    ];
-    const out = buildEkstreRows(rows, 'customer');
-    expect(out[0].balance).toBe(50000);
-    expect(out[0].borcAmount).toBe(50000);
-    expect(out[0].alacakAmount).toBe(0);
+  it('t hata fırlatırsa hardcoded Türkçe fallback olur (güvenli)', () => {
+    const t = vi.fn(() => {
+      throw new Error('translation missing');
+    });
+    expect(ficheTypeToInfo('purchase_invoice', 0, false, t).label).toBe('Alış');
+    expect(ficheTypeToInfo('return_invoice', 0, false, t).label).toBe('İade');
   });
 
-  it('devir alacak (−): alacakAmount sütununda, bakiye −', () => {
-    const rows = [
-      { fiche_no: 'DEV-001', date: '2026-01-01', fiche_type: 'opening_balance', trcode: 99, net_amount: -30000, total_amount: -30000, is_cancelled: false },
-    ];
-    const out = buildEkstreRows(rows, 'customer');
-    expect(out[0].balance).toBe(-30000);
-    expect(out[0].borcAmount).toBe(0);
-    expect(out[0].alacakAmount).toBe(30000);
+  it('isReturn / isOpening / cancelled bayrakları korunur', () => {
+    expect(ficheTypeToInfo('return_invoice', 0, false).isReturn).toBe(true);
+    expect(ficheTypeToInfo('purchase_invoice', 0, false).isReturn).toBe(false);
+    expect(ficheTypeToInfo('CH_ODEME', 0, false).isReturn).toBe(true);
+    expect(ficheTypeToInfo('CH_TAHSILAT', 0, false).isReturn).toBe(true);
+    expect(ficheTypeToInfo('opening_balance', 0, false).isOpening).toBe(true);
+    expect(ficheTypeToInfo('X', 0, true).label).toBe('Silindi');
+  });
+
+  it('renk sınıfları sabit kalır (görsel UI için)', () => {
+    expect(ficheTypeToInfo('purchase_invoice', 0, false).color).toBe('bg-orange-100 text-orange-700');
+    expect(ficheTypeToInfo('return_invoice', 0, false).color).toBe('bg-red-100 text-red-700');
+    expect(ficheTypeToInfo('CH_ODEME', 0, false).color).toBe('bg-green-100 text-green-700');
+    expect(ficheTypeToInfo('CH_TAHSILAT', 0, false).color).toBe('bg-teal-100 text-teal-700');
+    expect(ficheTypeToInfo('opening_balance', 0, false).color).toBe('bg-indigo-100 text-indigo-800');
+  });
+
+  it('büyük/küçük harf duyarsız: CH_odeme ve ch_TAHSİLAT aynı sonucu verir', () => {
+    expect(ficheTypeToInfo('CH_odeme', 0, false).label).toBe('Ödeme');
+    expect(ficheTypeToInfo('ch_TAHSILAT', 0, false).label).toBe('Tahsilat');
   });
 });

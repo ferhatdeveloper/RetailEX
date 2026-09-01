@@ -308,7 +308,7 @@ export function CariAccountStatementPanel({ account, onClose }: CariAccountState
             </thead>
             <tbody>
               {ekstresiRows.map((row, idx) => {
-                const { label, color } = ficheTypeToInfo(String(row.fiche_type ?? ''), Number(row.trcode), row.is_cancelled === true);
+                const { label, color } = ficheTypeToInfo(String(row.fiche_type ?? ''), Number(row.trcode), row.is_cancelled === true, tm);
                 const borcD = row.borcAmount > 0 ? fmtEkstreAmount(row.borcAmount) : null;
                 const alacD = row.alacakAmount > 0 ? fmtEkstreAmount(row.alacakAmount) : null;
                 const balD = row.balance !== 0 ? fmtEkstreAmount(Math.abs(row.balance)) : null;
