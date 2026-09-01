@@ -638,7 +638,10 @@ async function writeCashRegisterLineForInvoice(inv: Invoice, firmNr: string): Pr
       const kasalar = await fetchKasalar({ firm_nr: String(firmNr), aktif: true });
       if (kasalar.length > 0) targetKasaId = kasalar[0].id;
     }
-    if (!targetKasaId) return;
+    if (!targetKasaId) {
+      console.warn('[InvoicesAPI] Kasa satırı yazılamadı: hedef kasa bulunamadı (firmNr=%s).', firmNr);
+      return;
+    }
     const total = Number(inv.total_amount || 0);
     const ficheNo = String(inv.invoice_no || '').trim() || `INV-${String(inv.id || '').slice(0, 8)}`;
     const tarih = inv.invoice_date || inv.created_at || new Date().toISOString();
@@ -653,7 +656,7 @@ async function writeCashRegisterLineForInvoice(inv: Invoice, firmNr: string): Pr
           `SELECT id FROM cash_lines
              WHERE firm_nr = $1::text
                AND period_nr = $2::text
-               AND register_id = $3::text::uuid
+               AND fiche_id = $3::text::uuid
                AND fiche_no = $4::text
              LIMIT 1`,
           [String(firmNr), periodNr, targetKasaId, ficheNo]
@@ -663,7 +666,7 @@ async function writeCashRegisterLineForInvoice(inv: Invoice, firmNr: string): Pr
           await postgres.query(
             `UPDATE cash_lines SET
                 amount = $1::numeric,
-                date = $2::text::date,
+                date = $2::text,
                 definition = $3::text
               WHERE id = $4::text::uuid`,
             [Math.abs(total), tarih, aciklama, existingId]
@@ -671,11 +674,16 @@ async function writeCashRegisterLineForInvoice(inv: Invoice, firmNr: string): Pr
           return;
         }
       } catch (lookupErr: any) {
+        // Tekilleme kontrolü başarısız — INSERT'i yine de dene.
         console.warn('[InvoicesAPI] Kasa satırı tekilleme kontrolü:', lookupErr?.message || String(lookupErr));
       }
     }
 
-    await createKasaIslemi({
+    // ⚠️ Skandal (2026-09-01): yeni fatura create'inde kasa INSERT'i sessizce
+    // başarısız oluyordu. Düzeltme: 3 denemeli retry + UNIQUE(fiche_no) ihlali
+    // durumunda otomatik UPDATE fallback. Son hata yukarı fırlatılır ki
+    // aşağıdaki catch bloğu verbose loglasın.
+    const insertPayload = {
       firma_id: String(firmNr),
       kasa_id: targetKasaId,
       islem_no: ficheNo,
@@ -687,9 +695,60 @@ async function writeCashRegisterLineForInvoice(inv: Invoice, firmNr: string): Pr
       cari_hesap_unvani: inv.customer_name || '',
       doviz_kodu: 'YEREL',
       dovizli_tutar: 0,
-    });
+    };
+    let lastErr: any = null;
+    for (let attempt = 1; attempt <= 3; attempt++) {
+      try {
+        await createKasaIslemi(insertPayload);
+        return; // başarılı
+      } catch (e: any) {
+        lastErr = e;
+        const msg = String(e?.message || e || '');
+        const code = (e as any)?.code;
+        if (code === '23505' || /duplicate key/i.test(msg)) {
+          // UNIQUE(fiche_no) ihlali → mevcut satırı UPDATE et.
+          try {
+            await postgres.query(
+              `UPDATE cash_lines SET
+                  amount = $1::numeric,
+                  date = $2::text,
+                  definition = $3::text
+                WHERE firm_nr = $4::text
+                  AND register_id = $5::text::uuid
+                  AND fiche_no = $6::text`,
+              [Math.abs(total), tarih, aciklama, String(firmNr), targetKasaId, ficheNo]
+            );
+            return;
+          } catch (updErr: any) {
+            console.warn('[InvoicesAPI] UNIQUE → UPDATE fallback başarısız:', updErr?.message || String(updErr));
+          }
+        }
+        const isTransient = /timeout|connection|terminated|bad gateway|ETIMEDOUT/i.test(msg);
+        if (attempt < 3 && isTransient) {
+          await new Promise((r) => setTimeout(r, 250 * attempt));
+          continue;
+        }
+        break;
+      }
+    }
+    throw lastErr;
   } catch (e: any) {
-    console.warn('[InvoicesAPI] Kasa satırı (fatura):', e?.message || String(e));
+    // ⚠️ KRİTİK: Bu hata önceden sadece console.warn ile yutuluyordu — fatura
+    // başarıyla kaydedilmiş görünüyordu ama kasaya tahsilat düşmüyordu.
+    // Artık görünür log + payload bağlamı yazıyoruz ki kök neden hızla teşhis
+    // edilebilsin. UI tarafında bu hata ayrıca bir uyarı olarak gösterilebilir.
+    console.error('[InvoicesAPI] ⚠️ Kasa satırı (fatura) yazılamadı:', {
+      error: e?.message || String(e),
+      code: (e as any)?.code,
+      detail: (e as any)?.detail,
+      hint: (e as any)?.hint,
+      invoice_no: inv.invoice_no,
+      invoice_category: inv.invoice_category,
+      payment_method: (inv as any).payment_method,
+      total_amount: inv.total_amount,
+      status: inv.status,
+      firmNr,
+    });
   }
 }
 
@@ -1128,7 +1187,21 @@ export const invoicesAPI = {
         if (!saved?.id) throw new Error('Fatura PostgREST ile oluşturulamadı');
         await applyInvoiceStockUpdatesRestApi(invoice, createOptions, trcode);
         await applyInvoiceBalanceUpdatesRestApi(invoice, firmNr, trcode, ficheType);
-        await writeCashRegisterLineForInvoice({ ...invoice, id: saved.id }, firmNr);
+        // Kasa satırı yazımı — hata olursa konsola yaz ama faturanın başarı
+        // durumunu etkileme (eskiden olduğu gibi). Ancak artık payload
+        // bağlamı ile yazıldığı için kök neden daha hızlı teşhis edilebilir.
+        const cashInput = { ...invoice, id: saved.id };
+        if (import.meta.env.DEV) {
+          console.log('[InvoicesAPI] rest_api → kasa helper input:', {
+            invoice_category: cashInput.invoice_category,
+            payment_method: (cashInput as any).payment_method,
+            total_amount: cashInput.total_amount,
+            status: cashInput.status,
+            invoice_no: cashInput.invoice_no,
+            pm_implies_cash: paymentMethodImpliesCashInKasa((cashInput as any).payment_method),
+          });
+        }
+        await writeCashRegisterLineForInvoice(cashInput, firmNr);
         void import('../messaging/messagingService').then(({ messagingService }) =>
           messagingService.maybeEnqueueInvoiceNotification(invoice, saved.id!, firmNr, periodNr)
         ).catch((e) => console.warn('[InvoicesAPI] WhatsApp kuyruk:', e));
