@@ -62,10 +62,10 @@ Source: "payload\install-service.ps1"; DestDir: "{app}"; Flags: ignoreversion
 Source: "payload\print-server.example.json"; DestDir: "{commonappdata}\RetailEX"; Flags: ignoreversion onlyifdoesntexist uninsneveruninstall
 
 ; Designer (yalnizca installdesigner gorevi secildiginde)
-; Not: dotnet publish WinExe + WinForms bazen yalniz DLL uretebilir;
-; bu durumda RetailEX.FastReportDesigner.bat ile apphost uzerinden
-; calistirilir. Hem exe hem dll dosyalari install edilir.
-Source: "payload\designer\RetailEX.FastReportDesigner.exe"; DestDir: "{app}\Designer"; Flags: ignoreversion; Tasks: installdesigner; Check: FileExists(ExpandConstant('{src}\payload\designer\RetailEX.FastReportDesigner.exe'))
+; dotnet build her zaman RetailEX.FastReportDesigner.exe apphost uretir
+; (Workflow Designer publish adimi artik 'dotnet publish' degil 'dotnet build'
+; kullaniyor); bu sayede exe + dll her durumda payload/designer altinda.
+Source: "payload\designer\RetailEX.FastReportDesigner.exe"; DestDir: "{app}\Designer"; Flags: ignoreversion; Tasks: installdesigner
 Source: "payload\designer\RetailEX.FastReportDesigner.dll"; DestDir: "{app}\Designer"; Flags: ignoreversion; Tasks: installdesigner
 Source: "payload\designer\RetailEX.PrintServer.Core.dll"; DestDir: "{app}\Designer"; Flags: ignoreversion; Tasks: installdesigner
 Source: "payload\designer\Newtonsoft.Json.dll"; DestDir: "{app}\Designer"; Flags: ignoreversion; Tasks: installdesigner
