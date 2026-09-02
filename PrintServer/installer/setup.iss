@@ -129,7 +129,7 @@ const
 procedure CurStepChanged(CurStep: TSetupStep);
 var
   CfgDir, PrintDir, ExampleCfg, TargetCfg: String;
-  DesignerDir, DesignerExe, DesignerDll: String;
+  DesignerDir, DesignerExe, DesignerDll, DesignerLibFastReport: String;
   BatContent: String;
   BatFile: AnsiString;
 begin
@@ -176,6 +176,19 @@ begin
         // Dosya olustuysa basit bilesen acma icin [Icons] girdileri zaten var; batch yedek.
         Log('Designer fallback .bat olusturuldu: ' + BatFile);
       end;
+    end;
+
+    // FastReport lisansli DLL'leri pakete dahil edilmediyse kullaniciya uyari goster
+    DesignerLibFastReport := DesignerDir + '\lib\FastReport.dll';
+    if not FileExists(DesignerLibFastReport) then
+    begin
+      MsgBox(
+        'FastReport tasarim araci kuruldu, ancak lisansli FastReport ' +
+        'DLL''leri (FastReport.dll, FastReport.Bars.dll, FastReport.Editor.dll) ' +
+        'bu pakete dahil edilmedi. Tasarim araci bu dosyalar olmadan acilmaz.' + #13#10#13#10 +
+        DesignerDir + '\lib klasorune ilgili DLL''leri kopyalayin ve ' +
+        'FastReport Tasarimci kisayolunu yeniden calistirin.',
+        mbInformation, MB_OK);
     end;
   end;
 end;
