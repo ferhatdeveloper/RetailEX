@@ -23,6 +23,7 @@ import {
     rememberRestaurantCategories,
 } from '@/utils/restaurantPrinterCategories';
 import { useRestaurantModuleTm } from '../hooks/useRestaurantModuleTm';
+import { PrintServiceStatusBadge } from './PrintServiceStatusBadge';
 import { IS_TAURI } from '@/utils/env';
 import { cacheSystemPrinterScan } from '@/utils/resolveSystemPrinterName';
 
@@ -238,6 +239,9 @@ export const RestaurantPrinterSettings: React.FC = () => {
 
                 {/* 3. Windows servis modu */}
                 <div className="bg-white rounded-[32px] p-8 shadow-sm border-2 border-indigo-100 ring-1 ring-indigo-50">
+                    <div className="mb-4 flex items-center gap-3">
+                        <PrintServiceStatusBadge />
+                    </div>
                     <label className="flex items-start gap-4 cursor-pointer select-none">
                         <input
                             type="checkbox"
@@ -247,10 +251,13 @@ export const RestaurantPrinterSettings: React.FC = () => {
                         />
                         <span className="min-w-0">
                             <span className="block text-base font-black text-slate-900">
-                                Windows yazıcı servisi (RetailEX_Printer) — tüm yazıcı işlerini servis dağıtır
+                                {tm('restPrintWindowsServiceTitle')}
                             </span>
                             <span className="mt-1 block text-sm text-slate-600 leading-snug">
-                                Açıkken mutfak, POS fişi, hesap fişi ve FastReport şablonları doğrudan basılmaz; yazıcı kuyruğuna eklenir.
+                                {tm('restPrintWindowsServiceHint')}
+                            </span>
+                            <span className="mt-2 block text-xs text-slate-500 leading-snug">
+                                {tm('restPrintWindowsServiceHelp')}
                             </span>
                         </span>
                     </label>

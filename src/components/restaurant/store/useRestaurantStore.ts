@@ -186,7 +186,10 @@ export const useRestaurantStore = create<RestaurantState>()(
             printerRoutes: [],
             printerProfiles: [],
             commonPrinterId: undefined,
-            printViaWindowsService: false,
+            // Restoran modülü açıldığında Windows yazıcı servisi varsayılan olarak etkindir.
+            // Kullanıcı UI'dan kapatabilir. Migration 126 ile tüm aktif firmalara
+            // restaurant_printer_config.printViaWindowsService = true seed'lenir.
+            printViaWindowsService: true,
             kitchenOrders: [],
             currentStaff: null,
             staffList: [],
@@ -867,7 +870,9 @@ export const useRestaurantStore = create<RestaurantState>()(
                         printerProfiles: cfg.printerProfiles,
                         printerRoutes: cfg.printerRoutes,
                         commonPrinterId: cfg.commonPrinterId,
-                        printViaWindowsService: cfg.printViaWindowsService === true,
+                        // undefined veya true ise true kabul et; yalnızca explicit false ise kapat.
+                        // Böylece migration henüz uygulanmamış ortamda bile default true gelir.
+                        printViaWindowsService: cfg.printViaWindowsService !== false,
                     });
                 } catch (e) {
                     console.warn('[restaurant] loadPrinterConfigFromDb', e);

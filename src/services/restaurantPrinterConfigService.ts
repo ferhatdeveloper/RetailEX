@@ -13,9 +13,28 @@ export type RestaurantPrinterConfig = {
   printViaWindowsService?: boolean;
 };
 
+// PG'den okunan değer boş ise veya kısmi ise, varsayılan olarak
+// printViaWindowsService=true kabul edilir (migration 126 + restoran modülü
+// varsayılanı). Yalnızca explicit false durumunda kapatılır.
+function normalizeConfig(v: Partial<RestaurantPrinterConfig> | null | undefined): RestaurantPrinterConfig {
+  if (!v) {
+    return { printerProfiles: [], printerRoutes: [], printViaWindowsService: true };
+  }
+  return {
+    printerProfiles: Array.isArray(v.printerProfiles) ? v.printerProfiles : [],
+    printerRoutes: Array.isArray(v.printerRoutes) ? v.printerRoutes : [],
+    commonPrinterId: v.commonPrinterId,
+    printViaWindowsService: v.printViaWindowsService !== false,
+  };
+}
+
 export async function getRestaurantPrinterConfig(firmNr?: string): Promise<RestaurantPrinterConfig> {
   const fn = firmNr || ERP_SETTINGS.firmNr || '001';
-  const empty: RestaurantPrinterConfig = { printerProfiles: [], printerRoutes: [] };
+  const empty: RestaurantPrinterConfig = {
+    printerProfiles: [],
+    printerRoutes: [],
+    printViaWindowsService: true,
+  };
   try {
     const { rows } = await postgres.query<{ value: RestaurantPrinterConfig }>(
       `SELECT value FROM app_settings WHERE key = $1 AND firm_nr = $2`,
@@ -23,12 +42,7 @@ export async function getRestaurantPrinterConfig(firmNr?: string): Promise<Resta
     );
     if (rows.length > 0 && rows[0].value) {
       const v = rows[0].value as RestaurantPrinterConfig;
-      return {
-        printerProfiles: Array.isArray(v.printerProfiles) ? v.printerProfiles : [],
-        printerRoutes: Array.isArray(v.printerRoutes) ? v.printerRoutes : [],
-        commonPrinterId: v.commonPrinterId,
-        printViaWindowsService: v.printViaWindowsService === true,
-      };
+      return normalizeConfig(v);
     }
   } catch (e) {
     console.warn('[restaurantPrinterConfig] get failed', e);

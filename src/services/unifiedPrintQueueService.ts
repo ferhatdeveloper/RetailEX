@@ -111,6 +111,16 @@ async function isGlobalPrinterServiceEnabled(): Promise<boolean> {
   }
 }
 
+/**
+ * Windows yazıcı servisi aktif mi?
+ * Mantık:
+ *   1. Restoran modülü restaurant_printer_config.printViaWindowsService === true  → AKTİF
+ *   2. Global printer_service.enabled === true                                    → AKTİF
+ *   3. Aksi durumda (kayıt yok veya false)                                        → KAPALI
+ *
+ * Restoran modülü için varsayılan true (Migration 126 + useRestaurantStore default).
+ * Diğer modüller için global flag ile kontrol edilir.
+ */
 export async function isWindowsPrinterServiceEnabled(): Promise<boolean> {
   const [restaurantConfig, globalEnabled] = await Promise.all([
     getRestaurantPrinterConfig().catch(() => null),

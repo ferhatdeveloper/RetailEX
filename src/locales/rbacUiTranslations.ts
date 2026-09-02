@@ -351,6 +351,48 @@ export const restPrinterUiTranslations: Record<string, Entry> = {
   },
   restPrintCancel: { tr: 'İptal', en: 'Cancel', ar: 'إلغاء', ku: 'هەڵوەشاندنەوە' },
   restPrintSave: { tr: 'Kaydet', en: 'Save', ar: 'حفظ', ku: 'پاشەکەوت' },
+  restPrintServiceLabel: {
+    tr: 'Windows yazıcı servisi',
+    en: 'Windows print service',
+    ar: 'خدمة الطباعة على ويندوز',
+    ku: 'Xizmeta çapkirina Windows',
+  },
+  restPrintServiceOn: {
+    tr: 'AÇIK',
+    en: 'ON',
+    ar: 'مفعّل',
+    ku: 'VEKIRÎ',
+  },
+  restPrintServiceOff: {
+    tr: 'KAPALI',
+    en: 'OFF',
+    ar: 'معطّل',
+    ku: 'GIRT',
+  },
+  restPrintServiceChecking: {
+    tr: 'Kontrol ediliyor…',
+    en: 'Checking…',
+    ar: 'جارٍ التحقق…',
+    ku: 'Tê kontrolkirin…',
+  },
+  restPrintWindowsServiceTitle: {
+    tr: 'Windows yazıcı servisi (RetailEX_Print_Server)',
+    en: 'Windows print service (RetailEX_Print_Server)',
+    ar: 'خدمة الطباعة على ويندوز (RetailEX_Print_Server)',
+    ku: 'Xizmeta çapkirina Windows (RetailEX_Print_Server)',
+  },
+  restPrintWindowsServiceHint: {
+    tr: 'Açıkken mutfak, POS fişi, hesap fişi ve FastReport şablonları doğrudan yazıcıya gönderilmez; yazıcı kuyruğuna eklenir ve RetailEX_Print_Server Windows servisi dağıtır.',
+    en: 'When enabled, kitchen tickets, POS receipts, account statements and FastReport templates are not sent to printers directly; they are queued and dispatched by the RetailEX_Print_Server Windows service.',
+    ar: 'عند التفعيل، لا تُرسل تذاكر المطبخ والإيصالات وكشوف الحساب وقوالب FastReport إلى الطابعة مباشرة؛ تُضاف إلى قائمة الانتظار وتتولى خدمة RetailEX_Print_Server على ويندوز توزيعها.',
+    ku: 'Dema vekirî, fîşên metbexê, fîşên POS, hesab û şablonên FastRaster rasterast nayên şandin; di kuyrêkê de tên zêdekirin û RetailEX_Print_Server a xizmeta Windowsê belav dike.',
+  },
+  restPrintWindowsServiceHelp: {
+    tr: 'Servis kurulu değilse veya kapalıysa yazdırma istekleri tarayıcı/Tauri üzerinden yapılır. C:\\RetailEX\\print-server.log dosyasını kontrol edin.',
+    en: 'If the service is not installed or stopped, print jobs fall back to browser/Tauri. Check C:\\RetailEX\\print-server.log.',
+    ar: 'إذا لم تكن الخدمة مثبتة أو متوقفة، تعود طلبات الطباعة إلى المتصفح/Tauri. تحقق من C:\\RetailEX\\print-server.log.',
+    ku: 'Heke xizmet nehatibe sazkirin an rawestiyabe, daxwazên çapkirinê vedigerin gerokan/Tauri. C:\\RetailEX\\print-server.log kontrol bikin.',
+  },
 };
 
 export const restCallerUiTranslations: Record<string, Entry> = {
