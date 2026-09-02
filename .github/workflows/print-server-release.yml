@@ -195,26 +195,27 @@ jobs:
 
           # .cmd shim: build ciktisinda .exe yoksa da calissin.
           # Eger .exe varsa onu, yoksa 'dotnet <dll>' cagirir.
+          # YAML heredoc '@' sorunu: burada escape yerine burada dizi ile yaz.
           $shimPath = Join-Path $designerPayload "RetailEX.FastReportDesigner.cmd"
-          $shim = @"
-@echo off
-REM RetailEX FastReport Designer launcher
-REM .NET 8 Desktop Runtime ile calisir; .exe yoksa 'dotnet <dll>' kullanir.
-setlocal
-cd /d "%~dp0"
-if exist "RetailEX.FastReportDesigner.exe" (
-  start "" "RetailEX.FastReportDesigner.exe" %*
-) else (
-  where dotnet >nul 2>nul
-  if errorlevel 1 (
-    echo .NET 8 Desktop Runtime bulunamadi. Lutfen https://dot.net adresinden kurun.
-    pause
-    exit /b 1
-  )
-  start "" dotnet "RetailEX.FastReportDesigner.dll" %*
-)
-"@
-          Set-Content -Path $shimPath -Value $shim -Encoding ASCII
+          $shimLines = @(
+            '@echo off',
+            'REM RetailEX FastReport Designer launcher',
+            'REM .NET 8 Desktop Runtime ile calisir; exe yoksa dotnet <dll> kullanir.',
+            'setlocal',
+            'cd /d "%~dp0"',
+            'if exist "RetailEX.FastReportDesigner.exe" (',
+            '  start "" "RetailEX.FastReportDesigner.exe" %*',
+            ') else (',
+            '  where dotnet >nul 2>nul',
+            '  if errorlevel 1 (',
+            '    echo .NET 8 Desktop Runtime bulunamadi. Lutfen https://dot.net adresinden kurun.',
+            '    pause',
+            '    exit /b 1',
+            '  )',
+            '  start "" dotnet "RetailEX.FastReportDesigner.dll" %*',
+            ')'
+          )
+          Set-Content -Path $shimPath -Value $shimLines -Encoding ASCII
           Write-Host "Shim olusturuldu: $shimPath"
 
       - name: Inno Setup kur
