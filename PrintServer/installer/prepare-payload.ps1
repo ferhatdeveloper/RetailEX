@@ -18,9 +18,11 @@ if ($sourceDirs.Count -eq 0) {
     throw "Release build missing: once 'dotnet publish -c Release' ile PrintServer.Service derleyin."
 }
 
-# Payload klasoru sifirlama (mevcut icerigi temizle, .gitkeep haric)
+# Payload klasoru sifirlama (mevcut icerigi temizle, .gitkeep haric).
+# 'designer' alt klasoru workflow'un Designer publish adimi tarafindan
+# ayri olarak hazirlanir; burada silmeyiz (shim + designer exeleri kaybolur).
 if (-not (Test-Path $payload)) { New-Item -ItemType Directory -Force -Path $payload | Out-Null }
-Get-ChildItem -Path $payload -Force | Where-Object { $_.Name -ne '.gitkeep' } | Remove-Item -Recurse -Force
+Get-ChildItem -Path $payload -Force | Where-Object { $_.Name -ne '.gitkeep' -and $_.Name -ne 'designer' } | Remove-Item -Recurse -Force
 
 $sourceDir = $sourceDirs[0]
 Write-Host "Payload kaynagi: $sourceDir"
