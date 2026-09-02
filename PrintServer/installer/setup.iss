@@ -40,7 +40,7 @@ Name: "english"; MessagesFile: "compiler:Default.isl"
 
 [Tasks]
 Name: "desktopicon"; Description: "Masaustu kisayolu olustur"; GroupDescription: "Ek secenekler:"; Flags: unchecked
-Name: "installservice"; Description: "Windows yazici servisini kur (RetailEX_PrintServer)"; GroupDescription: "Ek secenekler:"; Flags: checked
+Name: "installservice"; Description: "Windows yazici servisini kur (RetailEX_PrintServer)"; GroupDescription: "Ek secenekler:"; Flags: checkedonce
 
 [Dirs]
 Name: "{commonappdata}\RetailEX"; Permissions: users-modify
