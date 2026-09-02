@@ -87,30 +87,6 @@ Name: "{group}\RetailEX Kaldir"; Filename: "{uninstallexe}"
 Name: "{autodesktop}\{#MyAppName}"; Filename: "{app}\{#MyAppExeName}"; Tasks: desktopicon
 Name: "{autodesktop}\FastReport Tasarimci"; Filename: "{app}\Designer\RetailEX.FastReportDesigner.cmd"; Tasks: installdesigner
 
-[Code]
-// Kurulum sonunda FastReport DLL yoksa kullaniciya uyari goster
-function NeedAdditionalFastReportLibs(): Boolean;
-begin
-  Result := not FileExists(ExpandConstant('{app}\Designer\lib\FastReport.dll'));
-end;
-
-procedure CurStepChanged(CurStep: TSetupStep);
-begin
-  if CurStep = ssPostInstall then
-  begin
-    if NeedAdditionalFastReportLibs() then
-    begin
-      MsgBox(
-        'FastReport tasarim araci kuruldu, ancak lisansli FastReport ' +
-        'DLL''leri (FastReport.dll, FastReport.Bars.dll, FastReport.Editor.dll) ' +
-        'bu pakete dahil edilmedi. Tasarim araci bu dosyalar olmadan acilmaz.' + #13#10#13#10 +
-        '{app}\Designer\lib klasorune ilgili DLL''leri kopyalayin ve ' +
-        'FastReport Tasarimci kisayolunu yeniden calistirin.',
-        mbInformation, MB_OK);
-    end;
-  end;
-end;
-
 [Run]
 Filename: "powershell.exe"; Parameters: "-ExecutionPolicy Bypass -File ""{app}\install-service.ps1"""; Flags: runhidden waituntilterminated skipifdoesntexist; Tasks: installservice; StatusMsg: "Yazici servisi kuruluyor..."
 
