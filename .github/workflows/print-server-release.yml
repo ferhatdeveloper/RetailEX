@@ -195,10 +195,11 @@ jobs:
 
           # .cmd shim: build ciktisinda .exe yoksa da calissin.
           # Eger .exe varsa onu, yoksa 'dotnet <dll>' cagirir.
-          # YAML heredoc '@' sorunu: burada escape yerine burada dizi ile yaz.
+          # YAML heredoc '@' sorununu engellemek icin dizi kullan,
+          # [IO.File]::WriteAllText ile PS7+ uyumlu ASCII yaz.
           $shimPath = Join-Path $designerPayload "RetailEX.FastReportDesigner.cmd"
           $shimLines = @(
-            '@echo off',
+            ('{0}echo off' -f [char]64),
             'REM RetailEX FastReport Designer launcher',
             'REM .NET 8 Desktop Runtime ile calisir; exe yoksa dotnet <dll> kullanir.',
             'setlocal',
@@ -215,8 +216,9 @@ jobs:
             '  start "" dotnet "RetailEX.FastReportDesigner.dll" %*',
             ')'
           )
-          Set-Content -Path $shimPath -Value $shimLines -Encoding ASCII
-          Write-Host "Shim olusturuldu: $shimPath"
+          [System.IO.File]::WriteAllLines($shimPath, $shimLines, [System.Text.Encoding]::ASCII)
+          Write-Host "Shim olusturuldu: $shimPath (boyut: $((Get-Item $shimPath).Length) bytes)"
+          Get-ChildItem $designerPayload | Format-Table Name, Length -AutoSize
 
       - name: Inno Setup kur
         if: runner.os == 'Windows'
