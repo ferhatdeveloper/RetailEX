@@ -62,7 +62,11 @@ Source: "payload\install-service.ps1"; DestDir: "{app}"; Flags: ignoreversion
 Source: "payload\print-server.example.json"; DestDir: "{commonappdata}\RetailEX"; Flags: ignoreversion onlyifdoesntexist uninsneveruninstall
 
 ; Designer (yalnizca installdesigner gorevi secildiginde)
-Source: "payload\designer\{#MyDesignerExeName}"; DestDir: "{app}\Designer"; Flags: ignoreversion; Tasks: installdesigner
+; Not: dotnet publish WinExe + WinForms bazen yalniz DLL uretebilir;
+; bu durumda RetailEX.FastReportDesigner.bat ile apphost uzerinden
+; calistirilir. Hem exe hem dll dosyalari install edilir.
+Source: "payload\designer\RetailEX.FastReportDesigner.exe"; DestDir: "{app}\Designer"; Flags: ignoreversion; Tasks: installdesigner; Check: FileExists(ExpandConstant('{src}\payload\designer\RetailEX.FastReportDesigner.exe'))
+Source: "payload\designer\RetailEX.FastReportDesigner.dll"; DestDir: "{app}\Designer"; Flags: ignoreversion; Tasks: installdesigner
 Source: "payload\designer\RetailEX.PrintServer.Core.dll"; DestDir: "{app}\Designer"; Flags: ignoreversion; Tasks: installdesigner
 Source: "payload\designer\Newtonsoft.Json.dll"; DestDir: "{app}\Designer"; Flags: ignoreversion; Tasks: installdesigner
 Source: "payload\designer\Microsoft.Extensions.*.dll"; DestDir: "{app}\Designer"; Flags: ignoreversion recursesubdirs createallsubdirs; Tasks: installdesigner
@@ -90,9 +94,17 @@ Type: filesandordirs; Name: "{app}"
 Filename: "powershell.exe"; Parameters: "-ExecutionPolicy Bypass -File ""{app}\install-service.ps1"" -Uninstall"; Flags: runhidden waituntilterminated
 
 [Code]
+const
+  DesignerExeName = 'RetailEX.FastReportDesigner.exe';
+  DesignerDllName = 'RetailEX.FastReportDesigner.dll';
+  DesignerBatName = 'RetailEX.FastReportDesigner.bat';
+
 procedure CurStepChanged(CurStep: TSetupStep);
 var
   CfgDir, PrintDir, ExampleCfg, TargetCfg: String;
+  DesignerDir, DesignerExe, DesignerDll: String;
+  BatContent: String;
+  BatFile: AnsiString;
 begin
   if CurStep = ssPostInstall then
   begin
@@ -113,5 +125,30 @@ begin
     // Asil config yoksa ornekten turetilir (kullanici duzenler)
     if not FileExists(TargetCfg) then
       FileCopy(ExampleCfg, TargetCfg, False);
+
+    // Designer: EXE yoksa DLL uzerinden dotnet apphost ile calistiran .bat olustur
+    DesignerDir := ExpandConstant('{app}\Designer');
+    DesignerExe := DesignerDir + '\' + DesignerExeName;
+    DesignerDll := DesignerDir + '\' + DesignerDllName;
+    if FileExists(DesignerDll) and not FileExists(DesignerExe) then
+    begin
+      BatContent :=
+        '@echo off' + #13#10 +
+        'REM dotnet publish yalniz DLL uretmis; EXE yerine apphost uzerinden calistiriliyor.' + #13#10 +
+        'cd /d "%~dp0"' + #13#10 +
+        'where dotnet >nul 2>nul' + #13#10 +
+        'if errorlevel 1 (' + #13#10 +
+        '  echo .NET 8 Desktop Runtime bulunamadi. Lutfen https://dot.net adresinden kurun.' + #13#10 +
+        '  pause' + #13#10 +
+        '  exit /b 1' + #13#10 +
+        ')' + #13#10 +
+        'dotnet "' + DesignerDllName + '" %*' + #13#10;
+      BatFile := DesignerDir + '\' + DesignerBatName;
+      if SaveStringToFile(BatFile, BatContent, False) then
+      begin
+        // Dosya olustuysa basit bilesen acma icin [Icons] girdileri zaten var; batch yedek.
+        Log('Designer fallback .bat olusturuldu: ' + BatFile);
+      end;
+    end;
   end;
 end;

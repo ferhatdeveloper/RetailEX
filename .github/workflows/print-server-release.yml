@@ -125,22 +125,45 @@ jobs:
         working-directory: PrintServer
         run: |
           $designerPayload = Join-Path (Resolve-Path installer/payload).Path "designer"
+          if (Test-Path $designerPayload) {
+            Remove-Item $designerPayload -Recurse -Force
+          }
           New-Item -ItemType Directory -Force -Path $designerPayload | Out-Null
           $libTarget = Join-Path $designerPayload "lib"
           New-Item -ItemType Directory -Force -Path $libTarget | Out-Null
+
           dotnet publish PrintServer.Designer/PrintServer.Designer.csproj `
             -c ${{ env.BUILD_CONFIG }} `
             -f net8.0-windows `
             -r win-x64 `
             --self-contained false `
             -o $designerPayload
+
+          # Yayinlama sonrasi kontrol: exe var mi yoksa dll mi?
+          $exePath = Join-Path $designerPayload "RetailEX.FastReportDesigner.exe"
+          if (-not (Test-Path $exePath)) {
+            Write-Host "Designer EXE publish ciktisinda yok, dotnet build output'undan kopyalaniyor..."
+            $buildOut = Resolve-Path "PrintServer.Designer/bin/${{ env.BUILD_CONFIG }}/net8.0-windows/win-x64"
+            if (Test-Path $buildOut.Path) {
+              Get-ChildItem $buildOut.Path -Filter "RetailEX.FastReportDesigner.*" | ForEach-Object {
+                Copy-Item $_.FullName $designerPayload -Force
+              }
+            }
+          }
+          Write-Host "--- Designer payload icerigi ---"
+          Get-ChildItem $designerPayload | Format-Table Name, Length -AutoSize
+
           # Kullanici lisansli FastReport DLL'lerini lib/ icine koyar; mevcut
           # tools/FastReportDesigner/lib/ dizinindekileri otomatik kopyala (varsa).
           $userLib = Join-Path (Resolve-Path ..).Path "tools/FastReportDesigner/lib"
           if (Test-Path $userLib) {
             Copy-Item (Join-Path $userLib "*.dll") $libTarget -Force
+            Write-Host "FastReport DLL'leri kopyalandi:"
+            Get-ChildItem $libTarget | Format-Table Name, Length -AutoSize
+          } else {
+            Write-Host "tools/FastReportDesigner/lib/ bulunamadi; designer lib klasoru bos birakildi."
           }
-          # Designer config ornegi
+          # Designer config ornegi (publish ciktisinda yoksa)
           if (-not (Test-Path (Join-Path $designerPayload "designer.config.example.json"))) {
             Copy-Item (Join-Path (Resolve-Path PrintServer.Designer).Path "designer.config.example.json") `
                       (Join-Path $designerPayload "designer.config.example.json") -Force
