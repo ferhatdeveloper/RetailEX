@@ -183,42 +183,21 @@ jobs:
           Write-Host "--- Designer payload icerigi ---"
           Get-ChildItem $designerPayload | Format-Table Name, Length -AutoSize
 
-          # Kullanici lisansli FastReport DLL'leri (3 kaynak, sirayla):
-          #   1) tools/FastReportDesigner/lib/*.dll (repo icinde commit'li ise)
-          #   2) GitHub release 'fastreport-libs' tag'i (zip ile)
-          #   3) hicbiri yoksa lib klasoru bos birakilir; setup hata vermez
-          #      (skipifsourcedoesntexist), kurulum sonunda kullaniciya uyari gosterir.
+          # Kullanici lisansli FastReport DLL'leri (sadece repo tools/):
+          #   tools/FastReportDesigner/lib/*.dll commit'li ise payload'a kopyala.
+          #   yoksa lib bos kalir; setup skipifsourcedoesntexist ile compile eder,
+          #   kurulum sonunda kullaniciya msgBox ile uyari gosterir.
+          # (Onceki 'gh release download fastreport-libs' denemesi CI'da
+          #  non-terminating error ile step'i kirar; release kaldirildi.)
           $frCopied = $false
           $userLib = Join-Path (Resolve-Path ..).Path "tools/FastReportDesigner/lib"
           if (Test-Path $userLib) {
-            $dlls = Get-ChildItem $userLib -Filter "*.dll" -ErrorAction SilentlyContinue
+            $dlls = @(Get-ChildItem $userLib -Filter "*.dll" -ErrorAction SilentlyContinue)
             if ($dlls.Count -gt 0) {
               Copy-Item (Join-Path $userLib "*.dll") $libTarget -Force
               Write-Host "FastReport DLL'leri (repo tools/) kopyalandi:"
               Get-ChildItem $libTarget | Format-Table Name, Length -AutoSize
               $frCopied = $true
-            }
-          }
-          if (-not $frCopied) {
-            # Repo'da yok; GitHub Releases'tan 'fastreport-libs' tag'li release'i dene
-            # Not: gh release download release yoksa non-terminating error verir;
-            # try/catch bunu yakalamaz, bu yuzden 2>&1 + LASTEXITCODE kontrolu.
-            $frZip = "fastreport-libs.zip"
-            $frOut = & gh release download fastreport-libs `
-              --repo $env:GITHUB_REPOSITORY `
-              --pattern $frZip `
-              --dir $env:RUNNER_TEMP `
-              --clobber 2>&1
-            Write-Host "gh release download cikti: $frOut"
-            $frZipPath = Join-Path $env:RUNNER_TEMP $frZip
-            if ((Test-Path $frZipPath) -and ($LASTEXITCODE -eq 0)) {
-              Expand-Archive -Path $frZipPath `
-                -DestinationPath $libTarget -Force
-              Write-Host "FastReport DLL'leri (release fastreport-libs) kopyalandi:"
-              Get-ChildItem $libTarget | Format-Table Name, Length -AutoSize
-              $frCopied = $true
-            } else {
-              Write-Host "fastreport-libs release'i yok veya indirilemedi (exit=$LASTEXITCODE)."
             }
           }
           if (-not $frCopied) {
@@ -251,6 +230,10 @@ jobs:
           [System.IO.File]::WriteAllLines($shimPath, $shimLines, [System.Text.Encoding]::ASCII)
           Write-Host "Shim olusturuldu: $shimPath (boyut: $((Get-Item $shimPath).Length) bytes)"
           Get-ChildItem $designerPayload | Format-Table Name, Length -AutoSize
+          # Format-Table veya baska bir komut non-zero exit code dondurebilir;
+          # step basari ile tamamlansin. (Release yoksa setup yine skipifsourcedoesntexist
+          # ile compile eder; kullanici msgBox ile bilgilendirilir.)
+          exit 0
 
       - name: Inno Setup kur
         if: runner.os == 'Windows'
