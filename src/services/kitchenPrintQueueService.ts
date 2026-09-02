@@ -1,6 +1,7 @@
 import type { MenuItem, OrderItem, PrinterProfile, PrinterRouting, Table } from '../components/restaurant/types';
 import { findPrinterRouteForOrderItem } from '../utils/restaurantKitchenPrint';
 import type { KitchenReceiptLocale } from '../utils/restaurantReceiptPrint';
+import { assemblePrintTranslations, resolvePrintLocale } from '../locales/printKeys';
 import { DB_SETTINGS, ERP_SETTINGS, postgres } from './postgres';
 import { getBindingForScope } from './printDesignBindingService';
 import { getRestaurantPrinterConfig } from './restaurantPrinterConfigService';
@@ -134,7 +135,8 @@ export async function enqueueKitchenPrintJobs(
     groups.get(key)!.items.push(item);
   }
 
-  const locale = params.locale ?? 'tr';
+  const locale = resolvePrintLocale(params.locale ?? (ERP_SETTINGS as { defaultLocale?: string }).defaultLocale);
+  const translations = assemblePrintTranslations();
   const sourceDb = currentSourceDb();
   await ensurePrintQueueTables();
   const jobsTable = postgres.getMovementTableName('kitchen_print_jobs', 'rest');
@@ -160,6 +162,8 @@ export async function enqueueKitchenPrintJobs(
       orderNote: params.orderNote,
       items: lines,
       sourceDb,
+      locale,
+      translations,
     };
 
     if (designBinding?.designId && target.connection !== 'network') {
@@ -177,14 +181,14 @@ export async function enqueueKitchenPrintJobs(
           designId: designBinding.designId,
           designName: designBinding.designName,
           scope: 'kitchen_ticket',
-          data: payload,
+          data: { ...payload, translations },
         });
       } else if (designBinding.designKind === 'design_center') {
         await enqueueFastReportTemplateJob({
           ...common,
           templateId: designBinding.designId,
           type: 'kitchen',
-          data: payload,
+          data: { ...payload, translations },
         });
       }
       jobCount += 1;

@@ -1,0 +1,12 @@
+## Standart .NET ignore — PrintServer.Service
+bin/
+obj/
+out/
+publish/
+*.user
+*.suo
+.vs/
+.idea/
+.vscode/
+*.log
+*.tmp

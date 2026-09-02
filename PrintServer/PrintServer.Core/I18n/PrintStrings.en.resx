@@ -1,0 +1,194 @@
+<?xml version="1.0" encoding="utf-8"?>
+<root>
+  <xsd:schema id="root" xmlns="" xmlns:xsd="http://www.w3.org/2001/XMLSchema" xmlns:msdata="urn:schemas-microsoft-com:xml-msdata">
+    <xsd:import namespace="http://www.w3.org/XML/1998/namespace" />
+    <xsd:element name="root" msdata:IsDataSet="true">
+      <xsd:complexType>
+        <xsd:choice maxOccurs="unbounded">
+          <xsd:element name="data">
+            <xsd:complexType>
+              <xsd:sequence>
+                <xsd:element name="value" type="xsd:string" minOccurs="0" msdata:Ordinal="1" />
+                <xsd:element name="comment" type="xsd:string" minOccurs="0" msdata:Ordinal="2" />
+              </xsd:sequence>
+              <xsd:attribute name="name" type="xsd:string" use="required" msdata:Ordinal="1" />
+              <xsd:attribute name="type" type="xsd:string" msdata:Ordinal="3" />
+              <xsd:attribute name="mimetype" type="xsd:string" msdata:Ordinal="4" />
+              <xsd:attribute ref="xml:space" />
+            </xsd:complexType>
+          </xsd:element>
+          <xsd:element name="resheader">
+            <xsd:complexType>
+              <xsd:sequence>
+                <xsd:element name="value" type="xsd:string" minOccurs="0" msdata:Ordinal="1" />
+              </xsd:sequence>
+              <xsd:attribute name="name" type="xsd:string" use="required" />
+            </xsd:complexType>
+          </xsd:element>
+        </xsd:choice>
+      </xsd:complexType>
+    </xsd:element>
+  </xsd:schema>
+  <resheader name="resmimetype">
+    <value>text/microsoft-resx</value>
+  </resheader>
+  <resheader name="version">
+    <value>2.0</value>
+  </resheader>
+  <resheader name="reader">
+    <value>System.Resources.ResXResourceReader, System.Windows.Forms, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089</value>
+  </resheader>
+  <resheader name="writer">
+    <value>System.Resources.ResXResourceWriter, System.Windows.Forms, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089</value>
+  </resheader>
+  <data name="kitchenHeader" xml:space="preserve">
+    <value>KITCHEN</value>
+  </data>
+  <data name="kitchenFooter" xml:space="preserve">
+    <value>Thank you</value>
+  </data>
+  <data name="accountHeader" xml:space="preserve">
+    <value>ACCOUNT STATEMENT</value>
+  </data>
+  <data name="accountFooter" xml:space="preserve">
+    <value>End of statement</value>
+  </data>
+  <data name="posHeader" xml:space="preserve">
+    <value>POS RECEIPT</value>
+  </data>
+  <data name="posFooter" xml:space="preserve">
+    <value>Thank you</value>
+  </data>
+  <data name="invoiceHeader" xml:space="preserve">
+    <value>INVOICE</value>
+  </data>
+  <data name="invoiceFooter" xml:space="preserve">
+    <value>Thank you</value>
+  </data>
+  <data name="cashVoucherHeader" xml:space="preserve">
+    <value>CASH VOUCHER</value>
+  </data>
+  <data name="cashVoucherFooter" xml:space="preserve">
+    <value>Thank you</value>
+  </data>
+  <data name="table" xml:space="preserve">
+    <value>Table</value>
+  </data>
+  <data name="floor" xml:space="preserve">
+    <value>Floor</value>
+  </data>
+  <data name="waiter" xml:space="preserve">
+    <value>Waiter</value>
+  </data>
+  <data name="orderNo" xml:space="preserve">
+    <value>Order No</value>
+  </data>
+  <data name="orderNote" xml:space="preserve">
+    <value>Note</value>
+  </data>
+  <data name="date" xml:space="preserve">
+    <value>Date</value>
+  </data>
+  <data name="time" xml:space="preserve">
+    <value>Time</value>
+  </data>
+  <data name="itemCount" xml:space="preserve">
+    <value>Qty</value>
+  </data>
+  <data name="itemName" xml:space="preserve">
+    <value>Item</value>
+  </data>
+  <data name="unitPrice" xml:space="preserve">
+    <value>Unit Price</value>
+  </data>
+  <data name="lineTotal" xml:space="preserve">
+    <value>Line Total</value>
+  </data>
+  <data name="subtotal" xml:space="preserve">
+    <value>Subtotal</value>
+  </data>
+  <data name="total" xml:space="preserve">
+    <value>Total</value>
+  </data>
+  <data name="discount" xml:space="preserve">
+    <value>Discount</value>
+  </data>
+  <data name="tax" xml:space="preserve">
+    <value>Tax</value>
+  </data>
+  <data name="grandTotal" xml:space="preserve">
+    <value>Grand Total</value>
+  </data>
+  <data name="paid" xml:space="preserve">
+    <value>Paid</value>
+  </data>
+  <data name="change" xml:space="preserve">
+    <value>Change</value>
+  </data>
+  <data name="currency" xml:space="preserve">
+    <value>Currency</value>
+  </data>
+  <data name="thankYou" xml:space="preserve">
+    <value>Thank you</value>
+  </data>
+  <data name="openDrawer" xml:space="preserve">
+    <value>Open Drawer</value>
+  </data>
+  <data name="customer" xml:space="preserve">
+    <value>Customer</value>
+  </data>
+  <data name="supplier" xml:space="preserve">
+    <value>Supplier</value>
+  </data>
+  <data name="balance" xml:space="preserve">
+    <value>Balance</value>
+  </data>
+  <data name="openingBalance" xml:space="preserve">
+    <value>Opening Balance</value>
+  </data>
+  <data name="debit" xml:space="preserve">
+    <value>Debit</value>
+  </data>
+  <data name="credit" xml:space="preserve">
+    <value>Credit</value>
+  </data>
+  <data name="invoiceNo" xml:space="preserve">
+    <value>Invoice No</value>
+  </data>
+  <data name="dateRange" xml:space="preserve">
+    <value>Date Range</value>
+  </data>
+  <data name="documentType" xml:space="preserve">
+    <value>Document Type</value>
+  </data>
+  <data name="quantity" xml:space="preserve">
+    <value>Quantity</value>
+  </data>
+  <data name="printerTest" xml:space="preserve">
+    <value>Printer Test</value>
+  </data>
+  <data name="emptyOrder" xml:space="preserve">
+    <value>(Empty order)</value>
+  </data>
+  <data name="course" xml:space="preserve">
+    <value>Course</value>
+  </data>
+  <data name="orderType" xml:space="preserve">
+    <value>Order Type</value>
+  </data>
+  <data name="takeaway" xml:space="preserve">
+    <value>Takeaway</value>
+  </data>
+  <data name="dineIn" xml:space="preserve">
+    <value>Dine In</value>
+  </data>
+  <data name="delivery" xml:space="preserve">
+    <value>Delivery</value>
+  </data>
+  <data name="cut" xml:space="preserve">
+    <value>Cut</value>
+  </data>
+  <data name="copy" xml:space="preserve">
+    <value>Copy</value>
+  </data>
+</root>

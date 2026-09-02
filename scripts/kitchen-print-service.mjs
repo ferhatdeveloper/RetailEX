@@ -104,6 +104,18 @@ function clampNumber(value, min, max, fallback) {
   return Math.min(max, Math.max(min, Math.floor(n)));
 }
 
+/**
+ * payload.translations[locale]?.[key] ?? fallbackTr
+ * Eski payload'lar `translations` içermez; fallbackTr varsayılan değer.
+ */
+function getPrintString(translations, locale, key, fallback) {
+  if (!translations || !locale) return fallback;
+  const dict = translations[locale];
+  if (dict && dict[key]) return dict[key];
+  if (locale !== 'tr' && translations.tr && translations.tr[key]) return translations.tr[key];
+  return fallback;
+}
+
 function logLine(message) {
   const line = `[${new Date().toISOString()}] ${message}`;
   if (!IS_WIN) {
@@ -583,7 +595,19 @@ function buildKitchenTicketEscPos(input) {
 
   const ticket = input.ticket || {};
   const locale = normalizeLocale(ticket.locale || input.payload?.locale);
-  const labels = KITCHEN_I18N[locale];
+  const fallbackLabels = KITCHEN_I18N[locale];
+  const translations = input.payload?.translations || null;
+  const labels = {
+    title: getPrintString(translations, locale, 'kitchenHeader', fallbackLabels.title),
+    tableSource: `${getPrintString(translations, locale, 'table', fallbackLabels.tableSource.split(' / ')[0] || 'Masa')} / ${getPrintString(translations, locale, 'orderNo', fallbackLabels.tableSource.split(' / ')[1]?.replace(':','').trim() || 'Sipariş No')}:`,
+    floor: `${getPrintString(translations, locale, 'floor', fallbackLabels.floor.replace(':','').trim() || 'Salon')}:`,
+    waiter: `${getPrintString(translations, locale, 'waiter', fallbackLabels.waiter.replace(':','').trim() || 'Garson')}:`,
+    time: `${getPrintString(translations, locale, 'time', fallbackLabels.time.replace(':','').trim() || 'Saat')}:`,
+    empty: getPrintString(translations, locale, 'emptyOrder', fallbackLabels.empty),
+    footer: getPrintString(translations, locale, 'kitchenFooter', fallbackLabels.footer),
+    colQty: getPrintString(translations, locale, 'itemCount', fallbackLabels.colQty),
+    colProduct: getPrintString(translations, locale, 'itemName', fallbackLabels.colProduct),
+  };
   const lineWidth = 40;
   const dash = `${'-'.repeat(lineWidth)}\n`;
   const parts = [
@@ -644,7 +668,19 @@ function buildKitchenTicketEscPos(input) {
 function buildKitchenTicketHtml(job) {
   const ticket = job.ticket || {};
   const locale = normalizeLocale(ticket.locale || job.payload?.locale);
-  const labels = KITCHEN_I18N[locale];
+  const fallbackLabels = KITCHEN_I18N[locale];
+  const translations = job.payload?.translations || null;
+  const labels = {
+    title: getPrintString(translations, locale, 'kitchenHeader', fallbackLabels.title),
+    tableSource: `${getPrintString(translations, locale, 'table', fallbackLabels.tableSource.split(' / ')[0] || 'Masa')} / ${getPrintString(translations, locale, 'orderNo', fallbackLabels.tableSource.split(' / ')[1]?.replace(':','').trim() || 'Sipariş No')}:`,
+    floor: `${getPrintString(translations, locale, 'floor', fallbackLabels.floor.replace(':','').trim() || 'Salon')}:`,
+    waiter: `${getPrintString(translations, locale, 'waiter', fallbackLabels.waiter.replace(':','').trim() || 'Garson')}:`,
+    time: `${getPrintString(translations, locale, 'time', fallbackLabels.time.replace(':','').trim() || 'Saat')}:`,
+    empty: getPrintString(translations, locale, 'emptyOrder', fallbackLabels.empty),
+    footer: getPrintString(translations, locale, 'kitchenFooter', fallbackLabels.footer),
+    colQty: getPrintString(translations, locale, 'itemCount', fallbackLabels.colQty),
+    colProduct: getPrintString(translations, locale, 'itemName', fallbackLabels.colProduct),
+  };
   const tableNumber =
     firstString(
       ticket.tableNumber,
@@ -1186,14 +1222,16 @@ async function printFastReportFrx(job, context) {
 }
 
 function buildTestPageEscPos(job) {
+  const payloadTranslations = job?.payload?.translations || null;
+  const locale = normalizeLocale(job?.payload?.locale || job?.ticket?.locale || 'tr');
+  const heading = getPrintString(payloadTranslations, locale, 'printerTest', 'RetailEX Printer') || 'RetailEX Printer';
   const text = [
     esc(0x1b, 0x40),
     esc(0x1b, 0x61, 1),
     esc(0x1b, 0x21, 0x30),
-    enc('RetailEX Printer\n'),
+    enc(`${heading}\n`),
     esc(0x1b, 0x21, 0),
-    enc('Test Page\n'),
-    enc(new Date().toLocaleString('tr-TR')),
+    enc(new Date().toLocaleString(locale === 'en' ? 'en-GB' : 'tr-TR')),
     enc('\n\n'),
     enc(`Target: ${job.address || job.systemName || 'default'}\n\n\n`),
     esc(0x1d, 0x56, 0x00),
@@ -1201,10 +1239,13 @@ function buildTestPageEscPos(job) {
   return Buffer.concat(text);
 }
 
-function buildTestPageHtml() {
-  return `<!doctype html><html><head><meta charset="utf-8"><title>RetailEX Printer Test</title>
+function buildTestPageHtml(job) {
+  const payloadTranslations = job?.payload?.translations || null;
+  const locale = normalizeLocale(job?.payload?.locale || job?.ticket?.locale || 'tr');
+  const heading = getPrintString(payloadTranslations, locale, 'printerTest', 'RetailEX Printer') || 'RetailEX Printer';
+  return `<!doctype html><html><head><meta charset="utf-8"><title>${htmlEscape(heading)}</title>
 <style>@page{margin:10mm}body{font-family:Arial,sans-serif}.box{border:1px solid #111;padding:12mm}</style></head>
-<body><div class="box"><h1>RetailEX Printer</h1><p>Test Page</p><p>${htmlEscape(new Date().toLocaleString('tr-TR'))}</p></div></body></html>`;
+<body><div class="box"><h1>${htmlEscape(heading)}</h1><p>${htmlEscape(new Date().toLocaleString(locale === 'en' ? 'en-GB' : 'tr-TR'))}</p></div></body></html>`;
 }
 
 async function printJob(row, context) {
@@ -1264,7 +1305,7 @@ async function printJob(row, context) {
       return `${job.address}:${job.port} test_page (${payload.length} bayt)`;
     }
     if (job.connection === 'system' || job.systemName) {
-      const info = await printHtmlDocument(buildTestPageHtml(), job.systemName, context.settings);
+      const info = await printHtmlDocument(buildTestPageHtml(job), job.systemName, context.settings);
       return `test_page -> ${info}`;
     }
     throw new Error('Test sayfasi icin ag yazicisi adresi veya system yazici gerekli.');

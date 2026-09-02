@@ -1,0 +1,194 @@
+<?xml version="1.0" encoding="utf-8"?>
+<root>
+  <xsd:schema id="root" xmlns="" xmlns:xsd="http://www.w3.org/2001/XMLSchema" xmlns:msdata="urn:schemas-microsoft-com:xml-msdata">
+    <xsd:import namespace="http://www.w3.org/XML/1998/namespace" />
+    <xsd:element name="root" msdata:IsDataSet="true">
+      <xsd:complexType>
+        <xsd:choice maxOccurs="unbounded">
+          <xsd:element name="data">
+            <xsd:complexType>
+              <xsd:sequence>
+                <xsd:element name="value" type="xsd:string" minOccurs="0" msdata:Ordinal="1" />
+                <xsd:element name="comment" type="xsd:string" minOccurs="0" msdata:Ordinal="2" />
+              </xsd:sequence>
+              <xsd:attribute name="name" type="xsd:string" use="required" msdata:Ordinal="1" />
+              <xsd:attribute name="type" type="xsd:string" msdata:Ordinal="3" />
+              <xsd:attribute name="mimetype" type="xsd:string" msdata:Ordinal="4" />
+              <xsd:attribute ref="xml:space" />
+            </xsd:complexType>
+          </xsd:element>
+          <xsd:element name="resheader">
+            <xsd:complexType>
+              <xsd:sequence>
+                <xsd:element name="value" type="xsd:string" minOccurs="0" msdata:Ordinal="1" />
+              </xsd:sequence>
+              <xsd:attribute name="name" type="xsd:string" use="required" />
+            </xsd:complexType>
+          </xsd:element>
+        </xsd:choice>
+      </xsd:complexType>
+    </xsd:element>
+  </xsd:schema>
+  <resheader name="resmimetype">
+    <value>text/microsoft-resx</value>
+  </resheader>
+  <resheader name="version">
+    <value>2.0</value>
+  </resheader>
+  <resheader name="reader">
+    <value>System.Resources.ResXResourceReader, System.Windows.Forms, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089</value>
+  </resheader>
+  <resheader name="writer">
+    <value>System.Resources.ResXResourceWriter, System.Windows.Forms, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089</value>
+  </resheader>
+  <data name="kitchenHeader" xml:space="preserve">
+    <value>المطبخ</value>
+  </data>
+  <data name="kitchenFooter" xml:space="preserve">
+    <value>شكراً لك</value>
+  </data>
+  <data name="accountHeader" xml:space="preserve">
+    <value>كشف حساب العميل</value>
+  </data>
+  <data name="accountFooter" xml:space="preserve">
+    <value>نهاية الكشف</value>
+  </data>
+  <data name="posHeader" xml:space="preserve">
+    <value>إيصال نقطة البيع</value>
+  </data>
+  <data name="posFooter" xml:space="preserve">
+    <value>شكراً لك</value>
+  </data>
+  <data name="invoiceHeader" xml:space="preserve">
+    <value>فاتورة</value>
+  </data>
+  <data name="invoiceFooter" xml:space="preserve">
+    <value>شكراً لك</value>
+  </data>
+  <data name="cashVoucherHeader" xml:space="preserve">
+    <value>سند قبض</value>
+  </data>
+  <data name="cashVoucherFooter" xml:space="preserve">
+    <value>شكراً لك</value>
+  </data>
+  <data name="table" xml:space="preserve">
+    <value>طاولة</value>
+  </data>
+  <data name="floor" xml:space="preserve">
+    <value>طابق</value>
+  </data>
+  <data name="waiter" xml:space="preserve">
+    <value>نادل</value>
+  </data>
+  <data name="orderNo" xml:space="preserve">
+    <value>رقم الطلب</value>
+  </data>
+  <data name="orderNote" xml:space="preserve">
+    <value>ملاحظة</value>
+  </data>
+  <data name="date" xml:space="preserve">
+    <value>التاريخ</value>
+  </data>
+  <data name="time" xml:space="preserve">
+    <value>الوقت</value>
+  </data>
+  <data name="itemCount" xml:space="preserve">
+    <value>الكمية</value>
+  </data>
+  <data name="itemName" xml:space="preserve">
+    <value>الصنف</value>
+  </data>
+  <data name="unitPrice" xml:space="preserve">
+    <value>سعر الوحدة</value>
+  </data>
+  <data name="lineTotal" xml:space="preserve">
+    <value>إجمالي السطر</value>
+  </data>
+  <data name="subtotal" xml:space="preserve">
+    <value>المجموع الفرعي</value>
+  </data>
+  <data name="total" xml:space="preserve">
+    <value>المجموع</value>
+  </data>
+  <data name="discount" xml:space="preserve">
+    <value>خصم</value>
+  </data>
+  <data name="tax" xml:space="preserve">
+    <value>ضريبة</value>
+  </data>
+  <data name="grandTotal" xml:space="preserve">
+    <value>الإجمالي العام</value>
+  </data>
+  <data name="paid" xml:space="preserve">
+    <value>مدفوع</value>
+  </data>
+  <data name="change" xml:space="preserve">
+    <value>الباقي</value>
+  </data>
+  <data name="currency" xml:space="preserve">
+    <value>العملة</value>
+  </data>
+  <data name="thankYou" xml:space="preserve">
+    <value>شكراً لك</value>
+  </data>
+  <data name="openDrawer" xml:space="preserve">
+    <value>فتح الدرج</value>
+  </data>
+  <data name="customer" xml:space="preserve">
+    <value>العميل</value>
+  </data>
+  <data name="supplier" xml:space="preserve">
+    <value>المورد</value>
+  </data>
+  <data name="balance" xml:space="preserve">
+    <value>الرصيد</value>
+  </data>
+  <data name="openingBalance" xml:space="preserve">
+    <value>رصيد افتتاحي</value>
+  </data>
+  <data name="debit" xml:space="preserve">
+    <value>مدين</value>
+  </data>
+  <data name="credit" xml:space="preserve">
+    <value>دائن</value>
+  </data>
+  <data name="invoiceNo" xml:space="preserve">
+    <value>رقم الفاتورة</value>
+  </data>
+  <data name="dateRange" xml:space="preserve">
+    <value>الفترة الزمنية</value>
+  </data>
+  <data name="documentType" xml:space="preserve">
+    <value>نوع المستند</value>
+  </data>
+  <data name="quantity" xml:space="preserve">
+    <value>الكمية</value>
+  </data>
+  <data name="printerTest" xml:space="preserve">
+    <value>اختبار الطابعة</value>
+  </data>
+  <data name="emptyOrder" xml:space="preserve">
+    <value>(طلب فارغ)</value>
+  </data>
+  <data name="course" xml:space="preserve">
+    <value>الدورة</value>
+  </data>
+  <data name="orderType" xml:space="preserve">
+    <value>نوع الطلب</value>
+  </data>
+  <data name="takeaway" xml:space="preserve">
+    <value>طلب خارجي</value>
+  </data>
+  <data name="dineIn" xml:space="preserve">
+    <value>داخل المطعم</value>
+  </data>
+  <data name="delivery" xml:space="preserve">
+    <value>توصيل</value>
+  </data>
+  <data name="cut" xml:space="preserve">
+    <value>قطع</value>
+  </data>
+  <data name="copy" xml:space="preserve">
+    <value>نسخة</value>
+  </data>
+</root>

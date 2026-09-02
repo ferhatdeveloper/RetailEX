@@ -1,0 +1,185 @@
+name: Print Server Release
+
+# RetailEX PrintServer (Windows Service + Inno Setup installer)
+# Tetikleyici:
+#   1) tag push:        print-v{version}   (ornek: print-v1.0.0)
+#   2) workflow_dispatch (manuel)
+#   3) PrintServer/** degisikliklerinde build (release yok)
+#   Release sadece tag veya dispatch(create_release=true) ile.
+
+on:
+  push:
+    branches:
+      - main
+    paths:
+      - 'PrintServer/**'
+      - '.github/workflows/print-server-release.yml'
+    tags:
+      - 'print-v*'
+  workflow_dispatch:
+    inputs:
+      create_release:
+        description: 'GitHub Release olustur (tag: print-v<run_number>)'
+        required: false
+        default: true
+        type: boolean
+      version:
+        description: 'Surum (ornek: 1.0.0). Bos birakilirsa tag veya run_number kullanilir.'
+        required: false
+        default: ''
+        type: string
+
+permissions:
+  contents: write
+
+env:
+  BUILD_CONFIG: Release
+
+jobs:
+  build-windows-setup:
+    runs-on: windows-latest
+    timeout-minutes: 45
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: .NET 8 SDK kur
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '8.0.x'
+
+      - name: Surum ve release bilgisi
+        id: meta
+        shell: pwsh
+        run: |
+          $shouldRelease = $false
+          $releaseTag = ""
+          $appVersion = ""
+
+          # 1) Tag push'tan surum cikar
+          if ("${{ github.ref_type }}" -eq "tag" -and "${{ github.ref_name }}" -like "print-v*") {
+            $tag = "${{ github.ref_name }}"
+            if ($tag -match '^print-v(\d+\.\d+\.\d+)$') {
+              $appVersion = $Matches[1]
+              $shouldRelease = $true
+              $releaseTag = $tag
+            }
+          }
+
+          # 2) Manual dispatch
+          elseif ("${{ github.event_name }}" -eq "workflow_dispatch") {
+            $manual = "${{ inputs.version }}".Trim()
+            $should = ("${{ inputs.create_release }}" -eq "true")
+            if ($manual -match '^\d+\.\d+\.\d+$') {
+              $appVersion = $manual
+              if ($should) {
+                $shouldRelease = $true
+                $releaseTag = "print-v$manual"
+              }
+            } else {
+              # run_number fallback
+              $appVersion = "0.${{ github.run_number }}.0"
+              if ($should) {
+                $shouldRelease = $true
+                $releaseTag = "print-v$appVersion"
+              }
+            }
+          }
+
+          # 3) Push (release yok) — sadece build
+          else {
+            $appVersion = "0.${{ github.run_number }}.0"
+          }
+
+          echo "APP_VERSION=$appVersion" >> $env:GITHUB_ENV
+          echo "SHOULD_RELEASE=$shouldRelease" >> $env:GITHUB_ENV
+          echo "RELEASE_TAG=$releaseTag" >> $env:GITHUB_ENV
+          Write-Host "APP_VERSION=$appVersion"
+          Write-Host "SHOULD_RELEASE=$shouldRelease"
+          Write-Host "RELEASE_TAG=$releaseTag"
+
+      - name: NuGet restore
+        shell: pwsh
+        working-directory: PrintServer
+        run: dotnet restore PrintServer.sln
+
+      - name: dotnet build (Release)
+        shell: pwsh
+        working-directory: PrintServer
+        run: |
+          dotnet build PrintServer.sln -c ${{ env.BUILD_CONFIG }} --no-restore
+
+      - name: dotnet publish (Service)
+        shell: pwsh
+        working-directory: PrintServer
+        run: |
+          dotnet publish PrintServer.Service/PrintServer.Service.csproj `
+            -c ${{ env.BUILD_CONFIG }} `
+            -f net8.0-windows `
+            -r win-x64 `
+            --self-contained false `
+            -o installer/payload
+
+      - name: Inno Setup kur
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: choco install innosetup -y --no-progress
+
+      - name: Kurulum paketi derle
+        shell: pwsh
+        working-directory: PrintServer
+        run: |
+          $env:Path = "C:\Program Files (x86)\Inno Setup 6;$env:Path"
+          & .\installer\build-installer.ps1 -ProjectRoot (Resolve-Path .).Path -Version $env:APP_VERSION
+
+      - name: releases klasorune kopyala
+        shell: pwsh
+        working-directory: PrintServer
+        run: |
+          New-Item -ItemType Directory -Force -Path releases | Out-Null
+          Get-ChildItem installer\output\RetailEX.PrintManager-Setup-*.exe | ForEach-Object {
+            Copy-Item $_.FullName (Join-Path releases $_.Name) -Force
+          }
+
+      - name: Workflow artifact yukle
+        uses: actions/upload-artifact@v4
+        with:
+          name: RetailEX.PrintServer-${{ env.APP_VERSION }}-${{ github.run_number }}
+          path: |
+            PrintServer/installer/output/RetailEX.PrintManager-Setup-*.exe
+            PrintServer/releases/*
+          retention-days: 30
+
+      - name: GitHub Release olustur
+        if: env.SHOULD_RELEASE == 'true'
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ env.RELEASE_TAG }}
+          name: RetailEX Print Server ${{ env.APP_VERSION }} (${{ env.RELEASE_TAG }})
+          body: |
+            ## RetailEX Print Server (Windows)
+
+            Otomatik derleme: `${{ github.workflow }}` (#${{ github.run_number }})
+
+            ### Kurulum
+            1. `RetailEX.PrintManager-Setup-*.exe` indirin ve yonetici olarak calistirin
+            2. Kurulum sihirbazinda **"Windows yazici servisini kur"** secenegini isaretleyin
+            3. `C:\ProgramData\RetailEX\print-server.json` icinde `PostgRest.ApiToken` alanini doldurun
+
+            ### Yapilandirma
+            - Yapilandirma dosyasi: `C:\ProgramData\RetailEX\print-server.json`
+            - Log dosyasi: `C:\ProgramData\RetailEX\print-server.log`
+            - EventLog: `Application` / Source: `RetailEX_PrintServer`
+
+            ### Servis komutlari
+            ```powershell
+            Get-Service RetailEX_PrintServer
+            Restart-Service RetailEX_PrintServer
+            ```
+
+            Surum: `${{ env.APP_VERSION }}`
+          files: |
+            PrintServer/installer/output/RetailEX.PrintManager-Setup-*.exe
+          draft: false
+          prerelease: false
+          make_latest: true

@@ -4,6 +4,7 @@ import { buildReceipt80mmPrintHtml } from './receipt80mmPrintHtml';
 import { RECEIPT_80MM_DOCUMENT_CSS, RECEIPT_80MM_VIEWPORT_FOR_HEADLESS } from './receipt80mmDocumentCss';
 import { enqueueHtmlDocumentJob, isWindowsPrinterServiceEnabled } from '../services/unifiedPrintQueueService';
 import { IS_TAURI } from './env';
+import { getPrintString, resolvePrintLocale } from '../locales/printKeys';
 
 /** Receipt80mm / mutfak fişi ile aynı dil kodları */
 export type KitchenReceiptLocale = 'tr' | 'en' | 'ar' | 'ku' | 'uz';
@@ -335,10 +336,20 @@ function isKitchenReceiptLocale(locale: string | undefined): locale is KitchenRe
   return locale === 'tr' || locale === 'en' || locale === 'ar' || locale === 'ku' || locale === 'uz';
 }
 
-/** Mutfak fişi etiketleri (HTML / ESC/POS) */
+/** Mutfak fişi etiketleri (HTML / ESC/POS) — ortak `printKeys` sözlüğünden türetilir */
 export function getKitchenTicketLabels(locale?: KitchenReceiptLocale) {
-  const loc: KitchenReceiptLocale = isKitchenReceiptLocale(locale) ? locale : 'tr';
-  return KITCHEN_I18N[loc];
+  const loc = resolvePrintLocale(locale);
+  return {
+    title: getPrintString(loc, 'kitchenHeader'),
+    tableSource: `${getPrintString(loc, 'table')} / ${getPrintString(loc, 'orderNo')}:`,
+    floor: `${getPrintString(loc, 'floor')}:`,
+    waiter: `${getPrintString(loc, 'waiter')}:`,
+    time: `${getPrintString(loc, 'time')}:`,
+    empty: getPrintString(loc, 'emptyOrder'),
+    footer: getPrintString(loc, 'kitchenFooter'),
+    colQty: getPrintString(loc, 'itemCount'),
+    colProduct: getPrintString(loc, 'itemName'),
+  };
 }
 
 function kitchenDateLocale(locale: KitchenReceiptLocale): string {
@@ -387,7 +398,7 @@ export function buildRestaurantKitchenTicketHtml(input: {
   } = input;
 
   const locale: KitchenReceiptLocale = localeIn in KITCHEN_I18N ? localeIn : 'tr';
-  const L = KITCHEN_I18N[locale];
+  const L = getKitchenTicketLabels(locale);
   const printedAtLabel =
     printedAtOverride ?? new Date().toLocaleString(kitchenDateLocale(locale));
 

@@ -1,0 +1,194 @@
+<?xml version="1.0" encoding="utf-8"?>
+<root>
+  <xsd:schema id="root" xmlns="" xmlns:xsd="http://www.w3.org/2001/XMLSchema" xmlns:msdata="urn:schemas-microsoft-com:xml-msdata">
+    <xsd:import namespace="http://www.w3.org/XML/1998/namespace" />
+    <xsd:element name="root" msdata:IsDataSet="true">
+      <xsd:complexType>
+        <xsd:choice maxOccurs="unbounded">
+          <xsd:element name="data">
+            <xsd:complexType>
+              <xsd:sequence>
+                <xsd:element name="value" type="xsd:string" minOccurs="0" msdata:Ordinal="1" />
+                <xsd:element name="comment" type="xsd:string" minOccurs="0" msdata:Ordinal="2" />
+              </xsd:sequence>
+              <xsd:attribute name="name" type="xsd:string" use="required" msdata:Ordinal="1" />
+              <xsd:attribute name="type" type="xsd:string" msdata:Ordinal="3" />
+              <xsd:attribute name="mimetype" type="xsd:string" msdata:Ordinal="4" />
+              <xsd:attribute ref="xml:space" />
+            </xsd:complexType>
+          </xsd:element>
+          <xsd:element name="resheader">
+            <xsd:complexType>
+              <xsd:sequence>
+                <xsd:element name="value" type="xsd:string" minOccurs="0" msdata:Ordinal="1" />
+              </xsd:sequence>
+              <xsd:attribute name="name" type="xsd:string" use="required" />
+            </xsd:complexType>
+          </xsd:element>
+        </xsd:choice>
+      </xsd:complexType>
+    </xsd:element>
+  </xsd:schema>
+  <resheader name="resmimetype">
+    <value>text/microsoft-resx</value>
+  </resheader>
+  <resheader name="version">
+    <value>2.0</value>
+  </resheader>
+  <resheader name="reader">
+    <value>System.Resources.ResXResourceReader, System.Windows.Forms, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089</value>
+  </resheader>
+  <resheader name="writer">
+    <value>System.Resources.ResXResourceWriter, System.Windows.Forms, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089</value>
+  </resheader>
+  <data name="kitchenHeader" xml:space="preserve">
+    <value>MITBAH</value>
+  </data>
+  <data name="kitchenFooter" xml:space="preserve">
+    <value>Spas dikim</value>
+  </data>
+  <data name="accountHeader" xml:space="preserve">
+    <value>DERHEKÊ KIRÊ</value>
+  </data>
+  <data name="accountFooter" xml:space="preserve">
+    <value>Daîna derhekê</value>
+  </data>
+  <data name="posHeader" xml:space="preserve">
+    <value>POS FIŞ</value>
+  </data>
+  <data name="posFooter" xml:space="preserve">
+    <value>Spas dikim</value>
+  </data>
+  <data name="invoiceHeader" xml:space="preserve">
+    <value>FATÛRE</value>
+  </data>
+  <data name="invoiceFooter" xml:space="preserve">
+    <value>Spas dikim</value>
+  </data>
+  <data name="cashVoucherHeader" xml:space="preserve">
+    <value>FİŞÊ KASÊ</value>
+  </data>
+  <data name="cashVoucherFooter" xml:space="preserve">
+    <value>Spas dikim</value>
+  </data>
+  <data name="table" xml:space="preserve">
+    <value>Masa</value>
+  </data>
+  <data name="floor" xml:space="preserve">
+    <value>Qat</value>
+  </data>
+  <data name="waiter" xml:space="preserve">
+    <value>Xulametî</value>
+  </data>
+  <data name="orderNo" xml:space="preserve">
+    <value>Hejmara siparîşê</value>
+  </data>
+  <data name="orderNote" xml:space="preserve">
+    <value>Nîşe</value>
+  </data>
+  <data name="date" xml:space="preserve">
+    <value>Dîrok</value>
+  </data>
+  <data name="time" xml:space="preserve">
+    <value>Seat</value>
+  </data>
+  <data name="itemCount" xml:space="preserve">
+    <value>Hejmar</value>
+  </data>
+  <data name="itemName" xml:space="preserve">
+    <value>Berk</value>
+  </data>
+  <data name="unitPrice" xml:space="preserve">
+    <value>Buhayê yekeyê</value>
+  </data>
+  <data name="lineTotal" xml:space="preserve">
+    <value>Komî ya rêzê</value>
+  </data>
+  <data name="subtotal" xml:space="preserve">
+    <value>Bîkoma navin</value>
+  </data>
+  <data name="total" xml:space="preserve">
+    <value>Bi giştî</value>
+  </data>
+  <data name="discount" xml:space="preserve">
+    <value>Kêmbûn</value>
+  </data>
+  <data name="tax" xml:space="preserve">
+    <value>KDV</value>
+  </data>
+  <data name="grandTotal" xml:space="preserve">
+    <value>Totalka giştî</value>
+  </data>
+  <data name="paid" xml:space="preserve">
+    <value>Hate dayîn</value>
+  </data>
+  <data name="change" xml:space="preserve">
+    <value>Pereyê maye</value>
+  </data>
+  <data name="currency" xml:space="preserve">
+    <value>Drah</value>
+  </data>
+  <data name="thankYou" xml:space="preserve">
+    <value>Spas dikim</value>
+  </data>
+  <data name="openDrawer" xml:space="preserve">
+    <value>Seknê kasê veke</value>
+  </data>
+  <data name="customer" xml:space="preserve">
+    <value>Mîştir</value>
+  </data>
+  <data name="supplier" xml:space="preserve">
+    <value>Pêşkêşkar</value>
+  </data>
+  <data name="balance" xml:space="preserve">
+    <value>Balansa</value>
+  </data>
+  <data name="openingBalance" xml:space="preserve">
+    <value>Balansa vekirinê</value>
+  </data>
+  <data name="debit" xml:space="preserve">
+    <value>Borc</value>
+  </data>
+  <data name="credit" xml:space="preserve">
+    <value>Made</value>
+  </data>
+  <data name="invoiceNo" xml:space="preserve">
+    <value>Hejmara fatûreyê</value>
+  </data>
+  <data name="dateRange" xml:space="preserve">
+    <value>Dema dîrokê</value>
+  </data>
+  <data name="documentType" xml:space="preserve">
+    <value>Cûreyê belgeyê</value>
+  </data>
+  <data name="quantity" xml:space="preserve">
+    <value>Hejmar</value>
+  </data>
+  <data name="printerTest" xml:space="preserve">
+    <value>Testa printerê</value>
+  </data>
+  <data name="emptyOrder" xml:space="preserve">
+    <value>(Siparîşa vala)</value>
+  </data>
+  <data name="course" xml:space="preserve">
+    <value>Wargêrin</value>
+  </data>
+  <data name="orderType" xml:space="preserve">
+    <value>Cûreyê siparîşê</value>
+  </data>
+  <data name="takeaway" xml:space="preserve">
+    <value>Brinî</value>
+  </data>
+  <data name="dineIn" xml:space="preserve">
+    <value>Li ser masê</value>
+  </data>
+  <data name="delivery" xml:space="preserve">
+    <value>Şandin</value>
+  </data>
+  <data name="cut" xml:space="preserve">
+    <value>Birqefîl</value>
+  </data>
+  <data name="copy" xml:space="preserve">
+    <value>Kopî</value>
+  </data>
+</root>

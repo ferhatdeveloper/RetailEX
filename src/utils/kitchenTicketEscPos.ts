@@ -4,10 +4,14 @@
  */
 import {
   formatKitchenTicketTime,
-  getKitchenTicketLabels,
   type KitchenReceiptLocale,
   type KitchenTicketItemLine,
 } from './restaurantReceiptPrint';
+import { getPrintString, resolvePrintLocale, type PrintStringKey } from '../locales/printKeys';
+
+function t(locale: KitchenReceiptLocale | string | undefined, key: PrintStringKey): string {
+  return getPrintString(resolvePrintLocale(locale ?? 'tr'), key as PrintStringKey);
+}
 
 const enc = new TextEncoder();
 
@@ -63,7 +67,17 @@ export function buildKitchenTicketEscPosBuffer(input: {
   items: KitchenTicketItemLine[];
   locale?: KitchenReceiptLocale;
 }): Uint8Array {
-  const L = getKitchenTicketLabels(input.locale);
+  const L = {
+    title: t(input.locale, 'kitchenHeader'),
+    tableSource: `${t(input.locale, 'table')} / ${t(input.locale, 'orderNo')}:`,
+    floor: `${t(input.locale, 'floor')}:`,
+    waiter: `${t(input.locale, 'waiter')}:`,
+    time: `${t(input.locale, 'time')}:`,
+    empty: t(input.locale, 'emptyOrder'),
+    footer: t(input.locale, 'kitchenFooter'),
+    colQty: t(input.locale, 'itemCount'),
+    colProduct: t(input.locale, 'itemName'),
+  };
   const printed = formatKitchenTicketTime(input.locale);
   const parts: Uint8Array[] = [];
 

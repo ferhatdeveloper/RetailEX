@@ -1,0 +1,55 @@
+namespace RetailEX.PrintServer.Core.I18n;
+
+public static class PrintStringKey
+{
+    public const string KitchenHeader = "kitchenHeader";
+    public const string KitchenFooter = "kitchenFooter";
+    public const string AccountHeader = "accountHeader";
+    public const string AccountFooter = "accountFooter";
+    public const string PosHeader = "posHeader";
+    public const string PosFooter = "posFooter";
+    public const string InvoiceHeader = "invoiceHeader";
+    public const string InvoiceFooter = "invoiceFooter";
+    public const string CashVoucherHeader = "cashVoucherHeader";
+    public const string CashVoucherFooter = "cashVoucherFooter";
+    public const string Table = "table";
+    public const string Floor = "floor";
+    public const string Waiter = "waiter";
+    public const string OrderNo = "orderNo";
+    public const string OrderNote = "orderNote";
+    public const string Date = "date";
+    public const string Time = "time";
+    public const string ItemCount = "itemCount";
+    public const string ItemName = "itemName";
+    public const string UnitPrice = "unitPrice";
+    public const string LineTotal = "lineTotal";
+    public const string Subtotal = "subtotal";
+    public const string Total = "total";
+    public const string Discount = "discount";
+    public const string Tax = "tax";
+    public const string GrandTotal = "grandTotal";
+    public const string Paid = "paid";
+    public const string Change = "change";
+    public const string Currency = "currency";
+    public const string ThankYou = "thankYou";
+    public const string OpenDrawer = "openDrawer";
+    public const string Customer = "customer";
+    public const string Supplier = "supplier";
+    public const string Balance = "balance";
+    public const string OpeningBalance = "openingBalance";
+    public const string Debit = "debit";
+    public const string Credit = "credit";
+    public const string InvoiceNo = "invoiceNo";
+    public const string DateRange = "dateRange";
+    public const string DocumentType = "documentType";
+    public const string Quantity = "quantity";
+    public const string PrinterTest = "printerTest";
+    public const string EmptyOrder = "emptyOrder";
+    public const string Course = "course";
+    public const string OrderType = "orderType";
+    public const string Takeaway = "takeaway";
+    public const string DineIn = "dineIn";
+    public const string Delivery = "delivery";
+    public const string Cut = "cut";
+    public const string Copy = "copy";
+}

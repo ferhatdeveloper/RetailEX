@@ -1,0 +1,33 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <TargetFramework>net8.0</TargetFramework>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <Nullable>enable</Nullable>
+    <LangVersion>latest</LangVersion>
+    <RootNamespace>RetailEX.PrintServer.Core</RootNamespace>
+    <AssemblyName>RetailEX.PrintServer.Core</AssemblyName>
+  </PropertyGroup>
+  <ItemGroup>
+    <PackageReference Include="Newtonsoft.Json" Version="13.0.3" />
+    <PackageReference Include="Microsoft.Extensions.Http" Version="8.*" />
+    <PackageReference Include="Microsoft.Extensions.Logging" Version="8.*" />
+    <PackageReference Include="Microsoft.Extensions.Hosting.Abstractions" Version="8.*" />
+  </ItemGroup>
+  <ItemGroup>
+    <EmbeddedResource Update="I18n\PrintStrings.resx">
+      <LogicalName>RetailEX.PrintServer.Core.I18n.PrintStrings.resources</LogicalName>
+    </EmbeddedResource>
+    <EmbeddedResource Update="I18n\PrintStrings.tr.resx">
+      <LogicalName>RetailEX.PrintServer.Core.I18n.PrintStrings.tr.resources</LogicalName>
+    </EmbeddedResource>
+    <EmbeddedResource Update="I18n\PrintStrings.en.resx">
+      <LogicalName>RetailEX.PrintServer.Core.I18n.PrintStrings.en.resources</LogicalName>
+    </EmbeddedResource>
+    <EmbeddedResource Update="I18n\PrintStrings.ar.resx">
+      <LogicalName>RetailEX.PrintServer.Core.I18n.PrintStrings.ar.resources</LogicalName>
+    </EmbeddedResource>
+    <EmbeddedResource Update="I18n\PrintStrings.ku.resx">
+      <LogicalName>RetailEX.PrintServer.Core.I18n.PrintStrings.ku.resources</LogicalName>
+    </EmbeddedResource>
+  </ItemGroup>
+</Project>

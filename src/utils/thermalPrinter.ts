@@ -2,6 +2,7 @@ import { getStoredWindowsPrinterNameForPrint } from './tauriPrintSettings';
 import { RECEIPT_80MM_DOCUMENT_CSS, RECEIPT_80MM_VIEWPORT_FOR_HEADLESS } from './receipt80mmDocumentCss';
 import { getBindingForScope } from '../services/printDesignBindingService';
 import { enqueueFastReportFrxJob, enqueueFastReportTemplateJob, enqueuePrintJob, isWindowsPrinterServiceEnabled } from '../services/unifiedPrintQueueService';
+import { getPrintString, resolvePrintLocale, type PrintStringKey } from '../locales/printKeys';
 
 export interface ReturnReceipt {
   id: string;
@@ -50,29 +51,31 @@ function generateReceiptHTML(sale: any, companyName: string, language: string, r
     ? `<div class="center" style="font-size: 9px; margin-bottom: 2mm;">${companyLines.join(' | ')}</div>`
     : '';
 
+  const locale = resolvePrintLocale(language);
+  const t = (key: PrintStringKey): string => getPrintString(locale, key);
   const labels = language === 'ar' ? {
-    receiptNo: 'رقم الإيصال', date: 'التاريخ', cashier: 'أمين الصندوق',
-    customer: 'العميل', product: 'المنتج', qty: 'الكمية', amount: 'المبلغ',
-    subtotal: 'المجموع الفرعي', discount: 'خصم', total: 'المجموع',
-    paymentMethod: 'طريقة الدفع', change: 'الباقي', thanks: 'شكرا لزيارتكم!',
+    receiptNo: t('invoiceNo'), date: t('date'), cashier: 'أمين الصندوق',
+    customer: t('customer'), product: t('itemName'), qty: t('itemCount'), amount: t('lineTotal'),
+    subtotal: t('subtotal'), discount: t('discount'), total: t('total'),
+    paymentMethod: 'طريقة الدفع', change: t('change'), thanks: t('thankYou'),
     cash: 'نقدي', card: 'بطاقة'
   } : language === 'ku' ? {
-    receiptNo: 'Hejmara Fîşê', date: 'Dîrok', cashier: 'Kasiyer',
-    customer: 'Mişterî', product: 'Berhem', qty: 'Hêjmar', amount: 'Sûlav',
-    subtotal: 'Bin-Berhev', discount: 'Daxistin', total: 'BERHEV',
-    paymentMethod: 'Rêbaza Peredanê', change: 'Baxşîş', thanks: 'Sipas dikin!',
+    receiptNo: t('invoiceNo'), date: t('date'), cashier: 'Kasiyer',
+    customer: t('customer'), product: t('itemName'), qty: t('itemCount'), amount: t('lineTotal'),
+    subtotal: t('subtotal'), discount: t('discount'), total: t('total'),
+    paymentMethod: 'Rêbaza Peredanê', change: t('change'), thanks: t('thankYou'),
     cash: 'Neqit', card: 'Kart'
   } : language === 'en' ? {
-    receiptNo: 'Receipt No', date: 'Date', cashier: 'Cashier',
-    customer: 'Customer', product: 'Product', qty: 'Qty', amount: 'Amount',
-    subtotal: 'Subtotal', discount: 'Discount', total: 'TOTAL',
-    paymentMethod: 'Payment Method', change: 'Change', thanks: 'Thank You For Choosing Us!',
+    receiptNo: t('invoiceNo'), date: t('date'), cashier: 'Cashier',
+    customer: t('customer'), product: t('itemName'), qty: t('itemCount'), amount: t('lineTotal'),
+    subtotal: t('subtotal'), discount: t('discount'), total: t('total'),
+    paymentMethod: 'Payment Method', change: t('change'), thanks: t('thankYou'),
     cash: 'Cash', card: 'Card'
   } : {
-    receiptNo: 'Fiş No', date: 'Tarih', cashier: 'Kasiyer',
-    customer: 'Müşteri', product: 'Ürün', qty: 'Adet', amount: 'Tutar',
-    subtotal: 'Ara Toplam', discount: 'İndirim', total: 'TOPLAM',
-    paymentMethod: 'Ödeme Yöntemi', change: 'Para Üstü', thanks: 'Bizi Tercih Ettiğiniz İçin Teşekkür Ederiz!',
+    receiptNo: t('invoiceNo'), date: t('date'), cashier: 'Kasiyer',
+    customer: t('customer'), product: t('itemName'), qty: t('itemCount'), amount: t('lineTotal'),
+    subtotal: t('subtotal'), discount: t('discount'), total: t('total'),
+    paymentMethod: 'Ödeme Yöntemi', change: t('change'), thanks: t('thankYou'),
     cash: 'Nakit', card: 'Kredi Kartı'
   };
 

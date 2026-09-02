@@ -1,0 +1,21 @@
+{
+  "PostgRest": {
+    "BaseUrl": "https://api.retailex.app",
+    "TenantCode": "kasap",
+    "ApiToken": "",
+    "AuthMode": "apikey"
+  },
+  "WorkerId": null,
+  "PollIntervalMs": 2500,
+  "ClaimLimit": 10,
+  "TcpTimeoutMs": 8000,
+  "MaxAttempts": 5,
+  "DefaultLocale": "tr",
+  "SumatraPdfPath": "",
+  "PrintBrowserPath": "",
+  "FastReportCliPath": "",
+  "LogLevel": "info",
+  "EnableMultiTenant": true,
+  "PinnedTenants": [],
+  "Tenants": []
+}

@@ -1,5 +1,15 @@
 import { ERP_SETTINGS, DB_SETTINGS, postgres } from './postgres';
 import { getRestaurantPrinterConfig } from './restaurantPrinterConfigService';
+import {
+  assemblePrintTranslations,
+  resolvePrintLocale,
+  type SupportedPrintLocale,
+} from '../locales/printKeys';
+
+function resolveDefaultLocale(): SupportedPrintLocale {
+  const raw = (ERP_SETTINGS as { defaultLocale?: string }).defaultLocale;
+  return resolvePrintLocale(raw ?? 'tr');
+}
 
 export type UnifiedPrintJobType =
   | 'kitchen_ticket'
@@ -195,7 +205,17 @@ export async function ensurePrintQueueTables(): Promise<void> {
 export async function enqueuePrintJob(params: EnqueuePrintJobParams): Promise<{ id?: string }> {
   await ensurePrintQueueTables();
   const jobsTable = postgres.getMovementTableName('print_jobs', 'rest');
-  const payload = params.payload && typeof params.payload === 'object' ? params.payload : {};
+  const basePayload = params.payload && typeof params.payload === 'object' ? params.payload : {};
+  const locale = resolvePrintLocale(params.locale ?? resolveDefaultLocale());
+  const incomingTranslations = (basePayload as { translations?: unknown }).translations;
+  const payload: Record<string, unknown> = {
+    ...basePayload,
+    locale,
+    translations:
+      incomingTranslations && typeof incomingTranslations === 'object'
+        ? incomingTranslations
+        : assemblePrintTranslations(),
+  };
   const { rows } = await postgres.query<{ id: string }>(
     `INSERT INTO ${jobsTable}
       (job_type, status, priority, connection, address, port, printer_name, printer_profile_id,
@@ -210,7 +230,7 @@ export async function enqueuePrintJob(params: EnqueuePrintJobParams): Promise<{ 
       params.port ?? null,
       params.printerName ?? null,
       params.printerProfileId ?? null,
-      params.locale ?? 'tr',
+      locale,
       normalizePositiveInt(params.copies, 1),
       JSON.stringify(payload),
       params.refType ?? null,
@@ -223,29 +243,53 @@ export async function enqueuePrintJob(params: EnqueuePrintJobParams): Promise<{ 
 }
 
 export async function enqueueFastReportTemplateJob(params: EnqueueFastReportTemplateJobParams): Promise<{ id?: string }> {
+  const locale = resolvePrintLocale(params.locale ?? resolveDefaultLocale());
+  const incomingData = (params.data && typeof params.data === 'object' ? params.data : {}) as Record<string, unknown>;
+  const incomingTranslations = (incomingData as { translations?: unknown }).translations;
+  const data: Record<string, unknown> = {
+    ...incomingData,
+    locale,
+    translations:
+      incomingTranslations && typeof incomingTranslations === 'object'
+        ? incomingTranslations
+        : assemblePrintTranslations(),
+  };
   return enqueuePrintJob({
     ...params,
+    locale,
     jobType: 'fastreport_template',
     payload: {
       kind: 'fastreport_template',
       templateId: params.templateId,
       templateType: params.type ?? 'invoice',
-      data: params.data,
+      data,
       engine: 'fastreport-like',
     },
   });
 }
 
 export async function enqueueFastReportFrxJob(params: EnqueueFastReportFrxJobParams): Promise<{ id?: string }> {
+  const locale = resolvePrintLocale(params.locale ?? resolveDefaultLocale());
+  const incomingData = (params.data && typeof params.data === 'object' ? params.data : {}) as Record<string, unknown>;
+  const incomingTranslations = (incomingData as { translations?: unknown }).translations;
+  const data: Record<string, unknown> = {
+    ...incomingData,
+    locale,
+    translations:
+      incomingTranslations && typeof incomingTranslations === 'object'
+        ? incomingTranslations
+        : assemblePrintTranslations(),
+  };
   return enqueuePrintJob({
     ...params,
+    locale,
     jobType: 'fastreport_frx',
     payload: {
       kind: 'fastreport_frx',
       designId: params.designId,
       designName: params.designName ?? null,
       scope: params.scope ?? null,
-      data: params.data,
+      data,
     },
   });
 }

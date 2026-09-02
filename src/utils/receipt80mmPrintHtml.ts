@@ -8,6 +8,7 @@ import type { ReceiptSettings } from '../services/receiptSettingsService';
 import { formatNumber } from './formatNumber';
 import { formatCurrency, formatMoneyWithCode, getGlobalCurrency, getCurrencyDecimalPlaces, moneyEpsilon } from './currency';
 import { receiptNotesForDisplay } from './receiptNotes';
+import { getPrintString, resolvePrintLocale, type SupportedPrintLocale } from '../locales/printKeys';
 /** Receipt80mm / POS fiş dili */
 export type Receipt80mmPrintLocale = 'tr' | 'en' | 'ar' | 'ku' | 'uz';
 
@@ -303,7 +304,38 @@ export function buildReceipt80mmPrintHtml(input: BuildReceipt80mmPrintHtmlInput)
     localeIn === 'uz'
       ? localeIn
       : 'tr';
-  const T = TEXT[locale];
+  const supported: SupportedPrintLocale = (locale as SupportedPrintLocale);
+  const t = (key: Parameters<typeof getPrintString>[1]) => getPrintString(supported, key);
+  const T = {
+    receiptNo: t('invoiceNo'),
+    date: t('date'),
+    cashier: 'Kasiyer',
+    customer: t('customer'),
+    table: t('table'),
+    device: 'Cihaz',
+    staff: 'Personel',
+    operation: 'İşlem',
+    productLabel: t('itemName'),
+    qtyLabel: t('itemCount'),
+    amountLabel: t('lineTotal'),
+    subtotal: t('subtotal'),
+    discount: t('discount'),
+    campaign: 'Kampanya',
+    total: t('total'),
+    paymentDetails: t('cashVoucherHeader'),
+    paid: t('paid'),
+    change: t('change'),
+    remaining: 'Kalan',
+    thanks: t('thankYou'),
+    footerLine: 'Profesyonel ERP Çözümleri',
+    cash: 'Nakit',
+    card: 'Kart',
+    veresiye: t('credit'),
+    qr: 'QR',
+    treatmentDegree: 'Derece',
+    treatmentShots: 'Atış',
+    noteLabel: t('orderNote'),
+  };
   const isRTL = locale === 'ar' || locale === 'ku';
   const dir = isRTL ? 'rtl' : 'ltr';
   const ta = isRTL ? 'right' : 'left';
