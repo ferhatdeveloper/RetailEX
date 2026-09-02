@@ -62,11 +62,14 @@ Source: "payload\install-service.ps1"; DestDir: "{app}"; Flags: ignoreversion
 Source: "payload\print-server.example.json"; DestDir: "{commonappdata}\RetailEX"; Flags: ignoreversion onlyifdoesntexist uninsneveruninstall
 
 ; Designer (yalnizca installdesigner gorevi secildiginde)
-; dotnet build her zaman RetailEX.FastReportDesigner.exe apphost uretir
-; (Workflow Designer publish adimi artik 'dotnet publish' degil 'dotnet build'
-; kullaniyor); bu sayede exe + dll her durumda payload/designer altinda.
-Source: "payload\designer\RetailEX.FastReportDesigner.exe"; DestDir: "{app}\Designer"; Flags: ignoreversion; Tasks: installdesigner
+; print v0.1.4+: Windows runner + WinForms WinExe bazen sadece DLL uretir
+; (apphost .exe uretmiyor). Bu yuzden:
+;   1) .exe varsa install edilir (FileExists check)
+;   2) .cmd shim her durumda install edilir; .exe varsa onu, yoksa
+;      'dotnet <dll>' cagirir. Start Menu kisayolu .cmd'e yonlenir.
+Source: "payload\designer\RetailEX.FastReportDesigner.cmd"; DestDir: "{app}\Designer"; Flags: ignoreversion; Tasks: installdesigner
 Source: "payload\designer\RetailEX.FastReportDesigner.dll"; DestDir: "{app}\Designer"; Flags: ignoreversion; Tasks: installdesigner
+Source: "payload\designer\RetailEX.FastReportDesigner.exe"; DestDir: "{app}\Designer"; Flags: ignoreversion skipifsourcedoesntexist; Tasks: installdesigner
 Source: "payload\designer\RetailEX.PrintServer.Core.dll"; DestDir: "{app}\Designer"; Flags: ignoreversion; Tasks: installdesigner
 Source: "payload\designer\Newtonsoft.Json.dll"; DestDir: "{app}\Designer"; Flags: ignoreversion; Tasks: installdesigner
 Source: "payload\designer\Microsoft.Extensions.*.dll"; DestDir: "{app}\Designer"; Flags: ignoreversion recursesubdirs createallsubdirs; Tasks: installdesigner
@@ -77,12 +80,12 @@ Source: "payload\designer\lib\FastReport.Editor.dll"; DestDir: "{app}\Designer\l
 
 [Icons]
 Name: "{group}\{#MyAppName}"; Filename: "{app}\{#MyAppExeName}"
-Name: "{group}\FastReport Tasarimci"; Filename: "{app}\Designer\{#MyDesignerExeName}"; Tasks: installdesigner
+Name: "{group}\FastReport Tasarimci"; Filename: "{app}\Designer\RetailEX.FastReportDesigner.cmd"; Tasks: installdesigner
 Name: "{group}\Yazici Servisi Kur"; Filename: "powershell.exe"; Parameters: "-ExecutionPolicy Bypass -File ""{app}\install-service.ps1"""; Comment: "Yonetici olarak calistirin"
 Name: "{group}\Yapilandirma"; Filename: "notepad.exe"; Parameters: "{commonappdata}\RetailEX\print-server.json"
 Name: "{group}\RetailEX Kaldir"; Filename: "{uninstallexe}"
 Name: "{autodesktop}\{#MyAppName}"; Filename: "{app}\{#MyAppExeName}"; Tasks: desktopicon
-Name: "{autodesktop}\FastReport Tasarimci"; Filename: "{app}\Designer\{#MyDesignerExeName}"; Tasks: installdesigner
+Name: "{autodesktop}\FastReport Tasarimci"; Filename: "{app}\Designer\RetailEX.FastReportDesigner.cmd"; Tasks: installdesigner
 
 [Run]
 Filename: "powershell.exe"; Parameters: "-ExecutionPolicy Bypass -File ""{app}\install-service.ps1"""; Flags: runhidden waituntilterminated skipifdoesntexist; Tasks: installservice; StatusMsg: "Yazici servisi kuruluyor..."
