@@ -132,9 +132,13 @@ jobs:
           $libTarget = Join-Path $designerPayload "lib"
           New-Item -ItemType Directory -Force -Path $libTarget | Out-Null
 
-          # Windows Forms WinExe icin en saglam yol: dotnet build ile win-x64 RID
-          # kullanarak derlemek; 'dotnet publish' bazen sadece DLL uretebiliyor.
-          # dotnet build ise apphost (.exe) her zaman uretir.
+          # Designer icin RID'li restore (WinExe apphost icin): proje kokunden
+          # 'dotnet restore -r win-x64' ile RuntimeIdentifiers tanitilir.
+          dotnet restore PrintServer.Designer/PrintServer.Designer.csproj -r win-x64
+
+          # 'dotnet publish' WinForms WinExe bazen sadece DLL uretir; 'dotnet
+          # build' apphost .exe her zaman uretir. Bu yuzden publish yerine
+          # build kullaniyoruz.
           dotnet build PrintServer.Designer/PrintServer.Designer.csproj `
             -c ${{ env.BUILD_CONFIG }} `
             -f net8.0-windows `
@@ -155,7 +159,6 @@ jobs:
           Get-ChildItem $buildOut -Filter "RetailEX.FastReportDesigner.exe" | ForEach-Object {
             Copy-Item $_.FullName $designerPayload -Force
           }
-          # designer.config.example.json publish ciktisinda yoksa projeden kopyala
           if (-not (Test-Path (Join-Path $designerPayload "designer.config.example.json"))) {
             Copy-Item (Join-Path (Resolve-Path PrintServer.Designer).Path "designer.config.example.json") `
                       (Join-Path $designerPayload "designer.config.example.json") -Force
@@ -164,8 +167,6 @@ jobs:
           Write-Host "--- Designer payload icerigi ---"
           Get-ChildItem $designerPayload | Format-Table Name, Length -AutoSize
 
-          # Kullanici lisansli FastReport DLL'lerini lib/ icine koyar; mevcut
-          # tools/FastReportDesigner/lib/ dizinindekileri otomatik kopyala (varsa).
           $userLib = Join-Path (Resolve-Path ..).Path "tools/FastReportDesigner/lib"
           if (Test-Path $userLib) {
             Copy-Item (Join-Path $userLib "*.dll") $libTarget -Force

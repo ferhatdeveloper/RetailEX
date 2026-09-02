@@ -11,6 +11,9 @@
     <AssemblyName>RetailEX.FastReportDesigner</AssemblyName>
     <ApplicationIcon></ApplicationIcon>
     <UserSecretsId>retailex-printserver-designer-1</UserSecretsId>
+    <!-- RID restore için win-x64 bildirimi; publish ve build sırasında
+         Windows runner'da apphost .exe üretimini garantiler. -->
+    <RuntimeIdentifiers>win-x64</RuntimeIdentifiers>
   </PropertyGroup>
 
   <ItemGroup>
