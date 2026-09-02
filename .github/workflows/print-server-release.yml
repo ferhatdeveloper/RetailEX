@@ -120,6 +120,32 @@ jobs:
             --self-contained false `
             -o installer/payload
 
+      - name: dotnet publish (Designer)
+        shell: pwsh
+        working-directory: PrintServer
+        run: |
+          $designerPayload = Join-Path (Resolve-Path installer/payload).Path "designer"
+          New-Item -ItemType Directory -Force -Path $designerPayload | Out-Null
+          $libTarget = Join-Path $designerPayload "lib"
+          New-Item -ItemType Directory -Force -Path $libTarget | Out-Null
+          dotnet publish PrintServer.Designer/PrintServer.Designer.csproj `
+            -c ${{ env.BUILD_CONFIG }} `
+            -f net8.0-windows `
+            -r win-x64 `
+            --self-contained false `
+            -o $designerPayload
+          # Kullanici lisansli FastReport DLL'lerini lib/ icine koyar; mevcut
+          # tools/FastReportDesigner/lib/ dizinindekileri otomatik kopyala (varsa).
+          $userLib = Join-Path (Resolve-Path ..).Path "tools/FastReportDesigner/lib"
+          if (Test-Path $userLib) {
+            Copy-Item (Join-Path $userLib "*.dll") $libTarget -Force
+          }
+          # Designer config ornegi
+          if (-not (Test-Path (Join-Path $designerPayload "designer.config.example.json"))) {
+            Copy-Item (Join-Path (Resolve-Path PrintServer.Designer).Path "designer.config.example.json") `
+                      (Join-Path $designerPayload "designer.config.example.json") -Force
+          }
+
       - name: Inno Setup kur
         if: runner.os == 'Windows'
         shell: pwsh

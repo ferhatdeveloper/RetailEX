@@ -1,0 +1,31 @@
+{
+  "$schema": "https://retailex.local/schemas/designer-config-v1.json",
+  "postgrest": {
+    "baseUrl": "http://127.0.0.1:3001",
+    "schema": "public",
+    "authMode": "none",
+    "bearerToken": "",
+    "apiKey": "",
+    "timeoutSeconds": 30,
+    "retries": 2
+  },
+  "tenants": {
+    "active": {
+      "firmNr": "001",
+      "periodNr": "01"
+    },
+    "known": [
+      { "firmNr": "001", "periodNr": "01", "name": "Demo Firma 1 - 2026/01" },
+      { "firmNr": "001", "periodNr": "02", "name": "Demo Firma 1 - 2026/02" },
+      { "firmNr": "002", "periodNr": "01", "name": "Demo Firma 2 - 2026/01" }
+    ]
+  },
+  "ui": {
+    "locale": "tr",
+    "recentTemplates": []
+  },
+  "fastReport": {
+    "libDirectory": "lib",
+    "defaultTemplateName": "Yeni FastReport Tasarımı"
+  }
+}

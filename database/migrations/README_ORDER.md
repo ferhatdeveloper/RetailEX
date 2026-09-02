@@ -132,6 +132,11 @@ VPS: `npm run db:migrate:tenants` veya GitHub Actions → **Migrate tenant datab
 - `bash database/scripts/apply-065-all-retail-tenants.sh` — yalnızca 065 (tenant_registry listesi)
 - GitHub Actions: **Migrate tenant databases** (`migrate-tenants-db.yml`) — VPS SSH ile `berqenas-repo-pull-and-migrate.sh`
 
+**Print Server & Designer migration'ları (Print v0.x):**
+- `125_seed_default_print_designs.sql` — public.print_design_bindings + public.print_design_translations (49 anahtar × 4 dil) seed.
+- `126_seed_restaurant_windows_service_default.sql` — public.app_settings `restaurant_printer_config.printViaWindowsService=true` seed (tüm aktif firmalar).
+- `127_print_designer_postgrest_grants.sql` — `print_designer` PostgREST bearer rolü + public.report_templates INSERT/UPDATE grant.
+
 **Mevcut veritabanı:** `config.db` (DeskApp ayarları) ile bekleyen migration’ları uygulamak için proje kökünde `npm run db:migrate` (ayrıntı: `.cursor/rules/database-migrate-config-db.mdc`).
 
 Restoran sohbetinde eklenen tek yeni tablo: **rest.return_log**. Diğer özellikler (masa durumu senkronu, taşı/birleştir, ürün etiketi, tek ürün taşıma, Z-raporu, mutfak süresi vb.) mevcut tabloları kullanıyor.
