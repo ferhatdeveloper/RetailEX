@@ -183,14 +183,41 @@ jobs:
           Write-Host "--- Designer payload icerigi ---"
           Get-ChildItem $designerPayload | Format-Table Name, Length -AutoSize
 
-          # Kullanici lisansli FastReport DLL'leri
+          # Kullanici lisansli FastReport DLL'leri (3 kaynak, sirayla):
+          #   1) tools/FastReportDesigner/lib/*.dll (repo icinde commit'li ise)
+          #   2) GitHub release 'fastreport-libs' tag'i (zip ile)
+          #   3) hicbiri yoksa lib klasoru bos birakilir; setup hata vermez
+          #      (skipifsourcedoesntexist), kurulum sonunda kullaniciya uyari gosterir.
+          $frCopied = $false
           $userLib = Join-Path (Resolve-Path ..).Path "tools/FastReportDesigner/lib"
           if (Test-Path $userLib) {
-            Copy-Item (Join-Path $userLib "*.dll") $libTarget -Force
-            Write-Host "FastReport DLL'leri kopyalandi:"
-            Get-ChildItem $libTarget | Format-Table Name, Length -AutoSize
-          } else {
-            Write-Host "tools/FastReportDesigner/lib/ bulunamadi; designer lib klasoru bos birakildi."
+            $dlls = Get-ChildItem $userLib -Filter "*.dll" -ErrorAction SilentlyContinue
+            if ($dlls.Count -gt 0) {
+              Copy-Item (Join-Path $userLib "*.dll") $libTarget -Force
+              Write-Host "FastReport DLL'leri (repo tools/) kopyalandi:"
+              Get-ChildItem $libTarget | Format-Table Name, Length -AutoSize
+              $frCopied = $true
+            }
+          }
+          if (-not $frCopied) {
+            # Repo'da yok; GitHub Releases'tan 'fastreport-libs-vN' tag'li release'i dene
+            $frZip = "fastreport-libs.zip"
+            try {
+              gh release download fastreport-libs --repo $env:GITHUB_REPOSITORY `
+                --pattern $frZip --dir $env:RUNNER_TEMP --clobber 2>$null
+              if (Test-Path (Join-Path $env:RUNNER_TEMP $frZip)) {
+                Expand-Archive -Path (Join-Path $env:RUNNER_TEMP $frZip) `
+                  -DestinationPath $libTarget -Force
+                Write-Host "FastReport DLL'leri (release fastreport-libs) kopyalandi:"
+                Get-ChildItem $libTarget | Format-Table Name, Length -AutoSize
+                $frCopied = $true
+              }
+            } catch {
+              Write-Host "fastreport-libs release'i yok veya indirilemedi."
+            }
+          }
+          if (-not $frCopied) {
+            Write-Host "UYARI: FastReport DLL'leri bulunamadi. Setup yine de derlenecek (skipifsourcedoesntexist); kurulum sonunda kullaniciya uyari gosterilecek."
           }
 
           # .cmd shim: build ciktisinda .exe yoksa da calissin.
