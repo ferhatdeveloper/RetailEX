@@ -20,6 +20,9 @@ type PrinterSettingsState = {
   setPaperSize: (paperSize: ReceiptPaperSize) => void;
   setDefaultLanguage: (lang: ReceiptLangCode) => void;
   setAutoPrint: (autoPrint: boolean) => void;
+  setWindowsServiceUrl: (url: string) => void;
+  setWindowsServiceApiKey: (key: string) => void;
+  setWindowsPrinterName: (name: string) => void;
 };
 
 function mergeSettings(
@@ -42,6 +45,11 @@ export const usePrinterSettingsStore = create<PrinterSettingsState>()(
       setPaperSize: (paperSize) => get().setSettings({ paperSize }),
       setDefaultLanguage: (defaultLanguage) => get().setSettings({ defaultLanguage }),
       setAutoPrint: (autoPrint) => get().setSettings({ autoPrint }),
+      setWindowsServiceUrl: (windowsServiceUrl) => get().setSettings({ windowsServiceUrl }),
+      setWindowsServiceApiKey: (windowsServiceApiKey) =>
+        get().setSettings({ windowsServiceApiKey }),
+      setWindowsPrinterName: (windowsPrinterName) =>
+        get().setSettings({ windowsPrinterName }),
     }),
     {
       name: 'retailex_mobile_printer_settings',

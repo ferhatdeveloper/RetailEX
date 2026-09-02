@@ -9,7 +9,7 @@ import {
   Switch,
   ActivityIndicator,
 } from 'react-native';
-import { Printer, Wifi, Bluetooth, Smartphone } from 'lucide-react-native';
+import { Printer, Wifi, Bluetooth, Smartphone, Server } from 'lucide-react-native';
 import { useTranslation } from 'react-i18next';
 import type { NativeStackScreenProps } from '@react-navigation/native-stack';
 import { ScreenHeader } from '../components/ScreenChrome';
@@ -17,7 +17,8 @@ import { FormField } from '../components/FormField';
 import { PrimaryButton } from '../components/PrimaryButton';
 import { useThemeStore } from '../store/themeStore';
 import { usePrinterSettingsStore } from '../store/printerSettingsStore';
-import { printerTransportStatus, testPrintReceipt } from '../services/printerService';
+import { printerTransportStatus, testPrintReceipt, listWindowsServicePrinters } from '../services/printerService';
+import type { WindowsPrinterInfo } from '../services/escpos/windowsServiceTransport';
 import { scanLanPrinters, type DiscoveredPrinter } from '../utils/lanPrinterScan';
 import {
   type PrinterInterface,
@@ -72,6 +73,9 @@ export function PrinterSettingsScreen(_props: Props) {
     currentHost?: string;
   } | null>(null);
   const [scanHits, setScanHits] = useState<DiscoveredPrinter[]>([]);
+  const [windowsPrinters, setWindowsPrinters] = useState<WindowsPrinterInfo[]>([]);
+  const [windowsListing, setWindowsListing] = useState(false);
+  const [windowsListError, setWindowsListError] = useState<string | null>(null);
 
   const transport = useMemo(() => printerTransportStatus(), []);
 
@@ -80,6 +84,7 @@ export function PrinterSettingsScreen(_props: Props) {
       { id: 'network', label: t('printerSettings.interfaceNetwork'), Icon: Wifi },
       { id: 'bluetooth', label: t('printerSettings.interfaceBluetooth'), Icon: Bluetooth },
       { id: 'system', label: t('printerSettings.interfaceSystem'), Icon: Smartphone },
+      { id: 'windows-service', label: t('printerSettings.interfaceWindowsService'), Icon: Server },
     ],
     [t],
   );
@@ -155,6 +160,45 @@ export function PrinterSettingsScreen(_props: Props) {
       );
     },
     [setSettings, t],
+  );
+
+  const onListWindowsPrinters = useCallback(async () => {
+    const url = settings.windowsServiceUrl?.trim();
+    if (!url) {
+      Alert.alert(t('printerSettings.testPrintFail'), t('printerSettings.errors.windowsInvalidUrl'));
+      return;
+    }
+    setWindowsListing(true);
+    setWindowsListError(null);
+    try {
+      const res = await listWindowsServicePrinters(url, settings.windowsServiceApiKey);
+      if (res.ok) {
+        setWindowsPrinters(res.printers);
+        if (res.printers.length === 0) {
+          setWindowsListError(t('printerSettings.windowsPrinterListEmpty'));
+        }
+      } else {
+        setWindowsPrinters([]);
+        setWindowsListError(
+          t('printerSettings.windowsPrinterListError', {
+            message: res.message ?? t('printerSettings.windowsPrinterListEmpty'),
+          }),
+        );
+      }
+    } catch (e) {
+      const msg = e instanceof Error ? e.message : String(e);
+      setWindowsPrinters([]);
+      setWindowsListError(t('printerSettings.windowsPrinterListError', { message: msg }));
+    } finally {
+      setWindowsListing(false);
+    }
+  }, [settings.windowsServiceUrl, settings.windowsServiceApiKey, t]);
+
+  const onPickWindowsPrinter = useCallback(
+    (printer: WindowsPrinterInfo) => {
+      setSettings({ windowsPrinterName: printer.name });
+    },
+    [setSettings],
   );
 
   const onReset = () => {
@@ -393,6 +437,86 @@ export function PrinterSettingsScreen(_props: Props) {
             <Text style={[styles.hint, { color: colors.textSubtle }]}>{t('printerSettings.systemHint')}</Text>
           ) : null}
 
+          {settings.interface === 'windows-service' ? (
+            <>
+              <FormField
+                label={t('printerSettings.windowsServiceUrl')}
+                value={settings.windowsServiceUrl ?? ''}
+                onChangeText={(v) => setSettings({ windowsServiceUrl: v })}
+                autoCapitalize="none"
+                placeholder="http://192.168.1.50:9105"
+              />
+              <Text style={[styles.hint, { color: colors.textSubtle }]}>
+                {t('printerSettings.windowsServiceUrlHint')}
+              </Text>
+              <FormField
+                label={t('printerSettings.windowsPrinterName')}
+                value={settings.windowsPrinterName ?? ''}
+                onChangeText={(v) => setSettings({ windowsPrinterName: v })}
+                placeholder="Microsoft Print to PDF"
+              />
+              <FormField
+                label={t('printerSettings.windowsServiceApiKey')}
+                value={settings.windowsServiceApiKey ?? ''}
+                onChangeText={(v) => setSettings({ windowsServiceApiKey: v })}
+                autoCapitalize="none"
+              />
+              {windowsListing ? (
+                <View style={styles.scanProgressRow}>
+                  <ActivityIndicator color={palette.blue600} />
+                  <Text style={{ color: colors.textMuted, fontSize: 12, flex: 1 }}>
+                    {t('printerSettings.windowsPrinterListButton')}…
+                  </Text>
+                </View>
+              ) : (
+                <PrimaryButton
+                  label={t('printerSettings.windowsPrinterListButton')}
+                  onPress={() => void onListWindowsPrinters()}
+                  variant="ghost"
+                />
+              )}
+              {windowsListError ? (
+                <Text style={[styles.hint, { color: colors.textSubtle }]}>{windowsListError}</Text>
+              ) : null}
+              {windowsPrinters.length > 0 ? (
+                <View style={styles.scanHits}>
+                  <Text style={[styles.sec, { color: colors.textMuted, marginTop: 0 }]}>
+                    {t('printerSettings.scanLanFound', { count: windowsPrinters.length })}
+                  </Text>
+                  {windowsPrinters.map((p) => {
+                    const selected = settings.windowsPrinterName === p.name;
+                    return (
+                      <Pressable
+                        key={p.name}
+                        onPress={() => onPickWindowsPrinter(p)}
+                        style={[
+                          styles.scanHitRow,
+                          {
+                            borderColor: selected ? palette.blue600 : colors.cardBorder,
+                            backgroundColor: selected
+                              ? darkMode
+                                ? `${palette.blue600}30`
+                                : `${palette.blue600}12`
+                              : colors.backgroundAlt,
+                          },
+                        ]}
+                      >
+                        <Text style={{ color: colors.text, fontWeight: '700', fontSize: 13 }}>
+                          {p.name}
+                        </Text>
+                        <Text style={{ color: colors.textMuted, fontSize: 11, marginTop: 2 }}>
+                          {p.isDefault ? 'varsayılan · ' : ''}
+                          {p.status ? `durum: ${p.status}` : ''}
+                          {selected ? ` · ${t('printerSettings.defaultPrinterTitle')}` : ''}
+                        </Text>
+                      </Pressable>
+                    );
+                  })}
+                </View>
+              ) : null}
+            </>
+          ) : null}
+
           <Text style={[styles.sec, { color: colors.textMuted }]}>{t('printerSettings.paperSize')}</Text>
           <View style={styles.chipRow}>
             {PAPER_OPTIONS.map((ps) => {
@@ -508,6 +632,12 @@ export function PrinterSettingsScreen(_props: Props) {
           body={t('printerSettings.transportSystemBody', { status: transport.system.hint })}
           accentDark="#047857"
           accentLight="#a7f3d0"
+        />
+        <TransportBox
+          title={t('printerSettings.transportWindowsServiceTitle')}
+          body={t('printerSettings.transportWindowsServiceBody', { status: transport.windowsService.hint })}
+          accentDark="#b45309"
+          accentLight="#fde68a"
         />
 
         {testing ? (

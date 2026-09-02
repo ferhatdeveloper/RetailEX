@@ -53,7 +53,7 @@ function parseConfigValue(raw: unknown): RestaurantPrinterConfig {
     printerProfiles: Array.isArray(v.printerProfiles) ? v.printerProfiles : [],
     printerRoutes: Array.isArray(v.printerRoutes) ? v.printerRoutes : [],
     commonPrinterId: typeof v.commonPrinterId === 'string' ? v.commonPrinterId : undefined,
-    printViaWindowsService: v.printViaWindowsService === true,
+    printViaWindowsService: v.printViaWindowsService !== false,
   };
 }
 

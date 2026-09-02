@@ -29,6 +29,8 @@ import { formatMoney } from '../api/erpTables';
 import { applyCampaign, pickBestCampaign } from '../services/campaignEngine';
 import { useThemeStore } from '../store/themeStore';
 import { useOrgEpoch } from '../hooks/useOrgEpoch';
+import { useDeviceLayout } from '../hooks/useDeviceLayout';
+import { SplitPane } from '../components/Layout/SplitPane';
 import { usePrinterSettingsStore } from '../store/printerSettingsStore';
 import { printSaleReceipt } from '../services/printerService';
 import { palette } from '../theme/colors';
@@ -57,6 +59,7 @@ export function PosScreen() {
   const { colors } = useThemeStore();
   const navigation = useNavigation<NativeStackNavigationProp<MainStackParamList>>();
   const orgEpoch = useOrgEpoch();
+  const { isLandscapeTablet } = useDeviceLayout();
   const printerSettings = usePrinterSettingsStore((s) => s.settings);
   const [search, setSearch] = useState('');
   const [hits, setHits] = useState<ProductRow[]>([]);
@@ -343,20 +346,8 @@ export function PosScreen() {
         ? t('posUi.campaignsActive', { count: campaigns.length })
         : t('posUi.noCampaign');
 
-  return (
-    <View style={[styles.root, { backgroundColor: colors.background }]}>
-      <ScreenHeader
-        title={t('posUi.title')}
-        subtitle={t('posUi.subtitle')}
-        showBack={false}
-        right={
-          <Pressable onPress={() => navigation.navigate('ScaleSale')} hitSlop={8}>
-            <Text style={{ color: palette.white, fontWeight: '800', fontSize: 12 }}>
-              {t('posUi.scale')}
-            </Text>
-          </Pressable>
-        }
-      />
+  const renderSearchRow = useCallback(
+    () => (
       <View style={styles.searchRow}>
         <View style={styles.searchFlex}>
           <SearchBar
@@ -373,17 +364,15 @@ export function PosScreen() {
           <ScanBarcode size={22} color={palette.blue600} />
         </Pressable>
       </View>
+    ),
+    [search, runSearch, t, colors.card, colors.cardBorder],
+  );
 
-      <BarcodeScannerModal
-        visible={scannerOpen}
-        onClose={() => setScannerOpen(false)}
-        onScanned={(data) => void runSearch(data)}
-        title={t('posUi.scanTitle')}
-      />
-
-      {hits.length > 0 ? (
+  const renderHits = useCallback(
+    (max: number) =>
+      hits.length > 0 ? (
         <View style={[styles.hits, { backgroundColor: colors.card, borderColor: colors.cardBorder }]}>
-          {hits.slice(0, 8).map((p) => (
+          {hits.slice(0, max).map((p) => (
             <Pressable
               key={String(p.id)}
               onPress={() => {
@@ -405,51 +394,52 @@ export function PosScreen() {
             <Text style={{ color: colors.textMuted, padding: 8 }}>{t('posUi.searching')}</Text>
           ) : null}
         </View>
-      ) : null}
+      ) : null,
+    [hits, colors.card, colors.cardBorder, colors.text, colors.textMuted, addProduct, searching, t],
+  );
 
-      <FlatList
-        data={cart}
-        keyExtractor={(item) => item.productId}
-        ListEmptyComponent={<EmptyState message={t('posUi.emptyCart')} />}
-        contentContainerStyle={{ padding: 12, gap: 8, paddingBottom: 280 }}
-        renderItem={({ item }) => (
-          <View style={[styles.line, { backgroundColor: colors.card, borderColor: colors.cardBorder }]}>
-            <View style={{ flex: 1 }}>
-              <Text style={{ color: colors.text, fontWeight: '600' }} numberOfLines={1}>
-                {item.name}
-              </Text>
-              <Text style={{ color: colors.textMuted, fontSize: 11 }}>
-                {formatMoney(item.price)} × {item.qty} {item.unit || ''}
-              </Text>
-            </View>
-            <View style={styles.qtyRow}>
-              <Pressable onPress={() => setQty(item.productId, -1)} style={styles.qtyBtn}>
-                <Minus size={14} color={palette.white} />
-              </Pressable>
-              <Text
-                style={{
-                  color: colors.text,
-                  fontWeight: '700',
-                  minWidth: 24,
-                  textAlign: 'center',
-                }}
-              >
-                {item.qty}
-              </Text>
-              <Pressable onPress={() => setQty(item.productId, 1)} style={styles.qtyBtn}>
-                <Plus size={14} color={palette.white} />
-              </Pressable>
-              <Pressable
-                onPress={() => setQty(item.productId, -item.qty)}
-                style={[styles.qtyBtn, { backgroundColor: palette.red500 }]}
-              >
-                <Trash2 size={14} color={palette.white} />
-              </Pressable>
-            </View>
-          </View>
-        )}
-      />
+  const renderCartLine = useCallback(
+    ({ item }: { item: CartLine }) => (
+      <View style={[styles.line, { backgroundColor: colors.card, borderColor: colors.cardBorder }]}>
+        <View style={{ flex: 1 }}>
+          <Text style={{ color: colors.text, fontWeight: '600' }} numberOfLines={1}>
+            {item.name}
+          </Text>
+          <Text style={{ color: colors.textMuted, fontSize: 11 }}>
+            {formatMoney(item.price)} × {item.qty} {item.unit || ''}
+          </Text>
+        </View>
+        <View style={styles.qtyRow}>
+          <Pressable onPress={() => setQty(item.productId, -1)} style={styles.qtyBtn}>
+            <Minus size={14} color={palette.white} />
+          </Pressable>
+          <Text
+            style={{
+              color: colors.text,
+              fontWeight: '700',
+              minWidth: 24,
+              textAlign: 'center',
+            }}
+          >
+            {item.qty}
+          </Text>
+          <Pressable onPress={() => setQty(item.productId, 1)} style={styles.qtyBtn}>
+            <Plus size={14} color={palette.white} />
+          </Pressable>
+          <Pressable
+            onPress={() => setQty(item.productId, -item.qty)}
+            style={[styles.qtyBtn, { backgroundColor: palette.red500 }]}
+          >
+            <Trash2 size={14} color={palette.white} />
+          </Pressable>
+        </View>
+      </View>
+    ),
+    [colors.card, colors.cardBorder, colors.text, colors.textMuted],
+  );
 
+  const renderFooter = useCallback(
+    () => (
       <View style={[styles.footer, { backgroundColor: colors.card, borderColor: colors.cardBorder }]}>
         <Pressable
           onPress={() => {
@@ -551,6 +541,114 @@ export function PosScreen() {
           </View>
         )}
       </View>
+    ),
+    [
+      colors.card,
+      colors.cardBorder,
+      colors.text,
+      colors.textMuted,
+      selectedCustomer,
+      setCustomerSearch,
+      setCustomerPickerOpen,
+      t,
+      setPickerOpen,
+      campaignModeLabel,
+      campaignSubtitle,
+      applied.discount,
+      applied.campaign,
+      subtotal,
+      total,
+      saving,
+      cart.length,
+      checkout,
+    ],
+  );
+
+  const renderPortraitBody = useCallback(
+    () => (
+      <>
+        {renderSearchRow()}
+        {renderHits(8)}
+        <FlatList
+          data={cart}
+          keyExtractor={(item) => item.productId}
+          ListEmptyComponent={<EmptyState message={t('posUi.emptyCart')} />}
+          contentContainerStyle={{ padding: 12, gap: 8, paddingBottom: 280 }}
+          renderItem={renderCartLine}
+        />
+        {renderFooter()}
+      </>
+    ),
+    [renderSearchRow, renderHits, renderCartLine, renderFooter, cart, t],
+  );
+
+  const renderLandscapeBody = useCallback(
+    () => (
+      <SplitPane
+        orientation="row"
+        leftFlex={1.4}
+        rightFlex={1}
+        gap={12}
+        left={
+          <View style={{ flex: 1 }}>
+            {renderSearchRow()}
+            {hits.length > 0 ? (
+              renderHits(12)
+            ) : (
+              <View
+                style={{
+                  padding: 24,
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  flex: 1,
+                }}
+              >
+                <Text style={{ color: colors.textMuted, fontSize: 12 }}>
+                  {t('posUi.emptyCart')}
+                </Text>
+              </View>
+            )}
+          </View>
+        }
+        right={
+          <View style={{ flex: 1 }}>
+            <FlatList
+              data={cart}
+              keyExtractor={(item) => item.productId}
+              ListEmptyComponent={<EmptyState message={t('posUi.emptyCart')} />}
+              contentContainerStyle={{ padding: 12, gap: 8, paddingBottom: 240 }}
+              renderItem={renderCartLine}
+            />
+            {renderFooter()}
+          </View>
+        }
+      />
+    ),
+    [renderSearchRow, renderHits, renderCartLine, renderFooter, hits.length, cart, t, colors.textMuted],
+  );
+
+  return (
+    <View style={[styles.root, { backgroundColor: colors.background }]}>
+      <ScreenHeader
+        title={t('posUi.title')}
+        subtitle={t('posUi.subtitle')}
+        showBack={false}
+        right={
+          <Pressable onPress={() => navigation.navigate('ScaleSale')} hitSlop={8}>
+            <Text style={{ color: palette.white, fontWeight: '800', fontSize: 12 }}>
+              {t('posUi.scale')}
+            </Text>
+          </Pressable>
+        }
+      />
+      <BarcodeScannerModal
+        visible={scannerOpen}
+        onClose={() => setScannerOpen(false)}
+        onScanned={(data) => void runSearch(data)}
+        title={t('posUi.scanTitle')}
+      />
+
+      {isLandscapeTablet ? renderLandscapeBody() : renderPortraitBody()}
 
       <Modal
         visible={customerPickerOpen}

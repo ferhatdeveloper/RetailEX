@@ -1,5 +1,5 @@
 /** Web `retailos-printer-settings` ile uyumlu alan adları (mobil AsyncStorage). */
-export type PrinterInterface = 'bluetooth' | 'network' | 'system';
+export type PrinterInterface = 'bluetooth' | 'network' | 'system' | 'windows-service';
 export type PrinterType = 'thermal' | 'standard';
 export type ReceiptPaperSize = '58mm' | '80mm' | 'A4' | 'A5';
 export type ReceiptLangCode = 'tr' | 'en' | 'ar' | 'ku' | 'uz';
@@ -17,6 +17,10 @@ export type MobilePrinterSettings = {
   paperSize: ReceiptPaperSize;
   autoPrint: boolean;
   defaultLanguage: ReceiptLangCode;
+  /** Windows print service adresi (örn. http://192.168.1.50:9105) */
+  windowsServiceUrl?: string;
+  /** Windows print service API anahtarı (opsiyonel Bearer token) */
+  windowsServiceApiKey?: string;
   /** Masaüstü uyumu — mobilde yalnızca bilgi amaçlı saklanır */
   windowsPrinterName?: string;
   /** Fiş üst bilgi (yerel yedek; PG `receipt_settings` yoksa kullanılır) */
@@ -40,6 +44,7 @@ export type PrinterTransportKind =
   | 'native-tcp'
   | 'bluetooth-escpos'
   | 'system-print'
+  | 'windows-service'
   | 'unavailable';
 
 export type PrinterErrorCode =
@@ -52,7 +57,13 @@ export type PrinterErrorCode =
   | 'systemPrintUnavailable'
   | 'systemPrintFailed'
   | 'systemPrintCancelled'
-  | 'autoPrintOff';
+  | 'autoPrintOff'
+  | 'windowsUnreachable'
+  | 'windowsPrinterNotFound'
+  | 'windowsUnauthorized'
+  | 'windowsServiceError'
+  | 'windowsTimeout'
+  | 'windowsInvalidUrl';
 
 export type TestPrintResult = {
   ok: boolean;

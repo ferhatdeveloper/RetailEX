@@ -90,6 +90,8 @@ import { RestaurantMenuCatalog } from '../components/RestaurantMenuCatalog';
 import { formatMoney } from '../api/erpTables';
 import { useThemeStore } from '../store/themeStore';
 import { useOrgEpoch } from '../hooks/useOrgEpoch';
+import { useDeviceLayout } from '../hooks/useDeviceLayout';
+import { SplitPane } from '../components/Layout/SplitPane';
 import { palette } from '../theme/colors';
 import {
   TABLE_STATUS_LEGEND,
@@ -122,6 +124,7 @@ type OrderSheetTab = 'order' | 'pay' | 'list';
 type Props = NativeStackScreenProps<MainStackParamList, 'Restaurant'>;
 
 const COLS = 3;
+const COLS_LANDSCAPE_TABLET = 6;
 const GRID_GAP = 8;
 const GRID_PAD = 12;
 
@@ -221,6 +224,7 @@ function isPendingKitchenLine(item: { status?: string | null; sent_to_kitchen_at
 export function RestaurantScreen({ navigation, route }: Props) {
   const { colors, darkMode } = useThemeStore();
   const { width } = useWindowDimensions();
+  const { isLandscapeTablet } = useDeviceLayout();
   const initialTab = route.params?.initialTab ?? 'dashboard';
   const callerPhone = route.params?.callerPhone?.trim() || '';
   const [tab, setTab] = useState<Tab>(
@@ -281,9 +285,10 @@ export function RestaurantScreen({ navigation, route }: Props) {
   ];
 
   const cardSize = useMemo(() => {
-    const usable = width - GRID_PAD * 2 - GRID_GAP * (COLS - 1);
-    return Math.floor(usable / COLS);
-  }, [width]);
+    const effectiveCols = isLandscapeTablet ? COLS_LANDSCAPE_TABLET : COLS;
+    const usable = width - GRID_PAD * 2 - GRID_GAP * (effectiveCols - 1);
+    return Math.floor(usable / effectiveCols);
+  }, [width, isLandscapeTablet]);
 
   const statusCounts = useMemo(() => {
     const counts: Partial<Record<TableStatus, number>> = {};
@@ -1520,7 +1525,7 @@ export function RestaurantScreen({ navigation, route }: Props) {
         <FlatList
           data={filteredTables}
           keyExtractor={(item) => String(item.id)}
-          numColumns={COLS}
+          numColumns={isLandscapeTablet ? COLS_LANDSCAPE_TABLET : COLS}
           refreshControl={
             <RefreshControl refreshing={refreshing} onRefresh={() => void load({ soft: true })} />
           }

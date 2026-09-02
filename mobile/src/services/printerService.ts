@@ -6,8 +6,14 @@ import {
   printReceiptViaSystem,
   receiptTextToHtml,
 } from './escpos/systemPrintTransport';
+import {
+  listWindowsServicePrinters,
+  sendEscposToWindowsService,
+  type WindowsServiceErrorCode,
+} from './escpos/windowsServiceTransport';
 
 export { printerTransportStatus } from './escpos/printerTransportStatus';
+export { listWindowsServicePrinters };
 
 function buildTestReceiptPreview(settings: MobilePrinterSettings): string {
   const now = new Date().toLocaleString('tr-TR');
@@ -67,6 +73,23 @@ function validatePrinterSettings(settings: MobilePrinterSettings): TestPrintResu
       code: 'btNameRequired',
       message: 'Bluetooth yazıcı adı girin veya «Sistem» bağlantı tipini seçin.',
     };
+  }
+
+  if (settings.interface === 'windows-service') {
+    if (!settings.windowsServiceUrl?.trim()) {
+      return {
+        ok: false,
+        code: 'windowsInvalidUrl',
+        message: 'Windows servisi için URL girin (örn. http://192.168.1.50:9105).',
+      };
+    }
+    if (!settings.windowsPrinterName?.trim()) {
+      return {
+        ok: false,
+        code: 'windowsPrinterNotFound',
+        message: 'Windows servisi için yazıcı adı girin.',
+      };
+    }
   }
 
   return null;
@@ -135,6 +158,36 @@ async function printSystemReceipt(
   };
 }
 
+async function printWindowsServiceEscPos(
+  settings: MobilePrinterSettings,
+  payload: Uint8Array,
+  jobName: string,
+): Promise<TestPrintResult> {
+  const res = await sendEscposToWindowsService(
+    settings.windowsServiceUrl ?? '',
+    settings.windowsServiceApiKey,
+    settings.windowsPrinterName ?? '',
+    payload,
+    jobName,
+  );
+  const codeMap: Record<WindowsServiceErrorCode, TestPrintResult['code']> = {
+    unreachable: 'windowsUnreachable',
+    printerNotFound: 'windowsPrinterNotFound',
+    serviceError: 'windowsServiceError',
+    unauthorized: 'windowsUnauthorized',
+    timeout: 'windowsTimeout',
+    invalidUrl: 'windowsInvalidUrl',
+    cancelled: 'windowsServiceError',
+  };
+  return {
+    ok: res.ok,
+    message: res.message,
+    code: res.code ? codeMap[res.code] : undefined,
+    transport: 'windows-service',
+    bytesSent: res.bytesSent,
+  };
+}
+
 /**
  * Test yazdırma.
  * - Ağ (IP): ESC/POS TCP — pg_bridge veya (dev build) react-native-tcp-socket
@@ -148,6 +201,12 @@ export async function testPrintReceipt(
   if (validation) return validation;
 
   const preview = buildTestReceiptPreview(settings);
+
+  if (settings.interface === 'windows-service') {
+    const payload = buildTestReceiptEscPos(settings);
+    const res = await printWindowsServiceEscPos(settings, payload, 'RetailEX Test Receipt');
+    return { ...res, preview };
+  }
 
   if (settings.interface === 'network') {
     const payload = buildTestReceiptEscPos(settings);
@@ -175,6 +234,11 @@ export async function printSaleReceipt(
 
   const validation = validatePrinterSettings(settings);
   if (validation) return validation;
+
+  if (settings.interface === 'windows-service') {
+    const payload = buildSaleReceiptEscPos(settings, saleId, [], 0);
+    return printWindowsServiceEscPos(settings, payload, `RetailEX Sale ${saleId}`);
+  }
 
   if (settings.interface === 'network') {
     const payload = buildSaleReceiptEscPos(settings, saleId, [], 0);

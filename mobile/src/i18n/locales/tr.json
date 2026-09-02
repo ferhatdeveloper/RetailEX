@@ -118,6 +118,18 @@
   "dbPassword": "Şifre",
   "firmSelection": "Firma seçimi",
   "storeSelection": "Mağaza seçimi",
+  "systemSettings": {
+    "display": {
+      "title": "Görünüm ve Yön",
+      "tabletOrientation": "Tablet yönü",
+      "phoneOrientation": "Telefon yönü",
+      "restaurantOrientation": "Restoran modülü yönü",
+      "orientationPortrait": "Dikey",
+      "orientationLandscape": "Yatay",
+      "orientationAuto": "Otomatik",
+      "hint": "Yatay mod tabletler için varsayılandır. Restoran için ayrı bir tercih belirleyebilirsiniz."
+    }
+  },
   "periodSelection": "Dönem",
   "selectFirm": "Firma seçin",
   "selectStore": "Mağaza seçin",
@@ -180,6 +192,12 @@
   "dashboardNoCriticalStock": "Kritik stok uyarısı yok",
   "dashboardNoStores": "Bu firma için mağaza kaydı bulunamadı.",
   "dashboardCriticalStockBanner": "{{count}} ürün kritik stok seviyesinde — Stok raporuna bakın.",
+  "printServiceLabel": "Windows yazıcı servisi",
+  "printServiceOn": "AÇIK",
+  "printServiceOff": "KAPALI",
+  "printServiceHint": "Açıkken yazıcı işlemleri RetailEX_Print_Server Windows servisine gönderilir. Servis kurulu değilse bu seçenek etkisizdir.",
+  "printServiceBadge": "Servis durumu: AÇIK",
+  "printServiceBadgeOff": "Servis durumu: KAPALI",
   "alert": {
     "missingInfo": "Eksik bilgi",
     "missingField": "Eksik alan",
@@ -384,6 +402,7 @@
     "interfaceNetwork": "Ağ (IP)",
     "interfaceBluetooth": "Bluetooth",
     "interfaceSystem": "Sistem",
+    "interfaceWindowsService": "Windows Servisi",
     "printerIp": "Yazıcı IP",
     "port": "Port",
     "networkHint": "ESC/POS ham TCP (port {{port}}). Önce pg_bridge köprüsü; development build'de doğrudan TCP de denenir.",
@@ -399,6 +418,13 @@
     "bluetoothDeviceName": "Bluetooth cihaz adı",
     "bluetoothPlaceholder": "Örn: RPP02N",
     "systemHint": "Android/iOS paylaşım menüsü veya sistem varsayılanı (expo-print).",
+    "windowsServiceUrl": "Servis URL",
+    "windowsServiceUrlHint": "Windows bilgisayarda çalışan print servisinin adresi (ör. http://192.168.1.50:9105).",
+    "windowsPrinterName": "Yazıcı adı",
+    "windowsServiceApiKey": "API anahtarı (opsiyonel)",
+    "windowsPrinterListButton": "Yazıcıları Listele",
+    "windowsPrinterListEmpty": "Servis yanıt vermedi veya yazıcı yok.",
+    "windowsPrinterListError": "Yazıcılar alınamadı: {{message}}",
     "paperSize": "Kağıt boyutu",
     "autoPrint": "Otomatik yazdır",
     "autoPrintHint": "Fiş kaydından sonra",
@@ -417,6 +443,8 @@
     "transportBluetoothBody": "{{status}}",
     "transportSystemTitle": "Sistem yazıcısı (expo-print)",
     "transportSystemBody": "{{status}}",
+    "transportWindowsServiceTitle": "Windows Servisi",
+    "transportWindowsServiceBody": "PC'nizdeki Windows print servisine HTTP üzerinden yazdırma. Aynı Wi-Fi ağında olmalı.",
     "testPrint": "Test yazdır",
     "testPrintOk": "Test yazdırma",
     "testPrintFail": "Yazdırılamadı",
@@ -437,7 +465,13 @@
       "systemPrintUnavailable": "Sistem yazıcısı için expo-print gerekir.",
       "systemPrintFailed": "Sistem yazdırma başarısız.",
       "systemPrintCancelled": "Yazdırma iptal edildi.",
-      "autoPrintOff": "Otomatik yazdırma kapalı."
+      "autoPrintOff": "Otomatik yazdırma kapalı.",
+      "windowsUnreachable": "Windows servisine ulaşılamadı. Aynı ağda mısınız?",
+      "windowsPrinterNotFound": "Yazıcı serviste bulunamadı: {{name}}",
+      "windowsUnauthorized": "Windows servisi yetkilendirme reddetti (API anahtarı).",
+      "windowsServiceError": "Windows servisi hata döndü.",
+      "windowsTimeout": "Windows servisi zaman aşımı.",
+      "windowsInvalidUrl": "Geçersiz servis URL."
     }
   },
   "menu": {

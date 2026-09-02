@@ -2,7 +2,7 @@
  * Restoran ayarları hub — Gastro benzeri (masa/kat yok).
  * Firma, yazıcı, raporlar, entegrasyonlar.
  */
-import React, { useCallback, useState } from 'react';
+import React, { useCallback, useEffect, useState } from 'react';
 import {
   View,
   Text,
@@ -11,7 +11,9 @@ import {
   Pressable,
   Alert,
   ActivityIndicator,
+  Switch,
 } from 'react-native';
+import { useTranslation } from 'react-i18next';
 import { useFocusEffect } from '@react-navigation/native';
 import type { NativeStackScreenProps } from '@react-navigation/native-stack';
 import {
@@ -39,6 +41,7 @@ import type { MainStackParamList } from '../navigation/types';
 type Props = NativeStackScreenProps<MainStackParamList, 'RestaurantSettings'>;
 
 export function RestaurantSettingsScreen({ navigation }: Props) {
+  const { t } = useTranslation();
   const { colors } = useThemeStore();
   const user = useAuthStore((s) => s.user);
 
@@ -47,6 +50,9 @@ export function RestaurantSettingsScreen({ navigation }: Props) {
   const [printerConfig, setPrinterConfig] = useState<RestaurantPrinterConfig | null>(null);
   const [printerScanning, setPrinterScanning] = useState(false);
   const [printerSaving, setPrinterSaving] = useState(false);
+  const [printViaWindowsService, setPrintViaWindowsService] = useState<boolean>(false);
+  const [windowsServiceLoading, setWindowsServiceLoading] = useState<boolean>(true);
+  const [windowsServiceSaving, setWindowsServiceSaving] = useState<boolean>(false);
 
   const loadPrinters = useCallback(async () => {
     setPrinterLoading(true);
@@ -54,13 +60,41 @@ export function RestaurantSettingsScreen({ navigation }: Props) {
       const conf = await getRestaurantPrinterConfig();
       setPrinterConfig(conf);
       setPrinterCount(conf.printerProfiles?.length ?? 0);
+      setPrintViaWindowsService(conf.printViaWindowsService !== false);
     } catch {
       setPrinterConfig(null);
       setPrinterCount(null);
     } finally {
       setPrinterLoading(false);
+      setWindowsServiceLoading(false);
     }
   }, []);
+
+  useEffect(() => {
+    void loadPrinters();
+  }, [loadPrinters]);
+
+  const onToggleWindowsService = useCallback(
+    async (next: boolean) => {
+      setPrintViaWindowsService(next);
+      setWindowsServiceSaving(true);
+      try {
+        await saveRestaurantPrinterConfig({
+          printerProfiles: printerConfig?.printerProfiles ?? [],
+          printerRoutes: printerConfig?.printerRoutes ?? [],
+          commonPrinterId: printerConfig?.commonPrinterId,
+          printViaWindowsService: next,
+        });
+      } catch (e) {
+        setPrintViaWindowsService(!next);
+        const msg = e instanceof Error ? e.message : String(e);
+        Alert.alert(t('alert.saveError'), msg);
+      } finally {
+        setWindowsServiceSaving(false);
+      }
+    },
+    [printerConfig, t],
+  );
 
   const networkProfiles = (printerConfig?.printerProfiles ?? []).filter(
     (p) => p.connection === 'network',
@@ -266,6 +300,36 @@ export function RestaurantSettingsScreen({ navigation }: Props) {
               Restoran yazıcı profilleri
             </Text>
           </View>
+          <View style={styles.settingRow}>
+            <View style={{ flex: 1, minWidth: 0 }}>
+              <Text style={[styles.settingLabel, { color: colors.text }]}>
+                {t('printServiceLabel')}
+              </Text>
+              <Text style={[styles.settingHint, { color: colors.textMuted }]}>
+                {t('printServiceHint')}
+              </Text>
+            </View>
+            <Switch
+              value={printViaWindowsService}
+              onValueChange={(v) => void onToggleWindowsService(v)}
+              disabled={windowsServiceLoading || windowsServiceSaving}
+            />
+          </View>
+          <Text
+            style={[
+              styles.settingBadge,
+              {
+                color: printViaWindowsService ? palette.green600 : colors.textMuted,
+                backgroundColor: printViaWindowsService
+                  ? palette.green600 + '18'
+                  : colors.backgroundAlt,
+              },
+            ]}
+          >
+            {printViaWindowsService
+              ? t('printServiceBadge')
+              : t('printServiceBadgeOff')}
+          </Text>
           {printerLoading ? (
             <ActivityIndicator color={palette.blue600} style={{ marginVertical: 8 }} />
           ) : null}
@@ -411,6 +475,24 @@ const styles = StyleSheet.create({
     gap: 8,
   },
   hintHeader: { flexDirection: 'row', alignItems: 'center', gap: 8, marginBottom: 2 },
+  settingRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 10,
+    paddingVertical: 6,
+  },
+  settingLabel: { fontSize: 13, fontWeight: '800' },
+  settingHint: { fontSize: 11, marginTop: 2, lineHeight: 15 },
+  settingBadge: {
+    alignSelf: 'flex-start',
+    fontSize: 10,
+    fontWeight: '800',
+    letterSpacing: 0.5,
+    paddingHorizontal: 8,
+    paddingVertical: 4,
+    borderRadius: 8,
+    overflow: 'hidden',
+  },
   printerProfileRow: {
     flexDirection: 'row',
     alignItems: 'center',

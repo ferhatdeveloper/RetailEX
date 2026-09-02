@@ -20,6 +20,7 @@ import {
 } from '../api/restaurantApi';
 import { formatMoney } from '../api/erpTables';
 import { useThemeStore } from '../store/themeStore';
+import { useDeviceLayout } from '../hooks/useDeviceLayout';
 import {
   usePreferencesStore,
   type RestMenuCatalogView,
@@ -125,10 +126,17 @@ export function RestaurantMenuCatalog({
 }: Props) {
   const { colors, darkMode } = useThemeStore();
   const { width } = useWindowDimensions();
+  const { isLandscapeTablet } = useDeviceLayout();
   const viewMode = usePreferencesStore((s) => s.restMenuCatalogView);
   const setViewMode = usePreferencesStore((s) => s.setRestMenuCatalogView);
-  const gridCols = usePreferencesStore((s) => s.restMenuCatalogGridCols);
+  const storedGridCols = usePreferencesStore((s) => s.restMenuCatalogGridCols);
   const setGridCols = usePreferencesStore((s) => s.setRestMenuCatalogGridCols);
+  const gridCols: typeof storedGridCols =
+    storedGridCols && storedGridCols !== 3
+      ? storedGridCols
+      : isLandscapeTablet
+        ? 4
+        : storedGridCols;
   const [category, setCategory] = useState<string | null>(null);
 
   const categories = useMemo(() => {
