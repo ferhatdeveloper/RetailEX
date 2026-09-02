@@ -200,20 +200,25 @@ jobs:
             }
           }
           if (-not $frCopied) {
-            # Repo'da yok; GitHub Releases'tan 'fastreport-libs-vN' tag'li release'i dene
+            # Repo'da yok; GitHub Releases'tan 'fastreport-libs' tag'li release'i dene
+            # Not: gh release download release yoksa non-terminating error verir;
+            # try/catch bunu yakalamaz, bu yuzden 2>&1 + LASTEXITCODE kontrolu.
             $frZip = "fastreport-libs.zip"
-            try {
-              gh release download fastreport-libs --repo $env:GITHUB_REPOSITORY `
-                --pattern $frZip --dir $env:RUNNER_TEMP --clobber 2>$null
-              if (Test-Path (Join-Path $env:RUNNER_TEMP $frZip)) {
-                Expand-Archive -Path (Join-Path $env:RUNNER_TEMP $frZip) `
-                  -DestinationPath $libTarget -Force
-                Write-Host "FastReport DLL'leri (release fastreport-libs) kopyalandi:"
-                Get-ChildItem $libTarget | Format-Table Name, Length -AutoSize
-                $frCopied = $true
-              }
-            } catch {
-              Write-Host "fastreport-libs release'i yok veya indirilemedi."
+            $frOut = & gh release download fastreport-libs `
+              --repo $env:GITHUB_REPOSITORY `
+              --pattern $frZip `
+              --dir $env:RUNNER_TEMP `
+              --clobber 2>&1
+            Write-Host "gh release download cikti: $frOut"
+            $frZipPath = Join-Path $env:RUNNER_TEMP $frZip
+            if ((Test-Path $frZipPath) -and ($LASTEXITCODE -eq 0)) {
+              Expand-Archive -Path $frZipPath `
+                -DestinationPath $libTarget -Force
+              Write-Host "FastReport DLL'leri (release fastreport-libs) kopyalandi:"
+              Get-ChildItem $libTarget | Format-Table Name, Length -AutoSize
+              $frCopied = $true
+            } else {
+              Write-Host "fastreport-libs release'i yok veya indirilemedi (exit=$LASTEXITCODE)."
             }
           }
           if (-not $frCopied) {
