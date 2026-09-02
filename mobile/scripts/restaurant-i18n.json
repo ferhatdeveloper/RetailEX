@@ -1,0 +1,298 @@
+{
+  "restaurant": {
+    "header": {
+      "title": "%RESTAURANT_HEADER_TITLE%",
+      "tablesTitle": "%RESTAURANT_HEADER_TABLES_TITLE%",
+      "subtitleDefault": "%RESTAURANT_HEADER_SUBTITLE_DEFAULT%",
+      "subtitleTables": "%RESTAURANT_HEADER_SUBTITLE_TABLES%",
+      "callerId": "%RESTAURANT_HEADER_CALLER_ID%"
+    },
+    "tabs": {
+      "dashboard": "%RESTAURANT_TABS_DASHBOARD%",
+      "tables": "%RESTAURANT_TABS_TABLES%",
+      "orders": "%RESTAURANT_TABS_ORDERS%",
+      "delivery": "%RESTAURANT_TABS_DELIVERY%",
+      "takeaway": "%RESTAURANT_TABS_TAKEAWAY%",
+      "schedule": "%RESTAURANT_TABS_SCHEDULE%",
+      "kitchen": "%RESTAURANT_TABS_KITCHEN%",
+      "reports": "%RESTAURANT_TABS_REPORTS%"
+    },
+    "kpi": {
+      "openTables": "%RESTAURANT_KPI_OPEN_TABLES%",
+      "openOrders": "%RESTAURANT_KPI_OPEN_ORDERS%",
+      "kitchenPending": "%RESTAURANT_KPI_KITCHEN_PENDING%",
+      "todayRevenue": "%RESTAURANT_KPI_TODAY_REVENUE%"
+    },
+    "tiles": {
+      "tables": "%RESTAURANT_TILES_TABLES%",
+      "tablesHint": "%RESTAURANT_TILES_TABLES_HINT%",
+      "retail": "%RESTAURANT_TILES_RETAIL%",
+      "retailHint": "%RESTAURANT_TILES_RETAIL_HINT%",
+      "kitchen": "%RESTAURANT_TILES_KITCHEN%",
+      "kitchenHint": "%RESTAURANT_TILES_KITCHEN_HINT%",
+      "delivery": "%RESTAURANT_TILES_DELIVERY%",
+      "deliveryHint": "%RESTAURANT_TILES_DELIVERY_HINT%",
+      "takeaway": "%RESTAURANT_TILES_TAKEAWAY%",
+      "takeawayHint": "%RESTAURANT_TILES_TAKEAWAY_HINT%",
+      "reports": "%RESTAURANT_TILES_REPORTS%",
+      "reportsHint": "%RESTAURANT_TILES_REPORTS_HINT%",
+      "schedule": "%RESTAURANT_TILES_SCHEDULE%",
+      "scheduleHint": "%RESTAURANT_TILES_SCHEDULE_HINT%",
+      "settings": "%RESTAURANT_TILES_SETTINGS%",
+      "settingsHint": "%RESTAURANT_TILES_SETTINGS_HINT%",
+      "firm": "%RESTAURANT_TILES_FIRM%",
+      "firmHint": "%RESTAURANT_TILES_FIRM_HINT%"
+    },
+    "quick": {
+      "newOrderEmpty": "%RESTAURANT_QUICK_NEW_ORDER_EMPTY%"
+    },
+    "filters": {
+      "all": "%RESTAURANT_FILTERS_ALL%",
+      "new": "%RESTAURANT_FILTERS_NEW%",
+      "cooking": "%RESTAURANT_FILTERS_COOKING%",
+      "ready": "%RESTAURANT_FILTERS_READY%"
+    },
+    "floor": {
+      "fallback": "%RESTAURANT_FLOOR_FALLBACK%"
+    },
+    "status": {
+      "reservation": {
+        "pending": "%RESTAURANT_STATUS_RESERVATION_PENDING%",
+        "confirmed": "%RESTAURANT_STATUS_RESERVATION_CONFIRMED%",
+        "seated": "%RESTAURANT_STATUS_RESERVATION_SEATED%",
+        "cancelled": "%RESTAURANT_STATUS_RESERVATION_CANCELLED%",
+        "noShow": "%RESTAURANT_STATUS_RESERVATION_NO_SHOW%"
+      },
+      "order": {
+        "open": "%RESTAURANT_STATUS_ORDER_OPEN%",
+        "closed": "%RESTAURANT_STATUS_ORDER_CLOSED%",
+        "cancelled": "%RESTAURANT_STATUS_ORDER_CANCELLED%"
+      },
+      "kitchen": {
+        "pending": "%RESTAURANT_STATUS_KITCHEN_PENDING%",
+        "cooking": "%RESTAURANT_STATUS_KITCHEN_COOKING%",
+        "ready": "%RESTAURANT_STATUS_KITCHEN_READY%",
+        "served": "%RESTAURANT_STATUS_KITCHEN_SERVED%",
+        "cancelled": "%RESTAURANT_STATUS_KITCHEN_CANCELLED%"
+      }
+    },
+    "empty": {
+      "tables": "%RESTAURANT_EMPTY_TABLES%",
+      "schedule": "%RESTAURANT_EMPTY_SCHEDULE%",
+      "kitchen": "%RESTAURANT_EMPTY_KITCHEN%",
+      "openOrders": "%RESTAURANT_EMPTY_OPEN_ORDERS%",
+      "retailOrder": "%RESTAURANT_EMPTY_RETAIL_ORDER%",
+      "modalOpenOrders": "%RESTAURANT_EMPTY_MODAL_OPEN_ORDERS%",
+      "modalOpenOrdersHintRetail": "%RESTAURANT_EMPTY_MODAL_OPEN_ORDERS_HINT_RETAIL%",
+      "modalOpenOrdersHintTable": "%RESTAURANT_EMPTY_MODAL_OPEN_ORDERS_HINT_TABLE%"
+    },
+    "schedule": {
+      "header": "%RESTAURANT_SCHEDULE_HEADER%",
+      "summary": "%RESTAURANT_SCHEDULE_SUMMARY%",
+      "quickTitle": "%RESTAURANT_SCHEDULE_QUICK_TITLE%",
+      "badgeReservation": "%RESTAURANT_SCHEDULE_BADGE_RESERVATION%",
+      "badgeOrder": "%RESTAURANT_SCHEDULE_BADGE_ORDER%",
+      "form": {
+        "customer": "%RESTAURANT_SCHEDULE_FORM_CUSTOMER%",
+        "phone": "%RESTAURANT_SCHEDULE_FORM_PHONE%",
+        "time": "%RESTAURANT_SCHEDULE_FORM_TIME%",
+        "guests": "%RESTAURANT_SCHEDULE_FORM_GUESTS%",
+        "note": "%RESTAURANT_SCHEDULE_FORM_NOTE%",
+        "placeholderCustomer": "%RESTAURANT_SCHEDULE_FORM_PLACEHOLDER_CUSTOMER%",
+        "placeholderTime": "%RESTAURANT_SCHEDULE_FORM_PLACEHOLDER_TIME%",
+        "placeholderNote": "%RESTAURANT_SCHEDULE_FORM_PLACEHOLDER_NOTE%",
+        "submit": "%RESTAURANT_SCHEDULE_FORM_SUBMIT%"
+      },
+      "actions": {
+        "confirm": "%RESTAURANT_SCHEDULE_ACTIONS_CONFIRM%",
+        "seated": "%RESTAURANT_SCHEDULE_ACTIONS_SEATED%",
+        "cancel": "%RESTAURANT_SCHEDULE_ACTIONS_CANCEL%"
+      }
+    },
+    "table": {
+      "defaultName": "%RESTAURANT_TABLE_DEFAULT_NAME%",
+      "retailName": "%RESTAURANT_TABLE_RETAIL_NAME%",
+      "retailSale": "%RESTAURANT_TABLE_RETAIL_SALE%",
+      "tableTag": "%RESTAURANT_TABLE_TABLE_TAG%",
+      "orderTag": "%RESTAURANT_TABLE_ORDER_TAG%",
+      "adisyon": "%RESTAURANT_TABLE_ADISYON%"
+    },
+    "orderModal": {
+      "titleTables": "%RESTAURANT_ORDER_MODAL_TITLE_TABLES%",
+      "subtitle": "%RESTAURANT_ORDER_MODAL_SUBTITLE%",
+      "titleWithStatus": "%RESTAURANT_ORDER_MODAL_TITLE_WITH_STATUS%",
+      "titleNoStatus": "%RESTAURANT_ORDER_MODAL_TITLE_NO_STATUS%",
+      "tabOrder": "%RESTAURANT_ORDER_MODAL_TAB_ORDER%",
+      "tabPay": "%RESTAURANT_ORDER_MODAL_TAB_PAY%",
+      "tabList": "%RESTAURANT_ORDER_MODAL_TAB_LIST%",
+      "tabOrderSimple": "%RESTAURANT_ORDER_MODAL_TAB_ORDER_SIMPLE%",
+      "createRetail": "%RESTAURANT_ORDER_MODAL_CREATE_RETAIL%",
+      "createTable": "%RESTAURANT_ORDER_MODAL_CREATE_TABLE%",
+      "cleanFinish": "%RESTAURANT_ORDER_MODAL_CLEAN_FINISH%",
+      "cleaning": "%RESTAURANT_ORDER_MODAL_CLEANING%",
+      "menu": {
+        "searchLabel": "%RESTAURANT_ORDER_MODAL_MENU_SEARCH_LABEL%",
+        "searchPlaceholder": "%RESTAURANT_ORDER_MODAL_MENU_SEARCH_PLACEHOLDER%",
+        "filterAll": "%RESTAURANT_ORDER_MODAL_MENU_FILTER_ALL%",
+        "loading": "%RESTAURANT_ORDER_MODAL_MENU_LOADING%",
+        "empty": "%RESTAURANT_ORDER_MODAL_MENU_EMPTY%",
+        "allColumns": "%RESTAURANT_ORDER_MODAL_MENU_ALL_COLUMNS%",
+        "title": "%RESTAURANT_ORDER_MODAL_MENU_TITLE%",
+        "subtitle": "%RESTAURANT_ORDER_MODAL_MENU_SUBTITLE%",
+        "subtitleWithCategory": "%RESTAURANT_ORDER_MODAL_MENU_SUBTITLE_WITH_CATEGORY%",
+        "fallbackCategory": "%RESTAURANT_ORDER_MODAL_MENU_FALLBACK_CATEGORY%",
+        "fallbackCode": "%RESTAURANT_ORDER_MODAL_MENU_FALLBACK_CODE%"
+      },
+      "cart": {
+        "summary": "%RESTAURANT_ORDER_MODAL_CART_SUMMARY%",
+        "summaryWithTotal": "%RESTAURANT_ORDER_MODAL_CART_SUMMARY_WITH_TOTAL%",
+        "pendingKitchen": "%RESTAURANT_ORDER_MODAL_CART_PENDING_KITCHEN%",
+        "empty": "%RESTAURANT_ORDER_MODAL_CART_EMPTY%",
+        "complimentary": "%RESTAURANT_ORDER_MODAL_CART_COMPLIMENTARY%",
+        "closed": "%RESTAURANT_ORDER_MODAL_CART_CLOSED%"
+      },
+      "manual": {
+        "title": "%RESTAURANT_ORDER_MODAL_MANUAL_TITLE%",
+        "hide": "%RESTAURANT_ORDER_MODAL_MANUAL_HIDE%",
+        "show": "%RESTAURANT_ORDER_MODAL_MANUAL_SHOW%",
+        "productPlaceholder": "%RESTAURANT_ORDER_MODAL_MANUAL_PRODUCT_PLACEHOLDER%",
+        "productLabel": "%RESTAURANT_ORDER_MODAL_MANUAL_PRODUCT_LABEL%",
+        "qtyLabel": "%RESTAURANT_ORDER_MODAL_MANUAL_QTY_LABEL%",
+        "priceLabel": "%RESTAURANT_ORDER_MODAL_MANUAL_PRICE_LABEL%",
+        "noteLabel": "%RESTAURANT_ORDER_MODAL_MANUAL_NOTE_LABEL%"
+      },
+      "lang": {
+        "title": "%RESTAURANT_ORDER_MODAL_LANG_TITLE%",
+        "sendHint": "%RESTAURANT_ORDER_MODAL_LANG_SEND_HINT%"
+      },
+      "summary": {
+        "title": "%RESTAURANT_ORDER_MODAL_SUMMARY_TITLE%",
+        "subtotal": "%RESTAURANT_ORDER_MODAL_SUMMARY_SUBTOTAL%",
+        "discountPct": "%RESTAURANT_ORDER_MODAL_SUMMARY_DISCOUNT_PCT%",
+        "grandTotal": "%RESTAURANT_ORDER_MODAL_SUMMARY_GRAND_TOTAL%",
+        "paymentTitle": "%RESTAURANT_ORDER_MODAL_SUMMARY_PAYMENT_TITLE%",
+        "moveTitle": "%RESTAURANT_ORDER_MODAL_SUMMARY_MOVE_TITLE%",
+        "moveButton": "%RESTAURANT_ORDER_MODAL_SUMMARY_MOVE_BUTTON%",
+        "payButton": "%RESTAURANT_ORDER_MODAL_SUMMARY_PAY_BUTTON%",
+        "itemsCount": "%RESTAURANT_ORDER_MODAL_SUMMARY_ITEMS_COUNT%",
+        "itemsActions": "%RESTAURANT_ORDER_MODAL_SUMMARY_ITEMS_ACTIONS%",
+        "qtyPrice": "%RESTAURANT_ORDER_MODAL_SUMMARY_QTY_PRICE%",
+        "due": "%RESTAURANT_ORDER_MODAL_SUMMARY_DUE%"
+      },
+      "actions": {
+        "delete": "%RESTAURANT_ORDER_MODAL_ACTIONS_DELETE%",
+        "void": "%RESTAURANT_ORDER_MODAL_ACTIONS_VOID%",
+        "complimentary": "%RESTAURANT_ORDER_MODAL_ACTIONS_COMPLIMENTARY%",
+        "apply": "%RESTAURANT_ORDER_MODAL_ACTIONS_APPLY%",
+        "discount": "%RESTAURANT_ORDER_MODAL_ACTIONS_DISCOUNT%",
+        "discountField": "%RESTAURANT_ORDER_MODAL_ACTIONS_DISCOUNT_FIELD%"
+      }
+    },
+    "kitchen": {
+      "ready": "%RESTAURANT_KITCHEN_READY%",
+      "readyAll": "%RESTAURANT_KITCHEN_READY_ALL%",
+      "prepare": "%RESTAURANT_KITCHEN_PREPARE%"
+    },
+    "payMethods": {
+      "cash": "%RESTAURANT_PAY_METHODS_CASH%",
+      "card": "%RESTAURANT_PAY_METHODS_CARD%",
+      "credit": "%RESTAURANT_PAY_METHODS_CREDIT%"
+    },
+    "alerts": {
+      "orderClosed": "%RESTAURANT_ALERTS_ORDER_CLOSED%",
+      "payTitle": "%RESTAURANT_ALERTS_PAY_TITLE%",
+      "payBody": "%RESTAURANT_ALERTS_PAY_BODY%",
+      "payBodyNoDiscount": "%RESTAURANT_ALERTS_PAY_BODY_NO_DISCOUNT%",
+      "payCancel": "%RESTAURANT_ALERTS_PAY_CANCEL%",
+      "payConfirm": "%RESTAURANT_ALERTS_PAY_CONFIRM%",
+      "needProductName": "%RESTAURANT_ALERTS_NEED_PRODUCT_NAME%",
+      "needQty": "%RESTAURANT_ALERTS_NEED_QTY%",
+      "needPrice": "%RESTAURANT_ALERTS_NEED_PRICE%",
+      "voidTitle": "%RESTAURANT_ALERTS_VOID_TITLE%",
+      "voidBody": "%RESTAURANT_ALERTS_VOID_BODY%",
+      "voidCancel": "%RESTAURANT_ALERTS_VOID_CANCEL%",
+      "voidConfirm": "%RESTAURANT_ALERTS_VOID_CONFIRM%",
+      "discountRange": "%RESTAURANT_ALERTS_DISCOUNT_RANGE%",
+      "needMoveTarget": "%RESTAURANT_ALERTS_NEED_MOVE_TARGET%",
+      "orderAlreadyClosed": "%RESTAURANT_ALERTS_ORDER_ALREADY_CLOSED%",
+      "noKitchenPending": "%RESTAURANT_ALERTS_NO_KITCHEN_PENDING%",
+      "noKitchenNew": "%RESTAURANT_ALERTS_NO_KITCHEN_NEW%",
+      "kitchenOk": "%RESTAURANT_ALERTS_KITCHEN_OK%",
+      "kitchenOkBody": "%RESTAURANT_ALERTS_KITCHEN_OK_BODY%",
+      "kitchenOkPrintBody": "%RESTAURANT_ALERTS_KITCHEN_OK_PRINT_BODY%",
+      "kitchenPrintFailTitle": "%RESTAURANT_ALERTS_KITCHEN_PRINT_FAIL_TITLE%",
+      "kitchenPrintFailDefault": "%RESTAURANT_ALERTS_KITCHEN_PRINT_FAIL_DEFAULT%",
+      "needReservationCustomer": "%RESTAURANT_ALERTS_NEED_RESERVATION_CUSTOMER%",
+      "reservationTimeFormat": "%RESTAURANT_ALERTS_RESERVATION_TIME_FORMAT%",
+      "reservationGuestsInvalid": "%RESTAURANT_ALERTS_RESERVATION_GUESTS_INVALID%"
+    }
+  },
+  "delivery": {
+    "panel": {
+      "title": "%DELIVERY_PANEL_TITLE%",
+      "empty": "%DELIVERY_PANEL_EMPTY%",
+      "formTitle": "%DELIVERY_PANEL_FORM_TITLE%",
+      "customer": "%DELIVERY_PANEL_CUSTOMER%",
+      "customerPh": "%DELIVERY_PANEL_CUSTOMER_PH%",
+      "phone": "%DELIVERY_PANEL_PHONE%",
+      "phonePh": "%DELIVERY_PANEL_PHONE_PH%",
+      "address": "%DELIVERY_PANEL_ADDRESS%",
+      "addressPh": "%DELIVERY_PANEL_ADDRESS_PH%",
+      "externalOrder": "%DELIVERY_PANEL_EXTERNAL_ORDER%",
+      "externalOrderPh": "%DELIVERY_PANEL_EXTERNAL_ORDER_PH%",
+      "orderSummary": "%DELIVERY_PANEL_ORDER_SUMMARY%",
+      "orderSummaryPh": "%DELIVERY_PANEL_ORDER_SUMMARY_PH%",
+      "amount": "%DELIVERY_PANEL_AMOUNT%",
+      "amountPh": "%DELIVERY_PANEL_AMOUNT_PH%",
+      "payment": "%DELIVERY_PANEL_PAYMENT%",
+      "submit": "%DELIVERY_PANEL_SUBMIT%",
+      "needCustomer": "%DELIVERY_PANEL_NEED_CUSTOMER%",
+      "needPhone": "%DELIVERY_PANEL_NEED_PHONE%",
+      "needAddress": "%DELIVERY_PANEL_NEED_ADDRESS%",
+      "titleLine": "%DELIVERY_PANEL_TITLE_LINE%",
+      "subLine": "%DELIVERY_PANEL_SUB_LINE%",
+      "addressEmpty": "%DELIVERY_PANEL_ADDRESS_EMPTY%",
+      "phoneEmpty": "%DELIVERY_PANEL_PHONE_EMPTY%",
+      "externalLine": "%DELIVERY_PANEL_EXTERNAL_LINE%",
+      "paymentLine": "%DELIVERY_PANEL_PAYMENT_LINE%",
+      "itemsSuffix": "%DELIVERY_PANEL_ITEMS_SUFFIX%",
+      "timeSuffix": "%DELIVERY_PANEL_TIME_SUFFIX%"
+    },
+    "status": {
+      "pending": "%DELIVERY_STATUS_PENDING%",
+      "preparing": "%DELIVERY_STATUS_PREPARING%",
+      "delivering": "%DELIVERY_STATUS_DELIVERING%",
+      "delivered": "%DELIVERY_STATUS_DELIVERED%"
+    },
+    "pay": {
+      "cash": "%DELIVERY_PAY_CASH%",
+      "card": "%DELIVERY_PAY_CARD%",
+      "transfer": "%DELIVERY_PAY_TRANSFER%",
+      "unknown": "%DELIVERY_PAY_UNKNOWN%"
+    }
+  },
+  "takeaway": {
+    "panel": {
+      "title": "%TAKEAWAY_PANEL_TITLE%",
+      "empty": "%TAKEAWAY_PANEL_EMPTY%",
+      "formTitle": "%TAKEAWAY_PANEL_FORM_TITLE%",
+      "customer": "%TAKEAWAY_PANEL_CUSTOMER%",
+      "customerPh": "%TAKEAWAY_PANEL_CUSTOMER_PH%",
+      "phone": "%TAKEAWAY_PANEL_PHONE%",
+      "phonePh": "%TAKEAWAY_PANEL_PHONE_PH%",
+      "submit": "%TAKEAWAY_PANEL_SUBMIT%",
+      "needCustomer": "%TAKEAWAY_PANEL_NEED_CUSTOMER%",
+      "needPhone": "%TAKEAWAY_PANEL_NEED_PHONE%",
+      "titleLine": "%TAKEAWAY_PANEL_TITLE_LINE%",
+      "subLine": "%TAKEAWAY_PANEL_SUB_LINE%",
+      "subLineOnlyPhone": "%TAKEAWAY_PANEL_SUB_LINE_ONLY_PHONE%",
+      "phoneEmpty": "%TAKEAWAY_PANEL_PHONE_EMPTY%"
+    },
+    "status": {
+      "pending": "%TAKEAWAY_STATUS_PENDING%",
+      "preparing": "%TAKEAWAY_STATUS_PREPARING%",
+      "ready": "%TAKEAWAY_STATUS_READY%",
+      "pickedUp": "%TAKEAWAY_STATUS_PICKED_UP%"
+    }
+  }
+}

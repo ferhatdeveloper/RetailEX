@@ -108,6 +108,7 @@ import {
 import { printKitchenTicketsForOrder } from '../services/kitchenTicketPrint';
 import { resolveKitchenTicketLocale } from '../services/escpos/buildKitchenTicketEscPos';
 import type { ReceiptLangCode } from '../types/printerSettings';
+import { useTranslation } from 'react-i18next';
 
 type Tab =
   | 'dashboard'
@@ -182,31 +183,31 @@ function hourKey(time: string): string {
   return `${m[1].padStart(2, '0')}:00`;
 }
 
-function reservationStatusLabel(status: string | null | undefined): string {
+function reservationStatusLabel(status: string | null | undefined, t: (key: string) => string): string {
   const s = String(status || '').toLowerCase();
-  if (s === 'pending') return 'Bekliyor';
-  if (s === 'confirmed') return 'Onaylı';
-  if (s === 'seated') return 'Oturdu';
-  if (s === 'cancelled') return 'İptal';
-  if (s === 'noshow' || s === 'no_show') return 'Gelmedi';
+  if (s === 'pending') return t('restaurant.status.reservation.pending');
+  if (s === 'confirmed') return t('restaurant.status.reservation.confirmed');
+  if (s === 'seated') return t('restaurant.status.reservation.seated');
+  if (s === 'cancelled') return t('restaurant.status.reservation.cancelled');
+  if (s === 'noshow' || s === 'no_show') return t('restaurant.status.reservation.noShow');
   return status || '—';
 }
 
-function orderStatusLabel(status: string | null | undefined): string {
+function orderStatusLabel(status: string | null | undefined, t: (key: string) => string): string {
   const s = String(status || '').toLowerCase();
-  if (s === 'open') return 'Açık';
-  if (s === 'closed' || s === 'kapatildi') return 'Kapalı';
-  if (s === 'cancelled') return 'İptal';
+  if (s === 'open') return t('restaurant.status.order.open');
+  if (s === 'closed' || s === 'kapatildi') return t('restaurant.status.order.closed');
+  if (s === 'cancelled') return t('restaurant.status.order.cancelled');
   return getStatusConfig(status).label;
 }
 
-function kitchenStatusLabel(status: string | null | undefined): string {
+function kitchenStatusLabel(status: string | null | undefined, t: (key: string) => string): string {
   const s = String(status || '').toLowerCase();
-  if (!s || s === 'new' || s === 'pending') return 'Bekliyor';
-  if (s === 'cooking') return 'Pişiyor';
-  if (s === 'ready') return 'Hazır';
-  if (s === 'served') return 'Servis edildi';
-  if (s === 'cancelled') return 'İptal';
+  if (!s || s === 'new' || s === 'pending') return t('restaurant.status.kitchen.pending');
+  if (s === 'cooking') return t('restaurant.status.kitchen.cooking');
+  if (s === 'ready') return t('restaurant.status.kitchen.ready');
+  if (s === 'served') return t('restaurant.status.kitchen.served');
+  if (s === 'cancelled') return t('restaurant.status.kitchen.cancelled');
   return status || '—';
 }
 
@@ -222,6 +223,7 @@ function isPendingKitchenLine(item: { status?: string | null; sent_to_kitchen_at
 }
 
 export function RestaurantScreen({ navigation, route }: Props) {
+  const { t } = useTranslation();
   const { colors, darkMode } = useThemeStore();
   const { width } = useWindowDimensions();
   const { isLandscapeTablet } = useDeviceLayout();
@@ -279,9 +281,9 @@ export function RestaurantScreen({ navigation, route }: Props) {
   const orgEpoch = useOrgEpoch();
 
   const PAY_METHODS: { id: RestPaymentMethod; label: string }[] = [
-    { id: 'cash', label: 'Nakit' },
-    { id: 'card', label: 'Kart' },
-    { id: 'veresiye', label: 'Veresiye' },
+    { id: 'cash', label: t('restaurant.payMethods.cash') },
+    { id: 'card', label: t('restaurant.payMethods.card') },
+    { id: 'veresiye', label: t('restaurant.payMethods.credit') },
   ];
 
   const cardSize = useMemo(() => {
@@ -328,8 +330,8 @@ export function RestaurantScreen({ navigation, route }: Props) {
         id: `o-${o.id}`,
         kind: 'order',
         time: formatClock(o.created_at),
-        title: o.table_name || 'Masa',
-        subtitle: `${o.order_no || o.id.slice(0, 8)} · ${orderStatusLabel(o.status)}`,
+        title: o.table_name || t('restaurant.table.defaultName'),
+        subtitle: `${o.order_no || o.id.slice(0, 8)} · ${orderStatusLabel(o.status, t)}`,
         amount: o.total_amount,
         status: o.status,
         order: o,
@@ -341,8 +343,8 @@ export function RestaurantScreen({ navigation, route }: Props) {
         kind: 'reservation',
         time: formatClock(r.reservation_time),
         title: r.customer_name,
-        subtitle: `${r.guest_count} kişi · ${reservationStatusLabel(r.status)}${
-          r.table_name ? ` · Masa ${r.table_name}` : ''
+        subtitle: `${r.guest_count} ${t('restaurant.schedule.form.guests')} · ${reservationStatusLabel(r.status, t)}${
+          r.table_name ? ` · ${t('restaurant.table.tableTag', { name: r.table_name })}` : ''
         }`,
         status: r.status,
         reservation: r,
@@ -389,11 +391,11 @@ export function RestaurantScreen({ navigation, route }: Props) {
       const count = tables.filter((t) => t.floor_id === id).length;
       return {
         id,
-        label: floor?.name?.trim() || `Bölge ${idx + 1}`,
+        label: floor?.name?.trim() || t('restaurant.floor.fallback', { index: idx + 1 }),
         count,
       };
     });
-  }, [tables, floors]);
+  }, [tables, floors, t]);
 
   const filteredTables = useMemo(() => {
     if (floorFilter === 'all' || floorTabs.length === 0) return tables;
@@ -657,20 +659,20 @@ export function RestaurantScreen({ navigation, route }: Props) {
   const handlePayment = () => {
     if (!selectedTable || !orderDetail?.id) return;
     if (!isOrderOpen(orderDetail.status)) {
-      setModalError('Bu adisyon zaten kapalı');
+      setModalError(t('restaurant.alerts.orderClosed'));
       return;
     }
     const methodLabel = PAY_METHODS.find((m) => m.id === payMethod)?.label || payMethod;
     const pct = Math.min(100, Math.max(0, Number(String(discountPct).replace(',', '.')) || 0));
     Alert.alert(
-      'Ödeme / kapat',
-      `${formatMoney(payableTotal)} — ${methodLabel}${
-        pct > 0 ? `\nİndirim %${pct}` : ''
-      }\nAdisyon kapatılsın mı?`,
+      t('restaurant.alerts.payTitle'),
+      pct > 0
+        ? t('restaurant.alerts.payBody', { total: formatMoney(payableTotal), method: methodLabel, pct })
+        : t('restaurant.alerts.payBodyNoDiscount', { total: formatMoney(payableTotal), method: methodLabel }),
       [
-        { text: 'İptal', style: 'cancel' },
+        { text: t('restaurant.alerts.payCancel'), style: 'cancel' },
         {
-          text: 'Onayla',
+          text: t('restaurant.alerts.payConfirm'),
           onPress: () => void doPayment(),
         },
       ],
@@ -745,15 +747,15 @@ export function RestaurantScreen({ navigation, route }: Props) {
     const qty = Number(itemQty.replace(',', '.'));
     const price = Number(itemPrice.replace(',', '.'));
     if (!name) {
-      setModalError('Ürün adı gerekli');
+      setModalError(t('restaurant.alerts.needProductName'));
       return;
     }
     if (!Number.isFinite(qty) || qty <= 0) {
-      setModalError('Geçerli miktar girin');
+      setModalError(t('restaurant.alerts.needQty'));
       return;
     }
     if (!Number.isFinite(price) || price < 0) {
-      setModalError('Geçerli fiyat girin');
+      setModalError(t('restaurant.alerts.needPrice'));
       return;
     }
     setSaving(true);
@@ -783,10 +785,10 @@ export function RestaurantScreen({ navigation, route }: Props) {
   };
 
   const handleVoidItem = (itemId: string, productName: string) => {
-    Alert.alert('Kalem iptal', `"${productName}" iptal edilsin mi?`, [
-      { text: 'Vazgeç', style: 'cancel' },
+    Alert.alert(t('restaurant.alerts.voidTitle'), t('restaurant.alerts.voidBody', { name: productName }), [
+      { text: t('restaurant.alerts.voidCancel'), style: 'cancel' },
       {
-        text: 'İptal et',
+        text: t('restaurant.alerts.voidConfirm'),
         style: 'destructive',
         onPress: () =>
           void (async () => {
@@ -842,7 +844,7 @@ export function RestaurantScreen({ navigation, route }: Props) {
     if (!orderDetail?.id || !selectedTable) return;
     const pct = Number(String(discountPct).replace(',', '.'));
     if (!Number.isFinite(pct) || pct < 0 || pct > 100) {
-      setModalError('İndirim 0–100 arasında olmalı');
+      setModalError(t('restaurant.alerts.discountRange'));
       return;
     }
     setSaving(true);
@@ -859,7 +861,7 @@ export function RestaurantScreen({ navigation, route }: Props) {
 
   const handleMoveTable = async () => {
     if (!selectedTable || !moveTargetId) {
-      setModalError('Hedef masa seçin');
+      setModalError(t('restaurant.alerts.needMoveTarget'));
       return;
     }
     setSaving(true);
@@ -979,7 +981,7 @@ export function RestaurantScreen({ navigation, route }: Props) {
   const handleQuickAddMenuItem = async (item: RestMenuItem) => {
     if (!orderDetail?.id || !selectedTable) return;
     if (!isOrderOpen(orderDetail.status)) {
-      setModalError('Adisyon kapalı');
+      setModalError(t('restaurant.alerts.orderAlreadyClosed'));
       return;
     }
     setQuickAddingId(item.id);
@@ -1003,7 +1005,7 @@ export function RestaurantScreen({ navigation, route }: Props) {
   const handleSendToKitchen = async () => {
     if (!orderDetail?.id || !selectedTable) return;
     if (pendingKitchenCount === 0) {
-      setModalError('Mutfağa gönderilecek bekleyen kalem yok');
+      setModalError(t('restaurant.alerts.noKitchenPending'));
       return;
     }
     setSendingKitchen(true);
@@ -1014,7 +1016,7 @@ export function RestaurantScreen({ navigation, route }: Props) {
       const oid = orderBeforeSend.id;
       const result = await sendRestaurantItemsToKitchen(oid);
       if (result.sentItemCount === 0) {
-        setModalError('Mutfağa gönderilecek yeni kalem yok');
+        setModalError(t('restaurant.alerts.noKitchenNew'));
         return;
       }
       const serviceEnabled = await isWindowsPrinterServiceEnabled();
@@ -1040,15 +1042,24 @@ export function RestaurantScreen({ navigation, route }: Props) {
       setKitchenOrders(await fetchActiveKitchenOrders());
       if (serviceEnabled) {
         Alert.alert(
-          'Mutfak',
-          `${result.sentItemCount} kalem mutfağa gönderildi.\n${queueResult?.jobCount ?? 0} yazdırma işi RetailEX_Printer kuyruğuna eklendi.`,
+          t('restaurant.alerts.kitchenOk'),
+          t('restaurant.alerts.kitchenOkBody', {
+            count: result.sentItemCount,
+            queue: queueResult?.jobCount ?? 0,
+          }),
         );
       } else if (printResult?.ok) {
-        Alert.alert('Mutfak', `${result.sentItemCount} kalem mutfağa gönderildi.\n${printResult.message}`);
+        Alert.alert(
+          t('restaurant.alerts.kitchenOk'),
+          t('restaurant.alerts.kitchenOkPrintBody', {
+            count: result.sentItemCount,
+            message: printResult.message,
+          }),
+        );
       } else {
-        const message = printResult?.message ?? 'Mutfak fişi yazdırılamadı';
+        const message = printResult?.message ?? t('restaurant.alerts.kitchenPrintFailDefault');
         setModalError(message);
-        Alert.alert('Mutfak yazdırma', message);
+        Alert.alert(t('restaurant.alerts.kitchenPrintFailTitle'), message);
       }
     } catch (e) {
       setModalError(e instanceof Error ? e.message : String(e));
@@ -1086,15 +1097,15 @@ export function RestaurantScreen({ navigation, route }: Props) {
     const customerName = reservationForm.customerName.trim();
     const guestCount = Number(reservationForm.guestCount.replace(',', '.'));
     if (!customerName) {
-      setError('Rezervasyon için müşteri adı gerekli');
+      setError(t('restaurant.alerts.needReservationCustomer'));
       return;
     }
     if (!/^\d{1,2}:\d{2}$/.test(reservationForm.time.trim())) {
-      setError('Rezervasyon saati HH:MM formatında olmalı');
+      setError(t('restaurant.alerts.reservationTimeFormat'));
       return;
     }
     if (!Number.isFinite(guestCount) || guestCount <= 0) {
-      setError('Rezervasyon kişi sayısı geçersiz');
+      setError(t('restaurant.alerts.reservationGuestsInvalid'));
       return;
     }
     setSaving(true);
@@ -1188,14 +1199,14 @@ export function RestaurantScreen({ navigation, route }: Props) {
   };
 
   const tabs: { id: Tab; label: string }[] = [
-    { id: 'dashboard', label: 'Ana panel' },
-    { id: 'tables', label: `Masalar (${tables.length})` },
-    { id: 'orders', label: `Adisyon (${orders.length})` },
-    { id: 'delivery', label: `Paket (${deliveryOrders.length})` },
-    { id: 'takeaway', label: `Gel Al (${takeawayOrders.length})` },
-    { id: 'schedule', label: `Bugün (${scheduleItems.length})` },
-    { id: 'kitchen', label: `Mutfak (${kitchenOrders.length})` },
-    { id: 'reports', label: 'Raporlar' },
+    { id: 'dashboard', label: t('restaurant.tabs.dashboard') },
+    { id: 'tables', label: t('restaurant.tabs.tables', { count: tables.length }) },
+    { id: 'orders', label: t('restaurant.tabs.orders', { count: orders.length }) },
+    { id: 'delivery', label: t('restaurant.tabs.delivery', { count: deliveryOrders.length }) },
+    { id: 'takeaway', label: t('restaurant.tabs.takeaway', { count: takeawayOrders.length }) },
+    { id: 'schedule', label: t('restaurant.tabs.schedule', { count: scheduleItems.length }) },
+    { id: 'kitchen', label: t('restaurant.tabs.kitchen', { count: kitchenOrders.length }) },
+    { id: 'reports', label: t('restaurant.tabs.reports') },
   ];
 
   const onChangeTab = (id: Tab) => {
@@ -1224,72 +1235,72 @@ export function RestaurantScreen({ navigation, route }: Props) {
   }[] = [
     {
       id: 'tables',
-      label: 'Masalar',
-      hint: `${gastroKpis.openTables} açık`,
+      label: t('restaurant.tiles.tables'),
+      hint: t('restaurant.tiles.tablesHint', { count: gastroKpis.openTables }),
       color: '#ef4444',
       Icon: LayoutGrid,
       onPress: () => setTab('tables'),
     },
     {
       id: 'retail',
-      label: 'Perakende',
-      hint: 'Masasız satış',
+      label: t('restaurant.tiles.retail'),
+      hint: t('restaurant.tiles.retailHint'),
       color: '#10b981',
       Icon: ShoppingCart,
       onPress: () => void openRetailPos(),
     },
     {
       id: 'kitchen',
-      label: 'Mutfak',
-      hint: `${gastroKpis.kitchenPending} bekleyen`,
+      label: t('restaurant.tiles.kitchen'),
+      hint: t('restaurant.tiles.kitchenHint', { count: gastroKpis.kitchenPending }),
       color: '#ec4899',
       Icon: ChefHat,
       onPress: () => setTab('kitchen'),
     },
     {
       id: 'delivery',
-      label: 'Paket',
-      hint: `${deliveryOrders.length} sipariş`,
+      label: t('restaurant.tiles.delivery'),
+      hint: t('restaurant.tiles.deliveryHint', { count: deliveryOrders.length }),
       color: '#3b82f6',
       Icon: Bike,
       onPress: () => setTab('delivery'),
     },
     {
       id: 'takeaway',
-      label: 'Gel-Al',
-      hint: `${takeawayOrders.length} sipariş`,
+      label: t('restaurant.tiles.takeaway'),
+      hint: t('restaurant.tiles.takeawayHint', { count: takeawayOrders.length }),
       color: '#f59e0b',
       Icon: ShoppingBag,
       onPress: () => setTab('takeaway'),
     },
     {
       id: 'reports',
-      label: 'Raporlar',
-      hint: 'Z / iptal / adet',
+      label: t('restaurant.tiles.reports'),
+      hint: t('restaurant.tiles.reportsHint'),
       color: '#6366f1',
       Icon: BarChart3,
       onPress: () => navigation.navigate('RestaurantReports'),
     },
     {
       id: 'schedule',
-      label: 'Rezervasyon',
-      hint: `${reservations.length} bugün`,
+      label: t('restaurant.tiles.schedule'),
+      hint: t('restaurant.tiles.scheduleHint', { count: reservations.length }),
       color: '#f43f5e',
       Icon: CalendarDays,
       onPress: () => setTab('schedule'),
     },
     {
       id: 'settings',
-      label: 'Ayarlar',
-      hint: 'Yazıcı · firma',
+      label: t('restaurant.tiles.settings'),
+      hint: t('restaurant.tiles.settingsHint'),
       color: '#64748b',
       Icon: Settings,
       onPress: () => navigation.navigate('RestaurantSettings'),
     },
     {
       id: 'firm',
-      label: 'Firma',
-      hint: 'Organizasyon',
+      label: t('restaurant.tiles.firm'),
+      hint: t('restaurant.tiles.firmHint'),
       color: '#14b8a6',
       Icon: Building2,
       onPress: () => navigation.navigate('RestaurantSettings'),
@@ -1297,10 +1308,10 @@ export function RestaurantScreen({ navigation, route }: Props) {
   ];
 
   const kitchenFilterChips: { id: KitchenFilter; label: string }[] = [
-    { id: 'all', label: 'Tümü' },
-    { id: 'new', label: 'Yeni' },
-    { id: 'cooking', label: 'Hazırlanıyor' },
-    { id: 'ready', label: 'Hazır' },
+    { id: 'all', label: t('restaurant.filters.all') },
+    { id: 'new', label: t('restaurant.filters.new') },
+    { id: 'cooking', label: t('restaurant.filters.cooking') },
+    { id: 'ready', label: t('restaurant.filters.ready') },
   ];
 
   const regionBelow =
@@ -1314,7 +1325,7 @@ export function RestaurantScreen({ navigation, route }: Props) {
             style={[styles.flatTabText, floorFilter === 'all' && styles.flatTabTextOn]}
             numberOfLines={1}
           >
-            Tümü
+            {t('restaurant.filters.all')}
           </Text>
         </Pressable>
         {floorTabs.map((f) => {
@@ -1337,13 +1348,13 @@ export function RestaurantScreen({ navigation, route }: Props) {
   return (
     <View style={[styles.root, { backgroundColor: colors.background }]}>
       <ScreenHeader
-        title={tab === 'tables' ? 'Masalar' : 'Restoran'}
+        title={tab === 'tables' ? t('restaurant.header.tablesTitle') : t('restaurant.header.title')}
         subtitle={
           callerPhone
-            ? `Caller ID: ${callerPhone}`
+            ? t('restaurant.header.callerId', { phone: callerPhone })
             : tab === 'tables'
-              ? `${filteredTables.length} masa`
-              : 'Masalar, paket, mutfak, raporlar'
+              ? t('restaurant.header.subtitleTables', { count: filteredTables.length })
+              : t('restaurant.header.subtitleDefault')
         }
         showBack={tab !== 'dashboard'}
         onBack={() => setTab('dashboard')}
@@ -1441,25 +1452,25 @@ export function RestaurantScreen({ navigation, route }: Props) {
             {[
               {
                 key: 'openTables',
-                label: 'Açık masa',
+                label: t('restaurant.kpi.openTables'),
                 value: String(gastroKpis.openTables),
                 accent: palette.blue600,
               },
               {
                 key: 'openOrders',
-                label: 'Açık sipariş',
+                label: t('restaurant.kpi.openOrders'),
                 value: String(gastroKpis.openOrders),
                 accent: palette.indigo600,
               },
               {
                 key: 'kitchen',
-                label: 'Mutfak bekleyen',
+                label: t('restaurant.kpi.kitchenPending'),
                 value: String(gastroKpis.kitchenPending),
                 accent: palette.amber600,
               },
               {
                 key: 'revenue',
-                label: 'Bugün ciro',
+                label: t('restaurant.kpi.todayRevenue'),
                 value: formatCompactTotal(gastroKpis.todayRevenue),
                 accent: palette.green600,
               },
@@ -1517,7 +1528,7 @@ export function RestaurantScreen({ navigation, route }: Props) {
           >
             <Plus size={16} color={palette.blue600} />
             <Text style={{ color: colors.text, fontWeight: '800', fontSize: 13 }}>
-              Yeni sipariş (boş masa)
+              {t('restaurant.quick.newOrderEmpty')}
             </Text>
           </Pressable>
         </ScrollView>
@@ -1529,7 +1540,7 @@ export function RestaurantScreen({ navigation, route }: Props) {
           refreshControl={
             <RefreshControl refreshing={refreshing} onRefresh={() => void load({ soft: true })} />
           }
-          ListEmptyComponent={<EmptyState message="Masa kaydı yok (rest şeması)" />}
+          ListEmptyComponent={<EmptyState message={t('restaurant.empty.tables')} />}
           contentContainerStyle={{ padding: GRID_PAD, paddingBottom: 40 }}
           columnWrapperStyle={{ gap: GRID_GAP, marginBottom: GRID_GAP }}
           renderItem={renderTableCard}
@@ -1541,7 +1552,7 @@ export function RestaurantScreen({ navigation, route }: Props) {
           refreshControl={
             <RefreshControl refreshing={refreshing} onRefresh={() => void load({ soft: true })} />
           }
-          ListEmptyComponent={<EmptyState message="Açık adisyon yok" />}
+          ListEmptyComponent={<EmptyState message={t('restaurant.empty.openOrders')} />}
           contentContainerStyle={{ padding: 12, gap: 8, paddingBottom: 40 }}
           renderItem={({ item }) => {
             const cfg = getStatusConfig(item.status === 'open' ? 'occupied' : item.status);
@@ -1560,10 +1571,10 @@ export function RestaurantScreen({ navigation, route }: Props) {
                 <View style={{ flex: 1, minWidth: 0 }}>
                   <Text style={{ color: colors.text, fontWeight: '700' }} numberOfLines={1}>
                     {item.order_no || item.id.slice(0, 8)} ·{' '}
-                    {item.table_name || (!item.table_id ? 'Perakende' : 'Masa')}
+                    {item.table_name || (!item.table_id ? t('restaurant.table.retailName') : t('restaurant.table.defaultName'))}
                   </Text>
                   <Text style={{ color: colors.textMuted, fontSize: 12, marginTop: 2 }}>
-                    {item.waiter || '—'} · {orderStatusLabel(item.status)}
+                    {item.waiter || '—'} · {orderStatusLabel(item.status, t)}
                     {item.created_at ? ` · ${formatClock(item.created_at)}` : ''}
                   </Text>
                 </View>
@@ -1608,26 +1619,29 @@ export function RestaurantScreen({ navigation, route }: Props) {
               <View style={styles.scheduleHeaderRow}>
                 <Clock size={16} color={palette.blue600} />
                 <Text style={{ color: colors.text, fontWeight: '800', fontSize: 13 }}>
-                  Bugün · {todayYmd()}
+                  {t('restaurant.schedule.header', { date: todayYmd() })}
                 </Text>
               </View>
               <Text style={{ color: colors.textMuted, fontSize: 11, marginTop: 4 }}>
-                {todayOrders.length} sipariş · {reservations.length} rezervasyon
+                {t('restaurant.schedule.summary', {
+                  orders: todayOrders.length,
+                  reservations: reservations.length,
+                })}
               </Text>
               <View style={[styles.reservationForm, { borderColor: colors.cardBorder }]}>
                 <Text style={{ color: colors.text, fontWeight: '800', fontSize: 12 }}>
-                  Hızlı rezervasyon
+                  {t('restaurant.schedule.quickTitle')}
                 </Text>
                 <FormField
-                  label="Müşteri"
+                  label={t('restaurant.schedule.form.customer')}
                   value={reservationForm.customerName}
                   onChangeText={(customerName) => setReservationForm((p) => ({ ...p, customerName }))}
-                  placeholder="Ad soyad"
+                  placeholder={t('restaurant.schedule.form.placeholderCustomer')}
                 />
                 <View style={styles.rowFields}>
                   <View style={{ flex: 1 }}>
                     <FormField
-                      label="Telefon"
+                      label={t('restaurant.schedule.form.phone')}
                       value={reservationForm.phone}
                       onChangeText={(phone) => setReservationForm((p) => ({ ...p, phone }))}
                       keyboardType="phone-pad"
@@ -1635,15 +1649,15 @@ export function RestaurantScreen({ navigation, route }: Props) {
                   </View>
                   <View style={{ width: 92 }}>
                     <FormField
-                      label="Saat"
+                      label={t('restaurant.schedule.form.time')}
                       value={reservationForm.time}
                       onChangeText={(time) => setReservationForm((p) => ({ ...p, time }))}
-                      placeholder="19:00"
+                      placeholder={t('restaurant.schedule.form.placeholderTime')}
                     />
                   </View>
                   <View style={{ width: 72 }}>
                     <FormField
-                      label="Kişi"
+                      label={t('restaurant.schedule.form.guests')}
                       value={reservationForm.guestCount}
                       onChangeText={(guestCount) => setReservationForm((p) => ({ ...p, guestCount }))}
                       keyboardType="number-pad"
@@ -1651,13 +1665,13 @@ export function RestaurantScreen({ navigation, route }: Props) {
                   </View>
                 </View>
                 <FormField
-                  label="Not"
+                  label={t('restaurant.schedule.form.note')}
                   value={reservationForm.note}
                   onChangeText={(note) => setReservationForm((p) => ({ ...p, note }))}
-                  placeholder="İsteğe bağlı"
+                  placeholder={t('restaurant.schedule.form.placeholderNote')}
                 />
                 <PrimaryButton
-                  label="Rezervasyon ekle"
+                  label={t('restaurant.schedule.form.submit')}
                   onPress={() => void handleCreateReservation()}
                   loading={saving}
                 />
@@ -1665,7 +1679,7 @@ export function RestaurantScreen({ navigation, route }: Props) {
             </View>
           }
           ListEmptyComponent={
-            <EmptyState message="Bugün için sipariş veya rezervasyon yok" />
+            <EmptyState message={t('restaurant.empty.schedule')} />
           }
           contentContainerStyle={{ padding: 12, paddingBottom: 40 }}
           renderItem={({ item: [hour, rows] }) => (
@@ -1698,7 +1712,7 @@ export function RestaurantScreen({ navigation, route }: Props) {
                         {row.time}
                       </Text>
                       <Text style={{ color: colors.textSubtle, fontSize: 9, fontWeight: '700', marginTop: 2 }}>
-                        {isRes ? 'REZ' : 'SİP'}
+                        {isRes ? t('restaurant.schedule.badgeReservation') : t('restaurant.schedule.badgeOrder')}
                       </Text>
                     </View>
                     <View style={{ flex: 1, minWidth: 0 }}>
@@ -1711,9 +1725,9 @@ export function RestaurantScreen({ navigation, route }: Props) {
                       {reservation ? (
                         <View style={styles.resStatusRow}>
                           {[
-                            ['confirmed', 'Onayla'],
-                            ['seated', 'Oturdu'],
-                            ['cancelled', 'İptal'],
+                            ['confirmed', t('restaurant.schedule.actions.confirm')],
+                            ['seated', t('restaurant.schedule.actions.seated')],
+                            ['cancelled', t('restaurant.schedule.actions.cancel')],
                           ].map(([status, label]) => (
                             <Pressable
                               key={status}
@@ -1772,7 +1786,7 @@ export function RestaurantScreen({ navigation, route }: Props) {
           refreshControl={
             <RefreshControl refreshing={refreshing} onRefresh={() => void load({ soft: true })} />
           }
-          ListEmptyComponent={<EmptyState message="Aktif mutfak fişi yok" />}
+          ListEmptyComponent={<EmptyState message={t('restaurant.empty.kitchen')} />}
           contentContainerStyle={{ padding: 12, gap: 10, paddingBottom: 40 }}
           renderItem={({ item }) => {
             const kitchenCfg = getStatusConfig('kitchen');
@@ -1794,7 +1808,7 @@ export function RestaurantScreen({ navigation, route }: Props) {
                 <View style={styles.kitchenHeaderRow}>
                   <View style={{ flex: 1, minWidth: 0 }}>
                     <Text style={{ color: colors.text, fontWeight: '900' }} numberOfLines={1}>
-                      {item.table_number || 'Masa'} · {kitchenStatusLabel(item.status)}
+                      {item.table_number || t('restaurant.table.defaultName')} · {kitchenStatusLabel(item.status, t)}
                     </Text>
                     <Text style={{ color: colors.textMuted, fontSize: 11, marginTop: 2 }}>
                       {item.waiter || '—'}
@@ -1813,7 +1827,7 @@ export function RestaurantScreen({ navigation, route }: Props) {
                     ]}
                   >
                     <Text style={styles.readyButtonText}>
-                      {allReady ? 'Hazır' : 'Tümünü hazırla'}
+                      {allReady ? t('restaurant.kitchen.ready') : t('restaurant.kitchen.readyAll')}
                     </Text>
                   </Pressable>
                 </View>
@@ -1833,7 +1847,7 @@ export function RestaurantScreen({ navigation, route }: Props) {
                           {ki.product_name}
                         </Text>
                         <Text style={{ color: colors.textMuted, fontSize: 11, marginTop: 2 }}>
-                          {ki.quantity} adet · {kitchenStatusLabel(ki.status)}
+                          {ki.quantity} adet · {kitchenStatusLabel(ki.status, t)}
                           {ki.preparation_time ? ` · ${ki.preparation_time} dk` : ''}
                         </Text>
                       </View>
@@ -1856,7 +1870,7 @@ export function RestaurantScreen({ navigation, route }: Props) {
                             fontWeight: '900',
                           }}
                         >
-                          {isReady ? 'Hazır' : 'Hazırla'}
+                          {isReady ? t('restaurant.kitchen.ready') : t('restaurant.kitchen.prepare')}
                         </Text>
                       </Pressable>
                     </View>
@@ -1882,16 +1896,16 @@ export function RestaurantScreen({ navigation, route }: Props) {
                 <View style={{ flex: 1, minWidth: 0 }}>
                   <Text style={{ color: palette.white, fontSize: 16, fontWeight: '700' }} numberOfLines={1}>
                     {orderSheetTab === 'list'
-                      ? 'Açık adisyonlar'
+                      ? t('restaurant.orderModal.titleTables')
                       : isRetailPos
-                        ? 'Perakende satış'
-                        : selectedTable?.name || 'Masa'}
+                        ? t('restaurant.table.retailSale')
+                        : selectedTable?.name || t('restaurant.table.defaultName')}
                   </Text>
                   <Text style={{ color: palette.blue100, fontSize: 10, marginTop: 2 }} numberOfLines={1}>
                     {orderSheetTab === 'list'
-                      ? `${orders.length} sipariş`
-                      : `${orderDetail?.order_no || 'Adisyon'}${
-                          orderDetail?.status ? ` · ${orderStatusLabel(orderDetail.status)}` : ''
+                      ? t('restaurant.orderModal.subtitle', { count: orders.length })
+                      : `${orderDetail?.order_no || t('restaurant.table.adisyon')}${
+                          orderDetail?.status ? ` · ${orderStatusLabel(orderDetail.status, t)}` : ''
                         }${orderDetail ? ` · ${formatMoney(orderDetail.total_amount)}` : ''}`}
                   </Text>
                 </View>
@@ -1931,16 +1945,16 @@ export function RestaurantScreen({ navigation, route }: Props) {
                     {
                       id: 'order' as OrderSheetTab,
                       label: orderDetail
-                        ? `Sipariş (${orderDetail.items.length})`
-                        : 'Sipariş',
+                        ? t('restaurant.orderModal.tabOrder', { count: orderDetail.items.length })
+                        : t('restaurant.orderModal.tabOrderSimple'),
                     },
                     {
                       id: 'pay' as OrderSheetTab,
-                      label: 'Ödeme',
+                      label: t('restaurant.orderModal.tabPay'),
                     },
                     {
                       id: 'list' as OrderSheetTab,
-                      label: `Liste (${orders.length})`,
+                      label: t('restaurant.orderModal.tabList', { count: orders.length }),
                     },
                   ] as const
                 ).map((item) => {
@@ -1972,7 +1986,7 @@ export function RestaurantScreen({ navigation, route }: Props) {
                 data={orders}
                 keyExtractor={(item) => item.id}
                 contentContainerStyle={styles.modalBody}
-                ListEmptyComponent={<EmptyState message="Açık adisyon yok" />}
+                ListEmptyComponent={<EmptyState message={t('restaurant.empty.modalOpenOrders')} />}
                 renderItem={({ item }) => (
                   <Pressable
                     onPress={() => {
@@ -1986,10 +2000,10 @@ export function RestaurantScreen({ navigation, route }: Props) {
                   >
                     <View style={{ flex: 1, minWidth: 0 }}>
                       <Text style={{ color: colors.text, fontWeight: '800' }} numberOfLines={1}>
-                        {item.table_name || item.order_no || 'Adisyon'}
+                        {item.table_name || item.order_no || t('restaurant.table.adisyon')}
                       </Text>
                       <Text style={{ color: colors.textMuted, fontSize: 11, marginTop: 2 }}>
-                        {item.order_no || '—'} · {orderStatusLabel(item.status)}
+                        {item.order_no || '—'} · {orderStatusLabel(item.status, t)}
                         {item.waiter ? ` · ${item.waiter}` : ''}
                       </Text>
                     </View>
@@ -2010,15 +2024,15 @@ export function RestaurantScreen({ navigation, route }: Props) {
                   ]}
                 >
                   <Text style={{ color: colors.text, fontWeight: '700', fontSize: 15, marginBottom: 6 }}>
-                    {isRetailPos ? 'Perakende adisyon yok' : 'Açık adisyon yok'}
+                    {isRetailPos ? t('restaurant.empty.retailOrder') : t('restaurant.empty.openOrders')}
                   </Text>
                   <Text style={{ color: colors.textMuted, marginBottom: 16, fontSize: 13 }}>
                     {isRetailPos
-                      ? 'Yeni perakende satışı başlatabilirsiniz.'
-                      : 'Bu masada yeni adisyon açabilirsiniz.'}
+                      ? t('restaurant.empty.modalOpenOrdersHintRetail')
+                      : t('restaurant.empty.modalOpenOrdersHintTable')}
                   </Text>
                   <PrimaryButton
-                    label={isRetailPos ? 'Perakende satış aç' : 'Adisyon aç'}
+                    label={isRetailPos ? t('restaurant.orderModal.createRetail') : t('restaurant.orderModal.createTable')}
                     onPress={() => void handleCreateOrder()}
                     loading={saving}
                   />
@@ -2026,7 +2040,7 @@ export function RestaurantScreen({ navigation, route }: Props) {
                     normalizeTableStatus(selectedTable?.status) === 'cleaning' ? (
                       <View style={{ marginTop: 10 }}>
                         <PrimaryButton
-                          label="Temizlik bitti — boşalt"
+                          label={t('restaurant.orderModal.cleanFinish')}
                           onPress={() => void handleMarkTableEmpty()}
                           loading={saving}
                         />
@@ -2034,7 +2048,7 @@ export function RestaurantScreen({ navigation, route }: Props) {
                     ) : (
                       <View style={{ marginTop: 10 }}>
                         <PrimaryButton
-                          label="Temizliğe al"
+                          label={t('restaurant.orderModal.cleaning')}
                           onPress={() => void handleMarkTableCleaning()}
                           loading={saving}
                         />
@@ -2059,10 +2073,15 @@ export function RestaurantScreen({ navigation, route }: Props) {
                     >
                       <View style={{ flex: 1, minWidth: 0 }}>
                         <Text style={{ color: colors.textMuted, fontSize: 10, fontWeight: '800' }}>
-                          SEPET · {orderDetail.items.length} kalem
                           {orderDetail.items.length > 0
-                            ? ` · ${formatMoney(orderDetail.total_amount)}`
-                            : ''}
+                            ? t('restaurant.orderModal.cart.summaryWithTotal', {
+                                count: orderDetail.items.length,
+                                total: formatMoney(orderDetail.total_amount),
+                              })
+                            : t('restaurant.orderModal.cart.summary', {
+                                count: orderDetail.items.length,
+                                suffix: '',
+                              })}
                         </Text>
                         <Text style={{ color: colors.text, fontSize: 20, fontWeight: '900', marginTop: 2 }}>
                           {formatMoney(orderDetail.total_amount)}
@@ -2071,14 +2090,14 @@ export function RestaurantScreen({ navigation, route }: Props) {
                       <View style={styles.metaChip}>
                         <Utensils size={12} color={palette.blue600} />
                         <Text style={{ color: colors.textMuted, fontSize: 11 }}>
-                          {pendingKitchenCount} bekleyen
+                          {t('restaurant.orderModal.cart.pendingKitchen', { count: pendingKitchenCount })}
                         </Text>
                       </View>
                     </View>
 
                     {orderDetail.items.length === 0 ? (
                       <Text style={{ color: colors.textMuted, fontSize: 12, marginBottom: 4 }}>
-                        Menüden ürünlere dokunarak ekleyin · uzun basınca miktar
+                        {t('restaurant.orderModal.cart.empty')}
                       </Text>
                     ) : (
                       <View style={styles.cartLines}>
@@ -2098,10 +2117,10 @@ export function RestaurantScreen({ navigation, route }: Props) {
                                   numberOfLines={1}
                                 >
                                   {it.quantity}× {it.product_name}
-                                  {it.is_complimentary ? ' · İkram' : ''}
+                                  {it.is_complimentary ? t('restaurant.orderModal.cart.complimentary') : ''}
                                 </Text>
                                 <Text style={{ color: colors.textMuted, fontSize: 10, marginTop: 1 }}>
-                                  {formatMoney(it.subtotal)} · {kitchenStatusLabel(it.status)}
+                                  {formatMoney(it.subtotal)} · {kitchenStatusLabel(it.status, t)}
                                 </Text>
                               </View>
                               {isOrderOpen(orderDetail.status) && pending ? (
@@ -2143,7 +2162,7 @@ export function RestaurantScreen({ navigation, route }: Props) {
                       />
                     ) : (
                       <Text style={{ color: colors.textMuted, fontSize: 13, marginTop: 8 }}>
-                        Adisyon kapalı ({orderDetail.status})
+                        {t('restaurant.orderModal.cart.closed', { status: orderDetail.status })}
                       </Text>
                     )}
 
@@ -2154,21 +2173,21 @@ export function RestaurantScreen({ navigation, route }: Props) {
                           style={[styles.manualToggle, { borderColor: colors.cardBorder }]}
                         >
                           <Text style={{ color: palette.blue600, fontWeight: '800', fontSize: 12 }}>
-                            {showManualAdd ? 'Manuel formu gizle' : 'Menüde yok? Manuel ekle'}
+                            {showManualAdd ? t('restaurant.orderModal.manual.hide') : t('restaurant.orderModal.manual.show')}
                           </Text>
                         </Pressable>
                         {showManualAdd ? (
                           <View style={{ gap: 8, marginTop: 8 }}>
                             <FormField
-                              label="Ürün adı"
+                              label={t('restaurant.orderModal.manual.productLabel')}
                               value={itemName}
                               onChangeText={setItemName}
-                              placeholder="Örn. Izgara köfte"
+                              placeholder={t('restaurant.orderModal.manual.productPlaceholder')}
                             />
                             <View style={styles.rowFields}>
                               <View style={{ flex: 1 }}>
                                 <FormField
-                                  label="Miktar"
+                                  label={t('restaurant.orderModal.manual.qtyLabel')}
                                   value={itemQty}
                                   onChangeText={setItemQty}
                                   keyboardType="decimal-pad"
@@ -2176,7 +2195,7 @@ export function RestaurantScreen({ navigation, route }: Props) {
                               </View>
                               <View style={{ flex: 1 }}>
                                 <FormField
-                                  label="Fiyat"
+                                  label={t('restaurant.orderModal.manual.priceLabel')}
                                   value={itemPrice}
                                   onChangeText={setItemPrice}
                                   keyboardType="decimal-pad"
@@ -2184,13 +2203,13 @@ export function RestaurantScreen({ navigation, route }: Props) {
                               </View>
                             </View>
                             <FormField
-                              label="Not"
+                              label={t('restaurant.orderModal.manual.noteLabel')}
                               value={itemNote}
                               onChangeText={setItemNote}
-                              placeholder="İsteğe bağlı"
+                              placeholder={t('restaurant.schedule.form.placeholderNote')}
                             />
                             <PrimaryButton
-                              label="Manuel kalem ekle"
+                              label={t('restaurant.orderModal.manual.title')}
                               onPress={() => void handleAddItem()}
                               loading={saving}
                             />
@@ -2202,7 +2221,7 @@ export function RestaurantScreen({ navigation, route }: Props) {
                     {isOrderOpen(orderDetail.status) && pendingKitchenCount > 0 ? (
                       <View style={styles.kitchenLangInline}>
                         <Text style={{ color: colors.textMuted, fontSize: 10, fontWeight: '800' }}>
-                          Mutfak dili
+                          {t('restaurant.orderModal.lang.title')}
                         </Text>
                         <View style={styles.payRow}>
                           {KITCHEN_LANGS.map((lang) => (
@@ -2234,7 +2253,7 @@ export function RestaurantScreen({ navigation, route }: Props) {
                           ))}
                         </View>
                         <Text style={{ color: colors.textSubtle, fontSize: 10 }}>
-                          Üstteki şef ikonu ile mutfağa gönder ({pendingKitchenCount})
+                          {t('restaurant.orderModal.lang.sendHint', { count: pendingKitchenCount })}
                         </Text>
                       </View>
                     ) : null}
@@ -2255,18 +2274,18 @@ export function RestaurantScreen({ navigation, route }: Props) {
                 >
                   <View style={{ flex: 1 }}>
                     <Text style={{ color: colors.textMuted, fontSize: 11, fontWeight: '700' }}>
-                      ÖDENECEK
+                      {t('restaurant.orderModal.summary.due')}
                     </Text>
                     <Text style={{ color: colors.text, fontSize: 28, fontWeight: '900', marginTop: 2 }}>
                       {formatMoney(payableTotal)}
                     </Text>
                   </View>
                   <Text style={{ color: colors.textMuted, fontSize: 11 }}>
-                    {orderDetail.items.length} kalem
+                    {t('restaurant.orderModal.summary.itemsCount', { count: orderDetail.items.length })}
                   </Text>
                 </View>
 
-                <Text style={[styles.sectionTitle, { color: colors.text }]}>Kalem işlemleri</Text>
+                <Text style={[styles.sectionTitle, { color: colors.text }]}>{t('restaurant.orderModal.summary.itemsActions')}</Text>
                 {orderDetail.items.map((it) => (
                   <View
                     key={it.id}
@@ -2279,7 +2298,7 @@ export function RestaurantScreen({ navigation, route }: Props) {
                       <View style={{ flex: 1, minWidth: 0 }}>
                         <Text style={{ color: colors.text, fontWeight: '600' }} numberOfLines={2}>
                           {it.product_name}
-                          {it.is_complimentary ? ' · İkram' : ''}
+                          {it.is_complimentary ? t('restaurant.orderModal.cart.complimentary') : ''}
                         </Text>
                         <Text style={{ color: colors.textMuted, fontSize: 10, marginTop: 2 }}>
                           {it.quantity} × {formatMoney(it.unit_price)} = {formatMoney(it.subtotal)}
@@ -2293,7 +2312,7 @@ export function RestaurantScreen({ navigation, route }: Props) {
                           style={[styles.smallAction, { borderColor: palette.red500 }]}
                         >
                           <Text style={{ color: palette.red500, fontSize: 10, fontWeight: '800' }}>
-                            İptal
+                            {t('restaurant.orderModal.actions.void')}
                           </Text>
                         </Pressable>
                         {!it.is_complimentary ? (
@@ -2302,7 +2321,7 @@ export function RestaurantScreen({ navigation, route }: Props) {
                             style={[styles.smallAction, { borderColor: colors.cardBorder }]}
                           >
                             <Text style={{ color: colors.textMuted, fontSize: 10, fontWeight: '800' }}>
-                              İkram
+                              {t('restaurant.orderModal.actions.complimentary')}
                             </Text>
                           </Pressable>
                         ) : null}
@@ -2314,12 +2333,12 @@ export function RestaurantScreen({ navigation, route }: Props) {
                 {isOrderOpen(orderDetail.status) ? (
                   <>
                     <Text style={[styles.sectionTitle, { color: colors.text, marginTop: 12 }]}>
-                      İndirim %
+                      {t('restaurant.orderModal.actions.discount')}
                     </Text>
                     <View style={styles.rowFields}>
                       <View style={{ flex: 1 }}>
                         <FormField
-                          label="İndirim"
+                          label={t('restaurant.orderModal.actions.discountField')}
                           value={discountPct}
                           onChangeText={setDiscountPct}
                           keyboardType="decimal-pad"
@@ -2327,7 +2346,7 @@ export function RestaurantScreen({ navigation, route }: Props) {
                       </View>
                       <View style={{ justifyContent: 'flex-end', paddingBottom: 4 }}>
                         <PrimaryButton
-                          label="Uygula"
+                          label={t('restaurant.orderModal.actions.apply')}
                           onPress={() => void handleSaveDiscount()}
                           loading={saving}
                         />
@@ -2341,10 +2360,10 @@ export function RestaurantScreen({ navigation, route }: Props) {
                       ]}
                     >
                       <Text style={[styles.sectionTitle, { color: colors.text, marginTop: 0 }]}>
-                        Sipariş özeti
+                        {t('restaurant.orderModal.summary.title')}
                       </Text>
                       <View style={styles.summaryRow}>
-                        <Text style={{ color: colors.textMuted, fontSize: 13 }}>Ara toplam</Text>
+                        <Text style={{ color: colors.textMuted, fontSize: 13 }}>{t('restaurant.orderModal.summary.subtotal')}</Text>
                         <Text style={{ color: colors.text, fontWeight: '700', fontSize: 14 }}>
                           {formatMoney(linesSubtotal)}
                         </Text>
@@ -2352,7 +2371,7 @@ export function RestaurantScreen({ navigation, route }: Props) {
                       {discountAmountPreview > 0 ? (
                         <View style={styles.summaryRow}>
                           <Text style={{ color: colors.textMuted, fontSize: 13 }}>
-                            İndirim (%{discountPctNum})
+                            {t('restaurant.orderModal.summary.discountPct', { pct: discountPctNum })}
                           </Text>
                           <Text style={{ color: palette.red500, fontWeight: '700', fontSize: 14 }}>
                             −{formatMoney(discountAmountPreview)}
@@ -2367,7 +2386,7 @@ export function RestaurantScreen({ navigation, route }: Props) {
                         ]}
                       >
                         <Text style={{ color: colors.text, fontWeight: '900', fontSize: 15 }}>
-                          Genel toplam
+                          {t('restaurant.orderModal.summary.grandTotal')}
                         </Text>
                         <Text style={{ color: palette.blue600, fontWeight: '900', fontSize: 18 }}>
                           {formatMoney(payableTotal)}
@@ -2378,7 +2397,7 @@ export function RestaurantScreen({ navigation, route }: Props) {
                       </Text>
                     </View>
 
-                    <Text style={[styles.sectionTitle, { color: colors.text }]}>Ödeme yöntemi</Text>
+                    <Text style={[styles.sectionTitle, { color: colors.text }]}>{t('restaurant.orderModal.summary.paymentTitle')}</Text>
                     <View style={styles.payRow}>
                       {PAY_METHODS.map((m) => (
                         <Pressable
@@ -2408,7 +2427,7 @@ export function RestaurantScreen({ navigation, route }: Props) {
 
                     {!isRetailPos && emptyTablesForMove.length > 0 ? (
                       <>
-                        <Text style={[styles.sectionTitle, { color: colors.text }]}>Masaya taşı</Text>
+                        <Text style={[styles.sectionTitle, { color: colors.text }]}>{t('restaurant.orderModal.summary.moveTitle')}</Text>
                         <ScrollView
                           horizontal
                           showsHorizontalScrollIndicator={false}
@@ -2444,7 +2463,7 @@ export function RestaurantScreen({ navigation, route }: Props) {
                           })}
                         </ScrollView>
                         <PrimaryButton
-                          label="Siparişi taşı"
+                          label={t('restaurant.orderModal.summary.moveButton')}
                           onPress={() => void handleMoveTable()}
                           loading={saving}
                           disabled={!moveTargetId}
@@ -2454,7 +2473,7 @@ export function RestaurantScreen({ navigation, route }: Props) {
                   </>
                 ) : (
                   <Text style={{ color: colors.textMuted, fontSize: 13 }}>
-                    Adisyon kapalı ({orderDetail.status})
+                    {t('restaurant.orderModal.cart.closed', { status: orderDetail.status })}
                   </Text>
                 )}
               </ScrollView>
@@ -2468,7 +2487,7 @@ export function RestaurantScreen({ navigation, route }: Props) {
                 ]}
               >
                 <PrimaryButton
-                  label={`Ödeme al · ${formatMoney(payableTotal)}`}
+                  label={t('restaurant.orderModal.summary.payButton', { total: formatMoney(payableTotal) })}
                   onPress={handlePayment}
                   loading={paying}
                 />

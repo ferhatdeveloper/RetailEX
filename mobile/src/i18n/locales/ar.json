@@ -810,5 +810,301 @@
     "weighSourceTcp": "المصدر: TCP (محاكاة إن لم يوجد كغ)",
     "weighSourceSpp": "المصدر: SPP {{addr}}",
     "weighSourceSimDefault": "المصدر: محاكاة"
+  },
+  "restaurant": {
+    "header": {
+      "title": "المطعم",
+      "tablesTitle": "الطاولات",
+      "subtitleDefault": "طاولات، توصيل، مطبخ، تقارير",
+      "subtitleTables": "{{count}} طاولة",
+      "callerId": "Caller ID: {{phone}}"
+    },
+    "tabs": {
+      "dashboard": "لوحة",
+      "tables": "طاولات ({{count}})",
+      "orders": "فواتير مفتوحة ({{count}})",
+      "delivery": "توصيل ({{count}})",
+      "takeaway": "استلام ({{count}})",
+      "schedule": "اليوم ({{count}})",
+      "kitchen": "مطبخ ({{count}})",
+      "reports": "Raporlar"
+    },
+    "kpi": {
+      "openTables": "طاولات مفتوحة",
+      "openOrders": "طلبات مفتوحة",
+      "kitchenPending": "مطبخ معلق",
+      "todayRevenue": "إيراد اليوم"
+    },
+    "tiles": {
+      "tables": "Masalar",
+      "tablesHint": "{{count}} açık",
+      "retail": "تجزئة",
+      "retailHint": "بيع بدون طاولة",
+      "kitchen": "Mutfak",
+      "kitchenHint": "{{count}} bekleyen",
+      "delivery": "Paket",
+      "deliveryHint": "{{count}} sipariş",
+      "takeaway": "Gel-Al",
+      "takeawayHint": "{{count}} sipariş",
+      "reports": "Raporlar",
+      "reportsHint": "Z / إلغاء / عدد",
+      "schedule": "حجز",
+      "scheduleHint": "{{count}} اليوم",
+      "settings": "Ayarlar",
+      "settingsHint": "طابعة · شركة",
+      "firm": "شركة",
+      "firmHint": "تنظيم"
+    },
+    "quick": {
+      "newOrderEmpty": "طلب جديد (طاولة فارغة)"
+    },
+    "filters": {
+      "all": "Tümü",
+      "new": "Yeni",
+      "cooking": "Hazırlanıyor",
+      "ready": "Hazır"
+    },
+    "floor": {
+      "fallback": "Bölge {{index}}"
+    },
+    "status": {
+      "reservation": {
+        "pending": "Bekliyor",
+        "confirmed": "مؤكد",
+        "seated": "تم الجلوس",
+        "cancelled": "İptal",
+        "noShow": "لم يحضر"
+      },
+      "order": {
+        "open": "Açık",
+        "closed": "Kapalı",
+        "cancelled": "İptal"
+      },
+      "kitchen": {
+        "pending": "Bekliyor",
+        "cooking": "قيد الطبخ",
+        "ready": "Hazır",
+        "served": "تم التقديم",
+        "cancelled": "İptal"
+      }
+    },
+    "empty": {
+      "tables": "لا توجد طاولات (مخطط rest)",
+      "schedule": "لا طلبات أو حجوزات اليوم",
+      "kitchen": "لا تذاكر مطبخ نشطة",
+      "openOrders": "Açık adisyon yok",
+      "retailOrder": "لا فاتورة تجزئة",
+      "modalOpenOrders": "Açık adisyon yok",
+      "modalOpenOrdersHintRetail": "ابدأ بيع تجزئة جديد.",
+      "modalOpenOrdersHintTable": "افتح فاتورة جديدة على هذه الطاولة."
+    },
+    "schedule": {
+      "header": "Bugün · {{date}}",
+      "summary": "{{orders}} sipariş · {{reservations}} rezervasyon",
+      "quickTitle": "حجز سريع",
+      "badgeReservation": "حجز",
+      "badgeOrder": "طلب",
+      "form": {
+        "customer": "العميل",
+        "phone": "الهاتف",
+        "time": "الوقت",
+        "guests": "الأشخاص",
+        "note": "ملاحظة",
+        "placeholderCustomer": "الاسم الكامل",
+        "placeholderTime": "19:00",
+        "placeholderNote": "اختياري",
+        "submit": "إضافة حجز"
+      },
+      "actions": {
+        "confirm": "تأكيد",
+        "seated": "تم الجلوس",
+        "cancel": "إلغاء"
+      }
+    },
+    "table": {
+      "defaultName": "Masa",
+      "retailName": "Perakende",
+      "retailSale": "بيع تجزئة",
+      "tableTag": "طاولة {{name}}",
+      "orderTag": "Masa {{name}} · {{no}}",
+      "adisyon": "فاتورة"
+    },
+    "orderModal": {
+      "titleTables": "فواتير مفتوحة",
+      "subtitle": "{{count}} sipariş",
+      "titleWithStatus": "فاتورة · {{status}}…",
+      "titleNoStatus": "فاتورة…",
+      "tabOrder": "Sipariş ({{count}})",
+      "tabPay": "دفع",
+      "tabList": "قائمة ({{count}})",
+      "tabOrderSimple": "طلب",
+      "createRetail": "فتح بيع تجزئة",
+      "createTable": "فتح فاتورة",
+      "cleanFinish": "انتهى التنظيف — إفراغ",
+      "cleaning": "إرسال للتنظيف",
+      "menu": {
+        "searchLabel": "بحث",
+        "searchPlaceholder": "منتج أو رمز أو فئة",
+        "filterAll": "Tümü · {{count}}",
+        "loading": "تحميل القائمة…",
+        "empty": "لا منتجات بهذا التصفية",
+        "allColumns": "أعمدة",
+        "title": "Menü",
+        "subtitle": "{{count}} ürün",
+        "subtitleWithCategory": "{{count}} ürün · {{category}}",
+        "fallbackCategory": "Genel",
+        "fallbackCode": "Menü"
+      },
+      "cart": {
+        "summary": "السلة · {{count}} صنف{{suffix}}",
+        "summaryWithTotal": "السلة · {{count}} صنف · {{total}}",
+        "pendingKitchen": "{{count}} bekleyen",
+        "empty": "اضغط على المنتجات لإضافتها · ضغطة طويلة للكمية",
+        "complimentary": " · مجاملة",
+        "closed": "فاتورة مغلقة ({{status}})"
+      },
+      "manual": {
+        "title": "إضافة صنف يدوي",
+        "hide": "إخفاء النموذج اليدوي",
+        "show": "ليس في القائمة؟ أضف يدوياً",
+        "productPlaceholder": "مثال: كفتة مشوية",
+        "productLabel": "اسم المنتج",
+        "qtyLabel": "الكمية",
+        "priceLabel": "السعر",
+        "noteLabel": "ملاحظة"
+      },
+      "lang": {
+        "title": "لغة المطبخ",
+        "sendHint": "أرسل للمطبخ بأيقونة الشيف أعلاه ({{count}})"
+      },
+      "summary": {
+        "title": "ملخص الطلب",
+        "subtotal": "المجموع الفرعي",
+        "discountPct": "خصم (%{{pct}})",
+        "grandTotal": "الإجمالي",
+        "paymentTitle": "طريقة الدفع",
+        "moveTitle": "نقل إلى طاولة",
+        "moveButton": "نقل الطلب",
+        "payButton": "تحصيل · {{total}}",
+        "itemsCount": "{{count}} kalem",
+        "itemsActions": "إجراءات الصنف",
+        "qtyPrice": "{{qty}} × {{price}} = {{total}}",
+        "due": "مستحق"
+      },
+      "actions": {
+        "delete": "حذف",
+        "void": "İptal",
+        "complimentary": "İkram",
+        "apply": "تطبيق",
+        "discount": "İndirim %",
+        "discountField": "İndirim"
+      }
+    },
+    "kitchen": {
+      "ready": "Hazır",
+      "readyAll": "تعليم الكل جاهز",
+      "prepare": "تحضير"
+    },
+    "payMethods": {
+      "cash": "Nakit",
+      "card": "Kart",
+      "credit": "دين"
+    },
+    "alerts": {
+      "orderClosed": "هذه الفاتورة مغلقة بالفعل",
+      "payTitle": "دفع / إغلاق",
+      "payBody": "{{total}} — {{method}}\nخصم %{{pct}}\nإغلاق الفاتورة؟",
+      "payBodyNoDiscount": "{{total}} — {{method}}\nإغلاق الفاتورة؟",
+      "payCancel": "İptal",
+      "payConfirm": "تأكيد",
+      "needProductName": "اسم المنتج مطلوب",
+      "needQty": "أدخل كمية صحيحة",
+      "needPrice": "أدخل سعراً صحيحاً",
+      "voidTitle": "إلغاء الصنف",
+      "voidBody": "إلغاء \"{{name}}\"؟",
+      "voidCancel": "تراجع",
+      "voidConfirm": "إلغاء",
+      "discountRange": "يجب أن يكون الخصم بين 0–100",
+      "needMoveTarget": "اختر طاولة هدف",
+      "orderAlreadyClosed": "فاتورة مغلقة",
+      "noKitchenPending": "لا أصناف معلقة لإرسالها للمطبخ",
+      "noKitchenNew": "لا أصناف جديدة لإرسالها للمطبخ",
+      "kitchenOk": "مطبخ",
+      "kitchenOkBody": "{{count}} صنف أُرسل للمطبخ.\n{{queue}} مهمة طباعة في طابور RetailEX_Printer.",
+      "kitchenOkPrintBody": "{{count}} صنف أُرسل للمطبخ.\n{{message}}",
+      "kitchenPrintFailTitle": "طباعة المطبخ",
+      "kitchenPrintFailDefault": "تعذرت طباعة تذكرة المطبخ",
+      "needReservationCustomer": "اسم العميل مطلوب للحجز",
+      "reservationTimeFormat": "وقت الحجز يجب أن يكون HH:MM",
+      "reservationGuestsInvalid": "عدد الأشخاص غير صحيح"
+    }
+  },
+  "delivery": {
+    "panel": {
+      "title": "توصيل",
+      "empty": "Açık paket siparişi yok",
+      "formTitle": "طلب توصيل جديد",
+      "customer": "Müşteri",
+      "customerPh": "الاسم الكامل",
+      "phone": "Telefon",
+      "phonePh": "05xx…",
+      "address": "العنوان",
+      "addressPh": "عنوان التوصيل",
+      "externalOrder": "رقم الطلب الخارجي",
+      "externalOrderPh": "مرجع اختياري",
+      "orderSummary": "ملخص الطلب",
+      "orderSummaryPh": "اختياري",
+      "amount": "المبلغ",
+      "amountPh": "0",
+      "payment": "طريقة الدفع",
+      "submit": "إنشاء طلب توصيل",
+      "needCustomer": "اسم العميل مطلوب",
+      "needPhone": "الهاتف مطلوب",
+      "needAddress": "العنوان مطلوب",
+      "titleLine": "{{no}} · {{customer}}",
+      "subLine": "{{phone}} · {{address}}",
+      "addressEmpty": "لا عنوان",
+      "phoneEmpty": "—",
+      "externalLine": "رقم خارجي: {{no}}",
+      "paymentLine": "{{courier}}{{payLabel}}{{items}}{{time}}",
+      "itemsSuffix": " · {{count}} صنف",
+      "timeSuffix": " · {{time}}"
+    },
+    "status": {
+      "pending": "Bekliyor",
+      "preparing": "Hazırlanıyor",
+      "delivering": "قيد التوصيل",
+      "delivered": "تم التسليم"
+    },
+    "pay": {
+      "cash": "Nakit",
+      "card": "Kart",
+      "transfer": "تحويل",
+      "unknown": "—"
+    }
+  },
+  "takeaway": {
+    "panel": {
+      "title": "استلام",
+      "empty": "Açık gel-al siparişi yok",
+      "formTitle": "طلب استلام جديد",
+      "customer": "Müşteri",
+      "customerPh": "Ad soyad",
+      "phone": "Telefon",
+      "phonePh": "05xx…",
+      "submit": "إنشاء طلب استلام",
+      "needCustomer": "اسم العميل مطلوب",
+      "needPhone": "الهاتف مطلوب",
+      "titleLine": "{{no}} · {{customer}}",
+      "subLine": "{{phone}}{{items}}{{time}}",
+      "subLineOnlyPhone": "{{phone}}",
+      "phoneEmpty": "—"
+    },
+    "status": {
+      "pending": "Bekliyor",
+      "preparing": "قيد التحضير",
+      "ready": "جاهز",
+      "pickedUp": "تم الاستلام"
+    }
   }
 }

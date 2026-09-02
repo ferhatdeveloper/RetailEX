@@ -810,5 +810,301 @@
     "weighSourceTcp": "Source: TCP (simulate fallback if no kg)",
     "weighSourceSpp": "Source: SPP {{addr}}",
     "weighSourceSimDefault": "Source: simulation"
+  },
+  "restaurant": {
+    "header": {
+      "title": "Restaurant",
+      "tablesTitle": "Tables",
+      "subtitleDefault": "Tables, delivery, kitchen, reports",
+      "subtitleTables": "{{count}} tables",
+      "callerId": "Caller ID: {{phone}}"
+    },
+    "tabs": {
+      "dashboard": "Dashboard",
+      "tables": "Tables ({{count}})",
+      "orders": "Open Checks ({{count}})",
+      "delivery": "Delivery ({{count}})",
+      "takeaway": "Takeaway ({{count}})",
+      "schedule": "Today ({{count}})",
+      "kitchen": "Kitchen ({{count}})",
+      "reports": "Raporlar"
+    },
+    "kpi": {
+      "openTables": "Open tables",
+      "openOrders": "Open orders",
+      "kitchenPending": "Kitchen pending",
+      "todayRevenue": "Today's revenue"
+    },
+    "tiles": {
+      "tables": "Masalar",
+      "tablesHint": "{{count}} açık",
+      "retail": "Retail",
+      "retailHint": "Walk-in sale",
+      "kitchen": "Mutfak",
+      "kitchenHint": "{{count}} bekleyen",
+      "delivery": "Delivery",
+      "deliveryHint": "{{count}} sipariş",
+      "takeaway": "Takeaway",
+      "takeawayHint": "{{count}} sipariş",
+      "reports": "Raporlar",
+      "reportsHint": "Z / void / qty",
+      "schedule": "Reservations",
+      "scheduleHint": "{{count}} bugün",
+      "settings": "Ayarlar",
+      "settingsHint": "Printer · firm",
+      "firm": "Firm",
+      "firmHint": "Organization"
+    },
+    "quick": {
+      "newOrderEmpty": "New order (empty table)"
+    },
+    "filters": {
+      "all": "Tümü",
+      "new": "Yeni",
+      "cooking": "Hazırlanıyor",
+      "ready": "Hazır"
+    },
+    "floor": {
+      "fallback": "Bölge {{index}}"
+    },
+    "status": {
+      "reservation": {
+        "pending": "Bekliyor",
+        "confirmed": "Confirmed",
+        "seated": "Seated",
+        "cancelled": "İptal",
+        "noShow": "No-show"
+      },
+      "order": {
+        "open": "Açık",
+        "closed": "Kapalı",
+        "cancelled": "İptal"
+      },
+      "kitchen": {
+        "pending": "Bekliyor",
+        "cooking": "Cooking",
+        "ready": "Hazır",
+        "served": "Served",
+        "cancelled": "İptal"
+      }
+    },
+    "empty": {
+      "tables": "No table records (rest schema)",
+      "schedule": "No orders or reservations today",
+      "kitchen": "No active kitchen tickets",
+      "openOrders": "Açık adisyon yok",
+      "retailOrder": "No retail check",
+      "modalOpenOrders": "Açık adisyon yok",
+      "modalOpenOrdersHintRetail": "Start a new retail sale.",
+      "modalOpenOrdersHintTable": "Open a new check on this table."
+    },
+    "schedule": {
+      "header": "Bugün · {{date}}",
+      "summary": "{{orders}} sipariş · {{reservations}} rezervasyon",
+      "quickTitle": "Quick reservation",
+      "badgeReservation": "RES",
+      "badgeOrder": "ORD",
+      "form": {
+        "customer": "Customer",
+        "phone": "Phone",
+        "time": "Time",
+        "guests": "Guests",
+        "note": "Note",
+        "placeholderCustomer": "Full name",
+        "placeholderTime": "19:00",
+        "placeholderNote": "Optional",
+        "submit": "Add reservation"
+      },
+      "actions": {
+        "confirm": "Confirm",
+        "seated": "Seated",
+        "cancel": "Cancel"
+      }
+    },
+    "table": {
+      "defaultName": "Masa",
+      "retailName": "Perakende",
+      "retailSale": "Retail sale",
+      "tableTag": "Table {{name}}",
+      "orderTag": "Masa {{name}} · {{no}}",
+      "adisyon": "Check"
+    },
+    "orderModal": {
+      "titleTables": "Open Checks",
+      "subtitle": "{{count}} sipariş",
+      "titleWithStatus": "Check · {{status}}…",
+      "titleNoStatus": "Check…",
+      "tabOrder": "Sipariş ({{count}})",
+      "tabPay": "Payment",
+      "tabList": "List ({{count}})",
+      "tabOrderSimple": "Order",
+      "createRetail": "Open retail sale",
+      "createTable": "Open check",
+      "cleanFinish": "Cleaning done — set empty",
+      "cleaning": "Send to cleaning",
+      "menu": {
+        "searchLabel": "Search",
+        "searchPlaceholder": "Product, code or category",
+        "filterAll": "Tümü · {{count}}",
+        "loading": "Loading menu…",
+        "empty": "No products in this filter",
+        "allColumns": "Columns",
+        "title": "Menü",
+        "subtitle": "{{count}} ürün",
+        "subtitleWithCategory": "{{count}} ürün · {{category}}",
+        "fallbackCategory": "Genel",
+        "fallbackCode": "Menü"
+      },
+      "cart": {
+        "summary": "CART · {{count}} items{{suffix}}",
+        "summaryWithTotal": "CART · {{count}} items · {{total}}",
+        "pendingKitchen": "{{count}} bekleyen",
+        "empty": "Tap products to add · long-press for qty",
+        "complimentary": " · Complimentary",
+        "closed": "Check closed ({{status}})"
+      },
+      "manual": {
+        "title": "Add manual line",
+        "hide": "Hide manual form",
+        "show": "Not on menu? Add manually",
+        "productPlaceholder": "e.g. Grilled meatball",
+        "productLabel": "Product name",
+        "qtyLabel": "Quantity",
+        "priceLabel": "Price",
+        "noteLabel": "Note"
+      },
+      "lang": {
+        "title": "Kitchen language",
+        "sendHint": "Send to kitchen with chef icon above ({{count}})"
+      },
+      "summary": {
+        "title": "Order summary",
+        "subtotal": "Subtotal",
+        "discountPct": "Discount ({{pct}}%)",
+        "grandTotal": "Grand total",
+        "paymentTitle": "Payment method",
+        "moveTitle": "Move to table",
+        "moveButton": "Move order",
+        "payButton": "Take payment · {{total}}",
+        "itemsCount": "{{count}} kalem",
+        "itemsActions": "Line actions",
+        "qtyPrice": "{{qty}} × {{price}} = {{total}}",
+        "due": "DUE"
+      },
+      "actions": {
+        "delete": "Delete",
+        "void": "İptal",
+        "complimentary": "İkram",
+        "apply": "Apply",
+        "discount": "İndirim %",
+        "discountField": "İndirim"
+      }
+    },
+    "kitchen": {
+      "ready": "Hazır",
+      "readyAll": "Mark all ready",
+      "prepare": "Prepare"
+    },
+    "payMethods": {
+      "cash": "Nakit",
+      "card": "Kart",
+      "credit": "Credit"
+    },
+    "alerts": {
+      "orderClosed": "This check is already closed",
+      "payTitle": "Payment / close",
+      "payBody": "{{total}} — {{method}}\nDiscount {{pct}}%\nClose check?",
+      "payBodyNoDiscount": "{{total}} — {{method}}\nClose check?",
+      "payCancel": "İptal",
+      "payConfirm": "Confirm",
+      "needProductName": "Product name required",
+      "needQty": "Enter a valid quantity",
+      "needPrice": "Enter a valid price",
+      "voidTitle": "Void line",
+      "voidBody": "Void \"{{name}}\"?",
+      "voidCancel": "Discard",
+      "voidConfirm": "Void",
+      "discountRange": "Discount must be between 0–100",
+      "needMoveTarget": "Select a target table",
+      "orderAlreadyClosed": "Check closed",
+      "noKitchenPending": "No pending items to send to kitchen",
+      "noKitchenNew": "No new items to send to kitchen",
+      "kitchenOk": "Kitchen",
+      "kitchenOkBody": "{{count}} items sent to kitchen.\n{{queue}} print jobs queued to RetailEX_Printer.",
+      "kitchenOkPrintBody": "{{count}} items sent to kitchen.\n{{message}}",
+      "kitchenPrintFailTitle": "Kitchen print",
+      "kitchenPrintFailDefault": "Could not print kitchen ticket",
+      "needReservationCustomer": "Customer name required for reservation",
+      "reservationTimeFormat": "Reservation time must be HH:MM",
+      "reservationGuestsInvalid": "Invalid guest count"
+    }
+  },
+  "delivery": {
+    "panel": {
+      "title": "Delivery",
+      "empty": "Açık paket siparişi yok",
+      "formTitle": "New delivery",
+      "customer": "Müşteri",
+      "customerPh": "Full name",
+      "phone": "Telefon",
+      "phonePh": "05xx…",
+      "address": "Address",
+      "addressPh": "Delivery address",
+      "externalOrder": "External order no",
+      "externalOrderPh": "Optional reference",
+      "orderSummary": "Order summary",
+      "orderSummaryPh": "Optional",
+      "amount": "Amount",
+      "amountPh": "0",
+      "payment": "Payment type",
+      "submit": "Create delivery order",
+      "needCustomer": "Customer name required",
+      "needPhone": "Phone required",
+      "needAddress": "Address required",
+      "titleLine": "{{no}} · {{customer}}",
+      "subLine": "{{phone}} · {{address}}",
+      "addressEmpty": "No address",
+      "phoneEmpty": "—",
+      "externalLine": "External no: {{no}}",
+      "paymentLine": "{{courier}}{{payLabel}}{{items}}{{time}}",
+      "itemsSuffix": " · {{count}} items",
+      "timeSuffix": " · {{time}}"
+    },
+    "status": {
+      "pending": "Bekliyor",
+      "preparing": "Hazırlanıyor",
+      "delivering": "Delivering",
+      "delivered": "Delivered"
+    },
+    "pay": {
+      "cash": "Nakit",
+      "card": "Kart",
+      "transfer": "Transfer",
+      "unknown": "—"
+    }
+  },
+  "takeaway": {
+    "panel": {
+      "title": "Takeaway",
+      "empty": "Açık gel-al siparişi yok",
+      "formTitle": "New takeaway order",
+      "customer": "Müşteri",
+      "customerPh": "Ad soyad",
+      "phone": "Telefon",
+      "phonePh": "05xx…",
+      "submit": "Create takeaway order",
+      "needCustomer": "Customer name required",
+      "needPhone": "Phone required",
+      "titleLine": "{{no}} · {{customer}}",
+      "subLine": "{{phone}}{{items}}{{time}}",
+      "subLineOnlyPhone": "{{phone}}",
+      "phoneEmpty": "—"
+    },
+    "status": {
+      "pending": "Bekliyor",
+      "preparing": "Preparing",
+      "ready": "Ready",
+      "pickedUp": "Picked up"
+    }
   }
 }

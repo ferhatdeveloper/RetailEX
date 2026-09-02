@@ -810,5 +810,301 @@
     "weighSourceTcp": "سه‌رچاوه‌: TCP (گەر كگ نەبوو سیم)",
     "weighSourceSpp": "سه‌رچاوه‌: SPP {{addr}}",
     "weighSourceSimDefault": "سه‌رچاوه‌: سیمولاسیۆن"
+  },
+  "restaurant": {
+    "header": {
+      "title": "خۆراکخانه‌",
+      "tablesTitle": "مێزەکان",
+      "subtitleDefault": "مێز، گەیاندن، چێشتخانە، راپۆرت",
+      "subtitleTables": "{{count}} مێز",
+      "callerId": "Caller ID: {{phone}}"
+    },
+    "tabs": {
+      "dashboard": "داشبۆرد",
+      "tables": "مێزەکان ({{count}})",
+      "orders": "حسابی کراوە ({{count}})",
+      "delivery": "گەیاندن ({{count}})",
+      "takeaway": "وەربگرە ({{count}})",
+      "schedule": "ئەمڕۆ ({{count}})",
+      "kitchen": "چێشتخانە ({{count}})",
+      "reports": "Raporlar"
+    },
+    "kpi": {
+      "openTables": "مێزی کراوە",
+      "openOrders": "داواکاری کراوە",
+      "kitchenPending": "چێشتخانە چاوەڕوان",
+      "todayRevenue": "داهاتی ئەمڕۆ"
+    },
+    "tiles": {
+      "tables": "Masalar",
+      "tablesHint": "{{count}} açık",
+      "retail": "فرۆشتن",
+      "retailHint": "فرۆشتن بەبێ مێز",
+      "kitchen": "Mutfak",
+      "kitchenHint": "{{count}} bekleyen",
+      "delivery": "Paket",
+      "deliveryHint": "{{count}} sipariş",
+      "takeaway": "Gel-Al",
+      "takeawayHint": "{{count}} sipariş",
+      "reports": "Raporlar",
+      "reportsHint": "Z / هەڵوەشاندن / ژمارە",
+      "schedule": "نۆرەی مەوعید",
+      "scheduleHint": "{{count}} bugün",
+      "settings": "Ayarlar",
+      "settingsHint": "پرێنتەر · کۆمپانیا",
+      "firm": "کۆمپانیا",
+      "firmHint": "ڕێکخستن"
+    },
+    "quick": {
+      "newOrderEmpty": "داواکاری نوێ (مێزی بەتاڵ)"
+    },
+    "filters": {
+      "all": "Tümü",
+      "new": "Yeni",
+      "cooking": "Hazırlanıyor",
+      "ready": "Hazır"
+    },
+    "floor": {
+      "fallback": "Bölge {{index}}"
+    },
+    "status": {
+      "reservation": {
+        "pending": "Bekliyor",
+        "confirmed": "پشتڕاستکراوە",
+        "seated": "دانیشتووە",
+        "cancelled": "İptal",
+        "noShow": "نەهاتووە"
+      },
+      "order": {
+        "open": "Açık",
+        "closed": "Kapalı",
+        "cancelled": "İptal"
+      },
+      "kitchen": {
+        "pending": "Bekliyor",
+        "cooking": "لە ئامادەکردندایە",
+        "ready": "Hazır",
+        "served": "پێشکەشکراوە",
+        "cancelled": "İptal"
+      }
+    },
+    "empty": {
+      "tables": "مێزی تۆمارکراو نییە (rest schema)",
+      "schedule": "ئەمڕۆ داواکاری یان مەوعید نییە",
+      "kitchen": "بلێتی چێشتخانەی چالاک نییە",
+      "openOrders": "Açık adisyon yok",
+      "retailOrder": "هیچ حسابی فرۆشتن نییە",
+      "modalOpenOrders": "Açık adisyon yok",
+      "modalOpenOrdersHintRetail": "فرۆشتنێکی نوێ دەستپێبکە.",
+      "modalOpenOrdersHintTable": "حسابێکی نوێ لەسەر ئەم مێزە بکەرەوە."
+    },
+    "schedule": {
+      "header": "Bugün · {{date}}",
+      "summary": "{{orders}} sipariş · {{reservations}} rezervasyon",
+      "quickTitle": "مەوعیدی خێرا",
+      "badgeReservation": "مەوعید",
+      "badgeOrder": "داواکاری",
+      "form": {
+        "customer": "کڕیار",
+        "phone": "تەلەفۆن",
+        "time": "کات",
+        "guests": "کەس",
+        "note": "تێبینی",
+        "placeholderCustomer": "ناوی تەواو",
+        "placeholderTime": "19:00",
+        "placeholderNote": "ئارەزوومەندانە",
+        "submit": "زیادکردنی مەوعید"
+      },
+      "actions": {
+        "confirm": "پشتڕاستکردنەوە",
+        "seated": "دانیشتن",
+        "cancel": "هەڵوەشاندنەوە"
+      }
+    },
+    "table": {
+      "defaultName": "Masa",
+      "retailName": "Perakende",
+      "retailSale": "فرۆشتنی ڕاستەوخۆ",
+      "tableTag": "مێزی {{name}}",
+      "orderTag": "Masa {{name}} · {{no}}",
+      "adisyon": "حساب"
+    },
+    "orderModal": {
+      "titleTables": "حسابی کراوە",
+      "subtitle": "{{count}} sipariş",
+      "titleWithStatus": "حساب · {{status}}…",
+      "titleNoStatus": "حساب…",
+      "tabOrder": "Sipariş ({{count}})",
+      "tabPay": "پارەدان",
+      "tabList": "لیست ({{count}})",
+      "tabOrderSimple": "داواکاری",
+      "createRetail": "کردنەوەی فرۆشتن",
+      "createTable": "کردنەوەی حساب",
+      "cleanFinish": "پاککردنەوە تەواوە — بەتاڵکردن",
+      "cleaning": "ناردن بۆ پاککردنەوە",
+      "menu": {
+        "searchLabel": "گەران",
+        "searchPlaceholder": "بەرهەم، کۆد یان پۆل",
+        "filterAll": "Tümü · {{count}}",
+        "loading": "خواردنەوەی لیست…",
+        "empty": "لەم فلتەردا بەرهەم نییە",
+        "allColumns": "ستوونەکان",
+        "title": "Menü",
+        "subtitle": "{{count}} ürün",
+        "subtitleWithCategory": "{{count}} ürün · {{category}}",
+        "fallbackCategory": "Genel",
+        "fallbackCode": "Menü"
+      },
+      "cart": {
+        "summary": "سەبەتە · {{count}} بابەت{{suffix}}",
+        "summaryWithTotal": "سەبەتە · {{count}} بابەت · {{total}}",
+        "pendingKitchen": "{{count}} bekleyen",
+        "empty": "بەرهەمەکان دابگرە بۆ زیادکردن · پاڵپشت بۆ ژمارە",
+        "complimentary": " · بەخشش",
+        "closed": "حساب داخراوە ({{status}})"
+      },
+      "manual": {
+        "title": "زیادکردنی بابەتی دەستی",
+        "hide": "شاردنەوەی فۆڕمی دەستی",
+        "show": "لە لیستدا نییە؟ دەستی زیادبکە",
+        "productPlaceholder": "نموونە: کفتەی برژاو",
+        "productLabel": "ناوی بەرهەم",
+        "qtyLabel": "ژمارە",
+        "priceLabel": "نرخ",
+        "noteLabel": "تێبینی"
+      },
+      "lang": {
+        "title": "زمانی چێشتخانە",
+        "sendHint": "ناردن بۆ چێشتخانە بە ئایکۆنی شێف لە سەرەوە ({{count}})"
+      },
+      "summary": {
+        "title": "کورتەی داواکاری",
+        "subtotal": "کۆی نیوە",
+        "discountPct": "داشکاندن (%{{pct}})",
+        "grandTotal": "کۆی گشتی",
+        "paymentTitle": "شێوازی پارەدان",
+        "moveTitle": "گواستنەوە بۆ مێز",
+        "moveButton": "گواستنەوەی داواکاری",
+        "payButton": "وەرگرتنی پارە · {{total}}",
+        "itemsCount": "{{count}} kalem",
+        "itemsActions": "کردارەکانی بابەت",
+        "qtyPrice": "{{qty}} × {{price}} = {{total}}",
+        "due": "پێویستە"
+      },
+      "actions": {
+        "delete": "سڕینەوە",
+        "void": "İptal",
+        "complimentary": "İkram",
+        "apply": "جێبەجێکردن",
+        "discount": "İndirim %",
+        "discountField": "İndirim"
+      }
+    },
+    "kitchen": {
+      "ready": "Hazır",
+      "readyAll": "نیشانکردنی هەموو وەک ئامادە",
+      "prepare": "ئامادەکردن"
+    },
+    "payMethods": {
+      "cash": "Nakit",
+      "card": "Kart",
+      "credit": "قەرز"
+    },
+    "alerts": {
+      "orderClosed": "ئەم حسابە پێشتر داخراوە",
+      "payTitle": "پارەدان / داخستن",
+      "payBody": "{{total}} — {{method}}\nداشکاندن %{{pct}}\nحساب دابخەیت؟",
+      "payBodyNoDiscount": "{{total}} — {{method}}\nحساب دابخەیت؟",
+      "payCancel": "İptal",
+      "payConfirm": "پشتڕاستکردنەوە",
+      "needProductName": "ناوی بەرهەم پێویستە",
+      "needQty": "ژمارەی دروست بنووسە",
+      "needPrice": "نرخی دروست بنووسە",
+      "voidTitle": "هەڵوەشاندنەوەی بابەت",
+      "voidBody": "\"{{name}}\" هەڵبوەشێنرێت؟",
+      "voidCancel": "دەستبەرداربوون",
+      "voidConfirm": "هەڵوەشاندنەوە",
+      "discountRange": "داشکاندن دەبێت لە نێوان 0–100 بێت",
+      "needMoveTarget": "مێزی مەبەست هەڵبژێرە",
+      "orderAlreadyClosed": "حساب داخراوە",
+      "noKitchenPending": "هیچ بابەتێکی چاوەڕوان نییە بۆ ناردن بۆ چێشتخانە",
+      "noKitchenNew": "هیچ بابەتی نوێ نییە بۆ ناردن بۆ چێشتخانە",
+      "kitchenOk": "چێشتخانە",
+      "kitchenOkBody": "{{count}} بابەت ناردرا بۆ چێشتخانە.\n{{queue}} کاری پرێنت لە ڕیزی RetailEX_Printer.",
+      "kitchenOkPrintBody": "{{count}} بابەت ناردرا بۆ چێشتخانە.\n{{message}}",
+      "kitchenPrintFailTitle": "پرێنتی چێشتخانە",
+      "kitchenPrintFailDefault": "نەتوانرا بلێتی چێشتخانە پرێنت بکرێت",
+      "needReservationCustomer": "ناوی کڕیار بۆ مەوعید پێویستە",
+      "reservationTimeFormat": "کاتی مەوعید دەبێت HH:MM بێت",
+      "reservationGuestsInvalid": "ژمارەی کەسەکان دروست نییە"
+    }
+  },
+  "delivery": {
+    "panel": {
+      "title": "گەیاندن",
+      "empty": "Açık paket siparişi yok",
+      "formTitle": "داواکاری گەیاندنی نوێ",
+      "customer": "Müşteri",
+      "customerPh": "ناوی تەواو",
+      "phone": "Telefon",
+      "phonePh": "05xx…",
+      "address": "ناونیشان",
+      "addressPh": "ناونیشانی گەیاندن",
+      "externalOrder": "ژمارەی داواکاری دەرەکی",
+      "externalOrderPh": "سەرچاوەی ئارەزوومەندانە",
+      "orderSummary": "کورتەی داواکاری",
+      "orderSummaryPh": "ئارەزوومەندانە",
+      "amount": "بڕ",
+      "amountPh": "0",
+      "payment": "جۆری پارەدان",
+      "submit": "دروستکردنی داواکاری گەیاندن",
+      "needCustomer": "ناوی کڕیار پێویستە",
+      "needPhone": "تەلەفۆن پێویستە",
+      "needAddress": "ناونیشان پێویستە",
+      "titleLine": "{{no}} · {{customer}}",
+      "subLine": "{{phone}} · {{address}}",
+      "addressEmpty": "ناونیشان نییە",
+      "phoneEmpty": "—",
+      "externalLine": "ژمارەی دەرەکی: {{no}}",
+      "paymentLine": "{{courier}}{{payLabel}}{{items}}{{time}}",
+      "itemsSuffix": " · {{count}} بابەت",
+      "timeSuffix": " · {{time}}"
+    },
+    "status": {
+      "pending": "Bekliyor",
+      "preparing": "Hazırlanıyor",
+      "delivering": "لە گەیاندندایە",
+      "delivered": "گەیشت"
+    },
+    "pay": {
+      "cash": "Nakit",
+      "card": "Kart",
+      "transfer": "گواستنەوە",
+      "unknown": "—"
+    }
+  },
+  "takeaway": {
+    "panel": {
+      "title": "وەربگرە",
+      "empty": "Açık gel-al siparişi yok",
+      "formTitle": "داواکاری وەربگرەی نوێ",
+      "customer": "Müşteri",
+      "customerPh": "Ad soyad",
+      "phone": "Telefon",
+      "phonePh": "05xx…",
+      "submit": "دروستکردنی داواکاری وەربگرە",
+      "needCustomer": "ناوی کڕیار پێویستە",
+      "needPhone": "تەلەفۆن پێویستە",
+      "titleLine": "{{no}} · {{customer}}",
+      "subLine": "{{phone}}{{items}}{{time}}",
+      "subLineOnlyPhone": "{{phone}}",
+      "phoneEmpty": "—"
+    },
+    "status": {
+      "pending": "Bekliyor",
+      "preparing": "لە ئامادەکردندایە",
+      "ready": "ئامادەیە",
+      "pickedUp": "وەرگیراوە"
+    }
   }
 }

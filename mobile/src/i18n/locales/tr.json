@@ -810,5 +810,301 @@
     "weighSourceTcp": "Kaynak: TCP (kg yoksa simüle yedek)",
     "weighSourceSpp": "Kaynak: SPP {{addr}}",
     "weighSourceSimDefault": "Kaynak: simülasyon"
+  },
+  "restaurant": {
+    "header": {
+      "title": "Restoran",
+      "tablesTitle": "Masalar",
+      "subtitleDefault": "Masalar, paket, mutfak, raporlar",
+      "subtitleTables": "{{count}} masa",
+      "callerId": "Caller ID: {{phone}}"
+    },
+    "tabs": {
+      "dashboard": "Ana panel",
+      "tables": "Masalar ({{count}})",
+      "orders": "Adisyon ({{count}})",
+      "delivery": "Paket ({{count}})",
+      "takeaway": "Gel Al ({{count}})",
+      "schedule": "Bugün ({{count}})",
+      "kitchen": "Mutfak ({{count}})",
+      "reports": "Raporlar"
+    },
+    "kpi": {
+      "openTables": "Açık masa",
+      "openOrders": "Açık sipariş",
+      "kitchenPending": "Mutfak bekleyen",
+      "todayRevenue": "Bugün ciro"
+    },
+    "tiles": {
+      "tables": "Masalar",
+      "tablesHint": "{{count}} açık",
+      "retail": "Perakende",
+      "retailHint": "Masasız satış",
+      "kitchen": "Mutfak",
+      "kitchenHint": "{{count}} bekleyen",
+      "delivery": "Paket",
+      "deliveryHint": "{{count}} sipariş",
+      "takeaway": "Gel-Al",
+      "takeawayHint": "{{count}} sipariş",
+      "reports": "Raporlar",
+      "reportsHint": "Z / iptal / adet",
+      "schedule": "Rezervasyon",
+      "scheduleHint": "{{count}} bugün",
+      "settings": "Ayarlar",
+      "settingsHint": "Yazıcı · firma",
+      "firm": "Firma",
+      "firmHint": "Organizasyon"
+    },
+    "quick": {
+      "newOrderEmpty": "Yeni sipariş (boş masa)"
+    },
+    "filters": {
+      "all": "Tümü",
+      "new": "Yeni",
+      "cooking": "Hazırlanıyor",
+      "ready": "Hazır"
+    },
+    "floor": {
+      "fallback": "Bölge {{index}}"
+    },
+    "status": {
+      "reservation": {
+        "pending": "Bekliyor",
+        "confirmed": "Onaylı",
+        "seated": "Oturdu",
+        "cancelled": "İptal",
+        "noShow": "Gelmedi"
+      },
+      "order": {
+        "open": "Açık",
+        "closed": "Kapalı",
+        "cancelled": "İptal"
+      },
+      "kitchen": {
+        "pending": "Bekliyor",
+        "cooking": "Pişiyor",
+        "ready": "Hazır",
+        "served": "Servis edildi",
+        "cancelled": "İptal"
+      }
+    },
+    "empty": {
+      "tables": "Masa kaydı yok (rest şeması)",
+      "schedule": "Bugün için sipariş veya rezervasyon yok",
+      "kitchen": "Aktif mutfak fişi yok",
+      "openOrders": "Açık adisyon yok",
+      "retailOrder": "Perakende adisyon yok",
+      "modalOpenOrders": "Açık adisyon yok",
+      "modalOpenOrdersHintRetail": "Yeni perakende satışı başlatabilirsiniz.",
+      "modalOpenOrdersHintTable": "Bu masada yeni adisyon açabilirsiniz."
+    },
+    "schedule": {
+      "header": "Bugün · {{date}}",
+      "summary": "{{orders}} sipariş · {{reservations}} rezervasyon",
+      "quickTitle": "Hızlı rezervasyon",
+      "badgeReservation": "REZ",
+      "badgeOrder": "SİP",
+      "form": {
+        "customer": "Müşteri",
+        "phone": "Telefon",
+        "time": "Saat",
+        "guests": "Kişi",
+        "note": "Not",
+        "placeholderCustomer": "Ad soyad",
+        "placeholderTime": "19:00",
+        "placeholderNote": "İsteğe bağlı",
+        "submit": "Rezervasyon ekle"
+      },
+      "actions": {
+        "confirm": "Onayla",
+        "seated": "Oturdu",
+        "cancel": "İptal"
+      }
+    },
+    "table": {
+      "defaultName": "Masa",
+      "retailName": "Perakende",
+      "retailSale": "Perakende satış",
+      "tableTag": "Masa {{name}}",
+      "orderTag": "Masa {{name}} · {{no}}",
+      "adisyon": "Adisyon"
+    },
+    "orderModal": {
+      "titleTables": "Açık adisyonlar",
+      "subtitle": "{{count}} sipariş",
+      "titleWithStatus": "Adisyon · {{status}}…",
+      "titleNoStatus": "Adisyon…",
+      "tabOrder": "Sipariş ({{count}})",
+      "tabPay": "Ödeme",
+      "tabList": "Liste ({{count}})",
+      "tabOrderSimple": "Sipariş",
+      "createRetail": "Perakende satış aç",
+      "createTable": "Adisyon aç",
+      "cleanFinish": "Temizlik bitti — boşalt",
+      "cleaning": "Temizliğe al",
+      "menu": {
+        "searchLabel": "Ara",
+        "searchPlaceholder": "Ürün, kod veya kategori",
+        "filterAll": "Tümü · {{count}}",
+        "loading": "Menü yükleniyor…",
+        "empty": "Bu filtrede ürün yok",
+        "allColumns": "Sütun",
+        "title": "Menü",
+        "subtitle": "{{count}} ürün",
+        "subtitleWithCategory": "{{count}} ürün · {{category}}",
+        "fallbackCategory": "Genel",
+        "fallbackCode": "Menü"
+      },
+      "cart": {
+        "summary": "SEPET · {{count}} kalem{{suffix}}",
+        "summaryWithTotal": "SEPET · {{count}} kalem · {{total}}",
+        "pendingKitchen": "{{count}} bekleyen",
+        "empty": "Menüden ürünlere dokunarak ekleyin · uzun basınca miktar",
+        "complimentary": " · İkram",
+        "closed": "Adisyon kapalı ({{status}})"
+      },
+      "manual": {
+        "title": "Manuel kalem ekle",
+        "hide": "Manuel formu gizle",
+        "show": "Menüde yok? Manuel ekle",
+        "productPlaceholder": "Örn. Izgara köfte",
+        "productLabel": "Ürün adı",
+        "qtyLabel": "Miktar",
+        "priceLabel": "Fiyat",
+        "noteLabel": "Not"
+      },
+      "lang": {
+        "title": "Mutfak dili",
+        "sendHint": "Üstteki şef ikonu ile mutfağa gönder ({{count}})"
+      },
+      "summary": {
+        "title": "Sipariş özeti",
+        "subtotal": "Ara toplam",
+        "discountPct": "İndirim (%{{pct}})",
+        "grandTotal": "Genel toplam",
+        "paymentTitle": "Ödeme yöntemi",
+        "moveTitle": "Masaya taşı",
+        "moveButton": "Siparişi taşı",
+        "payButton": "Ödeme al · {{total}}",
+        "itemsCount": "{{count}} kalem",
+        "itemsActions": "Kalem işlemleri",
+        "qtyPrice": "{{qty}} × {{price}} = {{total}}",
+        "due": "ÖDENECEK"
+      },
+      "actions": {
+        "delete": "Sil",
+        "void": "İptal",
+        "complimentary": "İkram",
+        "apply": "Uygula",
+        "discount": "İndirim %",
+        "discountField": "İndirim"
+      }
+    },
+    "kitchen": {
+      "ready": "Hazır",
+      "readyAll": "Tümünü hazırla",
+      "prepare": "Hazırla"
+    },
+    "payMethods": {
+      "cash": "Nakit",
+      "card": "Kart",
+      "credit": "Veresiye"
+    },
+    "alerts": {
+      "orderClosed": "Bu adisyon zaten kapalı",
+      "payTitle": "Ödeme / kapat",
+      "payBody": "{{total}} — {{method}}\nİndirim %{{pct}}\nAdisyon kapatılsın mı?",
+      "payBodyNoDiscount": "{{total}} — {{method}}\nAdisyon kapatılsın mı?",
+      "payCancel": "İptal",
+      "payConfirm": "Onayla",
+      "needProductName": "Ürün adı gerekli",
+      "needQty": "Geçerli miktar girin",
+      "needPrice": "Geçerli fiyat girin",
+      "voidTitle": "Kalem iptal",
+      "voidBody": "\"{{name}}\" iptal edilsin mi?",
+      "voidCancel": "Vazgeç",
+      "voidConfirm": "İptal et",
+      "discountRange": "İndirim 0–100 arasında olmalı",
+      "needMoveTarget": "Hedef masa seçin",
+      "orderAlreadyClosed": "Adisyon kapalı",
+      "noKitchenPending": "Mutfağa gönderilecek bekleyen kalem yok",
+      "noKitchenNew": "Mutfağa gönderilecek yeni kalem yok",
+      "kitchenOk": "Mutfak",
+      "kitchenOkBody": "{{count}} kalem mutfağa gönderildi.\n{{queue}} yazdırma işi RetailEX_Printer kuyruğuna eklendi.",
+      "kitchenOkPrintBody": "{{count}} kalem mutfağa gönderildi.\n{{message}}",
+      "kitchenPrintFailTitle": "Mutfak yazdırma",
+      "kitchenPrintFailDefault": "Mutfak fişi yazdırılamadı",
+      "needReservationCustomer": "Rezervasyon için müşteri adı gerekli",
+      "reservationTimeFormat": "Rezervasyon saati HH:MM formatında olmalı",
+      "reservationGuestsInvalid": "Rezervasyon kişi sayısı geçersiz"
+    }
+  },
+  "delivery": {
+    "panel": {
+      "title": "Paket servis",
+      "empty": "Açık paket siparişi yok",
+      "formTitle": "Yeni paket servis",
+      "customer": "Müşteri",
+      "customerPh": "Ad soyad",
+      "phone": "Telefon",
+      "phonePh": "05xx…",
+      "address": "Adres",
+      "addressPh": "Teslimat adresi",
+      "externalOrder": "Harici sipariş no",
+      "externalOrderPh": "İsteğe bağlı referans no",
+      "orderSummary": "Sipariş özeti",
+      "orderSummaryPh": "İsteğe bağlı",
+      "amount": "Tutar",
+      "amountPh": "0",
+      "payment": "Ödeme türü",
+      "submit": "Paket siparişi oluştur",
+      "needCustomer": "Müşteri adı gerekli",
+      "needPhone": "Telefon gerekli",
+      "needAddress": "Adres gerekli",
+      "titleLine": "{{no}} · {{customer}}",
+      "subLine": "{{phone}} · {{address}}",
+      "addressEmpty": "Adres yok",
+      "phoneEmpty": "—",
+      "externalLine": "Harici no: {{no}}",
+      "paymentLine": "{{courier}}{{payLabel}}{{items}}{{time}}",
+      "itemsSuffix": " · {{count}} kalem",
+      "timeSuffix": " · {{time}}"
+    },
+    "status": {
+      "pending": "Bekliyor",
+      "preparing": "Hazırlanıyor",
+      "delivering": "Yolda",
+      "delivered": "Teslim"
+    },
+    "pay": {
+      "cash": "Nakit",
+      "card": "Kart",
+      "transfer": "Havale",
+      "unknown": "—"
+    }
+  },
+  "takeaway": {
+    "panel": {
+      "title": "Gel-al",
+      "empty": "Açık gel-al siparişi yok",
+      "formTitle": "Yeni gel-al siparişi",
+      "customer": "Müşteri",
+      "customerPh": "Ad soyad",
+      "phone": "Telefon",
+      "phonePh": "05xx…",
+      "submit": "Gel-al siparişi oluştur",
+      "needCustomer": "Müşteri adı gerekli",
+      "needPhone": "Telefon gerekli",
+      "titleLine": "{{no}} · {{customer}}",
+      "subLine": "{{phone}}{{items}}{{time}}",
+      "subLineOnlyPhone": "{{phone}}",
+      "phoneEmpty": "—"
+    },
+    "status": {
+      "pending": "Bekliyor",
+      "preparing": "Hazırlanıyor",
+      "ready": "Hazır",
+      "pickedUp": "Teslim alındı"
+    }
   }
 }

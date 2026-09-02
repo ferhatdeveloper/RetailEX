@@ -12,6 +12,7 @@ import {
   StyleSheet,
   useWindowDimensions,
 } from 'react-native';
+import { useTranslation } from 'react-i18next';
 import { LayoutGrid, List, Plus, Utensils } from 'lucide-react-native';
 import { FormField } from './FormField';
 import {
@@ -124,6 +125,7 @@ export function RestaurantMenuCatalog({
   onQuickAdd,
   onLongPress,
 }: Props) {
+  const { t } = useTranslation();
   const { colors, darkMode } = useThemeStore();
   const { width } = useWindowDimensions();
   const { isLandscapeTablet } = useDeviceLayout();
@@ -139,10 +141,12 @@ export function RestaurantMenuCatalog({
         : storedGridCols;
   const [category, setCategory] = useState<string | null>(null);
 
+  // t() at this level returns the user's current locale word; default TR if key missing
+  const fallbackCategory = t('restaurant.orderModal.menu.fallbackCategory', { defaultValue: 'Genel' });
   const categories = useMemo(() => {
     const map = new Map<string, number>();
     for (const it of items) {
-      const c = (it.category || 'Genel').trim() || 'Genel';
+      const c = (it.category || fallbackCategory).trim() || fallbackCategory;
       map.set(c, (map.get(c) || 0) + 1);
     }
     return Array.from(map.entries()).sort((a, b) => a[0].localeCompare(b[0], 'tr'));
@@ -151,7 +155,7 @@ export function RestaurantMenuCatalog({
   const filtered = useMemo(() => {
     const q = search.trim().toLocaleLowerCase('tr-TR');
     return items.filter((it) => {
-      const cat = (it.category || 'Genel').trim() || 'Genel';
+      const cat = (it.category || fallbackCategory).trim() || fallbackCategory;
       if (category && cat !== category) return false;
       if (!q) return true;
       const hay = `${it.name} ${it.code || ''} ${cat}`.toLocaleLowerCase('tr-TR');
@@ -183,10 +187,13 @@ export function RestaurantMenuCatalog({
       >
         <View style={styles.toolbar}>
           <View style={{ flex: 1, minWidth: 0 }}>
-            <Text style={[styles.title, { color: colors.text }]}>Menü</Text>
+            <Text style={[styles.title, { color: colors.text }]}>{t('restaurant.orderModal.menu.title')}</Text>
             <Text style={{ color: colors.textMuted, fontSize: 11, fontWeight: '700', marginTop: 2 }}>
-              {loading ? 'Yükleniyor…' : `${filtered.length} ürün`}
-              {!loading && category ? ` · ${category}` : ''}
+              {loading
+                ? t('common.loading')
+                : category
+                  ? t('restaurant.orderModal.menu.subtitleWithCategory', { count: filtered.length, category })
+                  : t('restaurant.orderModal.menu.subtitle', { count: filtered.length })}
             </Text>
           </View>
           <View style={styles.viewToggle}>
@@ -230,7 +237,7 @@ export function RestaurantMenuCatalog({
         {viewMode === 'grid' ? (
           <View style={styles.colsRow}>
             <Text style={{ color: colors.textMuted, fontSize: 11, fontWeight: '800' }}>
-              Sütun
+              {t('restaurant.orderModal.menu.allColumns')}
             </Text>
             <View style={styles.colsChips}>
               {GRID_COL_OPTIONS.map((n) => {
@@ -264,10 +271,10 @@ export function RestaurantMenuCatalog({
         ) : null}
 
         <FormField
-          label="Ara"
+          label={t('restaurant.orderModal.menu.searchLabel')}
           value={search}
           onChangeText={onSearchChange}
-          placeholder="Ürün, kod veya kategori"
+          placeholder={t('restaurant.orderModal.menu.searchPlaceholder')}
           hintRight={loading ? '…' : `${filtered.length}/${items.length}`}
         />
 
@@ -296,7 +303,7 @@ export function RestaurantMenuCatalog({
                   fontSize: 13,
                 }}
               >
-                Tümü · {items.length}
+                {t('restaurant.orderModal.menu.filterAll', { count: items.length })}
               </Text>
             </Pressable>
             {categories.map(([name, count]) => {
@@ -347,7 +354,7 @@ export function RestaurantMenuCatalog({
         >
           <Utensils size={28} color={colors.textMuted} />
           <Text style={{ color: colors.textMuted, fontSize: 13, marginTop: 8, textAlign: 'center' }}>
-            {loading ? 'Menü yükleniyor…' : 'Bu filtrede ürün yok'}
+            {loading ? t('restaurant.orderModal.menu.loading') : t('restaurant.orderModal.menu.empty')}
           </Text>
         </View>
       ) : viewMode === 'grid' ? (

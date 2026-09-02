@@ -7,6 +7,7 @@ import {
   Pressable,
   RefreshControl,
 } from 'react-native';
+import { useTranslation } from 'react-i18next';
 import { EmptyState, ErrorBanner } from './ScreenChrome';
 import { FormField } from './FormField';
 import { PrimaryButton } from './PrimaryButton';
@@ -44,31 +45,39 @@ export type RestaurantDeliveryPanelProps = {
 
 type PayMethod = 'cash' | 'card' | 'transfer';
 
-const PAY_METHODS: { id: PayMethod; label: string }[] = [
-  { id: 'cash', label: 'Nakit' },
-  { id: 'card', label: 'Kart' },
-  { id: 'transfer', label: 'Havale' },
-];
-
-const STATUS_STEPS: { id: RestDeliveryStatus; label: string }[] = [
-  { id: 'pending', label: 'Bekliyor' },
-  { id: 'preparing', label: 'Hazırlanıyor' },
-  { id: 'on_way', label: 'Yolda' },
-  { id: 'delivered', label: 'Teslim' },
-];
-
-function statusLabel(status: RestDeliveryStatus | string | null): string {
-  const s = String(status || '').toLowerCase();
-  const found = STATUS_STEPS.find((x) => x.id === s);
-  return found?.label || status || '—';
+function buildPayMethods(t: (key: string) => string): { id: PayMethod; label: string }[] {
+  return [
+    { id: 'cash', label: t('delivery.pay.cash') },
+    { id: 'card', label: t('delivery.pay.card') },
+    { id: 'transfer', label: t('delivery.pay.transfer') },
+  ];
 }
 
-function payLabel(method: string | null | undefined): string {
+function buildStatusSteps(t: (key: string) => string): { id: RestDeliveryStatus; label: string }[] {
+  return [
+    { id: 'pending', label: t('delivery.status.pending') },
+    { id: 'preparing', label: t('delivery.status.preparing') },
+    { id: 'on_way', label: t('delivery.status.delivering') },
+    { id: 'delivered', label: t('delivery.status.delivered') },
+  ];
+}
+
+function statusLabel(
+  status: RestDeliveryStatus | string | null,
+  steps: { id: RestDeliveryStatus; label: string }[],
+  fallbackKey: string,
+): string {
+  const s = String(status || '').toLowerCase();
+  const found = steps.find((x) => x.id === s);
+  return found?.label || status || fallbackKey;
+}
+
+function payLabel(method: string | null | undefined, t: (key: string) => string): string {
   const m = String(method || '').toLowerCase();
-  if (m === 'cash') return 'Nakit';
-  if (m === 'card') return 'Kart';
-  if (m === 'transfer') return 'Havale';
-  return method || '—';
+  if (m === 'cash') return t('delivery.pay.cash');
+  if (m === 'card') return t('delivery.pay.card');
+  if (m === 'transfer') return t('delivery.pay.transfer');
+  return method || t('delivery.pay.unknown');
 }
 
 function statusAccent(status: RestDeliveryStatus | string | null): string {
@@ -89,6 +98,7 @@ export function RestaurantDeliveryPanel({
   actionId,
   error,
 }: RestaurantDeliveryPanelProps) {
+  const { t } = useTranslation();
   const { colors } = useThemeStore();
   const [customerName, setCustomerName] = useState('');
   const [phone, setPhone] = useState('');
@@ -115,15 +125,15 @@ export function RestaurantDeliveryPanel({
     const tel = phone.trim();
     const addr = address.trim();
     if (!name) {
-      setFormError('Müşteri adı gerekli');
+      setFormError(t('delivery.panel.needCustomer'));
       return;
     }
     if (!tel) {
-      setFormError('Telefon gerekli');
+      setFormError(t('delivery.panel.needPhone'));
       return;
     }
     if (!addr) {
-      setFormError('Adres gerekli');
+      setFormError(t('delivery.panel.needAddress'));
       return;
     }
     setFormError(null);
@@ -152,7 +162,7 @@ export function RestaurantDeliveryPanel({
       data={orders}
       keyExtractor={(item) => String(item.id)}
       refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} />}
-      ListEmptyComponent={<EmptyState message="Açık paket siparişi yok" />}
+      ListEmptyComponent={<EmptyState message={t('delivery.panel.empty')} />}
       contentContainerStyle={styles.list}
       ListHeaderComponent={
         <View
@@ -161,52 +171,52 @@ export function RestaurantDeliveryPanel({
             { backgroundColor: colors.card, borderColor: colors.cardBorder },
           ]}
         >
-          <Text style={[styles.formTitle, { color: colors.text }]}>Yeni paket servis</Text>
+          <Text style={[styles.formTitle, { color: colors.text }]}>{t('delivery.panel.formTitle')}</Text>
           {error ? <ErrorBanner message={error} /> : null}
           {formError ? (
             <ErrorBanner message={formError} onRetry={() => setFormError(null)} />
           ) : null}
           <FormField
-            label="Müşteri"
+            label={t('delivery.panel.customer')}
             value={customerName}
             onChangeText={setCustomerName}
-            placeholder="Ad soyad"
+            placeholder={t('delivery.panel.customerPh')}
           />
           <FormField
-            label="Telefon"
+            label={t('delivery.panel.phone')}
             value={phone}
             onChangeText={setPhone}
-            placeholder="05xx…"
+            placeholder={t('delivery.panel.phonePh')}
             keyboardType="phone-pad"
           />
           <FormField
-            label="Adres"
+            label={t('delivery.panel.address')}
             value={address}
             onChangeText={setAddress}
-            placeholder="Teslimat adresi"
+            placeholder={t('delivery.panel.addressPh')}
           />
           <FormField
-            label="Harici sipariş no"
+            label={t('delivery.panel.externalOrder')}
             value={externalOrderId}
             onChangeText={setExternalOrderId}
-            placeholder="İsteğe bağlı referans no"
+            placeholder={t('delivery.panel.externalOrderPh')}
           />
           <FormField
-            label="Sipariş özeti"
+            label={t('delivery.panel.orderSummary')}
             value={itemsSummary}
             onChangeText={setItemsSummary}
-            placeholder="İsteğe bağlı"
+            placeholder={t('delivery.panel.orderSummaryPh')}
           />
           <FormField
-            label="Tutar"
+            label={t('delivery.panel.amount')}
             value={totalAmount}
             onChangeText={setTotalAmount}
-            placeholder="0"
+            placeholder={t('delivery.panel.amountPh')}
             keyboardType="decimal-pad"
           />
-          <Text style={[styles.pickLabel, { color: colors.textMuted }]}>Ödeme türü</Text>
+          <Text style={[styles.pickLabel, { color: colors.textMuted }]}>{t('delivery.panel.payment')}</Text>
           <View style={styles.chipRow}>
-            {PAY_METHODS.map((p) => {
+            {buildPayMethods(t).map((p) => {
               const active = payMethod === p.id;
               return (
                 <Pressable
@@ -234,7 +244,7 @@ export function RestaurantDeliveryPanel({
             })}
           </View>
           <PrimaryButton
-            label="Paket siparişi oluştur"
+            label={t('delivery.panel.submit')}
             onPress={() => void handleCreate()}
             loading={!!saving && !actionId}
             disabled={!!saving}
@@ -245,6 +255,9 @@ export function RestaurantDeliveryPanel({
       renderItem={({ item }) => {
         const accent = statusAccent(item.delivery_status);
         const busy = actionId === item.id;
+        const steps = buildStatusSteps(t);
+        const phoneText = item.phone || t('delivery.panel.phoneEmpty');
+        const addrText = item.address || t('delivery.panel.addressEmpty');
         return (
           <View
             style={[
@@ -258,20 +271,23 @@ export function RestaurantDeliveryPanel({
           >
             <View style={styles.cardTop}>
               <Text style={{ color: colors.text, fontWeight: '800', flex: 1 }} numberOfLines={1}>
-                {item.order_no || item.id.slice(0, 8)} · {item.customer_name}
+                {t('delivery.panel.titleLine', {
+                  no: item.order_no || item.id.slice(0, 8),
+                  customer: item.customer_name,
+                })}
               </Text>
               <View style={[styles.badge, { backgroundColor: accent + '22' }]}>
                 <Text style={{ color: accent, fontSize: 10, fontWeight: '800' }}>
-                  {statusLabel(item.delivery_status)}
+                  {statusLabel(item.delivery_status, steps, '—')}
                 </Text>
               </View>
             </View>
             <Text style={{ color: colors.textMuted, fontSize: 12, marginTop: 4 }} numberOfLines={2}>
-              {item.phone || '—'} · {item.address || 'Adres yok'}
+              {t('delivery.panel.subLine', { phone: phoneText, address: addrText })}
             </Text>
             {item.external_order_id ? (
               <Text style={{ color: colors.textSubtle, fontSize: 11, marginTop: 2 }}>
-                Harici no: {item.external_order_id}
+                {t('delivery.panel.externalLine', { no: item.external_order_id })}
               </Text>
             ) : null}
             {item.items_summary ? (
@@ -280,16 +296,20 @@ export function RestaurantDeliveryPanel({
               </Text>
             ) : null}
             <Text style={{ color: colors.textSubtle, fontSize: 11, marginTop: 4 }}>
-              {item.courier ? `${item.courier} · ` : ''}
-              {payLabel(item.expected_payment_method)}
-              {item.item_count > 0 ? ` · ${item.item_count} kalem` : ''}
-              {item.created_at ? ` · ${item.created_at.slice(0, 16)}` : ''}
+              {t('delivery.panel.paymentLine', {
+                courier: item.courier ? `${item.courier} · ` : '',
+                payLabel: payLabel(item.expected_payment_method, t),
+                items: item.item_count > 0
+                  ? t('delivery.panel.itemsSuffix', { count: item.item_count })
+                  : '',
+                time: item.created_at ? t('delivery.panel.timeSuffix', { time: item.created_at.slice(0, 16) }) : '',
+              })}
             </Text>
             <Text style={{ color: palette.blue600, fontWeight: '800', marginTop: 4 }}>
               {formatMoney(item.total_amount)}
             </Text>
             <View style={styles.statusRow}>
-              {STATUS_STEPS.map((step) => {
+              {steps.map((step) => {
                 const active = item.delivery_status === step.id;
                 return (
                   <Pressable
