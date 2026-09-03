@@ -70,8 +70,6 @@ const InvoiceListModule = lazyWithChunkRecovery(() => import('../trading/invoice
 const ETransformModule = lazyWithChunkRecovery(() => import('../modules/ETransformModule').then(m => ({ default: m.ETransformModule })));
 const ReturnModule = lazyWithChunkRecovery(() => import('../trading/invoices/ReturnModule').then(m => ({ default: m.ReturnModule })));
 const ProductionModule = lazyWithChunkRecovery(() => import('../modules/ProductionModule').then(m => ({ default: m.ProductionModule })));
-const ProductionRecipeModule = lazyWithChunkRecovery(() => import('../modules/ProductionRecipeModule').then(m => ({ default: m.ProductionRecipeModule })));
-const ButcherProductionModule = lazyWithChunkRecovery(() => import('../modules/butcher/ButcherProductionModule').then(m => ({ default: m.ButcherProductionModule })));
 const AssetManagementModule = lazyWithChunkRecovery(() => import('../modules/AssetManagementModule').then(m => ({ default: m.AssetManagementModule })));
 const BudgetModule = lazyWithChunkRecovery(() => import('../modules/BudgetModule').then(m => ({ default: m.BudgetModule })));
 const ContractModule = lazyWithChunkRecovery(() => import('../modules/ContractModule').then(m => ({ default: m.ContractModule })));
@@ -1423,11 +1421,9 @@ export function ManagementModule({
         case 'production':
         case 'productionrecipe':
         case 'capacityplan':
-          return <ProductionModule />;
         case 'production-recipe':
-          return <ProductionRecipeModule />;
         case 'butcher-production':
-          return <ButcherProductionModule />;
+          return <ProductionModule />;
         case 'wave-picking':
           return <WavePickingModule />;
         case 'ai-stock-prediction':
