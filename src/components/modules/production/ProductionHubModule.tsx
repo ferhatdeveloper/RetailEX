@@ -9,9 +9,11 @@
  */
 
 import React, { useCallback, useEffect, useState } from 'react';
-import { Briefcase, ChefHat, Factory, Loader2 } from 'lucide-react';
+import { Beef, Briefcase, ChefHat, Factory, Loader2 } from 'lucide-react';
 import { toast } from 'sonner';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
+
+import { ButcherFullModule } from './butcher/ButcherFullModule';
 
 import { unifiedProductionAPI } from '@/services/production/unifiedProductionAPI';
 import type {
@@ -36,6 +38,13 @@ export function ProductionHubModule() {
   const { products, loadProducts } = useProductStore();
   const [activeTab, setActiveTab] = useState<'recipes' | 'orders'>('recipes');
 
+  /**
+   * Kasap Klasik Modu — eski 5 sekmeli tasarımı (Voucher/Reçeteler/Liste/
+   * Raporlar/Ayarlar) açar. Yeni sadeleştirilmiş tasarımı tercih edenler
+   * için toggle varsayılan olarak kapalı; kasap kullanıcıları için manuel açılır.
+   */
+  const [butcherClassicMode, setButcherClassicMode] = useState(false);
+
   const [recipes, setRecipes] = useState<ProductionRecipe[]>([]);
   const [butcherRecipes, setButcherRecipes] = useState<ButcherRecipe[]>([]);
   const [orders, setOrders] = useState<ProductionOrder[]>([]);
@@ -58,6 +67,27 @@ export function ProductionHubModule() {
         unifiedProductionAPI.production.getOrders(),
         unifiedProductionAPI.butcher.getOrders(),
       ]);
+
+      // Debug: kasap reçetelerinin listelenme durumu
+      // (kullanıcı "kasap reçeteleri görünmüyor" raporu için).
+      // eslint-disable-next-line no-console
+      console.log('[ProductionHub] recipes', {
+        general: generalRecipes.length,
+        butcher: butcher.length,
+        generalSample: generalRecipes.slice(0, 3).map((r) => ({
+          id: r.id,
+          name: r.name,
+          productId: r.productId,
+        })),
+        butcherSample: butcher.slice(0, 3).map((r) => ({
+          id: r.id,
+          name: r.name,
+          code: r.code,
+          animalType: r.animalType,
+          isActive: r.isActive,
+          outputCount: r.outputs?.length ?? 0,
+        })),
+      });
 
       // Satın alma fatura bağlantı meta'larını sırayla yükle (N+1 yerine tek sorgu hedefi)
       const orderIds = generalOrders.map((o) => o.id).filter(Boolean) as string[];
@@ -251,6 +281,17 @@ export function ProductionHubModule() {
               <span>Yükleniyor…</span>
             </>
           )}
+          <label className="flex items-center gap-2 px-3 py-1.5 rounded-md bg-slate-700 hover:bg-slate-600 cursor-pointer transition-colors">
+            <Beef className="w-3.5 h-3.5 text-amber-400" />
+            <span className="text-[11px] font-medium">Kasap Klasik</span>
+            <input
+              type="checkbox"
+              checked={butcherClassicMode}
+              onChange={(e) => setButcherClassicMode(e.target.checked)}
+              className="ml-1 h-3.5 w-3.5 accent-amber-500"
+              aria-label="Kasap klasik modunu aç/kapat"
+            />
+          </label>
         </div>
       </div>
 
@@ -261,11 +302,14 @@ export function ProductionHubModule() {
       )}
 
       <div className="flex-1 overflow-hidden p-6">
-        <Tabs
-          value={activeTab}
-          onValueChange={(v) => setActiveTab(v as 'recipes' | 'orders')}
-          className="h-full flex flex-col gap-6"
-        >
+        {butcherClassicMode ? (
+          <ButcherFullModule embedded />
+        ) : (
+          <Tabs
+            value={activeTab}
+            onValueChange={(v) => setActiveTab(v as 'recipes' | 'orders')}
+            className="h-full flex flex-col gap-6"
+          >
           <TabsList className="bg-white border border-slate-200 p-1 self-start shadow-sm">
             <TabsTrigger
               value="recipes"
@@ -308,7 +352,8 @@ export function ProductionHubModule() {
               onRefresh={refresh}
             />
           </TabsContent>
-        </Tabs>
+          </Tabs>
+        )}
       </div>
 
       {draft && (

@@ -281,8 +281,10 @@ export const butcherProductionAPI = {
   async getRecipes(): Promise<ButcherRecipe[]> {
     await this.ensureTables();
     const px = firmTablePrefix();
+    // Kasap reçeteleri: hem aktif hem pasif görünsün (eski davranış);
+    // kullanıcı UI'da "pasifleri gizle" isterse flag eklenebilir.
     const { rows } = await postgres.query(
-      `SELECT * FROM ${px}_butcher_recipes WHERE is_active = true ORDER BY name`,
+      `SELECT * FROM ${px}_butcher_recipes WHERE is_active IS NOT false ORDER BY name`,
     );
     if (!rows.length) return [];
     const ids = rows.map((r: any) => r.id);
