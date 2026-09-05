@@ -50,7 +50,7 @@ const HEADER_KEYS = {
   outputKg: ['KAC KG CIKAR', 'KAÇ KG ÇIKAR', 'KAC_KG_CIKAR'],
   ratio: ['YUZDE BAZI', 'YÜZDE BAZI', 'YUZDE BAZI', 'YUZDE_BAZI'],
   category: ['KATEGORİ', 'KATEGORI'],
-  recipeName: ['RECETE ADI', 'REÇETE ADI', 'RECETE_ADI'],
+  recipeName: ['RECETE ADI', 'REÇETE ADI', 'RECETE_ADI', 'COME FROM', 'COMEFROM', 'COME_FROM'],
   brand: ['MARKA'],
   unit: ['BİRİM', 'BIRIM'],
   purchasePrice: ['ALIŞ FİYATI', 'ALIS FIYATI', 'ALIŞFİYATI'],
@@ -108,7 +108,7 @@ export function parseButcherRecipeExcel(sheetRows: unknown[][]): ButcherRecipeEx
     return { ok: false, errors: ['Excel boş veya yalnız başlık satırı içeriyor.'], warnings, rows };
   }
 
-  const headers = (sheetRows[0] as unknown[]).map((h) => h);
+  const headers = (sheetRows[0] as unknown[]).map((h) => String(h ?? ''));
   const codeIdx = pickColumn(headers, HEADER_KEYS.code);
   const nameIdx = pickColumn(headers, HEADER_KEYS.name);
   const barkodIdx = pickColumn(headers, HEADER_KEYS.barkod);
@@ -118,6 +118,35 @@ export function parseButcherRecipeExcel(sheetRows: unknown[][]): ButcherRecipeEx
   const unitIdx = pickColumn(headers, HEADER_KEYS.unit);
   const purchaseIdx = pickColumn(headers, HEADER_KEYS.purchasePrice);
   const saleIdx = pickColumn(headers, HEADER_KEYS.salePrice);
+
+  // Kolon harfleri (Excel 1-indexed → 0-indexed array): D=3, E=4, F=5, G=6
+  const COL_LETTER_TO_IDX: Record<string, number> = { A: 0, B: 1, C: 2, D: 3, E: 4, F: 5, G: 6, H: 7, I: 8, J: 9, K: 10, L: 11 };
+
+  // Bazı Excel şablonlarında (ör. kasap Ürünler_YYYY-MM-DD.xlsx) yüzde/kg için
+  // açık sütun başlığı yoktur; bunun yerine konumsal kolonlar kullanılır ve
+  // COME FROM (reçete adı) değerine göre hangi kolonun geçerli olduğu anlaşılır.
+  // GOLK ailesi → D (yüzde) + E (kg)
+  // KALASHE KAML ailesi → F (yüzde) + G (kg)
+  const ratioIdxFallback = ratioIdx >= 0
+    ? ratioIdx
+    : (recipeIdx >= 0
+      ? -1 // aşağıda satır bazında çözülecek
+      : -1);
+  const outputKgIdxFallback = outputKgIdx >= 0
+    ? outputKgIdx
+    : (recipeIdx >= 0
+      ? -1 // aşağıda satır bazında çözülecek
+      : -1);
+
+  function pickPositionalForRecipe(recipeNameRaw: string, kind: 'ratio' | 'kg'): number {
+    const n = normalizeHeader(recipeNameRaw);
+    // KALASHE KAML ailesi → F (5) / G (6)
+    if (/(KALASHE|KAML)/.test(n)) {
+      return COL_LETTER_TO_IDX[kind === 'ratio' ? 'F' : 'G'];
+    }
+    // GOLK / SINGE / FROZEN vb. → D (3) / E (4)
+    return COL_LETTER_TO_IDX[kind === 'ratio' ? 'D' : 'E'];
+  }
 
   if (codeIdx < 0) errors.push('"Ürün Kodu" sütunu bulunamadı.');
   if (nameIdx < 0) errors.push('"Ürün Adı" sütunu bulunamadı.');
@@ -155,7 +184,13 @@ export function parseButcherRecipeExcel(sheetRows: unknown[][]): ButcherRecipeEx
       warnings.push(`Satır ${i + 1}: Tanınmayan birim "${unit}", yine de alınıyor.`);
     }
 
-    const ratio = ratioIdx >= 0 ? toNumber(row[ratioIdx]) : undefined;
+    const ratioCellIdx = ratioIdx >= 0
+      ? ratioIdx
+      : pickPositionalForRecipe(recipeName, 'ratio');
+    const kgCellIdx = outputKgIdx >= 0
+      ? outputKgIdx
+      : pickPositionalForRecipe(recipeName, 'kg');
+    const ratio = ratioCellIdx >= 0 ? toNumber(row[ratioCellIdx]) : undefined;
     if (ratio !== undefined && (ratio < 0 || ratio > 100)) {
       warnings.push(`Satır ${i + 1}: Yüzde ${ratio} aralık dışı (0-100), yine de alınıyor.`);
     }
@@ -167,7 +202,7 @@ export function parseButcherRecipeExcel(sheetRows: unknown[][]): ButcherRecipeEx
       outputProductCode: code,
       outputProductName: name,
       outputBarkod: barkodIdx >= 0 ? String(row[barkodIdx] ?? '').trim() || undefined : undefined,
-      outputKg: outputKgIdx >= 0 ? toNumber(row[outputKgIdx]) : undefined,
+      outputKg: kgCellIdx >= 0 ? toNumber(row[kgCellIdx]) : undefined,
       standardRatioPercent: ratio,
       unit: unit || undefined,
       purchasePrice: purchaseIdx >= 0 ? toNumber(row[purchaseIdx]) : undefined,
