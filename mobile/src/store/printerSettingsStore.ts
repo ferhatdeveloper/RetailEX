@@ -23,6 +23,12 @@ type PrinterSettingsState = {
   setWindowsServiceUrl: (url: string) => void;
   setWindowsServiceApiKey: (key: string) => void;
   setWindowsPrinterName: (name: string) => void;
+  /** Yönetim — Windows servisi genel geçişi ve fiş türü yönlendirmeleri */
+  setUseWindowsServiceGlobal: (value: boolean) => void;
+  setKitchenTicketWindowsService: (value: boolean) => void;
+  setPosReceiptWindowsService: (value: boolean) => void;
+  setAccountReceiptWindowsService: (value: boolean) => void;
+  setInvoiceWindowsService: (value: boolean) => void;
 };
 
 function mergeSettings(
@@ -50,10 +56,20 @@ export const usePrinterSettingsStore = create<PrinterSettingsState>()(
         get().setSettings({ windowsServiceApiKey }),
       setWindowsPrinterName: (windowsPrinterName) =>
         get().setSettings({ windowsPrinterName }),
+      setUseWindowsServiceGlobal: (useWindowsServiceGlobal) =>
+        get().setSettings({ useWindowsServiceGlobal }),
+      setKitchenTicketWindowsService: (kitchenTicketWindowsService) =>
+        get().setSettings({ kitchenTicketWindowsService }),
+      setPosReceiptWindowsService: (posReceiptWindowsService) =>
+        get().setSettings({ posReceiptWindowsService }),
+      setAccountReceiptWindowsService: (accountReceiptWindowsService) =>
+        get().setSettings({ accountReceiptWindowsService }),
+      setInvoiceWindowsService: (invoiceWindowsService) =>
+        get().setSettings({ invoiceWindowsService }),
     }),
     {
       name: 'retailex_mobile_printer_settings',
-      version: 1,
+      version: 2,
       storage: createJSONStorage(() => AsyncStorage),
       partialize: (s) => ({ settings: s.settings }),
       merge: (persisted, current) => {

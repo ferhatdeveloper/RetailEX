@@ -474,6 +474,30 @@
       "windowsInvalidUrl": "Geçersiz servis URL."
     }
   },
+  "printerManagement": {
+    "menuLabel": "Yazıcı Yönetimi",
+    "title": "Yazıcı Yönetimi",
+    "subtitle": "Windows yazıcı servisi genel geçişi ve fiş türü yönlendirmesi",
+    "bannerOn": "Windows yazıcı servisi AÇIK — fiş türü yönlendirmesi etkin.",
+    "bannerOff": "Windows yazıcı servisi KAPALI — cihaz yazıcısı kullanılıyor.",
+    "systemTitle": "Sistem — Windows Yazıcı Servisi",
+    "systemHint": "Bu anahtar açıkken aşağıdaki fiş türleri otomatik olarak Windows servisine yönlendirilir; bağlantı tipi ne olursa olsun geçerlidir.",
+    "globalServiceLabel": "Windows yazıcı servisi genel geçişi",
+    "globalServiceOn": "Açık — seçili fiş türleri Windows servisine gider.",
+    "globalServiceOff": "Kapalı — cihaz yazıcısı kullanılıyor.",
+    "serviceUrlMissing": "Windows servisi URL'i tanımlı değil. Yazıcı / Fiş Ayarları'ndan servis adresini girin.",
+    "serviceUrlMissingHint": "Yönlendirme açık olsa da servis URL'i yoksa Windows servisi kullanılamaz. Yazıcı / Fiş Ayarları → Windows Servisi bölümünden URL'i girin.",
+    "routingTitle": "Fiş Türü Yönlendirmesi",
+    "routingHint": "Genel geçiş açıkken yalnızca aşağıda seçili türler Windows servisine gider.",
+    "kindKitchenTicket": "Mutfak Fişi",
+    "kindPosReceipt": "POS / Satış Fişi",
+    "kindAccountReceipt": "Adisyon / Hesap Özeti",
+    "kindInvoice": "A4 / A5 Fatura",
+    "kindRoutedWindows": "Windows Servisi",
+    "kindRoutedDefault": "Cihaz Yazıcısı",
+    "languageTitle": "Sistem Dili",
+    "languageHint": "Varsayılan fiş dili (TR / EN / AR / KU / UZ). Tüm fişler bu dilde yazdırılır."
+  },
   "menu": {
     "sections": {
       "main-menu": "Ana Menü",

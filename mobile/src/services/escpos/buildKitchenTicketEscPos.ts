@@ -14,6 +14,7 @@ import {
   wrapText,
 } from './escposBytes';
 import { sendEscposOverNetwork } from './escposTcpTransport';
+import { sendEscposToWindowsService } from './windowsServiceTransport';
 import {
   getRestaurantPrinterConfig,
   type RestaurantPrinterConfig,
@@ -22,7 +23,7 @@ import {
 } from '../../api/restaurantPrinterConfigApi';
 import { useLanguageStore } from '../../store/languageStore';
 import { usePrinterSettingsStore } from '../../store/printerSettingsStore';
-import type { ReceiptLangCode } from '../../types/printerSettings';
+import { resolveEffectiveInterface, type ReceiptLangCode } from '../../types/printerSettings';
 
 export type KitchenReceiptLocale = ReceiptLangCode;
 
@@ -268,11 +269,13 @@ export type KitchenTicketOrderItem = {
 type KitchenResolvedTarget =
   | { kind: 'system'; windowsPrinter: string }
   | { kind: 'network'; host: string; port: number }
+  | { kind: 'windows_service'; url: string; apiKey?: string; printerName: string }
   | { kind: 'html_fallback' };
 
 function targetKey(t: KitchenResolvedTarget): string {
   if (t.kind === 'system') return `sys:${t.windowsPrinter}`;
   if (t.kind === 'network') return `net:${t.host}:${t.port}`;
+  if (t.kind === 'windows_service') return `ws:${t.printerName}`;
   return 'html';
 }
 
@@ -356,6 +359,23 @@ function resolveKitchenPrintTarget(
   printerRoutes: RestaurantPrinterRouting[],
   commonProfile: RestaurantPrinterProfile | undefined,
 ): KitchenResolvedTarget {
+  // Yönetim — Windows yazıcı servisi genel geçişi açıksa ve mutfak fişi için
+  // ilgili flag true ise TÜM mutfak fişlerini Windows servisine yönlendir.
+  // Bu, profile/route çözümünü ezer (yönetici bilinçli olarak açtı).
+  const printerSettings = usePrinterSettingsStore.getState().settings;
+  if (resolveEffectiveInterface(printerSettings, 'kitchen_ticket') === 'windows-service') {
+    const url = printerSettings.windowsServiceUrl?.trim();
+    const printerName = printerSettings.windowsPrinterName?.trim();
+    if (url && printerName) {
+      return {
+        kind: 'windows_service',
+        url,
+        apiKey: printerSettings.windowsServiceApiKey,
+        printerName,
+      };
+    }
+  }
+
   const idKey = productKey(item);
   const cat = resolveOrderItemCategoryLabel(item, menu, products);
 
@@ -441,7 +461,7 @@ export async function printKitchenTicketsForOrder(params: {
   let skippedGroups = 0;
 
   for (const { target, items } of groups.values()) {
-    if (target.kind !== 'network') {
+    if (target.kind === 'html_fallback' || target.kind === 'system') {
       skippedGroups += 1;
       const label =
         target.kind === 'system'
@@ -450,7 +470,6 @@ export async function printKitchenTicketsForOrder(params: {
       errors.push(`${label} Ağ (IP) yazıcı profili veya ortak yazıcı tanımlayın.`);
       continue;
     }
-
     const payload = buildKitchenTicketEscPosBuffer({
       tableNumber: String(params.table.number ?? params.table.name ?? 'Masa'),
       floorName: params.table.location?.trim() || undefined,
@@ -459,6 +478,27 @@ export async function printKitchenTicketsForOrder(params: {
       items: items.map(itemToKitchenLine),
       locale,
     });
+
+    if (target.kind === 'windows_service') {
+      // Yönetim — Windows servisi genel geçişi ile gelen mutfak fişi
+      const res = await sendEscposToWindowsService(
+        target.url,
+        target.apiKey,
+        target.printerName,
+        payload,
+        'RetailEX Kitchen Ticket',
+      );
+      if (res.ok) {
+        sentGroups += 1;
+        sentItems += items.length;
+      } else {
+        errors.push(
+          `${target.printerName} (Windows servisi) mutfak yazıcısı başarısız: ${res.message}`,
+        );
+      }
+      continue;
+    }
+
     const res = await sendEscposOverNetwork(target.host, target.port, payload);
     if (res.ok) {
       sentGroups += 1;
@@ -469,7 +509,10 @@ export async function printKitchenTicketsForOrder(params: {
   }
 
   const ok = sentItems === pendingItems.length && errors.length === 0;
-  const base = sentGroups > 0 ? `${sentItems} kalem ${sentGroups} ağ yazıcısı grubuna gönderildi.` : 'Mutfak fişi yazdırılamadı.';
+  const base =
+    sentGroups > 0
+      ? `${sentItems} kalem ${sentGroups} yazıcı grubuna gönderildi.`
+      : 'Mutfak fişi yazdırılamadı.';
   return {
     ok,
     message: errors.length > 0 ? `${base}\n${errors.join('\n')}` : base,

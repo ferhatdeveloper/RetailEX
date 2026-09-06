@@ -474,6 +474,30 @@
       "windowsInvalidUrl": "عنوان خدمة غير صالح."
     }
   },
+  "printerManagement": {
+    "menuLabel": "إدارة الطابعة",
+    "title": "إدارة الطابعة",
+    "subtitle": "محوّل خدمة طباعة Windows العام وتوجيه نوع الإيصال",
+    "bannerOn": "خدمة طباعة Windows مفعّلة — توجيه نوع الإيصال نشط.",
+    "bannerOff": "خدمة طباعة Windows معطّلة — تُستخدم طابعة الجهاز.",
+    "systemTitle": "النظام — خدمة طباعة Windows",
+    "systemHint": "عند تفعيل هذا المحوّل، يتم توجيه أنواع الإيصالات المحددة أدناه إلى خدمة Windows بصرف النظر عن نوع الاتصال.",
+    "globalServiceLabel": "محوّل خدمة طباعة Windows العام",
+    "globalServiceOn": "مفعّل — الأنواع المحددة تذهب إلى خدمة Windows.",
+    "globalServiceOff": "معطّل — تُستخدم طابعة الجهاز.",
+    "serviceUrlMissing": "عنوان خدمة Windows غير مكوّن. عيّنه من إعدادات الطابعة / الإيصال.",
+    "serviceUrlMissingHint": "حتى عند تفعيل التوجيه، لا يمكن استخدام خدمة Windows بدون عنوان. اضبطه من إعدادات الطابعة → خدمة Windows.",
+    "routingTitle": "توجيه نوع الإيصال",
+    "routingHint": "عند تفعيل المحوّل العام، فقط الأنواع المحددة أدناه تُوجّه إلى خدمة Windows.",
+    "kindKitchenTicket": "إيصال المطبخ",
+    "kindPosReceipt": "إيصال البيع / POS",
+    "kindAccountReceipt": "كشف الحساب",
+    "kindInvoice": "فاتورة A4 / A5",
+    "kindRoutedWindows": "خدمة Windows",
+    "kindRoutedDefault": "طابعة الجهاز",
+    "languageTitle": "لغة النظام",
+    "languageHint": "لغة الإيصال الافتراضية (TR / EN / AR / KU / UZ). جميع الإيصالات تُطبع بهذه اللغة."
+  },
   "menu": {
     "sections": {
       "main-menu": "القائمة الرئيسية",

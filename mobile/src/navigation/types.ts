@@ -179,6 +179,8 @@ export type MainStackParamList = {
   ETransform: undefined;
   /** Yazıcı / fiş ayarları (yerel persist + test stub) */
   PrinterSettings: undefined;
+  /** Yazıcı Yönetimi — Windows servisi genel geçişi + fiş türü yönlendirme */
+  PrinterManagement: undefined;
   /** Görünüm ve yön tercihleri (tablet/telefon/restoran yönü) */
   DisplaySettings: undefined;
   /** Terazi yönetimi (Rongta TCP / simüle / BT arayüzü) */

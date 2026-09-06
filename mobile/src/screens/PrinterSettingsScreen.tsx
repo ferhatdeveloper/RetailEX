@@ -9,7 +9,7 @@ import {
   Switch,
   ActivityIndicator,
 } from 'react-native';
-import { Printer, Wifi, Bluetooth, Smartphone, Server } from 'lucide-react-native';
+import { Printer, Wifi, Bluetooth, Smartphone, Server, ChevronRight, Settings2 } from 'lucide-react-native';
 import { useTranslation } from 'react-i18next';
 import type { NativeStackScreenProps } from '@react-navigation/native-stack';
 import { ScreenHeader } from '../components/ScreenChrome';
@@ -56,7 +56,7 @@ function resolvePrintMessage(
   return result.message;
 }
 
-export function PrinterSettingsScreen(_props: Props) {
+export function PrinterSettingsScreen(props: Props) {
   const { t } = useTranslation();
   const { colors, darkMode } = useThemeStore();
   const settings = usePrinterSettingsStore((s) => s.settings);
@@ -300,6 +300,48 @@ export function PrinterSettingsScreen(_props: Props) {
     <View style={[styles.root, { backgroundColor: colors.background }]}>
       <ScreenHeader title={t('printerSettings.title')} subtitle={t('printerSettings.subtitle')} />
       <ScrollView contentContainerStyle={styles.body} keyboardShouldPersistTaps="handled">
+        {/* ── Yönetim — Windows servisi genel geçişi link kartı ───── */}
+        <Pressable
+          onPress={() => props.navigation.navigate('PrinterManagement')}
+          style={[
+            styles.card,
+            styles.managementCard,
+            {
+              backgroundColor: darkMode ? '#1e3a8a40' : '#dbeafe',
+              borderColor: darkMode ? '#1d4ed8' : '#3b82f6',
+            },
+          ]}
+          accessibilityRole="button"
+        >
+          <View style={styles.managementIconBox}>
+            <Settings2 size={18} color={palette.white} />
+          </View>
+          <View style={{ flex: 1 }}>
+            <Text
+              style={{
+                color: darkMode ? '#bfdbfe' : '#1d4ed8',
+                fontSize: 13,
+                fontWeight: '800',
+              }}
+            >
+              {t('printerManagement.menuLabel')}
+            </Text>
+            <Text
+              style={{
+                color: darkMode ? '#93c5fd' : '#1e40af',
+                fontSize: 11,
+                marginTop: 2,
+                lineHeight: 16,
+              }}
+            >
+              {settings.useWindowsServiceGlobal === true
+                ? t('printerManagement.bannerOn')
+                : t('printerManagement.bannerOff')}
+            </Text>
+          </View>
+          <ChevronRight size={18} color={darkMode ? '#93c5fd' : '#1d4ed8'} />
+        </Pressable>
+
         <View style={[styles.card, { backgroundColor: colors.card, borderColor: colors.cardBorder }]}>
           <View style={styles.cardHeader}>
             <Printer size={20} color={palette.blue600} />
@@ -682,6 +724,19 @@ const styles = StyleSheet.create({
     borderRadius: 12,
     padding: 14,
     gap: 12,
+  },
+  managementCard: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 12,
+  },
+  managementIconBox: {
+    width: 36,
+    height: 36,
+    borderRadius: 10,
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: palette.blue600,
   },
   cardHeader: { flexDirection: 'row', alignItems: 'center', gap: 8 },
   cardTitle: { fontSize: 15, fontWeight: '800' },

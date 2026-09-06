@@ -185,6 +185,12 @@ export function MoreScreen() {
 
         <Text style={[styles.sec, { color: colors.text, marginTop: 12 }]}>{t('settings')}</Text>
         <PrimaryButton
+          label={t('printerManagement.menuLabel')}
+          onPress={() => navigation.navigate('PrinterManagement')}
+          variant="ghost"
+          style={{ marginBottom: 8 }}
+        />
+        <PrimaryButton
           label={t('printerSettings.menuLabel')}
           onPress={() => navigation.navigate('PrinterSettings')}
           variant="ghost"

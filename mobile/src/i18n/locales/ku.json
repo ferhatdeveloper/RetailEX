@@ -474,6 +474,30 @@
       "windowsInvalidUrl": "URL ی خزمەتگوزاری نادروستە."
     }
   },
+  "printerManagement": {
+    "menuLabel": "بەڕێوەبردنی چاپکەر",
+    "title": "بەڕێوەبردنی چاپکەر",
+    "subtitle": "گۆڕەری گشتی خزمەتگوزاری چاپی Windows و ڕێنمونەدانی جۆری وەسڵ",
+    "bannerOn": "خزمەتگوزاری چاپی Windows چالاکە — ڕێنمونەدانی جۆری وەسڵ کارایە.",
+    "bannerOff": "خزمەتگوزاری چاپی Windows ناچالاکە — چاپکەری ئامێر بەکاردێت.",
+    "systemTitle": "سیستەم — خزمەتگوزاری چاپی Windows",
+    "systemHint": "کاتێک ئەم گۆڕەرە چالاکە، جۆرەکانی وەسڵی خوارەوە بە ڕێنمونەدانی خزمەتگوزاری Windows دەچن، سەرەڕای جۆری پەیوەندی.",
+    "globalServiceLabel": "گۆڕەری گشتی خزمەتگوزاری چاپی Windows",
+    "globalServiceOn": "چالاکە — جۆرە هەڵبژێردراوەکان دەچنە خزمەتگوزاری Windows.",
+    "globalServiceOff": "ناچالاکە — چاپکەری ئامێر بەکاردێت.",
+    "serviceUrlMissing": "URL ی خزمەتگوزاری Windows ڕێکنەخراوە. لە ڕێکخستنەکانی چاپکەر / وەسڵ دایبنێ.",
+    "serviceUrlMissingHint": "تەنانەت کاتێک ڕێنمونەدان چالاکە، بەبێ URL خزمەتگوزاری Windows بەکارناهێنرێت. لە ڕێکخستنەکانی چاپکەر → خزمەتگوزاری Windows دایبنێ.",
+    "routingTitle": "ڕێنمونەدانی جۆری وەسڵ",
+    "routingHint": "کاتێک گۆڕەری گشتی چالاکە، تەنها جۆرە هەڵبژێردراوەکانی خوارەوە دەچنە خزمەتگوزاری Windows.",
+    "kindKitchenTicket": "وەسڵی چێشتخانە",
+    "kindPosReceipt": "وەسڵی فرۆشتن / POS",
+    "kindAccountReceipt": "کێشی حساب",
+    "kindInvoice": "فاتورەی A4 / A5",
+    "kindRoutedWindows": "خزمەتگوزاری Windows",
+    "kindRoutedDefault": "چاپکەری ئامێر",
+    "languageTitle": "زمانی سیستەم",
+    "languageHint": "زمانی وەسڵی بنەڕەت (TR / EN / AR / KU / UZ). هەموو وەسڵەکان بەم زمانە چاپ دەکرێن."
+  },
   "menu": {
     "sections": {
       "main-menu": "مینیوی سەرەکی",

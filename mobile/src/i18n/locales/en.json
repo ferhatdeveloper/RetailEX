@@ -474,6 +474,30 @@
       "windowsInvalidUrl": "Invalid service URL."
     }
   },
+  "printerManagement": {
+    "menuLabel": "Printer Management",
+    "title": "Printer Management",
+    "subtitle": "Global Windows print service switch and receipt-type routing",
+    "bannerOn": "Windows print service is ON — receipt-type routing active.",
+    "bannerOff": "Windows print service is OFF — device printer is used.",
+    "systemTitle": "System — Windows Print Service",
+    "systemHint": "When this switch is ON, the selected receipt types below are routed to the Windows service regardless of the connection type.",
+    "globalServiceLabel": "Global Windows print service switch",
+    "globalServiceOn": "ON — selected receipt types go to Windows service.",
+    "globalServiceOff": "OFF — device printer is used.",
+    "serviceUrlMissing": "Windows service URL is not configured. Set it in Printer / Receipt Settings.",
+    "serviceUrlMissingHint": "Even when routing is on, the Windows service cannot be used without a URL. Configure it in Printer Settings → Windows Service.",
+    "routingTitle": "Receipt-Type Routing",
+    "routingHint": "When the global switch is on, only the types selected below are routed to the Windows service.",
+    "kindKitchenTicket": "Kitchen Ticket",
+    "kindPosReceipt": "POS / Sale Receipt",
+    "kindAccountReceipt": "Adisyon / Account Summary",
+    "kindInvoice": "A4 / A5 Invoice",
+    "kindRoutedWindows": "Windows Service",
+    "kindRoutedDefault": "Device Printer",
+    "languageTitle": "System Language",
+    "languageHint": "Default receipt language (TR / EN / AR / KU / UZ). All receipts are printed in this language."
+  },
   "menu": {
     "sections": {
       "main-menu": "Main Menu",

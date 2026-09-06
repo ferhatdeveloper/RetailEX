@@ -1,4 +1,8 @@
-import type { MobilePrinterSettings, TestPrintResult } from '../types/printerSettings';
+import {
+  resolveEffectiveInterface,
+  type MobilePrinterSettings,
+  type TestPrintResult,
+} from '../types/printerSettings';
 import { buildSaleReceiptEscPos, buildTestReceiptEscPos } from './escpos/buildReceiptEscPos';
 import { sendEscposOverBluetooth } from './escpos/escposBluetoothTransport';
 import { escposTransportStatus, sendEscposOverNetwork } from './escpos/escposTcpTransport';
@@ -202,7 +206,7 @@ export async function testPrintReceipt(
 
   const preview = buildTestReceiptPreview(settings);
 
-  if (settings.interface === 'windows-service') {
+  if (resolveEffectiveInterface(settings, 'pos_receipt') === 'windows-service') {
     const payload = buildTestReceiptEscPos(settings);
     const res = await printWindowsServiceEscPos(settings, payload, 'RetailEX Test Receipt');
     return { ...res, preview };
@@ -235,7 +239,7 @@ export async function printSaleReceipt(
   const validation = validatePrinterSettings(settings);
   if (validation) return validation;
 
-  if (settings.interface === 'windows-service') {
+  if (resolveEffectiveInterface(settings, 'pos_receipt') === 'windows-service') {
     const payload = buildSaleReceiptEscPos(settings, saleId, [], 0);
     return printWindowsServiceEscPos(settings, payload, `RetailEX Sale ${saleId}`);
   }

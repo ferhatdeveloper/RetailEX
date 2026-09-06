@@ -161,6 +161,12 @@ export function MainStackNavigator() {
         }
       />
       <Stack.Screen
+        name="PrinterManagement"
+        getComponent={() =>
+          require('../screens/PrinterManagementScreen').PrinterManagementScreen as React.ComponentType
+        }
+      />
+      <Stack.Screen
         name="ScaleManagement"
         getComponent={() =>
           require('../screens/ScaleManagementScreen').ScaleManagementScreen as React.ComponentType

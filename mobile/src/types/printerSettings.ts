@@ -4,6 +4,13 @@ export type PrinterType = 'thermal' | 'standard';
 export type ReceiptPaperSize = '58mm' | '80mm' | 'A4' | 'A5';
 export type ReceiptLangCode = 'tr' | 'en' | 'ar' | 'ku' | 'uz';
 
+/**
+ * RN mobilde yöneticinin tek noktadan açıp kapatabileceği
+ * «Windows yazıcı servisi genel geçişi». Bu açık olduğunda
+ * aşağıdaki `*WindowsService` flag'leri true olan fiş türleri
+ * otomatik olarak Windows servisine yönlendirilir — kullanıcı
+ * PrinterSettings'deki «bağlantı tipi» seçimine bağlı kalmaz.
+ */
 export type MobilePrinterSettings = {
   enabled: boolean;
   type: PrinterType;
@@ -26,6 +33,24 @@ export type MobilePrinterSettings = {
   /** Fiş üst bilgi (yerel yedek; PG `receipt_settings` yoksa kullanılır) */
   companyName?: string;
   companyPhone?: string;
+
+  /**
+   * YÖNETİM — Windows yazıcı servisi genel geçişi (admin-only).
+   * AÇIK olduğunda aşağıdaki `*WindowsService` flag'leri true olan
+   * fiş türleri PrinterSettings ekranındaki bağlantı tipi ne olursa
+   * olsun Windows servisine yönlendirilir.
+   *
+   * Default false — mevcut cihaz yazıcı davranışını bozmaz.
+   */
+  useWindowsServiceGlobal?: boolean;
+  /** Mutfak fişleri (restaurant kitchen tickets) → Windows servisi */
+  kitchenTicketWindowsService?: boolean;
+  /** POS / perakende satış fişleri → Windows servisi */
+  posReceiptWindowsService?: boolean;
+  /** Adisyon / hesap özeti fişleri → Windows servisi */
+  accountReceiptWindowsService?: boolean;
+  /** A4/A5 fatura yazdırma → Windows servisi */
+  invoiceWindowsService?: boolean;
 };
 
 export const DEFAULT_PRINTER_SETTINGS: MobilePrinterSettings = {
@@ -37,6 +62,13 @@ export const DEFAULT_PRINTER_SETTINGS: MobilePrinterSettings = {
   paperSize: '80mm',
   autoPrint: false,
   defaultLanguage: 'tr',
+  // Yönetim — Windows yazıcı servisi varsayılan KAPALI (mevcut
+  // cihaz yazıcı davranışı bozulmasın).
+  useWindowsServiceGlobal: false,
+  kitchenTicketWindowsService: false,
+  posReceiptWindowsService: false,
+  accountReceiptWindowsService: false,
+  invoiceWindowsService: false,
 };
 
 export type PrinterTransportKind =
@@ -75,3 +107,49 @@ export type TestPrintResult = {
   transport?: PrinterTransportKind;
   bytesSent?: number;
 };
+
+/**
+ * RN mobilde «Windows yazıcı servisi genel geçişi» açıkken
+ * belirli bir fiş türü için gerçek kullanılacak interface'i döndürür.
+ *
+ * - useWindowsServiceGlobal === false → mevcut davranış (settings.interface)
+ * - useWindowsServiceGlobal === true ve `kind` için ilgili flag true
+ *   → 'windows-service' (settings.interface ne olursa olsun)
+ * - aksi → mevcut davranış
+ */
+export type PrintJobKind =
+  | 'kitchen_ticket'
+  | 'pos_receipt'
+  | 'account_receipt'
+  | 'invoice';
+
+export function resolveEffectiveInterface(
+  settings: Pick<
+    MobilePrinterSettings,
+    | 'interface'
+    | 'useWindowsServiceGlobal'
+    | 'kitchenTicketWindowsService'
+    | 'posReceiptWindowsService'
+    | 'accountReceiptWindowsService'
+    | 'invoiceWindowsService'
+  >,
+  kind: PrintJobKind,
+): PrinterInterface {
+  if (settings.useWindowsServiceGlobal === true) {
+    switch (kind) {
+      case 'kitchen_ticket':
+        if (settings.kitchenTicketWindowsService === true) return 'windows-service';
+        break;
+      case 'pos_receipt':
+        if (settings.posReceiptWindowsService === true) return 'windows-service';
+        break;
+      case 'account_receipt':
+        if (settings.accountReceiptWindowsService === true) return 'windows-service';
+        break;
+      case 'invoice':
+        if (settings.invoiceWindowsService === true) return 'windows-service';
+        break;
+    }
+  }
+  return settings.interface;
+}
