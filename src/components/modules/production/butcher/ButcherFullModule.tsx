@@ -118,24 +118,38 @@ function outputsFromRecipe(
   tpl: ButcherRecipe,
   products: ProductOpt[],
   inputKg: number,
+  prevOutputs: OutputRow[] = [],
 ): OutputRow[] {
+  const safeKg = inputKg > 0 ? inputKg : 0;
+  // Önceki outputs'ta kullanıcının manuel eklediği (row-*) veya düzenlediği satırları koruyacağız.
   return tpl.outputs
     .filter((o) => o.productId)
     .map((o, i) => {
       const prod = products.find((p) => p.id === o.productId);
-      const ratio = o.standardRatioPercent != null ? Number(o.standardRatioPercent) : null;
-      const outputKg =
-        ratio != null && Number.isFinite(ratio) && inputKg > 0
-          ? roundKg((inputKg * ratio) / 100)
+      const ratio =
+        o.standardRatioPercent != null ? Number(o.standardRatioPercent) : null;
+      const computedKg =
+        ratio != null && Number.isFinite(ratio) && safeKg > 0
+          ? roundKg((safeKg * ratio) / 100)
           : 0;
+      // Önceki listede aynı productId için manuel düzenlenmiş satır varsa (userEdited) koru.
+      const prevRow = prevOutputs.find(
+        (p) => p.productId === o.productId && p.userEdited,
+      );
+      const outputKg = prevRow ? prevRow.outputKg : computedKg;
       return {
-        key: `tpl-${tpl.id || 'x'}-${i}-${o.productId}`,
+        key:
+          prevRow?.key ||
+          `tpl-${tpl.id || 'x'}-${i}-${o.productId}`,
         productId: o.productId,
         productName: o.productName || prod?.name,
         outputKg,
-        coefficient: o.coefficient || 1,
-        salePrice: Number(prod?.price) || 0,
-        manualUnitCost: 0,
+        coefficient:
+          prevRow?.coefficient ?? (o.coefficient != null ? o.coefficient : 1),
+        salePrice:
+          prevRow?.salePrice ?? (Number(prod?.price) || 0),
+        manualUnitCost: prevRow?.manualUnitCost ?? 0,
+        userEdited: prevRow ? true : false,
       };
     });
 }
@@ -390,12 +404,12 @@ function VoucherForm({
     }
   }, [selectedInput, inputUnitCost]);
 
-  /** Girdi kg değişince reçete oranlarından kg yenile (manuel satırları ezme: yalnızca reçete satırları) */
+  /** Girdi kg değişince reçete oranlarından kg yenile (kullanıcının manuel düzenlediği satırları korur) */
   useEffect(() => {
-    if (!recipeId || inputQtyKg <= 0) return;
+    if (!recipeId) return;
     const tpl = recipes.find((t) => t.id === recipeId);
-    if (!tpl?.outputs.some((o) => o.standardRatioPercent != null)) return;
-    setOutputs(outputsFromRecipe(tpl, products, inputQtyKg));
+    if (!tpl) return;
+    setOutputs((prev) => outputsFromRecipe(tpl, products, inputQtyKg, prev));
   }, [inputQtyKg, recipeId, recipes, products]);
 
   const applyRecipe = (rid: string, opts?: { codeOverride?: string }) => {
@@ -420,7 +434,7 @@ function VoucherForm({
     if (tpl.wasteProductId) setWasteProductId(tpl.wasteProductId);
     if (tpl.costMethod) setCostMethod(tpl.costMethod);
     setAnimalType(tpl.animalType);
-    setOutputs(outputsFromRecipe(tpl, products, inputQtyKg));
+    setOutputs((prev) => outputsFromRecipe(tpl, products, inputQtyKg, prev));
   };
 
   const applyProductionCode = (raw: string) => {
@@ -441,7 +455,15 @@ function VoucherForm({
   const addOutputRow = () => {
     setOutputs((prev) => [
       ...prev,
-      { key: `row-${Date.now()}`, productId: '', outputKg: 0, coefficient: 1, salePrice: 0, manualUnitCost: 0 },
+      {
+        key: `row-${Date.now()}`,
+        productId: '',
+        outputKg: 0,
+        coefficient: 1,
+        salePrice: 0,
+        manualUnitCost: 0,
+        userAdded: true,
+      },
     ]);
   };
 
@@ -450,6 +472,14 @@ function VoucherForm({
       prev.map((r) => {
         if (r.key !== key) return r;
         const next = { ...r, ...patch };
+        // Kullanıcı outputKg, manualUnitCost veya productId'yi elle değiştirdiyse userEdited=true işaretle
+        if (
+          patch.outputKg !== undefined ||
+          patch.manualUnitCost !== undefined ||
+          (patch.productId && patch.productId !== r.productId)
+        ) {
+          next.userEdited = true;
+        }
         if (patch.productId) {
           const prod = products.find((p) => p.id === patch.productId);
           if (prod) {
@@ -689,6 +719,39 @@ function VoucherForm({
         <div className="flex items-center justify-between pt-2">
           <h3 className={cn('text-sm font-bold', darkMode ? 'text-white' : 'text-slate-800')}>
             {tm('butcherOutputs')}
+            {(() => {
+              const tpl = recipes.find((t) => t.id === recipeId);
+              if (!tpl) return null;
+              const ratioSum = tpl.outputs
+                .filter((o) => o.productId && o.standardRatioPercent != null)
+                .reduce((s, o) => s + Number(o.standardRatioPercent || 0), 0);
+              const missingRatio = tpl.outputs.filter(
+                (o) => o.productId && o.standardRatioPercent == null,
+              ).length;
+              if (!ratioSum && !missingRatio) return null;
+              return (
+                <span
+                  className={cn(
+                    'ml-2 text-xs font-normal px-1.5 py-0.5 rounded',
+                    ratioSum > 100
+                      ? 'bg-amber-100 text-amber-700 dark:bg-amber-900/40 dark:text-amber-300'
+                      : ratioSum < 90
+                        ? 'bg-blue-100 text-blue-700 dark:bg-blue-900/40 dark:text-blue-300'
+                        : 'bg-emerald-100 text-emerald-700 dark:bg-emerald-900/40 dark:text-emerald-300',
+                  )}
+                  title={
+                    ratioSum > 100
+                      ? `Oran toplamı %${ratioSum.toLocaleString('tr-TR', { maximumFractionDigits: 1 })} — fire de bu oranda çıkıyor`
+                      : ratioSum < 90
+                        ? `Oran toplamı düşük — girilen kg'nin bir kısmı fire olarak çıkar`
+                        : 'Oranlar ~100% — fire dahil'
+                  }
+                >
+                  Toplam: %{ratioSum.toLocaleString('tr-TR', { maximumFractionDigits: 1 })}
+                  {missingRatio > 0 ? ` · ${missingRatio} satır oransız` : ''}
+                </span>
+              );
+            })()}
           </h3>
           <Button type="button" size="sm" variant="outline" onClick={addOutputRow}>
             <Plus className="w-4 h-4 mr-1" /> {tm('butcherAddLine')}
