@@ -70,13 +70,27 @@ import {
 const EMPTY_FORM: Partial<BeautyCustomer> = {
     name: '',
     phone: '',
+    phone2: '',
+    age: null,
+    file_id: '',
+    occupation: '',
+    gender: null,
+    customer_tier: 'normal',
+    heard_from: '',
     email: '',
     address: '',
     city: '',
     notes: '',
-    customer_tier: 'normal',
-    gender: null,
 };
+
+/** DB'den yaş değerini parse eder; boş/NaN ise null döner. */
+function parseAgeValue(raw: unknown): number | null {
+    if (raw == null || raw === '') return null;
+    const n = Number(raw);
+    if (!Number.isFinite(n)) return null;
+    const clamped = Math.max(0, Math.min(150, Math.round(n)));
+    return clamped;
+}
 
 /** RetailExFlatModal (body portal) içindeki Select dropdown'ı overlay'in altında kalmadan
  *  en yüksek z-index'te gösterir. ServiceManagement.tsx ile aynı kalıp. */
@@ -377,7 +391,14 @@ export function ClientCustomerDetailPage({ customerId, onBack }: ClientCustomerD
     };
 
     const openEdit = (c: BeautyCustomer) => {
-        setEditing({ ...c });
+        setEditing({
+            ...c,
+            age: parseAgeValue(c.age),
+            phone2: c.phone2 ?? '',
+            file_id: c.file_id ?? '',
+            occupation: c.occupation ?? '',
+            heard_from: c.heard_from ?? '',
+        });
         setIsEdit(true);
         setShowModal(true);
     };
@@ -1620,6 +1641,55 @@ export function ClientCustomerDetailPage({ customerId, onBack }: ClientCustomerD
                         </div>
                         <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
                             <div>
+                                <RetailExFlatFieldLabel>{tm('custLabelPhone1')}</RetailExFlatFieldLabel>
+                                <Input
+                                    className="!rounded-2xl !px-4 !py-2.5"
+                                    value={editing.phone ?? ''}
+                                    onChange={e => setEditing(p => ({ ...p, phone: e.target.value }))}
+                                    placeholder={tm('bPlaceholderPhoneExample')}
+                                />
+                            </div>
+                            <div>
+                                <RetailExFlatFieldLabel>{tm('custLabelPhone2')}</RetailExFlatFieldLabel>
+                                <Input
+                                    className="!rounded-2xl !px-4 !py-2.5"
+                                    value={editing.phone2 ?? ''}
+                                    onChange={e => setEditing(p => ({ ...p, phone2: e.target.value }))}
+                                    placeholder={tm('custPhPhone2')}
+                                />
+                            </div>
+                        </div>
+                        <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+                            <div>
+                                <RetailExFlatFieldLabel>{tm('custLabelAge')}</RetailExFlatFieldLabel>
+                                <Input
+                                    className="!rounded-2xl !px-4 !py-2.5"
+                                    type="number"
+                                    min={0}
+                                    max={150}
+                                    value={editing.age == null ? '' : String(editing.age)}
+                                    onChange={e =>
+                                        setEditing(p => ({
+                                            ...p,
+                                            age: e.target.value === '' ? null : Number(e.target.value),
+                                        }))
+                                    }
+                                    placeholder={tm('custPhAge')}
+                                />
+                            </div>
+                            <div>
+                                <RetailExFlatFieldLabel>{tm('custLabelFileId')}</RetailExFlatFieldLabel>
+                                <Input
+                                    className="!rounded-2xl !px-4 !py-2.5"
+                                    value={editing.file_id ?? ''}
+                                    onChange={e => setEditing(p => ({ ...p, file_id: e.target.value }))}
+                                    placeholder={tm('custPhFileId')}
+                                    autoComplete="off"
+                                />
+                            </div>
+                        </div>
+                        <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+                            <div>
                                 <RetailExFlatFieldLabel>{tm('bGender')}</RetailExFlatFieldLabel>
                                 <Select
                                     {...antSelectInFlatModal}
@@ -1664,43 +1734,53 @@ export function ClientCustomerDetailPage({ customerId, onBack }: ClientCustomerD
                                 />
                             </div>
                         </div>
-                        <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
-                            <div>
-                                <RetailExFlatFieldLabel>{tm('bPhone')}</RetailExFlatFieldLabel>
-                                <Input
-                                    className="!rounded-2xl !px-4 !py-2.5"
-                                    value={editing.phone ?? ''}
-                                    onChange={e => setEditing(p => ({ ...p, phone: e.target.value }))}
-                                    placeholder={tm('bPlaceholderPhoneExample')}
-                                />
-                            </div>
-                            <div>
-                                <RetailExFlatFieldLabel>{tm('bCity')}</RetailExFlatFieldLabel>
-                                <Input
-                                    className="!rounded-2xl !px-4 !py-2.5"
-                                    value={editing.city ?? ''}
-                                    onChange={e => setEditing(p => ({ ...p, city: e.target.value }))}
-                                    placeholder={tm('bPlaceholderCity')}
-                                />
-                            </div>
-                        </div>
-                        <div>
-                            <RetailExFlatFieldLabel>{tm('bEmail')}</RetailExFlatFieldLabel>
-                            <Input
-                                className="!rounded-2xl !px-4 !py-2.5"
-                                type="email"
-                                value={editing.email ?? ''}
-                                onChange={e => setEditing(p => ({ ...p, email: e.target.value }))}
-                                placeholder={tm('bPlaceholderEmailExample')}
-                            />
-                        </div>
                         <div>
                             <RetailExFlatFieldLabel>{tm('bAddress')}</RetailExFlatFieldLabel>
-                            <Input
+                            <Input.TextArea
                                 className="!rounded-2xl !px-4 !py-2.5"
                                 value={editing.address ?? ''}
                                 onChange={e => setEditing(p => ({ ...p, address: e.target.value }))}
                                 placeholder={tm('bPlaceholderAddress')}
+                                rows={2}
+                            />
+                        </div>
+                        <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+                            <div>
+                                <RetailExFlatFieldLabel>{tm('custLabelOccupation')}</RetailExFlatFieldLabel>
+                                <Input
+                                    className="!rounded-2xl !px-4 !py-2.5"
+                                    value={editing.occupation ?? ''}
+                                    onChange={e => setEditing(p => ({ ...p, occupation: e.target.value }))}
+                                    placeholder={tm('custPhOccupation')}
+                                />
+                            </div>
+                            <div>
+                                <RetailExFlatFieldLabel>{tm('bEmail')}</RetailExFlatFieldLabel>
+                                <Input
+                                    className="!rounded-2xl !px-4 !py-2.5"
+                                    type="email"
+                                    value={editing.email ?? ''}
+                                    onChange={e => setEditing(p => ({ ...p, email: e.target.value }))}
+                                    placeholder={tm('bPlaceholderEmailExample')}
+                                />
+                            </div>
+                        </div>
+                        <div>
+                            <RetailExFlatFieldLabel>{tm('bCity')}</RetailExFlatFieldLabel>
+                            <Input
+                                className="!rounded-2xl !px-4 !py-2.5"
+                                value={editing.city ?? ''}
+                                onChange={e => setEditing(p => ({ ...p, city: e.target.value }))}
+                                placeholder={tm('bPlaceholderCity')}
+                            />
+                        </div>
+                        <div>
+                            <RetailExFlatFieldLabel>{tm('custLabelHeardFrom')}</RetailExFlatFieldLabel>
+                            <Input
+                                className="!rounded-2xl !px-4 !py-2.5"
+                                value={editing.heard_from ?? ''}
+                                onChange={e => setEditing(p => ({ ...p, heard_from: e.target.value }))}
+                                placeholder={tm('custPhHeardFrom')}
                             />
                         </div>
                         <div>
