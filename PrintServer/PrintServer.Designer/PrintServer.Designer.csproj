@@ -11,9 +11,10 @@
     <AssemblyName>RetailEX.FastReportDesigner</AssemblyName>
     <ApplicationIcon></ApplicationIcon>
     <UserSecretsId>retailex-printserver-designer-1</UserSecretsId>
-    <!-- RID restore için win-x64 bildirimi; publish ve build sırasında
-         Windows runner'da apphost .exe üretimini garantiler. -->
-    <RuntimeIdentifiers>win-x64</RuntimeIdentifiers>
+    <!-- RID YOK (qrprint kalıbı): framework-dependent default.
+         Tek TargetFramework=net8.0-windows + UseWindowsForms=true ile
+         dotnet build her zaman apphost .exe üretir. Self-contained publish
+         yapılmadığı sürece istemcide .NET 8 Desktop Runtime gerekli. -->
   </PropertyGroup>
 
   <ItemGroup>

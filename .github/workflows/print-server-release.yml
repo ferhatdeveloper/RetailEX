@@ -120,7 +120,7 @@ jobs:
             --self-contained false `
             -o installer/payload
 
-      - name: dotnet publish (Designer)
+      - name: dotnet build (Designer)
         shell: pwsh
         working-directory: PrintServer
         run: |
@@ -132,23 +132,19 @@ jobs:
           $libTarget = Join-Path $designerPayload "lib"
           New-Item -ItemType Directory -Force -Path $libTarget | Out-Null
 
-          # Designer icin RID'li restore
-          dotnet restore PrintServer.Designer/PrintServer.Designer.csproj -r win-x64
+          # v0.1.13+ qrprint kalibi: RID YOK, framework-dependent.
+          # Tek TargetFramework=net8.0-windows + UseWindowsForms=true ile
+          # dotnet build her zaman apphost .exe uretir (Windows runner).
+          dotnet restore PrintServer.Designer/PrintServer.Designer.csproj
 
-          # dotnet publish: hem apphost .exe uretir, hem de FastReport DLL'lerini
-          # tools/FastReportDesigner/lib/ kaynagindan lib/ altina kopyalar
-          # (qrprint kalibi). Normal 'dotnet build' CopyToOutputDirectory item'larini
-          # her durumda islemez; publish ile garanti altina aliyoruz.
-          dotnet publish PrintServer.Designer/PrintServer.Designer.csproj `
+          dotnet build PrintServer.Designer/PrintServer.Designer.csproj `
             -c ${{ env.BUILD_CONFIG }} `
             -f net8.0-windows `
-            -r win-x64 `
             -p:UseAppHost=true `
             -p:GenerateApphost=true `
-            --no-restore `
-            -o (Join-Path (Resolve-Path PrintServer.Designer).Path "bin/${{ env.BUILD_CONFIG }}/net8.0-windows/win-x64")
+            --no-restore
 
-          $buildOut = Join-Path (Resolve-Path PrintServer.Designer).Path "bin/${{ env.BUILD_CONFIG }}/net8.0-windows/win-x64"
+          $buildOut = Join-Path (Resolve-Path PrintServer.Designer).Path "bin/${{ env.BUILD_CONFIG }}/net8.0-windows"
           Write-Host "Build output klasoru: $buildOut"
           if (-not (Test-Path $buildOut)) {
             throw "Designer build output bulunamadi: $buildOut"
@@ -158,23 +154,10 @@ jobs:
           Write-Host "--- Build output ---"
           Get-ChildItem $buildOut | Format-Table Name, Length -AutoSize
 
-          Get-ChildItem $buildOut -Filter "*.dll" | ForEach-Object {
+          # v0.1.13+ qrprint kalibi: build output'taki TUM dosyalari (exe + dll + json + pdb)
+          # payload'a kopyala. EXE artik RID'siz dotnet build ile her zaman uretiliyor.
+          Get-ChildItem $buildOut -File | ForEach-Object {
             Copy-Item $_.FullName $designerPayload -Force
-          }
-          Get-ChildItem $buildOut -Filter "*.json" | ForEach-Object {
-            Copy-Item $_.FullName $designerPayload -Force
-          }
-
-          # Windows runner'da .exe uretilmiyorsa, apphost manuel olarak uret:
-          # 'apphost.exe' template'i dotnet SDK icinde var; PublishTools manifest
-          # kullanarak veya basit bir .NET 8 apphost C# ile uretilebilir.
-          # En pratik cozum: 'dotnet exec' ile calisan .cmd shim olustur.
-          $exeInBuild = Join-Path $buildOut "RetailEX.FastReportDesigner.exe"
-          if (Test-Path $exeInBuild) {
-            Copy-Item $exeInBuild $designerPayload -Force
-            Write-Host "Designer EXE build output'tan kopyalandi."
-          } else {
-            Write-Host "Designer EXE uretilmedi; shim .bat ile calistirilacak."
           }
 
           # Designer ornek config
@@ -186,12 +169,17 @@ jobs:
           Write-Host "--- Designer payload icerigi ---"
           Get-ChildItem $designerPayload | Format-Table Name, Length -AutoSize
 
+          # EXE kontrolu (build basariliysa olmali)
+          $exeInPayload = Join-Path $designerPayload "RetailEX.FastReportDesigner.exe"
+          if (-not (Test-Path $exeInPayload)) {
+            throw "Designer EXE payload'da bulunamadi: $exeInPayload"
+          }
+          Write-Host "Designer EXE hazir: $exeInPayload (boyut: $((Get-Item $exeInPayload).Length) bytes)"
+
           # Kullanici lisansli FastReport DLL'leri (sadece repo tools/):
           #   tools/FastReportDesigner/lib/*.dll commit'li ise payload'a kopyala.
           #   yoksa lib bos kalir; setup skipifsourcedoesntexist ile compile eder,
           #   kurulum sonunda kullaniciya msgBox ile uyari gosterir.
-          # (Onceki 'gh release download fastreport-libs' denemesi CI'da
-          #  non-terminating error ile step'i kirar; release kaldirildi.)
           $frCopied = $false
           $userLib = Join-Path (Resolve-Path ..).Path "tools/FastReportDesigner/lib"
           if (Test-Path $userLib) {
@@ -206,36 +194,6 @@ jobs:
           if (-not $frCopied) {
             Write-Host "UYARI: FastReport DLL'leri bulunamadi. Setup yine de derlenecek (skipifsourcedoesntexist); kurulum sonunda kullaniciya uyari gosterilecek."
           }
-
-          # .cmd shim: build ciktisinda .exe yoksa da calissin.
-          # Eger .exe varsa onu, yoksa 'dotnet <dll>' cagirir.
-          # YAML heredoc '@' sorununu engellemek icin dizi kullan,
-          # [IO.File]::WriteAllText ile PS7+ uyumlu ASCII yaz.
-          $shimPath = Join-Path $designerPayload "RetailEX.FastReportDesigner.cmd"
-          $shimLines = @(
-            ('{0}echo off' -f [char]64),
-            'REM RetailEX FastReport Designer launcher',
-            'REM .NET 8 Desktop Runtime ile calisir; exe yoksa dotnet <dll> kullanir.',
-            'setlocal',
-            'cd /d "%~dp0"',
-            'if exist "RetailEX.FastReportDesigner.exe" (',
-            '  start "" "RetailEX.FastReportDesigner.exe" %*',
-            ') else (',
-            '  where dotnet >nul 2>nul',
-            '  if errorlevel 1 (',
-            '    echo .NET 8 Desktop Runtime bulunamadi. Lutfen https://dot.net adresinden kurun.',
-            '    pause',
-            '    exit /b 1',
-            '  )',
-            '  start "" dotnet "RetailEX.FastReportDesigner.dll" %*',
-            ')'
-          )
-          [System.IO.File]::WriteAllLines($shimPath, $shimLines, [System.Text.Encoding]::ASCII)
-          Write-Host "Shim olusturuldu: $shimPath (boyut: $((Get-Item $shimPath).Length) bytes)"
-          Get-ChildItem $designerPayload | Format-Table Name, Length -AutoSize
-          # Format-Table veya baska bir komut non-zero exit code dondurebilir;
-          # step basari ile tamamlansin. (Release yoksa setup yine skipifsourcedoesntexist
-          # ile compile eder; kullanici msgBox ile bilgilendirilir.)
           exit 0
 
       - name: Inno Setup kur
