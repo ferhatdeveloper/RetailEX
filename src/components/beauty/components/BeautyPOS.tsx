@@ -15,6 +15,7 @@ import { useResponsive } from '../../../hooks/useResponsive';
 import { logger } from '../../../services/loggingService';
 import { formatMoneyAmount } from '../../../utils/formatMoney';
 import { splitProportionalLineDiscount } from '../../../utils/beautySaleLineDiscount';
+import { phoneMatchesQuery } from '../../../shared/utils/validators';
 import '../ClinicStyles.css';
 
 const BEAUTY_CATEGORY_RAIL_KEY = 'retailex_beauty_pos_category_rail';
@@ -147,10 +148,18 @@ export function BeautyPOS() {
 
     const filteredCusts = useMemo(() => {
         if (!custSearch) return [];
-        return customers.filter(c =>
-            c.name.toLowerCase().includes(custSearch.toLowerCase()) ||
-            (c.phone ?? '').includes(custSearch)
-        ).slice(0, 6);
+        const q = custSearch.toLowerCase();
+        return customers.filter(c => {
+            const textHit =
+                c.name.toLowerCase().includes(q) ||
+                (c.email ?? '').toLowerCase().includes(q) ||
+                (c.code ?? '').toLowerCase().includes(q);
+            if (textHit) return true;
+            return (
+                phoneMatchesQuery(c.phone, custSearch) ||
+                phoneMatchesQuery(c.phone2, custSearch)
+            );
+        }).slice(0, 6);
     }, [customers, custSearch]);
 
     // ── Cart actions ───────────────────────────────────────────────────────

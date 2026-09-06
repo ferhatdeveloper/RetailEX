@@ -18,6 +18,7 @@ import {
     RETAILEX_TEXT_PRIMARY,
 } from '../../../theme/retailexAntdTheme';
 import type { ColumnsType } from 'antd/es/table';
+import { phoneMatchesQuery } from '../../../shared/utils/validators';
 import {
     PlusOutlined,
     EditOutlined,
@@ -125,12 +126,19 @@ export function ClientCRM({ onOpenCustomer }: ClientCRMProps) {
     const filtered = useMemo(() => {
         const q = search.trim().toLowerCase();
         if (!q) return mergedCustomers;
-        return mergedCustomers.filter(c =>
-            c.name?.toLowerCase().includes(q) ||
-            (c.phone ?? '').includes(search.trim()) ||
-            c.email?.toLowerCase().includes(q) ||
-            (c.code ?? '').toLowerCase().includes(q)
-        );
+        const trimmed = search.trim();
+        return mergedCustomers.filter(c => {
+            const textHit =
+                c.name?.toLowerCase().includes(q) ||
+                c.email?.toLowerCase().includes(q) ||
+                (c.code ?? '').toLowerCase().includes(q);
+            if (textHit) return true;
+            // Telefon → rakam dışı karakterleri yoksayarak esnek eşleşme
+            return (
+                phoneMatchesQuery(c.phone, trimmed) ||
+                phoneMatchesQuery(c.phone2, trimmed)
+            );
+        });
     }, [mergedCustomers, search]);
 
     const openCreate = () => {

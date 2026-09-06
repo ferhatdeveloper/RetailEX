@@ -2,6 +2,7 @@ import { useMemo, useState } from 'react';
 import { X, User, Search, Truck, Plus, Loader2 } from 'lucide-react';
 import { useLanguage } from '../../../contexts/LanguageContext';
 import { PercentBodyModal, PercentBodyModalScrollBody } from '../../shared/PercentBodyModal';
+import { phoneMatchesQuery } from '../../../shared/utils/validators';
 
 export type InvoiceCariItem = {
   id: string;
@@ -39,12 +40,16 @@ export function InvoiceCariSelectModal({
   const filtered = useMemo(() => {
     const term = searchTerm.trim().toLocaleLowerCase('tr-TR');
     if (!term) return items;
+    const raw = searchTerm.trim();
     return items.filter((item) => {
       const code = (item.code || '').toLocaleLowerCase('tr-TR');
       const name = (item.name || '').toLocaleLowerCase('tr-TR');
       const phone = (item.phone || '').toLocaleLowerCase('tr-TR');
       const email = (item.email || '').toLocaleLowerCase('tr-TR');
-      return code.includes(term) || name.includes(term) || phone.includes(term) || email.includes(term);
+      const textHit = code.includes(term) || name.includes(term) || phone.includes(term) || email.includes(term);
+      if (textHit) return true;
+      // Telefon esnek arama: kullanıcı "555 123", DB'de "+90 555 123 4567" olabilir
+      return phoneMatchesQuery(item.phone, raw);
     });
   }, [items, searchTerm]);
 

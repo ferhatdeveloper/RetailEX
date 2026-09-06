@@ -1460,6 +1460,19 @@ export const beautyService = {
                 return [];
             }
         }
+        // Telefon sorgusu: kullanıcı "555 123", "+90 (555)", "0555123" gibi yazabilir.
+// Önce klasik ILIKE denenir; yetmezse normalize edilmiş (yalnız rakam) telefon
+// üzerinden substring karşılaştırma yapılır (≥3 hane koşulu ile).
+        const phoneDigits = term.replace(/\D/g, '');
+        const phoneClause =
+            phoneDigits.length >= 3
+                ? `OR regexp_replace(COALESCE(phone, ''), '\\D', '', 'g') LIKE $3
+                    OR regexp_replace(COALESCE(phone2, ''), '\\D', '', 'g') LIKE $3`
+                : '';
+        const params: unknown[] = [`%${term}%`, fn];
+        if (phoneDigits.length >= 3) {
+            params.push(`%${phoneDigits}%`);
+        }
         const { rows } = await postgres.query(
             `SELECT id, code, name, phone, phone2, age, file_id, occupation, gender, customer_tier, heard_from, email, address, city, points, total_spent, balance, is_active, notes
              FROM ${t}
@@ -1469,9 +1482,10 @@ export const beautyService = {
                  OR email ILIKE $1 OR code ILIKE $1
                  OR COALESCE(notes, '') ILIKE $1 OR COALESCE(occupation, '') ILIKE $1
                  OR COALESCE(file_id, '') ILIKE $1
+                 ${phoneClause}
                )
              ORDER BY name LIMIT 50`,
-            [`%${term}%`, fn]
+            params
         );
         return rows;
     },

@@ -1,6 +1,7 @@
 import { Users, Search, Phone, Mail, MapPin, Plus, CreditCard, Wallet } from 'lucide-react';
 import { useState, useEffect, useMemo } from 'react';
 import type { Customer } from '../../core/types';
+import { normalizePhoneDigits, phoneQueryDigits } from '../../shared/utils/validators';
 import { useLanguage } from '../../contexts/LanguageContext';
 import { useTheme } from '../../contexts/ThemeContext';
 import { supplierAPI } from '../../services/api/suppliers';
@@ -79,29 +80,32 @@ export function POSCustomerModal({
     return merged;
   }, [customers, accountCards]);
 
-  const digitsOnly = (s: string) => s.replace(/\D/g, '');
-
   const filteredCustomers = useMemo(() => {
     const q = searchTerm.trim();
+    if (!q) return mergedCustomers;
     const qLower = q.toLocaleLowerCase('tr-TR');
-    const qDigits = digitsOnly(q);
+    const qDigits = phoneQueryDigits(q);
+    // 7+ haneli sorguda telefonu rakam-dışı karakter yoksayarak esnek karşılaştır.
+    // 3-6 hane arası sorgu için de telefon içinde substring araması yapılır;
+    // <3 hane sorguda telefon araması tetiklenmez (örn. "ab" telefonla eşleşmesin).
+    const phoneMinDigits = 3;
     return mergedCustomers.filter((customer) => {
       const nameHit = customer.name.toLocaleLowerCase('tr-TR').includes(qLower);
       const mailHit = customer.email?.toLocaleLowerCase('tr-TR').includes(qLower);
+      if (qDigits.length >= phoneMinDigits) {
+        const d1 = normalizePhoneDigits(customer.phone);
+        const d2 = normalizePhoneDigits(customer.phone2);
+        const digitHit =
+          (d1 && d1.includes(qDigits)) || (d2 && d2.includes(qDigits));
+        if (digitHit) return true;
+      }
+      // Ham metin fallback (örn. "532" araması "532 123" formatlı telefonu bulabilsin)
       const p1 = customer.phone || '';
       const p2 = customer.phone2 || '';
       const subHit =
-        p1.toLowerCase().includes(q.toLowerCase()) ||
-        p2.toLowerCase().includes(q.toLowerCase());
-      if (!qDigits || qDigits.length < 7) {
-        return nameHit || mailHit || subHit;
-      }
-      const d1 = digitsOnly(p1);
-      const d2 = digitsOnly(p2);
-      const digitHit =
-        (d1 && (d1.includes(qDigits) || qDigits.includes(d1) || d1.slice(-10) === qDigits.slice(-10))) ||
-        (d2 && (d2.includes(qDigits) || qDigits.includes(d2) || d2.slice(-10) === qDigits.slice(-10)));
-      return nameHit || mailHit || subHit || digitHit;
+        p1.toLowerCase().includes(qLower) ||
+        p2.toLowerCase().includes(qLower);
+      return nameHit || mailHit || subHit;
     });
   }, [mergedCustomers, searchTerm]);
 

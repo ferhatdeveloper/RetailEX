@@ -12,6 +12,7 @@ import { customerAPI } from '../../../services/api/customers';
 import { toast } from 'sonner';
 import { useLanguage } from '../../../contexts/LanguageContext';
 import { DEMO_CUSTOMER_CODES } from '../../../utils/demoSeedCodes';
+import { phoneMatchesQuery } from '../../../shared/utils/validators';
 import { SupplierModule } from './SupplierModule';
 
 interface CustomerManagementModuleProps {
@@ -156,20 +157,29 @@ export function CustomerManagementModule({ customers, setCustomers, sales }: Cus
     [customers]
   );
 
-  const filteredCustomers = customers.filter(c =>
-    (c.code && c.code.toLowerCase().includes(q)) ||
-    c.name.toLowerCase().includes(q) ||
-    c.phone.toLowerCase().includes(q) ||
-    (c.phone2 && c.phone2.toLowerCase().includes(q)) ||
-    (c.email && c.email.toLowerCase().includes(q)) ||
-    (c.address && c.address.toLowerCase().includes(q)) ||
-    (c.notes && c.notes.toLowerCase().includes(q)) ||
-    (c.occupation && c.occupation.toLowerCase().includes(q)) ||
-    (c.gender && c.gender.toLowerCase().includes(q)) ||
-    (c.customer_tier && c.customer_tier.toLowerCase().includes(q)) ||
-    (c.heard_from && c.heard_from.toLowerCase().includes(q)) ||
-    (c.age != null && String(c.age).includes(searchQuery.trim()))
-  );
+  const trimmedQuery = searchQuery.trim();
+  const filteredCustomers = customers.filter(c => {
+    const textHit =
+      (c.code && c.code.toLowerCase().includes(q)) ||
+      c.name.toLowerCase().includes(q) ||
+      // Telefon → esnek eşleşme (aşağıda ayrı kontrol ediliyor) —
+      // burada sadece ham substring'i tutmaya gerek yok; alttaki
+      // phoneMatchesQuery çok daha sağlam.
+      (c.email && c.email.toLowerCase().includes(q)) ||
+      (c.address && c.address.toLowerCase().includes(q)) ||
+      (c.notes && c.notes.toLowerCase().includes(q)) ||
+      (c.occupation && c.occupation.toLowerCase().includes(q)) ||
+      (c.gender && c.gender.toLowerCase().includes(q)) ||
+      (c.customer_tier && c.customer_tier.toLowerCase().includes(q)) ||
+      (c.heard_from && c.heard_from.toLowerCase().includes(q)) ||
+      (c.age != null && String(c.age).includes(trimmedQuery));
+    if (textHit) return true;
+    // Telefon esnek arama (boşluk, +90, parantez, tire yok sayılır)
+    return (
+      phoneMatchesQuery(c.phone, trimmedQuery) ||
+      phoneMatchesQuery(c.phone2, trimmedQuery)
+    );
+  });
 
   // Calculate customer statistics
   const getCustomerStats = (customerId: string) => {

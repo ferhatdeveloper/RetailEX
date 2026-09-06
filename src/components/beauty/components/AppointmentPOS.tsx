@@ -33,6 +33,7 @@ import type { Product } from '../../../core/types';
 import type { Sale, SaleItem } from '../../../core/types/models';
 import { useFirmaDonem } from '../../../contexts/FirmaDonemContext';
 import { salesAPI } from '../../../services/api/sales';
+import { phoneMatchesQuery } from '../../../shared/utils/validators';
 import {
     buildRestaurantAdisyonHtml,
     printRestaurantHtmlNoPreview,
@@ -762,19 +763,27 @@ export function AppointmentPOS({
     }, [prefillCustomerId, existingAppointment?.id, mergedCustomers, customers]);
 
     const filteredCusts = useMemo(() => {
-        const q = custModalQ.toLowerCase();
+        const q = custModalQ.toLowerCase().trim();
         if (!q) return mergedCustomers;
-        return mergedCustomers.filter(c =>
-            c.name.toLowerCase().includes(q) ||
-            (c.phone ?? '').includes(custModalQ) ||
-            (c.phone2 ?? '').includes(custModalQ) ||
-            (c.email ?? '').toLowerCase().includes(q) ||
-            (c.code ?? '').toLowerCase().includes(q) ||
-            (c.address ?? '').toLowerCase().includes(q) ||
-            (c.notes ?? '').toLowerCase().includes(q) ||
-            (c.occupation ?? '').toLowerCase().includes(q) ||
-            (c.file_id ?? '').toLowerCase().includes(q)
-        );
+        return mergedCustomers.filter(c => {
+            // Ad, e-posta, kod, adres, not, meslek, dosya no → substring (case-insensitive)
+            const textHit =
+                c.name.toLowerCase().includes(q) ||
+                (c.email ?? '').toLowerCase().includes(q) ||
+                (c.code ?? '').toLowerCase().includes(q) ||
+                (c.address ?? '').toLowerCase().includes(q) ||
+                (c.notes ?? '').toLowerCase().includes(q) ||
+                (c.occupation ?? '').toLowerCase().includes(q) ||
+                (c.file_id ?? '').toLowerCase().includes(q);
+            if (textHit) return true;
+            // Telefon → rakam dışı karakterleri göz ardı ederek esnek eşleşme.
+            // Kullanıcı "0555", "555 123", "+90 555" gibi yazabilir; DB'de
+            // "+90 555 123 4567" veya "05551234567" gibi formatlar olabilir.
+            return (
+                phoneMatchesQuery(c.phone, custModalQ) ||
+                phoneMatchesQuery(c.phone2, custModalQ)
+            );
+        });
     }, [mergedCustomers, custModalQ]);
 
     useEffect(() => {

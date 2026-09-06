@@ -4,6 +4,7 @@ import { PercentBodyModal, PercentBodyModalScrollBody } from '../../shared/Perce
 import { useBeautyStore } from '../store/useBeautyStore';
 import { useLanguage } from '../../../contexts/LanguageContext';
 import type { BeautyCustomer } from '../../../types/beauty';
+import { phoneMatchesQuery } from '../../../shared/utils/validators';
 
 export type AppointmentChangeCustomerModalProps = {
     open: boolean;
@@ -21,11 +22,15 @@ function customerMatches(c: BeautyCustomer, term: string): boolean {
     const fields = [
         c.name,
         c.code,
-        c.phone,
-        c.phone2,
         c.email,
     ];
-    return fields.some((f) => (f ?? '').toString().toLocaleLowerCase('tr-TR').includes(lower));
+    const textHit = fields.some((f) =>
+        (f ?? '').toString().toLocaleLowerCase('tr-TR').includes(lower),
+    );
+    if (textHit) return true;
+    // Telefon: rakam dışı karakterleri yoksayarak esnek eşleşme
+    // (örn. DB'de "+90 555 123 4567", kullanıcı "555123" yazabilir).
+    return phoneMatchesQuery(c.phone, t) || phoneMatchesQuery(c.phone2, t);
 }
 
 export function AppointmentChangeCustomerModal({
