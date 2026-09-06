@@ -38,6 +38,12 @@ export type CompleteButcherInput = {
   costMethod: ButcherCostMethod;
   outputs: ButcherOutputDraft[];
   note?: string;
+  /**
+   * Tedarikçi (opsiyonel) — tamamlama sırasında fişe bağlanır;
+   * sonradan alış faturası oluşturulurken ön-doldurma için kullanılır.
+   */
+  supplierId?: string | null;
+  supplierName?: string | null;
   /** draft | open kaydet; completed = stok + kapat */
   status?: 'draft' | 'open' | 'completed';
   existingOrderId?: string;
@@ -452,6 +458,8 @@ export class ButcherProductionService {
           costPerKgSalable: preview.costPerKgSalable,
           status,
           note: input.note,
+          supplierId: input.supplierId ?? null,
+          supplierName: input.supplierName ?? null,
           outputs,
         });
       } catch (orderErr) {

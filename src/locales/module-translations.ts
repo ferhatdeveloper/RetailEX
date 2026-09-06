@@ -255,6 +255,20 @@ export const moduleTranslations: Record<string, Record<Language, string>> = {
     ar: 'تخطي الآن',
     ku: 'ئێستا تێپەڕە',
   },
+  butcherSupplier: { tr: 'Tedarikçi (opsiyonel)', en: 'Supplier (optional)', ar: 'المورد (اختياري)', ku: 'دابینکەر (هەڵبژاردنی)' },
+  butcherSupplierOptional: {
+    tr: 'Tedarikçi seçin (opsiyonel — alış faturasını hızlandırır)',
+    en: 'Select supplier (optional — speeds up purchase invoice)',
+    ar: 'اختر المورد (اختياري — يسرّع فاتورة الشراء)',
+    ku: 'دابینکەر هەڵبژێرە (هەڵبژاردنی — وەسڵی کڕین خێرا دەکات)',
+  },
+  butcherSupplierClear: { tr: 'Tedarikçi seçimini temizle', en: 'Clear supplier selection', ar: 'مسح اختيار المورد', ku: 'هەڵبژاردنی دابینکەر پاک بکەوە' },
+  butcherSupplierPrefilled: {
+    tr: 'Tedarikçi seçildi — alış faturası hızlıca oluşturulacak',
+    en: 'Supplier selected — purchase invoice will be created quickly',
+    ar: 'تم اختيار المورد — ستُنشأ فاتورة الشراء بسرعة',
+    ku: 'دابینکەر هەڵبژێردرا — وەسڵی کڕین بە خێرایی دروست دەکرێت',
+  },
   butcherPurchaseSkipHint: {
     tr: 'Üretim kaydı tamamlanmış kalır; alış listeden sonra da oluşturulabilir.',
     en: 'Production stays completed; you can create the purchase later from the list.',

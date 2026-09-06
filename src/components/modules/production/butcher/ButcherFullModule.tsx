@@ -330,6 +330,12 @@ function VoucherForm({
   const [note, setNote] = useState('');
   const [outputs, setOutputs] = useState<OutputRow[]>([]);
   const [submitting, setSubmitting] = useState(false);
+  // Tedarikçi (opsiyonel) — alış faturasını hızlıca oluşturmak için wizard'da seçilebilir
+  const [supplierId, setSupplierId] = useState<string>('');
+  const [supplierName, setSupplierName] = useState<string>('');
+  const [suppliers, setSuppliers] = useState<InvoiceCariItem[]>([]);
+  const [showSupplierPicker, setShowSupplierPicker] = useState(false);
+  const [supplierSearch, setSupplierSearch] = useState('');
   const [purchasePromptOrder, setPurchasePromptOrder] = useState<ButcherOrder | null>(null);
   const [completeSummary, setCompleteSummary] = useState<{
     orderNo?: string;
@@ -344,6 +350,29 @@ function VoucherForm({
   useEffect(() => {
     setCostMethod(settings.defaultCostMethod);
   }, [settings.defaultCostMethod]);
+
+  /** Tedarikçi listesi (kasap/alış faturası için ön-doldurma) */
+  useEffect(() => {
+    let alive = true;
+    (async () => {
+      try {
+        const list = await supplierAPI.getAll();
+        if (!alive) return;
+        setSuppliers(
+          (list || []).map((s) => ({
+            id: s.id,
+            code: s.code,
+            name: s.name,
+          })),
+        );
+      } catch (e) {
+        console.warn('[VoucherForm] suppliers load:', e);
+      }
+    })();
+    return () => {
+      alive = false;
+    };
+  }, []);
 
   const inputProducts = useMemo(
     () => filterProductsByMaterial(products, inputMaterialFilter),
@@ -454,6 +483,8 @@ function VoucherForm({
         outputs,
         note,
         warehouseId: settings.defaultWarehouseId,
+        supplierId: supplierId || null,
+        supplierName: supplierName || null,
         allowInsufficientStock: asComplete && stockShortfall ? true : undefined,
       };
       const result = asComplete
@@ -493,6 +524,8 @@ function VoucherForm({
       setOutputs((prev) => prev.map((o) => ({ ...o, outputKg: 0, manualUnitCost: 0 })));
       setLotNo('');
       setNote('');
+      // Tedarikçi kalsın — birden fazla alış ardışık girilebilir (aynı tedarikçiden)
+      // İsterse kullanıcı elle temizler.
       onCompleted();
     } finally {
       setSubmitting(false);
@@ -772,6 +805,52 @@ function VoucherForm({
           <Input value={note} onChange={(e) => setNote(e.target.value)} />
         </Field>
 
+        {/* Tedarikçi (opsiyonel) — alış faturasını hızlıca oluşturmak için wizard'da seçilebilir */}
+        <Field label={tm('butcherSupplier')} className={labelCls}>
+          <div className="flex gap-2">
+            <button
+              type="button"
+              onClick={() => setShowSupplierPicker(true)}
+              className={cn(
+                'flex-1 flex items-center justify-between gap-2 px-4 py-2.5 rounded-xl border text-left text-sm font-medium transition-colors',
+                darkMode
+                  ? 'bg-gray-900 border-gray-700 text-gray-100 hover:border-amber-500'
+                  : 'bg-white border-slate-200 text-slate-800 hover:border-amber-400',
+                supplierId && (darkMode ? 'border-amber-500' : 'border-amber-400'),
+              )}
+            >
+              <span className="flex items-center gap-2 min-w-0">
+                <Truck className="w-4 h-4 text-amber-500 shrink-0" />
+                <span className="truncate">
+                  {supplierId
+                    ? `${supplierName}${(() => {
+                        const found = suppliers.find((s) => s.id === supplierId);
+                        return found?.code ? ` (${found.code})` : '';
+                      })()}`
+                    : tm('butcherSupplierOptional')}
+                </span>
+              </span>
+              <span className={cn('text-xs', darkMode ? 'text-gray-500' : 'text-slate-400')}>
+                {supplierId ? tm('change') : tm('select')}
+              </span>
+            </button>
+            {supplierId && (
+              <Button
+                type="button"
+                variant="ghost"
+                size="sm"
+                onClick={() => {
+                  setSupplierId('');
+                  setSupplierName('');
+                }}
+                title={tm('butcherSupplierClear')}
+              >
+                ✕
+              </Button>
+            )}
+          </div>
+        </Field>
+
         {stockShortfall && (
           <div
             className={cn(
@@ -959,6 +1038,26 @@ function VoucherForm({
             setPurchasePromptOrder(null);
             onCompleted();
           }}
+        />
+      )}
+
+      {/* Tedarikçi seçim modalı (wizard'dan opsiyonel tetiklenir) */}
+      {showSupplierPicker && (
+        <InvoiceCariSelectModal
+          mode="supplier"
+          items={suppliers}
+          selectedId={supplierId || undefined}
+          onSelect={(item) => {
+            if (item?.id) {
+              setSupplierId(item.id);
+              setSupplierName(item.name || '');
+            } else {
+              setSupplierId('');
+              setSupplierName('');
+            }
+            setShowSupplierPicker(false);
+          }}
+          onClose={() => setShowSupplierPicker(false)}
         />
       )}
     </div>

@@ -520,6 +520,9 @@ export const butcherProductionAPI = {
     costPerKgSalable: number;
     status: ButcherOrder['status'];
     note?: string;
+    /** Tedarikçi (opsiyonel) — alış faturası bağlantısını hızlandırmak için wizard'da seçilebilir */
+    supplierId?: string | null;
+    supplierName?: string | null;
     outputs: ButcherOrderOutput[];
     orderNo?: string;
   }): Promise<string> {
@@ -536,9 +539,10 @@ export const butcherProductionAPI = {
           input_total_cost=$6, warehouse_id=$7, waste_product_id=$8, lot_no=$9, cost_method=$10,
           output_qty_kg=$11, waste_qty_kg=$12, waste_percent=$13, waste_cost_allocated=$14,
           cost_per_kg_salable=$15, status=$16, note=$17,
+          supplier_id=$18, supplier_name=$19,
           completed_at = CASE WHEN $16 = 'completed' THEN COALESCE(completed_at, CURRENT_TIMESTAMP) ELSE completed_at END,
           updated_at = CURRENT_TIMESTAMP
-         WHERE id = $18`,
+         WHERE id = $20`,
         [
           order.recipeId ?? null,
           order.animalType,
@@ -557,6 +561,8 @@ export const butcherProductionAPI = {
           order.costPerKgSalable,
           order.status,
           order.note ?? null,
+          order.supplierId ?? null,
+          order.supplierName ?? null,
           orderId,
         ],
       );
@@ -567,9 +573,10 @@ export const butcherProductionAPI = {
           firm_nr, order_no, recipe_id, animal_type, input_product_id, input_qty_kg, input_unit_cost,
           input_total_cost, warehouse_id, waste_product_id, lot_no, cost_method, output_qty_kg,
           waste_qty_kg, waste_percent, waste_cost_allocated, cost_per_kg_salable, status, note,
+          supplier_id, supplier_name,
           completed_at
-        ) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,
-          CASE WHEN $18 = 'completed' THEN CURRENT_TIMESTAMP ELSE NULL END
+        ) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,$21,
+          CASE WHEN $17 = 'completed' THEN CURRENT_TIMESTAMP ELSE NULL END
         ) RETURNING id`,
         [
           firm,
@@ -591,6 +598,8 @@ export const butcherProductionAPI = {
           order.costPerKgSalable,
           order.status,
           order.note ?? null,
+          order.supplierId ?? null,
+          order.supplierName ?? null,
         ],
       );
       orderId = rows[0].id;
