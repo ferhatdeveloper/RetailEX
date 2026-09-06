@@ -72,18 +72,19 @@ Source: "payload\designer\RetailEX.PrintServer.Core.dll"; DestDir: "{app}\Design
 Source: "payload\designer\Newtonsoft.Json.dll"; DestDir: "{app}\Designer"; Flags: ignoreversion; Tasks: installdesigner
 Source: "payload\designer\Microsoft.Extensions.*.dll"; DestDir: "{app}\Designer"; Flags: ignoreversion recursesubdirs createallsubdirs; Tasks: installdesigner
 Source: "payload\designer\designer.config.example.json"; DestDir: "{app}\Designer"; Flags: ignoreversion; Tasks: installdesigner
+Source: "payload\designer\Assets\app.ico"; DestDir: "{app}\Designer\Assets"; Flags: ignoreversion skipifsourcedoesntexist; Tasks: installdesigner
 Source: "payload\designer\lib\FastReport.dll"; DestDir: "{app}\Designer\lib"; Flags: ignoreversion skipifsourcedoesntexist; Tasks: installdesigner
 Source: "payload\designer\lib\FastReport.Bars.dll"; DestDir: "{app}\Designer\lib"; Flags: ignoreversion skipifsourcedoesntexist; Tasks: installdesigner
 Source: "payload\designer\lib\FastReport.Editor.dll"; DestDir: "{app}\Designer\lib"; Flags: ignoreversion skipifsourcedoesntexist; Tasks: installdesigner
 
 [Icons]
 Name: "{group}\{#MyAppName}"; Filename: "{app}\{#MyAppExeName}"
-Name: "{group}\FastReport Tasarimci"; Filename: "{app}\Designer\RetailEX.FastReportDesigner.exe"; Tasks: installdesigner; Check: FileExists(ExpandConstant('{app}\Designer\RetailEX.FastReportDesigner.exe'))
+Name: "{group}\FastReport Tasarimci"; Filename: "{app}\Designer\RetailEX.FastReportDesigner.exe"; Tasks: installdesigner; IconFilename: "{app}\Designer\Assets\app.ico"; Check: FileExists(ExpandConstant('{app}\Designer\RetailEX.FastReportDesigner.exe'))
 Name: "{group}\Yazici Servisi Kur"; Filename: "powershell.exe"; Parameters: "-ExecutionPolicy Bypass -File ""{app}\install-service.ps1"""; Comment: "Yonetici olarak calistirin"
 Name: "{group}\Yapilandirma"; Filename: "notepad.exe"; Parameters: "{commonappdata}\RetailEX\print-server.json"
 Name: "{group}\RetailEX Kaldir"; Filename: "{uninstallexe}"
 Name: "{autodesktop}\{#MyAppName}"; Filename: "{app}\{#MyAppExeName}"; Tasks: desktopicon
-Name: "{autodesktop}\FastReport Tasarimci"; Filename: "{app}\Designer\RetailEX.FastReportDesigner.exe"; Tasks: installdesigner; Check: FileExists(ExpandConstant('{app}\Designer\RetailEX.FastReportDesigner.exe'))
+Name: "{autodesktop}\FastReport Tasarimci"; Filename: "{app}\Designer\RetailEX.FastReportDesigner.exe"; Tasks: installdesigner; IconFilename: "{app}\Designer\Assets\app.ico"; Check: FileExists(ExpandConstant('{app}\Designer\RetailEX.FastReportDesigner.exe'))
 
 [Run]
 Filename: "powershell.exe"; Parameters: "-ExecutionPolicy Bypass -File ""{app}\install-service.ps1"""; Flags: runhidden waituntilterminated skipifdoesntexist; Tasks: installservice; StatusMsg: "Yazici servisi kuruluyor..."

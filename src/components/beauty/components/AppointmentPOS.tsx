@@ -4188,6 +4188,7 @@ export function AppointmentPOS({
                     showAutoPrintOption={false}
                     defaultShowReceiptPreview={false}
                     onPrintDraftReceipt={handlePrintDraftFromPaymentModal}
+                    onCloseForSilentPrint={() => setShowPay(false)}
                     onClose={() => setShowPay(false)}
                     onComplete={handlePayComplete}
                 />

@@ -3002,6 +3002,13 @@ export const RestPOS: React.FC<RestPOSProps> = ({
                     showAutoPrintOption={false}
                     defaultShowReceiptPreview={false}
                     onPrintDraftReceipt={handlePrintDraftFromPaymentModal}
+                    onCloseForSilentPrint={() => {
+                        // Windows yazıcı servisi açıkken "Yazdır" butonuna
+                        // basıldığında ödeme modal'ını kapat — kullanıcı
+                        // önizleme görmesin, doğrudan yazıcıya gitsin.
+                        void persistOrderDiscountToDb(orderDiscount);
+                        setShowPaymentModal(false);
+                    }}
                     onClose={() => {
                         void persistOrderDiscountToDb(orderDiscount);
                         setShowPaymentModal(false);

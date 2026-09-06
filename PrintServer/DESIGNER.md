@@ -9,6 +9,8 @@ kullanılır.
 
 ## Hızlı Bakış
 
+> **İkon:** RetailEX Designer uygulama ikonu `Assets/app.ico` (gradient mavi + beyaz "RX" + yazıcı bandı). Hem Windows Forms başlık çubuğu hem de Setup kısayollarında görünür. `PrintServer.Designer/Assets/GenerateIcon.csx` (Python + PIL) ile yeniden üretilebilir.
+
 ```
 ┌──────────────────┬──────────────────────────────────────────┐
 │  TenantPanel     │  DataBindingPanel                        │

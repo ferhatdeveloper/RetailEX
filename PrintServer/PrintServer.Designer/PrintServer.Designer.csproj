@@ -9,7 +9,7 @@
     <Nullable>enable</Nullable>
     <RootNamespace>RetailEX.PrintServer.Designer</RootNamespace>
     <AssemblyName>RetailEX.FastReportDesigner</AssemblyName>
-    <ApplicationIcon></ApplicationIcon>
+    <ApplicationIcon>Assets\app.ico</ApplicationIcon>
     <UserSecretsId>retailex-printserver-designer-1</UserSecretsId>
     <!-- RID YOK (qrprint kalıbı): framework-dependent default.
          Tek TargetFramework=net8.0-windows + UseWindowsForms=true ile
@@ -31,6 +31,7 @@
     <!-- Designer kendi lib/ klasoru (lisansli DLL'ler buraya kopyalanir) -->
     <None Update="lib\*.dll" CopyToOutputDirectory="PreserveNewest" Visible="false" />
     <None Include="designer.config.example.json" CopyToOutputDirectory="PreserveNewest" />
+    <None Include="Assets\app.ico" Pack="false" CopyToOutputDirectory="PreserveNewest" Link="Assets\app.ico" />
     <!-- qrprint kalibi: repo kokundeki tools/FastReportDesigner/lib/ dizinindeki
          FastReport*.dll dosyalarini otomatik olarak build output'a linkle. Boylece
          gelistirici lisansli DLL'leri tek bir yere koyar, hem lokal build hem

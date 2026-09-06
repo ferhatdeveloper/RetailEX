@@ -166,6 +166,22 @@ jobs:
                       (Join-Path $designerPayload "designer.config.example.json") -Force
           }
 
+          # Designer ikonu (app.ico): build output'taki Assets/ klasorunden tasinabilir,
+          # ya da kaynak dizinden acikca kopyalanir (bu daha saglidir).
+          $assetsTarget = Join-Path $designerPayload "Assets"
+          New-Item -ItemType Directory -Force -Path $assetsTarget | Out-Null
+          $iconInBuild = Join-Path $buildOut "Assets/app.ico"
+          $iconInSource = Join-Path (Resolve-Path PrintServer.Designer).Path "Assets/app.ico"
+          if (Test-Path $iconInBuild) {
+            Copy-Item $iconInBuild $assetsTarget -Force
+            Write-Host "Designer ikonu build output'tan kopyalandi: $iconInBuild"
+          } elseif (Test-Path $iconInSource) {
+            Copy-Item $iconInSource $assetsTarget -Force
+            Write-Host "Designer ikonu kaynak dizinden kopyalandi: $iconInSource"
+          } else {
+            Write-Host "UYARI: Designer app.ico bulunamadi. Designer kisayolunda fallback ikon kullanilir."
+          }
+
           Write-Host "--- Designer payload icerigi ---"
           Get-ChildItem $designerPayload | Format-Table Name, Length -AutoSize
 

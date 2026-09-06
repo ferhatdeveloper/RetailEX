@@ -56,7 +56,20 @@ internal sealed class MainForm : Form
         Height = 900;
         MinimumSize = new Size(1100, 700);
         Font = new Font("Segoe UI", 9F);
-        Icon = null;
+        // app.ico hem apphost .exe'ye hem de Form'a baglanir; tasarim araci
+        // basliginda + gorev cubugunda ayni ikon gorunur.
+        var iconPath = Path.Combine(AppContext.BaseDirectory, "Assets", "app.ico");
+        if (File.Exists(iconPath))
+        {
+            try
+            {
+                Icon = new Icon(iconPath);
+            }
+            catch (Exception ex)
+            {
+                DesignerLog.Warn("Icon yuklenemedi: " + iconPath, ex);
+            }
+        }
 
         _config = DesignerConfig.Load();
         BuildUi();

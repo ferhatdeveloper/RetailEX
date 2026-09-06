@@ -90,6 +90,12 @@ export type POSPaymentModalDraftContext = {
   finalTotal: number;
   discount: number;
   receiptLanguage: string;
+  /**
+   * Windows yazıcı servisi (RetailEX Print Service) açıksa `true` —
+   * parent bu bayrağı görünce `Receipt80mm`'i `printImmediately` modunda
+   * açmalı; kullanıcı fiş önizleme modalını GÖRMEMELİ.
+   */
+  printImmediatelyOnService?: boolean;
 };
 
 type Payment = POSPaymentModalPaymentRow;
@@ -108,6 +114,12 @@ interface POSPaymentModalProps {
   defaultShowReceiptPreview?: boolean;
   /** Restoran: ödeme modalından hesabı kapatmadan yazdır (Promise ile yükleme göstergesi) */
   onPrintDraftReceipt?: (ctx: POSPaymentModalDraftContext) => void | Promise<void>;
+  /**
+   * Windows yazıcı servisi AÇIK ve "Yazdır" butonuna basıldığında bu callback
+   * çağrılır — parent POSPaymentModal'ı kapatıp sadece sessiz yazdırma yapar.
+   * Kullanıcı yazdırma önizleme / fiş modalı görmez.
+   */
+  onCloseForSilentPrint?: () => void;
   onClose: () => void;
   onComplete: (paymentData: any, options?: { autoPrint?: boolean; language?: string }) => Promise<void> | void;
 }
@@ -123,6 +135,7 @@ export function POSPaymentModal({
   showAutoPrintOption = false,
   defaultShowReceiptPreview = true,
   onPrintDraftReceipt,
+  onCloseForSilentPrint,
   onClose,
   onComplete
 }: POSPaymentModalProps) {
@@ -361,6 +374,19 @@ export function POSPaymentModal({
 
   const handlePrintDraftReceipt = async () => {
     if (!onPrintDraftReceipt || draftPrintLoading) return;
+    // Windows yazıcı servisi açık mı? Açıksa parent'a "öniizleme gösterme,
+    // doğrudan yazdır" bayrağı gönderiyoruz — kullanıcı fiş önizleme modalını
+    // görmemeli, sadece "Yazdırılıyor..." göstergesi.
+    let printImmediatelyOnService = false;
+    try {
+      const { isWindowsPrinterServiceEnabled } = await import(
+        '../../services/unifiedPrintQueueService'
+      );
+      printImmediatelyOnService = await isWindowsPrinterServiceEnabled();
+    } catch {
+      // Servis yok/erişilemez → eski davranışa düş (öniizleme açılır)
+      printImmediatelyOnService = false;
+    }
     const ctx: POSPaymentModalDraftContext = {
       payments: payments.map(p => ({ ...p })),
       totalPaid,
@@ -369,7 +395,22 @@ export function POSPaymentModal({
       finalTotal,
       discount: calculatedDiscount,
       receiptLanguage,
+      printImmediatelyOnService,
     };
+    // Windows yazıcı servisi açıksa: önce sessiz yazdırma için POSPaymentModal'ı
+    // kapat (kullanıcı modalı görmesin), sonra parent'a adisyon yazdırmayı tetikle.
+    if (printImmediatelyOnService && onCloseForSilentPrint) {
+      setDraftPrintLoading(true);
+      try {
+        onCloseForSilentPrint();
+        await Promise.resolve(onPrintDraftReceipt(ctx));
+      } catch (e) {
+        console.error('[POSPaymentModal] onPrintDraftReceipt (silent)', e);
+      } finally {
+        setDraftPrintLoading(false);
+      }
+      return;
+    }
     setDraftPrintLoading(true);
     try {
       await Promise.resolve(onPrintDraftReceipt(ctx));
@@ -388,6 +429,21 @@ export function POSPaymentModal({
     }
 
     setIsLoading(true);
+    // Sistem ayarlarında Windows yazıcı servisi (RetailEX Print Service)
+    // AÇIKSA fiş önizleme modalını GÖSTERMEMELİYİZ — kullanıcı sadece
+    // «Yazdırılıyor...» göstergesini görsün, ardından yazıcıya gitsin.
+    // showReceiptPreview'ı yalnızca ödeme anında override ediyoruz;
+    // UI checkbox'ı kullanıcının tercihine saygı için olduğu gibi kalır.
+    let printImmediatelyOnService = false;
+    try {
+      const { isWindowsPrinterServiceEnabled } = await import(
+        '../../services/unifiedPrintQueueService'
+      );
+      printImmediatelyOnService = await isWindowsPrinterServiceEnabled();
+    } catch {
+      printImmediatelyOnService = false;
+    }
+    const effectiveShowReceiptPreview = printImmediatelyOnService ? false : showReceiptPreview;
     const paymentPayload = {
       payments: payments,
       totalPaid: totalPaid,
@@ -397,7 +453,7 @@ export function POSPaymentModal({
       autoPrint: showAutoPrintOption ? autoPrint : false,
       language: receiptLanguage,
       printFormat,
-      showReceiptPreview,
+      showReceiptPreview: effectiveShowReceiptPreview,
       // Ödeme tipi başına seçilen kasaları payload'a ekle
       cash_register_id: selectedCashRegister?.id,
       cash_register_name: selectedCashRegister?.kasa_adi,
