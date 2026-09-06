@@ -214,7 +214,7 @@ export const butcherProductionAPI = {
   },
 
   async getSettings(): Promise<ButcherSettings> {
-    await ensureTables();
+    await this.ensureTables();
     const px = firmTablePrefix();
     try {
       const { rows } = await postgres.query(
@@ -253,7 +253,7 @@ export const butcherProductionAPI = {
   },
 
   async saveSettings(settings: ButcherSettings): Promise<void> {
-    await ensureTables();
+    await this.ensureTables();
     const px = firmTablePrefix();
     const firm = padFirmNr();
     const allow = settings.allowCompleteWithoutStock !== false;
@@ -279,7 +279,7 @@ export const butcherProductionAPI = {
   },
 
   async getRecipes(): Promise<ButcherRecipe[]> {
-    await ensureTables();
+    await this.ensureTables();
     const px = firmTablePrefix();
     // Kasap reçeteleri: hem aktif hem pasif görünsün (eski davranış);
     // kullanıcı UI'da "pasifleri gizle" isterse flag eklenebilir.
@@ -309,7 +309,7 @@ export const butcherProductionAPI = {
   },
 
   async saveRecipe(recipe: ButcherRecipe): Promise<string> {
-    await ensureTables();
+    await this.ensureTables();
     const px = firmTablePrefix();
     const firm = padFirmNr();
     let recipeId = recipe.id;
@@ -392,7 +392,7 @@ export const butcherProductionAPI = {
     updated: number;
     missingCodes: string[];
   }> {
-    await ensureTables();
+    await this.ensureTables();
     const px = firmTablePrefix();
     const result = { created: 0, updated: 0, missingCodes: [] as string[] };
 
@@ -449,7 +449,7 @@ export const butcherProductionAPI = {
   },
 
   async getOrders(limit = 100): Promise<ButcherOrder[]> {
-    await ensureTables();
+    await this.ensureTables();
     const px = firmTablePrefix();
     const { rows } = await postgres.query(
       `SELECT o.*, r.name AS recipe_name
@@ -526,7 +526,7 @@ export const butcherProductionAPI = {
     outputs: ButcherOrderOutput[];
     orderNo?: string;
   }): Promise<string> {
-    await ensureTables();
+    await this.ensureTables();
     const px = firmTablePrefix();
     const firm = padFirmNr();
     const orderNo = order.orderNo || `KU-${Date.now()}`;
@@ -638,7 +638,7 @@ export const butcherProductionAPI = {
     supplierId?: string | null;
     supplierName?: string | null;
   }): Promise<boolean> {
-    await ensureTables();
+    await this.ensureTables();
     const px = firmTablePrefix();
     const { rows } = await postgres.query(
       `UPDATE ${px}_butcher_orders
@@ -679,7 +679,7 @@ export const butcherProductionAPI = {
       totalInputCost: number;
     }>
   > {
-    await ensureTables();
+    await this.ensureTables();
     const px = firmTablePrefix();
     const { rows } = await postgres.query(
       `SELECT
@@ -721,7 +721,7 @@ export const butcherProductionAPI = {
       lineCount: number;
     }>
   > {
-    await ensureTables();
+    await this.ensureTables();
     const px = firmTablePrefix();
     const { rows } = await postgres.query(
       `SELECT
