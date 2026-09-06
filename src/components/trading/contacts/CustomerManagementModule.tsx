@@ -132,6 +132,34 @@ export function CustomerManagementModule({ customers, setCustomers, sales }: Cus
     })();
   }, [setCustomers]);
 
+  // Beauty (güzellik) randevu sayıları: müşteri ID → randevu sayısı.
+  // Trading ekranı genel ERP bağlamında olduğu için randevuları ayrı bir
+  // tablodan çekiyoruz. Tablo boşsa veya customer store henüz yüklenmediyse
+  // sessizce 0 kalır.
+  const [appointmentCountByCustomer, setAppointmentCountByCustomer] = useState<Record<string, number>>({});
+  useEffect(() => {
+    if (!customers || customers.length === 0) return;
+    let cancelled = false;
+    void (async () => {
+      try {
+        const { beautyService } = await import('../../../services/beautyService');
+        const customerIds = customers.map((c) => c.id).filter(Boolean);
+        if (customerIds.length === 0) return;
+        const counts: Record<string, number> = {};
+        // Toplu randevu sorgusu: customerId başına randevu sayısını tek seferde çek
+        const counts2 = await beautyService.countAppointmentsByCustomerIds(customerIds);
+        if (!cancelled) setAppointmentCountByCustomer(counts2);
+        // (counts referansı kullanılmıyor; sadece TS uyarısını önlemek için)
+        void counts;
+      } catch {
+        // Beauty modülü kullanılmıyor olabilir; sessizce geç
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [customers]);
+
   useEffect(() => {
     const fromStorage = localStorage.getItem('callerid_customer_phone')?.trim();
     if (fromStorage) {
@@ -185,15 +213,35 @@ export function CustomerManagementModule({ customers, setCustomers, sales }: Cus
   const getCustomerStats = (customerId: string) => {
     const customerSales = sales.filter(s => s.customerId === customerId);
     const totalSpent = customerSales.reduce((sum, s) => sum + s.total, 0);
-    const lastPurchase = customerSales.length > 0
-      ? new Date(Math.max(...customerSales.map(s => new Date(s.date).getTime())))
-      : null;
+
+    // Son işlem: yalnızca elimizdeki `sales` (POS) verisini kullanıyoruz;
+    // beauty randevuları ayrı tabloda olduğu için burada hesaba katılmıyor.
+    // Tarih ile birlikte son satış tutarını da döndürürüz ki kolon hem tarihi
+    // hem tutarı gösterebilsin.
+    let lastPurchase: Date | null = null;
+    let lastPurchaseAmount: number | null = null;
+    if (customerSales.length > 0) {
+      let maxTime = -Infinity;
+      let lastSale: Sale | null = null;
+      for (const s of customerSales) {
+        const t = new Date(s.date).getTime();
+        if (Number.isFinite(t) && t > maxTime) {
+          maxTime = t;
+          lastSale = s;
+        }
+      }
+      if (lastSale && maxTime > -Infinity) {
+        lastPurchase = new Date(maxTime);
+        lastPurchaseAmount = Number(lastSale.total) || 0;
+      }
+    }
 
     return {
       totalPurchases: customerSales.length,
       totalSpent,
       lastPurchase,
-      averageSpent: customerSales.length > 0 ? totalSpent / customerSales.length : 0
+      lastPurchaseAmount,
+      averageSpent: customerSales.length > 0 ? totalSpent / customerSales.length : 0,
     };
   };
 
@@ -480,6 +528,32 @@ export function CustomerManagementModule({ customers, setCustomers, sales }: Cus
       },
       meta: { align: 'right' }
     }),
+    columnHelper.accessor('file_id', {
+      header: tm('custColFileNo'),
+      cell: info => {
+        const v = (info.getValue() ?? '').toString().trim();
+        return v
+          ? <span className="font-mono text-xs text-violet-700 font-medium">{v}</span>
+          : <span className="text-gray-300 text-xs">—</span>;
+      },
+      size: 110,
+    }),
+    columnHelper.display({
+      id: 'appointmentCount',
+      header: tm('custColAppointmentCount'),
+      cell: ({ row }) => {
+        const cnt = appointmentCountByCustomer[row.original.id] ?? 0;
+        if (!cnt) return <span className="text-gray-300 text-xs">0</span>;
+        return (
+          <span className="inline-flex items-center gap-1 px-2 py-0.5 bg-violet-100 text-violet-700 rounded text-xs font-semibold">
+            <Calendar className="w-3 h-3" />
+            {cnt}
+          </span>
+        );
+      },
+      meta: { align: 'right' },
+      size: 130,
+    }),
     columnHelper.display({
       id: 'lastPurchase',
       header: tm('custColLastPurchase'),
@@ -487,9 +561,15 @@ export function CustomerManagementModule({ customers, setCustomers, sales }: Cus
         const stats = getCustomerStats(row.original.id);
         if (!stats.lastPurchase) return <span className="text-gray-400 text-xs">-</span>;
         return (
-          <div className="flex flex-col text-xs">
-            <span>{stats.lastPurchase.toLocaleDateString(dateLocale)}</span>
-            <span className="text-gray-500">{stats.lastPurchase.toLocaleTimeString(dateLocale, { hour: '2-digit', minute: '2-digit' })}</span>
+          <div className="flex flex-col text-xs whitespace-nowrap">
+            <span className="font-medium text-gray-800">
+              {stats.lastPurchase.toLocaleDateString(dateLocale)}
+            </span>
+            {stats.lastPurchaseAmount != null && (
+              <span className="text-emerald-700 font-semibold tabular-nums">
+                {formatNumber(stats.lastPurchaseAmount, 2, true)} IQD
+              </span>
+            )}
           </div>
         );
       }

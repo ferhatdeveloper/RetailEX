@@ -3113,6 +3113,43 @@ export const beautyService = {
         return normalizeAppointmentRow(row);
     },
 
+    /**
+     * Verilen müşteri ID'leri için randevu sayılarını tek sorguda döner.
+     * Trading müşteri listesi gibi genel ekranlarda kullanılır; her müşteri için
+     * ayrı ayrı sorgu atmak yerine toplu GROUP BY yapılır.
+     *
+     * `beauty_appointments` tablosunda firm_nr yoktur — firma zaten tablo
+     * adına gömülü (`rex_{firmNr}_{periodNr}_beauty_appointments`), bu yüzden
+     * firm filtresine gerek yoktur; tablo adı yeterince firm-specific'tir.
+     */
+    async countAppointmentsByCustomerIds(
+        customerIds: string[],
+    ): Promise<Record<string, number>> {
+        const out: Record<string, number> = {};
+        const ids = Array.from(new Set(customerIds.filter(Boolean).map(String)));
+        if (ids.length === 0) return out;
+        const apt = postgres.getMovementTableName('beauty_appointments', 'beauty');
+
+        const ph = ids.map((_, i) => `$${i + 1}`).join(', ');
+        try {
+            const { rows } = await postgres.query<{ client_id: string; cnt: string | number }>(
+                `SELECT a.client_id::text AS client_id, COUNT(*)::int AS cnt
+                 FROM ${apt} a
+                 WHERE a.client_id IN (${ph})
+                 GROUP BY a.client_id`,
+                ids,
+            );
+            for (const r of rows) {
+                const cid = String(r.client_id ?? '').trim();
+                if (!cid) continue;
+                out[cid] = Number(r.cnt) || 0;
+            }
+        } catch (e) {
+            logger.warn('beautyService', 'countAppointmentsByCustomerIds failed', e);
+        }
+        return out;
+    },
+
     async getAppointmentsByCustomer(
         customerId: string,
         opts?: BeautyCustomerProfileQueryOpts | null,
