@@ -10,18 +10,27 @@ using RetailEX.PrintServer.Designer.Logging;
 namespace RetailEX.PrintServer.Designer.FastReport;
 
 /// <summary>
-/// FastReport designer + preview control sarmalayıcısı.
-/// Lisanlı DLL'ler lib/ klasöründe tutulur; runtime'da <see cref="Assembly.LoadFrom"/> ile yüklenir.
+/// FastReport runtime sarmalayıcısı. qrprint QrPrintDesktop.App projesindeki
+/// kanıtlanmış kalıbı kullanır:
+///   1) Editor.dll'i ONCE yükle (FastReport.Editor.dll)
+///   2) FastReport.dll'i yükle
+///   3) "FastReport.Report" tipini reflection ile bul
+///   4) Report.Design() / Report.Load / Report.Save / Report.Print / ShowPrepared
+///
+/// Designer kontrolunu Form'a gommek yerine FastReport'un kendi bagimsiz
+/// tasarim/onzleme penceresini aciyoruz. Bu hem daha stabil, hem de FastReport
+/// lisansli API'siyle tam uyumlu.
 /// </summary>
 internal sealed class FastReportDesignerHost : IDisposable
 {
     private readonly Panel _hostPanel;
     private readonly Label _messageLabel;
-    private readonly List<Assembly> _loadedAssemblies = new();
     private readonly string? _libDirectory;
 
+    private Assembly? _fastReportAssembly;
+    private Assembly? _editorAssembly;
     private object? _report;
-    private Control? _designerControl;
+    private readonly List<Assembly> _loadedAssemblies = new();
 
     public FastReportDesignerHost(Panel hostPanel, string? libDirectory = null)
     {
@@ -31,25 +40,32 @@ internal sealed class FastReportDesignerHost : IDisposable
         Initialize();
     }
 
-    public bool IsAvailable => _report is not null && _designerControl is not null;
+    /// <summary>FastReport.Report tipi bulundu mu?</summary>
+    public bool IsAvailable => _report is not null && _fastReportAssembly is not null;
+
+    /// <summary>Status mesajı; ana forma yansıtılır.</summary>
     public string StatusMessage { get; private set; } = "FastReport yüklenmedi.";
+
+    /// <summary>Çözümlenen lib dizini (debug için).</summary>
     public string? LibDirectory => _libDirectory;
 
-    /// <summary>Boş bir FastReport raporu oluşturur.</summary>
+    /// <summary>Yeni boş bir FastReport raporu oluşturur.</summary>
     public void NewReport()
     {
         EnsureFastReportAvailable();
-        _report = CreateReport();
-        AttachReportToDesigner();
+        _report = CreateReportInstance();
+        StatusMessage = "Yeni rapor oluşturuldu.";
+        ShowInfoMessage(StatusMessage);
     }
 
     /// <summary>Bir .frx dosyasını yükler.</summary>
     public void LoadFromFile(string path)
     {
         EnsureFastReportAvailable();
-        _report ??= CreateReport();
+        _report ??= CreateReportInstance();
         InvokeReportMethod("Load", path);
-        AttachReportToDesigner();
+        StatusMessage = $"Rapor yüklendi: {Path.GetFileName(path)}";
+        ShowInfoMessage(StatusMessage);
     }
 
     /// <summary>Byte[] olarak verilen .frx içeriğini yükler.</summary>
@@ -71,20 +87,7 @@ internal sealed class FastReportDesignerHost : IDisposable
     public byte[] SaveToBytes()
     {
         EnsureFastReportAvailable();
-        _report ??= CreateReport();
-
-        var reportType = _report.GetType();
-        var streamSave = reportType.GetMethods()
-            .FirstOrDefault(m => m.Name == "Save"
-                && m.GetParameters().Length == 1
-                && typeof(Stream).IsAssignableFrom(m.GetParameters()[0].ParameterType));
-
-        if (streamSave is not null)
-        {
-            using var stream = new MemoryStream();
-            streamSave.Invoke(_report, new object[] { stream });
-            return stream.ToArray();
-        }
+        if (_report is null) throw new InvalidOperationException("Önce bir rapor yükleyin.");
 
         var tempPath = Path.Combine(Path.GetTempPath(), $"retailex-designer-{Guid.NewGuid():N}.frx");
         try
@@ -103,85 +106,124 @@ internal sealed class FastReportDesignerHost : IDisposable
     {
         var bytes = SaveToBytes();
         File.WriteAllBytes(path, bytes);
+        StatusMessage = $"Rapor kaydedildi: {Path.GetFileName(path)}";
     }
 
-    /// <summary>FastReport preview penceresini açar.</summary>
+    /// <summary>FastReport önizleme penceresini açar.</summary>
     public void Preview()
     {
         EnsureFastReportAvailable();
-        _report ??= CreateReport();
+        _report ??= CreateReportInstance();
 
-        if (TryInvokeReportMethod("Show")) return;
-        if (TryInvokeReportMethod("Prepare") && TryInvokeReportMethod("ShowPrepared")) return;
-        throw new InvalidOperationException("FastReport önizleme metodu bulunamadı.");
+        // Prepare(false) ile veriyi bağla; ShowPrepared ile önizleme penceresini aç.
+        InvokeReportMethod("Prepare", false);
+        InvokeReportMethod("ShowPrepared");
     }
 
-    /// <summary>FastReport tasarım penceresini ayrı bir dialog olarak açar.</summary>
+    /// <summary>FastReport tasarım penceresini ayrı bir pencere olarak açar (qrprint kalıbı).</summary>
     public void OpenDesignerWindow()
     {
         EnsureFastReportAvailable();
-        _report ??= CreateReport();
-        if (TryInvokeReportMethod("Design")) return;
-        throw new InvalidOperationException("FastReport Design metodu bulunamadı.");
+        _report ??= CreateReportInstance();
+
+        // qrprint kalıbı: parameterless VEYA bool parameter.
+        var reportType = _report.GetType();
+        var designMethod = reportType.GetMethod("Design", Type.EmptyTypes)
+            ?? reportType.GetMethod("Design", new[] { typeof(bool) });
+
+        if (designMethod is null)
+            throw new InvalidOperationException("FastReport Design metodu bulunamadı.");
+
+        object? result = designMethod.GetParameters().Length == 0
+            ? designMethod.Invoke(_report, null)
+            : designMethod.Invoke(_report, new object[] { true });
+
+        DesignerLog.Info("Design() cagirildi, sonuc tipi: " + (result?.GetType().FullName ?? "null"));
     }
 
     /// <summary>
-    /// Report nesnesini alıp designer'a RegisterData ile tablo bağlar; böylece
-    /// önizlemede gerçek veri görünür.
+    /// Report nesnesine RegisterData ile tablo bağlar; böylece önizlemede gerçek veri görünür.
+    /// qrprint kalıbı: RegisterData(DataTable, string).
     /// </summary>
     public void RegisterDataTable(string name, DataTable table)
     {
         EnsureFastReportAvailable();
-        if (_report is null) _report = CreateReport();
+        _report ??= CreateReportInstance();
 
-        // FastReport API'si reflection ile çağrılır; RegisterData(DataTable, string)
         var method = _report.GetType().GetMethods(BindingFlags.Instance | BindingFlags.Public)
             .FirstOrDefault(m => m.Name == "RegisterData"
                 && m.GetParameters().Length == 2
-                && typeof(DataSet).IsAssignableFrom(m.GetParameters()[0].ParameterType) == false
                 && m.GetParameters()[0].ParameterType.IsAssignableFrom(typeof(DataTable))
                 && m.GetParameters()[1].ParameterType == typeof(string));
 
         if (method is null)
         {
-            DesignerLog.Warn("FastReport.RegisterData(DataTable, string) bulunamadı; preview boş kalabilir.");
+            DesignerLog.Warn($"FastReport.RegisterData(DataTable, string) bulunamadı; '{name}' bağlanamadı.");
             return;
         }
 
         method.Invoke(_report, new object[] { table, name });
     }
 
+    // ----- Private -----
+
     private void Initialize()
     {
         if (_libDirectory is null || !File.Exists(Path.Combine(_libDirectory, "FastReport.dll")))
         {
-            ShowMessage("FastReport DLL'lerini lib/ klasörüne koyun",
-                "FastReport.dll bulunamadı.\n\nBeklenen konum:\n" + (_libDirectory ?? "(yok)"));
+            ShowMessage("FastReport DLL'leri eksik",
+                "FastReport.dll, FastReport.Bars.dll ve FastReport.Editor.dll dosyalarını\n" +
+                (_libDirectory ?? "Designer\\lib") + " klasörüne kopyalayın.");
             StatusMessage = "FastReport DLL yok.";
             return;
         }
 
         try
         {
-            AppDomain.CurrentDomain.AssemblyResolve += ResolveFromLibDirectory;
-            LoadFastReportAssemblies(_libDirectory);
-            _report = CreateReport();
-            _designerControl = CreateDesignerControl();
-
-            if (_designerControl is null)
+            // Editor.dll'i ÖNCE yükle (qrprint kalıbı).
+            var editorPath = Path.Combine(_libDirectory, "FastReport.Editor.dll");
+            if (File.Exists(editorPath))
             {
-                ShowMessage("FastReport yüklendi, designer control bulunamadı",
-                    "Toolbar'daki harici Design penceresi veya Preview kullanılabilir.\n" +
-                    "DLL sürümünüzde DesignerControl yoksa yine de önizleme yapabilirsiniz.");
-                StatusMessage = "FastReport yüklendi; designer control bulunamadı.";
-                return;
+                _editorAssembly = Assembly.LoadFrom(editorPath);
+                _loadedAssemblies.Add(_editorAssembly);
             }
 
-            _hostPanel.Controls.Clear();
-            _designerControl.Dock = DockStyle.Fill;
-            _hostPanel.Controls.Add(_designerControl);
-            AttachReportToDesigner();
-            StatusMessage = "FastReport designer hazır.";
+            // FastReport.dll'i yükle + lib klasöründeki diğer bağımlılıkları.
+            AppDomain.CurrentDomain.AssemblyResolve += ResolveFromLibDirectory;
+            foreach (var dll in Directory.EnumerateFiles(_libDirectory, "*.dll")
+                .OrderBy(PrioritizeFastReportDll))
+            {
+                try
+                {
+                    var asm = Assembly.LoadFrom(dll);
+                    _loadedAssemblies.Add(asm);
+                    if (string.Equals(Path.GetFileName(dll), "FastReport.dll", StringComparison.OrdinalIgnoreCase))
+                    {
+                        _fastReportAssembly = asm;
+                    }
+                }
+                catch (Exception ex)
+                {
+                    DesignerLog.Warn($"Assembly yüklenemedi: {Path.GetFileName(dll)}", ex);
+                }
+            }
+
+            if (_fastReportAssembly is null)
+                throw new FileNotFoundException("FastReport.dll yüklenemedi.", Path.Combine(_libDirectory, "FastReport.dll"));
+
+            // Report instance oluşturma testi (yoksa tasarım/önizleme patlar).
+            _report = CreateReportInstance();
+
+            if (_report is null)
+                throw new InvalidOperationException("FastReport.Report örneği oluşturulamadı.");
+
+            ShowInfoMessage(
+                "FastReport yüklendi.\n\n" +
+                "• Tasarım için → 'Designer Pencere'\n" +
+                "• Önizleme için → 'Önizleme'\n" +
+                "• DB'ye Kaydet için → 'DB'ye Kaydet'\n\n" +
+                "Lib: " + _libDirectory);
+            StatusMessage = "FastReport hazır.";
         }
         catch (Exception ex)
         {
@@ -200,90 +242,24 @@ internal sealed class FastReportDesignerHost : IDisposable
         return File.Exists(candidate) ? Assembly.LoadFrom(candidate) : null;
     }
 
-    private void LoadFastReportAssemblies(string libDirectory)
+    private object CreateReportInstance()
     {
-        foreach (var dll in Directory.EnumerateFiles(libDirectory, "*.dll").OrderBy(PrioritizeFastReportDll))
-        {
-            try
-            {
-                _loadedAssemblies.Add(Assembly.LoadFrom(dll));
-            }
-            catch (Exception ex)
-            {
-                DesignerLog.Warn($"Assembly yüklenemedi: {Path.GetFileName(dll)}", ex);
-            }
-        }
-
-        if (_loadedAssemblies.All(a => !string.Equals(a.GetName().Name, "FastReport", StringComparison.OrdinalIgnoreCase)))
-        {
-            throw new FileNotFoundException("FastReport.dll bulunamadı.", Path.Combine(libDirectory, "FastReport.dll"));
-        }
-    }
-
-    private object CreateReport()
-    {
-        var reportType = FindType("FastReport.Report")
+        if (_fastReportAssembly is null)
+            throw new InvalidOperationException("FastReport.dll yüklü değil.");
+        var reportType = _fastReportAssembly.GetType("FastReport.Report")
             ?? throw new InvalidOperationException("FastReport.Report tipi bulunamadı.");
         return Activator.CreateInstance(reportType)
             ?? throw new InvalidOperationException("FastReport.Report oluşturulamadı.");
     }
 
-    private Control? CreateDesignerControl()
-    {
-        var designerType = FindType("FastReport.Design.StandardDesigner.DesignerControl")
-            ?? FindType("FastReport.Design.DesignerControl")
-            ?? _loadedAssemblies
-                .SelectMany(SafeGetTypes)
-                .FirstOrDefault(t => typeof(Control).IsAssignableFrom(t)
-                    && t.Name.Contains("DesignerControl", StringComparison.OrdinalIgnoreCase));
-
-        return designerType is null ? null : Activator.CreateInstance(designerType) as Control;
-    }
-
-    private void AttachReportToDesigner()
-    {
-        if (_designerControl is null || _report is null) return;
-        var designerType = _designerControl.GetType();
-        var reportProperty = designerType.GetProperty("Report", BindingFlags.Instance | BindingFlags.Public);
-        if (reportProperty is not null && reportProperty.CanWrite)
-        {
-            reportProperty.SetValue(_designerControl, _report);
-            return;
-        }
-        var reportMethod = designerType.GetMethods(BindingFlags.Instance | BindingFlags.Public)
-            .FirstOrDefault(m => m.Name is "SetReport" or "SetReportObject"
-                && m.GetParameters().Length == 1
-                && m.GetParameters()[0].ParameterType.IsAssignableFrom(_report.GetType()));
-        reportMethod?.Invoke(_designerControl, new object[] { _report });
-    }
-
-    private Type? FindType(string fullName)
-    {
-        foreach (var asm in _loadedAssemblies)
-        {
-            var t = asm.GetType(fullName, throwOnError: false, ignoreCase: false);
-            if (t is not null) return t;
-        }
-        return Type.GetType(fullName, throwOnError: false, ignoreCase: false);
-    }
-
     private void InvokeReportMethod(string methodName, params object[] args)
     {
-        if (!TryInvokeReportMethod(methodName, args))
-            throw new MissingMethodException(_report?.GetType().FullName, methodName);
-    }
-
-    private bool TryInvokeReportMethod(string methodName, params object[] args)
-    {
-        if (_report is null) return false;
+        if (_report is null) throw new InvalidOperationException("Aktif rapor yok.");
         var method = _report.GetType().GetMethods(BindingFlags.Instance | BindingFlags.Public)
-            .FirstOrDefault(m => m.Name == methodName
-                && m.GetParameters().Length == args.Length
-                && m.GetParameters().Zip(args, (pi, a) => pi.ParameterType.IsInstanceOfType(a)
-                    || (a is string && pi.ParameterType == typeof(string))).All(x => x));
-        if (method is null) return false;
+            .FirstOrDefault(m => m.Name == methodName && m.GetParameters().Length == args.Length);
+        if (method is null)
+            throw new MissingMethodException(_report.GetType().FullName, methodName);
         method.Invoke(_report, args);
-        return true;
     }
 
     private void EnsureFastReportAvailable()
@@ -296,6 +272,15 @@ internal sealed class FastReportDesignerHost : IDisposable
     {
         _hostPanel.Controls.Clear();
         _messageLabel.Text = $"{title}\n\n{details}";
+        _messageLabel.ForeColor = Color.FromArgb(220, 38, 38); // kırmızı
+        _hostPanel.Controls.Add(_messageLabel);
+    }
+
+    private void ShowInfoMessage(string text)
+    {
+        _hostPanel.Controls.Clear();
+        _messageLabel.Text = text;
+        _messageLabel.ForeColor = Color.FromArgb(30, 64, 175); // mavi
         _hostPanel.Controls.Add(_messageLabel);
     }
 
@@ -305,7 +290,7 @@ internal sealed class FastReportDesignerHost : IDisposable
         {
             Dock = DockStyle.Fill,
             TextAlign = ContentAlignment.MiddleCenter,
-            Font = new Font("Segoe UI", 14F, FontStyle.Bold),
+            Font = new Font("Segoe UI", 11F, FontStyle.Regular),
             ForeColor = Color.FromArgb(30, 64, 175),
             Padding = new Padding(32)
         };
@@ -326,19 +311,13 @@ internal sealed class FastReportDesignerHost : IDisposable
         return candidates.FirstOrDefault(c => File.Exists(Path.Combine(c, "FastReport.dll")));
     }
 
-    private static IEnumerable<Type> SafeGetTypes(Assembly assembly)
-    {
-        try { return assembly.GetTypes(); }
-        catch (ReflectionTypeLoadException ex) { return ex.Types.Where(t => t is not null).Cast<Type>(); }
-    }
-
     private static int PrioritizeFastReportDll(string path)
     {
         return Path.GetFileName(path) switch
         {
+            "FastReport.Editor.dll" => -1, // ÖNCE
             "FastReport.dll" => 0,
             "FastReport.Bars.dll" => 1,
-            "FastReport.Editor.dll" => 2,
             _ => 10
         };
     }

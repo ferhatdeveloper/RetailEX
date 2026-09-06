@@ -11,11 +11,23 @@ internal static class Program
     [STAThread]
     public static void Main(string[] args)
     {
-        ApplicationConfiguration.Initialize();
+        // Erken log: hata olmadan once baslangic noktasini kaydet
+        DesignerLog.Info("Program.Main basladi, args=" + string.Join(" ", args));
+
+        try
+        {
+            ApplicationConfiguration.Initialize();
+        }
+        catch (Exception ex)
+        {
+            ShowFatal("ApplicationConfiguration.Initialize", ex);
+            return;
+        }
 
         using var mutex = AcquireSingleInstanceMutex();
         if (mutex is null)
         {
+            DesignerLog.Info("Baska bir Designer ornegi calisiyor, cikiliyor.");
             MessageBox.Show(
                 "RetailEX FastReport Designer zaten çalışıyor.",
                 "RetailEX Designer",
@@ -23,11 +35,12 @@ internal static class Program
                 MessageBoxIcon.Information);
             return;
         }
+        DesignerLog.Info("SingleInstance mutex alindi, MainForm olusturuluyor.");
 
         AppDomain.CurrentDomain.UnhandledException += (_, args) =>
-            DesignerLog.Fatal("UnhandledException", args.ExceptionObject as Exception);
+            ShowFatal("UnhandledException", args.ExceptionObject as Exception);
         Application.ThreadException += (_, args) =>
-            DesignerLog.Error("ThreadException", args.Exception);
+            ShowFatal("ThreadException", args.Exception);
 
         try
         {
@@ -35,13 +48,22 @@ internal static class Program
         }
         catch (Exception ex)
         {
-            DesignerLog.Fatal("StartupFailed", ex);
-            MessageBox.Show(
-                $"Designer başlatılamadı:\n\n{ex.Message}",
-                "RetailEX Designer",
-                MessageBoxButtons.OK,
-                MessageBoxIcon.Error);
+            ShowFatal("StartupFailed", ex);
         }
+    }
+
+    private static void ShowFatal(string source, Exception? ex)
+    {
+        DesignerLog.Fatal(source, ex);
+        var logDir = DesignerLog.LogDirectory;
+        var msg = $"Designer başlatılamadı ({source}).\n\n" +
+                  $"{(ex is null ? "Bilinmeyen hata" : ex.GetType().Name + ": " + ex.Message)}\n\n" +
+                  $"Detaylar log dosyasinda:\n{logDir}";
+        MessageBox.Show(
+            msg,
+            "RetailEX Designer",
+            MessageBoxButtons.OK,
+            MessageBoxIcon.Error);
     }
 
     /// <summary>

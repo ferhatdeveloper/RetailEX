@@ -135,15 +135,18 @@ jobs:
           # Designer icin RID'li restore
           dotnet restore PrintServer.Designer/PrintServer.Designer.csproj -r win-x64
 
-          # WinForms WinExe icin apphost olusumunu zorla
-          # (Windows runner bazen sadece .dll uretiyor)
-          dotnet build PrintServer.Designer/PrintServer.Designer.csproj `
+          # dotnet publish: hem apphost .exe uretir, hem de FastReport DLL'lerini
+          # tools/FastReportDesigner/lib/ kaynagindan lib/ altina kopyalar
+          # (qrprint kalibi). Normal 'dotnet build' CopyToOutputDirectory item'larini
+          # her durumda islemez; publish ile garanti altina aliyoruz.
+          dotnet publish PrintServer.Designer/PrintServer.Designer.csproj `
             -c ${{ env.BUILD_CONFIG }} `
             -f net8.0-windows `
             -r win-x64 `
             -p:UseAppHost=true `
             -p:GenerateApphost=true `
-            --no-restore
+            --no-restore `
+            -o (Join-Path (Resolve-Path PrintServer.Designer).Path "bin/${{ env.BUILD_CONFIG }}/net8.0-windows/win-x64")
 
           $buildOut = Join-Path (Resolve-Path PrintServer.Designer).Path "bin/${{ env.BUILD_CONFIG }}/net8.0-windows/win-x64"
           Write-Host "Build output klasoru: $buildOut"

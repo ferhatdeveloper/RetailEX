@@ -27,8 +27,17 @@
   </ItemGroup>
 
   <ItemGroup>
+    <!-- Designer kendi lib/ klasoru (lisansli DLL'ler buraya kopyalanir) -->
     <None Update="lib\*.dll" CopyToOutputDirectory="PreserveNewest" Visible="false" />
     <None Include="designer.config.example.json" CopyToOutputDirectory="PreserveNewest" />
+    <!-- qrprint kalibi: repo kokundeki tools/FastReportDesigner/lib/ dizinindeki
+         FastReport*.dll dosyalarini otomatik olarak build output'a linkle. Boylece
+         gelistirici lisansli DLL'leri tek bir yere koyar, hem lokal build hem
+         CI Windows runner otomatik olarak DLL'leri tasarimci ile birlikte paketler. -->
+    <None Include="$(MSBuildThisFileDirectory)..\..\tools\FastReportDesigner\lib\FastReport*.dll"
+          Link="lib\%(Filename)%(Extension)"
+          CopyToOutputDirectory="PreserveNewest"
+          Condition="Exists('$(MSBuildThisFileDirectory)..\..\tools\FastReportDesigner\lib')" />
   </ItemGroup>
 
 </Project>
