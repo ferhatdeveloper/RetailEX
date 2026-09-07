@@ -30,6 +30,7 @@ import {
   firmNrCandidates,
   getEticaretPool,
 } from '../../eticaret/core/server/tenantDbResolve';
+import { registerQrMenuBridgeRoutes } from './qrMenuBridge';
 
 const app = new Hono();
 
@@ -1548,6 +1549,8 @@ app.post('/api/pg_query', async (c) => {
         }, 500);
     }
 });
+
+registerQrMenuBridgeRoutes(app);
 
 // Port: BRIDGE_PORT (tercih) veya PORT; varsayılan 3001
 const port = (() => {

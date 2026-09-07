@@ -48,6 +48,7 @@ export function buildRbacModuleGroups(tm: (k: string) => string): RbacModuleGrou
       color: 'rose',
       modules: [
         m('restaurant.pos', ['READ', 'CREATE', 'UPDATE', 'DELETE', 'EXECUTE']),
+        m('restaurant.smart_table', ['READ', 'UPDATE', 'EXECUTE']),
         m('restaurant.delivery', ['READ', 'CREATE', 'UPDATE', 'EXECUTE']),
         m('restaurant.takeaway', ['READ', 'CREATE', 'UPDATE', 'EXECUTE']),
         m('restaurant.kds', ['READ', 'UPDATE', 'EXECUTE']),

@@ -684,12 +684,12 @@ export const ALL_MODULES: ModuleDefinition[] = [
     name: 'QR Menü',
     nameEn: 'QR Menu',
     nameAr: 'قائمة QR',
-    category: 'other',
+    category: 'restaurant',
     icon: 'QrCode',
     description: 'QR kodlu dijital menü',
     descriptionEn: 'QR code digital menu',
     descriptionAr: 'قائمة رقمية برمز الاستجابة السريعة',
-    isEnabled: false
+    isEnabled: true
   },
   {
     id: 'gift-card',

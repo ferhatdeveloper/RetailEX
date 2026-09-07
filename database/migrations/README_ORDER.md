@@ -140,3 +140,8 @@ VPS: `npm run db:migrate:tenants` veya GitHub Actions → **Migrate tenant datab
 **Mevcut veritabanı:** `config.db` (DeskApp ayarları) ile bekleyen migration’ları uygulamak için proje kökünde `npm run db:migrate` (ayrıntı: `.cursor/rules/database-migrate-config-db.mdc`).
 
 Restoran sohbetinde eklenen tek yeni tablo: **rest.return_log**. Diğer özellikler (masa durumu senkronu, taşı/birleştir, ürün etiketi, tek ürün taşıma, Z-raporu, mutfak süresi vb.) mevcut tabloları kullanıyor.
+
+## 144 — Restoran QR Menü
+- `144_rest_qr_menu.sql` — `rest_tables.qr_token`, `qr_settings` (auto_send_kitchen), `qr_feedback_questions` seed, `rest_service_requests`, `rest_feedback`, `rest_orders.source`; INIT firm/period güncellemesi.
+- `145_qr_order_approval_mode.sql` — `qr_settings.order_approval_mode` (`manual` | `auto`); manuelde sipariş onaydan sonra adisyona yazılır.
+

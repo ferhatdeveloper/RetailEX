@@ -23,7 +23,8 @@ import {
     X,
     RefreshCw,
     CalendarDays,
-    FileText
+    FileText,
+    QrCode
 } from 'lucide-react';
 
 // Sub-components
@@ -39,6 +40,7 @@ import { POSOpenCashRegisterModal } from '../pos/POSOpenCashRegisterModal';
 import { RestaurantZReport } from './components/RestaurantZReport';
 import { RestaurantReservations } from './components/RestaurantReservations';
 import { RestaurantSettings } from './components/RestaurantSettings';
+import { QRMenuAdminPanel } from './components/qr-admin/QRMenuAdminPanel';
 import { DeliveryManagement } from './components/DeliveryManagement';
 import { TakeawayManagement } from './components/TakeawayManagement';
 import { RestaurantStaffPinModal } from './components/RestaurantStaffPinModal';
@@ -104,7 +106,7 @@ export default function RestaurantModule({
         return new Date(`${wd}T12:00:00`).toLocaleDateString(dateLocale);
     };
 
-    const [activeTab, setActiveTab] = useState<'dashboard' | 'floor' | 'pos' | 'kds' | 'history' | 'voidReport' | 'productQtyReport' | 'recipes' | 'customers' | 'stock' | 'reports' | 'settings' | 'cash' | 'reservations' | 'management' | 'delivery' | 'takeaway'>('dashboard');
+    const [activeTab, setActiveTab] = useState<'dashboard' | 'floor' | 'pos' | 'kds' | 'history' | 'voidReport' | 'productQtyReport' | 'recipes' | 'customers' | 'stock' | 'reports' | 'settings' | 'qrmenu' | 'cash' | 'reservations' | 'management' | 'delivery' | 'takeaway'>('dashboard');
     const [selectedTable, setSelectedTable] = useState<Table | null>(null);
     const [moveTableSource, setMoveTableSource] = useState<Table | null>(null);
     const [showStaffModalOnFloor, setShowStaffModalOnFloor] = useState(false);
@@ -555,6 +557,9 @@ export default function RestaurantModule({
                                     <DashboardTile icon={<Layers />} label={tm('resTileRecipes')} color="#475569" onClick={() => setActiveTab('recipes')} disabled={!isDayActive} />
                                 )}
                                 {hasPermission('restaurant.settings', 'READ') && (
+                                    <DashboardTile icon={<QrCode />} label={tm('resTileQrMenu')} color="#f59e0b" onClick={() => setActiveTab('qrmenu')} />
+                                )}
+                                {hasPermission('restaurant.settings', 'READ') && (
                                     <DashboardTile icon={<Settings />} label={tm('resTileSettings')} color="#0f172a" onClick={() => setActiveTab('settings')} />
                                 )}
                                 {hasPermission('management', 'READ') && isMainModuleVisible('management') && (
@@ -798,6 +803,11 @@ function RestaurantContent({
             )}
             {activeTab === 'settings' && (
                 <div className="h-full bg-white"><RestaurantSettings onBack={() => setActiveTab('dashboard')} /></div>
+            )}
+            {activeTab === 'qrmenu' && (
+                <ModuleWrapper title={tm('resTileQrMenu')} onBack={() => setActiveTab('dashboard')}>
+                    <QRMenuAdminPanel />
+                </ModuleWrapper>
             )}
             {activeTab === 'cash' && (
                 <ModuleWrapper title={tm('resModuleCashTitle')} onBack={() => setActiveTab('dashboard')}>

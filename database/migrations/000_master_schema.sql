@@ -3395,12 +3395,66 @@ BEGIN
       locked_at            TIMESTAMPTZ,
       linked_order_ids     text[] DEFAULT ''{}'',
       color                VARCHAR(20) DEFAULT NULL,
+      qr_token             UUID DEFAULT gen_random_uuid(),
       updated_at           TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP
     );
   ', v_prefix || '_rest_tables');
+  EXECUTE format('ALTER TABLE rest.%I ADD COLUMN IF NOT EXISTS qr_token UUID DEFAULT gen_random_uuid()', v_prefix || '_rest_tables');
+  EXECUTE format('CREATE UNIQUE INDEX IF NOT EXISTS %I ON rest.%I (qr_token)', 'uq_' || v_prefix || '_rest_tables_qr_token', v_prefix || '_rest_tables');
   EXECUTE format('CREATE TABLE IF NOT EXISTS rest.%I (id UUID PRIMARY KEY DEFAULT gen_random_uuid(), menu_item_id UUID, product_id UUID, total_cost DECIMAL(15,2) DEFAULT 0, wastage_percent DECIMAL(5,2) DEFAULT 0, is_active BOOLEAN DEFAULT true, updated_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP);', v_prefix || '_rest_recipes');
   EXECUTE format('CREATE TABLE IF NOT EXISTS rest.%I (id UUID PRIMARY KEY DEFAULT gen_random_uuid(), recipe_id UUID REFERENCES rest.%I(id) ON DELETE CASCADE, material_id UUID, quantity DECIMAL(15,3), unit VARCHAR(20), cost DECIMAL(15,2) DEFAULT 0);', v_prefix || '_rest_recipe_ingredients', v_prefix || '_rest_recipes');
   EXECUTE format('CREATE TABLE IF NOT EXISTS rest.%I (id UUID PRIMARY KEY DEFAULT gen_random_uuid(), name VARCHAR(100) NOT NULL, role VARCHAR(50) DEFAULT ''Waiter'', pin VARCHAR(10) NOT NULL UNIQUE, is_active BOOLEAN DEFAULT true, created_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP);', v_prefix || '_rest_staff');
+  EXECUTE format('
+    CREATE TABLE IF NOT EXISTS rest.%I (
+      id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+      restaurant_name VARCHAR(255),
+      logo_url TEXT,
+      cover_image_url TEXT,
+      primary_color VARCHAR(7) DEFAULT ''#f59e0b'',
+      wifi_ssid VARCHAR(255),
+      wifi_password VARCHAR(255),
+      public_base_url TEXT,
+      default_language VARCHAR(5) DEFAULT ''tr'',
+      supported_languages TEXT[] DEFAULT ARRAY[''tr'',''en'',''ar'',''ku''],
+      ordering_enabled BOOLEAN DEFAULT true,
+      call_waiter_enabled BOOLEAN DEFAULT true,
+      request_bill_enabled BOOLEAN DEFAULT true,
+      valet_enabled BOOLEAN DEFAULT false,
+      feedback_enabled BOOLEAN DEFAULT true,
+      wifi_enabled BOOLEAN DEFAULT true,
+      auto_send_kitchen BOOLEAN DEFAULT false,
+      order_approval_mode VARCHAR(20) DEFAULT ''manual'',
+      is_active BOOLEAN DEFAULT true,
+      updated_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP,
+      created_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP
+    )', v_prefix || '_qr_settings');
+  EXECUTE format('ALTER TABLE rest.%I ADD COLUMN IF NOT EXISTS order_approval_mode VARCHAR(20) DEFAULT ''manual''', v_prefix || '_qr_settings');
+  EXECUTE format('INSERT INTO rest.%I (restaurant_name) SELECT NULL WHERE NOT EXISTS (SELECT 1 FROM rest.%I LIMIT 1)', v_prefix || '_qr_settings', v_prefix || '_qr_settings');
+  EXECUTE format('
+    CREATE TABLE IF NOT EXISTS rest.%I (
+      id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+      code VARCHAR(50) NOT NULL,
+      name_tr VARCHAR(255) NOT NULL,
+      name_en VARCHAR(255),
+      name_ar VARCHAR(255),
+      name_ku VARCHAR(255),
+      icon_key VARCHAR(50) DEFAULT ''star'',
+      sort_order INTEGER DEFAULT 0,
+      is_active BOOLEAN DEFAULT true,
+      created_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP,
+      UNIQUE(code)
+    )', v_prefix || '_qr_feedback_questions');
+  EXECUTE format('
+    INSERT INTO rest.%I (code, name_tr, name_en, name_ar, name_ku, icon_key, sort_order)
+    VALUES
+      (''food'', ''Yemek kalitesi'', ''Food quality'', ''جودة الطعام'', ''کوالیتی خواردن'', ''utensils'', 1),
+      (''staff'', ''Personel hizmeti'', ''Staff service'', ''خدمة الموظفين'', ''خزمەتگوزاری ستاف'', ''users'', 2),
+      (''speed'', ''Servis hızı'', ''Service speed'', ''سرعة الخدمة'', ''خێرایی خزمەت'', ''clock'', 3),
+      (''cleanliness'', ''Temizlik'', ''Cleanliness'', ''النظافة'', ''پاکوخاوێنی'', ''sparkles'', 4),
+      (''ambiance'', ''Ambiyans'', ''Ambiance'', ''الأجواء'', ''ژینگە'', ''music'', 5),
+      (''value'', ''Fiyat / performans'', ''Price / value'', ''السعر / القيمة'', ''نرخ / بەها'', ''coffee'', 6)
+    ON CONFLICT (code) DO NOTHING
+  ', v_prefix || '_qr_feedback_questions');
 END;
 $$ LANGUAGE plpgsql;
 
@@ -3557,10 +3611,12 @@ BEGIN
       billed_at       TIMESTAMPTZ,
       closed_at       TIMESTAMPTZ,
       payment_method  VARCHAR(50),
+      source          VARCHAR(40) DEFAULT ''pos'',
       created_at      TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP,
       updated_at      TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP
     );
   ', v_prefix || '_rest_orders');
+  EXECUTE format('ALTER TABLE rest.%I ADD COLUMN IF NOT EXISTS source VARCHAR(40) DEFAULT ''pos''', v_prefix || '_rest_orders');
   EXECUTE format('
     CREATE TABLE IF NOT EXISTS rest.%I (
       id               UUID PRIMARY KEY DEFAULT gen_random_uuid(),
@@ -3603,6 +3659,46 @@ BEGIN
       updated_at TIMESTAMPTZ DEFAULT NOW()
     );
   ', v_prefix || '_rest_reservations');
+  EXECUTE format('
+    CREATE TABLE IF NOT EXISTS rest.%I (
+      id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+      request_type VARCHAR(40) NOT NULL,
+      status VARCHAR(20) NOT NULL DEFAULT ''pending'',
+      table_id UUID,
+      table_number VARCHAR(50),
+      order_id UUID,
+      payload JSONB DEFAULT ''{}''::jsonb,
+      customer_note TEXT,
+      staff_note TEXT,
+      acknowledged_by VARCHAR(255),
+      acknowledged_at TIMESTAMPTZ,
+      resolved_at TIMESTAMPTZ,
+      created_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP,
+      updated_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP
+    )', v_prefix || '_rest_service_requests');
+  EXECUTE format(
+    'CREATE INDEX IF NOT EXISTS %I ON rest.%I (status, created_at DESC)',
+    'idx_' || v_prefix || '_rest_service_requests_status',
+    v_prefix || '_rest_service_requests'
+  );
+  EXECUTE format('
+    CREATE TABLE IF NOT EXISTS rest.%I (
+      id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+      question_code VARCHAR(50),
+      question_id UUID,
+      rating INTEGER CHECK (rating IS NULL OR (rating BETWEEN 1 AND 5)),
+      table_id UUID,
+      table_number VARCHAR(50),
+      staff_id UUID,
+      first_name VARCHAR(100),
+      last_name VARCHAR(100),
+      phone VARCHAR(50),
+      comment TEXT,
+      status VARCHAR(20) DEFAULT ''new'',
+      response_text TEXT,
+      responded_at TIMESTAMPTZ,
+      created_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP
+    )', v_prefix || '_rest_feedback');
   PERFORM INIT_RESTAURANT_KITCHEN_PRINT_JOBS_TABLE(p_firm_nr, p_period_nr);
   PERFORM INIT_RESTAURANT_PRINT_JOBS_TABLE(p_firm_nr, p_period_nr);
 END;

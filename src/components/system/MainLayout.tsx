@@ -48,6 +48,7 @@ const BeautyMain = lazyWithChunkRecovery(() => import('../beauty/index'));
 import { FirmSelector } from './FirmSelector';
 import { HybridSyncToolbarButtons } from './HybridSyncToolbarButtons';
 import { MarketRatesToolbarButton } from './MarketRatesToolbarButton';
+import { QrServiceNotificationsButton } from './QrServiceNotificationsButton';
 import { POS_MASTER_OVERRIDE_PASSWORD } from '../pos/posUiConstants';
 import { ModalLayer } from '../shared/FullscreenBodyPortal';
 import { cn } from '../ui/utils';
@@ -1158,6 +1159,9 @@ export function MainLayout({
                   <MarketRatesToolbarButton compact />
                 </div>
                 <div className="shrink-0">
+                  <QrServiceNotificationsButton compact />
+                </div>
+                <div className="shrink-0">
                   <MainLayoutClockButton compact onOpenModal={() => setShowDateModal(true)} />
                 </div>
                 <button
@@ -1303,6 +1307,8 @@ export function MainLayout({
                 <HybridSyncToolbarButtons />
 
                 <MarketRatesToolbarButton />
+
+                <QrServiceNotificationsButton />
 
                 <MainLayoutClockButton onOpenModal={() => setShowDateModal(true)} />
 

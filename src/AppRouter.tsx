@@ -25,6 +25,9 @@ const InfrastructureSettingsPage = lazy(() =>
   })),
 );
 const PublicBeautyBooking = lazy(() => import('./components/beauty/components/PublicBeautyBooking'));
+const PublicQrMenuRoutes = lazy(() =>
+  import('./components/restaurant/qr-customer/index').then((m) => ({ default: m.PublicQrMenuRoutes })),
+);
 const RoleManagement = lazy(() => import('./components/system/RoleManagement'));
 const RoleForm = lazy(() => import('./components/system/RoleForm'));
 
@@ -88,6 +91,7 @@ export function AppRouter() {
                     />
                     <Route path="/infra-settings" element={<InfrastructureSettingsPage />} />
                     <Route path="/book/:firmNr" element={<PublicBeautyBooking />} />
+                    <Route path="/m/:tenantCode/*" element={<PublicQrMenuRoutes />} />
                     <Route
                       path="/system/roles"
                       element={

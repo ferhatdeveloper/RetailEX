@@ -209,6 +209,7 @@ export class RestaurantService {
         waiter?: string;
         customerId?: string;
         note?: string;
+        source?: string;
     }) {
         // Generate order number: RES-{year}-{seq}
         const year = new Date().getFullYear();
@@ -218,11 +219,12 @@ export class RestaurantService {
         );
         const seq = String(seqRows[0]?.seq ?? 1).padStart(5, '0');
         const orderNo = `RES-${year}-${seq}`;
+        const source = params.source?.trim() || 'pos';
 
         const sql = `
             INSERT INTO rest_orders
-                (order_no, table_id, floor_id, waiter, customer_id, status, note)
-            VALUES ($1, $2, $3, $4, $5, 'open', $6)
+                (order_no, table_id, floor_id, waiter, customer_id, status, note, source)
+            VALUES ($1, $2, $3, $4, $5, 'open', $6, $7)
             RETURNING *
         `;
         const { rows } = await this.db.query(sql, [
@@ -231,9 +233,52 @@ export class RestaurantService {
             (params.floorId && params.floorId.trim() !== '') ? params.floorId : null,
             params.waiter ?? null,
             (params.customerId && params.customerId.trim() !== '') ? params.customerId : null,
-            params.note ?? null
+            params.note ?? null,
+            source,
         ]);
         return rows[0];
+    }
+
+    /**
+     * Masadaki pending kalemleri mutfağa yazar (DB).
+     * UI oturumunda tercihen `useRestaurantStore.getState().sendToKitchen(tableId)` kullanın
+     * (Zustand + fiş kuyruğu). Bu metod bridge / QR ack için DB-only yoldur.
+     */
+    static async sendPendingItemsToKitchen(tableId: string): Promise<string | null> {
+        const order = await this.getActiveOrder(tableId);
+        if (!order) return null;
+        const pending = (order.items ?? []).filter(
+            (i: any) => i && !i.is_void && (i.status === 'pending' || !i.status || i.status === 'awaiting_ack')
+        );
+        if (pending.length === 0) return null;
+
+        for (const item of pending) {
+            await this.updateOrderItem(item.id, { status: 'cooking' });
+        }
+
+        const kitchenOrderId = await this.createKitchenOrder({
+            orderId: order.id,
+            tableNumber: order.table_number ?? '',
+            waiter: order.waiter ?? undefined,
+            staffId: order.staff_id ?? undefined,
+            items: pending.map((i: any) => ({
+                orderItemId: i.id,
+                productId: i.product_id ?? '',
+                productName: i.product_name,
+                quantity: Number(i.quantity),
+                course: i.course,
+                note: i.note,
+            })),
+        });
+
+        await this.updateTableStatus(
+            tableId,
+            'kitchen',
+            order.waiter ?? undefined,
+            order.staff_id ?? undefined,
+            Number(order.total_amount) || 0
+        );
+        return kitchenOrderId;
     }
 
     static async getActiveOrder(tableId: string) {

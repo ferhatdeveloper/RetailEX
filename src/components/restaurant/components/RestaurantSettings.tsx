@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { Settings, Users, Printer, Receipt, ChevronLeft, Shield, LayoutGrid, Phone, Bike } from 'lucide-react';
+import { Settings, Users, Printer, Receipt, ChevronLeft, Shield, LayoutGrid, Phone, Bike, QrCode } from 'lucide-react';
 import { RestaurantWorkDaySettings } from './RestaurantWorkDaySettings';
 import { RestaurantFoodDeliverySettings } from './RestaurantFoodDeliverySettings';
 import { RestaurantPrinterSettings } from './RestaurantPrinterSettings';
@@ -7,13 +7,14 @@ import { RestaurantCallerIdSettings } from './RestaurantCallerIdSettings';
 import { UserManagementModule } from '../../system/UserManagementModule';
 import { RoleManagement } from '../../system/RoleManagement';
 import { FloorTableManagement } from './FloorTableManagement';
+import { QRMenuAdminPanel } from './qr-admin/QRMenuAdminPanel';
 import { cn } from '@/components/ui/utils';
 import { useRestaurantModuleTm } from '../hooks/useRestaurantModuleTm';
 
 export function RestaurantSettings({ onBack }: { onBack: () => void }) {
     const tmR = useRestaurantModuleTm();
     const [activeTab, setActiveTab] = useState<
-        'general' | 'users' | 'roles' | 'printers' | 'receipts' | 'tables' | 'callerid' | 'delivery'
+        'general' | 'users' | 'roles' | 'printers' | 'receipts' | 'tables' | 'callerid' | 'delivery' | 'qrmenu'
     >('general');
 
     return (
@@ -130,6 +131,18 @@ export function RestaurantSettings({ onBack }: { onBack: () => void }) {
                         <Bike className={cn("w-5 h-5", activeTab === 'delivery' ? "text-cyan-600" : "text-slate-400")} />
                         {tmR('resSettingsTabDelivery')}
                     </button>
+                    <button
+                        onClick={() => setActiveTab('qrmenu')}
+                        className={cn(
+                            "w-full flex items-center gap-3 px-4 py-3 rounded-xl transition-all text-sm font-semibold",
+                            activeTab === 'qrmenu'
+                                ? "bg-amber-50 text-amber-800 shadow-sm ring-1 ring-amber-100/50"
+                                : "text-slate-600 hover:bg-slate-50 hover:text-slate-900"
+                        )}
+                    >
+                        <QrCode className={cn("w-5 h-5", activeTab === 'qrmenu' ? "text-amber-600" : "text-slate-400")} />
+                        {tmR('resSettingsTabQrMenu')}
+                    </button>
                 </div>
             </div>
 
@@ -179,6 +192,9 @@ export function RestaurantSettings({ onBack }: { onBack: () => void }) {
                             <div className="bg-white rounded-3xl shadow-sm border border-slate-100 p-6 md:p-8">
                                 <RestaurantFoodDeliverySettings />
                             </div>
+                        )}
+                        {activeTab === 'qrmenu' && (
+                            <QRMenuAdminPanel />
                         )}
                     </div>
                 </div>

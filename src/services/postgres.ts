@@ -1533,6 +1533,7 @@ export class PostgresConnection {
     'parties', 'partner_settings',
     // Restaurant card tables (rest schema)
     'rest_tables', 'rest_recipes', 'rest_recipe_ingredients', 'rest_staff',
+    'qr_settings', 'qr_feedback_questions',
     // Beauty card tables (beauty schema)
     'beauty_specialists', 'beauty_services', 'beauty_packages', 'beauty_devices', 'beauty_leads',
     'beauty_satisfaction_surveys', 'beauty_satisfaction_questions',
@@ -1548,6 +1549,7 @@ export class PostgresConnection {
     'party_ledger_movements', 'partner_distributions', 'partner_distribution_items',
     // Restaurant movement tables (rest schema)
     'rest_orders', 'rest_order_items', 'rest_kitchen_orders', 'rest_kitchen_items', 'rest_reservations',
+    'rest_service_requests', 'rest_feedback',
     'kitchen_print_jobs', 'print_jobs',
     // Beauty movement tables (beauty schema)
     'beauty_appointments', 'beauty_sessions', 'beauty_session_logs',
@@ -1562,7 +1564,9 @@ export class PostgresConnection {
   // Tables that live in a dedicated schema (not public)
   private static TABLE_SCHEMA: Record<string, string> = {
     'rest_tables': 'rest', 'rest_recipes': 'rest', 'rest_recipe_ingredients': 'rest', 'rest_staff': 'rest',
+    'qr_settings': 'rest', 'qr_feedback_questions': 'rest',
     'rest_orders': 'rest', 'rest_order_items': 'rest', 'rest_kitchen_orders': 'rest', 'rest_kitchen_items': 'rest', 'rest_reservations': 'rest',
+    'rest_service_requests': 'rest', 'rest_feedback': 'rest',
     'kitchen_print_jobs': 'rest', 'print_jobs': 'rest',
     'beauty_specialists': 'beauty', 'beauty_services': 'beauty', 'beauty_packages': 'beauty', 'beauty_devices': 'beauty',
     'beauty_appointments': 'beauty', 'beauty_sessions': 'beauty', 'beauty_session_logs': 'beauty',
