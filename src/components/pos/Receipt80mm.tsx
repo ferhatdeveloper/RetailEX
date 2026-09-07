@@ -665,8 +665,8 @@ export function Receipt80mm({
               />
             ) : isBeautyReceipt ? (
             <>
-            {/* Güzellik — sade fiş: logo + firma + telefon */}
-            <div data-section="header" className="text-center border-b-[3px] border-dashed border-gray-900 pb-2 mb-2 receipt-print-dark">
+            {/* Güzellik — temiz tablo fişi (kesik çizgi yok) */}
+            <div data-section="header" className="text-center border-b-2 border-gray-900 pb-2 mb-3 receipt-print-dark">
               {receiptSettings?.logoDataUrl && (
                 <div className="flex justify-center mb-1">
                   <img src={receiptSettings.logoDataUrl} alt="" className="h-10 w-auto object-contain" style={{ maxWidth: logoMaxWidth }} />
@@ -683,171 +683,199 @@ export function Receipt80mm({
             </div>
 
             {headerBanner?.trim() && (
-              <div className="text-center border-[3px] border-dashed border-gray-900 rounded-md px-2 py-2 mb-2 text-[12px] font-black tracking-wide text-gray-950 print:text-[11px] print:font-black receipt-print-dark">
+              <div className="text-center border-2 border-gray-900 rounded-md px-2 py-2 mb-3 text-[12px] font-black tracking-wide text-gray-950 print:text-[11px] print:font-black receipt-print-dark">
                 {headerBanner.trim()}
               </div>
             )}
 
-            <div data-section="meta" className="text-[14px] mb-2 space-y-0.5 text-gray-950 font-bold print:text-[11px]">
-              <div className="flex justify-between">
-                <span className="font-extrabold">{t.receipt.date}:</span>
-                <span className="font-bold">{formatDate(sale.date)}</span>
-              </div>
-              <div className="flex justify-between">
-                <span className="font-extrabold">{t.receipt.receiptNo}:</span>
-                <span className="font-black">{sale.receiptNumber}</span>
-              </div>
-              {sale.customerName && (
-                <div className={`mt-2 pt-1 ${isRTL ? 'text-right' : 'text-left'}`}>
-                  <div className="text-[11px] font-extrabold text-gray-700 print:text-[10px]">{t.receipt.customer}</div>
-                  <div className="text-[1.05rem] font-black text-gray-950 leading-tight print:text-base print:font-black break-words">
-                    {sale.customerName}
-                  </div>
+            <table data-section="meta" className="w-full table-fixed border-collapse text-[13px] mb-3 font-bold text-gray-950 print:text-[11px]">
+              <colgroup>
+                <col style={{ width: '38%' }} />
+                <col style={{ width: '62%' }} />
+              </colgroup>
+              <tbody>
+                <tr className="border-b border-gray-300">
+                  <td className={`py-1.5 font-extrabold align-top ${isRTL ? 'text-right' : 'text-left'}`}>{t.receipt.date}</td>
+                  <td className={`py-1.5 font-bold align-top ${isRTL ? 'text-left' : 'text-right'}`}>{formatDate(sale.date)}</td>
+                </tr>
+                <tr className="border-b border-gray-300">
+                  <td className={`py-1.5 font-extrabold align-top ${isRTL ? 'text-right' : 'text-left'}`}>{t.receipt.receiptNo}</td>
+                  <td className={`py-1.5 font-black align-top break-all ${isRTL ? 'text-left' : 'text-right'}`}>{sale.receiptNumber}</td>
+                </tr>
+                {sale.customerName ? (
+                  <tr className="border-b border-gray-300">
+                    <td className={`py-1.5 font-extrabold align-top ${isRTL ? 'text-right' : 'text-left'}`}>{t.receipt.customer}</td>
+                    <td className={`py-1.5 font-black align-top break-words text-[15px] leading-tight print:text-[13px] ${isRTL ? 'text-left' : 'text-right'}`}>
+                      {sale.customerName}
+                    </td>
+                  </tr>
+                ) : null}
+                <tr className="border-b border-gray-300">
+                  <td className={`py-1.5 font-extrabold align-top ${isRTL ? 'text-right' : 'text-left'}`}>{t.receipt.staff}</td>
+                  <td className={`py-1.5 font-bold align-top break-words ${isRTL ? 'text-left' : 'text-right'}`}>
+                    {beautyStaffList.length > 0 ? beautyStaffList.join(', ') : '—'}
+                  </td>
+                </tr>
+                {receiptDeviceName ? (
+                  <tr className="border-b border-gray-300">
+                    <td className={`py-1.5 font-extrabold align-top ${isRTL ? 'text-right' : 'text-left'}`}>{t.receipt.device}</td>
+                    <td className={`py-1.5 font-bold align-top break-words ${isRTL ? 'text-left' : 'text-right'}`}>{receiptDeviceName}</td>
+                  </tr>
+                ) : null}
+                {(() => {
+                  const deg = (sale.beautyTreatmentDegree ?? '').trim();
+                  const shots = (sale.beautyTreatmentShots ?? '').trim();
+                  if (!deg && !shots) return null;
+                  return (
+                    <>
+                      {deg ? (
+                        <tr className="border-b border-gray-300">
+                          <td className={`py-1.5 font-extrabold align-top ${isRTL ? 'text-right' : 'text-left'}`}>{t.receipt.treatmentDegreeLabel}</td>
+                          <td className={`py-1.5 font-bold tabular-nums align-top ${isRTL ? 'text-left' : 'text-right'}`}>{deg}</td>
+                        </tr>
+                      ) : null}
+                      {shots ? (
+                        <tr className="border-b border-gray-300">
+                          <td className={`py-1.5 font-extrabold align-top ${isRTL ? 'text-right' : 'text-left'}`}>{t.receipt.treatmentShotsLabel}</td>
+                          <td className={`py-1.5 font-bold tabular-nums align-top ${isRTL ? 'text-left' : 'text-right'}`}>{shots}</td>
+                        </tr>
+                      ) : null}
+                    </>
+                  );
+                })()}
+              </tbody>
+            </table>
+
+            {(() => {
+              const noteText = receiptNotesForDisplay(sale.notes);
+              if (!noteText) return null;
+              return (
+                <div className={`mb-3 text-[12px] text-gray-950 print:text-[10px] ${isRTL ? 'text-right' : 'text-left'}`}>
+                  <div className="font-extrabold mb-0.5">{t.receipt.noteLabel}</div>
+                  <div className="font-bold whitespace-pre-wrap break-words leading-snug">{noteText}</div>
                 </div>
-              )}
-              <div className="flex justify-between gap-2 mt-1">
-                <span className="font-extrabold shrink-0">{t.receipt.staff}:</span>
-                <span className="font-bold text-end break-words min-w-0">
-                  {beautyStaffList.length > 0 ? beautyStaffList.join(', ') : '—'}
-                </span>
-              </div>
-              {receiptDeviceName && (
-                <div className="flex justify-between gap-2">
-                  <span className="font-extrabold shrink-0">{t.receipt.device}:</span>
-                  <span className="font-bold text-end break-words min-w-0">{receiptDeviceName}</span>
-                </div>
-              )}
-              {(() => {
-                const deg = (sale.beautyTreatmentDegree ?? '').trim();
-                const shots = (sale.beautyTreatmentShots ?? '').trim();
-                if (!deg && !shots) return null;
-                return (
-                  <div className="flex justify-between gap-3 mt-1 text-[13px] font-extrabold text-gray-950 print:text-[11px]">
-                    {deg ? (
-                      <span className="min-w-0 flex-1">
-                        {t.receipt.treatmentDegreeLabel}: <span className="tabular-nums">{deg}</span>
-                      </span>
-                    ) : null}
-                    {shots ? (
-                      <span className="shrink-0 whitespace-nowrap">
-                        {t.receipt.treatmentShotsLabel}: <span className="tabular-nums">{shots}</span>
-                      </span>
-                    ) : null}
-                  </div>
-                );
-              })()}
-              {(() => {
-                const noteText = receiptNotesForDisplay(sale.notes);
-                if (!noteText) return null;
-                return (
-                  <div
-                    className={`mt-2 pt-2 border-t border-dashed border-gray-500 text-[12px] text-gray-950 print:text-[10px] ${isRTL ? 'text-right' : 'text-left'}`}
-                  >
-                    <div className="font-extrabold mb-1 print:font-black">{t.receipt.noteLabel}</div>
-                    <div className="font-bold whitespace-pre-wrap break-words leading-snug print:font-semibold">{noteText}</div>
-                  </div>
-                );
-              })()}
-            </div>
+              );
+            })()}
 
-            <div className="receipt-divider border-t-[3px] border-dashed border-gray-900 my-3"></div>
+            <table data-section="items" className="w-full table-fixed border-collapse text-[12px] mb-3 font-bold text-gray-950 print:text-[11px]">
+              <colgroup>
+                <col style={{ width: '62%' }} />
+                <col style={{ width: '38%' }} />
+              </colgroup>
+              <thead>
+                <tr className="border-y-2 border-gray-900 bg-gray-50 print:bg-transparent">
+                  <th className={`py-1.5 font-black ${isRTL ? 'text-right' : 'text-left'}`}>{t.receipt.operation}</th>
+                  <th className={`py-1.5 font-black tabular-nums ${isRTL ? 'text-left' : 'text-right'}`}>
+                    {(t.receipt as any).amountLabel ?? (selectedLang === 'en' ? 'Amt' : 'Tutar')}
+                  </th>
+                </tr>
+              </thead>
+              <tbody>
+                {sale.items.map((item, index) => {
+                  const si = item as SaleItem;
+                  const lineStaff = si.beautyStaffName?.trim();
+                  const showLineStaff = beautyStaffList.length > 1 && !!lineStaff;
+                  const mult = (item as any).multiplier && (item as any).multiplier > 1 ? (item as any).multiplier : 1;
+                  const unit = (item as any).unit || 'Adet';
+                  const basePrice = mult > 1 ? item.price / mult : item.price;
+                  const qtyPrice =
+                    mult > 1
+                      ? `${item.quantity} ${unit} × ${formatNumber(basePrice, moneyDecimals, moneyDecimals > 0)}`
+                      : `${item.quantity} × ${formatNumber(item.price, moneyDecimals, moneyDecimals > 0)}`;
+                  return (
+                    <tr key={index} className="border-b border-gray-300 align-top">
+                      <td className={`py-2 ${isRTL ? 'text-right' : 'text-left'}`} style={{ wordBreak: 'break-word' }}>
+                        <div className="font-extrabold">{lineProductName(item)}</div>
+                        {showLineStaff ? (
+                          <div className="text-[11px] font-bold text-gray-700 mt-0.5 print:text-[10px]">
+                            {t.receipt.staff}: {lineStaff}
+                          </div>
+                        ) : null}
+                        <div className="text-[11px] font-bold text-gray-700 mt-0.5 print:text-[10px]">{qtyPrice}</div>
+                      </td>
+                      <td className={`py-2 font-black tabular-nums whitespace-nowrap align-top ${isRTL ? 'text-left' : 'text-right'}`}>
+                        {fmtMoney(item.total)}
+                      </td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
 
-            <div data-section="items" className="text-[13px] mb-2 font-bold text-gray-950 print:text-[11px]">
-              <div className="font-black mb-2 text-gray-950 border-b-2 border-gray-900 pb-1 print:font-black">
-                {t.receipt.operation}
-              </div>
-              {sale.items.map((item, index) => {
-                const si = item as SaleItem;
-                const lineStaff = si.beautyStaffName?.trim();
-                const showLineStaff = beautyStaffList.length > 1 && !!lineStaff;
-                const mult = (item as any).multiplier && (item as any).multiplier > 1 ? (item as any).multiplier : 1;
-                const unit = (item as any).unit || 'Adet';
-                const basePrice = mult > 1 ? item.price / mult : item.price;
-                const qtyPrice =
-                  mult > 1
-                    ? `${item.quantity} ${unit} × ${formatNumber(basePrice, moneyDecimals, moneyDecimals > 0)}`
-                    : `${item.quantity} × ${formatNumber(item.price, moneyDecimals, moneyDecimals > 0)}`;
-                return (
-                  <div key={index} className="border-b border-dashed border-gray-400 pb-2 mb-2 last:border-0 last:mb-0 last:pb-0">
-                    <div className="flex justify-between gap-2 items-start">
-                      <span className="font-extrabold break-words min-w-0 flex-1" style={{ wordBreak: 'break-word' }}>
-                        {lineProductName(item)}
-                      </span>
-                      <span className="font-black whitespace-nowrap tabular-nums shrink-0">{fmtMoney(item.total)}</span>
-                    </div>
-                    {showLineStaff && (
-                      <div className="text-[11px] font-extrabold text-gray-800 mt-0.5 print:text-[10px] print:font-bold">
-                        {t.receipt.staff}: {lineStaff}
-                      </div>
-                    )}
-                    <div className="text-[11px] font-extrabold text-gray-800 mt-0.5 print:text-[10px] print:font-bold">
-                      {qtyPrice}
-                    </div>
-                  </div>
-                );
-              })}
-            </div>
-
-            <div className="receipt-divider border-t-[3px] border-dashed border-gray-900 my-3"></div>
-
-            <div data-section="totals" className="text-[14px] space-y-0.5 mb-2 font-bold print:text-[11px]">
-              {sale.discount > 0 && (
-                <div className="flex justify-between text-red-600 font-bold">
-                  <span>{t.receipt.discount}:</span>
-                  <span className="tabular-nums">-{fmtMoney(sale.discount)}</span>
-                </div>
-              )}
-              <div className="flex justify-between text-[1.05rem] font-black text-gray-950 pt-1 print:text-base print:font-black">
-                <span>{t.receipt.total}:</span>
-                <span className="tabular-nums">{fmtMoney(sale.total)}</span>
-              </div>
-            </div>
+            <table data-section="totals" className="w-full table-fixed border-collapse text-[14px] mb-3 font-bold print:text-[11px]">
+              <colgroup>
+                <col style={{ width: '50%' }} />
+                <col style={{ width: '50%' }} />
+              </colgroup>
+              <tbody>
+                {sale.discount > 0 ? (
+                  <tr className="border-b border-gray-300 text-red-600">
+                    <td className={`py-1.5 ${isRTL ? 'text-right' : 'text-left'}`}>{t.receipt.discount}</td>
+                    <td className={`py-1.5 tabular-nums ${isRTL ? 'text-left' : 'text-right'}`}>-{fmtMoney(sale.discount)}</td>
+                  </tr>
+                ) : null}
+                <tr className="border-t-2 border-gray-900">
+                  <td className={`py-2 text-[1.05rem] font-black text-gray-950 print:text-base ${isRTL ? 'text-right' : 'text-left'}`}>
+                    {t.receipt.total}
+                  </td>
+                  <td className={`py-2 text-[1.05rem] font-black tabular-nums text-gray-950 print:text-base ${isRTL ? 'text-left' : 'text-right'}`}>
+                    {fmtMoney(sale.total)}
+                  </td>
+                </tr>
+              </tbody>
+            </table>
 
             {paymentData.payments?.length > 0 && (
-              <>
-                <div className="receipt-divider border-t-[3px] border-dashed border-gray-900 my-3"></div>
-                <div data-section="payments" className="text-[14px] space-y-0.5 mb-2 font-bold print:text-[11px]">
-                  <div className="font-black mb-2 text-gray-950 print:font-black">{t.receipt.paymentDetails}:</div>
+              <table data-section="payments" className="w-full table-fixed border-collapse text-[13px] mb-3 font-bold print:text-[11px]">
+                <colgroup>
+                  <col style={{ width: '55%' }} />
+                  <col style={{ width: '45%' }} />
+                </colgroup>
+                <thead>
+                  <tr className="border-y-2 border-gray-900">
+                    <th colSpan={2} className={`py-1.5 font-black ${isRTL ? 'text-right' : 'text-left'}`}>
+                      {t.receipt.paymentDetails}
+                    </th>
+                  </tr>
+                </thead>
+                <tbody>
                   {paymentData.payments.map((payment: any, index: number) => (
-                    <div key={index} className={`flex justify-between ${isRTL ? 'mr-2' : 'ml-2'}`}>
-                      <span>
-                        {payment.method === 'cash' ? '💵 ' + t.cash :
-                          payment.method === 'card' ? '💳 ' + t.card :
-                            '📱 ' + t.qrScanCode}
+                    <tr key={index} className="border-b border-gray-300">
+                      <td className={`py-1.5 ${isRTL ? 'text-right' : 'text-left'}`}>
+                        {payment.method === 'cash' ? t.cash :
+                          payment.method === 'card' ? t.card :
+                            t.qrScanCode}
                         {payment.currency !== baseCurrency && ` (${payment.currency})`}
-                      </span>
-                      <span>
+                      </td>
+                      <td className={`py-1.5 tabular-nums ${isRTL ? 'text-left' : 'text-right'}`}>
                         {payment.currency === baseCurrency || !payment.currency
                           ? fmtMoney(payment.amount)
                           : formatMoneyWithCode(payment.amount, payment.currency)
                         }
-                      </span>
-                    </div>
+                      </td>
+                    </tr>
                   ))}
-                  <div className="border-t-2 border-gray-950 my-2"></div>
-                  <div className="flex justify-between font-extrabold text-gray-950">
-                    <span>{t.receipt.paid}:</span>
-                    <span className="tabular-nums font-black">{fmtMoney(paymentData.totalPaid || 0)}</span>
-                  </div>
-                  {paymentData.change > 0 && (
-                    <div className="flex justify-between text-green-800 font-black text-base mt-2 print:text-sm print:font-black">
-                      <span>{t.receipt.change}:</span>
-                      <span>{fmtMoney(paymentData.change)}</span>
-                    </div>
-                  )}
-                </div>
-              </>
+                  <tr className="border-t-2 border-gray-900">
+                    <td className={`py-1.5 font-extrabold ${isRTL ? 'text-right' : 'text-left'}`}>{t.receipt.paid}</td>
+                    <td className={`py-1.5 font-black tabular-nums ${isRTL ? 'text-left' : 'text-right'}`}>
+                      {fmtMoney(paymentData.totalPaid || 0)}
+                    </td>
+                  </tr>
+                  {paymentData.change > 0 ? (
+                    <tr className="text-green-800">
+                      <td className={`py-1.5 font-black ${isRTL ? 'text-right' : 'text-left'}`}>{t.receipt.change}</td>
+                      <td className={`py-1.5 font-black tabular-nums ${isRTL ? 'text-left' : 'text-right'}`}>
+                        {fmtMoney(paymentData.change)}
+                      </td>
+                    </tr>
+                  ) : null}
+                </tbody>
+              </table>
             )}
 
-            <div className="receipt-divider border-t-[3px] border-dashed border-gray-900 my-3"></div>
-
-            <div data-section="footer" className="text-center text-[12px] text-gray-950 mt-2 font-bold print:text-[11px] print:mt-1 print:mb-0">
-              <div className="flex items-center justify-center gap-1 font-black text-gray-950 print:font-black">
-                <span>*** {t.receipt.thanks} ***</span>
-              </div>
+            <div data-section="footer" className="text-center text-[12px] text-gray-950 mt-2 pt-2 border-t-2 border-gray-900 font-bold print:text-[11px]">
+              <span className="font-black">*** {t.receipt.thanks} ***</span>
             </div>
-
-            <div className="receipt-divider border-t-[3px] border-dashed border-gray-900 mt-2 print:mt-1 print:mb-0"></div>
             </>
             ) : (
             <>

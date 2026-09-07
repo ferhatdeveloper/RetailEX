@@ -416,89 +416,126 @@ export function buildReceipt80mmPrintHtml(input: BuildReceipt80mmPrintHtmlInput)
       ? `<div style="font-size:10px;font-weight:600;margin-top:4px">${escapeHtml(phone)}</div>`
       : '';
 
-    const beautyMeta: string[] = [];
-    beautyMeta.push(
-      `<div style="display:flex;justify-content:space-between;font-size:10px;font-weight:600;margin:2px 0"><span>${escapeHtml(T.date)}:</span><span>${escapeHtml(dateStr)}</span></div>`
+    const metaRowsHtml: string[] = [];
+    metaRowsHtml.push(
+      `<tr><td style="padding:5px 2px;border-bottom:1px solid #d1d5db;font-weight:800;vertical-align:top;text-align:${ta}">${escapeHtml(T.date)}</td><td style="padding:5px 2px;border-bottom:1px solid #d1d5db;font-weight:700;vertical-align:top;text-align:end">${escapeHtml(dateStr)}</td></tr>`
     );
-    beautyMeta.push(
-      `<div style="display:flex;justify-content:space-between;font-size:10px;font-weight:600;margin:2px 0"><span style="font-weight:700">${escapeHtml(T.receiptNo)}:</span><span style="font-weight:800">${escapeHtml(sale.receiptNumber)}</span></div>`
+    metaRowsHtml.push(
+      `<tr><td style="padding:5px 2px;border-bottom:1px solid #d1d5db;font-weight:800;vertical-align:top;text-align:${ta}">${escapeHtml(T.receiptNo)}</td><td style="padding:5px 2px;border-bottom:1px solid #d1d5db;font-weight:900;vertical-align:top;text-align:end;word-break:break-all">${escapeHtml(sale.receiptNumber)}</td></tr>`
     );
     if (sale.customerName) {
-      beautyMeta.push(
-        `<div style="margin:8px 0 4px;text-align:${ta}"><div style="font-size:9px;font-weight:700;color:#374151">${escapeHtml(T.customer)}</div><div style="font-size:15px;font-weight:900;line-height:1.2;word-break:break-word">${escapeHtml(sale.customerName)}</div></div>`
+      metaRowsHtml.push(
+        `<tr><td style="padding:5px 2px;border-bottom:1px solid #d1d5db;font-weight:800;vertical-align:top;text-align:${ta}">${escapeHtml(T.customer)}</td><td style="padding:5px 2px;border-bottom:1px solid #d1d5db;font-weight:900;font-size:14px;vertical-align:top;text-align:end;word-break:break-word">${escapeHtml(sale.customerName)}</td></tr>`
       );
     }
-    beautyMeta.push(
-      `<div style="display:flex;justify-content:space-between;font-size:10px;font-weight:600;margin:2px 0;gap:6px"><span style="font-weight:800;flex-shrink:0">${escapeHtml(T.staff)}:</span><span style="font-weight:700;text-align:end;word-break:break-word">${escapeHtml(beautyStaffList.length > 0 ? beautyStaffList.join(', ') : '—')}</span></div>`
+    metaRowsHtml.push(
+      `<tr><td style="padding:5px 2px;border-bottom:1px solid #d1d5db;font-weight:800;vertical-align:top;text-align:${ta}">${escapeHtml(T.staff)}</td><td style="padding:5px 2px;border-bottom:1px solid #d1d5db;font-weight:700;vertical-align:top;text-align:end;word-break:break-word">${escapeHtml(beautyStaffList.length > 0 ? beautyStaffList.join(', ') : '—')}</td></tr>`
     );
     if (deviceRow) {
-      beautyMeta.push(
-        `<div style="display:flex;justify-content:space-between;font-size:10px;font-weight:600;margin:2px 0;gap:6px"><span style="font-weight:800;flex-shrink:0">${escapeHtml(T.device)}:</span><span style="font-weight:700;text-align:end;word-break:break-word">${escapeHtml(deviceRow)}</span></div>`
+      metaRowsHtml.push(
+        `<tr><td style="padding:5px 2px;border-bottom:1px solid #d1d5db;font-weight:800;vertical-align:top;text-align:${ta}">${escapeHtml(T.device)}</td><td style="padding:5px 2px;border-bottom:1px solid #d1d5db;font-weight:700;vertical-align:top;text-align:end;word-break:break-word">${escapeHtml(deviceRow)}</td></tr>`
       );
     }
-    if (degVal || shotsVal) {
-      const degPart = degVal
-        ? `<span>${escapeHtml(T.treatmentDegree)}: <span style="font-variant-numeric:tabular-nums">${escapeHtml(degVal)}</span></span>`
-        : '';
-      const shotsPart = shotsVal
-        ? `<span style="white-space:nowrap">${escapeHtml(T.treatmentShots)}: <span style="font-variant-numeric:tabular-nums">${escapeHtml(shotsVal)}</span></span>`
-        : '';
-      beautyMeta.push(
-        `<div style="display:flex;justify-content:space-between;font-size:10px;font-weight:700;margin:4px 0;gap:8px">${degPart}${shotsPart}</div>`
+    if (degVal) {
+      metaRowsHtml.push(
+        `<tr><td style="padding:5px 2px;border-bottom:1px solid #d1d5db;font-weight:800;vertical-align:top;text-align:${ta}">${escapeHtml(T.treatmentDegree)}</td><td style="padding:5px 2px;border-bottom:1px solid #d1d5db;font-weight:700;vertical-align:top;text-align:end;font-variant-numeric:tabular-nums">${escapeHtml(degVal)}</td></tr>`
+      );
+    }
+    if (shotsVal) {
+      metaRowsHtml.push(
+        `<tr><td style="padding:5px 2px;border-bottom:1px solid #d1d5db;font-weight:800;vertical-align:top;text-align:${ta}">${escapeHtml(T.treatmentShots)}</td><td style="padding:5px 2px;border-bottom:1px solid #d1d5db;font-weight:700;vertical-align:top;text-align:end;font-variant-numeric:tabular-nums">${escapeHtml(shotsVal)}</td></tr>`
       );
     }
 
-    const beautyItems = (sale.items || [])
+    const beautyNotesHtml = notePlain
+      ? `<div style="font-size:10px;font-weight:700;line-height:1.35;margin:0 0 10px;word-break:break-word">
+  <div style="font-weight:800;margin-bottom:3px">${escapeHtml(T.noteLabel)}</div>
+  <div style="font-weight:600;white-space:pre-wrap">${escapeHtml(notePlain)}</div>
+</div>`
+      : '';
+
+    const beautyItemRows = (sale.items || [])
       .map((item) => {
         const sub = itemSubline(item, moneyDecimals);
         const lineStaff = item.beautyStaffName?.trim();
         const showLineStaff = beautyStaffList.length > 1 && !!lineStaff;
-        return `<div style="border-bottom:1px dashed #9ca3af;padding:6px 0;margin-bottom:4px">
-<div style="display:flex;justify-content:space-between;gap:6px;align-items:flex-start">
-<span style="font-weight:800;font-size:12px;word-break:break-word;flex:1;min-width:0">${escapeHtml(item.productName || '')}</span>
-<span style="font-weight:900;white-space:nowrap;flex-shrink:0">${escapeHtml(fmtMoney(item.total))}</span>
-</div>
-${showLineStaff ? `<div style="font-size:9px;font-weight:800;margin-top:2px;color:#111">${escapeHtml(T.staff)}: ${escapeHtml(lineStaff!)}</div>` : ''}
+        return `<tr>
+<td style="padding:7px 2px;border-bottom:1px solid #d1d5db;vertical-align:top;text-align:${ta};word-break:break-word">
+<div style="font-weight:800;font-size:12px">${escapeHtml(item.productName || '')}</div>
+${showLineStaff ? `<div style="font-size:9px;font-weight:700;margin-top:2px;color:#374151">${escapeHtml(T.staff)}: ${escapeHtml(lineStaff!)}</div>` : ''}
 <div style="font-size:9px;font-weight:700;color:#374151;margin-top:2px">${escapeHtml(sub)}</div>
-</div>`;
+</td>
+<td style="padding:7px 2px;border-bottom:1px solid #d1d5db;vertical-align:top;text-align:end;font-weight:900;white-space:nowrap">${escapeHtml(fmtMoney(item.total))}</td>
+</tr>`;
       })
       .join('');
 
-    const beautyPaymentsBlock =
+    const beautyPayRows = payments
+      .map((payment) => {
+        const left = paymentLabel(payment.method, T);
+        const payCode = (payment.currency || baseCurrency).trim().toUpperCase();
+        const right = fmtPayment(payment.amount ?? 0, payCode);
+        return `<tr><td style="padding:5px 2px;border-bottom:1px solid #d1d5db;text-align:${ta}">${left}${payCode !== baseCurrency ? ` (${escapeHtml(payCode)})` : ''}</td><td style="padding:5px 2px;border-bottom:1px solid #d1d5db;text-align:end;font-variant-numeric:tabular-nums">${escapeHtml(right)}</td></tr>`;
+      })
+      .join('');
+
+    const beautyPaymentsTable =
       payments.length > 0
-        ? `<div style="border-top:2px dashed #000;margin:10px 0"></div>
-  <div style="font-size:13px;margin-bottom:8px">
-    <div style="font-weight:800;margin-bottom:8px">${escapeHtml(T.paymentDetails)}:</div>
-    ${payLines}
-    <div style="border-top:1px solid #000;margin:8px 0"></div>
-    <div style="display:flex;justify-content:space-between;font-weight:700"><span>${escapeHtml(T.paid)}:</span><span>${escapeHtml(fmtMoney(paymentData.totalPaid || 0))}</span></div>
-    ${remainingBlock}
-    ${changeBlock}
-  </div>`
+        ? `<table role="presentation" style="width:100%;table-layout:fixed;border-collapse:collapse;font-size:12px;font-weight:700;margin:0 0 10px">
+<thead><tr><th colspan="2" style="padding:6px 2px;border-top:2px solid #000;border-bottom:2px solid #000;text-align:${ta};font-weight:900">${escapeHtml(T.paymentDetails)}</th></tr></thead>
+<tbody>
+${beautyPayRows}
+<tr><td style="padding:6px 2px;border-top:2px solid #000;font-weight:800;text-align:${ta}">${escapeHtml(T.paid)}</td><td style="padding:6px 2px;border-top:2px solid #000;font-weight:900;text-align:end">${escapeHtml(fmtMoney(paymentData.totalPaid || 0))}</td></tr>
+${
+  remaining > moneyEpsilon(baseCurrency)
+    ? `<tr><td style="padding:5px 2px;font-weight:800;text-align:${ta}">${escapeHtml(T.remaining)}</td><td style="padding:5px 2px;font-weight:800;text-align:end">${escapeHtml(fmtMoney(remaining))}</td></tr>`
+    : ''
+}
+${
+  paymentData.change > moneyEpsilon(baseCurrency)
+    ? `<tr><td style="padding:5px 2px;font-weight:800;color:#15803d;text-align:${ta}">${escapeHtml(T.change)}</td><td style="padding:5px 2px;font-weight:800;color:#15803d;text-align:end">${escapeHtml(fmtMoney(paymentData.change))}</td></tr>`
+    : ''
+}
+</tbody></table>`
         : '';
+
+    const bannerSolid = interimBanner?.trim()
+      ? `<div style="text-align:center;font-size:11px;font-weight:800;margin:0 0 10px;padding:8px;border:2px solid #000">${escapeHtml(interimBanner.trim())}</div>`
+      : '';
 
     bodyInner = `
 <div style="width:100%;max-width:100%;box-sizing:border-box;margin:0;padding:2mm 3mm 3mm;font-family:'Courier New',Courier,monospace;font-size:13px;font-weight:800;color:#000;direction:${dir};text-align:${ta};-webkit-print-color-adjust:exact;print-color-adjust:exact">
-  <div style="text-align:center;border-bottom:2px dashed #000;padding-bottom:8px;margin-bottom:8px">
+  <div style="text-align:center;border-bottom:2px solid #000;padding-bottom:8px;margin-bottom:10px">
     ${logoHtml}
     <div style="font-size:18px;font-weight:900;margin-bottom:4px">${escapeHtml(companyName)}</div>
     ${beautyPhoneOnly}
   </div>
-  ${bannerHtml}
-  ${beautyMeta.join('')}
-  ${notesBlockHtml}
-  <div style="border-top:2px dashed #000;margin:10px 0"></div>
-  <div style="font-weight:900;font-size:12px;border-bottom:1px solid #000;padding-bottom:4px;margin-bottom:6px">${escapeHtml(T.operation)}</div>
-  ${beautyItems}
-  <div style="border-top:2px dashed #000;margin:10px 0"></div>
-  <div style="font-size:13px;margin-bottom:8px">
-    ${discBlock}
-    <div style="display:flex;justify-content:space-between;font-size:16px;font-weight:900;margin-top:4px"><span>${escapeHtml(T.total)}:</span><span>${escapeHtml(fmtMoney(sale.total ?? 0))}</span></div>
-  </div>
-  ${beautyPaymentsBlock}
-  <div style="border-top:2px dashed #000;margin:10px 0"></div>
-  <div style="text-align:center;font-size:13px;font-weight:800;margin-top:8px">*** ${escapeHtml(T.thanks)} ***</div>
-  <div style="border-top:2px dashed #000;margin-top:10px"></div>
+  ${bannerSolid}
+  <table role="presentation" style="width:100%;table-layout:fixed;border-collapse:collapse;font-size:11px;margin:0 0 10px">
+    <colgroup><col style="width:38%" /><col style="width:62%" /></colgroup>
+    <tbody>${metaRowsHtml.join('')}</tbody>
+  </table>
+  ${beautyNotesHtml}
+  <table role="presentation" style="width:100%;table-layout:fixed;border-collapse:collapse;font-size:12px;font-weight:800;margin:0 0 10px">
+    <colgroup><col style="width:62%" /><col style="width:38%" /></colgroup>
+    <thead><tr>
+      <th style="padding:6px 2px;border-top:2px solid #000;border-bottom:2px solid #000;text-align:${ta};font-weight:900">${escapeHtml(T.operation)}</th>
+      <th style="padding:6px 2px;border-top:2px solid #000;border-bottom:2px solid #000;text-align:end;font-weight:900">${escapeHtml(T.amountLabel)}</th>
+    </tr></thead>
+    <tbody>${beautyItemRows}</tbody>
+  </table>
+  <table role="presentation" style="width:100%;table-layout:fixed;border-collapse:collapse;font-size:13px;margin:0 0 10px">
+    <tbody>
+      ${
+        sale.discount > 0
+          ? `<tr><td style="padding:4px 2px;color:#b91c1c;font-weight:700;text-align:${ta}">${escapeHtml(T.discount)}</td><td style="padding:4px 2px;color:#b91c1c;font-weight:700;text-align:end">-${escapeHtml(fmtMoney(sale.discount))}</td></tr>`
+          : ''
+      }
+      <tr><td style="padding:8px 2px;border-top:2px solid #000;font-size:16px;font-weight:900;text-align:${ta}">${escapeHtml(T.total)}</td><td style="padding:8px 2px;border-top:2px solid #000;font-size:16px;font-weight:900;text-align:end">${escapeHtml(fmtMoney(sale.total ?? 0))}</td></tr>
+    </tbody>
+  </table>
+  ${beautyPaymentsTable}
+  <div style="text-align:center;font-size:13px;font-weight:800;margin-top:8px;padding-top:8px;border-top:2px solid #000">*** ${escapeHtml(T.thanks)} ***</div>
 </div>`;
   } else {
     const metaRows: string[] = [];
