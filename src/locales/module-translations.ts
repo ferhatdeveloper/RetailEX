@@ -1330,6 +1330,26 @@ export const moduleTranslations: Record<string, Record<Language, string>> = {
   custPhEmail: { tr: 'musteri@example.com', en: 'customer@example.com', ar: 'customer@example.com', ku: 'customer@example.com' },
   cashActionCollect: { tr: 'Tahsilat al', en: 'Collect payment', ar: 'تحصيل دفعة', ku: 'پارە وەربگرە' },
   cashActionPay: { tr: 'Ödeme yap', en: 'Make payment', ar: 'إجراء دفعة', ku: 'پارە بدە' },
+  settleCloseAccount: { tr: 'Hesabı tamamla / kapat', en: 'Settle / close account', ar: 'تسوية / إغلاق الحساب', ku: 'هەژمار تەواو بکە / دابخە' },
+  settleCloseAccountDesc: {
+    tr: 'Cari bakiyenin tamamını tutara yazar; kayıt sonrası bakiye sıfırlanır.',
+    en: 'Fills the full account balance; balance becomes zero after save.',
+    ar: 'يملأ رصيد الحساب بالكامل؛ يصبح الرصيد صفراً بعد الحفظ.',
+    ku: 'هەموو باڵانسی هەژمار دەنوسێت؛ دوای پاشەکەوت باڵانس سفر دەبێت.',
+  },
+  settleCloseNoBalance: {
+    tr: 'Kapatılacak bakiye yok (0).',
+    en: 'No balance to settle (0).',
+    ar: 'لا يوجد رصيد للتسوية (0).',
+    ku: 'باڵانس بۆ داخستن نییە (0).',
+  },
+  settleCloseNeedCari: {
+    tr: 'Önce cari hesap seçin.',
+    en: 'Select a current account first.',
+    ar: 'اختر الحساب الجاري أولاً.',
+    ku: 'سەرەتا هەژماری جاری هەڵبژێرە.',
+  },
+
   missingBarcodeCreateProduct: { tr: 'Ürün kartı oluştur', en: 'Create product card', ar: 'إنشاء بطاقة صنف', ku: 'کارتی بەرهەم دروست بکە' },
   missingBarcodeAddAsProduct: { tr: 'Ürün olarak ekle', en: 'Add as product', ar: 'إضافة كصنف', ku: 'وەک بەرهەم زیاد بکە' },
   missingBarcodeProductName: { tr: 'Ürün adı', en: 'Product name', ar: 'اسم الصنف', ku: 'ناوی بەرهەم' },
