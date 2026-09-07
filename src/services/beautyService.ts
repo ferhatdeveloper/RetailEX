@@ -1378,6 +1378,7 @@ export const beautyService = {
             try {
                 const { postgrest } = await import('./api/postgrestClient');
                 const fn = erpFirmNrForRow();
+                const pn = periodPaddedForBeauty();
                 const rows = await postgrest.get<BeautyCustomer[]>(
                     `/rex_${fn}_customers`,
                     {
@@ -1391,12 +1392,93 @@ export const beautyService = {
                     { schema: 'public' }
                 );
                 const list = Array.isArray(rows) ? rows : [];
-                return list.map((c: BeautyCustomer): BeautyCustomer => ({
-                    ...c,
-                    appointment_count: 0,
-                    last_appointment_date: undefined,
-                    last_service_name: undefined,
-                }));
+
+                type AptAggRow = {
+                    client_id?: string | null;
+                    appointment_date?: string | null;
+                    appointment_time?: string | null;
+                    service_id?: string | null;
+                };
+                type CustAptAgg = {
+                    appointment_count: number;
+                    last_appointment_date?: string;
+                    last_service_id?: string;
+                    last_time?: string;
+                };
+                const byClient = new Map<string, CustAptAgg>();
+                try {
+                    const aptPath = `/rex_${fn}_${pn}_beauty_appointments`;
+                    const PAGE = 5000;
+                    for (let offset = 0; ; offset += PAGE) {
+                        const part = await postgrest.get<AptAggRow[]>(
+                            aptPath,
+                            {
+                                select: 'client_id,appointment_date,appointment_time,service_id',
+                                order: 'appointment_date.desc,appointment_time.desc',
+                                limit: PAGE,
+                                offset,
+                            },
+                            { schema: 'beauty' },
+                        );
+                        const chunk = Array.isArray(part) ? part : [];
+                        for (const r of chunk) {
+                            const cid = String(r.client_id ?? '').trim();
+                            if (!cid) continue;
+                            const ymd = String(r.appointment_date ?? '').slice(0, 10);
+                            const hhmm = normalizeAppointmentTimeCell(r.appointment_time);
+                            let acc = byClient.get(cid);
+                            if (!acc) {
+                                acc = {
+                                    appointment_count: 0,
+                                    last_appointment_date: ymd || undefined,
+                                    last_service_id: r.service_id ? String(r.service_id) : undefined,
+                                    last_time: hhmm || undefined,
+                                };
+                                byClient.set(cid, acc);
+                            }
+                            acc.appointment_count += 1;
+                            if (ymd) {
+                                const cur = acc.last_appointment_date ?? '';
+                                const better =
+                                    !cur ||
+                                    ymd > cur ||
+                                    (ymd === cur && (hhmm || '') > (acc.last_time || ''));
+                                if (better) {
+                                    acc.last_appointment_date = ymd;
+                                    acc.last_time = hhmm || undefined;
+                                    acc.last_service_id = r.service_id
+                                        ? String(r.service_id)
+                                        : undefined;
+                                }
+                            }
+                        }
+                        if (chunk.length < PAGE) break;
+                    }
+                } catch (e) {
+                    console.warn('[beautyService] getCustomers apt agg PostgREST:', e);
+                }
+
+                const svcIds = [...byClient.values()]
+                    .map(a => a.last_service_id)
+                    .filter((id): id is string => Boolean(id));
+                let nameBySvc = new Map<string, string>();
+                try {
+                    nameBySvc = await resolveServiceNamesPostgrest(svcIds);
+                } catch {
+                    /* */
+                }
+
+                return list.map((c: BeautyCustomer): BeautyCustomer => {
+                    const a = byClient.get(String(c.id));
+                    return {
+                        ...c,
+                        appointment_count: a?.appointment_count ?? 0,
+                        last_appointment_date: a?.last_appointment_date,
+                        last_service_name: a?.last_service_id
+                            ? nameBySvc.get(a.last_service_id)
+                            : undefined,
+                    };
+                });
             } catch (e) {
                 console.warn('[beautyService] getCustomers PostgREST (basit liste, randevu sayıları yok):', e);
             }
@@ -1490,6 +1572,62 @@ export const beautyService = {
         return rows;
     },
 
+    /**
+     * Sonraki dosya numarası: yalnızca sayısal `file_id` değerlerinden MAX+1.
+     * Alfanumerik kayıtlar yok sayılır. İlk kayıt → `1`.
+     */
+    async generateNextFileId(): Promise<string> {
+        const t = postgres.getCardTableName('customers');
+        const fn = erpFirmNrForRow();
+        try {
+            if (shouldUseTenantPostgrestApi()) {
+                const { postgrest } = await import('./api/postgrestClient');
+                const rows = await postgrest.get<{ file_id?: string | null }[]>(
+                    `/rex_${fn}_customers`,
+                    {
+                        select: 'file_id',
+                        firm_nr: `eq.${fn}`,
+                        file_id: 'not.is.null',
+                        limit: 5000,
+                    },
+                    { schema: 'public' },
+                );
+                let max = 0;
+                let pad = 1;
+                for (const row of Array.isArray(rows) ? rows : []) {
+                    const raw = String(row?.file_id ?? '').trim();
+                    if (!/^\d+$/.test(raw)) continue;
+                    const n = Number(raw);
+                    if (!Number.isFinite(n)) continue;
+                    if (n > max) max = n;
+                    pad = Math.max(pad, raw.length);
+                }
+                const next = max + 1;
+                return String(next).padStart(Math.max(pad, String(next).length), '0');
+            }
+            const { rows } = await postgres.query(
+                `SELECT COALESCE(
+                   MAX(CASE WHEN TRIM(file_id) ~ '^[0-9]+$' THEN TRIM(file_id)::bigint ELSE NULL END),
+                   0
+                 )::bigint + 1 AS next_nr,
+                 COALESCE(
+                   MAX(CASE WHEN TRIM(file_id) ~ '^[0-9]+$' THEN LENGTH(TRIM(file_id)) ELSE NULL END),
+                   1
+                 )::int AS pad_len
+                 FROM ${t}
+                 WHERE firm_nr = $1`,
+                [fn],
+            );
+            const next = Number(rows?.[0]?.next_nr ?? 1);
+            const padLen = Math.max(1, Number(rows?.[0]?.pad_len ?? 1));
+            const n = Number.isFinite(next) && next > 0 ? next : 1;
+            return String(n).padStart(Math.max(padLen, String(n).length), '0');
+        } catch (e) {
+            console.error('[beautyService] generateNextFileId failed:', e);
+            return '1';
+        }
+    },
+
     async createCustomer(data: Partial<BeautyCustomer>): Promise<string> {
         const t = postgres.getCardTableName('customers');
         const fn = erpFirmNrForRow();
@@ -1500,10 +1638,17 @@ export const beautyService = {
             const n = Number(data.age);
             if (Number.isFinite(n)) ageVal = Math.round(n);
         }
-        const fileIdVal =
+        let fileIdVal =
             data.file_id != null && String(data.file_id).trim() !== ''
                 ? String(data.file_id).trim()
                 : null;
+        if (fileIdVal == null) {
+            try {
+                fileIdVal = await beautyService.generateNextFileId();
+            } catch {
+                fileIdVal = null;
+            }
+        }
         const g = String(data.gender ?? '').trim().toLowerCase();
         const genderVal = g === 'female' || g === 'male' || g === 'other' ? g : null;
         const tierRaw = String(data.customer_tier ?? 'normal').trim().toLowerCase();

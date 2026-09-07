@@ -14,6 +14,7 @@ import { formatMoneyAmount } from '../../../utils/formatMoney';
 import { beautyAppointmentDateKey, formatLocalYmd, getWeekRangeLocal, getMonthRangeLocal } from '../../../utils/dateLocal';
 import { beautyAptVisibleOnSchedule } from '../../../utils/beautyAppointmentVisibility';
 import { beautyService } from '../../../services/beautyService';
+import { useBeautyTimeFormat } from '../../../hooks/useBeautyTimeFormat';
 import { BeautyServiceReportCrmModal } from '../../reports/BeautyServiceReportCrmModal';
 import '../ClinicStyles.css';
 
@@ -66,6 +67,7 @@ type CallTab = 'today' | 'tomorrow' | 'week' | 'month' | 'range';
 
 export function ClinicDashboard() {
     const { tm, language } = useLanguage();
+    const { formatTime } = useBeautyTimeFormat();
     const {
         appointments, services, specialists, devices,
         loadAppointments, loadServices, loadSpecialists, loadDevices, updateAppointment,
@@ -685,7 +687,7 @@ export function ClinicDashboard() {
                                                     const hasAct = Boolean(apt.pre_visit_activity_at);
                                                     const accent = hasCall && hasAct ? T.green : !hasCall ? T.amber : '#9333ea';
                                                     const dateLabel = beautyAppointmentDateKey(apt);
-                                                    const time = (apt.appointment_time ?? apt.time ?? '--:--').slice(0, 5);
+                                                    const time = formatTime(apt.appointment_time ?? apt.time);
                                                     const st = String(apt.status ?? '');
                                                     const stCfg = STATUS_CFG[st] ?? STATUS_CFG.scheduled;
                                                     return (
@@ -755,7 +757,7 @@ export function ClinicDashboard() {
                             const hasAct = Boolean(apt.pre_visit_activity_at);
                             const accent = hasCall && hasAct ? T.green : !hasCall ? T.amber : '#9333ea';
                             const dateLabel = beautyAppointmentDateKey(apt);
-                            const time = (apt.appointment_time ?? apt.time ?? '--:--').slice(0, 5);
+                            const time = formatTime(apt.appointment_time ?? apt.time);
                             return (
                                 <div
                                     key={apt.id}
@@ -866,7 +868,7 @@ export function ClinicDashboard() {
                                 </div>
                             ) : stats.todayApts.map(apt => {
                                 const cfg  = STATUS_CFG[apt.status] ?? STATUS_CFG.scheduled;
-                                const time = (apt.appointment_time ?? apt.time ?? '--:--').slice(0, 5);
+                                const time = formatTime(apt.appointment_time ?? apt.time);
                                 return (
                                     <div
                                         key={apt.id}

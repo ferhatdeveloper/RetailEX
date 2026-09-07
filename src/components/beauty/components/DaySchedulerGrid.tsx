@@ -11,6 +11,8 @@ import {
     suggestQueuePrefillTime,
 } from '../../../utils/beautyQueueOrder';
 import { beautyAptVisibleOnSchedule } from '../../../utils/beautyAppointmentVisibility';
+import { useBeautyTimeFormat } from '../../../hooks/useBeautyTimeFormat';
+import { formatBeautyMinutes } from '../../../utils/beautyTimeFormat';
 
 const DEFAULT_PX_PER_HOUR = 56;
 
@@ -107,6 +109,7 @@ export function DaySchedulerGrid({
     queueSnapMinutes = 5,
     pixelsPerHour = DEFAULT_PX_PER_HOUR,
 }: DaySchedulerGridProps) {
+    const { format: timeFormat } = useBeautyTimeFormat();
     const pxPerHour = Math.max(36, Math.min(72, pixelsPerHour));
     const dayStr = formatLocalYmd(currentDate);
     const dayApts = useMemo(
@@ -257,7 +260,7 @@ export function DaySchedulerGrid({
                                 boxSizing: 'border-box',
                             }}
                         >
-                            {`${String(h).padStart(2, '0')}:00`}
+                            {formatBeautyMinutes(h * 60, timeFormat)}
                         </div>
                     ))}
                 </div>

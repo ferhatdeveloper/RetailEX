@@ -8,8 +8,6 @@ import {
     Typography,
     Avatar,
     Tag,
-    Select,
-    Segmented,
 } from 'antd';
 import {
     RETAILEX_BORDER_SUBTLE,
@@ -27,7 +25,7 @@ import {
     UserOutlined,
 } from '@ant-design/icons';
 import { User } from 'lucide-react';
-import { RetailExFlatModal, RetailExFlatFieldLabel } from '../../shared/RetailExFlatModal';
+import { RetailExFlatModal } from '../../shared/RetailExFlatModal';
 import { useBeautyStore } from '../store/useBeautyStore';
 import { useLanguage } from '../../../contexts/LanguageContext';
 import { logger } from '../../../services/loggingService';
@@ -35,45 +33,12 @@ import type { BeautyCustomer } from '../../../types/beauty';
 import { formatMoneyAmount } from '../../../utils/formatMoney';
 import { fetchCurrentAccounts } from '../../../services/api/currentAccounts';
 import { ERP_SETTINGS } from '../../../services/postgres';
+import { beautyService } from '../../../services/beautyService';
 import { toast } from 'sonner';
-
-const EMPTY_FORM: Partial<BeautyCustomer> = {
-    name: '',
-    phone: '',
-    email: '',
-    address: '',
-    city: '',
-    notes: '',
-    customer_tier: 'normal',
-    gender: null,
-};
-
-/** RetailExFlatModal (body portal) içindeki Select dropdown'ı overlay'in altında kalmadan
- *  en yüksek z-index'te gösterir. ServiceManagement.tsx ile aynı kalıp. */
-const ANT_SELECT_POPUP_Z = 2147483647;
-const antSelectInFlatModal = {
-    getPopupContainer: () => document.body,
-    styles: { popup: { root: { zIndex: ANT_SELECT_POPUP_Z } as React.CSSProperties } },
-} as const;
-
-/** DB'den gelen cinsiyet değerini Select'in beklediği 3 değerden birine map'ler.
- *  Eski/uyumsuz stringler (örn. "Kadın", "K", "F") için en yakın anlamlı karşılığı döner. */
-function normalizeGender(
-    raw: unknown
-): 'female' | 'male' | 'other' | null {
-    const s = String(raw ?? '').trim().toLowerCase();
-    if (!s) return null;
-    if (s === 'female' || s === 'f' || s === 'kadın' || s === 'kadin' || s === 'k') return 'female';
-    if (s === 'male' || s === 'm' || s === 'erkek' || s === 'e') return 'male';
-    if (s === 'other' || s === 'diğer' || s === 'diger' || s === 'd') return 'other';
-    return null;
-}
-
-/** DB'deki ham değeri kullanıcıya göstermek için — bilinmeyen/uyumsuz değerler için info notu. */
-function genderRawLabel(raw: unknown): string {
-    const s = String(raw ?? '').trim();
-    return s;
-}
+import {
+    BEAUTY_CUSTOMER_EMPTY_FORM,
+    BeautyCustomerEditFormFields,
+} from './BeautyCustomerEditFormFields';
 
 export type ClientCRMProps = { onOpenCustomer: (customerId: string) => void };
 
@@ -82,7 +47,7 @@ export function ClientCRM({ onOpenCustomer }: ClientCRMProps) {
     const { tm } = useLanguage();
     const [search, setSearch] = useState('');
     const [showModal, setShowModal] = useState(false);
-    const [editing, setEditing] = useState<Partial<BeautyCustomer>>(EMPTY_FORM);
+    const [editing, setEditing] = useState<Partial<BeautyCustomer>>(BEAUTY_CUSTOMER_EMPTY_FORM);
     const [isEdit, setIsEdit] = useState(false);
     const [saving, setSaving] = useState(false);
     const [currentAccountCustomers, setCurrentAccountCustomers] = useState<BeautyCustomer[]>([]);
@@ -131,9 +96,9 @@ export function ClientCRM({ onOpenCustomer }: ClientCRMProps) {
             const textHit =
                 c.name?.toLowerCase().includes(q) ||
                 c.email?.toLowerCase().includes(q) ||
-                (c.code ?? '').toLowerCase().includes(q);
+                (c.code ?? '').toLowerCase().includes(q) ||
+                (c.file_id ?? '').toLowerCase().includes(q);
             if (textHit) return true;
-            // Telefon → rakam dışı karakterleri yoksayarak esnek eşleşme
             return (
                 phoneMatchesQuery(c.phone, trimmed) ||
                 phoneMatchesQuery(c.phone2, trimmed)
@@ -142,13 +107,24 @@ export function ClientCRM({ onOpenCustomer }: ClientCRMProps) {
     }, [mergedCustomers, search]);
 
     const openCreate = () => {
-        setEditing(EMPTY_FORM);
+        setEditing(BEAUTY_CUSTOMER_EMPTY_FORM);
         setIsEdit(false);
         setShowModal(true);
+        void beautyService.generateNextFileId().then(next => {
+            setEditing(p => ({ ...p, file_id: p.file_id?.trim() ? p.file_id : next }));
+        }).catch(() => { /* no-op */ });
     };
 
     const openEdit = (c: BeautyCustomer) => {
-        setEditing({ ...c });
+        setEditing({
+            ...BEAUTY_CUSTOMER_EMPTY_FORM,
+            ...c,
+            file_id: c.file_id ?? '',
+            phone2: c.phone2 ?? '',
+            occupation: c.occupation ?? '',
+            heard_from: c.heard_from ?? '',
+            age: c.age ?? null,
+        });
         setIsEdit(true);
         setShowModal(true);
     };
@@ -183,13 +159,30 @@ export function ClientCRM({ onOpenCustomer }: ClientCRMProps) {
         name.split(' ').slice(0, 2).map(w => w[0]).join('').toUpperCase();
 
     const formatDate = (d?: string) =>
-        d ? new Date(d).toLocaleDateString('tr-TR') : '-';
+        d ? new Date(d).toLocaleDateString(tm('localeCode') || 'tr-TR') : '-';
 
     const formatCurrency = (n?: number) =>
         formatMoneyAmount(n ?? 0, { minFrac: 0, maxFrac: 0 });
 
     const columns: ColumnsType<BeautyCustomer> = useMemo(
         () => [
+            {
+                title: tm('custColFileNo'),
+                key: 'file_id',
+                width: 100,
+                sorter: (a, b) => {
+                    const na = Number(String(a.file_id ?? '').trim());
+                    const nb = Number(String(b.file_id ?? '').trim());
+                    if (Number.isFinite(na) && Number.isFinite(nb)) return na - nb;
+                    return String(a.file_id ?? '').localeCompare(String(b.file_id ?? ''), 'tr');
+                },
+                defaultSortOrder: 'descend',
+                render: (_, c) => (
+                    <Typography.Text strong className="tabular-nums text-[#262626]">
+                        {String(c.file_id ?? '').trim() || '—'}
+                    </Typography.Text>
+                ),
+            },
             {
                 title: tm('bCustomerHeader'),
                 key: 'customer',
@@ -228,7 +221,7 @@ export function ClientCRM({ onOpenCustomer }: ClientCRMProps) {
             {
                 title: tm('bContactHeader'),
                 key: 'contact',
-                width: 260,
+                width: 220,
                 render: (_, c) => (
                     <Space direction="vertical" size={4} className="w-full">
                         {c.phone ? (
@@ -296,7 +289,7 @@ export function ClientCRM({ onOpenCustomer }: ClientCRMProps) {
                 ),
             },
         ],
-        [tm, formatCurrency],
+        [tm],
     );
 
     return (
@@ -372,7 +365,7 @@ export function ClientCRM({ onOpenCustomer }: ClientCRMProps) {
                                 onClick: () => onOpenCustomer(record.id),
                                 style: { cursor: 'pointer' },
                             })}
-                            scroll={{ x: 900 }}
+                            scroll={{ x: 980 }}
                         />
                     </Card>
                 </div>
@@ -393,112 +386,19 @@ export function ClientCRM({ onOpenCustomer }: ClientCRMProps) {
                         }
                     }}
                 >
-                    <div className="flex w-full flex-col gap-4">
-                        <div>
-                            <RetailExFlatFieldLabel required>{tm('bCustomerName')}</RetailExFlatFieldLabel>
-                            <Input
-                                className="!rounded-2xl !px-4 !py-2.5"
-                                value={editing.name ?? ''}
-                                onChange={e => setEditing(p => ({ ...p, name: e.target.value }))}
-                                placeholder={tm('bCustomerNamePlaceholder')}
-                            />
-                        </div>
-                        <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
-                            <div>
-                                <RetailExFlatFieldLabel>{tm('bGender')}</RetailExFlatFieldLabel>
-                                <Select
-                                    {...antSelectInFlatModal}
-                                    className="w-full [&_.ant-select-selector]:!rounded-2xl [&_.ant-select-selector]:!py-1"
-                                    allowClear
-                                    placeholder={tm('bGenderPlaceholder')}
-                                    value={normalizeGender(editing.gender) ?? undefined}
-                                    onChange={v =>
-                                        setEditing(p => ({
-                                            ...p,
-                                            gender: (v as BeautyCustomer['gender']) ?? null,
-                                        }))
-                                    }
-                                    options={[
-                                        { value: 'female', label: tm('bGenderFemale') },
-                                        { value: 'male', label: tm('bGenderMale') },
-                                        { value: 'other', label: tm('bGenderOther') },
-                                    ]}
-                                />
-                                {genderRawLabel(editing.gender) &&
-                                    normalizeGender(editing.gender) === null && (
-                                        <p className="mt-1 text-[11px] font-semibold text-amber-600 dark:text-amber-400">
-                                            DB'de kayıtlı değer: <b>"{genderRawLabel(editing.gender)}"</b> — lütfen listeden tekrar seçin.
-                                        </p>
-                                    )}
-                            </div>
-                            <div>
-                                <RetailExFlatFieldLabel>{tm('bCustomerTier')}</RetailExFlatFieldLabel>
-                                <Segmented
-                                    block
-                                    value={editing.customer_tier === 'vip' ? 'vip' : 'normal'}
-                                    onChange={v =>
-                                        setEditing(p => ({
-                                            ...p,
-                                            customer_tier: v === 'vip' ? 'vip' : 'normal',
-                                        }))
-                                    }
-                                    options={[
-                                        { label: tm('bCustomerTierNormal'), value: 'normal' },
-                                        { label: tm('bCustomerTierVip'), value: 'vip' },
-                                    ]}
-                                />
-                            </div>
-                        </div>
-                        <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
-                            <div>
-                                <RetailExFlatFieldLabel>{tm('bPhone')}</RetailExFlatFieldLabel>
-                                <Input
-                                    className="!rounded-2xl !px-4 !py-2.5"
-                                    value={editing.phone ?? ''}
-                                    onChange={e => setEditing(p => ({ ...p, phone: e.target.value }))}
-                                    placeholder="0555 000 00 00"
-                                />
-                            </div>
-                            <div>
-                                <RetailExFlatFieldLabel>{tm('bCity')}</RetailExFlatFieldLabel>
-                                <Input
-                                    className="!rounded-2xl !px-4 !py-2.5"
-                                    value={editing.city ?? ''}
-                                    onChange={e => setEditing(p => ({ ...p, city: e.target.value }))}
-                                    placeholder="İstanbul"
-                                />
-                            </div>
-                        </div>
-                        <div>
-                            <RetailExFlatFieldLabel>{tm('bEmail')}</RetailExFlatFieldLabel>
-                            <Input
-                                className="!rounded-2xl !px-4 !py-2.5"
-                                type="email"
-                                value={editing.email ?? ''}
-                                onChange={e => setEditing(p => ({ ...p, email: e.target.value }))}
-                                placeholder="ornek@email.com"
-                            />
-                        </div>
-                        <div>
-                            <RetailExFlatFieldLabel>{tm('bAddress')}</RetailExFlatFieldLabel>
-                            <Input
-                                className="!rounded-2xl !px-4 !py-2.5"
-                                value={editing.address ?? ''}
-                                onChange={e => setEditing(p => ({ ...p, address: e.target.value }))}
-                                placeholder="Adres"
-                            />
-                        </div>
-                        <div>
-                            <RetailExFlatFieldLabel>{tm('bNotes')}</RetailExFlatFieldLabel>
-                            <Input.TextArea
-                                className="!rounded-2xl !px-4 !py-2.5"
-                                value={editing.notes ?? ''}
-                                onChange={e => setEditing(p => ({ ...p, notes: e.target.value }))}
-                                placeholder={tm('bFeedbackComment')}
-                                rows={3}
-                            />
-                        </div>
-                    </div>
+                    <BeautyCustomerEditFormFields
+                        value={editing}
+                        onChange={setEditing}
+                        summary={
+                            isEdit
+                                ? {
+                                      appointmentCount: editing.appointment_count ?? 0,
+                                      lastServiceName: editing.last_service_name,
+                                      lastAppointmentDate: editing.last_appointment_date,
+                                  }
+                                : undefined
+                        }
+                    />
                 </RetailExFlatModal>
             </div>
     );

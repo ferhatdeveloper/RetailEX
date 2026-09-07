@@ -16,6 +16,8 @@ import {
 } from '../../../utils/beautyQueueOrder';
 import { CLINIC } from '../clinicDesignTokens';
 import { beautyAptVisibleOnSchedule } from '../../../utils/beautyAppointmentVisibility';
+import { useBeautyTimeFormat } from '../../../hooks/useBeautyTimeFormat';
+import { formatBeautyMinutes } from '../../../utils/beautyTimeFormat';
 import {
     beautySchedulerResourceColumnDropHandlers,
     beautySchedulerResourceDragOverAllowDrop,
@@ -216,6 +218,7 @@ export function ResourceGroupedDayView({
     onResourceColumnDrop,
 }: ResourceGroupedDayViewProps) {
     const { tm } = useLanguage();
+    const { format: timeFormat } = useBeautyTimeFormat();
     const dayHeaderLocale = tm('localeCode');
     const dayStr = formatLocalYmd(currentDate);
     const scheduleApts = useMemo(
@@ -506,7 +509,7 @@ export function ResourceGroupedDayView({
                                         boxSizing: 'border-box',
                                     }}
                                 >
-                                    {`${String(h).padStart(2, '0')}:00`}
+                                    {formatBeautyMinutes(h * 60, timeFormat)}
                                 </div>
                             ))}
                         </div>
@@ -666,6 +669,7 @@ export function ResourceGroupedWeekMatrix({
     onResourceCellDrop,
 }: ResourceGroupedWeekMatrixProps) {
     const { tm } = useLanguage();
+    const { formatTime } = useBeautyTimeFormat();
     const dayHeaderLocale = tm('localeCode');
     const suppressCellClickRef = useRef(0);
     const gridApts = useMemo(
@@ -896,7 +900,7 @@ export function ResourceGroupedWeekMatrix({
                                                     <div style={{ fontWeight: 700, color: CLINIC.textPrimary }}>
                                                         {queueMode
                                                             ? `#${gi + 1}`
-                                                            : aptTimeRaw(apt).slice(0, 5)}
+                                                            : formatTime(aptTimeRaw(apt))}
                                                     </div>
                                                     <div style={{ color: CLINIC.textSub, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
                                                         {apt.customer_name ?? '—'}

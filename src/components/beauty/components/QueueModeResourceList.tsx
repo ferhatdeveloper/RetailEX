@@ -16,6 +16,7 @@ import {
 } from '../../../utils/beautySchedulerDragDrop';
 import { resolveAppointmentProductLabels } from '../../../utils/beautyAppointmentProducts';
 import { useLanguage } from '../../../contexts/LanguageContext';
+import { useBeautyTimeFormat } from '../../../hooks/useBeautyTimeFormat';
 
 export interface QueueModeResourceListProps {
     appointments: BeautyAppointment[];
@@ -77,6 +78,7 @@ export function QueueModeResourceList({
     productLabelsByAppointmentId,
     lastTreatmentByCustomerId,
 }: QueueModeResourceListProps) {
+    const { formatTime } = useBeautyTimeFormat();
     const visible = appointments.filter(beautyAptVisibleOnSchedule);
     const groups = groupBeautyQueueByCustomer(visible);
     const allowDropProps = resourceDragKind ? beautySchedulerResourceDragOverAllowDrop() : {};
@@ -88,7 +90,7 @@ export function QueueModeResourceList({
             {groups.map((group, idx) => {
                 const display = mergeQueueGroupForCardDisplay(group);
                 const primary = group[0];
-                const timeLabel = (display.appointment_time ?? display.time ?? '').trim().slice(0, 5);
+                const timeLabel = formatTime(display.appointment_time ?? display.time);
                 const done =
                     useStatusTint &&
                     group.every(a => appointmentStatusMatches(a.status, AppointmentStatus.COMPLETED));

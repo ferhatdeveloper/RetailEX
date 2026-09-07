@@ -43,6 +43,8 @@ import {
 import { useBeautyStore } from '../store/useBeautyStore';
 import { beautyService, type BeautyCustomerProfileQueryOpts } from '../../../services/beautyService';
 import { useLanguage } from '../../../contexts/LanguageContext';
+import { useBeautyTimeFormat } from '../../../hooks/useBeautyTimeFormat';
+import { formatBeautyTime } from '../../../utils/beautyTimeFormat';
 import { logger } from '../../../services/loggingService';
 import type {
     BeautyCustomer,
@@ -58,8 +60,12 @@ import { fetchCurrentAccounts } from '../../../services/api/currentAccounts';
 import { ERP_SETTINGS } from '../../../services/postgres';
 import { toast } from 'sonner';
 import { User, Package } from 'lucide-react';
-import { RetailExFlatModal, RetailExFlatFieldLabel } from '../../shared/RetailExFlatModal';
+import { RetailExFlatModal } from '../../shared/RetailExFlatModal';
 import { BeautyFeedbackSurveyModal } from './BeautyFeedbackSurveyModal';
+import {
+    BEAUTY_CUSTOMER_EMPTY_FORM,
+    BeautyCustomerEditFormFields,
+} from './BeautyCustomerEditFormFields';
 import {
     RETAILEX_BORDER_SUBTLE,
     RETAILEX_PAGE_BG,
@@ -67,21 +73,7 @@ import {
     RETAILEX_TEXT_PRIMARY,
 } from '../../../theme/retailexAntdTheme';
 
-const EMPTY_FORM: Partial<BeautyCustomer> = {
-    name: '',
-    phone: '',
-    phone2: '',
-    age: null,
-    file_id: '',
-    occupation: '',
-    gender: null,
-    customer_tier: 'normal',
-    heard_from: '',
-    email: '',
-    address: '',
-    city: '',
-    notes: '',
-};
+const EMPTY_FORM: Partial<BeautyCustomer> = { ...BEAUTY_CUSTOMER_EMPTY_FORM };
 
 /** DB'den yaş değerini parse eder; boş/NaN ise null döner. */
 function parseAgeValue(raw: unknown): number | null {
@@ -90,31 +82,6 @@ function parseAgeValue(raw: unknown): number | null {
     if (!Number.isFinite(n)) return null;
     const clamped = Math.max(0, Math.min(150, Math.round(n)));
     return clamped;
-}
-
-/** RetailExFlatModal (body portal) içindeki Select dropdown'ı overlay'in altında kalmadan
- *  en yüksek z-index'te gösterir. ServiceManagement.tsx ile aynı kalıp. */
-const ANT_SELECT_POPUP_Z = 2147483647;
-const antSelectInFlatModal = {
-    getPopupContainer: () => document.body,
-    styles: { popup: { root: { zIndex: ANT_SELECT_POPUP_Z } as React.CSSProperties } },
-} as const;
-
-/** DB'den gelen cinsiyet değerini Select'in beklediği 3 değerden birine map'ler.
- *  Eski/uyumsuz stringler (örn. "Kadın", "K", "F") için en yakın anlamlı karşılığı döner. */
-function normalizeGender(
-    raw: unknown
-): 'female' | 'male' | 'other' | null {
-    const s = String(raw ?? '').trim().toLowerCase();
-    if (!s) return null;
-    if (s === 'female' || s === 'f' || s === 'kadın' || s === 'kadin' || s === 'k') return 'female';
-    if (s === 'male' || s === 'm' || s === 'erkek' || s === 'e') return 'male';
-    if (s === 'other' || s === 'diğer' || s === 'diger' || s === 'd') return 'other';
-    return null;
-}
-
-function genderRawLabel(raw: unknown): string {
-    return String(raw ?? '').trim();
 }
 
 const APT_STATUS_TM: Record<string, string> = {
@@ -170,6 +137,7 @@ type UnifiedHistoryRow =
 export function ClientCustomerDetailPage({ customerId, onBack }: ClientCustomerDetailPageProps) {
     const { customers, packages, specialists, isLoading, loadCustomers, loadPackages, loadSpecialists, updateCustomer } = useBeautyStore();
     const { tm } = useLanguage();
+    const { format: beautyTimeFormat } = useBeautyTimeFormat();
     const dateLocale = tm('localeCode');
     const [erpAccountsLoaded, setErpAccountsLoaded] = useState(false);
     const [showModal, setShowModal] = useState(false);
@@ -438,7 +406,7 @@ export function ClientCustomerDetailPage({ customerId, onBack }: ClientCustomerD
     const formatDateTime = (d?: string, t?: string) => {
         if (!d) return '-';
         const datePart = new Date(d).toLocaleDateString(dateLocale);
-        if (t) return `${datePart} ${t.slice(0, 5)}`;
+        if (t) return `${datePart} ${formatBeautyTime(t, beautyTimeFormat)}`;
         return datePart;
     };
 
@@ -485,7 +453,7 @@ export function ClientCustomerDetailPage({ customerId, onBack }: ClientCustomerD
             if (!d) return '-';
             const datePart = new Date(d).toLocaleDateString(dateLocale);
             const t = a.appointment_time ?? a.time;
-            if (t) return `${datePart} ${t.slice(0, 5)}`;
+            if (t) return `${datePart} ${formatBeautyTime(t, beautyTimeFormat)}`;
             return datePart;
         };
         const saleWhenStr = (created?: string) => {
@@ -593,6 +561,7 @@ export function ClientCustomerDetailPage({ customerId, onBack }: ClientCustomerD
         customerPackages,
         tm,
         dateLocale,
+        beautyTimeFormat,
         paymentMethodLabel,
         paymentStatusLabel,
         aptStatusLabel,
@@ -1629,171 +1598,34 @@ export function ClientCustomerDetailPage({ customerId, onBack }: ClientCustomerD
                         }
                     }}
                 >
-                    <div className="flex w-full flex-col gap-4">
-                        <div>
-                            <RetailExFlatFieldLabel required>{tm('bCustomerName')}</RetailExFlatFieldLabel>
-                            <Input
-                                className="!rounded-2xl !px-4 !py-2.5"
-                                value={editing.name ?? ''}
-                                onChange={e => setEditing(p => ({ ...p, name: e.target.value }))}
-                                placeholder={tm('bCustomerNamePlaceholder')}
-                            />
-                        </div>
-                        <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
-                            <div>
-                                <RetailExFlatFieldLabel>{tm('custLabelPhone1')}</RetailExFlatFieldLabel>
-                                <Input
-                                    className="!rounded-2xl !px-4 !py-2.5"
-                                    value={editing.phone ?? ''}
-                                    onChange={e => setEditing(p => ({ ...p, phone: e.target.value }))}
-                                    placeholder={tm('bPlaceholderPhoneExample')}
-                                />
-                            </div>
-                            <div>
-                                <RetailExFlatFieldLabel>{tm('custLabelPhone2')}</RetailExFlatFieldLabel>
-                                <Input
-                                    className="!rounded-2xl !px-4 !py-2.5"
-                                    value={editing.phone2 ?? ''}
-                                    onChange={e => setEditing(p => ({ ...p, phone2: e.target.value }))}
-                                    placeholder={tm('custPhPhone2')}
-                                />
-                            </div>
-                        </div>
-                        <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
-                            <div>
-                                <RetailExFlatFieldLabel>{tm('custLabelAge')}</RetailExFlatFieldLabel>
-                                <Input
-                                    className="!rounded-2xl !px-4 !py-2.5"
-                                    type="number"
-                                    min={0}
-                                    max={150}
-                                    value={editing.age == null ? '' : String(editing.age)}
-                                    onChange={e =>
-                                        setEditing(p => ({
-                                            ...p,
-                                            age: e.target.value === '' ? null : Number(e.target.value),
-                                        }))
-                                    }
-                                    placeholder={tm('custPhAge')}
-                                />
-                            </div>
-                            <div>
-                                <RetailExFlatFieldLabel>{tm('custLabelFileId')}</RetailExFlatFieldLabel>
-                                <Input
-                                    className="!rounded-2xl !px-4 !py-2.5"
-                                    value={editing.file_id ?? ''}
-                                    onChange={e => setEditing(p => ({ ...p, file_id: e.target.value }))}
-                                    placeholder={tm('custPhFileId')}
-                                    autoComplete="off"
-                                />
-                            </div>
-                        </div>
-                        <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
-                            <div>
-                                <RetailExFlatFieldLabel>{tm('bGender')}</RetailExFlatFieldLabel>
-                                <Select
-                                    {...antSelectInFlatModal}
-                                    className="w-full [&_.ant-select-selector]:!rounded-2xl [&_.ant-select-selector]:!py-1"
-                                    allowClear
-                                    placeholder={tm('bGenderPlaceholder')}
-                                    value={normalizeGender(editing.gender) ?? undefined}
-                                    onChange={v =>
-                                        setEditing(p => ({
-                                            ...p,
-                                            gender: (v as BeautyCustomer['gender']) ?? null,
-                                        }))
-                                    }
-                                    options={[
-                                        { value: 'female', label: tm('bGenderFemale') },
-                                        { value: 'male', label: tm('bGenderMale') },
-                                        { value: 'other', label: tm('bGenderOther') },
-                                    ]}
-                                />
-                                {genderRawLabel(editing.gender) &&
-                                    normalizeGender(editing.gender) === null && (
-                                        <p className="mt-1 text-[11px] font-semibold text-amber-600 dark:text-amber-400">
-                                            DB'de kayıtlı değer: <b>"{genderRawLabel(editing.gender)}"</b> — lütfen listeden tekrar seçin.
-                                        </p>
-                                    )}
-                            </div>
-                            <div>
-                                <RetailExFlatFieldLabel>{tm('bCustomerTier')}</RetailExFlatFieldLabel>
-                                <Segmented
-                                    block
-                                    value={editing.customer_tier === 'vip' ? 'vip' : 'normal'}
-                                    onChange={v =>
-                                        setEditing(p => ({
-                                            ...p,
-                                            customer_tier: v === 'vip' ? 'vip' : 'normal',
-                                        }))
-                                    }
-                                    options={[
-                                        { label: tm('bCustomerTierNormal'), value: 'normal' },
-                                        { label: tm('bCustomerTierVip'), value: 'vip' },
-                                    ]}
-                                />
-                            </div>
-                        </div>
-                        <div>
-                            <RetailExFlatFieldLabel>{tm('bAddress')}</RetailExFlatFieldLabel>
-                            <Input.TextArea
-                                className="!rounded-2xl !px-4 !py-2.5"
-                                value={editing.address ?? ''}
-                                onChange={e => setEditing(p => ({ ...p, address: e.target.value }))}
-                                placeholder={tm('bPlaceholderAddress')}
-                                rows={2}
-                            />
-                        </div>
-                        <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
-                            <div>
-                                <RetailExFlatFieldLabel>{tm('custLabelOccupation')}</RetailExFlatFieldLabel>
-                                <Input
-                                    className="!rounded-2xl !px-4 !py-2.5"
-                                    value={editing.occupation ?? ''}
-                                    onChange={e => setEditing(p => ({ ...p, occupation: e.target.value }))}
-                                    placeholder={tm('custPhOccupation')}
-                                />
-                            </div>
-                            <div>
-                                <RetailExFlatFieldLabel>{tm('bEmail')}</RetailExFlatFieldLabel>
-                                <Input
-                                    className="!rounded-2xl !px-4 !py-2.5"
-                                    type="email"
-                                    value={editing.email ?? ''}
-                                    onChange={e => setEditing(p => ({ ...p, email: e.target.value }))}
-                                    placeholder={tm('bPlaceholderEmailExample')}
-                                />
-                            </div>
-                        </div>
-                        <div>
-                            <RetailExFlatFieldLabel>{tm('bCity')}</RetailExFlatFieldLabel>
-                            <Input
-                                className="!rounded-2xl !px-4 !py-2.5"
-                                value={editing.city ?? ''}
-                                onChange={e => setEditing(p => ({ ...p, city: e.target.value }))}
-                                placeholder={tm('bPlaceholderCity')}
-                            />
-                        </div>
-                        <div>
-                            <RetailExFlatFieldLabel>{tm('custLabelHeardFrom')}</RetailExFlatFieldLabel>
-                            <Input
-                                className="!rounded-2xl !px-4 !py-2.5"
-                                value={editing.heard_from ?? ''}
-                                onChange={e => setEditing(p => ({ ...p, heard_from: e.target.value }))}
-                                placeholder={tm('custPhHeardFrom')}
-                            />
-                        </div>
-                        <div>
-                            <RetailExFlatFieldLabel>{tm('bNotes')}</RetailExFlatFieldLabel>
-                            <Input.TextArea
-                                className="!rounded-2xl !px-4 !py-2.5"
-                                value={editing.notes ?? ''}
-                                onChange={e => setEditing(p => ({ ...p, notes: e.target.value }))}
-                                placeholder={tm('bFeedbackComment')}
-                                rows={3}
-                            />
-                        </div>
-                    </div>
+                    <BeautyCustomerEditFormFields
+                        value={editing}
+                        onChange={setEditing}
+                        summary={
+                            isEdit && selected
+                                ? (() => {
+                                      const latest = [...pastAppointments].sort(
+                                          (a, b) => appointmentSortMs(b) - appointmentSortMs(a),
+                                      )[0];
+                                      return {
+                                          appointmentCount:
+                                              pastAppointments.length > 0
+                                                  ? pastAppointments.length
+                                                  : Number(selected.appointment_count ?? 0),
+                                          lastServiceName:
+                                              selected.last_service_name ??
+                                              latest?.service_name ??
+                                              null,
+                                          lastAppointmentDate:
+                                              selected.last_appointment_date ??
+                                              latest?.appointment_date ??
+                                              latest?.date ??
+                                              null,
+                                      };
+                                  })()
+                                : undefined
+                        }
+                    />
                 </RetailExFlatModal>
                 {selected ? (
                     <BeautyFeedbackSurveyModal

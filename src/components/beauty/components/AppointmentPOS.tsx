@@ -3181,7 +3181,13 @@ export function AppointmentPOS({
                                 }}>
                                     {!showAddForm ? (
                                         <button
-                                            onClick={() => setShowAddForm(true)}
+                                            onClick={() => {
+                                                setShowAddForm(true);
+                                                setNewCust(emptyQuickAddCustomer());
+                                                void beautyService.generateNextFileId().then(next => {
+                                                    setNewCust(p => (p.file_id.trim() ? p : { ...p, file_id: next }));
+                                                }).catch(() => { /* no-op */ });
+                                            }}
                                             style={{
                                                 display: 'flex',
                                                 alignItems: 'center',
@@ -3232,7 +3238,13 @@ export function AppointmentPOS({
                                                             <input type="number" min={0} max={150} value={newCust.age} onChange={e => setNewCust(p => ({ ...p, age: e.target.value }))} placeholder={tm('custPhAge')} style={{ ...iStyle, borderRadius: 10, height: 40 }} />
                                                         </Field>
                                                         <Field label={tm('custLabelFileId')}>
-                                                            <input value={newCust.file_id} onChange={e => setNewCust(p => ({ ...p, file_id: e.target.value }))} placeholder={tm('custPhFileId')} style={{ ...iStyle, borderRadius: 10, height: 40 }} autoComplete="off" />
+                                                            <input
+                                                                value={newCust.file_id}
+                                                                onChange={e => setNewCust(p => ({ ...p, file_id: e.target.value }))}
+                                                                placeholder={tm('custPhFileIdAuto')}
+                                                                style={{ ...iStyle, borderRadius: 10, height: 40 }}
+                                                                autoComplete="off"
+                                                            />
                                                         </Field>
                                                     </div>
                                                     <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))', gap: 8 }}>

@@ -26,6 +26,8 @@ import { QueueModeResourceList } from './QueueModeResourceList';
 import { AppointmentPOS } from './AppointmentPOS';
 import { formatMoneyAmount } from '../../../utils/formatMoney';
 import { safeInvoke, IS_BROWSER } from '../../../utils/env';
+import { useBeautyTimeFormat } from '../../../hooks/useBeautyTimeFormat';
+import { LS_BEAUTY_TIME_FORMAT } from '../../../utils/beautyTimeFormat';
 import {
     addDaysToLocalYmd,
     beautyAppointmentDateKey,
@@ -184,6 +186,7 @@ export function SmartScheduler() {
         loadSpecialists, loadServices, loadCustomers, loadDevices,
     } = useBeautyStore();
     const { tm, language } = useLanguage();
+    const { format: beautyTimeFormat, setFormat: setBeautyTimeFormatPref, formatTime: formatAptTime } = useBeautyTimeFormat();
     const scheduleDayHeaderLocale = useMemo(() => {
         switch (language) {
             case 'tr': return 'tr-TR';
@@ -383,6 +386,10 @@ export function SmartScheduler() {
                 if (!cancelled && SLOT_INTERVAL_OPTIONS.includes(v as (typeof SLOT_INTERVAL_OPTIONS)[number])) {
                     setSlotIntervalMin(v);
                 }
+                const tf = cfg?.beauty_time_format;
+                if (!cancelled && (tf === '12h' || tf === '24h')) {
+                    setBeautyTimeFormatPref(tf);
+                }
                 const qm = cfg?.beauty_queue_mode;
                 if (!cancelled) {
                     setBeautyQueueMode(
@@ -416,6 +423,7 @@ export function SmartScheduler() {
                 window.localStorage.setItem(LS_BEAUTY_SVC_ONLY_BOOKED, serviceBoardOnlyBooked ? 'true' : 'false');
                 window.localStorage.setItem(LS_BEAUTY_MAIN_LAYOUT, serviceBoardMainLayout);
                 window.localStorage.setItem(LS_BEAUTY_FU_GROUP, followUpGroupByCustomer ? 'true' : 'false');
+                window.localStorage.setItem(LS_BEAUTY_TIME_FORMAT, beautyTimeFormat);
             } catch {
                 // no-op
             }
@@ -430,13 +438,14 @@ export function SmartScheduler() {
                         beauty_slot_interval_min: slotIntervalMin,
                         beauty_queue_mode: beautyQueueMode,
                         beauty_queue_separate_sale_per_line: beautySeparateLineInvoices,
+                        beauty_time_format: beautyTimeFormat,
                     },
                 });
             } catch {
                 // no-op
             }
         })();
-    }, [slotIntervalMin, beautyQueueMode, beautySeparateLineInvoices, serviceBoardOnlyBooked, serviceBoardMainLayout, followUpGroupByCustomer]);
+    }, [slotIntervalMin, beautyQueueMode, beautySeparateLineInvoices, serviceBoardOnlyBooked, serviceBoardMainLayout, followUpGroupByCustomer, beautyTimeFormat]);
 
     useEffect(() => {
         if (view === 'svcboard') {
@@ -1178,7 +1187,7 @@ export function SmartScheduler() {
                 <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 6 }}>
                     <p style={{ fontSize: 12, fontWeight: 700, color: '#111827', lineHeight: 1.3 }}>{apt.customer_name ?? '—'}</p>
                     {!beautyQueueMode && (
-                        <span style={{ fontSize: 10, fontWeight: 700, fontFamily: 'monospace', color: '#6b7280' }}>{(apt.appointment_time ?? apt.time ?? '').slice(0, 5)}</span>
+                        <span style={{ fontSize: 10, fontWeight: 700, fontFamily: 'monospace', color: '#6b7280' }}>{formatAptTime(apt.appointment_time ?? apt.time)}</span>
                     )}
                 </div>
                 {phone ? (
@@ -1642,6 +1651,29 @@ export function SmartScheduler() {
                             ))}
                         </select>
                     </div>
+                    <button
+                        type="button"
+                        role="switch"
+                        aria-checked={beautyTimeFormat === '12h'}
+                        title={tm('bTimeFormatTitle')}
+                        onClick={() => setBeautyTimeFormatPref(beautyTimeFormat === '12h' ? '24h' : '12h')}
+                        style={{
+                            padding: '5px 10px',
+                            borderRadius: 5,
+                            border: beautyTimeFormat === '12h' ? '1px solid #6d28d9' : '1px solid #e5e7eb',
+                            background: beautyTimeFormat === '12h' ? '#ede9fe' : '#f3f4f6',
+                            color: beautyTimeFormat === '12h' ? '#5b21b6' : '#6b7280',
+                            fontSize: 11,
+                            fontWeight: 700,
+                            cursor: 'pointer',
+                            boxShadow: beautyTimeFormat === '12h' ? '0 1px 3px rgba(0,0,0,0.08)' : 'none',
+                            transition: 'all 0.1s',
+                            userSelect: 'none',
+                            whiteSpace: 'nowrap',
+                        }}
+                    >
+                        {beautyTimeFormat === '12h' ? tm('bTimeFormat12h') : tm('bTimeFormat24h')}
+                    </button>
                     <button
                         type="button"
                         role="switch"
@@ -2438,7 +2470,7 @@ export function SmartScheduler() {
                                                     onMouseLeave={e => (e.currentTarget.style.background = 'transparent')}
                                                 >
                                                     <span style={{ fontSize: 12, fontWeight: 700, color: '#111827', fontFamily: beautyQueueMode ? 'inherit' : 'monospace', whiteSpace: 'nowrap' }}>
-                                                        {beautyQueueMode ? rowIdx + 1 : (apt.appointment_time ?? apt.time ?? '--:--').slice(0, 5)}
+                                                        {beautyQueueMode ? rowIdx + 1 : formatAptTime(apt.appointment_time ?? apt.time)}
                                                     </span>
                                                     <span style={{ width: 8, height: 8, borderRadius: '50%', background: apt.service_color ?? '#7c3aed', display: 'inline-block' }} />
                                                     <div style={{ minWidth: 0 }}>
@@ -2548,7 +2580,7 @@ export function SmartScheduler() {
                         <div style={{ padding: '16px 20px', borderBottom: '1px solid #e5e7eb', background: '#f7f6fb', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
                             <div>
                                 <p style={{ fontSize: 14, fontWeight: 800, color: '#111827' }}>{selectedApt.customer_name ?? '—'}</p>
-                                <p style={{ fontSize: 11, color: '#9ca3af', fontWeight: 600 }}>{resolveServiceName(selectedApt)} · {(selectedApt.appointment_time ?? selectedApt.time ?? '').slice(0, 5)}</p>
+                                <p style={{ fontSize: 11, color: '#9ca3af', fontWeight: 600 }}>{resolveServiceName(selectedApt)} · {formatAptTime(selectedApt.appointment_time ?? selectedApt.time)}</p>
                             </div>
                             <button onClick={() => setSelectedApt(null)} style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#9ca3af' }}><X size={18} /></button>
                         </div>

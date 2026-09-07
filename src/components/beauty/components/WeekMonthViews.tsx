@@ -13,6 +13,7 @@ import {
     suggestQueuePrefillTime,
 } from '../../../utils/beautyQueueOrder';
 import { beautyAptVisibleOnSchedule } from '../../../utils/beautyAppointmentVisibility';
+import { useBeautyTimeFormat } from '../../../hooks/useBeautyTimeFormat';
 import '../ClinicStyles.css';
 
 function aptTimeRaw(apt: BeautyAppointment): string {
@@ -37,6 +38,7 @@ export interface WeekMonthViewsProps {
 
 export function WeekView({ currentDate, timeSlots = [], onAppointmentClick, onNewAppointment, groupBy = 'none', workWeekOnly = false, appointmentsOverride, queueMode = false, queueSnapMinutes = 5 }: WeekMonthViewsProps) {
     const { appointments: storeApts } = useBeautyStore();
+    const { formatTime } = useBeautyTimeFormat();
     const appointments = useMemo(
         () => (appointmentsOverride ?? storeApts).filter(beautyAptVisibleOnSchedule),
         [appointmentsOverride, storeApts],
@@ -144,7 +146,7 @@ export function WeekView({ currentDate, timeSlots = [], onAppointmentClick, onNe
                         timeSlots.map((timeSlot) => (
                             <div key={timeSlot} className="border-b border-gray-100 grid" style={{ gridTemplateColumns: `repeat(${colCount}, minmax(0, 1fr))` }}>
                                 <div className="p-3 border-r border-gray-100 bg-gray-50/50 flex items-center justify-center font-medium text-xs text-gray-400">
-                                    {timeSlot}
+                                    {formatTime(timeSlot)}
                                 </div>
                                 {weekDays.map((day, idx) => {
                                     const dateStr = formatLocalYmd(day);
@@ -223,6 +225,7 @@ function computePopoverPosition(rect: DOMRect) {
 
 export function MonthView({ currentDate, onAppointmentClick, onNewAppointment, onDayNavigate, appointmentsOverride }: WeekMonthViewsProps) {
     const { appointments: storeApts } = useBeautyStore();
+    const { formatTime } = useBeautyTimeFormat();
     const appointments = useMemo(
         () => (appointmentsOverride ?? storeApts).filter(beautyAptVisibleOnSchedule),
         [appointmentsOverride, storeApts],
@@ -423,7 +426,7 @@ export function MonthView({ currentDate, onAppointmentClick, onNewAppointment, o
                                             onClick={(e) => { e.stopPropagation(); onAppointmentClick(apt); }}
                                         >
                                             <span className="font-mono font-bold shrink-0" style={{ color: CLINIC.textMuted }}>
-                                                {(aptTimeRaw(apt)).slice(0, 5)}
+                                                {formatTime(aptTimeRaw(apt))}
                                             </span>
                                             <span className="truncate" style={{ color: CLINIC.textPrimary }}>
                                                 {apt.customer_name}
@@ -516,7 +519,7 @@ export function MonthView({ currentDate, onAppointmentClick, onNewAppointment, o
                                 >
                                     <div className="flex items-center justify-between gap-2">
                                         <span className="font-mono font-bold" style={{ color: CLINIC.textMuted }}>
-                                            {(aptTimeRaw(apt)).slice(0, 5)}
+                                            {formatTime(aptTimeRaw(apt))}
                                         </span>
                                         <span className="truncate font-bold" style={{ color: CLINIC.textPrimary }}>
                                             {apt.customer_name ?? '—'}
@@ -554,6 +557,7 @@ export function AgendaView({
     agendaDuration = 7,
 }: AgendaViewProps) {
     const { appointments: storeApts } = useBeautyStore();
+    const { formatTime } = useBeautyTimeFormat();
     const appointments = useMemo(
         () => (appointmentsOverride ?? storeApts).filter(beautyAptVisibleOnSchedule),
         [appointmentsOverride, storeApts],
@@ -626,7 +630,7 @@ export function AgendaView({
                                                 className="w-full text-left px-4 py-2.5 flex items-start gap-3 hover:bg-[#ede9fe]/70 transition-colors border-b border-gray-50 last:border-0"
                                             >
                                                 <span className="text-xs font-mono font-bold text-gray-500 tabular-nums shrink-0 pt-0.5">
-                                                    {(aptTimeRaw(apt)).slice(0, 5)}
+                                                    {formatTime(aptTimeRaw(apt))}
                                                 </span>
                                                 <span className="w-1 self-stretch rounded-full shrink-0 mt-0.5" style={{ background: apt.service_color || '#9333ea' }} />
                                                 <div className="min-w-0 flex-1">
