@@ -24,6 +24,7 @@ import { RestaurantService } from '../../services/restaurant';
 import { beautyService } from '../../services/beautyService';
 import { expenseAPI } from '../../services/api/expenses';
 import { fetchKasaIslemleri } from '../../services/api/kasa';
+import { mergeExpensesWithCashOuts } from '../../utils/reportUnifiedExpenses';
 import type { BeautyAppointment, BeautySale, BeautyStaffTreatmentReport } from '../../types/beauty';
 import { beautyServiceMainKey, beautyServiceSubKey } from '../beauty/beautyServiceCategoryUtils';
 import { localCalendarDateKey, localTodayDateKey, formatIsoDateTr } from '../../utils/localCalendarDate';
@@ -506,16 +507,6 @@ type DailyExpenseRow = {
   isCash: boolean;
 };
 
-const DAILY_CASH_OUT_TYPES = new Set([
-  'GIDER_PUSULASI',
-  'MAAS_ODEME',
-  'AVANS_ODEME',
-  'CH_ODEME',
-  'KASA_CIKIS',
-  'ORTAK_DAGITIM_KAR',
-  'ORTAK_SERMAYE_ODEME',
-]);
-
 type BeautyAppointmentProductRow = {
   key: string;
   saleId: string;
@@ -887,51 +878,32 @@ export function ReportsModule({
           bitis_tarihi: `${selectedDateTo}T23:59:59`,
         }).catch(() => []),
       ]);
-      const allExpenses = Array.isArray(expenseRows) ? expenseRows : [];
-      const linkedCashIds = new Set(
-        allExpenses
-          .map((e) => String(e.cash_line_id || '').trim())
-          .filter(Boolean)
+      const unifiedSrc = mergeExpensesWithCashOuts(
+        Array.isArray(expenseRows) ? expenseRows : [],
+        Array.isArray(cashLines) ? cashLines : [],
       );
 
-      const unified: DailyExpenseRow[] = [];
-      for (const e of allExpenses) {
+      const unified: DailyExpenseRow[] = unifiedSrc.map((e) => {
         const method = String(e.payment_method ?? '').trim();
         const methodLc = method.toLowerCase();
         const isCash = methodLc === 'cash' || methodLc === 'nakit';
-        unified.push({
-          key: `exp-${e.id}`,
+        const isCashOut = String(e.id || '').startsWith('cash-');
+        const typeCode = isCashOut
+          ? String(e.notes || '').trim().toUpperCase() || 'KASA_CIKIS'
+          : 'GIDER_PUSULASI';
+        return {
+          key: isCashOut ? String(e.id) : `exp-${e.id}`,
           date: String(e.expense_date || e.created_at || ''),
           ficheNo: String(e.document_number || '').trim() || '—',
-          typeCode: 'GIDER_PUSULASI',
+          typeCode,
           category: String(e.category || ''),
           description: String(e.description || ''),
           partyName: String(e.cost_center_name || ''),
           amount: Number(e.amount) || 0,
           paymentMethod: method || 'cash',
-          isCash,
-        });
-      }
-
-      for (const cl of Array.isArray(cashLines) ? cashLines : []) {
-        const type = String(cl.islem_tipi || '').trim().toUpperCase();
-        if (!DAILY_CASH_OUT_TYPES.has(type)) continue;
-        if (cl.id && linkedCashIds.has(String(cl.id))) continue;
-        const amt = Math.abs(Number(cl.tutar) || 0);
-        if (!amt) continue;
-        unified.push({
-          key: `cash-${cl.id}`,
-          date: String(cl.islem_tarihi || ''),
-          ficheNo: String(cl.islem_no || '').trim() || '—',
-          typeCode: type,
-          category: '',
-          description: String(cl.islem_aciklamasi || ''),
-          partyName: String(cl.cari_hesap_unvani || ''),
-          amount: amt,
-          paymentMethod: 'cash',
-          isCash: true,
-        });
-      }
+          isCash: isCashOut ? true : isCash,
+        };
+      });
 
       unified.sort((a, b) => String(b.date).localeCompare(String(a.date)));
       const totalAll = unified.reduce((sum, row) => sum + row.amount, 0);

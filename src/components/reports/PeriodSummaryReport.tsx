@@ -3,12 +3,14 @@ import { Calendar, Landmark, TrendingDown, TrendingUp, Wallet } from 'lucide-rea
 import { Table, Spin } from 'antd';
 import type { ColumnsType } from 'antd/es/table';
 import { formatNumber } from '../../utils/formatNumber';
-import { expenseAPI } from '../../services/api/expenses';
+import { expenseAPI, type Expense } from '../../services/api/expenses';
 import { salesAPI } from '../../services/api/sales';
 import { invoicesAPI } from '../../services/api/invoices';
 import { supplierAPI } from '../../services/api/suppliers';
-import { postgres } from '../../services/postgres';
+import { fetchKasaIslemleri } from '../../services/api/kasa';
 import { normalizePaymentMethodBucket } from '../../utils/paymentMethodUtils';
+import { isReturnSale } from '../../utils/posZReport';
+import { mergeExpensesWithCashOuts } from '../../utils/reportUnifiedExpenses';
 import type { Sale } from '../../App';
 import type { Invoice, Supplier } from '../../core/types/models';
 import { localCalendarDateKey, localTodayDateKey, formatIsoDateTr, toSqlDateInputString } from '../../utils/localCalendarDate';
@@ -97,48 +99,64 @@ function expenseDayKey(raw: string | undefined | null): string {
   return toSqlDateInputString(raw || '') || '';
 }
 
+/**
+ * Günlük Rapor ile aynı satış özeti:
+ * - cancelled / refunded aktif satışa girmez
+ * - refunded yalnızca iade sayacında
+ * - aktif ciro = Σ total − Σ |iade satırı| (status=return / negatif total aktifteyse)
+ * - nakit / kart ayrı kovalar; iade peşin satırı abs ile şişirmez
+ */
 function aggregateSales(sales: Sale[], bucketKey: (s: Sale) => string) {
   const map = new Map<string, {
     saleCount: number; revenue: number; cash: number; card: number; discount: number;
     returnsCount: number; returnsAmount: number;
   }>();
-  for (const s of sales) {
-    // Tamamen iptal (cancelled) — cirodan düşürülür, izi kalmaz (muhasebe tamamen yok sayar)
-    const st = String(s.status ?? '').toLowerCase();
-    if (st === 'cancelled' || st === 'canceled' || st === 'silindi' || st === 'iptal') continue;
-    // Muhasebe açılış bakiyeleri (devir) ciroya dahil edilmez; ayrı muhasebe kalemidir.
-    const ft = String((s as any).fiche_type ?? '');
-    if (ft === 'opening_balance') continue;
-    const key = bucketKey(s);
-    if (!key) continue;
+
+  const bump = (key: string) => {
     const row = map.get(key) || {
       saleCount: 0, revenue: 0, cash: 0, card: 0, discount: 0,
       returnsCount: 0, returnsAmount: 0,
     };
+    map.set(key, row);
+    return row;
+  };
+
+  for (const s of sales) {
+    const st = String(s.status ?? '').toLowerCase();
+    if (st === 'cancelled' || st === 'canceled' || st === 'silindi' || st === 'iptal') continue;
+    const ft = String((s as any).fiche_type ?? '');
+    if (ft === 'opening_balance' || ft === 'purchase_invoice') continue;
+    const key = bucketKey(s);
+    if (!key) continue;
+
+    const row = bump(key);
     const total = Number(s.total) || 0;
-    const isReturn = st === 'refunded';
+    const absTotal = Math.abs(total);
+    const isReturn = isReturnSale(s);
+
     if (isReturn) {
-      // İade/refund: cirodan düş, ayrı sayaç — muhasebe brüt gelir = net satış − iade
       row.returnsCount += 1;
-      row.returnsAmount += Math.abs(total);
-      row.revenue -= Math.abs(total);
-    } else {
+      row.returnsAmount += absTotal;
+    }
+
+    // Günlük: refunded `isRemovedSaleStatus` ile aktif dışı
+    if (st === 'refunded') continue;
+
+    if (!isReturn) {
       row.saleCount += 1;
-      row.revenue += total;
       row.discount += Number(s.discount) || 0;
     }
-    // payment_method bucket'ını normalize et: DB'de 'cash', 'Nakit', 'nakit' gibi varyantlar olabilir;
-    // 'Veresiye' ise normalizePaymentMethodBucket tarafından 'credit' bucket'ına dönüşür.
-    // Cash sütunu = peşin tahsil edilen (nakit + kart + havale); 'credit' (veresiye) ayrı izlenir.
+
+    row.revenue += total;
     const pmBucket = normalizePaymentMethodBucket((s as any).payment_method ?? s.paymentMethod);
-    if (pmBucket === 'cash' || pmBucket === 'card' || pmBucket === 'transfer') {
-      // Peşin tahsilat — cash sütununa brüt tutarı yaz (muhasebe brüt gelir görünümü)
-      row.cash += Math.abs(total);
-    } else if (pmBucket === 'credit') {
-      // Veresiye — cironun parçası (revenue'ya zaten eklendi) ama nakit akışa değil;
-      // burada ayrı bucket'a koymak yerine revenue ile bırakıyoruz (PeriodSummaryReport'ta ayrı kolon yok).
+    if (pmBucket === 'cash' || pmBucket === 'transfer') row.cash += total;
+    else if (pmBucket === 'card') row.card += total;
+
+    if (isReturn) {
+      row.revenue -= absTotal;
+      if (pmBucket === 'cash' || pmBucket === 'transfer') row.cash -= absTotal;
+      else if (pmBucket === 'card') row.card -= absTotal;
     }
-    map.set(key, row);
   }
   return map;
 }
@@ -204,7 +222,8 @@ export function PeriodSummaryReport({ mode, currency }: PeriodSummaryReportProps
   const [selectedYear, setSelectedYear] = useState(defaultYear);
   const [loading, setLoading] = useState(false);
   const [sales, setSales] = useState<Sale[]>([]);
-  const [expenses, setExpenses] = useState<Awaited<ReturnType<typeof expenseAPI.getAll>>>([]);
+  /** Günlük ile aynı: gider kartı + bağlanmamış kasa/cari çıkışları */
+  const [expenses, setExpenses] = useState<Expense[]>([]);
   const [purchases, setPurchases] = useState<Invoice[]>([]);
   const [suppliers, setSuppliers] = useState<Supplier[]>([]);
   const [supplierDetailOpen, setSupplierDetailOpen] = useState(false);
@@ -265,14 +284,23 @@ export function PeriodSummaryReport({ mode, currency }: PeriodSummaryReportProps
     }
     setLoading(true);
     try {
-      const [saleRows, expenseRows, purchaseRows, supplierRows] = await Promise.all([
+      const [saleRows, expenseRows, cashLines, purchaseRows, supplierRows] = await Promise.all([
         salesAPI.getByDateRange(periodRange.start, periodRange.end),
         expenseAPI.getAll({ startDate: periodRange.start, endDate: periodRange.end }),
+        fetchKasaIslemleri({
+          baslangic_tarihi: periodRange.start,
+          bitis_tarihi: `${periodRange.end}T23:59:59`,
+        }).catch(() => []),
         fetchPeriodPurchases(periodRange.start, periodRange.end),
         supplierAPI.getAll({ cardType: 'supplier' }),
       ]);
       setSales(Array.isArray(saleRows) ? saleRows : []);
-      setExpenses(Array.isArray(expenseRows) ? expenseRows : []);
+      setExpenses(
+        mergeExpensesWithCashOuts(
+          Array.isArray(expenseRows) ? expenseRows : [],
+          Array.isArray(cashLines) ? cashLines : [],
+        ),
+      );
       setPurchases(Array.isArray(purchaseRows) ? purchaseRows : []);
       setSuppliers(Array.isArray(supplierRows) ? supplierRows : []);
     } catch (err) {
@@ -342,7 +370,8 @@ export function PeriodSummaryReport({ mode, currency }: PeriodSummaryReportProps
           ? formatIsoDateTr(periodKey)
           : new Date(`${periodKey}-01T12:00:00`).toLocaleDateString(locale, { month: 'long', year: 'numeric' });
 
-      const netRemaining = sale.revenue - exp - purch;
+      // Günlük Rapor neti: ciro − gider (alış ayrı kolonda; netten düşülmez)
+      const netRemaining = sale.revenue - exp;
 
       const shareList = splitAmountByPartners(netRemaining, partnerSlices);
       const partnerShareMap: Record<string, number> = {};
@@ -650,17 +679,15 @@ export function PeriodSummaryReport({ mode, currency }: PeriodSummaryReportProps
             {tm('rptPeriodTotalExpenses')}
           </div>
           <p className="text-2xl font-bold text-red-600">{money(totals.expenses)}</p>
-          {partnerSlices.length > 0 ? (
-            <button
-              type="button"
-              className="mt-2 text-xs font-bold uppercase tracking-wider text-rose-700 hover:underline"
-              onClick={() =>
-                setExpenseDetail({ title: tm('rptPeriodExpenseDetailTitle'), periodKey: null })
-              }
-            >
-              {tm('rptPeriodOpenExpenseDetail')}
-            </button>
-          ) : null}
+          <button
+            type="button"
+            className="mt-2 text-xs font-bold uppercase tracking-wider text-rose-700 hover:underline"
+            onClick={() =>
+              setExpenseDetail({ title: tm('rptPeriodExpenseDetailTitle'), periodKey: null })
+            }
+          >
+            {tm('rptPeriodOpenExpenseDetail')}
+          </button>
         </div>
         <div className="bg-white rounded-lg border p-4">
           <div className="flex items-center gap-2 text-slate-500 text-sm mb-1">
@@ -814,7 +841,7 @@ export function PeriodSummaryReport({ mode, currency }: PeriodSummaryReportProps
         </Spin>
       </div>
 
-      {expenseDetail && partnerSlices.length > 0 ? (
+      {expenseDetail ? (
         <PeriodExpenseShareDetailModal
           expenses={expenses}
           partners={partnerSlices}
