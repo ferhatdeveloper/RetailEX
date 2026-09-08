@@ -51,3 +51,28 @@ export function currentPayrollMonthRange(now = new Date()): {
   const nextMonthStart = `${next.getFullYear()}-${String(next.getMonth() + 1).padStart(2, '0')}-01`;
   return { year, month, monthStart, nextMonthStart };
 }
+
+/** YYYY-MM-DD (veya ISO timestamp) → gün kısmı; geçersizse null. */
+export function normalizeHireDate(value: unknown): string | null {
+  if (value == null) return null;
+  const raw = String(value).trim();
+  if (!raw) return null;
+  const day = raw.includes('T') ? raw.slice(0, 10) : raw.slice(0, 10);
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(day)) return null;
+  return day;
+}
+
+/**
+ * Hakkediş ayı, işe giriş tarihinden önce mi?
+ * Örn. hire=2026-09-01 → 2026-08 hakkedişi yazılmaz; 2026-09 yazılır.
+ */
+export function isPayrollMonthBeforeHire(
+  monthStart: string,
+  nextMonthStart: string,
+  hireDate: unknown,
+): boolean {
+  const hire = normalizeHireDate(hireDate);
+  if (!hire) return false;
+  // Ay tamamen işe girişten önce bitiyorsa (nextMonthStart <= hire) atla
+  return nextMonthStart <= hire;
+}

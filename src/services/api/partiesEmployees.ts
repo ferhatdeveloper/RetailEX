@@ -3,6 +3,7 @@
  *
  * Akış:
  *   ensureMonthlySalaryAccrual: ay başı MAAS_HAKKEDIS (kasa yok) + bakiye yeniden hesap
+ *     — hire_date varsa o tarihten önceki otomatik hakkediş silinir; o aydan önce yeni hakkediş yazılmaz
  *   paySalary: kasa çıkışı (MAAS_ODEME) + party_ledger
  *   payAdvance: kasa çıkışı (AVANS_ODEME) + party_ledger
  *   reconcileAdvance: AVANS_MAHSUP (kasa etkisiz, bakiye 0 — avans zaten düştü)
@@ -23,6 +24,8 @@ import { ensurePartyPeriodTables } from './ensurePartyPeriodTables';
 import {
   currentPayrollMonthRange,
   employeeLedgerBalanceDelta,
+  isPayrollMonthBeforeHire,
+  normalizeHireDate,
 } from './partyEmployeeBalance';
 import type { PartyLedgerMovement, PartyEmployee } from '../../core/types/models';
 
@@ -61,6 +64,8 @@ export interface PayrollMonthLine {
 export interface AccrualEnsureResult {
   created: number;
   skipped: number;
+  /** İşe giriş öncesi otomatik hakkediş silinen satır sayısı */
+  removedBeforeHire: number;
 }
 
 function mapEmployee(p: {
@@ -146,9 +151,30 @@ export const employeeAPI = {
     const withSalary = active.filter((e) => (e.salary_base || 0) > 0);
     let created = 0;
     let skipped = 0;
+    let removedBeforeHire = 0;
 
-    if (withSalary.length) {
-      const ids = withSalary.map((e) => e.id);
+    // İşe giriş (hire_date) öncesi otomatik hakkedişleri temizle — örn. 01.09 öncesi aylar
+    for (const e of withSalary) {
+      const hire = normalizeHireDate(e.hire_date);
+      if (!hire) continue;
+      const { rows: deleted } = await postgres.query(
+        `DELETE FROM ${ledgerTable()}
+         WHERE party_id = $1::text::uuid
+           AND transaction_type = 'MAAS_HAKKEDIS'
+           AND source_module = 'payroll_accrual'
+           AND date < $2::date
+         RETURNING id`,
+        [e.id, hire],
+      );
+      removedBeforeHire += (deleted || []).length;
+    }
+
+    const eligible = withSalary.filter(
+      (e) => !isPayrollMonthBeforeHire(monthStart, nextMonthStart, e.hire_date),
+    );
+
+    if (eligible.length) {
+      const ids = eligible.map((e) => e.id);
       const { rows } = await postgres.query(
         `SELECT party_id FROM ${ledgerTable()}
          WHERE party_id = ANY($1::text::uuid[])
@@ -158,7 +184,7 @@ export const employeeAPI = {
       );
       const already = new Set((rows || []).map((r: { party_id: string }) => String(r.party_id)));
       const ym = `${year}-${String(month).padStart(2, '0')}`;
-      for (const e of withSalary) {
+      for (const e of eligible) {
         if (already.has(e.id)) {
           skipped += 1;
           continue;
@@ -175,10 +201,12 @@ export const employeeAPI = {
         });
         created += 1;
       }
+    } else {
+      skipped += withSalary.length;
     }
 
     await this.recomputeEmployeeBalances(active.map((e) => e.id));
-    return { created, skipped };
+    return { created, skipped, removedBeforeHire };
   },
 
   async listPayrollMonth(periodStart: string, periodEnd: string): Promise<PayrollMonthLine[]> {
@@ -212,7 +240,8 @@ export const employeeAPI = {
 
     return employees.map((e) => {
       const s = stats.get(e.id) || { advance: 0, paid: 0, accrued: 0, last: null };
-      const hakkedis = s.accrued || (e.salary_base || 0);
+      // Yalnızca gerçek MAAS_HAKKEDIS; salary_base ile hayali hakkediş üretme
+      const hakkedis = s.accrued;
       return {
         employee_id: e.id,
         employee_name: e.name,
