@@ -5,7 +5,6 @@ use std::ffi::OsString;
 use std::fs::OpenOptions;
 use std::io::Write;
 use std::os::windows::process::CommandExt;
-use std::path::PathBuf;
 use std::process::{Child, Command};
 use std::sync::mpsc;
 use std::time::Duration;
@@ -216,7 +215,7 @@ fn spawn_printer_child() -> Result<Child, Box<dyn std::error::Error>> {
     }
 
     const CREATE_NO_WINDOW: u32 = 0x08000000;
-    let child = Command::new(node)
+    let child = Command::new(&node)
         .arg(worker)
         .current_dir(&base)
         .creation_flags(CREATE_NO_WINDOW)
