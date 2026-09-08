@@ -88,25 +88,35 @@ jobs:
         working-directory: PrintServer
         run: dotnet test QrPrintDesktop.Tests/QrPrintDesktop.Tests.csproj -c ${{ env.BUILD_CONFIG }} --no-restore --nologo
 
-      - name: Publish tray app (self-contained win-x64)
+      - name: Publish tray + Windows service (self-contained win-x64)
         working-directory: PrintServer
         shell: pwsh
         run: |
           $out = Join-Path (Resolve-Path .).Path "releases/RetailEX.Printer"
+          $svcOut = Join-Path $out "Service"
           if (Test-Path $out) { Remove-Item $out -Recurse -Force }
-          New-Item -ItemType Directory -Force -Path $out | Out-Null
-          dotnet publish QrPrintDesktop.App/QrPrintDesktop.App.csproj `
-            -c ${{ env.BUILD_CONFIG }} `
-            -r win-x64 `
-            --self-contained true `
-            -o $out `
-            --nologo `
-            -p:DebugType=None `
-            -p:DebugSymbols=false `
-            -p:Version=$env:APP_VERSION
+          New-Item -ItemType Directory -Force -Path $svcOut | Out-Null
+          $common = @(
+            "-c", "${{ env.BUILD_CONFIG }}",
+            "-r", "win-x64",
+            "--self-contained", "true",
+            "--nologo",
+            "-p:DebugType=None",
+            "-p:DebugSymbols=false",
+            "-p:Version=$env:APP_VERSION"
+          )
+          dotnet publish QrPrintDesktop.App/QrPrintDesktop.App.csproj @common -o $out
+          if ($LASTEXITCODE -ne 0) { throw "Uygulama publish başarısız" }
+          dotnet publish QrPrintDesktop.Service/QrPrintDesktop.Service.csproj @common -o $svcOut
+          if ($LASTEXITCODE -ne 0) { throw "Servis publish başarısız" }
+          Copy-Item install-service.ps1 $out -Force
+          Copy-Item uninstall-service.ps1 $out -Force
           $exe = Join-Path $out "RetailEX.QrPrint.exe"
+          $svc = Join-Path $svcOut "RetailEX_Printer_Service.exe"
           if (-not (Test-Path $exe)) { throw "EXE yok: $exe" }
-          Write-Host "Publish EXE: $exe"
+          if (-not (Test-Path $svc)) { throw "Servis EXE yok: $svc" }
+          Write-Host "APP: $exe"
+          Write-Host "SVC: $svc"
 
       - name: Inno Setup kur
         shell: pwsh
@@ -118,6 +128,13 @@ jobs:
         run: |
           $iscc = "C:\Program Files (x86)\Inno Setup 6\ISCC.exe"
           if (-not (Test-Path $iscc)) { throw "ISCC yok: $iscc" }
+          $isl = "C:\Program Files (x86)\Inno Setup 6\Languages\Turkish.isl"
+          if (-not (Test-Path $isl)) {
+            New-Item -ItemType Directory -Force -Path "C:\Program Files (x86)\Inno Setup 6\Languages" | Out-Null
+            Invoke-WebRequest -UseBasicParsing -Uri "https://raw.githubusercontent.com/jrsoftware/issrc/main/Files/Languages/Turkish.isl" -OutFile $isl
+          }
+          $svc = "releases\RetailEX.Printer\Service\RetailEX_Printer_Service.exe"
+          if (-not (Test-Path $svc)) { throw "Kurulum paketi servis exe içermiyor: $svc" }
           New-Item -ItemType Directory -Force -Path installer\output | Out-Null
           & $iscc "/DMyAppVersion=$env:APP_VERSION" installer\setup.iss
           if ($LASTEXITCODE -ne 0) { throw "Inno Setup başarısız: $LASTEXITCODE" }
@@ -142,9 +159,14 @@ jobs:
           body: |
             ## RetailEX Printer
 
-            Kurulum: `RetailEX.Printer-Setup-${{ env.APP_VERSION }}.exe` indirip çalıştırın.
+            Kurulum: `RetailEX.Printer-Setup-${{ env.APP_VERSION }}.exe` indirip **yönetici olarak** çalıştırın.
 
-            Tepside bırakın (X gizler). Tam çıkış: tepsi → Çıkış.
+            Setup.exe:
+            - Windows 10/11 64-bit ve Yazdırma Biriktiricisi kontrol eder
+            - `RetailEX Printer Servisi` Windows servisini kurar
+            - Servisin **Çalışıyor** olduğunu doğrular
+
+            Tepsi uygulaması isteğe bağlıdır (X gizler). Tam çıkış: tepsi → Çıkış.
           files: |
             PrintServer/installer/output/${{ env.SETUP_EXE }}
           draft: false
