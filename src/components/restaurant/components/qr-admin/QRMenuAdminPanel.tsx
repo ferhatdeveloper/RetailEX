@@ -232,7 +232,7 @@ function QRSettingsForm() {
         {field('Restoran adı', 'restaurant_name')}
         {field('Ana renk', 'primary_color', 'color')}
         {field('Logo URL', 'logo_url')}
-        {field('Kapak URL', 'cover_image_url')}
+        {field('Kapak URL (görsel veya .mp4/.webm video)', 'cover_image_url')}
         {field('WiFi SSID', 'wifi_ssid')}
         {field('WiFi şifre', 'wifi_password')}
         {field('Public base URL', 'public_base_url')}

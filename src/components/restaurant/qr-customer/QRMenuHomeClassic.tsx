@@ -14,7 +14,7 @@ import { useQrCustomer } from './QRCustomerLayout';
 const DEFAULT_COVER =
   'https://images.unsplash.com/photo-1517248135467-4c7edcad34c4?auto=format&fit=crop&w=1600&q=80';
 const DEFAULT_VIDEO =
-  'https://r2.mynu.site/images/676ab181fc92f8671caef847/items/108044672.mp4';
+  'https://filesamples.com/samples/video/mp4/sample_1920x1080.mp4';
 
 const LANGS = [
   { code: 'tr' as const, name: 'Türkçe', flag: '🇹🇷' },

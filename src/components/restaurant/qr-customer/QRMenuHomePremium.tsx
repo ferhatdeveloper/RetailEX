@@ -12,8 +12,12 @@ import {
 } from 'lucide-react';
 import { useQrCustomer } from './QRCustomerLayout';
 
-const HERO =
+const HERO_POSTER =
   'https://images.unsplash.com/photo-1414235077428-338989a2e8c0?auto=format&fit=crop&w=1600&q=80';
+
+/** Varsayılan kapak videosu (ayar boşsa) */
+const DEFAULT_VIDEO =
+  'https://filesamples.com/samples/video/mp4/sample_1920x1080.mp4';
 
 const LANGS = [
   { code: 'tr' as const, label: 'TR' },
@@ -22,15 +26,26 @@ const LANGS = [
   { code: 'ku' as const, label: 'KU' },
 ];
 
-/** Sıfırdan premium QR ana sayfa — marka hero + zarif servis dock */
+function isVideoUrl(url: string) {
+  return /\.(mp4|webm|ogg)(\?|$)/i.test(url);
+}
+
+/** Premium QR ana sayfa — tam ekran video/görsel + alt dock */
 export function QRMenuHomePremium() {
   const { basePath, settings, t, lang, setLang, error, tableNumber } = useQrCustomer();
   const navigate = useNavigate();
   const [langOpen, setLangOpen] = useState(false);
+  const [videoOk, setVideoOk] = useState(true);
 
-  const cover = settings?.cover_image_url?.trim() || HERO;
+  const coverRaw = settings?.cover_image_url?.trim() || '';
+  const cover = coverRaw || DEFAULT_VIDEO;
+  const useVideo = (!coverRaw || isVideoUrl(cover)) && videoOk;
   const logo = settings?.logo_url?.trim() || null;
   const name = settings?.restaurant_name?.trim() || 'RetailEX';
+
+  useEffect(() => {
+    setVideoOk(true);
+  }, [cover]);
 
   useEffect(() => {
     const close = (e: MouseEvent) => {
@@ -80,25 +95,46 @@ export function QRMenuHomePremium() {
   ].filter((s) => s.show);
 
   return (
-    <div className="relative min-h-[100dvh] overflow-hidden" style={{ background: 'var(--qr-bg)' }}>
-      {/* Full-bleed hero */}
-      <div className="absolute inset-0">
-        <img src={cover} alt="" className="h-full w-full object-cover rex-qr-fade" />
+    <div
+      className="relative flex h-[100dvh] max-h-[100dvh] flex-col overflow-hidden"
+      style={{ background: '#0c0b0a' }}
+    >
+      {/* Tam ekran medya — boş alt şerit yok */}
+      <div className="absolute inset-0 z-0">
+        {useVideo ? (
+          <video
+            key={cover}
+            src={cover}
+            poster={HERO_POSTER}
+            autoPlay
+            muted
+            loop
+            playsInline
+            className="h-full w-full object-cover rex-qr-fade"
+            onError={() => setVideoOk(false)}
+          />
+        ) : (
+          <img
+            src={coverRaw && !isVideoUrl(coverRaw) ? coverRaw : HERO_POSTER}
+            alt=""
+            className="h-full w-full object-cover rex-qr-fade"
+          />
+        )}
         <div
           className="absolute inset-0"
           style={{
             background:
-              'linear-gradient(180deg, rgba(12,11,10,0.35) 0%, rgba(12,11,10,0.55) 42%, rgba(12,11,10,0.97) 78%, var(--qr-bg) 100%)',
+              'linear-gradient(180deg, rgba(12,11,10,0.45) 0%, rgba(12,11,10,0.25) 28%, rgba(12,11,10,0.55) 58%, rgba(12,11,10,0.88) 100%)',
           }}
         />
         <div className="rex-qr-grain" />
       </div>
 
-      {/* Top bar */}
-      <div className="relative z-20 flex items-start justify-between px-5 pt-[max(1.25rem,env(safe-area-inset-top))]">
+      {/* Üst bar */}
+      <div className="relative z-20 flex shrink-0 items-start justify-between px-5 pt-[max(1.25rem,env(safe-area-inset-top))]">
         {tableNumber ? (
           <span
-            className="rex-qr-rise inline-flex items-center rounded-full px-3 py-1.5 text-[11px] font-semibold tracking-wide uppercase"
+            className="rex-qr-rise inline-flex items-center rounded-full px-3 py-1.5 text-[11px] font-semibold uppercase tracking-wide"
             style={{
               background: 'rgba(12,11,10,0.55)',
               border: '1px solid var(--qr-line)',
@@ -156,8 +192,8 @@ export function QRMenuHomePremium() {
         </div>
       </div>
 
-      {/* Brand hero */}
-      <div className="relative z-10 flex min-h-[58dvh] flex-col items-center justify-end px-6 pb-6 pt-24 text-center">
+      {/* Marka — medya üzerinde ortalanmış */}
+      <div className="relative z-10 flex min-h-0 flex-1 flex-col items-center justify-center px-6 text-center">
         {logo ? (
           <img
             src={logo}
@@ -174,13 +210,13 @@ export function QRMenuHomePremium() {
         </p>
         <h1
           className="rex-qr-display rex-qr-rise rex-qr-rise-delay-2 max-w-[16ch] text-[2.65rem] font-semibold leading-[1.05] sm:text-5xl"
-          style={{ color: 'var(--qr-text)' }}
+          style={{ color: 'var(--qr-text)', textShadow: '0 2px 24px rgba(0,0,0,0.45)' }}
         >
           {name}
         </h1>
         <p
           className="rex-qr-rise rex-qr-rise-delay-3 mt-3 max-w-xs text-sm leading-relaxed"
-          style={{ color: 'var(--qr-muted)' }}
+          style={{ color: 'rgba(247,241,232,0.82)' }}
         >
           {t('homeTagline')}
         </p>
@@ -198,17 +234,19 @@ export function QRMenuHomePremium() {
         )}
       </div>
 
-      {/* Primary CTA + service dock */}
+      {/* Alt dock — medyanın üstünde, boşluk bırakmadan */}
       <div
-        className="relative z-20 px-4 pb-[max(1.25rem,env(safe-area-inset-bottom))] pt-2"
+        className="relative z-20 shrink-0 px-4 pb-[max(1.25rem,env(safe-area-inset-bottom))] pt-4"
         style={{
-          background: 'linear-gradient(180deg, transparent, var(--qr-bg) 28%)',
+          background:
+            'linear-gradient(180deg, transparent 0%, rgba(12,11,10,0.55) 35%, rgba(12,11,10,0.78) 100%)',
+          backdropFilter: 'blur(2px)',
         }}
       >
         <button
           type="button"
           onClick={() => navigate(`${basePath}/menu`)}
-          className="rex-qr-press rex-qr-rise mx-auto mb-4 flex w-full max-w-lg items-center justify-between rounded-2xl px-5 py-4 shadow-lg"
+          className="rex-qr-press rex-qr-rise mx-auto mb-3 flex w-full max-w-lg items-center justify-between rounded-2xl px-5 py-4 shadow-lg"
           style={{
             background: 'linear-gradient(135deg, var(--qr-gold) 0%, var(--qr-copper) 100%)',
             color: '#1a120c',
@@ -226,7 +264,7 @@ export function QRMenuHomePremium() {
           <ChevronRight className="h-5 w-5 opacity-70" />
         </button>
 
-        <div className="mx-auto grid max-w-lg grid-cols-3 gap-2 sm:grid-cols-3">
+        <div className="mx-auto grid max-w-lg grid-cols-3 gap-2">
           {services.map((s, i) => {
             const Icon = s.icon;
             return (
@@ -236,13 +274,14 @@ export function QRMenuHomePremium() {
                 onClick={() => navigate(`${basePath}/${s.path}`)}
                 className="rex-qr-press rex-qr-rise flex flex-col items-center gap-2 rounded-2xl px-2 py-3.5 transition-colors"
                 style={{
-                  background: 'var(--qr-bg-elevated)',
+                  background: 'rgba(22,20,18,0.72)',
                   border: '1px solid var(--qr-line)',
+                  backdropFilter: 'blur(12px)',
                   animationDelay: `${0.2 + i * 0.04}s`,
                 }}
               >
                 <Icon className="h-5 w-5" style={{ color: 'var(--qr-gold)' }} />
-                <span className="text-[11px] font-medium" style={{ color: 'var(--qr-muted)' }}>
+                <span className="text-[11px] font-medium" style={{ color: 'rgba(247,241,232,0.85)' }}>
                   {s.label}
                 </span>
               </button>
