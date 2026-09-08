@@ -332,15 +332,21 @@ public sealed class RetailExOrderClient
             var qty = (int)Math.Max(1, Math.Round(ReadDecimal(row, "quantity")));
             var name = ReadString(row, "product_name");
             var course = ReadString(row, "course");
+            var productId = ReadString(row, "product_id");
+            var orderItemId = ReadString(row, "order_item_id");
+            var categoryHint = FirstNonEmpty(
+                ReadString(row, "category_name"),
+                ReadString(row, "category"),
+                course);
             list.Add(new OrderLine(
-                ReadString(row, "order_item_id"),
+                string.IsNullOrWhiteSpace(orderItemId) ? productId : orderItemId,
                 qty,
                 string.IsNullOrWhiteSpace(name) ? "Ürün" : name,
                 course,
                 0m,
                 0m,
                 ReadString(row, "note"),
-                course,
+                categoryHint,
                 ReadAllFields(row)));
         }
 
@@ -554,23 +560,68 @@ public sealed class RetailExOrderClient
         {
             itemsMap[key] = itemsMap[key].Select(line =>
             {
-                var productId = line.MenuItemId;
-                if (orderItemProducts is not null && orderItemProducts.TryGetValue(line.MenuItemId, out var mapped) && !string.IsNullOrWhiteSpace(mapped))
-                {
-                    productId = mapped;
-                }
-
-                if (productCategories.TryGetValue(productId, out var fromProduct) && !string.IsNullOrWhiteSpace(fromProduct))
-                {
-                    return line with { Category = fromProduct };
-                }
-
-                var fallback = string.IsNullOrWhiteSpace(line.Category) ? line.Description : line.Category;
-                return line with { Category = string.IsNullOrWhiteSpace(fallback) ? "Genel" : fallback };
+                var resolved = ResolveItemCategory(line, productCategories, orderItemProducts);
+                return string.Equals(line.Category, resolved, StringComparison.Ordinal)
+                    ? line
+                    : line with { Category = resolved };
             }).ToList();
         }
 
         return itemsMap;
+    }
+
+    private static string ResolveItemCategory(
+        OrderLine line,
+        IReadOnlyDictionary<string, string> productCategories,
+        IReadOnlyDictionary<string, string>? orderItemProducts)
+    {
+        var named = FirstNonEmpty(
+            Field(line, "category_name"),
+            Field(line, "category"),
+            line.Category);
+        if (!string.IsNullOrWhiteSpace(named) &&
+            !Guid.TryParse(named, out _) &&
+            !string.Equals(named, line.Description, StringComparison.OrdinalIgnoreCase))
+        {
+            return named;
+        }
+
+        var productId = FirstNonEmpty(
+            Field(line, "product_id"),
+            orderItemProducts is not null && orderItemProducts.TryGetValue(line.MenuItemId, out var mapped) ? mapped : "",
+            line.MenuItemId);
+        if (!string.IsNullOrWhiteSpace(productId) &&
+            productCategories.TryGetValue(productId, out var fromProduct) &&
+            !string.IsNullOrWhiteSpace(fromProduct))
+        {
+            return fromProduct;
+        }
+
+        var fallback = FirstNonEmpty(line.Category, line.Description, Field(line, "course"));
+        return string.IsNullOrWhiteSpace(fallback) ? "Genel" : fallback;
+    }
+
+    private static string Field(OrderLine line, string name)
+    {
+        if (line.Fields is null)
+        {
+            return string.Empty;
+        }
+
+        return line.Fields.TryGetValue(name, out var value) ? value ?? string.Empty : string.Empty;
+    }
+
+    private static string FirstNonEmpty(params string?[] values)
+    {
+        foreach (var value in values)
+        {
+            if (!string.IsNullOrWhiteSpace(value))
+            {
+                return value.Trim();
+            }
+        }
+
+        return string.Empty;
     }
 
     private static async Task<Dictionary<string, string>> GetTableMapAsync(AppSettings settings, CancellationToken cancellationToken)

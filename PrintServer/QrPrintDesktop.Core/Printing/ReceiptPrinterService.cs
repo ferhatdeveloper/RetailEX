@@ -4,6 +4,7 @@ using System.Reflection;
 using System.Windows.Forms;
 using QrPrintDesktop.Core.Config;
 using QrPrintDesktop.Core.Orders;
+using QrPrintDesktop.Core.Windows;
 
 namespace QrPrintDesktop.Core.Printing;
 
@@ -20,7 +21,7 @@ public sealed class ReceiptPrinterService
     {
         var printer = string.IsNullOrWhiteSpace(printerName)
             ? PrinterInventory.GetDefaultPrinterName()
-            : printerName.Trim();
+            : PrinterInventory.ResolveInstalledName(printerName);
         var language = settings.KitchenReceiptLanguage;
         var heading = ReceiptCopy.ComposeKitchenTitle(title, language);
         var template = ReportTemplates.KitchenReceiptPath(language);
@@ -38,7 +39,7 @@ public sealed class ReceiptPrinterService
     {
         var printer = string.IsNullOrWhiteSpace(printerName)
             ? PrinterRouter.ResolveAccountPrinter(settings)
-            : printerName.Trim();
+            : PrinterInventory.ResolveInstalledName(printerName);
         var language = settings.AccountReceiptLanguage;
         var banner = ReceiptCopy.Account(language).Banner;
         var template = ReportTemplates.AccountReceiptPath(language);
@@ -74,14 +75,14 @@ public sealed class ReceiptPrinterService
             false,
             null,
             "kitchen");
-        return PrintOnSta(() => PrintWithGdi(order, settings, includePayment: false, printerName, "YAZICI TESTI", settings.KitchenReceiptLanguage));
+        return UiPrintDispatcher.Run(() => PrintWithGdi(order, settings, includePayment: false, printerName, "YAZICI TESTI", settings.KitchenReceiptLanguage));
     }
 
     public bool PreviewKitchenReceipt(StoredOrder order, AppSettings settings, string? printerName = null, string? title = null)
     {
         var printer = string.IsNullOrWhiteSpace(printerName)
             ? PrinterInventory.GetDefaultPrinterName()
-            : printerName.Trim();
+            : PrinterInventory.ResolveInstalledName(printerName);
         var language = settings.KitchenReceiptLanguage;
         var heading = ReceiptCopy.ComposeKitchenTitle(title, language);
         var template = ReportTemplates.KitchenReceiptPath(language);
@@ -93,7 +94,7 @@ public sealed class ReceiptPrinterService
     {
         var printer = string.IsNullOrWhiteSpace(printerName)
             ? PrinterRouter.ResolveAccountPrinter(settings)
-            : printerName.Trim();
+            : PrinterInventory.ResolveInstalledName(printerName);
         var language = settings.AccountReceiptLanguage;
         var banner = ReceiptCopy.Account(language).Banner;
         var template = ReportTemplates.AccountReceiptPath(language);
@@ -139,17 +140,24 @@ public sealed class ReceiptPrinterService
 
                 var printSettingsProp = reportType.GetProperty("PrintSettings");
                 var printSettings = printSettingsProp?.GetValue(report);
+                var canonicalPrinter = PrinterInventory.ResolveInstalledName(printerName);
                 if (printSettings is not null)
                 {
                     var psType = printSettings.GetType();
                     psType.GetProperty("ShowDialog")?.SetValue(printSettings, false);
-                    if (!string.IsNullOrWhiteSpace(printerName))
+                    psType.GetProperty("SavePrinterWithReport")?.SetValue(printSettings, false);
+                    if (!string.IsNullOrWhiteSpace(canonicalPrinter))
                     {
-                        psType.GetProperty("Printer")?.SetValue(printSettings, printerName);
+                        psType.GetProperty("Printer")?.SetValue(printSettings, canonicalPrinter);
                     }
                 }
 
                 reportType.GetMethod("Prepare", [typeof(bool)])?.Invoke(report, [false]);
+                if (printSettings is not null && !string.IsNullOrWhiteSpace(canonicalPrinter))
+                {
+                    printSettings.GetType().GetProperty("Printer")?.SetValue(printSettings, canonicalPrinter);
+                }
+
                 if (preview)
                 {
                     var showPrepared = reportType.GetMethod("ShowPrepared", [typeof(bool)])
@@ -170,7 +178,10 @@ public sealed class ReceiptPrinterService
                 }
                 else
                 {
-                    reportType.GetMethod("Print")?.Invoke(report, null);
+                    if (!PrintPreparedToPrinter(reportType, report, canonicalPrinter))
+                    {
+                        return false;
+                    }
                 }
 
                 return true;
@@ -186,27 +197,46 @@ public sealed class ReceiptPrinterService
         }
     }
 
+    private static bool PrintPreparedToPrinter(Type reportType, object report, string printerName)
+    {
+        if (string.IsNullOrWhiteSpace(printerName))
+        {
+            return false;
+        }
+
+        try
+        {
+            var settings = new PrinterSettings { PrinterName = printerName };
+            if (!settings.IsValid)
+            {
+                return false;
+            }
+
+            var withSettings = reportType.GetMethod("PrintPrepared", [typeof(PrinterSettings)]);
+            if (withSettings is not null)
+            {
+                withSettings.Invoke(report, [settings]);
+                return true;
+            }
+        }
+        catch
+        {
+            // GDI yedeğine düş
+        }
+
+        return false;
+    }
+
     private static bool PrintWithGdi(StoredOrder order, AppSettings settings, bool includePayment, string printerName, string heading, string language)
     {
         try
         {
-            Exception? printError = null;
-            var thread = new Thread(() =>
+            return UiPrintDispatcher.Run(() =>
             {
-                try
-                {
-                    using var doc = CreateReceiptDocument(order, settings, includePayment, printerName, heading, language);
-                    doc.Print();
-                }
-                catch (Exception ex)
-                {
-                    printError = ex;
-                }
+                using var doc = CreateReceiptDocument(order, settings, includePayment, printerName, heading, language);
+                doc.Print();
+                return true;
             });
-            thread.SetApartmentState(ApartmentState.STA);
-            thread.Start();
-            thread.Join();
-            return printError is null;
         }
         catch
         {
@@ -218,7 +248,7 @@ public sealed class ReceiptPrinterService
     {
         try
         {
-            return PrintOnSta(() =>
+            return UiPrintDispatcher.Run(() =>
             {
                 using var doc = CreateReceiptDocument(order, settings, includePayment, printerName, heading, language);
                 using var dialog = new PrintPreviewDialog
@@ -258,11 +288,13 @@ public sealed class ReceiptPrinterService
         string language)
     {
         var doc = new PrintDocument();
+        doc.PrintController = new StandardPrintController();
         if (!string.IsNullOrWhiteSpace(printerName))
         {
             try
             {
-                doc.PrinterSettings.PrinterName = printerName;
+                var resolved = PrinterInventory.ResolveInstalledName(printerName);
+                doc.PrinterSettings.PrinterName = string.IsNullOrWhiteSpace(resolved) ? printerName : resolved;
             }
             catch
             {
@@ -275,21 +307,6 @@ public sealed class ReceiptPrinterService
         doc.DefaultPageSettings.Margins = new Margins(8, 8, 8, 8);
         doc.PrintPage += (_, e) => DrawEightyMmPage(e, order, settings, includePayment, printerName, heading, language);
         return doc;
-    }
-
-    private static bool PrintOnSta(Func<bool> action)
-    {
-        if (Thread.CurrentThread.GetApartmentState() == ApartmentState.STA)
-        {
-            return action();
-        }
-
-        var result = false;
-        var thread = new Thread(() => result = action());
-        thread.SetApartmentState(ApartmentState.STA);
-        thread.Start();
-        thread.Join();
-        return result;
     }
 
     private static void DrawEightyMmPage(

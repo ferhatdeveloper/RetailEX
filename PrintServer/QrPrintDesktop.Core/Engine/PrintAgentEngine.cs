@@ -3,6 +3,7 @@ using QrPrintDesktop.Core.Config;
 using QrPrintDesktop.Core.Http;
 using QrPrintDesktop.Core.Orders;
 using QrPrintDesktop.Core.Printing;
+using QrPrintDesktop.Core.Windows;
 
 namespace QrPrintDesktop.Core.Engine;
 
@@ -113,7 +114,6 @@ public sealed class PrintAgentEngine
 
         try
         {
-            ReloadSettings();
             if (!_settings.OrdersEnabled && !force)
             {
                 LastStatus = "Sipariş alma kapalı";
@@ -434,6 +434,12 @@ public sealed class PrintAgentEngine
 
         var slice = order with { Items = items.ToList() };
         var jobs = PrinterRouter.CreateKitchenJobs(slice, _settings);
+        var routedItems = jobs.Sum(j => j.Order.Items.Count);
+        if (routedItems < items.Count)
+        {
+            AgentLog.Write(
+                $"Yazıcısı olmayan {items.Count - routedItems} kalem atlandı: {order.OrderNumber}. Yazıcılar sekmesinde kategori atayın.");
+        }
         if (!PrintKitchenJobs(slice, jobs, followUp ? "EK" : null))
         {
             return false;
@@ -491,32 +497,14 @@ public sealed class PrintAgentEngine
 
     private static bool PrintOnSta(Func<bool> action)
     {
-        if (Thread.CurrentThread.GetApartmentState() == ApartmentState.STA)
+        try
         {
-            return action();
+            return UiPrintDispatcher.Run(action);
         }
-
-        var result = false;
-        Exception? error = null;
-        var thread = new Thread(() =>
+        catch (Exception ex)
         {
-            try
-            {
-                result = action();
-            }
-            catch (Exception ex)
-            {
-                error = ex;
-            }
-        });
-        thread.SetApartmentState(ApartmentState.STA);
-        thread.Start();
-        thread.Join();
-        if (error is not null)
-        {
-            AgentLog.Write("Yazdırma iş parçacığı hatası: " + error.Message);
+            AgentLog.Write("Yazdırma iş parçacığı hatası: " + ex.Message);
+            return false;
         }
-
-        return result;
     }
 }

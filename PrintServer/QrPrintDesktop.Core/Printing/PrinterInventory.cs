@@ -28,6 +28,19 @@ public static class PrinterInventory
         }
     }
 
+    public static string ResolveInstalledName(string? printerName)
+    {
+        var requested = (printerName ?? string.Empty).Trim();
+        if (string.IsNullOrWhiteSpace(requested))
+        {
+            return string.Empty;
+        }
+
+        var match = ListInstalled().FirstOrDefault(p =>
+            string.Equals(p.Name, requested, StringComparison.OrdinalIgnoreCase));
+        return match?.Name ?? requested;
+    }
+
     public static IReadOnlyList<InstalledPrinterInfo> ListInstalled()
     {
         try

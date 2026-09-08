@@ -35,6 +35,40 @@ public class PrinterRouterTests
     }
 
     [Fact]
+    public void FindRoute_ShouldMatchTurkishCategoryLetters()
+    {
+        var settings = new AppSettings
+        {
+            PrinterRoutes =
+            [
+                new CategoryPrinterRoute { Category = "İçecekler", PrinterName = "BarYazici", Enabled = true }
+            ]
+        };
+
+        Assert.Equal("BarYazici", PrinterRouter.ResolvePrinter("Icecekler", settings, ""));
+        Assert.Equal("BarYazici", PrinterRouter.ResolvePrinter("içecekler", settings, ""));
+    }
+
+    [Fact]
+    public void CreateKitchenJobs_ShouldNotUseWindowsDefaultWhenSharedDisabled()
+    {
+        var settings = new AppSettings
+        {
+            UseSharedKitchenPrinter = false,
+            DefaultKitchenPrinter = "OrtakYazici",
+            PrinterRoutes =
+            [
+                new CategoryPrinterRoute { Category = "Bar", PrinterName = "BarYazici", Enabled = true }
+            ]
+        };
+        var order = CreateOrder(new OrderLine("1", 1, "Çorba", "", 50m, 50m, "", "Mutfak"));
+
+        var jobs = PrinterRouter.CreateKitchenJobs(order, settings);
+
+        Assert.Empty(jobs);
+    }
+
+    [Fact]
     public void CreateKitchenJobs_ShouldUseDefaultPrinterWhenNoRoute()
     {
         var settings = new AppSettings

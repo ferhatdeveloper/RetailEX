@@ -22,6 +22,24 @@ public static class PrinterRouter
         return string.IsNullOrWhiteSpace(value) ? Uncategorized : value;
     }
 
+    public static string CategoryKey(string? category)
+    {
+        var value = NormalizeCategory(category)
+            .Replace('İ', 'I')
+            .Replace('ı', 'i')
+            .Replace('Ş', 'S')
+            .Replace('ş', 's')
+            .Replace('Ğ', 'G')
+            .Replace('ğ', 'g')
+            .Replace('Ü', 'U')
+            .Replace('ü', 'u')
+            .Replace('Ö', 'O')
+            .Replace('ö', 'o')
+            .Replace('Ç', 'C')
+            .Replace('ç', 'c');
+        return value.ToLowerInvariant();
+    }
+
     public static bool IsSharedPrinterChoice(string? printerName)
     {
         var value = (printerName ?? string.Empty).Trim();
@@ -49,10 +67,10 @@ public static class PrinterRouter
     public static CategoryPrinterRoute? FindRoute(string? category, AppSettings settings)
     {
         var routes = settings.PrinterRoutes ?? [];
-        var key = NormalizeCategory(category);
+        var key = CategoryKey(category);
         var exact = routes.FirstOrDefault(r =>
             r.Enabled &&
-            string.Equals(NormalizeCategory(r.Category), key, StringComparison.OrdinalIgnoreCase));
+            CategoryKey(r.Category) == key);
         if (exact is not null)
         {
             return exact;
@@ -68,7 +86,9 @@ public static class PrinterRouter
         var route = FindRoute(category, settings);
         if (route is not null && !IsSharedPrinterChoice(route.PrinterName))
         {
-            return route.PrinterName.Trim();
+            var named = route.PrinterName.Trim();
+            var installed = PrinterInventory.ResolveInstalledName(named);
+            return string.IsNullOrWhiteSpace(installed) ? named : installed;
         }
 
         return string.IsNullOrWhiteSpace(fallback) ? ResolveSharedPrinter(settings) : fallback;
@@ -105,7 +125,11 @@ public static class PrinterRouter
                 return;
             }
 
-            var key = printer.Trim();
+            var key = PrinterInventory.ResolveInstalledName(printer.Trim());
+            if (string.IsNullOrWhiteSpace(key))
+            {
+                key = printer.Trim();
+            }
             if (!buckets.TryGetValue(key, out var list))
             {
                 buckets[key] = list = [];
@@ -137,11 +161,14 @@ public static class PrinterRouter
 
         if (unassigned.Count > 0)
         {
-            var fallback = buckets.Keys.FirstOrDefault()
-                ?? PrinterInventory.GetDefaultPrinterName();
-            foreach (var line in unassigned)
+            // Ortak yazıcı kapalıyken Windows varsayılanına düşme — yazıcısız kalem basılmaz.
+            var fallback = buckets.Keys.FirstOrDefault();
+            if (!string.IsNullOrWhiteSpace(fallback))
             {
-                Add(fallback, line);
+                foreach (var line in unassigned)
+                {
+                    Add(fallback, line);
+                }
             }
         }
 
@@ -172,14 +199,14 @@ public static class PrinterRouter
     {
         var saved = (existing ?? [])
             .Where(r => r is not null && !string.IsNullOrWhiteSpace(r.Category))
-            .GroupBy(r => NormalizeCategory(r.Category), StringComparer.OrdinalIgnoreCase)
+            .GroupBy(r => CategoryKey(r.Category), StringComparer.OrdinalIgnoreCase)
             .ToDictionary(g => g.Key, g => g.First(), StringComparer.OrdinalIgnoreCase);
 
         var merged = new List<CategoryPrinterRoute>();
         var used = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
         foreach (var name in listedCategories.Where(n => !string.IsNullOrWhiteSpace(n)))
         {
-            var key = NormalizeCategory(name);
+            var key = CategoryKey(name);
             if (!used.Add(key))
             {
                 continue;

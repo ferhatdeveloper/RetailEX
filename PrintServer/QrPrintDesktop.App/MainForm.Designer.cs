@@ -883,7 +883,8 @@ partial class MainForm
         gridRoutes.MultiSelect = false;
         gridRoutes.Name = "gridRoutes";
         gridRoutes.RowHeadersVisible = false;
-        gridRoutes.SelectionMode = DataGridViewSelectionMode.FullRowSelect;
+        gridRoutes.SelectionMode = DataGridViewSelectionMode.CellSelect;
+        gridRoutes.EditMode = DataGridViewEditMode.EditOnEnter;
         gridRoutes.Size = new Size(1116, 196);
         gridRoutes.TabIndex = 8;
         //

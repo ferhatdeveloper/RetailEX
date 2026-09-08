@@ -33,7 +33,9 @@ public partial class MainForm : Form
     public MainForm()
     {
         InitializeComponent();
+        UiPrintDispatcher.Capture();
         ApplyTheme();
+        Load += (_, _) => UiPrintDispatcher.Capture();
     }
 
     public MainForm(PrintAgentEngine engine, SettingsService settingsService, StartupManager startupManager, AssetBootstrapper assets)
@@ -173,6 +175,11 @@ public partial class MainForm : Form
         gridRoutes.AutoSizeColumnsMode = DataGridViewAutoSizeColumnsMode.Fill;
         gridRoutes.AllowUserToAddRows = true;
         gridRoutes.AllowUserToDeleteRows = true;
+        gridRoutes.SelectionMode = DataGridViewSelectionMode.CellSelect;
+        gridRoutes.EditMode = DataGridViewEditMode.EditOnEnter;
+        colRoutePrinter.DisplayStyle = DataGridViewComboBoxDisplayStyle.DropDownButton;
+        colRoutePrinter.DisplayStyleForCurrentCellOnly = false;
+        colRoutePrinter.FlatStyle = FlatStyle.Standard;
         gridRoutes.DataError -= GridRoutesOnDataError;
         gridRoutes.DataError += GridRoutesOnDataError;
         gridRoutes.CurrentCellDirtyStateChanged -= GridRoutesOnDirty;
@@ -1532,6 +1539,7 @@ public partial class MainForm : Form
             return;
         }
 
+        UiPrintDispatcher.Capture();
         // Tepsi veya pencere açıkken yazdırma kullanıcı oturumunda yapılır.
         // Servis, PrintAgentMutex ile bekler — ikisi birden basmaz.
         await _engine.PollAsync();

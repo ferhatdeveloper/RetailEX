@@ -42,6 +42,7 @@ function Test-CompleteServiceExe([string]$path) {
     if (Test-Path -LiteralPath $dll) {
         return $true
     }
+    # Özerk (self-contained) tek exe: native host dosyaları yanındadır
     return (Test-Path -LiteralPath $hostPolicy) -or (Test-Path -LiteralPath $coreClr)
 }
 
@@ -175,6 +176,7 @@ function Install-PrinterService {
     $proj = Find-ServiceProject $root
     $packaged = Find-PackagedServiceExe $root
 
+    # Müşteri kurulumunda SDK yok; paketlenmiş özerk exe kullanılır.
     if ($packaged -and -not $proj) {
         $exe = (Resolve-Path $packaged).Path
         Write-Info "Paket servis kullanılacak (SDK yok)."
