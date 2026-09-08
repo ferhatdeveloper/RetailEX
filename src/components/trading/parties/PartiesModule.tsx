@@ -113,6 +113,11 @@ export function PartiesModule({
           t('party.payroll.accrueCleanedPastMonths').replace('{n}', String(res.removedPastMonths)),
         );
       }
+      if (res.removedDuplicates > 0) {
+        toast.success(
+          t('party.payroll.accrueCleanedDuplicates').replace('{n}', String(res.removedDuplicates)),
+        );
+      }
       if (res.created > 0) {
         toast.success(`${t('party.payroll.accrueSuccess')} (${res.created})`);
       } else if (res.skipped > 0) {

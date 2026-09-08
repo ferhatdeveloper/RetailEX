@@ -6,7 +6,11 @@ import {
 } from '../../shared/PercentBodyModal';
 import { ContextMenu } from '../../shared/ContextMenu';
 import { employeeAPI } from '../../../services/api/partiesEmployees';
-import { employeeStatementSides } from '../../../services/api/partyEmployeeBalance';
+import {
+  currentPayrollMonthRange,
+  employeeLedgerBalanceDelta,
+  employeeStatementSides,
+} from '../../../services/api/partyEmployeeBalance';
 import { fetchKasalar, type Kasa } from '../../../services/api/kasa';
 import { printPayrollVoucher, type PayrollVoucherKind } from '../../../utils/printPayrollVoucher';
 import { ficheTypeToInfo } from '../../../utils/cariAccountStatement';
@@ -43,6 +47,8 @@ export function EmployeePayrollModal({ employee, onClose, onSaved, onOpenStateme
   const [registers, setRegisters] = useState<Kasa[]>([]);
   const [loading, setLoading] = useState(false);
   const [recent, setRecent] = useState<PartyLedgerMovement[]>([]);
+  const [ledgerOpening, setLedgerOpening] = useState(0);
+  const [showAllMovements, setShowAllMovements] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [balance, setBalance] = useState(employee.balance || 0);
   const [salaryBase, setSalaryBase] = useState(employee.salary_base || 0);
@@ -61,11 +67,29 @@ export function EmployeePayrollModal({ employee, onClose, onSaved, onOpenStateme
     }
   };
 
-  const loadRecent = async () => {
+  const loadRecent = async (all = showAllMovements) => {
     try {
       const rows = await employeeAPI.getLedger(employee.id, { limit: 500 });
-      setRecent(rows);
+      if (all) {
+        setLedgerOpening(0);
+        setRecent(rows);
+        return;
+      }
+      const { monthStart } = currentPayrollMonthRange();
+      const day = (d: string) => String(d || '').slice(0, 10);
+      let opening = 0;
+      const monthRows: PartyLedgerMovement[] = [];
+      for (const r of rows) {
+        if (day(r.date) < monthStart) {
+          opening += employeeLedgerBalanceDelta(r.transaction_type, r.amount);
+        } else {
+          monthRows.push(r);
+        }
+      }
+      setLedgerOpening(opening);
+      setRecent(monthRows);
     } catch {
+      setLedgerOpening(0);
       setRecent([]);
     }
   };
@@ -74,9 +98,13 @@ export function EmployeePayrollModal({ employee, onClose, onSaved, onOpenStateme
     fetchKasalar({ aktif: true }).then(setRegisters).catch(() => setRegisters([]));
     void (async () => {
       await refreshCard();
-      await loadRecent();
+      await loadRecent(false);
     })();
   }, [employee.id]);
+
+  useEffect(() => {
+    void loadRecent(showAllMovements);
+  }, [showAllMovements]);
 
   useEffect(() => {
     if (action === 'salary') {
@@ -91,7 +119,7 @@ export function EmployeePayrollModal({ employee, onClose, onSaved, onOpenStateme
     setContextMenu(null);
   }, [viewTab]);
 
-  const rows = useMemo(() => withRunning(recent), [recent]);
+  const rows = useMemo(() => withRunning(recent, ledgerOpening), [recent, ledgerOpening]);
   const dip = useMemo(() => {
     const debit = rows.reduce((s, r) => s + (r.debit || 0), 0);
     const credit = rows.reduce((s, r) => s + (r.credit || 0), 0);
@@ -341,25 +369,34 @@ export function EmployeePayrollModal({ employee, onClose, onSaved, onOpenStateme
         {viewTab === 'movements' && (
           <div className="min-h-0 flex-1 flex flex-col p-5">
             <div className="min-h-0 flex-1 flex flex-col border border-slate-200 rounded-2xl overflow-hidden bg-white">
-            <div className="shrink-0 px-4 py-2 border-b border-slate-100 flex items-center justify-between bg-slate-50">
+            <div className="shrink-0 px-4 py-2 border-b border-slate-100 flex items-center justify-between gap-3 bg-slate-50">
               <div className="text-[11px] font-bold text-slate-500 uppercase tracking-wider">
-                {t('party.payroll.movements')}
+                {showAllMovements ? t('party.payroll.movementsAll') : t('party.payroll.movementsThisMonth')}
                 <span className="ml-2 font-mono text-slate-700">
                   {formatMoney(balance)}
                   {balance > 0 ? ` · ${t('party.employee.balanceLabel')}` : balance < 0 ? ` · ${t('party.employee.balanceLabelAdvance')}` : ''}
                 </span>
               </div>
-              {onOpenStatement && (
+              <div className="flex items-center gap-3 shrink-0">
                 <button
                   type="button"
-                  onClick={onOpenStatement}
-                  className="text-[11px] font-bold uppercase tracking-wider text-emerald-700 hover:underline"
+                  onClick={() => setShowAllMovements((v) => !v)}
+                  className="text-[11px] font-bold uppercase tracking-wider text-slate-600 hover:underline"
                 >
-                  {t('party.payroll.openStatement')}
+                  {showAllMovements ? t('party.payroll.movementsShowMonth') : t('party.payroll.movementsShowAll')}
                 </button>
-              )}
+                {onOpenStatement && (
+                  <button
+                    type="button"
+                    onClick={onOpenStatement}
+                    className="text-[11px] font-bold uppercase tracking-wider text-emerald-700 hover:underline"
+                  >
+                    {t('party.payroll.openStatement')}
+                  </button>
+                )}
+              </div>
             </div>
-            {rows.length === 0 ? (
+            {rows.length === 0 && (showAllMovements || ledgerOpening === 0) ? (
               <div className="p-8 text-center text-sm text-slate-400">{t('party.statement.empty')}</div>
             ) : (
               <PercentBodyModalScrollBody>
@@ -376,6 +413,27 @@ export function EmployeePayrollModal({ employee, onClose, onSaved, onOpenStateme
                     </tr>
                   </thead>
                   <tbody>
+                    {!showAllMovements && ledgerOpening !== 0 && (
+                      <tr className="border-t border-slate-100 bg-amber-50/40">
+                        <td className="px-3 py-2 font-mono text-xs text-slate-500">—</td>
+                        <td className="px-3 py-2 font-mono text-xs text-slate-400">—</td>
+                        <td className="px-3 py-2">
+                          <span className="rounded-full px-2 py-0.5 text-[10px] font-black uppercase bg-amber-100 text-amber-800">
+                            {t('party.statement.opening')}
+                          </span>
+                        </td>
+                        <td className="px-3 py-2 text-slate-500 text-xs">{t('party.payroll.movementsPriorBalance')}</td>
+                        <td className="px-3 py-2 text-right font-mono text-red-600">
+                          {ledgerOpening < 0 ? formatMoney(Math.abs(ledgerOpening)) : ''}
+                        </td>
+                        <td className="px-3 py-2 text-right font-mono text-emerald-700">
+                          {ledgerOpening > 0 ? formatMoney(ledgerOpening) : ''}
+                        </td>
+                        <td className="px-3 py-2 text-right font-mono font-semibold text-slate-800">
+                          {formatMoney(ledgerOpening)}
+                        </td>
+                      </tr>
+                    )}
                     {rows.map((r, idx) => {
                       const { label, color } = ficheTypeToInfo(r.transaction_type, 0, false, tm);
                       return (
@@ -452,13 +510,13 @@ export function EmployeePayrollModal({ employee, onClose, onSaved, onOpenStateme
   );
 }
 
-function withRunning(rows: PartyLedgerMovement[]): MovementRow[] {
+function withRunning(rows: PartyLedgerMovement[], opening = 0): MovementRow[] {
   const sorted = [...rows].sort((a, b) => {
     const da = new Date(a.date).getTime() - new Date(b.date).getTime();
     if (da !== 0) return da;
     return String(a.created_at || '').localeCompare(String(b.created_at || ''));
   });
-  let running = 0;
+  let running = opening;
   return sorted.map((r) => {
     const { debit, credit } = employeeStatementSides(r.transaction_type, r.amount);
     running += credit - debit;

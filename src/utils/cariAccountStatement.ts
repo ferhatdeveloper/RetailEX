@@ -81,7 +81,19 @@ export function getCariBalanceDirection(
   };
 }
 
-export function defaultEkstreDateRange(): { start: string; end: string } {
+export function defaultEkstreDateRange(cardType?: ExtCardType): { start: string; end: string } {
+  // Personel: varsayılan yalnızca içinde bulunulan ay (geçmiş maaş/avans satırları karışmasın)
+  if (cardType === 'employee') {
+    const now = new Date();
+    const year = now.getFullYear();
+    const month = now.getMonth() + 1;
+    const lastDay = new Date(year, month, 0).getDate();
+    const mm = String(month).padStart(2, '0');
+    return {
+      start: `${year}-${mm}-01`,
+      end: `${year}-${mm}-${String(lastDay).padStart(2, '0')}`,
+    };
+  }
   const year = new Date().getFullYear();
   return { start: `${year}-01-01`, end: `${year}-12-31` };
 }

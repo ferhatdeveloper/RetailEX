@@ -34,7 +34,7 @@ function txKind(type: string): 'salary' | 'advance' | 'reconcile' | 'accrual' | 
 export function PartyStatementPanel({ party, onClose }: PartyStatementPanelProps) {
   const t = useNestedT();
   const { tm } = useLanguage();
-  const defaultRange = useMemo(() => defaultEkstreDateRange(), []);
+  const defaultRange = useMemo(() => defaultEkstreDateRange(party.card_type), [party.card_type]);
   const [start, setStart] = useState(defaultRange.start);
   const [end, setEnd] = useState(defaultRange.end);
   const [showCancelled, setShowCancelled] = useState(false);
@@ -69,13 +69,16 @@ export function PartyStatementPanel({ party, onClose }: PartyStatementPanelProps
   };
 
   useEffect(() => {
-    void load(start, end);
-    // eslint-disable-next-line react-hooks/exhaustive-deps -- party değişince yeniden yükle
-  }, [party.id]);
+    setStart(defaultRange.start);
+    setEnd(defaultRange.end);
+    void load(defaultRange.start, defaultRange.end);
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- party / varsayılan aralık değişince yeniden yükle
+  }, [party.id, defaultRange.start, defaultRange.end]);
 
   useEffect(() => {
     void load(start, end, showCancelled, excludeCompanyDebts);
     // toggle değişiminde tarih değişmese bile yeniden yükle
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [showCancelled, excludeCompanyDebts]);
 
   const printAll = async () => {

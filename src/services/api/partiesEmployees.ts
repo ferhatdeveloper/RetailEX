@@ -3,7 +3,7 @@
  *
  * Akış:
  *   ensureMonthlySalaryAccrual: yalnızca içinde bulunulan ay için MAAS_HAKKEDIS
- *     — önceki ayların otomatik hakkedişleri silinir; hire_date varsa o tarihten önce yazılmaz
+ *     — önceki ayların hakkedişleri silinir; aynı aydaki çiftler tek satıra iner; hire_date varsa o tarihten önce yazılmaz
  *   paySalary: kasa çıkışı (MAAS_ODEME) + party_ledger
  *   payAdvance: kasa çıkışı (AVANS_ODEME) + party_ledger
  *   reconcileAdvance: AVANS_MAHSUP (kasa etkisiz, bakiye 0 — avans zaten düştü)
@@ -64,8 +64,10 @@ export interface PayrollMonthLine {
 export interface AccrualEnsureResult {
   created: number;
   skipped: number;
-  /** Bu ay öncesi otomatik hakkediş silinen satır sayısı */
+  /** Bu ay öncesi hakkediş silinen satır sayısı */
   removedPastMonths: number;
+  /** Aynı ayda çift hakkediş silinen satır sayısı */
+  removedDuplicates: number;
 }
 
 function mapEmployee(p: {
@@ -152,18 +154,41 @@ export const employeeAPI = {
     let created = 0;
     let skipped = 0;
     let removedPastMonths = 0;
+    let removedDuplicates = 0;
 
-    // Geçmiş ayların otomatik hakkedişlerini kaldır — yalnızca bu aydan itibaren
+    // Geçmiş ayların tüm maaş hakkedişlerini kaldır (kaynak fark etmeksizin)
     {
       const { rows: deletedPast } = await postgres.query(
         `DELETE FROM ${ledgerTable()}
          WHERE transaction_type = 'MAAS_HAKKEDIS'
-           AND COALESCE(source_module, '') = 'payroll_accrual'
            AND date < $1::date
          RETURNING id`,
         [monthStart],
       );
       removedPastMonths += (deletedPast || []).length;
+    }
+
+    // Aynı ayda çift otomatik hakkediş (yarış / tekrar açılış) — en eski satır kalsın
+    {
+      const { rows: deletedDup } = await postgres.query(
+        `DELETE FROM ${ledgerTable()}
+         WHERE id IN (
+           SELECT id FROM (
+             SELECT id,
+               ROW_NUMBER() OVER (
+                 PARTITION BY party_id
+                 ORDER BY created_at ASC NULLS LAST, id ASC
+               ) AS rn
+             FROM ${ledgerTable()}
+             WHERE transaction_type = 'MAAS_HAKKEDIS'
+               AND date >= $1::date AND date < $2::date
+           ) d
+           WHERE rn > 1
+         )
+         RETURNING id`,
+        [monthStart, nextMonthStart],
+      );
+      removedDuplicates += (deletedDup || []).length;
     }
 
     const eligible = withSalary.filter(
@@ -196,6 +221,7 @@ export const employeeAPI = {
           definition: `Maaş hakkedişi ${ym} — ${e.name}`,
           sourceModule: 'payroll_accrual',
         });
+        already.add(e.id);
         created += 1;
       }
     } else {
@@ -203,7 +229,7 @@ export const employeeAPI = {
     }
 
     await this.recomputeEmployeeBalances(active.map((e) => e.id));
-    return { created, skipped, removedPastMonths };
+    return { created, skipped, removedPastMonths, removedDuplicates };
   },
 
   async listPayrollMonth(periodStart: string, periodEnd: string): Promise<PayrollMonthLine[]> {
