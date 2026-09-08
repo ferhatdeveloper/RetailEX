@@ -2,8 +2,8 @@
  * Parties Employees — maaş hakkedişi, ödeme, avans.
  *
  * Akış:
- *   ensureMonthlySalaryAccrual: ay başı MAAS_HAKKEDIS (kasa yok) + bakiye yeniden hesap
- *     — hire_date varsa o tarihten önceki otomatik hakkediş silinir; o aydan önce yeni hakkediş yazılmaz
+ *   ensureMonthlySalaryAccrual: yalnızca içinde bulunulan ay için MAAS_HAKKEDIS
+ *     — önceki ayların otomatik hakkedişleri silinir; hire_date varsa o tarihten önce yazılmaz
  *   paySalary: kasa çıkışı (MAAS_ODEME) + party_ledger
  *   payAdvance: kasa çıkışı (AVANS_ODEME) + party_ledger
  *   reconcileAdvance: AVANS_MAHSUP (kasa etkisiz, bakiye 0 — avans zaten düştü)
@@ -19,7 +19,7 @@
 import { postgres, ERP_SETTINGS } from '../postgres';
 import { normalizeFirmTableNr } from './accountBalance';
 import { createKasaIslemi } from './kasa';
-import { partyAPI } from './parties';
+import { partyAPI, toDateInputValue } from './parties';
 import { ensurePartyPeriodTables } from './ensurePartyPeriodTables';
 import {
   currentPayrollMonthRange,
@@ -64,8 +64,8 @@ export interface PayrollMonthLine {
 export interface AccrualEnsureResult {
   created: number;
   skipped: number;
-  /** İşe giriş öncesi otomatik hakkediş silinen satır sayısı */
-  removedBeforeHire: number;
+  /** Bu ay öncesi otomatik hakkediş silinen satır sayısı */
+  removedPastMonths: number;
 }
 
 function mapEmployee(p: {
@@ -88,7 +88,7 @@ function mapEmployee(p: {
     phone: p.phone,
     email: p.email,
     salary_base: p.salary_base || 0,
-    hire_date: p.hire_date,
+    hire_date: toDateInputValue(p.hire_date) || null,
     department: p.department,
     position: p.position,
     balance: p.balance || 0,
@@ -151,22 +151,19 @@ export const employeeAPI = {
     const withSalary = active.filter((e) => (e.salary_base || 0) > 0);
     let created = 0;
     let skipped = 0;
-    let removedBeforeHire = 0;
+    let removedPastMonths = 0;
 
-    // İşe giriş (hire_date) öncesi otomatik hakkedişleri temizle — örn. 01.09 öncesi aylar
-    for (const e of withSalary) {
-      const hire = normalizeHireDate(e.hire_date);
-      if (!hire) continue;
-      const { rows: deleted } = await postgres.query(
+    // Geçmiş ayların otomatik hakkedişlerini kaldır — yalnızca bu aydan itibaren
+    {
+      const { rows: deletedPast } = await postgres.query(
         `DELETE FROM ${ledgerTable()}
-         WHERE party_id = $1::text::uuid
-           AND transaction_type = 'MAAS_HAKKEDIS'
-           AND source_module = 'payroll_accrual'
-           AND date < $2::date
+         WHERE transaction_type = 'MAAS_HAKKEDIS'
+           AND COALESCE(source_module, '') = 'payroll_accrual'
+           AND date < $1::date
          RETURNING id`,
-        [e.id, hire],
+        [monthStart],
       );
-      removedBeforeHire += (deleted || []).length;
+      removedPastMonths += (deletedPast || []).length;
     }
 
     const eligible = withSalary.filter(
@@ -206,7 +203,7 @@ export const employeeAPI = {
     }
 
     await this.recomputeEmployeeBalances(active.map((e) => e.id));
-    return { created, skipped, removedBeforeHire };
+    return { created, skipped, removedPastMonths };
   },
 
   async listPayrollMonth(periodStart: string, periodEnd: string): Promise<PayrollMonthLine[]> {

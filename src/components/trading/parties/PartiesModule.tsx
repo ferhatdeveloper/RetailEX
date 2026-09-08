@@ -108,9 +108,9 @@ export function PartiesModule({
     setAccruing(true);
     try {
       const res = await employeeAPI.ensureMonthlySalaryAccrual();
-      if (res.removedBeforeHire > 0) {
+      if (res.removedPastMonths > 0) {
         toast.success(
-          t('party.payroll.accrueCleanedBeforeHire').replace('{n}', String(res.removedBeforeHire)),
+          t('party.payroll.accrueCleanedPastMonths').replace('{n}', String(res.removedPastMonths)),
         );
       }
       if (res.created > 0) {

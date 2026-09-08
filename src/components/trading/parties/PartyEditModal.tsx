@@ -13,7 +13,7 @@ import {
   Users,
   X,
 } from 'lucide-react';
-import { partyAPI } from '../../../services/api/parties';
+import { partyAPI, toDateInputValue } from '../../../services/api/parties';
 import type { Party, PartyCardType } from '../../../core/types/models';
 
 export interface PartyEditModalProps {
@@ -89,15 +89,41 @@ export function PartyEditModal({ initial, defaultCardType, onClose, onSaved }: P
     notes: initial?.notes || '',
     is_active: initial?.is_active !== false,
     salary_base: initial?.salary_base != null ? String(initial.salary_base) : '',
-    hire_date: initial?.hire_date || '',
+    hire_date: toDateInputValue(initial?.hire_date),
     department: initial?.department || '',
     position: initial?.position || '',
     share_pct: initial?.share_pct != null ? String(initial.share_pct) : '',
     capital_contribution: initial?.capital_contribution != null ? String(initial.capital_contribution) : '',
     partner_role: initial?.partner_role || '',
-    partner_since: initial?.partner_since || '',
+    partner_since: toDateInputValue(initial?.partner_since),
     iban: initial?.iban || '',
   }));
+
+  // Düzenleme kaydı değişince formu yenile (hire_date ISO → YYYY-MM-DD)
+  useEffect(() => {
+    if (!initial) return;
+    setForm({
+      card_type: initial.card_type || defaultCardType || 'customer',
+      code: initial.code || '',
+      name: initial.name || '',
+      phone: initial.phone || '',
+      email: initial.email || '',
+      address: initial.address || '',
+      tax_nr: initial.tax_nr || '',
+      tax_office: initial.tax_office || '',
+      notes: initial.notes || '',
+      is_active: initial.is_active !== false,
+      salary_base: initial.salary_base != null ? String(initial.salary_base) : '',
+      hire_date: toDateInputValue(initial.hire_date),
+      department: initial.department || '',
+      position: initial.position || '',
+      share_pct: initial.share_pct != null ? String(initial.share_pct) : '',
+      capital_contribution: initial.capital_contribution != null ? String(initial.capital_contribution) : '',
+      partner_role: initial.partner_role || '',
+      partner_since: toDateInputValue(initial.partner_since),
+      iban: initial.iban || '',
+    });
+  }, [initial?.id, initial?.updated_at, defaultCardType]);
 
   useEffect(() => {
     if (defaultCardType && !isEdit) {
@@ -153,7 +179,7 @@ export function PartyEditModal({ initial, defaultCardType, onClose, onSaved }: P
       };
       if (form.card_type === 'employee') {
         payload.salary_base = form.salary_base ? parseFloat(form.salary_base) : 0;
-        payload.hire_date = form.hire_date || null;
+        payload.hire_date = toDateInputValue(form.hire_date) || null;
         payload.department = form.department || null;
         payload.position = form.position || null;
       }
@@ -161,7 +187,7 @@ export function PartyEditModal({ initial, defaultCardType, onClose, onSaved }: P
         payload.share_pct = form.share_pct ? parseFloat(form.share_pct) : 0;
         payload.capital_contribution = form.capital_contribution ? parseFloat(form.capital_contribution) : 0;
         payload.partner_role = form.partner_role || null;
-        payload.partner_since = form.partner_since || null;
+        payload.partner_since = toDateInputValue(form.partner_since) || null;
         payload.iban = form.iban || null;
       }
       const saved =

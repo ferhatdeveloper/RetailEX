@@ -178,7 +178,21 @@ function formatValue(col: string, v: any): string | null {
   }
   if (typeof v === 'boolean') return v ? 'true' : 'false';
   if (typeof v === 'number') return String(v);
+  if (DATE_COLS.has(col)) {
+    return toDateInputValue(v) || null;
+  }
   return String(v);
+}
+
+/** HTML date input / DATE kolonu için YYYY-MM-DD (ISO timestamp kırpılır). */
+export function toDateInputValue(value: unknown): string {
+  if (value == null) return '';
+  const raw = value instanceof Date && Number.isFinite(value.getTime())
+    ? value.toISOString()
+    : String(value).trim();
+  if (!raw) return '';
+  const m = raw.match(/^(\d{4}-\d{2}-\d{2})/);
+  return m ? m[1] : '';
 }
 
 function normalizeParty(r: any): Party {
@@ -197,13 +211,13 @@ function normalizeParty(r: any): Party {
     is_active: r.is_active !== false,
     notes: r.notes,
     salary_base: parseFloat(r.salary_base || 0),
-    hire_date: r.hire_date,
+    hire_date: toDateInputValue(r.hire_date) || null,
     department: r.department,
     position: r.position,
     share_pct: parseFloat(r.share_pct || 0),
     capital_contribution: parseFloat(r.capital_contribution || 0),
     partner_role: r.partner_role,
-    partner_since: r.partner_since,
+    partner_since: toDateInputValue(r.partner_since) || null,
     iban: r.iban,
     merged_into_id: r.merged_into_id ?? null,
     merged_at: r.merged_at ?? null,
