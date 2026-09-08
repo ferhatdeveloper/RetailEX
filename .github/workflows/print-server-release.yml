@@ -161,6 +161,11 @@ jobs:
 
             Kurulum: `RetailEX.Printer-Setup-${{ env.APP_VERSION }}.exe` indirip **yönetici olarak** çalıştırın.
 
+            1.0.2:
+            - Program Files altına ses yazma hatası düzeltildi (başlangıç çökmesi)
+            - `waiter-call.wav` / `receipt-print.wav` kurulumla gelir; üretilen sesler ProgramData altındadır
+            - Servis kontrolü kurulum bittikten sonra yapılır
+
             Setup.exe:
             - Windows 10/11 64-bit ve Yazdırma Biriktiricisi kontrol eder
             - `RetailEX Printer Servisi` Windows servisini kurar

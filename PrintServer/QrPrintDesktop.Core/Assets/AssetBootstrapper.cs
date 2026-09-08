@@ -12,69 +12,186 @@ public sealed class AssetBootstrapper
 
     public string EnsureAppIcon()
     {
-        var assetsDir = Path.Combine(AppContext.BaseDirectory, "Assets");
-        Directory.CreateDirectory(assetsDir);
-        var iconPath = Path.Combine(assetsDir, "app.ico");
-        if (File.Exists(iconPath))
+        var packaged = Path.Combine(AppContext.BaseDirectory, "Assets", "app.ico");
+        if (File.Exists(packaged))
         {
-            return iconPath;
+            return packaged;
         }
 
-        using var bmp = new Bitmap(64, 64);
-        using (var g = Graphics.FromImage(bmp))
+        var dataPath = Path.Combine(SettingsService.DefaultDirectory, "Assets", "app.ico");
+        if (File.Exists(dataPath))
         {
-            g.SmoothingMode = SmoothingMode.AntiAlias;
-            g.Clear(Color.FromArgb(15, 23, 42));
-            using var circleBrush = new SolidBrush(Color.FromArgb(59, 130, 246));
-            g.FillEllipse(circleBrush, 6, 6, 52, 52);
-            using var font = new Font("Segoe UI", 16, FontStyle.Bold, GraphicsUnit.Pixel);
-            using var textBrush = new SolidBrush(Color.White);
-            var sf = new StringFormat { Alignment = StringAlignment.Center, LineAlignment = StringAlignment.Center };
-            g.DrawString("QR", font, textBrush, new RectangleF(0, 0, 64, 64), sf);
+            return dataPath;
         }
 
-        var iconHandle = bmp.GetHicon();
         try
         {
-            using var icon = Icon.FromHandle(iconHandle);
-            using var fs = File.Create(iconPath);
-            icon.Save(fs);
-        }
-        finally
-        {
-            DestroyIcon(iconHandle);
-        }
+            Directory.CreateDirectory(Path.GetDirectoryName(dataPath)!);
+            using var bmp = new Bitmap(64, 64);
+            using (var g = Graphics.FromImage(bmp))
+            {
+                g.SmoothingMode = SmoothingMode.AntiAlias;
+                g.Clear(Color.FromArgb(15, 23, 42));
+                using var circleBrush = new SolidBrush(Color.FromArgb(59, 130, 246));
+                g.FillEllipse(circleBrush, 6, 6, 52, 52);
+                using var font = new Font("Segoe UI", 16, FontStyle.Bold, GraphicsUnit.Pixel);
+                using var textBrush = new SolidBrush(Color.White);
+                var sf = new StringFormat { Alignment = StringAlignment.Center, LineAlignment = StringAlignment.Center };
+                g.DrawString("QR", font, textBrush, new RectangleF(0, 0, 64, 64), sf);
+            }
 
-        return iconPath;
+            var iconHandle = bmp.GetHicon();
+            try
+            {
+                using var icon = Icon.FromHandle(iconHandle);
+                using var fs = File.Create(dataPath);
+                icon.Save(fs);
+            }
+            finally
+            {
+                DestroyIcon(iconHandle);
+            }
+
+            return dataPath;
+        }
+        catch
+        {
+            return packaged;
+        }
     }
 
     public void EnsureCustomSounds(AppSettings settings)
     {
-        var waiterPath = Resolve(settings.WaiterCallSoundFile);
-        var receiptPath = Resolve(settings.ReceiptPrintSoundFile);
-        Directory.CreateDirectory(Path.GetDirectoryName(waiterPath)!);
-        Directory.CreateDirectory(Path.GetDirectoryName(receiptPath)!);
+        settings.WaiterCallSoundFile = EnsureTone(
+            settings.WaiterCallSoundFile,
+            "waiter-call.wav",
+            frequencyHz: 900,
+            durationMs: 260,
+            repeat: 2,
+            gapMs: 90);
+        settings.ReceiptPrintSoundFile = EnsureTone(
+            settings.ReceiptPrintSoundFile,
+            "receipt-print.wav",
+            frequencyHz: 620,
+            durationMs: 200,
+            repeat: 1,
+            gapMs: 0);
+    }
 
-        if (!File.Exists(waiterPath))
+    public static string ResolveExistingSound(string? relativeOrAbsolutePath)
+    {
+        foreach (var candidate in SoundCandidates(relativeOrAbsolutePath, "waiter-call.wav"))
         {
-            WriteToneWave(waiterPath, frequencyHz: 900, durationMs: 260, sampleRate: 22050, repeat: 2, gapMs: 90);
+            if (File.Exists(candidate))
+            {
+                return candidate;
+            }
         }
 
-        if (!File.Exists(receiptPath))
+        foreach (var candidate in SoundCandidates(relativeOrAbsolutePath, Path.GetFileName(relativeOrAbsolutePath ?? "")))
         {
-            WriteToneWave(receiptPath, frequencyHz: 620, durationMs: 200, sampleRate: 22050, repeat: 1, gapMs: 0);
+            if (File.Exists(candidate))
+            {
+                return candidate;
+            }
+        }
+
+        return string.Empty;
+    }
+
+    private static string EnsureTone(string configured, string fileName, int frequencyHz, int durationMs, int repeat, int gapMs)
+    {
+        foreach (var candidate in SoundCandidates(configured, fileName))
+        {
+            if (File.Exists(candidate))
+            {
+                return candidate;
+            }
+        }
+
+        var dest = Path.Combine(SettingsService.DefaultDirectory, "Sounds", fileName);
+        if (IsProtectedInstallPath(dest))
+        {
+            return dest;
+        }
+
+        try
+        {
+            Directory.CreateDirectory(Path.GetDirectoryName(dest)!);
+            WriteToneWave(dest, frequencyHz, durationMs, sampleRate: 22050, repeat, gapMs);
+            return dest;
+        }
+        catch
+        {
+            return dest;
         }
     }
 
-    private static string Resolve(string path)
+    private static IEnumerable<string> SoundCandidates(string? configured, string fileName)
     {
-        return Path.IsPathRooted(path)
-            ? path
-            : Path.Combine(AppContext.BaseDirectory, path);
+        var name = string.IsNullOrWhiteSpace(fileName) ? "sound.wav" : fileName;
+        if (!string.IsNullOrWhiteSpace(configured))
+        {
+            if (Path.IsPathRooted(configured))
+            {
+                yield return configured;
+            }
+            else
+            {
+                yield return Path.Combine(AppContext.BaseDirectory, configured);
+                yield return Path.Combine(SettingsService.DefaultDirectory, configured);
+            }
+        }
+
+        yield return Path.Combine(AppContext.BaseDirectory, "Sounds", name);
+        yield return Path.Combine(SettingsService.DefaultDirectory, "Sounds", name);
+    }
+
+    private static bool IsProtectedInstallPath(string path)
+    {
+        if (string.IsNullOrWhiteSpace(path))
+        {
+            return true;
+        }
+
+        try
+        {
+            var full = Path.GetFullPath(path);
+            foreach (var root in new[]
+                     {
+                         Environment.GetFolderPath(Environment.SpecialFolder.ProgramFiles),
+                         Environment.GetFolderPath(Environment.SpecialFolder.ProgramFilesX86),
+                         Environment.GetFolderPath(Environment.SpecialFolder.Windows)
+                     })
+            {
+                if (string.IsNullOrWhiteSpace(root))
+                {
+                    continue;
+                }
+
+                var prefix = Path.GetFullPath(root).TrimEnd(Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar)
+                    + Path.DirectorySeparatorChar;
+                if (full.StartsWith(prefix, StringComparison.OrdinalIgnoreCase))
+                {
+                    return true;
+                }
+            }
+        }
+        catch
+        {
+            return true;
+        }
+
+        return false;
     }
 
     private static void WriteToneWave(string path, int frequencyHz, int durationMs, int sampleRate, int repeat, int gapMs)
     {
+        if (IsProtectedInstallPath(path))
+        {
+            return;
+        }
+
         var bitsPerSample = 16;
         var channels = 1;
         var bytesPerSample = bitsPerSample / 8;

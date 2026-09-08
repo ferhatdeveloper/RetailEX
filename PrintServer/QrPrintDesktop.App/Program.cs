@@ -36,8 +36,23 @@ static class Program
             var settingsService = new SettingsService();
             var assets = new AssetBootstrapper();
             var engine = new PrintAgentEngine(settingsService);
-            assets.EnsureCustomSounds(engine.Settings);
-            assets.EnsureAppIcon();
+            try
+            {
+                assets.EnsureCustomSounds(engine.Settings);
+            }
+            catch
+            {
+                // Program Files yazılamaz; sesler ProgramData altına veya beep'e düşer
+            }
+
+            try
+            {
+                assets.EnsureAppIcon();
+            }
+            catch
+            {
+                // ikon yoksa sistem ikonu kullanılır
+            }
             var startup = new StartupManager();
             Application.Run(new MainForm(engine, settingsService, startup, assets));
         }

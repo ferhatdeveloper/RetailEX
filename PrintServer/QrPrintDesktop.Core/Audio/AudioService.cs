@@ -1,4 +1,5 @@
 using System.Media;
+using QrPrintDesktop.Core.Assets;
 using QrPrintDesktop.Core.Config;
 
 namespace QrPrintDesktop.Core.Audio;
@@ -19,11 +20,8 @@ public sealed class AudioService
     {
         try
         {
-            var fullPath = Path.IsPathRooted(relativeOrAbsolutePath)
-                ? relativeOrAbsolutePath
-                : Path.Combine(AppContext.BaseDirectory, relativeOrAbsolutePath);
-
-            if (File.Exists(fullPath))
+            var fullPath = AssetBootstrapper.ResolveExistingSound(relativeOrAbsolutePath);
+            if (!string.IsNullOrWhiteSpace(fullPath) && File.Exists(fullPath))
             {
                 using var player = new SoundPlayer(fullPath);
                 player.Play();

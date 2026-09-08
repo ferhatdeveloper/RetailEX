@@ -12,7 +12,14 @@ public sealed class PrintAgentWorker : BackgroundService
     {
         var assets = new AssetBootstrapper();
         var engine = new PrintAgentEngine();
-        assets.EnsureCustomSounds(engine.Settings);
+        try
+        {
+            assets.EnsureCustomSounds(engine.Settings);
+        }
+        catch
+        {
+            // Session 0 / izin: servis ses olmadan da yazdırır
+        }
         AgentLog.Write("Windows servisi başlatıldı — RetailEX Printer Servisi dinleniyor.");
 
         while (!stoppingToken.IsCancellationRequested)

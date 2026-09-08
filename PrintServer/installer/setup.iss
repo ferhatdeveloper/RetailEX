@@ -1,5 +1,5 @@
 #ifndef MyAppVersion
-#define MyAppVersion "1.0.0"
+#define MyAppVersion "1.0.2"
 #endif
 
 #define MyAppName "RetailEX Printer"
@@ -147,9 +147,10 @@ begin
     '', SW_HIDE, ewWaitUntilTerminated, ResultCode) and (ResultCode = 0);
 end;
 
-procedure CurStepChanged(CurStep: TSetupStep);
+procedure CurPageChanged(CurPageID: Integer);
 begin
-  if CurStep = ssPostInstall then
+  { ssPostInstall, [Run] servis kurulumundan once calisir. Kontrol bitis sayfasinda olmali. }
+  if CurPageID = wpFinished then
   begin
     if WizardIsTaskSelected('installservice') then
     begin
