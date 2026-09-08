@@ -6,7 +6,7 @@ import React, {
   useMemo,
   useState,
 } from 'react';
-import { Outlet, useNavigate, useParams } from 'react-router-dom';
+import { Outlet, useLocation, useNavigate, useParams } from 'react-router-dom';
 import { ArrowLeft, Languages } from 'lucide-react';
 import {
   qrPublicApi,
@@ -435,58 +435,88 @@ export function QRCustomerLayout() {
 
   const accent = settings?.primary_color || '#f59e0b';
   const rtl = lang === 'ar' || lang === 'ku';
+  const location = useLocation();
+  const isHome =
+    location.pathname === basePath ||
+    location.pathname === `${basePath}/` ||
+    location.pathname.replace(/\/+$/, '') === basePath.replace(/\/+$/, '');
 
   return (
     <QrCustomerContext.Provider value={value}>
       <div
-        className="min-h-[100dvh] bg-slate-950 text-slate-100 flex flex-col"
+        className={
+          isHome
+            ? 'min-h-[100dvh] bg-slate-950 text-slate-100'
+            : 'min-h-[100dvh] bg-gradient-to-br from-slate-950 via-slate-900 to-slate-950 text-slate-100 flex flex-col'
+        }
         dir={rtl ? 'rtl' : 'ltr'}
         style={{ ['--qr-accent' as string]: accent }}
       >
-        <header className="sticky top-0 z-20 border-b border-slate-800/80 bg-slate-950/90 backdrop-blur-md">
-          <div className="max-w-lg mx-auto px-4 py-3 flex items-center gap-3">
-            <button
-              type="button"
-              onClick={() => navigate(basePath)}
-              className="p-2 rounded-xl bg-slate-900 border border-slate-800 text-slate-300 hover:text-amber-400"
-              aria-label={t('home')}
-            >
-              <ArrowLeft className="w-5 h-5" />
-            </button>
-            <div className="flex-1 min-w-0">
-              <h1 className="font-semibold text-base truncate text-amber-400">
-                {settings?.restaurant_name || 'QR Menü'}
-              </h1>
-              <p className="text-xs text-slate-500 truncate">
-                {tableNumber
-                  ? `${t('table')} ${tableNumber}`
-                  : token
-                    ? `${t('table')} …`
-                    : t('noTable')}
-              </p>
-            </div>
-            <div className="relative">
-              <Languages className="w-4 h-4 absolute left-2 top-1/2 -translate-y-1/2 text-slate-500 pointer-events-none" />
-              <select
-                value={lang}
-                onChange={(e) => setLang(e.target.value as QrLang)}
-                className="appearance-none bg-slate-900 border border-slate-700 rounded-lg pl-8 pr-3 py-1.5 text-xs text-slate-200"
+        {!isHome && (
+          <header className="sticky top-0 z-20 border-b border-slate-800/80 bg-slate-950/90 backdrop-blur-md">
+            <div className="max-w-lg mx-auto px-4 py-3 flex items-center gap-3">
+              <button
+                type="button"
+                onClick={() => navigate(basePath)}
+                className="p-2 rounded-xl bg-slate-900 border border-slate-800 text-slate-300 hover:text-amber-400"
+                aria-label={t('home')}
               >
-                {(settings?.supported_languages?.length
-                  ? settings.supported_languages
-                  : ['tr', 'en', 'ar', 'ku']
-                ).map((l) => (
-                  <option key={l} value={l}>
-                    {String(l).toUpperCase()}
-                  </option>
-                ))}
-              </select>
+                <ArrowLeft className="w-5 h-5" />
+              </button>
+              <div className="flex-1 min-w-0 flex items-center gap-2">
+                {settings?.logo_url ? (
+                  <img
+                    src={settings.logo_url}
+                    alt=""
+                    className="h-8 w-8 rounded-full object-cover border border-slate-700 shrink-0"
+                  />
+                ) : null}
+                <div className="min-w-0">
+                  <h1 className="font-semibold text-base truncate text-amber-400">
+                    {settings?.restaurant_name || 'QR Menü'}
+                  </h1>
+                  <p className="text-xs text-slate-500 truncate">
+                    {tableNumber
+                      ? `${t('table')} ${tableNumber}`
+                      : token
+                        ? `${t('table')} …`
+                        : t('noTable')}
+                  </p>
+                </div>
+              </div>
+              <div className="relative">
+                <Languages className="w-4 h-4 absolute left-2 top-1/2 -translate-y-1/2 text-slate-500 pointer-events-none" />
+                <select
+                  value={lang}
+                  onChange={(e) => setLang(e.target.value as QrLang)}
+                  className="appearance-none bg-slate-900 border border-slate-700 rounded-lg pl-8 pr-3 py-1.5 text-xs text-slate-200"
+                >
+                  {(settings?.supported_languages?.length
+                    ? settings.supported_languages
+                    : ['tr', 'en', 'ar', 'ku']
+                  ).map((l) => (
+                    <option key={l} value={l}>
+                      {String(l).toUpperCase()}
+                    </option>
+                  ))}
+                </select>
+              </div>
             </div>
-          </div>
-        </header>
-        <main className="flex-1 max-w-lg mx-auto w-full px-4 py-4">
-          {loading ? (
+          </header>
+        )}
+        <main
+          className={
+            isHome
+              ? 'w-full'
+              : 'flex-1 max-w-lg mx-auto w-full px-4 py-4 pb-8'
+          }
+        >
+          {loading && !isHome ? (
             <p className="text-center text-slate-400 animate-pulse py-16">{t('loading')}</p>
+          ) : loading && isHome ? (
+            <div className="min-h-[100dvh] flex items-center justify-center bg-slate-950">
+              <p className="text-slate-400 animate-pulse">{t('loading')}</p>
+            </div>
           ) : (
             <Outlet />
           )}

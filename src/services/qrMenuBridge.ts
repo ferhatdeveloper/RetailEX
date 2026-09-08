@@ -94,9 +94,23 @@ export async function resolveQrTenant(
 }
 
 async function getQrSettings(ctx: QrTenantCtx) {
-  const { rows } = await ctx.pool.query(`SELECT * FROM ${ctx.card('qr_settings')} LIMIT 1`);
-  if (rows[0]) return rows[0];
-  // Tablo yoksa veya boş — varsayılan
+  try {
+    const { rows } = await ctx.pool.query(`SELECT * FROM ${ctx.card('qr_settings')} LIMIT 1`);
+    if (rows[0]) return rows[0];
+  } catch (e: unknown) {
+    const msg = e instanceof Error ? e.message : String(e);
+    if (/does not exist|undefined_table/i.test(msg)) {
+      try {
+        await ensureQrCardTables(ctx);
+        const again = await ctx.pool.query(`SELECT * FROM ${ctx.card('qr_settings')} LIMIT 1`);
+        if (again.rows[0]) return again.rows[0];
+      } catch (e2: unknown) {
+        console.error('[QR Settings ensure]', e2 instanceof Error ? e2.message : e2);
+      }
+    } else {
+      throw e;
+    }
+  }
   return {
     restaurant_name: ctx.tenantCode,
     primary_color: '#f59e0b',
@@ -112,6 +126,53 @@ async function getQrSettings(ctx: QrTenantCtx) {
     default_language: 'tr',
     supported_languages: ['tr', 'en', 'ar', 'ku'],
   };
+}
+
+async function ensureQrCardTables(ctx: QrTenantCtx) {
+  const settings = ctx.card('qr_settings').replace(/^rest\./, '');
+  const questions = ctx.card('qr_feedback_questions').replace(/^rest\./, '');
+  await ctx.pool.query(`
+    CREATE TABLE IF NOT EXISTS rest.${settings} (
+      id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+      restaurant_name VARCHAR(255),
+      logo_url TEXT,
+      cover_image_url TEXT,
+      primary_color VARCHAR(7) DEFAULT '#f59e0b',
+      wifi_ssid VARCHAR(255),
+      wifi_password VARCHAR(255),
+      public_base_url TEXT,
+      default_language VARCHAR(5) DEFAULT 'tr',
+      supported_languages TEXT[] DEFAULT ARRAY['tr','en','ar','ku'],
+      ordering_enabled BOOLEAN DEFAULT true,
+      call_waiter_enabled BOOLEAN DEFAULT true,
+      request_bill_enabled BOOLEAN DEFAULT true,
+      valet_enabled BOOLEAN DEFAULT false,
+      feedback_enabled BOOLEAN DEFAULT true,
+      wifi_enabled BOOLEAN DEFAULT true,
+      auto_send_kitchen BOOLEAN DEFAULT false,
+      order_approval_mode VARCHAR(20) DEFAULT 'manual',
+      is_active BOOLEAN DEFAULT true,
+      updated_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP,
+      created_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP
+    )`);
+  await ctx.pool.query(
+    `INSERT INTO rest.${settings} (restaurant_name)
+     SELECT $1 WHERE NOT EXISTS (SELECT 1 FROM rest.${settings} LIMIT 1)`,
+    [ctx.tenantCode]
+  );
+  await ctx.pool.query(`
+    CREATE TABLE IF NOT EXISTS rest.${questions} (
+      id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+      code VARCHAR(50) NOT NULL UNIQUE,
+      name_tr VARCHAR(255) NOT NULL,
+      name_en VARCHAR(255),
+      name_ar VARCHAR(255),
+      name_ku VARCHAR(255),
+      icon_key VARCHAR(50) DEFAULT 'star',
+      sort_order INTEGER DEFAULT 0,
+      is_active BOOLEAN DEFAULT true,
+      created_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP
+    )`);
 }
 
 async function findTableByToken(ctx: QrTenantCtx, token: string) {

@@ -67,8 +67,8 @@ BEGIN
     JOIN pg_namespace n ON n.oid = c.relnamespace
     WHERE n.nspname = 'rest'
       AND c.relkind = 'r'
-      AND c.relname LIKE 'rex_%_rest_tables'
-      AND c.relname NOT LIKE 'rex_%_%_rest_tables'
+      AND c.relname LIKE 'rex\_%\_rest\_tables' ESCAPE '\'
+      AND c.relname NOT LIKE 'rex\_%\_%\_rest\_tables' ESCAPE '\'
   LOOP
     v_firm := r.firm_prefix;
     -- rex_001_rest_tables → firm prefix rex_001; skip period tables (rex_001_01_...)

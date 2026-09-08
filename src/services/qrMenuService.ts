@@ -1,7 +1,7 @@
 /**
  * QR Menü — backoffice / personel servisleri (PostgresConnection prefix rewrite).
  */
-import { PostgresConnection, ERP_SETTINGS } from './postgres';
+import { PostgresConnection } from './postgres';
 
 export type QrSettings = {
   id?: string;
@@ -412,12 +412,20 @@ export class QrMenuService {
     try {
       const raw = localStorage.getItem('retailex_web_config');
       if (raw) {
-        const o = JSON.parse(raw) as { merkez_tenant_code?: string };
-        if (o.merkez_tenant_code) return String(o.merkez_tenant_code).trim();
+        const o = JSON.parse(raw) as {
+          merkez_tenant_code?: string;
+          remote_rest_url?: string;
+          remote_db?: string;
+        };
+        if (o.merkez_tenant_code) return String(o.merkez_tenant_code).trim().toLowerCase();
+        const rest = String(o.remote_rest_url || '');
+        const m = rest.match(/api\.retailex\.app\/([a-z0-9_-]+)/i);
+        if (m?.[1]) return m[1].toLowerCase();
+        if (o.remote_db) return String(o.remote_db).trim().toLowerCase();
       }
     } catch {
       /* ignore */
     }
-    return String(ERP_SETTINGS.firmNr || '001');
+    return 'demo';
   }
 }
