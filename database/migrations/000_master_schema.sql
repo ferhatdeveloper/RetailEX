@@ -3424,11 +3424,13 @@ BEGIN
       wifi_enabled BOOLEAN DEFAULT true,
       auto_send_kitchen BOOLEAN DEFAULT false,
       order_approval_mode VARCHAR(20) DEFAULT ''manual'',
+      guest_ui_theme VARCHAR(20) DEFAULT ''premium'',
       is_active BOOLEAN DEFAULT true,
       updated_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP,
       created_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP
     )', v_prefix || '_qr_settings');
   EXECUTE format('ALTER TABLE rest.%I ADD COLUMN IF NOT EXISTS order_approval_mode VARCHAR(20) DEFAULT ''manual''', v_prefix || '_qr_settings');
+  EXECUTE format('ALTER TABLE rest.%I ADD COLUMN IF NOT EXISTS guest_ui_theme VARCHAR(20) DEFAULT ''premium''', v_prefix || '_qr_settings');
   EXECUTE format('INSERT INTO rest.%I (restaurant_name) SELECT NULL WHERE NOT EXISTS (SELECT 1 FROM rest.%I LIMIT 1)', v_prefix || '_qr_settings', v_prefix || '_qr_settings');
   EXECUTE format('
     CREATE TABLE IF NOT EXISTS rest.%I (

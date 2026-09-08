@@ -36,54 +36,81 @@ export function QRCallWaiterView({ defaultType = 'waiter' as CallType }) {
 
   if (done) {
     return (
-      <div className="text-center py-16 space-y-3">
-        <Bell className="w-12 h-12 text-amber-400 mx-auto" />
-        <p className="text-lg font-semibold text-slate-100">{t('thanks')}</p>
+      <div className="space-y-3 py-16 text-center">
+        <Bell className="mx-auto h-12 w-12" style={{ color: 'var(--qr-gold)' }} />
+        <p className="rex-qr-display text-xl font-semibold">{t('thanks')}</p>
       </div>
     );
   }
 
   const options: { id: CallType; label: string; icon: React.ReactNode }[] = [
-    { id: 'waiter', label: t('callWaiter'), icon: <Bell className="w-5 h-5" /> },
-    { id: 'bill', label: t('requestBill'), icon: <Receipt className="w-5 h-5" /> },
-    { id: 'help', label: t('help'), icon: <HelpCircle className="w-5 h-5" /> },
+    { id: 'waiter', label: t('callWaiter'), icon: <Bell className="h-5 w-5" /> },
+    { id: 'bill', label: t('requestBill'), icon: <Receipt className="h-5 w-5" /> },
+    { id: 'help', label: t('help'), icon: <HelpCircle className="h-5 w-5" /> },
   ];
 
   return (
     <div className="space-y-4">
-      <h2 className="text-xl font-bold text-amber-400">{t('waiter')}</h2>
+      <h2 className="rex-qr-display text-2xl font-semibold" style={{ color: 'var(--qr-gold-bright)' }}>
+        {t('waiter')}
+      </h2>
       <div className="grid gap-2">
-        {options.map((o) => (
-          <button
-            key={o.id}
-            type="button"
-            onClick={() => setType(o.id)}
-            className={
-              type === o.id
-                ? 'flex items-center gap-3 rounded-2xl border border-amber-500/60 bg-amber-500/15 px-4 py-3 text-amber-300'
-                : 'flex items-center gap-3 rounded-2xl border border-slate-800 bg-slate-900 px-4 py-3 text-slate-300'
-            }
-          >
-            {o.icon}
-            <span className="font-semibold">{o.label}</span>
-          </button>
-        ))}
+        {options.map((o) => {
+          const active = type === o.id;
+          return (
+            <button
+              key={o.id}
+              type="button"
+              onClick={() => setType(o.id)}
+              className="rex-qr-press flex items-center gap-3 rounded-2xl px-4 py-3.5"
+              style={
+                active
+                  ? {
+                      background: 'rgba(212,165,116,0.15)',
+                      border: '1px solid rgba(212,165,116,0.5)',
+                      color: 'var(--qr-gold-bright)',
+                    }
+                  : {
+                      background: 'var(--qr-bg-elevated)',
+                      border: '1px solid var(--qr-line)',
+                      color: 'var(--qr-muted)',
+                    }
+              }
+            >
+              {o.icon}
+              <span className="font-semibold">{o.label}</span>
+            </button>
+          );
+        })}
       </div>
-      <label className="block text-xs text-slate-400">
+      <label className="block text-xs font-semibold uppercase tracking-wider" style={{ color: 'var(--qr-muted)' }}>
         {t('note')}
         <textarea
           value={note}
           onChange={(e) => setNote(e.target.value)}
           rows={2}
-          className="mt-1 w-full rounded-xl bg-slate-900 border border-slate-700 px-3 py-2 text-sm"
+          className="mt-2 w-full resize-none rounded-2xl px-4 py-3 text-sm outline-none"
+          style={{
+            background: 'var(--qr-bg-elevated)',
+            border: '1px solid var(--qr-line)',
+            color: 'var(--qr-text)',
+          }}
         />
       </label>
-      {err && <p className="text-rose-400 text-sm">{err}</p>}
+      {err && (
+        <p className="text-sm" style={{ color: 'var(--qr-danger)' }}>
+          {err}
+        </p>
+      )}
       <button
         type="button"
         disabled={busy}
         onClick={() => void submit()}
-        className="w-full py-3 rounded-2xl bg-amber-500 text-slate-950 font-bold disabled:opacity-40"
+        className="rex-qr-press w-full rounded-2xl py-3.5 text-base font-bold disabled:opacity-40"
+        style={{
+          background: 'linear-gradient(135deg, var(--qr-gold) 0%, var(--qr-copper) 100%)',
+          color: '#1a120c',
+        }}
       >
         {busy ? t('loading') : t('submit')}
       </button>

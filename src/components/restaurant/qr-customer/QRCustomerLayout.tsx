@@ -14,6 +14,7 @@ import {
   type QrPublicCartItem,
   type QrPublicSettings,
 } from './qrPublicApi';
+import './qrTheme.css';
 
 type CartContextValue = {
   items: QrPublicCartItem[];
@@ -102,6 +103,7 @@ const UI: Record<QrLang, Record<string, string>> = {
     noResults: 'Sonuç bulunamadı',
     items: 'ürün',
     viewCart: 'Sepet',
+    homeTagline: 'Sipariş · servis · hesap — masanızdan tek dokunuşla',
   },
   en: {
     menu: 'Menu',
@@ -163,6 +165,7 @@ const UI: Record<QrLang, Record<string, string>> = {
     noResults: 'No results',
     items: 'items',
     viewCart: 'Cart',
+    homeTagline: 'Order · service · bill — from your table',
   },
   ar: {
     menu: 'القائمة',
@@ -224,6 +227,7 @@ const UI: Record<QrLang, Record<string, string>> = {
     noResults: 'لا نتائج',
     items: 'عناصر',
     viewCart: 'السلة',
+    homeTagline: 'طلب · خدمة · حساب — من طاولتك',
   },
   ku: {
     menu: 'مینیو',
@@ -285,6 +289,7 @@ const UI: Record<QrLang, Record<string, string>> = {
     noResults: 'ئەنجام نەدۆزرایەوە',
     items: 'بەرهەم',
     viewCart: 'سەبەتە',
+    homeTagline: 'داواکاری · خزمەت · حیساب — لە مێزەکەتەوە',
   },
 };
 
@@ -469,33 +474,61 @@ export function QRCustomerLayout() {
     t,
   };
 
-  const accent = settings?.primary_color || '#f59e0b';
+  const accent = settings?.primary_color || '#d4a574';
+  const classic = settings?.guest_ui_theme === 'classic';
   const rtl = lang === 'ar' || lang === 'ku';
   const location = useLocation();
   const pathNorm = location.pathname.replace(/\/+$/, '');
   const baseNorm = basePath.replace(/\/+$/, '');
   const isHome = pathNorm === baseNorm;
   const isMenu = pathNorm === `${baseNorm}/menu`;
-  const hideChrome = isHome || isMenu;
+  const isCart = pathNorm === `${baseNorm}/cart`;
+  // Premium: home/menu/cart kendi chrome'unu kullanır. Klasik: yalnızca home/menu.
+  const selfChrome = classic ? isHome || isMenu : isHome || isMenu || isCart;
 
   return (
     <QrCustomerContext.Provider value={value}>
       <div
-        className="min-h-[100dvh] bg-gradient-to-br from-slate-900 via-slate-800 to-slate-900 text-slate-100"
+        className={
+          classic
+            ? 'rex-qr rex-qr--classic min-h-[100dvh] bg-gradient-to-br from-slate-900 via-slate-800 to-slate-900 text-slate-100'
+            : 'rex-qr min-h-[100dvh]'
+        }
         dir={rtl ? 'rtl' : 'ltr'}
-        style={{ ['--qr-accent' as string]: accent }}
+        style={
+          classic
+            ? ({ ['--qr-accent' as string]: accent } as React.CSSProperties)
+            : ({
+                ['--qr-gold' as string]: accent,
+                ['--qr-copper' as string]: accent,
+              } as React.CSSProperties)
+        }
       >
-        {!hideChrome && (
+        {!selfChrome && (
           <button
             type="button"
             onClick={() => navigate(basePath)}
-            className="fixed top-4 left-4 z-50 w-10 h-10 rounded-full bg-slate-800/80 backdrop-blur-md text-white border border-slate-700/50 flex items-center justify-center"
+            className={
+              classic
+                ? 'fixed top-4 left-4 z-50 w-10 h-10 rounded-full bg-slate-800/80 backdrop-blur-md text-white border border-slate-700/50 flex items-center justify-center'
+                : 'rex-qr-press fixed top-4 left-4 z-50 w-11 h-11 rounded-full flex items-center justify-center'
+            }
+            style={
+              classic
+                ? undefined
+                : {
+                    background: 'rgba(22,20,18,0.85)',
+                    border: '1px solid var(--qr-line)',
+                    color: 'var(--qr-text)',
+                    backdropFilter: 'blur(12px)',
+                  }
+            }
             aria-label={t('home')}
           >
             <ArrowLeft className="w-5 h-5" />
           </button>
         )}
-        {!hideChrome && (
+        {classic && !selfChrome && (
           <div className="fixed top-4 right-4 z-50">
             <div className="relative">
               <Languages className="w-4 h-4 absolute left-2 top-1/2 -translate-y-1/2 text-slate-400 pointer-events-none" />
@@ -516,13 +549,23 @@ export function QRCustomerLayout() {
             </div>
           </div>
         )}
-        <main className={hideChrome ? 'w-full' : 'pt-16 px-4 pb-8 max-w-lg mx-auto w-full'}>
-          {loading && isHome ? (
-            <div className="min-h-[100dvh] flex items-center justify-center">
-              <p className="text-slate-400 animate-pulse">{t('loading')}</p>
+        <main className={selfChrome ? 'w-full' : 'pt-16 px-4 pb-10 max-w-lg mx-auto w-full'}>
+          {loading ? (
+            <div className="min-h-[100dvh] flex flex-col items-center justify-center gap-3">
+              {classic ? (
+                <p className="text-slate-400 animate-pulse">{t('loading')}</p>
+              ) : (
+                <>
+                  <div
+                    className="w-10 h-10 rounded-full border-2 border-t-transparent animate-spin"
+                    style={{ borderColor: 'var(--qr-gold)', borderTopColor: 'transparent' }}
+                  />
+                  <p className="text-sm" style={{ color: 'var(--qr-muted)' }}>
+                    {t('loading')}
+                  </p>
+                </>
+              )}
             </div>
-          ) : loading && !isHome ? (
-            <p className="text-center text-slate-400 animate-pulse py-16">{t('loading')}</p>
           ) : (
             <Outlet />
           )}

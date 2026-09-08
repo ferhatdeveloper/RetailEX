@@ -80,50 +80,78 @@ export function QRRequestBillView() {
   };
 
   if (settings?.request_bill_enabled === false) {
-    return <p className="text-slate-500 text-center py-12">{t('error')}</p>;
+    return (
+      <p className="py-12 text-center" style={{ color: 'var(--qr-muted)' }}>
+        {t('error')}
+      </p>
+    );
   }
 
   return (
     <div className="space-y-4 pb-10">
       <div className="flex items-center justify-between gap-2">
-        <h2 className="text-xl font-bold text-amber-400">{t('yourBill')}</h2>
+        <h2 className="rex-qr-display text-2xl font-semibold" style={{ color: 'var(--qr-gold-bright)' }}>
+          {t('yourBill')}
+        </h2>
         {tableToken && (
           <button
             type="button"
             onClick={() => void refresh()}
-            className="p-2 rounded-xl border border-slate-700 text-slate-400 hover:text-amber-400"
+            className="rex-qr-press rounded-xl p-2"
+            style={{ border: '1px solid var(--qr-line)', color: 'var(--qr-muted)' }}
             aria-label={t('refreshing')}
           >
-            <RefreshCw className="w-4 h-4" />
+            <RefreshCw className="h-4 w-4" />
           </button>
         )}
       </div>
 
       {!tableToken && (
-        <p className="text-sm text-slate-400 rounded-xl border border-slate-800 bg-slate-900 px-3 py-2">
+        <p
+          className="rounded-2xl px-4 py-3 text-sm"
+          style={{
+            background: 'var(--qr-bg-elevated)',
+            border: '1px solid var(--qr-line)',
+            color: 'var(--qr-muted)',
+          }}
+        >
           {t('requestBillHint')}
         </p>
       )}
 
       {err && (
-        <p className="text-sm text-rose-300 rounded-xl border border-rose-500/30 bg-rose-500/10 px-3 py-2">
+        <p
+          className="rounded-2xl px-4 py-3 text-sm"
+          style={{
+            background: 'rgba(224,122,106,0.12)',
+            border: '1px solid rgba(224,122,106,0.3)',
+            color: '#f0c4bc',
+          }}
+        >
           {err}
         </p>
       )}
 
       {tableToken && bill && bill.items.length > 0 ? (
-        <div className="rounded-2xl border border-slate-800 bg-slate-900/80 p-4 space-y-3">
+        <div
+          className="space-y-3 rounded-2xl p-4"
+          style={{
+            background: 'var(--qr-bg-elevated)',
+            border: '1px solid var(--qr-line)',
+          }}
+        >
           <div className="flex items-center gap-3">
-            <div className="w-11 h-11 rounded-xl bg-amber-500/20 flex items-center justify-center">
-              <Receipt className="w-5 h-5 text-amber-400" />
+            <div
+              className="flex h-11 w-11 items-center justify-center rounded-xl"
+              style={{ background: 'rgba(212,165,116,0.18)' }}
+            >
+              <Receipt className="h-5 w-5" style={{ color: 'var(--qr-gold)' }} />
             </div>
             <div>
-              <p className="text-xs text-slate-500">
+              <p className="text-xs" style={{ color: 'var(--qr-muted)' }}>
                 {t('table')} {bill.tableNumber}
               </p>
-              <p className="font-semibold text-slate-100">
-                {phaseLabel(t, bill.guestPhase)}
-              </p>
+              <p className="font-semibold">{phaseLabel(t, bill.guestPhase)}</p>
             </div>
           </div>
 
@@ -131,49 +159,69 @@ export function QRRequestBillView() {
             {bill.items.map((i) => (
               <li key={i.id} className="flex justify-between gap-3 text-sm">
                 <div className="min-w-0">
-                  <p className="text-slate-200">
+                  <p>
                     {i.qty}× {i.name}
                   </p>
-                  <p className="text-[10px] text-slate-500 uppercase tracking-wide">
+                  <p
+                    className="text-[10px] uppercase tracking-wide"
+                    style={{ color: 'var(--qr-muted)' }}
+                  >
                     {itemStatusLabel(t, i.status)}
                   </p>
                 </div>
-                <span className="text-slate-400 tabular-nums shrink-0">
-                  {(i.subtotal ?? i.qty * i.price).toLocaleString()}
+                <span className="shrink-0 tabular-nums" style={{ color: 'var(--qr-muted)' }}>
+                  {(i.subtotal ?? i.qty * i.price).toLocaleString('tr-TR')}
                 </span>
               </li>
             ))}
           </ul>
 
           {bill.discountAmount > 0 && (
-            <div className="flex justify-between text-sm text-emerald-400">
+            <div className="flex justify-between text-sm" style={{ color: 'var(--qr-ok)' }}>
               <span>{t('discount')}</span>
-              <span className="tabular-nums">-{bill.discountAmount.toLocaleString()}</span>
+              <span className="tabular-nums">-{bill.discountAmount.toLocaleString('tr-TR')}</span>
             </div>
           )}
 
-          <div className="flex justify-between pt-3 border-t border-slate-800 text-lg font-bold">
-            <span className="text-slate-200">{t('total')}</span>
-            <span className="text-amber-400 tabular-nums">
-              {bill.totalAmount.toLocaleString()}
+          <div
+            className="flex justify-between pt-3 text-lg font-bold"
+            style={{ borderTop: '1px solid var(--qr-line)' }}
+          >
+            <span>{t('total')}</span>
+            <span className="tabular-nums" style={{ color: 'var(--qr-gold-bright)' }}>
+              {bill.totalAmount.toLocaleString('tr-TR')}
             </span>
           </div>
         </div>
       ) : tableToken ? (
-        <p className="text-slate-500 text-center py-8">{t('noLiveOrder')}</p>
+        <p className="py-8 text-center" style={{ color: 'var(--qr-muted)' }}>
+          {t('noLiveOrder')}
+        </p>
       ) : null}
 
       {done ? (
-        <div className="text-center py-6 space-y-2 rounded-2xl border border-emerald-500/30 bg-emerald-500/10">
-          <Receipt className="w-10 h-10 text-emerald-400 mx-auto" />
-          <p className="font-semibold text-emerald-200">{t('billRequested')}</p>
+        <div
+          className="space-y-2 rounded-2xl py-6 text-center"
+          style={{
+            background: 'rgba(124,184,154,0.12)',
+            border: '1px solid rgba(124,184,154,0.35)',
+          }}
+        >
+          <Receipt className="mx-auto h-10 w-10" style={{ color: 'var(--qr-ok)' }} />
+          <p className="font-semibold" style={{ color: 'var(--qr-ok)' }}>
+            {t('billRequested')}
+          </p>
         </div>
       ) : (
         <button
           type="button"
           disabled={busy || !tableToken}
           onClick={() => void requestBill()}
-          className="w-full py-3.5 rounded-2xl bg-amber-500 text-slate-950 font-bold disabled:opacity-40"
+          className="rex-qr-press w-full rounded-2xl py-3.5 font-bold disabled:opacity-40"
+          style={{
+            background: 'linear-gradient(135deg, var(--qr-gold) 0%, var(--qr-copper) 100%)',
+            color: '#1a120c',
+          }}
         >
           {busy ? t('loading') : t('requestBill')}
         </button>

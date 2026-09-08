@@ -22,8 +22,16 @@ export function QRWifiView() {
 
   return (
     <div className="space-y-4">
-      <h2 className="text-xl font-bold text-amber-400">{t('wifi')}</h2>
-      <div className="rounded-3xl border border-slate-800 bg-slate-900/80 p-5 space-y-4">
+      <h2 className="rex-qr-display text-2xl font-semibold" style={{ color: 'var(--qr-gold-bright)' }}>
+        {t('wifi')}
+      </h2>
+      <div
+        className="space-y-4 rounded-3xl p-5"
+        style={{
+          background: 'var(--qr-bg-elevated)',
+          border: '1px solid var(--qr-line)',
+        }}
+      >
         <Row
           label={t('ssid')}
           value={ssid}
@@ -59,15 +67,24 @@ function Row({
   return (
     <div className="flex items-center justify-between gap-3">
       <div className="min-w-0">
-        <p className="text-xs text-slate-500 uppercase tracking-wider">{label}</p>
-        <p className="font-mono text-lg text-slate-100 truncate">{value}</p>
+        <p className="text-xs uppercase tracking-wider" style={{ color: 'var(--qr-muted)' }}>
+          {label}
+        </p>
+        <p className="truncate font-mono text-lg" style={{ color: 'var(--qr-text)' }}>
+          {value}
+        </p>
       </div>
       <button
         type="button"
         onClick={onCopy}
-        className="shrink-0 flex items-center gap-1.5 px-3 py-2 rounded-xl bg-slate-800 border border-slate-700 text-xs font-semibold text-amber-400"
+        className="rex-qr-press flex shrink-0 items-center gap-1.5 rounded-xl px-3 py-2 text-xs font-semibold"
+        style={{
+          background: 'var(--qr-bg)',
+          border: '1px solid var(--qr-line)',
+          color: 'var(--qr-gold)',
+        }}
       >
-        {copied ? <Check className="w-4 h-4" /> : <Copy className="w-4 h-4" />}
+        {copied ? <Check className="h-4 w-4" /> : <Copy className="h-4 w-4" />}
         {copyLabel}
       </button>
     </div>

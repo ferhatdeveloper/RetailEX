@@ -265,6 +265,25 @@ function QRSettingsForm() {
             Manuelde misafir siparişi bildirime düşer; personel onaylayınca masaya yazılır.
           </span>
         </label>
+        <label className="flex flex-col gap-2 py-3 border-b border-slate-100 last:border-0">
+          <span className="text-sm font-medium text-slate-700">Misafir UI teması</span>
+          <select
+            value={s.guest_ui_theme === 'classic' ? 'classic' : 'premium'}
+            onChange={(e) =>
+              setS({
+                ...s,
+                guest_ui_theme: e.target.value === 'classic' ? 'classic' : 'premium',
+              })
+            }
+            className="w-full px-4 py-3 border border-slate-200 rounded-2xl text-slate-800 font-medium bg-white"
+          >
+            <option value="premium">Premium — yeni hospitality tasarım</option>
+            <option value="classic">Klasik — eski renkli grid (Qrmenu stili)</option>
+          </select>
+          <span className="text-xs text-slate-500">
+            Misafir QR ekranında ana sayfa, menü ve sepet görünümünü değiştirir.
+          </span>
+        </label>
         {toggle('QR menü aktif', 'is_active')}
       </div>
       <button

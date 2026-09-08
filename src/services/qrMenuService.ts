@@ -23,6 +23,8 @@ export type QrSettings = {
   auto_send_kitchen?: boolean;
   /** manual = adisyona yazılmaz (onay sonrası); auto = hemen adisyona */
   order_approval_mode?: 'manual' | 'auto';
+  /** premium = yeni hospitality UI; classic = eski Qrmenusystemsaas stili */
+  guest_ui_theme?: 'premium' | 'classic';
   is_active?: boolean;
 };
 
@@ -100,7 +102,7 @@ export class QrMenuService {
           wifi_ssid=$6, wifi_password=$7, public_base_url=$8, default_language=$9,
           ordering_enabled=$10, call_waiter_enabled=$11, request_bill_enabled=$12,
           valet_enabled=$13, feedback_enabled=$14, wifi_enabled=$15,
-          auto_send_kitchen=$16, is_active=$17, order_approval_mode=$18, updated_at=NOW()
+          auto_send_kitchen=$16, is_active=$17, order_approval_mode=$18, guest_ui_theme=$19, updated_at=NOW()
          WHERE id=$1 RETURNING *`,
         [
           cur.id,
@@ -121,6 +123,7 @@ export class QrMenuService {
           !!next.auto_send_kitchen,
           next.is_active !== false,
           next.order_approval_mode === 'auto' ? 'auto' : 'manual',
+          next.guest_ui_theme === 'classic' ? 'classic' : 'premium',
         ]
       );
       return rows[0] as QrSettings;

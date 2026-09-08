@@ -22,6 +22,8 @@ export type QrPublicSettings = {
   feedback_enabled?: boolean;
   wifi_enabled?: boolean;
   is_active?: boolean;
+  /** premium = yeni UI; classic = eski renkli grid UI */
+  guest_ui_theme?: 'premium' | 'classic';
 };
 
 export type QrPublicMenuItem = {
@@ -167,6 +169,10 @@ function mapSettings(raw: Record<string, unknown> | undefined): QrPublicSettings
     feedback_enabled: (raw.feedbackEnabled ?? raw.feedback_enabled) !== false,
     wifi_enabled: (raw.wifiEnabled ?? raw.wifi_enabled) !== false,
     is_active: (raw.isActive ?? raw.is_active) !== false,
+    guest_ui_theme:
+      String(raw.guestUiTheme ?? raw.guest_ui_theme ?? 'premium') === 'classic'
+        ? 'classic'
+        : 'premium',
   };
 }
 

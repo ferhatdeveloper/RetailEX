@@ -64,28 +64,44 @@ export function QRFeedbackView() {
     }
   };
 
+  const fieldStyle: React.CSSProperties = {
+    background: 'var(--qr-bg)',
+    border: '1px solid var(--qr-line)',
+    color: 'var(--qr-text)',
+  };
+
   if (done) {
     return (
-      <div className="text-center py-16 space-y-3">
-        <Star className="w-12 h-12 text-amber-400 mx-auto fill-amber-400" />
-        <p className="text-lg font-semibold">{t('thanks')}</p>
+      <div className="space-y-3 py-16 text-center">
+        <Star className="mx-auto h-12 w-12 fill-current" style={{ color: 'var(--qr-gold)' }} />
+        <p className="rex-qr-display text-xl font-semibold">{t('thanks')}</p>
       </div>
     );
   }
 
   return (
     <div className="space-y-5">
-      <h2 className="text-xl font-bold text-amber-400">{t('feedback')}</h2>
-      {err && <p className="text-rose-400 text-sm">{err}</p>}
+      <h2 className="rex-qr-display text-2xl font-semibold" style={{ color: 'var(--qr-gold-bright)' }}>
+        {t('feedback')}
+      </h2>
+      {err && (
+        <p className="text-sm" style={{ color: 'var(--qr-danger)' }}>
+          {err}
+        </p>
+      )}
 
       {current && (
-        <div className="rounded-3xl border border-slate-800 bg-slate-900/80 p-5 space-y-4">
-          <p className="text-xs text-slate-500">
+        <div
+          className="space-y-4 rounded-3xl p-5"
+          style={{
+            background: 'var(--qr-bg-elevated)',
+            border: '1px solid var(--qr-line)',
+          }}
+        >
+          <p className="text-xs" style={{ color: 'var(--qr-muted)' }}>
             {step + 1} / {questions.length}
           </p>
-          <p className="text-lg font-semibold text-slate-100">
-            {questionLabel(current, lang)}
-          </p>
+          <p className="text-lg font-semibold">{questionLabel(current, lang)}</p>
           <div className="flex justify-center gap-2">
             {[1, 2, 3, 4, 5].map((n) => (
               <button
@@ -96,15 +112,14 @@ export function QRFeedbackView() {
                   if (step < questions.length - 1) setStep(step + 1);
                   else setStep(questions.length);
                 }}
-                className={
-                  (ratings[current.code] || 0) >= n
-                    ? 'p-2 text-amber-400'
-                    : 'p-2 text-slate-600 hover:text-amber-300'
-                }
+                className="rex-qr-press p-2"
+                style={{
+                  color: (ratings[current.code] || 0) >= n ? 'var(--qr-gold)' : 'var(--qr-muted)',
+                }}
                 aria-label={`${n}`}
               >
                 <Star
-                  className="w-8 h-8"
+                  className="h-8 w-8"
                   fill={(ratings[current.code] || 0) >= n ? 'currentColor' : 'none'}
                 />
               </button>
@@ -115,16 +130,16 @@ export function QRFeedbackView() {
               type="button"
               disabled={step === 0}
               onClick={() => setStep(Math.max(0, step - 1))}
-              className="flex-1 py-2 rounded-xl border border-slate-700 text-slate-300 text-sm disabled:opacity-30"
+              className="rex-qr-press flex-1 rounded-xl py-2.5 text-sm disabled:opacity-30"
+              style={{ border: '1px solid var(--qr-line)', color: 'var(--qr-muted)' }}
             >
               {t('back')}
             </button>
             <button
               type="button"
-              onClick={() =>
-                setStep(Math.min(questions.length, step + 1))
-              }
-              className="flex-1 py-2 rounded-xl bg-slate-800 text-amber-400 text-sm font-semibold"
+              onClick={() => setStep(Math.min(questions.length, step + 1))}
+              className="rex-qr-press flex-1 rounded-xl py-2.5 text-sm font-semibold"
+              style={{ background: 'var(--qr-bg)', color: 'var(--qr-gold)' }}
             >
               →
             </button>
@@ -133,37 +148,51 @@ export function QRFeedbackView() {
       )}
 
       {step >= questions.length && (
-        <div className="space-y-3 rounded-3xl border border-slate-800 bg-slate-900/80 p-5">
+        <div
+          className="space-y-3 rounded-3xl p-5"
+          style={{
+            background: 'var(--qr-bg-elevated)',
+            border: '1px solid var(--qr-line)',
+          }}
+        >
           <input
             value={firstName}
             onChange={(e) => setFirstName(e.target.value)}
             placeholder="Ad"
-            className="w-full rounded-xl bg-slate-950 border border-slate-700 px-3 py-2.5 text-sm"
+            className="w-full rounded-xl px-3 py-2.5 text-sm outline-none"
+            style={fieldStyle}
           />
           <input
             value={lastName}
             onChange={(e) => setLastName(e.target.value)}
             placeholder="Soyad"
-            className="w-full rounded-xl bg-slate-950 border border-slate-700 px-3 py-2.5 text-sm"
+            className="w-full rounded-xl px-3 py-2.5 text-sm outline-none"
+            style={fieldStyle}
           />
           <input
             value={phone}
             onChange={(e) => setPhone(e.target.value)}
             placeholder="Telefon"
-            className="w-full rounded-xl bg-slate-950 border border-slate-700 px-3 py-2.5 text-sm"
+            className="w-full rounded-xl px-3 py-2.5 text-sm outline-none"
+            style={fieldStyle}
           />
           <textarea
             value={comment}
             onChange={(e) => setComment(e.target.value)}
             placeholder={t('note')}
             rows={3}
-            className="w-full rounded-xl bg-slate-950 border border-slate-700 px-3 py-2.5 text-sm"
+            className="w-full resize-none rounded-xl px-3 py-2.5 text-sm outline-none"
+            style={fieldStyle}
           />
           <button
             type="button"
             disabled={busy}
             onClick={() => void submitAll()}
-            className="w-full py-3 rounded-2xl bg-amber-500 text-slate-950 font-bold disabled:opacity-40"
+            className="rex-qr-press w-full rounded-2xl py-3 font-bold disabled:opacity-40"
+            style={{
+              background: 'linear-gradient(135deg, var(--qr-gold) 0%, var(--qr-copper) 100%)',
+              color: '#1a120c',
+            }}
           >
             {busy ? t('loading') : t('submit')}
           </button>

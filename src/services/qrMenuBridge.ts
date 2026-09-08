@@ -122,6 +122,7 @@ async function getQrSettings(ctx: QrTenantCtx) {
     wifi_enabled: true,
     auto_send_kitchen: false,
     order_approval_mode: 'manual',
+    guest_ui_theme: 'premium',
     is_active: true,
     default_language: 'tr',
     supported_languages: ['tr', 'en', 'ar', 'ku'],
@@ -151,6 +152,7 @@ async function ensureQrCardTables(ctx: QrTenantCtx) {
       wifi_enabled BOOLEAN DEFAULT true,
       auto_send_kitchen BOOLEAN DEFAULT false,
       order_approval_mode VARCHAR(20) DEFAULT 'manual',
+      guest_ui_theme VARCHAR(20) DEFAULT 'premium',
       is_active BOOLEAN DEFAULT true,
       updated_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP,
       created_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP
@@ -416,6 +418,7 @@ export function registerQrMenuBridgeRoutes(app: {
           wifiEnabled: settings.wifi_enabled !== false,
           autoSendKitchen: !!settings.auto_send_kitchen,
           orderApprovalMode: String(settings.order_approval_mode || 'manual') === 'auto' ? 'auto' : 'manual',
+          guestUiTheme: String(settings.guest_ui_theme || 'premium') === 'classic' ? 'classic' : 'premium',
         },
         categories,
         products,

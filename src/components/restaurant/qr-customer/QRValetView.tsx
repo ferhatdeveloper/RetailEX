@@ -12,7 +12,11 @@ export function QRValetView() {
   const [err, setErr] = useState<string | null>(null);
 
   if (settings?.valet_enabled === false) {
-    return <p className="text-slate-500 text-center py-12">{t('error')}</p>;
+    return (
+      <p className="py-12 text-center" style={{ color: 'var(--qr-muted)' }}>
+        {t('error')}
+      </p>
+    );
   }
 
   const submit = async () => {
@@ -43,40 +47,60 @@ export function QRValetView() {
 
   if (done) {
     return (
-      <div className="text-center py-16 space-y-3">
-        <Car className="w-12 h-12 text-amber-400 mx-auto" />
-        <p className="text-lg font-semibold">{t('thanks')}</p>
+      <div className="space-y-3 py-16 text-center">
+        <Car className="mx-auto h-12 w-12" style={{ color: 'var(--qr-gold)' }} />
+        <p className="rex-qr-display text-xl font-semibold">{t('thanks')}</p>
       </div>
     );
   }
 
   return (
     <div className="space-y-4">
-      <h2 className="text-xl font-bold text-amber-400">{t('valet')}</h2>
-      <label className="block text-xs text-slate-400">
+      <h2 className="rex-qr-display text-2xl font-semibold" style={{ color: 'var(--qr-gold-bright)' }}>
+        {t('valet')}
+      </h2>
+      <label className="block text-xs font-semibold uppercase tracking-wider" style={{ color: 'var(--qr-muted)' }}>
         {t('plate')}
         <input
           value={plate}
           onChange={(e) => setPlate(e.target.value)}
-          className="mt-1 w-full rounded-xl bg-slate-900 border border-slate-700 px-3 py-3 text-lg font-bold tracking-widest uppercase"
+          className="mt-2 w-full rounded-2xl px-4 py-3.5 text-lg font-bold uppercase tracking-widest outline-none"
+          style={{
+            background: 'var(--qr-bg-elevated)',
+            border: '1px solid var(--qr-line)',
+            color: 'var(--qr-text)',
+          }}
           placeholder="34 ABC 123"
         />
       </label>
-      <label className="block text-xs text-slate-400">
+      <label className="block text-xs font-semibold uppercase tracking-wider" style={{ color: 'var(--qr-muted)' }}>
         {t('note')}
         <textarea
           value={note}
           onChange={(e) => setNote(e.target.value)}
           rows={2}
-          className="mt-1 w-full rounded-xl bg-slate-900 border border-slate-700 px-3 py-2 text-sm"
+          className="mt-2 w-full resize-none rounded-2xl px-4 py-3 text-sm outline-none"
+          style={{
+            background: 'var(--qr-bg-elevated)',
+            border: '1px solid var(--qr-line)',
+            color: 'var(--qr-text)',
+          }}
         />
       </label>
-      {err && <p className="text-rose-400 text-sm">{err}</p>}
+      {err && (
+        <p className="text-sm" style={{ color: 'var(--qr-danger)' }}>
+          {err}
+        </p>
+      )}
       <button
         type="button"
         disabled={busy}
         onClick={() => void submit()}
-        className="w-full py-3 rounded-2xl bg-amber-500 text-slate-950 font-bold disabled:opacity-40"
+        className="rex-qr-press w-full rounded-2xl py-3.5 font-bold disabled:opacity-40"
+        style={{
+          background: 'linear-gradient(135deg, var(--qr-gold) 0%, var(--qr-copper) 100%)',
+          color: '#1a120c',
+        }}
       >
         {busy ? t('loading') : t('submit')}
       </button>
