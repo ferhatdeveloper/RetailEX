@@ -15,6 +15,8 @@ export const NON_RETAILEX_DATABASES = Object.freeze([
   'aram_shift_test',           // aram PDKS vardiya test snapshot'ı
   'naw',           // PDKS/İK şeması (employees/attendance) — RetailEX ERP değil
   'bestnaw',       // naw PDKS tenant'ı (bestnaw adıyla) — RetailEX ERP değil
+  'arzen',         // PDKS/attendance şeması (schema_migrations PDKS) — RetailEX ERP değil
+  'sitigroup',     // boş/eksik kabuk DB (public.users yok) — RetailEX ERP değil
 ]);
 
 const NON_RETAILEX_SET = new Set(NON_RETAILEX_DATABASES);

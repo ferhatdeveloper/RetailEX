@@ -44,7 +44,9 @@ BEGIN;
 -- ----------------------------------------------------------------------------
 DO $$
 BEGIN
-    IF to_regclass('public.rex_001_cheques') IS NOT NULL THEN
+    IF to_regclass('public.rex_001_cheques') IS NOT NULL
+       AND to_regclass('public.rex_001_customers') IS NOT NULL
+       AND to_regclass('public.rex_001_suppliers') IS NOT NULL THEN
         -- Eski constraint adıyla çakışma ihtimaline karşı IF EXISTS
         ALTER TABLE rex_001_cheques
             DROP CONSTRAINT IF EXISTS fk_rex_001_cheques_customer;
@@ -67,6 +69,8 @@ BEGIN
             ADD CONSTRAINT fk_rex_001_cheques_supplier
             FOREIGN KEY (cari_id) REFERENCES rex_001_suppliers(id)
             ON DELETE RESTRICT;
+    ELSIF to_regclass('public.rex_001_cheques') IS NOT NULL THEN
+        RAISE NOTICE '129: rex_001_cheques var ama customers/suppliers yok — FK atlandı';
     END IF;
 END $$;
 
@@ -75,7 +79,9 @@ END $$;
 -- ----------------------------------------------------------------------------
 DO $$
 BEGIN
-    IF to_regclass('public.rex_002_cheques') IS NOT NULL THEN
+    IF to_regclass('public.rex_002_cheques') IS NOT NULL
+       AND to_regclass('public.rex_002_customers') IS NOT NULL
+       AND to_regclass('public.rex_002_suppliers') IS NOT NULL THEN
         ALTER TABLE rex_002_cheques
             DROP CONSTRAINT IF EXISTS fk_rex_002_cheques_customer;
         ALTER TABLE rex_002_cheques
@@ -94,6 +100,8 @@ BEGIN
             ADD CONSTRAINT fk_rex_002_cheques_supplier
             FOREIGN KEY (cari_id) REFERENCES rex_002_suppliers(id)
             ON DELETE RESTRICT;
+    ELSIF to_regclass('public.rex_002_cheques') IS NOT NULL THEN
+        RAISE NOTICE '129: rex_002_cheques var ama customers/suppliers yok — FK atlandı';
     END IF;
 END $$;
 
@@ -102,7 +110,9 @@ END $$;
 -- ----------------------------------------------------------------------------
 DO $$
 BEGIN
-    IF to_regclass('public.rex_110_cheques') IS NOT NULL THEN
+    IF to_regclass('public.rex_110_cheques') IS NOT NULL
+       AND to_regclass('public.rex_110_customers') IS NOT NULL
+       AND to_regclass('public.rex_110_suppliers') IS NOT NULL THEN
         ALTER TABLE rex_110_cheques
             DROP CONSTRAINT IF EXISTS fk_rex_110_cheques_customer;
         ALTER TABLE rex_110_cheques
@@ -121,6 +131,8 @@ BEGIN
             ADD CONSTRAINT fk_rex_110_cheques_supplier
             FOREIGN KEY (cari_id) REFERENCES rex_110_suppliers(id)
             ON DELETE RESTRICT;
+    ELSIF to_regclass('public.rex_110_cheques') IS NOT NULL THEN
+        RAISE NOTICE '129: rex_110_cheques var ama customers/suppliers yok — FK atlandı';
     END IF;
 END $$;
 

@@ -18,6 +18,8 @@ Sunucuda (`pg_database`) başka ürünlerin veritabanları da bulunabilir. **`np
 | `siti_pdks` | Bağımsız PDKS kiracısı; RetailEX ERP migration zinciri değil |
 | `aram` | PDKS/İK şeması (employees/attendance); RetailEX ERP değil |
 | `naw` | PDKS/İK şeması (employees/attendance); RetailEX ERP değil |
+| `arzen` | PDKS/attendance şeması; RetailEX ERP değil |
+| `sitigroup` | Eksik kabuk DB (`public.users` yok); RetailEX ERP değil |
 
 ## Zorunlu davranış
 

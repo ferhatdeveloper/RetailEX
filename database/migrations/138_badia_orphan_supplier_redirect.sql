@@ -52,36 +52,56 @@ DECLARE
   v_bad_cashline_count INT;
   v_orphan_sales_count INT;
 BEGIN
+  IF to_regclass('public.rex_001_customers') IS NULL
+     OR to_regclass('public.rex_001_suppliers') IS NULL THEN
+    RAISE NOTICE '138: rex_001 müşteri/tedarikçi tablosu yok; no-op';
+    PERFORM set_config('retailex.mig138_skip', '1', true);
+    RETURN;
+  END IF;
+
   SELECT id, balance INTO v_cust_uuid, v_cust_balance
     FROM rex_001_customers WHERE code='MUS-002' AND LOWER(name)='badia';
   SELECT id, balance INTO v_supp_uuid, v_supp_balance
     FROM rex_001_suppliers WHERE code='TED-005' AND LOWER(name)='badia';
 
-  SELECT COUNT(*) INTO v_bad_cashline_count
-    FROM rex_001_01_cash_lines
-   WHERE customer_id = v_cust_uuid
-     AND UPPER(TRIM(transaction_type)) = 'CH_ODEME';
+  IF to_regclass('public.rex_001_01_cash_lines') IS NOT NULL THEN
+    SELECT COUNT(*) INTO v_bad_cashline_count
+      FROM rex_001_01_cash_lines
+     WHERE customer_id = v_cust_uuid
+       AND UPPER(TRIM(transaction_type)) = 'CH_ODEME';
+  ELSE
+    v_bad_cashline_count := 0;
+  END IF;
 
-  SELECT COUNT(*) INTO v_orphan_sales_count
-    FROM rex_001_01_sales
-   WHERE LOWER(TRIM(customer_name)) = 'badia'
-     AND customer_id IS NULL
-     AND COALESCE(is_cancelled, false) = false
-     AND fiche_type IN ('purchase_invoice', 'return_invoice', 'opening_balance');
-
+  IF to_regclass('public.rex_001_01_sales') IS NOT NULL THEN
+    SELECT COUNT(*) INTO v_orphan_sales_count
+      FROM rex_001_01_sales
+     WHERE LOWER(TRIM(customer_name)) = 'badia'
+       AND customer_id IS NULL
+       AND COALESCE(is_cancelled, false) = false
+       AND fiche_type IN ('purchase_invoice', 'return_invoice', 'opening_balance');
+  ELSE
+    v_orphan_sales_count := 0;
+  END IF;
   RAISE NOTICE 'Öncesi durum:';
   RAISE NOTICE '  customers.MUS-002 uuid=% balance=%', v_cust_uuid, v_cust_balance;
   RAISE NOTICE '  suppliers.TED-005 uuid=% balance=%', v_supp_uuid, v_supp_balance;
   RAISE NOTICE '  Müşteriye yazılmış yanlış CH_ODEME sayısı: %', v_bad_cashline_count;
   RAISE NOTICE '  Orphan BADIA sales sayısı: %', v_orphan_sales_count;
 
-  -- Doğrulama: iki UUID de var olmalı ve farklı olmalı
+  -- Doğrulama: iki UUID de var olmalı ve farklı olmalı.
+  -- Diğer kiracılarda BADIA yoksa no-op (EXCEPTION değil — zinciri kırma).
   IF v_cust_uuid IS NULL OR v_supp_uuid IS NULL THEN
-    RAISE EXCEPTION 'BADIA duplicate değil veya zaten düzeltilmiş; migration atlanabilir';
+    RAISE NOTICE 'BADIA duplicate değil veya zaten düzeltilmiş; 138 no-op atlanıyor';
+    PERFORM set_config('retailex.mig138_skip', '1', true);
+    RETURN;
   END IF;
   IF v_cust_uuid = v_supp_uuid THEN
-    RAISE EXCEPTION 'BADIA aynı UUID — duplicate değil, farklı sorun';
+    RAISE NOTICE 'BADIA aynı UUID — duplicate değil; 138 no-op atlanıyor';
+    PERFORM set_config('retailex.mig138_skip', '1', true);
+    RETURN;
   END IF;
+  PERFORM set_config('retailex.mig138_skip', '0', true);
 END $$;
 
 -- -----------------------------------------------------------------
@@ -99,6 +119,10 @@ DECLARE
   v_cust_balance NUMERIC;
   v_amount NUMERIC;
 BEGIN
+  IF current_setting('retailex.mig138_skip', true) = '1' THEN
+    RAISE NOTICE '138 adım 1 atlandı (no-op)';
+    RETURN;
+  END IF;
   SELECT id, balance INTO v_cust_uuid, v_cust_balance
     FROM rex_001_customers WHERE code='MUS-002' AND LOWER(name)='badia';
   SELECT id INTO v_supp_uuid
@@ -137,14 +161,20 @@ END $$;
 --    Tedarikçi + CH_ODEME → -amt (borç azalır). 7,574,270 - 2,307,000 = 5,267,270
 --    Idempotent: balance IN (eski_değerler) koşulu
 -- -----------------------------------------------------------------
-UPDATE rex_001_suppliers
-   SET balance = balance - 2307000.00,
-       notes = COALESCE(notes, '') ||
-               E'\n[2026-09-01] Migration 138: Bugünkü 2,307,000 IQD CH_ODEME '
-               || '(cash_line 787a70f2) bu tedarikçiye doğru şekilde uygulandı.',
-       updated_at = NOW()
- WHERE code = 'TED-005' AND LOWER(name) = 'badia'
-   AND balance = 7574270.00;
+DO $$
+BEGIN
+  IF current_setting('retailex.mig138_skip', true) = '1' THEN
+    RETURN;
+  END IF;
+  UPDATE rex_001_suppliers
+     SET balance = balance - 2307000.00,
+         notes = COALESCE(notes, '') ||
+                 E'\n[2026-09-01] Migration 138: Bugünkü 2,307,000 IQD CH_ODEME '
+                 || '(cash_line 787a70f2) bu tedarikçiye doğru şekilde uygulandı.',
+         updated_at = NOW()
+   WHERE code = 'TED-005' AND LOWER(name) = 'badia'
+     AND balance = 7574270.00;
+END $$;
 
 -- -----------------------------------------------------------------
 -- 3. Orphan sales satırlarını TED-005 ile bağla (customer_id)
@@ -157,6 +187,9 @@ DECLARE
   v_supp_uuid UUID;
   v_updated INT;
 BEGIN
+  IF current_setting('retailex.mig138_skip', true) = '1' THEN
+    RETURN;
+  END IF;
   SELECT id INTO v_supp_uuid FROM rex_001_suppliers WHERE code='TED-005' AND LOWER(name)='badia';
 
   UPDATE rex_001_01_sales
@@ -175,16 +208,27 @@ END $$;
 -- 4. customers.MUS-002 BADIA kaydını sil (orphan duplicate, bakiye 0)
 --    Idempotent: balance = 0 olduğunda sil (aksi halde atla)
 -- -----------------------------------------------------------------
-DELETE FROM rex_001_customers
- WHERE code = 'MUS-002' AND LOWER(name) = 'badia' AND balance = 0;
+DO $$
+BEGIN
+  IF current_setting('retailex.mig138_skip', true) = '1' THEN
+    RETURN;
+  END IF;
+  DELETE FROM rex_001_customers
+   WHERE code = 'MUS-002' AND LOWER(name) = 'badia' AND balance = 0;
+END $$;
 
 -- -----------------------------------------------------------------
 -- 5. Sync queue stale event'lerini sil (kalıcı revert engeli)
 -- -----------------------------------------------------------------
-DELETE FROM sync_queue
- WHERE record_id = 'de157885-6c31-4562-9a3a-51b843d6898f'
-   AND status = 'pending';
-
+DO $$
+BEGIN
+  IF current_setting('retailex.mig138_skip', true) = '1' THEN
+    RETURN;
+  END IF;
+  DELETE FROM sync_queue
+   WHERE record_id = 'de157885-6c31-4562-9a3a-51b843d6898f'
+     AND status = 'pending';
+END $$;
 -- -----------------------------------------------------------------
 -- 6. schema_migrations kaydı (idempotent)
 -- -----------------------------------------------------------------
