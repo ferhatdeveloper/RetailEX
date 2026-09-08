@@ -1,10 +1,7 @@
 name: Print Server Release
 
-# RetailEX Printer (tray WinForms + Windows service, FastReport 80mm)
-# Tetikleyici:
-# 1) tag push: print-v{version} (örnek: print-v1.0.0)
-# 2) workflow_dispatch (manuel) — varsayılan GitHub Release
-# 3) PrintServer/** değişince sadece build + artifact
+# RetailEX Printer — Windows Setup.exe (Inno) + GitHub Release
+# Tag: print-v1.0.0  |  Actions → Run workflow
 
 on:
   push:
@@ -18,14 +15,14 @@ on:
   workflow_dispatch:
     inputs:
       create_release:
-        description: "GitHub Release oluştur (tag: print-v<sürüm>)"
+        description: "GitHub Release oluştur (.exe indirme linki)"
         required: false
         default: true
         type: boolean
       version:
-        description: "Sürüm (örnek: 1.0.0). Boşsa tag veya run_number."
+        description: "Sürüm (örnek: 1.0.0)"
         required: false
-        default: ""
+        default: "1.0.0"
         type: string
 
 permissions:
@@ -66,18 +63,11 @@ jobs:
           elseif ("${{ github.event_name }}" -eq "workflow_dispatch") {
             $manual = "${{ inputs.version }}".Trim()
             $should = ("${{ inputs.create_release }}" -eq "true")
-            if ($manual -match '^\d+\.\d+\.\d+$') {
-              $appVersion = $manual
-              if ($should) {
-                $shouldRelease = $true
-                $releaseTag = "print-v$manual"
-              }
-            } else {
-              $appVersion = "0.${{ github.run_number }}.0"
-              if ($should) {
-                $shouldRelease = $true
-                $releaseTag = "print-v$appVersion"
-              }
+            if ($manual -notmatch '^\d+\.\d+\.\d+$') { $manual = "1.0.0" }
+            $appVersion = $manual
+            if ($should) {
+              $shouldRelease = $true
+              $releaseTag = "print-v$manual"
             }
           }
           else {
@@ -87,6 +77,7 @@ jobs:
           echo "APP_VERSION=$appVersion" >> $env:GITHUB_ENV
           echo "SHOULD_RELEASE=$shouldRelease" >> $env:GITHUB_ENV
           echo "RELEASE_TAG=$releaseTag" >> $env:GITHUB_ENV
+          echo "SETUP_EXE=RetailEX.Printer-Setup-$appVersion.exe" >> $env:GITHUB_ENV
           Write-Host "APP_VERSION=$appVersion SHOULD_RELEASE=$shouldRelease RELEASE_TAG=$releaseTag"
 
       - name: Restore
@@ -102,6 +93,7 @@ jobs:
         shell: pwsh
         run: |
           $out = Join-Path (Resolve-Path .).Path "releases/RetailEX.Printer"
+          if (Test-Path $out) { Remove-Item $out -Recurse -Force }
           New-Item -ItemType Directory -Force -Path $out | Out-Null
           dotnet publish QrPrintDesktop.App/QrPrintDesktop.App.csproj `
             -c ${{ env.BUILD_CONFIG }} `
@@ -114,41 +106,31 @@ jobs:
             -p:Version=$env:APP_VERSION
           $exe = Join-Path $out "RetailEX.QrPrint.exe"
           if (-not (Test-Path $exe)) { throw "EXE yok: $exe" }
-          Write-Host "EXE hazır: $exe ($((Get-Item $exe).Length) bytes)"
+          Write-Host "Publish EXE: $exe"
 
-      - name: Publish Windows service
+      - name: Inno Setup kur
+        shell: pwsh
+        run: choco install innosetup -y --no-progress
+
+      - name: Setup.exe derle
         working-directory: PrintServer
         shell: pwsh
         run: |
-          $svc = Join-Path (Resolve-Path .).Path "releases/RetailEX.Printer/Service"
-          New-Item -ItemType Directory -Force -Path $svc | Out-Null
-          dotnet publish QrPrintDesktop.Service/QrPrintDesktop.Service.csproj `
-            -c ${{ env.BUILD_CONFIG }} `
-            -r win-x64 `
-            --self-contained true `
-            -o $svc `
-            --nologo `
-            -p:DebugType=None `
-            -p:DebugSymbols=false `
-            -p:Version=$env:APP_VERSION
-
-      - name: Zip paket
-        working-directory: PrintServer
-        shell: pwsh
-        run: |
-          $src = Resolve-Path "releases/RetailEX.Printer"
-          $zip = Join-Path (Resolve-Path releases).Path "RetailEX.Printer-win-x64-v$env:APP_VERSION.zip"
-          if (Test-Path $zip) { Remove-Item $zip -Force }
-          Compress-Archive -Path (Join-Path $src.Path "*") -DestinationPath $zip -CompressionLevel Optimal
-          Write-Host "ZIP: $zip ($([math]::Round((Get-Item $zip).Length/1MB,1)) MB)"
+          $iscc = "C:\Program Files (x86)\Inno Setup 6\ISCC.exe"
+          if (-not (Test-Path $iscc)) { throw "ISCC yok: $iscc" }
+          New-Item -ItemType Directory -Force -Path installer\output | Out-Null
+          & $iscc "/DMyAppVersion=$env:APP_VERSION" installer\setup.iss
+          if ($LASTEXITCODE -ne 0) { throw "Inno Setup başarısız: $LASTEXITCODE" }
+          $setup = Join-Path (Resolve-Path installer\output).Path $env:SETUP_EXE
+          if (-not (Test-Path $setup)) { throw "Setup.exe yok: $setup" }
+          Copy-Item $setup (Join-Path (Resolve-Path releases).Path $env:SETUP_EXE) -Force
+          Write-Host "SETUP: $setup ($([math]::Round((Get-Item $setup).Length/1MB,1)) MB)"
 
       - name: Artifact yükle
         uses: actions/upload-artifact@v4
         with:
-          name: RetailEX.Printer-${{ env.APP_VERSION }}-${{ github.run_number }}
-          path: |
-            PrintServer/releases/RetailEX.Printer-win-x64-v${{ env.APP_VERSION }}.zip
-            PrintServer/releases/RetailEX.Printer/RetailEX.QrPrint.exe
+          name: ${{ env.SETUP_EXE }}
+          path: PrintServer/installer/output/${{ env.SETUP_EXE }}
           retention-days: 30
 
       - name: GitHub Release oluştur
@@ -158,22 +140,13 @@ jobs:
           tag_name: ${{ env.RELEASE_TAG }}
           name: RetailEX Printer ${{ env.APP_VERSION }}
           body: |
-            ## RetailEX Printer (Windows)
+            ## RetailEX Printer
 
-            Otomatik derleme: `${{ github.workflow }}` (#${{ github.run_number }})
+            Kurulum: `RetailEX.Printer-Setup-${{ env.APP_VERSION }}.exe` indirip çalıştırın.
 
-            ### Kurulum
-            1. `RetailEX.Printer-win-x64-v${{ env.APP_VERSION }}.zip` indirin ve klasörü açın
-            2. `RetailEX.QrPrint.exe` çalıştırın (tepsi önerilir)
-            3. Tenant, firma, dönem ve mutfak yazıcısını kaydedin
-
-            Tek dosyayı ayırmayın. FastReport DLL’leri ve `Reports` aynı klasörde kalmalı.
-
-            Servis (yönetici): `install-service.ps1`
-
-            Sürüm: `${{ env.APP_VERSION }}`
+            Tepside bırakın (X gizler). Tam çıkış: tepsi → Çıkış.
           files: |
-            PrintServer/releases/RetailEX.Printer-win-x64-v${{ env.APP_VERSION }}.zip
+            PrintServer/installer/output/${{ env.SETUP_EXE }}
           draft: false
           prerelease: false
           make_latest: true
