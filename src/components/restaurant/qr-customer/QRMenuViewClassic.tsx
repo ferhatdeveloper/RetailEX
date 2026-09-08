@@ -1,6 +1,6 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { Plus, Minus, Search, ShoppingCart, X, ImageIcon } from 'lucide-react';
+import { Plus, Minus, Search, ShoppingCart, X } from 'lucide-react';
 import { useQrCustomer } from './QRCustomerLayout';
 import { qrPublicApi, type QrPublicMenuItem } from './qrPublicApi';
 
@@ -208,26 +208,27 @@ export function QRMenuViewClassic() {
               key={item.id}
               className="group relative rounded-2xl overflow-hidden bg-slate-800/50 backdrop-blur-sm border border-slate-700/50 hover:border-amber-500/50 transition-all duration-300 hover:shadow-2xl hover:shadow-amber-500/20"
             >
-              <div className="relative h-48 overflow-hidden bg-slate-700">
+              <div className="relative h-28 overflow-hidden bg-white">
                 {item.image ? (
                   <img
                     src={item.image}
                     alt={item.name}
-                    className="w-full h-full object-cover group-hover:scale-110 transition-transform duration-500"
+                    className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-500"
                     onError={(e) => {
-                      e.currentTarget.src =
-                        'https://images.unsplash.com/photo-1546069901-ba9599a7e63c?w=400';
+                      e.currentTarget.style.display = 'none';
+                      const ph = e.currentTarget.nextElementSibling as HTMLElement | null;
+                      if (ph) ph.classList.remove('hidden');
                     }}
                   />
-                ) : (
-                  <div className="w-full h-full flex items-center justify-center bg-gradient-to-br from-slate-700 to-slate-800">
-                    <div className="text-center text-slate-500">
-                      <ImageIcon className="w-16 h-16 mx-auto mb-2 opacity-50" />
-                      <p className="text-sm">Resim Yok</p>
-                    </div>
-                  </div>
-                )}
-                <div className="absolute inset-0 bg-gradient-to-t from-slate-900 via-slate-900/60 to-transparent" />
+                ) : null}
+                <div
+                  className={`w-full h-full flex items-center justify-center bg-white ${item.image ? 'hidden' : ''}`}
+                >
+                  <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">
+                    Resim yok
+                  </p>
+                </div>
+                <div className="absolute inset-0 bg-gradient-to-t from-slate-900 via-slate-900/50 to-transparent pointer-events-none" />
               </div>
 
               <div className="absolute bottom-0 left-0 right-0 p-4">
@@ -265,6 +266,7 @@ export function QRMenuViewClassic() {
                             productId: item.id,
                             name: item.name,
                             price: Number(item.price),
+                            image: item.image,
                           })
                         }
                         className="w-10 h-10 p-0 rounded-full bg-amber-500 hover:bg-amber-600 shadow-lg shadow-amber-500/50 transition-all hover:scale-110 flex items-center justify-center text-slate-950"

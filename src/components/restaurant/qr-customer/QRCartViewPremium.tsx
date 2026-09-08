@@ -3,6 +3,7 @@ import { useNavigate } from 'react-router-dom';
 import { Minus, Plus, Trash2, X, Send } from 'lucide-react';
 import { useQrCustomer, pushLocalOrder } from './QRCustomerLayout';
 import { qrPublicApi } from './qrPublicApi';
+import { QrProductThumb } from './QrProductThumb';
 
 export function QRCartViewPremium() {
   const { tenantCode, tableToken, cart, t, basePath, settings } = useQrCustomer();
@@ -40,7 +41,10 @@ export function QRCartViewPremium() {
   };
 
   return (
-    <div className="relative min-h-[100dvh] pb-8" style={{ background: 'var(--qr-bg)' }}>
+    <div
+      className="relative min-h-[100dvh] min-h-[100svh] pb-8"
+      style={{ background: 'var(--qr-bg)' }}
+    >
       <div className="mx-auto max-w-lg px-4 pt-[max(0.75rem,env(safe-area-inset-top))]">
         <div className="mb-6 flex items-center gap-3">
           <button
@@ -94,20 +98,21 @@ export function QRCartViewPremium() {
               {cart.items.map((item) => (
                 <li
                   key={item.productId}
-                  className="flex items-center gap-3 rounded-2xl p-3.5"
+                  className="flex items-center gap-2.5 rounded-2xl p-2.5"
                   style={{
                     background: 'var(--qr-bg-elevated)',
                     border: '1px solid var(--qr-line)',
                   }}
                 >
+                  <QrProductThumb src={item.image} label={t('noImage')} size={48} />
                   <div className="min-w-0 flex-1">
-                    <p className="truncate font-semibold">{item.name}</p>
+                    <p className="truncate text-sm font-semibold">{item.name}</p>
                     <p className="mt-0.5 text-xs tabular-nums" style={{ color: 'var(--qr-muted)' }}>
                       {item.qty} × {Number(item.price).toLocaleString('tr-TR')}
                     </p>
                   </div>
                   <p
-                    className="rex-qr-display shrink-0 text-base font-semibold tabular-nums"
+                    className="rex-qr-display shrink-0 text-sm font-semibold tabular-nums"
                     style={{ color: 'var(--qr-gold-bright)' }}
                   >
                     {(item.qty * item.price).toLocaleString('tr-TR')}
@@ -144,7 +149,10 @@ export function QRCartViewPremium() {
               ))}
             </ul>
 
-            <label className="mt-5 block text-xs font-semibold uppercase tracking-wider" style={{ color: 'var(--qr-muted)' }}>
+            <label
+              className="mt-5 block text-xs font-semibold uppercase tracking-wider"
+              style={{ color: 'var(--qr-muted)' }}
+            >
               {t('note')}
               <textarea
                 value={note}
@@ -169,7 +177,10 @@ export function QRCartViewPremium() {
               <span className="text-sm font-medium" style={{ color: 'var(--qr-muted)' }}>
                 {t('total')}
               </span>
-              <span className="rex-qr-display text-2xl font-semibold tabular-nums" style={{ color: 'var(--qr-gold-bright)' }}>
+              <span
+                className="rex-qr-display text-2xl font-semibold tabular-nums"
+                style={{ color: 'var(--qr-gold-bright)' }}
+              >
                 {cart.total.toLocaleString('tr-TR')}
               </span>
             </div>

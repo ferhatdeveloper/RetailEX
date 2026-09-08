@@ -1,10 +1,11 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { Plus, Minus, Search, ShoppingBag, X, ImageIcon } from 'lucide-react';
+import { Plus, Minus, Search, ShoppingBag, X } from 'lucide-react';
 import { useQrCustomer } from './QRCustomerLayout';
 import { qrPublicApi, type QrPublicMenuItem } from './qrPublicApi';
+import { QrProductThumb } from './QrProductThumb';
 
-/** Sıfırdan premium menü — sticky kategori, dergi kartları, sticky sepet */
+/** Premium menü — kompakt satır, küçük görsel, resim yok placeholder */
 export function QRMenuViewPremium() {
   const { tenantCode, cart, t, settings, basePath } = useQrCustomer();
   const navigate = useNavigate();
@@ -60,8 +61,10 @@ export function QRMenuViewPremium() {
   const title = cat === 'all' ? t('allStatus') : cat;
 
   return (
-    <div className="relative min-h-[100dvh] pb-28" style={{ background: 'var(--qr-bg)' }}>
-      {/* Top chrome */}
+    <div
+      className="relative min-h-[100dvh] min-h-[100svh] pb-28"
+      style={{ background: 'var(--qr-bg)' }}
+    >
       <div
         className="sticky top-0 z-40 px-4 pt-[max(0.75rem,env(safe-area-inset-top))] pb-3"
         style={{
@@ -164,96 +167,82 @@ export function QRMenuViewPremium() {
             </p>
           </div>
 
-          <ul className="mx-auto max-w-lg space-y-3 px-4">
+          <ul className="mx-auto max-w-lg space-y-2.5 px-4">
             {filtered.map((item, idx) => {
               const inCart = cart.items.find((c) => c.productId === item.id);
               return (
                 <li
                   key={item.id}
-                  className="rex-qr-rise overflow-hidden rounded-[1.35rem]"
+                  className="rex-qr-rise flex items-center gap-3 rounded-2xl p-2.5"
                   style={{
                     background: 'var(--qr-bg-elevated)',
                     border: '1px solid var(--qr-line)',
                     animationDelay: `${Math.min(idx, 8) * 0.04}s`,
                   }}
                 >
-                  <div className="flex gap-0">
-                    <div
-                      className="relative h-[7.25rem] w-[7.25rem] shrink-0 overflow-hidden sm:h-32 sm:w-32"
-                      style={{ background: 'var(--qr-bg-soft)' }}
-                    >
-                      {item.image ? (
-                        <img src={item.image} alt="" className="h-full w-full object-cover" />
-                      ) : (
-                        <div className="flex h-full w-full flex-col items-center justify-center gap-1 opacity-40">
-                          <ImageIcon className="h-8 w-8" />
-                        </div>
-                      )}
-                    </div>
-                    <div className="flex min-w-0 flex-1 flex-col p-3.5">
-                      <h3 className="line-clamp-2 text-[15px] font-semibold leading-snug">
-                        {item.name}
-                      </h3>
-                      {item.description ? (
-                        <p
-                          className="mt-1 line-clamp-2 text-[11px] leading-relaxed"
-                          style={{ color: 'var(--qr-muted)' }}
-                        >
-                          {item.description}
-                        </p>
-                      ) : null}
-                      <div className="mt-auto flex items-center justify-between gap-2 pt-2.5">
-                        <span
-                          className="rex-qr-display text-lg font-semibold tabular-nums"
-                          style={{ color: 'var(--qr-gold-bright)' }}
-                        >
-                          {Number(item.price).toLocaleString('tr-TR')}
-                        </span>
-                        {canOrder &&
-                          (inCart ? (
-                            <div
-                              className="flex items-center gap-1 rounded-full px-1 py-1"
-                              style={{
-                                background: 'var(--qr-bg)',
-                                border: '1px solid var(--qr-line)',
-                              }}
-                            >
-                              <button
-                                type="button"
-                                className="rex-qr-press flex h-8 w-8 items-center justify-center rounded-full"
-                                style={{ color: 'var(--qr-text)' }}
-                                onClick={() => cart.setQty(item.id, inCart.qty - 1)}
-                              >
-                                <Minus className="h-4 w-4" />
-                              </button>
-                              <span className="w-6 text-center text-sm font-bold">{inCart.qty}</span>
-                              <button
-                                type="button"
-                                className="rex-qr-press flex h-8 w-8 items-center justify-center rounded-full"
-                                style={{ background: 'var(--qr-gold)', color: '#1a120c' }}
-                                onClick={() => cart.setQty(item.id, inCart.qty + 1)}
-                              >
-                                <Plus className="h-4 w-4" />
-                              </button>
-                            </div>
-                          ) : (
+                  <QrProductThumb src={item.image} label={t('noImage')} size={56} />
+                  <div className="flex min-w-0 flex-1 flex-col py-0.5">
+                    <h3 className="line-clamp-2 text-[14px] font-semibold leading-snug">{item.name}</h3>
+                    {item.description ? (
+                      <p
+                        className="mt-0.5 line-clamp-1 text-[11px] leading-relaxed"
+                        style={{ color: 'var(--qr-muted)' }}
+                      >
+                        {item.description}
+                      </p>
+                    ) : null}
+                    <div className="mt-1.5 flex items-center justify-between gap-2">
+                      <span
+                        className="rex-qr-display text-base font-semibold tabular-nums"
+                        style={{ color: 'var(--qr-gold-bright)' }}
+                      >
+                        {Number(item.price).toLocaleString('tr-TR')}
+                      </span>
+                      {canOrder &&
+                        (inCart ? (
+                          <div
+                            className="flex items-center gap-1 rounded-full px-1 py-0.5"
+                            style={{
+                              background: 'var(--qr-bg)',
+                              border: '1px solid var(--qr-line)',
+                            }}
+                          >
                             <button
                               type="button"
-                              className="rex-qr-press flex h-9 w-9 items-center justify-center rounded-full"
-                              style={{ background: 'var(--qr-gold)', color: '#1a120c' }}
-                              onClick={() =>
-                                cart.addItem({
-                                  productId: item.id,
-                                  name: item.name,
-                                  price: Number(item.price),
-                                })
-                              }
-                              aria-label={t('add')}
+                              className="rex-qr-press flex h-7 w-7 items-center justify-center rounded-full"
+                              style={{ color: 'var(--qr-text)' }}
+                              onClick={() => cart.setQty(item.id, inCart.qty - 1)}
                             >
-                              <Plus className="h-5 w-5" />
+                              <Minus className="h-3.5 w-3.5" />
                             </button>
-                          ))}
-                      </div>
+                            <span className="w-5 text-center text-sm font-bold">{inCart.qty}</span>
+                            <button
+                              type="button"
+                              className="rex-qr-press flex h-7 w-7 items-center justify-center rounded-full"
+                              style={{ background: 'var(--qr-gold)', color: '#1a120c' }}
+                              onClick={() => cart.setQty(item.id, inCart.qty + 1)}
+                            >
+                              <Plus className="h-3.5 w-3.5" />
+                            </button>
+                          </div>
+                        ) : (
+                          <button
+                            type="button"
+                            className="rex-qr-press flex h-8 w-8 items-center justify-center rounded-full"
+                            style={{ background: 'var(--qr-gold)', color: '#1a120c' }}
+                            onClick={() =>
+                              cart.addItem({
+                                productId: item.id,
+                                name: item.name,
+                                price: Number(item.price),
+                                image: item.image,
+                              })
+                            }
+                            aria-label={t('add')}
+                          >
+                            <Plus className="h-4 w-4" />
+                          </button>
+                        ))}
                     </div>
                   </div>
                 </li>
@@ -265,9 +254,6 @@ export function QRMenuViewPremium() {
             <div className="px-6 py-16 text-center">
               <p className="rex-qr-display text-xl" style={{ color: 'var(--qr-text)' }}>
                 {t('noResults')}
-              </p>
-              <p className="mt-2 text-sm" style={{ color: 'var(--qr-muted)' }}>
-                {t('searchProduct')}
               </p>
             </div>
           )}

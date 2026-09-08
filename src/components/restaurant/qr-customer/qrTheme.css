@@ -112,3 +112,35 @@
   --qr-display: system-ui, -apple-system, sans-serif;
   background: transparent;
 }
+
+/*
+  Body’deki lacivert gradient QR altında görünmesin.
+  Layout mount’ta html.rex-qr-active eklenir.
+*/
+html.rex-qr-active,
+html.rex-qr-active body,
+html.rex-qr-active #root {
+  background: #0c0b0a !important;
+  min-height: 100% !important;
+  height: auto !important;
+}
+
+html.rex-qr-active.rex-qr-classic-active,
+html.rex-qr-active.rex-qr-classic-active body,
+html.rex-qr-active.rex-qr-classic-active #root {
+  background: #0f172a !important;
+}
+
+.rex-qr {
+  min-height: 100dvh;
+  min-height: 100svh;
+}
+
+.rex-qr-media-fill {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  object-position: center;
+}

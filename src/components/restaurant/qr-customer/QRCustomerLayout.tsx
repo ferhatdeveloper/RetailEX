@@ -104,6 +104,7 @@ const UI: Record<QrLang, Record<string, string>> = {
     items: 'ürün',
     viewCart: 'Sepet',
     homeTagline: 'Sipariş · servis · hesap — masanızdan tek dokunuşla',
+    noImage: 'Resim yok',
   },
   en: {
     menu: 'Menu',
@@ -166,6 +167,7 @@ const UI: Record<QrLang, Record<string, string>> = {
     items: 'items',
     viewCart: 'Cart',
     homeTagline: 'Order · service · bill — from your table',
+    noImage: 'No image',
   },
   ar: {
     menu: 'القائمة',
@@ -228,6 +230,7 @@ const UI: Record<QrLang, Record<string, string>> = {
     items: 'عناصر',
     viewCart: 'السلة',
     homeTagline: 'طلب · خدمة · حساب — من طاولتك',
+    noImage: 'لا صورة',
   },
   ku: {
     menu: 'مینیو',
@@ -290,6 +293,7 @@ const UI: Record<QrLang, Record<string, string>> = {
     items: 'بەرهەم',
     viewCart: 'سەبەتە',
     homeTagline: 'داواکاری · خزمەت · حیساب — لە مێزەکەتەوە',
+    noImage: 'وێنە نییە',
   },
 };
 
@@ -370,6 +374,14 @@ export function QRCustomerLayout() {
   }, [items, tenantCode, token]);
 
   useEffect(() => {
+    document.documentElement.classList.add('rex-qr-active');
+    return () => {
+      document.documentElement.classList.remove('rex-qr-active');
+      document.documentElement.classList.remove('rex-qr-classic-active');
+    };
+  }, []);
+
+  useEffect(() => {
     let cancelled = false;
     (async () => {
       setLoading(true);
@@ -436,6 +448,7 @@ export function QRCustomerLayout() {
             price: item.price,
             qty: item.qty ?? 1,
             note: item.note,
+            image: item.image ?? null,
           },
         ];
       });
@@ -477,6 +490,11 @@ export function QRCustomerLayout() {
   const accent = settings?.primary_color || '#d4a574';
   const classic = settings?.guest_ui_theme === 'classic';
   const rtl = lang === 'ar' || lang === 'ku';
+
+  useEffect(() => {
+    document.documentElement.classList.toggle('rex-qr-classic-active', classic);
+  }, [classic]);
+
   const location = useLocation();
   const pathNorm = location.pathname.replace(/\/+$/, '');
   const baseNorm = basePath.replace(/\/+$/, '');
@@ -491,16 +509,20 @@ export function QRCustomerLayout() {
       <div
         className={
           classic
-            ? 'rex-qr rex-qr--classic min-h-[100dvh] bg-gradient-to-br from-slate-900 via-slate-800 to-slate-900 text-slate-100'
-            : 'rex-qr min-h-[100dvh]'
+            ? 'rex-qr rex-qr--classic min-h-[100dvh] min-h-[100svh] bg-slate-950 text-slate-100'
+            : 'rex-qr min-h-[100dvh] min-h-[100svh]'
         }
         dir={rtl ? 'rtl' : 'ltr'}
         style={
           classic
-            ? ({ ['--qr-accent' as string]: accent } as React.CSSProperties)
+            ? ({
+                ['--qr-accent' as string]: accent,
+                background: '#0f172a',
+              } as React.CSSProperties)
             : ({
                 ['--qr-gold' as string]: accent,
                 ['--qr-copper' as string]: accent,
+                background: 'var(--qr-bg)',
               } as React.CSSProperties)
         }
       >

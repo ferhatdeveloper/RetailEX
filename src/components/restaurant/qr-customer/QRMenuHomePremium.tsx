@@ -30,7 +30,10 @@ function isVideoUrl(url: string) {
   return /\.(mp4|webm|ogg)(\?|$)/i.test(url);
 }
 
-/** Premium QR ana sayfa — tam ekran video/görsel + alt dock */
+/**
+ * Premium ana sayfa — klasik gibi tam ekran medya (object-cover),
+ * üst bar + alt dock overlay.
+ */
 export function QRMenuHomePremium() {
   const { basePath, settings, t, lang, setLang, error, tableNumber } = useQrCustomer();
   const navigate = useNavigate();
@@ -95,11 +98,8 @@ export function QRMenuHomePremium() {
   ].filter((s) => s.show);
 
   return (
-    <div
-      className="relative flex h-[100dvh] max-h-[100dvh] flex-col overflow-hidden"
-      style={{ background: '#0c0b0a' }}
-    >
-      {/* Tam ekran medya — boş alt şerit yok */}
+    <div className="relative h-[100dvh] w-full overflow-hidden bg-black">
+      {/* Tam ekran medya — klasik ile aynı desen */}
       <div className="absolute inset-0 z-0">
         {useVideo ? (
           <video
@@ -110,28 +110,22 @@ export function QRMenuHomePremium() {
             muted
             loop
             playsInline
-            className="h-full w-full object-cover rex-qr-fade"
+            className="rex-qr-media-fill"
             onError={() => setVideoOk(false)}
           />
         ) : (
           <img
             src={coverRaw && !isVideoUrl(coverRaw) ? coverRaw : HERO_POSTER}
             alt=""
-            className="h-full w-full object-cover rex-qr-fade"
+            className="rex-qr-media-fill"
           />
         )}
-        <div
-          className="absolute inset-0"
-          style={{
-            background:
-              'linear-gradient(180deg, rgba(12,11,10,0.45) 0%, rgba(12,11,10,0.25) 28%, rgba(12,11,10,0.55) 58%, rgba(12,11,10,0.88) 100%)',
-          }}
-        />
+        <div className="absolute inset-0 bg-gradient-to-t from-black/85 via-black/40 to-black/25" />
         <div className="rex-qr-grain" />
       </div>
 
       {/* Üst bar */}
-      <div className="relative z-20 flex shrink-0 items-start justify-between px-5 pt-[max(1.25rem,env(safe-area-inset-top))]">
+      <div className="absolute top-0 left-0 right-0 z-30 flex items-start justify-between px-5 pt-[max(1.25rem,env(safe-area-inset-top))]">
         {tableNumber ? (
           <span
             className="rex-qr-rise inline-flex items-center rounded-full px-3 py-1.5 text-[11px] font-semibold uppercase tracking-wide"
@@ -192,13 +186,26 @@ export function QRMenuHomePremium() {
         </div>
       </div>
 
-      {/* Marka — medya üzerinde ortalanmış */}
-      <div className="relative z-10 flex min-h-0 flex-1 flex-col items-center justify-center px-6 text-center">
+      {error && (
+        <div
+          className="absolute top-20 left-4 right-4 z-30 rounded-xl px-3 py-2 text-center text-xs"
+          style={{
+            background: 'rgba(224,122,106,0.2)',
+            border: '1px solid rgba(224,122,106,0.4)',
+            color: '#f0c4bc',
+          }}
+        >
+          {error}
+        </div>
+      )}
+
+      {/* Marka — ekranın ortası / alt-orta */}
+      <div className="absolute inset-0 z-10 flex flex-col items-center justify-center px-6 pb-40 text-center pointer-events-none">
         {logo ? (
           <img
             src={logo}
             alt=""
-            className="rex-qr-rise mb-5 h-16 w-16 rounded-2xl object-cover shadow-xl"
+            className="rex-qr-rise mb-5 h-16 w-16 rounded-2xl object-cover shadow-xl pointer-events-auto"
             style={{ border: '1px solid var(--qr-line)' }}
           />
         ) : null}
@@ -210,37 +217,23 @@ export function QRMenuHomePremium() {
         </p>
         <h1
           className="rex-qr-display rex-qr-rise rex-qr-rise-delay-2 max-w-[16ch] text-[2.65rem] font-semibold leading-[1.05] sm:text-5xl"
-          style={{ color: 'var(--qr-text)', textShadow: '0 2px 24px rgba(0,0,0,0.45)' }}
+          style={{ color: '#fff', textShadow: '0 2px 28px rgba(0,0,0,0.55)' }}
         >
           {name}
         </h1>
         <p
           className="rex-qr-rise rex-qr-rise-delay-3 mt-3 max-w-xs text-sm leading-relaxed"
-          style={{ color: 'rgba(247,241,232,0.82)' }}
+          style={{ color: 'rgba(247,241,232,0.85)' }}
         >
           {t('homeTagline')}
         </p>
-        {error && (
-          <p
-            className="mt-4 max-w-sm rounded-xl px-3 py-2 text-xs"
-            style={{
-              background: 'rgba(224,122,106,0.15)',
-              border: '1px solid rgba(224,122,106,0.35)',
-              color: '#f0c4bc',
-            }}
-          >
-            {error}
-          </p>
-        )}
       </div>
 
-      {/* Alt dock — medyanın üstünde, boşluk bırakmadan */}
+      {/* Alt dock — klasik gibi absolute bottom */}
       <div
-        className="relative z-20 shrink-0 px-4 pb-[max(1.25rem,env(safe-area-inset-bottom))] pt-4"
+        className="absolute bottom-0 left-0 right-0 z-20 px-4 pb-[max(1.25rem,env(safe-area-inset-bottom))] pt-6"
         style={{
-          background:
-            'linear-gradient(180deg, transparent 0%, rgba(12,11,10,0.55) 35%, rgba(12,11,10,0.78) 100%)',
-          backdropFilter: 'blur(2px)',
+          background: 'linear-gradient(180deg, transparent, rgba(0,0,0,0.75) 40%)',
         }}
       >
         <button
@@ -272,16 +265,16 @@ export function QRMenuHomePremium() {
                 key={s.path}
                 type="button"
                 onClick={() => navigate(`${basePath}/${s.path}`)}
-                className="rex-qr-press rex-qr-rise flex flex-col items-center gap-2 rounded-2xl px-2 py-3.5 transition-colors"
+                className="rex-qr-press rex-qr-rise flex flex-col items-center gap-2 rounded-2xl px-2 py-3.5"
                 style={{
-                  background: 'rgba(22,20,18,0.72)',
+                  background: 'rgba(15,15,14,0.72)',
                   border: '1px solid var(--qr-line)',
                   backdropFilter: 'blur(12px)',
                   animationDelay: `${0.2 + i * 0.04}s`,
                 }}
               >
                 <Icon className="h-5 w-5" style={{ color: 'var(--qr-gold)' }} />
-                <span className="text-[11px] font-medium" style={{ color: 'rgba(247,241,232,0.85)' }}>
+                <span className="text-[11px] font-medium" style={{ color: 'rgba(247,241,232,0.9)' }}>
                   {s.label}
                 </span>
               </button>

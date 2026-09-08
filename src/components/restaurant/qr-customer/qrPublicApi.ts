@@ -98,6 +98,7 @@ export type QrPublicCartItem = {
   price: number;
   qty: number;
   note?: string;
+  image?: string | null;
 };
 
 export type QrPublicFeedbackQuestion = {
