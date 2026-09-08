@@ -73,7 +73,7 @@ async function fetchCustomersViaPostgrest(search = '', limit = 200): Promise<Cus
   const query: Record<string, string | number> = {
     select: REST_SELECT,
     is_active: 'eq.true',
-    order: 'name.asc',
+    order: 'file_id.asc.nullslast,name.asc',
     limit,
     or: `(${firmOr})`,
   };
@@ -118,7 +118,11 @@ async function fetchCustomersLiveBridge(search = '', limit = 200): Promise<Custo
            OR TRIM(COALESCE(firm_nr, '')) = $3
            OR firm_nr IS NULL
          )
-       ORDER BY name ASC
+       ORDER BY
+         CASE WHEN NULLIF(BTRIM(COALESCE(file_id, '')), '') ~ '^[0-9]+$'
+           THEN NULLIF(BTRIM(file_id), '')::bigint ELSE NULL END ASC NULLS LAST,
+         NULLIF(BTRIM(COALESCE(file_id, '')), '') ASC NULLS LAST,
+         name ASC
        LIMIT $4`,
       [like, fn, fn.replace(/^0+/, '') || fn, limit],
     );
@@ -133,7 +137,11 @@ async function fetchCustomersLiveBridge(search = '', limit = 200): Promise<Custo
          OR TRIM(COALESCE(firm_nr, '')) = $2
          OR firm_nr IS NULL
        )
-     ORDER BY name ASC
+     ORDER BY
+       CASE WHEN NULLIF(BTRIM(COALESCE(file_id, '')), '') ~ '^[0-9]+$'
+         THEN NULLIF(BTRIM(file_id), '')::bigint ELSE NULL END ASC NULLS LAST,
+       NULLIF(BTRIM(COALESCE(file_id, '')), '') ASC NULLS LAST,
+       name ASC
      LIMIT $3`,
     [fn, fn.replace(/^0+/, '') || fn, limit],
   );

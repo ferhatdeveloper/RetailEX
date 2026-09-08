@@ -362,6 +362,7 @@ export function ClientCustomerDetailPage({ customerId, onBack }: ClientCustomerD
         setEditing({
             ...c,
             age: parseAgeValue(c.age),
+            birth_date: c.birth_date ? String(c.birth_date).slice(0, 10) : null,
             phone2: c.phone2 ?? '',
             file_id: c.file_id ?? '',
             occupation: c.occupation ?? '',

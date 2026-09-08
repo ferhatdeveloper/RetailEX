@@ -139,6 +139,8 @@ export interface Customer {
   phone: string;
   phone2?: string;      // İkinci telefon
   age?: number | null;
+  /** Doğum tarihi YYYY-MM-DD */
+  birth_date?: string | null;
   file_id?: string | null;
   gender?: string | null;
   customer_tier?: 'normal' | 'vip' | string | null;

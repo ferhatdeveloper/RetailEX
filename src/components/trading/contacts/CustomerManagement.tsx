@@ -1,9 +1,10 @@
-﻿import { useState } from 'react';
+﻿import { useState, useMemo } from 'react';
 import { Users, Plus, Search, Mail, Phone, Edit, Trash2, MapPin, TrendingUp, ShoppingBag, User } from 'lucide-react';
 import { DevExDataGrid } from '../../shared/DevExDataGrid';
 import { createColumnHelper } from '@tanstack/react-table';
 import type { Customer, Sale } from '../../../App';
 import { useCustomerStore } from '../../../store/useCustomerStore';
+import { compareFileIdAsc, sortByFileIdAsc } from '../../../utils/customerFileIdSort';
 
 interface CustomerManagementProps {
   customers: Customer[];
@@ -28,7 +29,7 @@ export function CustomerManagement({ customers, setCustomers, sales = [] }: Cust
     name: '',
     phone: '',
     phone2: '',
-    age: '',
+    birth_date: '',
     file_id: '',
     gender: '',
     customer_tier: 'normal',
@@ -39,11 +40,16 @@ export function CustomerManagement({ customers, setCustomers, sales = [] }: Cust
     notes: ''
   });
 
-  const filteredCustomers = customers.filter(customer =>
-    customer.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
-    customer.phone.includes(searchQuery) ||
-    customer.email.toLowerCase().includes(searchQuery.toLowerCase())
-  );
+  const filteredCustomers = useMemo(() => {
+    const q = searchQuery.toLowerCase();
+    const list = customers.filter(customer =>
+      customer.name.toLowerCase().includes(q) ||
+      customer.phone.includes(searchQuery) ||
+      (customer.email || '').toLowerCase().includes(q) ||
+      (customer.file_id || '').includes(searchQuery)
+    );
+    return sortByFileIdAsc(list);
+  }, [customers, searchQuery]);
 
   const openModal = (customer?: Customer) => {
     if (customer) {
@@ -52,7 +58,7 @@ export function CustomerManagement({ customers, setCustomers, sales = [] }: Cust
         name: customer.name,
         phone: customer.phone,
         phone2: customer.phone2 || '',
-        age: customer.age != null ? String(customer.age) : '',
+        birth_date: customer.birth_date ? String(customer.birth_date).slice(0, 10) : '',
         file_id: customer.file_id || '',
         gender: customer.gender || '',
         customer_tier: customer.customer_tier || 'normal',
@@ -68,7 +74,7 @@ export function CustomerManagement({ customers, setCustomers, sales = [] }: Cust
         name: '',
         phone: '',
         phone2: '',
-        age: '',
+        birth_date: '',
         file_id: '',
         gender: '',
         customer_tier: 'normal',
@@ -96,13 +102,13 @@ export function CustomerManagement({ customers, setCustomers, sales = [] }: Cust
     if (editingCustomer) {
       updateCustomer(editingCustomer.id, {
         ...formData,
-        age: formData.age.trim() === '' ? null : Number(formData.age)
+        birth_date: formData.birth_date.trim() === '' ? null : formData.birth_date.trim(),
       });
     } else {
       const newCustomer: Customer = {
         ...formData,
         id: String(Date.now()),
-        age: formData.age.trim() === '' ? null : Number(formData.age),
+        birth_date: formData.birth_date.trim() === '' ? null : formData.birth_date.trim(),
         totalPurchases: 0
       };
       addCustomer(newCustomer);
@@ -128,6 +134,12 @@ export function CustomerManagement({ customers, setCustomers, sales = [] }: Cust
   const columnHelper = createColumnHelper<Customer>();
 
   const columns = [
+    columnHelper.accessor('file_id', {
+      header: 'Dosya No',
+      cell: info => info.getValue() || '—',
+      sortingFn: (a, b) => compareFileIdAsc(a.original.file_id, b.original.file_id),
+      size: 90,
+    }),
     columnHelper.accessor('name', {
       header: 'MÜŞTERİ ADI',
       cell: info => info.getValue(),
@@ -185,6 +197,7 @@ export function CustomerManagement({ customers, setCustomers, sales = [] }: Cust
             height="calc(100vh - 120px)"
             pageSize={50}
             enableSelection={true}
+            initialSorting={[{ id: 'file_id', desc: false }]}
           />
         </div>
       </div>
@@ -322,13 +335,11 @@ export function CustomerManagement({ customers, setCustomers, sales = [] }: Cust
                 </div>
                 <div className="grid grid-cols-2 gap-4">
                   <div>
-                    <label className="block text-sm text-gray-700 mb-1">Yaş</label>
+                    <label className="block text-sm text-gray-700 mb-1">Doğum tarihi</label>
                     <input
-                      type="number"
-                      min={0}
-                      value={formData.age}
-                      onChange={(e) => setFormData({ ...formData, age: e.target.value })}
-                      placeholder="Örn. 35"
+                      type="date"
+                      value={formData.birth_date}
+                      onChange={(e) => setFormData({ ...formData, birth_date: e.target.value })}
                       className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
                     />
                   </div>

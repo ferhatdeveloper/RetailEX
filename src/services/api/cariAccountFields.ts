@@ -24,6 +24,7 @@ const CUSTOMER_DB_COLUMNS = new Set([
   'heard_from',
   'file_id',
   'age',
+  'birth_date',
   'occupation',
   'call_plan_enabled',
   'call_plan_weekdays',

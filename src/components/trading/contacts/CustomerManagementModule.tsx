@@ -14,6 +14,7 @@ import { useLanguage } from '../../../contexts/LanguageContext';
 import { DEMO_CUSTOMER_CODES } from '../../../utils/demoSeedCodes';
 import { phoneMatchesQuery } from '../../../shared/utils/validators';
 import { SupplierModule } from './SupplierModule';
+import { compareFileIdAsc, sortByFileIdAsc } from '../../../utils/customerFileIdSort';
 
 interface CustomerManagementModuleProps {
   customers: Customer[];
@@ -27,7 +28,7 @@ const emptyCustomerForm = () => ({
   phone: '',
   city: '',
   phone2: '',
-  age: '',
+  birth_date: '',
   file_id: '',
   gender: '',
   customer_tier: 'normal',
@@ -41,12 +42,11 @@ const emptyCustomerForm = () => ({
   company: ''
 });
 
-function parseAgeInput(raw: string): number | undefined {
-  const t = raw.trim();
-  if (!t) return undefined;
-  const n = parseInt(t, 10);
-  if (!Number.isFinite(n) || n < 0 || n > 150) return undefined;
-  return n;
+function birthDateToInput(value: string | null | undefined): string {
+  if (!value) return '';
+  const s = String(value).trim();
+  if (!s) return '';
+  return s.includes('T') ? s.slice(0, 10) : s.slice(0, 10);
 }
 
 export function CustomerManagementModule({ customers, setCustomers, sales }: CustomerManagementModuleProps) {
@@ -186,28 +186,30 @@ export function CustomerManagementModule({ customers, setCustomers, sales }: Cus
   );
 
   const trimmedQuery = searchQuery.trim();
-  const filteredCustomers = customers.filter(c => {
-    const textHit =
-      (c.code && c.code.toLowerCase().includes(q)) ||
-      c.name.toLowerCase().includes(q) ||
-      // Telefon → esnek eşleşme (aşağıda ayrı kontrol ediliyor) —
-      // burada sadece ham substring'i tutmaya gerek yok; alttaki
-      // phoneMatchesQuery çok daha sağlam.
-      (c.email && c.email.toLowerCase().includes(q)) ||
-      (c.address && c.address.toLowerCase().includes(q)) ||
-      (c.notes && c.notes.toLowerCase().includes(q)) ||
-      (c.occupation && c.occupation.toLowerCase().includes(q)) ||
-      (c.gender && c.gender.toLowerCase().includes(q)) ||
-      (c.customer_tier && c.customer_tier.toLowerCase().includes(q)) ||
-      (c.heard_from && c.heard_from.toLowerCase().includes(q)) ||
-      (c.age != null && String(c.age).includes(trimmedQuery));
-    if (textHit) return true;
-    // Telefon esnek arama (boşluk, +90, parantez, tire yok sayılır)
-    return (
-      phoneMatchesQuery(c.phone, trimmedQuery) ||
-      phoneMatchesQuery(c.phone2, trimmedQuery)
-    );
-  });
+  const filteredCustomers = useMemo(() => {
+    const list = customers.filter(c => {
+      const textHit =
+        !trimmedQuery ||
+        (c.code && c.code.toLowerCase().includes(q)) ||
+        c.name.toLowerCase().includes(q) ||
+        (c.email && c.email.toLowerCase().includes(q)) ||
+        (c.address && c.address.toLowerCase().includes(q)) ||
+        (c.notes && c.notes.toLowerCase().includes(q)) ||
+        (c.occupation && c.occupation.toLowerCase().includes(q)) ||
+        (c.gender && c.gender.toLowerCase().includes(q)) ||
+        (c.customer_tier && c.customer_tier.toLowerCase().includes(q)) ||
+        (c.heard_from && c.heard_from.toLowerCase().includes(q)) ||
+        (c.file_id != null && String(c.file_id).includes(trimmedQuery)) ||
+        (c.birth_date != null && String(c.birth_date).includes(trimmedQuery)) ||
+        (c.age != null && String(c.age).includes(trimmedQuery));
+      if (textHit) return true;
+      return (
+        phoneMatchesQuery(c.phone, trimmedQuery) ||
+        phoneMatchesQuery(c.phone2, trimmedQuery)
+      );
+    });
+    return sortByFileIdAsc(list);
+  }, [customers, q, trimmedQuery]);
 
   // Calculate customer statistics
   const getCustomerStats = (customerId: string) => {
@@ -254,9 +256,7 @@ export function CustomerManagementModule({ customers, setCustomers, sales }: Cus
 
     try {
       const addCustomer = useCustomerStore.getState().addCustomer;
-      const trimmedAge = formData.age.trim();
-      const ageVal =
-        trimmedAge === '' ? undefined : parseAgeInput(formData.age);
+      const birthVal = formData.birth_date.trim() || undefined;
       await addCustomer({
         code: formData.code,
         name: formData.name,
@@ -268,7 +268,7 @@ export function CustomerManagementModule({ customers, setCustomers, sales }: Cus
         notes: formData.notes.trim() || undefined,
         occupation: formData.occupation.trim() || undefined,
         file_id: formData.file_id.trim() || undefined,
-        age: ageVal,
+        birth_date: birthVal,
         gender: formData.gender.trim() || undefined,
         customer_tier: formData.customer_tier === 'vip' ? 'vip' : 'normal',
         heard_from: formData.heard_from.trim() || undefined,
@@ -297,7 +297,7 @@ export function CustomerManagementModule({ customers, setCustomers, sales }: Cus
       phone: customer.phone || '',
       city: customer.city || '',
       phone2: customer.phone2 || '',
-      age: customer.age != null ? String(customer.age) : '',
+      birth_date: birthDateToInput(customer.birth_date),
       file_id: customer.file_id || '',
       gender: customer.gender || '',
       customer_tier: customer.customer_tier === 'vip' ? 'vip' : 'normal',
@@ -322,9 +322,7 @@ export function CustomerManagementModule({ customers, setCustomers, sales }: Cus
 
     try {
       const updateCustomer = useCustomerStore.getState().updateCustomer;
-      const trimmedAge = formData.age.trim();
-      const ageForDb =
-        trimmedAge === '' ? null : (parseAgeInput(formData.age) ?? null);
+      const birthTrim = formData.birth_date.trim();
       await updateCustomer(selectedCustomer.id, {
         code: formData.code,
         name: formData.name,
@@ -336,7 +334,7 @@ export function CustomerManagementModule({ customers, setCustomers, sales }: Cus
         notes: formData.notes.trim() === '' ? (null as any) : formData.notes.trim(),
         occupation: formData.occupation.trim() === '' ? (null as any) : formData.occupation.trim(),
         file_id: formData.file_id.trim() === '' ? (null as any) : formData.file_id.trim(),
-        age: ageForDb as any,
+        birth_date: birthTrim === '' ? (null as any) : birthTrim,
         gender: formData.gender.trim() === '' ? (null as any) : formData.gender.trim(),
         customer_tier: formData.customer_tier === 'vip' ? 'vip' : 'normal',
         heard_from: formData.heard_from.trim() === '' ? (null as any) : formData.heard_from.trim(),
@@ -425,6 +423,18 @@ export function CustomerManagementModule({ customers, setCustomers, sales }: Cus
   // Column definitions
   const columnHelper = createColumnHelper<Customer>();
   const columns: ColumnDef<Customer, any>[] = [
+    columnHelper.accessor('file_id', {
+      header: tm('custColFileNo'),
+      cell: info => {
+        const v = (info.getValue() ?? '').toString().trim();
+        return v
+          ? <span className="font-mono text-xs text-violet-700 font-medium">{v}</span>
+          : <span className="text-gray-300 text-xs">—</span>;
+      },
+      sortingFn: (rowA, rowB) =>
+        compareFileIdAsc(rowA.original.file_id, rowB.original.file_id),
+      size: 110,
+    }),
     columnHelper.accessor('code', {
       header: tm('custColCode'),
       cell: info => <span className="font-mono text-xs text-blue-600 font-medium">{info.getValue() || '-'}</span >,
@@ -527,16 +537,6 @@ export function CustomerManagementModule({ customers, setCustomers, sales }: Cus
         );
       },
       meta: { align: 'right' }
-    }),
-    columnHelper.accessor('file_id', {
-      header: tm('custColFileNo'),
-      cell: info => {
-        const v = (info.getValue() ?? '').toString().trim();
-        return v
-          ? <span className="font-mono text-xs text-violet-700 font-medium">{v}</span>
-          : <span className="text-gray-300 text-xs">—</span>;
-      },
-      size: 110,
     }),
     columnHelper.display({
       id: 'appointmentCount',
@@ -700,6 +700,7 @@ export function CustomerManagementModule({ customers, setCustomers, sales }: Cus
             data={filteredCustomers}
             columns={columns}
             enableSorting
+            initialSorting={[{ id: 'file_id', desc: false }]}
             enableFiltering={false}
             enableColumnResizing={true}
             onRowContextMenu={handleRowRightClick}
@@ -852,15 +853,13 @@ export function CustomerManagementModule({ customers, setCustomers, sales }: Cus
 
             <div className="grid grid-cols-2 gap-4">
               <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">{tm('custLabelAge')}</label>
+                <label className="block text-sm font-medium text-gray-700 mb-1">{tm('custLabelBirthDate')}</label>
                 <input
-                  type="number"
-                  min={0}
-                  max={150}
-                  value={formData.age}
-                  onChange={(e) => setFormData({ ...formData, age: e.target.value })}
+                  type="date"
+                  value={formData.birth_date}
+                  onChange={(e) => setFormData({ ...formData, birth_date: e.target.value })}
                   className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
-                  placeholder={tm('custPhAge')}
+                  placeholder={tm('custPhBirthDate')}
                 />
               </div>
               <div>
@@ -1056,14 +1055,19 @@ export function CustomerManagementModule({ customers, setCustomers, sales }: Cus
                     <p className="text-gray-900">{selectedCustomer.phone2}</p>
                   </div>
                 )}
-                {(selectedCustomer.age != null || (selectedCustomer.file_id != null && String(selectedCustomer.file_id).trim() !== '')) && (
+                {(selectedCustomer.birth_date || selectedCustomer.age != null || (selectedCustomer.file_id != null && String(selectedCustomer.file_id).trim() !== '')) && (
                   <div className="flex gap-4 flex-wrap">
-                    {selectedCustomer.age != null && (
+                    {selectedCustomer.birth_date ? (
+                      <div className="bg-gray-50 p-4 rounded-lg flex-1 min-w-[100px]">
+                        <p className="text-xs font-semibold text-gray-500 uppercase tracking-wider mb-1">{tm('custLabelBirthDate')}</p>
+                        <p className="text-gray-900">{birthDateToInput(selectedCustomer.birth_date)}</p>
+                      </div>
+                    ) : selectedCustomer.age != null ? (
                       <div className="bg-gray-50 p-4 rounded-lg flex-1 min-w-[100px]">
                         <p className="text-xs font-semibold text-gray-500 uppercase tracking-wider mb-1">{tm('custLabelAge')}</p>
                         <p className="text-gray-900">{selectedCustomer.age}</p>
                       </div>
-                    )}
+                    ) : null}
                     {selectedCustomer.file_id != null && String(selectedCustomer.file_id).trim() !== '' && (
                       <div className="bg-gray-50 p-4 rounded-lg flex-1 min-w-[100px]">
                         <p className="text-xs font-semibold text-gray-500 uppercase tracking-wider mb-1">{tm('custLabelFileId')}</p>

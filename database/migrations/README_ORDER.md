@@ -146,4 +146,5 @@ Restoran sohbetinde eklenen tek yeni tablo: **rest.return_log**. Diğer özellik
 - `145_qr_order_approval_mode.sql` — `qr_settings.order_approval_mode` (`manual` | `auto`); manuelde sipariş onaydan sonra adisyona yazılır.
 - `146_qr_settings_backfill.sql` — 144 LIKE joker bug’ı nedeniyle oluşmayan `qr_settings` / `qr_feedback_questions` kart tablolarını geri doldurur.
 - `147_qr_guest_ui_theme.sql` — `qr_settings.guest_ui_theme` (`premium` | `classic`); misafir QR UI teması.
+- `148_customers_birth_date.sql` — `rex_*_customers.birth_date` (DATE); müşteri formunda yaş yerine doğum tarihi.
 

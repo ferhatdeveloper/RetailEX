@@ -1276,6 +1276,8 @@ export const moduleTranslations: Record<string, Record<Language, string>> = {
   custPhPhone2: { tr: 'İkinci telefon (isteğe bağlı)', en: 'Second phone (optional)', ar: 'هاتف ثانٍ (اختياري)', ku: 'تەلەفۆنی دووەم (ئارەزوومەندانە)' },
   custLabelAge: { tr: 'Yaş', en: 'Age', ar: 'العمر', ku: 'تەمەن' },
   custPhAge: { tr: 'Örn. 35', en: 'e.g. 35', ar: 'مثلاً 35', ku: 'وەک 35' },
+  custLabelBirthDate: { tr: 'Doğum tarihi', en: 'Date of birth', ar: 'تاريخ الميلاد', ku: 'بەرواری لەدایکبوون' },
+  custPhBirthDate: { tr: 'gg.aa.yyyy', en: 'yyyy-mm-dd', ar: 'yyyy-mm-dd', ku: 'yyyy-mm-dd' },
   custLabelFileId: { tr: 'Dosya no', en: 'File ID', ar: 'رقم الملف', ku: 'ژ. فایل' },
   custPhFileId: { tr: 'Dosya / kart no', en: 'File or chart no.', ar: 'رقم الملف', ku: 'ژمارەی فایل' },
   custPhFileIdAuto: {

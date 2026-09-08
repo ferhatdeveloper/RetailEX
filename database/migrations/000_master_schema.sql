@@ -2311,6 +2311,7 @@ BEGIN
       phone        VARCHAR(50),
       phone2       VARCHAR(50),
       age          INTEGER,
+      birth_date   DATE,
       file_id      VARCHAR(120),
       occupation   VARCHAR(150),
       gender       VARCHAR(20),

@@ -243,6 +243,7 @@ const iStyle: React.CSSProperties = {
 };
 const selStyle: React.CSSProperties = { ...iStyle, cursor: 'pointer' };
 
+/** @deprecated yaş formu kaldırıldı — birth_date kullanın */
 function parseAgeInput(raw: string): number | undefined {
     const t = raw.trim();
     if (!t) return undefined;
@@ -256,7 +257,7 @@ function emptyQuickAddCustomer() {
         name: '',
         phone: '',
         phone2: '',
-        age: '',
+        birth_date: '',
         file_id: '',
         heard_from: '',
         email: '',
@@ -923,8 +924,7 @@ export function AppointmentPOS({
         if (!newCust.name.trim()) return;
         setSavingCust(true);
         try {
-            const trimmedAge = newCust.age.trim();
-            const ageNum = trimmedAge === '' ? undefined : parseAgeInput(newCust.age);
+            const birthTrim = newCust.birth_date.trim();
             const g = String(newCust.gender ?? '').trim().toLowerCase();
             const genderVal =
                 g === 'female' || g === 'male' || g === 'other' ? (g as 'female' | 'male' | 'other') : undefined;
@@ -938,7 +938,7 @@ export function AppointmentPOS({
                 notes: newCust.notes.trim() || undefined,
                 file_id: newCust.file_id.trim() || undefined,
                 heard_from: newCust.heard_from.trim() || undefined,
-                age: ageNum,
+                birth_date: birthTrim || undefined,
                 gender: genderVal,
                 customer_tier: newCust.customer_tier === 'vip' ? 'vip' : 'normal',
                 is_active: true,
@@ -969,7 +969,7 @@ export function AppointmentPOS({
                 notes: newCust.notes.trim() || undefined,
                 file_id: newCust.file_id.trim() || undefined,
                 heard_from: newCust.heard_from.trim() || undefined,
-                age: ageNum ?? null,
+                birth_date: birthTrim || null,
                 gender: genderVal ?? null,
                 customer_tier: newCust.customer_tier === 'vip' ? 'vip' : 'normal',
                 is_active: true,
@@ -3234,8 +3234,8 @@ export function AppointmentPOS({
                                                         </Field>
                                                     </div>
                                                     <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))', gap: 8 }}>
-                                                        <Field label={tm('custLabelAge')}>
-                                                            <input type="number" min={0} max={150} value={newCust.age} onChange={e => setNewCust(p => ({ ...p, age: e.target.value }))} placeholder={tm('custPhAge')} style={{ ...iStyle, borderRadius: 10, height: 40 }} />
+                                                        <Field label={tm('custLabelBirthDate')}>
+                                                            <input type="date" value={newCust.birth_date} onChange={e => setNewCust(p => ({ ...p, birth_date: e.target.value }))} placeholder={tm('custPhBirthDate')} style={{ ...iStyle, borderRadius: 10, height: 40 }} />
                                                         </Field>
                                                         <Field label={tm('custLabelFileId')}>
                                                             <input

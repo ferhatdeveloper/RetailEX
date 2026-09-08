@@ -176,7 +176,7 @@ export function ClientCRM({ onOpenCustomer }: ClientCRMProps) {
                     if (Number.isFinite(na) && Number.isFinite(nb)) return na - nb;
                     return String(a.file_id ?? '').localeCompare(String(b.file_id ?? ''), 'tr');
                 },
-                defaultSortOrder: 'descend',
+                defaultSortOrder: 'ascend',
                 render: (_, c) => (
                     <Typography.Text strong className="tabular-nums text-[#262626]">
                         {String(c.file_id ?? '').trim() || '—'}

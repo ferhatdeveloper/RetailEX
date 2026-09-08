@@ -13,6 +13,12 @@ import {
   computeCustomerBalanceFromLedger,
   normalizeFirmTableNr,
 } from './accountBalance';
+import {
+  SQL_ORDER_CUSTOMERS_BY_FILE_ID,
+  ageFromBirthDate,
+  normalizeBirthDate,
+  sortByFileIdAsc,
+} from '../../utils/customerFileIdSort';
 
 export const customerAPI = {
   /**
@@ -34,7 +40,7 @@ export const customerAPI = {
               select: '*',
               firm_nr: `eq.${firmNr}`,
               is_active: 'eq.true',
-              order: 'name.asc',
+              order: 'file_id.asc.nullslast,name.asc',
             },
             { schema: 'public' }
           ),
@@ -63,17 +69,19 @@ export const customerAPI = {
         ]);
         const sales = Array.isArray(salesRows) ? salesRows : [];
         const cash = Array.isArray(cashRows) ? cashRows : [];
-        return (Array.isArray(rows) ? rows : []).map((r) =>
-          mapDatabaseCustomerToCustomer({
-            ...r,
-            balance: computeCustomerBalanceFromLedger(
-              String(r.id),
-              String(r.name || ''),
-              sales,
-              cash,
-              parseFloat(String(r.balance ?? 0)) || 0,
-            ),
-          }),
+        return sortByFileIdAsc(
+          (Array.isArray(rows) ? rows : []).map((r) =>
+            mapDatabaseCustomerToCustomer({
+              ...r,
+              balance: computeCustomerBalanceFromLedger(
+                String(r.id),
+                String(r.name || ''),
+                sales,
+                cash,
+                parseFloat(String(r.balance ?? 0)) || 0,
+              ),
+            }),
+          ),
         );
       }
       const { rows } = await postgres.query(
@@ -82,7 +90,7 @@ export const customerAPI = {
         FROM ${tableName} c
         LEFT JOIN account_balances b ON c.id = b.id
         WHERE c.firm_nr = $1 AND c.is_active = true
-        ORDER BY c.name ASC`,
+        ORDER BY ${SQL_ORDER_CUSTOMERS_BY_FILE_ID}`,
         [firmNr],
         { firmNr, periodNr: ERP_SETTINGS.periodNr },
       );
@@ -114,28 +122,28 @@ export const customerAPI = {
             firm_nr: `eq.${ERP_SETTINGS.firmNr}`,
             is_active: 'eq.true',
             or,
-            order: 'name.asc',
+            order: 'file_id.asc.nullslast,name.asc',
             limit: 20,
           },
           { schema: 'public' }
         );
-        return (Array.isArray(rows) ? rows : []).map(mapDatabaseCustomerToCustomer);
+        return sortByFileIdAsc((Array.isArray(rows) ? rows : []).map(mapDatabaseCustomerToCustomer));
       }
       const searchTerm = `%${query.toLowerCase()}%`;
       const { rows } = await postgres.query(
-        `SELECT * FROM ${tableName} 
-         WHERE firm_nr = $1 
-         AND is_active = true 
+        `SELECT c.* FROM ${tableName} c
+         WHERE c.firm_nr = $1 
+         AND c.is_active = true 
          AND (
-           LOWER(name) LIKE $2 OR 
-           phone LIKE $2 OR 
-           COALESCE(phone2, '') LIKE $2 OR
-           LOWER(COALESCE(notes, '')) LIKE $2 OR
-           LOWER(COALESCE(occupation, '')) LIKE $2 OR
-           LOWER(COALESCE(file_id, '')) LIKE $2 OR
-           LOWER(code) LIKE $2
+           LOWER(c.name) LIKE $2 OR 
+           c.phone LIKE $2 OR 
+           COALESCE(c.phone2, '') LIKE $2 OR
+           LOWER(COALESCE(c.notes, '')) LIKE $2 OR
+           LOWER(COALESCE(c.occupation, '')) LIKE $2 OR
+           LOWER(COALESCE(c.file_id, '')) LIKE $2 OR
+           LOWER(c.code) LIKE $2
          )
-         ORDER BY name ASC 
+         ORDER BY ${SQL_ORDER_CUSTOMERS_BY_FILE_ID}
          LIMIT 20`,
         [ERP_SETTINGS.firmNr, searchTerm]
       );
@@ -285,6 +293,10 @@ export const customerAPI = {
         const n = Number(customer.age);
         if (Number.isFinite(n)) ageSafe = Math.round(n);
       }
+      const birthSafe = normalizeBirthDate(customer.birth_date);
+      if (birthSafe && ageSafe == null) {
+        ageSafe = ageFromBirthDate(birthSafe);
+      }
 
       const fileIdSafe =
         customer.file_id != null && String(customer.file_id).trim() !== ''
@@ -304,6 +316,7 @@ export const customerAPI = {
           address: customer.address || '',
           notes: customer.notes || '',
           age: ageSafe,
+          birth_date: birthSafe,
           occupation: customer.occupation || '',
           file_id: fileIdSafe,
           gender: customer.gender || null,
@@ -334,7 +347,7 @@ export const customerAPI = {
       const logoCols = Object.keys(logoPending);
       const logoVals = Object.values(logoPending);
       const baseCols = [
-        'code', 'name', 'phone', 'phone2', 'email', 'address', 'notes', 'age', 'occupation', 'file_id',
+        'code', 'name', 'phone', 'phone2', 'email', 'address', 'notes', 'age', 'birth_date', 'occupation', 'file_id',
         'gender', 'customer_tier', 'heard_from', 'call_plan_enabled', 'call_plan_weekdays', 'call_plan_note',
         'call_last_status', 'call_last_note', 'call_last_at', 'points', 'total_spent', 'is_active', 'firm_nr',
         ...logoCols,
@@ -348,6 +361,7 @@ export const customerAPI = {
           customer.address || '',
           customer.notes || '',
           ageSafe,
+          birthSafe,
           customer.occupation || '',
           fileIdSafe,
           customer.gender || null,
@@ -438,6 +452,21 @@ export const customerAPI = {
       const values: any[] = [];
       let i = 1;
 
+      const normalizedUpdates: Partial<Customer> = { ...updates };
+      if ('birth_date' in normalizedUpdates) {
+        const birthSafe =
+          normalizedUpdates.birth_date === null || normalizedUpdates.birth_date === ''
+            ? null
+            : normalizeBirthDate(normalizedUpdates.birth_date);
+        normalizedUpdates.birth_date = birthSafe;
+        if (birthSafe && normalizedUpdates.age === undefined) {
+          normalizedUpdates.age = ageFromBirthDate(birthSafe);
+        }
+        if (birthSafe === null && normalizedUpdates.age === undefined) {
+          normalizedUpdates.age = null;
+        }
+      }
+
       // V2 customers tablosundaki gerçek sütun adlarına map et
       const customerFieldMap: Record<string, string | null> = {
         totalSpent:    'total_spent',
@@ -455,7 +484,7 @@ export const customerAPI = {
         discount_rate:  null,
         firma_id:       null,
       };
-      Object.entries(updates).forEach(([key, value]) => {
+      Object.entries(normalizedUpdates).forEach(([key, value]) => {
         if (key === 'id' || value === undefined) return;
         const mapped = customerFieldMap[key];
         if (mapped === null) return; // V2'de kolonu yok, atla
@@ -471,7 +500,7 @@ export const customerAPI = {
         const { postgrest, stripPostgrestOpPrefix } = await import('./postgrestClient');
         const rawId = stripPostgrestOpPrefix(String(id));
         const patchBody: Record<string, unknown> = {};
-        Object.entries(updates).forEach(([key, value]) => {
+        Object.entries(normalizedUpdates).forEach(([key, value]) => {
           if (key === 'id' || value === undefined) return;
           const mapped = customerFieldMap[key];
           if (mapped === null) return;
@@ -639,6 +668,12 @@ function mapDatabaseCustomerToCustomer(dbCustomer: any): Customer {
     call_last_note: dbCustomer.call_last_note || undefined,
     call_last_at: dbCustomer.call_last_at || undefined,
     age: dbCustomer.age != null ? Number(dbCustomer.age) : undefined,
+    birth_date: (() => {
+      const raw = dbCustomer.birth_date;
+      if (raw == null || String(raw).trim() === '') return undefined;
+      const s = String(raw);
+      return s.includes('T') ? s.slice(0, 10) : s.slice(0, 10);
+    })(),
     file_id: dbCustomer.file_id != null && String(dbCustomer.file_id).trim() !== ''
       ? String(dbCustomer.file_id).trim()
       : undefined,

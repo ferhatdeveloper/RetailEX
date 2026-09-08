@@ -1383,7 +1383,7 @@ export const beautyService = {
                     `/rex_${fn}_customers`,
                     {
                         select:
-                            'id,code,name,phone,phone2,age,file_id,occupation,gender,customer_tier,heard_from,email,address,city,points,total_spent,balance,is_active,notes,created_at',
+                            'id,code,name,phone,phone2,age,birth_date,file_id,occupation,gender,customer_tier,heard_from,email,address,city,points,total_spent,balance,is_active,notes,created_at',
                         is_active: 'eq.true',
                         firm_nr: `eq.${fn}`,
                         order: 'name.asc',
@@ -1491,7 +1491,7 @@ export const beautyService = {
         const fn = erpFirmNrForRow();
         const { rows } = await postgres.query(`
             SELECT
-                c.id, c.code, c.name, c.phone, c.phone2, c.age, c.file_id, c.occupation,
+                c.id, c.code, c.name, c.phone, c.phone2, c.age, c.birth_date, c.file_id, c.occupation,
                 c.gender, c.customer_tier, c.heard_from, c.email,
                 c.address, c.city, c.points, c.total_spent, c.balance,
                 c.is_active, c.notes, c.created_at,
@@ -1509,7 +1509,11 @@ export const beautyService = {
             LEFT JOIN ${apt} a ON a.client_id = c.id
             WHERE c.is_active = true AND lpad(trim(c.firm_nr::text), 3, '0') = $2
             GROUP BY c.id
-            ORDER BY c.name
+            ORDER BY
+              CASE WHEN NULLIF(BTRIM(COALESCE(c.file_id, '')), '') ~ '^[0-9]+$'
+                THEN NULLIF(BTRIM(c.file_id), '')::bigint ELSE NULL END ASC NULLS LAST,
+              NULLIF(BTRIM(COALESCE(c.file_id, '')), '') ASC NULLS LAST,
+              c.name ASC
         `, [fn, fn]);
         return rows;
     },
@@ -1528,7 +1532,7 @@ export const beautyService = {
                     `/${px}_customers`,
                     {
                         select:
-                            'id,code,name,phone,phone2,age,file_id,occupation,gender,customer_tier,heard_from,email,address,city,points,total_spent,balance,is_active,notes',
+                            'id,code,name,phone,phone2,age,birth_date,file_id,occupation,gender,customer_tier,heard_from,email,address,city,points,total_spent,balance,is_active,notes',
                         is_active: 'eq.true',
                         or: `(name.ilike.${pat},phone.ilike.${pat},phone2.ilike.${pat},email.ilike.${pat},code.ilike.${pat},notes.ilike.${pat},occupation.ilike.${pat},file_id.ilike.${pat})`,
                         order: 'name.asc',
@@ -1556,7 +1560,7 @@ export const beautyService = {
             params.push(`%${phoneDigits}%`);
         }
         const { rows } = await postgres.query(
-            `SELECT id, code, name, phone, phone2, age, file_id, occupation, gender, customer_tier, heard_from, email, address, city, points, total_spent, balance, is_active, notes
+            `SELECT id, code, name, phone, phone2, age, birth_date, file_id, occupation, gender, customer_tier, heard_from, email, address, city, points, total_spent, balance, is_active, notes
              FROM ${t}
              WHERE is_active = true AND lpad(trim(firm_nr::text), 3, '0') = $2
                AND (
@@ -1566,7 +1570,12 @@ export const beautyService = {
                  OR COALESCE(file_id, '') ILIKE $1
                  ${phoneClause}
                )
-             ORDER BY name LIMIT 50`,
+             ORDER BY
+               CASE WHEN NULLIF(BTRIM(COALESCE(file_id, '')), '') ~ '^[0-9]+$'
+                 THEN NULLIF(BTRIM(file_id), '')::bigint ELSE NULL END ASC NULLS LAST,
+               NULLIF(BTRIM(COALESCE(file_id, '')), '') ASC NULLS LAST,
+               name ASC
+             LIMIT 50`,
             params
         );
         return rows;
@@ -1638,6 +1647,18 @@ export const beautyService = {
             const n = Number(data.age);
             if (Number.isFinite(n)) ageVal = Math.round(n);
         }
+        const birthRaw = data.birth_date != null ? String(data.birth_date).trim().slice(0, 10) : '';
+        const birthVal = /^\d{4}-\d{2}-\d{2}$/.test(birthRaw) ? birthRaw : null;
+        if (birthVal && ageVal == null) {
+            const born = new Date(`${birthVal}T12:00:00`);
+            if (Number.isFinite(born.getTime())) {
+                const now = new Date();
+                let age = now.getFullYear() - born.getFullYear();
+                const m = now.getMonth() - born.getMonth();
+                if (m < 0 || (m === 0 && now.getDate() < born.getDate())) age -= 1;
+                if (age >= 0 && age <= 150) ageVal = age;
+            }
+        }
         let fileIdVal =
             data.file_id != null && String(data.file_id).trim() !== ''
                 ? String(data.file_id).trim()
@@ -1670,6 +1691,7 @@ export const beautyService = {
                     city: data.city ?? null,
                     notes: data.notes?.trim() || null,
                     age: ageVal,
+                    birth_date: birthVal,
                     file_id: fileIdVal,
                     occupation: data.occupation?.trim() || null,
                     gender: genderVal,
@@ -1683,10 +1705,10 @@ export const beautyService = {
         }
         await postgres.query(
             `INSERT INTO ${t} (
-               id, firm_nr, code, name, phone, phone2, email, address, city, notes, age, file_id, occupation,
+               id, firm_nr, code, name, phone, phone2, email, address, city, notes, age, birth_date, file_id, occupation,
                gender, customer_tier, heard_from, is_active
              )
-             VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,true)`,
+             VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,true)`,
             [
                 id,
                 fn,
@@ -1699,6 +1721,7 @@ export const beautyService = {
                 data.city ?? null,
                 data.notes?.trim() || null,
                 ageVal,
+                birthVal,
                 fileIdVal,
                 data.occupation?.trim() || null,
                 genderVal,
@@ -1743,15 +1766,34 @@ export const beautyService = {
                             ? 'vip'
                             : 'normal',
                 heard_from: data.heard_from === undefined ? undefined : data.heard_from?.trim() || null,
-                age:
-                    data.age === undefined
+                birth_date:
+                    data.birth_date === undefined
                         ? undefined
-                        : data.age === null
+                        : data.birth_date == null || String(data.birth_date).trim() === ''
                             ? null
-                            : (() => {
-                                const n = Number(data.age);
-                                return Number.isFinite(n) ? Math.round(n) : null;
-                            })(),
+                            : String(data.birth_date).trim().slice(0, 10),
+                age:
+                    data.age === undefined && data.birth_date === undefined
+                        ? undefined
+                        : data.birth_date != null && String(data.birth_date).trim() !== ''
+                            ? (() => {
+                                const day = String(data.birth_date).trim().slice(0, 10);
+                                const born = new Date(`${day}T12:00:00`);
+                                if (!Number.isFinite(born.getTime())) return data.age === null ? null : (Number.isFinite(Number(data.age)) ? Math.round(Number(data.age)) : null);
+                                const now = new Date();
+                                let age = now.getFullYear() - born.getFullYear();
+                                const m = now.getMonth() - born.getMonth();
+                                if (m < 0 || (m === 0 && now.getDate() < born.getDate())) age -= 1;
+                                return age >= 0 && age <= 150 ? age : null;
+                            })()
+                        : data.age === undefined
+                            ? undefined
+                            : data.age === null
+                                ? null
+                                : (() => {
+                                    const n = Number(data.age);
+                                    return Number.isFinite(n) ? Math.round(n) : null;
+                                })(),
             });
             if (Object.keys(patchBody).length === 0) return;
             const { stripPostgrestOpPrefix } = await import('./api/postgrestClient');
@@ -1796,6 +1838,25 @@ export const beautyService = {
         }
         if (data.heard_from !== undefined) {
             push('heard_from', data.heard_from?.trim() || null);
+        }
+        if (data.birth_date !== undefined) {
+            const day =
+                data.birth_date == null || String(data.birth_date).trim() === ''
+                    ? null
+                    : String(data.birth_date).trim().slice(0, 10);
+            push('birth_date', day && /^\d{4}-\d{2}-\d{2}$/.test(day) ? day : null);
+            if (day && /^\d{4}-\d{2}-\d{2}$/.test(day) && data.age === undefined) {
+                const born = new Date(`${day}T12:00:00`);
+                if (Number.isFinite(born.getTime())) {
+                    const now = new Date();
+                    let age = now.getFullYear() - born.getFullYear();
+                    const m = now.getMonth() - born.getMonth();
+                    if (m < 0 || (m === 0 && now.getDate() < born.getDate())) age -= 1;
+                    if (age >= 0 && age <= 150) push('age', age);
+                }
+            } else if (day == null && data.age === undefined) {
+                push('age', null);
+            }
         }
         if (data.age !== undefined) {
             if (data.age === null) push('age', null);

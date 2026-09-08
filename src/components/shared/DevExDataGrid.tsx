@@ -30,6 +30,8 @@ interface DevExDataGridProps<T> {
   data: T[];
   columns: ColumnDef<T, any>[];
   enableSorting?: boolean;
+  /** İlk yüklemede kolon sıralaması (ör. file_id asc) */
+  initialSorting?: SortingState;
   enableFiltering?: boolean;
   enableColumnResizing?: boolean;
   enablePagination?: boolean;
@@ -593,6 +595,7 @@ export function DevExDataGrid<T>({
   data,
   columns,
   enableSorting = true,
+  initialSorting,
   enableFiltering = true,
   enableColumnResizing = true,
   enablePagination = true,
@@ -615,7 +618,7 @@ export function DevExDataGrid<T>({
   footerSumColumns,
   footerLabel,
 }: DevExDataGridProps<T>) {
-  const [sorting, setSorting] = useState<SortingState>([]);
+  const [sorting, setSorting] = useState<SortingState>(() => initialSorting ?? []);
   const [columnFilters, setColumnFilters] = useState<ColumnFiltersState>([]);
   const [pagination, setPagination] = useState<PaginationState>(() => ({
     pageIndex: 0,

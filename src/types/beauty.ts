@@ -771,6 +771,7 @@ export interface BeautyCustomer {
     phone?: string;
     phone2?: string;
     age?: number | null;
+    birth_date?: string | null;
     file_id?: string | null;
     occupation?: string | null;
     /** female | male | other — boş bırakılabilir */

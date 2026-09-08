@@ -16,6 +16,7 @@ export const BEAUTY_CUSTOMER_EMPTY_FORM: Partial<BeautyCustomer> = {
     phone: '',
     phone2: '',
     age: null,
+    birth_date: null,
     file_id: '',
     occupation: '',
     gender: null,
@@ -137,19 +138,18 @@ export function BeautyCustomerEditFormFields({
             </div>
             <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
                 <div>
-                    <RetailExFlatFieldLabel>{tm('custLabelAge')}</RetailExFlatFieldLabel>
+                    <RetailExFlatFieldLabel>{tm('custLabelBirthDate')}</RetailExFlatFieldLabel>
                     <Input
                         className="!rounded-2xl !px-4 !py-2.5"
-                        type="number"
-                        min={0}
-                        max={150}
-                        value={value.age == null ? '' : String(value.age)}
+                        type="date"
+                        value={value.birth_date ? String(value.birth_date).slice(0, 10) : ''}
                         onChange={e =>
                             set({
-                                age: e.target.value === '' ? null : Number(e.target.value),
+                                birth_date: e.target.value === '' ? null : e.target.value,
+                                age: null,
                             })
                         }
-                        placeholder={tm('custPhAge')}
+                        placeholder={tm('custPhBirthDate')}
                     />
                 </div>
                 <div>
