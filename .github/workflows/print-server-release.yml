@@ -1,32 +1,31 @@
 name: Print Server Release
 
-# RetailEX PrintServer (Windows Service + Inno Setup installer)
+# RetailEX Printer (tray WinForms + Windows service, FastReport 80mm)
 # Tetikleyici:
-#   1) tag push:        print-v{version}   (ornek: print-v1.0.0)
-#   2) workflow_dispatch (manuel)
-#   3) PrintServer/** degisikliklerinde build (release yok)
-#   Release sadece tag veya dispatch(create_release=true) ile.
+# 1) tag push: print-v{version} (örnek: print-v1.0.0)
+# 2) workflow_dispatch (manuel) — varsayılan GitHub Release
+# 3) PrintServer/** değişince sadece build + artifact
 
 on:
   push:
     branches:
       - main
     paths:
-      - 'PrintServer/**'
-      - '.github/workflows/print-server-release.yml'
+      - "PrintServer/**"
+      - ".github/workflows/print-server-release.yml"
     tags:
-      - 'print-v*'
+      - "print-v*"
   workflow_dispatch:
     inputs:
       create_release:
-        description: 'GitHub Release olustur (tag: print-v<run_number>)'
+        description: "GitHub Release oluştur (tag: print-v<sürüm>)"
         required: false
         default: true
         type: boolean
       version:
-        description: 'Surum (ornek: 1.0.0). Bos birakilirsa tag veya run_number kullanilir.'
+        description: "Sürüm (örnek: 1.0.0). Boşsa tag veya run_number."
         required: false
-        default: ''
+        default: ""
         type: string
 
 permissions:
@@ -36,19 +35,19 @@ env:
   BUILD_CONFIG: Release
 
 jobs:
-  build-windows-setup:
+  build-windows-exe:
     runs-on: windows-latest
     timeout-minutes: 45
     steps:
       - name: Checkout
         uses: actions/checkout@v4
 
-      - name: .NET 8 SDK kur
+      - name: .NET 9 SDK kur
         uses: actions/setup-dotnet@v4
         with:
-          dotnet-version: '8.0.x'
+          dotnet-version: "9.0.x"
 
-      - name: Surum ve release bilgisi
+      - name: Sürüm ve release bilgisi
         id: meta
         shell: pwsh
         run: |
@@ -56,7 +55,6 @@ jobs:
           $releaseTag = ""
           $appVersion = ""
 
-          # 1) Tag push'tan surum cikar
           if ("${{ github.ref_type }}" -eq "tag" -and "${{ github.ref_name }}" -like "print-v*") {
             $tag = "${{ github.ref_name }}"
             if ($tag -match '^print-v(\d+\.\d+\.\d+)$') {
@@ -65,8 +63,6 @@ jobs:
               $releaseTag = $tag
             }
           }
-
-          # 2) Manual dispatch
           elseif ("${{ github.event_name }}" -eq "workflow_dispatch") {
             $manual = "${{ inputs.version }}".Trim()
             $should = ("${{ inputs.create_release }}" -eq "true")
@@ -77,7 +73,6 @@ jobs:
                 $releaseTag = "print-v$manual"
               }
             } else {
-              # run_number fallback
               $appVersion = "0.${{ github.run_number }}.0"
               if ($should) {
                 $shouldRelease = $true
@@ -85,8 +80,6 @@ jobs:
               }
             }
           }
-
-          # 3) Push (release yok) — sadece build
           else {
             $appVersion = "0.${{ github.run_number }}.0"
           }
@@ -94,184 +87,93 @@ jobs:
           echo "APP_VERSION=$appVersion" >> $env:GITHUB_ENV
           echo "SHOULD_RELEASE=$shouldRelease" >> $env:GITHUB_ENV
           echo "RELEASE_TAG=$releaseTag" >> $env:GITHUB_ENV
-          Write-Host "APP_VERSION=$appVersion"
-          Write-Host "SHOULD_RELEASE=$shouldRelease"
-          Write-Host "RELEASE_TAG=$releaseTag"
+          Write-Host "APP_VERSION=$appVersion SHOULD_RELEASE=$shouldRelease RELEASE_TAG=$releaseTag"
 
-      - name: NuGet restore
-        shell: pwsh
+      - name: Restore
         working-directory: PrintServer
-        run: dotnet restore PrintServer.sln
+        run: dotnet restore QrPrintDesktop.sln
 
-      - name: dotnet build (Release)
-        shell: pwsh
+      - name: Test
         working-directory: PrintServer
+        run: dotnet test QrPrintDesktop.Tests/QrPrintDesktop.Tests.csproj -c ${{ env.BUILD_CONFIG }} --no-restore --nologo
+
+      - name: Publish tray app (self-contained win-x64)
+        working-directory: PrintServer
+        shell: pwsh
         run: |
-          dotnet build PrintServer.sln -c ${{ env.BUILD_CONFIG }} --no-restore
-
-      - name: dotnet publish (Service)
-        shell: pwsh
-        working-directory: PrintServer
-        run: |
-          dotnet publish PrintServer.Service/PrintServer.Service.csproj `
+          $out = Join-Path (Resolve-Path .).Path "releases/RetailEX.Printer"
+          New-Item -ItemType Directory -Force -Path $out | Out-Null
+          dotnet publish QrPrintDesktop.App/QrPrintDesktop.App.csproj `
             -c ${{ env.BUILD_CONFIG }} `
-            -f net8.0-windows `
             -r win-x64 `
-            --self-contained false `
-            -o installer/payload
+            --self-contained true `
+            -o $out `
+            --nologo `
+            -p:DebugType=None `
+            -p:DebugSymbols=false `
+            -p:Version=$env:APP_VERSION
+          $exe = Join-Path $out "RetailEX.QrPrint.exe"
+          if (-not (Test-Path $exe)) { throw "EXE yok: $exe" }
+          Write-Host "EXE hazır: $exe ($((Get-Item $exe).Length) bytes)"
 
-      - name: dotnet build (Designer)
-        shell: pwsh
+      - name: Publish Windows service
         working-directory: PrintServer
+        shell: pwsh
         run: |
-          $designerPayload = Join-Path (Resolve-Path installer/payload).Path "designer"
-          if (Test-Path $designerPayload) {
-            Remove-Item $designerPayload -Recurse -Force
-          }
-          New-Item -ItemType Directory -Force -Path $designerPayload | Out-Null
-          $libTarget = Join-Path $designerPayload "lib"
-          New-Item -ItemType Directory -Force -Path $libTarget | Out-Null
-
-          # v0.1.13+ qrprint kalibi: RID YOK, framework-dependent.
-          # Tek TargetFramework=net8.0-windows + UseWindowsForms=true ile
-          # dotnet build her zaman apphost .exe uretir (Windows runner).
-          dotnet restore PrintServer.Designer/PrintServer.Designer.csproj
-
-          dotnet build PrintServer.Designer/PrintServer.Designer.csproj `
+          $svc = Join-Path (Resolve-Path .).Path "releases/RetailEX.Printer/Service"
+          New-Item -ItemType Directory -Force -Path $svc | Out-Null
+          dotnet publish QrPrintDesktop.Service/QrPrintDesktop.Service.csproj `
             -c ${{ env.BUILD_CONFIG }} `
-            -f net8.0-windows `
-            -p:UseAppHost=true `
-            -p:GenerateApphost=true `
-            --no-restore
+            -r win-x64 `
+            --self-contained true `
+            -o $svc `
+            --nologo `
+            -p:DebugType=None `
+            -p:DebugSymbols=false `
+            -p:Version=$env:APP_VERSION
 
-          $buildOut = Join-Path (Resolve-Path PrintServer.Designer).Path "bin/${{ env.BUILD_CONFIG }}/net8.0-windows"
-          Write-Host "Build output klasoru: $buildOut"
-          if (-not (Test-Path $buildOut)) {
-            throw "Designer build output bulunamadi: $buildOut"
-          }
-
-          # Build output icerigi (debug)
-          Write-Host "--- Build output ---"
-          Get-ChildItem $buildOut | Format-Table Name, Length -AutoSize
-
-          # v0.1.13+ qrprint kalibi: build output'taki TUM dosyalari (exe + dll + json + pdb)
-          # payload'a kopyala. EXE artik RID'siz dotnet build ile her zaman uretiliyor.
-          Get-ChildItem $buildOut -File | ForEach-Object {
-            Copy-Item $_.FullName $designerPayload -Force
-          }
-
-          # Designer ornek config
-          if (-not (Test-Path (Join-Path $designerPayload "designer.config.example.json"))) {
-            Copy-Item (Join-Path (Resolve-Path PrintServer.Designer).Path "designer.config.example.json") `
-                      (Join-Path $designerPayload "designer.config.example.json") -Force
-          }
-
-          # Designer ikonu (app.ico): build output'taki Assets/ klasorunden tasinabilir,
-          # ya da kaynak dizinden acikca kopyalanir (bu daha saglidir).
-          $assetsTarget = Join-Path $designerPayload "Assets"
-          New-Item -ItemType Directory -Force -Path $assetsTarget | Out-Null
-          $iconInBuild = Join-Path $buildOut "Assets/app.ico"
-          $iconInSource = Join-Path (Resolve-Path PrintServer.Designer).Path "Assets/app.ico"
-          if (Test-Path $iconInBuild) {
-            Copy-Item $iconInBuild $assetsTarget -Force
-            Write-Host "Designer ikonu build output'tan kopyalandi: $iconInBuild"
-          } elseif (Test-Path $iconInSource) {
-            Copy-Item $iconInSource $assetsTarget -Force
-            Write-Host "Designer ikonu kaynak dizinden kopyalandi: $iconInSource"
-          } else {
-            Write-Host "UYARI: Designer app.ico bulunamadi. Designer kisayolunda fallback ikon kullanilir."
-          }
-
-          Write-Host "--- Designer payload icerigi ---"
-          Get-ChildItem $designerPayload | Format-Table Name, Length -AutoSize
-
-          # EXE kontrolu (build basariliysa olmali)
-          $exeInPayload = Join-Path $designerPayload "RetailEX.FastReportDesigner.exe"
-          if (-not (Test-Path $exeInPayload)) {
-            throw "Designer EXE payload'da bulunamadi: $exeInPayload"
-          }
-          Write-Host "Designer EXE hazir: $exeInPayload (boyut: $((Get-Item $exeInPayload).Length) bytes)"
-
-          # Kullanici lisansli FastReport DLL'leri (sadece repo tools/):
-          #   tools/FastReportDesigner/lib/*.dll commit'li ise payload'a kopyala.
-          #   yoksa lib bos kalir; setup skipifsourcedoesntexist ile compile eder,
-          #   kurulum sonunda kullaniciya msgBox ile uyari gosterir.
-          $frCopied = $false
-          $userLib = Join-Path (Resolve-Path ..).Path "tools/FastReportDesigner/lib"
-          if (Test-Path $userLib) {
-            $dlls = @(Get-ChildItem $userLib -Filter "*.dll" -ErrorAction SilentlyContinue)
-            if ($dlls.Count -gt 0) {
-              Copy-Item (Join-Path $userLib "*.dll") $libTarget -Force
-              Write-Host "FastReport DLL'leri (repo tools/) kopyalandi:"
-              Get-ChildItem $libTarget | Format-Table Name, Length -AutoSize
-              $frCopied = $true
-            }
-          }
-          if (-not $frCopied) {
-            Write-Host "UYARI: FastReport DLL'leri bulunamadi. Setup yine de derlenecek (skipifsourcedoesntexist); kurulum sonunda kullaniciya uyari gosterilecek."
-          }
-          exit 0
-
-      - name: Inno Setup kur
-        if: runner.os == 'Windows'
-        shell: pwsh
-        run: choco install innosetup -y --no-progress
-
-      - name: Kurulum paketi derle
-        shell: pwsh
+      - name: Zip paket
         working-directory: PrintServer
-        run: |
-          $env:Path = "C:\Program Files (x86)\Inno Setup 6;$env:Path"
-          & .\installer\build-installer.ps1 -ProjectRoot (Resolve-Path .).Path -Version $env:APP_VERSION
-
-      - name: releases klasorune kopyala
         shell: pwsh
-        working-directory: PrintServer
         run: |
-          New-Item -ItemType Directory -Force -Path releases | Out-Null
-          Get-ChildItem installer\output\RetailEX.PrintManager-Setup-*.exe | ForEach-Object {
-            Copy-Item $_.FullName (Join-Path releases $_.Name) -Force
-          }
+          $src = Resolve-Path "releases/RetailEX.Printer"
+          $zip = Join-Path (Resolve-Path releases).Path "RetailEX.Printer-win-x64-v$env:APP_VERSION.zip"
+          if (Test-Path $zip) { Remove-Item $zip -Force }
+          Compress-Archive -Path (Join-Path $src.Path "*") -DestinationPath $zip -CompressionLevel Optimal
+          Write-Host "ZIP: $zip ($([math]::Round((Get-Item $zip).Length/1MB,1)) MB)"
 
-      - name: Workflow artifact yukle
+      - name: Artifact yükle
         uses: actions/upload-artifact@v4
         with:
-          name: RetailEX.PrintServer-${{ env.APP_VERSION }}-${{ github.run_number }}
+          name: RetailEX.Printer-${{ env.APP_VERSION }}-${{ github.run_number }}
           path: |
-            PrintServer/installer/output/RetailEX.PrintManager-Setup-*.exe
-            PrintServer/releases/*
+            PrintServer/releases/RetailEX.Printer-win-x64-v${{ env.APP_VERSION }}.zip
+            PrintServer/releases/RetailEX.Printer/RetailEX.QrPrint.exe
           retention-days: 30
 
-      - name: GitHub Release olustur
+      - name: GitHub Release oluştur
         if: env.SHOULD_RELEASE == 'true'
         uses: softprops/action-gh-release@v2
         with:
           tag_name: ${{ env.RELEASE_TAG }}
-          name: RetailEX Print Server ${{ env.APP_VERSION }} (${{ env.RELEASE_TAG }})
+          name: RetailEX Printer ${{ env.APP_VERSION }}
           body: |
-            ## RetailEX Print Server (Windows)
+            ## RetailEX Printer (Windows)
 
             Otomatik derleme: `${{ github.workflow }}` (#${{ github.run_number }})
 
             ### Kurulum
-            1. `RetailEX.PrintManager-Setup-*.exe` indirin ve yonetici olarak calistirin
-            2. Kurulum sihirbazinda **"Windows yazici servisini kur"** secenegini isaretleyin
-            3. `C:\ProgramData\RetailEX\print-server.json` icinde `PostgRest.ApiToken` alanini doldurun
+            1. `RetailEX.Printer-win-x64-v${{ env.APP_VERSION }}.zip` indirin ve klasörü açın
+            2. `RetailEX.QrPrint.exe` çalıştırın (tepsi önerilir)
+            3. Tenant, firma, dönem ve mutfak yazıcısını kaydedin
 
-            ### Yapilandirma
-            - Yapilandirma dosyasi: `C:\ProgramData\RetailEX\print-server.json`
-            - Log dosyasi: `C:\ProgramData\RetailEX\print-server.log`
-            - EventLog: `Application` / Source: `RetailEX_PrintServer`
+            Tek dosyayı ayırmayın. FastReport DLL’leri ve `Reports` aynı klasörde kalmalı.
 
-            ### Servis komutlari
-            ```powershell
-            Get-Service RetailEX_PrintServer
-            Restart-Service RetailEX_PrintServer
-            ```
+            Servis (yönetici): `install-service.ps1`
 
-            Surum: `${{ env.APP_VERSION }}`
+            Sürüm: `${{ env.APP_VERSION }}`
           files: |
-            PrintServer/installer/output/RetailEX.PrintManager-Setup-*.exe
+            PrintServer/releases/RetailEX.Printer-win-x64-v${{ env.APP_VERSION }}.zip
           draft: false
           prerelease: false
           make_latest: true
