@@ -1,0 +1,74 @@
+<?xml version="1.0" encoding="utf-8"?>
+<Report ScriptLanguage="CSharp" TextQuality="Regular" ReportInfo.Created="09/06/2026 20:50:00" ReportInfo.Modified="09/06/2026 20:50:00" ReportInfo.CreatorVersion="2024.1.0.0">
+  <Dictionary>
+    <Parameter Name="CompanyName" DataType="System.String" AsString="RetailEX" />
+    <Parameter Name="ReceiptNo" DataType="System.String" AsString="" />
+    <Parameter Name="Cashier" DataType="System.String" AsString="" />
+    <Parameter Name="OrderNumber" DataType="System.String" AsString="" />
+    <Parameter Name="TableNumber" DataType="System.String" AsString="" />
+    <Parameter Name="CreatedAt" DataType="System.String" AsString="" />
+    <Parameter Name="CustomerName" DataType="System.String" AsString="" />
+    <Parameter Name="CustomerNote" DataType="System.String" AsString="" />
+    <Parameter Name="Subtotal" DataType="System.String" AsString="0,00" />
+    <Parameter Name="DiscountAmount" DataType="System.String" AsString="0,00" />
+    <Parameter Name="Total" DataType="System.String" AsString="0,00" />
+    <Parameter Name="PaidAmount" DataType="System.String" AsString="0,00" />
+    <Parameter Name="RemainingAmount" DataType="System.String" AsString="0,00" />
+    <Parameter Name="Banner" DataType="System.String" AsString="INTERIM BILL" />
+    <TableDataSource Name="OrderItems" ReferenceName="OrderItems" DataType="System.Int32" Enabled="true">
+      <Column Name="Qty" DataType="System.String" />
+      <Column Name="Name" DataType="System.String" />
+      <Column Name="Description" DataType="System.String" />
+      <Column Name="Price" DataType="System.String" />
+      <Column Name="LineTotal" DataType="System.String" />
+      <Column Name="Note" DataType="System.String" />
+      <Column Name="Category" DataType="System.String" />
+    </TableDataSource>
+  </Dictionary>
+  <ReportPage Name="Page1" PaperWidth="80" PaperHeight="320" LeftMargin="2" RightMargin="2" TopMargin="2" BottomMargin="2">
+    <PageHeaderBand Name="PageHeader1" Width="287.28" Height="170.1">
+      <TextObject Name="TextCompany" Width="287.28" Height="22.68" Text="[CompanyName]" HorzAlign="Center" Font="Courier New, 12pt, style=Bold" />
+      <TextObject Name="TextBanner" Top="22.68" Width="287.28" Height="22.68" Text="[Banner]" HorzAlign="Center" Font="Courier New, 11pt, style=Bold" />
+      <LineObject Name="LineDouble" Top="47.25" Width="287.28" Border.Width="2" Border.Color="Black" />
+      <TextObject Name="LblNo" Top="51.03" Width="132.3" Height="15.12" Text="RECEIPT NO" Font="Courier New, 8pt, style=Bold" />
+      <TextObject Name="ValNo" Top="51.03" Left="132.3" Width="154.98" Height="15.12" Text="[ReceiptNo]" HorzAlign="Right" Font="Courier New, 8pt, style=Bold" />
+      <TextObject Name="LblDate" Top="66.15" Width="132.3" Height="15.12" Text="DATE" Font="Courier New, 8pt, style=Bold" />
+      <TextObject Name="ValDate" Top="66.15" Left="132.3" Width="154.98" Height="15.12" Text="[CreatedAt]" HorzAlign="Right" Font="Courier New, 8pt" />
+      <TextObject Name="LblCashier" Top="81.27" Width="132.3" Height="15.12" Text="SERVER" Font="Courier New, 8pt, style=Bold" />
+      <TextObject Name="ValCashier" Top="81.27" Left="132.3" Width="154.98" Height="15.12" Text="[CustomerName]" HorzAlign="Right" Font="Courier New, 8pt" />
+      <TextObject Name="LblTable" Top="96.39" Width="132.3" Height="15.12" Text="TABLE" Font="Courier New, 8pt, style=Bold" />
+      <TextObject Name="ValTable" Top="96.39" Left="132.3" Width="154.98" Height="15.12" Text="[TableNumber]" HorzAlign="Right" Font="Courier New, 10pt, style=Bold" />
+      <LineObject Name="LineDash" Top="113.4" Width="287.28" Border.Style="Dash" Border.Color="Black" />
+      <TextObject Name="ColProduct" Top="117.18" Width="151.2" Height="15.12" Text="Item" Font="Courier New, 8pt, style=Bold" />
+      <TextObject Name="ColQty" Top="117.18" Left="151.2" Width="45.36" Height="15.12" Text="Qty" HorzAlign="Center" Font="Courier New, 8pt, style=Bold" />
+      <TextObject Name="ColAmount" Top="117.18" Left="196.56" Width="90.72" Height="15.12" Text="Amount" HorzAlign="Right" Font="Courier New, 8pt, style=Bold" />
+      <LineObject Name="LineCols" Top="134.19" Width="287.28" Border.Color="Black" />
+    </PageHeaderBand>
+    <DataBand Name="Data1" Top="174.28" Width="287.28" Height="37.8" DataSource="OrderItems" CanGrow="true">
+      <TextObject Name="ItemName" Width="151.2" Height="18.9" Text="[OrderItems.Name]" Font="Courier New, 8pt, style=Bold" />
+      <TextObject Name="ItemQty" Left="151.2" Width="45.36" Height="18.9" Text="[OrderItems.Qty]" HorzAlign="Center" Font="Courier New, 8pt" />
+      <TextObject Name="ItemTotal" Left="196.56" Width="90.72" Height="18.9" Text="[OrderItems.LineTotal]" HorzAlign="Right" Font="Courier New, 8pt, style=Bold" />
+      <TextObject Name="ItemNote" Top="18.9" Width="287.28" Height="15.12" Text="[OrderItems.Note]" CanGrow="true" Font="Courier New, 7pt, style=Italic" />
+    </DataBand>
+    <ReportSummaryBand Name="ReportSummary1" Top="216.08" Width="287.28" Height="198.45">
+      <LineObject Name="LineSum" Width="287.28" Border.Color="Black" />
+      <TextObject Name="LblSub" Top="5.67" Width="170.1" Height="15.12" Text="SUBTOTAL" Font="Courier New, 8pt" />
+      <TextObject Name="ValSub" Top="5.67" Left="170.1" Width="117.18" Height="15.12" Text="[Subtotal]" HorzAlign="Right" Font="Courier New, 8pt" />
+      <TextObject Name="LblDisc" Top="20.79" Width="170.1" Height="15.12" Text="DISCOUNT" Font="Courier New, 8pt" />
+      <TextObject Name="ValDisc" Top="20.79" Left="170.1" Width="117.18" Height="15.12" Text="[DiscountAmount]" HorzAlign="Right" Font="Courier New, 8pt" />
+      <LineObject Name="LineTot" Top="39.69" Width="287.28" Border.Width="2" Border.Color="Black" />
+      <TextObject Name="LblTot" Top="43.47" Width="170.1" Height="22.68" Text="TOTAL" Font="Courier New, 12pt, style=Bold" />
+      <TextObject Name="ValTot" Top="43.47" Left="170.1" Width="117.18" Height="22.68" Text="[Total]" HorzAlign="Right" Font="Courier New, 12pt, style=Bold" />
+      <TextObject Name="LblPay" Top="69.93" Width="287.28" Height="13.23" Text="PAYMENT" Font="Courier New, 8pt, style=Bold" />
+      <TextObject Name="LblPaid" Top="83.16" Width="170.1" Height="15.12" Text="PAID" Font="Courier New, 8pt" />
+      <TextObject Name="ValPaid" Top="83.16" Left="170.1" Width="117.18" Height="15.12" Text="[PaidAmount]" HorzAlign="Right" Font="Courier New, 8pt" />
+      <TextObject Name="LblRem" Top="98.28" Width="170.1" Height="18.9" Text="REMAINING" Font="Courier New, 10pt, style=Bold" />
+      <TextObject Name="ValRem" Top="98.28" Left="170.1" Width="117.18" Height="18.9" Text="[RemainingAmount]" HorzAlign="Right" Font="Courier New, 10pt, style=Bold" />
+      <LineObject Name="LineThanks" Top="120.96" Width="287.28" Border.Style="Dash" Border.Color="Black" />
+      <TextObject Name="TextThanks" Top="126.63" Width="287.28" Height="18.9" Text="Thank You For Choosing Us" HorzAlign="Center" Font="Courier New, 8pt, style=Bold" />
+      <TextObject Name="TextKeep" Top="145.53" Width="287.28" Height="15.12" Text="Please keep this slip." HorzAlign="Center" Font="Courier New, 7pt" />
+      <TextObject Name="TextBarcode" Top="162.54" Width="287.28" Height="15.12" Text="* [ReceiptNo] *" HorzAlign="Center" Font="Courier New, 8pt, style=Bold" />
+      <TextObject Name="TextFoot" Top="177.66" Width="287.28" Height="13.23" Text="RetailEX · 80mm" HorzAlign="Center" Font="Courier New, 7pt" />
+    </ReportSummaryBand>
+  </ReportPage>
+</Report>

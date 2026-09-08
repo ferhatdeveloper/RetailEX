@@ -1,24 +1,9 @@
-## RetailEX PrintServer — ana ignore
 bin/
 obj/
-out/
-publish/
+.vs/
 *.user
 *.suo
-.vs/
-.idea/
-.vscode/
+dist/
+releases/
 *.log
-*.tmp
-
-## Installer payload (build sirasinda uretilir)
-installer/payload/*
-!installer/payload/.gitkeep
-
-## Releases (CI artifact'lar)
-releases/*
-!releases/.gitkeep
-
-## Installer cikti
-installer/output/*
-!installer/output/.gitkeep
+*.zip

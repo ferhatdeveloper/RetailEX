@@ -1,0 +1,38 @@
+<?xml version="1.0" encoding="utf-8"?>
+<Report ScriptLanguage="CSharp" TextQuality="Regular" ReportInfo.Created="03/26/2026 20:07:00" ReportInfo.Modified="03/26/2026 20:07:00" ReportInfo.CreatorVersion="2024.1.0.0">
+  <Dictionary>
+    <Parameter Name="CompanyName" DataType="System.String" AsString="Firma Adi" />
+    <Parameter Name="CreatedAt" DataType="System.String" AsString="" />
+    <Parameter Name="CustomerName" DataType="System.String" AsString="" />
+    <Parameter Name="OrderNumber" DataType="System.String" AsString="" />
+    <Parameter Name="OverallRating" DataType="System.String" AsString="" />
+    <Parameter Name="FoodRating" DataType="System.String" AsString="" />
+    <Parameter Name="ServiceRating" DataType="System.String" AsString="" />
+    <Parameter Name="AmbianceRating" DataType="System.String" AsString="" />
+    <Parameter Name="ValueRating" DataType="System.String" AsString="" />
+    <Parameter Name="Comment" DataType="System.String" AsString="" />
+  </Dictionary>
+  <ReportPage Name="Page1" PaperWidth="80" PaperHeight="200" LeftMargin="2" RightMargin="2" TopMargin="2" BottomMargin="2">
+    <ReportTitleBand Name="ReportTitle1" Width="287.28" Height="236.25">
+      <TextObject Name="Text1" Width="287.28" Height="28.35" Text="[CompanyName]" HorzAlign="Center" Font="Arial, 11pt, style=Bold" />
+      <TextObject Name="Text2" Top="28.35" Width="287.28" Height="18.9" Text="YENI FEEDBACK" HorzAlign="Center" Font="Arial, 10pt, style=Bold" />
+      <LineObject Name="Line1" Top="49.14" Width="287.28" Border.Color="DimGray" />
+      <TextObject Name="Text3" Top="56.7" Width="287.28" Height="18.9" Text="Saat: [CreatedAt]" Font="Arial, 8pt" />
+      <TextObject Name="Text4" Top="75.6" Width="287.28" Height="18.9" Text="Musteri: [CustomerName]" Font="Arial, 8pt" />
+      <TextObject Name="Text5" Top="94.5" Width="287.28" Height="18.9" Text="Siparis No: [OrderNumber]" Font="Arial, 8pt" />
+      <LineObject Name="Line2" Top="115.29" Width="287.28" Border.Color="DimGray" />
+      <TextObject Name="Text6" Top="122.85" Width="151.2" Height="18.9" Text="Genel Puan" Font="Arial, 8pt, style=Bold" />
+      <TextObject Name="Text7" Top="122.85" Left="151.2" Width="136.08" Height="18.9" Text="[OverallRating]/5" HorzAlign="Right" Font="Arial, 8pt, style=Bold" />
+      <TextObject Name="Text8" Top="141.75" Width="151.2" Height="18.9" Text="Yemek" Font="Arial, 8pt" />
+      <TextObject Name="Text9" Top="141.75" Left="151.2" Width="136.08" Height="18.9" Text="[FoodRating]/5" HorzAlign="Right" Font="Arial, 8pt" />
+      <TextObject Name="Text10" Top="160.65" Width="151.2" Height="18.9" Text="Servis" Font="Arial, 8pt" />
+      <TextObject Name="Text11" Top="160.65" Left="151.2" Width="136.08" Height="18.9" Text="[ServiceRating]/5" HorzAlign="Right" Font="Arial, 8pt" />
+      <TextObject Name="Text12" Top="179.55" Width="151.2" Height="18.9" Text="Ortam" Font="Arial, 8pt" />
+      <TextObject Name="Text13" Top="179.55" Left="151.2" Width="136.08" Height="18.9" Text="[AmbianceRating]/5" HorzAlign="Right" Font="Arial, 8pt" />
+      <TextObject Name="Text14" Top="198.45" Width="151.2" Height="18.9" Text="Fiyat/Fayda" Font="Arial, 8pt" />
+      <TextObject Name="Text15" Top="198.45" Left="151.2" Width="136.08" Height="18.9" Text="[ValueRating]/5" HorzAlign="Right" Font="Arial, 8pt" />
+      <LineObject Name="Line3" Top="219.24" Width="287.28" Border.Color="DimGray" />
+      <TextObject Name="Text16" Top="226.8" Width="287.28" Height="47.25" Text="Yorum: [Comment]" CanGrow="true" Font="Arial, 8pt" />
+    </ReportTitleBand>
+  </ReportPage>
+</Report>

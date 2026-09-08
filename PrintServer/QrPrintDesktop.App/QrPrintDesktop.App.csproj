@@ -1,0 +1,52 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <OutputType>WinExe</OutputType>
+    <TargetFramework>net9.0-windows</TargetFramework>
+    <Nullable>enable</Nullable>
+    <UseWindowsForms>true</UseWindowsForms>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <EnableWindowsTargeting>true</EnableWindowsTargeting>
+    <RootNamespace>QrPrintDesktop.App</RootNamespace>
+    <AssemblyName>RetailEX.QrPrint</AssemblyName>
+    <ApplicationTitle>RetailEX Printer</ApplicationTitle>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\QrPrintDesktop.Core\QrPrintDesktop.Core.csproj" />
+    <ProjectReference Include="..\QrPrintDesktop.Service\QrPrintDesktop.Service.csproj">
+      <ReferenceOutputAssembly>false</ReferenceOutputAssembly>
+    </ProjectReference>
+  </ItemGroup>
+
+  <ItemGroup>
+    <None Include="..\Reports\**\*.frx">
+      <Link>Reports\%(RecursiveDir)%(Filename)%(Extension)</Link>
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+    </None>
+    <None Include="..\FastReport*.dll">
+      <Link>%(Filename)%(Extension)</Link>
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+    </None>
+    <None Include="Sounds\**\*.*">
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+    </None>
+    <None Include="..\install-service.ps1">
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+    </None>
+    <None Include="..\uninstall-service.ps1">
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+    </None>
+    <Content Include="Assets\app.ico" Condition="Exists('Assets\app.ico')" />
+  </ItemGroup>
+
+  <Target Name="CopyQrPrintService" AfterTargets="Build">
+    <ItemGroup>
+      <_SvcOut Include="..\QrPrintDesktop.Service\bin\$(Configuration)\net9.0-windows\**\*.*" />
+      <_OrphanSvc Include="$(OutputPath)RetailEX_Printer_Service.exe;$(OutputPath)RetailEX_Printer_Service.dll;$(OutputPath)RetailEX_QrPrint_Service.exe;$(OutputPath)RetailEX_QrPrint_Service.dll" />
+    </ItemGroup>
+    <Copy SourceFiles="@(_SvcOut)" DestinationFolder="$(OutputPath)Service\%(_SvcOut.RecursiveDir)" SkipUnchangedFiles="true" Condition="'@(_SvcOut)' != ''" ContinueOnError="true" />
+    <Delete Files="@(_OrphanSvc)" TreatErrorsAsWarnings="true" />
+  </Target>
+
+</Project>

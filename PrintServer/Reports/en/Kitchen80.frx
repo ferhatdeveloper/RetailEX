@@ -1,0 +1,50 @@
+<?xml version="1.0" encoding="utf-8"?>
+<Report ScriptLanguage="CSharp" TextQuality="Regular" ReportInfo.Created="09/06/2026 20:50:00" ReportInfo.Modified="09/06/2026 20:50:00" ReportInfo.CreatorVersion="2024.1.0.0">
+  <Dictionary>
+    <Parameter Name="CompanyName" DataType="System.String" AsString="RetailEX" />
+    <Parameter Name="KitchenTitle" DataType="System.String" AsString="KITCHEN TICKET" />
+    <Parameter Name="ReceiptNo" DataType="System.String" AsString="" />
+    <Parameter Name="OrderNumber" DataType="System.String" AsString="" />
+    <Parameter Name="TableNumber" DataType="System.String" AsString="" />
+    <Parameter Name="CreatedAt" DataType="System.String" AsString="" />
+    <Parameter Name="CustomerName" DataType="System.String" AsString="" />
+    <Parameter Name="CustomerNote" DataType="System.String" AsString="" />
+    <TableDataSource Name="OrderItems" ReferenceName="OrderItems" DataType="System.Int32" Enabled="true">
+      <Column Name="Qty" DataType="System.String" />
+      <Column Name="Name" DataType="System.String" />
+      <Column Name="Description" DataType="System.String" />
+      <Column Name="Price" DataType="System.String" />
+      <Column Name="LineTotal" DataType="System.String" />
+      <Column Name="Note" DataType="System.String" />
+      <Column Name="Category" DataType="System.String" />
+    </TableDataSource>
+  </Dictionary>
+  <ReportPage Name="Page1" PaperWidth="80" PaperHeight="297" LeftMargin="2" RightMargin="2" TopMargin="2" BottomMargin="2">
+    <PageHeaderBand Name="PageHeader1" Width="287.28" Height="151.2">
+      <TextObject Name="TextDashTop" Width="287.28" Height="11.34" Text="----------------------------------------------" HorzAlign="Center" Font="Courier New, 8pt, style=Bold" />
+      <TextObject Name="TextTitle" Top="12.47" Width="287.28" Height="30.24" Text="[KitchenTitle]" HorzAlign="Center" Font="Courier New, 14pt, style=Bold" />
+      <TextObject Name="TextCompany" Top="42.71" Width="287.28" Height="13.23" Text="[CompanyName]" HorzAlign="Center" Font="Courier New, 8pt" />
+      <LineObject Name="Line1" Top="58.59" Width="287.28" Border.Width="1.5" Border.Color="Black" />
+      <TextObject Name="LblTable" Top="62.37" Width="151.2" Height="17.01" Text="TABLE / SOURCE:" Font="Courier New, 9pt, style=Bold" />
+      <TextObject Name="ValTable" Top="62.37" Left="151.2" Width="136.08" Height="17.01" Text="[TableNumber]" HorzAlign="Right" Font="Courier New, 11pt, style=Bold" />
+      <TextObject Name="LblWaiter" Top="79.38" Width="151.2" Height="15.12" Text="SERVER:" Font="Courier New, 9pt, style=Bold" />
+      <TextObject Name="ValWaiter" Top="79.38" Left="151.2" Width="136.08" Height="15.12" Text="[CustomerName]" HorzAlign="Right" Font="Courier New, 9pt, style=Bold" />
+      <TextObject Name="LblTime" Top="94.5" Width="151.2" Height="15.12" Text="TIME:" Font="Courier New, 9pt, style=Bold" />
+      <TextObject Name="ValTime" Top="94.5" Left="151.2" Width="136.08" Height="15.12" Text="[CreatedAt]" HorzAlign="Right" Font="Courier New, 9pt" />
+      <TextObject Name="ValNote" Top="109.62" Width="287.28" Height="15.12" Text="[CustomerNote]" CanGrow="true" Font="Courier New, 8pt, style=Italic" />
+      <LineObject Name="Line2" Top="126.63" Width="287.28" Border.Style="Dash" Border.Color="Black" />
+      <TextObject Name="ColQty" Top="130.41" Width="56.7" Height="18.9" Text="Qty" HorzAlign="Center" Font="Courier New, 9pt, style=Bold" Border.Lines="All" />
+      <TextObject Name="ColProduct" Top="130.41" Left="56.7" Width="230.58" Height="18.9" Text="Item" Font="Courier New, 9pt, style=Bold" Border.Lines="All" Padding="4, 2, 2, 2" />
+    </PageHeaderBand>
+    <DataBand Name="Data1" Top="155.4" Width="287.28" Height="47.25" DataSource="OrderItems" CanGrow="true">
+      <TextObject Name="ItemQty" Width="56.7" Height="26.46" Text="[OrderItems.Qty]" HorzAlign="Center" VertAlign="Center" Font="Courier New, 14pt, style=Bold" Border.Lines="All" />
+      <TextObject Name="ItemName" Left="56.7" Width="230.58" Height="26.46" Text="[OrderItems.Name]" VertAlign="Center" Font="Courier New, 11pt, style=Bold" Border.Lines="All" Padding="4, 2, 2, 2" />
+      <TextObject Name="ItemDesc" Top="26.46" Width="287.28" Height="20.79" Text="[OrderItems.Note]" CanGrow="true" Font="Courier New, 8pt, style=Italic" Border.Lines="Left, Right, Bottom" Padding="4, 2, 2, 2" />
+    </DataBand>
+    <ReportSummaryBand Name="ReportSummary1" Top="206.65" Width="287.28" Height="49.14">
+      <LineObject Name="Line3" Width="287.28" Border.Style="Dash" Border.Color="Black" />
+      <TextObject Name="TextFooter" Top="7.56" Width="287.28" Height="18.9" Text="— to prepare —" HorzAlign="Center" Font="Courier New, 9pt, style=Bold" />
+      <TextObject Name="TextDashBottom" Top="28.35" Width="287.28" Height="15.12" Text="----------------------------------------------" HorzAlign="Center" Font="Courier New, 8pt" />
+    </ReportSummaryBand>
+  </ReportPage>
+</Report>

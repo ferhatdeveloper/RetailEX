@@ -1,0 +1,22 @@
+<?xml version="1.0" encoding="utf-8"?>
+<Report ScriptLanguage="CSharp" TextQuality="Regular" ReportInfo.Created="03/26/2026 20:06:00" ReportInfo.Modified="03/26/2026 20:06:00" ReportInfo.CreatorVersion="2024.1.0.0">
+  <Dictionary>
+    <Parameter Name="CompanyName" DataType="System.String" AsString="Firma Adi" />
+    <Parameter Name="TableNumber" DataType="System.String" AsString="" />
+    <Parameter Name="RequestType" DataType="System.String" AsString="Garson Cagrisi" />
+    <Parameter Name="Message" DataType="System.String" AsString="" />
+    <Parameter Name="RequestedAt" DataType="System.String" AsString="" />
+    <Parameter Name="CustomerName" DataType="System.String" AsString="" />
+  </Dictionary>
+  <ReportPage Name="Page1" PaperWidth="80" PaperHeight="120" LeftMargin="2" RightMargin="2" TopMargin="2" BottomMargin="2">
+    <ReportTitleBand Name="ReportTitle1" Width="287.28" Height="151.2">
+      <TextObject Name="Text1" Width="287.28" Height="28.35" Text="[CompanyName]" HorzAlign="Center" Font="Arial, 11pt, style=Bold" />
+      <TextObject Name="Text2" Top="28.35" Width="287.28" Height="28.35" Text="GARSON CAGRI" HorzAlign="Center" Font="Arial, 14pt, style=Bold" />
+      <LineObject Name="Line1" Top="58.59" Width="287.28" Border.Color="DimGray" />
+      <TextObject Name="Text3" Top="66.15" Width="287.28" Height="28.35" Text="Masa: [TableNumber]" HorzAlign="Center" Font="Arial, 13pt, style=Bold" />
+      <TextObject Name="Text4" Top="94.5" Width="287.28" Height="18.9" Text="Talep: [RequestType]" HorzAlign="Center" Font="Arial, 9pt, style=Bold" />
+      <TextObject Name="Text5" Top="113.4" Width="287.28" Height="18.9" Text="[Message]" HorzAlign="Center" Font="Arial, 8pt" />
+      <TextObject Name="Text6" Top="132.3" Width="287.28" Height="18.9" Text="[RequestedAt] - [CustomerName]" HorzAlign="Center" Font="Arial, 8pt" />
+    </ReportTitleBand>
+  </ReportPage>
+</Report>
