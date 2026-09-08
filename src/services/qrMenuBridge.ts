@@ -373,7 +373,10 @@ export function registerQrMenuBridgeRoutes(app: {
       }
       try {
         const prod = await ctx.pool.query(
-          `SELECT id, name, sale_price, category_id, image_url, description, is_active
+          `SELECT id, name, COALESCE(price, 0) AS price, category_id,
+                  COALESCE(NULLIF(image_url_cdn, ''), image_url) AS image_url,
+                  COALESCE(NULLIF(description, ''), description_tr) AS description,
+                  is_active
            FROM public.rex_${ctx.firm}_products
            WHERE COALESCE(is_active, true) = true
            ORDER BY name ASC
@@ -382,7 +385,7 @@ export function registerQrMenuBridgeRoutes(app: {
         products = prod.rows.map((p) => ({
           id: p.id,
           name: p.name,
-          price: Number(p.sale_price) || 0,
+          price: Number(p.price) || 0,
           categoryId: p.category_id,
           imageUrl: p.image_url,
           description: p.description,
