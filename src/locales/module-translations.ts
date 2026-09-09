@@ -6151,6 +6151,12 @@ export const moduleTranslations: Record<string, Record<Language, string>> = {
   costCenter: { tr: 'Masraf Merkezi', en: 'Cost Center', ar: 'مركز التكلفة', ku: 'ناوەندی تێچوون' },
   allCategories: { tr: 'Tüm Kategoriler', en: 'All Categories', ar: 'كل الفئات', ku: 'هەموو هاوپۆلەکان' },
   totalExpense: { tr: 'Toplam Gider', en: 'Total Expense', ar: 'إجمالي المصروفات', ku: 'کۆی خەرجی' },
+  excelExportAdminOnly: {
+    tr: 'Excel indirme yalnızca yönetici (admin) için açıktır.',
+    en: 'Excel download is available to administrators only.',
+    ar: 'تنزيل Excel متاح للمسؤولين فقط.',
+    ku: 'داگرتنی Excel تەنها بۆ بەڕێوەبەر (admin) کراوەیە.',
+  },
   expenseFilteredTotal: { tr: 'Filtrelenmiş toplam gider', en: 'Filtered total expense', ar: 'إجمالي المصروفات المصفاة', ku: 'کۆی خەرجیی پاڵاوتنکراو' },
   expenseFilterDateRange: { tr: '{from} – {to}', en: '{from} – {to}', ar: '{from} – {to}', ku: '{from} – {to}' },
   expenseFilterAllRecords: { tr: 'Tüm kayıtlar', en: 'All records', ar: 'جميع السجلات', ku: 'هەموو تۆمارەکان' },

@@ -5404,11 +5404,24 @@ export const beautyService = {
         if (!/^\d{4}-\d{2}-\d{2}$/.test(start) || !/^\d{4}-\d{2}-\d{2}$/.test(end)) return empty;
 
         const apts = await beautyService.getAppointmentsInRange(start, end);
-        const spTable = postgres.getCardTableName('beauty_specialists', 'beauty');
-        const { rows: spRows } = await postgres.query<{ id: string; name: string }>(
-            `SELECT id::text AS id, name FROM ${spTable}`,
-        );
-        const spNames = new Map(spRows.map((r) => [String(r.id), String(r.name ?? '').trim() || '—']));
+        const roster = await beautyService.getSpecialists().catch(() => [] as Awaited<ReturnType<typeof beautyService.getSpecialists>>);
+        const spNames = new Map<string, string>();
+        for (const sp of roster) {
+            const id = String(sp.id ?? '').trim();
+            if (id) spNames.set(id, String(sp.name ?? '').trim() || '—');
+        }
+        try {
+            const spTable = postgres.getCardTableName('beauty_specialists', 'beauty');
+            const { rows: spRows } = await postgres.query<{ id: string; name: string }>(
+                `SELECT id::text AS id, name FROM ${spTable}`,
+            );
+            for (const r of spRows) {
+                const id = String(r.id);
+                if (!spNames.has(id)) spNames.set(id, String(r.name ?? '').trim() || '—');
+            }
+        } catch {
+            /* roster yeterli */
+        }
 
         const parseShots = (raw: string | null | undefined): number => {
             const s = String(raw ?? '').trim();
@@ -5795,6 +5808,38 @@ export const beautyService = {
             product_commission: Number(r.product_commission) || 0,
             total_commission: Number(r.total_commission) || 0,
         }));
+
+        // Tüm aktif personeli (uzman/kullanıcı) listede göster; cirosu olmayanlar 0 satır.
+        try {
+            const roster = await beautyService.getSpecialists();
+            const byId = new Map(normalized.map((r) => [r.specialist_id, r]));
+            for (const sp of roster) {
+                const id = String(sp.id ?? '').trim();
+                if (!id || byId.has(id)) continue;
+                if (sp.is_active === false) continue;
+                const zero = {
+                    specialist_id: id,
+                    name: String(sp.name ?? '').trim() || '—',
+                    service_revenue: 0,
+                    service_commission: 0,
+                    service_rate_effective: 0,
+                    product_revenue: 0,
+                    product_commission: 0,
+                    product_rate_effective: 0,
+                    total_revenue: 0,
+                    total_commission: 0,
+                    total_transactions: 0,
+                };
+                normalized.push(zero);
+                byId.set(id, zero);
+            }
+            normalized.sort((a, b) => {
+                if (b.total_commission !== a.total_commission) return b.total_commission - a.total_commission;
+                return a.name.localeCompare(b.name, 'tr');
+            });
+        } catch (e) {
+            console.warn('[beautyService] getCommissionReport roster merge:', e);
+        }
 
         return { rows: normalized, history_rows: historyRows, totals };
     },

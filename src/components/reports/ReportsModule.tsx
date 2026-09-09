@@ -6865,7 +6865,9 @@ export function ReportsModule({
             {selectedTab === 'earnings-by-project' && <EarningsByProjectReport />}
             {selectedTab === 'cash-ledger' && <CashLedgerReport />}
             {selectedTab === 'contact-account-legacy' && <ContactAccountLegacyReport />}
-            {selectedTab === 'staff-attendance' && <StaffAttendanceReport />}
+            {selectedTab === 'staff-attendance' && (
+              <StaffAttendanceReport excelAdminOnly={businessType === 'beauty'} />
+            )}
             {selectedTab === 'invoice-items-detail' && <InvoiceItemsDetailReport />}
             {selectedTab === 'check-tracking' && <ChequeTrackingReport />}
 

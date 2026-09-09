@@ -9,17 +9,18 @@
  *  - Yıl/ay filtresi tek tablo gösterir; birden fazla ay seçilmez.
  *  - "1" (var) → maaş gün sayısına +1; "0" (yok) → hak kazanmaz.
  */
-import { useCallback, useEffect, useMemo, useState } from 'react';
-import { Download, Loader2, RefreshCw } from 'lucide-react';
-import { toast } from 'sonner';
-import { Select } from 'antd';
 import { useLanguage } from '../../contexts/LanguageContext';
 import { useTheme } from '../../contexts/ThemeContext';
 import { useFirmaDonem } from '../../contexts/FirmaDonemContext';
+import { usePermission } from '../../shared/hooks/usePermission';
 import { formatNumber } from '../../utils/formatNumber';
 import { getReportingCurrency } from '../../utils/currency';
 import { erpReportsAPI } from '../../services/api/erpReports';
 import { beautyService } from '../../services/beautyService';
+import { toast } from 'sonner';
+import { Select } from 'antd';
+import { Download, Loader2, RefreshCw } from 'lucide-react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
 
 type SelectOption = { value: string; label: string };
 
@@ -115,11 +116,18 @@ function getDaysInMonth(year: number, month: number): number {
   return new Date(year, month, 0).getDate();
 }
 
-export function StaffAttendanceReport() {
+export function StaffAttendanceReport({
+  excelAdminOnly = false,
+}: {
+  /** Güzellik kabuğu / güzellik raporlarında Excel yalnızca admin */
+  excelAdminOnly?: boolean;
+} = {}) {
   const { tm } = useLanguage();
   const { darkMode } = useTheme();
   const { selectedFirm } = useFirmaDonem();
+  const { isAdmin } = usePermission();
   const currency = getReportingCurrency();
+  const canExportExcel = !excelAdminOnly || isAdmin();
 
   const now = new Date();
   const [year, setYear] = useState<number>(now.getFullYear());
@@ -194,14 +202,26 @@ export function StaffAttendanceReport() {
   const load = useCallback(async () => {
     setLoading(true);
     try {
-      // erpReportsAPI.getStaffAttendance şu anda staff_attendance tablosu yoksa [] döner;
-      // kullanıcı yine de API'yi çağıracak; staff listesini ayrıca yüklüyoruz.
       const raw = await erpReportsAPI.getStaffAttendance({
         year,
         month,
         staffIds: staffIds.length > 0 ? staffIds : undefined,
       });
-      const data = (Array.isArray(raw) ? raw : []) as unknown as StaffAttendanceRow[];
+      let data = (Array.isArray(raw) ? raw : []) as unknown as StaffAttendanceRow[];
+      // Yoklama satırı yoksa bile personel listesini tabloya yaz (boş günler).
+      if (data.length === 0 && staffOptions.length > 0) {
+        const dim = getDaysInMonth(year, month);
+        data = staffOptions
+          .filter((o) => (staffIds.length === 0 ? true : staffIds.includes(o.value)))
+          .map((o) => ({
+            staffId: o.value,
+            staffName: o.label,
+            department: '',
+            salary: 0,
+            days: Array.from({ length: Math.max(dim, 31) }, () => null as AttendanceStatus),
+            extraPayment: 0,
+          }));
+      }
       setRows(data);
     } catch (err: unknown) {
       const msg = err instanceof Error ? err.message : String(err);
@@ -211,7 +231,7 @@ export function StaffAttendanceReport() {
     } finally {
       setLoading(false);
     }
-  }, [year, month, staffIds]);
+  }, [year, month, staffIds, staffOptions]);
 
   useEffect(() => {
     void load();
@@ -301,20 +321,24 @@ export function StaffAttendanceReport() {
       subtitle={tm('rprStaffAttendanceSubtitle') || 'Aylık geliş tablosu — VIVA SOLAR personel'}
       loading={loading}
       onRefresh={() => void load()}
-      onExport={() => {
-        const header = ['No', 'İsim', 'Departman', 'Maaş'];
-        for (let d = 1; d <= daysInMonth; d++) header.push(`Gün ${d}`);
-        header.push('Toplam Gün', 'Toplam Maaş', 'Ek Ödeme', 'Brüt Hak');
-        const out = enriched.map((r, i) => {
-          const row: string[] = [String(i + 1), r.staffName, r.department, String(r.salary)];
-          for (let d = 0; d < daysInMonth; d++) {
-            row.push(r.days[d] == null ? '' : String(r.days[d]));
-          }
-          row.push(String(r.totalDays), String(r.totalSalary), String(r.extraPayment), String(r.gross));
-          return row;
-        });
-        exportCsv(`pdks_${year}_${String(month).padStart(2, '0')}`, header, out);
-      }}
+      onExport={
+        canExportExcel
+          ? () => {
+              const header = ['No', 'İsim', 'Departman', 'Maaş'];
+              for (let d = 1; d <= daysInMonth; d++) header.push(`Gün ${d}`);
+              header.push('Toplam Gün', 'Toplam Maaş', 'Ek Ödeme', 'Brüt Hak');
+              const out = enriched.map((r, i) => {
+                const row: string[] = [String(i + 1), r.staffName, r.department, String(r.salary)];
+                for (let d = 0; d < daysInMonth; d++) {
+                  row.push(r.days[d] == null ? '' : String(r.days[d]));
+                }
+                row.push(String(r.totalDays), String(r.totalSalary), String(r.extraPayment), String(r.gross));
+                return row;
+              });
+              exportCsv(`pdks_${year}_${String(month).padStart(2, '0')}`, header, out);
+            }
+          : undefined
+      }
       filters={
         <div className="flex flex-wrap items-end gap-2">
           <div className="flex flex-col gap-1">

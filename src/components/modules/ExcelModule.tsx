@@ -13,6 +13,7 @@ import {
   TrendingUp, ArrowRightLeft
 } from 'lucide-react';
 import { useLanguage } from '../../contexts/LanguageContext';
+import { usePermission } from '../../shared/hooks/usePermission';
 import { productAPI } from '../../services/api/products';
 import { customerAPI } from '../../services/api/customers';
 import { supplierAPI } from '../../services/api/suppliers';
@@ -2003,6 +2004,7 @@ const TABS: TabConfig[] = [
 
 export function ExcelModule() {
   const { tm } = useLanguage();
+  const { isAdmin } = usePermission();
   const loadProducts = useProductStore((s) => s.loadProducts);
   const loadCustomers = useCustomerStore((s) => s.loadCustomers);
   const [activeTab, setActiveTab] = useState<EntityType>('products');
@@ -2063,6 +2065,11 @@ export function ExcelModule() {
   // Dışa aktar
   const handleExport = useCallback(async () => {
     if (!tab.exportFn) return;
+    const isBeautyEntity = tab.id === 'beauty-appointments' || tab.id === 'beauty-sales';
+    if (isBeautyEntity && !isAdmin()) {
+      showNotification({ type: 'error', message: tm('excelExportAdminOnly') });
+      return;
+    }
     setIsLoading(true);
     showNotification({ type: 'loading', message: `${tm(tab.label as any) || tab.label} dışa aktarılıyor...` }, false);
     try {
@@ -2077,7 +2084,7 @@ export function ExcelModule() {
     } finally {
       setIsLoading(false);
     }
-  }, [tab, showNotification]);
+  }, [tab, showNotification, isAdmin, tm]);
 
   // İçe aktar
   const runImportWithRows = useCallback(async (rows: any[]) => {
@@ -2522,14 +2529,20 @@ export function ExcelModule() {
                 <div className="bg-blue-50 dark:bg-blue-900/10 rounded-lg p-3 text-xs text-blue-700 dark:text-blue-300">
                   {tm('exportDataWarning')}
                 </div>
-                <button
-                  onClick={handleExport}
-                  disabled={isLoading || !tab.exportFn}
-                  className="w-full flex items-center justify-center gap-2 px-4 py-2.5 bg-blue-600 hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed text-white text-sm font-medium rounded-lg transition-colors"
-                >
-                  {isLoading ? <Loader2 className="w-4 h-4 animate-spin" /> : <Download className="w-4 h-4" />}
-                  {tm(tab.label as any) || tab.label}{tm('exportBtn')}
-                </button>
+                {(tab.id === 'beauty-appointments' || tab.id === 'beauty-sales') && !isAdmin() ? (
+                  <div className="rounded-lg border border-amber-200 bg-amber-50 dark:bg-amber-900/20 dark:border-amber-800 p-3 text-xs font-medium text-amber-800 dark:text-amber-200">
+                    {tm('excelExportAdminOnly')}
+                  </div>
+                ) : (
+                  <button
+                    onClick={handleExport}
+                    disabled={isLoading || !tab.exportFn}
+                    className="w-full flex items-center justify-center gap-2 px-4 py-2.5 bg-blue-600 hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed text-white text-sm font-medium rounded-lg transition-colors"
+                  >
+                    {isLoading ? <Loader2 className="w-4 h-4 animate-spin" /> : <Download className="w-4 h-4" />}
+                    {tm(tab.label as any) || tab.label}{tm('exportBtn')}
+                  </button>
+                )}
               </div>
             </div>
 

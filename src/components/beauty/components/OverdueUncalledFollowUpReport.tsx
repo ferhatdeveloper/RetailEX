@@ -4,6 +4,7 @@ import { toast } from 'sonner';
 import { beautyService } from '../../../services/beautyService';
 import { useLanguage } from '../../../contexts/LanguageContext';
 import { useTheme } from '../../../contexts/ThemeContext';
+import { usePermission } from '../../../shared/hooks/usePermission';
 import { formatLocalYmd } from '../../../utils/dateLocal';
 import { localTodayDateKey } from '../../../utils/localCalendarDate';
 import type { BeautyFollowUpReminder } from '../../../types/beauty';
@@ -45,6 +46,8 @@ function subjectLabel(r: BeautyFollowUpReminder): string {
 export function OverdueUncalledFollowUpReport() {
   const { tm } = useLanguage();
   const { darkMode } = useTheme();
+  const { isAdmin } = usePermission();
+  const canExportExcel = isAdmin();
   const initial = useMemo(() => defaultRange(), []);
   const [startYmd, setStartYmd] = useState(initial.start);
   const [endYmd, setEndYmd] = useState(initial.end);
@@ -106,6 +109,10 @@ export function OverdueUncalledFollowUpReport() {
     : 'border-gray-200 bg-white text-gray-700';
 
   const handleExport = () => {
+    if (!canExportExcel) {
+      toast.error(tm('excelExportAdminOnly'));
+      return;
+    }
     exportCsv(
       `gunu-gecmis-aranmayanlar_${startYmd}_${endYmd}`,
       [
@@ -181,15 +188,17 @@ export function OverdueUncalledFollowUpReport() {
               {loading ? <Loader2 size={14} className="animate-spin" /> : <RefreshCw size={14} />}
               {loading ? tm('bLoading') : tm('bRunReport')}
             </button>
-            <button
-              type="button"
-              onClick={handleExport}
-              disabled={rows.length === 0}
-              className="h-10 px-4 rounded-xl bg-emerald-600 hover:bg-emerald-700 disabled:opacity-40 text-white text-xs font-extrabold flex items-center gap-2"
-            >
-              <Download size={14} />
-              Excel / CSV
-            </button>
+            {canExportExcel && (
+              <button
+                type="button"
+                onClick={handleExport}
+                disabled={rows.length === 0}
+                className="h-10 px-4 rounded-xl bg-emerald-600 hover:bg-emerald-700 disabled:opacity-40 text-white text-xs font-extrabold flex items-center gap-2"
+              >
+                <Download size={14} />
+                Excel / CSV
+              </button>
+            )}
           </div>
         </div>
       </div>
