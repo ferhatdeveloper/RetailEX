@@ -59,7 +59,8 @@ x-postgrest-env: &postgrest-env
   PGRST_SERVER_CORS_ALLOWED_ORIGINS: "*"
   # Küme max_connections paylaşılır; kiracı başına 10 varsayılan havuz 15 örnekte 150 bağlantı eder.
   PGRST_DB_POOL: "4"
-  PGRST_DB_POOL_ACQUISITION_TIMEOUT: "8"
+  # 8s kısa kalınca geçici yükte PGRST003 görülür; 15s tüm kiracılar için daha toleranslı.
+  PGRST_DB_POOL_ACQUISITION_TIMEOUT: "15"
 
 x-sync-env: &sync-env
   BIND_ADDRESS: 0.0.0.0:8080
@@ -236,8 +237,31 @@ services:
     environment:
       <<: *postgrest-env
       PGRST_DB_URI: postgres://postgres:${POSTGRES_PASSWORD}@postgres:5432/aqua_beauty
+      # Yoğun kiracı: daha geniş havuz + uzun acquisition; REV değişince compose recreate olur.
+      PGRST_DB_POOL: "8"
+      PGRST_DB_POOL_ACQUISITION_TIMEOUT: "20"
+      RETAILEX_PGRST_REV: "2026-09-09-aqua-pool-fix"
     ports:
       - "${POSTGREST_PORT_AQUA:-3004}:3000"
+    networks:
+      - berqenas_net
+
+  # PGRST003 (hasql pool wedge) — aqua önce; docker restart ile iyileştirir.
+  postgrest_pool_watchdog:
+    image: docker:27-cli
+    container_name: retailex_postgrest_pool_watchdog
+    restart: always
+    depends_on:
+      - postgrest_aqua_beauty
+    environment:
+      WATCHDOG_INTERVAL_SEC: "45"
+      WATCHDOG_HTTP_TIMEOUT_SEC: "12"
+      WATCHDOG_COOLDOWN_SEC: "120"
+      WATCHDOG_TARGETS: "saas_postgrest_aqua_beauty|postgrest_aqua_beauty:3000"
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock
+      - ./database/docker/postgrest-pool-watchdog.sh:/watchdog.sh:ro
+    entrypoint: ["/bin/sh", "/watchdog.sh"]
     networks:
       - berqenas_net
 

@@ -48,6 +48,19 @@ for url in \
   echo "$code  $url"
 done
 
+section "PostgREST aqua (PGRST003 kontrol)"
+aqua_body=$(curl -sS --max-time 12 "http://127.0.0.1:${POSTGREST_PORT_AQUA:-3004}/" 2>/dev/null || echo "ERR")
+if echo "$aqua_body" | grep -q PGRST003; then
+  echo "FAIL: aqua PostgREST PGRST003 — havuz sıkışmış"
+  echo "  → docker restart saas_postgrest_aqua_beauty"
+  echo "  → veya POSTGRES_PASSWORD='...' bash database/scripts/dokploy-redeploy-aqua-postgrest.sh"
+elif echo "$aqua_body" | grep -qE 'swagger|openapi|paths'; then
+  echo "OK: aqua PostgREST yanıt veriyor"
+else
+  echo "UYARI: aqua yanıtı beklenmedik: $(echo "$aqua_body" | head -c 160)"
+fi
+docker ps --format '{{.Names}} {{.Status}}' 2>/dev/null | grep -E 'postgrest_aqua|postgrest_pool_watchdog' || true
+
 section "Son retailex_frontend log (40 satır)"
 docker logs retailex_frontend --tail 40 2>&1 || echo "retailex_frontend yok"
 

@@ -15,7 +15,7 @@ x-postgrest-env: &postgrest-env
   PGRST_SERVER_PORT: "3000"
   PGRST_SERVER_CORS_ALLOWED_ORIGINS: "*"
   PGRST_DB_POOL: "4"
-  PGRST_DB_POOL_ACQUISITION_TIMEOUT: "8"
+  PGRST_DB_POOL_ACQUISITION_TIMEOUT: "15"
 
 services:
   postgrest_merkez:
@@ -55,6 +55,9 @@ services:
     environment:
       <<: *postgrest-env
       PGRST_DB_URI: postgres://postgres:${POSTGRES_PASSWORD:-root_password_2026}@postgres:5432/aqua_beauty
+      PGRST_DB_POOL: "8"
+      PGRST_DB_POOL_ACQUISITION_TIMEOUT: "20"
+      RETAILEX_PGRST_REV: "2026-09-09-aqua-pool-fix"
     ports:
       - "0.0.0.0:3004:3000"
     networks:

@@ -181,6 +181,7 @@ localStorage.removeItem('exretail_selected_tenant');
 | `42P01` — `public.firms` does not exist | Boş DB veya dump import edilmedi | §2 dump import |
 | `schema "wms" does not exist` | Grant, dump’tan önce çalıştırıldı | Önce dump; postgrest script şemaları `IF NOT EXISTS` ile de oluşturur |
 | `PGRST202` — `verify_login` bulunamadı | RPC yok veya cache eski | §3 + `docker restart saas_postgrest_*` |
+| `PGRST003` — Timed out acquiring connection from connection pool | PostgREST hasql havuzu sıkışmış (DB sağlıklı olsa bile) | `docker restart saas_postgrest_<kiracı>` veya `POSTGRES_PASSWORD='...' bash database/scripts/dokploy-redeploy-aqua-postgrest.sh`; `postgrest_pool_watchdog` otomatik toparlar |
 | `42501` / 401 | `anon` yetkisi yok | §3 tekrar |
 | `{"ok":false,"error":"not_found"}` (düz JSON) | Caddy yolu; istek PostgREST’e gitmiyor | `database/API_PATH_404_CADDY_NOT_FOUND.md` |
 | `pg_query` timeout | SQL fallback; köprü DB’ye ulaşamıyor | PostgREST’i düzeltin; `rest_api` modunda asıl yol API |
