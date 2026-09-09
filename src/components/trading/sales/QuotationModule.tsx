@@ -175,7 +175,7 @@ function invoiceToQuotation(inv: Invoice): Quotation {
 // ===== COMPONENT =====
 
 export function QuotationModule() {
-  const { t } = useLanguage();
+  const { tm } = useLanguage();
   const { selectedFirma, selectedDonem } = useFirmaDonem();
 
   // State
@@ -233,36 +233,36 @@ export function QuotationModule() {
   // Status label helper
   const getStatusLabel = (status: QuotationStatus) => {
     const labels = {
-      'DRAFT': 'Taslak',
-      'SENT': 'Gönderildi',
-      'VIEWED': 'Görüntülendi',
-      'ACCEPTED': 'Kabul Edildi',
-      'REJECTED': 'Reddedildi',
-      'EXPIRED': 'Süresi Doldu',
-      'CONVERTED': 'Dönüştürüldü'
+      'DRAFT': tm('quotStatusDraft'),
+      'SENT': tm('quotStatusSent'),
+      'VIEWED': tm('quotStatusViewed'),
+      'ACCEPTED': tm('quotStatusAccepted'),
+      'REJECTED': tm('quotStatusRejected'),
+      'EXPIRED': tm('quotStatusExpired'),
+      'CONVERTED': tm('quotStatusConverted')
     };
     return labels[status] || status;
   };
 
   // Handle actions
   const handleConvertToOrder = (quotationId: string) => {
-    if (confirm('Bu teklifi siparişe dönüştürmek istediğinizden emin misiniz?')) {
-      toast.success('Teklif siparişe dönüştürüldü');
+    if (confirm(tm('quotConfirmToOrder'))) {
+      toast.success(tm('quotToastToOrder'));
     }
   };
 
   const handleConvertToInvoice = (quotationId: string) => {
-    if (confirm('Bu teklifi faturaya dönüştürmek istediğinizden emin misiniz?')) {
-      toast.success('Teklif faturaya dönüştürüldü');
+    if (confirm(tm('quotConfirmToInvoice'))) {
+      toast.success(tm('quotToastToInvoice'));
     }
   };
 
   const handleSendQuotation = (quotationId: string) => {
-    toast.success('Teklif müşteriye e-posta ile gönderildi');
+    toast.success(tm('quotToastSent'));
   };
 
   const handleDuplicate = (quotationId: string) => {
-    toast.success('Teklif kopyalandı');
+    toast.success(tm('quotToastCopied'));
   };
 
   return (
@@ -273,9 +273,9 @@ export function QuotationModule() {
           <div className="flex items-center gap-3">
             <FileText className="w-6 h-6" />
             <div>
-              <h2 className="text-xl font-semibold">Teklif & Proforma Yönetimi</h2>
+              <h2 className="text-xl font-semibold">{tm('quotTitle')}</h2>
               <p className="text-sm text-cyan-100 mt-0.5">
-                Fiyat teklifleri, proforma faturalar ve onay süreçleri
+                {tm('quotSubtitle')}
               </p>
             </div>
           </div>
@@ -284,7 +284,7 @@ export function QuotationModule() {
             className="flex items-center gap-2 px-4 py-2 bg-white text-cyan-700 rounded-lg hover:bg-cyan-50 transition-colors"
           >
             <Plus className="w-5 h-5" />
-            Yeni Teklif
+            {tm('quotNew')}
           </button>
         </div>
       </div>
@@ -294,7 +294,7 @@ export function QuotationModule() {
         <div className="bg-white rounded-lg p-4 border-2 border-cyan-200">
           <div className="flex items-center justify-between">
             <div>
-              <p className="text-sm text-gray-600">Teklifler</p>
+              <p className="text-sm text-gray-600">{tm('quotQuotations')}</p>
               <p className="text-2xl font-semibold text-cyan-600 mt-1">{summary.totalQuotations}</p>
             </div>
             <FileText className="w-10 h-10 text-cyan-600 opacity-20" />
@@ -304,7 +304,7 @@ export function QuotationModule() {
         <div className="bg-white rounded-lg p-4 border-2 border-purple-200">
           <div className="flex items-center justify-between">
             <div>
-              <p className="text-sm text-gray-600">Proformalar</p>
+              <p className="text-sm text-gray-600">{tm('quotProformas')}</p>
               <p className="text-2xl font-semibold text-purple-600 mt-1">{summary.totalProformas}</p>
             </div>
             <FileText className="w-10 h-10 text-purple-600 opacity-20" />
@@ -314,7 +314,7 @@ export function QuotationModule() {
         <div className="bg-white rounded-lg p-4 border-2 border-blue-200">
           <div className="flex items-center justify-between">
             <div>
-              <p className="text-sm text-gray-600">Onay Bekleyen</p>
+              <p className="text-sm text-gray-600">{tm('quotPendingApproval')}</p>
               <p className="text-2xl font-semibold text-blue-600 mt-1">{summary.pendingApproval}</p>
             </div>
             <Clock className="w-10 h-10 text-blue-600 opacity-20" />
@@ -324,7 +324,7 @@ export function QuotationModule() {
         <div className="bg-white rounded-lg p-4 border-2 border-green-200">
           <div className="flex items-center justify-between">
             <div>
-              <p className="text-sm text-gray-600">Kabul Edilen</p>
+              <p className="text-sm text-gray-600">{tm('quotAccepted')}</p>
               <p className="text-2xl font-semibold text-green-600 mt-1">{summary.acceptedQuotes}</p>
             </div>
             <CheckCircle2 className="w-10 h-10 text-green-600 opacity-20" />
@@ -334,7 +334,7 @@ export function QuotationModule() {
         <div className="bg-white rounded-lg p-4 border-2 border-gray-200">
           <div className="flex items-center justify-between">
             <div>
-              <p className="text-sm text-gray-600">Toplam Tutar</p>
+              <p className="text-sm text-gray-600">{tm('totalAmount')}</p>
               <p className="text-xl font-semibold text-gray-900 mt-1">
                 {summary.totalValue.toLocaleString('tr-TR')} IQD
               </p>
@@ -352,7 +352,7 @@ export function QuotationModule() {
               type="text"
               value={searchQuery}
               onChange={(e) => setSearchQuery(e.target.value)}
-              placeholder="Teklif no veya müşteri adı ara..."
+              placeholder={tm('quotSearchPh')}
               className="w-full pl-10 pr-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-cyan-500 focus:border-cyan-500"
             />
           </div>
@@ -362,9 +362,9 @@ export function QuotationModule() {
             onChange={(e) => setFilterType(e.target.value as any)}
             className="px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-cyan-500"
           >
-            <option value="ALL">Tüm Tipler</option>
-            <option value="QUOTATION">Teklif</option>
-            <option value="PROFORMA">Proforma</option>
+            <option value="ALL">{tm('quotAllTypes')}</option>
+            <option value="QUOTATION">{tm('quotTypeQuote')}</option>
+            <option value="PROFORMA">{tm('quotTypeProforma')}</option>
           </select>
 
           <select
@@ -372,12 +372,12 @@ export function QuotationModule() {
             onChange={(e) => setFilterStatus(e.target.value as any)}
             className="px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-cyan-500"
           >
-            <option value="ALL">Tüm Durumlar</option>
-            <option value="DRAFT">Taslak</option>
-            <option value="SENT">Gönderildi</option>
-            <option value="ACCEPTED">Kabul Edildi</option>
-            <option value="REJECTED">Reddedildi</option>
-            <option value="EXPIRED">Süresi Doldu</option>
+            <option value="ALL">{tm('quotAllStatuses')}</option>
+            <option value="DRAFT">{tm('quotStatusDraft')}</option>
+            <option value="SENT">{tm('quotStatusSent')}</option>
+            <option value="ACCEPTED">{tm('quotStatusAccepted')}</option>
+            <option value="REJECTED">{tm('quotStatusRejected')}</option>
+            <option value="EXPIRED">{tm('quotStatusExpired')}</option>
           </select>
         </div>
       </div>
@@ -388,14 +388,14 @@ export function QuotationModule() {
           <table className="w-full">
             <thead>
               <tr className="bg-gray-50 border-b">
-                <th className="px-4 py-3 text-left text-xs font-medium text-gray-700 uppercase">Teklif No</th>
-                <th className="px-4 py-3 text-left text-xs font-medium text-gray-700 uppercase">Tip</th>
-                <th className="px-4 py-3 text-left text-xs font-medium text-gray-700 uppercase">Müşteri</th>
-                <th className="px-4 py-3 text-left text-xs font-medium text-gray-700 uppercase">Tarih</th>
-                <th className="px-4 py-3 text-left text-xs font-medium text-gray-700 uppercase">Geçerlilik</th>
-                <th className="px-4 py-3 text-right text-xs font-medium text-gray-700 uppercase">Tutar</th>
-                <th className="px-4 py-3 text-left text-xs font-medium text-gray-700 uppercase">Durum</th>
-                <th className="px-4 py-3 text-center text-xs font-medium text-gray-700 uppercase">İşlemler</th>
+                <th className="px-4 py-3 text-left text-xs font-medium text-gray-700 uppercase">{tm('quotColNo')}</th>
+                <th className="px-4 py-3 text-left text-xs font-medium text-gray-700 uppercase">{tm('quotColType')}</th>
+                <th className="px-4 py-3 text-left text-xs font-medium text-gray-700 uppercase">{tm('quotColCustomer')}</th>
+                <th className="px-4 py-3 text-left text-xs font-medium text-gray-700 uppercase">{tm('quotColDate')}</th>
+                <th className="px-4 py-3 text-left text-xs font-medium text-gray-700 uppercase">{tm('quotColValidity')}</th>
+                <th className="px-4 py-3 text-right text-xs font-medium text-gray-700 uppercase">{tm('quotColAmount')}</th>
+                <th className="px-4 py-3 text-left text-xs font-medium text-gray-700 uppercase">{tm('quotColStatus')}</th>
+                <th className="px-4 py-3 text-center text-xs font-medium text-gray-700 uppercase">{tm('quotColActions')}</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-gray-200">
@@ -415,7 +415,7 @@ export function QuotationModule() {
                     <td className="px-4 py-3">
                       <span className={`inline-flex items-center px-2 py-1 rounded text-xs font-medium ${quot.quotation_type === 'QUOTATION' ? 'bg-cyan-100 text-cyan-700' : 'bg-purple-100 text-purple-700'
                         }`}>
-                        {quot.quotation_type === 'QUOTATION' ? 'Teklif' : 'Proforma'}
+                        {quot.quotation_type === 'QUOTATION' ? tm('quotTypeQuote') : tm('quotTypeProforma')}
                       </span>
                     </td>
                     <td className="px-4 py-3">
@@ -447,7 +447,7 @@ export function QuotationModule() {
                         </span>
                         {quot.converted_to && (
                           <span className="text-xs text-gray-500">
-                            → {quot.converted_to === 'ORDER' ? 'Sipariş' : 'Fatura'}: {quot.converted_document_no}
+                            → {quot.converted_to === 'ORDER' ? tm('quotConvertOrder') : tm('quotConvertInvoice')}: {quot.converted_document_no}
                           </span>
                         )}
                       </div>
@@ -458,7 +458,7 @@ export function QuotationModule() {
                           <button
                             onClick={() => handleSendQuotation(quot.id)}
                             className="p-1 text-blue-600 hover:bg-blue-50 rounded"
-                            title="Gönder"
+                            title={tm('quotSend')}
                           >
                             <Send className="w-4 h-4" />
                           </button>
@@ -468,14 +468,14 @@ export function QuotationModule() {
                             <button
                               onClick={() => handleConvertToOrder(quot.id)}
                               className="p-1 text-green-600 hover:bg-green-50 rounded"
-                              title="Siparişe Dönüştür"
+                              title={tm('quotToOrder')}
                             >
                               <ArrowRight className="w-4 h-4" />
                             </button>
                             <button
                               onClick={() => handleConvertToInvoice(quot.id)}
                               className="p-1 text-purple-600 hover:bg-purple-50 rounded"
-                              title="Faturaya Dönüştür"
+                              title={tm('quotToInvoice')}
                             >
                               <FileText className="w-4 h-4" />
                             </button>
@@ -483,26 +483,26 @@ export function QuotationModule() {
                         )}
                         <button
                           className="p-1 text-gray-600 hover:bg-gray-50 rounded"
-                          title="Yazdır"
+                          title={tm('print')}
                         >
                           <Printer className="w-4 h-4" />
                         </button>
                         <button
                           onClick={() => handleDuplicate(quot.id)}
                           className="p-1 text-orange-600 hover:bg-orange-50 rounded"
-                          title="Kopyala"
+                          title={tm('copy')}
                         >
                           <Copy className="w-4 h-4" />
                         </button>
                         <button
                           className="p-1 text-cyan-600 hover:bg-cyan-50 rounded"
-                          title="Düzenle"
+                          title={tm('edit')}
                         >
                           <Edit className="w-4 h-4" />
                         </button>
                         <button
                           className="p-1 text-red-600 hover:bg-red-50 rounded"
-                          title="Sil"
+                          title={tm('delete')}
                         >
                           <Trash2 className="w-4 h-4" />
                         </button>
@@ -517,7 +517,7 @@ export function QuotationModule() {
           {filteredQuotations.length === 0 && (
             <div className="text-center py-12 text-gray-500">
               <FileText className="w-12 h-12 mx-auto mb-3 opacity-30" />
-              <p>Kayıt bulunamadı</p>
+              <p>{tm('noRecordFound')}</p>
             </div>
           )}
         </div>

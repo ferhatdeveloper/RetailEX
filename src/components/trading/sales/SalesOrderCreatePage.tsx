@@ -2,6 +2,7 @@
 import { ArrowLeft, Plus, Minus, Trash2, Save, Search } from 'lucide-react';
 import { APP_VERSION } from '../../../core/version';
 import type { Customer, Product } from '../../../App';
+import { useLanguage } from '../../../contexts/LanguageContext';
 
 interface SalesOrderCreatePageProps {
   customers: Customer[];
@@ -11,6 +12,7 @@ interface SalesOrderCreatePageProps {
 }
 
 export function SalesOrderCreatePage({ customers, products, onBack, onSuccess }: SalesOrderCreatePageProps) {
+  const { tm } = useLanguage();
   const [selectedCustomer, setSelectedCustomer] = useState('');
   const [orderItems, setOrderItems] = useState<any[]>([]);
   const [deliveryDate, setDeliveryDate] = useState('');
@@ -63,12 +65,12 @@ export function SalesOrderCreatePage({ customers, products, onBack, onSuccess }:
 
   const handleCreateOrder = async () => {
     if (!selectedCustomer) {
-      alert('Lütfen müşteri seçin!');
+      alert(tm('soSelectCustomer'));
       return;
     }
 
     if (orderItems.length === 0) {
-      alert('Lütfen en az bir ürün ekleyin!');
+      alert(tm('soAddProduct'));
       return;
     }
 
@@ -84,7 +86,7 @@ export function SalesOrderCreatePage({ customers, products, onBack, onSuccess }:
         notes,
         date: new Date().toISOString(),
       });
-      alert('✅ Sipariş başarıyla oluşturuldu!');
+      alert(tm('soCreatedOk'));
 
       // Auto-increment version after successful operation
       APP_VERSION.increment();
@@ -92,7 +94,7 @@ export function SalesOrderCreatePage({ customers, products, onBack, onSuccess }:
       onSuccess();
     } catch (error) {
       console.error('❌ Sipariş oluşturma hatası:', error);
-      alert('❌ Sipariş oluşturulurken hata oluştu!');
+      alert(tm('soCreateError'));
     } finally {
       setLoading(false);
     }
@@ -110,8 +112,8 @@ export function SalesOrderCreatePage({ customers, products, onBack, onSuccess }:
             <ArrowLeft className="w-5 h-5" />
           </button>
           <div>
-            <h2 className="text-lg">Yeni Satış Siparişi</h2>
-            <p className="text-xs text-blue-100">Sipariş Formu</p>
+            <h2 className="text-lg">{tm('soNewTitle')}</h2>
+            <p className="text-xs text-blue-100">{tm('soFormSubtitle')}</p>
           </div>
         </div>
         <button
@@ -120,7 +122,7 @@ export function SalesOrderCreatePage({ customers, products, onBack, onSuccess }:
           className="flex items-center gap-2 px-4 py-2 bg-white text-blue-700 hover:bg-blue-50 transition-colors text-sm disabled:opacity-50 disabled:cursor-not-allowed"
         >
           <Save className="w-4 h-4" />
-          <span>{loading ? 'Kaydediliyor...' : 'Kaydet'}</span>
+          <span>{loading ? tm('saving') : tm('save')}</span>
         </button>
       </div>
 
@@ -131,17 +133,17 @@ export function SalesOrderCreatePage({ customers, products, onBack, onSuccess }:
             {/* Customer Selection */}
             <div className="bg-white border border-gray-200 rounded">
               <div className="bg-gray-50 border-b border-gray-200 px-4 py-2">
-                <h3 className="text-sm text-gray-700">Müşteri Bilgileri</h3>
+                <h3 className="text-sm text-gray-700">{tm('soCustomerInfo')}</h3>
               </div>
               <div className="p-4">
-                <label className="block text-xs text-gray-600 mb-2">Müşteri *</label>
+                <label className="block text-xs text-gray-600 mb-2">{tm('soCustomerRequired')}</label>
                 <select
                   value={selectedCustomer}
                   onChange={(e) => setSelectedCustomer(e.target.value)}
                   className="w-full px-3 py-2 border border-gray-300 rounded focus:outline-none focus:ring-2 focus:ring-blue-500 text-sm"
                   required
                 >
-                  <option value="">Müşteri Seçin</option>
+                  <option value="">{tm('soSelectCustomerOpt')}</option>
                   {customers.map(customer => (
                     <option key={customer.id} value={customer.id}>
                       {customer.name} - {customer.phone}
@@ -154,14 +156,14 @@ export function SalesOrderCreatePage({ customers, products, onBack, onSuccess }:
             {/* Order Items */}
             <div className="bg-white border border-gray-200 rounded">
               <div className="bg-gray-50 border-b border-gray-200 px-4 py-2 flex items-center justify-between">
-                <h3 className="text-sm text-gray-700">Sipariş Kalemleri</h3>
-                <span className="text-xs text-gray-500">{orderItems.length} kalem</span>
+                <h3 className="text-sm text-gray-700">{tm('soOrderLines')}</h3>
+                <span className="text-xs text-gray-500">{tm('soItemCount').replace('{count}', String(orderItems.length))}</span>
               </div>
               <div className="p-4">
                 {orderItems.length === 0 ? (
                   <div className="text-center py-8 text-gray-400">
-                    <p className="text-sm">Henüz ürün eklenmedi</p>
-                    <p className="text-xs mt-1">Sağdaki listeden ürün ekleyin</p>
+                    <p className="text-sm">{tm('soNoProductsYet')}</p>
+                    <p className="text-xs mt-1">{tm('soAddFromList')}</p>
                   </div>
                 ) : (
                   <div className="space-y-2">
@@ -169,7 +171,7 @@ export function SalesOrderCreatePage({ customers, products, onBack, onSuccess }:
                       <div key={index} className="flex items-center gap-3 p-3 bg-gray-50 border border-gray-200 rounded">
                         <div className="flex-1">
                           <p className="text-sm text-gray-900">{item.name}</p>
-                          <p className="text-xs text-gray-500">Birim Fiyat: {item.price.toFixed(2)}</p>
+                          <p className="text-xs text-gray-500">{tm('soUnitPrice')} {item.price.toFixed(2)}</p>
                         </div>
                         <div className="flex items-center gap-2">
                           <button
@@ -211,11 +213,11 @@ export function SalesOrderCreatePage({ customers, products, onBack, onSuccess }:
             {/* Additional Info */}
             <div className="bg-white border border-gray-200 rounded">
               <div className="bg-gray-50 border-b border-gray-200 px-4 py-2">
-                <h3 className="text-sm text-gray-700">Ek Bilgiler</h3>
+                <h3 className="text-sm text-gray-700">{tm('soExtraInfo')}</h3>
               </div>
               <div className="p-4 grid grid-cols-2 gap-4">
                 <div>
-                  <label className="block text-xs text-gray-600 mb-2">Teslimat Tarihi</label>
+                  <label className="block text-xs text-gray-600 mb-2">{tm('soDeliveryDate')}</label>
                   <input
                     type="date"
                     value={deliveryDate}
@@ -224,13 +226,13 @@ export function SalesOrderCreatePage({ customers, products, onBack, onSuccess }:
                   />
                 </div>
                 <div className="col-span-2">
-                  <label className="block text-xs text-gray-600 mb-2">Notlar</label>
+                  <label className="block text-xs text-gray-600 mb-2">{tm('notes')}</label>
                   <textarea
                     value={notes}
                     onChange={(e) => setNotes(e.target.value)}
                     className="w-full px-3 py-2 border border-gray-300 rounded focus:outline-none focus:ring-2 focus:ring-blue-500 text-sm"
                     rows={3}
-                    placeholder="Sipariş notları..."
+                    placeholder={tm('soNotesPh')}
                   />
                 </div>
               </div>
@@ -242,7 +244,7 @@ export function SalesOrderCreatePage({ customers, products, onBack, onSuccess }:
             {/* Product Search */}
             <div className="bg-white border border-gray-200 rounded">
               <div className="bg-gray-50 border-b border-gray-200 px-4 py-2">
-                <h3 className="text-sm text-gray-700">Ürün Ekle</h3>
+                <h3 className="text-sm text-gray-700">{tm('soAddProductTitle')}</h3>
               </div>
               <div className="p-4">
                 <div className="relative mb-3">
@@ -251,7 +253,7 @@ export function SalesOrderCreatePage({ customers, products, onBack, onSuccess }:
                     type="text"
                     value={productSearch}
                     onChange={(e) => setProductSearch(e.target.value)}
-                    placeholder="Ürün ara..."
+                    placeholder={tm('soSearchProduct')}
                     className="w-full pl-9 pr-3 py-2 border border-gray-300 rounded focus:outline-none focus:ring-2 focus:ring-blue-500 text-sm"
                   />
                 </div>
@@ -264,7 +266,7 @@ export function SalesOrderCreatePage({ customers, products, onBack, onSuccess }:
                     >
                       <p className="text-sm text-gray-900">{product.name}</p>
                       <p className="text-xs text-gray-500">
-                        {product.barcode} • {product.price.toFixed(2)} • Stok: {product.stock}
+                        {product.barcode} • {product.price.toFixed(2)} • {tm('soStockLabel')} {product.stock}
                       </p>
                     </button>
                   ))}
@@ -275,20 +277,20 @@ export function SalesOrderCreatePage({ customers, products, onBack, onSuccess }:
             {/* Order Summary */}
             <div className="bg-white border border-gray-200 rounded">
               <div className="bg-gray-50 border-b border-gray-200 px-4 py-2">
-                <h3 className="text-sm text-gray-700">Sipariş Özeti</h3>
+                <h3 className="text-sm text-gray-700">{tm('soOrderSummary')}</h3>
               </div>
               <div className="p-4 space-y-2">
                 <div className="flex justify-between text-sm">
-                  <span className="text-gray-600">Kalem Sayısı:</span>
+                  <span className="text-gray-600">{tm('soLineCount')}</span>
                   <span className="text-gray-900">{orderItems.length}</span>
                 </div>
                 <div className="flex justify-between text-sm">
-                  <span className="text-gray-600">Toplam Adet:</span>
+                  <span className="text-gray-600">{tm('soTotalQty')}</span>
                   <span className="text-gray-900">{orderItems.reduce((sum, item) => sum + item.quantity, 0)}</span>
                 </div>
                 <div className="border-t border-gray-200 pt-2 mt-2">
                   <div className="flex justify-between">
-                    <span className="text-gray-900">Toplam Tutar:</span>
+                    <span className="text-gray-900">{tm('soTotalAmount')}</span>
                     <span className="text-blue-600 text-lg">{calculateTotal().toFixed(2)}</span>
                   </div>
                 </div>

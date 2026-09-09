@@ -34,6 +34,7 @@ import {
   AlertDialogTitle,
 } from '../ui/alert-dialog';
 import { AlertTriangle, Info, Loader2, ShieldAlert, Trash2 } from 'lucide-react';
+import { LanguageProvider, useLanguage } from '../../contexts/LanguageContext';
 
 export type ConfirmVariant = 'default' | 'danger' | 'warning' | 'info';
 
@@ -100,6 +101,7 @@ export function ConfirmDialog({
   onCancel,
   requireText,
 }: ConfirmDialogProps) {
+  const { tm } = useLanguage();
   const styles = variantStyles[variant];
   const [busy, setBusy] = React.useState(false);
   const [typed, setTyped] = React.useState('');
@@ -194,7 +196,7 @@ export function ConfirmDialog({
             onClick={() => onCancel?.()}
             className="dark:bg-gray-800 dark:border-gray-700 dark:text-gray-200 dark:hover:bg-gray-700"
           >
-            {cancelLabel ?? 'İptal'}
+            {cancelLabel ?? tm('cancel')}
           </AlertDialogCancel>
           <AlertDialogAction
             disabled={confirmDisabled}
@@ -202,7 +204,7 @@ export function ConfirmDialog({
             className={`${styles.confirmClass} disabled:opacity-60`}
           >
             {busy && <Loader2 className="w-4 h-4 mr-2 animate-spin" />}
-            {confirmLabel ?? 'Onayla'}
+            {confirmLabel ?? tm('confirm')}
           </AlertDialogAction>
         </AlertDialogFooter>
       </AlertDialogContent>
@@ -295,6 +297,11 @@ export function confirm(opts: ConfirmOptions): Promise<boolean> {
       );
     };
 
-    root.render(<Wrapper />);
+    // Imperative root LanguageProvider dışında — tm() için sarmala
+    root.render(
+      <LanguageProvider>
+        <Wrapper />
+      </LanguageProvider>
+    );
   });
 }

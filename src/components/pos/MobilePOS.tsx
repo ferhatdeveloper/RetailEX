@@ -33,7 +33,7 @@ interface MobilePOSProps {
 
 export function MobilePOS({ products, customers, campaigns, onSaleComplete, onBack }: MobilePOSProps) {
   const { darkMode } = useTheme();
-  const { language: uiLanguage, tm } = useLanguage();
+  const { language: uiLanguage, tm, t } = useLanguage();
   const { selectedFirm } = useFirmaDonem();
   const receiptFirmNr = useMemo(() => {
     const f = selectedFirm;
@@ -42,7 +42,7 @@ export function MobilePOS({ products, customers, campaigns, onSaleComplete, onBa
     const s = String(raw).trim().padStart(3, '0').slice(0, 10);
     return s || undefined;
   }, [selectedFirm]);
-  const [selectedCategory, setSelectedCategory] = useState<string>('Tümü');
+  const [selectedCategory, setSelectedCategory] = useState<string>('');
   const [cart, setCart] = useState<SaleItem[]>([]);
   const [selectedCustomer, setSelectedCustomer] = useState<Customer | null>(null);
   const [barcodeInput, setBarcodeInput] = useState('');
@@ -162,11 +162,13 @@ export function MobilePOS({ products, customers, campaigns, onSaleComplete, onBa
   const invoiceNo = `FIS${String(Date.now()).slice(-6)}`;
 
   // Get unique categories
-  const categories = ['Tümü', ...Array.from(new Set(products.map(p => p.category)))];
+  const allCat = tm('posAllShort');
+  const categories = [allCat, ...Array.from(new Set(products.map(p => p.category)))];
+  const activeCategory = selectedCategory || allCat;
 
   // Filter products
   const filteredProducts = products.filter(product => {
-    const matchesCategory = selectedCategory === 'Tümü' || product.category === selectedCategory;
+    const matchesCategory = activeCategory === allCat || product.category === activeCategory;
     const matchesSearch = searchQuery === '' ||
       (product.name || '').toLowerCase().includes(searchQuery.toLowerCase()) ||
       (product.code || '').toLowerCase().includes(searchQuery.toLowerCase()) ||
@@ -209,7 +211,7 @@ export function MobilePOS({ products, customers, campaigns, onSaleComplete, onBa
         const unitInfo = result.unitInfo;
 
         if (product.hasVariants || (product.variants && product.variants.length > 0)) {
-          showNotif('Lütfen varyant seçimi için market ekranını kullanın veya ürünü listeden seçin.', 'info');
+          showNotif(tm('posVariantUseMarket'), 'info');
           return;
         }
 
@@ -261,14 +263,14 @@ export function MobilePOS({ products, customers, campaigns, onSaleComplete, onBa
           setBarcodeInput('');
           barcodeLatestRef.current = '';
         } else {
-          showNotif('Ürün bulunamadı!', 'error');
+          showNotif(tm('posProductNotFoundExclaim'), 'error');
         }
       } else {
-        showNotif('Ürün bulunamadı!', 'error');
+        showNotif(tm('posProductNotFoundExclaim'), 'error');
       }
     } catch (error) {
       console.error('[MobilePOS] Barcode lookup error:', error);
-      showNotif('Barkod sorgulama hatası!', 'error');
+      showNotif(tm('posBarcodeQueryError'), 'error');
     } finally {
       barcodeSubmitBusyRef.current = false;
     }
@@ -586,7 +588,7 @@ export function MobilePOS({ products, customers, campaigns, onSaleComplete, onBa
             <button
               onClick={() => setShowQuickActions(!showQuickActions)}
               className={`p-2 rounded-lg hover:bg-white/30 transition-all ${showQuickActions ? 'bg-white/30' : 'bg-white/20'}`}
-              title={showQuickActions ? 'Hızlı Aksiyonları Gizle' : 'Hızlı Aksiyonları Göster'}
+              title={showQuickActions ? tm('posHideQuickActions') : tm('posShowQuickActions')}
             >
               <Grid3x3 className="w-5 h-5" />
             </button>
@@ -598,7 +600,7 @@ export function MobilePOS({ products, customers, campaigns, onSaleComplete, onBa
             <button
               onClick={() => setShowBarcodeScanner(true)}
               className="p-2 bg-white/20 rounded-lg hover:bg-white/30 transition-colors min-h-[44px] min-w-[44px] flex items-center justify-center"
-              title="Barkod Tara"
+              title={tm('posScanBarcode')}
             >
               <Camera className="w-5 h-5" />
             </button>
@@ -612,7 +614,7 @@ export function MobilePOS({ products, customers, campaigns, onSaleComplete, onBa
                 }
               }}
               className="p-2 bg-white/20 rounded-lg hover:bg-white/30 transition-colors min-h-[44px] min-w-[44px] flex items-center justify-center"
-              title="Geri"
+              title={t.back}
             >
               <ArrowLeft className="w-5 h-5" />
             </button>
@@ -625,38 +627,38 @@ export function MobilePOS({ products, customers, campaigns, onSaleComplete, onBa
             <div className="grid grid-cols-4 gap-2">
               <button className="flex flex-col items-center justify-center gap-2 p-3 min-h-[44px] bg-white border-2 border-gray-200 rounded hover:border-blue-500 transition-all active:bg-blue-50">
                 <Tag className="w-6 h-6 text-orange-600" />
-                <span className="text-xs text-center leading-tight">Kampanya</span>
+                <span className="text-xs text-center leading-tight">{t.campaign}</span>
               </button>
               <button
                 onClick={() => setShowProductsModal(true)}
                 className="flex flex-col items-center justify-center gap-2 p-3 min-h-[44px] bg-white border-2 border-gray-200 rounded hover:border-blue-500 transition-all active:bg-blue-50"
               >
                 <Grid3x3 className="w-6 h-6 text-blue-600" />
-                <span className="text-xs text-center leading-tight">Kategori</span>
+                <span className="text-xs text-center leading-tight">{t.category}</span>
               </button>
               <button className="flex flex-col items-center justify-center gap-2 p-3 min-h-[44px] bg-white border-2 border-gray-200 rounded hover:border-blue-500 transition-all active:bg-blue-50">
                 <RefreshCw className="w-6 h-6 text-purple-600" />
-                <span className="text-xs text-center leading-tight">İade</span>
+                <span className="text-xs text-center leading-tight">{t.return}</span>
               </button>
               <button className="flex flex-col items-center justify-center gap-2 p-3 min-h-[44px] bg-white border-2 border-gray-200 rounded hover:border-blue-500 transition-all active:bg-blue-50">
                 <FileText className="w-6 h-6 text-red-600" />
-                <span className="text-xs text-center leading-tight">Fiş İptal</span>
+                <span className="text-xs text-center leading-tight">{t.cancelReceipt}</span>
               </button>
               <button className="flex flex-col items-center justify-center gap-2 p-3 min-h-[44px] bg-white border-2 border-gray-200 rounded hover:border-blue-500 transition-all active:bg-blue-50">
                 <FileCheck className="w-6 h-6 text-green-600" />
-                <span className="text-xs text-center leading-tight">Son Fiş</span>
+                <span className="text-xs text-center leading-tight">{t.lastReceipt}</span>
               </button>
               <button className="flex flex-col items-center justify-center gap-2 p-3 min-h-[44px] bg-white border-2 border-gray-200 rounded hover:border-blue-500 transition-all active:bg-blue-50">
                 <Truck className="w-6 h-6 text-cyan-600" />
-                <span className="text-xs text-center leading-tight">Park Et</span>
+                <span className="text-xs text-center leading-tight">{t.parkReceipt}</span>
               </button>
               <button className="flex flex-col items-center justify-center gap-2 p-3 min-h-[44px] bg-white border-2 border-gray-200 rounded hover:border-blue-500 transition-all active:bg-blue-50">
                 <Send className="w-6 h-6 text-pink-600" />
-                <span className="text-xs text-center leading-tight">Et</span>
+                <span className="text-xs text-center leading-tight">{tm('posMeatDept')}</span>
               </button>
               <button className="flex flex-col items-center justify-center gap-2 p-3 min-h-[44px] bg-white border-2 border-gray-200 rounded hover:border-blue-500 transition-all active:bg-blue-50">
                 <Menu className="w-6 h-6 text-indigo-600" />
-                <span className="text-xs text-center leading-tight">Bekleyen</span>
+                <span className="text-xs text-center leading-tight">{t.parkedReceiptsButton}</span>
               </button>
             </div>
           </div>
@@ -668,7 +670,7 @@ export function MobilePOS({ products, customers, campaigns, onSaleComplete, onBa
             <div className="bg-white rounded-lg flex items-center px-4 py-3 shadow-sm">
               <Search className="w-5 h-5 text-gray-400 mr-3 flex-shrink-0" />
               <div className="flex-1 min-w-0">
-                <div className="text-xs text-gray-500 mb-1 font-medium">Fiş No: {invoiceNo}</div>
+                <div className="text-xs text-gray-500 mb-1 font-medium">{tm('posReceiptNoPrefix')} {invoiceNo}</div>
                 <input
                   ref={barcodeRef}
                   type="text"
@@ -680,7 +682,7 @@ export function MobilePOS({ products, customers, campaigns, onSaleComplete, onBa
                       void processBarcodeScan(barcodeLatestRef.current);
                     }
                   }}
-                  placeholder="Ara"
+                  placeholder={t.search}
                   className="w-full border-0 outline-none text-base p-0 bg-transparent placeholder-gray-400"
                   autoFocus
                 />
@@ -743,9 +745,9 @@ export function MobilePOS({ products, customers, campaigns, onSaleComplete, onBa
         {cart.length === 0 ? (
           <div className="flex flex-col items-center justify-center h-full text-gray-400 px-4">
             <ShoppingBag className="w-32 h-32 mb-6 opacity-20" />
-            <p className="text-xl font-medium text-gray-500 mb-2">Sepet boş</p>
+            <p className="text-xl font-medium text-gray-500 mb-2">{t.cartEmpty}</p>
             <p className="text-sm text-gray-400 text-center max-w-xs">
-              Barkod okutun veya kategori butonuna tıklayın
+              {tm('posEmptyCartHint')}
             </p>
           </div>
         ) : (
@@ -803,7 +805,7 @@ export function MobilePOS({ products, customers, campaigns, onSaleComplete, onBa
 
                 {/* Discount */}
                 <div className="flex items-center gap-2">
-                  <label className="text-xs text-gray-600">İndirim %:</label>
+                  <label className="text-xs text-gray-600">{tm('discountPercent')}:</label>
                   <input
                     type="number"
                     value={item.discount}
@@ -824,7 +826,7 @@ export function MobilePOS({ products, customers, campaigns, onSaleComplete, onBa
       <div className="bg-white border-t border-gray-200">
         <div className="px-4 py-3 space-y-2 text-sm">
           <div className="flex justify-between items-center">
-            <span className="text-gray-600">Ara Toplam:</span>
+            <span className="text-gray-600">{tm('subTotal')}:</span>
             <span className="font-medium text-gray-900">{formatNumber(subtotal, 2, false)}</span>
           </div>
           <div className="flex justify-between items-center">
@@ -832,7 +834,7 @@ export function MobilePOS({ products, customers, campaigns, onSaleComplete, onBa
             <span className="font-medium text-gray-900">{formatNumber(tax, 2, false)}</span>
           </div>
           <div className="flex justify-between items-center pt-2 border-t border-gray-100">
-            <span className="text-gray-600 text-sm">Genel İndirim %:</span>
+            <span className="text-gray-600 text-sm">{tm('posGeneralDiscountPercent')}</span>
             <input
               type="number"
               value={discount}
@@ -844,7 +846,7 @@ export function MobilePOS({ products, customers, campaigns, onSaleComplete, onBa
           </div>
           {totalDiscount > 0 && (
             <div className="flex justify-between items-center text-red-600">
-              <span>İndirim:</span>
+              <span>{t.discountLabel || t.discount}</span>
               <span className="font-medium">-{formatNumber(totalDiscount, 2, false)}</span>
             </div>
           )}
@@ -854,14 +856,14 @@ export function MobilePOS({ products, customers, campaigns, onSaleComplete, onBa
       {/* Total & System Info Bar */}
       <div className="bg-gray-900 text-white">
         <div className="px-4 py-4 flex justify-between items-center border-b border-gray-700">
-          <span className="text-xl font-bold">TOPLAM:</span>
+          <span className="text-xl font-bold">{t.totalUppercase}:</span>
           <span className="text-2xl font-bold">{formatNumber(total, 2, false)}</span>
         </div>
         <div className="px-4 py-2.5 flex items-center justify-between text-xs border-t border-gray-700">
           <div className="flex items-center gap-3">
             <span className="flex items-center gap-1.5">
               <div className="w-2 h-2 bg-green-500 rounded-full animate-pulse"></div>
-              <span className="text-gray-300">Çevrimiçi</span>
+              <span className="text-gray-300">{t.online}</span>
             </span>
             <span className="text-gray-400">KASA-01</span>
           </div>
@@ -889,7 +891,7 @@ export function MobilePOS({ products, customers, campaigns, onSaleComplete, onBa
         <ModalLayer className="bg-white flex flex-col">
           {/* Header */}
           <div className="bg-gradient-to-r from-blue-600 to-blue-700 text-white p-4 flex items-center justify-between shadow-lg">
-            <h3 className="font-medium text-lg">Ürünler</h3>
+            <h3 className="font-medium text-lg">{tm('posProducts')}</h3>
             <button onClick={() => setShowProductsModal(false)} className="p-1">
               <X className="w-6 h-6" />
             </button>
@@ -901,7 +903,7 @@ export function MobilePOS({ products, customers, campaigns, onSaleComplete, onBa
               <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400 w-5 h-5" />
               <input
                 type="text"
-                placeholder="Kod, ad veya barkod ara..."
+                placeholder={tm('posSearchCodeNameBarcode')}
                 value={searchQuery}
                 onChange={(e) => setSearchQuery(e.target.value)}
                 className="w-full pl-11 pr-4 py-3 border-2 border-gray-300 rounded-lg focus:outline-none focus:border-blue-600"
@@ -916,7 +918,7 @@ export function MobilePOS({ products, customers, campaigns, onSaleComplete, onBa
                 <button
                   key={cat}
                   onClick={() => setSelectedCategory(cat)}
-                  className={`px-4 py-2 whitespace-nowrap text-sm rounded-lg transition-all ${selectedCategory === cat
+                  className={`px-4 py-2 whitespace-nowrap text-sm rounded-lg transition-all ${activeCategory === cat
                     ? 'bg-blue-600 text-white shadow'
                     : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
                     }`}
@@ -952,9 +954,9 @@ export function MobilePOS({ products, customers, campaigns, onSaleComplete, onBa
                   <div className="text-blue-600 font-bold text-lg mb-1">
                     {product.price.toFixed(2)}
                   </div>
-                  <div className="text-xs text-gray-500">Stok: {product.stock}</div>
-                  <div className="text-xs text-gray-400 mt-1 font-mono">Kod: {product.code || '-'}</div>
-                  <div className="text-xs text-gray-400 font-mono">Barkod: {product.barcode || '-'}</div>
+                  <div className="text-xs text-gray-500">{tm('posStockColon')} {product.stock}</div>
+                  <div className="text-xs text-gray-400 mt-1 font-mono">{tm('posCodeColon')} {product.code || '-'}</div>
+                  <div className="text-xs text-gray-400 font-mono">{tm('posBarcodeColon')} {product.barcode || '-'}</div>
                 </button>
               ))}
             </div>
@@ -967,12 +969,12 @@ export function MobilePOS({ products, customers, campaigns, onSaleComplete, onBa
         <ModalLayer className="bg-black/60 flex items-center justify-center p-4">
           <div className="bg-white rounded-2xl w-full max-w-md shadow-2xl overflow-hidden">
             <div className="bg-gradient-to-r from-green-500 to-green-600 text-white px-6 py-4">
-              <h3 className="font-medium text-lg">Ödeme</h3>
+              <h3 className="font-medium text-lg">{t.payment}</h3>
               <div className="text-3xl font-bold mt-1">{total.toFixed(2)}</div>
               {appliedCampaign && (
                 <div className="mt-2 text-xs flex items-center gap-1 bg-white/20 px-2 py-1 rounded">
                   <Tag className="w-3 h-3" />
-                  <span>{appliedCampaign.name} uygulandı</span>
+                  <span>{tm('posCampaignApplied').replace('{name}', appliedCampaign.name)}</span>
                 </div>
               )}
             </div>
@@ -984,7 +986,7 @@ export function MobilePOS({ products, customers, campaigns, onSaleComplete, onBa
               >
                 <Banknote className="w-6 h-6" />
                 <div className="flex-1 text-left">
-                  <div className="font-medium">Nakit (F8)</div>
+                  <div className="font-medium">{tm('posCashF8')}</div>
                 </div>
               </button>
 
@@ -994,7 +996,7 @@ export function MobilePOS({ products, customers, campaigns, onSaleComplete, onBa
               >
                 <CreditCard className="w-6 h-6" />
                 <div className="flex-1 text-left">
-                  <div className="font-medium">Kredi Kartı</div>
+                  <div className="font-medium">{t.creditCard}</div>
                 </div>
               </button>
 
@@ -1004,7 +1006,7 @@ export function MobilePOS({ products, customers, campaigns, onSaleComplete, onBa
               >
                 <CreditCard className="w-6 h-6" />
                 <div className="flex-1 text-left">
-                  <div className="font-medium">Banka Kartı</div>
+                  <div className="font-medium">{tm('posBankCard')}</div>
                 </div>
               </button>
 
@@ -1014,7 +1016,7 @@ export function MobilePOS({ products, customers, campaigns, onSaleComplete, onBa
               >
                 <Smartphone className="w-6 h-6" />
                 <div className="flex-1 text-left">
-                  <div className="font-medium">Mobil Ödeme</div>
+                  <div className="font-medium">{tm('posMobilePayment')}</div>
                 </div>
               </button>
 
@@ -1028,8 +1030,8 @@ export function MobilePOS({ products, customers, campaigns, onSaleComplete, onBa
                       <FileText className="w-4 h-4 text-gray-500" />
                     </div>
                     <div>
-                      <div className="text-sm font-bold text-gray-900">Yazıcı Ayarları</div>
-                      <div className="text-[10px] text-gray-500 font-medium">Satış sonrası çıktı seçenekleri</div>
+                      <div className="text-sm font-bold text-gray-900">{tm('posPrinterSettings')}</div>
+                      <div className="text-[10px] text-gray-500 font-medium">{tm('posPrinterSettingsDesc')}</div>
                     </div>
                   </div>
                 </div>
@@ -1047,7 +1049,7 @@ export function MobilePOS({ products, customers, campaigns, onSaleComplete, onBa
                         className="hidden"
                       />
                     </div>
-                    <div className="text-[11px] font-bold text-gray-900 leading-tight">Otomatik Yazdır</div>
+                    <div className="text-[11px] font-bold text-gray-900 leading-tight">{tm('posAutoPrint')}</div>
                   </label>
 
                   <div className={`flex flex-col gap-2 p-3 rounded-xl border-2 border-purple-500 bg-purple-50 transition-all`}>
@@ -1077,7 +1079,7 @@ export function MobilePOS({ products, customers, campaigns, onSaleComplete, onBa
                 onClick={() => setShowPayment(false)}
                 className="w-full px-4 py-3 bg-gray-100 text-gray-700 font-bold rounded-xl hover:bg-gray-200 active:bg-gray-300 transition-colors"
               >
-                İptal
+                {t.cancel}
               </button>
             </div>
           </div>
@@ -1089,7 +1091,7 @@ export function MobilePOS({ products, customers, campaigns, onSaleComplete, onBa
         <ModalLayer className="bg-black/60 flex items-center justify-center p-4">
           <div className="bg-white rounded-2xl w-full max-w-md shadow-2xl max-h-[80vh] flex flex-col overflow-hidden">
             <div className="bg-gradient-to-r from-blue-600 to-blue-700 text-white px-6 py-4">
-              <h3 className="font-medium text-lg">Müşteri Seç</h3>
+              <h3 className="font-medium text-lg">{t.selectCustomer}</h3>
             </div>
 
             <div className="flex-1 overflow-auto p-4 space-y-2">
@@ -1100,7 +1102,7 @@ export function MobilePOS({ products, customers, campaigns, onSaleComplete, onBa
                 }}
                 className="w-full px-4 py-3 border-2 border-gray-300 rounded-lg hover:border-blue-500 hover:bg-blue-50 active:bg-blue-100 text-left"
               >
-                <p className="font-medium">Müşterisiz Devam Et</p>
+                <p className="font-medium">{tm('posContinueWithoutCustomer')}</p>
               </button>
 
               {customers.map(customer => (
@@ -1126,7 +1128,7 @@ export function MobilePOS({ products, customers, campaigns, onSaleComplete, onBa
                 onClick={() => setShowCustomerModal(false)}
                 className="w-full px-4 py-3 border-2 border-gray-300 rounded-lg hover:bg-gray-50 active:bg-gray-100"
               >
-                İptal
+                {t.cancel}
               </button>
             </div>
           </div>
@@ -1210,13 +1212,13 @@ export function MobilePOS({ products, customers, campaigns, onSaleComplete, onBa
                 const unitInfo = lookupResult.unitInfo;
 
                 if (product.hasVariants || (product.variants && product.variants.length > 0)) {
-                  showNotif('Lütfen varyant seçimi için market ekranını kullanın veya ürünü listeden seçin.', 'info');
+                  showNotif(tm('posVariantUseMarket'), 'info');
                   return;
                 }
 
                 const price = (unitInfo && unitInfo.sale_price > 0) ? unitInfo.sale_price : (product.price * (unitInfo?.multiplier || 1));
                 addToCart(product, undefined, unitInfo?.unit_code, unitInfo?.multiplier, price);
-                showNotif(`${product.name} sepete eklendi`, 'success');
+                showNotif(tm('posAddedToCart').replace('{name}', product.name), 'success');
               } else if (code.length >= 13 && code.length <= 15 && /^\d+$/.test(code)) {
                 const scaleSale = await resolveScaleBarcodeSale(code, exchangeRate);
                 if (scaleSale) {
@@ -1233,14 +1235,14 @@ export function MobilePOS({ products, customers, campaigns, onSaleComplete, onBa
                     'success',
                   );
                 } else {
-                  showNotif(`Ürün bulunamadı!\nAranan barkod: ${code}`, 'error');
+                  showNotif(tm('posProductNotFoundBarcode').replace('{code}', code), 'error');
                 }
               } else {
-                showNotif(`Ürün bulunamadı!\nAranan barkod: ${code}`, 'error');
+                showNotif(tm('posProductNotFoundBarcode').replace('{code}', code), 'error');
               }
             } catch (error) {
               console.error('[MobilePOS] Barcode scanning error:', error);
-              showNotif('Barkod tarama hatası!', 'error');
+              showNotif(tm('posBarcodeScanError'), 'error');
             }
           }}
           onClose={() => setShowBarcodeScanner(false)}

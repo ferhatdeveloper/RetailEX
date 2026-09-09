@@ -14,6 +14,7 @@
 import { useState, useEffect } from 'react';
 import { TrendingUp, TrendingDown, Package, Banknote, Percent, Download, Search, Filter } from 'lucide-react';
 import { useFirmaDonem } from '../../contexts/FirmaDonemContext';
+import { useLanguage } from '../../contexts/LanguageContext';
 import { CostAccountingService } from '../../services/costAccountingService';
 import { toast } from 'sonner';
 
@@ -30,6 +31,7 @@ interface ProductProfitData {
 }
 
 export function ProductProfitabilityReport() {
+  const { tm } = useLanguage();
   const { selectedFirma, selectedDonem } = useFirmaDonem();
   const [loading, setLoading] = useState(false);
   const [data, setData] = useState<ProductProfitData[]>([]);
@@ -132,7 +134,7 @@ export function ProductProfitabilityReport() {
       setData(results);
     } catch (error) {
       console.error('[ProductProfitabilityReport] Error:', error);
-      toast.error('Rapor yüklenirken hata oluştu');
+      toast.error(tm('rptProfitLoadError'));
     } finally {
       setLoading(false);
     }
@@ -195,7 +197,7 @@ export function ProductProfitabilityReport() {
     a.download = `product-profitability-${selectedDonem?.donem_adi ?? selectedDonem?.name ?? 'donem'}.csv`;
     a.click();
 
-    toast.success('Rapor Excel\'e aktarıldı!');
+    toast.success(tm('rptProfitExportOk'));
   };
 
   if (!selectedFirma || !selectedDonem) {
@@ -203,7 +205,7 @@ export function ProductProfitabilityReport() {
       <div className="bg-yellow-50 border border-yellow-200 rounded-lg p-4">
         <div className="flex items-center gap-2 text-yellow-800">
           <Package className="w-5 h-5" />
-          <span>Lütfen firma ve dönem seçin</span>
+          <span>{tm('rptProfitSelectFirmPeriod')}</span>
         </div>
       </div>
     );
@@ -217,7 +219,7 @@ export function ProductProfitabilityReport() {
           <div className="flex items-center gap-3">
             <Package className="w-6 h-6 text-blue-600" />
             <div>
-              <h2 className="text-xl font-semibold">Ürün Karlılık Raporu</h2>
+              <h2 className="text-xl font-semibold">{tm('rptProfitProductTitle')}</h2>
               <div className="text-sm text-gray-600">
                 {selectedFirma.firma_adi} / {selectedDonem.donem_adi}
               </div>
@@ -230,7 +232,7 @@ export function ProductProfitabilityReport() {
             className="px-4 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700 flex items-center gap-2 disabled:opacity-50"
           >
             <Download className="w-4 h-4" />
-            Excel'e Aktar
+            {tm('rptProfitExportExcel')}
           </button>
         </div>
 
@@ -240,7 +242,7 @@ export function ProductProfitabilityReport() {
             <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" />
             <input
               type="text"
-              placeholder="Ürün kodu veya adı ara..."
+              placeholder={tm('rptProfitSearchPlaceholder')}
               value={searchQuery}
               onChange={(e) => setSearchQuery(e.target.value)}
               className="w-full pl-10 pr-4 py-2 border rounded-lg"
@@ -252,9 +254,9 @@ export function ProductProfitabilityReport() {
             onChange={(e) => setFilterProfitable(e.target.value as any)}
             className="px-3 py-2 border rounded-lg"
           >
-            <option value="all">Tüm Ürünler</option>
-            <option value="profitable">Karlı Ürünler</option>
-            <option value="loss">Zararlı Ürünler</option>
+            <option value="all">{tm('rptProfitFilterAll')}</option>
+            <option value="profitable">{tm('rptProfitFilterProfitable')}</option>
+            <option value="loss">{tm('rptProfitFilterLoss')}</option>
           </select>
 
           <select
@@ -262,9 +264,9 @@ export function ProductProfitabilityReport() {
             onChange={(e) => setSortBy(e.target.value as any)}
             className="px-3 py-2 border rounded-lg"
           >
-            <option value="profit">Kar'a Göre</option>
-            <option value="revenue">Satış'a Göre</option>
-            <option value="margin">Marj'a Göre</option>
+            <option value="profit">{tm('rptProfitSortByProfit')}</option>
+            <option value="revenue">{tm('rptProfitSortByRevenue')}</option>
+            <option value="margin">{tm('rptProfitSortByMargin')}</option>
           </select>
         </div>
       </div>
@@ -274,18 +276,20 @@ export function ProductProfitabilityReport() {
         <div className="bg-gradient-to-br from-blue-50 to-blue-100 border-2 border-blue-200 rounded-lg p-4">
           <div className="flex items-center gap-2 mb-2">
             <Package className="w-5 h-5 text-blue-600" />
-            <div className="text-sm text-blue-700">Toplam Ürün</div>
+            <div className="text-sm text-blue-700">{tm('rptProfitTotalProducts')}</div>
           </div>
           <div className="text-2xl font-bold text-blue-900">{summary.totalProducts}</div>
           <div className="text-xs text-blue-600 mt-1">
-            {summary.profitableProducts} karlı, {summary.lossProducts} zararlı
+            {tm('rptProfitProfitableLossCount')
+              .replace('{profitable}', String(summary.profitableProducts))
+              .replace('{loss}', String(summary.lossProducts))}
           </div>
         </div>
 
         <div className="bg-gradient-to-br from-green-50 to-green-100 border-2 border-green-200 rounded-lg p-4">
           <div className="flex items-center gap-2 mb-2">
             <Banknote className="w-5 h-5 text-green-600" />
-            <div className="text-sm text-green-700">Toplam Satış</div>
+            <div className="text-sm text-green-700">{tm('rptProfitTotalSales')}</div>
           </div>
           <div className="text-2xl font-bold text-green-900">
             {formatMoney(summary.totalRevenue)} IQD
@@ -295,7 +299,7 @@ export function ProductProfitabilityReport() {
         <div className="bg-gradient-to-br from-orange-50 to-orange-100 border-2 border-orange-200 rounded-lg p-4">
           <div className="flex items-center gap-2 mb-2">
             <Banknote className="w-5 h-5 text-orange-600" />
-            <div className="text-sm text-orange-700">Toplam Maliyet</div>
+            <div className="text-sm text-orange-700">{tm('rptProfitTotalCost')}</div>
           </div>
           <div className="text-2xl font-bold text-orange-900">
             {formatMoney(summary.totalCost)} IQD
@@ -316,7 +320,7 @@ export function ProductProfitabilityReport() {
             <div className={`text-sm ${
               summary.totalProfit >= 0 ? 'text-emerald-700' : 'text-red-700'
             }`}>
-              Toplam Kar
+              {tm('rptProfitTotalProfit')}
             </div>
           </div>
           <div className={`text-2xl font-bold ${
@@ -327,7 +331,7 @@ export function ProductProfitabilityReport() {
           <div className={`text-xs mt-1 ${
             summary.totalProfit >= 0 ? 'text-emerald-600' : 'text-red-600'
           }`}>
-            Marj: {summary.profitMargin.toFixed(2)}%
+            {tm('rptProfitMarginValue').replace('{n}', summary.profitMargin.toFixed(2))}
           </div>
         </div>
       </div>
@@ -337,25 +341,25 @@ export function ProductProfitabilityReport() {
         {loading ? (
           <div className="p-8 text-center">
             <div className="inline-block w-8 h-8 border-4 border-blue-600 border-t-transparent rounded-full animate-spin" />
-            <div className="mt-2 text-gray-600">Yükleniyor...</div>
+            <div className="mt-2 text-gray-600">{tm('rptProfitLoading')}</div>
           </div>
         ) : filteredData.length === 0 ? (
           <div className="p-8 text-center text-gray-500">
-            Veri bulunamadı
+            {tm('rptProfitNoData')}
           </div>
         ) : (
           <div className="overflow-auto max-h-[600px]">
             <table className="w-full text-sm">
               <thead className="bg-gray-50 sticky top-0">
                 <tr>
-                  <th className="text-left px-4 py-3 font-semibold">Ürün Kodu</th>
-                  <th className="text-left px-4 py-3 font-semibold">Ürün Adı</th>
-                  <th className="text-right px-4 py-3 font-semibold">Miktar</th>
-                  <th className="text-right px-4 py-3 font-semibold">Ort. Fiyat</th>
-                  <th className="text-right px-4 py-3 font-semibold">Satış Tutarı</th>
-                  <th className="text-right px-4 py-3 font-semibold">Maliyet</th>
-                  <th className="text-right px-4 py-3 font-semibold">Brüt Kar</th>
-                  <th className="text-right px-4 py-3 font-semibold">Marj %</th>
+                  <th className="text-left px-4 py-3 font-semibold">{tm('rptProfitColProductCode')}</th>
+                  <th className="text-left px-4 py-3 font-semibold">{tm('rptProfitColProductName')}</th>
+                  <th className="text-right px-4 py-3 font-semibold">{tm('rptProfitColQty')}</th>
+                  <th className="text-right px-4 py-3 font-semibold">{tm('rptProfitColAvgPrice')}</th>
+                  <th className="text-right px-4 py-3 font-semibold">{tm('rptProfitColSalesAmount')}</th>
+                  <th className="text-right px-4 py-3 font-semibold">{tm('rptProfitColCost')}</th>
+                  <th className="text-right px-4 py-3 font-semibold">{tm('rptProfitColGrossProfit')}</th>
+                  <th className="text-right px-4 py-3 font-semibold">{tm('rptProfitColMarginPct')}</th>
                 </tr>
               </thead>
               <tbody>
@@ -408,7 +412,7 @@ export function ProductProfitabilityReport() {
               </tbody>
               <tfoot className="bg-gray-100 border-t-2 border-gray-300">
                 <tr>
-                  <td colSpan={4} className="px-4 py-3 font-bold">TOPLAM</td>
+                  <td colSpan={4} className="px-4 py-3 font-bold">{tm('rptPeriodTotalRow')}</td>
                   <td className="px-4 py-3 text-right font-bold text-blue-700">
                     {formatMoney(summary.totalRevenue)} IQD
                   </td>
@@ -434,4 +438,3 @@ export function ProductProfitabilityReport() {
     </div>
   );
 }
-

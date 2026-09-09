@@ -118,7 +118,7 @@ interface BankTransaction {
 // ===== COMPONENT =====
 
 export function BankAccountManagement() {
-  const { t } = useLanguage();
+  const { t, tm } = useLanguage();
   const { selectedFirma, selectedDonem } = useFirmaDonem();
 
   // State
@@ -385,9 +385,9 @@ export function BankAccountManagement() {
           <div className="flex items-center gap-3">
             <Building2 className="w-6 h-6" />
             <div>
-              <h2 className="text-xl font-semibold">Banka Hesap Yönetimi</h2>
+              <h2 className="text-xl font-semibold">{tm('accBankAccountMgmt')}</h2>
               <p className="text-sm text-blue-100 mt-0.5">
-                Banka hesapları, hareketler ve mutabakat
+                {tm('accBankAccountSubtitle')}
               </p>
             </div>
           </div>
@@ -437,7 +437,7 @@ export function BankAccountManagement() {
 
         <div className="bg-white rounded-lg p-4 border-2 border-gray-200">
           <div>
-            <p className="text-sm text-gray-600">Bugünkü İşlemler</p>
+            <p className="text-sm text-gray-600">{tm('todaysTransactions')}</p>
             <p className="text-2xl font-semibold text-gray-900 mt-1">{summary.todayTransactions}</p>
           </div>
         </div>

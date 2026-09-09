@@ -263,12 +263,12 @@ function resolveDailyRowDeviceName(value: unknown): string {
 
 /** `closed_at` / `opened_at` null iken `new Date(null)` epoch (1970) üretir; raporda gösterme. */
 /** Stok raporu: DB’de `name` boş veya eski cache’te eksikse name2 / kod / barkod */
-function productLabelForReport(p: Product): string {
+function productLabelForReport(p: Product, unnamedLabel: string): string {
   const parts: (string | undefined)[] = [p.name, p.name2, p.name_tr, p.name_en, p.code, p.barcode];
   for (const x of parts) {
     if (typeof x === 'string' && x.trim()) return x.trim();
   }
-  return 'İsimsiz ürün';
+  return unnamedLabel;
 }
 
 function productCategoryForReport(p: Product): string {
@@ -351,8 +351,6 @@ type ComparisonWindows = {
   currentTo: string;
   previousFrom: string;
   previousTo: string;
-  currentPeriodLabel: string;
-  previousPeriodLabel: string;
 };
 
 /** Hafta: son 7 gün vs önceki 7 gün. Ay: aybaşı–bugün vs geçen ayın aynı gün aralığı. */
@@ -367,8 +365,6 @@ function buildComparisonWindows(period: 'week' | 'month', todayKey: string): Com
       currentTo,
       previousFrom,
       previousTo,
-      currentPeriodLabel: 'Bu hafta',
-      previousPeriodLabel: 'Geçen hafta',
     };
   }
   const [y, m, d] = todayKey.split('-').map(Number);
@@ -386,8 +382,6 @@ function buildComparisonWindows(period: 'week' | 'month', todayKey: string): Com
     currentTo,
     previousFrom,
     previousTo,
-    currentPeriodLabel: 'Bu ay',
-    previousPeriodLabel: 'Geçen ay (aynı gün aralığı)',
   };
 }
 
@@ -1899,20 +1893,17 @@ export function ReportsModule({
   /** Dönem karşılaştırması: ERP `sales` veya (restoran) fiş yoksa `comparisonOrders` */
   const comparisonBundle = useMemo(() => {
     const todayKey = localTodayDateKey();
-    const windowsRaw = buildComparisonWindows(comparisonPeriod, todayKey);
+    const windows = buildComparisonWindows(comparisonPeriod, todayKey);
     const lang = language as ModuleLanguage;
-    const windows = {
-      ...windowsRaw,
-      currentPeriodLabel: translateModule(
-        comparisonPeriod === 'week' ? 'reportsPeriodThisWeek' : 'reportsPeriodThisMonth',
-        lang
-      ),
-      previousPeriodLabel: translateModule(
-        comparisonPeriod === 'week' ? 'reportsPeriodLastWeek' : 'reportsPeriodLastMonthSameRange',
-        lang
-      ),
-    };
-    const { currentFrom, currentTo, previousFrom, previousTo, currentPeriodLabel, previousPeriodLabel } = windows;
+    const currentPeriodLabel = translateModule(
+      comparisonPeriod === 'week' ? 'reportsPeriodThisWeek' : 'reportsPeriodThisMonth',
+      lang
+    );
+    const previousPeriodLabel = translateModule(
+      comparisonPeriod === 'week' ? 'reportsPeriodLastWeek' : 'reportsPeriodLastMonthSameRange',
+      lang
+    );
+    const { currentFrom, currentTo, previousFrom, previousTo } = windows;
 
     const salesInUnion = comparisonSales.length > 0
       ? comparisonSales
@@ -2871,7 +2862,7 @@ export function ReportsModule({
     const map = new Map<string, number>();
     for (const row of dailyUnifiedRows) {
       if (row.paymentMethod !== 'card' && row.paymentMethod !== 'gateway') continue;
-      const label = row.paymentMethod === 'gateway' ? 'Sanal POS' : 'Kredi kartı';
+      const label = row.paymentMethod === 'gateway' ? tm('reportsVirtualPos') : tm('creditCard');
       map.set(label, (map.get(label) || 0) + (Number(row.total) || 0));
     }
 
@@ -2880,7 +2871,7 @@ export function ReportsModule({
       .sort((a, b) => b.amount - a.amount);
 
     if (cardTotal > 0 && cards.length === 0) {
-      cards = [{ name: 'Kredi kartı', amount: cardTotal }];
+      cards = [{ name: tm('creditCard'), amount: cardTotal }];
     }
 
     return {
@@ -2912,7 +2903,7 @@ export function ReportsModule({
     // E3: "Genel İndirim" tek fallback tüm indirimleri yutuyordu; kategori
     // belirsizse artık ayrı "Diğer İndirim" sütununda göster. Yalnızca gerçekten
     // boş string/null/undefined için fallback uygulanır.
-    const FALLBACK_KEY = 'Diğer İndirim';
+    const FALLBACK_KEY = tm('reportsOtherDiscount');
 
     erpSalesForReportPeriod.forEach(sale => {
       if (sale.discount > 0) {
@@ -2986,7 +2977,7 @@ export function ReportsModule({
       const unitCost = costOf(p);
       const minStock = minLevelFor(p);
       return {
-        name: productLabelForReport(p),
+        name: productLabelForReport(p, tm('reportsUnnamedProduct')),
         category: productCategoryForReport(p),
         stock: s,
         minStock,
@@ -3103,7 +3094,7 @@ export function ReportsModule({
         const unitCost = c > 0 ? c : price;
         return {
           id: sid,
-          name: productLabelForReport(p),
+          name: productLabelForReport(p, tm('reportsUnnamedProduct')),
           category: productCategoryForReport(p),
           stock: stk,
           daysSinceMovement: days,
@@ -3177,7 +3168,7 @@ export function ReportsModule({
       const daysCover = dailySales > 0 ? stock / dailySales : null;
       rows.push({
         id,
-        name: catalog ? productLabelForReport(catalog) : String(item.product?.name ?? '—'),
+        name: catalog ? productLabelForReport(catalog, tm('reportsUnnamedProduct')) : String(item.product?.name ?? '—'),
         category: catalog ? productCategoryForReport(catalog) : String(item.product?.category ?? '—'),
         soldQty,
         revenue,
@@ -3198,7 +3189,7 @@ export function ReportsModule({
       seen.add(id);
       rows.push({
         id,
-        name: productLabelForReport(p),
+        name: productLabelForReport(p, tm('reportsUnnamedProduct')),
         category: productCategoryForReport(p),
         soldQty: 0,
         revenue: 0,
@@ -3259,7 +3250,7 @@ export function ReportsModule({
         const metric = revenue > 0 ? revenue : stockValue;
         return {
           id: p.id,
-          name: productLabelForReport(p),
+          name: productLabelForReport(p, tm('reportsUnnamedProduct')),
           category: productCategoryForReport(p),
           revenue,
           stock: stk,
@@ -3633,7 +3624,7 @@ export function ReportsModule({
       businessType === 'restaurant' && productSales.length > 0
         ? `
         <div class="divider"></div>
-        <div class="center bold">SATILAN URUNLER</div>
+        <div class="center bold">${escHtml(tm('reportsZPrintSoldProducts'))}</div>
         ${productSales
           .map((item: any) => {
             const name = escHtml(item.product?.name || '—');
@@ -3650,7 +3641,7 @@ export function ReportsModule({
       <html>
       <head>
         <meta charset="UTF-8">
-        <title>Z Raporu - ${escHtml(zReport.dateLabel)}</title>
+        <title>${escHtml(tm('reportsZPrintDocTitle'))} - ${escHtml(zReport.dateLabel)}</title>
         <style>
           html {
             width: 80mm;
@@ -3696,96 +3687,96 @@ export function ReportsModule({
       </head>
       <body>
         <div class="header center">
-          <div class="bold large">Z RAPORU</div>
-          <div>RetailOS Mağaza Sistemi</div>
+          <div class="bold large">${escHtml(tm('reportsZPrintHeader'))}</div>
+          <div>${escHtml(tm('reportsZPrintStoreSystem'))}</div>
         </div>
         
         <div class="divider"></div>
         
         <div class="row">
-          <span>Tarih:</span>
+          <span>${escHtml(tm('dateLabel'))}:</span>
           <span class="bold">${escHtml(zReport.dateLabel)}</span>
         </div>
         <div class="row">
-          <span>Rapor Saati:</span>
-          <span>${new Date().toLocaleTimeString('tr-TR')}</span>
+          <span>${escHtml(tm('reportsZPrintReportTime'))}:</span>
+          <span>${new Date().toLocaleTimeString(tm('localeCode'))}</span>
         </div>
         
         <div class="divider"></div>
         
-        <div class="section-title">SATIŞ ÖZETİ</div>
+        <div class="section-title">${escHtml(tm('reportsSalesSummarySection'))}</div>
         
         <div class="row">
-          <span class="label">Toplam İşlem:</span>
+          <span class="label">${escHtml(tm('reportsTotalTransactions'))}:</span>
           <span class="value">${zReport.totalSales}</span>
         </div>
         <div class="row">
-          <span class="label">Brüt Satış:</span>
+          <span class="label">${escHtml(tm('reportsZPrintGrossSales'))}:</span>
           <span class="value">${formatNumber(zReport.amountBeforeDiscount, 2, false)}</span>
         </div>
         <div class="row">
-          <span class="label">İndirim (-):</span>
+          <span class="label">${escHtml(tm('reportsZPrintDiscountMinus'))}:</span>
           <span>${formatNumber(zReport.totalDiscount, 2, false)}</span>
         </div>
         <div class="row">
-          <span class="label">Satış iade (-):</span>
-          <span>${formatNumber(zReport.refundAmount, 2, false)} (${zReport.returnCount ?? 0} adet)</span>
+          <span class="label">${escHtml(tm('reportsSalesReturnMinus'))}:</span>
+          <span>${formatNumber(zReport.refundAmount, 2, false)} (${escHtml(tm('reportsZPrintPcsCount').replace('{n}', String(zReport.returnCount ?? 0)))})</span>
         </div>
         <div class="row">
-          <span class="label">İptal adet:</span>
+          <span class="label">${escHtml(tm('reportsZPrintCancelCount'))}:</span>
           <span>${zReport.canceledSales}</span>
         </div>
         <div class="row">
-          <span class="label">Toplam gider (-):</span>
+          <span class="label">${escHtml(tm('reportsZPrintTotalExpenseMinus'))}:</span>
           <span>${formatNumber(zReport.totalExpenses, 2, false)}</span>
         </div>
         <div class="row">
-          <span class="label">Net ciro:</span>
+          <span class="label">${escHtml(tm('reportsZPrintNetTurnover'))}:</span>
           <span>${formatNumber(zReport.netSales ?? (zReport.totalAmount - zReport.refundAmount), 2, false)}</span>
         </div>
         <div class="row">
-          <span class="label">İlk Fiş No:</span>
+          <span class="label">${escHtml(tm('reportsZPrintFirstReceiptNo'))}:</span>
           <span>${zReport.firstSale}</span>
         </div>
         <div class="row">
-          <span class="label">Son Fiş No:</span>
+          <span class="label">${escHtml(tm('reportsZPrintLastReceiptNo'))}:</span>
           <span>${zReport.lastSale}</span>
         </div>
         
         <div class="divider"></div>
         ${restaurantProductBlock}
-        <div class="section-title">ÖDEME ÖZETİ</div>
+        <div class="section-title">${escHtml(tm('reportsPaymentSummarySection'))}</div>
         
         <div class="row">
-          <span class="label">Nakit:</span>
+          <span class="label">${escHtml(tm('reportsPaymentPieCash'))}:</span>
           <span class="value">${formatNumber(zReport.cashAmount, 2, false)}</span>
         </div>
         <div class="row">
-          <span class="label">Kart:</span>
+          <span class="label">${escHtml(tm('cardLabel'))}:</span>
           <span>${formatNumber(zReport.cardAmount, 2, false)}</span>
         </div>
         
         <div class="divider"></div>
 
-        <div class="section-title">HESAP ÖZETİ</div>
+        <div class="section-title">${escHtml(tm('reportsZPrintAccountSummary'))}</div>
         <div class="formula">
-          <div class="row"><span class="label">Nakit + Kart tahsilat</span><span>${formatNumber(zReport.totalAmount, 2, false)}</span></div>
-          <div class="row"><span class="label">Toplam gider</span><span>- ${formatNumber(zReport.totalExpenses, 2, false)}</span></div>
-          <div class="row final"><span>GİDER SONRASI NET</span><span>${formatNumber(zReport.netAfterExpenses, 2, false)}</span></div>
+          <div class="row"><span class="label">${escHtml(tm('reportsZPrintCashCardCollected'))}</span><span>${formatNumber(zReport.totalAmount, 2, false)}</span></div>
+          <div class="row"><span class="label">${escHtml(tm('reportsZPrintTotalExpense'))}</span><span>- ${formatNumber(zReport.totalExpenses, 2, false)}</span></div>
+          <div class="row final"><span>${escHtml(tm('reportsZPrintNetAfterExpensesUpper'))}</span><span>${formatNumber(zReport.netAfterExpenses, 2, false)}</span></div>
         </div>
-        <div class="center small muted" style="margin-top:1mm">Bu tutar günlük tahsilat eksi günlük giderdir.</div>
+        <div class="center small muted" style="margin-top:1mm">${escHtml(tm('reportsZPrintNetFootnote'))}</div>
         
         <div class="divider"></div>
         
         <div class="center" style="margin-top: 5mm; font-size: 10px;">
-          <div>Bu rapor otomatik oluşturulmuştur</div>
+          <div>${escHtml(tm('reportsZPrintAutoGenerated'))}</div>
           <div>RetailOS v1.0</div>
         </div>
       </body>
       </html>
     `;
 
-    const previewTitle = `Z Raporu — ${zReport.dateLabel}`;
+    const previewTitle = `${tm('reportsZPrintDocTitle')} — ${zReport.dateLabel}`;
     if (shouldPreviewReportPrint(isMobile)) {
       setReportPrintPreview({ html: reportHTML, title: previewTitle });
       return;
@@ -4657,7 +4648,7 @@ export function ReportsModule({
                         <p className="text-sm text-gray-600">{tm('totalSales')}</p>
                         <p className="text-3xl font-bold mt-1" style={{ color: bizConfig.color }}>{dailyActiveRows.filter((r) => r.status !== 'return').length}</p>
                         <p className="text-xs text-slate-500 mt-1">
-                          Satış iade: {dailyReturnRows.length}
+                          {tm('reportsSalesReturnCount').replace('{count}', String(dailyReturnRows.length))}
                           {dailyReturnTotal > 0 ? ` · −${formatNumber(dailyReturnTotal, 2, false)}` : ''}
                         </p>
                         <p className="text-xs text-slate-500">
@@ -4711,9 +4702,9 @@ export function ReportsModule({
                   <div className="bg-white rounded-lg p-4 border-2 border-red-100">
                     <div className="flex items-center justify-between">
                       <div>
-                        <p className="text-sm text-gray-600">Satış iade</p>
+                        <p className="text-sm text-gray-600">{tm('reportsSalesReturnLabel')}</p>
                         <p className="text-2xl font-bold mt-1 text-red-600">{formatNumber(dailyReturnTotal, 2, false)}</p>
-                        <p className="text-xs text-slate-500 mt-1">{dailyReturnRows.length} işlem</p>
+                        <p className="text-xs text-slate-500 mt-1">{tm('reportsPaymentTxnShort').replace('{n}', String(dailyReturnRows.length))}</p>
                       </div>
                       <TrendingDown className="w-12 h-12 text-red-400 opacity-40" />
                     </div>
@@ -5050,23 +5041,23 @@ export function ReportsModule({
 
             <Modal
               open={reportConfirmOpen}
-              title="Onay"
+              title={tm('reportsConfirmTitle')}
               onOk={() => resolveReportConfirm(true)}
               onCancel={() => resolveReportConfirm(false)}
-              okText="Evet"
-              cancelText="Vazgeç"
+              okText={tm('resVoidStockYes')}
+              cancelText={tm('cancelBtn')}
               okButtonProps={{ disabled: !reportConfirmReason.trim() }}
               destroyOnClose
             >
               <div className="whitespace-pre-line text-sm text-slate-700">{reportConfirmMessage}</div>
               <div className="mt-4">
                 <label className="mb-1 block text-xs font-semibold text-slate-600">
-                  İptal nedeni (zorunlu)
+                  {tm('reportsCancelReasonRequired')}
                 </label>
                 <Input.TextArea
                   value={reportConfirmReason}
                   onChange={(e) => setReportConfirmReason(e.target.value)}
-                  placeholder="Lütfen iptal nedenini yazın..."
+                  placeholder={tm('reportsCancelReasonPlaceholder')}
                   autoSize={{ minRows: 3, maxRows: 5 }}
                 />
               </div>
@@ -5193,20 +5184,20 @@ export function ReportsModule({
                           <p className="text-2xl font-bold text-orange-600 mt-1">{formatNumber(zReport.totalDiscount, 2, false)}</p>
                         </div>
                         <div className="p-4 bg-red-50 rounded-lg border border-red-100">
-                          <p className="text-sm text-gray-600">Satış iade (-)</p>
+                          <p className="text-sm text-gray-600">{tm('reportsSalesReturnMinus')}</p>
                           <p className="text-2xl font-bold text-red-700 mt-1">{formatNumber(zReport.refundAmount, 2, false)}</p>
-                          <p className="text-xs text-slate-500 mt-1">{zReport.returnCount ?? 0} işlem</p>
+                          <p className="text-xs text-slate-500 mt-1">{tm('reportsPaymentTxnShort').replace('{n}', String(zReport.returnCount ?? 0))}</p>
                         </div>
                         <div className="p-4 bg-green-50 rounded-lg border border-green-100">
                           <p className="text-sm text-gray-600">{tm('reportsNetTurnover')}</p>
                           <p className="text-2xl font-bold text-green-700 mt-1">{formatNumber(zReport.netSales ?? (zReport.totalAmount - zReport.refundAmount), 2, false)}</p>
                         </div>
                         <div className="p-4 bg-rose-50 rounded-lg border border-rose-100">
-                          <p className="text-sm text-gray-600">Toplam gider</p>
+                          <p className="text-sm text-gray-600">{tm('totalExpense')}</p>
                           <p className="text-2xl font-bold text-rose-700 mt-1">{formatNumber(zReport.totalExpenses, 2, false)}</p>
                         </div>
                         <div className="p-4 bg-indigo-50 rounded-lg border border-indigo-100">
-                          <p className="text-sm text-gray-600">Gider sonrası net</p>
+                          <p className="text-sm text-gray-600">{tm('reportsNetAfterExpenses')}</p>
                           <p className="text-2xl font-bold text-indigo-700 mt-1">{formatNumber(zReport.netAfterExpenses, 2, false)}</p>
                         </div>
                       </div>

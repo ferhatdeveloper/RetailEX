@@ -9,6 +9,7 @@ import { postgres } from '../../../services/postgres';
 import { stockCountAPI } from '../../../services/stockCountAPI';
 import { BarcodeScanner } from './BarcodeScanner';
 import { useTheme } from '../../../contexts/ThemeContext';
+import { useLanguage } from '../../../contexts/LanguageContext';
 
 interface CountedItem {
   barcode: string;
@@ -28,6 +29,7 @@ interface InventoryCountProps {
 
 export function InventoryCount({ onBack }: InventoryCountProps) {
   const { darkMode } = useTheme();
+  const { tm } = useLanguage();
   const [step, setStep] = useState<'type-select' | 'warehouse-select' | 'location-scan' | 'item-count' | 'summary'>('type-select');
   const [countType, setCountType] = useState<'full' | 'cycle' | 'location'>('full');
   const [warehouses, setWarehouses] = useState<any[]>([]);
@@ -122,7 +124,7 @@ export function InventoryCount({ onBack }: InventoryCountProps) {
         beep(true);
       } else {
         beep(false);
-        alert('Ürün bulunamadı: ' + barcode);
+        alert(tm('productNotFoundWithBarcode').replace('{code}', barcode));
       }
     } catch (err) {
       console.error('Search error:', err);
@@ -183,12 +185,12 @@ export function InventoryCount({ onBack }: InventoryCountProps) {
 
       vibrate();
       beep(true);
-      alert('Sayım başarıyla veritabanına kaydedildi.');
+      alert(tm('countSavedToDatabase'));
       onBack();
     } catch (err) {
       console.error('Save error:', err);
       beep(false);
-      alert('Sayım kaydedilirken bir hata oluştu!');
+      alert(tm('countSaveError'));
     } finally {
       setSaving(false);
     }

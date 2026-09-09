@@ -1,6 +1,7 @@
 import { useState, useEffect } from 'react';
 import { Printer, Save, RefreshCw, CheckCircle, XCircle, Wifi, Usb } from 'lucide-react';
 import { useElectron } from '../../hooks/useElectron';
+import { useLanguage } from '../../contexts/LanguageContext';
 
 /** Electron preload ile genişletilmiş API (yazıcı / barkod / store) */
 type ExtendedElectronApi = NonNullable<ReturnType<typeof useElectron>['api']> & {
@@ -34,6 +35,7 @@ interface PrinterConfig {
 }
 
 export function PrinterSettings() {
+  const { tm } = useLanguage();
   const { isElectron, api: rawApi } = useElectron();
   const api = rawApi as ExtendedElectronApi | undefined;
   
@@ -108,7 +110,7 @@ export function PrinterSettings() {
       api.store.set('printer', config);
     }
     
-    alert('Yazıcı ayarları kaydedildi!');
+    alert(tm('printerSaved'));
   };
   
   const loadAvailablePrinters = async () => {
@@ -139,11 +141,11 @@ export function PrinterSettings() {
   
   const testPrinter = async () => {
     setTestStatus('testing');
-    setTestMessage('Bağlantı test ediliyor...');
+    setTestMessage(tm('printerTesting'));
     
     if (!isElectron || !api?.printer) {
       setTestStatus('error');
-      setTestMessage('Yazıcı testi sadece Electron uygulamasında çalışır');
+      setTestMessage(tm('printerTestElectronOnly'));
       return;
     }
     
@@ -160,14 +162,14 @@ export function PrinterSettings() {
           encoding: config.encoding || 'PC857_TURKISH'
         },
         storeName: 'RetailOS Test',
-        storeAddress: 'Test Adresi',
+        storeAddress: tm('printerTestAddress'),
         storeTaxNo: '1234567890',
         invoiceNo: 'TEST-' + Date.now(),
         date: new Date().toISOString(),
-        cashierName: 'Test Kullanıcı',
+        cashierName: tm('printerTestUser'),
         items: [
           {
-            productName: 'Test Ürün',
+            productName: tm('printerTestProduct'),
             quantity: 1,
             price: 10.00,
             total: 10.00
@@ -178,7 +180,7 @@ export function PrinterSettings() {
         tax: 1.80,
         total: 11.80,
         payment: {
-          method: 'Nakit',
+          method: tm('printerCash'),
           amount: 11.80
         }
       };
@@ -187,14 +189,14 @@ export function PrinterSettings() {
       
       if (result.success) {
         setTestStatus('success');
-        setTestMessage('Test yazdırma başarılı!');
+        setTestMessage(tm('printerTestSuccess'));
       } else {
         setTestStatus('error');
-        setTestMessage(result.error || 'Yazdırma başarısız');
+        setTestMessage(result.error || tm('printerPrintFailed'));
       }
     } catch (error: any) {
       setTestStatus('error');
-      setTestMessage(error.message || 'Yazıcı bağlantı hatası');
+      setTestMessage(error.message || tm('printerConnError'));
     }
   };
   
@@ -204,8 +206,8 @@ export function PrinterSettings() {
       <div className="bg-white border-b px-6 py-4">
         <div className="flex items-center justify-between">
           <div>
-            <h2 className="text-xl">Yazıcı Ayarları</h2>
-            <p className="text-sm text-gray-600">Fatura ve etiket yazdırma yapılandırması</p>
+            <h2 className="text-xl">{tm('printerTitle')}</h2>
+            <p className="text-sm text-gray-600">{tm('printerSubtitle')}</p>
           </div>
           <div className="flex items-center gap-3">
             <button
@@ -214,14 +216,14 @@ export function PrinterSettings() {
               className="px-4 py-2 border border-gray-300 rounded-lg hover:bg-gray-50 disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-2"
             >
               <Printer className="w-4 h-4" />
-              Test Yazdırma
+              {tm('printerTestPrint')}
             </button>
             <button
               onClick={saveSettings}
               className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 flex items-center gap-2"
             >
               <Save className="w-4 h-4" />
-              Kaydet
+              {tm('save')}
             </button>
           </div>
         </div>
@@ -233,8 +235,7 @@ export function PrinterSettings() {
           {!isElectron && !isTauri && (
             <div className="bg-yellow-50 border border-yellow-200 rounded-lg p-4">
               <p className="text-sm text-yellow-800">
-                ⚠️ Donanım yazıcı özellikleri sadece Electron desktop uygulamasında çalışır.
-                Web uygulamasında standart tarayıcı yazdırma kullanılır.
+                ⚠️ {tm('printerWebWarning')}
               </p>
             </div>
           )}
@@ -261,7 +262,7 @@ export function PrinterSettings() {
           
           {/* General Settings */}
           <div className="bg-white rounded-lg border p-6">
-            <h3 className="text-lg mb-4">Genel Ayarlar</h3>
+            <h3 className="text-lg mb-4">{tm('printerGeneral')}</h3>
             
             <div className="space-y-4">
               <label className="flex items-center gap-2">
@@ -271,18 +272,18 @@ export function PrinterSettings() {
                   onChange={(e) => setConfig({ ...config, enabled: e.target.checked })}
                   className="rounded"
                 />
-                <span>Yazıcı etkin</span>
+                <span>{tm('printerEnabled')}</span>
               </label>
               
               <div>
-                <label className="block text-sm text-gray-700 mb-2">Yazıcı Tipi</label>
+                <label className="block text-sm text-gray-700 mb-2">{tm('printerType')}</label>
                 <select
                   value={config.type}
                   onChange={(e) => setConfig({ ...config, type: e.target.value as any })}
                   className="w-full px-4 py-2 border border-gray-300 rounded-lg"
                 >
-                  <option value="thermal">Termal Yazıcı (ESC/POS)</option>
-                  <option value="standard">Standart Yazıcı (A4/A5)</option>
+                  <option value="thermal">{tm('printerThermal')}</option>
+                  <option value="standard">{tm('printerStandard')}</option>
                 </select>
               </div>
               
@@ -393,7 +394,7 @@ export function PrinterSettings() {
                         setConfig({ ...config, windowsPrinterName: v || undefined });
                       }}
                     >
-                      <option value="">— Listeden seçin veya alttaki kutuya yazın —</option>
+                      <option value="">{tm('printerSelectListOrType')}</option>
                       {tauriPrinters.map((p, i) => {
                         const name = (p.Name ?? p.name ?? '').trim();
                         if (!name) return null;
@@ -408,7 +409,7 @@ export function PrinterSettings() {
                   <input
                     type="text"
                     className="mt-2 w-full px-3 py-2 border border-gray-300 rounded-lg text-sm font-mono"
-                    placeholder='Örn: EPSON TM-T20III (Denetim Masası → Aygıtlar ve yazıcılar → tam ad)'
+                    placeholder={tm('printerWindowsNamePh')}
                     value={config.windowsPrinterName ?? ''}
                     onChange={(e) =>
                       setConfig({
@@ -459,12 +460,12 @@ export function PrinterSettings() {
           {(config.interface === 'serial' || config.interface === 'usb') && (
             <div className="bg-white rounded-lg border p-6">
               <h3 className="text-lg mb-4">
-                {config.interface === 'usb' ? 'USB' : 'Serial'} Ayarları
+                {tm('printerUsbSerialSettings').replace('{iface}', config.interface === 'usb' ? 'USB' : 'Serial')}
               </h3>
               
               <div>
                 <label className="block text-sm text-gray-700 mb-2">
-                  Cihaz {config.interface === 'usb' ? 'Yolu' : 'Port'}
+                  {tm('printerDevicePath').replace('{kind}', config.interface === 'usb' ? tm('printerPath') : tm('printerPort'))}
                 </label>
                 {availablePorts.length > 0 ? (
                   <select
@@ -472,7 +473,7 @@ export function PrinterSettings() {
                     onChange={(e) => setConfig({ ...config, devicePath: e.target.value })}
                     className="w-full px-4 py-2 border border-gray-300 rounded-lg"
                   >
-                    <option value="">Seçin...</option>
+                    <option value="">{tm('printerSelect')}</option>
                     {availablePorts.map(port => (
                       <option key={port.path} value={port.path}>
                         {port.path} {port.manufacturer ? `(${port.manufacturer})` : ''}
@@ -484,7 +485,7 @@ export function PrinterSettings() {
                     type="text"
                     value={config.devicePath || ''}
                     onChange={(e) => setConfig({ ...config, devicePath: e.target.value })}
-                    placeholder="COM1 veya /dev/ttyUSB0"
+                    placeholder={tm('printerDevicePathPh')}
                     className="w-full px-4 py-2 border border-gray-300 rounded-lg"
                   />
                 )}

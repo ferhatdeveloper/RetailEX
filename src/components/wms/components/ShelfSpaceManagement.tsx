@@ -6,6 +6,7 @@ import {
   Grid3x3, Package, TrendingUp, Maximize2, AlertCircle,
   Edit, Save, X, Plus, BarChart3, Layers, Box
 } from 'lucide-react';
+import { useLanguage } from '../../../contexts/LanguageContext';
 
 interface ShelfSpaceManagementProps {
   darkMode: boolean;
@@ -35,6 +36,7 @@ interface Brand {
 }
 
 export function ShelfSpaceManagement({ darkMode, onBack }: ShelfSpaceManagementProps) {
+  const { tm } = useLanguage();
   const [allocations, setAllocations] = useState<ShelfAllocation[]>([]);
   const [brands, setBrands] = useState<Brand[]>([]);
   const [selectedBrand, setSelectedBrand] = useState<string>('all');
@@ -190,7 +192,7 @@ export function ShelfSpaceManagement({ darkMode, onBack }: ShelfSpaceManagementP
                 }`}
             >
               {isEditing ? <Save className="w-4 h-4" /> : <Edit className="w-4 h-4" />}
-              {isEditing ? 'Kaydet' : 'Düzenle'}
+              {isEditing ? tm('save') : tm('edit')}
             </button>
           </div>
         </div>

@@ -2,6 +2,7 @@
 import { useState } from 'react';
 import { formatCurrency, formatNumber } from '../../utils/formatNumber';
 import { ModalLayer } from '../shared/FullscreenBodyPortal';
+import { useLanguage } from '../../contexts/LanguageContext';
 
 interface POSCashHandoverModalProps {
   onClose: () => void;
@@ -24,16 +25,17 @@ export function POSCashHandoverModal({
   amount,
   note
 }: POSCashHandoverModalProps) {
+  const { t, tm } = useLanguage();
   const [selectedStaff, setSelectedStaff] = useState<string>('');
   const [handoverNote, setHandoverNote] = useState(note);
   const [showPrintPreview, setShowPrintPreview] = useState(false);
 
   // Demo personel listesi - gerçek uygulamada API'den gelecek
   const staffList: Staff[] = [
-    { id: '1', name: 'Ali Yılmaz', role: 'Kasiyer' },
-    { id: '2', name: 'Ayşe Demir', role: 'Kasiyer' },
-    { id: '3', name: 'Mehmet Kaya', role: 'Kıdemli Kasiyer' },
-    { id: '4', name: 'Fatma Şahin', role: 'Kasiyer' },
+    { id: '1', name: 'Ali Yılmaz', role: tm('posCashierRole') },
+    { id: '2', name: 'Ayşe Demir', role: tm('posCashierRole') },
+    { id: '3', name: 'Mehmet Kaya', role: tm('posSeniorCashierRole') },
+    { id: '4', name: 'Fatma Şahin', role: tm('posCashierRole') },
   ];
 
   const handlePrintHandoverReceipt = () => {
@@ -47,7 +49,7 @@ export function POSCashHandoverModal({
 
   const handleConfirm = () => {
     if (!selectedStaff) {
-      alert('Lütfen devredilecek kasiyeri seçin!');
+      alert(tm('posSelectHandoverCashierAlert'));
       return;
     }
 
@@ -70,7 +72,7 @@ export function POSCashHandoverModal({
           <div className="p-4 border-b border-gray-200 bg-gradient-to-r from-purple-600 to-purple-700 flex items-center justify-between">
             <h3 className="text-lg text-white flex items-center gap-2">
               <Users className="w-6 h-6" />
-              Kasa Devir İşlemi
+              {tm('posCashHandoverTitle')}
             </h3>
             <button
               onClick={onClose}
@@ -89,15 +91,15 @@ export function POSCashHandoverModal({
               </h4>
               <div className="space-y-2 text-sm">
                 <div className="flex justify-between">
-                  <span className="text-gray-600">Devreden Kasiyer:</span>
+                  <span className="text-gray-600">{t.handoverFromCashier}</span>
                   <span className="font-medium text-gray-900">{fromStaff}</span>
                 </div>
                 <div className="flex justify-between items-center">
-                  <span className="text-gray-600">Devir Tutarı:</span>
+                  <span className="text-gray-600">{t.handoverAmount}</span>
                   <span className="text-2xl font-bold text-purple-900">{formatCurrency(amount)}</span>
                 </div>
                 <div className="flex justify-between">
-                  <span className="text-gray-600">Devir Tarihi:</span>
+                  <span className="text-gray-600">{tm('posHandoverDate')}</span>
                   <span className="font-medium text-gray-900">
                     {new Date().toLocaleDateString('tr-TR')} {new Date().toLocaleTimeString('tr-TR')}
                   </span>
@@ -107,7 +109,7 @@ export function POSCashHandoverModal({
 
             {/* Personel Seçimi */}
             <div className="bg-gray-50 border border-gray-200 rounded-lg p-4 mb-4">
-              <h4 className="text-sm font-medium text-gray-900 mb-3">Devredilecek Kasiyer Seçin</h4>
+              <h4 className="text-sm font-medium text-gray-900 mb-3">{tm('posSelectHandoverCashier')}</h4>
               <div className="space-y-2 max-h-64 overflow-y-auto">
                 {staffList.map((staff) => (
                   <button
@@ -142,11 +144,11 @@ export function POSCashHandoverModal({
 
             {/* Not Alanı */}
             <div className="bg-white border border-gray-200 rounded-lg p-4">
-              <h4 className="text-sm font-medium text-gray-900 mb-2">Devir Notu</h4>
+              <h4 className="text-sm font-medium text-gray-900 mb-2">{tm('posHandoverNoteTitle')}</h4>
               <textarea
                 value={handoverNote}
                 onChange={(e) => setHandoverNote(e.target.value)}
-                placeholder="Kasa devri ile ilgili notlarınızı yazın..."
+                placeholder={tm('posHandoverNotePlaceholder')}
                 rows={3}
                 className="w-full px-3 py-2 text-sm border border-gray-300 rounded focus:outline-none focus:border-purple-500"
               />
@@ -157,11 +159,11 @@ export function POSCashHandoverModal({
               <div className="flex items-start gap-2">
                 <AlertCircle className="w-5 h-5 text-yellow-600 flex-shrink-0 mt-0.5" />
                 <div className="text-sm text-yellow-800">
-                  <p className="font-medium mb-1">Önemli Bilgilendirme:</p>
+                  <p className="font-medium mb-1">{tm('posHandoverImportantInfo')}</p>
                   <ul className="list-disc list-inside space-y-1 text-xs">
-                    <li>Devir işlemi onaylandıktan sonra devir fişi otomatik yazdırılacaktır</li>
-                    <li>Seçilen kasiyer kasa açılışı yapana kadar bekleyecektir</li>
-                    <li>Kasiyer devri onaylamadan kasa açamayacaktır</li>
+                    <li>{tm('posHandoverInfo1')}</li>
+                    <li>{tm('posHandoverInfo2')}</li>
+                    <li>{tm('posHandoverInfo3')}</li>
                   </ul>
                 </div>
               </div>
@@ -174,7 +176,7 @@ export function POSCashHandoverModal({
               onClick={onClose}
               className="flex-1 px-6 py-3 text-sm bg-gray-200 text-gray-700 hover:bg-gray-300 transition-colors rounded-lg"
             >
-              İptal
+              {t.cancel}
             </button>
             <button
               onClick={handleConfirm}
@@ -194,7 +196,7 @@ export function POSCashHandoverModal({
           <div className="bg-white w-full max-w-2xl max-h-[90vh] flex flex-col shadow-2xl rounded-lg overflow-hidden">
             {/* Header */}
             <div className="p-4 border-b border-gray-200 flex items-center justify-between">
-              <h3 className="text-lg font-medium text-gray-900">Devir Fişi Önizleme</h3>
+              <h3 className="text-lg font-medium text-gray-900">{tm('posHandoverPreview')}</h3>
               <button
                 onClick={() => setShowPrintPreview(false)}
                 className="text-gray-400 hover:text-gray-600 p-1"
@@ -207,36 +209,36 @@ export function POSCashHandoverModal({
             <div className="flex-1 overflow-y-auto p-6 bg-gray-50">
               <div className="bg-white p-8 mx-auto max-w-lg border border-gray-200 print-content">
                 <div className="text-center mb-6">
-                  <h2 className="text-2xl font-bold text-gray-900 mb-1">KASA DEVİR FİŞİ</h2>
-                  <p className="text-sm text-gray-600">ExRetailOS - Profesyonel Satış Yönetimi</p>
+                  <h2 className="text-2xl font-bold text-gray-900 mb-1">{tm('posCashHandoverSlip')}</h2>
+                  <p className="text-sm text-gray-600">{tm('posHandoverProSubtitle')}</p>
                 </div>
 
                 <div className="border-t border-b border-gray-300 py-4 mb-4">
                   <div className="space-y-2 text-sm">
                     <div className="flex justify-between">
-                      <span className="text-gray-600">Devir No:</span>
+                      <span className="text-gray-600">{tm('posHandoverNo')}</span>
                       <span className="font-medium text-gray-900">#{Date.now().toString().slice(-8)}</span>
                     </div>
                     <div className="flex justify-between">
-                      <span className="text-gray-600">Tarih:</span>
+                      <span className="text-gray-600">{t.dateLabel}:</span>
                       <span className="font-medium text-gray-900">{new Date().toLocaleDateString('tr-TR')}</span>
                     </div>
                     <div className="flex justify-between">
-                      <span className="text-gray-600">Saat:</span>
+                      <span className="text-gray-600">{t.timeLabel}:</span>
                       <span className="font-medium text-gray-900">{new Date().toLocaleTimeString('tr-TR')}</span>
                     </div>
                   </div>
                 </div>
 
                 <div className="bg-gray-50 p-4 rounded mb-4">
-                  <h3 className="text-sm font-medium text-gray-900 mb-3">Devir Bilgileri</h3>
+                  <h3 className="text-sm font-medium text-gray-900 mb-3">{tm('posHandoverInfoSection')}</h3>
                   <div className="space-y-2 text-sm">
                     <div className="flex justify-between">
-                      <span className="text-gray-600">Devreden:</span>
+                      <span className="text-gray-600">{tm('posHandoverFrom')}</span>
                       <span className="font-medium text-gray-900">{fromStaff}</span>
                     </div>
                     <div className="flex justify-between">
-                      <span className="text-gray-600">Devralan:</span>
+                      <span className="text-gray-600">{tm('posHandoverTo')}</span>
                       <span className="font-medium text-gray-900">
                         {staffList.find(s => s.id === selectedStaff)?.name || '-'}
                       </span>
@@ -246,14 +248,14 @@ export function POSCashHandoverModal({
 
                 <div className="bg-purple-50 border border-purple-200 p-4 rounded mb-4">
                   <div className="flex justify-between items-center">
-                    <span className="text-sm font-medium text-purple-900">DEVİR TUTARI:</span>
+                    <span className="text-sm font-medium text-purple-900">{tm('posHandoverAmountCaps')}</span>
                     <span className="text-3xl font-bold text-purple-900">{formatCurrency(amount)}</span>
                   </div>
                 </div>
 
                 {handoverNote && (
                   <div className="mb-4 p-3 bg-gray-50 rounded">
-                    <p className="text-xs text-gray-600 mb-1">Not:</p>
+                    <p className="text-xs text-gray-600 mb-1">{tm('posNoteCaps')}</p>
                     <p className="text-sm text-gray-900">{handoverNote}</p>
                   </div>
                 )}
@@ -262,13 +264,13 @@ export function POSCashHandoverModal({
                   <div className="grid grid-cols-2 gap-8">
                     <div className="text-center">
                       <div className="border-t border-gray-400 pt-2 mt-12">
-                        <p className="text-xs text-gray-600">Devreden İmza</p>
+                        <p className="text-xs text-gray-600">{tm('posHandoverFromSign')}</p>
                         <p className="text-sm font-medium text-gray-900">{fromStaff}</p>
                       </div>
                     </div>
                     <div className="text-center">
                       <div className="border-t border-gray-400 pt-2 mt-12">
-                        <p className="text-xs text-gray-600">Devralan İmza</p>
+                        <p className="text-xs text-gray-600">{tm('posHandoverToSign')}</p>
                         <p className="text-sm font-medium text-gray-900">
                           {staffList.find(s => s.id === selectedStaff)?.name || '-'}
                         </p>
@@ -278,8 +280,8 @@ export function POSCashHandoverModal({
                 </div>
 
                 <div className="mt-6 text-center text-xs text-gray-500">
-                  <p>Bu belge elektronik ortamda oluşturulmuş olup imza gerektirmez.</p>
-                  <p className="mt-1">Yazdırma Tarihi: {new Date().toLocaleString('tr-TR')}</p>
+                  <p>{tm('posElectronicDocNote')}</p>
+                  <p className="mt-1">{tm('posPrintDate')} {new Date().toLocaleString()}</p>
                 </div>
               </div>
             </div>
@@ -297,7 +299,7 @@ export function POSCashHandoverModal({
                 className="flex-1 px-6 py-3 text-sm bg-blue-600 text-white hover:bg-blue-700 transition-colors flex items-center justify-center gap-2 rounded-lg"
               >
                 <Printer className="w-5 h-5" />
-                Yazdır
+                {t.print}
               </button>
             </div>
           </div>

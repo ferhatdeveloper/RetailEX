@@ -125,7 +125,7 @@ const TDHP_TEMPLATE: Partial<ChartOfAccount>[] = [
 // ===== COMPONENT =====
 
 export function ChartOfAccountsManagement() {
-  const { t } = useLanguage();
+  const { t, tm } = useLanguage();
   const { selectedFirma } = useFirmaDonem();
 
   // State
@@ -254,14 +254,14 @@ export function ChartOfAccountsManagement() {
               <div className="flex items-center justify-center gap-2">
                 <button
                   className="p-1 text-blue-600 hover:bg-blue-50 rounded"
-                  title="Düzenle"
+                  title={tm('edit')}
                 >
                   <Edit className="w-4 h-4" />
                 </button>
                 {account.detay_hesap && (
                   <button
                     className="p-1 text-red-600 hover:bg-red-50 rounded"
-                    title="Sil"
+                    title={tm('delete')}
                   >
                     <Trash2 className="w-4 h-4" />
                   </button>
@@ -283,9 +283,9 @@ export function ChartOfAccountsManagement() {
           <div className="flex items-center gap-3">
             <BookOpen className="w-6 h-6" />
             <div>
-              <h2 className="text-xl font-semibold">Hesap Planı Yönetimi</h2>
+              <h2 className="text-xl font-semibold">{tm('accChartOfAccountsMgmt')}</h2>
               <p className="text-sm text-indigo-100 mt-0.5">
-                Tek Düzen Hesap Planı (TDHP) - Logo Uyumlu
+                {tm('accChartOfAccountsSubtitle')}
               </p>
             </div>
           </div>
@@ -361,7 +361,7 @@ export function ChartOfAccountsManagement() {
           {accountTree.length === 0 && (
             <div className="text-center py-12 text-gray-500">
               <BookOpen className="w-12 h-12 mx-auto mb-3 opacity-30" />
-              <p>Kayıt bulunamadı</p>
+              <p>{tm('noRecordsFound')}</p>
             </div>
           )}
         </div>

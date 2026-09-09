@@ -1,8 +1,10 @@
 import React, { useState, useEffect } from 'react';
 import { accountingAPI, YevmiyeFisi, YevmiyeSatiri, HesapPlani } from '../../../services/api/accounting';
 import { Plus, X, Save, AlertCircle } from 'lucide-react';
+import { useLanguage } from '../../../contexts/LanguageContext';
 
 export function AccountingDashboard() {
+  const { tm } = useLanguage();
   const [fisler, setFisler] = useState<YevmiyeFisi[]>([]);
   const [accounts, setAccounts] = useState<HesapPlani[]>([]);
   const [loading, setLoading] = useState(true);
@@ -72,37 +74,37 @@ export function AccountingDashboard() {
       <div className="flex items-center justify-between">
         <h1 className="text-2xl font-bold text-gray-800 flex items-center gap-2">
           <Save className="w-6 h-6 text-blue-600" />
-          Muhasebe - Yevmiye Defteri
+          {tm('accJournalBook')}
         </h1>
         <button
           onClick={() => setShowNewFisModal(true)}
           className="flex items-center gap-2 px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-shadow shadow-sm"
         >
           <Plus className="w-4 h-4" />
-          Yeni Fiş
+          {tm('accNewVoucher')}
         </button>
       </div>
 
       {/* Summary Cards */}
       <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
         <div className="bg-white p-4 rounded-xl shadow-sm border border-gray-100">
-          <div className="text-sm text-gray-500">Toplam Fiş</div>
+          <div className="text-sm text-gray-500">{tm('accTotalVouchers')}</div>
           <div className="text-2xl font-bold text-gray-900">{fisler.length}</div>
         </div>
         <div className="bg-white p-4 rounded-xl shadow-sm border border-gray-100">
-          <div className="text-sm text-gray-500 font-medium">Onaylı</div>
+          <div className="text-sm text-gray-500 font-medium">{tm('approved')}</div>
           <div className="text-2xl font-bold text-green-600">
             {fisler.filter((f: YevmiyeFisi) => f.onay_durumu === 'ONAYLANDI').length}
           </div>
         </div>
         <div className="bg-white p-4 rounded-xl shadow-sm border border-gray-100">
-          <div className="text-sm text-gray-500 font-medium">Taslak</div>
+          <div className="text-sm text-gray-500 font-medium">{tm('draft')}</div>
           <div className="text-2xl font-bold text-orange-500">
             {fisler.filter((f: YevmiyeFisi) => f.onay_durumu === 'TASLAK').length}
           </div>
         </div>
         <div className="bg-white p-4 rounded-xl shadow-sm border border-gray-100">
-          <div className="text-sm text-gray-500 font-medium">İptal</div>
+          <div className="text-sm text-gray-500 font-medium">{tm('cancel')}</div>
           <div className="text-2xl font-bold text-red-500">
             {fisler.filter((f: YevmiyeFisi) => f.onay_durumu === 'IPTAL').length}
           </div>
@@ -114,13 +116,13 @@ export function AccountingDashboard() {
         <table className="min-w-full divide-y divide-gray-200">
           <thead className="bg-gray-50">
             <tr>
-              <th className="px-6 py-3 text-left text-xs font-semibold text-gray-500 uppercase tracking-wider">Fiş No</th>
-              <th className="px-6 py-3 text-left text-xs font-semibold text-gray-500 uppercase tracking-wider">Tarih</th>
-              <th className="px-6 py-3 text-left text-xs font-semibold text-gray-500 uppercase tracking-wider">Açıklama</th>
-              <th className="px-6 py-3 text-right text-xs font-semibold text-gray-500 uppercase tracking-wider">Borç</th>
-              <th className="px-6 py-3 text-right text-xs font-semibold text-gray-500 uppercase tracking-wider">Alacak</th>
-              <th className="px-6 py-3 text-left text-xs font-semibold text-gray-500 uppercase tracking-wider">Durum</th>
-              <th className="px-6 py-3 text-right text-xs font-semibold text-gray-500 uppercase tracking-wider">İşlem</th>
+              <th className="px-6 py-3 text-left text-xs font-semibold text-gray-500 uppercase tracking-wider">{tm('accVoucherNo')}</th>
+              <th className="px-6 py-3 text-left text-xs font-semibold text-gray-500 uppercase tracking-wider">{tm('date')}</th>
+              <th className="px-6 py-3 text-left text-xs font-semibold text-gray-500 uppercase tracking-wider">{tm('description')}</th>
+              <th className="px-6 py-3 text-right text-xs font-semibold text-gray-500 uppercase tracking-wider">{tm('directionDebtShort')}</th>
+              <th className="px-6 py-3 text-right text-xs font-semibold text-gray-500 uppercase tracking-wider">{tm('directionCreditShort')}</th>
+              <th className="px-6 py-3 text-left text-xs font-semibold text-gray-500 uppercase tracking-wider">{tm('status')}</th>
+              <th className="px-6 py-3 text-right text-xs font-semibold text-gray-500 uppercase tracking-wider">{tm('actions')}</th>
             </tr>
           </thead>
           <tbody className="bg-white divide-y divide-gray-200">
@@ -146,8 +148,8 @@ export function AccountingDashboard() {
                   </span>
                 </td>
                 <td className="px-6 py-4 whitespace-nowrap text-right text-sm font-medium">
-                  <button className="text-blue-600 hover:text-blue-900 transition-colors mr-3">Görüntüle</button>
-                  <button className="text-gray-400 hover:text-gray-600 transition-colors">Yazdır</button>
+                  <button className="text-blue-600 hover:text-blue-900 transition-colors mr-3">{tm('view')}</button>
+                  <button className="text-gray-400 hover:text-gray-600 transition-colors">{tm('print')}</button>
                 </td>
               </tr>
             ))}
@@ -157,12 +159,12 @@ export function AccountingDashboard() {
         {fisler.length === 0 && (
           <div className="text-center py-20 bg-white">
             <AlertCircle className="w-12 h-12 text-gray-300 mx-auto mb-4" />
-            <p className="text-gray-500 text-lg">Henüz yevmiye fişi bulunmuyor</p>
+            <p className="text-gray-500 text-lg">{tm('accNoJournalYet')}</p>
             <button
               onClick={() => setShowNewFisModal(true)}
               className="mt-4 text-blue-600 font-medium hover:underline"
             >
-              İlk fişi oluşturun
+              {tm('accCreateFirstVoucher')}
             </button>
           </div>
         )}
@@ -181,6 +183,7 @@ export function AccountingDashboard() {
 }
 
 function YeniFisModal({ onClose, onSave, accounts }: { onClose: () => void, onSave: () => void, accounts: HesapPlani[] }) {
+  const { tm } = useLanguage();
   const [fis, setFis] = useState<Omit<YevmiyeFisi, 'id' | 'satirlar'>>({
     fis_no: `YF-${new Date().getFullYear()}-${Math.floor(100000 + Math.random() * 900000)}`,
     fis_tarihi: new Date().toISOString().split('T')[0],
@@ -232,7 +235,7 @@ function YeniFisModal({ onClose, onSave, accounts }: { onClose: () => void, onSa
       <div className="bg-white rounded-2xl shadow-2xl w-full max-w-5xl max-h-[90vh] flex flex-col overflow-hidden animate-in fade-in zoom-in duration-200">
         {/* Modal Header */}
         <div className="px-6 py-4 border-b border-gray-100 flex items-center justify-between bg-gray-50/50">
-          <h2 className="text-xl font-bold text-gray-800">Yeni Yevmiye Fişi</h2>
+          <h2 className="text-xl font-bold text-gray-800">{tm('accNewJournalEntry')}</h2>
           <button onClick={onClose} className="p-2 hover:bg-gray-200 rounded-full transition-colors">
             <X className="w-5 h-5 text-gray-500" />
           </button>

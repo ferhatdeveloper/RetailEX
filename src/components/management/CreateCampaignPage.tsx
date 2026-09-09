@@ -4,6 +4,7 @@ import { useState, useEffect } from 'react';
 import { ArrowLeft, Save, X, Plus, Trash2, Calendar, Percent, Tag, Users, Package, Image as ImageIcon, Globe, Banknote, Clock, Info } from 'lucide-react';
 import type { Campaign, Product } from '../../App';
 import { campaignsAPI } from '../../services/api/campaigns';
+import { useLanguage } from '../../contexts/LanguageContext';
 
 interface CreateCampaignPageProps {
   onBack: () => void;
@@ -16,6 +17,7 @@ type CampaignType = 'product' | 'category' | 'cart' | 'customer';
 type DiscountType = 'percentage' | 'fixed' | 'buyXgetY' | 'priceOverride';
 
 export function CreateCampaignPage({ onBack, onSave, editingCampaign, products }: CreateCampaignPageProps) {
+  const { tm } = useLanguage();
   const [loading, setLoading] = useState(false);
 
   // Basic Info
@@ -68,7 +70,7 @@ export function CreateCampaignPage({ onBack, onSave, editingCampaign, products }
     e.preventDefault();
 
     if (!name || !startDate || !endDate) {
-      alert('Lütfen zorunlu alanları doldurun!');
+      alert(tm('campFillRequired'));
       return;
     }
 
@@ -118,14 +120,14 @@ export function CreateCampaignPage({ onBack, onSave, editingCampaign, products }
 
       if (result) {
         onSave(result);
-        alert(editingCampaign ? 'Kampanya güncellendi!' : 'Kampanya oluşturuldu!');
+        alert(editingCampaign ? tm('campUpdated') : tm('campCreated'));
         onBack();
       } else {
-        alert('Kampanya kaydedilemedi!');
+        alert(tm('campSaveFailed'));
       }
     } catch (error) {
       console.error('Kampanya kaydetme hatası:', error);
-      alert('Bağlantı hatası!');
+      alert(tm('campConnectionError'));
     } finally {
       setLoading(false);
     }
@@ -144,8 +146,8 @@ export function CreateCampaignPage({ onBack, onSave, editingCampaign, products }
     (p.code?.toLowerCase().includes(productSearch.toLowerCase()))
   );
 
-  const categories = ['Elektronik', 'Giyim', 'Gıda', 'Ev & Yaşam', 'Kozmetik', 'Kitap & Kırtasiye'];
-  const segments = ['VIP Müşteriler', 'Yeni Müşteriler', 'Sadık Müşteriler', 'Toptan Alıcılar'];
+  const categories = [tm('campCatElectronics'), tm('campCatClothing'), tm('campCatFood'), tm('campCatHome'), tm('campCatCosmetics'), tm('campCatBooks')];
+  const segments = [tm('campSegVip'), tm('campSegNew'), tm('campSegLoyal'), tm('campSegWholesale')];
 
   return (
     <div className="h-full bg-gray-50 overflow-auto">
@@ -162,10 +164,10 @@ export function CreateCampaignPage({ onBack, onSave, editingCampaign, products }
               </button>
               <div>
                 <h1 className="text-2xl text-gray-900">
-                  {editingCampaign ? 'Kampanyayı Düzenle' : 'Yeni Kampanya Oluştur'}
+                  {editingCampaign ? tm('campEditTitle') : tm('campCreateTitle')}
                 </h1>
                 <p className="text-sm text-gray-500 mt-1">
-                  Kampanya detaylarını girin ve kaydedin
+                  {tm('campCreateSubtitle')}
                 </p>
               </div>
             </div>
@@ -175,7 +177,7 @@ export function CreateCampaignPage({ onBack, onSave, editingCampaign, products }
                 className="px-4 py-2 bg-white border border-gray-300 text-gray-700 rounded-lg hover:bg-gray-50 transition-colors flex items-center gap-2"
               >
                 <X className="w-4 h-4" />
-                İptal
+                {tm('cancel')}
               </button>
               <button
                 onClick={handleSubmit}
@@ -183,7 +185,7 @@ export function CreateCampaignPage({ onBack, onSave, editingCampaign, products }
                 className="px-6 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors flex items-center gap-2 disabled:opacity-50"
               >
                 <Save className="w-4 h-4" />
-                {loading ? 'Kaydediliyor...' : 'Kaydet'}
+                {loading ? tm('saving') : tm('save')}
               </button>
             </div>
           </div>
@@ -199,33 +201,33 @@ export function CreateCampaignPage({ onBack, onSave, editingCampaign, products }
             <div className="bg-white rounded-lg border border-gray-200 p-6">
               <div className="flex items-center gap-2 mb-4">
                 <Tag className="w-5 h-5 text-gray-600" />
-                <h2 className="text-lg text-gray-900">Temel Bilgiler</h2>
+                <h2 className="text-lg text-gray-900">{tm('campBasicInfo')}</h2>
               </div>
 
               <div className="space-y-4">
                 <div>
                   <label className="block text-sm text-gray-700 mb-2">
-                    Kampanya Adı <span className="text-red-500">*</span>
+                    {tm('campName')} <span className="text-red-500">*</span>
                   </label>
                   <input
                     type="text"
                     value={name}
                     onChange={(e) => setName(e.target.value)}
                     className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-                    placeholder="Örn: Yaz İndirimi 2025"
+                    placeholder={tm('campNamePh')}
                     required
                   />
                 </div>
 
                 <div>
                   <label className="block text-sm text-gray-700 mb-2">
-                    Açıklama
+                    {tm('description')}
                   </label>
                   <textarea
                     value={description}
                     onChange={(e) => setDescription(e.target.value)}
                     className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-                    placeholder="Kampanya hakkında detaylı açıklama..."
+                    placeholder={tm('campDescPh')}
                     rows={3}
                   />
                 </div>
@@ -233,33 +235,33 @@ export function CreateCampaignPage({ onBack, onSave, editingCampaign, products }
                 <div className="grid grid-cols-2 gap-4">
                   <div>
                     <label className="block text-sm text-gray-700 mb-2">
-                      Kampanya Türü
+                      {tm('campType')}
                     </label>
                     <select
                       value={campaignType}
                       onChange={(e) => setCampaignType(e.target.value as CampaignType)}
                       className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
                     >
-                      <option value="product">Ürün Bazlı</option>
-                      <option value="category">Kategori Bazlı</option>
-                      <option value="cart">Sepet Bazlı</option>
-                      <option value="customer">Müşteri Segmenti Bazlı</option>
+                      <option value="product">{tm('campTypeProduct')}</option>
+                      <option value="category">{tm('campTypeCategory')}</option>
+                      <option value="cart">{tm('campTypeCart')}</option>
+                      <option value="customer">{tm('campTypeCustomer')}</option>
                     </select>
                   </div>
 
                   <div>
                     <label className="block text-sm text-gray-700 mb-2">
-                      İndirim Tipi
+                      {tm('campDiscountType')}
                     </label>
                     <select
                       value={discountType}
                       onChange={(e) => setDiscountType(e.target.value as DiscountType)}
                       className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
                     >
-                      <option value="percentage">Yüzde İndirim (%)</option>
-                      <option value="fixed">Sabit Tutar (IQD)</option>
-                      <option value="buyXgetY">X Al Y Öde</option>
-                      <option value="priceOverride">Fiyat Bazlı İndirim</option>
+                      <option value="percentage">{tm('campDiscPct')}</option>
+                      <option value="fixed">{tm('campDiscFixed')}</option>
+                      <option value="buyXgetY">{tm('campDiscBuyXGetY')}</option>
+                      <option value="priceOverride">{tm('campDiscPriceOverride')}</option>
                     </select>
                   </div>
                 </div>
@@ -268,7 +270,7 @@ export function CreateCampaignPage({ onBack, onSave, editingCampaign, products }
                   <div className="grid grid-cols-2 gap-4 p-4 bg-blue-50 rounded-lg">
                     <div>
                       <label className="block text-sm text-gray-700 mb-2">
-                        Alım Miktarı (X)
+                        {tm('campBuyQtyX')}
                       </label>
                       <input
                         type="number"
@@ -280,7 +282,7 @@ export function CreateCampaignPage({ onBack, onSave, editingCampaign, products }
                     </div>
                     <div>
                       <label className="block text-sm text-gray-700 mb-2">
-                        Ödeme Miktarı (Y)
+                        {tm('campPayQtyY')}
                       </label>
                       <input
                         type="number"
@@ -295,7 +297,7 @@ export function CreateCampaignPage({ onBack, onSave, editingCampaign, products }
                   <div className="grid grid-cols-2 gap-4">
                     <div>
                       <label className="block text-sm text-gray-700 mb-2">
-                        İndirim Değeri {discountType === 'percentage' ? '(%)' : '(IQD)'}
+                        {tm('campDiscountValue')} {discountType === 'percentage' ? '(%)' : '(IQD)'}
                       </label>
                       <input
                         type="number"
@@ -309,7 +311,7 @@ export function CreateCampaignPage({ onBack, onSave, editingCampaign, products }
 
                     <div>
                       <label className="block text-sm text-gray-700 mb-2">
-                        Maksimum İndirim Tutarı (IQD)
+                        {tm('campMaxDiscount')}
                       </label>
                       <input
                         type="number"
@@ -317,7 +319,7 @@ export function CreateCampaignPage({ onBack, onSave, editingCampaign, products }
                         onChange={(e) => setMaxDiscountAmount(Number(e.target.value))}
                         className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
                         min="0"
-                        placeholder="Sınırsız için 0"
+                        placeholder={tm('campUnlimitedZero')}
                       />
                     </div>
                   </div>
@@ -325,11 +327,11 @@ export function CreateCampaignPage({ onBack, onSave, editingCampaign, products }
 
                 <div className="p-4 bg-gray-50 rounded-lg border border-gray-200">
                   <label className="block text-sm font-bold text-gray-700 mb-3">
-                    Birim Bazında İndirim
+                    {tm('campUnitDiscount')}
                   </label>
                   <div className="flex flex-wrap gap-2">
                     {[
-                      { id: 'NONE', label: 'ADET (YOK)', color: 'blue' },
+                      { id: 'NONE', label: tm('campUnitNone'), color: 'blue' },
                       { id: 'KG', label: 'KG', color: 'orange' },
                       { id: 'GR', label: 'GRAM', color: 'orange' },
                       { id: 'PAKET', label: 'PAKET', color: 'purple' },
@@ -355,14 +357,14 @@ export function CreateCampaignPage({ onBack, onSave, editingCampaign, products }
                   </div>
                   <p className="text-[10px] text-gray-500 mt-2 italic font-medium">
                     {campaignUnit === 'NONE'
-                      ? "â–ª İndirim toplam ürün adeti üzerinden uygulanır."
-                      : `â–ª İndirim her ${campaignUnit} birim için ayrı hesaplanır.`}
+                      ? tm('campUnitHintNone')
+                      : tm('campUnitHintUnit').replace('{unit}', campaignUnit)}
                   </p>
                 </div>
 
                 <div>
                   <label className="block text-sm text-gray-700 mb-2">
-                    Minimum Alışveriş Tutarı (IQD)
+                    {tm('campMinPurchase')}
                   </label>
                   <input
                     type="number"
@@ -370,7 +372,7 @@ export function CreateCampaignPage({ onBack, onSave, editingCampaign, products }
                     onChange={(e) => setMinPurchaseAmount(Number(e.target.value))}
                     className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
                     min="0"
-                    placeholder="Minimum tutar yok için 0"
+                    placeholder={tm('campMinPurchasePh')}
                   />
                 </div>
               </div>
@@ -380,13 +382,13 @@ export function CreateCampaignPage({ onBack, onSave, editingCampaign, products }
             <div className="bg-white rounded-lg border border-gray-200 p-6">
               <div className="flex items-center gap-2 mb-4">
                 <Calendar className="w-5 h-5 text-gray-600" />
-                <h2 className="text-lg text-gray-900">Kampanya Dönemi</h2>
+                <h2 className="text-lg text-gray-900">{tm('campPeriod')}</h2>
               </div>
 
               <div className="grid grid-cols-2 gap-4">
                 <div>
                   <label className="block text-sm text-gray-700 mb-2">
-                    Başlangıç Tarihi <span className="text-red-500">*</span>
+                    {tm('campStartDate')} <span className="text-red-500">*</span>
                   </label>
                   <input
                     type="date"
@@ -399,7 +401,7 @@ export function CreateCampaignPage({ onBack, onSave, editingCampaign, products }
 
                 <div>
                   <label className="block text-sm text-gray-700 mb-2">
-                    Başlangıç Saati
+                    {tm('campStartTime')}
                   </label>
                   <input
                     type="time"
@@ -411,7 +413,7 @@ export function CreateCampaignPage({ onBack, onSave, editingCampaign, products }
 
                 <div>
                   <label className="block text-sm text-gray-700 mb-2">
-                    Bitiş Tarihi <span className="text-red-500">*</span>
+                    {tm('campEndDate')} <span className="text-red-500">*</span>
                   </label>
                   <input
                     type="date"
@@ -424,7 +426,7 @@ export function CreateCampaignPage({ onBack, onSave, editingCampaign, products }
 
                 <div>
                   <label className="block text-sm text-gray-700 mb-2">
-                    Bitiş Saati
+                    {tm('campEndTime')}
                   </label>
                   <input
                     type="time"
@@ -442,7 +444,7 @@ export function CreateCampaignPage({ onBack, onSave, editingCampaign, products }
                 <div className="flex items-center gap-2 mb-4">
                   <Package className="w-5 h-5 text-gray-600" />
                   <h2 className="text-lg text-gray-900">
-                    {campaignType === 'product' ? 'Ürün Seçimi' : 'Kategori Seçimi'}
+                    {campaignType === 'product' ? tm('campProductSelect') : tm('campCategorySelect')}
                   </h2>
                 </div>
 
@@ -453,7 +455,7 @@ export function CreateCampaignPage({ onBack, onSave, editingCampaign, products }
                       value={productSearch}
                       onChange={(e) => setProductSearch(e.target.value)}
                       className="w-full px-4 py-2 border border-gray-300 rounded-lg mb-4 focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-                      placeholder="Ürün ara..."
+                      placeholder={tm('campSearchProduct')}
                     />
 
                     <div className="max-h-96 overflow-y-auto border border-gray-200 rounded-lg">
@@ -478,7 +480,7 @@ export function CreateCampaignPage({ onBack, onSave, editingCampaign, products }
                     </div>
 
                     <p className="text-sm text-gray-600 mt-3">
-                      {selectedProducts.length} ürün seçildi
+                      {tm('campProductsSelected').replace('{count}', String(selectedProducts.length))}
                     </p>
                   </>
                 ) : (
@@ -512,14 +514,14 @@ export function CreateCampaignPage({ onBack, onSave, editingCampaign, products }
             <div className="bg-white rounded-lg border border-gray-200 p-6">
               <div className="flex items-center gap-2 mb-4">
                 <Globe className="w-5 h-5 text-gray-600" />
-                <h2 className="text-lg text-gray-900">Çoklu Dil Desteği</h2>
+                <h2 className="text-lg text-gray-900">{tm('campMultiLang')}</h2>
               </div>
 
               <div className="space-y-4">
                 <div className="grid grid-cols-2 gap-4">
                   <div>
                     <label className="block text-sm text-gray-700 mb-2">
-                      Kampanya Adı (İngilizce)
+                      {tm('campNameEn')}
                     </label>
                     <input
                       type="text"
@@ -532,7 +534,7 @@ export function CreateCampaignPage({ onBack, onSave, editingCampaign, products }
 
                   <div>
                     <label className="block text-sm text-gray-700 mb-2">
-                      Kampanya Adı (Arapça)
+                      {tm('campNameAr')}
                     </label>
                     <input
                       type="text"
@@ -548,7 +550,7 @@ export function CreateCampaignPage({ onBack, onSave, editingCampaign, products }
                 <div className="grid grid-cols-2 gap-4">
                   <div>
                     <label className="block text-sm text-gray-700 mb-2">
-                      Açıklama (İngilizce)
+                      {tm('campDescEn')}
                     </label>
                     <textarea
                       value={descriptionEn}
@@ -561,7 +563,7 @@ export function CreateCampaignPage({ onBack, onSave, editingCampaign, products }
 
                   <div>
                     <label className="block text-sm text-gray-700 mb-2">
-                      Açıklama (Arapça)
+                      {tm('campDescAr')}
                     </label>
                     <textarea
                       value={descriptionAr}
@@ -583,7 +585,7 @@ export function CreateCampaignPage({ onBack, onSave, editingCampaign, products }
             <div className="bg-white rounded-lg border border-gray-200 p-6">
               <div className="flex items-center gap-2 mb-4">
                 <Users className="w-5 h-5 text-gray-600" />
-                <h2 className="text-lg text-gray-900">Müşteri Segmenti</h2>
+                <h2 className="text-lg text-gray-900">{tm('campCustomerSegment')}</h2>
               </div>
 
               <label className="flex items-center gap-2 mb-4 cursor-pointer">
@@ -593,7 +595,7 @@ export function CreateCampaignPage({ onBack, onSave, editingCampaign, products }
                   onChange={(e) => setApplyToAllCustomers(e.target.checked)}
                   className="w-4 h-4 text-blue-600 rounded"
                 />
-                <span className="text-sm text-gray-700">Tüm müşterilere uygula</span>
+                <span className="text-sm text-gray-700">{tm('campApplyAllCustomers')}</span>
               </label>
 
               {!applyToAllCustomers && (
@@ -626,13 +628,13 @@ export function CreateCampaignPage({ onBack, onSave, editingCampaign, products }
             <div className="bg-white rounded-lg border border-gray-200 p-6">
               <div className="flex items-center gap-2 mb-4">
                 <Clock className="w-5 h-5 text-gray-600" />
-                <h2 className="text-lg text-gray-900">Gelişmiş Ayarlar</h2>
+                <h2 className="text-lg text-gray-900">{tm('campAdvanced')}</h2>
               </div>
 
               <div className="space-y-4">
                 <div>
                   <label className="block text-sm text-gray-700 mb-2">
-                    Toplam Kullanım Limiti
+                    {tm('campUsageLimit')}
                   </label>
                   <input
                     type="number"
@@ -640,16 +642,16 @@ export function CreateCampaignPage({ onBack, onSave, editingCampaign, products }
                     onChange={(e) => setUsageLimit(Number(e.target.value))}
                     className="w-full px-4 py-2 border border-gray-300 rounded-lg"
                     min="0"
-                    placeholder="Sınırsız için 0"
+                    placeholder={tm('campUnlimitedZero')}
                   />
                   <p className="text-xs text-gray-500 mt-1">
-                    Kampanyanın toplam kullanım sayısı
+                    {tm('campUsageLimitHint')}
                   </p>
                 </div>
 
                 <div>
                   <label className="block text-sm text-gray-700 mb-2">
-                    Müşteri Başına Kullanım Limiti
+                    {tm('campUsagePerCustomer')}
                   </label>
                   <input
                     type="number"
@@ -657,10 +659,10 @@ export function CreateCampaignPage({ onBack, onSave, editingCampaign, products }
                     onChange={(e) => setUsageLimitPerCustomer(Number(e.target.value))}
                     className="w-full px-4 py-2 border border-gray-300 rounded-lg"
                     min="0"
-                    placeholder="Sınırsız için 0"
+                    placeholder={tm('campUnlimitedZero')}
                   />
                   <p className="text-xs text-gray-500 mt-1">
-                    Her müşteri için kullanım limiti
+                    {tm('campUsagePerCustomerHint')}
                   </p>
                 </div>
 
@@ -671,7 +673,7 @@ export function CreateCampaignPage({ onBack, onSave, editingCampaign, products }
                     onChange={(e) => setStackable(e.target.checked)}
                     className="w-4 h-4 text-blue-600 rounded"
                   />
-                  <span className="text-sm text-gray-700">Diğer kampanyalarla birleştirilebilir</span>
+                  <span className="text-sm text-gray-700">{tm('campStackable')}</span>
                 </label>
               </div>
             </div>
@@ -680,11 +682,11 @@ export function CreateCampaignPage({ onBack, onSave, editingCampaign, products }
             <div className="bg-white rounded-lg border border-gray-200 p-6">
               <div className="flex items-center gap-2 mb-4">
                 <Info className="w-5 h-5 text-gray-600" />
-                <h2 className="text-lg text-gray-900">Durum</h2>
+                <h2 className="text-lg text-gray-900">{tm('status')}</h2>
               </div>
 
               <label className="flex items-center justify-between cursor-pointer">
-                <span className="text-sm text-gray-700">Kampanya Aktif</span>
+                <span className="text-sm text-gray-700">{tm('campActiveLabel')}</span>
                 <div className="relative">
                   <input
                     type="checkbox"
@@ -697,37 +699,37 @@ export function CreateCampaignPage({ onBack, onSave, editingCampaign, products }
               </label>
 
               <p className="text-xs text-gray-500 mt-2">
-                {active ? 'Kampanya şu anda aktif' : 'Kampanya pasif durumda'}
+                {active ? tm('campIsActive') : tm('campIsPassive')}
               </p>
             </div>
 
             {/* Campaign Summary */}
             <div className="bg-blue-50 rounded-lg border border-blue-200 p-6">
-              <h3 className="text-sm font-medium text-blue-900 mb-3">Kampanya Özeti</h3>
+              <h3 className="text-sm font-medium text-blue-900 mb-3">{tm('campSummary')}</h3>
               <div className="space-y-2 text-sm">
                 <div className="flex justify-between">
-                  <span className="text-blue-700">İndirim:</span>
+                  <span className="text-blue-700">{tm('discount')}:</span>
                   <span className="text-blue-900 font-medium">
                     {discountType === 'percentage' && `%${discountValue}`}
                     {discountType === 'fixed' && `${discountValue.toLocaleString()} IQD`}
-                    {discountType === 'buyXgetY' && `${buyQuantity} Al ${getQuantity} Öde`}
+                    {discountType === 'buyXgetY' && tm('campBuyPaySummary').replace('{x}', String(buyQuantity)).replace('{y}', String(getQuantity))}
                   </span>
                 </div>
                 {minPurchaseAmount > 0 && (
                   <div className="flex justify-between">
-                    <span className="text-blue-700">Min. Tutar:</span>
+                    <span className="text-blue-700">{tm('campMinAmount')}</span>
                     <span className="text-blue-900">{minPurchaseAmount.toLocaleString()} IQD</span>
                   </div>
                 )}
                 {maxDiscountAmount > 0 && (
                   <div className="flex justify-between">
-                    <span className="text-blue-700">Maks. İndirim:</span>
+                    <span className="text-blue-700">{tm('campMaxDiscLabel')}</span>
                     <span className="text-blue-900">{maxDiscountAmount.toLocaleString()} IQD</span>
                   </div>
                 )}
                 {selectedProducts.length > 0 && (
                   <div className="flex justify-between">
-                    <span className="text-blue-700">Ürün Sayısı:</span>
+                    <span className="text-blue-700">{tm('campProductCountLabel')}</span>
                     <span className="text-blue-900">{selectedProducts.length}</span>
                   </div>
                 )}

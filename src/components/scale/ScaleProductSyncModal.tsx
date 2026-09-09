@@ -4,6 +4,7 @@ import type { Product } from '../../App';
 import type { ScaleDevice } from '../../utils/scaleProtocol';
 import { sendProductsToScale } from '../../utils/scaleProtocol';
 import { isScaleSyncCandidate } from '../../utils/scaleProductFilter';
+import { useLanguage } from '../../contexts/LanguageContext';
 
 interface ScaleProductSyncModalProps {
   device: ScaleDevice;
@@ -13,6 +14,7 @@ interface ScaleProductSyncModalProps {
 }
 
 export function ScaleProductSyncModal({ device, products, onClose, onSyncComplete }: ScaleProductSyncModalProps) {
+  const { tm } = useLanguage();
   const [selectedProducts, setSelectedProducts] = useState<Set<string>>(new Set());
   const [pluStartIndex, setPluStartIndex] = useState(1);
   const [filterCategory, setFilterCategory] = useState<string>('all');
@@ -309,7 +311,7 @@ export function ScaleProductSyncModal({ device, products, onClose, onSyncComplet
               disabled={syncing}
               className="px-4 py-2 text-gray-700 hover:bg-gray-100 rounded transition-colors disabled:opacity-50"
             >
-              {syncResult?.success ? 'Kapat' : 'İptal'}
+              {syncResult?.success ? tm('close') : tm('cancel')}
             </button>
             {!syncResult?.success && (
               <button

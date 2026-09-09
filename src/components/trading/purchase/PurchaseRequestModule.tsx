@@ -4,12 +4,14 @@ import { PurchaseRequestCreatePage } from './PurchaseRequestCreatePage';
 import type { Product } from '../../../App';
 import { purchaseRequestAPI, PurchaseRequest } from '../../../services/purchaseRequestAPI';
 import { toast } from 'sonner';
+import { useLanguage } from '../../../contexts/LanguageContext';
 
 interface PurchaseRequestModuleProps {
     products: Product[];
 }
 
 export function PurchaseRequestModule({ products }: PurchaseRequestModuleProps) {
+    const { tm } = useLanguage();
     const [showNewRequestPage, setShowNewRequestPage] = useState(false);
     const [statusFilter, setStatusFilter] = useState<'all' | 'pending' | 'approved' | 'processed'>('all');
     const [requests, setRequests] = useState<PurchaseRequest[]>([]);
@@ -98,14 +100,14 @@ export function PurchaseRequestModule({ products }: PurchaseRequestModuleProps) 
                 <div className="flex items-center justify-between">
                     <div className="flex items-center gap-2">
                         <ClipboardList className="w-4 h-4" />
-                        <h2 className="text-sm">Satın Alma Talepleri</h2>
+                        <h2 className="text-sm">{tm('purchaseRequests')}</h2>
                     </div>
                     <button
                         onClick={() => setShowNewRequestPage(true)}
                         className="flex items-center gap-1 px-2 py-1 bg-white text-blue-700 hover:bg-blue-50 transition-colors text-[10px]"
                     >
                         <Plus className="w-3 h-3" />
-                        Yeni Talep Oluştur
+                        {tm('createNewPurchaseRequest')}
                     </button>
                 </div>
             </div>
@@ -204,7 +206,7 @@ export function PurchaseRequestModule({ products }: PurchaseRequestModuleProps) 
                         </thead>
                         <tbody>
                             {loading ? (
-                                <tr><td colSpan={6} className="text-center py-4 text-[10px]">Yükleniyor...</td></tr>
+                                <tr><td colSpan={6} className="text-center py-4 text-[10px]">{tm('loading')}</td></tr>
                             ) : filteredRequests.length === 0 ? (
                                 <tr><td colSpan={6} className="text-center py-4 text-[10px]">Talep bulunamadı</td></tr>
                             ) : filteredRequests.map((req) => {

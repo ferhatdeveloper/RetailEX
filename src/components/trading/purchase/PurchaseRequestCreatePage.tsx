@@ -11,6 +11,7 @@ import { supplierAPI, Supplier } from '../../../services/api/suppliers';
 import { toast } from 'sonner';
 import { SupplierHistoryModal } from '../contacts/SupplierHistoryModal';
 import { FullscreenBodyPortal } from '../../shared/FullscreenBodyPortal';
+import { useLanguage } from '../../../contexts/LanguageContext';
 
 interface PurchaseRequestCreatePageProps {
     products: Product[];
@@ -36,6 +37,7 @@ export function PurchaseRequestCreatePage({
     onSuccess,
     initialData
 }: PurchaseRequestCreatePageProps) {
+    const { tm } = useLanguage();
     const [activeTab, setActiveTab] = useState<'talep' | 'detaylar' | 'ekler'>('talep');
     const [isFormExpanded, setIsFormExpanded] = useState(true);
     const [loading, setLoading] = useState(false);
@@ -135,7 +137,7 @@ export function PurchaseRequestCreatePage({
             setSuppliers(data);
         } catch (error) {
             console.error('Error loading suppliers:', error);
-            toast.error('Tedarikçiler yüklenirken hata oluştu');
+            toast.error(tm('suppliersNotLoaded'));
         }
     };
 
@@ -233,7 +235,7 @@ export function PurchaseRequestCreatePage({
     const handleSave = async (status: 'draft' | 'pending' = 'draft') => {
         setLoading(true);
         setTimeout(() => {
-            toast.success('Talep Fişi Kaydedildi');
+            toast.success(tm('requestSlipSaved'));
             onSuccess();
             setLoading(false);
         }, 500);
@@ -249,8 +251,8 @@ export function PurchaseRequestCreatePage({
                             <ClipboardList className="w-5 h-5 text-white" />
                         </div>
                         <div className="flex flex-col">
-                            <h2 className="text-sm font-bold tracking-wide uppercase leading-none">Satın Alma Talebi</h2>
-                            <span className="text-[10px] text-blue-100 opacity-90 leading-tight mt-0.5">Yeni Talep Oluştur</span>
+                            <h2 className="text-sm font-bold tracking-wide uppercase leading-none">{tm('purchaseRequest')}</h2>
+                            <span className="text-[10px] text-blue-100 opacity-90 leading-tight mt-0.5">{tm('createNewPurchaseRequest')}</span>
                         </div>
                     </div>
                     <div className="flex items-center gap-2">
@@ -299,7 +301,7 @@ export function PurchaseRequestCreatePage({
                         <div className="h-6 w-px bg-blue-500/50 mx-1"></div>
                         <button onClick={() => handleSave('draft')} className="bg-white text-blue-600 hover:bg-blue-50 px-4 py-1.5 rounded-md text-xs font-bold transition-all shadow-sm flex items-center gap-2">
                             <Save className="w-3.5 h-3.5" />
-                            Kaydet
+                            {tm('save')}
                         </button>
                         <button onClick={onBack} className="p-1.5 hover:bg-white/10 rounded-md transition-colors text-white/90 hover:text-white">
                             <X className="w-5 h-5" />

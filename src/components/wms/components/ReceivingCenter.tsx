@@ -12,6 +12,7 @@ import { BarcodeScanner } from './BarcodeScanner';
 import { ConditionalReceivingModal } from './ConditionalReceivingModal';
 import { projectId, publicAnonKey } from '../utils/supabase/info';
 import { formatCurrency, formatNumber, formatDateTime } from '../utils';
+import { useLanguage } from '../../../contexts/LanguageContext';
 
 interface ReceivingCenterProps {
   darkMode: boolean;
@@ -51,6 +52,7 @@ interface ReceivingItem {
 }
 
 export function ReceivingCenter({ darkMode, onBack }: ReceivingCenterProps) {
+  const { tm } = useLanguage();
   const [view, setView] = useState<'list' | 'create' | 'execute'>('list');
   const [receivings, setReceivings] = useState<Receiving[]>([]);
   const [isLoading, setIsLoading] = useState(false);
@@ -176,7 +178,7 @@ export function ReceivingCenter({ darkMode, onBack }: ReceivingCenterProps) {
       pending: { bg: 'bg-yellow-100 dark:bg-yellow-900/30', text: 'text-yellow-700 dark:text-yellow-400', label: 'Bekliyor' },
       in_progress: { bg: 'bg-blue-100 dark:bg-blue-900/30', text: 'text-blue-700 dark:text-blue-400', label: 'İşlemde' },
       completed: { bg: 'bg-green-100 dark:bg-green-900/30', text: 'text-green-700 dark:text-green-400', label: 'Tamamlandı' },
-      cancelled: { bg: 'bg-red-100 dark:bg-red-900/30', text: 'text-red-700 dark:text-red-400', label: 'İptal' },
+      cancelled: { bg: 'bg-red-100 dark:bg-red-900/30', text: 'text-red-700 dark:text-red-400', label: tm('cancel') },
     };
     const config = configs[status] || configs.pending;
     return (
@@ -432,7 +434,7 @@ export function ReceivingCenter({ darkMode, onBack }: ReceivingCenterProps) {
                   onClick={() => setView('list')}
                   className="flex-1 px-6 py-3 border-2 border-gray-300 dark:border-gray-600 rounded-lg hover:bg-gray-100 dark:hover:bg-gray-700 transition-colors"
                 >
-                  İptal
+                  {tm('cancel')}
                 </button>
                 <button
                   type="submit"
@@ -601,7 +603,7 @@ export function ReceivingCenter({ darkMode, onBack }: ReceivingCenterProps) {
               }}
               className="flex-1 px-6 py-3 border-2 border-gray-300 dark:border-gray-600 rounded-lg hover:bg-gray-100 dark:hover:bg-gray-700"
             >
-              İptal
+              {tm('cancel')}
             </button>
             <button
               onClick={() => {

@@ -1730,7 +1730,7 @@ export function InvoiceListModule({
             },
             {
               id: 'special-print',
-              label: 'Özel Yazdır',
+              label: tm('specialPrint'),
               icon: Printer,
               onClick: () => {
                 if (contextMenu.invoice) {
@@ -1781,11 +1781,11 @@ export function InvoiceListModule({
       )}
 
       {specialPrintState && (
-        <PercentBodyModal onClose={() => setSpecialPrintState(null)} size="list" ariaLabel="Özel Yazdır">
+        <PercentBodyModal onClose={() => setSpecialPrintState(null)} size="list" ariaLabel={tm('specialPrint')}>
               <div className="bg-gradient-to-r from-blue-600 to-indigo-600 px-8 py-6 text-white shrink-0">
                 <div className="flex items-center justify-between">
                   <div>
-                    <h2 className="text-xl font-black uppercase tracking-tight">Özel Yazdır</h2>
+                    <h2 className="text-xl font-black uppercase tracking-tight">{tm('specialPrint')}</h2>
                     <p className="text-blue-100 text-xs font-semibold uppercase tracking-wider mt-0.5 opacity-90">
                       {specialPrintState.invoice.invoice_no || specialPrintState.invoice.id}
                     </p>
@@ -1801,14 +1801,14 @@ export function InvoiceListModule({
               </div>
               <PercentBodyModalScrollBody className="p-8 space-y-5">
                 <div className="rounded-2xl border border-slate-200 bg-slate-50 p-4">
-                  <div className="text-[11px] font-bold text-slate-500 uppercase tracking-wider mb-1.5">Belge Türü</div>
+                  <div className="text-[11px] font-bold text-slate-500 uppercase tracking-wider mb-1.5">{tm('specialPrintDocumentType')}</div>
                   <div className="text-base font-semibold text-slate-900">
                     {TEMPLATE_USAGE_SCOPE_LABELS[specialPrintState.scope]}
                   </div>
                 </div>
                 <div>
                   <label className="text-[11px] font-bold text-slate-500 uppercase tracking-wider mb-1.5 block">
-                    Tasarım Seçimi
+                    {tm('specialPrintDesignSelect')}
                   </label>
                   <div className="relative">
                     <select
@@ -1851,7 +1851,7 @@ export function InvoiceListModule({
                     className="mt-1 h-4 w-4 rounded border-slate-300 text-blue-600"
                   />
                   <span className="text-sm text-slate-700 font-medium">
-                    Bu belge türü için varsayılan tasarım olarak kaydet
+                    {tm('specialPrintMakeDefault')}
                   </span>
                 </label>
               </PercentBodyModalScrollBody>
@@ -1861,7 +1861,7 @@ export function InvoiceListModule({
                   onClick={() => setSpecialPrintState(null)}
                   className="flex-1 rounded-2xl border-2 border-slate-200 text-slate-600 font-bold uppercase text-sm tracking-wider hover:bg-slate-100 active:scale-[0.98]"
                 >
-                  İptal
+                  {tm('cancel')}
                 </button>
                 <button
                   type="button"
@@ -1869,7 +1869,7 @@ export function InvoiceListModule({
                   disabled={specialPrintLoading}
                   className="flex-1 rounded-2xl bg-blue-600 text-white font-bold uppercase text-sm tracking-wider shadow-lg shadow-blue-200/50 hover:bg-blue-700 disabled:opacity-50 active:scale-[0.98]"
                 >
-                  {specialPrintLoading ? 'Hazırlanıyor...' : 'Özel Yazdır'}
+                  {specialPrintLoading ? tm('preparing') : tm('specialPrint')}
                 </button>
               </div>
         </PercentBodyModal>
@@ -2188,16 +2188,16 @@ export function InvoiceListModule({
                         <h4 className="text-sm text-gray-700 mb-2 font-medium">{tm('description')}</h4>
                         <div className="text-xs text-gray-600">
                           {hoveredInvoiceType.code === 0 && (
-                            <p>Standart satış işlemlerinizi kayıt altına almak için kullanılır. Müşterilere mal/hizmet satışı yapıldığında bu fatura türü ile fatura kesilir.</p>
+                            <p>{tm('invoiceTypeDescStandard')}</p>
                           )}
                           {hoveredInvoiceType.code === 1 && (
-                            <p>Perakende satış işlemleri için kullanılır. Mağaza veya satış noktasından yapılan bireysel satışlar için kesilir.</p>
+                            <p>{tm('invoiceTypeDescRetail')}</p>
                           )}
                           {hoveredInvoiceType.code === 5 && (
-                            <p>Tedarikçilerden yapılan alış işlemlerini kayıt altına almak için kullanılır. Satın alınan mal/hizmetlerin muhasebe kaydı yapılır.</p>
+                            <p>{tm('invoiceTypeDescPurchase')}</p>
                           )}
                           {!hoveredInvoiceType.code || (hoveredInvoiceType.code !== 0 && hoveredInvoiceType.code !== 1 && hoveredInvoiceType.code !== 5) && (
-                            <p>Bu fatura türü ile işlemlerinizi kayıt altına alabilirsiniz.</p>
+                            <p>{tm('invoiceTypeDescGeneric')}</p>
                           )}
                         </div>
                       </div>

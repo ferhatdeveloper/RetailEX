@@ -10,6 +10,7 @@ import {
   loadOpenRouterConfig,
   type OpenRouterConfig,
 } from './openRouterConfig';
+import { translate, type Language } from '../locales/module-translations';
 
 export type OpenRouterChatRole = 'system' | 'user' | 'assistant';
 
@@ -136,7 +137,7 @@ export async function openRouterChat(
 ): Promise<OpenRouterChatResult> {
   const cfg = options?.config ?? loadOpenRouterConfig();
   if (!cfg.enabled) {
-    return { ok: false, content: '', error: 'OpenRouter kapalı. Entegrasyonlar → Yapay Zeka ile açın.' };
+    return { ok: false, content: '', error: translate('reportChatOpenRouterOff', 'tr') };
   }
   if (!cfg.model.trim()) {
     return { ok: false, content: '', error: 'OpenRouter model seçilmedi.' };
@@ -201,29 +202,36 @@ export async function testOpenRouterConnection(
 }
 
 /** Rapor özeti için sıkıştırılmış bağlam (token tasarrufu) */
-export function buildReportContextSummary(reportData: {
-  dailyTotal?: number;
-  dailyCash?: number;
-  dailyCard?: number;
-  dailySales?: unknown[];
-  sales?: unknown[];
-  products?: unknown[];
-  productSales?: Array<{ product?: { name?: string }; quantity?: number; revenue?: number }>;
-  cashierPerformance?: Array<{ name?: string; salesCount?: number; totalRevenue?: number }>;
-  categoryAnalysis?: Array<{ name?: string; totalRevenue?: number; totalQuantity?: number }>;
-  hourlyAnalysis?: Array<{ hour?: number; sales?: number; revenue?: number }>;
-}): string {
+export function buildReportContextSummary(
+  reportData: {
+    dailyTotal?: number;
+    dailyCash?: number;
+    dailyCard?: number;
+    dailySales?: unknown[];
+    sales?: unknown[];
+    products?: unknown[];
+    productSales?: Array<{ product?: { name?: string }; quantity?: number; revenue?: number }>;
+    cashierPerformance?: Array<{ name?: string; salesCount?: number; totalRevenue?: number }>;
+    categoryAnalysis?: Array<{ name?: string; totalRevenue?: number; totalQuantity?: number }>;
+    hourlyAnalysis?: Array<{ hour?: number; sales?: number; revenue?: number }>;
+  },
+  language: Language = 'tr',
+): string {
+  const t = (key: string) => translate(key, language);
   const topProducts = (reportData.productSales || [])
     .slice()
     .sort((a, b) => (b.revenue || 0) - (a.revenue || 0))
     .slice(0, 8)
     .map(
       (p, i) =>
-        `${i + 1}. ${p.product?.name || '?'} — adet ${p.quantity ?? 0}, ciro ${p.revenue ?? 0}`,
+        `${i + 1}. ${p.product?.name || '?'} — ${t('reportChatCtxPcs')} ${p.quantity ?? 0}, ${t('reportChatAnsRevenue')} ${p.revenue ?? 0}`,
     );
   const cashiers = (reportData.cashierPerformance || [])
     .slice(0, 6)
-    .map((c) => `${c.name}: ${c.salesCount} satış / ${c.totalRevenue} ciro`);
+    .map(
+      (c) =>
+        `${c.name}: ${c.salesCount} ${t('reportChatCtxSalesSlash')} / ${c.totalRevenue} ${t('reportChatAnsRevenue')}`,
+    );
   const cats = (reportData.categoryAnalysis || [])
     .slice(0, 6)
     .map((c) => `${c.name}: ${c.totalRevenue}`);
@@ -232,28 +240,31 @@ export function buildReportContextSummary(reportData: {
     .sort((a, b) => (b.revenue || 0) - (a.revenue || 0))[0];
 
   return [
-    `Günlük ciro: ${reportData.dailyTotal ?? 0}`,
-    `Günlük nakit: ${reportData.dailyCash ?? 0}`,
-    `Günlük kart: ${reportData.dailyCard ?? 0}`,
-    `Günlük işlem: ${(reportData.dailySales || []).length}`,
-    `Toplam satış kaydı: ${(reportData.sales || []).length}`,
-    `Ürün kartı: ${(reportData.products || []).length}`,
-    topProducts.length ? `En çok satanlar:\n${topProducts.join('\n')}` : '',
-    cashiers.length ? `Kasiyerler:\n${cashiers.join('\n')}` : '',
-    cats.length ? `Kategoriler:\n${cats.join('\n')}` : '',
-    peak ? `En yoğun saat: ${peak.hour}:00 (ciro ${peak.revenue})` : '',
+    `${t('reportChatCtxDailyRevenue')}: ${reportData.dailyTotal ?? 0}`,
+    `${t('reportChatCtxDailyCash')}: ${reportData.dailyCash ?? 0}`,
+    `${t('reportChatCtxDailyCard')}: ${reportData.dailyCard ?? 0}`,
+    `${t('reportChatCtxDailyTxn')}: ${(reportData.dailySales || []).length}`,
+    `${t('reportChatCtxTotalSales')}: ${(reportData.sales || []).length}`,
+    `${t('reportChatCtxProductCards')}: ${(reportData.products || []).length}`,
+    topProducts.length ? `${t('reportChatCtxTopSellers')}:\n${topProducts.join('\n')}` : '',
+    cashiers.length ? `${t('reportChatCtxCashiers')}:\n${cashiers.join('\n')}` : '',
+    cats.length ? `${t('reportChatCtxCategories')}:\n${cats.join('\n')}` : '',
+    peak
+      ? `${t('reportChatCtxPeakHour')}: ${peak.hour}:00 (${t('reportChatAnsRevenue')} ${peak.revenue})`
+      : '',
   ]
     .filter(Boolean)
     .join('\n');
 }
 
 /**
- * Rapor sorusu — OpenRouter ile Türkçe perakende asistan yanıtı.
+ * Rapor sorusu — OpenRouter ile dile göre perakende asistan yanıtı.
  */
 export async function analyzeReportWithOpenRouter(
   question: string,
   reportData: Parameters<typeof buildReportContextSummary>[0],
   conversationHistory: Array<{ role: 'user' | 'assistant'; content: string }> = [],
+  language: Language = 'tr',
 ): Promise<{
   answer: string;
   suggested_reports: string[];
@@ -261,23 +272,22 @@ export async function analyzeReportWithOpenRouter(
 }> {
   const cfg = loadOpenRouterConfig();
   if (!cfg.enabled) {
-    throw new Error('OpenRouter kapalı');
+    throw new Error(translate('reportChatOpenRouterOff', language));
   }
 
-  const context = buildReportContextSummary(reportData);
+  const context = buildReportContextSummary(reportData, language);
   const system: OpenRouterChatMessage = {
     role: 'system',
-    content:
-      'Sen RetailEX perakende ERP asistanısın. Türkçe, net ve kısa yanıt ver. ' +
-      'Yalnızca verilen rapor özetine dayan; uydurma sayı yazma. ' +
-      'Uygunsa sonunda 2–4 önerilen rapor adı listele (örn. Günlük Rapor, Z Raporu).',
+    content: translate('reportChatSystemPrompt', language),
   };
   const history: OpenRouterChatMessage[] = conversationHistory
     .slice(-8)
     .map((m) => ({ role: m.role, content: m.content }));
   const user: OpenRouterChatMessage = {
     role: 'user',
-    content: `Rapor özeti:\n${context}\n\nSoru: ${question}`,
+    content: translate('reportChatUserPrompt', language)
+      .replace('{context}', context)
+      .replace('{question}', question),
   };
 
   const result = await openRouterChat([system, ...history, user], { config: cfg });
@@ -285,26 +295,34 @@ export async function analyzeReportWithOpenRouter(
     throw new Error(result.error || 'OpenRouter yanıt vermedi');
   }
 
-  const suggested = extractSuggestedReports(result.content);
+  const suggested = extractSuggestedReports(result.content, language);
   return {
     answer: result.content,
     suggested_reports: suggested,
   };
 }
 
-function extractSuggestedReports(text: string): string[] {
-  const known = [
-    'Günlük Rapor',
-    'Z Raporu',
-    'Karşılaştırma',
-    'Top Ürünler',
-    'Ürün Satış Analizi',
-    'Kategori Analizi',
-    'Kasiyer Performansı',
-    'Saatlik Analiz',
-    'Stok Durumu',
+function extractSuggestedReports(text: string, language: Language = 'tr'): string[] {
+  const knownKeys = [
+    'reportChatSuggestDaily',
+    'reportChatSuggestZ',
+    'reportChatSuggestCompare',
+    'reportChatSuggestTopProducts',
+    'reportChatSuggestProductSales',
+    'reportChatSuggestCategory',
+    'reportChatSuggestCashier',
+    'reportChatSuggestHourly',
+    'reportChatSuggestStock',
   ];
-  return known.filter((k) => text.includes(k)).slice(0, 4);
+  const known = knownKeys.map((k) => translate(k, language));
+  // Ayrıca TR isimleri de tanı (model bazen TR dönebilir)
+  const knownTr = knownKeys.map((k) => translate(k, 'tr'));
+  const matched = known.filter((k) => text.includes(k));
+  if (matched.length > 0) return matched.slice(0, 4);
+  return knownTr
+    .map((tr, i) => (text.includes(tr) ? known[i] : null))
+    .filter((x): x is string => Boolean(x))
+    .slice(0, 4);
 }
 
 export async function checkOpenRouterHealth(): Promise<{

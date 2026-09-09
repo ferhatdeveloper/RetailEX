@@ -7,6 +7,7 @@ import {
 import { supabase } from '../../utils/supabase/client';
 import { logger } from '../../services/loggingService';
 import { useAuth } from '../../contexts/AuthContext';
+import { useLanguage } from '../../contexts/LanguageContext';
 import { PercentBodyModal, PercentBodyModalScrollBody } from '../shared/PercentBodyModal';
 import {
   remapLegacyStaticHiddenModules,
@@ -43,6 +44,7 @@ interface MenuManagementPanelProps {
 }
 
 export function MenuManagementPanel({ onClose }: MenuManagementPanelProps) {
+  const { tm } = useLanguage();
   const { user } = useAuth();
   const currentUsername = user?.username || user?.full_name || 'kullanici';
 
@@ -115,7 +117,7 @@ export function MenuManagementPanel({ onClose }: MenuManagementPanelProps) {
           return {
             id: currentId,
             menu_type: item.menu_type || (parentId ? 'main' : 'section'),
-            label: item.label || item.title || 'İsimsiz',
+            label: item.label || item.title || tm('menuPanelUntitled'),
             label_tr: item.label_tr || item.label || item.title,
             label_en: item.label_en,
             label_ar: item.label_ar,
@@ -190,7 +192,7 @@ export function MenuManagementPanel({ onClose }: MenuManagementPanelProps) {
       setShowLoadPresetModal(true);
     } catch (e) {
       logger.crudError('MenuManagement', 'listPresets', e);
-      alert('Yükleme seçenekleri listelenemedi.');
+      alert(tm('menuPanelPresetsListFailed'));
     } finally {
       setSaving(false);
     }
@@ -202,7 +204,7 @@ export function MenuManagementPanel({ onClose }: MenuManagementPanelProps) {
       const svc = await loadMenuPrefsService();
       const prefs = await svc.applyMenuPreferencePresetById(presetId, currentUsername);
       if (!prefs) {
-        alert('Seçilen kayıt bulunamadı.');
+        alert(tm('menuPanelPresetNotFound'));
         return;
       }
       setHiddenModules(prefs.hidden_modules ?? []);
@@ -211,14 +213,14 @@ export function MenuManagementPanel({ onClose }: MenuManagementPanelProps) {
       window.dispatchEvent(new CustomEvent('menuUpdated', { detail: { forceReload: true } }));
     } catch (e) {
       logger.crudError('MenuManagement', 'applyPreset', e);
-      alert('Yükleme seçeneği uygulanamadı.');
+      alert(tm('menuPanelPresetApplyFailed'));
     } finally {
       setSaving(false);
     }
   };
 
   const handleDeletePreset = async (presetId: string, presetName: string) => {
-    if (!confirm(`"${presetName}" kaydını silmek istediğinizden emin misiniz?`)) return;
+    if (!confirm(tm('menuPanelPresetDeleteConfirm').replace('{name}', presetName))) return;
     try {
       setSaving(true);
       const svc = await loadMenuPrefsService();
@@ -227,7 +229,7 @@ export function MenuManagementPanel({ onClose }: MenuManagementPanelProps) {
       setLoadPresets(presets);
     } catch (e) {
       logger.crudError('MenuManagement', 'deletePreset', e);
-      alert('Kayıt silinemedi.');
+      alert(tm('menuPanelPresetDeleteFailed'));
     } finally {
       setSaving(false);
     }
@@ -256,10 +258,10 @@ export function MenuManagementPanel({ onClose }: MenuManagementPanelProps) {
       await loadMenuItems();
       await new Promise(resolve => setTimeout(resolve, 300));
       window.dispatchEvent(new CustomEvent('menuUpdated', { detail: { forceReload: true } }));
-      alert('Menü tercihleri kaydedildi.');
+      alert(tm('menuPanelPrefsSaved'));
     } catch (e) {
       logger.crudError('MenuManagement', 'savePreset', e);
-      alert('Menü tercihleri kaydedilemedi. Veritabanı bağlantısını kontrol edin.');
+      alert(tm('menuPanelPrefsSaveFailed'));
     } finally {
       setSaving(false);
     }
@@ -267,7 +269,7 @@ export function MenuManagementPanel({ onClose }: MenuManagementPanelProps) {
 
   // Mevcut statik menü yapısını veritabanına aktar
   const seedCurrentMenu = async () => {
-    if (!confirm('Mevcut menü yapısını veritabanına aktarmak istediğinizden emin misiniz? Bu işlem mevcut menü öğelerini silebilir.')) {
+    if (!confirm(tm('menuPanelSeedConfirm'))) {
       return;
     }
 
@@ -277,7 +279,7 @@ export function MenuManagementPanel({ onClose }: MenuManagementPanelProps) {
       const staticMenuSections = await fetchStaticMenuStructure();
 
       if (!staticMenuSections || staticMenuSections.length === 0) {
-        alert('Statik menü yapısı alınamadı. Lütfen sayfayı yenileyin ve tekrar deneyin.');
+        alert(tm('menuPanelSeedNoStatic'));
         return;
       }
 
@@ -321,14 +323,14 @@ export function MenuManagementPanel({ onClose }: MenuManagementPanelProps) {
           alert(`Başarılı! ${result.count} menü öğesi oluşturuldu.`);
           await loadMenuItems();
         } else {
-          alert(result.message || 'Menü yapısı aktarılırken hata oluştu!');
+          alert(result.message || tm('menuPanelSeedError'));
         }
       } else {
         throw new Error('Backend JSON döndürmedi. Backend çalışıyor mu?');
       }
     } catch (error: any) {
       logger.crudError('MenuManagement', 'seedMenu', error);
-      const errorMessage = error.message || 'Bilinmeyen hata';
+      const errorMessage = error.message || tm('menuPanelUnknownError');
       alert(`Menü yapısı aktarılırken hata oluştu:\n\n${errorMessage}\n\nBackend'i başlatmak için:\n\nWindows: BASLAT_BACKEND.bat dosyasını çalıştırın\nLinux/Mac: ./BASLAT_BACKEND.sh komutunu çalıştırın\n\nBackend çalıştıktan sonra tekrar deneyin.`);
     } finally {
       setSaving(false);
@@ -363,7 +365,7 @@ export function MenuManagementPanel({ onClose }: MenuManagementPanelProps) {
 
   // Faturalar menüsünü geri ekle
   const restoreFaturalarMenu = async () => {
-    if (!confirm('Faturalar menüsünü ve tüm alt menülerini geri eklemek istediğinizden emin misiniz?')) {
+    if (!confirm(tm('menuPanelRestoreInvoicesConfirm'))) {
       return;
     }
 
@@ -525,7 +527,7 @@ export function MenuManagementPanel({ onClose }: MenuManagementPanelProps) {
         }
       }
 
-      alert('✅ Faturalar menüsü başarıyla geri eklendi!');
+      alert(tm('menuPanelInvoicesRestored'));
       await loadMenuItems();
       // Kısa bir gecikme ekle (Supabase'in güncellemeyi işlemesi için)
       await new Promise(resolve => setTimeout(resolve, 300));
@@ -746,8 +748,8 @@ export function MenuManagementPanel({ onClose }: MenuManagementPanelProps) {
 
         const results = await Promise.all(updatePromises);
         const errors = results.filter(r => r.error);
-        if (errors.length > 0) throw new Error('Bazı öğeler güncellenemedi');
-        alert('Dinamik menü kaydedildi!');
+        if (errors.length > 0) throw new Error(tm('menuPanelSomeUpdateFailed'));
+        alert(tm('menuPanelDynamicSaved'));
       }
 
       await loadMenuItems();
@@ -755,7 +757,7 @@ export function MenuManagementPanel({ onClose }: MenuManagementPanelProps) {
       window.dispatchEvent(new CustomEvent('menuUpdated', { detail: { forceReload: true } }));
     } catch (error) {
       logger.crudError('MenuManagement', 'saveMenu', error);
-      alert('Menü kaydedilirken hata oluştu!');
+      alert(tm('menuPanelSaveError'));
     } finally {
       setSaving(false);
     }
@@ -763,7 +765,7 @@ export function MenuManagementPanel({ onClose }: MenuManagementPanelProps) {
 
   // Menü öğesini sil - Supabase'den direkt
   const deleteMenuItem = async (id: number) => {
-    if (!confirm('Bu menü öğesini silmek istediğinizden emin misiniz?')) {
+    if (!confirm(tm('menuPanelDeleteItemConfirm'))) {
       return;
     }
 
@@ -784,7 +786,7 @@ export function MenuManagementPanel({ onClose }: MenuManagementPanelProps) {
       window.dispatchEvent(new CustomEvent('menuUpdated', { detail: { forceReload: true } }));
     } catch (error) {
       logger.crudError('MenuManagement', 'deleteMenuItem', error);
-      alert('Menü öğesi silinirken hata oluştu!');
+      alert(tm('menuPanelDeleteItemError'));
     }
   };
 
@@ -832,7 +834,7 @@ export function MenuManagementPanel({ onClose }: MenuManagementPanelProps) {
       window.dispatchEvent(new CustomEvent('menuUpdated', { detail: { forceReload: true } }));
     } catch (error) {
       logger.crudError('MenuManagement', 'updateMenuItem', error);
-      alert('Menü öğesi güncellenirken hata oluştu!');
+      alert(tm('menuPanelUpdateItemError'));
     }
   };
 
@@ -878,7 +880,7 @@ export function MenuManagementPanel({ onClose }: MenuManagementPanelProps) {
       window.dispatchEvent(new CustomEvent('menuUpdated', { detail: { forceReload: true } }));
     } catch (error) {
       logger.crudError('MenuManagement', 'addMenuItem', error);
-      alert('Menü öğesi eklenirken hata oluştu!');
+      alert(tm('menuPanelAddItemError'));
     }
   };
 
@@ -967,15 +969,15 @@ export function MenuManagementPanel({ onClose }: MenuManagementPanelProps) {
             item.menu_type === 'main' ? 'bg-blue-100 text-blue-700' :
               'bg-gray-100 text-gray-700'
             }`}>
-            {item.menu_type === 'section' ? 'Ana Menu' :
-              item.menu_type === 'main' ? 'Alt Menu' : 'Sub Menu'}
+            {item.menu_type === 'section' ? tm('menuPanelSection') :
+              item.menu_type === 'main' ? tm('menuPanelMain') : tm('menuPanelSub')}
           </span>
 
           {/* Visibility Toggle */}
           <button
             onClick={() => updateMenuItem({ ...item, is_visible: !item.is_visible })}
             className="p-1 hover:bg-gray-200 rounded"
-            title={item.is_visible ? 'Gizle' : 'Göster'}
+            title={item.is_visible ? tm('menuPanelHide') : tm('show')}
           >
             {item.is_visible ? (
               <Eye className="w-4 h-4 text-green-600" />
@@ -988,7 +990,7 @@ export function MenuManagementPanel({ onClose }: MenuManagementPanelProps) {
           <button
             onClick={() => setEditingItem(item)}
             className="p-1 hover:bg-blue-100 rounded text-blue-600"
-            title="Düzenle"
+            title={tm('edit')}
           >
             <Edit2 className="w-4 h-4" />
           </button>
@@ -997,7 +999,7 @@ export function MenuManagementPanel({ onClose }: MenuManagementPanelProps) {
           <button
             onClick={() => deleteMenuItem(item.id)}
             className="p-1 hover:bg-red-100 rounded text-red-600"
-            title="Sil"
+            title={tm('delete')}
           >
             <Trash2 className="w-4 h-4" />
           </button>
@@ -1031,7 +1033,7 @@ export function MenuManagementPanel({ onClose }: MenuManagementPanelProps) {
         <div className="flex items-center gap-3">
           <Settings className="w-6 h-6 text-blue-600" />
           <div className="flex flex-col">
-            <h2 className="text-xl font-semibold text-gray-900">Menü Yönetimi</h2>
+            <h2 className="text-xl font-semibold text-gray-900">{tm('menuPanelTitle')}</h2>
             <div className="flex items-center gap-2 mt-1">
               <button
                 onClick={() => setMenuSource('supabase')}
@@ -1060,7 +1062,7 @@ export function MenuManagementPanel({ onClose }: MenuManagementPanelProps) {
             onClick={openLoadPresetModal}
             disabled={saving}
             className="px-4 py-2 text-sm bg-teal-600 text-white rounded-lg hover:bg-teal-700 disabled:opacity-50 flex items-center gap-2"
-            title="Kayıtlı yükleme seçeneklerinden birini seç"
+            title={tm('menuPanelLoadPresetTitle')}
           >
             <CloudDownload className="w-4 h-4" />
             Yükleme Seçenekleri
@@ -1069,7 +1071,7 @@ export function MenuManagementPanel({ onClose }: MenuManagementPanelProps) {
             onClick={restoreFaturalarMenu}
             disabled={saving}
             className="px-4 py-2 text-sm bg-orange-600 text-white rounded-lg hover:bg-orange-700 disabled:opacity-50 flex items-center gap-2"
-            title="Faturalar menüsünü ve tüm alt menülerini geri ekle"
+            title={tm('menuPanelRestoreInvoicesTitle')}
           >
             <RefreshCw className="w-4 h-4" />
             Faturalar Menüsünü Geri Ekle
@@ -1078,7 +1080,7 @@ export function MenuManagementPanel({ onClose }: MenuManagementPanelProps) {
             onClick={seedCurrentMenu}
             disabled={saving}
             className="px-4 py-2 text-sm bg-purple-600 text-white rounded-lg hover:bg-purple-700 disabled:opacity-50 flex items-center gap-2"
-            title="Mevcut statik menü yapısını veritabanına aktar"
+            title={tm('menuPanelSeedTitle')}
           >
             <MenuIcon className="w-4 h-4" />
             Mevcut Menüyü Yükle
@@ -1089,7 +1091,7 @@ export function MenuManagementPanel({ onClose }: MenuManagementPanelProps) {
             className="px-4 py-2 text-sm bg-blue-600 text-white rounded-lg hover:bg-blue-700 disabled:opacity-50 flex items-center gap-2"
           >
             <Save className="w-4 h-4" />
-            {saving ? 'Kaydediliyor...' : 'Kaydet'}
+            {saving ? tm('saving') : tm('save')}
           </button>
           <button
             onClick={() => setShowAddModal(true)}
@@ -1166,7 +1168,7 @@ export function MenuManagementPanel({ onClose }: MenuManagementPanelProps) {
                   value={newItem.label || ''}
                   onChange={(e) => setNewItem({ ...newItem, label: e.target.value })}
                   className="w-full px-3 py-2 border border-gray-300 rounded-lg"
-                  placeholder="Menü adı"
+                  placeholder={tm('menuPanelNamePh')}
                 />
               </div>
               <div>
@@ -1176,7 +1178,7 @@ export function MenuManagementPanel({ onClose }: MenuManagementPanelProps) {
                   value={newItem.screen_id || ''}
                   onChange={(e) => setNewItem({ ...newItem, screen_id: e.target.value })}
                   className="w-full px-3 py-2 border border-gray-300 rounded-lg"
-                  placeholder="dashboard, products, vb."
+                  placeholder={tm('menuPanelScreenIdPh')}
                 />
               </div>
               <div className="flex gap-2 pt-4">
@@ -1190,7 +1192,7 @@ export function MenuManagementPanel({ onClose }: MenuManagementPanelProps) {
                   onClick={() => setShowAddModal(false)}
                   className="flex-1 px-4 py-2 border border-gray-300 rounded-lg hover:bg-gray-50"
                 >
-                  İptal
+                  {tm('cancel')}
                 </button>
               </div>
             </div>
@@ -1245,13 +1247,13 @@ export function MenuManagementPanel({ onClose }: MenuManagementPanelProps) {
                   onClick={() => updateMenuItem(editingItem)}
                   className="flex-1 px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700"
                 >
-                  Kaydet
+                  {tm('save')}
                 </button>
                 <button
                   onClick={() => setEditingItem(null)}
                   className="flex-1 px-4 py-2 border border-gray-300 rounded-lg hover:bg-gray-50"
                 >
-                  İptal
+                  {tm('cancel')}
                 </button>
               </div>
             </div>
@@ -1260,9 +1262,9 @@ export function MenuManagementPanel({ onClose }: MenuManagementPanelProps) {
       )}
 
       {showSavePresetModal && (
-        <PercentBodyModal onClose={() => setShowSavePresetModal(false)} size="compact" ariaLabel="Menü kaydı">
+        <PercentBodyModal onClose={() => setShowSavePresetModal(false)} size="compact" ariaLabel={tm('menuPanelSaveAria')}>
           <div className="p-3 border-b border-gray-200 flex items-center justify-between shrink-0 bg-gradient-to-r from-blue-600 to-blue-700">
-            <h3 className="text-base text-white font-medium">Menü Tercihini Kaydet</h3>
+            <h3 className="text-base text-white font-medium">{tm('menuPanelSavePrefsTitle')}</h3>
             <button type="button" onClick={() => setShowSavePresetModal(false)} className="text-white hover:text-gray-200 p-1">
               <X className="w-5 h-5" />
             </button>
@@ -1288,7 +1290,7 @@ export function MenuManagementPanel({ onClose }: MenuManagementPanelProps) {
               onClick={() => setShowSavePresetModal(false)}
               className="flex-1 px-4 py-2 text-sm bg-gray-200 text-gray-700 rounded hover:bg-gray-300"
             >
-              İptal
+              {tm('cancel')}
             </button>
             <button
               type="button"
@@ -1296,14 +1298,14 @@ export function MenuManagementPanel({ onClose }: MenuManagementPanelProps) {
               disabled={saving}
               className="flex-1 px-4 py-2 text-sm bg-blue-600 text-white rounded hover:bg-blue-700 disabled:opacity-50"
             >
-              {saving ? 'Kaydediliyor...' : 'Kaydet'}
+              {saving ? tm('saving') : tm('save')}
             </button>
           </div>
         </PercentBodyModal>
       )}
 
       {showLoadPresetModal && (
-        <PercentBodyModal onClose={() => setShowLoadPresetModal(false)} size="list" ariaLabel="Yükleme seçenekleri">
+        <PercentBodyModal onClose={() => setShowLoadPresetModal(false)} size="list" ariaLabel={tm('menuPanelLoadAria')}>
           <div className="p-3 border-b border-gray-200 flex items-center justify-between shrink-0 bg-gradient-to-r from-teal-600 to-teal-700">
             <h3 className="text-base text-white font-medium">Yükleme Seçenekleri</h3>
             <button type="button" onClick={() => setShowLoadPresetModal(false)} className="text-white hover:text-gray-200 p-1">
@@ -1330,7 +1332,7 @@ export function MenuManagementPanel({ onClose }: MenuManagementPanelProps) {
                       window.dispatchEvent(new CustomEvent('menuUpdated', { detail: { forceReload: true } }));
                     } catch (e) {
                       logger.crudError('MenuManagement', 'applyDefault', e);
-                      alert('Varsayılan menü yüklenemedi.');
+                      alert(tm('menuPanelDefaultLoadFailed'));
                     } finally {
                       setSaving(false);
                     }
@@ -1365,7 +1367,7 @@ export function MenuManagementPanel({ onClose }: MenuManagementPanelProps) {
                       onClick={() => handleDeletePreset(preset.id, preset.name)}
                       disabled={saving}
                       className="shrink-0 p-1.5 text-red-600 hover:bg-red-50 rounded"
-                      title="Sil"
+                      title={tm('delete')}
                     >
                       <Trash2 className="w-4 h-4" />
                     </button>

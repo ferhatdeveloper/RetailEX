@@ -274,7 +274,7 @@ export function KasaIslemModal({
     }
 
     if (islemTipi === 'CH_ODEME' && ortakAdina && !formData.party_id) {
-      toast.error('Ortak seçmediniz — "Ortak adına" seçili ise ortak seçimi zorunludur.');
+      toast.error(tm('accPartnerRequired'));
       return;
     }
 
@@ -431,13 +431,13 @@ export function KasaIslemModal({
                           ID: {cari.kod}
                         </div>
                         <div className="font-bold text-gray-800 dark:text-gray-200 truncate">
-                          {cari.unvan || <span className="text-red-400 font-normal">Ünvan belirtilmemiş</span>}
+                          {cari.unvan || <span className="text-red-400 font-normal">{tm('accTitleNotSet')}</span>}
                         </div>
                       </div>
                       {renderCariBalance(cari)}
                     </button>
                   ))}
-                  {filteredCariHesaplar.length === 0 && <div className="p-4 text-center text-gray-400 text-sm">Cari bulunamadı</div>}
+                  {filteredCariHesaplar.length === 0 && <div className="p-4 text-center text-gray-400 text-sm">{tm('accCariNotFound')}</div>}
                 </div>
               )}
               {selectedCariBakiye !== null && formData.cari_hesap_id && (
@@ -522,11 +522,11 @@ export function KasaIslemModal({
                   }}
                   className="w-4 h-4 accent-amber-600"
                 />
-                <span>Ortak adına ödeme (tedarikçi ödemesi firma kasasından ortak adına yapılıyor)</span>
+                <span>{tm('accPartnerPayment')}</span>
               </label>
               {ortakAdina && (
                 <div className="space-y-1.5">
-                  <label className="text-xs font-medium text-amber-700 dark:text-amber-300">Ortak</label>
+                  <label className="text-xs font-medium text-amber-700 dark:text-amber-300">{tm('accPartner')}</label>
                   <select
                     value={formData.party_id || ''}
                     onChange={(e) => {
@@ -540,7 +540,7 @@ export function KasaIslemModal({
                     }}
                     className="w-full px-3 py-2 bg-white dark:bg-gray-800 border border-amber-300 dark:border-amber-700 rounded text-sm focus:ring-1 focus:ring-amber-500 outline-none"
                   >
-                    <option value="">Ortak seçin...</option>
+                    <option value="">{tm('accSelectPartner')}</option>
                     {ortaklar.map(o => (
                       <option key={o.id} value={o.id}>
                         {o.code} - {o.name} (%{o.share_pct})
@@ -549,7 +549,7 @@ export function KasaIslemModal({
                   </select>
                   {ortaklar.length === 0 && (
                     <p className="text-xs text-amber-700 dark:text-amber-300">
-                      Aktif ortak bulunamadı. Ortak tanımı için Ortaklar modülünü kullanın.
+                      {tm('accNoActivePartners')}
                     </p>
                   )}
                 </div>

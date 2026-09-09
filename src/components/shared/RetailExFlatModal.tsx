@@ -2,6 +2,7 @@ import React, { useEffect, useId } from 'react';
 import { createPortal } from 'react-dom';
 import { X, Loader2 } from 'lucide-react';
 import { useTheme } from '../../contexts/ThemeContext';
+import { useLanguage } from '../../contexts/LanguageContext';
 import { MODAL_OVERLAY_Z } from './FullscreenBodyPortal';
 
 export type RetailExFlatModalProps = {
@@ -40,15 +41,18 @@ export function RetailExFlatModal({
     children,
     maxWidthClass = 'max-w-lg',
     closeOnBackdrop = true,
-    cancelLabel = 'İptal',
-    confirmLabel = 'Kaydet',
+    cancelLabel,
+    confirmLabel,
     onConfirm,
     confirmDisabled = false,
     confirmLoading = false,
     footer,
 }: RetailExFlatModalProps) {
     const { darkMode } = useTheme();
+    const { tm } = useLanguage();
     const titleId = useId();
+    const resolvedCancelLabel = cancelLabel ?? tm('cancel');
+    const resolvedConfirmLabel = confirmLabel ?? tm('save');
 
     useEffect(() => {
         if (!open) return;
@@ -141,7 +145,7 @@ export function RetailExFlatModal({
                                 type="button"
                                 onClick={onClose}
                                 className="w-11 h-11 sm:w-12 sm:h-12 shrink-0 rounded-2xl bg-white/20 hover:bg-white/30 flex items-center justify-center transition-colors"
-                                aria-label="Kapat"
+                                aria-label={tm('close')}
                             >
                                 <X className="w-5 h-5" />
                             </button>
@@ -160,7 +164,7 @@ export function RetailExFlatModal({
                                 className={`${cancelBtn} ${darkMode ? cancelDark : cancelLight}`}
                                 disabled={confirmLoading}
                             >
-                                {cancelLabel}
+                                {resolvedCancelLabel}
                             </button>
                             <button
                                 type="button"
@@ -171,7 +175,7 @@ export function RetailExFlatModal({
                                 {confirmLoading ? (
                                     <Loader2 className="h-5 w-5 animate-spin shrink-0" aria-hidden />
                                 ) : null}
-                                {confirmLabel}
+                                {resolvedConfirmLabel}
                             </button>
                         </div>
                     ) : null}

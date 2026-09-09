@@ -23,6 +23,7 @@ import {
   Award
 } from 'lucide-react';
 import { useFirmaDonem } from '../../contexts/FirmaDonemContext';
+import { useLanguage } from '../../contexts/LanguageContext';
 import { ProductProfitabilityReport } from './ProductProfitabilityReport';
 import { CustomerProfitabilityReport } from '../trading/contacts/CustomerProfitabilityReport';
 import { postgres } from '../../services/postgres';
@@ -31,6 +32,7 @@ import { SQL_COUNTABLE_SALE_STATUS_PLAIN } from '../../utils/saleInvoiceStatus';
 type TabType = 'overview' | 'products' | 'customers';
 
 export function ProfitDashboard() {
+  const { tm } = useLanguage();
   const { selectedFirma, selectedDonem } = useFirmaDonem();
   const [activeTab, setActiveTab] = useState<TabType>('overview');
   const [loading, setLoading] = useState(false);
@@ -146,8 +148,8 @@ export function ProfitDashboard() {
         <div className="flex items-center gap-3 text-yellow-800">
           <BarChart3 className="w-6 h-6" />
           <div>
-            <h3 className="font-semibold">Firma ve Dönem Seçimi Gerekli</h3>
-            <p className="text-sm">Karlılık analizlerini görmek için lütfen firma ve dönem seçin</p>
+            <h3 className="font-semibold">{tm('rptProfitDashNeedFirmTitle')}</h3>
+            <p className="text-sm">{tm('rptProfitDashNeedFirmDesc')}</p>
           </div>
         </div>
       </div>
@@ -160,7 +162,7 @@ export function ProfitDashboard() {
       <div className="bg-gradient-to-r from-purple-600 to-blue-600 rounded-lg p-6 text-white">
         <div className="flex items-center justify-between">
           <div>
-            <h1 className="text-2xl font-bold mb-2">Karlılık Analizi Dashboard</h1>
+            <h1 className="text-2xl font-bold mb-2">{tm('rptProfitDashTitle')}</h1>
             <p className="text-purple-100">
               {selectedFirma.firma_adi} / {selectedDonem.donem_adi}
             </p>
@@ -169,7 +171,7 @@ export function ProfitDashboard() {
             <div className="text-3xl font-bold">
               {loading ? '...' : `${formatMoney(kpiData.grossProfit)} IQD`}
             </div>
-            <div className="text-purple-100">Toplam Brüt Kar</div>
+            <div className="text-purple-100">{tm('rptProfitDashTotalGross')}</div>
           </div>
         </div>
       </div>
@@ -186,7 +188,7 @@ export function ProfitDashboard() {
           >
             <div className="flex items-center gap-2">
               <BarChart3 className="w-4 h-4" />
-              Genel Bakış
+              {tm('rptProfitTabOverview')}
             </div>
           </button>
           <button
@@ -198,7 +200,7 @@ export function ProfitDashboard() {
           >
             <div className="flex items-center gap-2">
               <Package className="w-4 h-4" />
-              Ürün Bazlı
+              {tm('rptProfitTabProducts')}
             </div>
           </button>
           <button
@@ -210,7 +212,7 @@ export function ProfitDashboard() {
           >
             <div className="flex items-center gap-2">
               <Users className="w-4 h-4" />
-              Müşteri Bazlı
+              {tm('rptProfitTabCustomers')}
             </div>
           </button>
         </div>
@@ -232,7 +234,7 @@ export function ProfitDashboard() {
                       </div>
                     )}
                   </div>
-                  <div className="text-sm text-gray-600 mb-1">Toplam Satış</div>
+                  <div className="text-sm text-gray-600 mb-1">{tm('rptProfitTotalSales')}</div>
                   <div className="text-2xl font-bold text-green-900">
                     {formatMoney(kpiData.totalRevenue)} IQD
                   </div>
@@ -244,7 +246,7 @@ export function ProfitDashboard() {
                       <Banknote className="w-6 h-6 text-white" />
                     </div>
                   </div>
-                  <div className="text-sm text-gray-600 mb-1">Toplam Maliyet</div>
+                  <div className="text-sm text-gray-600 mb-1">{tm('rptProfitTotalCost')}</div>
                   <div className="text-2xl font-bold text-orange-900">
                     {formatMoney(kpiData.totalCost)} IQD
                   </div>
@@ -262,7 +264,7 @@ export function ProfitDashboard() {
                       </div>
                     )}
                   </div>
-                  <div className="text-sm text-gray-600 mb-1">Brüt Kar</div>
+                  <div className="text-sm text-gray-600 mb-1">{tm('rptProfitGrossProfit')}</div>
                   <div className="text-2xl font-bold text-emerald-900">
                     {formatMoney(kpiData.grossProfit)} IQD
                   </div>
@@ -280,7 +282,7 @@ export function ProfitDashboard() {
                       </div>
                     )}
                   </div>
-                  <div className="text-sm text-gray-600 mb-1">Kar Marjı</div>
+                  <div className="text-sm text-gray-600 mb-1">{tm('rptProfitMargin')}</div>
                   <div className="text-2xl font-bold text-blue-900">
                     {kpiData.profitMargin.toFixed(2)}%
                   </div>
@@ -292,12 +294,12 @@ export function ProfitDashboard() {
                 <div className="bg-white border-2 border-gray-200 rounded-lg p-4">
                   <div className="flex items-center gap-3 mb-2">
                     <ShoppingCart className="w-5 h-5 text-purple-600" />
-                    <div className="text-sm text-gray-600">İşlem Sayısı</div>
+                    <div className="text-sm text-gray-600">{tm('rptProfitTxnCount')}</div>
                   </div>
                   <div className="text-xl font-bold text-gray-900">{kpiData.transactionCount}</div>
                   {trends.transactionChange > 0 && (
                     <div className="text-xs text-green-600 mt-1">
-                      +{trends.transactionChange}% artış
+                      {tm('rptProfitIncreasePct').replace('{n}', String(trends.transactionChange))}
                     </div>
                   )}
                 </div>
@@ -305,18 +307,20 @@ export function ProfitDashboard() {
                 <div className="bg-white border-2 border-gray-200 rounded-lg p-4">
                   <div className="flex items-center gap-3 mb-2">
                     <Package className="w-5 h-5 text-blue-600" />
-                    <div className="text-sm text-gray-600">Ürün Sayısı</div>
+                    <div className="text-sm text-gray-600">{tm('rptProfitProductCount')}</div>
                   </div>
                   <div className="text-xl font-bold text-gray-900">{kpiData.productCount}</div>
                   <div className="text-xs text-gray-500 mt-1">
-                    {kpiData.profitableProducts} karlı, {kpiData.lossProducts} zararlı
+                    {tm('rptProfitProfitableLossCount')
+                      .replace('{profitable}', String(kpiData.profitableProducts))
+                      .replace('{loss}', String(kpiData.lossProducts))}
                   </div>
                 </div>
 
                 <div className="bg-white border-2 border-gray-200 rounded-lg p-4">
                   <div className="flex items-center gap-3 mb-2">
                     <Users className="w-5 h-5 text-green-600" />
-                    <div className="text-sm text-gray-600">Müşteri Sayısı</div>
+                    <div className="text-sm text-gray-600">{tm('rptProfitCustomerCount')}</div>
                   </div>
                   <div className="text-xl font-bold text-gray-900">{kpiData.customerCount}</div>
                 </div>
@@ -324,7 +328,7 @@ export function ProfitDashboard() {
                 <div className="bg-white border-2 border-gray-200 rounded-lg p-4">
                   <div className="flex items-center gap-3 mb-2">
                     <Banknote className="w-5 h-5 text-cyan-600" />
-                    <div className="text-sm text-gray-600">Ort. İşlem Değeri</div>
+                    <div className="text-sm text-gray-600">{tm('rptProfitAvgTxnValue')}</div>
                   </div>
                   <div className="text-lg font-bold text-gray-900">
                     {formatMoney(kpiData.avgTransactionValue)} IQD
@@ -337,42 +341,42 @@ export function ProfitDashboard() {
                 <div className="bg-gradient-to-br from-yellow-50 to-amber-50 border-2 border-yellow-200 rounded-lg p-6">
                   <div className="flex items-center gap-3 mb-4">
                     <Award className="w-6 h-6 text-yellow-600" />
-                    <h3 className="font-semibold text-yellow-900">En Karlı Ürün</h3>
+                    <h3 className="font-semibold text-yellow-900">{tm('rptProfitTopProduct')}</h3>
                   </div>
                   <div className="text-2xl font-bold text-yellow-900 mb-2">
                     {kpiData.topProduct}
                   </div>
                   <div className="text-sm text-yellow-700">
-                    Dönemin en yüksek karlılık oranına sahip ürünü
+                    {tm('rptProfitTopProductHint')}
                   </div>
                 </div>
 
                 <div className="bg-gradient-to-br from-pink-50 to-rose-50 border-2 border-pink-200 rounded-lg p-6">
                   <div className="flex items-center gap-3 mb-4">
                     <Award className="w-6 h-6 text-pink-600" />
-                    <h3 className="font-semibold text-pink-900">En Karlı Müşteri</h3>
+                    <h3 className="font-semibold text-pink-900">{tm('rptProfitTopCustomer')}</h3>
                   </div>
                   <div className="text-2xl font-bold text-pink-900 mb-2">
                     {kpiData.topCustomer}
                   </div>
                   <div className="text-sm text-pink-700">
-                    Dönemin en yüksek kar getiren müşterisi
+                    {tm('rptProfitTopCustomerHint')}
                   </div>
                 </div>
               </div>
 
               {/* Quick Insights */}
               <div className="bg-blue-50 border-2 border-blue-200 rounded-lg p-6">
-                <h3 className="font-semibold text-blue-900 mb-4">Hızlı İçgörüler</h3>
+                <h3 className="font-semibold text-blue-900 mb-4">{tm('rptProfitInsights')}</h3>
                 <div className="space-y-3">
                   <div className="flex items-start gap-3">
                     <div className="w-2 h-2 bg-blue-600 rounded-full mt-2" />
                     <div>
                       <div className="font-medium text-blue-900">
-                        Kar marjınız sektör ortalamasının üzerinde
+                        {tm('rptProfitInsightMarginAbove')}
                       </div>
                       <div className="text-sm text-blue-700">
-                        %{kpiData.profitMargin.toFixed(2)} kar marjı ile hedeflerinize ulaşıyorsunuz
+                        {tm('rptProfitInsightMarginDetail').replace('{n}', kpiData.profitMargin.toFixed(2))}
                       </div>
                     </div>
                   </div>
@@ -380,10 +384,17 @@ export function ProfitDashboard() {
                     <div className="w-2 h-2 bg-green-600 rounded-full mt-2" />
                     <div>
                       <div className="font-medium text-blue-900">
-                        {kpiData.profitableProducts} ürün karlı çalışıyor
+                        {tm('rptProfitInsightProfitableProducts').replace('{n}', String(kpiData.profitableProducts))}
                       </div>
                       <div className="text-sm text-blue-700">
-                        Toplam {kpiData.productCount} üründen %{((kpiData.profitableProducts / kpiData.productCount) * 100).toFixed(1)}'i karlı
+                        {tm('rptProfitInsightProfitableRatio')
+                          .replace('{count}', String(kpiData.productCount))
+                          .replace(
+                            '{pct}',
+                            kpiData.productCount > 0
+                              ? ((kpiData.profitableProducts / kpiData.productCount) * 100).toFixed(1)
+                              : '0'
+                          )}
                       </div>
                     </div>
                   </div>
@@ -391,10 +402,10 @@ export function ProfitDashboard() {
                     <div className="w-2 h-2 bg-yellow-600 rounded-full mt-2" />
                     <div>
                       <div className="font-medium text-blue-900">
-                        {kpiData.lossProducts} ürün dikkat gerektiriyor
+                        {tm('rptProfitInsightLossAttention').replace('{n}', String(kpiData.lossProducts))}
                       </div>
                       <div className="text-sm text-blue-700">
-                        Zararlı ürünlerin fiyatlandırması gözden geçirilmeli
+                        {tm('rptProfitInsightLossHint')}
                       </div>
                     </div>
                   </div>
@@ -415,4 +426,3 @@ export function ProfitDashboard() {
     </div>
   );
 }
-

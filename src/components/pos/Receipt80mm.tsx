@@ -66,7 +66,7 @@ export function Receipt80mm({
 }: Receipt80mmProps) {
   const { darkMode } = useTheme();
   const { selectedFirm } = useFirmaDonem();
-  const { language: currentSystemLang, translations: allTranslations, t: tUi } = useLanguage();
+  const { language: currentSystemLang, translations: allTranslations, t: tUi, tm } = useLanguage();
   const [selectedLang, setSelectedLang] = useState<ReceiptLang>(() =>
     isReceiptLang(initialPrintLanguage) ? initialPrintLanguage : (currentSystemLang as ReceiptLang)
   );
@@ -307,7 +307,7 @@ export function Receipt80mm({
     return (
       <ModalLayer className="bg-black/80 backdrop-blur-sm flex items-center justify-center p-4">
         <div className="bg-white p-6 rounded-lg shadow-xl">
-          <p className="text-red-600 font-bold mb-4">Fiş verileri yüklenemedi</p>
+          <p className="text-red-600 font-bold mb-4">{tm('posReceiptDataLoadFailed')}</p>
           <button
             onClick={onClose}
             className="px-4 py-2 bg-blue-600 text-white rounded hover:bg-blue-700"
@@ -551,7 +551,7 @@ export function Receipt80mm({
         <div className="absolute inset-0 z-20 flex items-center justify-center pointer-events-none">
           <div className="pointer-events-auto flex items-center gap-3 rounded-2xl bg-white px-6 py-4 shadow-xl dark:bg-gray-800">
             <span className="inline-block h-8 w-8 border-[3px] border-blue-600 border-t-transparent rounded-full animate-spin" />
-            <span className="text-sm font-bold text-slate-800 dark:text-slate-100">Yazdırılıyor...</span>
+            <span className="text-sm font-bold text-slate-800 dark:text-slate-100">{tUi.printingReceiptStatus}</span>
           </div>
         </div>
       )}
@@ -576,7 +576,7 @@ export function Receipt80mm({
             {isPrinting ? (
               <span className="text-sm font-bold text-blue-600 dark:text-blue-400 flex items-center gap-2">
                 <span className="inline-block w-4 h-4 border-2 border-blue-600 border-t-transparent rounded-full animate-spin" />
-                Yazdırılıyor...
+                {tUi.printingReceiptStatus}
               </span>
             ) : (
               <>

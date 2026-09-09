@@ -287,6 +287,7 @@ const PRESET_ATTRIBUTES = {
 };
 
 export const ProductFormPage = React.memo(({ productId, onClose, onSave }: ProductFormPageProps) => {
+  const { tm } = useLanguage();
   useEffect(() => {
     console.log('[ProductFormPage] MOUNTED', { productId });
     return () => console.log('[ProductFormPage] UNMOUNTED', { productId });
@@ -304,7 +305,7 @@ export const ProductFormPage = React.memo(({ productId, onClose, onSave }: Produ
       if (field && value !== undefined) {
         console.log('[VoiceAssistant] Updating field:', field, 'with value:', value);
         handleInputChange(field, value);
-        toast.info(`Sesli komutla güncellendi: ${field} = ${value}`);
+        toast.info(tm('prodFormVoiceUpdated').replace('{field}', field).replace('{value}', String(value)));
       }
     };
 
@@ -1080,10 +1081,10 @@ export const ProductFormPage = React.memo(({ productId, onClose, onSave }: Produ
         });
       }
 
-      toast.success(productId ? 'Çeviri tamamlandı ve kaydedildi!' : 'Çeviri tamamlandı!');
+      toast.success(productId ? tm('prodFormTranslateDoneSaved') : tm('prodFormTranslateDone'));
     } catch (error) {
       console.error('Translation failed:', error);
-      toast.error('Çeviri başarısız oldu');
+      toast.error(tm('prodFormTranslateFailed'));
     } finally {
       setIsTranslating(false);
     }
@@ -1152,10 +1153,10 @@ export const ProductFormPage = React.memo(({ productId, onClose, onSave }: Produ
       const base64 = await compressImageToWebP(file, 2048, 2048, 0.9);
       const resized = await resizeDataUrlToExactSize(base64, urlImageWidth, urlImageHeight);
       handleInputChange('image_url', resized);
-      toast.success(`Resim ${urlImageWidth}x${urlImageHeight} boyutunda yüklendi`);
+      toast.success(tm('prodFormImageProcessed').replace('{w}', String(urlImageWidth)).replace('{h}', String(urlImageHeight)));
     } catch (error) {
       console.error('Image upload error:', error);
-      toast.error('Resim işlenirken bir hata oluştu');
+      toast.error(tm('prodFormImageProcessError'));
     }
   };
 
@@ -1205,7 +1206,7 @@ export const ProductFormPage = React.memo(({ productId, onClose, onSave }: Produ
     const url = String(urlRaw || '').trim();
     if (!url) return null;
     if (!/^https?:\/\//i.test(url)) {
-      if (!silent) toast.error('Lütfen geçerli bir http/https resim URL girin.');
+      if (!silent) toast.error(tm('prodFormInvalidImageUrl'));
       return null;
     }
 
@@ -1216,10 +1217,10 @@ export const ProductFormPage = React.memo(({ productId, onClose, onSave }: Produ
         const resized = await resizeDataUrlToExactSize(base64, urlImageWidth, urlImageHeight);
         handleInputChange('image_url', resized);
         lastAutoImportedUrlRef.current = url;
-        if (!silent) toast.success('URL resmi bilgisayara alındı ve ürüne eklendi.');
+        if (!silent) toast.success(tm('prodFormUrlImageAdded'));
         return resized;
       } else if (!silent) {
-        toast.error('URL resmi indirilemedi (CORS veya URL erişimi engelliyor olabilir).');
+        toast.error(tm('prodFormUrlImageFailed'));
       }
       return null;
     } finally {
@@ -1396,14 +1397,14 @@ export const ProductFormPage = React.memo(({ productId, onClose, onSave }: Produ
     }));
     setVariantAttributes(newAttributes);
     setShowPresetMenu(false);
-    toast.success(`"${preset.name}" paketi yüklendi`);
+    toast.success(tm('prodFormPresetLoaded').replace('{name}', preset.name));
   };
 
   const generateVariantCombinations = () => {
     const activeAttributes = variantAttributes.filter((attr: VariantAttribute) => attr.name && attr.values.length > 0);
 
     if (activeAttributes.length === 0) {
-      toast.error('En az bir özellik ve değer tanımlamalısınız');
+      toast.error(tm('prodFormNeedAttrValues'));
       return;
     }
 
@@ -1446,7 +1447,7 @@ export const ProductFormPage = React.memo(({ productId, onClose, onSave }: Produ
       setExpandedGroups(new Set(firstAttr.values));
     }
 
-    toast.success(`${combinations.length} varyant oluşturuldu`);
+    toast.success(tm('prodFormVariantsCreated').replace('{count}', String(combinations.length)));
   };
 
   const updateVariant = (id: string, field: string, value: any) => {
@@ -1476,7 +1477,7 @@ export const ProductFormPage = React.memo(({ productId, onClose, onSave }: Produ
       setVariants(prev => prev.map((v: FormVariant) => {
         return { ...v, purchasePrice: Number(price) };
       }));
-      toast.success('Fiyat tüm varyantlara uygulandı');
+      toast.success(tm('prodFormPriceAppliedAll'));
     }
   };
 
@@ -1485,20 +1486,20 @@ export const ProductFormPage = React.memo(({ productId, onClose, onSave }: Produ
     if (quantity && !isNaN(Number(quantity))) {
       const qty = Number(quantity);
       if (qty < 0) {
-        toast.error('Adet negatif olamaz');
+        toast.error(tm('prodFormQtyNegative'));
         return;
       }
       setVariants(prev => prev.map((v: FormVariant) => {
         if (!v.enabled) return v; // Pasif varyantları atla
         return { ...v, purchaseQuantity: qty };
       }));
-      toast.success(`${qty} adet tüm aktif varyantlara uygulandı`);
+      toast.success(tm('prodFormQtyAppliedAll').replace('{qty}', String(qty)));
     }
   };
 
   const generateBarcodesAuto = () => {
     if (!formData.code) {
-      toast.error('Önce ürün kodu girmelisiniz');
+      toast.error(tm('prodFormNeedProductCode'));
       return;
     }
 
@@ -1521,12 +1522,12 @@ export const ProductFormPage = React.memo(({ productId, onClose, onSave }: Produ
     }));
 
     const generatedCount = variants.filter(v => !v.barcode).length;
-    toast.success(`${generatedCount} varyant için ${barcodeType} barkod oluşturuldu. Mevcut barkodlar korundu.`);
+    toast.success(tm('prodFormBarcodesGenerated').replace('{count}', String(generatedCount)).replace('{type}', barcodeType));
   };
 
   const toggleAllVariants = (enabled: boolean) => {
     setVariants(prev => prev.map((v: FormVariant) => ({ ...v, enabled })));
-    toast.success(enabled ? 'Tüm varyantlar aktifleştirildi' : 'Tüm varyantlar pasifleştirildi');
+    toast.success(enabled ? tm('prodFormVariantsEnabled') : tm('prodFormVariantsDisabled'));
   };
 
   // Varyantları grupla (kullanıcı tercihine göre)
@@ -1579,19 +1580,19 @@ export const ProductFormPage = React.memo(({ productId, onClose, onSave }: Produ
     );
 
     if (variantsWithPurchaseQty.length === 0) {
-      toast.error('Lütfen en az bir varyant için alış adedi girin');
+      toast.error(tm('prodFormNeedPurchaseQty'));
       return;
     }
 
     // Ürün kodu ve adı kontrolü
     if (!formData.code || !formData.description_tr) {
-      toast.error('Önce ürün kodunu ve açıklamasını girin');
+      toast.error(tm('prodFormNeedCodeDesc'));
       return;
     }
 
     try {
       // ─── ADIM 1: Ürünü önce kaydet (varyantlarla birlikte) ────────────────
-      toast.info('Ürün kaydediliyor...', { duration: 1500 });
+      toast.info(tm('prodFormSaving'), { duration: 1500 });
       await handleSave(false); // Formu kapatma, fatura oluşturma devam edecek
 
       // ─── ADIM 2: Gerçek ürün kodunu kullanarak fatura oluştur ─────────────
@@ -1675,13 +1676,13 @@ export const ProductFormPage = React.memo(({ productId, onClose, onSave }: Produ
       setVariants(prev => prev.map(v => ({ ...v, purchaseQuantity: 0 })));
     } catch (error: any) {
       console.error('Alış faturası oluşturma hatası:', error);
-      toast.error(error.message || 'Alış faturası oluşturulamadı');
+      toast.error(error.message || tm('prodFormPurchaseInvoiceFailed'));
     }
   };
 
   const handleSave = async (closeAfter = true) => {
     if (!formData.code || !formData.description_tr) {
-      toast.error('Ürün kodu ve Türkçe açıklama zorunludur');
+      toast.error(tm('prodFormCodeDescRequired'));
       return;
     }
 
@@ -1864,9 +1865,9 @@ export const ProductFormPage = React.memo(({ productId, onClose, onSave }: Produ
       try {
         const result = await supabaseMenuSyncService.upsertMenuItem(savedProduct);
         if (result.ok) {
-          toast.success('Supabase menüye yansıtıldı.');
+          toast.success(tm('prodFormMenuSynced'));
         } else if (result.error && !result.error.includes('tanımlı değil')) {
-          toast.warning('Menü senkronu: ' + result.error);
+          toast.warning(tm('prodFormMenuSyncWarn') + result.error);
         }
       } catch (_) {
         // Sessizce geç; ana işlem başarılı
@@ -1902,7 +1903,6 @@ export const ProductFormPage = React.memo(({ productId, onClose, onSave }: Produ
     return () => window.removeEventListener('keydown', handleKeyDown);
   }, [formData, barcodes, variants, hasVariants]);
 
-  const { tm } = useLanguage();
   const { canViewPurchasePricing } = usePermission();
   const showPurchasePricing = canViewPurchasePricing();
 
@@ -2028,7 +2028,7 @@ export const ProductFormPage = React.memo(({ productId, onClose, onSave }: Produ
                             toast.info(tm('codeGenerated'));
                           }}
                           className="p-1 text-blue-600 hover:bg-blue-50 rounded"
-                          title="Kod Üret"
+                          title={tm('prodFormGenerateCode')}
                         >
                           <Plus className="w-4 h-4" />
                         </button>
@@ -2584,7 +2584,7 @@ export const ProductFormPage = React.memo(({ productId, onClose, onSave }: Produ
                     />
                   </div>
                   <div className="col-span-6 max-lg:col-span-1 bg-gray-50 px-2 py-1.5 flex items-center">
-                    <span className="text-[10px] text-gray-400 italic">Boş veya 0 ise sistem kuru ({usdExchangeRate}) baz alınır. MarketPOS ve Faturalarda dinamik hesaplanır.</span>
+                    <span className="text-[10px] text-gray-400 italic">{tm('prodFormUsdRateHint').replace('{rate}', String(usdExchangeRate))}</span>
                   </div>
 
                   {showPurchasePricing ? (
@@ -2939,7 +2939,7 @@ export const ProductFormPage = React.memo(({ productId, onClose, onSave }: Produ
                           <div className="fixed inset-0 z-40" onClick={() => setShowUnitSetPicker(false)} />
                           <div className="absolute right-0 top-full mt-1 z-50 bg-white border border-gray-200 rounded shadow-lg min-w-[180px] max-h-60 overflow-y-auto">
                           {unitSets.length === 0 ? (
-                            <div className="px-3 py-2 text-[11px] text-gray-400">Henüz birim seti yok</div>
+                            <div className="px-3 py-2 text-[11px] text-gray-400">{tm('prodFormNoUnitSet')}</div>
                           ) : (
                             unitSets.map(us => (
                               <button
@@ -3983,7 +3983,7 @@ export const ProductFormPage = React.memo(({ productId, onClose, onSave }: Produ
                 </div>
                 <div className="mt-3 grid grid-cols-2 gap-2 max-lg:grid-cols-1">
                   <div>
-                    <label className="text-xs text-gray-600 block mb-1">Genişlik (px)</label>
+                    <label className="text-xs text-gray-600 block mb-1">{tm('prodFormWidthPx')}</label>
                     <input
                       type="number"
                       min={32}
@@ -3994,7 +3994,7 @@ export const ProductFormPage = React.memo(({ productId, onClose, onSave }: Produ
                     />
                   </div>
                   <div>
-                    <label className="text-xs text-gray-600 block mb-1">Yükseklik (px)</label>
+                    <label className="text-xs text-gray-600 block mb-1">{tm('prodFormHeightPx')}</label>
                     <input
                       type="number"
                       min={32}
@@ -4020,14 +4020,14 @@ export const ProductFormPage = React.memo(({ productId, onClose, onSave }: Produ
                     <Database className="w-4 h-4 text-amber-600" />
                     CDN galerisi
                   </h3>
-                  <p className="text-xs text-gray-500 mb-3">Tüm menü resimleri listelenir; arama ve öner ile seçebilirsiniz.</p>
+                  <p className="text-xs text-gray-500 mb-3">{tm('prodFormMenuImagesHint')}</p>
                   <button
                     type="button"
                     disabled={loadingMenuSuggestions}
                     onClick={async () => {
                       const companyId = await supabaseMenuSyncService.getCompanyId();
                       if (!companyId) {
-                        toast.error('Supabase Firma ID tanımlı değil. Kurulum > Firma düzenle.');
+                        toast.error(tm('prodFormNoFirmId'));
                         return;
                       }
                       setLoadingMenuSuggestions(true);
@@ -4035,7 +4035,7 @@ export const ProductFormPage = React.memo(({ productId, onClose, onSave }: Produ
                         const { images: allImages } = await supabaseMenuSyncService.getAllImagesForGallery(companyId);
                         setCdnGalleryImages(allImages);
                         setShowCdnGalleryModal(true);
-                        if (allImages.length === 0) toast.info('Menüde resim bulunamadı.');
+                        if (allImages.length === 0) toast.info(tm('prodFormNoMenuImages'));
                       } finally {
                         setLoadingMenuSuggestions(false);
                       }
@@ -4098,14 +4098,14 @@ export const ProductFormPage = React.memo(({ productId, onClose, onSave }: Produ
                       await importImageUrlToLocal(entered, true);
                     }}
                   />
-                  <p className="text-xs text-gray-500">Supabase Storage veya başka bir CDN linki yapıştırabilirsiniz.</p>
+                  <p className="text-xs text-gray-500">{tm('prodFormCdnHint')}</p>
                   <div className="flex flex-wrap gap-2">
                     <button
                       type="button"
                       disabled={uploadingToSupabase || !formData.image_url || !productId}
                       onClick={async () => {
                         if (!formData.image_url || !productId) {
-                          toast.error('Önce resim ekleyin ve ürünü kaydedin.');
+                          toast.error(tm('prodFormAddImageFirst'));
                           return;
                         }
                         setUploadingToSupabase(true);
@@ -4113,7 +4113,7 @@ export const ProductFormPage = React.memo(({ productId, onClose, onSave }: Produ
                           const result = await supabaseProductImageService.uploadProductImageFromDataUrl(formData.image_url, productId);
                           if ('url' in result) {
                             handleInputChange('image_url_cdn', result.url);
-                            toast.success('Resim Supabase CDN\'e yüklendi.');
+                            toast.success(tm('prodFormCdnUploaded'));
                           } else {
                             toast.error(result.error);
                           }
@@ -4131,7 +4131,7 @@ export const ProductFormPage = React.memo(({ productId, onClose, onSave }: Produ
                       disabled={uploadingToSystem || importingUrlToLocal || !formData.image_url_cdn}
                       onClick={async () => {
                         if (!formData.image_url_cdn) {
-                          toast.error('Önce CDN URL girin.');
+                          toast.error(tm('prodFormNeedCdnUrl'));
                           return;
                         }
                         setUploadingToSystem(true);
@@ -4161,7 +4161,7 @@ export const ProductFormPage = React.memo(({ productId, onClose, onSave }: Produ
                       disabled={downloadingCdnToLocal || importingUrlToLocal || !formData.image_url_cdn}
                       onClick={async () => {
                         if (!formData.image_url_cdn) {
-                          toast.error('CDN URL girin veya önce Supabase\'e yükleyin.');
+                          toast.error(tm('prodFormNeedCdnOrUpload'));
                           return;
                         }
                         setDownloadingCdnToLocal(true);
@@ -4289,7 +4289,7 @@ export const ProductFormPage = React.memo(({ productId, onClose, onSave }: Produ
         onLoadAll={async () => {
           const companyId = await supabaseMenuSyncService.getCompanyId();
           if (!companyId) {
-            toast.error('Supabase Firma ID tanımlı değil. Kurulum > Firma düzenle > Supabase Firma ID alanını doldurun.');
+            toast.error(tm('prodFormNoFirmIdLong'));
             return;
           }
           setLoadingMenuSuggestions(true);
@@ -4301,7 +4301,7 @@ export const ProductFormPage = React.memo(({ productId, onClose, onSave }: Produ
                 ? `Storage: ${storageError}`
                 : 'Menü ve Storage\'da resim yok.';
               toast.info(
-                `${detail} Kullanılan Firma ID: ${companyId}. Supabase Storage'da "product-images" bucket'ında bu isimde klasör olmalı.`,
+                tm('prodFormFirmIdDetail').replace('{detail}', detail).replace('{id}', String(companyId)),
                 { duration: 7000 }
               );
             }
@@ -4312,7 +4312,7 @@ export const ProductFormPage = React.memo(({ productId, onClose, onSave }: Produ
         onRefresh={async () => {
           const companyId = await supabaseMenuSyncService.getCompanyId();
           if (!companyId) {
-            toast.error('Supabase Firma ID tanımlı değil.');
+            toast.error(tm('prodFormNoFirmIdShort'));
             return;
           }
           setLoadingMenuSuggestions(true);
@@ -4326,7 +4326,7 @@ export const ProductFormPage = React.memo(({ productId, onClose, onSave }: Produ
         onSuggest={async () => {
           const companyId = await supabaseMenuSyncService.getCompanyId();
           if (!companyId) {
-            toast.error('Supabase Firma ID tanımlı değil.');
+            toast.error(tm('prodFormNoFirmIdShort'));
             return;
           }
           setLoadingMenuSuggestions(true);
@@ -4343,12 +4343,12 @@ export const ProductFormPage = React.memo(({ productId, onClose, onSave }: Produ
               (s.gallery_urls || []).forEach((url) => url && flat.push({ url, label }));
             });
             setCdnGalleryImages(flat);
-            if (flat.length === 0) toast.info('Bu ürün adı/kodu ile eşleşen menü resmi bulunamadı.');
+            if (flat.length === 0) toast.info(tm('prodFormNoMatchingMenuImage'));
           } finally {
             setLoadingMenuSuggestions(false);
           }
         }}
-        loadAllLabel="Tümünü listele"
+        loadAllLabel={tm('prodFormListAll')}
         suggestLabel="Öner"
         title="CDN Galerisi"
       />

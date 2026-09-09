@@ -5,6 +5,7 @@ import { getDefaultPort, getDefaultBaudRate, testScaleConnection } from '../../u
 import { RONGTA_DEFAULT_IP } from '../../utils/rongtaRlsProtocol';
 import { validateIPAddress } from '../../utils/scaleScanner';
 import { formatScalePortInput, normalizeOptionalScalePort } from '../../utils/scalePort';
+import { useLanguage } from '../../contexts/LanguageContext';
 
 interface ScaleDeviceModalProps {
   device?: ScaleDevice;
@@ -13,6 +14,7 @@ interface ScaleDeviceModalProps {
 }
 
 export function ScaleDeviceModal({ device, onSave, onClose }: ScaleDeviceModalProps) {
+  const { tm } = useLanguage();
   const [formData, setFormData] = useState<Partial<ScaleDevice>>({
     name: device?.name || '',
     brand: device?.brand || 'rongta',
@@ -428,13 +430,13 @@ export function ScaleDeviceModal({ device, onSave, onClose }: ScaleDeviceModalPr
             onClick={onClose}
             className="px-4 py-2 text-gray-700 hover:bg-gray-100 rounded transition-colors"
           >
-            İptal
+            {tm('cancel')}
           </button>
           <button
             onClick={handleSave}
             className="px-6 py-2 bg-gradient-to-r from-blue-600 to-blue-700 text-white rounded hover:from-blue-700 hover:to-blue-800 transition-all shadow-sm"
           >
-            {device ? 'Güncelle' : 'Ekle'}
+            {device ? tm('update') : tm('add')}
           </button>
         </div>
       </div>

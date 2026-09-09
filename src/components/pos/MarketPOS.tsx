@@ -1572,7 +1572,7 @@ export default function MarketPOS({
     { label: t.salesHistory, color: 'bg-blue-50 text-blue-700 border-blue-400', onClick: () => setShowSalesHistoryModal(true), icon: History },
     { label: t.returnTransaction, color: 'bg-blue-50 text-blue-700 border-blue-400', onClick: handleReturnAction, icon: RotateCcw },
     { label: t.missingBarcodes, color: 'bg-red-50 text-red-700 border-red-400', onClick: () => setShowMissingBarcodesModal(true), icon: Barcode },
-    { label: 'Gider İşlemleri', color: 'bg-orange-50 text-orange-700 border-orange-400', onClick: () => setShowExpenseScreen(true), icon: Receipt },
+    { label: tm('posExpenseOperations'), color: 'bg-orange-50 text-orange-700 border-orange-400', onClick: () => setShowExpenseScreen(true), icon: Receipt },
     { label: t.scale, color: 'bg-blue-50 text-blue-700 border-blue-400', onClick: () => { }, icon: Scale },
     { label: t.subtotalAction, color: 'bg-blue-50 text-blue-700 border-blue-400', onClick: () => showNotif(`${t.subtotalAction}: ${subtotal.toFixed(2)}`, 'info'), icon: Calculator },
     { label: t.receiptNote, color: 'bg-blue-50 text-blue-700 border-blue-400', onClick: () => { }, icon: FileText },
@@ -2028,7 +2028,7 @@ export default function MarketPOS({
                   <div className="mt-2 flex items-center justify-between px-2 py-1 bg-green-50 rounded-lg border border-green-100">
                     <div className="flex items-center gap-1.5 grayscale opacity-70">
                       <ArrowRightLeft className="w-3 h-3 text-green-700" />
-                      <span className="text-[10px] uppercase font-bold text-green-800">Güncel Kur</span>
+                      <span className="text-[10px] uppercase font-bold text-green-800">{tm('posCurrentRate')}</span>
                     </div>
                     <span className="text-xs font-black text-green-700">1$ = {exchangeRate} IQD</span>
                   </div>
@@ -2404,7 +2404,7 @@ export default function MarketPOS({
                 className={`${getButtonClass('orange')} py-4 text-xs leading-tight flex flex-col items-center justify-center gap-1 transition-all`}
               >
                 <Receipt className="w-5 h-5" />
-                <span>Gider İşlemleri</span>
+                <span>{tm('posExpenseOperations')}</span>
               </button>
 
               {/* Third Row - Cart & Customer */}
@@ -2465,7 +2465,7 @@ export default function MarketPOS({
                  className={`${getButtonClass('purple')} py-4 text-xs leading-tight flex flex-col items-center justify-center gap-1 transition-all`}
                >
                  <Banknote className="w-4 h-4" />
-                 <span>Cüzdan/Bakiye</span>
+                 <span>{tm('posWalletBalance')}</span>
                </button>
                */}
 
@@ -2524,7 +2524,7 @@ export default function MarketPOS({
           <button
             onClick={() => window.dispatchEvent(new CustomEvent('voiceAssistantToggle'))}
             className="flex items-center gap-1.5 hover:text-blue-300 transition-colors cursor-pointer"
-            title="Sesli Asistan"
+            title={tm('posVoiceAssistant')}
           >
             <Mic className="w-3 h-3 text-indigo-400" />
             <span className="text-indigo-400 hidden xs:inline">Sesli</span>

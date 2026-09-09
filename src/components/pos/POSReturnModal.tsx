@@ -25,7 +25,7 @@ export function POSReturnModal({
   onReturnComplete,
   onClose
 }: POSReturnModalProps) {
-  const { t, language } = useLanguage();
+  const { t, tm, language } = useLanguage();
   const [returnType, setReturnType] = useState<'receipt' | 'product' | 'barcode'>('barcode');
   const [searchTerm, setSearchTerm] = useState('');
   const [barcodeInput, setBarcodeInput] = useState('');
@@ -208,10 +208,10 @@ export function POSReturnModal({
     const code = barcodeInput.trim();
     if (!code) return;
 
-    setBarcodeHint('Aranıyor…');
+    setBarcodeHint(tm('posSearching'));
     const { matches, scaleQty, scaleUnit, product } = await findSalesForBarcode(code);
     if (matches.length === 0) {
-      setBarcodeHint('Bu barkod/kod ile tamamlanmış satış bulunamadı.');
+      setBarcodeHint(tm('posBarcodeSaleNotFound'));
       return;
     }
 
@@ -481,7 +481,7 @@ export function POSReturnModal({
 
         {returnType === 'barcode' && (
           <div className="p-4 border-b border-gray-200 bg-blue-50/50">
-            <label className="text-xs font-semibold text-gray-600 mb-1.5 block">Barkod / ürün kodu okutun</label>
+            <label className="text-xs font-semibold text-gray-600 mb-1.5 block">{tm('posBarcodeProductCodeLabel')}</label>
             <div className="flex gap-2">
               <input
                 ref={barcodeRef}
@@ -494,7 +494,7 @@ export function POSReturnModal({
                     handleBarcodeScan();
                   }
                 }}
-                placeholder="Barkod okutun veya yazın…"
+                placeholder={tm('scannerPlaceholder')}
                 className="flex-1 px-3 py-2.5 border border-blue-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 font-mono text-sm"
                 autoFocus
               />
@@ -509,7 +509,7 @@ export function POSReturnModal({
             {barcodeHint ? (
               <p className="mt-2 text-sm text-blue-800 font-medium">{barcodeHint}</p>
             ) : (
-              <p className="mt-2 text-xs text-gray-500">Son satışlarda eşleşen ürün otomatik seçilir.</p>
+              <p className="mt-2 text-xs text-gray-500">{tm('posReturnAutoMatchHint')}</p>
             )}
           </div>
         )}
@@ -522,7 +522,7 @@ export function POSReturnModal({
                   <Search className="w-4 h-4 absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" />
                   <input
                     type="text"
-                    placeholder={returnType === 'receipt' ? t.searchReceiptPlaceholder : 'Ürün adı, kod veya barkod…'}
+                    placeholder={returnType === 'receipt' ? t.searchReceiptPlaceholder : tm('posSearchProductCodeBarcode')}
                     value={searchTerm}
                     onChange={(e) => setSearchTerm(e.target.value)}
                     className="w-full pl-9 pr-4 py-2 border border-gray-300 rounded focus:outline-none focus:border-blue-600 text-sm"
@@ -535,7 +535,7 @@ export function POSReturnModal({
               {returnType === 'barcode' && !selectedSale ? (
                 <div className="flex flex-col items-center justify-center h-full text-gray-400 p-6 text-center">
                   <Barcode className="w-14 h-14 mb-3 opacity-40" />
-                  <p className="text-sm">İade için barkodu okutun</p>
+                  <p className="text-sm">{tm('posReturnScanToReturn')}</p>
                 </div>
               ) : returnType === 'receipt' ? (
                 filteredSales.length === 0 ? (
@@ -608,7 +608,7 @@ export function POSReturnModal({
                             </div>
                           </div>
                           <div className="flex items-center gap-2">
-                            <span className="text-xs text-gray-600">İade miktarı:</span>
+                            <span className="text-xs text-gray-600">{tm('posReturnQty')}</span>
                             <div className="flex items-center gap-1">
                               <button
                                 onClick={() => handleQuantityChange(
@@ -649,7 +649,7 @@ export function POSReturnModal({
                 )
               ) : selectedSale ? (
                 <div className="p-3 bg-orange-50 border border-orange-200 rounded-lg">
-                  <p className="text-xs text-orange-700 font-semibold mb-1">Seçili fiş</p>
+                  <p className="text-xs text-orange-700 font-semibold mb-1">{tm('posSelectedReceipt')}</p>
                   <p className="font-mono text-sm font-bold">{selectedSale.receiptNumber}</p>
                   <p className="text-xs text-gray-600 mt-1">{new Date(selectedSale.date).toLocaleString('tr-TR')}</p>
                 </div>
@@ -663,7 +663,7 @@ export function POSReturnModal({
                 <div className="text-center">
                   <RotateCcw className="w-12 h-12 mx-auto mb-2 opacity-50" />
                   <p className="text-sm">
-                    {returnType === 'barcode' ? 'Barkod okutun veya fiş seçin' : t.selectReceiptForReturn}
+                    {returnType === 'barcode' ? tm('posScanBarcodeOrSelectReceipt') : t.selectReceiptForReturn}
                   </p>
                 </div>
               </div>

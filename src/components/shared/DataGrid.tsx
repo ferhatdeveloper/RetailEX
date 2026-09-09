@@ -1,5 +1,6 @@
 ﻿import { useState, useMemo } from 'react';
 import { ChevronUp, ChevronDown, ChevronsUpDown, Search, Edit2, Trash2 } from 'lucide-react';
+import { useLanguage } from '../../contexts/LanguageContext';
 
 interface Column<T> {
   field: keyof T | string;
@@ -27,12 +28,14 @@ export function DataGrid<T extends Record<string, any>>({
   onDelete,
   pageSize = 10,
   searchable = true,
-  searchPlaceholder = 'Ara...'
+  searchPlaceholder
 }: DataGridProps<T>) {
+  const { tm } = useLanguage();
   const [searchQuery, setSearchQuery] = useState('');
   const [sortField, setSortField] = useState<string | null>(null);
   const [sortDirection, setSortDirection] = useState<'asc' | 'desc'>('asc');
   const [currentPage, setCurrentPage] = useState(1);
+  const resolvedSearchPlaceholder = searchPlaceholder ?? tm('searchEllipsis');
 
   // Filter data based on search
   const filteredData = useMemo(() => {
@@ -114,7 +117,7 @@ export function DataGrid<T extends Record<string, any>>({
             <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400 w-4 h-4" />
             <input
               type="text"
-              placeholder={searchPlaceholder}
+              placeholder={resolvedSearchPlaceholder}
               value={searchQuery}
               onChange={(e) => {
                 setSearchQuery(e.target.value);
@@ -195,7 +198,7 @@ export function DataGrid<T extends Record<string, any>>({
                           <button
                             onClick={() => onEdit(item)}
                             className="p-1.5 text-blue-600 hover:bg-blue-50 transition-colors"
-                            title="Düzenle"
+                            title={tm('edit')}
                           >
                             <Edit2 className="w-4 h-4" />
                           </button>
@@ -204,7 +207,7 @@ export function DataGrid<T extends Record<string, any>>({
                           <button
                             onClick={() => onDelete(item)}
                             className="p-1.5 text-red-600 hover:bg-red-50 transition-colors"
-                            title="Sil"
+                            title={tm('delete')}
                           >
                             <Trash2 className="w-4 h-4" />
                           </button>

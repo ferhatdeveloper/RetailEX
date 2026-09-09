@@ -2,12 +2,14 @@ import { X, Package, TrendingUp, Banknote } from 'lucide-react';
 import { usePendingPurchaseStore, type PurchaseInvoiceItem } from '../../../store/usePendingPurchaseStore';
 import { formatNumber } from '../../../utils/formatNumber';
 import { toast } from 'sonner';
+import { useLanguage } from '../../../contexts/LanguageContext';
 
 interface PendingPurchaseInvoiceModalProps {
     onClose: () => void;
 }
 
 export function PendingPurchaseInvoiceModal({ onClose }: PendingPurchaseInvoiceModalProps) {
+    const { tm } = useLanguage();
     const pendingInvoice = usePendingPurchaseStore((state) => state.pendingInvoice);
     const removeItem = usePendingPurchaseStore((state) => state.removeItem);
     const clearInvoice = usePendingPurchaseStore((state) => state.clearInvoice);
@@ -18,13 +20,13 @@ export function PendingPurchaseInvoiceModal({ onClose }: PendingPurchaseInvoiceM
                 <div className="bg-white rounded-lg shadow-2xl w-[600px] p-6">
                     <div className="text-center">
                         <Package className="w-16 h-16 text-gray-400 mx-auto mb-4" />
-                        <h3 className="text-lg font-semibold text-gray-900 mb-2">Bekleyen Fatura Yok</h3>
-                        <p className="text-gray-600 mb-4">Henüz bekleyen alış faturası bulunmuyor.</p>
+                        <h3 className="text-lg font-semibold text-gray-900 mb-2">{tm('pendNoInvoice')}</h3>
+                        <p className="text-gray-600 mb-4">{tm('pendNoInvoiceDesc')}</p>
                         <button
                             onClick={onClose}
                             className="px-4 py-2 bg-blue-600 text-white rounded hover:bg-blue-700"
                         >
-                            Kapat
+                            {tm('close')}
                         </button>
                     </div>
                 </div>
@@ -47,23 +49,23 @@ export function PendingPurchaseInvoiceModal({ onClose }: PendingPurchaseInvoiceM
                     invoiceNo,
                     'purchase',
                     totalAmount,
-                    `Sayımdan otomatik oluşturuldu (${pendingInvoice.items.length} kalem)`,
+                    tm('pendAutoNote').replace('{count}', String(pendingInvoice.items.length)),
                     'system',
                 ]
             );
             
-            toast.success(`Alış faturası ${invoiceNo} olarak kaydedildi`);
+            toast.success(tm('pendSavedOk').replace('{no}', invoiceNo));
             clearInvoice();
             onClose();
         } catch (err: any) {
-            toast.error(`Fatura kaydedilemedi: ${err?.message || String(err)}`);
+            toast.error(tm('pendSaveFail').replace('{msg}', err?.message || String(err)));
         }
     };
 
     const handleClearInvoice = () => {
-        if (confirm('Bekleyen faturayı temizlemek istediğinize emin misiniz?')) {
+        if (confirm(tm('pendClearConfirm'))) {
             clearInvoice();
-            toast.info('Bekleyen fatura temizlendi');
+            toast.info(tm('pendCleared'));
             onClose();
         }
     };
@@ -76,8 +78,8 @@ export function PendingPurchaseInvoiceModal({ onClose }: PendingPurchaseInvoiceM
                     <div className="flex items-center gap-3">
                         <Package className="w-6 h-6" />
                         <div>
-                            <h2 className="text-xl font-semibold">Bekleyen Alış Faturası</h2>
-                            <p className="text-sm text-blue-100">{pendingInvoice.items.length} kalem</p>
+                            <h2 className="text-xl font-semibold">{tm('pendTitle')}</h2>
+                            <p className="text-sm text-blue-100">{tm('pendItemCount').replace('{count}', String(pendingInvoice.items.length))}</p>
                         </div>
                     </div>
                     <button
@@ -93,7 +95,7 @@ export function PendingPurchaseInvoiceModal({ onClose }: PendingPurchaseInvoiceM
                     <div className="bg-white p-4 rounded-lg shadow-sm">
                         <div className="flex items-center gap-2 text-gray-600 mb-1">
                             <Banknote className="w-4 h-4" />
-                            <span className="text-xs font-medium">Toplam Maliyet</span>
+                            <span className="text-xs font-medium">{tm('pendTotalCost')}</span>
                         </div>
                         <div className="text-2xl font-bold text-gray-900">
                             {formatNumber(pendingInvoice.totalCost, 2, true)}
@@ -102,7 +104,7 @@ export function PendingPurchaseInvoiceModal({ onClose }: PendingPurchaseInvoiceM
                     <div className="bg-white p-4 rounded-lg shadow-sm">
                         <div className="flex items-center gap-2 text-gray-600 mb-1">
                             <TrendingUp className="w-4 h-4" />
-                            <span className="text-xs font-medium">Toplam Kazanç</span>
+                            <span className="text-xs font-medium">{tm('pendTotalProfit')}</span>
                         </div>
                         <div className="text-2xl font-bold text-green-600">
                             {formatNumber(pendingInvoice.totalProfit, 2, true)}
@@ -111,7 +113,7 @@ export function PendingPurchaseInvoiceModal({ onClose }: PendingPurchaseInvoiceM
                     <div className="bg-white p-4 rounded-lg shadow-sm">
                         <div className="flex items-center gap-2 text-gray-600 mb-1">
                             <TrendingUp className="w-4 h-4" />
-                            <span className="text-xs font-medium">Ortalama Kar Marjı</span>
+                            <span className="text-xs font-medium">{tm('pendAvgMargin')}</span>
                         </div>
                         <div className="text-2xl font-bold text-blue-600">
                             %{pendingInvoice.averageProfitMargin.toFixed(1)}
@@ -124,14 +126,14 @@ export function PendingPurchaseInvoiceModal({ onClose }: PendingPurchaseInvoiceM
                     <table className="w-full">
                         <thead className="bg-gray-100 sticky top-0">
                             <tr className="text-xs text-gray-600 text-left">
-                                <th className="px-3 py-2">Ürün</th>
-                                <th className="px-3 py-2">Varyant</th>
-                                <th className="px-3 py-2 text-right">Adet</th>
-                                <th className="px-3 py-2 text-right">Alış Fiyatı</th>
-                                <th className="px-3 py-2 text-right">Satış Fiyatı</th>
-                                <th className="px-3 py-2 text-right">Maliyet</th>
-                                <th className="px-3 py-2 text-right">Kazanç</th>
-                                <th className="px-3 py-2 text-right">Kar %</th>
+                                <th className="px-3 py-2">{tm('pendColProduct')}</th>
+                                <th className="px-3 py-2">{tm('pendColVariant')}</th>
+                                <th className="px-3 py-2 text-right">{tm('pendColQty')}</th>
+                                <th className="px-3 py-2 text-right">{tm('pendColPurchase')}</th>
+                                <th className="px-3 py-2 text-right">{tm('pendColSale')}</th>
+                                <th className="px-3 py-2 text-right">{tm('pendColCost')}</th>
+                                <th className="px-3 py-2 text-right">{tm('pendColProfit')}</th>
+                                <th className="px-3 py-2 text-right">{tm('pendColMargin')}</th>
                                 <th className="px-3 py-2"></th>
                             </tr>
                         </thead>
@@ -167,7 +169,7 @@ export function PendingPurchaseInvoiceModal({ onClose }: PendingPurchaseInvoiceM
                                         <button
                                             onClick={() => removeItem(index)}
                                             className="p-1 text-red-600 hover:bg-red-50 rounded"
-                                            title="Kaldır"
+                                            title={tm('pendRemove')}
                                         >
                                             <X className="w-4 h-4" />
                                         </button>
@@ -184,20 +186,20 @@ export function PendingPurchaseInvoiceModal({ onClose }: PendingPurchaseInvoiceM
                         onClick={handleClearInvoice}
                         className="px-4 py-2 text-sm text-red-600 hover:bg-red-50 rounded transition-colors"
                     >
-                        Faturayı Temizle
+                        {tm('pendClearInvoice')}
                     </button>
                     <div className="flex gap-3">
                         <button
                             onClick={onClose}
                             className="px-4 py-2 text-sm bg-gray-300 hover:bg-gray-400 text-gray-800 rounded transition-colors"
                         >
-                            Kapat
+                            {tm('close')}
                         </button>
                         <button
                             onClick={handleSaveInvoice}
                             className="px-6 py-2 text-sm bg-blue-600 hover:bg-blue-700 text-white rounded transition-colors font-medium"
                         >
-                            Faturayı Kaydet
+                            {tm('pendSaveInvoice')}
                         </button>
                     </div>
                 </div>

@@ -16,16 +16,12 @@ interface CampaignManagementProps {
 }
 
 export function CampaignManagement({ campaigns, setCampaigns, products }: CampaignManagementProps) {
-  const { t } = useLanguage();
+  const { tm } = useLanguage();
   const [showCreatePage, setShowCreatePage] = useState(false);
   const [editingCampaign, setEditingCampaign] = useState<Campaign | null>(null);
   const [searchQuery, setSearchQuery] = useState('');
   const [loading, setLoading] = useState(false);
   const [contextMenu, setContextMenu] = useState<{ x: number; y: number; campaign: Campaign } | null>(null);
-  const tAny = t as Record<string, unknown>;
-  const labelOr = (value: unknown, fallback: string) =>
-    typeof value === 'string' && value.trim() ? value : fallback;
-
   // Load campaigns from database on mount
   useEffect(() => {
     loadCampaigns();
@@ -38,7 +34,7 @@ export function CampaignManagement({ campaigns, setCampaigns, products }: Campai
       setCampaigns(data || []);
     } catch (error) {
       console.error('Kampanyalar yüklenirken hata:', error);
-      toast.error('Kampanyalar yüklenemedi');
+      toast.error(tm('campLoadFail'));
     } finally {
       setLoading(false);
     }
@@ -60,19 +56,19 @@ export function CampaignManagement({ campaigns, setCampaigns, products }: Campai
   };
 
   const handleDelete = async (id: string, name: string) => {
-    if (!confirm(`"${name}" kampanyasını silmek istediğinizden emin misiniz?`)) return;
+    if (!confirm(tm('campDeleteConfirm').replace('{name}', name))) return;
 
     try {
       const success = await campaignsAPI.delete(id);
       if (success) {
         setCampaigns(campaigns.filter(c => c.id !== id));
-        toast.success('Kampanya silindi');
+        toast.success(tm('campDeleted'));
       } else {
-        toast.error('Kampanya silinirken hata oluştu');
+        toast.error(tm('campDeleteError'));
       }
     } catch (error) {
       console.error('Kampanya silme hatası:', error);
-      toast.error('Bağlantı hatası oluştu');
+      toast.error(tm('campConnErrorToast'));
     }
   };
 
@@ -86,7 +82,7 @@ export function CampaignManagement({ campaigns, setCampaigns, products }: Campai
         setCampaigns(campaigns.map(c =>
           c.id === id ? { ...c, active: !c.active } : c
         ));
-        toast.success(`Kampanya ${!campaign.active ? 'aktif' : 'pasif'} duruma getirildi`);
+        toast.success(!campaign.active ? tm('campSetActive') : tm('campSetPassive'));
       }
     } catch (error) {
       console.error('Kampanya durum güncelleme hatası:', error);
@@ -102,7 +98,7 @@ export function CampaignManagement({ campaigns, setCampaigns, products }: Campai
 
   const columns: ColumnDef<Campaign, any>[] = [
     columnHelper.accessor('name', {
-      header: 'KAMPANYA ADI',
+      header: tm('campColName'),
       cell: info => (
         <div className="flex flex-col">
           <span className="font-bold text-gray-800">{info.getValue()}</span>
@@ -114,7 +110,7 @@ export function CampaignManagement({ campaigns, setCampaigns, products }: Campai
       size: 250
     }),
     columnHelper.accessor('discountValue', {
-      header: 'İNDİRİM',
+      header: tm('campColDiscount'),
       cell: info => {
         const row = info.row.original;
         return (
@@ -139,7 +135,7 @@ export function CampaignManagement({ campaigns, setCampaigns, products }: Campai
       size: 150
     }),
     columnHelper.accessor('startDate', {
-      header: 'KAMPANYA DÖNEMİ',
+      header: tm('campColPeriod'),
       cell: info => {
         const row = info.row.original;
         const start = new Date(row.startDate).toLocaleDateString('tr-TR');
@@ -152,10 +148,10 @@ export function CampaignManagement({ campaigns, setCampaigns, products }: Campai
             <span className="text-[11px] font-medium text-gray-600">{start} - {end}</span>
             {isInPeriod ? (
               <span className="text-[9px] text-green-600 font-bold flex items-center gap-1">
-                <CheckCircle className="w-2.5 h-2.5" /> AKTİF DÖNEM
+                <CheckCircle className="w-2.5 h-2.5" /> {tm('campActivePeriod')}
               </span>
             ) : (
-              <span className="text-[9px] text-gray-400 font-medium">PASİF DÖNEM</span>
+              <span className="text-[9px] text-gray-400 font-medium">{tm('campPassivePeriod')}</span>
             )}
           </div>
         );
@@ -163,16 +159,16 @@ export function CampaignManagement({ campaigns, setCampaigns, products }: Campai
       size: 200
     }),
     columnHelper.accessor('productIds', {
-      header: 'ÜRÜN SAYISI',
+      header: tm('campColProductCount'),
       cell: info => (
         <span className="px-2 py-0.5 bg-gray-100 text-gray-700 rounded text-[10px] font-bold">
-          {info.getValue()?.length || 0} Ürün
+          {tm('campProductCountCell').replace('{count}', String(info.getValue()?.length || 0))}
         </span>
       ),
       size: 120
     }),
     columnHelper.accessor('active', {
-      header: 'DURUM',
+      header: tm('campColStatus'),
       cell: info => (
         <button
           onClick={(e) => { e.stopPropagation(); handleToggleActive(info.row.original.id); }}
@@ -181,27 +177,27 @@ export function CampaignManagement({ campaigns, setCampaigns, products }: Campai
             : 'bg-gray-400 text-white hover:bg-gray-500'
             }`}
         >
-          {info.getValue() ? 'AKTİF' : 'PASİF'}
+          {info.getValue() ? tm('campStatusActive') : tm('campStatusPassive')}
         </button>
       ),
       size: 120
     }),
     columnHelper.display({
       id: 'actions',
-      header: 'İŞLEMLER',
+      header: tm('campColActions'),
       cell: info => (
         <div className="flex items-center gap-1">
           <button
             onClick={(e) => { e.stopPropagation(); handleEdit(info.row.original); }}
             className="p-1.5 hover:bg-blue-100 rounded text-blue-600 transition-colors"
-            title="Düzenle"
+            title={tm('edit')}
           >
             <Edit2 className="w-3.5 h-3.5" />
           </button>
           <button
             onClick={(e) => { e.stopPropagation(); handleDelete(info.row.original.id, info.row.original.name); }}
             className="p-1.5 hover:bg-red-100 rounded text-red-600 transition-colors"
-            title="Sil"
+            title={tm('delete')}
           >
             <Trash2 className="w-3.5 h-3.5" />
           </button>
@@ -232,8 +228,8 @@ export function CampaignManagement({ campaigns, setCampaigns, products }: Campai
         <div className="flex items-center justify-between">
           <div className="flex items-center gap-2">
             <Tag className="w-4 h-4 text-blue-100" />
-            <h2 className="text-sm font-bold tracking-tight">Kampanya Yönetimi</h2>
-            <span className="text-blue-200 text-[10px] ml-2">• {campaigns.length} Kampanya</span>
+            <h2 className="text-sm font-bold tracking-tight">{tm('campaignManagement')}</h2>
+            <span className="text-blue-200 text-[10px] ml-2">• {tm('campCountLabel').replace('{count}', String(campaigns.length))}</span>
           </div>
 
           <div className="flex items-center gap-1.5">
@@ -242,7 +238,7 @@ export function CampaignManagement({ campaigns, setCampaigns, products }: Campai
               className="flex items-center gap-1 px-2 py-1 bg-white/10 hover:bg-white/20 transition-colors text-[10px] font-medium rounded border border-white/10"
             >
               <RefreshCw className={`w-3 h-3 ${loading ? 'animate-spin' : ''}`} />
-              <span>Yenile</span>
+              <span>{tm('refresh')}</span>
             </button>
             <button
               onClick={() => {
@@ -252,7 +248,7 @@ export function CampaignManagement({ campaigns, setCampaigns, products }: Campai
               className="flex items-center gap-1 px-3 py-1 bg-white text-blue-700 hover:bg-blue-50 transition-colors text-[10px] font-bold rounded shadow-lg"
             >
               <Plus className="w-3.5 h-3.5" />
-              <span>Yeni Kampanya</span>
+              <span>{tm('campNew')}</span>
             </button>
           </div>
         </div>
@@ -265,7 +261,7 @@ export function CampaignManagement({ campaigns, setCampaigns, products }: Campai
             <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" />
             <input
               type="text"
-              placeholder="Kampanya adına göre hızlı ara..."
+              placeholder={tm('campSearchPh')}
               value={searchQuery}
               onChange={(e) => setSearchQuery(e.target.value)}
               className="w-full pl-9 pr-4 py-1.5 text-xs bg-gray-50 border border-gray-200 rounded-md focus:outline-none focus:ring-1 focus:ring-blue-500 focus:bg-white transition-all"
@@ -274,7 +270,7 @@ export function CampaignManagement({ campaigns, setCampaigns, products }: Campai
           <div className="flex items-center gap-2">
             <div className="px-3 py-1 bg-blue-50 text-blue-700 rounded flex items-center gap-2 text-[11px] font-bold border border-blue-100">
               <CheckCircle className="w-3.5 h-3.5 text-blue-500" />
-              <span>{campaigns.filter(c => c.active).length} Aktif</span>
+              <span>{tm('campActiveCount').replace('{count}', String(campaigns.filter(c => c.active).length))}</span>
             </div>
             <button className="p-1.5 hover:bg-gray-100 rounded text-gray-400 transition-colors border border-gray-200">
               <Settings className="w-4 h-4" />
@@ -310,21 +306,21 @@ export function CampaignManagement({ campaigns, setCampaigns, products }: Campai
           items={[
             {
               id: 'edit',
-              label: labelOr(tAny.editCampaign, 'Kampanyayı Düzenle'),
+              label: tm('campEditCampaign'),
               icon: Edit2,
               onClick: () => handleEdit(contextMenu.campaign)
             },
             {
               id: 'status',
               label: contextMenu.campaign.active
-                ? labelOr(tAny.makePassive, 'Pasife Al')
-                : labelOr(tAny.makeActive, 'Aktife Al'),
+                ? tm('campMakePassive')
+                : tm('campMakeActive'),
               icon: Calendar,
               onClick: () => handleToggleActive(contextMenu.campaign.id)
             },
             {
               id: 'delete',
-              label: labelOr(tAny.deleteCampaign, 'Kampanyayı Sil'),
+              label: tm('campDeleteCampaign'),
               icon: Trash2,
               variant: 'danger',
               divider: true,

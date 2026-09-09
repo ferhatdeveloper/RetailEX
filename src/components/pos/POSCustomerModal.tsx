@@ -33,7 +33,7 @@ export function POSCustomerModal({
   const [searchTerm, setSearchTerm] = useState('');
   const [selectedPaymentType, setSelectedPaymentType] = useState<'cash' | 'credit'>('cash');
   const [accountCards, setAccountCards] = useState<Customer[]>([]);
-  const { t } = useLanguage();
+  const { t, tm } = useLanguage();
   const { darkMode } = useTheme();
 
   useEffect(() => {
@@ -258,7 +258,7 @@ export function POSCustomerModal({
                             ? darkMode ? 'bg-orange-900/40 text-orange-300' : 'bg-orange-100 text-orange-700'
                             : darkMode ? 'bg-blue-900/40 text-blue-300' : 'bg-blue-100 text-blue-700'
                         }`}>
-                          {customer.cardType === 'supplier' ? 'Tedarikçi' : 'Müşteri'}
+                          {customer.cardType === 'supplier' ? tm('posSupplier') : t.customer}
                         </span>
                         <span className={`px-2 py-0.5 rounded text-xs ${darkMode ? 'bg-gray-700 text-gray-300' : 'bg-gray-100 text-gray-700'}`}>
                           {customer.company?.trim() ? t.corporate : t.individual}
@@ -312,7 +312,7 @@ export function POSCustomerModal({
           {/* Payment Type Selection */}
           {allowPaymentTypeSelection && selectedCustomer && (
             <div className="bg-blue-50 border border-blue-200 p-3 rounded-lg">
-              <h4 className="text-sm font-medium text-blue-900 mb-2">Ödeme Türü Seçin</h4>
+              <h4 className="text-sm font-medium text-blue-900 mb-2">{tm('posSelectPaymentType')}</h4>
               <div className="grid grid-cols-2 gap-2">
                 <button
                   onClick={() => setSelectedPaymentType('cash')}
@@ -323,7 +323,7 @@ export function POSCustomerModal({
                   }`}
                 >
                   <Wallet className="w-5 h-5" />
-                  <span className="font-medium">Nakit</span>
+                  <span className="font-medium">{t.cashLabel}</span>
                 </button>
                 <button
                   onClick={() => setSelectedPaymentType('credit')}
@@ -334,13 +334,13 @@ export function POSCustomerModal({
                   }`}
                 >
                   <CreditCard className="w-5 h-5" />
-                  <span className="font-medium">Veresiye</span>
+                  <span className="font-medium">{tm('veresiye')}</span>
                 </button>
               </div>
               <p className="text-xs text-blue-700 mt-2">
                 {selectedPaymentType === 'cash' 
-                  ? 'Satış nakit olarak kapatılacak' 
-                  : 'Satış müşterinin cari hesabına veresiye olarak işlenecek'}
+                  ? tm('posSaleCloseCash') 
+                  : tm('posSalePostCredit')}
               </p>
             </div>
           )}

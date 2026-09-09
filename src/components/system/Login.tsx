@@ -53,7 +53,7 @@ function normalizeTenantFirmNr(v: string | number | undefined | null): string {
 }
 
 export function Login({ onLogin }: LoginProps) {
-  const { t, language, setLanguage } = useLanguage();
+  const { t, tm, language, setLanguage } = useLanguage();
   const [username, setUsername] = useState('');
   const [password, setPassword] = useState('');
   const [store, setStore] = useState('');
@@ -138,19 +138,19 @@ export function Login({ onLogin }: LoginProps) {
   type DbSettingsWizardStepId = 'mode' | 'local_pg' | 'remote_pg' | 'postgrest' | 'sync' | 'single_pg';
   const dbSettingsWizardSteps = useMemo((): { id: DbSettingsWizardStepId; label: string }[] => {
     const steps: { id: DbSettingsWizardStepId; label: string }[] = [
-      { id: 'mode', label: 'Mod' },
+      { id: 'mode', label: tm('loginStepMode') },
     ];
     if (dbConnectionMode === 'hybrid') {
-      steps.push({ id: 'local_pg', label: 'Yerel' });
+      steps.push({ id: 'local_pg', label: tm('loginStepLocal') });
       steps.push({ id: 'postgrest', label: 'REST' });
-      steps.push({ id: 'sync', label: 'Senkron' });
+      steps.push({ id: 'sync', label: tm('loginStepSync') });
     } else if (connectionProvider === 'rest_api') {
       steps.push({ id: 'postgrest', label: 'PostgREST' });
     } else {
       steps.push({ id: 'single_pg', label: 'PostgreSQL' });
     }
     return steps;
-  }, [dbConnectionMode, connectionProvider]);
+  }, [dbConnectionMode, connectionProvider, tm]);
   const currentDbSettingsStepId =
     dbSettingsWizardSteps[Math.min(dbSettingsStep, dbSettingsWizardSteps.length - 1)]?.id ?? 'mode';
 
@@ -510,7 +510,7 @@ export function Login({ onLogin }: LoginProps) {
           },
         });
         setShowSetupWizard(false);
-        toast.success('Kurulum sihirbazı açılıyor...');
+        toast.success(tm('loginWizardOpening'));
         requestOpenSetupWizard();
         setIsEnteringFullSetup(false);
         return;
@@ -529,17 +529,17 @@ export function Login({ onLogin }: LoginProps) {
       setShowSetupWizard(false);
       setShowDbSettings(true);
       setIsEnteringFullSetup(false);
-      toast.message('Veritabanı / PostgREST ayarlarından devam edin');
+      toast.message(tm('loginContinueDbSettings'));
     } catch (err: any) {
       console.error('enterDesktopSetupWizard failed:', err);
-      toast.error('Kurulum sihirbazı açılamadı: ' + (err?.message || String(err)));
+      toast.error(tm('loginWizardOpenFailed') + (err?.message || String(err)));
       setIsEnteringFullSetup(false);
     }
   };
 
   const handleSetup = async () => {
     if (!setupFirmId.trim()) {
-      toast.error('Lütfen Firma ID giriniz');
+      toast.error(tm('loginEnterFirmId'));
       return;
     }
 
@@ -555,7 +555,7 @@ export function Login({ onLogin }: LoginProps) {
         .maybeSingle();
 
       if (error) throw error;
-      if (!data) throw new Error('Firma bulunamadı');
+      if (!data) throw new Error(tm('loginFirmNotFound'));
 
       // 2. Fetch current config to preserve other fields
       let currentConfig: any = {};
@@ -603,7 +603,7 @@ export function Login({ onLogin }: LoginProps) {
       const { ensureTenantDatabaseFromRegistry } = await import('../../services/postgres');
       await ensureTenantDatabaseFromRegistry();
 
-      toast.success('Firma yapılandırması başarıyla tamamlandı!');
+      toast.success(tm('loginFirmConfigDone'));
       setSetupSuccessData(updatedConfig);
       // setShowSetupWizard(false); // Hide the input modal but keep the success view
 
@@ -618,7 +618,7 @@ export function Login({ onLogin }: LoginProps) {
 
     } catch (err: any) {
       console.error('Setup failed:', err);
-      toast.error('Sıfırlama başarısız: ' + err);
+      toast.error(tm('loginResetFailed') + err);
     } finally {
       setIsSetupLoading(false);
     }
@@ -635,7 +635,7 @@ export function Login({ onLogin }: LoginProps) {
         if (deleteCRetailexFolder) {
           const del = await deleteCRetailexFolderIfTauri();
           if (!del.ok) {
-            toast.error('C:\\RetailEX silinemedi: ' + (del.detail || ''));
+            toast.error(tm('loginDeleteCRetailExFailed') + (del.detail || ''));
           } else if (del.detail) {
             toast.success(del.detail);
           }
@@ -692,7 +692,7 @@ export function Login({ onLogin }: LoginProps) {
       window.location.reload();
     } catch (err) {
       console.error('Reset failed:', err);
-      toast.error('Sıfırlama başarısız: ' + err);
+      toast.error(tm('loginResetFailed') + err);
     }
   };
 
@@ -706,7 +706,7 @@ export function Login({ onLogin }: LoginProps) {
     const url = (remoteRestUrl || '').trim() || '(boş URL)';
     setDbTestFeedback({
       phase: 'loading',
-      title: 'PostgREST deneniyor…',
+      title: tm('loginPostgrestTrying'),
       target: url,
     });
     const pr = await testPostgrestUrl(remoteRestUrl);
@@ -725,15 +725,15 @@ export function Login({ onLogin }: LoginProps) {
       if (pr.baseUrl && pr.baseUrl !== (remoteRestUrl || '').trim()) {
         setRemoteRestUrl(pr.baseUrl);
       }
-      toast.success('PostgREST: ' + msg, { description: normalizedHint || pr.baseUrl });
+      toast.success(tm('loginPostgrestPrefix') + msg, { description: normalizedHint || pr.baseUrl });
     } else {
       setDbTestFeedback({
         phase: 'err',
-        title: pr.error || 'PostgREST yanıt vermiyor',
+        title: pr.error || tm('loginPostgrestNoResponse'),
         detail: pr.baseUrl && pr.baseUrl !== url ? `Denenen: ${pr.baseUrl}` : undefined,
         target: pr.baseUrl || url,
       });
-      toast.error(pr.error || 'PostgREST erişilemiyor', { description: pr.baseUrl, duration: 8000 });
+      toast.error(pr.error || tm('loginPostgrestUnreachable'), { description: pr.baseUrl, duration: 8000 });
     }
   };
 
@@ -761,18 +761,18 @@ export function Login({ onLogin }: LoginProps) {
         detail: ver ? `${ver}${onlineHint}` : onlineHint || undefined,
         target: targetStr,
       });
-      toast.success(`${titlePrefix}: bağlantı başarılı.`, { description: ver || targetStr });
+      toast.success(`${titlePrefix}${tm('loginConnSuccessSuffix')}`, { description: ver || targetStr });
     } else {
       setDbTestFeedback({
         phase: 'err',
-        title: res.error || 'Bağlantı kurulamadı',
+        title: res.error || tm('loginConnFailed'),
         detail:
           isTauri && dbConnectionMode === 'online'
-            ? 'Online modda giriş sonrası uygulama kayıtlı uzak sunucuyu kullanır; uzak PG alanını Yönetim → Veritabanı ile eşitleyin veya Hybrid kullanın.'
+            ? tm('loginOnlineHybridHint')
             : undefined,
         target: targetStr,
       });
-      toast.error(res.error || 'Bağlantı kurulamadı', { description: targetStr });
+      toast.error(res.error || tm('loginConnFailed'), { description: targetStr });
     }
   };
 
@@ -791,7 +791,7 @@ export function Login({ onLogin }: LoginProps) {
               user: dbConfig.user,
               password: dbConfig.password,
             },
-            'Yerel PostgreSQL'
+            tm('loginLocalPg')
           );
         }
         return;
@@ -816,14 +816,14 @@ export function Login({ onLogin }: LoginProps) {
       const msg = e?.message || String(e);
       setDbTestFeedback({
         phase: 'err',
-        title: 'Test hatası',
+        title: tm('loginTestError'),
         detail: msg,
         target:
           connectionProvider === 'rest_api'
             ? remoteRestUrl
             : fmtPgTarget(dbConfig.host, dbConfig.port, dbConfig.database),
       });
-      toast.error('Test başarısız: ' + msg);
+      toast.error(tm('loginTestFailed') + msg);
     } finally {
       setIsDbTestLoading(false);
     }
@@ -840,17 +840,17 @@ export function Login({ onLogin }: LoginProps) {
           user: remoteDbConfig.user,
           password: remoteDbConfig.password,
         },
-        'Uzak PostgreSQL (LAN)'
+        tm('loginRemotePgLan')
       );
     } catch (e: any) {
       const msg = e?.message || String(e);
       setDbTestFeedback({
         phase: 'err',
-        title: 'Uzak PG test hatası',
+        title: tm('loginRemotePgTestError'),
         detail: msg,
         target: fmtPgTarget(remoteDbConfig.host, remoteDbConfig.port, remoteDbConfig.database),
       });
-      toast.error('Uzak PG testi: ' + msg);
+      toast.error(tm('loginRemotePgTest') + msg);
     } finally {
       setIsDbTestLoading(false);
     }
@@ -867,17 +867,17 @@ export function Login({ onLogin }: LoginProps) {
           user: dbConfig.user,
           password: dbConfig.password,
         },
-        'Yerel PostgreSQL'
+        tm('loginLocalPg')
       );
     } catch (e: any) {
       const msg = e?.message || String(e);
       setDbTestFeedback({
         phase: 'err',
-        title: 'Yerel PG test hatası',
+        title: tm('loginLocalPgTestError'),
         detail: msg,
         target: fmtPgTarget(dbConfig.host, dbConfig.port, dbConfig.database),
       });
-      toast.error('Yerel PG testi: ' + msg);
+      toast.error(tm('loginLocalPgTest') + msg);
     } finally {
       setIsDbTestLoading(false);
     }
@@ -891,11 +891,11 @@ export function Login({ onLogin }: LoginProps) {
       const msg = e?.message || String(e);
       setDbTestFeedback({
         phase: 'err',
-        title: 'PostgREST test hatası',
+        title: tm('loginPostgrestTestError'),
         detail: msg,
         target: remoteRestUrl,
       });
-      toast.error('PostgREST testi: ' + msg);
+      toast.error(tm('loginPostgrestTest') + msg);
     } finally {
       setIsDbTestLoading(false);
     }
@@ -910,7 +910,7 @@ export function Login({ onLogin }: LoginProps) {
         hybridSyncDirection,
       });
       if (!r.success) {
-        toast.error(r.message || 'Senkron başlatılamadı.');
+        toast.error(r.message || tm('loginSyncStartFailed'));
         return;
       }
       const detail =
@@ -920,12 +920,12 @@ export function Login({ onLogin }: LoginProps) {
             ? `Yön: ${r.direction}`
             : undefined;
       if (r.totalSynced != null && r.totalSynced > 0) {
-        toast.success(r.message || 'Senkron tamamlandı.', detail ? { description: detail } : undefined);
+        toast.success(r.message || tm('loginSyncDone'), detail ? { description: detail } : undefined);
       } else {
-        toast.info(r.message || 'Bekleyen kayıt yok.', detail ? { description: detail } : undefined);
+        toast.info(r.message || tm('loginSyncNoPending'), detail ? { description: detail } : undefined);
       }
     } catch (e: any) {
-      toast.error('Senkron hatası: ' + (e?.message || String(e)));
+      toast.error(tm('loginSyncError') + (e?.message || String(e)));
     } finally {
       setIsHybridSyncLoading(false);
     }
@@ -985,19 +985,19 @@ export function Login({ onLogin }: LoginProps) {
       await ensureTenantDatabaseFromRegistry();
 
       if (tenantResult.applied && tenantResult.tag) {
-        toast.success(`Kiracı bağlantısı uygulandı: ${tenantResult.tag}`);
+        toast.success(tm('loginTenantApplied') + tenantResult.tag);
       } else {
         toast.success(
           connectionProvider === 'rest_api'
-            ? 'PostgREST bağlantı ayarları güncellendi.'
-            : 'Veritabanı bağlantı ayarları güncellendi.',
+            ? tm('loginPostgrestSettingsUpdated')
+            : tm('loginDbSettingsUpdated'),
         );
       }
       setShowDbSettings(false);
       void loadFirms();
       void loadUsers();
     } catch (err) {
-      toast.error('Ayarlar kaydedilemedi: ' + err);
+      toast.error(tm('loginSettingsSaveFailed') + err);
     }
   };
 
@@ -1084,7 +1084,7 @@ export function Login({ onLogin }: LoginProps) {
     if (loginStep === 'tenant') {
       const slug = tenantPostgrestSlug.trim().toLowerCase().replace(/[^a-z0-9_-]/g, '');
       if (!slug) {
-        setError('Kiracı kodu zorunludur (örn. firma kodunuz).');
+        setError(tm('loginTenantCodeRequired'));
         return;
       }
       setIsLoading(true);
@@ -1110,15 +1110,15 @@ export function Login({ onLogin }: LoginProps) {
           preserveDbMode: 'online',
         });
         if (tenantResult?.tag) {
-          toast.success(`Kiracı bağlandı: ${tenantResult.tag}`);
+          toast.success(tm('loginTenantConnected') + tenantResult.tag);
         } else {
-          toast.success(`Kiracı: ${slug}`);
+          toast.success(tm('loginTenantLabel') + slug);
         }
         setLoginStep('credentials');
         void loadFirms();
         void loadUsers();
       } catch (err: any) {
-        setError(err?.message || 'Kiracı bağlantısı kurulamadı. Kodu kontrol edin.');
+        setError(err?.message || tm('loginTenantConnectFailed'));
       } finally {
         setIsLoading(false);
       }
@@ -1143,7 +1143,7 @@ export function Login({ onLogin }: LoginProps) {
     }
 
     if (!isTauri && !isTenantResolvedForWeb() && !tenantPostgrestSlug.trim()) {
-      setError('Önce kiracı kodunu girin.');
+      setError(tm('loginEnterTenantFirst'));
       setLoginStep('tenant');
       return;
     }
@@ -1312,7 +1312,7 @@ export function Login({ onLogin }: LoginProps) {
             value={remoteRestUrl}
             onChange={(e) => setRemoteRestUrl(e.target.value)}
             className={fullInputCls}
-            placeholder="http://LAN_IP:3002 veya https://baska-sunucu/kiracı"
+            placeholder={tm('loginPlaceholderRestUrl')}
             autoComplete="off"
           />
         )}
@@ -1342,13 +1342,13 @@ export function Login({ onLogin }: LoginProps) {
                 type="button"
                 onClick={toggleDarkMode}
                 className="p-2.5 bg-white/10 hover:bg-white/20 rounded-sm border border-white/10 transition-all backdrop-blur-md"
-                title={darkMode ? 'Açık Tema' : 'Koyu Tema'}
+                title={darkMode ? tm('loginLightTheme') : tm('loginDarkTheme')}
               >
                 {darkMode ? <Sun className="w-3.5 h-3.5" /> : <Moon className="w-3.5 h-3.5" />}
               </button>
               <button
                 type="button"
-                title="Kurulum sihirbazı"
+                title={tm('loginSetupWizardTitle')}
                 onClick={() => setShowSetupWizard(true)}
                 className="p-2.5 bg-white/10 hover:bg-white/20 rounded-sm border border-white/10 transition-all backdrop-blur-md group"
               >
@@ -1356,7 +1356,7 @@ export function Login({ onLogin }: LoginProps) {
               </button>
               <button
                 type="button"
-                title="Kiracı / PostgREST bağlantısı"
+                title={tm('loginTenantPostgrestTitle')}
                 onClick={openDbSettingsAtPostgrest}
                 className="p-2.5 bg-white/10 hover:bg-white/20 rounded-sm border border-white/10 transition-all backdrop-blur-md group"
               >
@@ -1372,7 +1372,7 @@ export function Login({ onLogin }: LoginProps) {
                 type="button"
                 onClick={() => setShowDbSettings(true)}
                 className="p-2.5 bg-blue-500/20 hover:bg-blue-500/30 rounded-sm border border-blue-500/10 transition-all backdrop-blur-md group"
-                title="Dışa Aktar"
+                title={tm('export')}
               >
                 <Database className="w-3.5 h-3.5 group-hover:scale-110 transition-transform" />
               </button>
@@ -1437,7 +1437,7 @@ export function Login({ onLogin }: LoginProps) {
                         setRemoteRestUrl(buildSaaSTenantPostgrestUrl(slug));
                       }}
                       className={`min-w-0 flex-1 border-0 bg-transparent px-4 py-4 text-sm font-bold focus:outline-none focus:ring-0 ${darkMode ? 'text-white placeholder-white/20' : 'text-gray-900 placeholder:text-gray-400'}`}
-                      placeholder="ornek_kiraci"
+                      placeholder={tm('loginPlaceholderTenantExample')}
                       autoComplete="organization"
                       autoFocus
                       required
@@ -1621,7 +1621,7 @@ export function Login({ onLogin }: LoginProps) {
                             type="text"
                             value={dbConfig.host}
                             onChange={(e) => setDbConfig({ ...dbConfig, host: e.target.value })}
-                            placeholder="Örn. 10.x veya 26.x sunucu IP"
+                            placeholder={tm('loginPlaceholderServerIp')}
                             className={`w-full px-3 py-2 border-2 focus:border-blue-600 rounded-sm font-bold text-[10px] ${darkMode ? 'bg-gray-800 border-gray-700 text-white' : 'bg-white border-gray-200 text-gray-900'}`}
                           />
                         </div>
@@ -1715,7 +1715,7 @@ export function Login({ onLogin }: LoginProps) {
                   if (status === 'approved') {
                     setDeviceGateStatus(null);
                     setError(null);
-                    toast.success('Cihaz onaylandı. Giriş yapabilirsiniz.');
+                    toast.success(tm('loginDeviceApproved'));
                   } else {
                     setDeviceGateStatus(status);
                   }
@@ -1734,7 +1734,7 @@ export function Login({ onLogin }: LoginProps) {
                   {t.verifying}
                 </>
               ) : loginStep === 'tenant' ? (
-                'Kiracıya bağlan'
+                tm('loginConnectTenant')
               ) : loginStep === 'credentials' ? (
                 t.continue
               ) : (
@@ -1792,7 +1792,7 @@ export function Login({ onLogin }: LoginProps) {
                   type="button"
                   onClick={() => !isSetupLoading && !isEnteringFullSetup && setShowSetupWizard(false)}
                   className="w-12 h-12 rounded-2xl bg-white/20 hover:bg-white/30 flex items-center justify-center transition-colors"
-                  aria-label="Kapat"
+                  aria-label={tm('close')}
                 >
                   <CloseIcon className="w-5 h-5" />
                 </button>
@@ -1808,7 +1808,7 @@ export function Login({ onLogin }: LoginProps) {
                         <CheckCircle className="w-6 h-6 text-blue-600" />
                       </div>
                       <div>
-                        <h3 className={`text-base font-bold tracking-tight ${darkMode ? 'text-white' : 'text-slate-900'}`}>{setupSuccessData.terminal_name || 'Terminal'}</h3>
+                        <h3 className={`text-base font-bold tracking-tight ${darkMode ? 'text-white' : 'text-slate-900'}`}>{setupSuccessData.terminal_name || tm('loginTerminal')}</h3>
                         <p className={`text-[10px] font-semibold uppercase tracking-wider mt-0.5 ${darkMode ? 'text-slate-400' : 'text-slate-500'}`}>Lisans bilgisi</p>
                       </div>
                     </div>
@@ -1913,7 +1913,7 @@ export function Login({ onLogin }: LoginProps) {
                           value={setupFirmId}
                           onChange={(e) => setSetupFirmId(e.target.value)}
                           disabled={isSetupLoading}
-                          placeholder="Örn: 550e8400-e29b-..."
+                          placeholder={tm('loginPlaceholderUuid')}
                           className={`w-full pl-12 pr-4 py-3 border rounded-2xl focus:ring-2 focus:ring-blue-500 focus:border-blue-400 outline-none font-medium ${
                             darkMode
                               ? 'border-slate-600 bg-slate-800 text-slate-100'
@@ -2041,10 +2041,10 @@ export function Login({ onLogin }: LoginProps) {
 
                 <button
                   onClick={() => {
-                    if (confirm('Tüm kayıtlar temizlenecek. Emin misiniz?')) logger.clearLogs();
+                    if (confirm(tm('loginClearLogsConfirm'))) logger.clearLogs();
                   }}
                   className="p-2.5 rounded-xl hover:bg-red-500/10 text-red-400/60 hover:text-red-400 transition-all"
-                  title="Temizle"
+                  title={tm('clear')}
                 >
                   <Trash2 className="w-5 h-5" />
                 </button>
@@ -2058,7 +2058,7 @@ export function Login({ onLogin }: LoginProps) {
                     a.click();
                   }}
                   className="p-2.5 rounded-xl hover:bg-emerald-500/10 text-emerald-400/60 hover:text-emerald-400 transition-all"
-                  title="Dışa Aktar"
+                  title={tm('export')}
                 >
                   <Download className="w-5 h-5" />
                 </button>
@@ -2142,7 +2142,7 @@ export function Login({ onLogin }: LoginProps) {
             }}
             role="dialog"
             aria-modal="true"
-            aria-label="Veritabanı bağlantı ayarları"
+            aria-label={tm('loginDbSettingsAria')}
             onClick={() => {
               if (!isDbTestLoading && !isHybridSyncLoading) setShowDbSettings(false);
             }}
@@ -2173,7 +2173,7 @@ export function Login({ onLogin }: LoginProps) {
                   <button
                     type="button"
                     className="rounded-xl p-2 text-white transition-colors hover:bg-white/10"
-                    aria-label="Kapat"
+                    aria-label={tm('close')}
                     onClick={() => setShowDbSettings(false)}
                   >
                     <CloseIcon className="h-5 w-5" />
@@ -2184,7 +2184,7 @@ export function Login({ onLogin }: LoginProps) {
               <div
                 className={`shrink-0 border-b px-4 py-3 sm:px-5 ${darkMode ? 'border-gray-700 bg-gray-900/80' : 'border-slate-200 bg-slate-50'}`}
               >
-                <div className="flex gap-1 overflow-x-auto pb-0.5" role="tablist" aria-label="Bağlantı ayarı adımları">
+                <div className="flex gap-1 overflow-x-auto pb-0.5" role="tablist" aria-label={tm('loginDbStepsAria')}>
                   {dbSettingsWizardSteps.map((step, idx) => {
                     const active = idx === dbSettingsStep;
                     return (
@@ -2382,7 +2382,7 @@ export function Login({ onLogin }: LoginProps) {
                             type="text"
                             value={remoteDbConfig.host}
                             onChange={(e) => setRemoteDbConfig({ ...remoteDbConfig, host: e.target.value })}
-                            placeholder="192.168.x.x veya merkez hostname"
+                            placeholder={tm('loginPlaceholderRemoteHost')}
                             className={`w-full rounded-sm border-2 px-4 py-3 text-xs font-bold transition-all focus:border-blue-600 focus:outline-none ${darkMode ? 'border-gray-800 bg-black text-sky-300' : 'border-gray-200 bg-white'}`}
                           />
                         </div>
@@ -2534,8 +2534,8 @@ export function Login({ onLogin }: LoginProps) {
                         </select>
                         <p className={`px-1 text-[9px] font-bold leading-relaxed ${darkMode ? 'text-slate-500' : 'text-slate-600'}`}>
                           {connectionProvider === 'rest_api'
-                            ? 'Yerel satışlar PostgreSQL\'de; merkeze PostgREST ile sync_queue üzerinden gider.'
-                            : 'POS yoğun şubede genelde yerel önce; merkez kesintisinde yedek için uzak önce seçilebilir.'}
+                            ? tm('loginSyncHintLocalFirst')
+                            : tm('loginSyncHintRemoteFirst')}
                         </p>
                       </div>
                       <div className="space-y-1">
@@ -2603,7 +2603,7 @@ export function Login({ onLogin }: LoginProps) {
                             type="text"
                             value={dbConfig.host}
                             onChange={(e) => setDbConfig({ ...dbConfig, host: e.target.value })}
-                            placeholder="127.0.0.1 veya LAN / internet sunucu IP"
+                            placeholder={tm('loginPlaceholderSingleHost')}
                             className={`w-full rounded-sm border-2 px-4 py-3 text-xs font-bold transition-all focus:border-blue-600 focus:outline-none ${darkMode ? 'border-gray-800 bg-black text-blue-400' : 'border-gray-200 bg-gray-50'}`}
                           />
                         </div>

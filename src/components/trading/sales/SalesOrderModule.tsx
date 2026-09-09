@@ -55,7 +55,7 @@ export function SalesOrderModule({ customers, products }: SalesOrderModuleProps)
       }));
       setOrders(rows);
     } catch (e: any) {
-      setError(e?.message || String(e) || 'Siparişler yüklenemedi');
+      setError(e?.message || String(e) || tm('soLoadFail'));
       setOrders([]);
     } finally {
       setLoading(false);
@@ -76,12 +76,12 @@ export function SalesOrderModule({ customers, products }: SalesOrderModuleProps)
       if (!res.ok) {
         setError(
           res.error === 'delivery_already_exists'
-            ? `${row.invoice_no}: zaten açık teslimat var`
-            : res.error || 'Teslimat oluşturulamadı'
+            ? tm('soDeliveryExists').replace('{no}', row.invoice_no)
+            : res.error || tm('soDeliveryFail')
         );
         return;
       }
-      setInfo(`Teslimat oluşturuldu: ${res.delivery_no}`);
+      setInfo(tm('soDeliveryCreated').replace('{no}', String(res.delivery_no)));
     } catch (e: any) {
       setError(e?.message || String(e));
     } finally {
@@ -124,8 +124,8 @@ export function SalesOrderModule({ customers, products }: SalesOrderModuleProps)
         <div className="flex items-center justify-between">
           <div className="flex items-center gap-2">
             <ShoppingCart className="w-4 h-4" />
-            <h2 className="text-sm font-semibold">{t.menu?.salesOrder || tm('salesOrders') || 'Satış Siparişleri'}</h2>
-            <span className="text-blue-100 text-[10px] ml-2">• {orders.length} sipariş</span>
+            <h2 className="text-sm font-semibold">{t.menu?.salesOrder || tm('salesOrders')}</h2>
+            <span className="text-blue-100 text-[10px] ml-2">• {tm('soOrderCount').replace('{count}', String(orders.length))}</span>
           </div>
           <div className="flex items-center gap-1">
             <button
@@ -134,14 +134,14 @@ export function SalesOrderModule({ customers, products }: SalesOrderModuleProps)
               className="flex items-center gap-1 px-2 py-1 bg-white/15 hover:bg-white/25 text-[10px]"
             >
               <RefreshCw className={`w-3 h-3 ${loading ? 'animate-spin' : ''}`} />
-              Yenile
+              {tm('refresh')}
             </button>
             <button
               onClick={() => setShowNewOrderPage(true)}
               className="flex items-center gap-1 px-2 py-1 bg-white text-blue-700 hover:bg-blue-50 transition-colors text-[10px]"
             >
               <Plus className="w-3 h-3" />
-              <span>Yeni Sipariş</span>
+              <span>{tm('soNewOrder')}</span>
             </button>
           </div>
         </div>
@@ -157,20 +157,20 @@ export function SalesOrderModule({ customers, products }: SalesOrderModuleProps)
 
         <div className="bg-white border border-gray-300 rounded mb-3">
           <div className="bg-[#E3F2FD] border-b border-gray-300 px-3 py-1.5">
-            <h3 className="text-[11px] text-gray-700">Sipariş Özeti</h3>
+            <h3 className="text-[11px] text-gray-700">{tm('soOrderSummary')}</h3>
           </div>
           <div className="grid grid-cols-3 divide-x divide-gray-200">
             <div className="p-3">
               <div className="flex items-center gap-2 mb-1">
                 <TrendingUp className="w-4 h-4 text-blue-600" />
-                <span className="text-[10px] text-gray-600">Toplam Sipariş</span>
+                <span className="text-[10px] text-gray-600">{tm('soTotalOrders')}</span>
               </div>
               <div className="text-base text-gray-900">{loading ? '…' : orders.length}</div>
             </div>
             <div className="p-3">
               <div className="flex items-center gap-2 mb-1">
                 <ShoppingCart className="w-4 h-4 text-green-600" />
-                <span className="text-[10px] text-gray-600">Toplam Tutar</span>
+                <span className="text-[10px] text-gray-600">{tm('totalAmount')}</span>
               </div>
               <div className="text-base text-gray-900">
                 {orders.reduce((s, o) => s + o.total, 0).toLocaleString('tr-TR', { minimumFractionDigits: 2 })}
@@ -179,7 +179,7 @@ export function SalesOrderModule({ customers, products }: SalesOrderModuleProps)
             <div className="p-3">
               <div className="flex items-center gap-2 mb-1">
                 <Clock className="w-4 h-4 text-orange-600" />
-                <span className="text-[10px] text-gray-600">Bekleyen</span>
+                <span className="text-[10px] text-gray-600">{tm('soPending')}</span>
               </div>
               <div className="text-base text-gray-900">{pendingCount}</div>
             </div>
@@ -191,33 +191,33 @@ export function SalesOrderModule({ customers, products }: SalesOrderModuleProps)
             data={orders}
             columns={[
               columnHelper.accessor('invoice_no', {
-                header: 'SİPARİŞ NO',
+                header: tm('soColNo'),
                 cell: (info) => info.getValue(),
                 size: 140,
               }),
               columnHelper.accessor('customer', {
-                header: 'MÜŞTERİ',
+                header: tm('soColCustomer'),
                 cell: (info) => info.getValue(),
                 size: 200,
               }),
               columnHelper.accessor('date', {
-                header: 'TARİH',
+                header: tm('soColDate'),
                 cell: (info) => info.getValue(),
                 size: 120,
               }),
               columnHelper.accessor('items', {
-                header: 'ÜRÜN',
+                header: tm('soColProduct'),
                 cell: (info) => info.getValue(),
                 size: 80,
               }),
               columnHelper.accessor('total', {
-                header: 'TUTAR',
+                header: tm('soColAmount'),
                 cell: (info) =>
                   `${Number(info.getValue() || 0).toLocaleString('tr-TR', { minimumFractionDigits: 2 })}`,
                 size: 140,
               }),
               columnHelper.accessor('status', {
-                header: 'DURUM',
+                header: tm('soColStatus'),
                 cell: (info) => (
                   <span className={`px-2 py-1 text-xs rounded ${getStatusColor(info.getValue())}`}>
                     {info.getValue()}
@@ -228,7 +228,7 @@ export function SalesOrderModule({ customers, products }: SalesOrderModuleProps)
               }),
               columnHelper.display({
                 id: 'actions',
-                header: 'TESLİMAT',
+                header: tm('soColDelivery'),
                 size: 140,
                 cell: ({ row }) => (
                   <button
@@ -241,7 +241,7 @@ export function SalesOrderModule({ customers, products }: SalesOrderModuleProps)
                     className="inline-flex items-center gap-1 px-2 py-1 text-[10px] rounded bg-lime-600 text-white hover:bg-lime-700 disabled:opacity-50"
                   >
                     <Truck className="w-3 h-3" />
-                    {busyId === row.original.id ? '…' : 'Oluştur'}
+                    {busyId === row.original.id ? '…' : tm('soCreate')}
                   </button>
                 ),
               }),
@@ -250,7 +250,7 @@ export function SalesOrderModule({ customers, products }: SalesOrderModuleProps)
             enableSelection={true}
           />
           {loading && (
-            <div className="px-3 py-2 text-[11px] text-gray-500 border-t">Siparişler yükleniyor…</div>
+            <div className="px-3 py-2 text-[11px] text-gray-500 border-t">{tm('soLoading')}</div>
           )}
         </div>
       </div>

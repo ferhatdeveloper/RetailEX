@@ -7,6 +7,7 @@ import {
     XCircle, Navigation, Phone, FileText, ChevronRight,
     Search, Shield, AlertTriangle
 } from 'lucide-react';
+import { useLanguage } from '../../../contexts/LanguageContext';
 
 interface DispatchManagementProps {
     darkMode: boolean;
@@ -33,6 +34,7 @@ interface Driver {
 }
 
 export function DispatchManagement({ darkMode, onBack }: DispatchManagementProps) {
+    const { tm } = useLanguage();
     const [vehicles, setVehicles] = useState<DispatchVehicle[]>([]);
     const [drivers, setDrivers] = useState<Driver[]>([]);
     const [selectedVehicle, setSelectedVehicle] = useState<string | null>(null);
@@ -75,7 +77,7 @@ export function DispatchManagement({ darkMode, onBack }: DispatchManagementProps
 
     const getStatusBadge = (status: string) => {
         const config: any = {
-            loading: { bg: 'bg-blue-100 text-blue-700', label: 'Yükleniyor', icon: Truck },
+            loading: { bg: 'bg-blue-100 text-blue-700', label: tm('loading'), icon: Truck },
             ready_to_dispatch: { bg: 'bg-yellow-100 text-yellow-700', label: 'Sevk Hazır', icon: CheckCircle },
             dispatched: { bg: 'bg-green-100 text-green-700', label: 'Yolda', icon: Navigation },
             delivered: { bg: 'bg-gray-100 text-gray-700', label: 'Teslim Edildi', icon: CheckCircle },
@@ -190,7 +192,7 @@ export function DispatchManagement({ darkMode, onBack }: DispatchManagementProps
                             <div className={`${cardClass} border rounded-xl p-6`}>
                                 <div className="flex justify-between items-center mb-4">
                                     <h3 className={`font-bold ${textClass}`}>Sürücü Seç</h3>
-                                    <button onClick={() => setSelectedVehicle(null)} className="text-sm text-red-500">İptal</button>
+                                    <button onClick={() => setSelectedVehicle(null)} className="text-sm text-red-500">{tm('cancel')}</button>
                                 </div>
 
                                 <div className="space-y-3">

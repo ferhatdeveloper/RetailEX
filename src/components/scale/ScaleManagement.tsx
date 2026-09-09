@@ -4,6 +4,7 @@ import { toast } from 'sonner';
 import type { ScaleDevice } from '../../utils/scaleProtocol';
 import { testScaleConnectionDetailed, testScaleConnection, getScaleInfo } from '../../utils/scaleProtocol';
 import { formatScalePortLabel } from '../../utils/scalePort';
+import { useLanguage } from '../../contexts/LanguageContext';
 
 interface ScaleManagementProps {
   devices: ScaleDevice[];
@@ -24,6 +25,7 @@ export function ScaleManagement({
   onEditDevice,
   onSyncProducts,
 }: ScaleManagementProps) {
+  const { tm } = useLanguage();
   const [testingDevice, setTestingDevice] = useState<string | null>(null);
   const [refreshingDevice, setRefreshingDevice] = useState<string | null>(null);
 
@@ -167,7 +169,7 @@ export function ScaleManagement({
       case 'offline':
         return 'Çevrimdışı';
       case 'error':
-        return 'Hata';
+        return tm('error');
       case 'syncing':
         return 'Senkronize Ediliyor';
       default:
@@ -237,7 +239,7 @@ export function ScaleManagement({
                 className="flex items-center gap-2 px-6 py-3 bg-gray-100 text-gray-700 rounded hover:bg-gray-200 transition-colors"
               >
                 <Plus className="w-5 h-5" />
-                <span>Manuel Ekle</span>
+                <span>Manuel {tm('add')}</span>
               </button>
             </div>
           </div>
@@ -415,7 +417,7 @@ export function ScaleManagement({
               <div className="flex items-center gap-2">
                 <div className="w-2 h-2 bg-red-500 rounded-full"></div>
                 <span className="text-gray-600">
-                  Hata: <span className="text-gray-900">{devices.filter(d => d.status === 'error').length}</span>
+                  {tm('error')}: <span className="text-gray-900">{devices.filter(d => d.status === 'error').length}</span>
                 </span>
               </div>
             </div>

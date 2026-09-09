@@ -6,8 +6,10 @@ import {
 import { dynamicReportEngine, ReportRow } from '../../../services/reports/DynamicReportEngine';
 import { aiReportService } from '../../../services/ai/AIReportService';
 import { formatNumber } from '../../../utils/formatNumber';
+import { useLanguage } from '../../../contexts/LanguageContext';
 
 export function GeneralLedgerMizan() {
+    const { tm } = useLanguage();
     const [loading, setLoading] = useState(true);
     const [data, setData] = useState<ReportRow[]>([]);
     const [briefing, setBriefing] = useState<string>('');
@@ -39,13 +41,13 @@ export function GeneralLedgerMizan() {
                             <BarChart className="w-6 h-6 text-gray-700" />
                         </div>
                         <div>
-                            <h1 className="text-xl font-black text-gray-900 uppercase tracking-tighter">Genel Mizan (Trial Balance)</h1>
-                            <p className="text-[10px] text-gray-500 font-bold uppercase tracking-widest mt-1">Logo ERP Hesap Planı Standardı • RetailEX Yerel Veri</p>
+                            <h1 className="text-xl font-black text-gray-900 uppercase tracking-tighter">{tm('accGeneralMizan')}</h1>
+                            <p className="text-[10px] text-gray-500 font-bold uppercase tracking-widest mt-1">{tm('accMizanStandardNote')}</p>
                         </div>
                     </div>
                     <div className="flex gap-2">
-                        <button className="px-4 py-2 bg-white border border-gray-300 rounded-lg text-xs font-bold hover:bg-gray-50 flex items-center gap-2"><Printer className="w-4 h-4" /> Yazdır</button>
-                        <button className="px-4 py-2 bg-white border border-gray-300 rounded-lg text-xs font-bold hover:bg-gray-50 flex items-center gap-2"><Download className="w-4 h-4" /> Excel Aktar</button>
+                        <button className="px-4 py-2 bg-white border border-gray-300 rounded-lg text-xs font-bold hover:bg-gray-50 flex items-center gap-2"><Printer className="w-4 h-4" /> {tm('print')}</button>
+                        <button className="px-4 py-2 bg-white border border-gray-300 rounded-lg text-xs font-bold hover:bg-gray-50 flex items-center gap-2"><Download className="w-4 h-4" /> {tm('accExportExcel')}</button>
                     </div>
                 </div>
             </div>
@@ -57,7 +59,7 @@ export function GeneralLedgerMizan() {
                         <Sparkles className="w-5 h-5" />
                     </div>
                     <div className="flex-1">
-                        <span className="text-[10px] font-black uppercase text-purple-600 tracking-widest">AI Finansal Analiz Özet</span>
+                        <span className="text-[10px] font-black uppercase text-purple-600 tracking-widest">{tm('accAiFinancialSummary')}</span>
                         <p className="text-sm text-purple-900 font-medium italic">"{briefing}"</p>
                     </div>
                 </div>
@@ -69,18 +71,18 @@ export function GeneralLedgerMizan() {
                     <table className="w-full text-[11px] border-collapse">
                         <thead className="bg-gray-50 border-b border-gray-300 font-black uppercase text-gray-600 tracking-widest text-center">
                             <tr>
-                                <th className="px-4 py-3 text-left border-r border-gray-300">Hesap Kodu</th>
-                                <th className="px-4 py-3 text-left border-r border-gray-300">Hesap Adı</th>
-                                <th colSpan={2} className="px-4 py-3 border-r border-gray-300 bg-gray-100/50">Tutar (IQD)</th>
-                                <th colSpan={2} className="px-4 py-3 bg-red-50/30">Bakiye (IQD)</th>
+                                <th className="px-4 py-3 text-left border-r border-gray-300">{tm('accAccountCode')}</th>
+                                <th className="px-4 py-3 text-left border-r border-gray-300">{tm('accAccountName')}</th>
+                                <th colSpan={2} className="px-4 py-3 border-r border-gray-300 bg-gray-100/50">{tm('accAmountIqd')}</th>
+                                <th colSpan={2} className="px-4 py-3 bg-red-50/30">{tm('accBalanceIqd')}</th>
                             </tr>
                             <tr className="bg-gray-50/50">
                                 <th className="border-r border-gray-300"></th>
                                 <th className="border-r border-gray-300"></th>
-                                <th className="px-4 py-2 border-r border-gray-300">Borç</th>
-                                <th className="px-4 py-2 border-r border-gray-300">Alacak</th>
-                                <th className="px-4 py-2 border-r border-gray-300">Borç</th>
-                                <th className="px-4 py-2">Alacak</th>
+                                <th className="px-4 py-2 border-r border-gray-300">{tm('directionDebtShort')}</th>
+                                <th className="px-4 py-2 border-r border-gray-300">{tm('directionCreditShort')}</th>
+                                <th className="px-4 py-2 border-r border-gray-300">{tm('directionDebtShort')}</th>
+                                <th className="px-4 py-2">{tm('directionCreditShort')}</th>
                             </tr>
                         </thead>
                         <tbody className="divide-y divide-gray-200 text-gray-700">

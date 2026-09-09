@@ -7,6 +7,7 @@
 
 import { useRef } from 'react';
 import { Download, Printer, Mail } from 'lucide-react';
+import { useLanguage } from '../../contexts/LanguageContext';
 
 interface ReportData {
   reportTitle: string;
@@ -33,12 +34,15 @@ interface ReportData {
 
 export default function ProfessionalReportPrintTemplate({ data }: { data: ReportData }) {
   const printRef = useRef<HTMLDivElement>(null);
+  const { tm, language } = useLanguage();
+  const locale = language === 'en' ? 'en-US' : language === 'ar' ? 'ar-SA' : language === 'ku' ? 'ku-IQ' : 'tr-TR';
 
   const handlePrint = () => {
     const printWindow = window.open('', '_blank');
     if (!printWindow) return;
 
     const content = printRef.current?.innerHTML || '';
+    const pageLabel = tm('rptPrintPageCss');
     
     printWindow.document.write(`
       <!DOCTYPE html>
@@ -311,7 +315,7 @@ export default function ProfessionalReportPrintTemplate({ data }: { data: Report
           /* Page Numbers */
           @media print {
             .report-footer::after {
-              content: "Sayfa " counter(page) " / " counter(pages);
+              content: "${pageLabel} " counter(page) " / " counter(pages);
               position: absolute;
               bottom: 1cm;
               right: 1.5cm;
@@ -350,13 +354,13 @@ export default function ProfessionalReportPrintTemplate({ data }: { data: Report
 
   const formatValue = (value: any, format?: string) => {
     if (format === 'currency') {
-      return new Intl.NumberFormat('tr-TR', { 
+      return new Intl.NumberFormat(locale, { 
         minimumFractionDigits: 0,
         maximumFractionDigits: 0 
       }).format(value) + ' IQD';
     }
     if (format === 'number') {
-      return new Intl.NumberFormat('tr-TR').format(value);
+      return new Intl.NumberFormat(locale).format(value);
     }
     if (format === 'percent') {
       return value.toFixed(2) + '%';
@@ -368,22 +372,22 @@ export default function ProfessionalReportPrintTemplate({ data }: { data: Report
     <div className="bg-white">
       {/* Print/Export Actions */}
       <div className="flex items-center justify-between p-4 border-b border-gray-200 print:hidden">
-        <h3 className="font-semibold">Rapor Önizleme</h3>
+        <h3 className="font-semibold">{tm('rptPrintPreview')}</h3>
         <div className="flex items-center gap-2">
           <button
             onClick={handlePrint}
             className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 flex items-center gap-2"
           >
             <Printer className="w-4 h-4" />
-            Yazdır
+            {tm('print')}
           </button>
           <button className="px-4 py-2 border border-gray-300 rounded-lg hover:bg-gray-50 flex items-center gap-2">
             <Download className="w-4 h-4" />
-            PDF İndir
+            {tm('pdfDownload')}
           </button>
           <button className="px-4 py-2 border border-gray-300 rounded-lg hover:bg-gray-50 flex items-center gap-2">
             <Mail className="w-4 h-4" />
-            E-posta Gönder
+            {tm('rptPrintEmail')}
           </button>
         </div>
       </div>
@@ -404,8 +408,8 @@ export default function ProfessionalReportPrintTemplate({ data }: { data: Report
             </div>
             <div className="company-details">
               <div>{data.company.address}</div>
-              <div>Tel: {data.company.phone}</div>
-              <div>Vergi No: {data.company.taxNo}</div>
+              <div>{tm('rptPrintTel')}: {data.company.phone}</div>
+              <div>{tm('rptPrintTaxNo')}: {data.company.taxNo}</div>
             </div>
           </div>
           
@@ -419,8 +423,8 @@ export default function ProfessionalReportPrintTemplate({ data }: { data: Report
         <div className="meta-info no-break">
           <div className="meta-grid">
             <div className="meta-item">
-              <div className="meta-label">Rapor Tarihi</div>
-              <div className="meta-value">{new Date(data.generatedAt).toLocaleString('tr-TR')}</div>
+              <div className="meta-label">{tm('rptPrintReportDate')}</div>
+              <div className="meta-value">{new Date(data.generatedAt).toLocaleString(locale)}</div>
             </div>
             {Object.entries(data.parameters).map(([key, value]) => (
               <div key={key} className="meta-item">
@@ -434,7 +438,7 @@ export default function ProfessionalReportPrintTemplate({ data }: { data: Report
         {/* Summary Section */}
         {data.summary && data.summary.length > 0 && (
           <div className="summary-section no-break">
-            <div className="summary-header">Özet Bilgiler</div>
+            <div className="summary-header">{tm('rptPrintSummary')}</div>
             <div className="summary-grid">
               {data.summary.map((item, idx) => (
                 <div key={idx} className="summary-item">
@@ -479,7 +483,7 @@ export default function ProfessionalReportPrintTemplate({ data }: { data: Report
           {/* Optional totals row */}
           <tfoot>
             <tr>
-              <td colSpan={data.headers.length - 1}>TOPLAM</td>
+              <td colSpan={data.headers.length - 1}>{tm('totalUppercase')}</td>
               <td className="currency">
                 {formatValue(
                   data.data.reduce((sum, row) => sum + (typeof row[row.length - 1] === 'number' ? row[row.length - 1] : 0), 0),
@@ -494,19 +498,19 @@ export default function ProfessionalReportPrintTemplate({ data }: { data: Report
         <div className="report-footer">
           <div className="footer-grid">
             <div className="footer-section">
-              <h4>Hazırlayan</h4>
-              <div>ExRetailOS v1.0</div>
-              <div>Otomatik Rapor Sistemi</div>
+              <h4>{tm('rptPrintPreparedBy')}</h4>
+              <div>RetailEX</div>
+              <div>{tm('rptPrintAutoSystem')}</div>
             </div>
             <div className="footer-section">
-              <h4>İletişim</h4>
+              <h4>{tm('rptPrintContactShort')}</h4>
               <div>{data.company.phone}</div>
               <div>destek@exretailos.com</div>
             </div>
             <div className="footer-section">
-              <h4>Yasal Uyarı</h4>
-              <div>Bu rapor gizlidir</div>
-              <div>Yetkisiz kullanım yasaktır</div>
+              <h4>{tm('rptPrintLegal')}</h4>
+              <div>{tm('rptPrintConfidential')}</div>
+              <div>{tm('rptPrintUnauthorized')}</div>
             </div>
           </div>
           {data.footer && (

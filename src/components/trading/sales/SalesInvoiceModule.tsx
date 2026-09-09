@@ -14,6 +14,7 @@ import { unitSetAPI } from '../../../services/unitSetAPI';
 import { buildUnitSelectOptions, withMissingUnitValue, type UnitSelectOption } from '../../../utils/unitOptions';
 import { InvoiceCariSelectModal, type InvoiceCariItem } from '../invoices/InvoiceCariSelectModal';
 import { supplierAPI, type Supplier } from '../../../services/api/suppliers';
+import { useLanguage } from '../../../contexts/LanguageContext';
 
 interface SalesInvoiceModuleProps {
   customers: Customer[];
@@ -54,7 +55,7 @@ const mockProducts = [
 
 export function SalesInvoiceModule({ customers, products, onCreateInvoice, onSwitchTab, activeTab: externalActiveTab, onInvoiceClick }: SalesInvoiceModuleProps) {
   // ===== CONTEXT & HOOKS =====
-  // ===== CONTEXT & HOOKS =====
+  const { tm } = useLanguage();
   const { selectedFirm, selectedPeriod } = useFirmaDonem();
 
   // Mappings for backward compatibility
@@ -156,8 +157,7 @@ export function SalesInvoiceModule({ customers, products, onCreateInvoice, onSwi
   const handleSaveInvoice = async () => {
     // ===== 1. FIRMA/DÖNEM KONTROLÜ =====
     if (!selectedFirma || !selectedDonem) {
-      toast.error('❌ Lütfen firma ve dönem seçiniz!', {
-        description: 'Satış faturası için firma ve dönem seçimi zorunludur.',
+      toast.error(tm('selectFirmAndPeriod'), {
         duration: 5000,
       });
       return;
@@ -178,7 +178,7 @@ Lütfen bu bilgiyi ekran görüntüsü olarak paylaşın!`);
     }
 
     if (!periodOpen) {
-      toast.error('❌ Dönem kapalıdır!', {
+      toast.error(tm('periodClosed'), {
         description: `${selectedDonem?.donem_adi} kapalı. Kapalı dönemde fatura kesilemez.`,
         duration: 5000,
       });
@@ -188,8 +188,7 @@ Lütfen bu bilgiyi ekran görüntüsü olarak paylaşın!`);
     // ===== 3. TARİH KONTROLÜ =====
     const invoiceDate = new Date();
     if (!isTransactionAllowed(invoiceDate, 'SALES_INVOICE')) {
-      toast.error('❌ Bu tarihte işlem yapılamaz!', {
-        description: 'Dönem kapalı veya ay kapalı olabilir.',
+      toast.error(tm('transactionNotAllowedDate'), {
         duration: 5000,
       });
       return;
@@ -197,8 +196,7 @@ Lütfen bu bilgiyi ekran görüntüsü olarak paylaşın!`);
 
     // ===== 4. MÜŞTERİ KONTROLÜ =====
     if (!customerTitle) {
-      toast.error('❌ Müşteri seçilmedi!', {
-        description: 'Lütfen bir müşteri seçiniz.',
+      toast.error(tm('customerNotSelected'), {
         duration: 3000,
       });
       return;
@@ -207,8 +205,7 @@ Lütfen bu bilgiyi ekran görüntüsü olarak paylaşın!`);
     // ===== 5. KALEMLER KONTROLÜ =====
     const validItems = items.filter(item => item.quantity > 0 && item.unitPrice > 0);
     if (validItems.length === 0) {
-      toast.error('❌ Fatura kalemi yok!', {
-        description: 'En az bir ürün ekleyiniz.',
+      toast.error(tm('noInvoiceItems'), {
         duration: 3000,
       });
       return;
@@ -220,8 +217,7 @@ Lütfen bu bilgiyi ekran görüntüsü olarak paylaşın!`);
     const grandTotal = items.reduce((sum, item) => sum + item.netAmount, 0);
 
     if (grandTotal <= 0) {
-      toast.error('❌ Fatura tutarı 0 olamaz!', {
-        description: 'Geçerli tutar giriniz.',
+      toast.error(tm('invoiceAmountCannotBeZero'), {
         duration: 3000,
       });
       return;
@@ -280,8 +276,8 @@ Lütfen bu bilgiyi ekran görüntüsü olarak paylaşın!`);
       const result = await invoicesAPI.create(apiInvoice as any);
 
       if (result) {
-        toast.success('✅ Fatura Başarıyla Kaydedildi', {
-          description: `Fatura No: ${result.invoice_no}`,
+        toast.success(tm('invoiceSaved'), {
+          description: `${tm('invoiceNo')}: ${result.invoice_no}`,
           duration: 5000,
         });
 
@@ -301,8 +297,8 @@ Lütfen bu bilgiyi ekran görüntüsü olarak paylaşın!`);
       }
     } catch (error: any) {
       console.error('Save error:', error);
-      toast.error('❌ Kaydetme Hatası', {
-        description: error.message || 'Veritabanı hatası oluştu',
+      toast.error(tm('invoiceSaveError'), {
+        description: error.message || tm('errorOccurred'),
         duration: 5000,
       });
     }
@@ -311,9 +307,9 @@ Lütfen bu bilgiyi ekran görüntüsü olarak paylaşın!`);
 
 
   const handleDeleteInvoice = (invoiceId: string) => {
-    if (confirm('Bu faturayı silmek istediğinizden emin misiniz?')) {
+    if (confirm(tm('confirmDeleteInvoiceShort'))) {
       setInvoices(invoices.filter(inv => inv.id !== invoiceId));
-      alert('Fatura başarıyla silindi!');
+      alert(tm('invoiceDeleteSuccess'));
     }
   };
 
@@ -554,7 +550,7 @@ Lütfen bu bilgiyi ekran görüntüsü olarak paylaşın!`);
       setItems(updatedItems);
       setBarcodeInput('');
       barcodeInputRef.current?.focus();
-      toast.success(`${product.name} eklendi`);
+      toast.success(tm('itemAddedNamed').replace('{name}', product.name));
     } else if (product) {
       // Add new row
       const newItem: InvoiceItem = {
@@ -574,9 +570,9 @@ Lütfen bu bilgiyi ekran görüntüsü olarak paylaşın!`);
       setBarcodeInput('');
       setCurrentRowIndex(items.length);
       barcodeInputRef.current?.focus();
-      toast.success(`${product.name} eklendi`);
+      toast.success(tm('itemAddedNamed').replace('{name}', product.name));
     } else {
-      toast.error('Ürün bulunamadı!');
+      toast.error(tm('posProductNotFoundExclaim'));
       setBarcodeInput('');
     }
   };
@@ -733,7 +729,7 @@ Lütfen bu bilgiyi ekran görüntüsü olarak paylaşın!`);
       } as Omit<Supplier, 'id'>);
       const customerRow = created as unknown as Customer;
       setExtraCustomers((prev) => [...prev, customerRow]);
-      toast.success('Müşteri eklendi');
+      toast.success(tm('custToastAdded'));
       return {
         id: created.id,
         code: created.code,
@@ -742,7 +738,7 @@ Lütfen bu bilgiyi ekran görüntüsü olarak paylaşın!`);
         email: created.email,
       };
     } catch (e: any) {
-      toast.error(e?.message || 'Müşteri eklenemedi');
+      toast.error(e?.message || tm('custToastAddFail'));
       return null;
     }
   };
@@ -918,14 +914,14 @@ Lütfen bu bilgiyi ekran görüntüsü olarak paylaşın!`);
                         handleBarcodeSubmit();
                       }
                     }}
-                    placeholder="Barkod okutun veya girin..."
+                    placeholder={tm('barcodeScanOrEnterPlaceholder')}
                     className="flex-1 px-3 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:border-blue-500 focus:ring-1 focus:ring-blue-500"
                   />
                   <button
                     onClick={handleBarcodeSubmit}
                     className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors text-sm"
                   >
-                    Ekle
+                    {tm('add')}
                   </button>
                 </div>
               </div>
@@ -1056,7 +1052,7 @@ Lütfen bu bilgiyi ekran görüntüsü olarak paylaşın!`);
                                 type="text"
                                 value={customerCode}
                                 readOnly
-                                placeholder="Seçin..."
+                                placeholder={tm('selectShortPlaceholder')}
                                 className="flex-1 px-2 py-1 border border-gray-300 rounded text-sm bg-white cursor-pointer"
                                 onClick={() => setShowCustomerModal(true)}
                               />
@@ -1152,7 +1148,7 @@ Lütfen bu bilgiyi ekran görüntüsü olarak paylaşın!`);
                                     }
                                   }}
                                   className="w-full px-1.5 py-1 border-0 focus:outline-none text-sm bg-transparent"
-                                  placeholder="Kod/ad..."
+                                  placeholder={tm('itemSearchPlaceholder')}
                                 />
 
                                 {/* Dropdown */}
@@ -1322,28 +1318,28 @@ Lütfen bu bilgiyi ekran görüntüsü olarak paylaşın!`);
               <div className="bg-white rounded border border-gray-200 p-6">
                 <div className="space-y-4">
                   <div>
-                    <label className="block text-sm font-medium text-gray-700 mb-2">Açıklama</label>
+                    <label className="block text-sm font-medium text-gray-700 mb-2">{tm('description')}</label>
                     <textarea
                       rows={6}
                       className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:border-blue-500 focus:ring-1 focus:ring-blue-500"
-                      placeholder="Fatura açıklaması..."
+                      placeholder={tm('invoiceDescriptionPlaceholder')}
                     />
                   </div>
                   <div className="grid grid-cols-2 gap-4">
                     <div>
-                      <label className="block text-sm font-medium text-gray-700 mb-2">Teslimat Adresi</label>
+                      <label className="block text-sm font-medium text-gray-700 mb-2">{tm('shippingAddress')}</label>
                       <textarea
                         rows={3}
                         className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:border-blue-500 focus:ring-1 focus:ring-blue-500"
-                        placeholder="Teslimat adresi..."
+                        placeholder={tm('deliveryAddressPlaceholder')}
                       />
                     </div>
                     <div>
-                      <label className="block text-sm font-medium text-gray-700 mb-2">Notlar</label>
+                      <label className="block text-sm font-medium text-gray-700 mb-2">{tm('notes')}</label>
                       <textarea
                         rows={3}
                         className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:border-blue-500 focus:ring-1 focus:ring-blue-500"
-                        placeholder="Ek notlar..."
+                        placeholder={tm('extraNotesPlaceholder')}
                       />
                     </div>
                   </div>
@@ -1461,7 +1457,7 @@ Lütfen bu bilgiyi ekran görüntüsü olarak paylaşın!`);
           <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" />
           <input
             type="text"
-            placeholder="Fatura ara..."
+            placeholder={tm('searchInvoicePlaceholder')}
             className="pl-10 pr-4 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:border-blue-500"
           />
         </div>

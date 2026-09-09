@@ -3,6 +3,7 @@ import { X, Search, Loader2, AlertCircle, Download } from 'lucide-react';
 import { imageSearchService, type ImageSearchResult } from '../../services/imageSearchService';
 import { toast } from 'sonner';
 import { formatBytes, getBase64Size } from '../../utils/imageUtils';
+import { useLanguage } from '../../contexts/LanguageContext';
 import { ModalLayer } from './FullscreenBodyPortal';
 
 interface ImageSearchModalProps {
@@ -16,6 +17,7 @@ export const ImageSearchModal: React.FC<ImageSearchModalProps> = ({
     onClose,
     initialQuery = '',
 }) => {
+    const { tm } = useLanguage();
     const [searchQuery, setSearchQuery] = useState(initialQuery);
     const [searchResults, setSearchResults] = useState<ImageSearchResult[]>([]);
     const [isSearching, setIsSearching] = useState(false);
@@ -32,7 +34,7 @@ export const ImageSearchModal: React.FC<ImageSearchModalProps> = ({
 
     const handleSearch = async () => {
         if (!searchQuery || searchQuery.trim() === '') {
-            setError('Lütfen bir arama terimi girin.');
+            setError(tm('imgSearchEnterTerm'));
             return;
         }
 
@@ -44,12 +46,12 @@ export const ImageSearchModal: React.FC<ImageSearchModalProps> = ({
             const results = await imageSearchService.searchImages(searchQuery.trim(), 20);
 
             if (results.length === 0) {
-                setError('Sonuç bulunamadı. Farklı bir arama terimi deneyin.');
+                setError(tm('imgSearchNoResults'));
             } else {
                 setSearchResults(results);
             }
         } catch (err) {
-            const errorMessage = err instanceof Error ? err.message : 'Resim arama sırasında bir hata oluştu.';
+            const errorMessage = err instanceof Error ? err.message : tm('imgSearchError');
             setError(errorMessage);
             toast.error(errorMessage);
         } finally {
@@ -70,12 +72,12 @@ export const ImageSearchModal: React.FC<ImageSearchModalProps> = ({
             );
 
             const sizeInBytes = getBase64Size(base64Image);
-            toast.success(`Resim seçildi (${formatBytes(sizeInBytes)})`);
+            toast.success(tm('imgSearchSelected').replace('{size}', formatBytes(sizeInBytes)));
 
             onSelect(base64Image);
             onClose();
         } catch (err) {
-            const errorMessage = err instanceof Error ? err.message : 'Resim işlenirken bir hata oluştu.';
+            const errorMessage = err instanceof Error ? err.message : tm('imgSearchProcessError');
             toast.error(errorMessage);
             setSelectedImageId(null);
         } finally {
@@ -95,15 +97,15 @@ export const ImageSearchModal: React.FC<ImageSearchModalProps> = ({
                 {/* Header */}
                 <div className="flex items-center justify-between px-6 py-4 border-b border-gray-200">
                     <div>
-                        <h2 className="text-lg font-bold text-gray-900">İnternetten Resim Ara</h2>
+                        <h2 className="text-lg font-bold text-gray-900">{tm('imgSearchTitle')}</h2>
                         <p className="text-xs text-gray-500 mt-0.5">
-                            Önce Unsplash; limit veya boş sonuçta Wikimedia Commons ve Openverse yedek kaynakları
+                            {tm('imgSearchSubtitle')}
                         </p>
                     </div>
                     <button
                         onClick={onClose}
                         className="p-2 hover:bg-gray-100 rounded-full transition-colors"
-                        title="Kapat"
+                        title={tm('close')}
                     >
                         <X className="w-5 h-5 text-gray-500" />
                     </button>
@@ -119,7 +121,7 @@ export const ImageSearchModal: React.FC<ImageSearchModalProps> = ({
                                 value={searchQuery}
                                 onChange={(e) => setSearchQuery(e.target.value)}
                                 onKeyPress={handleKeyPress}
-                                placeholder="Ürün açıklaması girin (örn: laptop, phone, coffee cup)"
+                                placeholder={tm('imgSearchPlaceholder')}
                                 className="w-full pl-10 pr-4 py-2.5 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
                                 disabled={isSearching}
                             />
@@ -132,12 +134,12 @@ export const ImageSearchModal: React.FC<ImageSearchModalProps> = ({
                             {isSearching ? (
                                 <>
                                     <Loader2 className="w-4 h-4 animate-spin" />
-                                    Aranıyor...
+                                    {tm('searching')}
                                 </>
                             ) : (
                                 <>
                                     <Search className="w-4 h-4" />
-                                    Ara
+                                    {tm('search')}
                                 </>
                             )}
                         </button>
@@ -145,7 +147,7 @@ export const ImageSearchModal: React.FC<ImageSearchModalProps> = ({
 
                     {/* Info */}
                     <p className="text-xs text-gray-500 mt-2">
-                        💡 İpucu: İngilizce arama terimleri daha iyi sonuç verir
+                        💡 {tm('imgSearchTip')}
                     </p>
                 </div>
 
@@ -157,7 +159,7 @@ export const ImageSearchModal: React.FC<ImageSearchModalProps> = ({
                             <div className="w-16 h-16 bg-red-50 text-red-500 rounded-full flex items-center justify-center mb-4">
                                 <AlertCircle className="w-8 h-8" />
                             </div>
-                            <p className="text-sm font-medium text-gray-900 mb-1">Bir Hata Oluştu</p>
+                            <p className="text-sm font-medium text-gray-900 mb-1">{tm('imgSearchErrorTitle')}</p>
                             <p className="text-xs text-gray-500 max-w-md">{error}</p>
                         </div>
                     )}
@@ -166,8 +168,8 @@ export const ImageSearchModal: React.FC<ImageSearchModalProps> = ({
                     {isSearching && (
                         <div className="flex flex-col items-center justify-center py-12">
                             <Loader2 className="w-12 h-12 text-blue-600 animate-spin mb-4" />
-                            <p className="text-sm font-medium text-gray-700">Resimler aranıyor...</p>
-                            <p className="text-xs text-gray-500 mt-1">Lütfen bekleyin</p>
+                            <p className="text-sm font-medium text-gray-700">{tm('imgSearchLoading')}</p>
+                            <p className="text-xs text-gray-500 mt-1">{tm('pleaseWait')}</p>
                         </div>
                     )}
 
@@ -177,9 +179,9 @@ export const ImageSearchModal: React.FC<ImageSearchModalProps> = ({
                             <div className="w-16 h-16 bg-gray-100 text-gray-400 rounded-full flex items-center justify-center mb-4">
                                 <Search className="w-8 h-8" />
                             </div>
-                            <p className="text-sm font-medium text-gray-700 mb-1">Resim Aramaya Başlayın</p>
+                            <p className="text-sm font-medium text-gray-700 mb-1">{tm('imgSearchStart')}</p>
                             <p className="text-xs text-gray-500 max-w-md">
-                                Yukarıdaki arama kutusuna ürün açıklaması girerek resim arayabilirsiniz
+                                {tm('imgSearchStartHint')}
                             </p>
                         </div>
                     )}
@@ -189,7 +191,7 @@ export const ImageSearchModal: React.FC<ImageSearchModalProps> = ({
                         <>
                             <div className="mb-4">
                                 <p className="text-sm font-medium text-gray-700">
-                                    {searchResults.length} sonuç bulundu
+                                    {tm('imgSearchResultsFound').replace('{n}', String(searchResults.length))}
                                 </p>
                             </div>
 
@@ -226,7 +228,7 @@ export const ImageSearchModal: React.FC<ImageSearchModalProps> = ({
                                         {selectedImageId === result.id && isConverting && (
                                             <div className="absolute inset-0 bg-white/90 flex flex-col items-center justify-center">
                                                 <Loader2 className="w-8 h-8 text-blue-600 animate-spin mb-2" />
-                                                <p className="text-xs font-medium text-gray-700">İşleniyor...</p>
+                                                <p className="text-xs font-medium text-gray-700">{tm('processing')}</p>
                                             </div>
                                         )}
 
@@ -246,7 +248,7 @@ export const ImageSearchModal: React.FC<ImageSearchModalProps> = ({
                 {/* Footer */}
                 <div className="px-6 py-3 border-t border-gray-200 bg-gray-50">
                     <p className="text-xs text-gray-500 text-center leading-relaxed">
-                        Kaynaklar:{' '}
+                        {tm('imgSearchSourcesLabel')}{' '}
                         <a
                             href="https://unsplash.com"
                             target="_blank"
@@ -256,7 +258,7 @@ export const ImageSearchModal: React.FC<ImageSearchModalProps> = ({
                             Unsplash
                         </a>
                         {' '}
-                        (öncelik),{' '}
+                        {tm('imgSearchSourcesPriority')}{' '}
                         <a
                             href="https://commons.wikimedia.org"
                             target="_blank"
@@ -274,11 +276,10 @@ export const ImageSearchModal: React.FC<ImageSearchModalProps> = ({
                         >
                             Openverse
                         </a>
-                        . Lisanslar kaynak sitelerde. Seçilen resimler 800×800’e yakın optimize edilir.
+                        {tm('imgSearchSourcesSuffix')}
                     </p>
                 </div>
             </div>
         </ModalLayer>
     );
 };
-

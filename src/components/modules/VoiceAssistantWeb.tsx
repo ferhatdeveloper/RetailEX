@@ -14,6 +14,7 @@ import { getPopularCommands, getAllCommandExamples } from '../../config/voiceCom
 import { getVoiceService } from '../../services/voiceService';
 import { VoiceServiceProvider } from '../../services/voiceTypes';
 import { visionService, type VisionResult } from '../../services/visionService';
+import { useLanguage } from '../../contexts/LanguageContext';
 
 interface Message {
     id: string;
@@ -26,6 +27,7 @@ interface Message {
 }
 
 export function VoiceAssistantWeb({ hideFloatingButton = false }: { hideFloatingButton?: boolean }) {
+    const { tm } = useLanguage();
     const [listening, setListening] = useState(false);
     const [messages, setMessages] = useState<Message[]>([]);
     const [inputText, setInputText] = useState('');
@@ -199,8 +201,8 @@ export function VoiceAssistantWeb({ hideFloatingButton = false }: { hideFloating
             }
         } catch (err: any) {
             console.error('Processing error:', err);
-            setError('Komut işlenirken bir hata oluştu.');
-            addMessage('assistant', 'Üzgünüm, bir hata oluştu.');
+            setError(tm('vaCmdError'));
+            addMessage('assistant', tm('vaSorryError'));
         } finally {
             setIsProcessing(false);
         }
@@ -210,7 +212,7 @@ export function VoiceAssistantWeb({ hideFloatingButton = false }: { hideFloating
         try {
             setError(null);
             setListening(true);
-            addMessage('assistant', 'Dinliyorum...');
+            addMessage('assistant', tm('vaListening'));
             setShowHistory(false);
             setShowSuggestions(false);
             streamRef.current = await startAudioMonitoring();
@@ -227,11 +229,11 @@ export function VoiceAssistantWeb({ hideFloatingButton = false }: { hideFloating
             stopAudioMonitoring();
             const msg = err.message || '';
             if (msg.includes('no-speech')) {
-                setError('Ses algılanamadı. Lütfen tekrar deneyin.');
+                setError(tm('vaNoSpeech'));
             } else if (msg.includes('not-allowed')) {
-                setError('Mikrofon izni reddedildi. Lütfen tarayıcı ayarlarından izin verin.');
+                setError(tm('vaMicDenied'));
             } else {
-                setError(err.message || 'Bir hata oluştu. Tekrar deneyin.');
+                setError(err.message || tm('vaTryAgain'));
             }
         }
     };
@@ -255,7 +257,7 @@ export function VoiceAssistantWeb({ hideFloatingButton = false }: { hideFloating
             if (result.success) await routeCommand(result);
         } catch (err) {
             console.error('Text command error:', err);
-            setError('Komut işlenirken bir hata oluştu.');
+            setError(tm('vaCmdError'));
         } finally {
             setIsProcessing(false);
         }
@@ -268,7 +270,7 @@ export function VoiceAssistantWeb({ hideFloatingButton = false }: { hideFloating
         const reader = new FileReader();
         reader.onload = async (event) => {
             const base64 = event.target?.result as string;
-            addMessage('user', 'Resim üzerinden işlem yapmak istiyorum.', 'image', base64);
+            addMessage('user', tm('vaImageWant'), 'image', base64);
             setIsProcessing(true);
             try {
                 const result = await visionService.analyzeImage(base64);
@@ -278,11 +280,11 @@ export function VoiceAssistantWeb({ hideFloatingButton = false }: { hideFloating
                     // SMART VERIFICATION: Check if entities exist
                     await checkAndPromptMissingEntities(result);
                 } else {
-                    addMessage('assistant', 'Üzgünüm, resimden veri çıkaramadım.');
+                    addMessage('assistant', tm('vaImageFail'));
                 }
             } catch (err) {
                 console.error('Vision error:', err);
-                addMessage('assistant', 'Hata oluştu.');
+                addMessage('assistant', tm('vaVisionError'));
             } finally {
                 setIsProcessing(false);
             }
@@ -337,7 +339,7 @@ export function VoiceAssistantWeb({ hideFloatingButton = false }: { hideFloating
         if (!drawingImage || !canvasRef.current) return;
 
         setIsProcessing(true);
-        addMessage('assistant', 'Seçilen alan analiz ediliyor...');
+        addMessage('assistant', tm('vaAnalyzingRoi'));
         setDrawingImage(null); // Close drawing view
 
         try {
@@ -363,7 +365,7 @@ export function VoiceAssistantWeb({ hideFloatingButton = false }: { hideFloating
             img.src = drawingImage;
             await new Promise<void>((resolve, reject) => {
                 img.onload = () => resolve();
-                img.onerror = () => reject(new Error('Görsel yüklenemedi.'));
+                img.onerror = () => reject(new Error(tm('vaImageLoadFail')));
             });
 
             // For now, simpler approach: Just send the original image AGAIN but marked as ROI?
@@ -416,13 +418,13 @@ export function VoiceAssistantWeb({ hideFloatingButton = false }: { hideFloating
                 if (result.success) {
                     await checkAndPromptMissingEntities(result);
                 } else {
-                    addMessage('assistant', 'Seçili alandan veri çıkaramadım.');
+                    addMessage('assistant', tm('vaRoiFail'));
                 }
             }
 
         } catch (err) {
             console.error('ROI Error:', err);
-            addMessage('assistant', 'Analiz hatası.');
+            addMessage('assistant', tm('vaRoiError'));
         } finally {
             setIsProcessing(false);
         }
@@ -450,7 +452,7 @@ export function VoiceAssistantWeb({ hideFloatingButton = false }: { hideFloating
                 // Determine missing name for friendly message
                 const missingName = result.supplier;
 
-                addMessage('assistant', `"${missingName}" tedarikçisini sistemde bulamadım.Eklemek ister misiniz ? `, 'action_verification', undefined, {
+                addMessage('assistant', tm('vaSupplierNotFound').replace('{name}', missingName), 'action_verification', undefined, {
                     type: 'missing_supplier',
                     name: missingName,
                     data: result // Pass full result to resume after addition
@@ -460,12 +462,12 @@ export function VoiceAssistantWeb({ hideFloatingButton = false }: { hideFloating
         }
 
         // If all verified (or skipped), proceed to normal flow
-        addMessage('assistant', `Resmi analiz ettim.İçerisinde ${result.items.length} kalem buldum.Ne yapmak istersiniz ? `, 'action', undefined, result);
+        addMessage('assistant', tm('vaVisionFoundItems').replace('{n}', String(result.items.length)), 'action', undefined, result);
         setShowVisionModal(true);
     };
 
     const handleAddMissingEntity = async (type: string, name: string) => {
-        addMessage('assistant', `${name} sisteme ekleniyor...`);
+        addMessage('assistant', tm('vaCreating').replace('{type}', name));
         // Simulate quick add (in real app, show modal or form)
         // Here we just mock the addition and continue
         try {
@@ -479,24 +481,24 @@ export function VoiceAssistantWeb({ hideFloatingButton = false }: { hideFloating
                     city: '',
                     is_active: true
                 } as any);
-                addMessage('assistant', `✅ ${name} başarıyla eklendi.İşleme devam ediliyor...`);
+                addMessage('assistant', tm('vaAddedContinue').replace('{name}', name));
 
                 // Resume flow
                 if (visionResult) {
-                    addMessage('assistant', `Resmi analiz ettim.İçerisinde ${visionResult.items.length} kalem buldum.Ne yapmak istersiniz ? `, 'action', undefined, visionResult);
+                    addMessage('assistant', tm('vaVisionFoundItems').replace('{n}', String(visionResult.items.length)), 'action', undefined, visionResult);
                     setShowVisionModal(true);
                 }
             }
         } catch (err) {
-            addMessage('assistant', 'Ekleme sırasında hata oluştu.');
+            addMessage('assistant', tm('vaAddError'));
         }
     };
 
     const handleCreateInvoice = (type: string) => {
         if (!visionResult) return;
         setShowVisionModal(false);
-        addMessage('assistant', `${type} oluşturuluyor...`);
-        const path = type === 'Alış Faturası' ? '/purchase-invoice' : '/sales-invoice';
+        addMessage('assistant', tm('vaCreating').replace('{type}', type));
+        const path = type === tm('purchaseInvoice') ? '/purchase-invoice' : '/sales-invoice';
         routeCommand({
             transcript: 'image_upload',
             intent: 'create_invoice',
@@ -511,7 +513,7 @@ export function VoiceAssistantWeb({ hideFloatingButton = false }: { hideFloating
                 supplier_name: visionResult.supplier,
                 customer_name: visionResult.customer,
                 total_amount: visionResult.totalAmount,
-                notes: 'Vision OCR ile otomatik oluşturuldu.'
+                notes: tm('vaVisionNotes')
             }
         });
         setTimeout(() => setIsOpen(false), 1500);
@@ -521,7 +523,7 @@ export function VoiceAssistantWeb({ hideFloatingButton = false }: { hideFloating
         return (
             <div className="fixed bottom-6 right-6 w-[420px] h-[600px] bg-slate-900 rounded-3xl shadow-2xl overflow-hidden border border-slate-700 z-50 flex flex-col animate-in slide-in-from-bottom-5">
                 <div className="p-4 bg-slate-800 text-white flex justify-between items-center">
-                    <span className="font-bold flex items-center gap-2"><PenTool className="w-4 h-4" /> Alan Seçimi</span>
+                    <span className="font-bold flex items-center gap-2"><PenTool className="w-4 h-4" /> {tm('vaAreaSelect')}</span>
                     <button onClick={() => setDrawingImage(null)} className="p-1 hover:bg-white/10 rounded-full"><X className="w-5 h-5" /></button>
                 </div>
                 <div className="flex-1 relative bg-black flex items-center justify-center overflow-hidden touch-none">
@@ -544,12 +546,12 @@ export function VoiceAssistantWeb({ hideFloatingButton = false }: { hideFloating
                     </div>
                 </div>
                 <div className="p-4 bg-slate-800 flex justify-between gap-4">
-                    <p className="text-xs text-slate-400 self-center">Okunacak alanı sarı kalemle çizin.</p>
+                    <p className="text-xs text-slate-400 self-center">{tm('vaDrawHint')}</p>
                     <button
                         onClick={analyzeSelection}
                         className="flex items-center gap-2 px-4 py-2 bg-yellow-500 text-black font-bold rounded-xl hover:bg-yellow-400 transition-colors"
                     >
-                        <Crop className="w-4 h-4" /> Kırp ve Oku
+                        <Crop className="w-4 h-4" /> {tm('vaCropRead')}
                     </button>
                 </div>
                 {/* Canvas Sizer Effect */}
@@ -558,20 +560,22 @@ export function VoiceAssistantWeb({ hideFloatingButton = false }: { hideFloating
         );
     }
 
-    if (hideFloatingButton) return null;
+    if (!isOpen) {
+        if (hideFloatingButton) return null;
 
-    return (
-        <button
-            onClick={() => setIsOpen(true)}
-            className="fixed bottom-6 right-6 p-4 bg-gradient-to-r from-blue-600 to-indigo-600 rounded-full shadow-2xl hover:scale-110 transition-transform z-50 group"
-            title="Sesli Asistan (Ctrl+Shift+V)"
-        >
-            <Mic className="w-6 h-6 text-white" />
-            <span className="absolute right-full mr-4 top-1/2 -translate-y-1/2 px-3 py-1 bg-white text-blue-600 text-sm font-bold rounded-lg shadow-lg opacity-0 group-hover:opacity-100 transition-opacity whitespace-nowrap">
-                Sesli Asistan (Ctrl+Shift+V)
-            </span>
-        </button>
-    );
+        return (
+            <button
+                onClick={() => setIsOpen(true)}
+                className="fixed bottom-6 right-6 p-4 bg-gradient-to-r from-blue-600 to-indigo-600 rounded-full shadow-2xl hover:scale-110 transition-transform z-50 group"
+                title={tm('vaTitle')}
+            >
+                <Mic className="w-6 h-6 text-white" />
+                <span className="absolute right-full mr-4 top-1/2 -translate-y-1/2 px-3 py-1 bg-white text-blue-600 text-sm font-bold rounded-lg shadow-lg opacity-0 group-hover:opacity-100 transition-opacity whitespace-nowrap">
+                    {tm('vaTitle')}
+                </span>
+            </button>
+        );
+    }
 
     return (
         <div className="fixed bottom-6 right-6 w-[380px] h-[550px] bg-white rounded-2xl shadow-xl overflow-hidden border border-gray-100 z-50 flex flex-col animate-in slide-in-from-bottom-5 font-sans">
@@ -581,13 +585,13 @@ export function VoiceAssistantWeb({ hideFloatingButton = false }: { hideFloating
                     <div className="p-1.5 bg-blue-50 rounded-lg">
                         <Sparkles className="w-4 h-4 text-blue-600" />
                     </div>
-                    <span className="font-semibold text-gray-800">Asistan</span>
+                    <span className="font-semibold text-gray-800">{tm('vaAssistant')}</span>
                 </div>
                 <div className="flex items-center gap-1">
                     <button
                         onClick={() => setShowHistory(!showHistory)}
                         className="p-1.5 text-gray-400 hover:text-gray-600 hover:bg-gray-50 rounded-md transition-colors"
-                        title="Geçmiş"
+                        title={tm('vaHistory')}
                     >
                         <History className="w-4 h-4" />
                     </button>
@@ -620,18 +624,18 @@ export function VoiceAssistantWeb({ hideFloatingButton = false }: { hideFloating
                         {providerName === VoiceServiceProvider.TAURI_WHISPER ? <Monitor className="w-3 h-3" /> :
                             providerName === VoiceServiceProvider.CAPACITOR ? <Smartphone className="w-3 h-3" /> :
                                 <Globe className="w-3 h-3" />}
-                        <span>{providerName === VoiceServiceProvider.TAURI_WHISPER ? 'Whisper AI' : 'Web Modu'}</span>
+                        <span>{providerName === VoiceServiceProvider.TAURI_WHISPER ? 'Whisper AI' : tm('vaWebMode')}</span>
                     </div>
                     <span className="text-green-500 flex items-center gap-1">
                         <span className="w-1.5 h-1.5 bg-green-500 rounded-full"></span>
-                        Aktif
+                        {tm('active')}
                     </span>
                 </div>
             )}
 
             {!isVoiceAvailable && (
                 <div className="px-4 py-2 bg-yellow-50 border-b border-yellow-100">
-                    <p className="text-xs text-yellow-600">⚠️ Sesli asistan bu platformda desteklenmiyor</p>
+                    <p className="text-xs text-yellow-600">{tm('vaNotSupported')}</p>
                 </div>
             )}
 
@@ -645,7 +649,7 @@ export function VoiceAssistantWeb({ hideFloatingButton = false }: { hideFloating
 
                 {showHistory && commandHistory.length > 0 && (
                     <div className="p-4 border-b bg-slate-50">
-                        <h4 className="text-xs font-bold text-slate-600 uppercase mb-2">Son Komutlar</h4>
+                        <h4 className="text-xs font-bold text-slate-600 uppercase mb-2">{tm('vaRecentCommands')}</h4>
                         <div className="space-y-1 max-h-32 overflow-y-auto">
                             {commandHistory.slice(0, 5).map((cmd, idx) => (
                                 <button
@@ -662,7 +666,7 @@ export function VoiceAssistantWeb({ hideFloatingButton = false }: { hideFloating
 
                 {showSuggestions && (
                     <div className="p-4 border-b bg-blue-50">
-                        <h4 className="text-xs font-bold text-blue-600 uppercase mb-2">Popüler Komutlar</h4>
+                        <h4 className="text-xs font-bold text-blue-600 uppercase mb-2">{tm('vaPopularCommands')}</h4>
                         <div className="space-y-1">
                             {popularCommands.slice(0, 4).map((cmd, idx) => (
                                 <button
@@ -681,8 +685,8 @@ export function VoiceAssistantWeb({ hideFloatingButton = false }: { hideFloating
                 {messages.length === 0 && !showHistory && !showSuggestions && (
                     <div className="h-full flex flex-col items-center justify-center text-slate-400 text-center">
                         <MessageSquare className="w-12 h-12 opacity-20 mb-2" />
-                        <p>Merhaba! Size nasıl yardımcı olabilirim?</p>
-                        <p className="text-xs mt-2">Örnek: "Satış faturası aç" veya "Ürünleri göster"</p>
+                        <p>{tm('vaHello')}</p>
+                        <p className="text-xs mt-2">{tm('vaHelloHint')}</p>
                     </div>
                 )}
                 {messages.map((msg) => (
@@ -696,16 +700,16 @@ export function VoiceAssistantWeb({ hideFloatingButton = false }: { hideFloating
                             {msg.type === 'action' && msg.data && msg.role === 'assistant' && (
                                 <div className="mt-3 pt-3 border-t border-slate-100 flex gap-2 overflow-x-auto">
                                     <button
-                                        onClick={() => handleCreateInvoice('Alış Faturası')}
+                                        onClick={() => handleCreateInvoice(tm('purchaseInvoice'))}
                                         className="flex items-center gap-1.5 px-3 py-1.5 bg-blue-50 text-blue-600 rounded-lg text-xs font-bold hover:bg-blue-100 whitespace-nowrap"
                                     >
-                                        <ShoppingCart className="w-3.5 h-3.5" /> Alış Faturası
+                                        <ShoppingCart className="w-3.5 h-3.5" /> {tm('purchaseInvoice')}
                                     </button>
                                     <button
-                                        onClick={() => handleCreateInvoice('Satış Faturası')}
+                                        onClick={() => handleCreateInvoice(tm('salesInvoice'))}
                                         className="flex items-center gap-1.5 px-3 py-1.5 bg-green-50 text-green-600 rounded-lg text-xs font-bold hover:bg-green-100 whitespace-nowrap"
                                     >
-                                        <FilePlus className="w-3.5 h-3.5" /> Satış Faturası
+                                        <FilePlus className="w-3.5 h-3.5" /> {tm('salesInvoice')}
                                     </button>
                                 </div>
                             )}
@@ -714,7 +718,7 @@ export function VoiceAssistantWeb({ hideFloatingButton = false }: { hideFloating
                                 <button
                                     onClick={() => setDrawingImage(msg.image || null)}
                                     className="absolute bottom-2 right-2 p-1.5 bg-black/50 text-white rounded-lg hover:bg-black/70 backdrop-blur-sm transition-colors"
-                                    title="Seçili Alanı Oku (ROI)"
+                                    title={tm('vaReadRoi')}
                                 >
                                     <PenTool className="w-3.5 h-3.5" />
                                 </button>
@@ -725,19 +729,19 @@ export function VoiceAssistantWeb({ hideFloatingButton = false }: { hideFloating
                                         onClick={() => handleAddMissingEntity(msg.data.type, msg.data.name)}
                                         className="flex items-center gap-1.5 px-3 py-1.5 bg-blue-50 text-blue-600 rounded-lg text-xs font-bold hover:bg-blue-100 whitespace-nowrap"
                                     >
-                                        <UserPlus className="w-3.5 h-3.5" /> Evet, Ekle
+                                        <UserPlus className="w-3.5 h-3.5" /> {tm('vaYesAdd')}
                                     </button>
                                     <button
                                         onClick={() => {
                                             // Skip adding
                                             if (visionResult) {
-                                                addMessage('assistant', `Resmi analiz ettim. İçerisinde ${visionResult.items.length} kalem buldum. Ne yapmak istersiniz?`, 'action', undefined, visionResult);
+                                                addMessage('assistant', tm('vaVisionFoundItems').replace('{n}', String(visionResult.items.length)), 'action', undefined, visionResult);
                                                 setShowVisionModal(true);
                                             }
                                         }}
                                         className="flex items-center gap-1.5 px-3 py-1.5 bg-slate-50 text-slate-600 rounded-lg text-xs font-bold hover:bg-slate-100 whitespace-nowrap"
                                     >
-                                        <X className="w-3.5 h-3.5" /> Hayır, Devam Et
+                                        <X className="w-3.5 h-3.5" /> {tm('vaNoContinue')}
                                     </button>
                                 </div>
                             )}
@@ -763,7 +767,7 @@ export function VoiceAssistantWeb({ hideFloatingButton = false }: { hideFloating
                     <button
                         onClick={() => fileInputRef.current?.click()}
                         className="p-2 text-slate-400 hover:text-blue-600 hover:bg-blue-50 rounded-full transition-colors"
-                        title="Resim Yükle"
+                        title={tm('vaUploadImage')}
                     >
                         <ImageIcon className="w-5 h-5" />
                     </button>
@@ -781,7 +785,7 @@ export function VoiceAssistantWeb({ hideFloatingButton = false }: { hideFloating
                             value={inputText}
                             onChange={(e) => setInputText(e.target.value)}
                             onKeyPress={(e) => e.key === 'Enter' && executeTextCommand(inputText)}
-                            placeholder="Mesajınızı yazın..."
+                            placeholder={tm('vaWriteMessage')}
                             className="w-full pl-4 pr-12 py-2.5 bg-slate-100 border-none rounded-2xl text-sm focus:ring-2 focus:ring-blue-500 transition-all"
                         />
                         <button

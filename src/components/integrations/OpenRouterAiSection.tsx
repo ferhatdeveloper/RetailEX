@@ -15,6 +15,7 @@ import {
 } from 'antd';
 import { ApiOutlined, RobotOutlined, SaveOutlined } from '@ant-design/icons';
 import { toast } from 'sonner';
+import { useLanguage } from '../../contexts/LanguageContext';
 import {
   DEFAULT_OPENROUTER_CONFIG,
   OPENROUTER_MODEL_PRESETS,
@@ -27,6 +28,7 @@ import { testOpenRouterConnection } from '../../services/openRouterService';
 const { Text, Title, Paragraph, Link } = Typography;
 
 export function OpenRouterAiSection() {
+  const { tm } = useLanguage();
   const [form] = Form.useForm<OpenRouterConfig>();
   const [testing, setTesting] = useState(false);
   const [saving, setSaving] = useState(false);
@@ -56,8 +58,8 @@ export function OpenRouterAiSection() {
       setEnabled(next.enabled);
       toast.success(
         next.enabled
-          ? 'OpenRouter kaydedildi — rapor AI ve asistan bu modeli kullanır.'
-          : 'OpenRouter ayarları kaydedildi (şimdilik kapalı).',
+          ? tm('orAiToastSavedEnabled')
+          : tm('orAiToastSavedDisabled'),
       );
     } catch (e: unknown) {
       if (e && typeof e === 'object' && 'errorFields' in e) return;
@@ -78,7 +80,7 @@ export function OpenRouterAiSection() {
         apiKey: String(values.apiKey || '').trim(),
       };
       if (!trial.apiKey) {
-        toast.error('Test için API anahtarı gerekli.');
+        toast.error(tm('orAiToastApiKeyRequired'));
         return;
       }
       const result = await testOpenRouterConnection(trial);
@@ -99,14 +101,14 @@ export function OpenRouterAiSection() {
       title={
         <Space>
           <RobotOutlined />
-          <span>Yapay Zeka — OpenRouter</span>
+          <span>{tm('orAiTitle')}</span>
           {enabled ? (
             <Text type="success" style={{ fontSize: 12 }}>
-              Açık
+              {tm('orAiOpen')}
             </Text>
           ) : (
             <Text type="secondary" style={{ fontSize: 12 }}>
-              Kapalı
+              {tm('orAiClosed')}
             </Text>
           )}
         </Space>
@@ -114,7 +116,7 @@ export function OpenRouterAiSection() {
       extra={
         <Space>
           <Button icon={<ApiOutlined />} loading={testing} onClick={() => void handleTest()}>
-            Bağlantı testi
+            {tm('orAiTestConnection')}
           </Button>
           <Button
             type="primary"
@@ -122,29 +124,29 @@ export function OpenRouterAiSection() {
             loading={saving}
             onClick={() => void handleSave()}
           >
-            Kaydet
+            {tm('orAiSave')}
           </Button>
         </Space>
       }
     >
       <Paragraph type="secondary" style={{ marginTop: 0 }}>
-        OpenRouter üzerinden GPT, Claude, Gemini ve diğer modellere tek API anahtarı ile erişim.
-        Rapor sohbeti ve AI asistan bu ayarı kullanır. Çağrılar güvenlik için{' '}
-        <Text code>pg_bridge</Text> üzerinden iletilir.
+        {tm('orAiDescription')}{' '}
+        <Text code>pg_bridge</Text> {tm('orAiDescriptionVia')}
       </Paragraph>
 
       <Alert
         type="info"
         showIcon
         style={{ marginBottom: 16 }}
-        message="Anahtar alma"
+        message={tm('orAiKeyAlertTitle')}
         description={
           <span>
-            Ücretsiz / ücretli anahtar:{' '}
+            {tm('orAiKeyAlertDescBefore')}{' '}
             <Link href="https://openrouter.ai/keys" target="_blank" rel="noreferrer">
               openrouter.ai/keys
             </Link>
-            . İsteğe bağlı sunucu env: <Text code>OPENROUTER_API_KEY</Text> (bridge).
+            {tm('orAiKeyAlertDescAfter')} <Text code>OPENROUTER_API_KEY</Text>{' '}
+            {tm('orAiKeyAlertDescBridge')}
           </span>
         }
       />
@@ -157,52 +159,56 @@ export function OpenRouterAiSection() {
       >
         <Row gutter={[16, 0]}>
           <Col xs={24} md={8}>
-            <Form.Item name="enabled" label="OpenRouter etkin" valuePropName="checked">
-              <Switch checkedChildren="Açık" unCheckedChildren="Kapalı" />
+            <Form.Item name="enabled" label={tm('orAiEnabledLabel')} valuePropName="checked">
+              <Switch checkedChildren={tm('orAiOpen')} unCheckedChildren={tm('orAiClosed')} />
             </Form.Item>
           </Col>
           <Col xs={24} md={16}>
             <Form.Item
               name="apiKey"
-              label="API anahtarı"
+              label={tm('orAiApiKeyLabel')}
               rules={[{ required: false }]}
-              extra="sk-or-… ile başlar. Tarayıcıda saklanır; istekler köprüye gider."
+              extra={tm('orAiApiKeyExtra')}
             >
               <Input.Password placeholder="sk-or-v1-…" autoComplete="off" />
             </Form.Item>
           </Col>
           <Col xs={24} md={12}>
-            <Form.Item name="model" label="Model" rules={[{ required: true, message: 'Model seçin' }]}>
+            <Form.Item
+              name="model"
+              label={tm('orAiModelLabel')}
+              rules={[{ required: true, message: tm('orAiModelRequired') }]}
+            >
               <Select
                 showSearch
                 allowClear={false}
                 options={OPENROUTER_MODEL_PRESETS}
                 optionFilterProp="label"
-                placeholder="Model"
+                placeholder={tm('orAiModelLabel')}
               />
             </Form.Item>
           </Col>
           <Col xs={24} md={12}>
             <Form.Item
               name="baseUrl"
-              label="API taban URL"
-              rules={[{ required: true, message: 'URL gerekli' }]}
+              label={tm('orAiBaseUrlLabel')}
+              rules={[{ required: true, message: tm('orAiUrlRequired') }]}
             >
               <Input placeholder="https://openrouter.ai/api/v1" />
             </Form.Item>
           </Col>
           <Col xs={24} md={8}>
-            <Form.Item name="temperature" label="Temperature (0–2)">
+            <Form.Item name="temperature" label={tm('orAiTemperatureLabel')}>
               <InputNumber min={0} max={2} step={0.1} style={{ width: '100%' }} />
             </Form.Item>
           </Col>
           <Col xs={24} md={8}>
-            <Form.Item name="maxTokens" label="Max tokens">
+            <Form.Item name="maxTokens" label={tm('orAiMaxTokensLabel')}>
               <InputNumber min={256} max={16000} step={256} style={{ width: '100%' }} />
             </Form.Item>
           </Col>
           <Col xs={24} md={8}>
-            <Form.Item name="siteName" label="Uygulama adı (X-Title)">
+            <Form.Item name="siteName" label={tm('orAiSiteNameLabel')}>
               <Input placeholder="RetailEX" />
             </Form.Item>
           </Col>
@@ -215,11 +221,11 @@ export function OpenRouterAiSection() {
       </Form>
 
       <Title level={5} style={{ marginTop: 8 }}>
-        Nerede kullanılır?
+        {tm('orAiWhereUsedTitle')}
       </Title>
       <ul style={{ margin: 0, paddingLeft: 18, color: 'rgba(0,0,0,0.65)' }}>
-        <li>Raporlar → AI sohbet paneli</li>
-        <li>İleride stok / yönetim asistanı (aynı servis)</li>
+        <li>{tm('orAiWhereUsedReports')}</li>
+        <li>{tm('orAiWhereUsedFuture')}</li>
       </ul>
     </Card>
   );

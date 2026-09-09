@@ -6,6 +6,7 @@ import {
   suggestQuickAddCode,
   type MasterDataQuickAddVariant,
 } from '../../utils/masterDataQuickAdd';
+import { useLanguage } from '../../contexts/LanguageContext';
 import { ModalLayer } from './FullscreenBodyPortal';
 
 export interface MasterDataItem {
@@ -49,6 +50,7 @@ export function MasterDataSelectionModal({
     onItemsChanged,
     enableQuickAdd = true,
 }: MasterDataSelectionModalProps) {
+    const { tm } = useLanguage();
     const [searchTerm, setSearchTerm] = useState('');
     const [showQuickAdd, setShowQuickAdd] = useState(false);
     const [quickCode, setQuickCode] = useState('');
@@ -92,11 +94,11 @@ export function MasterDataSelectionModal({
 
     const handleQuickAdd = async () => {
         if (quickAddVariant !== 'taxRate' && (!quickCode.trim() || !quickName.trim())) {
-            toast.error('Kod ve ad zorunludur.');
+            toast.error(tm('codeAndNameRequired'));
             return;
         }
         if (quickAddVariant === 'taxRate' && !quickCode.trim()) {
-            toast.error('Vergi oranı zorunludur.');
+            toast.error(tm('taxRateRequired'));
             return;
         }
         setQuickSaving(true);
@@ -114,14 +116,14 @@ export function MasterDataSelectionModal({
                     extra: quickAddExtra,
                 });
             }
-            if (!mapped) throw new Error('Kayıt oluşturulamadı');
+            if (!mapped) throw new Error(tm('recordCreateFailed'));
             setLocalItems((prev) => [...prev, mapped]);
             onItemsChanged?.();
             setQuickCode('');
             setQuickName('');
             setShowQuickAdd(false);
             if (!isMulti) onSelect(mapped);
-            toast.success('Kayıt eklendi');
+            toast.success(tm('recordAdded'));
         } catch (e: unknown) {
             toast.error(e instanceof Error ? e.message : String(e));
         } finally {
@@ -164,7 +166,7 @@ export function MasterDataSelectionModal({
                 <div className="p-3 border-b border-gray-200 flex items-center justify-between bg-gradient-to-r from-blue-700 to-blue-800 rounded-t-lg">
                     <h3 className="text-sm font-semibold text-white flex items-center gap-2">
                         <Database className="w-4 h-4" />
-                        {title} {isMulti && <span className="text-[10px] font-normal bg-white/20 px-1.5 py-0.5 rounded ml-1">Çoklu Seçim</span>}
+                        {title} {isMulti && <span className="text-[10px] font-normal bg-white/20 px-1.5 py-0.5 rounded ml-1">{tm('multiSelect')}</span>}
                     </h3>
                     <button
                         onClick={onClose}
@@ -179,7 +181,7 @@ export function MasterDataSelectionModal({
                         <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" />
                         <input
                             type="text"
-                            placeholder="Ara..."
+                            placeholder={tm('searchEllipsis')}
                             value={searchTerm}
                             onChange={(e: React.ChangeEvent<HTMLInputElement>) => setSearchTerm(e.target.value)}
                             className="w-full pl-9 pr-4 py-2 border border-gray-300 rounded text-sm focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 transition-all"
@@ -197,20 +199,20 @@ export function MasterDataSelectionModal({
                                 className="inline-flex items-center gap-1 text-xs font-medium text-blue-700 hover:text-blue-900"
                             >
                                 <Plus className="w-3 h-3" />
-                                Yeni ekle
+                                {tm('addNew')}
                             </button>
                         ) : (
                             <div className="flex flex-wrap items-end gap-2">
                                 <input
                                     value={quickCode}
                                     onChange={(e) => setQuickCode(e.target.value)}
-                                    placeholder={quickAddVariant === 'taxRate' ? 'Oran (%)' : 'Kod'}
+                                    placeholder={quickAddVariant === 'taxRate' ? tm('ratePercent') : tm('code')}
                                     className="flex-1 min-w-[80px] px-2 py-1.5 border rounded text-xs"
                                 />
                                 <input
                                     value={quickName}
                                     onChange={(e) => setQuickName(e.target.value)}
-                                    placeholder={quickAddVariant === 'taxRate' ? 'Açıklama' : 'Ad'}
+                                    placeholder={quickAddVariant === 'taxRate' ? tm('description') : tm('name')}
                                     className="flex-[2] min-w-[120px] px-2 py-1.5 border rounded text-xs"
                                 />
                                 <button
@@ -219,14 +221,14 @@ export function MasterDataSelectionModal({
                                     onClick={() => void handleQuickAdd()}
                                     className="px-3 py-1.5 bg-blue-600 text-white text-xs rounded disabled:opacity-50"
                                 >
-                                    Kaydet
+                                    {tm('save')}
                                 </button>
                                 <button
                                     type="button"
                                     onClick={() => setShowQuickAdd(false)}
                                     className="px-2 py-1.5 text-xs text-gray-600"
                                 >
-                                    İptal
+                                    {tm('cancel')}
                                 </button>
                             </div>
                         )}
@@ -237,7 +239,7 @@ export function MasterDataSelectionModal({
                     {filteredItems.length === 0 ? (
                         <div className="text-center py-10">
                             <Database className="w-12 h-12 mx-auto mb-2 text-gray-200" />
-                            <p className="text-sm text-gray-500 italic">Kayıt bulunamadı</p>
+                            <p className="text-sm text-gray-500 italic">{tm('noRecordsFound')}</p>
                             {canQuickAdd && searchTerm.trim() && !showQuickAdd && (
                                 <button
                                     type="button"
@@ -245,7 +247,7 @@ export function MasterDataSelectionModal({
                                     className="mt-4 inline-flex items-center gap-1 px-3 py-1.5 text-xs font-medium text-blue-700 border border-blue-200 rounded-md hover:bg-blue-50"
                                 >
                                     <Plus className="w-3 h-3" />
-                                    &quot;{searchTerm.trim()}&quot; olarak ekle
+                                    {tm('addAsQuoted').replace('{q}', searchTerm.trim())}
                                 </button>
                             )}
                         </div>
@@ -299,7 +301,7 @@ export function MasterDataSelectionModal({
                         onClick={onClose}
                         className="px-4 py-2 text-xs font-medium bg-white border border-gray-300 text-gray-700 rounded-md hover:bg-gray-50 transition-colors shadow-sm"
                     >
-                        {isMulti ? 'İptal' : 'Kapat'}
+                        {isMulti ? tm('cancel') : tm('close')}
                     </button>
                     {isMulti && (
                         <button
@@ -307,7 +309,7 @@ export function MasterDataSelectionModal({
                             className="px-4 py-2 text-xs font-medium bg-blue-600 text-white rounded-md hover:bg-blue-700 transition-colors shadow-sm flex items-center gap-1"
                         >
                             <Check className="w-3 h-3" />
-                            Tamam ({selectedItems.length})
+                            {tm('okWithCount').replace('{n}', String(selectedItems.length))}
                         </button>
                     )}
                 </div>

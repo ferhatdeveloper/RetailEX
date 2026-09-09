@@ -19,6 +19,7 @@ import {
   Receipt
 } from 'lucide-react';
 import { useFirmaDonem } from '../../contexts/FirmaDonemContext';
+import { useLanguage } from '../../contexts/LanguageContext';
 import { toast } from 'sonner';
 import { organizationAPI, storeApiService, warehouseAPI, fetchCurrentAccounts, createCurrentAccount, Store as StoreType, Warehouse as WarehouseType } from '../../services/api';
 import { logger } from '../../services/loggingService';
@@ -168,6 +169,7 @@ const TreeItem = ({ node, level = 0, onToggle, onSelect, onAdd, selectedId, acti
 };
 
 export function CompanySetup() {
+  const { tm } = useLanguage();
   const { selectedFirm, selectedPeriod, setSelectedFirm, setSelectedPeriod, setFirmAsDefault, setPeriodAsDefault } = useFirmaDonem();
 
   // Data State
@@ -221,7 +223,7 @@ export function CompanySetup() {
     try {
       setLoading(true);
       const sourceCompany = companies.find(c => c.id === copySourceId);
-      if (!sourceCompany) throw new Error('Kaynak firma bulunamadı');
+      if (!sourceCompany) throw new Error(tm('coSetupSourceNotFound'));
 
       // 1. Create New Firm
       const newFirmData = {
@@ -249,20 +251,20 @@ export function CompanySetup() {
               created_at: undefined
             });
           }
-          toast.success('Cari hesaplar kopyalandı');
+          toast.success(tm('coSetupAccountsCopied'));
         } catch (e) {
           logger.crudError('CompanySetup', 'copyAccounts', e);
-          toast.error('Cari hesaplar kopyalanırken hata oluştu');
+          toast.error(tm('coSetupAccountsCopyError'));
         }
       }
 
-      toast.success('Firma başarıyla kopyalandı');
+      toast.success(tm('coSetupFirmCopied'));
       setShowCopyModal(false);
       loadAllData();
 
     } catch (e: any) {
       logger.crudError('CompanySetup', 'copyFirm', e);
-      toast.error('Kopyalama hatası: ' + e.message);
+      toast.error(tm('coSetupCopyError') + e.message);
     } finally {
       setLoading(false);
     }
@@ -270,7 +272,7 @@ export function CompanySetup() {
 
   const handleSaveReceiptInfo = async () => {
     if (!effectiveFirmNr) {
-      toast.error('Önce firma kodunu kaydedin.');
+      toast.error(tm('coSetupSaveFirmCodeFirst'));
       return;
     }
     setSavingReceipt(true);
@@ -286,9 +288,9 @@ export function CompanySetup() {
         },
         effectiveFirmNr
       );
-      toast.success('Fiş ve fatura bilgileri kaydedildi.');
+      toast.success(tm('coSetupReceiptSaved'));
     } catch (e) {
-      toast.error('Kaydetme başarısız.');
+      toast.error(tm('coSetupSaveFailed'));
     } finally {
       setSavingReceipt(false);
     }
@@ -348,7 +350,7 @@ export function CompanySetup() {
 
     } catch (error) {
       console.error('Error loading data:', error);
-      toast.error('Veriler yüklenirken hata oluştu');
+      toast.error(tm('coSetupLoadError'));
     } finally {
       setLoading(false);
     }
@@ -379,7 +381,7 @@ export function CompanySetup() {
         children: [
           {
             id: `folder-branch-${comp.id}`,
-            label: 'Şubeler',
+            label: tm('coSetupBranches'),
             type: 'folder-branch',
             icon: Store,
             parentId: comp.id,
@@ -394,7 +396,7 @@ export function CompanySetup() {
               children: [
                 {
                   id: `folder-wh-${store.id}`,
-                  label: 'Depolar / Ambarlar',
+                  label: tm('coSetupWarehouses'),
                   type: 'folder-warehouse',
                   icon: Warehouse,
                   isExpanded: expandedNodes.has(`folder-wh-${store.id}`),
@@ -411,7 +413,7 @@ export function CompanySetup() {
           },
           {
             id: `folder-period-${comp.id}`,
-            label: 'Dönemler',
+            label: tm('coSetupPeriods'),
             type: 'folder-period',
             icon: Calendar,
             parentId: comp.id,
@@ -471,7 +473,7 @@ export function CompanySetup() {
         await organizationAPI.saveFirm(formData);
         eTransformService.resetConfigCache();
         emitInvalidate('firms');
-        toast.success('Firma başarıyla kaydedildi');
+        toast.success(tm('coSetupFirmSaved'));
       }
       else if (selectedNode?.type === 'branch' || (selectedNode?.type === 'folder-branch' && mode === 'create')) {
         if (mode === 'create') {
@@ -479,7 +481,7 @@ export function CompanySetup() {
         } else {
           await storeApiService.updateStore(selectedNode!.id, formData);
         }
-        toast.success('Şube başarıyla kaydedildi');
+        toast.success(tm('coSetupBranchSaved'));
       }
       else if (selectedNode?.type === 'warehouse' || (selectedNode?.type === 'folder-warehouse' && mode === 'create')) {
         if (mode === 'create') {
@@ -487,28 +489,28 @@ export function CompanySetup() {
         } else {
           await warehouseAPI.update(selectedNode!.id, formData);
         }
-        toast.success('Depo başarıyla kaydedildi');
+        toast.success(tm('coSetupWarehouseSaved'));
       }
       else if (selectedNode?.type === 'period' || (selectedNode?.type === 'folder-period' && mode === 'create')) {
         await organizationAPI.savePeriod({
           ...formData,
           firma_id: mode === 'create' ? selectedNode?.parentId : formData.firma_id
         });
-        toast.success('Dönem başarıyla kaydedildi');
+        toast.success(tm('coSetupPeriodSaved'));
       }
 
       setMode('view');
       loadAllData();
     } catch (error: any) {
       logger.crudError('CompanySetup', 'save', error);
-      toast.error('İşlem başarısız: ' + error.message);
+      toast.error(tm('coSetupOpFailed') + error.message);
     } finally {
       setLoading(false);
     }
   };
 
   const handleDelete = async () => {
-    if (!confirm('Bu kaydı silmek istediğinize emin misiniz?')) return;
+    if (!confirm(tm('coSetupDeleteConfirm'))) return;
 
     try {
       if (selectedNode?.type === 'company') {
@@ -522,17 +524,17 @@ export function CompanySetup() {
         await warehouseAPI.delete(selectedNode.id);
       }
       else {
-        toast.info('Bu öğe için silme işlemi henüz PostgreSQL tarafında desteklenmiyor.');
+        toast.info(tm('coSetupDeleteUnsupported'));
         return;
       }
 
-      toast.success('Başarıyla silindi');
+      toast.success(tm('coSetupDeleted'));
       setMode('view');
       loadAllData();
       setSelectedNode(null);
     } catch (e) {
       logger.crudError('CompanySetup', 'delete', e);
-      toast.error('Silme hatası');
+      toast.error(tm('coSetupDeleteError'));
     }
   };
 
@@ -541,7 +543,7 @@ export function CompanySetup() {
       return (
         <div className="h-full flex flex-col items-center justify-center text-gray-400">
           <Building2 className="w-16 h-16 mb-4 opacity-20" />
-          <p>İşlem yapmak için soldaki ağaçtan bir öğe seçin</p>
+          <p>{tm('coSetupSelectTreeHint')}</p>
         </div>
       );
     }
@@ -557,7 +559,7 @@ export function CompanySetup() {
             </div>
             <div>
               <h2 className="text-xl font-bold text-gray-900">{selectedNode.label}</h2>
-              <p className="text-gray-500">Bu klasör altındaki öğeleri yönetebilirsiniz.</p>
+              <p className="text-gray-500">{tm('coSetupFolderHint')}</p>
             </div>
           </div>
 
@@ -577,7 +579,7 @@ export function CompanySetup() {
             className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 flex items-center gap-2"
           >
             <Plus className="w-4 h-4" />
-            Yeni Ekle
+            {tm('coSetupAddNew')}
           </button>
         </div>
       );
@@ -585,7 +587,7 @@ export function CompanySetup() {
 
     const renderFields = () => {
       const gibMode = formData.gib_integration_mode || 'mock';
-      if (selectedNode.type === 'company' || (selectedNode.label === 'Yeni Firma')) {
+      if (selectedNode.type === 'company' || (selectedNode.label === tm('coSetupNewFirm'))) {
         return (
           <>
             {mode === 'create' && IS_TAURI && (
@@ -919,7 +921,7 @@ export function CompanySetup() {
               </div>
               <div className="pt-2">
                 <button type="button" onClick={handleSaveReceiptInfo} disabled={savingReceipt || !firmNr} className="px-4 py-2 bg-amber-600 text-white rounded-lg hover:bg-amber-700 disabled:opacity-50 flex items-center gap-2 text-sm">
-                  <Save className="w-4 h-4" /> {savingReceipt ? 'Kaydediliyor...' : 'Fiş/Fatura Bilgilerini Kaydet'}
+                  <Save className="w-4 h-4" /> {savingReceipt ? tm('saving') : tm('coSetupSaveReceipt')}
                 </button>
                 {!firmNr && <p className="text-xs text-amber-700 mt-1">Firma kodunu kaydettikten sonra fiş bilgilerini kaydedebilirsiniz.</p>}
               </div>
@@ -935,31 +937,31 @@ export function CompanySetup() {
           <div className="flex items-center gap-3">
             {selectedNode.icon && <selectedNode.icon className="w-6 h-6 text-gray-400" />}
             <h2 className="text-xl font-bold text-gray-800">
-              {mode === 'create' ? (`Yeni ${selectedNode.type.replace('folder-', '')} Kaydı`) : (formData.name || formData.title || formData.firma_adi || selectedNode.label)}
+              {mode === 'create' ? tm('coSetupNewRecord').replace('{type}', selectedNode.type.replace('folder-', '')) : (formData.name || formData.title || formData.firma_adi || selectedNode.label)}
             </h2>
           </div>
           <div className="flex gap-2">
             {mode === 'view' && selectedNode.type.startsWith('folder') && (
               <button onClick={() => handleAddNode(selectedNode)} className="px-3 py-1.5 bg-blue-600 text-white hover:bg-blue-700 rounded-lg flex items-center gap-2 text-sm">
-                <Plus className="w-4 h-4" /> Yeni Ekle
+                <Plus className="w-4 h-4" /> {tm('coSetupAddNew')}
               </button>
             )}
             {mode === 'view' && !selectedNode.type.startsWith('folder') ? (
               <>
                 <button onClick={() => setMode('edit')} className="px-3 py-1.5 border hover:bg-gray-50 rounded-lg flex items-center gap-2 text-sm">
-                  <Settings className="w-4 h-4" /> Düzenle
+                  <Settings className="w-4 h-4" /> {tm('edit')}
                 </button>
                 <button onClick={handleDelete} className="px-3 py-1.5 border border-red-200 text-red-600 hover:bg-red-50 rounded-lg flex items-center gap-2 text-sm">
-                  <Trash2 className="w-4 h-4" /> Sil
+                  <Trash2 className="w-4 h-4" /> {tm('delete')}
                 </button>
                 {selectedNode?.type === 'company' && (
                   <>
                     <button onClick={() => { setCopySourceId(selectedNode.id); setShowCopyModal(true); }} className="px-3 py-1.5 border border-blue-200 text-blue-600 hover:bg-blue-50 rounded-lg flex items-center gap-2 text-sm">
-                      <Copy className="w-4 h-4" /> Kopyala
+                      <Copy className="w-4 h-4" /> {tm('coSetupCopy')}
                     </button>
                     {(selectedFirm?.id !== selectedNode.id) && (
-                      <button onClick={() => { const firm = companies.find(c => c.id === selectedNode.id); if (firm) { setFirmAsDefault(firm.id); toast.success('Çalışma firması olarak ayarlandı'); } }} className="px-3 py-1.5 bg-green-600 text-white hover:bg-green-700 rounded-lg flex items-center gap-2 text-sm font-medium">
-                        <Settings className="w-4 h-4" /> Çalışma Firması Yap
+                      <button onClick={() => { const firm = companies.find(c => c.id === selectedNode.id); if (firm) { setFirmAsDefault(firm.id); toast.success(tm('coSetupSetWorkingFirm')); } }} className="px-3 py-1.5 bg-green-600 text-white hover:bg-green-700 rounded-lg flex items-center gap-2 text-sm font-medium">
+                        <Settings className="w-4 h-4" /> {tm('coSetupMakeWorkingFirm')}
                       </button>
                     )}
                   </>
@@ -1007,13 +1009,13 @@ export function CompanySetup() {
     <div className="flex h-full bg-white">
       <div className="w-80 border-r bg-gray-50 flex flex-col">
         <div className="p-4 border-b bg-white">
-          <h2 className="font-bold text-gray-800 flex items-center gap-2"><Building2 className="w-5 h-5 text-blue-600" /> Organizasyon</h2>
+          <h2 className="font-bold text-gray-800 flex items-center gap-2"><Building2 className="w-5 h-5 text-blue-600" /> {tm('coSetupOrgTitle')}</h2>
         </div>
         <div className="flex-1 overflow-auto py-2">
           {loading ? (
-            <div className="p-4 text-center text-gray-500 text-sm">Yükleniyor...</div>
+            <div className="p-4 text-center text-gray-500 text-sm">{tm('loading')}</div>
           ) : treeData.length === 0 ? (
-            <div className="p-4 text-center text-gray-500 text-sm">Kayıt bulunamadı.</div>
+            <div className="p-4 text-center text-gray-500 text-sm">{tm('coSetupNoRecords')}</div>
           ) : (
             treeData.map(node => (
               <TreeItem key={node.id} node={node} onToggle={toggleNode} onSelect={handleSelectNode} onAdd={handleAddNode} selectedId={selectedNode?.id || null} activeId={selectedFirm?.id || null} />

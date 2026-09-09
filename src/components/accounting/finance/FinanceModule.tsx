@@ -2,12 +2,14 @@ import { useState } from 'react';
 import { Banknote, TrendingUp, TrendingDown, CreditCard, Calendar, Download, Filter } from 'lucide-react';
 import type { Sale } from '../../../App';
 import { formatNumber } from '../../../utils/formatNumber';
+import { useLanguage } from '../../../contexts/LanguageContext';
 
 interface FinanceModuleProps {
   sales: Sale[];
 }
 
 export function FinanceModule({ sales }: FinanceModuleProps) {
+  const { tm } = useLanguage();
   const [dateFilter, setDateFilter] = useState<'today' | 'week' | 'month' | 'all'>('today');
   const [paymentFilter, setPaymentFilter] = useState<string>('Tümü');
 
@@ -90,11 +92,11 @@ export function FinanceModule({ sales }: FinanceModuleProps) {
         <div className="flex items-center justify-between">
           <div className="flex items-center gap-2">
             <Banknote className="w-4 h-4" />
-            <h2 className="text-sm">Finans & Kasa Yönetimi</h2>
+            <h2 className="text-sm">{tm('financeAndCashManagement')}</h2>
           </div>
           <button className="flex items-center gap-1 px-2 py-1 bg-white/10 hover:bg-white/20 transition-colors text-[10px]">
             <Download className="w-3 h-3" />
-            Z Raporu
+            {tm('zRaporu')}
           </button>
         </div>
       </div>
@@ -143,7 +145,7 @@ export function FinanceModule({ sales }: FinanceModuleProps) {
         {/* Kurumsal Özet Panel */}
         <div className="bg-white border border-gray-300 rounded mb-3">
           <div className="bg-[#E3F2FD] border-b border-gray-300 px-3 py-1.5">
-            <h3 className="text-[11px] text-gray-700">Finansal Özet</h3>
+            <h3 className="text-[11px] text-gray-700">{tm('financialSummary')}</h3>
           </div>
           <div className="grid grid-cols-4 divide-x divide-gray-200">
             <div className="p-3">
@@ -191,7 +193,7 @@ export function FinanceModule({ sales }: FinanceModuleProps) {
         {/* Payment Method Breakdown */}
         <div className="bg-white border border-gray-300 rounded mb-3">
           <div className="bg-[#E3F2FD] border-b border-gray-300 px-3 py-1.5">
-            <h3 className="text-[11px] text-gray-700">Ödeme Yöntemi Dağılımı</h3>
+            <h3 className="text-[11px] text-gray-700">{tm('paymentMethodDistribution')}</h3>
           </div>
           <div className="p-3">
             <div className="grid grid-cols-4 gap-2">
@@ -214,7 +216,7 @@ export function FinanceModule({ sales }: FinanceModuleProps) {
         {/* Z Report */}
         <div className="bg-white rounded-xl shadow-lg border border-gray-200">
           <div className="p-6 border-b border-gray-200 bg-gradient-to-r from-gray-50 to-gray-100">
-            <h3 className="text-xl">Z Raporu - Kasa Kapama</h3>
+            <h3 className="text-xl">{tm('zReportCashClosing')}</h3>
             <p className="text-sm text-gray-600 mt-1">Günlük kasa özeti</p>
           </div>
           <div className="p-6">
@@ -302,7 +304,7 @@ export function FinanceModule({ sales }: FinanceModuleProps) {
         {/* Transaction List */}
         <div className="bg-white rounded-xl shadow-lg border border-gray-200">
           <div className="p-6 border-b border-gray-200">
-            <h3 className="text-xl">İşlem Detayları</h3>
+            <h3 className="text-xl">{tm('transactionDetailsTitle')}</h3>
             <p className="text-sm text-gray-600 mt-1">Tüm satış hareketleri</p>
           </div>
           <div className="overflow-auto">

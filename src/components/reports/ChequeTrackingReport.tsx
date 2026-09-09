@@ -69,12 +69,12 @@ function exportCsv(fileName: string, headers: string[], rows: string[][]): void 
     URL.revokeObjectURL(url);
 }
 
-const STATUS_LABEL: Record<ChequeStatus, { tr: string; en: string; ar: string; ku: string }> = {
-    pending: { tr: 'Tahsil Edilecek', en: 'Pending', ar: 'قيد التحصيل', ku: 'چاوەڕوان' },
-    collected: { tr: 'Tahsil Edildi', en: 'Collected', ar: 'تم التحصيل', ku: 'وەرگیراوە' },
-    endorsed: { tr: 'Ciro Edildi', en: 'Endorsed', ar: 'مظهر', ku: 'گوزەراوە' },
-    bounced: { tr: 'Karşılıksız', en: 'Bounced', ar: 'مرتجع', ku: 'بێ بایەخ' },
-    protested: { tr: 'Protestolu', en: 'Protested', ar: 'محتجز', ku: 'ڕەتکراو' },
+const STATUS_KEY: Record<ChequeStatus, string> = {
+    pending: 'chequeStatusPending',
+    collected: 'chequeStatusCollected',
+    endorsed: 'chequeStatusEndorsed',
+    bounced: 'chequeStatusBounced',
+    protested: 'chequeStatusProtested',
 };
 
 export function ChequeTrackingReport() {
@@ -191,7 +191,11 @@ export function ChequeTrackingReport() {
         };
     }, [filtered]);
 
-    const statusLabel = (s: ChequeStatus) => STATUS_LABEL[s]?.tr || s;
+    const statusLabel = (s: ChequeStatus) => tm(STATUS_KEY[s]) || s;
+    const typeLabel = (t: 'cheque' | 'promissory') =>
+        t === 'cheque' ? tm('chequeTypeCheque') : tm('chequeTypePromissory');
+    const partyLabel = (p: 'customer' | 'supplier') =>
+        p === 'customer' ? tm('customer') : tm('supplier');
     const panel = darkMode ? 'bg-gray-800 border-gray-700 text-gray-100' : 'bg-white border-gray-200 text-gray-900';
     const muted = darkMode ? 'text-gray-400' : 'text-gray-500';
     const inputCls = darkMode ? 'bg-gray-900 border-gray-600' : 'bg-white border-gray-300';
@@ -215,10 +219,10 @@ export function ChequeTrackingReport() {
                     <div>
                         <h3 className="flex items-center gap-2 text-lg font-semibold">
                             <FileText className="h-4 w-4" />
-                            {tm('cekSenetTakibi') || 'Çek/Senet Takibi'}
+                            {tm('cekSenetTakibi')}
                         </h3>
                         <p className={`text-sm ${muted}`}>
-                            Vade, durum ve cari bazlı çek/senet hareketlerini izleyin.
+                            {tm('cekSenetSubtitle')}
                         </p>
                     </div>
                     <div className="flex flex-wrap items-center gap-2">
@@ -230,30 +234,40 @@ export function ChequeTrackingReport() {
                             }`}
                         >
                             {loading ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <RefreshCw className="h-3.5 w-3.5" />}
-                            {tm('refresh') || 'Yenile'}
+                            {tm('refresh')}
                         </button>
                         <button
                             type="button"
                             onClick={() =>
                                 exportCsv(
                                     'cek_senet_takibi',
-                                    ['Tip', 'Belge No', 'Tür', 'Cari', 'Tutar', 'Vade', 'Banka', 'Durum', 'Açıklama'],
+                                    [
+                                        tm('type'),
+                                        tm('documentNo'),
+                                        tm('chequePartyType'),
+                                        tm('customer'),
+                                        tm('amount'),
+                                        tm('date'),
+                                        tm('chequeColBank'),
+                                        tm('status'),
+                                        tm('description'),
+                                    ],
                                     filtered.map((r) => [
-                                        r.type === 'cheque' ? 'Çek' : 'Senet',
+                                        typeLabel(r.type),
                                         r.documentNo,
-                                        r.partyType === 'customer' ? 'Müşteri' : 'Tedarikçi',
+                                        partyLabel(r.partyType),
                                         r.partyName,
                                         String(r.amount),
                                         r.dueDate,
                                         r.bankName || '',
-                                        r.status,
+                                        statusLabel(r.status),
                                         r.notes || '',
                                     ]),
                                 )
                             }
                             className="inline-flex items-center gap-1.5 rounded-lg bg-emerald-600 px-3 py-2 text-xs font-bold text-white hover:bg-emerald-700"
                         >
-                            Excel / CSV
+                            {tm('chequeExcelCsv')}
                         </button>
                     </div>
                 </div>
@@ -261,7 +275,7 @@ export function ChequeTrackingReport() {
                 <div className="mt-4 flex flex-wrap items-end gap-3">
                     <div>
                         <label className={`mb-1 block text-[10px] font-bold uppercase tracking-wider ${muted}`}>
-                            Başlangıç
+                            {tm('startDate')}
                         </label>
                         <input
                             type="date"
@@ -272,7 +286,7 @@ export function ChequeTrackingReport() {
                     </div>
                     <div>
                         <label className={`mb-1 block text-[10px] font-bold uppercase tracking-wider ${muted}`}>
-                            Bitiş
+                            {tm('endDate')}
                         </label>
                         <input
                             type="date"
@@ -283,14 +297,14 @@ export function ChequeTrackingReport() {
                     </div>
                     <div>
                         <label className={`mb-1 block text-[10px] font-bold uppercase tracking-wider ${muted}`}>
-                            Durum
+                            {tm('status')}
                         </label>
                         <select
                             value={statusFilter}
                             onChange={(e) => setStatusFilter(e.target.value as StatusFilter)}
                             className={`rounded-lg border px-2 py-2 text-sm ${inputCls}`}
                         >
-                            <option value="all">Tümü</option>
+                            <option value="all">{tm('all')}</option>
                             <option value="pending">{statusLabel('pending')}</option>
                             <option value="collected">{statusLabel('collected')}</option>
                             <option value="endorsed">{statusLabel('endorsed')}</option>
@@ -300,30 +314,30 @@ export function ChequeTrackingReport() {
                     </div>
                     <div>
                         <label className={`mb-1 block text-[10px] font-bold uppercase tracking-wider ${muted}`}>
-                            Tür
+                            {tm('type')}
                         </label>
                         <select
                             value={typeFilter}
                             onChange={(e) => setTypeFilter(e.target.value as TypeFilter)}
                             className={`rounded-lg border px-2 py-2 text-sm ${inputCls}`}
                         >
-                            <option value="all">Çek + Senet</option>
-                            <option value="cheque">Çek</option>
-                            <option value="promissory">Senet</option>
+                            <option value="all">{tm('chequeTypeBoth')}</option>
+                            <option value="cheque">{tm('chequeTypeCheque')}</option>
+                            <option value="promissory">{tm('chequeTypePromissory')}</option>
                         </select>
                     </div>
                     <div>
                         <label className={`mb-1 block text-[10px] font-bold uppercase tracking-wider ${muted}`}>
-                            Cari Türü
+                            {tm('chequePartyType')}
                         </label>
                         <select
                             value={partyFilter}
                             onChange={(e) => setPartyFilter(e.target.value as PartyFilter)}
                             className={`rounded-lg border px-2 py-2 text-sm ${inputCls}`}
                         >
-                            <option value="all">Müşteri + Tedarikçi</option>
-                            <option value="customer">Müşteri</option>
-                            <option value="supplier">Tedarikçi</option>
+                            <option value="all">{tm('chequePartyBoth')}</option>
+                            <option value="customer">{tm('customer')}</option>
+                            <option value="supplier">{tm('supplier')}</option>
                         </select>
                     </div>
                 </div>
@@ -331,37 +345,37 @@ export function ChequeTrackingReport() {
 
             <div className="grid grid-cols-2 gap-3 md:grid-cols-6">
                 <div className={`rounded-lg border p-3 ${panel}`}>
-                    <p className={`text-[10px] font-bold uppercase tracking-wide ${muted}`}>Bekleyen</p>
+                    <p className={`text-[10px] font-bold uppercase tracking-wide ${muted}`}>{tm('chequePendingTotal')}</p>
                     <p className="mt-1 text-lg font-bold text-amber-600">
                         {formatNumber(totals.pending, 2, false)} {currency}
                     </p>
                 </div>
                 <div className={`rounded-lg border p-3 ${panel}`}>
-                    <p className={`text-[10px] font-bold uppercase tracking-wide ${muted}`}>Tahsil Edilen</p>
+                    <p className={`text-[10px] font-bold uppercase tracking-wide ${muted}`}>{tm('chequeCollectedTotal')}</p>
                     <p className="mt-1 text-lg font-bold text-emerald-600">
                         {formatNumber(totals.collected, 2, false)} {currency}
                     </p>
                 </div>
                 <div className={`rounded-lg border p-3 ${panel}`}>
-                    <p className={`text-[10px] font-bold uppercase tracking-wide ${muted}`}>Ciro Edilen</p>
+                    <p className={`text-[10px] font-bold uppercase tracking-wide ${muted}`}>{tm('chequeEndorsedTotal')}</p>
                     <p className="mt-1 text-lg font-bold text-blue-600">
                         {formatNumber(totals.endorsed, 2, false)} {currency}
                     </p>
                 </div>
                 <div className={`rounded-lg border p-3 ${panel}`}>
-                    <p className={`text-[10px] font-bold uppercase tracking-wide ${muted}`}>Karşılıksız</p>
+                    <p className={`text-[10px] font-bold uppercase tracking-wide ${muted}`}>{tm('chequeStatusBounced')}</p>
                     <p className="mt-1 text-lg font-bold text-red-600">
                         {formatNumber(totals.bounced, 2, false)} {currency}
                     </p>
                 </div>
                 <div className={`rounded-lg border p-3 ${panel}`}>
-                    <p className={`text-[10px] font-bold uppercase tracking-wide ${muted}`}>Protestolu</p>
+                    <p className={`text-[10px] font-bold uppercase tracking-wide ${muted}`}>{tm('chequeStatusProtested')}</p>
                     <p className="mt-1 text-lg font-bold text-rose-600">
                         {formatNumber(totals.protested, 2, false)} {currency}
                     </p>
                 </div>
                 <div className={`rounded-lg border p-3 ${panel}`}>
-                    <p className={`text-[10px] font-bold uppercase tracking-wide ${muted}`}>Toplam</p>
+                    <p className={`text-[10px] font-bold uppercase tracking-wide ${muted}`}>{tm('total')}</p>
                     <p className="mt-1 text-lg font-bold">
                         {formatNumber(totals.total, 2, false)} {currency}
                     </p>
@@ -371,9 +385,7 @@ export function ChequeTrackingReport() {
             <div className={`flex items-start gap-2 rounded-lg border p-3 ${darkMode ? 'border-amber-700/40 bg-amber-900/20 text-amber-200' : 'border-amber-200 bg-amber-50 text-amber-800'}`}>
                 <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0" />
                 <div className="text-sm">
-                    <strong>TODO:</strong> RetailEX şemasında çek/senet tablosu yoktur.
-                    Bu rapor <code className="font-mono text-xs">cheques</code> tablosu eklendiğinde otomatik dolacak şekilde tasarlandı.
-                    Şu an kayıt gösterilemiyor; filtreler ve toplam kartlar UI test amaçlı aktiftir.
+                    <strong>TODO:</strong> {tm('chequeSchemaTodo')}
                 </div>
             </div>
 
@@ -381,21 +393,21 @@ export function ChequeTrackingReport() {
                 <table className="w-full min-w-[960px] text-sm">
                     <thead className={`sticky top-0 ${thCls}`}>
                         <tr>
-                            <th className="px-3 py-2 text-left">Tip</th>
-                            <th className="px-3 py-2 text-left">Belge No</th>
-                            <th className="px-3 py-2 text-left">Cari</th>
-                            <th className="px-3 py-2 text-right">Tutar</th>
-                            <th className="px-3 py-2 text-left">Vade</th>
-                            <th className="px-3 py-2 text-left">Banka</th>
-                            <th className="px-3 py-2 text-left">Durum</th>
-                            <th className="px-3 py-2 text-left">Açıklama</th>
+                            <th className="px-3 py-2 text-left">{tm('type')}</th>
+                            <th className="px-3 py-2 text-left">{tm('documentNo')}</th>
+                            <th className="px-3 py-2 text-left">{tm('customer')}</th>
+                            <th className="px-3 py-2 text-right">{tm('amount')}</th>
+                            <th className="px-3 py-2 text-left">{tm('date')}</th>
+                            <th className="px-3 py-2 text-left">{tm('chequeColBank')}</th>
+                            <th className="px-3 py-2 text-left">{tm('status')}</th>
+                            <th className="px-3 py-2 text-left">{tm('description')}</th>
                         </tr>
                     </thead>
                     <tbody>
                         {filtered.length === 0 && !loading && (
                             <tr>
                                 <td colSpan={8} className="px-3 py-8 text-center opacity-60">
-                                    Henüz çek/senet kaydı yok.
+                                    {tm('chequeEmpty')}
                                 </td>
                             </tr>
                         )}
@@ -404,12 +416,12 @@ export function ChequeTrackingReport() {
                                 key={r.id}
                                 className={darkMode ? 'border-t border-gray-700' : 'border-t border-gray-100'}
                             >
-                                <td className="px-3 py-2 font-medium">{r.type === 'cheque' ? 'Çek' : 'Senet'}</td>
+                                <td className="px-3 py-2 font-medium">{typeLabel(r.type)}</td>
                                 <td className="px-3 py-2 font-mono text-xs">{r.documentNo}</td>
                                 <td className="px-3 py-2">
                                     <div className="font-medium">{r.partyName}</div>
                                     <div className="text-xs opacity-60">
-                                        {r.partyCode} · {r.partyType === 'customer' ? 'Müşteri' : 'Tedarikçi'}
+                                        {r.partyCode} · {partyLabel(r.partyType)}
                                     </div>
                                 </td>
                                 <td className="px-3 py-2 text-right font-semibold">

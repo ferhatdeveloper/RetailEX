@@ -71,9 +71,10 @@ export function POSProductGrid({
   const [searchTerm, setSearchTerm] = useState('');
   const containerRef = useRef<HTMLDivElement>(null);
   const [containerSize, setContainerSize] = useState({ width: 800, height: 600 });
+  const { t, tm } = useLanguage();
 
   const filteredProducts = products.filter(p => {
-    const categoryMatch = selectedCategory === 'Tümü' || p.category === selectedCategory;
+    const categoryMatch = selectedCategory === t.allCategories || selectedCategory === 'Tümü' || selectedCategory === tm('posAllShort') || p.category === selectedCategory;
     const searchMatch = searchTerm === '' ||
       (p.name || '').toLowerCase().includes(searchTerm.toLowerCase()) ||
       (p.barcode || '').toLowerCase().includes(searchTerm.toLowerCase());
@@ -83,8 +84,6 @@ export function POSProductGrid({
   const handleSearch = () => {
     setSearchTerm(barcodeInput);
   };
-
-  const { t } = useLanguage();
 
   // Measure container size for virtual scrolling
   useEffect(() => {
@@ -115,7 +114,7 @@ export function POSProductGrid({
           <div className="relative flex-1">
             <input
               type="text"
-              placeholder="Barkod okut veya ürün ara... (Enter ile hızlı satış)"
+              placeholder={tm('posBarcodeOrSearchPlaceholder')}
               value={barcodeInput}
               onChange={(e) => onBarcodeInputChange(e.target.value)}
               onKeyDown={onBarcodeEnter}
@@ -138,19 +137,19 @@ export function POSProductGrid({
           <button
             onClick={onToggleNumpad}
             className="px-3 py-3 bg-blue-600 text-white border border-blue-700 hover:bg-blue-700 transition-colors flex items-center gap-1.5 whitespace-nowrap"
-            title="Numerik Klavye"
+            title={tm('posNumericKeypad')}
           >
             <Calculator className="w-4 h-4" />
-            <span className="text-sm">Numerik</span>
+            <span className="text-sm">{tm('posNumericShort')}</span>
           </button>
 
           <button
             onClick={onStockQueryClick}
             className="px-3 py-3 bg-blue-600 text-white border border-blue-700 hover:bg-blue-700 transition-colors flex items-center gap-1.5 whitespace-nowrap"
-            title="Ürün Sorgula"
+            title={t.stockQuery}
           >
             <Search className="w-4 h-4" />
-            <span className="text-sm">Sorgula</span>
+            <span className="text-sm">{tm('posQuery')}</span>
           </button>
         </div>
       </div>
@@ -286,7 +285,7 @@ export function POSProductGrid({
                     {product.variants && product.variants.length > 0 && (
                       <span className="inline-flex items-center gap-1 px-1.5 py-0.5 bg-blue-100 text-blue-600 rounded text-xs">
                         <Package className="w-3 h-3" />
-                        Varyantlı
+                        {tm('posHasVariants')}
                       </span>
                     )}
                   </div>
@@ -313,7 +312,7 @@ export function POSProductGrid({
           <div className="flex items-center justify-center h-full text-gray-400">
             <div className="text-center">
               <Package className="w-12 h-12 mx-auto mb-2 opacity-30" />
-              <p>Ürün bulunamadı</p>
+              <p>{tm('productNotFound')}</p>
             </div>
           </div>
         )}

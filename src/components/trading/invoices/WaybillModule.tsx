@@ -146,7 +146,7 @@ function mapInvoiceToWaybill(inv: Invoice): Waybill {
 // ===== COMPONENT =====
 
 export function WaybillModule() {
-  const { t } = useLanguage();
+  const { tm } = useLanguage();
   const { selectedFirma, selectedDonem } = useFirmaDonem();
 
   // State
@@ -162,9 +162,9 @@ export function WaybillModule() {
     if (selectedFirma && selectedDonem) {
       fetchWaybills({ page: 1, pageSize: 1000 })
         .then((res) => setWaybills((res.data || []).map(mapInvoiceToWaybill)))
-        .catch(() => toast.error('İrsaliyeler yüklenirken hata oluştu'));
+        .catch(() => toast.error(tm('errorLoadingWaybills')));
     }
-  }, [selectedFirma, selectedDonem]);
+  }, [selectedFirma, selectedDonem, tm]);
 
   // Filter waybills
   const filteredWaybills = waybills.filter(waybill => {
@@ -228,13 +228,13 @@ export function WaybillModule() {
     if (confirm('Bu irsaliyeyi faturaya dönüştürmek istediğinizden emin misiniz?')) {
       convertWaybillToInvoice(waybillId)
         .then(() => {
-          toast.success('İrsaliye faturaya dönüştürüldü');
+          toast.success(tm('waybillConvertedToInvoice'));
           // Refresh waybills
           fetchWaybills({ page: 1, pageSize: 1000 })
             .then((res) => setWaybills((res.data || []).map(mapInvoiceToWaybill)))
-            .catch(() => toast.error('İrsaliyeler yüklenirken hata oluştu'));
+            .catch(() => toast.error(tm('errorLoadingWaybills')));
         })
-        .catch(error => toast.error('Fatura dönüştürülürken hata oluştu'));
+        .catch(error => toast.error(tm('waybillConvertError')));
     }
   };
 
@@ -243,13 +243,13 @@ export function WaybillModule() {
     if (confirm('Bu irsaliyeyi silmek istediğinizden emin misiniz?')) {
       deleteWaybill(waybillId)
         .then(() => {
-          toast.success('İrsaliye silindi');
+          toast.success(tm('waybillDeleted'));
           // Refresh waybills
           fetchWaybills({ page: 1, pageSize: 1000 })
             .then((res) => setWaybills((res.data || []).map(mapInvoiceToWaybill)))
-            .catch(() => toast.error('İrsaliyeler yüklenirken hata oluştu'));
+            .catch(() => toast.error(tm('errorLoadingWaybills')));
         })
-        .catch(error => toast.error('İrsaliye silinirken hata oluştu'));
+        .catch(error => toast.error(tm('waybillDeleteError')));
     }
   };
 

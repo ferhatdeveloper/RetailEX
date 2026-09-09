@@ -9,6 +9,7 @@ import { useState, useEffect } from 'react';
 import type { Customer } from '../../App';
 import { formatCurrency } from '../../utils/formatNumber';
 import { toast } from 'sonner';
+import { useLanguage } from '../../contexts/LanguageContext';
 import { ModalLayer } from '../shared/FullscreenBodyPortal';
 
 interface Product {
@@ -20,6 +21,7 @@ interface Product {
 }
 
 export function CustomerScreen() {
+  const { t, tm } = useLanguage();
   const [cart, setCart] = useState<Product[]>([]);
   const [customer, setCustomer] = useState<Customer | null>(null);
   const [showQRScanner, setShowQRScanner] = useState(false);
@@ -89,7 +91,7 @@ export function CustomerScreen() {
           <div className="flex items-center justify-between">
             <div>
               <h1 className="text-3xl text-white mb-1">ExRetailOS</h1>
-              <p className="text-white/80 text-sm">Alışverişinizin keyfini çıkarın</p>
+              <p className="text-white/80 text-sm">{tm('posEnjoyShopping')}</p>
             </div>
 
             <button
@@ -97,7 +99,7 @@ export function CustomerScreen() {
               className="bg-white text-purple-600 px-6 py-3 rounded-xl hover:bg-purple-50 transition-colors flex items-center gap-2 shadow-lg"
             >
               <QrCode className="w-6 h-6" />
-              <span>QR Kod Okut, Puan Kazan!</span>
+              <span>{tm('posQrScanEarn')}</span>
             </button>
           </div>
         </div>
@@ -115,7 +117,7 @@ export function CustomerScreen() {
                     className="w-full h-full object-cover"
                   />
                   <div className="absolute top-4 right-4 bg-red-500 text-white px-4 py-2 rounded-full shadow-lg">
-                    ÖNERİLEN!
+                    {tm('posRecommended')}
                   </div>
                 </div>
                 <div className="p-8">
@@ -139,25 +141,25 @@ export function CustomerScreen() {
                     <Star className="w-8 h-8" />
                   </div>
                   <div>
-                    <div className="text-xl">Hoş Geldiniz</div>
+                    <div className="text-xl">{tm('posWelcome')}</div>
                     <div className="text-3xl">{customer.name}</div>
                   </div>
                 </div>
 
                 <div className="grid grid-cols-2 gap-4">
                   <div className="bg-white/20 rounded-xl p-4 backdrop-blur-sm">
-                    <div className="text-sm mb-1">Puanınız</div>
+                    <div className="text-sm mb-1">{tm('posYourPoints')}</div>
                     <div className="text-3xl">{(customer.points ?? 0).toLocaleString()}</div>
                   </div>
                   <div className="bg-white/20 rounded-xl p-4 backdrop-blur-sm">
-                    <div className="text-sm mb-1">Seviyeniz</div>
+                    <div className="text-sm mb-1">{tm('posYourLevel')}</div>
                     <div className="text-3xl">{customer.customer_tier ?? '—'}</div>
                   </div>
                 </div>
 
                 {discountRate > 0 && (
                   <div className="mt-4 bg-white/20 rounded-xl p-4 text-center backdrop-blur-sm">
-                    <div className="text-sm mb-1">İndiriminiz</div>
+                    <div className="text-sm mb-1">{tm('posYourDiscount')}</div>
                     <div className="text-4xl">%{discountRate}</div>
                   </div>
                 )}
@@ -165,9 +167,9 @@ export function CustomerScreen() {
             ) : (
               <div className="bg-white rounded-3xl shadow-2xl p-8 text-center">
                 <QrCode className="w-20 h-20 mx-auto text-purple-600 mb-4" />
-                <h3 className="text-2xl mb-3">Puan Kazanın!</h3>
+                <h3 className="text-2xl mb-3">{tm('posEarnPoints')}</h3>
                 <p className="text-gray-600 mb-6">
-                  QR kodunuzu okutarak puan kazanmaya başlayın ve indirimlerden yararlanın
+                  {tm('posEarnPointsHint')}
                 </p>
                 <button
                   onClick={() => setShowQRScanner(true)}
@@ -187,7 +189,7 @@ export function CustomerScreen() {
                 <div className="flex items-center gap-3">
                   <ShoppingCart className="w-8 h-8" />
                   <div>
-                    <div className="text-xl">Sepetiniz</div>
+                    <div className="text-xl">{tm('posYourCart')}</div>
                     <div className="text-sm opacity-90">{cart.length} ürün</div>
                   </div>
                 </div>
@@ -205,7 +207,7 @@ export function CustomerScreen() {
               {cart.length === 0 ? (
                 <div className="text-center text-gray-400 py-12">
                   <ShoppingCart className="w-16 h-16 mx-auto mb-4 opacity-50" />
-                  <p>Sepetiniz boş</p>
+                  <p>{tm('posYourCartEmpty')}</p>
                 </div>
               ) : (
                 cart.map((item, index) => (
@@ -234,19 +236,19 @@ export function CustomerScreen() {
             {cart.length > 0 && (
               <div className="border-t-2 border-gray-200 p-6 space-y-3">
                 <div className="flex justify-between text-lg">
-                  <span>Ara Toplam</span>
+                  <span>{t.subtotal}</span>
                   <span>{formatCurrency(subtotal)}</span>
                 </div>
 
                 {discount > 0 && (
                   <div className="flex justify-between text-lg text-green-600">
-                    <span>İndirim (%{discountRate})</span>
+                    <span>{t.discount} (%{discountRate})</span>
                     <span>-{formatCurrency(discount)}</span>
                   </div>
                 )}
 
                 <div className="border-t-2 border-purple-200 pt-3 flex justify-between text-3xl text-purple-600">
-                  <span>TOPLAM</span>
+                  <span>{t.totalUppercase}</span>
                   <span>{formatCurrency(total)}</span>
                 </div>
               </div>
@@ -256,7 +258,7 @@ export function CustomerScreen() {
 
         {/* Footer */}
         <div className="bg-white/10 backdrop-blur-sm border-t border-white/20 p-4 text-center text-white text-sm">
-          ExRetailOS • Müşteri Ekranı • Her 1 alışverişte 1 puan kazanın!
+          {tm('posCustomerScreenFooter')}
         </div>
       </div>
 
@@ -282,7 +284,7 @@ export function CustomerScreen() {
             localStorage.setItem('customer_display_customer', JSON.stringify(mockCustomer));
             setShowQRScanner(false);
 
-            toast.success(`Hoş geldiniz! ${mockCustomer.points} puanınız var`, {
+            toast.success(tm('posWelcomePointsToast').replace('{points}', String(mockCustomer.points)), {
               duration: 4000
             });
           }}
@@ -317,8 +319,8 @@ function QRScannerModal({ onClose, onScan }: QRScannerModalProps) {
       <div className="bg-white rounded-3xl p-8 max-w-lg w-full mx-4">
         <div className="text-center mb-6">
           <QrCode className="w-20 h-20 mx-auto text-purple-600 mb-4" />
-          <h2 className="text-2xl mb-2">QR Kod Okutun</h2>
-          <p className="text-gray-600">Müşteri kartınızdaki QR kodu kameraya gösterin</p>
+          <h2 className="text-2xl mb-2">{tm('posScanQrTitle')}</h2>
+          <p className="text-gray-600">{tm('posScanQrHint')}</p>
         </div>
 
         <div className="bg-gray-900 rounded-2xl aspect-square mb-6 flex items-center justify-center">
@@ -329,7 +331,7 @@ function QRScannerModal({ onClose, onScan }: QRScannerModalProps) {
           onClick={onClose}
           className="w-full bg-gray-200 text-gray-700 py-3 rounded-xl hover:bg-gray-300 transition-colors"
         >
-          İptal
+          {t.cancel}
         </button>
       </div>
     </ModalLayer>

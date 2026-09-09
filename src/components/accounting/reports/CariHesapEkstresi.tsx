@@ -7,8 +7,10 @@ import { dynamicReportEngine, ReportRow } from '../../../services/reports/Dynami
 import { aiReportService } from '../../../services/ai/AIReportService';
 import { formatNumber } from '../../../utils/formatNumber';
 import { format } from 'date-fns';
+import { useLanguage } from '../../../contexts/LanguageContext';
 
 export function CariHesapEkstresi() {
+    const { tm } = useLanguage();
     const [loading, setLoading] = useState(false);
     const [data, setData] = useState<any[]>([]);
     const [briefing, setBriefing] = useState<string>('');
@@ -42,7 +44,7 @@ export function CariHesapEkstresi() {
                 <div className="flex justify-between items-center mb-6">
                     <h1 className="text-xl font-black tracking-tighter flex items-center gap-2 uppercase">
                         <Users className="w-6 h-6 text-indigo-400" />
-                        Cari Hesap Hareket Ekstresi
+                        {tm('accCustomerExtract')}
                     </h1>
                     <div className="flex gap-2">
                         <button className="p-2 bg-slate-700 hover:bg-slate-600 rounded transition-colors"><Printer className="w-4 h-4" /></button>
@@ -52,18 +54,18 @@ export function CariHesapEkstresi() {
 
                 <div className="flex flex-wrap gap-4 items-end bg-slate-700/50 p-4 rounded-xl">
                     <div className="flex-1 min-w-[300px]">
-                        <label className="block text-[10px] font-bold text-slate-400 uppercase mb-1">Cari Hesap Seçimi</label>
+                        <label className="block text-[10px] font-bold text-slate-400 uppercase mb-1">{tm('accCariSelect')}</label>
                         <input className="w-full bg-slate-900 border-none rounded-lg px-4 py-2 text-sm text-white" defaultValue="K001 - GLOBAL TEKSTIL LTD." />
                     </div>
                     <div>
-                        <label className="block text-[10px] font-bold text-slate-400 uppercase mb-1">Başlangıç</label>
+                        <label className="block text-[10px] font-bold text-slate-400 uppercase mb-1">{tm('startDate')}</label>
                         <input type="date" value={dateRange.start} className="bg-slate-900 border-none rounded-lg px-4 py-2 text-sm text-white" />
                     </div>
                     <div>
-                        <label className="block text-[10px] font-bold text-slate-400 uppercase mb-1">Bitiş</label>
+                        <label className="block text-[10px] font-bold text-slate-400 uppercase mb-1">{tm('endDate')}</label>
                         <input type="date" value={dateRange.end} className="bg-slate-900 border-none rounded-lg px-4 py-2 text-sm text-white" />
                     </div>
-                    <button onClick={loadReport} className="bg-indigo-600 hover:bg-indigo-500 px-6 py-2 rounded-lg font-bold text-sm h-[38px] transition-all">Sorgula</button>
+                    <button onClick={loadReport} className="bg-indigo-600 hover:bg-indigo-500 px-6 py-2 rounded-lg font-bold text-sm h-[38px] transition-all">{tm('accQuery')}</button>
                 </div>
             </div>
 
@@ -74,7 +76,7 @@ export function CariHesapEkstresi() {
                         <Sparkles className="w-4 h-4" />
                     </div>
                     <div>
-                        <h4 className="text-[10px] font-black uppercase text-indigo-600 tracking-widest">AI Yönetici Özeti</h4>
+                        <h4 className="text-[10px] font-black uppercase text-indigo-600 tracking-widest">{tm('accAiExecutiveSummary')}</h4>
                         <p className="text-sm text-indigo-900 mt-1 italic leading-relaxed">"{briefing}"</p>
                     </div>
                 </div>
@@ -89,9 +91,9 @@ export function CariHesapEkstresi() {
                             <th className="px-4 py-3 text-left border">Tür</th>
                             <th className="px-4 py-3 text-left border">Fiş No</th>
                             <th className="px-4 py-3 text-left border">Açıklama</th>
-                            <th className="px-4 py-3 text-right border">Borç (Debit)</th>
-                            <th className="px-4 py-3 text-right border">Alacak (Credit)</th>
-                            <th className="px-4 py-3 text-right border bg-indigo-50">Bakiye</th>
+                            <th className="px-4 py-3 text-right border">{tm('accDebitParen')}</th>
+                            <th className="px-4 py-3 text-right border">{tm('accCreditParen')}</th>
+                            <th className="px-4 py-3 text-right border bg-indigo-50">{tm('balanceShort')}</th>
                             <th className="px-2 py-3 text-center border bg-indigo-50 w-8">B/A</th>
                         </tr>
                     </thead>

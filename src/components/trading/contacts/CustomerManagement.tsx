@@ -5,6 +5,7 @@ import { createColumnHelper } from '@tanstack/react-table';
 import type { Customer, Sale } from '../../../App';
 import { useCustomerStore } from '../../../store/useCustomerStore';
 import { compareFileIdAsc, sortByFileIdAsc } from '../../../utils/customerFileIdSort';
+import { useLanguage } from '../../../contexts/LanguageContext';
 
 interface CustomerManagementProps {
   customers: Customer[];
@@ -12,9 +13,9 @@ interface CustomerManagementProps {
   sales?: Sale[];
 }
 
-const DEFAULT_HEARD_FROM_OPTIONS = ['Instagram', 'Tavsiye', 'Google', 'Facebook', 'Diğer'];
-
 export function CustomerManagement({ customers, setCustomers, sales = [] }: CustomerManagementProps) {
+  const { tm } = useLanguage();
+  const defaultHeardFrom = ['Instagram', tm('custHeardReferral'), 'Google', 'Facebook', tm('custHeardOther')];
   const addCustomer = useCustomerStore((state) => state.addCustomer);
   const updateCustomer = useCustomerStore((state) => state.updateCustomer);
   const deleteCustomerFromStore = useCustomerStore((state) => state.deleteCustomer);
@@ -23,7 +24,7 @@ export function CustomerManagement({ customers, setCustomers, sales = [] }: Cust
   const [showModal, setShowModal] = useState(false);
   const [editingCustomer, setEditingCustomer] = useState<Customer | null>(null);
   const [selectedCustomer, setSelectedCustomer] = useState<Customer | null>(null);
-  const [heardFromOptions, setHeardFromOptions] = useState<string[]>(DEFAULT_HEARD_FROM_OPTIONS);
+  const [heardFromOptions, setHeardFromOptions] = useState<string[]>(defaultHeardFrom);
   const [heardFromDraft, setHeardFromDraft] = useState('');
   const [formData, setFormData] = useState({
     name: '',
@@ -118,7 +119,7 @@ export function CustomerManagement({ customers, setCustomers, sales = [] }: Cust
   };
 
   const deleteCustomer = (id: string) => {
-    if (confirm('Bu müşteriyi silmek istediğinizden emin misiniz?')) {
+    if (confirm(tm('custDeleteConfirmSimple'))) {
       setCustomers(customers.filter(c => c.id !== id));
       deleteCustomerFromStore(id);
       if (selectedCustomer?.id === id) {
@@ -135,33 +136,33 @@ export function CustomerManagement({ customers, setCustomers, sales = [] }: Cust
 
   const columns = [
     columnHelper.accessor('file_id', {
-      header: 'Dosya No',
+      header: tm('custColFileNo'),
       cell: info => info.getValue() || '—',
       sortingFn: (a, b) => compareFileIdAsc(a.original.file_id, b.original.file_id),
       size: 90,
     }),
     columnHelper.accessor('name', {
-      header: 'MÜŞTERİ ADI',
+      header: tm('custColNameUpper'),
       cell: info => info.getValue(),
       size: 200
     }),
     columnHelper.accessor('phone', {
-      header: 'TELEFON',
+      header: tm('custColPhone'),
       cell: info => info.getValue(),
       size: 140
     }),
     columnHelper.accessor('email', {
-      header: 'E-POSTA',
+      header: tm('custColEmail'),
       cell: info => info.getValue(),
       size: 200
     }),
     columnHelper.accessor('address', {
-      header: 'ADRES',
+      header: tm('custColAddress'),
       cell: info => info.getValue(),
       size: 250
     }),
     columnHelper.accessor('totalPurchases', {
-      header: 'TOPLAM ALIŞVERİŞ',
+      header: tm('custColPurchasesUpper'),
       cell: info => info.getValue()?.toLocaleString('tr-TR', { minimumFractionDigits: 2 }),
       size: 160
     }),
@@ -174,15 +175,15 @@ export function CustomerManagement({ customers, setCustomers, sales = [] }: Cust
         <div className="flex items-center justify-between">
           <div className="flex items-center gap-2">
             <Users className="w-4 h-4" />
-            <h2 className="text-sm">Müşteri Yönetimi</h2>
-            <span className="text-blue-100 text-[10px] ml-2">• {customers.length} müşteri</span>
+            <h2 className="text-sm">{tm('custMgmtTitle')}</h2>
+            <span className="text-blue-100 text-[10px] ml-2">• {tm('custCountLabel').replace('{count}', String(customers.length))}</span>
           </div>
           <button
             onClick={() => openModal()}
             className="flex items-center gap-1 px-2 py-1 bg-white text-blue-700 hover:bg-blue-50 transition-colors text-[10px]"
           >
             <Plus className="w-3 h-3" />
-            <span>Yeni Müşteri</span>
+            <span>{tm('custMgmtNewBtn')}</span>
           </button>
         </div>
       </div>
@@ -218,7 +219,7 @@ export function CustomerManagement({ customers, setCustomers, sales = [] }: Cust
               </button>
             </div>
             <h3 className="text-xl mb-1">{selectedCustomer.name}</h3>
-            <p className="text-blue-100 text-sm">Müşteri Detayları</p>
+            <p className="text-blue-100 text-sm">{tm('custDetails')}</p>
           </div>
 
           <div className="p-6 border-b bg-gray-50">
@@ -243,14 +244,14 @@ export function CustomerManagement({ customers, setCustomers, sales = [] }: Cust
               <div className="bg-gradient-to-br from-green-500 to-green-600 p-4 rounded-lg text-white">
                 <div className="flex items-center gap-2 mb-2">
                   <TrendingUp className="w-4 h-4" />
-                  <p className="text-sm opacity-90">Toplam Alışveriş</p>
+                  <p className="text-sm opacity-90">{tm('custColTotalPurchases')}</p>
                 </div>
                 <p className="text-2xl">{selectedCustomer.totalPurchases.toFixed(2)}</p>
               </div>
               <div className="bg-gradient-to-br from-blue-500 to-blue-600 p-4 rounded-lg text-white">
                 <div className="flex items-center gap-2 mb-2">
                   <ShoppingBag className="w-4 h-4" />
-                  <p className="text-sm opacity-90">Alışveriş Sayısı</p>
+                  <p className="text-sm opacity-90">{tm('custPurchaseCount')}</p>
                 </div>
                 <p className="text-2xl">{getCustomerSales(selectedCustomer.id).length}</p>
               </div>
@@ -258,7 +259,7 @@ export function CustomerManagement({ customers, setCustomers, sales = [] }: Cust
           </div>
 
           <div className="flex-1 overflow-auto p-6">
-            <h4 className="mb-4 text-gray-700">Satış Geçmişi</h4>
+            <h4 className="mb-4 text-gray-700">{tm('custSalesHistory')}</h4>
             <div className="space-y-3">
               {getCustomerSales(selectedCustomer.id).map(sale => (
                 <div key={sale.id} className="bg-gray-50 p-4 rounded-lg border border-gray-200">
@@ -274,14 +275,14 @@ export function CustomerManagement({ customers, setCustomers, sales = [] }: Cust
                     <span className="text-blue-600">{sale.total.toFixed(2)}</span>
                   </div>
                   <div className="text-xs text-gray-600 space-y-1">
-                    <p>Fiş No: {sale.id}</p>
-                    <p>{sale.items.length} ürün - {sale.paymentMethod}</p>
+                    <p>{tm('custSlipNo')} {sale.id}</p>
+                    <p>{tm('custSaleItemsLine').replace('{count}', String(sale.items.length)).replace('{method}', String(sale.paymentMethod))}</p>
                   </div>
                 </div>
               ))}
               {getCustomerSales(selectedCustomer.id).length === 0 && (
                 <p className="text-gray-400 text-sm text-center py-8">
-                  Henüz satış geçmişi yok
+                  {tm('custNoSalesYet')}
                 </p>
               )}
             </div>
@@ -295,14 +296,14 @@ export function CustomerManagement({ customers, setCustomers, sales = [] }: Cust
           <div className="bg-white w-full max-w-2xl">
             <div className="p-3 border-b bg-gradient-to-r from-blue-600 to-blue-700 text-white flex items-center justify-between">
               <h3 className="text-base">
-                {editingCustomer ? 'Müşteri Düzenle' : 'Yeni Kayıt'}
+                {editingCustomer ? tm('custModalEditTitle') : tm('custNewRecord')}
               </h3>
             </div>
             
             <form onSubmit={handleSubmit} className="p-6">
               <div className="space-y-4">
                 <div>
-                  <label className="block text-sm text-gray-700 mb-1">Ad Soyad *</label>
+                  <label className="block text-sm text-gray-700 mb-1">{tm('custFullNameRequired')}</label>
                   <input
                     type="text"
                     required
@@ -313,7 +314,7 @@ export function CustomerManagement({ customers, setCustomers, sales = [] }: Cust
                 </div>
                 <div className="grid grid-cols-2 gap-4">
                   <div>
-                    <label className="block text-sm text-gray-700 mb-1">Telefon 1 *</label>
+                    <label className="block text-sm text-gray-700 mb-1">{tm('custPhone1Required')}</label>
                     <input
                       type="tel"
                       required
@@ -323,19 +324,19 @@ export function CustomerManagement({ customers, setCustomers, sales = [] }: Cust
                     />
                   </div>
                   <div>
-                    <label className="block text-sm text-gray-700 mb-1">Telefon 2 (isteğe bağlı)</label>
+                    <label className="block text-sm text-gray-700 mb-1">{tm('custPhone2Optional')}</label>
                     <input
                       type="tel"
                       value={formData.phone2}
                       onChange={(e) => setFormData({ ...formData, phone2: e.target.value })}
-                      placeholder="İkinci telefon (isteğe bağlı)"
+                      placeholder={tm('custPhPhone2')}
                       className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
                     />
                   </div>
                 </div>
                 <div className="grid grid-cols-2 gap-4">
                   <div>
-                    <label className="block text-sm text-gray-700 mb-1">Doğum tarihi</label>
+                    <label className="block text-sm text-gray-700 mb-1">{tm('custLabelBirthDate')}</label>
                     <input
                       type="date"
                       value={formData.birth_date}
@@ -344,55 +345,55 @@ export function CustomerManagement({ customers, setCustomers, sales = [] }: Cust
                     />
                   </div>
                   <div>
-                    <label className="block text-sm text-gray-700 mb-1">Dosya No</label>
+                    <label className="block text-sm text-gray-700 mb-1">{tm('custColFileNo')}</label>
                     <input
                       type="text"
                       value={formData.file_id}
                       onChange={(e) => setFormData({ ...formData, file_id: e.target.value })}
-                      placeholder="Dosya / kart no"
+                      placeholder={tm('custPhFileId')}
                       className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
                     />
                   </div>
                 </div>
                 <div className="grid grid-cols-2 gap-4">
                   <div>
-                    <label className="block text-sm text-gray-700 mb-1">Cinsiyet</label>
+                    <label className="block text-sm text-gray-700 mb-1">{tm('custLabelGender')}</label>
                     <select
                       value={formData.gender}
                       onChange={(e) => setFormData({ ...formData, gender: e.target.value })}
                       className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 bg-white"
                     >
-                      <option value="">Seçiniz</option>
-                      <option value="erkek">Erkek</option>
-                      <option value="kadin">Kadın</option>
-                      <option value="diger">Diğer</option>
+                      <option value="">{tm('custGenderSelect')}</option>
+                      <option value="erkek">{tm('custGenderMale')}</option>
+                      <option value="kadin">{tm('custGenderFemale')}</option>
+                      <option value="diger">{tm('custGenderOther')}</option>
                     </select>
                   </div>
                   <div>
-                    <label className="block text-sm text-gray-700 mb-1">Müşteri Tipi</label>
+                    <label className="block text-sm text-gray-700 mb-1">{tm('custLabelTier')}</label>
                     <select
                       value={formData.customer_tier}
                       onChange={(e) => setFormData({ ...formData, customer_tier: e.target.value })}
                       className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 bg-white"
                     >
-                      <option value="normal">Normal</option>
-                      <option value="vip">VIP</option>
+                      <option value="normal">{tm('custTierNormal')}</option>
+                      <option value="vip">{tm('custTierVip')}</option>
                     </select>
                   </div>
                 </div>
                 <div className="grid grid-cols-2 gap-4">
                   <div>
-                    <label className="block text-sm text-gray-700 mb-1">Meslek</label>
+                    <label className="block text-sm text-gray-700 mb-1">{tm('custLabelOccupation')}</label>
                     <input
                       type="text"
                       value={formData.occupation}
                       onChange={(e) => setFormData({ ...formData, occupation: e.target.value })}
-                      placeholder="Meslek veya unvan"
+                      placeholder={tm('custPhOccupation')}
                       className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
                     />
                   </div>
                   <div>
-                    <label className="block text-sm text-gray-700 mb-1">E-posta *</label>
+                    <label className="block text-sm text-gray-700 mb-1">{tm('custEmailRequired')}</label>
                     <input
                       type="email"
                       required
@@ -403,14 +404,14 @@ export function CustomerManagement({ customers, setCustomers, sales = [] }: Cust
                   </div>
                 </div>
                 <div>
-                  <label className="block text-sm text-gray-700 mb-1">Bizi nereden duydunuz?</label>
+                  <label className="block text-sm text-gray-700 mb-1">{tm('custLabelHeardFrom')}</label>
                   <div className="grid grid-cols-[1fr_auto] gap-2">
                     <select
                       value={formData.heard_from}
                       onChange={(e) => setFormData({ ...formData, heard_from: e.target.value })}
                       className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 bg-white"
                     >
-                      <option value="">Seçiniz</option>
+                      <option value="">{tm('custGenderSelect')}</option>
                       {heardFromOptions.map((option) => (
                         <option key={option} value={option}>{option}</option>
                       ))}
@@ -420,7 +421,7 @@ export function CustomerManagement({ customers, setCustomers, sales = [] }: Cust
                       onClick={addHeardFromOption}
                       className="px-4 py-2 border border-gray-300 rounded-lg hover:bg-gray-50 transition-colors text-sm font-semibold"
                     >
-                      + Ekle
+                      + {tm('add')}
                     </button>
                   </div>
                   <input
@@ -433,12 +434,12 @@ export function CustomerManagement({ customers, setCustomers, sales = [] }: Cust
                         addHeardFromOption();
                       }
                     }}
-                    placeholder="Örn. Instagram, tavsiye, Google..."
+                    placeholder={tm('custPhHeardFrom')}
                     className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 mt-2"
                   />
                 </div>
                 <div>
-                  <label className="block text-sm text-gray-700 mb-1">Adres</label>
+                  <label className="block text-sm text-gray-700 mb-1">{tm('custLabelAddress')}</label>
                   <textarea
                     value={formData.address}
                     onChange={(e) => setFormData({ ...formData, address: e.target.value })}
@@ -447,12 +448,12 @@ export function CustomerManagement({ customers, setCustomers, sales = [] }: Cust
                   />
                 </div>
                 <div>
-                  <label className="block text-sm text-gray-700 mb-1">Müşteri Hakkında</label>
+                  <label className="block text-sm text-gray-700 mb-1">{tm('custLabelAbout')}</label>
                   <textarea
                     value={formData.notes}
                     onChange={(e) => setFormData({ ...formData, notes: e.target.value })}
                     rows={3}
-                    placeholder="Tercihler, notlar, özel durumlar..."
+                    placeholder={tm('custPhAbout')}
                     className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
                   />
                 </div>
@@ -464,13 +465,13 @@ export function CustomerManagement({ customers, setCustomers, sales = [] }: Cust
                   onClick={() => setShowModal(false)}
                   className="flex-1 px-6 py-3 border-2 border-gray-300 rounded-lg hover:bg-gray-50 transition-colors"
                 >
-                  İptal
+                  {tm('cancel')}
                 </button>
                 <button
                   type="submit"
                   className="flex-1 px-6 py-3 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors"
                 >
-                  {editingCustomer ? 'Güncelle' : 'Müşteriyi Kaydet'}
+                  {editingCustomer ? tm('update') : tm('custSaveCustomer')}
                 </button>
               </div>
             </form>

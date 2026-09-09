@@ -7,6 +7,7 @@ import {
     Maximize2, Minimize2, UtensilsCrossed, Sparkles, FileCode, ShieldCheck
 } from 'lucide-react';
 import { toast } from 'sonner';
+import { useLanguage } from '../../contexts/LanguageContext';
 import { NeonLogo } from '../ui/NeonLogo';
 import { AppFooter } from '../shared/AppFooter';
 import { postgres, initializeFromSQLite } from '../../services/postgres';
@@ -46,6 +47,7 @@ import {
 } from '../../services/merkezTenantRegistry';
 
 const SetupWizard: React.FC = () => {
+    const { tm } = useLanguage();
     const [windowWidth, setWindowWidth] = useState(window.innerWidth);
     const isTauri = IS_TAURI;
 
@@ -173,7 +175,7 @@ const SetupWizard: React.FC = () => {
     const downloadSupabaseSql = async (project: any, tablesOnly: boolean = false): Promise<string | null> => {
         // No password required anymore (API Mode)
         if (!supabaseToken) {
-            toast.error("Supabase oturumu (Token) bulunamadı.");
+            toast.error(tm('setupSupabaseSessionMissing'));
             return null;
         }
 
@@ -214,13 +216,13 @@ const SetupWizard: React.FC = () => {
 
             if (unlisten) unlisten();
             setDownloadedSqlPath(filePath);
-            toast.success(`İndirme Tamamlandı!\nDosya: ${filePath}`, { id: 'dump-progress', duration: 3000 });
+            toast.success(`${tm('setupDownloadDone')}\n${tm('setupDownloadFile')}${filePath}`, { id: 'dump-progress', duration: 3000 });
 
             return filePath;
 
         } catch (err: any) {
             console.error('Dump failed:', err);
-            toast.error('İndirme hatası: ' + err, { id: 'dump-progress' });
+            toast.error(tm('setupDownloadError') + err, { id: 'dump-progress' });
             return null;
         } finally {
             setIsDumpingSql(false);
@@ -229,12 +231,12 @@ const SetupWizard: React.FC = () => {
 
     const handleFullImport = async () => {
         if (!selectedProject) {
-            toast.error("Lütfen bir kaynak proje seçin.");
+            toast.error(tm('setupSelectSourceProject'));
             return;
         }
 
         if (importTargetType === 'supabase' && !selectedTargetProject) {
-            toast.error("Lütfen bir hedef proje seçin.");
+            toast.error(tm('setupSelectTargetProject'));
             return;
         }
 
@@ -247,7 +249,7 @@ const SetupWizard: React.FC = () => {
                 }
             } else {
                 // Cloud-to-Cloud Migration
-                toast.loading('Buluttan buluta aktarım başlatılıyor...', { id: 'import-progress' });
+                toast.loading(tm('setupCloudTransferStarting'), { id: 'import-progress' });
 
                 const migrationService = new SupabaseMigrationService((logs) => {
                     const latestLog = logs[logs.length - 1];
@@ -269,12 +271,12 @@ const SetupWizard: React.FC = () => {
 
                 const connected = await migrationService.connect(sourceConfig, targetConfig);
                 if (!connected) {
-                    toast.error('Supabase bağlantısı kurulamadı. Lütfen API key/token kontrol edin.');
+                    toast.error(tm('setupSupabaseConnFailed'));
                     return;
                 }
 
                 const tables = await migrationService.getTables(selectedProject.id, supabaseToken?.trim());
-                toast.info(`${tables.length} tablo bulundu, aktarım başlıyor...`, { id: 'import-progress' });
+                toast.info(tm('setupTablesFoundImport').replace('{count}', String(tables.length)), { id: 'import-progress' });
 
                 // 1. Functions
                 if (migrateOptions.functions) {
@@ -314,12 +316,12 @@ const SetupWizard: React.FC = () => {
                     await migrationService.migratePolicies(selectedProject.id, supabaseToken?.trim(), selectedTargetProject.id, targetSupabaseToken?.trim());
                 }
 
-                toast.success('Buluttan buluta aktarım tamamlandı!', { id: 'import-progress', duration: 4000 });
+                toast.success(tm('setupCloudToCloudDone'), { id: 'import-progress', duration: 4000 });
                 setDbInitialized(true);
             }
         } catch (err) {
             console.error('Full import failed:', err);
-            toast.error('İçe aktarma hatası: ' + err, { id: 'import-progress' });
+            toast.error(tm('setupImportError') + err, { id: 'import-progress' });
         } finally {
             setIsImporting(false);
         }
@@ -330,7 +332,7 @@ const SetupWizard: React.FC = () => {
         const pathToUse = forcePath || downloadedSqlPath;
         if (!pathToUse) return;
         setLoading(true);
-        toast.info('Veritabanı hazırlanıyor ve SQL aktarılıyor...', { id: 'import-progress' });
+        toast.info(tm('setupDbPreparing'), { id: 'import-progress' });
 
         try {
             // 1. Create temporary config for the backend call
@@ -350,7 +352,7 @@ const SetupWizard: React.FC = () => {
                 // 3. Execute SQL
                 const connStr = `postgres://${importDbConfig.user}:${importDbConfig.password}@${importDbConfig.host}:${importDbConfig.port}/${importDbConfig.database}`;
 
-                toast.loading('SQL dosyası veritabanına aktarılıyor...', { id: 'import-progress' });
+                toast.loading(tm('setupSqlImporting'), { id: 'import-progress' });
 
                 if (backupFormat === 'postgresql') {
                     // Use new backend command for efficient cleaning and execution of Supabase dumps
@@ -379,11 +381,11 @@ const SetupWizard: React.FC = () => {
                 await safeInvoke('check_db_status', { config: { ...config, local_db: newLocalDb, pg_local_user: importDbConfig.user, pg_local_pass: importDbConfig.password } });
             }
 
-            toast.success('İçe aktarma başarıyla tamamlandı!', { id: 'import-progress', duration: 4000 });
+            toast.success(tm('setupImportSuccess'), { id: 'import-progress', duration: 4000 });
             setDbInitialized(true);
         } catch (err: any) {
             console.error('Import error:', err);
-            toast.error('İçe aktarma hatası: ' + err, { id: 'import-progress' });
+            toast.error(tm('setupImportError') + err, { id: 'import-progress' });
         } finally {
             setLoading(false);
         }
@@ -411,7 +413,7 @@ const SetupWizard: React.FC = () => {
                 if (status.startsWith('ERROR')) {
                     setDbStatus('ERROR');
                     setDbErrorMessage(status);
-                    toast.error("Veritabanı Hatası: " + status);
+                    toast.error(tm('setupDbError') + status);
                 } else {
                     setDbStatus(status as any);
                 }
@@ -419,7 +421,7 @@ const SetupWizard: React.FC = () => {
         } catch (err: any) {
             setDbStatus('ERROR');
             setDbErrorMessage(err.toString());
-            toast.error("Kritik Sistem Hatası: " + err);
+            toast.error(tm('setupCriticalError') + err);
         }
     };
 
@@ -451,12 +453,12 @@ const SetupWizard: React.FC = () => {
             if (showRemoteDbSection) {
                 if (usesPostgrestForHybridSync(config) || config.connection_provider === 'rest_api') {
                     if (!config.remote_rest_url || !config.remote_rest_url.trim()) {
-                        toast.error('Merkez API (PostgREST) URL girilmelidir.');
+                        toast.error(tm('setupMerkezApiRequired'));
                         return;
                     }
                 } else if (showRemotePgSection) {
                     if (!config.remote_db || config.remote_db.includes('127.0.0.1') || config.remote_db.includes('localhost')) {
-                        toast.error('Geçerli bir uzak sunucu adresi girilmelidir.');
+                        toast.error(tm('setupValidRemoteRequired'));
                         return;
                     }
                 }
@@ -468,11 +470,11 @@ const SetupWizard: React.FC = () => {
             if (!config.skip_integration) {
                 // Logo Integration: Firma ve dönem seçimi zorunlu
                 if (!config.erp_firm_nr) {
-                    toast.error('Lütfen bir firma seçiniz.');
+                    toast.error(tm('setupSelectFirm'));
                     return;
                 }
                 if (!config.erp_period_nr) {
-                    toast.error('Lütfen çalışma dönemını seçiniz.');
+                    toast.error(tm('setupSelectPeriod'));
                     return;
                 }
 
@@ -487,7 +489,7 @@ const SetupWizard: React.FC = () => {
                         })
                         .catch(err => {
                             console.error('Kasa listesi hatası:', err);
-                            toast.error('Kasa listesi alınamadı: ' + err);
+                            toast.error(tm('setupCashListFailed') + err);
                             setStep(5);
                         })
                         .finally(() => setLoading(false));
@@ -502,16 +504,16 @@ const SetupWizard: React.FC = () => {
                 const provider = config.connection_provider || 'db';
                 if (provider === 'rest_api') {
                     if (!config.remote_rest_url || !config.remote_rest_url.trim()) {
-                        toast.error('PostgREST API URL girilmelidir.');
+                        toast.error(tm('setupPostgrestUrlRequired'));
                         return;
                     }
                 } else {
                     if (!config.remote_db || config.remote_db.includes('127.0.0.1') || config.remote_db.includes('localhost')) {
-                        toast.error('Merkez sunucu için geçerli bir uzak PostgreSQL adresi girilmelidir (host:port/veritabanı).');
+                        toast.error(tm('setupRemotePgRequired'));
                         return;
                     }
                     if (!config.pg_remote_user?.trim()) {
-                        toast.error('Merkez PostgreSQL kullanıcı adı girilmelidir.');
+                        toast.error(tm('setupRemotePgUserRequired'));
                         return;
                     }
                 }
@@ -521,7 +523,7 @@ const SetupWizard: React.FC = () => {
                 const normalizedPeriodNr = (config.erp_period_nr || '01').padStart(2, '0');
 
                 if (!config.title?.trim()) {
-                    toast.error('Lütfen firma unvanını giriniz.');
+                    toast.error(tm('setupEnterFirmTitle'));
                     return;
                 }
 
@@ -557,7 +559,7 @@ const SetupWizard: React.FC = () => {
         // Cihaz adımı: hibrit terminal için kasa adı zorunlu
         if (step === deviceStep) {
             if (isTauri && config.role === 'client' && !String(config.terminal_name || '').trim()) {
-                toast.error('Cihaz / kasa adı zorunludur.');
+                toast.error(tm('setupDeviceNameRequired'));
                 return;
             }
         }
@@ -660,9 +662,9 @@ const SetupWizard: React.FC = () => {
 
                 if (entity !== 'ITEMS_AUTO') {
                     if (response.data && response.data.length > 0) {
-                        toast.success(`${actualEntity} için ${response.data.length} satır önizleme yüklendi.`);
+                        toast.success(tm('setupPreviewLoaded').replace('{entity}', actualEntity).replace('{count}', String(response.data.length)));
                     } else {
-                        toast.warning(`${actualEntity} için gösterilecek kayıt bulunamadı. Tablo boş olabilir.`);
+                        toast.warning(tm('setupPreviewEmpty').replace('{entity}', actualEntity));
                     }
                 }
             } else {
@@ -672,7 +674,7 @@ const SetupWizard: React.FC = () => {
             }
         } catch (err: any) {
             console.error('Logo Preview Error:', err);
-            toast.error("Önizleme hatası: " + err);
+            toast.error(tm('setupPreviewError') + err);
         } finally {
             setLogoPreviewLoading(false);
         }
@@ -689,15 +691,15 @@ const SetupWizard: React.FC = () => {
                 let pathIsNebim = config.is_nebim_migration;
 
                 if (detected === 'nebim' && !config.is_nebim_migration) {
-                    toast.info('Nebim V3 veritabanı tespit edildi. Mod otomatik güncelleniyor.');
+                    toast.info(tm('setupNebimDetected'));
                     pathIsNebim = true;
                     setConfig(prev => ({ ...prev, is_nebim_migration: true, erp_method: 'nebim', erp_firm_nr: '001', erp_period_nr: '2026' }));
                 } else if (detected === 'logo' && config.is_nebim_migration) {
-                    toast.info('Logo ERP veritabanı tespit edildi. Mod otomatik güncelleniyor.');
+                    toast.info(tm('setupLogoDetected'));
                     pathIsNebim = false;
                     setConfig(prev => ({ ...prev, is_nebim_migration: false, erp_method: 'sql' }));
                 } else {
-                    toast.success('Bağlantı başarılı!');
+                    toast.success(tm('setupConnSuccess'));
                 }
 
                 if (pathIsNebim) {
@@ -711,16 +713,16 @@ const SetupWizard: React.FC = () => {
                         city: f.city || '', periods: [], stores: [], users: []
                     }));
                     setCompanies(companiesList);
-                    toast.success(companiesList.length + " firma bulundu.");
+                    toast.success(tm('setupFirmsFound').replace('{count}', String(companiesList.length)));
                     if (companiesList.length > 0) setStep(4);
                 }
             } else {
-                toast.success('Web Modu: Bağlantı simüle edildi.');
+                toast.success(tm('setupWebConnSimulated'));
                 setCompanies([{ id: '01', name: 'Web Demo Firma', tax_nr: '', tax_office: '', city: '', periods: [], stores: [], users: [] }]);
                 setStep(4);
             }
         } catch (err: any) {
-            toast.error("Bağlantı hatası: " + err);
+            toast.error(tm('setupConnError') + err);
         } finally {
             setTestingLogo(false);
         }
@@ -764,7 +766,7 @@ const SetupWizard: React.FC = () => {
             }
         } catch (err: any) {
             console.error('Failed to fetch periods', err);
-            toast.error(`Dönemler alınamadı: ${err?.message || String(err)}`);
+            toast.error(tm('setupPeriodsFailed') + (err?.message || String(err)));
         }
     };
 
@@ -777,10 +779,10 @@ const SetupWizard: React.FC = () => {
                 
                 await safeInvoke('pg_query', { connStr, sql: 'SELECT 1', params: [] });
             }
-            toast.success('PostgreSQL bağlantısı başarılı!');
+            toast.success(tm('setupPgConnSuccess'));
         } catch (err: any) {
             console.error('PG Connection Failed:', err);
-            toast.error(`PostgreSQL bağlantı hatası: ${err}`);
+            toast.error(tm('setupPgConnError') + err);
         } finally {
             setTestingPg(false);
         }
@@ -789,7 +791,7 @@ const SetupWizard: React.FC = () => {
     const runMigrations = async () => {
         setLoading(true);
         try {
-            toast.info('Veritabanı tabloları oluşturuluyor...');
+            toast.info(tm('setupCreatingTables'));
             const normalized = normalizeSetupConfig(config);
             const primaryTarget = resolvePrimaryMigrationTarget(normalized.db_mode as 'online' | 'offline' | 'hybrid');
 
@@ -820,31 +822,31 @@ const SetupWizard: React.FC = () => {
                 const applied = report.filter(r => r.status === 'Applied').length;
 
                 if (errors.length > 0) {
-                    toast.warning(`${applied} güncelleme uygulandı, ${errors.length} hata var.`, {
+                    toast.warning(tm('setupMigrationsPartial').replace('{applied}', String(applied)).replace('{errors}', String(errors.length)), {
                         description: 'Detaylar için logları kontrol edin.',
                         duration: 10000,
                     });
                 } else {
-                    toast.success(`${applied} yeni güncelleme uygulandı.`);
+                    toast.success(tm('setupMigrationsApplied').replace('{applied}', String(applied)));
                 }
 
                 // Logo/ERP Integration: Automatically initialize firm and period schemas
                 if (!normalized.skip_integration && normalized.erp_firm_nr && normalized.erp_period_nr) {
-                    toast.info('ERP Entegrasyon tabloları hazırlanıyor...');
+                    toast.info(tm('setupErpTablesPreparing'));
                     await initErpFirmSchemas(normalized, normalized.erp_firm_nr, { primaryTarget });
                     await initErpPeriodSchema(normalized, normalized.erp_firm_nr, normalized.erp_period_nr);
                     await initOptionalModuleSchemas(normalized, normalized.erp_firm_nr, normalized.erp_period_nr);
-                    toast.success(`Firma ${normalized.erp_firm_nr} ve Dönem ${normalized.erp_period_nr} yapılandırması tamamlandı.`);
+                    toast.success(tm('setupFirmPeriodDone').replace('{firm}', String(normalized.erp_firm_nr)).replace('{period}', String(normalized.erp_period_nr)));
                 }
             } else {
-                toast.success('Migrations simüle edildi.');
+                toast.success(tm('setupMigrationsSimulated'));
             }
 
 
             setDbInitialized(true);
         } catch (err: any) {
             console.error('Migration Error:', err);
-            toast.error(`Tablo oluşturma hatası: ${err}`);
+            toast.error(tm('setupTableCreateError') + err);
         } finally {
             setLoading(false);
         }
@@ -853,7 +855,7 @@ const SetupWizard: React.FC = () => {
     const fetchSupabaseProjects = async () => {
         const trimmedToken = supabaseToken?.trim();
         if (!trimmedToken) {
-            toast.error('Lütfen bir Supabase Management Token (PAT) giriniz.');
+            toast.error(tm('setupEnterPat'));
             return;
         }
         setIsFetchingSupabase(true);
@@ -862,11 +864,11 @@ const SetupWizard: React.FC = () => {
                 
                 const projects = await safeInvoke<any[]>('list_supabase_projects', { token: trimmedToken });
                 setSupabaseProjects(projects);
-                toast.success(`${projects.length} kaynak proje bulundu.`);
+                toast.success(tm('setupSourceProjectsFound').replace('{count}', String(projects.length)));
             }
         } catch (err: any) {
             console.error('Supabase fetch error:', err);
-            toast.error(`Kaynak proje listesi alınamadı: ${err}`);
+            toast.error(tm('setupSourceProjectsFailed') + err);
         } finally {
             setIsFetchingSupabase(false);
         }
@@ -875,7 +877,7 @@ const SetupWizard: React.FC = () => {
     const fetchTargetSupabaseProjects = async () => {
         const trimmedToken = targetSupabaseToken?.trim();
         if (!trimmedToken) {
-            toast.error('Lütfen bir Supabase Management Token (PAT) giriniz.');
+            toast.error(tm('setupEnterPat'));
             return;
         }
         setIsFetchingTargetSupabase(true);
@@ -884,11 +886,11 @@ const SetupWizard: React.FC = () => {
                 
                 const projects = await safeInvoke<any[]>('list_supabase_projects', { token: trimmedToken });
                 setTargetSupabaseProjects(projects);
-                toast.success(`${projects.length} hedef proje bulundu.`);
+                toast.success(tm('setupTargetProjectsFound').replace('{count}', String(projects.length)));
             }
         } catch (err: any) {
             console.error('Supabase fetch error:', err);
-            toast.error(`Hedef proje listesi alınamadı: ${err}`);
+            toast.error(tm('setupTargetProjectsFailed') + err);
         } finally {
             setIsFetchingTargetSupabase(false);
         }
@@ -896,7 +898,7 @@ const SetupWizard: React.FC = () => {
 
     const selectSupabaseProject = async (project: any) => {
         try {
-            toast.info('Proje yapılandırması alınıyor...');
+            toast.info(tm('setupFetchingProject'));
             // Project structure usually: { id, name, organization_id, region, ... }
             // We need DB credentials. We'll ask user for password or try to fetch if stored.
 
@@ -912,12 +914,12 @@ const SetupWizard: React.FC = () => {
                 remote_db: `${db_host}:${db_port}/${db_name}`,
                 pg_remote_user: db_user,
             }));
-            toast.success(`Supabase projesi seçildi: ${project.name}`);
+            toast.success(tm('setupProjectSelected') + project.name);
 
-            toast.success('Proje ayarları uygulandı. Lütfen veritabanı şifresini kontrol edin.');
+            toast.success(tm('setupProjectApplied'));
             setSupabaseProjects([]); // Close list
         } catch (err: any) {
-            toast.error(`Proje seçimi başarısız: ${err}`);
+            toast.error(tm('setupProjectSelectFailed') + err);
         }
     };
 
@@ -926,7 +928,7 @@ const SetupWizard: React.FC = () => {
         const targetName = target === 'local' ? 'Yerel' : 'Uzak';
 
         try {
-            toast.info(`${targetName} Veritabanı başlatılıyor...`);
+            toast.info(tm('setupDbStarting').replace('{name}', targetName));
 
             // Call create_database with target parameter
             if (isTauri) {
@@ -936,7 +938,7 @@ const SetupWizard: React.FC = () => {
                 console.log(`Web Modu: ${targetName} veritabanı başlatma simüle edildi.`);
             }
 
-            toast.success(`${targetName} Veritabanı başarıyla oluşturuldu/hazırlandı.`);
+            toast.success(tm('setupDbCreated').replace('{name}', targetName));
 
             if (target === 'local') {
                 setDbInitialized(true);
@@ -945,7 +947,7 @@ const SetupWizard: React.FC = () => {
             }
         } catch (e: any) {
             console.error('DB Init Error:', e);
-            toast.error(`${targetName} Veritabanı oluşturma hatası: ${e}`);
+            toast.error(tm('setupDbCreateError').replace('{name}', targetName) + e);
         } finally {
             setLoading(false);
         }
@@ -1062,7 +1064,7 @@ const SetupWizard: React.FC = () => {
                 const migErrStr = String(migErr);
                 console.error('Migration Error:', migErr);
                 setSyncLogs(prev => [...prev, `❌ Migration hatası: ${migErrStr}`]);
-                toast.error('Veritabanı güncelleme hatası: ' + migErrStr);
+                toast.error(tm('setupDbUpdateError') + migErrStr);
                 if (!isUpdateMode) throw migErr; // Only block if new install
             }
 
@@ -1383,7 +1385,7 @@ const SetupWizard: React.FC = () => {
 
             // 4.6. Initialize Default Currencies (Logo Standard)
             if (!isUpdateMode) {
-                toast.info('Para birimleri tanımlanıyor...');
+                toast.info(tm('setupDefiningCurrencies'));
                 const currencies = [
                     ['IQD', 'Irak Dinarı', '', true],
                     ['USD', 'Amerikan Doları', '$', false],
@@ -1402,13 +1404,13 @@ const SetupWizard: React.FC = () => {
             // 5. Logo ERP (MSSQL) → PostgreSQL: seçilen firma/dönem için gerçek kart ve hareket verileri (demo değil)
             if (!config.skip_integration) {
                 setInstallationStep('SYNC');
-                toast.info('Logo ERP veritabanından gerçek firma verileri aktarılıyor...');
+                toast.info(tm('setupLogoImporting'));
                 if (isTauri) {
                     const { emit } = await import('@tauri-apps/api/event');
                     await emit('sync-event', `📡 Logo ERP (MSSQL) → PostgreSQL: firma ${config.erp_firm_nr} / dönem ${config.erp_period_nr} gerçek verileri okunuyor...`);
                     await safeInvoke('sync_logo_data', { config: config });
                     await emit('sync-event', '✅ Logo ERP aktarımı tamamlandı (kaynak: canlı ERP veritabanı, demo seed değil).');
-                    toast.success('Logo ERP verileri PostgreSQL\'e aktarıldı.');
+                    toast.success(tm('setupLogoImported'));
 
                     // 000_master_schema "RetailEx OS" şablon firması (001) — Logo'da 002 vb. seçildiyse gereksiz ikinci kayıt oluşur
                     const logoFirmNr = String(config.erp_firm_nr || '').padStart(3, '0');
@@ -1450,17 +1452,17 @@ const SetupWizard: React.FC = () => {
             if (!isUpdateMode && isTauri && config.role === 'client' && config.db_mode === 'hybrid') {
                 const terminalName = String(config.terminal_name || '').trim();
                 if (!terminalName) {
-                    toast.error('Cihaz / kasa adı zorunludur.');
+                    toast.error(tm('setupDeviceNameRequired'));
                     setInstallationStep('ERROR');
                     return;
                 }
                 setInstallationStep('DEVICE');
-                toast.info('Cihaz kaydı merkeze iletiliyor...');
+                toast.info(tm('setupDeviceRegistering'));
                 const reg = await postgres.registerDevice(terminalName, config.store_id);
                 if (reg.success) {
-                    toast.success(reg.message || 'Cihaz kaydı merkeze iletildi. Web panelinden onay bekleniyor.');
+                    toast.success(reg.message || tm('setupDeviceRegistered'));
                 } else {
-                    toast.error(reg.message || 'Cihaz kaydı başarısız.');
+                    toast.error(reg.message || tm('setupDeviceRegisterFailed'));
                 }
             }
 
@@ -1488,7 +1490,7 @@ const SetupWizard: React.FC = () => {
             }
             localStorage.setItem('retailex_active_module', primaryShell);
 
-            toast.success(isUpdateMode ? 'Güncelleme başarıyla tamamlandı!' : 'Kurulum başarıyla tamamlandı!');
+            toast.success(isUpdateMode ? tm('setupUpdateSuccess') : tm('setupInstallSuccess'));
             setTimeout(() => {
                 window.location.href = '/';
             }, 1500);
@@ -1520,7 +1522,7 @@ const SetupWizard: React.FC = () => {
                     `💥 KURULUM HATASI:`,
                 `  ${errStr}`
                 ]);
-                toast.error('Kurulum hatası: ' + errStr);
+                toast.error(tm('setupErrorPrefix') + errStr);
             }
         } finally {
             if (typeof unlisten === 'function') {
@@ -1627,7 +1629,7 @@ const SetupWizard: React.FC = () => {
                                                         const updatedConfig = { ...config, is_configured: true };
                                                         localStorage.setItem('retailex_web_config', JSON.stringify(updatedConfig));
                                                         localStorage.setItem('exretail_firma_donem_configured', 'true');
-                                                        toast.success('Panele yönlendiriliyorsunuz...');
+                                                        toast.success(tm('setupRedirectPanel'));
                                                         setTimeout(() => {
                                                             window.location.href = '/';
                                                         }, 1000);
@@ -1735,10 +1737,10 @@ const SetupWizard: React.FC = () => {
                                                         onKeyDown={(e) => {
                                                             if (e.key === 'Enter' && bayiSetiPassword === '10021993') {
                                                                 setBayiSetiUnlocked(true);
-                                                                toast.success('Bayi Seti kilidi açıldı.');
+                                                                toast.success(tm('setupDealerUnlocked'));
                                                             }
                                                         }}
-                                                        placeholder="Bayi Seti Şifresi..."
+                                                        placeholder={tm('setupDealerPasswordPh')}
                                                         className="w-full bg-black/40 border border-white/10 rounded-xl pl-9 pr-4 py-2 text-xs text-white focus:outline-none focus:border-blue-500 transition-all placeholder:text-slate-600"
                                                     />
                                                 </div>
@@ -1746,9 +1748,9 @@ const SetupWizard: React.FC = () => {
                                                     onClick={() => {
                                                         if (bayiSetiPassword === '10021993') {
                                                             setBayiSetiUnlocked(true);
-                                                            toast.success('Bayi Seti kilidi açıldı.');
+                                                            toast.success(tm('setupDealerUnlocked'));
                                                         } else {
-                                                            toast.error('Hatalı şifre.');
+                                                            toast.error(tm('setupWrongPassword'));
                                                         }
                                                     }}
                                                     className="px-4 py-2 bg-blue-600/20 hover:bg-blue-600/40 text-blue-400 rounded-xl text-[9px] font-black uppercase tracking-widest border border-blue-500/20 transition-all"
@@ -1848,8 +1850,8 @@ const SetupWizard: React.FC = () => {
                                     <>
                                         <div className="space-y-4">
                                             <div>
-                                                <h2 className="text-xl font-black mb-0.5 text-white tracking-tight">Terminal Veritabanı</h2>
-                                                <p className="text-blue-400/60 font-medium uppercase tracking-[0.2em] text-[10px]">Yerel kurulum mu, merkez DB’ye bağlantı mı?</p>
+                                                <h2 className="text-xl font-black mb-0.5 text-white tracking-tight">{tm('setupTerminalDbTitle')}</h2>
+                                                <p className="text-blue-400/60 font-medium uppercase tracking-[0.2em] text-[10px]">{tm('setupLocalOrCenterQ')}</p>
                                             </div>
                                             <div className="grid grid-cols-1 gap-3">
                                                 <button
@@ -1864,8 +1866,8 @@ const SetupWizard: React.FC = () => {
                                                             <Database className="w-6 h-6" />
                                                         </div>
                                                         <div className="flex-1">
-                                                            <div className={`text-base font-black mb-0.5 ${config.db_mode !== 'online' ? 'text-white' : 'text-slate-200'}`}>Yerel veritabanı kur</div>
-                                                            <div className={`text-[10px] font-bold leading-tight max-w-sm ${config.db_mode !== 'online' ? 'text-blue-200/60' : 'text-slate-500'}`}>Bu bilgisayarda veritabanı kurulur veya mevcut yerel PostgreSQL kullanılır.</div>
+                                                            <div className={`text-base font-black mb-0.5 ${config.db_mode !== 'online' ? 'text-white' : 'text-slate-200'}`}>{tm('setupLocalDbTitle')}</div>
+                                                            <div className={`text-[10px] font-bold leading-tight max-w-sm ${config.db_mode !== 'online' ? 'text-blue-200/60' : 'text-slate-500'}`}>{tm('setupLocalDbDesc')}</div>
                                                         </div>
                                                         {config.db_mode !== 'online' && <CheckCircle className="w-5 h-5 text-blue-500" />}
                                                     </div>
@@ -1882,8 +1884,8 @@ const SetupWizard: React.FC = () => {
                                                             <Globe className="w-6 h-6" />
                                                         </div>
                                                         <div className="flex-1">
-                                                            <div className={`text-base font-black mb-0.5 ${config.db_mode === 'online' ? 'text-white' : 'text-slate-200'}`}>Merkez veritabanına bağlan</div>
-                                                            <div className={`text-[10px] font-bold leading-tight max-w-sm ${config.db_mode === 'online' ? 'text-blue-200/60' : 'text-slate-500'}`}>Veriler merkez sunucuda tutulur. Aşağıda merkez IP veya adresini girin.</div>
+                                                            <div className={`text-base font-black mb-0.5 ${config.db_mode === 'online' ? 'text-white' : 'text-slate-200'}`}>{tm('setupConnectCenterDb')}</div>
+                                                            <div className={`text-[10px] font-bold leading-tight max-w-sm ${config.db_mode === 'online' ? 'text-blue-200/60' : 'text-slate-500'}`}>{tm('setupCenterDataHint')}</div>
                                                         </div>
                                                         {config.db_mode === 'online' && <CheckCircle className="w-5 h-5 text-blue-500" />}
                                                     </div>
@@ -1899,7 +1901,7 @@ const SetupWizard: React.FC = () => {
                                                         onChange={(e) => setConfig({ ...config, central_api_url: e.target.value })}
                                                         className="w-full bg-black/40 border border-white/5 rounded-xl px-4 py-3 text-white text-[11px] outline-none focus:border-blue-500/50"
                                                     />
-                                                    <p className="text-[9px] text-slate-500">Terminal, bu adres üzerinden merkez veritabanına online bağlanacaktır.</p>
+                                                    <p className="text-[9px] text-slate-500">{tm('setupTerminalOnlineHint')}</p>
                                                 </div>
                                             )}
                                         </div>
@@ -1954,8 +1956,8 @@ const SetupWizard: React.FC = () => {
                                 {config.db_mode === 'hybrid' && (
                                     <div className="space-y-4">
                                         <div>
-                                            <h2 className="text-xl font-black mb-0.5 text-white tracking-tight">Hibrit Senkron</h2>
-                                            <p className="text-blue-400/60 font-medium uppercase tracking-[0.2em] text-[10px]">Okuma ve senkron yönü</p>
+                                            <h2 className="text-xl font-black mb-0.5 text-white tracking-tight">{tm('setupHybridSyncTitle')}</h2>
+                                            <p className="text-blue-400/60 font-medium uppercase tracking-[0.2em] text-[10px]">{tm('setupHybridSyncSub')}</p>
                                         </div>
                                         <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                                             <div className="space-y-2">
@@ -1970,7 +1972,7 @@ const SetupWizard: React.FC = () => {
                                                 </select>
                                             </div>
                                             <div className="space-y-2">
-                                                <label className="text-[9px] font-black text-slate-400 uppercase tracking-widest pl-1">Senkron yönü</label>
+                                                <label className="text-[9px] font-black text-slate-400 uppercase tracking-widest pl-1">{tm('setupSyncDirection')}</label>
                                                 <select
                                                     value={config.hybrid_sync_direction || 'local_to_remote'}
                                                     onChange={(e) => setConfig({ ...config, hybrid_sync_direction: e.target.value as AppConfig['hybrid_sync_direction'] })}
@@ -4059,7 +4061,7 @@ const SetupWizard: React.FC = () => {
                                     if (IS_TAURI) {
                                         const r = await removeRetailexWindowsServicesIfTauri();
                                         if (!r.ok) {
-                                            toast.error('Windows hizmetleri kaldırılamadı (gerekirse uygulamayı Yönetici olarak açın). ' + (r.detail || ''));
+                                            toast.error(tm('setupWindowsServiceRemoveFailed') + (r.detail || ''));
                                         } else if (r.detail) {
                                             console.info('[Yeniden kurulum]', r.detail);
                                         }

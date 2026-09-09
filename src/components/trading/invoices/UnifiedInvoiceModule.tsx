@@ -193,7 +193,7 @@ export function UnifiedInvoiceModule({ customers = [], products = [], defaultCat
       setSelectedInvoiceForAction(null);
     },
     delete: async (invoice: any) => {
-      if (!confirm('Bu faturayı silmek istediğinize emin misiniz?')) {
+      if (!confirm(tm('confirmDeleteInvoiceShort'))) {
         setSelectedInvoiceForAction(null);
         return;
       }
@@ -203,9 +203,9 @@ export function UnifiedInvoiceModule({ customers = [], products = [], defaultCat
           `UPDATE invoices SET is_deleted = true, updated_at = NOW() WHERE id = $1`,
           [invoice.id]
         );
-        toast.success('Fatura başarıyla silindi');
+        toast.success(tm('invoiceDeleteSuccess'));
       } catch (err: any) {
-        toast.error(`Fatura silinemedi: ${err?.message || String(err)}`);
+        toast.error(`${tm('invoiceDeleteError')}: ${err?.message || String(err)}`);
       }
       setSelectedInvoiceForAction(null);
     },
@@ -378,108 +378,20 @@ export function UnifiedInvoiceModule({ customers = [], products = [], defaultCat
                       <div className="border border-gray-300 bg-white p-4">
                         <h4 className="text-sm text-gray-700 mb-2">{tm('description')}</h4>
                         <div className="text-xs text-gray-600 space-y-2">
-                          {hoveredInvoiceType.code === 0 && (
-                            <>
-                              <p className="font-medium text-gray-800">Ne İşe Yarar:</p>
-                              <p>Standart satış işlemlerinizi kayıt altına almak için kullanılır. Müşterilere mal/hizmet satışı yapıldığında bu fatura türü ile fatura kesilir. Muhasebe kayıtları otomatik oluşturulur ve stok hareketleri kaydedilir.</p>
-                            </>
-                          )}
-                          {hoveredInvoiceType.code === 1 && (
-                            <>
-                              <p className="font-medium text-gray-800">Ne İşe Yarar:</p>
-                              <p>Perakende satış işlemleri için kullanılır. Mağaza veya satış noktasından yapılan bireysel satışlar için kesilir. Genellikle daha küçük miktarlı ve nakit/kkart ödemeli işlemler için kullanılır.</p>
-                            </>
-                          )}
-                          {hoveredInvoiceType.code === 2 && (
-                            <>
-                              <p className="font-medium text-gray-800">Ne İşe Yarar:</p>
-                              <p>Toptan satış işlemleri için kullanılır. Büyük miktarlı, indirimli satışlar ve kurumsal müşterilere yapılan satışlar için kesilir. Genellikle vade farkı veya özel fiyatlandırma ile birlikte kullanılır.</p>
-                            </>
-                          )}
-                          {hoveredInvoiceType.code === 3 && (
-                            <>
-                              <p className="font-medium text-gray-800">Ne İşe Yarar:</p>
-                              <p>Müşteriden geri gelen satış iadeleri için kullanılır. Defolu, hasarlı veya istenmeyen ürünlerin geri alınması durumunda kesilir. Stok girişi ve muhasebe kaydı otomatik oluşturulur.</p>
-                            </>
-                          )}
-                          {hoveredInvoiceType.code === 4 && (
-                            <>
-                              <p className="font-medium text-gray-800">Ne İşe Yarar:</p>
-                              <p>Konsinye satış işlemleri için kullanılır. Ürünler başka bir işletmeye satış yapılana kadar depolarda tutulur. Satış gerçekleştiğinde fatura kesilir ve stok çıkışı yapılır.</p>
-                            </>
-                          )}
-                          {hoveredInvoiceType.code === 5 && (
-                            <>
-                              <p className="font-medium text-gray-800">Ne İşe Yarar:</p>
-                              <p>Tedarikçilerden yapılan alış işlemlerini kayıt altına almak için kullanılır. Satın alınan mal/hizmetlerin muhasebe kaydı yapılır ve stok girişi otomatik oluşturulur. FIFO maliyet hesaplaması yapılır.</p>
-                            </>
-                          )}
-                          {hoveredInvoiceType.code === 6 && (
-                            <>
-                              <p className="font-medium text-gray-800">Ne İşe Yarar:</p>
-                              <p>Tedarikçilere yapılan iadeler için kullanılır. Defolu veya hatalı gelen ürünlerin geri gönderilmesi durumunda kesilir. Stok çıkışı ve muhasebe kaydı otomatik oluşturulur.</p>
-                            </>
-                          )}
-                          {hoveredInvoiceType.code === 7 && (
-                            <>
-                              <p className="font-medium text-gray-800">Ne İşe Yarar:</p>
-                              <p>Müşterilere verilen hizmetler için kullanılır. Mal teslimi olmayan, sadece hizmet sunulan işlemler için kesilir. Muhasebe kaydı yapılır ancak stok hareketi oluşturulmaz.</p>
-                            </>
-                          )}
-                          {hoveredInvoiceType.code === 8 && (
-                            <>
-                              <p className="font-medium text-gray-800">Ne İşe Yarar:</p>
-                              <p>Tedarikçilerden alınan hizmetler için kullanılır. Dışarıdan alınan danışmanlık, bakım, onarım gibi hizmetler için kesilir. Gider muhasebesi yapılır, stok hareketi oluşturulmaz.</p>
-                            </>
-                          )}
-                          {hoveredInvoiceType.code === 10 && (
-                            <>
-                              <p className="font-medium text-gray-800">Ne İşe Yarar:</p>
-                              <p>Müşterilere yapılan sevkiyatları kayıt altına almak için kullanılır. Mal teslim edildiğinde kesilir, fatura sonradan kesilebilir. Stok çıkışı yapılır.</p>
-                            </>
-                          )}
-                          {hoveredInvoiceType.code === 11 && (
-                            <>
-                              <p className="font-medium text-gray-800">Ne İşe Yarar:</p>
-                              <p>Tedarikçilerden gelen sevkiyatları kayıt altına almak için kullanılır. Mal teslim alındığında kesilir, fatura sonradan kesilebilir. Stok girişi yapılır.</p>
-                            </>
-                          )}
-                          {hoveredInvoiceType.code === 12 && (
-                            <>
-                              <p className="font-medium text-gray-800">Ne İşe Yarar:</p>
-                              <p>Depolar arası ürün transferlerini kayıt altına almak için kullanılır. Bir depodan diğerine yapılan ürün aktarımları için kesilir. Stok hareketi oluşturulur.</p>
-                            </>
-                          )}
-                          {hoveredInvoiceType.code === 13 && (
-                            <>
-                              <p className="font-medium text-gray-800">Ne İşe Yarar:</p>
-                              <p>Fire, bozulmuş veya kullanılamaz hale gelmiş ürünlerin stoktan çıkarılması için kullanılır. Stok çıkışı yapılır ve maliyet kaydı oluşturulur.</p>
-                            </>
-                          )}
-                          {hoveredInvoiceType.code === 20 && (
-                            <>
-                              <p className="font-medium text-gray-800">Ne İşe Yarar:</p>
-                              <p>Müşterilerden gelen satış siparişlerini kayıt altına almak için kullanılır. Sipariş alındığında oluşturulur, sonradan faturaya dönüştürülebilir. Stok rezervasyonu yapılır.</p>
-                            </>
-                          )}
-                          {hoveredInvoiceType.code === 21 && (
-                            <>
-                              <p className="font-medium text-gray-800">Ne İşe Yarar:</p>
-                              <p>Tedarikçilere verilen alış siparişlerini kayıt altına almak için kullanılır. Sipariş verildiğinde oluşturulur, mal geldiğinde faturaya dönüştürülebilir.</p>
-                            </>
-                          )}
-                          {hoveredInvoiceType.code === 30 && (
-                            <>
-                              <p className="font-medium text-gray-800">Ne İşe Yarar:</p>
-                              <p>Müşterilere gönderilen satış tekliflerini kayıt altına almak için kullanılır. Fiyat ve koşul teklifi sunulduğunda oluşturulur, kabul edilirse siparişe veya faturaya dönüştürülebilir.</p>
-                            </>
-                          )}
-                          {hoveredInvoiceType.code === 31 && (
-                            <>
-                              <p className="font-medium text-gray-800">{tm('whatIsItFor')}:</p>
-                              <p>{tm('purchaseOfferDesc')}</p>
-                            </>
-                          )}
+                          <p className="font-medium text-gray-800">{tm('whatIsItFor')}:</p>
+                          <p>
+                            {tm(
+                              hoveredInvoiceType.code === 0
+                                ? 'invoiceTypeDescStandard'
+                                : hoveredInvoiceType.code === 1
+                                  ? 'invoiceTypeDescRetail'
+                                  : hoveredInvoiceType.code === 5
+                                    ? 'invoiceTypeDescPurchase'
+                                    : hoveredInvoiceType.code === 31
+                                      ? 'purchaseOfferDesc'
+                                      : 'invoiceTypeDescGeneric'
+                            )}
+                          </p>
                         </div>
                       </div>
                     </>

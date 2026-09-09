@@ -6,6 +6,7 @@ import {
   type BinInventoryRow,
   type FefoAllocation,
 } from '../../../services/wmsEnterpriseService';
+import { useLanguage } from '../../../contexts/LanguageContext';
 
 interface Props {
   darkMode?: boolean;
@@ -226,6 +227,7 @@ export function BinManagement({ darkMode, onBack }: Props) {
 }
 
 function CreateBinModal({ darkMode, onClose, onCreated }: { darkMode?: boolean; onClose: () => void; onCreated: () => void | Promise<void> }) {
+  const { tm } = useLanguage();
   const [form, setForm] = useState({ code: '', zone: '', aisle: '', rack: '', shelf: '', bin: '', bin_type: 'storage', barcode: '' });
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState<string | null>(null);
@@ -276,9 +278,9 @@ function CreateBinModal({ darkMode, onClose, onCreated }: { darkMode?: boolean; 
           <input className={inputCls} placeholder="Barkod" value={form.barcode} onChange={(e) => setForm({ ...form, barcode: e.target.value })} />
         </div>
         <div className="px-4 py-3 border-t flex justify-end gap-2">
-          <button onClick={onClose} className="px-3 py-1.5 text-xs border rounded">İptal</button>
+          <button onClick={onClose} className="px-3 py-1.5 text-xs border rounded">{tm('cancel')}</button>
           <button onClick={() => void save()} disabled={busy} className="px-3 py-1.5 text-xs bg-blue-600 text-white rounded disabled:opacity-50">
-            {busy ? 'Kaydediliyor…' : 'Kaydet'}
+            {busy ? tm('saving') : tm('save')}
           </button>
         </div>
       </div>

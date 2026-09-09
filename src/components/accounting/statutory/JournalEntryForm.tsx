@@ -1,5 +1,6 @@
 ﻿import React, { useState, useEffect } from 'react';
 import { useFirmaDonem } from '../../../contexts/FirmaDonemContext';
+import { useLanguage } from '../../../contexts/LanguageContext';
 import { TableRoutingService } from '../../../services/TableRoutingService';
 import { offlineQueue } from '../../../services/OfflineQueueService';
 import { projectId, publicAnonKey } from '../../../utils/supabase/info';
@@ -37,6 +38,7 @@ interface JournalFormProps {
 }
 
 export function JournalEntryForm({ onClose, onSaveSuccess, initialData }: JournalFormProps) {
+    const { tm } = useLanguage();
     const { selectedFirm, selectedPeriod, selectedBranch } = useFirmaDonem();
 
     // Header State
@@ -153,7 +155,7 @@ export function JournalEntryForm({ onClose, onSaveSuccess, initialData }: Journa
         <div className="bg-white w-full max-w-6xl h-[90vh] rounded-lg shadow-xl flex flex-col border">
             {/* Header */}
             <div className="flex items-center justify-between p-4 border-b">
-                <h2 className="text-xl font-semibold">Yeni Muhasebe Fişi</h2>
+                <h2 className="text-xl font-semibold">{tm('accNewAccountingVoucher')}</h2>
                 <Button variant="ghost" size="icon" onClick={onClose}>
                     <X className="w-5 h-5" />
                 </Button>
@@ -234,8 +236,8 @@ export function JournalEntryForm({ onClose, onSaveSuccess, initialData }: Journa
                             <TableHead className="w-[150px]">Hesap Kodu</TableHead>
                             <TableHead className="w-[200px]">Hesap Adı</TableHead>
                             <TableHead>Açıklama</TableHead>
-                            <TableHead className="w-[150px] text-right">Borç</TableHead>
-                            <TableHead className="w-[150px] text-right">Alacak</TableHead>
+                            <TableHead className="w-[150px] text-right">{tm('directionDebtShort')}</TableHead>
+                            <TableHead className="w-[150px] text-right">{tm('directionCreditShort')}</TableHead>
                             <TableHead className="w-[50px]"></TableHead>
                         </TableRow>
                     </TableHeader>
@@ -333,13 +335,13 @@ export function JournalEntryForm({ onClose, onSaveSuccess, initialData }: Journa
 
                 <div className="flex items-center gap-8">
                     <div className="flex flex-col items-end">
-                        <span className="text-xs text-gray-500 font-medium uppercase">Toplam Borç</span>
+                        <span className="text-xs text-gray-500 font-medium uppercase">{tm('accTotalDebit')}</span>
                         <span className="text-lg font-mono font-bold text-gray-900">
                             {new Intl.NumberFormat('tr-TR', { minimumFractionDigits: 2 }).format(totalDebit)}
                         </span>
                     </div>
                     <div className="flex flex-col items-end">
-                        <span className="text-xs text-gray-500 font-medium uppercase">Toplam Alacak</span>
+                        <span className="text-xs text-gray-500 font-medium uppercase">{tm('accTotalCredit')}</span>
                         <span className="text-lg font-mono font-bold text-gray-900">
                             {new Intl.NumberFormat('tr-TR', { minimumFractionDigits: 2 }).format(totalCredit)}
                         </span>
@@ -355,10 +357,10 @@ export function JournalEntryForm({ onClose, onSaveSuccess, initialData }: Journa
                     </div>
 
                     <div className="pl-8 border-l flex gap-2">
-                        <Button variant="outline" onClick={onClose}>İptal</Button>
+                        <Button variant="outline" onClick={onClose}>{tm('cancel')}</Button>
                         <Button className="bg-blue-600 hover:bg-blue-700" onClick={handleSave} disabled={saving}>
                             <Save className="w-4 h-4 mr-2" />
-                            {saving ? 'Kaydediliyor...' : 'Kaydet'}
+                            {saving ? tm('saving') : tm('save')}
                         </Button>
                     </div>
                 </div>

@@ -3,6 +3,7 @@
  */
 
 import { loadOpenRouterConfig } from './openRouterConfig';
+import { translate, type Language } from '../locales/module-translations';
 
 const BACKEND_API_URL = import.meta.env.VITE_BACKEND_API_URL || 'http://localhost:8000';
 
@@ -53,13 +54,14 @@ interface AIAnalysisResponse {
 export async function analyzeReportWithChatGPT(
   question: string,
   reportData: ReportData,
-  conversationHistory: ChatMessage[] = []
+  conversationHistory: ChatMessage[] = [],
+  language: Language = 'tr',
 ): Promise<AIAnalysisResponse> {
   const orCfg = loadOpenRouterConfig();
   // Etkinse OpenRouter (istemci anahtarı veya bridge OPENROUTER_API_KEY)
   if (orCfg.enabled) {
     const { analyzeReportWithOpenRouter } = await import('./openRouterService');
-    return analyzeReportWithOpenRouter(question, reportData, conversationHistory);
+    return analyzeReportWithOpenRouter(question, reportData, conversationHistory, language);
   }
 
   try {
@@ -89,9 +91,7 @@ export async function analyzeReportWithChatGPT(
     console.error('[OpenAI Service] Error:', error);
 
     if (error.message?.includes('Failed to fetch') || error.message?.includes('API key')) {
-      throw new Error(
-        'Yapay zeka şu anda kullanılamıyor. Entegrasyonlar → Yapay Zeka (OpenRouter) bölümünden API anahtarını girip etkinleştirin.',
-      );
+      throw new Error(translate('reportChatAiUnavailable', language));
     }
 
     throw error;

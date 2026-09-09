@@ -6,6 +6,7 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { Layers, Package, RefreshCw, Download, ChevronDown, ChevronRight, TrendingUp } from 'lucide-react';
 import { useFirmaDonem } from '../../contexts/FirmaDonemContext';
+import { useLanguage } from '../../contexts/LanguageContext';
 import { postgres, ERP_SETTINGS, getAppDefaultCurrency } from '../../services/postgres';
 import { toSqlDateInputString } from '../../utils/localCalendarDate';
 import { SQL_COUNTABLE_SALE_STATUS } from '../../utils/saleInvoiceStatus';
@@ -76,6 +77,7 @@ function groupRows(rows: CategoryGroupProductRow[]) {
 }
 
 export function CategoryGroupSalesProfitReport() {
+  const { tm } = useLanguage();
   const { selectedFirma, selectedDonem } = useFirmaDonem();
   const [loading, setLoading] = useState(false);
   const [rows, setRows] = useState<CategoryGroupProductRow[]>([]);
@@ -171,12 +173,12 @@ export function CategoryGroupSalesProfitReport() {
       setOpenCats(allGC);
     } catch (e: any) {
       console.error('[CategoryGroupSalesProfitReport]', e);
-      toast.error(e?.message || 'Rapor yüklenemedi');
+      toast.error(e?.message || tm('rptProfitCatLoadError'));
       setRows([]);
     } finally {
       setLoading(false);
     }
-  }, [selectedFirma, selectedDonem, dateFrom, dateTo]);
+  }, [selectedFirma, selectedDonem, dateFrom, dateTo, tm]);
 
   useEffect(() => {
     if (selectedFirma && selectedDonem && dateFrom && dateTo) void load();
@@ -201,7 +203,7 @@ export function CategoryGroupSalesProfitReport() {
     a.href = URL.createObjectURL(blob);
     a.download = `kategori-grup-satis-kar-${dateFrom}_${dateTo}.csv`;
     a.click();
-    toast.success('CSV indirildi');
+    toast.success(tm('rptProfitCsvDownloaded'));
   };
 
   const toggleGroup = (g: string) => {
@@ -225,7 +227,7 @@ export function CategoryGroupSalesProfitReport() {
   if (!selectedFirma || !selectedDonem) {
     return (
       <div className="rounded-lg border border-amber-200 bg-amber-50 p-4 text-amber-900">
-        Lütfen firma ve dönem seçin.
+        {tm('rptProfitSelectFirmPeriodDot')}
       </div>
     );
   }
@@ -241,16 +243,15 @@ export function CategoryGroupSalesProfitReport() {
         <div className="flex items-center gap-3">
           <Layers className="h-6 w-6 text-indigo-600" />
           <div>
-            <h2 className="text-lg font-semibold text-slate-900">Kategori grubu — satış ve kar</h2>
+            <h2 className="text-lg font-semibold text-slate-900">{tm('rptProfitCatTitle')}</h2>
             <p className="text-sm text-slate-500">
-              {selectedFirma.name || selectedFirma.title} · {selectedDonem.donem_adi || selectedDonem.nr} · Üst kategori veya ürün grubu →
-              kategori → ürün
+              {selectedFirma.name || selectedFirma.title} · {selectedDonem.donem_adi || selectedDonem.nr} · {tm('rptProfitCatSubtitle')}
             </p>
           </div>
         </div>
         <div className="flex flex-wrap items-center gap-2">
           <label className="flex items-center gap-1 text-sm text-slate-600">
-            Başlangıç
+            {tm('rptProfitDateFrom')}
             <input
               type="date"
               value={toSqlDateInputString(dateFrom) || ''}
@@ -259,7 +260,7 @@ export function CategoryGroupSalesProfitReport() {
             />
           </label>
           <label className="flex items-center gap-1 text-sm text-slate-600">
-            Bitiş
+            {tm('rptProfitDateTo')}
             <input
               type="date"
               value={toSqlDateInputString(dateTo) || ''}
@@ -274,7 +275,7 @@ export function CategoryGroupSalesProfitReport() {
             className="inline-flex items-center gap-1 rounded-lg bg-slate-100 px-3 py-1.5 text-sm font-medium text-slate-800 hover:bg-slate-200 disabled:opacity-50"
           >
             <RefreshCw className={`h-4 w-4 ${loading ? 'animate-spin' : ''}`} />
-            Yenile
+            {tm('reportsRefresh')}
           </button>
           <button
             type="button"
@@ -283,7 +284,7 @@ export function CategoryGroupSalesProfitReport() {
             className="inline-flex items-center gap-1 rounded-lg bg-emerald-600 px-3 py-1.5 text-sm font-medium text-white hover:bg-emerald-700 disabled:opacity-50"
           >
             <Download className="h-4 w-4" />
-            CSV
+            {tm('rptProfitCsv')}
           </button>
         </div>
       </div>
@@ -292,21 +293,21 @@ export function CategoryGroupSalesProfitReport() {
         <div className="rounded-xl border border-slate-200 bg-white p-4 shadow-sm">
           <div className="flex items-center gap-2 text-sm text-slate-500">
             <Package className="h-4 w-4" />
-            Toplam adet
+            {tm('rptProfitTotalQty')}
           </div>
           <div className="mt-1 text-2xl font-bold text-slate-900">{fmt(grand.qty)}</div>
         </div>
         <div className="rounded-xl border border-slate-200 bg-white p-4 shadow-sm">
           <div className="flex items-center gap-2 text-sm text-slate-500">
             <TrendingUp className="h-4 w-4" />
-            Toplam ciro ({cur})
+            {tm('rptProfitTotalRevenueCur').replace('{cur}', cur)}
           </div>
           <div className="mt-1 text-2xl font-bold text-emerald-700">{fmt(grand.rev)}</div>
         </div>
         <div className="rounded-xl border border-slate-200 bg-white p-4 shadow-sm">
           <div className="flex items-center gap-2 text-sm text-slate-500">
             <TrendingUp className="h-4 w-4" />
-            Toplam brüt kar ({cur})
+            {tm('rptProfitTotalGrossCur').replace('{cur}', cur)}
           </div>
           <div className="mt-1 text-2xl font-bold text-indigo-700">{fmt(grand.pr)}</div>
         </div>
@@ -314,10 +315,10 @@ export function CategoryGroupSalesProfitReport() {
 
       <div className="min-h-0 flex-1 overflow-auto rounded-xl border border-slate-200 bg-white shadow-sm">
         {loading ? (
-          <div className="flex items-center justify-center p-12 text-slate-500">Yükleniyor…</div>
+          <div className="flex items-center justify-center p-12 text-slate-500">{tm('reportsLoadingShort')}</div>
         ) : rows.length === 0 ? (
           <div className="flex items-center justify-center p-12 text-slate-500">
-            Bu aralıkta satış satırı bulunamadı.
+            {tm('rptProfitCatEmpty')}
           </div>
         ) : (
           <div className="divide-y divide-slate-100">
@@ -337,9 +338,9 @@ export function CategoryGroupSalesProfitReport() {
                       {groupName}
                     </span>
                     <span className="flex gap-6 text-sm font-normal">
-                      <span>Adet: {fmt(gt.qty)}</span>
-                      <span>Ciro: {fmt(gt.revenue)}</span>
-                      <span>Kar: {fmt(gt.profit)}</span>
+                      <span>{tm('rptProfitLabelQty').replace('{n}', fmt(gt.qty))}</span>
+                      <span>{tm('rptProfitLabelRevenue').replace('{n}', fmt(gt.revenue))}</span>
+                      <span>{tm('rptProfitLabelProfit').replace('{n}', fmt(gt.profit))}</span>
                     </span>
                   </button>
                   {gOpen &&
@@ -358,7 +359,7 @@ export function CategoryGroupSalesProfitReport() {
                               {catName}
                             </span>
                             <span className="flex gap-4 text-xs font-normal">
-                              <span>{fmt(bucket.qty)} ad.</span>
+                              <span>{tm('rptProfitQtyUnit').replace('{n}', fmt(bucket.qty))}</span>
                               <span>{fmt(bucket.revenue)}</span>
                               <span>{fmt(bucket.profit)}</span>
                             </span>
@@ -368,11 +369,11 @@ export function CategoryGroupSalesProfitReport() {
                               <table className="w-full min-w-[640px] text-sm">
                                 <thead className="bg-slate-50 text-left text-xs uppercase tracking-wide text-slate-500">
                                   <tr>
-                                    <th className="px-8 py-2 pl-14">Ürün</th>
-                                    <th className="px-2 py-2 text-right">Kod</th>
-                                    <th className="px-2 py-2 text-right">Adet</th>
-                                    <th className="px-2 py-2 text-right">Ciro</th>
-                                    <th className="px-2 py-2 text-right">Brüt kar</th>
+                                    <th className="px-8 py-2 pl-14">{tm('rptProfitColProduct')}</th>
+                                    <th className="px-2 py-2 text-right">{tm('rptProfitColCode')}</th>
+                                    <th className="px-2 py-2 text-right">{tm('rptProfitColPcs')}</th>
+                                    <th className="px-2 py-2 text-right">{tm('rptPeriodColRevenue')}</th>
+                                    <th className="px-2 py-2 text-right">{tm('rptProfitColGrossShort')}</th>
                                   </tr>
                                 </thead>
                                 <tbody className="divide-y divide-slate-100">
@@ -386,7 +387,7 @@ export function CategoryGroupSalesProfitReport() {
                                           e.preventDefault();
                                           e.stopPropagation();
                                           if (!p.productCode && !p.productId) {
-                                            toast.error('Ürün kodu bulunamadı');
+                                            toast.error(tm('rptProfitProductCodeMissing'));
                                             return;
                                           }
                                           setMovementTarget({
@@ -397,7 +398,7 @@ export function CategoryGroupSalesProfitReport() {
                                             endDate: toSqlDateInputString(dateTo) || undefined,
                                           });
                                         }}
-                                        title="Satıra tıklayarak ürün hareketlerini görüntüleyin"
+                                        title={tm('rptProfitRowClickHint')}
                                       >
                                         <td className="px-8 py-2 pl-14 font-medium text-slate-800">{p.productName}</td>
                                         <td className="px-2 py-2 text-right text-slate-500">{p.productCode || '—'}</td>
