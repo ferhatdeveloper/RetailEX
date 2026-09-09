@@ -1,5 +1,13 @@
 //! RetailEX_Tools — Kurulum dizinindeki .ps1 yardımcılarını ExecutionPolicy Bypass ile çalıştırır.
+//! Portable: config.db tabanlı güncelleme + migration (tools_portable).
 //! Önerilen konum: INSTDIR\RetailEXTools\RetailEX_Tools.exe (kurulum dosyaları INSTDIR kökünde).
+
+#[path = "config.rs"]
+mod config;
+#[path = "sql_migration_split.rs"]
+mod sql_migration_split;
+#[path = "tools_portable.rs"]
+mod tools_portable;
 
 use std::io::{self, BufRead, Write};
 use std::path::{Path, PathBuf};
@@ -15,6 +23,9 @@ fn resolve_install_dir(exe_dir: &Path) -> PathBuf {
             return p.to_path_buf();
         }
         if p.join("install-services-manual.ps1").exists() {
+            return p.to_path_buf();
+        }
+        if p.join("retailex.exe").exists() || p.join("VERSION.txt").exists() {
             return p.to_path_buf();
         }
         cur = p.parent();
@@ -79,6 +90,11 @@ fn list_scripts(install_dir: &Path) {
         if pgexe.exists() { "OK" } else { "--" },
         "RetailEX_PostgreSQLRemote.exe"
     );
+    let ver = install_dir.join("VERSION.txt");
+    println!(
+        "  [{}] VERSION.txt",
+        if ver.exists() { "OK" } else { "--" }
+    );
     println!();
 }
 
@@ -126,6 +142,9 @@ fn menu_loop(install_dir: &Path) -> i32 {
         println!("4) Yönetim menüsü (retailex-admin.ps1)");
         println!("5) PostgreSQL uzaktan erisim (pg-windows-expose-remote.ps1)");
         println!("6) PostgreSQL LAN (.exe, UAC) — RetailEX_PostgreSQLRemote.exe");
+        println!("7) Güncelle (portable zip, GitHub)");
+        println!("8) Migration uygula (config.db → PG)");
+        println!("9) config.db özeti");
         println!("L) Script listesini yenile");
         println!("0) Çıkış");
         print!("Secim: ");
@@ -149,6 +168,9 @@ fn menu_loop(install_dir: &Path) -> i32 {
             "4" => run_ps1(install_dir, "retailex-admin.ps1", &["-Menu".into()]),
             "5" => run_ps1(install_dir, "pg-windows-expose-remote.ps1", &[]),
             "6" => run_postgres_remote_elevated(install_dir),
+            "7" => tools_portable::run_portable_update(install_dir),
+            "8" => tools_portable::run_portable_migrate(install_dir),
+            "9" => tools_portable::print_config_summary(),
             "l" => {
                 println!();
                 continue;
@@ -204,10 +226,17 @@ fn dispatch_cli(install_dir: &Path, args: &[String]) -> i32 {
                 }
             }
         }
+        "update" | "guncelle" | "güncelle" => tools_portable::run_portable_update(install_dir),
+        "migrate" | "migration" => tools_portable::run_portable_migrate(install_dir),
+        "config" | "config-db" => tools_portable::print_config_summary(),
         "help" | "-h" | "/?" => {
             println!(
                 "Kullanım: RetailEX_Tools.exe [komut]\n\
                  Komutlar: services | bridge-npm | bridge | admin | pg | pg-remote\n\
+                           update | migrate | config\n\
+                 update: GitHub RetailEX-Portable-*.zip indirip kurulum dizinine yazar\n\
+                 migrate: C:\\RetailEx\\config.db → PostgreSQL bekleyen migration\n\
+                 config: config.db özeti\n\
                  pg-remote: RetailEX_PostgreSQLRemote.exe (argümanları iletir; yönetici gerekir)\n\
                  Argümansız açılırsa etkileşimli menü."
             );

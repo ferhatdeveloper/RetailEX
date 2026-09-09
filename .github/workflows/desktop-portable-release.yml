@@ -1,0 +1,133 @@
+name: Desktop Portable Release
+
+# RetailEX Tauri masaüstü — NSIS yok, RetailEX-Portable-{version}.zip
+# Tetikleme:
+#   git tag portable-v0.1.263 && git push origin portable-v0.1.263
+# veya Actions → "Desktop Portable Release" → Run workflow
+
+on:
+  push:
+    tags:
+      - 'portable-v*'
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  build-windows-portable:
+    runs-on: windows-latest
+    timeout-minutes: 90
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Guard origin product (RetailEX)
+        shell: pwsh
+        run: |
+          $url = git remote get-url origin
+          if ($url -notmatch 'RetailEX') {
+            throw "origin RetailEX degil: $url — AsinERP portable bu workflow ile yayinlanamaz."
+          }
+          Write-Host "origin OK: $url"
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+
+      - name: Read package version
+        shell: pwsh
+        run: |
+          $v = node -p "require('./package.json').version"
+          echo "PACKAGE_VERSION=$v" >> $env:GITHUB_ENV
+          if ("${{ github.ref_type }}" -eq "tag" -and "${{ github.ref }}" -like "refs/tags/portable-v*") {
+            echo "RELEASE_TAG=${{ github.ref_name }}" >> $env:GITHUB_ENV
+          } else {
+            echo "RELEASE_TAG=portable-v$v" >> $env:GITHUB_ENV
+          }
+
+      - name: Install Rust
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          toolchain: stable
+
+      - name: Rust cache
+        uses: swatinem/rust-cache@v2
+        with:
+          workspaces: './DeskApp -> target'
+
+      - name: Install dependencies
+        run: npm ci --legacy-peer-deps
+
+      - name: Fetch Windows extras (Sumatra, PostgREST, Node)
+        shell: pwsh
+        run: |
+          npm run sumatra:fetch
+          if ($LASTEXITCODE -ne 0) { throw "sumatra:fetch failed: $LASTEXITCODE" }
+          npm run postgrest:fetch
+          if ($LASTEXITCODE -ne 0) { throw "postgrest:fetch failed: $LASTEXITCODE" }
+          npm run node-runtime:fetch
+          if ($LASTEXITCODE -ne 0) { throw "node-runtime:fetch failed: $LASTEXITCODE" }
+
+      - name: Sync app version + prebuild extras
+        shell: pwsh
+        env:
+          WINDOWS_CODESIGN_DISABLE: '1'
+        run: npm run prebuild
+
+      - name: Build Tauri (no NSIS bundle)
+        shell: pwsh
+        env:
+          CI: 'true'
+          CARGO_BUILD_JOBS: '2'
+          CARGO_INCREMENTAL: '0'
+          WINDOWS_CODESIGN_DISABLE: '1'
+        run: node scripts/tauri-build-portable.mjs
+
+      - name: Pack portable zip
+        shell: pwsh
+        run: |
+          New-Item -ItemType Directory -Force -Path dist | Out-Null
+          node scripts/pack-retailex-portable-zip.mjs
+          $zip = "dist/RetailEX-Portable-$env:PACKAGE_VERSION.zip"
+          if (-not (Test-Path $zip)) { throw "Portable zip yok: $zip" }
+          echo "PORTABLE_ZIP=RetailEX-Portable-$env:PACKAGE_VERSION.zip" >> $env:GITHUB_ENV
+          (Get-Item $zip).Length | Out-Host
+
+      - name: Upload workflow artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: RetailEX-Portable-${{ env.PACKAGE_VERSION }}
+          path: dist/RetailEX-Portable-${{ env.PACKAGE_VERSION }}.zip
+          retention-days: 30
+
+      - name: Create GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ env.RELEASE_TAG }}
+          name: RetailEX Portable ${{ env.PACKAGE_VERSION }}
+          body: |
+            ## RetailEX Portable (Windows)
+
+            Kurulumsuz zip — NSIS setup yok. Otomatik derleme: `${{ github.workflow }}` (#${{ github.run_number }})
+
+            ### Kurulum
+            1. `RetailEX-Portable-${{ env.PACKAGE_VERSION }}.zip` indirin ve örn. `C:\RetailEx\App\` altına açın
+            2. PostgreSQL erişilebilir olmalı
+            3. `RetailEX_Config.exe` ile `C:\RetailEx\config.db` ayarlayın
+            4. `retailex.exe` çalıştırın
+
+            ### Güncelleme
+            `RetailEX_Tools.exe` → **Güncelle (portable)** veya `RetailEX_Tools.exe update`
+
+            ### Dosyalar
+            - **RetailEX-Portable-${{ env.PACKAGE_VERSION }}.zip** — taşınabilir paket
+
+            Sürüm: `${{ env.PACKAGE_VERSION }}` (kök `package.json`)
+          files: dist/RetailEX-Portable-${{ env.PACKAGE_VERSION }}.zip
+          draft: false
+          prerelease: false
+          make_latest: false
+          generate_release_notes: false

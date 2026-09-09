@@ -24,7 +24,7 @@ AsinERP Portable yanlışlıkla RetailEX releases’a düşmesin. Ürün ayrım�
 | Asin portable workflow / script | `desktop-portable-release.yml` (Asin), `pack-asin-portable-zip.mjs` |
 | Asin tag’ini RetailEX’e push | `portable-v*` / `app-v*` yanlış origin’e |
 
-## RetailEX portable (gerekirse)
+## RetailEX portable
 
 Yalnızca **bu** repoda ve **RetailEX** markasıyla:
 
@@ -33,6 +33,10 @@ Yalnızca **bu** repoda ve **RetailEX** markasıyla:
 | Zip | `RetailEX-Portable-{version}.zip` |
 | Tag | `portable-v{version}` (yalnızca `origin` = RetailEX) |
 | Release adı | `RetailEX Portable {version}` |
+| Workflow | `.github/workflows/desktop-portable-release.yml` (RetailEX) |
+| Pack | `scripts/pack-retailex-portable-zip.mjs` |
+| Tetikleme | `npm run desktop:portable:ci:build` |
+| Güncelleme | `RetailEX_Tools.exe update` / menü 7 (config.db + GitHub) |
 
 NSIS kurulum: `RetailEX-Desktop-Setup-{version}.exe` + tag `app-v{version}` (`retailex-desktop-release-filename.mdc`).
 
