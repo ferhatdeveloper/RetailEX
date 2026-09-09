@@ -76,13 +76,20 @@ const README = `RetailEX Portable ${version}
 
 Kurulum (hızlı)
 1. Bu zip'i örn. C:\\RetailEx\\App\\ altına açın.
-2. PostgreSQL erişilebilir olmalı (yerel veya uzak).
+2. PostgreSQL sunucusu elle kurulu olmalı (bu paket PG kurmaz).
 3. RetailEX_Config.exe ile C:\\RetailEx\\config.db ayarlarını doldurun.
-4. retailex.exe çalıştırın (açılışta migration uygulanır).
+4. RetailEX_Tools.exe setup-db  (veya menü 9: DB oluştur + migration)
+   — SQL güncellemek için: RetailEX_Tools.exe sync-migrate (menü C)
+5. retailex.exe çalıştırın.
 
 Güncelleme
-- RetailEX_Tools.exe → menü "Güncelle (portable)"
-- veya: RetailEX_Tools.exe update
+- Uygulama: RetailEX_Tools.exe update (menü 7)
+- Yalnız şema: RetailEX_Tools.exe sync-migrate (GitHub SQL + migrate)
+- Ortam: RETAILEX_SQL_REF=main (varsayılan)
+
+Araçlar
+- RetailEX_Tools.exe (kök) ve RetailEXTools\\RetailEX_Tools.exe
+- setup-db | fetch-sql | sync-migrate | migrate | update | config
 
 Notlar
 - config.db, PG verisi ve yedekler zip içinde DEĞİLDİR (C:\\RetailEx\\ altında kalır).

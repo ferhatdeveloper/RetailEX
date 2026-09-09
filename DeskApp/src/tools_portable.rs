@@ -10,6 +10,7 @@ use std::process::Command;
 
 const GITHUB_REPO: &str = "ferhatdeveloper/RetailEX";
 const CONFIG_DB: &str = r"C:\RetailEx\config.db";
+const DEFAULT_GIT_REF: &str = "main";
 
 #[derive(Debug, Deserialize)]
 struct GhRelease {
@@ -22,6 +23,25 @@ struct GhAsset {
     name: String,
     browser_download_url: String,
     size: u64,
+}
+
+#[derive(Debug, Deserialize)]
+struct GhContentItem {
+    name: String,
+    #[serde(rename = "type")]
+    item_type: String,
+    download_url: Option<String>,
+    size: Option<u64>,
+}
+
+#[derive(Debug, Deserialize)]
+struct GhRefObject {
+    sha: String,
+}
+
+#[derive(Debug, Deserialize)]
+struct GhGitRef {
+    object: GhRefObject,
 }
 
 fn load_config_from_db() -> Result<AppConfig, String> {
@@ -150,6 +170,224 @@ fn download_file(url: &str, dest: &Path) -> Result<(), String> {
     let mut f = fs::File::create(dest).map_err(|e| e.to_string())?;
     res.copy_to(&mut f).map_err(|e| e.to_string())?;
     Ok(())
+}
+
+fn http_get_bytes(url: &str) -> Result<Vec<u8>, String> {
+    let client = reqwest::blocking::Client::builder()
+        .user_agent("RetailEX-Tools-Portable")
+        .timeout(std::time::Duration::from_secs(120))
+        .build()
+        .map_err(|e| e.to_string())?;
+    let res = client.get(url).send().map_err(|e| e.to_string())?;
+    if !res.status().is_success() {
+        return Err(format!("HTTP {}: {}", res.status(), url));
+    }
+    res.bytes().map(|b| b.to_vec()).map_err(|e| e.to_string())
+}
+
+fn resolve_git_ref() -> String {
+    std::env::var("RETAILEX_SQL_REF")
+        .or_else(|_| std::env::var("GITHUB_REF_NAME"))
+        .unwrap_or_else(|_| DEFAULT_GIT_REF.to_string())
+}
+
+fn migrations_target_dir(install_dir: &Path) -> PathBuf {
+    install_dir.join("_up_").join("database").join("migrations")
+}
+
+fn is_numbered_sql(name: &str) -> bool {
+    let Some(stem) = name.strip_suffix(".sql").or_else(|| name.strip_suffix(".SQL")) else {
+        return false;
+    };
+    let Some(prefix) = stem.split('_').next() else {
+        return false;
+    };
+    !prefix.is_empty() && prefix.chars().all(|c| c.is_ascii_digit())
+}
+
+fn github_head_sha(git_ref: &str) -> Result<String, String> {
+    // branches/main or tags/portable-v...
+    let url_branch = format!(
+        "https://api.github.com/repos/{}/git/ref/heads/{}",
+        GITHUB_REPO, git_ref
+    );
+    if let Ok(body) = http_get_json(&url_branch) {
+        if let Ok(r) = serde_json::from_str::<GhGitRef>(&body) {
+            return Ok(r.object.sha);
+        }
+    }
+    let url_tag = format!(
+        "https://api.github.com/repos/{}/git/ref/tags/{}",
+        GITHUB_REPO, git_ref
+    );
+    let body = http_get_json(&url_tag)?;
+    let r: GhGitRef = serde_json::from_str(&body).map_err(|e| e.to_string())?;
+    Ok(r.object.sha)
+}
+
+/// GitHub `database/migrations` içeriğini yerel `_up_/database/migrations` altına yazar.
+fn fetch_sql_from_github(install_dir: &Path, git_ref: &str) -> Result<(usize, String), String> {
+    let dest = migrations_target_dir(install_dir);
+    fs::create_dir_all(&dest).map_err(|e| format!("Klasör oluşturulamadı: {}", e))?;
+
+    let list_url = format!(
+        "https://api.github.com/repos/{}/contents/database/migrations?ref={}",
+        GITHUB_REPO,
+        urlencoding_lite(git_ref)
+    );
+    println!("GitHub SQL listesi: {}", list_url);
+    let body = http_get_json(&list_url)?;
+    let items: Vec<GhContentItem> =
+        serde_json::from_str(&body).map_err(|e| format!("GitHub içerik JSON: {}", e))?;
+
+    let mut sql_files: Vec<&GhContentItem> = items
+        .iter()
+        .filter(|i| i.item_type == "file" && is_numbered_sql(&i.name))
+        .collect();
+    sql_files.sort_by(|a, b| a.name.cmp(&b.name));
+
+    if sql_files.is_empty() {
+        return Err(
+            "GitHub'da numaralı *.sql migration dosyası bulunamadı (database/migrations)."
+                .to_string(),
+        );
+    }
+
+    let sha = github_head_sha(git_ref).unwrap_or_else(|_| "?".to_string());
+    let short = if sha.len() >= 7 { &sha[..7] } else { &sha };
+
+    let mut ok = 0usize;
+    let mut fail = 0usize;
+    for item in &sql_files {
+        let Some(url) = item.download_url.as_ref() else {
+            eprintln!("  atlandı (download_url yok): {}", item.name);
+            fail += 1;
+            continue;
+        };
+        let target = dest.join(&item.name);
+        print!(
+            "  indiriliyor: {} ({})... ",
+            item.name,
+            item.size.unwrap_or(0)
+        );
+        let _ = io::stdout().flush();
+        match http_get_bytes(url) {
+            Ok(bytes) => {
+                if let Err(e) = fs::write(&target, &bytes) {
+                    eprintln!("yazma hatası: {}", e);
+                    fail += 1;
+                } else {
+                    println!("OK");
+                    ok += 1;
+                }
+            }
+            Err(e) => {
+                eprintln!("{}", e);
+                fail += 1;
+            }
+        }
+    }
+
+    let meta = dest.join("MIGRATIONS_SOURCE.txt");
+    let meta_body = format!(
+        "repo={}\nref={}\nsha={}\nfetched={:?}\nfiles={}\n",
+        GITHUB_REPO,
+        git_ref,
+        sha,
+        std::time::SystemTime::now(),
+        ok
+    );
+    let _ = fs::write(&meta, meta_body);
+
+    if ok == 0 {
+        return Err(format!(
+            "Hiç SQL indirilemedi (başarısız={}). Ağ / GitHub rate limit kontrol edin.",
+            fail
+        ));
+    }
+    Ok((
+        ok,
+        format!(
+            "SQL güncellendi: {} dosya → {} (ref={}, sha={}, hata={})",
+            ok,
+            dest.display(),
+            git_ref,
+            short,
+            fail
+        ),
+    ))
+}
+
+/// Basit path segment encode (ref adı için).
+fn urlencoding_lite(s: &str) -> String {
+    let mut out = String::new();
+    for c in s.chars() {
+        match c {
+            'A'..='Z' | 'a'..='z' | '0'..='9' | '-' | '_' | '.' | '~' => out.push(c),
+            _ => {
+                for b in c.to_string().as_bytes() {
+                    out.push_str(&format!("%{:02X}", b));
+                }
+            }
+        }
+    }
+    out
+}
+
+/// Yalnızca GitHub'dan SQL çek.
+pub fn run_portable_fetch_sql(install_dir: &Path) -> i32 {
+    println!("=== GitHub'dan güncel SQL (database/migrations) ===");
+    let git_ref = resolve_git_ref();
+    println!("Repo: {}  ref: {}", GITHUB_REPO, git_ref);
+    println!(
+        "Hedef: {}",
+        migrations_target_dir(install_dir).display()
+    );
+    if !confirm("GitHub'dan SQL dosyaları indirilsin mi?") {
+        return 0;
+    }
+    match fetch_sql_from_github(install_dir, &git_ref) {
+        Ok((_n, msg)) => {
+            println!("{}", msg);
+            0
+        }
+        Err(e) => {
+            eprintln!("{}", e);
+            1
+        }
+    }
+}
+
+/// GitHub SQL çek + config.db üzerinden bekleyen migration uygula.
+pub fn run_portable_sync_migrate(install_dir: &Path) -> i32 {
+    println!("=== GitHub SQL + Migration ===");
+    let git_ref = resolve_git_ref();
+    println!("Repo: {}  ref: {}", GITHUB_REPO, git_ref);
+
+    let config = match load_config_from_db() {
+        Ok(c) => c,
+        Err(e) => {
+            eprintln!("{}", e);
+            eprintln!("Önce RetailEX_Config.exe ile config.db ayarlayın.");
+            return 1;
+        }
+    };
+
+    if !confirm("GitHub'dan güncel SQL çekilip yeni migration'lar uygulansın mı?") {
+        return 0;
+    }
+
+    match fetch_sql_from_github(install_dir, &git_ref) {
+        Ok((_n, msg)) => println!("{}", msg),
+        Err(e) => {
+            eprintln!("{}", e);
+            return 1;
+        }
+    }
+
+    println!();
+    println!("Bekleyen migration'lar uygulanıyor...");
+    migrate_with_config(install_dir, &config, true)
 }
 
 fn expand_zip_overwrite(zip_path: &Path, dest_dir: &Path) -> Result<(), String> {
@@ -333,8 +571,9 @@ pub fn run_portable_update(install_dir: &Path) -> i32 {
 }
 
 fn resolve_migrations_dir(install_dir: &Path) -> Result<PathBuf, String> {
+    let preferred = migrations_target_dir(install_dir);
     let candidates = [
-        install_dir.join("_up_").join("database").join("migrations"),
+        preferred.clone(),
         install_dir.join("database").join("migrations"),
         install_dir.join("migrations"),
     ];
@@ -344,8 +583,8 @@ fn resolve_migrations_dir(install_dir: &Path) -> Result<PathBuf, String> {
         }
     }
     Err(format!(
-        "Migration klasörü yok. Beklenen: {}",
-        candidates[0].display()
+        "Migration klasörü yok. Önce 'fetch-sql' veya portable zip kullanın. Beklenen: {}",
+        preferred.display()
     ))
 }
 
@@ -377,24 +616,85 @@ fn pg_endpoint(config: &AppConfig, prefer_remote: bool) -> (String, String, Stri
     (host, user.to_string(), pass.to_string(), db_name, port)
 }
 
-/// config.db → PG migration (sys_migrations).
-pub fn run_portable_migrate(install_dir: &Path) -> i32 {
-    println!("=== RetailEX Migration (config.db) ===");
-    let config = match load_config_from_db() {
-        Ok(c) => c,
-        Err(e) => {
-            eprintln!("{}", e);
-            eprintln!("RetailEX_Config.exe ile önce ayarlayın.");
-            return 1;
-        }
-    };
-    if !config.is_configured {
-        eprintln!("config.db henüz yapılandırılmamış (is_configured=false).");
-        if !confirm("Yine de denensin mi?") {
-            return 1;
+async fn refresh_template_collation(client: &tokio_postgres::Client) {
+    for db in ["postgres", "template1"] {
+        if let Err(e) = client
+            .batch_execute(&format!("ALTER DATABASE {} REFRESH COLLATION VERSION", db))
+            .await
+        {
+            eprintln!("Collation refresh uyarısı ({}): {}", db, e);
         }
     }
+}
 
+fn is_collation_mismatch(e: &tokio_postgres::Error) -> bool {
+    let s = e.to_string();
+    s.contains("collation version mismatch") || s.contains("REFRESH COLLATION VERSION")
+}
+
+async fn create_database_async(
+    host: &str,
+    port: u16,
+    user: &str,
+    pass: &str,
+    db_name: &str,
+) -> Result<String, String> {
+    use tokio_postgres::NoTls;
+
+    let safe = db_name.replace('"', "");
+    if safe.is_empty() || safe.contains(|c: char| !(c.is_ascii_alphanumeric() || c == '_' || c == '-')) {
+        return Err(format!("Geçersiz veritabanı adı: {}", db_name));
+    }
+
+    let mut pg_config = tokio_postgres::Config::new();
+    pg_config
+        .host(host)
+        .port(port)
+        .user(user)
+        .password(pass)
+        .dbname("postgres")
+        .connect_timeout(std::time::Duration::from_secs(15));
+
+    let (client, connection) = pg_config
+        .connect(NoTls)
+        .await
+        .map_err(|e| format!("Sistem DB (postgres) bağlantı: {}", e))?;
+    tokio::spawn(async move {
+        if let Err(e) = connection.await {
+            eprintln!("connection error: {}", e);
+        }
+    });
+
+    let rows = client
+        .query("SELECT 1 FROM pg_database WHERE datname = $1", &[&safe])
+        .await
+        .map_err(|e| format!("DB kontrol: {}", e))?;
+
+    if !rows.is_empty() {
+        return Ok(format!("Veritabanı zaten var: {}", safe));
+    }
+
+    refresh_template_collation(&client).await;
+    let create_sql = format!("CREATE DATABASE \"{}\"", safe);
+    match client.execute(&create_sql, &[]).await {
+        Ok(_) => Ok(format!("Veritabanı oluşturuldu: {}", safe)),
+        Err(e) if is_collation_mismatch(&e) => {
+            eprintln!("Collation uyumsuzluğu; template yenileniyor...");
+            refresh_template_collation(&client).await;
+            client
+                .execute(&create_sql, &[])
+                .await
+                .map_err(|e2| format!("CREATE DATABASE: {}", e2))?;
+            Ok(format!(
+                "Veritabanı oluşturuldu (collation refresh sonrası): {}",
+                safe
+            ))
+        }
+        Err(e) => Err(format!("CREATE DATABASE: {}", e)),
+    }
+}
+
+fn migrate_with_config(install_dir: &Path, config: &AppConfig, skip_confirm: bool) -> i32 {
     let migrations_dir = match resolve_migrations_dir(install_dir) {
         Ok(p) => p,
         Err(e) => {
@@ -406,10 +706,10 @@ pub fn run_portable_migrate(install_dir: &Path) -> i32 {
     println!("db_mode: {}", config.db_mode);
 
     let prefer_remote = config.db_mode.eq_ignore_ascii_case("online");
-    let (host, user, pass, db_name, port) = pg_endpoint(&config, prefer_remote);
+    let (host, user, pass, db_name, port) = pg_endpoint(config, prefer_remote);
     println!("Hedef PG: {}:{}/{} (kullanıcı {})", host, port, db_name, user);
 
-    if !confirm("Bekleyen migration'lar uygulansın mı?") {
+    if !skip_confirm && !confirm("Bekleyen migration'lar uygulansın mı?") {
         return 0;
     }
 
@@ -438,6 +738,93 @@ pub fn run_portable_migrate(install_dir: &Path) -> i32 {
             1
         }
     }
+}
+
+/// config.db → CREATE DATABASE (yoksa) + migration.
+pub fn run_portable_setup_db(install_dir: &Path) -> i32 {
+    println!("=== RetailEX DB oluştur + Migration ===");
+    println!("Not: PostgreSQL sunucusu önceden kurulu olmalı (elle kurulum).");
+    let config = match load_config_from_db() {
+        Ok(c) => c,
+        Err(e) => {
+            eprintln!("{}", e);
+            eprintln!("Önce RetailEX_Config.exe ile C:\\RetailEx\\config.db ayarlayın.");
+            return 1;
+        }
+    };
+    if !config.is_configured {
+        eprintln!("config.db henüz yapılandırılmamış (is_configured=false).");
+        if !confirm("Yine de denensin mi?") {
+            return 1;
+        }
+    }
+
+    let prefer_remote = config.db_mode.eq_ignore_ascii_case("online");
+    let (host, user, pass, db_name, port) = pg_endpoint(&config, prefer_remote);
+    println!("Hedef: {}:{}/{} (kullanıcı {})", host, port, db_name, user);
+    println!("db_mode: {}", config.db_mode);
+
+    if prefer_remote {
+        println!();
+        println!("Uyarı: online/uzak hedefte CREATE DATABASE genelde yetki gerektirir.");
+        println!("Uzak DB genelde sunucuda önceden oluşturulur; yine de denenecek.");
+    }
+
+    if !confirm("Veritabanı yoksa oluşturulsun ve migration uygulansın mı?") {
+        return 0;
+    }
+
+    if confirm("Önce GitHub'dan güncel SQL çekilsin mi? (önerilir)") {
+        let git_ref = resolve_git_ref();
+        match fetch_sql_from_github(install_dir, &git_ref) {
+            Ok((_n, msg)) => println!("{}", msg),
+            Err(e) => {
+                eprintln!("SQL indirme: {}", e);
+                if !confirm("Yerel SQL ile devam edilsin mi?") {
+                    return 1;
+                }
+            }
+        }
+    }
+
+    let rt = match tokio::runtime::Runtime::new() {
+        Ok(r) => r,
+        Err(e) => {
+            eprintln!("tokio: {}", e);
+            return 1;
+        }
+    };
+    match rt.block_on(create_database_async(&host, port, &user, &pass, &db_name)) {
+        Ok(msg) => println!("{}", msg),
+        Err(e) => {
+            eprintln!("{}", e);
+            return 1;
+        }
+    }
+
+    println!();
+    println!("Migration başlıyor...");
+    migrate_with_config(install_dir, &config, true)
+}
+
+/// config.db → PG migration (sys_migrations).
+pub fn run_portable_migrate(install_dir: &Path) -> i32 {
+    println!("=== RetailEX Migration (config.db) ===");
+    let config = match load_config_from_db() {
+        Ok(c) => c,
+        Err(e) => {
+            eprintln!("{}", e);
+            eprintln!("RetailEX_Config.exe ile önce ayarlayın.");
+            return 1;
+        }
+    };
+    if !config.is_configured {
+        eprintln!("config.db henüz yapılandırılmamış (is_configured=false).");
+        if !confirm("Yine de denensin mi?") {
+            return 1;
+        }
+    }
+    migrate_with_config(install_dir, &config, false)
 }
 
 async fn apply_migrations_async(

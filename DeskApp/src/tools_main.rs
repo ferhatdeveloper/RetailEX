@@ -143,8 +143,11 @@ fn menu_loop(install_dir: &Path) -> i32 {
         println!("5) PostgreSQL uzaktan erisim (pg-windows-expose-remote.ps1)");
         println!("6) PostgreSQL LAN (.exe, UAC) — RetailEX_PostgreSQLRemote.exe");
         println!("7) Güncelle (portable zip, GitHub)");
-        println!("8) Migration uygula (config.db → PG)");
-        println!("9) config.db özeti");
+        println!("8) Migration uygula (yerel SQL → PG)");
+        println!("9) DB oluştur + migration (config.db)");
+        println!("B) GitHub'dan güncel SQL çek");
+        println!("C) GitHub SQL çek + migration uygula");
+        println!("A) config.db özeti");
         println!("L) Script listesini yenile");
         println!("0) Çıkış");
         print!("Secim: ");
@@ -170,7 +173,10 @@ fn menu_loop(install_dir: &Path) -> i32 {
             "6" => run_postgres_remote_elevated(install_dir),
             "7" => tools_portable::run_portable_update(install_dir),
             "8" => tools_portable::run_portable_migrate(install_dir),
-            "9" => tools_portable::print_config_summary(),
+            "9" => tools_portable::run_portable_setup_db(install_dir),
+            "b" => tools_portable::run_portable_fetch_sql(install_dir),
+            "c" => tools_portable::run_portable_sync_migrate(install_dir),
+            "a" | "10" => tools_portable::print_config_summary(),
             "l" => {
                 println!();
                 continue;
@@ -228,16 +234,22 @@ fn dispatch_cli(install_dir: &Path, args: &[String]) -> i32 {
         }
         "update" | "guncelle" | "güncelle" => tools_portable::run_portable_update(install_dir),
         "migrate" | "migration" => tools_portable::run_portable_migrate(install_dir),
+        "setup-db" | "init-db" | "createdb" => tools_portable::run_portable_setup_db(install_dir),
+        "fetch-sql" | "pull-sql" | "sql" => tools_portable::run_portable_fetch_sql(install_dir),
+        "sync-migrate" | "sync-sql" => tools_portable::run_portable_sync_migrate(install_dir),
         "config" | "config-db" => tools_portable::print_config_summary(),
         "help" | "-h" | "/?" => {
             println!(
                 "Kullanım: RetailEX_Tools.exe [komut]\n\
                  Komutlar: services | bridge-npm | bridge | admin | pg | pg-remote\n\
-                           update | migrate | config\n\
+                           update | migrate | setup-db | fetch-sql | sync-migrate | config\n\
                  update: GitHub RetailEX-Portable-*.zip indirip kurulum dizinine yazar\n\
-                 migrate: C:\\RetailEx\\config.db → PostgreSQL bekleyen migration\n\
+                 migrate: yerel SQL → PostgreSQL bekleyen migration\n\
+                 setup-db: CREATE DATABASE (yoksa) + migration\n\
+                 fetch-sql: GitHub main database/migrations → _up_\\database\\migrations\n\
+                 sync-migrate: fetch-sql + migrate (önerilen SQL güncelleme)\n\
+                 Ortam: RETAILEX_SQL_REF=main (veya tag/branch)\n\
                  config: config.db özeti\n\
-                 pg-remote: RetailEX_PostgreSQLRemote.exe (argümanları iletir; yönetici gerekir)\n\
                  Argümansız açılırsa etkileşimli menü."
             );
             0
