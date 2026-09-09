@@ -62,6 +62,9 @@ export function normalizeHireDate(value: unknown): string | null {
   return day;
 }
 
+/** Alias — hire / termination aynı normalizasyon. */
+export const normalizeIsoDate = normalizeHireDate;
+
 /**
  * Hakkediş ayı, işe giriş tarihinden önce mi?
  * Örn. hire=2026-09-01 → 2026-08 hakkedişi yazılmaz; 2026-09 yazılır.
@@ -75,4 +78,69 @@ export function isPayrollMonthBeforeHire(
   if (!hire) return false;
   // Ay tamamen işe girişten önce bitiyorsa (nextMonthStart <= hire) atla
   return nextMonthStart <= hire;
+}
+
+/**
+ * Hakkediş ayı, işten çıkıştan tamamen sonra mı?
+ * Örn. termination=2026-09-11 → 2026-10 hakkedişi yazılmaz; 2026-09 yazılabilir (oranlı).
+ */
+export function isPayrollMonthAfterTermination(
+  monthStart: string,
+  terminationDate: unknown,
+): boolean {
+  const term = normalizeIsoDate(terminationDate);
+  if (!term) return false;
+  return monthStart > term;
+}
+
+/** Ay içindeki gün sayısı (YYYY-MM-DD ay başı). */
+export function daysInPayrollMonth(monthStart: string): number {
+  const y = parseInt(monthStart.slice(0, 4), 10);
+  const m = parseInt(monthStart.slice(5, 7), 10);
+  if (!y || !m) return 30;
+  return new Date(y, m, 0).getDate();
+}
+
+/**
+ * İşe giriş / çıkışa göre ay içi çalışılan gün (dahil).
+ * termination yoksa ay sonuna kadar; hire yoksa ay başından.
+ */
+export function payrollWorkedDaysInMonth(
+  monthStart: string,
+  nextMonthStart: string,
+  hireDate: unknown,
+  terminationDate: unknown,
+): number {
+  const dim = daysInPayrollMonth(monthStart);
+  const lastDay = `${monthStart.slice(0, 8)}${String(dim).padStart(2, '0')}`;
+  const hire = normalizeIsoDate(hireDate);
+  const term = normalizeIsoDate(terminationDate);
+  let from = monthStart;
+  let to = lastDay;
+  if (hire && hire > from) from = hire;
+  if (term && term < to) to = term;
+  if (to < from) return 0;
+  if (isPayrollMonthAfterTermination(monthStart, term)) return 0;
+  if (isPayrollMonthBeforeHire(monthStart, nextMonthStart, hire)) return 0;
+  const t0 = Date.parse(`${from}T12:00:00Z`);
+  const t1 = Date.parse(`${to}T12:00:00Z`);
+  if (!Number.isFinite(t0) || !Number.isFinite(t1)) return dim;
+  return Math.floor((t1 - t0) / 86400000) + 1;
+}
+
+/** Tam maaş × (çalışılan gün / ay günü); IQD için tam sayıya yuvarla. */
+export function prorateSalaryForMonth(
+  salaryBase: number,
+  monthStart: string,
+  nextMonthStart: string,
+  hireDate: unknown,
+  terminationDate: unknown,
+): number {
+  const base = Math.abs(Number(salaryBase) || 0);
+  if (!base) return 0;
+  const dim = daysInPayrollMonth(monthStart);
+  const worked = payrollWorkedDaysInMonth(monthStart, nextMonthStart, hireDate, terminationDate);
+  if (worked <= 0) return 0;
+  if (worked >= dim) return Math.round(base);
+  return Math.round((base * worked) / dim);
 }

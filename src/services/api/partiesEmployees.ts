@@ -24,10 +24,15 @@ import { ensurePartyPeriodTables } from './ensurePartyPeriodTables';
 import {
   currentPayrollMonthRange,
   employeeLedgerBalanceDelta,
+  isPayrollMonthAfterTermination,
   isPayrollMonthBeforeHire,
   normalizeHireDate,
+  normalizeIsoDate,
+  prorateSalaryForMonth,
 } from './partyEmployeeBalance';
 import type { PartyLedgerMovement, PartyEmployee } from '../../core/types/models';
+import { printEmployeeTerminationLetterEn } from '../../utils/printEmployeeTerminationLetter';
+import { getReportingCurrency } from '../../utils/currency';
 
 function ledgerTable(): string {
   const firm = normalizeFirmTableNr(ERP_SETTINGS.firmNr);
@@ -78,6 +83,7 @@ function mapEmployee(p: {
   email?: string;
   salary_base?: number;
   hire_date?: string | null;
+  termination_date?: string | null;
   department?: string;
   position?: string;
   balance?: number;
@@ -91,6 +97,7 @@ function mapEmployee(p: {
     email: p.email,
     salary_base: p.salary_base || 0,
     hire_date: toDateInputValue(p.hire_date) || null,
+    termination_date: toDateInputValue(p.termination_date) || null,
     department: p.department,
     position: p.position,
     balance: p.balance || 0,
@@ -149,8 +156,8 @@ export const employeeAPI = {
     const nextMonthStart = `${next.getFullYear()}-${String(next.getMonth() + 1).padStart(2, '0')}-01`;
 
     const employees = await this.list();
-    const active = employees.filter((e) => e.is_active !== false);
-    const withSalary = active.filter((e) => (e.salary_base || 0) > 0);
+    // Aktif VEYA çıkış ayı içinde oranlı hakkediş gerekenler
+    const withSalary = employees.filter((e) => (e.salary_base || 0) > 0);
     let created = 0;
     let skipped = 0;
     let removedPastMonths = 0;
@@ -191,23 +198,62 @@ export const employeeAPI = {
       removedDuplicates += (deletedDup || []).length;
     }
 
-    const eligible = withSalary.filter(
-      (e) => !isPayrollMonthBeforeHire(monthStart, nextMonthStart, e.hire_date),
-    );
+    const eligible = withSalary.filter((e) => {
+      if (isPayrollMonthBeforeHire(monthStart, nextMonthStart, e.hire_date)) return false;
+      if (isPayrollMonthAfterTermination(monthStart, e.termination_date)) return false;
+      // Pasif ve çıkış tarihi yoksa hakkediş yazma
+      if (e.is_active === false && !normalizeIsoDate(e.termination_date)) return false;
+      const amt = prorateSalaryForMonth(
+        e.salary_base,
+        monthStart,
+        nextMonthStart,
+        e.hire_date,
+        e.termination_date,
+      );
+      return amt > 0;
+    });
 
     if (eligible.length) {
       const ids = eligible.map((e) => e.id);
       const { rows } = await postgres.query(
-        `SELECT party_id FROM ${ledgerTable()}
+        `SELECT id, party_id, amount
+         FROM ${ledgerTable()}
          WHERE party_id = ANY($1::text::uuid[])
            AND transaction_type = 'MAAS_HAKKEDIS'
            AND date >= $2::date AND date < $3::date`,
         [ids, monthStart, nextMonthStart],
       );
-      const already = new Set((rows || []).map((r: { party_id: string }) => String(r.party_id)));
+      const existingByParty = new Map<string, { id: string; amount: number }>();
+      for (const r of rows || []) {
+        const pid = String(r.party_id);
+        if (!existingByParty.has(pid)) {
+          existingByParty.set(pid, { id: String(r.id), amount: Number(r.amount) || 0 });
+        }
+      }
       const ym = `${year}-${String(month).padStart(2, '0')}`;
       for (const e of eligible) {
-        if (already.has(e.id)) {
+        const amount = prorateSalaryForMonth(
+          e.salary_base,
+          monthStart,
+          nextMonthStart,
+          e.hire_date,
+          e.termination_date,
+        );
+        const existing = existingByParty.get(e.id);
+        if (existing) {
+          if (Math.round(existing.amount) !== Math.round(amount)) {
+            await postgres.query(
+              `UPDATE ${ledgerTable()}
+               SET amount = $1::text::numeric,
+                   definition = $2
+               WHERE id = $3::text::uuid`,
+              [
+                String(amount),
+                `Maaş hakkedişi ${ym} — ${e.name}${e.termination_date ? ' (oranlı / işten çıkış)' : ''}`,
+                existing.id,
+              ],
+            );
+          }
           skipped += 1;
           continue;
         }
@@ -215,21 +261,90 @@ export const employeeAPI = {
           partyId: e.id,
           cardType: 'employee',
           transactionType: 'MAAS_HAKKEDIS',
-          amount: e.salary_base,
+          amount,
           sign: 1,
           date: `${monthStart}T12:00:00`,
-          definition: `Maaş hakkedişi ${ym} — ${e.name}`,
+          definition: `Maaş hakkedişi ${ym} — ${e.name}${e.termination_date ? ' (oranlı / işten çıkış)' : ''}`,
           sourceModule: 'payroll_accrual',
         });
-        already.add(e.id);
         created += 1;
       }
     } else {
       skipped += withSalary.length;
     }
 
-    await this.recomputeEmployeeBalances(active.map((e) => e.id));
+    await this.recomputeEmployeeBalances(employees.map((e) => e.id));
     return { created, skipped, removedPastMonths, removedDuplicates };
+  },
+
+  /**
+   * İşten çıkış: termination_date + pasif; çıkış ayı hakkedişini gün oranına çeker;
+   * isteğe bağlı İngilizce çıkış mektubu yazdırır.
+   */
+  async terminateEmployment(opts: {
+    employeeId: string;
+    terminationDate: string;
+    reason?: string | null;
+    printLetterEn?: boolean;
+  }): Promise<{
+    employee: PartyEmployee;
+    finalAccrualAmount: number;
+    monthStart: string;
+  }> {
+    const term = normalizeIsoDate(opts.terminationDate);
+    if (!term) throw new Error('Geçersiz işten çıkış tarihi');
+    const existing = await this.getById(opts.employeeId);
+    if (!existing) throw new Error('Personel bulunamadı');
+
+    const hire = normalizeHireDate(existing.hire_date);
+    if (hire && term < hire) {
+      throw new Error('İşten çıkış tarihi işe girişten önce olamaz');
+    }
+
+    const noteLine = `Terminated ${term}`;
+    const prevNotes = String((await partyAPI.getById(opts.employeeId))?.notes || '').trim();
+    const notes = prevNotes.includes(noteLine)
+      ? prevNotes
+      : [prevNotes, noteLine].filter(Boolean).join('\n');
+
+    const updated = await partyAPI.update(opts.employeeId, {
+      is_active: false,
+      termination_date: term,
+      notes,
+    });
+
+    const y = parseInt(term.slice(0, 4), 10);
+    const m = parseInt(term.slice(5, 7), 10);
+    await this.ensureMonthlySalaryAccrual({ year: y, month: m });
+
+    const monthStart = `${term.slice(0, 7)}-01`;
+    const next = new Date(y, m, 1);
+    const nextMonthStart = `${next.getFullYear()}-${String(next.getMonth() + 1).padStart(2, '0')}-01`;
+    const finalAccrualAmount = prorateSalaryForMonth(
+      existing.salary_base,
+      monthStart,
+      nextMonthStart,
+      existing.hire_date,
+      term,
+    );
+
+    const employee = mapEmployee(updated);
+    if (opts.printLetterEn) {
+      await printEmployeeTerminationLetterEn({
+        employeeName: employee.name,
+        employeeCode: employee.code,
+        department: employee.department,
+        position: employee.position,
+        hireDate: employee.hire_date,
+        terminationDate: term,
+        finalAccrualAmount,
+        currencyCode: getReportingCurrency(),
+        reason: opts.reason,
+        issueDate: new Date().toISOString().slice(0, 10),
+      });
+    }
+
+    return { employee, finalAccrualAmount, monthStart };
   },
 
   async listPayrollMonth(periodStart: string, periodEnd: string): Promise<PayrollMonthLine[]> {

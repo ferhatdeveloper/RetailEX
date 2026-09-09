@@ -36,6 +36,7 @@ interface FormState {
   is_active: boolean;
   salary_base: string;
   hire_date: string;
+  termination_date: string;
   department: string;
   position: string;
   share_pct: string;
@@ -90,6 +91,7 @@ export function PartyEditModal({ initial, defaultCardType, onClose, onSaved }: P
     is_active: initial?.is_active !== false,
     salary_base: initial?.salary_base != null ? String(initial.salary_base) : '',
     hire_date: toDateInputValue(initial?.hire_date),
+    termination_date: toDateInputValue(initial?.termination_date),
     department: initial?.department || '',
     position: initial?.position || '',
     share_pct: initial?.share_pct != null ? String(initial.share_pct) : '',
@@ -115,6 +117,7 @@ export function PartyEditModal({ initial, defaultCardType, onClose, onSaved }: P
       is_active: initial.is_active !== false,
       salary_base: initial.salary_base != null ? String(initial.salary_base) : '',
       hire_date: toDateInputValue(initial.hire_date),
+      termination_date: toDateInputValue(initial.termination_date),
       department: initial.department || '',
       position: initial.position || '',
       share_pct: initial.share_pct != null ? String(initial.share_pct) : '',
@@ -180,8 +183,12 @@ export function PartyEditModal({ initial, defaultCardType, onClose, onSaved }: P
       if (form.card_type === 'employee') {
         payload.salary_base = form.salary_base ? parseFloat(form.salary_base) : 0;
         payload.hire_date = toDateInputValue(form.hire_date) || null;
+        payload.termination_date = toDateInputValue(form.termination_date) || null;
         payload.department = form.department || null;
         payload.position = form.position || null;
+        if (payload.termination_date) {
+          payload.is_active = false;
+        }
       }
       if (form.card_type === 'partner') {
         payload.share_pct = form.share_pct ? parseFloat(form.share_pct) : 0;
@@ -320,6 +327,17 @@ export function PartyEditModal({ initial, defaultCardType, onClose, onSaved }: P
                   type="date"
                 />
                 <Field
+                  label={t('party.employee.terminationDate')}
+                  value={form.termination_date}
+                  onChange={(v) =>
+                    update({
+                      termination_date: v,
+                      ...(v ? { is_active: false } : {}),
+                    })
+                  }
+                  type="date"
+                />
+                <Field
                   label={t('party.employee.department')}
                   value={form.department}
                   onChange={(v) => update({ department: v })}
@@ -330,6 +348,38 @@ export function PartyEditModal({ initial, defaultCardType, onClose, onSaved }: P
                   onChange={(v) => update({ position: v })}
                 />
               </div>
+              {isEdit && initial?.id && (
+                <div className="mt-4 flex flex-wrap gap-2">
+                  <button
+                    type="button"
+                    className="inline-flex items-center rounded-xl border border-emerald-300 bg-white px-3 py-2 text-xs font-bold text-emerald-800 hover:bg-emerald-50"
+                    onClick={async () => {
+                      try {
+                        const { employeeAPI } = await import('../../../services/api/partiesEmployees');
+                        const term =
+                          toDateInputValue(form.termination_date) ||
+                          new Date().toISOString().slice(0, 10);
+                        const res = await employeeAPI.terminateEmployment({
+                          employeeId: initial.id,
+                          terminationDate: term,
+                          printLetterEn: true,
+                        });
+                        const refreshed = await partyAPI.getById(initial.id);
+                        update({
+                          termination_date: term,
+                          is_active: false,
+                        });
+                        if (refreshed) onSaved(refreshed);
+                        else onSaved({ ...initial, ...res.employee, is_active: false, termination_date: term });
+                      } catch (err: any) {
+                        setError(err?.message || String(err));
+                      }
+                    }}
+                  >
+                    {t('party.employee.terminateAndPrintEn')}
+                  </button>
+                </div>
+              )}
             </section>
           )}
 

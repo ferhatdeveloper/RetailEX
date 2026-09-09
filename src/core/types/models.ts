@@ -245,6 +245,8 @@ export interface Party {
   /** Employee-specific */
   salary_base?: number;
   hire_date?: string | null;
+  /** İşten çıkış (son çalışma günü); doluysa sonraki aylara hakkediş yazılmaz */
+  termination_date?: string | null;
   department?: string;
   position?: string;
   /** Partner-specific */
@@ -270,6 +272,7 @@ export interface PartyEmployee {
   email?: string;
   salary_base: number;
   hire_date?: string | null;
+  termination_date?: string | null;
   department?: string;
   position?: string;
   /** Pozitif = ödenmemiş maaş alacağı (işletmenin personele borcu) */

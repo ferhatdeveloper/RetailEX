@@ -17,7 +17,7 @@ function partiesTable(): string {
 
 const PARTY_DB_COLUMNS = new Set([
   'code', 'name', 'card_type', 'phone', 'email', 'address', 'tax_nr', 'tax_office',
-  'balance', 'is_active', 'notes', 'salary_base', 'hire_date', 'department', 'position',
+  'balance', 'is_active', 'notes', 'salary_base', 'hire_date', 'termination_date', 'department', 'position',
   'share_pct', 'capital_contribution', 'partner_role', 'partner_since', 'iban',
   'firm_nr',
   'merged_into_id', 'merged_at', 'merged_by', 'merge_notes',
@@ -27,7 +27,7 @@ const ALLOWED_CARD_TYPES: PartyCardType[] = ['customer', 'supplier', 'employee',
 
 const BOOLEAN_COLS = new Set(['is_active']);
 const NUMERIC_COLS = new Set(['balance', 'salary_base', 'share_pct', 'capital_contribution']);
-const DATE_COLS = new Set(['hire_date', 'partner_since']);
+const DATE_COLS = new Set(['hire_date', 'termination_date', 'partner_since']);
 const TIMESTAMPTZ_COLS = new Set(['merged_at']);
 const UUID_COLS = new Set(['merged_into_id']);
 

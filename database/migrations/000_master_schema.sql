@@ -2581,6 +2581,7 @@ BEGIN
     notes TEXT,
     salary_base DECIMAL(15,2) NOT NULL DEFAULT 0,
     hire_date DATE,
+    termination_date DATE,
     department VARCHAR(100),
     position VARCHAR(100),
     share_pct NUMERIC(5,2) NOT NULL DEFAULT 0,

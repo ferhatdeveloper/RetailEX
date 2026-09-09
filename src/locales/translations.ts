@@ -2901,6 +2901,8 @@ export const translations: any = {
       employee: {
         salaryBase: 'Aylık Brüt Maaş',
         hireDate: 'İşe Giriş Tarihi',
+        terminationDate: 'İşten Çıkış Tarihi',
+        terminateAndPrintEn: 'İşten çıkar + İngilizce form yazdır',
         department: 'Departman',
         position: 'Pozisyon',
         balanceLabel: 'Maaş Alacağı',
@@ -4486,6 +4488,8 @@ export const translations: any = {
       employee: {
         salaryBase: 'Monthly Gross Salary',
         hireDate: 'Hire Date',
+        terminationDate: 'Termination Date',
+        terminateAndPrintEn: 'Terminate + print English letter',
         department: 'Department',
         position: 'Position',
         balanceLabel: 'Salary Payable',
@@ -6060,6 +6064,8 @@ export const translations: any = {
       employee: {
         salaryBase: 'الراتب الإجمالي الشهري',
         hireDate: 'تاريخ التعيين',
+        terminationDate: 'تاريخ إنهاء الخدمة',
+        terminateAndPrintEn: 'إنهاء الخدمة + طباعة خطاب إنجليزي',
         department: 'القسم',
         position: 'المنصب',
         balanceLabel: 'راتب مستحق',
@@ -7684,6 +7690,8 @@ export const translations: any = {
       employee: {
         salaryBase: 'مووچەی کۆی مانگانە',
         hireDate: 'ڕێکەوتی دەستبەکاربوون',
+        terminationDate: 'ڕێکەوتی دەرچوون لە کار',
+        terminateAndPrintEn: 'دەرچوون لە کار + چاپکردنی فۆرمی ئینگلیزی',
         department: 'بەش',
         position: 'پلە',
         balanceLabel: 'مووچەی داواکراو',
