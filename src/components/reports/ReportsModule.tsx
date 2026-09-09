@@ -4814,7 +4814,20 @@ export function ReportsModule({
                               </tr>
                             );
                           }
-                          return visibleRows.map((row: any) => (
+                          let sumBefore = 0;
+                          let sumDiscount = 0;
+                          let sumNet = 0;
+                          for (const row of visibleRows as any[]) {
+                            const disc = Number(row.discount) || 0;
+                            const net = Number(row.total) || 0;
+                            const before = Number(row.beforeDiscount ?? net + disc) || 0;
+                            sumBefore += before;
+                            sumDiscount += disc;
+                            sumNet += net;
+                          }
+                          return (
+                            <>
+                              {visibleRows.map((row: any) => (
                           <tr
                             key={row.key}
                             role="button"
@@ -4901,7 +4914,23 @@ export function ReportsModule({
                               })()}
                             </td>
                           </tr>
-                        ));
+                              ))}
+                              <tr className="bg-slate-50 font-semibold">
+                                <td colSpan={5} className="px-4 py-3 text-sm">{tm('totalSales')}</td>
+                                <td className="px-4 py-3 text-right text-sm text-slate-700 tabular-nums">
+                                  {formatNumber(sumBefore, 2, false)}
+                                </td>
+                                <td className="px-4 py-3 text-right text-sm text-orange-700 tabular-nums">
+                                  {formatNumber(sumDiscount, 2, false)}
+                                </td>
+                                <td className="px-4 py-3 text-right text-sm tabular-nums">
+                                  {formatNumber(sumNet, 2, false)}
+                                </td>
+                                <td />
+                                <td />
+                              </tr>
+                            </>
+                          );
                         })()}
                       </tbody>
                     </table>
