@@ -11148,6 +11148,7 @@ export const excelModuleTranslations = {
   coSetupFolderHint: { tr: 'Bu klasör altındaki öğeleri yönetebilirsiniz.', en: 'You can manage items under this folder.', ar: 'يمكنك إدارة العناصر ضمن هذا المجلد.', ku: 'دەتوانیت بڕگەکانی ژێر ئەم فۆڵدەرە بەڕێوەببەیت.' },
   coSetupAddNew: { tr: 'Yeni Ekle', en: 'Add New', ar: 'إضافة جديد', ku: 'زیادکردنی نوێ' },
   coSetupNewFirm: { tr: 'Yeni Firma', en: 'New Firm', ar: 'شركة جديدة', ku: 'کۆمپانیای نوێ' },
+  coSetupAddFirm: { tr: 'Firma Ekle', en: 'Add Firm', ar: 'إضافة شركة', ku: 'کۆمپانیا زیاد بکە' },
   coSetupSaveReceipt: { tr: 'Fiş/Fatura Bilgilerini Kaydet', en: 'Save Receipt/Invoice Info', ar: 'حفظ معلومات الإيصال/الفاتورة', ku: 'زانیاری پسوڵە/وەسڵ پاشەکەوت بکە' },
   coSetupSetWorkingFirm: { tr: 'Çalışma firması olarak ayarlandı', en: 'Set as working firm', ar: 'تم التعيين كشركة عمل', ku: 'وەک کۆمپانیای کارکردن دانرا' },
   coSetupSourceNotFound: { tr: 'Kaynak firma bulunamadı', en: 'Source firm not found', ar: 'الشركة المصدر غير موجودة', ku: 'کۆمپانیای سەرچاوە نەدۆزرایەوە' },

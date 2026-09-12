@@ -463,6 +463,29 @@ export function CompanySetup() {
     setFormData(initialData);
   };
 
+  const handleAddFirm = () => {
+    const usedNums = companies
+      .map((c) => parseInt(String(c.firma_kodu || '').replace(/\D/g, ''), 10))
+      .filter((n) => Number.isFinite(n) && n > 0);
+    const nextNum = usedNums.length ? Math.max(...usedNums) + 1 : 1;
+    const nextCode = String(nextNum).padStart(3, '0');
+
+    setSelectedNode({
+      id: 'new-firm',
+      label: tm('coSetupNewFirm'),
+      type: 'company',
+      icon: Building2,
+    });
+    setMode('create');
+    setFormData({
+      firma_adi: '',
+      firma_kodu: nextCode,
+      ana_para_birimi: 'IQD',
+      raporlama_para_birimi: 'IQD',
+      regulatory_region: 'IQ',
+    });
+  };
+
   // --- CRUD Handlers ---
 
   const handleSave = async () => {
@@ -470,7 +493,8 @@ export function CompanySetup() {
       setLoading(true);
 
       if (selectedNode?.type === 'company' || (selectedNode?.type === 'root' && mode === 'create')) {
-        await organizationAPI.saveFirm(formData);
+        const firmPayload = mode === 'create' ? { ...formData, id: undefined } : formData;
+        await organizationAPI.saveFirm(firmPayload);
         eTransformService.resetConfigCache();
         emitInvalidate('firms');
         toast.success(tm('coSetupFirmSaved'));
@@ -956,6 +980,9 @@ export function CompanySetup() {
                 </button>
                 {selectedNode?.type === 'company' && (
                   <>
+                    <button onClick={handleAddFirm} className="px-3 py-1.5 bg-blue-600 text-white hover:bg-blue-700 rounded-lg flex items-center gap-2 text-sm">
+                      <Plus className="w-4 h-4" /> {tm('coSetupAddFirm')}
+                    </button>
                     <button onClick={() => { setCopySourceId(selectedNode.id); setShowCopyModal(true); }} className="px-3 py-1.5 border border-blue-200 text-blue-600 hover:bg-blue-50 rounded-lg flex items-center gap-2 text-sm">
                       <Copy className="w-4 h-4" /> {tm('coSetupCopy')}
                     </button>
@@ -1008,14 +1035,31 @@ export function CompanySetup() {
   return (
     <div className="flex h-full bg-white">
       <div className="w-80 border-r bg-gray-50 flex flex-col">
-        <div className="p-4 border-b bg-white">
-          <h2 className="font-bold text-gray-800 flex items-center gap-2"><Building2 className="w-5 h-5 text-blue-600" /> {tm('coSetupOrgTitle')}</h2>
+        <div className="p-4 border-b bg-white flex items-center justify-between gap-2">
+          <h2 className="font-bold text-gray-800 flex items-center gap-2 min-w-0"><Building2 className="w-5 h-5 text-blue-600 shrink-0" /> <span className="truncate">{tm('coSetupOrgTitle')}</span></h2>
+          <button
+            type="button"
+            onClick={handleAddFirm}
+            className="px-2.5 py-1.5 bg-blue-600 text-white hover:bg-blue-700 rounded-lg flex items-center gap-1.5 text-xs font-medium shrink-0"
+            title={tm('coSetupAddFirm')}
+          >
+            <Plus className="w-3.5 h-3.5" /> {tm('coSetupAddFirm')}
+          </button>
         </div>
         <div className="flex-1 overflow-auto py-2">
           {loading ? (
             <div className="p-4 text-center text-gray-500 text-sm">{tm('loading')}</div>
           ) : treeData.length === 0 ? (
-            <div className="p-4 text-center text-gray-500 text-sm">{tm('coSetupNoRecords')}</div>
+            <div className="p-4 text-center text-gray-500 text-sm space-y-3">
+              <div>{tm('coSetupNoRecords')}</div>
+              <button
+                type="button"
+                onClick={handleAddFirm}
+                className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-blue-600 text-white hover:bg-blue-700 rounded-lg text-xs font-medium"
+              >
+                <Plus className="w-3.5 h-3.5" /> {tm('coSetupAddFirm')}
+              </button>
+            </div>
           ) : (
             treeData.map(node => (
               <TreeItem key={node.id} node={node} onToggle={toggleNode} onSelect={handleSelectNode} onAdd={handleAddNode} selectedId={selectedNode?.id || null} activeId={selectedFirm?.id || null} />
