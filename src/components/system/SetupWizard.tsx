@@ -1677,12 +1677,12 @@ const SetupWizard: React.FC = () => {
 
                                                     let newModules: string[] = [];
                                                     let isBayiSeti = false;
-                                                    if (sys.id === 'retail' || sys.id === 'market') newModules = ['pos', 'wms'];
-                                                    else if (sys.id === 'wms') newModules = ['wms'];
-                                                    else if (sys.id === 'restaurant') newModules = ['pos', 'restaurant'];
-                                                    else if (sys.id === 'beauty') newModules = ['beauty'];
+                                                    if (sys.id === 'retail' || sys.id === 'market') newModules = ['pos', 'management'];
+                                                    else if (sys.id === 'wms') newModules = ['management'];
+                                                    else if (sys.id === 'restaurant') newModules = ['pos', 'restaurant', 'management'];
+                                                    else if (sys.id === 'beauty') newModules = ['beauty', 'management'];
                                                     else if (sys.id === 'bayi') {
-                                                        newModules = ['pos', 'wms', 'restaurant', 'beauty'];
+                                                        newModules = ['pos', 'restaurant', 'beauty', 'management'];
                                                         isBayiSeti = true;
                                                     }
 
@@ -1764,7 +1764,6 @@ const SetupWizard: React.FC = () => {
                                             <div className="grid grid-cols-2 gap-2 animate-in fade-in slide-in-from-top-2 duration-300">
                                                 {[
                                                     { id: 'pos', label: 'Satış (POS)', icon: Zap },
-                                                    { id: 'wms', label: 'Depo (WMS)', icon: Building2 },
                                                     { id: 'restaurant', label: 'Restoran', icon: UtensilsCrossed },
                                                     { id: 'beauty', label: 'Beauty', icon: Sparkles },
                                                 ].map((mod) => {

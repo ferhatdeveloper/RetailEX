@@ -104,7 +104,7 @@ export function buildDirectPostgrestTenantPatch(input: {
     is_configured: true,
     db_mode: 'online',
     system_type: 'retail',
-    enabled_modules: ['pos', 'wms'],
+    enabled_modules: ['pos', 'management'],
     connection_provider: 'rest_api',
     remote_rest_url: u,
     // Direct URL akışında URL slug'ı (örn. `/aqua`) gerçek PostgreSQL database_name olmayabilir.
@@ -339,7 +339,8 @@ function moduleToSystemType(module: string): 'retail' | 'market' | 'wms' | 'rest
 
 /**
  * `tenant_registry.module` → ana kabukta hangi modül sekmeleri (mavi alan) açık olsun.
- * `retailex_enabled_modules` / web_config.enabled_modules ile uyumlu id'ler: pos, management, wms, mobile-pos, restaurant, beauty.
+ * `retailex_enabled_modules` / web_config.enabled_modules ile uyumlu id'ler: pos, management, restaurant, beauty
+ * (wms / mobile-pos pasif — ALL_SHELL_MODULES içinde yok).
  * Yönetim sekmesi `isMainModuleVisible` ile her zaman görünür; burada listelemek isteğe bağlı (sıra için).
  */
 /** tenant_registry.module → MainLayout başlangıç kabuğu */
@@ -440,15 +441,16 @@ export async function resolveTenantRegistryForDirectPostgrest(input: {
   return null;
 }
 
-/** Üst kabukta açılabilecek tüm iş + yönetim modülleri (demo / full kiracı). */
+/** Üst kabukta açılabilecek iş + yönetim modülleri (demo / full). WMS ve mobile-pos pasif. */
 export const ALL_SHELL_MODULES = [
   'pos',
   'management',
-  'wms',
-  'mobile-pos',
   'restaurant',
   'beauty',
 ] as const;
+
+/** Bilinçli olarak kapalı tutulan kabuk id'leri (UI / seed). */
+export const PASSIVE_SHELL_MODULES = ['wms', 'mobile-pos'] as const;
 
 export function shellEnabledModulesForTenantRegistryModule(module: string): string[] {
   const m = String(module || '').toLowerCase().trim();
@@ -464,21 +466,22 @@ export function shellEnabledModulesForTenantRegistryModule(module: string): stri
   }
   switch (m) {
     case 'clinic':
-      return ['beauty'];
+      return ['beauty', 'management'];
     case 'restaurant':
-      return ['pos', 'restaurant'];
+      return ['pos', 'restaurant', 'management'];
     case 'wms':
-      return ['wms'];
+      // Kabuk pasif — yönetim üzerinden stok/WMS menüsü; üst sekme yok
+      return ['management'];
     case 'retail':
     case 'market':
-      return ['pos', 'wms'];
+      return ['pos', 'management'];
     case 'pdks':
     case 'hrm':
       return ['management'];
     case 'tenant_registry':
       return ['management'];
     default:
-      return ['pos', 'wms'];
+      return ['pos', 'management'];
   }
 }
 

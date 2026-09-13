@@ -17,6 +17,7 @@ import {
   refreshPeriodScopedStores,
 } from '../store/refreshFirmScopedStores';
 import { toSqlDateInputString } from '../utils/localCalendarDate';
+import { applyFirmShellModules } from '../utils/firmShellModules';
 
 /** firms.firm_nr ile SQLite erp_firm_nr aynı biçimde eşlensin (2 ↔ 002); rex_{nr}_customers için şart */
 function normalizeFirmNr(v: string | number | undefined | null): string {
@@ -98,6 +99,8 @@ export interface Firm {
   raporlama_para_birimi?: string;
   /** firms.regulatory_region — e-belge mevzuatı */
   regulatory_region?: 'TR' | 'IQ';
+  /** Firma kabuk modülleri — örn. ["pos","management"]; yoksa kiracı varsayılanı */
+  enabled_modules?: string[] | null;
   default?: boolean;
 }
 
@@ -226,6 +229,8 @@ export const FirmaDonemProvider: React.FC<{ children: ReactNode }> = ({ children
         ERP_SETTINGS.firmNr = normalizeFirmNr(selectedFirm.firm_nr) || String(selectedFirm.firm_nr);
         if (import.meta.env.DEV) console.log('[FirmaDonemContext] ERP_SETTINGS.firmNr updated to:', ERP_SETTINGS.firmNr);
       }
+      // Firma bazlı kabuk modülleri (birbirine karışmasın)
+      applyFirmShellModules(selectedFirm);
     } else {
       setPeriods([]);
       setBranches([]);
@@ -338,6 +343,7 @@ export const FirmaDonemProvider: React.FC<{ children: ReactNode }> = ({ children
         raporlama_para_birimi: f.raporlama_para_birimi || 'IQD',
         regulatory_region:
           String(f.regulatory_region || 'IQ').toUpperCase() === 'TR' ? 'TR' : 'IQ',
+        enabled_modules: Array.isArray(f.enabled_modules) ? f.enabled_modules : f.enabled_modules ?? null,
       }));
 
       try {

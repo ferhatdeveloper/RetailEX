@@ -1,6 +1,11 @@
 #!/usr/bin/env node
 /**
- * retailex_demo: tüm kabuk modüllerini aç + 001_demo_data + ekstra örnek veri.
+ * retailex_demo: kabuk (WMS/mobile-pos pasif) + 001_demo_data + firma ayrımı + restoran Excel.
+ *
+ * Firmalar:
+ *   001 Demo Market   — pos + management
+ *   010 Demo Restoran — restaurant + pos (+ yemekcom Excel menü)
+ *   020 Demo Güzellik — beauty
  *
  * Kullanım:
  *   PGHOST=... PGUSER=postgres PGPASSWORD=... PGDATABASE=retailex_demo \
@@ -8,7 +13,8 @@
  *
  * Opsiyonel:
  *   MERKEZ_PGDATABASE=merkez_db  — tenant_registry.module = all
- *   SKIP_001=1                   — yalnızca extras + merkez
+ *   SKIP_001=1                   — 001_demo_data atla
+ *   SKIP_EXCEL=1                 — restoran Excel menü atla
  *   DRY_RUN=1
  */
 import fs from 'node:fs';
@@ -28,6 +34,7 @@ const database = process.env.PGDATABASE || 'retailex_demo';
 const merkezDb = process.env.MERKEZ_PGDATABASE || 'merkez_db';
 const dry = process.env.DRY_RUN === '1' || process.argv.includes('--dry-run');
 const skip001 = process.env.SKIP_001 === '1' || process.argv.includes('--skip-001');
+const skipExcel = process.env.SKIP_EXCEL === '1' || process.argv.includes('--skip-excel');
 
 if (!password) {
   console.error('PGPASSWORD gerekli');
@@ -59,6 +66,31 @@ function runPsql(db, filePath) {
   }
 }
 
+function runNode(scriptRel) {
+  const abs = path.join(root, scriptRel);
+  if (dry) {
+    console.log(`[dry-run] node ${scriptRel}`);
+    return;
+  }
+  const r = spawnSync(process.execPath, [abs], {
+    env: {
+      ...process.env,
+      PGPASSWORD: password,
+      PGHOST: host,
+      PGPORT: String(port),
+      PGUSER: user,
+      PGDATABASE: database,
+    },
+    encoding: 'utf8',
+    maxBuffer: 20 * 1024 * 1024,
+  });
+  if (r.stdout) process.stdout.write(r.stdout);
+  if (r.stderr) process.stderr.write(r.stderr);
+  if (r.status !== 0) {
+    throw new Error(`node başarısız: ${scriptRel} exit=${r.status}`);
+  }
+}
+
 async function withClient(db, fn) {
   const client = new pg.Client({ host, port, user, password, database: db });
   await client.connect();
@@ -84,7 +116,6 @@ async function shouldApply001(client) {
 function preparePatched001() {
   const demoSql = path.join(root, 'database/migrations/001_demo_data.sql');
   let sql = fs.readFileSync(demoSql, 'utf8');
-  // Stok UPDATE'leri tekrar çalışınca bakiyeyi bozar — atla
   sql = sql.replace(
     /-- =+\n-- 10\. DEMO STOK GÜNCELLEMELERİ[\s\S]*?(?=-- =+\n-- 11\. WMS)/m,
     '-- 10. DEMO STOK GÜNCELLEMELERİ — seed-retailex-demo-full: atlandı (idempotent)\n\n',
@@ -96,30 +127,23 @@ function preparePatched001() {
 
 async function printCounts(client) {
   const checks = [
-    ['products', `SELECT count(*) FROM rex_001_products`],
-    ['customers', `SELECT count(*) FROM rex_001_customers`],
-    ['suppliers', `SELECT count(*) FROM rex_001_suppliers`],
-    ['sales', `SELECT count(*) FROM rex_001_01_sales`],
-    ['cash_lines', `SELECT count(*) FROM rex_001_01_cash_lines`],
-    ['bank_reg', `SELECT count(*) FROM rex_001_bank_registers`],
-    ['bank_lines', `SELECT count(*) FROM rex_001_01_bank_lines`],
-    ['campaigns', `SELECT count(*) FROM rex_001_campaigns`],
-    ['rest_tables', `SELECT count(*) FROM rest.rex_001_rest_tables`],
-    ['rest_staff', `SELECT count(*) FROM rest.rex_001_rest_staff`],
-    ['beauty_svc', `SELECT count(*) FROM beauty.rex_001_beauty_services`],
-    ['beauty_appt', `SELECT count(*) FROM beauty.rex_001_01_beauty_appointments`],
-    ['wms_count', `SELECT count(*) FROM wms.counting_slips WHERE firm_nr='001'`],
-    ['wms_recv', `SELECT count(*) FROM wms.receiving_slips WHERE firm_nr='001'`],
-    ['logistics_dlv', `SELECT count(*) FROM logistics.deliveries WHERE firm_nr='001'`],
-    ['eticaret', `SELECT count(*) FROM eticaret_web_orders WHERE tenant_code='demo'`],
-    ['butcher', `SELECT count(*) FROM rex_001_butcher_recipes WHERE firm_nr='001'`],
-    ['menu_presets', `SELECT COALESCE(jsonb_array_length(menu_preferences->'presets'),0) FROM system_settings WHERE id=1`],
+    [
+      'firms',
+      `SELECT string_agg(firm_nr || ':' || name || '/' || coalesce(enabled_modules::text,'null'), ', ' ORDER BY firm_nr) FROM firms WHERE firm_nr IN ('001','010','020')`,
+    ],
+    ['p001', `SELECT count(*) FROM rex_001_products`],
+    ['p010', `SELECT count(*) FROM rex_010_products`],
+    ['p020_cust', `SELECT count(*) FROM rex_020_customers`],
+    ['rest_tables', `SELECT count(*) FROM rest.rex_010_rest_tables`],
+    ['beauty_svc', `SELECT count(*) FROM beauty.rex_020_beauty_services`],
+    ['beauty_appt', `SELECT count(*) FROM beauty.rex_020_01_beauty_appointments`],
+    ['menu_on_001', `SELECT count(*) FROM rex_001_products WHERE code LIKE 'MENU-%'`],
   ];
   const out = {};
   for (const [k, q] of checks) {
     try {
       const { rows } = await client.query(q);
-      out[k] = rows[0]?.count ?? rows[0]?.coalesce ?? Object.values(rows[0] || {})[0];
+      out[k] = rows[0]?.count ?? rows[0]?.string_agg ?? Object.values(rows[0] || {})[0];
     } catch (e) {
       out[k] = `ERR: ${e.message}`;
     }
@@ -153,6 +177,16 @@ async function main() {
 
   const extras = path.join(root, 'database/scripts/seed-retailex-demo-full-extras.sql');
   runPsql(database, extras);
+
+  console.log('[demo] modül firmaları 001/010/020...');
+  runPsql(database, path.join(root, 'database/scripts/seed-retailex-demo-module-firms.sql'));
+
+  if (skipExcel) {
+    console.log('[demo] SKIP_EXCEL — restoran menü atlandı');
+  } else {
+    console.log('[demo] restoran Excel → firma 010...');
+    runNode('scripts/seed-retailex-demo-restaurant-from-excel.mjs');
+  }
 
   if (!dry) {
     await withClient(database, printCounts);

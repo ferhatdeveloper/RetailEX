@@ -60,6 +60,7 @@ CREATE TABLE IF NOT EXISTS firms (
   gib_use_test_environment BOOLEAN DEFAULT true,
   "default"             BOOLEAN DEFAULT false,
   is_active             BOOLEAN DEFAULT true,
+  enabled_modules       JSONB DEFAULT NULL,
   created_at            TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP
 );
 
@@ -67,6 +68,8 @@ CREATE TABLE IF NOT EXISTS firms (
 ALTER TABLE firms ADD COLUMN IF NOT EXISTS supabase_firm_id VARCHAR(255);
 
 ALTER TABLE firms ADD COLUMN IF NOT EXISTS regulatory_region VARCHAR(2) NOT NULL DEFAULT 'IQ';
+
+ALTER TABLE firms ADD COLUMN IF NOT EXISTS enabled_modules JSONB DEFAULT NULL;
 
 -- Web / çok istemci: açılış varsayılanları (tek satır)
 CREATE TABLE IF NOT EXISTS public.system_settings (

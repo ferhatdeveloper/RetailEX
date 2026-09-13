@@ -14,22 +14,22 @@ export function parseStoredRetailexWebConfig(): Record<string, unknown> {
   }
 }
 
-/** İşletme tipine göre varsayılan modül listesi (önbellek bozuksa geri yükleme). */
+/** İşletme tipine göre varsayılan modül listesi (önbellek bozuksa geri yükleme). WMS / mobile-pos pasif. */
 export function defaultEnabledModulesForSystemType(systemType: string): string[] {
   switch (systemType) {
     case 'retail':
     case 'market':
-      return ['pos', 'wms'];
+      return ['pos', 'management'];
     case 'wms':
-      return ['wms'];
+      return ['management'];
     case 'restaurant':
-      return ['pos', 'restaurant'];
+      return ['pos', 'restaurant', 'management'];
     case 'beauty':
-      return ['beauty'];
+      return ['beauty', 'management'];
     case 'bayi':
-      return ['pos', 'wms', 'restaurant', 'beauty'];
+      return ['pos', 'restaurant', 'beauty', 'management'];
     default:
-      return ['pos', 'wms'];
+      return ['pos', 'management'];
   }
 }
 

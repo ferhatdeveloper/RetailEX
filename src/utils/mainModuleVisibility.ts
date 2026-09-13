@@ -37,6 +37,8 @@ function getExplicitShellEnabledList(): string[] | null {
  */
 export function isMainModuleVisible(moduleId: string): boolean {
   if (moduleId === 'management') return true;
+  // Kabukta pasif — üst sekme asla gösterilmez
+  if (moduleId === 'wms' || moduleId === 'mobile-pos') return false;
   if (typeof localStorage === 'undefined') return true;
   const bayiSeti = localStorage.getItem('retailex_bayi_seti') === 'true';
   try {
@@ -81,20 +83,20 @@ export function getPrimaryShellModuleForCallerId(activeShell?: Module): Module {
   return 'pos';
 }
 
-/** Görünür modül yoksa sırayla denenecek id'ler — işletme tipine göre (restoran önce POS değil). */
+/** Görünür modül yoksa sırayla denenecek id'ler — işletme tipine göre (restoran önce POS değil). WMS/mobile-pos pasif. */
 export function getShellModuleFallbackOrder(): string[] {
   try {
     const raw = localStorage.getItem('retailex_web_config');
-    if (!raw) return ['pos', 'restaurant', 'wms', 'beauty', 'mobile-pos', 'management'];
+    if (!raw) return ['pos', 'restaurant', 'beauty', 'management'];
     const cfg = JSON.parse(raw) as { system_type?: string };
     const st = cfg.system_type;
-    if (st === 'restaurant') return ['restaurant', 'pos', 'wms', 'beauty', 'mobile-pos', 'management'];
-    if (st === 'beauty') return ['beauty', 'pos', 'restaurant', 'wms', 'mobile-pos', 'management'];
-    if (st === 'wms') return ['wms', 'pos', 'restaurant', 'beauty', 'mobile-pos', 'management'];
-    if (st === 'bayi') return ['pos', 'restaurant', 'wms', 'beauty', 'mobile-pos', 'management'];
-    return ['pos', 'restaurant', 'wms', 'beauty', 'mobile-pos', 'management'];
+    if (st === 'restaurant') return ['restaurant', 'pos', 'beauty', 'management'];
+    if (st === 'beauty') return ['beauty', 'pos', 'restaurant', 'management'];
+    if (st === 'wms') return ['management', 'pos', 'restaurant', 'beauty'];
+    if (st === 'bayi') return ['pos', 'restaurant', 'beauty', 'management'];
+    return ['pos', 'restaurant', 'beauty', 'management'];
   } catch {
-    return ['pos', 'restaurant', 'wms', 'beauty', 'mobile-pos', 'management'];
+    return ['pos', 'restaurant', 'beauty', 'management'];
   }
 }
 

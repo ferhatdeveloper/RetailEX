@@ -49,7 +49,7 @@ export function createInitialSetupConfig(): SetupAppConfig {
     },
     selected_cash_registers: [],
     is_nebim_migration: false,
-    enabled_modules: ['pos', 'wms'],
+    enabled_modules: ['pos', 'management'],
     bayi_seti: false,
     default_currency: 'IQD',
     regulatory_region: 'IQ',

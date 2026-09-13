@@ -57,6 +57,7 @@ import {
   getShellModuleDisplayOrder,
   isMainModuleVisible,
 } from '../../utils/mainModuleVisibility';
+import { FIRM_SHELL_MODULES_CHANGED_EVENT } from '../../utils/firmShellModules';
 import { NeonLogo } from '../ui/NeonLogo';
 import type { NeonLogoProductLine } from '../ui/NeonLogo';
 
@@ -319,8 +320,14 @@ export function MainLayout({
     }
   }, [currentModule]);
 
-  // Aktif modül görünür değilse ilk görünür modüle düş (geçersiz id — örn. eski 'backoffice' — düzeltilir)
+  // Aktif modül görünür değilse ilk görünür modüle düş (firma değişince kabuk listesi de yenilenir)
   const MAIN_MODULE_IDS: Module[] = ['pos', 'management', 'wms', 'mobile-pos', 'restaurant', 'beauty'];
+  const [shellModulesTick, setShellModulesTick] = useState(0);
+  useEffect(() => {
+    const onChange = () => setShellModulesTick((n) => n + 1);
+    window.addEventListener(FIRM_SHELL_MODULES_CHANGED_EVENT, onChange);
+    return () => window.removeEventListener(FIRM_SHELL_MODULES_CHANGED_EVENT, onChange);
+  }, []);
   useEffect(() => {
     const cm = currentModule as string;
     if (cm === 'backoffice') {
@@ -337,7 +344,7 @@ export function MainLayout({
     const orderedModules = getShellModuleDisplayOrder() as Module[];
     const nextVisible = orderedModules.find((m) => isModuleVisible(m));
     if (nextVisible) setCurrentModule(nextVisible);
-  }, [currentModule]);
+  }, [currentModule, shellModulesTick, selectedFirm?.firm_nr]);
 
   // Check if firma/donem setup is needed on mount - AFTER currentModule is defined
   useEffect(() => {

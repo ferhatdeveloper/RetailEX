@@ -148,4 +148,5 @@ Restoran sohbetinde eklenen tek yeni tablo: **rest.return_log**. Diğer özellik
 - `147_qr_guest_ui_theme.sql` — `qr_settings.guest_ui_theme` (`premium` | `classic`); misafir QR UI teması.
 - `148_customers_birth_date.sql` — `rex_*_customers.birth_date` (DATE); müşteri formunda yaş yerine doğum tarihi.
 - `149_parties_employee_termination_date.sql` — `rex_*_parties.termination_date` (DATE); personel işten çıkış + oranlı hakkediş.
+- `150_firms_enabled_modules.sql` — `firms.enabled_modules` (JSONB); firma bazlı kabuk modül listesi (pos/management/restaurant/beauty). WMS ve mobile-pos kabukta pasif.
 
