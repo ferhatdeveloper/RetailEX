@@ -1215,7 +1215,7 @@ export class RestaurantService {
             ORDER BY o.opened_at DESC
         `;
         const { rows } = await this.db.query(sql);
-        return rows.map((r: any) => {
+        const fromRest = rows.map((r: any) => {
             let noteObj: Record<string, unknown> = {};
             try {
                 noteObj = JSON.parse(r.note ?? '{}');
@@ -1244,7 +1244,75 @@ export class RestaurantService {
                 rawNote: r.note,
                 paymentMethod,
                 paymentPosted: Boolean(noteObj.payment_posted_at),
+                source: 'rest' as const,
             };
+        });
+
+        // Mobil / e-ticaret siparişleri (eticaret_web_orders) — Delivery ekranında göster
+        let fromWeb: typeof fromRest = [];
+        try {
+            const webSql = `
+                SELECT id, order_no, status, customer_name, customer_phone, shipping_address,
+                       payment_provider, payment_status, total, items, notes, created_at, tenant_code
+                FROM public.eticaret_web_orders
+                WHERE COALESCE(demo_mode, false) = false
+                  AND lower(COALESCE(status, '')) NOT IN ('delivered', 'cancelled', 'canceled', 'demo')
+                ORDER BY created_at DESC
+                LIMIT 200
+            `;
+            const webRes = await this.db.query(webSql);
+            fromWeb = (webRes.rows || []).map((r: any) => {
+                let address = String(r.shipping_address || '');
+                try {
+                    const j = JSON.parse(address);
+                    if (j && typeof j === 'object') {
+                        address = [j.text, j.area, j.city, j.details].filter(Boolean).join(', ') || address;
+                    }
+                } catch { /* plain text */ }
+                const items = Array.isArray(r.items) ? r.items : [];
+                const itemsSummary = items
+                    .map((it: any) => `${it.quantity || 1}× ${it.name || it.code || 'Ürün'}`)
+                    .join(', ');
+                const st = String(r.status || '').toLowerCase();
+                let deliveryStatus: string = 'pending';
+                if (st === 'preparing' || st === 'kitchen' || st === 'processing') deliveryStatus = 'preparing';
+                else if (st === 'onway' || st === 'on_way' || st === 'shipping') deliveryStatus = 'on_way';
+                else if (st === 'delivered' || st === 'completed') deliveryStatus = 'delivered';
+                const pay = String(r.payment_provider || '').toLowerCase();
+                const paymentMethod: DeliveryExpectedPaymentMethod =
+                    pay === 'card' || pay === 'transfer' ? (pay as DeliveryExpectedPaymentMethod) : 'cash';
+                return {
+                    id: r.id,
+                    orderNo: r.order_no,
+                    status: deliveryStatus,
+                    customerName: r.customer_name || '—',
+                    address,
+                    phone: r.customer_phone || '',
+                    courier: '',
+                    deliveryStatus,
+                    channel: 'mobile_app' as const,
+                    externalOrderId: r.order_no || '',
+                    itemsSummary,
+                    total: Number(r.total ?? 0),
+                    startTime: r.created_at,
+                    itemCount: items.length,
+                    rawNote: r.notes || '',
+                    paymentMethod,
+                    paymentPosted: String(r.payment_status || '').toLowerCase() === 'paid',
+                    source: 'eticaret_web' as const,
+                };
+            });
+        } catch (e) {
+            console.warn('[RestaurantService.getDeliveryOrders] eticaret_web_orders:', (e as Error)?.message);
+        }
+
+        // Aynı external id / order_no ile çift kayıt önle (rest DLV öncelikli)
+        const seen = new Set(fromRest.map((o) => String(o.externalOrderId || o.orderNo)));
+        const mergedWeb = fromWeb.filter((o) => !seen.has(String(o.externalOrderId || o.orderNo)));
+        return [...fromRest, ...mergedWeb].sort((a, b) => {
+            const ta = a.startTime ? new Date(a.startTime).getTime() : 0;
+            const tb = b.startTime ? new Date(b.startTime).getTime() : 0;
+            return tb - ta;
         });
     }
 
@@ -1361,7 +1429,17 @@ export class RestaurantService {
         method: DeliveryExpectedPaymentMethod
     ) {
         const { rows } = await this.db.query('SELECT note FROM rest_orders WHERE id=$1', [orderId]);
-        if (!rows[0]) throw new Error('Sipariş bulunamadı');
+        if (!rows[0]) {
+            const upd = await this.db.query(
+                `UPDATE public.eticaret_web_orders
+                 SET payment_provider = $2, updated_at = NOW()
+                 WHERE id = $1
+                 RETURNING id`,
+                [orderId, method]
+            );
+            if (!upd.rows[0]) throw new Error('Sipariş bulunamadı');
+            return;
+        }
         let noteObj: Record<string, unknown> = {};
         try {
             noteObj = JSON.parse(rows[0]?.note ?? '{}');
@@ -1387,7 +1465,26 @@ export class RestaurantService {
             'SELECT note, total_amount, order_no FROM rest_orders WHERE id=$1',
             [orderId]
         );
-        if (!rows[0]) throw new Error('Sipariş bulunamadı');
+
+        // Mobil / e-ticaret siparişi (rest_orders'ta yok)
+        if (!rows[0]) {
+            const statusMap: Record<string, string> = {
+                pending: 'confirmed',
+                preparing: 'preparing',
+                on_way: 'onway',
+                delivered: 'delivered',
+            };
+            const webStatus = statusMap[deliveryStatus] || deliveryStatus;
+            const upd = await this.db.query(
+                `UPDATE public.eticaret_web_orders
+                 SET status = $2, updated_at = NOW()
+                 WHERE id = $1
+                 RETURNING id, order_no, status`,
+                [orderId, webStatus]
+            );
+            if (!upd.rows[0]) throw new Error('Sipariş bulunamadı');
+            return;
+        }
 
         let noteObj: Record<string, unknown> = {};
         try {
@@ -1418,6 +1515,28 @@ export class RestaurantService {
                 `UPDATE rest_orders SET status='closed', closed_at=NOW() WHERE id=$1`,
                 [orderId]
             );
+        }
+
+        // Rest DLV ile eşleşen web sipariş varsa mobil takip için senkronize et
+        try {
+            const extId =
+                typeof noteObj.external_order_id === 'string' ? noteObj.external_order_id.trim() : '';
+            const webStatus =
+                deliveryStatus === 'on_way'
+                    ? 'onway'
+                    : deliveryStatus === 'pending'
+                      ? 'confirmed'
+                      : deliveryStatus;
+            if (extId) {
+                await this.db.query(
+                    `UPDATE public.eticaret_web_orders
+                     SET status = $2, updated_at = NOW()
+                     WHERE order_no = $1 OR id::text = $1`,
+                    [extId, webStatus]
+                );
+            }
+        } catch {
+            /* optional sync */
         }
     }
 

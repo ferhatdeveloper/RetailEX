@@ -5,6 +5,7 @@
 
 export type FoodDeliveryChannelId =
     | 'manual'
+    | 'mobile_app'
     | 'yemeksepeti'
     | 'getir_yemek'
     | 'trendyol_yemek'
@@ -29,6 +30,13 @@ export const FOOD_DELIVERY_CHANNELS: FoodDeliveryChannelMeta[] = [
         shortLabel: 'Manuel',
         accentClass: 'bg-slate-100 text-slate-700 border-slate-200',
         description: 'Restoran içinden veya telefonla girilen siparişler.',
+    },
+    {
+        id: 'mobile_app',
+        label: 'Kuçoglu Mobil',
+        shortLabel: 'Mobil',
+        accentClass: 'bg-emerald-50 text-emerald-800 border-emerald-200',
+        description: 'Kuçoglu mobil uygulamasından gelen online siparişler (eticaret_web_orders).',
     },
     {
         id: 'yemeksepeti',
@@ -88,14 +96,13 @@ export function getFoodDeliveryChannelMeta(id: string | undefined | null): FoodD
 export function normalizeFoodDeliveryChannel(raw: string | undefined | null): FoodDeliveryChannelId {
     const s = (raw ?? '').trim().toLowerCase();
     if (!s) return 'manual';
+    if (s.includes('mobile') || s.includes('kucoglu') || s.includes('m10') || s === 'app') return 'mobile_app';
     if (s.includes('yemeksepeti') || s === 'ys' || s === 'ys_pro') return 'yemeksepeti';
     if (s.includes('getir')) return 'getir_yemek';
     if (s.includes('trendyol')) return 'trendyol_yemek';
     if (s.includes('migros')) return 'migros_yemek';
     if (s.includes('fuudy')) return 'fuudy';
-    if (
-        FOOD_DELIVERY_CHANNELS.some((c) => c.id === s)
-    ) {
+    if (FOOD_DELIVERY_CHANNELS.some((c) => c.id === s)) {
         return s as FoodDeliveryChannelId;
     }
     return 'other';
