@@ -2302,6 +2302,11 @@ BEGIN
       updated_at        TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP
     );
   ', v_prefix || '_products');
+  -- CREATE TABLE IF NOT EXISTS eski/eksik şemayı güncellemez; PLU kolonunu garanti et
+  EXECUTE format(
+    'ALTER TABLE %I ADD COLUMN IF NOT EXISTS plu_code VARCHAR(20)',
+    v_prefix || '_products'
+  );
 
   -- 2. Customers
   EXECUTE format('
@@ -2873,6 +2878,11 @@ BEGIN
       qty_delivered   DECIMAL(18,4) DEFAULT 0
     );
   ', v_tbl_items, v_tbl_sales);
+  -- CREATE TABLE IF NOT EXISTS eski/eksik şemayı güncellemez; kolonları garanti et
+  EXECUTE format(
+    'ALTER TABLE %I ADD COLUMN IF NOT EXISTS item_type VARCHAR(20) DEFAULT ''Malzeme''',
+    v_tbl_items
+  );
   EXECUTE format('CREATE INDEX IF NOT EXISTS %I ON %I (expiry_date) WHERE expiry_date IS NOT NULL', v_tbl_items || '_expiry_date_idx', v_tbl_items);
 
   -- 3. Cash Transactions

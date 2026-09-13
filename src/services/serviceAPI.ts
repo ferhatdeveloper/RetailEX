@@ -329,11 +329,13 @@ class ServiceAPI {
      * (distinct invoice_id, item_type='Hizmet'). Tek sorgu, N+1 yok.
      *
      * periodNr verilirse o dönemdeki satışlar sayılır; verilmezse aktif dönem kullanılır.
+     * sale_items.item_type kolonu yoksa (eksik migration / eski dönem tablosu) filtresiz sayımla devam eder.
      */
     async getAllWithSaleStats(opts?: { periodNr?: string }): Promise<Service[]> {
         const periodNr = String(opts?.periodNr ?? ERP_SETTINGS.periodNr ?? '01').trim();
+        const params = [ERP_SETTINGS.firmNr, periodNr];
         // sale_items otomatik rex_{firm}_{period}_sale_items'e çevrilir (MOVEMENT_TABLES)
-        const { rows } = await postgres.query(
+        const buildSql = (itemTypeFilter: boolean) =>
             `SELECT s.*,
                     COALESCE(sc.sale_count, 0)::int AS sale_count
                FROM ${tableName()} s
@@ -342,14 +344,27 @@ class ServiceAPI {
                    FROM sale_items
                   WHERE firm_nr = $1
                     AND period_nr = $2
-                    AND item_type = 'Hizmet'
+                    ${itemTypeFilter ? `AND item_type = 'Hizmet'` : ''}
                   GROUP BY product_id
                ) sc ON sc.product_id = s.id
               WHERE s.firm_nr = $1
-              ORDER BY s.is_active DESC, s.name ASC`,
-            [ERP_SETTINGS.firmNr, periodNr]
-        );
-        return (rows as Record<string, unknown>[]).map(mapRow);
+              ORDER BY s.is_active DESC, s.name ASC`;
+
+        try {
+            const { rows } = await postgres.query(buildSql(true), params);
+            return (rows as Record<string, unknown>[]).map(mapRow);
+        } catch (error) {
+            const msg = String((error as { message?: string })?.message ?? error ?? '');
+            const missingItemType =
+                (msg.includes('42703') ||
+                    (msg.toLowerCase().includes('column') &&
+                        msg.toLowerCase().includes('does not exist'))) &&
+                msg.includes('item_type');
+            if (!missingItemType) throw error;
+            // item_type yoksa: hizmet UUID'leri ürünlerle çakışmaz; product_id üzerinden say
+            const { rows } = await postgres.query(buildSql(false), params);
+            return (rows as Record<string, unknown>[]).map(mapRow);
+        }
     }
 }
 
