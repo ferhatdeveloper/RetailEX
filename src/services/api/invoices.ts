@@ -2172,6 +2172,9 @@ export const invoicesAPI = {
 
     let rows: any[];
     try {
+      const sessionFirmPad = String(firmVariants[0] || firmNrStr || ERP_SETTINGS.firmNr || '001').padStart(3, '0');
+      const sessionPeriodPad = String(ERP_SETTINGS.periodNr ?? '01').padStart(2, '0');
+      const sessionOpts = { firmNr: sessionFirmPad, periodNr: sessionPeriodPad };
       /* join_* ile s.customer_name çakışması yok; tedarikçi adı her zaman join'den gelir */
       let res = await postgres.query(
         `SELECT s.*, c.name AS join_customer_name, sup.name AS join_supplier_name
@@ -2179,18 +2182,21 @@ export const invoicesAPI = {
          LEFT JOIN customers c ON s.customer_id = c.id
          LEFT JOIN suppliers sup ON s.customer_id = sup.id
          WHERE s.id::text = $1 AND s.firm_nr::text = $2`,
-        [cleanId, firmVariants[0] || firmNrStr]
+        [cleanId, firmVariants[0] || firmNrStr],
+        sessionOpts,
       );
       rows = res.rows;
       if (rows.length === 0 && firmVariants.length > 1) {
         for (let i = 1; i < firmVariants.length; i++) {
+          const fn = String(firmVariants[i]).padStart(3, '0');
           res = await postgres.query(
             `SELECT s.*, c.name AS join_customer_name, sup.name AS join_supplier_name
              FROM sales s
              LEFT JOIN customers c ON s.customer_id = c.id
              LEFT JOIN suppliers sup ON s.customer_id = sup.id
              WHERE s.id::text = $1 AND s.firm_nr::text = $2`,
-            [cleanId, firmVariants[i]]
+            [cleanId, firmVariants[i]],
+            { firmNr: fn, periodNr: sessionPeriodPad },
           );
           if (res.rows.length > 0) {
             rows = res.rows;
@@ -2198,7 +2204,7 @@ export const invoicesAPI = {
           }
         }
       }
-      /* firm_nr 1 vs 001 uyuşmazlığı: id UUID yeterli (tekil) */
+      /* firm_nr 1 vs 001 uyuşmazlığı: yalnızca seçili firma tablosunda id ara (çapraz firma yok) */
       if (rows.length === 0) {
         res = await postgres.query(
           `SELECT s.*, c.name AS join_customer_name, sup.name AS join_supplier_name
@@ -2206,7 +2212,8 @@ export const invoicesAPI = {
            LEFT JOIN customers c ON s.customer_id = c.id
            LEFT JOIN suppliers sup ON s.customer_id = sup.id
            WHERE s.id::text = $1`,
-          [cleanId]
+          [cleanId],
+          sessionOpts,
         );
         rows = res.rows;
       }
