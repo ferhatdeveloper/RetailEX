@@ -17,7 +17,7 @@ import {
   refreshPeriodScopedStores,
 } from '../store/refreshFirmScopedStores';
 import { toSqlDateInputString } from '../utils/localCalendarDate';
-import { applyFirmShellModules } from '../utils/firmShellModules';
+import { applyFirmShellModules, normalizeFirmEnabledModules } from '../utils/firmShellModules';
 
 /** firms.firm_nr ile SQLite erp_firm_nr aynı biçimde eşlensin (2 ↔ 002); rex_{nr}_customers için şart */
 function normalizeFirmNr(v: string | number | undefined | null): string {
@@ -390,7 +390,27 @@ export const FirmaDonemProvider: React.FC<{ children: ReactNode }> = ({ children
         const isTemplateRetailEx = (f: any) => String(f.firm_nr) === '001' && f.name === 'RetailEx OS';
         const nonTemplate = mappedFirms.filter((f: any) => !isTemplateRetailEx(f));
 
+        /** Aktif kabuk beauty/restaurant iken yanlış firma (001 Market) tercihini ez. */
+        let shellLockFirma: any = null;
+        try {
+          const activeMod = String(localStorage.getItem('retailex_active_module') || '').trim();
+          if (activeMod === 'beauty' || activeMod === 'restaurant') {
+            const curMods = normalizeFirmEnabledModules(selectedFirmRef.current?.enabled_modules);
+            if (curMods?.includes(activeMod)) {
+              shellLockFirma = selectedFirmRef.current;
+            } else {
+              shellLockFirma =
+                mappedFirms.find((f: any) =>
+                  normalizeFirmEnabledModules(f.enabled_modules)?.includes(activeMod),
+                ) ?? null;
+            }
+          }
+        } catch {
+          /* ignore */
+        }
+
         const targetFirma =
+          shellLockFirma ||
           (storedPreferredNr && matchNr(storedPreferredNr)) ||
           (currentSelectedNr && matchNr(currentSelectedNr)) ||
           (cfgPreferredNr && matchNr(cfgPreferredNr)) ||

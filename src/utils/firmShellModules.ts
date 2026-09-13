@@ -101,6 +101,9 @@ export type ShellModuleFirmPick = {
  * Kabuk modülü (beauty/restaurant) için doğru firmayı seçer.
  * Örn. varsayılan Market (001) açıkken Güzellik’e geçilince Demo Güzellik (020).
  * Seçim değiştiyse bulunan firmayı döner; zaten uygunsa null.
+ *
+ * Not: `enabled_modules` yoksa firma uygun sayılmaz — yanlış firmada boş
+ * `beauty.rex_001_beauty_services` okunmasını önlemek için sıkı kontrol.
  */
 export function pickFirmForShellModule(
   moduleId: 'beauty' | 'restaurant',
@@ -111,4 +114,14 @@ export function pickFirmForShellModule(
   if (current?.includes(moduleId)) return null;
   const match = firms.find((f) => normalizeFirmEnabledModules(f.enabled_modules)?.includes(moduleId));
   return match ?? null;
+}
+
+/** Firma seçim kimliği: tercihen firm_nr (pad), yoksa id — UUID’yi localStorage’a yazmayı önler. */
+export function firmSelectionKey(firm: ShellModuleFirmPick | null | undefined): string {
+  const nr = String(firm?.firm_nr ?? '').trim();
+  if (nr) {
+    const digits = nr.replace(/\D/g, '');
+    return digits.length && digits.length <= 3 ? digits.padStart(3, '0') : nr;
+  }
+  return String(firm?.id ?? '').trim();
 }

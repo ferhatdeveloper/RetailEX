@@ -8,6 +8,10 @@ import type {
 import { beautyService } from '../../../services/beautyService';
 import { logger } from '../../../services/loggingService';
 import { formatLocalYmd } from '../../../utils/dateLocal';
+import { ERP_SETTINGS } from '../../../services/postgres';
+
+/** Stale loadServices yanıtlarının boş listeyle üzerine yazmasını önler. */
+let servicesLoadSeq = 0;
 
 interface BeautyState {
     // Data
@@ -192,11 +196,19 @@ export const useBeautyStore = create<BeautyState>()((set, get) => ({
     // Services
     // -------------------------------------------------------------------------
     loadServices: async () => {
+        const seq = ++servicesLoadSeq;
+        set({ isLoading: true, error: null });
         try {
+            const firmNr = String(ERP_SETTINGS.firmNr ?? '').trim();
+            if (import.meta.env.DEV) {
+                console.log('[BeautyStore] loadServices firmNr=', firmNr || '(boş)');
+            }
             const services = await beautyService.getServices();
-            set({ services, error: null });
+            if (seq !== servicesLoadSeq) return;
+            set({ services, error: null, isLoading: false });
         } catch (e: any) {
-            set({ error: e?.message || String(e) });
+            if (seq !== servicesLoadSeq) return;
+            set({ error: e?.message || String(e), isLoading: false });
         }
     },
 

@@ -802,6 +802,7 @@ async function getServicesPostgrestBranch(): Promise<BeautyService[] | null> {
         const seen = new Set<string>();
         const out: BeautyService[] = [];
         let beautyTableOk = false;
+        let beautyFetchError: unknown = null;
 
         try {
             const beautyRows = await postgrest.get<Record<string, unknown>[]>(
@@ -821,8 +822,25 @@ async function getServicesPostgrestBranch(): Promise<BeautyService[] | null> {
                 const isActive = r.is_active === undefined || r.is_active === null ? true : r.is_active !== false;
                 out.push({ ...(r as unknown as BeautyService), is_active: isActive });
             }
+            if (import.meta.env.DEV) {
+                console.log(
+                    `[beautyService] PostgREST beauty.rex_${fn}_beauty_services → ${out.length} satır`,
+                );
+            }
         } catch (e) {
+            beautyFetchError = e;
             console.warn('[beautyService] PostgREST beauty_services:', e);
+        }
+
+        // Ana beauty kartı okunduysa ERP/ürün yedeğine düşme — yanlış firmada boş liste
+        // ile ERP services (item_type) hatalarını karıştırmamak için early return.
+        if (beautyTableOk) {
+            out.sort((a, b) => {
+                const c = String(a.category ?? '').localeCompare(String(b.category ?? ''), 'tr');
+                if (c !== 0) return c;
+                return String(a.name ?? '').localeCompare(String(b.name ?? ''), 'tr');
+            });
+            return out;
         }
 
         try {
@@ -870,7 +888,15 @@ async function getServicesPostgrestBranch(): Promise<BeautyService[] | null> {
         }
 
         // Ana beauty_services erişilemediyse ve yedek kaynak da boşsa SQL yoluna düş
-        if (!beautyTableOk && out.length === 0) return null;
+        if (!beautyTableOk && out.length === 0) {
+            if (beautyFetchError) {
+                console.warn(
+                    `[beautyService] beauty.rex_${fn}_beauty_services okunamadı; SQL yedeğine düşülüyor`,
+                    beautyFetchError,
+                );
+            }
+            return null;
+        }
 
         out.sort((a, b) => {
             const c = String(a.category ?? '').localeCompare(String(b.category ?? ''), 'tr');
@@ -2112,10 +2138,19 @@ export const beautyService = {
     // SERVICES  (firm card table: rex_{firm}_beauty_services)
     // =========================================================================
     async getServices(): Promise<BeautyService[]> {
+        const fnLog = erpFirmNrForRow();
         if (shouldUseTenantPostgrestApi()) {
             try {
                 const pr = await getServicesPostgrestBranch();
-                if (pr != null) return pr;
+                if (pr != null) {
+                    if (import.meta.env.DEV && pr.length === 0) {
+                        console.warn(
+                            `[beautyService] getServices: beauty.rex_${fnLog}_beauty_services boş. ` +
+                                'Firma 020 (Demo Güzellik) seçili mi?',
+                        );
+                    }
+                    return pr;
+                }
             } catch (e) {
                 console.warn('[beautyService] getServices PostgREST denemesi:', e);
             }
@@ -2143,7 +2178,18 @@ export const beautyService = {
                 const isActive = a === undefined || a === null ? true : a !== false;
                 out.push({ ...(raw as unknown as BeautyService), is_active: isActive });
             }
-        } catch {
+            if (import.meta.env.DEV) {
+                console.log(`[beautyService] SQL ${t} → ${beautyRows.length} satır`);
+            }
+            // Beauty kartı okundu — ERP services / ürün yedeğine karışma (item_type / boş ERP)
+            out.sort((a, b) => {
+                const c = String(a.category ?? '').localeCompare(String(b.category ?? ''), 'tr');
+                if (c !== 0) return c;
+                return String(a.name ?? '').localeCompare(String(b.name ?? ''), 'tr');
+            });
+            return out;
+        } catch (e) {
+            console.warn(`[beautyService] SQL beauty_services (${t}):`, e);
             /* beauty_services yok / hata — hizmet kartları (ERP) yine yüklensin */
         }
 

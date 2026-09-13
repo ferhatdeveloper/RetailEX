@@ -57,7 +57,11 @@ import {
   getShellModuleDisplayOrder,
   isMainModuleVisible,
 } from '../../utils/mainModuleVisibility';
-import { FIRM_SHELL_MODULES_CHANGED_EVENT, pickFirmForShellModule } from '../../utils/firmShellModules';
+import {
+  FIRM_SHELL_MODULES_CHANGED_EVENT,
+  firmSelectionKey,
+  pickFirmForShellModule,
+} from '../../utils/firmShellModules';
 import { NeonLogo } from '../ui/NeonLogo';
 import type { NeonLogoProductLine } from '../ui/NeonLogo';
 
@@ -296,13 +300,19 @@ export function MainLayout({
   const currentModuleRef = useRef(currentModule);
   currentModuleRef.current = currentModule;
 
-  /** Güzellik sekmesi: seçili firma beauty içermiyorsa uygun firmaya geç (001 Market → 020 Demo Güzellik). */
-  const openBeautyModule = useCallback(() => {
-    const match = pickFirmForShellModule('beauty', firms, selectedFirm);
-    if (match) {
-      const id = match.id ?? match.firm_nr;
-      if (id != null && String(id).trim() !== '') {
-        selectFirm(id);
+  /**
+   * Güzellik kabuğu: seçili firma beauty içermiyorsa Demo Güzellik (020) vb. seç.
+   * Yalnızca sekme tıklamasında değil — kayıtlı modül / login sonrası da çağrılır.
+   */
+  const ensureBeautyFirm = useCallback(
+    (opts?: { toastOnSwitch?: boolean }): boolean => {
+      if (firmaLoading || firms.length === 0) return false;
+      const match = pickFirmForShellModule('beauty', firms, selectedFirm);
+      if (!match) return true;
+      const key = firmSelectionKey(match);
+      if (!key) return false;
+      selectFirm(key);
+      if (opts?.toastOnSwitch !== false) {
         const firmLabel = `${match.name || 'Firma'} (${String(match.firm_nr || '').padStart(3, '0')})`;
         const msg = String(tm('bSwitchedToBeautyFirm') || '').replace('{firm}', firmLabel);
         toast.message(
@@ -311,9 +321,26 @@ export function MainLayout({
             : msg,
         );
       }
-    }
+      return true;
+    },
+    [firmaLoading, firms, selectedFirm, selectFirm, tm],
+  );
+
+  /** Güzellik sekmesi: uygun firmaya geç, sonra modülü aç. */
+  const openBeautyModule = useCallback(() => {
+    ensureBeautyFirm({ toastOnSwitch: true });
     setCurrentModule('beauty');
-  }, [firms, selectedFirm, selectFirm, tm]);
+  }, [ensureBeautyFirm]);
+
+  /**
+   * Kayıtlı / sistem tipi ile beauty’ye düşülünce veya firms sonradan yüklenince
+   * firma hâlâ 001 (Market) kalmasın — aksi halde hizmet listesi boş kalır.
+   */
+  useEffect(() => {
+    if (currentModule !== 'beauty') return;
+    if (firmaLoading || firms.length === 0) return;
+    ensureBeautyFirm({ toastOnSwitch: false });
+  }, [currentModule, firmaLoading, firms, selectedFirm?.firm_nr, ensureBeautyFirm]);
 
   // Check for WMS redirect flag from login (depo store login) or URL parameter
   useEffect(() => {

@@ -41,6 +41,7 @@ import {
     RETAILEX_TEXT_PRIMARY,
 } from '../../../theme/retailexAntdTheme';
 import { ERP_SETTINGS } from '../../../services/postgres';
+import { normalizeFirmEnabledModules } from '../../../utils/firmShellModules';
 
 /** RetailExFlatModal z≈2147483646; antd Select varsayılan popup daha altta kalıyor */
 const ANT_SELECT_POPUP_Z = 2147483647;
@@ -106,8 +107,11 @@ export function ServiceManagement() {
     const [saving, setSaving] = useState(false);
 
     useEffect(() => {
+        // Yanlış firmada (001 Market) boş liste çekilmesin — MainLayout ensureBeautyFirm sonrası yükle
+        const hasBeauty = !!normalizeFirmEnabledModules(selectedFirm?.enabled_modules)?.includes('beauty');
+        if (!hasBeauty) return;
         loadServices();
-    }, [firmNr, loadServices]);
+    }, [firmNr, selectedFirm?.enabled_modules, loadServices]);
 
     useEffect(() => {
         let mounted = true;

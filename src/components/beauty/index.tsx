@@ -43,6 +43,7 @@ import { AppointmentPOS } from './components/AppointmentPOS';
 import { LanguageSelectionModal } from '../system/LanguageSelectionModal';
 import { FirmSelector } from '../system/FirmSelector';
 import { useFirmaDonem } from '../../contexts/FirmaDonemContext';
+import { normalizeFirmEnabledModules } from '../../utils/firmShellModules';
 import { RetailExFlatModal, RetailExFlatFieldLabel } from '../shared/RetailExFlatModal';
 import './ClinicStyles.css';
 
@@ -109,6 +110,7 @@ function BeautyModuleShell({ sales = [], products = [], onRequestManagementAcces
     const { specialists, devices, loadSpecialists, loadServices, loadAppointments, loadDevices } = useBeautyStore();
     const { selectedFirm } = useFirmaDonem();
     const beautyFirmNr = String(selectedFirm?.firm_nr ?? '').trim();
+    const firmHasBeauty = !!normalizeFirmEnabledModules(selectedFirm?.enabled_modules)?.includes('beauty');
     const [surveyOverlayOpen, setSurveyOverlayOpen] = useState(false);
     const [reportInitialTab, setReportInitialTab] = useState<'beauty-survey-report' | undefined>(undefined);
     const [showNewAptWizard, setShowNewAptWizard] = useState(false);
@@ -253,12 +255,14 @@ function BeautyModuleShell({ sales = [], products = [], onRequestManagementAcces
     }), [language, tm]);
 
     React.useEffect(() => {
+        // Market (001) vb. henüz güzellik firmasına geçmeden yükleme — boş liste yarışını önler
+        if (!firmHasBeauty || !beautyFirmNr) return;
         const today = formatLocalYmd(new Date());
         loadSpecialists();
         loadServices();
         loadDevices();
         loadAppointments(today);
-    }, [beautyFirmNr, loadSpecialists, loadServices, loadDevices, loadAppointments]);
+    }, [beautyFirmNr, firmHasBeauty, loadSpecialists, loadServices, loadDevices, loadAppointments]);
 
     React.useEffect(() => {
         if (activeTab !== 'clients') setBeautyClientDetailId(null);
