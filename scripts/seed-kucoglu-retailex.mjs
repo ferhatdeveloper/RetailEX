@@ -87,6 +87,13 @@ async function ensureCategories(client) {
   return byCode
 }
 
+/** Menü scrape bazen çözülmeyen menu.kucoglu.restaurant hostu yazar — canlı CDN .com */
+function normalizeMenuImageUrl(url) {
+  const s = String(url || '').trim()
+  if (!s) return null
+  return s.replace(/menu\.kucoglu\.restaurant/gi, 'menu.kucoglu.com')
+}
+
 async function seedProducts(client, catByKey) {
   let upserted = 0
   for (const p of menu.products) {
@@ -98,6 +105,7 @@ async function seedProducts(client, catByKey) {
     const name2 = nameEn
     const hasVariants = Array.isArray(p.variants) && p.variants.length > 1
     const desc = p.descs?.en || p.category || ''
+    const imageUrl = normalizeMenuImageUrl(p.image)
 
     const { rows } = await client.query(
       `INSERT INTO public.rex_001_products (
@@ -132,8 +140,8 @@ async function seedProducts(client, catByKey) {
         p.code.slice(0, 100),
         primaryName.slice(0, 255),
         name2.slice(0, 255),
-        p.image || null,
-        p.image || null,
+        imageUrl,
+        imageUrl,
         desc,
         nameTr,
         nameEn,
@@ -176,8 +184,17 @@ async function seedProducts(client, catByKey) {
 
 async function seedRestaurant(client) {
   await client.query(
-    `UPDATE public.firms SET name = $1, is_active = true, "default" = true WHERE firm_nr = '001'`,
-    [menu.tenant?.displayName || 'Kuç Oglu'],
+    `UPDATE public.firms
+     SET name = $1,
+         title = $1,
+         is_active = true,
+         "default" = true,
+         enabled_modules = $2::jsonb
+     WHERE firm_nr = '001'`,
+    [
+      menu.tenant?.displayName || 'Kuç Oglu',
+      JSON.stringify(['pos', 'restaurant', 'management']),
+    ],
   )
   await client.query(
     `UPDATE public.stores SET name = $1 WHERE firm_nr = '001'`,
