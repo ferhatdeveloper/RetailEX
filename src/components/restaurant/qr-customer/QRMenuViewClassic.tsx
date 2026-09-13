@@ -213,7 +213,9 @@ export function QRMenuViewClassic() {
                   <img
                     src={item.image}
                     alt={item.name}
-                    className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-500"
+                    className="w-full h-full object-contain object-center group-hover:scale-105 transition-transform duration-500"
+                    referrerPolicy="no-referrer"
+                    loading="lazy"
                     onError={(e) => {
                       e.currentTarget.style.display = 'none';
                       const ph = e.currentTarget.nextElementSibling as HTMLElement | null;

@@ -79,7 +79,7 @@ function MenuThumb({
           fill ? styles.thumbFill : { width: dim, height: dim },
           { borderRadius: rounded },
         ]}
-        resizeMode="cover"
+        resizeMode="contain"
         onError={() => setFailed(true)}
       />
     );

@@ -2274,7 +2274,9 @@ export const RestPOS: React.FC<RestPOSProps> = ({
                                             <img
                                                 src={imgSrc}
                                                 alt={product.name}
-                                                className="w-full h-full object-cover object-center group-hover:scale-125 transition-transform duration-700 ease-in-out"
+                                                className="w-full h-full object-contain object-center group-hover:scale-105 transition-transform duration-500 ease-in-out"
+                                                referrerPolicy="no-referrer"
+                                                loading="lazy"
                                                 onError={e => {
                                                     (e.target as HTMLImageElement).style.display = 'none';
                                                 }}

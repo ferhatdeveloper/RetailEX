@@ -25,8 +25,9 @@ export function QrProductThumb({
         <img
           src={src!}
           alt=""
-          className="h-full w-full object-cover"
+          className="h-full w-full object-contain object-center"
           loading="lazy"
+          referrerPolicy="no-referrer"
           onError={() => setBroken(true)}
         />
       </div>
