@@ -6,7 +6,7 @@
  *   001 Demo Market   — pos + management (varyant ürün yok)
  *   010 Demo Restoran — restaurant + pos (+ yemekcom Excel menü)
  *   020 Demo Güzellik — beauty
- *   030 Demo Varyant  — pos + management (TSHIRT-VAR / PHONE-VAR)
+ *   030 Demo Giyim    — pos + management (TSHIRT-VAR / PHONE-VAR)
  *
  * Kullanım:
  *   PGHOST=... PGUSER=postgres PGPASSWORD=... PGDATABASE=retailex_demo \

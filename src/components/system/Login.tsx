@@ -376,10 +376,12 @@ export function Login({ onLogin }: LoginProps) {
             { schema: 'public' }
           );
           const safeRows: any[] = Array.isArray(rows) ? rows : [];
-          setFirms(safeRows);
+          setFirms(safeRows.filter((f) => f.is_active !== false && f.is_active !== 0));
           if (safeRows.length > 0) {
+            const active = safeRows.filter((f) => f.is_active !== false && f.is_active !== 0);
+            const pool = active.length > 0 ? active : safeRows;
             const lastFirm = localStorage.getItem('exretail_selected_firma_id');
-            const next = (lastFirm && safeRows.find(f => f.firm_nr === lastFirm)) ? lastFirm : safeRows[0].firm_nr;
+            const next = (lastFirm && pool.find(f => f.firm_nr === lastFirm)) ? lastFirm : pool[0].firm_nr;
             if (next) setSelectedFirmNr(next);
           }
           return;
@@ -389,7 +391,7 @@ export function Login({ onLogin }: LoginProps) {
           // Bu durumda postgres.query SQL rewrite ile doğru tabloya yönlendirir.
           const { postgres } = await import('../../services/postgres');
           const result = await postgres.query(`SELECT * FROM firms ORDER BY firm_nr ASC`, []);
-          const rows = result.rows || [];
+          const rows = ((result.rows || []) as any[]).filter((f) => f.is_active !== false && f.is_active !== 0);
           setFirms(rows as any[]);
           if (rows.length > 0) {
             const lastFirm = localStorage.getItem('exretail_selected_firma_id');
@@ -405,7 +407,7 @@ export function Login({ onLogin }: LoginProps) {
 
       const { postgres } = await import('../../services/postgres');
       const result = await postgres.query(`SELECT * FROM firms ORDER BY firm_nr ASC`, []);
-      const rows = result.rows || [];
+      const rows = ((result.rows || []) as any[]).filter((f) => f.is_active !== false && f.is_active !== 0);
       setFirms(rows);
       
       if (rows.length > 0) {

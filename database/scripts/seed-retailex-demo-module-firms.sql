@@ -4,7 +4,7 @@
 -- 001 Demo Market     → pos + management (perakende; varyant ürün yok)
 -- 010 Demo Restoran   → restaurant + pos + management (Excel menü ayrı script)
 -- 020 Demo Güzellik   → beauty + management
--- 030 Demo Varyant    → pos + management (TSHIRT-VAR / PHONE-VAR)
+-- 030 Demo Giyim      → pos + management (TSHIRT-VAR / PHONE-VAR giyim+varyant)
 -- WMS / mobile-pos kabukta yok.
 -- Idempotent. Çalıştırma: seed-retailex-demo-full.mjs
 -- ============================================================================
@@ -75,7 +75,7 @@ DELETE FROM public.rex_001_products WHERE code LIKE 'MENU-%';
 DELETE FROM public.rex_001_categories WHERE is_restaurant IS TRUE OR code LIKE 'REST-%';
 DELETE FROM public.rex_001_customers WHERE code LIKE 'BCust-%';
 
--- Market (001) içinden varyantlı ürünleri kaldır (ayrı firma: 030 Demo Varyant)
+-- Market (001) içinden varyantlı ürünleri kaldır (ayrı firma: 030 Demo Giyim)
 DELETE FROM public.rex_001_01_sale_items si
 USING public.rex_001_products p
 WHERE si.product_id = p.id
@@ -351,12 +351,12 @@ SET name = 'Demo Güzellik',
     enabled_modules = '["beauty","management"]'::jsonb
 WHERE firm_nr = '020';
 
--- ─── 030: Varyant ürün demosu ────────────────────────────────────────────────
-SELECT * FROM public.provision_firm_schema('030', '01', 'Demo Varyant', 'TRY', true);
+-- ─── 030: Giyim / varyant ürün demosu ────────────────────────────────────────
+SELECT * FROM public.provision_firm_schema('030', '01', 'Demo Giyim', 'TRY', true);
 
 UPDATE public.firms
-SET name = 'Demo Varyant',
-    title = 'RetailEX Demo Varyant Ürün',
+SET name = 'Demo Giyim',
+    title = 'RetailEX Demo Giyim / Varyant',
     is_active = true,
     "default" = false,
     ana_para_birimi = 'TRY',
@@ -366,7 +366,7 @@ SET name = 'Demo Varyant',
 WHERE firm_nr = '030';
 
 INSERT INTO public.stores (code, name, firm_nr, is_main, "default", is_active)
-VALUES ('ST_030', 'Varyant Mağaza', '030', true, true, true)
+VALUES ('ST_030', 'Giyim Mağaza', '030', true, true, true)
 ON CONFLICT (code) DO UPDATE
 SET name = EXCLUDED.name, firm_nr = EXCLUDED.firm_nr, is_active = true;
 
@@ -453,10 +453,35 @@ WHERE p.code = 'PHONE-VAR'
 ON CONFLICT (sku) DO NOTHING;
 
 INSERT INTO public.rex_030_customers (firm_nr, code, name, phone, email, balance, is_active) VALUES
-  ('030', 'VCust-001', 'Varyant Demo Müşteri', '+90 532 300 0001', 'varyant@demo.local', 0, true)
-ON CONFLICT (code) DO NOTHING;
+  ('030', 'VCust-001', 'Giyim Demo Müşteri', '+90 532 300 0001', 'giyim@demo.local', 0, true)
+ON CONFLICT (code) DO UPDATE
+SET name = EXCLUDED.name, phone = EXCLUDED.phone, email = EXCLUDED.email, is_active = true;
 
 -- ─── Demo satışlar (listelerde görünsün) ─────────────────────────────────────
+-- 030 Giyim: POS satış (varyantlı ürün satırı)
+INSERT INTO public.rex_030_01_sales
+  (firm_nr, period_nr, fiche_no, fiche_type, date, customer_id, customer_name, total_net, total_vat, total_gross, net_amount, is_cancelled)
+SELECT '030', '01', v.fiche, 'S', v.dt::timestamptz, c.id, c.name, v.net, v.vat, v.gross, v.net, false
+FROM (VALUES
+  ('GIY-2026-0001', '2026-02-02 14:20:00', 'VCust-001', 250.00, 25.00, 275.00),
+  ('GIY-2026-0002', '2026-02-04 16:05:00', 'VCust-001', 18000.00, 3600.00, 21600.00)
+) AS v(fiche, dt, ccode, net, vat, gross)
+JOIN public.rex_030_customers c ON c.code = v.ccode
+WHERE NOT EXISTS (SELECT 1 FROM public.rex_030_01_sales s WHERE s.fiche_no = v.fiche);
+
+INSERT INTO public.rex_030_01_sale_items
+  (firm_nr, period_nr, invoice_id, product_id, item_code, quantity, unit_price, vat_rate, net_amount, total_amount)
+SELECT '030', '01', s.id, p.id, p.code, 1, p.price, COALESCE(p.vat_rate, 10), p.price, p.price * (1 + COALESCE(p.vat_rate, 10) / 100.0)
+FROM public.rex_030_01_sales s
+JOIN public.rex_030_products p ON p.code = CASE s.fiche_no
+  WHEN 'GIY-2026-0001' THEN 'TSHIRT-VAR'
+  WHEN 'GIY-2026-0002' THEN 'PHONE-VAR'
+END
+WHERE s.fiche_no IN ('GIY-2026-0001', 'GIY-2026-0002')
+  AND NOT EXISTS (
+    SELECT 1 FROM public.rex_030_01_sale_items si WHERE si.invoice_id = s.id AND si.item_code = p.code
+  );
+
 -- 010 Restoran: POS satış + masa adisyonu
 INSERT INTO public.rex_010_01_sales
   (firm_nr, period_nr, fiche_no, fiche_type, date, customer_id, customer_name, total_net, total_vat, total_gross, net_amount, is_cancelled)

@@ -8,6 +8,7 @@ import { useAuthStore } from '../store';
 import {
   verifyLoginUser,
   normalizeLoginFirmNr,
+  resolveAccessibleFirmNrs,
   type LoginVerifyRow,
 } from '../services/loginVerify';
 
@@ -105,9 +106,7 @@ function buildUserFromLoginRow(row: LoginVerifyRow, periodNr: string): User {
     landingRoute: landingRoute || undefined,
   };
 
-  const allowedFirmNrs = row.allowed_firm_nrs != null
-    ? (typeof row.allowed_firm_nrs === 'string' ? JSON.parse(row.allowed_firm_nrs || '[]') : row.allowed_firm_nrs)
-    : [];
+  const allowedFirmNrs = resolveAccessibleFirmNrs(row);
   const allowedPeriods = row.allowed_periods != null
     ? (typeof row.allowed_periods === 'string' ? JSON.parse(row.allowed_periods || '[]') : row.allowed_periods)
     : [];

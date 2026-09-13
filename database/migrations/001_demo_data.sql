@@ -166,7 +166,7 @@ UPDATE rex_001_products SET
 WHERE code IN ('CLOTH-001', 'CLOTH-002', 'CLOTH-003');
 
 -- ============================================================================
--- 4b. VARYANTLI ÜRÜN — firma 001'de yok; seed-retailex-demo-module-firms.sql → 030 Demo Varyant
+-- 4b. VARYANTLI ÜRÜN — firma 001'de yok; seed-retailex-demo-module-firms.sql → 030 Demo Giyim
 -- ============================================================================
 
 -- ============================================================================

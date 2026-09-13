@@ -352,9 +352,25 @@ export const FirmaDonemProvider: React.FC<{ children: ReactNode }> = ({ children
         const sessionStr = localStorage.getItem('exretail_session');
         if (sessionStr) {
           const session = JSON.parse(sessionStr);
-          const allowedFirmNrs = session?.user?.allowed_firm_nrs;
-          if (Array.isArray(allowedFirmNrs) && allowedFirmNrs.length > 0) {
-            mappedFirms = mappedFirms.filter((f: any) => allowedFirmNrs.includes(f.firm_nr));
+          const roles = Array.isArray(session?.user?.roles) ? session.user.roles : [];
+          const isAdmin =
+            roles.some((r: any) => {
+              const name = String(r?.name || '').toLowerCase();
+              const perms = Array.isArray(r?.permissions) ? r.permissions : [];
+              return name === 'admin' || perms.includes('*');
+            }) ||
+            String(session?.user?.username || '').toLowerCase() === 'admin';
+          // Admin: tüm aktif firmalar (eski oturumda allowed_firm_nrs 030’suz kalmış olabilir)
+          if (!isAdmin) {
+            const allowedFirmNrs = session?.user?.allowed_firm_nrs;
+            if (Array.isArray(allowedFirmNrs) && allowedFirmNrs.length > 0) {
+              const allowedNorm = new Set(
+                allowedFirmNrs.map((n: unknown) => normalizeFirmNr(n as string)).filter(Boolean),
+              );
+              mappedFirms = mappedFirms.filter((f: any) =>
+                allowedNorm.has(normalizeFirmNr(f.firm_nr)),
+              );
+            }
           }
         }
       } catch (_) { /* ignore */ }
