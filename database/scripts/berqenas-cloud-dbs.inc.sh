@@ -68,6 +68,7 @@ berqenas_default_dbs_array() {
     zetem
     ferhat
     ozbek
+    kucoglu
   )
 }
 

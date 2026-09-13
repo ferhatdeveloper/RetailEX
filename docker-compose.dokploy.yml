@@ -100,10 +100,12 @@ services:
       - postgrest_zetem
       - postgrest_ferhat
       - postgrest_ozbek
+      - postgrest_kucoglu
       - sync_lovan
       - sync_zetem
       - sync_ferhat
       - sync_ozbek
+      - sync_kucoglu
     volumes:
       - ./database/docker/Caddyfile.api-gateway:/etc/caddy/Caddyfile:ro
     networks:
@@ -445,6 +447,21 @@ services:
     networks:
       - berqenas_net
 
+  postgrest_kucoglu:
+    image: postgrest/postgrest:v12.2.0
+    container_name: saas_postgrest_kucoglu
+    restart: always
+    depends_on:
+      postgres:
+        condition: service_healthy
+    environment:
+      <<: *postgrest-env
+      PGRST_DB_URI: postgres://postgres:${POSTGRES_PASSWORD}@postgres:5432/kucoglu
+    ports:
+      - "${POSTGREST_PORT_KUCOGLU:-3022}:3000"
+    networks:
+      - berqenas_net
+
   sync_aqua:
     <<: *sync-service
     container_name: saas_sync_aqua
@@ -500,6 +517,13 @@ services:
     environment:
       <<: *sync-env
       DATABASE_URL: postgres://postgres:${POSTGRES_PASSWORD}@postgres:5432/ozbek
+
+  sync_kucoglu:
+    <<: *sync-service
+    container_name: saas_sync_kucoglu
+    environment:
+      <<: *sync-env
+      DATABASE_URL: postgres://postgres:${POSTGRES_PASSWORD}@postgres:5432/kucoglu
 
   sync_mettu:
     <<: *sync-service
