@@ -208,12 +208,12 @@ export function QRMenuViewClassic() {
               key={item.id}
               className="group relative rounded-2xl overflow-hidden bg-slate-800/50 backdrop-blur-sm border border-slate-700/50 hover:border-amber-500/50 transition-all duration-300 hover:shadow-2xl hover:shadow-amber-500/20"
             >
-              <div className="relative h-28 overflow-hidden bg-white">
+              <div className="relative aspect-[4/3] overflow-hidden bg-slate-900 flex items-center justify-center">
                 {item.image ? (
                   <img
                     src={item.image}
                     alt={item.name}
-                    className="w-full h-full object-contain object-center group-hover:scale-105 transition-transform duration-500"
+                    className="max-w-full max-h-full w-auto h-auto object-contain object-center group-hover:scale-[1.03] transition-transform duration-500"
                     referrerPolicy="no-referrer"
                     loading="lazy"
                     onError={(e) => {
@@ -224,13 +224,13 @@ export function QRMenuViewClassic() {
                   />
                 ) : null}
                 <div
-                  className={`w-full h-full flex items-center justify-center bg-white ${item.image ? 'hidden' : ''}`}
+                  className={`absolute inset-0 flex items-center justify-center bg-slate-800 ${item.image ? 'hidden' : ''}`}
                 >
-                  <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">
+                  <p className="text-xs font-semibold uppercase tracking-wide text-slate-400">
                     Resim yok
                   </p>
                 </div>
-                <div className="absolute inset-0 bg-gradient-to-t from-slate-900 via-slate-900/50 to-transparent pointer-events-none" />
+                <div className="absolute inset-0 bg-gradient-to-t from-slate-900 via-slate-900/40 to-transparent pointer-events-none" />
               </div>
 
               <div className="absolute bottom-0 left-0 right-0 p-4">

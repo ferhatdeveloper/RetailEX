@@ -159,8 +159,11 @@
 }
 
 .res-pos-product-thumb {
-  height: 9rem;
-  background-color: #f8fafc;
+  /* Sabit alçak yükseklik yemek fotoğraflarını “basık” gösteriyordu */
+  aspect-ratio: 1 / 1;
+  height: auto;
+  min-height: 11rem;
+  background-color: #f1f5f9;
 }
 
 .res-pos-product-thumb-placeholder {

@@ -2268,13 +2268,13 @@ export const RestPOS: React.FC<RestPOSProps> = ({
                                     onTouchCancel={cancelLongPress}
                                     className="bg-white rounded-2xl border border-slate-200 flex flex-col text-left cursor-pointer hover:shadow-lg hover:border-blue-400 transition-all overflow-hidden group hover:-translate-y-0.5 select-none relative active:scale-[0.98]"
                                 >
-                                    {/* Product image — kompakt masaüstü yükseklik */}
-                                    <div className="res-pos-product-thumb w-full overflow-hidden bg-slate-100 shrink-0 relative">
+                                    {/* Product image — kare alan; tam ürün görünür (basık şerit değil) */}
+                                    <div className="res-pos-product-thumb w-full overflow-hidden bg-slate-100 shrink-0 relative flex items-center justify-center p-1.5">
                                         {imgSrc ? (
                                             <img
                                                 src={imgSrc}
                                                 alt={product.name}
-                                                className="w-full h-full object-contain object-center group-hover:scale-105 transition-transform duration-500 ease-in-out"
+                                                className="max-w-full max-h-full w-auto h-auto object-contain object-center group-hover:scale-[1.03] transition-transform duration-500 ease-out"
                                                 referrerPolicy="no-referrer"
                                                 loading="lazy"
                                                 onError={e => {
@@ -2286,7 +2286,6 @@ export const RestPOS: React.FC<RestPOSProps> = ({
                                                 <UtensilsCrossed className="w-12 h-12 text-blue-400/70" strokeWidth={1.35} />
                                             </div>
                                         )}
-                                        <div className="absolute inset-x-0 bottom-0 h-2/3 bg-gradient-to-t from-black/40 via-black/10 to-transparent opacity-0 group-hover:opacity-100 transition-all duration-300" />
 
                                         {/* Quick Add Badge */}
                                         <div className="absolute top-2 right-2 w-8 h-8 rounded-xl bg-white/90 backdrop-blur-md flex items-center justify-center text-blue-600 shadow-xl scale-0 group-hover:scale-100 transition-all duration-300 transform opacity-0 group-hover:opacity-100 rotate-12 group-hover:rotate-0">
