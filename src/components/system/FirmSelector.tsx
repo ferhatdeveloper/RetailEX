@@ -1,16 +1,10 @@
 import { useState } from 'react';
-import { Building2, ChevronDown, Calendar, Check } from 'lucide-react';
+import { Building2, ChevronDown, Calendar, Check, X } from 'lucide-react';
 import { useFirmaDonem } from '../../contexts/FirmaDonemContext';
-import {
-    Dialog,
-    DialogContent,
-    DialogDescription,
-    DialogHeader,
-    DialogTitle,
-} from '../ui/dialog';
 import { Button } from '../ui/button';
 import { formatIsoDateTr } from '../../utils/localCalendarDate';
 import { cn } from '../ui/utils';
+import { PercentBodyModal, PercentBodyModalScrollBody } from '../shared/PercentBodyModal';
 
 export type FirmSelectorTriggerVariant = 'topbar' | 'clinic';
 
@@ -32,6 +26,8 @@ export function FirmSelector({ triggerVariant = 'topbar', compactMobile = false 
         selectPeriod,
         loading
     } = useFirmaDonem();
+
+    const close = () => setIsOpen(false);
 
     return (
         <>
@@ -71,16 +67,27 @@ export function FirmSelector({ triggerVariant = 'topbar', compactMobile = false 
                 <ChevronDown className={cn('opacity-50 shrink-0', compactMobile && triggerVariant === 'topbar' ? 'h-2.5 w-2.5' : 'h-3 w-3')} />
             </Button>
 
-            <Dialog open={isOpen} onOpenChange={setIsOpen}>
-                <DialogContent className="sm:max-w-sm gap-0 p-0 overflow-hidden">
-                    <DialogHeader className="px-4 pt-3 pb-2 border-b border-slate-100 dark:border-slate-800 space-y-0.5">
-                        <DialogTitle className="text-base">Firma ve Dönem</DialogTitle>
-                        <DialogDescription className="text-xs">
-                            Firma ve dönem seçin
-                        </DialogDescription>
-                    </DialogHeader>
+            {isOpen && (
+                <PercentBodyModal onClose={close} size="compact" ariaLabel="Firma ve Dönem">
+                    <div className="bg-gradient-to-r from-blue-600 to-indigo-600 px-4 py-3 text-white shrink-0 flex items-center gap-2">
+                        <Building2 className="h-5 w-5 shrink-0 opacity-90" />
+                        <div className="min-w-0 flex-1">
+                            <h3 className="text-sm font-bold tracking-tight truncate">Firma ve Dönem</h3>
+                            <p className="text-[10px] text-blue-100 font-medium mt-0.5">
+                                Firma ve dönem seçin
+                            </p>
+                        </div>
+                        <button
+                            type="button"
+                            onClick={close}
+                            aria-label="Kapat"
+                            className="w-8 h-8 rounded-lg bg-white/15 hover:bg-white/25 active:scale-95 flex items-center justify-center shrink-0"
+                        >
+                            <X className="h-4 w-4" />
+                        </button>
+                    </div>
 
-                    <div className="px-3 py-2.5 space-y-3">
+                    <PercentBodyModalScrollBody className="px-3 py-2.5 space-y-3 bg-white">
                         {/* Firma — kompakt liste */}
                         <div className="space-y-1">
                             <label className="text-[11px] font-semibold uppercase tracking-wide text-slate-500">
@@ -174,9 +181,9 @@ export function FirmSelector({ triggerVariant = 'topbar', compactMobile = false 
                                 )}
                             </div>
                         </div>
-                    </div>
+                    </PercentBodyModalScrollBody>
 
-                    <div className="flex items-center justify-between gap-2 px-3 py-2 border-t border-slate-100 dark:border-slate-800 bg-slate-50/80 dark:bg-slate-900/40">
+                    <div className="flex items-center justify-between gap-2 px-3 py-2 border-t border-slate-100 dark:border-slate-800 bg-slate-50/80 dark:bg-slate-900/40 shrink-0">
                         <p className="min-w-0 truncate text-[11px] text-slate-500">
                             {selectedFirm && selectedPeriod
                                 ? `${selectedFirm.firm_nr} · ${selectedFirm.name} · D${selectedPeriod.nr}`
@@ -186,13 +193,13 @@ export function FirmSelector({ triggerVariant = 'topbar', compactMobile = false 
                             variant="outline"
                             size="sm"
                             className="h-7 shrink-0 px-3 text-xs"
-                            onClick={() => setIsOpen(false)}
+                            onClick={close}
                         >
                             Kapat
                         </Button>
                     </div>
-                </DialogContent>
-            </Dialog>
+                </PercentBodyModal>
+            )}
         </>
     );
 }
