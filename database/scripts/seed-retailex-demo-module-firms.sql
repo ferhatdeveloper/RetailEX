@@ -1,9 +1,10 @@
 -- ============================================================================
 -- retailex_demo — modül başına ayrı firma + enabled_modules
 -- ============================================================================
--- 001 Demo Market     → pos + management (perakende)
+-- 001 Demo Market     → pos + management (perakende; varyant ürün yok)
 -- 010 Demo Restoran   → restaurant + pos + management (Excel menü ayrı script)
 -- 020 Demo Güzellik   → beauty + management
+-- 030 Demo Varyant    → pos + management (TSHIRT-VAR / PHONE-VAR)
 -- WMS / mobile-pos kabukta yok.
 -- Idempotent. Çalıştırma: seed-retailex-demo-full.mjs
 -- ============================================================================
@@ -73,6 +74,51 @@ WHERE f.store_id = s.id AND s.firm_nr = '001';
 DELETE FROM public.rex_001_products WHERE code LIKE 'MENU-%';
 DELETE FROM public.rex_001_categories WHERE is_restaurant IS TRUE OR code LIKE 'REST-%';
 DELETE FROM public.rex_001_customers WHERE code LIKE 'BCust-%';
+
+-- Market (001) içinden varyantlı ürünleri kaldır (ayrı firma: 030 Demo Varyant)
+DELETE FROM public.rex_001_01_sale_items si
+USING public.rex_001_products p
+WHERE si.product_id = p.id
+  AND (
+    p.code IN ('TSHIRT-VAR', 'PHONE-VAR')
+    OR p.code LIKE '%-VAR'
+    OR p.has_variants IS TRUE
+  );
+
+DELETE FROM public.rex_001_01_sale_items
+WHERE item_code IN ('TSHIRT-VAR', 'PHONE-VAR')
+   OR item_code LIKE 'TSHIRT-VAR-%'
+   OR item_code LIKE 'PHONE-VAR-%';
+
+DO $$
+BEGIN
+  BEGIN
+    DELETE FROM public.rex_001_product_barcodes pb
+    USING public.rex_001_products p
+    WHERE pb.product_id = p.id
+      AND (p.code IN ('TSHIRT-VAR', 'PHONE-VAR') OR p.code LIKE '%-VAR' OR p.has_variants IS TRUE);
+  EXCEPTION WHEN undefined_table THEN NULL;
+  END;
+END $$;
+
+DELETE FROM public.rex_001_product_variants pv
+USING public.rex_001_products p
+WHERE pv.product_id = p.id
+  AND (
+    p.code IN ('TSHIRT-VAR', 'PHONE-VAR')
+    OR p.code LIKE '%-VAR'
+    OR p.has_variants IS TRUE
+  );
+
+DELETE FROM public.rex_001_product_variants
+WHERE sku LIKE 'TSHIRT-VAR-%' OR sku LIKE 'PHONE-VAR-%';
+
+DELETE FROM public.rex_001_products
+WHERE code IN ('TSHIRT-VAR', 'PHONE-VAR')
+   OR code LIKE '%-VAR'
+   OR has_variants IS TRUE;
+
+UPDATE public.rex_001_products SET has_variants = false WHERE has_variants IS TRUE;
 
 -- Market (001) üzerinde restoran/güzellik faturaları kalmasın (firmalar arası karışma)
 DELETE FROM public.rex_001_01_sale_items si
@@ -305,6 +351,111 @@ SET name = 'Demo Güzellik',
     enabled_modules = '["beauty","management"]'::jsonb
 WHERE firm_nr = '020';
 
+-- ─── 030: Varyant ürün demosu ────────────────────────────────────────────────
+SELECT * FROM public.provision_firm_schema('030', '01', 'Demo Varyant', 'TRY', true);
+
+UPDATE public.firms
+SET name = 'Demo Varyant',
+    title = 'RetailEX Demo Varyant Ürün',
+    is_active = true,
+    "default" = false,
+    ana_para_birimi = 'TRY',
+    raporlama_para_birimi = 'TRY',
+    regulatory_region = 'TR',
+    enabled_modules = '["pos","management"]'::jsonb
+WHERE firm_nr = '030';
+
+INSERT INTO public.stores (code, name, firm_nr, is_main, "default", is_active)
+VALUES ('ST_030', 'Varyant Mağaza', '030', true, true, true)
+ON CONFLICT (code) DO UPDATE
+SET name = EXCLUDED.name, firm_nr = EXCLUDED.firm_nr, is_active = true;
+
+INSERT INTO public.rex_030_categories (code, name, parent_id, is_restaurant, is_active) VALUES
+  ('ELEC',  'Elektronik', NULL, false, true),
+  ('CLOTH', 'Giyim',      NULL, false, true)
+ON CONFLICT (code) DO NOTHING;
+
+INSERT INTO public.rex_030_categories (code, name, parent_id, is_restaurant, is_active)
+SELECT 'ELEC-PHONE', 'Telefonlar', c.id, false, true
+FROM public.rex_030_categories c
+WHERE c.code = 'ELEC'
+ON CONFLICT (code) DO UPDATE SET
+  parent_id = EXCLUDED.parent_id,
+  name = EXCLUDED.name,
+  is_active = true;
+
+INSERT INTO public.rex_030_products
+  (firm_nr, code, barcode, name, name2, category_id, vat_rate, price, cost, stock, min_stock, unit, currency, is_active, has_variants)
+VALUES
+  ('030', 'TSHIRT-VAR', NULL, 'Unisex T-Shirt',     'Pamuk %100',  (SELECT id FROM public.rex_030_categories WHERE code='CLOTH'),      10,   250.00,   140.00, 0, 10, 'Adet', 'TRY', true, true),
+  ('030', 'PHONE-VAR',  NULL, 'Akıllı Telefon X12', 'Çift SIM 5G', (SELECT id FROM public.rex_030_categories WHERE code='ELEC-PHONE'), 20, 18000.00, 13500.00, 0,  2, 'Adet', 'TRY', true, true)
+ON CONFLICT (code) DO UPDATE SET
+  name = EXCLUDED.name,
+  name2 = EXCLUDED.name2,
+  category_id = EXCLUDED.category_id,
+  vat_rate = EXCLUDED.vat_rate,
+  price = EXCLUDED.price,
+  cost = EXCLUDED.cost,
+  unit = EXCLUDED.unit,
+  currency = EXCLUDED.currency,
+  is_active = true,
+  has_variants = true,
+  firm_nr = '030';
+
+UPDATE public.rex_030_products SET has_variants = true
+WHERE code IN ('TSHIRT-VAR', 'PHONE-VAR');
+
+UPDATE public.rex_030_products SET
+  unitset_id = (SELECT id FROM public.rex_030_unitsets WHERE code = '01-ADET' LIMIT 1)
+WHERE code IN ('TSHIRT-VAR', 'PHONE-VAR')
+  AND EXISTS (SELECT 1 FROM public.rex_030_unitsets WHERE code = '01-ADET');
+
+-- T-Shirt varyantları (Beden × Renk = 12)
+INSERT INTO public.rex_030_product_variants (product_id, sku, attributes)
+SELECT
+  p.id,
+  'TSHIRT-VAR-' || beden || '-' || renk,
+  jsonb_build_object(
+    'variant_name', beden || ' ' || renk,
+    'size',         beden,
+    'color',        renk,
+    'barcode',      '',
+    'price',        250.00,
+    'cost',         140.00,
+    'stock',        CASE WHEN beden IN ('M','L') THEN 20 ELSE 10 END,
+    'is_active',    true
+  )
+FROM public.rex_030_products p
+CROSS JOIN (VALUES ('S'),('M'),('L'),('XL')) AS b(beden)
+CROSS JOIN (VALUES ('Beyaz'),('Siyah'),('Lacivert')) AS c(renk)
+WHERE p.code = 'TSHIRT-VAR'
+ON CONFLICT (sku) DO NOTHING;
+
+-- Telefon varyantları (Renk × Depolama = 6)
+INSERT INTO public.rex_030_product_variants (product_id, sku, attributes)
+SELECT
+  p.id,
+  'PHONE-VAR-' || renk || '-' || dep,
+  jsonb_build_object(
+    'variant_name', dep || ' ' || renk,
+    'size',         dep,
+    'color',        renk,
+    'barcode',      '',
+    'price',        CASE dep WHEN '128GB' THEN 18000.00 WHEN '256GB' THEN 21000.00 ELSE 26000.00 END,
+    'cost',         CASE dep WHEN '128GB' THEN 13500.00 WHEN '256GB' THEN 15800.00 ELSE 19500.00 END,
+    'stock',        8,
+    'is_active',    true
+  )
+FROM public.rex_030_products p
+CROSS JOIN (VALUES ('Siyah'),('Beyaz'),('Gümüş')) AS c(renk)
+CROSS JOIN (VALUES ('128GB'),('256GB'),('512GB')) AS d(dep)
+WHERE p.code = 'PHONE-VAR'
+ON CONFLICT (sku) DO NOTHING;
+
+INSERT INTO public.rex_030_customers (firm_nr, code, name, phone, email, balance, is_active) VALUES
+  ('030', 'VCust-001', 'Varyant Demo Müşteri', '+90 532 300 0001', 'varyant@demo.local', 0, true)
+ON CONFLICT (code) DO NOTHING;
+
 -- ─── Demo satışlar (listelerde görünsün) ─────────────────────────────────────
 -- 010 Restoran: POS satış + masa adisyonu
 INSERT INTO public.rex_010_01_sales
@@ -372,9 +523,9 @@ WHERE NOT EXISTS (
   SELECT 1 FROM beauty.rex_020_01_beauty_sales bs WHERE bs.invoice_number = v.inv
 );
 
--- Admin: üç demo firmaya erişim
+-- Admin: dört demo firmaya erişim
 UPDATE public.users u
-SET allowed_firm_nrs = '["001","010","020"]'::jsonb,
+SET allowed_firm_nrs = '["001","010","020","030"]'::jsonb,
     allowed_periods = '["01"]'::jsonb
 WHERE lower(u.username) = 'admin';
 
@@ -387,7 +538,7 @@ WHERE id = 1;
 -- Demo dışı / test firmaları gizle
 UPDATE public.firms
 SET is_active = false, "default" = false
-WHERE firm_nr NOT IN ('001', '010', '020')
+WHERE firm_nr NOT IN ('001', '010', '020', '030')
   AND firm_nr ~ '^[0-9]+$';
 
 NOTIFY pgrst, 'reload schema';

@@ -120,9 +120,6 @@ INSERT INTO rex_001_products (firm_nr, code, barcode, name, name2, category_id, 
   ('001', 'CLOTH-001', '8680000000050', 'Erkek Gömlek',        'Beyaz Klasik',       (SELECT id FROM rex_001_categories WHERE code='CLOTH'),       10,   450.00,   280.00, 45, 10, 'Adet', 'IQD', true),
   ('001', 'CLOTH-002', '8680000000051', 'Erkek Pantolon',      'Lacivert Kumaş',     (SELECT id FROM rex_001_categories WHERE code='CLOTH'),       10,   650.00,   400.00, 38, 10, 'Adet', 'IQD', true),
   ('001', 'CLOTH-003', '8680000000052', 'Kadın Bluz',          'Pembe Şifon',        (SELECT id FROM rex_001_categories WHERE code='CLOTH'),       10,   380.00,   230.00, 52, 10, 'Adet', 'IQD', true),
-  -- Varyantlı ürünler
-  ('001', 'TSHIRT-VAR', NULL, 'Unisex T-Shirt',      'Pamuk %100',         (SELECT id FROM rex_001_categories WHERE code='CLOTH'),       10,   250.00,   140.00,  0, 10, 'Adet', 'IQD', true),
-  ('001', 'PHONE-VAR',  NULL, 'Akıllı Telefon X12',  'Çift SIM 5G',        (SELECT id FROM rex_001_categories WHERE code='ELEC-PHONE'), 20, 18000.00, 13500.00,  0,  2, 'Adet', 'IQD', true),
   -- Restaurant menü ürünleri
   ('001', 'MENU-001',  NULL, 'Izgara Köfte',         '200g, Salata ile',   (SELECT id FROM rex_001_categories WHERE code='REST-ANA'),   10,   250.00,    80.00,999,  1, 'Porsiyon', 'IQD', true),
   ('001', 'MENU-002',  NULL, 'Tavuk Şiş',            '3''lü, Pilav ile',   (SELECT id FROM rex_001_categories WHERE code='REST-ANA'),   10,   220.00,    65.00,999,  1, 'Porsiyon', 'IQD', true),
@@ -163,60 +160,14 @@ UPDATE rex_001_products SET
   unitset_id = (SELECT id FROM rex_001_unitsets WHERE code = '06-KOLI24')
 WHERE code IN ('DRINK-001', 'DRINK-002');
 
--- Giyim: Tekil (varyantlı ürünler birim seti almaz, ama temel birim tanımlı olsun)
+-- Giyim: Tekil
 UPDATE rex_001_products SET
   unitset_id = (SELECT id FROM rex_001_unitsets WHERE code = '01-ADET')
-WHERE code IN ('CLOTH-001', 'CLOTH-002', 'CLOTH-003', 'TSHIRT-VAR', 'PHONE-VAR');
+WHERE code IN ('CLOTH-001', 'CLOTH-002', 'CLOTH-003');
 
 -- ============================================================================
--- 4b. VARYANTLI ÜRÜN KURULUMU
+-- 4b. VARYANTLI ÜRÜN — firma 001'de yok; seed-retailex-demo-module-firms.sql → 030 Demo Varyant
 -- ============================================================================
-
--- has_variants işaretle
-UPDATE rex_001_products SET has_variants = true
-WHERE code IN ('TSHIRT-VAR', 'PHONE-VAR');
-
--- ── T-Shirt Varyantları (Beden × Renk = 12 kombinasyon) ──────────────────────
-INSERT INTO rex_001_product_variants (product_id, sku, attributes)
-SELECT
-  p.id,
-  'TSHIRT-VAR-' || beden || '-' || renk,
-  jsonb_build_object(
-    'variant_name', beden || ' ' || renk,
-    'size',         beden,
-    'color',        renk,
-    'barcode',      '',
-    'price',        250.00,
-    'cost',         140.00,
-    'stock',        CASE WHEN beden IN ('M','L') THEN 20 ELSE 10 END,
-    'is_active',    true
-  )
-FROM rex_001_products p
-CROSS JOIN (VALUES ('S'),('M'),('L'),('XL')) AS b(beden)
-CROSS JOIN (VALUES ('Beyaz'),('Siyah'),('Lacivert')) AS c(renk)
-WHERE p.code = 'TSHIRT-VAR'
-ON CONFLICT (sku) DO NOTHING;
-
--- ── Telefon Varyantları (Renk × Depolama = 6 kombinasyon) ────────────────────
-INSERT INTO rex_001_product_variants (product_id, sku, attributes)
-SELECT
-  p.id,
-  'PHONE-VAR-' || renk || '-' || dep,
-  jsonb_build_object(
-    'variant_name', dep || ' ' || renk,
-    'size',         dep,
-    'color',        renk,
-    'barcode',      '',
-    'price',        CASE dep WHEN '128GB' THEN 18000.00 WHEN '256GB' THEN 21000.00 ELSE 26000.00 END,
-    'cost',         CASE dep WHEN '128GB' THEN 13500.00 WHEN '256GB' THEN 15800.00 ELSE 19500.00 END,
-    'stock',        8,
-    'is_active',    true
-  )
-FROM rex_001_products p
-CROSS JOIN (VALUES ('Siyah'),('Beyaz'),('Gümüş')) AS c(renk)
-CROSS JOIN (VALUES ('128GB'),('256GB'),('512GB')) AS d(dep)
-WHERE p.code = 'PHONE-VAR'
-ON CONFLICT (sku) DO NOTHING;
 
 -- ============================================================================
 -- 5. DEMO TEDARİKÇİLER (rex_001_suppliers)

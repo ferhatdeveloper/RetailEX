@@ -3,9 +3,10 @@
  * retailex_demo: kabuk (WMS/mobile-pos pasif) + 001_demo_data + firma ayrımı + restoran Excel.
  *
  * Firmalar:
- *   001 Demo Market   — pos + management
+ *   001 Demo Market   — pos + management (varyant ürün yok)
  *   010 Demo Restoran — restaurant + pos (+ yemekcom Excel menü)
  *   020 Demo Güzellik — beauty
+ *   030 Demo Varyant  — pos + management (TSHIRT-VAR / PHONE-VAR)
  *
  * Kullanım:
  *   PGHOST=... PGUSER=postgres PGPASSWORD=... PGDATABASE=retailex_demo \
@@ -129,9 +130,12 @@ async function printCounts(client) {
   const checks = [
     [
       'firms',
-      `SELECT string_agg(firm_nr || ':' || name || '/' || coalesce(enabled_modules::text,'null'), ', ' ORDER BY firm_nr) FROM firms WHERE firm_nr IN ('001','010','020')`,
+      `SELECT string_agg(firm_nr || ':' || name || '/' || coalesce(enabled_modules::text,'null'), ', ' ORDER BY firm_nr) FROM firms WHERE firm_nr IN ('001','010','020','030')`,
     ],
     ['p001', `SELECT count(*) FROM rex_001_products`],
+    ['p001_var', `SELECT count(*) FROM rex_001_products WHERE has_variants OR code LIKE '%-VAR'`],
+    ['p030', `SELECT count(*) FROM rex_030_products`],
+    ['p030_var', `SELECT count(*) FROM rex_030_product_variants`],
     ['p010', `SELECT count(*) FROM rex_010_products`],
     ['p020_cust', `SELECT count(*) FROM rex_020_customers`],
     ['rest_tables', `SELECT count(*) FROM rest.rex_010_rest_tables`],
@@ -178,7 +182,7 @@ async function main() {
   const extras = path.join(root, 'database/scripts/seed-retailex-demo-full-extras.sql');
   runPsql(database, extras);
 
-  console.log('[demo] modül firmaları 001/010/020...');
+  console.log('[demo] modül firmaları 001/010/020/030...');
   runPsql(database, path.join(root, 'database/scripts/seed-retailex-demo-module-firms.sql'));
 
   if (skipExcel) {

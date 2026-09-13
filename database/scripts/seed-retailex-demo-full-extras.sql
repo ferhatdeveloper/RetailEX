@@ -32,7 +32,7 @@ UPDATE public.users u
 SET role_id = r.id,
     role = 'admin',
     is_active = true,
-    allowed_firm_nrs = '["001","010","020"]'::jsonb,
+    allowed_firm_nrs = '["001","010","020","030"]'::jsonb,
     allowed_periods = '["01"]'::jsonb
 FROM public.roles r
 WHERE lower(u.username) = 'admin'
