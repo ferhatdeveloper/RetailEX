@@ -60,6 +60,10 @@ const CATEGORY_LABELS: Record<string, string> = {
     makeup: 'Makyaj',
     nails: 'Tırnak',
     spa: 'Spa',
+    // Eski demo seed kodları (facial/hair/nail)
+    facial: 'Yüz Bakımı',
+    hair: 'Saç',
+    nail: 'Tırnak',
 };
 
 const EMPTY_FORM: Partial<BeautyService> = {

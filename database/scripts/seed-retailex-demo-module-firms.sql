@@ -213,11 +213,21 @@ WHERE NOT EXISTS (
 INSERT INTO beauty.rex_020_beauty_services (name, category, duration_min, price, cost_price, commission_rate, expected_shots, is_active)
 SELECT v.name, v.cat, v.dur, v.price, v.cost, v.comm, v.shots, true
 FROM (VALUES
-  ('Bacak Lazer Epilasyon (Tam)', 'laser',  90, 2500.00, 800.00, 15.00, 1200),
-  ('Koltuk Altı Lazer',          'laser',  30,  800.00, 250.00, 15.00,  150),
-  ('Yüz Bakımı',                 'facial', 60, 1200.00, 400.00, 12.00,    0),
-  ('Saç Boyama',                 'hair',   90, 1800.00, 600.00, 10.00,    0),
-  ('Manikür & Pedikür',          'nail',   60,  650.00, 200.00, 10.00,    0)
+  -- Mevcut demo hizmetler
+  ('Bacak Lazer Epilasyon (Tam)', 'laser',      90, 2500.00, 800.00, 15.00, 1200),
+  ('Koltuk Altı Lazer',          'laser',      30,  800.00, 250.00, 15.00,  150),
+  ('Yüz Bakımı',                 'facial',     60, 1200.00, 400.00, 12.00,    0),
+  ('Saç Boyama',                 'hair',       90, 1800.00, 600.00, 10.00,    0),
+  ('Manikür & Pedikür',          'nail',       60,  650.00, 200.00, 10.00,    0),
+  -- Ek demo hizmetler (idempotent — name ile)
+  ('Üst Dudak Lazer',            'laser',      20,  450.00, 120.00, 15.00,   80),
+  ('Bikini Lazer',               'laser',      45, 1500.00, 450.00, 15.00,  400),
+  ('Hydrafacial',                'skincare',   75, 1800.00, 550.00, 12.00,    0),
+  ('Kaş Dizaynı',                'beauty',     30,  350.00,  80.00, 10.00,    0),
+  ('Saç Kesimi',                 'hair_salon', 45,  400.00, 100.00, 10.00,    0),
+  ('Keratin Bakım',              'hair_salon',120, 2200.00, 700.00, 10.00,    0),
+  ('Kalıcı Oje',                 'nails',      45,  450.00, 120.00, 10.00,    0),
+  ('Klasik Masaj (60 dk)',       'massage',    60,  900.00, 250.00, 12.00,    0)
 ) AS v(name, cat, dur, price, cost, comm, shots)
 WHERE NOT EXISTS (
   SELECT 1 FROM beauty.rex_020_beauty_services s WHERE s.name = v.name
@@ -234,6 +244,18 @@ SELECT 'Yüz Bakımı 4lü Paket', '4 seans — %10 indirimli', sv.id, 4, 4320.0
 FROM beauty.rex_020_beauty_services sv
 WHERE sv.name = 'Yüz Bakımı'
   AND NOT EXISTS (SELECT 1 FROM beauty.rex_020_beauty_packages p WHERE p.name = 'Yüz Bakımı 4lü Paket');
+
+INSERT INTO beauty.rex_020_beauty_packages (name, description, service_id, total_sessions, price, cost_price, discount_pct, validity_days, is_active)
+SELECT 'Koltuk Altı 8li Paket', '8 seans — %15 indirimli', sv.id, 8, 5440.00, 2000.00, 15.00, 365, true
+FROM beauty.rex_020_beauty_services sv
+WHERE sv.name = 'Koltuk Altı Lazer'
+  AND NOT EXISTS (SELECT 1 FROM beauty.rex_020_beauty_packages p WHERE p.name = 'Koltuk Altı 8li Paket');
+
+INSERT INTO beauty.rex_020_beauty_packages (name, description, service_id, total_sessions, price, cost_price, discount_pct, validity_days, is_active)
+SELECT 'Hydrafacial 3lü Paket', '3 seans — %10 indirimli', sv.id, 3, 4860.00, 1650.00, 10.00, 120, true
+FROM beauty.rex_020_beauty_services sv
+WHERE sv.name = 'Hydrafacial'
+  AND NOT EXISTS (SELECT 1 FROM beauty.rex_020_beauty_packages p WHERE p.name = 'Hydrafacial 3lü Paket');
 
 INSERT INTO beauty.rex_020_beauty_devices (name, device_type, serial_number, manufacturer, model, total_shots, max_shots, status, is_active)
 SELECT v.name, v.dtype, v.sn, v.mfr, v.model, v.shots, v.max, 'active', true
@@ -253,7 +275,10 @@ FROM (VALUES
   ('BCust-002', 'Yüz Bakımı',                 'Fatma',  '2026-01-20', '14:00', 60, 'completed', 1200.00),
   ('BCust-003', 'Saç Boyama',                 'Shoxan', '2026-01-25', '11:00', 90, 'completed', 1800.00),
   ('BCust-001', 'Bacak Lazer Epilasyon (Tam)', 'Zahra',  '2026-02-05', '10:00', 90, 'scheduled', 2500.00),
-  ('BCust-004', 'Manikür & Pedikür',          'Fatma',  '2026-02-08', '15:00', 60, 'scheduled',  650.00)
+  ('BCust-004', 'Manikür & Pedikür',          'Fatma',  '2026-02-08', '15:00', 60, 'scheduled',  650.00),
+  ('BCust-002', 'Hydrafacial',                'Fatma',  '2026-02-10', '11:00', 75, 'scheduled', 1800.00),
+  ('BCust-003', 'Keratin Bakım',              'Shoxan', '2026-02-12', '13:00',120, 'scheduled', 2200.00),
+  ('BCust-004', 'Üst Dudak Lazer',            'Zahra',  '2026-02-14', '16:00', 20, 'scheduled',  450.00)
 ) AS v(ccode, sname, spname, adate, atime, dur, stat, price)
 JOIN public.rex_020_customers c ON c.code = v.ccode
 JOIN beauty.rex_020_beauty_services sv ON sv.name = v.sname
