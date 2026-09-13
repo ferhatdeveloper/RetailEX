@@ -194,7 +194,7 @@ export const useBeautyStore = create<BeautyState>()((set, get) => ({
     loadServices: async () => {
         try {
             const services = await beautyService.getServices();
-            set({ services });
+            set({ services, error: null });
         } catch (e: any) {
             set({ error: e?.message || String(e) });
         }

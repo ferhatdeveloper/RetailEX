@@ -8705,6 +8705,18 @@ export const excelModuleTranslations = {
   bServicesSectionTitle: { tr: 'Hizmetler', en: 'Services', ar: 'الخدمات', ku: 'خزمەتەکان' },
   bServicesDefinedCount: { tr: '{n} tanımlı', en: '{n} defined', ar: '{n} معرّف', ku: '{n} دیاریکراو' },
   bNoServicesDefined: { tr: 'Hizmet tanımlanmamış', en: 'No services defined', ar: 'لا خدمات معرّفة', ku: 'هیچ خزمەتێک دیاری نەکراوە' },
+  bNoServicesFirmHint: {
+    tr: 'Seçili firma: {firmName} ({firmNr}). Tablo: {table}. Demo için «Demo Güzellik» (020) seçin.',
+    en: 'Selected firm: {firmName} ({firmNr}). Table: {table}. For demo pick «Demo Beauty» (020).',
+    ar: 'الشركة المحددة: {firmName} ({firmNr}). الجدول: {table}. للتجربة اختر Demo Güzellik (020).',
+    ku: 'کۆمپانیای هەڵبژێردراو: {firmName} ({firmNr}). خشتە: {table}. بۆ دێمۆ «Demo Güzellik» (020) هەڵبژێرە.',
+  },
+  bSwitchedToBeautyFirm: {
+    tr: 'Güzellik için firma seçildi: {firm}',
+    en: 'Switched firm for beauty: {firm}',
+    ar: 'تم اختيار الشركة للتجميل: {firm}',
+    ku: 'بۆ جوانکاری کۆمپانیا هەڵبژێردرا: {firm}',
+  },
   bStaffSectionTitle: { tr: 'Personel', en: 'Staff', ar: 'الموظفون', ku: 'ستاف' },
   bStaffActiveShort: { tr: '{n} aktif', en: '{n} active', ar: '{n} نشط', ku: '{n} چالاک' },
   bNoStaffDefined: { tr: 'Personel tanımlanmamış', en: 'No staff defined', ar: 'لا موظفين معرّفين', ku: 'هیچ ستافێک دیاری نەکراوە' },

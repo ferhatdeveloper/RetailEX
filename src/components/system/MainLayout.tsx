@@ -57,7 +57,7 @@ import {
   getShellModuleDisplayOrder,
   isMainModuleVisible,
 } from '../../utils/mainModuleVisibility';
-import { FIRM_SHELL_MODULES_CHANGED_EVENT } from '../../utils/firmShellModules';
+import { FIRM_SHELL_MODULES_CHANGED_EVENT, pickFirmForShellModule } from '../../utils/firmShellModules';
 import { NeonLogo } from '../ui/NeonLogo';
 import type { NeonLogoProductLine } from '../ui/NeonLogo';
 
@@ -295,6 +295,25 @@ export function MainLayout({
   /** Caller ID bildirimi tıklaması gibi async kapaklarda güncel modül */
   const currentModuleRef = useRef(currentModule);
   currentModuleRef.current = currentModule;
+
+  /** Güzellik sekmesi: seçili firma beauty içermiyorsa uygun firmaya geç (001 Market → 020 Demo Güzellik). */
+  const openBeautyModule = useCallback(() => {
+    const match = pickFirmForShellModule('beauty', firms, selectedFirm);
+    if (match) {
+      const id = match.id ?? match.firm_nr;
+      if (id != null && String(id).trim() !== '') {
+        selectFirm(id);
+        const firmLabel = `${match.name || 'Firma'} (${String(match.firm_nr || '').padStart(3, '0')})`;
+        const msg = String(tm('bSwitchedToBeautyFirm') || '').replace('{firm}', firmLabel);
+        toast.message(
+          msg.includes('{firm}') || !msg || msg === 'bSwitchedToBeautyFirm'
+            ? `Güzellik için firma seçildi: ${firmLabel}`
+            : msg,
+        );
+      }
+    }
+    setCurrentModule('beauty');
+  }, [firms, selectedFirm, selectFirm, tm]);
 
   // Check for WMS redirect flag from login (depo store login) or URL parameter
   useEffect(() => {
@@ -645,7 +664,7 @@ export function MainLayout({
           detail: { target: 'beauty_calendar', phone },
         })
       );
-      setCurrentModule('beauty');
+      openBeautyModule();
       return;
     }
     if (target === 'wms') {
@@ -658,7 +677,7 @@ export function MainLayout({
     }
     void phone;
     setCurrentModule('pos');
-  }, [currentModule]);
+  }, [currentModule, openBeautyModule]);
 
   /**
    * Caller ID → Yönetim: müşteri listesi `customers` ekranında açılmalı; aksi halde event dinleyici yok (yanlış sayfa).
@@ -692,14 +711,14 @@ export function MainLayout({
   useEffect(() => {
     const onOpenBeautyWizard = (ev: Event) => {
       const d = (ev as CustomEvent<{ dateYmd?: string; time?: string; staffId?: string; deviceId?: string; serviceId?: string }>).detail;
-      setCurrentModule('beauty');
+      openBeautyModule();
       window.setTimeout(() => {
         window.dispatchEvent(new CustomEvent('beauty-open-new-appointment-wizard-delayed', { detail: d ?? {} }));
       }, 450);
     };
     window.addEventListener('beauty-open-new-appointment-wizard', onOpenBeautyWizard);
     return () => window.removeEventListener('beauty-open-new-appointment-wizard', onOpenBeautyWizard);
-  }, []);
+  }, [openBeautyModule]);
 
   // WebSocket connection on mount
   useEffect(() => {
@@ -978,7 +997,7 @@ export function MainLayout({
       beauty: {
         title: tm('bModuleBeautyTooltip'),
         icon: Sparkles,
-        onClick: () => setCurrentModule('beauty'),
+        onClick: () => openBeautyModule(),
       },
     };
 
@@ -995,7 +1014,7 @@ export function MainLayout({
     return ordered
       .filter((m) => moduleMeta[m] && isModuleVisible(m) && permissionMap[m])
       .map((m) => ({ id: m, ...moduleMeta[m] }));
-  }, [t, tm, hasPermission, isModuleVisible, requestManagementAccess]);
+  }, [t, tm, hasPermission, isModuleVisible, requestManagementAccess, openBeautyModule]);
 
   // Keyboard shortcut for Management Panel (Ctrl+Shift+M)
   useEffect(() => {

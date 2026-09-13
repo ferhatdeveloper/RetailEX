@@ -42,6 +42,7 @@ import { DietitianScreen } from './specialty/DietitianScreen';
 import { AppointmentPOS } from './components/AppointmentPOS';
 import { LanguageSelectionModal } from '../system/LanguageSelectionModal';
 import { FirmSelector } from '../system/FirmSelector';
+import { useFirmaDonem } from '../../contexts/FirmaDonemContext';
 import { RetailExFlatModal, RetailExFlatFieldLabel } from '../shared/RetailExFlatModal';
 import './ClinicStyles.css';
 
@@ -106,6 +107,8 @@ function BeautyModuleShell({ sales = [], products = [], onRequestManagementAcces
     const [showLanguageModal, setShowLanguageModal] = useState(false);
     const [rtlMode, setRtlMode] = useState(() => localStorage.getItem('retailos_rtl_mode') === 'true');
     const { specialists, devices, loadSpecialists, loadServices, loadAppointments, loadDevices } = useBeautyStore();
+    const { selectedFirm } = useFirmaDonem();
+    const beautyFirmNr = String(selectedFirm?.firm_nr ?? '').trim();
     const [surveyOverlayOpen, setSurveyOverlayOpen] = useState(false);
     const [reportInitialTab, setReportInitialTab] = useState<'beauty-survey-report' | undefined>(undefined);
     const [showNewAptWizard, setShowNewAptWizard] = useState(false);
@@ -255,7 +258,7 @@ function BeautyModuleShell({ sales = [], products = [], onRequestManagementAcces
         loadServices();
         loadDevices();
         loadAppointments(today);
-    }, [loadSpecialists, loadServices, loadDevices, loadAppointments]);
+    }, [beautyFirmNr, loadSpecialists, loadServices, loadDevices, loadAppointments]);
 
     React.useEffect(() => {
         if (activeTab !== 'clients') setBeautyClientDetailId(null);

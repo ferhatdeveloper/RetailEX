@@ -89,3 +89,26 @@ export function applyFirmShellModules(firm: {
   persistShellModules(mods);
   return mods;
 }
+
+export type ShellModuleFirmPick = {
+  id?: string | null;
+  firm_nr?: string | null;
+  name?: string | null;
+  enabled_modules?: unknown;
+};
+
+/**
+ * Kabuk modülü (beauty/restaurant) için doğru firmayı seçer.
+ * Örn. varsayılan Market (001) açıkken Güzellik’e geçilince Demo Güzellik (020).
+ * Seçim değiştiyse bulunan firmayı döner; zaten uygunsa null.
+ */
+export function pickFirmForShellModule(
+  moduleId: 'beauty' | 'restaurant',
+  firms: ShellModuleFirmPick[],
+  selectedFirm: ShellModuleFirmPick | null | undefined,
+): ShellModuleFirmPick | null {
+  const current = normalizeFirmEnabledModules(selectedFirm?.enabled_modules);
+  if (current?.includes(moduleId)) return null;
+  const match = firms.find((f) => normalizeFirmEnabledModules(f.enabled_modules)?.includes(moduleId));
+  return match ?? null;
+}

@@ -30,6 +30,7 @@ import { BeautyService, ServiceCategory } from '../../../types/beauty';
 import { beautyServiceMainKey, beautyServiceSubKey } from '../beautyServiceCategoryUtils';
 import { formatMoneyAmount } from '../../../utils/formatMoney';
 import { useLanguage } from '../../../contexts/LanguageContext';
+import { useFirmaDonem } from '../../../contexts/FirmaDonemContext';
 import { toast } from 'sonner';
 import { beautyService } from '../../../services/beautyService';
 import { categoryAPI, type Category } from '../../../services/api/masterData';
@@ -39,6 +40,7 @@ import {
     RETAILEX_PRIMARY,
     RETAILEX_TEXT_PRIMARY,
 } from '../../../theme/retailexAntdTheme';
+import { ERP_SETTINGS } from '../../../services/postgres';
 
 /** RetailExFlatModal z≈2147483646; antd Select varsayılan popup daha altta kalıyor */
 const ANT_SELECT_POPUP_Z = 2147483647;
@@ -83,8 +85,11 @@ const EMPTY_FORM: Partial<BeautyService> = {
 };
 
 export function ServiceManagement() {
-    const { services, isLoading, loadServices, createService, updateService, deleteService } = useBeautyStore();
+    const { services, isLoading, error, loadServices, createService, updateService, deleteService } = useBeautyStore();
     const { tm } = useLanguage();
+    const { selectedFirm } = useFirmaDonem();
+    const firmNr = String(selectedFirm?.firm_nr || ERP_SETTINGS.firmNr || '001').trim().padStart(3, '0');
+    const firmName = String(selectedFirm?.name || '').trim();
     const [backofficeCategories, setBackofficeCategories] = useState<Category[]>([]);
     const [searchTerm, setSearchTerm] = useState('');
     const [selectedRowKeys, setSelectedRowKeys] = useState<React.Key[]>([]);
@@ -102,7 +107,7 @@ export function ServiceManagement() {
 
     useEffect(() => {
         loadServices();
-    }, []);
+    }, [firmNr, loadServices]);
 
     useEffect(() => {
         let mounted = true;
@@ -580,9 +585,22 @@ export function ServiceManagement() {
                                                 : tm('bNoServicesDefined')}
                                         </Typography.Text>
                                         {!searchTerm && selectedMain === 'all' && selectedSub === 'all' && (
-                                            <Button type="primary" className="mt-4" icon={<PlusOutlined />} onClick={openCreate}>
-                                                {tm('bNewServiceAdd')}
-                                            </Button>
+                                            <>
+                                                <Typography.Text type="secondary" className="mt-2 block text-xs">
+                                                    {String(tm('bNoServicesFirmHint') || '')
+                                                        .replace('{firmNr}', firmNr)
+                                                        .replace('{firmName}', firmName || firmNr)
+                                                        .replace('{table}', `beauty.rex_${firmNr}_beauty_services`)}
+                                                </Typography.Text>
+                                                {error ? (
+                                                    <Typography.Text type="danger" className="mt-2 block text-xs">
+                                                        {error}
+                                                    </Typography.Text>
+                                                ) : null}
+                                                <Button type="primary" className="mt-4" icon={<PlusOutlined />} onClick={openCreate}>
+                                                    {tm('bNewServiceAdd')}
+                                                </Button>
+                                            </>
                                         )}
                                     </div>
                                 ),

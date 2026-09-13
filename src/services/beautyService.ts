@@ -801,6 +801,7 @@ async function getServicesPostgrestBranch(): Promise<BeautyService[] | null> {
         const firmIn = firmCandidates.join(',');
         const seen = new Set<string>();
         const out: BeautyService[] = [];
+        let beautyTableOk = false;
 
         try {
             const beautyRows = await postgrest.get<Record<string, unknown>[]>(
@@ -812,6 +813,7 @@ async function getServicesPostgrestBranch(): Promise<BeautyService[] | null> {
                 },
                 { schema: 'beauty' }
             );
+            beautyTableOk = true;
             for (const r of Array.isArray(beautyRows) ? beautyRows : []) {
                 const id = String(r.id);
                 if (seen.has(id)) continue;
@@ -866,6 +868,9 @@ async function getServicesPostgrestBranch(): Promise<BeautyService[] | null> {
         } catch (e) {
             console.warn('[beautyService] PostgREST products (hizmet):', e);
         }
+
+        // Ana beauty_services erişilemediyse ve yedek kaynak da boşsa SQL yoluna düş
+        if (!beautyTableOk && out.length === 0) return null;
 
         out.sort((a, b) => {
             const c = String(a.category ?? '').localeCompare(String(b.category ?? ''), 'tr');
