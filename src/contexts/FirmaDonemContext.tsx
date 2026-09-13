@@ -333,7 +333,9 @@ export const FirmaDonemProvider: React.FC<{ children: ReactNode }> = ({ children
 
       if (import.meta.env.DEV) console.log('[FirmaDonemContext] Raw firms rows:', rows);
 
-      let mappedFirms = (rows || []).map((f: any) => ({
+      let mappedFirms = (rows || [])
+        .filter((f: any) => f.is_active !== false && f.is_active !== 0)
+        .map((f: any) => ({
         ...f,
         logicalref: parseInt(f.firm_nr) || f.nr || 0,
         nr: parseInt(f.firm_nr) || f.nr || 0,

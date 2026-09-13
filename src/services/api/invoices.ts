@@ -2038,8 +2038,17 @@ export const invoicesAPI = {
         sql += ` AND COALESCE(is_cancelled, false) = false AND LOWER(TRIM(COALESCE(status, ''))) NOT IN ('iptal', 'silindi', 'cancelled', 'canceled', 'deleted')`;
       }
 
-      // Count total
-      const { rows: countRows } = await postgres.query(`SELECT COUNT(*) as total FROM (${sql}) as sub`, params);
+      const queryOpts = {
+        firmNr: String(firmNr).padStart(3, '0'),
+        periodNr: String(periodNr).padStart(2, '0'),
+      };
+
+      // Count total — firmNr/periodNr zorunlu (ERP_SETTINGS stale olsa bile doğru tablo)
+      const { rows: countRows } = await postgres.query(
+        `SELECT COUNT(*) as total FROM (${sql}) as sub`,
+        params,
+        queryOpts,
+      );
       const total = countRows && countRows[0] ? parseInt(countRows[0].total) : 0;
 
       // Add ordering and pagination
@@ -2047,7 +2056,7 @@ export const invoicesAPI = {
       params.push(pageSize);
       params.push((page - 1) * pageSize);
 
-      const { rows } = await postgres.query(sql, params);
+      const { rows } = await postgres.query(sql, params, queryOpts);
       const invoices = rows.map(mapDatabaseInvoiceToInvoice);
 
       return {
@@ -3417,7 +3426,11 @@ export const invoicesAPI = {
             const { rows: hdrRows } = await postgres.query(
               `SELECT id, fiche_no, notes, payment_method, customer_id, net_amount, firm_nr, period_nr, fiche_type, trcode, status, customer_name
                FROM sales WHERE id::text = $1::text LIMIT 1`,
-              [String(id).trim()]
+              [String(id).trim()],
+              {
+                firmNr: String(firmNr || ERP_SETTINGS.firmNr).padStart(3, '0'),
+                periodNr: String(ERP_SETTINGS.periodNr || '01').padStart(2, '0'),
+              },
             );
             const h = hdrRows?.[0];
             if (h) {

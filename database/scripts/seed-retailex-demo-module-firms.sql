@@ -74,6 +74,31 @@ DELETE FROM public.rex_001_products WHERE code LIKE 'MENU-%';
 DELETE FROM public.rex_001_categories WHERE is_restaurant IS TRUE OR code LIKE 'REST-%';
 DELETE FROM public.rex_001_customers WHERE code LIKE 'BCust-%';
 
+-- Market (001) üzerinde restoran/güzellik faturaları kalmasın (firmalar arası karışma)
+DELETE FROM public.rex_001_01_sale_items si
+USING public.rex_001_01_sales s
+WHERE si.invoice_id = s.id
+  AND (
+    s.fiche_no LIKE 'BEA-%'
+    OR s.fiche_no LIKE 'REST-%'
+    OR s.fiche_no LIKE 'GEL-%'
+    OR s.fiche_no LIKE 'DLV-%'
+    OR s.fiche_no LIKE 'RST-%'
+    OR coalesce(s.notes, '') ILIKE '%GüzellikPOS%'
+    OR coalesce(s.notes, '') ILIKE '%BeautyPOS%'
+  );
+
+DELETE FROM public.rex_001_01_sales s
+WHERE (
+  s.fiche_no LIKE 'BEA-%'
+  OR s.fiche_no LIKE 'REST-%'
+  OR s.fiche_no LIKE 'GEL-%'
+  OR s.fiche_no LIKE 'DLV-%'
+  OR s.fiche_no LIKE 'RST-%'
+  OR coalesce(s.notes, '') ILIKE '%GüzellikPOS%'
+  OR coalesce(s.notes, '') ILIKE '%BeautyPOS%'
+);
+
 -- WMS demo slip'leri market firmasında kalsın ama kabuk WMS kapalı; isteğe bağlı temizlikte bırakıyoruz.
 
 -- ─── 010: Restoran ───────────────────────────────────────────────────────────
@@ -248,6 +273,80 @@ WHERE NOT EXISTS (
   SELECT 1 FROM beauty.rex_020_beauty_leads l WHERE l.phone = v.phone
 );
 
+-- Firma 020 adını sabitle (elle değiştirilmiş olabilir)
+UPDATE public.firms
+SET name = 'Demo Güzellik',
+    title = 'RetailEX Demo Güzellik Merkezi',
+    enabled_modules = '["beauty","management"]'::jsonb
+WHERE firm_nr = '020';
+
+-- ─── Demo satışlar (listelerde görünsün) ─────────────────────────────────────
+-- 010 Restoran: POS satış + masa adisyonu
+INSERT INTO public.rex_010_01_sales
+  (firm_nr, period_nr, fiche_no, fiche_type, date, customer_id, customer_name, total_net, total_vat, total_gross, net_amount, is_cancelled)
+SELECT '010', '01', v.fiche, 'S', v.dt::timestamptz, c.id, c.name, v.net, v.vat, v.gross, v.net, false
+FROM (VALUES
+  ('RST-2026-0001', '2026-02-01 12:30:00', 'RCust-001', 1500.00, 150.00, 1650.00),
+  ('RST-2026-0002', '2026-02-03 19:15:00', 'RCust-002', 6750.00, 675.00, 7425.00),
+  ('RST-2026-0003', '2026-02-05 13:00:00', 'RCust-003', 2500.00, 250.00, 2750.00)
+) AS v(fiche, dt, ccode, net, vat, gross)
+JOIN public.rex_010_customers c ON c.code = v.ccode
+WHERE NOT EXISTS (SELECT 1 FROM public.rex_010_01_sales s WHERE s.fiche_no = v.fiche);
+
+INSERT INTO public.rex_010_01_sale_items
+  (firm_nr, period_nr, invoice_id, product_id, item_code, quantity, unit_price, vat_rate, net_amount, total_amount)
+SELECT '010', '01', s.id, p.id, p.code, 1, p.price, COALESCE(p.vat_rate, 10), p.price, p.price * (1 + COALESCE(p.vat_rate, 10) / 100.0)
+FROM public.rex_010_01_sales s
+JOIN public.rex_010_products p ON p.code = CASE s.fiche_no
+  WHEN 'RST-2026-0001' THEN 'YMK-00001'
+  WHEN 'RST-2026-0002' THEN 'YMK-00002'
+  WHEN 'RST-2026-0003' THEN 'YMK-00003'
+END
+WHERE s.fiche_no IN ('RST-2026-0001', 'RST-2026-0002', 'RST-2026-0003')
+  AND NOT EXISTS (
+    SELECT 1 FROM public.rex_010_01_sale_items si WHERE si.invoice_id = s.id AND si.item_code = p.code
+  );
+
+-- Kapalı masa adisyonu (restoran listesi)
+INSERT INTO rest.rex_010_01_rest_orders
+  (order_no, table_id, floor_id, waiter, customer_id, status, total_amount, discount_amount, tax_amount, opened_at, billed_at, closed_at, payment_method, source)
+SELECT v.ono, t.id, t.floor_id, 'Demo Garson', c.id, 'closed', v.total, 0, v.tax,
+       v.opened::timestamptz, v.billed::timestamptz, v.closed::timestamptz, 'cash', 'pos'
+FROM (VALUES
+  ('RO-2026-0001', '1', 'RCust-001', 1650.00, 150.00, '2026-02-01 12:00:00', '2026-02-01 12:25:00', '2026-02-01 12:30:00'),
+  ('RO-2026-0002', '3', 'RCust-002', 7425.00, 675.00, '2026-02-03 18:40:00', '2026-02-03 19:10:00', '2026-02-03 19:15:00')
+) AS v(ono, tnum, ccode, total, tax, opened, billed, closed)
+JOIN rest.rex_010_rest_tables t ON t.number = v.tnum
+JOIN public.rex_010_customers c ON c.code = v.ccode
+WHERE NOT EXISTS (SELECT 1 FROM rest.rex_010_01_rest_orders o WHERE o.order_no = v.ono);
+
+INSERT INTO rest.rex_010_01_rest_order_items
+  (order_id, product_id, product_name, quantity, unit_price, discount_pct, subtotal, status)
+SELECT o.id, p.id, p.name, 1, p.price, 0, p.price, 'served'
+FROM rest.rex_010_01_rest_orders o
+JOIN public.rex_010_products p ON p.code = CASE o.order_no
+  WHEN 'RO-2026-0001' THEN 'YMK-00001'
+  WHEN 'RO-2026-0002' THEN 'YMK-00002'
+END
+WHERE o.order_no IN ('RO-2026-0001', 'RO-2026-0002')
+  AND NOT EXISTS (
+    SELECT 1 FROM rest.rex_010_01_rest_order_items i WHERE i.order_id = o.id AND i.product_id = p.id
+  );
+
+-- 020 Güzellik: POS satış kaydı
+INSERT INTO beauty.rex_020_01_beauty_sales
+  (invoice_number, customer_id, subtotal, discount, tax, total, payment_method, payment_status, paid_amount, remaining_amount)
+SELECT v.inv, c.id, v.sub, 0, v.tax, v.tot, 'cash', 'paid', v.tot, 0
+FROM (VALUES
+  ('BPOS-2026-001', 'BCust-001', 2500.00, 0, 2500.00),
+  ('BPOS-2026-002', 'BCust-002', 1200.00, 0, 1200.00),
+  ('BPOS-2026-003', 'BCust-003', 1800.00, 0, 1800.00)
+) AS v(inv, ccode, sub, tax, tot)
+JOIN public.rex_020_customers c ON c.code = v.ccode
+WHERE NOT EXISTS (
+  SELECT 1 FROM beauty.rex_020_01_beauty_sales bs WHERE bs.invoice_number = v.inv
+);
+
 -- Admin: üç demo firmaya erişim
 UPDATE public.users u
 SET allowed_firm_nrs = '["001","010","020"]'::jsonb,
@@ -259,5 +358,11 @@ SET primary_firm_nr = '001',
     primary_period_nr = '01',
     updated_at = NOW()
 WHERE id = 1;
+
+-- Demo dışı / test firmaları gizle
+UPDATE public.firms
+SET is_active = false, "default" = false
+WHERE firm_nr NOT IN ('001', '010', '020')
+  AND firm_nr ~ '^[0-9]+$';
 
 NOTIFY pgrst, 'reload schema';
