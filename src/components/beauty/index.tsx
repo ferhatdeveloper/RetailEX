@@ -110,7 +110,27 @@ function BeautyModuleShell({ sales = [], products = [], onRequestManagementAcces
     const { specialists, devices, loadSpecialists, loadServices, loadAppointments, loadDevices } = useBeautyStore();
     const { selectedFirm } = useFirmaDonem();
     const beautyFirmNr = String(selectedFirm?.firm_nr ?? '').trim();
-    const firmHasBeauty = !!normalizeFirmEnabledModules(selectedFirm?.enabled_modules)?.includes('beauty');
+    /**
+     * `firms.enabled_modules` doluysa ona bak.
+     * NULL = kiracı varsayılanı (clinic → beauty); kolon henüz migrate edilmemiş
+     * kiracılarda kabuk zaten beauty açıksa yüklemeyi engelleme.
+     */
+    const firmHasBeauty = useMemo(() => {
+        const fromFirm = normalizeFirmEnabledModules(selectedFirm?.enabled_modules);
+        if (fromFirm) return fromFirm.includes('beauty');
+        try {
+            const shell = JSON.parse(localStorage.getItem('retailex_enabled_modules') || '[]') as unknown;
+            if (Array.isArray(shell) && shell.map((x) => String(x).toLowerCase()).includes('beauty')) {
+                return true;
+            }
+            const cfg = JSON.parse(localStorage.getItem('retailex_web_config') || '{}') as {
+                tenant_module?: string;
+            };
+            return String(cfg.tenant_module || '').toLowerCase().trim() === 'clinic';
+        } catch {
+            return false;
+        }
+    }, [selectedFirm?.enabled_modules]);
     const [surveyOverlayOpen, setSurveyOverlayOpen] = useState(false);
     const [reportInitialTab, setReportInitialTab] = useState<'beauty-survey-report' | undefined>(undefined);
     const [showNewAptWizard, setShowNewAptWizard] = useState(false);
