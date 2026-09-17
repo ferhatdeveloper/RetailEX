@@ -69,7 +69,8 @@ berqenas_default_dbs_array() {
     ferhat
     ozbek
     kucoglu
-  )
+    guzel
+)
 }
 
 # TENANT_DBS doluysa dokunmaz; boş + tty menü; boş + !tty hepsi

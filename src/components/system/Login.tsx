@@ -1319,8 +1319,8 @@ export function Login({ onLogin }: LoginProps) {
           />
         )}
         <p className={`text-[9px] font-bold leading-relaxed ${darkMode ? 'text-slate-500' : 'text-slate-600'}`}>
-          RetailEX bulutu: yalnızca kiracı yolunu yazın (kayıtta{' '}
-          <span className="font-mono">{DEFAULT_SAAS_TENANT_POSTGREST_ORIGIN}/kiracı</span> birleştirilir). LAN veya başka
+          RetailEX bulutu: yalnızca server yolunu yazın (kayıtta{' '}
+          <span className="font-mono">{DEFAULT_SAAS_TENANT_POSTGREST_ORIGIN}/server</span> birleştirilir). LAN veya başka
           domain için «Özel tam URL».
         </p>
       </div>
@@ -1414,7 +1414,7 @@ export function Login({ onLogin }: LoginProps) {
                 <div className="space-y-2">
                   <div className="flex justify-between items-end px-1">
                     <label className={`text-[10px] font-black uppercase tracking-[0.2em] ${darkMode ? 'text-gray-400' : 'text-gray-500'}`}>
-                      Kiracı kodu
+                      Server kodu
                     </label>
                     <span className="text-[8px] font-bold text-blue-500 uppercase">Adım 0 · zorunlu</span>
                   </div>
@@ -1446,7 +1446,7 @@ export function Login({ onLogin }: LoginProps) {
                     />
                   </div>
                   <p className={`px-1 text-[11px] font-medium leading-relaxed ${darkMode ? 'text-gray-400' : 'text-gray-500'}`}>
-                    Giriş için kiracı kodunuz zorunludur. Kod yoksa ilerlenemez; kimlik adımında Değiştir ile güncellenebilir.
+                    Giriş için server kodunuz zorunludur. Kod yoksa ilerlenemez; kimlik adımında Değiştir ile güncellenebilir.
                   </p>
                 </div>
               </div>
@@ -1455,7 +1455,7 @@ export function Login({ onLogin }: LoginProps) {
                 {!isTauri && (
                   <div className="flex items-center justify-between gap-2 px-1">
                     <p className={`text-[10px] font-bold ${darkMode ? 'text-gray-400' : 'text-gray-500'}`}>
-                      Kiracı:{' '}
+                      Server:{' '}
                       <span className="font-mono text-blue-500">
                         {tenantPostgrestSlug.trim() || '—'}
                       </span>
@@ -2453,19 +2453,19 @@ export function Login({ onLogin }: LoginProps) {
                       <p className={`text-[9px] font-bold leading-relaxed ${darkMode ? 'text-slate-400' : 'text-slate-600'}`}>
                         {tenantPostgrestEntryMode === 'retailex_cloud' ? (
                           <>
-                            RetailEX bulutu: yalnızca kiracı kodunu yazın (ör.{' '}
+                            RetailEX bulutu: yalnızca server kodunu yazın (ör.{' '}
                             <strong>ozbek</strong>). Hedef{' '}
                             <span className="font-mono">
-                              {DEFAULT_SAAS_TENANT_POSTGREST_ORIGIN}/kiracı
+                              {DEFAULT_SAAS_TENANT_POSTGREST_ORIGIN}/server
                             </span>
-                            . LAN Wi‑Fi / port 3002 bu modda kullanılmaz. Kaydettiğinizde kiracı
+                            . LAN Wi‑Fi / port 3002 bu modda kullanılmaz. Kaydettiğinizde server
                             bağlantısı uygulanır; firma listesi yenilenir.
                           </>
                         ) : (
                           <>
-                            Kiracı / merkez REST adresi. Aynı ağda örnek:{' '}
+                            Server / merkez REST adresi. Aynı ağda örnek:{' '}
                             <strong>http://192.168.1.10:3002</strong> (port <strong>3002</strong>, 3001
-                            değil) veya RetailEX bulutunda yalnızca kiracı adı. Kaydettiğinizde kiracı
+                            değil) veya RetailEX bulutunda yalnızca server kodu. Kaydettiğinizde server
                             bağlantısı otomatik uygulanır; firma listesi yenilenir.
                           </>
                         )}
@@ -2500,7 +2500,7 @@ export function Login({ onLogin }: LoginProps) {
                           <p className="font-black uppercase tracking-wide">RetailEX bulutu</p>
                           <ul className="mt-1.5 list-disc space-y-1 pl-4">
                             <li>
-                              Özbek Restoran kiracı kodu: <strong className="font-mono">ozbek</strong> (
+                              Özbek Restoran server kodu: <strong className="font-mono">ozbek</strong> (
                               <span className="font-mono">berzin_com</span> ayrı bir firmadır).
                             </li>
                             <li>
@@ -2568,7 +2568,7 @@ export function Login({ onLogin }: LoginProps) {
                           <option value="polling">Yalnız Periyodik</option>
                         </select>
                         <p className={`px-1 text-[9px] font-bold leading-relaxed ${darkMode ? 'text-slate-500' : 'text-slate-600'}`}>
-                          Mavi çubuktan da değiştirilebilir. WebSocket için PostgREST URL kiracı kodu içermeli (ör. /lovan).
+                          Mavi çubuktan da değiştirilebilir. WebSocket için PostgREST URL server kodu içermeli (ör. /lovan).
                         </p>
                       </div>
                       <div className="space-y-1">

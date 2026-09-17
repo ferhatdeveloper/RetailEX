@@ -134,11 +134,20 @@ async function applySqlFile(client, label, sql) {
   await client.query(sql);
 }
 
-async function provisionSchema(dbName, displayName, tenantPassword, dryRun) {
+async function provisionSchema(dbName, displayName, tenantPassword, dryRun, moduleName = 'retail') {
   if (dryRun) {
-    console.log(`[dry-run] ${dbName}: master şema + PostgREST + firma/kullanıcı seed`);
+    console.log(`[dry-run] ${dbName}: master şema + PostgREST + firma/kullanıcı (örnek ürün yok)`);
     return;
   }
+
+  const shellMods =
+    moduleName === 'clinic'
+      ? ['beauty', 'management']
+      : moduleName === 'restaurant'
+        ? ['pos', 'restaurant', 'management']
+        : moduleName === 'retail'
+          ? ['pos', 'management']
+          : ['management'];
 
   const master = readSql('database/migrations/000_master_schema.sql');
   const roleSql = readSql('database/migrations/007_postgrest_anon_role.sql');
@@ -171,17 +180,23 @@ async function provisionSchema(dbName, displayName, tenantPassword, dryRun) {
     }
 
     await client.query(
-      `UPDATE public.firms SET name = $1, is_active = true, "default" = true WHERE firm_nr = '001'`,
-      [displayName]
+      `UPDATE public.firms
+       SET name = $1,
+           title = $1,
+           is_active = true,
+           "default" = true,
+           enabled_modules = $2::jsonb
+       WHERE firm_nr = '001'`,
+      [displayName, JSON.stringify(shellMods)]
     );
     await client.query(
       `INSERT INTO public.firms (
-        id, firm_nr, name, ana_para_birimi, raporlama_para_birimi,
-        regulatory_region, gib_integration_mode, gib_ubl_profile, "default", is_active
+        id, firm_nr, name, title, ana_para_birimi, raporlama_para_birimi,
+        regulatory_region, gib_integration_mode, gib_ubl_profile, "default", is_active, enabled_modules
       )
-      SELECT $2, '001', $1, 'TRY', 'TRY', 'TR', 'mock', 'TICARIFATURA', true, true
+      SELECT $2, '001', $1, $1, 'TRY', 'TRY', 'TR', 'mock', 'TICARIFATURA', true, true, $3::jsonb
       WHERE NOT EXISTS (SELECT 1 FROM public.firms WHERE firm_nr = '001')`,
-      [displayName, '00000000-0000-4000-a000-000000000001']
+      [displayName, '00000000-0000-4000-a000-000000000001', JSON.stringify(shellMods)]
     );
     await client.query(
       `INSERT INTO public.periods (id, firm_id, nr, beg_date, end_date, is_active)
@@ -275,7 +290,7 @@ function printInfraChecklist(code, dbName) {
 4) Bekleyen migration:
    npm run db:migrate:tenants
 
-5) Giriş testi: retailex.app → kiracı kodu "${code}" → admin / mudur
+5) Giriş testi: retailex.app → server kodu "${code}" → mudur / admin
 `);
 }
 
@@ -297,7 +312,7 @@ async function main() {
 
   const tenantPassword = process.env.TENANT_USER_PASSWORD || 'admin';
 
-  console.log(`Kiracı: ${args.code} (${args.display})`);
+  console.log(`Server: ${args.code} (${args.display})`);
   console.log(`DB: ${args.dbName} | modül: ${args.module} | API: ${args.apiBase}/${args.code}`);
 
   if (!args.skipCreateDb) {
@@ -307,7 +322,7 @@ async function main() {
 
   if (!args.skipSchema) {
     console.log('\n== 2) Şema + kullanıcılar ==');
-    await provisionSchema(args.dbName, args.display, tenantPassword, args.dryRun);
+    await provisionSchema(args.dbName, args.display, tenantPassword, args.dryRun, args.module);
   }
 
   console.log('\n== 3) merkez_db tenant_registry ==');
