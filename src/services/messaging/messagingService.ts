@@ -38,7 +38,7 @@ function isRestApi(): boolean {
 }
 
 const MESSAGING_TABLE_MISSING_HINT =
-  'rex_*_messaging_settings tablosu API\'de yok. Kiracı veritabanında migration 042/044 çalıştırın; ardından NOTIFY pgrst, \'reload schema\'.';
+  'rex_*_messaging_settings tablosu API\'de yok. Server veritabanında migration 042/044 çalıştırın; ardından NOTIFY pgrst, \'reload schema\'.';
 
 function isPostgrestMissingTableError(err: unknown): boolean {
   const msg = err instanceof Error ? err.message : String(err);

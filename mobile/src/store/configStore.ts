@@ -40,7 +40,7 @@ export type DbConfig = {
   networkPolicy: NetworkPolicy;
   /**
    * bridge = yalnızca pg_bridge SQL;
-   * postgrest = kiracı REST (`remote_rest_url`);
+   * postgrest = server REST (`remote_rest_url`);
    * hybrid = okumada PostgREST tercih, başarısızsa bridge
    */
   apiMode: ApiMode;
@@ -48,7 +48,7 @@ export type DbConfig = {
   remoteRestUrl: string;
   /** İsteğe bağlı JWT / anon key (Supabase-uyumlu PostgREST Apikey) */
   postgrestAnonKey: string;
-  /** Kısa kiracı kodu (örn. ozbek) — uzun URL yerine */
+  /** Kısa server kodu (örn. ozbek) — uzun URL yerine */
   merkezTenantCode: string;
   /** tenant_registry.display_name */
   merkezDisplayName: string;
@@ -122,7 +122,7 @@ export function normalizeRemoteRestUrl(input: string | null | undefined): string
 }
 
 /**
- * Çalışma anı PostgREST tabanı: kayıtlı URL veya kiracı kodundan SaaS URL.
+ * Çalışma anı PostgREST tabanı: kayıtlı URL veya server kodundan SaaS URL.
  * Web `resolveEffectiveRemoteRestUrl` + boş URL’de `buildSaaSTenantPostgrestUrl` tamamlayıcısı.
  */
 export function resolveEffectiveRemoteRestUrl(

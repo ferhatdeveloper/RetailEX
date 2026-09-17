@@ -1,6 +1,6 @@
 /**
  * ExRetailOS WebSocket Service
- * Kiracı merkez: wss://api.retailex.app/{kiracı}/ws
+ * Server merkez: wss://api.retailex.app/{server}/ws
  * Yerel Windows servisi yedek: ws://127.0.0.1:9999/ws (RetailEX_Service)
  */
 

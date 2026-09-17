@@ -77,7 +77,7 @@ export function needsRemotePgStep(
   return false;
 }
 
-/** PostgREST / kiracı API adresi adımı (hibrit veya online+rest_api). */
+/** PostgREST / server API adresi adımı (hibrit veya online+rest_api). */
 export function needsPostgrestApiStep(
   config: Pick<SetupAppConfig, 'role' | 'db_mode' | 'connection_provider'>,
 ): boolean {

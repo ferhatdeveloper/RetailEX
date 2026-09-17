@@ -1249,7 +1249,7 @@ app.put('/api/eticaret/settings', async (c) => {
       return c.json({ error: 'tenant_code ve settings gerekli' }, 400);
     }
     const connStr = await resolveEticaretConnStrAsync(tenant);
-    if (!connStr) return c.json({ error: 'Kiracı veritabanı çözülemedi' }, 400);
+    if (!connStr) return c.json({ error: 'Server veritabanı çözülemedi' }, 400);
     await saveEticaretSettingsToPg(connStr, settings);
     return c.json({ ok: true });
   } catch (error: unknown) {
@@ -1363,7 +1363,7 @@ app.post('/api/eticaret/inquiry', async (c) => {
     const tenant = String(body.tenant_code || '').trim().toLowerCase();
     if (!tenant) return c.json({ error: 'tenant_code gerekli' }, 400);
     const connStr = await resolveEticaretConnStrAsync(tenant);
-    if (!connStr) return c.json({ error: 'Kiracı veritabanı çözülemedi' }, 400);
+    if (!connStr) return c.json({ error: 'Server veritabanı çözülemedi' }, 400);
     const pool = getEticaretPool(connStr);
     const orderNo = `INQ-${Date.now().toString(36).toUpperCase()}`;
     const message = String(body.message || body.question || '').trim();

@@ -74,7 +74,7 @@ export function Login({ onLogin }: LoginProps) {
   const [deviceGateStatus, setDeviceGateStatus] = useState<string | null>(null);
   const [loginStep, setLoginStep] = useState<'tenant' | 'credentials' | 'organization'>(() => {
     if (typeof window === 'undefined') return 'tenant';
-    // DeskApp: kurulum SetupWizard’da; Login’de kiracı adımı zorunlu değil
+    // DeskApp: kurulum SetupWizard’da; Login’de server adımı zorunlu değil
     if (!!(window as any).__TAURI_INTERNALS__) return 'credentials';
     try {
       const rawCfg = localStorage.getItem('retailex_web_config');
@@ -109,7 +109,7 @@ export function Login({ onLogin }: LoginProps) {
   });
   const [connectionProvider, setConnectionProvider] = useState<ConnectionProvider>('rest_api');
   const [remoteRestUrl, setRemoteRestUrl] = useState<string>(DEFAULT_REMOTE_REST_URL);
-  /** Veritabanı modalı: RetailEX bulutunda yalnızca kiracı segmenti vs tam URL */
+  /** Veritabanı modalı: RetailEX bulutunda yalnızca server segmenti vs tam URL */
   const [tenantPostgrestEntryMode, setTenantPostgrestEntryMode] = useState<'retailex_cloud' | 'custom_url'>(
     'retailex_cloud',
   );

@@ -11,7 +11,7 @@ function readStoredShellEnabledModules(): string[] {
 }
 
 /**
- * Kabuk için açık modül listesi: önce `retailex_enabled_modules`; boşsa merkez kiracı
+ * Kabuk için açık modül listesi: önce `retailex_enabled_modules`; boşsa merkez server
  * `retailex_web_config.tenant_module` (tenant_registry.module) ile türetilir; ikisi de yoksa null (bayi / tümü mantığı).
  */
 function getExplicitShellEnabledList(): string[] | null {

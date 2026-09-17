@@ -876,7 +876,7 @@ export function HybridSyncModal({ open, onOpenChange, onComplete }: Props) {
           <div className="rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-950 space-y-1">
             <p className="font-semibold">
               Taşıma: {formatSyncTransportLabel(transportAudit.transport)}
-              {transportAudit.tenantSlug ? ` · kiracı: ${transportAudit.tenantSlug}` : ''}
+              {transportAudit.tenantSlug ? ` · server: ${transportAudit.tenantSlug}` : ''}
             </p>
             {transportAudit.issues
               .filter((i) => i.severity !== 'info')

@@ -1,6 +1,6 @@
 /**
  * Public QR Menü API helpers — pg_bridge üzerinde /api/qr/:tenantCode/*
- * Kiracı: resolveEticaretConnStrAsync + firm/period prefix'li rest tabloları.
+ * Server: resolveEticaretConnStrAsync + firm/period prefix'li rest tabloları.
  */
 
 import type { Context } from 'hono';
@@ -75,13 +75,13 @@ export async function resolveQrTenant(
     .trim()
     .toLowerCase();
   if (!code || !/^[a-z0-9_-]{2,64}$/.test(code)) {
-    return { error: 'Geçersiz kiracı kodu', status: 400 };
+    return { error: 'Geçersiz server kodu', status: 400 };
   }
   const connStr = await resolveEticaretConnStrAsync(code);
   if (!connStr) {
     return {
       error:
-        'Kiracı veritabanı çözülemedi. Bridge ortamında PG_DUMP_INTERNAL_URI / MERKEZ_PG_URI gerekir.',
+        'Server veritabanı çözülemedi. Bridge ortamında PG_DUMP_INTERNAL_URI / MERKEZ_PG_URI gerekir.',
       status: 503,
     };
   }

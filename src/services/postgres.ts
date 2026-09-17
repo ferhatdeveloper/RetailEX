@@ -238,7 +238,7 @@ export function getDbSqlTargetChain(opts?: { write?: boolean; sqlTarget?: SqlTar
   }
   if (shouldUseCentralApi()) {
     // Online + API: veri çoğunlukla PostgREST; legacy SQL (raporlar vb.) için uzak PG.
-    // SaaS web'de LOCAL_CONFIG (127.0.0.1) köprüden erişilemez — kiracı uzak ucunu kullan.
+    // SaaS web'de LOCAL_CONFIG (127.0.0.1) köprüden erişilemez — server uzak ucunu kullan.
     if (DB_SETTINGS.activeMode === 'online') {
       const cfg =
         !IS_TAURI && IS_PRODUCTION
@@ -433,7 +433,7 @@ export function alignRemoteConfigWithRestUrl(): void {
   syncRemoteConfigFromRestUrl(DB_SETTINGS.remoteRestUrl);
 }
 
-/** PostgREST URL slug → kiracı PostgreSQL veritabanı adı (ör. /lovan → lovan). */
+/** PostgREST URL slug → server PostgreSQL veritabanı adı (ör. /lovan → lovan). */
 export function resolveTenantDatabaseFromRestUrl(restUrl?: string): string | null {
   const raw = String(restUrl ?? DB_SETTINGS.remoteRestUrl ?? '').trim();
   if (!raw) return null;
@@ -472,7 +472,7 @@ export function resolveEffectiveTenantDatabaseName(restUrl?: string): string | n
     }
     return configuredDb;
   }
-  // Varsayılan retailex_demo veya boş yapılandırmada PostgREST slug'ından kiracı DB adını çöz.
+  // Varsayılan retailex_demo veya boş yapılandırmada PostgREST slug'ından server DB adını çöz.
   if (slug) return slug;
   return null;
 }
@@ -515,7 +515,7 @@ export async function ensureTenantDatabaseFromRegistry(): Promise<void> {
         /* tek cache */
       }
     }
-    console.log(`[Postgres] Kiracı DB adı tenant_registry: ${dbName}`);
+    console.log(`[Postgres] Server DB adı tenant_registry: ${dbName}`);
   } catch (e) {
     console.warn('[Postgres] tenant_registry database_name çözülemedi:', e);
   }
@@ -528,11 +528,11 @@ export function alignRemoteConfigDatabaseWithTenant(restUrl?: string): void {
   const prev = REMOTE_CONFIG.database;
   REMOTE_CONFIG.database = tenantDb;
   console.log(
-    `[Postgres] Uzak veritabanı kiracıya hizalandı: ${prev} → ${tenantDb}`,
+    `[Postgres] Uzak veritabanı servera hizalandı: ${prev} → ${tenantDb}`,
   );
 }
 
-/** Merkez PG ucu — remote_db yanlış olsa bile PostgREST slug / kiracı kodu ile DB adını hizalar. */
+/** Merkez PG ucu — remote_db yanlış olsa bile PostgREST slug / server kodu ile DB adını hizalar. */
 export function getCentralRemotePgConfig(): typeof REMOTE_CONFIG {
   const tenantDb = resolveEffectiveTenantDatabaseName();
   if (tenantDb) {
@@ -543,7 +543,7 @@ export function getCentralRemotePgConfig(): typeof REMOTE_CONFIG {
 
 /**
  * Web: `exretail_pg_config` ve/veya `retailex_web_config` nesnesini uygular.
- * Birden fazla çağrıda son çağrı üstte kalır (tam kiracı + düz PG overlay sırası initializeFromSQLite’da).
+ * Birden fazla çağrıda son çağrı üstte kalır (tam server + düz PG overlay sırası initializeFromSQLite’da).
  */
 function applyWebLocalStorageConfig(config: any): void {
   if (!config || typeof config !== 'object') return;
@@ -802,7 +802,7 @@ export async function initializeFromSQLite(preloadedConfig?: any) {
           });
           console.log(`[Postgres] config.db remote_db güncellendi: ${remoteDbAfterAlign}`);
         } catch (persistErr) {
-          console.warn('[Postgres] remote_db kiracı hizalaması config.db\'ye yazılamadı:', persistErr);
+          console.warn('[Postgres] remote_db server hizalaması config.db\'ye yazılamadı:', persistErr);
         }
       }
 
@@ -1199,25 +1199,25 @@ export function explainPostgrestConnectionError(
   if (saas) {
     const httpStatus = opts?.httpStatus;
     if (httpStatus === 404 || gatewayNotFound) {
-      const kod = slug || 'kiracı_kodu';
+      const kod = slug || 'server_kodu';
       return (
         `RetailEX bulutu: https://api.retailex.app/${kod} yolu bulunamadı (HTTP 404` +
         `${gatewayNotFound ? ', gateway not_found' : ''}). ` +
         `LAN Wi‑Fi / port 3002 bu mod için geçerli değildir. ` +
-        `Kiracı kodunu kontrol edin (Özbek Restoran: ozbek — berzin_com farklı firmadır). ` +
+        `Server kodunu kontrol edin (Özbek Restoran: ozbek — berzin_com farklı firmadır). ` +
         `Kod doğruysa sunucuda postgrest_${kod} ve retailex_api_gateway (Caddy) yeniden yayınlanmalı.`
       );
     }
     if (httpStatus === 503) {
       return (
-        `RetailEX bulutu: kiracı API'si geçici olarak yanıt vermiyor (HTTP 503). ` +
+        `RetailEX bulutu: server API'si geçici olarak yanıt vermiyor (HTTP 503). ` +
         `postgrest_${slug || '…'} veya veritabanı kontrol edilmeli. LAN / port 3002 ile ilgili değildir.`
       );
     }
     if (httpStatus === 406) {
       return (
         `RetailEX bulutu: PostgREST Accept başlığı reddedildi (HTTP 406). ` +
-        `Kiracı URL'si doğru mu kontrol edin: https://api.retailex.app/${slug || 'kiracı'}.`
+        `Server URL'si doğru mu kontrol edin: https://api.retailex.app/${slug || 'server'}.`
       );
     }
 
@@ -1304,14 +1304,14 @@ async function enrichSaasPostgrest404Error(
       const name = String(row.display_name || row.code).trim();
       const active = row.is_active === false ? ' (pasif)' : '';
       return (
-        `Kiracı «${slug}» merkez kayıtta var (${name}${active}), ancak ` +
+        `Server «${slug}» merkez kayıtta var (${name}${active}), ancak ` +
         `https://api.retailex.app/${slug} API gateway'de 404 (not_found). ` +
         `Kod doğru (berzin_com başka firmadır). Sunucuda: ` +
         `docker compose -f docker-compose.dokploy.yml up -d postgrest_${slug} sync_${slug} retailex_api_gateway`
       );
     }
     return (
-      `Kiracı kodu «${slug}» api.retailex.app üzerinde yok ve merkez tenant_registry'de bulunamadı. ` +
+      `Server kodu «${slug}» api.retailex.app üzerinde yok ve merkez tenant_registry'de bulunamadı. ` +
       `Doğru kodu operatörden alın (Özbek Restoran için beklenen: ozbek).`
     );
   } catch {
@@ -1611,7 +1611,7 @@ export class PostgresConnection {
   async query<T = any>(sql: string, params: any[] = [], options?: { firmNr?: string, periodNr?: string, sqlTarget?: SqlTargetOverride }): Promise<{ rows: T[]; rowCount: number }> {
     // Production webte tenant_registry çözülmeden tablo/sorgu trafiğini başlatma.
     if (!IS_TAURI && IS_PRODUCTION && !isTenantResolvedForWeb()) {
-      throw new Error('Kiracı bağlantısı yapılmadan sorgu çalıştırılamaz. Önce "Merkezden bağlan" ile tenant_registry kaydını uygulayın.');
+      throw new Error('Server bağlantısı yapılmadan sorgu çalıştırılamaz. Önce "Merkezden bağlan" ile tenant_registry kaydını uygulayın.');
     }
 
     // rest_api modunda bile bu method çağrılabilir (legacy akışlar).

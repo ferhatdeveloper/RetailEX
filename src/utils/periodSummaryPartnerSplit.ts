@@ -18,7 +18,7 @@ export const DEFAULT_PERIOD_SUMMARY_PARTNER_SPLIT: PeriodSummaryPartnerSplitPref
   minorPct: DEFAULT_PARTNER_SHARE_MINOR_PCT,
 };
 
-/** Güzellik / klinik kiracılarında varsayılan açık */
+/** Güzellik / klinik serverlarında varsayılan açık */
 export const DEFAULT_PERIOD_SUMMARY_PARTNER_SPLIT_BEAUTY: PeriodSummaryPartnerSplitPrefs = {
   enabled: true,
   majorPct: DEFAULT_PARTNER_SHARE_MAJOR_PCT,

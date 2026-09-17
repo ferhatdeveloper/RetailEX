@@ -348,7 +348,7 @@ export function PendingDevicesPanel({ darkMode = false }: Props) {
               <p className="text-[11px] text-gray-400 leading-relaxed">
                 Hibrit kasa kurulduğu halde burada görünmüyorsa: DeskApp kurulumunda{' '}
                 <strong>Şube Terminali</strong> rolü ve <strong>hibrit</strong> mod seçilmeli;{' '}
-                <strong>remote_db</strong> ve PostgREST URL web ile aynı kiracıyı göstermeli.
+                <strong>remote_db</strong> ve PostgREST URL web ile aynı serverı göstermeli.
               </p>
             </div>
           ) : (

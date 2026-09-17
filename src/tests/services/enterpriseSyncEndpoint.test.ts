@@ -41,7 +41,7 @@ describe('resolveSyncPgEndpoint', () => {
     expect(endpoint.database).not.toBe('lovan');
   });
 
-  it('config yüklemede retailex_demo kiracı slug ile hizalanır', () => {
+  it('config yüklemede retailex_demo server slug ile hizalanır', () => {
     DB_SETTINGS.merkezTenantCode = 'lovan';
     REMOTE_CONFIG.database = 'retailex_demo';
     alignRemoteConfigDatabaseWithTenant('https://api.retailex.app/lovan');

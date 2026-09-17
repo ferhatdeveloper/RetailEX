@@ -574,7 +574,7 @@ class StockMovementAPI {
                     return db - da;
                 });
                 const mappedPgrest = combinedRaw.map(mapRow);
-                // PostgREST boş döndüyse (yanlış kiracı / eşleme) postgres yoluna düş.
+                // PostgREST boş döndüyse (yanlış server / eşleme) postgres yoluna düş.
                 if (mappedPgrest.length > 0) return mappedPgrest;
             } catch (e) {
                 console.warn('[StockMovementAPI] getProductMovements PostgREST:', e);

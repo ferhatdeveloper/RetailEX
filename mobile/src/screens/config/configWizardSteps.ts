@@ -36,8 +36,8 @@ export function getConfigWizardSteps(apiMode: ApiMode): ConfigWizardStep[] {
     },
     {
       id: 'cloud',
-      label: 'Kiracı / API',
-      shortLabel: 'Kiracı',
+      label: 'Server / API',
+      shortLabel: 'Server',
       icon: Cloud,
     },
     {

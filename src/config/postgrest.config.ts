@@ -32,7 +32,7 @@ export const postgrestConfig = {
   schemas: ['public', 'logic', 'wms', 'rest', 'beauty', 'pos', 'logistics'] as const,
 };
 
-/** Kiracı PostgREST ile okuma/yazım (Tauri hibrit hariç — yerel PG) */
+/** Server PostgREST ile okuma/yazım (Tauri hibrit hariç — yerel PG) */
 export function shouldUseTenantPostgrestApi(): boolean {
   if (DB_SETTINGS.activeMode === 'offline') return false;
   // Tauri hibrit: ürün/cari/fatura CRUD yerel PG; PostgREST yalnızca senkron motoru.
@@ -49,9 +49,9 @@ export function shouldUsePostgrestForCrud(): boolean {
 }
 
 export function getPostgrestBaseUrl(): string {
-  // Kiracı PostgREST URL’si (remote_rest_url) varken çevrimdışı değilse doğrudan tenant API.
+  // Server PostgREST URL’si (remote_rest_url) varken çevrimdışı değilse doğrudan tenant API.
   // Böylece db + hybrid (pg_query köprüsü zayıf/502) senaryosunda da PostgREST okumaları çalışır.
-  // Kök `https://api.retailex.app` + boş kiracı kodu → remote DB adı (örn. retailex_demo) slug olarak kullanılır.
+  // Kök `https://api.retailex.app` + boş server kodu → remote DB adı (örn. retailex_demo) slug olarak kullanılır.
   const tenantHint =
     String(DB_SETTINGS.merkezTenantCode || '').trim() ||
     String(REMOTE_CONFIG.database || '').trim();

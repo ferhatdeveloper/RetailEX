@@ -1,6 +1,6 @@
 /**
- * merkez_db.tenant_registry üzerinden kiracı çözümleme (PostgREST).
- * Uygulama henüz hedef kiracıya bağlı değilken merkez URL'sine doğrudan fetch yapılır.
+ * merkez_db.tenant_registry üzerinden server çözümleme (PostgREST).
+ * Uygulama henüz hedef servera bağlı değilken merkez URL'sine doğrudan fetch yapılır.
  */
 
 import { fetchRetailexAware } from '../utils/retailexDevProxy';
@@ -39,12 +39,12 @@ export type ParsedTenantConnection =
   | { kind: 'direct_postgrest'; url: string; pathSlug: string | null };
 
 /**
- * Tek satır giriş: kiracı kodu / UUID veya doğrudan kiracı PostgREST tabanı (`https://.../aqua`).
+ * Tek satır giriş: server kodu / UUID veya doğrudan server PostgREST tabanı (`https://.../aqua`).
  * Merkez kayıt kökü (`.../merkez`) buraya yazılmamalı — ayrı "Gelişmiş" alanı kullanılır.
  */
 export function parseTenantConnectionLine(raw: string): ParsedTenantConnection {
   const t = (raw || '').trim();
-  if (!t) throw new Error('Kiracı bağlantısı boş olamaz.');
+  if (!t) throw new Error('Server bağlantısı boş olamaz.');
 
   if (/^https?:\/\//i.test(t)) {
     const sanitized = sanitizeMerkezRestUrlInput(t);
@@ -57,13 +57,13 @@ export function parseTenantConnectionLine(raw: string): ParsedTenantConnection {
     const pathParts = parsedUrl.pathname.replace(/\/+$/, '').split('/').filter(Boolean);
     if (pathParts.length === 0) {
       throw new Error(
-        'Adreste kiracı yolu yok. Örnek: https://api.retailex.app/aqua — veya yalnızca kiracı kodunu girin.'
+        'Adreste server yolu yok. Örnek: https://api.retailex.app/aqua — veya yalnızca server kodunu girin.'
       );
     }
     const last = pathParts[pathParts.length - 1]!;
     if (last === 'merkez') {
       throw new Error(
-        'Bu adres merkez kayıt servisidir. Kiracı için kiracı kodunu girin veya tam kiracı API adresini (örn. .../aqua) yazın; merkez tabanını aşağıdaki Gelişmiş alanından ayarlayın.'
+        'Bu adres merkez kayıt servisidir. Server için server kodunu girin veya tam server API adresini (örn. .../aqua) yazın; merkez tabanını aşağıdaki Gelişmiş alanından ayarlayın.'
       );
     }
     const pathSlug =
@@ -134,7 +134,7 @@ function ensureUrlProtocol(input: string): string {
   return `http://${s}`;
 }
 
-/** RetailEX SaaS kiracı PostgREST kökü — Caddy’de `/kiracı_kodu` tek segment. */
+/** RetailEX SaaS server PostgREST kökü — Caddy’de `/server_kodu` tek segment. */
 export const DEFAULT_SAAS_TENANT_POSTGREST_ORIGIN = 'https://api.retailex.app';
 
 export type ParsedSaaSOrCustomPostgrestUrl =
@@ -142,7 +142,7 @@ export type ParsedSaaSOrCustomPostgrestUrl =
   | { kind: 'other'; url: string };
 
 /**
- * Kayıtlı `remote_rest_url`: yalnızca `https://api.retailex.app/{kiracı}` ise slug’a ayrıştırır.
+ * Kayıtlı `remote_rest_url`: yalnızca `https://api.retailex.app/{server}` ise slug’a ayrıştırır.
  * `/merkez` veya çok segmentli yollar “özel” kabul edilir.
  */
 export function parseSaaSOrCustomPostgrestUrl(raw: string): ParsedSaaSOrCustomPostgrestUrl {
@@ -171,7 +171,7 @@ export function buildSaaSTenantPostgrestUrl(slug: string): string {
 }
 
 /**
- * Kök `https://api.retailex.app` + kiracı kodu → `.../lovan` (PostgREST/Caddy uyumu).
+ * Kök `https://api.retailex.app` + server kodu → `.../lovan` (PostgREST/Caddy uyumu).
  */
 export function resolveEffectiveRemoteRestUrl(
   remoteRestUrl?: string,
@@ -198,7 +198,7 @@ export function resolveEffectiveRemoteRestUrl(
   return remote;
 }
 
-/** Kiracı kodundan merkez WebSocket URL — örn. lovan → wss://api.retailex.app/lovan/ws */
+/** Server kodundan merkez WebSocket URL — örn. lovan → wss://api.retailex.app/lovan/ws */
 export function buildTenantCentralWsUrl(tenantCode: string): string {
   const code = String(tenantCode || '').trim().replace(/^\/+|\/+$/g, '');
   if (!code || code === 'merkez') return '';
@@ -207,7 +207,7 @@ export function buildTenantCentralWsUrl(tenantCode: string): string {
   return `${wsOrigin}/${code}/ws`;
 }
 
-/** Kiracı kodundan merkez senkron REST API — örn. lovan → https://api.retailex.app/lovan/sync */
+/** Server kodundan merkez senkron REST API — örn. lovan → https://api.retailex.app/lovan/sync */
 export function buildTenantCentralApiUrl(tenantCode: string): string {
   const code = String(tenantCode || '').trim().replace(/^\/+|\/+$/g, '');
   if (!code || code === 'merkez') return '';
@@ -221,7 +221,7 @@ export type TenantSyncUrlInput = {
   central_api_url?: string | null;
 };
 
-/** Kiracı kodu veya PostgREST slug ile merkez WS/REST adreslerini türetir. */
+/** Server kodu veya PostgREST slug ile merkez WS/REST adreslerini türetir. */
 export function resolveTenantSyncUrls(input: TenantSyncUrlInput): {
   central_ws_url: string;
   central_api_url: string;
@@ -390,7 +390,7 @@ async function queryTenantRegistryRows(filter: string): Promise<TenantRegistryRo
 
 function validateTenantRegistryRow(row: TenantRegistryRow): TenantRegistryRow {
   if (row.is_active === false) {
-    throw new Error('Bu kiracı kaydı pasif (is_active = false).');
+    throw new Error('Bu server kaydı pasif (is_active = false).');
   }
 
   const provider = row.connection_provider === 'db' ? 'db' : 'rest_api';
@@ -398,7 +398,7 @@ function validateTenantRegistryRow(row: TenantRegistryRow): TenantRegistryRow {
     const ru = (row.rest_base_url || '').trim();
     if (!ru) {
       throw new Error(
-        'Kiracı için rest_base_url tanımlı değil. merkez_db.tenant_registry satırında rest_base_url doldurun.'
+        'Server için rest_base_url tanımlı değil. merkez_db.tenant_registry satırında rest_base_url doldurun.'
       );
     }
   } else if (!row.db_host?.trim() || !row.database_name?.trim()) {
@@ -487,12 +487,12 @@ export function shellEnabledModulesForTenantRegistryModule(module: string): stri
 
 export async function fetchTenantRegistryRow(tenantInput: string): Promise<TenantRegistryRow> {
   const q = tenantInput.trim();
-  if (!q) throw new Error('Kiracı kodu veya ID boş olamaz.');
+  if (!q) throw new Error('Server kodu veya ID boş olamaz.');
 
   const filter = UUID_RE.test(q) ? `id=eq.${encodeURIComponent(q)}` : `code=eq.${encodeURIComponent(q)}`;
   const rows = await queryTenantRegistryRows(filter);
   if (rows.length === 0) {
-    throw new Error('Kiracı bulunamadı (tenant_registry). Kod veya UUID kontrol edin.');
+    throw new Error('Server bulunamadı (tenant_registry). Kod veya UUID kontrol edin.');
   }
 
   return validateTenantRegistryRow(rows[0]!);
@@ -570,7 +570,7 @@ export function tenantRowToAppConfigPatch(
   return patch;
 }
 
-/** PostgREST URL slug'ından kiracı alanlarını türetir (db_mode korunur). */
+/** PostgREST URL slug'ından server alanlarını türetir (db_mode korunur). */
 export function buildTenantFieldsFromRestUrl(
   restUrl: string,
   prev: Record<string, unknown> = {},
@@ -618,7 +618,7 @@ export function buildTenantFieldsFromRestUrl(
   };
 }
 
-/** DB ayarları kaydı sonrası kiracıyı uygular (web localStorage / Tauri config). */
+/** DB ayarları kaydı sonrası serverı uygular (web localStorage / Tauri config). */
 export async function persistTenantFieldsFromRestUrl(
   restUrl: string,
   opts?: { forTauri?: boolean; preserveDbMode?: string },
@@ -1006,7 +1006,7 @@ export async function saveTenantLogoErpFields(
       saved: false,
       via: 'none',
       columnsEnsured: false,
-      error: 'Kiracı kodu yok — önce Login’de kiracı bağlayın.',
+      error: 'Server kodu yok — önce Login’de server bağlayın.',
     };
   }
 

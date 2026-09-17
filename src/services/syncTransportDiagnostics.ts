@@ -62,7 +62,7 @@ export function syncTransportNeedsPolling(transport?: HybridSyncTransport): bool
   return t === 'polling' || t === 'both';
 }
 
-/** Etkin WebSocket URL (yapılandırma + kiracı türetme) */
+/** Etkin WebSocket URL (yapılandırma + server türetme) */
 export function resolveEffectiveCentralWsUrl(): string {
   const explicit = String(DB_SETTINGS.centralWsUrl || '').trim();
   if (explicit && explicit !== 'wss://api.retailex.app/ws' && explicit !== 'ws://127.0.0.1:9999/ws') {
@@ -100,7 +100,7 @@ export function auditSyncTransportConfig(): SyncTransportAudit {
       code: 'REST_URL_MISSING',
       severity: 'error',
       message: 'Merkez PostgREST URL (remote_rest_url) tanımlı değil.',
-      solution: `Kurulumda PostgREST URL girin: ${DEFAULT_SAAS_TENANT_POSTGREST_ORIGIN}/{kiracı_kodu}`,
+      solution: `Kurulumda PostgREST URL girin: ${DEFAULT_SAAS_TENANT_POSTGREST_ORIGIN}/{server_kodu}`,
     });
   }
 
@@ -113,10 +113,10 @@ export function auditSyncTransportConfig(): SyncTransportAudit {
     issues.push({
       code: 'REST_URL_NO_TENANT',
       severity: 'error',
-      message: 'PostgREST URL kiracı kodu içermiyor (api.retailex.app kökü).',
+      message: 'PostgREST URL server kodu içermiyor (api.retailex.app kökü).',
       solution: tenantCode
         ? `remote_rest_url → ${buildSaaSTenantPostgrestUrl(tenantCode)}`
-        : 'Kiracı kodunu ekleyin: https://api.retailex.app/lovan (örnek)',
+        : 'Server kodunu ekleyin: https://api.retailex.app/lovan (örnek)',
     });
   }
 
@@ -140,14 +140,14 @@ export function auditSyncTransportConfig(): SyncTransportAudit {
         message: 'WebSocket senkron seçildi ancak merkez WS adresi çözülemedi.',
         solution: tenantSlug
           ? `central_ws_url veya remote_rest_url ile otomatik: wss://api.retailex.app/${tenantSlug}/ws`
-          : 'remote_rest_url içine kiracı slug ekleyin veya central_ws_url alanını doldurun.',
+          : 'remote_rest_url içine server slug ekleyin veya central_ws_url alanını doldurun.',
       });
     } else if (wsUrl.startsWith('ws://127.0.0.1:9999') && !IS_TAURI) {
       issues.push({
         code: 'WS_LOCAL_FALLBACK_WEB',
         severity: 'warn',
         message: 'Tarayıcıda yerel WS yedek adresi (127.0.0.1:9999) kullanılıyor.',
-        solution: 'Merkez kiracı bağlantısı yapın veya senkron modunu "Periyodik" seçin.',
+        solution: 'Merkez server bağlantısı yapın veya senkron modunu "Periyodik" seçin.',
       });
     }
   }

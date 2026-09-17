@@ -425,7 +425,7 @@ export async function testPostgrestSyncEndpoint(
       });
       const routingHint =
         firmsProbe.ok
-          ? ' API gateway yönlendirmesi hatalı olabilir: /{kiracı}/sync* kuralı sync_queue yolunu sync servisine gönderir. Caddy\'de /sync/* kullanın (database/docker/Caddyfile.api-gateway).'
+          ? ' API gateway yönlendirmesi hatalı olabilir: /{server}/sync* kuralı sync_queue yolunu sync servisine gönderir. Caddy\'de /sync/* kullanın (database/docker/Caddyfile.api-gateway).'
           : '';
       return {
         ok: false,

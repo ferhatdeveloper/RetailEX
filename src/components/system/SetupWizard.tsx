@@ -1999,7 +1999,7 @@ const SetupWizard: React.FC = () => {
                                                     <option value="polling">Yalnız Periyodik (timer)</option>
                                                 </select>
                                                 <p className="text-[9px] text-slate-500 pl-1 leading-relaxed">
-                                                    WebSocket: wss://api.retailex.app/&#123;kiracı&#125;/ws — PostgREST URL kiracı kodu içermeli.
+                                                    WebSocket: wss://api.retailex.app/&#123;server&#125;/ws — PostgREST URL server kodu içermeli.
                                                 </p>
                                             </div>
                                             <div className="space-y-2">
@@ -2559,7 +2559,7 @@ const SetupWizard: React.FC = () => {
                                                                       <>
                                                                         RetailEX bulutu: kayıtta{' '}
                                                                         <span className="font-mono text-blue-200/90">
-                                                                          {DEFAULT_SAAS_TENANT_POSTGREST_ORIGIN}/kiracı
+                                                                          {DEFAULT_SAAS_TENANT_POSTGREST_ORIGIN}/server
                                                                         </span>{' '}
                                                                         birleştirilir. LAN Wi‑Fi / port 3002 bu modda
                                                                         geçerli değildir. Özbek Restoran kodu:{' '}

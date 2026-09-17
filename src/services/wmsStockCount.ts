@@ -66,7 +66,7 @@ class WMSStockCountService {
     private conn = PostgresConnection.getInstance();
     private schemaReady = false;
 
-    /** Kiracı PostgREST (rest_api veya hibrit + remote_rest_url) — pg_bridge ile aynı veriyi okumak için. */
+    /** Server PostgREST (rest_api veya hibrit + remote_rest_url) — pg_bridge ile aynı veriyi okumak için. */
     private usePostgrestWms(): boolean {
         return shouldUseTenantPostgrestApi();
     }

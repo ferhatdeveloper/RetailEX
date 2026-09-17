@@ -1,5 +1,5 @@
 /**
- * merkez_db.tenant_registry üzerinden kiracı çözümleme (PostgREST).
+ * merkez_db.tenant_registry üzerinden server çözümleme (PostgREST).
  * Web `src/services/merkezTenantRegistry.ts` ile aynı SaaS sözleşmesi — Expo uyumlu.
  */
 
@@ -17,7 +17,7 @@ export type TenantRegistryRow = {
 const UUID_RE =
   /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 
-/** RetailEX SaaS kiracı PostgREST kökü */
+/** RetailEX SaaS server PostgREST kökü */
 export const DEFAULT_SAAS_TENANT_POSTGREST_ORIGIN = 'https://api.retailex.app';
 
 function normalizeBaseUrl(input: string): string {
@@ -58,14 +58,14 @@ export function getMerkezRestBaseUrl(): string {
 
 function validateTenantRegistryRow(row: TenantRegistryRow): TenantRegistryRow {
   if (row.is_active === false) {
-    throw new Error('Bu kiracı kaydı pasif (is_active = false).');
+    throw new Error('Bu server kaydı pasif (is_active = false).');
   }
   const provider = row.connection_provider === 'db' ? 'db' : 'rest_api';
   if (provider === 'rest_api') {
     const ru = (row.rest_base_url || '').trim();
     if (!ru) {
       throw new Error(
-        'Kiracı için rest_base_url tanımlı değil. tenant_registry satırını kontrol edin.',
+        'Server için rest_base_url tanımlı değil. tenant_registry satırını kontrol edin.',
       );
     }
   }
@@ -95,13 +95,13 @@ async function queryTenantRegistryRows(filter: string): Promise<TenantRegistryRo
 
 export async function fetchTenantRegistryRow(tenantInput: string): Promise<TenantRegistryRow> {
   const q = tenantInput.trim();
-  if (!q) throw new Error('Kiracı kodu boş olamaz.');
+  if (!q) throw new Error('Server kodu boş olamaz.');
   const filter = UUID_RE.test(q)
     ? `id=eq.${encodeURIComponent(q)}`
     : `code=eq.${encodeURIComponent(q.toLowerCase())}`;
   const rows = await queryTenantRegistryRows(filter);
   if (rows.length === 0) {
-    throw new Error('Kiracı bulunamadı. Kodu kontrol edin (örn. ozbek, lovan).');
+    throw new Error('Server bulunamadı. Kodu kontrol edin (örn. ozbek, lovan).');
   }
   return validateTenantRegistryRow(rows[0]!);
 }
@@ -116,7 +116,7 @@ export type ResolvedTenantConnection = {
 };
 
 /**
- * Kısa kiracı kodu → PostgREST tabanı.
+ * Kısa server kodu → PostgREST tabanı.
  * Önce merkez tenant_registry; başarısızsa https://api.retailex.app/{kod} (uyarı ile).
  */
 export async function resolveTenantByCode(rawCode: string): Promise<ResolvedTenantConnection> {
@@ -124,12 +124,12 @@ export async function resolveTenantByCode(rawCode: string): Promise<ResolvedTena
     .trim()
     .toLowerCase()
     .replace(/^\/+|\/+$/g, '');
-  if (!code) throw new Error('Kiracı kodu boş olamaz.');
+  if (!code) throw new Error('Server kodu boş olamaz.');
   if (code === 'merkez') {
-    throw new Error('merkez kayıt servisidir; kiracı kodu girin (örn. ozbek).');
+    throw new Error('merkez kayıt servisidir; server kodu girin (örn. ozbek).');
   }
   if (/^https?:\/\//i.test(code)) {
-    throw new Error('Yalnızca kısa kiracı kodu girin; tam URL için Gelişmiş bölümünü kullanın.');
+    throw new Error('Yalnızca kısa server kodu girin; tam URL için Gelişmiş bölümünü kullanın.');
   }
 
   try {

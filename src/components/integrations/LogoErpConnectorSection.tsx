@@ -572,7 +572,7 @@ export function LogoErpConnectorSection() {
           toast.warning(
             merkez.error
               ? `Merkez DB yazılamadı: ${merkez.error}`
-              : 'Merkez DB yazılamadı — kiracı kodu veya merkez erişimini kontrol edin',
+              : 'Merkez DB yazılamadı — server kodu veya merkez erişimini kontrol edin',
             { duration: 10_000 }
           );
         }

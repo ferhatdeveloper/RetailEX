@@ -99,7 +99,7 @@ export interface Firm {
   raporlama_para_birimi?: string;
   /** firms.regulatory_region — e-belge mevzuatı */
   regulatory_region?: 'TR' | 'IQ';
-  /** Firma kabuk modülleri — örn. ["pos","management"]; yoksa kiracı varsayılanı */
+  /** Firma kabuk modülleri — örn. ["pos","management"]; yoksa server varsayılanı */
   enabled_modules?: string[] | null;
   default?: boolean;
 }

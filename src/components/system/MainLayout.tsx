@@ -186,12 +186,12 @@ function WsConnectionStatusDot() {
 
   const title =
     status === 'connected'
-      ? 'Merkez WebSocket bağlı (kiracı /ws veya yerel 9999)'
+      ? 'Merkez WebSocket bağlı (server /ws veya yerel 9999)'
       : status === 'connecting'
         ? 'Gerçek zamanlı sunucuya bağlanılıyor…'
         : IS_TAURI
-          ? 'WebSocket yok — RetailEX_Service veya kiracı central_ws_url yapılandırmasını kontrol edin'
-          : 'WebSocket bağlı değil — kiracı bağlantısı sonrası api.retailex.app/{kiracı}/ws denenir';
+          ? 'WebSocket yok — RetailEX_Service veya server central_ws_url yapılandırmasını kontrol edin'
+          : 'WebSocket bağlı değil — server bağlantısı sonrası api.retailex.app/{server}/ws denenir';
 
   let boxClass =
     'w-4 h-4 sm:w-5 sm:h-5 rounded transition-colors flex-shrink-0 ';

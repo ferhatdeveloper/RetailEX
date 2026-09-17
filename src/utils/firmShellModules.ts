@@ -77,7 +77,7 @@ function persistShellModules(mods: string[]): void {
 
 /**
  * Seçili firmanın enabled_modules alanını kabuk görünürlüğüne uygular.
- * Firma alanı yoksa kiracı varsayılanına (WMS/mobile-pos hariç) döner.
+ * Firma alanı yoksa server varsayılanına (WMS/mobile-pos hariç) döner.
  */
 export function applyFirmShellModules(firm: {
   enabled_modules?: unknown;

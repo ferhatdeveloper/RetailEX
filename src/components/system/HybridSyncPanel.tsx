@@ -323,7 +323,7 @@ export function HybridSyncPanel({ compact = false, darkMode = false, directionOv
       <p className={`text-[9px] leading-relaxed ${muted}`}>
         {DB_SETTINGS.connectionProvider === 'rest_api' ? (
           <>
-            Yerel <strong>PostgreSQL</strong> ↔ uzak <strong>PostgREST API</strong> ({DB_SETTINGS.remoteRestUrl || 'kiracı URL'}).
+            Yerel <strong>PostgreSQL</strong> ↔ uzak <strong>PostgREST API</strong> ({DB_SETTINGS.remoteRestUrl || 'server URL'}).
             Satış/hareketler <code>sync_queue</code> üzerinden aktarılır; uzakta migration 048+049 ve PostgREST şema yenilemesi gerekir.
           </>
         ) : (

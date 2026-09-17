@@ -11,7 +11,7 @@ export type LogoSyncDirection = 'pull_only' | 'push_only' | 'bidirectional';
 
 /**
  * Verinin hangi katmanlardan geçeceği:
- * - logo_merkez: Logo REST → kiracı merkez DB (web SaaS varsayılanı)
+ * - logo_merkez: Logo REST → server merkez DB (web SaaS varsayılanı)
  * - logo_desktop_merkez: Logo → yerel PG (masaüstü) → hibrit gönder → merkez
  * - logo_merkez_desktop: Logo → merkez → hibrit al → mağaza yerel PG
  */

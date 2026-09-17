@@ -399,7 +399,7 @@ async function createProductViaPostgrest(input: ProductInput, id: string): Promi
     const row = Array.isArray(rows) ? rows[0] : rows;
     return row?.id != null ? String(row.id) : id;
   } catch (e) {
-    // Bazı kiracılarda price_list_1 / vat_rate yok — sade gövde dene
+    // Bazı serverlarda price_list_1 / vat_rate yok — sade gövde dene
     const slim = { ...body };
     delete slim.price_list_1;
     delete slim.vat_rate;

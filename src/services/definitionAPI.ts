@@ -24,7 +24,7 @@ const GLOBAL_DEFINITION_TABLES = new Set(['product_groups']);
 
 /**
  * Tanım tabloları için PostgREST yolu.
- * - `stores`: public.stores (firm_nr ile kiracı)
+ * - `stores`: public.stores (firm_nr ile server)
  * - Diğer çoğu: CREATE_FIRM ile rex_{firma}_tablo
  */
 function definitionPostgrestSpec(tableName: string): { path: string; listQuery: Record<string, string | number | undefined> } {

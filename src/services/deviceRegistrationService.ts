@@ -108,7 +108,7 @@ function describeCentralTarget(): string {
   if (rest) {
     const parsed = parseSaaSOrCustomPostgrestUrl(rest);
     if (parsed.kind === 'saas_single_slug') {
-      return `${rest} (kiracı DB: ${parsed.slug})`;
+      return `${rest} (server DB: ${parsed.slug})`;
     }
     return rest;
   }
@@ -634,7 +634,7 @@ export async function assertDesktopTerminalApproved(): Promise<{
       'Bu kasa henüz onaylanmadı. Merkez yöneticisi web panelinde Sistem Yönetimi → Kasa Cihazları bölümünden işyeri ve kasa tanımını yaparak onaylamalı.',
     rejected: check.message || 'Cihaz kaydı reddedildi. Merkez ile iletişime geçin.',
     blocked: 'Bu cihaz engellenmiş. Merkez ile iletişime geçin.',
-    not_registered: `Cihaz kaydı merkeze iletilemedi (${describeCentralTarget()}). ${check.message || 'PostgREST URL ve remote_db aynı kiracıyı göstermeli (ör. /lovan → lovan DB).'}`,
+    not_registered: `Cihaz kaydı merkeze iletilemedi (${describeCentralTarget()}). ${check.message || 'PostgREST URL ve remote_db aynı serverı göstermeli (ör. /lovan → lovan DB).'}`,
   };
 
   return {

@@ -1,5 +1,5 @@
 /**
- * Kiracı bağlantısı / sistem yüklemesi sonrası Logo REST bağlamını
+ * Server bağlantısı / sistem yüklemesi sonrası Logo REST bağlamını
  * merkez tenant_registry (web_config önbelleği) üzerinden uygular.
  */
 import {
@@ -21,7 +21,7 @@ export function applyLogoRestAfterTenantMerge(
   if (newKey && newKey !== prevKey) {
     clearLogoRestUrlManualOverride();
   }
-  // Kiracı veya Logo URL/firma merkezi değiştiyse yerel override'ı bırak, merkez kazanır.
+  // Server veya Logo URL/firma merkezi değiştiyse yerel override'ı bırak, merkez kazanır.
   if ((newUrl && newUrl !== prevUrl) || (newFirm > 0 && newFirm !== prevFirm)) {
     clearLogoRestUrlManualOverride();
   }

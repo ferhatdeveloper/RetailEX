@@ -1,6 +1,6 @@
 /**
  * PostgREST REST istemcisi — web `src/services/api/postgrestClient.ts` deseni.
- * Base URL: config `remoteRestUrl` veya kiracı kodundan SaaS URL.
+ * Base URL: config `remoteRestUrl` veya server kodundan SaaS URL.
  * İsteğe bağlı `postgrestAnonKey` → Authorization Bearer + apikey.
  */
 
@@ -43,7 +43,7 @@ export function getPostgrestBaseUrl(cfg?: DbConfig): string {
 
 export function getPostgrestUrl(path: string, cfg?: DbConfig): string {
   const base = getPostgrestBaseUrl(cfg);
-  if (!base) throw new Error('PostgREST URL boş (remote_rest_url / remoteRestUrl / kiracı kodu)');
+  if (!base) throw new Error('PostgREST URL boş (remote_rest_url / remoteRestUrl / server kodu)');
   const p = path.startsWith('/') ? path : `/${path}`;
   return `${base}${p}`;
 }
@@ -330,7 +330,7 @@ export async function testPostgrestConnection(
   if (!base) {
     return {
       ok: false,
-      detail: 'PostgREST URL boş (web: remote_rest_url veya kiracı kodu)',
+      detail: 'PostgREST URL boş (web: remote_rest_url veya server kodu)',
     };
   }
 

@@ -1,5 +1,5 @@
 /**
- * ERP çekirdek raporları — mevcut kiracı tablolarından (sales, cash_lines, bank_lines, customers, suppliers).
+ * ERP çekirdek raporları — mevcut server tablolarından (sales, cash_lines, bank_lines, customers, suppliers).
  * Yeni view/tablo yok; LIMIT ile ağır sorgular sınırlanır.
  */
 import { postgres, ERP_SETTINGS, DB_SETTINGS } from '../postgres';

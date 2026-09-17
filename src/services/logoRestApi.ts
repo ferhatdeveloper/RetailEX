@@ -20,7 +20,7 @@ const STORAGE_MANUAL_URL = 'retailex_logo_rest_manual_url';
 
 export const LOGO_API_URL_EXAMPLE = 'http://185.206.175.241:32001';
 
-/** Bu kurulumdaki internet üzerinden erişilebilir Logo REST (kiracı kaydı boşsa önerilen) */
+/** Bu kurulumdaki internet üzerinden erişilebilir Logo REST (server kaydı boşsa önerilen) */
 export const LOGO_DEFAULT_PUBLIC_BASE_URL = LOGO_API_URL_EXAMPLE;
 
 /** Logo REST OAuth uygulama kaydı (RetailEX gömülü) */
@@ -148,7 +148,7 @@ function normalizeBaseUrl(url: string): string {
   return normalizeLogoRestBaseUrl(url);
 }
 
-/** Logo REST API taban URL — sabit IP yok; kiracı / kullanıcı tanımlar */
+/** Logo REST API taban URL — sabit IP yok; server / kullanıcı tanımlar */
 export function normalizeLogoRestBaseUrl(url: string): string {
   let u = (url || '').trim().replace(/\/+$/, '');
   if (!u) return '';
@@ -634,7 +634,7 @@ export function clearLogoRestFirmContext(cfg?: LogoRestConfig): LogoRestConfig {
   return next;
 }
 
-/** Kiracı girişinde tenant_registry Logo alanları → logo config (URL + firma/dönem/DB) */
+/** Server girişinde tenant_registry Logo alanları → logo config (URL + firma/dönem/DB) */
 export function syncLogoRestFromWebConfig(force = false): void {
   if (typeof window === 'undefined') return;
   const webCfg = parseStoredRetailexWebConfig();

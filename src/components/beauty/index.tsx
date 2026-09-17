@@ -112,8 +112,8 @@ function BeautyModuleShell({ sales = [], products = [], onRequestManagementAcces
     const beautyFirmNr = String(selectedFirm?.firm_nr ?? '').trim();
     /**
      * `firms.enabled_modules` doluysa ona bak.
-     * NULL = kiracı varsayılanı (clinic → beauty); kolon henüz migrate edilmemiş
-     * kiracılarda kabuk zaten beauty açıksa yüklemeyi engelleme.
+     * NULL = server varsayılanı (clinic → beauty); kolon henüz migrate edilmemiş
+     * serverlarda kabuk zaten beauty açıksa yüklemeyi engelleme.
      */
     const firmHasBeauty = useMemo(() => {
         const fromFirm = normalizeFirmEnabledModules(selectedFirm?.enabled_modules);

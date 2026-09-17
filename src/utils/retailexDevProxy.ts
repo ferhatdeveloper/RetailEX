@@ -15,7 +15,7 @@ export const VITE_DEV_API_PROXY_PREFIX = '/__retailex-api';
 
 /**
  * Geliştirme modunda `https://api.retailex.app/...` → `http://localhost:6173/__retailex-api/...`
- * Kiracı (/aqua), merkez (/merkez) ve diğer PostgREST tabanları aynı kural ile çalışır.
+ * Server (/aqua), merkez (/merkez) ve diğer PostgREST tabanları aynı kural ile çalışır.
  */
 export function rewriteRetailexAppUrlForViteDev(url: string): string {
   if (typeof window === 'undefined' || !import.meta.env.DEV) return url;

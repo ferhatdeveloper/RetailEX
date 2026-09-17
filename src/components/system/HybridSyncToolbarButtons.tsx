@@ -289,7 +289,7 @@ export function HybridSyncToolbarButtons({ compact = false }: Props) {
       toast.warning('WebSocket bağlı değil', {
         description:
           audit.issues[0]?.solution ||
-          'Kiracı PostgREST URL ve api_gateway WS yolunu kontrol edin.',
+          'Server PostgREST URL ve api_gateway WS yolunu kontrol edin.',
         duration: 12000,
       });
     }

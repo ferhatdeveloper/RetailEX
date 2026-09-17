@@ -183,7 +183,7 @@ export const expiryReportsAPI = {
     }
 
     const purchaseTrcodeIn = PURCHASE_TRCODES.join(', ');
-    // rex_*_sales: trcode + fiche_type (invoice_type YOK — eski sorgu tüm kiracılarda patlıyordu)
+    // rex_*_sales: trcode + fiche_type (invoice_type YOK — eski sorgu tüm serverlarda patlıyordu)
     let dateFilterSql = '';
     const queryParams: number[] = [];
     if (limitDays === EXPIRY_REPORT_ALL_RECORDED) {

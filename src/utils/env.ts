@@ -89,7 +89,7 @@ export async function deleteCRetailexFolderIfTauri(): Promise<{ ok: boolean; det
 
 /**
  * SaaS web (retailex.app, VPS IP, alt alan adları) — köprü Docker içinde `saas_postgres` kullanır.
- * Yalnızca tam `retailex.app` hostname kontrolü kiracıları 127.0.0.1 connStr ile bozar.
+ * Yalnızca tam `retailex.app` hostname kontrolü serverları 127.0.0.1 connStr ile bozar.
  */
 export function isRetailExProductionWeb(): boolean {
   if (typeof window === 'undefined') return false;
@@ -140,7 +140,7 @@ export const getBridgeUrl = () => {
   }
 
   // Uretim (retailex.app + Docker nginx): /api/* aynı origin uzerinden retailex_bridge'e proxy edilir.
-  // api.retailex.app yalnizca PostgREST (merkez/kiracı); buraya pg_query yonlendirmeyin (CORS / 404).
+  // api.retailex.app yalnizca PostgREST (merkez/server); buraya pg_query yonlendirmeyin (CORS / 404).
   if (!isLocalHost) {
     return window.location.origin.replace(/\/+$/, '');
   }
