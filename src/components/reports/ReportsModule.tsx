@@ -11,7 +11,7 @@ import { SalesTargetReport } from './SalesTargetReport';
 import { formatNumber } from '../../utils/formatNumber';
 import { getCurrencyDecimalPlaces, getFirmLedgerCurrency, formatLedgerAmount } from '../../utils/currency';
 import { getAppDefaultCurrency } from '../../services/postgres';
-import { useProductStore } from '../../store';
+import { useProductStore, useCustomerStore } from '../../store';
 import { fetchExpiringSoonLots } from '../../services/api/lots';
 import { useFirmaDonem } from '../../contexts/FirmaDonemContext';
 import { useLanguage } from '../../contexts/LanguageContext';
@@ -1494,6 +1494,9 @@ export function ReportsModule({
 
   const loadProducts = useProductStore((s) => s.loadProducts);
   const stockReportLoading = useProductStore((s) => s.isLoading);
+  const reportCustomers = useCustomerStore((s) => s.customers);
+  const loadCustomers = useCustomerStore((s) => s.loadCustomers);
+  const customerSalesLoadedRef = useRef(false);
 
   // Stok raporlarında ürünleri DB’den tazele (isim/stok mağaza cache’inden sapmasın)
   useEffect(() => {
@@ -1507,6 +1510,13 @@ export function ReportsModule({
       void loadProducts(true);
     }
   }, [selectedTab, loadProducts]);
+
+  // Müşteri satış: kart adı / telefon eşlemesi için store listesini bir kez yükle
+  useEffect(() => {
+    if (selectedTab !== 'customer-sales' || customerSalesLoadedRef.current) return;
+    customerSalesLoadedRef.current = true;
+    void loadCustomers();
+  }, [selectedTab, loadCustomers]);
 
   // Fetch expiring products
   useEffect(() => {
@@ -7288,7 +7298,7 @@ export function ReportsModule({
             {selectedTab === 'check-tracking' && <ChequeTrackingReport />}
 
             {selectedTab === 'customer-sales' && (
-              <CustomerSalesReport sales={effectiveCatalogSales} customers={[]} />
+              <CustomerSalesReport sales={effectiveCatalogSales} customers={reportCustomers} />
             )}
 
             {selectedTab === 'sales-trend' && (
