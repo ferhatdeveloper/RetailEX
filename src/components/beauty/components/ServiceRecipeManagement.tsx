@@ -19,6 +19,8 @@ import { beautyService } from '../../../services/beautyService';
 import type { BeautyService, BeautyServiceConsumableRow } from '../../../types/beauty';
 import type { Product } from '../../../core/types';
 import { toast } from 'sonner';
+import { POSProductCatalogModal } from '../../pos/POSProductCatalogModal';
+import { useLanguage } from '../../../contexts/LanguageContext';
 
 /** Restoran RecipeManagement ile aynı düzen; veri: beauty_service_consumables + ürün maliyeti */
 type DraftLine = {
@@ -51,6 +53,7 @@ export interface ServiceRecipeManagementProps {
 }
 
 export function ServiceRecipeManagement({ onBack }: ServiceRecipeManagementProps) {
+    const { tm } = useLanguage();
     const { services, loadServices } = useBeautyStore();
     const { products, loadProducts } = useProductStore();
 
@@ -65,9 +68,9 @@ export function ServiceRecipeManagement({ onBack }: ServiceRecipeManagementProps
     const [draftLines, setDraftLines] = useState<DraftLine[]>([]);
     const [loadingDraft, setLoadingDraft] = useState(false);
     const [saving, setSaving] = useState(false);
-    /** Satır içi stok ürünü araması (modal yok) */
     const [materialSearch, setMaterialSearch] = useState('');
-    const addProductBarRef = useRef<HTMLDivElement>(null);
+    const [showProductPicker, setShowProductPicker] = useState(false);
+    const [catalogQuery, setCatalogQuery] = useState('');
     const [wastagePercent, setWastagePercent] = useState(5.2);
     /** Hizmet başına reçete satırı sayısı (sol listede REÇETE HAZIR için) */
     const [recipeCountByService, setRecipeCountByService] = useState<Record<string, number>>({});
@@ -135,37 +138,14 @@ export function ServiceRecipeManagement({ onBack }: ServiceRecipeManagementProps
         [services, searchTerm],
     );
 
-    const filteredMaterials = useMemo(() => {
-        const q = materialSearch.trim().toLowerCase();
-        if (!q) return [];
-        return products
-            .filter(p =>
-                (p.name.toLowerCase().includes(q) ||
-                    String(p.barcode ?? '')
-                        .toLowerCase()
-                        .includes(q)) &&
-                (p.materialType === 'raw_material' || p.category === 'Hammadde' || true),
-            )
-            .slice(0, 40);
-    }, [products, materialSearch]);
+    const alreadyInListText = () => {
+        const msg = tm('bServiceRecipeAlreadyInList');
+        return msg === 'bServiceRecipeAlreadyInList' ? 'Bu ürün zaten listede' : msg;
+    };
 
-    useEffect(() => {
-        const onDocDown = (e: MouseEvent) => {
-            if (!addProductBarRef.current?.contains(e.target as Node)) {
-                setMaterialSearch('');
-            }
-        };
-        document.addEventListener('mousedown', onDocDown);
-        return () => document.removeEventListener('mousedown', onDocDown);
-    }, []);
-
-    const handleAddIngredient = (product: Product) => {
-        if (draftLines.some(i => i.product_id === product.id)) {
-            toast.info('Bu ürün zaten listede');
-            return;
-        }
+    const productToDraft = (product: Product): DraftLine => {
         const cost = Number(product.cost ?? product.price ?? 0);
-        const line: DraftLine = {
+        return {
             key: uuidv4(),
             product_id: product.id,
             materialName: product.name,
@@ -173,8 +153,41 @@ export function ServiceRecipeManagement({ onBack }: ServiceRecipeManagementProps
             cost,
             qty: 1,
         };
-        setDraftLines(prev => [...prev, line]);
+    };
+
+    const openProductPicker = (query?: string) => {
+        setCatalogQuery(typeof query === 'string' ? query : materialSearch);
+        setShowProductPicker(true);
+    };
+
+    const handleAddIngredient = (product: Product) => {
+        if (draftLines.some(i => i.product_id === product.id)) {
+            toast.info(alreadyInListText());
+            return;
+        }
+        setDraftLines(prev => [...prev, productToDraft(product)]);
         setMaterialSearch('');
+    };
+
+    const handleAddMultipleIngredients = (selected: Product[]) => {
+        const existing = new Set(draftLines.map(i => i.product_id));
+        const addedIds = new Set<string>();
+        const extra: DraftLine[] = [];
+        let skipped = 0;
+        for (const product of selected) {
+            if (existing.has(product.id) || addedIds.has(product.id)) {
+                skipped += 1;
+                continue;
+            }
+            addedIds.add(product.id);
+            extra.push(productToDraft(product));
+        }
+        if (extra.length > 0) {
+            setDraftLines(prev => [...prev, ...extra]);
+        }
+        if (skipped > 0) {
+            toast.info(alreadyInListText());
+        }
     };
 
     const handleRemoveIngredient = (key: string) => {
@@ -377,46 +390,43 @@ export function ServiceRecipeManagement({ onBack }: ServiceRecipeManagementProps
                                     </div>
                                 ) : (
                                     <>
-                                        <div ref={addProductBarRef} className="relative z-30 mb-5">
+                                        <div className="mb-5">
                                             <p className="mb-1.5 text-[10px] font-black uppercase tracking-widest text-slate-500">
-                                                Stok ürünü ara — seçince listeye eklenir
+                                                {tm('bServiceRecipeSearchHint')}
                                             </p>
-                                            <div className="relative">
-                                                <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />
-                                                <input
-                                                    type="search"
-                                                    autoComplete="off"
-                                                    placeholder="Ürün adı veya barkod yazın…"
-                                                    value={materialSearch}
-                                                    onChange={e => setMaterialSearch(e.target.value)}
-                                                    className="w-full rounded-xl border border-slate-200 bg-white py-2.5 pl-10 pr-3 text-xs font-bold text-slate-800 shadow-inner outline-none ring-0 transition-all placeholder:font-medium placeholder:text-slate-400 focus:border-blue-400 focus:ring-2 focus:ring-blue-500/15"
-                                                />
-                                                {materialSearch.trim().length > 0 && (
-                                                    <div className="absolute left-0 right-0 top-[calc(100%+4px)] max-h-52 overflow-y-auto rounded-xl border border-slate-200 bg-white py-1 shadow-xl ring-1 ring-black/5">
-                                                        {filteredMaterials.length === 0 ? (
-                                                            <div className="px-3 py-2.5 text-center text-[11px] font-medium text-slate-400">
-                                                                Sonuç yok
-                                                            </div>
-                                                        ) : (
-                                                            filteredMaterials.map(p => (
-                                                                <button
-                                                                    key={p.id}
-                                                                    type="button"
-                                                                    onClick={() => handleAddIngredient(p)}
-                                                                    className="flex w-full items-center gap-2 border-b border-slate-50 px-3 py-2 text-left last:border-b-0 hover:bg-blue-50/80"
-                                                                >
-                                                                    <Package className="h-4 w-4 shrink-0 text-slate-400" />
-                                                                    <span className="min-w-0 flex-1 truncate text-xs font-bold uppercase text-slate-800">
-                                                                        {p.name}
-                                                                    </span>
-                                                                    <span className="shrink-0 text-[11px] font-semibold tabular-nums text-emerald-600">
-                                                                        {(p.cost ?? p.price ?? 0).toLocaleString('tr-TR')}
-                                                                    </span>
-                                                                </button>
-                                                            ))
-                                                        )}
-                                                    </div>
-                                                )}
+                                            <div className="flex items-center gap-2">
+                                                <div className="relative min-w-0 flex-1">
+                                                    <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />
+                                                    <input
+                                                        type="search"
+                                                        autoComplete="off"
+                                                        placeholder={tm('bServiceRecipeSearchPlaceholder')}
+                                                        value={materialSearch}
+                                                        onChange={e => {
+                                                            const next = e.target.value;
+                                                            setMaterialSearch(next);
+                                                            if (!showProductPicker && next.trim().length > 0) {
+                                                                openProductPicker(next);
+                                                            }
+                                                        }}
+                                                        onKeyDown={e => {
+                                                            if (e.key === 'Enter') {
+                                                                e.preventDefault();
+                                                                openProductPicker(materialSearch);
+                                                            }
+                                                        }}
+                                                        className="w-full rounded-xl border border-slate-200 bg-white py-2.5 pl-10 pr-3 text-xs font-bold text-slate-800 shadow-inner outline-none ring-0 transition-all placeholder:font-medium placeholder:text-slate-400 focus:border-blue-400 focus:ring-2 focus:ring-blue-500/15"
+                                                    />
+                                                </div>
+                                                <button
+                                                    type="button"
+                                                    onClick={openProductPicker}
+                                                    title={tm('bServiceRecipeAddProduct')}
+                                                    className="flex h-[42px] shrink-0 items-center gap-2 rounded-xl bg-blue-600 px-4 text-[11px] font-black uppercase text-white shadow-sm transition-all hover:bg-blue-700 active:scale-95"
+                                                >
+                                                    <Package className="h-4 w-4" />
+                                                    {tm('bServiceRecipeOpenCatalog')}
+                                                </button>
                                             </div>
                                         </div>
 
@@ -482,14 +492,18 @@ export function ServiceRecipeManagement({ onBack }: ServiceRecipeManagementProps
                                                     </div>
                                                 ))
                                             ) : (
-                                                <div className="flex flex-col items-center justify-center rounded-[2rem] border-2 border-dashed border-slate-200 bg-white py-24 opacity-60 shadow-inner">
+                                                <button
+                                                    type="button"
+                                                    onClick={openProductPicker}
+                                                    className="flex w-full flex-col items-center justify-center rounded-[2rem] border-2 border-dashed border-slate-200 bg-white py-24 opacity-60 shadow-inner transition-all hover:border-blue-300 hover:opacity-80"
+                                                >
                                                     <div className="mb-6 flex h-20 w-20 items-center justify-center rounded-full bg-slate-50">
                                                         <Package className="h-10 w-10 text-slate-300" />
                                                     </div>
                                                     <p className="text-xs font-black uppercase text-slate-400">
-                                                        Yukarıdaki arama ile stok ürünü ekleyin
+                                                        {tm('bServiceRecipeEmptyPick')}
                                                     </p>
-                                                </div>
+                                                </button>
                                             )}
                                         </div>
                                     </>
@@ -518,6 +532,25 @@ export function ServiceRecipeManagement({ onBack }: ServiceRecipeManagementProps
                 </div>
             </div>
 
+            {showProductPicker && (
+                <POSProductCatalogModal
+                    key={catalogQuery}
+                    products={products}
+                    mode="invoice-multi-select"
+                    initialSearchQuery={catalogQuery}
+                    onClose={() => setShowProductPicker(false)}
+                    onAddMultiple={(selected) => {
+                        handleAddMultipleIngredients(selected);
+                        setShowProductPicker(false);
+                        setMaterialSearch('');
+                    }}
+                    onAddToCart={(product) => {
+                        handleAddIngredient(product);
+                        setShowProductPicker(false);
+                        setMaterialSearch('');
+                    }}
+                />
+            )}
         </div>
     );
 }
