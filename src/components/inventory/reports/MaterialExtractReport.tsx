@@ -19,6 +19,8 @@ interface ExtractRow {
     date: string;
     trcode: number;
     movement_type: string;
+    source_type: string;
+    fiche_type: string;
     document_no: string;
     description: string;
     quantity: number;
@@ -26,6 +28,39 @@ interface ExtractRow {
     amount: number;
     running_balance: number;
     warehouse_name?: string;
+}
+
+/** Logo alış faturası trcode'ları — ambar fişi 1=Sarf / 5=Transfer / 26=Sayım fazlası ile çakışır. */
+const PURCHASE_INVOICE_TRCODES = new Set([1, 4, 13, 26, 41, 42]);
+const SALES_INVOICE_TRCODES = new Set([7, 8, 9, 14, 29, 30, 31, 32]);
+const RETURN_INVOICE_TRCODES = new Set([2, 3, 6]);
+
+function normKey(value: string): string {
+    return String(value || '').trim().toLocaleLowerCase('tr');
+}
+
+function isInvoiceMovement(sourceType: string, ficheType: string): boolean {
+    const src = normKey(sourceType);
+    const fiche = normKey(ficheType);
+    if (src === 'invoice' || src === 'sales' || src === 'sale') return true;
+    return (
+        fiche === 'purchase_invoice' ||
+        fiche === 'sales_invoice' ||
+        fiche === 'return_invoice' ||
+        fiche === 'alis' ||
+        fiche === 'a' ||
+        fiche === 'purchase'
+    );
+}
+
+function isPurchaseInvoiceFiche(ficheType: string): boolean {
+    const fiche = normKey(ficheType);
+    return fiche === 'purchase_invoice' || fiche === 'alis' || fiche === 'a' || fiche === 'purchase';
+}
+
+function isWarehouseSlip(sourceType: string): boolean {
+    const src = normKey(sourceType);
+    return src === 'slip' || src === 'warehouse' || src === 'ambar';
 }
 
 function isInbound(movType: string): boolean {
@@ -135,8 +170,23 @@ export function MaterialExtractReport() {
                     date: m.movement?.movement_date || m.movement_date || m.created_at,
                     trcode: Number(m.movement?.trcode || m.trcode || 0),
                     movement_type: movType,
+                    source_type: String(
+                        m.source_type ||
+                        m.source_kind ||
+                        m.movement?.source_type ||
+                        m.movement?.source_kind ||
+                        '',
+                    ).trim(),
+                    fiche_type: String(
+                        m.fiche_type ||
+                        m.ficheType ||
+                        m.movement?.fiche_type ||
+                        m.movement?.ficheType ||
+                        m.sales_fiche_type ||
+                        '',
+                    ).trim(),
                     document_no: m.movement?.document_no || m.document_no || '',
-                    description: m.notes || m.description || '',
+                    description: m.notes || m.description || m.customer_name || m.supplier || '',
                     quantity: qty,
                     unit_price: unitPrice,
                     amount: qty * unitPrice,
@@ -174,11 +224,46 @@ export function MaterialExtractReport() {
         );
     }, [rows]);
 
-    const labelTrcode = (trcode: number, movType: string): string => {
+    const labelTrcode = (
+        trcode: number,
+        movType: string,
+        sourceType: string,
+        ficheType: string,
+    ): string => {
+        const fiche = normKey(ficheType);
+        const invoice = isInvoiceMovement(sourceType, ficheType);
+        const warehouseSlip = isWarehouseSlip(sourceType);
+        const satinalma = tm('satinalmaFaturasi') || 'Satınalma faturası';
+
+        // Satınalma: sales.fiche_type / source_type=invoice. trcode 1 Logo alış = ambar Sarf ile çakışır.
+        if (
+            isPurchaseInvoiceFiche(ficheType) ||
+            (invoice && !warehouseSlip && (PURCHASE_INVOICE_TRCODES.has(trcode) || trcode === 5))
+        ) {
+            return satinalma;
+        }
+        // Fatura kaynağı + trcode 1: her zaman satınalma (ambar slip değil)
+        if (invoice && trcode === 1) {
+            return satinalma;
+        }
+        // Kaynak belirsiz giriş + trcode 1: alış faturası (gerçek sarf çıkıştır / warehouse slip)
+        if (trcode === 1 && movType === 'in' && !warehouseSlip) {
+            return satinalma;
+        }
+        if (fiche === 'sales_invoice' || (invoice && SALES_INVOICE_TRCODES.has(trcode))) {
+            return tm('salesInvoice') || 'Satış Faturası';
+        }
+        if (fiche === 'return_invoice' && (trcode === 3 || movType === 'in')) {
+            return tm('salesReturn') || 'Satış İade';
+        }
+        if (fiche === 'return_invoice' || (invoice && RETURN_INVOICE_TRCODES.has(trcode) && trcode !== 3)) {
+            return tm('purchaseReturn') || 'Alış İade';
+        }
+        // Gerçek ambar sarf fişi (source=slip, trcode 1) — etiket değişmez
         if (trcode === 1) return tm('consumption') || 'Sarf';
         if (trcode === 2) return tm('productionEntry') || 'Üretim Girişi';
         if (trcode === 5) return tm('warehouseReceipt') || 'Ambar Fişi';
-        if (trcode === 8) return movType === 'out' ? (tm('salesInvoice') || 'Satış Fat.') : (tm('purchaseInvoice') || 'Alış Fat.');
+        if (trcode === 8) return movType === 'out' ? (tm('salesInvoice') || 'Satış Faturası') : satinalma;
         return movType === 'in' ? (tm('in') || 'Giriş') : (tm('out') || 'Çıkış');
     };
 
@@ -189,7 +274,7 @@ export function MaterialExtractReport() {
             return {
                 ...row,
                 dateLabel: row.date ? format(new Date(row.date), 'dd.MM.yyyy') : '',
-                typeLabel: labelTrcode(row.trcode, row.movement_type),
+                typeLabel: labelTrcode(row.trcode, row.movement_type, row.source_type, row.fiche_type),
                 descLabel: row.description || row.warehouse_name || '',
                 inQty: inbound ? row.quantity : null,
                 inAmt: inbound ? row.amount : null,
@@ -284,7 +369,7 @@ export function MaterialExtractReport() {
             const outbound = isOutbound(row.movement_type);
             return {
                 [hDate]: row.date ? format(new Date(row.date), 'dd.MM.yyyy') : '',
-                [hFicheType]: labelTrcode(row.trcode, row.movement_type),
+                [hFicheType]: labelTrcode(row.trcode, row.movement_type, row.source_type, row.fiche_type),
                 [hFicheNo]: row.document_no,
                 [hDesc]: row.description || row.warehouse_name || '',
                 [hInQty]: inbound ? row.quantity : '',

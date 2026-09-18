@@ -145,3 +145,74 @@ export function addAnalysisSplitAmount(
   else row.product += safe;
   map.set(key, row);
 }
+
+export type SaleKindBucket = 'service' | 'product' | 'mixed' | 'unknown';
+
+export interface SaleKindAmounts {
+  kind: SaleKindBucket;
+  serviceNet: number;
+  productNet: number;
+  serviceDiscount: number;
+  productDiscount: number;
+  serviceBefore: number;
+  productBefore: number;
+}
+
+function emptyKindAmounts(): SaleKindAmounts {
+  return {
+    kind: 'unknown',
+    serviceNet: 0,
+    productNet: 0,
+    serviceDiscount: 0,
+    productDiscount: 0,
+    serviceBefore: 0,
+    productBefore: 0,
+  };
+}
+
+/**
+ * Fiş kalemlerini hizmet / ürün olarak böler; başlık indirimini orantılı dağıtır.
+ * Karma fişte her iki kova da dolu kalır — günlük rapor filtresi buna göre ayırır.
+ */
+export function allocateSaleKindAmounts(
+  items: Array<AnalysisSaleLineInput & { total?: number }>,
+  headerNet: number,
+  headerDiscount: number,
+  headerBefore: number,
+  products: Array<Pick<Product, 'id' | 'code' | 'name' | 'isService' | 'materialType'>>,
+  serviceKeys?: Set<string>,
+): SaleKindAmounts {
+  let serviceRaw = 0;
+  let productRaw = 0;
+  for (const it of items || []) {
+    const amt = Number(it.total) || 0;
+    if (classifyAnalysisSaleLine(it, products, serviceKeys) === 'service') serviceRaw += amt;
+    else productRaw += amt;
+  }
+  const rawSum = serviceRaw + productRaw;
+  if (!Number.isFinite(rawSum) || rawSum === 0) return emptyKindAmounts();
+
+  const serviceRatio = serviceRaw / rawSum;
+  const productRatio = productRaw / rawSum;
+  const net = Number(headerNet);
+  const disc = Number(headerDiscount);
+  const before = Number(headerBefore);
+  const safeNet = Number.isFinite(net) ? net : rawSum;
+  const safeDisc = Number.isFinite(disc) ? disc : 0;
+  const safeBefore = Number.isFinite(before) && before !== 0 ? before : safeNet + safeDisc;
+  const kind: SaleKindBucket =
+    Math.abs(serviceRaw) > 0.0001 && Math.abs(productRaw) > 0.0001
+      ? 'mixed'
+      : Math.abs(serviceRaw) > 0.0001
+        ? 'service'
+        : 'product';
+  return {
+    kind,
+    serviceNet: safeNet * serviceRatio,
+    productNet: safeNet * productRatio,
+    serviceDiscount: safeDisc * serviceRatio,
+    productDiscount: safeDisc * productRatio,
+    serviceBefore: safeBefore * serviceRatio,
+    productBefore: safeBefore * productRatio,
+  };
+}

@@ -185,7 +185,7 @@ interface InvoiceItemsGridProps {
     searchingRowIndex: number;
     productDropdownRef: React.RefObject<HTMLDivElement | null>;
     gridRefs: React.MutableRefObject<{ [key: string]: HTMLInputElement | null }>;
-    getProductCode: (code: string) => string;
+    getProductCode: (code: string, productId?: string) => string;
     /** Kart birimleri (`unitAPI`); ürün formu / hızlı ekleme — satır birim listesinde kullanılmaz */
     masterUnits?: UnitMasterRow[];
     unitSets?: any[];
@@ -422,7 +422,7 @@ export const InvoiceItemsGrid = React.memo(({
                                     <button
                                         type="button"
                                         onClick={() =>
-                                            handleShowProductHistory(getProductCode(item.code), item.description, item.code)
+                                            handleShowProductHistory(getProductCode(item.code, item.productId), item.description, item.productId || item.code)
                                         }
                                         className="p-1.5 text-blue-600 hover:bg-blue-50 rounded-lg touch-manipulation"
                                         title={tm('itemHistoryTooltip')}
@@ -478,12 +478,12 @@ export const InvoiceItemsGrid = React.memo(({
                                                 gridRefs.current[`code-${index}`] = el;
                                             }}
                                             type="text"
-                                            value={getProductCode(item.code)}
+                                            value={getProductCode(item.code, item.productId)}
                                             onChange={(e) => handleProductSearchChange(e.target.value, index)}
                                             onKeyDown={(e) => handleProductKeyDown(e, index)}
                                             onFocus={() => {
                                                 setCurrentRowIndex(index);
-                                                onCodeFieldFocus?.(index, getProductCode(items[index]?.code || ''));
+                                                onCodeFieldFocus?.(index, getProductCode(items[index]?.code || '', items[index]?.productId));
                                             }}
                                             className="min-w-0 flex-1 border-0 bg-transparent text-[11px] font-mono text-gray-600 tracking-tight py-0.5 focus:ring-0 focus:outline-none placeholder:text-gray-400"
                                             placeholder={tm('itemCode')}
@@ -699,12 +699,12 @@ export const InvoiceItemsGrid = React.memo(({
                                         <input
                                             ref={el => { gridRefs.current[`code-${index}`] = el; }}
                                             type="text"
-                                            value={getProductCode(item.code)}
+                                            value={getProductCode(item.code, item.productId)}
                                             onChange={(e) => handleProductSearchChange(e.target.value, index)}
                                             onKeyDown={(e) => handleProductKeyDown(e, index)}
                                             onFocus={() => {
                                                 setCurrentRowIndex(index);
-                                                onCodeFieldFocus?.(index, getProductCode(items[index]?.code || ''));
+                                                onCodeFieldFocus?.(index, getProductCode(items[index]?.code || '', items[index]?.productId));
                                             }}
                                             className="w-full px-1.5 py-1 border-0 focus:outline-none text-sm bg-transparent"
                                             placeholder={tm('itemSearchPlaceholder')}
@@ -712,7 +712,7 @@ export const InvoiceItemsGrid = React.memo(({
                                         {invoiceType.category === 'Alis' && item.code && (
                                             <button
                                                 type="button"
-                                                onClick={() => handleShowProductHistory(getProductCode(item.code), item.description, item.code)}
+                                                onClick={() => handleShowProductHistory(getProductCode(item.code, item.productId), item.description, item.productId || item.code)}
                                                 className="absolute right-1 top-1 opacity-0 group-hover:opacity-100 transition-opacity p-1 text-blue-600 hover:text-blue-700"
                                                 title={tm('itemHistoryTooltip')}
                                             >

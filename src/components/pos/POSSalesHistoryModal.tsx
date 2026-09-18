@@ -3,6 +3,8 @@ import { createPortal } from 'react-dom';
 import { X, FileText, Calendar, Search, Printer, Eye, ArrowLeft, Download, Filter } from 'lucide-react';
 import type { Sale } from '../../core/types';
 import { useLanguage } from '../../contexts/LanguageContext';
+import { saleCollectedSplit } from '../../utils/saleCollectedAmounts';
+import { normalizePaymentMethodBucket } from '../../utils/paymentMethodUtils';
 import { useTheme } from '../../contexts/ThemeContext';
 import { MODAL_OVERLAY_Z } from '../shared/FullscreenBodyPortal';
 import { addDaysToLocalYmd, formatLocalYmd } from '../../utils/dateLocal';
@@ -39,7 +41,7 @@ export function POSSalesHistoryModal({
   autoSelectLast = false,
   isLoading = false,
 }: POSSalesHistoryModalProps) {
-  const { t } = useLanguage();
+  const { t, tm } = useLanguage();
   const { darkMode } = useTheme();
   const [searchTerm, setSearchTerm] = useState('');
   const [filterDate, setFilterDate] = useState('today'); // varsayılan: bugün
@@ -87,6 +89,10 @@ export function POSSalesHistoryModal({
   });
 
   const totalSalesAmount = filteredSales.reduce((sum, sale) => sum + sale.total, 0);
+  const totalCollectedAmount = filteredSales.reduce(
+    (sum, sale) => sum + saleCollectedSplit(sale).collected,
+    0,
+  );
 
   // Detay görünümü render fonksiyonu
   const renderDetailView = () => {
@@ -199,6 +205,7 @@ export function POSSalesHistoryModal({
               {!selectedSale && (
                 <p className="text-xs text-blue-100 mt-0.5">
                   {filteredSales.length} {t.salesCount} • {t.totalSales}: {totalSalesAmount.toFixed(2)}
+                  {' · '}{tm('tahsilEdilen')}: {totalCollectedAmount.toFixed(2)}
                 </p>
               )}
             </div>
@@ -365,13 +372,22 @@ export function POSSalesHistoryModal({
                           <span className={`font-mono text-sm font-medium ${darkMode ? 'text-white' : 'text-gray-900'}`}>
                             {sale.receiptNumber}
                           </span>
-                          <span className={`px-2 py-0.5 rounded text-xs flex-shrink-0 ${sale.paymentMethod === 'cash'
+                          <span className={`px-2 py-0.5 rounded text-xs flex-shrink-0 ${
+                            normalizePaymentMethodBucket(sale.paymentMethod) === 'cash'
                             ? 'bg-green-100 text-green-700'
-                            : sale.paymentMethod === 'card'
+                            : normalizePaymentMethodBucket(sale.paymentMethod) === 'card'
                               ? 'bg-blue-100 text-blue-700'
-                              : 'bg-purple-100 text-purple-700'
+                              : normalizePaymentMethodBucket(sale.paymentMethod) === 'credit'
+                                ? 'bg-amber-100 text-amber-800'
+                                : 'bg-purple-100 text-purple-700'
                             }`}>
-                            {sale.paymentMethod === 'cash' ? t.cash : sale.paymentMethod === 'card' ? t.card : t.other}
+                            {normalizePaymentMethodBucket(sale.paymentMethod) === 'cash'
+                              ? t.cash
+                              : normalizePaymentMethodBucket(sale.paymentMethod) === 'card'
+                                ? t.card
+                                : normalizePaymentMethodBucket(sale.paymentMethod) === 'credit'
+                                  ? (t.veresiyeLabel || tm('veresiye'))
+                                  : t.other}
                           </span>
                           <span className={`text-xs ${darkMode ? 'text-gray-400' : 'text-gray-500'} flex-shrink-0`}>
                             {new Date(sale.date).toLocaleDateString('tr-TR', {
@@ -396,6 +412,13 @@ export function POSSalesHistoryModal({
                             <div className={`text-sm font-medium ${darkMode ? 'text-white' : 'text-gray-900'}`}>
                               {sale.total.toFixed(2)} IQD
                             </div>
+                            {saleCollectedSplit(sale).remaining > 0.009 && (
+                              <div className="text-[11px] text-amber-700">
+                                {tm('tahsilEdilen')}: {saleCollectedSplit(sale).collected.toFixed(2)}
+                                {' · '}
+                                {tm('kalanCari')}: {saleCollectedSplit(sale).remaining.toFixed(2)}
+                              </div>
+                            )}
                           </div>
 
                           <div className={`flex gap-1 border-l pl-3 ${darkMode ? 'border-gray-700' : 'border-gray-200'}`}>

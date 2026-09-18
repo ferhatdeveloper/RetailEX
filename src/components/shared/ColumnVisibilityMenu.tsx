@@ -29,24 +29,35 @@ export function ColumnVisibilityMenu({
   const locale = tm('localeCode');
   const [isOpen, setIsOpen] = useState(false);
   const [search, setSearch] = useState('');
-  const [menuPos, setMenuPos] = useState<{ top: number; left: number } | null>(null);
+  const [menuPos, setMenuPos] = useState<{
+    top: number;
+    left: number;
+    width: number;
+    maxHeight: number;
+  } | null>(null);
   const rootRef = useRef<HTMLDivElement>(null);
   const buttonRef = useRef<HTMLButtonElement>(null);
   const menuRef = useRef<HTMLDivElement>(null);
 
   const MENU_WIDTH = 300;
   const MENU_HEIGHT = 440;
-  const LIST_SCROLL_HEIGHT = 250;
+  /** FilterMenu (12000) ve sticky dip toplam / sayfalama üstünde; portal overlay. */
+  const COLUMN_CHOOSER_Z_INDEX = 20000;
 
   const updateMenuPos = () => {
     const rect = buttonRef.current?.getBoundingClientRect();
     if (!rect) return;
-    const left = Math.max(8, Math.min(rect.left, window.innerWidth - MENU_WIDTH - 8));
-    let top = rect.bottom + 6;
-    if (top + MENU_HEIGHT > window.innerHeight - 8) {
-      top = Math.max(8, rect.top - MENU_HEIGHT - 6);
-    }
-    setMenuPos({ top, left });
+    const margin = 8;
+    const width = Math.min(MENU_WIDTH, window.innerWidth - margin * 2);
+    const left = Math.max(margin, Math.min(rect.right - width, window.innerWidth - width - margin));
+    const spaceBelow = window.innerHeight - rect.bottom - margin;
+    const spaceAbove = rect.top - margin;
+    const flipUp = spaceBelow < 280 && spaceAbove > spaceBelow;
+    const maxHeight = Math.max(200, Math.min(MENU_HEIGHT, flipUp ? spaceAbove : spaceBelow));
+    const top = flipUp
+      ? Math.max(margin, rect.top - maxHeight - 6)
+      : rect.bottom + 6;
+    setMenuPos({ top, left, width, maxHeight });
   };
 
   const openMenu = () => {
@@ -91,87 +102,94 @@ export function ColumnVisibilityMenu({
 
   const menuPanel = isOpen && menuPos ? (
     <div
-      ref={menuRef}
-      className="fixed flex flex-col bg-white rounded-lg shadow-2xl border border-gray-300 z-[14000] overflow-hidden"
-      style={{
-        top: menuPos.top,
-        left: menuPos.left,
-        width: MENU_WIDTH,
-        height: Math.min(MENU_HEIGHT, window.innerHeight - 16),
-      }}
-      onMouseDown={(e) => e.stopPropagation()}
+      className="fixed inset-0"
+      style={{ zIndex: COLUMN_CHOOSER_Z_INDEX }}
+      onMouseDown={closeMenu}
     >
-      <div className="shrink-0 p-3 border-b border-gray-200 bg-gray-50">
-        <div className="flex items-center justify-between mb-2">
-          <span className="text-sm font-semibold text-gray-800">{tm('columnVisibilityTitle')}</span>
-          <button type="button" onClick={closeMenu} className="text-gray-400 hover:text-gray-600 text-lg leading-none">
-            ×
-          </button>
+      <div
+        ref={menuRef}
+        className="absolute flex flex-col bg-white rounded-lg shadow-2xl border border-gray-300 overflow-hidden"
+        style={{
+          top: menuPos.top,
+          left: menuPos.left,
+          width: menuPos.width,
+          maxHeight: menuPos.maxHeight,
+          height: 'auto',
+        }}
+        onMouseDown={(e) => e.stopPropagation()}
+      >
+        <div className="shrink-0 p-3 border-b border-gray-200 bg-gray-50">
+          <div className="flex items-center justify-between mb-2">
+            <span className="text-sm font-semibold text-gray-800">{tm('columnVisibilityTitle')}</span>
+            <button type="button" onClick={closeMenu} className="text-gray-400 hover:text-gray-600 text-lg leading-none">
+              ×
+            </button>
+          </div>
+          <div className="flex gap-2">
+            <button
+              type="button"
+              onClick={onShowAll}
+              className="flex-1 px-2 py-1 text-xs bg-blue-50 text-blue-600 rounded hover:bg-blue-100 font-medium"
+            >
+              {tm('showAllColumns')}
+            </button>
+            <button
+              type="button"
+              onClick={onHideAll}
+              className="flex-1 px-2 py-1 text-xs bg-gray-50 text-gray-600 rounded hover:bg-gray-100 font-medium"
+            >
+              {tm('hideAllColumns')}
+            </button>
+          </div>
+          <div className="relative mt-2">
+            <Search className="absolute left-2 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-gray-400" />
+            <input
+              type="text"
+              value={search}
+              onChange={(e) => setSearch(e.target.value)}
+              placeholder={tm('searchColumns')}
+              className="w-full pl-8 pr-2 py-1.5 text-xs border border-gray-200 rounded focus:outline-none focus:ring-1 focus:ring-blue-500"
+            />
+          </div>
+          <p className="mt-2 text-[10px] text-gray-500 tabular-nums">
+            {tm('columnsVisibleCount')
+              .replace('{visible}', String(visibleCount))
+              .replace('{total}', String(filteredColumns.length))}
+          </p>
         </div>
-        <div className="flex gap-2">
-          <button
-            type="button"
-            onClick={onShowAll}
-            className="flex-1 px-2 py-1 text-xs bg-blue-50 text-blue-600 rounded hover:bg-blue-100 font-medium"
-          >
-            {tm('showAllColumns')}
-          </button>
-          <button
-            type="button"
-            onClick={onHideAll}
-            className="flex-1 px-2 py-1 text-xs bg-gray-50 text-gray-600 rounded hover:bg-gray-100 font-medium"
-          >
-            {tm('hideAllColumns')}
-          </button>
+
+        <div className="panel-menu-scroll flex-1 min-h-0 overflow-y-auto p-2 border-b border-gray-100">
+          {filteredColumns.length === 0 ? (
+            <p className="text-xs text-gray-400 text-center py-8">{tm('noMatchingColumns')}</p>
+          ) : (
+            filteredColumns.map((column) => (
+              <label
+                key={column.id}
+                className="flex items-center gap-2 px-3 py-2 hover:bg-gray-50 rounded cursor-pointer"
+              >
+                <input
+                  type="checkbox"
+                  checked={column.visible}
+                  onChange={() => onToggle(column.id)}
+                  className="w-4 h-4 text-blue-600 rounded focus:ring-2 focus:ring-blue-500 shrink-0"
+                />
+                <span className="text-sm text-gray-700 flex-1 truncate" title={column.label}>
+                  {column.label}
+                </span>
+                {column.visible ? (
+                  <Eye className="w-4 h-4 text-green-600 shrink-0" />
+                ) : (
+                  <EyeOff className="w-4 h-4 text-gray-400 shrink-0" />
+                )}
+              </label>
+            ))
+          )}
         </div>
-        <div className="relative mt-2">
-          <Search className="absolute left-2 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-gray-400" />
-          <input
-            type="text"
-            value={search}
-            onChange={(e) => setSearch(e.target.value)}
-            placeholder={tm('searchColumns')}
-            className="w-full pl-8 pr-2 py-1.5 text-xs border border-gray-200 rounded focus:outline-none focus:ring-1 focus:ring-blue-500"
-          />
-        </div>
-        <p className="mt-2 text-[10px] text-gray-500 tabular-nums">
-          {tm('columnsVisibleCount')
-            .replace('{visible}', String(visibleCount))
-            .replace('{total}', String(filteredColumns.length))}
+
+        <p className="shrink-0 px-3 py-2 text-[10px] text-gray-400 bg-gray-50 border-t border-gray-100">
+          {tm('columnVisibilitySavedNote')}
         </p>
       </div>
-
-      <div className="panel-menu-scroll shrink-0 p-2 border-b border-gray-100" style={{ height: LIST_SCROLL_HEIGHT }}>
-        {filteredColumns.length === 0 ? (
-          <p className="text-xs text-gray-400 text-center py-8">{tm('noMatchingColumns')}</p>
-        ) : (
-          filteredColumns.map((column) => (
-            <label
-              key={column.id}
-              className="flex items-center gap-2 px-3 py-2 hover:bg-gray-50 rounded cursor-pointer"
-            >
-              <input
-                type="checkbox"
-                checked={column.visible}
-                onChange={() => onToggle(column.id)}
-                className="w-4 h-4 text-blue-600 rounded focus:ring-2 focus:ring-blue-500 shrink-0"
-              />
-              <span className="text-sm text-gray-700 flex-1 truncate" title={column.label}>
-                {column.label}
-              </span>
-              {column.visible ? (
-                <Eye className="w-4 h-4 text-green-600 shrink-0" />
-              ) : (
-                <EyeOff className="w-4 h-4 text-gray-400 shrink-0" />
-              )}
-            </label>
-          ))
-        )}
-      </div>
-
-      <p className="shrink-0 px-3 py-2 text-[10px] text-gray-400 bg-gray-50 border-t border-gray-100">
-        {tm('columnVisibilitySavedNote')}
-      </p>
     </div>
   ) : null;
 

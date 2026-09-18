@@ -8,6 +8,9 @@ import {
   ChevronDown, ChevronRight, Printer, Package, Upload
 } from 'lucide-react';
 import { serviceAPI, type Service, type CreateServiceInput } from '../../../services/serviceAPI';
+import { CodeFormatFieldButton } from '../../shared/CodeFormatFieldButton';
+import { allocateNextEntityCode } from '../../../services/entityCodeFormatService';
+import { uuidOrNull } from '../../../utils/pgUuid';
 import { currencyAPI, categoryAPI, taxRateAPI, specialCodeAPI, type Currency, type Category, type TaxRate, type SpecialCode, brandAPI, productGroupAPI, unitAPI, type Brand, exchangeRateAPI } from '../../../services/api/masterData';
 import { definitionAPI } from '../../../services/definitionAPI';
 import { resolveProductFormQuickAdd } from '../../../utils/masterDataQuickAdd';
@@ -281,7 +284,8 @@ export const ServiceFormPage = React.memo(({ serviceId, onClose, onSave }: Servi
     let cancelled = false;
     (async () => {
       try {
-        const next = await serviceAPI.getNextCode();
+        const formatted = await allocateNextEntityCode('service');
+        const next = formatted || (await serviceAPI.getNextCode());
         if (cancelled || !next) return;
         setFormData((prev) => {
           if (String(prev.code || '').trim()) return prev;
@@ -431,9 +435,9 @@ export const ServiceFormPage = React.memo(({ serviceId, onClose, onSave }: Servi
         description_en: latest.description_en,
         description_ar: latest.description_ar,
         description_ku: latest.description_ku,
-        category: latest.category,
-        categoryId: latest.categoryId,
-        categoryCode: latest.categoryCode,
+        category: latest.category || null,
+        categoryId: uuidOrNull(latest.categoryId),
+        categoryCode: latest.categoryCode || null,
         brand: latest.brand,
         model: latest.model,
         manufacturer: latest.manufacturer,
@@ -793,13 +797,19 @@ export const ServiceFormPage = React.memo(({ serviceId, onClose, onSave }: Servi
                     <label className="text-xs text-gray-700">Hizmet Kodu *</label>
                   </div>
                   <div className="col-span-3 bg-white px-2 py-1.5">
-                    <input
-                      type="text"
-                      value={formData.code || ''}
-                      onChange={(e) => handleInputChange('code', e.target.value)}
-                      className="w-full px-2 py-1 border border-gray-300 text-xs focus:outline-none focus:ring-1 focus:ring-blue-500 font-bold text-blue-700"
-                      placeholder="Otomatik veya Manuel"
-                    />
+                    <div className="flex items-center gap-1">
+                      <input
+                        type="text"
+                        value={formData.code || ''}
+                        onChange={(e) => handleInputChange('code', e.target.value)}
+                        className="flex-1 min-w-0 px-2 py-1 border border-gray-300 text-xs focus:outline-none focus:ring-1 focus:ring-blue-500 font-bold text-blue-700"
+                        placeholder="Otomatik veya Manuel"
+                      />
+                      <CodeFormatFieldButton
+                        entity="service"
+                        onApply={(code) => handleInputChange('code', code)}
+                      />
+                    </div>
                   </div>
 
                   <div className="col-span-3 bg-gray-100 px-2 py-1.5">

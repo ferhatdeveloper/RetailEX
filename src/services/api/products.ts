@@ -8,6 +8,7 @@ import { postgres, ERP_SETTINGS, DB_SETTINGS } from '../postgres';
 import { logoOutboundPendingFields } from '../logoRestOutbound';
 import type { Product } from '../../core/types';
 import { expandBarcodeLookupKeys } from '../../utils/barcodeParser';
+import { uuidOrNull } from '../../utils/pgUuid';
 import { useAuthStore } from '../../store/useAuthStore';
 import { SQL_COUNTABLE_SALE_STATUS } from '../../utils/saleInvoiceStatus';
 import {
@@ -1552,7 +1553,7 @@ export const productAPI = {
         max_stock: (product as any).maxStock ?? product.max_stock ?? 0,
         critical_stock: product.criticalStock || 0,
         unit: product.unit || 'Adet',
-        unitset_id: (product as any).unitsetId || (product as any).unitset_id || null,
+        unitset_id: uuidOrNull((product as any).unitsetId || (product as any).unitset_id),
         is_active: true,
         firm_nr: firmNrPadded(),
         image_url: product.image_url || '',
@@ -1709,6 +1710,15 @@ export const productAPI = {
             finalData[dbKey] = Boolean(value);
             return;
           }
+          if (dbKey === 'unitset_id' || dbKey === 'id') {
+            const u = uuidOrNull(value);
+            if (dbKey === 'id') {
+              if (u) finalData.id = u;
+              return;
+            }
+            finalData.unitset_id = u;
+            return;
+          }
           finalData[dbKey] = value;
         }
       });
@@ -1758,6 +1768,10 @@ export const productAPI = {
         if (!dbKey) return;
         if (dbKey === 'is_scale_product' || dbKey === 'expiry_tracking') {
           fieldValues.set(dbKey, Boolean(value));
+          return;
+        }
+        if (dbKey === 'unitset_id') {
+          fieldValues.set(dbKey, uuidOrNull(value));
           return;
         }
         if (dbKey === 'plu_code') {

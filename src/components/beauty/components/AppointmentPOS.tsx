@@ -26,12 +26,14 @@ import { useLanguage } from '../../../contexts/LanguageContext';
 import { useResponsive } from '../../../hooks/useResponsive';
 import { logger } from '../../../services/loggingService';
 import { POSPaymentModal, type POSPaymentModalDraftContext } from '../../pos/POSPaymentModal';
+import { splitPaymentRows } from '../../../utils/saleCollectedAmounts';
 import { Receipt80mm } from '../../pos/Receipt80mm';
 import { formatMoneyAmount } from '../../../utils/formatMoney';
 import { useProductStore } from '../../../store/useProductStore';
 import type { Product } from '../../../core/types';
 import type { Sale, SaleItem } from '../../../core/types/models';
 import { useFirmaDonem } from '../../../contexts/FirmaDonemContext';
+import { currentLoginCashierName } from '../../../utils/loginCashierName';
 import { salesAPI } from '../../../services/api/sales';
 import { phoneMatchesQuery } from '../../../shared/utils/validators';
 import {
@@ -1674,14 +1676,7 @@ export function AppointmentPOS({
         }
     }, [existingAppointment, aptNotes, updateAppointment, tm, aptDate]);
 
-    const resolveBeautyCashierName = () => {
-        const svc = cart.find(l => l.type === 'service' && l.staff_id?.trim());
-        if (svc?.staff_id) {
-            const n = specialists.find(s => s.id === svc.staff_id)?.name;
-            if (n?.trim()) return n.trim();
-        }
-        return '—';
-    };
+    const resolveBeautyCashierName = () => currentLoginCashierName() || '—';
 
     const handleBookOnly = async () => {
         if (isExistingPaidComplete) {
@@ -2021,6 +2016,10 @@ export function AppointmentPOS({
             } else if (paymentData?.payments?.[0]?.method) {
                 paymentMethod = paymentData.payments[0].method === 'gateway' ? 'card' : paymentData.payments[0].method;
             }
+            const payRows = Array.isArray(paymentData.payments) ? paymentData.payments : [];
+            const collectedSplit = splitPaymentRows(finalTotalSale, payRows, paymentMethod);
+            const paidNow = collectedSplit.collected;
+            const remainingNow = collectedSplit.remaining;
 
             const lineGrosses = cart.map((l) => l.unit_price * l.qty);
             const lineSplits = splitProportionalLineDiscount(lineGrosses, headerDiscount);
@@ -2088,6 +2087,7 @@ export function AppointmentPOS({
                     const gross = line.unit_price * line.qty;
                     const disc = lineSplits[idx]?.discount ?? 0;
                     const net = lineSplits[idx]?.total ?? gross;
+                    const ratio = finalTotalSale > 0 ? net / finalTotalSale : 0;
                     return beautyService.createSale(
                         {
                             customer_id: customer!.id,
@@ -2098,8 +2098,8 @@ export function AppointmentPOS({
                             total: net,
                             payment_method: paymentMethod,
                             payment_status: 'paid',
-                            paid_amount: net,
-                            remaining_amount: 0,
+                            paid_amount: paidNow * ratio,
+                            remaining_amount: remainingNow * ratio,
                             notes: saleNotesLink,
                         },
                         [
@@ -2129,9 +2129,10 @@ export function AppointmentPOS({
                         total: finalTotalSale,
                         payment_method: paymentMethod,
                         payment_status: 'paid',
-                        paid_amount: finalTotalSale,
-                        remaining_amount: 0,
+                        paid_amount: paidNow,
+                        remaining_amount: remainingNow,
                         notes: (saleNotesLink ?? aptNotes?.trim()) || undefined,
+                        payments: payRows,
                     },
                     saleItems,
                 );
@@ -2145,9 +2146,10 @@ export function AppointmentPOS({
                     total: finalTotalSale,
                     payment_method: paymentMethod,
                     payment_status: 'paid',
-                    paid_amount: finalTotalSale,
-                    remaining_amount: 0,
+                    paid_amount: paidNow,
+                    remaining_amount: remainingNow,
                     notes: saleNotesLink,
+                    payments: payRows,
                 }, saleItems);
             }
 
@@ -2186,6 +2188,11 @@ export function AppointmentPOS({
                 discount: headerDiscount,
                 total: finalTotalSale,
                 paymentMethod,
+                payments: payRows.map((p: { method?: string; amount?: number; currency?: string }) => ({
+                    method: String(p.method || paymentMethod),
+                    amount: Number(p.amount) || 0,
+                    currency: p.currency,
+                })),
                 cashier: resolveBeautyCashierName(),
                 notes: aptNotes?.trim() || undefined,
                 beautyDeviceName: resolveBeautyDeviceLabel(aptDevice, devices) || undefined,

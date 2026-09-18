@@ -3,6 +3,7 @@ import React from 'react';
 import { MoreVertical, Barcode, History, ChevronDown, ChevronRight } from 'lucide-react';
 import { useLanguage } from '../../../contexts/LanguageContext';
 import { isInvoicePurchaseSide } from '../../../utils/invoiceLineType';
+import { CodeFormatFieldButton } from '../../shared/CodeFormatFieldButton';
 
 interface InvoiceType {
     code: number;
@@ -312,18 +313,27 @@ export const InvoiceHeader: React.FC<InvoiceHeaderProps> = ({
                             <label className="block mb-1 text-gray-700 text-xs font-semibold">
                                 {tm('invoiceNo')}
                             </label>
+                            <div className="flex items-center gap-1">
                             <input
                                 type="text"
                                 value={invoiceNo}
                                 readOnly={!invoiceNoEditable}
                                 onChange={(e) => setInvoiceNo?.(e.target.value)}
                                 title={invoiceNoEditable ? tm('invoiceNo') : undefined}
-                                className={`w-full px-2 py-1 border border-gray-300 rounded text-sm font-mono tabular-nums ${
+                                className={`flex-1 min-w-0 px-2 py-1 border border-gray-300 rounded text-sm font-mono tabular-nums ${
                                     invoiceNoEditable
                                         ? 'bg-white focus:outline-none focus:ring-1 focus:ring-blue-500'
                                         : 'bg-gray-50 text-gray-800'
                                 }`}
                             />
+                            {invoiceNoEditable ? (
+                                <CodeFormatFieldButton
+                                    entity="invoice"
+                                    typeCode={invoiceType.code}
+                                    onApply={(code) => setInvoiceNo?.(code)}
+                                />
+                            ) : null}
+                            </div>
                         </div>
 
                         <div>
@@ -714,6 +724,13 @@ export const InvoiceHeader: React.FC<InvoiceHeaderProps> = ({
                                 }`}
                                 title={invoiceNo}
                             />
+                            {invoiceNoEditable ? (
+                                <CodeFormatFieldButton
+                                    entity="invoice"
+                                    typeCode={invoiceType.code}
+                                    onApply={(code) => setInvoiceNo?.(code)}
+                                />
+                            ) : null}
                         </div>
 
                         <div className="inline-flex items-center gap-1.5 shrink-0">

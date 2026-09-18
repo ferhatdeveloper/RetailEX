@@ -93,6 +93,8 @@ import {
 import { buildInvoiceHeaderFieldsFromForm, readInvoiceHeaderFields, sanitizeInvoiceHeaderPartyValue } from '../../../utils/invoiceHeaderFields';
 import { fetchKasalar as fetchKasaListForRegister, type Kasa as KasaRow } from '../../../services/api/kasa';
 import { allocateNextInvoiceCode } from '../../../services/invoiceCodeFormatService';
+import { looksLikeUuid } from '../../../utils/pgUuid';
+import { resolveInvoiceLineDisplayCode, splitInvoiceLineIdentity } from '../../../utils/invoiceLineDisplayCode';
 import { generateDefaultInvoiceStamp } from '../../../utils/invoiceCodeFormat';
 
 // Electron API tip tanımı
@@ -1448,7 +1450,8 @@ export function UniversalInvoiceForm({
   /** Barkod / ürün kodu ile satırı doldur (lookup sonucu) */
   const applyLookupResultToInvoiceItem = (baseItem: InvoiceItem, product: Product, unitInfo?: any): InvoiceItem => {
     const item = { ...baseItem };
-    item.code = product.code || (product as any).id || '';
+    item.code = product.code || product.barcode || '';
+    item.productId = product.id;
     item.description = product.name || '';
     const isPurchase = invoiceType.category === 'Alis';
     const docUsd = (currency || '').trim().toUpperCase() === 'USD';
@@ -2185,7 +2188,7 @@ export function UniversalInvoiceForm({
       }
     }
 
-    const productCode = variant?.code || selProduct.code || selProduct.barcode || selProduct.id || '';
+    const productCode = variant?.code || selProduct.code || selProduct.barcode || '';
     const productName = variant ? `${selProduct.name} - ${variant.size || variant.color || ''}` : selProduct.name;
     const productUnit = selProduct.unit || 'Adet';
 
@@ -2194,6 +2197,7 @@ export function UniversalInvoiceForm({
     const item = { ...updatedItems[targetRowIndex] };
 
     item.code = productCode;
+    item.productId = selProduct.id;
     item.description = productName;
     item.unit = productUnit;
     item.unitPrice = productPrice;
@@ -2320,7 +2324,7 @@ export function UniversalInvoiceForm({
       }
     }
 
-    const productCode = variant?.code || selProduct.barcode || selProduct.id || '';
+    const productCode = variant?.code || selProduct.code || selProduct.barcode || '';
     const productName = variant ? `${selProduct.name} - ${variant.size || variant.color || ''}` : selProduct.name;
     const productUnit = selProduct.unit || 'Adet';
 
@@ -2329,6 +2333,7 @@ export function UniversalInvoiceForm({
       id: createInvoiceLineId(),
       type: 'Malzeme',
       code: productCode,
+      productId: selProduct.id,
       description: productName,
       description2: '',
       quantity: 1,
@@ -2534,7 +2539,8 @@ export function UniversalInvoiceForm({
       }
 
       item.type = 'Hizmet';
-      item.code = service.code;
+      item.code = service.code || '';
+      item.productId = service.id;
       item.description = service.name;
       item.unit = service.unit || 'Adet';
       item.unitPrice = servicePrice;
@@ -3062,28 +3068,15 @@ export function UniversalInvoiceForm({
         const hdrCur = String((editData as any)?.currency || 'IQD');
         const hdrRate = parseFloat(String((editData as any)?.currency_rate)) || 1;
         const initializedItems = itemsData.map((item: any, index: number) => {
-          // Ürün kodunu bul - product_id ise products listesinden bul
-          let productCode = item.code || item.product_code || '';
-          const productId = item.productId || item.product_id;
-
-          // Eğer product_id varsa ve UUID formatındaysa, products listesinden bul
-          if (productId && !productCode) {
-            const uuidPattern = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
-            if (uuidPattern.test(productId)) {
-              const foundProduct = products.find(p => p.id === productId);
-              if (foundProduct && foundProduct.code) {
-                productCode = foundProduct.code;
-              } else {
-                const foundStoreProduct = storeProducts.find(p => p.id === productId);
-                if (foundStoreProduct && foundStoreProduct.code) {
-                  productCode = foundStoreProduct.code;
-                } else {
-                  productCode = productId; // Bulunamazsa product_id'yi kullan
-                }
-              }
-            } else {
-              productCode = productId; // UUID değilse direkt kullan
-            }
+          const identity = splitInvoiceLineIdentity(item);
+          const productId = identity.productId || String(item.productId || item.product_id || '').trim();
+          let productCode = identity.code;
+          if (!productCode) {
+            productCode = resolveInvoiceLineDisplayCode(
+              { code: item.code, productId, item_code: item.item_code, product_code: item.product_code, barcode: item.barcode },
+              [...products, ...storeProducts],
+              services
+            );
           }
 
           const fc = invoiceEditLineToFormAmounts(item, hdrCur, hdrRate);
@@ -3092,6 +3085,7 @@ export function UniversalInvoiceForm({
             id: item.id || `item-${index}`,
             type: canonicalInvoiceLineType(item.type ?? item.item_type),
             code: productCode,
+            productId: productId || undefined,
             description: item.description || item.productName || item.product_name || '',
             description2: item.description2 || '',
             quantity: q,
@@ -3136,6 +3130,36 @@ export function UniversalInvoiceForm({
     }
     /* editData?.items?.length: getById sonrası kalem sayısı değişince yeniden doldur */
   }, [editData, editData?.items?.length]);
+
+  useEffect(() => {
+    if (!editData) return;
+    const catalog = [...products, ...storeProducts];
+    setItems((prev) => {
+      let changed = false;
+      const next = prev.map((item) => {
+        const needsCode = !item.code || looksLikeUuid(item.code);
+        const pid =
+          (item.productId && looksLikeUuid(item.productId) ? item.productId : '') ||
+          (looksLikeUuid(item.code) ? item.code : '');
+        if (!needsCode) {
+          if (!item.productId && pid) {
+            changed = true;
+            return { ...item, productId: pid };
+          }
+          return item;
+        }
+        const resolved = resolveInvoiceLineDisplayCode(
+          { code: item.code, productId: pid || item.productId },
+          catalog,
+          services
+        );
+        if (resolved === item.code && (pid || item.productId) === item.productId) return item;
+        changed = true;
+        return { ...item, code: resolved, productId: pid || item.productId };
+      });
+      return changed ? next : prev;
+    });
+  }, [editData, products, storeProducts, services]);
 
   // Load suppliers and customers from database
   // Cari yükleme artık fatura türünün KATEGORİSİNE değil İADE YÖNÜNE bakıyor:
@@ -3297,26 +3321,14 @@ export function UniversalInvoiceForm({
   }, []);
 
   // Ürün kodunu bul (product_id ise products listesinden bul)
-  const getProductCode = (itemCode: string): string => {
-    if (!itemCode) return '';
-
-    // Eğer UUID formatındaysa (product_id), products listesinden bul
-    const uuidPattern = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
-    if (uuidPattern.test(itemCode)) {
-      // products listesinden product_id'ye göre bul
-      const product = products.find(p => p.id === itemCode);
-      if (product && product.code) {
-        return product.code;
-      }
-      // storeProducts'tan da dene
-      const storeProduct = storeProducts.find(p => p.id === itemCode);
-      if (storeProduct && storeProduct.code) {
-        return storeProduct.code;
-      }
-    }
-
-    // UUID değilse direkt kodu döndür
-    return itemCode;
+  const getProductCode = (itemCode: string, productId?: string): string => {
+    if (!itemCode && !productId) return '';
+    if (itemCode && !looksLikeUuid(itemCode)) return itemCode;
+    return resolveInvoiceLineDisplayCode(
+      { code: itemCode, productId: productId || itemCode },
+      [...products, ...storeProducts],
+      services
+    );
   };
 
   /** Kod hücresine odak: searchingRowIndex + productSearch input ile hizala (Enter’da stale filtre/odak kayması önlenir) */

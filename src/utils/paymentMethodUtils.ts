@@ -19,7 +19,10 @@ export function dbPaymentMethodToFormCode(raw: unknown): PaymentFormCode | '' {
     lower === 'acik hesap' ||
     lower === 'açık cari' ||
     lower === 'acik cari' ||
-    lower === 'cari'
+    lower === 'cari' ||
+    lower.includes('açık cari') ||
+    lower.includes('acik cari') ||
+    lower.includes('open account')
   ) {
     return 'ACIK_CARI';
   }
@@ -179,14 +182,15 @@ export function paymentMethodImpliesCustomerDebt(pm: string | undefined | null):
   if (code === 'ACIK_CARI') return true;
   const p = String(pm || '').toLowerCase().trim();
   if (!p) return false;
-  if (p === 'veresiye' || p === 'open_account' || p === 'acik_cari' || p === 'açık_cari') return true;
+  if (p === 'credit' || p === 'veresiye' || p === 'open_account' || p === 'acik_cari' || p === 'açık_cari') return true;
   if (p.includes('veresiye')) return true;
   if (
     p === 'cari' ||
-    p === 'açık hesap' ||
-    p === 'acik hesap' ||
-    p === 'açık cari' ||
-    p === 'acik cari'
+    p.includes('açık hesap') ||
+    p.includes('acik hesap') ||
+    p.includes('açık cari') ||
+    p.includes('acik cari') ||
+    p.includes('open account')
   ) {
     return true;
   }

@@ -589,6 +589,8 @@ class StockMovementAPI {
                 movement_date: r.movement_date,
                 status: r.status,
                 trcode: r.trcode,
+                fiche_type: r.fiche_type,
+                source_type: r.source_type,
                 warehouses: { name: r.warehouse_name }
             }
         });
@@ -842,6 +844,7 @@ class StockMovementAPI {
                     sl.status,
                     sl.trcode,
                     sl.fiche_type,
+                    COALESCE(NULLIF(TRIM(sl.customer_name), ''), sl.notes, '') as notes,
                     COALESCE(st.name, 'Merkez Ambar') as warehouse_name,
                     'invoice' as source_type,
                     COALESCE(sl.currency_rate, 1.0) as currency_rate,

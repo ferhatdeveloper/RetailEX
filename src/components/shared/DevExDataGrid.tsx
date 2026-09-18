@@ -26,6 +26,8 @@ import { ActiveFiltersBar, filterOperatorI18nKey, type ActiveFilterChip } from '
 
 const DEFAULT_PAGE_SIZE_OPTIONS = [10, 15, 20, 25, 50, 100];
 const FILTER_MENU_Z_INDEX = 12000;
+/** Sticky dip toplam / sayfalama — tablo gövdesinin üstünde, Kolonlar/huni portal overlay'inin altında */
+const GRID_CHROME_Z_INDEX = 1;
 
 export interface DevExDataGridProps<T> {
   data: T[];
@@ -1020,6 +1022,7 @@ export function DevExDataGrid<T>({
       {((enableColumnVisibility && showColumnVisibilityToolbar) || enableExcelExport) && (
         <div className="flex items-center justify-end gap-2 px-3 py-1.5 bg-gray-50 border border-gray-300 border-b-0 shrink-0">
           {enableColumnVisibility && showColumnVisibilityToolbar && (
+          /* Kolonlar: ColumnVisibilityMenu document.body portal + yüksek z-index; footer/sayfalama altında kalmaz */
           <ColumnVisibilityMenu
             columns={leafColumnsForVisibility.map((col) => {
               const header = col.columnDef.header;
@@ -1075,7 +1078,7 @@ export function DevExDataGrid<T>({
       )}
 
       {/* Table Container */}
-      <div className={`flex-1 overflow-auto border ${darkMode ? 'border-gray-600 bg-gray-800' : 'border-gray-300 bg-white'}`}>
+      <div className={`flex-1 overflow-auto border isolate ${darkMode ? 'border-gray-600 bg-gray-800' : 'border-gray-300 bg-white'}`}>
         <table className="w-full border-collapse">
           <thead className={`sticky top-0 z-30 shadow-[0_1px_0_0_rgba(0,0,0,0.08)] ${headerBg}`}>
             {table.getHeaderGroups().map((headerGroup) => (
@@ -1154,9 +1157,10 @@ export function DevExDataGrid<T>({
           </tbody>
           {showFooterRow && (
             <tfoot
-              className={`sticky bottom-0 z-20 border-t-2 ${
+              className={`sticky bottom-0 border-t-2 ${
                 darkMode ? 'bg-gray-900 border-blue-500' : 'bg-blue-50 border-blue-300'
               }`}
+              style={{ zIndex: GRID_CHROME_Z_INDEX }}
             >
               <tr>
                 {(() => {
@@ -1220,7 +1224,10 @@ export function DevExDataGrid<T>({
 
       {/* Pagination */}
       {enablePagination && (
-        <div className="relative z-20 flex flex-wrap items-center justify-between gap-3 px-4 py-3 bg-white border-t border-gray-200">
+        <div
+          className="relative flex flex-wrap items-center justify-between gap-3 px-4 py-3 bg-white border-t border-gray-200"
+          style={{ zIndex: GRID_CHROME_Z_INDEX }}
+        >
           <div className="flex items-center gap-2 text-sm text-gray-600">
             <span>
               {tm('page')} {table.getState().pagination.pageIndex + 1} {tm('of')} {table.getPageCount()}

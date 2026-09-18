@@ -24,7 +24,15 @@ import {
 import { RestaurantService } from '../../services/restaurant';
 import { beautyService } from '../../services/beautyService';
 import { expenseAPI } from '../../services/api/expenses';
-import { fetchKasaIslemleri } from '../../services/api/kasa';
+import { fetchKasaIslemleri, type KasaIslemi } from '../../services/api/kasa';
+import { userAPI } from '../../services/api/users';
+import { ReportColumnTable } from './shared/ReportDataGrid';
+import {
+  displayUserCashierName,
+  isPlaceholderCashierName,
+  isPlaceholderDeviceName,
+  resolveCashierDisplayName,
+} from '../../utils/loginCashierName';
 import { mergeExpensesWithCashOuts } from '../../utils/reportUnifiedExpenses';
 import type { BeautyAppointment, BeautySale, BeautyStaffTreatmentReport } from '../../types/beauty';
 import { beautyServiceMainKey, beautyServiceSubKey } from '../beauty/beautyServiceCategoryUtils';
@@ -34,15 +42,18 @@ import { ReportDateRangePresets } from '../shared/ReportDateRangePresets';
 import { buildErpServiceBreakdownGroups, type ErpServiceBreakdownLine } from '../../utils/serviceBreakdownReport';
 import {
   addAnalysisSplitAmount,
+  allocateSaleKindAmounts,
   classifyAnalysisSaleLine,
   resolveAnalysisSaleCategory,
+  type SaleKindBucket,
 } from '../../utils/analysisSaleLine';
 import {
   summarizePurchasePromotionReport,
   type PurchasePromotionReportLine,
 } from '../../utils/purchasePromotionReport';
 import { buildPosZReportForRange, isReturnSale } from '../../utils/posZReport';
-import { normalizePaymentMethodBucket } from '../../utils/paymentMethodUtils';
+import { normalizePaymentMethodBucket, paymentMethodBucketTranslationKey } from '../../utils/paymentMethodUtils';
+import { extraCustomerCollectionsNotOnSales, saleCollectedSplit } from '../../utils/saleCollectedAmounts';
 import { BeautyServiceReportCrmModal } from './BeautyServiceReportCrmModal';
 import {
   CariAgingReport,
@@ -180,7 +191,22 @@ function isRestaurantPaymentCashLike(m: string): boolean {
   return /NAK[İI]T|CASH|^cash$/i.test(String(m || ''));
 }
 function isRestaurantPaymentCardLike(m: string): boolean {
-  return /KART|CARD|kredi|credit|gateway/i.test(String(m || ''));
+  return /kredi\s*kart|credit\s*card|\bkart\b|\bcard\b|gateway|\bpos\b/i.test(String(m || ''));
+}
+function isRestaurantPaymentCreditLike(m: string): boolean {
+  const s = String(m || '').trim();
+  if (!s || isRestaurantPaymentCardLike(s)) return false;
+  return /veresiye|açık\s*cari|acik\s*cari|açık\s*hesap|acik\s*hesap|open[\s_-]*account|^credit$|^cari$/i.test(s);
+}
+function restaurantPaymentBucket(pm: string): 'cash' | 'card' | 'credit' | 'other' {
+  if (isRestaurantPaymentCreditLike(pm)) return 'credit';
+  if (isRestaurantPaymentCardLike(pm)) return 'card';
+  if (isRestaurantPaymentCashLike(pm)) return 'cash';
+  return 'other';
+}
+function dailyRowShowsCreditSplit(row: { paymentMethod?: string; remaining?: number }): boolean {
+  if (Number(row.remaining) > 0.009) return true;
+  return normalizePaymentMethodBucket(row.paymentMethod) === 'credit';
 }
 
 /** Rapor yazdırma / Z başlığı için yerel tarih metni (YYYY-MM-DD takvim anahtarları). */
@@ -222,9 +248,7 @@ function restOrderToSaleForReceipt(o: any): Sale {
       total: Number(it.subtotal ?? it.total) || 0,
     }));
   const pm = restOrderPaymentMethod(o);
-  let paymentMethod = 'cash';
-  if (isRestaurantPaymentCardLike(pm)) paymentMethod = 'card';
-  else if (!isRestaurantPaymentCashLike(pm) && String(pm).trim()) paymentMethod = 'transfer';
+  const paymentMethod = restaurantPaymentBucket(pm);
   const id = String(o.id || '');
   return {
     id,
@@ -236,7 +260,7 @@ function restOrderToSaleForReceipt(o: any): Sale {
     discount: Number(o.discount_amount ?? o.discountAmount ?? 0) || 0,
     total: restOrderNetAmount(o),
     paymentMethod,
-    cashier: o.waiter || '-',
+    cashier: isPlaceholderCashierName(o.waiter) ? '—' : String(o.waiter || '').trim() || '—',
     status: 'completed',
   } as Sale;
 }
@@ -267,9 +291,13 @@ function extractBeautyAppointmentIdFromSaleNotes(notes: unknown): string {
   return match?.[1]?.trim().toLowerCase() || '';
 }
 
-function resolveDailyRowDeviceName(value: unknown): string {
-  const raw = String(value ?? '').trim();
-  return raw || '-';
+function resolveDailyRowDeviceName(...values: unknown[]): string {
+  for (const value of values) {
+    const raw = String(value ?? '').trim();
+    if (!raw || isPlaceholderDeviceName(raw)) continue;
+    return raw;
+  }
+  return '—';
 }
 
 /** `closed_at` / `opened_at` null iken `new Date(null)` epoch (1970) üretir; raporda gösterme. */
@@ -527,9 +555,79 @@ type DailyUnifiedRow = {
   paymentMethod: string;
   status?: string;
   cancelReason?: string;
+  collected?: number;
+  remaining?: number;
   erpSale?: Sale;
   restOrder?: any;
+  kind: SaleKindBucket;
+  serviceTotal: number;
+  productTotal: number;
+  serviceDiscount: number;
+  productDiscount: number;
+  serviceBefore: number;
+  productBefore: number;
 };
+
+type DailyKindFilter = 'all' | 'service' | 'product';
+
+function dailyKindAmountShare(row: DailyUnifiedRow, filter: DailyKindFilter): number {
+  if (filter === 'all') return 1;
+  const serviceAmt = Math.abs(Number(row.serviceTotal) || 0);
+  const productAmt = Math.abs(Number(row.productTotal) || 0);
+  const sum = serviceAmt + productAmt;
+  if (sum < 0.0001) return 0;
+  return filter === 'service' ? serviceAmt / sum : productAmt / sum;
+}
+
+function applyDailyKindFilter(row: DailyUnifiedRow, filter: DailyKindFilter): DailyUnifiedRow | null {
+  if (filter === 'all') return row;
+  const share = dailyKindAmountShare(row, filter);
+  if (filter === 'service') {
+    if (Math.abs(Number(row.serviceTotal) || 0) < 0.0001) return null;
+    return {
+      ...row,
+      kind: 'service',
+      total: row.serviceTotal,
+      discount: row.serviceDiscount,
+      beforeDiscount: row.serviceBefore,
+      collected: (Number(row.collected) || 0) * share,
+      remaining: (Number(row.remaining) || 0) * share,
+    };
+  }
+  if (Math.abs(Number(row.productTotal) || 0) < 0.0001) return null;
+  return {
+    ...row,
+    kind: 'product',
+    total: row.productTotal,
+    discount: row.productDiscount,
+    beforeDiscount: row.productBefore,
+    collected: (Number(row.collected) || 0) * share,
+    remaining: (Number(row.remaining) || 0) * share,
+  };
+}
+
+function kindFieldsFromItems(
+  items: Array<{ productId?: string; productName?: string; lineType?: string; item_type?: string; total?: number }>,
+  headerNet: number,
+  headerDiscount: number,
+  headerBefore: number,
+  products: Array<Pick<Product, 'id' | 'code' | 'name' | 'isService' | 'materialType'>>,
+  serviceKeys?: Set<string>,
+): Pick<
+  DailyUnifiedRow,
+  'kind' | 'serviceTotal' | 'productTotal' | 'serviceDiscount' | 'productDiscount' | 'serviceBefore' | 'productBefore'
+> {
+  const split = allocateSaleKindAmounts(items, headerNet, headerDiscount, headerBefore, products, serviceKeys);
+  return {
+    kind: split.kind,
+    serviceTotal: split.serviceNet,
+    productTotal: split.productNet,
+    serviceDiscount: split.serviceDiscount,
+    productDiscount: split.productDiscount,
+    serviceBefore: split.serviceBefore,
+    productBefore: split.productBefore,
+  };
+}
 
 /** Günlük rapor gider satırı: gider pusulası + kasa çıkışları (maaş/avans/cari). */
 type DailyExpenseRow = {
@@ -821,11 +919,14 @@ export function ReportsModule({
   const [refreshingReports, setRefreshingReports] = useState(false);
   const [lastReportRefreshAt, setLastReportRefreshAt] = useState<Date | null>(null);
   const [dailyShowOnlyRemoved, setDailyShowOnlyRemoved] = useState(false);
+  const [dailyKindFilter, setDailyKindFilter] = useState<DailyKindFilter>('all');
+  const [userNameById, setUserNameById] = useState<Map<string, string>>(() => new Map());
   const [reportConfirmOpen, setReportConfirmOpen] = useState(false);
   const [reportConfirmMessage, setReportConfirmMessage] = useState('');
   const [reportConfirmReason, setReportConfirmReason] = useState('');
   const reportConfirmResolverRef = useRef<((result: { approved: boolean; reason: string }) => void) | null>(null);
   const [cashExpensesForSelectedDate, setCashExpensesForSelectedDate] = useState(0);
+  const [kasaLinesForSelectedDate, setKasaLinesForSelectedDate] = useState<KasaIslemi[]>([]);
   const [totalExpensesForSelectedDate, setTotalExpensesForSelectedDate] = useState(0);
   const [dailyExpenseRows, setDailyExpenseRows] = useState<DailyExpenseRow[]>([]);
   const [comparisonPeriod, setComparisonPeriod] = useState<'week' | 'month'>('week');
@@ -972,10 +1073,12 @@ export function ReportsModule({
       setDailyExpenseRows(unified);
       setCashExpensesForSelectedDate(totalCash);
       setTotalExpensesForSelectedDate(totalAll);
+      setKasaLinesForSelectedDate(Array.isArray(cashLines) ? cashLines : []);
     } catch {
       setDailyExpenseRows([]);
       setCashExpensesForSelectedDate(0);
       setTotalExpensesForSelectedDate(0);
+      setKasaLinesForSelectedDate([]);
     }
   }, [selectedDateFrom, selectedDateTo]);
 
@@ -1175,6 +1278,23 @@ export function ReportsModule({
     }
     return keys;
   }, [beautyServicesCatalog, erpServiceCards]);
+
+  useEffect(() => {
+    let cancelled = false;
+    void userAPI.getAll().then((users) => {
+      if (cancelled) return;
+      const m = new Map<string, string>();
+      for (const u of users) {
+        const name = displayUserCashierName({ full_name: u.full_name, username: u.username });
+        if (u.id && name && !isPlaceholderCashierName(name)) m.set(String(u.id), name);
+      }
+      setUserNameById(m);
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
   const beautyMainCategoryOptions = useMemo(() => {
     const keys = new Set<string>();
     for (const s of beautyServicesCatalog) {
@@ -2199,28 +2319,16 @@ export function ReportsModule({
     (sum, s) => sum + Math.abs(Number(s.total) || 0),
     0,
   );
-  const dailyReturnCashLocal = dailyReturnRowsLocal
-    .filter((s) => normalizePaymentMethodBucket(s.paymentMethod) === 'cash')
-    .reduce((sum, s) => sum + Math.abs(Number(s.total) || 0), 0);
-  const dailyReturnCardLocal = dailyReturnRowsLocal
-    .filter((s) => normalizePaymentMethodBucket(s.paymentMethod) === 'card')
-    .reduce((sum, s) => sum + Math.abs(Number(s.total) || 0), 0);
   if (businessType === 'restaurant') {
     /** Perakende Satışlar / fatura listesi ile aynı tutar: önce ERP `sales` (REST-* dahil); yoksa yalnız kapalı adisyon */
     if (dailySalesActive.length > 0) {
       const grossTotal = dailySalesActive.reduce((sum, s) => sum + (Number(s.total) || 0), 0);
       dailyTotal = grossTotal - dailyReturnTotalLocal;
-      const grossCash = dailySalesActive
-        .filter((s) => normalizePaymentMethodBucket(s.paymentMethod) === 'cash')
-        .reduce((sum, s) => sum + (Number(s.total) || 0), 0);
-      const grossCard = dailySalesActive
-        .filter((s) => {
-          const b = normalizePaymentMethodBucket(s.paymentMethod);
-          return b === 'card';
-        })
-        .reduce((sum, s) => sum + (Number(s.total) || 0), 0);
-      dailyCash = grossCash - dailyReturnCashLocal;
-      dailyCard = grossCard - dailyReturnCardLocal;
+      // İade satırında total negatif; split.cash zaten işaretli — tekrar düşme
+      dailyCash = dailySalesActive
+        .reduce((sum, s) => sum + (Number(saleCollectedSplit(s).cash) || 0), 0);
+      dailyCard = dailySalesActive
+        .reduce((sum, s) => sum + (Number(saleCollectedSplit(s).card) || 0), 0);
       dailyDiscount = dailySalesActive.reduce((sum, s) => sum + (Number(s.discount) || 0), 0);
     } else {
       // Restoran adisyonlarında iade kavramı `trcode=3` ile ayrı ele alınmaz; mevcut brüt toplam korunur.
@@ -2229,9 +2337,12 @@ export function ReportsModule({
       let restCard = 0;
       restOrdersClosedOnSelectedDate.forEach((o: any) => {
         const n = restOrderNetAmount(o);
-        const pm = String(o.payment_method ?? 'NAKİT');
-        if (isRestaurantPaymentCashLike(pm)) restCash += n;
-        else if (isRestaurantPaymentCardLike(pm)) restCard += n;
+        const split = saleCollectedSplit({
+          total: n,
+          paymentMethod: restaurantPaymentBucket(restOrderPaymentMethod(o)),
+        });
+        restCash += Number(split.cash) || 0;
+        restCard += Number(split.card) || 0;
       });
       dailyCash = restCash;
       dailyCard = restCard;
@@ -2243,87 +2354,132 @@ export function ReportsModule({
   } else {
     const grossTotal = dailySalesActive.reduce((sum, s) => sum + s.total, 0);
     dailyTotal = grossTotal - dailyReturnTotalLocal;
-    const grossCash = dailySalesActive
-      .filter((s) => normalizePaymentMethodBucket(s.paymentMethod) === 'cash')
-      .reduce((sum, s) => sum + s.total, 0);
-    const grossCard = dailySalesActive
-      .filter((s) => normalizePaymentMethodBucket(s.paymentMethod) === 'card')
-      .reduce((sum, s) => sum + s.total, 0);
-    dailyCash = grossCash - dailyReturnCashLocal;
-    dailyCard = grossCard - dailyReturnCardLocal;
+    dailyCash = dailySalesActive
+      .reduce((sum, s) => sum + (Number(saleCollectedSplit(s).cash) || 0), 0);
+    dailyCard = dailySalesActive
+      .reduce((sum, s) => sum + (Number(saleCollectedSplit(s).card) || 0), 0);
     dailyDiscount = dailySalesActive.reduce((sum, s) => sum + s.discount, 0);
   }
 
+  const extraCollections = extraCustomerCollectionsNotOnSales(
+    kasaLinesForSelectedDate,
+    dailySalesActive,
+  );
+  dailyCash += extraCollections;
+
+  const dailyCollected =
+    dailySalesActive.reduce((sum, s) => {
+      if (isReturnSale(s)) return sum;
+      return sum + (Number(saleCollectedSplit(s).collected) || 0);
+    }, 0) + extraCollections;
+  const dailyRemaining = dailySalesActive.reduce((sum, s) => {
+    if (isReturnSale(s)) return sum;
+    return sum + (Number(saleCollectedSplit(s).remaining) || 0);
+  }, 0);
+
   /** Günlük tablo + özet kartlar: restoranda Perakende Satışlar (ERP) ile birebir; ERP yoksa kapalı adisyonlar */
   const dailyUnifiedRows = useMemo((): DailyUnifiedRow[] => {
-    if (businessType !== 'restaurant') {
-      return dailySales.map((s) => ({
+    const mapErpSale = (s: Sale): DailyUnifiedRow => {
+      const split = saleCollectedSplit(s);
+      const net = Number(s.total) || 0;
+      const discount = Number(s.discount) || 0;
+      const before = erpSaleBeforeDiscount(s);
+      return {
         key: `erp-${s.id}`,
         source: 'erp' as const,
         receiptNumber: s.receiptNumber,
         date: s.date,
-        cashier: s.cashier,
+        cashier: resolveCashierDisplayName(s.cashier, s.userId, userNameById),
         deviceName: resolveDailyRowDeviceName(
-          (s as any).beautyDeviceName ?? (s as any).device_name ?? (s as any).terminal_name ?? s.storeId
+          (s as Sale & { beautyDeviceName?: string; device_name?: string; terminal_name?: string }).beautyDeviceName,
+          (s as Sale & { device_name?: string }).device_name,
+          (s as Sale & { terminal_name?: string }).terminal_name,
+          s.storeId,
         ),
         customerName: s.customerName,
-        beforeDiscount: erpSaleBeforeDiscount(s),
-        total: Number(s.total) || 0,
-        discount: Number(s.discount) || 0,
+        beforeDiscount: before,
+        total: net,
+        discount,
         paymentMethod: normalizePaymentMethodBucket(s.paymentMethod),
         status: String(s.status ?? 'completed'),
         cancelReason: extractCancelReason(s.notes),
+        collected: split.collected,
+        remaining: split.remaining,
         erpSale: s,
-      }));
+        ...kindFieldsFromItems(
+          (s.items || []).map((it) => ({
+            productId: it.productId,
+            productName: it.productName,
+            lineType: it.lineType,
+            item_type: (it as { item_type?: string }).item_type,
+            total: Number(it.total) || 0,
+          })),
+          net,
+          discount,
+          before,
+          catalogProducts,
+          analysisServiceKeys,
+        ),
+      };
+    };
+
+    if (businessType !== 'restaurant') {
+      return dailySales.map(mapErpSale);
     }
     if (dailySales.length > 0) {
       return dailySales
-        .map((s) => ({
-          key: `erp-${s.id}`,
-          source: 'erp' as const,
-          receiptNumber: s.receiptNumber,
-          date: s.date,
-          cashier: s.cashier,
-          deviceName: resolveDailyRowDeviceName(
-            (s as any).beautyDeviceName ?? (s as any).device_name ?? (s as any).terminal_name ?? s.storeId
-          ),
-          customerName: s.customerName,
-          beforeDiscount: erpSaleBeforeDiscount(s),
-          total: Number(s.total) || 0,
-          discount: Number(s.discount) || 0,
-          paymentMethod: normalizePaymentMethodBucket(s.paymentMethod),
-          status: String(s.status ?? 'completed'),
-          cancelReason: extractCancelReason(s.notes),
-          erpSale: s,
-        }))
+        .map(mapErpSale)
         .sort((a, b) => new Date(a.date).getTime() - new Date(b.date).getTime());
     }
     return restOrdersClosedOnSelectedDate
       .map((o: any) => {
-        const pm = String(o.payment_method ?? 'NAKİT');
-        let paymentMethod = 'other';
-        if (isRestaurantPaymentCashLike(pm)) paymentMethod = 'cash';
-        else if (isRestaurantPaymentCardLike(pm)) paymentMethod = 'card';
+        const pm = restOrderPaymentMethod(o);
+        const paymentMethod = restaurantPaymentBucket(pm);
         const disc = Number(o.discount_amount ?? o.discountAmount ?? 0) || 0;
         const net = restOrderNetAmount(o);
+        const before = restOrderBeforeDiscount(o);
+        const split = saleCollectedSplit({ total: net, paymentMethod });
+        const restItems = (Array.isArray(o.items) ? o.items : [])
+          .filter((it: any) => it?.is_void !== true)
+          .map((it: any) => ({
+            productId: String(it.product_id ?? it.productId ?? ''),
+            productName: String(it.product_name ?? it.productName ?? ''),
+            lineType: String(it.line_type ?? it.lineType ?? it.item_type ?? ''),
+            item_type: String(it.item_type ?? ''),
+            total: Number(it.subtotal ?? it.total ?? 0),
+          }));
         return {
           key: `rest-${o.id}`,
           source: 'rest' as const,
           receiptNumber: String(o.order_no || `ADİSYON-${String(o.id).slice(0, 8)}`),
           date: o.closed_at || o.closedAt || o.opened_at,
-          cashier: o.waiter || '-',
-          deviceName: resolveDailyRowDeviceName((o as any).device_name ?? (o as any).terminal_name ?? (o as any).table_no),
+          cashier: resolveCashierDisplayName(o.waiter, o.user_id ?? o.created_by, userNameById),
+          deviceName: resolveDailyRowDeviceName(
+            (o as any).device_name,
+            (o as any).terminal_name,
+            (o as any).table_no,
+          ),
           customerName: o.customer_name || '-',
-          beforeDiscount: restOrderBeforeDiscount(o),
+          beforeDiscount: before,
           total: net,
           discount: disc,
           paymentMethod,
           status: 'completed',
+          collected: split.collected,
+          remaining: split.remaining,
           restOrder: o,
+          ...kindFieldsFromItems(restItems, net, disc, before, catalogProducts, analysisServiceKeys),
         };
       })
       .sort((a, b) => new Date(a.date).getTime() - new Date(b.date).getTime());
-  }, [businessType, dailySales, restOrdersClosedOnSelectedDate]);
+  }, [
+    businessType,
+    dailySales,
+    restOrdersClosedOnSelectedDate,
+    userNameById,
+    catalogProducts,
+    analysisServiceKeys,
+  ]);
 
   const dailySalesForAi = useMemo((): Sale[] => {
     if (businessType !== 'restaurant') return dailySales;
@@ -2339,7 +2495,7 @@ export function ReportsModule({
           discount: r.discount ?? 0,
           total: r.total,
           paymentMethod: r.paymentMethod === 'other' ? 'transfer' : r.paymentMethod,
-          cashier: r.cashier || '-',
+          cashier: isPlaceholderCashierName(r.cashier) ? '—' : r.cashier || '—',
           status: 'completed',
         }) as Sale
     );
@@ -2350,10 +2506,91 @@ export function ReportsModule({
     return dailyUnifiedRows.filter((r) => isRemovedSaleStatus(r.status));
   }, [dailyUnifiedRows, dailyShowOnlyRemoved]);
 
+  const dailyKindVisibleRows = useMemo(() => {
+    const out: DailyUnifiedRow[] = [];
+    for (const row of dailyVisibleRows) {
+      const next = applyDailyKindFilter(row, dailyKindFilter);
+      if (next) out.push(next);
+    }
+    return out;
+  }, [dailyVisibleRows, dailyKindFilter]);
+
   const dailyActiveRows = useMemo(
     () => dailyUnifiedRows.filter((r) => !isRemovedSaleStatus(r.status)),
     [dailyUnifiedRows]
   );
+
+  const dailyKindActiveRows = useMemo(() => {
+    const out: DailyUnifiedRow[] = [];
+    for (const row of dailyActiveRows) {
+      const next = applyDailyKindFilter(row, dailyKindFilter);
+      if (next) out.push(next);
+    }
+    return out;
+  }, [dailyActiveRows, dailyKindFilter]);
+
+  const dailyKindGridRows = useMemo(() => {
+    const kindLabel = (kind: SaleKindBucket) => {
+      if (kind === 'service') return tm('reportsDailyKindService');
+      if (kind === 'product') return tm('reportsDailyKindProduct');
+      if (kind === 'mixed') return tm('reportsDailyKindMixed');
+      return tm('reportsDailyKindAll');
+    };
+    return dailyKindVisibleRows.map((row) => {
+      const parsed = new Date(row.date);
+      const hour = Number.isNaN(parsed.getTime())
+        ? String(row.date || '')
+        : parsed.toLocaleTimeString('tr-TR');
+      const bucket = normalizePaymentMethodBucket(row.paymentMethod);
+      const st = String(row.status ?? 'completed').toLowerCase();
+      const isCancelled = st === 'cancelled' || st === 'canceled';
+      const isRefunded = st === 'refunded';
+      const isReturn = st === 'return';
+      return {
+        ...row,
+        hour,
+        kindLabel: kindLabel(row.kind),
+        paymentLabel: tm(paymentMethodBucketTranslationKey(bucket)),
+        statusLabel: isReturn
+          ? 'Satış İade'
+          : isCancelled
+            ? tm('reportsDetStatusCancelled')
+            : isRefunded
+              ? tm('reportsDetStatusRefunded')
+              : tm('reportsDetStatusCompleted'),
+      };
+    });
+  }, [dailyKindVisibleRows, tm]);
+
+  const dailyExpenseGridRows = useMemo(() => {
+    return dailyExpenseRows.map((row) => {
+      const dateRaw = String(row.date || '');
+      const parsed = new Date(dateRaw);
+      const timeLabel = Number.isNaN(parsed.getTime())
+        ? (dateRaw.slice(11, 19) || dateRaw.slice(0, 10) || '—')
+        : selectedDateFrom !== selectedDateTo
+          ? parsed.toLocaleString('tr-TR')
+          : /^\d{4}-\d{2}-\d{2}$/.test(dateRaw.slice(0, 10)) && dateRaw.length <= 10
+            ? '—'
+            : parsed.toLocaleTimeString('tr-TR');
+      const bucket = normalizePaymentMethodBucket(row.paymentMethod);
+      const payLabel =
+        row.isCash || bucket === 'cash'
+          ? tm('cashLabel')
+          : bucket === 'card'
+            ? tm('cardLabel')
+            : bucket === 'transfer'
+              ? tm('reportsPaymentPieTransfer')
+              : tm('reportsPaymentOther');
+      return {
+        ...row,
+        timeLabel,
+        typeLabel: labelDailyExpenseType(row.typeCode),
+        category: row.category || row.partyName || '—',
+        payLabel,
+      };
+    });
+  }, [dailyExpenseRows, selectedDateFrom, selectedDateTo, tm, labelDailyExpenseType]);
 
   const dailyReturnRows = useMemo(
     () => dailySales.filter((s) => isReturnSale(s)),
@@ -2393,13 +2630,26 @@ export function ReportsModule({
           (selectedFirm?.nr != null ? String(selectedFirm.nr).padStart(3, '0') : undefined);
         const rs = await getReceiptSettings(firmNrForReceipt);
         const total = Number(sale.total) || 0;
-        const pm = String(sale.paymentMethod || 'cash').toLowerCase();
-        const methodForReceipt = pm === 'card' || pm === 'gateway' ? 'card' : pm === 'veresiye' ? 'veresiye' : 'cash';
+        const bucket = normalizePaymentMethodBucket(sale.paymentMethod);
+        const methodForReceipt =
+          bucket === 'card' ? 'card'
+            : bucket === 'credit' ? 'veresiye'
+              : bucket === 'transfer' ? 'transfer'
+                : bucket === 'cash' ? 'cash'
+                  : 'veresiye';
+        const split = saleCollectedSplit(sale);
+        const receiptPayments = Array.isArray(sale.payments) && sale.payments.length > 0 && Math.abs(split.collected) > 1e-9
+          ? sale.payments.map((p) => ({
+              method: String(p.method || methodForReceipt),
+              amount: Number(p.amount) || 0,
+              currency: p.currency || reportCurrency || 'IQD',
+            }))
+          : [{ method: methodForReceipt, amount: total, currency: reportCurrency || 'IQD' }];
         const html = buildReceipt80mmPrintHtml({
           sale,
           paymentData: {
-            payments: [{ method: methodForReceipt, amount: total, currency: reportCurrency || 'IQD' }],
-            totalPaid: total,
+            payments: receiptPayments,
+            totalPaid: receiptPayments.reduce((s, p) => s + (Number(p.amount) || 0), 0),
             change: Number(sale.change) || 0,
           },
           receiptSettings: rs,
@@ -2547,12 +2797,16 @@ export function ReportsModule({
         return buildFromErpSales();
       }
       const totalAmount = restOrdersClosedOnSelectedDate.reduce((sum, o) => sum + restOrderNetAmount(o), 0);
-      const cashAmount = restOrdersClosedOnSelectedDate
-        .filter((o: any) => isRestaurantPaymentCashLike(String(o.payment_method ?? 'NAKİT')))
-        .reduce((sum, o) => sum + restOrderNetAmount(o), 0);
-      const cardAmount = restOrdersClosedOnSelectedDate
-        .filter((o: any) => isRestaurantPaymentCardLike(String(o.payment_method ?? '')))
-        .reduce((sum, o) => sum + restOrderNetAmount(o), 0);
+      let cashAmount = 0;
+      let cardAmount = 0;
+      restOrdersClosedOnSelectedDate.forEach((o: any) => {
+        const split = saleCollectedSplit({
+          total: restOrderNetAmount(o),
+          paymentMethod: restaurantPaymentBucket(restOrderPaymentMethod(o)),
+        });
+        cashAmount += Number(split.cash) || 0;
+        cardAmount += Number(split.card) || 0;
+      });
       const totalDiscount = restOrdersClosedOnSelectedDate.reduce(
         (sum, o) => sum + Number((o as any).discount_amount || 0),
         0
@@ -2685,17 +2939,26 @@ export function ReportsModule({
     let transferCnt = 0;
     for (const row of dailyActiveRows) {
       const n = Number(row.total) || 0;
-      if (n <= 0) continue;
-      if (row.paymentMethod === 'cash') {
-        cashAmt += n;
+      if (n === 0) continue;
+      const split = row.erpSale
+        ? saleCollectedSplit(row.erpSale)
+        : saleCollectedSplit({ total: n, paymentMethod: row.paymentMethod });
+      if (split.cash > 0) {
+        cashAmt += split.cash;
         cashCnt += 1;
-      } else if (row.paymentMethod === 'card' || row.paymentMethod === 'gateway') {
-        cardAmt += n;
+      }
+      if (split.card > 0) {
+        cardAmt += split.card;
         cardCnt += 1;
-      } else {
-        transferAmt += n;
+      }
+      if (split.transfer > 0) {
+        transferAmt += split.transfer;
         transferCnt += 1;
       }
+    }
+    if (extraCollections > 0) {
+      cashAmt += extraCollections;
+      cashCnt += 1;
     }
     return finalize(cashAmt, cashCnt, cardAmt, cardCnt, transferAmt, transferCnt);
   };
@@ -2703,7 +2966,8 @@ export function ReportsModule({
   const getCashierPerformance = () => {
     const cashierMap = new Map<string, any>();
     dailyActiveRows.forEach((row) => {
-      const name = String(row.cashier || '').trim() || 'Bilinmeyen Kasiyer';
+      const rawName = String(row.cashier || '').trim();
+      const name = rawName && !isPlaceholderCashierName(rawName) ? rawName : '—';
       const existing = cashierMap.get(name) || { name, salesCount: 0, totalRevenue: 0, avgSale: 0, cashSales: 0, cardSales: 0 };
       existing.salesCount += 1;
       // B1: Kasiyer cirosu net (iade düşülmüş) — `dailyActiveRows` zaten iadeleri
@@ -2712,8 +2976,11 @@ export function ReportsModule({
       const net = Number(row.total) || 0;
       existing.totalRevenue += net;
       existing.avgSale = existing.totalRevenue / existing.salesCount;
-      if (row.paymentMethod === 'cash') existing.cashSales += net;
-      else if (row.paymentMethod === 'card' || row.paymentMethod === 'gateway') existing.cardSales += net;
+      const split = row.erpSale
+        ? saleCollectedSplit(row.erpSale)
+        : saleCollectedSplit({ total: net, paymentMethod: row.paymentMethod });
+      existing.cashSales += Number(split.cash) || 0;
+      existing.cardSales += Number(split.card) || 0;
       cashierMap.set(name, existing);
     });
     return Array.from(cashierMap.values()).sort((a, b) => b.totalRevenue - a.totalRevenue);
@@ -2723,13 +2990,12 @@ export function ReportsModule({
   const computeDayReportStats = () => {
     const totalSales = dailyActiveRows.reduce((sum, r) => sum + r.total, 0);
     const payments = dailyActiveRows.reduce((acc: Record<string, number>, r) => {
-      const bucket =
-        r.paymentMethod === 'cash'
-          ? 'NAKİT'
-          : r.paymentMethod === 'card' || r.paymentMethod === 'gateway'
-            ? 'POS'
-            : String(r.paymentMethod || 'DİĞER').toUpperCase();
-      acc[bucket] = (acc[bucket] || 0) + r.total;
+      const split = r.erpSale
+        ? saleCollectedSplit(r.erpSale)
+        : saleCollectedSplit({ total: Number(r.total) || 0, paymentMethod: r.paymentMethod });
+      acc['NAKİT'] = (acc['NAKİT'] || 0) + (split.cash || 0);
+      acc['POS'] = (acc['POS'] || 0) + (split.card || 0);
+      if (split.remaining > 0) acc['VERESİYE'] = (acc['VERESİYE'] || 0) + split.remaining;
       return acc;
     }, {});
     const discountTotal = dailyActiveRows.reduce((sum, r) => sum + (Number(r.discount) || 0), 0);
@@ -3426,26 +3692,63 @@ export function ReportsModule({
       selectedDateFrom === selectedDateTo ? selectedDateFrom : `${selectedDateFrom} – ${selectedDateTo}`;
 
     const removedRows = dailyUnifiedRows.filter((r) => isRemovedSaleStatus(r.status));
+    const kindPrintLabel = (kind: SaleKindBucket) => {
+      if (kind === 'service') return L('reportsDailyKindService');
+      if (kind === 'product') return L('reportsDailyKindProduct');
+      if (kind === 'mixed') return L('reportsDailyKindMixed');
+      return L('reportsDailyKindAll');
+    };
+    const printKindFilterLabel =
+      dailyKindFilter === 'service'
+        ? L('reportsDailyKindService')
+        : dailyKindFilter === 'product'
+          ? L('reportsDailyKindProduct')
+          : L('reportsDailyKindAll');
+    const printNet = dailyKindActiveRows.reduce((sum, r) => sum + (Number(r.total) || 0), 0);
+    const printDisc = dailyKindActiveRows.reduce((sum, r) => sum + (Number(r.discount) || 0), 0);
+    let printCash = dailyCash;
+    let printCard = dailyCard;
+    if (dailyKindFilter !== 'all') {
+      printCash = 0;
+      printCard = 0;
+      for (const row of dailyKindActiveRows) {
+        const share = dailyKindAmountShare(row, dailyKindFilter);
+        const split = row.erpSale
+          ? saleCollectedSplit(row.erpSale)
+          : saleCollectedSplit({ total: Number(row.total) || 0, paymentMethod: row.paymentMethod });
+        printCash += (Number(split.cash) || 0) * share;
+        printCard += (Number(split.card) || 0) * share;
+      }
+    }
 
-    const saleRowsA4 = dailyActiveRows
+    const dailyPrintPayLabel = (row: DailyUnifiedRow) =>
+      L(paymentMethodBucketTranslationKey(normalizePaymentMethodBucket(row.paymentMethod)));
+    const dailyPrintNetCell = (row: DailyUnifiedRow) => {
+      const netTxt = formatNumber(row.total, 2, false);
+      if (!dailyRowShowsCreditSplit(row)) return netTxt;
+      const remaining = Number(row.remaining) > 0.009
+        ? Number(row.remaining)
+        : Number(row.total) || 0;
+      return `${netTxt}<div style="font-size:10px;color:#b45309">${escHtml(L('tahsilEdilen'))}: ${formatNumber(Number(row.collected) || 0, 2, false)} · ${escHtml(L('kalanCari'))}: ${formatNumber(remaining, 2, false)}</div>`;
+    };
+
+    const saleRowsA4 = dailyKindActiveRows
       .map((row) => {
-        const pmLabel =
-          row.paymentMethod === 'cash'
-            ? L('cashLabel')
-            : row.paymentMethod === 'card' || row.paymentMethod === 'gateway'
-              ? L('cardLabel')
-              : L('reportsPaymentOther');
+        const pmLabel = dailyPrintPayLabel(row);
         const before = row.beforeDiscount ?? ((Number(row.total) || 0) + (Number(row.discount) || 0));
+        const cashier = isPlaceholderCashierName(row.cashier) ? '—' : String(row.cashier || '').trim() || '—';
+        const device = isPlaceholderDeviceName(row.deviceName) ? '—' : String(row.deviceName || '').trim() || '—';
         return `
         <tr>
           <td>${escHtml(row.receiptNumber)}</td>
           <td>${escHtml(new Date(row.date).toLocaleTimeString('tr-TR'))}</td>
-          <td>${escHtml(row.cashier || '—')}</td>
-          <td>${escHtml(row.deviceName || '—')}</td>
+          <td>${escHtml(kindPrintLabel(row.kind))}</td>
+          <td>${escHtml(cashier)}</td>
+          <td>${escHtml(device)}</td>
           <td>${escHtml(row.customerName || '—')}</td>
           <td style="text-align:right">${formatNumber(before, 2, false)}</td>
           <td style="text-align:right">${formatNumber(row.discount ?? 0, 2, false)}</td>
-          <td style="text-align:right">${formatNumber(row.total, 2, false)}</td>
+          <td style="text-align:right">${dailyPrintNetCell(row)}</td>
           <td>${pmLabel}</td>
         </tr>`;
       })
@@ -3471,24 +3774,28 @@ export function ReportsModule({
         </table>`;
     }
 
-    const saleBlocks80 = dailyActiveRows
+    const saleBlocks80 = dailyKindActiveRows
       .map((row) => {
-        const pm =
-          row.paymentMethod === 'cash'
-            ? L('cashLabel')
-            : row.paymentMethod === 'card' || row.paymentMethod === 'gateway'
-              ? L('cardLabel')
-              : L('reportsPaymentOther');
+        const pm = dailyPrintPayLabel(row);
         const net = formatNumber(row.total, 2, false);
         const disc = formatNumber(row.discount ?? 0, 2, false);
         const before = formatNumber(row.beforeDiscount ?? ((Number(row.total) || 0) + (Number(row.discount) || 0)), 2, false);
+        const cashier = isPlaceholderCashierName(row.cashier) ? '—' : String(row.cashier || '').trim() || '—';
+        const device = isPlaceholderDeviceName(row.deviceName) ? '—' : String(row.deviceName || '').trim() || '—';
+        const remaining = Number(row.remaining) > 0.009
+          ? Number(row.remaining)
+          : Number(row.total) || 0;
+        const creditLine = dailyRowShowsCreditSplit(row)
+          ? `<div class="row sub"><span>${escHtml(L('tahsilEdilen'))} / ${escHtml(L('kalanCari'))}</span><span>${formatNumber(Number(row.collected) || 0, 2, false)} / ${formatNumber(remaining, 2, false)}</span></div>`
+          : '';
         return `
     <div class="sale-block">
       <div class="row"><span class="wrap">${escHtml(row.receiptNumber)}</span><span>${escHtml(new Date(row.date).toLocaleTimeString('tr-TR'))}</span></div>
-      <div class="sub wrap">${escHtml(row.cashier || '—')} · ${escHtml(row.deviceName || '—')} · ${escHtml(row.customerName || '—')}</div>
+      <div class="sub wrap">${escHtml(kindPrintLabel(row.kind))} · ${escHtml(cashier)} · ${escHtml(device)} · ${escHtml(row.customerName || '—')}</div>
       <div class="row"><span>${escHtml(L('reportsPrintBefore'))}</span><span>${before}</span></div>
       <div class="row"><span>${escHtml(L('reportsColDiscount'))}</span><span>${disc}</span></div>
       <div class="row bold"><span>${escHtml(L('reportsPrintNetWithPm').replace('{pm}', pm))}</span><span>${net}</span></div>
+      ${creditLine}
     </div>
     <div class="divider light"></div>`;
       })
@@ -3529,7 +3836,7 @@ export function ReportsModule({
       .join('');
 
     const emptySales80 =
-      dailyActiveRows.length === 0
+      dailyKindActiveRows.length === 0
         ? `<div class="center muted" style="margin:3mm 0">${escHtml(L('reportsPrintNoRecords'))}</div>`
         : saleBlocks80;
 
@@ -3598,21 +3905,21 @@ export function ReportsModule({
   .t thead { background: #f8fafc; }
 </style></head><body>
   <h1>${escHtml(L('reportsPrintDailyTitle'))}</h1>
-  <p class="muted">${escHtml(dateLabel)}</p>
+  <p class="muted">${escHtml(dateLabel)} · ${escHtml(printKindFilterLabel)}</p>
   <div class="grid">
-    <div class="card"><div>${escHtml(L('reportsPrintSummaryTxnCount'))}</div><strong>${dailyActiveRows.length}</strong></div>
+    <div class="card"><div>${escHtml(L('reportsPrintSummaryTxnCount'))}</div><strong>${dailyKindActiveRows.length}</strong></div>
     <div class="card"><div>${escHtml(`${L('reportsDetStatusCancelled')} / ${L('reportsDetStatusRefunded')}`)}</div><strong>${removedRows.length}</strong></div>
-    <div class="card"><div>${escHtml(L('reportsPrintSummaryTotalRev'))}</div><strong>${formatNumber(dailyTotal, 2, false)}</strong></div>
-    <div class="card"><div>${escHtml(L('reportsPrintSummaryTotalDisc'))}</div><strong>${formatNumber(dailyDiscount, 2, false)}</strong></div>
-    <div class="card"><div>${escHtml(L('cashLabel'))}</div><strong>${formatNumber(dailyCash, 2, false)}</strong></div>
-    <div class="card"><div>${escHtml(L('cardLabel'))}</div><strong>${formatNumber(dailyCard, 2, false)}</strong></div>
+    <div class="card"><div>${escHtml(L('reportsPrintSummaryTotalRev'))}</div><strong>${formatNumber(printNet, 2, false)}</strong></div>
+    <div class="card"><div>${escHtml(L('reportsPrintSummaryTotalDisc'))}</div><strong>${formatNumber(printDisc, 2, false)}</strong></div>
+    <div class="card"><div>${escHtml(L('cashLabel'))}</div><strong>${formatNumber(printCash, 2, false)}</strong></div>
+    <div class="card"><div>${escHtml(L('cardLabel'))}</div><strong>${formatNumber(printCard, 2, false)}</strong></div>
     <div class="card"><div>${escHtml(L('totalExpense'))}</div><strong>${formatNumber(totalExpensesForSelectedDate, 2, false)}</strong></div>
-    <div class="card"><div>${escHtml(L('dailyNetAfterExpense'))}</div><strong>${formatNumber(dailyTotal - totalExpensesForSelectedDate, 2, false)}</strong></div>
+    <div class="card"><div>${escHtml(L('dailyNetAfterExpense'))}</div><strong>${formatNumber(printNet - totalExpensesForSelectedDate, 2, false)}</strong></div>
   </div>
   <h3 style="font-size:14px;margin:0 0 8px">${escHtml(L('reportsPrintPosLinesTitle'))}</h3>
   <table class="t">
-    <thead><tr><th>${escHtml(L('receiptFicheNo'))}</th><th>${escHtml(L('hourLabel'))}</th><th>${escHtml(L('cashierLabel'))}</th><th>${escHtml(L('reportsDeviceLabel'))}</th><th>${escHtml(L('customerLabel_rep'))}</th><th style="text-align:right">${escHtml(L('reportsBeforeDiscount'))}</th><th style="text-align:right">${escHtml(L('reportsColDiscount'))}</th><th style="text-align:right">${escHtml(L('reportsNetAmount'))}</th><th>${escHtml(L('paymentLabel_rep'))}</th></tr></thead>
-    <tbody>${saleRowsA4 || `<tr><td colspan="9" style="text-align:center;color:#64748b">${escHtml(L('reportsPrintNoRecords'))}</td></tr>`}</tbody>
+    <thead><tr><th>${escHtml(L('receiptFicheNo'))}</th><th>${escHtml(L('hourLabel'))}</th><th>${escHtml(L('reportsDailyKindLabel'))}</th><th>${escHtml(L('cashierLabel'))}</th><th>${escHtml(L('reportsDeviceLabel'))}</th><th>${escHtml(L('customerLabel_rep'))}</th><th style="text-align:right">${escHtml(L('reportsBeforeDiscount'))}</th><th style="text-align:right">${escHtml(L('reportsColDiscount'))}</th><th style="text-align:right">${escHtml(L('reportsNetAmount'))}</th><th>${escHtml(L('paymentLabel_rep'))}</th></tr></thead>
+    <tbody>${saleRowsA4 || `<tr><td colspan="10" style="text-align:center;color:#64748b">${escHtml(L('reportsPrintNoRecords'))}</td></tr>`}</tbody>
   </table>
   ${
     removedRowsA4
@@ -3680,16 +3987,16 @@ export function ReportsModule({
   .section-title { margin: 3mm 0 2mm; text-align: center; font-weight: bold; font-size: 11px; }
 </style></head><body>
   <div class="center bold large">${escHtml(L('reportsPrintDailyTitle80'))}</div>
-  <div class="center small">${escHtml(dateLabel)}</div>
+  <div class="center small">${escHtml(dateLabel)} · ${escHtml(printKindFilterLabel)}</div>
   <div class="divider"></div>
-  <div class="row"><span>${escHtml(L('reportsPrintSummaryTxnCount'))}</span><span class="bold">${dailyActiveRows.length}</span></div>
+  <div class="row"><span>${escHtml(L('reportsPrintSummaryTxnCount'))}</span><span class="bold">${dailyKindActiveRows.length}</span></div>
   <div class="row"><span>${escHtml(`${L('reportsDetStatusCancelled')} / ${L('reportsDetStatusRefunded')}`)}</span><span class="bold">${removedRows.length}</span></div>
-  <div class="row"><span>${escHtml(L('reportsPrintSummaryTotalRev'))}</span><span class="bold">${formatNumber(dailyTotal, 2, false)}</span></div>
-  <div class="row"><span>${escHtml(L('reportsPrintSummaryTotalDisc'))}</span><span>${formatNumber(dailyDiscount, 2, false)}</span></div>
-  <div class="row"><span>${escHtml(L('cashLabel'))}</span><span>${formatNumber(dailyCash, 2, false)}</span></div>
-  <div class="row"><span>${escHtml(L('cardLabel'))}</span><span>${formatNumber(dailyCard, 2, false)}</span></div>
+  <div class="row"><span>${escHtml(L('reportsPrintSummaryTotalRev'))}</span><span class="bold">${formatNumber(printNet, 2, false)}</span></div>
+  <div class="row"><span>${escHtml(L('reportsPrintSummaryTotalDisc'))}</span><span>${formatNumber(printDisc, 2, false)}</span></div>
+  <div class="row"><span>${escHtml(L('cashLabel'))}</span><span>${formatNumber(printCash, 2, false)}</span></div>
+  <div class="row"><span>${escHtml(L('cardLabel'))}</span><span>${formatNumber(printCard, 2, false)}</span></div>
   <div class="row"><span>${escHtml(L('totalExpense'))}</span><span class="bold">${formatNumber(totalExpensesForSelectedDate, 2, false)}</span></div>
-  <div class="row"><span>${escHtml(L('dailyNetAfterExpense'))}</span><span class="bold">${formatNumber(dailyTotal - totalExpensesForSelectedDate, 2, false)}</span></div>
+  <div class="row"><span>${escHtml(L('dailyNetAfterExpense'))}</span><span class="bold">${formatNumber(printNet - totalExpensesForSelectedDate, 2, false)}</span></div>
   <div class="divider"></div>
   <div class="section-title">${escHtml(L('reportsPrintPosDetail80'))}</div>
   ${emptySales80}
@@ -4131,11 +4438,14 @@ export function ReportsModule({
             if (!mk) continue;
             const net = restOrderNetAmount(o);
             const row = map.get(mk) || { total: 0, cash: 0, card: 0, other: 0 };
-            row.total += net;
-            const pm = restOrderPaymentMethod(o);
-            if (isRestaurantPaymentCashLike(pm)) row.cash += net;
-            else if (isRestaurantPaymentCardLike(pm)) row.card += net;
-            else row.other += net;
+            const split = saleCollectedSplit({
+              total: net,
+              paymentMethod: restaurantPaymentBucket(restOrderPaymentMethod(o)),
+            });
+            row.cash += Number(split.cash) || 0;
+            row.card += Number(split.card) || 0;
+            row.other += Number(split.remaining) + Number(split.transfer);
+            row.total += Number(split.collected) || 0;
             map.set(mk, row);
           }
           const rows = Array.from(map.entries())
@@ -4425,13 +4735,12 @@ export function ReportsModule({
         for (const s of retailSales) {
           const mk = saleMonthKeyFromDate(s.date);
           if (!mk) continue;
-          const net = Number(s.total ?? 0);
+          const split = saleCollectedSplit(s);
           const row = map.get(mk) || { total: 0, cash: 0, card: 0, other: 0 };
-          row.total += net;
-          const pm = String(s.paymentMethod ?? '');
-          if (pm === 'cash') row.cash += net;
-          else if (pm === 'card' || pm === 'gateway') row.card += net;
-          else row.other += net;
+          row.cash += split.cash;
+          row.card += split.card;
+          row.other += split.remaining + split.transfer;
+          row.total += split.collected;
           map.set(mk, row);
         }
         const rows = Array.from(map.entries())
@@ -4857,6 +5166,7 @@ export function ReportsModule({
                       <div>
                         <p className="text-sm text-gray-600">{tm('cashLabel')}</p>
                         <p className="text-2xl font-bold mt-1" style={{ color: bizConfig.color }}>{formatNumber(dailyCash, 2, false)}</p>
+                        <p className="text-xs text-slate-500 mt-1">{tm('cebeGirenNakit')}</p>
                       </div>
                       <Banknote className="w-12 h-12 opacity-20" style={{ color: bizConfig.color }} />
                     </div>
@@ -4881,6 +5191,21 @@ export function ReportsModule({
                       </div>
                       <TrendingDown className="w-12 h-12 text-red-400 opacity-40" />
                     </div>
+                  </div>
+                </div>
+
+                <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+                  <div className="bg-white rounded-lg p-4 border-2 border-slate-200">
+                    <p className="text-sm text-gray-600">{tm('belgeTutari')}</p>
+                    <p className="text-2xl font-bold mt-1 text-slate-800">{formatNumber(dailyTotal, 2, false)}</p>
+                  </div>
+                  <div className="bg-white rounded-lg p-4 border-2 border-emerald-200">
+                    <p className="text-sm text-gray-600">{tm('tahsilEdilen')}</p>
+                    <p className="text-2xl font-bold mt-1 text-emerald-700">{formatNumber(dailyCollected, 2, false)}</p>
+                  </div>
+                  <div className="bg-white rounded-lg p-4 border-2 border-amber-200">
+                    <p className="text-sm text-gray-600">{tm('kalanCari')}</p>
+                    <p className="text-2xl font-bold mt-1 text-amber-700">{formatNumber(dailyRemaining, 2, false)}</p>
                   </div>
                 </div>
 
@@ -4925,356 +5250,205 @@ export function ReportsModule({
                     <div>
                       <h3 className="text-lg">{tm('salesDetails')}</h3>
                       <p className="text-xs text-slate-500 mt-1">{tm('reportsClickRowReceiptPreview')}</p>
+                      <p className="text-xs text-slate-500 mt-0.5">{tm('reportsDailyKindHint')}</p>
                     </div>
-                    <label className="inline-flex items-center gap-2 text-xs font-medium text-slate-700">
-                      <input
-                        type="checkbox"
-                        checked={dailyShowOnlyRemoved}
-                        onChange={(e) => setDailyShowOnlyRemoved(e.target.checked)}
-                      />
-                      {tm('reportsDetStatusCancelled')} / {tm('reportsDetStatusRefunded')}
-                    </label>
-                  </div>
-                  <div className="overflow-x-auto overflow-y-auto max-h-[600px]" style={{ scrollbarWidth: 'thin', scrollbarColor: '#cbd5e1 #f1f5f9' }}>
-                    <table className="w-full min-w-[1020px]">
-                      <thead className="bg-gray-50 border-b">
-                        <ReportColumnFilters
-                          columns={[
-                            { key: 'receiptNumber', label: tm('receiptFicheNo'), type: 'text', width: 'min-w-[120px]' },
-                            { key: 'hour', label: tm('hourLabel'), type: 'text', width: 'min-w-[120px]' },
-                            { key: 'cashier', label: tm('cashierLabel'), type: 'text', width: 'min-w-[140px]' },
-                            { key: 'deviceName', label: tm('reportsDeviceLabel'), type: 'text', width: 'min-w-[120px]' },
-                            { key: 'customerName', label: tm('customerLabel_rep'), type: 'text', width: 'min-w-[140px]' },
-                            { key: 'beforeDiscount', label: tm('reportsBeforeDiscount'), type: 'number', align: 'right', width: 'min-w-[120px]' },
-                            { key: 'discount', label: tm('reportsColDiscount'), type: 'number', align: 'right', width: 'min-w-[120px]' },
-                            { key: 'total', label: tm('reportsNetAmount'), type: 'number', align: 'right', width: 'min-w-[120px]' },
-                            { key: 'paymentSearch', label: tm('paymentLabel_rep'), type: 'text', width: 'min-w-[120px]' },
-                            { key: 'statusSearch', label: tm('status'), type: 'text', width: 'min-w-[120px]' },
-                          ]}
-                          values={reportFilters.forTab('daily').values}
-                          onFilterChange={reportFilters.forTab('daily').setFilter}
-                          onClear={reportFilters.forTab('daily').clearAll}
-                        >
-                        <tr>
-                          <th className="px-4 py-3 text-left text-sm">{tm('receiptFicheNo')}</th>
-                          <th className="px-4 py-3 text-left text-sm">{tm('hourLabel')}</th>
-                          <th className="px-4 py-3 text-left text-sm">{tm('cashierLabel')}</th>
-                          <th className="px-4 py-3 text-left text-sm">{tm('reportsDeviceLabel')}</th>
-                          <th className="px-4 py-3 text-left text-sm">{tm('customerLabel_rep')}</th>
-                          <th className="px-4 py-3 text-right text-sm">{tm('reportsBeforeDiscount')}</th>
-                          <th className="px-4 py-3 text-right text-sm">{tm('reportsColDiscount')}</th>
-                          <th className="px-4 py-3 text-right text-sm font-semibold">{tm('reportsNetAmount')}</th>
-                          <th className="px-4 py-3 text-left text-sm">{tm('paymentLabel_rep')}</th>
-                          <th className="px-4 py-3 text-left text-sm">{tm('status')}</th>
-                        </tr>
-                        </ReportColumnFilters>
-                      </thead>
-                      <tbody className="divide-y">
-                        {(() => {
-                          const rpt = reportFilters.forTab('daily');
-                          const visibleRows = rpt.filtered(
-                            dailyVisibleRows.map((row) => {
-                              const parsed = new Date(row.date);
-                              const hour = Number.isNaN(parsed.getTime())
-                                ? String(row.date || '')
-                                : parsed.toLocaleTimeString('tr-TR');
-                              const bucket = normalizePaymentMethodBucket(row.paymentMethod);
-                              const paymentLabel =
-                                bucket === 'cash'
-                                  ? tm('cashLabel')
-                                  : bucket === 'card'
-                                    ? tm('cardLabel')
-                                    : bucket === 'transfer'
-                                      ? tm('reportsPaymentPieTransfer')
-                                      : tm('reportsPaymentOther');
-                              const st = String(row.status ?? 'completed').toLowerCase();
-                              const isCancelled = st === 'cancelled' || st === 'canceled';
-                              const isRefunded = st === 'refunded';
-                              const isReturn = st === 'return';
-                              const statusLabel = isReturn
-                                ? 'Satış İade'
-                                : isCancelled
-                                  ? tm('reportsDetStatusCancelled')
-                                  : isRefunded
-                                    ? tm('reportsDetStatusRefunded')
-                                    : tm('reportsDetStatusCompleted');
-                              const disc = Number(row.discount) || 0;
-                              const net = Number(row.total) || 0;
-                              return {
-                                ...row,
-                                hour,
-                                beforeDiscount: Number(row.beforeDiscount ?? net + disc) || 0,
-                                paymentSearch: `${row.paymentMethod || ''} ${paymentLabel}`,
-                                statusSearch: `${row.status || ''} ${statusLabel}`,
-                              };
-                            }) as any,
-                          );
-                          if (visibleRows.length === 0) {
-                            return (
-                              <tr>
-                                <td colSpan={10} className="px-4 py-10 text-center text-slate-500 text-sm">
-                                  {tm('noDataFound')}
-                                </td>
-                              </tr>
-                            );
-                          }
-                          let sumBefore = 0;
-                          let sumDiscount = 0;
-                          let sumNet = 0;
-                          for (const row of visibleRows as any[]) {
-                            const disc = Number(row.discount) || 0;
-                            const net = Number(row.total) || 0;
-                            const before = Number(row.beforeDiscount ?? net + disc) || 0;
-                            sumBefore += before;
-                            sumDiscount += disc;
-                            sumNet += net;
-                          }
-                          return (
-                            <>
-                              {visibleRows.map((row: any) => (
-                          <tr
-                            key={row.key}
-                            role="button"
-                            tabIndex={0}
-                            className="hover:bg-blue-50/80 cursor-pointer transition-colors outline-none focus-visible:ring-2 focus-visible:ring-blue-400 focus-visible:ring-inset"
-                            onClick={() => void openDailyRowReceiptModal(row)}
-                            onKeyDown={(e) => {
-                              if (e.key === 'Enter' || e.key === ' ') {
-                                e.preventDefault();
-                                void openDailyRowReceiptModal(row);
-                              }
-                            }}
+                    <div className="flex flex-wrap items-center gap-3">
+                      <div className="inline-flex rounded-lg border border-slate-200 overflow-hidden text-xs font-medium">
+                        {([
+                          ['all', tm('reportsDailyKindAll')],
+                          ['service', tm('reportsDailyKindService')],
+                          ['product', tm('reportsDailyKindProduct')],
+                        ] as const).map(([key, label]) => (
+                          <button
+                            key={key}
+                            type="button"
+                            onClick={() => setDailyKindFilter(key)}
+                            className={`px-3 py-1.5 ${dailyKindFilter === key ? 'bg-blue-600 text-white' : 'bg-white text-slate-700 hover:bg-slate-50'}`}
                           >
-                            <td className="px-4 py-3 text-sm font-medium text-blue-700 underline-offset-2">{row.receiptNumber}</td>
-                            <td className="px-4 py-3 text-sm">
-                              {new Date(row.date).toLocaleTimeString('tr-TR')}
-                            </td>
-                            <td className="px-4 py-3 text-sm">{row.cashier || '-'}</td>
-                            <td className="px-4 py-3 text-sm">{row.deviceName || '-'}</td>
-                            <td className="px-4 py-3 text-sm">{row.customerName || '-'}</td>
-                            <td className="px-4 py-3 text-right text-sm text-slate-700 tabular-nums">
-                              {formatNumber(row.beforeDiscount ?? (row.total + (row.discount ?? 0)), 2, false)}
-                            </td>
-                            <td className="px-4 py-3 text-right text-sm text-orange-700 tabular-nums">
-                              {formatNumber(row.discount ?? 0, 2, false)}
-                            </td>
-                            <td className="px-4 py-3 text-right text-sm font-medium tabular-nums">{formatNumber(row.total, 2, false)}</td>
-                            <td className="px-4 py-3">
-                              {(() => {
-                                const bucket = normalizePaymentMethodBucket(row.paymentMethod);
-                                const label =
-                                  bucket === 'cash'
-                                    ? tm('cashLabel')
-                                    : bucket === 'card'
-                                      ? tm('cardLabel')
-                                      : bucket === 'transfer'
-                                        ? tm('reportsPaymentPieTransfer')
-                                        : tm('reportsPaymentOther');
-                                const cls =
-                                  bucket === 'cash'
-                                    ? 'bg-green-100 text-green-700'
-                                    : bucket === 'card'
-                                      ? 'bg-blue-100 text-blue-700'
-                                      : 'bg-slate-100 text-slate-700';
-                                return (
-                                  <span className={`px-2 py-1 rounded text-xs ${cls}`}>{label}</span>
-                                );
-                              })()}
-                            </td>
-                            <td className="px-4 py-3">
-                              {(() => {
-                                const st = String(row.status ?? 'completed').toLowerCase();
-                                const isCancelled = st === 'cancelled' || st === 'canceled';
-                                const isRefunded = st === 'refunded';
-                                const isReturn = st === 'return';
-                                const label = isReturn
-                                  ? 'Satış İade'
-                                  : isCancelled
-                                    ? tm('reportsDetStatusCancelled')
-                                    : isRefunded
-                                      ? tm('reportsDetStatusRefunded')
-                                      : tm('reportsDetStatusCompleted');
-                                const cls = isReturn
-                                  ? 'bg-red-100 text-red-700'
-                                  : isCancelled
-                                    ? 'bg-red-100 text-red-700'
-                                    : isRefunded
-                                      ? 'bg-amber-100 text-amber-700'
-                                      : 'bg-emerald-100 text-emerald-700';
-                                const reasonText = row.cancelReason?.trim();
-                                return (
-                                  <div className="space-y-1">
-                                    <span className={`inline-block px-2 py-1 rounded text-xs font-semibold ${cls}`}>{label}</span>
-                                    {(isCancelled || isRefunded) && reasonText && (
-                                      <div
-                                        className="max-w-[240px] truncate text-[11px] text-slate-500"
-                                        title={reasonText}
-                                      >
-                                        {reasonText}
-                                      </div>
-                                    )}
-                                  </div>
-                                );
-                              })()}
-                            </td>
-                          </tr>
-                              ))}
-                              <tr className="bg-slate-50 font-semibold">
-                                <td colSpan={5} className="px-4 py-3 text-sm">{tm('totalSales')}</td>
-                                <td className="px-4 py-3 text-right text-sm text-slate-700 tabular-nums">
-                                  {formatNumber(sumBefore, 2, false)}
-                                </td>
-                                <td className="px-4 py-3 text-right text-sm text-orange-700 tabular-nums">
-                                  {formatNumber(sumDiscount, 2, false)}
-                                </td>
-                                <td className="px-4 py-3 text-right text-sm tabular-nums">
-                                  {formatNumber(sumNet, 2, false)}
-                                </td>
-                                <td />
-                                <td />
-                              </tr>
-                            </>
-                          );
-                        })()}
-                      </tbody>
-                    </table>
+                            {label}
+                          </button>
+                        ))}
+                      </div>
+                      <label className="inline-flex items-center gap-2 text-xs font-medium text-slate-700">
+                        <input
+                          type="checkbox"
+                          checked={dailyShowOnlyRemoved}
+                          onChange={(e) => setDailyShowOnlyRemoved(e.target.checked)}
+                        />
+                        {tm('reportsDetStatusCancelled')} / {tm('reportsDetStatusRefunded')}
+                      </label>
+                    </div>
+                  </div>
+                  <div className="p-2">
+                    <ReportColumnTable
+                      data={dailyKindGridRows}
+                      height={560}
+                      onRowClick={(row) => void openDailyRowReceiptModal(row)}
+                      footerLabel={tm('totalSales')}
+                      columns={[
+                        { key: 'receiptNumber', header: tm('receiptFicheNo'), size: 140 },
+                        { key: 'hour', header: tm('hourLabel'), size: 100 },
+                        {
+                          key: 'kindLabel',
+                          header: tm('reportsDailyKindLabel'),
+                          size: 100,
+                          cell: (row) => {
+                            const kind = row.kind;
+                            const cls =
+                              kind === 'service'
+                                ? 'bg-violet-100 text-violet-800'
+                                : kind === 'product'
+                                  ? 'bg-sky-100 text-sky-800'
+                                  : kind === 'mixed'
+                                    ? 'bg-amber-100 text-amber-800'
+                                    : 'bg-slate-100 text-slate-700';
+                            return <span className={`px-2 py-0.5 rounded text-xs font-semibold ${cls}`}>{row.kindLabel}</span>;
+                          },
+                        },
+                        { key: 'cashier', header: tm('cashierLabel'), size: 140, cell: (row) => (isPlaceholderCashierName(row.cashier) ? '—' : row.cashier || '—') },
+                        { key: 'deviceName', header: tm('reportsDeviceLabel'), size: 110, cell: (row) => (isPlaceholderDeviceName(row.deviceName) ? '—' : row.deviceName || '—') },
+                        { key: 'customerName', header: tm('customerLabel_rep'), size: 150, cell: (row) => row.customerName || '—' },
+                        {
+                          key: 'beforeDiscount',
+                          header: tm('reportsBeforeDiscount'),
+                          type: 'number',
+                          align: 'right',
+                          size: 120,
+                          footerSum: true,
+                          footerFormat: (n) => formatNumber(n, 2, false),
+                          cell: (row) => formatNumber(row.beforeDiscount ?? ((Number(row.total) || 0) + (Number(row.discount) || 0)), 2, false),
+                        },
+                        {
+                          key: 'discount',
+                          header: tm('reportsColDiscount'),
+                          type: 'number',
+                          align: 'right',
+                          size: 110,
+                          footerSum: true,
+                          footerFormat: (n) => formatNumber(n, 2, false),
+                          cell: (row) => formatNumber(Number(row.discount) || 0, 2, false),
+                        },
+                        {
+                          key: 'total',
+                          header: tm('reportsNetAmount'),
+                          type: 'number',
+                          align: 'right',
+                          size: 140,
+                          footerSum: true,
+                          footerFormat: (n) => formatNumber(n, 2, false),
+                          cell: (row) => {
+                            const remaining = Number(row.remaining) > 0.009
+                              ? Number(row.remaining)
+                              : dailyRowShowsCreditSplit(row)
+                                ? Number(row.total) || 0
+                                : 0;
+                            return (
+                            <div>
+                              <div>{formatNumber(row.total, 2, false)}</div>
+                              {dailyRowShowsCreditSplit(row) && (
+                                <div className="text-[11px] font-normal text-amber-700 mt-0.5">
+                                  {tm('tahsilEdilen')}: {formatNumber(Number(row.collected) || 0, 2, false)}
+                                  {' · '}
+                                  {tm('kalanCari')}: {formatNumber(remaining, 2, false)}
+                                </div>
+                              )}
+                            </div>
+                            );
+                          },
+                        },
+                        {
+                          key: 'paymentLabel',
+                          header: tm('paymentLabel_rep'),
+                          size: 110,
+                          cell: (row) => {
+                            const bucket = normalizePaymentMethodBucket(row.paymentMethod);
+                            const cls =
+                              bucket === 'cash'
+                                ? 'bg-green-100 text-green-700'
+                                : bucket === 'card'
+                                  ? 'bg-blue-100 text-blue-700'
+                                  : bucket === 'credit'
+                                    ? 'bg-amber-100 text-amber-800'
+                                    : 'bg-slate-100 text-slate-700';
+                            return <span className={`px-2 py-1 rounded text-xs ${cls}`}>{row.paymentLabel}</span>;
+                          },
+                        },
+                        {
+                          key: 'statusLabel',
+                          header: tm('status'),
+                          size: 130,
+                          cell: (row) => {
+                            const st = String(row.status ?? 'completed').toLowerCase();
+                            const isCancelled = st === 'cancelled' || st === 'canceled';
+                            const isRefunded = st === 'refunded';
+                            const isReturn = st === 'return';
+                            const cls = isReturn || isCancelled
+                              ? 'bg-red-100 text-red-700'
+                              : isRefunded
+                                ? 'bg-amber-100 text-amber-700'
+                                : 'bg-emerald-100 text-emerald-700';
+                            const reasonText = row.cancelReason?.trim();
+                            return (
+                              <div className="space-y-1">
+                                <span className={`inline-block px-2 py-1 rounded text-xs font-semibold ${cls}`}>{row.statusLabel}</span>
+                                {(isCancelled || isRefunded) && reasonText && (
+                                  <div className="max-w-[240px] truncate text-[11px] text-slate-500" title={reasonText}>{reasonText}</div>
+                                )}
+                              </div>
+                            );
+                          },
+                        },
+                      ]}
+                    />
                   </div>
                 </div>
-
                 <div className="bg-white rounded-lg border">
                   <div className="p-4 border-b">
                     <h3 className="text-lg">{tm('expenseDetails')}</h3>
                     <p className="text-xs text-slate-500 mt-1">{tm('dailyExpenseDetailsHint')}</p>
                   </div>
-                  <div className="overflow-x-auto overflow-y-auto max-h-[480px]" style={{ scrollbarWidth: 'thin', scrollbarColor: '#cbd5e1 #f1f5f9' }}>
-                    <table className="w-full min-w-[920px]">
-                      <thead className="bg-gray-50 border-b">
-                        <ReportColumnFilters
-                          columns={[
-                            { key: 'ficheNo', label: tm('receiptFicheNo'), type: 'text', width: 'min-w-[120px]' },
-                            { key: 'timeLabel', label: tm('hourLabel'), type: 'text', width: 'min-w-[120px]' },
-                            { key: 'typeLabel', label: tm('type'), type: 'text', width: 'min-w-[120px]' },
-                            { key: 'category', label: tm('category'), type: 'text', width: 'min-w-[120px]' },
-                            { key: 'description', label: tm('description'), type: 'text', width: 'min-w-[160px]' },
-                            { key: 'amount', label: tm('amountLabel_rep'), type: 'number', align: 'right', width: 'min-w-[120px]' },
-                            { key: 'payLabel', label: tm('paymentLabel_rep'), type: 'text', width: 'min-w-[120px]' },
-                          ]}
-                          values={reportFilters.forTab('daily-expense').values}
-                          onFilterChange={reportFilters.forTab('daily-expense').setFilter}
-                          onClear={reportFilters.forTab('daily-expense').clearAll}
-                        >
-                        <tr>
-                          <th className="px-4 py-3 text-left text-sm">{tm('receiptFicheNo')}</th>
-                          <th className="px-4 py-3 text-left text-sm">{tm('hourLabel')}</th>
-                          <th className="px-4 py-3 text-left text-sm">{tm('type')}</th>
-                          <th className="px-4 py-3 text-left text-sm">{tm('category')}</th>
-                          <th className="px-4 py-3 text-left text-sm">{tm('description')}</th>
-                          <th className="px-4 py-3 text-right text-sm font-semibold">{tm('amountLabel_rep')}</th>
-                          <th className="px-4 py-3 text-left text-sm">{tm('paymentLabel_rep')}</th>
-                        </tr>
-                        </ReportColumnFilters>
-                      </thead>
-                      <tbody className="divide-y">
-                        {(() => {
-                          const rpt = reportFilters.forTab('daily-expense');
-                          const visibleRows = rpt.filtered(
-                            dailyExpenseRows.map((row) => {
-                              const dateRaw = String(row.date || '');
-                              const parsed = new Date(dateRaw);
-                              const timeLabel = Number.isNaN(parsed.getTime())
-                                ? (dateRaw.slice(11, 19) || dateRaw.slice(0, 10) || '—')
-                                : selectedDateFrom !== selectedDateTo
-                                  ? parsed.toLocaleString('tr-TR')
-                                  : /^\d{4}-\d{2}-\d{2}$/.test(dateRaw.slice(0, 10)) && dateRaw.length <= 10
-                                    ? '—'
-                                    : parsed.toLocaleTimeString('tr-TR');
-                              const bucket = normalizePaymentMethodBucket(row.paymentMethod);
-                              const payLabel =
-                                row.isCash || bucket === 'cash'
-                                  ? tm('cashLabel')
-                                  : bucket === 'card'
-                                    ? tm('cardLabel')
-                                    : bucket === 'transfer'
-                                      ? tm('reportsPaymentPieTransfer')
-                                      : tm('reportsPaymentOther');
-                              return {
-                                ...row,
-                                timeLabel,
-                                typeLabel: labelDailyExpenseType(row.typeCode),
-                                payLabel: `${row.paymentMethod || ''} ${payLabel}`,
-                              };
-                            }) as any,
-                          );
-                          if (visibleRows.length === 0) {
-                            return (
-                              <tr>
-                                <td colSpan={7} className="px-4 py-10 text-center text-slate-500 text-sm">
-                                  {tm('noDataFound')}
-                                </td>
-                              </tr>
-                            );
-                          }
-                          return visibleRows.map((row: any) => {
-                          const dateRaw = String(row.date || '');
-                          const parsed = new Date(dateRaw);
-                          const timeLabel = Number.isNaN(parsed.getTime())
-                            ? (dateRaw.slice(11, 19) || dateRaw.slice(0, 10) || '—')
-                            : selectedDateFrom !== selectedDateTo
-                              ? parsed.toLocaleString('tr-TR')
-                              : /^\d{4}-\d{2}-\d{2}$/.test(dateRaw.slice(0, 10)) && dateRaw.length <= 10
-                                ? '—'
-                                : parsed.toLocaleTimeString('tr-TR');
-                          const partyOrCat = row.category || row.partyName || '—';
-                          const bucket = normalizePaymentMethodBucket(row.paymentMethod);
-                          const payLabel =
-                            row.isCash || bucket === 'cash'
-                              ? tm('cashLabel')
-                              : bucket === 'card'
-                                ? tm('cardLabel')
-                                : bucket === 'transfer'
-                                  ? tm('reportsPaymentPieTransfer')
-                                  : tm('reportsPaymentOther');
-                          const payCls =
-                            row.isCash || bucket === 'cash'
-                              ? 'bg-green-100 text-green-700'
-                              : bucket === 'card'
-                                ? 'bg-blue-100 text-blue-700'
-                                : 'bg-slate-100 text-slate-700';
-                          return (
-                            <tr key={row.key} className="hover:bg-rose-50/60">
-                              <td className="px-4 py-3 text-sm font-medium">{row.ficheNo}</td>
-                              <td className="px-4 py-3 text-sm">{timeLabel}</td>
-                              <td className="px-4 py-3 text-sm">{labelDailyExpenseType(row.typeCode)}</td>
-                              <td className="px-4 py-3 text-sm">{partyOrCat}</td>
-                              <td className="px-4 py-3 text-sm text-slate-600">{row.description || '—'}</td>
-                              <td className="px-4 py-3 text-right text-sm font-medium text-rose-700 tabular-nums">
-                                {formatNumber(row.amount, 2, false)}
-                              </td>
-                              <td className="px-4 py-3">
-                                <span className={`px-2 py-1 rounded text-xs ${payCls}`}>{payLabel}</span>
-                              </td>
-                            </tr>
-                          );
-                          });
-                        })()}
-                        {dailyExpenseRows.length === 0 && (
-                          <tr>
-                            <td colSpan={7} className="px-4 py-8 text-center text-sm text-slate-500">
-                              {tm('noDataFound')}
-                            </td>
-                          </tr>
-                        )}
-                        {dailyExpenseRows.length > 0 && (
-                          <tr className="bg-slate-50 font-semibold">
-                            <td colSpan={5} className="px-4 py-3 text-sm">{tm('totalExpense')}</td>
-                            <td className="px-4 py-3 text-right text-sm text-rose-700 tabular-nums">
-                              {formatNumber(totalExpensesForSelectedDate, 2, false)}
-                            </td>
-                            <td />
-                          </tr>
-                        )}
-                      </tbody>
-                    </table>
+                  <div className="p-2">
+                    <ReportColumnTable
+                      data={dailyExpenseGridRows}
+                      height={480}
+                      footerLabel={tm('totalExpense')}
+                      columns={[
+                        { key: 'ficheNo', header: tm('receiptFicheNo'), size: 140 },
+                        { key: 'timeLabel', header: tm('hourLabel'), size: 120 },
+                        { key: 'typeLabel', header: tm('type'), size: 140 },
+                        { key: 'category', header: tm('category'), size: 140 },
+                        { key: 'description', header: tm('description'), size: 180, cell: (row) => row.description || '—' },
+                        {
+                          key: 'amount',
+                          header: tm('amountLabel_rep'),
+                          type: 'number',
+                          align: 'right',
+                          size: 120,
+                          footerSum: true,
+                          footerFormat: (n) => formatNumber(n, 2, false),
+                          cell: (row) => (
+                            <span className="font-medium text-rose-700 tabular-nums">
+                              {formatNumber(row.amount, 2, false)}
+                            </span>
+                          ),
+                        },
+                        {
+                          key: 'payLabel',
+                          header: tm('paymentLabel_rep'),
+                          size: 120,
+                          cell: (row) => {
+                            const bucket = normalizePaymentMethodBucket(row.paymentMethod);
+                            const cls =
+                              row.isCash || bucket === 'cash'
+                                ? 'bg-green-100 text-green-700'
+                                : bucket === 'card'
+                                  ? 'bg-blue-100 text-blue-700'
+                                  : 'bg-slate-100 text-slate-700';
+                            return <span className={`px-2 py-1 rounded text-xs ${cls}`}>{row.payLabel}</span>;
+                          },
+                        },
+                      ]}
+                    />
                   </div>
                 </div>
               </div>

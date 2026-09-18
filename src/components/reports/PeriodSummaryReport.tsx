@@ -8,7 +8,6 @@ import { salesAPI } from '../../services/api/sales';
 import { invoicesAPI } from '../../services/api/invoices';
 import { supplierAPI } from '../../services/api/suppliers';
 import { fetchKasaIslemleri } from '../../services/api/kasa';
-import { normalizePaymentMethodBucket } from '../../utils/paymentMethodUtils';
 import { isReturnSale } from '../../utils/posZReport';
 import { mergeExpensesWithCashOuts } from '../../utils/reportUnifiedExpenses';
 import type { Sale } from '../../App';
@@ -148,14 +147,12 @@ function aggregateSales(sales: Sale[], bucketKey: (s: Sale) => string) {
     }
 
     row.revenue += total;
-    const pmBucket = normalizePaymentMethodBucket((s as any).payment_method ?? s.paymentMethod);
-    if (pmBucket === 'cash' || pmBucket === 'transfer') row.cash += total;
-    else if (pmBucket === 'card') row.card += total;
+    const split = saleCollectedSplit(s);
+    row.cash += split.cash;
+    row.card += split.card;
 
     if (isReturn) {
       row.revenue -= absTotal;
-      if (pmBucket === 'cash' || pmBucket === 'transfer') row.cash -= absTotal;
-      else if (pmBucket === 'card') row.card -= absTotal;
     }
   }
   return map;

@@ -11,8 +11,14 @@ import { invoicesAPI } from './invoices';
 import { batchCalculateFIFOCost } from '../../hooks/useFIFOCost';
 import { fetchKasalar, createKasaIslemi, type KasaIslemi } from './kasa';
 import { normalizeWeightProductQuantity, resolveStockQuantityFromLine } from '../../utils/scaleQuantity';
-import { normalizePaymentMethodBucket } from '../../utils/paymentMethodUtils';
+import { normalizePaymentMethodBucket, paymentMethodImpliesCustomerDebt } from '../../utils/paymentMethodUtils';
 import { dbItemTypeToInvoiceLine } from '../../utils/invoiceLineType';
+import {
+  currentLoginUserId,
+  isPlaceholderDeviceName,
+  resolveWriteCashierName,
+  sanitizeStoredCashierName,
+} from '../../utils/loginCashierName';
 
 async function enrichSalesWithLineItems(sales: Sale[]): Promise<Sale[]> {
   if (!sales.length) return sales;
@@ -155,16 +161,28 @@ export const salesAPI = {
         donem_id: periodNr,
 
         payment_method: sale.paymentMethod || 'Nakit',
-        cashier: sale.cashier || '',
+        cashier: resolveWriteCashierName(sale.cashier),
+        created_by_user_id: sale.userId || currentLoginUserId(),
         status: 'completed', // POS sales are completed immediately
         notes: sale.notes || 'MarketPOS Satışı',
-        store_id: sale.storeId,
+        store_id: sale.storeId && !isPlaceholderDeviceName(sale.storeId) ? sale.storeId : undefined,
 
         items: invoiceItems
       };
 
       // Karma ödeme: veresiye + nakit/kart → faturayı veresiye yaz, peşin kısmı için anında CH_TAHSILAT
       const paymentRows = Array.isArray((sale as any).payments) ? (sale as any).payments : [];
+      if (paymentRows.length > 0) {
+        invoiceData.header_fields = {
+          ...(((sale as any).header_fields as Record<string, unknown>) || {}),
+          payments: paymentRows.map((p: { method?: string; amount?: number; currency?: string; cash_register_id?: string | null }) => ({
+            method: String(p.method || 'cash'),
+            amount: Number(p.amount) || 0,
+            currency: p.currency || 'IQD',
+            cash_register_id: p.cash_register_id ?? null,
+          })),
+        };
+      }
       let cashPortion = 0;
       let cardPortion = 0;
       let veresiyePortion = 0;
@@ -174,7 +192,7 @@ export const salesAPI = {
           if (!amt) continue;
           let method = String(p.method || '').toLowerCase();
           if (method === 'gateway') method = 'card';
-          if (method === 'veresiye' || method === 'credit' || method === 'open_account') veresiyePortion += amt;
+          if (paymentMethodImpliesCustomerDebt(method) || method === 'credit') veresiyePortion += amt;
           else if (method === 'card' || method === 'kart') cardPortion += amt;
           else cashPortion += amt;
         }
@@ -348,10 +366,11 @@ export const salesAPI = {
         firma_id: firmNr,
         donem_id: periodNr,
         payment_method: params.paymentMethod || 'Nakit',
-        cashier: params.cashier || '',
+        cashier: resolveWriteCashierName(params.cashier),
+        created_by_user_id: currentLoginUserId(),
         status: 'completed',
         notes: reasonNote,
-        store_id: params.storeId,
+        store_id: params.storeId && !isPlaceholderDeviceName(params.storeId) ? params.storeId : undefined,
         items: invoiceItems,
       };
 
@@ -411,10 +430,11 @@ export const salesAPI = {
         paymentMethod: params.paymentMethod || 'cash',
         status: 'return',
         notes: reasonNote,
-        cashier: params.cashier,
+        cashier: resolveWriteCashierName(params.cashier),
+        userId: currentLoginUserId(),
         firmNr: String(firmNr),
         periodNr: String(periodNr),
-        storeId: params.storeId,
+        storeId: params.storeId && !isPlaceholderDeviceName(params.storeId) ? params.storeId : undefined,
       } as Sale;
     } catch (error: any) {
       console.error('[SalesAPI] createReturn failed:', error);
@@ -668,6 +688,9 @@ function mapInvoiceToSale(invoice: Invoice): Sale {
   const amount = Math.abs(Number(invoice.total_amount ?? invoice.total ?? 0));
   const signedTotal = isCustomerReturn ? -amount : amount;
   const signedSubtotal = isCustomerReturn ? -Math.abs(Number(invoice.subtotal) || amount) : invoice.subtotal;
+  const headerPayments = Array.isArray((invoice as Invoice & { header_fields?: { payments?: Array<{ method?: string; amount?: number; currency?: string }> } }).header_fields?.payments)
+    ? (invoice as Invoice & { header_fields?: { payments?: Array<{ method?: string; amount?: number; currency?: string }> } }).header_fields!.payments
+    : undefined;
 
   return {
     id: invoice.id || '',
@@ -675,14 +698,20 @@ function mapInvoiceToSale(invoice: Invoice): Sale {
     date: invoice.invoice_date,
     customerId: invoice.customer_id,
     customerName: invoice.customer_name,
-    storeId: invoice.store_id || 'DEFAULT',
-    cashier: invoice.cashier || 'Unknown',
+    storeId: invoice.store_id && !isPlaceholderDeviceName(invoice.store_id) ? invoice.store_id : undefined,
+    cashier: sanitizeStoredCashierName(invoice.cashier),
+    userId: (invoice as Invoice & { created_by_user_id?: string }).created_by_user_id,
     subtotal: signedSubtotal,
     discount: invoice.discount,
     tax: invoice.tax,
     total: signedTotal,
     profit: invoice.gross_profit || 0,
-    paymentMethod: normalizePaymentMethodBucket(invoice.payment_method || 'cash'),
+    paymentMethod: normalizePaymentMethodBucket(invoice.payment_method),
+    payments: headerPayments?.map((p) => ({
+      method: String(p.method || ''),
+      amount: Number(p.amount) || 0,
+      currency: p.currency,
+    })),
     status: isCustomerReturn ? 'return' : invoice.status,
     notes: invoice.notes,
     firmNr: invoice.firma_id,
@@ -699,6 +728,8 @@ function mapInvoiceToSale(invoice: Invoice): Sale {
       cost: res.unitCost || 0,
       profit: res.grossProfit || 0,
       total: res.total,
+      lineType: (res as { type?: string; lineType?: string }).type
+        || (res as { lineType?: string }).lineType,
     }))
   } as Sale;
 }

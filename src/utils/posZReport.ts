@@ -1,6 +1,8 @@
 import type { Sale } from '../core/types';
 import { formatNumber } from './formatNumber';
 import { localCalendarDateKey } from './localCalendarDate';
+import { normalizePaymentMethodBucket } from './paymentMethodUtils';
+import { saleCollectedSplit } from './saleCollectedAmounts';
 
 export interface PosPaymentBreakdown {
   cash: number;
@@ -45,10 +47,10 @@ export interface CashierDayStats {
 }
 
 function normalizePaymentMethod(raw: unknown): 'cash' | 'card' | 'credit' | 'other' {
-  const pm = String(raw ?? '').toLowerCase().trim();
-  if (!pm || pm === 'cash' || pm === 'nakit') return 'cash';
-  if (pm === 'card' || pm === 'kart' || pm === 'kredi kartı' || pm === 'gateway' || pm === 'kredi') return 'card';
-  if (pm === 'veresiye' || pm === 'credit' || pm === 'cari' || pm === 'borç' || pm === 'borc') return 'credit';
+  const bucket = normalizePaymentMethodBucket(raw);
+  if (bucket === 'cash') return 'cash';
+  if (bucket === 'card') return 'card';
+  if (bucket === 'credit') return 'credit';
   return 'other';
 }
 

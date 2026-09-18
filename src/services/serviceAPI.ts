@@ -3,6 +3,7 @@
  * (Eski Supabase `services` tablosu yerine; yerel PG / köprü ile uyumlu.)
  */
 import { postgres, ERP_SETTINGS } from './postgres';
+import { newUuid, uuidOrNull } from '../utils/pgUuid';
 
 export interface Service {
     id: string;
@@ -145,7 +146,7 @@ function inputToDbRow(input: Record<string, unknown>, firmNr: string): Record<st
         description_ar: g('description_ar', 'description_ar') ?? null,
         description_ku: g('description_ku', 'description_ku') ?? null,
         category: g('category', 'category') ?? null,
-        category_id: g('categoryId', 'category_id') ?? null,
+        category_id: uuidOrNull(g('categoryId', 'category_id')),
         category_code: g('categoryCode', 'category_code') ?? null,
         brand: g('brand', 'brand') ?? null,
         model: g('model', 'model') ?? null,
@@ -198,7 +199,9 @@ function patchToDbRow(patch: UpdateServiceInput): Record<string, unknown> {
     set('description_ar', i.description_ar ?? undefined);
     set('description_ku', i.description_ku ?? undefined);
     set('category', i.category ?? undefined);
-    set('category_id', i.categoryId ?? undefined);
+    if (i.categoryId !== undefined || i.category_id !== undefined) {
+      set('category_id', uuidOrNull(i.categoryId ?? i.category_id));
+    }
     set('category_code', i.categoryCode ?? undefined);
     set('brand', i.brand ?? undefined);
     set('model', i.model ?? undefined);
@@ -309,6 +312,9 @@ class ServiceAPI {
 
     async create(service: CreateServiceInput): Promise<Service> {
         const row = inputToDbRow(service as Record<string, unknown>, padServiceFirmNr());
+        // id her zaman gerçek UUID; kod (000001) asla id olmaz. Boş FK'ler uuidOrNull ile NULL.
+        const incomingId = uuidOrNull((service as Record<string, unknown>).id);
+        row.id = incomingId || newUuid();
         const entries = Object.entries(row).filter(([, v]) => v !== undefined);
         const cols = entries.map(([k]) => k);
         const placeholders = cols.map((_, i) => `$${i + 1}`).join(', ');

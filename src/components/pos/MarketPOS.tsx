@@ -71,6 +71,7 @@ import { BalanceLoadModal } from '../wallet/BalanceLoadModal';
 import { printThermalReceipt } from '../../utils/thermalPrinter';
 import { KeyboardShortcutOverlay, KeyboardShortcutHint } from '../shared/KeyboardShortcutOverlay';
 import { salesAPI } from '../../services/api/sales';
+import { isPlaceholderDeviceName, resolveWriteCashierName } from '../../utils/loginCashierName';
 import { useKeyboardShortcuts } from '../../hooks/useKeyboardShortcuts';
 import type { KeyboardShortcut } from '../../hooks/useKeyboardShortcuts';
 import { useProductStore, useSaleStore } from '../../store';
@@ -161,9 +162,9 @@ export default function MarketPOS({
       ...(invoiceSearch?.trim() ? { invoiceSearch: invoiceSearch.trim() } : {}),
       posSalesReturn: {
         editData: {
-          cashier: currentStaff || currentUser.full_name || currentUser.username || '',
+          cashier: resolveWriteCashierName(currentStaff || currentUser.full_name || currentUser.username),
           created_by_user_id: currentUser.id,
-          store_id: currentUser.storeId || undefined,
+          store_id: currentUser.storeId && !isPlaceholderDeviceName(currentUser.storeId) ? currentUser.storeId : undefined,
           source: 'pos',
           notes: 'POS İade',
         },
@@ -1472,10 +1473,10 @@ export default function MarketPOS({
       campaignId: selectedCampaign?.id,
       campaignName: selectedCampaign?.name,
       campaignDiscount: campaignDiscount,
-      cashier: currentStaff,
+      cashier: resolveWriteCashierName(currentStaff),
       firmNr: selectedFirm?.firm_nr,
       periodNr: selectedPeriod?.nr.toString().padStart(2, '0'),
-      storeId: currentUser.storeId || undefined,
+      storeId: currentUser.storeId && !isPlaceholderDeviceName(currentUser.storeId) ? currentUser.storeId : undefined,
     };
 
     try {

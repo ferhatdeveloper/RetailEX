@@ -21,6 +21,7 @@ import {
 import { sanitizeInvoiceHeaderFields } from '../../utils/invoiceHeaderFields';
 import { allocateNextInvoiceCode } from '../invoiceCodeFormatService';
 import { generateDefaultInvoiceStamp } from '../../utils/invoiceCodeFormat';
+import { saleItemVisibleCode, splitInvoiceLineIdentity } from '../../utils/invoiceLineDisplayCode';
 import type { PurchasePromotionReportLine } from '../../utils/purchasePromotionReport';
 import {
   paymentMethodImpliesCustomerDebt,
@@ -694,6 +695,14 @@ async function writeCashRegisterLineForInvoice(inv: Invoice, firmNr: string): Pr
 
   // Çoklu ödeme: her payment satırı kendi kasa INSERT'ini yapar.
   if (paymentsRaw && paymentsRaw.length > 0) {
+    const mixedCredit = paymentsRaw.some((row: { method?: string }) =>
+      paymentMethodImpliesCustomerDebt(String(row?.method || '')),
+    );
+    if (mixedCredit) {
+      // Karma veresiye: belge tutarı cari borç; peşin kısım sales.ts CH_TAHSILAT
+      // (kasa + müşteri bakiyesi). Nakit satırını burada yazmak tahsilatı çiftler.
+      return;
+    }
     for (let i = 0; i < paymentsRaw.length; i++) {
       const row = paymentsRaw[i] || {};
       const rowMethod = String(row.method || '').toLowerCase().trim();
@@ -1151,7 +1160,7 @@ async function createInvoiceViaPostgrest(invoice: Invoice, opts: {
         firm_nr: String(opts.firmNr),
         period_nr: String(opts.periodNr),
         product_id: productUuid,
-        item_code: String(item.code || item.productId || ''),
+        item_code: saleItemVisibleCode(item as { code?: unknown; productId?: unknown }),
         item_name: String(item.description || item.productName || ''),
         quantity: Number(item.quantity || 0),
         unit: String((item as any).unit || 'Adet'),
@@ -1180,7 +1189,7 @@ async function createInvoiceViaPostgrest(invoice: Invoice, opts: {
         firm_nr: String(opts.firmNr),
         period_nr: String(opts.periodNr),
         product_id: productUuid,
-        item_code: String(item.code || item.productId || ''),
+        item_code: saleItemVisibleCode(item as { code?: unknown; productId?: unknown }),
         item_name: String(item.description || item.productName || ''),
         quantity: Number(item.quantity || 0),
         unit: String((item as any).unit || 'Adet'),
@@ -1357,8 +1366,8 @@ export function invoiceMatchesModuleCategory(
 
 /** sale_items satırını UniversalInvoiceForm / grid satır modeline çevirir (SQL ve PostgREST ortak) */
 export function mapSaleItemRowToInvoiceLine(item: any, inv: Invoice) {
-  const codeRaw = item.item_code ?? item.product_id;
-  const code = codeRaw != null && codeRaw !== '' ? String(codeRaw) : '';
+  const identity = splitInvoiceLineIdentity(item);
+  const code = identity.code;
   const hdrCur = String(inv.currency || 'IQD').trim().toUpperCase();
   const rowCur = String(item.currency || hdrCur || 'IQD').trim().toUpperCase();
   const rate = Number(inv.currency_rate) > 0 ? Number(inv.currency_rate) : 1;
@@ -1385,7 +1394,7 @@ export function mapSaleItemRowToInvoiceLine(item: any, inv: Invoice) {
   });
   return {
     id: item.id,
-    productId: item.product_id != null ? String(item.product_id) : code,
+    productId: identity.productId || (item.product_id != null ? String(item.product_id) : ''),
     code,
     description: item.item_name || '',
     productName: item.item_name || '',
@@ -1408,6 +1417,70 @@ export function mapSaleItemRowToInvoiceLine(item: any, inv: Invoice) {
     batchNo: item.batch_no || undefined,
     type: canonicalInvoiceLineType(item.item_type ?? item.type),
   };
+}
+
+async function hydrateInvoiceItemDisplayCodes(items: Invoice['items'] | undefined): Promise<void> {
+  if (!items?.length) return;
+  const need = items.filter((it) => {
+    const code = String((it as { code?: string }).code || '').trim();
+    return !code || isValidUuid(code);
+  });
+  if (!need.length) return;
+  const ids = [
+    ...new Set(
+      need
+        .map((it) => {
+          const pid = String((it as { productId?: string }).productId || '').trim();
+          if (isValidUuid(pid)) return pid;
+          const code = String((it as { code?: string }).code || '').trim();
+          return isValidUuid(code) ? code : '';
+        })
+        .filter((id) => isValidUuid(id))
+    ),
+  ];
+  if (!ids.length) {
+    for (const it of items) {
+      if (isValidUuid(String((it as { code?: string }).code || ''))) {
+        (it as { code: string }).code = '';
+      }
+    }
+    return;
+  }
+  const found = new Map<string, string>();
+  try {
+    const { rows } = await postgres.query<{ id: string; code: string; barcode: string }>(
+      `SELECT id::text AS id, code, barcode FROM products WHERE id = ANY($1::uuid[])`,
+      [ids]
+    );
+    for (const r of rows || []) {
+      const c = String(r.code || '').trim();
+      const b = String(r.barcode || '').trim();
+      if (c && !isValidUuid(c)) found.set(r.id, c);
+      else if (b && !isValidUuid(b)) found.set(r.id, b);
+    }
+  } catch (e) {
+    console.warn('[InvoicesAPI] hydrate product codes failed', e);
+  }
+  try {
+    const { rows } = await postgres.query<{ id: string; code: string }>(
+      `SELECT id::text AS id, code FROM services WHERE id = ANY($1::uuid[])`,
+      [ids]
+    );
+    for (const r of rows || []) {
+      if (found.has(r.id)) continue;
+      const c = String(r.code || '').trim();
+      if (c && !isValidUuid(c)) found.set(r.id, c);
+    }
+  } catch (e) {
+    console.warn('[InvoicesAPI] hydrate service codes failed', e);
+  }
+  for (const it of items) {
+    const cur = String((it as { code?: string }).code || '').trim();
+    if (cur && !isValidUuid(cur)) continue;
+    const pid = String((it as { productId?: string }).productId || (isValidUuid(cur) ? cur : '')).trim();
+    const mapped = found.get(pid);
+    (it as { code: string }).code = mapped || '';
+  }
 }
 
 export const invoicesAPI = {
@@ -1656,7 +1729,7 @@ export const invoicesAPI = {
             String(firmNr),
             String(periodNr),
             productUuid,
-            String(productId || ''),
+            saleItemVisibleCode(item as { code?: unknown; productId?: unknown }),
             String(item.description || item.productName),
             Number(item.quantity),
             String((item as any).unit || 'Adet'),
@@ -2199,6 +2272,7 @@ export const invoicesAPI = {
         }
 
         invoice.items = itemRows.map((row) => mapSaleItemRowToInvoiceLine(row, invoice));
+        await hydrateInvoiceItemDisplayCodes(invoice.items);
         if (itemRows.length === 0) {
           console.warn('[InvoicesAPI] getById PostgREST: sale_items boş', cleanId, { itemsPath });
         }
@@ -2364,6 +2438,7 @@ export const invoicesAPI = {
     }
 
     invoice.items = itemRows.map((row) => mapSaleItemRowToInvoiceLine(row, invoice));
+    await hydrateInvoiceItemDisplayCodes(invoice.items);
 
     if (itemRows.length === 0) {
       console.warn('[InvoicesAPI] getById: no sale_items for invoice', cleanId, itemTableOpts);
@@ -2514,7 +2589,7 @@ export const invoicesAPI = {
               firm_nr: String(fn),
               period_nr: String(pn),
               product_id: productUuid,
-              item_code: String(productId || ''),
+              item_code: saleItemVisibleCode(item as { code?: unknown; productId?: unknown }),
               item_name: String(item.description || item.productName || ''),
               quantity: Number(item.quantity || 0),
               unit: String((item as any).unit || 'Adet'),
@@ -2540,7 +2615,7 @@ export const invoicesAPI = {
               firm_nr: String(fn),
               period_nr: String(pn),
               product_id: productUuid,
-              item_code: String(productId || ''),
+              item_code: saleItemVisibleCode(item as { code?: unknown; productId?: unknown }),
               item_name: String(item.description || item.productName || ''),
               quantity: Number(item.quantity || 0),
               unit: String((item as any).unit || 'Adet'),
@@ -2637,7 +2712,7 @@ export const invoicesAPI = {
               String(fn0),
               String(pn0),
               productUuid,
-              String(productId || ''),
+              saleItemVisibleCode(item as { code?: unknown; productId?: unknown }),
               String(item.description || item.productName),
               Number(item.quantity),
               String((item as any).unit || 'Adet'),

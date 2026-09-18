@@ -5,6 +5,7 @@ import { shouldUseTenantPostgrestApi } from '../config/postgrest.config';
 import { postgres, ERP_SETTINGS } from './postgres';
 import { useSaleStore } from '../store/useSaleStore';
 import { useCustomerStore } from '../store/useCustomerStore';
+import { currentLoginCashierName, currentLoginStoreId, currentLoginUserId } from '../utils/loginCashierName';
 import {
     buildReminderText,
     sendAtakSms,
@@ -74,7 +75,8 @@ import {
     type BeautyFollowUpReminderStatus,
 } from '../types/beauty';
 import { mergeFollowUpRemindersWithActions } from '../utils/beautyFollowUpReminderUtils';
-
+import { normalizePaymentMethodBucket } from '../utils/paymentMethodUtils';
+import { splitPaymentRows } from '../utils/saleCollectedAmounts';
 /** Müşteri profili: randevu / satış / paket sorgularında aynı kişiye ait yinelenen kartları bulmak için */
 export type BeautyCustomerProfileQueryOpts = {
     phone?: string | null;
@@ -157,16 +159,17 @@ function addDaysYmd(ymd: string, days: number): string {
 }
 
 /** Raporlarda yerel takvim gününe göre filtre (UTC gece kayması olmasın diye tarayıcı yerel aralığı ISO’ya çevirir) */
-/** Güzellik ödeme kodunu MarketPOS / salesAPI ile uyumlu hale getirir (yalnızca `cash` kasaya yazılır; restoran POS ile aynı ayrım) */
+/** Güzellik ödeme kodunu MarketPOS / salesAPI ile uyumlu hale getirir. Açık cari / veresiye nakit sayılmaz. */
 function mapBeautyPaymentToErpMethod(raw: string | undefined): string {
-    const s = String(raw ?? '').trim();
-    const m = s.toLowerCase();
-    if (m === 'cash' || /^nak[ıi]t$/i.test(s) || m === 'nakit') return 'cash';
-    if (m === 'transfer' || m === 'havale' || /havale|eft|transfer/i.test(s)) return 'transfer';
-    if (m === 'card' || m === 'kart' || /kredi|kart/i.test(s)) return 'card';
-    if (m === 'gateway' || /sanal|gateway/i.test(s)) return 'gateway';
-    if (m === 'veresiye') return 'veresiye';
-    return 'cash';
+    if (raw == null || String(raw).trim() === '') return 'cash';
+    const bucket = normalizePaymentMethodBucket(raw);
+    if (bucket === 'cash') return 'cash';
+    if (bucket === 'card') return 'card';
+    if (bucket === 'transfer') return 'transfer';
+    if (bucket === 'credit') return 'veresiye';
+    const m = String(raw).trim().toLowerCase();
+    if (m === 'gateway' || /sanal|gateway/i.test(String(raw))) return 'card';
+    return 'veresiye';
 }
 
 /** Tablo öneki `rex_00x_*` ile uyum: oturumdaki firma no `1` / `01` iken satır `firm_nr` hep `001` olmalı */
@@ -1299,6 +1302,9 @@ async function runBeautySaleErpAndLoyalty(
     );
     const pm = mapBeautyPaymentToErpMethod(String(sale.payment_method ?? 'cash'));
     const dateIso = new Date().toISOString();
+    const paymentRows = Array.isArray((sale as BeautySale & { payments?: Array<{ method?: string; amount?: number; currency?: string }> }).payments)
+        ? (sale as BeautySale & { payments?: Array<{ method?: string; amount?: number; currency?: string }> }).payments
+        : undefined;
 
     try {
         const noteTail = sale.notes?.trim() ? String(sale.notes).trim() : 'Güzellik satışı';
@@ -1318,10 +1324,17 @@ async function runBeautySaleErpAndLoyalty(
             tax: Number(sale.tax ?? 0),
             total: Number(sale.total ?? 0),
             paymentMethod: pm,
+            payments: paymentRows?.map((p) => ({
+                method: String(p.method || pm),
+                amount: Number(p.amount) || 0,
+                currency: p.currency,
+            })),
             paymentStatus: 'paid',
             status: 'completed',
             notes: erpNotes,
-            cashier: 'Güzellik',
+            cashier: currentLoginCashierName(),
+            userId: currentLoginUserId(),
+            storeId: currentLoginStoreId(),
             firmNr: ERP_SETTINGS.firmNr,
             periodNr: ERP_SETTINGS.periodNr,
         });
@@ -5139,12 +5152,16 @@ export const beautyService = {
      * sonra `syncBeautyCheckoutToErp` ile tek tahsilat.
      */
     async createSale(
-        sale: Partial<BeautySale>,
+        sale: Partial<BeautySale> & { payments?: Array<{ method?: string; amount?: number; currency?: string }> },
         items: Partial<BeautySaleItem>[],
         opts?: { skipErpAndLoyalty?: boolean },
     ): Promise<string> {
         const id = uuidv4();
         const invoiceNumber = `BEA-${new Date().getFullYear()}-${Date.now().toString(36).toUpperCase()}`;
+        const pm = mapBeautyPaymentToErpMethod(String(sale.payment_method ?? 'cash'));
+        const split = splitPaymentRows(Number(sale.total ?? 0), sale.payments, pm);
+        const paidAmount = sale.paid_amount ?? split.collected;
+        const remainingAmount = sale.remaining_amount ?? split.remaining;
         if (shouldUseTenantPostgrestApi()) {
             const { postgrest } = await import('./api/postgrestClient');
             const fn = erpFirmNrForRow();
@@ -5160,10 +5177,10 @@ export const beautyService = {
                         discount: sale.discount ?? 0,
                         tax: sale.tax ?? 0,
                         total: sale.total ?? 0,
-                        payment_method: sale.payment_method ?? 'cash',
+                        payment_method: pm,
                         payment_status: sale.payment_status ?? 'paid',
-                        paid_amount: sale.paid_amount ?? sale.total ?? 0,
-                        remaining_amount: sale.remaining_amount ?? 0,
+                        paid_amount: paidAmount,
+                        remaining_amount: remainingAmount,
                         notes: sale.notes ?? null,
                     },
                 ],
@@ -5199,9 +5216,9 @@ export const beautyService = {
                 VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12)
             `, [id, invoiceNumber, pgUuidOrNull(sale.customer_id),
                 sale.subtotal ?? 0, sale.discount ?? 0, sale.tax ?? 0, sale.total ?? 0,
-                sale.payment_method ?? 'cash', sale.payment_status ?? 'paid',
-                sale.paid_amount ?? sale.total ?? 0,
-                sale.remaining_amount ?? 0, sale.notes ?? null]);
+                pm, sale.payment_status ?? 'paid',
+                paidAmount,
+                remainingAmount, sale.notes ?? null]);
 
             if (items.length > 0) {
                 const values: unknown[] = [];

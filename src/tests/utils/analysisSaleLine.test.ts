@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import {
   addAnalysisSplitAmount,
+  allocateSaleKindAmounts,
   classifyAnalysisSaleLine,
   resolveAnalysisSaleCategory,
 } from '../../utils/analysisSaleLine';
@@ -86,6 +87,41 @@ describe('resolveAnalysisSaleCategory', () => {
         keys,
       ),
     ).toBe('Hizmet');
+  });
+});
+
+describe('allocateSaleKindAmounts', () => {
+  it('karma fişte hizmet ve ürün tutarını orantılı böler', () => {
+    const split = allocateSaleKindAmounts(
+      [
+        { productId: 'svc-erp', lineType: 'Hizmet', total: 70 },
+        { productId: 'p-1', lineType: 'Malzeme', total: 30 },
+      ],
+      90,
+      10,
+      100,
+      products,
+    );
+    expect(split.kind).toBe('mixed');
+    expect(split.serviceNet).toBeCloseTo(63);
+    expect(split.productNet).toBeCloseTo(27);
+    expect(split.serviceDiscount).toBeCloseTo(7);
+    expect(split.productDiscount).toBeCloseTo(3);
+    expect(split.serviceBefore).toBeCloseTo(70);
+    expect(split.productBefore).toBeCloseTo(30);
+  });
+
+  it('yalnız hizmet satırında ürün kovası boş kalır', () => {
+    const split = allocateSaleKindAmounts(
+      [{ productId: 'svc-erp', item_type: 'service', total: 50 }],
+      50,
+      0,
+      50,
+      products,
+    );
+    expect(split.kind).toBe('service');
+    expect(split.serviceNet).toBe(50);
+    expect(split.productNet).toBe(0);
   });
 });
 
