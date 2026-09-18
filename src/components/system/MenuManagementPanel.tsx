@@ -43,6 +43,76 @@ interface MenuManagementPanelProps {
   onClose?: () => void;
 }
 
+/**
+ * Aynı screen_id birden fazla yerde olabilir (ör. Alınan Hizmet:
+ * Satınalma + Hizmet Faturaları). Görünürlük tek screen_id üzerinden
+ * senkron tutulmazsa bir göz açıkken diğeri gizli kalır ve
+ * collectHiddenModules yine screen_id'yi gizler → menüde hiç açılmaz.
+ */
+function syncScreenVisibility(items: MenuItem[], screenId: string, isVisible: boolean): MenuItem[] {
+  return items.map((item) => {
+    const matched = item.screen_id === screenId;
+    const children = item.children
+      ? syncScreenVisibility(item.children, screenId, isVisible)
+      : item.children;
+    return {
+      ...item,
+      is_visible: matched ? isVisible : item.is_visible,
+      children,
+    };
+  });
+}
+
+/** Görünür yaprak/alt öğe varsa ataları da görünür yap (üst gizliyse alt menüye hiç gelinmez). */
+function propagateVisibilityUp(items: MenuItem[]): MenuItem[] {
+  return items.map((item) => {
+    const children = item.children ? propagateVisibilityUp(item.children) : undefined;
+    const childVisible = !!children?.some((c) => c.is_visible);
+    return {
+      ...item,
+      children,
+      is_visible: item.is_visible || childVisible,
+    };
+  });
+}
+
+/** Üst öğe gizlenince alt ağacı da gizle (screen_id tutarlılığı için). */
+function cascadeHideSubtree(item: MenuItem): MenuItem {
+  return {
+    ...item,
+    is_visible: false,
+    children: item.children?.map(cascadeHideSubtree),
+  };
+}
+
+function applyVisibilityUpdate(items: MenuItem[], target: MenuItem): MenuItem[] {
+  const screenId = target.screen_id;
+  const makingVisible = target.is_visible;
+
+  const updateInTree = (nodes: MenuItem[]): MenuItem[] =>
+    nodes.map((i) => {
+      if (i.id === target.id) {
+        if (!makingVisible && i.children?.length) {
+          return { ...cascadeHideSubtree(i), ...target, is_visible: false };
+        }
+        return { ...i, ...target };
+      }
+      if (i.children?.length) {
+        return { ...i, children: updateInTree(i.children) };
+      }
+      return i;
+    });
+
+  let next = updateInTree(items);
+  if (screenId) {
+    next = syncScreenVisibility(next, screenId, makingVisible);
+  }
+  if (makingVisible) {
+    next = propagateVisibilityUp(next);
+  }
+  return next;
+}
+
 export function MenuManagementPanel({ onClose }: MenuManagementPanelProps) {
   const { tm } = useLanguage();
   const { user } = useAuth();
@@ -566,9 +636,19 @@ export function MenuManagementPanel({ onClose }: MenuManagementPanelProps) {
 
   const collectHiddenModulesFromTree = (items: MenuItem[]): string[] => {
     const flat = flattenMenuItems(items);
-    return remapLegacyStaticHiddenModules(
-      flat.filter((item) => !item.is_visible && item.screen_id).map((item) => item.screen_id as string),
-    );
+    const byScreen = new Map<string, boolean[]>();
+    for (const item of flat) {
+      if (!item.screen_id) continue;
+      const arr = byScreen.get(item.screen_id) ?? [];
+      arr.push(!!item.is_visible);
+      byScreen.set(item.screen_id, arr);
+    }
+    const hidden: string[] = [];
+    for (const [screenId, flags] of byScreen) {
+      // En az bir örnek görünürse menüde göster (çift kayıt tuzağı)
+      if (flags.every((v) => !v)) hidden.push(screenId);
+    }
+    return remapLegacyStaticHiddenModules(hidden);
   };
 
   const previewStaticMenuVisibility = (items: MenuItem[]) => {
@@ -716,9 +796,7 @@ export function MenuManagementPanel({ onClose }: MenuManagementPanelProps) {
 
       if (menuSource === 'static') {
         const flatItems = flattenMenuItems(menuItems);
-        const newHiddenModules = flatItems
-          .filter(item => !item.is_visible && item.screen_id)
-          .map(item => item.screen_id as string);
+        const newHiddenModules = collectHiddenModulesFromTree(menuItems);
         const item_orders: Record<string, number> = {};
         flatItems.forEach((item) => {
           if (item.screen_id) item_orders[item.screen_id] = item.display_order;
@@ -793,14 +871,7 @@ export function MenuManagementPanel({ onClose }: MenuManagementPanelProps) {
   // Menü öğesini güncelle
   const updateMenuItem = async (item: MenuItem) => {
     if (menuSource === 'static') {
-      const updateInTree = (items: MenuItem[]): MenuItem[] =>
-        items.map((i) => {
-          if (i.id === item.id) return { ...i, ...item };
-          if (i.children) return { ...i, children: updateInTree(i.children) };
-          return i;
-        });
-
-      const nextTree = updateInTree(menuItems);
+      const nextTree = applyVisibilityUpdate(menuItems, item);
       setMenuItems(nextTree);
       setEditingItem(null);
       previewStaticMenuVisibility(nextTree);
