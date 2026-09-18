@@ -21,6 +21,8 @@
 
 - **Hedef:** React Native + Expo → **`mobile/`** (native UI). Capacitor / WebView Vite SPA **yok**.
 - Android CI: `.github/workflows/android-release.yml` + `npm run android:ci:build` (tag `android-v{version}`).
+- Portable CI: `.github/workflows/desktop-portable-release.yml` + `npm run desktop:portable:ci:build` (tag `portable-v{version}`) — `retailex-desktop-portable-ci-build.mdc`.
+- Push sonrası CI teklifi: Android / DeskApp NSIS / **Portable** / Hepsi / Şimdi değil — `git-ask-ci-build-after-push.mdc`.
 - Kural: `.cursor/rules/retailex-mobile-react-native.mdc`
 
 ## Cursor Cloud specific instructions
