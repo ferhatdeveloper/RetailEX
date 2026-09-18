@@ -21,6 +21,7 @@ import {
     ScissorOutlined,
     FormOutlined,
     InfoCircleOutlined,
+    FileExcelOutlined,
 } from '@ant-design/icons';
 import { ChevronDown, Scissors } from 'lucide-react';
 import { RetailExFlatModal, RetailExFlatFieldLabel } from '../../shared/RetailExFlatModal';
@@ -37,6 +38,8 @@ import { formatMoneyAmount } from '../../../utils/formatMoney';
 import { useLanguage } from '../../../contexts/LanguageContext';
 import { useFirmaDonem } from '../../../contexts/FirmaDonemContext';
 import { toast } from 'sonner';
+import type { ColumnDef } from '@tanstack/react-table';
+import { exportDataGridToExcel } from '../../../utils/gridExcelExport';
 import { beautyService } from '../../../services/beautyService';
 import { categoryAPI, type Category } from '../../../services/api/masterData';
 import {
@@ -717,6 +720,60 @@ export function ServiceManagement() {
 
     const formatCurrency = (amount: number) => formatMoneyAmount(amount, { minFrac: 0, maxFrac: 0 });
 
+    const excelColumns = useMemo<ColumnDef<BeautyService, unknown>[]>(
+        () => [
+            { id: 'name', header: tm('bServiceLabel'), accessorFn: s => s.name },
+            {
+                id: 'parent_category',
+                header: tm('bServiceMainCategoryFilter'),
+                accessorFn: s =>
+                    String(s.parent_category ?? '').trim()
+                        ? categoryDisplayLabel(String(s.parent_category), masterLabelByKey)
+                        : '',
+            },
+            {
+                id: 'category',
+                header: tm('bServiceSubCategoryFilter'),
+                accessorFn: s => categoryDisplayLabel(s.category, masterLabelByKey),
+            },
+            { id: 'duration_min', header: tm('bDurationHeader'), accessorFn: s => s.duration_min },
+            {
+                id: 'default_sessions',
+                header: tm('bServiceDefaultSessionsCol'),
+                accessorFn: s => Math.max(1, Math.round(Number(s.default_sessions ?? 1))),
+            },
+            {
+                id: 'follow_up_reminder_days',
+                header: tm('bServiceFollowUpDaysShort'),
+                accessorFn: s => {
+                    const n = Number(s.follow_up_reminder_days);
+                    return Number.isFinite(n) && n > 0 ? Math.round(n) : '';
+                },
+            },
+            { id: 'price', header: tm('price'), accessorFn: s => s.price },
+            { id: 'cost_price', header: tm('purchasePrice'), accessorFn: s => s.cost_price ?? 0 },
+            {
+                id: 'requires_device',
+                header: tm('bDiagDevice'),
+                accessorFn: s => (s.requires_device ? tm('bDiagDevice') : ''),
+            },
+            {
+                id: 'is_active',
+                header: tm('status'),
+                accessorFn: s => (s.is_active ? tm('bStatusActive') : tm('inactive')),
+            },
+        ],
+        [tm, masterLabelByKey],
+    );
+
+    const handleExportExcel = () => {
+        exportDataGridToExcel(
+            filteredServices,
+            excelColumns,
+            tm('bServiceDefinitionsTitle') || 'hizmetler',
+        );
+    };
+
     const columns: ColumnsType<BeautyService> = useMemo(
         () => [
             {
@@ -862,9 +919,19 @@ export function ServiceManagement() {
                                     </Typography.Text>
                                 </div>
                             </Space>
-                            <Button type="primary" icon={<PlusOutlined />} onClick={openCreate}>
-                                {tm('bNewServiceAdd')}
-                            </Button>
+                            <Space size={8}>
+                                <Button
+                                    icon={<FileExcelOutlined />}
+                                    onClick={handleExportExcel}
+                                    title={tm('exportExcel')}
+                                    aria-label={tm('exportExcel')}
+                                >
+                                    {tm('exportExcel')}
+                                </Button>
+                                <Button type="primary" icon={<PlusOutlined />} onClick={openCreate}>
+                                    {tm('bNewServiceAdd')}
+                                </Button>
+                            </Space>
                         </div>
 
                         <div className="space-y-3 border-b px-4 py-3" style={{ borderColor: RETAILEX_BORDER_SUBTLE }}>
