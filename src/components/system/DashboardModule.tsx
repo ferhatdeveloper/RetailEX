@@ -683,7 +683,13 @@ export function DashboardModule({ products, customers, sales, setCurrentScreen, 
                   <CartesianGrid strokeDasharray="3 3" stroke="#E5E7EB" />
                   <XAxis dataKey="name" stroke="#6B7280" style={{ fontSize: '10px' }} />
                   <YAxis stroke="#6B7280" style={{ fontSize: '10px' }} />
-                  <Tooltip />
+                  <Tooltip
+                    formatter={(value: number, name: string) => {
+                      if (name === 'count') return [value, tLabel(t.productCount, 'Ürün')];
+                      if (name === 'value') return [formatNumber(value, 0, false), tLabel(undefined, 'Envanter değeri')];
+                      return [value, name];
+                    }}
+                  />
                   <Bar dataKey="value" fill="#8B5CF6" radius={[6, 6, 0, 0]} />
                 </BarChart>
               </ResponsiveContainer>

@@ -8,7 +8,7 @@ import {
     ChevronLeft, ChevronRight,
 } from 'lucide-react';
 import { useBeautyStore } from '../store/useBeautyStore';
-import { AppointmentStatus } from '../../../types/beauty';
+import { AppointmentStatus, appointmentStatusMatches } from '../../../types/beauty';
 import type { BeautyAppointment } from '../../../types/beauty';
 import { formatMoneyAmount } from '../../../utils/formatMoney';
 import { beautyAppointmentDateKey, formatLocalYmd, getWeekRangeLocal, getMonthRangeLocal } from '../../../utils/dateLocal';
@@ -166,7 +166,7 @@ export function ClinicDashboard() {
         return () => {
             cancelled = true;
         };
-    }, [callTab, callMonthOffset, callBoardRefreshTick, callRangeFrom, callRangeTo]);
+    }, [callTab, callMonthOffset, callBoardRefreshTick, callRangeFrom, callRangeTo, appointments]);
 
     const callRows = useMemo(() => {
         return callRowsRaw.filter((a) => {
@@ -306,7 +306,24 @@ export function ClinicDashboard() {
 
     const fmt = (n: number) => formatMoneyAmount(n, { minFrac: 0, maxFrac: 0 });
 
-    const activeStaff = specialists.filter(s => s.is_active);
+    /** is_active personel (toplam aktif kadro) */
+    const activeStaff = useMemo(() => specialists.filter(s => s.is_active), [specialists]);
+
+    /**
+     * Aktif Personel KPI: şu an müsait = is_active ve bugün in_progress randevusu olmayan.
+     * Alt metin: toplam aktif personel.
+     */
+    const availableStaffCount = useMemo(() => {
+        const busyIds = new Set<string>();
+        for (const a of appointments) {
+            if (beautyAppointmentDateKey(a) !== todayStr) continue;
+            if (!appointmentStatusMatches(a.status, AppointmentStatus.IN_PROGRESS)) continue;
+            const sid = String(a.specialist_id ?? a.staff_id ?? '').trim();
+            if (sid) busyIds.add(sid);
+        }
+        return activeStaff.filter(s => !busyIds.has(String(s.id))).length;
+    }, [appointments, todayStr, activeStaff]);
+
     const topServices = services.slice(0, 6);
 
     return (
@@ -344,7 +361,7 @@ export function ClinicDashboard() {
                 <KpiCard label={tm('bKpiCompletedLabel')}         value={stats.completed}      sub={tm('bKpiCompletionRateSub').replace('{n}', String(stats.rate))} accent={T.green}   icon={CheckCircle2} />
                 <KpiCard label={tm('bKpiPendingLabel')}           value={stats.pending}        sub={tm('bKpiInProgressSub').replace('{n}', String(stats.inProg))} accent={T.amber} icon={Clock} />
                 <KpiCard label={tm('bKpiCancelledLabel') || 'İptal'} value={stats.cancelled} accent={T.pink} icon={Activity} />
-                <KpiCard label={tm('bKpiActiveStaff')}     value={activeStaff.length}   sub={tm('bKpiTotalStaffSub').replace('{n}', String(specialists.length))} accent={T.blue}  icon={Users} />
+                <KpiCard label={tm('bKpiActiveStaff')}     value={availableStaffCount}   sub={tm('bKpiTotalStaffSub').replace('{n}', String(activeStaff.length))} accent={T.blue}  icon={Users} />
             </div>
 
             {/* ── Ön arama / aktivite (Bugün · Yarın · Hafta · Ay) ───────────── */}

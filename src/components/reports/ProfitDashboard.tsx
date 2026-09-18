@@ -107,12 +107,21 @@ export function ProfitDashboard() {
         ) t
       `);
 
+      // Katalog SKU adedi (stok toplamı değil) — KPI «Ürün Sayısı»
+      const { rows: catalogCountRows } = await postgres.query(`
+        SELECT COUNT(*)::int AS sku_count
+        FROM products
+        WHERE COALESCE(is_active, true) = true
+      `);
+
       const k = kpiRows[0] || {};
       const pc = prodCountRows[0] || {};
       const tp = topProductRows[0];
       const tc = topCustomerRows[0];
       const txCount = parseInt(k.transaction_count) || 0;
       const totalRev = parseFloat(k.total_revenue) || 0;
+      const catalogSku = parseInt(catalogCountRows[0]?.sku_count) || 0;
+      const soldSku = parseInt(pc.total_count) || 0;
 
       setKpiData({
         totalRevenue: totalRev,
@@ -120,7 +129,7 @@ export function ProfitDashboard() {
         grossProfit: parseFloat(k.gross_profit) || 0,
         profitMargin: parseFloat(k.profit_margin) || 0,
         transactionCount: txCount,
-        productCount: parseInt(pc.total_count) || 0,
+        productCount: catalogSku > 0 ? catalogSku : soldSku,
         customerCount: parseInt(k.customer_count) || 0,
         avgTransactionValue: txCount > 0 ? totalRev / txCount : 0,
         topProduct: tp ? `${tp.product_code} - ${tp.product_name}` : '-',
@@ -388,12 +397,25 @@ export function ProfitDashboard() {
                       </div>
                       <div className="text-sm text-blue-700">
                         {tm('rptProfitInsightProfitableRatio')
-                          .replace('{count}', String(kpiData.productCount))
+                          .replace(
+                            '{count}',
+                            String(
+                              kpiData.profitableProducts + kpiData.lossProducts > 0
+                                ? kpiData.profitableProducts + kpiData.lossProducts
+                                : kpiData.productCount
+                            )
+                          )
                           .replace(
                             '{pct}',
-                            kpiData.productCount > 0
-                              ? ((kpiData.profitableProducts / kpiData.productCount) * 100).toFixed(1)
-                              : '0'
+                            (() => {
+                              const denom =
+                                kpiData.profitableProducts + kpiData.lossProducts > 0
+                                  ? kpiData.profitableProducts + kpiData.lossProducts
+                                  : kpiData.productCount;
+                              return denom > 0
+                                ? ((kpiData.profitableProducts / denom) * 100).toFixed(1)
+                                : '0';
+                            })()
                           )}
                       </div>
                     </div>

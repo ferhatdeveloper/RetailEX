@@ -1,4 +1,4 @@
-﻿import React, { useState, useEffect, useCallback, useMemo } from 'react';
+import React, { useState, useEffect, useCallback, useMemo } from 'react';
 import { Plus, Search, Edit, Trash2, X, AlertCircle, RefreshCw, Download, Upload, Filter, MoreVertical } from 'lucide-react';
 import { definitionAPI, DefinitionItem } from '../../services/definitionAPI';
 import { BaseModal } from '../shared/BaseModal';
@@ -14,6 +14,8 @@ interface ColumnDef {
     key: string;
     header: string;
     type?: 'text' | 'boolean' | 'number' | 'icon';
+    /** false = yalnızca grid (ör. ürün SKU adedi); forma yazılmaz */
+    editable?: boolean;
 }
 
 interface GenericDefinitionModuleProps {
@@ -22,6 +24,21 @@ interface GenericDefinitionModuleProps {
     tableName: string;
     columns: ColumnDef[];
     icon: React.ElementType;
+}
+
+/** Kategori satırı için ürün (SKU) adedi — stok toplamı değil */
+function countProductsForCategory(
+    cat: DefinitionItem,
+    products: Array<{ category?: string; categoryCode?: string }>
+): number {
+    const code = String(cat.code ?? '').trim().toLocaleLowerCase('tr-TR');
+    const name = String(cat.name ?? '').trim().toLocaleLowerCase('tr-TR');
+    if (!code && !name) return 0;
+    return products.filter((p) => {
+        const pCat = String(p.category ?? p.categoryCode ?? '').trim().toLocaleLowerCase('tr-TR');
+        if (!pCat) return false;
+        return (code !== '' && pCat === code) || (name !== '' && pCat === name);
+    }).length;
 }
 
 export function GenericDefinitionModule({
@@ -44,7 +61,23 @@ export function GenericDefinitionModule({
         try {
             setLoading(true);
             const data = await definitionAPI.getAll(tableName);
-            setItems(data);
+            // Kategori listesi: ürün (SKU) adedi — stok toplamı değil
+            if (tableName === 'categories') {
+                const { useProductStore } = await import('../../store/useProductStore');
+                const store = useProductStore.getState();
+                if (!store.products.length) {
+                    await store.loadProducts(true);
+                }
+                const products = useProductStore.getState().products;
+                setItems(
+                    data.map((row) => ({
+                        ...row,
+                        product_count: countProductsForCategory(row, products),
+                    }))
+                );
+            } else {
+                setItems(data);
+            }
         } catch (error) {
             console.error('Error loading items:', error);
         } finally {
@@ -97,9 +130,14 @@ export function GenericDefinitionModule({
         }
     };
 
+    const editableColumns = useMemo(
+        () => columns.filter((col) => col.editable !== false && col.key !== 'product_count'),
+        [columns]
+    );
+
     const resetForm = () => {
         const initialData: any = {};
-        columns.forEach(col => {
+        editableColumns.forEach(col => {
             if (col.key !== 'is_active' && col.key !== 'actions') {
                 initialData[col.key] = col.type === 'boolean' ? false : '';
             }
@@ -112,7 +150,7 @@ export function GenericDefinitionModule({
     const openEditModal = (item: DefinitionItem) => {
         setEditingItem(item);
         const data: any = {};
-        columns.forEach(col => {
+        editableColumns.forEach(col => {
             data[col.key] = item[col.key];
         });
         setFormData(data);
@@ -146,6 +184,10 @@ export function GenericDefinitionModule({
                                 <span className="text-[10px] text-gray-500 font-mono">{value}</span>
                             </div>
                         );
+                    }
+                    if (col.key === 'product_count' || col.type === 'number') {
+                        const n = Number(value);
+                        return <span className="tabular-nums">{Number.isFinite(n) ? n : 0}</span>;
                     }
                     return value;
                 },
@@ -358,7 +400,7 @@ export function GenericDefinitionModule({
                 }
             >
                 <form onSubmit={handleSubmit} className="space-y-4 p-1">
-                    {columns.map(col => (
+                    {editableColumns.map(col => (
                         <div key={col.key}>
                             <label className="block text-xs font-semibold text-gray-700 mb-1.5 uppercase tracking-wide">
                                 {col.header} {(col.key === 'code' || col.key === 'name') && <span className="text-red-500">*</span>}

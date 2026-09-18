@@ -17,6 +17,8 @@ interface InvoiceHeaderProps {
 
     // Data Fields
     invoiceNo: string;
+    /** Yeni faturalarda düzenlenebilir; kayıtlı/düzenleme modunda verilmez → salt okunur */
+    setInvoiceNo?: (val: string) => void;
     transactionDate: string;
     setTransactionDate: (val: string) => void;
     time: string;
@@ -98,6 +100,7 @@ export const InvoiceHeader: React.FC<InvoiceHeaderProps> = ({
     isFormExpanded,
     setIsFormExpanded,
     invoiceNo,
+    setInvoiceNo,
     transactionDate,
     setTransactionDate,
     time,
@@ -163,6 +166,7 @@ export const InvoiceHeader: React.FC<InvoiceHeaderProps> = ({
 }) => {
     const { tm } = useLanguage();
     const cashierLabel = cashierFieldLabel || tm('cashier');
+    const invoiceNoEditable = typeof setInvoiceNo === 'function';
     // iade yönüne göre cari tarafı (Alış + Alış İade + Alınan Hizmet → tedarikçi)
     const isPurchaseSide = isInvoicePurchaseSide(invoiceType);
     const cariTitle = isPurchaseSide ? supplierTitle : customerTitle;
@@ -305,12 +309,20 @@ export const InvoiceHeader: React.FC<InvoiceHeaderProps> = ({
                     {/* Column 1 - Fatura Bilgileri */}
                     <div className="space-y-3">
                         <div>
-                            <label className="block mb-1 text-gray-700 text-xs">{tm('invoiceCode')}</label>
+                            <label className="block mb-1 text-gray-700 text-xs font-semibold">
+                                {tm('invoiceNo')}
+                            </label>
                             <input
                                 type="text"
                                 value={invoiceNo}
-                                readOnly
-                                className="w-full px-2 py-1 border border-gray-300 rounded text-sm bg-gray-50"
+                                readOnly={!invoiceNoEditable}
+                                onChange={(e) => setInvoiceNo?.(e.target.value)}
+                                title={invoiceNoEditable ? tm('invoiceNo') : undefined}
+                                className={`w-full px-2 py-1 border border-gray-300 rounded text-sm font-mono tabular-nums ${
+                                    invoiceNoEditable
+                                        ? 'bg-white focus:outline-none focus:ring-1 focus:ring-blue-500'
+                                        : 'bg-gray-50 text-gray-800'
+                                }`}
                             />
                         </div>
 
@@ -688,6 +700,22 @@ export const InvoiceHeader: React.FC<InvoiceHeaderProps> = ({
                     </div>
 
                     <div className="flex flex-wrap items-center gap-x-4 gap-y-2 shrink-0 order-2 sm:ml-auto">
+                        <div className="inline-flex items-center gap-1.5 shrink-0">
+                            <span className="text-[11px] font-semibold text-gray-500 uppercase whitespace-nowrap">{tm('invoiceNo')}</span>
+                            <input
+                                type="text"
+                                value={invoiceNo}
+                                readOnly={!invoiceNoEditable}
+                                onChange={(e) => setInvoiceNo?.(e.target.value)}
+                                className={`w-[7.5rem] sm:w-[9rem] px-2 py-1 border border-gray-300 rounded text-sm font-mono tabular-nums truncate ${
+                                    invoiceNoEditable
+                                        ? 'bg-white focus:outline-none focus:ring-1 focus:ring-blue-500'
+                                        : 'bg-gray-50 text-gray-800'
+                                }`}
+                                title={invoiceNo}
+                            />
+                        </div>
+
                         <div className="inline-flex items-center gap-1.5 shrink-0">
                             <span className="text-[11px] font-semibold text-gray-500 uppercase whitespace-nowrap">{tm('date')}</span>
                             <div className="flex gap-1">

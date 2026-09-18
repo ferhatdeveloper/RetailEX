@@ -8,6 +8,7 @@ import {
 import { useBeautyStore } from '../store/useBeautyStore';
 import { beautyService } from '../../../services/beautyService';
 import { useLanguage } from '../../../contexts/LanguageContext';
+import { useFirmaDonem } from '../../../contexts/FirmaDonemContext';
 import { Button } from '@/components/ui/button';
 import { cn } from '@/components/ui/utils';
 import { formatMoneyAmount } from '../../../utils/formatMoney';
@@ -25,10 +26,14 @@ type ReportStats = Awaited<ReturnType<typeof beautyService.getReportStats>>;
 export function ReportDashboard() {
     const { specialists } = useBeautyStore();
     const { tm } = useLanguage();
+    const { selectedFirm } = useFirmaDonem();
     const [stats, setStats]     = useState<ReportStats | null>(null);
     const [loading, setLoading] = useState(true);
     const [error, setError]     = useState<string | null>(null);
-    const currency = getAppDefaultCurrency() || 'IQD';
+    const currency =
+        (selectedFirm?.ana_para_birimi && String(selectedFirm.ana_para_birimi).trim()) ||
+        getAppDefaultCurrency() ||
+        'IQD';
     const fmt = (n: number) => `${formatMoneyAmount(n, { minFrac: 0, maxFrac: 0 })} ${currency}`;
 
     const CATEGORY_LABEL: Record<string, string> = {

@@ -2720,11 +2720,14 @@ export function ReportsModule({
         (order.items || []).forEach((item: any) => {
           const categoryName = item.category_name || 'Diğer';
           const existing = categoryMap.get(categoryName);
-          const productKey = String(item.product_id ?? item.productId ?? item.product_name ?? item.productName ?? '').trim() || '—';
+          // Distinct SKU — quantity/stok değil
+          const productKey = String(
+            item.product_id ?? item.productId ?? item.menu_item_id ?? item.product_code ?? item.productCode ?? item.product_name ?? item.productName ?? ''
+          ).trim() || '—';
           if (existing) {
             existing.totalRevenue += Number(item.subtotal || 0);
             existing.totalQuantity += Number(item.quantity || 0);
-            existing.avgPrice = existing.totalRevenue / existing.totalQuantity;
+            existing.avgPrice = existing.totalQuantity > 0 ? existing.totalRevenue / existing.totalQuantity : 0;
             existing.productIds.add(productKey);
             existing.productCount = existing.productIds.size;
             if (!existing.items) existing.items = [];
@@ -5559,6 +5562,7 @@ export function ReportsModule({
                           name: c.name,
                           totalRevenue: c.totalRevenue,
                           totalQuantity: c.totalQuantity,
+                          productCount: c.productCount,
                           avgPrice: c.avgPrice,
                         }));
                         const visible = rpt.filtered(rows);
@@ -5569,6 +5573,7 @@ export function ReportsModule({
                                 <tr>
                                   <th className="px-4 py-2 text-left text-sm">{tm('categoryLabel')}</th>
                                   <th className="px-4 py-2 text-right text-sm">{tm('totalRevenueLabel')}</th>
+                                  <th className="px-4 py-2 text-right text-sm">{tm('erpColSkuCount')}</th>
                                   <th className="px-4 py-2 text-right text-sm">{tm('salesQuantityLabel')}</th>
                                   <th className="px-4 py-2 text-right text-sm">{tm('avgPriceLabel')}</th>
                                 </tr>
@@ -5576,6 +5581,7 @@ export function ReportsModule({
                                   columns={[
                                     { key: 'name', label: tm('categoryLabel'), type: 'text', width: 'min-w-[180px]' },
                                     { key: 'totalRevenue', label: tm('totalRevenueLabel'), type: 'number', align: 'right', width: 'min-w-[140px]' },
+                                    { key: 'productCount', label: tm('erpColSkuCount'), type: 'number', align: 'right', width: 'min-w-[100px]' },
                                     { key: 'totalQuantity', label: tm('salesQuantityLabel'), type: 'number', align: 'right', width: 'min-w-[120px]' },
                                     { key: 'avgPrice', label: tm('avgPriceLabel'), type: 'number', align: 'right', width: 'min-w-[120px]' },
                                   ]}
@@ -5587,7 +5593,7 @@ export function ReportsModule({
                               <tbody className="divide-y">
                                 {visible.length === 0 ? (
                                   <tr>
-                                    <td colSpan={4} className="px-4 py-10 text-center text-slate-500 text-sm">
+                                    <td colSpan={5} className="px-4 py-10 text-center text-slate-500 text-sm">
                                       {tm('noDataFound')}
                                     </td>
                                   </tr>
@@ -5606,6 +5612,11 @@ export function ReportsModule({
                                           {formatNumber(cat.totalRevenue, 2, false)} {reportCurrency}
                                         </td>
                                         <td className="px-4 py-2 text-right">
+                                          <span className="px-2 py-1 bg-slate-100 text-slate-700 rounded text-sm">
+                                            {cat.productCount}
+                                          </span>
+                                        </td>
+                                        <td className="px-4 py-2 text-right">
                                           <span className="px-2 py-1 bg-blue-100 text-blue-700 rounded text-sm">
                                             {cat.totalQuantity}
                                           </span>
@@ -5621,6 +5632,7 @@ export function ReportsModule({
                                 columns={[
                                   { key: 'name', label: tm('categoryLabel'), align: 'left' },
                                   { key: 'totalRevenue', label: tm('totalRevenueLabel'), aggregate: 'sum', align: 'right', formatter: (v) => `${formatNumber(v, 2, false)} ${reportCurrency}` },
+                                  { key: 'productCount', label: tm('erpColSkuCount'), aggregate: 'sum', align: 'right' },
                                   { key: 'totalQuantity', label: tm('salesQuantityLabel'), aggregate: 'sum', align: 'right' },
                                   { key: 'avgPrice', label: tm('avgPriceLabel'), aggregate: 'avg', align: 'right', formatter: (v) => `${formatNumber(v, 2, false)} ${reportCurrency}` },
                                 ]}

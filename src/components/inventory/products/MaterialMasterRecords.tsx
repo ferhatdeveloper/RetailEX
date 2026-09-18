@@ -63,6 +63,7 @@ export function MaterialMasterRecords({ viewType }: MaterialMasterRecordsProps) 
                     tableName: 'categories',
                     columns: [
                         ...commonColumns,
+                        { key: 'product_count', header: tm('erpColSkuCount'), type: 'number' as const, editable: false },
                         { key: 'is_restaurant', header: tm('restCategory'), type: 'boolean' as const },
                         { key: 'icon', header: tm('icon').toUpperCase(), type: 'icon' as const }
                     ],
@@ -73,7 +74,10 @@ export function MaterialMasterRecords({ viewType }: MaterialMasterRecordsProps) 
                     title: tm('materialClasses'),
                     description: tm('materialClassDesc'),
                     tableName: 'categories', // Using categories for now as per schema
-                    columns: commonColumns,
+                    columns: [
+                        ...commonColumns,
+                        { key: 'product_count', header: tm('erpColSkuCount'), type: 'number' as const, editable: false },
+                    ],
                     icon: Layers
                 };
             case 'warehousetransfer_def':

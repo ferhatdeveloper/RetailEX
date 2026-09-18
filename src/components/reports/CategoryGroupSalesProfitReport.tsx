@@ -18,6 +18,7 @@ import {
   SIGNED_LINE_PROFIT_EXPR,
   SIGNED_LINE_QTY_EXPR,
   SIGNED_LINE_REVENUE_EXPR,
+  SQL_IS_SERVICE_LINE,
   SQL_LINE_RESOLVED_PRODUCT_ID,
   SQL_PL_SALES_OR_RETURN,
 } from '../../utils/lastPurchaseCostSql';
@@ -85,6 +86,7 @@ export function CategoryGroupSalesProfitReport() {
   const [dateTo, setDateTo] = useState('');
   const [openGroups, setOpenGroups] = useState<Set<string>>(new Set());
   const [openCats, setOpenCats] = useState<Set<string>>(new Set());
+  const [lineKind, setLineKind] = useState<'product' | 'service' | 'all'>('product');
   const [movementTarget, setMovementTarget] = useState<ProductMovementTarget | null>(null);
 
   const cur = getAppDefaultCurrency();
@@ -106,6 +108,13 @@ export function CategoryGroupSalesProfitReport() {
         .replace(/\D/g, '')
         .padStart(3, '0')
         .slice(0, 10);
+
+      const lineKindSql =
+        lineKind === 'service'
+          ? `AND (${SQL_IS_SERVICE_LINE})`
+          : lineKind === 'product'
+            ? `AND NOT (${SQL_IS_SERVICE_LINE})`
+            : '';
 
       const { rows: qrows } = await postgres.query<{
         group_name: string;
@@ -141,6 +150,7 @@ export function CategoryGroupSalesProfitReport() {
           AND ${SQL_COUNTABLE_SALE_STATUS}
           AND ${SQL_PL_SALES_OR_RETURN}
           AND COALESCE(si.item_type, 'Malzeme') NOT IN ('Promosyon', 'İndirim')
+          ${lineKindSql}
           AND (s.date AT TIME ZONE 'UTC')::date >= $2::date
           AND (s.date AT TIME ZONE 'UTC')::date <= $3::date
         GROUP BY
@@ -178,7 +188,7 @@ export function CategoryGroupSalesProfitReport() {
     } finally {
       setLoading(false);
     }
-  }, [selectedFirma, selectedDonem, dateFrom, dateTo, tm]);
+  }, [selectedFirma, selectedDonem, dateFrom, dateTo, lineKind, tm]);
 
   useEffect(() => {
     if (selectedFirma && selectedDonem && dateFrom && dateTo) void load();
@@ -250,6 +260,16 @@ export function CategoryGroupSalesProfitReport() {
           </div>
         </div>
         <div className="flex flex-wrap items-center gap-2">
+          <select
+            value={lineKind}
+            onChange={(e) => setLineKind(e.target.value as 'product' | 'service' | 'all')}
+            className="rounded border border-slate-200 px-2 py-1 text-sm bg-white"
+            aria-label={tm('service') || 'Hizmet'}
+          >
+            <option value="product">Malzeme</option>
+            <option value="service">{tm('service') || 'Hizmet'}</option>
+            <option value="all">{tm('erpCardAll') || 'Tümü'}</option>
+          </select>
           <label className="flex items-center gap-1 text-sm text-slate-600">
             {tm('rptProfitDateFrom')}
             <input

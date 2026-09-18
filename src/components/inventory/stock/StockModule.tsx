@@ -92,7 +92,7 @@ export function StockModule({ products, setProducts }: StockModuleProps) {
             <Package className="w-4 h-4" />
             <h2 className="text-sm">{tm('invStockInventoryTitle')}</h2>
             <span className="text-orange-100 text-[10px] ml-2">
-              {tm('invProductCountBadge').replace('{n}', String(totalItems))}
+              {tm('invProductCountBadge').replace('{n}', String(products.length))}
             </span>
           </div>
           <div className="flex gap-1.5">

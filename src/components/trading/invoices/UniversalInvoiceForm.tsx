@@ -4090,6 +4090,7 @@ export function UniversalInvoiceForm({
                   setIsFormExpanded={setIsFormExpanded}
 
                   invoiceNo={invoiceNo}
+                  setInvoiceNo={(editData as any)?.id ? undefined : setInvoiceNo}
                   transactionDate={transactionDate}
                   setTransactionDate={setTransactionDate}
                   time={time}

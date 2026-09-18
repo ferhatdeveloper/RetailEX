@@ -136,9 +136,14 @@ export const useBeautyStore = create<BeautyState>()((set, get) => ({
         try {
             const updatedAt = new Date().toISOString();
             await beautyService.updateAppointmentStatus(id, status);
+            // Anlık KPI / liste güncellemesi (dashboard vb.)
             set((state) => ({
                 appointments: state.appointments.map(a => a.id === id ? { ...a, status, updated_at: updatedAt } : a),
             }));
+            // Sunucu ile hizala — ClinicDashboard KPI ve takvim yenilensin
+            const r = get().lastAppointmentRange;
+            if (r) await get().loadAppointmentsInRange(r.start, r.end);
+            else await get().loadAppointments(formatLocalYmd(new Date()));
         } catch (e: any) {
             logger.crudError('BeautyStore', 'updateAppointmentStatus', e, { id, status });
             throw e;
