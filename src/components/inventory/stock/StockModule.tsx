@@ -44,6 +44,25 @@ export function StockModule({ products, setProducts }: StockModuleProps) {
   const criticalStockCount = products.filter(p => p.stock < 10).length;
   const outOfStockCount = products.filter(p => p.stock === 0).length;
 
+  // Kategori dağılımı: benzersiz SKU/ürün adedi — stok miktarı toplamı değil
+  const categoryDistribution = (() => {
+    const buckets = new Map<string, Set<string>>();
+    for (const p of products) {
+      const cat = String(p.category ?? '').trim();
+      let skus = buckets.get(cat);
+      if (!skus) {
+        skus = new Set<string>();
+        buckets.set(cat, skus);
+      }
+      const skuKey = String(p.id || p.barcode || p.sku || p.code || p.name);
+      if (skuKey) skus.add(skuKey);
+    }
+    return Array.from(buckets.entries())
+      .map(([category, skus]) => ({ category, productCount: skus.size }))
+      .sort((a, b) => b.productCount - a.productCount)
+      .slice(0, 4);
+  })();
+
   // Stock movements (mock data for demo)
   // Stock movements
   const [stockMovements, setStockMovements] = useState<any[]>([]);
@@ -336,21 +355,14 @@ export function StockModule({ products, setProducts }: StockModuleProps) {
               <div className="bg-white rounded-xl shadow-lg border border-gray-200 p-6">
                 <h4 className="text-sm text-gray-600 mb-4">{tm('invCategoryDistTitle')}</h4>
                 <div className="space-y-3">
-                  {Array.from(new Set(products.map(p => p.category))).slice(0, 4).map((category, index) => {
-                    const categoryProducts = products.filter(p => p.category === category);
-                    // Ürün adedi (SKU), stok miktarı toplamı değil — stok ayrı gösterilir
-                    const categorySkuCount = categoryProducts.length;
-                    const categoryStock = categoryProducts.reduce((sum, p) => sum + (Number(p.stock) || 0), 0);
-                    return (
-                      <div key={`category-${category}-${index}`} className="flex justify-between gap-2">
-                        <span className="text-sm text-gray-600 truncate">{category}:</span>
-                        <span className="text-sm text-gray-600 shrink-0 text-right">
-                          {tm('invProductsCount').replace('{n}', String(categorySkuCount))}
-                          <span className="text-gray-400 ml-1">({formatNumber(categoryStock, 0, false)})</span>
-                        </span>
-                      </div>
-                    );
-                  })}
+                  {categoryDistribution.map(({ category, productCount }, index) => (
+                    <div key={`category-${category || 'none'}-${index}`} className="flex justify-between gap-2">
+                      <span className="text-sm text-gray-600 truncate">{category || '—'}</span>
+                      <span className="text-sm text-gray-600 shrink-0 text-right">
+                        {tm('invProductsCount').replace('{n}', String(productCount))}
+                      </span>
+                    </div>
+                  ))}
                 </div>
               </div>
             </div>

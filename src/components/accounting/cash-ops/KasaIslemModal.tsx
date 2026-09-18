@@ -5,22 +5,35 @@
  */
 
 import { useState, useEffect } from 'react';
-import { X, Calendar, Search, Save, Wallet, CheckCircle2 } from 'lucide-react';
+import { X, Calendar, Search, Save, Wallet, CheckCircle2, FileText } from 'lucide-react';
 import { useFirmaDonem } from '../../../contexts/FirmaDonemContext';
 import { useLanguage } from '../../../contexts/LanguageContext';
 import { toast } from 'sonner';
-import { createKasaIslemi, updateKasaIslemi, fetchKasalar, type Kasa, type KasaIslemi } from '../../../services/api/kasa';
+import {
+  createKasaIslemi,
+  updateKasaIslemi,
+  fetchKasalar,
+  cashLineExistsForFicheNo,
+  isKasaInvoiceIslemTipi,
+  postedCashTypeForInvoiceIslem,
+  invoiceCashDescriptionPrefix,
+  type Kasa,
+  type KasaIslemi,
+  type KasaIslemTipi,
+  type KasaInvoiceIslemTipi,
+} from '../../../services/api/kasa';
+import { KasaFaturaSecModal } from './KasaFaturaSecModal';
 import { fetchBankalar, type Banka } from '../../../services/api/banka';
 import { fetchCurrentAccounts } from '../../../services/api/currentAccounts';
 import { partnerAPI } from '../../../services/api/partiesPartners';
-import type { PartyPartner } from '../../../core/types/models';
+import type { Invoice, PartyPartner } from '../../../core/types/models';
 import { formatNumber, parseNumber } from '../../../utils/formatNumber';
 import { formatCurrency, formatMoneyWithCode, getGlobalCurrency } from '../../../utils/currency';
 import { getCariBalanceDirection } from '../../../utils/cariAccountStatement';
 
 interface KasaIslemModalProps {
   kasa: Kasa;
-  islemTipi: 'CH_TAHSILAT' | 'CH_ODEME' | 'KASA_GIRIS' | 'KASA_CIKIS' | 'BANKA_YATIRILAN' | 'BANKADAN_CEKILEN' | 'VIRMAN' | 'GIDER_PUSULASI' | 'VERILEN_SERBEST_MESLEK' | 'ALINAN_SERBEST_MESLEK' | 'MUSTAHSIL_MAKBUZU' | 'ACILIS_BORC' | 'ACILIS_ALACAK' | 'KUR_FARKI_BORC' | 'KUR_FARKI_ALACAK';
+  islemTipi: KasaIslemTipi;
   onClose: () => void;
   onSuccess: () => void;
   /** Düzenleme modu: dolu ise form mevcut işlem değerleriyle açılır ve kayıt updateKasaIslemi ile yapılır. */
@@ -192,6 +205,9 @@ export function KasaIslemModal({
   // Ortak adına ödeme (CH_ODEME_PARTNER): firma ortak adına tedarikçiye ödeme yapıyor
   const [ortakAdina, setOrtakAdina] = useState(false);
   const [ortaklar, setOrtaklar] = useState<PartyPartner[]>([]);
+  const isInvoiceCash = isKasaInvoiceIslemTipi(islemTipi);
+  const [showInvoicePicker, setShowInvoicePicker] = useState(false);
+  const [selectedInvoice, setSelectedInvoice] = useState<Invoice | null>(null);
 
   useEffect(() => {
     if (!initialSettleClose || isEdit) return;
@@ -293,7 +309,8 @@ export function KasaIslemModal({
     islemTipi === 'CH_TAHSILAT' ||
     islemTipi === 'CH_ODEME' ||
     islemTipi === 'KASA_GIRIS' ||
-    islemTipi === 'KASA_CIKIS';
+    islemTipi === 'KASA_CIKIS' ||
+    isInvoiceCash;
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -313,6 +330,17 @@ export function KasaIslemModal({
       return;
     }
 
+    if (isInvoiceCash && !isEdit) {
+      if (!selectedInvoice?.invoice_no) {
+        toast.error(tm('pleaseSelectInvoice'));
+        return;
+      }
+      if (!formData.cari_hesap_id) {
+        toast.error(t['pleaseSelectCurrentAccount']);
+        return;
+      }
+    }
+
     setLoading(true);
     try {
       console.log('[KasaIslemModal] Submitting formData:', formData, 'isEdit:', isEdit);
@@ -320,8 +348,21 @@ export function KasaIslemModal({
         throw new Error(t['missingKasaId']);
       }
       // CH_ODEME_PARTNER: party_id ekle (veya kaldır)
+      const submitTutar = Math.abs(parseNumber(displayAmount) || Number(formData.tutar) || 0);
+      const invoiceFiche = String(selectedInvoice?.invoice_no || formData.islem_no || '').trim();
+      let postedTip = islemTipi as string;
+      if (isInvoiceCash && !isEdit) {
+        if (await cashLineExistsForFicheNo(invoiceFiche)) {
+          throw new Error(tm('cashInvoiceAlreadyPosted'));
+        }
+        postedTip = postedCashTypeForInvoiceIslem(islemTipi as KasaInvoiceIslemTipi);
+      }
       const submitFormData: KasaIslemi = {
         ...(formData as KasaIslemi),
+        tutar: submitTutar,
+        dovizli_tutar: submitTutar,
+        islem_tipi: postedTip,
+        islem_no: invoiceFiche || formData.islem_no,
         party_id: islemTipi === 'CH_ODEME' && ortakAdina ? formData.party_id : undefined,
       };
       if (isEdit && editingIslem?.id) {
@@ -333,7 +374,12 @@ export function KasaIslemModal({
       }
       onSuccess();
     } catch (error: any) {
-      toast.error(error.message || t['operationSaveFailed']);
+      const msg = String(error?.message || '');
+      if (/duplicate|unique|fiche_no|23505/i.test(msg)) {
+        toast.error(tm('cashInvoiceAlreadyPosted'));
+      } else {
+        toast.error(error.message || t['operationSaveFailed']);
+      }
     } finally {
       setLoading(false);
     }
@@ -363,6 +409,27 @@ export function KasaIslemModal({
     return codeMatch || nameMatch;
   });
 
+  const applySelectedInvoice = (inv: Invoice) => {
+    const amt = Math.abs(Number(inv.total_amount || 0));
+    const prefix = invoiceCashDescriptionPrefix(islemTipi as KasaInvoiceIslemTipi);
+    const partnerId = String(inv.customer_id || inv.supplier_id || '').trim();
+    const partnerName = String(inv.customer_name || inv.supplier_name || '').trim();
+    setSelectedInvoice(inv);
+    setFormData((prev) => ({
+      ...prev,
+      tutar: amt,
+      dovizli_tutar: amt,
+      islem_no: String(inv.invoice_no || '').trim(),
+      cari_hesap_id: partnerId || undefined,
+      cari_hesap_unvani: partnerName || undefined,
+      cari_hesap_kodu: undefined,
+      islem_aciklamasi: `${prefix} — ${inv.invoice_no || ''}`.trim(),
+    }));
+    setDisplayAmount(amt ? formatNumber(amt) : '');
+    setCariSearch(partnerName);
+    setShowInvoicePicker(false);
+  };
+
   const getModalTitle = () => {
     const titles: Record<string, string> = {
       'CH_TAHSILAT': t['chCollection'],
@@ -380,11 +447,15 @@ export function KasaIslemModal({
       'ACILIS_ALACAK': t['openingCredit'],
       'KUR_FARKI_BORC': t['exchangeDifferenceDebit'],
       'KUR_FARKI_ALACAK': t['exchangeDifferenceCredit'],
+      'SATIS_FATURASI': tm('cashSalesInvoice'),
+      'ALIS_FATURASI': tm('cashPurchaseInvoice'),
+      'HIZMET_FATURASI': tm('cashServiceInvoice'),
     };
     return titles[islemTipi] || t['cashOperation'];
   };
 
   return (
+    <>
     <div className="fixed inset-0 bg-black/60 backdrop-blur-sm flex items-center justify-center z-[70] p-4">
       <div className="bg-white dark:bg-gray-900 w-full max-w-2xl shadow-2xl flex flex-col overflow-hidden">
         {/* Header - Flat Blue */}
@@ -459,6 +530,35 @@ export function KasaIslemModal({
               </div>
             </div>
           </div>
+
+          {isInvoiceCash && (
+            <div className="space-y-1.5">
+              <label className="text-sm font-medium text-gray-700 dark:text-gray-300">{tm('selectInvoiceForCash')}</label>
+              <button
+                type="button"
+                onClick={() => setShowInvoicePicker(true)}
+                className={`w-full flex items-center gap-3 px-3 py-2.5 border rounded text-left ${
+                  selectedInvoice
+                    ? 'border-blue-500 bg-blue-50 ring-1 ring-blue-500'
+                    : 'border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-800'
+                }`}
+              >
+                <FileText className="w-5 h-5 text-blue-600 shrink-0" />
+                <div className="min-w-0 flex-1">
+                  {selectedInvoice ? (
+                    <>
+                      <div className="font-mono font-semibold text-blue-800 truncate">{selectedInvoice.invoice_no}</div>
+                      <div className="text-xs text-gray-500 truncate">
+                        {selectedInvoice.customer_name || selectedInvoice.supplier_name || ''}
+                      </div>
+                    </>
+                  ) : (
+                    <span className="text-sm text-gray-500">{tm('pleaseSelectInvoice')}</span>
+                  )}
+                </div>
+              </button>
+            </div>
+          )}
 
           {/* Cari Selection (Conditional) */}
           {(islemTipi === 'CH_TAHSILAT' || islemTipi === 'CH_ODEME' || islemTipi === 'VERILEN_SERBEST_MESLEK' || islemTipi === 'ALINAN_SERBEST_MESLEK' || islemTipi === 'MUSTAHSIL_MAKBUZU') && (
@@ -802,6 +902,14 @@ export function KasaIslemModal({
         </form>
       </div>
     </div>
+    {showInvoicePicker && isInvoiceCash && (
+      <KasaFaturaSecModal
+        islemTipi={islemTipi as KasaInvoiceIslemTipi}
+        onSelect={applySelectedInvoice}
+        onClose={() => setShowInvoicePicker(false)}
+      />
+    )}
+    </>
   );
 }
 

@@ -4,6 +4,7 @@
  */
 
 import { postgres, ERP_SETTINGS, DB_SETTINGS } from '../postgres';
+import { parseDecimalStringForInput } from '../../utils/numberFormatter';
 import {
   cariCashStoredBalanceDelta,
   normalizeFirmTableNr,
@@ -17,6 +18,42 @@ function padKasaFirmNr(): string {
 }
 function padKasaPeriodNr(): string {
   return String(ERP_SETTINGS.periodNr || '01').trim().padStart(2, '0').slice(0, 10);
+}
+
+/**
+ * Kasa tutarı: TR binlik "450.000" → 450000. Number/parseFloat("450.000")=450 yapmaz.
+ */
+export function parseKasaAmount(value: unknown): number {
+  if (typeof value === 'number') return Number.isFinite(value) ? value : 0;
+  if (value == null || value === '') return 0;
+  const n = parseDecimalStringForInput(String(value).trim());
+  return Number.isFinite(n) ? n : 0;
+}
+
+function expenseTableSqlKasa(): string {
+  return `rex_${padKasaFirmNr()}_expenses`;
+}
+
+function expenseTablePathKasa(): string {
+  return `/${expenseTableSqlKasa()}`;
+}
+
+type ExpenseMirrorRow = {
+  id: string;
+  cash_line_id?: string | null;
+  amount?: number;
+  description?: string;
+  expense_date?: string;
+  document_number?: string | null;
+};
+
+/** Aynı gün + aynı açıklama eşlemesi (EYLUL KIRASI / Eylül Kirası). */
+export function normalizeGiderAciklama(value: unknown): string {
+  return String(value || '').trim().replace(/\s+/g, ' ').toLocaleLowerCase('tr-TR');
+}
+
+function isGiderPusulasiType(type: unknown): boolean {
+  return String(type || '').trim().toUpperCase() === 'GIDER_PUSULASI';
 }
 
 function partyLedgerTable(): string {
@@ -330,12 +367,61 @@ export interface KasaIslemi {
   bank_id?: string;
   bank_account_id?: string;
   expense_card_id?: string;
+  /**
+   * Gider Yönetimi expenses satırını zaten yazdıysa kasa ikinci gider açmasın.
+   * Yalnızca expenseAPI.create nakit yolunda true.
+   */
+  skipExpenseMirror?: boolean;
   tax_rate?: number;
   withholding_tax_rate?: number;
   /** Polimorfik cari ref — Personel/Şirket Ortağı işlemleri için (customer_id ayrı tutulur) */
   party_id?: string;
   party_code?: string;
   party_name?: string;
+}
+
+/** Kasa → mevcut faturaya tahsilat/ödeme (fatura motoru ayrı; yalnızca kasa satırı). */
+export const KASA_INVOICE_ISLEM_TIPLERI = ['SATIS_FATURASI', 'ALIS_FATURASI', 'HIZMET_FATURASI'] as const;
+export type KasaInvoiceIslemTipi = (typeof KASA_INVOICE_ISLEM_TIPLERI)[number];
+
+export type KasaIslemTipi =
+  | 'CH_TAHSILAT'
+  | 'CH_ODEME'
+  | 'KASA_GIRIS'
+  | 'KASA_CIKIS'
+  | 'BANKA_YATIRILAN'
+  | 'BANKADAN_CEKILEN'
+  | 'VIRMAN'
+  | 'GIDER_PUSULASI'
+  | 'VERILEN_SERBEST_MESLEK'
+  | 'ALINAN_SERBEST_MESLEK'
+  | 'MUSTAHSIL_MAKBUZU'
+  | 'ACILIS_BORC'
+  | 'ACILIS_ALACAK'
+  | 'KUR_FARKI_BORC'
+  | 'KUR_FARKI_ALACAK'
+  | KasaInvoiceIslemTipi;
+
+export function isKasaInvoiceIslemTipi(tip: string | null | undefined): tip is KasaInvoiceIslemTipi {
+  const t = String(tip || '').trim().toUpperCase();
+  return (KASA_INVOICE_ISLEM_TIPLERI as readonly string[]).includes(t);
+}
+
+export function invoiceCategoryForKasaIslem(tip: KasaInvoiceIslemTipi): 'Satis' | 'Alis' | 'Hizmet' {
+  if (tip === 'ALIS_FATURASI') return 'Alis';
+  if (tip === 'HIZMET_FATURASI') return 'Hizmet';
+  return 'Satis';
+}
+
+/** Satış/hizmet tahsilatı CH_TAHSILAT (+); alış ödemesi CH_ODEME (−) — ekstre ile aynı tipler. */
+export function postedCashTypeForInvoiceIslem(tip: KasaInvoiceIslemTipi): 'CH_TAHSILAT' | 'CH_ODEME' {
+  return tip === 'ALIS_FATURASI' ? 'CH_ODEME' : 'CH_TAHSILAT';
+}
+
+export function invoiceCashDescriptionPrefix(tip: KasaInvoiceIslemTipi): string {
+  if (tip === 'ALIS_FATURASI') return 'Alış faturası';
+  if (tip === 'HIZMET_FATURASI') return 'Hizmet faturası';
+  return 'Satış faturası';
 }
 
 // ===== API FUNCTIONS =====
@@ -671,6 +757,40 @@ export async function fetchKasaIslemleri(params?: {
   }
 }
 
+/** Fatura fiş no ile kasa satırı var mı (peşin yazım veya önceki tahsilat/ödeme). */
+export async function cashLineExistsForFicheNo(ficheNo: string): Promise<boolean> {
+  const trimmed = String(ficheNo || '').trim();
+  if (!trimmed) return false;
+  try {
+    if (DB_SETTINGS.connectionProvider === 'rest_api') {
+      const { postgrest } = await import('./postgrestClient');
+      const path = `/rex_${padKasaFirmNr()}_${padKasaPeriodNr()}_cash_lines`;
+      const exact = await postgrest.get<any[]>(
+        path,
+        { select: 'id', fiche_no: `eq.${trimmed}`, limit: 1 },
+        { schema: 'public' },
+      );
+      if (Array.isArray(exact) && exact[0]?.id) return true;
+      const prefixed = await postgrest.get<any[]>(
+        path,
+        { select: 'id', fiche_no: `like.${trimmed}-*`, limit: 1 },
+        { schema: 'public' },
+      );
+      return Array.isArray(prefixed) && !!prefixed[0]?.id;
+    }
+    const { rows } = await postgres.query<{ id: string }>(
+      `SELECT id FROM cash_lines
+        WHERE fiche_no::text = $1::text OR fiche_no::text LIKE $2::text
+        LIMIT 1`,
+      [trimmed, `${trimmed}-%`],
+    );
+    return !!rows?.[0]?.id;
+  } catch (err) {
+    console.warn('[Kasa] cashLineExistsForFicheNo:', err);
+    return false;
+  }
+}
+
 /** PostgREST: kasa hareketi + bakiyeler (atomik DEĞİL; `rest_api` için) */
 async function createKasaIslemiViaPostgrest(
   islem: KasaIslemi,
@@ -955,11 +1075,13 @@ async function createKasaIslemiViaPostgrest(
  */
 export async function createKasaIslemi(incoming: KasaIslemi): Promise<KasaIslemi> {
   try {
+    const skipExpenseMirror = Boolean(incoming.skipExpenseMirror);
     let islem = {
       ...incoming,
       islem_tipi: String(incoming.islem_tipi || '').trim().toUpperCase(),
-      tutar: Math.abs(Number(incoming.tutar) || 0),
+      tutar: Math.abs(parseKasaAmount(incoming.tutar)),
     };
+    delete (islem as { skipExpenseMirror?: boolean }).skipExpenseMirror;
     // Dönem kontrolü — kapalı dönemde yazma engellenir (PeriodControl entegrasyonu).
     await assertPeriodOpen(
       ERP_SETTINGS.firmNr,
@@ -1044,9 +1166,26 @@ export async function createKasaIslemi(incoming: KasaIslemi): Promise<KasaIslemi
     if (cariSplit.customer_id) islem = { ...islem, cari_hesap_id: cariSplit.customer_id };
     if (cariSplit.party_id && !islem.party_id) islem = { ...islem, party_id: cariSplit.party_id };
 
+    if (isGiderPusulasiType(islem.islem_tipi) && !skipExpenseMirror) {
+      const redirected = await redirectGiderPusulasiCreate(islem);
+      if (redirected) return redirected;
+    }
+
     if (DB_SETTINGS.connectionProvider === 'rest_api') {
       console.log('[Kasa] PostgREST işlem. Type:', islem.islem_tipi, 'Target:', islem.target_register_id);
-      return await createKasaIslemiViaPostgrest(islem, sign, ficheNo);
+      const created = await createKasaIslemiViaPostgrest(islem, sign, ficheNo);
+      if (isGiderPusulasiType(islem.islem_tipi) && !skipExpenseMirror && created?.id) {
+        await upsertExpenseLinkedToCashLine({
+          cashLineId: String(created.id),
+          amount: islem.tutar,
+          definition: islem.islem_aciklamasi || 'Gider',
+          date: islem.islem_tarihi || new Date().toISOString(),
+          registerId: islem.kasa_id,
+          ficheNo: created.islem_no || ficheNo,
+          category: islem.ozel_kod || '',
+        });
+      }
+      return created;
     }
 
     // Start transaction
@@ -1385,7 +1524,19 @@ export async function createKasaIslemi(incoming: KasaIslemi): Promise<KasaIslemi
 
     await postgres.query('COMMIT');
 
-    return mapDbIslemToIslem(rows[0]);
+    const mapped = mapDbIslemToIslem(rows[0]);
+    if (isGiderPusulasiType(islem.islem_tipi) && !skipExpenseMirror && mapped?.id) {
+      await upsertExpenseLinkedToCashLine({
+        cashLineId: String(mapped.id),
+        amount: islem.tutar,
+        definition: islem.islem_aciklamasi || 'Gider',
+        date: islem.islem_tarihi || new Date().toISOString(),
+        registerId: islem.kasa_id,
+        ficheNo: mapped.islem_no || ficheNo,
+        category: islem.ozel_kod || '',
+      });
+    }
+    return mapped;
   } catch (error: any) {
     try {
       await postgres.query('ROLLBACK');
@@ -1403,8 +1554,8 @@ function mapDbKasaToKasa(row: any): Kasa {
     firma_id: ERP_SETTINGS.firmNr,
     kasa_kodu: row.code,
     kasa_adi: row.name,
-    bakiye: parseFloat(row.balance || 0),
-    id_bakiye: parseFloat(row.balance || 0),
+    bakiye: parseKasaAmount(row.balance),
+    id_bakiye: parseKasaAmount(row.balance),
     id_doviz_kodu: row.currency_code || 'IQD',
     aktif: row.is_active,
     olusturma_tarihi: row.created_at,
@@ -1420,7 +1571,7 @@ function mapDbIslemToIslem(row: any): KasaIslemi {
     islem_no: row.fiche_no,
     islem_tarihi: row.date,
     islem_tipi: row.transaction_type,
-    tutar: parseFloat(row.amount || 0),
+    tutar: Math.abs(parseKasaAmount(row.amount)),
     islem_aciklamasi: row.definition,
     // cari_hesap_id: customer_id öncelikli; tedarikçi/personel için party_id fallback.
     // Bu sayede eski müşteri tahsilatları ve yeni tedarikçi ödemelerinin ikisi de
@@ -1466,8 +1617,8 @@ export async function deleteKasaIslemi(id: string): Promise<void> {
   const row = prevRows?.[0];
   if (!row) throw new Error('İşlem bulunamadı');
 
-  const amount = parseFloat(row.amount || 0);
-  const sign = parseInt(row.sign || 0, 10);
+  const amount = Math.abs(parseKasaAmount(row.amount));
+  const sign = effectiveKasaPostedSign(row.sign, row.transaction_type);
   const registerId = row.register_id;
   const targetRegisterId = row.target_register_id;
   const ficheNo = row.fiche_no || '';
@@ -1639,7 +1790,10 @@ export async function deleteKasaIslemi(id: string): Promise<void> {
       }
     }
 
-    // 7) Ana satırı sil
+    // 7) Bağlı gider pusulası (Gider Yönetimi / güzellik) — önce expenses, sonra cash_line
+    await deleteExpenseLinkedToCashLine(id);
+
+    // 8) Ana satırı sil
     await postgres.query(`DELETE FROM ${table} WHERE id = $1::text::uuid`, [id]);
 
     await postgres.query('COMMIT');
@@ -1667,8 +1821,8 @@ async function deleteKasaIslemiViaPostgrest(id: string): Promise<void> {
   const row = Array.isArray(rs) ? rs[0] : null;
   if (!row) throw new Error('İşlem bulunamadı');
 
-  const amount = Number(row.amount || 0);
-  const sign = Number(row.sign || 0);
+  const amount = Math.abs(parseKasaAmount(row.amount));
+  const sign = effectiveKasaPostedSign(row.sign, row.transaction_type);
   const registerId = row.register_id;
   const targetRegisterId = row.target_register_id;
   const ficheNo = row.fiche_no || '';
@@ -1688,7 +1842,7 @@ async function deleteKasaIslemiViaPostgrest(id: string): Promise<void> {
     if (!r) return;
     await postgrest.patch(
       `${kasaPath}?id=eq.${encodeURIComponent(String(rid))}`,
-      { balance: Number(r.balance ?? 0) + delta },
+      { balance: parseKasaAmount(r.balance) + delta },
       { schema: 'public', prefer: 'return=minimal' }
     );
   };
@@ -1873,7 +2027,7 @@ async function deleteKasaIslemiViaPostgrest(id: string): Promise<void> {
               trcode: 0,
               transaction_type: `CANCELLED_${String(cancelType)}`,
               date: new Date().toISOString(),
-              amount: Math.abs(Number(row.amount || 0)),
+              amount: Math.abs(parseKasaAmount(row.amount)),
               sign: -Number(row.sign || 0),
               definition: `İptal: ${row.definition || ''}`.trim(),
               source_module: 'cash_delete',
@@ -1890,13 +2044,16 @@ async function deleteKasaIslemiViaPostgrest(id: string): Promise<void> {
     }
   }
 
+  // Bağlı gider pusulası
+  await deleteExpenseLinkedToCashLine(String(id));
+
   // Ana satırı sil
   await postgrest.delete(`${linesPath}?id=eq.${encodeURIComponent(String(id))}`, { schema: 'public', prefer: 'return=minimal' });
 }
 
 /**
  * Kasa işlemini güncelle — mevcut cash_line üzerinde yerinde delta (sil+yeniden oluştur YOK).
- * GIDER_PUSULASI düzenlemesinde expenses.amount da cash_line_id ile senkronlanır (B01/B23).
+ * GIDER_PUSULASI düzenlemesinde rex_{firm}_expenses satırı da senkronlanır (B01/B23).
  */
 export function computeKasaIslemiSign(islemTipi: string): number {
   const tip = String(islemTipi || '').trim().toUpperCase();
@@ -1941,49 +2098,448 @@ export function kasaIslemiBalanceDeltaOnUpdate(
   newAmount: number,
   newSign: number,
 ): number {
-  const oa = Math.abs(Number(oldAmount) || 0);
-  const na = Math.abs(Number(newAmount) || 0);
+  const oa = Math.abs(parseKasaAmount(oldAmount));
+  const na = Math.abs(parseKasaAmount(newAmount));
   return na * Number(newSign || 0) - oa * Number(oldSign || 0);
 }
 
-async function syncExpenseLinkedToCashLine(opts: {
+/**
+ * cash_lines.sign 0/NULL/NaN ise create'in yazdığı tip işaretini kullan.
+ * Aksi halde 450k→45k düzenlemede eski tutar terslenmez; silme yalnızca 45k alır (505k hayalet).
+ */
+export function effectiveKasaPostedSign(rowSign: unknown, trType: string): number {
+  const n = Number(rowSign);
+  if (Number.isFinite(n) && n !== 0) return n < 0 ? -1 : 1;
+  return computeKasaIslemiSign(trType);
+}
+
+export function kasaIslemiPostedCash(amount: number, sign: number): number {
+  return Math.abs(parseKasaAmount(amount)) * Number(sign || 0);
+}
+
+/** Silmede ledger'daki (tutar×sign) kadar bakiyeyi geri al. */
+export function kasaIslemiBalanceDeltaOnDelete(amount: number, sign: number): number {
+  return -kasaIslemiPostedCash(amount, sign);
+}
+
+export function isCariCashTransactionType(trType: string | null | undefined): boolean {
+  const t = String(trType || '').trim().toUpperCase();
+  return t === 'CH_TAHSILAT' || t === 'CH_ODEME';
+}
+
+/** Cari saklanan balance neti — create/delete ile aynı (üçüncü argüman yok). */
+export function kasaIslemiCariDeltaOnUpdate(
+  oldAmount: number,
+  oldType: string,
+  newAmount: number,
+  newType: string,
+): number {
+  return (
+    cariCashStoredBalanceDelta(newAmount, newType) -
+    cariCashStoredBalanceDelta(oldAmount, oldType)
+  );
+}
+
+export function cashRegisterDeltasOnUpdate(
+  oldRegisterId: string | null | undefined,
+  newRegisterId: string | null | undefined,
+  oldPosted: number,
+  newPosted: number,
+): Array<{ registerId: string; delta: number }> {
+  const o = String(oldRegisterId || '').trim();
+  const n = String(newRegisterId || '').trim();
+  const op = Number(oldPosted) || 0;
+  const np = Number(newPosted) || 0;
+  if (o && n && o === n) {
+    const d = np - op;
+    return Number.isFinite(d) && d !== 0 ? [{ registerId: o, delta: d }] : [];
+  }
+  const out: Array<{ registerId: string; delta: number }> = [];
+  if (o && op) out.push({ registerId: o, delta: -op });
+  if (n && np) out.push({ registerId: n, delta: np });
+  return out;
+}
+
+function kasaIslemiPartyPostedDelta(
+  amount: number,
+  trType: string,
+  partyId: string | null | undefined,
+): number {
+  if (!partyId) return 0;
+  const t = String(trType || '').trim().toUpperCase();
+  if (t === 'CH_ODEME') return -Math.abs(parseKasaAmount(amount));
+  return computePartyBalanceDelta(amount, t);
+}
+
+async function applyCashRegisterBalanceDelta(
+  registerId: string | null | undefined,
+  delta: number,
+): Promise<void> {
+  const rid = String(registerId || '').trim();
+  if (!rid || !Number.isFinite(delta) || delta === 0) return;
+  if (DB_SETTINGS.connectionProvider === 'rest_api') {
+    const { postgrest } = await import('./postgrestClient');
+    const kasaPath = `/rex_${padKasaFirmNr()}_cash_registers`;
+    const cur = await postgrest.get<any[]>(
+      kasaPath,
+      { select: 'balance', id: `eq.${rid}`, limit: 1 },
+      { schema: 'public' },
+    );
+    const r = Array.isArray(cur) ? cur[0] : null;
+    if (!r) {
+      throw new Error('Kasa bakiyesi güncellenemedi — kasa bulunamadı');
+    }
+    await postgrest.patch(
+      `${kasaPath}?id=eq.${encodeURIComponent(rid)}`,
+      { balance: Number(r.balance ?? 0) + delta },
+      { schema: 'public', prefer: 'return=minimal' },
+    );
+    return;
+  }
+  await postgres.query(
+    `UPDATE cash_registers SET balance = balance + $1::text::numeric WHERE id = $2::text::uuid`,
+    [delta.toString(), rid],
+  );
+}
+
+async function bumpCariStoredBalance(
+  partnerId: string | null | undefined,
+  trType: string,
+  delta: number,
+): Promise<void> {
+  const id = String(partnerId || '').trim();
+  if (!id || !Number.isFinite(delta) || delta === 0) return;
+  const hint: 'supplier' | 'customer' | null =
+    trType === 'CH_ODEME' ? 'supplier' : trType === 'CH_TAHSILAT' ? 'customer' : null;
+  const kind = await resolveCariAccountKind(id, hint);
+  if (kind === 'employee' || kind === 'partner') return;
+  const firmNr = normalizeFirmTableNr(ERP_SETTINGS.firmNr);
+  const deltaStr = delta.toString();
+  if (DB_SETTINGS.connectionProvider === 'rest_api') {
+    const { postgrest } = await import('./postgrestClient');
+    const tryPatch = async (path: string, withFirm: boolean): Promise<boolean> => {
+      try {
+        const q: Record<string, string> = { select: 'balance', id: `eq.${id}`, limit: '1' };
+        if (withFirm) q.firm_nr = `eq.${firmNr}`;
+        const rs = await postgrest.get<any[]>(path, q, { schema: 'public' });
+        const r = Array.isArray(rs) ? rs[0] : null;
+        if (!r) return false;
+        const url = withFirm
+          ? `${path}?id=eq.${encodeURIComponent(id)}&firm_nr=eq.${encodeURIComponent(firmNr)}`
+          : `${path}?id=eq.${encodeURIComponent(id)}`;
+        await postgrest.patch(
+          url,
+          { balance: Number(r.balance ?? 0) + delta },
+          { schema: 'public', prefer: 'return=minimal' },
+        );
+        return true;
+      } catch {
+        return false;
+      }
+    };
+    if (kind === 'supplier') {
+      await tryPatch(`/rex_${firmNr}_suppliers`, false);
+    } else if (kind === 'customer') {
+      await tryPatch(`/rex_${firmNr}_customers`, true);
+    } else {
+      const patched = await tryPatch(`/rex_${firmNr}_customers`, true);
+      if (!patched) await tryPatch(`/rex_${firmNr}_suppliers`, false);
+    }
+    return;
+  }
+  if (kind === 'supplier') {
+    await postgres.query(
+      `UPDATE suppliers SET balance = balance + $1::text::numeric WHERE id = $2::text::uuid`,
+      [deltaStr, id],
+    );
+  } else if (kind === 'customer') {
+    await postgres.query(
+      `UPDATE customers SET balance = balance + $1::text::numeric WHERE id = $2::text::uuid AND firm_nr = $3::text`,
+      [deltaStr, id, firmNr],
+    );
+  } else {
+    const { rowCount: custCount } = await postgres.query(
+      `UPDATE customers SET balance = balance + $1::text::numeric WHERE id = $2::text::uuid AND firm_nr = $3::text`,
+      [deltaStr, id, firmNr],
+    );
+    if (!custCount) {
+      await postgres.query(
+        `UPDATE suppliers SET balance = balance + $1::text::numeric WHERE id = $2::text::uuid`,
+        [deltaStr, id],
+      );
+    }
+  }
+}
+
+async function bumpPartyCardBalance(partyId: string | null | undefined, delta: number): Promise<void> {
+  const id = String(partyId || '').trim();
+  if (!id || !Number.isFinite(delta) || delta === 0) return;
+  const firmNr = normalizeFirmTableNr(ERP_SETTINGS.firmNr);
+  if (DB_SETTINGS.connectionProvider === 'rest_api') {
+    const { postgrest } = await import('./postgrestClient');
+    const partyPath = `/rex_${firmNr}_parties`;
+    const rs = await postgrest.get<any[]>(
+      partyPath,
+      { select: 'balance', id: `eq.${id}`, limit: 1 },
+      { schema: 'public' },
+    );
+    const r = Array.isArray(rs) ? rs[0] : null;
+    if (!r) return;
+    await postgrest.patch(
+      `${partyPath}?id=eq.${encodeURIComponent(id)}`,
+      { balance: Number(r.balance ?? 0) + delta },
+      { schema: 'public', prefer: 'return=minimal' },
+    );
+    return;
+  }
+  await postgres.query(
+    `UPDATE rex_${firmNr}_parties SET balance = balance + $1::text::numeric, updated_at = NOW() WHERE id = $2::text::uuid`,
+    [delta.toString(), id],
+  );
+}
+
+async function applyCariAndPartyDeltasOnUpdate(opts: {
+  oldPartnerId: string;
+  newPartnerId: string;
+  oldType: string;
+  newType: string;
+  oldAmount: number;
+  newAmount: number;
+  oldPartyId: string;
+  newPartyId: string;
+}): Promise<void> {
+  const oldP = opts.oldPartnerId;
+  const newP = opts.newPartnerId;
+  if (oldP && newP && oldP === newP) {
+    const hintType = isCariCashTransactionType(opts.oldType) ? opts.oldType : opts.newType;
+    await bumpCariStoredBalance(
+      oldP,
+      hintType,
+      kasaIslemiCariDeltaOnUpdate(opts.oldAmount, opts.oldType, opts.newAmount, opts.newType),
+    );
+  } else {
+    if (oldP) {
+      await bumpCariStoredBalance(
+        oldP,
+        opts.oldType,
+        -cariCashStoredBalanceDelta(opts.oldAmount, opts.oldType),
+      );
+    }
+    if (newP) {
+      await bumpCariStoredBalance(
+        newP,
+        opts.newType,
+        cariCashStoredBalanceDelta(opts.newAmount, opts.newType),
+      );
+    }
+  }
+
+  const oldParty = opts.oldPartyId;
+  const newParty = opts.newPartyId;
+  const oldPartyPosted = kasaIslemiPartyPostedDelta(opts.oldAmount, opts.oldType, oldParty);
+  const newPartyPosted = kasaIslemiPartyPostedDelta(opts.newAmount, opts.newType, newParty);
+  if (oldParty && newParty && oldParty === newParty) {
+    await bumpPartyCardBalance(oldParty, newPartyPosted - oldPartyPosted);
+  } else {
+    if (oldParty) await bumpPartyCardBalance(oldParty, -oldPartyPosted);
+    if (newParty) await bumpPartyCardBalance(newParty, newPartyPosted);
+  }
+}
+
+async function listExpensesForMirrorDate(day: string): Promise<ExpenseMirrorRow[]> {
+  const firm = padKasaFirmNr();
+  const date = String(day || '').slice(0, 10);
+  if (!date) return [];
+  if (DB_SETTINGS.connectionProvider === 'rest_api') {
+    const { postgrest } = await import('./postgrestClient');
+    const rows = await postgrest
+      .get<any[]>(
+        expenseTablePathKasa(),
+        {
+          select: 'id,cash_line_id,amount,description,expense_date,document_number',
+          firm_nr: `eq.${firm}`,
+          expense_date: `eq.${date}`,
+          limit: '500',
+        },
+        { schema: 'public' },
+      )
+      .catch(() => [] as any[]);
+    return Array.isArray(rows) ? rows : [];
+  }
+  try {
+    const { rows } = await postgres.query(
+      `SELECT id, cash_line_id, amount, description, expense_date, document_number
+       FROM ${expenseTableSqlKasa()}
+       WHERE firm_nr = $1 AND expense_date = $2::text::date
+       LIMIT 500`,
+      [firm, date],
+    );
+    return rows || [];
+  } catch (err) {
+    console.warn('[Kasa] listExpensesForMirrorDate failed:', err);
+    return [];
+  }
+}
+
+export function pickExpenseForKasaGider(
+  rows: ExpenseMirrorRow[],
+  opts: { cashLineId?: string; definition: string },
+): ExpenseMirrorRow | null {
+  const list = Array.isArray(rows) ? rows : [];
+  const cid = String(opts.cashLineId || '').trim();
+  if (cid) {
+    const byLine = list.find((r) => String(r.cash_line_id || '').trim() === cid);
+    if (byLine) return byLine;
+  }
+  const key = normalizeGiderAciklama(opts.definition);
+  if (!key) return null;
+  const matches = list.filter((r) => normalizeGiderAciklama(r.description) === key);
+  if (!matches.length) return null;
+  return matches.find((r) => String(r.cash_line_id || '').trim()) || matches[0];
+}
+
+async function upsertExpenseLinkedToCashLine(opts: {
   cashLineId: string;
   amount: number;
   definition: string;
   date: string;
+  registerId?: string;
+  ficheNo?: string;
+  category?: string;
 }): Promise<void> {
   const firm = padKasaFirmNr();
-  const amt = Math.abs(Number(opts.amount) || 0);
+  const amt = Math.abs(parseKasaAmount(opts.amount));
   const day = String(opts.date || '').slice(0, 10);
-  const def = opts.definition || 'Gider';
-  if (DB_SETTINGS.connectionProvider === 'rest_api') {
-    try {
+  const def = String(opts.definition || '').trim() || 'Gider';
+  const cashLineId = String(opts.cashLineId || '').trim();
+  if (!cashLineId || !amt) return;
+
+  const patchBody: Record<string, unknown> = {
+    amount: amt,
+    description: def,
+    payment_method: 'cash',
+    cash_line_id: cashLineId,
+  };
+  if (day) patchBody.expense_date = day;
+  if (opts.registerId) patchBody.cash_register_id = opts.registerId;
+
+  const rows = await listExpensesForMirrorDate(day || new Date().toISOString().slice(0, 10));
+  const existing = pickExpenseForKasaGider(rows, { cashLineId, definition: def });
+
+  try {
+    if (existing?.id) {
+      if (!String(existing.document_number || '').trim() && opts.ficheNo) {
+        patchBody.document_number = opts.ficheNo;
+      }
+      if (DB_SETTINGS.connectionProvider === 'rest_api') {
+        const { postgrest } = await import('./postgrestClient');
+        await postgrest.patch(
+          `${expenseTablePathKasa()}?id=eq.${encodeURIComponent(String(existing.id))}&firm_nr=eq.${encodeURIComponent(firm)}`,
+          patchBody,
+          { schema: 'public', prefer: 'return=minimal' },
+        );
+        return;
+      }
+      await postgres.query(
+        `UPDATE ${expenseTableSqlKasa()}
+         SET amount = $1::text::numeric,
+             description = $2::text,
+             expense_date = COALESCE($3::text::date, expense_date),
+             payment_method = 'cash',
+             cash_line_id = $4::text::uuid,
+             cash_register_id = COALESCE($5::text::uuid, cash_register_id),
+             document_number = COALESCE(NULLIF(document_number, ''), $6::text)
+         WHERE id = $7::text::uuid AND firm_nr = $8`,
+        [
+          amt,
+          def,
+          day || null,
+          cashLineId,
+          opts.registerId || null,
+          opts.ficheNo || null,
+          existing.id,
+          firm,
+        ],
+      );
+      return;
+    }
+
+    const category = String(opts.category || '').trim() || 'other';
+    if (DB_SETTINGS.connectionProvider === 'rest_api') {
       const { postgrest } = await import('./postgrestClient');
-      await postgrest.patch(
-        `/rex_${firm}_expenses?cash_line_id=eq.${encodeURIComponent(opts.cashLineId)}`,
+      await postgrest.post(
+        expenseTablePathKasa(),
         {
-          amount: amt,
+          category,
           description: def,
-          ...(day ? { expense_date: day } : {}),
+          amount: amt,
+          payment_method: 'cash',
+          document_number: opts.ficheNo || null,
+          expense_date: day || new Date().toISOString().slice(0, 10),
+          firm_nr: firm,
+          cash_line_id: cashLineId,
+          cash_register_id: opts.registerId || null,
         },
         { schema: 'public', prefer: 'return=minimal' },
       );
-    } catch (err) {
-      console.warn('[Kasa] syncExpenseLinkedToCashLine (rest) failed:', err);
+      return;
     }
-    return;
-  }
-  try {
     await postgres.query(
-      `UPDATE expenses
-       SET amount = $1::text::numeric,
-           description = $2::text,
-           expense_date = COALESCE($3::text::date, expense_date)
-       WHERE cash_line_id = $4::text::uuid`,
-      [amt, def, day || null, opts.cashLineId],
+      `INSERT INTO ${expenseTableSqlKasa()} (
+         category, description, amount, payment_method, document_number,
+         expense_date, firm_nr, cash_line_id, cash_register_id
+       ) VALUES ($1, $2, $3::text::numeric, 'cash', $4, $5::text::date, $6, $7::text::uuid, $8::text::uuid)`,
+      [
+        category,
+        def,
+        amt,
+        opts.ficheNo || null,
+        day || new Date().toISOString().slice(0, 10),
+        firm,
+        cashLineId,
+        opts.registerId || null,
+      ],
     );
   } catch (err) {
-    console.warn('[Kasa] syncExpenseLinkedToCashLine failed:', err);
+    console.warn('[Kasa] upsertExpenseLinkedToCashLine failed:', err);
+  }
+}
+
+async function deleteExpenseLinkedToCashLine(cashLineId: string): Promise<void> {
+  const id = String(cashLineId || '').trim();
+  if (!id) return;
+  try {
+    if (DB_SETTINGS.connectionProvider === 'rest_api') {
+      const { postgrest } = await import('./postgrestClient');
+      await postgrest.delete(
+        `${expenseTablePathKasa()}?cash_line_id=eq.${encodeURIComponent(id)}`,
+        { schema: 'public', prefer: 'return=minimal' },
+      );
+      return;
+    }
+    await postgres.query(
+      `DELETE FROM ${expenseTableSqlKasa()} WHERE cash_line_id = $1::text::uuid`,
+      [id],
+    );
+  } catch (err) {
+    console.warn('[Kasa] deleteExpenseLinkedToCashLine failed:', err);
+  }
+}
+
+/** Aynı gün + açıklamadaki gider pusulası varsa yeni fiş açma — mevcut cash_line'ı güncelle. */
+async function redirectGiderPusulasiCreate(islem: KasaIslemi): Promise<KasaIslemi | null> {
+  const day = String(islem.islem_tarihi || '').slice(0, 10);
+  const def = String(islem.islem_aciklamasi || '').trim();
+  if (!day || !def) return null;
+  const rows = await listExpensesForMirrorDate(day);
+  const existing = pickExpenseForKasaGider(rows, { definition: def });
+  const linkedId = String(existing?.cash_line_id || '').trim();
+  if (!linkedId) return null;
+  try {
+    return await updateKasaIslemi(linkedId, islem);
+  } catch (err) {
+    console.warn('[Kasa] redirectGiderPusulasiCreate: mevcut satır güncellenemedi, yeni satır denenecek:', err);
+    return null;
   }
 }
 
@@ -1995,7 +2551,7 @@ async function syncExpenseLinkedToCashLine(opts: {
 export async function updateKasaIslemi(id: string, islem: KasaIslemi): Promise<KasaIslemi> {
   if (!id) throw new Error('Güncellenecek işlem ID boş');
 
-  const newAmount = Math.abs(Number(islem.tutar) || 0);
+  const newAmount = Math.abs(parseKasaAmount(islem.tutar));
   const newType = String(islem.islem_tipi || '').trim().toUpperCase();
   const newSign = computeKasaIslemiSign(newType);
   const newDate = islem.islem_tarihi || new Date().toISOString();
@@ -2012,7 +2568,6 @@ export async function updateKasaIslemi(id: string, islem: KasaIslemi): Promise<K
     const fn = padKasaFirmNr();
     const pn = padKasaPeriodNr();
     const linesPath = `/rex_${fn}_${pn}_cash_lines`;
-    const kasaPath = `/rex_${fn}_cash_registers`;
 
     const rs = await postgrest.get<any[]>(
       linesPath,
@@ -2022,10 +2577,11 @@ export async function updateKasaIslemi(id: string, islem: KasaIslemi): Promise<K
     const row = Array.isArray(rs) ? rs[0] : null;
     if (!row) throw new Error('İşlem bulunamadı');
 
-    const oldAmount = Math.abs(Number(row.amount || 0));
-    const oldSign = Number(row.sign || 0);
+    const oldAmount = Math.abs(parseKasaAmount(row.amount));
     const oldType = String(row.transaction_type || '').toUpperCase();
-    const registerId = row.register_id;
+    const oldSign = effectiveKasaPostedSign(row.sign, oldType);
+    const oldRegisterId = String(row.register_id || islem.kasa_id || '').trim();
+    const newRegisterId = String(islem.kasa_id || row.register_id || '').trim();
 
     // VIRMAN / banka tipi değişimi: güvenli yol delete+create (karşı satır karmaşık).
     const complex =
@@ -2042,7 +2598,25 @@ export async function updateKasaIslemi(id: string, islem: KasaIslemi): Promise<K
       return await createKasaIslemi({ ...islem, id: undefined });
     }
 
-    const balDelta = kasaIslemiBalanceDeltaOnUpdate(oldAmount, oldSign, newAmount, newSign);
+    let customerId = row.customer_id || null;
+    let partyId = row.party_id || null;
+    if (islem.cari_hesap_id && isCariCashTransactionType(newType)) {
+      const hint: 'supplier' | 'customer' | null =
+        newType === 'CH_ODEME' ? 'supplier' : 'customer';
+      const kind = await resolveCariAccountKind(islem.cari_hesap_id, hint);
+      const split = islem.party_id
+        ? { customer_id: null as string | null, party_id: islem.party_id }
+        : splitCariAccountForCashLine(kind, islem.cari_hesap_id);
+      customerId = split.customer_id;
+      partyId = split.party_id || islem.party_id || null;
+    }
+
+    const cashDeltas = cashRegisterDeltasOnUpdate(
+      oldRegisterId,
+      newRegisterId,
+      kasaIslemiPostedCash(oldAmount, oldSign),
+      kasaIslemiPostedCash(newAmount, newSign),
+    );
     const patchBody: Record<string, unknown> = {
       amount: newAmount,
       f_amount: islem.dovizli_tutar != null ? Math.abs(Number(islem.dovizli_tutar) || 0) : newAmount,
@@ -2052,36 +2626,53 @@ export async function updateKasaIslemi(id: string, islem: KasaIslemi): Promise<K
       sign: newSign,
       special_code: islem.ozel_kod ?? row.special_code ?? '',
     };
+    if (newRegisterId) patchBody.register_id = newRegisterId;
+    if (customerId !== undefined) patchBody.customer_id = customerId;
+    if (partyId !== undefined) patchBody.party_id = partyId;
 
-    const patched = await postgrest.patch<any[]>(
-      `${linesPath}?id=eq.${encodeURIComponent(id)}`,
-      patchBody,
-      { schema: 'public', prefer: 'return=representation' },
-    );
-    const updatedRow = Array.isArray(patched) ? patched[0] : patched;
+    // Nakit önce: satır tutarı değişip kasa bakiyesinin eski 450k'da kalmasını önle.
+    for (const d of cashDeltas) {
+      await applyCashRegisterBalanceDelta(d.registerId, d.delta);
+    }
 
-    if (balDelta !== 0 && registerId) {
-      const cur = await postgrest.get<any[]>(
-        kasaPath,
-        { select: 'balance', id: `eq.${registerId}`, limit: 1 },
-        { schema: 'public' },
+    let updatedRow: any;
+    try {
+      const patched = await postgrest.patch<any[]>(
+        `${linesPath}?id=eq.${encodeURIComponent(id)}`,
+        patchBody,
+        { schema: 'public', prefer: 'return=representation' },
       );
-      const r = Array.isArray(cur) ? cur[0] : null;
-      if (r) {
-        await postgrest.patch(
-          `${kasaPath}?id=eq.${encodeURIComponent(String(registerId))}`,
-          { balance: Number(r.balance ?? 0) + balDelta },
-          { schema: 'public', prefer: 'return=minimal' },
-        );
+      updatedRow = Array.isArray(patched) ? patched[0] : patched;
+      await applyCariAndPartyDeltasOnUpdate({
+        oldPartnerId: String(row.customer_id || row.party_id || '').trim(),
+        newPartnerId: String(customerId || partyId || islem.cari_hesap_id || '').trim(),
+        oldType,
+        newType,
+        oldAmount,
+        newAmount,
+        oldPartyId: String(row.party_id || '').trim(),
+        newPartyId: String(partyId || '').trim(),
+      });
+    } catch (err) {
+      for (const d of cashDeltas) {
+        try {
+          await applyCashRegisterBalanceDelta(d.registerId, -d.delta);
+        } catch {
+          /* nakit geri alma en iyi çaba */
+        }
       }
+      throw err;
     }
 
     if (newType === 'GIDER_PUSULASI' || oldType === 'GIDER_PUSULASI') {
-      await syncExpenseLinkedToCashLine({
+      await upsertExpenseLinkedToCashLine({
         cashLineId: id,
         amount: newAmount,
         definition: newDef || 'Gider',
         date: newDate,
+        registerId: newRegisterId || undefined,
+        ficheNo: String(updatedRow?.fiche_no || row.fiche_no || ''),
+        category: islem.ozel_kod || String(row.special_code || ''),
       });
     }
 
@@ -2089,7 +2680,6 @@ export async function updateKasaIslemi(id: string, islem: KasaIslemi): Promise<K
   }
 
   const table = 'cash_lines';
-  const kasaTable = 'cash_registers';
   const { rows: prevRows } = await postgres.query(
     `SELECT * FROM ${table} WHERE id = $1::text::uuid LIMIT 1`,
     [id],
@@ -2097,10 +2687,11 @@ export async function updateKasaIslemi(id: string, islem: KasaIslemi): Promise<K
   const row = prevRows?.[0];
   if (!row) throw new Error('İşlem bulunamadı');
 
-  const oldAmount = Math.abs(parseFloat(row.amount || 0));
-  const oldSign = parseInt(row.sign || 0, 10);
+  const oldAmount = Math.abs(parseKasaAmount(row.amount));
   const oldType = String(row.transaction_type || '').toUpperCase();
-  const registerId = row.register_id;
+  const oldSign = effectiveKasaPostedSign(row.sign, oldType);
+  const oldRegisterId = String(row.register_id || islem.kasa_id || '').trim();
+  const newRegisterId = String(islem.kasa_id || row.register_id || '').trim();
 
   const complex =
     oldType === 'VIRMAN' ||
@@ -2116,7 +2707,25 @@ export async function updateKasaIslemi(id: string, islem: KasaIslemi): Promise<K
     return await createKasaIslemi({ ...islem, id: undefined });
   }
 
-  const balDelta = kasaIslemiBalanceDeltaOnUpdate(oldAmount, oldSign, newAmount, newSign);
+  let customerId = row.customer_id || null;
+  let partyId = row.party_id || null;
+  if (islem.cari_hesap_id && isCariCashTransactionType(newType)) {
+    const hint: 'supplier' | 'customer' | null =
+      newType === 'CH_ODEME' ? 'supplier' : 'customer';
+    const kind = await resolveCariAccountKind(islem.cari_hesap_id, hint);
+    const split = islem.party_id
+      ? { customer_id: null as string | null, party_id: islem.party_id }
+      : splitCariAccountForCashLine(kind, islem.cari_hesap_id);
+    customerId = split.customer_id;
+    partyId = split.party_id || islem.party_id || null;
+  }
+
+  const cashDeltas = cashRegisterDeltasOnUpdate(
+    oldRegisterId,
+    newRegisterId,
+    kasaIslemiPostedCash(oldAmount, oldSign),
+    kasaIslemiPostedCash(newAmount, newSign),
+  );
 
   await postgres.query('BEGIN');
   try {
@@ -2128,8 +2737,11 @@ export async function updateKasaIslemi(id: string, islem: KasaIslemi): Promise<K
            definition = $4::text,
            transaction_type = $5::text,
            sign = $6::text::integer,
-           special_code = $7::text
-       WHERE id = $8::text::uuid
+           special_code = $7::text,
+           register_id = COALESCE($8::text::uuid, register_id),
+           customer_id = $9::text::uuid,
+           party_id = $10::text::uuid
+       WHERE id = $11::text::uuid
        RETURNING *`,
       [
         newAmount,
@@ -2139,25 +2751,38 @@ export async function updateKasaIslemi(id: string, islem: KasaIslemi): Promise<K
         newType || row.transaction_type,
         newSign,
         islem.ozel_kod ?? row.special_code ?? '',
+        newRegisterId || null,
+        customerId,
+        partyId,
         id,
       ],
     );
 
-    if (balDelta !== 0 && registerId) {
-      await postgres.query(
-        `UPDATE ${kasaTable} SET balance = balance + $1::text::numeric WHERE id = $2::text::uuid`,
-        [balDelta.toString(), registerId],
-      );
+    for (const d of cashDeltas) {
+      await applyCashRegisterBalanceDelta(d.registerId, d.delta);
     }
+    await applyCariAndPartyDeltasOnUpdate({
+      oldPartnerId: String(row.customer_id || row.party_id || '').trim(),
+      newPartnerId: String(customerId || partyId || islem.cari_hesap_id || '').trim(),
+      oldType,
+      newType,
+      oldAmount,
+      newAmount,
+      oldPartyId: String(row.party_id || '').trim(),
+      newPartyId: String(partyId || '').trim(),
+    });
 
     await postgres.query('COMMIT');
 
     if (newType === 'GIDER_PUSULASI' || oldType === 'GIDER_PUSULASI') {
-      await syncExpenseLinkedToCashLine({
+      await upsertExpenseLinkedToCashLine({
         cashLineId: id,
         amount: newAmount,
         definition: newDef || 'Gider',
         date: newDate,
+        registerId: newRegisterId || undefined,
+        ficheNo: String(rows[0]?.fiche_no || row.fiche_no || ''),
+        category: islem.ozel_kod || String(row.special_code || ''),
       });
     }
 

@@ -9,7 +9,7 @@ import { CustomerSalesReport } from './CustomerSalesReport';
 import { SalesTrendReport } from './SalesTrendReport';
 import { SalesTargetReport } from './SalesTargetReport';
 import { formatNumber } from '../../utils/formatNumber';
-import { getGlobalCurrency, getReportingCurrency } from '../../utils/currency';
+import { getGlobalCurrency, getReportingCurrency, getCurrencyDecimalPlaces } from '../../utils/currency';
 import { getAppDefaultCurrency } from '../../services/postgres';
 import { useProductStore } from '../../store';
 import { fetchExpiringSoonLots } from '../../services/api/lots';
@@ -32,6 +32,11 @@ import { localCalendarDateKey, localTodayDateKey, formatIsoDateTr } from '../../
 import { type ReportDatePreset, type ReportDateRangeValue } from '../../utils/reportDatePresets';
 import { ReportDateRangePresets } from '../shared/ReportDateRangePresets';
 import { buildErpServiceBreakdownGroups, type ErpServiceBreakdownLine } from '../../utils/serviceBreakdownReport';
+import {
+  addAnalysisSplitAmount,
+  classifyAnalysisSaleLine,
+  resolveAnalysisSaleCategory,
+} from '../../utils/analysisSaleLine';
 import {
   summarizePurchasePromotionReport,
   type PurchasePromotionReportLine,
@@ -737,10 +742,7 @@ export function ReportsModule({
 
   const { selectedFirm } = useFirmaDonem();
   /** Dönüştürülmemiş tutarlar (ciro/gider/kasa) → ana para; raporlama para birimi etiket için kullanılmaz. */
-  const amountCurrency =
-    (selectedFirm?.ana_para_birimi && String(selectedFirm.ana_para_birimi).trim()) ||
-    getGlobalCurrency() ||
-    getAppDefaultCurrency();
+  const amountCurrency = getFirmLedgerCurrency(selectedFirm, getAppDefaultCurrency());
   const reportCurrency =
     (selectedFirm?.raporlama_para_birimi && String(selectedFirm.raporlama_para_birimi).trim()) ||
     amountCurrency ||
@@ -1100,6 +1102,20 @@ export function ReportsModule({
   const beautyServicesCatalog = useBeautyStore((s) => s.services);
   const storeProducts = useProductStore((s) => s.products);
   const catalogProducts = storeProducts.length > 0 ? storeProducts : products;
+  const analysisServiceKeys = useMemo(() => {
+    const keys = new Set<string>();
+    for (const s of beautyServicesCatalog) {
+      const id = String(s.id ?? '').trim().toLowerCase();
+      if (id) keys.add(id);
+    }
+    for (const c of erpServiceCards) {
+      const id = String(c.id ?? '').trim().toLowerCase();
+      const code = String(c.code ?? '').trim().toLowerCase();
+      if (id) keys.add(id);
+      if (code) keys.add(code);
+    }
+    return keys;
+  }, [beautyServicesCatalog, erpServiceCards]);
   const beautyMainCategoryOptions = useMemo(() => {
     const keys = new Set<string>();
     for (const s of beautyServicesCatalog) {
@@ -1579,7 +1595,8 @@ export function ReportsModule({
   useEffect(() => {
     if (
       businessType !== 'beauty' ||
-      (selectedTab !== 'beauty-service-report' &&
+      (selectedTab !== 'analysis' &&
+        selectedTab !== 'beauty-service-report' &&
         selectedTab !== 'beauty-cancelled-report' &&
         selectedTab !== 'beauty-appointment-product-report' &&
         selectedTab !== 'beauty-commission-report')
@@ -3805,13 +3822,26 @@ export function ReportsModule({
     dataSource: Record<string, unknown>[];
     chartData?: { name: string; value: number }[];
   } => {
+    const moneyDecimals = getCurrencyDecimalPlaces(amountCurrency);
     const moneyCol = (title: string, key: string): ColumnsType<Record<string, unknown>>[number] => ({
       title,
       dataIndex: key,
       key,
       align: 'right',
-      render: (v: unknown) => formatNumber(Number(v ?? 0), 2, false),
+      render: (v: unknown) => formatNumber(Number(v ?? 0), moneyDecimals, moneyDecimals > 0),
     });
+    const colMonth = tm('rptAnalysisColMonth') || 'Ay';
+    const colCategory = tm('rptAnalysisColCategory') || tm('category') || 'Kategori';
+    const colService = tm('rptAnalysisColService') || 'Hizmet';
+    const colProduct = tm('rptAnalysisColProduct') || 'Ürün';
+    const colTotal = tm('rptAnalysisColTotal') || tm('total') || 'Toplam';
+    const otherCat = tm('bCatOther') || 'Diğer';
+    const serviceCatFallback = colService;
+    const splitMoneyColumns = (): ColumnsType<Record<string, unknown>> => [
+      moneyCol(`${colService} (${amountCurrency})`, 'serviceAmount'),
+      moneyCol(`${colProduct} (${amountCurrency})`, 'productAmount'),
+      moneyCol(`${colTotal} (${amountCurrency})`, 'total'),
+    ];
 
     if (businessType === 'restaurant') {
       const orders = analysisOrders;
@@ -3828,8 +3858,8 @@ export function ReportsModule({
             .map(([mk, total]) => ({ key: mk, month: formatAnalysisMonthTr(mk), total }));
           return {
             columns: [
-              { title: 'Ay', dataIndex: 'month', key: 'month' },
-              moneyCol(`Tutar (${reportCurrency})`, 'total'),
+              { title: colMonth, dataIndex: 'month', key: 'month' },
+              moneyCol(`Tutar (${amountCurrency})`, 'total'),
             ],
             dataSource: rows,
             chartData: rows.map(r => ({ name: String(r.month), value: Number(r.total) })),
@@ -3845,33 +3875,52 @@ export function ReportsModule({
             .sort((a, b) => b[1] - a[1])
             .map(([user, total]) => ({ key: user, user, total }));
           return {
-            columns: [{ title: 'Kullanıcı / Garson', dataIndex: 'user', key: 'user' }, moneyCol('Ciro', 'total')],
+            columns: [{ title: 'Kullanıcı / Garson', dataIndex: 'user', key: 'user' }, moneyCol(`Ciro (${amountCurrency})`, 'total')],
             dataSource: rows,
             chartData: rows.slice(0, 16).map(r => ({ name: String(r.user), value: Number(r.total) })),
           };
         }
         case 'category-monthly-revenue': {
-          const map = new Map<string, number>();
+          const map = new Map<string, { service: number; product: number }>();
           for (const o of orders) {
             const mk = analysisMonthKeyFromOrder(o);
             if (!mk) continue;
             eachRestOrderItem(o, (it: any) => {
-              const cat = String(it.category_name ?? 'Diğer').trim() || 'Diğer';
+              const cat = String(it.category_name ?? otherCat).trim() || otherCat;
               const k = `${mk}\t${cat}`;
-              map.set(k, (map.get(k) || 0) + Number(it.subtotal ?? 0));
+              addAnalysisSplitAmount(
+                map,
+                k,
+                classifyAnalysisSaleLine(
+                  {
+                    productId: String(it.product_id ?? it.productId ?? ''),
+                    productName: String(it.product_name ?? it.productName ?? ''),
+                    lineType: String(it.line_type ?? it.lineType ?? it.item_type ?? ''),
+                  },
+                  catalogProducts,
+                ),
+                Number(it.subtotal ?? 0),
+              );
             });
           }
           const rows = Array.from(map.entries())
             .sort((a, b) => a[0].localeCompare(b[0]))
-            .map(([compound, total]) => {
+            .map(([compound, v]) => {
               const [ym, cat] = compound.split('\t');
-              return { key: compound, month: formatAnalysisMonthTr(ym), category: cat, total };
+              return {
+                key: compound,
+                month: formatAnalysisMonthTr(ym),
+                category: cat,
+                serviceAmount: v.service,
+                productAmount: v.product,
+                total: v.service + v.product,
+              };
             });
           return {
             columns: [
-              { title: 'Ay', dataIndex: 'month', key: 'month' },
-              { title: 'Kategori', dataIndex: 'category', key: 'category' },
-              moneyCol(`Tutar (${reportCurrency})`, 'total'),
+              { title: colMonth, dataIndex: 'month', key: 'month' },
+              { title: colCategory, dataIndex: 'category', key: 'category' },
+              ...splitMoneyColumns(),
             ],
             dataSource: rows,
           };
@@ -3895,7 +3944,7 @@ export function ReportsModule({
             });
           return {
             columns: [
-              { title: 'Ay', dataIndex: 'month', key: 'month' },
+              { title: colMonth, dataIndex: 'month', key: 'month' },
               { title: 'Ürün', dataIndex: 'product', key: 'product' },
               { title: 'Miktar', dataIndex: 'qty', key: 'qty', align: 'right', render: (v: unknown) => formatNumber(Number(v ?? 0), 2, false) },
             ],
@@ -3948,7 +3997,7 @@ export function ReportsModule({
             const mk = analysisMonthKeyFromOrder(o);
             if (!mk) continue;
             eachRestOrderItem(o, (it: any) => {
-              const cat = String(it.category_name ?? 'Diğer').trim() || 'Diğer';
+              const cat = String(it.category_name ?? otherCat).trim() || otherCat;
               const k = `${mk}\t${cat}`;
               map.set(k, (map.get(k) || 0) + Number(it.quantity ?? 0));
             });
@@ -3961,8 +4010,8 @@ export function ReportsModule({
             });
           return {
             columns: [
-              { title: 'Ay', dataIndex: 'month', key: 'month' },
-              { title: 'Kategori', dataIndex: 'category', key: 'category' },
+              { title: colMonth, dataIndex: 'month', key: 'month' },
+              { title: colCategory, dataIndex: 'category', key: 'category' },
               { title: 'Miktar', dataIndex: 'qty', key: 'qty', align: 'right', render: (v: unknown) => formatNumber(Number(v ?? 0), 2, false) },
             ],
             dataSource: rows,
@@ -3980,7 +4029,7 @@ export function ReportsModule({
             .sort((a, b) => b[1] - a[1])
             .map(([section, total]) => ({ key: section, section, total }));
           return {
-            columns: [{ title: 'Bölüm (course)', dataIndex: 'section', key: 'section' }, moneyCol(`Tutar (${reportCurrency})`, 'total')],
+            columns: [{ title: 'Bölüm (course)', dataIndex: 'section', key: 'section' }, moneyCol(`Tutar (${amountCurrency})`, 'total')],
             dataSource: rows,
             chartData: rows.map(r => ({ name: String(r.section), value: Number(r.total) })),
           };
@@ -3996,7 +4045,7 @@ export function ReportsModule({
             .sort((a, b) => b[1] - a[1])
             .map(([region, total]) => ({ key: region, region, total }));
           return {
-            columns: [{ title: 'Kat / Bölge', dataIndex: 'region', key: 'region' }, moneyCol(`Ciro (${reportCurrency})`, 'total')],
+            columns: [{ title: 'Kat / Bölge', dataIndex: 'region', key: 'region' }, moneyCol(`Ciro (${amountCurrency})`, 'total')],
             dataSource: rows,
             chartData: rows.map(r => ({ name: String(r.region), value: Number(r.total) })),
           };
@@ -4011,7 +4060,7 @@ export function ReportsModule({
             .sort((a, b) => b[1] - a[1])
             .map(([table, total]) => ({ key: table, table, total }));
           return {
-            columns: [{ title: 'Masa', dataIndex: 'table', key: 'table' }, moneyCol(`Ciro (${reportCurrency})`, 'total')],
+            columns: [{ title: 'Masa', dataIndex: 'table', key: 'table' }, moneyCol(`Ciro (${amountCurrency})`, 'total')],
             dataSource: rows,
             chartData: rows.slice(0, 20).map(r => ({ name: String(r.table), value: Number(r.total) })),
           };
@@ -4042,11 +4091,11 @@ export function ReportsModule({
             }));
           return {
             columns: [
-              { title: 'Ay', dataIndex: 'month', key: 'month' },
-              moneyCol(`Nakit (${reportCurrency})`, 'cash'),
-              moneyCol(`Kart (${reportCurrency})`, 'card'),
-              moneyCol(`Diğer (${reportCurrency})`, 'other'),
-              moneyCol(`Toplam (${reportCurrency})`, 'total'),
+              { title: colMonth, dataIndex: 'month', key: 'month' },
+              moneyCol(`Nakit (${amountCurrency})`, 'cash'),
+              moneyCol(`Kart (${amountCurrency})`, 'card'),
+              moneyCol(`Diğer (${amountCurrency})`, 'other'),
+              moneyCol(`Toplam (${amountCurrency})`, 'total'),
             ],
             dataSource: rows,
             chartData: rows.map(r => ({ name: String(r.month), value: Number(r.total) })),
@@ -4058,24 +4107,44 @@ export function ReportsModule({
     }
 
     const retailSales = salesForAnalysis;
-    const categoryOf = (productId: string) => {
-      const p = products.find(x => x.id === productId);
-      return String(p?.category ?? 'Diğer').trim() || 'Diğer';
-    };
+    const classifyItem = (it: { productId?: string; productName?: string; lineType?: string; item_type?: string }) =>
+      classifyAnalysisSaleLine(it, catalogProducts, analysisServiceKeys);
+    const categoryOfItem = (it: { productId?: string; productName?: string; lineType?: string; item_type?: string }) =>
+      resolveAnalysisSaleCategory(it, catalogProducts, beautyServicesCatalog, {
+        other: otherCat,
+        service: serviceCatFallback,
+        tm,
+      }, analysisServiceKeys);
 
     switch (kind) {
       case 'sales-by-month': {
-        const map = new Map<string, number>();
+        const map = new Map<string, { service: number; product: number }>();
         for (const s of retailSales) {
           const mk = saleMonthKeyFromDate(s.date);
           if (!mk) continue;
-          map.set(mk, (map.get(mk) || 0) + Number(s.total ?? 0));
+          const items = s.items || [];
+          if (items.length === 0) {
+            addAnalysisSplitAmount(map, mk, 'product', Number(s.total ?? 0));
+            continue;
+          }
+          for (const it of items) {
+            addAnalysisSplitAmount(map, mk, classifyItem(it), Number(it.total ?? 0));
+          }
         }
         const rows = Array.from(map.entries())
           .sort((a, b) => a[0].localeCompare(b[0]))
-          .map(([mk, total]) => ({ key: mk, month: formatAnalysisMonthTr(mk), total }));
+          .map(([mk, v]) => ({
+            key: mk,
+            month: formatAnalysisMonthTr(mk),
+            serviceAmount: v.service,
+            productAmount: v.product,
+            total: v.service + v.product,
+          }));
         return {
-          columns: [{ title: 'Ay', dataIndex: 'month', key: 'month' }, moneyCol(`Tutar (${reportCurrency})`, 'total')],
+          columns: [
+            { title: colMonth, dataIndex: 'month', key: 'month' },
+            ...splitMoneyColumns(),
+          ],
           dataSource: rows,
           chartData: rows.map(r => ({ name: String(r.month), value: Number(r.total) })),
         };
@@ -4090,33 +4159,40 @@ export function ReportsModule({
           .sort((a, b) => b[1] - a[1])
           .map(([user, total]) => ({ key: user, user, total }));
         return {
-          columns: [{ title: 'Kasiyer', dataIndex: 'user', key: 'user' }, moneyCol('Ciro', 'total')],
+          columns: [{ title: 'Kasiyer', dataIndex: 'user', key: 'user' }, moneyCol(`Ciro (${amountCurrency})`, 'total')],
           dataSource: rows,
           chartData: rows.slice(0, 16).map(r => ({ name: String(r.user), value: Number(r.total) })),
         };
       }
       case 'category-monthly-revenue': {
-        const map = new Map<string, number>();
+        const map = new Map<string, { service: number; product: number }>();
         for (const s of retailSales) {
           const mk = saleMonthKeyFromDate(s.date);
           if (!mk) continue;
           for (const it of s.items || []) {
-            const cat = categoryOf(it.productId);
+            const cat = categoryOfItem(it);
             const k = `${mk}\t${cat}`;
-            map.set(k, (map.get(k) || 0) + Number(it.total ?? 0));
+            addAnalysisSplitAmount(map, k, classifyItem(it), Number(it.total ?? 0));
           }
         }
         const rows = Array.from(map.entries())
           .sort((a, b) => a[0].localeCompare(b[0]))
-          .map(([compound, total]) => {
+          .map(([compound, v]) => {
             const [ym, cat] = compound.split('\t');
-            return { key: compound, month: formatAnalysisMonthTr(ym), category: cat, total };
+            return {
+              key: compound,
+              month: formatAnalysisMonthTr(ym),
+              category: cat,
+              serviceAmount: v.service,
+              productAmount: v.product,
+              total: v.service + v.product,
+            };
           });
         return {
           columns: [
-            { title: 'Ay', dataIndex: 'month', key: 'month' },
-            { title: 'Kategori', dataIndex: 'category', key: 'category' },
-            moneyCol(`Tutar (${reportCurrency})`, 'total'),
+            { title: colMonth, dataIndex: 'month', key: 'month' },
+            { title: colCategory, dataIndex: 'category', key: 'category' },
+            ...splitMoneyColumns(),
           ],
           dataSource: rows,
         };
@@ -4140,9 +4216,9 @@ export function ReportsModule({
           });
         return {
           columns: [
-            { title: 'Ay', dataIndex: 'month', key: 'month' },
-            { title: 'Ürün', dataIndex: 'product', key: 'product' },
-            { title: 'Miktar', dataIndex: 'qty', key: 'qty', align: 'right', render: (v: unknown) => formatNumber(Number(v ?? 0), 2, false) },
+            { title: colMonth, dataIndex: 'month', key: 'month' },
+            { title: colProduct, dataIndex: 'product', key: 'product' },
+            { title: tm('rptAnalysisColQty') || 'Miktar', dataIndex: 'qty', key: 'qty', align: 'right', render: (v: unknown) => formatNumber(Number(v ?? 0), 2, false) },
           ],
           dataSource: rows,
         };
@@ -4188,44 +4264,69 @@ export function ReportsModule({
         };
       }
       case 'category-monthly-qty': {
-        const map = new Map<string, number>();
+        const map = new Map<string, { service: number; product: number }>();
         for (const s of retailSales) {
           const mk = saleMonthKeyFromDate(s.date);
           if (!mk) continue;
           for (const it of s.items || []) {
-            const cat = categoryOf(it.productId);
+            const cat = categoryOfItem(it);
             const k = `${mk}\t${cat}`;
-            map.set(k, (map.get(k) || 0) + Number(it.quantity ?? 0));
+            addAnalysisSplitAmount(map, k, classifyItem(it), Number(it.quantity ?? 0));
           }
         }
         const rows = Array.from(map.entries())
           .sort((a, b) => a[0].localeCompare(b[0]))
-          .map(([compound, qty]) => {
+          .map(([compound, v]) => {
             const [ym, cat] = compound.split('\t');
-            return { key: compound, month: formatAnalysisMonthTr(ym), category: cat, qty };
+            return {
+              key: compound,
+              month: formatAnalysisMonthTr(ym),
+              category: cat,
+              serviceQty: v.service,
+              productQty: v.product,
+              qty: v.service + v.product,
+            };
           });
+        const qtyCol = (title: string, key: string): ColumnsType<Record<string, unknown>>[number] => ({
+          title,
+          dataIndex: key,
+          key,
+          align: 'right',
+          render: (v: unknown) => formatNumber(Number(v ?? 0), 2, false),
+        });
         return {
           columns: [
-            { title: 'Ay', dataIndex: 'month', key: 'month' },
-            { title: 'Kategori', dataIndex: 'category', key: 'category' },
-            { title: 'Miktar', dataIndex: 'qty', key: 'qty', align: 'right', render: (v: unknown) => formatNumber(Number(v ?? 0), 2, false) },
+            { title: colMonth, dataIndex: 'month', key: 'month' },
+            { title: colCategory, dataIndex: 'category', key: 'category' },
+            qtyCol(colService, 'serviceQty'),
+            qtyCol(colProduct, 'productQty'),
+            qtyCol(tm('rptAnalysisColQty') || 'Miktar', 'qty'),
           ],
           dataSource: rows,
         };
       }
       case 'section-turnover': {
-        const map = new Map<string, number>();
+        const map = new Map<string, { service: number; product: number }>();
         for (const s of retailSales) {
           for (const it of s.items || []) {
-            const sec = categoryOf(it.productId);
-            map.set(sec, (map.get(sec) || 0) + Number(it.total ?? 0));
+            const sec = categoryOfItem(it);
+            addAnalysisSplitAmount(map, sec, classifyItem(it), Number(it.total ?? 0));
           }
         }
         const rows = Array.from(map.entries())
-          .sort((a, b) => b[1] - a[1])
-          .map(([section, total]) => ({ key: section, section, total }));
+          .sort((a, b) => (b[1].service + b[1].product) - (a[1].service + a[1].product))
+          .map(([section, v]) => ({
+            key: section,
+            section,
+            serviceAmount: v.service,
+            productAmount: v.product,
+            total: v.service + v.product,
+          }));
         return {
-          columns: [{ title: 'Kategori (bölüm)', dataIndex: 'section', key: 'section' }, moneyCol(`Tutar (${reportCurrency})`, 'total')],
+          columns: [
+            { title: colCategory, dataIndex: 'section', key: 'section' },
+            ...splitMoneyColumns(),
+          ],
           dataSource: rows,
           chartData: rows.map(r => ({ name: String(r.section), value: Number(r.total) })),
         };
@@ -4240,7 +4341,7 @@ export function ReportsModule({
           .sort((a, b) => b[1] - a[1])
           .map(([region, total]) => ({ key: region, region, total }));
         return {
-          columns: [{ title: 'Mağaza / Alan', dataIndex: 'region', key: 'region' }, moneyCol(`Ciro (${reportCurrency})`, 'total')],
+          columns: [{ title: 'Mağaza / Alan', dataIndex: 'region', key: 'region' }, moneyCol(`Ciro (${amountCurrency})`, 'total')],
           dataSource: rows,
           chartData: rows.map(r => ({ name: String(r.region), value: Number(r.total) })),
         };
@@ -4255,7 +4356,7 @@ export function ReportsModule({
           .sort((a, b) => b[1] - a[1])
           .map(([table, total]) => ({ key: table, table, total }));
         return {
-          columns: [{ title: 'Masa / Not', dataIndex: 'table', key: 'table' }, moneyCol(`Tutar (${reportCurrency})`, 'total')],
+          columns: [{ title: 'Masa / Not', dataIndex: 'table', key: 'table' }, moneyCol(`Tutar (${amountCurrency})`, 'total')],
           dataSource: rows,
           chartData: rows.slice(0, 20).map(r => ({ name: String(r.table), value: Number(r.total) })),
         };
@@ -4286,11 +4387,11 @@ export function ReportsModule({
           }));
         return {
           columns: [
-            { title: 'Ay', dataIndex: 'month', key: 'month' },
-            moneyCol(`Nakit (${reportCurrency})`, 'cash'),
-            moneyCol(`Kart (${reportCurrency})`, 'card'),
-            moneyCol(`Diğer (${reportCurrency})`, 'other'),
-            moneyCol(`Toplam (${reportCurrency})`, 'total'),
+            { title: colMonth, dataIndex: 'month', key: 'month' },
+            moneyCol(`Nakit (${amountCurrency})`, 'cash'),
+            moneyCol(`Kart (${amountCurrency})`, 'card'),
+            moneyCol(`Diğer (${amountCurrency})`, 'other'),
+            moneyCol(`Toplam (${amountCurrency})`, 'total'),
           ],
           dataSource: rows,
           chartData: rows.map(r => ({ name: String(r.month), value: Number(r.total) })),

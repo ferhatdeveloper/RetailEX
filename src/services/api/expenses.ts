@@ -355,6 +355,7 @@ export const expenseAPI = {
               doviz_kodu: kasa.currency_code || 'IQD',
               dovizli_tutar: expense.amount,
               ozel_kod: expense.category || '',
+              skipExpenseMirror: true,
             });
 
             const linked = await postgrest.patch<any[]>(

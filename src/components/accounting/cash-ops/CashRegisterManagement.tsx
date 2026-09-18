@@ -239,12 +239,14 @@ export function CashRegisterManagement({ onEnterKasa, initialTab = 'sessions' }:
     }),
   ];
 
+  const isTodayTxn = (t: KasaIslemi) =>
+    new Date(t.islem_tarihi).toDateString() === new Date().toDateString();
   const stats = {
-    openCount: kasalar.filter(k => k.aktif).length,
+    todayTxnCount: transactions.filter(isTodayTxn).length,
     totalBalance: kasalar.reduce((sum, k) => sum + (Number(k.bakiye) || 0), 0),
     totalSalesToday: transactions
-      .filter(t => new Date(t.islem_tarihi).toDateString() === new Date().toDateString() && (t.islem_tipi === 'KASA_GIRIS' || t.islem_tipi === 'CH_TAHSILAT'))
-      .reduce((sum, t) => sum + t.tutar, 0),
+      .filter((t) => isTodayTxn(t) && (t.islem_tipi === 'KASA_GIRIS' || t.islem_tipi === 'CH_TAHSILAT'))
+      .reduce((sum, t) => sum + (Number(t.tutar) || 0), 0),
     totalDiff: kasalar.reduce((sum, k) => sum + (k.bakiye < 0 ? Math.abs(k.bakiye) : 0), 0)
   };
 
@@ -283,8 +285,8 @@ export function CashRegisterManagement({ onEnterKasa, initialTab = 'sessions' }:
         <div className="bg-green-50 rounded-lg p-4">
           <div className="flex items-center justify-between">
             <div>
-              <p className="text-sm text-green-600 mb-1 font-semibold">{tm('openCashRegisters')}</p>
-              <p className="text-2xl font-bold text-green-900">{stats.openCount}</p>
+              <p className="text-sm text-green-600 mb-1 font-semibold">{tm('todayTxnCount')}</p>
+              <p className="text-2xl font-bold text-green-900">{stats.todayTxnCount}</p>
             </div>
             <CheckCircle className="w-8 h-8 text-green-600" />
           </div>
@@ -303,7 +305,7 @@ export function CashRegisterManagement({ onEnterKasa, initialTab = 'sessions' }:
         <div className="bg-purple-50 rounded-lg p-4">
           <div className="flex items-center justify-between">
             <div>
-              <p className="text-sm text-purple-600 mb-1 font-semibold">{tm('totalSalesToday')}</p>
+              <p className="text-sm text-purple-600 mb-1 font-semibold">{tm('todayCashCollected')}</p>
               <p className="text-xl font-bold text-purple-900">
                 {formatCurrency(stats.totalSalesToday, amountCurrency)}
               </p>

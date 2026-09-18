@@ -44,6 +44,7 @@ import {
   fetchCashBreakdown,
   type Kasa,
   type KasaIslemi,
+  type KasaIslemTipi,
   type CashBreakdown
 } from '../../../services/api/kasa';
 import { DevExDataGrid } from '../../shared/DevExDataGrid';
@@ -92,7 +93,7 @@ export function KasalarModule({ initialKasaId, onBack }: Props) {
   const [showIslemModal, setShowIslemModal] = useState(false);
   const [editingIslem, setEditingIslem] = useState<KasaIslemi | null>(null);
   const [deletingId, setDeletingId] = useState<string | null>(null);
-  const [islemModalType, setIslemModalType] = useState<'CH_TAHSILAT' | 'CH_ODEME' | 'KASA_GIRIS' | 'KASA_CIKIS' | 'BANKA_YATIRILAN' | 'BANKADAN_CEKILEN' | 'VIRMAN' | 'GIDER_PUSULASI' | 'VERILEN_SERBEST_MESLEK' | 'ALINAN_SERBEST_MESLEK' | 'MUSTAHSIL_MAKBUZU' | 'ACILIS_BORC' | 'ACILIS_ALACAK' | 'KUR_FARKI_BORC' | 'KUR_FARKI_ALACAK' | null>(null);
+  const [islemModalType, setIslemModalType] = useState<KasaIslemTipi | null>(null);
   const [contextMenu, setContextMenu] = useState<{
     x: number;
     y: number;
@@ -172,6 +173,10 @@ export function KasalarModule({ initialKasaId, onBack }: Props) {
         aktif: true,
       });
       setKasalar(data);
+      setSelectedKasa((prev) => {
+        if (!prev?.id) return prev;
+        return data.find((k) => k.id === prev.id) ?? prev;
+      });
       // Her kasa için breakdown arka planda yükle (tooltip için)
       data.forEach((k) => {
         if (!k.id) return;
@@ -248,7 +253,7 @@ export function KasalarModule({ initialKasaId, onBack }: Props) {
     setContextMenu({ x: e.clientX, y: e.clientY, type: 'kasa', data: kasa });
   };
 
-  const handleIslemClick = (type: 'CH_TAHSILAT' | 'CH_ODEME' | 'KASA_GIRIS' | 'KASA_CIKIS' | 'BANKA_YATIRILAN' | 'BANKADAN_CEKILEN' | 'VIRMAN' | 'GIDER_PUSULASI' | 'VERILEN_SERBEST_MESLEK' | 'ALINAN_SERBEST_MESLEK' | 'MUSTAHSIL_MAKBUZU' | 'ACILIS_BORC' | 'ACILIS_ALACAK' | 'KUR_FARKI_BORC' | 'KUR_FARKI_ALACAK') => {
+  const handleIslemClick = (type: KasaIslemTipi) => {
     if (!selectedKasa) {
       toast.error(tm('selectSafeFirst'));
       return;
@@ -330,8 +335,8 @@ export function KasalarModule({ initialKasaId, onBack }: Props) {
 
   const filteredTransactions = kasaIslemleri.filter(m => {
     const matchesTab = activeTab === 'all' ||
-      (activeTab === 'in' && (m.islem_tipi === 'CH_TAHSILAT' || m.islem_tipi === 'KASA_GIRIS' || m.islem_tipi === 'ACILIS')) ||
-      (activeTab === 'out' && (m.islem_tipi === 'CH_ODEME' || m.islem_tipi === 'KASA_CIKIS' || m.islem_tipi === 'KAPANIS'));
+      (activeTab === 'in' && (m.islem_tipi === 'CH_TAHSILAT' || m.islem_tipi === 'KASA_GIRIS' || m.islem_tipi === 'ACILIS' || m.islem_tipi === 'SATIS_FATURASI' || m.islem_tipi === 'HIZMET_FATURASI')) ||
+      (activeTab === 'out' && (m.islem_tipi === 'CH_ODEME' || m.islem_tipi === 'KASA_CIKIS' || m.islem_tipi === 'KAPANIS' || m.islem_tipi === 'ALIS_FATURASI'));
 
     const matchesSearch = !searchQuery ||
       (m.islem_no || '').toLowerCase().includes(searchQuery.toLowerCase()) ||
@@ -828,6 +833,9 @@ function KasaIslemleriTable({
             'KASA_GIRIS': tm('cashIn'),
             'KASA_CIKIS': tm('cashOut'),
             'GIDER_PUSULASI': tm('expenseVoucher') || 'Gider pusulası',
+            'SATIS_FATURASI': tm('cashSalesInvoice'),
+            'ALIS_FATURASI': tm('cashPurchaseInvoice'),
+            'HIZMET_FATURASI': tm('cashServiceInvoice'),
             'ACILIS': tm('openingDebit'),
             'KAPANIS': tm('openingCredit'),
             'ACILIS_BORC': tm('openingDebit'),
@@ -835,7 +843,7 @@ function KasaIslemleriTable({
           };
           label = labels[tip] || tip;
         }
-        const isGiris = tip === 'CH_TAHSILAT' || tip === 'KASA_GIRIS' || tip === 'ACILIS' || tip === 'ACILIS_BORC';
+        const isGiris = tip === 'CH_TAHSILAT' || tip === 'KASA_GIRIS' || tip === 'ACILIS' || tip === 'ACILIS_BORC' || tip === 'SATIS_FATURASI' || tip === 'HIZMET_FATURASI';
         return (
           <span className={`inline-flex items-center px-2 py-0.5 rounded-md text-[11px] font-bold ${isGiris
             ? 'bg-green-100 text-green-700'
@@ -876,7 +884,7 @@ function KasaIslemleriTable({
       cell: info => {
         const tutar = info.getValue() || 0;
         const tip = info.row.original.islem_tipi;
-        const isGiris = tip === 'CH_TAHSILAT' || tip === 'KASA_GIRIS' || tip === 'ACILIS';
+        const isGiris = tip === 'CH_TAHSILAT' || tip === 'KASA_GIRIS' || tip === 'ACILIS' || tip === 'SATIS_FATURASI' || tip === 'HIZMET_FATURASI';
         return (
           <span className={`font-semibold ${isGiris ? 'text-green-600' : 'text-red-600'}`}>
             {formatCurrency(tutar)} {isGiris ? '(B)' : '(A)'}
