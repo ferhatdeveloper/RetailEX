@@ -15,12 +15,15 @@ import {
   INVOICE_LINE_SCALE_JOIN,
   LAST_PURCHASE_JOIN,
   PRODUCTS_JOIN,
+  SERVICE_COST_JOINS,
   SIGNED_LINE_PROFIT_EXPR,
   SIGNED_LINE_QTY_EXPR,
   SIGNED_LINE_REVENUE_EXPR,
   SQL_IS_SERVICE_LINE,
   SQL_LINE_RESOLVED_PRODUCT_ID,
   SQL_PL_SALES_OR_RETURN,
+  SQL_SERVICE_CATEGORY_EXPR,
+  sqlLineKindFilter,
 } from '../../utils/lastPurchaseCostSql';
 import { toast } from 'sonner';
 import {
@@ -109,12 +112,7 @@ export function CategoryGroupSalesProfitReport() {
         .padStart(3, '0')
         .slice(0, 10);
 
-      const lineKindSql =
-        lineKind === 'service'
-          ? `AND (${SQL_IS_SERVICE_LINE})`
-          : lineKind === 'product'
-            ? `AND NOT (${SQL_IS_SERVICE_LINE})`
-            : '';
+      const lineKindSql = sqlLineKindFilter(lineKind);
 
       const { rows: qrows } = await postgres.query<{
         group_name: string;
@@ -129,8 +127,17 @@ export function CategoryGroupSalesProfitReport() {
         `
         WITH ${buildProfitCostCtes('$1')}
         SELECT
-          COALESCE(parent_cat.name, pg.name, NULLIF(TRIM(COALESCE(p.group_code, '')), ''), 'Genel') AS group_name,
-          COALESCE(leaf_cat.name, NULLIF(TRIM(COALESCE(p.category_code, '')), ''), 'Diğer') AS category_name,
+          COALESCE(
+            parent_cat.name,
+            pg.name,
+            NULLIF(TRIM(COALESCE(p.group_code, '')), ''),
+            CASE WHEN ${SQL_IS_SERVICE_LINE} THEN ${SQL_SERVICE_CATEGORY_EXPR} ELSE 'Genel' END
+          ) AS group_name,
+          COALESCE(
+            leaf_cat.name,
+            NULLIF(TRIM(COALESCE(p.category_code, '')), ''),
+            CASE WHEN ${SQL_IS_SERVICE_LINE} THEN ${SQL_SERVICE_CATEGORY_EXPR} ELSE 'Diğer' END
+          ) AS category_name,
           MAX(COALESCE((${SQL_LINE_RESOLVED_PRODUCT_ID})::text, '')) AS product_id,
           COALESCE(NULLIF(TRIM(p.code), ''), NULLIF(TRIM(si.item_code), ''), '') AS product_code,
           COALESCE(NULLIF(TRIM(si.item_name), ''), p.name, 'Bilinmeyen') AS product_name,
@@ -140,6 +147,7 @@ export function CategoryGroupSalesProfitReport() {
         FROM sale_items si
         INNER JOIN sales s ON s.id = si.invoice_id
         ${PRODUCTS_JOIN}
+        ${SERVICE_COST_JOINS}
         LEFT JOIN categories leaf_cat ON leaf_cat.id = p.category_id
         LEFT JOIN categories parent_cat ON parent_cat.id = leaf_cat.parent_id
         LEFT JOIN product_groups pg ON pg.code = p.group_code
@@ -154,8 +162,17 @@ export function CategoryGroupSalesProfitReport() {
           AND (s.date AT TIME ZONE 'UTC')::date >= $2::date
           AND (s.date AT TIME ZONE 'UTC')::date <= $3::date
         GROUP BY
-          COALESCE(parent_cat.name, pg.name, NULLIF(TRIM(COALESCE(p.group_code, '')), ''), 'Genel'),
-          COALESCE(leaf_cat.name, NULLIF(TRIM(COALESCE(p.category_code, '')), ''), 'Diğer'),
+          COALESCE(
+            parent_cat.name,
+            pg.name,
+            NULLIF(TRIM(COALESCE(p.group_code, '')), ''),
+            CASE WHEN ${SQL_IS_SERVICE_LINE} THEN ${SQL_SERVICE_CATEGORY_EXPR} ELSE 'Genel' END
+          ),
+          COALESCE(
+            leaf_cat.name,
+            NULLIF(TRIM(COALESCE(p.category_code, '')), ''),
+            CASE WHEN ${SQL_IS_SERVICE_LINE} THEN ${SQL_SERVICE_CATEGORY_EXPR} ELSE 'Diğer' END
+          ),
           COALESCE(NULLIF(TRIM(p.code), ''), NULLIF(TRIM(si.item_code), ''), ''),
           COALESCE(NULLIF(TRIM(si.item_name), ''), p.name, 'Bilinmeyen')
         HAVING SUM(ABS(si.quantity)) <> 0

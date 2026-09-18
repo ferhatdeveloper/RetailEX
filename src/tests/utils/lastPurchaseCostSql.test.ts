@@ -1,8 +1,10 @@
 import { describe, expect, it } from 'vitest';
 import {
+  buildProfitCostCtes,
   isPlSalesOrReturnFiche,
   isPurchaseFiche,
   isSalesReturnFiche,
+  isServiceLineType,
   LINE_COST_EXPR,
   lineCostAmount,
   resolveLineProductId,
@@ -16,9 +18,22 @@ describe('lastPurchaseCostSql — muhasebe yardımcıları', () => {
     expect(LINE_COST_EXPR).toContain('lpc_code.unit_cost');
     expect(LINE_COST_EXPR).toContain('lpc_pcode.unit_cost');
     expect(LINE_COST_EXPR).toContain('svc.purchase_price');
-    expect(LINE_COST_EXPR).toContain("IN ('hizmet', 'service')");
+    expect(LINE_COST_EXPR).toContain('bsvc.cost_price');
+    expect(LINE_COST_EXPR).toContain('src.unit_recipe_cost');
+    expect(LINE_COST_EXPR).toContain("IN ('hizmet', 'service', 'package', 'paket')");
     // Malzeme kolunda kart/satış cost yok; hizmet kolunda unit_cost / p.cost yedek
     expect(LINE_COST_EXPR).not.toContain('si.total_cost');
+  });
+
+  it('isServiceLineType paket/package kabul eder', () => {
+    expect(isServiceLineType('package')).toBe(true);
+    expect(isServiceLineType('paket')).toBe(true);
+    expect(isServiceLineType('Hizmet')).toBe(true);
+    expect(isServiceLineType('Malzeme')).toBe(false);
+  });
+
+  it('buildProfitCostCtes hizmet reçete CTE içerir', () => {
+    expect(buildProfitCostCtes()).toContain('service_recipe_unit_cost');
   });
 
   it('alış iadesini (trcode 6) son alış saymaz', () => {

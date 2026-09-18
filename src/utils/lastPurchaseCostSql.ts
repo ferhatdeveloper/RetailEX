@@ -2,7 +2,7 @@
  * Kar-zarar / ürün brüt kâr maliyet kaynağı:
  * - Malzeme: son alış faturası birim tutarı × satış miktarı (ürün id / kod / barkod).
  *   Alış yoksa maliyet = 0 — products.cost / sale_items.total_cost kart kopyası kullanılmaz.
- * - Hizmet: services.purchase_price (veya satır unit_cost / ürün cost) × miktar.
+ * - Hizmet: satır unit_cost → services.purchase_price → beauty cost_price → reçete (sarf × son alış) × miktar.
  *
  * Satır kimliği (kasap vb.):
  * - Satış satırlarında product_id çoğu zaman boş; item_code = ürün UUID
@@ -143,9 +143,37 @@ export function buildInvoiceLineScaleCte(): string {
 }
 
 /** Son alış + dip indirim ölçeği — ProfitLoss / brüt kâr sorguları */
+export function buildServiceRecipeCostCte(firmNrParam = '$1'): string {
+  return `
+  service_recipe_unit_cost AS (
+    SELECT
+      c.service_id,
+      SUM(
+        COALESCE(c.qty_per_service, 0) * COALESCE(
+          NULLIF(lpc_id.unit_cost, 0),
+          NULLIF(lpc_code.unit_cost, 0),
+          NULLIF(lpc_pcode.unit_cost, 0),
+          0
+        )
+      ) AS unit_recipe_cost
+    FROM beauty_service_consumables c
+    LEFT JOIN products p
+      ON p.firm_nr = ${firmNrParam}
+      AND p.id = c.product_id
+    LEFT JOIN last_purchase_by_id lpc_id ON lpc_id.product_id = c.product_id
+    LEFT JOIN last_purchase_by_code lpc_code
+      ON lpc_code.item_code = NULLIF(TRIM(p.code), '')
+    LEFT JOIN last_purchase_by_code lpc_pcode
+      ON lpc_pcode.item_code = NULLIF(TRIM(p.barcode), '')
+    GROUP BY c.service_id
+  )
+`.trim();
+}
+
 export function buildProfitCostCtes(firmNrParam = '$1'): string {
   return `${buildLastPurchaseCte(firmNrParam)},
-  ${buildInvoiceLineScaleCte()}`;
+  ${buildInvoiceLineScaleCte()},
+  ${buildServiceRecipeCostCte(firmNrParam)}`;
 }
 
 export const INVOICE_LINE_SCALE_JOIN = `
@@ -233,11 +261,28 @@ export const LINE_REVENUE_EXPR = `
 
 /**
  * product_id (veya UUID item_code) ile son alış; yoksa satır kodu / ürün kartı kodu.
- * Hizmet satırlarında services.purchase_price / satır unit_cost / ürün cost kullanılır.
+ * Hizmet satırlarında: satır unit_cost → hizmet kartı purchase_price → beauty cost_price → reçete.
  * Malzemede alış bulunamazsa 0 (kart cost / satış satırı total_cost yok).
  */
 export const SQL_IS_SERVICE_LINE = `
-LOWER(TRIM(COALESCE(si.item_type, 'Malzeme'))) IN ('hizmet', 'service')
+(
+  LOWER(TRIM(COALESCE(si.item_type, 'Malzeme'))) IN ('hizmet', 'service', 'package', 'paket')
+  OR svc.id IS NOT NULL
+  OR bsvc.id IS NOT NULL
+)
+`.trim();
+
+export const SQL_LINE_KIND_EXPR = `
+CASE WHEN ${SQL_IS_SERVICE_LINE} THEN 'service' ELSE 'product' END
+`.trim();
+
+export const SQL_SERVICE_CATEGORY_EXPR = `
+COALESCE(
+  NULLIF(TRIM(svc.category), ''),
+  NULLIF(TRIM(bsvc.parent_category), ''),
+  NULLIF(TRIM(bsvc.category), ''),
+  'Hizmet'
+)
 `.trim();
 
 export const LINE_COST_EXPR = `
@@ -247,7 +292,8 @@ export const LINE_COST_EXPR = `
       COALESCE(
         NULLIF(si.unit_cost, 0),
         NULLIF(svc.purchase_price, 0),
-        NULLIF(p.cost, 0),
+        NULLIF(bsvc.cost_price, 0),
+        NULLIF(src.unit_recipe_cost, 0),
         0
       ) * COALESCE(si.quantity, 0)
     ELSE
@@ -294,6 +340,29 @@ export function buildServicesJoin(firmNrParam = '$1'): string {
 
 export const SERVICES_JOIN = buildServicesJoin('$1');
 
+/** Güzellik hizmet kartı — cost_price (ERP services ile aynı id) */
+export function buildBeautyServicesJoin(): string {
+  return `
+  LEFT JOIN beauty_services bsvc
+    ON bsvc.id = (${SQL_LINE_RESOLVED_PRODUCT_ID})
+`.trim();
+}
+
+export const BEAUTY_SERVICES_JOIN = buildBeautyServicesJoin();
+
+/** Hizmet reçetesi (sarf × son alış) birim maliyeti */
+export const SERVICE_RECIPE_COST_JOIN = `
+  LEFT JOIN service_recipe_unit_cost src
+    ON src.service_id = COALESCE(svc.id, bsvc.id, (${SQL_LINE_RESOLVED_PRODUCT_ID}))
+`.trim();
+
+/** Hizmet maliyeti için gereken join'ler (svc + beauty + reçete) */
+export const SERVICE_COST_JOINS = `
+  ${SERVICES_JOIN}
+  ${BEAUTY_SERVICES_JOIN}
+  ${SERVICE_RECIPE_COST_JOIN}
+`.trim();
+
 export const LAST_PURCHASE_JOIN = `
   LEFT JOIN last_purchase_by_id lpc_id
     ON lpc_id.product_id = (${SQL_LINE_RESOLVED_PRODUCT_ID})
@@ -318,8 +387,14 @@ export function resolveLineProductId(it: {
 }
 
 export function isServiceLineType(itemType?: unknown): boolean {
-  const t = String(itemType || '').trim().toLowerCase();
-  return t === 'hizmet' || t === 'service';
+  const t = String(itemType || '').trim().toLocaleLowerCase('tr-TR');
+  return t === 'hizmet' || t === 'service' || t === 'package' || t === 'paket';
+}
+
+export function sqlLineKindFilter(kind: 'all' | 'product' | 'service'): string {
+  if (kind === 'service') return `AND (${SQL_IS_SERVICE_LINE})`;
+  if (kind === 'product') return `AND NOT (${SQL_IS_SERVICE_LINE})`;
+  return '';
 }
 
 /** REST/client yolu: alış satırından birim maliyet */

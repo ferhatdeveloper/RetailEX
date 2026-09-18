@@ -31,7 +31,7 @@ import {
   LAST_PURCHASE_JOIN,
   lineCostAmount,
   PRODUCTS_JOIN,
-  SERVICES_JOIN,
+  SERVICE_COST_JOINS,
   resolveLineProductId,
   scaleLineRevenueToInvoiceNet,
   SIGNED_LINE_COST_EXPR,
@@ -1747,7 +1747,7 @@ export const erpReportsAPI = {
       FROM sale_items si
       INNER JOIN sales s ON s.id = si.invoice_id
       ${PRODUCTS_JOIN}
-      ${SERVICES_JOIN}
+      ${SERVICE_COST_JOINS}
       ${LAST_PURCHASE_JOIN}
       ${INVOICE_LINE_SCALE_JOIN}
       WHERE s.firm_nr = $1

@@ -8282,6 +8282,8 @@ export const excelModuleTranslations = {
   reportsPlMonthly: { tr: 'Aylık', en: 'Monthly', ar: 'شهري', ku: 'مانگانە' },
   reportsPlTotalRevenue: { tr: 'Net Satış', en: 'Net sales', ar: 'صافي المبيعات', ku: 'فرۆشتنی خاوێن' },
   reportsPlTotalCost: { tr: 'SMM (COGS)', en: 'COGS', ar: 'تكلفة البضاعة المباعة', ku: 'تێچووی کاڵای فرۆشراو' },
+  reportsPlProductCost: { tr: 'Ürün maliyeti', en: 'Product cost', ar: 'تكلفة المنتج', ku: 'تێچووی بەرهەم' },
+  reportsPlServiceCost: { tr: 'Hizmet maliyeti', en: 'Service cost', ar: 'تكلفة الخدمة', ku: 'تێچووی خزمەتگوزاری' },
   reportsPlGrossProfit: { tr: 'Brüt Kar', en: 'Gross profit', ar: 'إجمالي الربح', ku: 'قازانجی گشتی' },
   reportsPlMarginPct: { tr: 'Marj', en: 'Margin', ar: 'الهامش', ku: 'مارژ' },
   reportsPlNoData: {
@@ -8371,8 +8373,8 @@ export const excelModuleTranslations = {
     ku: 'بارکردنی ڕاپۆرتی قازانج و زەرەر سەرکەوتوو نەبوو',
   },
   reportsPlCostSourceNote: {
-    tr: 'Net satış = satış − satış iadesi; dip indirim satırlara oranlanır. SMM (adet/kg aynı): yalnızca son alış birim × miktar (alış iadesi hariç; ürün id/kod/barkod). Alış yoksa maliyet 0 — ürün kartı cost kullanılmaz.',
-    en: 'Net sales = sales − sales returns; footer discount is prorated to lines. COGS (piece/kg same): last purchase unit × qty only (excl. purchase returns; match by id/code/barcode). No purchase → cost 0 (product card cost is never used).',
+    tr: 'Net satış = satış − satış iadesi; dip indirim satırlara oranlanır. Ürün SMM: son alış birim × miktar (alış iadesi hariç). Alış yoksa 0 — ürün kartı cost kullanılmaz. Hizmet maliyeti: satır unit_cost → hizmet kartı alış fiyatı → güzellik cost_price → reçete (sarf × son alış).',
+    en: 'Net sales = sales − sales returns; footer discount is prorated. Product COGS: last purchase unit × qty (excl. purchase returns). No purchase → 0 (card cost unused). Service cost: line unit_cost → service purchase_price → beauty cost_price → recipe (consumable × last purchase).',
     ar: 'صافي المبيعات = المبيعات − مرتجعات المبيعات؛ يُوزع خصم الفاتورة على الأسطر. تكلفة البضاعة (قطعة/كغ): آخر شراء × الكمية فقط (باستثناء مرتجع الشراء). بلا شراء = 0.',
     ku: 'فرۆشتنی خاوێن = فرۆشتن − گەڕاندنەوە؛ داشکاندنی کۆتایی بەسەر هێڵەکان دابەش دەکرێت. تێچوون (دانە/کگ): تەنها دوایین کڕین × بڕ (بێ گەڕاندنەوەی کڕین). کڕین نەبێت = 0.',
   },
