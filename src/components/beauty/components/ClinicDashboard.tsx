@@ -2,13 +2,13 @@
 import React, { useEffect, useMemo, useState, useCallback } from 'react';
 import { useLanguage } from '../../../contexts/LanguageContext';
 import {
-    Calendar, CalendarRange, Users, CheckCircle2, Clock,
-    Activity, TrendingUp,
+    Calendar, CalendarRange, CheckCircle2, Clock,
+    Activity, TrendingUp, Wallet,
     Phone,
     ChevronLeft, ChevronRight,
 } from 'lucide-react';
 import { useBeautyStore } from '../store/useBeautyStore';
-import { AppointmentStatus, appointmentStatusMatches } from '../../../types/beauty';
+import { AppointmentStatus } from '../../../types/beauty';
 import type { BeautyAppointment } from '../../../types/beauty';
 import { formatMoneyAmount } from '../../../utils/formatMoney';
 import { beautyAppointmentDateKey, formatLocalYmd, getWeekRangeLocal, getMonthRangeLocal } from '../../../utils/dateLocal';
@@ -285,7 +285,9 @@ export function ClinicDashboard() {
         const pending   = todayApts.filter(a => a.status === AppointmentStatus.SCHEDULED || a.status === AppointmentStatus.CONFIRMED);
         const inProg    = todayApts.filter(a => a.status === AppointmentStatus.IN_PROGRESS);
         const cancelled = todayAll.filter(a => a.status === AppointmentStatus.CANCELLED);
+        const remaining = [...pending, ...inProg];
         const revenue   = completed.reduce((s, a) => s + (a.total_price || 0), 0);
+        const expectedRevenue = remaining.reduce((s, a) => s + (a.total_price || 0), 0);
         const rate      = todayApts.length ? Math.round((completed.length / todayApts.length) * 100) : 0;
 
         const sorted = [...todayApts].sort((a, b) => {
@@ -299,6 +301,8 @@ export function ClinicDashboard() {
             inProg: inProg.length,
             cancelled: cancelled.length,
             revenue,
+            expectedRevenue,
+            remaining: remaining.length,
             rate,
             total: todayApts.length,
         };
@@ -308,21 +312,6 @@ export function ClinicDashboard() {
 
     /** is_active personel (toplam aktif kadro) */
     const activeStaff = useMemo(() => specialists.filter(s => s.is_active), [specialists]);
-
-    /**
-     * Aktif Personel KPI: şu an müsait = is_active ve bugün in_progress randevusu olmayan.
-     * Alt metin: toplam aktif personel.
-     */
-    const availableStaffCount = useMemo(() => {
-        const busyIds = new Set<string>();
-        for (const a of appointments) {
-            if (beautyAppointmentDateKey(a) !== todayStr) continue;
-            if (!appointmentStatusMatches(a.status, AppointmentStatus.IN_PROGRESS)) continue;
-            const sid = String(a.specialist_id ?? a.staff_id ?? '').trim();
-            if (sid) busyIds.add(sid);
-        }
-        return activeStaff.filter(s => !busyIds.has(String(s.id))).length;
-    }, [appointments, todayStr, activeStaff]);
 
     const topServices = services.slice(0, 6);
 
@@ -361,7 +350,7 @@ export function ClinicDashboard() {
                 <KpiCard label={tm('bKpiCompletedLabel')}         value={stats.completed}      sub={tm('bKpiCompletionRateSub').replace('{n}', String(stats.rate))} accent={T.green}   icon={CheckCircle2} />
                 <KpiCard label={tm('bKpiPendingLabel')}           value={stats.pending}        sub={tm('bKpiInProgressSub').replace('{n}', String(stats.inProg))} accent={T.amber} icon={Clock} />
                 <KpiCard label={tm('bKpiCancelledLabel') || 'İptal'} value={stats.cancelled} accent={T.pink} icon={Activity} />
-                <KpiCard label={tm('bKpiActiveStaff')}     value={availableStaffCount}   sub={tm('bKpiTotalStaffSub').replace('{n}', String(activeStaff.length))} accent={T.blue}  icon={Users} />
+                <KpiCard label={tm('bKpiExpectedRevenue')} value={fmt(stats.expectedRevenue)} sub={tm('bKpiRemainingAppointmentsSub').replace('{n}', String(stats.remaining))} accent={T.blue} icon={Wallet} />
             </div>
 
             {/* ── Ön arama / aktivite (Bugün · Yarın · Hafta · Ay) ───────────── */}

@@ -5,7 +5,7 @@
 
 import { useState, useEffect } from 'react';
 import {
-  Wallet, TrendingUp, AlertTriangle, Clock,
+  Wallet, TrendingUp, AlertTriangle, Banknote,
   CheckCircle, Plus, RefreshCw, Trash2, Pencil
 } from 'lucide-react';
 import { DevExDataGrid } from '../../shared/DevExDataGrid';
@@ -241,7 +241,7 @@ export function CashRegisterManagement({ onEnterKasa, initialTab = 'sessions' }:
 
   const stats = {
     openCount: kasalar.filter(k => k.aktif).length,
-    newToday: kasalar.filter(k => new Date(k.olusturma_tarihi).toDateString() === new Date().toDateString()).length,
+    totalBalance: kasalar.reduce((sum, k) => sum + (Number(k.bakiye) || 0), 0),
     totalSalesToday: transactions
       .filter(t => new Date(t.islem_tarihi).toDateString() === new Date().toDateString() && (t.islem_tipi === 'KASA_GIRIS' || t.islem_tipi === 'CH_TAHSILAT'))
       .reduce((sum, t) => sum + t.tutar, 0),
@@ -292,10 +292,12 @@ export function CashRegisterManagement({ onEnterKasa, initialTab = 'sessions' }:
         <div className="bg-blue-50 rounded-lg p-4">
           <div className="flex items-center justify-between">
             <div>
-              <p className="text-sm text-blue-600 mb-1 font-semibold">{tm('openedToday')}</p>
-              <p className="text-2xl font-bold text-blue-900">{stats.newToday}</p>
+              <p className="text-sm text-blue-600 mb-1 font-semibold">{tm('totalBalance')}</p>
+              <p className="text-xl font-bold text-blue-900">
+                {formatCurrency(stats.totalBalance, amountCurrency)}
+              </p>
             </div>
-            <Clock className="w-8 h-8 text-blue-600" />
+            <Banknote className="w-8 h-8 text-blue-600" />
           </div>
         </div>
         <div className="bg-purple-50 rounded-lg p-4">
@@ -303,7 +305,7 @@ export function CashRegisterManagement({ onEnterKasa, initialTab = 'sessions' }:
             <div>
               <p className="text-sm text-purple-600 mb-1 font-semibold">{tm('totalSalesToday')}</p>
               <p className="text-xl font-bold text-purple-900">
-                {formatCurrency(stats.totalSalesToday)} {amountCurrency}
+                {formatCurrency(stats.totalSalesToday, amountCurrency)}
               </p>
             </div>
             <TrendingUp className="w-8 h-8 text-purple-600" />
@@ -314,7 +316,7 @@ export function CashRegisterManagement({ onEnterKasa, initialTab = 'sessions' }:
             <div>
               <p className="text-sm text-red-600 mb-1 font-semibold">{tm('totalDifference')}</p>
               <p className="text-xl font-bold text-red-900">
-                {formatCurrency(stats.totalDiff)} {amountCurrency}
+                {formatCurrency(stats.totalDiff, amountCurrency)}
               </p>
             </div>
             <AlertTriangle className="w-8 h-8 text-red-600" />
