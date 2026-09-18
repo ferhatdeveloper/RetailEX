@@ -207,14 +207,6 @@ export function ModernSidebar({
               <X className="w-4 h-4" />
             </button>
           )}
-          {!menuSearchQuery && (
-            <div className={`absolute right-3 top-1/2 -translate-y-1/2 flex items-center gap-1 px-2 py-1 rounded text-xs ${darkMode ? 'text-gray-500 bg-gray-700/50' : 'text-gray-400 bg-gray-100'
-              }`}>
-              <kbd className="px-1.5 py-0.5 rounded text-xs font-mono border border-gray-300">Ctrl</kbd>
-              <span>+</span>
-              <kbd className="px-1.5 py-0.5 rounded text-xs font-mono border border-gray-300">K</kbd>
-            </div>
-          )}
         </div>
 
         {/* Search Results Dropdown - Enhanced */}
