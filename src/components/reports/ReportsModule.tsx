@@ -4938,6 +4938,23 @@ export function ReportsModule({
                   <div className="overflow-x-auto overflow-y-auto max-h-[600px]" style={{ scrollbarWidth: 'thin', scrollbarColor: '#cbd5e1 #f1f5f9' }}>
                     <table className="w-full min-w-[1020px]">
                       <thead className="bg-gray-50 border-b">
+                        <ReportColumnFilters
+                          columns={[
+                            { key: 'receiptNumber', label: tm('receiptFicheNo'), type: 'text', width: 'min-w-[120px]' },
+                            { key: 'hour', label: tm('hourLabel'), type: 'text', width: 'min-w-[120px]' },
+                            { key: 'cashier', label: tm('cashierLabel'), type: 'text', width: 'min-w-[140px]' },
+                            { key: 'deviceName', label: tm('reportsDeviceLabel'), type: 'text', width: 'min-w-[120px]' },
+                            { key: 'customerName', label: tm('customerLabel_rep'), type: 'text', width: 'min-w-[140px]' },
+                            { key: 'beforeDiscount', label: tm('reportsBeforeDiscount'), type: 'number', align: 'right', width: 'min-w-[120px]' },
+                            { key: 'discount', label: tm('reportsColDiscount'), type: 'number', align: 'right', width: 'min-w-[120px]' },
+                            { key: 'total', label: tm('reportsNetAmount'), type: 'number', align: 'right', width: 'min-w-[120px]' },
+                            { key: 'paymentSearch', label: tm('paymentLabel_rep'), type: 'text', width: 'min-w-[120px]' },
+                            { key: 'statusSearch', label: tm('status'), type: 'text', width: 'min-w-[120px]' },
+                          ]}
+                          values={reportFilters.forTab('daily').values}
+                          onFilterChange={reportFilters.forTab('daily').setFilter}
+                          onClear={reportFilters.forTab('daily').clearAll}
+                        >
                         <tr>
                           <th className="px-4 py-3 text-left text-sm">{tm('receiptFicheNo')}</th>
                           <th className="px-4 py-3 text-left text-sm">{tm('hourLabel')}</th>
@@ -4950,25 +4967,48 @@ export function ReportsModule({
                           <th className="px-4 py-3 text-left text-sm">{tm('paymentLabel_rep')}</th>
                           <th className="px-4 py-3 text-left text-sm">{tm('status')}</th>
                         </tr>
-                        <ReportColumnFilters
-                          columns={[
-                            { key: 'receiptNumber', label: tm('receiptFicheNo'), type: 'text', width: 'min-w-[120px]' },
-                            { key: 'hour', label: tm('hourLabel'), type: 'text', width: 'min-w-[120px]' },
-                            { key: 'cashier', label: tm('cashierLabel'), type: 'text', width: 'min-w-[140px]' },
-                            { key: 'deviceName', label: tm('reportsDeviceLabel'), type: 'text', width: 'min-w-[120px]' },
-                            { key: 'customerName', label: tm('customerLabel_rep'), type: 'text', width: 'min-w-[140px]' },
-                            { key: 'total', label: tm('reportsNetAmount'), type: 'number', align: 'right', width: 'min-w-[120px]' },
-                            { key: 'status', label: tm('status'), type: 'text', width: 'min-w-[120px]' },
-                          ]}
-                          values={reportFilters.forTab('daily').values}
-                          onFilterChange={reportFilters.forTab('daily').setFilter}
-                          onClear={reportFilters.forTab('daily').clearAll}
-                        />
+                        </ReportColumnFilters>
                       </thead>
                       <tbody className="divide-y">
                         {(() => {
                           const rpt = reportFilters.forTab('daily');
-                          const visibleRows = rpt.filtered(dailyVisibleRows as any);
+                          const visibleRows = rpt.filtered(
+                            dailyVisibleRows.map((row) => {
+                              const parsed = new Date(row.date);
+                              const hour = Number.isNaN(parsed.getTime())
+                                ? String(row.date || '')
+                                : parsed.toLocaleTimeString('tr-TR');
+                              const bucket = normalizePaymentMethodBucket(row.paymentMethod);
+                              const paymentLabel =
+                                bucket === 'cash'
+                                  ? tm('cashLabel')
+                                  : bucket === 'card'
+                                    ? tm('cardLabel')
+                                    : bucket === 'transfer'
+                                      ? tm('reportsPaymentPieTransfer')
+                                      : tm('reportsPaymentOther');
+                              const st = String(row.status ?? 'completed').toLowerCase();
+                              const isCancelled = st === 'cancelled' || st === 'canceled';
+                              const isRefunded = st === 'refunded';
+                              const isReturn = st === 'return';
+                              const statusLabel = isReturn
+                                ? 'Satış İade'
+                                : isCancelled
+                                  ? tm('reportsDetStatusCancelled')
+                                  : isRefunded
+                                    ? tm('reportsDetStatusRefunded')
+                                    : tm('reportsDetStatusCompleted');
+                              const disc = Number(row.discount) || 0;
+                              const net = Number(row.total) || 0;
+                              return {
+                                ...row,
+                                hour,
+                                beforeDiscount: Number(row.beforeDiscount ?? net + disc) || 0,
+                                paymentSearch: `${row.paymentMethod || ''} ${paymentLabel}`,
+                                statusSearch: `${row.status || ''} ${statusLabel}`,
+                              };
+                            }) as any,
+                          );
                           if (visibleRows.length === 0) {
                             return (
                               <tr>
@@ -5109,6 +5149,20 @@ export function ReportsModule({
                   <div className="overflow-x-auto overflow-y-auto max-h-[480px]" style={{ scrollbarWidth: 'thin', scrollbarColor: '#cbd5e1 #f1f5f9' }}>
                     <table className="w-full min-w-[920px]">
                       <thead className="bg-gray-50 border-b">
+                        <ReportColumnFilters
+                          columns={[
+                            { key: 'ficheNo', label: tm('receiptFicheNo'), type: 'text', width: 'min-w-[120px]' },
+                            { key: 'timeLabel', label: tm('hourLabel'), type: 'text', width: 'min-w-[120px]' },
+                            { key: 'typeLabel', label: tm('type'), type: 'text', width: 'min-w-[120px]' },
+                            { key: 'category', label: tm('category'), type: 'text', width: 'min-w-[120px]' },
+                            { key: 'description', label: tm('description'), type: 'text', width: 'min-w-[160px]' },
+                            { key: 'amount', label: tm('amountLabel_rep'), type: 'number', align: 'right', width: 'min-w-[120px]' },
+                            { key: 'payLabel', label: tm('paymentLabel_rep'), type: 'text', width: 'min-w-[120px]' },
+                          ]}
+                          values={reportFilters.forTab('daily-expense').values}
+                          onFilterChange={reportFilters.forTab('daily-expense').setFilter}
+                          onClear={reportFilters.forTab('daily-expense').clearAll}
+                        >
                         <tr>
                           <th className="px-4 py-3 text-left text-sm">{tm('receiptFicheNo')}</th>
                           <th className="px-4 py-3 text-left text-sm">{tm('hourLabel')}</th>
@@ -5118,25 +5172,39 @@ export function ReportsModule({
                           <th className="px-4 py-3 text-right text-sm font-semibold">{tm('amountLabel_rep')}</th>
                           <th className="px-4 py-3 text-left text-sm">{tm('paymentLabel_rep')}</th>
                         </tr>
-                        <ReportColumnFilters
-                          columns={[
-                            { key: 'ficheNo', label: tm('receiptFicheNo'), type: 'text', width: 'min-w-[120px]' },
-                            { key: 'date', label: tm('hourLabel'), type: 'date', width: 'min-w-[120px]' },
-                            { key: 'type', label: tm('type'), type: 'text', width: 'min-w-[120px]' },
-                            { key: 'category', label: tm('category'), type: 'text', width: 'min-w-[120px]' },
-                            { key: 'description', label: tm('description'), type: 'text', width: 'min-w-[160px]' },
-                            { key: 'amount', label: tm('amountLabel_rep'), type: 'number', align: 'right', width: 'min-w-[120px]' },
-                            { key: 'paymentMethod', label: tm('paymentLabel_rep'), type: 'text', width: 'min-w-[120px]' },
-                          ]}
-                          values={reportFilters.forTab('daily-expense').values}
-                          onFilterChange={reportFilters.forTab('daily-expense').setFilter}
-                          onClear={reportFilters.forTab('daily-expense').clearAll}
-                        />
+                        </ReportColumnFilters>
                       </thead>
                       <tbody className="divide-y">
                         {(() => {
                           const rpt = reportFilters.forTab('daily-expense');
-                          const visibleRows = rpt.filtered(dailyExpenseRows as any);
+                          const visibleRows = rpt.filtered(
+                            dailyExpenseRows.map((row) => {
+                              const dateRaw = String(row.date || '');
+                              const parsed = new Date(dateRaw);
+                              const timeLabel = Number.isNaN(parsed.getTime())
+                                ? (dateRaw.slice(11, 19) || dateRaw.slice(0, 10) || '—')
+                                : selectedDateFrom !== selectedDateTo
+                                  ? parsed.toLocaleString('tr-TR')
+                                  : /^\d{4}-\d{2}-\d{2}$/.test(dateRaw.slice(0, 10)) && dateRaw.length <= 10
+                                    ? '—'
+                                    : parsed.toLocaleTimeString('tr-TR');
+                              const bucket = normalizePaymentMethodBucket(row.paymentMethod);
+                              const payLabel =
+                                row.isCash || bucket === 'cash'
+                                  ? tm('cashLabel')
+                                  : bucket === 'card'
+                                    ? tm('cardLabel')
+                                    : bucket === 'transfer'
+                                      ? tm('reportsPaymentPieTransfer')
+                                      : tm('reportsPaymentOther');
+                              return {
+                                ...row,
+                                timeLabel,
+                                typeLabel: labelDailyExpenseType(row.typeCode),
+                                payLabel: `${row.paymentMethod || ''} ${payLabel}`,
+                              };
+                            }) as any,
+                          );
                           if (visibleRows.length === 0) {
                             return (
                               <tr>
@@ -5393,13 +5461,6 @@ export function ReportsModule({
                             <h4 className="text-sm text-gray-600 mb-3">Kasiyer / personel cirosu</h4>
                             <table className="w-full text-sm min-w-[640px]">
                               <thead>
-                                <tr className="text-left text-xs text-gray-500 border-b">
-                                  <th className="py-2 pr-3">Kasiyer</th>
-                                  <th className="py-2 pr-3 text-right">Fiş</th>
-                                  <th className="py-2 pr-3 text-right">Brüt</th>
-                                  <th className="py-2 pr-3 text-right">İade</th>
-                                  <th className="py-2 text-right">Net</th>
-                                </tr>
                                 <ReportColumnFilters
                                   columns={[
                                     { key: 'name', label: tm('cashierLabel'), type: 'text', width: 'min-w-[140px]' },
@@ -5410,8 +5471,15 @@ export function ReportsModule({
                                   ]}
                                   values={reportFilters.forTab('z-report').values}
                                   onFilterChange={reportFilters.forTab('z-report').setFilter}
-                                  onClear={reportFilters.forTab('z-report').clearAll}
-                                />
+                                  onClear={reportFilters.forTab('z-report').clearAll}>
+                                <tr className="text-left text-xs text-gray-500 border-b">
+                                  <th className="py-2 pr-3">Kasiyer</th>
+                                  <th className="py-2 pr-3 text-right">Fiş</th>
+                                  <th className="py-2 pr-3 text-right">Brüt</th>
+                                  <th className="py-2 pr-3 text-right">İade</th>
+                                  <th className="py-2 text-right">Net</th>
+                                </tr>
+                                </ReportColumnFilters>
                               </thead>
                               <tbody>
                                 {(() => {
@@ -5481,14 +5549,6 @@ export function ReportsModule({
                   <div className="overflow-x-auto overflow-y-auto max-h-[600px]" style={{ scrollbarWidth: 'thin', scrollbarColor: '#cbd5e1 #f1f5f9' }}>
                     <table className="w-full min-w-[800px]">
                       <thead className="bg-gray-50 border-b sticky top-0">
-                        <tr>
-                          <th className="px-4 py-3 text-left text-sm">{tm('cashierLabel')}</th>
-                          <th className="px-4 py-3 text-right text-sm">{tm('transactionCount')}</th>
-                          <th className="px-4 py-3 text-right text-sm">{tm('totalRevenueLabel')}</th>
-                          <th className="px-4 py-3 text-right text-sm">{tm('avgSaleLabel')}</th>
-                          <th className="px-4 py-3 text-right text-sm">{tm('cashLabel')}</th>
-                          <th className="px-4 py-3 text-right text-sm">{tm('cardLabel')}</th>
-                        </tr>
                         <ReportColumnFilters
                           columns={[
                             { key: 'name', label: tm('cashierLabel'), type: 'text', align: 'left', width: 'min-w-[160px]' },
@@ -5500,8 +5560,16 @@ export function ReportsModule({
                           ]}
                           values={rpt.values}
                           onFilterChange={rpt.setFilter}
-                          onClear={rpt.clearAll}
-                        />
+                          onClear={rpt.clearAll}>
+                        <tr>
+                          <th className="px-4 py-3 text-left text-sm">{tm('cashierLabel')}</th>
+                          <th className="px-4 py-3 text-right text-sm">{tm('transactionCount')}</th>
+                          <th className="px-4 py-3 text-right text-sm">{tm('totalRevenueLabel')}</th>
+                          <th className="px-4 py-3 text-right text-sm">{tm('avgSaleLabel')}</th>
+                          <th className="px-4 py-3 text-right text-sm">{tm('cashLabel')}</th>
+                          <th className="px-4 py-3 text-right text-sm">{tm('cardLabel')}</th>
+                        </tr>
+                        </ReportColumnFilters>
                       </thead>
                       <tbody className="divide-y">
                         {visible.length === 0 ? (
@@ -5588,15 +5656,6 @@ export function ReportsModule({
                     <div className="overflow-x-auto overflow-y-auto max-h-[600px]" style={{ scrollbarWidth: 'thin', scrollbarColor: '#cbd5e1 #f1f5f9' }}>
                       <table className="w-full min-w-[900px]">
                         <thead className="bg-gray-50 border-b sticky top-0">
-                          <tr>
-                            <th className="px-4 py-3 text-left text-sm">{tm('rankLabel')}</th>
-                            <th className="px-4 py-3 text-left text-sm">{tm('productNameLabel')}</th>
-                            <th className="px-4 py-3 text-left text-sm">{tm('categoryLabel')}</th>
-                            <th className="px-4 py-3 text-right text-sm">{tm('salesQuantityLabel')}</th>
-                            <th className="px-4 py-3 text-right text-sm">{tm('totalRevenueLabel')}</th>
-                            <th className="px-4 py-3 text-right text-sm">{tm('avgPriceLabel')}</th>
-                            <th className="px-4 py-3 text-right text-sm">{tm('stockLabel')}</th>
-                          </tr>
                           <ReportColumnFilters
                             columns={[
                               { key: 'rank', label: tm('rankLabel'), type: 'number', align: 'right', width: 'min-w-[90px]' },
@@ -5609,8 +5668,17 @@ export function ReportsModule({
                             ]}
                             values={rpt.values}
                             onFilterChange={rpt.setFilter}
-                            onClear={rpt.clearAll}
-                          />
+                            onClear={rpt.clearAll}>
+                          <tr>
+                            <th className="px-4 py-3 text-left text-sm">{tm('rankLabel')}</th>
+                            <th className="px-4 py-3 text-left text-sm">{tm('productNameLabel')}</th>
+                            <th className="px-4 py-3 text-left text-sm">{tm('categoryLabel')}</th>
+                            <th className="px-4 py-3 text-right text-sm">{tm('salesQuantityLabel')}</th>
+                            <th className="px-4 py-3 text-right text-sm">{tm('totalRevenueLabel')}</th>
+                            <th className="px-4 py-3 text-right text-sm">{tm('avgPriceLabel')}</th>
+                            <th className="px-4 py-3 text-right text-sm">{tm('stockLabel')}</th>
+                          </tr>
+                          </ReportColumnFilters>
                         </thead>
                         <tbody className="divide-y">
                           {visible.length === 0 ? (
@@ -5727,13 +5795,6 @@ export function ReportsModule({
                           <div className="overflow-x-auto overflow-y-auto max-h-[300px]" style={{ scrollbarWidth: 'thin', scrollbarColor: '#cbd5e1 #f1f5f9' }}>
                             <table className="w-full min-w-[700px]">
                               <thead className="bg-gray-50 border-b sticky top-0">
-                                <tr>
-                                  <th className="px-4 py-2 text-left text-sm">{tm('categoryLabel')}</th>
-                                  <th className="px-4 py-2 text-right text-sm">{tm('totalRevenueLabel')}</th>
-                                  <th className="px-4 py-2 text-right text-sm">{tm('erpColSkuCount')}</th>
-                                  <th className="px-4 py-2 text-right text-sm">{tm('salesQuantityLabel')}</th>
-                                  <th className="px-4 py-2 text-right text-sm">{tm('avgPriceLabel')}</th>
-                                </tr>
                                 <ReportColumnFilters
                                   columns={[
                                     { key: 'name', label: tm('categoryLabel'), type: 'text', width: 'min-w-[180px]' },
@@ -5744,8 +5805,15 @@ export function ReportsModule({
                                   ]}
                                   values={rpt.values}
                                   onFilterChange={rpt.setFilter}
-                                  onClear={rpt.clearAll}
-                                />
+                                  onClear={rpt.clearAll}>
+                                <tr>
+                                  <th className="px-4 py-2 text-left text-sm">{tm('categoryLabel')}</th>
+                                  <th className="px-4 py-2 text-right text-sm">{tm('totalRevenueLabel')}</th>
+                                  <th className="px-4 py-2 text-right text-sm">{tm('erpColSkuCount')}</th>
+                                  <th className="px-4 py-2 text-right text-sm">{tm('salesQuantityLabel')}</th>
+                                  <th className="px-4 py-2 text-right text-sm">{tm('avgPriceLabel')}</th>
+                                </tr>
+                                </ReportColumnFilters>
                               </thead>
                               <tbody className="divide-y">
                                 {visible.length === 0 ? (
@@ -5843,12 +5911,6 @@ export function ReportsModule({
                     <div className="overflow-x-auto overflow-y-auto max-h-[600px]" style={{ scrollbarWidth: 'thin', scrollbarColor: '#cbd5e1 #f1f5f9' }}>
                       <table className="w-full min-w-[700px]">
                         <thead className="bg-gray-50 border-b sticky top-0">
-                          <tr>
-                            <th className="px-4 py-3 text-left text-sm">{tm('hourLabel')}</th>
-                            <th className="px-4 py-3 text-right text-sm">{tm('transactionCount')}</th>
-                            <th className="px-4 py-3 text-right text-sm">{tm('totalRevenueLabel')}</th>
-                            <th className="px-4 py-3 text-right text-sm">{tm('avgSaleLabel')}</th>
-                          </tr>
                           <ReportColumnFilters
                             columns={[
                               { key: 'label', label: tm('hourLabel'), type: 'text', width: 'min-w-[140px]' },
@@ -5858,8 +5920,14 @@ export function ReportsModule({
                             ]}
                             values={reportFilters.forTab('hourly-analysis').values}
                             onFilterChange={reportFilters.forTab('hourly-analysis').setFilter}
-                            onClear={reportFilters.forTab('hourly-analysis').clearAll}
-                          />
+                            onClear={reportFilters.forTab('hourly-analysis').clearAll}>
+                          <tr>
+                            <th className="px-4 py-3 text-left text-sm">{tm('hourLabel')}</th>
+                            <th className="px-4 py-3 text-right text-sm">{tm('transactionCount')}</th>
+                            <th className="px-4 py-3 text-right text-sm">{tm('totalRevenueLabel')}</th>
+                            <th className="px-4 py-3 text-right text-sm">{tm('avgSaleLabel')}</th>
+                          </tr>
+                          </ReportColumnFilters>
                         </thead>
                         <tbody className="divide-y">
                           {hourlyData.map((hour) => {
@@ -6172,13 +6240,6 @@ export function ReportsModule({
                         <div className="overflow-x-auto overflow-y-auto max-h-[600px]" style={{ scrollbarWidth: 'thin', scrollbarColor: '#cbd5e1 #f1f5f9' }}>
                           <table className="w-full min-w-[800px]">
                             <thead className="bg-gray-50 border-b sticky top-0">
-                              <tr>
-                                <th className="px-4 py-3 text-left text-sm">{tm('reportsDiscountTypeCol')}</th>
-                                <th className="px-4 py-3 text-right text-sm">{tm('transactionCount')}</th>
-                                <th className="px-4 py-3 text-right text-sm">{tm('reportsTotalDiscount')}</th>
-                                <th className="px-4 py-3 text-right text-sm">{tm('reportsAverageDiscountCol')}</th>
-                                <th className="px-4 py-3 text-right text-sm">{tm('reportsRatePercentCol')}</th>
-                              </tr>
                               <ReportColumnFilters
                                 columns={[
                                   { key: 'name', label: tm('reportsDiscountTypeCol'), type: 'text', width: 'min-w-[180px]' },
@@ -6189,8 +6250,15 @@ export function ReportsModule({
                                 ]}
                                 values={rpt.values}
                                 onFilterChange={rpt.setFilter}
-                                onClear={rpt.clearAll}
-                              />
+                                onClear={rpt.clearAll}>
+                              <tr>
+                                <th className="px-4 py-3 text-left text-sm">{tm('reportsDiscountTypeCol')}</th>
+                                <th className="px-4 py-3 text-right text-sm">{tm('transactionCount')}</th>
+                                <th className="px-4 py-3 text-right text-sm">{tm('reportsTotalDiscount')}</th>
+                                <th className="px-4 py-3 text-right text-sm">{tm('reportsAverageDiscountCol')}</th>
+                                <th className="px-4 py-3 text-right text-sm">{tm('reportsRatePercentCol')}</th>
+                              </tr>
+                              </ReportColumnFilters>
                             </thead>
                             <tbody className="divide-y">
                               {visible.length === 0 ? (
@@ -6318,15 +6386,6 @@ export function ReportsModule({
                         <div className="overflow-x-auto overflow-y-auto max-h-[600px]" style={{ scrollbarWidth: 'thin', scrollbarColor: '#cbd5e1 #f1f5f9' }}>
                           <table className="w-full min-w-[900px]">
                             <thead className="bg-gray-50 border-b sticky top-0">
-                              <tr>
-                                <th className="px-4 py-3 text-left text-sm">{tm('productNameLabel')}</th>
-                                <th className="px-4 py-3 text-left text-sm">{tm('categoryLabel')}</th>
-                                <th className="px-4 py-3 text-right text-sm">{tm('reportsCurrentStock')}</th>
-                                <th className="px-4 py-3 text-right text-sm">{tm('reportsMinStockCol')}</th>
-                                <th className="px-4 py-3 text-right text-sm">{tm('reportsPriceCol')}</th>
-                                <th className="px-4 py-3 text-right text-sm">{tm('reportsStockValue')}</th>
-                                <th className="px-4 py-3 text-center text-sm">{tm('reportsStatusCol')}</th>
-                              </tr>
                               <ReportColumnFilters
                                 columns={[
                                   { key: 'name', label: tm('productNameLabel'), type: 'text', width: 'min-w-[180px]' },
@@ -6339,8 +6398,17 @@ export function ReportsModule({
                                 ]}
                                 values={rpt.values}
                                 onFilterChange={rpt.setFilter}
-                                onClear={rpt.clearAll}
-                              />
+                                onClear={rpt.clearAll}>
+                              <tr>
+                                <th className="px-4 py-3 text-left text-sm">{tm('productNameLabel')}</th>
+                                <th className="px-4 py-3 text-left text-sm">{tm('categoryLabel')}</th>
+                                <th className="px-4 py-3 text-right text-sm">{tm('reportsCurrentStock')}</th>
+                                <th className="px-4 py-3 text-right text-sm">{tm('reportsMinStockCol')}</th>
+                                <th className="px-4 py-3 text-right text-sm">{tm('reportsPriceCol')}</th>
+                                <th className="px-4 py-3 text-right text-sm">{tm('reportsStockValue')}</th>
+                                <th className="px-4 py-3 text-center text-sm">{tm('reportsStatusCol')}</th>
+                              </tr>
+                              </ReportColumnFilters>
                             </thead>
                             <tbody className="divide-y">
                               {visible.length === 0 ? (
@@ -6542,15 +6610,6 @@ export function ReportsModule({
                         <div className="overflow-x-auto max-h-[420px] overflow-y-auto" style={{ scrollbarWidth: 'thin', scrollbarColor: '#cbd5e1 #f1f5f9' }}>
                           <table className="w-full min-w-[720px] text-sm">
                             <thead className="bg-gray-50 border-b sticky top-0 z-10">
-                              <tr>
-                                <th className="px-3 py-2 text-left font-medium text-gray-700">{tm('reportColProduct')}</th>
-                                <th className="px-3 py-2 text-right font-medium text-gray-700">{tm('reportColPrevQty')}</th>
-                                <th className="px-3 py-2 text-right font-medium text-gray-700">{tm('reportColCurrQty')}</th>
-                                <th className="px-3 py-2 text-right font-medium text-gray-700">{tm('reportColQtyDelta')}</th>
-                                <th className="px-3 py-2 text-right font-medium text-gray-700">{tm('reportColPrevRev')}</th>
-                                <th className="px-3 py-2 text-right font-medium text-gray-700">{tm('reportColCurrRev')}</th>
-                                <th className="px-3 py-2 text-right font-medium text-gray-700">{tm('reportColRevDelta')}</th>
-                              </tr>
                               <ReportColumnFilters
                                 columns={[
                                   { key: 'name', label: tm('reportColProduct'), type: 'text', width: 'min-w-[180px]' },
@@ -6563,8 +6622,17 @@ export function ReportsModule({
                                 ]}
                                 values={rpt.values}
                                 onFilterChange={rpt.setFilter}
-                                onClear={rpt.clearAll}
-                              />
+                                onClear={rpt.clearAll}>
+                              <tr>
+                                <th className="px-3 py-2 text-left font-medium text-gray-700">{tm('reportColProduct')}</th>
+                                <th className="px-3 py-2 text-right font-medium text-gray-700">{tm('reportColPrevQty')}</th>
+                                <th className="px-3 py-2 text-right font-medium text-gray-700">{tm('reportColCurrQty')}</th>
+                                <th className="px-3 py-2 text-right font-medium text-gray-700">{tm('reportColQtyDelta')}</th>
+                                <th className="px-3 py-2 text-right font-medium text-gray-700">{tm('reportColPrevRev')}</th>
+                                <th className="px-3 py-2 text-right font-medium text-gray-700">{tm('reportColCurrRev')}</th>
+                                <th className="px-3 py-2 text-right font-medium text-gray-700">{tm('reportColRevDelta')}</th>
+                              </tr>
+                              </ReportColumnFilters>
                             </thead>
                             <tbody className="divide-y divide-gray-100">
                               {visible.length === 0 ? (
@@ -6671,17 +6739,6 @@ export function ReportsModule({
                         <div className="overflow-x-auto">
                           <table className="min-w-full text-sm">
                             <thead className="bg-slate-50 text-slate-600">
-                              <tr>
-                                <th className="px-3 py-2 text-left">{tm('date')}</th>
-                                <th className="px-3 py-2 text-left">{tm('invoiceNo')}</th>
-                                <th className="px-3 py-2 text-left">{tm('supplier')}</th>
-                                <th className="px-3 py-2 text-left">{tm('productGridColCode')}</th>
-                                <th className="px-3 py-2 text-left">{tm('productName')}</th>
-                                <th className="px-3 py-2 text-right">{tm('quantity')}</th>
-                                <th className="px-3 py-2 text-right">{tm('unitCost')}</th>
-                                <th className="px-3 py-2 text-right">{tm('purchasePromotionAllocatedCost')}</th>
-                                <th className="px-3 py-2 text-right">{tm('purchasePromotionInvoicePaid')}</th>
-                              </tr>
                               <ReportColumnFilters
                                 columns={[
                                   { key: 'invoiceDate', label: tm('date'), type: 'date', width: 'min-w-[140px]' },
@@ -6696,8 +6753,19 @@ export function ReportsModule({
                                 ]}
                                 values={rpt.values}
                                 onFilterChange={rpt.setFilter}
-                                onClear={rpt.clearAll}
-                              />
+                                onClear={rpt.clearAll}>
+                              <tr>
+                                <th className="px-3 py-2 text-left">{tm('date')}</th>
+                                <th className="px-3 py-2 text-left">{tm('invoiceNo')}</th>
+                                <th className="px-3 py-2 text-left">{tm('supplier')}</th>
+                                <th className="px-3 py-2 text-left">{tm('productGridColCode')}</th>
+                                <th className="px-3 py-2 text-left">{tm('productName')}</th>
+                                <th className="px-3 py-2 text-right">{tm('quantity')}</th>
+                                <th className="px-3 py-2 text-right">{tm('unitCost')}</th>
+                                <th className="px-3 py-2 text-right">{tm('purchasePromotionAllocatedCost')}</th>
+                                <th className="px-3 py-2 text-right">{tm('purchasePromotionInvoicePaid')}</th>
+                              </tr>
+                              </ReportColumnFilters>
                             </thead>
                             <tbody>
                               {visible.length === 0 ? (
@@ -6876,18 +6944,6 @@ export function ReportsModule({
                       <div className="overflow-x-auto overflow-y-auto max-h-[600px]" style={{ scrollbarWidth: 'thin', scrollbarColor: '#cbd5e1 #f1f5f9' }}>
                         <table className="w-full min-w-[1000px]">
                           <thead className="bg-gray-50 border-b sticky top-0">
-                            <tr>
-                              <th className="px-4 py-3 text-left text-sm">{tm('reportsExpiringThProductCode')}</th>
-                              <th className="px-4 py-3 text-left text-sm">{tm('reportsThProductName')}</th>
-                              <th className="px-4 py-3 text-left text-sm">{tm('reportsExpiringThLotSerial')}</th>
-                              <th className="px-4 py-3 text-left text-sm">{tm('warehouse')}</th>
-                              <th className="px-4 py-3 text-right text-sm">{tm('reportsThQty')}</th>
-                              <th className="px-4 py-3 text-left text-sm">{tm('reportsExpiringThExpiryDate')}</th>
-                              <th className="px-4 py-3 text-right text-sm">{tm('reportsExpiringThRemainingDays')}</th>
-                              <th className="px-4 py-3 text-right text-sm">{tm('reportsColUnitCost')}</th>
-                              <th className="px-4 py-3 text-right text-sm">{tm('reportsExpiringTotalValue')}</th>
-                              <th className="px-4 py-3 text-center text-sm">{tm('rptTargetColStatus')}</th>
-                            </tr>
                             {(() => {
                               const rpt = reportFilters.forTab('expiring-products');
                               return (
@@ -6907,7 +6963,20 @@ export function ReportsModule({
                                   values={rpt.values}
                                   onFilterChange={rpt.setFilter}
                                   onClear={rpt.clearAll}
-                                />
+                                >
+                            <tr>
+                              <th className="px-4 py-3 text-left text-sm">{tm('reportsExpiringThProductCode')}</th>
+                              <th className="px-4 py-3 text-left text-sm">{tm('reportsThProductName')}</th>
+                              <th className="px-4 py-3 text-left text-sm">{tm('reportsExpiringThLotSerial')}</th>
+                              <th className="px-4 py-3 text-left text-sm">{tm('warehouse')}</th>
+                              <th className="px-4 py-3 text-right text-sm">{tm('reportsThQty')}</th>
+                              <th className="px-4 py-3 text-left text-sm">{tm('reportsExpiringThExpiryDate')}</th>
+                              <th className="px-4 py-3 text-right text-sm">{tm('reportsExpiringThRemainingDays')}</th>
+                              <th className="px-4 py-3 text-right text-sm">{tm('reportsColUnitCost')}</th>
+                              <th className="px-4 py-3 text-right text-sm">{tm('reportsExpiringTotalValue')}</th>
+                              <th className="px-4 py-3 text-center text-sm">{tm('rptTargetColStatus')}</th>
+                            </tr>
+                                </ReportColumnFilters>
                               );
                             })()}
                           </thead>
@@ -7120,14 +7189,6 @@ export function ReportsModule({
                         <div className="overflow-x-auto overflow-y-auto max-h-[560px]" style={{ scrollbarWidth: 'thin', scrollbarColor: '#cbd5e1 #f1f5f9' }}>
                           <table className="w-full min-w-[880px]">
                             <thead className="bg-gray-50 border-b sticky top-0">
-                              <tr>
-                                <th className="px-4 py-3 text-left text-sm">{tm('reportColProduct')}</th>
-                                <th className="px-4 py-3 text-left text-sm">{tm('reportsColCategory')}</th>
-                                <th className="px-4 py-3 text-right text-sm">{tm('reportsColStock')}</th>
-                                <th className="px-4 py-3 text-right text-sm">{tm('reportsStockAgeThLastMove')}</th>
-                                <th className="px-4 py-3 text-right text-sm">{tm('reportsColStockValue')}</th>
-                                <th className="px-4 py-3 text-center text-sm">{tm('reportsStockAgeThBucket')}</th>
-                              </tr>
                               <ReportColumnFilters
                                 columns={[
                                   { key: 'name', label: tm('reportColProduct'), type: 'text', width: 'min-w-[180px]' },
@@ -7139,8 +7200,16 @@ export function ReportsModule({
                                 ]}
                                 values={rpt.values}
                                 onFilterChange={rpt.setFilter}
-                                onClear={rpt.clearAll}
-                              />
+                                onClear={rpt.clearAll}>
+                              <tr>
+                                <th className="px-4 py-3 text-left text-sm">{tm('reportColProduct')}</th>
+                                <th className="px-4 py-3 text-left text-sm">{tm('reportsColCategory')}</th>
+                                <th className="px-4 py-3 text-right text-sm">{tm('reportsColStock')}</th>
+                                <th className="px-4 py-3 text-right text-sm">{tm('reportsStockAgeThLastMove')}</th>
+                                <th className="px-4 py-3 text-right text-sm">{tm('reportsColStockValue')}</th>
+                                <th className="px-4 py-3 text-center text-sm">{tm('reportsStockAgeThBucket')}</th>
+                              </tr>
+                              </ReportColumnFilters>
                             </thead>
                             <tbody className="divide-y">
                               {visible.length === 0 ? (
@@ -7222,16 +7291,6 @@ export function ReportsModule({
                         <div className="overflow-x-auto overflow-y-auto max-h-[560px]" style={{ scrollbarWidth: 'thin', scrollbarColor: '#cbd5e1 #f1f5f9' }}>
                           <table className="w-full min-w-[960px]">
                             <thead className="bg-gray-50 border-b sticky top-0">
-                              <tr>
-                                <th className="px-4 py-3 text-left text-sm">{tm('reportColProduct')}</th>
-                                <th className="px-4 py-3 text-left text-sm">{tm('reportsColCategory')}</th>
-                                <th className="px-4 py-3 text-right text-sm">{tm('reportsStockTurnThSoldQty')}</th>
-                                <th className="px-4 py-3 text-right text-sm">{tm('totalRevenueLabel')}</th>
-                                <th className="px-4 py-3 text-right text-sm">{tm('invCurrentStockLbl')}</th>
-                                <th className="px-4 py-3 text-right text-sm">{tm('reportsStockTurnThSalesStockRatio')}</th>
-                                <th className="px-4 py-3 text-right text-sm">{tm('reportsStockTurnThAnnualTurn')}</th>
-                                <th className="px-4 py-3 text-right text-sm">{tm('reportsStockTurnThStockDays')}</th>
-                              </tr>
                               <ReportColumnFilters
                                 columns={[
                                   { key: 'name', label: tm('reportColProduct'), type: 'text', width: 'min-w-[180px]' },
@@ -7245,8 +7304,18 @@ export function ReportsModule({
                                 ]}
                                 values={rpt.values}
                                 onFilterChange={rpt.setFilter}
-                                onClear={rpt.clearAll}
-                              />
+                                onClear={rpt.clearAll}>
+                              <tr>
+                                <th className="px-4 py-3 text-left text-sm">{tm('reportColProduct')}</th>
+                                <th className="px-4 py-3 text-left text-sm">{tm('reportsColCategory')}</th>
+                                <th className="px-4 py-3 text-right text-sm">{tm('reportsStockTurnThSoldQty')}</th>
+                                <th className="px-4 py-3 text-right text-sm">{tm('totalRevenueLabel')}</th>
+                                <th className="px-4 py-3 text-right text-sm">{tm('invCurrentStockLbl')}</th>
+                                <th className="px-4 py-3 text-right text-sm">{tm('reportsStockTurnThSalesStockRatio')}</th>
+                                <th className="px-4 py-3 text-right text-sm">{tm('reportsStockTurnThAnnualTurn')}</th>
+                                <th className="px-4 py-3 text-right text-sm">{tm('reportsStockTurnThStockDays')}</th>
+                              </tr>
+                              </ReportColumnFilters>
                             </thead>
                             <tbody className="divide-y">
                               {visible.length === 0 ? (
@@ -7393,16 +7462,6 @@ export function ReportsModule({
                         <div className="overflow-x-auto overflow-y-auto max-h-[400px]" style={{ scrollbarWidth: 'thin', scrollbarColor: '#cbd5e1 #f1f5f9' }}>
                           <table className="w-full min-w-[800px]">
                             <thead className="bg-gray-50 border-b sticky top-0">
-                              <tr>
-                                <th className="px-4 py-3 text-left text-sm">{tm('reportsAbcThClass')}</th>
-                                <th className="px-4 py-3 text-left text-sm">{tm('reportColProduct')}</th>
-                                <th className="px-4 py-3 text-left text-sm">{tm('reportsColCategory')}</th>
-                                <th className="px-4 py-3 text-right text-sm">{tm('reportsAbcThRevenuePeriod')}</th>
-                                <th className="px-4 py-3 text-right text-sm">{tm('reportsColStock')}</th>
-                                <th className="px-4 py-3 text-right text-sm">{tm('reportsColStockValue')}</th>
-                                <th className="px-4 py-3 text-right text-sm">{tm('reportsAbcThMetric')}</th>
-                                <th className="px-4 py-3 text-right text-sm">{tm('reportsAbcThCumPct')}</th>
-                              </tr>
                               <ReportColumnFilters
                                 columns={[
                                   { key: 'abc', label: tm('reportsAbcThClass'), type: 'text', align: 'left', width: 'min-w-[80px]' },
@@ -7416,8 +7475,18 @@ export function ReportsModule({
                                 ]}
                                 values={rpt.values}
                                 onFilterChange={rpt.setFilter}
-                                onClear={rpt.clearAll}
-                              />
+                                onClear={rpt.clearAll}>
+                              <tr>
+                                <th className="px-4 py-3 text-left text-sm">{tm('reportsAbcThClass')}</th>
+                                <th className="px-4 py-3 text-left text-sm">{tm('reportColProduct')}</th>
+                                <th className="px-4 py-3 text-left text-sm">{tm('reportsColCategory')}</th>
+                                <th className="px-4 py-3 text-right text-sm">{tm('reportsAbcThRevenuePeriod')}</th>
+                                <th className="px-4 py-3 text-right text-sm">{tm('reportsColStock')}</th>
+                                <th className="px-4 py-3 text-right text-sm">{tm('reportsColStockValue')}</th>
+                                <th className="px-4 py-3 text-right text-sm">{tm('reportsAbcThMetric')}</th>
+                                <th className="px-4 py-3 text-right text-sm">{tm('reportsAbcThCumPct')}</th>
+                              </tr>
+                              </ReportColumnFilters>
                             </thead>
                             <tbody className="divide-y">
                               {visible.length === 0 ? (
@@ -7701,6 +7770,11 @@ export function ReportsModule({
                             <div className="overflow-x-auto">
                               <table className="w-full text-[13px]">
                                 <thead>
+                                  <ReportColumnFilters
+                                    columns={columnDefs}
+                                    values={rpt.values}
+                                    onFilterChange={rpt.setFilter}
+                                    onClear={rpt.clearAll}>
                                   <tr className="bg-slate-300 border-b border-slate-400 text-left text-[14px] uppercase tracking-wide text-slate-950">
                                     <th className="px-4 py-3 font-black">{tm('date')}</th>
                                     <th className="px-4 py-3 font-black">{tm('customer')}</th>
@@ -7718,12 +7792,7 @@ export function ReportsModule({
                                     <th className="px-4 py-3 font-black text-right">{tm('amount')}</th>
                                     <th className="px-4 py-3 font-black">{tm('status')}</th>
                                   </tr>
-                                  <ReportColumnFilters
-                                    columns={columnDefs}
-                                    values={rpt.values}
-                                    onFilterChange={rpt.setFilter}
-                                    onClear={rpt.clearAll}
-                                  />
+                                  </ReportColumnFilters>
                                 </thead>
                                 <tbody className="divide-y divide-slate-100">
                                   {g.items.filter((row: any) => {
@@ -7921,14 +7990,6 @@ export function ReportsModule({
                                 <div className="overflow-x-auto">
                                   <table className="w-full text-[13px]">
                                     <thead>
-                                      <tr className="bg-slate-100 border-b border-slate-200 text-left text-[12px] uppercase tracking-wide text-slate-800">
-                                        <th className="px-4 py-2 font-black">{tm('date')}</th>
-                                        <th className="px-4 py-2 font-black">{tm('customer')}</th>
-                                        <th className="px-4 py-2 font-black text-right">{tm('quantity')}</th>
-                                        <th className="px-4 py-2 font-black text-right">{tm('amount')}</th>
-                                        <th className="px-4 py-2 font-black">{tm('bStaffView')}</th>
-                                        <th className="px-4 py-2 font-black">{tm('paymentType')}</th>
-                                      </tr>
                                       <ReportColumnFilters
                                         columns={[
                                           { key: 'appointmentDate', label: tm('date'), type: 'date', width: 'min-w-[140px]' },
@@ -7940,8 +8001,16 @@ export function ReportsModule({
                                         ]}
                                         values={reportFilters.forTab('beauty-appointment-product-report').values}
                                         onFilterChange={reportFilters.forTab('beauty-appointment-product-report').setFilter}
-                                        onClear={reportFilters.forTab('beauty-appointment-product-report').clearAll}
-                                      />
+                                        onClear={reportFilters.forTab('beauty-appointment-product-report').clearAll}>
+                                      <tr className="bg-slate-100 border-b border-slate-200 text-left text-[12px] uppercase tracking-wide text-slate-800">
+                                        <th className="px-4 py-2 font-black">{tm('date')}</th>
+                                        <th className="px-4 py-2 font-black">{tm('customer')}</th>
+                                        <th className="px-4 py-2 font-black text-right">{tm('quantity')}</th>
+                                        <th className="px-4 py-2 font-black text-right">{tm('amount')}</th>
+                                        <th className="px-4 py-2 font-black">{tm('bStaffView')}</th>
+                                        <th className="px-4 py-2 font-black">{tm('paymentType')}</th>
+                                      </tr>
+                                      </ReportColumnFilters>
                                     </thead>
                                     <tbody className="divide-y divide-slate-100">
                                       {g.items.map((row) => {
@@ -7992,17 +8061,6 @@ export function ReportsModule({
                             <div className="overflow-x-auto">
                               <table className="w-full text-[13px]">
                                 <thead>
-                                  <tr className="bg-slate-300 border-b border-slate-400 text-left text-[14px] uppercase tracking-wide text-slate-950">
-                                    <th className="px-4 py-3 font-black">{tm('date')}</th>
-                                    <th className="px-4 py-3 font-black">{tm('customer')}</th>
-                                    <th className="px-4 py-3 font-black">{tm('product')}</th>
-                                    <th className="px-4 py-3 font-black">{tm('code')}</th>
-                                    <th className="px-4 py-3 font-black text-right">{tm('quantity')}</th>
-                                    <th className="px-4 py-3 font-black text-right">{tm('price')}</th>
-                                    <th className="px-4 py-3 font-black text-right">{tm('amount')}</th>
-                                    <th className="px-4 py-3 font-black">{tm('bStaffView')}</th>
-                                    <th className="px-4 py-3 font-black">{tm('paymentType')}</th>
-                                  </tr>
                                   <ReportColumnFilters
                                     columns={[
                                       { key: 'appointmentDate', label: tm('date'), type: 'date', width: 'min-w-[140px]' },
@@ -8017,8 +8075,19 @@ export function ReportsModule({
                                     ]}
                                     values={reportFilters.forTab('beauty-appointment-product-report').values}
                                     onFilterChange={reportFilters.forTab('beauty-appointment-product-report').setFilter}
-                                    onClear={reportFilters.forTab('beauty-appointment-product-report').clearAll}
-                                  />
+                                    onClear={reportFilters.forTab('beauty-appointment-product-report').clearAll}>
+                                  <tr className="bg-slate-300 border-b border-slate-400 text-left text-[14px] uppercase tracking-wide text-slate-950">
+                                    <th className="px-4 py-3 font-black">{tm('date')}</th>
+                                    <th className="px-4 py-3 font-black">{tm('customer')}</th>
+                                    <th className="px-4 py-3 font-black">{tm('product')}</th>
+                                    <th className="px-4 py-3 font-black">{tm('code')}</th>
+                                    <th className="px-4 py-3 font-black text-right">{tm('quantity')}</th>
+                                    <th className="px-4 py-3 font-black text-right">{tm('price')}</th>
+                                    <th className="px-4 py-3 font-black text-right">{tm('amount')}</th>
+                                    <th className="px-4 py-3 font-black">{tm('bStaffView')}</th>
+                                    <th className="px-4 py-3 font-black">{tm('paymentType')}</th>
+                                  </tr>
+                                  </ReportColumnFilters>
                                 </thead>
                                 <tbody className="divide-y divide-slate-100">
                                   {beautyAppointmentProductRows.map((row) => {
@@ -8092,7 +8161,7 @@ export function ReportsModule({
                           className="bg-rose-50 rounded-xl border border-red-200 overflow-hidden shadow-sm"
                         >
                           <div
-                            className="px-4 py-3 flex flex-wrap items-center justify-between gap-2 text-white font-bold bg-red-700/90"
+                            className="px-4 py-3 flex flex-wrap items-center justify-between gap-2 bg-rose-100 text-rose-950 font-bold border-b border-rose-200"
                             title={tm('beautyCancelledAppointmentsHint')}
                           >
                             <span className="text-base">{g.serviceName}</span>
@@ -8103,14 +8172,6 @@ export function ReportsModule({
                           <div className="overflow-x-auto">
                             <table className="w-full text-[13px]">
                               <thead>
-                                <tr className="bg-slate-300 border-b border-slate-400 text-left text-[14px] uppercase tracking-wide text-slate-950">
-                                  <th className="px-4 py-3 font-black">{tm('date')}</th>
-                                  <th className="px-4 py-3 font-black">{tm('customer')}</th>
-                                  <th className="px-4 py-3 font-black">{tm('bStaffView')}</th>
-                                  <th className="px-4 py-3 font-black">{tm('bDeviceView')}</th>
-                                  <th className="px-4 py-3 font-black text-right">{tm('amount')}</th>
-                                  <th className="px-4 py-3 font-black">{tm('status')}</th>
-                                </tr>
                                 <ReportColumnFilters
                                   columns={[
                                     { key: 'date', label: tm('date'), type: 'date', width: 'min-w-[140px]' },
@@ -8122,8 +8183,16 @@ export function ReportsModule({
                                   ]}
                                   values={reportFilters.forTab('beauty-cancelled-report').values}
                                   onFilterChange={reportFilters.forTab('beauty-cancelled-report').setFilter}
-                                  onClear={reportFilters.forTab('beauty-cancelled-report').clearAll}
-                                />
+                                  onClear={reportFilters.forTab('beauty-cancelled-report').clearAll}>
+                                <tr className="bg-slate-300 border-b border-slate-400 text-left text-[14px] uppercase tracking-wide text-slate-950">
+                                  <th className="px-4 py-3 font-black">{tm('date')}</th>
+                                  <th className="px-4 py-3 font-black">{tm('customer')}</th>
+                                  <th className="px-4 py-3 font-black">{tm('bStaffView')}</th>
+                                  <th className="px-4 py-3 font-black">{tm('bDeviceView')}</th>
+                                  <th className="px-4 py-3 font-black text-right">{tm('amount')}</th>
+                                  <th className="px-4 py-3 font-black">{tm('status')}</th>
+                                </tr>
+                                </ReportColumnFilters>
                               </thead>
                               <tbody className="divide-y divide-slate-100">
                                 {g.items.map((a) => (
@@ -8184,13 +8253,6 @@ export function ReportsModule({
                       <div className="overflow-x-auto">
                         <table className="w-full text-[13px]">
                           <thead>
-                            <tr className="bg-slate-300 border-b border-slate-400 text-left text-[14px] uppercase tracking-wide text-slate-950">
-                              <th className="px-4 py-3 font-black">{tm('date')}</th>
-                              <th className="px-4 py-3 font-black">{tm('customer')}</th>
-                              <th className="px-4 py-3 font-black">{tm('paymentType')}</th>
-                              <th className="px-4 py-3 font-black text-right">{tm('amount')}</th>
-                              <th className="px-4 py-3 font-black">{tm('status')}</th>
-                            </tr>
                             <ReportColumnFilters
                               columns={[
                                 { key: 'created_at', label: tm('date'), type: 'date', width: 'min-w-[140px]' },
@@ -8201,8 +8263,15 @@ export function ReportsModule({
                               ]}
                               values={reportFilters.forTab('beauty-cancelled-report').values}
                               onFilterChange={reportFilters.forTab('beauty-cancelled-report').setFilter}
-                              onClear={reportFilters.forTab('beauty-cancelled-report').clearAll}
-                            />
+                              onClear={reportFilters.forTab('beauty-cancelled-report').clearAll}>
+                            <tr className="bg-slate-300 border-b border-slate-400 text-left text-[14px] uppercase tracking-wide text-slate-950">
+                              <th className="px-4 py-3 font-black">{tm('date')}</th>
+                              <th className="px-4 py-3 font-black">{tm('customer')}</th>
+                              <th className="px-4 py-3 font-black">{tm('paymentType')}</th>
+                              <th className="px-4 py-3 font-black text-right">{tm('amount')}</th>
+                              <th className="px-4 py-3 font-black">{tm('status')}</th>
+                            </tr>
+                            </ReportColumnFilters>
                           </thead>
                           <tbody className="divide-y divide-slate-100">
                             {beautyCancelledPayments.map((s) => {

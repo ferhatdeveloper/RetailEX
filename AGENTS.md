@@ -97,3 +97,7 @@ See `package.json` scripts. Key commands:
 ### Modal (zorunlu)
 
 Ortalanmış liste/form modalları **`PercentBodyModal`** (`src/components/shared/PercentBodyModal.tsx`) ile `document.body` portalına render edilir. `fixed inset-0 z-50` kullanma. Kural: `.cursor/rules/percent-body-modal-portal.mdc`
+
+### Tablo / Grid (zorunlu)
+
+Veri listeleri ve raporlar **`DevExDataGrid`** (`src/components/shared/DevExDataGrid.tsx`). Kural: `.cursor/rules/ui-devex-datagrid.mdc`

@@ -1,8 +1,7 @@
 import React, { useState, useEffect, useMemo } from 'react';
-import { invoicesAPI } from '../../../services/api/invoices';
-import { productAPI } from '../../../services/api/products';
-import type { Product } from '../../../core/types';
+import { getCostProfitAnalysis, type CostProfitRow } from '../../../services/layeredInventoryCost';
 import { DevExDataGrid } from '../../shared/DevExDataGrid';
+import { REPORT_GRID_DEFAULTS } from '../../reports/shared/ReportDataGrid';
 import { exportDataGridToExcel } from '../../../utils/gridExcelExport';
 import { createColumnHelper, ColumnDef } from '@tanstack/react-table';
 import { Download, TrendingDown } from 'lucide-react';
@@ -10,6 +9,7 @@ import { useLanguage } from '../../../contexts/LanguageContext';
 import { useFirmaDonem } from '../../../contexts/FirmaDonemContext';
 import { formatNumber } from '../../../utils/formatNumber';
 import { format } from 'date-fns';
+import { toSqlDateInputString } from '../../../utils/localCalendarDate';
 
 interface CostRow {
     product_id: string;
@@ -20,12 +20,28 @@ interface CostRow {
     cogs: number;
     profit: number;
     margin_percent: number;
+    cost_source: CostProfitRow['costSource'];
+}
+
+function mapAnalysisRow(r: CostProfitRow): CostRow {
+    return {
+        product_id: r.productId,
+        product_code: r.productCode,
+        product_name: r.productName,
+        quantity_sold: r.quantity,
+        revenue: r.revenue,
+        cogs: r.cogs,
+        profit: r.profit,
+        margin_percent: r.marginPercent,
+        cost_source: r.costSource,
+    };
 }
 
 /**
- * Maliyet ve Kar Analizi (COGS) — tenant-aware.
- * Satış faturalarındaki kalemleri ürün bazında toplayıp, ürün ortalama maliyetiyle
- * (products.cost) COGS hesaplar. FIFO katmanları henüz olmadığı için yaklaşıktır.
+ * Maliyet ve Karlılık Analizi — tenant-aware.
+ * Satış kalemleri sale_items JOIN sales (perakende / POS / güzellik ürün).
+ * SMM = FIFO alış katmanı × satılan miktar; kart alış (products.cost) kullanılmaz.
+ * getPaginated items:[] kullanılmaz — aksi halde tablo her zaman boş kalır.
  */
 export function CostReport() {
     const [rows, setRows] = useState<CostRow[]>([]);
@@ -48,66 +64,18 @@ export function CostReport() {
         async function load() {
             setLoading(true);
             try {
-                const [invRes, products] = await Promise.all([
-                    invoicesAPI.getPaginated({
-                        pageSize: 5000,
-                        startDate,
-                        endDate,
-                        invoiceCategory: 'Satis',
-                        firmNr: selectedFirm?.firm_nr,
-                        periodNr: selectedPeriod?.nr,
-                    }),
-                    productAPI.getAllForReports({ firmNr: selectedFirm?.firm_nr }),
-                ]);
-                const productByCode = new Map<string, Product>();
-                const productById = new Map<string, Product>();
-                products.forEach(p => {
-                    if (p.code) productByCode.set(p.code, p);
-                    if (p.id) productById.set(p.id, p);
+                const start = toSqlDateInputString(startDate) || startDate;
+                const end = toSqlDateInputString(endDate) || endDate;
+                const list = await getCostProfitAnalysis({
+                    startDate: start,
+                    endDate: end,
+                    firmNr: selectedFirm?.firm_nr,
+                    periodNr: selectedPeriod?.nr,
                 });
-
-                const agg = new Map<string, CostRow>();
-                for (const inv of invRes.data) {
-                    const items: any[] = (inv as any).items || (inv as any).sale_items || [];
-                    for (const it of items) {
-                        const code = it.item_code || it.product_code || '';
-                        const pid = it.product_id || '';
-                        const p = (pid && productById.get(pid)) || (code && productByCode.get(code)) || null;
-                        if (!p) continue;
-                        const qty = Number(it.quantity || 0);
-                        const unitPrice = Number(it.unit_price || it.unitPrice || 0);
-                        const revenue = qty * unitPrice;
-                        const unitCost = Number(p.cost || 0);
-                        const cogs = qty * unitCost;
-                        const key = p.id || p.code || code;
-                        const prev = agg.get(key);
-                        if (prev) {
-                            prev.quantity_sold += qty;
-                            prev.revenue += revenue;
-                            prev.cogs += cogs;
-                        } else {
-                            agg.set(key, {
-                                product_id: p.id || '',
-                                product_code: p.code || code,
-                                product_name: p.name || '',
-                                quantity_sold: qty,
-                                revenue,
-                                cogs,
-                                profit: 0,
-                                margin_percent: 0,
-                            });
-                        }
-                    }
-                }
-                const list = Array.from(agg.values()).map(r => {
-                    const profit = r.revenue - r.cogs;
-                    const margin_percent = r.revenue > 0 ? (profit / r.revenue) * 100 : 0;
-                    return { ...r, profit, margin_percent };
-                });
-                list.sort((a, b) => b.profit - a.profit);
-                if (!cancelled) setRows(list);
+                if (!cancelled) setRows(list.map(mapAnalysisRow));
             } catch (err) {
                 console.error('[CostReport] load failed', err);
+                if (!cancelled) setRows([]);
             } finally {
                 if (!cancelled) setLoading(false);
             }
@@ -127,6 +95,19 @@ export function CostReport() {
         );
         return { ...tot, profit: tot.revenue - tot.cogs };
     }, [rows]);
+
+    const costSourceNote = useMemo(() => {
+        const hasNone = rows.some((r) => r.cost_source === 'none');
+        const hasLayer = rows.some((r) => r.cost_source === 'fifo_layers');
+        const hasMove = rows.some((r) => r.cost_source === 'movement_unit_cost');
+        if (hasLayer && !hasNone && !hasMove) {
+            return tm('costProfitCogsLayerNote') || 'SMM: FIFO alış katmanları (kart alış kullanılmaz). Kâr = satış − SMM.';
+        }
+        if (hasNone) {
+            return tm('costProfitCogsMissingNote') || 'SMM: katman/hareket maliyeti yoksa 0 — gelir yine gösterilir. Kart alış kullanılmaz.';
+        }
+        return tm('costProfitCogsLayerNote') || 'SMM: FIFO katman veya hareket birim maliyeti. Kart alış kullanılmaz. Kâr = satış − SMM.';
+    }, [rows, tm]);
 
     const columnHelper = createColumnHelper<CostRow>();
     const columns = useMemo<ColumnDef<CostRow, any>[]>(() => [
@@ -203,6 +184,7 @@ export function CostReport() {
                                 </span>
                             </div>
                         </div>
+                        <p className="mt-1 text-[11px] text-gray-500 max-w-3xl">{costSourceNote}</p>
                     </div>
                     <button
                         type="button"
@@ -221,7 +203,7 @@ export function CostReport() {
                         <input
                             type="date"
                             value={startDate}
-                            onChange={e => setStartDate(e.target.value)}
+                            onChange={e => setStartDate(toSqlDateInputString(e.target.value) || e.target.value)}
                             className="px-3 py-1.5 border rounded text-sm"
                         />
                     </div>
@@ -232,7 +214,7 @@ export function CostReport() {
                         <input
                             type="date"
                             value={endDate}
-                            onChange={e => setEndDate(e.target.value)}
+                            onChange={e => setEndDate(toSqlDateInputString(e.target.value) || e.target.value)}
                             className="px-3 py-1.5 border rounded text-sm"
                         />
                     </div>
@@ -247,8 +229,12 @@ export function CostReport() {
                             <p className="text-gray-500">{tm('loading')}</p>
                         </div>
                     </div>
+                ) : rows.length === 0 ? (
+                    <div className="h-full flex items-center justify-center px-6 text-center text-sm text-gray-500">
+                        {tm('noRecordsFound') || 'Kayıt bulunamadı'}
+                    </div>
                 ) : (
-                    <DevExDataGrid data={rows} columns={columns} pageSize={50} enableExcelExport={false} />
+                    <DevExDataGrid data={rows} columns={columns} {...REPORT_GRID_DEFAULTS} height="100%" />
                 )}
             </div>
         </div>

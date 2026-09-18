@@ -30,6 +30,7 @@ import { imageSearchService } from '../../../services/imageSearchService';
 import { supabaseProductImageService } from '../../../services/supabaseProductImageService';
 import { supabaseMenuSyncService, type MenuItem } from '../../../services/supabaseMenuSyncService';
 import { buildUnitSelectOptions } from '../../../utils/unitOptions';
+import { markupPercentFromPrices, salePriceFromMarkupPercent } from '../../../utils/productProfitMargin';
 
 // BARKOD VE VARYANT KOD ÜRETİCİ UTILITY FONKSIYONLARI
 const generateEAN13 = (baseCode: string, index: number): string => {
@@ -469,6 +470,7 @@ export const ProductFormPage = React.memo(({ productId, onClose, onSave }: Produ
   const [cdnGalleryImages, setCdnGalleryImages] = useState<{ url: string; label?: string }[]>([]);
   const [loadingMenuSuggestions, setLoadingMenuSuggestions] = useState(false);
   const [showCdnGalleryModal, setShowCdnGalleryModal] = useState(false);
+  const [profitMarginDraft, setProfitMarginDraft] = useState<string | null>(null);
 
   // Master data states
   const [currencies, setCurrencies] = useState<Currency[]>([]);
@@ -1101,6 +1103,17 @@ export const ProductFormPage = React.memo(({ productId, onClose, onSave }: Produ
   const handleInputChange = (field: string, value: any) => {
     // Ensure text inputs always have a string value (prevent undefined)
     const safeValue = value === undefined || value === null ? '' : value;
+
+    // % kâr marjı (markup): satış = alış * (1 + marj/100). Alış ve KDV değişmez; USD zorlanmaz.
+    if (field === 'profitMarginPercent') {
+      const cost = Number(formData.purchasePrice) || 0;
+      const pct = Number(safeValue);
+      if (cost > 0 && Number.isFinite(pct)) {
+        const sale = salePriceFromMarkupPercent(cost, pct, formData.currency || 'IQD');
+        handleInputChange('salePrice', sale);
+      }
+      return;
+    }
     
     setFormData((prev: any) => {
       const newData = { ...prev, [field]: safeValue };
@@ -2497,14 +2510,28 @@ export const ProductFormPage = React.memo(({ productId, onClose, onSave }: Produ
                       <div className="col-span-3 max-lg:col-span-1 bg-gray-100 px-2 py-1.5 flex items-center">
                         <label className="text-xs text-gray-700">{tm('profitMargin')}</label>
                       </div>
-                      <div className="col-span-3 max-lg:col-span-1 bg-gray-50 px-2 py-1.5">
+                      <div className="col-span-3 max-lg:col-span-1 bg-white px-2 py-1.5">
                         <input
-                          type="text"
-                          value={formData.purchasePrice > 0
-                            ? ((formData.salePrice - formData.purchasePrice) / formData.purchasePrice * 100).toFixed(2)
-                            : '0.00'}
-                          readOnly
-                          className="w-full px-2 py-1 border border-gray-300 text-xs text-right bg-gray-100 text-gray-600 font-medium"
+                          type="number"
+                          step="0.01"
+                          disabled={!(formData.purchasePrice > 0)}
+                          value={profitMarginDraft !== null
+                            ? profitMarginDraft
+                            : markupPercentFromPrices(formData.purchasePrice, formData.salePrice).toFixed(2)}
+                          onFocus={() => {
+                            setProfitMarginDraft(
+                              markupPercentFromPrices(formData.purchasePrice, formData.salePrice).toFixed(2)
+                            );
+                          }}
+                          onChange={(e: React.ChangeEvent<HTMLInputElement>) => {
+                            setProfitMarginDraft(e.target.value);
+                            const pct = parseFloat(e.target.value);
+                            if (Number.isFinite(pct)) {
+                              handleInputChange('profitMarginPercent', pct);
+                            }
+                          }}
+                          onBlur={() => setProfitMarginDraft(null)}
+                          className="w-full px-2 py-1 border border-gray-300 text-xs text-right bg-white font-medium focus:outline-none focus:ring-1 focus:ring-blue-500 disabled:bg-gray-100 disabled:text-gray-500"
                         />
                       </div>
                       <div className="col-span-6 max-lg:col-span-1 bg-gray-50 flex items-center px-4">

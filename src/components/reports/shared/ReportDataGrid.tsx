@@ -1,0 +1,153 @@
+import { useMemo, type ReactNode } from 'react';
+import type { ColumnDef } from '@tanstack/react-table';
+import {
+  DevExDataGrid,
+  type DevExDataGridProps,
+} from '../../shared/DevExDataGrid';
+
+/** Malzeme / Envanter Listesi ile aynı sayfa boyutu. */
+export const REPORT_GRID_PAGE_SIZE = 50;
+export const REPORT_GRID_PAGE_SIZE_OPTIONS = [10, 25, 50, 100, 200, 500, 1000];
+
+/** Malzeme listesi ile aynı DevExDataGrid varsayılanları. */
+export const REPORT_GRID_DEFAULTS = {
+  enableFiltering: true as const,
+  enablePagination: true as const,
+  enableColumnVisibility: true as const,
+  showColumnVisibilityToolbar: true as const,
+  enableExcelExport: false as const,
+  density: 'compact' as const,
+  pageSize: REPORT_GRID_PAGE_SIZE,
+  pageSizeOptions: REPORT_GRID_PAGE_SIZE_OPTIONS,
+};
+
+function alignClass(align?: 'left' | 'right' | 'center'): string {
+  if (align === 'right') return 'text-right tabular-nums';
+  if (align === 'center') return 'text-center';
+  return '';
+}
+
+export type ReportGridColumn<T> = {
+  id: string;
+  header: string;
+  accessor?: (row: T) => unknown;
+  cell?: (row: T) => ReactNode;
+  size?: number;
+  align?: 'left' | 'right' | 'center';
+  enableColumnFilter?: boolean;
+  filterKind?: 'date' | 'text' | 'number';
+};
+
+/** Kolon başlığında huni filtresi üreten factory — Malzeme listesi ile aynı FilterMenu. */
+export function buildReportGridColumns<T>(cols: ReportGridColumn<T>[]): ColumnDef<T, unknown>[] {
+  return cols.map((c) => ({
+    id: c.id,
+    accessorFn: c.accessor ?? ((row: T) => (row as Record<string, unknown>)[c.id]),
+    header: c.header,
+    size: c.size,
+    enableColumnFilter: c.enableColumnFilter !== false,
+    filterFn: 'gridColumnFilter',
+    meta: c.filterKind ? { filterKind: c.filterKind, format: c.filterKind === 'date' ? 'date' : undefined } : undefined,
+    cell: (info) => {
+      const row = info.row.original as T;
+      const inner = c.cell ? c.cell(row) : (() => {
+        const v = info.getValue();
+        if (v == null || v === '') return '—';
+        return v as ReactNode;
+      })();
+      return <div className={alignClass(c.align)}>{inner}</div>;
+    },
+  }));
+}
+
+export type ReportDataGridProps<T> = DevExDataGridProps<T>;
+
+/**
+ * Rapor ızgarası — Malzeme / Envanter Listesi `DevExDataGrid` sarmalayıcısı.
+ * Kolon başlığı filtresi, compact yoğunluk, sayfalama ve sütun araçları.
+ */
+export function ReportDataGrid<T>(props: ReportDataGridProps<T>) {
+  return (
+    <DevExDataGrid<T>
+      {...REPORT_GRID_DEFAULTS}
+      {...props}
+    />
+  );
+}
+
+export type ReportColumnTableCol<T> = {
+  key: string;
+  header: string;
+  type?: 'text' | 'number' | 'date';
+  align?: 'left' | 'right' | 'center';
+  size?: number;
+  cell?: (row: T) => ReactNode;
+  footerSum?: boolean;
+  footerFormat?: (sum: number, rows: T[]) => ReactNode;
+};
+
+/**
+ * HTML &lt;table&gt; + ReportColumnFilters yerine Malzeme ızgarası.
+ * Başlık ikonu, sayfalama ve dip toplam (opsiyonel).
+ */
+export function ReportColumnTable<T extends object>({
+  data,
+  columns,
+  onRowClick,
+  height = 520,
+  footerLabel,
+}: {
+  data: T[];
+  columns: ReportColumnTableCol<T>[];
+  onRowClick?: (row: T) => void;
+  height?: string | number;
+  footerLabel?: ReactNode;
+}) {
+  const gridColumns = useMemo(
+    () =>
+      buildReportGridColumns<T>(
+        columns.map((c) => ({
+          id: c.key,
+          header: c.header,
+          align: c.align,
+          size: c.size,
+          filterKind: c.type === 'date' ? 'date' : c.type === 'number' ? 'number' : 'text',
+          cell: c.cell,
+        })),
+      ),
+    [columns],
+  );
+
+  const footerSumColumns = useMemo(
+    () =>
+      columns
+        .filter((c) => c.footerSum)
+        .map((c) => ({
+          columnId: c.key,
+          getValue: (row: T) => {
+            const n = Number((row as Record<string, unknown>)[c.key]);
+            return Number.isFinite(n) ? n : 0;
+          },
+          format: c.footerFormat,
+        })),
+    [columns],
+  );
+
+  const heightStyle = typeof height === 'number' ? `${height}px` : height;
+
+  return (
+    <div className="min-h-[280px]" style={{ height: heightStyle }}>
+      <DevExDataGrid<T>
+        data={data}
+        columns={gridColumns}
+        onRowClick={onRowClick}
+        footerSumColumns={footerSumColumns.length > 0 ? footerSumColumns : undefined}
+        footerLabel={footerLabel}
+        {...REPORT_GRID_DEFAULTS}
+        height="100%"
+      />
+    </div>
+  );
+}
+
+export default ReportDataGrid;

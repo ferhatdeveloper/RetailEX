@@ -1,10 +1,12 @@
-import { useEffect, useMemo, useState } from 'react';
-import { AlertTriangle, FileMinus, RefreshCw, Search } from 'lucide-react';
+import { useEffect, useState } from 'react';
+import { AlertTriangle, FileMinus, RefreshCw } from 'lucide-react';
 import { createColumnHelper } from '@tanstack/react-table';
 import { DevExDataGrid } from '../shared/DevExDataGrid';
+import { REPORT_GRID_DEFAULTS } from './shared/ReportDataGrid';
 import {
   EXPIRY_REPORT_ALL_FUTURE,
   EXPIRY_REPORT_ALL_RECORDED,
+  EXPIRY_REPORT_DEFAULT_DAYS,
   expiryReportsAPI,
   type ExpiringPurchaseItem,
 } from '../../services/api/expiryReports';
@@ -15,9 +17,8 @@ export function PurchaseExpiryReport() {
   const [rows, setRows] = useState<ExpiringPurchaseItem[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
-  const [search, setSearch] = useState('');
-  // Varsayılan: kayıtlı tüm SKT (geçmiş dahil) — berzin gibi süresi geçmiş kayıtlar da görünsün
-  const [daysAhead, setDaysAhead] = useState(EXPIRY_REPORT_ALL_RECORDED);
+  // Varsayılan: sonraki 30 gün (bugün … bugün+30, henüz dolmamış)
+  const [daysAhead, setDaysAhead] = useState(EXPIRY_REPORT_DEFAULT_DAYS);
 
   const load = async () => {
     setLoading(true);
@@ -35,17 +36,6 @@ export function PurchaseExpiryReport() {
   useEffect(() => {
     void load();
   }, [daysAhead]);
-
-  const filtered = useMemo(() => {
-    const q = search.trim().toLocaleLowerCase('tr-TR');
-    if (!q) return rows;
-    return rows.filter(row =>
-      row.itemName.toLocaleLowerCase('tr-TR').includes(q) ||
-      row.itemCode.toLocaleLowerCase('tr-TR').includes(q) ||
-      row.supplierName.toLocaleLowerCase('tr-TR').includes(q) ||
-      row.invoiceNo.toLocaleLowerCase('tr-TR').includes(q)
-    );
-  }, [rows, search]);
 
   const columnHelper = createColumnHelper<ExpiringPurchaseItem>();
   const columns = [
@@ -102,10 +92,12 @@ export function PurchaseExpiryReport() {
       id: 'returnHint',
       header: tm('purchaseReturn'),
       cell: ({ row }) => (
-        <span className="inline-flex items-center gap-1 rounded-lg bg-orange-50 px-2 py-1 text-xs font-bold text-orange-700" title={tm('expiryReturnHint')}>
-          <FileMinus className="h-3.5 w-3.5" />
-          {tm('expiryReturnCandidate')}
-        </span>
+        row.original.invoiceId ? (
+          <span className="inline-flex items-center gap-1 rounded-lg bg-orange-50 px-2 py-1 text-xs font-bold text-orange-700" title={tm('expiryReturnHint')}>
+            <FileMinus className="h-3.5 w-3.5" />
+            {tm('expiryReturnCandidate')}
+          </span>
+        ) : <span className="text-slate-400">-</span>
       ),
       size: 110,
     }),
@@ -167,15 +159,6 @@ export function PurchaseExpiryReport() {
                 <option value={365}>{tm('expiryNext365')}</option>
               </select>
             </label>
-            <div className="relative min-w-[260px] flex-1">
-              <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />
-              <input
-                value={search}
-                onChange={e => setSearch(e.target.value)}
-                placeholder={tm('expirySearchPlaceholder')}
-                className="w-full rounded-lg border border-slate-200 py-2 pl-10 pr-3 text-sm outline-none focus:ring-2 focus:ring-red-500"
-              />
-            </div>
           </div>
           <p className="mt-2 text-[11px] font-medium text-slate-500">{tm('expiryRangeHint')}</p>
         </div>
@@ -186,7 +169,7 @@ export function PurchaseExpiryReport() {
               <p className="text-sm font-bold text-slate-700">{tm('noDataFound')}</p>
               <p className="max-w-lg text-xs font-medium text-red-600">{error}</p>
             </div>
-          ) : !loading && filtered.length === 0 ? (
+          ) : !loading && rows.length === 0 ? (
             <div className="flex h-full min-h-[240px] flex-col items-center justify-center gap-2 px-6 text-center">
               <AlertTriangle className="h-8 w-8 text-amber-400" />
               <p className="text-sm font-bold text-slate-700">{tm('noDataFound')}</p>
@@ -195,7 +178,7 @@ export function PurchaseExpiryReport() {
               </p>
             </div>
           ) : (
-            <DevExDataGrid data={filtered} columns={columns} enableSorting enableFiltering={false} enableColumnResizing pageSize={50} />
+            <DevExDataGrid data={rows} columns={columns} {...REPORT_GRID_DEFAULTS} height="100%" />
           )}
         </div>
       </div>

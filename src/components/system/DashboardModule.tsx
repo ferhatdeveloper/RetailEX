@@ -17,6 +17,11 @@ import { isGibEdocumentUiEnabled } from '../../config/eInvoice.config';
 import { useLanguage } from '../../contexts/LanguageContext';
 import { useFirmaDonem } from '../../contexts/FirmaDonemContext';
 import { logger } from '../../services/loggingService';
+import {
+  fetchLayeredInventoryValuation,
+  layeredCostForProduct,
+  type LayeredInventoryValuation,
+} from '../../services/layeredInventoryCost';
 
 const DASHBOARD_SHORTCUTS_LS = 'retailos_dashboard_shortcut_ids';
 
@@ -56,6 +61,7 @@ export function DashboardModule({ products, customers, sales, setCurrentScreen, 
   const [showCustomizeModal, setShowCustomizeModal] = useState(false);
   const [selectedActions, setSelectedActions] = useState<string[]>([]);
   const [isLoading, setIsLoading] = useState(true);
+  const [layeredValuation, setLayeredValuation] = useState<LayeredInventoryValuation | null>(null);
 
   const baseActions = useMemo(() => {
     const m = t.menu;
@@ -278,12 +284,34 @@ export function DashboardModule({ products, customers, sales, setCurrentScreen, 
     }, {} as Record<string, typeof allAvailableActions>);
   }, [allAvailableActions]);
 
+  useEffect(() => {
+    let cancelled = false;
+    (async () => {
+      try {
+        const v = await fetchLayeredInventoryValuation({
+          firmNr: selectedFirm?.firm_nr,
+          periodNr: selectedPeriod?.nr,
+          onHandProducts: products,
+        });
+        if (!cancelled) setLayeredValuation(v);
+      } catch (err) {
+        console.warn('[DashboardModule] layered inventory cost failed', err);
+        if (!cancelled) setLayeredValuation(null);
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [products, selectedFirm?.firm_nr, selectedPeriod?.nr]);
+
   // Today's sales
   const today = new Date();
   today.setHours(0, 0, 0, 0);
   const todaysSales = sales.filter(s => new Date(s.date) >= today);
   const totalRevenue = todaysSales.reduce((sum, s) => sum + s.total, 0);
-  const totalProfitToday = todaysSales.reduce((sum, s) => sum + (s.profit || 0), 0);
+  const totalProfitToday = layeredValuation
+    ? totalRevenue - layeredValuation.todayCogs
+    : todaysSales.reduce((sum, s) => sum + (s.profit || 0), 0);
 
   // Yesterday's sales for comparison
   const yesterday = new Date(today);
@@ -309,9 +337,9 @@ export function DashboardModule({ products, customers, sales, setCurrentScreen, 
   const weekSales = sales.filter(s => new Date(s.date) >= weekAgo);
   const weekRevenue = weekSales.reduce((sum, s) => sum + s.total, 0);
 
-  // Stock value
-  const totalStockValue = products.reduce((sum, p) => sum + (p.stock * p.cost), 0);
-  const totalStockSaleValue = products.reduce((sum, p) => sum + (p.stock * p.price), 0);
+  // Stock value — FIFO kalan katman (kart alış × miktar değil)
+  const totalStockValue = products.reduce((sum, p) => sum + layeredCostForProduct(layeredValuation, p), 0);
+  const totalStockSaleValue = products.reduce((sum, p) => sum + ((Number(p.stock) || 0) * (Number(p.price) || 0)), 0);
   const potentialProfit = totalStockSaleValue - totalStockValue;
 
   // Low stock products

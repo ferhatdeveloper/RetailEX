@@ -32,7 +32,7 @@ import {
 } from './partyEmployeeBalance';
 import type { PartyLedgerMovement, PartyEmployee } from '../../core/types/models';
 import { printEmployeeTerminationLetterEn } from '../../utils/printEmployeeTerminationLetter';
-import { getReportingCurrency } from '../../utils/currency';
+import { getFirmLedgerCurrency, getGlobalCurrency } from '../../utils/currency';
 
 function ledgerTable(): string {
   const firm = normalizeFirmTableNr(ERP_SETTINGS.firmNr);
@@ -338,7 +338,7 @@ export const employeeAPI = {
         hireDate: employee.hire_date,
         terminationDate: term,
         finalAccrualAmount,
-        currencyCode: getReportingCurrency(),
+        currencyCode: getFirmLedgerCurrency(null, getGlobalCurrency()),
         reason: opts.reason,
         issueDate: new Date().toISOString().slice(0, 10),
       });

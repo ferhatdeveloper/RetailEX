@@ -20,6 +20,7 @@ import { useLanguage } from '../../../contexts/LanguageContext';
 import { toast } from 'sonner';
 import { translateToAllLanguages } from '../../../services/translationService';
 import { compressImage } from '../../../utils/imageUtils';
+import { markupPercentFromPrices, salePriceFromMarkupPercent } from '../../../utils/productProfitMargin';
 
 interface ServiceFormPageProps {
   serviceId?: string;
@@ -122,6 +123,7 @@ export const ServiceFormPage = React.memo(({ serviceId, onClose, onSave }: Servi
   });
   const formDataRef = useRef(formData);
   formDataRef.current = formData;
+  const [profitMarginDraft, setProfitMarginDraft] = useState<string | null>(null);
 
   // Master data states
   const [currencies, setCurrencies] = useState<Currency[]>([]);
@@ -301,6 +303,16 @@ export const ServiceFormPage = React.memo(({ serviceId, onClose, onSave }: Servi
 
   const handleInputChange = (field: string, value: any) => {
     const safeValue = value === undefined || value === null ? '' : value;
+
+    if (field === 'profitMarginPercent') {
+      const cost = Number(formData.purchase_price) || 0;
+      const pct = Number(safeValue);
+      if (cost > 0 && Number.isFinite(pct)) {
+        const sale = salePriceFromMarkupPercent(cost, pct, formData.currency || 'IQD');
+        handleInputChange('unit_price', sale);
+      }
+      return;
+    }
     
     setFormData((prev: any) => {
       const newData = { ...prev, [field]: safeValue };
@@ -1121,18 +1133,32 @@ export const ServiceFormPage = React.memo(({ serviceId, onClose, onSave }: Servi
                   <div className="col-span-3 bg-gray-100 px-2 py-1.5 flex items-center">
                     <label className="text-xs text-gray-700">{tm('profitMargin')}</label>
                   </div>
-                  <div className="col-span-3 bg-gray-50 px-2 py-1.5">
+                  <div className="col-span-3 bg-white px-2 py-1.5">
                     <input
-                      type="text"
-                      value={formData.purchase_price > 0
-                        ? ((formData.unit_price - formData.purchase_price) / formData.purchase_price * 100).toFixed(2)
-                        : '0.00'}
-                      readOnly
-                      className="w-full px-2 py-1 border border-gray-300 text-xs text-right bg-gray-100 text-gray-600 font-medium"
+                      type="number"
+                      step="0.01"
+                      disabled={!(formData.purchase_price > 0)}
+                      value={profitMarginDraft !== null
+                        ? profitMarginDraft
+                        : markupPercentFromPrices(formData.purchase_price, formData.unit_price).toFixed(2)}
+                      onFocus={() => {
+                        setProfitMarginDraft(
+                          markupPercentFromPrices(formData.purchase_price, formData.unit_price).toFixed(2)
+                        );
+                      }}
+                      onChange={(e) => {
+                        setProfitMarginDraft(e.target.value);
+                        const pct = parseFloat(e.target.value);
+                        if (Number.isFinite(pct)) {
+                          handleInputChange('profitMarginPercent', pct);
+                        }
+                      }}
+                      onBlur={() => setProfitMarginDraft(null)}
+                      className="w-full px-2 py-1 border border-gray-300 text-xs text-right bg-white font-medium focus:outline-none focus:ring-1 focus:ring-blue-500 disabled:bg-gray-100 disabled:text-gray-500"
                     />
                   </div>
                   <div className="col-span-6 bg-gray-50 flex items-center px-4">
-                    <span className="text-[10px] text-gray-400 italic">Net kâr marjı (Lokal para birimi üzerinden hesaplanır)</span>
+                    <span className="text-[10px] text-gray-400 italic">{tm('profitMarginNote')}</span>
                   </div>
                 </div>
               </div>

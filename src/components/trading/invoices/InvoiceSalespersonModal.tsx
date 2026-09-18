@@ -1,22 +1,11 @@
 ﻿import { X, User, Search } from 'lucide-react';
-import { useState, useMemo } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { useLanguage } from '../../../contexts/LanguageContext';
 import { PercentBodyModal, PercentBodyModalScrollBody } from '../../shared/PercentBodyModal';
-
-interface Salesperson {
-  code: string;
-  name: string;
-  phone?: string;
-  email?: string;
-}
-
-// Mock satış elemanları - gerçek uygulamada API'den gelecek
-const mockSalespersons: Salesperson[] = [
-  { code: 'SAT001', name: 'Ahmed Yılmaz', phone: '+964 750 123 4567', email: 'ahmed@example.com' },
-  { code: 'SAT002', name: 'Mohammed Ali', phone: '+964 750 234 5678', email: 'mohammed@example.com' },
-  { code: 'SAT003', name: 'Fatima Hassan', phone: '+964 750 345 6789', email: 'fatima@example.com' },
-  { code: 'SAT004', name: 'Omar Kader', phone: '+964 750 456 7890', email: 'omar@example.com' },
-];
+import {
+  listInvoiceSalespersons,
+  type InvoicePickerMaster,
+} from '../../../utils/invoiceDetailMasters';
 
 interface InvoiceSalespersonModalProps {
   currentSalesperson: string;
@@ -27,20 +16,34 @@ interface InvoiceSalespersonModalProps {
 export function InvoiceSalespersonModal({ currentSalesperson, onSelect, onClose }: InvoiceSalespersonModalProps) {
   const { tm } = useLanguage();
   const [searchTerm, setSearchTerm] = useState('');
+  const [salespersons, setSalespersons] = useState<InvoicePickerMaster[]>([]);
+  const [loaded, setLoaded] = useState(false);
+
+  useEffect(() => {
+    let cancelled = false;
+    (async () => {
+      const rows = await listInvoiceSalespersons();
+      if (!cancelled) {
+        setSalespersons(rows);
+        setLoaded(true);
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, []);
 
   const filteredSalespersons = useMemo(() => {
-    if (!searchTerm.trim()) {
-      return mockSalespersons;
-    }
-    const term = searchTerm.toLowerCase();
-    return mockSalespersons.filter(
-      person =>
-        person.code.toLowerCase().includes(term) ||
-        person.name.toLowerCase().includes(term) ||
-        person.phone?.toLowerCase().includes(term) ||
-        person.email?.toLowerCase().includes(term)
+    if (!searchTerm.trim()) return salespersons;
+    const term = searchTerm.toLocaleLowerCase('tr-TR');
+    return salespersons.filter(
+      (person) =>
+        person.code.toLocaleLowerCase('tr-TR').includes(term) ||
+        person.name.toLocaleLowerCase('tr-TR').includes(term) ||
+        person.phone?.toLocaleLowerCase('tr-TR').includes(term) ||
+        person.email?.toLocaleLowerCase('tr-TR').includes(term),
     );
-  }, [searchTerm]);
+  }, [searchTerm, salespersons]);
 
   const handleSelect = (code: string) => {
     onSelect(code);
@@ -62,7 +65,6 @@ export function InvoiceSalespersonModal({ currentSalesperson, onSelect, onClose 
           </button>
         </div>
 
-        {/* Search */}
         <div className="p-4 border-b border-gray-200 shrink-0">
           <div className="relative">
             <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" />
@@ -77,26 +79,25 @@ export function InvoiceSalespersonModal({ currentSalesperson, onSelect, onClose 
           </div>
         </div>
 
-        {/* Salesperson List */}
         <PercentBodyModalScrollBody className="p-4">
-          {filteredSalespersons.length === 0 ? (
-            <div className="text-center py-8 text-gray-500">
-              <User className="w-12 h-12 mx-auto mb-2 opacity-50" />
-              <p>{tm('salespersonNotFound')}</p>
-            </div>
-          ) : (
-            <div className="space-y-2">
-              <button
-                onClick={() => handleSelect('')}
-                className={`w-full px-4 py-3 border-2 rounded-lg text-left transition-all ${
-                  !currentSalesperson
-                    ? 'border-blue-500 bg-blue-50'
-                    : 'border-gray-300 hover:border-blue-500 hover:bg-blue-50'
-                }`}
-              >
-                <p className="font-medium text-gray-900">{tm('salespersonNotSelected')}</p>
-              </button>
-              {filteredSalespersons.map((person) => (
+          <div className="space-y-2">
+            <button
+              onClick={() => handleSelect('')}
+              className={`w-full px-4 py-3 border-2 rounded-lg text-left transition-all ${
+                !currentSalesperson
+                  ? 'border-blue-500 bg-blue-50'
+                  : 'border-gray-300 hover:border-blue-500 hover:bg-blue-50'
+              }`}
+            >
+              <p className="font-medium text-gray-900">{tm('salespersonNotSelected')}</p>
+            </button>
+            {loaded && filteredSalespersons.length === 0 ? (
+              <div className="text-center py-8 text-gray-500">
+                <User className="w-12 h-12 mx-auto mb-2 opacity-50" />
+                <p>{tm('invoicePickerNoRecords')}</p>
+              </div>
+            ) : (
+              filteredSalespersons.map((person) => (
                 <button
                   key={person.code}
                   onClick={() => handleSelect(person.code)}
@@ -128,9 +129,9 @@ export function InvoiceSalespersonModal({ currentSalesperson, onSelect, onClose 
                     )}
                   </div>
                 </button>
-              ))}
-            </div>
-          )}
+              ))
+            )}
+          </div>
         </PercentBodyModalScrollBody>
 
         <div className="p-4 border-t border-gray-200 bg-gray-50 shrink-0">
@@ -144,6 +145,3 @@ export function InvoiceSalespersonModal({ currentSalesperson, onSelect, onClose 
     </PercentBodyModal>
   );
 }
-
-
-

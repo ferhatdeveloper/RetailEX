@@ -1279,6 +1279,7 @@ async function runBeautySaleErpAndLoyalty(
         item_type: 'service',
     }]).map((item) => {
         const line = item as Partial<BeautySaleItem>;
+        const rawType = String(line.item_type ?? 'service').trim().toLowerCase();
         return {
         productId: line.item_id
             ? String(line.item_id)
@@ -1288,6 +1289,7 @@ async function runBeautySaleErpAndLoyalty(
         price: Number(line.unit_price ?? 0),
         discount: Number(line.discount ?? 0),
         total: Number(line.total ?? 0),
+        lineType: rawType === 'product' ? 'Malzeme' : 'Hizmet',
     };
     });
 

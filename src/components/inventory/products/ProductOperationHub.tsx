@@ -12,11 +12,59 @@ import { stockMovementAPI } from '../../../services/stockMovementAPI';
 import { ProductFormPage } from './ProductFormPage';
 import { useLanguage } from '../../../contexts/LanguageContext';
 import { toast } from 'sonner';
+import { formatShortDate, formatTimeShort } from '../../../utils/dateLocale';
+import type { Language } from '../../../locales/module-translations';
 
-function formatTrNumberOrDash(n: unknown): string {
-    if (n === null || n === undefined || n === '') return '—';
+function formatNumberOrDash(n: unknown, locale: string, empty: string): string {
+    if (n === null || n === undefined || n === '') return empty;
     const x = typeof n === 'number' ? n : parseFloat(String(n));
-    return Number.isFinite(x) ? x.toLocaleString('tr-TR', { maximumFractionDigits: 4 }) : '—';
+    return Number.isFinite(x) ? x.toLocaleString(locale, { maximumFractionDigits: 4 }) : empty;
+}
+
+/** yyyy-mm-dd, tr gg.aa.yyyy, en mm/dd/yyyy, ar/ku yyyy-mm-dd veya gg/aa/yyyy */
+function pohInputToIso(raw: string, language: Language): string {
+    const s = raw.trim();
+    if (!s) return '';
+    const iso = /^(\d{4})-(\d{2})-(\d{2})$/.exec(s);
+    if (iso) return `${iso[1]}-${iso[2]}-${iso[3]}`;
+    const parts = s.split(/[./-]/).map((p) => p.trim()).filter(Boolean);
+    if (parts.length !== 3) return '';
+    let y: string;
+    let m: string;
+    let d: string;
+    if (parts[0].length === 4) {
+        [y, m, d] = parts;
+    } else if (language === 'en') {
+        [m, d, y] = parts;
+    } else {
+        [d, m, y] = parts;
+    }
+    if (y.length === 2) y = `20${y}`;
+    if (y.length !== 4) return '';
+    const dd = d.padStart(2, '0');
+    const mm = m.padStart(2, '0');
+    const yi = Number(y);
+    const mi = Number(mm);
+    const di = Number(dd);
+    const dt = new Date(yi, mi - 1, di);
+    if (dt.getFullYear() !== yi || dt.getMonth() !== mi - 1 || dt.getDate() !== di) return '';
+    return `${y}-${mm}-${dd}`;
+}
+
+function pohParseFilterDate(raw: string, language: Language, endOfDay: boolean): Date | null {
+    const iso = pohInputToIso(raw, language);
+    if (!iso) return null;
+    const d = new Date(`${iso}T00:00:00`);
+    if (!Number.isFinite(d.getTime())) return null;
+    if (endOfDay) d.setHours(23, 59, 59, 999);
+    return d;
+}
+
+function movementTypeLabel(mt: string | undefined, tm: (k: string) => string): string {
+    if (mt === 'in') return tm('invMovTypeIn');
+    if (mt === 'out') return tm('invMovTypeOut');
+    if (mt === 'price_change') return tm('reportsPlMovPriceChange');
+    return tm('pohTypeAdjust');
 }
 
 interface ProductOperationHubProps {
@@ -30,7 +78,9 @@ interface ProductOperationHubProps {
 export type HubTab = 'overview' | 'edit' | 'movements' | 'inventory' | 'labels' | 'history';
 
 export function ProductOperationHub({ product, onClose, onSave, initialTab = 'overview', darkMode = false }: ProductOperationHubProps) {
-    const { t, tm } = useLanguage();
+    const { language, tm } = useLanguage();
+    const localeCode = tm('localeCode');
+    const emptyDash = tm('pohEmpty');
     const [activeTab, setActiveTab] = useState<HubTab>(initialTab);
     const [movements, setMovements] = useState<any[]>([]);
     const [loadingMovements, setLoadingMovements] = useState(false);
@@ -74,19 +124,19 @@ export function ProductOperationHub({ product, onClose, onSave, initialTab = 'ov
             setMovements(data);
         } catch (error) {
             console.error('Failed to load movements:', error);
-            toast.error('Hareketler yüklenemedi');
+            toast.error(tm('reportsPlMovLoadError'));
         } finally {
             setLoadingMovements(false);
         }
     };
 
     const tabs = [
-        { id: 'overview', label: 'Genel Bakış', icon: Info },
-        { id: 'edit', label: 'Kartı Düzenle', icon: Edit3 },
-        { id: 'movements', label: 'Hareketler', icon: TrendingUp },
-        { id: 'inventory', label: 'Envanter', icon: Warehouse },
-        { id: 'labels', label: 'Barkod', icon: Barcode },
-        { id: 'history', label: 'Geçmiş', icon: History },
+        { id: 'overview', label: tm('pohTabOverview'), icon: Info },
+        { id: 'edit', label: tm('pohTabEdit'), icon: Edit3 },
+        { id: 'movements', label: tm('pohTabMovements'), icon: TrendingUp },
+        { id: 'inventory', label: tm('pohTabInventory'), icon: Warehouse },
+        { id: 'labels', label: tm('pohTabLabels'), icon: Barcode },
+        { id: 'history', label: tm('pohTabHistory'), icon: History },
     ];
 
     const renderContent = () => {
@@ -199,13 +249,13 @@ export function ProductOperationHub({ product, onClose, onSave, initialTab = 'ov
                                     <div className="px-4 py-2 border-b border-gray-100 bg-gray-50/50 flex items-center justify-between">
                                         <div className="flex items-center gap-2">
                                             <TrendingUp className="w-4 h-4 text-blue-600" />
-                                            <h3 className="text-xs font-bold text-gray-700 uppercase">Son Hareketler</h3>
+                                            <h3 className="text-xs font-bold text-gray-700 uppercase">{tm('pohRecentMovements')}</h3>
                                         </div>
                                         <button
                                             onClick={() => setActiveTab('movements')}
                                             className="text-blue-600 text-[10px] font-bold hover:underline"
                                         >
-                                            TÜMÜ
+                                            {tm('pohFilterAll')}
                                         </button>
                                     </div>
                                     <div className="p-3 space-y-2 max-h-[300px] overflow-y-auto">
@@ -216,7 +266,7 @@ export function ProductOperationHub({ product, onClose, onSave, initialTab = 'ov
                                         ) : movements.length === 0 ? (
                                             <div className="text-center py-8 text-gray-400">
                                                 <Layers className="w-8 h-8 mx-auto mb-2 opacity-20" />
-                                                <p className="text-xs">Henüz hareket yok</p>
+                                                <p className="text-xs">{tm('pohNoMovementsYet')}</p>
                                             </div>
                                         ) : (
                                             movements.slice(0, 5).map((item) => {
@@ -229,16 +279,16 @@ export function ProductOperationHub({ product, onClose, onSave, initialTab = 'ov
                                                             <span className={`text-xs font-bold ${
                                                                 isPrice ? 'text-violet-600' : item.movement?.movement_type === 'in' ? 'text-green-600' : 'text-red-600'
                                                                 }`}>
-                                                                {isPrice ? 'Fiyat fişi' : item.movement?.movement_type === 'in' ? 'Giriş' : 'Çıkış'}
+                                                                {movementTypeLabel(item.movement?.movement_type, tm)}
                                                             </span>
                                                             <span className="text-[10px] text-gray-500">
-                                                                {new Date(item.movement?.movement_date || item.created_at).toLocaleDateString('tr-TR')}
+                                                                {formatShortDate(item.movement?.movement_date || item.created_at, localeCode, { fallback: emptyDash })}
                                                             </span>
                                                         </div>
-                                                        <p className="text-xs text-gray-600 truncate">{item.movement?.document_no || 'Manuel'}</p>
+                                                        <p className="text-xs text-gray-600 truncate">{item.movement?.document_no || tm('manual')}</p>
                                                         {isPrice && (item.notes || item.unit_price != null) ? (
                                                             <p className="text-[10px] text-violet-700 truncate max-w-[200px]">
-                                                                {item.notes || `Alış ${formatTrNumberOrDash(item.cost_price)} · Satış ${formatTrNumberOrDash(item.unit_price)}`}
+                                                                {item.notes || `${tm('purchase')} ${formatNumberOrDash(item.cost_price, localeCode, emptyDash)} · ${tm('salePrice')} ${formatNumberOrDash(item.unit_price, localeCode, emptyDash)}`}
                                                             </p>
                                                         ) : null}
                                                     </div>
@@ -246,7 +296,7 @@ export function ProductOperationHub({ product, onClose, onSave, initialTab = 'ov
                                                         isPrice ? 'text-violet-600' : item.movement?.movement_type === 'in' ? 'text-green-600' : 'text-red-600'
                                                         }`}>
                                                         {isPrice ? (
-                                                            <>A:{formatTrNumberOrDash(item.cost_price)} S:{formatTrNumberOrDash(item.unit_price)}</>
+                                                            <>{tm('purchase')}:{formatNumberOrDash(item.cost_price, localeCode, emptyDash)} {tm('salePrice')}:{formatNumberOrDash(item.unit_price, localeCode, emptyDash)}</>
                                                         ) : (
                                                             <>{item.movement?.movement_type === 'in' ? '+' : '-'}{item.quantity}</>
                                                         )}
@@ -346,24 +396,36 @@ export function ProductOperationHub({ product, onClose, onSave, initialTab = 'ov
                             <div className="flex items-center gap-4">
                                 <h2 className="text-xs font-bold text-gray-700 uppercase flex items-center gap-2">
                                     <TrendingUp className="w-4 h-4 text-blue-600" />
-                                    Stok Hareketleri
+                                    {tm('stockMovements')}
                                 </h2>
                                 
                                 {/* Filters */}
                                 <div className="flex items-center gap-2 bg-white border border-gray-200 rounded-lg px-2 py-1">
                                     <Calendar className="w-3 h-3 text-gray-400" />
                                     <input 
-                                        type="date" 
+                                        type="text"
+                                        inputMode="numeric"
+                                        autoComplete="off"
+                                        lang={localeCode}
+                                        placeholder={tm('pohDatePlaceholder')}
+                                        title={tm('pohDatePlaceholder')}
+                                        aria-label={tm('reportsPlMovColDate')}
                                         value={filterStartDate}
                                         onChange={(e) => setFilterStartDate(e.target.value)}
-                                        className="text-[10px] font-bold outline-none border-none p-0 w-24"
+                                        className="text-[10px] font-bold outline-none border-none p-0 w-28 bg-transparent"
                                     />
                                     <span className="text-gray-300">-</span>
                                     <input 
-                                        type="date" 
+                                        type="text"
+                                        inputMode="numeric"
+                                        autoComplete="off"
+                                        lang={localeCode}
+                                        placeholder={tm('pohDatePlaceholder')}
+                                        title={tm('pohDatePlaceholder')}
+                                        aria-label={tm('reportsPlMovColDate')}
                                         value={filterEndDate}
                                         onChange={(e) => setFilterEndDate(e.target.value)}
-                                        className="text-[10px] font-bold outline-none border-none p-0 w-24"
+                                        className="text-[10px] font-bold outline-none border-none p-0 w-28 bg-transparent"
                                     />
                                 </div>
 
@@ -372,10 +434,10 @@ export function ProductOperationHub({ product, onClose, onSave, initialTab = 'ov
                                     onChange={(e) => setFilterType(e.target.value as 'all' | 'in' | 'out' | 'price_change')}
                                     className="text-[10px] font-bold bg-white border border-gray-200 rounded-lg px-2 py-1 outline-none"
                                 >
-                                    <option value="all">TÜMÜ</option>
-                                    <option value="in">GİRİŞ ( + )</option>
-                                    <option value="out">ÇIKIŞ ( - )</option>
-                                    <option value="price_change">FİYAT FİŞİ</option>
+                                    <option value="all">{tm('pohFilterAll')}</option>
+                                    <option value="in">{tm('pohFilterIn')}</option>
+                                    <option value="out">{tm('pohFilterOut')}</option>
+                                    <option value="price_change">{tm('pohFilterPrice')}</option>
                                 </select>
                             </div>
 
@@ -389,13 +451,13 @@ export function ProductOperationHub({ product, onClose, onSave, initialTab = 'ov
                                         }}
                                         className="text-[10px] font-bold text-red-600 hover:text-red-700 underline"
                                     >
-                                        FİLTRELERİ TEMİZLE
+                                        {tm('pohClearFilters')}
                                     </button>
                                 )}
                                 <button
                                     onClick={loadMovements}
                                     className="p-1 hover:bg-gray-200 rounded text-gray-500 transition-colors"
-                                    title="Yenile"
+                                    title={tm('refresh')}
                                 >
                                     <ArrowRightLeft className={`w-3 h-3 ${loadingMovements ? 'animate-spin' : ''} `} />
                                 </button>
@@ -406,25 +468,25 @@ export function ProductOperationHub({ product, onClose, onSave, initialTab = 'ov
                             {loadingMovements ? (
                                 <div className="flex flex-col items-center justify-center h-full space-y-2">
                                     <div className="w-8 h-8 border-3 border-blue-600 border-t-transparent rounded-full animate-spin"></div>
-                                    <p className="text-[10px] font-bold text-gray-400">YÜKLENİYOR...</p>
+                                    <p className="text-[10px] font-bold text-gray-400">{tm('reportsPlMovLoading')}</p>
                                 </div>
                             ) : movements.length === 0 ? (
                                 <div className="flex flex-col items-center justify-center h-full p-8 text-gray-300 text-center">
                                     <Layers className="w-10 h-10 mb-2 opacity-20" />
-                                    <h3 className="text-[11px] font-bold uppercase tracking-wider">Hareket Bulunamadı</h3>
+                                    <h3 className="text-[11px] font-bold uppercase tracking-wider">{tm('pohNoMovements')}</h3>
                                 </div>
                             ) : (
                                 <div className="overflow-x-auto">
                                     <table className="w-full text-left text-xs">
                                         <thead className="sticky top-0 bg-gray-100 border-b border-gray-200 z-10">
                                             <tr>
-                                                <th className="px-4 py-2 font-bold text-gray-500 uppercase tracking-tighter">Tarih</th>
-                                                <th className="px-4 py-2 font-bold text-gray-500 uppercase tracking-tighter">İşlem / Belge No</th>
-                                                <th className="px-4 py-2 font-bold text-gray-500 uppercase tracking-tighter">Tip</th>
-                                                <th className="px-4 py-2 font-bold text-gray-500 uppercase tracking-tighter">Depo</th>
-                                                <th className="px-4 py-2 font-bold text-gray-500 uppercase tracking-tighter">Döviz / Kur</th>
-                                                <th className="px-4 py-2 font-bold text-gray-500 uppercase tracking-tighter text-right">Kar (Brt)</th>
-                                                <th className="px-4 py-2 font-bold text-gray-500 uppercase tracking-tighter text-right">Miktar</th>
+                                                <th className="px-4 py-2 font-bold text-gray-500 uppercase tracking-tighter">{tm('reportsPlMovColDate')}</th>
+                                                <th className="px-4 py-2 font-bold text-gray-500 uppercase tracking-tighter">{tm('pohColDoc')}</th>
+                                                <th className="px-4 py-2 font-bold text-gray-500 uppercase tracking-tighter">{tm('invThType')}</th>
+                                                <th className="px-4 py-2 font-bold text-gray-500 uppercase tracking-tighter">{tm('warehouse')}</th>
+                                                <th className="px-4 py-2 font-bold text-gray-500 uppercase tracking-tighter">{tm('pohColFx')}</th>
+                                                <th className="px-4 py-2 font-bold text-gray-500 uppercase tracking-tighter text-right">{tm('reportsPlMovColProfit')}</th>
+                                                <th className="px-4 py-2 font-bold text-gray-500 uppercase tracking-tighter text-right">{tm('reportsPlMovColQty')}</th>
                                             </tr>
                                         </thead>
                                         <tbody className="divide-y divide-gray-50">
@@ -438,14 +500,12 @@ export function ProductOperationHub({ product, onClose, onSave, initialTab = 'ov
                                                     
                                                     // Date filter
                                                     if (filterStartDate) {
-                                                        const start = new Date(filterStartDate);
-                                                        start.setHours(0, 0, 0, 0);
-                                                        if (date < start) return false;
+                                                        const start = pohParseFilterDate(filterStartDate, language, false);
+                                                        if (start && date < start) return false;
                                                     }
                                                     if (filterEndDate) {
-                                                        const end = new Date(filterEndDate);
-                                                        end.setHours(23, 59, 59, 999);
-                                                        if (date > end) return false;
+                                                        const end = pohParseFilterDate(filterEndDate, language, true);
+                                                        if (end && date > end) return false;
                                                     }
                                                     
                                                     return true;
@@ -453,14 +513,14 @@ export function ProductOperationHub({ product, onClose, onSave, initialTab = 'ov
                                                 .map((item) => (
                                                 <tr key={item.id} className="hover:bg-blue-50/30 transition-colors">
                                                     <td className="px-4 py-2 whitespace-nowrap text-gray-500">
-                                                        <span className="font-medium">{new Date(item.movement?.movement_date || item.created_at).toLocaleDateString('tr-TR')}</span>
+                                                        <span className="font-medium">{formatShortDate(item.movement?.movement_date || item.created_at, localeCode, { fallback: emptyDash })}</span>
                                                         <span className="block text-[9px] opacity-60">
-                                                            {new Date(item.movement?.movement_date || item.created_at).toLocaleTimeString('tr-TR', { hour: '2-digit', minute: '2-digit' })}
+                                                            {formatTimeShort(item.movement?.movement_date || item.created_at, localeCode, { fallback: emptyDash })}
                                                         </span>
                                                     </td>
                                                     <td className="px-4 py-2">
-                                                        <span className="font-bold text-gray-800 block text-[11px]">{item.movement?.document_no || 'MANUEL'}</span>
-                                                        <span className="text-[9px] text-gray-400 truncate max-w-[120px] block">{item.notes || '---'}</span>
+                                                        <span className="font-bold text-gray-800 block text-[11px]">{item.movement?.document_no || tm('manual')}</span>
+                                                        <span className="text-[9px] text-gray-400 truncate max-w-[120px] block">{item.notes || emptyDash}</span>
                                                     </td>
                                                     <td className="px-4 py-2">
                                                         <span className={`px-1.5 py-0.5 rounded text-[9px] font-bold uppercase ${
@@ -472,31 +532,25 @@ export function ProductOperationHub({ product, onClose, onSave, initialTab = 'ov
                                                                     ? 'bg-violet-100 text-violet-800'
                                                                     : 'bg-blue-100 text-blue-700'
                                                             } `}>
-                                                            {item.movement?.movement_type === 'in'
-                                                                ? 'Giriş'
-                                                                : item.movement?.movement_type === 'out'
-                                                                    ? 'Çıkış'
-                                                                    : item.movement?.movement_type === 'price_change'
-                                                                        ? 'Fiyat fişi'
-                                                                        : 'Düzeltme'}
+                                                            {movementTypeLabel(item.movement?.movement_type, tm)}
                                                         </span>
                                                     </td>
                                                     <td className="px-4 py-2 text-gray-600 text-[11px]">
-                                                        {item.movement?.warehouses?.name || 'Ana Depo'}
+                                                        {item.movement?.warehouses?.name || tm('pohMainWarehouse')}
                                                     </td>
                                                     <td className="px-4 py-2 text-gray-600 text-[11px] font-mono">
-                                                        {item.currency || 'IQD'} / {item.currency_rate?.toLocaleString('tr-TR', { minimumFractionDigits: 2 })}
+                                                        {item.currency || 'IQD'} / {item.currency_rate != null ? Number(item.currency_rate).toLocaleString(localeCode, { minimumFractionDigits: 2 }) : emptyDash}
                                                     </td>
                                                     <td className="px-4 py-2 text-right">
                                                         <span className={`text-[11px] font-bold ${item.gross_profit > 0 ? 'text-green-600' : 'text-gray-400'}`}>
-                                                            {item.gross_profit > 0 ? item.gross_profit.toLocaleString('tr-TR') : '---'}
+                                                            {item.gross_profit > 0 ? item.gross_profit.toLocaleString(localeCode) : emptyDash}
                                                         </span>
                                                     </td>
                                                     <td className="px-4 py-2 text-right">
                                                         {item.movement?.movement_type === 'price_change' ? (
                                                             <div className="text-[10px] font-bold text-violet-700 leading-tight text-right">
-                                                                <div>Alış {formatTrNumberOrDash(item.cost_price)}</div>
-                                                                <div>Satış {formatTrNumberOrDash(item.unit_price)}</div>
+                                                                <div>{tm('purchase')} {formatNumberOrDash(item.cost_price, localeCode, emptyDash)}</div>
+                                                                <div>{tm('salePrice')} {formatNumberOrDash(item.unit_price, localeCode, emptyDash)}</div>
                                                             </div>
                                                         ) : (
                                                             <span className={`text-[11px] font-bold ${item.movement?.movement_type === 'in' ? 'text-green-600' : 'text-red-600'
@@ -638,7 +692,7 @@ export function ProductOperationHub({ product, onClose, onSave, initialTab = 'ov
                     <button
                         onClick={onClose}
                         className="p-2 hover:bg-white/10 rounded-full transition-colors"
-                        title="Kapat"
+                        title={tm('close')}
                     >
                         <X className="w-5 h-5" />
                     </button>

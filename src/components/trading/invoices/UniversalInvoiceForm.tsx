@@ -70,7 +70,13 @@ import {
   type ExchangeRate
 } from '../../../services/api/masterData';
 import { unitSetAPI } from '../../../services/unitSetAPI';
-import type { UnitMasterRow } from '../../../utils/unitOptions';
+import {
+  applyProductUnitsToInvoiceItem,
+  collectProductInvoiceUnits,
+  invoiceLineHasSelectedItem,
+  type UnitMasterRow,
+} from '../../../utils/unitOptions';
+import { productUnitsAPI } from '../../../services/api/productUnitsAPI';
 import {
   downloadPurchaseInvoiceImportTemplate,
   parsePurchaseInvoiceExcelArrayBuffer,
@@ -84,8 +90,10 @@ import {
   paymentMethodImpliesCashRegisterOnInvoice,
   RETAIL_SALES_INVOICE_TRCODE,
 } from '../../../utils/paymentMethodUtils';
-import { buildInvoiceHeaderFieldsFromForm, readInvoiceHeaderFields } from '../../../utils/invoiceHeaderFields';
+import { buildInvoiceHeaderFieldsFromForm, readInvoiceHeaderFields, sanitizeInvoiceHeaderPartyValue } from '../../../utils/invoiceHeaderFields';
 import { fetchKasalar as fetchKasaListForRegister, type Kasa as KasaRow } from '../../../services/api/kasa';
+import { allocateNextInvoiceCode } from '../../../services/invoiceCodeFormatService';
+import { generateDefaultInvoiceStamp } from '../../../utils/invoiceCodeFormat';
 
 // Electron API tip tanımı
 declare global {
@@ -160,6 +168,10 @@ interface InvoiceItem {
   baseQuantity?: number; // quantity * multiplier → stok güncellemesi için
   // Döviz
   unitPriceFC?: number;  // Fatura dövizindeki orijinal birim fiyat
+  productId?: string;
+  productUnit?: string;
+  allowedUnits?: string[];
+  unitMultipliers?: Record<string, number>;
 }
 
 interface UniversalInvoiceFormProps {
@@ -497,8 +509,29 @@ export function UniversalInvoiceForm({
     if (editData?.invoice_no) {
       return editData.invoice_no;
     }
-    return `${new Date().toISOString().split('T')[0].replace(/-/g, '')}${Math.floor(Math.random() * 1000000)}`;
+    return generateDefaultInvoiceStamp();
   });
+  const invoiceNoManualRef = useRef(Boolean(editData?.invoice_no));
+  const handleInvoiceNoChange = useCallback((value: string) => {
+    invoiceNoManualRef.current = true;
+    setInvoiceNo(value);
+  }, []);
+
+  useEffect(() => {
+    if (editData?.invoice_no) return;
+    let cancelled = false;
+    void allocateNextInvoiceCode(invoiceType.code)
+      .then((code) => {
+        if (cancelled || invoiceNoManualRef.current || !code) return;
+        setInvoiceNo(code);
+      })
+      .catch((e) => {
+        console.warn('[UniversalInvoiceForm] invoice code allocate:', e);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [invoiceType.code, editData?.invoice_no]);
   const [editDate, setEditDate] = useState(() => {
     if (editData?.invoice_date) {
       return new Date(editData.invoice_date).toLocaleDateString(tm('localeCode'));
@@ -648,7 +681,7 @@ export function UniversalInvoiceForm({
     const name = String(user?.full_name || user?.username || '').trim();
     return name;
   }, [user?.full_name, user?.username]);
-  const [warehouse, setWarehouse] = useState('000, Merkez'); // Depo (Ambar)
+  const [warehouse, setWarehouse] = useState(''); // Depo (Ambar) — demo "000, Merkez" yok
   const [fromWarehouse, setFromWarehouse] = useState(''); // Çıkış deposu (Transfer)
   const [toWarehouse, setToWarehouse] = useState(''); // Giriş deposu (Transfer)
   const [consignmentCommission, setConsignmentCommission] = useState(0); // Konsinye komisyon %
@@ -660,7 +693,7 @@ export function UniversalInvoiceForm({
 
   // Logo formatına uygun ek alanlar
   const [documentNo, setDocumentNo] = useState(''); // Belge No
-  const [workplace, setWorkplace] = useState('000, Merkez'); // İşyeri
+  const [workplace, setWorkplace] = useState(''); // İşyeri — demo "000, Merkez" yok
   const [salespersonCode, setSalespersonCode] = useState(''); // Satış Elemanı Kodu
   const [authorizationCode, setAuthorizationCode] = useState(''); // Yetki Kodu
   const [selectedCariBalance, setSelectedCariBalance] = useState<number | null>(null);
@@ -772,6 +805,19 @@ export function UniversalInvoiceForm({
   const [items, setItems] = useState<InvoiceItem[]>(initializeItems());
   /** Son kullanıcının seçtiği satır tipi — yeni boş satırlarda varsayılan olur. */
   const [defaultLineType, setDefaultLineType] = useState<string>(() => defaultInvoiceLineTypeFor(invoiceType));
+
+  useEffect(() => {
+    const next = defaultInvoiceLineTypeFor(invoiceType);
+    setDefaultLineType(next);
+    if ((editData as any)?.id) return;
+    setItems((prev) => {
+      if (prev.length !== 1) return prev;
+      const row = prev[0];
+      const blank = !row.code && row.quantity === 0 && row.unitPrice === 0;
+      if (!blank || row.type === next) return prev;
+      return [{ ...row, type: next }];
+    });
+  }, [invoiceType.code, invoiceType.category, invoiceType.name]);
   const [productSearch, setProductSearch] = useState('');
   const [showProductDropdown, setShowProductDropdown] = useState(false);
   const [selectedProductIndex, setSelectedProductIndex] = useState(-1);
@@ -1100,12 +1146,13 @@ export function UniversalInvoiceForm({
   // Load Services — firma değişince yeniden yükle (katalog boş kalmasın)
   const reloadServices = useCallback(async () => {
     try {
-      const data = await serviceAPI.getActive();
-      setServices(Array.isArray(data) ? data : []);
+      const data = await serviceAPI.getAll();
+      const list = Array.isArray(data) ? data : [];
+      setServices(list.length > 0 ? list : await serviceAPI.getActive().catch(() => []));
     } catch (error) {
       console.error('[UniversalInvoice] Error loading services:', error);
       try {
-        const fallback = await serviceAPI.getAll();
+        const fallback = await serviceAPI.getActive();
         setServices(Array.isArray(fallback) ? fallback : []);
       } catch (err2) {
         console.error('[UniversalInvoice] Error loading services (fallback):', err2);
@@ -1283,6 +1330,7 @@ export function UniversalInvoiceForm({
   const productDropdownRef = useRef<HTMLDivElement>(null);
   const cashRegisterDropdownRef = useRef<HTMLDivElement>(null);
   const purchaseExcelInputRef = useRef<HTMLInputElement>(null);
+  const lineUnitEnrichStartedRef = useRef(new Set<string>());
   const [purchaseExcelImporting, setPurchaseExcelImporting] = useState(false);
   /** Excel içe aktarmada atlanan satırlar — tam liste formda gösterilir */
   const [purchaseExcelImportReport, setPurchaseExcelImportReport] = useState<{
@@ -1368,9 +1416,12 @@ export function UniversalInvoiceForm({
 
   const createInvoiceLineId = () => `${Date.now()}-${Math.random().toString(36).slice(2, 9)}`;
 
-  const createEmptyInvoiceLine = (type: InvoiceItem['type'] = 'Malzeme'): InvoiceItem => ({
+  const resolveEmptyLineType = (): InvoiceItem['type'] =>
+    (defaultLineType || defaultInvoiceLineTypeFor(invoiceType) || 'Malzeme') as InvoiceItem['type'];
+
+  const createEmptyInvoiceLine = (type?: InvoiceItem['type']): InvoiceItem => ({
     id: createInvoiceLineId(),
-    type,
+    type: type || resolveEmptyLineType(),
     code: '',
     description: '',
     description2: '',
@@ -1389,7 +1440,7 @@ export function UniversalInvoiceForm({
   const withTrailingEmptyLine = (list: InvoiceItem[]): InvoiceItem[] => {
     const last = list[list.length - 1];
     if (!last || !lineIsBlank(last)) {
-      return [...list, createEmptyInvoiceLine(defaultLineType || 'Malzeme')];
+      return [...list, createEmptyInvoiceLine()];
     }
     return list;
   };
@@ -1509,8 +1560,65 @@ export function UniversalInvoiceForm({
     item.amount = subtotal;
     item.netAmount = subtotal - item.discountAmount;
 
-    return item;
+    return applyProductUnitsToInvoiceItem(item, product, unitSets);
   };
+
+  const enrichInvoiceLineAlternateUnits = useCallback(async (
+    lineId: string,
+    productId: string,
+    unitsetId?: string,
+    baseUnit?: string,
+  ) => {
+    if (!productId) return;
+    try {
+      const [conversions, barcodes] = await Promise.all([
+        productUnitsAPI.getUnitConversionsByProductId(productId),
+        productUnitsAPI.getBarcodesByProductId(productId),
+      ]);
+      setItems((prev) =>
+        prev.map((it) => {
+          if (it.id !== lineId) return it;
+          const lines = unitsetId
+            ? (unitSets.find((us: any) => us.id === unitsetId)?.lines || [])
+            : [];
+          const collected = collectProductInvoiceUnits({
+            baseUnit: baseUnit || it.productUnit || it.unit,
+            unitsetLines: lines,
+            conversions,
+            barcodeUnits: barcodes.map((b) => b.unit),
+          });
+          return {
+            ...it,
+            allowedUnits: collected.units,
+            unitMultipliers: { ...it.unitMultipliers, ...collected.multipliers },
+          };
+        }),
+      );
+    } catch (err) {
+      console.error('[UniversalInvoice] product units enrich failed:', err);
+    }
+  }, [unitSets]);
+
+  useEffect(() => {
+    for (const item of items) {
+      if (!invoiceLineHasSelectedItem(item)) continue;
+      if (isInvoiceServiceLineType(item.type)) continue;
+      const product = products.find(
+        (p: Product) => p.id === item.productId || p.code === item.code,
+      );
+      const pid = String(item.productId || product?.id || '').trim();
+      if (!pid) continue;
+      const key = `${item.id}:${pid}`;
+      if (lineUnitEnrichStartedRef.current.has(key)) continue;
+      lineUnitEnrichStartedRef.current.add(key);
+      void enrichInvoiceLineAlternateUnits(
+        item.id,
+        pid,
+        item.unitsetId || (product as Product)?.unitsetId || (product as any)?.unitset_id,
+        item.productUnit || product?.unit || item.unit,
+      );
+    }
+  }, [items, products, enrichInvoiceLineAlternateUnits]);
 
   const applyUnitHintToInvoiceItem = (item: InvoiceItem, hint: string): InvoiceItem => {
     const h = hint.trim();
@@ -1599,7 +1707,7 @@ export function UniversalInvoiceForm({
           );
           continue;
         }
-        const base = createEmptyInvoiceLine(defaultLineType || 'Malzeme');
+        const base = createEmptyInvoiceLine();
         base.quantity = pr.quantity;
         base.discountPercent = pr.discountPercent;
         let item = applyLookupResultToInvoiceItem(base, resolved.product, resolved.unitInfo);
@@ -1791,7 +1899,7 @@ export function UniversalInvoiceForm({
       if (prev.length <= 1) {
         return [{
           id: '1',
-          type: defaultLineType || 'Malzeme',
+          type: defaultLineType || defaultInvoiceLineTypeFor(invoiceType) || 'Malzeme',
           code: '',
           description: '',
           description2: '',
@@ -1836,13 +1944,19 @@ export function UniversalInvoiceForm({
       const item = { ...prevRow, [field]: nextValue };
 
       // Birim değişince çarpan ve birim fiyatı (baz birime göre) güncelle
-      if (field === 'unit' && item.unitsetId) {
-        const unitSet = unitSets.find((us: any) => us.id === item.unitsetId);
-        const line = unitSet?.lines?.find((l: any) => l.name === value || l.code === value);
+      if (field === 'unit') {
         const oldMult = prevRow.multiplier || 1;
-        const newMult = line
-          ? (parseFloat(line.conv_fact1) || parseFloat(line.multiplier1) || 1)
-          : 1;
+        let newMult = oldMult;
+        const mapped = prevRow.unitMultipliers?.[String(value)];
+        if (mapped != null && Number.isFinite(mapped) && mapped > 0) {
+          newMult = mapped;
+        } else if (item.unitsetId) {
+          const unitSet = unitSets.find((us: any) => us.id === item.unitsetId);
+          const line = unitSet?.lines?.find((l: any) => l.name === value || l.code === value);
+          newMult = line
+            ? (parseFloat(line.conv_fact1) || parseFloat(line.multiplier1) || 1)
+            : 1;
+        }
         item.multiplier = newMult;
         if (oldMult > 0 && newMult !== oldMult && (prevRow.unitPrice || 0) > 0) {
           item.unitPrice = prevRow.unitPrice * (newMult / oldMult);
@@ -2124,7 +2238,7 @@ export function UniversalInvoiceForm({
     item.amount = subtotal;
     item.netAmount = subtotal - item.discountAmount;
 
-    updatedItems[targetRowIndex] = item;
+    updatedItems[targetRowIndex] = applyProductUnitsToInvoiceItem(item, selProduct, unitSets);
     const nextItems = withTrailingEmptyLine(updatedItems);
     setItems(nextItems);
     setShowProductCatalogModal(false);
@@ -2147,18 +2261,18 @@ export function UniversalInvoiceForm({
         : [...items];
 
     if (targetRowIndex >= withoutTrailing.length) {
-      withoutTrailing.push(...Array.from({ length: targetRowIndex - withoutTrailing.length + 1 }, () => createEmptyInvoiceLine(defaultLineType || 'Malzeme')));
+      withoutTrailing.push(...Array.from({ length: targetRowIndex - withoutTrailing.length + 1 }, () => createEmptyInvoiceLine()));
     }
 
     const [firstProduct, ...restProducts] = selectedProducts;
-    const baseRow = withoutTrailing[targetRowIndex] || createEmptyInvoiceLine(defaultLineType || 'Malzeme');
+    const baseRow = withoutTrailing[targetRowIndex] || createEmptyInvoiceLine();
     withoutTrailing[targetRowIndex] = applyLookupResultToInvoiceItem(
       { ...baseRow, quantity: baseRow.quantity > 0 ? baseRow.quantity : 1 },
       firstProduct
     );
 
     const extraRows = restProducts.map((product) =>
-      applyLookupResultToInvoiceItem(createEmptyInvoiceLine(defaultLineType || 'Malzeme'), product)
+      applyLookupResultToInvoiceItem(createEmptyInvoiceLine(), product)
     );
 
     const merged = [
@@ -2254,9 +2368,11 @@ export function UniversalInvoiceForm({
       }
     }
 
+    const stampedItem = applyProductUnitsToInvoiceItem(newItem, selProduct, unitSets);
+
     const lastItem = items[items.length - 1];
     const isEmptyLastItem = lineIsBlank(lastItem);
-    const baseItems = isEmptyLastItem ? [...items.slice(0, -1), newItem] : [...items, newItem];
+    const baseItems = isEmptyLastItem ? [...items.slice(0, -1), stampedItem] : [...items, stampedItem];
     const nextItems = withTrailingEmptyLine(baseItems);
     setItems(nextItems);
     setCurrentRowIndex(nextItems.length - 1);
@@ -2270,6 +2386,7 @@ export function UniversalInvoiceForm({
 
   // Ürün seçimi
   const selectProduct = (product: { 
+    id?: string;
     code: string; 
     name: string; 
     unit: string; 
@@ -2352,7 +2469,7 @@ export function UniversalInvoiceForm({
       item.amount = grossAmount;
       item.netAmount = grossAmount - item.discountAmount;
 
-      next[rowIndex] = item;
+      next[rowIndex] = applyProductUnitsToInvoiceItem(item, product, unitSets);
       return next;
     });
 
@@ -2360,7 +2477,7 @@ export function UniversalInvoiceForm({
     setProductSearch('');
 
     setTimeout(() => {
-      const newItem: InvoiceItem = createEmptyInvoiceLine(defaultLineType || 'Malzeme');
+      const newItem: InvoiceItem = createEmptyInvoiceLine();
       setItems(prev => [...prev, newItem]);
 
       setTimeout(() => {
@@ -2379,7 +2496,7 @@ export function UniversalInvoiceForm({
 
     // If typing in a service row, prioritize services
     const currentItem = items[rowIndex];
-    if (isInvoiceServiceLineType(currentItem?.type) || invoiceType.category === 'Hizmet') {
+    if (isInvoiceServiceLineType(currentItem?.type) || isServiceInvoiceType(invoiceType)) {
        // Search handled by filteredProducts useMemo
     } else if (value.length >= 8) {
       const product = mockProducts.find(p => p.barcode === value.trim());
@@ -2432,7 +2549,10 @@ export function UniversalInvoiceForm({
       item.amount = grossAmount;
       item.netAmount = grossAmount - item.discountAmount;
 
-      next[rowIndex] = item;
+      next[rowIndex] = applyProductUnitsToInvoiceItem(item, {
+        id: service.id,
+        unit: service.unit || 'Adet',
+      }, unitSets);
       return next;
     });
 
@@ -2442,7 +2562,7 @@ export function UniversalInvoiceForm({
     setTimeout(() => {
       setItems(prev => {
         if (rowIndex !== prev.length - 1) return prev;
-        const newItem: InvoiceItem = createEmptyInvoiceLine(defaultLineType || 'Malzeme');
+        const newItem: InvoiceItem = createEmptyInvoiceLine();
         return [...prev, newItem];
       });
       setTimeout(() => {
@@ -2674,10 +2794,11 @@ export function UniversalInvoiceForm({
       const item = items[rowIndex];
       const currentCode = String(item?.code || productSearch || '').trim();
       const currentName = String(item?.description || '').trim();
-      setQuickCreate({ rowIndex, kind, initialCode: currentCode, initialName: currentName });
+      const resolvedKind = isServiceInvoiceType(invoiceType) ? 'service' : kind;
+      setQuickCreate({ rowIndex, kind: resolvedKind, initialCode: currentCode, initialName: currentName });
       setShowProductDropdown(false);
     },
-    [items, productSearch],
+    [items, productSearch, invoiceType],
   );
 
   /** Quick create form submit — productAPI.create / serviceAPI.create çağırır, satıra yerleştirir. */
@@ -2726,6 +2847,7 @@ export function UniversalInvoiceForm({
           );
           selectProduct(
             {
+              id: createdProduct.id,
               code: createdProduct.code || code,
               name: createdProduct.name || name,
               unit: createdProduct.unit || form.unit || 'Adet',
@@ -2737,7 +2859,7 @@ export function UniversalInvoiceForm({
             quickCreate.rowIndex,
           );
         } else {
-          const created = await serviceAPI.create({
+          const payload = {
             code,
             name,
             description: name,
@@ -2746,12 +2868,23 @@ export function UniversalInvoiceForm({
             tax_rate: form.vatRate || 0,
             unit: form.unit || 'Adet',
             is_active: true,
-          } as any);
+          } as any;
+          let created;
+          try {
+            created = await serviceAPI.create(payload);
+          } catch (createErr: any) {
+            const msg = String(createErr?.message || createErr || '').toLowerCase();
+            const unique = msg.includes('23505') || msg.includes('unique') || msg.includes('duplicate');
+            if (!unique) throw createErr;
+            const nextCode = (await serviceAPI.getNextCode()) || code;
+            created = await serviceAPI.create({ ...payload, code: nextCode });
+          }
           setServices((prev) => {
             const exists = prev.find((s) => s.id === created.id || s.code === created.code);
             if (exists) return prev.map((s) => (s.id === created.id ? created : s));
             return [created, ...prev];
           });
+          void reloadServices();
           selectService(created, quickCreate.rowIndex);
         }
         setQuickCreate(null);
@@ -2762,7 +2895,7 @@ export function UniversalInvoiceForm({
         setQuickCreateSaving(false);
       }
     },
-    [quickCreate, ledgerCurrency, tm, storeSetProducts, storeProducts, setServices, selectProduct, selectService],
+    [quickCreate, ledgerCurrency, tm, storeSetProducts, storeProducts, setServices, selectProduct, selectService, reloadServices],
   );
 
   const handleImageToInvoice = useCallback(
@@ -2866,9 +2999,9 @@ export function UniversalInvoiceForm({
         if (hf.specialCode) setSpecialCode(hf.specialCode);
         if (hf.tradingGroup) setTradingGroup(hf.tradingGroup);
         if (hf.authorizationCode) setAuthorizationCode(hf.authorizationCode);
-        if (hf.warehouse) setWarehouse(hf.warehouse);
-        if (hf.workplace) setWorkplace(hf.workplace);
-        if (hf.salespersonCode) setSalespersonCode(hf.salespersonCode);
+        if (sanitizeInvoiceHeaderPartyValue(hf.warehouse)) setWarehouse(sanitizeInvoiceHeaderPartyValue(hf.warehouse));
+        if (sanitizeInvoiceHeaderPartyValue(hf.workplace)) setWorkplace(sanitizeInvoiceHeaderPartyValue(hf.workplace));
+        if (sanitizeInvoiceHeaderPartyValue(hf.salespersonCode)) setSalespersonCode(sanitizeInvoiceHeaderPartyValue(hf.salespersonCode));
         if (hf.editDate) setEditDate(hf.editDate);
         if (hf.customerBarcode) setCustomerBarcode(hf.customerBarcode);
         if (hf.deliveryCode) setDeliveryCode(hf.deliveryCode);
@@ -2987,7 +3120,7 @@ export function UniversalInvoiceForm({
         // Items yoksa veya boşsa, boş bir item ile başlat
         setItems([{
           id: '1',
-          type: 'Malzeme',
+          type: defaultInvoiceLineTypeFor(invoiceType),
           code: '',
           description: '',
           description2: '',
@@ -3703,8 +3836,24 @@ export function UniversalInvoiceForm({
         }
       }
 
+      let resolvedInvoiceNo = String(invoiceNo || '').trim();
+      if (!(editData as any)?.id && !invoiceNoManualRef.current) {
+        try {
+          const allocated = await allocateNextInvoiceCode(invoiceType.code, invoiceDate);
+          if (allocated) resolvedInvoiceNo = allocated;
+        } catch (e) {
+          console.warn('[UniversalInvoiceForm] invoice code allocate on save:', e);
+        }
+      }
+      if (!resolvedInvoiceNo) {
+        resolvedInvoiceNo = generateDefaultInvoiceStamp();
+      }
+      if (resolvedInvoiceNo !== invoiceNo) {
+        setInvoiceNo(resolvedInvoiceNo);
+      }
+
       const invoiceData: any = {
-        invoice_no: invoiceNo,
+        invoice_no: resolvedInvoiceNo,
         invoice_date: transactionDate,
         invoice_type: invoiceType.code,
         invoice_category: invoiceType.category as any,
@@ -3756,7 +3905,7 @@ export function UniversalInvoiceForm({
           return 'completed';
         })(),
         notes: description,
-        document_no: documentNo.trim() || invoiceNo,
+        document_no: documentNo.trim() || resolvedInvoiceNo,
         header_fields: buildInvoiceHeaderFieldsFromForm({
           documentNo,
           specialCode,
@@ -3832,7 +3981,7 @@ export function UniversalInvoiceForm({
                     quantity: baseQty,
                     unit_cost: item.unitCost || item.unitPrice,
                     purchase_date: invoiceDate.toISOString(),
-                    document_no: invoiceNo,
+                    document_no: resolvedInvoiceNo,
                     firma_id: selectedFirm.id || '',
                     donem_id: selectedPeriod.id || ''
                   });
@@ -3853,7 +4002,7 @@ export function UniversalInvoiceForm({
                     total_cost: item.totalCost || 0,
                     total_price: item.netAmount * rateToIQD,
                     movement_date: invoiceDate.toISOString(),
-                    document_no: invoiceNo,
+                    document_no: resolvedInvoiceNo,
                     document_type: 'SALES_INVOICE',
                     firma_id: selectedFirm.id || '',
                     donem_id: selectedPeriod.id || '',
@@ -3865,8 +4014,8 @@ export function UniversalInvoiceForm({
 
           if (priceChangeItems.length > 0) {
             await priceChangeVouchersAPI.create({
-              voucher_no: `FD-${invoiceNo}`,
-              invoice_no: invoiceNo,
+              voucher_no: `FD-${resolvedInvoiceNo}`,
+              invoice_no: resolvedInvoiceNo,
               date: invoiceDate.toISOString(),
               items: priceChangeItems,
               firma_id: selectedFirm.id || '',
@@ -3883,7 +4032,7 @@ export function UniversalInvoiceForm({
 
           if (invoiceType.category === 'Satis' && selectedFirm && selectedPeriod) {
             journalResult = await createSalesJournal({
-              fatura_no: invoiceNo,
+              fatura_no: resolvedInvoiceNo,
               tarih: invoiceDate,
               musteri_adi: customerTitle || supplierTitle,
               tutar: totals.netIQD,
@@ -3891,7 +4040,7 @@ export function UniversalInvoiceForm({
             });
           } else if (invoiceType.category === 'Alis' && selectedFirm && selectedPeriod) {
             journalResult = await createPurchaseJournal({
-              fatura_no: invoiceNo,
+              fatura_no: resolvedInvoiceNo,
               tarih: invoiceDate,
               tedarikci_adi: supplierTitle || customerTitle,
               tutar: totals.netIQD,
@@ -3913,7 +4062,7 @@ export function UniversalInvoiceForm({
           storeName: selectedFirm?.name || '',
           storeAddress: '',
           storeTaxNo: '',
-          receiptNumber: invoiceNo,
+          receiptNumber: resolvedInvoiceNo,
           date: invoiceDate.toISOString(),
           customerName: invoiceType.category === 'Alis' ? supplierTitle : customerTitle,
           cashier: cashierName || '',
@@ -4090,7 +4239,7 @@ export function UniversalInvoiceForm({
                   setIsFormExpanded={setIsFormExpanded}
 
                   invoiceNo={invoiceNo}
-                  setInvoiceNo={(editData as any)?.id ? undefined : setInvoiceNo}
+                  setInvoiceNo={(editData as any)?.id ? undefined : handleInvoiceNoChange}
                   transactionDate={transactionDate}
                   setTransactionDate={setTransactionDate}
                   time={time}
@@ -4367,6 +4516,7 @@ export function UniversalInvoiceForm({
                     getProductCode={getProductCode}
                     masterUnits={masterUnits}
                     unitSets={unitSets}
+                    productCatalog={products}
                     currency={currency}
                     currencyRate={effectiveInvoiceCurrencyRate}
                     ledgerCurrency={ledgerCurrency}
@@ -5261,7 +5411,6 @@ export function UniversalInvoiceForm({
               }}
               onRequestAdd={() => {
                 const rowIndex = selectedRowForProduct !== null ? selectedRowForProduct : currentRowIndex;
-                setShowServiceCatalogModal(false);
                 setQuickCreate({
                   rowIndex,
                   kind: 'service',
@@ -5279,6 +5428,7 @@ export function UniversalInvoiceForm({
               initialName={quickCreate.initialName}
               saving={quickCreateSaving}
               masterUnits={masterUnits}
+              nested={Boolean(showServiceCatalogModal || showProductCatalogModal)}
               onClose={() => { if (!quickCreateSaving) setQuickCreate(null); }}
               onSave={handleQuickCreateSave}
             />

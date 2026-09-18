@@ -1,5 +1,5 @@
 import { useEffect, useState, type CSSProperties, type ReactNode } from 'react';
-import { FullscreenBodyPortal, MODAL_OVERLAY_Z } from './FullscreenBodyPortal';
+import { FullscreenBodyPortal, MODAL_OVERLAY_NESTED_Z, MODAL_OVERLAY_Z } from './FullscreenBodyPortal';
 
 export const PERCENT_BODY_MODAL_PORTAL_CLASS =
   'overflow-y-auto overflow-x-hidden bg-black/60 backdrop-blur-sm flex items-center justify-center p-3 sm:p-4 py-6';
@@ -40,6 +40,8 @@ type PercentBodyModalProps = {
   size?: PercentBodyModalSize;
   shellClassName?: string;
   ariaLabel?: string;
+  /** Katalog üstünde oluşturma gibi iç içe diyalog */
+  nested?: boolean;
 };
 
 export function PercentBodyModal({
@@ -48,6 +50,7 @@ export function PercentBodyModal({
   size = 'list',
   shellClassName = '',
   ariaLabel,
+  nested = false,
 }: PercentBodyModalProps) {
   /** Satır tıklamasıyla açılınca aynı click overlay’e “düşüp” hemen kapanmasın. */
   const [overlayCloseArmed, setOverlayCloseArmed] = useState(false);
@@ -64,7 +67,7 @@ export function PercentBodyModal({
 
   return (
     <FullscreenBodyPortal
-      zIndex={MODAL_OVERLAY_Z}
+      zIndex={nested ? MODAL_OVERLAY_NESTED_Z : MODAL_OVERLAY_Z}
       className={PERCENT_BODY_MODAL_PORTAL_CLASS}
       role="dialog"
       aria-modal

@@ -1528,6 +1528,7 @@ export class PostgresConnection {
     'categories', 'brands', 'units', 'tax_rates', 'special_codes',
     'unitsets', 'unitsetl',
     'campaigns', 'product_variants', 'product_barcodes', 'product_unit_conversions', 'lots', 'bank_registers', 'expense_cards',
+    'expenses', 'cost_centers',
     'services',
     // Parties (cari polymorphism — customer/supplier/employee/partner)
     'parties', 'partner_settings',

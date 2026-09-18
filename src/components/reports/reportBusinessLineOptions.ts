@@ -9,13 +9,6 @@ import { isMainModuleVisible } from '../../utils/mainModuleVisibility';
 
 export type ReportBusinessType = 'retail' | 'market' | 'restaurant' | 'beauty';
 
-const ALL_REPORT_BUSINESS_TYPES: ReportBusinessType[] = [
-  'retail',
-  'market',
-  'restaurant',
-  'beauty',
-];
-
 function readTenantModuleHint(): string {
   if (typeof localStorage === 'undefined') return '';
   try {
@@ -49,17 +42,21 @@ function isShellOn(
   const fromFirm = normalizeFirmEnabledModules(firm?.enabled_modules);
   if (fromFirm) return fromFirm.includes(id);
   const hint = readTenantModuleHint();
-  if (hint === 'clinic') return id === 'beauty';
+  if (hint === 'clinic' || hint === 'beauty') return id === 'beauty';
   if (hint === 'restaurant') return id === 'restaurant' || id === 'pos';
   if (hint === 'retail' || hint === 'market') return id === 'pos';
   if (hint === 'wms' || hint === 'pdks' || hint === 'hrm' || hint === 'tenant_registry') {
     return false;
   }
+  if (tenantShowsAllVerticals(hint)) return isMainModuleVisible(id);
+  /** Hint yok: klinik/güzellik varsayılanı — POS varsayılan açık sanılıp Perakende/Market/Restoran görünmesin. */
+  if (!hint) return id === 'beauty';
   return isMainModuleVisible(id);
 }
 
 /**
- * Firmanın lisanslı/aktif iş kolları. Belirsizse dört seçenek (eski davranış).
+ * Firmanın lisanslı/aktif iş kolları.
+ * Belirsiz (modül yok, tenant hint yok): yalnızca Güzellik — dört dikeyi açma.
  * `pos` → Perakende; tenant market ise Market; all/demo ise ikisi.
  */
 export function resolveEnabledReportBusinessTypes(
@@ -68,7 +65,7 @@ export function resolveEnabledReportBusinessTypes(
   const pos = isShellOn('pos', firm);
   const restaurant = isShellOn('restaurant', firm);
   const beauty = isShellOn('beauty', firm);
-  if (!pos && !restaurant && !beauty) return [...ALL_REPORT_BUSINESS_TYPES];
+  if (!pos && !restaurant && !beauty) return ['beauty'];
 
   const hint = readTenantModuleHint();
   const out: ReportBusinessType[] = [];
@@ -91,5 +88,5 @@ export function clampReportBusinessType(
   enabled: ReportBusinessType[],
 ): ReportBusinessType {
   if (enabled.includes(current)) return current;
-  return enabled[0] ?? 'retail';
+  return enabled[0] ?? 'beauty';
 }

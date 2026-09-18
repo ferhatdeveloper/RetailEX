@@ -75,9 +75,9 @@ export function ServiceCatalogModal({
     ? 'Hizmet bulunamadı'
     : tm('noServicesFound');
   const codeLabel = tm('itemCode') === 'itemCode' ? 'Kod' : tm('itemCode');
-  const addNewLabel = tm('quickCreateService') === 'quickCreateService'
-    ? 'Yeni hizmet ekle'
-    : tm('quickCreateService');
+  const addNewLabel = tm('catalogAddNewService') === 'catalogAddNewService'
+    ? 'Yeni hizmet'
+    : tm('catalogAddNewService');
 
   const filteredServices = useMemo(() => {
     const q = searchQuery.trim().toLowerCase();
@@ -225,6 +225,11 @@ export function ServiceCatalogModal({
           {filteredServices.length === 0 ? (
             <div className="px-4 py-10 text-center text-sm text-gray-500 space-y-3">
               <div>{notFoundLabel}</div>
+              <p className="text-xs text-gray-400">
+                {tm('noServicesEmptyHint') === 'noServicesEmptyHint'
+                  ? 'Kayıtlı hizmet kartı yok. Faturaya eklemek için yeni hizmet oluşturun.'
+                  : tm('noServicesEmptyHint')}
+              </p>
               {canAddNew && (
                 <button
                   type="button"

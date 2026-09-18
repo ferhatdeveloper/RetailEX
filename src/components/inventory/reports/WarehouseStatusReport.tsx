@@ -3,6 +3,7 @@ import { warehouseAPI, type Warehouse } from '../../../services/warehouseAPI';
 import { productAPI } from '../../../services/api/products';
 import type { Product } from '../../../core/types';
 import { DevExDataGrid } from '../../shared/DevExDataGrid';
+import { REPORT_GRID_DEFAULTS } from '../../reports/shared/ReportDataGrid';
 import { exportDataGridToExcel } from '../../../utils/gridExcelExport';
 import { createColumnHelper, ColumnDef } from '@tanstack/react-table';
 import { Download, Building2 } from 'lucide-react';
@@ -120,7 +121,7 @@ export function WarehouseStatusReport() {
                         </div>
                     </div>
                 ) : (
-                    <DevExDataGrid data={rows} columns={columns} pageSize={50} enableExcelExport={false} />
+                    <DevExDataGrid data={rows} columns={columns} {...REPORT_GRID_DEFAULTS} height="100%" />
                 )}
             </div>
         </div>

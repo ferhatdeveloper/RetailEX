@@ -4,14 +4,15 @@ import { moduleTranslations, type Language } from '../../../locales/module-trans
 import { useLanguage } from '../../../contexts/LanguageContext';
 import { useResponsive } from '../../../hooks/useResponsive';
 import {
-  buildUnitSelectOptions,
-  withMissingUnitValue,
+  buildInvoiceLineUnitOptions,
+  invoiceLineHasSelectedItem,
   type UnitMasterRow,
   type UnitSelectOption,
 } from '../../../utils/unitOptions';
 import { formatInvoiceLineQuantityDisplay } from '../../../utils/scaleQuantity';
 import { formatWeightQuantityInput, parseInvoiceWeightQuantity } from '../../../utils/numberFormatter';
 import { isWeightBasedUnit } from '../../../utils/productUnits';
+import { isServiceInvoiceType } from '../../../utils/invoiceLineType';
 
 function quantityInputPlaceholder(unit: string | undefined, tm: (k: string) => string): string {
   if (isWeightBasedUnit(unit)) {
@@ -155,6 +156,9 @@ interface InvoiceItem {
     multiplier?: number;
     baseQuantity?: number;
     unitPriceFC?: number;
+    productId?: string;
+    productUnit?: string;
+    allowedUnits?: string[];
 }
 
 interface InvoiceItemsGridProps {
@@ -182,9 +186,17 @@ interface InvoiceItemsGridProps {
     productDropdownRef: React.RefObject<HTMLDivElement | null>;
     gridRefs: React.MutableRefObject<{ [key: string]: HTMLInputElement | null }>;
     getProductCode: (code: string) => string;
-    /** Kart birimleri (`unitAPI`); birim seti dışı satırlarda birleşik liste için */
+    /** Kart birimleri (`unitAPI`); ürün formu / hızlı ekleme — satır birim listesinde kullanılmaz */
     masterUnits?: UnitMasterRow[];
     unitSets?: any[];
+    /** Ürün kartı birimi / unitset_id çözümlemek için (seçim sonrası ve mevcut fatura) */
+    productCatalog?: Array<{
+        code?: string;
+        id?: string;
+        unit?: string;
+        unitsetId?: string;
+        unitset_id?: string;
+    }>;
     currency?: string;
     currencyRate?: number;
     /** Firma ana / yerel para (sütun etiketleri ve çeviri satırları) */
@@ -219,8 +231,9 @@ export const InvoiceItemsGrid = React.memo(({
     productDropdownRef,
     gridRefs,
     getProductCode,
-    masterUnits = [],
+    masterUnits: _masterUnits = [],
     unitSets = [],
+    productCatalog = [],
     currency = 'IQD',
     currencyRate = 1,
     ledgerCurrency = 'IQD',
@@ -237,46 +250,63 @@ export const InvoiceItemsGrid = React.memo(({
         return itemColumnVisibility[columnId] !== false;
     };
 
-    const globalUnitOptions = useMemo(
-        () => buildUnitSelectOptions(masterUnits, unitSets),
-        [masterUnits, unitSets]
-    );
+    const catalogByCode = useMemo(() => {
+        const map = new Map<string, (typeof productCatalog)[number]>();
+        for (const p of productCatalog) {
+            const code = String(p.code || '').trim();
+            if (code && !map.has(code)) map.set(code, p);
+        }
+        return map;
+    }, [productCatalog]);
 
     const unitSelectOptionsForItem = useCallback(
         (item: InvoiceItem): UnitSelectOption[] => {
-            if (item.unitsetId) {
-                const lines = unitSets.find((us: any) => us.id === item.unitsetId)?.lines || [];
-                const fromSet: UnitSelectOption[] = (lines as any[]).map((line: any) => {
-                    const name = String(line.name || '').trim();
-                    const code = String(line.code || line.item_code || '').trim() || name;
-                    return {
-                        id: String(line.id || `${item.unitsetId}:${code || name}`),
-                        code: code || name,
-                        name,
-                    };
-                }).filter((o) => o.name);
-                return withMissingUnitValue(fromSet, item.unit);
+            const selected = invoiceLineHasSelectedItem(item);
+            const isService = isServiceLineType ? isServiceLineType(item.type) : item.type === 'Hizmet';
+            if (!selected) return [];
+            if (isService) {
+                return buildInvoiceLineUnitOptions({
+                    hasProduct: true,
+                    productUnit: item.unit,
+                    currentUnit: item.unit,
+                    extraUnits: item.allowedUnits,
+                });
             }
-            return withMissingUnitValue(globalUnitOptions, item.unit);
+            const cat = catalogByCode.get(String(item.code || '').trim());
+            return buildInvoiceLineUnitOptions({
+                hasProduct: true,
+                productUnit: item.productUnit || cat?.unit || item.unit,
+                unitsetId: item.unitsetId || cat?.unitsetId || cat?.unitset_id,
+                unitSets,
+                currentUnit: item.unit,
+                extraUnits: item.allowedUnits,
+            });
         },
-        [globalUnitOptions, unitSets]
+        [catalogByCode, isServiceLineType, unitSets]
     );
 
     /** Açıklama alanı çift tıklaması: satır Hizmet ise Service katalog, değilse Ürün katalog. */
     const openCatalogForRow = useCallback((rowIndex: number) => {
         setSelectedRowForProduct(rowIndex);
         const itemType = items[rowIndex]?.type;
-        const isService = isServiceLineType ? isServiceLineType(itemType) : false;
+        const serviceDoc = isServiceInvoiceType(invoiceType);
+        const isService = serviceDoc || (isServiceLineType ? isServiceLineType(itemType) : false);
+        if (serviceDoc && itemType !== 'Hizmet') {
+            const row = items[rowIndex];
+            const blank = row && !row.code && row.quantity === 0 && row.unitPrice === 0;
+            if (blank) updateItem(rowIndex, 'type', 'Hizmet');
+        }
         if (isService && setShowServiceCatalogModal) {
             setShowServiceCatalogModal(true);
         } else {
             setShowProductCatalogModal(true);
         }
-    }, [items, isServiceLineType, setShowProductCatalogModal, setShowServiceCatalogModal, setSelectedRowForProduct]);
+    }, [items, invoiceType, isServiceLineType, setShowProductCatalogModal, setShowServiceCatalogModal, setSelectedRowForProduct, updateItem]);
 
     /** Kod alanı dropdown render — Hizmet/Malzeme tipine göre etiket ekler. */
     const renderProductDropdownItems = (rowIndex: number) => {
-        const isService = isServiceLineType ? isServiceLineType(items[rowIndex]?.type) : false;
+        const isService = isServiceInvoiceType(invoiceType)
+            || (isServiceLineType ? isServiceLineType(items[rowIndex]?.type) : false);
         return filteredProducts.map((product) => {
             const kind = (product as any).type;
             const isServiceRow = isService || kind === 'Hizmet';
@@ -318,7 +348,8 @@ export const InvoiceItemsGrid = React.memo(({
         if (filteredProducts.length > 0) return null;
         const query = (productSearch || '').trim();
         if (!query) return null;
-        const isService = isServiceLineType ? isServiceLineType(items[rowIndex]?.type) : false;
+        const isService = isServiceInvoiceType(invoiceType)
+            || (isServiceLineType ? isServiceLineType(items[rowIndex]?.type) : false);
         const kind: 'product' | 'service' = isService ? 'service' : 'product';
         const label = isService
             ? (tm('quickCreateService') || 'Eşleşen hizmet yok — yeni hizmet ekle')
@@ -545,11 +576,12 @@ export const InvoiceItemsGrid = React.memo(({
                                     <label className="flex flex-col gap-0.5 min-w-0">
                                         <span className="text-[10px] font-medium text-gray-500">{tm('itemUnit')}</span>
                                         <select
-                                            value={item.unit}
+                                            value={invoiceLineHasSelectedItem(item) ? item.unit : ''}
+                                            disabled={!invoiceLineHasSelectedItem(item)}
                                             onChange={(e) => updateItem(index, 'unit', e.target.value)}
                                             onFocus={() => setCurrentRowIndex(index)}
                                             onClick={(e) => e.stopPropagation()}
-                                            className="w-full px-2 py-1.5 rounded-lg border border-gray-200 text-xs font-medium text-blue-800 bg-white"
+                                            className="w-full px-2 py-1.5 rounded-lg border border-gray-200 text-xs font-medium text-blue-800 bg-white disabled:opacity-50 disabled:cursor-not-allowed"
                                         >
                                             {unitSelectOptionsForItem(item).map((o) => (
                                                 <option key={o.id} value={o.name}>
@@ -761,12 +793,13 @@ export const InvoiceItemsGrid = React.memo(({
                                 {isColumnVisible('unit') && (
                                     <td className="border-r border-gray-100 p-0 w-16">
                                         <select
-                                            value={item.unit}
+                                            value={invoiceLineHasSelectedItem(item) ? item.unit : ''}
+                                            disabled={!invoiceLineHasSelectedItem(item)}
                                             onChange={(e) => {
                                                 updateItem(index, 'unit', e.target.value);
                                             }}
                                             onFocus={() => setCurrentRowIndex(index)}
-                                            className="w-full px-1.5 py-1 border-0 focus:outline-none text-sm bg-transparent font-medium text-blue-700"
+                                            className="w-full px-1.5 py-1 border-0 focus:outline-none text-sm bg-transparent font-medium text-blue-700 disabled:opacity-50 disabled:cursor-not-allowed"
                                         >
                                             {unitSelectOptionsForItem(item).map((o) => (
                                                 <option key={o.id} value={o.name}>{o.name}</option>

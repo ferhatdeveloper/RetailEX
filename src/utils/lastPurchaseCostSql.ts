@@ -177,6 +177,29 @@ AND COALESCE(s.trcode, 0) <> ${PURCHASE_RETURN_TRCODE}
 AND LOWER(TRIM(COALESCE(s.fiche_type, ''))) NOT IN ('purchase_invoice', 'a', 'opening_balance')
 `.trim();
 
+/** Alış faturası (alış iade hariç) — InvoiceList Alis / son alış CTE ile aynı. */
+export const SQL_PL_PURCHASE = `
+(
+  COALESCE(s.trcode, 0) <> ${PURCHASE_RETURN_TRCODE}
+  AND LOWER(TRIM(COALESCE(s.fiche_type, ''))) <> 'return_invoice'
+  AND (
+    LOWER(TRIM(COALESCE(s.fiche_type, ''))) IN ('purchase_invoice', 'a')
+    OR COALESCE(s.trcode, 0) IN (${PURCHASE_TRCODES_SQL})
+  )
+)
+`.trim();
+
+/** Alış iade (trcode 6 veya return_invoice; satış iade 2/3 hariç). */
+export const SQL_PL_PURCHASE_RETURN = `
+(
+  COALESCE(s.trcode, 0) = ${PURCHASE_RETURN_TRCODE}
+  OR (
+    LOWER(TRIM(COALESCE(s.fiche_type, ''))) = 'return_invoice'
+    AND COALESCE(s.trcode, 0) NOT IN (${SALES_RETURN_TRCODES_SQL})
+  )
+)
+`.trim();
+
 export const SQL_IS_SALES_RETURN = `
 (
   COALESCE(s.trcode, 0) IN (${SALES_RETURN_TRCODES_SQL})

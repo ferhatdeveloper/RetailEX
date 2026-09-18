@@ -23,6 +23,8 @@ interface QuickProductCreateModalProps {
     onSave: (value: QuickCreateFormValue) => void;
     /** Mevcut birim listesi (kullanıcıya öneri olarak); opsiyonel */
     masterUnits?: UnitMasterRow[];
+    /** Katalog üstünde açıldığında z-index için */
+    nested?: boolean;
 }
 
 const DEFAULT_UNITS = ['Adet', 'Kg', 'Lt', 'Mt', 'Paket', 'Koli', 'Kutu', 'Şişe', 'Çuval'];
@@ -40,6 +42,7 @@ export const QuickProductCreateModal: React.FC<QuickProductCreateModalProps> = (
     onClose,
     onSave,
     masterUnits,
+    nested = false,
 }) => {
     const { language } = useLanguage();
     const tm = (key: string) => moduleTranslations[key]?.[language] || key;
@@ -112,7 +115,7 @@ export const QuickProductCreateModal: React.FC<QuickProductCreateModalProps> = (
     };
 
     return (
-        <PercentBodyModal onClose={onClose} size="form" ariaLabel={title}>
+        <PercentBodyModal onClose={onClose} size="form" nested={nested} ariaLabel={title}>
             <div className="bg-gradient-to-r from-blue-600 to-indigo-600 px-6 py-4 text-white shrink-0 rounded-t-2xl">
                 <div className="flex items-center justify-between gap-3">
                     <div className="min-w-0">

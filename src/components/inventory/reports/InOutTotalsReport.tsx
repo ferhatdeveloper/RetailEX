@@ -1,129 +1,71 @@
 import React, { useState, useEffect, useMemo } from 'react';
-import { invoicesAPI } from '../../../services/api/invoices';
 import { stockMovementAPI } from '../../../services/stockMovementAPI';
 import { productAPI } from '../../../services/api/products';
-import type { Product } from '../../../core/types';
+import { collapseInOutTotalsRows, type InOutTotalsRow } from '../../../utils/stockInOutTotals';
+import { toSqlDateInputString, localTodayDateKey } from '../../../utils/localCalendarDate';
 import { DevExDataGrid } from '../../shared/DevExDataGrid';
+import { REPORT_GRID_DEFAULTS } from '../../reports/shared/ReportDataGrid';
 import { exportDataGridToExcel } from '../../../utils/gridExcelExport';
 import { createColumnHelper, ColumnDef } from '@tanstack/react-table';
 import { Download, ArrowRightLeft } from 'lucide-react';
 import { useLanguage } from '../../../contexts/LanguageContext';
 import { useFirmaDonem } from '../../../contexts/FirmaDonemContext';
-import { format } from 'date-fns';
 import { formatNumber } from '../../../utils/formatNumber';
 
-interface InOutRow {
-    productId: string;
-    productCode: string;
-    productName: string;
-    totalIn: number;
-    totalOut: number;
-    netChange: number;
+function monthStartKey(): string {
+    const today = localTodayDateKey();
+    const [y, m] = today.split('-');
+    return `${y}-${m}-01`;
 }
 
 /**
  * Giriş/Çıkış Toplamları — tenant-aware.
- * Hem satış/alış faturalarındaki kalemleri hem de ambar fişi kalemlerini
- * (stock_movement_items) tarayıp ürün başına toplam in/out hesabı yapar.
+ * getProductMovements ile aynı kaynak: ambar fiş kalemleri (alış/sarf giriş)
+ * + fatura kalemleri (satış/çıkış). Giriş ve çıkış tutarları ayrı kolonlarda; netlenmez.
  */
 export function InOutTotalsReport() {
-    const [rows, setRows] = useState<InOutRow[]>([]);
+    const [rows, setRows] = useState<InOutTotalsRow[]>([]);
     const [loading, setLoading] = useState(true);
     const { tm } = useLanguage();
     const { selectedFirm, selectedPeriod } = useFirmaDonem();
-    const today = useMemo(() => new Date(), []);
-    const monthStart = useMemo(() => {
-        const d = new Date(today);
-        d.setDate(1);
-        return d;
-    }, [today]);
-    const [startDate, setStartDate] = useState(format(monthStart, 'yyyy-MM-dd'));
-    const [endDate, setEndDate] = useState(format(today, 'yyyy-MM-dd'));
+    const currency = selectedFirm?.ana_para_birimi || 'IQD';
+    const [startDate, setStartDate] = useState(monthStartKey);
+    const [endDate, setEndDate] = useState(localTodayDateKey);
 
     useEffect(() => {
         let cancelled = false;
         async function load() {
             setLoading(true);
             try {
-                const [products, invRes, slipMovements] = await Promise.all([
-                    productAPI.getAllForReports({ firmNr: selectedFirm?.firm_nr }),
-                    // Hem satış hem alış faturaları
-                    Promise.all([
-                        invoicesAPI.getPaginated({ pageSize: 5000, startDate, endDate, invoiceCategory: 'Satis', firmNr: selectedFirm?.firm_nr, periodNr: selectedPeriod?.nr }),
-                        invoicesAPI.getPaginated({ pageSize: 5000, startDate, endDate, invoiceCategory: 'Alis', firmNr: selectedFirm?.firm_nr, periodNr: selectedPeriod?.nr }),
-                    ]),
-                    stockMovementAPI.getAll(),
+                const start = toSqlDateInputString(startDate);
+                const end = toSqlDateInputString(endDate);
+                const [totals, products] = await Promise.all([
+                    stockMovementAPI.getInOutTotalsByDateRange({
+                        startDate: start,
+                        endDate: end,
+                        firmNr: selectedFirm?.firm_nr,
+                        periodNr: selectedPeriod?.nr,
+                    }),
+                    productAPI.getAllForReports({ firmNr: selectedFirm?.firm_nr }).catch(() => []),
                 ]);
-
-                const productByCode = new Map<string, Product>();
-                const productById = new Map<string, Product>();
-                products.forEach(p => {
-                    if (p.code) productByCode.set(p.code, p);
-                    if (p.id) productById.set(p.id, p);
-                });
-
-                const agg = new Map<string, InOutRow>();
-                const addQty = (key: string, code: string, name: string, qty: number, isIn: boolean) => {
-                    const r = agg.get(key) || {
-                        productId: key,
-                        productCode: code,
-                        productName: name,
-                        totalIn: 0,
-                        totalOut: 0,
-                        netChange: 0,
-                    };
-                    if (isIn) r.totalIn += qty;
-                    else r.totalOut += qty;
-                    r.netChange = r.totalIn - r.totalOut;
-                    agg.set(key, r);
-                };
-
-                const allInvoices = invRes.flatMap(r => r.data);
-                for (const inv of allInvoices) {
-                    const cat = String(
-                        (inv as any).invoiceCategory ||
-                        (inv as any).invoice_category ||
-                        (inv as any).fiche_type ||
-                        ''
-                    ).toLowerCase();
-                    const isIn = cat.includes('purchase') || cat.includes('alis');
-                    const items: any[] = (inv as any).items || (inv as any).sale_items || [];
-                    for (const it of items) {
-                        const code = it.item_code || it.product_code || '';
-                        const pid = it.product_id || '';
-                        const p = (pid && productById.get(pid)) || (code && productByCode.get(code)) || null;
-                        if (!p) continue;
-                        const qty = Number(it.quantity || 0);
-                        addQty(p.id || code, p.code || code, p.name || '', qty, isIn);
-                    }
-                }
-
-                // Ambar fişlerinin items'ı için her birini ayrı sorgulamak pahalı.
-                // Bu yüzden sadece tarih aralığındakileri filtreliyoruz; items'i opsiyonel olarak gelirse alıyoruz.
-                const start = new Date(startDate).getTime();
-                const end = new Date(endDate).getTime() + 86_400_000;
-                for (const m of slipMovements) {
-                    if (m.source_kind !== 'slip') continue;
-                    const md = new Date(m.movement_date || m.created_at).getTime();
-                    if (md < start || md > end) continue;
-                    const items: any[] = (m as any).stock_movement_items || [];
-                    const isIn = m.movement_type === 'in';
-                    for (const it of items) {
-                        const code = it.product_code || '';
-                        const pid = it.product_id || '';
-                        const p = (pid && productById.get(pid)) || (code && productByCode.get(code)) || null;
-                        if (!p) continue;
-                        const qty = Number(it.quantity || 0);
-                        addQty(p.id || code, p.code || code, p.name || '', qty, isIn);
-                    }
-                }
-
-                const list = Array.from(agg.values()).sort(
-                    (a, b) => Math.abs(b.netChange) - Math.abs(a.netChange)
+                const byId = new Map(products.map((p) => [String(p.id), p]));
+                const byCode = new Map(products.filter((p) => p.code).map((p) => [String(p.code), p]));
+                const filled = collapseInOutTotalsRows(
+                    totals.map((r) => {
+                        const p = byId.get(r.productId) || byCode.get(r.productCode);
+                        if (!p) return r;
+                        return {
+                            ...r,
+                            productId: r.productId || p.id || r.productCode,
+                            productCode: r.productCode || p.code || '',
+                            productName: r.productName || p.name || '',
+                        };
+                    }),
                 );
-                if (!cancelled) setRows(list);
+                if (!cancelled) setRows(filled);
             } catch (err) {
                 console.error('[InOutTotalsReport] load failed', err);
+                if (!cancelled) setRows([]);
             } finally {
                 if (!cancelled) setLoading(false);
             }
@@ -132,31 +74,58 @@ export function InOutTotalsReport() {
         return () => { cancelled = true; };
     }, [startDate, endDate, selectedFirm?.firm_nr, selectedPeriod?.nr]);
 
-    const columnHelper = createColumnHelper<InOutRow>();
-    const columns = useMemo<ColumnDef<InOutRow, any>[]>(() => [
+    const grand = useMemo(
+        () =>
+            rows.reduce(
+                (acc, r) => {
+                    acc.inQty += r.inQty;
+                    acc.inAmount += r.inAmount;
+                    acc.outQty += r.outQty;
+                    acc.outAmount += r.outAmount;
+                    return acc;
+                },
+                { inQty: 0, inAmount: 0, outQty: 0, outAmount: 0 },
+            ),
+        [rows],
+    );
+
+    const columnHelper = createColumnHelper<InOutTotalsRow>();
+    const columns = useMemo<ColumnDef<InOutTotalsRow, any>[]>(() => [
         columnHelper.accessor('productCode', { header: tm('materialCode') }),
         columnHelper.accessor('productName', { header: tm('materialName') }),
-        columnHelper.accessor('totalIn', {
-            header: tm('totalIn') || 'Toplam Giriş',
-            cell: info => <span className="text-green-600 font-medium">{formatNumber(Number(info.getValue()) || 0, 2)}</span>,
+        columnHelper.accessor('inQty', {
+            header: tm('extractInQty') || 'Giriş miktar',
+            cell: info => (
+                <span className="text-green-600 font-medium">
+                    {formatNumber(Number(info.getValue()) || 0, 2)}
+                </span>
+            ),
         }),
-        columnHelper.accessor('totalOut', {
-            header: tm('totalOut') || 'Toplam Çıkış',
-            cell: info => <span className="text-red-600 font-medium">{formatNumber(Number(info.getValue()) || 0, 2)}</span>,
+        columnHelper.accessor('inAmount', {
+            header: tm('extractInAmount') || 'Giriş tutar',
+            cell: info => (
+                <span className="text-green-700 font-medium">
+                    {formatNumber(Number(info.getValue()) || 0, 2)} {currency}
+                </span>
+            ),
         }),
-        columnHelper.accessor('netChange', {
-            header: tm('netChange') || 'Net Değişim',
-            cell: info => {
-                const v = Number(info.getValue()) || 0;
-                return (
-                    <span className={`font-bold ${v >= 0 ? 'text-green-700' : 'text-red-700'}`}>
-                        {v > 0 ? '+' : ''}
-                        {formatNumber(v, 2)}
-                    </span>
-                );
-            },
+        columnHelper.accessor('outQty', {
+            header: tm('extractOutQty') || 'Çıkış miktar',
+            cell: info => (
+                <span className="text-red-600 font-medium">
+                    {formatNumber(Number(info.getValue()) || 0, 2)}
+                </span>
+            ),
         }),
-    ], [tm]);
+        columnHelper.accessor('outAmount', {
+            header: tm('extractOutAmount') || 'Çıkış tutar',
+            cell: info => (
+                <span className="text-red-700 font-medium">
+                    {formatNumber(Number(info.getValue()) || 0, 2)} {currency}
+                </span>
+            ),
+        }),
+    ], [tm, currency]);
 
     return (
         <div className="h-full flex flex-col bg-white rounded-lg shadow-sm border border-gray-200">
@@ -177,6 +146,28 @@ export function InOutTotalsReport() {
                         {tm('excel')}
                     </button>
                 </div>
+                <div className="flex gap-4 text-sm flex-wrap">
+                    <div>
+                        {tm('extractInQty')}:{' '}
+                        <span className="font-bold text-green-700">{formatNumber(grand.inQty, 2)}</span>
+                    </div>
+                    <div>
+                        {tm('extractInAmount')}:{' '}
+                        <span className="font-bold text-green-700">
+                            {formatNumber(grand.inAmount, 2)} {currency}
+                        </span>
+                    </div>
+                    <div>
+                        {tm('extractOutQty')}:{' '}
+                        <span className="font-bold text-red-700">{formatNumber(grand.outQty, 2)}</span>
+                    </div>
+                    <div>
+                        {tm('extractOutAmount')}:{' '}
+                        <span className="font-bold text-red-700">
+                            {formatNumber(grand.outAmount, 2)} {currency}
+                        </span>
+                    </div>
+                </div>
                 <div className="flex gap-3 items-end flex-wrap">
                     <div>
                         <label className="block text-[10px] font-bold text-gray-500 uppercase mb-1">
@@ -185,7 +176,7 @@ export function InOutTotalsReport() {
                         <input
                             type="date"
                             value={startDate}
-                            onChange={e => setStartDate(e.target.value)}
+                            onChange={e => setStartDate(toSqlDateInputString(e.target.value) || e.target.value)}
                             className="px-3 py-1.5 border rounded text-sm"
                         />
                     </div>
@@ -196,7 +187,7 @@ export function InOutTotalsReport() {
                         <input
                             type="date"
                             value={endDate}
-                            onChange={e => setEndDate(e.target.value)}
+                            onChange={e => setEndDate(toSqlDateInputString(e.target.value) || e.target.value)}
                             className="px-3 py-1.5 border rounded text-sm"
                         />
                     </div>
@@ -211,8 +202,12 @@ export function InOutTotalsReport() {
                             <p className="text-gray-500">{tm('loading')}</p>
                         </div>
                     </div>
+                ) : rows.length === 0 ? (
+                    <div className="h-full flex items-center justify-center px-6 text-center text-sm text-gray-500">
+                        {tm('noRecordsFound') || 'Kayıt bulunamadı'}
+                    </div>
                 ) : (
-                    <DevExDataGrid data={rows} columns={columns} pageSize={50} enableExcelExport={false} />
+                    <DevExDataGrid data={rows} columns={columns} {...REPORT_GRID_DEFAULTS} height="100%" />
                 )}
             </div>
         </div>

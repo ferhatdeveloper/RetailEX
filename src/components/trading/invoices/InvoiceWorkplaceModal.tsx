@@ -1,21 +1,11 @@
 ﻿import { X, Building, Search } from 'lucide-react';
-import { useState, useMemo } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { useLanguage } from '../../../contexts/LanguageContext';
 import { PercentBodyModal, PercentBodyModalScrollBody } from '../../shared/PercentBodyModal';
-
-interface Workplace {
-  code: string;
-  name: string;
-  address?: string;
-}
-
-// Mock işyerleri - gerçek uygulamada API'den gelecek
-const mockWorkplaces: Workplace[] = [
-  { code: '000', name: 'Merkez', address: 'Bağdat, Irak' },
-  { code: '001', name: 'Şube 1', address: 'Erbil, Irak' },
-  { code: '002', name: 'Şube 2', address: 'Basra, Irak' },
-  { code: '003', name: 'Şube 3', address: 'Musul, Irak' },
-];
+import {
+  listInvoiceWorkplaces,
+  type InvoicePickerMaster,
+} from '../../../utils/invoiceDetailMasters';
 
 interface InvoiceWorkplaceModalProps {
   currentWorkplace: string;
@@ -26,21 +16,35 @@ interface InvoiceWorkplaceModalProps {
 export function InvoiceWorkplaceModal({ currentWorkplace, onSelect, onClose }: InvoiceWorkplaceModalProps) {
   const { tm } = useLanguage();
   const [searchTerm, setSearchTerm] = useState('');
+  const [workplaces, setWorkplaces] = useState<InvoicePickerMaster[]>([]);
+  const [loaded, setLoaded] = useState(false);
+
+  useEffect(() => {
+    let cancelled = false;
+    (async () => {
+      const rows = await listInvoiceWorkplaces();
+      if (!cancelled) {
+        setWorkplaces(rows);
+        setLoaded(true);
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, []);
 
   const filteredWorkplaces = useMemo(() => {
-    if (!searchTerm.trim()) {
-      return mockWorkplaces;
-    }
-    const term = searchTerm.toLowerCase();
-    return mockWorkplaces.filter(
-      workplace =>
-        workplace.code.toLowerCase().includes(term) ||
-        workplace.name.toLowerCase().includes(term) ||
-        workplace.address?.toLowerCase().includes(term)
+    if (!searchTerm.trim()) return workplaces;
+    const term = searchTerm.toLocaleLowerCase('tr-TR');
+    return workplaces.filter(
+      (workplace) =>
+        workplace.code.toLocaleLowerCase('tr-TR').includes(term) ||
+        workplace.name.toLocaleLowerCase('tr-TR').includes(term) ||
+        workplace.address?.toLocaleLowerCase('tr-TR').includes(term),
     );
-  }, [searchTerm]);
+  }, [searchTerm, workplaces]);
 
-  const handleSelect = (workplace: Workplace) => {
+  const handleSelect = (workplace: InvoicePickerMaster) => {
     onSelect(`${workplace.code}, ${workplace.name}`);
     onClose();
   };
@@ -67,7 +71,6 @@ export function InvoiceWorkplaceModal({ currentWorkplace, onSelect, onClose }: I
           </button>
         </div>
 
-        {/* Search */}
         <div className="p-4 border-b border-gray-200 shrink-0">
           <div className="relative">
             <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" />
@@ -82,12 +85,11 @@ export function InvoiceWorkplaceModal({ currentWorkplace, onSelect, onClose }: I
           </div>
         </div>
 
-        {/* Workplace List */}
         <PercentBodyModalScrollBody className="p-4">
-          {filteredWorkplaces.length === 0 ? (
+          {loaded && filteredWorkplaces.length === 0 ? (
             <div className="text-center py-8 text-gray-500">
               <Building className="w-12 h-12 mx-auto mb-2 opacity-50" />
-              <p>{tm('workplaceNotFound')}</p>
+              <p>{tm('invoicePickerNoRecords')}</p>
             </div>
           ) : (
             <div className="space-y-2">
@@ -135,5 +137,3 @@ export function InvoiceWorkplaceModal({ currentWorkplace, onSelect, onClose }: I
     </PercentBodyModal>
   );
 }
-
-

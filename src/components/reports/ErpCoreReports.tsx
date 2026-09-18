@@ -39,6 +39,8 @@ import {
   ProductMovementHistoryModal,
   type ProductMovementTarget,
 } from './ProductMovementHistoryModal';
+import { DevExDataGrid } from '../shared/DevExDataGrid';
+import { buildReportGridColumns, REPORT_GRID_DEFAULTS } from './shared/ReportDataGrid';
 
 type CardFilter = 'all' | 'customer' | 'supplier';
 
@@ -230,47 +232,44 @@ export function CariAgingReport() {
           </div>
         ))}
       </div>
-      <div className={`overflow-auto rounded-lg border max-h-[520px] ${tableCls}`}>
-        <table className="w-full min-w-[900px] text-sm">
-          <thead className={`sticky top-0 ${thCls}`}>
-            <tr>
-              <th className="px-3 py-2 text-left">{tm('erpColAccount')}</th>
-              <th className="px-3 py-2 text-left">{tm('erpColFiche')}</th>
-              <th className="px-3 py-2 text-left">{tm('erpColInvoiceDate')}</th>
-              <th className="px-3 py-2 text-left">{tm('erpColDueDate')}</th>
-              <th className="px-3 py-2 text-right">{tm('erpColAmount')}</th>
-              <th className="px-3 py-2 text-right">{tm('erpColDaysOverdue')}</th>
-              <th className="px-3 py-2 text-left">{tm('erpColBucket')}</th>
-            </tr>
-          </thead>
-          <tbody>
-            {rows.length === 0 && !loading && (
-              <tr>
-                <td colSpan={7} className="px-3 py-8 text-center opacity-60">
-                  {tm('erpNoRows')}
-                </td>
-              </tr>
-            )}
-            {rows.map((r, i) => (
-              <tr key={`${r.ficheNo}-${i}`} className={darkMode ? 'border-t border-gray-700' : 'border-t border-gray-100'}>
-                <td className="px-3 py-2">
+      <div className="h-[520px]">
+        <DevExDataGrid
+          data={rows.map((r) => ({
+            ...r,
+            accountLabel: `${r.accountName} ${r.accountCode}`,
+            typeLabel: cariTypeLabel(tm, r.cardType),
+            bucketText: bucketLabel(tm, r.bucket),
+          }))}
+          columns={buildReportGridColumns([
+            {
+              id: 'accountLabel',
+              header: tm('erpColAccount'),
+              size: 200,
+              cell: (r: CariAgingRow & { typeLabel: string }) => (
+                <div>
                   <div className="font-medium">{r.accountName}</div>
                   <div className="text-xs opacity-60">
-                    {r.accountCode} · {r.cardType === 'customer' ? tm('erpCardCustomers') : tm('erpCardSuppliers')}
+                    {r.accountCode} · {r.typeLabel}
                   </div>
-                </td>
-                <td className="px-3 py-2 font-mono text-xs">{r.ficheNo}</td>
-                <td className="px-3 py-2">{r.invoiceDate}</td>
-                <td className="px-3 py-2">{r.dueDate}</td>
-                <td className="px-3 py-2 text-right font-semibold">
-                  {formatNumber(r.amount, 2, false)} {currency}
-                </td>
-                <td className="px-3 py-2 text-right">{r.daysOverdue}</td>
-                <td className="px-3 py-2">{bucketLabel(tm, r.bucket)}</td>
-              </tr>
-            ))}
-          </tbody>
-        </table>
+                </div>
+              ),
+            },
+            { id: 'ficheNo', header: tm('erpColFiche'), size: 110 },
+            { id: 'invoiceDate', header: tm('erpColInvoiceDate'), filterKind: 'date' as const, size: 110 },
+            { id: 'dueDate', header: tm('erpColDueDate'), filterKind: 'date' as const, size: 110 },
+            {
+              id: 'amount',
+              header: tm('erpColAmount'),
+              align: 'right' as const,
+              size: 120,
+              cell: (r: CariAgingRow) => `${formatNumber(r.amount, 2, false)} ${currency}`,
+            },
+            { id: 'daysOverdue', header: tm('erpColDaysOverdue'), align: 'right' as const, size: 90 },
+            { id: 'bucketText', header: tm('erpColBucket'), size: 110 },
+          ])}
+          {...REPORT_GRID_DEFAULTS}
+          height="100%"
+        />
       </div>
     </ReportShell>
   );
@@ -368,43 +367,49 @@ export function CariBalanceSummaryReport() {
           </p>
         </div>
       </div>
-      <div className={`overflow-auto rounded-lg border max-h-[520px] ${tableCls}`}>
-        <table className="w-full min-w-[700px] text-sm">
-          <thead className={`sticky top-0 ${thCls}`}>
-            <tr>
-              <th className="px-3 py-2 text-left">{tm('erpColAccount')}</th>
-              <th className="px-3 py-2 text-left">{tm('erpColType')}</th>
-              <th className="px-3 py-2 text-right">{tm('erpColBalance')}</th>
-              <th className="px-3 py-2 text-right">{tm('erpColCreditLimit')}</th>
-              <th className="px-3 py-2 text-left">{tm('erpColTerms')}</th>
-            </tr>
-          </thead>
-          <tbody>
-            {rows.length === 0 && !loading && (
-              <tr>
-                <td colSpan={5} className="px-3 py-8 text-center opacity-60">
-                  {tm('erpNoRows')}
-                </td>
-              </tr>
-            )}
-            {rows.map((r) => (
-              <tr key={r.accountId} className={darkMode ? 'border-t border-gray-700' : 'border-t border-gray-100'}>
-                <td className="px-3 py-2">
+      <div className="h-[520px]">
+        <DevExDataGrid
+          data={rows.map((r) => ({
+            ...r,
+            accountLabel: `${r.accountName} ${r.accountCode}`,
+            typeLabel: cariTypeLabel(tm, r.cardType),
+          }))}
+          columns={buildReportGridColumns([
+            {
+              id: 'accountLabel',
+              header: tm('erpColAccount'),
+              size: 220,
+              cell: (r: CariBalanceRow) => (
+                <div>
                   <div className="font-medium">{r.accountName}</div>
                   <div className="font-mono text-xs opacity-60">{r.accountCode}</div>
-                </td>
-                <td className="px-3 py-2">
-                  {cariTypeLabel(tm, r.cardType)}
-                </td>
-                <td className={`px-3 py-2 text-right font-semibold ${r.balance < 0 ? 'text-red-500' : ''}`}>
+                </div>
+              ),
+            },
+            { id: 'typeLabel', header: tm('erpColType'), size: 120 },
+            {
+              id: 'balance',
+              header: tm('erpColBalance'),
+              align: 'right' as const,
+              size: 130,
+              cell: (r: CariBalanceRow) => (
+                <span className={`font-semibold ${r.balance < 0 ? 'text-red-500' : ''}`}>
                   {formatLedgerAmount(r.balance, currency)}
-                </td>
-                <td className="px-3 py-2 text-right">{fmtAmt(r.creditLimit)}</td>
-                <td className="px-3 py-2">{r.paymentTerms || '—'}</td>
-              </tr>
-            ))}
-          </tbody>
-        </table>
+                </span>
+              ),
+            },
+            {
+              id: 'creditLimit',
+              header: tm('erpColCreditLimit'),
+              align: 'right' as const,
+              size: 120,
+              cell: (r: CariBalanceRow) => fmtAmt(r.creditLimit),
+            },
+            { id: 'paymentTerms', header: tm('erpColTerms'), size: 140 },
+          ])}
+          {...REPORT_GRID_DEFAULTS}
+          height="100%"
+        />
       </div>
     </ReportShell>
   );
@@ -460,16 +465,11 @@ export function CashBankMovementReport() {
   const initial = defaultRange();
   const [startDate, setStartDate] = useState(initial.start);
   const [endDate, setEndDate] = useState(initial.end);
-  const [source, setSource] = useState<'all' | 'cash' | 'bank'>('all');
-  const [registerId, setRegisterId] = useState<string>('');
   const [kasalar, setKasalar] = useState<Kasa[]>([]);
   const [rows, setRows] = useState<CashBankMovementRow[]>([]);
   const [loading, setLoading] = useState(false);
-  /** Defter etiketi — raporlama USD yok, kur çevrimi yok. Seçili kasa dövizi varsa o. */
+  /** Defter etiketi — raporlama USD yok, kur çevrimi yok. Kasalar tek dövizse o. */
   const currency = useMemo(() => {
-    const selected = kasalar.find((k) => k.id === registerId);
-    const kasaCode = String(selected?.id_doviz_kodu || '').trim().toUpperCase();
-    if (kasaCode.length >= 3) return kasaCode.slice(0, 10);
     const unique = [
       ...new Set(
         kasalar
@@ -479,7 +479,7 @@ export function CashBankMovementReport() {
     ];
     if (unique.length === 1) return unique[0].slice(0, 10);
     return getFirmLedgerCurrency(selectedFirm, getAppDefaultCurrency() || getGlobalCurrency());
-  }, [kasalar, registerId, selectedFirm]);
+  }, [kasalar, selectedFirm]);
 
   useEffect(() => {
     if (selectedDonem?.beg_date && selectedDonem?.end_date) {
@@ -510,8 +510,7 @@ export function CashBankMovementReport() {
         await erpReportsAPI.getCashBankMovements({
           startDate,
           endDate,
-          source,
-          registerId: registerId || undefined,
+          source: 'all',
         }),
       );
     } catch (err: any) {
@@ -520,7 +519,7 @@ export function CashBankMovementReport() {
     } finally {
       setLoading(false);
     }
-  }, [startDate, endDate, source, registerId]);
+  }, [startDate, endDate]);
 
   useEffect(() => {
     void load();
@@ -562,27 +561,45 @@ export function CashBankMovementReport() {
   }, [rows]);
 
   const tableCls = darkMode ? 'bg-gray-800 border-gray-700' : 'bg-white border-gray-200';
-  const thCls = darkMode ? 'bg-gray-900/60 text-gray-300' : 'bg-gray-50 text-gray-600';
   const inputCls = darkMode ? 'bg-gray-900 border-gray-600' : 'bg-white border-gray-300';
-  const kasaOptions = useMemo(() => {
-    const byId = new Map<string, { id: string; label: string }>();
-    for (const k of kasalar) {
-      const id = String(k.id || '').trim();
-      if (!id) continue;
-      const name = String(k.kasa_adi || '').trim();
-      const code = String(k.kasa_kodu || '').trim();
-      byId.set(id, { id, label: name || code || id });
-    }
-    for (const r of rows) {
-      if (r.source !== 'cash') continue;
-      const id = String(r.registerId || '').trim();
-      if (!id || byId.has(id)) continue;
-      const name = String(r.registerName || '').trim();
-      const code = String(r.registerCode || '').trim();
-      byId.set(id, { id, label: name || code || id });
-    }
-    return [...byId.values()].sort((a, b) => a.label.localeCompare(b.label, 'tr'));
-  }, [kasalar, rows]);
+
+  const gridRows = useMemo(
+    () =>
+      rows.map((r) => ({
+        ...r,
+        sourceLabel: r.source === 'cash' ? tm('erpSourceCash') : tm('erpSourceBank'),
+        registerLabel: displayRegister(r),
+        txnLabel: cashBankTxnLabel(tm, r.transactionType),
+        descLabel: String(r.definition || '').trim(),
+        accountLabel: String(r.accountName || '').trim(),
+      })),
+    [rows, tm],
+  );
+
+  const gridColumns = useMemo(
+    () =>
+      buildReportGridColumns<(typeof gridRows)[number]>([
+        { id: 'date', header: tm('erpColDate'), filterKind: 'date', size: 110 },
+        { id: 'sourceLabel', header: tm('erpColSource'), size: 110 },
+        { id: 'registerLabel', header: tm('erpColRegister'), size: 160 },
+        { id: 'ficheNo', header: tm('erpColFiche'), size: 110 },
+        { id: 'txnLabel', header: tm('erpColTxnType'), size: 130 },
+        { id: 'descLabel', header: tm('reportsCashColDesc'), size: 200 },
+        { id: 'accountLabel', header: tm('erpColAccount'), size: 160 },
+        {
+          id: 'netAmount',
+          header: tm('erpColAmount'),
+          align: 'right',
+          size: 130,
+          cell: (r) => (
+            <span className={`font-semibold ${r.netAmount < 0 ? 'text-red-500' : 'text-emerald-600'}`}>
+              {formatLedgerAmount(r.netAmount, currency)}
+            </span>
+          ),
+        },
+      ]),
+    [tm, currency],
+  );
 
   return (
     <ReportShell
@@ -610,37 +627,6 @@ export function CashBankMovementReport() {
         <>
           <input type="date" value={startDate} onChange={(e) => setStartDate(e.target.value)} className={`rounded-lg border px-2 py-2 text-sm ${inputCls}`} />
           <input type="date" value={endDate} onChange={(e) => setEndDate(e.target.value)} className={`rounded-lg border px-2 py-2 text-sm ${inputCls}`} />
-          <select
-            value={source}
-            onChange={(e) => {
-              const next = e.target.value as 'all' | 'cash' | 'bank';
-              setSource(next);
-              if (next === 'bank') setRegisterId('');
-            }}
-            className={`rounded-lg border px-2 py-2 text-sm ${inputCls}`}
-          >
-            <option value="all">{tm('erpSourceAll')}</option>
-            <option value="cash">{tm('erpSourceCash')}</option>
-            <option value="bank">{tm('erpSourceBank')}</option>
-          </select>
-          {source !== 'bank' && (
-            <select
-              value={registerId}
-              onChange={(e) => setRegisterId(e.target.value)}
-              className={`rounded-lg border px-2 py-2 text-sm min-w-[12rem] ${inputCls}`}
-              title={tm('erpCashRegisterFilter')}
-              aria-label={tm('erpCashRegisterFilter')}
-            >
-              <option value="">
-                {tm('all')} — {tm('erpCashRegisterFilter')}
-              </option>
-              {kasaOptions.map((k) => (
-                <option key={k.id} value={k.id}>
-                  {k.label}
-                </option>
-              ))}
-            </select>
-          )}
         </>
       }
     >
@@ -670,50 +656,14 @@ export function CashBankMovementReport() {
           </p>
         </div>
       </div>
-      {registerId ? (
-        <p className={`text-xs ${darkMode ? 'text-gray-400' : 'text-gray-500'}`}>
-          {tm('erpVirmanSingleKasaNote')}
-        </p>
-      ) : null}
-      <div className={`overflow-auto rounded-lg border max-h-[520px] ${tableCls}`}>
-        <table className="w-full min-w-[960px] text-sm">
-          <thead className={`sticky top-0 ${thCls}`}>
-            <tr>
-              <th className="px-3 py-2 text-left">{tm('erpColDate')}</th>
-              <th className="px-3 py-2 text-left">{tm('erpColSource')}</th>
-              <th className="px-3 py-2 text-left">{tm('erpColRegister')}</th>
-              <th className="px-3 py-2 text-left">{tm('erpColFiche')}</th>
-              <th className="px-3 py-2 text-left">{tm('erpColTxnType')}</th>
-              <th className="px-3 py-2 text-left">{tm('reportsCashColDesc')}</th>
-              <th className="px-3 py-2 text-right">{tm('erpColAmount')}</th>
-            </tr>
-          </thead>
-          <tbody>
-            {rows.length === 0 && !loading && (
-              <tr>
-                <td colSpan={7} className="px-3 py-8 text-center opacity-60">
-                  {tm('erpNoRows')}
-                </td>
-              </tr>
-            )}
-            {rows.map((r) => (
-              <tr key={r.id} className={darkMode ? 'border-t border-gray-700' : 'border-t border-gray-100'}>
-                <td className="px-3 py-2">{r.date}</td>
-                <td className="px-3 py-2">{r.source === 'cash' ? tm('erpSourceCash') : tm('erpSourceBank')}</td>
-                <td className="px-3 py-2">{displayRegister(r)}</td>
-                <td className="px-3 py-2 font-mono text-xs">{r.ficheNo}</td>
-                <td className="px-3 py-2 text-xs">{cashBankTxnLabel(tm, r.transactionType)}</td>
-                <td className="px-3 py-2">
-                  <div>{r.definition || '—'}</div>
-                  {r.accountName ? <div className="text-xs opacity-60">{r.accountName}</div> : null}
-                </td>
-                <td className={`px-3 py-2 text-right font-semibold ${r.netAmount < 0 ? 'text-red-500' : 'text-emerald-600'}`}>
-                  {formatLedgerAmount(r.netAmount, currency)}
-                </td>
-              </tr>
-            ))}
-          </tbody>
-        </table>
+      <div className="h-[520px]">
+        <DevExDataGrid
+          data={gridRows}
+          columns={gridColumns}
+          enableFiltering
+          {...REPORT_GRID_DEFAULTS}
+          height="100%"
+        />
       </div>
     </ReportShell>
   );
@@ -1553,9 +1503,50 @@ export function CariExtractReport() {
   }, [load]);
 
   const tableCls = darkMode ? 'bg-gray-800 border-gray-700' : 'bg-white border-gray-200';
-  const thCls = darkMode ? 'bg-gray-900/60 text-gray-300' : 'bg-gray-50 text-gray-600';
   const inputCls = darkMode ? 'bg-gray-900 border-gray-600' : 'bg-white border-gray-300';
   const closing = rows.length ? rows[rows.length - 1].balance : 0;
+
+  const gridRows = useMemo(
+    () =>
+      rows.map((r) => ({
+        ...r,
+        descLabel: resolveEkstreDescription(r.notes, r.ficheType, r.trcode ?? 0, r.isCancelled, tm) || '',
+        ficheTypeLabel: String(r.ficheType || r.source || '').trim(),
+      })),
+    [rows, tm],
+  );
+
+  const gridColumns = useMemo(
+    () =>
+      buildReportGridColumns<(typeof gridRows)[number]>([
+        { id: 'date', header: tm('erpColDate'), filterKind: 'date', size: 110 },
+        { id: 'ficheNo', header: tm('erpColFiche'), size: 120 },
+        { id: 'ficheTypeLabel', header: tm('erpColTxnType'), size: 120 },
+        { id: 'descLabel', header: tm('reportsCashColDesc'), size: 240 },
+        {
+          id: 'debit',
+          header: tm('erpColDebit'),
+          align: 'right',
+          size: 120,
+          cell: (r) => (r.debit ? fmtAmt(r.debit) : '—'),
+        },
+        {
+          id: 'credit',
+          header: tm('erpColCredit'),
+          align: 'right',
+          size: 120,
+          cell: (r) => (r.credit ? fmtAmt(r.credit) : '—'),
+        },
+        {
+          id: 'balance',
+          header: tm('erpColBalance'),
+          align: 'right',
+          size: 130,
+          cell: (r) => <span className="font-semibold">{fmtAmt(r.balance)}</span>,
+        },
+      ]),
+    [tm, fmtAmt],
+  );
 
   return (
     <ReportShell
@@ -1600,38 +1591,14 @@ export function CariExtractReport() {
         <p className="text-xs opacity-60">{tm('erpColBalance')}</p>
         <p className="text-xl font-bold">{formatLedgerAmount(closing, currency)}</p>
       </div>
-      <div className={`overflow-auto rounded-lg border max-h-[520px] ${tableCls}`}>
-        <table className="w-full min-w-[880px] text-sm">
-          <thead className={`sticky top-0 ${thCls}`}>
-            <tr>
-              <th className="px-3 py-2 text-left">{tm('erpColDate')}</th>
-              <th className="px-3 py-2 text-left">{tm('erpColFiche')}</th>
-              <th className="px-3 py-2 text-left">{tm('reportsCashColDesc')}</th>
-              <th className="px-3 py-2 text-right">{tm('erpColDebit')}</th>
-              <th className="px-3 py-2 text-right">{tm('erpColCredit')}</th>
-              <th className="px-3 py-2 text-right">{tm('erpColBalance')}</th>
-            </tr>
-          </thead>
-          <tbody>
-            {rows.length === 0 && !loading && (
-              <tr>
-                <td colSpan={6} className="px-3 py-8 text-center opacity-60">{tm('erpNoRows')}</td>
-              </tr>
-            )}
-            {rows.map((r) => (
-              <tr key={r.id} className={darkMode ? 'border-t border-gray-700' : 'border-t border-gray-100'}>
-                <td className="px-3 py-2">{r.date}</td>
-                <td className="px-3 py-2 font-mono text-xs">{r.ficheNo}</td>
-                <td className="px-3 py-2">
-                  {resolveEkstreDescription(r.notes, r.ficheType, r.trcode ?? 0, r.isCancelled, tm) || '—'}
-                </td>
-                <td className="px-3 py-2 text-right">{r.debit ? fmtAmt(r.debit) : '—'}</td>
-                <td className="px-3 py-2 text-right">{r.credit ? fmtAmt(r.credit) : '—'}</td>
-                <td className="px-3 py-2 text-right font-semibold">{fmtAmt(r.balance)}</td>
-              </tr>
-            ))}
-          </tbody>
-        </table>
+      <div className="h-[520px]">
+        <DevExDataGrid
+          data={gridRows}
+          columns={gridColumns}
+          enableFiltering
+          {...REPORT_GRID_DEFAULTS}
+          height="100%"
+        />
       </div>
     </ReportShell>
   );

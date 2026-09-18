@@ -2,6 +2,7 @@
 import { productAPI } from '../../../services/api/products';
 import { Product } from '../../../core/types';
 import { DevExDataGrid } from '../../shared/DevExDataGrid';
+import { REPORT_GRID_DEFAULTS } from '../../reports/shared/ReportDataGrid';
 import { exportDataGridToExcel } from '../../../utils/gridExcelExport';
 import { createColumnHelper, ColumnDef } from '@tanstack/react-table';
 import { Download, AlertTriangle, Filter } from 'lucide-react';
@@ -138,8 +139,8 @@ export function MinMaxStockReport() {
                     <DevExDataGrid
                         data={products}
                         columns={columns}
-                        pageSize={50}
-                        enableExcelExport={false}
+                        {...REPORT_GRID_DEFAULTS}
+                        height="100%"
                     />
                 )}
             </div>

@@ -115,6 +115,7 @@ export const salesAPI = {
           unitCost,
           totalCost,
           grossProfit,
+          type: item.lineType ?? (item as { type?: string }).type,
         };
       });
 

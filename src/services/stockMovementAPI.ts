@@ -1,5 +1,14 @@
 import { shouldUseTenantPostgrestApi } from '../config/postgrest.config';
 import { postgres, ERP_SETTINGS } from './postgres';
+import { toSqlDateInputString } from '../utils/localCalendarDate';
+import {
+    aggregateInOutTotals,
+    classifyStockLineDirection,
+    isSqlDateInInclusiveRange,
+    sqlDateExclusiveUpperBound,
+    type InOutTotalsRow,
+    type StockInOutLine,
+} from '../utils/stockInOutTotals';
 
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
@@ -31,6 +40,23 @@ export interface StockMovement {
     stock_movement_items?: StockMovementItem[];
     /** slip: ambar fişi; invoice: satış/alış faturası (synthetic liste) */
     source_kind?: 'slip' | 'invoice';
+}
+
+/** Hareket Dökümü — belge başlığı değil, stok kalem satırı. */
+export interface StockMovementLine {
+    id: string;
+    document_no: string;
+    movement_date: string;
+    created_at: string;
+    movement_type: string;
+    source_kind: 'slip' | 'invoice';
+    product_code: string;
+    product_name: string;
+    quantity: number;
+    unit_price: number;
+    warehouse_name: string;
+    customer_name: string;
+    description: string;
 }
 
 export interface StockMovementItem {
@@ -144,7 +170,10 @@ class StockMovementAPI {
                     LEFT JOIN stores st ON s.store_id = st.id
                     LEFT JOIN customers c ON c.id::text = s.customer_id::text
                     LEFT JOIN suppliers sup ON sup.id::text = s.customer_id::text
-                    WHERE s.fiche_type IN ('purchase_invoice', 'sales_invoice', 'return_invoice')
+                    WHERE LOWER(TRIM(COALESCE(s.fiche_type, ''))) IN (
+                        'purchase_invoice', 'sales_invoice', 'return_invoice',
+                        'service', 'hizmet', 'beauty', 'beauty_sale', 'pos', 'retail'
+                    )
                     ORDER BY s.date DESC NULLS LAST, s.created_at DESC NULLS LAST
                     LIMIT 500`
                 );
@@ -169,6 +198,142 @@ class StockMovementAPI {
             return combined;
         } catch (error) {
             console.error('[StockMovementAPI] getAll failed:', error);
+            return [];
+        }
+    }
+
+    /**
+     * Hareket Dökümü: fiş/fatura kalem satırları (ürün, miktar, depo, fiyat).
+     * Fiş Listesi `getAll` başlık satırıdır; burası aynı belgelerin satır dökümü.
+     */
+    async getAllLines(): Promise<StockMovementLine[]> {
+        const LINE_CAP = 15000;
+        try {
+            let slipRows: any[] = [];
+            try {
+                const { rows } = await postgres.query(
+                    `SELECT
+                        i.id,
+                        m.document_no,
+                        m.movement_date,
+                        m.created_at,
+                        m.movement_type,
+                        COALESCE(p.code, '') AS product_code,
+                        COALESCE(p.name, '') AS product_name,
+                        i.quantity,
+                        i.unit_price,
+                        COALESCE(s.name, '') AS warehouse_name,
+                        '' AS customer_name,
+                        COALESCE(i.notes, m.description, '') AS description
+                     FROM stock_movement_items i
+                     JOIN stock_movements m ON i.movement_id = m.id
+                     LEFT JOIN products p ON p.id = i.product_id
+                     LEFT JOIN stores s ON m.warehouse_id = s.id
+                     WHERE LOWER(COALESCE(m.movement_type, '')) <> 'price_change'
+                     ORDER BY m.movement_date DESC NULLS LAST, m.created_at DESC NULLS LAST
+                     LIMIT ${LINE_CAP}`
+                );
+                slipRows = rows || [];
+            } catch (err) {
+                console.warn('[StockMovementAPI] getAllLines slips failed:', err);
+            }
+
+            let invRows: any[] = [];
+            try {
+                const { rows } = await postgres.query(
+                    `SELECT
+                        si.id,
+                        sl.fiche_no AS document_no,
+                        sl.date AS movement_date,
+                        sl.created_at,
+                        CASE
+                            WHEN sl.fiche_type = 'purchase_invoice' THEN 'in'
+                            WHEN sl.fiche_type = 'sales_invoice' THEN 'out'
+                            WHEN sl.fiche_type = 'return_invoice' AND COALESCE(sl.trcode, 0) = 3 THEN 'in'
+                            WHEN sl.fiche_type = 'return_invoice' THEN 'out'
+                            ELSE 'out'
+                        END AS movement_type,
+                        COALESCE(p.code, si.item_code, '') AS product_code,
+                        COALESCE(p.name, si.item_name, '') AS product_name,
+                        si.quantity,
+                        COALESCE(
+                          NULLIF(si.unit_price, 0),
+                          CASE
+                            WHEN ABS(COALESCE(si.quantity, 0)) > 0.0000001
+                            THEN COALESCE(NULLIF(si.net_amount, 0), NULLIF(si.total_amount, 0), 0)
+                                 / NULLIF(ABS(si.quantity), 0)
+                            ELSE 0
+                          END
+                        ) AS unit_price,
+                        COALESCE(st.name, '') AS warehouse_name,
+                        COALESCE(
+                            NULLIF(TRIM(sl.customer_name), ''),
+                            c.name,
+                            sup.name,
+                            ''
+                        ) AS customer_name,
+                        COALESCE(si.item_name, sl.notes, '') AS description
+                     FROM sale_items si
+                     JOIN sales sl ON si.invoice_id = sl.id
+                     LEFT JOIN products p ON p.id = si.product_id
+                        OR (si.product_id IS NULL AND p.code = si.item_code)
+                        OR (si.product_id IS NULL AND p.id::text = si.item_code)
+                     LEFT JOIN stores st ON sl.store_id = st.id
+                     LEFT JOIN customers c ON c.id::text = sl.customer_id::text
+                     LEFT JOIN suppliers sup ON sup.id::text = sl.customer_id::text
+                     WHERE LOWER(TRIM(COALESCE(sl.fiche_type, ''))) IN (
+                         'purchase_invoice', 'sales_invoice', 'return_invoice',
+                         'service', 'hizmet', 'beauty', 'beauty_sale', 'pos', 'retail'
+                       )
+                     ORDER BY sl.date DESC NULLS LAST, sl.created_at DESC NULLS LAST
+                     LIMIT ${LINE_CAP}`
+                );
+                invRows = rows || [];
+            } catch (err) {
+                console.warn('[StockMovementAPI] getAllLines invoices failed:', err);
+            }
+
+            const slips: StockMovementLine[] = slipRows.map((r: any) => ({
+                id: String(r.id),
+                document_no: String(r.document_no || ''),
+                movement_date: r.movement_date || r.created_at || '',
+                created_at: r.created_at || '',
+                movement_type: String(r.movement_type || ''),
+                source_kind: 'slip' as const,
+                product_code: String(r.product_code || ''),
+                product_name: String(r.product_name || ''),
+                quantity: Number(r.quantity) || 0,
+                unit_price: Number(r.unit_price) || 0,
+                warehouse_name: String(r.warehouse_name || ''),
+                customer_name: String(r.customer_name || ''),
+                description: String(r.description || ''),
+            }));
+
+            const invoices: StockMovementLine[] = invRows.map((r: any) => ({
+                id: `inv-line-${r.id}`,
+                document_no: String(r.document_no || ''),
+                movement_date: r.movement_date || r.created_at || '',
+                created_at: r.created_at || '',
+                movement_type: String(r.movement_type || ''),
+                source_kind: 'invoice' as const,
+                product_code: String(r.product_code || ''),
+                product_name: String(r.product_name || ''),
+                quantity: Number(r.quantity) || 0,
+                unit_price: Number(r.unit_price) || 0,
+                warehouse_name: String(r.warehouse_name || ''),
+                customer_name: String(r.customer_name || ''),
+                description: String(r.description || ''),
+            }));
+
+            const combined = [...slips, ...invoices];
+            combined.sort((a, b) => {
+                const ta = new Date(b.created_at || b.movement_date || 0).getTime();
+                const tb = new Date(a.created_at || a.movement_date || 0).getTime();
+                return ta - tb;
+            });
+            return combined.slice(0, LINE_CAP);
+        } catch (error) {
+            console.error('[StockMovementAPI] getAllLines failed:', error);
             return [];
         }
     }
@@ -734,6 +899,305 @@ class StockMovementAPI {
 
         console.log(`[StockMovementAPI] getProductMovements(${productId}): slips=${slipRows.length}, invoices=${invoiceRows.length}`);
         return combined.map(mapRow);
+    }
+
+    /**
+     * Tarih aralığında ürün bazında giriş/çıkış toplamları.
+     * Kaynak: getProductMovements ile aynı — ambar fiş kalemleri + sale_items (alış/satış/iade).
+     * Bitiş günü `::date` ile dahildir; tutarlar netlenmez.
+     */
+    async getInOutTotalsByDateRange(options: {
+        startDate: string;
+        endDate: string;
+        firmNr?: string | number;
+        periodNr?: string | number;
+    }): Promise<InOutTotalsRow[]> {
+        const start = toSqlDateInputString(options.startDate);
+        const end = toSqlDateInputString(options.endDate);
+        if (!start || !end) return [];
+        const firmNr = String(options.firmNr ?? ERP_SETTINGS.firmNr ?? '001').padStart(3, '0').slice(0, 10);
+        const periodNr = String(options.periodNr ?? ERP_SETTINGS.periodNr ?? '01').padStart(2, '0').slice(0, 10);
+        const fp = { firmNr, periodNr };
+        const exclusiveEnd = sqlDateExclusiveUpperBound(end);
+
+        const toLine = (r: any, sourceType: 'slip' | 'invoice'): StockInOutLine => ({
+            productId: String(r.product_id || r.productId || '').trim(),
+            productCode: String(r.product_code || r.item_code || r.productCode || '').trim(),
+            productName: String(r.product_name || r.item_name || r.productName || '').trim(),
+            itemCode: String(r.item_code || '').trim(),
+            quantity: Number(r.quantity) || 0,
+            unitPrice: Number(r.unit_price ?? r.unitPrice) || 0,
+            costPrice: Number(r.cost_price ?? r.costPrice ?? r.unit_cost) || 0,
+            totalAmount: Number(r.total_amount ?? r.net_amount ?? r.totalAmount) || 0,
+            movementType: String(r.movement_type || r.movementType || ''),
+            ficheType: String(r.fiche_type || r.ficheType || ''),
+            trcode: Number(r.trcode ?? 0),
+            sourceType,
+            movementDate: r.movement_date || r.date || r.created_at,
+        });
+
+        if (shouldUseTenantPostgrestApi()) {
+            try {
+                const { postgrest } = await import('./api/postgrestClient');
+                const movPath = `/rex_${firmNr}_${periodNr}_stock_movements`;
+                const smiPath = `/rex_${firmNr}_${periodNr}_stock_movement_items`;
+                const salesPath = `/rex_${firmNr}_${periodNr}_sales`;
+                const itemsPath = `/rex_${firmNr}_${periodNr}_sale_items`;
+                const prodPath = `/rex_${firmNr}_products`;
+                const RANGE_CAP = 20000;
+                const chunkSize = 35;
+                const lines: StockInOutLine[] = [];
+
+                const isCancelled = (row: any) =>
+                    row?.is_cancelled === true ||
+                    ['iptal', 'silindi', 'cancelled', 'canceled', 'deleted'].includes(
+                        String(row?.status || '').trim().toLowerCase(),
+                    );
+
+                const slipHeaders = await postgrest
+                    .get<any[]>(
+                        movPath,
+                        {
+                            select: 'id,movement_type,movement_date,trcode,status',
+                            and: `(movement_date.gte.${start},movement_date.lt.${exclusiveEnd || end})`,
+                            limit: RANGE_CAP,
+                        },
+                        { schema: 'public' },
+                    )
+                    .catch(() => [] as any[]);
+
+                const slips = (Array.isArray(slipHeaders) ? slipHeaders : []).filter((m) => {
+                    const mt = String(m?.movement_type || '').toLowerCase();
+                    if (mt === 'price_change' || mt === 'transfer') return false;
+                    return isSqlDateInInclusiveRange(m?.movement_date, start, end);
+                });
+                const slipById = new Map<string, any>();
+                slips.forEach((m) => {
+                    if (m?.id) slipById.set(String(m.id), m);
+                });
+                const slipIds = [...slipById.keys()];
+                for (let i = 0; i < slipIds.length; i += chunkSize) {
+                    const chunk = slipIds.slice(i, i + chunkSize);
+                    const items = await postgrest
+                        .get<any[]>(
+                            smiPath,
+                            {
+                                select: 'id,movement_id,product_id,quantity,unit_price,cost_price,notes',
+                                movement_id: `in.(${chunk.join(',')})`,
+                                limit: 20000,
+                            },
+                            { schema: 'public' },
+                        )
+                        .catch(() => [] as any[]);
+                    for (const it of Array.isArray(items) ? items : []) {
+                        const m = slipById.get(String(it.movement_id));
+                        if (!m) continue;
+                        lines.push(
+                            toLine(
+                                {
+                                    ...it,
+                                    movement_type: m.movement_type,
+                                    movement_date: m.movement_date,
+                                    trcode: m.trcode,
+                                },
+                                'slip',
+                            ),
+                        );
+                    }
+                }
+
+                const saleHeaders = await postgrest
+                    .get<any[]>(
+                        salesPath,
+                        {
+                            select: 'id,date,fiche_type,trcode,status,is_cancelled',
+                            and: `(date.gte.${start},date.lt.${exclusiveEnd || end})`,
+                            limit: RANGE_CAP,
+                        },
+                        { schema: 'public' },
+                    )
+                    .catch(() => [] as any[]);
+                const sales = (Array.isArray(saleHeaders) ? saleHeaders : []).filter((s) => {
+                    if (isCancelled(s)) return false;
+                    const ft = String(s?.fiche_type || '').trim().toLowerCase();
+                    if (
+                      ![
+                        'purchase_invoice',
+                        'sales_invoice',
+                        'return_invoice',
+                        'service',
+                        'hizmet',
+                        'beauty',
+                        'beauty_sale',
+                        'pos',
+                        'retail',
+                      ].includes(ft)
+                    ) {
+                      return false;
+                    }
+                    return isSqlDateInInclusiveRange(s?.date, start, end);
+                });
+                const saleById = new Map<string, any>();
+                sales.forEach((s) => {
+                    if (s?.id) saleById.set(String(s.id), s);
+                });
+                const saleIds = [...saleById.keys()];
+                for (let i = 0; i < saleIds.length; i += chunkSize) {
+                    const chunk = saleIds.slice(i, i + chunkSize);
+                    const items = await postgrest
+                        .get<any[]>(
+                            itemsPath,
+                            {
+                                select: 'id,invoice_id,product_id,item_code,item_name,quantity,unit_price,total_amount,net_amount,unit_cost',
+                                invoice_id: `in.(${chunk.join(',')})`,
+                                limit: 20000,
+                            },
+                            { schema: 'public' },
+                        )
+                        .catch(() => [] as any[]);
+                    for (const it of Array.isArray(items) ? items : []) {
+                        const sl = saleById.get(String(it.invoice_id));
+                        if (!sl) continue;
+                        const ft = String(sl.fiche_type || '');
+                        let movementType = 'out';
+                        if (ft === 'purchase_invoice') movementType = 'in';
+                        else if (ft === 'return_invoice' && Number(sl.trcode) === 3) movementType = 'in';
+                        else if (ft === 'return_invoice' && [2, 6].includes(Number(sl.trcode))) movementType = 'out';
+                        lines.push(
+                            toLine(
+                                {
+                                    ...it,
+                                    product_code: it.item_code,
+                                    product_name: it.item_name,
+                                    movement_type: movementType,
+                                    movement_date: sl.date,
+                                    fiche_type: ft,
+                                    trcode: sl.trcode,
+                                },
+                                'invoice',
+                            ),
+                        );
+                    }
+                }
+
+                let totals = aggregateInOutTotals(lines);
+                const needIds = totals
+                    .map((r) => r.productId)
+                    .filter((id) => UUID_RE.test(id));
+                if (needIds.length > 0) {
+                    const byId = new Map<string, { code?: string; name?: string }>();
+                    for (let i = 0; i < needIds.length; i += chunkSize) {
+                        const chunk = needIds.slice(i, i + chunkSize);
+                        const prows = await postgrest
+                            .get<any[]>(
+                                prodPath,
+                                { select: 'id,code,name', id: `in.(${chunk.join(',')})`, limit: chunk.length },
+                                { schema: 'public' },
+                            )
+                            .catch(() => [] as any[]);
+                        (Array.isArray(prows) ? prows : []).forEach((p) => {
+                            if (p?.id) byId.set(String(p.id), { code: p.code, name: p.name });
+                        });
+                    }
+                    totals = totals.map((r) => {
+                        const p = byId.get(r.productId);
+                        if (!p) return r;
+                        return {
+                            ...r,
+                            productCode: r.productCode || String(p.code || ''),
+                            productName: r.productName || String(p.name || ''),
+                        };
+                    });
+                }
+                if (totals.length > 0) return totals;
+            } catch (e) {
+                console.warn('[StockMovementAPI] getInOutTotalsByDateRange PostgREST:', e);
+            }
+        }
+
+        const lines: StockInOutLine[] = [];
+        try {
+            const { rows } = await postgres.query(
+                `SELECT
+                    i.product_id::text AS product_id,
+                    COALESCE(p.code, '') AS product_code,
+                    COALESCE(p.name, '') AS product_name,
+                    i.quantity,
+                    i.unit_price,
+                    i.cost_price,
+                    m.movement_type,
+                    m.movement_date,
+                    m.trcode
+                 FROM stock_movement_items i
+                 JOIN stock_movements m ON i.movement_id = m.id
+                 LEFT JOIN products p ON p.id = i.product_id
+                 WHERE m.movement_date::date >= $1::date
+                   AND m.movement_date::date <= $2::date
+                   AND LOWER(COALESCE(m.movement_type, '')) NOT IN ('price_change', 'transfer')`,
+                [start, end],
+                fp,
+            );
+            for (const r of rows || []) {
+                if (classifyStockLineDirection(r) === 'skip') continue;
+                lines.push(toLine(r, 'slip'));
+            }
+        } catch (err) {
+            console.warn('[StockMovementAPI] getInOutTotalsByDateRange slips failed:', err);
+        }
+
+        try {
+            const { rows } = await postgres.query(
+                `SELECT
+                    COALESCE(si.product_id::text, p.id::text, si.item_code) AS product_id,
+                    COALESCE(p.code, si.item_code, '') AS product_code,
+                    COALESCE(p.name, si.item_name, '') AS product_name,
+                    si.item_code,
+                    si.quantity,
+                    COALESCE(
+                      NULLIF(si.unit_price, 0),
+                      CASE
+                        WHEN ABS(COALESCE(si.quantity, 0)) > 0.0000001
+                        THEN COALESCE(NULLIF(si.net_amount, 0), NULLIF(si.total_amount, 0), 0)
+                             / NULLIF(ABS(si.quantity), 0)
+                        ELSE 0
+                      END
+                    ) AS unit_price,
+                    COALESCE(si.unit_cost, 0) AS cost_price,
+                    COALESCE(si.total_amount, si.net_amount, 0) AS total_amount,
+                    CASE
+                        WHEN sl.fiche_type = 'purchase_invoice' THEN 'in'
+                        WHEN sl.fiche_type = 'sales_invoice' THEN 'out'
+                        WHEN sl.fiche_type = 'return_invoice' AND sl.trcode = 3 THEN 'in'
+                        WHEN sl.fiche_type = 'return_invoice' AND sl.trcode IN (2, 6) THEN 'out'
+                        ELSE 'out'
+                    END AS movement_type,
+                    sl.date AS movement_date,
+                    sl.fiche_type,
+                    sl.trcode
+                 FROM sale_items si
+                 JOIN sales sl ON si.invoice_id = sl.id
+                 LEFT JOIN products p ON p.id = si.product_id
+                    OR (si.product_id IS NULL AND p.code = si.item_code)
+                    OR (si.product_id IS NULL AND p.id::text = si.item_code)
+                 WHERE sl.date::date >= $1::date
+                   AND sl.date::date <= $2::date
+                   AND LOWER(TRIM(COALESCE(sl.fiche_type, ''))) IN (
+                     'purchase_invoice', 'sales_invoice', 'return_invoice',
+                     'service', 'hizmet', 'beauty', 'beauty_sale', 'pos', 'retail'
+                   )
+                   AND COALESCE(sl.is_cancelled, false) = false
+                   AND LOWER(TRIM(COALESCE(sl.status, ''))) NOT IN ('iptal', 'silindi', 'cancelled', 'canceled', 'deleted')`,
+                [start, end],
+                fp,
+            );
+            for (const r of rows || []) {
+                lines.push(toLine(r, 'invoice'));
+            }
+        } catch (err) {
+            console.warn('[StockMovementAPI] getInOutTotalsByDateRange invoices failed:', err);
+        }
+
+        return aggregateInOutTotals(lines);
     }
 
     /**

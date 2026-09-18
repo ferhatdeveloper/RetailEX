@@ -2,12 +2,19 @@ import React, { useState, useEffect, useMemo } from 'react';
 import { productAPI } from '../../../services/api/products';
 import type { Product } from '../../../core/types';
 import { DevExDataGrid } from '../../shared/DevExDataGrid';
+import { REPORT_GRID_DEFAULTS } from '../../reports/shared/ReportDataGrid';
 import { exportDataGridToExcel } from '../../../utils/gridExcelExport';
 import { createColumnHelper, ColumnDef } from '@tanstack/react-table';
 import { Download, Banknote } from 'lucide-react';
 import { useLanguage } from '../../../contexts/LanguageContext';
 import { useFirmaDonem } from '../../../contexts/FirmaDonemContext';
 import { formatNumber } from '../../../utils/formatNumber';
+import {
+    fetchLayeredInventoryValuation,
+    layeredAvgForProduct,
+    layeredCostForProduct,
+    type LayeredInventoryValuation,
+} from '../../../services/layeredInventoryCost';
 
 interface ValuationRow {
     product_id: string;
@@ -21,14 +28,15 @@ interface ValuationRow {
 
 /**
  * Malzeme Değer Raporu — tenant-aware (rex_{firmNr}_products).
- * FIFO katmanları henüz mevcut değil; ortalama maliyet (products.cost) × stok ile
- * yaklaşık değer hesaplanır. Para birimi seçili firmanın ana_para_birimi'nden alınır.
+ * Toplam değer ve ort. birim maliyet FIFO kalan alış katmanlarından gelir
+ * (kart alış fiyatı × miktar değil). Para birimi firmanın ana_para_birimi (IQD vb.).
  */
 export function MaterialValueReport() {
     const [products, setProducts] = useState<Product[]>([]);
+    const [valuation, setValuation] = useState<LayeredInventoryValuation | null>(null);
     const [loading, setLoading] = useState(true);
     const { tm } = useLanguage();
-    const { selectedFirm } = useFirmaDonem();
+    const { selectedFirm, selectedPeriod } = useFirmaDonem();
     const currency = selectedFirm?.ana_para_birimi || 'IQD';
 
     useEffect(() => {
@@ -37,7 +45,17 @@ export function MaterialValueReport() {
             setLoading(true);
             try {
                 const data = await productAPI.getAllForReports({ firmNr: selectedFirm?.firm_nr });
-                if (!cancelled) setProducts(data);
+                if (cancelled) return;
+                setProducts(data);
+                const layered = await fetchLayeredInventoryValuation({
+                    firmNr: selectedFirm?.firm_nr,
+                    periodNr: selectedPeriod?.nr,
+                    onHandProducts: data,
+                }).catch((err) => {
+                    console.error('[MaterialValueReport] layered cost failed', err);
+                    return null;
+                });
+                if (!cancelled) setValuation(layered);
             } catch (err) {
                 console.error('[MaterialValueReport] load failed', err);
             } finally {
@@ -46,25 +64,26 @@ export function MaterialValueReport() {
         }
         loadData();
         return () => { cancelled = true; };
-    }, [selectedFirm?.firm_nr]);
+    }, [selectedFirm?.firm_nr, selectedPeriod?.nr]);
 
     const rows = useMemo<ValuationRow[]>(() => {
         return products
             .filter(p => (p.stock || 0) > 0)
             .map(p => {
                 const qty = Number(p.stock) || 0;
-                const cost = Number(p.cost) || 0;
+                const total_cost = layeredCostForProduct(valuation, p);
+                const average_unit_cost = layeredAvgForProduct(valuation, p);
                 return {
                     product_id: p.id,
                     product_code: p.code || '',
                     product_name: p.name || '',
                     unit: p.unit || '',
                     quantity: qty,
-                    average_unit_cost: cost,
-                    total_cost: qty * cost,
+                    average_unit_cost,
+                    total_cost,
                 };
             });
-    }, [products]);
+    }, [products, valuation]);
 
     const totalValue = useMemo(() => rows.reduce((acc, r) => acc + r.total_cost, 0), [rows]);
 
@@ -128,7 +147,7 @@ export function MaterialValueReport() {
                         </div>
                     </div>
                 ) : (
-                    <DevExDataGrid data={rows} columns={columns} pageSize={50} enableExcelExport={false} />
+                    <DevExDataGrid data={rows} columns={columns} {...REPORT_GRID_DEFAULTS} height="100%" />
                 )}
             </div>
         </div>

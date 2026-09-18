@@ -3,14 +3,21 @@ import { productAPI } from '../../../services/api/products';
 import { salesAPI } from '../../../services/api/sales';
 import { Product } from '../../../core/types';
 import { DevExDataGrid } from '../../shared/DevExDataGrid';
+import { REPORT_GRID_DEFAULTS } from '../../reports/shared/ReportDataGrid';
 import { exportDataGridToExcel } from '../../../utils/gridExcelExport';
 import { createColumnHelper, ColumnDef } from '@tanstack/react-table';
 import { Download, Package, Columns3 } from 'lucide-react';
 import { useLanguage } from '../../../contexts/LanguageContext';
 import { useFirmaDonem } from '../../../contexts/FirmaDonemContext';
+import {
+    fetchLayeredInventoryValuation,
+    layeredCostForProduct,
+    type LayeredInventoryValuation,
+} from '../../../services/layeredInventoryCost';
 
 export function InventoryReport() {
     const [products, setProducts] = useState<Product[]>([]);
+    const [valuation, setValuation] = useState<LayeredInventoryValuation | null>(null);
     const [totalSalesAmount, setTotalSalesAmount] = useState(0);
     const [loading, setLoading] = useState(true);
     const [showColumnMenu, setShowColumnMenu] = useState(false);
@@ -48,6 +55,16 @@ export function InventoryReport() {
                 if (cancelled) return;
                 setProducts(data);
                 setTotalSalesAmount(Number(summary?.totalRevenue || 0));
+                const layered = await fetchLayeredInventoryValuation({
+                    firmNr: selectedFirm?.firm_nr,
+                    periodNr: selectedPeriod?.nr,
+                    onHandProducts: data,
+                }).catch((err) => {
+                    console.error('Failed to load layered inventory cost', err);
+                    return null;
+                });
+                if (cancelled) return;
+                setValuation(layered);
             } catch (error) {
                 console.error('Failed to load inventory', error);
             } finally {
@@ -64,14 +81,17 @@ export function InventoryReport() {
     const columnHelper = createColumnHelper<Product>();
     const totals = useMemo(() => {
         const totalStockUnits = products.reduce((acc, p) => acc + (Number(p.stock) || 0), 0);
-        const totalInventoryCostValue = products.reduce((acc, p) => acc + ((Number(p.cost) || 0) * (Number(p.stock) || 0)), 0);
+        const totalInventoryCostValue = products.reduce(
+            (acc, p) => acc + layeredCostForProduct(valuation, p),
+            0,
+        );
         const totalInventorySalesValue = products.reduce((acc, p) => acc + ((Number(p.price) || 0) * (Number(p.stock) || 0)), 0);
         return {
             totalStockUnits,
             totalInventoryCostValue,
             totalInventorySalesValue
         };
-    }, [products]);
+    }, [products, valuation]);
 
     const columns = useMemo<ColumnDef<Product, any>[]>(() => [
         columnHelper.accessor('code', {
@@ -112,7 +132,7 @@ export function InventoryReport() {
             cell: info => `${(Number(info.getValue()) || 0).toLocaleString()} ${currency}`,
             size: 140
         }),
-        columnHelper.accessor(row => (row.cost || 0) * (row.stock || 0), {
+        columnHelper.accessor(row => layeredCostForProduct(valuation, row), {
             id: 'total_cost',
             header: tm('totalValue') || 'Toplam Değer',
             cell: info => `${(Number(info.getValue()) || 0).toLocaleString()} ${currency}`,
@@ -124,7 +144,7 @@ export function InventoryReport() {
             cell: info => `${(Number(info.getValue()) || 0).toLocaleString()} ${currency}`,
             size: 180
         }),
-    ], [tm, currency]);
+    ], [tm, currency, valuation]);
 
     const columnLabels: Record<string, string> = {
         code: tm('materialCode') || 'Ürün Kodu',
@@ -198,11 +218,10 @@ export function InventoryReport() {
                     <DevExDataGrid
                         data={products}
                         columns={columns}
+                        {...REPORT_GRID_DEFAULTS}
                         columnVisibility={columnVisibility}
                         onColumnVisibilityChange={setColumnVisibility}
                         showColumnVisibilityToolbar={false}
-                        enableExcelExport={false}
-                        pageSize={50}
                         height="100%"
                     />
                 )}

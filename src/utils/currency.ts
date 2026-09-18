@@ -5,6 +5,7 @@
  */
 
 import { formatNumber as baseFormatNumber, formatCurrency as baseFormatCurrency } from './formatNumber';
+import { formatMoneyAmount } from './formatMoney';
 
 // Global currencies - will be updated by context
 let globalCurrency = 'IQD'; // Ana para birimi (işlemler)
@@ -53,6 +54,33 @@ export const getGlobalCurrency = (): string => {
 export const getReportingCurrency = (): string => {
   return globalReportingCurrency;
 };
+
+/**
+ * Defter / POS tutar etiketi — firma ana para birimi.
+ * Raporlama dövizi (USD) kullanılmaz; tutar çevrilmez.
+ */
+export function getFirmLedgerCurrency(
+  firm?: { ana_para_birimi?: string | null } | null,
+  fallback?: string | null,
+): string {
+  const fromFirm = String(firm?.ana_para_birimi ?? '').trim();
+  if (fromFirm) return normalizeCurrencyCode(fromFirm);
+  const fb = String(fallback || getGlobalCurrency() || 'IQD').trim();
+  return normalizeCurrencyCode(fb);
+}
+
+/**
+ * Ana para tutarı + kod (IQD 0 hane, USD 2). Kur çevirisi yok.
+ * Aylık satış vb. raporlarla aynı yardımcı.
+ */
+export function formatLedgerAmount(
+  value: number | null | undefined,
+  currency?: string | null,
+): string {
+  const code = normalizeCurrencyCode(currency);
+  const d = getCurrencyDecimalPlaces(code);
+  return `${formatMoneyAmount(value, { minFrac: d, maxFrac: d })} ${code}`;
+}
 
 /**
  * Para birimine göre gösterim ondalık basamağı (IQD → 0, USD/EUR → 2, KWD → 3).

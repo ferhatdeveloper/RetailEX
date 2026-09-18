@@ -7,6 +7,12 @@ import { formatNumber } from '../../../utils/formatNumber';
 import { format } from 'date-fns';
 import { useLanguage } from '../../../contexts/LanguageContext';
 import { useFirmaDonem } from '../../../contexts/FirmaDonemContext';
+import { exportReportToXlsx } from '../../../utils/reportExport';
+import { DevExDataGrid } from '../../shared/DevExDataGrid';
+import {
+    buildReportGridColumns,
+    REPORT_GRID_DEFAULTS,
+} from '../../reports/shared/ReportDataGrid';
 
 interface ExtractRow {
     id: string;
@@ -22,10 +28,19 @@ interface ExtractRow {
     warehouse_name?: string;
 }
 
+function isInbound(movType: string): boolean {
+    return movType === 'in';
+}
+
+function isOutbound(movType: string): boolean {
+    return movType === 'out';
+}
+
 /**
  * Malzeme Ekstresi — tenant-aware.
  * Seçili ürünün dönem içindeki tüm hareketlerini (ambar fişleri + faturalar)
- * tarih sırasıyla listeler ve kümülatif bakiye hesaplar.
+ * tarih sırasıyla listeler ve kümülatif miktar bakiyesi hesaplar.
+ * Para kolonları giriş/çıkış olarak ayrıdır; tek tutarda netlenmez.
  */
 export function MaterialExtractReport() {
     const { tm } = useLanguage();
@@ -146,12 +161,16 @@ export function MaterialExtractReport() {
     const totals = useMemo(() => {
         return rows.reduce(
             (acc, r) => {
-                if (r.movement_type === 'in') acc.totalIn += r.quantity;
-                else if (r.movement_type === 'out') acc.totalOut += r.quantity;
-                acc.totalAmount += r.amount;
+                if (isInbound(r.movement_type)) {
+                    acc.totalInQty += r.quantity;
+                    acc.totalInAmount += r.amount;
+                } else if (isOutbound(r.movement_type)) {
+                    acc.totalOutQty += r.quantity;
+                    acc.totalOutAmount += r.amount;
+                }
                 return acc;
             },
-            { totalIn: 0, totalOut: 0, totalAmount: 0 }
+            { totalInQty: 0, totalInAmount: 0, totalOutQty: 0, totalOutAmount: 0 }
         );
     }, [rows]);
 
@@ -161,6 +180,145 @@ export function MaterialExtractReport() {
         if (trcode === 5) return tm('warehouseReceipt') || 'Ambar Fişi';
         if (trcode === 8) return movType === 'out' ? (tm('salesInvoice') || 'Satış Fat.') : (tm('purchaseInvoice') || 'Alış Fat.');
         return movType === 'in' ? (tm('in') || 'Giriş') : (tm('out') || 'Çıkış');
+    };
+
+    const gridRows = useMemo(() => {
+        return rows.map((row) => {
+            const inbound = isInbound(row.movement_type);
+            const outbound = isOutbound(row.movement_type);
+            return {
+                ...row,
+                dateLabel: row.date ? format(new Date(row.date), 'dd.MM.yyyy') : '',
+                typeLabel: labelTrcode(row.trcode, row.movement_type),
+                descLabel: row.description || row.warehouse_name || '',
+                inQty: inbound ? row.quantity : null,
+                inAmt: inbound ? row.amount : null,
+                outQty: outbound ? row.quantity : null,
+                outAmt: outbound ? row.amount : null,
+            };
+        });
+    }, [rows, tm]);
+
+    const gridColumns = useMemo(
+        () =>
+            buildReportGridColumns<(typeof gridRows)[number]>([
+                { id: 'dateLabel', header: tm('date'), filterKind: 'date', size: 110 },
+                { id: 'typeLabel', header: tm('ficheType') || 'Fiş Tipi', size: 130 },
+                { id: 'document_no', header: tm('ficheNo') || 'Fiş No', size: 120 },
+                { id: 'descLabel', header: tm('description') || 'Açıklama', size: 180 },
+                {
+                    id: 'inQty',
+                    header: tm('extractInQty'),
+                    align: 'right',
+                    size: 110,
+                    cell: (r) =>
+                        r.inQty == null ? '' : (
+                            <span className="font-bold text-green-700">{formatNumber(r.inQty, 2)}</span>
+                        ),
+                },
+                {
+                    id: 'inAmt',
+                    header: tm('extractInAmount'),
+                    align: 'right',
+                    size: 120,
+                    cell: (r) =>
+                        r.inAmt == null ? '' : (
+                            <span className="text-green-700">{formatNumber(r.inAmt, 2)}</span>
+                        ),
+                },
+                {
+                    id: 'outQty',
+                    header: tm('extractOutQty'),
+                    align: 'right',
+                    size: 110,
+                    cell: (r) =>
+                        r.outQty == null ? '' : (
+                            <span className="font-bold text-red-700">{formatNumber(r.outQty, 2)}</span>
+                        ),
+                },
+                {
+                    id: 'outAmt',
+                    header: tm('extractOutAmount'),
+                    align: 'right',
+                    size: 120,
+                    cell: (r) =>
+                        r.outAmt == null ? '' : (
+                            <span className="text-red-700">{formatNumber(r.outAmt, 2)}</span>
+                        ),
+                },
+                {
+                    id: 'unit_price',
+                    header: tm('unitPrice') || 'Birim Fiyat',
+                    align: 'right',
+                    size: 120,
+                    cell: (r) => formatNumber(r.unit_price, 2),
+                },
+                {
+                    id: 'running_balance',
+                    header: tm('runningQuantity') || 'Kümülatif Bakiye',
+                    align: 'right',
+                    size: 140,
+                    cell: (r) => (
+                        <span className="font-bold">{formatNumber(r.running_balance, 2)}</span>
+                    ),
+                },
+            ]),
+        [tm],
+    );
+
+    const exportExcel = () => {
+        if (!selectedProduct || rows.length === 0) return;
+        const hDate = tm('date');
+        const hFicheType = tm('ficheType') || 'Fiş Tipi';
+        const hFicheNo = tm('ficheNo') || 'Fiş No';
+        const hDesc = tm('description') || 'Açıklama';
+        const hInQty = tm('extractInQty');
+        const hInAmt = tm('extractInAmount');
+        const hOutQty = tm('extractOutQty');
+        const hOutAmt = tm('extractOutAmount');
+        const hUnit = tm('unitPrice') || 'Birim Fiyat';
+        const hBal = tm('runningQuantity') || 'Kümülatif Bakiye';
+        const headers = [hDate, hFicheType, hFicheNo, hDesc, hInQty, hInAmt, hOutQty, hOutAmt, hUnit, hBal];
+        const exportRows = rows.map((row) => {
+            const inbound = isInbound(row.movement_type);
+            const outbound = isOutbound(row.movement_type);
+            return {
+                [hDate]: row.date ? format(new Date(row.date), 'dd.MM.yyyy') : '',
+                [hFicheType]: labelTrcode(row.trcode, row.movement_type),
+                [hFicheNo]: row.document_no,
+                [hDesc]: row.description || row.warehouse_name || '',
+                [hInQty]: inbound ? row.quantity : '',
+                [hInAmt]: inbound ? row.amount : '',
+                [hOutQty]: outbound ? row.quantity : '',
+                [hOutAmt]: outbound ? row.amount : '',
+                [hUnit]: row.unit_price,
+                [hBal]: row.running_balance,
+            };
+        });
+        const lastBalance = rows[rows.length - 1]?.running_balance ?? 0;
+        exportReportToXlsx({
+            fileName: `Malzeme_Ekstresi_${selectedProduct.code || 'urun'}_${startDate}_${endDate}`,
+            sheetName: tm('materialExtractReport') || 'Malzeme Ekstresi',
+            headers,
+            rows: exportRows,
+            totals: {
+                [hDate]: '',
+                [hFicheType]: '',
+                [hFicheNo]: '',
+                [hDesc]: tm('totalUppercase') || 'Toplam',
+                [hInQty]: totals.totalInQty,
+                [hInAmt]: totals.totalInAmount,
+                [hOutQty]: totals.totalOutQty,
+                [hOutAmt]: totals.totalOutAmount,
+                [hUnit]: '',
+                [hBal]: lastBalance,
+            },
+            metadata: {
+                companyName: selectedFirm?.name || selectedFirm?.firma_adi || 'RetailEX',
+                period: `${startDate} → ${endDate}`,
+                note: `${selectedProduct.code || ''} — ${selectedProduct.name || ''} • ${currency}`,
+            },
+        });
     };
 
     return (
@@ -247,7 +405,13 @@ export function MaterialExtractReport() {
                     <button className="p-2 hover:bg-gray-200 rounded border transition-colors" title={tm('print') || 'Yazdır'}>
                         <Printer className="w-4 h-4" />
                     </button>
-                    <button className="p-2 hover:bg-gray-200 rounded border transition-colors" title={tm('export') || 'Aktar'}>
+                    <button
+                        type="button"
+                        onClick={exportExcel}
+                        disabled={!selectedProduct || rows.length === 0}
+                        className="p-2 hover:bg-gray-200 rounded border transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
+                        title={tm('exportExcel') || tm('export') || 'Excel'}
+                    >
                         <Download className="w-4 h-4" />
                     </button>
                 </div>
@@ -270,8 +434,8 @@ export function MaterialExtractReport() {
                 </div>
             </div>
 
-            {/* Tablo */}
-            <div className="flex-1 overflow-auto px-6 pb-6">
+            {/* Tablo — Malzeme / Envanter Listesi ile aynı DevExDataGrid */}
+            <div className="flex-1 min-h-0 overflow-hidden px-6 pb-6">
                 {!selectedProduct ? (
                     <div className="h-full flex items-center justify-center">
                         <div className="text-center max-w-md text-gray-400">
@@ -279,83 +443,51 @@ export function MaterialExtractReport() {
                             <p>{tm('selectMaterialHint') || 'Ekstresini görmek istediğiniz malzemeyi yukarıdan seçin.'}</p>
                         </div>
                     </div>
+                ) : loading ? (
+                    <div className="h-full flex items-center justify-center text-gray-400">
+                        <div className="inline-flex items-center gap-2">
+                            <div className="w-4 h-4 border-2 border-indigo-600 border-t-transparent rounded-full animate-spin"></div>
+                            {tm('loading') || 'Yükleniyor...'}
+                        </div>
+                    </div>
                 ) : (
-                    <table className="w-full border-collapse border border-gray-300">
-                        <thead className="bg-gray-50 text-[10px] font-bold uppercase text-gray-700">
-                            <tr>
-                                <th className="border border-gray-300 px-3 py-2 text-left">{tm('date')}</th>
-                                <th className="border border-gray-300 px-3 py-2 text-left">{tm('ficheType') || 'Fiş Tipi'}</th>
-                                <th className="border border-gray-300 px-3 py-2 text-left">{tm('ficheNo') || 'Fiş No'}</th>
-                                <th className="border border-gray-300 px-3 py-2 text-left">{tm('description') || 'Açıklama'}</th>
-                                <th className="border border-gray-300 px-3 py-2 text-right">{tm('inOutQty') || 'Giriş/Çıkış'}</th>
-                                <th className="border border-gray-300 px-3 py-2 text-right">{tm('unitPrice') || 'Birim Fiyat'}</th>
-                                <th className="border border-gray-300 px-3 py-2 text-right">{tm('amount') || 'Tutar'}</th>
-                                <th className="border border-gray-300 px-3 py-2 text-right bg-blue-50">{tm('runningQuantity') || 'Kümülatif Bakiye'}</th>
-                            </tr>
-                        </thead>
-                        <tbody className="text-[11px] text-gray-700">
-                            {loading ? (
-                                <tr>
-                                    <td colSpan={8} className="text-center py-10 text-gray-400">
-                                        <div className="inline-flex items-center gap-2">
-                                            <div className="w-4 h-4 border-2 border-indigo-600 border-t-transparent rounded-full animate-spin"></div>
-                                            {tm('loading') || 'Yükleniyor...'}
-                                        </div>
-                                    </td>
-                                </tr>
-                            ) : rows.length === 0 ? (
-                                <tr>
-                                    <td colSpan={8} className="text-center py-10 text-gray-400 italic">
-                                        {tm('noRecordsFound') || 'Kayıt bulunamadı'}
-                                    </td>
-                                </tr>
-                            ) : (
-                                rows.map((row, idx) => (
-                                    <tr key={`${row.id}-${idx}`} className="hover:bg-gray-50">
-                                        <td className="border border-gray-200 px-3 py-1.5">
-                                            {row.date ? format(new Date(row.date), 'dd.MM.yyyy') : '-'}
-                                        </td>
-                                        <td className="border border-gray-200 px-3 py-1.5 font-semibold">
-                                            {labelTrcode(row.trcode, row.movement_type)}
-                                        </td>
-                                        <td className="border border-gray-200 px-3 py-1.5 font-mono">{row.document_no}</td>
-                                        <td className="border border-gray-200 px-3 py-1.5 italic">
-                                            {row.description || row.warehouse_name || '-'}
-                                        </td>
-                                        <td className={`border border-gray-200 px-3 py-1.5 text-right font-bold ${row.movement_type === 'in' ? 'text-green-600' : 'text-red-600'}`}>
-                                            {row.movement_type === 'in' ? '+' : '-'}{formatNumber(row.quantity, 2)}
-                                        </td>
-                                        <td className="border border-gray-200 px-3 py-1.5 text-right">{formatNumber(row.unit_price, 2)}</td>
-                                        <td className="border border-gray-200 px-3 py-1.5 text-right">{formatNumber(row.amount, 2)}</td>
-                                        <td className="border border-gray-200 px-3 py-1.5 text-right font-bold bg-blue-50/30">
-                                            {formatNumber(row.running_balance, 2)}
-                                        </td>
-                                    </tr>
-                                ))
-                            )}
-                        </tbody>
-                        {rows.length > 0 && (
-                            <tfoot className="bg-gray-100 font-bold text-xs">
-                                <tr>
-                                    <td colSpan={4} className="border border-gray-300 px-3 py-2 text-right">
-                                        {tm('totalUppercase') || 'TOPLAM'}
-                                    </td>
-                                    <td className="border border-gray-300 px-3 py-2 text-right">
-                                        <span className="text-green-600">+{formatNumber(totals.totalIn, 2)}</span>
-                                        {' / '}
-                                        <span className="text-red-600">-{formatNumber(totals.totalOut, 2)}</span>
-                                    </td>
-                                    <td className="border border-gray-300 px-3 py-2"></td>
-                                    <td className="border border-gray-300 px-3 py-2 text-right">
-                                        {formatNumber(totals.totalAmount, 2)} {currency}
-                                    </td>
-                                    <td className="border border-gray-300 px-3 py-2 text-right bg-blue-100">
-                                        {rows.length > 0 ? formatNumber(rows[rows.length - 1].running_balance, 2) : '0'}
-                                    </td>
-                                </tr>
-                            </tfoot>
-                        )}
-                    </table>
+                    <DevExDataGrid
+                        data={gridRows}
+                        columns={gridColumns}
+                        {...REPORT_GRID_DEFAULTS}
+                        height="100%"
+                        footerLabel={tm('totalUppercase') || 'Toplam'}
+                        footerSumColumns={[
+                            {
+                                columnId: 'inQty',
+                                getValue: (r) => Number(r.inQty) || 0,
+                                format: (sum) => (
+                                    <span className="text-green-700">{formatNumber(sum, 2)}</span>
+                                ),
+                            },
+                            {
+                                columnId: 'inAmt',
+                                getValue: (r) => Number(r.inAmt) || 0,
+                                format: (sum) => (
+                                    <span className="text-green-700">{formatNumber(sum, 2)} {currency}</span>
+                                ),
+                            },
+                            {
+                                columnId: 'outQty',
+                                getValue: (r) => Number(r.outQty) || 0,
+                                format: (sum) => (
+                                    <span className="text-red-700">{formatNumber(sum, 2)}</span>
+                                ),
+                            },
+                            {
+                                columnId: 'outAmt',
+                                getValue: (r) => Number(r.outAmt) || 0,
+                                format: (sum) => (
+                                    <span className="text-red-700">{formatNumber(sum, 2)} {currency}</span>
+                                ),
+                            },
+                        ]}
+                    />
                 )}
             </div>
         </div>

@@ -15,11 +15,14 @@ import { useCallback, useEffect, useMemo, useState } from 'react';
 import { Download, Loader2, RefreshCw } from 'lucide-react';
 import { toast } from 'sonner';
 import { Select } from 'antd';
+import { DevExDataGrid } from '../shared/DevExDataGrid';
+import { buildReportGridColumns, REPORT_GRID_DEFAULTS } from './shared/ReportDataGrid';
 import { useLanguage } from '../../contexts/LanguageContext';
 import { useTheme } from '../../contexts/ThemeContext';
 import { useFirmaDonem } from '../../contexts/FirmaDonemContext';
 import { formatNumber } from '../../utils/formatNumber';
-import { getReportingCurrency } from '../../utils/currency';
+import { getFirmLedgerCurrency, getGlobalCurrency } from '../../utils/currency';
+import { getAppDefaultCurrency } from '../../services/postgres';
 import {
   buildReportDateRangeChange,
   defaultReportDateRange,
@@ -133,7 +136,7 @@ export function CashLedgerReport() {
   const { tm } = useLanguage();
   const { darkMode } = useTheme();
   const { selectedFirm } = useFirmaDonem();
-  const currency = getReportingCurrency();
+  const currency = getFirmLedgerCurrency(selectedFirm, getAppDefaultCurrency() || getGlobalCurrency());
 
   const [dateRange, setDateRange] = useState<ReportDateRangeValue>(() => defaultReportDateRange('month'));
   const [groups, setGroups] = useState<CashLedgerGroup[]>([]);
@@ -227,8 +230,62 @@ export function CashLedgerReport() {
   }, [recalculated]);
 
   const tableCls = darkMode ? 'bg-gray-800 border-gray-700' : 'bg-white border-gray-200';
-  const thCls = darkMode ? 'bg-gray-900/60 text-gray-300' : 'bg-gray-50 text-gray-600';
-  const tfootCls = darkMode ? 'bg-gray-900/80 text-gray-100' : 'bg-gray-100 text-gray-900';
+
+  const gridColumns = useMemo(
+    () =>
+      buildReportGridColumns<(typeof recalculated)[number]>([
+        { id: 'date', header: tm('rprColDate') || 'Tarih', filterKind: 'date', size: 110 },
+        { id: 'ficheNo', header: tm('rprColFicheNo') || 'Fiş No', size: 120 },
+        { id: 'sequence', header: tm('rprColSequence') || 'Sıra', align: 'right', size: 70 },
+        { id: 'group', header: tm('rprColGroup') || 'Grup', size: 110 },
+        { id: 'subGroup', header: tm('rprColSubGroup') || 'Alt Grup', size: 120 },
+        {
+          id: 'description',
+          header: tm('rprColDescription') || 'Açıklama',
+          size: 220,
+          cell: (r) => (
+            <div>
+              <div className="truncate" title={r.description}>{r.description}</div>
+              {r.cariName ? <div className="text-xs opacity-60">{r.cariName}</div> : null}
+            </div>
+          ),
+        },
+        {
+          id: 'incoming',
+          header: tm('rprColIncoming') || 'Gelen',
+          align: 'right',
+          size: 120,
+          cell: (r) => (
+            <span className="font-semibold text-emerald-600">
+              {r.incoming > 0 ? formatNumber(r.incoming, 2, false) : '—'}
+            </span>
+          ),
+        },
+        {
+          id: 'outgoing',
+          header: tm('rprColOutgoing') || 'Giden',
+          align: 'right',
+          size: 120,
+          cell: (r) => (
+            <span className="font-semibold text-red-500">
+              {r.outgoing > 0 ? formatNumber(r.outgoing, 2, false) : '—'}
+            </span>
+          ),
+        },
+        {
+          id: 'cumulative',
+          header: tm('rprColCumulative') || 'Kümülatif',
+          align: 'right',
+          size: 130,
+          cell: (r) => (
+            <span className={`font-bold ${r.cumulative < 0 ? 'text-red-500' : 'text-blue-600'}`}>
+              {formatNumber(r.cumulative, 2, false)} {currency}
+            </span>
+          ),
+        },
+      ]),
+    [tm, currency],
+  );
 
   return (
     <ReportShell
@@ -321,75 +378,30 @@ export function CashLedgerReport() {
           </p>
         </div>
       </div>
-      <div className={`overflow-auto rounded-lg border max-h-[600px] ${tableCls}`}>
-        <table className="w-full min-w-[1000px] text-sm">
-          <thead className={`sticky top-0 ${thCls}`}>
-            <tr>
-              <th className="px-3 py-2 text-left">{tm('rprColDate') || 'Tarih'}</th>
-              <th className="px-3 py-2 text-left">{tm('rprColFicheNo') || 'Fiş No'}</th>
-              <th className="px-3 py-2 text-right">{tm('rprColSequence') || 'Sıra'}</th>
-              <th className="px-3 py-2 text-left">{tm('rprColGroup') || 'Grup'}</th>
-              <th className="px-3 py-2 text-left">{tm('rprColSubGroup') || 'Alt Grup'}</th>
-              <th className="px-3 py-2 text-left">{tm('rprColDescription') || 'Açıklama'}</th>
-              <th className="px-3 py-2 text-right">{tm('rprColIncoming') || 'Gelen'}</th>
-              <th className="px-3 py-2 text-right">{tm('rprColOutgoing') || 'Giden'}</th>
-              <th className="px-3 py-2 text-right">{tm('rprColCumulative') || 'Kümülatif'}</th>
-            </tr>
-          </thead>
-          <tbody>
-            {recalculated.length === 0 && !loading && (
-              <tr>
-                <td colSpan={9} className="px-3 py-8 text-center opacity-60">
-                  {tm('erpNoRows') || 'Veri yok'}
-                </td>
-              </tr>
-            )}
-            {recalculated.map((r) => (
-              <tr key={r.id} className={darkMode ? 'border-t border-gray-700' : 'border-t border-gray-100'}>
-                <td className="px-3 py-2 whitespace-nowrap">{r.date}</td>
-                <td className="px-3 py-2 font-mono text-xs">{r.ficheNo}</td>
-                <td className="px-3 py-2 text-right">{r.sequence}</td>
-                <td className="px-3 py-2">
-                  <span className="inline-block px-2 py-0.5 text-[10px] font-bold rounded bg-slate-100 text-slate-700 dark:bg-slate-700 dark:text-slate-200">
-                    {r.group}
-                  </span>
-                </td>
-                <td className="px-3 py-2 text-xs">{r.subGroup}</td>
-                <td className="px-3 py-2 max-w-[280px] truncate" title={r.description}>
-                  <div>{r.description}</div>
-                  {r.cariName && <div className="text-xs opacity-60">{r.cariName}</div>}
-                </td>
-                <td className="px-3 py-2 text-right font-semibold text-emerald-600">
-                  {r.incoming > 0 ? formatNumber(r.incoming, 2, false) : '—'}
-                </td>
-                <td className="px-3 py-2 text-right font-semibold text-red-500">
-                  {r.outgoing > 0 ? formatNumber(r.outgoing, 2, false) : '—'}
-                </td>
-                <td className={`px-3 py-2 text-right font-bold ${r.cumulative < 0 ? 'text-red-500' : 'text-blue-600'}`}>
-                  {formatNumber(r.cumulative, 2, false)} {currency}
-                </td>
-              </tr>
-            ))}
-          </tbody>
-          {recalculated.length > 0 && (
-            <tfoot>
-              <tr className={`font-bold ${tfootCls}`}>
-                <td className="px-3 py-2" colSpan={6}>
-                  {tm('rprTotal') || 'TOPLAM'}
-                </td>
-                <td className="px-3 py-2 text-right text-emerald-600">
-                  {formatNumber(totals.incoming, 2, false)}
-                </td>
-                <td className="px-3 py-2 text-right text-red-500">
-                  {formatNumber(totals.outgoing, 2, false)}
-                </td>
-                <td className={`px-3 py-2 text-right ${totals.finalBalance < 0 ? 'text-red-500' : 'text-blue-600'}`}>
-                  {formatNumber(totals.finalBalance, 2, false)} {currency}
-                </td>
-              </tr>
-            </tfoot>
-          )}
-        </table>
+      <div className="h-[560px]">
+        <DevExDataGrid
+          data={recalculated}
+          columns={gridColumns}
+          {...REPORT_GRID_DEFAULTS}
+          height="100%"
+          footerLabel={tm('rprTotal') || 'TOPLAM'}
+          footerSumColumns={[
+            {
+              columnId: 'incoming',
+              getValue: (r) => Number(r.incoming) || 0,
+              format: (sum) => (
+                <span className="text-emerald-600">{formatNumber(sum, 2, false)}</span>
+              ),
+            },
+            {
+              columnId: 'outgoing',
+              getValue: (r) => Number(r.outgoing) || 0,
+              format: (sum) => (
+                <span className="text-red-500">{formatNumber(sum, 2, false)}</span>
+              ),
+            },
+          ]}
+        />
       </div>
     </ReportShell>
   );

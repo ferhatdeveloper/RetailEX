@@ -22,6 +22,7 @@ import {
 import { APP_VERSION } from '../../core/version';
 import { PrinterSettings } from './PrinterSettings';
 import { PrintOptionsSettings } from './PrintOptionsSettings';
+import { InvoiceCodeFormatSettings } from './InvoiceCodeFormatSettings';
 import { TemplateManager } from '../modules/TemplateManager';
 import { RestaurantCallerIdSettings } from '../restaurant/components/RestaurantCallerIdSettings';
 import { RECEIPT_PRODUCT_NAME_FIELD_OPTIONS } from '../../utils/receiptProductName';
@@ -759,6 +760,7 @@ function ReceiptSettingsView() {
           </div>
         </div>
       </div>
+      <InvoiceCodeFormatSettings />
     </div>
   );
 }

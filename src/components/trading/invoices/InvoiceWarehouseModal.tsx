@@ -1,21 +1,11 @@
 ﻿import { X, Package, Search } from 'lucide-react';
-import { useState, useMemo } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { useLanguage } from '../../../contexts/LanguageContext';
 import { PercentBodyModal, PercentBodyModalScrollBody } from '../../shared/PercentBodyModal';
-
-interface Warehouse {
-  code: string;
-  name: string;
-  address?: string;
-}
-
-// Mock ambarlar - gerçek uygulamada API'den gelecek
-const mockWarehouses: Warehouse[] = [
-  { code: '000', name: 'Merkez', address: 'Ana depo' },
-  { code: '001', name: 'Depo 1', address: 'Şube 1 deposu' },
-  { code: '002', name: 'Depo 2', address: 'Şube 2 deposu' },
-  { code: '003', name: 'Depo 3', address: 'Soğuk hava deposu' },
-];
+import {
+  listInvoiceWarehouses,
+  type InvoicePickerMaster,
+} from '../../../utils/invoiceDetailMasters';
 
 interface InvoiceWarehouseModalProps {
   currentWarehouse: string;
@@ -26,21 +16,35 @@ interface InvoiceWarehouseModalProps {
 export function InvoiceWarehouseModal({ currentWarehouse, onSelect, onClose }: InvoiceWarehouseModalProps) {
   const { tm } = useLanguage();
   const [searchTerm, setSearchTerm] = useState('');
+  const [warehouses, setWarehouses] = useState<InvoicePickerMaster[]>([]);
+  const [loaded, setLoaded] = useState(false);
+
+  useEffect(() => {
+    let cancelled = false;
+    (async () => {
+      const rows = await listInvoiceWarehouses();
+      if (!cancelled) {
+        setWarehouses(rows);
+        setLoaded(true);
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, []);
 
   const filteredWarehouses = useMemo(() => {
-    if (!searchTerm.trim()) {
-      return mockWarehouses;
-    }
-    const term = searchTerm.toLowerCase();
-    return mockWarehouses.filter(
-      warehouse =>
-        warehouse.code.toLowerCase().includes(term) ||
-        warehouse.name.toLowerCase().includes(term) ||
-        warehouse.address?.toLowerCase().includes(term)
+    if (!searchTerm.trim()) return warehouses;
+    const term = searchTerm.toLocaleLowerCase('tr-TR');
+    return warehouses.filter(
+      (warehouse) =>
+        warehouse.code.toLocaleLowerCase('tr-TR').includes(term) ||
+        warehouse.name.toLocaleLowerCase('tr-TR').includes(term) ||
+        warehouse.address?.toLocaleLowerCase('tr-TR').includes(term),
     );
-  }, [searchTerm]);
+  }, [searchTerm, warehouses]);
 
-  const handleSelect = (warehouse: Warehouse) => {
+  const handleSelect = (warehouse: InvoicePickerMaster) => {
     onSelect(`${warehouse.code}, ${warehouse.name}`);
     onClose();
   };
@@ -67,7 +71,6 @@ export function InvoiceWarehouseModal({ currentWarehouse, onSelect, onClose }: I
           </button>
         </div>
 
-        {/* Search */}
         <div className="p-4 border-b border-gray-200 shrink-0">
           <div className="relative">
             <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" />
@@ -82,12 +85,11 @@ export function InvoiceWarehouseModal({ currentWarehouse, onSelect, onClose }: I
           </div>
         </div>
 
-        {/* Warehouse List */}
         <PercentBodyModalScrollBody className="p-4">
-          {filteredWarehouses.length === 0 ? (
+          {loaded && filteredWarehouses.length === 0 ? (
             <div className="text-center py-8 text-gray-500">
               <Package className="w-12 h-12 mx-auto mb-2 opacity-50" />
-              <p>{tm('warehouseNotFound')}</p>
+              <p>{tm('invoicePickerNoRecords')}</p>
             </div>
           ) : (
             <div className="space-y-2">
@@ -135,6 +137,3 @@ export function InvoiceWarehouseModal({ currentWarehouse, onSelect, onClose }: I
     </PercentBodyModal>
   );
 }
-
-
-

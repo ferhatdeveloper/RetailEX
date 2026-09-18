@@ -1,0 +1,63 @@
+---
+description: Zorunlu veri tablosu — tüm listeler ve raporlar DevExDataGrid (Malzeme listesi ile aynı ızgara)
+globs: "**/components/**/*.tsx,**/reports/**/*.tsx"
+alwaysApply: true
+---
+
+# DevExDataGrid — zorunlu veri tablosu
+
+RetailEX web / DeskApp’te **tüm veri tabloları ve rapor ızgaraları** `DevExDataGrid` kullanır. Yeni kütüphane uydurma; Malzeme / Envanter Listesi ile **aynı bileşen**.
+
+**Bileşen:** `src/components/shared/DevExDataGrid.tsx`  
+**Referans:** `src/components/inventory/products/ProductManagement.tsx`  
+**Rapor sarmalayıcı (kabul):** `ReportDataGrid` / `ReportColumnTable` — `src/components/reports/shared/ReportDataGrid.tsx` (içeride `DevExDataGrid`).
+
+```tsx
+import { DevExDataGrid } from '../../shared/DevExDataGrid';
+// relatif yol derinlikle değişir; hedef her zaman shared/DevExDataGrid
+
+<DevExDataGrid
+  data={rows}
+  columns={columns}
+  pageSize={50}
+  enableFiltering
+  enablePagination
+/>
+```
+
+`enableFiltering` varsayılan **açık**. Kolon başlığındaki huni `FilterMenu`; aktif filtreler grid üstündeki **chip** satırında (kapatma ×). `enableFiltering={false}` ile başlığı kapatıp üstte kopya filtre çubuğu **yasak**.
+
+## Tablo sayılan (zorunlu)
+
+Satır/kolon veri kümesi: ana kayıt listesi, seçim listesi, hareket/fiş listesi, rapor çıktısı.
+
+Rapor örnekleri (Malzeme ile aynı ızgara): malzeme ekstre, değer, giriş-çıkış, karlılık, SKT, hareket, fiş, nakit akış, cari, güzellik günlük/iptal.
+
+## Yasak
+
+- Birincil veri ızgarası olarak antd `Table` / `ProTable`
+- Liste veya rapor için ham HTML `<table>`
+- `ReportColumnFilters`, `ReportFilterBar` veya serbest input ile **kolon başlığı filtresini kopyalamak**
+
+Sorgu parametresi (dönem, depo, veri çekimi için tarih aralığı) ızgara dışında kalabilir; aynı alanı kolon filtresi + üst çubukta **tekrarlama**.
+
+```tsx
+// YANLIŞ
+<Table dataSource={rows} columns={antdCols} />
+<ReportColumnFilters defs={defs}><table>...</table></ReportColumnFilters>
+
+// DOĞRU — Malzeme listesi / ReportDataGrid
+<DevExDataGrid data={rows} columns={columns} pageSize={50} />
+```
+
+## İstisna (dar — rapor boşluğu değil)
+
+- Veri kümesi olmayan **statik 2 satırlık özet** (belgele).
+- Native `mobile/`: `FlatList` (web `DevExDataGrid` değil).
+
+## Kontrol listesi
+
+- [ ] `DevExDataGrid` (veya `ReportDataGrid` / `ReportColumnTable`) kullanıldı mı?
+- [ ] antd Table / HTML `<table>` birincil ızgara değil mi?
+- [ ] Kolon filtresi başlıkta; kopya filtre çubuğu yok mu?
+- [ ] Aktif filtre chip’leri grid’de mi (kapatılmadıysa)?

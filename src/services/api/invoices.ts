@@ -18,7 +18,9 @@ import {
   invoiceLinePayableNetAmount,
   isServiceInvoiceType,
 } from '../../utils/invoiceLineType';
-import { readInvoiceHeaderFields } from '../../utils/invoiceHeaderFields';
+import { sanitizeInvoiceHeaderFields } from '../../utils/invoiceHeaderFields';
+import { allocateNextInvoiceCode } from '../invoiceCodeFormatService';
+import { generateDefaultInvoiceStamp } from '../../utils/invoiceCodeFormat';
 import type { PurchasePromotionReportLine } from '../../utils/purchasePromotionReport';
 import {
   paymentMethodImpliesCustomerDebt,
@@ -1167,7 +1169,7 @@ async function createInvoiceViaPostgrest(invoice: Invoice, opts: {
         currency: itemCurrency,
         expiry_date: invoiceLineDateOrNull((item as any).expiryDate),
         batch_no: String((item as any).batchNo || '').trim() || null,
-        item_type: invoiceLineTypeToDb((item as any).type),
+        item_type: invoiceLineTypeToDb((item as any).type ?? (item as any).lineType),
       };
     });
     const itemLegacyList = invoice.items.map((item) => {
@@ -1415,6 +1417,13 @@ export const invoicesAPI = {
    */
   async create(invoice: Invoice, createOptions?: { skipProductStockUpdate?: boolean }): Promise<Invoice | null> {
     try {
+      if (!String(invoice.invoice_no || '').trim()) {
+        const allocated = await allocateNextInvoiceCode(
+          invoice.invoice_type ?? (invoice as Invoice & { trcode?: number }).trcode
+        );
+        invoice.invoice_no = allocated || generateDefaultInvoiceStamp();
+      }
+
       if (import.meta.env.DEV) {
         console.log('[InvoicesAPI] Creating invoice via Dynamic Public Tables...', invoice.invoice_no);
       }
@@ -1665,7 +1674,7 @@ export const invoicesAPI = {
             itemCurrency,
             invoiceLineDateOrNull((item as any).expiryDate),
             String((item as any).batchNo || '').trim() || null,
-            invoiceLineTypeToDb((item as any).type)
+            invoiceLineTypeToDb((item as any).type ?? (item as any).lineType)
           );
 
           const isStockLine = isInvoiceStockLineType((item as any).type, invoice.invoice_category);
@@ -2523,7 +2532,7 @@ export const invoicesAPI = {
               currency: itemCurrency,
               expiry_date: invoiceLineDateOrNull((item as any).expiryDate),
               batch_no: String((item as any).batchNo || '').trim() || null,
-              item_type: invoiceLineTypeToDb((item as any).type),
+              item_type: invoiceLineTypeToDb((item as any).type ?? (item as any).lineType),
             };
             const itemLegacy: Record<string, unknown> = {
               id: self.crypto.randomUUID(),
@@ -2646,7 +2655,7 @@ export const invoicesAPI = {
               itemCurrency,
               invoiceLineDateOrNull((item as any).expiryDate),
               String((item as any).batchNo || '').trim() || null,
-              invoiceLineTypeToDb((item as any).type),
+              invoiceLineTypeToDb((item as any).type ?? (item as any).lineType),
             ],
             sqlOpts
           );
@@ -3798,7 +3807,7 @@ function mapDatabaseInvoiceToInvoice(dbInv: any): Invoice {
     id: dbInv.id || '',
     invoice_no: dbInv.fiche_no || dbInv.document_no,
     document_no: String(dbInv.document_no || '').trim() || undefined,
-    header_fields: readInvoiceHeaderFields(dbInv.header_fields),
+    header_fields: sanitizeInvoiceHeaderFields(dbInv.header_fields),
     invoice_date: dbInv.created_at || dbInv.date,
     customer_id: dbInv.customer_id,
     customer_name: category === 'Alis' ? partnerNameAlis : partnerNameSatis,

@@ -66,8 +66,8 @@ export const PRODUCT_GRID_COLUMN_META: Record<string, ColumnMeta> = {
   priceList4: { id: 'priceList4', label: 'Fiyat Listesi 4', defaultVisible: false, size: 110, format: 'currency' },
   priceList5: { id: 'priceList5', label: 'Fiyat Listesi 5', defaultVisible: false, size: 110, format: 'currency' },
   priceList6: { id: 'priceList6', label: 'Fiyat Listesi 6', defaultVisible: false, size: 110, format: 'currency' },
-  totalSales: { id: 'totalSales', label: 'Satış Toplam', defaultVisible: true, size: 120, format: 'number' },
-  totalPurchased: { id: 'totalPurchased', label: 'Alış Toplam', defaultVisible: true, purchaseOnly: true, size: 120, format: 'number' },
+  totalSales: { id: 'totalSales', label: 'Satış Toplam', defaultVisible: true, size: 140, format: 'currency' },
+  totalPurchased: { id: 'totalPurchased', label: 'Alış Toplam', defaultVisible: true, purchaseOnly: true, size: 140, format: 'currency' },
   hasVariants: { id: 'hasVariants', label: 'Varyantlı', defaultVisible: false, size: 90, format: 'bool' },
   isScaleProduct: { id: 'isScaleProduct', label: 'Tartılı Ürün', defaultVisible: false, size: 100, format: 'bool' },
   followUpReminderDays: { id: 'followUpReminderDays', label: 'Takip Günü', defaultVisible: false, size: 100, format: 'number' },
@@ -239,12 +239,16 @@ export function buildProductGridColumns(options: {
         }
         if (id === 'totalSales') {
           return (
-            <span className="text-green-600 font-medium font-bold">{raw || 0}</span>
+            <span className="text-green-600 font-medium font-bold">
+              {formatCurrency(Number(raw) || 0, 2, false)}
+            </span>
           );
         }
         if (id === 'totalPurchased') {
           return (
-            <span className="text-blue-600 font-medium font-bold">{raw || 0}</span>
+            <span className="text-blue-600 font-medium font-bold">
+              {formatCurrency(Number(raw) || 0, 2, false)}
+            </span>
           );
         }
         if (meta.format) {

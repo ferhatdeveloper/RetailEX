@@ -1,181 +1,49 @@
-﻿/**
- * ExRetailOS - FIFO Cost Hook
- * 
- * Ürün maliyetini FIFO'ya göre hesaplar
- * Satış sırasında anlık kar hesabı için kullanılır
- * 
- * @created 2024-12-18
- */
+import {
+  consumeFifoForQuantity,
+  fetchLayeredInventoryValuation,
+} from '../services/layeredInventoryCost';
 
-import { useState, useEffect } from 'react';
-import { CostAccountingService } from '../services/costAccountingService';
+export type FifoCostItem = {
+  productId: string;
+  productCode?: string;
+  quantity: number;
+};
 
-interface FIFOCostResult {
+export type FifoCostResult = {
   unitCost: number;
   totalCost: number;
   available: boolean;
-  loading: boolean;
-}
+};
 
 /**
- * Ürün için FIFO maliyetini hesapla
- */
-export function useFIFOCost(params: {
-  productId: string;
-  quantity: number;
-  firmaId: string;
-  donemId: string;
-  enabled?: boolean;
-}): FIFOCostResult {
-  const [cost, setCost] = useState<FIFOCostResult>({
-    unitCost: 0,
-    totalCost: 0,
-    available: false,
-    loading: false
-  });
-  
-  const { productId, quantity, firmaId, donemId, enabled = true } = params;
-  
-  useEffect(() => {
-    if (!enabled || !productId || !quantity || !firmaId || !donemId) {
-      return;
-    }
-    
-    let cancelled = false;
-    
-    const calculateCost = async () => {
-      setCost(prev => ({ ...prev, loading: true }));
-      
-      try {
-        // FIFO layers'ları getir
-        const layers = await CostAccountingService.getFIFOLayers({
-          product_id: productId,
-          firma_id: firmaId,
-          donem_id: donemId
-        });
-        
-        if (cancelled) return;
-        
-        if (layers.length === 0) {
-          // Stok yok
-          setCost({
-            unitCost: 0,
-            totalCost: 0,
-            available: false,
-            loading: false
-          });
-          return;
-        }
-        
-        // FIFO hesaplama
-        let remainingQty = quantity;
-        let totalCost = 0;
-        
-        for (const layer of layers) {
-          if (remainingQty <= 0) break;
-          
-          const qtyToUse = Math.min(remainingQty, layer.remaining_quantity);
-          totalCost += qtyToUse * layer.unit_cost;
-          remainingQty -= qtyToUse;
-        }
-        
-        // Eğer yeterli stok yoksa, son bilinen maliyeti kullan
-        if (remainingQty > 0 && layers.length > 0) {
-          const lastCost = layers[layers.length - 1].unit_cost;
-          totalCost += remainingQty * lastCost;
-        }
-        
-        const unitCost = quantity > 0 ? totalCost / quantity : 0;
-        
-        setCost({
-          unitCost,
-          totalCost,
-          available: true,
-          loading: false
-        });
-        
-      } catch (error) {
-        console.error('[useFIFOCost] Error:', error);
-        if (!cancelled) {
-          setCost({
-            unitCost: 0,
-            totalCost: 0,
-            available: false,
-            loading: false
-          });
-        }
-      }
-    };
-    
-    calculateCost();
-    
-    return () => {
-      cancelled = true;
-    };
-  }, [productId, quantity, firmaId, donemId, enabled]);
-  
-  return cost;
-}
-
-/**
- * Batch FIFO cost calculation for multiple products
+ * Satış satırları için FIFO birim maliyet (kalan alış katmanlarından).
+ * Kart alış fiyatı kullanılmaz.
  */
 export async function batchCalculateFIFOCost(params: {
-  items: Array<{
-    productId: string;
-    productCode: string;
-    quantity: number;
-  }>;
-  firmaId: string;
-  donemId: string;
-}): Promise<Map<string, { unitCost: number; totalCost: number; available: boolean }>> {
-  const results = new Map<string, { unitCost: number; totalCost: number; available: boolean }>();
+  items: FifoCostItem[];
+  firmaId?: string;
+  donemId?: string;
+}): Promise<Map<string, FifoCostResult>> {
+  const results = new Map<string, FifoCostResult>();
+  const items = (params.items || []).filter((i) => i.productId && Number(i.quantity) > 0);
+  if (!items.length) return results;
 
-  const items = (params.items || []).filter((i) => i.productId);
-  if (items.length === 0) return results;
+  const valuation = await fetchLayeredInventoryValuation({
+    firmNr: params.firmaId,
+    periodNr: params.donemId,
+  });
 
-  const layerRows = await Promise.all(
-    items.map(async (item) => {
-      try {
-        const layers = await CostAccountingService.getFIFOLayers({
-          product_id: item.productId,
-          firma_id: params.firmaId,
-          donem_id: params.donemId,
-        });
-        return { item, layers, ok: true as const };
-      } catch (error) {
-        console.error(`[batchCalculateFIFOCost] Error for product ${item.productId}:`, error);
-        return { item, layers: [] as Awaited<ReturnType<typeof CostAccountingService.getFIFOLayers>>, ok: false as const };
-      }
-    })
-  );
-
-  for (const row of layerRows) {
-    const { item, layers, ok } = row;
-    if (!ok || layers.length === 0) {
-      results.set(item.productId, { unitCost: 0, totalCost: 0, available: false });
-      continue;
+  for (const item of items) {
+    const row =
+      valuation.byProductId.get(String(item.productId)) ||
+      (item.productCode
+        ? valuation.byProductId.get(valuation.aliases.get(String(item.productCode)) || '')
+        : undefined);
+    const consumed = consumeFifoForQuantity(row?.layers, item.quantity);
+    results.set(item.productId, consumed);
+    if (item.productCode && item.productCode !== item.productId) {
+      results.set(item.productCode, consumed);
     }
-
-    let remainingQty = item.quantity;
-    let totalCost = 0;
-
-    for (const layer of layers) {
-      if (remainingQty <= 0) break;
-      const qtyToUse = Math.min(remainingQty, layer.remaining_quantity);
-      totalCost += qtyToUse * layer.unit_cost;
-      remainingQty -= qtyToUse;
-    }
-
-    if (remainingQty > 0 && layers.length > 0) {
-      const lastCost = layers[layers.length - 1].unit_cost;
-      totalCost += remainingQty * lastCost;
-    }
-
-    const unitCost = item.quantity > 0 ? totalCost / item.quantity : 0;
-    results.set(item.productId, { unitCost, totalCost, available: true });
   }
-
   return results;
 }
-

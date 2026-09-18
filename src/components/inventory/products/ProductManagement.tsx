@@ -99,11 +99,26 @@ export function ProductManagement({ products, setProducts }: ProductManagementPr
   const deleteProduct = useProductStore((state) => state.deleteProduct);
   const loadProducts = useProductStore((state) => state.loadProducts);
   const storeProducts = useProductStore((state) => state.products);
+  const lastSync = useProductStore((state) => state.lastSync);
   const isLoading = useProductStore((state) => state.isLoading);
   const [hasLoadedFromStore, setHasLoadedFromStore] = useState(false);
+  const [docTotals, setDocTotals] = useState<Record<string, { totalSales: number; totalPurchased: number }>>({});
 
   // Store'dan ürünleri kullan (stok güncellemeleri otomatik yansır)
-  const displayProducts = hasLoadedFromStore ? storeProducts : products;
+  const displayProducts = useMemo(() => {
+    const base = hasLoadedFromStore ? storeProducts : products;
+    return base.map((p) => {
+      const tot = docTotals[String(p.id || '').trim()];
+      if (!tot) {
+        return {
+          ...p,
+          totalSales: Number(p.totalSales ?? 0) || 0,
+          totalPurchased: Number(p.totalPurchased ?? 0) || 0,
+        };
+      }
+      return { ...p, totalSales: tot.totalSales, totalPurchased: tot.totalPurchased };
+    });
+  }, [hasLoadedFromStore, storeProducts, products, docTotals]);
 
   // Sayfa yüklendiğinde ve periyodik olarak ürünleri yenile
   useEffect(() => {
@@ -122,6 +137,16 @@ export function ProductManagement({ products, setProducts }: ProductManagementPr
 
     return () => clearInterval(interval);
   }, [loadProducts, storeProducts.length]);
+
+  useEffect(() => {
+    let alive = true;
+    void productAPI.getListDocumentTotals().then((map) => {
+      if (alive) setDocTotals(map);
+    });
+    return () => {
+      alive = false;
+    };
+  }, [lastSync]);
 
   // Manuel yenileme fonksiyonu
   const handleRefresh = async () => {
@@ -287,6 +312,17 @@ export function ProductManagement({ products, setProducts }: ProductManagementPr
       return String(a.name ?? '').localeCompare(String(b.name ?? ''), 'tr', { sensitivity: 'base' });
     });
   }, [displayProducts, searchQuery, categoryFilter, showServicesOnly, showTodayOnly, duplicateDetectBy, duplicateKeys]);
+
+  /** Görünen listedeki belge Satış/Alış toplamı (dip indirim ölçekli API). */
+  const listDocumentMoneyTotals = useMemo(() => {
+    let sales = 0;
+    let purchased = 0;
+    for (const p of filteredProducts) {
+      sales += Number(p.totalSales) || 0;
+      purchased += Number(p.totalPurchased) || 0;
+    }
+    return { sales, purchased, count: filteredProducts.length };
+  }, [filteredProducts]);
 
   const mobilePageCount = Math.max(1, Math.ceil(filteredProducts.length / MOBILE_PAGE_SIZE));
   const mobilePagedProducts = useMemo(() => {
@@ -733,6 +769,17 @@ export function ProductManagement({ products, setProducts }: ProductManagementPr
               {tm('productFilterTodayActive').replace(/\{count\}/g, String(filteredProducts.length))}
             </p>
           )}
+          <div className="mt-2 flex flex-wrap items-center gap-x-4 gap-y-1 text-[11px] font-semibold tabular-nums text-gray-700">
+            <span>{listDocumentMoneyTotals.count}</span>
+            <span>
+              {tm('salesTotal')}: {formatCurrency(listDocumentMoneyTotals.sales, 2, false)}
+            </span>
+            {showPurchasePricing ? (
+              <span>
+                {tm('purchaseTotal')}: {formatCurrency(listDocumentMoneyTotals.purchased, 2, false)}
+              </span>
+            ) : null}
+          </div>
         </div>
 
         <div
@@ -958,9 +1005,9 @@ export function ProductManagement({ products, setProducts }: ProductManagementPr
                     ]
                   : []),
                 [tm('tax').toUpperCase(), `%${mobileActionProduct.taxRate ?? 0}`],
-                [tm('salesTotal').toUpperCase(), String(mobileActionProduct.totalSales ?? 0)],
+                [tm('salesTotal').toUpperCase(), formatCurrency(Number(mobileActionProduct.totalSales) || 0, 2, false)],
                 ...(showPurchasePricing
-                  ? [[tm('purchaseTotal').toUpperCase(), String(mobileActionProduct.totalPurchased ?? 0)] as [string, string]]
+                  ? [[tm('purchaseTotal').toUpperCase(), formatCurrency(Number(mobileActionProduct.totalPurchased) || 0, 2, false)] as [string, string]]
                   : []),
                 [tm('stock').toUpperCase(), isWeightBasedUnit(mobileActionProduct.unit)
                   ? formatScaleQuantityDisplay(Number(mobileActionProduct.stock ?? 0), mobileActionProduct.unit)

@@ -22,11 +22,12 @@ import { useLanguage } from '../../contexts/LanguageContext';
 import { useTheme } from '../../contexts/ThemeContext';
 import { ColumnVisibilityMenu } from './ColumnVisibilityMenu';
 import { exportDataGridToExcel } from '../../utils/gridExcelExport';
+import { ActiveFiltersBar, filterOperatorI18nKey, type ActiveFilterChip } from './ActiveFiltersBar';
 
 const DEFAULT_PAGE_SIZE_OPTIONS = [10, 15, 20, 25, 50, 100];
 const FILTER_MENU_Z_INDEX = 12000;
 
-interface DevExDataGridProps<T> {
+export interface DevExDataGridProps<T> {
   data: T[];
   columns: ColumnDef<T, any>[];
   enableSorting?: boolean;
@@ -96,6 +97,67 @@ function cellToFilterKey(value: unknown): string {
 
 const BOOL_FILTER_COLUMNS = new Set(['hasVariants', 'isScaleProduct']);
 
+function formatFilterChipValue(payload: GridFilterPayload | undefined): string {
+  if (payload == null || payload === '') return '';
+  if (typeof payload === 'string') return payload;
+  if (payload.mode === 'range') {
+    const from = String(payload.from ?? '').trim();
+    const to = String(payload.to ?? '').trim();
+    if (from && to) return `${from} – ${to}`;
+    return from || to;
+  }
+  if (payload.mode === 'multiselect') {
+    return (payload.values ?? []).filter((v) => v && v !== EMPTY_FILTER_KEY).join(', ');
+  }
+  return String(payload.value ?? '').trim();
+}
+
+function gridColumnHeaderLabel(column: Column<any, unknown> | undefined, fallbackId: string): string {
+  if (!column) return fallbackId;
+  const header = column.columnDef.header;
+  if (typeof header === 'string' && header.trim()) return header;
+  return column.id || fallbackId;
+}
+
+function gridFilterOperatorMode(payload: GridFilterPayload | undefined): string {
+  if (payload == null || payload === '') return 'contains';
+  if (typeof payload === 'string') return 'contains';
+  return payload.mode ?? payload.operator ?? 'contains';
+}
+
+function gridFilterChipValueLabel(
+  payload: GridFilterPayload | undefined,
+  columnId: string,
+  tm: (key: string) => string,
+  localeCode: string,
+): string {
+  if (payload == null || payload === '') return '';
+  if (typeof payload === 'string') return payload;
+  if (payload.mode === 'range') {
+    return formatFilterChipValue(payload);
+  }
+  if (payload.mode === 'multiselect') {
+    const values = payload.values ?? [];
+    if (values.length === 0) return tm('gridFilterEmpty');
+    const labels = values.map((v) =>
+      formatFilterLabel(v === EMPTY_FILTER_KEY ? null : v, columnId, tm, localeCode),
+    );
+    if (labels.length <= 2) return labels.join(', ');
+    return tm('activeFiltersSelectedCount').replace('{count}', String(labels.length));
+  }
+  return String(payload.value ?? '').trim();
+}
+
+function isGridFilterActive(payload: unknown): boolean {
+  if (payload == null || payload === '') return false;
+  if (typeof payload === 'string') return payload.trim() !== '';
+  const p = payload as GridFilterPayload;
+  if (typeof p !== 'object') return false;
+  if (p.mode === 'range') return !!(p.from || p.to);
+  if (p.mode === 'multiselect') return Array.isArray(p.values);
+  return String(p.value ?? '').trim() !== '';
+}
+
 function formatFilterLabel(
   value: unknown,
   columnId: string,
@@ -134,7 +196,7 @@ function parseCellDate(value: unknown): number | null {
   return Number.isFinite(d.getTime()) ? d.getTime() : null;
 }
 
-const DATE_FILTER_COLUMN_IDS = new Set(['created_at', 'updated_at', 'expiry_date']);
+const DATE_FILTER_COLUMN_IDS = new Set(['created_at', 'updated_at', 'expiry_date', 'date', 'invoiceDate', 'dueDate']);
 
 function isDateFilterColumn(columnId: string, column: Column<any, unknown>): boolean {
   if (DATE_FILTER_COLUMN_IDS.has(columnId)) return true;
@@ -777,6 +839,43 @@ export function DevExDataGrid<T>({
     },
   });
 
+  const localeCode = tm('localeCode');
+  const activeFilterChips: ActiveFilterChip[] = useMemo(() => {
+    if (!enableFiltering) return [];
+    return columnFilters
+      .filter((f) => isGridFilterActive(f.value))
+      .map((f) => {
+        const col = table.getColumn(f.id);
+        const payload = f.value as GridFilterPayload | undefined;
+        const mode = gridFilterOperatorMode(payload);
+        const opKey = filterOperatorI18nKey(mode);
+        const opLabel = tm(opKey);
+        return {
+          id: f.id,
+          columnLabel: gridColumnHeaderLabel(col, f.id),
+          operatorLabel: opLabel && opLabel !== opKey ? opLabel : tm(mode === 'notContains' ? 'reportColumnFiltersOpDoesNotContain' : mode),
+          valueLabel: gridFilterChipValueLabel(payload, f.id, tm, localeCode),
+        };
+      });
+  }, [columnFilters, enableFiltering, table, tm, localeCode]);
+
+  const renderActiveFilterChips = () => (
+    <ActiveFiltersBar
+      chips={activeFilterChips}
+      onRemove={(id) => {
+        table.getColumn(id)?.setFilterValue(undefined);
+        closeFilterMenu();
+      }}
+      onClearAll={() => {
+        table.resetColumnFilters();
+        closeFilterMenu();
+      }}
+      title={tm('activeFiltersBarTitle')}
+      clearAllLabel={tm('reportColumnFiltersClearAll')}
+      removeAriaLabel={tm('removeFilter')}
+    />
+  );
+
   // Notify parent of selection changes
   useEffect(() => {
     if (onSelectionChange) {
@@ -825,6 +924,11 @@ export function DevExDataGrid<T>({
   if (isMobile) {
     return (
       <div className={`flex flex-col h-full ${darkMode ? 'bg-gray-900' : 'bg-gray-50'}`}>
+        {enableFiltering && activeFilterChips.length > 0 && (
+          <div className={`shrink-0 px-3 py-2 border-b ${darkMode ? 'border-gray-700 bg-gray-800' : 'border-gray-200 bg-white'}`}>
+            {renderActiveFilterChips()}
+          </div>
+        )}
         {/* Mobile Cards */}
         <div className="flex-1 overflow-auto p-3 space-y-3">
           {table.getRowModel().rows.length === 0 ? (
@@ -915,18 +1019,6 @@ export function DevExDataGrid<T>({
     >
       {((enableColumnVisibility && showColumnVisibilityToolbar) || enableExcelExport) && (
         <div className="flex items-center justify-end gap-2 px-3 py-1.5 bg-gray-50 border border-gray-300 border-b-0 shrink-0">
-          {enableFiltering && columnFilters.length > 0 && (
-            <button
-              type="button"
-              onClick={() => {
-                table.resetColumnFilters();
-                closeFilterMenu();
-              }}
-              className="px-2 py-1 text-[10px] text-blue-700 bg-blue-50 border border-blue-200 rounded hover:bg-blue-100"
-            >
-              {tm('clear')} ({columnFilters.length})
-            </button>
-          )}
           {enableColumnVisibility && showColumnVisibilityToolbar && (
           <ColumnVisibilityMenu
             columns={leafColumnsForVisibility.map((col) => {
@@ -973,6 +1065,12 @@ export function DevExDataGrid<T>({
               Excel
             </button>
           )}
+        </div>
+      )}
+
+      {enableFiltering && activeFilterChips.length > 0 && (
+        <div className={`shrink-0 px-3 py-1.5 border border-b-0 ${darkMode ? 'border-gray-600 bg-gray-800' : 'border-gray-300 bg-sky-50/80'}`}>
+          {renderActiveFilterChips()}
         </div>
       )}
 

@@ -12,7 +12,78 @@
  */
 
 import { describe, it, expect } from 'vitest';
-import { buildInvoiceHeaderFieldsFromForm } from './invoiceHeaderFields';
+import {
+  buildInvoiceHeaderFieldsFromForm,
+  getInvoiceHeaderField,
+  isDemoInvoiceHeaderPartyValue,
+  sanitizeInvoiceHeaderPartyValue,
+  sanitizeInvoiceHeaderFields,
+} from './invoiceHeaderFields';
+
+describe('demo ambar / işyeri / satış elemanı', () => {
+  it('"000, Merkez" yer tutucusunu tanır ve temizler', () => {
+    expect(isDemoInvoiceHeaderPartyValue('000, Merkez')).toBe(true);
+    expect(isDemoInvoiceHeaderPartyValue('000,Merkez')).toBe(true);
+    expect(sanitizeInvoiceHeaderPartyValue('000, Merkez')).toBe('');
+  });
+
+  it('gerçek şube seçimini korur', () => {
+    expect(isDemoInvoiceHeaderPartyValue('001, Şube A')).toBe(false);
+    expect(sanitizeInvoiceHeaderPartyValue('001, Şube A')).toBe('001, Şube A');
+  });
+
+  it('kayıtta demo değerleri header_fields yazmaz', () => {
+    const out = buildInvoiceHeaderFieldsFromForm({
+      warehouse: '000, Merkez',
+      workplace: '000, Merkez',
+      salespersonCode: '000, Satış Elemanı',
+      documentNo: 'DOC-1',
+    });
+    expect(out.warehouse).toBeUndefined();
+    expect(out.workplace).toBeUndefined();
+    expect(out.salespersonCode).toBeUndefined();
+    expect(out.documentNo).toBe('DOC-1');
+  });
+
+  it('SAT001–SAT004 hardcoded satış elemanı seçimini temizler', () => {
+    expect(isDemoInvoiceHeaderPartyValue('SAT001')).toBe(true);
+    expect(isDemoInvoiceHeaderPartyValue('sat002')).toBe(true);
+    expect(sanitizeInvoiceHeaderPartyValue('SAT003')).toBe('');
+    expect(sanitizeInvoiceHeaderPartyValue('SAT005')).toBe('SAT005');
+  });
+
+  it('gerçek işyeri / ambar seçimini korur (ST_01, MERKEZ AMBAR)', () => {
+    expect(sanitizeInvoiceHeaderPartyValue('ST_01, Merkez Depo')).toBe('ST_01, Merkez Depo');
+    expect(sanitizeInvoiceHeaderPartyValue('001, Şube A')).toBe('001, Şube A');
+    expect(isDemoInvoiceHeaderPartyValue('000, Merkez')).toBe(true);
+  });
+
+  it('detay okumasında demo ambar boş döner', () => {
+    expect(
+      getInvoiceHeaderField(
+        { header_fields: { warehouse: '000, Merkez', documentNo: 'X' } },
+        'warehouse',
+      ),
+    ).toBe('');
+    expect(
+      getInvoiceHeaderField(
+        { header_fields: { warehouse: '000, Merkez', documentNo: 'X' } },
+        'documentNo',
+      ),
+    ).toBe('X');
+    const cleaned = sanitizeInvoiceHeaderFields({
+      warehouse: '000, Merkez',
+      workplace: '000, Merkez',
+      salespersonCode: 'SAT001',
+      documentNo: 'X',
+    });
+    expect(cleaned.warehouse).toBeUndefined();
+    expect(cleaned.workplace).toBeUndefined();
+    expect(cleaned.salespersonCode).toBeUndefined();
+    expect(cleaned.documentNo).toBe('X');
+  });
+});
+
 
 describe('buildInvoiceHeaderFieldsFromForm', () => {
   it('temel alanları (documentNo, time, vb.) yazar', () => {

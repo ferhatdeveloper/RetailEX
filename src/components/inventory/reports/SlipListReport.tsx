@@ -1,6 +1,7 @@
 import React, { useState, useEffect, useMemo } from 'react';
 import { stockMovementAPI, type StockMovement } from '../../../services/stockMovementAPI';
 import { DevExDataGrid } from '../../shared/DevExDataGrid';
+import { REPORT_GRID_DEFAULTS } from '../../reports/shared/ReportDataGrid';
 import { exportDataGridToExcel } from '../../../utils/gridExcelExport';
 import { createColumnHelper, ColumnDef } from '@tanstack/react-table';
 import { Download, FileText } from 'lucide-react';
@@ -12,13 +13,14 @@ interface SlipRow {
     documentNo: string;
     date: string;
     type: string;
+    customer_name: string;
     movement_type: string;
     description: string;
 }
 
 /**
- * Fiş Listesi — tenant-aware.
- * Tüm fiş ve fatura başlıklarını liste olarak gösterir.
+ * Fiş Listesi — belge/fiş başlığı (tarih, no, tür, cari, yön, açıklama).
+ * Kalem dökümü Hareket Dökümü ekranındadır.
  */
 export function SlipListReport() {
     const { tm } = useLanguage();
@@ -38,6 +40,7 @@ export function SlipListReport() {
                     type: m.source_kind === 'invoice'
                         ? (m.movement_type === 'in' ? (tm('purchaseInvoice') || 'Alış Faturası') : (tm('salesInvoice') || 'Satış Faturası'))
                         : (tm('warehouseSlip') || 'Ambar Fişi'),
+                    customer_name: m.customer_name || '',
                     movement_type: m.movement_type || '',
                     description: m.description || '',
                 }));
@@ -66,7 +69,11 @@ export function SlipListReport() {
             },
         }),
         columnHelper.accessor('documentNo', { header: tm('slipInvoiceNo') || 'Fiş/Fatura No' }),
-        columnHelper.accessor('type', { header: tm('slipType') || 'Tip' }),
+        columnHelper.accessor('type', { header: tm('slipType') || 'Fiş Türü' }),
+        columnHelper.accessor('customer_name', {
+            header: tm('customerSupplier') || 'Müşteri/Tedarikçi',
+            cell: info => <span className="text-gray-900 font-medium">{info.getValue() || '—'}</span>,
+        }),
         columnHelper.accessor('movement_type', {
             header: tm('direction') || 'Yön',
             cell: info => {
@@ -109,7 +116,7 @@ export function SlipListReport() {
                         </div>
                     </div>
                 ) : (
-                    <DevExDataGrid data={rows} columns={columns} pageSize={50} enableExcelExport={false} />
+                    <DevExDataGrid data={rows} columns={columns} {...REPORT_GRID_DEFAULTS} height="100%" />
                 )}
             </div>
         </div>

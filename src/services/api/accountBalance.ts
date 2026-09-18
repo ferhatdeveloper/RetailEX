@@ -21,6 +21,28 @@ export function firmCustomersTable(firmNr?: string | number | null): string {
   return `rex_${normalizeFirmTableNr(firmNr)}_customers`;
 }
 
+/**
+ * Kart tablosu zaten `rex_{firm}_*` — satır `firm_nr` '1' / '001' / boş olabilir.
+ * Tam eşitlik (`eq.001`) güzellik müşterilerini düşürür; tedarikçi listesinde bu filtre yok.
+ */
+export function cardFirmNrMatches(rowFirmNr: unknown, sessionFirmNr: string): boolean {
+  const raw = String(rowFirmNr ?? '').trim();
+  if (!raw) return true;
+  const digits = raw.replace(/\D/g, '');
+  if (!digits) return true;
+  const a = digits.length <= 3 ? digits.padStart(3, '0') : digits.slice(0, 10);
+  return a === normalizeFirmTableNr(sessionFirmNr);
+}
+
+/** SQL: boş firm_nr veya 1↔001 eşleşmesi (güzellik müşteri kartları). */
+export function sqlFirmScopedCardMatch(alias: string, bind: string): string {
+  return `(
+    NULLIF(BTRIM(COALESCE(${alias}.firm_nr::text, '')), '') IS NULL
+    OR lpad(regexp_replace(trim(COALESCE(${alias}.firm_nr::text, '')), '[^0-9]', '', 'g'), 3, '0')
+       = lpad(regexp_replace(trim(${bind}::text), '[^0-9]', '', 'g'), 3, '0')
+  )`;
+}
+
 export function firmSuppliersTable(firmNr?: string | number | null): string {
   return `rex_${normalizeFirmTableNr(firmNr)}_suppliers`;
 }
@@ -90,7 +112,7 @@ export function sqlCustomerAccountBalancesCte(custTable: string, firmNrBind: str
         SELECT c.id,
           CASE WHEN s.fiche_type = 'return_invoice' THEN -s.net_amount ELSE s.net_amount END
         FROM sales s
-        INNER JOIN ${custTable} c ON c.firm_nr = ${firmNrBind}
+        INNER JOIN ${custTable} c ON ${sqlFirmScopedCardMatch('c', firmNrBind)}
           AND TRIM(LOWER(COALESCE(s.customer_name, ''))) = TRIM(LOWER(c.name))
         WHERE (s.customer_id IS NULL OR s.customer_id::text <> c.id::text)
           AND COALESCE(s.is_cancelled, false) = false

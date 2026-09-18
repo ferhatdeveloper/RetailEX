@@ -9,6 +9,22 @@ import { logoOutboundPendingFields } from '../logoRestOutbound';
 import type { Product } from '../../core/types';
 import { expandBarcodeLookupKeys } from '../../utils/barcodeParser';
 import { useAuthStore } from '../../store/useAuthStore';
+import { SQL_COUNTABLE_SALE_STATUS } from '../../utils/saleInvoiceStatus';
+import {
+  SQL_LINE_RESOLVED_PRODUCT_ID,
+  SQL_PL_PURCHASE,
+  SQL_PL_PURCHASE_RETURN,
+  SQL_PL_SALES_OR_RETURN,
+  SQL_SALES_SIGN,
+  LINE_REVENUE_EXPR,
+  INVOICE_LINE_SCALE_JOIN,
+  buildInvoiceLineScaleCte,
+} from '../../utils/lastPurchaseCostSql';
+
+export type ProductDocumentMoneyTotals = {
+  totalSales: number;
+  totalPurchased: number;
+};
 
 /** Malzeme listesi: uzun metin kolonları hariç (ağ payload + parse maliyeti) */
 const PRODUCT_LIST_SELECT =
@@ -614,6 +630,80 @@ export const productAPI = {
       }
     }
     return ids.filter((id) => !withPurchase.has(id));
+  },
+
+  /**
+   * Ürün listesi Satış/Alış toplamı: dönem belgelerinden tek batch aggregate.
+   * Satış = satış + hizmet satış − satış iade; alış = alış − alış iade.
+   * Firma para birimi (ölçekli fatura neti); kur çevrimi yok. Stok miktarı karışmaz.
+   * Dip indirim: satır net toplamı ≠ fatura net_amount ise satırlara oransal ölçek (kâr marjı ile aynı).
+   * Yalnızca completed/approved; iptal hariç (pending çift sayılmaz).
+   */
+  async getListDocumentTotals(): Promise<Record<string, ProductDocumentMoneyTotals>> {
+    const empty: Record<string, ProductDocumentMoneyTotals> = {};
+    try {
+      const firmEq = firmNrPadded();
+      const { rows } = await postgres.query<{
+        product_id: string;
+        total_sales: number | string;
+        total_purchased: number | string;
+      }>(
+        `WITH ${buildInvoiceLineScaleCte()}
+         SELECT
+            resolved.pid::text AS product_id,
+            COALESCE(SUM(resolved.sales_amt), 0) AS total_sales,
+            COALESCE(SUM(resolved.purchase_amt), 0) AS total_purchased
+         FROM (
+           SELECT
+             COALESCE(
+               ${SQL_LINE_RESOLVED_PRODUCT_ID},
+               p_by_code.id,
+               p_by_barcode.id
+             ) AS pid,
+             CASE
+               WHEN ${SQL_PL_SALES_OR_RETURN}
+               THEN (${SQL_SALES_SIGN}) * (${LINE_REVENUE_EXPR})
+               ELSE 0
+             END AS sales_amt,
+             CASE
+               WHEN ${SQL_PL_PURCHASE_RETURN} THEN -ABS(${LINE_REVENUE_EXPR})
+               WHEN ${SQL_PL_PURCHASE} THEN (${LINE_REVENUE_EXPR})
+               ELSE 0
+             END AS purchase_amt
+           FROM sale_items si
+           INNER JOIN sales s ON s.id = si.invoice_id
+           ${INVOICE_LINE_SCALE_JOIN}
+           LEFT JOIN products p_by_code
+             ON LPAD(TRIM(COALESCE(p_by_code.firm_nr, '')), 3, '0') = $1
+             AND NULLIF(TRIM(p_by_code.code), '') IS NOT NULL
+             AND NULLIF(TRIM(p_by_code.code), '') = NULLIF(TRIM(si.item_code), '')
+           LEFT JOIN products p_by_barcode
+             ON LPAD(TRIM(COALESCE(p_by_barcode.firm_nr, '')), 3, '0') = $1
+             AND NULLIF(TRIM(p_by_barcode.barcode), '') IS NOT NULL
+             AND NULLIF(TRIM(p_by_barcode.barcode), '') = NULLIF(TRIM(si.item_code), '')
+           WHERE LPAD(TRIM(COALESCE(s.firm_nr, '')), 3, '0') = $1
+             AND COALESCE(s.is_cancelled, false) = false
+             AND ${SQL_COUNTABLE_SALE_STATUS}
+             AND COALESCE(si.item_type, 'Malzeme') NOT IN ('Promosyon', 'İndirim')
+         ) resolved
+         WHERE resolved.pid IS NOT NULL
+         GROUP BY resolved.pid`,
+        [firmEq]
+      );
+      const out: Record<string, ProductDocumentMoneyTotals> = {};
+      for (const r of rows || []) {
+        const id = String(r.product_id || '').trim();
+        if (!id) continue;
+        out[id] = {
+          totalSales: Number(r.total_sales) || 0,
+          totalPurchased: Number(r.total_purchased) || 0,
+        };
+      }
+      return out;
+    } catch (error) {
+      console.warn('[ProductAPI] getListDocumentTotals failed:', error);
+      return empty;
+    }
   },
 
   /**
@@ -2156,6 +2246,8 @@ function mapDatabaseProductToProduct(dbProduct: any): Product {
     shelfLifeDays: normalizeProductShelfLifeDaysForProduct(dbProduct.shelf_life_days),
     created_at: dbProduct.created_at != null ? String(dbProduct.created_at) : undefined,
     updated_at: dbProduct.updated_at != null ? String(dbProduct.updated_at) : undefined,
+    totalSales: parseFloat(String(dbProduct.total_sales ?? dbProduct.totalSales ?? 0)) || 0,
+    totalPurchased: parseFloat(String(dbProduct.total_purchased ?? dbProduct.totalPurchased ?? 0)) || 0,
   };
 }
 
