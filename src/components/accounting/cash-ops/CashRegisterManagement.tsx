@@ -5,8 +5,8 @@
 
 import { useState, useEffect } from 'react';
 import {
-  Wallet, Banknote, TrendingUp, AlertTriangle, Clock,
-  CheckCircle, Plus, RefreshCw, Search, Trash2
+  Wallet, TrendingUp, AlertTriangle, Clock,
+  CheckCircle, Plus, RefreshCw, Trash2, Pencil
 } from 'lucide-react';
 import { DevExDataGrid } from '../../shared/DevExDataGrid';
 import { createColumnHelper } from '@tanstack/react-table';
@@ -17,6 +17,7 @@ import { KasaIslemleriModal } from './KasaIslemleriModal';
 import { toast } from 'sonner';
 import { useLanguage } from '../../../contexts/LanguageContext';
 import { useFirmaDonem } from '../../../contexts/FirmaDonemContext';
+import { getAppDefaultCurrency } from '../../../services/postgres';
 
 interface Props {
   onEnterKasa?: (id: string) => void;
@@ -34,11 +35,13 @@ export function CashRegisterManagement({ onEnterKasa, initialTab = 'sessions' }:
 
   // Modals
   const [showAddModal, setShowAddModal] = useState(false);
+  const [editingKasa, setEditingKasa] = useState<Kasa | null>(null);
   const [showDetailModal, setShowDetailModal] = useState(false);
   const [selectedKasa, setSelectedKasa] = useState<Kasa | null>(null);
   const [selectedKasaIslemleri, setSelectedKasaIslemleri] = useState<KasaIslemi[]>([]);
   const [loadingDetail, setLoadingDetail] = useState(false);
   const [deletingTxId, setDeletingTxId] = useState<string | null>(null);
+  const amountCurrency = getAppDefaultCurrency() || 'IQD';
 
   const loadData = async () => {
     // If firm not selected, don't even try - prevents noise
@@ -140,39 +143,45 @@ export function CashRegisterManagement({ onEnterKasa, initialTab = 'sessions' }:
       size: 90
     }),
     kasaColumnHelper.accessor('kasa_kodu', {
-      header: t.store.toUpperCase(),
+      header: (tm('cashRegisterCode') || 'Kasa kodu').toUpperCase(),
       cell: info => info.getValue(),
       size: 150
     }),
     kasaColumnHelper.accessor('kasa_adi', {
-      header: t.cashier.toUpperCase(),
-      size: 130
+      header: (tm('cashRegisterName') || 'Kasa adı').toUpperCase(),
+      size: 160
     }),
     kasaColumnHelper.accessor('bakiye', {
-      header: tm('expected').toUpperCase(),
+      header: (tm('balance') || 'Bakiye').toUpperCase(),
       cell: info => (
         <span className="font-semibold">
-          {formatCurrency(info.getValue())} {info.row.original.id_doviz_kodu}
+          {formatCurrency(info.getValue())} {info.row.original.id_doviz_kodu || amountCurrency}
         </span>
       ),
-      size: 120
-    }),
-    kasaColumnHelper.display({
-      id: 'actual',
-      header: tm('actual').toUpperCase(),
-      cell: info => <span className="text-gray-600 font-semibold">{formatCurrency(info.row.original.bakiye)}</span>,
-      size: 120
-    }),
-    kasaColumnHelper.display({
-      id: 'diff',
-      header: tm('difference').toUpperCase(),
-      cell: info => <span className="text-green-600 font-semibold">0</span>,
-      size: 120
+      size: 140
     }),
     kasaColumnHelper.accessor('olusturma_tarihi', {
-      header: tm('openingTime').toUpperCase(),
+      header: (tm('createdAt') || 'Oluşturma').toUpperCase(),
       cell: info => new Date(info.getValue()).toLocaleString(language === 'ar' ? 'ar-SA' : language === 'ku' ? 'ku-Arab' : 'tr-TR'),
-      size: 140
+      size: 150
+    }),
+    kasaColumnHelper.display({
+      id: 'kasa_actions',
+      header: tm('actions').toUpperCase(),
+      size: 88,
+      cell: ({ row }) => (
+        <button
+          type="button"
+          onClick={(e) => {
+            e.stopPropagation();
+            setEditingKasa(row.original);
+          }}
+          className="inline-flex items-center justify-center rounded-md border border-slate-200 bg-white p-1.5 text-slate-700 hover:bg-slate-50"
+          title={tm('edit') || 'Düzenle'}
+        >
+          <Pencil className="h-4 w-4" />
+        </button>
+      ),
     }),
   ];
 
@@ -294,7 +303,7 @@ export function CashRegisterManagement({ onEnterKasa, initialTab = 'sessions' }:
             <div>
               <p className="text-sm text-purple-600 mb-1 font-semibold">{tm('totalSalesToday')}</p>
               <p className="text-xl font-bold text-purple-900">
-                {formatCurrency(stats.totalSalesToday)} {tm('currencyCode')}
+                {formatCurrency(stats.totalSalesToday)} {amountCurrency}
               </p>
             </div>
             <TrendingUp className="w-8 h-8 text-purple-600" />
@@ -305,7 +314,7 @@ export function CashRegisterManagement({ onEnterKasa, initialTab = 'sessions' }:
             <div>
               <p className="text-sm text-red-600 mb-1 font-semibold">{tm('totalDifference')}</p>
               <p className="text-xl font-bold text-red-900">
-                {formatCurrency(stats.totalDiff)} {tm('currencyCode')}
+                {formatCurrency(stats.totalDiff)} {amountCurrency}
               </p>
             </div>
             <AlertTriangle className="w-8 h-8 text-red-600" />
@@ -375,6 +384,17 @@ export function CashRegisterManagement({ onEnterKasa, initialTab = 'sessions' }:
         />
       )}
 
+      {editingKasa && (
+        <KasaDefinitionModal
+          kasa={editingKasa}
+          onClose={() => setEditingKasa(null)}
+          onSuccess={() => {
+            setEditingKasa(null);
+            loadData();
+          }}
+        />
+      )}
+
       {showDetailModal && selectedKasa && (
         <KasaIslemleriModal
           kasa={selectedKasa}
@@ -397,6 +417,15 @@ export function CashRegisterManagement({ onEnterKasa, initialTab = 'sessions' }:
             className="w-full px-4 py-2 text-left text-sm hover:bg-gray-100 flex items-center gap-2"
           >
             İncele
+          </button>
+          <button
+            onClick={() => {
+              setEditingKasa(contextMenu.kasa);
+              setContextMenu(null);
+            }}
+            className="w-full px-4 py-2 text-left text-sm hover:bg-gray-100 flex items-center gap-2 border-t"
+          >
+            {tm('edit') || 'Düzenle'} (ad / kod)
           </button>
           <button
             onClick={() => void handleCloneKasa(contextMenu.kasa)}

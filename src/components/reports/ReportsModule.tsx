@@ -2712,6 +2712,7 @@ export function ReportsModule({
         totalQuantity: number;
         productCount: number;
         avgPrice: number;
+        productIds: Set<string>;
         items?: CategoryAnalysisItem[];
       }>();
 
@@ -2719,10 +2720,13 @@ export function ReportsModule({
         (order.items || []).forEach((item: any) => {
           const categoryName = item.category_name || 'Diğer';
           const existing = categoryMap.get(categoryName);
+          const productKey = String(item.product_id ?? item.productId ?? item.product_name ?? item.productName ?? '').trim() || '—';
           if (existing) {
             existing.totalRevenue += Number(item.subtotal || 0);
             existing.totalQuantity += Number(item.quantity || 0);
             existing.avgPrice = existing.totalRevenue / existing.totalQuantity;
+            existing.productIds.add(productKey);
+            existing.productCount = existing.productIds.size;
             if (!existing.items) existing.items = [];
             existing.items.push({
               product_name: String(item.product_name ?? item.productName ?? '—'),
@@ -2735,6 +2739,7 @@ export function ReportsModule({
               totalRevenue: Number(item.subtotal || 0),
               totalQuantity: Number(item.quantity || 0),
               productCount: 1,
+              productIds: new Set([productKey]),
               avgPrice: Number(item.unit_price || 0),
               items: [
                 {
@@ -2747,7 +2752,9 @@ export function ReportsModule({
           }
         });
       });
-      return Array.from(categoryMap.values()).sort((a, b) => b.totalRevenue - a.totalRevenue);
+      return Array.from(categoryMap.values())
+        .map(({ productIds: _ids, ...rest }) => rest)
+        .sort((a, b) => b.totalRevenue - a.totalRevenue);
     }
 
     if (!erpSalesForReportPeriod || !Array.isArray(erpSalesForReportPeriod) || !products || !Array.isArray(products)) return [];

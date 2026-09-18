@@ -11,9 +11,8 @@ import { useLanguage } from '../../../contexts/LanguageContext';
 import { Button } from '@/components/ui/button';
 import { cn } from '@/components/ui/utils';
 import { formatMoneyAmount } from '../../../utils/formatMoney';
+import { getAppDefaultCurrency } from '../../../services/postgres';
 import '../ClinicStyles.css';
-
-const fmt = (n: number) => formatMoneyAmount(n, { minFrac: 0, maxFrac: 0 });
 
 const pctChange = (current: number, prev: number): { pct: string; up: boolean } => {
     if (prev === 0) return { pct: current > 0 ? '+100%' : '0%', up: current > 0 };
@@ -29,6 +28,8 @@ export function ReportDashboard() {
     const [stats, setStats]     = useState<ReportStats | null>(null);
     const [loading, setLoading] = useState(true);
     const [error, setError]     = useState<string | null>(null);
+    const currency = getAppDefaultCurrency() || 'IQD';
+    const fmt = (n: number) => `${formatMoneyAmount(n, { minFrac: 0, maxFrac: 0 })} ${currency}`;
 
     const CATEGORY_LABEL: Record<string, string> = {
         laser: tm('bCatLaser'), hair_salon: tm('bCatHairSalon'), beauty: tm('bCatBeauty'),
@@ -67,12 +68,16 @@ export function ReportDashboard() {
     const revenueChg    = pctChange(stats!.monthlyRevenue, stats!.prevMonthRevenue);
     const txChg         = pctChange(stats!.transactionCount, stats!.prevMonthTransactions);
     const totalRevDist  = stats!.serviceDistribution.reduce((s, r) => s + r.revenue, 0) || 1;
+    const serviceRevenue = stats!.serviceDistribution.reduce((s, r) => s + r.revenue, 0);
+    const productRevenue = (stats!.productStaffPerformance || []).reduce((s, r) => s + r.revenue, 0);
 
     const kpiStats = [
         { label: tm('bMonthlyRevenue'),    value: fmt(stats!.monthlyRevenue),         ...revenueChg, icon: Banknote, color: 'purple' },
         { label: tm('bTransactionCount'), value: stats!.transactionCount.toString(), ...txChg,       icon: Activity,   color: 'blue' },
         { label: tm('bNewCustomersKPI'),  value: stats!.newCustomers.toString(),     pct: '—', up: true, icon: Users, color: 'pink' },
         { label: tm('bAvgCart'),          value: fmt(stats!.avgCartValue),           pct: '—', up: true, icon: ShoppingBag, color: 'orange' },
+        { label: tm('bServiceSalesKpi') || 'Hizmet satışı', value: fmt(serviceRevenue), pct: '—', up: true, icon: Star, color: 'purple' },
+        { label: tm('bProductSalesKpi') || 'Ürün satışı', value: fmt(productRevenue), pct: '—', up: true, icon: ShoppingBag, color: 'blue' },
     ];
 
     // Pad trend to always show 6 bars

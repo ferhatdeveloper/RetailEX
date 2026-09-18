@@ -279,12 +279,12 @@ export function ClinicDashboard() {
     };
 
     const stats = useMemo(() => {
-        const todayApts = appointments.filter(
-            a => beautyAppointmentDateKey(a) === todayStr && beautyAptVisibleOnSchedule(a),
-        );
+        const todayAll = appointments.filter(a => beautyAppointmentDateKey(a) === todayStr);
+        const todayApts = todayAll.filter(a => beautyAptVisibleOnSchedule(a));
         const completed = todayApts.filter(a => a.status === AppointmentStatus.COMPLETED);
         const pending   = todayApts.filter(a => a.status === AppointmentStatus.SCHEDULED || a.status === AppointmentStatus.CONFIRMED);
         const inProg    = todayApts.filter(a => a.status === AppointmentStatus.IN_PROGRESS);
+        const cancelled = todayAll.filter(a => a.status === AppointmentStatus.CANCELLED);
         const revenue   = completed.reduce((s, a) => s + (a.total_price || 0), 0);
         const rate      = todayApts.length ? Math.round((completed.length / todayApts.length) * 100) : 0;
 
@@ -292,7 +292,16 @@ export function ClinicDashboard() {
             return (a.appointment_time ?? a.time ?? '').localeCompare(b.appointment_time ?? b.time ?? '');
         });
 
-        return { todayApts: sorted, completed: completed.length, pending: pending.length, inProg: inProg.length, revenue, rate, total: todayApts.length };
+        return {
+            todayApts: sorted,
+            completed: completed.length,
+            pending: pending.length,
+            inProg: inProg.length,
+            cancelled: cancelled.length,
+            revenue,
+            rate,
+            total: todayApts.length,
+        };
     }, [appointments, todayStr]);
 
     const fmt = (n: number) => formatMoneyAmount(n, { minFrac: 0, maxFrac: 0 });
@@ -330,10 +339,11 @@ export function ClinicDashboard() {
             </div>
 
             {/* ── KPI Strip ───────────────────────────────────────── */}
-            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(180px, 1fr))', gap: 12, marginBottom: 20 }}>
+            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(160px, 1fr))', gap: 12, marginBottom: 20 }}>
                 <KpiCard label={tm('bKpiDailyRevenue')}       value={fmt(stats.revenue)}   accent={T.violet}  icon={TrendingUp} />
                 <KpiCard label={tm('bKpiCompletedLabel')}         value={stats.completed}      sub={tm('bKpiCompletionRateSub').replace('{n}', String(stats.rate))} accent={T.green}   icon={CheckCircle2} />
                 <KpiCard label={tm('bKpiPendingLabel')}           value={stats.pending}        sub={tm('bKpiInProgressSub').replace('{n}', String(stats.inProg))} accent={T.amber} icon={Clock} />
+                <KpiCard label={tm('bKpiCancelledLabel') || 'İptal'} value={stats.cancelled} accent={T.pink} icon={Activity} />
                 <KpiCard label={tm('bKpiActiveStaff')}     value={activeStaff.length}   sub={tm('bKpiTotalStaffSub').replace('{n}', String(specialists.length))} accent={T.blue}  icon={Users} />
             </div>
 
