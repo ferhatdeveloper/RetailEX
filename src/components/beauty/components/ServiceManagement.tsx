@@ -1,4 +1,4 @@
-import React, { useEffect, useMemo, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import {
     Table,
     Input,
@@ -22,11 +22,17 @@ import {
     FormOutlined,
     InfoCircleOutlined,
 } from '@ant-design/icons';
-import { Scissors } from 'lucide-react';
+import { ChevronDown, Scissors } from 'lucide-react';
 import { RetailExFlatModal, RetailExFlatFieldLabel } from '../../shared/RetailExFlatModal';
 import { useBeautyStore } from '../store/useBeautyStore';
 import { BeautyService, ServiceCategory } from '../../../types/beauty';
-import { beautyServiceMainKey, beautyServiceSubKey } from '../beautyServiceCategoryUtils';
+import {
+    beautyCategoryIsTopLevel,
+    beautyCategorySlug,
+    beautyCategoryStoredValue,
+    beautyServiceMainKey,
+    beautyServiceSubKey,
+} from '../beautyServiceCategoryUtils';
 import { formatMoneyAmount } from '../../../utils/formatMoney';
 import { useLanguage } from '../../../contexts/LanguageContext';
 import { useFirmaDonem } from '../../../contexts/FirmaDonemContext';
@@ -68,25 +74,9 @@ function categoryDisplayLabel(key: string, masterByKey?: Map<string, string>): s
     return CATEGORY_LABELS[k] ?? k;
 }
 
-function slugCategoryCode(name: string): string {
-    const base = String(name || '')
-        .trim()
-        .toLocaleLowerCase('tr-TR')
-        .replace(/ğ/g, 'g')
-        .replace(/ü/g, 'u')
-        .replace(/ş/g, 's')
-        .replace(/ı/g, 'i')
-        .replace(/ö/g, 'o')
-        .replace(/ç/g, 'c')
-        .replace(/[^a-z0-9]+/g, '_')
-        .replace(/^_+|_+$/g, '')
-        .slice(0, 40);
-    return base || `cat_${Date.now().toString(36)}`;
-}
-
 const EMPTY_FORM: Partial<BeautyService> = {
     name: '',
-    category: ServiceCategory.BEAUTY,
+    category: '',
     parent_category: undefined,
     duration_min: 60,
     price: 0,
@@ -180,16 +170,57 @@ export function ServiceManagement() {
         return map;
     }, [backofficeCategories]);
 
+    const findMasterCategory = useCallback((key: string): Category | undefined => {
+        const k = String(key || '').trim();
+        if (!k) return undefined;
+        return backofficeCategories.find(
+            c => String(c.code ?? '').trim() === k || String(c.name ?? '').trim() === k,
+        );
+    }, [backofficeCategories]);
+
+    const canonicalCategoryValue = useCallback((key: string): string => {
+        const k = String(key || '').trim();
+        if (!k) return '';
+        const master = findMasterCategory(k);
+        return master ? beautyCategoryStoredValue(master) : k;
+    }, [findMasterCategory]);
+
+    const keysReferSameCategory = useCallback((a: string, b: string): boolean => {
+        const left = String(a || '').trim();
+        const right = String(b || '').trim();
+        if (!left || !right) return false;
+        if (left === right) return true;
+        const ma = findMasterCategory(left);
+        const mb = findMasterCategory(right);
+        if (ma && mb) return ma.id === mb.id;
+        if (ma) return beautyCategoryStoredValue(ma) === right || String(ma.name ?? '').trim() === right;
+        if (mb) return beautyCategoryStoredValue(mb) === left || String(mb.name ?? '').trim() === left;
+        return false;
+    }, [findMasterCategory]);
+
+    const childMasterValues = useMemo(() => {
+        const set = new Set<string>();
+        for (const cat of backofficeCategories) {
+            if (beautyCategoryIsTopLevel(cat)) continue;
+            const value = beautyCategoryStoredValue(cat);
+            if (value) set.add(value);
+            const name = String(cat.name ?? '').trim();
+            if (name) set.add(name);
+            const code = String(cat.code ?? '').trim();
+            if (code) set.add(code);
+        }
+        return set;
+    }, [backofficeCategories]);
+
     const categories = useMemo(() => {
         const byValue = new Map<string, string>();
         for (const c of Object.values(ServiceCategory)) {
             byValue.set(c, CATEGORY_LABELS[c] ?? c);
         }
         for (const cat of backofficeCategories) {
-            const code = String(cat.code ?? '').trim();
+            const value = beautyCategoryStoredValue(cat);
             const name = String(cat.name ?? '').trim();
-            const value = code || name;
-            if (value) byValue.set(value, name || code);
+            if (value) byValue.set(value, name || value);
         }
         for (const s of services) {
             const leaf = beautyServiceSubKey(s);
@@ -202,15 +233,76 @@ export function ServiceManagement() {
             .sort((a, b) => a.label.localeCompare(b.label, 'tr'));
     }, [backofficeCategories, services, masterLabelByKey]);
 
-    const findMasterCategory = (key: string): Category | undefined => {
-        const k = String(key || '').trim();
-        if (!k) return undefined;
-        return backofficeCategories.find(
-            c => String(c.code ?? '').trim() === k || String(c.name ?? '').trim() === k,
-        );
-    };
+    const formMainCategoryOptions = useMemo(() => {
+        const byValue = new Map<string, string>();
+        for (const c of Object.values(ServiceCategory)) {
+            byValue.set(c, CATEGORY_LABELS[c] ?? c);
+        }
+        for (const cat of backofficeCategories) {
+            if (!beautyCategoryIsTopLevel(cat)) continue;
+            const value = beautyCategoryStoredValue(cat);
+            const name = String(cat.name ?? '').trim();
+            if (value) byValue.set(value, name || value);
+        }
+        for (const s of services) {
+            const main = beautyServiceMainKey(s);
+            if (!main || main === 'uncategorized') continue;
+            if (childMasterValues.has(main)) continue;
+            const canon = canonicalCategoryValue(main);
+            if (!byValue.has(canon) && !byValue.has(main)) {
+                byValue.set(canon || main, categoryDisplayLabel(main, masterLabelByKey));
+            }
+        }
+        return Array.from(byValue.entries())
+            .map(([value, label]) => ({ value, label }))
+            .sort((a, b) => a.label.localeCompare(b.label, 'tr'));
+    }, [backofficeCategories, services, masterLabelByKey, childMasterValues, canonicalCategoryValue]);
+
+    const selectedFormParent = String(editing.parent_category ?? '').trim();
+
+    const formSubCategoryOptions = useMemo(() => {
+        if (!selectedFormParent) return [] as { value: string; label: string }[];
+        const parentMaster = findMasterCategory(selectedFormParent);
+        const byValue = new Map<string, string>();
+        for (const cat of backofficeCategories) {
+            if (beautyCategoryIsTopLevel(cat)) continue;
+            const matchesParent = parentMaster
+                ? String(cat.parent_id ?? '') === parentMaster.id
+                : false;
+            if (!matchesParent) continue;
+            const value = beautyCategoryStoredValue(cat);
+            const name = String(cat.name ?? '').trim();
+            if (value) byValue.set(value, name || value);
+        }
+        for (const s of services) {
+            const main = beautyServiceMainKey(s);
+            if (!keysReferSameCategory(main, selectedFormParent)) continue;
+            const leaf = beautyServiceSubKey(s);
+            if (!leaf || leaf === 'uncategorized') continue;
+            if (keysReferSameCategory(leaf, selectedFormParent)) continue;
+            const canon = canonicalCategoryValue(leaf);
+            if (!byValue.has(canon) && !byValue.has(leaf)) {
+                byValue.set(canon || leaf, categoryDisplayLabel(leaf, masterLabelByKey));
+            }
+        }
+        return Array.from(byValue.entries())
+            .map(([value, label]) => ({ value, label }))
+            .sort((a, b) => a.label.localeCompare(b.label, 'tr'));
+    }, [
+        selectedFormParent,
+        backofficeCategories,
+        services,
+        findMasterCategory,
+        keysReferSameCategory,
+        canonicalCategoryValue,
+        masterLabelByKey,
+    ]);
 
     const openCreateCategory = (target: 'parent' | 'sub' | 'filter' = 'filter') => {
+        if (target === 'sub' && !String(editing.parent_category ?? '').trim()) {
+            toast.error(tm('bSelectMainCategoryFirst'));
+            return;
+        }
         setCategoryCreateTarget(target);
         setCategoryModalMode('create');
         setCategoryModalName('');
@@ -256,19 +348,54 @@ export function ServiceManagement() {
         setCategoryModalSaving(true);
         try {
             if (categoryModalMode === 'create') {
-                const code = slugCategoryCode(name);
-                const created = await categoryAPI.create({ code, name });
+                const code = beautyCategorySlug(name);
+                let parentId: string | null = null;
+                let parentKey = '';
+                if (categoryCreateTarget === 'sub') {
+                    parentKey = String(editing.parent_category ?? '').trim();
+                    let parentMaster = findMasterCategory(parentKey);
+                    if (!parentKey) {
+                        toast.error(tm('bSelectMainCategoryFirst'));
+                        throw new Error('validation');
+                    }
+                    if (!parentMaster) {
+                        const parentName = categoryDisplayLabel(parentKey, masterLabelByKey) || parentKey;
+                        const parentCode = /^[a-z0-9_]+$/.test(parentKey)
+                            ? parentKey
+                            : beautyCategorySlug(parentName);
+                        parentMaster = (await categoryAPI.create({
+                            code: parentCode,
+                            name: parentName,
+                        })) ?? undefined;
+                    }
+                    if (!parentMaster?.id) {
+                        toast.error(tm('bSelectMainCategoryFirst'));
+                        throw new Error('validation');
+                    }
+                    parentId = parentMaster.id;
+                    parentKey = beautyCategoryStoredValue(parentMaster);
+                }
+                const created = await categoryAPI.create({
+                    code,
+                    name,
+                    parent_id: parentId,
+                });
                 if (!created) {
                     toast.error(tm('error') || 'Kategori oluşturulamadı');
                     throw new Error('create failed');
                 }
-                const createdKey = String(created.code || created.name || name).trim() || name;
+                const createdKey = beautyCategoryStoredValue(created) || code;
                 await reloadBackofficeCategories();
                 if (categoryCreateTarget === 'parent') {
-                    setEditing(p => ({ ...p, parent_category: createdKey }));
+                    setEditing(p => ({
+                        ...p,
+                        parent_category: createdKey,
+                        category: '',
+                    }));
                 } else if (categoryCreateTarget === 'sub') {
                     setEditing(p => ({
                         ...p,
+                        parent_category: parentKey || p.parent_category,
                         category: createdKey as BeautyService['category'],
                     }));
                 } else {
@@ -279,32 +406,39 @@ export function ServiceManagement() {
             } else {
                 const oldKey = categoryModalKey;
                 const master = findMasterCategory(oldKey);
+                let keepKey = oldKey;
                 if (master?.id) {
-                    const updated = await categoryAPI.update(master.id, { name, code: master.code || slugCategoryCode(name) });
+                    const updated = await categoryAPI.update(master.id, { name, code: master.code || beautyCategorySlug(name) });
                     if (!updated) {
                         toast.error(tm('error') || 'Kategori güncellenemedi');
                         throw new Error('update failed');
                     }
+                    keepKey = beautyCategoryStoredValue(updated) || keepKey;
                 }
-                // Hizmetlerde ana/alt anahtarı yeniden adlandır
                 const toRename = services.filter(
-                    s => beautyServiceMainKey(s) === oldKey || beautyServiceSubKey(s) === oldKey,
+                    s =>
+                        keysReferSameCategory(beautyServiceMainKey(s), oldKey) ||
+                        keysReferSameCategory(beautyServiceSubKey(s), oldKey),
                 );
-                if (toRename.length > 0) {
+                if (toRename.length > 0 && keepKey !== oldKey) {
                     await Promise.allSettled(
                         toRename.map(s => {
                             const patch: Partial<BeautyService> = { ...s };
-                            if (String(s.parent_category ?? '').trim() === oldKey) patch.parent_category = name;
-                            if (String(s.category ?? '').trim() === oldKey) patch.category = name as BeautyService['category'];
+                            if (keysReferSameCategory(String(s.parent_category ?? ''), oldKey)) {
+                                patch.parent_category = keepKey;
+                            }
+                            if (keysReferSameCategory(String(s.category ?? ''), oldKey)) {
+                                patch.category = keepKey as BeautyService['category'];
+                            }
                             return updateService(s.id, patch);
                         }),
                     );
                     await loadServices();
                 }
-                syncEditingCategoryKey(oldKey, name);
+                syncEditingCategoryKey(oldKey, keepKey);
                 await reloadBackofficeCategories();
-                if (selectedMain === oldKey) setSelectedMain(name);
-                if (selectedSub === oldKey) setSelectedSub(name);
+                if (selectedMain === oldKey) setSelectedMain(keepKey);
+                if (selectedSub === oldKey) setSelectedSub(keepKey);
                 toast.success(tm('bCategorySaved'));
             }
             setCategoryModalOpen(false);
@@ -390,38 +524,53 @@ export function ServiceManagement() {
     const serviceMainKeys = useMemo(() => {
         const set = new Set<string>();
         for (const s of services) {
-            set.add(beautyServiceMainKey(s));
+            const main = beautyServiceMainKey(s);
+            if (!main || main === 'uncategorized') continue;
+            if (childMasterValues.has(main)) continue;
+            set.add(canonicalCategoryValue(main) || main);
         }
         for (const cat of backofficeCategories) {
-            const code = String(cat.code ?? '').trim();
-            const name = String(cat.name ?? '').trim();
-            if (code) set.add(code);
-            else if (name) set.add(name);
+            if (!beautyCategoryIsTopLevel(cat)) continue;
+            const value = beautyCategoryStoredValue(cat);
+            if (value) set.add(value);
         }
         return Array.from(set).sort((a, b) =>
             categoryDisplayLabel(a, masterLabelByKey).localeCompare(categoryDisplayLabel(b, masterLabelByKey), 'tr'),
         );
-    }, [services, backofficeCategories, masterLabelByKey]);
+    }, [services, backofficeCategories, masterLabelByKey, childMasterValues, canonicalCategoryValue]);
 
     const serviceSubKeysForMain = useMemo(() => {
         if (selectedMain === 'all') return [] as string[];
         const set = new Set<string>();
+        const parentMaster = findMasterCategory(selectedMain);
         for (const s of services) {
-            if (beautyServiceMainKey(s) !== selectedMain) continue;
-            set.add(beautyServiceSubKey(s));
+            if (!keysReferSameCategory(beautyServiceMainKey(s), selectedMain)) continue;
+            const leaf = beautyServiceSubKey(s);
+            if (!leaf || leaf === 'uncategorized') continue;
+            if (keysReferSameCategory(leaf, selectedMain)) continue;
+            set.add(canonicalCategoryValue(leaf) || leaf);
         }
-        return Array.from(set).sort((a, b) => a.localeCompare(b, 'tr'));
-    }, [services, selectedMain]);
+        if (parentMaster) {
+            for (const cat of backofficeCategories) {
+                if (String(cat.parent_id ?? '') !== parentMaster.id) continue;
+                const value = beautyCategoryStoredValue(cat);
+                if (value) set.add(value);
+            }
+        }
+        return Array.from(set).sort((a, b) =>
+            categoryDisplayLabel(a, masterLabelByKey).localeCompare(categoryDisplayLabel(b, masterLabelByKey), 'tr'),
+        );
+    }, [services, selectedMain, backofficeCategories, findMasterCategory, keysReferSameCategory, canonicalCategoryValue, masterLabelByKey]);
 
     const filteredServices = useMemo(
         () =>
             services.filter(s => {
-                const matchesSearch = s.name.toLowerCase().includes(searchTerm.toLowerCase());
-                const mainOk = selectedMain === 'all' || beautyServiceMainKey(s) === selectedMain;
-                const subOk = selectedSub === 'all' || beautyServiceSubKey(s) === selectedSub;
+                const matchesSearch = s.name.toLocaleLowerCase('tr-TR').includes(searchTerm.toLocaleLowerCase('tr-TR'));
+                const mainOk = selectedMain === 'all' || keysReferSameCategory(beautyServiceMainKey(s), selectedMain);
+                const subOk = selectedSub === 'all' || keysReferSameCategory(beautyServiceSubKey(s), selectedSub);
                 return matchesSearch && mainOk && subOk;
             }),
-        [services, searchTerm, selectedMain, selectedSub],
+        [services, searchTerm, selectedMain, selectedSub, keysReferSameCategory],
     );
 
     useEffect(() => {
@@ -435,7 +584,13 @@ export function ServiceManagement() {
     };
 
     const openEdit = (svc: BeautyService) => {
-        setEditing({ ...svc });
+        const parentKey = String(svc.parent_category ?? '').trim();
+        const leafKey = String(svc.category ?? '').trim();
+        setEditing({
+            ...svc,
+            parent_category: parentKey ? canonicalCategoryValue(parentKey) : undefined,
+            category: (leafKey ? canonicalCategoryValue(leafKey) : '') as BeautyService['category'],
+        });
         setIsEdit(true);
         setShowModal(true);
     };
@@ -445,10 +600,17 @@ export function ServiceManagement() {
             toast.error(tm('bFillServiceNameToSave'));
             throw new Error('validation');
         }
+        const parentKey = String(editing.parent_category ?? '').trim();
+        const subKey = String(editing.category ?? '').trim();
+        const payload: Partial<BeautyService> = {
+            ...editing,
+            parent_category: parentKey || undefined,
+            category: (subKey || parentKey || ServiceCategory.BEAUTY) as BeautyService['category'],
+        };
         setSaving(true);
         try {
-            if (isEdit && editing.id) await updateService(editing.id, editing);
-            else await createService(editing);
+            if (isEdit && editing.id) await updateService(editing.id, payload);
+            else await createService(payload);
             setShowModal(false);
             toast.success(tm('bServiceSaved'));
         } catch (e: unknown) {
@@ -1056,18 +1218,42 @@ export function ServiceManagement() {
                                         </span>
                                     </RetailExFlatFieldLabel>
                                     <div className="flex items-center gap-2">
-                                        <Input
-                                            className="min-w-0 flex-1 !rounded-2xl !px-4 !py-2.5"
-                                            list="beauty-service-main-cat-suggestions"
-                                            value={String(editing.parent_category ?? '')}
-                                            onChange={e =>
-                                                setEditing(p => ({
-                                                    ...p,
-                                                    parent_category: e.target.value.trim() ? e.target.value : undefined,
-                                                }))
-                                            }
-                                            placeholder="Candela"
-                                        />
+                                        <div className="relative min-w-0 flex-1">
+                                            <select
+                                                className="w-full appearance-none rounded-2xl border border-slate-200 bg-white px-4 py-2.5 pr-11 text-sm font-medium text-slate-800 outline-none focus:border-blue-400 focus:ring-2 focus:ring-blue-500"
+                                                value={String(editing.parent_category ?? '')}
+                                                onChange={e => {
+                                                    const next = e.target.value.trim();
+                                                    setEditing(p => ({
+                                                        ...p,
+                                                        parent_category: next || undefined,
+                                                        category: '' as BeautyService['category'],
+                                                    }));
+                                                }}
+                                                aria-label={tm('bServiceParentCategoryField')}
+                                            >
+                                                <option value="">{tm('bServiceMainCategoryPlaceholder')}</option>
+                                                {formMainCategoryOptions.map(o => (
+                                                    <option key={o.value} value={o.value}>
+                                                        {o.label}
+                                                    </option>
+                                                ))}
+                                                {selectedFormParent &&
+                                                    !formMainCategoryOptions.some(
+                                                        o =>
+                                                            o.value === selectedFormParent ||
+                                                            keysReferSameCategory(o.value, selectedFormParent),
+                                                    ) && (
+                                                        <option value={selectedFormParent}>
+                                                            {categoryDisplayLabel(selectedFormParent, masterLabelByKey)}
+                                                        </option>
+                                                    )}
+                                            </select>
+                                            <ChevronDown
+                                                className="pointer-events-none absolute right-3 top-1/2 h-5 w-5 -translate-y-1/2 text-slate-400"
+                                                aria-hidden
+                                            />
+                                        </div>
                                         <Space size={4} className="shrink-0">
                                             <Tooltip title={tm('bNewCategory')}>
                                                 <Button
@@ -1114,36 +1300,64 @@ export function ServiceManagement() {
                                             </Popconfirm>
                                         </Space>
                                     </div>
-                                    <datalist id="beauty-service-main-cat-suggestions">
-                                        {serviceMainKeys.map(k => (
-                                            <option key={k} value={k} />
-                                        ))}
-                                    </datalist>
                                 </div>
                                 <div className="min-w-0">
                                     <RetailExFlatFieldLabel useSentenceCase>
                                         {tm('bServiceSubCategoryFilter')}
                                     </RetailExFlatFieldLabel>
                                     <div className="flex items-center gap-2">
-                                        <Input
-                                            className="min-w-0 flex-1 !rounded-2xl !px-4 !py-2.5"
-                                            list="beauty-service-sub-cat-suggestions"
-                                            value={String(editing.category ?? '')}
-                                            onChange={e =>
-                                                setEditing(p => ({
-                                                    ...p,
-                                                    category: (e.target.value.trim()
-                                                        ? e.target.value
-                                                        : ServiceCategory.BEAUTY) as BeautyService['category'],
-                                                }))
-                                            }
-                                            placeholder="Lazer"
-                                        />
+                                        <div className="relative min-w-0 flex-1">
+                                            <select
+                                                className="w-full appearance-none rounded-2xl border border-slate-200 bg-white px-4 py-2.5 pr-11 text-sm font-medium text-slate-800 outline-none focus:border-blue-400 focus:ring-2 focus:ring-blue-500 disabled:cursor-not-allowed disabled:bg-slate-50 disabled:text-slate-400"
+                                                value={selectedFormParent ? String(editing.category ?? '') : ''}
+                                                disabled={!selectedFormParent}
+                                                onChange={e =>
+                                                    setEditing(p => ({
+                                                        ...p,
+                                                        category: e.target.value.trim() as BeautyService['category'],
+                                                    }))
+                                                }
+                                                aria-label={tm('bServiceSubCategoryFilter')}
+                                            >
+                                                <option value="">
+                                                    {selectedFormParent
+                                                        ? tm('bServiceSubCategoryPlaceholder')
+                                                        : tm('bSelectMainCategoryFirst')}
+                                                </option>
+                                                {formSubCategoryOptions.map(o => (
+                                                    <option key={o.value} value={o.value}>
+                                                        {o.label}
+                                                    </option>
+                                                ))}
+                                                {selectedFormParent &&
+                                                    String(editing.category ?? '').trim() &&
+                                                    !formSubCategoryOptions.some(
+                                                        o =>
+                                                            o.value === String(editing.category ?? '').trim() ||
+                                                            keysReferSameCategory(
+                                                                o.value,
+                                                                String(editing.category ?? ''),
+                                                            ),
+                                                    ) && (
+                                                        <option value={String(editing.category ?? '')}>
+                                                            {categoryDisplayLabel(
+                                                                String(editing.category ?? ''),
+                                                                masterLabelByKey,
+                                                            )}
+                                                        </option>
+                                                    )}
+                                            </select>
+                                            <ChevronDown
+                                                className="pointer-events-none absolute right-3 top-1/2 h-5 w-5 -translate-y-1/2 text-slate-400"
+                                                aria-hidden
+                                            />
+                                        </div>
                                         <Space size={4} className="shrink-0">
                                             <Tooltip title={tm('bNewCategory')}>
                                                 <Button
                                                     type="dashed"
                                                     icon={<PlusOutlined />}
+                                                    disabled={!selectedFormParent}
                                                     onClick={() => openCreateCategory('sub')}
                                                     aria-label={tm('bNewCategory')}
                                                 />
@@ -1183,13 +1397,6 @@ export function ServiceManagement() {
                                             </Popconfirm>
                                         </Space>
                                     </div>
-                                    <datalist id="beauty-service-sub-cat-suggestions">
-                                        {categories.map(c => (
-                                            <option key={c.value} value={c.value}>
-                                                {c.label}
-                                            </option>
-                                        ))}
-                                    </datalist>
                                 </div>
                             </div>
                         </section>
