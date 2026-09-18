@@ -6,7 +6,6 @@ import {
     Card,
     Space,
     Typography,
-    Select,
     InputNumber,
     Checkbox,
     Popconfirm,
@@ -43,13 +42,7 @@ import {
 import { ERP_SETTINGS } from '../../../services/postgres';
 import { normalizeFirmEnabledModules } from '../../../utils/firmShellModules';
 
-/** RetailExFlatModal z≈2147483646; antd Select varsayılan popup daha altta kalıyor */
-const ANT_SELECT_POPUP_Z = 2147483647;
-const antSelectInFlatModal = {
-    getPopupContainer: () => document.body,
-    styles: { popup: { root: { zIndex: ANT_SELECT_POPUP_Z } as React.CSSProperties } },
-} as const;
-
+/** Sabit etiketler — yalnızca görüntüleme; CRUD serbest metin / masterData ile çalışır */
 const CATEGORY_LABELS: Record<string, string> = {
     laser: 'Lazer',
     hair_salon: 'Kuaför',
@@ -63,11 +56,33 @@ const CATEGORY_LABELS: Record<string, string> = {
     makeup: 'Makyaj',
     nails: 'Tırnak',
     spa: 'Spa',
-    // Eski demo seed kodları (facial/hair/nail)
     facial: 'Yüz Bakımı',
     hair: 'Saç',
     nail: 'Tırnak',
 };
+
+function categoryDisplayLabel(key: string, masterByKey?: Map<string, string>): string {
+    const k = String(key || '').trim();
+    if (!k) return k;
+    if (masterByKey?.has(k)) return masterByKey.get(k)!;
+    return CATEGORY_LABELS[k] ?? k;
+}
+
+function slugCategoryCode(name: string): string {
+    const base = String(name || '')
+        .trim()
+        .toLocaleLowerCase('tr-TR')
+        .replace(/ğ/g, 'g')
+        .replace(/ü/g, 'u')
+        .replace(/ş/g, 's')
+        .replace(/ı/g, 'i')
+        .replace(/ö/g, 'o')
+        .replace(/ç/g, 'c')
+        .replace(/[^a-z0-9]+/g, '_')
+        .replace(/^_+|_+$/g, '')
+        .slice(0, 40);
+    return base || `cat_${Date.now().toString(36)}`;
+}
 
 const EMPTY_FORM: Partial<BeautyService> = {
     name: '',
@@ -105,6 +120,24 @@ export function ServiceManagement() {
     const [editing, setEditing] = useState<Partial<BeautyService>>(EMPTY_FORM);
     const [isEdit, setIsEdit] = useState(false);
     const [saving, setSaving] = useState(false);
+    const [categoryModalOpen, setCategoryModalOpen] = useState(false);
+    const [categoryModalMode, setCategoryModalMode] = useState<'create' | 'edit'>('create');
+    const [categoryModalName, setCategoryModalName] = useState('');
+    const [categoryModalKey, setCategoryModalKey] = useState('');
+    const [categoryModalSaving, setCategoryModalSaving] = useState(false);
+    const [reassignModalOpen, setReassignModalOpen] = useState(false);
+    const [reassignFromKey, setReassignFromKey] = useState('');
+    const [reassignTargetKey, setReassignTargetKey] = useState('');
+    const [reassignSaving, setReassignSaving] = useState(false);
+
+    const reloadBackofficeCategories = async () => {
+        try {
+            const rows = await categoryAPI.getAll();
+            setBackofficeCategories(rows.filter(r => String(r.name ?? '').trim().length > 0));
+        } catch {
+            setBackofficeCategories([]);
+        }
+    };
 
     useEffect(() => {
         // Yanlış firmada (001 Market) boş liste çekilmesin — MainLayout ensureBeautyFirm sonrası yükle
@@ -115,7 +148,7 @@ export function ServiceManagement() {
 
     useEffect(() => {
         let mounted = true;
-        const loadBackofficeCategories = async () => {
+        (async () => {
             try {
                 const rows = await categoryAPI.getAll();
                 if (!mounted) return;
@@ -124,8 +157,7 @@ export function ServiceManagement() {
                 if (!mounted) return;
                 setBackofficeCategories([]);
             }
-        };
-        loadBackofficeCategories();
+        })();
         return () => {
             mounted = false;
         };
@@ -135,29 +167,206 @@ export function ServiceManagement() {
         setSelectedRowKeys(keys => keys.filter(k => services.some(s => s.id === k)));
     }, [services]);
 
-    const categories = useMemo(() => {
-        const staticFallback = Object.values(ServiceCategory).map(c => ({
-            value: c,
-            label: CATEGORY_LABELS[c] ?? c,
-        }));
-        if (backofficeCategories.length === 0) return staticFallback;
-        return backofficeCategories.map(cat => {
+    const masterLabelByKey = useMemo(() => {
+        const map = new Map<string, string>();
+        for (const cat of backofficeCategories) {
             const code = String(cat.code ?? '').trim();
             const name = String(cat.name ?? '').trim();
-            return {
-                value: code.length ? code : name,
-                label: name || code,
-            };
-        });
+            if (code) map.set(code, name || code);
+            if (name) map.set(name, name);
+        }
+        return map;
     }, [backofficeCategories]);
+
+    const categories = useMemo(() => {
+        const byValue = new Map<string, string>();
+        for (const c of Object.values(ServiceCategory)) {
+            byValue.set(c, CATEGORY_LABELS[c] ?? c);
+        }
+        for (const cat of backofficeCategories) {
+            const code = String(cat.code ?? '').trim();
+            const name = String(cat.name ?? '').trim();
+            const value = code || name;
+            if (value) byValue.set(value, name || code);
+        }
+        for (const s of services) {
+            const leaf = beautyServiceSubKey(s);
+            if (leaf && !byValue.has(leaf)) byValue.set(leaf, categoryDisplayLabel(leaf, masterLabelByKey));
+            const main = beautyServiceMainKey(s);
+            if (main && !byValue.has(main)) byValue.set(main, categoryDisplayLabel(main, masterLabelByKey));
+        }
+        return Array.from(byValue.entries())
+            .map(([value, label]) => ({ value, label }))
+            .sort((a, b) => a.label.localeCompare(b.label, 'tr'));
+    }, [backofficeCategories, services, masterLabelByKey]);
+
+    const findMasterCategory = (key: string): Category | undefined => {
+        const k = String(key || '').trim();
+        if (!k) return undefined;
+        return backofficeCategories.find(
+            c => String(c.code ?? '').trim() === k || String(c.name ?? '').trim() === k,
+        );
+    };
+
+    const openCreateCategory = () => {
+        setCategoryModalMode('create');
+        setCategoryModalName('');
+        setCategoryModalKey('');
+        setCategoryModalOpen(true);
+    };
+
+    const openEditCategory = (key: string) => {
+        const k = String(key || '').trim();
+        if (!k || k === 'all') return;
+        setCategoryModalMode('edit');
+        setCategoryModalKey(k);
+        setCategoryModalName(categoryDisplayLabel(k, masterLabelByKey));
+        setCategoryModalOpen(true);
+    };
+
+    const handleCategoryModalSave = async () => {
+        const name = categoryModalName.trim();
+        if (!name) {
+            toast.error(tm('bCategoryNameRequired'));
+            throw new Error('validation');
+        }
+        setCategoryModalSaving(true);
+        try {
+            if (categoryModalMode === 'create') {
+                const code = slugCategoryCode(name);
+                const created = await categoryAPI.create({ code, name });
+                if (!created) {
+                    toast.error(tm('error') || 'Kategori oluşturulamadı');
+                    throw new Error('create failed');
+                }
+                await reloadBackofficeCategories();
+                setSelectedMain(created.code || name);
+                setSelectedSub('all');
+                toast.success(tm('bCategorySaved'));
+            } else {
+                const oldKey = categoryModalKey;
+                const master = findMasterCategory(oldKey);
+                if (master?.id) {
+                    const updated = await categoryAPI.update(master.id, { name, code: master.code || slugCategoryCode(name) });
+                    if (!updated) {
+                        toast.error(tm('error') || 'Kategori güncellenemedi');
+                        throw new Error('update failed');
+                    }
+                }
+                // Hizmetlerde ana/alt anahtarı yeniden adlandır
+                const toRename = services.filter(
+                    s => beautyServiceMainKey(s) === oldKey || beautyServiceSubKey(s) === oldKey,
+                );
+                if (toRename.length > 0) {
+                    await Promise.allSettled(
+                        toRename.map(s => {
+                            const patch: Partial<BeautyService> = { ...s };
+                            if (String(s.parent_category ?? '').trim() === oldKey) patch.parent_category = name;
+                            if (String(s.category ?? '').trim() === oldKey) patch.category = name as BeautyService['category'];
+                            return updateService(s.id, patch);
+                        }),
+                    );
+                    await loadServices();
+                }
+                await reloadBackofficeCategories();
+                if (selectedMain === oldKey) setSelectedMain(name);
+                if (selectedSub === oldKey) setSelectedSub(name);
+                toast.success(tm('bCategorySaved'));
+            }
+            setCategoryModalOpen(false);
+        } catch (e: unknown) {
+            const msg = e instanceof Error ? e.message : String(e);
+            if (msg !== 'validation' && msg !== 'create failed' && msg !== 'update failed') {
+                toast.error(msg);
+            }
+            throw e;
+        } finally {
+            setCategoryModalSaving(false);
+        }
+    };
+
+    const finishDeleteCategoryKey = async (k: string) => {
+        const master = findMasterCategory(k);
+        if (master?.id) {
+            const ok = await categoryAPI.delete(master.id);
+            if (!ok) {
+                toast.error(tm('error') || 'Kategori silinemedi');
+                return false;
+            }
+        }
+        await reloadBackofficeCategories();
+        if (selectedMain === k) {
+            setSelectedMain('all');
+            setSelectedSub('all');
+        }
+        if (selectedSub === k) setSelectedSub('all');
+        toast.success(tm('bCategoryDeleted'));
+        return true;
+    };
+
+    const handleDeleteCategory = async (key: string) => {
+        const k = String(key || '').trim();
+        if (!k || k === 'all') return;
+        const used = services.filter(s => beautyServiceMainKey(s) === k || beautyServiceSubKey(s) === k);
+        if (used.length > 0) {
+            setReassignFromKey(k);
+            setReassignTargetKey('');
+            setReassignModalOpen(true);
+            return;
+        }
+        await finishDeleteCategoryKey(k);
+    };
+
+    const handleReassignAndDelete = async () => {
+        const from = reassignFromKey.trim();
+        const to = reassignTargetKey.trim();
+        if (!from || !to || from === to) {
+            toast.error(tm('bCategoryReassignRequired'));
+            throw new Error('validation');
+        }
+        setReassignSaving(true);
+        try {
+            const toRename = services.filter(
+                s => beautyServiceMainKey(s) === from || beautyServiceSubKey(s) === from,
+            );
+            if (toRename.length > 0) {
+                await Promise.allSettled(
+                    toRename.map(s => {
+                        const patch: Partial<BeautyService> = { ...s };
+                        if (String(s.parent_category ?? '').trim() === from) patch.parent_category = to;
+                        if (String(s.category ?? '').trim() === from) patch.category = to as BeautyService['category'];
+                        return updateService(s.id, patch);
+                    }),
+                );
+                await loadServices();
+            }
+            const ok = await finishDeleteCategoryKey(from);
+            if (!ok) throw new Error('delete failed');
+            setReassignModalOpen(false);
+        } catch (e: unknown) {
+            const msg = e instanceof Error ? e.message : String(e);
+            if (msg !== 'validation' && msg !== 'delete failed') toast.error(msg);
+            throw e;
+        } finally {
+            setReassignSaving(false);
+        }
+    };
 
     const serviceMainKeys = useMemo(() => {
         const set = new Set<string>();
         for (const s of services) {
             set.add(beautyServiceMainKey(s));
         }
-        return Array.from(set).sort((a, b) => a.localeCompare(b, 'tr'));
-    }, [services]);
+        for (const cat of backofficeCategories) {
+            const code = String(cat.code ?? '').trim();
+            const name = String(cat.name ?? '').trim();
+            if (code) set.add(code);
+            else if (name) set.add(name);
+        }
+        return Array.from(set).sort((a, b) =>
+            categoryDisplayLabel(a, masterLabelByKey).localeCompare(categoryDisplayLabel(b, masterLabelByKey), 'tr'),
+        );
+    }, [services, backofficeCategories, masterLabelByKey]);
 
     const serviceSubKeysForMain = useMemo(() => {
         if (selectedMain === 'all') return [] as string[];
@@ -324,8 +533,8 @@ export function ServiceManagement() {
                         </Typography.Text>
                         <Typography.Text type="secondary" className="text-xs">
                             {String(s.parent_category ?? '').trim()
-                                ? `${CATEGORY_LABELS[String(s.parent_category)] ?? s.parent_category} › ${CATEGORY_LABELS[s.category] ?? s.category}`
-                                : CATEGORY_LABELS[s.category] ?? s.category}
+                                ? `${categoryDisplayLabel(String(s.parent_category), masterLabelByKey)} › ${categoryDisplayLabel(s.category, masterLabelByKey)}`
+                                : categoryDisplayLabel(s.category, masterLabelByKey)}
                         </Typography.Text>
                     </Space>
                 ),
@@ -422,7 +631,7 @@ export function ServiceManagement() {
                 ),
             },
         ],
-        [tm],
+        [tm, masterLabelByKey],
     );
 
     const definedSubtitle = tm('bServicesPageSubtitle').replace('{n}', String(services.length));
@@ -471,9 +680,41 @@ export function ServiceManagement() {
                                 size="middle"
                             />
                             <div className="space-y-2">
-                                <Typography.Text type="secondary" className="text-xs font-semibold">
-                                    {tm('bServiceMainCategoryFilter')}
-                                </Typography.Text>
+                                <div className="flex flex-wrap items-center justify-between gap-2">
+                                    <Typography.Text type="secondary" className="text-xs font-semibold">
+                                        {tm('bServiceMainCategoryFilter')}
+                                    </Typography.Text>
+                                    <Space size={4} wrap>
+                                        <Button type="dashed" size="small" icon={<PlusOutlined />} onClick={openCreateCategory}>
+                                            {tm('bNewCategory')}
+                                        </Button>
+                                        {selectedMain !== 'all' && (
+                                            <>
+                                                <Button
+                                                    size="small"
+                                                    icon={<EditOutlined />}
+                                                    onClick={() => openEditCategory(selectedMain)}
+                                                    aria-label={tm('bEditCategory')}
+                                                >
+                                                    {tm('edit')}
+                                                </Button>
+                                                <Popconfirm
+                                                    title={tm('bCategoryDeleteConfirm').replace(
+                                                        '{name}',
+                                                        categoryDisplayLabel(selectedMain, masterLabelByKey),
+                                                    )}
+                                                    okText={tm('delete')}
+                                                    cancelText={tm('cancel')}
+                                                    onConfirm={() => handleDeleteCategory(selectedMain)}
+                                                >
+                                                    <Button size="small" danger icon={<DeleteOutlined />} aria-label={tm('bDeleteCategory')}>
+                                                        {tm('delete')}
+                                                    </Button>
+                                                </Popconfirm>
+                                            </>
+                                        )}
+                                    </Space>
+                                </div>
                                 <Space wrap size={[8, 8]}>
                                     <Button
                                         type={selectedMain === 'all' ? 'primary' : 'default'}
@@ -495,7 +736,7 @@ export function ServiceManagement() {
                                                 setSelectedSub('all');
                                             }}
                                         >
-                                            {CATEGORY_LABELS[mk] ?? mk}
+                                            {categoryDisplayLabel(mk, masterLabelByKey)}
                                         </Button>
                                     ))}
                                 </Space>
@@ -519,7 +760,7 @@ export function ServiceManagement() {
                                                     size="small"
                                                     onClick={() => setSelectedSub(sk)}
                                                 >
-                                                    {CATEGORY_LABELS[sk] ?? sk}
+                                                    {categoryDisplayLabel(sk, masterLabelByKey)}
                                                 </Button>
                                             ))}
                                         </Space>
@@ -613,6 +854,85 @@ export function ServiceManagement() {
                         />
                     </Card>
                 </div>
+
+                <RetailExFlatModal
+                    open={categoryModalOpen}
+                    onClose={() => setCategoryModalOpen(false)}
+                    title={categoryModalMode === 'edit' ? tm('bEditCategory') : tm('bNewCategory')}
+                    headerIcon={<FormOutlined className="text-xl" aria-hidden />}
+                    maxWidthClass="max-w-md"
+                    cancelLabel={tm('cancel')}
+                    confirmLabel={categoryModalSaving ? tm('bSaving') : tm('save')}
+                    confirmLoading={categoryModalSaving}
+                    onConfirm={async () => {
+                        try {
+                            await handleCategoryModalSave();
+                        } catch {
+                            /* handled */
+                        }
+                    }}
+                >
+                    <div className="flex w-full flex-col gap-4">
+                        <div>
+                            <RetailExFlatFieldLabel required>{tm('bCategoryName')}</RetailExFlatFieldLabel>
+                            <Input
+                                className="!rounded-2xl !px-4 !py-2.5"
+                                value={categoryModalName}
+                                onChange={e => setCategoryModalName(e.target.value)}
+                                placeholder="Lazer"
+                                autoFocus
+                            />
+                        </div>
+                    </div>
+                </RetailExFlatModal>
+
+                <RetailExFlatModal
+                    open={reassignModalOpen}
+                    onClose={() => setReassignModalOpen(false)}
+                    title={tm('bCategoryReassignTitle')}
+                    subtitle={tm('bCategoryInUse').replace(
+                        '{n}',
+                        String(
+                            services.filter(
+                                s =>
+                                    beautyServiceMainKey(s) === reassignFromKey ||
+                                    beautyServiceSubKey(s) === reassignFromKey,
+                            ).length,
+                        ),
+                    )}
+                    headerIcon={<FormOutlined className="text-xl" aria-hidden />}
+                    maxWidthClass="max-w-md"
+                    cancelLabel={tm('cancel')}
+                    confirmLabel={reassignSaving ? tm('bSaving') : tm('bCategoryReassignDelete')}
+                    confirmLoading={reassignSaving}
+                    onConfirm={async () => {
+                        try {
+                            await handleReassignAndDelete();
+                        } catch {
+                            /* handled */
+                        }
+                    }}
+                >
+                    <div className="flex w-full flex-col gap-4">
+                        <div>
+                            <RetailExFlatFieldLabel required>{tm('bCategoryReassignTarget')}</RetailExFlatFieldLabel>
+                            <select
+                                className="w-full appearance-none rounded-2xl border border-slate-200 bg-white px-4 py-2.5 pr-11 text-sm font-medium text-slate-800 outline-none focus:border-blue-400 focus:ring-2 focus:ring-blue-500"
+                                value={reassignTargetKey}
+                                onChange={e => setReassignTargetKey(e.target.value)}
+                            >
+                                <option value="">{tm('bCategoryReassignPick')}</option>
+                                {categories
+                                    .filter(c => c.value !== reassignFromKey)
+                                    .map(c => (
+                                        <option key={c.value} value={c.value}>
+                                            {c.label}
+                                        </option>
+                                    ))}
+                            </select>
+                        </div>
+                    </div>
+                </RetailExFlatModal>
 
                 <RetailExFlatModal
                     open={bulkUpdateModalOpen}
@@ -722,13 +1042,27 @@ export function ServiceManagement() {
                                     <RetailExFlatFieldLabel useSentenceCase>
                                         {tm('bServiceSubCategoryFilter')}
                                     </RetailExFlatFieldLabel>
-                                    <Select
-                                        {...antSelectInFlatModal}
-                                        className="w-full [&_.ant-select-selector]:!rounded-2xl [&_.ant-select-selector]:!min-h-[46px] [&_.ant-select-selector]:!px-4 [&_.ant-select-selector]:!py-2"
-                                        value={editing.category ?? ServiceCategory.BEAUTY}
-                                        onChange={v => setEditing(p => ({ ...p, category: v }))}
-                                        options={categories}
+                                    <Input
+                                        className="!rounded-2xl !px-4 !py-2.5"
+                                        list="beauty-service-sub-cat-suggestions"
+                                        value={String(editing.category ?? '')}
+                                        onChange={e =>
+                                            setEditing(p => ({
+                                                ...p,
+                                                category: (e.target.value.trim()
+                                                    ? e.target.value
+                                                    : ServiceCategory.BEAUTY) as BeautyService['category'],
+                                            }))
+                                        }
+                                        placeholder="Lazer"
                                     />
+                                    <datalist id="beauty-service-sub-cat-suggestions">
+                                        {categories.map(c => (
+                                            <option key={c.value} value={c.value}>
+                                                {c.label}
+                                            </option>
+                                        ))}
+                                    </datalist>
                                 </div>
                             </div>
                         </section>

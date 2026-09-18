@@ -21,7 +21,7 @@ import { DevExDataGrid } from '../../shared/DevExDataGrid';
 import { createColumnHelper } from '@tanstack/react-table';
 import { formatCurrency } from '../../../utils/formatNumber';
 import { InlineLanguageSwitcher } from '../../shared/InlineLanguageSwitcher';
-import { expenseAPI, ExpenseSaveError, type Expense } from '../../../services/api/expenses';
+import { expenseAPI, ExpenseSaveError, parseExpenseAmount, type Expense } from '../../../services/api/expenses';
 import { fetchKasalar, type Kasa } from '../../../services/api/kasa';
 import { useLanguage } from '../../../contexts/LanguageContext';
 
@@ -58,11 +58,6 @@ const CATEGORY_FALLBACK: ExpenseCategory = {
   name: 'Özel Kategori',
   color: 'bg-slate-100 text-slate-700'
 };
-
-function parseExpenseAmount(value: unknown): number {
-  const n = Number(value);
-  return Number.isFinite(n) ? n : 0;
-}
 
 const getCurrentMonthDateRange = () => {
   const now = new Date();
@@ -239,13 +234,14 @@ export function ExpenseManagement({ embeddedInPos = false }: { embeddedInPos?: b
         alert(tm('descriptionRequired'));
         return;
       }
-      if (!formData.amount || Number.isNaN(parseFloat(formData.amount))) {
+      const parsedAmount = parseExpenseAmount(formData.amount);
+      if (!formData.amount.trim() || !Number.isFinite(parsedAmount) || parsedAmount <= 0) {
         alert(tm('pleaseEnterValidAmount'));
         return;
       }
       const data = {
         ...formData,
-        amount: parseFloat(formData.amount),
+        amount: parsedAmount,
         store_id: formData.store_id || undefined,
         cost_center_id: formData.cost_center_id || undefined,
         cash_register_id: formData.cash_register_id || undefined,
@@ -750,10 +746,11 @@ export function ExpenseManagement({ embeddedInPos = false }: { embeddedInPos?: b
                     {tm('amount')} (IQD) *
                   </label>
                   <input
-                    type="number"
+                    type="text"
+                    inputMode="decimal"
                     value={formData.amount}
                     onChange={(e) => setFormData({ ...formData, amount: e.target.value })}
-                    placeholder="0.00"
+                    placeholder="45.000"
                     className="w-full px-4 py-3 border border-slate-200 rounded-2xl focus:ring-2 focus:ring-red-500 focus:border-red-400 outline-none text-slate-800 font-medium"
                   />
                 </div>

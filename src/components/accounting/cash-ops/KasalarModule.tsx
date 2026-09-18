@@ -806,26 +806,46 @@ function KasaIslemleriTable({
       id: 'tur',
       header: tm('type'),
       cell: info => {
-        const tip = info.getValue();
-        const labels: Record<string, string> = {
-          'CH_TAHSILAT': tm('chCollection'),
-          'CH_ODEME': tm('chPayment'),
-          'KASA_GIRIS': tm('cashIn'),
-          'KASA_CIKIS': tm('cashOut'),
-          'ACILIS': tm('openingDebit'), // Assuming ACILIS maps to opening debit/credit general concept.
-          'KAPANIS': tm('openingCredit'),
-        };
-        const isGiris = tip === 'CH_TAHSILAT' || tip === 'KASA_GIRIS' || tip === 'ACILIS';
+        const tip = String(info.getValue() || '');
+        const def = String(info.row.original.islem_aciklamasi || '');
+        const defNorm = def.toLocaleLowerCase('tr-TR');
+        // Fatura bağlantılı kasa satırları: tip kodu yerine fatura kategorisi etiketi
+        let label = '';
+        if (defNorm.includes('hizmet fatur')) {
+          label = defNorm.includes('alınan') || defNorm.includes('alinan')
+            ? 'Alınan hizmet faturası'
+            : defNorm.includes('verilen')
+              ? 'Verilen hizmet faturası'
+              : 'Hizmet faturası';
+        } else if (defNorm.includes('satış fatur') || defNorm.includes('satis fatur')) {
+          label = 'Satış faturası';
+        } else if (defNorm.includes('alış fatur') || defNorm.includes('alis fatur')) {
+          label = 'Alış faturası';
+        } else {
+          const labels: Record<string, string> = {
+            'CH_TAHSILAT': tm('chCollection'),
+            'CH_ODEME': tm('chPayment'),
+            'KASA_GIRIS': tm('cashIn'),
+            'KASA_CIKIS': tm('cashOut'),
+            'GIDER_PUSULASI': tm('expenseVoucher') || 'Gider pusulası',
+            'ACILIS': tm('openingDebit'),
+            'KAPANIS': tm('openingCredit'),
+            'ACILIS_BORC': tm('openingDebit'),
+            'ACILIS_ALACAK': tm('openingCredit'),
+          };
+          label = labels[tip] || tip;
+        }
+        const isGiris = tip === 'CH_TAHSILAT' || tip === 'KASA_GIRIS' || tip === 'ACILIS' || tip === 'ACILIS_BORC';
         return (
-          <span className={`inline-flex items-center px-2 py-0.5 rounded-md text-[11px] font-bold uppercase ${isGiris
+          <span className={`inline-flex items-center px-2 py-0.5 rounded-md text-[11px] font-bold ${isGiris
             ? 'bg-green-100 text-green-700'
             : 'bg-red-100 text-red-700'
             }`}>
-            {labels[tip] || tip}
+            {label}
           </span>
         );
       },
-      size: 130,
+      size: 160,
     }),
     columnHelper.accessor('cari_hesap_unvani', {
       header: tm('currentAccountTitle'),
@@ -834,7 +854,21 @@ function KasaIslemleriTable({
     }),
     columnHelper.accessor('islem_aciklamasi', {
       header: tm('description'),
-      cell: info => info.getValue() || '-',
+      cell: info => {
+        const def = String(info.getValue() || '').trim();
+        if (!def) return '-';
+        // Fatura satırında fiş no vurgusu: "Satış faturası — INV-001"
+        const parts = def.split('—').map((p) => p.trim()).filter(Boolean);
+        if (parts.length >= 2) {
+          return (
+            <div className="min-w-0">
+              <div className="font-medium text-gray-900 truncate">{parts[0]}</div>
+              <div className="text-[11px] text-gray-500 font-mono truncate">{parts.slice(1).join(' — ')}</div>
+            </div>
+          );
+        }
+        return def;
+      },
       size: 250,
     }),
     columnHelper.accessor('tutar', {

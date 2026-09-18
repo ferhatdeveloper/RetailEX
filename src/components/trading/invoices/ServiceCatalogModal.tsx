@@ -1,5 +1,5 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react';
-import { Search, X, Check, Briefcase } from 'lucide-react';
+import { Search, X, Check, Briefcase, Plus } from 'lucide-react';
 import {
   PercentBodyModal,
   PercentBodyModalScrollBody,
@@ -16,6 +16,8 @@ interface ServiceCatalogModalProps {
   onSelect: (service: Service) => void;
   /** Çoklu seçim: "Seçilenleri Ekle" butonuna basıldığında. */
   onAddMultiple?: (services: Service[]) => void;
+  /** Liste açıkken / boşken yeni hizmet ekleme CTA. */
+  onRequestAdd?: () => void;
 }
 
 function formatNumber(num: number | undefined, decimals = 2): string {
@@ -32,6 +34,7 @@ export function ServiceCatalogModal({
   onClose,
   onSelect,
   onAddMultiple,
+  onRequestAdd,
 }: ServiceCatalogModalProps) {
   const { language } = useLanguage();
   const tm = (key: string) => moduleTranslations[key]?.[language] || key;
@@ -72,6 +75,9 @@ export function ServiceCatalogModal({
     ? 'Hizmet bulunamadı'
     : tm('noServicesFound');
   const codeLabel = tm('itemCode') === 'itemCode' ? 'Kod' : tm('itemCode');
+  const addNewLabel = tm('quickCreateService') === 'quickCreateService'
+    ? 'Yeni hizmet ekle'
+    : tm('quickCreateService');
 
   const filteredServices = useMemo(() => {
     const q = searchQuery.trim().toLowerCase();
@@ -125,26 +131,39 @@ export function ServiceCatalogModal({
 
   const selectedCount = multiSelectedIds.size;
   const canMulti = Boolean(onAddMultiple);
+  const canAddNew = Boolean(onRequestAdd);
 
   return (
     <PercentBodyModal size="wide" onClose={onClose} ariaLabel={titleLabel}>
       <div className="flex flex-col min-h-0 h-full">
-        <div className="flex items-center justify-between px-4 py-3 border-b border-gray-200 shrink-0">
-          <div className="flex items-center gap-2">
-            <Briefcase className="w-5 h-5 text-indigo-600" />
-            <h2 className="text-base font-semibold text-gray-900">{titleLabel}</h2>
-            <span className="text-xs text-gray-500 ml-1">
+        <div className="flex items-center justify-between px-4 py-3 border-b border-gray-200 shrink-0 gap-2">
+          <div className="flex items-center gap-2 min-w-0">
+            <Briefcase className="w-5 h-5 text-indigo-600 shrink-0" />
+            <h2 className="text-base font-semibold text-gray-900 truncate">{titleLabel}</h2>
+            <span className="text-xs text-gray-500 ml-1 shrink-0">
               ({services.length})
             </span>
           </div>
-          <button
-            type="button"
-            onClick={onClose}
-            className="p-1.5 rounded hover:bg-gray-100 text-gray-500"
-            aria-label="close"
-          >
-            <X className="w-5 h-5" />
-          </button>
+          <div className="flex items-center gap-2 shrink-0">
+            {canAddNew && (
+              <button
+                type="button"
+                onClick={onRequestAdd}
+                className="inline-flex items-center gap-1.5 px-2.5 py-1.5 text-xs font-semibold rounded-md bg-indigo-600 hover:bg-indigo-700 text-white shadow-sm"
+              >
+                <Plus className="w-3.5 h-3.5" />
+                {addNewLabel}
+              </button>
+            )}
+            <button
+              type="button"
+              onClick={onClose}
+              className="p-1.5 rounded hover:bg-gray-100 text-gray-500"
+              aria-label="close"
+            >
+              <X className="w-5 h-5" />
+            </button>
+          </div>
         </div>
 
         <div className="px-4 py-2 border-b border-gray-200 shrink-0">
@@ -204,8 +223,18 @@ export function ServiceCatalogModal({
 
         <PercentBodyModalScrollBody className="bg-gray-50/40">
           {filteredServices.length === 0 ? (
-            <div className="px-4 py-10 text-center text-sm text-gray-500">
-              {notFoundLabel}
+            <div className="px-4 py-10 text-center text-sm text-gray-500 space-y-3">
+              <div>{notFoundLabel}</div>
+              {canAddNew && (
+                <button
+                  type="button"
+                  onClick={onRequestAdd}
+                  className="inline-flex items-center gap-1.5 px-3 py-2 text-sm font-semibold rounded-md bg-indigo-600 hover:bg-indigo-700 text-white shadow-sm"
+                >
+                  <Plus className="w-4 h-4" />
+                  {addNewLabel}
+                </button>
+              )}
             </div>
           ) : (
             <ul className="divide-y divide-gray-100">

@@ -268,6 +268,29 @@ class ServiceAPI {
         return r ? mapRow(r) : null;
     }
 
+    /**
+     * Sonraki hizmet kodu — sayısal 6 hane (000001, 000002, …).
+     * Yalnızca tamamen sayısal kodlar dikkate alınır; yoksa 000001.
+     */
+    async getNextCode(): Promise<string> {
+        const { rows } = await postgres.query(
+            `SELECT code FROM ${tableName()}
+              WHERE firm_nr = $1
+                AND code ~ '^[0-9]+$'
+              ORDER BY LENGTH(code) DESC, code DESC
+              LIMIT 1`,
+            [ERP_SETTINGS.firmNr]
+        );
+        const last = String((rows?.[0] as { code?: string } | undefined)?.code || '').trim();
+        if (!last) return '000001';
+        try {
+            const next = (BigInt(last) + 1n).toString().padStart(Math.max(6, last.length), '0');
+            return next;
+        } catch {
+            return '000001';
+        }
+    }
+
     async create(service: CreateServiceInput): Promise<Service> {
         const row = inputToDbRow(service as Record<string, unknown>, ERP_SETTINGS.firmNr);
         const entries = Object.entries(row).filter(([, v]) => v !== undefined);

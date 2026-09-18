@@ -373,7 +373,7 @@ export function DashboardModule({ products, customers, sales, setCurrentScreen, 
     }
   });
 
-  // Category distribution
+  // Category distribution — count = ürün (SKU) adedi; value = stok×fiyat envanter değeri
   const categoryData = products.reduce((acc, product) => {
     if (!acc[product.category]) {
       acc[product.category] = {
@@ -383,7 +383,7 @@ export function DashboardModule({ products, customers, sales, setCurrentScreen, 
       };
     }
     acc[product.category].value += product.stock * product.price;
-    acc[product.category].count += product.stock;
+    acc[product.category].count += 1;
     return acc;
   }, {} as Record<string, { name: string; value: number; count: number }>);
 

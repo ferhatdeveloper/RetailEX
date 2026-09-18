@@ -159,6 +159,8 @@ export function KasaIslemModal({
   const [cariHesaplar, setCariHesaplar] = useState<CariHesap[]>([]);
   const [bankalar, setBankalar] = useState<Banka[]>([]);
   const [digerKasalar, setDigerKasalar] = useState<Kasa[]>([]);
+  const [allKasalar, setAllKasalar] = useState<Kasa[]>([]);
+  const [kasalarLoading, setKasalarLoading] = useState(false);
   const [showCariDropdown, setShowCariDropdown] = useState(false);
   const [cariSearch, setCariSearch] = useState(initialCari?.unvan || initialCari?.kod || '');
   const [selectedCariBakiye, setSelectedCariBakiye] = useState<number | null>(initialCari?.ledgerBalance ?? initialCari?.bakiye ?? null);
@@ -211,6 +213,9 @@ export function KasaIslemModal({
     if (selectedFirma && islemTipi === 'VIRMAN') {
       loadDigerKasalar();
     }
+    if (selectedFirma && (islemTipi === 'CH_TAHSILAT' || islemTipi === 'CH_ODEME' || islemTipi === 'KASA_GIRIS' || islemTipi === 'KASA_CIKIS')) {
+      loadAllKasalar();
+    }
     if (selectedFirma && islemTipi === 'CH_ODEME') {
       loadOrtaklar();
     }
@@ -259,6 +264,36 @@ export function KasaIslemModal({
       console.error('[KasaIslemModal] Diğer kasalar yüklenemedi:', error);
     }
   };
+
+  const loadAllKasalar = async () => {
+    setKasalarLoading(true);
+    try {
+      const data = await fetchKasalar({ aktif: true, firm_nr: selectedFirma?.firm_nr });
+      setAllKasalar(Array.isArray(data) ? data : []);
+      // Seçili kasa listede yoksa ilk kasayı seç (InvoicePaymentInfoModal deseni)
+      setFormData((prev) => {
+        if (prev.kasa_id && data.some((k) => k.id === prev.kasa_id)) return prev;
+        const first = data[0];
+        if (!first) return prev;
+        return {
+          ...prev,
+          kasa_id: first.id,
+          doviz_kodu: first.id_doviz_kodu || prev.doviz_kodu || ledgerCurrency,
+        };
+      });
+    } catch (error) {
+      console.error('[KasaIslemModal] Kasalar yüklenemedi:', error);
+      setAllKasalar([]);
+    } finally {
+      setKasalarLoading(false);
+    }
+  };
+
+  const showKasaPicker =
+    islemTipi === 'CH_TAHSILAT' ||
+    islemTipi === 'CH_ODEME' ||
+    islemTipi === 'KASA_GIRIS' ||
+    islemTipi === 'KASA_CIKIS';
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -371,7 +406,50 @@ export function KasaIslemModal({
           <div className="grid grid-cols-2 gap-4">
             <div className="space-y-1.5">
               <label className="text-sm font-medium text-gray-700 dark:text-gray-300">{t['cashRegister']}</label>
-              <input readOnly value={`${kasa.kasa_kodu} - ${kasa.kasa_adi}`} className="w-full px-3 py-2 bg-gray-50 dark:bg-gray-800 border border-gray-300 dark:border-gray-700 rounded text-sm text-gray-500" />
+              {showKasaPicker ? (
+                <div className="relative">
+                  <select
+                    aria-label={t['cashRegister']}
+                    value={formData.kasa_id || ''}
+                    disabled={kasalarLoading || allKasalar.length === 0}
+                    onChange={(e) => {
+                      const id = e.target.value;
+                      const sel = allKasalar.find((k) => k.id === id);
+                      setFormData((prev) => ({
+                        ...prev,
+                        kasa_id: id,
+                        doviz_kodu: sel?.id_doviz_kodu || prev.doviz_kodu || ledgerCurrency,
+                      }));
+                    }}
+                    className="w-full px-3 py-2 pr-9 bg-white dark:bg-gray-800 border border-gray-300 dark:border-gray-700 rounded text-sm focus:ring-1 focus:ring-blue-500 outline-none appearance-none disabled:bg-gray-100 disabled:cursor-not-allowed"
+                  >
+                    <option value="">
+                      {kasalarLoading
+                        ? (tm('loading') || '…')
+                        : (tm('selectCashRegister') || 'Kasa seçin')}
+                    </option>
+                    {allKasalar.map((k) => (
+                      <option key={k.id} value={k.id}>
+                        {`${k.kasa_adi} — ${k.kasa_kodu}`}
+                      </option>
+                    ))}
+                  </select>
+                  <svg
+                    aria-hidden
+                    className="absolute right-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400 pointer-events-none"
+                    viewBox="0 0 20 20"
+                    fill="currentColor"
+                  >
+                    <path
+                      fillRule="evenodd"
+                      d="M5.23 7.21a.75.75 0 011.06.02L10 11.06l3.71-3.83a.75.75 0 111.08 1.04l-4.25 4.39a.75.75 0 01-1.08 0L5.21 8.27a.75.75 0 01.02-1.06z"
+                      clipRule="evenodd"
+                    />
+                  </svg>
+                </div>
+              ) : (
+                <input readOnly value={`${kasa.kasa_kodu} - ${kasa.kasa_adi}`} className="w-full px-3 py-2 bg-gray-50 dark:bg-gray-800 border border-gray-300 dark:border-gray-700 rounded text-sm text-gray-500" />
+              )}
             </div>
             <div className="space-y-1.5">
               <label className="text-sm font-medium text-gray-700 dark:text-gray-300">{t['dateLabel']}</label>

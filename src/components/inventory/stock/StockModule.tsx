@@ -338,12 +338,15 @@ export function StockModule({ products, setProducts }: StockModuleProps) {
                 <div className="space-y-3">
                   {Array.from(new Set(products.map(p => p.category))).slice(0, 4).map((category, index) => {
                     const categoryProducts = products.filter(p => p.category === category);
-                    const categoryStock = categoryProducts.reduce((sum, p) => sum + p.stock, 0);
+                    // Ürün adedi (SKU), stok miktarı toplamı değil — stok ayrı gösterilir
+                    const categorySkuCount = categoryProducts.length;
+                    const categoryStock = categoryProducts.reduce((sum, p) => sum + (Number(p.stock) || 0), 0);
                     return (
-                      <div key={`category-${category}-${index}`} className="flex justify-between">
-                        <span className="text-sm text-gray-600">{category}:</span>
-                        <span className="text-sm text-gray-600">
-                          {tm('invProductsCount').replace('{n}', String(categoryStock))}
+                      <div key={`category-${category}-${index}`} className="flex justify-between gap-2">
+                        <span className="text-sm text-gray-600 truncate">{category}:</span>
+                        <span className="text-sm text-gray-600 shrink-0 text-right">
+                          {tm('invProductsCount').replace('{n}', String(categorySkuCount))}
+                          <span className="text-gray-400 ml-1">({formatNumber(categoryStock, 0, false)})</span>
                         </span>
                       </div>
                     );

@@ -12,6 +12,7 @@ import {
   INVOICE_LINE_SCALE_JOIN,
   LAST_PURCHASE_JOIN,
   PRODUCTS_JOIN,
+  SERVICES_JOIN,
   SIGNED_LINE_COST_EXPR,
   SIGNED_LINE_PROFIT_EXPR,
   SIGNED_LINE_QTY_EXPR,
@@ -98,6 +99,7 @@ export function ProfitLossReport() {
             FROM sale_items si
             INNER JOIN sales s ON s.id = si.invoice_id
             ${PRODUCTS_JOIN}
+            ${SERVICES_JOIN}
             LEFT JOIN categories leaf_cat ON leaf_cat.id = p.category_id
             ${LAST_PURCHASE_JOIN}
             ${INVOICE_LINE_SCALE_JOIN}
@@ -123,6 +125,7 @@ export function ProfitLossReport() {
             FROM sale_items si
             INNER JOIN sales s ON s.id = si.invoice_id
             ${PRODUCTS_JOIN}
+            ${SERVICES_JOIN}
             ${LAST_PURCHASE_JOIN}
             ${INVOICE_LINE_SCALE_JOIN}
             WHERE ${SALES_FILTER}
@@ -145,6 +148,7 @@ export function ProfitLossReport() {
             FROM sale_items si
             INNER JOIN sales s ON s.id = si.invoice_id
             ${PRODUCTS_JOIN}
+            ${SERVICES_JOIN}
             ${LAST_PURCHASE_JOIN}
             ${INVOICE_LINE_SCALE_JOIN}
             WHERE ${SALES_FILTER}
@@ -167,6 +171,7 @@ export function ProfitLossReport() {
             FROM sale_items si
             INNER JOIN sales s ON s.id = si.invoice_id
             ${PRODUCTS_JOIN}
+            ${SERVICES_JOIN}
             ${LAST_PURCHASE_JOIN}
             ${INVOICE_LINE_SCALE_JOIN}
             WHERE ${SALES_FILTER}

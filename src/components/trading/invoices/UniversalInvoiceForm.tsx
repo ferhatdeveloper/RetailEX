@@ -15,7 +15,15 @@ import { toast } from 'sonner';
 import { formatNumber } from '../../../utils/formatNumber';
 import { parseDecimalStringForInput, formatDecimalForTrInput, parseInvoiceWeightQuantity } from '../../../utils/numberFormatter';
 import { normalizeWeightProductQuantity, syncWeightLineQuantities, hydrateWeightLineFromDb } from '../../../utils/scaleQuantity';
-import { canonicalInvoiceLineType, isInvoiceServiceLineType, isInvoiceMaterialLineType, isInvoiceSupplierPayableLineType } from '../../../utils/invoiceLineType';
+import {
+  canonicalInvoiceLineType,
+  isInvoiceServiceLineType,
+  isInvoiceMaterialLineType,
+  isInvoiceSupplierPayableLineType,
+  defaultInvoiceLineTypeFor,
+  isInvoicePurchaseSide,
+  isServiceInvoiceType,
+} from '../../../utils/invoiceLineType';
 import { allocatePurchaseInvoiceLineCosts } from '../../../utils/purchasePromoCost';
 import { DocumentManager } from '../../shared/DocumentManager';
 import { printInvoice } from '../../../utils/printUtils';
@@ -707,6 +715,7 @@ export function UniversalInvoiceForm({
   // Items
   // EditData varsa items'ı yükle
   const initializeItems = (): InvoiceItem[] => {
+    const lineDefault = defaultInvoiceLineTypeFor(invoiceType);
     if (editData?.items && editData.items.length > 0) {
       const hdrCur = String((editData as any)?.currency || 'IQD');
       const hdrRate = parseFloat(String((editData as any)?.currency_rate)) || 1;
@@ -746,7 +755,7 @@ export function UniversalInvoiceForm({
     }
     return [{
       id: '1',
-      type: 'Malzeme',
+      type: lineDefault,
       code: '',
       description: '',
       description2: '',
@@ -762,7 +771,7 @@ export function UniversalInvoiceForm({
 
   const [items, setItems] = useState<InvoiceItem[]>(initializeItems());
   /** Son kullanıcının seçtiği satır tipi — yeni boş satırlarda varsayılan olur. */
-  const [defaultLineType, setDefaultLineType] = useState<string>('Malzeme');
+  const [defaultLineType, setDefaultLineType] = useState<string>(() => defaultInvoiceLineTypeFor(invoiceType));
   const [productSearch, setProductSearch] = useState('');
   const [showProductDropdown, setShowProductDropdown] = useState(false);
   const [selectedProductIndex, setSelectedProductIndex] = useState(-1);
@@ -1088,18 +1097,31 @@ export function UniversalInvoiceForm({
     }
   }, [currencyRate, currency, ledgerCurrency]);
 
-  // Load Services
-  useEffect(() => {
-    const loadServices = async () => {
+  // Load Services — firma değişince yeniden yükle (katalog boş kalmasın)
+  const reloadServices = useCallback(async () => {
+    try {
+      const data = await serviceAPI.getActive();
+      setServices(Array.isArray(data) ? data : []);
+    } catch (error) {
+      console.error('[UniversalInvoice] Error loading services:', error);
       try {
-        const data = await serviceAPI.getAll();
-        setServices(data);
-      } catch (error) {
-        console.error('[UniversalInvoice] Error loading services:', error);
+        const fallback = await serviceAPI.getAll();
+        setServices(Array.isArray(fallback) ? fallback : []);
+      } catch (err2) {
+        console.error('[UniversalInvoice] Error loading services (fallback):', err2);
+        setServices([]);
       }
-    };
-    loadServices();
+    }
   }, []);
+
+  useEffect(() => {
+    void reloadServices();
+  }, [reloadServices, selectedFirm?.firm_nr, selectedFirm?.logicalref]);
+
+  // Katalog açılınca hizmet listesini tazele (boş / eski liste riski)
+  useEffect(() => {
+    if (showServiceCatalogModal) void reloadServices();
+  }, [showServiceCatalogModal, reloadServices]);
 
   // Birim kartı + birim setleri (Tauri / PostgREST / doğrudan PG tek API zinciri)
   useEffect(() => {
@@ -1274,10 +1296,10 @@ export function UniversalInvoiceForm({
       case 'Satis': return { gradient: 'from-blue-600 to-blue-700', solid: 'bg-blue-600' };
       case 'Alis': return { gradient: 'from-teal-600 to-teal-700', solid: 'bg-teal-600' };
       case 'Hizmet':
-        // Hizmet faturaları için: Verilen (code 7) -> mavi, Alınan (code 8) -> teal
-        if (invoiceType.code === 7) {
+        // Verilen (9/7) → mavi, Alınan (4/8) → teal
+        if (invoiceType.code === 9 || invoiceType.code === 7) {
           return { gradient: 'from-blue-600 to-blue-700', solid: 'bg-blue-600' };
-        } else if (invoiceType.code === 8) {
+        } else if (invoiceType.code === 4 || invoiceType.code === 8) {
           return { gradient: 'from-teal-600 to-teal-700', solid: 'bg-teal-600' };
         }
         return { gradient: 'from-indigo-600 to-indigo-700', solid: 'bg-indigo-600' };
@@ -1296,8 +1318,8 @@ export function UniversalInvoiceForm({
         case 'Satis': return 'border-blue-500 bg-gray-800';
         case 'Alis': return 'border-teal-500 bg-gray-800';
         case 'Hizmet':
-          if (invoiceType.code === 7) return 'border-blue-500 bg-gray-800';
-          if (invoiceType.code === 8) return 'border-teal-500 bg-gray-800';
+          if (invoiceType.code === 9 || invoiceType.code === 7) return 'border-blue-500 bg-gray-800';
+          if (invoiceType.code === 4 || invoiceType.code === 8) return 'border-teal-500 bg-gray-800';
           return 'border-indigo-500 bg-gray-800';
         case 'Iade': return 'border-red-500 bg-gray-800';
         case 'Irsaliye': return 'border-orange-500 bg-gray-800';
@@ -1310,10 +1332,9 @@ export function UniversalInvoiceForm({
       case 'Satis': return 'border-blue-600 bg-blue-50';
       case 'Alis': return 'border-teal-600 bg-teal-50';
       case 'Hizmet':
-        // Hizmet faturaları için: Verilen (code 7) -> mavi, Alınan (code 8) -> teal
-        if (invoiceType.code === 7) {
+        if (invoiceType.code === 9 || invoiceType.code === 7) {
           return 'border-blue-600 bg-blue-50';
-        } else if (invoiceType.code === 8) {
+        } else if (invoiceType.code === 4 || invoiceType.code === 8) {
           return 'border-teal-600 bg-teal-50';
         }
         return 'border-indigo-600 bg-indigo-50';
@@ -1331,10 +1352,9 @@ export function UniversalInvoiceForm({
       case 'Satis': return 'text-blue-600';
       case 'Alis': return 'text-teal-600';
       case 'Hizmet':
-        // Hizmet faturaları için: Verilen (code 7) -> mavi, Alınan (code 8) -> teal
-        if (invoiceType.code === 7) {
+        if (invoiceType.code === 9 || invoiceType.code === 7) {
           return 'text-blue-600';
-        } else if (invoiceType.code === 8) {
+        } else if (invoiceType.code === 4 || invoiceType.code === 8) {
           return 'text-teal-600';
         }
         return 'text-indigo-600';
@@ -1664,7 +1684,47 @@ export function UniversalInvoiceForm({
     }
   };
 
-  // Ürün arama
+  const resolveServiceByCodeInput = async (rowIndex: number, codeRaw: string) => {
+    const raw = codeRaw.trim();
+    if (!raw) return;
+    try {
+      const attempts = barcodeLookupAttempts(raw);
+      let found: Service | null = null;
+      for (const key of attempts) {
+        const local = services.find(
+          (s) =>
+            (s.code && s.code.trim().toLowerCase() === key.toLowerCase()) ||
+            (s.name && s.name.trim().toLowerCase() === key.toLowerCase())
+        );
+        if (local) {
+          found = local;
+          break;
+        }
+        const byCode = await serviceAPI.getByCode(key);
+        if (byCode) {
+          found = byCode;
+          break;
+        }
+      }
+      if (!found) {
+        toast.error(tm('noServicesFound') === 'noServicesFound' ? 'Hizmet bulunamadı' : tm('noServicesFound'));
+        setQuickCreate({
+          rowIndex,
+          kind: 'service',
+          initialCode: raw,
+          initialName: '',
+        });
+        return;
+      }
+      selectService(found, rowIndex);
+      toast.success(found.name ? `${found.name} eklendi` : 'Hizmet eklendi');
+    } catch (err: any) {
+      console.error('[UniversalInvoiceForm] resolveServiceByCodeInput:', err);
+      toast.error(err?.message || 'Hizmet arama hatası');
+    }
+  };
+
+  // Ürün / hizmet arama (Hizmet satırında services listesi)
   const filteredProducts = useMemo(() => {
     if (!productSearch) return [];
     const search = productSearch.toLowerCase();
@@ -1675,18 +1735,27 @@ export function UniversalInvoiceForm({
       (p.barcode && p.barcode.toLowerCase().includes(search))
     );
 
-    // Check current row type for Service
     const currentItem = items[searchingRowIndex];
-    if (isInvoiceServiceLineType(currentItem?.type)) {
+    const searchServices =
+      isInvoiceServiceLineType(currentItem?.type) || isServiceInvoiceType(invoiceType);
+    if (searchServices) {
       return services.filter(s =>
         (s.code && s.code.toLowerCase().includes(search)) ||
         (s.name && s.name.toLowerCase().includes(search)) ||
         (s.category && s.category.toLowerCase().includes(search))
       ).map(s => ({
+        id: s.id,
         code: s.code,
         name: s.name,
         unit: s.unit,
         price: s.unit_price,
+        unit_price: s.unit_price,
+        unit_price_usd: s.unit_price_usd,
+        unit_price_eur: s.unit_price_eur,
+        purchase_price: s.purchase_price,
+        purchase_price_usd: s.purchase_price_usd,
+        purchase_price_eur: s.purchase_price_eur,
+        withholding_rate: s.withholding_rate,
         barcode: s.code,
         lastPurchasePrice: 0,
         type: 'Hizmet'
@@ -1714,7 +1783,7 @@ export function UniversalInvoiceForm({
       (p.name && p.name.toLowerCase().includes(search)) ||
       (p.barcode && p.barcode.includes(search))
     );
-  }, [productSearch, products]);
+  }, [productSearch, products, services, items, searchingRowIndex, invoiceType]);
 
   // Satır silme
   const removeItem = useCallback((index: number) => {
@@ -1722,7 +1791,7 @@ export function UniversalInvoiceForm({
       if (prev.length <= 1) {
         return [{
           id: '1',
-          type: 'Malzeme',
+          type: defaultLineType || 'Malzeme',
           code: '',
           description: '',
           description2: '',
@@ -1740,7 +1809,7 @@ export function UniversalInvoiceForm({
 
     // setCurrentRowIndex is async in setState, but we can't easily fix it here without more changes
     // it will be called correctly next tick
-  }, []);
+  }, [defaultLineType]);
 
   // Item güncelleme
   const updateItem = useCallback((index: number, field: keyof InvoiceItem, value: any) => {
@@ -2328,7 +2397,8 @@ export function UniversalInvoiceForm({
       const item = { ...next[rowIndex] };
 
       let servicePrice = 0;
-      if (invoiceType.category === 'Alis') {
+      const purchaseSide = isInvoicePurchaseSide(invoiceType);
+      if (purchaseSide) {
         if (currency === 'USD' && service.purchase_price_usd) {
           servicePrice = service.purchase_price_usd;
         } else if (currency === 'EUR' && service.purchase_price_eur) {
@@ -2421,7 +2491,8 @@ export function UniversalInvoiceForm({
       const writeService = (idx: number, svc: Service) => {
         const row = ensureRow(idx);
         let servicePrice = 0;
-        if (invoiceType.category === 'Alis') {
+        const purchaseSide = isInvoicePurchaseSide(invoiceType);
+        if (purchaseSide) {
           if (currency === 'USD' && svc.purchase_price_usd) servicePrice = svc.purchase_price_usd;
           else if (currency === 'EUR' && svc.purchase_price_eur) servicePrice = svc.purchase_price_eur;
           else servicePrice = svc.purchase_price || svc.unit_price || 0;
@@ -2501,12 +2572,15 @@ export function UniversalInvoiceForm({
     e.stopPropagation();
 
     const row = items[rowIndex];
-    if (!row || !isInvoiceProductBarcodeLineType(row.type, invoiceType.category)) return;
+    if (!row) return;
+
+    const isServiceRow =
+      isInvoiceServiceLineType(row.type) || isServiceInvoiceType(invoiceType);
 
     if (dropdownForThisRow && selectedProductIndex >= 0 && filtered[selectedProductIndex]) {
       const selected = filtered[selectedProductIndex];
       const selType = 'type' in selected ? (selected as { type?: string }).type : undefined;
-      if (selType === 'Hizmet') {
+      if (selType === 'Hizmet' || isServiceRow) {
         selectService(selected, rowIndex);
       } else {
         selectProduct(selected, rowIndex);
@@ -2524,7 +2598,7 @@ export function UniversalInvoiceForm({
           (only.barcode && only.barcode.trim() === key)
       );
       if (exact) {
-        if (onlyType === 'Hizmet') {
+        if (onlyType === 'Hizmet' || isServiceRow) {
           selectService(only, rowIndex);
         } else {
           selectProduct(only, rowIndex);
@@ -2534,6 +2608,27 @@ export function UniversalInvoiceForm({
     }
 
     const idx = rowIndex;
+
+    if (isServiceRow) {
+      const flushServiceResolve = (raw: string) => {
+        const v = raw.trim();
+        if (!v) return false;
+        updateItem(idx, 'code', v);
+        setShowProductDropdown(false);
+        setProductSearch('');
+        void resolveServiceByCodeInput(idx, v);
+        return true;
+      };
+      if (flushServiceResolve(inputVal)) return;
+      window.setTimeout(() => {
+        const el = gridRefs.current[`code-${idx}`] as HTMLInputElement | undefined;
+        flushServiceResolve(el?.value ?? '');
+      }, 0);
+      return;
+    }
+
+    if (!isInvoiceProductBarcodeLineType(row.type, invoiceType.category)) return;
+
     const flushCodeResolve = (raw: string) => {
       const v = raw.trim();
       if (!v) return false;
@@ -2657,17 +2752,7 @@ export function UniversalInvoiceForm({
             if (exists) return prev.map((s) => (s.id === created.id ? created : s));
             return [created, ...prev];
           });
-          selectProduct(
-            {
-              code: created.code,
-              name: created.name,
-              unit: created.unit || form.unit || 'Adet',
-              price: created.unit_price || form.price || 0,
-              barcode: created.code,
-              lastPurchasePrice: 0,
-            },
-            quickCreate.rowIndex,
-          );
+          selectService(created, quickCreate.rowIndex);
         }
         setQuickCreate(null);
       } catch (err: any) {
@@ -2677,7 +2762,7 @@ export function UniversalInvoiceForm({
         setQuickCreateSaving(false);
       }
     },
-    [quickCreate, ledgerCurrency, tm, storeSetProducts, storeProducts, setServices, selectProduct],
+    [quickCreate, ledgerCurrency, tm, storeSetProducts, storeProducts, setServices, selectProduct, selectService],
   );
 
   const handleImageToInvoice = useCallback(
@@ -2928,10 +3013,13 @@ export function UniversalInvoiceForm({
   // Eski davranış: category === 'Iade' koşulu her iki iadeyi de müşteri kabul ediyordu
   // (Alış İade müşteri listesi açıyordu — bkz. kasap BADIA ödeme skandalı).
   useEffect(() => {
-    const wantsSuppliers =
-      invoiceType.category === 'Alis' || invoiceType.code === 6; // alış + alış iade
+    const wantsSuppliers = isInvoicePurchaseSide(invoiceType);
     const wantsCustomers =
-      invoiceType.category === 'Satis' || invoiceType.code === 3; // satış + satış iade
+      invoiceType.category === 'Satis' ||
+      invoiceType.code === 3 ||
+      invoiceType.code === 9 ||
+      invoiceType.code === 7 ||
+      (invoiceType.category === 'Hizmet' && !wantsSuppliers);
 
     const loadSuppliers = async () => {
       if (!wantsSuppliers) return;
@@ -3433,10 +3521,9 @@ export function UniversalInvoiceForm({
     }
 
     // Cari kontrol — iade yönüne göre:
-    //   Alış (code 5)        + Alış İade (code 6)  → tedarikçi zorunlu
-    //   Satış (code 0,1,2,4) + Satış İade (code 3) → müşteri zorunlu
-    const isPurchaseSide =
-      invoiceType.category === 'Alis' || invoiceType.code === 6;
+    //   Alış (code 1/5) + Alış İade (code 6) + Alınan Hizmet (code 4) → tedarikçi zorunlu
+    //   Satış + Satış İade (code 3) + Verilen Hizmet (code 9) → müşteri zorunlu
+    const isPurchaseSide = isInvoicePurchaseSide(invoiceType);
     const isSalesReturnInvoice = invoiceType.category === 'Iade' && invoiceType.code === 3;
     if (isPurchaseSide && !supplierTitle) {
       toast.error('❌ ' + tm('supplierNotSelected'));
@@ -4265,6 +4352,7 @@ export function UniversalInvoiceForm({
                     updateItem={updateItem}
                     removeItem={removeItem}
                     selectProduct={selectProduct}
+                    selectService={selectService}
                     handleProductSearchChange={handleProductSearchChange}
                     handleProductKeyDown={handleProductKeyDown}
                     handleShowProductHistory={handleShowProductHistory}
@@ -5169,6 +5257,16 @@ export function UniversalInvoiceForm({
                 } else {
                   handleServicesBulkSelectForRow(selected, currentRowIndex);
                 }
+              }}
+              onRequestAdd={() => {
+                const rowIndex = selectedRowForProduct !== null ? selectedRowForProduct : currentRowIndex;
+                setShowServiceCatalogModal(false);
+                setQuickCreate({
+                  rowIndex,
+                  kind: 'service',
+                  initialCode: '',
+                  initialName: '',
+                });
               }}
             />
           )}

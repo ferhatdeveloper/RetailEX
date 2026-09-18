@@ -3,7 +3,41 @@
  */
 
 import { postgres, ERP_SETTINGS, DB_SETTINGS } from '../postgres';
-import { createKasaIslemi } from './kasa';
+import { createKasaIslemi, deleteKasaIslemi } from './kasa';
+import { parseDecimalStringForInput } from '../../utils/numberFormatter';
+
+/**
+ * IQD / TR tutar ayrıştırma: "45.000" → 45000, "450.000" → 450000.
+ * Ham Number/parseFloat "45.000" → 45 yapar (B01).
+ */
+export function parseExpenseAmount(value: unknown): number {
+  if (typeof value === 'number') return Number.isFinite(value) ? value : 0;
+  if (value == null) return 0;
+  const raw = String(value).trim();
+  if (!raw) return 0;
+  const n = parseDecimalStringForInput(raw);
+  return Number.isFinite(n) ? n : 0;
+}
+
+/**
+ * Gider nakit satırı (sign=-1) tutar değişince kasa bakiyesine uygulanacak delta.
+ * balance'a eklenir: eski 450k → yeni 45k ⇒ +405000.
+ */
+export function expenseCashBalanceDeltaOnUpdate(oldAmount: number, newAmount: number): number {
+  const oldAmt = Math.abs(Number(oldAmount) || 0);
+  const newAmt = Math.abs(Number(newAmount) || 0);
+  return oldAmt - newAmt;
+}
+
+/**
+ * Silinen nakit gider satırının bakiyeyi geri alma deltası (cash_lines.sign ile).
+ * GIDER_PUSULASI sign=-1 ⇒ +amount (çıkışı geri koy).
+ */
+export function expenseCashBalanceDeltaOnDelete(cashLineAmount: number, sign: number = -1): number {
+  const amt = Math.abs(Number(cashLineAmount) || 0);
+  const s = Number(sign) || -1;
+  return -(amt * s);
+}
 
 function padExpenseFirmNr(): string {
   return String(ERP_SETTINGS.firmNr || '001').trim().padStart(3, '0').slice(0, 10);
@@ -243,6 +277,12 @@ export const expenseAPI = {
       const firmNr = padExpenseFirmNr();
       const payMethod = String(expense.payment_method || '').trim().toLowerCase();
       const isCashExpense = payMethod === 'cash' || payMethod === 'nakit';
+      const expenseAmount = Math.abs(parseExpenseAmount(expense.amount));
+      if (!Number.isFinite(expenseAmount) || expenseAmount <= 0) {
+        throw new Error('Geçersiz gider tutarı');
+      }
+      // Normalize for downstream inserts
+      expense = { ...expense, amount: expenseAmount };
 
       if (DB_SETTINGS.connectionProvider === 'rest_api') {
         const fn = padExpenseFirmNr();
@@ -465,7 +505,7 @@ export const expenseAPI = {
   },
 
   /**
-   * Update expense
+   * Update expense — bağlı cash_line varsa yerinde güncelle (delta); asla yeni satır üretme.
    */
   async update(id: string, updates: Partial<Expense>): Promise<Expense | null> {
     try {
@@ -480,6 +520,10 @@ export const expenseAPI = {
       const normalizeUpdateEntry = (key: string, value: unknown): unknown | undefined => {
         if (['id', 'firm_nr', 'created_at', 'cost_center_name'].includes(key) || value === undefined) return undefined;
         let normalizedValue = value;
+        if (key === 'amount') {
+          const n = Math.abs(parseExpenseAmount(value));
+          return Number.isFinite(n) ? n : 0;
+        }
         if (typeof normalizedValue === 'string') {
           const trimmed = normalizedValue.trim();
           if (uuidFields.has(key)) {
@@ -518,12 +562,14 @@ export const expenseAPI = {
         let updated = (Array.isArray(patched) ? patched[0] : patched) as Expense | undefined;
         if (!updated) return null;
 
-        if (updated.cash_line_id && updated.cash_register_id) {
-          const oldAmount = Number(existing.amount || 0);
-          const newAmount = Number(updated.amount || 0);
-          const delta = newAmount - oldAmount;
+        const cashLineId = String(updated.cash_line_id || existing.cash_line_id || '').trim();
+        const cashRegisterId = String(updated.cash_register_id || existing.cash_register_id || '').trim();
+        if (cashLineId && cashRegisterId) {
+          const oldAmount = Math.abs(Number(existing.amount || 0));
+          const newAmount = Math.abs(Number(updated.amount || 0));
+          const balDelta = expenseCashBalanceDeltaOnUpdate(oldAmount, newAmount);
           await postgrest.patch(
-            `${cashLinesPathRest()}?id=eq.${encodeURIComponent(String(updated.cash_line_id))}`,
+            `${cashLinesPathRest()}?id=eq.${encodeURIComponent(cashLineId)}`,
             {
               amount: newAmount,
               f_amount: newAmount,
@@ -532,17 +578,17 @@ export const expenseAPI = {
             },
             { schema: 'public', prefer: 'return=minimal' }
           );
-          if (delta !== 0) {
+          if (balDelta !== 0) {
             const regRows = await postgrest.get<any[]>(
               cashRegistersPathRest(),
-              { select: 'balance', id: `eq.${String(updated.cash_register_id)}`, limit: 1 },
+              { select: 'balance', id: `eq.${cashRegisterId}`, limit: 1 },
               { schema: 'public' }
             );
             const row = Array.isArray(regRows) ? regRows[0] : null;
             const b = Number(row?.balance ?? 0);
             await postgrest.patch(
-              `${cashRegistersPathRest()}?id=eq.${encodeURIComponent(String(updated.cash_register_id))}`,
-              { balance: b - delta },
+              `${cashRegistersPathRest()}?id=eq.${encodeURIComponent(cashRegisterId)}`,
+              { balance: b + balDelta },
               { schema: 'public', prefer: 'return=minimal' }
             );
           }
@@ -585,11 +631,13 @@ export const expenseAPI = {
         return null;
       }
 
-      // If this expense is linked to a cash line, keep amount/date/description synchronized.
-      if (updated.cash_line_id && updated.cash_register_id) {
-        const oldAmount = Number(existing.amount || 0);
-        const newAmount = Number(updated.amount || 0);
-        const delta = newAmount - oldAmount;
+      // Bağlı cash_line: yerinde güncelle + bakiye delta (asla yeni satır oluşturma).
+      const cashLineId = String(updated.cash_line_id || existing.cash_line_id || '').trim();
+      const cashRegisterId = String(updated.cash_register_id || existing.cash_register_id || '').trim();
+      if (cashLineId && cashRegisterId) {
+        const oldAmount = Math.abs(Number(existing.amount || 0));
+        const newAmount = Math.abs(Number(updated.amount || 0));
+        const balDelta = expenseCashBalanceDeltaOnUpdate(oldAmount, newAmount);
 
         await postgres.query(
           `UPDATE cash_lines
@@ -598,16 +646,15 @@ export const expenseAPI = {
                date = $2::text::date,
                definition = $3::text
            WHERE id = $4::text::uuid`,
-          [newAmount, updated.expense_date, updated.description || 'Gider', updated.cash_line_id]
+          [newAmount, updated.expense_date, updated.description || 'Gider', cashLineId]
         );
 
-        if (delta !== 0) {
-          // cash expense uses sign=-1, so register balance changes inversely with amount delta.
+        if (balDelta !== 0) {
           await postgres.query(
             `UPDATE cash_registers
-             SET balance = balance - $1::text::numeric
+             SET balance = balance + $1::text::numeric
              WHERE id = $2::text::uuid`,
-            [delta, updated.cash_register_id]
+            [balDelta, cashRegisterId]
           );
         }
       }
@@ -626,7 +673,7 @@ export const expenseAPI = {
   },
 
   /**
-   * Delete expense
+   * Delete expense — cash_line bakiyesini deleteKasaIslemi ile geri al (çift +amount yok).
    */
   async delete(id: string): Promise<boolean> {
     try {
@@ -644,24 +691,15 @@ export const expenseAPI = {
         const existing = Array.isArray(ex) ? ex[0] : null;
         if (!existing) return false;
 
-        if (existing.cash_line_id && existing.cash_register_id) {
-          const amt = Number(existing.amount || 0);
-          const regRows = await postgrest.get<any[]>(
-            cashRegistersPathRest(),
-            { select: 'balance', id: `eq.${String(existing.cash_register_id)}`, limit: 1 },
-            { schema: 'public' }
-          );
-          const row = Array.isArray(regRows) ? regRows[0] : null;
-          const b = Number(row?.balance ?? 0);
-          await postgrest.patch(
-            `${cashRegistersPathRest()}?id=eq.${encodeURIComponent(String(existing.cash_register_id))}`,
-            { balance: b + amt },
-            { schema: 'public', prefer: 'return=minimal' }
-          );
-          await postgrest.delete(
-            `${cashLinesPathRest()}?id=eq.${encodeURIComponent(String(existing.cash_line_id))}`,
-            { schema: 'public', prefer: 'return=minimal' }
-          );
+        const cashLineId = String(existing.cash_line_id || '').trim();
+        if (cashLineId) {
+          try {
+            // deleteKasaIslemi cash_line tutarı × sign ile bakiyeyi tersine alır; sonra satırı siler.
+            await deleteKasaIslemi(cashLineId);
+          } catch (cashErr) {
+            // Satır yoksa (eski orphan id) yalnızca gider satırını sil — bakiyeye tekrar amount EKLEME.
+            console.warn('[ExpenseAPI] delete: cash_line zaten yok veya silinemedi:', cashErr);
+          }
         }
         await postgrest.delete(
           `${expenseTablePath()}?id=eq.${encodeURIComponent(id)}&firm_nr=eq.${encodeURIComponent(firm)}`,
@@ -677,22 +715,16 @@ export const expenseAPI = {
       const existing = existingRows[0] as Expense | undefined;
       if (!existing) return false;
 
-      await postgres.query('BEGIN');
-
-      if (existing.cash_line_id && existing.cash_register_id) {
-        // Reverse balance effect created by cash expense.
-        await postgres.query(
-          `UPDATE cash_registers
-           SET balance = balance + $1::text::numeric
-           WHERE id = $2::text::uuid`,
-          [existing.amount || 0, existing.cash_register_id]
-        );
-        await postgres.query(
-          `DELETE FROM cash_lines WHERE id = $1::text::uuid`,
-          [existing.cash_line_id]
-        );
+      const cashLineId = String(existing.cash_line_id || '').trim();
+      if (cashLineId) {
+        try {
+          await deleteKasaIslemi(cashLineId);
+        } catch (cashErr) {
+          console.warn('[ExpenseAPI] delete: cash_line zaten yok veya silinemedi:', cashErr);
+        }
       }
 
+      await postgres.query('BEGIN');
       const { rowCount } = await postgres.query(
         `DELETE FROM ${tableName} WHERE id = $1 AND firm_nr = $2`,
         [id, firm]

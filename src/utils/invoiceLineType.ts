@@ -1,5 +1,43 @@
 /** Fatura satırı Tür alanı — Malzeme / Hizmet / Promosyon / İndirim (UI + sale_items.item_type) */
 
+/** Hizmet faturası (trcode 4 Alınan / 9 Verilen; eski 7/8) veya kategori Hizmet */
+export function isServiceInvoiceType(invoiceType: {
+  category?: string;
+  code?: number;
+}): boolean {
+  const cat = invoiceType.category;
+  const code = Number(invoiceType.code);
+  return cat === 'Hizmet' || code === 4 || code === 9 || code === 7 || code === 8;
+}
+
+/** Yeni satır varsayılan türü — hizmet faturalarında Hizmet */
+export function defaultInvoiceLineTypeFor(invoiceType: {
+  category?: string;
+  code?: number;
+}): string {
+  return isServiceInvoiceType(invoiceType) ? 'Hizmet' : 'Malzeme';
+}
+
+/**
+ * Alış / tedarikçi tarafı: Alış, Alış İade (6), Alınan Hizmet (4; eski 8).
+ * İsimde "Alınan" geçen hizmet faturaları da dahil.
+ */
+export function isInvoicePurchaseSide(invoiceType: {
+  category?: string;
+  code?: number;
+  name?: string;
+}): boolean {
+  if (invoiceType.category === 'Alis') return true;
+  const code = Number(invoiceType.code);
+  if (code === 6 || code === 4 || code === 8) return true;
+  const name = String(invoiceType.name || '');
+  const lower = name.toLocaleLowerCase('tr-TR');
+  if (lower.includes('alınan') || lower.includes('alinan') || lower.includes('received')) {
+    return true;
+  }
+  return false;
+}
+
 export function canonicalInvoiceLineType(raw: string | undefined): string {
   const t = (raw || '').trim();
   if (!t || t === 'Malzeme' || t === 'Material' || t === 'material' || t === 'product' || t === 'مادة' || t === 'ماددە') {

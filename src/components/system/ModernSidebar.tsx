@@ -164,18 +164,9 @@ export function ModernSidebar({
     );
   };
 
-  // Keyboard shortcut for search (Ctrl+K or Cmd+K)
+  // ESC clears menu search (Ctrl/Cmd+K kaldırıldı — tarayıcı / OS kısayolu ile çakışıyordu)
   React.useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
-      if ((e.ctrlKey || e.metaKey) && e.key === 'k') {
-        e.preventDefault();
-        const searchInput = document.querySelector('input[placeholder*="ara"]') as HTMLInputElement;
-        if (searchInput) {
-          searchInput.focus();
-          searchInput.select();
-        }
-      }
-      // ESC to clear search
       if (e.key === 'Escape' && menuSearchQuery) {
         setMenuSearchQuery('');
       }

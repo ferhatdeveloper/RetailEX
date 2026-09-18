@@ -12,9 +12,11 @@ import { toSqlDateInputString } from '../../utils/localCalendarDate';
 import {
   canonicalInvoiceLineType,
   invoiceLineTypeToDb,
+  isInvoicePurchaseSide,
   isInvoiceStockLineType,
   isInvoiceSupplierPayableLineType,
   invoiceLinePayableNetAmount,
+  isServiceInvoiceType,
 } from '../../utils/invoiceLineType';
 import { readInvoiceHeaderFields } from '../../utils/invoiceHeaderFields';
 import type { PurchasePromotionReportLine } from '../../utils/purchasePromotionReport';
@@ -609,19 +611,30 @@ async function revertInvoiceLedgerSideEffects(existing: Invoice, firmNr: string,
 }
 
 async function writeCashRegisterLineForInvoice(inv: Invoice, firmNr: string): Promise<void> {
-  // Kategori: 'Satis' / 'sale' / 'sales' / 'SalesInvoice' gibi varyasyonları kabul et
-  const cat = String(inv.invoice_category || '').toLowerCase();
-  const isSaleCategory = cat === 'satis' || cat === 'sale' || cat === 'sales'
-    || cat === 'sales_invoice' || cat === 'satış' || cat === 'hizmet' || cat === 'service';
+  // Satış / alış / hizmet (alınan+verilen) peşin → cash_lines; veresiye atlanır.
+  const catRaw = String(inv.invoice_category || '').trim();
+  const cat = catRaw.toLocaleLowerCase('tr-TR');
+  const trcode = Number((inv as any).trcode ?? inv.invoice_type ?? 0);
+  const purchaseSide = isInvoicePurchaseSide({
+    category: inv.invoice_category,
+    code: trcode,
+    name: String((inv as any).invoice_type_name || (inv as any).fiche_type || ''),
+  });
+  const serviceDoc = isServiceInvoiceType({ category: inv.invoice_category, code: trcode });
+  const isCashRelevant =
+    cat === 'satis' || cat === 'sale' || cat === 'sales' || cat === 'sales_invoice'
+    || cat === 'alis' || cat === 'alış' || cat === 'purchase' || cat === 'purchases'
+    || cat === 'hizmet' || cat === 'service' || cat === 'services'
+    || serviceDoc;
   if (
-    !isSaleCategory
+    !isCashRelevant
     || Number(inv.total_amount || 0) === 0
     || String(inv.status || '').toLowerCase() === 'cancelled'
   ) {
     if (import.meta.env.DEV) {
       console.log('[InvoicesAPI] kasa yazımı atlandı:', {
         invoice_category: inv.invoice_category,
-        isSaleCategory,
+        isCashRelevant,
         payment_method: (inv as any).payment_method,
         total_amount: inv.total_amount,
         status: inv.status,
@@ -629,6 +642,13 @@ async function writeCashRegisterLineForInvoice(inv: Invoice, firmNr: string): Pr
     }
     return;
   }
+
+  // Alış / alınan hizmet → KASA_CIKIS (−); satış / verilen hizmet → KASA_GIRIS (+)
+  const sign = purchaseSide ? -1 : 1;
+  const transactionType = purchaseSide ? 'KASA_CIKIS' : 'KASA_GIRIS';
+  const labelPrefix = serviceDoc
+    ? (purchaseSide ? 'Alınan hizmet faturası' : 'Verilen hizmet faturası')
+    : (purchaseSide ? 'Alış faturası' : 'Satış faturası');
 
   // Çoklu ödeme (Market POS pattern): header_fields.payments doluysa
   // her satır bağımsız bir cash_lines INSERT'i olarak işlenir. Tek-ödeme
@@ -639,7 +659,9 @@ async function writeCashRegisterLineForInvoice(inv: Invoice, firmNr: string): Pr
   const periodNr = String((ERP_SETTINGS as any).periodNr ?? '01');
   const ficheNo = String(inv.invoice_no || '').trim() || `INV-${String(inv.id || '').slice(0, 8)}`;
   const tarih = inv.invoice_date || inv.created_at || new Date().toISOString();
-  const customerId = inv.customer_id && isValidUuid(inv.customer_id) ? inv.customer_id : null;
+  const customerId = inv.customer_id && isValidUuid(inv.customer_id)
+    ? inv.customer_id
+    : (inv.supplier_id && isValidUuid(inv.supplier_id) ? inv.supplier_id : null);
 
   // Tek-ödeme fallback aday kasaları
   const headerCashRegisterId = isValidUuid(headerFields.cash_register_id)
@@ -658,7 +680,7 @@ async function writeCashRegisterLineForInvoice(inv: Invoice, firmNr: string): Pr
    * Düzeltme: bağlantı moduna göre dal.
    *  - `db` modu: doğrudan `postgres.query` ile SQL INSERT + UPDATE.
    *  - `rest_api` modu: `postgrest.post` ile `/cash_lines` ve
-   *    `/rex_001_cash_registers` endpoint'leri (PostgREST tarafında
+   *    `/rex_{firm}_cash_registers` endpoint'leri (PostgREST tarafında
    *    UNIQUE(fiche_no) → INSERT'e bırakılır; idempotent için önce
    *    mevcut kayıt aranır, varsa PATCH).
    *
@@ -693,16 +715,18 @@ async function writeCashRegisterLineForInvoice(inv: Invoice, firmNr: string): Pr
         ? `${ficheNo}-${i + 1}`
         : ficheNo;
       const subAciklama = paymentsRaw.length > 1
-        ? `${inv.invoice_no || ''} — Ödeme ${i + 1}/${paymentsRaw.length}`
-        : `Satış faturası — ${inv.invoice_no || ''}`;
+        ? `${labelPrefix} — ${inv.invoice_no || ''} — Ödeme ${i + 1}/${paymentsRaw.length}`
+        : `${labelPrefix} — ${inv.invoice_no || ''}`;
       try {
         if (isRest) {
           await writeCashRegisterLineRest(
             inv, firmNr, periodNr, rowCandidates, rowAmount, subFicheNo, tarih, subAciklama, customerId,
+            sign, transactionType,
           );
         } else {
           await writeCashRegisterLineSql(
             firmNr, periodNr, rowCandidates, rowAmount, subFicheNo, tarih, subAciklama, customerId, null,
+            sign, transactionType,
           );
         }
       } catch (e: any) {
@@ -727,13 +751,19 @@ async function writeCashRegisterLineForInvoice(inv: Invoice, firmNr: string): Pr
 
   const total = Number(inv.total_amount || 0);
   const amount = Math.abs(total);
-  const aciklama = `Satış faturası — ${inv.invoice_no || ''}`;
+  const aciklama = `${labelPrefix} — ${inv.invoice_no || ''}`;
 
   try {
     if (isRest) {
-      await writeCashRegisterLineRest(inv, firmNr, periodNr, defaultCandidates, amount, ficheNo, tarih, aciklama, customerId);
+      await writeCashRegisterLineRest(
+        inv, firmNr, periodNr, defaultCandidates, amount, ficheNo, tarih, aciklama, customerId,
+        sign, transactionType,
+      );
     } else {
-      await writeCashRegisterLineSql(firmNr, periodNr, defaultCandidates, amount, ficheNo, tarih, aciklama, customerId, null);
+      await writeCashRegisterLineSql(
+        firmNr, periodNr, defaultCandidates, amount, ficheNo, tarih, aciklama, customerId, null,
+        sign, transactionType,
+      );
     }
   } catch (e: any) {
     console.error('[InvoicesAPI] ⚠️ Kasa satırı (fatura) yazılamadı:', {
@@ -2660,7 +2690,7 @@ export const invoicesAPI = {
 
         // Not: dönem sale_items şemasında sale_id yok; yalnızca invoice_id (PostgREST bilinmeyen kolon → 400).
         const itemSelect =
-          'id,quantity,unit_price,total_amount,net_amount,invoice_id,item_code,product_id';
+          'id,quantity,unit_price,total_amount,net_amount,invoice_id,item_code,product_id,unit_cost,total_cost,gross_profit';
 
         const fetchSaleItems = async (extra: Record<string, string>) =>
           postgrest
@@ -2820,12 +2850,25 @@ export const invoicesAPI = {
             if (!unitPrice && qty > 0.0000001) {
               unitPrice = (net || total) / qty;
             }
+            const unitCost = parseFloat(String(it.unit_cost ?? 0)) || 0;
+            let grossProfit = parseFloat(String(it.gross_profit ?? 0)) || 0;
+            if (!grossProfit && unitCost > 0 && unitPrice > 0 && qty > 0) {
+              const line = (unitPrice - unitCost) * qty;
+              // Satış iadesi: kârı tersine çevir
+              grossProfit = type === 'sales_return' ? -Math.abs(line) : type === 'purchase' || type === 'purchase_return' ? 0 : line;
+            } else if (type === 'sales_return' && grossProfit > 0) {
+              grossProfit = -grossProfit;
+            } else if (type === 'purchase' || type === 'purchase_return') {
+              grossProfit = grossProfit || 0;
+            }
             return {
               date: hd.date,
               documentNo: hd.fiche_no,
               supplier: partner || 'N/A',
               quantity: it.quantity,
               unitPrice,
+              unitCost,
+              grossProfit,
               total: total || net || unitPrice * qty,
               type,
               ficheType,
@@ -2841,7 +2884,10 @@ export const invoicesAPI = {
       const hintBarcode = String(hint?.barcode || '').trim();
       const { rows } = await postgres.query(
         `SELECT 
-            it.quantity, it.unit_price, it.total_amount, it.net_amount, s.fiche_no, s.date, s.fiche_type, s.trcode,
+            it.quantity, it.unit_price, it.total_amount, it.net_amount,
+            COALESCE(it.unit_cost, 0) as unit_cost,
+            COALESCE(it.gross_profit, 0) as gross_profit,
+            s.fiche_no, s.date, s.fiche_type, s.trcode,
             COALESCE(c.name, sup.name) as partner_name
          FROM sale_items it 
          JOIN sales s ON it.invoice_id = s.id 
@@ -2897,12 +2943,22 @@ export const invoicesAPI = {
         if (!unitPrice && qty > 0.0000001) {
           unitPrice = (net || total) / qty;
         }
+        const unitCost = parseFloat(String(r.unit_cost ?? 0)) || 0;
+        let grossProfit = parseFloat(String(r.gross_profit ?? 0)) || 0;
+        if (!grossProfit && unitCost > 0 && unitPrice > 0 && qty > 0) {
+          const line = (unitPrice - unitCost) * qty;
+          grossProfit = type === 'sales_return' ? -Math.abs(line) : type === 'purchase' || type === 'purchase_return' ? 0 : line;
+        } else if (type === 'sales_return' && grossProfit > 0) {
+          grossProfit = -grossProfit;
+        }
         return {
           date: r.date,
           documentNo: r.fiche_no,
           supplier: r.partner_name || 'N/A',
           quantity: r.quantity,
           unitPrice,
+          unitCost,
+          grossProfit,
           total: total || net || unitPrice * qty,
           type,
           ficheType,

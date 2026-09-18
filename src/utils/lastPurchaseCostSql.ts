@@ -1,7 +1,8 @@
 /**
  * Kar-zarar / ürün brüt kâr maliyet kaynağı:
- * Yalnızca son alış faturası birim tutarı × satış miktarı (ürün id / kod / barkod).
- * Alış yoksa maliyet = 0 — products.cost / sale_items.total_cost / unit_cost kart veya satış satırı kopyası kullanılmaz.
+ * - Malzeme: son alış faturası birim tutarı × satış miktarı (ürün id / kod / barkod).
+ *   Alış yoksa maliyet = 0 — products.cost / sale_items.total_cost kart kopyası kullanılmaz.
+ * - Hizmet: services.purchase_price (veya satır unit_cost / ürün cost) × miktar.
  *
  * Satır kimliği (kasap vb.):
  * - Satış satırlarında product_id çoğu zaman boş; item_code = ürün UUID
@@ -209,16 +210,32 @@ export const LINE_REVENUE_EXPR = `
 
 /**
  * product_id (veya UUID item_code) ile son alış; yoksa satır kodu / ürün kartı kodu.
- * Birim (kg/adet) ayrımı yok — ikisi de alış birim tutarı × miktar.
- * Alış bulunamazsa 0 (kart cost / satış satırı unit_cost / total_cost yok).
+ * Hizmet satırlarında services.purchase_price / satır unit_cost / ürün cost kullanılır.
+ * Malzemede alış bulunamazsa 0 (kart cost / satış satırı total_cost yok).
  */
+export const SQL_IS_SERVICE_LINE = `
+LOWER(TRIM(COALESCE(si.item_type, 'Malzeme'))) IN ('hizmet', 'service')
+`.trim();
+
 export const LINE_COST_EXPR = `
-  COALESCE(
-    NULLIF(lpc_id.unit_cost, 0) * si.quantity,
-    NULLIF(lpc_code.unit_cost, 0) * si.quantity,
-    NULLIF(lpc_pcode.unit_cost, 0) * si.quantity,
-    0
-  )
+(
+  CASE
+    WHEN ${SQL_IS_SERVICE_LINE} THEN
+      COALESCE(
+        NULLIF(si.unit_cost, 0),
+        NULLIF(svc.purchase_price, 0),
+        NULLIF(p.cost, 0),
+        0
+      ) * COALESCE(si.quantity, 0)
+    ELSE
+      COALESCE(
+        NULLIF(lpc_id.unit_cost, 0) * si.quantity,
+        NULLIF(lpc_code.unit_cost, 0) * si.quantity,
+        NULLIF(lpc_pcode.unit_cost, 0) * si.quantity,
+        0
+      )
+  END
+)
 `.trim();
 
 export const SIGNED_LINE_QTY_EXPR = `(${SQL_SALES_SIGN}) * COALESCE(si.quantity, 0)`;
@@ -236,6 +253,23 @@ export function buildProductsJoin(firmNrParam = '$1'): string {
 }
 
 export const PRODUCTS_JOIN = buildProductsJoin('$1');
+
+/** Hizmet kartı — satış satırı product_id / item_code ile */
+export function buildServicesJoin(firmNrParam = '$1'): string {
+  return `
+  LEFT JOIN services svc
+    ON svc.firm_nr = ${firmNrParam}
+    AND (
+      svc.id = (${SQL_LINE_RESOLVED_PRODUCT_ID})
+      OR (
+        NULLIF(TRIM(svc.code), '') IS NOT NULL
+        AND NULLIF(TRIM(svc.code), '') = NULLIF(TRIM(si.item_code), '')
+      )
+    )
+`.trim();
+}
+
+export const SERVICES_JOIN = buildServicesJoin('$1');
 
 export const LAST_PURCHASE_JOIN = `
   LEFT JOIN last_purchase_by_id lpc_id
@@ -260,6 +294,11 @@ export function resolveLineProductId(it: {
   return '';
 }
 
+export function isServiceLineType(itemType?: unknown): boolean {
+  const t = String(itemType || '').trim().toLowerCase();
+  return t === 'hizmet' || t === 'service';
+}
+
 /** REST/client yolu: alış satırından birim maliyet */
 export function unitCostFromPurchaseLine(it: {
   quantity?: unknown;
@@ -279,14 +318,21 @@ export function unitCostFromPurchaseLine(it: {
 }
 
 /**
- * Satır COGS (adet/kg aynı): yalnızca son alış birim × miktar; alış yoksa 0.
+ * Satır COGS: malzeme → son alış birim × miktar; hizmet → hizmet birim maliyeti × miktar.
  * İşaret (iade) çağıran tarafta uygulanır.
  */
 export function lineCostAmount(opts: {
   quantity: number;
   lastPurchaseUnit?: number;
+  itemType?: unknown;
+  serviceUnitCost?: number;
 }): number {
   const qty = Number(opts.quantity) || 0;
+  if (isServiceLineType(opts.itemType)) {
+    const u = Number(opts.serviceUnitCost) || 0;
+    if (u) return u * qty;
+    return 0;
+  }
   const lpc = Number(opts.lastPurchaseUnit) || 0;
   if (lpc) return lpc * qty;
   return 0;

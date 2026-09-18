@@ -167,6 +167,8 @@ interface InvoiceItemsGridProps {
     updateItem: (index: number, field: keyof InvoiceItem, value: any) => void;
     removeItem: (index: number) => void;
     selectProduct: (product: any, rowIndex: number) => void;
+    /** Hizmet satırı dropdown tıklamasında selectProduct yerine kullanılır. */
+    selectService?: (service: any, rowIndex: number) => void;
     handleProductSearchChange: (value: string, rowIndex: number) => void;
     handleProductKeyDown: (e: React.KeyboardEvent, rowIndex: number) => void;
     handleShowProductHistory: (code: string, name: string, id: string) => void;
@@ -205,6 +207,7 @@ export const InvoiceItemsGrid = React.memo(({
     updateItem,
     removeItem,
     selectProduct,
+    selectService,
     handleProductSearchChange,
     handleProductKeyDown,
     handleShowProductHistory,
@@ -279,8 +282,14 @@ export const InvoiceItemsGrid = React.memo(({
             const isServiceRow = isService || kind === 'Hizmet';
             return (
                 <div
-                    key={product.code}
-                    onClick={() => selectProduct(product, rowIndex)}
+                    key={product.code || product.id || product.name}
+                    onClick={() => {
+                        if (isServiceRow && selectService) {
+                            selectService(product, rowIndex);
+                        } else {
+                            selectProduct(product, rowIndex);
+                        }
+                    }}
                     className={`px-3 py-2 cursor-pointer text-sm hover:bg-gray-50 text-gray-900 border-b border-gray-50 last:border-0 ${isServiceRow ? 'bg-indigo-50/40' : ''}`}
                 >
                     <div className="flex items-center gap-2 min-w-0">
@@ -336,8 +345,8 @@ export const InvoiceItemsGrid = React.memo(({
             case 'Satis': return 'text-blue-600';
             case 'Alis': return 'text-teal-600';
             case 'Hizmet':
-                if (invoiceType.code === 7) return 'text-blue-600';
-                if (invoiceType.code === 8) return 'text-teal-600';
+                if (invoiceType.code === 9 || invoiceType.code === 7) return 'text-blue-600';
+                if (invoiceType.code === 4 || invoiceType.code === 8) return 'text-teal-600';
                 return 'text-indigo-600';
             case 'Iade': return 'text-red-600';
             case 'Irsaliye': return 'text-orange-600';

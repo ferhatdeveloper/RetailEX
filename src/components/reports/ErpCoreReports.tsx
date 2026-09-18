@@ -8,8 +8,10 @@ import { useLanguage } from '../../contexts/LanguageContext';
 import { useTheme } from '../../contexts/ThemeContext';
 import { useFirmaDonem } from '../../contexts/FirmaDonemContext';
 import { formatNumber } from '../../utils/formatNumber';
-import { getReportingCurrency } from '../../utils/currency';
+import { getGlobalCurrency, getReportingCurrency } from '../../utils/currency';
+import { getAppDefaultCurrency } from '../../services/postgres';
 import { toSqlDateInputString, localTodayDateKey } from '../../utils/localCalendarDate';
+import { fetchKasalar, type Kasa } from '../../services/api/kasa';
 import {
   erpReportsAPI,
   type AgingBucket,
@@ -269,7 +271,9 @@ export function CariBalanceSummaryReport() {
   const { tm } = useLanguage();
   const { darkMode } = useTheme();
   const { selectedFirm } = useFirmaDonem();
-  const currency = getReportingCurrency();
+  const currency =
+    (selectedFirm?.ana_para_birimi && String(selectedFirm.ana_para_birimi).trim()) ||
+    getGlobalCurrency();
   const [cardType, setCardType] = useState<CardFilter>('all');
   const [rows, setRows] = useState<CariBalanceRow[]>([]);
   const [loading, setLoading] = useState(false);
@@ -401,11 +405,17 @@ export function CashBankMovementReport() {
   const { tm } = useLanguage();
   const { darkMode } = useTheme();
   const { selectedFirm, selectedDonem } = useFirmaDonem();
-  const currency = getReportingCurrency();
+  /** Nakit akış tutarları ana para (raporlama dövizi değil). */
+  const currency =
+    (selectedFirm?.ana_para_birimi && String(selectedFirm.ana_para_birimi).trim()) ||
+    getAppDefaultCurrency() ||
+    getGlobalCurrency();
   const initial = defaultRange();
   const [startDate, setStartDate] = useState(initial.start);
   const [endDate, setEndDate] = useState(initial.end);
   const [source, setSource] = useState<'all' | 'cash' | 'bank'>('all');
+  const [registerId, setRegisterId] = useState<string>('');
+  const [kasalar, setKasalar] = useState<Kasa[]>([]);
   const [rows, setRows] = useState<CashBankMovementRow[]>([]);
   const [loading, setLoading] = useState(false);
 
@@ -417,6 +427,20 @@ export function CashBankMovementReport() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [selectedDonem?.beg_date, selectedDonem?.end_date]);
 
+  useEffect(() => {
+    let cancelled = false;
+    void fetchKasalar({ firm_nr: selectedFirm?.firm_nr, aktif: true })
+      .then((list) => {
+        if (!cancelled) setKasalar(Array.isArray(list) ? list : []);
+      })
+      .catch(() => {
+        if (!cancelled) setKasalar([]);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [selectedFirm?.firm_nr]);
+
   const load = useCallback(async () => {
     setLoading(true);
     try {
@@ -425,6 +449,7 @@ export function CashBankMovementReport() {
           startDate,
           endDate,
           source,
+          registerId: registerId || undefined,
         }),
       );
     } catch (err: any) {
@@ -433,11 +458,21 @@ export function CashBankMovementReport() {
     } finally {
       setLoading(false);
     }
-  }, [startDate, endDate, source]);
+  }, [startDate, endDate, source, registerId]);
 
   useEffect(() => {
     void load();
   }, [load, selectedFirm?.firm_nr]);
+
+  const displayRegister = (r: CashBankMovementRow) => {
+    const name = String(r.registerName || '').trim();
+    const code = String(r.registerCode || '').trim();
+    // Eksik kasa: uydurma "MERKEZ KASA" gösterme — kod veya —
+    if (!name && !code) return '—';
+    if (!name) return code;
+    if (code && code !== name) return `${code} · ${name}`;
+    return name;
+  };
 
   const totals = useMemo(() => {
     let inflow = 0;
@@ -495,7 +530,7 @@ export function CashBankMovementReport() {
           ['Kaynak', 'Kasa/Banka', 'Fiş', 'Tarih', 'Tip', 'Açıklama', 'Cari', 'Net'],
           rows.map((r) => [
             r.source,
-            r.registerName,
+            displayRegister(r),
             r.ficheNo,
             r.date,
             r.transactionType,
@@ -517,6 +552,20 @@ export function CashBankMovementReport() {
             <option value="all">{tm('erpSourceAll')}</option>
             <option value="cash">{tm('erpSourceCash')}</option>
             <option value="bank">{tm('erpSourceBank')}</option>
+          </select>
+          <select
+            value={registerId}
+            onChange={(e) => setRegisterId(e.target.value)}
+            className={`rounded-lg border px-2 py-2 text-sm min-w-[10rem] ${inputCls}`}
+            title={tm('erpColRegister')}
+          >
+            <option value="">{tm('erpSourceAll')} — {tm('erpColRegister')}</option>
+            {kasalar.map((k) => (
+              <option key={k.id} value={k.id}>
+                {(k.kasa_kodu || '').trim() || '—'}
+                {k.kasa_adi ? ` · ${k.kasa_adi}` : ''}
+              </option>
+            ))}
           </select>
         </>
       }
@@ -572,7 +621,7 @@ export function CashBankMovementReport() {
               <tr key={r.id} className={darkMode ? 'border-t border-gray-700' : 'border-t border-gray-100'}>
                 <td className="px-3 py-2">{r.date}</td>
                 <td className="px-3 py-2">{r.source === 'cash' ? tm('erpSourceCash') : tm('erpSourceBank')}</td>
-                <td className="px-3 py-2">{r.registerName || '—'}</td>
+                <td className="px-3 py-2">{displayRegister(r)}</td>
                 <td className="px-3 py-2 font-mono text-xs">{r.ficheNo}</td>
                 <td className="px-3 py-2 text-xs">{r.transactionType}</td>
                 <td className="px-3 py-2">
@@ -1190,10 +1239,13 @@ export function ProductGrossProfitReport() {
   const { tm } = useLanguage();
   const { darkMode } = useTheme();
   const { selectedFirm, selectedDonem } = useFirmaDonem();
-  const currency = getReportingCurrency();
+  const currency =
+    (selectedFirm?.ana_para_birimi && String(selectedFirm.ana_para_birimi).trim()) ||
+    getGlobalCurrency();
   const initial = defaultRange();
   const [startDate, setStartDate] = useState(initial.start);
   const [endDate, setEndDate] = useState(initial.end);
+  const [lineKind, setLineKind] = useState<'product' | 'service' | 'all'>('product');
   const [rows, setRows] = useState<ProductGrossProfitRow[]>([]);
   const [loading, setLoading] = useState(false);
   const [movementTarget, setMovementTarget] = useState<ProductMovementTarget | null>(null);
@@ -1208,14 +1260,14 @@ export function ProductGrossProfitReport() {
   const load = useCallback(async () => {
     setLoading(true);
     try {
-      setRows(await erpReportsAPI.getProductGrossProfit({ startDate, endDate }));
+      setRows(await erpReportsAPI.getProductGrossProfit({ startDate, endDate, lineKind }));
     } catch (err: any) {
       toast.error(err?.message || String(err));
       setRows([]);
     } finally {
       setLoading(false);
     }
-  }, [startDate, endDate]);
+  }, [startDate, endDate, lineKind]);
 
   useEffect(() => {
     void load();
@@ -1259,6 +1311,15 @@ export function ProductGrossProfitReport() {
       }
       filters={
         <>
+          <select
+            value={lineKind}
+            onChange={(e) => setLineKind(e.target.value as 'product' | 'service' | 'all')}
+            className={`rounded-lg border px-2 py-2 text-sm ${inputCls}`}
+          >
+            <option value="product">Malzeme</option>
+            <option value="service">{tm('service') || 'Hizmet'}</option>
+            <option value="all">{tm('erpCardAll')}</option>
+          </select>
           <input type="date" value={startDate} onChange={(e) => setStartDate(e.target.value)} className={`rounded-lg border px-2 py-2 text-sm ${inputCls}`} />
           <input type="date" value={endDate} onChange={(e) => setEndDate(e.target.value)} className={`rounded-lg border px-2 py-2 text-sm ${inputCls}`} />
         </>
@@ -1352,7 +1413,9 @@ export function CariExtractReport() {
   const { tm } = useLanguage();
   const { darkMode } = useTheme();
   const { selectedFirm, selectedDonem } = useFirmaDonem();
-  const currency = getReportingCurrency();
+  const currency =
+    (selectedFirm?.ana_para_birimi && String(selectedFirm.ana_para_birimi).trim()) ||
+    getGlobalCurrency();
   const initial = defaultRange();
   const [startDate, setStartDate] = useState(initial.start);
   const [endDate, setEndDate] = useState(initial.end);
@@ -1389,14 +1452,22 @@ export function CariExtractReport() {
     }
     setLoading(true);
     try {
-      setRows(await erpReportsAPI.getCariExtract({ accountId, cardType, startDate, endDate }));
+      setRows(
+        await erpReportsAPI.getCariExtract({
+          accountId,
+          cardType,
+          startDate,
+          endDate,
+          accountName: accounts.find((a) => a.accountId === accountId)?.accountName,
+        }),
+      );
     } catch (err: any) {
       toast.error(err?.message || String(err));
       setRows([]);
     } finally {
       setLoading(false);
     }
-  }, [accountId, cardType, startDate, endDate]);
+  }, [accountId, cardType, startDate, endDate, accounts]);
 
   useEffect(() => {
     void load();

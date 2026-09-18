@@ -384,11 +384,40 @@ class StockMovementAPI {
         productId: string,
         hint?: { code?: string; barcode?: string }
     ): Promise<any[]> {
+        const computeGrossProfit = (row: {
+            gross_profit?: number;
+            unit_price?: number;
+            cost_price?: number;
+            unit_cost?: number;
+            quantity?: number;
+            fiche_type?: string;
+            trcode?: number;
+            movement_type?: string;
+            source_type?: string;
+        }): number => {
+            const stored = Number(row.gross_profit ?? 0);
+            if (Number.isFinite(stored) && Math.abs(stored) > 0.0000001) return stored;
+            const qty = Math.abs(Number(row.quantity) || 0);
+            const unitPrice = Number(row.unit_price) || 0;
+            const unitCost = Number(row.unit_cost ?? row.cost_price ?? 0) || 0;
+            if (!qty || !unitPrice || !unitCost) return 0;
+            const fiche = String(row.fiche_type || '').toLowerCase();
+            const tr = Number(row.trcode ?? 0);
+            const mt = String(row.movement_type || '');
+            // Alış / alış iadesi: brüt kâr yok
+            if (fiche === 'purchase_invoice' || (fiche === 'return_invoice' && (tr === 2 || tr === 6))) return 0;
+            if (row.source_type === 'slip' && mt !== 'out') return 0;
+            const line = (unitPrice - unitCost) * qty;
+            if (fiche === 'return_invoice' && tr === 3) return -Math.abs(line);
+            if (mt === 'out' || fiche === 'sales_invoice' || tr === 7 || tr === 8) return line;
+            return 0;
+        };
+
         const mapRow = (r: any) => ({
             ...r,
             currency: r.currency,
             currency_rate: parseFloat(r.currency_rate || 1),
-            gross_profit: parseFloat(r.gross_profit || 0),
+            gross_profit: computeGrossProfit(r),
             movement: {
                 document_no: r.document_no,
                 movement_type: r.movement_type,
@@ -551,6 +580,8 @@ class StockMovementAPI {
                         product_id: histPid,
                         quantity: h.quantity,
                         unit_price: unitPrice,
+                        unit_cost: Number(h.unitCost) || 0,
+                        cost_price: Number(h.unitCost) || 0,
                         total_amount: total,
                         created_at: h.date,
                         document_no: h.documentNo,
@@ -563,7 +594,7 @@ class StockMovementAPI {
                         source_type: 'invoice',
                         currency_rate: 1,
                         currency: 'IQD',
-                        gross_profit: 0,
+                        gross_profit: Number(h.grossProfit) || 0,
                         notes: h.supplier || '',
                     });
                 }
@@ -650,6 +681,7 @@ class StockMovementAPI {
                     'invoice' as source_type,
                     COALESCE(sl.currency_rate, 1.0) as currency_rate,
                     COALESCE(sl.currency, 'IQD') as currency,
+                    COALESCE(si.unit_cost, 0) as unit_cost,
                     COALESCE(si.gross_profit, 0) as gross_profit
                  FROM sale_items si
                  JOIN sales sl ON si.invoice_id = sl.id

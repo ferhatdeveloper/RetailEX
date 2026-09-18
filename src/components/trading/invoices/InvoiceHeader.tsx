@@ -2,6 +2,7 @@
 import React from 'react';
 import { MoreVertical, Barcode, History, ChevronDown, ChevronRight } from 'lucide-react';
 import { useLanguage } from '../../../contexts/LanguageContext';
+import { isInvoicePurchaseSide } from '../../../utils/invoiceLineType';
 
 interface InvoiceType {
     code: number;
@@ -162,9 +163,8 @@ export const InvoiceHeader: React.FC<InvoiceHeaderProps> = ({
 }) => {
     const { tm } = useLanguage();
     const cashierLabel = cashierFieldLabel || tm('cashier');
-    // iade yönüne göre cari tarafı (Alış + Alış İade → tedarikçi)
-    const isPurchaseSide =
-        invoiceType.category === 'Alis' || invoiceType.code === 6;
+    // iade yönüne göre cari tarafı (Alış + Alış İade + Alınan Hizmet → tedarikçi)
+    const isPurchaseSide = isInvoicePurchaseSide(invoiceType);
     const cariTitle = isPurchaseSide ? supplierTitle : customerTitle;
     const showCariMeta = Boolean(cariTitle?.trim());
 

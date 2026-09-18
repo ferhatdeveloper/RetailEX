@@ -9,7 +9,8 @@ import { CustomerSalesReport } from './CustomerSalesReport';
 import { SalesTrendReport } from './SalesTrendReport';
 import { SalesTargetReport } from './SalesTargetReport';
 import { formatNumber } from '../../utils/formatNumber';
-import { getReportingCurrency } from '../../utils/currency';
+import { getGlobalCurrency, getReportingCurrency } from '../../utils/currency';
+import { getAppDefaultCurrency } from '../../services/postgres';
 import { useProductStore } from '../../store';
 import { fetchExpiringSoonLots } from '../../services/api/lots';
 import { useFirmaDonem } from '../../contexts/FirmaDonemContext';
@@ -735,9 +736,14 @@ export function ReportsModule({
   const canDeleteErpSale = hasPermission('sales-invoices', 'DELETE');
 
   const { selectedFirm } = useFirmaDonem();
+  /** Dönüştürülmemiş tutarlar (ciro/gider/kasa) → ana para; raporlama para birimi etiket için kullanılmaz. */
+  const amountCurrency =
+    (selectedFirm?.ana_para_birimi && String(selectedFirm.ana_para_birimi).trim()) ||
+    getGlobalCurrency() ||
+    getAppDefaultCurrency();
   const reportCurrency =
     (selectedFirm?.raporlama_para_birimi && String(selectedFirm.raporlama_para_birimi).trim()) ||
-    (selectedFirm?.ana_para_birimi && String(selectedFirm.ana_para_birimi).trim()) ||
+    amountCurrency ||
     getReportingCurrency();
   const [selectedTab, setSelectedTab] = useState<ReportTab>(() =>
     resolveInitialReportTab(initialBusinessType, initialReportTab),
@@ -6832,11 +6838,11 @@ export function ReportsModule({
             })()}
 
             {selectedTab === 'monthly-days-summary' && (
-              <PeriodSummaryReport mode="monthly-days" currency={reportCurrency} />
+              <PeriodSummaryReport mode="monthly-days" currency={amountCurrency} />
             )}
 
             {selectedTab === 'yearly-months-summary' && (
-              <PeriodSummaryReport mode="yearly-months" currency={reportCurrency} />
+              <PeriodSummaryReport mode="yearly-months" currency={amountCurrency} />
             )}
 
             {selectedTab === 'profit-loss' && <ProfitLossReport />}

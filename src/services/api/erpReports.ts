@@ -3,7 +3,20 @@
  * Yeni view/tablo yok; LIMIT ile ağır sorgular sınırlanır.
  */
 import { postgres, ERP_SETTINGS, DB_SETTINGS } from '../postgres';
-import { normalizeFirmTableNr, normalizeTrText } from './accountBalance';
+import {
+  firmCustomersTable,
+  firmSuppliersTable,
+  sqlCustomerAccountBalancesCte,
+  sqlSupplierAccountBalancesCte,
+  sqlResolvedCustomerBalanceExpr,
+  sqlResolvedSupplierBalanceExpr,
+  computeCustomerBalanceFromLedger,
+  computeSupplierBalanceFromLedger,
+  normalizeFirmTableNr,
+  normalizeTrText,
+} from './accountBalance';
+import { supplierAPI } from './suppliers';
+import { buildEkstreRows, ficheTypeToInfo } from '../../utils/cariAccountStatement';
 import { SQL_COUNTABLE_SALE_STATUS } from '../../utils/saleInvoiceStatus';
 import { localTodayDateKey } from '../../utils/localCalendarDate';
 import {
@@ -12,15 +25,18 @@ import {
   isPlSalesOrReturnFiche,
   isPurchaseFiche,
   isSalesReturnFiche,
+  isServiceLineType,
   LAST_PURCHASE_JOIN,
   lineCostAmount,
   PRODUCTS_JOIN,
+  SERVICES_JOIN,
   resolveLineProductId,
   scaleLineRevenueToInvoiceNet,
   SIGNED_LINE_COST_EXPR,
   SIGNED_LINE_PROFIT_EXPR,
   SIGNED_LINE_QTY_EXPR,
   SIGNED_LINE_REVENUE_EXPR,
+  SQL_IS_SERVICE_LINE,
   SQL_LINE_RESOLVED_PRODUCT_ID,
   SQL_PL_SALES_OR_RETURN,
   unitCostFromPurchaseLine,
@@ -153,6 +169,8 @@ export interface ProductGrossProfitRow {
   cost: number;
   grossProfit: number;
   marginPct: number;
+  /** Malzeme | Hizmet — brüt kâr ayrımı */
+  lineKind?: 'product' | 'service';
 }
 
 export interface CariExtractRow {
@@ -485,88 +503,193 @@ export const erpReportsAPI = {
     const filterExactCode = rawFilter;
     const filterLike = `%${filterKey}%`;
     const hasFilter = filterKey.length > 0;
+    const firmNr = padFirm();
+    const custTable = firmCustomersTable(firmNr);
+    const suppTable = firmSuppliersTable(firmNr);
 
-    // balance filtresi: yalnız borç bakiyeli cariler (muhasebe denetimi)
-    const balFilter = onlyDebit
+    const passBalance = (balance: number) => {
+      if (onlyDebit) return balance > 0.009;
+      if (onlyNonZero) return Math.abs(balance) > 0.009;
+      return true;
+    };
+
+    if (DB_SETTINGS.connectionProvider === 'rest_api') {
+      const { postgrest } = await import('./postgrestClient');
+      const fn = firmNr;
+      const pn = padPeriod();
+      const out: CariBalanceRow[] = [];
+      const safeGet = async (path: string, query: Record<string, string>) => {
+        try {
+          const rows = await postgrest.get<Record<string, unknown>[]>(path, query, { schema: 'public' });
+          return Array.isArray(rows) ? rows : [];
+        } catch {
+          return [] as Record<string, unknown>[];
+        }
+      };
+      const [customers, suppliers, salesRows, cashRows] = await Promise.all([
+        want === 'all' || want === 'customer'
+          ? safeGet(`/${custTable}`, {
+              select: 'id,code,name,balance,credit_limit,payment_terms,is_active',
+              firm_nr: `eq.${fn}`,
+              is_active: 'eq.true',
+              order: 'name.asc',
+              limit: '2000',
+            })
+          : Promise.resolve([] as Record<string, unknown>[]),
+        want === 'all' || want === 'supplier'
+          ? safeGet(`/${suppTable}`, {
+              select: 'id,code,name,balance,credit_limit,payment_terms,is_active',
+              is_active: 'eq.true',
+              order: 'name.asc',
+              limit: '2000',
+            })
+          : Promise.resolve([] as Record<string, unknown>[]),
+        safeGet(`/rex_${fn}_${pn}_sales`, {
+          select: 'customer_id,customer_name,net_amount,fiche_type,is_cancelled,payment_method',
+          is_cancelled: 'eq.false',
+          limit: '10000',
+        }),
+        safeGet(`/rex_${fn}_${pn}_cash_lines`, {
+          select: 'customer_id,party_id,amount,transaction_type',
+          transaction_type: 'in.(CH_ODEME,CH_TAHSILAT)',
+          limit: '50000',
+        }),
+      ]);
+      const sales = salesRows as Parameters<typeof computeCustomerBalanceFromLedger>[2];
+      const cash = cashRows as Parameters<typeof computeCustomerBalanceFromLedger>[3];
+      const matchFilter = (code: string, name: string) => {
+        if (!hasFilter) return true;
+        const c = String(code || '');
+        const n = String(name || '');
+        return (
+          c.toLowerCase() === filterExactCode.toLowerCase() ||
+          normalizeTrText(c).includes(filterKey) ||
+          normalizeTrText(n).includes(filterKey)
+        );
+      };
+      for (const r of customers) {
+        const code = String(r.code ?? '');
+        const name = String(r.name ?? '');
+        if (!matchFilter(code, name)) continue;
+        const balance = computeCustomerBalanceFromLedger(
+          String(r.id),
+          name,
+          sales,
+          cash,
+          Number(r.balance ?? 0) || 0,
+        );
+        if (!passBalance(balance)) continue;
+        out.push({
+          accountId: String(r.id ?? ''),
+          accountCode: code,
+          accountName: name,
+          cardType: 'customer',
+          balance,
+          creditLimit: Number(r.credit_limit ?? 0),
+          paymentTerms: String(r.payment_terms ?? ''),
+        });
+      }
+      for (const r of suppliers) {
+        const code = String(r.code ?? '');
+        const name = String(r.name ?? '');
+        if (!matchFilter(code, name)) continue;
+        const balance = computeSupplierBalanceFromLedger(
+          String(r.id),
+          name,
+          sales,
+          cash,
+          Number(r.balance ?? 0) || 0,
+        );
+        if (!passBalance(balance)) continue;
+        out.push({
+          accountId: String(r.id ?? ''),
+          accountCode: code,
+          accountName: name,
+          cardType: 'supplier',
+          balance,
+          creditLimit: Number(r.credit_limit ?? 0),
+          paymentTerms: String(r.payment_terms ?? ''),
+        });
+      }
+      return out.sort((a, b) => b.balance - a.balance).slice(0, ROW_LIMIT);
+    }
+
+    const filterParams: unknown[] = [firmNr];
+    let filterClauseCust = '';
+    let filterClauseSupp = '';
+    if (hasFilter) {
+      filterParams.push(filterExactCode, filterLike);
+      filterClauseCust = ` AND (
+            LOWER(TRIM(COALESCE(c.code, ''))) = LOWER(TRIM($2))
+            OR LOWER(TRIM(COALESCE(c.code, ''))) LIKE LOWER(TRIM($3))
+            OR LOWER(TRIM(COALESCE(c.name, ''))) LIKE LOWER(TRIM($3))
+          )`;
+      filterClauseSupp = ` AND (
+            LOWER(TRIM(COALESCE(s.code, ''))) = LOWER(TRIM($2))
+            OR LOWER(TRIM(COALESCE(s.code, ''))) LIKE LOWER(TRIM($3))
+            OR LOWER(TRIM(COALESCE(s.name, ''))) LIKE LOWER(TRIM($3))
+          )`;
+    }
+
+    const balHaving = onlyDebit
       ? 'AND COALESCE(balance, 0) > 0.009'
       : onlyNonZero
         ? 'AND ABS(COALESCE(balance, 0)) > 0.009'
         : '';
 
-    if (DB_SETTINGS.connectionProvider === 'rest_api') {
-      const { postgrest } = await import('./postgrestClient');
-      const fn = padFirm();
-      const out: CariBalanceRow[] = [];
-      const load = async (path: string, cardType: 'customer' | 'supplier') => {
-        const qs = new URLSearchParams();
-        qs.set('select', 'id,code,name,balance,credit_limit,payment_terms,is_active');
-        qs.set('is_active', 'eq.true');
-        qs.set('order', 'balance.desc');
-        qs.set('limit', '2000');
-        if (onlyDebit) qs.append('balance', 'gt.0.009');
-        else if (onlyNonZero) qs.append('balance', 'neq.0');
-        if (hasFilter) qs.append('or', `(code.ilike.*${rawFilter}*,name.ilike.*${rawFilter}*)`);
-        const rows = await postgrest
-          .get<Record<string, unknown>[]>(
-            `${path}?${qs.toString()}`,
-            undefined,
-            { schema: 'public' },
-          )
-          .catch(() => [] as Record<string, unknown>[]);
-        for (const r of rows || []) {
-          const balance = Number(r.balance ?? 0);
-          if (onlyDebit && balance <= 0.009) continue;
-          if (onlyNonZero && Math.abs(balance) <= 0.009) continue;
-          out.push({
-            accountId: String(r.id ?? ''),
-            accountCode: String(r.code ?? ''),
-            accountName: String(r.name ?? ''),
-            cardType,
-            balance,
-            creditLimit: Number(r.credit_limit ?? 0),
-            paymentTerms: String(r.payment_terms ?? ''),
-          });
-        }
-      };
-      if (want === 'all' || want === 'customer') await load(`/rex_${fn}_customers`, 'customer');
-      if (want === 'all' || want === 'supplier') await load(`/rex_${fn}_suppliers`, 'supplier');
-      return out.sort((a, b) => b.balance - a.balance).slice(0, ROW_LIMIT);
-    }
-
     const parts: string[] = [];
-    const filterParams: unknown[] = [];
-    if (hasFilter) {
-      filterParams.push(filterExactCode, filterLike);
-    }
-    const filterClause = hasFilter
-      ? ` AND (
-            LOWER(TRIM(COALESCE(code, ''))) = LOWER(TRIM($1))
-            OR LOWER(TRIM(COALESCE(code, ''))) LIKE LOWER(TRIM($2))
-            OR LOWER(TRIM(COALESCE(name, ''))) LIKE LOWER(TRIM($2))
-          )`
-      : '';
     if (want === 'all' || want === 'customer') {
       parts.push(`
-        SELECT id::text AS account_id, COALESCE(code,'') AS account_code, COALESCE(name,'') AS account_name,
-               'customer'::text AS card_type, COALESCE(balance,0) AS balance,
-               COALESCE(credit_limit,0) AS credit_limit, COALESCE(payment_terms::text,'') AS payment_terms
-        FROM customers
-        WHERE COALESCE(is_active, true) = true ${balFilter}${filterClause}
+        SELECT
+          c.id::text AS account_id,
+          COALESCE(c.code,'') AS account_code,
+          COALESCE(c.name,'') AS account_name,
+          'customer'::text AS card_type,
+          ${sqlResolvedCustomerBalanceExpr('c')} AS balance,
+          COALESCE(c.credit_limit,0) AS credit_limit,
+          COALESCE(c.payment_terms::text,'') AS payment_terms
+        FROM ${custTable} c
+        LEFT JOIN account_balances b ON c.id = b.id
+        WHERE c.firm_nr = $1 AND COALESCE(c.is_active, true) = true
+          ${filterClauseCust}
       `);
     }
     if (want === 'all' || want === 'supplier') {
       parts.push(`
-        SELECT id::text AS account_id, COALESCE(code,'') AS account_code, COALESCE(name,'') AS account_name,
-               'supplier'::text AS card_type, COALESCE(balance,0) AS balance,
-               COALESCE(credit_limit,0) AS credit_limit, COALESCE(payment_terms::text,'') AS payment_terms
-        FROM suppliers
-        WHERE COALESCE(is_active, true) = true ${balFilter}${filterClause}
+        SELECT
+          s.id::text AS account_id,
+          COALESCE(s.code,'') AS account_code,
+          COALESCE(s.name,'') AS account_name,
+          'supplier'::text AS card_type,
+          ${sqlResolvedSupplierBalanceExpr('s')} AS balance,
+          COALESCE(s.credit_limit,0) AS credit_limit,
+          COALESCE(s.payment_terms::text,'') AS payment_terms
+        FROM ${suppTable} s
+        LEFT JOIN supplier_balances b ON s.id = b.id
+        WHERE COALESCE(s.is_active, true) = true
+          ${filterClauseSupp}
       `);
     }
     if (!parts.length) return [];
+
+    const needCust = want === 'all' || want === 'customer';
+    const needSupp = want === 'all' || want === 'supplier';
+    const cteParts: string[] = [];
+    if (needCust) cteParts.push(sqlCustomerAccountBalancesCte(custTable, '$1::text'));
+    if (needSupp) cteParts.push(sqlSupplierAccountBalancesCte(suppTable));
+
     const { rows } = await postgres.query(
-      `${parts.join(' UNION ALL ')} ORDER BY balance DESC LIMIT ${ROW_LIMIT}`,
+      `
+      WITH ${cteParts.join(',\n')}
+      SELECT * FROM (
+        ${parts.join(' UNION ALL ')}
+      ) bal
+      WHERE 1=1 ${balHaving}
+      ORDER BY balance DESC
+      LIMIT ${ROW_LIMIT}
+      `,
       filterParams,
+      { firmNr, periodNr: ERP_SETTINGS.periodNr },
     );
     return (rows || []).map((r: any) => ({
       accountId: String(r.account_id ?? ''),
@@ -1228,17 +1351,26 @@ export const erpReportsAPI = {
   async getProductGrossProfit(opts: {
     startDate: string;
     endDate: string;
+    /** product = yalnızca Malzeme (varsayılan); service = Hizmet; all = ikisi */
+    lineKind?: 'all' | 'product' | 'service';
   }): Promise<ProductGrossProfitRow[]> {
     const start = String(opts.startDate || '').slice(0, 10);
     const end = String(opts.endDate || '').slice(0, 10);
     if (!start || !end) return [];
     const firmNr = padFirm();
+    const lineKind = opts.lineKind ?? 'product';
+    const lineKindSql =
+      lineKind === 'service'
+        ? `AND (${SQL_IS_SERVICE_LINE})`
+        : lineKind === 'product'
+          ? `AND NOT (${SQL_IS_SERVICE_LINE})`
+          : '';
 
     if (DB_SETTINGS.connectionProvider === 'rest_api') {
       const { postgrest } = await import('./postgrestClient');
       const fn = firmNr;
       const pn = padPeriod();
-      const [sales, items, products] = await Promise.all([
+      const [sales, items, products, services] = await Promise.all([
         postgrest
           .get<Record<string, unknown>[]>(
             `/rex_${fn}_${pn}_sales`,
@@ -1268,12 +1400,27 @@ export const erpReportsAPI = {
             { schema: 'public' },
           )
           .catch(() => [] as Record<string, unknown>[]),
+        postgrest
+          .get<Record<string, unknown>[]>(
+            `/rex_${fn}_services`,
+            { select: 'id,code,name,purchase_price', limit: '8000' },
+            { schema: 'public' },
+          )
+          .catch(() => [] as Record<string, unknown>[]),
       ]);
 
       const salesById = new Map((sales || []).map((s) => [String(s.id), s]));
       const productById = new Map(
         (products || []).map((p) => [String(p.id), p]),
       );
+      const serviceById = new Map(
+        (services || []).map((s) => [String(s.id), s]),
+      );
+      const serviceByCode = new Map<string, Record<string, unknown>>();
+      for (const s of services || []) {
+        const code = String(s.code || '').trim();
+        if (code) serviceByCode.set(code, s);
+      }
       const productIdByCode = new Map<string, string>();
       const productIdByBarcode = new Map<string, string>();
       for (const p of products || []) {
@@ -1346,13 +1493,20 @@ export const erpReportsAPI = {
         if (!saleOk.has(String(it.invoice_id))) continue;
         const itemType = String(it.item_type || 'Malzeme');
         if (itemType === 'Promosyon' || itemType === 'İndirim') continue;
+        const isService = isServiceLineType(itemType);
+        if (lineKind === 'product' && isService) continue;
+        if (lineKind === 'service' && !isService) continue;
         const inv = salesById.get(String(it.invoice_id));
         if (!inv) continue;
         const sgn = isSalesReturnFiche(inv) ? -1 : 1;
         const pid = resolveLineProductId(it);
         const prod = pid ? productById.get(pid) : undefined;
+        const svc =
+          (pid && serviceById.get(pid)) ||
+          serviceByCode.get(String(it.item_code || '').trim()) ||
+          undefined;
         const code =
-          String(prod?.code || '').trim() ||
+          String(prod?.code || svc?.code || '').trim() ||
           String(it.item_code || it.product_id || '—');
         const qty = sgn * (Number(it.quantity ?? 0) || 0);
         const rawLineNet = Number(it.net_amount ?? 0) || 0;
@@ -1370,30 +1524,39 @@ export const erpReportsAPI = {
           (String(prod?.code || '').trim() &&
             lastByCode.get(String(prod?.code || '').trim())?.unitCost) ||
           0;
+        const serviceUnit =
+          Number(it.unit_cost ?? 0) ||
+          Number(svc?.purchase_price ?? 0) ||
+          Number(prod?.cost ?? 0) ||
+          0;
         const absQty = Number(it.quantity ?? 0) || 0;
         const cost =
           sgn *
           lineCostAmount({
             quantity: absQty,
             lastPurchaseUnit: lpc,
+            itemType,
+            serviceUnitCost: serviceUnit,
           });
         const gp = revenue - cost;
-        const cur = map.get(code) || {
+        const mapKey = `${isService ? 'S' : 'P'}|${code}`;
+        const cur = map.get(mapKey) || {
           productId: pid,
           productCode: code,
-          productName: String(it.item_name ?? prod?.name ?? ''),
+          productName: String(it.item_name ?? prod?.name ?? svc?.name ?? ''),
           quantity: 0,
           revenue: 0,
           cost: 0,
           grossProfit: 0,
           marginPct: 0,
+          lineKind: isService ? ('service' as const) : ('product' as const),
         };
         cur.quantity += qty;
         cur.revenue += revenue;
         cur.cost += cost;
         cur.grossProfit += gp;
         if (!cur.productName && it.item_name) cur.productName = String(it.item_name);
-        map.set(code, cur);
+        map.set(mapKey, cur);
       }
       return Array.from(map.values())
         .map((r) => ({
@@ -1410,8 +1573,19 @@ export const erpReportsAPI = {
       WITH ${profitCtes}
       SELECT
         COALESCE((${SQL_LINE_RESOLVED_PRODUCT_ID})::text, '') AS product_id,
-        COALESCE(NULLIF(TRIM(p.code), ''), NULLIF(TRIM(si.item_code), ''), '—') AS product_code,
-        COALESCE(NULLIF(TRIM(si.item_name), ''), p.name, '—') AS product_name,
+        COALESCE(
+          NULLIF(TRIM(p.code), ''),
+          NULLIF(TRIM(svc.code), ''),
+          NULLIF(TRIM(si.item_code), ''),
+          '—'
+        ) AS product_code,
+        COALESCE(
+          NULLIF(TRIM(si.item_name), ''),
+          p.name,
+          svc.name,
+          '—'
+        ) AS product_name,
+        CASE WHEN ${SQL_IS_SERVICE_LINE} THEN 'service' ELSE 'product' END AS line_kind,
         COALESCE(SUM(${SIGNED_LINE_QTY_EXPR}), 0) AS quantity,
         COALESCE(SUM(${SIGNED_LINE_REVENUE_EXPR}), 0) AS revenue,
         COALESCE(SUM(${SIGNED_LINE_COST_EXPR}), 0) AS cost,
@@ -1419,6 +1593,7 @@ export const erpReportsAPI = {
       FROM sale_items si
       INNER JOIN sales s ON s.id = si.invoice_id
       ${PRODUCTS_JOIN}
+      ${SERVICES_JOIN}
       ${LAST_PURCHASE_JOIN}
       ${INVOICE_LINE_SCALE_JOIN}
       WHERE s.firm_nr = $1
@@ -1426,9 +1601,10 @@ export const erpReportsAPI = {
         AND ${SQL_COUNTABLE_SALE_STATUS}
         AND ${SQL_PL_SALES_OR_RETURN}
         AND COALESCE(si.item_type, 'Malzeme') NOT IN ('Promosyon', 'İndirim')
+        ${lineKindSql}
         AND (s.date AT TIME ZONE 'UTC')::date >= $2::date
         AND (s.date AT TIME ZONE 'UTC')::date <= $3::date
-      GROUP BY 1, 2, 3
+      GROUP BY 1, 2, 3, 4
       HAVING ABS(COALESCE(SUM(${SIGNED_LINE_REVENUE_EXPR}), 0)) > 0.009
          OR ABS(COALESCE(SUM(${SIGNED_LINE_QTY_EXPR}), 0)) > 0.0001
       ORDER BY gross_profit DESC
@@ -1449,6 +1625,7 @@ export const erpReportsAPI = {
         cost,
         grossProfit,
         marginPct: Math.abs(revenue) > 0.009 ? (grossProfit / revenue) * 100 : 0,
+        lineKind: r.line_kind === 'service' ? 'service' : 'product',
       };
     });
   },
@@ -1458,331 +1635,65 @@ export const erpReportsAPI = {
     cardType: 'customer' | 'supplier';
     startDate: string;
     endDate: string;
+    accountName?: string;
   }): Promise<CariExtractRow[]> {
     const accountId = String(opts.accountId || '').trim();
     const start = String(opts.startDate || '').slice(0, 10);
     const end = String(opts.endDate || '').slice(0, 10);
     if (!accountId || !start || !end) return [];
-    const isCustomer = opts.cardType === 'customer';
 
-    const mapRunning = (raw: { id: string; date: string; ficheNo: string; definition: string; amount: number; sign: number; source: CariExtractRow['source'] }[]) => {
-      let running = 0;
-      return raw.map((m) => {
-        const amount = Math.abs(m.amount);
-        const debit = m.sign > 0 ? amount : 0;
-        const credit = m.sign < 0 ? amount : 0;
-        running += debit - credit;
-        return {
-          id: m.id,
-          date: m.date,
-          ficheNo: m.ficheNo,
-          definition: m.definition,
-          debit,
-          credit,
-          balance: running,
-          source: m.source,
-        };
-      });
-    };
-
-    if (DB_SETTINGS.connectionProvider === 'rest_api') {
-      const { postgrest } = await import('./postgrestClient');
-      const fn = padFirm();
-      const pn = padPeriod();
-
-      // 3 kaynaktan birleştirme: account_movements (eski) + party_ledger_movements
-      // (CH_ODEME / CH_TAHSILAT dahil) + cash_lines (yedek). Aynı hareket birden fazla
-      // tabloda tutulmuş olabilir; tarih + fiche_no + amount + sign ile dedupe edilir.
-      const [movements, ledgerMovs, cashLines] = await Promise.all([
-        postgrest
-          .get<Record<string, unknown>[]>(
-            `/rex_${fn}_${pn}_account_movements`,
-            {
-              select: 'id,fiche_no,date,amount,sign,definition,customer_id,supplier_id',
-              order: 'date.asc',
-              limit: String(ROW_LIMIT),
-            },
-            { schema: 'public' },
-          )
-          .catch(() => [] as Record<string, unknown>[]),
-        postgrest
-          .get<Record<string, unknown>[]>(
-            `/rex_${fn}_${pn}_party_ledger_movements`,
-            {
-              select: 'id,date,amount,sign,definition,transaction_type,cash_line_id,party_id,card_type',
-              card_type: `eq.${isCustomer ? 'customer' : 'supplier'}`,
-              party_id: `eq.${accountId}`,
-              order: 'date.asc',
-              limit: String(ROW_LIMIT),
-            },
-            { schema: 'public' },
-          )
-          .catch(() => [] as Record<string, unknown>[]),
-        postgrest
-          .get<Record<string, unknown>[]>(
-            `/rex_${fn}_${pn}_cash_lines`,
-            {
-              select: 'id,fiche_no,date,amount,sign,definition,transaction_type,customer_id,party_id',
-              transaction_type: 'in.(CH_ODEME,CH_TAHSILAT)',
-              order: 'date.asc',
-              limit: String(ROW_LIMIT),
-            },
-            { schema: 'public' },
-          )
-          .catch(() => [] as Record<string, unknown>[]),
-      ]);
-
-      const allMovs: Array<Record<string, unknown> & { _src: string }> = [];
-      (movements || []).forEach((m) => {
-        const d = String(m.date || '').slice(0, 10);
-        if (d < start || d > end) return;
-        const id = isCustomer ? String(m.customer_id || '') : String(m.supplier_id || m.customer_id || '');
-        if (id !== accountId) return;
-        allMovs.push({ ...m, _src: 'account_movements' });
-      });
-      (ledgerMovs || []).forEach((m) => {
-        const d = String(m.date || '').slice(0, 10);
-        if (d < start || d > end) return;
-        const tt = String(m.transaction_type || '');
-        if (tt.startsWith('CANCELLED_')) return;
-        allMovs.push({ ...m, _src: 'party_ledger' });
-      });
-      (cashLines || []).forEach((m) => {
-        const d = String(m.date || '').slice(0, 10);
-        if (d < start || d > end) return;
-        const tt = String(m.transaction_type || '');
-        if (tt.startsWith('CANCELLED_')) return;
-        const cashIdCol = isCustomer ? 'customer_id' : 'party_id';
-        const id = String(m[cashIdCol] || '');
-        if (id !== accountId) return;
-        allMovs.push({ ...m, _src: 'cash_lines' });
-      });
-
-      // Dedupe: tarih + fiche_no + amount + sign — aynı hareket birden çok tabloda duruyorsa
-      // party_ledger > account_movements > cash_lines önceliği ile tek satır tutulur.
-      const seen = new Map<string, Record<string, unknown> & { _src: string }>();
-      const prio = (src: string) => ({ party_ledger: 2, account_movements: 1, cash_lines: 0 } as Record<string, number>)[src] || 0;
-      for (const m of allMovs) {
-        const d = String(m.date || '').slice(0, 10);
-        const fn_ = String(m.fiche_no || '');
-        const amt = Number(m.amount ?? 0);
-        const sg = Number(m.sign ?? 0);
-        const key = `${d}|${fn_}|${amt}|${sg}`;
-        const existing = seen.get(key);
-        if (!existing || prio(m._src) > prio(existing._src)) {
-          seen.set(key, m);
-        }
+    // Cari listesi / ekstre paneli ile aynı kaynak: sales + cash_lines (customer_id / party_id).
+    let accountName = String(opts.accountName || '').trim();
+    if (!accountName) {
+      try {
+        const cards = await this.getCariBalances({
+          cardType: opts.cardType,
+          onlyNonZero: false,
+        });
+        accountName = cards.find((c) => c.accountId === accountId)?.accountName || '';
+      } catch {
+        accountName = '';
       }
-      const dedup = Array.from(seen.values()).sort(
-        (a, b) => String(a.date || '').localeCompare(String(b.date || '')),
-      );
-
-      if (dedup.length) {
-        return mapRunning(
-          dedup.map((m) => ({
-            id: String(m.id ?? `${m.fiche_no}-${m.date}`),
-            date: String(m.date || '').slice(0, 10),
-            ficheNo: String(m.fiche_no ?? ''),
-            definition: String(m.definition ?? ''),
-            amount: Number(m.amount ?? 0),
-            sign: Number(m.sign ?? 1) || 1,
-            source: (m._src === 'sale' ? 'sale' : 'movement') as CariExtractRow['source'],
-          })),
-        ).slice(0, ROW_LIMIT);
-      }
-
-      const sales = await postgrest
-        .get<Record<string, unknown>[]>(
-          `/rex_${fn}_${pn}_sales`,
-          {
-            select: 'id,fiche_no,date,net_amount,fiche_type,trcode,customer_id,is_cancelled,status',
-            customer_id: `eq.${accountId}`,
-            order: 'date.asc',
-            limit: String(ROW_LIMIT),
-          },
-          { schema: 'public' },
-        )
-        .catch(() => [] as Record<string, unknown>[]);
-
-      // V2-R17 / mobilde V2-R13: alış ≠ iade; kart tipine göre işaret.
-      // buildEkstreRows / ledger: alış +net, iade −net. Eski kod purchase_invoice'u da −1 yapıyordu.
-      return mapRunning(
-        (sales || [])
-          .filter((s) => {
-            if (s.is_cancelled === true || s.is_cancelled === 'true') return false;
-            const d = String(s.date || '').slice(0, 10);
-            return d >= start && d <= end;
-          })
-          .map((s) => {
-            const ft = String(s.fiche_type || '').trim().toLowerCase();
-            const tr = Number(s.trcode ?? 0) || 0;
-            const net = Number(s.net_amount ?? 0);
-            let sign = 1;
-            if (ft === 'opening_balance') {
-              sign = net < 0 ? -1 : 1;
-            } else if (isCustomer) {
-              if (ft === 'return_invoice' || tr === 2 || tr === 3) sign = -1;
-            } else if (tr === 6 || ft === 'return_invoice') {
-              sign = -1;
-            }
-            return {
-              id: String(s.id ?? ''),
-              date: String(s.date || '').slice(0, 10),
-              ficheNo: String(s.fiche_no ?? ''),
-              definition: ft === 'opening_balance' ? 'Devir' : ft || 'sale',
-              amount: Math.abs(net),
-              sign,
-              source: 'sale' as const,
-            };
-          }),
-      ).slice(0, ROW_LIMIT);
     }
 
-    const idCol = isCustomer ? 'customer_id' : 'supplier_id';
-    const cashIdCol = isCustomer ? 'customer_id' : 'party_id';
-    const ledgerCardType = isCustomer ? 'customer' : 'supplier';
-    const fn = padFirm();
-    const pn = padPeriod();
-    let rows: any[] = [];
-    try {
-      // 3 kaynaktan UNION ALL + dedupe (party_ledger öncelikli → account_movements → cash_lines).
-      // CH_ODEME / CH_TAHSILAT hareketleri çoğunlukla yalnızca party_ledger_movements veya
-      // cash_lines'ta tutulduğundan, yalnızca account_movements okumak tedarikçi ödemelerini
-      // cari ekstresinde göstermiyordu.
-      const res = await postgres.query(
-        `
-        WITH all_movs AS (
-          SELECT
-            am.id::text AS id,
-            (am.date AT TIME ZONE 'UTC')::date::text AS date,
-            COALESCE(am.fiche_no, '') AS fiche_no,
-            COALESCE(am.definition, '') AS definition,
-            ABS(COALESCE(am.amount, 0)) AS amount,
-            COALESCE(am.sign, 1) AS sign,
-            'movement'::text AS source,
-            1 AS _prio
-          FROM rex_${fn}_${pn}_account_movements am
-          WHERE am.${idCol}::text = $1
-            AND (am.date AT TIME ZONE 'UTC')::date >= $2::date
-            AND (am.date AT TIME ZONE 'UTC')::date <= $3::date
-
-          UNION ALL
-
-          SELECT
-            pl.id::text AS id,
-            (pl.date AT TIME ZONE 'UTC')::date::text AS date,
-            COALESCE(cl.fiche_no, pl.transaction_type, '') AS fiche_no,
-            COALESCE(pl.definition, '') AS definition,
-            ABS(COALESCE(pl.amount, 0)) AS amount,
-            COALESCE(pl.sign, 1) AS sign,
-            'movement'::text AS source,
-            2 AS _prio
-          FROM rex_${fn}_${pn}_party_ledger_movements pl
-          LEFT JOIN rex_${fn}_${pn}_cash_lines cl ON cl.id = pl.cash_line_id
-          WHERE pl.party_id::text = $1
-            AND pl.card_type = $4
-            AND pl.transaction_type NOT LIKE 'CANCELLED_%'
-            AND (pl.date AT TIME ZONE 'UTC')::date >= $2::date
-            AND (pl.date AT TIME ZONE 'UTC')::date <= $3::date
-
-          UNION ALL
-
-          SELECT
-            cl.id::text AS id,
-            (cl.date AT TIME ZONE 'UTC')::date::text AS date,
-            COALESCE(cl.fiche_no, '') AS fiche_no,
-            COALESCE(cl.definition, '') AS definition,
-            ABS(COALESCE(cl.amount, 0)) AS amount,
-            COALESCE(cl.sign, 1) AS sign,
-            'movement'::text AS source,
-            0 AS _prio
-          FROM rex_${fn}_${pn}_cash_lines cl
-          WHERE cl.${cashIdCol}::text = $1
-            AND cl.transaction_type IN ('CH_ODEME', 'CH_TAHSILAT')
-            AND cl.transaction_type NOT LIKE 'CANCELLED_%'
-            AND (cl.date AT TIME ZONE 'UTC')::date >= $2::date
-            AND (cl.date AT TIME ZONE 'UTC')::date <= $3::date
-        ),
-        ranked AS (
-          SELECT *, ROW_NUMBER() OVER (
-            PARTITION BY date, fiche_no, amount, sign
-            ORDER BY _prio DESC
-          ) AS rn
-          FROM all_movs
-        )
-        SELECT id, date, fiche_no, definition, amount, sign, source
-        FROM ranked
-        WHERE rn = 1
-        ORDER BY date ASC
-        LIMIT ${ROW_LIMIT}
-        `,
-        [accountId, start, end, ledgerCardType],
-      );
-      rows = res.rows || [];
-    } catch {
-      rows = [];
-    }
-
-    if (!rows.length) {
-      const ficheFilter = isCustomer
-        ? `s.fiche_type IN ('sales_invoice', 'service', 'hizmet', 'return_invoice', 'opening_balance')`
-        : `(s.fiche_type = 'purchase_invoice' OR s.trcode IN (1, 4, 5, 6, 13, 26, 41, 42) OR s.fiche_type IN ('return_invoice', 'opening_balance'))`;
-      // V2-R17: kart tipine göre CASE (mobil reportsApi saleSignSql / V2-R13 ile aynı).
-      // Alış (purchase_invoice / trcode 1…) → +1; iade → −1. Opening: işaretli net_amount.
-      const openingSignSql = `CASE
-            WHEN LOWER(TRIM(COALESCE(s.fiche_type, ''))) = 'opening_balance'
-              THEN CASE WHEN COALESCE(s.net_amount, 0) < 0 THEN -1 ELSE 1 END`;
-      const saleSignSql = isCustomer
-        ? `${openingSignSql}
-            WHEN LOWER(TRIM(COALESCE(s.fiche_type, ''))) = 'return_invoice'
-              OR COALESCE(s.trcode, 0) IN (2, 3) THEN -1
-            ELSE 1
-          END`
-        : `${openingSignSql}
-            WHEN COALESCE(s.trcode, 0) = 6
-              OR LOWER(TRIM(COALESCE(s.fiche_type, ''))) = 'return_invoice' THEN -1
-            ELSE 1
-          END`;
-      const saleDefinitionSql = `CASE
-            WHEN LOWER(TRIM(COALESCE(s.fiche_type, ''))) = 'opening_balance' THEN 'Devir'
-            ELSE COALESCE(s.fiche_type, '')
-          END`;
-      const res = await postgres.query(
-        `
-        SELECT
-          s.id::text AS id,
-          (s.date AT TIME ZONE 'UTC')::date::text AS date,
-          COALESCE(s.fiche_no, '') AS fiche_no,
-          ${saleDefinitionSql} AS definition,
-          ABS(COALESCE(s.net_amount, 0)) AS amount,
-          ${saleSignSql} AS sign,
-          'sale'::text AS source
-        FROM sales s
-        WHERE s.customer_id::text = $1
-          AND COALESCE(s.is_cancelled, false) = false
-          AND ${SQL_COUNTABLE_SALE_STATUS}
-          AND ${ficheFilter}
-          AND (s.date AT TIME ZONE 'UTC')::date >= $2::date
-          AND (s.date AT TIME ZONE 'UTC')::date <= $3::date
-        ORDER BY s.date ASC
-        LIMIT ${ROW_LIMIT}
-        `,
-        [accountId, start, end],
-      );
-      rows = res.rows || [];
-    }
-
-    return mapRunning(
-      rows.map((r: any) => ({
-        id: String(r.id ?? ''),
-        date: String(r.date ?? '').slice(0, 10),
-        ficheNo: String(r.fiche_no ?? ''),
-        definition: String(r.definition ?? ''),
-        amount: Number(r.amount ?? 0),
-        sign: Number(r.sign ?? 1) || 1,
-        source: (r.source === 'sale' ? 'sale' : 'movement') as CariExtractRow['source'],
-      })),
+    const raw = await supplierAPI.getAccountStatement(
+      accountId,
+      start,
+      end,
+      accountName || undefined,
+      opts.cardType,
     );
+    const ekstre = buildEkstreRows(
+      (raw || []).map((r: any) => ({
+        ...r,
+        date: r.date,
+        fiche_no: r.fiche_no,
+        fiche_type: r.fiche_type,
+        trcode: r.trcode,
+        notes: r.notes,
+        total_amount: r.total_amount,
+        is_cancelled: r.is_cancelled,
+      })),
+      opts.cardType,
+    );
+
+    return ekstre.map((r, idx) => {
+      const ft = String(r.fiche_type || '');
+      const info = ficheTypeToInfo(ft, Number(r.trcode) || 0, r.is_cancelled === true);
+      const ftUpper = ft.trim().toUpperCase();
+      let source: CariExtractRow['source'] = 'sale';
+      if (ftUpper === 'CH_ODEME' || ftUpper === 'CH_TAHSILAT') source = 'cash';
+      return {
+        id: `${r.fiche_no || 'x'}-${String(r.date || '').slice(0, 10)}-${idx}`,
+        date: String(r.date || '').slice(0, 10),
+        ficheNo: String(r.fiche_no ?? ''),
+        definition: String(r.notes || info.label || ft || ''),
+        debit: Number(r.borcAmount) || 0,
+        credit: Number(r.alacakAmount) || 0,
+        balance: Number(r.balance) || 0,
+        source,
+      };
+    }).slice(0, ROW_LIMIT);
   },
 
   async getCriticalStock(): Promise<CriticalStockRow[]> {

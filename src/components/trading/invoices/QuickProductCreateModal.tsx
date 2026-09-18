@@ -3,6 +3,7 @@ import { PercentBodyModal, PercentBodyModalScrollBody } from '../../shared/Perce
 import { useLanguage } from '../../../contexts/LanguageContext';
 import { moduleTranslations } from '../../../locales/module-translations';
 import type { UnitMasterRow } from '../../../utils/unitOptions';
+import { serviceAPI } from '../../../services/serviceAPI';
 
 export interface QuickCreateFormValue {
     code: string;
@@ -50,17 +51,36 @@ export const QuickProductCreateModal: React.FC<QuickProductCreateModalProps> = (
     const [vatRate, setVatRate] = useState<string>('');
     const [barcode, setBarcode] = useState<string>('');
     const [touched, setTouched] = useState(false);
+    const [codeLoading, setCodeLoading] = useState(false);
 
-    // Modal her açıldığında initial değerlerle sıfırla
+    // Modal her açıldığında initial değerlerle sıfırla; hizmette kod boşsa getNextCode (000001…)
     useEffect(() => {
-        setCode(initialCode);
         setName(initialName);
         setUnit('Adet');
         setPrice('');
         setVatRate('');
         setBarcode('');
         setTouched(false);
-    }, [initialCode, initialName]);
+
+        let cancelled = false;
+        const bootstrapCode = async () => {
+            if (kind === 'service' && !String(initialCode || '').trim()) {
+                setCodeLoading(true);
+                try {
+                    const next = await serviceAPI.getNextCode();
+                    if (!cancelled) setCode(next || '000001');
+                } catch {
+                    if (!cancelled) setCode('000001');
+                } finally {
+                    if (!cancelled) setCodeLoading(false);
+                }
+            } else {
+                setCode(initialCode);
+            }
+        };
+        void bootstrapCode();
+        return () => { cancelled = true; };
+    }, [initialCode, initialName, kind]);
 
     const unitOptions = useMemo(() => {
         const fromMaster = (masterUnits || [])
@@ -125,9 +145,10 @@ export const QuickProductCreateModal: React.FC<QuickProductCreateModalProps> = (
                             type="text"
                             value={code}
                             onChange={(e) => setCode(e.target.value)}
-                            autoFocus
+                            autoFocus={!(kind === 'service' && !initialCode)}
+                            disabled={codeLoading}
                             className={`px-3 py-2.5 border rounded-xl text-sm focus:ring-2 focus:ring-blue-500 focus:border-blue-400 outline-none text-slate-800 font-medium ${codeMissing ? 'border-red-400 bg-red-50/40' : 'border-slate-200 bg-white'}`}
-                            placeholder={kind === 'service' ? 'SRV-001' : 'PRD-001'}
+                            placeholder={kind === 'service' ? '000001' : 'PRD-001'}
                         />
                     </label>
 
@@ -139,6 +160,7 @@ export const QuickProductCreateModal: React.FC<QuickProductCreateModalProps> = (
                             type="text"
                             value={name}
                             onChange={(e) => setName(e.target.value)}
+                            autoFocus={kind === 'service' && !initialCode}
                             className={`px-3 py-2.5 border rounded-xl text-sm focus:ring-2 focus:ring-blue-500 focus:border-blue-400 outline-none text-slate-800 font-medium ${nameMissing ? 'border-red-400 bg-red-50/40' : 'border-slate-200 bg-white'}`}
                             placeholder={kind === 'service' ? 'Danışmanlık Hizmeti' : 'Yeni Ürün'}
                         />
@@ -219,7 +241,7 @@ export const QuickProductCreateModal: React.FC<QuickProductCreateModalProps> = (
                 <button
                     type="button"
                     onClick={handleSubmit}
-                    disabled={saving}
+                    disabled={saving || codeLoading}
                     className="rounded-2xl bg-blue-600 text-white font-bold uppercase text-sm tracking-wider px-5 py-2.5 shadow-lg shadow-blue-200/50 hover:bg-blue-700 active:scale-[0.98] disabled:opacity-50 inline-flex items-center gap-2 justify-center"
                 >
                     {saving && (

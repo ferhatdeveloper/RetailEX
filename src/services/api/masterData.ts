@@ -672,6 +672,115 @@ export const categoryAPI = {
             return [];
         }
     },
+
+    async create(input: {
+        code: string;
+        name: string;
+        parent_id?: string | null;
+        description?: string;
+        is_active?: boolean;
+    }): Promise<Category | null> {
+        try {
+            const code = String(input.code || '').trim();
+            const name = String(input.name || '').trim();
+            if (!code || !name) return null;
+            if (isRestApi()) {
+                const { postgrest } = await import('./postgrestClient');
+                const fn = padFirmNr();
+                const rows = await postgrest.post<Category[]>(
+                    `/rex_${fn}_categories`,
+                    {
+                        code,
+                        name,
+                        parent_id: input.parent_id || null,
+                        description: input.description ?? null,
+                        is_active: input.is_active ?? true,
+                    },
+                    { schema: 'public', prefer: 'return=representation' }
+                );
+                return Array.isArray(rows) ? rows[0] : (rows as unknown as Category);
+            }
+            const { rows } = await postgres.query(
+                `INSERT INTO categories (code, name, parent_id, description, is_active)
+                 VALUES ($1, $2, $3, $4, $5)
+                 RETURNING *`,
+                [code, name, input.parent_id || null, input.description ?? null, input.is_active ?? true]
+            );
+            return rows[0] ?? null;
+        } catch (error) {
+            console.error('[CategoryAPI] create failed:', error);
+            return null;
+        }
+    },
+
+    async update(id: string, patch: Partial<Pick<Category, 'code' | 'name' | 'parent_id' | 'description' | 'is_active'>>): Promise<Category | null> {
+        try {
+            const cid = String(id || '').trim();
+            if (!cid) return null;
+            if (isRestApi()) {
+                const { postgrest } = await import('./postgrestClient');
+                const fn = padFirmNr();
+                const body: Record<string, unknown> = {};
+                if (patch.code !== undefined) body.code = patch.code;
+                if (patch.name !== undefined) body.name = patch.name;
+                if (patch.parent_id !== undefined) body.parent_id = patch.parent_id;
+                if (patch.description !== undefined) body.description = patch.description;
+                if (patch.is_active !== undefined) body.is_active = patch.is_active;
+                const rows = await postgrest.patch<Category[]>(
+                    `/rex_${fn}_categories?id=eq.${encodeURIComponent(cid)}`,
+                    body,
+                    { schema: 'public', prefer: 'return=representation' }
+                );
+                return Array.isArray(rows) ? rows[0] : (rows as unknown as Category);
+            }
+            const { rows } = await postgres.query(
+                `UPDATE categories
+                 SET code = COALESCE($1, code),
+                     name = COALESCE($2, name),
+                     parent_id = CASE WHEN $3::boolean THEN $4::uuid ELSE parent_id END,
+                     description = COALESCE($5, description),
+                     is_active = COALESCE($6, is_active)
+                 WHERE id = $7
+                 RETURNING *`,
+                [
+                    patch.code ?? null,
+                    patch.name ?? null,
+                    patch.parent_id !== undefined,
+                    patch.parent_id ?? null,
+                    patch.description ?? null,
+                    patch.is_active ?? null,
+                    cid,
+                ]
+            );
+            return rows[0] ?? null;
+        } catch (error) {
+            console.error('[CategoryAPI] update failed:', error);
+            return null;
+        }
+    },
+
+    /** Soft-delete: is_active = false */
+    async delete(id: string): Promise<boolean> {
+        try {
+            const cid = String(id || '').trim();
+            if (!cid) return false;
+            if (isRestApi()) {
+                const { postgrest } = await import('./postgrestClient');
+                const fn = padFirmNr();
+                await postgrest.patch(
+                    `/rex_${fn}_categories?id=eq.${encodeURIComponent(cid)}`,
+                    { is_active: false },
+                    { schema: 'public' }
+                );
+                return true;
+            }
+            await postgres.query(`UPDATE categories SET is_active = false WHERE id = $1`, [cid]);
+            return true;
+        } catch (error) {
+            console.error('[CategoryAPI] delete failed:', error);
+            return false;
+        }
+    },
 };
 
 // ============================================================================

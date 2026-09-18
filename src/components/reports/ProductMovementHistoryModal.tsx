@@ -29,6 +29,8 @@ type MovementRow = {
   quantity: number;
   unitPrice: number;
   amount: number;
+  /** Brüt kâr — birim maliyet + fiyat varsa dolu; aksi halde null (—). */
+  grossProfit: number | null;
   partner: string;
 };
 
@@ -85,6 +87,32 @@ function resolveAmount(m: any, qty: number, unitPrice: number): number {
   const total = Number(m.total_amount ?? m.total ?? m.net_amount ?? 0) || 0;
   if (total) return total;
   return qty * unitPrice;
+}
+
+/** API gross_profit veya (birim fiyat − maliyet) × |miktar|; yoksa / sıfırsa null (—). */
+function resolveGrossProfit(m: any, qty: number): number | null {
+  const stored = Number(m.gross_profit);
+  if (Number.isFinite(stored) && Math.abs(stored) > 0.0000001) return stored;
+
+  const fiche = String(m.fiche_type || '').toLowerCase();
+  const tr = Number(m.trcode ?? m.movement?.trcode ?? 0);
+  const mt = String(m.movement?.movement_type || m.movement_type || '');
+  // Alış / alış iadesi: brüt kâr yok
+  if (fiche === 'purchase_invoice' || (fiche === 'return_invoice' && (tr === 2 || tr === 6))) return null;
+  if (m.source_type === 'slip' && mt !== 'out') return null;
+
+  const unitPrice = Number(m.unit_price ?? m.unitPrice ?? 0) || 0;
+  const unitCost = Number(m.unit_cost ?? m.cost_price ?? m.unitCost ?? m.costPrice ?? 0) || 0;
+  if (!unitPrice || !unitCost || !qty) return null;
+  const line = (unitPrice - unitCost) * Math.abs(qty);
+  if (fiche === 'return_invoice' && tr === 3) {
+    const v = -Math.abs(line);
+    return Math.abs(v) > 0.0000001 ? v : null;
+  }
+  if (mt === 'out' || fiche === 'sales_invoice' || tr === 7 || tr === 8 || !fiche) {
+    return Math.abs(line) > 0.0000001 ? line : null;
+  }
+  return null;
 }
 
 function resolveTypeLabel(
@@ -174,6 +202,7 @@ export function ProductMovementHistoryModal({
             quantity: qty,
             unitPrice,
             amount: resolveAmount(m, qty, unitPrice),
+            grossProfit: resolveGrossProfit(m, qty),
             partner: String(m.notes || '').trim(),
             dayMs: toDayMs(String(dateRaw)),
           };
@@ -266,6 +295,7 @@ export function ProductMovementHistoryModal({
                 <th className="px-4 py-2.5 text-right font-semibold">{tm('reportsPlMovColQty')}</th>
                 <th className="px-4 py-2.5 text-right font-semibold">{tm('reportsPlMovColUnit')}</th>
                 <th className="px-4 py-2.5 text-right font-semibold">{tm('reportsPlMovColAmount')}</th>
+                <th className="px-4 py-2.5 text-right font-semibold">{tm('reportsPlMovColProfit')}</th>
                 <th className="px-4 py-2.5 text-left font-semibold">{tm('reportsPlMovColPartner')}</th>
               </tr>
             </thead>
@@ -285,6 +315,19 @@ export function ProductMovementHistoryModal({
                   </td>
                   <td className="px-4 py-2 text-right tabular-nums font-medium">
                     {formatNumber(r.amount, 2, false)} {currency}
+                  </td>
+                  <td
+                    className={`px-4 py-2 text-right tabular-nums font-medium ${
+                      r.grossProfit == null
+                        ? 'opacity-40'
+                        : r.grossProfit >= 0
+                          ? 'text-emerald-700 dark:text-emerald-400'
+                          : 'text-rose-700 dark:text-rose-400'
+                    }`}
+                  >
+                    {r.grossProfit == null
+                      ? '—'
+                      : `${formatNumber(r.grossProfit, 2, false)} ${currency}`}
                   </td>
                   <td className="px-4 py-2 text-xs opacity-70 max-w-[12rem] truncate">{r.partner || '—'}</td>
                 </tr>

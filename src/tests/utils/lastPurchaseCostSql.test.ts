@@ -11,14 +11,16 @@ import {
 } from '../../utils/lastPurchaseCostSql';
 
 describe('lastPurchaseCostSql — muhasebe yardımcıları', () => {
-  it('LINE_COST_EXPR yalnızca alış CTE birimlerini kullanır (kart/satış cost yok)', () => {
+  it('LINE_COST_EXPR malzeme için alış CTE; hizmet için purchase_price/unit_cost', () => {
     expect(LINE_COST_EXPR).toContain('lpc_id.unit_cost');
     expect(LINE_COST_EXPR).toContain('lpc_code.unit_cost');
     expect(LINE_COST_EXPR).toContain('lpc_pcode.unit_cost');
-    expect(LINE_COST_EXPR).not.toMatch(/\bp\.cost\b/);
+    expect(LINE_COST_EXPR).toContain('svc.purchase_price');
+    expect(LINE_COST_EXPR).toContain("IN ('hizmet', 'service')");
+    // Malzeme kolunda kart/satış cost yok; hizmet kolunda unit_cost / p.cost yedek
     expect(LINE_COST_EXPR).not.toContain('si.total_cost');
-    expect(LINE_COST_EXPR).not.toContain('si.unit_cost');
   });
+
   it('alış iadesini (trcode 6) son alış saymaz', () => {
     expect(isPurchaseFiche({ fiche_type: 'purchase_invoice', trcode: 6 })).toBe(false);
     expect(isPurchaseFiche({ fiche_type: 'purchase_invoice', trcode: 1 })).toBe(true);
@@ -78,9 +80,21 @@ describe('lastPurchaseCostSql — muhasebe yardımcıları', () => {
     ).toBe(27000);
   });
 
-  it('son alış yoksa maliyet 0 (kart / satış satırı cost kullanılmaz)', () => {
+  it('son alış yoksa malzeme maliyeti 0 (kart / satış satırı cost kullanılmaz)', () => {
     expect(lineCostAmount({ quantity: 2, lastPurchaseUnit: 0 })).toBe(0);
     expect(lineCostAmount({ quantity: 2 })).toBe(0);
     expect(lineCostAmount({ quantity: 5, lastPurchaseUnit: undefined })).toBe(0);
+  });
+
+  it('hizmet satırında purchase_price / unit_cost ile COGS hesaplar', () => {
+    expect(
+      lineCostAmount({
+        quantity: 2,
+        itemType: 'Hizmet',
+        serviceUnitCost: 15000,
+        lastPurchaseUnit: 999, // malzeme yolu yok sayılmalı
+      }),
+    ).toBe(30000);
+    expect(lineCostAmount({ quantity: 1, itemType: 'service', serviceUnitCost: 0 })).toBe(0);
   });
 });

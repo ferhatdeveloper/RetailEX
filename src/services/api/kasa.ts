@@ -1895,14 +1895,281 @@ async function deleteKasaIslemiViaPostgrest(id: string): Promise<void> {
 }
 
 /**
- * Kasa işlemini güncelle — pragmatik: önce eski işlemi sil (bakiyeyi geri al),
- * sonra yeni değerlerle createKasaIslemi ile tekrar oluştur.
+ * Kasa işlemini güncelle — mevcut cash_line üzerinde yerinde delta (sil+yeniden oluştur YOK).
+ * GIDER_PUSULASI düzenlemesinde expenses.amount da cash_line_id ile senkronlanır (B01/B23).
+ */
+export function computeKasaIslemiSign(islemTipi: string): number {
+  const tip = String(islemTipi || '').trim().toUpperCase();
+  switch (tip) {
+    case 'CH_TAHSILAT':
+    case 'KASA_GIRIS':
+    case 'BANKADAN_CEKILEN':
+    case 'ALINAN_SERBEST_MESLEK':
+    case 'ACILIS_BORC':
+    case 'KUR_FARKI_BORC':
+    case 'ORTAK_DAGITIM_ZARAR':
+    case 'ORTAK_SERMAYE_TAHSILAT':
+    case 'ORTAK_PARA_GIRIS':
+      return 1;
+    case 'CH_ODEME':
+    case 'KASA_CIKIS':
+    case 'BANKA_YATIRILAN':
+    case 'VIRMAN':
+    case 'GIDER_PUSULASI':
+    case 'VERILEN_SERBEST_MESLEK':
+    case 'MUSTAHSIL_MAKBUZU':
+    case 'ACILIS_ALACAK':
+    case 'KUR_FARKI_ALACAK':
+    case 'MAAS_ODEME':
+    case 'AVANS_ODEME':
+    case 'ORTAK_DAGITIM_KAR':
+    case 'ORTAK_SERMAYE_ODEME':
+    case 'ORTAK_PARA_CIKIS':
+    case 'ORTAK_SERMAYE_CIKIS':
+      return -1;
+    case 'AVANS_MAHSUP':
+      return 0;
+    default:
+      return tip.includes('CIKIS') || tip.includes('ODEME') ? -1 : 1;
+  }
+}
+
+/** Bakiye delta: (yeni tutar×sign) − (eski tutar×sign) — balance'a eklenir. */
+export function kasaIslemiBalanceDeltaOnUpdate(
+  oldAmount: number,
+  oldSign: number,
+  newAmount: number,
+  newSign: number,
+): number {
+  const oa = Math.abs(Number(oldAmount) || 0);
+  const na = Math.abs(Number(newAmount) || 0);
+  return na * Number(newSign || 0) - oa * Number(oldSign || 0);
+}
+
+async function syncExpenseLinkedToCashLine(opts: {
+  cashLineId: string;
+  amount: number;
+  definition: string;
+  date: string;
+}): Promise<void> {
+  const firm = padKasaFirmNr();
+  const amt = Math.abs(Number(opts.amount) || 0);
+  const day = String(opts.date || '').slice(0, 10);
+  const def = opts.definition || 'Gider';
+  if (DB_SETTINGS.connectionProvider === 'rest_api') {
+    try {
+      const { postgrest } = await import('./postgrestClient');
+      await postgrest.patch(
+        `/rex_${firm}_expenses?cash_line_id=eq.${encodeURIComponent(opts.cashLineId)}`,
+        {
+          amount: amt,
+          description: def,
+          ...(day ? { expense_date: day } : {}),
+        },
+        { schema: 'public', prefer: 'return=minimal' },
+      );
+    } catch (err) {
+      console.warn('[Kasa] syncExpenseLinkedToCashLine (rest) failed:', err);
+    }
+    return;
+  }
+  try {
+    await postgres.query(
+      `UPDATE expenses
+       SET amount = $1::text::numeric,
+           description = $2::text,
+           expense_date = COALESCE($3::text::date, expense_date)
+       WHERE cash_line_id = $4::text::uuid`,
+      [amt, def, day || null, opts.cashLineId],
+    );
+  } catch (err) {
+    console.warn('[Kasa] syncExpenseLinkedToCashLine failed:', err);
+  }
+}
+
+/**
+ * Kasa işlemini güncelle — aynı cash_line id üzerinde yerinde delta (sil+yeniden oluştur YOK).
+ * GIDER_PUSULASI için bağlı expenses satırı da senkronlanır (B01/B23).
+ * VIRMAN / banka tipi değişiminde güvenli yol: delete + create.
  */
 export async function updateKasaIslemi(id: string, islem: KasaIslemi): Promise<KasaIslemi> {
   if (!id) throw new Error('Güncellenecek işlem ID boş');
-  await deleteKasaIslemi(id);
-  const created = await createKasaIslemi({ ...islem, id: undefined });
-  return created;
+
+  const newAmount = Math.abs(Number(islem.tutar) || 0);
+  const newType = String(islem.islem_tipi || '').trim().toUpperCase();
+  const newSign = computeKasaIslemiSign(newType);
+  const newDate = islem.islem_tarihi || new Date().toISOString();
+  const newDef = islem.islem_aciklamasi || '';
+
+  await assertPeriodOpen(
+    ERP_SETTINGS.firmNr,
+    ERP_SETTINGS.periodNr,
+    newDate,
+  );
+
+  if (DB_SETTINGS.connectionProvider === 'rest_api') {
+    const { postgrest } = await import('./postgrestClient');
+    const fn = padKasaFirmNr();
+    const pn = padKasaPeriodNr();
+    const linesPath = `/rex_${fn}_${pn}_cash_lines`;
+    const kasaPath = `/rex_${fn}_cash_registers`;
+
+    const rs = await postgrest.get<any[]>(
+      linesPath,
+      { select: '*', id: `eq.${id}`, limit: 1 },
+      { schema: 'public' },
+    );
+    const row = Array.isArray(rs) ? rs[0] : null;
+    if (!row) throw new Error('İşlem bulunamadı');
+
+    const oldAmount = Math.abs(Number(row.amount || 0));
+    const oldSign = Number(row.sign || 0);
+    const oldType = String(row.transaction_type || '').toUpperCase();
+    const registerId = row.register_id;
+
+    // VIRMAN / banka tipi değişimi: güvenli yol delete+create (karşı satır karmaşık).
+    const complex =
+      oldType === 'VIRMAN' ||
+      newType === 'VIRMAN' ||
+      oldType === 'BANKA_YATIRILAN' ||
+      oldType === 'BANKADAN_CEKILEN' ||
+      newType === 'BANKA_YATIRILAN' ||
+      newType === 'BANKADAN_CEKILEN' ||
+      Boolean(islem.target_register_id && islem.target_register_id !== row.target_register_id);
+
+    if (complex) {
+      await deleteKasaIslemi(id);
+      return await createKasaIslemi({ ...islem, id: undefined });
+    }
+
+    const balDelta = kasaIslemiBalanceDeltaOnUpdate(oldAmount, oldSign, newAmount, newSign);
+    const patchBody: Record<string, unknown> = {
+      amount: newAmount,
+      f_amount: islem.dovizli_tutar != null ? Math.abs(Number(islem.dovizli_tutar) || 0) : newAmount,
+      date: newDate,
+      definition: newDef,
+      transaction_type: newType || row.transaction_type,
+      sign: newSign,
+      special_code: islem.ozel_kod ?? row.special_code ?? '',
+    };
+
+    const patched = await postgrest.patch<any[]>(
+      `${linesPath}?id=eq.${encodeURIComponent(id)}`,
+      patchBody,
+      { schema: 'public', prefer: 'return=representation' },
+    );
+    const updatedRow = Array.isArray(patched) ? patched[0] : patched;
+
+    if (balDelta !== 0 && registerId) {
+      const cur = await postgrest.get<any[]>(
+        kasaPath,
+        { select: 'balance', id: `eq.${registerId}`, limit: 1 },
+        { schema: 'public' },
+      );
+      const r = Array.isArray(cur) ? cur[0] : null;
+      if (r) {
+        await postgrest.patch(
+          `${kasaPath}?id=eq.${encodeURIComponent(String(registerId))}`,
+          { balance: Number(r.balance ?? 0) + balDelta },
+          { schema: 'public', prefer: 'return=minimal' },
+        );
+      }
+    }
+
+    if (newType === 'GIDER_PUSULASI' || oldType === 'GIDER_PUSULASI') {
+      await syncExpenseLinkedToCashLine({
+        cashLineId: id,
+        amount: newAmount,
+        definition: newDef || 'Gider',
+        date: newDate,
+      });
+    }
+
+    return mapDbIslemToIslem(updatedRow || { ...row, ...patchBody, id });
+  }
+
+  const table = 'cash_lines';
+  const kasaTable = 'cash_registers';
+  const { rows: prevRows } = await postgres.query(
+    `SELECT * FROM ${table} WHERE id = $1::text::uuid LIMIT 1`,
+    [id],
+  );
+  const row = prevRows?.[0];
+  if (!row) throw new Error('İşlem bulunamadı');
+
+  const oldAmount = Math.abs(parseFloat(row.amount || 0));
+  const oldSign = parseInt(row.sign || 0, 10);
+  const oldType = String(row.transaction_type || '').toUpperCase();
+  const registerId = row.register_id;
+
+  const complex =
+    oldType === 'VIRMAN' ||
+    newType === 'VIRMAN' ||
+    oldType === 'BANKA_YATIRILAN' ||
+    oldType === 'BANKADAN_CEKILEN' ||
+    newType === 'BANKA_YATIRILAN' ||
+    newType === 'BANKADAN_CEKILEN' ||
+    Boolean(islem.target_register_id && islem.target_register_id !== row.target_register_id);
+
+  if (complex) {
+    await deleteKasaIslemi(id);
+    return await createKasaIslemi({ ...islem, id: undefined });
+  }
+
+  const balDelta = kasaIslemiBalanceDeltaOnUpdate(oldAmount, oldSign, newAmount, newSign);
+
+  await postgres.query('BEGIN');
+  try {
+    const { rows } = await postgres.query(
+      `UPDATE ${table}
+       SET amount = $1::text::numeric,
+           f_amount = $2::text::numeric,
+           date = $3::text::date,
+           definition = $4::text,
+           transaction_type = $5::text,
+           sign = $6::text::integer,
+           special_code = $7::text
+       WHERE id = $8::text::uuid
+       RETURNING *`,
+      [
+        newAmount,
+        islem.dovizli_tutar != null ? Math.abs(Number(islem.dovizli_tutar) || 0) : newAmount,
+        newDate,
+        newDef,
+        newType || row.transaction_type,
+        newSign,
+        islem.ozel_kod ?? row.special_code ?? '',
+        id,
+      ],
+    );
+
+    if (balDelta !== 0 && registerId) {
+      await postgres.query(
+        `UPDATE ${kasaTable} SET balance = balance + $1::text::numeric WHERE id = $2::text::uuid`,
+        [balDelta.toString(), registerId],
+      );
+    }
+
+    await postgres.query('COMMIT');
+
+    if (newType === 'GIDER_PUSULASI' || oldType === 'GIDER_PUSULASI') {
+      await syncExpenseLinkedToCashLine({
+        cashLineId: id,
+        amount: newAmount,
+        definition: newDef || 'Gider',
+        date: newDate,
+      });
+    }
+
+    return mapDbIslemToIslem(rows[0]);
+  } catch (err) {
+    try {
+      await postgres.query('ROLLBACK');
+    } catch {
+      /* ignore */
+    }
+    throw err;
+  }
 }
 
 // ===== CASH BREAKDOWN =====
