@@ -1,12 +1,52 @@
-import React, { useState, useMemo } from 'react';
-import { X, Search, Grid3x3, List, Package, Check } from 'lucide-react';
+import React, { useState, useMemo, useEffect } from 'react';
+import { X, Search, Grid3x3, List, Package, Check, ChevronRight, ChevronDown } from 'lucide-react';
 import type { Product } from '../../core/types';
+import { categoryAPI, type Category } from '../../services/api/masterData';
 import { POSProductDetailModal } from './POSProductDetailModal';
 import { POSProductQuantityModal } from './POSProductQuantityModal';
 import { useTheme } from '../../contexts/ThemeContext';
 import { useLanguage } from '../../contexts/LanguageContext';
 import { FullscreenBodyPortal, MODAL_OVERLAY_Z } from '../shared/FullscreenBodyPortal';
 import { useLongPressHandlers } from '../../hooks/useLongPress';
+
+function isTopLevelCategory(cat: Category): boolean {
+  return !String(cat.parent_id ?? '').trim();
+}
+
+function productCategoryValues(product: Product): string[] {
+  const raw = product.category as string | string[] | undefined;
+  if (Array.isArray(raw)) {
+    return raw.map((c) => String(c ?? '').trim()).filter(Boolean);
+  }
+  const one = String(raw ?? '').trim();
+  return one ? [one] : [];
+}
+
+function categoryMatchKeys(category: Category): Set<string> {
+  return new Set(
+    [category.id, category.code, category.name]
+      .map((v) => String(v ?? '').trim().toLocaleLowerCase('tr-TR'))
+      .filter(Boolean)
+  );
+}
+
+/** Ürün, kategori id / kod / ad (trim) ile eşleşirse true. */
+function productMatchesCategory(product: Product, category: Category): boolean {
+  const keys = categoryMatchKeys(category);
+  if (keys.size === 0) return false;
+  const tokens = [
+    ...productCategoryValues(product),
+    String(product.categoryCode ?? '').trim(),
+    String(product.categoryId ?? '').trim(),
+  ]
+    .filter(Boolean)
+    .map((t) => t.toLocaleLowerCase('tr-TR'));
+  return tokens.some((t) => keys.has(t));
+}
+
+function syntheticCategory(name: string): Category {
+  return { id: `orphan:${name}`, code: name, name, is_active: true };
+}
 
 interface POSProductCatalogModalProps {
   products: Product[];
@@ -75,8 +115,15 @@ export function POSProductCatalogModal({
   const searchPlaceholder = moduleSearchPlaceholder === 'itemSearchPlaceholder' ? t.searchProductBarcodeCategory : moduleSearchPlaceholder;
   const moduleCodeLabel = tm('code');
   const productCodeLabel = moduleCodeLabel === 'code' ? 'Kod' : moduleCodeLabel;
-  const ALL_CAT = t.allBtn || 'Tümü';
-  const [selectedCategory, setSelectedCategory] = useState(ALL_CAT);
+  const tmAll = tm('all');
+  const allBtnText = t.allBtn || (tmAll === 'all' ? 'Tümü' : tmAll);
+  const mainCatLabel = tm('catalogMainCategory');
+  const mainCatText = mainCatLabel === 'catalogMainCategory' ? 'Ana kategori' : mainCatLabel;
+  const subCatLabel = tm('catalogSubCategory');
+  const subCatText = subCatLabel === 'catalogSubCategory' ? 'Alt kategori' : subCatLabel;
+  const [masterCategories, setMasterCategories] = useState<Category[]>([]);
+  const [selectedMainId, setSelectedMainId] = useState('all');
+  const [selectedSubId, setSelectedSubId] = useState('all');
   const [viewMode, setViewMode] = useState<'grid' | 'list'>('list');
   const [showDetailModal, setShowDetailModal] = useState(false);
   const [selectedProduct, setSelectedProduct] = useState<Product | null>(null);
@@ -145,55 +192,118 @@ export function POSProductCatalogModal({
     setQuantityModalProduct(null);
   };
 
-  // Get categories with counts
-  const categoriesWithCounts = useMemo(() => {
-    const categoryMap = new Map<string, number>();
+  useEffect(() => {
+    let cancelled = false;
+    categoryAPI.getAll()
+      .then((rows) => {
+        if (!cancelled) setMasterCategories(Array.isArray(rows) ? rows : []);
+      })
+      .catch(() => {
+        if (!cancelled) setMasterCategories([]);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, []);
 
-    products.forEach(product => {
-      if (product.category) {
-        if (Array.isArray(product.category)) {
-          product.category.forEach(cat => {
-            categoryMap.set(cat, (categoryMap.get(cat) || 0) + 1);
-          });
+  const sidebarMains = useMemo(() => {
+    const hasMaster = masterCategories.length > 0;
+    const childrenByParent = new Map<string, Category[]>();
+    const mains: Category[] = [];
+
+    if (hasMaster) {
+      for (const cat of masterCategories) {
+        if (isTopLevelCategory(cat)) {
+          mains.push(cat);
         } else {
-          categoryMap.set(product.category, (categoryMap.get(product.category) || 0) + 1);
+          const pid = String(cat.parent_id ?? '').trim();
+          const list = childrenByParent.get(pid) ?? [];
+          list.push(cat);
+          childrenByParent.set(pid, list);
         }
       }
-    });
+    }
 
-    const categories = [
-      { name: ALL_CAT, count: products.length },
-      ...Array.from(categoryMap.entries()).map(([name, count]) => ({ name, count }))
-    ];
+    const masterKeys = new Set<string>();
+    if (hasMaster) {
+      for (const cat of masterCategories) {
+        for (const key of categoryMatchKeys(cat)) masterKeys.add(key);
+      }
+    }
 
-    return categories;
-  }, [products]);
+    const orphanNames = new Set<string>();
+    for (const product of products) {
+      for (const val of productCategoryValues(product)) {
+        if (!hasMaster || !masterKeys.has(val.toLocaleLowerCase('tr-TR'))) orphanNames.add(val);
+      }
+    }
 
-  // Filter products
+    type MainRow = { id: string; name: string; category: Category; children: Category[]; count: number };
+    const rows: MainRow[] = [];
+
+    if (hasMaster) {
+      for (const main of mains) {
+        const children = childrenByParent.get(main.id) ?? [];
+        const count = products.filter(
+          (p) => productMatchesCategory(p, main) || children.some((ch) => productMatchesCategory(p, ch))
+        ).length;
+        if (count === 0) continue;
+        rows.push({ id: main.id, name: main.name, category: main, children, count });
+      }
+    }
+
+    const sortedOrphans = Array.from(orphanNames).sort((a, b) => a.localeCompare(b, 'tr'));
+    for (const name of sortedOrphans) {
+      const syn = syntheticCategory(name);
+      const count = products.filter((p) => productMatchesCategory(p, syn)).length;
+      if (count === 0) continue;
+      rows.push({ id: syn.id, name, category: syn, children: [], count });
+    }
+
+    return rows;
+  }, [masterCategories, products]);
+
+  const selectedCategoryLabel = useMemo(() => {
+    if (selectedMainId === 'all') return allBtnText;
+    const main = sidebarMains.find((m) => m.id === selectedMainId);
+    if (!main) return allBtnText;
+    if (selectedSubId !== 'all') {
+      const sub = main.children.find((c) => c.id === selectedSubId);
+      if (sub) return `${main.name} · ${sub.name}`;
+    }
+    return main.name;
+  }, [selectedMainId, selectedSubId, sidebarMains, allBtnText]);
+
   const filteredProducts = useMemo(() => {
-    return products.filter(product => {
-      // Category filter
-      if (selectedCategory !== ALL_CAT) {
-        const productCategories = Array.isArray(product.category) ? product.category : [product.category];
-        if (!productCategories.includes(selectedCategory)) {
-          return false;
+    return products.filter((product) => {
+      if (selectedMainId !== 'all') {
+        const main = sidebarMains.find((m) => m.id === selectedMainId);
+        if (main) {
+          if (selectedSubId !== 'all') {
+            const sub = main.children.find((c) => c.id === selectedSubId);
+            if (!sub || !productMatchesCategory(product, sub)) return false;
+          } else {
+            const matches =
+              productMatchesCategory(product, main.category) ||
+              main.children.some((ch) => productMatchesCategory(product, ch));
+            if (!matches) return false;
+          }
         }
       }
 
-      // Search filter
       if (searchQuery.trim()) {
-        const query = searchQuery.toLowerCase();
+        const query = searchQuery.trim().toLocaleLowerCase('tr-TR');
         return (
-          (product.name || '').toLowerCase().includes(query) ||
-          (product.code || '').toLowerCase().includes(query) ||
-          (product.barcode || '').toLowerCase().includes(query) ||
-          (product.category?.toString() || '').toLowerCase().includes(query)
+          (product.name || '').toLocaleLowerCase('tr-TR').includes(query) ||
+          (product.code || '').toLocaleLowerCase('tr-TR').includes(query) ||
+          (product.barcode || '').toLocaleLowerCase('tr-TR').includes(query) ||
+          (product.category?.toString() || '').toLocaleLowerCase('tr-TR').includes(query)
         );
       }
 
       return true;
     });
-  }, [products, selectedCategory, searchQuery]);
+  }, [products, selectedMainId, selectedSubId, searchQuery, sidebarMains]);
 
   const allFilteredSelected =
     filteredProducts.length > 0 && filteredProducts.every((p) => multiSelectedIds.has(p.id));
@@ -244,7 +354,7 @@ export function POSProductCatalogModal({
                     : t.productQuery}
               </h2>
               <p className="text-sm text-blue-100">
-                {filteredProducts.length} {t.productCount} · {selectedCategory}
+                {filteredProducts.length} {t.productCount} · {selectedCategoryLabel}
                 {isInvoiceMultiSelect && ` · ${multiSelectHintText}`}
                 {mode === 'assign-to-slot' && ' · Shift + Tıkla veya Çift Tıkla'}
               </p>
@@ -266,19 +376,83 @@ export function POSProductCatalogModal({
               <h3 className="text-sm text-gray-600">{t.categories}</h3>
             </div>
             <div className="flex-1 overflow-y-auto">
-              {categoriesWithCounts.map((category) => (
-                <button
-                  key={category.name}
-                  onClick={() => setSelectedCategory(category.name)}
-                  className={`w-full px-3 py-2 text-left text-xs flex items-center justify-between transition-colors ${selectedCategory === category.name
-                    ? 'bg-blue-50 text-blue-700 border-l-2 border-blue-600'
-                    : 'text-gray-700 hover:bg-gray-50'
-                    }`}
-                >
-                  <span>{category.name}</span>
-                  <span className="text-xs text-gray-500">{category.count}</span>
-                </button>
-              ))}
+              <button
+                type="button"
+                onClick={() => {
+                  setSelectedMainId('all');
+                  setSelectedSubId('all');
+                }}
+                className={`w-full px-3 py-2 text-left text-xs flex items-center justify-between transition-colors ${selectedMainId === 'all'
+                  ? 'bg-blue-50 text-blue-700 border-l-2 border-blue-600'
+                  : 'text-gray-700 hover:bg-gray-50'
+                  }`}
+              >
+                <span>{allBtnText}</span>
+                <span className="text-xs text-gray-500">{products.length}</span>
+              </button>
+              {sidebarMains.map((main) => {
+                const isMainSelected = selectedMainId === main.id;
+                const hasChildren = main.children.length > 0;
+                const expanded = isMainSelected && hasChildren;
+                return (
+                  <div key={main.id}>
+                    <button
+                      type="button"
+                      title={mainCatText}
+                      aria-expanded={hasChildren ? expanded : undefined}
+                      onClick={() => {
+                        setSelectedMainId(main.id);
+                        setSelectedSubId('all');
+                      }}
+                      className={`w-full px-3 py-2 text-left text-xs flex items-center justify-between transition-colors ${isMainSelected && selectedSubId === 'all'
+                        ? 'bg-blue-50 text-blue-700 border-l-2 border-blue-600'
+                        : isMainSelected
+                          ? 'bg-blue-50/60 text-blue-700 border-l-2 border-blue-300'
+                          : 'text-gray-700 hover:bg-gray-50'
+                        }`}
+                    >
+                      <span className="flex items-center gap-1 min-w-0">
+                        {hasChildren && (
+                          expanded
+                            ? <ChevronDown className="w-3.5 h-3.5 text-gray-400 flex-shrink-0" aria-hidden />
+                            : <ChevronRight className="w-3.5 h-3.5 text-gray-400 flex-shrink-0" aria-hidden />
+                        )}
+                        <span className="truncate">{main.name}</span>
+                      </span>
+                      <span className="text-xs text-gray-500 flex-shrink-0 ml-1">{main.count}</span>
+                    </button>
+                    {expanded && (
+                      <>
+                        <div className="pl-6 pr-3 pt-1 pb-0.5 text-[10px] uppercase tracking-wide text-gray-400">
+                          {subCatText}
+                        </div>
+                        {main.children.map((child) => {
+                          const childCount = products.filter((p) => productMatchesCategory(p, child)).length;
+                          const isSubSelected = selectedSubId === child.id;
+                          return (
+                            <button
+                              key={child.id}
+                              type="button"
+                              title={subCatText}
+                              onClick={() => {
+                                setSelectedMainId(main.id);
+                                setSelectedSubId(child.id);
+                              }}
+                              className={`w-full pl-6 pr-3 py-1.5 text-left text-[11px] flex items-center justify-between transition-colors ${isSubSelected
+                                ? 'bg-blue-50 text-blue-700 border-l-2 border-blue-600'
+                                : 'text-gray-600 hover:bg-gray-50'
+                                }`}
+                            >
+                              <span className="truncate">{child.name}</span>
+                              <span className="text-[11px] text-gray-500 flex-shrink-0 ml-1">{childCount}</span>
+                            </button>
+                          );
+                        })}
+                      </>
+                    )}
+                  </div>
+                );
+              })}
             </div>
           </div>
 
