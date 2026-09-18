@@ -14,9 +14,11 @@ import {
   computeSupplierBalanceFromLedger,
   normalizeFirmTableNr,
   normalizeTrText,
+  cardFirmNrMatches,
+  sqlFirmScopedCardMatch,
 } from './accountBalance';
 import { supplierAPI } from './suppliers';
-import { buildEkstreRows, ficheTypeToInfo } from '../../utils/cariAccountStatement';
+import { buildEkstreRows, resolveEkstreDescription } from '../../utils/cariAccountStatement';
 import { SQL_COUNTABLE_SALE_STATUS } from '../../utils/saleInvoiceStatus';
 import { localTodayDateKey } from '../../utils/localCalendarDate';
 import {
@@ -64,7 +66,7 @@ export interface CariBalanceRow {
   accountId: string;
   accountCode: string;
   accountName: string;
-  cardType: 'customer' | 'supplier';
+  cardType: 'customer' | 'supplier' | 'employee' | 'partner';
   balance: number;
   creditLimit: number;
   paymentTerms: string;
@@ -73,7 +75,9 @@ export interface CariBalanceRow {
 export interface CashBankMovementRow {
   id: string;
   source: 'cash' | 'bank';
+  registerId: string;
   registerName: string;
+  registerCode: string;
   ficheNo: string;
   date: string;
   transactionType: string;
@@ -182,6 +186,10 @@ export interface CariExtractRow {
   credit: number;
   balance: number;
   source: 'movement' | 'sale' | 'cash' | 'bank';
+  ficheType?: string;
+  trcode?: number;
+  notes?: string;
+  isCancelled?: boolean;
 }
 
 export interface CriticalStockRow {
@@ -210,6 +218,20 @@ function padFirm(): string {
 }
 function padPeriod(): string {
   return String(ERP_SETTINGS.periodNr ?? '01').padStart(2, '0').slice(0, 10);
+}
+
+function mapCariCardType(raw: unknown): CariBalanceRow['cardType'] {
+  const v = String(raw || '').trim().toLowerCase();
+  if (v === 'supplier') return 'supplier';
+  if (v === 'employee') return 'employee';
+  if (v === 'partner') return 'partner';
+  return 'customer';
+}
+
+function rowIsActiveFlag(v: unknown): boolean {
+  if (v === false || v === 0 || v === '0') return false;
+  const s = String(v ?? 'true').trim().toLowerCase();
+  return s !== 'false' && s !== 'f' && s !== 'no';
 }
 
 function parseTermsDays(raw: unknown, fallback = 30): number {
@@ -365,6 +387,45 @@ const rawFilter = String(cariFilter ?? '').trim();
       );
     })
     .filter((r): r is CariAgingRow => r !== null && Math.abs(r.amount) > 0.009);
+}
+
+function mapCashBankMovementRow(r: {
+  id?: unknown;
+  source?: unknown;
+  register_id?: unknown;
+  registerId?: unknown;
+  register_name?: unknown;
+  registerName?: unknown;
+  register_code?: unknown;
+  registerCode?: unknown;
+  fiche_no?: unknown;
+  ficheNo?: unknown;
+  date?: unknown;
+  transaction_type?: unknown;
+  transactionType?: unknown;
+  definition?: unknown;
+  amount?: unknown;
+  sign?: unknown;
+  account_name?: unknown;
+  accountName?: unknown;
+}): CashBankMovementRow {
+  const amount = Number(r.amount ?? 0);
+  const sign = Number(r.sign ?? 1) || 1;
+  return {
+    id: String(r.id ?? ''),
+    source: r.source === 'bank' ? 'bank' : 'cash',
+    registerId: String(r.register_id ?? r.registerId ?? ''),
+    registerName: String(r.register_name ?? r.registerName ?? ''),
+    registerCode: String(r.register_code ?? r.registerCode ?? ''),
+    ficheNo: String(r.fiche_no ?? r.ficheNo ?? ''),
+    date: String(r.date ?? '').slice(0, 10),
+    transactionType: String(r.transaction_type ?? r.transactionType ?? ''),
+    definition: String(r.definition ?? ''),
+    amount,
+    sign,
+    netAmount: amount * sign,
+    accountName: String(r.account_name ?? r.accountName ?? ''),
+  };
 }
 
 export const erpReportsAPI = {
@@ -526,11 +587,10 @@ export const erpReportsAPI = {
           return [] as Record<string, unknown>[];
         }
       };
-      const [customers, suppliers, salesRows, cashRows] = await Promise.all([
+      const [customers, suppliers, salesRows, cashRows, partyRows] = await Promise.all([
         want === 'all' || want === 'customer'
           ? safeGet(`/${custTable}`, {
-              select: 'id,code,name,balance,credit_limit,payment_terms,is_active',
-              firm_nr: `eq.${fn}`,
+              select: 'id,code,name,balance,credit_limit,payment_terms,is_active,firm_nr',
               is_active: 'eq.true',
               order: 'name.asc',
               limit: '2000',
@@ -554,6 +614,14 @@ export const erpReportsAPI = {
           transaction_type: 'in.(CH_ODEME,CH_TAHSILAT)',
           limit: '50000',
         }),
+        want === 'all'
+          ? safeGet(`/rex_${fn}_parties`, {
+              select: 'id,code,name,balance,card_type,is_active,firm_nr',
+              is_active: 'eq.true',
+              order: 'name.asc',
+              limit: '2000',
+            })
+          : Promise.resolve([] as Record<string, unknown>[]),
       ]);
       const sales = salesRows as Parameters<typeof computeCustomerBalanceFromLedger>[2];
       const cash = cashRows as Parameters<typeof computeCustomerBalanceFromLedger>[3];
@@ -570,6 +638,7 @@ export const erpReportsAPI = {
       for (const r of customers) {
         const code = String(r.code ?? '');
         const name = String(r.name ?? '');
+        if (!cardFirmNrMatches(r.firm_nr, fn)) continue;
         if (!matchFilter(code, name)) continue;
         const balance = computeCustomerBalanceFromLedger(
           String(r.id),
@@ -578,6 +647,8 @@ export const erpReportsAPI = {
           cash,
           Number(r.balance ?? 0) || 0,
         );
+        const active = rowIsActiveFlag(r.is_active);
+        if (!active && Math.abs(balance) <= 0.009) continue;
         if (!passBalance(balance)) continue;
         out.push({
           accountId: String(r.id ?? ''),
@@ -609,6 +680,25 @@ export const erpReportsAPI = {
           balance,
           creditLimit: Number(r.credit_limit ?? 0),
           paymentTerms: String(r.payment_terms ?? ''),
+        });
+      }
+      for (const r of partyRows) {
+        const ct = mapCariCardType(r.card_type);
+        if (ct !== 'employee' && ct !== 'partner') continue;
+        if (!cardFirmNrMatches(r.firm_nr, fn)) continue;
+        const code = String(r.code ?? '');
+        const name = String(r.name ?? '');
+        if (!matchFilter(code, name)) continue;
+        const balance = Number(r.balance ?? 0) || 0;
+        if (!passBalance(balance)) continue;
+        out.push({
+          accountId: String(r.id ?? ''),
+          accountCode: code,
+          accountName: name,
+          cardType: ct,
+          balance,
+          creditLimit: 0,
+          paymentTerms: '',
         });
       }
       return out.sort((a, b) => b.balance - a.balance).slice(0, ROW_LIMIT);
@@ -650,7 +740,11 @@ export const erpReportsAPI = {
           COALESCE(c.payment_terms::text,'') AS payment_terms
         FROM ${custTable} c
         LEFT JOIN account_balances b ON c.id = b.id
-        WHERE c.firm_nr = $1 AND COALESCE(c.is_active, true) = true
+        WHERE ${sqlFirmScopedCardMatch('c', '$1')}
+          AND (
+            COALESCE(c.is_active, true) = true
+            OR COALESCE(b.txn_count, 0) > 0
+          )
           ${filterClauseCust}
       `);
     }
@@ -691,26 +785,79 @@ export const erpReportsAPI = {
       filterParams,
       { firmNr, periodNr: ERP_SETTINGS.periodNr },
     );
-    return (rows || []).map((r: any) => ({
+    const mapped: CariBalanceRow[] = (rows || []).map((r: any) => ({
       accountId: String(r.account_id ?? ''),
       accountCode: String(r.account_code ?? ''),
       accountName: String(r.account_name ?? ''),
-      cardType: r.card_type === 'supplier' ? 'supplier' : 'customer',
+      cardType: mapCariCardType(r.card_type),
       balance: Number(r.balance ?? 0),
       creditLimit: Number(r.credit_limit ?? 0),
       paymentTerms: String(r.payment_terms ?? ''),
     }));
+
+    if (want === 'all') {
+      try {
+        const partyFilter = hasFilter
+          ? ` AND (
+            LOWER(TRIM(COALESCE(p.code, ''))) = LOWER(TRIM($2))
+            OR LOWER(TRIM(COALESCE(p.code, ''))) LIKE LOWER(TRIM($3))
+            OR LOWER(TRIM(COALESCE(p.name, ''))) LIKE LOWER(TRIM($3))
+          )`
+          : '';
+        const { rows: partySqlRows } = await postgres.query(
+          `
+          SELECT
+            p.id::text AS account_id,
+            COALESCE(p.code,'') AS account_code,
+            COALESCE(p.name,'') AS account_name,
+            LOWER(TRIM(COALESCE(p.card_type, ''))) AS card_type,
+            COALESCE(p.balance, 0) AS balance,
+            0::numeric AS credit_limit,
+            ''::text AS payment_terms
+          FROM rex_${firmNr}_parties p
+          WHERE COALESCE(p.is_active, true) = true
+            AND LOWER(TRIM(COALESCE(p.card_type, ''))) IN ('employee', 'partner')
+            AND ${sqlFirmScopedCardMatch('p', '$1')}
+            ${partyFilter}
+          `,
+          filterParams,
+          { firmNr, periodNr: ERP_SETTINGS.periodNr },
+        );
+        for (const r of partySqlRows || []) {
+          const balance = Number(r.balance ?? 0);
+          if (!passBalance(balance)) continue;
+          mapped.push({
+            accountId: String(r.account_id ?? ''),
+            accountCode: String(r.account_code ?? ''),
+            accountName: String(r.account_name ?? ''),
+            cardType: mapCariCardType(r.card_type),
+            balance,
+            creditLimit: 0,
+            paymentTerms: '',
+          });
+        }
+      } catch {
+        /* parties tablosu yoksa cari özet müşteri/tedarikçi ile devam eder */
+      }
+    }
+
+    return mapped.sort((a, b) => b.balance - a.balance).slice(0, ROW_LIMIT);
   },
 
   async getCashBankMovements(opts: {
     startDate: string;
     endDate: string;
     source?: 'all' | 'cash' | 'bank';
+    registerId?: string;
   }): Promise<CashBankMovementRow[]> {
     const start = String(opts.startDate || '').slice(0, 10);
     const end = String(opts.endDate || '').slice(0, 10);
     const source = opts.source ?? 'all';
+    const registerId = String(opts.registerId || '').trim();
     if (!start || !end) return [];
+    // Tek kasa seçilince yalnızca o kasanın nakit satırları (banka karışmaz).
+    const wantCash = source === 'all' || source === 'cash';
+    const wantBank = (source === 'all' || source === 'bank') && !registerId;
 
     if (DB_SETTINGS.connectionProvider === 'rest_api') {
       const { postgrest } = await import('./postgrestClient');
@@ -718,7 +865,7 @@ export const erpReportsAPI = {
       const pn = padPeriod();
       const out: CashBankMovementRow[] = [];
 
-      if (source === 'all' || source === 'cash') {
+      if (wantCash) {
         const [lines, regs] = await Promise.all([
           postgrest.get<Record<string, unknown>[]>(
             `/rex_${fn}_${pn}_cash_lines`,
@@ -731,29 +878,37 @@ export const erpReportsAPI = {
             { schema: 'public' },
           ).catch(() => [] as Record<string, unknown>[]),
         ]);
-        const regMap = new Map(regs.map((r) => [String(r.id), String(r.name || r.code || '')]));
+        const regMap = new Map(
+          regs.map((r) => [
+            String(r.id),
+            { name: String(r.name || r.code || ''), code: String(r.code || '') },
+          ]),
+        );
         for (const r of lines || []) {
+          const rid = String(r.register_id || '');
+          if (registerId && rid !== registerId) continue;
           const d = String(r.date || '').slice(0, 10);
           if (d < start || d > end) continue;
-          const amount = Number(r.amount ?? 0);
-          const sign = Number(r.sign ?? 1) || 1;
-          out.push({
-            id: String(r.id ?? `c-${d}-${r.fiche_no}`),
-            source: 'cash',
-            registerName: regMap.get(String(r.register_id || '')) || '',
-            ficheNo: String(r.fiche_no ?? ''),
-            date: d,
-            transactionType: String(r.transaction_type ?? ''),
-            definition: String(r.definition ?? ''),
-            amount,
-            sign,
-            netAmount: amount * sign,
-            accountName: '',
-          });
+          const reg = regMap.get(rid);
+          out.push(
+            mapCashBankMovementRow({
+              id: r.id ?? `c-${d}-${r.fiche_no}`,
+              source: 'cash',
+              register_id: rid,
+              register_name: reg?.name || '',
+              register_code: reg?.code || '',
+              fiche_no: r.fiche_no,
+              date: d,
+              transaction_type: r.transaction_type,
+              definition: r.definition,
+              amount: r.amount,
+              sign: r.sign,
+            }),
+          );
         }
       }
 
-      if (source === 'all' || source === 'bank') {
+      if (wantBank) {
         const [lines, regs] = await Promise.all([
           postgrest.get<Record<string, unknown>[]>(
             `/rex_${fn}_${pn}_bank_lines`,
@@ -766,25 +921,32 @@ export const erpReportsAPI = {
             { schema: 'public' },
           ).catch(() => [] as Record<string, unknown>[]),
         ]);
-        const regMap = new Map(regs.map((r) => [String(r.id), String(r.name || r.code || '')]));
+        const regMap = new Map(
+          regs.map((r) => [
+            String(r.id),
+            { name: String(r.name || r.code || ''), code: String(r.code || '') },
+          ]),
+        );
         for (const r of lines || []) {
           const d = String(r.date || '').slice(0, 10);
           if (d < start || d > end) continue;
-          const amount = Number(r.amount ?? 0);
-          const sign = Number(r.sign ?? 1) || 1;
-          out.push({
-            id: String(r.id ?? `b-${d}-${r.fiche_no}`),
-            source: 'bank',
-            registerName: regMap.get(String(r.register_id || '')) || '',
-            ficheNo: String(r.fiche_no ?? ''),
-            date: d,
-            transactionType: String(r.transaction_type ?? ''),
-            definition: String(r.definition ?? ''),
-            amount,
-            sign,
-            netAmount: amount * sign,
-            accountName: '',
-          });
+          const rid = String(r.register_id || '');
+          const reg = regMap.get(rid);
+          out.push(
+            mapCashBankMovementRow({
+              id: r.id ?? `b-${d}-${r.fiche_no}`,
+              source: 'bank',
+              register_id: rid,
+              register_name: reg?.name || '',
+              register_code: reg?.code || '',
+              fiche_no: r.fiche_no,
+              date: d,
+              transaction_type: r.transaction_type,
+              definition: r.definition,
+              amount: r.amount,
+              sign: r.sign,
+            }),
+          );
         }
       }
 
@@ -793,12 +955,17 @@ export const erpReportsAPI = {
 
     const parts: string[] = [];
     const values: unknown[] = [start, end];
-    if (source === 'all' || source === 'cash') {
+    const cashRegisterClause = registerId
+      ? ` AND cl.register_id::text = $${values.push(registerId)}`
+      : '';
+    if (wantCash) {
       parts.push(`
         SELECT
           cl.id::text AS id,
           'cash'::text AS source,
+          cl.register_id::text AS register_id,
           COALESCE(cr.name, cr.code, '') AS register_name,
+          COALESCE(cr.code, '') AS register_code,
           COALESCE(cl.fiche_no, '') AS fiche_no,
           (cl.date AT TIME ZONE 'UTC')::date::text AS date,
           COALESCE(cl.transaction_type, '') AS transaction_type,
@@ -816,14 +983,17 @@ export const erpReportsAPI = {
         ) s ON TRUE
         WHERE (cl.date AT TIME ZONE 'UTC')::date >= $1::date
           AND (cl.date AT TIME ZONE 'UTC')::date <= $2::date
+          ${cashRegisterClause}
       `);
     }
-    if (source === 'all' || source === 'bank') {
+    if (wantBank) {
       parts.push(`
         SELECT
           bl.id::text AS id,
           'bank'::text AS source,
+          bl.register_id::text AS register_id,
           COALESCE(br.name, br.code, '') AS register_name,
+          COALESCE(br.code, '') AS register_code,
           COALESCE(bl.fiche_no, '') AS fiche_no,
           (bl.date AT TIME ZONE 'UTC')::date::text AS date,
           COALESCE(bl.transaction_type, '') AS transaction_type,
@@ -848,23 +1018,7 @@ export const erpReportsAPI = {
       `${parts.join(' UNION ALL ')} ORDER BY date DESC LIMIT ${ROW_LIMIT}`,
       values,
     );
-    return (rows || []).map((r: any) => {
-      const amount = Number(r.amount ?? 0);
-      const sign = Number(r.sign ?? 1) || 1;
-      return {
-        id: String(r.id ?? ''),
-        source: r.source === 'bank' ? 'bank' : 'cash',
-        registerName: String(r.register_name ?? ''),
-        ficheNo: String(r.fiche_no ?? ''),
-        date: String(r.date ?? '').slice(0, 10),
-        transactionType: String(r.transaction_type ?? ''),
-        definition: String(r.definition ?? ''),
-        amount,
-        sign,
-        netAmount: amount * sign,
-        accountName: String(r.account_name ?? ''),
-      };
-    });
+    return (rows || []).map((r: any) => mapCashBankMovementRow(r));
   },
 
   async getPurchaseSummary(opts: {
@@ -1679,7 +1833,8 @@ export const erpReportsAPI = {
 
     return ekstre.map((r, idx) => {
       const ft = String(r.fiche_type || '');
-      const info = ficheTypeToInfo(ft, Number(r.trcode) || 0, r.is_cancelled === true);
+      const trcode = Number(r.trcode) || 0;
+      const cancelled = r.is_cancelled === true;
       const ftUpper = ft.trim().toUpperCase();
       let source: CariExtractRow['source'] = 'sale';
       if (ftUpper === 'CH_ODEME' || ftUpper === 'CH_TAHSILAT') source = 'cash';
@@ -1687,11 +1842,15 @@ export const erpReportsAPI = {
         id: `${r.fiche_no || 'x'}-${String(r.date || '').slice(0, 10)}-${idx}`,
         date: String(r.date || '').slice(0, 10),
         ficheNo: String(r.fiche_no ?? ''),
-        definition: String(r.notes || info.label || ft || ''),
+        definition: resolveEkstreDescription(r.notes, ft, trcode, cancelled),
         debit: Number(r.borcAmount) || 0,
         credit: Number(r.alacakAmount) || 0,
         balance: Number(r.balance) || 0,
         source,
+        ficheType: ft,
+        trcode,
+        notes: String(r.notes || ''),
+        isCancelled: cancelled,
       };
     }).slice(0, ROW_LIMIT);
   },

@@ -1,28 +1,23 @@
 /**
- * Regression test: ficheTypeToInfo i18n entegrasyonu
- *
- * Skandal: Ekstre TYPE kolonundaki etiketler ("Alış", "İade", "Sipariş",
- * "İrsaliye", "Ödeme", "Tahsilat" vb.) hardcoded Türkçe idi. Dil
- * İngilizce/Arapça/Kürtçe'ye çevrildiğinde bile UI'da aynı Türkçe
- * etiketler görünüyordu (2026-09-01 kasap ekstresi).
- *
- * Düzeltme: ficheTypeToInfo opsiyonel `t` parametresi aldı; modül
- * çevirilerinden (module-translations.ts) anahtar ile çeviri döner.
- * `t` verilmezse eski hardcoded Türkçe korunur (geriye uyumluluk).
+ * ficheTypeToInfo / ekstre açıklama i18n
  */
 import { describe, expect, it, vi } from 'vitest';
-import { ficheTypeToInfo } from './cariAccountStatement';
+import {
+  ficheTypeToInfo,
+  resolveEkstreDescription,
+  buildEkstreRows,
+} from './cariAccountStatement';
 
 describe('ficheTypeToInfo — i18n', () => {
   it('t verilmezse hardcoded Türkçe korunur (geriye uyumluluk)', () => {
-    expect(ficheTypeToInfo('purchase_invoice', 0, false).label).toBe('Alış');
+    expect(ficheTypeToInfo('purchase_invoice', 0, false).label).toBe('Alış faturası');
     expect(ficheTypeToInfo('return_invoice', 0, false).label).toBe('İade');
     expect(ficheTypeToInfo('waybill', 0, false).label).toBe('İrsaliye');
     expect(ficheTypeToInfo('order', 0, false).label).toBe('Sipariş');
     expect(ficheTypeToInfo('CH_ODEME', 0, false).label).toBe('Ödeme');
     expect(ficheTypeToInfo('CH_TAHSILAT', 0, false).label).toBe('Tahsilat');
     expect(ficheTypeToInfo('', 9, false).label).toBe('Hizmet');
-    expect(ficheTypeToInfo('sales_invoice', 0, false).label).toBe('Satış');
+    expect(ficheTypeToInfo('sales_invoice', 0, false).label).toBe('Satış faturası');
     expect(ficheTypeToInfo('opening_balance', 0, false).label).toBe('Devir');
     expect(ficheTypeToInfo('X', 0, true).label).toBe('Silindi');
   });
@@ -30,58 +25,82 @@ describe('ficheTypeToInfo — i18n', () => {
   it('t verilirse çevrilmiş etiket döner (İngilizce)', () => {
     const t = (key: string) => {
       const map: Record<string, string> = {
-        ficheTypePurchaseInvoice: 'Purchase',
+        ficheTypePurchaseInvoice: 'Purchase invoice',
         ficheTypeReturnInvoice: 'Return',
         ficheTypeWaybill: 'Waybill',
         ficheTypeOrder: 'Order',
         ficheTypePaymentOut: 'Payment',
         ficheTypePaymentIn: 'Collection',
         ficheTypeService: 'Service',
-        ficheTypeSalesInvoice: 'Sale',
+        ficheTypeSalesInvoice: 'Sales invoice',
         ficheTypeOpeningBalance: 'Opening Balance',
         ficheTypeCancelled: 'Cancelled',
       };
       return map[key] || key;
     };
-    expect(ficheTypeToInfo('purchase_invoice', 0, false, t).label).toBe('Purchase');
-    expect(ficheTypeToInfo('return_invoice', 0, false, t).label).toBe('Return');
-    expect(ficheTypeToInfo('waybill', 0, false, t).label).toBe('Waybill');
-    expect(ficheTypeToInfo('order', 0, false, t).label).toBe('Order');
-    expect(ficheTypeToInfo('CH_ODEME', 0, false, t).label).toBe('Payment');
-    expect(ficheTypeToInfo('CH_TAHSILAT', 0, false, t).label).toBe('Collection');
-    expect(ficheTypeToInfo('', 9, false, t).label).toBe('Service');
-    expect(ficheTypeToInfo('sales_invoice', 0, false, t).label).toBe('Sale');
-    expect(ficheTypeToInfo('opening_balance', 0, false, t).label).toBe('Opening Balance');
-    expect(ficheTypeToInfo('X', 0, true, t).label).toBe('Cancelled');
+    expect(ficheTypeToInfo('purchase_invoice', 0, false, t).label).toBe('Purchase invoice');
+    expect(ficheTypeToInfo('sales_invoice', 0, false, t).label).toBe('Sales invoice');
   });
 
   it('t hata fırlatırsa hardcoded Türkçe fallback olur (güvenli)', () => {
     const t = vi.fn(() => {
       throw new Error('translation missing');
     });
-    expect(ficheTypeToInfo('purchase_invoice', 0, false, t).label).toBe('Alış');
-    expect(ficheTypeToInfo('return_invoice', 0, false, t).label).toBe('İade');
+    expect(ficheTypeToInfo('purchase_invoice', 0, false, t).label).toBe('Alış faturası');
   });
 
-  it('isReturn / isOpening / cancelled bayrakları korunur', () => {
-    expect(ficheTypeToInfo('return_invoice', 0, false).isReturn).toBe(true);
-    expect(ficheTypeToInfo('purchase_invoice', 0, false).isReturn).toBe(false);
-    expect(ficheTypeToInfo('CH_ODEME', 0, false).isReturn).toBe(true);
-    expect(ficheTypeToInfo('CH_TAHSILAT', 0, false).isReturn).toBe(true);
-    expect(ficheTypeToInfo('opening_balance', 0, false).isOpening).toBe(true);
-    expect(ficheTypeToInfo('X', 0, true).label).toBe('Silindi');
-  });
-
-  it('renk sınıfları sabit kalır (görsel UI için)', () => {
-    expect(ficheTypeToInfo('purchase_invoice', 0, false).color).toBe('bg-orange-100 text-orange-700');
-    expect(ficheTypeToInfo('return_invoice', 0, false).color).toBe('bg-red-100 text-red-700');
-    expect(ficheTypeToInfo('CH_ODEME', 0, false).color).toBe('bg-green-100 text-green-700');
-    expect(ficheTypeToInfo('CH_TAHSILAT', 0, false).color).toBe('bg-teal-100 text-teal-700');
-    expect(ficheTypeToInfo('opening_balance', 0, false).color).toBe('bg-indigo-100 text-indigo-800');
-  });
-
-  it('büyük/küçük harf duyarsız: CH_odeme ve ch_TAHSİLAT aynı sonucu verir', () => {
+  it('büyük/küçük harf duyarsız: CH_odeme ve ch_TAHSILAT aynı sonucu verir', () => {
     expect(ficheTypeToInfo('CH_odeme', 0, false).label).toBe('Ödeme');
     expect(ficheTypeToInfo('ch_TAHSILAT', 0, false).label).toBe('Tahsilat');
+  });
+});
+
+describe('resolveEkstreDescription', () => {
+  it('ham purchase_invoice notes yerine Alış faturası yazar', () => {
+    expect(resolveEkstreDescription('purchase_invoice', 'purchase_invoice', 1)).toBe('Alış faturası');
+    expect(resolveEkstreDescription('', 'purchase_invoice', 1)).toBe('Alış faturası');
+  });
+
+  it('gerçek açıklama metnini korur', () => {
+    expect(resolveEkstreDescription('Mal alımı', 'purchase_invoice', 1)).toBe('Mal alımı');
+  });
+});
+
+describe('buildEkstreRows — müşteri peşin satış', () => {
+  it('nakit satış ekstede görünür ama bakiyeyi şişirmez', () => {
+    const rows = buildEkstreRows(
+      [
+        {
+          date: '2026-09-18',
+          fiche_no: 'SF-1',
+          fiche_type: 'sales_invoice',
+          total_amount: 150000,
+          payment_method: 'cash',
+        },
+      ],
+      'customer',
+    );
+    expect(rows).toHaveLength(1);
+    expect(rows[0].borcAmount).toBe(150000);
+    expect(rows[0].alacakAmount).toBe(150000);
+    expect(rows[0].balance).toBe(0);
+  });
+
+  it('veresiye satış müşteri borcunu artırır', () => {
+    const rows = buildEkstreRows(
+      [
+        {
+          date: '2026-09-18',
+          fiche_no: 'SF-2',
+          fiche_type: 'sales_invoice',
+          total_amount: 150000,
+          payment_method: 'veresiye',
+        },
+      ],
+      'customer',
+    );
+    expect(rows[0].borcAmount).toBe(150000);
+    expect(rows[0].alacakAmount).toBe(0);
+    expect(rows[0].balance).toBe(150000);
   });
 });

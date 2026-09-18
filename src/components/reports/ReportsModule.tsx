@@ -9,7 +9,7 @@ import { CustomerSalesReport } from './CustomerSalesReport';
 import { SalesTrendReport } from './SalesTrendReport';
 import { SalesTargetReport } from './SalesTargetReport';
 import { formatNumber } from '../../utils/formatNumber';
-import { getGlobalCurrency, getReportingCurrency, getCurrencyDecimalPlaces } from '../../utils/currency';
+import { getCurrencyDecimalPlaces, getFirmLedgerCurrency, formatLedgerAmount } from '../../utils/currency';
 import { getAppDefaultCurrency } from '../../services/postgres';
 import { useProductStore } from '../../store';
 import { fetchExpiringSoonLots } from '../../services/api/lots';
@@ -63,6 +63,11 @@ import { ContactAccountLegacyReport } from './ContactAccountLegacyReport';
 import { StaffAttendanceReport } from './StaffAttendanceReport';
 import { InvoiceItemsDetailReport } from './InvoiceItemsDetailReport';
 import { ChequeTrackingReport } from './ChequeTrackingReport';
+import {
+  clampReportBusinessType,
+  resolveEnabledReportBusinessTypes,
+  type ReportBusinessType,
+} from './reportBusinessLineOptions';
 
 import { useBeautyStore } from '../beauty/store/useBeautyStore';
 import { CommissionReport } from '../beauty/components/CommissionReport';
@@ -391,9 +396,42 @@ function buildComparisonWindows(period: 'week' | 'month', todayKey: string): Com
   };
 }
 
-type BusinessType = 'retail' | 'market' | 'restaurant' | 'beauty';
+type BusinessType = ReportBusinessType;
 
 const REPORTS_BUSINESS_TYPE_STORAGE_KEY = 'retailex_reports_business_type';
+
+/** Grid DURUM — DB İngilizce kodunu tm ile gösterir (Completed → Tamamlandı). */
+function reportGridStatusLabel(tm: (key: string) => string, status: unknown): string {
+  const raw = String(status ?? '').trim();
+  if (!raw || raw === '—') return '—';
+  const st = raw.toLocaleLowerCase('en-US');
+  switch (st) {
+    case 'completed':
+    case 'complete':
+    case 'done':
+      return tm('reportsDetStatusCompleted');
+    case 'cancelled':
+    case 'canceled':
+      return tm('reportsDetStatusCancelled');
+    case 'refunded':
+    case 'refund':
+      return tm('reportsDetStatusRefunded');
+    case 'scheduled':
+      return tm('bAppointmentScheduled');
+    case 'confirmed':
+      return tm('bAppointmentConfirmed');
+    case 'in_progress':
+    case 'started':
+      return tm('bAppointmentStarted');
+    case 'no_show':
+    case 'noshow':
+      return tm('bAppointmentNoShow');
+    case 'pending':
+      return tm('pending');
+    default:
+      return raw;
+  }
+}
 
 function parseStoredReportsBusinessType(): BusinessType | null {
   if (typeof window === 'undefined') return null;
@@ -741,12 +779,13 @@ export function ReportsModule({
   const canDeleteErpSale = hasPermission('sales-invoices', 'DELETE');
 
   const { selectedFirm } = useFirmaDonem();
-  /** Dönüştürülmemiş tutarlar (ciro/gider/kasa) → ana para; raporlama para birimi etiket için kullanılmaz. */
+  /** Defter tutarı — firma ana para (IQD); raporlama USD yok, kur çevrimi yok. */
   const amountCurrency = getFirmLedgerCurrency(selectedFirm, getAppDefaultCurrency());
-  const reportCurrency =
-    (selectedFirm?.raporlama_para_birimi && String(selectedFirm.raporlama_para_birimi).trim()) ||
-    amountCurrency ||
-    getReportingCurrency();
+  const reportCurrency = amountCurrency;
+  const enabledBusinessTypes = useMemo(
+    () => resolveEnabledReportBusinessTypes(selectedFirm),
+    [selectedFirm?.enabled_modules, selectedFirm?.firm_nr],
+  );
   const [selectedTab, setSelectedTab] = useState<ReportTab>(() =>
     resolveInitialReportTab(initialBusinessType, initialReportTab),
   );
@@ -809,6 +848,26 @@ export function ReportsModule({
   );
 
   useEffect(() => {
+    setBusinessType((prev) => clampReportBusinessType(prev, enabledBusinessTypes));
+  }, [enabledBusinessTypes]);
+
+  const businessLineSelectOptions = useMemo(
+    () =>
+      enabledBusinessTypes.map((value) => ({
+        value,
+        label:
+          value === 'retail'
+            ? tm('resTileRetail')
+            : value === 'market'
+              ? tm('reportsBizMarket')
+              : value === 'restaurant'
+                ? tm('restaurant')
+                : tm('bCatBeauty'),
+      })),
+    [enabledBusinessTypes, tm],
+  );
+
+  useEffect(() => {
     if (initialReportTab) {
       setSelectedTab(initialReportTab);
     }
@@ -816,12 +875,12 @@ export function ReportsModule({
 
   useEffect(() => {
     if (initialBusinessType !== 'retail') {
-      setBusinessType(initialBusinessType);
+      setBusinessType(clampReportBusinessType(initialBusinessType, enabledBusinessTypes));
       if (!initialReportTab) {
         setSelectedTab(resolveInitialReportTab(initialBusinessType));
       }
     }
-  }, [initialBusinessType, initialReportTab]);
+  }, [initialBusinessType, initialReportTab, enabledBusinessTypes]);
 
   useEffect(() => {
     try {
@@ -4687,21 +4746,18 @@ export function ReportsModule({
               >
                 {tm('reportsRefresh')}
               </Button>
-              <label className="flex flex-wrap items-center gap-2 text-xs text-slate-600 min-w-0 flex-1 sm:flex-initial">
-                <span className="font-semibold shrink-0">{tm('reportsBusinessLine')}</span>
-                <Select<BusinessType>
-                  value={businessType}
-                  onChange={(v) => setBusinessType(v)}
-                  className="min-w-0 flex-1 sm:flex-initial"
-                  style={{ minWidth: isMobile ? 0 : 152 }}
-                  options={[
-                    { value: 'retail', label: tm('resTileRetail') },
-                    { value: 'market', label: tm('reportsBizMarket') },
-                    { value: 'restaurant', label: tm('restaurant') },
-                    { value: 'beauty', label: tm('bCatBeauty') },
-                  ]}
-                />
-              </label>
+              {businessLineSelectOptions.length > 1 ? (
+                <label className="flex flex-wrap items-center gap-2 text-xs text-slate-600 min-w-0 flex-1 sm:flex-initial">
+                  <span className="font-semibold shrink-0">{tm('reportsBusinessLine')}</span>
+                  <Select<BusinessType>
+                    value={businessType}
+                    onChange={(v) => setBusinessType(v)}
+                    className="min-w-0 flex-1 sm:flex-initial"
+                    style={{ minWidth: isMobile ? 0 : 152 }}
+                    options={businessLineSelectOptions}
+                  />
+                </label>
+              ) : null}
             </div>
           </div>
 
@@ -7639,7 +7695,7 @@ export function ReportsModule({
                             >
                               <span className="text-base">{g.serviceName}</span>
                               <span className="text-sm font-semibold opacity-95">
-                                {tm('subTotal')}: {formatNumber(g.sum, 2, false)} {reportCurrency}
+                                {tm('subTotal')}: {formatLedgerAmount(g.sum, reportCurrency)}
                               </span>
                             </div>
                             <div className="overflow-x-auto">
@@ -7705,11 +7761,11 @@ export function ReportsModule({
                                           <td className="px-4 py-3 text-slate-900 font-medium">{a.staffName}</td>
                                           <td className="px-4 py-3 text-slate-900 font-medium">{a.receiptNumber}</td>
                                           <td className="px-4 py-3 text-right tabular-nums font-semibold text-slate-950">
-                                            {formatNumber(a.amount, 2, false)} {reportCurrency}
+                                            {formatLedgerAmount(a.amount, reportCurrency)}
                                           </td>
                                           <td className="px-4 py-3">
-                                            <span className="inline-flex items-center rounded-md border border-slate-200 bg-slate-50 px-2 py-0.5 text-xs font-bold capitalize text-slate-700">
-                                              {a.status}
+                                            <span className="inline-flex items-center rounded-md border border-slate-200 bg-slate-50 px-2 py-0.5 text-xs font-bold text-slate-700">
+                                              {reportGridStatusLabel(tm, a.status)}
                                             </span>
                                           </td>
                                         </tr>
@@ -7746,11 +7802,11 @@ export function ReportsModule({
                                           {String(a.device_name ?? '').trim() || '—'}
                                         </td>
                                         <td className="px-4 py-3 text-right tabular-nums font-semibold text-slate-950">
-                                          {formatNumber(Number(a.total_price ?? 0), 2, false)} {reportCurrency}
+                                          {formatLedgerAmount(Number(a.total_price ?? 0), reportCurrency)}
                                         </td>
                                         <td className="px-4 py-3">
-                                          <span className="inline-flex items-center rounded-md border border-red-200 bg-red-50 px-2 py-0.5 text-xs font-bold capitalize text-red-700">
-                                            {String(a.status ?? '—')}
+                                          <span className="inline-flex items-center rounded-md border border-red-200 bg-red-50 px-2 py-0.5 text-xs font-bold text-red-700">
+                                            {reportGridStatusLabel(tm, a.status)}
                                           </span>
                                         </td>
                                       </tr>
@@ -7766,7 +7822,7 @@ export function ReportsModule({
                                           { key: 'customerName', label: tm('customer'), align: 'left' },
                                           { key: 'staffName', label: tm('cashier'), align: 'left' },
                                           { key: 'receiptNumber', label: tm('reportsThOrderNo'), align: 'left' },
-                                          { key: 'amount', label: tm('amount'), aggregate: 'sum', align: 'right', formatter: (v) => `${formatNumber(v, 2, false)} ${reportCurrency}` },
+                                          { key: 'amount', label: tm('amount'), aggregate: 'sum', align: 'right', formatter: (v) => formatLedgerAmount(v, reportCurrency) },
                                           { key: 'status', label: tm('status'), align: 'left' },
                                         ]
                                       : [
@@ -7774,7 +7830,7 @@ export function ReportsModule({
                                           { key: 'customer_name', label: tm('customer'), align: 'left' },
                                           { key: 'specialist_name', label: tm('bStaffView'), align: 'left' },
                                           { key: 'device_name', label: tm('bDeviceView'), align: 'left' },
-                                          { key: 'total_price', label: tm('amount'), aggregate: 'sum', align: 'right', formatter: (v) => `${formatNumber(v, 2, false)} ${reportCurrency}` },
+                                          { key: 'total_price', label: tm('amount'), aggregate: 'sum', align: 'right', formatter: (v) => formatLedgerAmount(v, reportCurrency) },
                                           { key: 'status', label: tm('status'), align: 'left' },
                                         ]
                                   }
@@ -8100,11 +8156,11 @@ export function ReportsModule({
                                       {String(a.device_name ?? '').trim() || '—'}
                                     </td>
                                     <td className="px-4 py-3 text-right tabular-nums font-semibold text-slate-950">
-                                      {formatNumber(Number(a.total_price ?? 0), 2, false)} {reportCurrency}
+                                      {formatLedgerAmount(Number(a.total_price ?? 0), reportCurrency)}
                                     </td>
                                     <td className="px-4 py-3">
-                                      <span className="inline-flex items-center rounded-md border border-red-200 bg-red-50 px-2 py-0.5 text-xs font-bold capitalize text-red-700">
-                                        {String(a.status ?? '—')}
+                                      <span className="inline-flex items-center rounded-md border border-red-200 bg-red-50 px-2 py-0.5 text-xs font-bold text-red-700">
+                                        {reportGridStatusLabel(tm, a.status)}
                                       </span>
                                     </td>
                                   </tr>

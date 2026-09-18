@@ -3,17 +3,28 @@
 /** Hizmet faturası (trcode 4 Alınan / 9 Verilen; eski 7/8) veya kategori Hizmet */
 export function isServiceInvoiceType(invoiceType: {
   category?: string;
-  code?: number;
+  code?: number | string;
+  name?: string;
 }): boolean {
-  const cat = invoiceType.category;
+  const cat = String(invoiceType.category || '').trim();
   const code = Number(invoiceType.code);
-  return cat === 'Hizmet' || code === 4 || code === 9 || code === 7 || code === 8;
+  if (cat === 'Hizmet') return true;
+  if (code === 4 || code === 9 || code === 7 || code === 8) return true;
+  const name = String(invoiceType.name || '').toLocaleLowerCase('tr-TR');
+  if (!name) return false;
+  if (name.includes('alınan hizmet') || name.includes('alinan hizmet')) return true;
+  if (name.includes('verilen hizmet')) return true;
+  if (name.includes('hizmet fatur')) return true;
+  if (name.includes('service received') || name.includes('service given')) return true;
+  if (name.includes('service invoice')) return true;
+  return false;
 }
 
 /** Yeni satır varsayılan türü — hizmet faturalarında Hizmet */
 export function defaultInvoiceLineTypeFor(invoiceType: {
   category?: string;
-  code?: number;
+  code?: number | string;
+  name?: string;
 }): string {
   return isServiceInvoiceType(invoiceType) ? 'Hizmet' : 'Malzeme';
 }

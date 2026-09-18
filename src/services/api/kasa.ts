@@ -2533,7 +2533,25 @@ async function redirectGiderPusulasiCreate(islem: KasaIslemi): Promise<KasaIslem
   if (!day || !def) return null;
   const rows = await listExpensesForMirrorDate(day);
   const existing = pickExpenseForKasaGider(rows, { definition: def });
-  const linkedId = String(existing?.cash_line_id || '').trim();
+  let linkedId = String(existing?.cash_line_id || '').trim();
+  if (!linkedId && islem.kasa_id) {
+    try {
+      const cashRows = await fetchKasaIslemleri({
+        kasa_id: islem.kasa_id,
+        baslangic_tarihi: day,
+        bitis_tarihi: day,
+      });
+      const key = normalizeGiderAciklama(def);
+      const match = (Array.isArray(cashRows) ? cashRows : []).find((r) => {
+        const tip = String(r.islem_tipi || '').trim().toUpperCase();
+        if (tip !== 'GIDER_PUSULASI' && tip !== 'KASA_CIKIS') return false;
+        return normalizeGiderAciklama(r.islem_aciklamasi) === key;
+      });
+      if (match?.id) linkedId = String(match.id);
+    } catch (err) {
+      console.warn('[Kasa] redirectGiderPusulasiCreate: mevcut kasa satırı aranamadı:', err);
+    }
+  }
   if (!linkedId) return null;
   try {
     return await updateKasaIslemi(linkedId, islem);

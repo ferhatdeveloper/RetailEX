@@ -55,6 +55,7 @@ function mapSalesRowToEkstre(r: any) {
     currency: r.currency,
     notes: r.notes,
     is_cancelled: cancelled,
+    payment_method: r.payment_method,
   };
 }
 
@@ -83,8 +84,8 @@ function isCariEkstreSaleRow(
   }
   if (cardType === 'customer') {
     if (ft === 'return_invoice' || ft === 'opening_balance') return true;
-    if (ft !== 'sales_invoice' && ft !== 'service' && ft !== 'hizmet') return false;
-    return paymentMethodImpliesCustomerDebt(row.payment_method);
+    // Peşin satış da ekstrede görünsün (klinik nakit); bakiye etkisi buildEkstreRows'ta netlenir.
+    return ft === 'sales_invoice' || ft === 'service' || ft === 'hizmet';
   }
   return true;
 }
@@ -746,26 +747,18 @@ export const supplierAPI = {
                 )
               )`
           : cardType === 'customer'
-            ? ` AND t.fiche_type IN ('sales_invoice', 'return_invoice', 'service', 'hizmet', 'opening_balance')
-              AND (
-                t.fiche_type IN ('return_invoice', 'opening_balance')
-                OR LOWER(TRIM(COALESCE(t.payment_method, ''))) IN (
-                  'veresiye', 'open_account', 'cari', 'açık hesap', 'acik hesap',
-                  'açık cari', 'acik cari', 'acik_cari', 'açık_cari'
-                )
-                OR LOWER(TRIM(COALESCE(t.payment_method, ''))) LIKE '%veresiye%'
-              )`
+            ? ` AND t.fiche_type IN ('sales_invoice', 'return_invoice', 'service', 'hizmet', 'opening_balance')`
             : '';
 
       const sql = `
         SELECT fiche_no, date, trcode, fiche_type, net_amount AS total_amount, currency, notes,
-               COALESCE(is_cancelled, false) AS is_cancelled
+               COALESCE(is_cancelled, false) AS is_cancelled, payment_method
         FROM sales t
         WHERE ${accountMatchSales}${ledgerFicheFilter}${dateFilter}
         UNION ALL
         SELECT fiche_no, date, 0 AS trcode, transaction_type AS fiche_type,
                ABS(amount) AS total_amount, currency_code AS currency, definition AS notes,
-               false AS is_cancelled
+               false AS is_cancelled, NULL::text AS payment_method
         FROM cash_lines t
         WHERE (t.customer_id::text = $1::text OR t.party_id::text = $1::text)${dateFilter}
           AND UPPER(TRIM(t.transaction_type)) IN ('CH_ODEME', 'CH_TAHSILAT')

@@ -1,5 +1,7 @@
 /** Cari hesap ekstresi — ortak yardımcılar */
 
+import { paymentMethodImpliesCustomerDebt } from './paymentMethodUtils';
+
 export type ExtCardType = 'customer' | 'supplier' | 'employee' | 'partner' | undefined;
 
 /**
@@ -163,7 +165,7 @@ export function ficheTypeToInfo(
 
   const resolve = (k: string): string | null => (t ? (() => { try { return t(k); } catch { return null; } })() : null);
 
-  if (ft === 'purchase_invoice') return { label: resolve(key!) || 'Alış', color: 'bg-orange-100 text-orange-700', isReturn: false };
+  if (ft === 'purchase_invoice') return { label: resolve(key!) || 'Alış faturası', color: 'bg-orange-100 text-orange-700', isReturn: false };
   if (ft === 'return_invoice') return { label: resolve(key!) || 'İade', color: 'bg-red-100 text-red-700', isReturn: true };
   if (ft === 'waybill') return { label: resolve(key!) || 'İrsaliye', color: 'bg-purple-100 text-purple-700', isReturn: false };
   if (ft === 'order') return { label: resolve(key!) || 'Sipariş', color: 'bg-gray-100 text-gray-600', isReturn: false };
@@ -186,8 +188,46 @@ export function ficheTypeToInfo(
   if (trcode === 9) return { label: resolve(trcodeKey!) || 'Hizmet', color: 'bg-indigo-100 text-indigo-700', isReturn: false };
   // Default (sales_invoice vb.): fiche_type = 'sales_invoice' ise onu kullan, yoksa "Satış"
   const salesKey = FICHE_TYPE_I18N_KEYS.sales_invoice;
-  if (ft === 'sales_invoice') return { label: resolve(salesKey) || 'Satış', color: 'bg-blue-100 text-blue-700', isReturn: false };
-  return { label: 'Satış', color: 'bg-blue-100 text-blue-700', isReturn: false };
+  if (ft === 'sales_invoice') return { label: resolve(salesKey) || 'Satış faturası', color: 'bg-blue-100 text-blue-700', isReturn: false };
+  return { label: resolve(salesKey) || 'Satış', color: 'bg-blue-100 text-blue-700', isReturn: false };
+}
+
+const RAW_FICHE_TYPE_KEYS = new Set(
+  [
+    ...Object.keys(FICHE_TYPE_I18N_KEYS),
+    ...Object.keys(FICHE_TYPE_I18N_KEYS).map((k) => k.toLowerCase()),
+    'purchase_invoice',
+    'sales_invoice',
+    'return_invoice',
+    'opening_balance',
+    'service',
+    'hizmet',
+    'a',
+  ].map((k) => k.toLowerCase()),
+);
+
+/** notes / açıklama ham fiche_type anahtarıysa (purchase_invoice) true. */
+export function isRawFicheTypeKey(text: unknown): boolean {
+  const s = String(text ?? '').trim();
+  if (!s) return true;
+  return RAW_FICHE_TYPE_KEYS.has(s.toLowerCase());
+}
+
+/** Ekstre açıklama: ham `purchase_invoice` yerine çevrilmiş etiket. */
+export function resolveEkstreDescription(
+  notes: unknown,
+  ficheType: unknown,
+  trcode: number,
+  cancelled?: boolean,
+  t?: TFunction,
+): string {
+  const ft = String(ficheType ?? '').trim();
+  const info = ficheTypeToInfo(ft, trcode, cancelled, t);
+  const n = String(notes ?? '').trim();
+  if (!n || isRawFicheTypeKey(n) || n.toLowerCase() === ft.toLowerCase()) {
+    return info.label;
+  }
+  return n;
 }
 
 export type EkstreRow = {
@@ -214,8 +254,14 @@ export function buildEkstreRows(
     const amount = parseFloat(String(row.total_amount ?? 0));
     const cancelled = row.is_cancelled === true;
     const ficheType = String(row.fiche_type ?? '').trim().toUpperCase();
+    const ftLower = String(row.fiche_type ?? '').trim().toLowerCase();
     const typeInfo = ficheTypeToInfo(String(row.fiche_type ?? ''), Number(row.trcode), cancelled);
     const { isReturn, isOpening } = typeInfo as { isReturn: boolean; isOpening?: boolean };
+    const isCustomerCashSale =
+      !isSupplierAccount &&
+      !cancelled &&
+      (ftLower === 'sales_invoice' || ftLower === 'service' || ftLower === 'hizmet') &&
+      !paymentMethodImpliesCustomerDebt(row.payment_method as string);
     let delta = 0;
     if (!cancelled) {
       // Kasa satırları (CH_TAHSILAT / CH_ODEME) ayrı imza ile işlenir —
@@ -226,6 +272,9 @@ export function buildEkstreRows(
       } else if (isOpening) {
         // Açılış/devir fişi: kullanıcının girdiği yön (borç + / alacak −) korunur.
         delta = amount;
+      } else if (isCustomerCashSale) {
+        // Peşin satış ekstede görünür; açık bakiyeyi şişirmez.
+        delta = 0;
       } else if (isSupplierAccount) {
         delta = isReturn ? -Math.abs(amount) : Math.abs(amount);
       } else {
@@ -243,6 +292,8 @@ export function buildEkstreRows(
     let isBorcEntry: boolean;
     if (cancelled) {
       isBorcEntry = false;
+    } else if (isCustomerCashSale) {
+      isBorcEntry = true;
     } else if (isOpening) {
       isBorcEntry = amount > 0;
     } else if (isCashLine) {
@@ -252,10 +303,22 @@ export function buildEkstreRows(
     } else {
       isBorcEntry = !isReturn;
     }
+    let borcAmount = 0;
+    let alacakAmount = 0;
+    if (!cancelled) {
+      if (isCustomerCashSale) {
+        borcAmount = absAmt;
+        alacakAmount = absAmt;
+      } else if (isBorcEntry) {
+        borcAmount = absAmt;
+      } else {
+        alacakAmount = absAmt;
+      }
+    }
     return {
       ...row,
-      borcAmount: cancelled ? 0 : (isBorcEntry ? absAmt : 0),
-      alacakAmount: cancelled ? 0 : (isBorcEntry ? 0 : absAmt),
+      borcAmount,
+      alacakAmount,
       balance: runningBalance,
     } as EkstreRow;
   });

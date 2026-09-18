@@ -37,6 +37,8 @@ export const ServiceFormPage = React.memo(({ serviceId, onClose, onSave }: Servi
   const lastTranslatedTrRef = useRef('');
   const [usdExchangeRate, setUsdExchangeRate] = useState<number>(1316);
   const [showImageSearchModal, setShowImageSearchModal] = useState(false);
+  const [saving, setSaving] = useState(false);
+  const [saveError, setSaveError] = useState('');
 
   const [formData, setFormData] = useState({
     id: '',
@@ -118,6 +120,8 @@ export const ServiceFormPage = React.memo(({ serviceId, onClose, onSave }: Servi
     autoCalculateUSD: false,
     customExchangeRate: 0,
   });
+  const formDataRef = useRef(formData);
+  formDataRef.current = formData;
 
   // Master data states
   const [currencies, setCurrencies] = useState<Currency[]>([]);
@@ -269,6 +273,32 @@ export const ServiceFormPage = React.memo(({ serviceId, onClose, onSave }: Servi
     fetchMasterData();
   }, [serviceId]);
 
+  // Yeni kart: sıradaki 6 haneli kod (000001…). Kullanıcı elle değiştirebilir.
+  useEffect(() => {
+    if (serviceId) return;
+    let cancelled = false;
+    (async () => {
+      try {
+        const next = await serviceAPI.getNextCode();
+        if (cancelled || !next) return;
+        setFormData((prev) => {
+          if (String(prev.code || '').trim()) return prev;
+          return { ...prev, code: next };
+        });
+      } catch (error) {
+        console.warn('[ServiceFormPage] getNextCode:', error);
+        if (cancelled) return;
+        setFormData((prev) => {
+          if (String(prev.code || '').trim()) return prev;
+          return { ...prev, code: '000001' };
+        });
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [serviceId]);
+
   const handleInputChange = (field: string, value: any) => {
     const safeValue = value === undefined || value === null ? '' : value;
     
@@ -348,76 +378,133 @@ export const ServiceFormPage = React.memo(({ serviceId, onClose, onSave }: Servi
     [translateDescriptionFromTurkish]
   );
 
+  const isUniqueCodeError = (error: unknown) => {
+    const msg = String((error as { message?: string })?.message ?? error ?? '').toLowerCase();
+    return msg.includes('23505') || msg.includes('unique') || msg.includes('duplicate');
+  };
+
   const handleSubmit = async (e?: React.FormEvent) => {
     if (e) e.preventDefault();
-    if (!formData.code || !formData.description_tr) {
-      toast.error('Hizmet kodu ve Türkçe açıklama zorunludur');
+    if (saving) return;
+
+    const current = formDataRef.current;
+    const nameTr = String(current.description_tr || current.name || '').trim();
+    if (!nameTr) {
+      const msg = tm('serviceNameRequired') === 'serviceNameRequired'
+        ? 'Türkçe açıklama zorunludur'
+        : tm('serviceNameRequired');
+      setSaveError(msg);
+      toast.error(msg);
+      setActiveTab('genel');
       return;
     }
 
-    try {
-      const serviceData: any = {
-        code: formData.code,
-        name: formData.description_tr,
-        description: formData.description_tr,
-        description_tr: formData.description_tr,
-        description_en: formData.description_en,
-        description_ar: formData.description_ar,
-        description_ku: formData.description_ku,
-        category: formData.category,
-        categoryId: formData.categoryId,
-        categoryCode: formData.categoryCode,
-        brand: formData.brand,
-        model: formData.model,
-        manufacturer: formData.manufacturer,
-        supplier: formData.supplier,
-        origin: formData.origin,
-        groupCode: formData.groupCode,
-        subGroupCode: formData.subGroupCode,
-        specialCode1: formData.specialCode1,
-        specialCode2: formData.specialCode2,
-        specialCode3: formData.specialCode3,
-        specialCode4: formData.specialCode4,
-        specialCode5: formData.specialCode5,
-        specialCode6: formData.specialCode6,
-        unit_price: formData.unit_price,
-        unit_price_usd: formData.unit_price_usd,
-        unit_price_eur: formData.unit_price_eur,
-        purchase_price: formData.purchase_price,
-        purchase_price_usd: formData.purchase_price_usd,
-        purchase_price_eur: formData.purchase_price_eur,
-        tax_rate: formData.taxRate,
-        tax_type: formData.taxType,
-        withholding_rate: formData.withholdingRate,
-        discount1: formData.discount1,
-        discount2: formData.discount2,
-        discount3: formData.discount3,
-        unit: formData.unit,
-        is_active: formData.isActive,
-        image_url: formData.image_url,
-        priceList1: formData.priceList1,
-        priceList2: formData.priceList2,
-        priceList3: formData.priceList3,
-        priceList4: formData.priceList4,
-        priceList5: formData.priceList5,
-        priceList6: formData.priceList6,
-      };
-
-      let result;
-      if (serviceId) {
-        result = await serviceAPI.update(serviceId, serviceData);
-        toast.success(tm('materialCardUpdated') || 'Hizmet başarıyla güncellendi');
-      } else {
-        result = await serviceAPI.create(serviceData);
-        toast.success(tm('materialCardCreated') || 'Hizmet başarıyla oluşturuldu');
+    let code = String(current.code || '').trim();
+    if (!code) {
+      try {
+        code = (await serviceAPI.getNextCode()) || '000001';
+      } catch {
+        code = '000001';
       }
+      setFormData((prev) => ({ ...prev, code }));
+    }
+
+    const persist = async (useCode: string) => {
+      const latest = formDataRef.current;
+      const serviceData: any = {
+        code: useCode,
+        name: nameTr,
+        description: latest.description_tr || nameTr,
+        description_tr: nameTr,
+        description_en: latest.description_en,
+        description_ar: latest.description_ar,
+        description_ku: latest.description_ku,
+        category: latest.category,
+        categoryId: latest.categoryId,
+        categoryCode: latest.categoryCode,
+        brand: latest.brand,
+        model: latest.model,
+        manufacturer: latest.manufacturer,
+        supplier: latest.supplier,
+        origin: latest.origin,
+        groupCode: latest.groupCode,
+        subGroupCode: latest.subGroupCode,
+        specialCode1: latest.specialCode1,
+        specialCode2: latest.specialCode2,
+        specialCode3: latest.specialCode3,
+        specialCode4: latest.specialCode4,
+        specialCode5: latest.specialCode5,
+        specialCode6: latest.specialCode6,
+        unit_price: latest.unit_price,
+        unit_price_usd: latest.unit_price_usd,
+        unit_price_eur: latest.unit_price_eur,
+        purchase_price: latest.purchase_price,
+        purchase_price_usd: latest.purchase_price_usd,
+        purchase_price_eur: latest.purchase_price_eur,
+        tax_rate: latest.taxRate,
+        tax_type: latest.taxType,
+        withholding_rate: latest.withholdingRate,
+        discount1: latest.discount1,
+        discount2: latest.discount2,
+        discount3: latest.discount3,
+        unit: latest.unit,
+        is_active: latest.isActive,
+        image_url: latest.image_url,
+        priceList1: latest.priceList1,
+        priceList2: latest.priceList2,
+        priceList3: latest.priceList3,
+        priceList4: latest.priceList4,
+        priceList5: latest.priceList5,
+        priceList6: latest.priceList6,
+      };
+      if (serviceId) {
+        return serviceAPI.update(serviceId, serviceData);
+      }
+      return serviceAPI.create(serviceData);
+    };
+
+    setSaving(true);
+    setSaveError('');
+    try {
+      let result;
+      try {
+        result = await persist(code);
+      } catch (error) {
+        if (!serviceId && isUniqueCodeError(error)) {
+          const next = (await serviceAPI.getNextCode()) || code;
+          setFormData((prev) => ({ ...prev, code: next }));
+          result = await persist(next);
+        } else {
+          throw error;
+        }
+      }
+      toast.success(
+        serviceId
+          ? (tm('serviceCardUpdated') === 'serviceCardUpdated' ? 'Hizmet kartı güncellendi' : tm('serviceCardUpdated'))
+          : (tm('serviceCardCreated') === 'serviceCardCreated' ? 'Hizmet kartı oluşturuldu' : tm('serviceCardCreated'))
+      );
       if (onSave) onSave(result);
       if (onClose) onClose();
     } catch (error: any) {
       console.error('Error saving service:', error);
-      toast.error(error.message || 'Hizmet kaydedilirken bir hata oluştu');
+      const msg = error?.message || 'Hizmet kaydedilirken bir hata oluştu';
+      setSaveError(msg);
+      toast.error(msg);
+    } finally {
+      setSaving(false);
     }
   };
+
+  useEffect(() => {
+    const onKeyDown = (e: KeyboardEvent) => {
+      if (e.ctrlKey && (e.key === 's' || e.key === 'S')) {
+        e.preventDefault();
+        void handleSubmit();
+      }
+    };
+    window.addEventListener('keydown', onKeyDown);
+    return () => window.removeEventListener('keydown', onKeyDown);
+  }, []);
 
   const refreshMasterDataForSelection = useCallback(async () => {
     try {
@@ -617,13 +704,21 @@ export const ServiceFormPage = React.memo(({ serviceId, onClose, onSave }: Servi
             </span>
           )}
         </div>
+        {saveError && (
+          <div className="flex items-center gap-1.5 text-xs text-red-700 bg-red-50 border border-red-200 rounded px-2 py-1 max-w-md">
+            <AlertCircle className="w-3.5 h-3.5 shrink-0" />
+            <span className="truncate">{saveError}</span>
+          </div>
+        )}
         <div className="flex items-center gap-2">
           <button
-            onClick={() => handleSubmit()}
-            className="flex items-center gap-1.5 px-3 py-1.5 bg-blue-600 text-white rounded text-xs hover:bg-blue-700 transition-colors"
+            type="button"
+            onClick={() => void handleSubmit()}
+            disabled={saving}
+            className="flex items-center gap-1.5 px-3 py-1.5 bg-blue-600 text-white rounded text-xs hover:bg-blue-700 transition-colors disabled:opacity-50"
           >
             <Save className="w-3.5 h-3.5" />
-            {tm('save')} (Ctrl+S)
+            {saving ? '...' : `${tm('save')} (Ctrl+S)`}
           </button>
           {onClose && (
             <button

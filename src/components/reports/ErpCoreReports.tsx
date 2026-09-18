@@ -8,10 +8,12 @@ import { useLanguage } from '../../contexts/LanguageContext';
 import { useTheme } from '../../contexts/ThemeContext';
 import { useFirmaDonem } from '../../contexts/FirmaDonemContext';
 import { formatNumber } from '../../utils/formatNumber';
-import { getGlobalCurrency, getReportingCurrency } from '../../utils/currency';
+import { getGlobalCurrency, getFirmLedgerCurrency, formatLedgerAmount, getCurrencyDecimalPlaces } from '../../utils/currency';
 import { getAppDefaultCurrency } from '../../services/postgres';
+import { formatMoneyAmount } from '../../utils/formatMoney';
 import { toSqlDateInputString, localTodayDateKey } from '../../utils/localCalendarDate';
 import { fetchKasalar, type Kasa } from '../../services/api/kasa';
+import { resolveEkstreDescription } from '../../utils/cariAccountStatement';
 import {
   erpReportsAPI,
   type AgingBucket,
@@ -39,6 +41,13 @@ import {
 } from './ProductMovementHistoryModal';
 
 type CardFilter = 'all' | 'customer' | 'supplier';
+
+function cariTypeLabel(tm: (k: string) => string, cardType: string): string {
+  if (cardType === 'supplier') return tm('erpCardSuppliers');
+  if (cardType === 'employee') return tm('erpCardEmployees');
+  if (cardType === 'partner') return tm('erpCardPartners');
+  return tm('erpCardCustomers');
+}
 
 function defaultRange(): { start: string; end: string } {
   const end = localTodayDateKey();
@@ -139,7 +148,7 @@ export function CariAgingReport() {
   const { tm } = useLanguage();
   const { darkMode } = useTheme();
   const { selectedFirm } = useFirmaDonem();
-  const currency = getReportingCurrency();
+  const currency = getFirmLedgerCurrency(selectedFirm, getAppDefaultCurrency() || getGlobalCurrency());
   const [cardType, setCardType] = useState<CardFilter>('all');
   const [rows, setRows] = useState<CariAgingRow[]>([]);
   const [loading, setLoading] = useState(false);
@@ -271,9 +280,9 @@ export function CariBalanceSummaryReport() {
   const { tm } = useLanguage();
   const { darkMode } = useTheme();
   const { selectedFirm } = useFirmaDonem();
-  const currency =
-    (selectedFirm?.ana_para_birimi && String(selectedFirm.ana_para_birimi).trim()) ||
-    getGlobalCurrency();
+  const currency = getFirmLedgerCurrency(selectedFirm, getAppDefaultCurrency() || getGlobalCurrency());
+  const moneyDec = getCurrencyDecimalPlaces(currency);
+  const fmtAmt = (n: number) => formatMoneyAmount(n, { minFrac: moneyDec, maxFrac: moneyDec });
   const [cardType, setCardType] = useState<CardFilter>('all');
   const [rows, setRows] = useState<CariBalanceRow[]>([]);
   const [loading, setLoading] = useState(false);
@@ -281,7 +290,7 @@ export function CariBalanceSummaryReport() {
   const load = useCallback(async () => {
     setLoading(true);
     try {
-      setRows(await erpReportsAPI.getCariBalances({ cardType, onlyNonZero: true }));
+      setRows(await erpReportsAPI.getCariBalances({ cardType, onlyNonZero: false }));
     } catch (err: any) {
       toast.error(err?.message || String(err));
       setRows([]);
@@ -299,7 +308,7 @@ export function CariBalanceSummaryReport() {
     let pay = 0;
     for (const r of rows) {
       if (r.cardType === 'customer') recv += r.balance;
-      else pay += r.balance;
+      else if (r.cardType === 'supplier') pay += r.balance;
     }
     return { recv, pay, net: recv - pay };
   }, [rows]);
@@ -343,19 +352,19 @@ export function CariBalanceSummaryReport() {
         <div className={`rounded-lg border p-3 ${tableCls}`}>
           <p className="text-xs opacity-60">{tm('erpReceivables')}</p>
           <p className="text-xl font-bold text-blue-500">
-            {formatNumber(totals.recv, 2, false)} {currency}
+            {formatLedgerAmount(totals.recv, currency)}
           </p>
         </div>
         <div className={`rounded-lg border p-3 ${tableCls}`}>
           <p className="text-xs opacity-60">{tm('erpPayables')}</p>
           <p className="text-xl font-bold text-orange-500">
-            {formatNumber(totals.pay, 2, false)} {currency}
+            {formatLedgerAmount(totals.pay, currency)}
           </p>
         </div>
         <div className={`rounded-lg border p-3 ${tableCls}`}>
           <p className="text-xs opacity-60">{tm('erpNetBalance')}</p>
           <p className="text-xl font-bold">
-            {formatNumber(totals.net, 2, false)} {currency}
+            {formatLedgerAmount(totals.net, currency)}
           </p>
         </div>
       </div>
@@ -385,12 +394,12 @@ export function CariBalanceSummaryReport() {
                   <div className="font-mono text-xs opacity-60">{r.accountCode}</div>
                 </td>
                 <td className="px-3 py-2">
-                  {r.cardType === 'customer' ? tm('erpCardCustomers') : tm('erpCardSuppliers')}
+                  {cariTypeLabel(tm, r.cardType)}
                 </td>
                 <td className={`px-3 py-2 text-right font-semibold ${r.balance < 0 ? 'text-red-500' : ''}`}>
-                  {formatNumber(r.balance, 2, false)} {currency}
+                  {formatLedgerAmount(r.balance, currency)}
                 </td>
-                <td className="px-3 py-2 text-right">{formatNumber(r.creditLimit, 2, false)}</td>
+                <td className="px-3 py-2 text-right">{fmtAmt(r.creditLimit)}</td>
                 <td className="px-3 py-2">{r.paymentTerms || '—'}</td>
               </tr>
             ))}
@@ -401,15 +410,53 @@ export function CariBalanceSummaryReport() {
   );
 }
 
+const CASH_INFLOW_TYPES = new Set([
+  'CH_TAHSILAT',
+  'BANKA_GIRIS',
+  'SERMAYE_TAHSILAT',
+  'ORTAK_SERMAYE_TAHSILAT',
+  'ORTAK_PARA_GIRIS',
+  'KASA_GIRIS',
+  'BANKADAN_CEKILEN',
+]);
+const CASH_OUTFLOW_TYPES = new Set([
+  'CH_ODEME',
+  'BANKA_CIKIS',
+  'HAVALE',
+  'EFT',
+  'MAAS_ODEME',
+  'AVANS_ODEME',
+  'KASA_CIKIS',
+  'GIDER_PUSULASI',
+  'BANKA_YATIRILAN',
+]);
+
+function cashBankTxnLabel(tm: (k: string) => string, raw: string): string {
+  const tt = String(raw || '').toUpperCase();
+  switch (tt) {
+    case 'KASA_GIRIS':
+      return tm('cashIn') || 'Kasa giriş';
+    case 'KASA_CIKIS':
+      return tm('cashOut') || 'Kasa çıkış';
+    case 'CH_TAHSILAT':
+      return tm('collection') || 'Tahsilat';
+    case 'CH_ODEME':
+      return tm('payment') || 'Ödeme';
+    case 'VIRMAN':
+      return tm('erpTxnVirman') || 'Virman';
+    case 'BANKA_GIRIS':
+      return tm('bankDeposit') || 'Banka giriş';
+    case 'BANKA_CIKIS':
+      return tm('bankWithdrawal') || 'Banka çıkış';
+    default:
+      return raw || '—';
+  }
+}
+
 export function CashBankMovementReport() {
   const { tm } = useLanguage();
   const { darkMode } = useTheme();
   const { selectedFirm, selectedDonem } = useFirmaDonem();
-  /** Nakit akış tutarları ana para (raporlama dövizi değil). */
-  const currency =
-    (selectedFirm?.ana_para_birimi && String(selectedFirm.ana_para_birimi).trim()) ||
-    getAppDefaultCurrency() ||
-    getGlobalCurrency();
   const initial = defaultRange();
   const [startDate, setStartDate] = useState(initial.start);
   const [endDate, setEndDate] = useState(initial.end);
@@ -418,6 +465,21 @@ export function CashBankMovementReport() {
   const [kasalar, setKasalar] = useState<Kasa[]>([]);
   const [rows, setRows] = useState<CashBankMovementRow[]>([]);
   const [loading, setLoading] = useState(false);
+  /** Defter etiketi — raporlama USD yok, kur çevrimi yok. Seçili kasa dövizi varsa o. */
+  const currency = useMemo(() => {
+    const selected = kasalar.find((k) => k.id === registerId);
+    const kasaCode = String(selected?.id_doviz_kodu || '').trim().toUpperCase();
+    if (kasaCode.length >= 3) return kasaCode.slice(0, 10);
+    const unique = [
+      ...new Set(
+        kasalar
+          .map((k) => String(k.id_doviz_kodu || '').trim().toUpperCase())
+          .filter((c) => c.length >= 3),
+      ),
+    ];
+    if (unique.length === 1) return unique[0].slice(0, 10);
+    return getFirmLedgerCurrency(selectedFirm, getAppDefaultCurrency() || getGlobalCurrency());
+  }, [kasalar, registerId, selectedFirm]);
 
   useEffect(() => {
     if (selectedDonem?.beg_date && selectedDonem?.end_date) {
@@ -478,45 +540,49 @@ export function CashBankMovementReport() {
     let inflow = 0;
     let outflow = 0;
     let transfer = 0;
+    let net = 0;
     for (const r of rows) {
-      // B7: Backend hem `sign` hem `transaction_type` döndürüyor
-      // (CH_TAHSILAT/CH_ODEME/BANKA_GIRIS/BANKA_CIKIS/HAVALE/EFT/VIRMAN).
-      // Tek `netAmount` üzerinden sınıflandırma yerine transaction_type'a göre ayır;
-      // virman ayrı sütunda — kasa-banka nakit akışında giriş/çıkış olarak sayılmaz.
       const tt = String(r.transactionType || '').toUpperCase();
       const amount = Math.abs(Number(r.amount) || 0);
+      const signed = Number(r.netAmount) || 0;
+      net += signed;
       if (tt === 'VIRMAN') {
-        transfer += amount;
-      } else if (
-        tt === 'CH_TAHSILAT' ||
-        tt === 'BANKA_GIRIS' ||
-        tt === 'SERMAYE_TAHSILAT' ||
-        tt === 'ORTAK_SERMAYE_TAHSILAT' ||
-        tt === 'ORTAK_PARA_GIRIS'
-      ) {
+        transfer += signed;
+      } else if (CASH_INFLOW_TYPES.has(tt)) {
         inflow += amount;
-      } else if (
-        tt === 'CH_ODEME' ||
-        tt === 'BANKA_CIKIS' ||
-        tt === 'HAVALE' ||
-        tt === 'EFT' ||
-        tt === 'MAAS_ODEME' ||
-        tt === 'AVANS_ODEME'
-      ) {
+      } else if (CASH_OUTFLOW_TYPES.has(tt)) {
         outflow += amount;
+      } else if (signed >= 0) {
+        inflow += amount;
       } else {
-        // Bilinmeyen tip: işaret alanına güven (sign = +1 / -1)
-        const net = Number(r.netAmount) || 0;
-        if (net >= 0) inflow += amount;
-        else outflow += amount;
+        outflow += amount;
       }
     }
-    return { inflow, outflow, transfer, net: inflow - outflow };
+    return { inflow, outflow, transfer, net };
   }, [rows]);
 
   const tableCls = darkMode ? 'bg-gray-800 border-gray-700' : 'bg-white border-gray-200';
   const thCls = darkMode ? 'bg-gray-900/60 text-gray-300' : 'bg-gray-50 text-gray-600';
   const inputCls = darkMode ? 'bg-gray-900 border-gray-600' : 'bg-white border-gray-300';
+  const kasaOptions = useMemo(() => {
+    const byId = new Map<string, { id: string; label: string }>();
+    for (const k of kasalar) {
+      const id = String(k.id || '').trim();
+      if (!id) continue;
+      const name = String(k.kasa_adi || '').trim();
+      const code = String(k.kasa_kodu || '').trim();
+      byId.set(id, { id, label: name || code || id });
+    }
+    for (const r of rows) {
+      if (r.source !== 'cash') continue;
+      const id = String(r.registerId || '').trim();
+      if (!id || byId.has(id)) continue;
+      const name = String(r.registerName || '').trim();
+      const code = String(r.registerCode || '').trim();
+      byId.set(id, { id, label: name || code || id });
+    }
+    return [...byId.values()].sort((a, b) => a.label.localeCompare(b.label, 'tr'));
+  }, [kasalar, rows]);
 
   return (
     <ReportShell
@@ -533,7 +599,7 @@ export function CashBankMovementReport() {
             displayRegister(r),
             r.ficheNo,
             r.date,
-            r.transactionType,
+            cashBankTxnLabel(tm, r.transactionType),
             r.definition,
             r.accountName,
             String(r.netAmount),
@@ -546,27 +612,35 @@ export function CashBankMovementReport() {
           <input type="date" value={endDate} onChange={(e) => setEndDate(e.target.value)} className={`rounded-lg border px-2 py-2 text-sm ${inputCls}`} />
           <select
             value={source}
-            onChange={(e) => setSource(e.target.value as 'all' | 'cash' | 'bank')}
+            onChange={(e) => {
+              const next = e.target.value as 'all' | 'cash' | 'bank';
+              setSource(next);
+              if (next === 'bank') setRegisterId('');
+            }}
             className={`rounded-lg border px-2 py-2 text-sm ${inputCls}`}
           >
             <option value="all">{tm('erpSourceAll')}</option>
             <option value="cash">{tm('erpSourceCash')}</option>
             <option value="bank">{tm('erpSourceBank')}</option>
           </select>
-          <select
-            value={registerId}
-            onChange={(e) => setRegisterId(e.target.value)}
-            className={`rounded-lg border px-2 py-2 text-sm min-w-[10rem] ${inputCls}`}
-            title={tm('erpColRegister')}
-          >
-            <option value="">{tm('erpSourceAll')} — {tm('erpColRegister')}</option>
-            {kasalar.map((k) => (
-              <option key={k.id} value={k.id}>
-                {(k.kasa_kodu || '').trim() || '—'}
-                {k.kasa_adi ? ` · ${k.kasa_adi}` : ''}
+          {source !== 'bank' && (
+            <select
+              value={registerId}
+              onChange={(e) => setRegisterId(e.target.value)}
+              className={`rounded-lg border px-2 py-2 text-sm min-w-[12rem] ${inputCls}`}
+              title={tm('erpCashRegisterFilter')}
+              aria-label={tm('erpCashRegisterFilter')}
+            >
+              <option value="">
+                {tm('all')} — {tm('erpCashRegisterFilter')}
               </option>
-            ))}
-          </select>
+              {kasaOptions.map((k) => (
+                <option key={k.id} value={k.id}>
+                  {k.label}
+                </option>
+              ))}
+            </select>
+          )}
         </>
       }
     >
@@ -574,28 +648,33 @@ export function CashBankMovementReport() {
         <div className={`rounded-lg border p-3 ${tableCls}`}>
           <p className="text-xs opacity-60">{tm('erpInflow')}</p>
           <p className="text-xl font-bold text-emerald-500">
-            {formatNumber(totals.inflow, 2, false)} {currency}
+            {formatLedgerAmount(totals.inflow, currency)}
           </p>
         </div>
         <div className={`rounded-lg border p-3 ${tableCls}`}>
           <p className="text-xs opacity-60">{tm('erpOutflow')}</p>
           <p className="text-xl font-bold text-red-500">
-            {formatNumber(totals.outflow, 2, false)} {currency}
+            {formatLedgerAmount(totals.outflow, currency)}
           </p>
         </div>
         <div className={`rounded-lg border p-3 ${tableCls}`}>
-          <p className="text-xs opacity-60">Virman</p>
+          <p className="text-xs opacity-60">{tm('erpTxnVirman')}</p>
           <p className="text-xl font-bold text-blue-500">
-            {formatNumber(totals.transfer, 2, false)} {currency}
+            {formatLedgerAmount(totals.transfer, currency)}
           </p>
         </div>
         <div className={`rounded-lg border p-3 ${tableCls}`}>
           <p className="text-xs opacity-60">{tm('erpNetMovement')}</p>
           <p className="text-xl font-bold">
-            {formatNumber(totals.net, 2, false)} {currency}
+            {formatLedgerAmount(totals.net, currency)}
           </p>
         </div>
       </div>
+      {registerId ? (
+        <p className={`text-xs ${darkMode ? 'text-gray-400' : 'text-gray-500'}`}>
+          {tm('erpVirmanSingleKasaNote')}
+        </p>
+      ) : null}
       <div className={`overflow-auto rounded-lg border max-h-[520px] ${tableCls}`}>
         <table className="w-full min-w-[960px] text-sm">
           <thead className={`sticky top-0 ${thCls}`}>
@@ -623,13 +702,13 @@ export function CashBankMovementReport() {
                 <td className="px-3 py-2">{r.source === 'cash' ? tm('erpSourceCash') : tm('erpSourceBank')}</td>
                 <td className="px-3 py-2">{displayRegister(r)}</td>
                 <td className="px-3 py-2 font-mono text-xs">{r.ficheNo}</td>
-                <td className="px-3 py-2 text-xs">{r.transactionType}</td>
+                <td className="px-3 py-2 text-xs">{cashBankTxnLabel(tm, r.transactionType)}</td>
                 <td className="px-3 py-2">
                   <div>{r.definition || '—'}</div>
                   {r.accountName ? <div className="text-xs opacity-60">{r.accountName}</div> : null}
                 </td>
                 <td className={`px-3 py-2 text-right font-semibold ${r.netAmount < 0 ? 'text-red-500' : 'text-emerald-600'}`}>
-                  {formatNumber(r.netAmount, 2, false)} {currency}
+                  {formatLedgerAmount(r.netAmount, currency)}
                 </td>
               </tr>
             ))}
@@ -644,7 +723,7 @@ export function PurchaseSummaryReport() {
   const { tm } = useLanguage();
   const { darkMode } = useTheme();
   const { selectedFirm, selectedDonem } = useFirmaDonem();
-  const currency = getReportingCurrency();
+  const currency = getFirmLedgerCurrency(selectedFirm, getAppDefaultCurrency() || getGlobalCurrency());
   const initial = defaultRange();
   const [startDate, setStartDate] = useState(initial.start);
   const [endDate, setEndDate] = useState(initial.end);
@@ -779,7 +858,7 @@ export function SupplierPurchaseReturnsReport() {
   const { tm } = useLanguage();
   const { darkMode } = useTheme();
   const { selectedFirm } = useFirmaDonem();
-  const currency = getReportingCurrency();
+  const currency = getFirmLedgerCurrency(selectedFirm, getAppDefaultCurrency() || getGlobalCurrency());
   const [dateRange, setDateRange] = useState<ReportDateRangeValue>(() => defaultReportDateRange('month'));
   const [rows, setRows] = useState<SupplierPurchaseReturnRow[]>([]);
   const [loading, setLoading] = useState(false);
@@ -984,7 +1063,7 @@ export function CollectionDueReport() {
   const { tm } = useLanguage();
   const { darkMode } = useTheme();
   const { selectedFirm } = useFirmaDonem();
-  const currency = getReportingCurrency();
+  const currency = getFirmLedgerCurrency(selectedFirm, getAppDefaultCurrency() || getGlobalCurrency());
   const [horizon, setHorizon] = useState(30);
   const [rows, setRows] = useState<CollectionDueRow[]>([]);
   const [loading, setLoading] = useState(false);
@@ -1139,7 +1218,7 @@ export function SalesReturnsReport() {
   const { tm } = useLanguage();
   const { darkMode } = useTheme();
   const { selectedFirm, selectedDonem } = useFirmaDonem();
-  const currency = getReportingCurrency();
+  const currency = getFirmLedgerCurrency(selectedFirm, getAppDefaultCurrency() || getGlobalCurrency());
   const initial = defaultRange();
   const [startDate, setStartDate] = useState(initial.start);
   const [endDate, setEndDate] = useState(initial.end);
@@ -1413,9 +1492,9 @@ export function CariExtractReport() {
   const { tm } = useLanguage();
   const { darkMode } = useTheme();
   const { selectedFirm, selectedDonem } = useFirmaDonem();
-  const currency =
-    (selectedFirm?.ana_para_birimi && String(selectedFirm.ana_para_birimi).trim()) ||
-    getGlobalCurrency();
+  const currency = getFirmLedgerCurrency(selectedFirm, getAppDefaultCurrency() || getGlobalCurrency());
+  const moneyDec = getCurrencyDecimalPlaces(currency);
+  const fmtAmt = (n: number) => formatMoneyAmount(n, { minFrac: moneyDec, maxFrac: moneyDec });
   const initial = defaultRange();
   const [startDate, setStartDate] = useState(initial.start);
   const [endDate, setEndDate] = useState(initial.end);
@@ -1488,7 +1567,14 @@ export function CariExtractReport() {
         exportCsv(
           'cari_ekstre',
           ['Tarih', 'Fiş', 'Açıklama', 'Borç', 'Alacak', 'Bakiye'],
-          rows.map((r) => [r.date, r.ficheNo, r.definition, String(r.debit), String(r.credit), String(r.balance)]),
+          rows.map((r) => [
+            r.date,
+            r.ficheNo,
+            resolveEkstreDescription(r.notes, r.ficheType, r.trcode ?? 0, r.isCancelled, tm),
+            String(r.debit),
+            String(r.credit),
+            String(r.balance),
+          ]),
         )
       }
       filters={
@@ -1512,7 +1598,7 @@ export function CariExtractReport() {
     >
       <div className={`rounded-lg border p-3 ${tableCls}`}>
         <p className="text-xs opacity-60">{tm('erpColBalance')}</p>
-        <p className="text-xl font-bold">{formatNumber(closing, 2, false)} {currency}</p>
+        <p className="text-xl font-bold">{formatLedgerAmount(closing, currency)}</p>
       </div>
       <div className={`overflow-auto rounded-lg border max-h-[520px] ${tableCls}`}>
         <table className="w-full min-w-[880px] text-sm">
@@ -1536,10 +1622,12 @@ export function CariExtractReport() {
               <tr key={r.id} className={darkMode ? 'border-t border-gray-700' : 'border-t border-gray-100'}>
                 <td className="px-3 py-2">{r.date}</td>
                 <td className="px-3 py-2 font-mono text-xs">{r.ficheNo}</td>
-                <td className="px-3 py-2">{r.definition || '—'}</td>
-                <td className="px-3 py-2 text-right">{r.debit ? formatNumber(r.debit, 2, false) : '—'}</td>
-                <td className="px-3 py-2 text-right">{r.credit ? formatNumber(r.credit, 2, false) : '—'}</td>
-                <td className="px-3 py-2 text-right font-semibold">{formatNumber(r.balance, 2, false)}</td>
+                <td className="px-3 py-2">
+                  {resolveEkstreDescription(r.notes, r.ficheType, r.trcode ?? 0, r.isCancelled, tm) || '—'}
+                </td>
+                <td className="px-3 py-2 text-right">{r.debit ? fmtAmt(r.debit) : '—'}</td>
+                <td className="px-3 py-2 text-right">{r.credit ? fmtAmt(r.credit) : '—'}</td>
+                <td className="px-3 py-2 text-right font-semibold">{fmtAmt(r.balance)}</td>
               </tr>
             ))}
           </tbody>
@@ -1553,7 +1641,7 @@ export function CriticalStockReport() {
   const { tm } = useLanguage();
   const { darkMode } = useTheme();
   const { selectedFirm } = useFirmaDonem();
-  const currency = getReportingCurrency();
+  const currency = getFirmLedgerCurrency(selectedFirm, getAppDefaultCurrency() || getGlobalCurrency());
   const [rows, setRows] = useState<CriticalStockRow[]>([]);
   const [loading, setLoading] = useState(false);
 
@@ -1653,7 +1741,7 @@ export function WarehouseStockReport() {
   const { tm } = useLanguage();
   const { darkMode } = useTheme();
   const { selectedFirm } = useFirmaDonem();
-  const currency = getReportingCurrency();
+  const currency = getFirmLedgerCurrency(selectedFirm, getAppDefaultCurrency() || getGlobalCurrency());
   const [rows, setRows] = useState<WarehouseStockRow[]>([]);
   const [loading, setLoading] = useState(false);
 

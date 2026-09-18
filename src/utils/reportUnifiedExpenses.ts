@@ -2,11 +2,16 @@
  * Günlük Rapor ile Aylık/Yıllık özet ortak gider birleşimi:
  * Gider Yönetimi satırları + kasa çıkışları (cari ödeme, maaş, avans…).
  * cash_line_id ile bağlı gider pusulaları çift sayılmaz.
+ * Aynı gün + aynı açıklama (ör. EYLUL KIRASI) kasa kardeş fişi de çift sayılmaz.
  */
 
 import type { Expense } from '../services/api/expenses';
 import type { KasaIslemi } from '../services/api/kasa';
 import { localCalendarDateKey, toSqlDateInputString } from './localCalendarDate';
+
+export function normalizeGiderAciklama(value: unknown): string {
+  return String(value || '').trim().replace(/\s+/g, ' ').toLocaleLowerCase('tr-TR');
+}
 
 /** Günlük Rapor `DAILY_CASH_OUT_TYPES` ile aynı küme */
 export const REPORT_CASH_OUT_TYPES = new Set([
@@ -45,6 +50,15 @@ export function mergeExpensesWithCashOuts(
       .map((e) => String(e.cash_line_id || '').trim())
       .filter(Boolean),
   );
+  const expenseDescKeys = new Set(
+    allExpenses
+      .map((e) => {
+        const day = String(e.expense_date || '').slice(0, 10);
+        const desc = normalizeGiderAciklama(e.description);
+        return day && desc ? `${day}|${desc}` : '';
+      })
+      .filter(Boolean),
+  );
 
   const unified: Expense[] = allExpenses.map((e) => ({ ...e }));
 
@@ -59,6 +73,11 @@ export function mergeExpensesWithCashOuts(
       localCalendarDateKey(cl.islem_tarihi) ||
       '';
     if (!day) continue;
+    // Gider pusulası veya aynı açıklamalı kasa çıkış kardeşi (450k düzenleme → 45k) çift sayılmaz.
+    if (type === 'GIDER_PUSULASI' || type === 'KASA_CIKIS') {
+      const descKey = `${day}|${normalizeGiderAciklama(cl.islem_aciklamasi || cl.cari_hesap_unvani)}`;
+      if (expenseDescKeys.has(descKey)) continue;
+    }
     unified.push({
       id: `cash-${cl.id || `${day}-${type}-${amt}`}`,
       category: reportCashOutCategory(type),

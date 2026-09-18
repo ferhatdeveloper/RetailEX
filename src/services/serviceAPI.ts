@@ -59,9 +59,14 @@ export interface Service {
 export type CreateServiceInput = Omit<Service, 'id' | 'created_at' | 'updated_at'>;
 export type UpdateServiceInput = Partial<CreateServiceInput>;
 
+function padServiceFirmNr(): string {
+    const d = String(ERP_SETTINGS.firmNr ?? '001').replace(/\D/g, '');
+    if (!d) return '001';
+    return d.length <= 3 ? d.padStart(3, '0') : d.slice(0, 10);
+}
+
 function tableName(): string {
-    const fn = String(ERP_SETTINGS.firmNr ?? '001').trim().padStart(3, '0').slice(0, 10);
-    return `rex_${fn}_services`;
+    return `rex_${padServiceFirmNr()}_services`;
 }
 
 function num(v: unknown, fallback = 0): number {
@@ -236,7 +241,7 @@ class ServiceAPI {
     async getAll(): Promise<Service[]> {
         const { rows } = await postgres.query(
             `SELECT * FROM ${tableName()} WHERE firm_nr = $1 ORDER BY created_at DESC`,
-            [ERP_SETTINGS.firmNr]
+            [padServiceFirmNr()]
         );
         return (rows as Record<string, unknown>[]).map(mapRow);
     }
@@ -244,7 +249,7 @@ class ServiceAPI {
     async getActive(): Promise<Service[]> {
         const { rows } = await postgres.query(
             `SELECT * FROM ${tableName()} WHERE firm_nr = $1 AND is_active = true ORDER BY name ASC`,
-            [ERP_SETTINGS.firmNr]
+            [padServiceFirmNr()]
         );
         return (rows as Record<string, unknown>[]).map(mapRow);
     }
@@ -252,7 +257,7 @@ class ServiceAPI {
     async getById(id: string): Promise<Service | null> {
         const { rows } = await postgres.query(
             `SELECT * FROM ${tableName()} WHERE id = $1 AND firm_nr = $2 LIMIT 1`,
-            [id, ERP_SETTINGS.firmNr]
+            [id, padServiceFirmNr()]
         );
         const r = rows[0] as Record<string, unknown> | undefined;
         return r ? mapRow(r) : null;
@@ -262,7 +267,7 @@ class ServiceAPI {
         if (!code?.trim()) return null;
         const { rows } = await postgres.query(
             `SELECT * FROM ${tableName()} WHERE firm_nr = $1 AND code = $2 LIMIT 1`,
-            [ERP_SETTINGS.firmNr, code.trim()]
+            [padServiceFirmNr(), code.trim()]
         );
         const r = rows[0] as Record<string, unknown> | undefined;
         return r ? mapRow(r) : null;
@@ -271,28 +276,39 @@ class ServiceAPI {
     /**
      * Sonraki hizmet kodu — sayısal 6 hane (000001, 000002, …).
      * Yalnızca tamamen sayısal kodlar dikkate alınır; yoksa 000001.
+     * Çakışmada (000001 doluysa) sıradaki boş pad'li kodu verir. Ürün barkodunu etkilemez.
      */
     async getNextCode(): Promise<string> {
         const { rows } = await postgres.query(
             `SELECT code FROM ${tableName()}
               WHERE firm_nr = $1
-                AND code ~ '^[0-9]+$'
-              ORDER BY LENGTH(code) DESC, code DESC
-              LIMIT 1`,
-            [ERP_SETTINGS.firmNr]
+                AND code ~ '^[0-9]+$'`,
+            [padServiceFirmNr()]
         );
-        const last = String((rows?.[0] as { code?: string } | undefined)?.code || '').trim();
-        if (!last) return '000001';
-        try {
-            const next = (BigInt(last) + 1n).toString().padStart(Math.max(6, last.length), '0');
-            return next;
-        } catch {
-            return '000001';
+        const used = new Set<string>();
+        let max = 0n;
+        for (const row of (rows || []) as { code?: string }[]) {
+            const raw = String(row?.code || '').trim();
+            if (!raw) continue;
+            try {
+                const n = BigInt(raw);
+                used.add(n.toString());
+                if (n > max) max = n;
+            } catch {
+                /* yoksay */
+            }
         }
+        let next = max + 1n;
+        if (next < 1n) next = 1n;
+        while (used.has(next.toString())) {
+            next += 1n;
+            if (next > 9999999n) break;
+        }
+        return next.toString().padStart(6, '0');
     }
 
     async create(service: CreateServiceInput): Promise<Service> {
-        const row = inputToDbRow(service as Record<string, unknown>, ERP_SETTINGS.firmNr);
+        const row = inputToDbRow(service as Record<string, unknown>, padServiceFirmNr());
         const entries = Object.entries(row).filter(([, v]) => v !== undefined);
         const cols = entries.map(([k]) => k);
         const placeholders = cols.map((_, i) => `$${i + 1}`).join(', ');
@@ -317,7 +333,7 @@ class ServiceAPI {
         const values = keys.map((k) => patch[k]);
         const { rows } = await postgres.query(
             `UPDATE ${tableName()} SET ${setClause} WHERE id = $${keys.length + 1} AND firm_nr = $${keys.length + 2} RETURNING *`,
-            [...values, id, ERP_SETTINGS.firmNr]
+            [...values, id, padServiceFirmNr()]
         );
         if (!rows[0]) throw new Error('Service not found');
         return mapRow(rows[0] as Record<string, unknown>);
@@ -326,7 +342,7 @@ class ServiceAPI {
     async delete(id: string): Promise<void> {
         await postgres.query(
             `DELETE FROM ${tableName()} WHERE id = $1 AND firm_nr = $2`,
-            [id, ERP_SETTINGS.firmNr]
+            [id, padServiceFirmNr()]
         );
     }
 
@@ -342,7 +358,7 @@ class ServiceAPI {
             `SELECT * FROM ${tableName()} WHERE firm_nr = $1
              AND (code ILIKE $2 OR name ILIKE $2 OR COALESCE(category,'') ILIKE $2)
              ORDER BY name ASC`,
-            [ERP_SETTINGS.firmNr, q]
+            [padServiceFirmNr(), q]
         );
         return (rows as Record<string, unknown>[]).map(mapRow);
     }
@@ -356,7 +372,7 @@ class ServiceAPI {
      */
     async getAllWithSaleStats(opts?: { periodNr?: string }): Promise<Service[]> {
         const periodNr = String(opts?.periodNr ?? ERP_SETTINGS.periodNr ?? '01').trim();
-        const params = [ERP_SETTINGS.firmNr, periodNr];
+        const params = [padServiceFirmNr(), periodNr];
         // sale_items otomatik rex_{firm}_{period}_sale_items'e çevrilir (MOVEMENT_TABLES)
         const buildSql = (itemTypeFilter: boolean) =>
             `SELECT s.*,
