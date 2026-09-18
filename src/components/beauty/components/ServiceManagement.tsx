@@ -125,6 +125,8 @@ export function ServiceManagement() {
     const [categoryModalName, setCategoryModalName] = useState('');
     const [categoryModalKey, setCategoryModalKey] = useState('');
     const [categoryModalSaving, setCategoryModalSaving] = useState(false);
+    /** Yeni kategori hangi alana yazılsın: hizmet formu ana/alt veya liste filtresi */
+    const [categoryCreateTarget, setCategoryCreateTarget] = useState<'parent' | 'sub' | 'filter'>('filter');
     const [reassignModalOpen, setReassignModalOpen] = useState(false);
     const [reassignFromKey, setReassignFromKey] = useState('');
     const [reassignTargetKey, setReassignTargetKey] = useState('');
@@ -208,7 +210,8 @@ export function ServiceManagement() {
         );
     };
 
-    const openCreateCategory = () => {
+    const openCreateCategory = (target: 'parent' | 'sub' | 'filter' = 'filter') => {
+        setCategoryCreateTarget(target);
         setCategoryModalMode('create');
         setCategoryModalName('');
         setCategoryModalKey('');
@@ -218,6 +221,7 @@ export function ServiceManagement() {
     const openEditCategory = (key: string) => {
         const k = String(key || '').trim();
         if (!k || k === 'all') return;
+        setCategoryCreateTarget('filter');
         setCategoryModalMode('edit');
         setCategoryModalKey(k);
         setCategoryModalName(categoryDisplayLabel(k, masterLabelByKey));
@@ -258,9 +262,19 @@ export function ServiceManagement() {
                     toast.error(tm('error') || 'Kategori oluşturulamadı');
                     throw new Error('create failed');
                 }
+                const createdKey = String(created.code || created.name || name).trim() || name;
                 await reloadBackofficeCategories();
-                setSelectedMain(created.code || name);
-                setSelectedSub('all');
+                if (categoryCreateTarget === 'parent') {
+                    setEditing(p => ({ ...p, parent_category: createdKey }));
+                } else if (categoryCreateTarget === 'sub') {
+                    setEditing(p => ({
+                        ...p,
+                        category: createdKey as BeautyService['category'],
+                    }));
+                } else {
+                    setSelectedMain(createdKey);
+                    setSelectedSub('all');
+                }
                 toast.success(tm('bCategorySaved'));
             } else {
                 const oldKey = categoryModalKey;
@@ -1055,6 +1069,14 @@ export function ServiceManagement() {
                                             placeholder="Candela"
                                         />
                                         <Space size={4} className="shrink-0">
+                                            <Tooltip title={tm('bNewCategory')}>
+                                                <Button
+                                                    type="dashed"
+                                                    icon={<PlusOutlined />}
+                                                    onClick={() => openCreateCategory('parent')}
+                                                    aria-label={tm('bNewCategory')}
+                                                />
+                                            </Tooltip>
                                             <Tooltip title={tm('bEditCategory')}>
                                                 <Button
                                                     type="default"
@@ -1118,6 +1140,14 @@ export function ServiceManagement() {
                                             placeholder="Lazer"
                                         />
                                         <Space size={4} className="shrink-0">
+                                            <Tooltip title={tm('bNewCategory')}>
+                                                <Button
+                                                    type="dashed"
+                                                    icon={<PlusOutlined />}
+                                                    onClick={() => openCreateCategory('sub')}
+                                                    aria-label={tm('bNewCategory')}
+                                                />
+                                            </Tooltip>
                                             <Tooltip title={tm('bEditCategory')}>
                                                 <Button
                                                     type="default"
