@@ -224,6 +224,25 @@ export function ServiceManagement() {
         setCategoryModalOpen(true);
     };
 
+    /** Açık hizmet formundaki ana/alt kategori alanlarını yeniden adlandırma / silme ile hizala */
+    const syncEditingCategoryKey = (from: string, to: string | null) => {
+        const fromKey = String(from || '').trim();
+        if (!fromKey) return;
+        setEditing(p => {
+            if (!p) return p;
+            const next = { ...p };
+            if (String(p.parent_category ?? '').trim() === fromKey) {
+                next.parent_category = to?.trim() ? to.trim() : undefined;
+            }
+            if (String(p.category ?? '').trim() === fromKey) {
+                next.category = (to?.trim()
+                    ? to.trim()
+                    : ServiceCategory.BEAUTY) as BeautyService['category'];
+            }
+            return next;
+        });
+    };
+
     const handleCategoryModalSave = async () => {
         const name = categoryModalName.trim();
         if (!name) {
@@ -268,6 +287,7 @@ export function ServiceManagement() {
                     );
                     await loadServices();
                 }
+                syncEditingCategoryKey(oldKey, name);
                 await reloadBackofficeCategories();
                 if (selectedMain === oldKey) setSelectedMain(name);
                 if (selectedSub === oldKey) setSelectedSub(name);
@@ -285,7 +305,7 @@ export function ServiceManagement() {
         }
     };
 
-    const finishDeleteCategoryKey = async (k: string) => {
+    const finishDeleteCategoryKey = async (k: string, replaceWith: string | null = null) => {
         const master = findMasterCategory(k);
         if (master?.id) {
             const ok = await categoryAPI.delete(master.id);
@@ -295,11 +315,12 @@ export function ServiceManagement() {
             }
         }
         await reloadBackofficeCategories();
+        syncEditingCategoryKey(k, replaceWith);
         if (selectedMain === k) {
-            setSelectedMain('all');
+            setSelectedMain(replaceWith?.trim() || 'all');
             setSelectedSub('all');
         }
-        if (selectedSub === k) setSelectedSub('all');
+        if (selectedSub === k) setSelectedSub(replaceWith?.trim() || 'all');
         toast.success(tm('bCategoryDeleted'));
         return true;
     };
@@ -340,7 +361,7 @@ export function ServiceManagement() {
                 );
                 await loadServices();
             }
-            const ok = await finishDeleteCategoryKey(from);
+            const ok = await finishDeleteCategoryKey(from, to);
             if (!ok) throw new Error('delete failed');
             setReassignModalOpen(false);
         } catch (e: unknown) {
@@ -1020,18 +1041,57 @@ export function ServiceManagement() {
                                             </Tooltip>
                                         </span>
                                     </RetailExFlatFieldLabel>
-                                    <Input
-                                        className="!rounded-2xl !px-4 !py-2.5"
-                                        list="beauty-service-main-cat-suggestions"
-                                        value={String(editing.parent_category ?? '')}
-                                        onChange={e =>
-                                            setEditing(p => ({
-                                                ...p,
-                                                parent_category: e.target.value.trim() ? e.target.value : undefined,
-                                            }))
-                                        }
-                                        placeholder="Candela"
-                                    />
+                                    <div className="flex items-center gap-2">
+                                        <Input
+                                            className="min-w-0 flex-1 !rounded-2xl !px-4 !py-2.5"
+                                            list="beauty-service-main-cat-suggestions"
+                                            value={String(editing.parent_category ?? '')}
+                                            onChange={e =>
+                                                setEditing(p => ({
+                                                    ...p,
+                                                    parent_category: e.target.value.trim() ? e.target.value : undefined,
+                                                }))
+                                            }
+                                            placeholder="Candela"
+                                        />
+                                        <Space size={4} className="shrink-0">
+                                            <Tooltip title={tm('bEditCategory')}>
+                                                <Button
+                                                    type="default"
+                                                    icon={<EditOutlined />}
+                                                    disabled={!String(editing.parent_category ?? '').trim()}
+                                                    onClick={() =>
+                                                        openEditCategory(String(editing.parent_category ?? ''))
+                                                    }
+                                                    aria-label={tm('bEditCategory')}
+                                                />
+                                            </Tooltip>
+                                            <Popconfirm
+                                                title={tm('bCategoryDeleteConfirm').replace(
+                                                    '{name}',
+                                                    categoryDisplayLabel(
+                                                        String(editing.parent_category ?? ''),
+                                                        masterLabelByKey,
+                                                    ),
+                                                )}
+                                                okText={tm('delete')}
+                                                cancelText={tm('cancel')}
+                                                disabled={!String(editing.parent_category ?? '').trim()}
+                                                onConfirm={() =>
+                                                    handleDeleteCategory(String(editing.parent_category ?? ''))
+                                                }
+                                            >
+                                                <Tooltip title={tm('bDeleteCategory')}>
+                                                    <Button
+                                                        danger
+                                                        icon={<DeleteOutlined />}
+                                                        disabled={!String(editing.parent_category ?? '').trim()}
+                                                        aria-label={tm('bDeleteCategory')}
+                                                    />
+                                                </Tooltip>
+                                            </Popconfirm>
+                                        </Space>
+                                    </div>
                                     <datalist id="beauty-service-main-cat-suggestions">
                                         {serviceMainKeys.map(k => (
                                             <option key={k} value={k} />
@@ -1042,20 +1102,57 @@ export function ServiceManagement() {
                                     <RetailExFlatFieldLabel useSentenceCase>
                                         {tm('bServiceSubCategoryFilter')}
                                     </RetailExFlatFieldLabel>
-                                    <Input
-                                        className="!rounded-2xl !px-4 !py-2.5"
-                                        list="beauty-service-sub-cat-suggestions"
-                                        value={String(editing.category ?? '')}
-                                        onChange={e =>
-                                            setEditing(p => ({
-                                                ...p,
-                                                category: (e.target.value.trim()
-                                                    ? e.target.value
-                                                    : ServiceCategory.BEAUTY) as BeautyService['category'],
-                                            }))
-                                        }
-                                        placeholder="Lazer"
-                                    />
+                                    <div className="flex items-center gap-2">
+                                        <Input
+                                            className="min-w-0 flex-1 !rounded-2xl !px-4 !py-2.5"
+                                            list="beauty-service-sub-cat-suggestions"
+                                            value={String(editing.category ?? '')}
+                                            onChange={e =>
+                                                setEditing(p => ({
+                                                    ...p,
+                                                    category: (e.target.value.trim()
+                                                        ? e.target.value
+                                                        : ServiceCategory.BEAUTY) as BeautyService['category'],
+                                                }))
+                                            }
+                                            placeholder="Lazer"
+                                        />
+                                        <Space size={4} className="shrink-0">
+                                            <Tooltip title={tm('bEditCategory')}>
+                                                <Button
+                                                    type="default"
+                                                    icon={<EditOutlined />}
+                                                    disabled={!String(editing.category ?? '').trim()}
+                                                    onClick={() => openEditCategory(String(editing.category ?? ''))}
+                                                    aria-label={tm('bEditCategory')}
+                                                />
+                                            </Tooltip>
+                                            <Popconfirm
+                                                title={tm('bCategoryDeleteConfirm').replace(
+                                                    '{name}',
+                                                    categoryDisplayLabel(
+                                                        String(editing.category ?? ''),
+                                                        masterLabelByKey,
+                                                    ),
+                                                )}
+                                                okText={tm('delete')}
+                                                cancelText={tm('cancel')}
+                                                disabled={!String(editing.category ?? '').trim()}
+                                                onConfirm={() =>
+                                                    handleDeleteCategory(String(editing.category ?? ''))
+                                                }
+                                            >
+                                                <Tooltip title={tm('bDeleteCategory')}>
+                                                    <Button
+                                                        danger
+                                                        icon={<DeleteOutlined />}
+                                                        disabled={!String(editing.category ?? '').trim()}
+                                                        aria-label={tm('bDeleteCategory')}
+                                                    />
+                                                </Tooltip>
+                                            </Popconfirm>
+                                        </Space>
+                                    </div>
                                     <datalist id="beauty-service-sub-cat-suggestions">
                                         {categories.map(c => (
                                             <option key={c.value} value={c.value}>
