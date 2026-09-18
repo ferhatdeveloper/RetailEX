@@ -9,6 +9,7 @@ import {
     type InOutTotalsRow,
     type StockInOutLine,
 } from '../utils/stockInOutTotals';
+import { resolveExtractSourceMeta } from '../utils/materialExtractLabels';
 
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
@@ -578,22 +579,26 @@ class StockMovementAPI {
             return 0;
         };
 
-        const mapRow = (r: any) => ({
-            ...r,
-            currency: r.currency,
-            currency_rate: parseFloat(r.currency_rate || 1),
-            gross_profit: computeGrossProfit(r),
-            movement: {
-                document_no: r.document_no,
-                movement_type: r.movement_type,
-                movement_date: r.movement_date,
-                status: r.status,
-                trcode: r.trcode,
-                fiche_type: r.fiche_type,
-                source_type: r.source_type,
-                warehouses: { name: r.warehouse_name }
-            }
-        });
+        const mapRow = (r: any) => {
+            const classified = resolveExtractSourceMeta(r);
+            const row = { ...r, source_type: classified.source_type, fiche_type: classified.fiche_type };
+            return {
+                ...row,
+                currency: row.currency,
+                currency_rate: parseFloat(row.currency_rate || 1),
+                gross_profit: computeGrossProfit(row),
+                movement: {
+                    document_no: row.document_no,
+                    movement_type: row.movement_type,
+                    movement_date: row.movement_date,
+                    status: row.status,
+                    trcode: row.trcode,
+                    fiche_type: classified.fiche_type,
+                    source_type: classified.source_type,
+                    warehouses: { name: row.warehouse_name }
+                }
+            };
+        };
 
         if (shouldUseTenantPostgrestApi()) {
             try {

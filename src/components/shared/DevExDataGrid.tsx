@@ -72,6 +72,41 @@ export interface DevExDataGridProps<T> {
   footerLabel?: ReactNode;
 }
 
+type GridColumnMeta = {
+  filterKind?: string;
+  format?: string;
+  align?: 'left' | 'right' | 'center';
+};
+
+function readGridColumnMeta(column: { columnDef: { meta?: unknown } }): GridColumnMeta {
+  return (column.columnDef.meta as GridColumnMeta | undefined) ?? {};
+}
+
+function resolveGridColumnAlign(
+  column: { id: string; columnDef: { meta?: unknown } },
+  isNumericFooter: boolean,
+): 'left' | 'right' | 'center' {
+  const meta = readGridColumnMeta(column);
+  if (meta.align === 'left' || meta.align === 'right' || meta.align === 'center') {
+    return meta.align;
+  }
+  if (meta.filterKind === 'number' || meta.format === 'number' || meta.format === 'currency') {
+    return 'right';
+  }
+  if (isNumericFooter) return 'right';
+  return 'left';
+}
+
+function gridColumnAlignClass(align: 'left' | 'right' | 'center'): string {
+  if (align === 'right') return 'text-right tabular-nums';
+  if (align === 'center') return 'text-center';
+  return 'text-left';
+}
+
+function gridColumnWidthStyle(size: number): { width: number; minWidth: number } {
+  return { width: size, minWidth: size };
+}
+
 interface FilterMenuProps {
   column: Column<any, unknown>;
   onClose: () => void;
@@ -997,6 +1032,8 @@ export function DevExDataGrid<T>({
     openFilterColumn != null ? filterColumnsRef.current.get(openFilterColumn) : undefined;
 
   // Desktop Table View
+  const visibleLeafColumns = table.getVisibleLeafColumns();
+  const tableMinWidth = visibleLeafColumns.reduce((acc, col) => acc + col.getSize(), 0);
   const leafColumnsForVisibility = table
     .getAllLeafColumns()
     .filter((col) => col.id !== 'select' && col.id !== 'actions' && col.getCanHide());
@@ -1079,15 +1116,23 @@ export function DevExDataGrid<T>({
 
       {/* Table Container */}
       <div className={`flex-1 overflow-auto border isolate ${darkMode ? 'border-gray-600 bg-gray-800' : 'border-gray-300 bg-white'}`}>
-        <table className="w-full border-collapse">
+        <table
+          className="border-collapse"
+          style={{ tableLayout: 'fixed', width: '100%', minWidth: tableMinWidth }}
+        >
+          <colgroup>
+            {visibleLeafColumns.map((col) => (
+              <col key={col.id} style={gridColumnWidthStyle(col.getSize())} />
+            ))}
+          </colgroup>
           <thead className={`sticky top-0 z-30 shadow-[0_1px_0_0_rgba(0,0,0,0.08)] ${headerBg}`}>
             {table.getHeaderGroups().map((headerGroup) => (
               <tr key={headerGroup.id} className={`border-b ${darkMode ? 'border-gray-600' : 'border-gray-300'} ${headerBg}`}>
                 {headerGroup.headers.map((header) => (
                   <th
                     key={header.id}
-                    className={`px-2 py-1 text-left border-r last:border-r-0 relative ${headerBg} ${darkMode ? 'text-gray-100 border-gray-600' : 'text-gray-800 border-gray-300'} ${density === 'comfortable' ? 'text-xs font-semibold py-1.5' : 'text-[10px] font-medium'}`}
-                    style={{ width: header.getSize() }}
+                    className={`px-2 py-1 text-left border-r last:border-r-0 relative box-border ${headerBg} ${darkMode ? 'text-gray-100 border-gray-600' : 'text-gray-800 border-gray-300'} ${density === 'comfortable' ? 'text-xs font-semibold py-1.5' : 'text-[10px] font-medium'}`}
+                    style={gridColumnWidthStyle(header.getSize())}
                   >
                     <div className="flex items-center justify-between gap-1">
                       {/* Header Text + Sort */}
@@ -1144,38 +1189,44 @@ export function DevExDataGrid<T>({
                 onContextMenu={(e) => onRowContextMenu?.(e, row.original)}
                 className={`border-b transition-colors cursor-pointer ${darkMode ? 'border-gray-700' : 'border-gray-200'} ${rowHover} ${idx % 2 === 0 ? rowStripeEven : rowStripeOdd} ${enableSelection && row.getIsSelected() ? (darkMode ? 'bg-blue-900/50' : 'bg-blue-100') : ''}`}
               >
-                {row.getVisibleCells().map((cell) => (
-                  <td
-                    key={cell.id}
-                    className={`px-2 py-1 border-r last:border-r-0 ${cellTextSize} ${cellWeight} ${cellColor} ${cellBorder}`}
-                  >
-                    {flexRender(cell.column.columnDef.cell, cell.getContext())}
-                  </td>
-                ))}
+                {row.getVisibleCells().map((cell) => {
+                  const align = resolveGridColumnAlign(cell.column, footerSumByColumnId.has(cell.column.id));
+                  return (
+                    <td
+                      key={cell.id}
+                      className={`px-2 py-1 border-r last:border-r-0 box-border overflow-hidden ${cellTextSize} ${cellWeight} ${cellColor} ${cellBorder} ${gridColumnAlignClass(align)}`}
+                      style={gridColumnWidthStyle(cell.column.getSize())}
+                    >
+                      {flexRender(cell.column.columnDef.cell, cell.getContext())}
+                    </td>
+                  );
+                })}
               </tr>
             ))}
-          </tbody>
-          {showFooterRow && (
-            <tfoot
-              className={`sticky bottom-0 border-t-2 ${
-                darkMode ? 'bg-gray-900 border-blue-500' : 'bg-blue-50 border-blue-300'
-              }`}
-              style={{ zIndex: GRID_CHROME_Z_INDEX }}
-            >
-              <tr>
-                {(() => {
-                  const visibleCols = table.getVisibleLeafColumns();
-                  const labelColId = visibleCols.find(
-                    (c) => c.id !== 'select' && c.id !== 'actions' && !footerSumByColumnId.has(c.id),
-                  )?.id;
-                  return visibleCols.map((col) => {
+            {showFooterRow && (() => {
+              const footerBg = darkMode ? 'bg-gray-900' : 'bg-blue-50';
+              const labelColId = visibleLeafColumns.find(
+                (c) => c.id !== 'select' && c.id !== 'actions' && !footerSumByColumnId.has(c.id),
+              )?.id;
+              return (
+                <tr
+                  className={`border-t-2 ${footerBg} ${
+                    darkMode ? 'border-blue-500' : 'border-blue-300'
+                  }`}
+                >
+                  {visibleLeafColumns.map((col) => {
                     const sumNode = footerSumByColumnId.get(col.id);
+                    const align = resolveGridColumnAlign(col, sumNode != null);
                     return (
                       <td
                         key={`footer-${col.id}`}
-                        className={`px-2 py-1.5 border-r last:border-r-0 ${cellTextSize} font-bold tabular-nums ${
+                        className={`sticky bottom-0 px-2 py-1.5 border-r last:border-r-0 box-border whitespace-nowrap ${cellTextSize} font-bold ${footerBg} ${gridColumnAlignClass(align)} ${
                           darkMode ? 'text-blue-200 border-gray-600' : 'text-blue-900 border-blue-200'
                         }`}
+                        style={{
+                          ...gridColumnWidthStyle(col.getSize()),
+                          zIndex: GRID_CHROME_Z_INDEX,
+                        }}
                       >
                         {sumNode != null ? (
                           sumNode
@@ -1189,11 +1240,11 @@ export function DevExDataGrid<T>({
                         ) : null}
                       </td>
                     );
-                  });
-                })()}
-              </tr>
-            </tfoot>
-          )}
+                  })}
+                </tr>
+              );
+            })()}
+          </tbody>
         </table>
 
         {/* No Data */}

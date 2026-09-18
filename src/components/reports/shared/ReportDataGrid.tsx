@@ -40,24 +40,32 @@ export type ReportGridColumn<T> = {
 
 /** Kolon başlığında huni filtresi üreten factory — Malzeme listesi ile aynı FilterMenu. */
 export function buildReportGridColumns<T>(cols: ReportGridColumn<T>[]): ColumnDef<T, unknown>[] {
-  return cols.map((c) => ({
-    id: c.id,
-    accessorFn: c.accessor ?? ((row: T) => (row as Record<string, unknown>)[c.id]),
-    header: c.header,
-    size: c.size,
-    enableColumnFilter: c.enableColumnFilter !== false,
-    filterFn: 'gridColumnFilter',
-    meta: c.filterKind ? { filterKind: c.filterKind, format: c.filterKind === 'date' ? 'date' : undefined } : undefined,
-    cell: (info) => {
-      const row = info.row.original as T;
-      const inner = c.cell ? c.cell(row) : (() => {
-        const v = info.getValue();
-        if (v == null || v === '') return '—';
-        return v as ReactNode;
-      })();
-      return <div className={alignClass(c.align)}>{inner}</div>;
-    },
-  }));
+  return cols.map((c) => {
+    const align = c.align ?? (c.filterKind === 'number' ? 'right' : undefined);
+    return {
+      id: c.id,
+      accessorFn: c.accessor ?? ((row: T) => (row as Record<string, unknown>)[c.id]),
+      header: c.header,
+      size: c.size,
+      enableColumnFilter: c.enableColumnFilter !== false,
+      filterFn: 'gridColumnFilter',
+      meta: {
+        ...(c.filterKind
+          ? { filterKind: c.filterKind, format: c.filterKind === 'date' ? 'date' : undefined }
+          : {}),
+        ...(align ? { align } : {}),
+      },
+      cell: (info) => {
+        const row = info.row.original as T;
+        const inner = c.cell ? c.cell(row) : (() => {
+          const v = info.getValue();
+          if (v == null || v === '') return '—';
+          return v as ReactNode;
+        })();
+        return <div className={alignClass(align)}>{inner}</div>;
+      },
+    };
+  });
 }
 
 export type ReportDataGridProps<T> = DevExDataGridProps<T>;

@@ -345,12 +345,13 @@ export function buildInvoiceListColumns(options: BuildInvoiceListColumnsOptions)
       columnHelper.display({
         id,
         header: tm(labelKey),
+        meta: { align: 'right', filterKind: 'number' },
         cell: ({ row }) => {
           const inv = row.original;
           const value = pick(inv);
           const cur = resolveListRowCurrency(inv);
           return (
-            <span className={`tabular-nums ${bold ? 'font-bold text-gray-900' : 'text-gray-800'}`}>
+            <span className={`tabular-nums text-right ${bold ? 'font-bold text-gray-900' : 'text-gray-800'}`}>
               {formatNumber(value, 2, true)} {cur}
             </span>
           );
