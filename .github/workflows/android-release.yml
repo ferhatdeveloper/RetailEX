@@ -45,7 +45,11 @@ jobs:
           java-version: 17
 
       - name: Setup Android SDK
-        uses: android-actions/setup-android@v3
+        # v3 default packages includes Google-removed `tools` → sdkmanager fail.
+        # v4.0.2+ defaults to platform-tools; cmdline-tools 22.0 (v4.0.4).
+        uses: android-actions/setup-android@v4
+        with:
+          packages: platform-tools
 
       - name: Read package version
         working-directory: .
