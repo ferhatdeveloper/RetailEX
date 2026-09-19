@@ -5,6 +5,7 @@ import {
   type DevExDataGridProps,
 } from '../../shared/DevExDataGrid';
 import { isReportSumColumnId } from '../../../utils/reportGridChrome';
+import { formatReportDateCell } from '../../../utils/dateLocale';
 
 /** Malzeme / Envanter Listesi ile aynı sayfa boyutu. */
 export const REPORT_GRID_PAGE_SIZE = 50;
@@ -63,6 +64,9 @@ export function buildReportGridColumns<T>(cols: ReportGridColumn<T>[]): ColumnDe
         const inner = c.cell ? c.cell(row) : (() => {
           const v = info.getValue();
           if (v == null || v === '') return '—';
+          if (c.filterKind === 'date') {
+            return formatReportDateCell(v as string | number | Date);
+          }
           return v as ReactNode;
         })();
         return <div className={alignClass(align)}>{inner}</div>;

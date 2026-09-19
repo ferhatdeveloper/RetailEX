@@ -5,6 +5,7 @@ import {
 import { beautyService } from '../../../services/beautyService';
 import { useLanguage } from '../../../contexts/LanguageContext';
 import { formatLocalYmd } from '../../../utils/dateLocal';
+import { formatReportDateCell } from '../../../utils/dateLocale';
 import type {
     BeautySurveyBreakdownRow,
     BeautySurveyCommentsReport,
@@ -454,13 +455,7 @@ export function SurveyCommentsReport(embed?: BeautySurveyReportEmbedProps) {
         void load();
     }, [load]);
 
-    const formatDateTime = (iso: string) => {
-        const d = new Date(iso);
-        if (Number.isNaN(d.getTime())) return iso.slice(0, 10);
-        return d.toLocaleString('tr-TR', {
-            day: '2-digit', month: '2-digit', year: 'numeric', hour: '2-digit', minute: '2-digit',
-        });
-    };
+    const formatDateTime = (iso: string) => formatReportDateCell(iso);
 
     return (
         <div className="p-6 space-y-6 bg-gray-50 min-h-full">

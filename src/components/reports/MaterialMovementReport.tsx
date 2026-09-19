@@ -4,6 +4,8 @@ import { formatNumber } from '../../utils/formatNumber';
 import { postgres } from '../../services/postgres';
 import { useLanguage } from '../../contexts/LanguageContext';
 import { displayItemCode } from '../../utils/lastPurchaseCostSql';
+import { formatReportDateCell } from '../../utils/dateLocale';
+import { ReportYmdDatePicker } from '../shared/ReportDateRangePresets';
 
 interface Movement {
   id: string;
@@ -62,7 +64,6 @@ function displayUnit(unit: string | undefined): string {
 
 export function MaterialMovementReport() {
   const { tm } = useLanguage();
-  const dateLocale = tm('localeCode');
   const [startDate, setStartDate] = useState('');
   const [endDate, setEndDate] = useState('');
   const [movementType, setMovementType] = useState<string>('all');
@@ -194,7 +195,7 @@ export function MaterialMovementReport() {
           const rawUnit = r.unit || 'Adet';
           return {
             id: r.id,
-            date: r.date ? new Date(r.date).toLocaleString(dateLocale) : '',
+            date: r.date ? formatReportDateCell(r.date) : '',
             productCode: displayItemCode(r.product_code),
             productName: r.product_name || '',
             type: dbTypeToUiType(dbTypeRow),
@@ -213,7 +214,7 @@ export function MaterialMovementReport() {
     } finally {
       setLoading(false);
     }
-  }, [startDate, endDate, movementType, selectedWarehouse, dateLocale]);
+  }, [startDate, endDate, movementType, selectedWarehouse]);
 
   useEffect(() => {
     loadMovements();
@@ -253,24 +254,14 @@ export function MaterialMovementReport() {
               <Calendar className="w-4 h-4 inline mr-1" />
               {tm('reportsPlStartDate')}
             </label>
-            <input
-              type="date"
-              value={startDate}
-              onChange={(e) => setStartDate(e.target.value)}
-              className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-indigo-500"
-            />
+            <ReportYmdDatePicker value={startDate} onChange={setStartDate} className="w-full" />
           </div>
           <div>
             <label className="block text-sm font-medium text-gray-700 mb-2">
               <Calendar className="w-4 h-4 inline mr-1" />
               {tm('reportsPlEndDate')}
             </label>
-            <input
-              type="date"
-              value={endDate}
-              onChange={(e) => setEndDate(e.target.value)}
-              className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-indigo-500"
-            />
+            <ReportYmdDatePicker value={endDate} onChange={setEndDate} className="w-full" />
           </div>
           <div>
             <label className="block text-sm font-medium text-gray-700 mb-2">

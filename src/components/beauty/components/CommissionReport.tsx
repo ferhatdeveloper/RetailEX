@@ -4,6 +4,8 @@ import { beautyService } from '../../../services/beautyService';
 import { useLanguage } from '../../../contexts/LanguageContext';
 import { formatMoneyAmount } from '../../../utils/formatMoney';
 import { formatLocalYmd } from '../../../utils/dateLocal';
+import { formatReportDateCell } from '../../../utils/dateLocale';
+import { ReportYmdDatePicker } from '../../shared/ReportDateRangePresets';
 
 const fmt = (n: number) => formatMoneyAmount(n, { minFrac: 0, maxFrac: 0 });
 
@@ -72,27 +74,11 @@ export function CommissionReport() {
                     <div className="flex items-end gap-2 flex-wrap">
                         <label className="flex flex-col gap-1">
                             <span className="text-[10px] font-bold text-gray-500 uppercase tracking-wider">{tm('date')}</span>
-                            <div className="flex items-center gap-2 border border-gray-200 rounded-xl px-3 py-2 bg-white">
-                                <CalendarDays size={14} className="text-emerald-600" />
-                                <input
-                                    type="date"
-                                    value={startYmd}
-                                    onChange={(e) => setStartYmd(e.target.value)}
-                                    className="text-xs font-bold text-gray-700 outline-none bg-transparent"
-                                />
-                            </div>
+                            <ReportYmdDatePicker value={startYmd} onChange={setStartYmd} className="min-w-[9.5rem]" />
                         </label>
                         <label className="flex flex-col gap-1">
                             <span className="text-[10px] font-bold text-gray-500 uppercase tracking-wider">{tm('bToDate')}</span>
-                            <div className="flex items-center gap-2 border border-gray-200 rounded-xl px-3 py-2 bg-white">
-                                <CalendarDays size={14} className="text-emerald-600" />
-                                <input
-                                    type="date"
-                                    value={endYmd}
-                                    onChange={(e) => setEndYmd(e.target.value)}
-                                    className="text-xs font-bold text-gray-700 outline-none bg-transparent"
-                                />
-                            </div>
+                            <ReportYmdDatePicker value={endYmd} onChange={setEndYmd} className="min-w-[9.5rem]" />
                         </label>
                         <button
                             type="button"
@@ -209,7 +195,7 @@ export function CommissionReport() {
                             <tbody className="divide-y divide-gray-100">
                                 {historyRows.map((r, idx) => (
                                     <tr key={`${r.date_ymd}-${r.specialist_id}-${idx}`} className="hover:bg-gray-50/50">
-                                        <td className="px-6 py-4 font-semibold text-gray-700">{r.date_ymd}</td>
+                                        <td className="px-6 py-4 font-semibold text-gray-700">{formatReportDateCell(r.date_ymd)}</td>
                                         <td className="px-6 py-4 font-bold text-gray-900">{r.name}</td>
                                         <td className="px-6 py-4 font-semibold text-purple-700">{fmt(r.service_commission)}</td>
                                         <td className="px-6 py-4 font-semibold text-emerald-700">{fmt(r.product_commission)}</td>

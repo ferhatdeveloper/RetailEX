@@ -1,4 +1,6 @@
 import React from 'react';
+import { DatePicker } from 'antd';
+import dayjs, { type Dayjs } from 'dayjs';
 import { Calendar, ChevronLeft, ChevronRight } from 'lucide-react';
 import { toSqlDateInputString } from '../../utils/localCalendarDate';
 import {
@@ -17,6 +19,9 @@ export interface ReportDateRangePresetsProps {
   showMonthNav?: boolean;
 }
 
+/** Rapor filtrelerinde sabit görünen tarih biçimi (gg.aa.yyyy). */
+export const REPORT_DATE_PICKER_FORMAT = 'DD.MM.YYYY';
+
 const PRESET_BUTTONS: Array<{ id: ReportDatePreset; labelKey: string }> = [
   { id: 'today', labelKey: 'bCallBoardToday' },
   { id: 'week', labelKey: 'bCallBoardWeek' },
@@ -33,6 +38,55 @@ function presetButtonClass(active: boolean): string {
   ].join(' ');
 }
 
+function ymdToDayjs(ymd: string): Dayjs | null {
+  if (!ymd || !/^\d{4}-\d{2}-\d{2}$/.test(ymd)) return null;
+  const d = dayjs(ymd);
+  return d.isValid() ? d : null;
+}
+
+function dayjsToYmd(value: Dayjs | null): string {
+  if (!value || !value.isValid()) return '';
+  return toSqlDateInputString(value.format('YYYY-MM-DD'));
+}
+
+/** Tek gün seçici — rapor filtrelerinde `DD.MM.YYYY` gösterir, değer `YYYY-MM-DD` tutar. */
+export function ReportYmdDatePicker({
+  value,
+  onChange,
+  allowClear = false,
+  min,
+  max,
+  className,
+  placeholder,
+}: {
+  value: string;
+  onChange: (ymd: string) => void;
+  allowClear?: boolean;
+  min?: string;
+  max?: string;
+  className?: string;
+  placeholder?: string;
+}) {
+  return (
+    <DatePicker
+      allowClear={allowClear}
+      format={REPORT_DATE_PICKER_FORMAT}
+      value={ymdToDayjs(value)}
+      minDate={min ? ymdToDayjs(min) ?? undefined : undefined}
+      maxDate={max ? ymdToDayjs(max) ?? undefined : undefined}
+      onChange={(picked: Dayjs | null) => {
+        if (!picked || !picked.isValid()) {
+          if (allowClear) onChange('');
+          return;
+        }
+        onChange(dayjsToYmd(picked));
+      }}
+      className={className ?? 'min-w-[9.5rem] w-full'}
+      placeholder={placeholder}
+    />
+  );
+}
+
 export function ReportDateRangePresets({
   value,
   onChange,
@@ -46,15 +100,13 @@ export function ReportDateRangePresets({
     onChange(buildReportDateRangeChange(preset, monthOffset, value.from, value.to));
   };
 
-  const handleFromChange = (raw: string) => {
-    const from = toSqlDateInputString(raw);
+  const handleFromChange = (from: string) => {
     if (!from) return;
     const to = from > value.to ? from : value.to;
     onChange(buildReportDateRangeChange('custom', 0, from, to));
   };
 
-  const handleToChange = (raw: string) => {
-    const to = toSqlDateInputString(raw);
+  const handleToChange = (to: string) => {
     if (!to) return;
     const from = to < value.from ? to : value.from;
     onChange(buildReportDateRangeChange('custom', 0, from, to));
@@ -119,24 +171,20 @@ export function ReportDateRangePresets({
         <div className="flex flex-wrap items-end gap-3">
           <label className="flex flex-col gap-1">
             <span className="text-xs font-semibold text-slate-500">{tm('dateFrom')}</span>
-            <input
-              type="date"
+            <ReportYmdDatePicker
+              value={value.from}
+              onChange={handleFromChange}
               min={min}
               max={max}
-              value={value.from}
-              onChange={(e) => handleFromChange(e.target.value)}
-              className="px-3 py-2 border border-slate-200 rounded-lg text-sm min-w-[9.5rem]"
             />
           </label>
           <label className="flex flex-col gap-1">
             <span className="text-xs font-semibold text-slate-500">{tm('dateTo')}</span>
-            <input
-              type="date"
+            <ReportYmdDatePicker
+              value={value.to}
+              onChange={handleToChange}
               min={min}
               max={max}
-              value={value.to}
-              onChange={(e) => handleToChange(e.target.value)}
-              className="px-3 py-2 border border-slate-200 rounded-lg text-sm min-w-[9.5rem]"
             />
           </label>
         </div>

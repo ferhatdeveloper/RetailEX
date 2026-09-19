@@ -17,11 +17,11 @@
 
 import React, { useMemo } from 'react';
 import { Select, Switch } from 'antd';
-import { RefreshCw, RotateCcw, Search, Calendar } from 'lucide-react';
+import { RefreshCw, RotateCcw, Search } from 'lucide-react';
 import { useLanguage } from '../../contexts/LanguageContext';
 import { useTheme } from '../../contexts/ThemeContext';
 import { cn } from '../ui/utils';
-import { ReportDateRangePresets } from './ReportDateRangePresets';
+import { ReportDateRangePresets, ReportYmdDatePicker } from './ReportDateRangePresets';
 import {
   buildReportDateRangeChange,
   defaultReportDateRange,
@@ -115,15 +115,11 @@ function FieldRenderer({ field, value, onChange, tm }: FieldRendererProps) {
     return (
       <label className={cn('flex flex-col gap-1', field.width ?? 'shrink-0')}>
         {labelEl}
-        <div className="flex items-center gap-2 border border-slate-200 rounded-xl px-3 py-2 bg-white">
-          <Calendar size={14} className="text-slate-400 shrink-0" />
-          <input
-            type="date"
-            value={(value as string) ?? ''}
-            onChange={(e) => onChange(field.key, e.target.value)}
-            className="text-xs font-bold text-slate-700 outline-none bg-transparent min-w-0"
-          />
-        </div>
+        <ReportYmdDatePicker
+          value={(value as string) ?? ''}
+          onChange={(ymd) => onChange(field.key, ymd)}
+          className="w-full min-w-[9.5rem]"
+        />
       </label>
     );
   }

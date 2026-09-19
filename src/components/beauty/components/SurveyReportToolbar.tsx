@@ -1,8 +1,9 @@
 import React from 'react';
-import { CalendarDays, RefreshCw } from 'lucide-react';
+import { RefreshCw } from 'lucide-react';
 import { useLanguage } from '../../../contexts/LanguageContext';
 import type { BeautySatisfactionSurvey } from '../../../types/beauty';
 import { cn } from '../../ui/utils';
+import { ReportYmdDatePicker } from '../../shared/ReportDateRangePresets';
 
 type SurveyReportToolbarProps = {
     titleKey: string;
@@ -60,27 +61,11 @@ export function SurveyReportToolbar({
                     <>
                         <label className="flex flex-col gap-1 shrink-0">
                             <span className="text-[10px] font-bold text-gray-500 uppercase tracking-wider">{tm('date')}</span>
-                            <div className="flex items-center gap-2 border border-gray-200 rounded-xl px-3 py-2 bg-white">
-                                <CalendarDays size={14} className="text-violet-600 shrink-0" />
-                                <input
-                                    type="date"
-                                    value={startYmd}
-                                    onChange={(e) => onStartChange(e.target.value)}
-                                    className="text-xs font-bold text-gray-700 outline-none bg-transparent min-w-0"
-                                />
-                            </div>
+                            <ReportYmdDatePicker value={startYmd} onChange={onStartChange} className="min-w-[9.5rem]" />
                         </label>
                         <label className="flex flex-col gap-1 shrink-0">
                             <span className="text-[10px] font-bold text-gray-500 uppercase tracking-wider">{tm('bToDate')}</span>
-                            <div className="flex items-center gap-2 border border-gray-200 rounded-xl px-3 py-2 bg-white">
-                                <CalendarDays size={14} className="text-violet-600 shrink-0" />
-                                <input
-                                    type="date"
-                                    value={endYmd}
-                                    onChange={(e) => onEndChange(e.target.value)}
-                                    className="text-xs font-bold text-gray-700 outline-none bg-transparent min-w-0"
-                                />
-                            </div>
+                            <ReportYmdDatePicker value={endYmd} onChange={onEndChange} className="min-w-[9.5rem]" />
                         </label>
                     </>
                 ) : null}
@@ -105,12 +90,12 @@ export function SurveyReportToolbar({
                     onClick={onRun}
                     disabled={loading}
                     className={cn(
-                        'h-10 px-5 rounded-xl text-white text-xs font-extrabold flex items-center gap-2 shrink-0 ml-auto',
+                        'h-10 px-4 rounded-xl text-white text-xs font-extrabold flex items-center gap-2 shrink-0',
                         buttonClassName,
                     )}
                 >
                     <RefreshCw size={14} className={loading ? 'animate-spin' : ''} />
-                    {loading ? tm('bLoading') : tm('bBookingModalOk')}
+                    {loading ? tm('bLoading') : tm('bRunReport')}
                 </button>
             </div>
         </div>

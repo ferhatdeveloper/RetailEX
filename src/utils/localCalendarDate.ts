@@ -83,7 +83,7 @@ export function toSqlDateInputString(raw: string | Date | number | undefined | n
     return '';
 }
 
-/** `YYYY-MM-DD` (veya parse edilebilir ham string) → Türkçe kısa tarih (dönem seçici vb.) */
+/** `YYYY-MM-DD` (veya parse edilebilir ham string) → `19.09.2026` */
 export function formatIsoDateTr(iso: string | undefined | null): string {
     const s = toSqlDateInputString(iso || '');
     if (!s) return (iso && String(iso).trim()) || '-';
@@ -92,5 +92,7 @@ export function formatIsoDateTr(iso: string | undefined | null): string {
     const m = parts[1];
     const d = parts[2];
     if (!y || !m || !d) return String(iso).trim() || '-';
-    return new Date(y, m - 1, d).toLocaleDateString('tr-TR');
+    const dd = String(d).padStart(2, '0');
+    const mm = String(m).padStart(2, '0');
+    return `${dd}.${mm}.${y}`;
 }

@@ -1,5 +1,5 @@
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
-import { Download, Loader2, PhoneMissed, RefreshCw, CalendarDays } from 'lucide-react';
+import { Download, Loader2, PhoneMissed, RefreshCw } from 'lucide-react';
 import { toast } from 'sonner';
 import { beautyService } from '../../../services/beautyService';
 import { useLanguage } from '../../../contexts/LanguageContext';
@@ -7,6 +7,8 @@ import { useTheme } from '../../../contexts/ThemeContext';
 import { usePermission } from '../../../shared/hooks/usePermission';
 import { formatLocalYmd } from '../../../utils/dateLocal';
 import { localTodayDateKey } from '../../../utils/localCalendarDate';
+import { formatReportDateCell } from '../../../utils/dateLocale';
+import { ReportYmdDatePicker } from '../../shared/ReportDateRangePresets';
 import type { BeautyFollowUpReminder } from '../../../types/beauty';
 import {
   filterOverdueUncalledFollowUps,
@@ -157,27 +159,11 @@ export function OverdueUncalledFollowUpReport() {
           <div className="flex flex-wrap items-end gap-2">
             <label className="flex flex-col gap-1">
               <span className={cn('text-[10px] font-bold uppercase tracking-wider', muted)}>{tm('date')}</span>
-              <div className={cn('flex items-center gap-2 border rounded-xl px-3 py-2', inputCls)}>
-                <CalendarDays size={14} className="text-rose-600 shrink-0" />
-                <input
-                  type="date"
-                  value={startYmd}
-                  onChange={(e) => setStartYmd(e.target.value)}
-                  className="text-xs font-bold outline-none bg-transparent min-w-0"
-                />
-              </div>
+              <ReportYmdDatePicker value={startYmd} onChange={setStartYmd} className="min-w-[9.5rem]" />
             </label>
             <label className="flex flex-col gap-1">
               <span className={cn('text-[10px] font-bold uppercase tracking-wider', muted)}>{tm('bToDate')}</span>
-              <div className={cn('flex items-center gap-2 border rounded-xl px-3 py-2', inputCls)}>
-                <CalendarDays size={14} className="text-rose-600 shrink-0" />
-                <input
-                  type="date"
-                  value={endYmd}
-                  onChange={(e) => setEndYmd(e.target.value)}
-                  className="text-xs font-bold outline-none bg-transparent min-w-0"
-                />
-              </div>
+              <ReportYmdDatePicker value={endYmd} onChange={setEndYmd} className="min-w-[9.5rem]" />
             </label>
             <button
               type="button"
@@ -261,7 +247,7 @@ export function OverdueUncalledFollowUpReport() {
                   const key = `${r.customer_id}|${r.service_id}|${r.product_id ?? ''}|${r.last_completed_date}|${r.due_date}|${r.reminder_kind ?? 'service'}`;
                   return (
                     <tr key={key} className={rowHover}>
-                      <td className="px-4 py-3 font-semibold tabular-nums">{r.due_date}</td>
+                      <td className="px-4 py-3 font-semibold tabular-nums">{formatReportDateCell(r.due_date)}</td>
                       <td className="px-4 py-3 font-black text-rose-600 tabular-nums">{days}</td>
                       <td className="px-4 py-3 font-bold">{r.customer_name || '—'}</td>
                       <td className="px-4 py-3 font-semibold tabular-nums">{r.customer_phone || '—'}</td>

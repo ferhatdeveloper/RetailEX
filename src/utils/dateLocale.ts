@@ -45,7 +45,7 @@ function calendarDate(input: DateInput): Date | null {
             const y = Number(iso[1]);
             const m = Number(iso[2]);
             const d = Number(iso[3]);
-            const time = trimmed.match(/T(\d{2}):(\d{2})(?::(\d{2}))?/);
+            const time = trimmed.match(/[T\s](\d{2}):(\d{2})(?::(\d{2}))?/);
             if (time && !trimmed.endsWith('Z') && !/[+-]\d{2}:\d{2}$/.test(trimmed)) {
                 return new Date(y, m - 1, d, Number(time[1]), Number(time[2]), Number(time[3] || 0));
             }
@@ -218,8 +218,42 @@ export function formatDateTimeShort(
 ): string {
     const d = calendarDate(date);
     if (!d) return opts.fallback ?? FALLBACK_DEFAULT;
-    const timed = typeof date === 'string' && /T\d{2}:/.test(date) ? safeDate(date) ?? d : d;
+    const timed = typeof date === 'string' && /[T\s]\d{2}:/.test(date) ? safeDate(date) ?? d : d;
     return `${formatDotDate(timed)} ${pad2(timed.getHours())}:${pad2(timed.getMinutes())}`;
+}
+
+function normalizeHm(time: string | null | undefined): string {
+    if (!time) return '';
+    const m = String(time).trim().match(/^(\d{1,2}):(\d{2})/);
+    if (!m) return '';
+    return `${pad2(Number(m[1]))}:${m[2]}`;
+}
+
+/**
+ * Rapor ızgara / tablo hücreleri — her zaman `19.09.2026`.
+ * Ayrı saat alanı varsa `19.09.2026 - 21:25`; ISO datetime ise `formatDateTimeShort`.
+ */
+export function formatReportDateCell(
+    date: DateInput,
+    time?: string | null,
+    opts: FormatOptions = {},
+): string {
+    const fallback = opts.fallback ?? FALLBACK_DEFAULT;
+    if (date === null || date === undefined || date === '') return fallback;
+
+    const timePart = normalizeHm(time);
+
+    if (typeof date === 'string') {
+        const trimmed = date.trim();
+        // Ham ISO / SQL timestamp → tarih+saat
+        if (/^\d{4}-\d{2}-\d{2}[T\s]\d{2}:\d{2}/.test(trimmed) && !timePart) {
+            return formatDateTimeShort(trimmed, undefined, opts);
+        }
+    }
+
+    const day = formatShortDate(date, undefined, { fallback: '' });
+    if (!day) return fallback;
+    return timePart ? `${day} - ${timePart}` : day;
 }
 
 /**

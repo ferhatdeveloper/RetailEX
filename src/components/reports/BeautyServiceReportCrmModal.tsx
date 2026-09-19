@@ -17,6 +17,7 @@ import type {
 } from '../../types/beauty';
 import { useBeautyStore } from '../beauty/store/useBeautyStore';
 import { beautyAppointmentDateKey } from '../../utils/dateLocal';
+import { formatReportDateCell } from '../../utils/dateLocale';
 
 function appointmentTimeHHmm(apt: BeautyAppointment): string {
   const raw = String(apt.appointment_time ?? apt.time ?? '').trim();
@@ -453,7 +454,7 @@ export function BeautyServiceReportCrmModal({
                           const note = typeof p.note === 'string' ? p.note : '';
                           return (
                             <div key={row.id} className="border-b border-slate-100 pb-2 last:border-0">
-                              <div className="text-xs text-slate-400">{new Date(row.created_at).toLocaleString('tr-TR')}</div>
+                              <div className="text-xs text-slate-400">{formatReportDateCell(row.created_at)}</div>
                               <div className="font-medium text-slate-800">{label}</div>
                               {note ? <div className="text-slate-600">{note}</div> : null}
                             </div>

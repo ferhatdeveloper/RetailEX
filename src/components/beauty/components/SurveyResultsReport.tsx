@@ -3,6 +3,7 @@ import { ChevronDown, ChevronRight, ClipboardList, Star, ThumbsUp, Users } from 
 import { beautyService } from '../../../services/beautyService';
 import { useLanguage } from '../../../contexts/LanguageContext';
 import { formatLocalYmd } from '../../../utils/dateLocal';
+import { formatReportDateCell } from '../../../utils/dateLocale';
 import type { BeautySurveyResponseRow, BeautySurveyResultsReport } from '../../../types/beauty';
 import { SurveyReportToolbar } from './SurveyReportToolbar';
 import type { BeautySurveyReportEmbedProps } from './SurveyExtraReports';
@@ -82,18 +83,7 @@ export function SurveyResultsReport(embed?: BeautySurveyReportEmbedProps) {
     const questionStats = data?.question_stats ?? [];
     const responses = data?.responses ?? [];
 
-    const formatDateTime = (iso: string) => {
-        if (!iso) return '—';
-        const d = new Date(iso);
-        if (Number.isNaN(d.getTime())) return iso.slice(0, 10);
-        return d.toLocaleString('tr-TR', {
-            day: '2-digit',
-            month: '2-digit',
-            year: 'numeric',
-            hour: '2-digit',
-            minute: '2-digit',
-        });
-    };
+    const formatDateTime = (iso: string) => formatReportDateCell(iso);
 
     const ratingDistribution = useMemo(() => {
         const buckets = [0, 0, 0, 0, 0];

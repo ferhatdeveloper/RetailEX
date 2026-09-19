@@ -7,6 +7,8 @@ import { formatNumber } from '../../utils/formatNumber';
 import { isReturnSale } from '../../utils/posZReport';
 import { useLanguage } from '../../contexts/LanguageContext';
 import { localCalendarDateKey, localTodayDateKey } from '../../utils/localCalendarDate';
+import { formatReportDateCell } from '../../utils/dateLocale';
+import { ReportYmdDatePicker } from '../shared/ReportDateRangePresets';
 import { ReportColumnTable } from './shared/ReportDataGrid';
 
 interface CustomerSalesReportProps {
@@ -33,7 +35,6 @@ function matchesSearchBlob(term: string, fields: Array<string | undefined | null
 
 export function CustomerSalesReport({ sales, customers }: CustomerSalesReportProps) {
   const { tm } = useLanguage();
-  const dateLocale = tm('localeCode');
   const [dateRange, setDateRange] = useState(() => {
     const end = localTodayDateKey();
     const startDate = new Date();
@@ -177,17 +178,15 @@ export function CustomerSalesReport({ sales, customers }: CustomerSalesReportPro
               className="w-64"
               style={{ width: 260 }}
             />
-            <input
-              type="date"
+            <ReportYmdDatePicker
               value={dateRange.start}
-              onChange={(e) => setDateRange({ ...dateRange, start: e.target.value })}
-              className="px-3 py-2 border rounded-lg text-sm"
+              onChange={(start) => setDateRange({ ...dateRange, start })}
+              className="min-w-[9.5rem]"
             />
-            <input
-              type="date"
+            <ReportYmdDatePicker
               value={dateRange.end}
-              onChange={(e) => setDateRange({ ...dateRange, end: e.target.value })}
-              className="px-3 py-2 border rounded-lg text-sm"
+              onChange={(end) => setDateRange({ ...dateRange, end })}
+              className="min-w-[9.5rem]"
             />
           </div>
         </div>
@@ -260,7 +259,7 @@ export function CustomerSalesReport({ sales, customers }: CustomerSalesReportPro
                 header: tm('rptCustLastSale'),
                 type: 'date',
                 size: 140,
-                cell: (row) => new Date(row.lastSaleDate).toLocaleDateString(dateLocale),
+                cell: (row) => formatReportDateCell(row.lastSaleDate),
               },
             ]}
           />

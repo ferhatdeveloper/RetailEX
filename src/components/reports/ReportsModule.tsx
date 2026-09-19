@@ -38,6 +38,7 @@ import { mergeExpensesWithCashOuts } from '../../utils/reportUnifiedExpenses';
 import type { BeautyAppointment, BeautySale, BeautyStaffTreatmentReport } from '../../types/beauty';
 import { beautyServiceMainKey, beautyServiceSubKey } from '../beauty/beautyServiceCategoryUtils';
 import { localCalendarDateKey, localTodayDateKey, formatIsoDateTr } from '../../utils/localCalendarDate';
+import { formatDateTimeShort, formatReportDateCell, formatShortDate } from '../../utils/dateLocale';
 import { type ReportDatePreset, type ReportDateRangeValue } from '../../utils/reportDatePresets';
 import { ReportDateRangePresets } from '../shared/ReportDateRangePresets';
 import { buildErpServiceBreakdownGroups, type ErpServiceBreakdownLine } from '../../utils/serviceBreakdownReport';
@@ -324,13 +325,7 @@ function formatRestReportDateTime(value: unknown): string {
   const t = d.getTime();
   if (!Number.isFinite(t) || t <= 0) return '—';
   if (t < 86400000) return '—';
-  return d.toLocaleString('tr-TR', {
-    day: '2-digit',
-    month: '2-digit',
-    year: 'numeric',
-    hour: '2-digit',
-    minute: '2-digit',
-  });
+  return formatDateTimeShort(d);
 }
 
 type AnalysisReportKind =
@@ -7283,7 +7278,7 @@ export function ReportsModule({
                                       <div className="flex items-center gap-2">
                                         <Calendar className="w-4 h-4 text-gray-400" />
                                         <span className="text-sm">
-                                          {new Date(product.expiry_date).toLocaleDateString(tm('localeCode'))}
+                                          {formatShortDate(product.expiry_date)}
                                         </span>
                                       </div>
                                     </td>
@@ -8031,18 +8026,18 @@ export function ReportsModule({
                                     values={rpt.values}
                                     onFilterChange={rpt.setFilter}
                                     onClear={rpt.clearAll}>
-                                  <tr className="bg-slate-300 border-b border-slate-400 text-left text-[14px] uppercase tracking-wide text-slate-950">
-                                    <th className="px-4 py-3 font-black">{tm('date')}</th>
-                                    <th className="px-4 py-3 font-black">{tm('customer')}</th>
+                                  <tr className="bg-slate-300 border-b border-slate-400 text-[14px] uppercase tracking-wide text-slate-950">
+                                    <th className="px-4 py-3 font-black text-left">{tm('date')}</th>
+                                    <th className="px-4 py-3 font-black text-left">{tm('customer')}</th>
                                     {isErpServiceBreakdown ? (
                                       <>
-                                        <th className="px-4 py-3 font-black">{tm('cashier')}</th>
-                                        <th className="px-4 py-3 font-black">{tm('reportsThOrderNo')}</th>
+                                        <th className="px-4 py-3 font-black text-left">{tm('cashier')}</th>
+                                        <th className="px-4 py-3 font-black text-left">{tm('reportsThOrderNo')}</th>
                                       </>
                                     ) : (
                                       <>
-                                        <th className="px-4 py-3 font-black">{tm('bStaffView')}</th>
-                                        <th className="px-4 py-3 font-black">{tm('bDeviceView')}</th>
+                                        <th className="px-4 py-3 font-black text-left">{tm('bStaffView')}</th>
+                                        <th className="px-4 py-3 font-black text-left">{tm('bDeviceView')}</th>
                                       </>
                                     )}
                                     <th className="px-4 py-3 font-black text-right">{tm('amount')}</th>
@@ -8076,12 +8071,12 @@ export function ReportsModule({
                                       const a = row as ErpServiceBreakdownLine;
                                       return (
                                         <tr key={a.id} className="hover:bg-slate-50/90">
-                                          <td className="px-4 py-3 tabular-nums text-slate-900 whitespace-nowrap font-medium">
-                                            {a.date}
+                                          <td className="px-4 py-3 text-left tabular-nums text-slate-900 whitespace-nowrap font-medium">
+                                            {formatReportDateCell(a.date)}
                                           </td>
-                                          <td className="px-4 py-3 text-slate-900 font-medium">{a.customerName}</td>
-                                          <td className="px-4 py-3 text-slate-900 font-medium">{a.staffName}</td>
-                                          <td className="px-4 py-3 text-slate-900 font-medium">{a.receiptNumber}</td>
+                                          <td className="px-4 py-3 text-left text-slate-900 font-medium">{a.customerName}</td>
+                                          <td className="px-4 py-3 text-left text-slate-900 font-medium">{a.staffName}</td>
+                                          <td className="px-4 py-3 text-left text-slate-900 font-medium">{a.receiptNumber}</td>
                                           <td className="px-4 py-3 text-right tabular-nums font-semibold text-slate-950">
                                             {formatLedgerAmount(a.amount, reportCurrency)}
                                           </td>
@@ -8103,19 +8098,19 @@ export function ReportsModule({
                                         }}
                                         className="cursor-pointer hover:bg-pink-50/90"
                                       >
-                                        <td className="px-4 py-3 tabular-nums text-slate-900 whitespace-nowrap font-medium">
-                                          {String(a.date ?? a.appointment_date ?? '—')}
-                                          {a.time || a.appointment_time
-                                            ? ` · ${String(a.time ?? a.appointment_time).slice(0, 5)}`
-                                            : ''}
+                                        <td className="px-4 py-3 text-left tabular-nums text-slate-900 whitespace-nowrap font-medium">
+                                          {formatReportDateCell(
+                                            a.date ?? a.appointment_date,
+                                            a.time ?? a.appointment_time,
+                                          )}
                                         </td>
-                                        <td className="px-4 py-3 text-slate-900 font-medium">
+                                        <td className="px-4 py-3 text-left text-slate-900 font-medium">
                                           {String(a.customer_name ?? '').trim() || '—'}
                                         </td>
-                                        <td className="px-4 py-3 text-slate-900 font-medium">
+                                        <td className="px-4 py-3 text-left text-slate-900 font-medium">
                                           {String(a.specialist_name ?? a.staff_name ?? '').trim() || '—'}
                                         </td>
-                                        <td className="px-4 py-3 text-slate-900 font-medium">
+                                        <td className="px-4 py-3 text-left text-slate-900 font-medium">
                                           {String(a.device_name ?? '').trim() || '—'}
                                         </td>
                                         <td className="px-4 py-3 text-right tabular-nums font-semibold text-slate-950">
@@ -8276,8 +8271,7 @@ export function ReportsModule({
                                             className={canOpenCrm ? 'cursor-pointer hover:bg-pink-50/90' : undefined}
                                           >
                                             <td className="px-4 py-2 tabular-nums text-slate-900 whitespace-nowrap">
-                                              {row.appointmentDate}
-                                              {row.appointmentTime ? ` · ${row.appointmentTime}` : ''}
+                                              {formatReportDateCell(row.appointmentDate, row.appointmentTime)}
                                             </td>
                                             <td className="px-4 py-2 text-slate-900">{row.customerName}</td>
                                             <td className="px-4 py-2 text-right tabular-nums font-semibold">
@@ -8351,8 +8345,7 @@ export function ReportsModule({
                                         className={canOpenCrm ? 'cursor-pointer hover:bg-pink-50/90' : undefined}
                                       >
                                         <td className="px-4 py-3 tabular-nums text-slate-900 whitespace-nowrap font-medium">
-                                          {row.appointmentDate}
-                                          {row.appointmentTime ? ` · ${row.appointmentTime}` : ''}
+                                          {formatReportDateCell(row.appointmentDate, row.appointmentTime)}
                                         </td>
                                         <td className="px-4 py-3 text-slate-900 font-medium">{row.customerName}</td>
                                         <td className="px-4 py-3 text-slate-900 font-medium">{row.productName}</td>
@@ -8451,10 +8444,10 @@ export function ReportsModule({
                                     className="cursor-pointer hover:bg-red-50/80"
                                   >
                                     <td className="px-4 py-3 tabular-nums text-slate-900 whitespace-nowrap font-medium">
-                                      {String(a.date ?? a.appointment_date ?? '—')}
-                                      {a.time || a.appointment_time
-                                        ? ` · ${String(a.time ?? a.appointment_time).slice(0, 5)}`
-                                        : ''}
+                                      {formatReportDateCell(
+                                        a.date ?? a.appointment_date,
+                                        a.time ?? a.appointment_time,
+                                      )}
                                     </td>
                                     <td className="px-4 py-3 text-slate-900 font-medium">
                                       {String(a.customer_name ?? '').trim() || '—'}
@@ -8521,7 +8514,7 @@ export function ReportsModule({
                               return (
                                 <tr key={s.id} className="hover:bg-red-50/70">
                                   <td className="px-4 py-3 tabular-nums text-slate-900 whitespace-nowrap font-medium">
-                                    {String(s.created_at ?? '').replace('T', ' ').slice(0, 16)}
+                                    {formatReportDateCell(s.created_at)}
                                   </td>
                                   <td className="px-4 py-3 text-slate-900 font-medium">
                                     {String(s.customer_name ?? '').trim() || '—'}

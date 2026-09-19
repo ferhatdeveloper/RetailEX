@@ -2,6 +2,7 @@ import React from 'react';
 import { Select, Button } from 'antd';
 import { FilterOutlined, ClearOutlined } from '@ant-design/icons';
 import { useLanguage } from '../../../contexts/LanguageContext';
+import { ReportYmdDatePicker } from '../../shared/ReportDateRangePresets';
 
 export type ReportFilterType = 'date-start' | 'date-end' | 'select';
 
@@ -79,11 +80,12 @@ export const ReportFilterBar: React.FC<ReportFilterBarProps> = ({
           if (item.type === 'date-start' || item.type === 'date-end') {
             return (
               <ItemWrapper key={item.key} item={item}>
-                <input
-                  type="date"
-                  value={item.value ?? ''}
-                  onChange={(e) => item.onChange(e.target.value)}
-                  className="w-full px-3 py-2 border border-slate-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-400 focus:border-blue-400"
+                <ReportYmdDatePicker
+                  allowClear
+                  value={typeof item.value === 'string' ? item.value : ''}
+                  onChange={(ymd) => item.onChange(ymd)}
+                  placeholder={item.placeholder ?? item.label}
+                  className="w-full"
                 />
               </ItemWrapper>
             );
