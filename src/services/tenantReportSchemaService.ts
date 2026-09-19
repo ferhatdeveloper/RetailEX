@@ -1,6 +1,6 @@
 /**
- * Bağlı kiracı (merkez_tenant_code) + seçili firma için DB tablo/kolon keşfi.
- * Sorgular mevcut postgres bağlantısı üzerinden gider (zaten kiracı DB’sine bağlı).
+ * Bağlı sunucu + seçili firma için DB tablo/kolon keşfi.
+ * Sorgular mevcut postgres bağlantısı üzerinden gider.
  */
 
 import {
@@ -94,7 +94,7 @@ function classifyTable(tableName: string, firm: string, period: string): {
 }
 
 /**
- * Seçili firma için kiracı DB tabloları + kolonları.
+ * Seçili firma için DB tabloları + kolonları.
  * Öncelik: rex_{firm}_* ve rex_{firm}_{period}_* ; şemalar: public, beauty, rest, wms, pos, logic
  */
 export async function discoverTenantReportSchema(opts?: {

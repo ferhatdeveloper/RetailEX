@@ -154,4 +154,5 @@ Restoran sohbetinde eklenen tek yeni tablo: **rest.return_log**. Diğer özellik
 - `153_system_settings_report_menu_params.sql` — `system_settings.report_menu_params` (JSONB); güzellik anket/aranmayanlar + sanal santral (`virtual-pbx-caller-id`) + fiyat değişimi (`stock-price-change-slips`) + malzeme listesi satış/alış dip toplamı (`product-list-sales-purchase-totals`); varsayılan kapalı.
 - `154_report_menu_params_daily_supplier_payments.sql` — `report_menu_params` içine `daily-report-supplier-payments: true` (yoksa ekler); günlük rapor tedarikçi ödemeleri varsayılan açık.
 - `155_report_menu_params_kpi_cards.sql` — günlük (`daily-report-card-*`) ve dönem özeti (`period-summary-card-*`) KPI kart anahtarları; varsayılan açık (yoksa ekler).
+- `156_custom_saved_reports.sql` — `custom_saved_reports` (UUID, firm_nr, name, sql_text); Rapor Oluşturucu kayıtlı SELECT’ler.
 

@@ -2,6 +2,7 @@ import { useCallback, useEffect, useMemo, useState } from 'react';
 import {
   Activity,
   BarChart3,
+  Bookmark,
   ChevronDown,
   ChevronRight,
   Database,
@@ -10,9 +11,11 @@ import {
   Loader2,
   Play,
   RefreshCw,
+  Save,
   Search,
   Sparkles,
   Table2,
+  Trash2,
 } from 'lucide-react';
 import { useTheme } from '../../contexts/ThemeContext';
 import { useLanguage } from '../../contexts/LanguageContext';
@@ -32,8 +35,14 @@ import {
   type TenantSchemaContext,
   type TenantSchemaTable,
 } from '../../services/tenantReportSchemaService';
+import {
+  deleteSavedCustomReport,
+  listSavedCustomReports,
+  saveCustomReport,
+  type SavedCustomReport,
+} from '../../services/savedCustomReportService';
 
-type MainTab = 'tenant' | 'grafana';
+type MainTab = 'data' | 'grafana';
 
 function reportTitle(r: GrafanaReadyReport, lang: string): string {
   return lang === 'en' ? r.titleEn : r.titleTr;
@@ -59,7 +68,7 @@ function kindLabel(kind: TenantSchemaTable['kind'], lang: string): string {
 
 /**
  * Raporlar & Analiz → Rapor Oluşturucu
- * Kiracı koduna göre DB tablo/alan keşfi + hazır Grafana panoları.
+ * Firma tabloları + kayıtlı raporlar + hazır Grafana panoları.
  */
 export function GrafanaReportBuilderModule() {
   const { darkMode } = useTheme();
@@ -67,7 +76,7 @@ export function GrafanaReportBuilderModule() {
   const { selectedFirm, selectedPeriod } = useFirmaDonem();
   const lang = language || 'tr';
 
-  const [mainTab, setMainTab] = useState<MainTab>('tenant');
+  const [mainTab, setMainTab] = useState<MainTab>('data');
   const [grafanaId, setGrafanaId] = useState(
     () => GRAFANA_READY_REPORTS.find((r) => !r.isBuilder)?.id || GRAFANA_READY_REPORTS[0].id
   );
@@ -86,6 +95,12 @@ export function GrafanaReportBuilderModule() {
   const [resultRows, setResultRows] = useState<Record<string, unknown>[]>([]);
   const [resultCols, setResultCols] = useState<string[]>([]);
 
+  const [savedReports, setSavedReports] = useState<SavedCustomReport[]>([]);
+  const [activeSavedId, setActiveSavedId] = useState<string | null>(null);
+  const [reportName, setReportName] = useState('');
+  const [saving, setSaving] = useState(false);
+  const [saveMsg, setSaveMsg] = useState<string | null>(null);
+
   const shell = darkMode ? 'bg-gray-900 text-gray-100' : 'bg-gray-50 text-gray-900';
   const card = darkMode ? 'bg-gray-800 border-gray-700' : 'bg-white border-gray-200';
   const muted = darkMode ? 'text-gray-400' : 'text-gray-500';
@@ -95,6 +110,15 @@ export function GrafanaReportBuilderModule() {
   const inputCls = darkMode
     ? 'bg-gray-900 border-gray-600 text-gray-100 placeholder:text-gray-500'
     : 'bg-white border-gray-200 text-gray-900 placeholder:text-gray-400';
+
+  const loadSaved = useCallback(async () => {
+    try {
+      const list = await listSavedCustomReports();
+      setSavedReports(list);
+    } catch {
+      setSavedReports([]);
+    }
+  }, []);
 
   const loadSchema = useCallback(async (q?: string) => {
     setLoadingSchema(true);
@@ -124,7 +148,8 @@ export function GrafanaReportBuilderModule() {
 
   useEffect(() => {
     void loadSchema(search);
-  }, [selectedFirm?.firm_nr, selectedPeriod?.nr, loadSchema]);
+    void loadSaved();
+  }, [selectedFirm?.firm_nr, selectedPeriod?.nr, loadSchema, loadSaved]);
 
   useEffect(() => {
     const t = window.setTimeout(() => {
@@ -146,6 +171,7 @@ export function GrafanaReportBuilderModule() {
     setSelectedColumns(cols);
     setSql(buildSelectSql(table, cols));
     setRunError(null);
+    setActiveSavedId(null);
   };
 
   const toggleColumnOnTable = (table: TenantSchemaTable, col: string) => {
@@ -172,6 +198,48 @@ export function GrafanaReportBuilderModule() {
       setResultCols([]);
     } finally {
       setRunning(false);
+    }
+  };
+
+  const handleSave = async () => {
+    const name = reportName.trim() || (lang === 'en' ? 'Untitled report' : 'Adsız rapor');
+    setSaving(true);
+    setSaveMsg(null);
+    try {
+      const saved = await saveCustomReport({
+        id: activeSavedId || undefined,
+        name,
+        sqlText: sql,
+      });
+      setActiveSavedId(saved.id);
+      setReportName(saved.name);
+      setSaveMsg(lang === 'en' ? 'Saved' : 'Kaydedildi');
+      await loadSaved();
+    } catch (err) {
+      setSaveMsg(err instanceof Error ? err.message : String(err));
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  const loadSavedReport = (r: SavedCustomReport) => {
+    setActiveSavedId(r.id);
+    setReportName(r.name);
+    setSql(r.sqlText);
+    setRunError(null);
+    setSaveMsg(null);
+  };
+
+  const handleDeleteSaved = async (id: string) => {
+    try {
+      await deleteSavedCustomReport(id);
+      if (activeSavedId === id) {
+        setActiveSavedId(null);
+        setReportName('');
+      }
+      await loadSaved();
+    } catch (err) {
+      setSaveMsg(err instanceof Error ? err.message : String(err));
     }
   };
 
@@ -208,13 +276,10 @@ export function GrafanaReportBuilderModule() {
               {lang === 'en' ? 'Report builder' : 'Rapor Oluşturucu'}
             </h2>
             <p className={`text-xs truncate ${muted}`}>
-              {lang === 'en' ? 'Tenant' : 'Kiracı'}:{' '}
-              <span className="font-medium">{ctx.tenantCode || '—'}</span>
-              {ctx.databaseName ? ` · DB ${ctx.databaseName}` : ''}
-              {' · '}
               {firmLabel}
               {' · '}
               {lang === 'en' ? 'Period' : 'Dönem'} {ctx.periodNr}
+              {ctx.databaseName ? ` · ${ctx.databaseName}` : ''}
             </p>
           </div>
         </div>
@@ -222,12 +287,12 @@ export function GrafanaReportBuilderModule() {
         <div className="flex items-center gap-1 rounded-lg border p-0.5 shrink-0 dark:border-gray-600 border-gray-200">
           <button
             type="button"
-            onClick={() => setMainTab('tenant')}
+            onClick={() => setMainTab('data')}
             className={`px-3 py-1.5 text-xs font-semibold rounded-md ${
-              mainTab === 'tenant' ? active : muted
+              mainTab === 'data' ? active : muted
             }`}
           >
-            {lang === 'en' ? 'Tenant tables' : 'Kiracı tabloları'}
+            {lang === 'en' ? 'Data tables' : 'Veri tabloları'}
           </button>
           <button
             type="button"
@@ -241,7 +306,7 @@ export function GrafanaReportBuilderModule() {
         </div>
       </div>
 
-      {mainTab === 'tenant' ? (
+      {mainTab === 'data' ? (
         <div className="flex flex-1 min-h-0">
           <aside
             className={`w-80 shrink-0 border-r flex flex-col min-h-0 ${
@@ -279,14 +344,57 @@ export function GrafanaReportBuilderModule() {
             </div>
 
             <div className="flex-1 min-h-0 overflow-y-auto p-2 space-y-1">
+              <p className={`px-2 pt-1 text-[10px] font-bold uppercase tracking-wider ${muted}`}>
+                {lang === 'en' ? 'Saved reports' : 'Kayıtlı raporlar'}
+              </p>
+              {savedReports.length === 0 && (
+                <p className={`text-[11px] px-2 pb-2 ${muted}`}>
+                  {lang === 'en' ? 'No saved reports yet.' : 'Henüz kayıtlı rapor yok.'}
+                </p>
+              )}
+              {savedReports.map((r) => {
+                const isOn = r.id === activeSavedId;
+                return (
+                  <div
+                    key={r.id}
+                    className={`rounded-xl border flex items-stretch ${isOn ? active : card}`}
+                  >
+                    <button
+                      type="button"
+                      className="flex-1 min-w-0 text-left px-2.5 py-2 flex items-start gap-1.5"
+                      onClick={() => loadSavedReport(r)}
+                    >
+                      <Bookmark className="h-3.5 w-3.5 mt-0.5 shrink-0" />
+                      <div className="min-w-0">
+                        <div className="text-xs font-semibold truncate">{r.name}</div>
+                        <div className={`text-[10px] truncate ${isOn ? '' : muted}`}>
+                          {r.updatedAt ? String(r.updatedAt).slice(0, 16).replace('T', ' ') : ''}
+                        </div>
+                      </div>
+                    </button>
+                    <button
+                      type="button"
+                      title={lang === 'en' ? 'Delete' : 'Sil'}
+                      className={`px-2 shrink-0 ${muted} hover:text-red-500`}
+                      onClick={() => void handleDeleteSaved(r.id)}
+                    >
+                      <Trash2 className="h-3.5 w-3.5" />
+                    </button>
+                  </div>
+                );
+              })}
+
+              <p className={`px-2 pt-3 text-[10px] font-bold uppercase tracking-wider ${muted}`}>
+                {lang === 'en' ? 'Tables' : 'Tablolar'}
+              </p>
               {schemaError && (
                 <p className="text-xs text-amber-600 dark:text-amber-400 px-2 py-1">{schemaError}</p>
               )}
               {!loadingSchema && !schemaError && tables.length === 0 && (
                 <p className={`text-xs px-2 py-3 ${muted}`}>
                   {lang === 'en'
-                    ? 'No tables for this firm on the connected tenant DB.'
-                    : 'Bağlı kiracı DB’sinde bu firma için tablo bulunamadı.'}
+                    ? 'No tables found for this firm.'
+                    : 'Bu firma için tablo bulunamadı.'}
                 </p>
               )}
               {tables.map((table) => {
@@ -352,14 +460,32 @@ export function GrafanaReportBuilderModule() {
 
           <section className="flex-1 min-w-0 min-h-0 flex flex-col">
             <div className={`shrink-0 p-3 border-b space-y-2 ${darkMode ? 'border-gray-700' : 'border-gray-200'}`}>
-              <div className="flex items-center justify-between gap-2">
-                <p className={`text-xs ${muted}`}>
-                  {selectedTable
-                    ? `${selectedTable.schemaName}.${selectedTable.tableName}`
+              <div className="flex flex-wrap items-center gap-2">
+                <input
+                  value={reportName}
+                  onChange={(e) => setReportName(e.target.value)}
+                  placeholder={lang === 'en' ? 'Report name…' : 'Rapor adı…'}
+                  className={`flex-1 min-w-[140px] px-3 py-2 text-xs rounded-lg border outline-none focus:ring-2 focus:ring-teal-500/40 ${inputCls}`}
+                />
+                <button
+                  type="button"
+                  onClick={() => void handleSave()}
+                  disabled={saving || !sql.trim()}
+                  className={`inline-flex items-center gap-1.5 text-xs font-bold uppercase tracking-wide px-3 py-2 rounded-xl border disabled:opacity-50 ${
+                    darkMode
+                      ? 'border-teal-700 text-teal-200 hover:bg-teal-900/40'
+                      : 'border-teal-300 text-teal-800 hover:bg-teal-50'
+                  }`}
+                >
+                  {saving ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Save className="h-3.5 w-3.5" />}
+                  {activeSavedId
+                    ? lang === 'en'
+                      ? 'Update'
+                      : 'Güncelle'
                     : lang === 'en'
-                      ? 'Select a table'
-                      : 'Tablo seçin'}
-                </p>
+                      ? 'Save'
+                      : 'Kaydet'}
+                </button>
                 <button
                   type="button"
                   onClick={() => void runQuery()}
@@ -370,6 +496,11 @@ export function GrafanaReportBuilderModule() {
                   {lang === 'en' ? 'Run' : 'Çalıştır'}
                 </button>
               </div>
+              {selectedTable && (
+                <p className={`text-xs ${muted}`}>
+                  {selectedTable.schemaName}.{selectedTable.tableName}
+                </p>
+              )}
               <textarea
                 value={sql}
                 onChange={(e) => setSql(e.target.value)}
@@ -379,14 +510,19 @@ export function GrafanaReportBuilderModule() {
                 placeholder="SELECT … FROM … LIMIT 100"
               />
               {runError && <p className="text-xs text-red-500">{runError}</p>}
+              {saveMsg && !runError && (
+                <p className={`text-xs ${saveMsg.includes('Kayded') || saveMsg === 'Saved' ? 'text-teal-600' : 'text-amber-600'}`}>
+                  {saveMsg}
+                </p>
+              )}
             </div>
 
             <div className="flex-1 min-h-0 overflow-auto p-3">
               {resultRows.length === 0 && !runError ? (
                 <div className={`h-full min-h-[240px] flex items-center justify-center text-sm ${muted}`}>
                   {lang === 'en'
-                    ? 'Pick columns from the connected tenant, then run SELECT.'
-                    : 'Bağlı kiracıdan tablo/alan seçin, SELECT çalıştırın.'}
+                    ? 'Select columns, run SELECT, then save the report.'
+                    : 'Tablo/alan seçin, SELECT çalıştırın, raporu kaydedin.'}
                 </div>
               ) : (
                 <DevExDataGrid
