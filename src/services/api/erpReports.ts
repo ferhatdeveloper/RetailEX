@@ -10,7 +10,6 @@ import {
   sqlFirmScopedCardMatch,
 } from './accountBalance';
 import { supplierAPI } from './suppliers';
-import { customerAPI } from './customers';
 import { buildEkstreRows, resolveEkstreDescription } from '../../utils/cariAccountStatement';
 import { SQL_COUNTABLE_SALE_STATUS } from '../../utils/saleInvoiceStatus';
 import { localTodayDateKey } from '../../utils/localCalendarDate';
@@ -573,11 +572,13 @@ export const erpReportsAPI = {
 
     const out: CariBalanceRow[] = [];
 
-    // Müşteriler: customerAPI (gevşek firm_nr + ledger/kart bakiye). Tedarikçiler: supplierAPI.
-    if (want === 'all' || want === 'customer') {
+    // Cari Hesaplar ile aynı kaynak (supplierAPI) — firm_nr 1↔001 + ledger bakiye.
+    if (want === 'all' || want === 'customer' || want === 'supplier') {
+      const listFilter =
+        want === 'customer' ? 'customer' : want === 'supplier' ? 'supplier' : 'all';
       try {
-        const customers = await customerAPI.getAll();
-        for (const a of customers) {
+        const accounts = await supplierAPI.getAll({ cardType: listFilter });
+        for (const a of accounts) {
           const code = String(a.code ?? '');
           const name = String(a.name ?? '');
           if (!matchFilter(code, name)) continue;
@@ -587,31 +588,7 @@ export const erpReportsAPI = {
             accountId: String(a.id ?? ''),
             accountCode: code,
             accountName: name,
-            cardType: 'customer',
-            balance,
-            creditLimit: Number((a as { credit_limit?: number }).credit_limit ?? 0) || 0,
-            paymentTerms: String((a as { payment_terms?: string | number }).payment_terms ?? ''),
-          });
-        }
-      } catch (err) {
-        console.warn('[erpReports] getCariBalances customerAPI:', err);
-      }
-    }
-
-    if (want === 'all' || want === 'supplier') {
-      try {
-        const suppliers = await supplierAPI.getAll({ cardType: 'supplier' });
-        for (const a of suppliers) {
-          const code = String(a.code ?? '');
-          const name = String(a.name ?? '');
-          if (!matchFilter(code, name)) continue;
-          const balance = Number(a.balance ?? 0) || 0;
-          if (!passBalance(balance)) continue;
-          out.push({
-            accountId: String(a.id ?? ''),
-            accountCode: code,
-            accountName: name,
-            cardType: 'supplier',
+            cardType: a.cardType === 'supplier' ? 'supplier' : 'customer',
             balance,
             creditLimit: Number(a.credit_limit ?? 0) || 0,
             paymentTerms: String(a.payment_terms ?? ''),
