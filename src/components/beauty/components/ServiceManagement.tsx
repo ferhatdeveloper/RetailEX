@@ -25,7 +25,6 @@ import {
 } from '@ant-design/icons';
 import { ChevronDown, Scissors } from 'lucide-react';
 import { RetailExFlatModal, RetailExFlatFieldLabel } from '../../shared/RetailExFlatModal';
-import { MODAL_OVERLAY_NESTED_Z } from '../../shared/FullscreenBodyPortal';
 import { useBeautyStore } from '../store/useBeautyStore';
 import { BeautyService, ServiceCategory } from '../../../types/beauty';
 import {
@@ -125,6 +124,15 @@ export function ServiceManagement() {
     const [reassignFromKey, setReassignFromKey] = useState('');
     const [reassignTargetKey, setReassignTargetKey] = useState('');
     const [reassignSaving, setReassignSaving] = useState(false);
+    /** Silme onayı — Popconfirm FlatModal üstünde güvenilir değil */
+    const [categoryDeleteConfirmOpen, setCategoryDeleteConfirmOpen] = useState(false);
+    const [categoryDeletePendingKey, setCategoryDeletePendingKey] = useState('');
+    const [categoryDeleteSaving, setCategoryDeleteSaving] = useState(false);
+    /**
+     * Soft-delete / enum / orphan string sonrası dropdown’a geri düşmesin diye
+     * oturum içinde gizlenen kategori anahtarları (code / name / value).
+     */
+    const [purgedCategoryKeys, setPurgedCategoryKeys] = useState<string[]>([]);
 
     const reloadBackofficeCategories = async () => {
         try {
@@ -202,6 +210,35 @@ export function ServiceManagement() {
         return false;
     }, [findMasterCategory]);
 
+    const markCategoryPurged = useCallback((key: string, master?: Category | null) => {
+        const aliases = new Set<string>();
+        const k = String(key || '').trim();
+        if (k) aliases.add(k);
+        if (master) {
+            const stored = beautyCategoryStoredValue(master);
+            if (stored) aliases.add(stored);
+            const name = String(master.name ?? '').trim();
+            if (name) aliases.add(name);
+            const code = String(master.code ?? '').trim();
+            if (code) aliases.add(code);
+        }
+        if (aliases.size === 0) return;
+        setPurgedCategoryKeys(prev => {
+            const next = new Set(prev);
+            for (const a of aliases) next.add(a);
+            return Array.from(next);
+        });
+    }, []);
+
+    const isCategoryKeyPurged = useCallback(
+        (key: string): boolean => {
+            const k = String(key || '').trim();
+            if (!k) return false;
+            return purgedCategoryKeys.some(p => p === k || keysReferSameCategory(p, k));
+        },
+        [purgedCategoryKeys, keysReferSameCategory],
+    );
+
     const childMasterValues = useMemo(() => {
         const set = new Set<string>();
         for (const cat of backofficeCategories) {
@@ -218,41 +255,45 @@ export function ServiceManagement() {
 
     const categories = useMemo(() => {
         const byValue = new Map<string, string>();
-        for (const c of Object.values(ServiceCategory)) {
-            byValue.set(c, CATEGORY_LABELS[c] ?? c);
-        }
         for (const cat of backofficeCategories) {
             const value = beautyCategoryStoredValue(cat);
             const name = String(cat.name ?? '').trim();
-            if (value) byValue.set(value, name || value);
+            if (!value || isCategoryKeyPurged(value)) continue;
+            byValue.set(value, name || value);
         }
         for (const s of services) {
             const leaf = beautyServiceSubKey(s);
-            if (leaf && !byValue.has(leaf)) byValue.set(leaf, categoryDisplayLabel(leaf, masterLabelByKey));
+            if (leaf && leaf !== 'uncategorized' && !isCategoryKeyPurged(leaf) && !byValue.has(leaf)) {
+                byValue.set(leaf, categoryDisplayLabel(leaf, masterLabelByKey));
+            }
             const main = beautyServiceMainKey(s);
-            if (main && !byValue.has(main)) byValue.set(main, categoryDisplayLabel(main, masterLabelByKey));
+            if (main && main !== 'uncategorized' && !isCategoryKeyPurged(main) && !byValue.has(main)) {
+                byValue.set(main, categoryDisplayLabel(main, masterLabelByKey));
+            }
         }
         return Array.from(byValue.entries())
             .map(([value, label]) => ({ value, label }))
             .sort((a, b) => a.label.localeCompare(b.label, 'tr'));
-    }, [backofficeCategories, services, masterLabelByKey]);
+    }, [backofficeCategories, services, masterLabelByKey, isCategoryKeyPurged]);
 
     const formMainCategoryOptions = useMemo(() => {
         const byValue = new Map<string, string>();
-        for (const c of Object.values(ServiceCategory)) {
-            byValue.set(c, CATEGORY_LABELS[c] ?? c);
-        }
+        // Yalnızca aktif master (üst seviye) + silinmemiş orphan hizmet anahtarları —
+        // ServiceCategory enum soft-delete sonrası dropdown’a geri düşmesin.
         for (const cat of backofficeCategories) {
             if (!beautyCategoryIsTopLevel(cat)) continue;
             const value = beautyCategoryStoredValue(cat);
             const name = String(cat.name ?? '').trim();
-            if (value) byValue.set(value, name || value);
+            if (!value || isCategoryKeyPurged(value)) continue;
+            byValue.set(value, name || value);
         }
         for (const s of services) {
             const main = beautyServiceMainKey(s);
             if (!main || main === 'uncategorized') continue;
             if (childMasterValues.has(main)) continue;
+            if (isCategoryKeyPurged(main)) continue;
             const canon = canonicalCategoryValue(main);
+            if (canon && isCategoryKeyPurged(canon)) continue;
             if (!byValue.has(canon) && !byValue.has(main)) {
                 byValue.set(canon || main, categoryDisplayLabel(main, masterLabelByKey));
             }
@@ -260,7 +301,14 @@ export function ServiceManagement() {
         return Array.from(byValue.entries())
             .map(([value, label]) => ({ value, label }))
             .sort((a, b) => a.label.localeCompare(b.label, 'tr'));
-    }, [backofficeCategories, services, masterLabelByKey, childMasterValues, canonicalCategoryValue]);
+    }, [
+        backofficeCategories,
+        services,
+        masterLabelByKey,
+        childMasterValues,
+        canonicalCategoryValue,
+        isCategoryKeyPurged,
+    ]);
 
     const selectedFormParent = String(editing.parent_category ?? '').trim();
 
@@ -276,7 +324,8 @@ export function ServiceManagement() {
             if (!matchesParent) continue;
             const value = beautyCategoryStoredValue(cat);
             const name = String(cat.name ?? '').trim();
-            if (value) byValue.set(value, name || value);
+            if (!value || isCategoryKeyPurged(value)) continue;
+            byValue.set(value, name || value);
         }
         for (const s of services) {
             const main = beautyServiceMainKey(s);
@@ -284,7 +333,9 @@ export function ServiceManagement() {
             const leaf = beautyServiceSubKey(s);
             if (!leaf || leaf === 'uncategorized') continue;
             if (keysReferSameCategory(leaf, selectedFormParent)) continue;
+            if (isCategoryKeyPurged(leaf)) continue;
             const canon = canonicalCategoryValue(leaf);
+            if (canon && isCategoryKeyPurged(canon)) continue;
             if (!byValue.has(canon) && !byValue.has(leaf)) {
                 byValue.set(canon || leaf, categoryDisplayLabel(leaf, masterLabelByKey));
             }
@@ -300,6 +351,7 @@ export function ServiceManagement() {
         keysReferSameCategory,
         canonicalCategoryValue,
         masterLabelByKey,
+        isCategoryKeyPurged,
     ]);
 
     const openCreateCategory = (target: 'parent' | 'sub' | 'filter' = 'filter') => {
@@ -331,16 +383,70 @@ export function ServiceManagement() {
         setEditing(p => {
             if (!p) return p;
             const next = { ...p };
-            if (String(p.parent_category ?? '').trim() === fromKey) {
+            const parent = String(p.parent_category ?? '').trim();
+            const leaf = String(p.category ?? '').trim();
+            if (parent === fromKey || keysReferSameCategory(parent, fromKey)) {
                 next.parent_category = to?.trim() ? to.trim() : undefined;
             }
-            if (String(p.category ?? '').trim() === fromKey) {
+            if (leaf === fromKey || keysReferSameCategory(leaf, fromKey)) {
                 next.category = (to?.trim()
                     ? to.trim()
-                    : ServiceCategory.BEAUTY) as BeautyService['category'];
+                    : '') as BeautyService['category'];
             }
             return next;
         });
+    };
+
+    const requestDeleteCategory = (key: string) => {
+        const k = String(key || '').trim();
+        if (!k || k === 'all') {
+            toast.error(tm('bSelectCategoryToDelete'));
+            return;
+        }
+        setCategoryDeletePendingKey(k);
+        setCategoryDeleteConfirmOpen(true);
+    };
+
+    const finishDeleteCategoryKey = async (k: string, replaceWith: string | null = null) => {
+        const master = findMasterCategory(k);
+        if (master?.id) {
+            const ok = await categoryAPI.delete(master.id);
+            if (!ok) {
+                toast.error(tm('error') || 'Kategori silinemedi');
+                return false;
+            }
+        }
+        // Master yoksa (yalnızca enum / orphan string) yine de UI’dan düşür
+        markCategoryPurged(k, master);
+        await reloadBackofficeCategories();
+        syncEditingCategoryKey(k, replaceWith);
+        if (selectedMain === k || keysReferSameCategory(selectedMain, k)) {
+            setSelectedMain(replaceWith?.trim() || 'all');
+            setSelectedSub('all');
+        }
+        if (selectedSub === k || keysReferSameCategory(selectedSub, k)) {
+            setSelectedSub(replaceWith?.trim() || 'all');
+        }
+        toast.success(tm('bCategoryDeleted'));
+        return true;
+    };
+
+    const handleDeleteCategory = async (key: string) => {
+        const k = String(key || '').trim();
+        if (!k || k === 'all') return;
+        const used = services.filter(
+            s =>
+                keysReferSameCategory(beautyServiceMainKey(s), k) ||
+                keysReferSameCategory(beautyServiceSubKey(s), k),
+        );
+        if (used.length > 0) {
+            setCategoryDeleteConfirmOpen(false);
+            setReassignFromKey(k);
+            setReassignTargetKey('');
+            setReassignModalOpen(true);
+            return;
+        }
+        await finishDeleteCategoryKey(k);
     };
 
     const handleCategoryModalSave = async () => {
@@ -390,6 +496,16 @@ export function ServiceManagement() {
                 }
                 const createdKey = beautyCategoryStoredValue(created) || code;
                 await reloadBackofficeCategories();
+                setPurgedCategoryKeys(prev =>
+                    prev.filter(
+                        p =>
+                            p !== createdKey &&
+                            p !== code &&
+                            p !== name &&
+                            p !== String(created.name ?? '').trim() &&
+                            p !== String(created.code ?? '').trim(),
+                    ),
+                );
                 if (categoryCreateTarget === 'parent') {
                     setEditing(p => ({
                         ...p,
@@ -472,43 +588,6 @@ export function ServiceManagement() {
         }
     };
 
-    const finishDeleteCategoryKey = async (k: string, replaceWith: string | null = null) => {
-        const master = findMasterCategory(k);
-        if (master?.id) {
-            const ok = await categoryAPI.delete(master.id);
-            if (!ok) {
-                toast.error(tm('error') || 'Kategori silinemedi');
-                return false;
-            }
-        }
-        await reloadBackofficeCategories();
-        syncEditingCategoryKey(k, replaceWith);
-        if (selectedMain === k) {
-            setSelectedMain(replaceWith?.trim() || 'all');
-            setSelectedSub('all');
-        }
-        if (selectedSub === k) setSelectedSub(replaceWith?.trim() || 'all');
-        toast.success(tm('bCategoryDeleted'));
-        return true;
-    };
-
-    const handleDeleteCategory = async (key: string) => {
-        const k = String(key || '').trim();
-        if (!k || k === 'all') return;
-        const used = services.filter(
-            s =>
-                keysReferSameCategory(beautyServiceMainKey(s), k) ||
-                keysReferSameCategory(beautyServiceSubKey(s), k),
-        );
-        if (used.length > 0) {
-            setReassignFromKey(k);
-            setReassignTargetKey('');
-            setReassignModalOpen(true);
-            return;
-        }
-        await finishDeleteCategoryKey(k);
-    };
-
     const handleReassignAndDelete = async () => {
         const from = reassignFromKey.trim();
         const to = reassignTargetKey.trim();
@@ -556,17 +635,27 @@ export function ServiceManagement() {
             const main = beautyServiceMainKey(s);
             if (!main || main === 'uncategorized') continue;
             if (childMasterValues.has(main)) continue;
-            set.add(canonicalCategoryValue(main) || main);
+            if (isCategoryKeyPurged(main)) continue;
+            const canon = canonicalCategoryValue(main) || main;
+            if (isCategoryKeyPurged(canon)) continue;
+            set.add(canon);
         }
         for (const cat of backofficeCategories) {
             if (!beautyCategoryIsTopLevel(cat)) continue;
             const value = beautyCategoryStoredValue(cat);
-            if (value) set.add(value);
+            if (value && !isCategoryKeyPurged(value)) set.add(value);
         }
         return Array.from(set).sort((a, b) =>
             categoryDisplayLabel(a, masterLabelByKey).localeCompare(categoryDisplayLabel(b, masterLabelByKey), 'tr'),
         );
-    }, [services, backofficeCategories, masterLabelByKey, childMasterValues, canonicalCategoryValue]);
+    }, [
+        services,
+        backofficeCategories,
+        masterLabelByKey,
+        childMasterValues,
+        canonicalCategoryValue,
+        isCategoryKeyPurged,
+    ]);
 
     const serviceSubKeysForMain = useMemo(() => {
         if (selectedMain === 'all') return [] as string[];
@@ -577,19 +666,31 @@ export function ServiceManagement() {
             const leaf = beautyServiceSubKey(s);
             if (!leaf || leaf === 'uncategorized') continue;
             if (keysReferSameCategory(leaf, selectedMain)) continue;
-            set.add(canonicalCategoryValue(leaf) || leaf);
+            if (isCategoryKeyPurged(leaf)) continue;
+            const canon = canonicalCategoryValue(leaf) || leaf;
+            if (isCategoryKeyPurged(canon)) continue;
+            set.add(canon);
         }
         if (parentMaster) {
             for (const cat of backofficeCategories) {
                 if (String(cat.parent_id ?? '') !== parentMaster.id) continue;
                 const value = beautyCategoryStoredValue(cat);
-                if (value) set.add(value);
+                if (value && !isCategoryKeyPurged(value)) set.add(value);
             }
         }
         return Array.from(set).sort((a, b) =>
             categoryDisplayLabel(a, masterLabelByKey).localeCompare(categoryDisplayLabel(b, masterLabelByKey), 'tr'),
         );
-    }, [services, selectedMain, backofficeCategories, findMasterCategory, keysReferSameCategory, canonicalCategoryValue, masterLabelByKey]);
+    }, [
+        services,
+        selectedMain,
+        backofficeCategories,
+        findMasterCategory,
+        keysReferSameCategory,
+        canonicalCategoryValue,
+        masterLabelByKey,
+        isCategoryKeyPurged,
+    ]);
 
     const filteredServices = useMemo(
         () =>
@@ -975,7 +1076,7 @@ export function ServiceManagement() {
                                         {tm('bServiceMainCategoryFilter')}
                                     </Typography.Text>
                                     <Space size={4} wrap>
-                                        <Button type="dashed" size="small" icon={<PlusOutlined />} onClick={openCreateCategory}>
+                                        <Button type="dashed" size="small" icon={<PlusOutlined />} onClick={() => openCreateCategory()}>
                                             {tm('bNewCategory')}
                                         </Button>
                                         {selectedMain !== 'all' && (
@@ -988,19 +1089,15 @@ export function ServiceManagement() {
                                                 >
                                                     {tm('edit')}
                                                 </Button>
-                                                <Popconfirm
-                                                    title={tm('bCategoryDeleteConfirm').replace(
-                                                        '{name}',
-                                                        categoryDisplayLabel(selectedMain, masterLabelByKey),
-                                                    )}
-                                                    okText={tm('delete')}
-                                                    cancelText={tm('cancel')}
-                                                    onConfirm={() => handleDeleteCategory(selectedMain)}
+                                                <Button
+                                                    size="small"
+                                                    danger
+                                                    icon={<DeleteOutlined />}
+                                                    aria-label={tm('bDeleteCategory')}
+                                                    onClick={() => requestDeleteCategory(selectedMain)}
                                                 >
-                                                    <Button size="small" danger icon={<DeleteOutlined />} aria-label={tm('bDeleteCategory')}>
-                                                        {tm('delete')}
-                                                    </Button>
-                                                </Popconfirm>
+                                                    {tm('delete')}
+                                                </Button>
                                             </>
                                         )}
                                     </Space>
@@ -1175,6 +1272,45 @@ export function ServiceManagement() {
                             />
                         </div>
                     </div>
+                </RetailExFlatModal>
+
+                <RetailExFlatModal
+                    open={categoryDeleteConfirmOpen}
+                    onClose={() => {
+                        if (categoryDeleteSaving) return;
+                        setCategoryDeleteConfirmOpen(false);
+                        setCategoryDeletePendingKey('');
+                    }}
+                    title={tm('bDeleteCategory')}
+                    subtitle={tm('bCategoryDeleteConfirm').replace(
+                        '{name}',
+                        categoryDisplayLabel(categoryDeletePendingKey, masterLabelByKey),
+                    )}
+                    headerIcon={<DeleteOutlined className="text-xl" aria-hidden />}
+                    maxWidthClass="max-w-md"
+                    nested
+                    cancelLabel={tm('cancel')}
+                    confirmLabel={categoryDeleteSaving ? tm('bSaving') : tm('delete')}
+                    confirmLoading={categoryDeleteSaving}
+                    onConfirm={async () => {
+                        setCategoryDeleteSaving(true);
+                        try {
+                            await handleDeleteCategory(categoryDeletePendingKey);
+                            setCategoryDeleteConfirmOpen(false);
+                            setCategoryDeletePendingKey('');
+                        } catch {
+                            /* handled */
+                        } finally {
+                            setCategoryDeleteSaving(false);
+                        }
+                    }}
+                >
+                    <p className="text-sm text-slate-600 dark:text-slate-300">
+                        {tm('bCategoryDeleteConfirm').replace(
+                            '{name}',
+                            categoryDisplayLabel(categoryDeletePendingKey, masterLabelByKey),
+                        )}
+                    </p>
                 </RetailExFlatModal>
 
                 <RetailExFlatModal
@@ -1369,31 +1505,17 @@ export function ServiceManagement() {
                                                     aria-label={tm('bEditCategory')}
                                                 />
                                             </Tooltip>
-                                            <Popconfirm
-                                                title={tm('bCategoryDeleteConfirm').replace(
-                                                    '{name}',
-                                                    categoryDisplayLabel(
-                                                        String(editing.parent_category ?? ''),
-                                                        masterLabelByKey,
-                                                    ),
-                                                )}
-                                                okText={tm('delete')}
-                                                cancelText={tm('cancel')}
-                                                disabled={!String(editing.parent_category ?? '').trim()}
-                                                zIndex={MODAL_OVERLAY_NESTED_Z}
-                                                onConfirm={() =>
-                                                    handleDeleteCategory(String(editing.parent_category ?? ''))
-                                                }
-                                            >
-                                                <Tooltip title={tm('bDeleteCategory')}>
-                                                    <Button
-                                                        danger
-                                                        icon={<DeleteOutlined />}
-                                                        disabled={!String(editing.parent_category ?? '').trim()}
-                                                        aria-label={tm('bDeleteCategory')}
-                                                    />
-                                                </Tooltip>
-                                            </Popconfirm>
+                                            <Tooltip title={tm('bDeleteCategory')}>
+                                                <Button
+                                                    danger
+                                                    icon={<DeleteOutlined />}
+                                                    disabled={!String(editing.parent_category ?? '').trim()}
+                                                    aria-label={tm('bDeleteCategory')}
+                                                    onClick={() =>
+                                                        requestDeleteCategory(String(editing.parent_category ?? ''))
+                                                    }
+                                                />
+                                            </Tooltip>
                                         </Space>
                                     </div>
                                 </div>
@@ -1467,31 +1589,17 @@ export function ServiceManagement() {
                                                     aria-label={tm('bEditCategory')}
                                                 />
                                             </Tooltip>
-                                            <Popconfirm
-                                                title={tm('bCategoryDeleteConfirm').replace(
-                                                    '{name}',
-                                                    categoryDisplayLabel(
-                                                        String(editing.category ?? ''),
-                                                        masterLabelByKey,
-                                                    ),
-                                                )}
-                                                okText={tm('delete')}
-                                                cancelText={tm('cancel')}
-                                                disabled={!String(editing.category ?? '').trim()}
-                                                zIndex={MODAL_OVERLAY_NESTED_Z}
-                                                onConfirm={() =>
-                                                    handleDeleteCategory(String(editing.category ?? ''))
-                                                }
-                                            >
-                                                <Tooltip title={tm('bDeleteCategory')}>
-                                                    <Button
-                                                        danger
-                                                        icon={<DeleteOutlined />}
-                                                        disabled={!String(editing.category ?? '').trim()}
-                                                        aria-label={tm('bDeleteCategory')}
-                                                    />
-                                                </Tooltip>
-                                            </Popconfirm>
+                                            <Tooltip title={tm('bDeleteCategory')}>
+                                                <Button
+                                                    danger
+                                                    icon={<DeleteOutlined />}
+                                                    disabled={!String(editing.category ?? '').trim()}
+                                                    aria-label={tm('bDeleteCategory')}
+                                                    onClick={() =>
+                                                        requestDeleteCategory(String(editing.category ?? ''))
+                                                    }
+                                                />
+                                            </Tooltip>
                                         </Space>
                                     </div>
                                 </div>

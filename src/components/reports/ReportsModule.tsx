@@ -4360,7 +4360,19 @@ export function ReportsModule({
                   String(p.id ?? '').trim() === pid ||
                   String(p.code ?? '').trim().toLowerCase() === pid.toLowerCase(),
               );
-              const productCode = fromItem || String(fromCatalog?.code ?? '').trim();
+              const fromBeauty = beautyServicesCatalog.find(
+                (s) => String(s.id ?? '').trim() === pid || String(s.id ?? '').trim().toLowerCase() === pid.toLowerCase(),
+              );
+              const fromErpSvc = erpServiceCards.find(
+                (c) =>
+                  String(c.id ?? '').trim() === pid ||
+                  String(c.code ?? '').trim().toLowerCase() === pid.toLowerCase(),
+              );
+              const productCode =
+                fromItem ||
+                String(fromCatalog?.code ?? '').trim() ||
+                String(fromBeauty?.code ?? '').trim() ||
+                String(fromErpSvc?.code ?? '').trim();
               const k = `${kind}\t${pid || `name:${pname}`}`;
               const cur = map.get(k) || { product: pname, productCode, kind, qty: 0, revenue: 0 };
               cur.qty += Number(it.quantity ?? 0);
@@ -4650,7 +4662,19 @@ export function ReportsModule({
                 String(p.id ?? '').trim() === pid ||
                 String(p.code ?? '').trim().toLowerCase() === pid.toLowerCase(),
             );
-            const productCode = fromItem || String(fromCatalog?.code ?? '').trim();
+            const fromBeauty = beautyServicesCatalog.find(
+              (s) => String(s.id ?? '').trim() === pid || String(s.id ?? '').trim().toLowerCase() === pid.toLowerCase(),
+            );
+            const fromErpSvc = erpServiceCards.find(
+              (c) =>
+                String(c.id ?? '').trim() === pid ||
+                String(c.code ?? '').trim().toLowerCase() === pid.toLowerCase(),
+            );
+            const productCode =
+              fromItem ||
+              String(fromCatalog?.code ?? '').trim() ||
+              String(fromBeauty?.code ?? '').trim() ||
+              String(fromErpSvc?.code ?? '').trim();
             const k = `${kind}\t${pid || `name:${pname}`}`;
             const cur = map.get(k) || { product: pname, productCode, kind, qty: 0, revenue: 0 };
             cur.qty += Number(it.quantity ?? 0);

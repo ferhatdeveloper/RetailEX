@@ -9072,6 +9072,12 @@ export const excelModuleTranslations = {
     ar: 'حذف الفئة «{name}»؟',
     ku: 'پۆلی «{name}» بسڕدرێتەوە؟',
   },
+  bSelectCategoryToDelete: {
+    tr: 'Silmek için önce listeden bir kategori seçin (açık liste yeterli değil).',
+    en: 'Select a category from the list first (opening the dropdown is not enough).',
+    ar: 'اختر فئة من القائمة أولاً (فتح القائمة لا يكفي).',
+    ku: 'سەرەتا لە لیستەکە پۆلێک هەڵبژێرە (کردنەوەی لیست بەس نییە).',
+  },
   bCategoryNameRequired: { tr: 'Kategori adı girin', en: 'Enter a category name', ar: 'أدخل اسم الفئة', ku: 'ناوی پۆل بنووسە' },
   bCategoryReassignTitle: {
     tr: 'Kategoriyi taşı ve sil',
