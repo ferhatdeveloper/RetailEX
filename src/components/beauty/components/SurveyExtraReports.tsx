@@ -15,6 +15,7 @@ import type {
     BeautySurveyTrendReport,
 } from '../../../types/beauty';
 import { SurveyReportToolbar } from './SurveyReportToolbar';
+import { ReportKpiStrip } from '../../reports/shared/ReportKpiStrip';
 import { cn } from '../../ui/utils';
 
 function useSurveyDateRange() {
@@ -163,20 +164,29 @@ export function SurveyTrendReport(embed?: BeautySurveyReportEmbedProps) {
             {error && (
                 <div className="rounded-2xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">{error}</div>
             )}
-            <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-                <div className="bg-white rounded-2xl border border-gray-100 p-5 shadow-sm">
-                    <p className="text-[10px] font-black text-gray-400 uppercase">{tm('bSurveyReportResponses')}</p>
-                    <p className="text-2xl font-black text-blue-700 mt-2">{data?.summary.response_count ?? 0}</p>
-                </div>
-                <div className="bg-white rounded-2xl border border-gray-100 p-5 shadow-sm">
-                    <p className="text-[10px] font-black text-gray-400 uppercase">{tm('bSurveyReportAvgRating')}</p>
-                    <p className="text-2xl font-black text-amber-600 mt-2">{data?.summary.avg_overall_rating?.toFixed(1) ?? '0.0'}★</p>
-                </div>
-                <div className="bg-white rounded-2xl border border-gray-100 p-5 shadow-sm">
-                    <p className="text-[10px] font-black text-gray-400 uppercase">{tm('bSurveyReportRecommend')}</p>
-                    <p className="text-2xl font-black text-emerald-700 mt-2">%{data?.summary.would_recommend_pct ?? 0}</p>
-                </div>
-            </div>
+            <ReportKpiStrip
+                columns={3}
+                items={[
+                    {
+                        key: 'resp',
+                        label: tm('bSurveyReportResponses'),
+                        value: data?.summary.response_count ?? 0,
+                        valueClassName: 'text-blue-700',
+                    },
+                    {
+                        key: 'avg',
+                        label: tm('bSurveyReportAvgRating'),
+                        value: `${data?.summary.avg_overall_rating?.toFixed(1) ?? '0.0'}★`,
+                        valueClassName: 'text-amber-600',
+                    },
+                    {
+                        key: 'rec',
+                        label: tm('bSurveyReportRecommend'),
+                        value: `%${data?.summary.would_recommend_pct ?? 0}`,
+                        valueClassName: 'text-emerald-700',
+                    },
+                ]}
+            />
             <div className="bg-white rounded-2xl border border-gray-100 p-5 shadow-sm">
                 <h3 className="text-sm font-black text-gray-800 mb-4 flex items-center gap-2">
                     <LineChart size={16} />
@@ -379,50 +389,71 @@ export function SurveyNpsReport(embed?: BeautySurveyReportEmbedProps) {
             {error && (
                 <div className="rounded-2xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">{error}</div>
             )}
-            <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-4 gap-4">
-                <div className="bg-white rounded-2xl border border-gray-100 p-5 shadow-sm md:col-span-1">
-                    <p className="text-[10px] font-black text-gray-400 uppercase">{tm('bSurveyNpsScore')}</p>
-                    <p className={cn(
-                        'text-4xl font-black mt-2 tabular-nums',
-                        (s?.nps_score ?? 0) >= 50 ? 'text-emerald-600' : (s?.nps_score ?? 0) >= 0 ? 'text-amber-600' : 'text-red-600',
-                    )}>
-                        {s?.nps_score ?? 0}
-                    </p>
-                    <p className="text-xs text-gray-500 mt-1">{tm('bSurveyNpsScoreHint')}</p>
-                </div>
-                <div className="bg-white rounded-2xl border border-gray-100 p-5 shadow-sm">
-                    <p className="text-[10px] font-black text-emerald-600 uppercase">{tm('bSurveyNpsPromoters')}</p>
-                    <p className="text-2xl font-black text-emerald-700 mt-2">{s?.promoter_count ?? 0}</p>
-                    <p className="text-xs text-gray-500">%{s?.promoter_pct ?? 0} · 5★</p>
-                </div>
-                <div className="bg-white rounded-2xl border border-gray-100 p-5 shadow-sm">
-                    <p className="text-[10px] font-black text-amber-600 uppercase">{tm('bSurveyNpsPassives')}</p>
-                    <p className="text-2xl font-black text-amber-700 mt-2">{s?.passive_count ?? 0}</p>
-                    <p className="text-xs text-gray-500">%{s?.passive_pct ?? 0} · 4★</p>
-                </div>
-                <div className="bg-white rounded-2xl border border-gray-100 p-5 shadow-sm">
-                    <p className="text-[10px] font-black text-red-600 uppercase">{tm('bSurveyNpsDetractors')}</p>
-                    <p className="text-2xl font-black text-red-700 mt-2">{s?.detractor_count ?? 0}</p>
-                    <p className="text-xs text-gray-500">%{s?.detractor_pct ?? 0} · 1–3★</p>
-                </div>
-            </div>
-            <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-                <div className="bg-white rounded-2xl border border-gray-100 p-5 shadow-sm">
-                    <p className="text-[10px] font-black text-gray-400 uppercase">{tm('bSurveyReportResponses')}</p>
-                    <p className="text-2xl font-black text-gray-800 mt-2">{s?.response_count ?? 0}</p>
-                </div>
-                <div className="bg-white rounded-2xl border border-gray-100 p-5 shadow-sm">
-                    <p className="text-[10px] font-black text-gray-400 uppercase">{tm('bSurveyReportAvgRating')}</p>
-                    <p className="text-2xl font-black text-amber-600 mt-2 flex items-center gap-1">
-                        <Star size={18} className="fill-amber-400 text-amber-400" />
-                        {s?.avg_overall_rating?.toFixed(1) ?? '0.0'}
-                    </p>
-                </div>
-                <div className="bg-white rounded-2xl border border-gray-100 p-5 shadow-sm">
-                    <p className="text-[10px] font-black text-gray-400 uppercase">{tm('bSurveyReportRecommend')}</p>
-                    <p className="text-2xl font-black text-emerald-700 mt-2">%{s?.would_recommend_pct ?? 0}</p>
-                </div>
-            </div>
+            <ReportKpiStrip
+                columns={4}
+                items={[
+                    {
+                        key: 'nps',
+                        label: tm('bSurveyNpsScore'),
+                        value: s?.nps_score ?? 0,
+                        valueClassName:
+                            (s?.nps_score ?? 0) >= 50
+                                ? 'text-emerald-600 text-base'
+                                : (s?.nps_score ?? 0) >= 0
+                                  ? 'text-amber-600 text-base'
+                                  : 'text-red-600 text-base',
+                        hint: tm('bSurveyNpsScoreHint'),
+                    },
+                    {
+                        key: 'prom',
+                        label: tm('bSurveyNpsPromoters'),
+                        value: s?.promoter_count ?? 0,
+                        valueClassName: 'text-emerald-700',
+                        hint: `%${s?.promoter_pct ?? 0} · 5★`,
+                    },
+                    {
+                        key: 'pass',
+                        label: tm('bSurveyNpsPassives'),
+                        value: s?.passive_count ?? 0,
+                        valueClassName: 'text-amber-700',
+                        hint: `%${s?.passive_pct ?? 0} · 4★`,
+                    },
+                    {
+                        key: 'det',
+                        label: tm('bSurveyNpsDetractors'),
+                        value: s?.detractor_count ?? 0,
+                        valueClassName: 'text-red-700',
+                        hint: `%${s?.detractor_pct ?? 0} · 1–3★`,
+                    },
+                ]}
+            />
+            <ReportKpiStrip
+                columns={3}
+                items={[
+                    {
+                        key: 'resp',
+                        label: tm('bSurveyReportResponses'),
+                        value: s?.response_count ?? 0,
+                    },
+                    {
+                        key: 'avg',
+                        label: tm('bSurveyReportAvgRating'),
+                        value: (
+                            <span className="inline-flex items-center gap-1">
+                                <Star size={14} className="fill-amber-400 text-amber-400 shrink-0" />
+                                {s?.avg_overall_rating?.toFixed(1) ?? '0.0'}
+                            </span>
+                        ),
+                        valueClassName: 'text-amber-600',
+                    },
+                    {
+                        key: 'rec',
+                        label: tm('bSurveyReportRecommend'),
+                        value: `%${s?.would_recommend_pct ?? 0}`,
+                        valueClassName: 'text-emerald-700',
+                    },
+                ]}
+            />
         </div>
     );
 }
@@ -492,25 +523,37 @@ export function SurveyCommentsReport(embed?: BeautySurveyReportEmbedProps) {
             {error && (
                 <div className="rounded-2xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">{error}</div>
             )}
-            <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-                <div className="bg-white rounded-2xl border border-gray-100 p-5 shadow-sm">
-                    <p className="text-[10px] font-black text-gray-400 uppercase">{tm('bSurveyCommentsWithText')}</p>
-                    <p className="text-2xl font-black text-orange-700 mt-2">{data?.summary.total_with_comment ?? 0}</p>
-                </div>
-                <div className="bg-white rounded-2xl border border-gray-100 p-5 shadow-sm">
-                    <p className="text-[10px] font-black text-gray-400 uppercase flex items-center gap-1">
-                        <AlertTriangle size={12} />
-                        {tm('bSurveyReportLowScore')}
-                    </p>
-                    <p className="text-2xl font-black text-red-700 mt-2">{data?.summary.low_score_count ?? 0}</p>
-                </div>
-                <div className="bg-white rounded-2xl border border-gray-100 p-5 shadow-sm">
-                    <p className="text-[10px] font-black text-gray-400 uppercase">{tm('bSurveyCommentsAvgRating')}</p>
-                    <p className="text-2xl font-black text-amber-600 mt-2">
-                        {data?.summary.avg_rating_comments != null ? `${data.summary.avg_rating_comments}★` : '—'}
-                    </p>
-                </div>
-            </div>
+            <ReportKpiStrip
+                columns={3}
+                items={[
+                    {
+                        key: 'with',
+                        label: tm('bSurveyCommentsWithText'),
+                        value: data?.summary.total_with_comment ?? 0,
+                        valueClassName: 'text-orange-700',
+                    },
+                    {
+                        key: 'low',
+                        label: (
+                            <span className="inline-flex items-center gap-1">
+                                <AlertTriangle size={10} />
+                                {tm('bSurveyReportLowScore')}
+                            </span>
+                        ),
+                        value: data?.summary.low_score_count ?? 0,
+                        valueClassName: 'text-red-700',
+                    },
+                    {
+                        key: 'avg',
+                        label: tm('bSurveyCommentsAvgRating'),
+                        value:
+                            data?.summary.avg_rating_comments != null
+                                ? `${data.summary.avg_rating_comments}★`
+                                : '—',
+                        valueClassName: 'text-amber-600',
+                    },
+                ]}
+            />
             <div className="bg-white rounded-2xl border border-gray-100 p-5 shadow-sm overflow-hidden">
                 <h3 className="text-sm font-black text-gray-800 mb-4">{tm('bSurveyCommentsListTitle')}</h3>
                 {(data?.rows ?? []).length === 0 ? (

@@ -30,6 +30,7 @@ import {
   sqlLineKindFilter,
 } from '../../utils/lastPurchaseCostSql';
 import { toast } from 'sonner';
+import { ReportKpiStrip } from './shared/ReportKpiStrip';
 import {
   ProductMovementHistoryModal,
   type ProductMovementTarget,
@@ -347,29 +348,43 @@ export function CategoryGroupSalesProfitReport() {
         </div>
       </div>
 
-      <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
-        <div className="rounded-xl border border-slate-200 bg-white p-4 shadow-sm">
-          <div className="flex items-center gap-2 text-sm text-slate-500">
-            <Package className="h-4 w-4" />
-            {tm('rptProfitTotalQty')}
-          </div>
-          <div className="mt-1 text-2xl font-bold text-slate-900">{fmt(grand.qty)}</div>
-        </div>
-        <div className="rounded-xl border border-slate-200 bg-white p-4 shadow-sm">
-          <div className="flex items-center gap-2 text-sm text-slate-500">
-            <TrendingUp className="h-4 w-4" />
-            {tm('rptProfitTotalRevenueCur').replace('{cur}', cur)}
-          </div>
-          <div className="mt-1 text-2xl font-bold text-emerald-700">{fmt(grand.rev)}</div>
-        </div>
-        <div className="rounded-xl border border-slate-200 bg-white p-4 shadow-sm">
-          <div className="flex items-center gap-2 text-sm text-slate-500">
-            <TrendingUp className="h-4 w-4" />
-            {tm('rptProfitTotalGrossCur').replace('{cur}', cur)}
-          </div>
-          <div className="mt-1 text-2xl font-bold text-indigo-700">{fmt(grand.pr)}</div>
-        </div>
-      </div>
+      <ReportKpiStrip
+        columns={3}
+        items={[
+          {
+            key: 'qty',
+            label: (
+              <span className="inline-flex items-center gap-1">
+                <Package className="h-3 w-3 shrink-0" />
+                {tm('rptProfitTotalQty')}
+              </span>
+            ),
+            value: fmt(grand.qty),
+          },
+          {
+            key: 'rev',
+            label: (
+              <span className="inline-flex items-center gap-1">
+                <TrendingUp className="h-3 w-3 shrink-0" />
+                {tm('rptProfitTotalRevenueCur').replace('{cur}', cur)}
+              </span>
+            ),
+            value: fmt(grand.rev),
+            valueClassName: 'text-emerald-700',
+          },
+          {
+            key: 'gp',
+            label: (
+              <span className="inline-flex items-center gap-1">
+                <TrendingUp className="h-3 w-3 shrink-0" />
+                {tm('rptProfitTotalGrossCur').replace('{cur}', cur)}
+              </span>
+            ),
+            value: fmt(grand.pr),
+            valueClassName: 'text-indigo-700',
+          },
+        ]}
+      />
 
       <div className="min-h-0 flex-1 overflow-auto rounded-xl border border-slate-200 bg-white shadow-sm">
         {loading ? (

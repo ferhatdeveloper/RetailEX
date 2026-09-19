@@ -42,6 +42,7 @@ import {
 } from './ProductMovementHistoryModal';
 import { DevExDataGrid } from '../shared/DevExDataGrid';
 import { buildReportGridColumns, REPORT_GRID_DEFAULTS, ReportColumnTable, type ReportColumnTableCol } from './shared/ReportDataGrid';
+import { ReportKpiStrip } from './shared/ReportKpiStrip';
 
 type CardFilter = 'all' | 'customer' | 'supplier';
 type ExtractCardFilter = 'customer' | 'supplier' | 'employee';
@@ -339,26 +340,29 @@ export function CariBalanceSummaryReport() {
         </select>
       }
     >
-      <div className="grid grid-cols-1 gap-3 md:grid-cols-3">
-        <div className={`rounded-lg border p-3 ${tableCls}`}>
-          <p className="text-xs opacity-60">{tm('erpReceivables')}</p>
-          <p className="text-xl font-bold text-blue-500">
-            {formatLedgerAmount(totals.recv, currency)}
-          </p>
-        </div>
-        <div className={`rounded-lg border p-3 ${tableCls}`}>
-          <p className="text-xs opacity-60">{tm('erpPayables')}</p>
-          <p className="text-xl font-bold text-orange-500">
-            {formatLedgerAmount(totals.pay, currency)}
-          </p>
-        </div>
-        <div className={`rounded-lg border p-3 ${tableCls}`}>
-          <p className="text-xs opacity-60">{tm('erpNetBalance')}</p>
-          <p className="text-xl font-bold">
-            {formatLedgerAmount(totals.net, currency)}
-          </p>
-        </div>
-      </div>
+      <ReportKpiStrip
+        columns={3}
+        itemClassName={tableCls}
+        items={[
+          {
+            key: 'recv',
+            label: tm('erpReceivables'),
+            value: formatLedgerAmount(totals.recv, currency),
+            valueClassName: 'text-blue-500',
+          },
+          {
+            key: 'pay',
+            label: tm('erpPayables'),
+            value: formatLedgerAmount(totals.pay, currency),
+            valueClassName: 'text-orange-500',
+          },
+          {
+            key: 'net',
+            label: tm('erpNetBalance'),
+            value: formatLedgerAmount(totals.net, currency),
+          },
+        ]}
+      />
       <div className="h-[520px]">
         <DevExDataGrid
           data={rows.map((r) => ({
@@ -1437,22 +1441,28 @@ export function ProductGrossProfitReport() {
         </>
       }
     >
-      <div className="grid grid-cols-1 gap-3 md:grid-cols-3">
-        <div className={`rounded-lg border p-3 ${tableCls}`}>
-          <p className="text-xs opacity-60">{tm('erpColRevenue')}</p>
-          <p className="text-xl font-bold">{formatNumber(totals.revenue, 2, false)} {currency}</p>
-        </div>
-        <div className={`rounded-lg border p-3 ${tableCls}`}>
-          <p className="text-xs opacity-60">{tm('erpColCost')}</p>
-          <p className="text-xl font-bold">{formatNumber(totals.cost, 2, false)} {currency}</p>
-        </div>
-        <div className={`rounded-lg border p-3 ${tableCls}`}>
-          <p className="text-xs opacity-60">{tm('erpColGrossProfit')}</p>
-          <p className={`text-xl font-bold ${totals.profit >= 0 ? 'text-emerald-500' : 'text-red-500'}`}>
-            {formatNumber(totals.profit, 2, false)} {currency}
-          </p>
-        </div>
-      </div>
+      <ReportKpiStrip
+        columns={3}
+        itemClassName={tableCls}
+        items={[
+          {
+            key: 'rev',
+            label: tm('erpColRevenue'),
+            value: `${formatNumber(totals.revenue, 2, false)} ${currency}`,
+          },
+          {
+            key: 'cost',
+            label: tm('erpColCost'),
+            value: `${formatNumber(totals.cost, 2, false)} ${currency}`,
+          },
+          {
+            key: 'gp',
+            label: tm('erpColGrossProfit'),
+            value: `${formatNumber(totals.profit, 2, false)} ${currency}`,
+            valueClassName: totals.profit >= 0 ? 'text-emerald-500' : 'text-red-500',
+          },
+        ]}
+      />
       <div className={`rounded-lg border p-2 ${tableCls}`}>
         {rows.length === 0 && !loading ? (
           <div className="px-3 py-8 text-center opacity-60">{tm('erpNoRows')}</div>

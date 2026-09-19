@@ -25,6 +25,7 @@ import {
   type ReportDateRangeValue,
 } from '../../utils/reportDatePresets';
 import { ReportDateRangePresets } from '../shared/ReportDateRangePresets';
+import { ReportKpiStrip } from './shared/ReportKpiStrip';
 import { erpReportsAPI } from '../../services/api/erpReports';
 import { supplierAPI } from '../../services/api/suppliers';
 import type { Supplier } from '../../core/types';
@@ -300,24 +301,29 @@ export function ContactAccountLegacyReport() {
         </div>
       }
     >
-      <div className="grid grid-cols-1 gap-3 md:grid-cols-3">
-        <div className={`rounded-lg border p-3 ${tableCls}`}>
-          <p className="text-xs opacity-60">{tm('rprColTotalAmount') || 'Toplam Tutar'}</p>
-          <p className="text-xl font-bold text-blue-600">
-            {formatNumber(totals.total, 2, false)} {currency}
-          </p>
-        </div>
-        <div className={`rounded-lg border p-3 ${tableCls}`}>
-          <p className="text-xs opacity-60">{tm('rprColRemainingBalance') || 'Kalan Bakiye'}</p>
-          <p className={`text-xl font-bold ${totals.remaining > 0 ? 'text-red-500' : 'text-emerald-600'}`}>
-            {formatNumber(totals.remaining, 2, false)} {currency}
-          </p>
-        </div>
-        <div className={`rounded-lg border p-3 ${tableCls}`}>
-          <p className="text-xs opacity-60">{tm('rprColExitQuantity') || 'Çıkış Miktar'}</p>
-          <p className="text-xl font-bold">{formatNumber(totals.qty, 2, false)}</p>
-        </div>
-      </div>
+      <ReportKpiStrip
+        columns={3}
+        itemClassName={tableCls}
+        items={[
+          {
+            key: 'total',
+            label: tm('rprColTotalAmount') || 'Toplam Tutar',
+            value: `${formatNumber(totals.total, 2, false)} ${currency}`,
+            valueClassName: 'text-blue-600',
+          },
+          {
+            key: 'rem',
+            label: tm('rprColRemainingBalance') || 'Kalan Bakiye',
+            value: `${formatNumber(totals.remaining, 2, false)} ${currency}`,
+            valueClassName: totals.remaining > 0 ? 'text-red-500' : 'text-emerald-600',
+          },
+          {
+            key: 'qty',
+            label: tm('rprColExitQuantity') || 'Çıkış Miktar',
+            value: formatNumber(totals.qty, 2, false),
+          },
+        ]}
+      />
       <div className={`overflow-auto rounded-lg border max-h-[600px] ${tableCls}`}>
         <table className="w-full min-w-[1100px] text-sm">
           <thead className={`sticky top-0 ${thCls}`}>

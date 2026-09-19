@@ -27,6 +27,7 @@ import { expenseAPI } from '../../services/api/expenses';
 import { fetchKasaIslemleri, type KasaIslemi } from '../../services/api/kasa';
 import { userAPI } from '../../services/api/users';
 import { ReportColumnTable, type ReportColumnTableCol } from './shared/ReportDataGrid';
+import { ReportKpiStrip } from './shared/ReportKpiStrip';
 import { PercentBodyModal, PercentBodyModalScrollBody } from '../shared/PercentBodyModal';
 import {
   displayUserCashierName,
@@ -94,6 +95,13 @@ import {
   SurveyCommentsReport,
 } from '../beauty/components/SurveyExtraReports';
 import { OverdueUncalledFollowUpReport } from '../beauty/components/OverdueUncalledFollowUpReport';
+import {
+  getRuntimeReportMenuParams,
+  isReportTabHiddenByParams,
+  loadReportMenuParams,
+  subscribeReportMenuParams,
+  type ReportMenuParams,
+} from '../../services/reportMenuParamsService';
 import { ReportColumnFilters, type ReportColumnFilterDef } from './shared/ReportColumnFilters';
 import { useReportColumnFiltersPool } from './shared/useReportColumnFilters';
 import { ReportFilterBar } from './shared/ReportFilterBar';
@@ -761,7 +769,7 @@ const BEAUTY_ONLY_REPORT_KEYS = new Set<string>([
   'beauty-overdue-uncalled-report',
 ]);
 
-function beautyReportMenuItems(tm: (key: string) => string) {
+function beautyReportMenuItems(tm: (key: string) => string, reportMenuParams: ReportMenuParams) {
   return [
     { key: 'beauty-service-report', label: tm('beautyServiceBreakdownReport'), icon: <DeploymentUnitOutlined /> },
     { key: 'beauty-cancelled-report', label: tm('beautyCancelledOnlyReport'), icon: <AlertTriangle /> },
@@ -775,7 +783,7 @@ function beautyReportMenuItems(tm: (key: string) => string) {
     { key: 'beauty-survey-service-report', label: tm('bSurveyServiceReportMenu'), icon: <Scissors className="w-4 h-4" /> },
     { key: 'beauty-survey-nps-report', label: tm('bSurveyNpsReportMenu'), icon: <ThumbsUp className="w-4 h-4" /> },
     { key: 'beauty-survey-comments-report', label: tm('bSurveyCommentsReportMenu'), icon: <MessageSquare className="w-4 h-4" /> },
-  ];
+  ].filter((item) => !isReportTabHiddenByParams(item.key, reportMenuParams));
 }
 
 function resolveInitialReportTab(
@@ -788,14 +796,21 @@ function resolveInitialReportTab(
   return 'daily';
 }
 
-function filterReportMenuGroups(groups: { type?: string; children?: { key?: string }[]; [k: string]: unknown }[]): any[] {
+function filterReportMenuGroups(
+  groups: { type?: string; children?: { key?: string }[]; [k: string]: unknown }[],
+  reportMenuParams?: ReportMenuParams,
+): any[] {
   return groups.map((group) => {
     if (group?.type === 'group' && Array.isArray(group.children)) {
       return {
         ...group,
-        children: group.children.filter(
-          (child) => child?.key != null && !REPORT_TABS_HIDDEN_FROM_MENU.has(String(child.key))
-        ),
+        children: group.children.filter((child) => {
+          if (child?.key == null) return false;
+          const key = String(child.key);
+          if (REPORT_TABS_HIDDEN_FROM_MENU.has(key)) return false;
+          if (isReportTabHiddenByParams(key, reportMenuParams)) return false;
+          return true;
+        }),
       };
     }
     return group;
@@ -884,6 +899,9 @@ export function ReportsModule({
   );
   const [selectedTab, setSelectedTab] = useState<ReportTab>(() =>
     resolveInitialReportTab(initialBusinessType, initialReportTab),
+  );
+  const [reportMenuParams, setReportMenuParams] = useState<ReportMenuParams>(() =>
+    getRuntimeReportMenuParams(),
   );
   const [selectedDateFrom, setSelectedDateFrom] = useState(localTodayDateKey);
   const [selectedDateTo, setSelectedDateTo] = useState(localTodayDateKey);
@@ -1351,10 +1369,25 @@ export function ReportsModule({
   const loadBeautyServicesCatalog = useBeautyStore((s) => s.loadServices);
 
   useEffect(() => {
-    if (REPORT_TABS_HIDDEN_FROM_MENU.has(selectedTab)) {
-      setSelectedTab('daily');
+    let cancelled = false;
+    void loadReportMenuParams().then((p) => {
+      if (!cancelled) setReportMenuParams(p);
+    });
+    const unsub = subscribeReportMenuParams((p) => setReportMenuParams(p));
+    return () => {
+      cancelled = true;
+      unsub();
+    };
+  }, []);
+
+  useEffect(() => {
+    if (
+      REPORT_TABS_HIDDEN_FROM_MENU.has(selectedTab) ||
+      isReportTabHiddenByParams(selectedTab, reportMenuParams)
+    ) {
+      setSelectedTab(businessType === 'beauty' ? 'beauty-service-report' : 'daily');
     }
-  }, [selectedTab]);
+  }, [selectedTab, reportMenuParams, businessType]);
 
   const reloadBeautyServiceReport = useCallback((): Promise<void> => {
     const isServiceReportTab = selectedTab === 'beauty-service-report';
@@ -4945,38 +4978,41 @@ export function ReportsModule({
       },
     ];
 
-    return filterReportMenuGroups([
-      ...(businessType === 'beauty'
-        ? [
-            {
-              key: 'grp-beauty-reports',
-              label: tm('bBeautyReportsMenu'),
-              type: 'group',
-              children: beautyReportMenuItems(tm),
-            },
-          ]
-        : []),
-      ...commonGroups,
-      {
-        key: 'grp-business-specific',
-        label: bizConfig.groupLabel,
-        type: 'group',
-        children: businessType === 'restaurant' ? [
-          { key: 'product-reports', label: tm('resProductQtyReportTitle'), icon: <ShoppingCart className="w-4 h-4" /> },
-          { key: 'category-reports', label: tm('kategoriRaporlari'), icon: <PieChartIcon className="w-4 h-4" /> },
-          { key: 'staff-reports', label: tm('personelRaporlari'), icon: <User className="w-4 h-4" /> },
-          { key: 'staff-performance', label: tm('staffPerformance'), icon: <TrendingUp className="w-4 h-4" /> },
-          { key: 'table-reports', label: tm('masaRaporlari'), icon: <ApartmentOutlined /> },
-          { key: 'payment-reports', label: tm('odemeRaporlari'), icon: <CreditCard className="w-4 h-4" /> },
-          { key: 'discount-reports', label: tm('indirimRaporlari'), icon: <Percent className="w-4 h-4" /> },
-          { key: 'sales-movements', label: tm('satisHareketRaporu'), icon: <RiseOutlined /> },
-          { key: 'receipts', label: tm('adisyonlar'), icon: <FileText className="w-4 h-4" /> },
-          { key: 'courier-reports', label: tm('kuryeRaporlari'), icon: <Package className="w-4 h-4" /> },
-          { key: 'cash-register-reports', label: tm('yazarkasaRaporlari'), icon: <PrinterOutlined /> },
-          { key: 'turnover-reports', label: tm('ciroRaporlari'), icon: <Banknote className="w-4 h-4" /> },
-        ] : []
-      }
-    ]);
+    return filterReportMenuGroups(
+      [
+        ...(businessType === 'beauty'
+          ? [
+              {
+                key: 'grp-beauty-reports',
+                label: tm('bBeautyReportsMenu'),
+                type: 'group',
+                children: beautyReportMenuItems(tm, reportMenuParams),
+              },
+            ]
+          : []),
+        ...commonGroups,
+        {
+          key: 'grp-business-specific',
+          label: bizConfig.groupLabel,
+          type: 'group',
+          children: businessType === 'restaurant' ? [
+            { key: 'product-reports', label: tm('resProductQtyReportTitle'), icon: <ShoppingCart className="w-4 h-4" /> },
+            { key: 'category-reports', label: tm('kategoriRaporlari'), icon: <PieChartIcon className="w-4 h-4" /> },
+            { key: 'staff-reports', label: tm('personelRaporlari'), icon: <User className="w-4 h-4" /> },
+            { key: 'staff-performance', label: tm('staffPerformance'), icon: <TrendingUp className="w-4 h-4" /> },
+            { key: 'table-reports', label: tm('masaRaporlari'), icon: <ApartmentOutlined /> },
+            { key: 'payment-reports', label: tm('odemeRaporlari'), icon: <CreditCard className="w-4 h-4" /> },
+            { key: 'discount-reports', label: tm('indirimRaporlari'), icon: <Percent className="w-4 h-4" /> },
+            { key: 'sales-movements', label: tm('satisHareketRaporu'), icon: <RiseOutlined /> },
+            { key: 'receipts', label: tm('adisyonlar'), icon: <FileText className="w-4 h-4" /> },
+            { key: 'courier-reports', label: tm('kuryeRaporlari'), icon: <Package className="w-4 h-4" /> },
+            { key: 'cash-register-reports', label: tm('yazarkasaRaporlari'), icon: <PrinterOutlined /> },
+            { key: 'turnover-reports', label: tm('ciroRaporlari'), icon: <Banknote className="w-4 h-4" /> },
+          ] : []
+        }
+      ],
+      reportMenuParams,
+    );
   };
 
   const allMenuItems = getMenuItems();
@@ -5271,20 +5307,32 @@ export function ReportsModule({
                   </div>
                 </div>
 
-                <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
-                  <div className="bg-white rounded-lg p-4 border-2 border-slate-200">
-                    <p className="text-sm text-gray-600">{tm('belgeTutari')}</p>
-                    <p className="text-2xl font-bold mt-1 text-slate-800">{formatNumber(dailyTotal, 2, false)}</p>
-                  </div>
-                  <div className="bg-white rounded-lg p-4 border-2 border-emerald-200">
-                    <p className="text-sm text-gray-600">{tm('tahsilEdilen')}</p>
-                    <p className="text-2xl font-bold mt-1 text-emerald-700">{formatNumber(dailyCollected, 2, false)}</p>
-                  </div>
-                  <div className="bg-white rounded-lg p-4 border-2 border-amber-200">
-                    <p className="text-sm text-gray-600">{tm('kalanCari')}</p>
-                    <p className="text-2xl font-bold mt-1 text-amber-700">{formatNumber(dailyRemaining, 2, false)}</p>
-                  </div>
-                </div>
+                <ReportKpiStrip
+                  columns={3}
+                  items={[
+                    {
+                      key: 'belge',
+                      label: tm('belgeTutari'),
+                      value: formatNumber(dailyTotal, 2, false),
+                      valueClassName: 'text-slate-800',
+                      className: 'border-2 border-slate-200',
+                    },
+                    {
+                      key: 'tahsil',
+                      label: tm('tahsilEdilen'),
+                      value: formatNumber(dailyCollected, 2, false),
+                      valueClassName: 'text-emerald-700',
+                      className: 'border-2 border-emerald-200',
+                    },
+                    {
+                      key: 'kalan',
+                      label: tm('kalanCari'),
+                      value: formatNumber(dailyRemaining, 2, false),
+                      valueClassName: 'text-amber-700',
+                      className: 'border-2 border-amber-200',
+                    },
+                  ]}
+                />
 
                 <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
                   <div className="bg-white rounded-lg p-4 border-2 border-rose-100">
@@ -6953,26 +7001,31 @@ export function ReportsModule({
                   <p className="text-xs text-slate-500 flex-1 min-w-[200px]">{tm('purchasePromotionReportHint')}</p>
                 </div>
 
-                <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3">
-                  <div className="bg-white rounded-xl border border-slate-200 p-4 shadow-sm">
-                    <p className="text-xs text-slate-500">{tm('purchasePromotionReport')}</p>
-                    <p className="text-2xl font-bold text-slate-800">{purchasePromoSummary.lineCount}</p>
-                  </div>
-                  <div className="bg-white rounded-xl border border-slate-200 p-4 shadow-sm">
-                    <p className="text-xs text-slate-500">{tm('purchasePromotionInvoiceCount')}</p>
-                    <p className="text-2xl font-bold text-slate-800">{purchasePromoSummary.invoiceCount}</p>
-                  </div>
-                  <div className="bg-white rounded-xl border border-slate-200 p-4 shadow-sm">
-                    <p className="text-xs text-slate-500">{tm('quantity')}</p>
-                    <p className="text-2xl font-bold text-slate-800">{formatNumber(purchasePromoSummary.totalQuantity, 2, false)}</p>
-                  </div>
-                  <div className="bg-white rounded-xl border border-slate-200 p-4 shadow-sm">
-                    <p className="text-xs text-slate-500">{tm('purchasePromotionAllocatedCost')}</p>
-                    <p className="text-2xl font-bold text-slate-800">
-                      {formatNumber(purchasePromoSummary.totalAllocatedCost, 2, false)} {reportCurrency}
-                    </p>
-                  </div>
-                </div>
+                <ReportKpiStrip
+                  columns={4}
+                  items={[
+                    {
+                      key: 'lines',
+                      label: tm('purchasePromotionReport'),
+                      value: purchasePromoSummary.lineCount,
+                    },
+                    {
+                      key: 'invoices',
+                      label: tm('purchasePromotionInvoiceCount'),
+                      value: purchasePromoSummary.invoiceCount,
+                    },
+                    {
+                      key: 'qty',
+                      label: tm('quantity'),
+                      value: formatNumber(purchasePromoSummary.totalQuantity, 2, false),
+                    },
+                    {
+                      key: 'cost',
+                      label: tm('purchasePromotionAllocatedCost'),
+                      value: `${formatNumber(purchasePromoSummary.totalAllocatedCost, 2, false)} ${reportCurrency}`,
+                    },
+                  ]}
+                />
 
                 <Spin spinning={loadingPurchasePromoReport}>
                   {(() => {
@@ -7919,17 +7972,17 @@ export function ReportsModule({
                   >
                     {tm('refresh')}
                   </Button>
-                  <p className="text-xs text-slate-500 flex-1 min-w-[200px]">
-                    {isAnyBeautySurveyReportTab
-                      ? tm('bSurveyReportDateHint')
-                      : isBeautyCancelledReportTab
-                      ? `${tm('beautyCancelledAppointmentsHint')} ${tm('beautyCancelledPaymentsHint')}`
-                      : isBeautyAppointmentProductReportTab
-                        ? tm('beautyAppointmentProductSalesHint')
-                      : isErpServiceBreakdown
-                        ? tm('serviceBreakdownHintErp')
-                      : `${tm('beautyServiceBreakdownHint')} ${tm('beautyServiceRowCrmHint')} ${tm('beautyServiceHeaderCrmHint')}`}
-                  </p>
+                  {!isBeautyServiceReportTab && (
+                    <p className="text-xs text-slate-500 flex-1 min-w-[200px]">
+                      {isAnyBeautySurveyReportTab
+                        ? tm('bSurveyReportDateHint')
+                        : isBeautyCancelledReportTab
+                        ? `${tm('beautyCancelledAppointmentsHint')} ${tm('beautyCancelledPaymentsHint')}`
+                        : isBeautyAppointmentProductReportTab
+                          ? tm('beautyAppointmentProductSalesHint')
+                          : null}
+                    </p>
+                  )}
                 </div>
 
                 {isBeautyServiceReportTab && (
@@ -8175,26 +8228,26 @@ export function ReportsModule({
                       </div>
                     ) : (
                       <div className="space-y-4">
-                        <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
-                          <div className="bg-white rounded-xl border border-slate-200 p-4">
-                            <p className="text-xs font-semibold text-slate-500">{tm('transactionCount')}</p>
-                            <p className="mt-1 text-2xl font-black text-slate-900">
-                              {formatNumber(beautyAppointmentProductSummary.transactionCount, 0, false)}
-                            </p>
-                          </div>
-                          <div className="bg-white rounded-xl border border-slate-200 p-4">
-                            <p className="text-xs font-semibold text-slate-500">{tm('quantity')}</p>
-                            <p className="mt-1 text-2xl font-black text-slate-900">
-                              {formatNumber(beautyAppointmentProductSummary.totalQty, 2, false)}
-                            </p>
-                          </div>
-                          <div className="bg-white rounded-xl border border-slate-200 p-4">
-                            <p className="text-xs font-semibold text-slate-500">{tm('totalRevenueLabel')}</p>
-                            <p className="mt-1 text-2xl font-black text-slate-900">
-                              {formatNumber(beautyAppointmentProductSummary.totalRevenue, 2, false)} {reportCurrency}
-                            </p>
-                          </div>
-                        </div>
+                        <ReportKpiStrip
+                          columns={3}
+                          items={[
+                            {
+                              key: 'tx',
+                              label: tm('transactionCount'),
+                              value: formatNumber(beautyAppointmentProductSummary.transactionCount, 0, false),
+                            },
+                            {
+                              key: 'qty',
+                              label: tm('quantity'),
+                              value: formatNumber(beautyAppointmentProductSummary.totalQty, 2, false),
+                            },
+                            {
+                              key: 'rev',
+                              label: tm('totalRevenueLabel'),
+                              value: `${formatNumber(beautyAppointmentProductSummary.totalRevenue, 2, false)} ${reportCurrency}`,
+                            },
+                          ]}
+                        />
 
                         {beautyProductViewMode === 'grouped' ? (
                           <div className="space-y-6">

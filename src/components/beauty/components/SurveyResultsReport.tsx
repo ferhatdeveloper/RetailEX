@@ -6,6 +6,7 @@ import { formatLocalYmd } from '../../../utils/dateLocal';
 import { formatReportDateCell } from '../../../utils/dateLocale';
 import type { BeautySurveyResponseRow, BeautySurveyResultsReport } from '../../../types/beauty';
 import { SurveyReportToolbar } from './SurveyReportToolbar';
+import { ReportKpiStrip } from '../../reports/shared/ReportKpiStrip';
 import type { BeautySurveyReportEmbedProps } from './SurveyExtraReports';
 import {
     SurveyRatingRespondentsModal,
@@ -222,38 +223,49 @@ export function SurveyResultsReport(embed?: BeautySurveyReportEmbedProps) {
                 </div>
             )}
 
-            <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-4 gap-4">
-                <div className="bg-white rounded-2xl border border-gray-100 p-5 shadow-sm">
-                    <p className="text-[10px] font-black text-gray-400 uppercase tracking-[0.18em]">{tm('bSurveyReportResponses')}</p>
-                    <p className="text-2xl font-black text-violet-700 mt-2">{summary?.response_count ?? 0}</p>
-                    <p className="text-xs text-gray-500 mt-1">
-                        {tm('bSurveyReportCompletedAppts')}: {summary?.completed_appointments ?? 0}
-                    </p>
-                </div>
-                <div className="bg-white rounded-2xl border border-gray-100 p-5 shadow-sm">
-                    <p className="text-[10px] font-black text-gray-400 uppercase tracking-[0.18em]">{tm('bSurveyReportAvgRating')}</p>
-                    <p className="text-2xl font-black text-amber-600 mt-2 flex items-center gap-1">
-                        <Star size={20} className="fill-amber-400 text-amber-400" />
-                        {summary?.avg_overall_rating?.toFixed(1) ?? '0.0'}
-                    </p>
-                    <p className="text-xs text-gray-500 mt-1">{tm('bSurveyReportOverallHint')}</p>
-                </div>
-                <div className="bg-white rounded-2xl border border-gray-100 p-5 shadow-sm">
-                    <p className="text-[10px] font-black text-gray-400 uppercase tracking-[0.18em]">{tm('bSurveyReportRecommend')}</p>
-                    <p className="text-2xl font-black text-emerald-700 mt-2 flex items-center gap-1">
-                        <ThumbsUp size={20} />
-                        %{summary?.would_recommend_pct ?? 0}
-                    </p>
-                    <p className="text-xs text-gray-500 mt-1">
-                        {summary?.would_recommend_count ?? 0} / {summary?.response_count ?? 0}
-                    </p>
-                </div>
-                <div className="bg-white rounded-2xl border border-gray-100 p-5 shadow-sm">
-                    <p className="text-[10px] font-black text-gray-400 uppercase tracking-[0.18em]">{tm('bSurveyReportResponseRate')}</p>
-                    <p className="text-2xl font-black text-blue-700 mt-2">%{summary?.response_rate_pct ?? 0}</p>
-                    <p className="text-xs text-gray-500 mt-1">{tm('bSurveyReportResponseRateHint')}</p>
-                </div>
-            </div>
+            <ReportKpiStrip
+                columns={4}
+                items={[
+                    {
+                        key: 'resp',
+                        label: tm('bSurveyReportResponses'),
+                        value: summary?.response_count ?? 0,
+                        valueClassName: 'text-violet-700',
+                        hint: `${tm('bSurveyReportCompletedAppts')}: ${summary?.completed_appointments ?? 0}`,
+                    },
+                    {
+                        key: 'avg',
+                        label: tm('bSurveyReportAvgRating'),
+                        value: (
+                            <span className="inline-flex items-center gap-1">
+                                <Star size={14} className="fill-amber-400 text-amber-400 shrink-0" />
+                                {summary?.avg_overall_rating?.toFixed(1) ?? '0.0'}
+                            </span>
+                        ),
+                        valueClassName: 'text-amber-600',
+                        hint: tm('bSurveyReportOverallHint'),
+                    },
+                    {
+                        key: 'rec',
+                        label: tm('bSurveyReportRecommend'),
+                        value: (
+                            <span className="inline-flex items-center gap-1">
+                                <ThumbsUp size={14} className="shrink-0" />
+                                %{summary?.would_recommend_pct ?? 0}
+                            </span>
+                        ),
+                        valueClassName: 'text-emerald-700',
+                        hint: `${summary?.would_recommend_count ?? 0} / ${summary?.response_count ?? 0}`,
+                    },
+                    {
+                        key: 'rate',
+                        label: tm('bSurveyReportResponseRate'),
+                        value: `%${summary?.response_rate_pct ?? 0}`,
+                        valueClassName: 'text-blue-700',
+                        hint: tm('bSurveyReportResponseRateHint'),
+                    },
+                ]}
+            />
 
             <div className="bg-white rounded-2xl border border-gray-100 p-5 shadow-sm">
                 <div className="flex flex-wrap items-center justify-between gap-3 mb-4">

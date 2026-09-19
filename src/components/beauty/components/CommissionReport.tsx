@@ -6,6 +6,7 @@ import { formatMoneyAmount } from '../../../utils/formatMoney';
 import { formatLocalYmd } from '../../../utils/dateLocal';
 import { formatReportDateCell } from '../../../utils/dateLocale';
 import { ReportYmdDatePicker } from '../../shared/ReportDateRangePresets';
+import { ReportKpiStrip } from '../../reports/shared/ReportKpiStrip';
 
 const fmt = (n: number) => formatMoneyAmount(n, { minFrac: 0, maxFrac: 0 });
 
@@ -93,23 +94,31 @@ export function CommissionReport() {
                 </div>
             </div>
 
-            <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-                <div className="bg-white rounded-2xl border border-gray-100 p-5 shadow-sm">
-                    <p className="text-[10px] font-black text-gray-400 uppercase tracking-[0.18em]">{tm('bServiceCommissionTotal')}</p>
-                    <p className="text-2xl font-black text-purple-700 mt-2">{fmt(totals.service_commission)}</p>
-                    <p className="text-xs text-gray-500 mt-1">{tm('bServiceRevenueTotal')}: {fmt(totals.service_revenue)}</p>
-                </div>
-                <div className="bg-white rounded-2xl border border-gray-100 p-5 shadow-sm">
-                    <p className="text-[10px] font-black text-gray-400 uppercase tracking-[0.18em]">{tm('bProductCommissionTotal')}</p>
-                    <p className="text-2xl font-black text-emerald-700 mt-2">{fmt(totals.product_commission)}</p>
-                    <p className="text-xs text-gray-500 mt-1">{tm('bProductRevenueTotal')}: {fmt(totals.product_revenue)}</p>
-                </div>
-                <div className="bg-white rounded-2xl border border-gray-100 p-5 shadow-sm">
-                    <p className="text-[10px] font-black text-gray-400 uppercase tracking-[0.18em]">{tm('bTotalCommission')}</p>
-                    <p className="text-2xl font-black text-gray-900 mt-2">{fmt(totals.total_commission)}</p>
-                    <p className="text-xs text-gray-500 mt-1">{tm('bTransactionCount')}: {totals.total_transactions}</p>
-                </div>
-            </div>
+            <ReportKpiStrip
+                columns={3}
+                items={[
+                    {
+                        key: 'svc',
+                        label: tm('bServiceCommissionTotal'),
+                        value: fmt(totals.service_commission),
+                        valueClassName: 'text-purple-700',
+                        hint: `${tm('bServiceRevenueTotal')}: ${fmt(totals.service_revenue)}`,
+                    },
+                    {
+                        key: 'prd',
+                        label: tm('bProductCommissionTotal'),
+                        value: fmt(totals.product_commission),
+                        valueClassName: 'text-emerald-700',
+                        hint: `${tm('bProductRevenueTotal')}: ${fmt(totals.product_revenue)}`,
+                    },
+                    {
+                        key: 'tot',
+                        label: tm('bTotalCommission'),
+                        value: fmt(totals.total_commission),
+                        hint: `${tm('bTransactionCount')}: ${totals.total_transactions}`,
+                    },
+                ]}
+            />
 
             <div className="bg-white rounded-3xl border border-gray-100 shadow-sm overflow-hidden">
                 <div className="px-6 py-4 border-b border-gray-100 flex items-center justify-between">

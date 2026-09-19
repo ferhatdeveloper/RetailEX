@@ -314,6 +314,22 @@ function ColumnFilterButton({
   );
 }
 
+/** Sayı kolonları varsayılan sağ; etiket+huni aynı hizada kalsın. */
+function resolveColumnAlign(col: ReportColumnFilterDef): 'left' | 'right' | 'center' {
+  return col.align ?? (col.type === 'number' ? 'right' : 'left');
+}
+
+function alignTextClass(align: 'left' | 'right' | 'center'): string {
+  if (align === 'right') return 'text-right';
+  if (align === 'center') return 'text-center';
+  return 'text-left';
+}
+
+function mergeThAlignClass(existing: string | undefined, align: 'left' | 'right' | 'center'): string {
+  const cleaned = (existing ?? '').replace(/\btext-(?:left|right|center)\b/g, '').replace(/\s+/g, ' ').trim();
+  return `${cleaned} ${alignTextClass(align)}`.trim();
+}
+
 function HeaderLabelWithFilter({
   col,
   model,
@@ -331,21 +347,34 @@ function HeaderLabelWithFilter({
   onCommit: (patch: Partial<FilterValueModel>) => void;
   labelNode: React.ReactNode;
 }) {
-  const align = col.align ?? 'left';
+  const align = resolveColumnAlign(col);
   const justify =
     align === 'right' ? 'justify-end' : align === 'center' ? 'justify-center' : 'justify-start';
+  const filterBtn =
+    col.filterable === false ? null : (
+      <ColumnFilterButton
+        col={col}
+        model={model}
+        disabled={disabled}
+        tm={tm}
+        datePlaceholder={datePlaceholder}
+        onCommit={onCommit}
+      />
+    );
+  const label = <span className="min-w-0 truncate">{labelNode}</span>;
+  /** Sağ hizada etiket hücre değeriyle aynı kenarda kalsın; huni solda. */
   return (
-    <div className={`flex items-center gap-1 min-w-0 ${justify}`}>
-      <span className="min-w-0 truncate">{labelNode}</span>
-      {col.filterable === false ? null : (
-        <ColumnFilterButton
-          col={col}
-          model={model}
-          disabled={disabled}
-          tm={tm}
-          datePlaceholder={datePlaceholder}
-          onCommit={onCommit}
-        />
+    <div className={`flex w-full items-center gap-1 min-w-0 ${justify}`}>
+      {align === 'right' ? (
+        <>
+          {filterBtn}
+          {label}
+        </>
+      ) : (
+        <>
+          {label}
+          {filterBtn}
+        </>
       )}
     </div>
   );
@@ -457,7 +486,10 @@ export const ReportColumnFilters: React.FC<ReportColumnFiltersProps> = ({
       if (!col) return cell;
       const type = col.type ?? 'text';
       const model = ensureModel(col.key, type);
-      return React.cloneElement(cell as React.ReactElement<{ children?: React.ReactNode }>, {
+      const align = resolveColumnAlign(col);
+      const prev = cell as React.ReactElement<{ children?: React.ReactNode; className?: string }>;
+      return React.cloneElement(prev, {
+        className: mergeThAlignClass(prev.props.className, align),
         children: (
           <HeaderLabelWithFilter
             col={col}
@@ -466,7 +498,7 @@ export const ReportColumnFilters: React.FC<ReportColumnFiltersProps> = ({
             tm={tm}
             datePlaceholder={datePlaceholder}
             onCommit={(patch) => updateModel(col.key, patch)}
-            labelNode={(cell as React.ReactElement<{ children?: React.ReactNode }>).props.children}
+            labelNode={prev.props.children}
           />
         ),
       });
@@ -487,14 +519,12 @@ export const ReportColumnFilters: React.FC<ReportColumnFiltersProps> = ({
       <tr className={headerRowClassName ?? 'bg-gray-50 border-b border-slate-200'}>
         {columns.map((col, idx) => {
           const type = col.type ?? 'text';
-          const align = col.align ?? 'left';
-          const alignClass =
-            align === 'right' ? 'text-right' : align === 'center' ? 'text-center' : 'text-left';
+          const align = resolveColumnAlign(col);
           const model = ensureModel(col.key, type);
           return (
             <th
               key={`${col.key}-${idx}`}
-              className={`${alignClass} ${thClassName} ${col.width ?? ''}`.trim()}
+              className={`${alignTextClass(align)} ${thClassName} ${col.width ?? ''}`.trim()}
               scope="col"
             >
               <HeaderLabelWithFilter

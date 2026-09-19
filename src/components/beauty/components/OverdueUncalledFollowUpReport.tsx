@@ -15,6 +15,7 @@ import {
   followUpDaysOverdue,
 } from '../../../utils/beautyFollowUpReminderUtils';
 import { FollowUpReminderActionModal } from './FollowUpReminderActionModal';
+import { ReportKpiStrip } from '../../reports/shared/ReportKpiStrip';
 import { cn } from '../../ui/utils';
 
 function defaultRange(): { start: string; end: string } {
@@ -189,26 +190,28 @@ export function OverdueUncalledFollowUpReport() {
         </div>
       </div>
 
-      <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-        <div className={cn('rounded-2xl border p-5 shadow-sm', panel)}>
-          <p className={cn('text-[10px] font-black uppercase tracking-[0.18em]', muted)}>
-            {tm('bOverdueUncalledTotal')}
-          </p>
-          <p className="text-2xl font-black text-rose-600 mt-2 tabular-nums">{rows.length}</p>
-        </div>
-        <div className={cn('rounded-2xl border p-5 shadow-sm', panel)}>
-          <p className={cn('text-[10px] font-black uppercase tracking-[0.18em]', muted)}>
-            {tm('bOverdueUncalledAvgDays')}
-          </p>
-          <p className="text-2xl font-black mt-2 tabular-nums">
-            {rows.length === 0
-              ? '—'
-              : Math.round(
-                  rows.reduce((s, r) => s + followUpDaysOverdue(r.due_date, todayYmd), 0) / rows.length,
-                )}
-          </p>
-        </div>
-      </div>
+      <ReportKpiStrip
+        columns={2}
+        itemClassName={cn('shadow-sm', panel)}
+        items={[
+          {
+            key: 'total',
+            label: tm('bOverdueUncalledTotal'),
+            value: rows.length,
+            valueClassName: 'text-rose-600',
+          },
+          {
+            key: 'avg',
+            label: tm('bOverdueUncalledAvgDays'),
+            value:
+              rows.length === 0
+                ? '—'
+                : Math.round(
+                    rows.reduce((s, r) => s + followUpDaysOverdue(r.due_date, todayYmd), 0) / rows.length,
+                  ),
+          },
+        ]}
+      />
 
       <div className={cn('rounded-3xl border shadow-sm overflow-hidden', tableWrap)}>
         <div className={cn('px-6 py-4 border-b flex items-center gap-2 font-black', darkMode ? 'border-gray-700' : 'border-gray-100')}>

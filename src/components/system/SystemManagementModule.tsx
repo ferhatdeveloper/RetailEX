@@ -26,6 +26,10 @@ import { InvoiceCodeFormatSettings } from './InvoiceCodeFormatSettings';
 import { TemplateManager } from '../modules/TemplateManager';
 import { RestaurantCallerIdSettings } from '../restaurant/components/RestaurantCallerIdSettings';
 import { RECEIPT_PRODUCT_NAME_FIELD_OPTIONS } from '../../utils/receiptProductName';
+import {
+  getRuntimeReportMenuParams,
+  type ReportMenuParamKey,
+} from '../../services/reportMenuParamsService';
 
 type SystemView =
   | 'userManagement'
@@ -473,19 +477,123 @@ function RoleAuthorizationView() {
   );
 }
 
-// Definitions Parameters View
+// Definitions Parameters View — rapor menüsü ve diğer sistem parametreleri
 function DefinitionsParametersView() {
+  const { tm } = useLanguage();
+  const [params, setParams] = useState(() => getRuntimeReportMenuParams());
+  const [loading, setLoading] = useState(true);
+  const [saving, setSaving] = useState(false);
+  const [toast, setToast] = useState<string | null>(null);
+
+  useEffect(() => {
+    let cancelled = false;
+    (async () => {
+      try {
+        const { loadReportMenuParams } = await import('../../services/reportMenuParamsService');
+        const data = await loadReportMenuParams();
+        if (!cancelled) setParams(data);
+      } catch {
+        if (!cancelled) setToast(tm('reportMenuParamsLoadError'));
+      } finally {
+        if (!cancelled) setLoading(false);
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [tm]);
+
+  const reportParamRows: { key: ReportMenuParamKey; labelKey: string }[] = [
+    { key: 'beauty-overdue-uncalled-report', labelKey: 'bOverdueUncalledReportMenu' },
+    { key: 'beauty-survey-report', labelKey: 'bShellNavSurveyReport' },
+    { key: 'beauty-survey-trend-report', labelKey: 'bSurveyTrendReportMenu' },
+    { key: 'beauty-survey-staff-report', labelKey: 'bSurveyStaffReportMenu' },
+    { key: 'beauty-survey-service-report', labelKey: 'bSurveyServiceReportMenu' },
+    { key: 'beauty-survey-nps-report', labelKey: 'bSurveyNpsReportMenu' },
+    { key: 'beauty-survey-comments-report', labelKey: 'bSurveyCommentsReportMenu' },
+  ];
+
+  const toggleParam = (key: ReportMenuParamKey) => {
+    setParams((prev) => ({ ...prev, [key]: !prev[key] }));
+  };
+
+  const handleSave = async () => {
+    setSaving(true);
+    setToast(null);
+    try {
+      const { saveReportMenuParams } = await import('../../services/reportMenuParamsService');
+      await saveReportMenuParams(params);
+      setToast(tm('reportMenuParamsSaved'));
+    } catch {
+      setToast(tm('reportMenuParamsSaveError'));
+    } finally {
+      setSaving(false);
+    }
+  };
+
   return (
-    <div className="p-6">
+    <div className="p-6 space-y-6">
       <div className="bg-white rounded-lg shadow-sm border p-6">
-        <h3 className="font-semibold text-gray-900 mb-4 flex items-center gap-2">
+        <h3 className="font-semibold text-gray-900 mb-1 flex items-center gap-2">
           <Settings className="h-5 w-5 text-green-600" />
-          Tanımlar ve Parametreler
+          {tm('parameterSettingsTitle')}
         </h3>
-        <p className="text-gray-600 mb-4">Sistem tanımları ve parametreleri</p>
-        <div className="text-center py-8">
-          <Settings className="h-16 w-16 text-gray-300 mx-auto mb-3" />
-          <p className="text-gray-500">Parametre yönetimi ekranı hazırlanıyor...</p>
+        <p className="text-sm text-gray-500 mb-6">{tm('parameterSettingsSubtitle')}</p>
+
+        <div className="border border-gray-200 rounded-lg overflow-hidden">
+          <div className="px-4 py-3 bg-gray-50 border-b border-gray-200">
+            <h4 className="text-sm font-semibold text-gray-800">{tm('reportMenuParamsSection')}</h4>
+            <p className="text-xs text-gray-500 mt-0.5">{tm('reportMenuParamsHint')}</p>
+          </div>
+
+          {loading ? (
+            <div className="flex items-center justify-center gap-2 py-10 text-gray-500 text-sm">
+              <Loader2 className="h-5 w-5 animate-spin" />
+              {tm('loading')}
+            </div>
+          ) : (
+            <ul className="divide-y divide-gray-100">
+              {reportParamRows.map((row) => {
+                const on = params[row.key] === true;
+                return (
+                  <li key={row.key} className="flex items-center justify-between gap-4 px-4 py-3">
+                    <div className="min-w-0">
+                      <p className="text-sm font-medium text-gray-900 truncate">{tm(row.labelKey)}</p>
+                      <p className="text-[11px] text-gray-400 font-mono truncate">{row.key}</p>
+                    </div>
+                    <button
+                      type="button"
+                      role="switch"
+                      aria-checked={on}
+                      onClick={() => toggleParam(row.key)}
+                      className={`relative inline-flex h-7 w-12 shrink-0 items-center rounded-full transition-colors ${
+                        on ? 'bg-green-600' : 'bg-gray-300'
+                      }`}
+                    >
+                      <span
+                        className={`inline-block h-5 w-5 transform rounded-full bg-white shadow transition-transform ${
+                          on ? 'translate-x-6' : 'translate-x-1'
+                        }`}
+                      />
+                    </button>
+                  </li>
+                );
+              })}
+            </ul>
+          )}
+        </div>
+
+        <div className="mt-4 flex flex-wrap items-center gap-3">
+          <button
+            type="button"
+            disabled={loading || saving}
+            onClick={() => void handleSave()}
+            className="inline-flex items-center gap-2 px-4 py-2 rounded-lg bg-green-600 text-white text-sm font-semibold hover:bg-green-700 disabled:opacity-50"
+          >
+            {saving ? <Loader2 className="h-4 w-4 animate-spin" /> : <Save className="h-4 w-4" />}
+            {tm('save')}
+          </button>
+          {toast && <span className="text-sm text-gray-600">{toast}</span>}
         </div>
       </div>
     </div>

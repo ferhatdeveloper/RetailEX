@@ -108,33 +108,36 @@ export function ReportDashboard() {
                 </div>
             </div>
 
-            {/* KPI Grid */}
-            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
+      <div className="grid grid-cols-2 lg:grid-cols-4 gap-2">
                 {kpiStats.map((stat, idx) => (
-                    <div key={idx} className="bg-white p-6 rounded-[2.5rem] border border-gray-100 shadow-sm relative overflow-hidden group">
-                        <div className={cn(
-                            "w-12 h-12 rounded-2xl flex items-center justify-center mb-4 transition-all duration-500 group-hover:scale-110 shadow-lg",
-                            stat.color === 'purple' ? "bg-purple-100 text-purple-600 shadow-purple-100/50" :
-                                stat.color === 'blue'   ? "bg-blue-100   text-blue-600   shadow-blue-100/50"   :
-                                    stat.color === 'pink'   ? "bg-pink-100   text-pink-600   shadow-pink-100/50"   :
-                                        "bg-orange-100 text-orange-600 shadow-orange-100/50"
-                        )}>
-                            <stat.icon size={24} />
-                        </div>
-                        <p className="text-[10px] font-black text-gray-400 uppercase tracking-widest leading-none mb-1">{stat.label}</p>
-                        <p className="text-2xl font-black text-gray-900 tracking-tight">{stat.value}</p>
-                        {stat.pct !== '—' && (
-                            <div className="mt-4 flex items-center gap-2">
-                                <span className={cn(
-                                    "flex items-center gap-0.5 px-2 py-0.5 rounded-lg text-[10px] font-black uppercase tracking-tighter",
-                                    stat.up ? "bg-green-100 text-green-700" : "bg-red-100 text-red-700"
-                                )}>
-                                    {stat.up ? <ArrowUpRight size={12} /> : <ArrowDownRight size={12} />}
-                                    {stat.pct}
-                                </span>
-                                <span className="text-[10px] font-bold text-gray-400 uppercase tracking-tighter">{tm('bRevenueVsPrev')}</span>
+                    <div key={idx} className="bg-white px-3 py-2 rounded-xl border border-gray-100 shadow-sm relative overflow-hidden group">
+                        <div className="flex items-start gap-2">
+                            <div className={cn(
+                                "w-8 h-8 rounded-lg flex items-center justify-center shrink-0 transition-all duration-500 group-hover:scale-105 shadow-sm",
+                                stat.color === 'purple' ? "bg-purple-100 text-purple-600" :
+                                    stat.color === 'blue'   ? "bg-blue-100   text-blue-600"   :
+                                        stat.color === 'pink'   ? "bg-pink-100   text-pink-600"   :
+                                            "bg-orange-100 text-orange-600"
+                            )}>
+                                <stat.icon size={16} />
                             </div>
-                        )}
+                            <div className="min-w-0 flex-1">
+                                <p className="text-[10px] font-bold text-gray-400 uppercase tracking-wide leading-none truncate">{stat.label}</p>
+                                <p className="text-sm font-bold text-gray-900 tracking-tight tabular-nums truncate mt-0.5">{stat.value}</p>
+                                {stat.pct !== '—' && (
+                                    <div className="mt-1 flex items-center gap-1.5 flex-wrap">
+                                        <span className={cn(
+                                            "inline-flex items-center gap-0.5 px-1.5 py-0.5 rounded text-[10px] font-bold uppercase",
+                                            stat.up ? "bg-green-100 text-green-700" : "bg-red-100 text-red-700"
+                                        )}>
+                                            {stat.up ? <ArrowUpRight size={10} /> : <ArrowDownRight size={10} />}
+                                            {stat.pct}
+                                        </span>
+                                        <span className="text-[9px] font-semibold text-gray-400 uppercase tracking-tighter">{tm('bRevenueVsPrev')}</span>
+                                    </div>
+                                )}
+                            </div>
+                        </div>
                     </div>
                 ))}
             </div>
