@@ -178,6 +178,30 @@ type ServiceBreakdownFlatRow = {
   appointment?: BeautyAppointment;
 };
 
+/** İptal randevu satırı — DevEx flat grid */
+type BeautyCancelledAppointmentRow = {
+  id: string;
+  serviceName: string;
+  date: string;
+  time: string;
+  customerName: string;
+  staffName: string;
+  deviceName: string;
+  amount: number;
+  status: string;
+  appointment: BeautyAppointment;
+};
+
+/** İptal/iade ödeme satırı — DevEx flat grid */
+type BeautyCancelledPaymentRow = {
+  id: string;
+  date: string;
+  customerName: string;
+  paymentMethod: string;
+  amount: number;
+  status: string;
+};
+
 const { Sider, Content } = Layout;
 
 /** Mobil çekmece: yönetim içerik alanı z-[10], üst çubuk z-[100] — menü bunların üstünde */
@@ -1956,39 +1980,36 @@ export function ReportsModule({
     return rows;
   }, [serviceBreakdownGrouped, businessType]);
 
-  /** Randevu iptalleri (ciro raporundan ayrı; ödeme alınmış olsa bile iptal statüsü) */
-  const beautyCancelledGrouped = useMemo(() => {
+  /** Randevu iptalleri — flat DevEx satırları (ciro raporundan ayrı; ödeme alınmış olsa bile) */
+  const beautyCancelledAppointmentRows = useMemo((): BeautyCancelledAppointmentRow[] => {
     const rows = beautyServiceAppointments.filter((a) => {
       const st = String(a.status ?? '').toLowerCase();
       if (st !== 'cancelled') return false;
       if (beautyMainCategoryFilter && !appointmentMatchesMainCategory(a)) return false;
       return true;
     });
-    const map = new Map<string, BeautyAppointment[]>();
-    for (const a of rows) {
-      const name = (a.service_name && String(a.service_name).trim()) || '—';
-      if (!map.has(name)) map.set(name, []);
-      map.get(name)!.push(a);
-    }
-    for (const arr of map.values()) {
-      arr.sort((x, y) => {
-        const dx = String(x.date ?? x.appointment_date ?? '');
-        const dy = String(y.date ?? y.appointment_date ?? '');
-        if (dx !== dy) return dx.localeCompare(dy);
-        return String(x.time ?? x.appointment_time ?? '').localeCompare(String(y.time ?? y.appointment_time ?? ''));
+    return rows
+      .map((a) => ({
+        id: String(a.id ?? ''),
+        serviceName: (a.service_name && String(a.service_name).trim()) || '—',
+        date: String(a.date ?? a.appointment_date ?? ''),
+        time: String(a.time ?? a.appointment_time ?? ''),
+        customerName: String(a.customer_name ?? '').trim() || '—',
+        staffName: String(a.specialist_name ?? a.staff_name ?? '').trim() || '—',
+        deviceName: String(a.device_name ?? '').trim() || '—',
+        amount: Number(a.total_price ?? 0),
+        status: String(a.status ?? 'cancelled'),
+        appointment: a,
+      }))
+      .sort((x, y) => {
+        if (x.serviceName !== y.serviceName) return x.serviceName.localeCompare(y.serviceName, 'tr');
+        if (x.date !== y.date) return x.date.localeCompare(y.date);
+        return x.time.localeCompare(y.time);
       });
-    }
-    return Array.from(map.entries())
-      .sort((a, b) => a[0].localeCompare(b[0], 'tr'))
-      .map(([serviceName, items]) => ({
-        serviceName,
-        items,
-        sum: items.reduce((s, it) => s + Number(it.total_price ?? 0), 0),
-      }));
   }, [beautyServiceAppointments, beautyMainCategoryFilter, beautySubCategoryFilter, appointmentMatchesMainCategory]);
 
   /** İptal edilen ödemeler (beauty_sales.payment_status = cancelled/refunded) */
-  const beautyCancelledPayments = useMemo(() => {
+  const beautyCancelledPaymentRows = useMemo((): BeautyCancelledPaymentRow[] => {
     const isCancelledPayment = (raw: unknown) => {
       const st = String(raw ?? '').trim().toLowerCase();
       return st === 'cancelled' || st === 'canceled' || st === 'refunded';
@@ -2011,7 +2032,15 @@ export function ReportsModule({
         }
         return true;
       })
-      .sort((a, b) => String(b.created_at ?? '').localeCompare(String(a.created_at ?? '')));
+      .sort((a, b) => String(b.created_at ?? '').localeCompare(String(a.created_at ?? '')))
+      .map((s) => ({
+        id: String(s.id ?? ''),
+        date: String(s.created_at ?? ''),
+        customerName: String(s.customer_name ?? '').trim() || '—',
+        paymentMethod: String(s.payment_method ?? '').trim() || '—',
+        amount: Number(s.total ?? 0),
+        status: String((s as any).payment_status ?? 'cancelled'),
+      }));
   }, [beautyServiceSales, beautyMainCategoryFilter, beautySubCategoryFilter, beautyServicesCatalog]);
 
   const beautyProductCatalogById = useMemo(
@@ -8605,166 +8634,114 @@ export function ReportsModule({
                   </Spin>
                 )}
 
-                {isBeautyCancelledReportTab && beautyCancelledGrouped.length === 0 && beautyCancelledPayments.length === 0 && (
+                {isBeautyCancelledReportTab &&
+                  beautyCancelledAppointmentRows.length === 0 &&
+                  beautyCancelledPaymentRows.length === 0 && (
                   <div className="bg-white rounded-xl border border-slate-200 p-12 text-center text-slate-500">
                     {tm('noDataFound')}
                   </div>
                 )}
 
-                {isBeautyCancelledReportTab && beautyCancelledGrouped.length > 0 && (
+                {isBeautyCancelledReportTab && beautyCancelledAppointmentRows.length > 0 && (
                   <div className="space-y-4 mt-10">
                     <div>
                       <h3 className="text-xl font-extrabold tracking-tight text-slate-900">{tm('beautyCancelledAppointmentsSection')}</h3>
                       <p className="text-sm font-medium text-slate-700 mt-1">{tm('beautyCancelledAppointmentsHint')}</p>
                     </div>
-                    <div className="space-y-6">
-                      {beautyCancelledGrouped.map((g) => (
-                        <div
-                          key={`cx-${g.serviceName}`}
-                          className="bg-rose-50 rounded-xl border border-red-200 overflow-hidden shadow-sm"
-                        >
-                          <div
-                            className="px-4 py-3 flex flex-wrap items-center justify-between gap-2 bg-rose-100 text-rose-950 font-bold border-b border-rose-200"
-                            title={tm('beautyCancelledAppointmentsHint')}
-                          >
-                            <span className="text-base">{g.serviceName}</span>
-                            <span className="text-sm font-semibold opacity-95">
-                              {tm('subTotal')}: {formatNumber(g.sum, 2, false)} {reportCurrency}
-                            </span>
-                          </div>
-                          <div className="overflow-x-auto">
-                            <table className="w-full text-[13px]">
-                              <thead>
-                                <ReportColumnFilters
-                                  columns={[
-                                    { key: 'date', label: tm('date'), type: 'date', width: 'min-w-[140px]' },
-                                    { key: 'customer_name', label: tm('customer'), type: 'text', width: 'min-w-[140px]' },
-                                    { key: 'specialist_name', label: tm('bStaffView'), type: 'text', width: 'min-w-[140px]' },
-                                    { key: 'device_name', label: tm('bDeviceView'), type: 'text', width: 'min-w-[140px]' },
-                                    { key: 'total_price', label: tm('amount'), type: 'number', align: 'right', width: 'min-w-[120px]' },
-                                    { key: 'status', label: tm('status'), type: 'text', width: 'min-w-[120px]' },
-                                  ]}
-                                  values={reportFilters.forTab('beauty-cancelled-report').values}
-                                  onFilterChange={reportFilters.forTab('beauty-cancelled-report').setFilter}
-                                  onClear={reportFilters.forTab('beauty-cancelled-report').clearAll}>
-                                <tr className="bg-slate-300 border-b border-slate-400 text-left text-[14px] uppercase tracking-wide text-slate-950">
-                                  <th className="px-4 py-3 font-black">{tm('date')}</th>
-                                  <th className="px-4 py-3 font-black">{tm('customer')}</th>
-                                  <th className="px-4 py-3 font-black">{tm('bStaffView')}</th>
-                                  <th className="px-4 py-3 font-black">{tm('bDeviceView')}</th>
-                                  <th className="px-4 py-3 font-black text-right">{tm('amount')}</th>
-                                  <th className="px-4 py-3 font-black">{tm('status')}</th>
-                                </tr>
-                                </ReportColumnFilters>
-                              </thead>
-                              <tbody className="divide-y divide-slate-100">
-                                {g.items.map((a) => (
-                                  <tr
-                                    key={a.id}
-                                    role="button"
-                                    tabIndex={0}
-                                    onClick={() => setBeautyCrmModalAppointment(a)}
-                                    onKeyDown={(e) => {
-                                      if (e.key === 'Enter' || e.key === ' ') {
-                                        e.preventDefault();
-                                        setBeautyCrmModalAppointment(a);
-                                      }
-                                    }}
-                                    className="cursor-pointer hover:bg-red-50/80"
-                                  >
-                                    <td className="px-4 py-3 tabular-nums text-slate-900 whitespace-nowrap font-medium">
-                                      {formatReportDateCell(
-                                        a.date ?? a.appointment_date,
-                                        a.time ?? a.appointment_time,
-                                      )}
-                                    </td>
-                                    <td className="px-4 py-3 text-slate-900 font-medium">
-                                      {String(a.customer_name ?? '').trim() || '—'}
-                                    </td>
-                                    <td className="px-4 py-3 text-slate-900 font-medium">
-                                      {String(a.specialist_name ?? a.staff_name ?? '').trim() || '—'}
-                                    </td>
-                                    <td className="px-4 py-3 text-slate-900 font-medium">
-                                      {String(a.device_name ?? '').trim() || '—'}
-                                    </td>
-                                    <td className="px-4 py-3 text-right tabular-nums font-semibold text-slate-950">
-                                      {formatLedgerAmount(Number(a.total_price ?? 0), reportCurrency)}
-                                    </td>
-                                    <td className="px-4 py-3">
-                                      <span className="inline-flex items-center rounded-md border border-red-200 bg-red-50 px-2 py-0.5 text-xs font-bold text-red-700">
-                                        {reportGridStatusLabel(tm, a.status)}
-                                      </span>
-                                    </td>
-                                  </tr>
-                                ))}
-                              </tbody>
-                            </table>
-                          </div>
-                        </div>
-                      ))}
+                    <div className="bg-white rounded-xl border border-slate-200 overflow-hidden shadow-sm p-2">
+                      <ReportColumnTable
+                        data={beautyCancelledAppointmentRows}
+                        height={560}
+                        footerLabel={tm('grandTotal')}
+                        storageNamespace="beauty-cancelled-appointments"
+                        groupByColumnId="serviceName"
+                        onRowClick={(row) => setBeautyCrmModalAppointment(row.appointment)}
+                        columns={
+                          [
+                            { key: 'serviceName', header: tm('service'), size: 180 },
+                            {
+                              key: 'date',
+                              header: tm('date'),
+                              type: 'date',
+                              size: 150,
+                              cell: (row) => formatReportDateCell(row.date, row.time || undefined),
+                            },
+                            { key: 'customerName', header: tm('customer'), size: 160 },
+                            { key: 'staffName', header: tm('bStaffView'), size: 140 },
+                            { key: 'deviceName', header: tm('bDeviceView'), size: 140 },
+                            {
+                              key: 'amount',
+                              header: tm('amount'),
+                              type: 'number',
+                              align: 'right',
+                              size: 110,
+                              footerSum: true,
+                              footerFormat: (n) => formatLedgerAmount(n, reportCurrency),
+                              cell: (row) => formatLedgerAmount(row.amount, reportCurrency),
+                            },
+                            {
+                              key: 'status',
+                              header: tm('status'),
+                              size: 110,
+                              cell: (row) => (
+                                <span className="inline-flex items-center rounded-md border border-red-200 bg-red-50 px-2 py-0.5 text-xs font-bold text-red-700">
+                                  {reportGridStatusLabel(tm, row.status)}
+                                </span>
+                              ),
+                            },
+                          ] as ReportColumnTableCol<BeautyCancelledAppointmentRow>[]
+                        }
+                      />
                     </div>
                   </div>
                 )}
 
-                {isBeautyCancelledReportTab && beautyCancelledPayments.length > 0 && (
+                {isBeautyCancelledReportTab && beautyCancelledPaymentRows.length > 0 && (
                   <div className="space-y-4 mt-10">
                     <div>
                       <h3 className="text-xl font-extrabold tracking-tight text-slate-900">{tm('beautyCancelledPaymentsSection')}</h3>
                       <p className="text-sm font-medium text-slate-700 mt-1">{tm('beautyCancelledPaymentsHint')}</p>
                     </div>
-                    <div className="bg-rose-50 rounded-xl border border-red-200 overflow-hidden shadow-sm">
-                      <div className="overflow-x-auto">
-                        <table className="w-full text-[13px]">
-                          <thead>
-                            <ReportColumnFilters
-                              columns={[
-                                { key: 'created_at', label: tm('date'), type: 'date', width: 'min-w-[140px]' },
-                                { key: 'customer_name', label: tm('customer'), type: 'text', width: 'min-w-[140px]' },
-                                { key: 'payment_method', label: tm('paymentType'), type: 'text', width: 'min-w-[140px]' },
-                                { key: 'total', label: tm('amount'), type: 'number', align: 'right', width: 'min-w-[120px]' },
-                                { key: 'payment_status', label: tm('status'), type: 'text', width: 'min-w-[120px]' },
-                              ]}
-                              values={reportFilters.forTab('beauty-cancelled-report').values}
-                              onFilterChange={reportFilters.forTab('beauty-cancelled-report').setFilter}
-                              onClear={reportFilters.forTab('beauty-cancelled-report').clearAll}>
-                            <tr className="bg-slate-300 border-b border-slate-400 text-left text-[14px] uppercase tracking-wide text-slate-950">
-                              <th className="px-4 py-3 font-black">{tm('date')}</th>
-                              <th className="px-4 py-3 font-black">{tm('customer')}</th>
-                              <th className="px-4 py-3 font-black">{tm('paymentType')}</th>
-                              <th className="px-4 py-3 font-black text-right">{tm('amount')}</th>
-                              <th className="px-4 py-3 font-black">{tm('status')}</th>
-                            </tr>
-                            </ReportColumnFilters>
-                          </thead>
-                          <tbody className="divide-y divide-slate-100">
-                            {beautyCancelledPayments.map((s) => {
-                              const rawSt = String((s as any).payment_status ?? '').toLowerCase();
-                              const statusLabel = rawSt === 'refunded' ? tm('reportsDetStatusRefunded') : tm('cancelled');
-                              return (
-                                <tr key={s.id} className="hover:bg-red-50/70">
-                                  <td className="px-4 py-3 tabular-nums text-slate-900 whitespace-nowrap font-medium">
-                                    {formatReportDateCell(s.created_at)}
-                                  </td>
-                                  <td className="px-4 py-3 text-slate-900 font-medium">
-                                    {String(s.customer_name ?? '').trim() || '—'}
-                                  </td>
-                                  <td className="px-4 py-3 text-slate-900 font-medium">
-                                    {String(s.payment_method ?? '—')}
-                                  </td>
-                                  <td className="px-4 py-3 text-right tabular-nums font-semibold text-slate-950">
-                                    {formatNumber(Number(s.total ?? 0), 2, false)} {reportCurrency}
-                                  </td>
-                                  <td className="px-4 py-3">
-                                    <span className="inline-flex items-center rounded-md border border-red-200 bg-red-50 px-2 py-0.5 text-xs font-bold capitalize text-red-700">
-                                      {statusLabel}
-                                    </span>
-                                  </td>
-                                </tr>
-                              );
-                            })}
-                          </tbody>
-                        </table>
-                      </div>
+                    <div className="bg-white rounded-xl border border-slate-200 overflow-hidden shadow-sm p-2">
+                      <ReportColumnTable
+                        data={beautyCancelledPaymentRows}
+                        height={420}
+                        footerLabel={tm('grandTotal')}
+                        storageNamespace="beauty-cancelled-payments"
+                        columns={
+                          [
+                            {
+                              key: 'date',
+                              header: tm('date'),
+                              type: 'date',
+                              size: 150,
+                              cell: (row) => formatReportDateCell(row.date),
+                            },
+                            { key: 'customerName', header: tm('customer'), size: 160 },
+                            { key: 'paymentMethod', header: tm('paymentType'), size: 140 },
+                            {
+                              key: 'amount',
+                              header: tm('amount'),
+                              type: 'number',
+                              align: 'right',
+                              size: 110,
+                              footerSum: true,
+                              footerFormat: (n) => formatLedgerAmount(n, reportCurrency),
+                              cell: (row) => formatLedgerAmount(row.amount, reportCurrency),
+                            },
+                            {
+                              key: 'status',
+                              header: tm('status'),
+                              size: 110,
+                              cell: (row) => (
+                                <span className="inline-flex items-center rounded-md border border-red-200 bg-red-50 px-2 py-0.5 text-xs font-bold text-red-700">
+                                  {reportGridStatusLabel(tm, row.status)}
+                                </span>
+                              ),
+                            },
+                          ] as ReportColumnTableCol<BeautyCancelledPaymentRow>[]
+                        }
+                      />
                     </div>
                   </div>
                 )}

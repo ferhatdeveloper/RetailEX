@@ -144,6 +144,7 @@ export function ReportColumnTable<T extends object>({
   footerLabel,
   storageNamespace,
   columnOrderStorageKey,
+  groupByColumnId,
 }: {
   data: T[];
   columns: ReportColumnTableCol<T>[];
@@ -153,6 +154,8 @@ export function ReportColumnTable<T extends object>({
   /** Aynı ekranda birden fazla tablo için sabit ad alanı */
   storageNamespace?: string;
   columnOrderStorageKey?: string;
+  /** Varsayılan grup kolonu (kullanıcı kolon başlığından değiştirebilir) */
+  groupByColumnId?: string | null;
 }) {
   const { selectedFirm } = useFirmaDonem();
   const footerCurrency = useMemo(
@@ -206,6 +209,7 @@ export function ReportColumnTable<T extends object>({
         footerLabel={footerLabel}
         storageNamespace={storageNamespace}
         columnOrderStorageKey={columnOrderStorageKey}
+        groupByColumnId={groupByColumnId}
         height="100%"
       />
     </div>

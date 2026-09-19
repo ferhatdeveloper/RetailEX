@@ -2862,11 +2862,10 @@ export function SmartScheduler() {
                                 <p style={{ fontSize: 10, fontWeight: 700, color: '#9ca3af', textTransform: 'uppercase', letterSpacing: '0.08em', marginBottom: 8 }}>{tm('bUpdateStatus')}</p>
                                 <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
                                     {([
-                                        { status: AppointmentStatus.CONFIRMED,   label: tm('bStatusConfirm'),                color: '#0284c7', bg: '#e0f2fe' },
-                                        { status: AppointmentStatus.IN_PROGRESS, label: tm('bStatusStarted'),                color: '#d97706', bg: '#fef3c7' },
-                                        { status: AppointmentStatus.COMPLETED,   label: `✓ ${tm('bAppointmentCompleted')}`, color: '#059669', bg: '#d1fae5' },
-                                        { status: AppointmentStatus.CANCELLED,   label: tm('bStatusCancel'),                 color: '#dc2626', bg: '#fee2e2' },
-                                        { status: AppointmentStatus.NO_SHOW,     label: tm('bStatusNoShow'),                 color: '#9ca3af', bg: '#f3f4f6' },
+                                        { status: AppointmentStatus.CONFIRMED,   label: tm('bStatusConfirm'), color: '#0284c7', bg: '#e0f2fe' },
+                                        { status: AppointmentStatus.IN_PROGRESS, label: tm('bStatusStarted'), color: '#d97706', bg: '#fef3c7' },
+                                        { status: AppointmentStatus.CANCELLED,   label: tm('bStatusCancel'),  color: '#dc2626', bg: '#fee2e2' },
+                                        { status: AppointmentStatus.NO_SHOW,     label: tm('bStatusNoShow'),  color: '#9ca3af', bg: '#f3f4f6' },
                                     ] as { status: AppointmentStatus; label: string; color: string; bg: string }[]).map(opt => {
                                         const isCurrent = selectedApt.status === opt.status;
                                         return (
