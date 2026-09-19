@@ -11,6 +11,11 @@ import {
 } from '../utils/stockInOutTotals';
 import { resolveExtractSourceMeta } from '../utils/materialExtractLabels';
 import { displayItemCode, isUuidText, SQL_NON_UUID_ITEM_CODE } from '../utils/lastPurchaseCostSql';
+import {
+    computePriceDriftCandidates,
+    latestSlipPriceByProduct,
+    type PriceDriftCandidate as ComputedPriceDriftCandidate,
+} from '../utils/priceChangeSlipDrift';
 
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
@@ -87,17 +92,8 @@ export interface PriceChangeSlipSummary {
     line_count: number;
 }
 
-/** Son fiyat fişindeki değerler ile ürün kartındaki güncel fiyatların karşılaştırması (PG). */
-export interface PriceDriftCandidate {
-    product_id: string;
-    product_code: string;
-    product_name: string;
-    unit: string;
-    current_cost: number;
-    current_price: number;
-    last_slip_cost: number;
-    last_slip_price: number;
-}
+/** Son fiyat fişindeki değerler ile ürün kartındaki güncel fiyatların karşılaştırması. */
+export type PriceDriftCandidate = ComputedPriceDriftCandidate;
 
 /**
  * Logo ERP Standard Stock Slip TRCODEs
@@ -434,6 +430,70 @@ class StockMovementAPI {
      * Get a single stock movement with its items
      */
     async getById(id: string): Promise<StockMovement | null> {
+        const mid = String(id || '').trim();
+        if (!mid) return null;
+
+        if (shouldUseTenantPostgrestApi()) {
+            try {
+                const { postgrest } = await import('./api/postgrestClient');
+                const fn = padFirmNr();
+                const pn = padPeriodNr();
+                const movPath = `/rex_${fn}_${pn}_stock_movements`;
+                const itemPath = `/rex_${fn}_${pn}_stock_movement_items`;
+                const prodPath = `/rex_${fn}_products`;
+                const headers = await postgrest.get<any[]>(
+                    movPath,
+                    { select: '*', id: `eq.${mid}`, limit: 1 },
+                    { schema: 'public' },
+                );
+                const movement = Array.isArray(headers) ? headers[0] : null;
+                if (!movement) return null;
+                const items = await postgrest
+                    .get<any[]>(
+                        itemPath,
+                        { select: '*', movement_id: `eq.${mid}`, limit: 20000 },
+                        { schema: 'public' },
+                    )
+                    .catch(() => [] as any[]);
+                const list = Array.isArray(items) ? items : [];
+                const pids = [...new Set(list.map((i) => String(i.product_id || '').trim()).filter(Boolean))];
+                const pmap = new Map<string, any>();
+                const chunkSize = 35;
+                for (let i = 0; i < pids.length; i += chunkSize) {
+                    const chunk = pids.slice(i, i + chunkSize);
+                    const prows = await postgrest
+                        .get<any[]>(
+                            prodPath,
+                            {
+                                select: 'id,code,name,unit,cost,price',
+                                id: `in.(${chunk.join(',')})`,
+                                limit: 2000,
+                            },
+                            { schema: 'public' },
+                        )
+                        .catch(() => [] as any[]);
+                    for (const p of Array.isArray(prows) ? prows : []) {
+                        if (p?.id) pmap.set(String(p.id), p);
+                    }
+                }
+                return {
+                    ...movement,
+                    stock_movement_items: list.map((i) => {
+                        const p = pmap.get(String(i.product_id || ''));
+                        const code = displayItemCode(p?.code);
+                        return {
+                            ...i,
+                            product_name: p?.name || i.product_name,
+                            product_code: code === '—' ? '' : code,
+                        };
+                    }),
+                };
+            } catch (e) {
+                console.warn('[StockMovementAPI] getById PostgREST:', e);
+                return null;
+            }
+        }
+
         try {
             const { rows } = await postgres.query(`SELECT * FROM stock_movements WHERE id = $1`, [id]);
             if (!rows[0]) return null;
@@ -453,7 +513,7 @@ class StockMovementAPI {
                 stock_movement_items: items.map(i => ({
                     ...i,
                     product_name: i.product_name,
-                    product_code: i.product_code
+                    product_code: displayItemCode(i.product_code) === '—' ? '' : displayItemCode(i.product_code),
                 }))
             };
         } catch (error) {
@@ -493,11 +553,83 @@ class StockMovementAPI {
 
     /**
      * Son kayıtlı fiyat değişim fişindeki alış/satış ile ürün kartındaki mevcut fiyatı karşılaştırır.
-     * Yalnızca doğrudan PostgreSQL sorgusu (tablo öneki yeniden yazımı); PostgREST-only ortamda boş dizi döner.
+     * PostgREST (web) ve doğrudan PostgreSQL (masaüstü / köprü) desteklenir.
      */
     async findPriceDriftVsLastSlip(): Promise<PriceDriftCandidate[]> {
         if (shouldUseTenantPostgrestApi()) {
-            return [];
+            try {
+                const { postgrest } = await import('./api/postgrestClient');
+                const fn = padFirmNr();
+                const pn = padPeriodNr();
+                const movPath = `/rex_${fn}_${pn}_stock_movements`;
+                const itemPath = `/rex_${fn}_${pn}_stock_movement_items`;
+                const prodPath = `/rex_${fn}_products`;
+                const movements = await postgrest.get<any[]>(
+                    movPath,
+                    {
+                        select: 'id,movement_date,created_at',
+                        movement_type: 'eq.price_change',
+                        order: 'movement_date.desc,created_at.desc',
+                        limit: 500,
+                    },
+                    { schema: 'public' },
+                );
+                const list = Array.isArray(movements) ? movements : [];
+                if (list.length === 0) return [];
+
+                const items: any[] = [];
+                const mids = list.map((m) => String(m.id));
+                const chunkSize = 35;
+                for (let i = 0; i < mids.length; i += chunkSize) {
+                    const chunk = mids.slice(i, i + chunkSize);
+                    const rows = await postgrest
+                        .get<any[]>(
+                            itemPath,
+                            {
+                                select: 'movement_id,product_id,cost_price,unit_price',
+                                movement_id: `in.(${chunk.join(',')})`,
+                                limit: 20000,
+                            },
+                            { schema: 'public' },
+                        )
+                        .catch(() => [] as any[]);
+                    items.push(...(Array.isArray(rows) ? rows : []));
+                }
+
+                const lastByProduct = latestSlipPriceByProduct(list, items);
+                const pids = [...lastByProduct.keys()];
+                const products: any[] = [];
+                for (let i = 0; i < pids.length; i += chunkSize) {
+                    const chunk = pids.slice(i, i + chunkSize);
+                    const rows = await postgrest
+                        .get<any[]>(
+                            prodPath,
+                            {
+                                select: 'id,code,name,unit,cost,price',
+                                id: `in.(${chunk.join(',')})`,
+                                limit: 2000,
+                            },
+                            { schema: 'public' },
+                        )
+                        .catch(() => [] as any[]);
+                    products.push(...(Array.isArray(rows) ? rows : []));
+                }
+
+                return computePriceDriftCandidates(
+                    lastByProduct,
+                    products.map((p) => ({
+                        id: String(p.id),
+                        code: p.code,
+                        name: p.name,
+                        unit: p.unit,
+                        cost: Number(p.cost) || 0,
+                        price: Number(p.price) || 0,
+                    })),
+                );
+            } catch (e) {
+                console.warn('[StockMovementAPI] findPriceDriftVsLastSlip PostgREST:', e);
+                return [];
+            }
         }
         try {
             const { rows } = await postgres.query(
@@ -1232,6 +1364,100 @@ class StockMovementAPI {
             `ST-${Date.now()}`;
         const maxAttempts = 6;
         let lastError: unknown;
+
+        if (shouldUseTenantPostgrestApi()) {
+            const { postgrest } = await import('./api/postgrestClient');
+            const { productAPI } = await import('./api/products');
+            const movPath = `/rex_${firmNr}_${periodNr}_stock_movements`;
+            const itemPath = `/rex_${firmNr}_${periodNr}_stock_movement_items`;
+            for (let attempt = 0; attempt < maxAttempts; attempt++) {
+                const documentNo =
+                    attempt === 0
+                        ? baseDoc.slice(0, 50)
+                        : `${baseDoc.slice(0, 36)}-${Date.now().toString(36)}${attempt}`.slice(0, 50);
+                try {
+                    const header: Record<string, unknown> = {
+                        firm_nr: firmNr,
+                        period_nr: periodNr,
+                        document_no: documentNo,
+                        movement_type: movement.movement_type || 'out',
+                        trcode,
+                        movement_date: movement.movement_date || new Date().toISOString(),
+                        exchange_rate: movement.exchange_rate || 1,
+                        description: movement.description ?? null,
+                        status: movement.status || 'completed',
+                    };
+                    if (movement.warehouse_id) header.warehouse_id = movement.warehouse_id;
+                    if (movement.target_warehouse_id) header.target_warehouse_id = movement.target_warehouse_id;
+                    if (movement.created_by && UUID_RE.test(String(movement.created_by))) {
+                        header.created_by = movement.created_by;
+                    }
+                    const posted = await postgrest.post<any[]>(movPath, header, {
+                        schema: 'public',
+                        prefer: 'return=representation',
+                    });
+                    const newMovement = Array.isArray(posted) ? posted[0] : posted;
+                    const movementId = String(newMovement?.id || '');
+                    if (!movementId) throw new Error('Stok hareketi oluşturulamadı');
+
+                    const itemBodies = items.map((item) => ({
+                        movement_id: movementId,
+                        product_id: item.product_id,
+                        quantity: item.quantity ?? 0,
+                        unit_price: item.unit_price || 0,
+                        cost_price: item.cost_price || 0,
+                        exchange_rate: item.exchange_rate || movement.exchange_rate || 1,
+                        unit_name: item.unit_name || 'Adet',
+                        convert_factor: item.convert_factor || 1,
+                        notes: item.notes ?? null,
+                    }));
+                    if (itemBodies.length > 0) {
+                        try {
+                            await postgrest.post(itemPath, itemBodies, {
+                                schema: 'public',
+                                prefer: 'return=minimal',
+                            });
+                        } catch {
+                            for (const body of itemBodies) {
+                                await postgrest.post(itemPath, body, {
+                                    schema: 'public',
+                                    prefer: 'return=minimal',
+                                });
+                            }
+                        }
+                    }
+
+                    if (movement.movement_type !== 'price_change') {
+                        for (const item of items) {
+                            if (!item.product_id) continue;
+                            let modifier = Number(item.quantity) || 0;
+                            if (['out', 'adjustment'].includes(movement.movement_type || 'out')) {
+                                modifier = -modifier;
+                            }
+                            if (movement.movement_type === 'transfer') continue;
+                            const p = await productAPI.getById(String(item.product_id));
+                            if (!p) continue;
+                            await productAPI.updateStock(
+                                String(item.product_id),
+                                (Number(p.stock) || 0) + modifier,
+                            );
+                        }
+                    }
+
+                    return { ...newMovement, stock_movement_items: items } as StockMovement;
+                } catch (error) {
+                    lastError = error;
+                    const msg = error instanceof Error ? error.message : String(error);
+                    const isDupDoc =
+                        /document_no/i.test(msg) &&
+                        (/unique|duplicate key/i.test(msg) || /_document_no_key/i.test(msg));
+                    if (isDupDoc && attempt < maxAttempts - 1) continue;
+                    console.error('[StockMovementAPI] create PostgREST failed:', error);
+                    throw error;
+                }
+            }
+            throw lastError instanceof Error ? lastError : new Error(String(lastError));
+        }
 
         for (let attempt = 0; attempt < maxAttempts; attempt++) {
             const documentNo =

@@ -302,51 +302,52 @@ export function CariDevirExcelImportModule() {
   ).length;
 
   return (
-    <div className="space-y-6" data-testid="cari-devir-excel-import">
-      <header className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-        <div>
-          <h2 className="flex items-center gap-2 text-xl font-semibold text-slate-900 dark:text-slate-100">
-            <FileSpreadsheet className="h-6 w-6 text-emerald-600" />
-            {tm('excelCariDevirTitle')}
-          </h2>
-          <p className="mt-1 text-sm text-slate-600 dark:text-slate-400">
-            {tm('excelCariDevirSubtitle')}
-          </p>
+    <div className="h-full min-h-0 flex flex-col bg-gray-50" data-testid="cari-devir-excel-import">
+      <div className="relative z-20 shrink-0 bg-gradient-to-r from-blue-600 to-blue-700 text-white px-4 py-2">
+        <div className="flex items-center justify-between">
+          <div className="flex items-center gap-2 min-w-0">
+            <FileSpreadsheet className="w-4 h-4 shrink-0" />
+            <h2 className="text-sm truncate">{tm('excelCariDevirTitle')}</h2>
+            <span className="text-blue-100 text-[10px] ml-2 hidden sm:inline">
+              • {previewRows.length} {tm('records')}
+            </span>
+          </div>
+          <div className="flex gap-1.5">
+            <button
+              type="button"
+              onClick={handleDownloadTemplate}
+              className="flex items-center gap-1 px-2 py-1 bg-white/10 hover:bg-white/20 transition-colors text-[10px]"
+              data-testid="cari-devir-excel-template-btn"
+            >
+              <Download className="w-3 h-3" />
+              <span>{tm('excelCariDevirTemplateBtn')}</span>
+            </button>
+            <button
+              type="button"
+              onClick={() => fileInputRef.current?.click()}
+              disabled={parsing || accountsLoading}
+              className="flex items-center gap-1 px-2 py-1 bg-white text-blue-700 hover:bg-blue-50 transition-colors text-[10px] disabled:opacity-50"
+              data-testid="cari-devir-excel-import-btn"
+            >
+              {parsing ? (
+                <Loader2 className="w-3 h-3 animate-spin" />
+              ) : (
+                <Upload className="w-3 h-3" />
+              )}
+              <span>{parsing ? tm('purchaseInvoiceExcelImporting') : tm('excelCariDevirImportBtn')}</span>
+            </button>
+            <input
+              ref={fileInputRef}
+              type="file"
+              accept=".xlsx,.xls"
+              onChange={handleExcelFileChange}
+              className="hidden"
+              data-testid="cari-devir-excel-file-input"
+            />
+          </div>
         </div>
-        <div className="flex flex-wrap gap-2">
-          <button
-            type="button"
-            onClick={handleDownloadTemplate}
-            className="inline-flex items-center gap-2 rounded-lg border border-slate-300 bg-white px-4 py-2 text-sm font-medium text-slate-700 shadow-sm transition hover:bg-slate-50 dark:border-slate-600 dark:bg-slate-800 dark:text-slate-200 dark:hover:bg-slate-700"
-            data-testid="cari-devir-excel-template-btn"
-          >
-            <Download className="h-4 w-4" />
-            {tm('excelCariDevirTemplateBtn')}
-          </button>
-          <button
-            type="button"
-            onClick={() => fileInputRef.current?.click()}
-            disabled={parsing || accountsLoading}
-            className="inline-flex items-center gap-2 rounded-lg bg-emerald-600 px-4 py-2 text-sm font-medium text-white shadow-sm transition hover:bg-emerald-700 disabled:cursor-not-allowed disabled:opacity-50"
-            data-testid="cari-devir-excel-import-btn"
-          >
-            {parsing ? (
-              <Loader2 className="h-4 w-4 animate-spin" />
-            ) : (
-              <Upload className="h-4 w-4" />
-            )}
-            {parsing ? tm('purchaseInvoiceExcelImporting') : tm('excelCariDevirImportBtn')}
-          </button>
-          <input
-            ref={fileInputRef}
-            type="file"
-            accept=".xlsx,.xls"
-            onChange={handleExcelFileChange}
-            className="hidden"
-            data-testid="cari-devir-excel-file-input"
-          />
-        </div>
-      </header>
+      </div>
+      <div className="flex-1 min-h-0 overflow-auto p-4 space-y-6">
 
       {/* Kullanım bilgi kartı */}
       <section className="rounded-xl border border-slate-200 bg-white p-5 shadow-sm dark:border-slate-700 dark:bg-slate-800">
@@ -390,6 +391,8 @@ export function CariDevirExcelImportModule() {
           {tm('importWarning')}
         </p>
       </section>
+
+      </div>
 
       {/* Import Modal */}
       {showImportModal && (

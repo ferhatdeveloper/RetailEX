@@ -392,57 +392,54 @@ export function CariDevirFisiModule() {
 
   return (
     <div className="h-full min-h-0 flex flex-col bg-gray-50">
-      <div className="bg-gradient-to-r from-indigo-700 to-blue-700 text-white px-4 py-3 flex-shrink-0">
-        <div className="flex flex-wrap items-center justify-between gap-3">
-          <div className="flex items-center gap-2">
-            <ArrowRightLeft className="w-5 h-5" />
-            <div>
-              <h1 className="text-base font-bold">{tm('cariOpeningTitle')}</h1>
-              <p className="text-[11px] text-blue-100">
-                {tm('cariOpeningSubtitle')}
-              </p>
-            </div>
+      <div className="relative z-20 shrink-0 bg-gradient-to-r from-blue-600 to-blue-700 text-white px-4 py-2">
+        <div className="flex items-center justify-between">
+          <div className="flex items-center gap-2 min-w-0">
+            <ArrowRightLeft className="w-4 h-4 shrink-0" />
+            <h2 className="text-sm truncate">{tm('cariOpeningTitle')}</h2>
+            <span className="text-blue-100 text-[10px] ml-2 hidden sm:inline">
+              • {activeTab === 'entry' ? accounts.length : records.length} {tm('records')}
+            </span>
           </div>
-          <div className="flex gap-2">
+          <div className="flex gap-1.5">
+            <button
+              type="button"
+              onClick={() => setActiveTab('entry')}
+              className={`flex items-center gap-1 px-2 py-1 transition-colors text-[10px] font-bold ${
+                activeTab === 'entry' ? 'bg-white text-blue-700' : 'bg-white/10 hover:bg-white/20'
+              }`}
+            >
+              {tm('tabEntryEdit')}
+            </button>
+            <button
+              type="button"
+              onClick={() => setActiveTab('records')}
+              className={`flex items-center gap-1 px-2 py-1 transition-colors text-[10px] font-bold ${
+                activeTab === 'records' ? 'bg-white text-blue-700' : 'bg-white/10 hover:bg-white/20'
+              }`}
+            >
+              {tm('tabRegisteredRecords')}
+            </button>
             <button
               type="button"
               onClick={() => (activeTab === 'entry' ? void loadAccounts() : void loadRecords())}
-              className="flex items-center gap-1 px-3 py-1.5 bg-white/10 hover:bg-white/20 text-xs rounded-lg"
+              className="flex items-center gap-1 px-2 py-1 bg-white/10 hover:bg-white/20 transition-colors text-[10px]"
             >
-              <RefreshCw className={`w-3.5 h-3.5 ${loading || recordsLoading ? 'animate-spin' : ''}`} />
-              {tm('refreshData')}
+              <RefreshCw className={`w-3 h-3 ${loading || recordsLoading ? 'animate-spin' : ''}`} />
+              <span>{tm('refresh')}</span>
             </button>
             {activeTab === 'entry' && (
               <button
                 type="button"
                 disabled={saving || selectedCount === 0}
                 onClick={() => void handleSave()}
-                className="flex items-center gap-1 px-4 py-1.5 bg-white text-indigo-800 hover:bg-blue-50 text-xs font-bold rounded-lg disabled:opacity-40"
+                className="flex items-center gap-1 px-2 py-1 bg-white text-blue-700 hover:bg-blue-50 transition-colors text-[10px] disabled:opacity-50"
               >
-                <Save className="w-3.5 h-3.5" />
-                {tm('saveOpeningBalance')} ({selectedCount})
+                <Save className="w-3 h-3" />
+                <span>{tm('saveOpeningBalance')} ({selectedCount})</span>
               </button>
             )}
           </div>
-        </div>
-        <div className="flex gap-1 mt-3">
-          {(
-            [
-              { key: 'entry' as const, label: tm('tabEntryEdit') },
-              { key: 'records' as const, label: tm('tabRegisteredRecords') },
-            ] as const
-          ).map((tab) => (
-            <button
-              key={tab.key}
-              type="button"
-              onClick={() => setActiveTab(tab.key)}
-              className={`px-3 py-1.5 rounded-lg text-[10px] font-black uppercase ${
-                activeTab === tab.key ? 'bg-white text-indigo-800' : 'bg-white/15 text-white hover:bg-white/25'
-              }`}
-            >
-              {tab.label}
-            </button>
-          ))}
         </div>
       </div>
 

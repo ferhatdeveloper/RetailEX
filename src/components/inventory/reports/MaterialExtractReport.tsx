@@ -1,5 +1,5 @@
 ﻿import React, { useState, useEffect, useMemo, useRef } from 'react';
-import { Search, Download, Printer } from 'lucide-react';
+import { Search, Download, Printer, X } from 'lucide-react';
 import { stockMovementAPI } from '../../../services/stockMovementAPI';
 import { productAPI } from '../../../services/api/products';
 import type { Product } from '../../../core/types';
@@ -95,10 +95,18 @@ export function MaterialExtractReport() {
         return products
             .filter(p =>
                 (p.code || '').toLocaleLowerCase('tr').includes(q) ||
-                (p.name || '').toLocaleLowerCase('tr').includes(q)
+                (p.name || '').toLocaleLowerCase('tr').includes(q) ||
+                (p.barcode || '').toLocaleLowerCase('tr').includes(q)
             )
             .slice(0, 50);
     }, [products, searchText]);
+
+    const resetToManualSearch = (opts?: { openDropdown?: boolean }) => {
+        setSelectedProduct(null);
+        setSearchText('');
+        setRows([]);
+        setShowDropdown(opts?.openDropdown !== false);
+    };
 
     const loadReport = async () => {
         if (!selectedProduct?.id) {
@@ -348,18 +356,39 @@ export function MaterialExtractReport() {
                             placeholder={tm('selectMaterialPlaceholder') || 'Malzeme arayın...'}
                             value={searchText}
                             onChange={e => {
-                                setSearchText(e.target.value);
+                                const v = e.target.value;
+                                setSearchText(v);
+                                if (selectedProduct) {
+                                    setSelectedProduct(null);
+                                    setRows([]);
+                                }
                                 setShowDropdown(true);
                             }}
-                            onFocus={() => setShowDropdown(true)}
+                            onFocus={() => {
+                                if (!selectedProduct) setShowDropdown(true);
+                            }}
                         />
-                        <button
-                            type="button"
-                            onClick={() => setShowDropdown(s => !s)}
-                            className="p-2 bg-indigo-600 text-white rounded hover:bg-indigo-700"
-                        >
-                            <Search className="w-4 h-4" />
-                        </button>
+                        {selectedProduct ? (
+                            <button
+                                type="button"
+                                onClick={() => resetToManualSearch({ openDropdown: true })}
+                                className="p-2 bg-indigo-600 text-white rounded hover:bg-indigo-700"
+                                title={tm('clear') || 'Temizle'}
+                                aria-label={tm('clear') || 'Temizle'}
+                            >
+                                <X className="w-4 h-4" />
+                            </button>
+                        ) : (
+                            <button
+                                type="button"
+                                onClick={() => setShowDropdown(s => !s)}
+                                className="p-2 bg-indigo-600 text-white rounded hover:bg-indigo-700"
+                                title={tm('search') || 'Ara'}
+                                aria-label={tm('search') || 'Ara'}
+                            >
+                                <Search className="w-4 h-4" />
+                            </button>
+                        )}
                     </div>
                     {showDropdown && filteredProducts.length > 0 && (
                         <div className="absolute z-20 mt-1 w-80 max-h-80 overflow-y-auto bg-white border rounded-lg shadow-lg">
