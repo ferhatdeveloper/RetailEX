@@ -2,6 +2,8 @@ import { useCallback, useEffect, useMemo, useState } from 'react';
 import {
   Activity,
   BarChart3,
+  ChevronDown,
+  ChevronRight,
   Database,
   ExternalLink,
   LayoutDashboard,
@@ -9,6 +11,7 @@ import {
   RefreshCw,
   Search,
   Sparkles,
+  Table2,
 } from 'lucide-react';
 import { useTheme } from '../../contexts/ThemeContext';
 import { useLanguage } from '../../contexts/LanguageContext';
@@ -17,13 +20,17 @@ import {
   GRAFANA_CATEGORY_LABELS,
   GRAFANA_READY_REPORTS,
   getGrafanaBaseUrl,
+  getGrafanaExplorePostgresPath,
   type GrafanaReadyReport,
   type GrafanaReportCategory,
 } from '../../utils/grafanaEmbed';
 import {
   ensureGrafanaDbForCurrentServer,
+  fetchGrafanaSchema,
   listGrafanaDashboardsViaApi,
+  type GrafanaSchemaTable,
 } from '../../services/grafanaDatasourceService';
+import { buildSelectSql } from '../../services/tenantReportSchemaService';
 import { GrafanaServerCodeModal } from './GrafanaServerCodeModal';
 
 function reportTitle(r: GrafanaReadyReport, lang: string): string {
@@ -53,7 +60,20 @@ function padPeriod(v: unknown): string {
   return d.length <= 2 ? d.padStart(2, '0') : d;
 }
 
-/** Raporlar & Analiz → Rapor Oluşturucu (yalnızca Grafana; API katalog) */
+function kindLabel(kind: string, lang: string): string {
+  if (lang === 'en') {
+    return ({ firm: 'Firm', period: 'Period', shared: 'Shared', other: 'Other' } as Record<string, string>)[
+      kind
+    ] || kind;
+  }
+  return ({ firm: 'Firma', period: 'Dönem', shared: 'Ortak', other: 'Diğer' } as Record<string, string>)[
+    kind
+  ] || kind;
+}
+
+type LeftPane = 'reports' | 'tables';
+
+/** Raporlar & Analiz → Rapor Oluşturucu (Grafana + API şema) */
 export function GrafanaReportBuilderModule() {
   const { darkMode } = useTheme();
   const { language } = useLanguage();
@@ -63,11 +83,21 @@ export function GrafanaReportBuilderModule() {
   const firm = padFirm(selectedFirm?.firm_nr ?? selectedFirm?.nr);
   const period = padPeriod(selectedPeriod?.nr);
 
+  const [leftPane, setLeftPane] = useState<LeftPane>('reports');
   const [reports, setReports] = useState<GrafanaReadyReport[]>(GRAFANA_READY_REPORTS);
   const [catalogSource, setCatalogSource] = useState<'api' | 'static'>('static');
   const [catalogLoading, setCatalogLoading] = useState(false);
   const [catalogError, setCatalogError] = useState<string | null>(null);
   const [search, setSearch] = useState('');
+
+  const [schemaTables, setSchemaTables] = useState<GrafanaSchemaTable[]>([]);
+  const [schemaLoading, setSchemaLoading] = useState(false);
+  const [schemaError, setSchemaError] = useState<string | null>(null);
+  const [schemaSource, setSchemaSource] = useState<string | null>(null);
+  const [schemaSearch, setSchemaSearch] = useState('');
+  const [expanded, setExpanded] = useState<Record<string, boolean>>({});
+  const [selectedTableKey, setSelectedTableKey] = useState<string | null>(null);
+  const [exploreSql, setExploreSql] = useState<string | null>(null);
 
   const [grafanaId, setGrafanaId] = useState(
     () =>
@@ -129,10 +159,37 @@ export function GrafanaReportBuilderModule() {
     setCatalogLoading(false);
   }, []);
 
+  const loadSchema = useCallback(
+    async (q?: string) => {
+      setSchemaLoading(true);
+      setSchemaError(null);
+      const result = await fetchGrafanaSchema({ firm, period, search: q });
+      setSchemaLoading(false);
+      if (!result.ok) {
+        setSchemaTables([]);
+        setSchemaError(result.reason);
+        setSchemaSource(null);
+        return;
+      }
+      setSchemaTables(result.tables);
+      setSchemaSource(result.source);
+      if (result.database) setGrafanaDbLabel(result.database);
+    },
+    [firm, period]
+  );
+
   useEffect(() => {
     void linkGrafanaDb();
     void loadCatalog();
   }, [linkGrafanaDb, loadCatalog, selectedFirm?.firm_nr, selectedPeriod?.nr]);
+
+  useEffect(() => {
+    if (leftPane !== 'tables') return;
+    const t = window.setTimeout(() => {
+      void loadSchema(schemaSearch);
+    }, 280);
+    return () => window.clearTimeout(t);
+  }, [leftPane, schemaSearch, loadSchema]);
 
   const visibleCategories = useMemo(() => {
     const q = search.trim().toLocaleLowerCase('tr');
@@ -153,6 +210,22 @@ export function GrafanaReportBuilderModule() {
       .filter((c) => c.items.length > 0);
   }, [reports, search]);
 
+  const openTableInExplore = (table: GrafanaSchemaTable, columns?: string[]) => {
+    const sql = buildSelectSql(
+      {
+        schemaName: table.schemaName,
+        tableName: table.tableName,
+        logicalName: table.logicalName,
+        kind: (table.kind as 'firm' | 'period' | 'shared' | 'other') || 'other',
+        columns: table.columns,
+      },
+      columns?.length ? columns : table.columns.slice(0, 20).map((c) => c.columnName)
+    );
+    setExploreSql(sql);
+    setGrafanaId('builder-pg');
+    setSelectedTableKey(`${table.schemaName}.${table.tableName}`);
+  };
+
   const grafanaSelected =
     reports.find((r) => r.id === grafanaId) ||
     reports.find((r) => r.category === 'executive') ||
@@ -160,10 +233,12 @@ export function GrafanaReportBuilderModule() {
     GRAFANA_READY_REPORTS[0];
 
   const theme = darkMode ? 'dark' : 'light';
-  const embedPath = grafanaSelected.embedPath(theme, { firm, period });
+  const embedPath =
+    grafanaId === 'builder-pg' && exploreSql
+      ? getGrafanaExplorePostgresPath(theme, exploreSql)
+      : grafanaSelected.embedPath(theme, { firm, period });
   const embedUrl = `${getGrafanaBaseUrl()}${embedPath}`;
   const baseUrl = getGrafanaBaseUrl();
-
   const firmLabel = selectedFirm?.name || `Firma ${firm}`;
 
   return (
@@ -185,7 +260,8 @@ export function GrafanaReportBuilderModule() {
               {lang === 'en' ? 'Period' : 'Dönem'} {period}
               {grafanaDbLabel ? ` · Grafana DB ${grafanaDbLabel}` : ''}
               {` · ${catalogSource === 'api' ? 'API' : 'katalog'} (${reports.length})`}
-              {grafanaLinking || catalogLoading
+              {schemaSource ? ` · şema:${schemaSource}` : ''}
+              {grafanaLinking || catalogLoading || schemaLoading
                 ? lang === 'en'
                   ? ' · loading…'
                   : ' · yükleniyor…'
@@ -197,16 +273,23 @@ export function GrafanaReportBuilderModule() {
         <div className="flex items-center gap-2 shrink-0">
           <button
             type="button"
-            onClick={() => void loadCatalog()}
-            disabled={catalogLoading}
+            onClick={() => {
+              if (leftPane === 'tables') void loadSchema(schemaSearch);
+              else void loadCatalog();
+            }}
+            disabled={catalogLoading || schemaLoading}
             className={`inline-flex items-center gap-1 text-xs font-medium px-2.5 py-1.5 rounded-lg border ${
               darkMode
                 ? 'border-gray-600 text-gray-200 hover:bg-gray-700'
                 : 'border-gray-200 text-gray-700 hover:bg-gray-50'
             }`}
           >
-            {catalogLoading ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <RefreshCw className="h-3.5 w-3.5" />}
-            {lang === 'en' ? 'Refresh list' : 'Listeyi yenile'}
+            {catalogLoading || schemaLoading ? (
+              <Loader2 className="h-3.5 w-3.5 animate-spin" />
+            ) : (
+              <RefreshCw className="h-3.5 w-3.5" />
+            )}
+            {lang === 'en' ? 'Refresh' : 'Yenile'}
           </button>
           <button
             type="button"
@@ -222,9 +305,9 @@ export function GrafanaReportBuilderModule() {
         </div>
       </div>
 
-      {(grafanaLinkError || catalogError) && (
+      {(grafanaLinkError || catalogError || schemaError) && (
         <div className="shrink-0 px-4 py-2 text-xs text-amber-700 bg-amber-50 border-b border-amber-200">
-          {grafanaLinkError || catalogError}{' '}
+          {grafanaLinkError || schemaError || catalogError}{' '}
           {grafanaLinkError && (
             <button
               type="button"
@@ -248,6 +331,7 @@ export function GrafanaReportBuilderModule() {
           setGrafanaDbLabel(database);
           setGrafanaLinkError(null);
           void loadCatalog();
+          void loadSchema(schemaSearch);
         }}
       />
 
@@ -257,56 +341,185 @@ export function GrafanaReportBuilderModule() {
             darkMode ? 'border-gray-700' : 'border-gray-200 bg-white'
           }`}
         >
-          <div className={`shrink-0 p-2 border-b ${darkMode ? 'border-gray-700' : 'border-gray-200'}`}>
+          <div className={`shrink-0 p-2 border-b space-y-2 ${darkMode ? 'border-gray-700' : 'border-gray-200'}`}>
+            <div className="flex rounded-lg border p-0.5 dark:border-gray-600 border-gray-200">
+              <button
+                type="button"
+                onClick={() => setLeftPane('reports')}
+                className={`flex-1 px-2 py-1.5 text-xs font-semibold rounded-md ${
+                  leftPane === 'reports' ? active : muted
+                }`}
+              >
+                {lang === 'en' ? 'Reports' : 'Raporlar'}
+              </button>
+              <button
+                type="button"
+                onClick={() => {
+                  setLeftPane('tables');
+                  void loadSchema(schemaSearch);
+                }}
+                className={`flex-1 px-2 py-1.5 text-xs font-semibold rounded-md inline-flex items-center justify-center gap-1 ${
+                  leftPane === 'tables' ? active : muted
+                }`}
+              >
+                <Table2 className="h-3.5 w-3.5" />
+                {lang === 'en' ? 'Tables' : 'Tablolar'}
+              </button>
+            </div>
             <div className="relative">
               <Search className={`absolute left-2.5 top-1/2 -translate-y-1/2 h-3.5 w-3.5 ${muted}`} />
               <input
-                value={search}
-                onChange={(e) => setSearch(e.target.value)}
-                placeholder={lang === 'en' ? 'Search reports…' : 'Rapor ara…'}
+                value={leftPane === 'tables' ? schemaSearch : search}
+                onChange={(e) =>
+                  leftPane === 'tables' ? setSchemaSearch(e.target.value) : setSearch(e.target.value)
+                }
+                placeholder={
+                  leftPane === 'tables'
+                    ? lang === 'en'
+                      ? 'Search table / column…'
+                      : 'Tablo / alan ara…'
+                    : lang === 'en'
+                      ? 'Search reports…'
+                      : 'Rapor ara…'
+                }
                 className={`w-full pl-8 pr-3 py-2 text-xs rounded-lg border outline-none focus:ring-2 focus:ring-teal-500/40 ${inputCls}`}
               />
             </div>
           </div>
+
           <div className="flex-1 min-h-0 overflow-y-auto overscroll-contain p-2 space-y-1.5">
-            {visibleCategories.map((cat) => (
-              <div key={cat.key} className="space-y-1.5">
-                <p className={`px-2 pt-2 text-[10px] font-bold uppercase tracking-wider ${muted}`}>
-                  {lang === 'en'
-                    ? GRAFANA_CATEGORY_LABELS[cat.key].en
-                    : GRAFANA_CATEGORY_LABELS[cat.key].tr}
-                  <span className="ml-1 opacity-70">({cat.items.length})</span>
-                </p>
-                {cat.items.map((r) => {
-                  const Icon = reportIcon(r);
-                  const isOn = r.id === grafanaId;
-                  return (
-                    <button
-                      key={r.id}
-                      type="button"
-                      onClick={() => setGrafanaId(r.id)}
-                      className={`w-full text-left rounded-xl border px-3 py-2.5 transition-colors ${
-                        isOn ? active : `${card} hover:border-teal-400/60`
-                      }`}
-                    >
-                      <div className="flex items-start gap-2">
-                        <Icon className="h-4 w-4 mt-0.5 shrink-0" />
-                        <div className="min-w-0">
-                          <div className="text-sm font-medium truncate">{reportTitle(r, lang)}</div>
-                          <div className={`text-xs mt-0.5 line-clamp-2 ${isOn ? '' : muted}`}>
-                            {reportDesc(r, lang)}
+            {leftPane === 'reports' ? (
+              <>
+                {visibleCategories.map((cat) => (
+                  <div key={cat.key} className="space-y-1.5">
+                    <p className={`px-2 pt-2 text-[10px] font-bold uppercase tracking-wider ${muted}`}>
+                      {lang === 'en'
+                        ? GRAFANA_CATEGORY_LABELS[cat.key].en
+                        : GRAFANA_CATEGORY_LABELS[cat.key].tr}
+                      <span className="ml-1 opacity-70">({cat.items.length})</span>
+                    </p>
+                    {cat.items.map((r) => {
+                      const Icon = reportIcon(r);
+                      const isOn = r.id === grafanaId && !exploreSql;
+                      return (
+                        <button
+                          key={r.id}
+                          type="button"
+                          onClick={() => {
+                            setExploreSql(null);
+                            setGrafanaId(r.id);
+                          }}
+                          className={`w-full text-left rounded-xl border px-3 py-2.5 transition-colors ${
+                            isOn || (r.id === grafanaId && r.id === 'builder-pg' && exploreSql)
+                              ? active
+                              : `${card} hover:border-teal-400/60`
+                          }`}
+                        >
+                          <div className="flex items-start gap-2">
+                            <Icon className="h-4 w-4 mt-0.5 shrink-0" />
+                            <div className="min-w-0">
+                              <div className="text-sm font-medium truncate">{reportTitle(r, lang)}</div>
+                              <div className={`text-xs mt-0.5 line-clamp-2 ${isOn ? '' : muted}`}>
+                                {reportDesc(r, lang)}
+                              </div>
+                            </div>
                           </div>
+                        </button>
+                      );
+                    })}
+                  </div>
+                ))}
+                {visibleCategories.length === 0 && (
+                  <p className={`text-xs px-2 py-4 ${muted}`}>
+                    {lang === 'en' ? 'No reports match.' : 'Eşleşen rapor yok.'}
+                  </p>
+                )}
+              </>
+            ) : (
+              <>
+                <p className={`px-2 text-[10px] font-bold uppercase tracking-wider ${muted}`}>
+                  {lang === 'en' ? 'API schema' : 'API şema'}
+                  {!schemaLoading && schemaTables.length > 0 ? ` (${schemaTables.length})` : ''}
+                </p>
+                {schemaLoading && (
+                  <div className={`flex items-center gap-2 px-2 py-3 text-xs ${muted}`}>
+                    <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                    {lang === 'en' ? 'Loading tables…' : 'Tablolar yükleniyor…'}
+                  </div>
+                )}
+                {!schemaLoading &&
+                  schemaTables.map((table) => {
+                    const key = `${table.schemaName}.${table.tableName}`;
+                    const isOpen = !!expanded[key];
+                    const isSel = selectedTableKey === key;
+                    return (
+                      <div
+                        key={key}
+                        className={`rounded-xl border ${isSel ? active : card}`}
+                      >
+                        <div className="flex items-stretch">
+                          <button
+                            type="button"
+                            className="px-2 py-2 shrink-0"
+                            onClick={() => setExpanded((e) => ({ ...e, [key]: !e[key] }))}
+                            aria-label="expand"
+                          >
+                            {isOpen ? (
+                              <ChevronDown className="h-3.5 w-3.5" />
+                            ) : (
+                              <ChevronRight className="h-3.5 w-3.5" />
+                            )}
+                          </button>
+                          <button
+                            type="button"
+                            className="flex-1 min-w-0 text-left py-2 pr-3"
+                            onClick={() => openTableInExplore(table)}
+                          >
+                            <div className="text-sm font-medium truncate">{table.logicalName}</div>
+                            <div className={`text-[10px] truncate ${muted}`}>
+                              {kindLabel(table.kind, lang)} · {table.schemaName}.{table.tableName} ·{' '}
+                              {table.columns.length}{' '}
+                              {lang === 'en' ? 'cols' : 'alan'}
+                            </div>
+                          </button>
                         </div>
+                        {isOpen && (
+                          <div
+                            className={`border-t px-2 py-1.5 space-y-0.5 max-h-48 overflow-y-auto ${
+                              darkMode ? 'border-gray-700' : 'border-gray-200'
+                            }`}
+                          >
+                            {table.columns.map((col) => (
+                              <button
+                                key={col.columnName}
+                                type="button"
+                                onClick={() => openTableInExplore(table, [col.columnName])}
+                                className={`w-full text-left text-[11px] px-2 py-1 rounded-md hover:bg-teal-500/10 ${muted}`}
+                              >
+                                <span className="font-mono text-inherit opacity-90">{col.columnName}</span>
+                                <span className="ml-1 opacity-60">{col.dataType}</span>
+                              </button>
+                            ))}
+                            <button
+                              type="button"
+                              onClick={() => openTableInExplore(table)}
+                              className="w-full text-left text-[11px] font-semibold px-2 py-1.5 text-teal-600 dark:text-teal-300"
+                            >
+                              {lang === 'en' ? 'Open in Explore →' : 'Explore’da aç →'}
+                            </button>
+                          </div>
+                        )}
                       </div>
-                    </button>
-                  );
-                })}
-              </div>
-            ))}
-            {visibleCategories.length === 0 && (
-              <p className={`text-xs px-2 py-4 ${muted}`}>
-                {lang === 'en' ? 'No reports match.' : 'Eşleşen rapor yok.'}
-              </p>
+                    );
+                  })}
+                {!schemaLoading && schemaTables.length === 0 && !schemaError && (
+                  <p className={`text-xs px-2 py-4 ${muted}`}>
+                    {lang === 'en'
+                      ? 'No tables. Reconnect DB, then refresh.'
+                      : 'Tablo yok. DB bağla, sonra yenile.'}
+                  </p>
+                )}
+              </>
             )}
           </div>
         </aside>
@@ -318,9 +531,17 @@ export function GrafanaReportBuilderModule() {
             }`}
           >
             <div className="min-w-0">
-              <h3 className="text-sm font-semibold truncate">{reportTitle(grafanaSelected, lang)}</h3>
+              <h3 className="text-sm font-semibold truncate">
+                {exploreSql && grafanaId === 'builder-pg'
+                  ? lang === 'en'
+                    ? 'Explore (table from API)'
+                    : 'Explore (API tablosu)'
+                  : reportTitle(grafanaSelected, lang)}
+              </h3>
               <p className={`text-xs truncate ${muted}`}>
-                {reportDesc(grafanaSelected, lang)}
+                {exploreSql && grafanaId === 'builder-pg'
+                  ? selectedTableKey || exploreSql.split('\n')[0]
+                  : reportDesc(grafanaSelected, lang)}
                 {` · firm=${firm} period=${period}`}
               </p>
             </div>
@@ -349,8 +570,8 @@ export function GrafanaReportBuilderModule() {
             />
           </div>
           <p className={`shrink-0 px-4 py-1.5 text-[10px] ${muted}`}>
-            Grafana · {baseUrl} · {lang === 'en' ? 'anonymous (no login)' : 'anonim (giriş yok)'} ·{' '}
-            {catalogSource === 'api' ? 'API' : 'statik katalog'}
+            Grafana · {baseUrl} · {lang === 'en' ? 'anonymous (no login)' : 'anonim (giriş yok)'}
+            {exploreSql ? ' · SQL API' : ''}
           </p>
         </section>
       </div>

@@ -74,6 +74,105 @@ async function setGrafanaPostgresDatabase(database: string): Promise<void> {
   }
 }
 
+export type GrafanaSchemaColumn = {
+  columnName: string;
+  dataType: string;
+  isNullable: boolean;
+  ordinalPosition: number;
+};
+
+export type GrafanaSchemaTable = {
+  schemaName: string;
+  tableName: string;
+  logicalName: string;
+  kind: string;
+  columns: GrafanaSchemaColumn[];
+};
+
+export type GrafanaSchemaResult =
+  | {
+      ok: true;
+      database: string;
+      firm: string;
+      period: string;
+      tableCount: number;
+      tables: GrafanaSchemaTable[];
+      source: 'grafana-api' | 'tenant';
+    }
+  | { ok: false; reason: string };
+
+/**
+ * Grafana ds/query → information_schema (köprü). Başarısızsa tenant postgres keşfi.
+ */
+export async function fetchGrafanaSchema(opts: {
+  firm: string;
+  period: string;
+  search?: string;
+}): Promise<GrafanaSchemaResult> {
+  const firm = String(opts.firm || '001').replace(/\D/g, '').padStart(3, '0') || '001';
+  const period = String(opts.period || '01').replace(/\D/g, '').padStart(2, '0') || '01';
+  const q = String(opts.search || '').trim();
+
+  if (!IS_TAURI) {
+    try {
+      const bridge = getBridgeUrl();
+      const qs = new URLSearchParams({ firm, period });
+      if (q) qs.set('q', q);
+      const res = await fetch(`${bridge}/api/grafana/schema?${qs}`, {
+        method: 'GET',
+        credentials: 'same-origin',
+      });
+      const body = (await res.json().catch(() => ({}))) as {
+        error?: string;
+        database?: string;
+        firm?: string;
+        period?: string;
+        tableCount?: number;
+        tables?: GrafanaSchemaTable[];
+      };
+      if (res.ok && Array.isArray(body.tables)) {
+        return {
+          ok: true,
+          database: String(body.database || ''),
+          firm: String(body.firm || firm),
+          period: String(body.period || period),
+          tableCount: Number(body.tableCount || body.tables.length),
+          tables: body.tables,
+          source: 'grafana-api',
+        };
+      }
+      // düş — tenant fallback
+      if (!res.ok && body.error) {
+        console.warn('[Grafana schema API]', body.error);
+      }
+    } catch (e) {
+      console.warn('[Grafana schema API]', e);
+    }
+  }
+
+  try {
+    const { discoverTenantReportSchema } = await import('./tenantReportSchemaService');
+    const { context, tables } = await discoverTenantReportSchema({ search: q || undefined });
+    return {
+      ok: true,
+      database: context.databaseName || '',
+      firm: context.firmNr,
+      period: context.periodNr,
+      tableCount: tables.length,
+      tables: tables.map((t) => ({
+        schemaName: t.schemaName,
+        tableName: t.tableName,
+        logicalName: t.logicalName,
+        kind: t.kind,
+        columns: t.columns,
+      })),
+      source: 'tenant',
+    };
+  } catch (e) {
+    return { ok: false, reason: e instanceof Error ? e.message : String(e) };
+  }
+}
+
 /**
  * Grafana API üzerinden panoları çeker; başarısızsa statik katalog.
  */

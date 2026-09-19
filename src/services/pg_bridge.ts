@@ -1713,6 +1713,201 @@ app.post('/api/grafana/postgres-database', async (c) => {
     }
 });
 
+/**
+ * Grafana PostgreSQL datasource üzerinden information_schema (tablo + kolon).
+ * Query: firm, period, q (arama)
+ */
+app.get('/api/grafana/schema', async (c) => {
+    try {
+        const firm = String(c.req.query('firm') || '001').replace(/\D/g, '').padStart(3, '0').slice(0, 10) || '001';
+        const period = String(c.req.query('period') || '01').replace(/\D/g, '').padStart(2, '0').slice(0, 10) || '01';
+        const q = String(c.req.query('q') || '').trim().toLowerCase();
+
+        const dbRes = await fetch(`${grafanaBaseUrl()}/api/datasources/uid/postgres`, {
+            headers: { Authorization: grafanaAdminAuthHeader() },
+        });
+        if (!dbRes.ok) {
+            const t = await dbRes.text();
+            return c.json({ error: `Datasource okunamadı: ${dbRes.status} ${t.slice(0, 200)}` }, 502);
+        }
+        const ds = (await dbRes.json()) as { jsonData?: { database?: string }; database?: string };
+        const database = String(ds.jsonData?.database || ds.database || '').trim();
+        if (!database) {
+            return c.json({ error: 'Grafana PostgreSQL database boş — önce DB bağlayın.' }, 400);
+        }
+
+        const firmLike = `rex_${firm}_%`;
+        const periodLike = `rex_${firm}_${period}_%`;
+        const rawSql = `
+SELECT
+  c.table_schema,
+  c.table_name,
+  c.column_name,
+  c.data_type,
+  c.is_nullable,
+  c.ordinal_position
+FROM information_schema.columns c
+INNER JOIN information_schema.tables t
+  ON t.table_schema = c.table_schema AND t.table_name = c.table_name
+WHERE c.table_schema IN ('public','beauty','rest','wms','pos','logic')
+  AND t.table_type = 'BASE TABLE'
+  AND (
+    c.table_name LIKE '${firmLike.replace(/'/g, "''")}'
+    OR c.table_name LIKE '${periodLike.replace(/'/g, "''")}'
+    OR c.table_name IN ('stores','firms','users','warehouses','branches','units')
+  )
+ORDER BY c.table_schema, c.table_name, c.ordinal_position
+LIMIT 20000
+`.trim();
+
+        const queryRes = await fetch(`${grafanaBaseUrl()}/api/ds/query`, {
+            method: 'POST',
+            headers: {
+                Authorization: grafanaAdminAuthHeader(),
+                'Content-Type': 'application/json',
+            },
+            body: JSON.stringify({
+                queries: [
+                    {
+                        refId: 'A',
+                        datasource: { type: 'postgres', uid: 'postgres' },
+                        rawSql,
+                        format: 'table',
+                        rawQuery: true,
+                    },
+                ],
+                from: String(Date.now() - 3600_000),
+                to: String(Date.now()),
+            }),
+        });
+        if (!queryRes.ok) {
+            const t = await queryRes.text();
+            return c.json(
+                { error: `Grafana ds/query hata: ${queryRes.status} ${t.slice(0, 300)}` },
+                502
+            );
+        }
+        const payload = (await queryRes.json()) as {
+            results?: Record<
+                string,
+                {
+                    error?: string;
+                    frames?: Array<{
+                        schema?: { fields?: Array<{ name?: string }> };
+                        data?: { values?: unknown[][] };
+                    }>;
+                }
+            >;
+        };
+        const resultA = payload.results?.A;
+        if (resultA?.error) {
+            return c.json({ error: resultA.error, database }, 502);
+        }
+        const frame = resultA?.frames?.[0];
+        const fields = frame?.schema?.fields || [];
+        const values = frame?.data?.values || [];
+        const colIndex: Record<string, number> = {};
+        fields.forEach((f, i) => {
+            if (f.name) colIndex[f.name] = i;
+        });
+        const rowCount = values[0]?.length ?? 0;
+        const sensitive = new Set([
+            'encrypted_password',
+            'password',
+            'password_hash',
+            'raw_user_meta_data',
+            'refresh_token',
+            'access_token',
+            'db_pass',
+        ]);
+
+        type Col = {
+            columnName: string;
+            dataType: string;
+            isNullable: boolean;
+            ordinalPosition: number;
+        };
+        type Tbl = {
+            schemaName: string;
+            tableName: string;
+            logicalName: string;
+            kind: string;
+            columns: Col[];
+        };
+        const byKey = new Map<string, Tbl>();
+
+        const classify = (tableName: string) => {
+            const fp = `rex_${firm}_${period}_`;
+            const f = `rex_${firm}_`;
+            if (tableName.startsWith(fp)) return { kind: 'period', logicalName: tableName.slice(fp.length) };
+            if (tableName.startsWith(f)) {
+                const rest = tableName.slice(f.length);
+                if (/^\d{2}_/.test(rest)) return { kind: 'period', logicalName: rest.replace(/^\d{2}_/, '') };
+                return { kind: 'firm', logicalName: rest };
+            }
+            if (['stores', 'firms', 'users', 'warehouses', 'branches', 'units'].includes(tableName)) {
+                return { kind: 'shared', logicalName: tableName };
+            }
+            return { kind: 'other', logicalName: tableName };
+        };
+
+        for (let i = 0; i < rowCount; i++) {
+            const schemaName = String(values[colIndex.table_schema]?.[i] ?? 'public');
+            const tableName = String(values[colIndex.table_name]?.[i] ?? '');
+            const columnName = String(values[colIndex.column_name]?.[i] ?? '');
+            if (!tableName || !columnName || sensitive.has(columnName)) continue;
+            const key = `${schemaName}.${tableName}`;
+            let tbl = byKey.get(key);
+            if (!tbl) {
+                const { kind, logicalName } = classify(tableName);
+                tbl = { schemaName, tableName, logicalName, kind, columns: [] };
+                byKey.set(key, tbl);
+            }
+            tbl.columns.push({
+                columnName,
+                dataType: String(values[colIndex.data_type]?.[i] ?? 'text'),
+                isNullable: String(values[colIndex.is_nullable]?.[i] ?? 'YES') === 'YES',
+                ordinalPosition: Number(values[colIndex.ordinal_position]?.[i] ?? 0),
+            });
+        }
+
+        let tables = Array.from(byKey.values());
+        if (q) {
+            tables = tables
+                .map((t) => {
+                    const hit =
+                        t.tableName.toLowerCase().includes(q) ||
+                        t.logicalName.toLowerCase().includes(q) ||
+                        t.schemaName.toLowerCase().includes(q);
+                    if (hit) return t;
+                    const cols = t.columns.filter((c) => c.columnName.toLowerCase().includes(q));
+                    if (!cols.length) return null;
+                    return { ...t, columns: cols };
+                })
+                .filter((t): t is Tbl => t != null);
+        }
+
+        const kindOrder: Record<string, number> = { period: 0, firm: 1, shared: 2, other: 3 };
+        tables.sort((a, b) => {
+            const kd = (kindOrder[a.kind] ?? 9) - (kindOrder[b.kind] ?? 9);
+            if (kd !== 0) return kd;
+            return a.tableName.localeCompare(b.tableName);
+        });
+
+        return c.json({
+            ok: true,
+            database,
+            firm,
+            period,
+            tableCount: tables.length,
+            tables,
+        });
+    } catch (e: any) {
+        console.error('[PG Bridge] grafana schema:', e);
+        return c.json({ error: e?.message || String(e) }, 500);
+    }
+});
+
 // Port: BRIDGE_PORT (tercih) veya PORT; varsayılan 3001
 const port = (() => {
     const raw = (process.env.BRIDGE_PORT || process.env.PORT || '3001').trim();

@@ -600,10 +600,28 @@ export const GRAFANA_READY_REPORTS: GrafanaReadyReport[] = [
     descriptionTr: 'SQL sorgusu oluştur',
     descriptionEn: 'Build SQL queries',
     isBuilder: true,
-    embedPath: (theme) =>
-      `/explore?orgId=1&left=%7B%22datasource%22:%22postgres%22,%22queries%22:%5B%7B%22refId%22:%22A%22%7D%5D%7D&theme=${theme}`,
+    embedPath: (theme) => getGrafanaExplorePostgresPath(theme),
   },
 ];
+
+/** Explore PostgreSQL — isteğe bağlı ham SQL (API şema seçimi) */
+export function getGrafanaExplorePostgresPath(theme: string, sql?: string): string {
+  const query: Record<string, unknown> = {
+    refId: 'A',
+    datasource: { type: 'postgres', uid: 'postgres' },
+    format: 'table',
+    rawQuery: true,
+  };
+  if (sql && sql.trim()) {
+    query.rawSql = sql.trim();
+  }
+  const left = {
+    datasource: 'postgres',
+    queries: [query],
+    range: { from: 'now-6h', to: 'now' },
+  };
+  return `/explore?orgId=1&left=${encodeURIComponent(JSON.stringify(left))}&theme=${theme}`;
+}
 
 export function getGrafanaEmbedUrl(opts?: {
   dark?: boolean;
@@ -611,9 +629,13 @@ export function getGrafanaEmbedUrl(opts?: {
   uid?: string;
   firm?: string;
   period?: string;
+  sql?: string;
 }): string {
   const base = getGrafanaBaseUrl();
   const theme = opts?.dark ? 'dark' : 'light';
+  if (opts?.sql || opts?.reportId === 'builder-pg') {
+    return `${base}${getGrafanaExplorePostgresPath(theme, opts.sql)}`;
+  }
   const vars = { firm: opts?.firm, period: opts?.period };
   if (opts?.uid) {
     return `${base}${dashEmbed(opts.uid, theme, '&refresh=2m', vars)}`;
