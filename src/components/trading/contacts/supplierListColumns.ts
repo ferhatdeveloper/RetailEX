@@ -1,6 +1,7 @@
 /** Cari hesaplar listesi kolon görünürlüğü (localStorage). */
 
 export const SUPPLIER_LIST_COLUMN_VISIBILITY_KEY = 'retailex_supplierList_columnVisibility_v2';
+export const SUPPLIER_LIST_COLUMN_ORDER_KEY = 'retailex_supplierList_columnOrder_v1';
 
 /**
  * Liste kolonları — rex_*_customers + rex_*_suppliers alanlarının birleşimi.

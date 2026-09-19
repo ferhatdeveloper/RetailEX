@@ -42,6 +42,7 @@ import {
 } from '../../../utils/cariAccountStatement';
 import {
   SUPPLIER_LIST_COLUMN_ORDER,
+  SUPPLIER_LIST_COLUMN_ORDER_KEY,
   SUPPLIER_LIST_COLUMN_VISIBILITY_KEY,
   loadSupplierListColumnVisibility,
   supplierListColumnVisibilityMenuItems,
@@ -1146,6 +1147,7 @@ export function SupplierModule({ initialFilter = 'all' }: { initialFilter?: Cari
               enableColumnResizing={true}
               enableExcelExport={false}
               enableSelection
+              columnOrderStorageKey={SUPPLIER_LIST_COLUMN_ORDER_KEY}
               onSelectionChange={(rows) => {
                 if (rows.length > 2) {
                   toast.error('Birleştirme için en fazla 2 cari işaretleyin');

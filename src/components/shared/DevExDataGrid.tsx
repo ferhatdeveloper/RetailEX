@@ -1,4 +1,4 @@
-import { useState, useMemo, useEffect, useRef, useCallback, type ReactNode } from 'react';
+import { useState, useMemo, useEffect, useRef, useCallback, type CSSProperties, type MouseEvent as ReactMouseEvent, type ReactNode } from 'react';
 import { createPortal } from 'react-dom';
 import {
   useReactTable,
@@ -15,8 +15,24 @@ import {
   PaginationState,
   Column,
   FilterFn,
+  Header,
 } from '@tanstack/react-table';
-import { ChevronDown, ChevronUp, Filter, Download, Printer, Layers } from 'lucide-react';
+import {
+  DndContext,
+  PointerSensor,
+  closestCenter,
+  useSensor,
+  useSensors,
+  type DragEndEvent,
+} from '@dnd-kit/core';
+import {
+  SortableContext,
+  arrayMove,
+  horizontalListSortingStrategy,
+  useSortable,
+} from '@dnd-kit/sortable';
+import { CSS } from '@dnd-kit/utilities';
+import { ChevronDown, ChevronUp, Filter, Download, Printer, Layers, GripVertical } from 'lucide-react';
 import { useResponsive } from '../../hooks/useResponsive';
 import { useLanguage } from '../../contexts/LanguageContext';
 import { useTheme } from '../../contexts/ThemeContext';
@@ -34,6 +50,62 @@ import {
 import { getFirmLedgerCurrency, getGlobalCurrency } from '../../utils/currency';
 import { getAppDefaultCurrency } from '../../services/postgres';
 import { useFirmaDonem } from '../../contexts/FirmaDonemContext';
+
+/** Sabit kolonlar — sürüklenmez; select solda, actions sağda kalır. */
+const PINNED_COLUMN_IDS = new Set(['select', 'actions']);
+
+/**
+ * Görünürlük key’inden sıra key’i: `…_columnVisibility_v1` → `…_columnOrder_v1`
+ */
+export function toColumnOrderStorageKey(visibilityStorageKey: string): string {
+  if (visibilityStorageKey.includes('_columnVisibility_')) {
+    return visibilityStorageKey.replace('_columnVisibility_', '_columnOrder_');
+  }
+  return `${visibilityStorageKey}_columnOrder`;
+}
+
+export function loadColumnOrderFromStorage(storageKey: string): string[] | null {
+  if (typeof window === 'undefined' || !storageKey) return null;
+  try {
+    const raw = localStorage.getItem(storageKey);
+    if (!raw) return null;
+    const parsed = JSON.parse(raw) as unknown;
+    if (!Array.isArray(parsed) || !parsed.every((x) => typeof x === 'string')) return null;
+    return parsed as string[];
+  } catch {
+    return null;
+  }
+}
+
+export function saveColumnOrderToStorage(storageKey: string, order: string[]): void {
+  if (typeof window === 'undefined' || !storageKey) return;
+  try {
+    const persistable = order.filter((id) => !PINNED_COLUMN_IDS.has(id));
+    localStorage.setItem(storageKey, JSON.stringify(persistable));
+  } catch {
+    /* quota / private mode */
+  }
+}
+
+/** Tercih edilen sırayı mevcut kolon id’leriyle birleştir; select/actions sabit. */
+export function mergeDevExColumnOrder(preferred: string[], availableIds: string[]): string[] {
+  const available = availableIds.filter(Boolean);
+  const availableSet = new Set(available);
+  const start = available.filter((id) => id === 'select');
+  const end = available.filter((id) => id === 'actions');
+  const middleAvail = available.filter((id) => !PINNED_COLUMN_IDS.has(id));
+  const middleSet = new Set(middleAvail);
+  const fromPreferred = preferred.filter((id) => middleSet.has(id));
+  const seen = new Set(fromPreferred);
+  const missing = middleAvail.filter((id) => !seen.has(id));
+  const merged = [...start, ...fromPreferred, ...missing, ...end];
+  // preferred’da olmayan ama available’da olan her şey eklendi; fazladan id yok
+  return merged.filter((id) => availableSet.has(id));
+}
+
+function isColumnReorderable(columnId: string): boolean {
+  return !PINNED_COLUMN_IDS.has(columnId);
+}
 
 const DEFAULT_PAGE_SIZE_OPTIONS = [10, 15, 20, 25, 50, 100];
 
@@ -59,6 +131,20 @@ export interface DevExDataGridProps<T> {
   showColumnVisibilityToolbar?: boolean;
   columnVisibility?: Record<string, boolean>;
   onColumnVisibilityChange?: (visibility: any) => void;
+  /**
+   * Kolon başlığını sürükleyerek sıra değiştir (masaüstü). Varsayılan: açık.
+   * `select` / `actions` sabit kalır. Filtre / grup ikonları sürüklenmez.
+   */
+  enableColumnReorder?: boolean;
+  /** Kontrollü kolon sırası (kolon id listesi) */
+  columnOrder?: string[];
+  onColumnOrderChange?: (order: string[]) => void;
+  /**
+   * Sıra tercihi localStorage anahtarı (görünürlük ile aynı kalıp).
+   * Örn. `retailex_invoiceList_columnOrder_v1` —
+   * `toColumnOrderStorageKey(INVOICE_LIST_COLUMN_VISIBILITY_KEY)` ile üretilebilir.
+   */
+  columnOrderStorageKey?: string;
   pageSize?: number;
   onRowClick?: (row: T) => void;
   onRowDoubleClick?: (row: T) => void;
@@ -150,17 +236,17 @@ export function resolveDevExGridRowKind<T>(
   return 'detail';
 }
 
-/** Grup başlığı: soft sky/slate; grup dip toplam: soft amber — dark mode uyumlu. */
+/** Grup başlığı: indigo; grup dip toplam: amber — birbirinden net ayırt edilir. */
 function devExGridRowKindClass(kind: DevExGridRowKind, darkMode: boolean): string {
   if (kind === 'group') {
     return darkMode
-      ? 'bg-slate-600/95 hover:bg-slate-500 text-slate-50 !border-slate-500'
-      : 'bg-sky-100/95 hover:bg-sky-200/90 text-slate-900 !border-sky-200';
+      ? 'bg-indigo-900/85 hover:bg-indigo-800 text-indigo-50 !border-indigo-500 ring-1 ring-inset ring-indigo-400/35'
+      : 'bg-indigo-100 hover:bg-indigo-200/90 text-indigo-950 !border-indigo-300 ring-1 ring-inset ring-indigo-200/90';
   }
   if (kind === 'subtotal') {
     return darkMode
-      ? 'bg-amber-900/50 hover:bg-amber-900/65 text-amber-50 !border-amber-800/60'
-      : 'bg-amber-50 hover:bg-amber-100/95 text-amber-950 !border-amber-200';
+      ? 'bg-amber-900/75 hover:bg-amber-900/90 text-amber-50 !border-amber-600 ring-1 ring-inset ring-amber-500/45'
+      : 'bg-amber-100 hover:bg-amber-200/95 text-amber-950 !border-amber-300 ring-1 ring-inset ring-amber-200/95';
   }
   return '';
 }
@@ -913,11 +999,14 @@ function decorateColumnsForAutoGroupRows<T>(
         if (kind === 'group') {
           const gCol = String(rec[DEVEX_GRID_GROUP_COLUMN_ID] || '');
           const label = String(rec[DEVEX_GRID_GROUP_LABEL] ?? '');
-          if (id === gCol || (!gCol && id === firstLabelColumnId)) {
-            return <span className="font-bold text-blue-900 dark:text-blue-100">{label || '—'}</span>;
-          }
-          if (id === firstLabelColumnId && gCol && id !== gCol) {
-            return <span className="font-bold text-blue-800/80 dark:text-blue-200/90">{label || '—'}</span>;
+          // Tek grup başlığı: yalnızca gruplanan kolonda (yoksa ilk etiket kolonunda)
+          const labelColId = gCol || firstLabelColumnId;
+          if (id === labelColId) {
+            return (
+              <span className="font-bold tracking-wide text-indigo-950 dark:text-indigo-50">
+                {label || '—'}
+              </span>
+            );
           }
           return null;
         }
@@ -929,9 +1018,10 @@ function decorateColumnsForAutoGroupRows<T>(
             const fmt = footerSumFormats.get(id);
             return fmt ? fmt(sum, []) : sum;
           }
-          if (id === firstLabelColumnId || id === String(rec[DEVEX_GRID_GROUP_COLUMN_ID] || '')) {
+          // Tek «Grup toplamı» etiketi — ilk etiket kolonunda; grup kolonuyla çift yazma
+          if (id === firstLabelColumnId) {
             return (
-              <span className="font-semibold text-slate-700 dark:text-slate-200">
+              <span className="font-bold uppercase tracking-wide text-amber-900 dark:text-amber-100">
                 {String(rec[DEVEX_GRID_GROUP_LABEL] || 'Grup toplamı')}
               </span>
             );
@@ -976,6 +1066,131 @@ function withReportCodeCells<T>(cols: ColumnDef<T, any>[]): ColumnDef<T, any>[] 
   });
 }
 
+type SortableHeaderThProps<T> = {
+  header: Header<T, unknown>;
+  enableReorder: boolean;
+  headerClassName: string;
+  headerStyle: CSSProperties;
+  darkMode: boolean;
+  groupingEnabled: boolean;
+  enableFiltering: boolean;
+  resolvedGroupByColumnId: string | null;
+  dragTitle: string;
+  filterTitle: string;
+  groupByTitle: string;
+  groupClearTitle: string;
+  onContextMenu: (e: ReactMouseEvent) => void;
+  onGroupToggle: (columnId: string) => void;
+  onOpenFilter: (headerId: string, anchorEl: HTMLElement, column: Column<T, unknown>) => void;
+};
+
+function SortableHeaderTh<T>({
+  header,
+  enableReorder,
+  headerClassName,
+  headerStyle,
+  darkMode,
+  groupingEnabled,
+  enableFiltering,
+  resolvedGroupByColumnId,
+  dragTitle,
+  filterTitle,
+  groupByTitle,
+  groupClearTitle,
+  onContextMenu,
+  onGroupToggle,
+  onOpenFilter,
+}: SortableHeaderThProps<T>) {
+  const columnId = header.column.id;
+  const canReorder = enableReorder && isColumnReorderable(columnId);
+  const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({
+    id: columnId,
+    disabled: !canReorder,
+  });
+
+  const style: CSSProperties = {
+    ...headerStyle,
+    transform: CSS.Translate.toString(transform),
+    transition,
+    opacity: isDragging ? 0.72 : undefined,
+    zIndex: isDragging ? 2 : undefined,
+    position: 'relative',
+  };
+
+  return (
+    <th
+      ref={setNodeRef}
+      className={headerClassName}
+      style={style}
+      onContextMenu={onContextMenu}
+    >
+      <div className="flex items-center gap-1">
+        <div
+          className={`flex items-center gap-1 flex-1 min-w-0 select-none ${
+            canReorder ? 'cursor-grab active:cursor-grabbing' : 'cursor-pointer'
+          }`}
+          onClick={header.column.getToggleSortingHandler()}
+          title={canReorder ? dragTitle : undefined}
+          {...(canReorder ? { ...attributes, ...listeners } : {})}
+        >
+          {canReorder && (
+            <GripVertical
+              className={`w-2.5 h-2.5 shrink-0 ${darkMode ? 'text-gray-400' : 'text-gray-500'}`}
+              aria-hidden
+            />
+          )}
+          <span className="truncate min-w-0">
+            {flexRender(header.column.columnDef.header, header.getContext())}
+          </span>
+          {header.column.getIsSorted() && (
+            <span className="text-gray-600 shrink-0">
+              {header.column.getIsSorted() === 'asc' ? (
+                <ChevronUp className="w-2.5 h-2.5" />
+              ) : (
+                <ChevronDown className="w-2.5 h-2.5" />
+              )}
+            </span>
+          )}
+        </div>
+
+        {groupingEnabled && columnId !== 'select' && columnId !== 'actions' && (
+          <button
+            type="button"
+            onClick={(e) => {
+              e.stopPropagation();
+              onGroupToggle(columnId);
+            }}
+            className={`p-0.5 rounded transition-colors shrink-0 ${
+              resolvedGroupByColumnId === columnId
+                ? 'text-indigo-700 bg-indigo-100'
+                : 'text-gray-400 hover:text-indigo-600 hover:bg-indigo-50'
+            }`}
+            title={resolvedGroupByColumnId === columnId ? groupClearTitle : groupByTitle}
+          >
+            <Layers className="w-2.5 h-2.5" />
+          </button>
+        )}
+
+        {enableFiltering && header.column.getCanFilter() && columnId !== 'select' && columnId !== 'actions' && (
+          <button
+            type="button"
+            onClick={(e) => {
+              e.stopPropagation();
+              onOpenFilter(header.id, e.currentTarget, header.column);
+            }}
+            className={`p-0.5 hover:bg-gray-200 rounded transition-colors shrink-0 ${
+              header.column.getFilterValue() ? 'text-blue-600' : 'text-gray-500'
+            }`}
+            title={filterTitle}
+          >
+            <Filter className="w-2.5 h-2.5" />
+          </button>
+        )}
+      </div>
+    </th>
+  );
+}
+
 export function DevExDataGrid<T>({
   data,
   columns,
@@ -989,6 +1204,10 @@ export function DevExDataGrid<T>({
   showColumnVisibilityToolbar = true,
   columnVisibility,
   onColumnVisibilityChange,
+  enableColumnReorder = true,
+  columnOrder: columnOrderProp,
+  onColumnOrderChange,
+  columnOrderStorageKey,
   pageSize = 20,
   onRowClick,
   onRowDoubleClick,
@@ -1023,6 +1242,13 @@ export function DevExDataGrid<T>({
   }));
   const [rowSelection, setRowSelection] = useState<Record<string, boolean>>(selectedRowIds || {});
   const [internalColumnVisibility, setInternalColumnVisibility] = useState<Record<string, boolean>>(columnVisibility || {});
+  const [internalColumnOrder, setInternalColumnOrder] = useState<string[]>(() => {
+    if (columnOrderProp?.length) return columnOrderProp;
+    if (columnOrderStorageKey) {
+      return loadColumnOrderFromStorage(columnOrderStorageKey) ?? [];
+    }
+    return [];
+  });
   const [openFilterColumn, setOpenFilterColumn] = useState<string | null>(null);
   const [filterMenuAnchor, setFilterMenuAnchor] = useState<{ top: number; left: number } | null>(null);
   const [internalGroupByColumnId, setInternalGroupByColumnId] = useState<string | null>(
@@ -1107,6 +1333,12 @@ export function DevExDataGrid<T>({
       setInternalColumnVisibility(columnVisibility);
     }
   }, [columnVisibility]);
+
+  useEffect(() => {
+    if (columnOrderProp) {
+      setInternalColumnOrder(columnOrderProp);
+    }
+  }, [columnOrderProp]);
 
   useEffect(() => {
     setPagination((prev) => (prev.pageSize === pageSize ? prev : { ...prev, pageSize, pageIndex: 0 }));
@@ -1299,6 +1531,55 @@ export function DevExDataGrid<T>({
     return [selectionColumn, ...groupingDecoratedColumns];
   }, [groupingDecoratedColumns, enableSelection, setRowSelection, tm]);
 
+  const allColumnIds = useMemo(
+    () =>
+      finalColumns
+        .map((col) => columnDefId(col))
+        .filter((id): id is string => Boolean(id)),
+    [finalColumns],
+  );
+
+  const resolvedColumnOrder = useMemo(() => {
+    const preferred = columnOrderProp ?? internalColumnOrder;
+    return mergeDevExColumnOrder(preferred.length > 0 ? preferred : allColumnIds, allColumnIds);
+  }, [columnOrderProp, internalColumnOrder, allColumnIds]);
+
+  const applyColumnOrder = useCallback(
+    (nextRaw: string[]) => {
+      const next = mergeDevExColumnOrder(nextRaw, allColumnIds);
+      if (!columnOrderProp) {
+        setInternalColumnOrder(next);
+      }
+      onColumnOrderChange?.(next);
+      if (columnOrderStorageKey) {
+        saveColumnOrderToStorage(columnOrderStorageKey, next);
+      }
+    },
+    [allColumnIds, columnOrderProp, onColumnOrderChange, columnOrderStorageKey],
+  );
+
+  const columnReorderEnabled = enableColumnReorder !== false && !isMobile;
+
+  const columnReorderSensors = useSensors(
+    useSensor(PointerSensor, { activationConstraint: { distance: 8 } }),
+  );
+
+  const handleColumnDragEnd = useCallback(
+    (event: DragEndEvent) => {
+      if (!columnReorderEnabled) return;
+      const { active, over } = event;
+      if (!over || active.id === over.id) return;
+      const activeId = String(active.id);
+      const overId = String(over.id);
+      if (!isColumnReorderable(activeId) || !isColumnReorderable(overId)) return;
+      const oldIndex = resolvedColumnOrder.indexOf(activeId);
+      const newIndex = resolvedColumnOrder.indexOf(overId);
+      if (oldIndex < 0 || newIndex < 0) return;
+      applyColumnOrder(arrayMove(resolvedColumnOrder, oldIndex, newIndex));
+    },
+    [columnReorderEnabled, resolvedColumnOrder, applyColumnOrder],
+  );
+
   const table = useReactTable({
     data: tableSourceData,
     columns: finalColumns,
@@ -1307,12 +1588,18 @@ export function DevExDataGrid<T>({
       columnFilters,
       rowSelection,
       columnVisibility: resolvedColumnVisibility,
+      columnOrder: resolvedColumnOrder,
       pagination,
     },
     onSortingChange: setSorting,
     onColumnFiltersChange: setColumnFilters,
     onRowSelectionChange: setRowSelection,
     onColumnVisibilityChange: handleColumnVisibilityChange,
+    onColumnOrderChange: (updater) => {
+      const next =
+        typeof updater === 'function' ? updater(resolvedColumnOrder) : updater;
+      applyColumnOrder(next);
+    },
     onPaginationChange: setPagination,
     getCoreRowModel: getCoreRowModel(),
     getSortedRowModel: getSortedRowModel(),
@@ -1426,14 +1713,6 @@ export function DevExDataGrid<T>({
     }
     return map;
   }, [mergedFooterSumColumns, detailRowsForFooter]);
-
-  const groupableColumns = useMemo(
-    () =>
-      table
-        .getAllLeafColumns()
-        .filter((col) => col.id !== 'select' && col.id !== 'actions' && col.getCanHide()),
-    [table, finalColumns, resolvedColumnVisibility],
-  );
 
   const resolveRowVisualClass = useCallback(
     (row: T, idx: number, isSelected: boolean) => {
@@ -1579,36 +1858,8 @@ export function DevExDataGrid<T>({
           : undefined
       }
     >
-      {((enableColumnVisibility && showColumnVisibilityToolbar) || enableExcelExport || printEnabled || groupingEnabled) && (
+      {((enableColumnVisibility && showColumnVisibilityToolbar) || enableExcelExport || printEnabled) && (
         <div className="flex items-center justify-end gap-1.5 px-3 py-1.5 bg-gray-50 border border-gray-300 border-b-0 shrink-0">
-          {groupingEnabled && (
-            <label
-              className="inline-flex items-center gap-1 mr-auto px-1.5 py-0.5 text-[10px] font-medium text-slate-700"
-              title={tm('gridGroupByColumn') || 'Kolona göre grupla'}
-            >
-              <Layers className="w-3 h-3 text-indigo-600 shrink-0" aria-hidden />
-              <span className="hidden sm:inline whitespace-nowrap">{tm('gridGroupBy') || 'Grupla'}</span>
-              <select
-                className="max-w-[10rem] px-1.5 py-0.5 border border-slate-300 rounded bg-white text-[10px] font-medium text-slate-800 focus:outline-none focus:ring-1 focus:ring-blue-500"
-                value={resolvedGroupByColumnId ?? ''}
-                onChange={(e) => {
-                  const v = e.target.value.trim();
-                  setGroupByColumnId(v || null);
-                }}
-              >
-                <option value="">{tm('gridGroupNone') || 'Gruplama yok'}</option>
-                {groupableColumns.map((col) => {
-                  const header = col.columnDef.header;
-                  const label = typeof header === 'string' ? header : col.id;
-                  return (
-                    <option key={col.id} value={col.id}>
-                      {label}
-                    </option>
-                  );
-                })}
-              </select>
-            </label>
-          )}
           {enableExcelExport && (
             <button
               type="button"
@@ -1689,6 +1940,11 @@ export function DevExDataGrid<T>({
 
       {/* Table Container */}
       <div className={`relative z-0 flex-1 overflow-auto border isolate ${darkMode ? 'border-gray-600 bg-gray-800' : 'border-gray-300 bg-white'}`}>
+        <DndContext
+          sensors={columnReorderSensors}
+          collisionDetection={closestCenter}
+          onDragEnd={handleColumnDragEnd}
+        >
         <table
           className="border-collapse"
           style={{ tableLayout: 'fixed', width: '100%', minWidth: tableMinWidth }}
@@ -1701,11 +1957,25 @@ export function DevExDataGrid<T>({
           <thead className={`sticky top-0 z-[1] shadow-[0_1px_0_0_rgba(0,0,0,0.08)] ${headerBg}`}>
             {table.getHeaderGroups().map((headerGroup) => (
               <tr key={headerGroup.id} className={`border-b ${darkMode ? 'border-gray-600' : 'border-gray-300'} ${headerBg}`}>
+                <SortableContext
+                  items={headerGroup.headers.map((h) => h.column.id)}
+                  strategy={horizontalListSortingStrategy}
+                >
                 {headerGroup.headers.map((header) => (
-                  <th
+                  <SortableHeaderTh
                     key={header.id}
-                    className={`px-2 py-1 text-left border-r last:border-r-0 relative box-border ${headerBg} ${darkMode ? 'text-gray-100 border-gray-600' : 'text-gray-800 border-gray-300'} ${density === 'comfortable' ? 'text-xs font-semibold py-1.5' : 'text-[10px] font-medium'}`}
-                    style={gridColumnWidthStyle(header.getSize())}
+                    header={header}
+                    enableReorder={columnReorderEnabled}
+                    headerClassName={`px-2 py-1 text-left border-r last:border-r-0 relative box-border ${headerBg} ${darkMode ? 'text-gray-100 border-gray-600' : 'text-gray-800 border-gray-300'} ${density === 'comfortable' ? 'text-xs font-semibold py-1.5' : 'text-[10px] font-medium'}`}
+                    headerStyle={gridColumnWidthStyle(header.getSize())}
+                    darkMode={darkMode}
+                    groupingEnabled={groupingEnabled}
+                    enableFiltering={enableFiltering}
+                    resolvedGroupByColumnId={resolvedGroupByColumnId}
+                    dragTitle={tm('dragAndDropToReorder') || 'Sürükle ve bırak ile yer değiştirebilirsiniz'}
+                    filterTitle={tm('filterType')}
+                    groupByTitle={tm('gridGroupByThisColumn') || 'Bu kolona göre grupla'}
+                    groupClearTitle={tm('gridGroupClear') || 'Gruplamayı kaldır'}
                     onContextMenu={(e) => {
                       if (!groupingEnabled) return;
                       if (header.id === 'select' || header.id === 'actions') return;
@@ -1717,66 +1987,13 @@ export function DevExDataGrid<T>({
                       const top = Math.max(8, Math.min(e.clientY, window.innerHeight - 120));
                       setColumnHeaderMenu({ columnId: header.column.id, top, left });
                     }}
-                  >
-                    <div className="flex items-center gap-1">
-                      {/* Header Text + Sort */}
-                      <div
-                        className="flex items-center gap-1 cursor-pointer select-none flex-1 min-w-0"
-                        onClick={header.column.getToggleSortingHandler()}
-                      >
-                        {flexRender(header.column.columnDef.header, header.getContext())}
-                        {header.column.getIsSorted() && (
-                          <span className="text-gray-600">
-                            {header.column.getIsSorted() === 'asc' ? (
-                              <ChevronUp className="w-2.5 h-2.5" />
-                            ) : (
-                              <ChevronDown className="w-2.5 h-2.5" />
-                            )}
-                          </span>
-                        )}
-                      </div>
-
-                      {groupingEnabled && header.id !== 'select' && header.id !== 'actions' && (
-                        <button
-                          type="button"
-                          onClick={(e) => {
-                            e.stopPropagation();
-                            const id = header.column.id;
-                            setGroupByColumnId(resolvedGroupByColumnId === id ? null : id);
-                          }}
-                          className={`p-0.5 rounded transition-colors shrink-0 ${
-                            resolvedGroupByColumnId === header.column.id
-                              ? 'text-indigo-700 bg-indigo-100'
-                              : 'text-gray-400 hover:text-indigo-600 hover:bg-indigo-50'
-                          }`}
-                          title={
-                            resolvedGroupByColumnId === header.column.id
-                              ? tm('gridGroupClear') || 'Gruplamayı kaldır'
-                              : tm('gridGroupByThisColumn') || 'Bu kolona göre grupla'
-                          }
-                        >
-                          <Layers className="w-2.5 h-2.5" />
-                        </button>
-                      )}
-
-                      {/* Filter Icon (huni) */}
-                      {enableFiltering && header.column.getCanFilter() && header.id !== 'select' && header.id !== 'actions' && (
-                        <button
-                          type="button"
-                          onClick={(e) => {
-                            e.stopPropagation();
-                            openFilterForHeader(header.id, e.currentTarget, header.column);
-                          }}
-                          className={`p-0.5 hover:bg-gray-200 rounded transition-colors ${header.column.getFilterValue() ? 'text-blue-600' : 'text-gray-500'
-                            }`}
-                          title={tm('filterType')}
-                        >
-                          <Filter className="w-2.5 h-2.5" />
-                        </button>
-                      )}
-                    </div>
-                  </th>
+                    onGroupToggle={(id) => {
+                      setGroupByColumnId(resolvedGroupByColumnId === id ? null : id);
+                    }}
+                    onOpenFilter={openFilterForHeader}
+                  />
                 ))}
+                </SortableContext>
               </tr>
             ))}
           </thead>
@@ -1811,12 +2028,12 @@ export function DevExDataGrid<T>({
                   const cellKindBg =
                     kind === 'group'
                       ? darkMode
-                        ? 'bg-slate-600/95'
-                        : 'bg-sky-100/95'
+                        ? 'bg-indigo-900/85'
+                        : 'bg-indigo-100'
                       : kind === 'subtotal'
                         ? darkMode
-                          ? 'bg-amber-900/50'
-                          : 'bg-amber-50'
+                          ? 'bg-amber-900/75'
+                          : 'bg-amber-100'
                         : '';
                   return (
                     <td
@@ -1886,6 +2103,7 @@ export function DevExDataGrid<T>({
             );
           })()}
         </table>
+        </DndContext>
 
         {/* No Data */}
         {table.getRowModel().rows.length === 0 && (

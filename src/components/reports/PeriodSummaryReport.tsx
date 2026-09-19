@@ -20,6 +20,14 @@ import { useLanguage } from '../../contexts/LanguageContext';
 import { partnerAPI } from '../../services/api/partiesPartners';
 import type { PartyPartner } from '../../core/types/models';
 import {
+  getRuntimeReportMenuParams,
+  isReportMenuParamEnabled,
+  loadReportMenuParams,
+  reportNetAfterOptionalExpense,
+  subscribeReportMenuParams,
+  type ReportMenuParams,
+} from '../../services/reportMenuParamsService';
+import {
   loadPeriodSummaryPartnerSplitPrefs,
   normalizePartnerSplitPrefs,
   savePeriodSummaryPartnerSplitPrefs,
@@ -231,6 +239,36 @@ export function PeriodSummaryReport({ mode, currency }: PeriodSummaryReportProps
   const [partners, setPartners] = useState<PartyPartner[]>([]);
   const [expenseDetail, setExpenseDetail] = useState<{ title: string; periodKey: string | null } | null>(null);
   const [partnerDetail, setPartnerDetail] = useState<PartyPartner | null>(null);
+  const [reportMenuParams, setReportMenuParams] = useState<ReportMenuParams>(() =>
+    getRuntimeReportMenuParams(),
+  );
+
+  useEffect(() => {
+    void loadReportMenuParams().then((p) => setReportMenuParams(p));
+    return subscribeReportMenuParams((p) => setReportMenuParams(p));
+  }, []);
+
+  const showPeriodCardRevenue = isReportMenuParamEnabled(
+    'period-summary-card-total-revenue',
+    reportMenuParams,
+  );
+  const showPeriodCardExpenses = isReportMenuParamEnabled(
+    'period-summary-card-total-expenses',
+    reportMenuParams,
+  );
+  const showPeriodCardPurchases = isReportMenuParamEnabled(
+    'period-summary-card-period-purchases',
+    reportMenuParams,
+  );
+  const showPeriodCardSupplierPayables = isReportMenuParamEnabled(
+    'period-summary-card-supplier-payables',
+    reportMenuParams,
+  );
+  const showPeriodCardNet = isReportMenuParamEnabled('period-summary-card-net', reportMenuParams);
+  const showPeriodCardPaymentSplit = isReportMenuParamEnabled(
+    'period-summary-card-payment-split',
+    reportMenuParams,
+  );
 
   const partnerSlices = useMemo(
     () =>
@@ -368,13 +406,19 @@ export function PeriodSummaryReport({ mode, currency }: PeriodSummaryReportProps
           ? formatIsoDateTr(periodKey)
           : new Date(`${periodKey}-01T12:00:00`).toLocaleDateString(locale, { month: 'long', year: 'numeric' });
 
-      // Günlük Rapor neti: ciro − gider (alış ayrı kolonda; netten düşülmez)
-      const netRemaining = sale.revenue - exp;
+      // Günlük Rapor neti: ciro − gider (alış ayrı kolonda; netten düşülmez).
+      // Gider kartı parametresi kapalıysa gider düşülmez.
+      const netRemaining = reportNetAfterOptionalExpense(
+        sale.revenue,
+        exp,
+        showPeriodCardExpenses,
+      );
 
       const shareList = splitAmountByPartners(netRemaining, partnerSlices);
       const partnerShareMap: Record<string, number> = {};
       for (const s of shareList) partnerShareMap[s.id] = s.amount;
-      const expShareList = splitAmountByPartners(exp, partnerSlices);
+      const expForShare = showPeriodCardExpenses ? exp : 0;
+      const expShareList = splitAmountByPartners(expForShare, partnerSlices);
       const expenseShareMap: Record<string, number> = {};
       for (const s of expShareList) expenseShareMap[s.id] = s.amount;
       return {
@@ -395,7 +439,18 @@ export function PeriodSummaryReport({ mode, currency }: PeriodSummaryReportProps
         expenseShares: expenseShareMap,
       };
     });
-  }, [mode, periodRange, sales, expenses, purchases, selectedMonth, selectedYear, tm, partnerSlices]);
+  }, [
+    mode,
+    periodRange,
+    sales,
+    expenses,
+    purchases,
+    selectedMonth,
+    selectedYear,
+    tm,
+    partnerSlices,
+    showPeriodCardExpenses,
+  ]);
 
   const totals = useMemo(() => {
     const base = rows.reduce(
@@ -554,10 +609,20 @@ export function PeriodSummaryReport({ mode, currency }: PeriodSummaryReportProps
       },
     ];
 
-    if (!showPartnerCols) return base;
+    const filtered = base.filter((col) => {
+      const key = String(col.key ?? '');
+      if (key === 'revenue') return showPeriodCardRevenue;
+      if (key === 'cash' || key === 'card') return showPeriodCardPaymentSplit;
+      if (key === 'expenses') return showPeriodCardExpenses;
+      if (key === 'purchases') return showPeriodCardPurchases;
+      if (key === 'netRemaining') return showPeriodCardNet;
+      return true;
+    });
+
+    if (!showPartnerCols) return filtered;
 
     return [
-      ...base,
+      ...filtered,
       ...partnerSlices.map((p, idx) => ({
         title: `${p.name} (%${p.sharePct}) (${currency})`,
         dataIndex: ['partnerShares', p.id] as unknown as string,
@@ -581,7 +646,19 @@ export function PeriodSummaryReport({ mode, currency }: PeriodSummaryReportProps
         },
       })),
     ];
-  }, [mode, currency, tm, money, showPartnerCols, partnerSlices]);
+  }, [
+    mode,
+    currency,
+    tm,
+    money,
+    showPartnerCols,
+    partnerSlices,
+    showPeriodCardRevenue,
+    showPeriodCardPaymentSplit,
+    showPeriodCardExpenses,
+    showPeriodCardPurchases,
+    showPeriodCardNet,
+  ]);
 
   const title = mode === 'monthly-days' ? tm('aylikGunOzeti') : tm('yillikAyOzeti');
   const subtitle = mode === 'monthly-days' ? tm('aylikGunOzetiDesc') : tm('yillikAyOzetiDesc');
@@ -661,6 +738,7 @@ export function PeriodSummaryReport({ mode, currency }: PeriodSummaryReportProps
           showPartnerCols ? 'lg:grid-cols-3 xl:grid-cols-4' : 'lg:grid-cols-2 xl:grid-cols-4'
         }`}
       >
+        {showPeriodCardRevenue ? (
         <div className="bg-white rounded-lg border p-4">
           <div className="flex items-center gap-2 text-slate-500 text-sm mb-1">
             <TrendingUp className="w-4 h-4 text-green-600" />
@@ -671,6 +749,8 @@ export function PeriodSummaryReport({ mode, currency }: PeriodSummaryReportProps
             {totals.saleCount} {tm('rptPeriodColSaleCount').toLowerCase()}
           </p>
         </div>
+        ) : null}
+        {showPeriodCardExpenses ? (
         <div className="bg-white rounded-lg border p-4">
           <div className="flex items-center gap-2 text-slate-500 text-sm mb-1">
             <TrendingDown className="w-4 h-4 text-red-500" />
@@ -687,6 +767,8 @@ export function PeriodSummaryReport({ mode, currency }: PeriodSummaryReportProps
             {tm('rptPeriodOpenExpenseDetail')}
           </button>
         </div>
+        ) : null}
+        {showPeriodCardPurchases ? (
         <div className="bg-white rounded-lg border p-4">
           <div className="flex items-center gap-2 text-slate-500 text-sm mb-1">
             <Landmark className="w-4 h-4 text-amber-600" />
@@ -695,6 +777,8 @@ export function PeriodSummaryReport({ mode, currency }: PeriodSummaryReportProps
           <p className="text-2xl font-bold text-amber-700">{money(totals.purchases)}</p>
           <p className="text-xs text-slate-400 mt-1">{tm('rptPeriodPurchasesHint')}</p>
         </div>
+        ) : null}
+        {showPeriodCardSupplierPayables ? (
         <div className="bg-white rounded-lg border p-4 border-amber-100">
           <div className="flex items-center gap-2 text-slate-500 text-sm mb-1">
             <Landmark className="w-4 h-4 text-amber-700" />
@@ -720,6 +804,8 @@ export function PeriodSummaryReport({ mode, currency }: PeriodSummaryReportProps
           </button>
           <p className="text-[11px] text-slate-500 mt-2">{tm('rptPeriodSupplierDetailHint')}</p>
         </div>
+        ) : null}
+        {showPeriodCardNet ? (
         <div className="bg-white rounded-lg border p-4">
           <div className="flex items-center gap-2 text-slate-500 text-sm mb-1">
             <Wallet className="w-4 h-4 text-blue-600" />
@@ -729,6 +815,7 @@ export function PeriodSummaryReport({ mode, currency }: PeriodSummaryReportProps
             {money(totals.netRemaining)}
           </p>
         </div>
+        ) : null}
         {showPartnerCols ? (
           partnerSlices.map((p, idx) => {
             const fullPartner = partners.find((x) => x.id === p.id);
@@ -764,6 +851,7 @@ export function PeriodSummaryReport({ mode, currency }: PeriodSummaryReportProps
             );
           })
         ) : null}
+        {showPeriodCardPaymentSplit ? (
         <div className="bg-white rounded-lg border p-4">
           <p className="text-slate-500 text-sm mb-1">{tm('rptPeriodPaymentSplit')}</p>
           <p className="text-sm text-slate-700">
@@ -773,6 +861,7 @@ export function PeriodSummaryReport({ mode, currency }: PeriodSummaryReportProps
             {tm('rptPeriodColCard')}: <span className="font-semibold">{money(totals.card)}</span>
           </p>
         </div>
+        ) : null}
       </div>
 
       <div className="bg-white rounded-lg border p-4">
@@ -793,48 +882,121 @@ export function PeriodSummaryReport({ mode, currency }: PeriodSummaryReportProps
               },
               className: row.expenses > 0 && partnerSlices.length ? 'cursor-pointer' : undefined,
             })}
-            summary={() => (
-              <Table.Summary fixed>
-                <Table.Summary.Row className="bg-slate-50 font-semibold">
-                  <Table.Summary.Cell index={0}>{tm('rptPeriodTotalRow')}</Table.Summary.Cell>
-                  <Table.Summary.Cell index={1} align="right">{totals.saleCount}</Table.Summary.Cell>
-                  <Table.Summary.Cell index={2} align="right">{money(totals.revenue)}</Table.Summary.Cell>
-                  <Table.Summary.Cell index={3} align="right">{money(totals.cash)}</Table.Summary.Cell>
-                  <Table.Summary.Cell index={4} align="right">{money(totals.card)}</Table.Summary.Cell>
-                  <Table.Summary.Cell index={5} align="right">{money(totals.discount)}</Table.Summary.Cell>
-                  <Table.Summary.Cell index={6} align="right">
-                    <span className="text-orange-600" title={`${totals.returnsCount} ${tm('rptPeriodColReturnsCount') || 'iade adedi'}`}>
-                      {totals.returnsAmount > 0 ? money(totals.returnsAmount) : '—'}
-                    </span>
-                  </Table.Summary.Cell>
-                  <Table.Summary.Cell index={7} align="right">
-                    <span className="text-red-600">{money(totals.expenses)}</span>
-                  </Table.Summary.Cell>
-                  <Table.Summary.Cell index={8} align="right">
-                    <span className="text-amber-700">{money(totals.purchases)}</span>
-                  </Table.Summary.Cell>
-                  <Table.Summary.Cell index={9} align="right">
-                    <span className={totals.netRemaining >= 0 ? 'text-emerald-700' : 'text-red-600'}>
-                      {money(totals.netRemaining)}
-                    </span>
-                  </Table.Summary.Cell>
-                  {showPartnerCols
-                    ? partnerSlices.map((p, idx) => (
-                        <Table.Summary.Cell key={p.id} index={10 + idx} align="right">
-                          <div className="leading-tight">
-                            <span className={partnerColColors[idx % partnerColColors.length]}>
-                              {money(totals.partnerShares[p.id] ?? 0)}
-                            </span>
-                            <div className="text-[10px] font-semibold text-red-600">
-                              {tm('rptPeriodExpenseShare')}: {money(totals.expenseShares[p.id] ?? 0)}
-                            </div>
-                          </div>
-                        </Table.Summary.Cell>
-                      ))
-                    : null}
-                </Table.Summary.Row>
-              </Table.Summary>
-            )}
+            summary={() => {
+              const cells: React.ReactNode[] = [];
+              let idx = 0;
+              for (const col of columns) {
+                const key = String(col.key ?? '');
+                if (key === 'periodLabel') {
+                  cells.push(
+                    <Table.Summary.Cell key={key} index={idx++}>
+                      {tm('rptPeriodTotalRow')}
+                    </Table.Summary.Cell>,
+                  );
+                  continue;
+                }
+                if (key === 'saleCount') {
+                  cells.push(
+                    <Table.Summary.Cell key={key} index={idx++} align="right">
+                      {totals.saleCount}
+                    </Table.Summary.Cell>,
+                  );
+                  continue;
+                }
+                if (key === 'revenue') {
+                  cells.push(
+                    <Table.Summary.Cell key={key} index={idx++} align="right">
+                      {money(totals.revenue)}
+                    </Table.Summary.Cell>,
+                  );
+                  continue;
+                }
+                if (key === 'cash') {
+                  cells.push(
+                    <Table.Summary.Cell key={key} index={idx++} align="right">
+                      {money(totals.cash)}
+                    </Table.Summary.Cell>,
+                  );
+                  continue;
+                }
+                if (key === 'card') {
+                  cells.push(
+                    <Table.Summary.Cell key={key} index={idx++} align="right">
+                      {money(totals.card)}
+                    </Table.Summary.Cell>,
+                  );
+                  continue;
+                }
+                if (key === 'discount') {
+                  cells.push(
+                    <Table.Summary.Cell key={key} index={idx++} align="right">
+                      {money(totals.discount)}
+                    </Table.Summary.Cell>,
+                  );
+                  continue;
+                }
+                if (key === 'returnsAmount') {
+                  cells.push(
+                    <Table.Summary.Cell key={key} index={idx++} align="right">
+                      <span
+                        className="text-orange-600"
+                        title={`${totals.returnsCount} ${tm('rptPeriodColReturnsCount') || 'iade adedi'}`}
+                      >
+                        {totals.returnsAmount > 0 ? money(totals.returnsAmount) : '—'}
+                      </span>
+                    </Table.Summary.Cell>,
+                  );
+                  continue;
+                }
+                if (key === 'expenses') {
+                  cells.push(
+                    <Table.Summary.Cell key={key} index={idx++} align="right">
+                      <span className="text-red-600">{money(totals.expenses)}</span>
+                    </Table.Summary.Cell>,
+                  );
+                  continue;
+                }
+                if (key === 'purchases') {
+                  cells.push(
+                    <Table.Summary.Cell key={key} index={idx++} align="right">
+                      <span className="text-amber-700">{money(totals.purchases)}</span>
+                    </Table.Summary.Cell>,
+                  );
+                  continue;
+                }
+                if (key === 'netRemaining') {
+                  cells.push(
+                    <Table.Summary.Cell key={key} index={idx++} align="right">
+                      <span className={totals.netRemaining >= 0 ? 'text-emerald-700' : 'text-red-600'}>
+                        {money(totals.netRemaining)}
+                      </span>
+                    </Table.Summary.Cell>,
+                  );
+                  continue;
+                }
+                if (key.startsWith('partner-')) {
+                  const partnerId = key.slice('partner-'.length);
+                  const pIdx = partnerSlices.findIndex((p) => p.id === partnerId);
+                  cells.push(
+                    <Table.Summary.Cell key={key} index={idx++} align="right">
+                      <div className="leading-tight">
+                        <span className={partnerColColors[Math.max(0, pIdx) % partnerColColors.length]}>
+                          {money(totals.partnerShares[partnerId] ?? 0)}
+                        </span>
+                        <div className="text-[10px] font-semibold text-red-600">
+                          {tm('rptPeriodExpenseShare')}: {money(totals.expenseShares[partnerId] ?? 0)}
+                        </div>
+                      </div>
+                    </Table.Summary.Cell>,
+                  );
+                }
+              }
+              return (
+                <Table.Summary fixed>
+                  <Table.Summary.Row className="bg-slate-50 font-semibold">{cells}</Table.Summary.Row>
+                </Table.Summary>
+              );
+            }}
           />
         </Spin>
       </div>

@@ -103,18 +103,6 @@ export const getStaticMenuSections = (t: Translations) => [
         screen: 'salesinvoice',
         items: [
             {
-                label: t.menu.salesInvoices,
-                screen: 'salesinvoice',
-                icon: FileText,
-                children: [
-                    { label: t.menu.salesInvoice, screen: 'sales-invoice-standard', icon: FileText },
-                    { label: t.menu.retailSales, screen: 'sales-invoice-retail', icon: FileText },
-                    { label: t.menu.wholesaleSales, screen: 'sales-invoice-wholesale', icon: FileText },
-                    { label: t.menu.consignmentSales, screen: 'sales-invoice-consignment', icon: FileText },
-                    { label: t.menu.salesReturn, screen: 'sales-invoice-return', icon: FileMinus }
-                ]
-            },
-            {
                 label: t.menu.purchasing,
                 screen: 'purchaseinvoice',
                 icon: FileCheck,
@@ -124,6 +112,18 @@ export const getStaticMenuSections = (t: Translations) => [
                     { label: t.menu.purchaseInvoice, screen: 'purchase-invoice-standard', icon: FileCheck },
                     { label: t.menu.purchaseReturn, screen: 'purchase-invoice-return', icon: FileMinus },
                     { label: t.menu.receivedService, screen: 'serviceinvoice-received', icon: FileText }
+                ]
+            },
+            {
+                label: t.menu.salesInvoices,
+                screen: 'salesinvoice',
+                icon: FileText,
+                children: [
+                    { label: t.menu.salesInvoice, screen: 'sales-invoice-standard', icon: FileText },
+                    { label: t.menu.retailSales, screen: 'sales-invoice-retail', icon: FileText },
+                    { label: t.menu.wholesaleSales, screen: 'sales-invoice-wholesale', icon: FileText },
+                    { label: t.menu.consignmentSales, screen: 'sales-invoice-consignment', icon: FileText },
+                    { label: t.menu.salesReturn, screen: 'sales-invoice-return', icon: FileMinus }
                 ]
             },
             {
@@ -368,7 +368,7 @@ export const staticMenuSections = getStaticMenuSections({
         dashboard: 'Dashboard',
         storeManagement: 'Mağaza Yönetimi',
         salesInvoices: 'Satış Faturaları',
-        purchasing: 'Satın Alma',
+        purchasing: 'Satın Alma Faturaları',
         serviceInvoices: 'Hizmet Faturaları',
         waybills: 'İrsaliyeler',
         orders: 'Siparişler',

@@ -107,6 +107,7 @@ import {
   isReportMenuParamEnabled,
   isReportTabHiddenByParams,
   loadReportMenuParams,
+  reportNetAfterOptionalExpense,
   subscribeReportMenuParams,
   type ReportMenuParams,
 } from '../../services/reportMenuParamsService';
@@ -2687,6 +2688,45 @@ export function ReportsModule({
     'daily-report-supplier-payments',
     reportMenuParams,
   );
+  const showDailyCardTotalSales = isReportMenuParamEnabled(
+    'daily-report-card-total-sales',
+    reportMenuParams,
+  );
+  const showDailyCardTotalRevenue = isReportMenuParamEnabled(
+    'daily-report-card-total-revenue',
+    reportMenuParams,
+  );
+  const showDailyCardTotalDiscount = isReportMenuParamEnabled(
+    'daily-report-card-total-discount',
+    reportMenuParams,
+  );
+  const showDailyCardCash = isReportMenuParamEnabled('daily-report-card-cash', reportMenuParams);
+  const showDailyCardCard = isReportMenuParamEnabled('daily-report-card-card', reportMenuParams);
+  const showDailyCardSalesReturn = isReportMenuParamEnabled(
+    'daily-report-card-sales-return',
+    reportMenuParams,
+  );
+  const showDailyCardDocumentAmount = isReportMenuParamEnabled(
+    'daily-report-card-document-amount',
+    reportMenuParams,
+  );
+  const showDailyCardAmountCollected = isReportMenuParamEnabled(
+    'daily-report-card-amount-collected',
+    reportMenuParams,
+  );
+  const showDailyCardRemainingAccount = isReportMenuParamEnabled(
+    'daily-report-card-remaining-account',
+    reportMenuParams,
+  );
+  const showDailyCardTotalExpense = isReportMenuParamEnabled(
+    'daily-report-card-total-expense',
+    reportMenuParams,
+  );
+  const showDailyCardCashExpenses = isReportMenuParamEnabled(
+    'daily-report-card-cash-expenses',
+    reportMenuParams,
+  );
+  const showDailyCardNet = isReportMenuParamEnabled('daily-report-card-net', reportMenuParams);
   const dailyExpenseRowsForReport = useMemo(() => {
     if (showDailySupplierPayments) return dailyExpenseRows;
     return dailyExpenseRows.filter((r) => r.typeCode !== 'CH_ODEME');
@@ -2698,6 +2738,12 @@ export function ReportsModule({
   const cashExpensesForReport = useMemo(
     () => dailyExpenseRowsForReport.reduce((sum, row) => sum + (row.isCash ? row.amount : 0), 0),
     [dailyExpenseRowsForReport],
+  );
+  /** Gider kartı kapalıysa net'ten gider düşülmez */
+  const dailyNetAfterExpense = useMemo(
+    () =>
+      reportNetAfterOptionalExpense(dailyTotal, totalExpensesForReport, showDailyCardTotalExpense),
+    [dailyTotal, totalExpensesForReport, showDailyCardTotalExpense],
   );
 
   const dailyExpenseGridRows = useMemo(() => {
@@ -2998,7 +3044,11 @@ export function ReportsModule({
         totalAmount: base.totalAmount,
         netSales,
         totalExpenses: totalExpensesForReport,
-        netAfterExpenses: netSales - totalExpensesForReport,
+        netAfterExpenses: reportNetAfterOptionalExpense(
+          netSales,
+          totalExpensesForReport,
+          showDailyCardTotalExpense,
+        ),
         cashAmount: base.cashAmount,
         cardAmount: base.cardAmount,
         creditAmount: base.creditAmount,
@@ -3055,7 +3105,11 @@ export function ReportsModule({
         totalAmount,
         netSales: totalAmount,
         totalExpenses: totalExpensesForReport,
-        netAfterExpenses: totalAmount - totalExpensesForReport,
+        netAfterExpenses: reportNetAfterOptionalExpense(
+          totalAmount,
+          totalExpensesForReport,
+          showDailyCardTotalExpense,
+        ),
         cashAmount,
         cardAmount,
         creditAmount,
@@ -4161,14 +4215,14 @@ export function ReportsModule({
   <h1>${escHtml(L('reportsPrintDailyTitle'))}</h1>
   <p class="muted">${escHtml(dateLabel)} · ${escHtml(printKindFilterLabel)}</p>
   <div class="grid">
-    <div class="card"><div>${escHtml(L('reportsPrintSummaryTxnCount'))}</div><strong>${dailyKindActiveRows.length}</strong></div>
+    ${showDailyCardTotalSales ? `<div class="card"><div>${escHtml(L('reportsPrintSummaryTxnCount'))}</div><strong>${dailyKindActiveRows.length}</strong></div>` : ''}
     <div class="card"><div>${escHtml(`${L('reportsDetStatusCancelled')} / ${L('reportsDetStatusRefunded')}`)}</div><strong>${removedRows.length}</strong></div>
-    <div class="card"><div>${escHtml(L('reportsPrintSummaryTotalRev'))}</div><strong>${formatNumber(printNet, 2, false)}</strong></div>
-    <div class="card"><div>${escHtml(L('reportsPrintSummaryTotalDisc'))}</div><strong>${formatNumber(printDisc, 2, false)}</strong></div>
-    <div class="card"><div>${escHtml(L('cashLabel'))}</div><strong>${formatNumber(printCash, 2, false)}</strong></div>
-    <div class="card"><div>${escHtml(L('cardLabel'))}</div><strong>${formatNumber(printCard, 2, false)}</strong></div>
-    <div class="card"><div>${escHtml(L('totalExpense'))}</div><strong>${formatNumber(totalExpensesForReport, 2, false)}</strong></div>
-    <div class="card"><div>${escHtml(L('dailyNetAfterExpense'))}</div><strong>${formatNumber(printNet - totalExpensesForReport, 2, false)}</strong></div>
+    ${showDailyCardTotalRevenue ? `<div class="card"><div>${escHtml(L('reportsPrintSummaryTotalRev'))}</div><strong>${formatNumber(printNet, 2, false)}</strong></div>` : ''}
+    ${showDailyCardTotalDiscount ? `<div class="card"><div>${escHtml(L('reportsPrintSummaryTotalDisc'))}</div><strong>${formatNumber(printDisc, 2, false)}</strong></div>` : ''}
+    ${showDailyCardCash ? `<div class="card"><div>${escHtml(L('cashLabel'))}</div><strong>${formatNumber(printCash, 2, false)}</strong></div>` : ''}
+    ${showDailyCardCard ? `<div class="card"><div>${escHtml(L('cardLabel'))}</div><strong>${formatNumber(printCard, 2, false)}</strong></div>` : ''}
+    ${showDailyCardTotalExpense ? `<div class="card"><div>${escHtml(L('totalExpense'))}</div><strong>${formatNumber(totalExpensesForReport, 2, false)}</strong></div>` : ''}
+    ${showDailyCardNet ? `<div class="card"><div>${escHtml(L('dailyNetAfterExpense'))}</div><strong>${formatNumber(reportNetAfterOptionalExpense(printNet, totalExpensesForReport, showDailyCardTotalExpense), 2, false)}</strong></div>` : ''}
   </div>
   <h3 style="font-size:14px;margin:0 0 8px">${escHtml(L('reportsPrintPosLinesTitle'))}</h3>
   <table class="t">
@@ -4243,14 +4297,14 @@ export function ReportsModule({
   <div class="center bold large">${escHtml(L('reportsPrintDailyTitle80'))}</div>
   <div class="center small">${escHtml(dateLabel)} · ${escHtml(printKindFilterLabel)}</div>
   <div class="divider"></div>
-  <div class="row"><span>${escHtml(L('reportsPrintSummaryTxnCount'))}</span><span class="bold">${dailyKindActiveRows.length}</span></div>
+  ${showDailyCardTotalSales ? `<div class="row"><span>${escHtml(L('reportsPrintSummaryTxnCount'))}</span><span class="bold">${dailyKindActiveRows.length}</span></div>` : ''}
   <div class="row"><span>${escHtml(`${L('reportsDetStatusCancelled')} / ${L('reportsDetStatusRefunded')}`)}</span><span class="bold">${removedRows.length}</span></div>
-  <div class="row"><span>${escHtml(L('reportsPrintSummaryTotalRev'))}</span><span class="bold">${formatNumber(printNet, 2, false)}</span></div>
-  <div class="row"><span>${escHtml(L('reportsPrintSummaryTotalDisc'))}</span><span>${formatNumber(printDisc, 2, false)}</span></div>
-  <div class="row"><span>${escHtml(L('cashLabel'))}</span><span>${formatNumber(printCash, 2, false)}</span></div>
-  <div class="row"><span>${escHtml(L('cardLabel'))}</span><span>${formatNumber(printCard, 2, false)}</span></div>
-  <div class="row"><span>${escHtml(L('totalExpense'))}</span><span class="bold">${formatNumber(totalExpensesForReport, 2, false)}</span></div>
-  <div class="row"><span>${escHtml(L('dailyNetAfterExpense'))}</span><span class="bold">${formatNumber(printNet - totalExpensesForReport, 2, false)}</span></div>
+  ${showDailyCardTotalRevenue ? `<div class="row"><span>${escHtml(L('reportsPrintSummaryTotalRev'))}</span><span class="bold">${formatNumber(printNet, 2, false)}</span></div>` : ''}
+  ${showDailyCardTotalDiscount ? `<div class="row"><span>${escHtml(L('reportsPrintSummaryTotalDisc'))}</span><span>${formatNumber(printDisc, 2, false)}</span></div>` : ''}
+  ${showDailyCardCash ? `<div class="row"><span>${escHtml(L('cashLabel'))}</span><span>${formatNumber(printCash, 2, false)}</span></div>` : ''}
+  ${showDailyCardCard ? `<div class="row"><span>${escHtml(L('cardLabel'))}</span><span>${formatNumber(printCard, 2, false)}</span></div>` : ''}
+  ${showDailyCardTotalExpense ? `<div class="row"><span>${escHtml(L('totalExpense'))}</span><span class="bold">${formatNumber(totalExpensesForReport, 2, false)}</span></div>` : ''}
+  ${showDailyCardNet ? `<div class="row"><span>${escHtml(L('dailyNetAfterExpense'))}</span><span class="bold">${formatNumber(reportNetAfterOptionalExpense(printNet, totalExpensesForReport, showDailyCardTotalExpense), 2, false)}</span></div>` : ''}
   <div class="divider"></div>
   <div class="section-title">${escHtml(L('reportsPrintPosDetail80'))}</div>
   ${emptySales80}
@@ -5438,7 +5492,14 @@ export function ReportsModule({
                 </div>
 
                 {/* Stats */}
+                {(showDailyCardTotalSales ||
+                  showDailyCardTotalRevenue ||
+                  showDailyCardTotalDiscount ||
+                  showDailyCardCash ||
+                  showDailyCardCard ||
+                  showDailyCardSalesReturn) && (
                 <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-6 gap-4">
+                  {showDailyCardTotalSales ? (
                   <div className="bg-white rounded-lg p-4 border-2" style={{ borderColor: `${bizConfig.color}44` }}>
                     <div className="flex items-center justify-between">
                       <div>
@@ -5455,7 +5516,9 @@ export function ReportsModule({
                       <ShoppingCart className="w-12 h-12 opacity-20" style={{ color: bizConfig.color }} />
                     </div>
                   </div>
+                  ) : null}
 
+                  {showDailyCardTotalRevenue ? (
                   <div className="bg-white rounded-lg p-4 border-2" style={{ borderColor: `${bizConfig.color}44` }}>
                     <div className="flex items-center justify-between">
                       <div>
@@ -5465,7 +5528,9 @@ export function ReportsModule({
                       <Banknote className="w-12 h-12 opacity-20" style={{ color: bizConfig.color }} />
                     </div>
                   </div>
+                  ) : null}
 
+                  {showDailyCardTotalDiscount ? (
                   <div className="bg-white rounded-lg p-4 border-2 border-orange-100">
                     <div className="flex items-center justify-between">
                       <div>
@@ -5475,7 +5540,9 @@ export function ReportsModule({
                       <Percent className="w-12 h-12 text-orange-400 opacity-30" />
                     </div>
                   </div>
+                  ) : null}
 
+                  {showDailyCardCash ? (
                   <div className="bg-white rounded-lg p-4 border-2" style={{ borderColor: `${bizConfig.color}44` }}>
                     <div className="flex items-center justify-between">
                       <div>
@@ -5486,7 +5553,9 @@ export function ReportsModule({
                       <Banknote className="w-12 h-12 opacity-20" style={{ color: bizConfig.color }} />
                     </div>
                   </div>
+                  ) : null}
 
+                  {showDailyCardCard ? (
                   <div className="bg-white rounded-lg p-4 border-2" style={{ borderColor: `${bizConfig.color}44` }}>
                     <div className="flex items-center justify-between">
                       <div>
@@ -5496,7 +5565,9 @@ export function ReportsModule({
                       <CreditCard className="w-12 h-12 opacity-20" style={{ color: bizConfig.color }} />
                     </div>
                   </div>
+                  ) : null}
 
+                  {showDailyCardSalesReturn ? (
                   <div className="bg-white rounded-lg p-4 border-2 border-red-100">
                     <div className="flex items-center justify-between">
                       <div>
@@ -5507,36 +5578,53 @@ export function ReportsModule({
                       <TrendingDown className="w-12 h-12 text-red-400 opacity-40" />
                     </div>
                   </div>
+                  ) : null}
                 </div>
+                )}
 
-                <ReportKpiStrip
-                  columns={3}
-                  items={[
-                    {
-                      key: 'belge',
-                      label: tm('belgeTutari'),
-                      value: formatNumber(dailyTotal, 2, false),
-                      valueClassName: 'text-slate-800',
-                      className: 'border-2 border-slate-200',
-                    },
-                    {
-                      key: 'tahsil',
-                      label: tm('tahsilEdilen'),
-                      value: formatNumber(dailyCollected, 2, false),
-                      valueClassName: 'text-emerald-700',
-                      className: 'border-2 border-emerald-200',
-                    },
-                    {
-                      key: 'kalan',
-                      label: tm('kalanCari'),
-                      value: formatNumber(dailyRemaining, 2, false),
-                      valueClassName: 'text-amber-700',
-                      className: 'border-2 border-amber-200',
-                    },
-                  ]}
-                />
+                {(() => {
+                  const stripItems = [
+                    showDailyCardDocumentAmount
+                      ? {
+                          key: 'belge',
+                          label: tm('belgeTutari'),
+                          value: formatNumber(dailyTotal, 2, false),
+                          valueClassName: 'text-slate-800',
+                          className: 'border-2 border-slate-200',
+                        }
+                      : null,
+                    showDailyCardAmountCollected
+                      ? {
+                          key: 'tahsil',
+                          label: tm('tahsilEdilen'),
+                          value: formatNumber(dailyCollected, 2, false),
+                          valueClassName: 'text-emerald-700',
+                          className: 'border-2 border-emerald-200',
+                        }
+                      : null,
+                    showDailyCardRemainingAccount
+                      ? {
+                          key: 'kalan',
+                          label: tm('kalanCari'),
+                          value: formatNumber(dailyRemaining, 2, false),
+                          valueClassName: 'text-amber-700',
+                          className: 'border-2 border-amber-200',
+                        }
+                      : null,
+                  ].filter(Boolean) as {
+                    key: string;
+                    label: string;
+                    value: string;
+                    valueClassName: string;
+                    className: string;
+                  }[];
+                  if (stripItems.length === 0) return null;
+                  return <ReportKpiStrip items={stripItems} />;
+                })()}
 
+                {(showDailyCardTotalExpense || showDailyCardCashExpenses || showDailyCardNet) ? (
                 <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
+                  {showDailyCardTotalExpense ? (
                   <div className="bg-white rounded-lg p-4 border-2 border-rose-100">
                     <div className="flex items-center justify-between">
                       <div>
@@ -5549,6 +5637,8 @@ export function ReportsModule({
                       <Wallet className="w-12 h-12 text-rose-400 opacity-40" />
                     </div>
                   </div>
+                  ) : null}
+                  {showDailyCardCashExpenses ? (
                   <div className="bg-white rounded-lg p-4 border-2 border-orange-100">
                     <div className="flex items-center justify-between">
                       <div>
@@ -5558,18 +5648,22 @@ export function ReportsModule({
                       <Banknote className="w-12 h-12 text-orange-400 opacity-30" />
                     </div>
                   </div>
+                  ) : null}
+                  {showDailyCardNet ? (
                   <div className="bg-white rounded-lg p-4 border-2 border-emerald-100">
                     <div className="flex items-center justify-between">
                       <div>
                         <p className="text-sm text-gray-600">{tm('dailyNetAfterExpense')}</p>
-                        <p className={`text-2xl font-bold mt-1 ${dailyTotal - totalExpensesForReport >= 0 ? 'text-emerald-700' : 'text-rose-600'}`}>
-                          {formatNumber(dailyTotal - totalExpensesForReport, 2, false)}
+                        <p className={`text-2xl font-bold mt-1 ${dailyNetAfterExpense >= 0 ? 'text-emerald-700' : 'text-rose-600'}`}>
+                          {formatNumber(dailyNetAfterExpense, 2, false)}
                         </p>
                       </div>
                       <TrendingUp className="w-12 h-12 text-emerald-400 opacity-30" />
                     </div>
                   </div>
+                  ) : null}
                 </div>
+                ) : null}
 
                 {/* Sales List */}
                 <div className="bg-white rounded-lg border">

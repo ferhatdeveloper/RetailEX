@@ -13,6 +13,7 @@ import {
   getProductGridColumnLabels,
   loadProductColumnVisibility,
   productColumnVisibilityMenuItems,
+  PRODUCT_COLUMN_ORDER_KEY,
   PRODUCT_COLUMN_VISIBILITY_KEY,
   PRODUCT_GRID_COLUMN_ORDER,
 } from './productGridColumns';
@@ -34,7 +35,6 @@ import {
   Plus,
   Search,
   X,
-  FileText,
   ImageIcon,
   SlidersHorizontal,
   Printer,
@@ -175,7 +175,6 @@ export function ProductManagement({ products, setProducts }: ProductManagementPr
   const [hubInitialTab, setHubInitialTab] = useState<HubTab>('overview');
   const [editingProductId, setEditingProductId] = useState<string | undefined>(undefined);
   const [contextMenu, setContextMenu] = useState<{ x: number; y: number; product: Product } | null>(null);
-  const [showServicesOnly, setShowServicesOnly] = useState(false);
   const [showTodayOnly, setShowTodayOnly] = useState(false);
   const [duplicateDetectBy, setDuplicateDetectBy] = useState<'none' | 'code' | 'barcode'>('none');
   const [selectedProducts, setSelectedProducts] = useState<Product[]>([]);
@@ -287,7 +286,7 @@ export function ProductManagement({ products, setProducts }: ProductManagementPr
 
   useEffect(() => {
     setMobilePage(0);
-  }, [searchQuery, categoryFilter, showServicesOnly, showTodayOnly, duplicateDetectBy]);
+  }, [searchQuery, categoryFilter, showTodayOnly, duplicateDetectBy]);
 
   useEffect(() => {
     try {
@@ -309,13 +308,12 @@ export function ProductManagement({ products, setProducts }: ProductManagementPr
         (product.barcode || '').includes(searchQuery) ||
         (product.category?.toLocaleLowerCase('tr-TR') || '').includes(searchLower);
       const matchesCategory = categoryFilter === ALL_CATEGORIES || product.category === categoryFilter;
-      const matchesService = showServicesOnly ? (product.materialType === 'service' || product.isService === true) : true;
       const matchesToday = !showTodayOnly || isProductCreatedToday(product.created_at);
       const duplicateKey = duplicateDetectBy === 'code'
         ? String(product.code || '').trim()
         : String(product.barcode || '').trim();
       const matchesDuplicate = duplicateDetectBy === 'none' || duplicateKeys.has(duplicateKey);
-      return matchesSearch && matchesCategory && matchesService && matchesToday && matchesDuplicate;
+      return matchesSearch && matchesCategory && matchesToday && matchesDuplicate;
     });
     /** Ekleme tarihine göre yeniden eskiye (created_at DESC) */
     return [...list].sort((a, b) => {
@@ -325,7 +323,7 @@ export function ProductManagement({ products, setProducts }: ProductManagementPr
       if (diff !== 0) return diff;
       return String(a.name ?? '').localeCompare(String(b.name ?? ''), 'tr', { sensitivity: 'base' });
     });
-  }, [displayProducts, searchQuery, categoryFilter, showServicesOnly, showTodayOnly, duplicateDetectBy, duplicateKeys]);
+  }, [displayProducts, searchQuery, categoryFilter, showTodayOnly, duplicateDetectBy, duplicateKeys]);
 
   const mobilePageCount = Math.max(1, Math.ceil(filteredProducts.length / MOBILE_PAGE_SIZE));
   const mobilePagedProducts = useMemo(() => {
@@ -619,8 +617,7 @@ export function ProductManagement({ products, setProducts }: ProductManagementPr
               title={tm('productPurchaseDraftNotesSelection')}
             >
               <ShoppingCart className="w-3 h-3 shrink-0" />
-              <span className="hidden sm:inline">{tm('productPurchaseDraftFromSelectionBtn')}</span>
-              <span className="sm:hidden">Seç→Alış</span>
+              <span>{tm('productPurchaseDraftFromSelectionBtn')}</span>
             </button>
             <button
               type="button"
@@ -634,8 +631,7 @@ export function ProductManagement({ products, setProducts }: ProductManagementPr
               ) : (
                 <ShoppingCart className="w-3 h-3 shrink-0" />
               )}
-              <span className="hidden sm:inline">{tm('productPurchaseDraftFromNoHistoryBtn')}</span>
-              <span className="sm:hidden">Alışsız</span>
+              <span>{tm('productPurchaseDraftFromNoHistoryBtn')}</span>
             </button>
             <button
               type="button"
@@ -645,8 +641,7 @@ export function ProductManagement({ products, setProducts }: ProductManagementPr
               title={tm('productPurchaseDraftNotesNewProducts')}
             >
               <ShoppingCart className="w-3 h-3 shrink-0" />
-              <span className="hidden sm:inline">{tm('productPurchaseDraftFromNewBtn')}</span>
-              <span className="sm:hidden">Yeni</span>
+              <span>{tm('productPurchaseDraftFromNewBtn')}</span>
             </button>
             <button
               type="button"
@@ -689,22 +684,12 @@ export function ProductManagement({ products, setProducts }: ProductManagementPr
               title={tm('productFilterTodayTitle')}
             >
               <CalendarDays className="w-3 h-3 shrink-0" />
-              <span className="hidden sm:inline">{tm('productFilterTodayBtn')}</span>
-              <span className="sm:hidden">{tm('productFilterTodayBtn')}</span>
+              <span>{tm('productFilterTodayBtn')}</span>
               {todayProductsCount > 0 && (
                 <span className={`tabular-nums ${showTodayOnly ? 'text-emerald-100' : 'text-blue-100'}`}>
                   ({todayProductsCount})
                 </span>
               )}
-            </button>
-            <button
-              onClick={() => setShowServicesOnly(!showServicesOnly)}
-              className={`flex items-center gap-1 px-2 py-1 transition-colors text-[10px] font-bold ${
-                showServicesOnly ? 'bg-orange-600 text-white' : 'bg-white/10 hover:bg-white/20'
-              }`}
-            >
-              <FileText className="w-3 h-3" />
-              <span>{tm('serviceCardsEntities')}</span>
             </button>
             {selectedProducts.length > 0 && (
               <>
@@ -960,6 +945,7 @@ export function ProductManagement({ products, setProducts }: ProductManagementPr
               footerLabel={productFooterSumColumns ? tm('reportsTotalUpper') : undefined}
               columnVisibility={columnVisibility}
               onColumnVisibilityChange={setColumnVisibility}
+              columnOrderStorageKey={PRODUCT_COLUMN_ORDER_KEY}
               onRowContextMenu={(e, product) => {
                 e.preventDefault();
                 setContextMenu({ x: e.clientX, y: e.clientY, product });

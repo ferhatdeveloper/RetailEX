@@ -14,6 +14,7 @@ import { UniversalInvoiceForm } from './UniversalInvoiceForm';
 import {
   buildInvoiceListColumns,
   INVOICE_LIST_COLUMN_ORDER,
+  INVOICE_LIST_COLUMN_ORDER_KEY,
   INVOICE_LIST_COLUMN_VISIBILITY_KEY,
   invoiceListColumnVisibilityMenuItems,
   loadInvoiceListColumnVisibility,
@@ -1525,6 +1526,8 @@ export function InvoiceListModule({
               enableSorting={false}
               enableFiltering={true}
               enableColumnResizing
+              enableColumnReorder
+              columnOrderStorageKey={INVOICE_LIST_COLUMN_ORDER_KEY}
               enablePagination={false}
               enableSelection={defaultCategory === 'Alis' && !isMobile}
               enableExcelExport={false}

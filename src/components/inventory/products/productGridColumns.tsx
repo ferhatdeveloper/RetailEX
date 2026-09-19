@@ -9,6 +9,7 @@ import { isProductStockLow, isWeightBasedUnit } from '../../../utils/productUnit
 
 /** v3: KDV (taxRate) varsayılan gizli; eski v2 tercihlerinden KDV açık taşıma. */
 export const PRODUCT_COLUMN_VISIBILITY_KEY = 'retailex_productManagement_columnVisibility_v3';
+export const PRODUCT_COLUMN_ORDER_KEY = 'retailex_productManagement_columnOrder_v1';
 
 export type ProductGridColumnId = keyof typeof PRODUCT_GRID_COLUMN_META;
 

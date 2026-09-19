@@ -25,6 +25,8 @@ export const REPORT_GRID_DEFAULTS = {
   autoFooterSums: true as const,
   /** Toolbar + kolon başlığında kolona göre grupla */
   enableGrouping: true as const,
+  /** Kolon başlığı sürükle-bırak (persist için `columnOrderStorageKey` verin) */
+  enableColumnReorder: true as const,
   density: 'compact' as const,
   pageSize: REPORT_GRID_PAGE_SIZE,
   pageSizeOptions: REPORT_GRID_PAGE_SIZE_OPTIONS,

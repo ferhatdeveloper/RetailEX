@@ -119,7 +119,7 @@ export const translations = {
   mainMenu: { tr: 'Ana Menü', en: 'Main Menu', ar: 'القائمة الرئيسية', ku: 'لیستی سەرەکی' },
   invoices: { tr: 'Faturalar', en: 'Invoices', ar: 'الفواتير', ku: 'پسوولەکان' },
   salesOperations: { tr: 'Satış İşlemleri', en: 'Sales Operations', ar: 'عمليات المبيعات', ku: 'کارەکانی فرۆشتن' },
-  purchasing: { tr: 'Satın Alma', en: 'Purchasing', ar: 'المشتريات', ku: 'کڕین' },
+  purchasing: { tr: 'Satın Alma Faturaları', en: 'Purchase Invoices', ar: 'فواتير المشتريات', ku: 'پسوولەکانی کڕین' },
   stockWarehouse: { tr: 'Stok & Depo', en: 'Stock & Warehouse', ar: 'المخزون والمستودع', ku: 'کۆگا و کۆگە' },
   production: { tr: 'Üretim', en: 'Production', ar: 'الإنتاج', ku: 'بەرھەمهێنان' },
   financeAccounting: { tr: 'Finans & Muhasebe', en: 'Finance & Accounting', ar: 'المالية والمحاسبة', ku: 'دارایی و ژمێریاری' },

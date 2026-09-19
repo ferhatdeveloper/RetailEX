@@ -554,6 +554,30 @@ function DefinitionsParametersView() {
     { key: 'daily-report-supplier-payments', labelKey: 'menuParamDailyReportSupplierPayments' },
   ];
 
+  const dailyReportCardParamRows: { key: ReportMenuParamKey; labelKey: string }[] = [
+    { key: 'daily-report-card-total-sales', labelKey: 'menuParamDailyCardTotalSales' },
+    { key: 'daily-report-card-total-revenue', labelKey: 'menuParamDailyCardTotalRevenue' },
+    { key: 'daily-report-card-total-discount', labelKey: 'menuParamDailyCardTotalDiscount' },
+    { key: 'daily-report-card-cash', labelKey: 'menuParamDailyCardCash' },
+    { key: 'daily-report-card-card', labelKey: 'menuParamDailyCardCard' },
+    { key: 'daily-report-card-sales-return', labelKey: 'menuParamDailyCardSalesReturn' },
+    { key: 'daily-report-card-document-amount', labelKey: 'menuParamDailyCardDocumentAmount' },
+    { key: 'daily-report-card-amount-collected', labelKey: 'menuParamDailyCardAmountCollected' },
+    { key: 'daily-report-card-remaining-account', labelKey: 'menuParamDailyCardRemainingAccount' },
+    { key: 'daily-report-card-total-expense', labelKey: 'menuParamDailyCardTotalExpense' },
+    { key: 'daily-report-card-cash-expenses', labelKey: 'menuParamDailyCardCashExpenses' },
+    { key: 'daily-report-card-net', labelKey: 'menuParamDailyCardNet' },
+  ];
+
+  const periodSummaryCardParamRows: { key: ReportMenuParamKey; labelKey: string }[] = [
+    { key: 'period-summary-card-total-revenue', labelKey: 'menuParamPeriodCardTotalRevenue' },
+    { key: 'period-summary-card-total-expenses', labelKey: 'menuParamPeriodCardTotalExpenses' },
+    { key: 'period-summary-card-period-purchases', labelKey: 'menuParamPeriodCardPurchases' },
+    { key: 'period-summary-card-supplier-payables', labelKey: 'menuParamPeriodCardSupplierPayables' },
+    { key: 'period-summary-card-net', labelKey: 'menuParamPeriodCardNet' },
+    { key: 'period-summary-card-payment-split', labelKey: 'menuParamPeriodCardPaymentSplit' },
+  ];
+
   const toggleParam = (key: ReportMenuParamKey) => {
     setParams((prev) => ({ ...prev, [key]: !prev[key] }));
   };
@@ -633,6 +657,22 @@ function DefinitionsParametersView() {
                 <p className="text-xs text-gray-500 mt-0.5">{tm('featureMenuParamsHint')}</p>
               </div>
               {renderParamList(featureParamRows)}
+            </div>
+
+            <div className="border border-gray-200 rounded-lg overflow-hidden">
+              <div className="px-4 py-3 bg-gray-50 border-b border-gray-200">
+                <h4 className="text-sm font-semibold text-gray-800">{tm('dailyReportCardParamsSection')}</h4>
+                <p className="text-xs text-gray-500 mt-0.5">{tm('dailyReportCardParamsHint')}</p>
+              </div>
+              {renderParamList(dailyReportCardParamRows)}
+            </div>
+
+            <div className="border border-gray-200 rounded-lg overflow-hidden">
+              <div className="px-4 py-3 bg-gray-50 border-b border-gray-200">
+                <h4 className="text-sm font-semibold text-gray-800">{tm('periodSummaryCardParamsSection')}</h4>
+                <p className="text-xs text-gray-500 mt-0.5">{tm('periodSummaryCardParamsHint')}</p>
+              </div>
+              {renderParamList(periodSummaryCardParamRows)}
             </div>
           </div>
         )}

@@ -80,6 +80,7 @@ CREATE TABLE IF NOT EXISTS public.system_settings (
   primary_period_nr VARCHAR(10),
   eticaret_settings JSONB DEFAULT '{}'::jsonb,
   menu_preferences JSONB DEFAULT '{}'::jsonb,
+  -- Menü/özellik + rapor KPI kart bayrakları (boolean JSON); anahtarlar reportMenuParamsService
   report_menu_params JSONB DEFAULT '{}'::jsonb,
   updated_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP
 );

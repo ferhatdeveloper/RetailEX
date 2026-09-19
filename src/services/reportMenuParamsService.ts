@@ -1,12 +1,13 @@
 /**
  * Menü görünürlük parametreleri: güzellik/anket raporları + sanal santral + fiyat değişimi
- * + ürün listesi satış/alış dip toplamları + günlük rapor tedarikçi ödemeleri.
+ * + ürün listesi satış/alış dip toplamları + günlük/dönem rapor özet kartları
+ * + günlük rapor tedarikçi ödemeleri.
  * Kaynak: PostgreSQL `system_settings.report_menu_params` ↔ localStorage önbellek.
- * Varsayılan: çoğu menü/özellik kapalı; `daily-report-supplier-payments` varsayılan açık.
+ * Varsayılan: çoğu menü/özellik kapalı; rapor kartları ve `daily-report-supplier-payments` varsayılan açık.
  */
 import { postgres, DB_SETTINGS } from './postgres';
 
-/** Menüde / özellikte parametre ile aç/kapa edilen ekran / rapor sekmeleri */
+/** Menüde / özellikte parametre ile aç/kapa edilen ekran / rapor sekmeleri / KPI kartları */
 export const REPORT_MENU_PARAM_KEYS = [
   'beauty-overdue-uncalled-report',
   'beauty-survey-report',
@@ -21,6 +22,26 @@ export const REPORT_MENU_PARAM_KEYS = [
   'product-list-sales-purchase-totals',
   /** Günlük rapor — tedarikçiye ödenen (CH_ODEME) tutarlar (varsayılan açık) */
   'daily-report-supplier-payments',
+  /** Günlük rapor KPI kartları (varsayılan açık) */
+  'daily-report-card-total-sales',
+  'daily-report-card-total-revenue',
+  'daily-report-card-total-discount',
+  'daily-report-card-cash',
+  'daily-report-card-card',
+  'daily-report-card-sales-return',
+  'daily-report-card-document-amount',
+  'daily-report-card-amount-collected',
+  'daily-report-card-remaining-account',
+  'daily-report-card-total-expense',
+  'daily-report-card-cash-expenses',
+  'daily-report-card-net',
+  /** Aylık gün / yıllık ay özeti KPI kartları (varsayılan açık) */
+  'period-summary-card-total-revenue',
+  'period-summary-card-total-expenses',
+  'period-summary-card-period-purchases',
+  'period-summary-card-supplier-payables',
+  'period-summary-card-net',
+  'period-summary-card-payment-split',
 ] as const;
 
 export type ReportMenuParamKey = (typeof REPORT_MENU_PARAM_KEYS)[number];
@@ -41,6 +62,24 @@ const DEFAULT_PARAMS: ReportMenuParams = {
   'stock-price-change-slips': false,
   'product-list-sales-purchase-totals': false,
   'daily-report-supplier-payments': true,
+  'daily-report-card-total-sales': true,
+  'daily-report-card-total-revenue': true,
+  'daily-report-card-total-discount': true,
+  'daily-report-card-cash': true,
+  'daily-report-card-card': true,
+  'daily-report-card-sales-return': true,
+  'daily-report-card-document-amount': true,
+  'daily-report-card-amount-collected': true,
+  'daily-report-card-remaining-account': true,
+  'daily-report-card-total-expense': true,
+  'daily-report-card-cash-expenses': true,
+  'daily-report-card-net': true,
+  'period-summary-card-total-revenue': true,
+  'period-summary-card-total-expenses': true,
+  'period-summary-card-period-purchases': true,
+  'period-summary-card-supplier-payables': true,
+  'period-summary-card-net': true,
+  'period-summary-card-payment-split': true,
 };
 
 type Listener = (params: ReportMenuParams) => void;
@@ -86,6 +125,18 @@ export function isReportMenuParamEnabled(
 ): boolean {
   const p = params ?? getRuntimeReportMenuParams();
   return p[key] === true;
+}
+
+/**
+ * Net (ciro − gider): gider kartı/parametresi kapalıysa gider düşülmez.
+ * Ciro her zaman veri kaynağından alınır (kart gizli olsa bile net hesabı tutarlı kalsın).
+ */
+export function reportNetAfterOptionalExpense(
+  revenue: number,
+  expense: number,
+  expenseParamEnabled: boolean,
+): number {
+  return revenue - (expenseParamEnabled ? expense : 0);
 }
 
 function notify(params: ReportMenuParams): void {
@@ -223,7 +274,7 @@ async function writeToDb(params: ReportMenuParams): Promise<void> {
   }
 }
 
-/** PG → localStorage → runtime; kolon yoksa varsayılan (hepsi kapalı). */
+/** PG → localStorage → runtime; kolon yoksa varsayılan. */
 export async function loadReportMenuParams(): Promise<ReportMenuParams> {
   try {
     const raw = await readFromDb();

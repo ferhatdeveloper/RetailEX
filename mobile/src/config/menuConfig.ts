@@ -121,6 +121,18 @@ export const MENU_SECTIONS: MenuSection[] = [
     title: 'Faturalar',
     items: [
       {
+        id: 'purchasing',
+        label: 'Satın Alma Faturaları',
+        screen: 'purchaseinvoice',
+        children: [
+          { id: 'purchaserequest', label: 'Talep Fişleri', screen: 'purchaserequest' },
+          { id: 'purchase', label: 'Satınalma Siparişleri', screen: 'purchase' },
+          { id: 'purchase-std', label: 'Alış Faturası', screen: 'purchase-invoice-standard' },
+          { id: 'purchase-return', label: 'Alış İade', screen: 'purchase-invoice-return' },
+          { id: 'service-recv', label: 'Alınan Hizmet', screen: 'serviceinvoice-received' },
+        ],
+      },
+      {
         id: 'sales-inv',
         label: 'Satış Faturaları',
         screen: 'salesinvoice',
@@ -130,18 +142,6 @@ export const MENU_SECTIONS: MenuSection[] = [
           { id: 'sales-wholesale', label: 'Toptan Satış', screen: 'sales-invoice-wholesale' },
           { id: 'sales-consign', label: 'Konsinye Satış', screen: 'sales-invoice-consignment' },
           { id: 'sales-return', label: 'Satış İade', screen: 'sales-invoice-return' },
-        ],
-      },
-      {
-        id: 'purchasing',
-        label: 'Satın Alma',
-        screen: 'purchaseinvoice',
-        children: [
-          { id: 'purchaserequest', label: 'Talep Fişleri', screen: 'purchaserequest' },
-          { id: 'purchase', label: 'Satınalma Siparişleri', screen: 'purchase' },
-          { id: 'purchase-std', label: 'Alış Faturası', screen: 'purchase-invoice-standard' },
-          { id: 'purchase-return', label: 'Alış İade', screen: 'purchase-invoice-return' },
-          { id: 'service-recv', label: 'Alınan Hizmet', screen: 'serviceinvoice-received' },
         ],
       },
       {

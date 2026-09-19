@@ -10,6 +10,8 @@ import { getInvoiceHeaderField } from '../../../utils/invoiceHeaderFields';
 import { Eye, Edit, FileText } from 'lucide-react';
 
 export const INVOICE_LIST_COLUMN_VISIBILITY_KEY = 'retailex_invoiceList_columnVisibility_v1';
+/** Kolon sürükle-bırak sırası — görünürlük key kalıbı ile uyumlu */
+export const INVOICE_LIST_COLUMN_ORDER_KEY = 'retailex_invoiceList_columnOrder_v1';
 
 export type ListInvoice = Invoice & {
   trcode?: number;

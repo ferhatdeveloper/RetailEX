@@ -478,8 +478,8 @@ export function MenuManagementPanel({ onClose }: MenuManagementPanelProps) {
 
       // Ana menü öğelerini ekle
       const mainItems = [
-        { screen_id: 'salesinvoice', label: 'Satış Faturaları', label_en: 'Sales Invoices', label_ar: 'فواتير المبيعات', icon_name: 'FileText', order: 0 },
-        { screen_id: 'purchaseinvoice', label: 'Alış & Satın alma', label_en: 'Purchase & Procurement', label_ar: 'الشراء والمشتريات', icon_name: 'FileCheck', order: 1 },
+        { screen_id: 'purchaseinvoice', label: 'Satın Alma Faturaları', label_en: 'Purchase Invoices', label_ar: 'فواتير المشتريات', icon_name: 'FileCheck', order: 0 },
+        { screen_id: 'salesinvoice', label: 'Satış Faturaları', label_en: 'Sales Invoices', label_ar: 'فواتير المبيعات', icon_name: 'FileText', order: 1 },
         { screen_id: 'serviceinvoice', label: 'Hizmet Faturaları', label_en: 'Service Invoices', label_ar: 'فواتير الخدمات', icon_name: 'FileText', order: 2 },
         { screen_id: 'waybill', label: 'İrsaliyeler', label_en: 'Waybills', label_ar: 'إيصالات النقل', icon_name: 'Truck', order: 3 },
         { screen_id: 'orders', label: 'Siparişler', label_en: 'Orders', label_ar: 'الطلبات', icon_name: 'ShoppingBag', order: 4 },

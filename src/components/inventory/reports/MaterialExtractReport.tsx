@@ -10,7 +10,6 @@ import { getAppDefaultCurrency } from '../../../services/postgres';
 import { format } from 'date-fns';
 import { useLanguage } from '../../../contexts/LanguageContext';
 import { useFirmaDonem } from '../../../contexts/FirmaDonemContext';
-import { exportReportToXlsx } from '../../../utils/reportExport';
 import { DevExDataGrid } from '../../shared/DevExDataGrid';
 import {
     buildReportGridColumns,
@@ -82,8 +81,6 @@ interface ExtractRow {
     product_name?: string;
 }
 
-type ExtractRowKind = 'detail' | 'group' | 'subtotal';
-
 type ExtractGridRow = ExtractRow & {
     dateLabel: string;
     productCodeLabel: string;
@@ -96,36 +93,8 @@ type ExtractGridRow = ExtractRow & {
     outQty: number | null;
     outAmt: number | null;
     salesUnitPrice: number | null;
-    _rowKind: ExtractRowKind;
+    _rowKind: 'detail';
 };
-
-function extractProductGroupKey(row: {
-    product_id?: string;
-    product_code?: string;
-    product_name?: string;
-}): string {
-    const id = String(row.product_id || '').trim();
-    if (id) return `id:${id}`;
-    const code = displayItemCode(row.product_code);
-    const codePart = code === '—' ? '' : code;
-    const name = String(row.product_name || '').trim();
-    return `cn:${codePart}\0${name}`;
-}
-
-function compareExtractProductRows(
-    a: { productCodeLabel?: string; productNameLabel?: string; product_code?: string; product_name?: string; date?: string },
-    b: { productCodeLabel?: string; productNameLabel?: string; product_code?: string; product_name?: string; date?: string },
-): number {
-    const aCode = a.productCodeLabel || (displayItemCode(a.product_code) === '—' ? '' : displayItemCode(a.product_code));
-    const bCode = b.productCodeLabel || (displayItemCode(b.product_code) === '—' ? '' : displayItemCode(b.product_code));
-    const byCode = aCode.localeCompare(bCode, 'tr', { sensitivity: 'base' });
-    if (byCode !== 0) return byCode;
-    const aName = a.productNameLabel || a.product_name || '';
-    const bName = b.productNameLabel || b.product_name || '';
-    const byName = aName.localeCompare(bName, 'tr', { sensitivity: 'base' });
-    if (byName !== 0) return byName;
-    return String(a.date || '').localeCompare(String(b.date || ''));
-}
 
 const BUILTIN_SELECTION: ExtractPrintSelection = {
     kind: 'builtin',
@@ -169,10 +138,6 @@ export function MaterialExtractReport() {
     const [reportReady, setReportReady] = useState(false);
     /** true = malzeme seçilmeden tüm malzemeler yüklendi */
     const [allMaterialsMode, setAllMaterialsMode] = useState(false);
-    /** Tüm malzemeler modunda ürün koduna göre grupla (varsayılan açık). */
-    const [groupByProduct, setGroupByProduct] = useState(true);
-    /** DevEx kolon gruplama (ürün bazlı kapalıyken). */
-    const [columnGroupBy, setColumnGroupBy] = useState<string | null>(null);
     const dropdownRef = useRef<HTMLDivElement>(null);
 
     const [printOpen, setPrintOpen] = useState(false);
@@ -410,32 +375,6 @@ export function MaterialExtractReport() {
         ficheType: string,
     ): string => labelMaterialExtractFiche(tm, trcode, movType, sourceType, ficheType);
 
-    /** Tek ürün seçiliyken gruplama kapalı; tüm malzemelerde kullanıcı tercihi. */
-    const effectiveGroupByProduct = Boolean(
-        allMaterialsMode && !selectedProduct && groupByProduct && !columnGroupBy,
-    );
-
-    const gridGroupByColumnId = useMemo(() => {
-        if (!allMaterialsMode || selectedProduct) return null;
-        if (effectiveGroupByProduct) return 'productNameLabel';
-        return columnGroupBy;
-    }, [allMaterialsMode, selectedProduct, effectiveGroupByProduct, columnGroupBy]);
-
-    const handleGridGroupByChange = (columnId: string | null) => {
-        if (!columnId) {
-            setGroupByProduct(false);
-            setColumnGroupBy(null);
-            return;
-        }
-        if (columnId === 'productNameLabel' || columnId === 'productCodeLabel') {
-            setGroupByProduct(true);
-            setColumnGroupBy(null);
-            return;
-        }
-        setGroupByProduct(false);
-        setColumnGroupBy(columnId);
-    };
-
     const gridRows = useMemo((): ExtractGridRow[] => {
         return rows.map((row) => {
             const inbound = isInboundMovement(row.movement_type);
@@ -457,85 +396,6 @@ export function MaterialExtractReport() {
             };
         });
     }, [rows, tm]);
-
-    /** Excel / yazdırma için ürün bazlı sentetik grup satırları (ekran native DevEx gruplama kullanır). */
-    const productGroupedRows = useMemo((): ExtractGridRow[] => {
-        if (!effectiveGroupByProduct) return gridRows;
-        const sorted = [...gridRows].sort(compareExtractProductRows);
-        const out: ExtractGridRow[] = [];
-        let i = 0;
-        while (i < sorted.length) {
-            const key = extractProductGroupKey(sorted[i]);
-            const group: ExtractGridRow[] = [];
-            while (i < sorted.length && extractProductGroupKey(sorted[i]) === key) {
-                group.push(sorted[i]);
-                i += 1;
-            }
-            const first = group[0];
-            let inQty = 0;
-            let inAmt = 0;
-            let outQty = 0;
-            let outAmt = 0;
-            let lastBal = first.running_balance;
-            for (const g of group) {
-                if (g.inQty != null) {
-                    inQty += g.inQty;
-                    inAmt += Number(g.inAmt) || 0;
-                }
-                if (g.outQty != null) {
-                    outQty += g.outQty;
-                    outAmt += Number(g.outAmt) || 0;
-                }
-                lastBal = g.running_balance;
-            }
-            const code = first.productCodeLabel || '';
-            const name = first.productNameLabel || '';
-            out.push({
-                ...first,
-                id: `group-${key}`,
-                _rowKind: 'group',
-                dateLabel: '',
-                typeLabel: '',
-                document_no: '',
-                descLabel: '',
-                productCodeLabel: code,
-                productNameLabel: name,
-                inQty: null,
-                inAmt: null,
-                purchaseUnitPrice: null,
-                outQty: null,
-                outAmt: null,
-                salesUnitPrice: null,
-                running_balance: lastBal,
-                quantity: 0,
-                unit_price: 0,
-                amount: 0,
-            });
-            for (const g of group) out.push(g);
-            out.push({
-                ...first,
-                id: `subtotal-${key}`,
-                _rowKind: 'subtotal',
-                dateLabel: '',
-                typeLabel: '',
-                document_no: '',
-                descLabel: tm('extractGroupSubtotal') || 'Grup toplamı',
-                productCodeLabel: code,
-                productNameLabel: name,
-                inQty,
-                inAmt,
-                purchaseUnitPrice: null,
-                outQty,
-                outAmt,
-                salesUnitPrice: null,
-                running_balance: lastBal,
-                quantity: 0,
-                unit_price: 0,
-                amount: 0,
-            });
-        }
-        return out;
-    }, [gridRows, tm, effectiveGroupByProduct]);
 
     const showProductColumns = allMaterialsMode || !selectedProduct;
 
@@ -668,143 +528,6 @@ export function MaterialExtractReport() {
         [tm, showProductColumns],
     );
 
-    const exportExcel = () => {
-        if (!reportReady || rows.length === 0) return;
-        const hDate = tm('date');
-        const hCode = tm('materialCode') || 'Malzeme Kodu';
-        const hName = tm('materialName') || 'Malzeme Adı';
-        const hFicheType = tm('ficheType') || 'Fiş Tipi';
-        const hFicheNo = tm('ficheNo') || 'Fiş No';
-        const hDesc = tm('description') || 'Açıklama';
-        const hInQty = tm('extractInQty');
-        const hInAmt = tm('extractInAmount');
-        const hPurchaseUnit = tm('extractPurchaseUnitPrice') || 'Alış Birim Fiyatı';
-        const hOutQty = tm('extractOutQty');
-        const hOutAmt = tm('extractOutAmount');
-        const hSalesUnit = tm('extractSalesUnitPrice') || 'Satış Birim Fiyatı';
-        const hBal = tm('runningQuantity') || 'Kalan Bakiye';
-        const headers = showProductColumns
-            ? [hDate, hCode, hName, hFicheType, hFicheNo, hDesc, hInQty, hInAmt, hPurchaseUnit, hOutQty, hOutAmt, hSalesUnit, hBal]
-            : [hDate, hFicheType, hFicheNo, hDesc, hInQty, hInAmt, hPurchaseUnit, hOutQty, hOutAmt, hSalesUnit, hBal];
-
-        const exportSource: ExtractGridRow[] = effectiveGroupByProduct
-            ? productGroupedRows
-            : gridRows;
-
-        const exportRows = exportSource.map((row) => {
-            const kind = row._rowKind;
-            if (kind === 'group') {
-                const base: Record<string, string | number> = {
-                    [hDate]: '',
-                    [hFicheType]: '',
-                    [hFicheNo]: '',
-                    [hDesc]: [row.productCodeLabel, row.productNameLabel].filter(Boolean).join(' — '),
-                    [hInQty]: '',
-                    [hInAmt]: '',
-                    [hPurchaseUnit]: '',
-                    [hOutQty]: '',
-                    [hOutAmt]: '',
-                    [hSalesUnit]: '',
-                    [hBal]: '',
-                };
-                if (showProductColumns) {
-                    base[hCode] = row.productCodeLabel || '';
-                    base[hName] = row.productNameLabel || '';
-                }
-                return base;
-            }
-            if (kind === 'subtotal') {
-                const base: Record<string, string | number> = {
-                    [hDate]: '',
-                    [hFicheType]: '',
-                    [hFicheNo]: '',
-                    [hDesc]: tm('extractGroupSubtotal') || 'Grup toplamı',
-                    [hInQty]: row.inQty ?? '',
-                    [hInAmt]: row.inAmt ?? '',
-                    [hPurchaseUnit]: '',
-                    [hOutQty]: row.outQty ?? '',
-                    [hOutAmt]: row.outAmt ?? '',
-                    [hSalesUnit]: '',
-                    [hBal]: row.running_balance,
-                };
-                if (showProductColumns) {
-                    base[hCode] = row.productCodeLabel || '';
-                    base[hName] = row.productNameLabel || '';
-                }
-                return base;
-            }
-            const base: Record<string, string | number> = {
-                [hDate]: row.dateLabel,
-                [hFicheType]: row.typeLabel,
-                [hFicheNo]: row.document_no,
-                [hDesc]: row.descLabel,
-                [hInQty]: row.inQty ?? '',
-                [hInAmt]: row.inAmt ?? '',
-                [hPurchaseUnit]: row.purchaseUnitPrice ?? '',
-                [hOutQty]: row.outQty ?? '',
-                [hOutAmt]: row.outAmt ?? '',
-                [hSalesUnit]: row.salesUnitPrice ?? '',
-                [hBal]: row.running_balance,
-            };
-            if (showProductColumns) {
-                base[hCode] = row.productCodeLabel;
-                base[hName] = row.productNameLabel;
-            }
-            return base;
-        });
-        const lastBalance = rows[rows.length - 1]?.running_balance ?? 0;
-        const codeForFile = selectedProduct
-            ? productCodeLabel === '—'
-                ? 'urun'
-                : productCodeLabel.replace(/[^\w.-]+/g, '_')
-            : 'tum_malzemeler';
-        const noteLabel = selectedProduct
-            ? `${productCodeLabel} — ${selectedProduct.name || ''} • ${currency}`
-            : `${tm('extractAllMaterialsLabel') || 'Tüm malzemeler'}${
-                  effectiveGroupByProduct ? ` · ${tm('extractGroupByProduct') || 'Ürün bazında'}` : ''
-              } • ${currency}`;
-        exportReportToXlsx({
-            fileName: `Malzeme_Ekstresi_${codeForFile}_${startDate}_${endDate}`,
-            sheetName: tm('materialExtractReport') || 'Malzeme Ekstresi',
-            headers,
-            rows: exportRows,
-            totals: showProductColumns
-                ? {
-                      [hDate]: '',
-                      [hCode]: '',
-                      [hName]: '',
-                      [hFicheType]: '',
-                      [hFicheNo]: '',
-                      [hDesc]: tm('totalUppercase') || 'Toplam',
-                      [hInQty]: totals.totalInQty,
-                      [hInAmt]: totals.totalInAmount,
-                      [hPurchaseUnit]: '',
-                      [hOutQty]: totals.totalOutQty,
-                      [hOutAmt]: totals.totalOutAmount,
-                      [hSalesUnit]: '',
-                      [hBal]: lastBalance,
-                  }
-                : {
-                      [hDate]: '',
-                      [hFicheType]: '',
-                      [hFicheNo]: '',
-                      [hDesc]: tm('totalUppercase') || 'Toplam',
-                      [hInQty]: totals.totalInQty,
-                      [hInAmt]: totals.totalInAmount,
-                      [hPurchaseUnit]: '',
-                      [hOutQty]: totals.totalOutQty,
-                      [hOutAmt]: totals.totalOutAmount,
-                      [hSalesUnit]: '',
-                      [hBal]: lastBalance,
-                  },
-            metadata: {
-                companyName: selectedFirm?.name || selectedFirm?.firma_adi || 'RetailEX',
-                period: `${formatReportDateCell(startDate)} → ${formatReportDateCell(endDate)}`,
-                note: noteLabel,
-            },
-        });
-    };
-
     const buildPrintInput = async (): Promise<MaterialExtractPrintInput | null> => {
         if (!reportReady || rows.length === 0) return null;
         const receipt = await getReceiptSettings(firmNr).catch(() => ({}));
@@ -812,67 +535,20 @@ export function MaterialExtractReport() {
             receipt,
             selectedFirm?.name || selectedFirm?.firma_adi || 'RetailEX',
         );
-        const printRows: MaterialExtractPrintRow[] = effectiveGroupByProduct
-            ? productGroupedRows.flatMap((row) => {
-                  if (row._rowKind === 'group') {
-                      const title = [row.productCodeLabel, row.productNameLabel].filter(Boolean).join(' — ');
-                      return [
-                          {
-                              date: '',
-                              trcode: 0,
-                              movement_type: '',
-                              source_type: '',
-                              fiche_type: '',
-                              document_no: '',
-                              description: title,
-                              quantity: 0,
-                              unit_price: 0,
-                              amount: 0,
-                              running_balance: row.running_balance,
-                              printRowKind: 'group' as const,
-                          },
-                      ];
-                  }
-                  if (row._rowKind === 'subtotal') {
-                      return [
-                          {
-                              date: '',
-                              trcode: 0,
-                              movement_type: '',
-                              source_type: '',
-                              fiche_type: '',
-                              document_no: '',
-                              description: tm('extractGroupSubtotal') || 'Grup toplamı',
-                              quantity: 0,
-                              unit_price: 0,
-                              amount: 0,
-                              running_balance: row.running_balance,
-                              printRowKind: 'subtotal' as const,
-                              printInQty: row.inQty ?? undefined,
-                              printInAmt: row.inAmt ?? undefined,
-                              printOutQty: row.outQty ?? undefined,
-                              printOutAmt: row.outAmt ?? undefined,
-                          },
-                      ];
-                  }
-                  return [
-                      {
-                          date: row.date,
-                          trcode: row.trcode,
-                          movement_type: row.movement_type,
-                          source_type: row.source_type,
-                          fiche_type: row.fiche_type,
-                          document_no: row.document_no,
-                          description: row.description,
-                          quantity: row.quantity,
-                          unit_price: row.unit_price,
-                          amount: row.amount,
-                          running_balance: row.running_balance,
-                          warehouse_name: row.warehouse_name,
-                      },
-                  ];
-              })
-            : [...rows].sort(compareExtractProductRows);
+        const printRows: MaterialExtractPrintRow[] = rows.map((row) => ({
+            date: row.date,
+            trcode: row.trcode,
+            movement_type: row.movement_type,
+            source_type: row.source_type,
+            fiche_type: row.fiche_type,
+            document_no: row.document_no,
+            description: row.description,
+            quantity: row.quantity,
+            unit_price: row.unit_price,
+            amount: row.amount,
+            running_balance: row.running_balance,
+            warehouse_name: row.warehouse_name,
+        }));
         return {
             ...header,
             reportTitle: tm('materialExtractReport') || 'Malzeme Ekstresi',
@@ -1184,25 +860,6 @@ export function MaterialExtractReport() {
                 >
                     {loading ? (tm('loading') || 'Yükleniyor...') : (tm('prepareReport') || 'Raporu Hazırla')}
                 </button>
-
-                {!selectedProduct && (
-                    <label
-                        className="flex items-center gap-2 px-3 py-2 border rounded bg-white text-sm text-gray-700 select-none cursor-pointer"
-                        title={tm('extractGroupByProduct') || 'Ürün bazında'}
-                    >
-                        <input
-                            type="checkbox"
-                            className="h-4 w-4 rounded border-slate-300 text-indigo-600"
-                            checked={groupByProduct && !columnGroupBy}
-                            onChange={(e) => {
-                                const on = e.target.checked;
-                                setGroupByProduct(on);
-                                if (on) setColumnGroupBy(null);
-                            }}
-                        />
-                        <span className="font-medium">{tm('extractGroupByProduct') || 'Ürün bazında'}</span>
-                    </label>
-                )}
             </div>
 
             {/* Rapor Başlığı */}
@@ -1255,8 +912,6 @@ export function MaterialExtractReport() {
                         printDisabled={!canExport}
                         enableExcelExport={canExport}
                         enableGrouping
-                        groupByColumnId={gridGroupByColumnId}
-                        onGroupByColumnIdChange={handleGridGroupByChange}
                         footerLabel={tm('totalUppercase') || 'Toplam'}
                         footerSumColumns={[
                             {

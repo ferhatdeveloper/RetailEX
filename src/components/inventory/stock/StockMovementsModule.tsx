@@ -1,8 +1,7 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useMemo, useCallback } from 'react';
 import {
     TrendingDown, Plus, Search, Trash2, X, Edit2, Eye,
-    Printer, RefreshCw, Filter, ChevronLeft, ChevronRight,
-    MoreHorizontal, FileText, Download, Share2, Check,
+    Printer, RefreshCw, Check,
     FileMinus, Archive, ChevronDown
 } from 'lucide-react';
 import { useLanguage } from '../../../contexts/LanguageContext';
@@ -17,13 +16,14 @@ import {
 } from '../../../services/stockMovementAPI';
 import { Button } from '../../ui/button';
 import { Input } from '../../ui/input';
-import {
-    DropdownMenu,
-    DropdownMenuContent,
-    DropdownMenuItem,
-    DropdownMenuTrigger,
-} from '../../ui/dropdown-menu';
 import { PercentBodyModal, PercentBodyModalScrollBody } from '../../shared/PercentBodyModal';
+import { DevExDataGrid, DEVEX_GRID_ROW_ID } from '../../shared/DevExDataGrid';
+import {
+    STOCK_MOVEMENTS_COLUMN_ORDER_KEY,
+    buildStockMovementsListColumns,
+    loadStockMovementsColumnVisibility,
+    saveStockMovementsColumnVisibility,
+} from './stockMovementsListColumns';
 
 /** jRetail materialReceiptList + Ekle menü yedek etiketleri (tm boşsa) */
 const SLIP_TYPE_FALLBACK: Record<string, string> = {
@@ -97,9 +97,17 @@ export function StockMovementsModule({ defaultFilter = 'all' }: StockMovementsMo
 
     const [formData, setFormData] = useState<FormState>(() => defaultFormForFilter(defaultFilter));
     const [warehouses, setWarehouses] = useState<any[]>([]);
+    const [columnVisibility, setColumnVisibility] = useState<Record<string, boolean>>(
+        () => loadStockMovementsColumnVisibility(),
+    );
 
     const slipTypeLabel = (item: MaterialSlipAddMenuItem) =>
         tm(item.labelKey) || SLIP_TYPE_FALLBACK[item.labelKey] || item.labelKey;
+
+    const handleColumnVisibilityChange = useCallback((visibility: Record<string, boolean>) => {
+        setColumnVisibility(visibility);
+        saveStockMovementsColumnVisibility(visibility);
+    }, []);
 
     useEffect(() => {
         loadMovements();
@@ -205,7 +213,7 @@ export function StockMovementsModule({ defaultFilter = 'all' }: StockMovementsMo
         }
     };
 
-    const handleDelete = async (id: string | null) => {
+    const handleDelete = useCallback(async (id: string | null) => {
         const targetId = id || selectedId;
         if (!targetId) return;
         if (String(targetId).startsWith('inv-')) {
@@ -224,23 +232,48 @@ export function StockMovementsModule({ defaultFilter = 'all' }: StockMovementsMo
         } finally {
             setLoading(false);
         }
-    };
+    }, [selectedId, tm]);
 
-    const filteredMovements = movements.filter((m: StockMovement) => {
-        const tabOk =
-            activeTab === 'all'
-                ? true
-                : activeTab === 'in'
-                  ? m.movement_type === 'in' || m.movement_type === 'transfer'
-                  : m.movement_type === 'out';
-        const matchesSearch =
-            m.document_no?.toLowerCase().includes(searchQuery.toLowerCase()) ||
-            (m as any).warehouses?.name?.toLowerCase().includes(searchQuery.toLowerCase()) ||
-            labelStockSlipDocumentType(tm, m.trcode, m.movement_type)
-                .toLowerCase()
-                .includes(searchQuery.toLowerCase());
-        return tabOk && matchesSearch;
-    });
+    const filteredMovements = useMemo(() => {
+        return movements.filter((m: StockMovement) => {
+            const tabOk =
+                activeTab === 'all'
+                    ? true
+                    : activeTab === 'in'
+                      ? m.movement_type === 'in' || m.movement_type === 'transfer'
+                      : m.movement_type === 'out';
+            const q = searchQuery.trim().toLowerCase();
+            if (!q) return tabOk;
+            const matchesSearch =
+                m.document_no?.toLowerCase().includes(q) ||
+                (m as StockMovement & { warehouses?: { name?: string } }).warehouses?.name
+                    ?.toLowerCase()
+                    .includes(q) ||
+                labelStockSlipDocumentType(tm, m.trcode, m.movement_type).toLowerCase().includes(q) ||
+                (m.description || '').toLowerCase().includes(q);
+            return tabOk && matchesSearch;
+        });
+    }, [movements, activeTab, searchQuery, tm]);
+
+    const gridRows = useMemo(
+        () =>
+            filteredMovements.map((m) => ({
+                ...m,
+                [DEVEX_GRID_ROW_ID]: `${m.source_kind || 'slip'}-${m.id}`,
+            })),
+        [filteredMovements],
+    );
+
+    const columns = useMemo(
+        () =>
+            buildStockMovementsListColumns({
+                tm,
+                onDelete: (id) => {
+                    void handleDelete(id);
+                },
+            }),
+        [tm, handleDelete],
+    );
 
     const addButtonClass =
         'h-7 px-3 gap-1 bg-white text-blue-700 hover:bg-blue-50 transition-colors text-[10px] font-bold border-none shadow-sm';
@@ -346,62 +379,23 @@ export function StockMovementsModule({ defaultFilter = 'all' }: StockMovementsMo
                 </div>
             </div>
 
-            {/* Filter Bar */}
-            <div className="bg-white border-b px-4 py-2 flex items-center justify-between sticky top-0 z-10">
-                <div className="flex items-center gap-4">
-                    <div className="flex bg-gray-100 p-0.5 rounded-lg">
-                        {['all', 'in', 'out'].map((tab: string) => (
-                            <button
-                                key={tab}
-                                onClick={() => setActiveTab(tab as any)}
-                                className={`px-4 py-1.5 text-xs font-medium rounded-md transition-all ${
-                                    activeTab === tab
-                                        ? 'bg-white text-blue-600 shadow-sm'
-                                        : 'text-gray-500 hover:text-gray-700'
-                                }`}
-                            >
-                                {tab === 'all' ? tm('all') : tab === 'in' ? tm('in') : tm('out')}
-                            </button>
-                        ))}
-                    </div>
-
-                    <div className="w-px h-4 bg-gray-200" />
-
-                    <div className="flex items-center gap-2">
-                        <Button
-                            variant="ghost"
-                            size="sm"
-                            className="h-8 px-2.5 gap-1.5 text-gray-600 hover:bg-gray-50 text-xs"
+            {/* Filter Bar — sekme + arama; kolon filtresi DevEx başlığında */}
+            <div className="bg-white border-b px-4 py-2 flex items-center justify-between sticky top-0 z-10 shrink-0">
+                <div className="flex bg-gray-100 p-0.5 rounded-lg">
+                    {(['all', 'in', 'out'] as const).map((tab) => (
+                        <button
+                            key={tab}
+                            type="button"
+                            onClick={() => setActiveTab(tab)}
+                            className={`px-4 py-1.5 text-xs font-medium rounded-md transition-all ${
+                                activeTab === tab
+                                    ? 'bg-white text-blue-600 shadow-sm'
+                                    : 'text-gray-500 hover:text-gray-700'
+                            }`}
                         >
-                            <Filter className="w-3.5 h-3.5" />
-                            <span>{tm('filter')}</span>
-                        </Button>
-                        <DropdownMenu>
-                            <DropdownMenuTrigger asChild>
-                                <Button
-                                    variant="ghost"
-                                    size="sm"
-                                    className="h-8 w-8 p-0 text-gray-500 hover:bg-gray-50"
-                                >
-                                    <MoreHorizontal className="w-4 h-4" />
-                                </Button>
-                            </DropdownMenuTrigger>
-                            <DropdownMenuContent align="end" className="w-48">
-                                <DropdownMenuItem className="gap-2 text-xs">
-                                    <Download className="w-3.5 h-3.5" />
-                                    {tm('export')} Excel
-                                </DropdownMenuItem>
-                                <DropdownMenuItem className="gap-2 text-xs">
-                                    <FileText className="w-3.5 h-3.5" />
-                                    {tm('export')} PDF
-                                </DropdownMenuItem>
-                                <DropdownMenuItem className="gap-2 text-xs">
-                                    <Share2 className="w-3.5 h-3.5" />
-                                    {tm('share')}
-                                </DropdownMenuItem>
-                            </DropdownMenuContent>
-                        </DropdownMenu>
-                    </div>
+                            {tab === 'all' ? tm('all') : tab === 'in' ? tm('in') : tm('out')}
+                        </button>
+                    ))}
                 </div>
 
                 <div className="relative w-64">
@@ -415,143 +409,81 @@ export function StockMovementsModule({ defaultFilter = 'all' }: StockMovementsMo
                 </div>
             </div>
 
-            {/* Data Grid */}
-            <div className="flex-1 overflow-auto p-4">
+            {/* Data Grid — Malzeme listesi / ReportDataGrid standardı */}
+            <div className="flex-1 min-h-0 overflow-hidden p-3">
                 {loading && movements.length === 0 ? (
                     <div className="flex flex-col items-center justify-center h-full gap-4">
                         <div className="animate-spin rounded-full h-10 w-10 border-b-2 border-blue-500" />
                         <p className="text-sm text-gray-500 font-medium">{tm('loading')}...</p>
                     </div>
                 ) : (
-                    <div className="bg-white rounded-xl shadow-sm border border-gray-200 overflow-hidden">
-                        <div className="overflow-x-auto">
-                            <table className="w-full text-sm text-left border-collapse">
-                                <thead>
-                                    <tr className="bg-gray-50/80 border-b border-gray-200 sticky top-0 z-20">
-                                        <th className="px-4 py-3 font-semibold text-gray-600 uppercase tracking-wider text-[11px] border-r border-gray-100">
-                                            {tm('documentType') || 'Belge Türü'}
-                                        </th>
-                                        <th className="px-4 py-3 font-semibold text-gray-600 uppercase tracking-wider text-[11px] border-r border-gray-100">
-                                            {tm('slipNo')}
-                                        </th>
-                                        <th className="px-4 py-3 font-semibold text-gray-600 uppercase tracking-wider text-[11px] border-r border-gray-100">
-                                            {tm('date')}
-                                        </th>
-                                        <th className="px-4 py-3 font-semibold text-gray-600 uppercase tracking-wider text-[11px] border-r border-gray-100">
-                                            {tm('warehouse')}
-                                        </th>
-                                        <th className="px-4 py-3 font-semibold text-gray-600 uppercase tracking-wider text-[11px] text-center">
-                                            {tm('actions')}
-                                        </th>
-                                    </tr>
-                                </thead>
-                                <tbody className="divide-y divide-gray-100">
-                                    {filteredMovements.length === 0 ? (
-                                        <tr>
-                                            <td colSpan={5} className="px-6 py-24 text-center">
-                                                <div className="flex flex-col items-center gap-3">
-                                                    <div className="w-16 h-16 bg-gray-50 rounded-full flex items-center justify-center">
-                                                        <TrendingDown className="w-8 h-8 text-gray-300" />
-                                                    </div>
-                                                    <p className="text-gray-400 font-medium">
-                                                        {tm('noTransactionSlip')}
-                                                    </p>
-                                                    {defaultFilter === 'all' ? (
-                                                        <Button
-                                                            type="button"
-                                                            variant="outline"
-                                                            size="sm"
-                                                            className="mt-2 border-dashed"
-                                                            onClick={openSlipTypePicker}
-                                                        >
-                                                            <Plus className="w-4 h-4 mr-2" />
-                                                            {tm('add')}
-                                                            <ChevronDown className="w-3.5 h-3.5 ml-1 opacity-70" />
-                                                        </Button>
-                                                    ) : (
-                                                        <Button
-                                                            type="button"
-                                                            variant="outline"
-                                                            size="sm"
-                                                            className="mt-2 border-dashed"
-                                                            onClick={() => {
-                                                                const item =
-                                                                    defaultFilter === 'shortage'
-                                                                        ? MATERIAL_SLIP_ADD_MENU.find(
-                                                                              (x) => x.key === 'shortage',
-                                                                          )!
-                                                                        : MATERIAL_SLIP_ADD_MENU.find(
-                                                                              (x) => x.key === 'surplus',
-                                                                          )!;
-                                                                openCreateForSlip(item);
-                                                            }}
-                                                        >
-                                                            <Plus className="w-4 h-4 mr-2" />
-                                                            {tm('add')}
-                                                        </Button>
-                                                    )}
-                                                </div>
-                                            </td>
-                                        </tr>
-                                    ) : (
-                                        filteredMovements.map((m: StockMovement) => {
-                                            const rowKey = `${(m as any).source_kind || 'slip'}-${m.id}`;
-                                            const isSelected = selectedId === m.id;
-                                            const docType = labelStockSlipDocumentType(
-                                                tm,
-                                                m.trcode,
-                                                m.movement_type,
-                                            );
-                                            return (
-                                                <tr
-                                                    key={rowKey}
-                                                    onClick={() => setSelectedId(isSelected ? null : m.id)}
-                                                    className={`group transition-all cursor-pointer border-l-4 ${
-                                                        isSelected
-                                                            ? 'bg-orange-50/40 border-l-orange-500'
-                                                            : 'hover:bg-gray-50 border-l-transparent'
-                                                    }`}
-                                                >
-                                                    <td className="px-4 py-2.5 text-gray-800 border-r border-gray-50 whitespace-nowrap font-medium">
-                                                        {docType}
-                                                    </td>
-                                                    <td className="px-4 py-2.5 font-mono font-medium text-gray-700 border-r border-gray-50 whitespace-nowrap">
-                                                        {m.document_no}
-                                                    </td>
-                                                    <td className="px-4 py-2.5 text-gray-600 border-r border-gray-50 whitespace-nowrap">
-                                                        {new Date(m.movement_date).toLocaleDateString('tr-TR')}
-                                                    </td>
-                                                    <td className="px-4 py-2.5 text-gray-600 border-r border-gray-50">
-                                                        {(m as any).warehouses?.name || '-'}
-                                                    </td>
-                                                    <td className="px-4 py-2.5 text-center">
-                                                        <div className="flex items-center justify-center gap-1">
-                                                            <Button
-                                                                variant="ghost"
-                                                                size="sm"
-                                                                className="h-7 w-7 p-0 opacity-0 group-hover:opacity-100 transition-opacity hover:bg-red-50 hover:text-red-600"
-                                                                onClick={(e: React.MouseEvent) => {
-                                                                    e.stopPropagation();
-                                                                    handleDelete(m.id);
-                                                                }}
-                                                            >
-                                                                <Trash2 className="w-3.5 h-3.5" />
-                                                            </Button>
-                                                        </div>
-                                                    </td>
-                                                </tr>
-                                            );
-                                        })
-                                    )}
-                                </tbody>
-                            </table>
-                        </div>
+                    <div className="h-full bg-white rounded-xl shadow-sm border border-gray-200 overflow-hidden flex flex-col min-h-0">
+                        {filteredMovements.length === 0 ? (
+                            <div className="flex flex-col items-center justify-center flex-1 gap-3 py-24">
+                                <div className="w-16 h-16 bg-gray-50 rounded-full flex items-center justify-center">
+                                    <TrendingDown className="w-8 h-8 text-gray-300" />
+                                </div>
+                                <p className="text-gray-400 font-medium">{tm('noTransactionSlip')}</p>
+                                {defaultFilter === 'all' ? (
+                                    <Button
+                                        type="button"
+                                        variant="outline"
+                                        size="sm"
+                                        className="mt-2 border-dashed"
+                                        onClick={openSlipTypePicker}
+                                    >
+                                        <Plus className="w-4 h-4 mr-2" />
+                                        {tm('add')}
+                                        <ChevronDown className="w-3.5 h-3.5 ml-1 opacity-70" />
+                                    </Button>
+                                ) : (
+                                    <Button
+                                        type="button"
+                                        variant="outline"
+                                        size="sm"
+                                        className="mt-2 border-dashed"
+                                        onClick={() => {
+                                            const item =
+                                                defaultFilter === 'shortage'
+                                                    ? MATERIAL_SLIP_ADD_MENU.find((x) => x.key === 'shortage')!
+                                                    : MATERIAL_SLIP_ADD_MENU.find((x) => x.key === 'surplus')!;
+                                            openCreateForSlip(item);
+                                        }}
+                                    >
+                                        <Plus className="w-4 h-4 mr-2" />
+                                        {tm('add')}
+                                    </Button>
+                                )}
+                            </div>
+                        ) : (
+                            <DevExDataGrid
+                                data={gridRows}
+                                columns={columns}
+                                pageSize={50}
+                                pageSizeOptions={[10, 25, 50, 100, 200]}
+                                enableFiltering
+                                enablePagination
+                                enableSorting
+                                enableColumnResizing
+                                enableColumnReorder
+                                enableColumnVisibility
+                                enableExcelExport
+                                enableGrouping
+                                columnVisibility={columnVisibility}
+                                onColumnVisibilityChange={handleColumnVisibilityChange}
+                                columnOrderStorageKey={STOCK_MOVEMENTS_COLUMN_ORDER_KEY}
+                                onRowClick={(row) =>
+                                    setSelectedId(selectedId === row.id ? null : row.id)
+                                }
+                                height="100%"
+                            />
+                        )}
                     </div>
                 )}
             </div>
 
             {/* Bottom Status Bar */}
-            <div className="bg-white border-t px-4 py-2.5 flex items-center justify-between text-xs text-gray-500 font-medium">
+            <div className="bg-white border-t px-4 py-2.5 flex items-center justify-between text-xs text-gray-500 font-medium shrink-0">
                 <div className="flex items-center gap-6">
                     <div className="flex items-center gap-2">
                         <span className="text-gray-400 uppercase tracking-tighter">{tm('status')}:</span>
@@ -564,23 +496,9 @@ export function StockMovementsModule({ defaultFilter = 'all' }: StockMovementsMo
                     <div>
                         <span className="text-gray-400 mr-2 uppercase tracking-tighter">{tm('total')}:</span>
                         <span className="text-gray-900">
-                            {movements.length} {tm('records')}
+                            {filteredMovements.length} / {movements.length} {tm('records')}
                         </span>
                     </div>
-                </div>
-
-                <div className="flex items-center gap-3">
-                    <button className="p-1 hover:bg-gray-100 rounded transition-colors disabled:opacity-30" disabled>
-                        <ChevronLeft className="w-4 h-4" />
-                    </button>
-                    <div className="flex items-center gap-1.5 px-2 py-0.5 bg-gray-50 rounded border border-gray-100">
-                        <span className="text-gray-900 font-bold">1</span>
-                        <span className="text-gray-400">/</span>
-                        <span className="text-gray-500">1</span>
-                    </div>
-                    <button className="p-1 hover:bg-gray-100 rounded transition-colors disabled:opacity-30" disabled>
-                        <ChevronRight className="w-4 h-4" />
-                    </button>
                 </div>
             </div>
 
