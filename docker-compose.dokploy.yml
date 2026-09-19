@@ -214,6 +214,8 @@ services:
       GF_EXPLORE_ENABLED: "true"
       # Postgres datasource provisioning (${POSTGRES_PASSWORD})
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?POSTGRES_PASSWORD is required}
+      # ERP Grafana panoları: sunucu DB adı (örn. guzel). Yoksa postgres (küme metrikleri).
+      GRAFANA_POSTGRES_DATABASE: ${GRAFANA_POSTGRES_DATABASE:-postgres}
       # Nginx alt yol: https://retailex.app/__grafana/ (Dokploy’da GF_SERVER_ROOT_URL ile sabitleyin)
       GF_SERVER_ROOT_URL: ${GF_SERVER_ROOT_URL:-https://retailex.app/__grafana/}
       GF_SERVER_SERVE_FROM_SUB_PATH: "true"

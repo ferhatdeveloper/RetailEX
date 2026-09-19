@@ -544,31 +544,45 @@ export function GrafanaReportBuilderModule() {
             }`}
           >
             <div className="flex-1 min-h-0 overflow-y-auto p-2 space-y-1.5">
-              <p className={`px-2 pt-1 text-[10px] font-bold uppercase tracking-wider ${muted}`}>
-                {lang === 'en' ? 'Ready reports' : 'Hazır raporlar'}
-              </p>
-              {GRAFANA_READY_REPORTS.map((r) => {
-                const Icon = reportIcon(r);
-                const isOn = r.id === grafanaId;
+              {(
+                [
+                  { key: 'erp' as const, tr: 'İş raporları', en: 'Business reports' },
+                  { key: 'ops' as const, tr: 'Operasyon', en: 'Operations' },
+                  { key: 'tools' as const, tr: 'Araçlar', en: 'Tools' },
+                ] as const
+              ).map((cat) => {
+                const items = GRAFANA_READY_REPORTS.filter((r) => r.category === cat.key);
+                if (items.length === 0) return null;
                 return (
-                  <button
-                    key={r.id}
-                    type="button"
-                    onClick={() => setGrafanaId(r.id)}
-                    className={`w-full text-left rounded-xl border px-3 py-2.5 transition-colors ${
-                      isOn ? active : `${card} hover:border-teal-400/60`
-                    }`}
-                  >
-                    <div className="flex items-start gap-2">
-                      <Icon className="h-4 w-4 mt-0.5 shrink-0" />
-                      <div className="min-w-0">
-                        <div className="text-sm font-medium truncate">{reportTitle(r, lang)}</div>
-                        <div className={`text-xs mt-0.5 line-clamp-2 ${isOn ? '' : muted}`}>
-                          {reportDesc(r, lang)}
-                        </div>
-                      </div>
-                    </div>
-                  </button>
+                  <div key={cat.key} className="space-y-1.5">
+                    <p className={`px-2 pt-2 text-[10px] font-bold uppercase tracking-wider ${muted}`}>
+                      {lang === 'en' ? cat.en : cat.tr}
+                    </p>
+                    {items.map((r) => {
+                      const Icon = reportIcon(r);
+                      const isOn = r.id === grafanaId;
+                      return (
+                        <button
+                          key={r.id}
+                          type="button"
+                          onClick={() => setGrafanaId(r.id)}
+                          className={`w-full text-left rounded-xl border px-3 py-2.5 transition-colors ${
+                            isOn ? active : `${card} hover:border-teal-400/60`
+                          }`}
+                        >
+                          <div className="flex items-start gap-2">
+                            <Icon className="h-4 w-4 mt-0.5 shrink-0" />
+                            <div className="min-w-0">
+                              <div className="text-sm font-medium truncate">{reportTitle(r, lang)}</div>
+                              <div className={`text-xs mt-0.5 line-clamp-2 ${isOn ? '' : muted}`}>
+                                {reportDesc(r, lang)}
+                              </div>
+                            </div>
+                          </div>
+                        </button>
+                      );
+                    })}
+                  </div>
                 );
               })}
             </div>

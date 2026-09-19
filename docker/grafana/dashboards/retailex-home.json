@@ -10,110 +10,13 @@
   "panels": [
     {
       "id": 1,
-      "title": "Veritabanı boyutları",
-      "type": "table",
-      "gridPos": {
-        "h": 9,
-        "w": 14,
-        "x": 0,
-        "y": 0
-      },
-      "datasource": {
-        "type": "postgres",
-        "uid": "postgres"
-      },
-      "targets": [
-        {
-          "refId": "A",
-          "format": "table",
-          "rawQuery": true,
-          "rawSql": "SELECT datname AS database, pg_database_size(datname) AS size_bytes,\n                pg_size_pretty(pg_database_size(datname)) AS size\n         FROM pg_database WHERE datistemplate = false ORDER BY size_bytes DESC LIMIT 40;"
-        }
-      ],
-      "fieldConfig": {
-        "defaults": {},
-        "overrides": []
-      }
-    },
-    {
-      "id": 2,
-      "title": "Bağlantı durumu",
-      "type": "table",
-      "gridPos": {
-        "h": 9,
-        "w": 10,
-        "x": 14,
-        "y": 0
-      },
-      "datasource": {
-        "type": "postgres",
-        "uid": "postgres"
-      },
-      "targets": [
-        {
-          "refId": "A",
-          "format": "table",
-          "rawQuery": true,
-          "rawSql": "SELECT COALESCE(state,'(null)') AS state, count(*)::int AS connections\n         FROM pg_stat_activity GROUP BY 1 ORDER BY connections DESC;"
-        }
-      ],
-      "fieldConfig": {
-        "defaults": {},
-        "overrides": []
-      }
-    },
-    {
-      "id": 3,
-      "title": "Toplam bağlantı",
+      "title": "Veritabanı sayısı",
       "type": "stat",
       "gridPos": {
-        "h": 5,
+        "h": 4,
         "w": 6,
         "x": 0,
-        "y": 9
-      },
-      "datasource": {
-        "type": "postgres",
-        "uid": "postgres"
-      },
-      "targets": [
-        {
-          "refId": "A",
-          "format": "table",
-          "rawQuery": true,
-          "rawSql": "SELECT count(*)::int AS value FROM pg_stat_activity;"
-        }
-      ],
-      "fieldConfig": {
-        "defaults": {
-          "unit": "short"
-        },
-        "overrides": []
-      },
-      "options": {
-        "colorMode": "value",
-        "graphMode": "none",
-        "justifyMode": "auto",
-        "orientation": "auto",
-        "reduceOptions": {
-          "calcs": [
-            "lastNotNull"
-          ],
-          "fields": "",
-          "values": false
-        },
-        "textMode": "auto"
-      }
-    },
-    {
-      "id": 4,
-      "title": "DB sayısı",
-      "type": "stat",
-      "gridPos": {
-        "h": 5,
-        "w": 6,
-        "x": 6,
-        "y": 9
+        "y": 0
       },
       "datasource": {
         "type": "postgres",
@@ -149,14 +52,14 @@
       }
     },
     {
-      "id": 5,
-      "title": "Toplam DB boyutu",
+      "id": 2,
+      "title": "Toplam bağlantı",
       "type": "stat",
       "gridPos": {
-        "h": 5,
+        "h": 4,
         "w": 6,
-        "x": 12,
-        "y": 9
+        "x": 6,
+        "y": 0
       },
       "datasource": {
         "type": "postgres",
@@ -167,12 +70,12 @@
           "refId": "A",
           "format": "table",
           "rawQuery": true,
-          "rawSql": "SELECT coalesce(sum(pg_database_size(datname)),0)::bigint AS value FROM pg_database WHERE datistemplate = false;"
+          "rawSql": "SELECT count(*)::int AS value FROM pg_stat_activity;"
         }
       ],
       "fieldConfig": {
         "defaults": {
-          "unit": "bytes"
+          "unit": "short"
         },
         "overrides": []
       },
@@ -192,14 +95,14 @@
       }
     },
     {
-      "id": 6,
-      "title": "Uzun süren sorgular (>5s)",
-      "type": "table",
+      "id": 3,
+      "title": "rex_ tablo sayısı (bu DB)",
+      "type": "stat",
       "gridPos": {
-        "h": 8,
-        "w": 24,
-        "x": 0,
-        "y": 14
+        "h": 4,
+        "w": 6,
+        "x": 12,
+        "y": 0
       },
       "datasource": {
         "type": "postgres",
@@ -210,7 +113,92 @@
           "refId": "A",
           "format": "table",
           "rawQuery": true,
-          "rawSql": "SELECT pid, usename, datname, state, now()-query_start AS duration, left(query,200) AS query\n         FROM pg_stat_activity\n         WHERE state <> 'idle' AND query_start < now() - interval '5 seconds'\n         ORDER BY query_start ASC LIMIT 30;"
+          "rawSql": "SELECT count(*)::int AS value FROM information_schema.tables WHERE table_schema='public' AND table_name LIKE 'rex_%';"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short"
+        },
+        "overrides": []
+      },
+      "options": {
+        "colorMode": "value",
+        "graphMode": "none",
+        "justifyMode": "auto",
+        "orientation": "auto",
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ],
+          "fields": "",
+          "values": false
+        },
+        "textMode": "auto"
+      }
+    },
+    {
+      "id": 4,
+      "title": "Aktif konteyner",
+      "type": "stat",
+      "gridPos": {
+        "h": 4,
+        "w": 6,
+        "x": 18,
+        "y": 0
+      },
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "expr": "count(container_last_seen{name!=\"\"})",
+          "legendFormat": "konteyner"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short"
+        },
+        "overrides": []
+      },
+      "options": {
+        "colorMode": "value",
+        "graphMode": "area",
+        "justifyMode": "auto",
+        "orientation": "auto",
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ],
+          "fields": "",
+          "values": false
+        },
+        "textMode": "auto"
+      }
+    },
+    {
+      "id": 5,
+      "title": "En büyük tablolar (bu DB)",
+      "type": "table",
+      "gridPos": {
+        "h": 10,
+        "w": 24,
+        "x": 0,
+        "y": 4
+      },
+      "datasource": {
+        "type": "postgres",
+        "uid": "postgres"
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "format": "table",
+          "rawQuery": true,
+          "rawSql": "SELECT n.nspname AS schema, c.relname AS table_name,\n            pg_size_pretty(pg_total_relation_size(c.oid)) AS total_size,\n            pg_total_relation_size(c.oid) AS size_bytes\n     FROM pg_class c\n     JOIN pg_namespace n ON n.oid = c.relnamespace\n     WHERE c.relkind = 'r' AND n.nspname NOT IN ('pg_catalog','information_schema')\n     ORDER BY pg_total_relation_size(c.oid) DESC\n     LIMIT 30;"
         }
       ],
       "fieldConfig": {
@@ -219,24 +207,23 @@
       }
     }
   ],
-  "refresh": "1m",
+  "refresh": "30s",
   "schemaVersion": 39,
   "tags": [
     "retailex",
     "ready",
-    "ops",
-    "postgres"
+    "home"
   ],
   "templating": {
     "list": []
   },
   "time": {
-    "from": "now-24h",
+    "from": "now-6h",
     "to": "now"
   },
   "timepicker": {},
   "timezone": "browser",
-  "title": "RetailEX PostgreSQL",
-  "uid": "retailex-postgres",
+  "title": "RetailEX Ana Panel",
+  "uid": "retailex-home",
   "version": 1
 }

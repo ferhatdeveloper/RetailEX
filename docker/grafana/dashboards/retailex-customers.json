@@ -10,11 +10,11 @@
   "panels": [
     {
       "id": 1,
-      "title": "Veritabanı boyutları",
-      "type": "table",
+      "title": "Müşteri sayısı",
+      "type": "stat",
       "gridPos": {
-        "h": 9,
-        "w": 14,
+        "h": 4,
+        "w": 8,
         "x": 0,
         "y": 0
       },
@@ -27,22 +27,38 @@
           "refId": "A",
           "format": "table",
           "rawQuery": true,
-          "rawSql": "SELECT datname AS database, pg_database_size(datname) AS size_bytes,\n                pg_size_pretty(pg_database_size(datname)) AS size\n         FROM pg_database WHERE datistemplate = false ORDER BY size_bytes DESC LIMIT 40;"
+          "rawSql": "SELECT count(*)::int AS value FROM rex_${firm}_customers;"
         }
       ],
       "fieldConfig": {
-        "defaults": {},
+        "defaults": {
+          "unit": "short"
+        },
         "overrides": []
+      },
+      "options": {
+        "colorMode": "value",
+        "graphMode": "none",
+        "justifyMode": "auto",
+        "orientation": "auto",
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ],
+          "fields": "",
+          "values": false
+        },
+        "textMode": "auto"
       }
     },
     {
       "id": 2,
-      "title": "Bağlantı durumu",
-      "type": "table",
+      "title": "Tedarikçi sayısı",
+      "type": "stat",
       "gridPos": {
-        "h": 9,
-        "w": 10,
-        "x": 14,
+        "h": 4,
+        "w": 8,
+        "x": 8,
         "y": 0
       },
       "datasource": {
@@ -54,23 +70,39 @@
           "refId": "A",
           "format": "table",
           "rawQuery": true,
-          "rawSql": "SELECT COALESCE(state,'(null)') AS state, count(*)::int AS connections\n         FROM pg_stat_activity GROUP BY 1 ORDER BY connections DESC;"
+          "rawSql": "SELECT count(*)::int AS value FROM rex_${firm}_suppliers;"
         }
       ],
       "fieldConfig": {
-        "defaults": {},
+        "defaults": {
+          "unit": "short"
+        },
         "overrides": []
+      },
+      "options": {
+        "colorMode": "value",
+        "graphMode": "none",
+        "justifyMode": "auto",
+        "orientation": "auto",
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ],
+          "fields": "",
+          "values": false
+        },
+        "textMode": "auto"
       }
     },
     {
       "id": 3,
-      "title": "Toplam bağlantı",
+      "title": "Aktif müşteri",
       "type": "stat",
       "gridPos": {
-        "h": 5,
-        "w": 6,
-        "x": 0,
-        "y": 9
+        "h": 4,
+        "w": 8,
+        "x": 16,
+        "y": 0
       },
       "datasource": {
         "type": "postgres",
@@ -81,7 +113,7 @@
           "refId": "A",
           "format": "table",
           "rawQuery": true,
-          "rawSql": "SELECT count(*)::int AS value FROM pg_stat_activity;"
+          "rawSql": "SELECT count(*)::int AS value FROM rex_${firm}_customers WHERE COALESCE(is_active,true)=true;"
         }
       ],
       "fieldConfig": {
@@ -107,13 +139,13 @@
     },
     {
       "id": 4,
-      "title": "DB sayısı",
-      "type": "stat",
+      "title": "Son eklenen müşteriler",
+      "type": "table",
       "gridPos": {
-        "h": 5,
-        "w": 6,
-        "x": 6,
-        "y": 9
+        "h": 10,
+        "w": 12,
+        "x": 0,
+        "y": 4
       },
       "datasource": {
         "type": "postgres",
@@ -124,82 +156,23 @@
           "refId": "A",
           "format": "table",
           "rawQuery": true,
-          "rawSql": "SELECT count(*)::int AS value FROM pg_database WHERE datistemplate = false;"
+          "rawSql": "SELECT code, name, phone, tax_nr, created_at\n         FROM rex_${firm}_customers\n         ORDER BY created_at DESC NULLS LAST\n         LIMIT 50;"
         }
       ],
       "fieldConfig": {
-        "defaults": {
-          "unit": "short"
-        },
+        "defaults": {},
         "overrides": []
-      },
-      "options": {
-        "colorMode": "value",
-        "graphMode": "none",
-        "justifyMode": "auto",
-        "orientation": "auto",
-        "reduceOptions": {
-          "calcs": [
-            "lastNotNull"
-          ],
-          "fields": "",
-          "values": false
-        },
-        "textMode": "auto"
       }
     },
     {
       "id": 5,
-      "title": "Toplam DB boyutu",
-      "type": "stat",
-      "gridPos": {
-        "h": 5,
-        "w": 6,
-        "x": 12,
-        "y": 9
-      },
-      "datasource": {
-        "type": "postgres",
-        "uid": "postgres"
-      },
-      "targets": [
-        {
-          "refId": "A",
-          "format": "table",
-          "rawQuery": true,
-          "rawSql": "SELECT coalesce(sum(pg_database_size(datname)),0)::bigint AS value FROM pg_database WHERE datistemplate = false;"
-        }
-      ],
-      "fieldConfig": {
-        "defaults": {
-          "unit": "bytes"
-        },
-        "overrides": []
-      },
-      "options": {
-        "colorMode": "value",
-        "graphMode": "none",
-        "justifyMode": "auto",
-        "orientation": "auto",
-        "reduceOptions": {
-          "calcs": [
-            "lastNotNull"
-          ],
-          "fields": "",
-          "values": false
-        },
-        "textMode": "auto"
-      }
-    },
-    {
-      "id": 6,
-      "title": "Uzun süren sorgular (>5s)",
+      "title": "Son eklenen tedarikçiler",
       "type": "table",
       "gridPos": {
-        "h": 8,
-        "w": 24,
-        "x": 0,
-        "y": 14
+        "h": 10,
+        "w": 12,
+        "x": 12,
+        "y": 4
       },
       "datasource": {
         "type": "postgres",
@@ -210,7 +183,7 @@
           "refId": "A",
           "format": "table",
           "rawQuery": true,
-          "rawSql": "SELECT pid, usename, datname, state, now()-query_start AS duration, left(query,200) AS query\n         FROM pg_stat_activity\n         WHERE state <> 'idle' AND query_start < now() - interval '5 seconds'\n         ORDER BY query_start ASC LIMIT 30;"
+          "rawSql": "SELECT code, name, phone, tax_nr, created_at\n         FROM rex_${firm}_suppliers\n         ORDER BY created_at DESC NULLS LAST\n         LIMIT 50;"
         }
       ],
       "fieldConfig": {
@@ -219,16 +192,41 @@
       }
     }
   ],
-  "refresh": "1m",
+  "refresh": "5m",
   "schemaVersion": 39,
   "tags": [
     "retailex",
     "ready",
-    "ops",
-    "postgres"
+    "customers",
+    "erp"
   ],
   "templating": {
-    "list": []
+    "list": [
+      {
+        "name": "firm",
+        "type": "textbox",
+        "label": "Firma",
+        "query": "001",
+        "current": {
+          "selected": true,
+          "text": "001",
+          "value": "001"
+        },
+        "hide": 0
+      },
+      {
+        "name": "period",
+        "type": "textbox",
+        "label": "Dönem",
+        "query": "01",
+        "current": {
+          "selected": true,
+          "text": "01",
+          "value": "01"
+        },
+        "hide": 0
+      }
+    ]
   },
   "time": {
     "from": "now-24h",
@@ -236,7 +234,7 @@
   },
   "timepicker": {},
   "timezone": "browser",
-  "title": "RetailEX PostgreSQL",
-  "uid": "retailex-postgres",
+  "title": "RetailEX Cari / Müşteri",
+  "uid": "retailex-customers",
   "version": 1
 }
