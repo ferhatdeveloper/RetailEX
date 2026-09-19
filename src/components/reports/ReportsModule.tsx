@@ -7954,7 +7954,6 @@ export function ReportsModule({
                                 { key: 'staffName', label: tm('cashier'), type: 'text' as const, width: 'min-w-[140px]' },
                                 { key: 'receiptNumber', label: tm('reportsThOrderNo'), type: 'text' as const, width: 'min-w-[120px]' },
                                 { key: 'amount', label: tm('amount'), type: 'number' as const, align: 'right' as const, width: 'min-w-[120px]' },
-                                { key: 'status', label: tm('status'), type: 'text' as const, width: 'min-w-[120px]' },
                               ]
                             : [
                                 { key: 'date', label: tm('date'), type: 'date' as const, width: 'min-w-[140px]' },
@@ -7962,7 +7961,6 @@ export function ReportsModule({
                                 { key: 'specialist_name', label: tm('bStaffView'), type: 'text' as const, width: 'min-w-[140px]' },
                                 { key: 'device_name', label: tm('bDeviceView'), type: 'text' as const, width: 'min-w-[140px]' },
                                 { key: 'total_price', label: tm('amount'), type: 'number' as const, align: 'right' as const, width: 'min-w-[120px]' },
-                                { key: 'status', label: tm('status'), type: 'text' as const, width: 'min-w-[120px]' },
                               ];
                           const visibleItems = rpt.filtered(
                             g.items.map((it: any) => {
@@ -7974,7 +7972,6 @@ export function ReportsModule({
                                   staffName: a.staffName,
                                   receiptNumber: a.receiptNumber,
                                   amount: a.amount,
-                                  status: a.status,
                                 };
                               }
                               const a = it as BeautyAppointment;
@@ -7984,7 +7981,6 @@ export function ReportsModule({
                                 specialist_name: a.specialist_name ?? a.staff_name ?? '',
                                 device_name: a.device_name ?? '',
                                 total_price: a.total_price ?? 0,
-                                status: a.status ?? '',
                               };
                             }),
                           );
@@ -8050,7 +8046,6 @@ export function ReportsModule({
                                       </>
                                     )}
                                     <th className="px-4 py-3 font-black text-right">{tm('amount')}</th>
-                                    <th className="px-4 py-3 font-black">{tm('status')}</th>
                                   </tr>
                                   </ReportColumnFilters>
                                 </thead>
@@ -8064,7 +8059,6 @@ export function ReportsModule({
                                         staffName: a.staffName,
                                         receiptNumber: a.receiptNumber,
                                         amount: a.amount,
-                                        status: a.status,
                                       };
                                       return visibleIndexes.has(JSON.stringify(v));
                                     }
@@ -8075,7 +8069,6 @@ export function ReportsModule({
                                       specialist_name: a.specialist_name ?? a.staff_name ?? '',
                                       device_name: a.device_name ?? '',
                                       total_price: a.total_price ?? 0,
-                                      status: a.status ?? '',
                                     };
                                     return visibleIndexes.has(JSON.stringify(v));
                                   }).map((row) => {
@@ -8091,11 +8084,6 @@ export function ReportsModule({
                                           <td className="px-4 py-3 text-slate-900 font-medium">{a.receiptNumber}</td>
                                           <td className="px-4 py-3 text-right tabular-nums font-semibold text-slate-950">
                                             {formatLedgerAmount(a.amount, reportCurrency)}
-                                          </td>
-                                          <td className="px-4 py-3">
-                                            <span className="inline-flex items-center rounded-md border border-slate-200 bg-slate-50 px-2 py-0.5 text-xs font-bold text-slate-700">
-                                              {reportGridStatusLabel(tm, a.status)}
-                                            </span>
                                           </td>
                                         </tr>
                                       );
@@ -8133,11 +8121,6 @@ export function ReportsModule({
                                         <td className="px-4 py-3 text-right tabular-nums font-semibold text-slate-950">
                                           {formatLedgerAmount(Number(a.total_price ?? 0), reportCurrency)}
                                         </td>
-                                        <td className="px-4 py-3">
-                                          <span className="inline-flex items-center rounded-md border border-red-200 bg-red-50 px-2 py-0.5 text-xs font-bold text-red-700">
-                                            {reportGridStatusLabel(tm, a.status)}
-                                          </span>
-                                        </td>
                                       </tr>
                                     );
                                   })}
@@ -8152,7 +8135,6 @@ export function ReportsModule({
                                           { key: 'staffName', label: tm('cashier'), align: 'left' },
                                           { key: 'receiptNumber', label: tm('reportsThOrderNo'), align: 'left' },
                                           { key: 'amount', label: tm('amount'), aggregate: 'sum', align: 'right', formatter: (v) => formatLedgerAmount(v, reportCurrency) },
-                                          { key: 'status', label: tm('status'), align: 'left' },
                                         ]
                                       : [
                                           { key: 'date', label: tm('date'), align: 'left' },
@@ -8160,7 +8142,6 @@ export function ReportsModule({
                                           { key: 'specialist_name', label: tm('bStaffView'), align: 'left' },
                                           { key: 'device_name', label: tm('bDeviceView'), align: 'left' },
                                           { key: 'total_price', label: tm('amount'), aggregate: 'sum', align: 'right', formatter: (v) => formatLedgerAmount(v, reportCurrency) },
-                                          { key: 'status', label: tm('status'), align: 'left' },
                                         ]
                                   }
                                 />
