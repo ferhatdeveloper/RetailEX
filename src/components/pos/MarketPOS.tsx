@@ -69,6 +69,7 @@ import { VariantSelectionPanelForCart } from './VariantSelectionPanelForCart';
 import { POSDetailSidebar } from './POSDetailSidebar';
 import { BalanceLoadModal } from '../wallet/BalanceLoadModal';
 import { printThermalReceipt } from '../../utils/thermalPrinter';
+import { resolvePosCheckoutSettlement } from '../../utils/saleCollectedAmounts';
 import { KeyboardShortcutOverlay, KeyboardShortcutHint } from '../shared/KeyboardShortcutOverlay';
 import { salesAPI } from '../../services/api/sales';
 import { isPlaceholderDeviceName, resolveWriteCashierName } from '../../utils/loginCashierName';
@@ -1411,31 +1412,17 @@ export default function MarketPOS({
   const handlePaymentComplete = async (paymentData: any) => {
     if (paymentSubmitRef.current) return;
     paymentSubmitRef.current = true;
-    // Determine payment method from paymentData
-    // If payments array exists (V2 modal), use the primary payment method
-    // Otherwise use the method field directly (V1 modal)
-    let paymentMethod = 'cash';
-    if (paymentData.payments && paymentData.payments.length > 0) {
-      // Calculate total amounts by payment method
-      const exchangeRates: any = { IQD: 1, USD: 1310, EUR: 1450 };
-      const methodTotals: Record<string, number> = { cash: 0, card: 0, veresiye: 0 };
-
-      paymentData.payments.forEach((payment: any) => {
-        const amountInIQD = payment.amount * (exchangeRates[payment.currency] || 1);
-        let method = payment.method;
-        if (method === 'gateway') method = 'card';
-
-        methodTotals[method] = (methodTotals[method] || 0) + amountInIQD;
-      });
-
-      // Use the payment method with the highest total
-      paymentMethod = Object.keys(methodTotals).reduce((a, b) => methodTotals[a] > methodTotals[b] ? a : b);
-
-    } else if (paymentData.method) {
+    const baseCurrency = selectedFirm?.ana_para_birimi?.trim().toUpperCase() || getGlobalCurrency();
+    const saleTotal = roundPosMoneyAmount(paymentData.finalTotal || paymentData.total, baseCurrency);
+    const settlement =
+      paymentData.payments && paymentData.payments.length > 0
+        ? resolvePosCheckoutSettlement(saleTotal, paymentData.payments)
+        : null;
+    let paymentMethod = settlement?.paymentMethod ?? 'cash';
+    if (!settlement && paymentData.method) {
       paymentMethod = paymentData.method === 'gateway' ? 'card' : paymentData.method;
     }
 
-    const baseCurrency = selectedFirm?.ana_para_birimi?.trim().toUpperCase() || getGlobalCurrency();
     const sale: Sale = {
       id: Date.now().toString(),
       receiptNumber,
@@ -1462,12 +1449,13 @@ export default function MarketPOS({
       })),
       subtotal: roundPosMoneyAmount(subtotal, baseCurrency),
       discount: roundPosMoneyAmount(totalDiscount + campaignDiscount + (paymentData.discount || 0), baseCurrency),
-      total: roundPosMoneyAmount(paymentData.finalTotal || paymentData.total, baseCurrency),
+      total: saleTotal,
       paymentMethod: paymentMethod,
-      payments: paymentData.payments?.map((p: { method?: string; amount?: number; currency?: string }) => ({
+      payments: (settlement?.payments ?? paymentData.payments)?.map((p: { method?: string; amount?: number; currency?: string; cash_register_id?: string | null }) => ({
         method: p.method === 'gateway' ? 'card' : String(p.method || 'cash'),
         amount: Number(p.amount) || 0,
         currency: p.currency,
+        cash_register_id: p.cash_register_id ?? null,
       })),
       userId: currentUser.id,
       campaignId: selectedCampaign?.id,

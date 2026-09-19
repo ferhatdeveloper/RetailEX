@@ -26,7 +26,7 @@ import { useLanguage } from '../../../contexts/LanguageContext';
 import { useResponsive } from '../../../hooks/useResponsive';
 import { logger } from '../../../services/loggingService';
 import { POSPaymentModal, type POSPaymentModalDraftContext } from '../../pos/POSPaymentModal';
-import { splitPaymentRows } from '../../../utils/saleCollectedAmounts';
+import { resolvePosCheckoutSettlement } from '../../../utils/saleCollectedAmounts';
 import { Receipt80mm } from '../../pos/Receipt80mm';
 import { formatMoneyAmount } from '../../../utils/formatMoney';
 import { useProductStore } from '../../../store/useProductStore';
@@ -2000,26 +2000,14 @@ export function AppointmentPOS({
                 }
             }
 
-            let paymentMethod = 'cash';
-            if (paymentData.payments && paymentData.payments.length > 0) {
-                const exchangeRates: Record<string, number> = { IQD: 1, USD: 1310, EUR: 1450 };
-                const methodTotals: Record<string, number> = {};
-                paymentData.payments.forEach((payment: { method: string; currency: string; amount: number }) => {
-                    const amountInIQD = payment.amount * (exchangeRates[payment.currency] || 1);
-                    let method = payment.method;
-                    if (method === 'gateway') method = 'card';
-                    methodTotals[method] = (methodTotals[method] || 0) + amountInIQD;
-                });
-                paymentMethod = Object.keys(methodTotals).reduce((a, b) =>
-                    (methodTotals[a] ?? 0) > (methodTotals[b] ?? 0) ? a : b
-                );
-            } else if (paymentData?.payments?.[0]?.method) {
-                paymentMethod = paymentData.payments[0].method === 'gateway' ? 'card' : paymentData.payments[0].method;
-            }
-            const payRows = Array.isArray(paymentData.payments) ? paymentData.payments : [];
-            const collectedSplit = splitPaymentRows(finalTotalSale, payRows, paymentMethod);
-            const paidNow = collectedSplit.collected;
-            const remainingNow = collectedSplit.remaining;
+            const settlement = resolvePosCheckoutSettlement(
+                finalTotalSale,
+                Array.isArray(paymentData.payments) ? paymentData.payments : [],
+            );
+            const paymentMethod = settlement.paymentMethod;
+            const payRows = settlement.payments;
+            const paidNow = settlement.collected;
+            const remainingNow = settlement.remaining;
 
             const lineGrosses = cart.map((l) => l.unit_price * l.qty);
             const lineSplits = splitProportionalLineDiscount(lineGrosses, headerDiscount);
@@ -2101,6 +2089,13 @@ export function AppointmentPOS({
                             paid_amount: paidNow * ratio,
                             remaining_amount: remainingNow * ratio,
                             notes: saleNotesLink,
+                            // Oranlanmış peşin/cari kırılımı createSale settlement için
+                            payments: payRows.map((p: { method?: string; amount?: number; currency?: string; cash_register_id?: string | null }) => ({
+                                method: String(p.method || paymentMethod),
+                                amount: (Number(p.amount) || 0) * ratio,
+                                currency: p.currency,
+                                cash_register_id: p.cash_register_id ?? null,
+                            })),
                         },
                         [
                             {
@@ -2188,10 +2183,11 @@ export function AppointmentPOS({
                 discount: headerDiscount,
                 total: finalTotalSale,
                 paymentMethod,
-                payments: payRows.map((p: { method?: string; amount?: number; currency?: string }) => ({
+                payments: payRows.map((p: { method?: string; amount?: number; currency?: string; cash_register_id?: string | null }) => ({
                     method: String(p.method || paymentMethod),
                     amount: Number(p.amount) || 0,
                     currency: p.currency,
+                    cash_register_id: p.cash_register_id ?? null,
                 })),
                 cashier: resolveBeautyCashierName(),
                 notes: aptNotes?.trim() || undefined,

@@ -76,7 +76,7 @@ import {
 } from '../types/beauty';
 import { mergeFollowUpRemindersWithActions } from '../utils/beautyFollowUpReminderUtils';
 import { normalizePaymentMethodBucket } from '../utils/paymentMethodUtils';
-import { splitPaymentRows } from '../utils/saleCollectedAmounts';
+import { resolvePosCheckoutSettlement } from '../utils/saleCollectedAmounts';
 /** Müşteri profili: randevu / satış / paket sorgularında aynı kişiye ait yinelenen kartları bulmak için */
 export type BeautyCustomerProfileQueryOpts = {
     phone?: string | null;
@@ -1300,10 +1300,9 @@ async function runBeautySaleErpAndLoyalty(
         sale.customer_id,
         sale.customer_name != null ? String(sale.customer_name) : undefined
     );
-    const pm = mapBeautyPaymentToErpMethod(String(sale.payment_method ?? 'cash'));
     const dateIso = new Date().toISOString();
-    const paymentRows = Array.isArray((sale as BeautySale & { payments?: Array<{ method?: string; amount?: number; currency?: string }> }).payments)
-        ? (sale as BeautySale & { payments?: Array<{ method?: string; amount?: number; currency?: string }> }).payments
+    const paymentRows = Array.isArray((sale as BeautySale & { payments?: Array<{ method?: string; amount?: number; currency?: string; cash_register_id?: string | null }> }).payments)
+        ? (sale as BeautySale & { payments?: Array<{ method?: string; amount?: number; currency?: string; cash_register_id?: string | null }> }).payments
         : undefined;
 
     try {
@@ -1311,6 +1310,9 @@ async function runBeautySaleErpAndLoyalty(
         const erpNotes = ctx.beautySaleId
             ? `GüzellikPOS|beauty_sale_id:${ctx.beautySaleId}|${noteTail}`
             : `GüzellikPOS|checkout_tek_tahsilat|${noteTail}`;
+
+        const settlement = resolvePosCheckoutSettlement(Number(sale.total ?? 0), paymentRows ?? null);
+        const erpPaymentMethod = settlement.paymentMethod;
 
         await useSaleStore.getState().addSale({
             id: uuidv4(),
@@ -1323,11 +1325,12 @@ async function runBeautySaleErpAndLoyalty(
             discount: Number(sale.discount ?? 0),
             tax: Number(sale.tax ?? 0),
             total: Number(sale.total ?? 0),
-            paymentMethod: pm,
-            payments: paymentRows?.map((p) => ({
-                method: String(p.method || pm),
+            paymentMethod: erpPaymentMethod,
+            payments: settlement.payments.map((p) => ({
+                method: String(p.method || erpPaymentMethod),
                 amount: Number(p.amount) || 0,
                 currency: p.currency,
+                cash_register_id: p.cash_register_id ?? null,
             })),
             paymentStatus: 'paid',
             status: 'completed',
@@ -5158,10 +5161,24 @@ export const beautyService = {
     ): Promise<string> {
         const id = uuidv4();
         const invoiceNumber = `BEA-${new Date().getFullYear()}-${Date.now().toString(36).toUpperCase()}`;
-        const pm = mapBeautyPaymentToErpMethod(String(sale.payment_method ?? 'cash'));
-        const split = splitPaymentRows(Number(sale.total ?? 0), sale.payments, pm);
-        const paidAmount = sale.paid_amount ?? split.collected;
-        const remainingAmount = sale.remaining_amount ?? split.remaining;
+        const docTotal = Number(sale.total ?? 0);
+        const settlement = resolvePosCheckoutSettlement(docTotal, sale.payments ?? null);
+        const hasPayRows = Array.isArray(sale.payments) && sale.payments.length > 0;
+        // payments[] varsa kırılım yetkili kaynak — caller’ın 0/0 veya çoğunluk hatasını ezme
+        const paidAmount = hasPayRows
+            ? settlement.collected
+            : (sale.paid_amount ?? settlement.collected);
+        const remainingAmount = hasPayRows
+            ? settlement.remaining
+            : (sale.remaining_amount ?? settlement.remaining);
+        // Kalan cari varken belge her zaman veresiye (payments yoksa settlement.cash yanılmasın)
+        const pm = mapBeautyPaymentToErpMethod(
+            hasPayRows
+                ? settlement.paymentMethod
+                : Math.abs(remainingAmount) > 1e-6
+                    ? 'veresiye'
+                    : String(sale.payment_method ?? settlement.paymentMethod),
+        );
         if (shouldUseTenantPostgrestApi()) {
             const { postgrest } = await import('./api/postgrestClient');
             const fn = erpFirmNrForRow();
@@ -5253,7 +5270,17 @@ export const beautyService = {
         }
 
         if (!opts?.skipErpAndLoyalty) {
-            await runBeautySaleErpAndLoyalty(sale, items, { invoiceNumber, beautySaleId: id });
+            await runBeautySaleErpAndLoyalty(
+                {
+                    ...sale,
+                    payment_method: pm,
+                    paid_amount: paidAmount,
+                    remaining_amount: remainingAmount,
+                    payments: hasPayRows ? settlement.payments : sale.payments,
+                },
+                items,
+                { invoiceNumber, beautySaleId: id },
+            );
         }
 
         return id;

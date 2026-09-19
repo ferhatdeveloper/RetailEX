@@ -233,9 +233,12 @@ export const salesAPI = {
         islemTipi: 'KASA_GIRIS' | 'CH_TAHSILAT',
         tutar: number,
         aciklamaSuffix: string,
+        preferredKasaId?: string | null,
       ) => {
         if (tutar <= 0) return;
-        let targetKasaId = ERP_SETTINGS.selected_cash_registers?.[0];
+        let targetKasaId =
+          (preferredKasaId && String(preferredKasaId).trim()) ||
+          ERP_SETTINGS.selected_cash_registers?.[0];
         if (!targetKasaId) {
           const kasalar = await fetchKasalar({ firm_nr: String(firmNr), aktif: true });
           if (kasalar.length > 0) targetKasaId = kasalar[0].id;
@@ -264,10 +267,22 @@ export const salesAPI = {
         await createKasaIslemi(islem);
       };
 
+      const prepaidKasaId = (() => {
+        for (const p of paymentRows) {
+          const method = String(p.method || '').toLowerCase();
+          if (paymentMethodImpliesCustomerDebt(method) || method === 'credit' || method === 'veresiye') {
+            continue;
+          }
+          const kid = p.cash_register_id != null ? String(p.cash_register_id).trim() : '';
+          if (kid) return kid;
+        }
+        return null;
+      })();
+
       try {
         if (hasMixedWithCredit && settledNonCredit > 0 && sale.customerId) {
           // Veresiye fatura tam tutarı borç yazdı; peşin kısmı tahsilat ile düş
-          await createRegisterTx('CH_TAHSILAT', settledNonCredit, ' (kısmi tahsilat)');
+          await createRegisterTx('CH_TAHSILAT', settledNonCredit, ' (kısmi tahsilat)', prepaidKasaId);
           if (cashPortion > 0) {
             // CH_TAHSILAT kasaya girmez; nakit kısmı için ayrıca KASA_GIRIS
             // Not: CH_TAHSILAT zaten kasa sign=+1 yapıyor createKasaIslemi içinde — çift yazmamak için
@@ -275,7 +290,7 @@ export const salesAPI = {
             // createKasaIslemi CH_TAHSILAT → kasa bakiyesi artar. Nakit için yeterli.
           }
         } else if (sale.paymentMethod === 'cash' || (needsCashIn && !hasMixedWithCredit)) {
-          await createRegisterTx('KASA_GIRIS', sale.total, '');
+          await createRegisterTx('KASA_GIRIS', sale.total, '', prepaidKasaId);
         }
       } catch (kasaError) {
         console.error('[SalesAPI] Failed to create cash transaction:', kasaError);

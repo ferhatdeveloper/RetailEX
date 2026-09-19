@@ -1,4 +1,4 @@
-import { X, CreditCard, Banknote, Wallet, Plus, Trash2, CheckCircle, Calculator, Smartphone, ShoppingCart, QrCode, Minus, Globe, Tag, TrendingDown, Loader2, Check, Percent, Printer } from 'lucide-react';
+import { X, CreditCard, Banknote, Wallet, Plus, Trash2, CheckCircle, Calculator, Smartphone, ShoppingCart, QrCode, Minus, Globe, Tag, TrendingDown, Loader2, Check, Percent, Printer, ChevronDown } from 'lucide-react';
 import { useState, useEffect, useMemo } from 'react';
 import type { CartItem } from './types';
 import type { Campaign, Customer } from '../../core/types';
@@ -14,6 +14,7 @@ import {
 import { useTheme } from '../../contexts/ThemeContext';
 import { paymentGateway, type PaymentProvider } from '../../services/paymentGateway';
 import { ModalLayer } from '../shared/FullscreenBodyPortal';
+import { PercentBodyModal, PercentBodyModalScrollBody } from '../shared/PercentBodyModal';
 import { formatCurrency, formatNumber, formatMoneyWithCode, getGlobalCurrency } from '../../utils/currency';
 import { formatNumber as formatNumberTR } from '../../utils/formatNumber';
 import { posPaymentAdditionalDiscount, roundPosMoneyAmount, posMoneyEpsilon, getPosQuickDiscountAmountPresets } from '../../utils/discountRounding';
@@ -162,6 +163,7 @@ export function POSPaymentModal({
   const [cashRegisters, setCashRegisters] = useState<Kasa[]>([]);
   const [cashRegistersLoading, setCashRegistersLoading] = useState(false);
   const [selectedCashRegisterId, setSelectedCashRegisterId] = useState<string>('');
+  const [showCashRegisterModal, setShowCashRegisterModal] = useState(false);
   const [discountValue, setDiscountValue] = useState('');
   const [showNumpad, setShowNumpad] = useState(false);
   const [selectedGateway, setSelectedGateway] = useState<string>('');
@@ -271,9 +273,8 @@ export function POSPaymentModal({
   }, []);
 
   // Varsayılan kasa: her zaman listenin ilk öğesi (DB'ye ilk eklenmiş kasa,
-  // fetchKasalar created_at'e göre sıralı döner). Ödeme tipine göre anahtar
-  // kelime eşleşmesi (nakit/kart otomatik önerisi) kaldırıldı.
-  // Kullanıcı isterse dropdown'dan elle değiştirebilir.
+  // fetchKasalar created_at'e göre sıralı döner).
+  // Kullanıcı isterse kasa seçim modalından elle değiştirebilir.
   useEffect(() => {
     if (cashRegisters.length === 0) return;
     if (selectedCashRegisterId && cashRegisters.some((k) => k.id === selectedCashRegisterId)) return;
@@ -282,7 +283,7 @@ export function POSPaymentModal({
 
   const selectedCashRegister = cashRegisters.find((k) => k.id === selectedCashRegisterId) || null;
 
-  // Currency exchange rates (base: IQD)
+  // Ana para birimi — UI'da USD/IQD seçici yok; tutarlar firma bazında
   const exchangeRates: Record<string, number> = {
     IQD: 1,
     USD: 1310,
@@ -533,11 +534,6 @@ export function POSPaymentModal({
     setShowCancelReasonModal(false);
     onClose();
   };
-
-  const currencies = [
-    { code: 'IQD' as const, symbol: 'IQD', label: 'دیار عێراقی', flag: '🇮🇶' },
-    { code: 'USD' as const, symbol: '$', label: 'US Dollar', flag: '🇺🇸' }
-  ];
 
   const paymentMethods = [
     { id: 'cash', name: t.cashLabel || 'Nakit', icon: Wallet },
@@ -869,7 +865,7 @@ export function POSPaymentModal({
                 </div>
               </div>
 
-              {/* Cash Register Selection — ödeme tipine göre bağlı kasayı seç */}
+              {/* Cash Register Selection — buton → kasa listesi modalı */}
               <div className={`border p-3 ${darkMode ? 'bg-gray-800 border-gray-700' : 'bg-emerald-50 border-emerald-200'}`}>
                 <div className="flex items-center justify-between mb-2">
                   <h4 className={`text-sm flex items-center gap-2 ${darkMode ? 'text-emerald-400' : 'text-emerald-800'}`}>
@@ -885,64 +881,29 @@ export function POSPaymentModal({
                     </span>
                   )}
                 </div>
-                <select
+                <button
+                  type="button"
                   aria-label={tm('cashRegisterLabel') || 'Kasa Seçimi'}
-                  value={selectedCashRegisterId}
-                  onChange={(e) => setSelectedCashRegisterId(e.target.value)}
                   disabled={cashRegistersLoading || cashRegisters.length === 0}
-                  className={`w-full px-3 py-2 text-sm border focus:outline-none focus:border-emerald-600 ${darkMode ? 'bg-gray-700 border-gray-600 text-white' : 'bg-white border-gray-300'}`}
+                  onClick={() => setShowCashRegisterModal(true)}
+                  className={`w-full px-3 py-2.5 text-sm border text-left flex items-center justify-between gap-2 focus:outline-none focus:border-emerald-600 disabled:opacity-50 ${
+                    darkMode ? 'bg-gray-700 border-gray-600 text-white hover:border-emerald-500' : 'bg-white border-gray-300 hover:border-emerald-500'
+                  }`}
                 >
-                  <option value="">
+                  <span className="truncate font-medium">
                     {cashRegistersLoading
                       ? (tm('loading') || 'Yükleniyor...')
-                      : (tm('selectCashRegister') || 'Kasa seçin (opsiyonel)')}
-                  </option>
-                  {cashRegisters.map((k) => (
-                    <option key={k.id} value={k.id}>
-                      {`${k.kasa_adi} (${k.kasa_kodu}) — ${k.id_doviz_kodu} · ${k.bakiye.toLocaleString('tr-TR')}`}
-                    </option>
-                  ))}
-                </select>
+                      : selectedCashRegister
+                        ? `${selectedCashRegister.kasa_adi} (${selectedCashRegister.kasa_kodu}) — ${selectedCashRegister.id_doviz_kodu} · ${selectedCashRegister.bakiye.toLocaleString('tr-TR')}`
+                        : (tm('selectCashRegister') || 'Kasa seçin')}
+                  </span>
+                  <ChevronDown className={`w-4 h-4 shrink-0 ${darkMode ? 'text-gray-400' : 'text-gray-500'}`} aria-hidden />
+                </button>
                 {selectedCashRegister && (
                   <p className={`text-[11px] mt-1 ${darkMode ? 'text-gray-400' : 'text-gray-600'}`}>
                     {`${selectedCashRegister.kasa_adi} · Bakiye: ${selectedCashRegister.bakiye.toLocaleString('tr-TR')} ${selectedCashRegister.id_doviz_kodu}`}
                   </p>
                 )}
-              </div>
-
-              {/* Currency Selector */}
-              <div>
-                <h4 className={`text-sm mb-2 ${darkMode ? 'text-gray-300' : 'text-gray-700'}`}>
-                  {t.currencyAndRates || 'Para Birimi & Kurlar'}:
-                </h4>
-                <div className="grid grid-cols-2 gap-2">
-                  {currencies.map(curr => (
-                    <button
-                      key={curr.code}
-                      onClick={() => setCurrentCurrency(curr.code)}
-                      className={`p-2 border text-sm transition-colors ${currentCurrency === curr.code
-                        ? darkMode
-                          ? 'bg-blue-900/30 text-blue-400 border-blue-700'
-                          : 'bg-blue-50 text-blue-700 border-blue-200'
-                        : darkMode
-                          ? 'bg-gray-800 border-gray-600 text-gray-300 hover:border-blue-500'
-                          : 'bg-white border-gray-300 hover:border-blue-300'
-                        }`}
-                    >
-                      <div className="flex flex-col items-center gap-0.5">
-                        <div className="flex items-center gap-1">
-                          <span>{curr.flag}</span>
-                          <span className="font-medium">{curr.code}</span>
-                        </div>
-                        {curr.code !== baseCurrency && (
-                          <span className="text-xs text-gray-500">
-                            1 = {exchangeRates[curr.code]} {baseCurrency}
-                          </span>
-                        )}
-                      </div>
-                    </button>
-                  ))}
-                </div>
               </div>
 
               {/* Amount Input */}
@@ -1431,6 +1392,73 @@ export function POSPaymentModal({
             </div>
           </div>
         </ModalLayer>
+      )}
+
+      {showCashRegisterModal && (
+        <PercentBodyModal
+          nested
+          size="list"
+          ariaLabel={tm('cashRegisterLabel') || 'Kasa Seçimi'}
+          onClose={() => setShowCashRegisterModal(false)}
+        >
+          <div className="bg-gradient-to-r from-emerald-600 to-teal-600 px-6 py-4 text-white shrink-0 flex items-center justify-between">
+            <h3 className="text-base font-bold flex items-center gap-2">
+              <Wallet className="w-5 h-5" />
+              {tm('cashRegisterLabel') || 'Kasa Seçimi'}
+            </h3>
+            <button
+              type="button"
+              onClick={() => setShowCashRegisterModal(false)}
+              className="p-1 rounded-lg hover:bg-white/20 transition-colors"
+              aria-label={t.cancel || 'Kapat'}
+            >
+              <X className="w-5 h-5" />
+            </button>
+          </div>
+          <PercentBodyModalScrollBody className="p-4">
+            <div className="space-y-2">
+              {cashRegisters.map((k) => {
+                const selected = k.id === selectedCashRegisterId;
+                return (
+                  <button
+                    key={k.id}
+                    type="button"
+                    onClick={() => {
+                      setSelectedCashRegisterId(k.id);
+                      setShowCashRegisterModal(false);
+                    }}
+                    className={`w-full text-left px-4 py-3 rounded-xl border-2 transition-colors ${
+                      selected
+                        ? 'border-emerald-500 bg-emerald-50 text-emerald-900'
+                        : 'border-slate-200 bg-white hover:border-emerald-300 text-slate-800'
+                    }`}
+                  >
+                    <div className="font-bold text-sm">
+                      {k.kasa_adi} ({k.kasa_kodu})
+                    </div>
+                    <div className="text-xs text-slate-500 mt-0.5">
+                      {k.id_doviz_kodu} · {tm('balance') || 'Bakiye'}: {k.bakiye.toLocaleString('tr-TR')}
+                    </div>
+                  </button>
+                );
+              })}
+              {cashRegisters.length === 0 && (
+                <p className="text-sm text-slate-500 text-center py-8">
+                  {tm('noCashRegisters') || 'Aktif kasa bulunamadı'}
+                </p>
+              )}
+            </div>
+          </PercentBodyModalScrollBody>
+          <div className="p-4 border-t border-slate-100 bg-slate-50/50 shrink-0">
+            <button
+              type="button"
+              onClick={() => setShowCashRegisterModal(false)}
+              className="w-full py-3 rounded-2xl border-2 border-slate-200 text-slate-600 font-bold uppercase text-sm tracking-wider hover:bg-slate-100"
+            >
+              {t.cancel || 'İptal'}
+            </button>
+          </div>
+        </PercentBodyModal>
       )}
 
       {showCancelReasonModal && (

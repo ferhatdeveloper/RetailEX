@@ -402,7 +402,12 @@ export interface Sale {
   total: number;
   paymentMethod: string;
   /** Çoklu ödeme (POSPaymentModal) — Z raporu kırılımı için */
-  payments?: Array<{ method: string; amount: number; currency?: string }>;
+  payments?: Array<{
+    method: string;
+    amount: number;
+    currency?: string;
+    cash_register_id?: string | null;
+  }>;
   paymentStatus?: 'pending' | 'paid' | 'refunded';
   status?: string;  // 'completed' | 'refunded' | 'cancelled'
   notes?: string;

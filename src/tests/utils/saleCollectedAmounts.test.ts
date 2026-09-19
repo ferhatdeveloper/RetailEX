@@ -3,6 +3,7 @@ import {
   beautySalePocketCollected,
   beautySaleRemainingCari,
   extraCustomerCollectionsNotOnSales,
+  resolvePosCheckoutSettlement,
   saleCollectedSplit,
   splitPaymentRows,
 } from '../../utils/saleCollectedAmounts';
@@ -115,5 +116,74 @@ describe('extraCustomerCollectionsNotOnSales — çift sayım yok', () => {
       [{ total: 100, paymentMethod: 'veresiye', receiptNumber: 'SAT-MIX' }],
     );
     expect(extra).toBe(40);
+  });
+
+  it('güzellik KPI: paid 0 + rem 0 + veresiye → belge kalanı (eski bozuk kayıt)', () => {
+    expect(beautySalePocketCollected({
+      total: 45000,
+      payment_method: 'veresiye',
+      paid_amount: 0,
+      remaining_amount: 0,
+    })).toBe(0);
+    expect(beautySaleRemainingCari({
+      total: 45000,
+      payment_method: 'veresiye',
+      paid_amount: 0,
+      remaining_amount: 0,
+    })).toBe(45000);
+  });
+});
+
+describe('resolvePosCheckoutSettlement — kısmi nakit + kalan cari', () => {
+  it('45k belge / 25k nakit / 20k veresiye: method=veresiye, cebe 25k, kalan 20k', () => {
+    const s = resolvePosCheckoutSettlement(45000, [
+      { method: 'cash', amount: 25000, currency: 'IQD' },
+      { method: 'veresiye', amount: 20000, currency: 'IQD' },
+    ]);
+    expect(s.paymentMethod).toBe('veresiye');
+    expect(s.collected).toBe(25000);
+    expect(s.cash).toBe(25000);
+    expect(s.remaining).toBe(20000);
+    expect(s.credit).toBe(20000);
+  });
+
+  it('çoğunluk peşin olsa bile kalan cari varsa belge veresiye kalır', () => {
+    const s = resolvePosCheckoutSettlement(100, [
+      { method: 'cash', amount: 70 },
+      { method: 'veresiye', amount: 30 },
+    ]);
+    expect(s.paymentMethod).toBe('veresiye');
+    expect(s.collected).toBe(70);
+    expect(s.remaining).toBe(30);
+  });
+
+  it('yalnızca nakit: payment_method=cash, kalan 0', () => {
+    const s = resolvePosCheckoutSettlement(45000, [
+      { method: 'cash', amount: 45000, currency: 'IQD' },
+    ]);
+    expect(s.paymentMethod).toBe('cash');
+    expect(s.collected).toBe(45000);
+    expect(s.remaining).toBe(0);
+  });
+
+  it('veresiye etiket + kısmi nakit payments (kredi satırı yok): cebe korunur', () => {
+    const s = splitPaymentRows(45000, [{ method: 'cash', amount: 25000 }], 'veresiye');
+    expect(s.collected).toBe(25000);
+    expect(s.remaining).toBe(20000);
+  });
+
+  it('güzellik KPI: settlement skalerleri 25k/20k', () => {
+    expect(beautySalePocketCollected({
+      total: 45000,
+      payment_method: 'veresiye',
+      paid_amount: 25000,
+      remaining_amount: 20000,
+    })).toBe(25000);
+    expect(beautySaleRemainingCari({
+      total: 45000,
+      payment_method: 'veresiye',
+      paid_amount: 25000,
+      remaining_amount: 20000,
+    })).toBe(20000);
   });
 });

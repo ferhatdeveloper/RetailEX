@@ -72,9 +72,11 @@ export function splitPaymentRows(
     if (methodIsCredit && remaining <= 1e-9) {
       const gap = Math.abs(document) - collected;
       if (gap > 1e-6) {
+        // Kısmi peşin + üst bilgi veresiye: kalan = belge − tahsilat (cebe giren korunur)
         remaining = Math.max(0, gap);
-      } else if (collected > 1e-9) {
-        // Ödeme=Veresiye ama payments[] tam belgeyi nakit/kart yazmış — kasa şişmesin
+      } else if (collected > 1e-9 && Math.abs(gap) <= 1e-6) {
+        // Ödeme=Veresiye ama payments[] tam belgeyi nakit/kart yazmış — kasa şişmesin.
+        // Yalnızca collected ≈ document iken; kısmi tahsilatı asla sıfırlama.
         cashOut = 0;
         cardOut = 0;
         transferOut = 0;
@@ -155,6 +157,72 @@ export function saleCollectedSplit(sale: Pick<Sale, 'total' | 'paymentMethod' | 
   return splitPaymentRows(Number(sale.total) || 0, sale.payments, sale.paymentMethod);
 }
 
+export type PosCheckoutPaymentRow = SalePaymentRow & {
+  cash_register_id?: string | null;
+  cash_register_name?: string | null;
+  cash_register_code?: string | null;
+};
+
+export type PosCheckoutSettlement = SaleCollectedSplit & {
+  /** Belge başlığı: kalan cari varsa her zaman veresiye (çoğunluk peşin olsa bile) */
+  paymentMethod: 'cash' | 'card' | 'transfer' | 'veresiye';
+  payments: PosCheckoutPaymentRow[];
+};
+
+/**
+ * POS / güzellik ödeme onayı — peşin + kalan cari kırılımı.
+ * Çoğunluk kuralı peşin yöntem seçiminde kullanılır; herhangi bir veresiye satırı
+ * veya kalan > 0 ise belge payment_method = veresiye (cari borç + CH_TAHSILAT).
+ */
+export function resolvePosCheckoutSettlement(
+  documentTotal: number,
+  payments?: PosCheckoutPaymentRow[] | null,
+): PosCheckoutSettlement {
+  const rows = (Array.isArray(payments) ? payments : [])
+    .filter((p) => p != null)
+    .map((p) => {
+      const methodRaw = String(p.method || 'cash').trim().toLowerCase();
+      const method =
+        methodRaw === 'gateway' || methodRaw === 'kart' ? 'card' : methodRaw;
+      return {
+        ...p,
+        method,
+        amount: Number(p.amount) || 0,
+        currency: p.currency,
+      };
+    });
+
+  let prepaidDominant: 'cash' | 'card' | 'transfer' = 'cash';
+  let bestPrepaid = 0;
+  let hasCredit = false;
+  for (const row of rows) {
+    const amt = toLocalAmount(Number(row.amount) || 0, row.currency);
+    if (!(amt > 0)) continue;
+    const bucket = normalizePaymentMethodBucket(row.method);
+    if (bucket === 'credit') {
+      hasCredit = true;
+      continue;
+    }
+    if (bucket === 'card' || bucket === 'transfer' || bucket === 'cash') {
+      if (amt > bestPrepaid) {
+        bestPrepaid = amt;
+        prepaidDominant = bucket;
+      }
+    }
+  }
+
+  const headerGuess = hasCredit ? 'veresiye' : prepaidDominant;
+  const split = splitPaymentRows(documentTotal, rows, headerGuess);
+  const paymentMethod: PosCheckoutSettlement['paymentMethod'] =
+    hasCredit || Math.abs(split.remaining) > 1e-6 ? 'veresiye' : prepaidDominant;
+
+  return {
+    ...split,
+    paymentMethod,
+    payments: rows,
+  };
+}
+
 export type KasaCollectionLine = {
   islem_tipi?: string;
   tutar?: number;
@@ -175,6 +243,17 @@ export function beautySalePocketCollected(sale: {
 }): number {
   const paid = Number(sale.paid_amount);
   const rem = Number(sale.remaining_amount);
+  // payments[] varsa her zaman kırılımdan (eski 0/0 + veresiye yanlış KPI’yı düzeltir)
+  if (Array.isArray(sale.payments) && sale.payments.length > 0) {
+    return Math.max(
+      0,
+      saleCollectedSplit({
+        total: Number(sale.total) || 0,
+        paymentMethod: sale.payment_method,
+        payments: sale.payments,
+      }).collected,
+    );
+  }
   if (Number.isFinite(paid) && (Math.abs(paid) > 1e-9 || Math.abs(rem) > 1e-9)) {
     return Math.max(0, paid);
   }
@@ -197,6 +276,16 @@ export function beautySaleRemainingCari(sale: {
 }): number {
   const paid = Number(sale.paid_amount);
   const rem = Number(sale.remaining_amount);
+  if (Array.isArray(sale.payments) && sale.payments.length > 0) {
+    return Math.max(
+      0,
+      saleCollectedSplit({
+        total: Number(sale.total) || 0,
+        paymentMethod: sale.payment_method,
+        payments: sale.payments,
+      }).remaining,
+    );
+  }
   if (Number.isFinite(rem) && (Math.abs(paid) > 1e-9 || Math.abs(rem) > 1e-9)) {
     return Math.max(0, rem);
   }
