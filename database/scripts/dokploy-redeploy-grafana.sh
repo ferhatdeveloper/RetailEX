@@ -25,5 +25,6 @@ docker compose -p "${COMPOSE_PROJECT_NAME}" -f "${COMPOSE}" up -d --no-build \
 
 echo ""
 echo "Grafana: yalnızca Docker ağı (grafana:3000) → https://<alan>/__grafana/"
-echo "React gömme: Sistem Sağlığı / Rapor Oluşturucu (frontend rebuild gerekir)"
+echo "ZORUNLU: nginx ^~ /__grafana için frontend rebuild:"
+echo "  POSTGRES_PASSWORD='...' bash database/scripts/dokploy-redeploy-frontend.sh"
 echo "Not: host :3000 yayınlanmaz (port çakışması önlemi)"
