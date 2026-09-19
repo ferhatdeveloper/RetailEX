@@ -2258,7 +2258,7 @@ export function AppointmentPOS({
     }, [monthlyModalLine, customer, monthlyForm, aptDevice, aptTime, tm, loadAppointmentsInRange]);
 
     return (
-        <div style={{ height: '100%', display: 'flex', flexDirection: 'column', background: '#f7f6fb', overflow: 'hidden' }}>
+        <div style={{ height: '100%', width: '100%', minHeight: 0, minWidth: 0, display: 'flex', flexDirection: 'column', background: '#f7f6fb', overflow: 'hidden' }}>
 
             {/* ── TOP BAR: tarih + saat + cihaz + durum (altta yalnızca not) ── */}
             <div style={{ background: '#fff', borderBottom: '1px solid #e5e7eb', padding: isMobile ? '10px 12px' : '10px 20px', display: 'flex', alignItems: 'center', gap: 14, flexShrink: 0, flexWrap: 'wrap' }}>
@@ -2825,7 +2825,7 @@ export function AppointmentPOS({
                             </aside>
                         )}
                     {/* Grid */}
-                    <div style={{ flex: 1, minWidth: 0, overflowY: 'auto', padding: '10px 12px', display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(148px,1fr))', gap: 8, alignContent: 'start' }} className="custom-scrollbar">
+                    <div style={{ flex: 1, minWidth: 0, overflowY: 'auto', padding: '10px 12px', display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(min(100%, 148px), 1fr))', gap: 8, alignContent: 'start' }} className="custom-scrollbar">
                         {tab === 'services' && filteredSvcs.map(svc => (
                             <button key={svc.id} onClick={() => addService(svc)} style={{
                                 background: '#fff', border: '1px solid #e8e4f0',
@@ -2906,7 +2906,7 @@ export function AppointmentPOS({
                 {/* ── RIGHT: Cart + Appointment + Checkout ─────────── */}
                 <div
                     style={{
-                        width: isMobile ? '100%' : 400,
+                        width: isMobile ? '100%' : 'clamp(300px, 32vw, 420px)',
                         height: isMobile ? 'auto' : '100%',
                         maxHeight: isMobile ? '55dvh' : undefined,
                         display: 'flex',
@@ -2915,6 +2915,8 @@ export function AppointmentPOS({
                         overflow: 'hidden',
                         borderTop: isMobile ? '1px solid #e5e7eb' : undefined,
                         flexShrink: 0,
+                        minWidth: isMobile ? 0 : 280,
+                        minHeight: 0,
                     }}
                 >
 

@@ -3,7 +3,7 @@ import { createPortal } from 'react-dom';
 import { X, Loader2 } from 'lucide-react';
 import { useTheme } from '../../contexts/ThemeContext';
 import { useLanguage } from '../../contexts/LanguageContext';
-import { MODAL_OVERLAY_Z } from './FullscreenBodyPortal';
+import { MODAL_OVERLAY_NESTED_Z, MODAL_OVERLAY_Z } from './FullscreenBodyPortal';
 
 export type RetailExFlatModalProps = {
     open: boolean;
@@ -24,6 +24,13 @@ export type RetailExFlatModalProps = {
     confirmLoading?: boolean;
     /** Verilirse varsayılan İptal/Kaydet footer yerine bu render edilir */
     footer?: React.ReactNode;
+    /**
+     * Başka bir FlatModal üzerinde açılacak iç modal (kategori düzenle / sil yeniden ata).
+     * `true` → `MODAL_OVERLAY_NESTED_Z`; yoksa `zIndex` veya varsayılan overlay.
+     */
+    nested?: boolean;
+    /** Özel z-index (nested / varsayılanı ezer) */
+    zIndex?: number;
 };
 
 const overlayCls =
@@ -47,12 +54,15 @@ export function RetailExFlatModal({
     confirmDisabled = false,
     confirmLoading = false,
     footer,
+    nested = false,
+    zIndex,
 }: RetailExFlatModalProps) {
     const { darkMode } = useTheme();
     const { tm } = useLanguage();
     const titleId = useId();
     const resolvedCancelLabel = cancelLabel ?? tm('cancel');
     const resolvedConfirmLabel = confirmLabel ?? tm('save');
+    const overlayZ = zIndex ?? (nested ? MODAL_OVERLAY_NESTED_Z : MODAL_OVERLAY_Z);
 
     useEffect(() => {
         if (!open) return;
@@ -106,7 +116,7 @@ export function RetailExFlatModal({
     const showDefaultFooter = footer === undefined && onConfirm !== undefined;
 
     const node = (
-        <div className={overlayCls} style={{ zIndex: MODAL_OVERLAY_Z }}>
+        <div className={overlayCls} style={{ zIndex: overlayZ }}>
             <div
                 className="flex min-h-[100dvh] min-h-screen w-full items-center justify-center p-3 py-6 sm:p-4"
                 onClick={() => closeOnBackdrop && onClose()}

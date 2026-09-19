@@ -25,6 +25,7 @@ import {
 } from '@ant-design/icons';
 import { ChevronDown, Scissors } from 'lucide-react';
 import { RetailExFlatModal, RetailExFlatFieldLabel } from '../../shared/RetailExFlatModal';
+import { MODAL_OVERLAY_NESTED_Z } from '../../shared/FullscreenBodyPortal';
 import { useBeautyStore } from '../store/useBeautyStore';
 import { BeautyService, ServiceCategory } from '../../../types/beauty';
 import {
@@ -417,6 +418,17 @@ export function ServiceManagement() {
                         throw new Error('update failed');
                     }
                     keepKey = beautyCategoryStoredValue(updated) || keepKey;
+                } else {
+                    // Master kaydı yoksa (yalnızca hizmet string’i) oluştur + hizmetleri yeni anahtara taşı
+                    const created = await categoryAPI.create({
+                        code: beautyCategorySlug(name),
+                        name,
+                    });
+                    if (!created) {
+                        toast.error(tm('error') || 'Kategori güncellenemedi');
+                        throw new Error('update failed');
+                    }
+                    keepKey = beautyCategoryStoredValue(created) || beautyCategorySlug(name);
                 }
                 const toRename = services.filter(
                     s =>
@@ -440,8 +452,12 @@ export function ServiceManagement() {
                 }
                 syncEditingCategoryKey(oldKey, keepKey);
                 await reloadBackofficeCategories();
-                if (selectedMain === oldKey) setSelectedMain(keepKey);
-                if (selectedSub === oldKey) setSelectedSub(keepKey);
+                if (selectedMain === oldKey || keysReferSameCategory(selectedMain, oldKey)) {
+                    setSelectedMain(keepKey);
+                }
+                if (selectedSub === oldKey || keysReferSameCategory(selectedSub, oldKey)) {
+                    setSelectedSub(keepKey);
+                }
                 toast.success(tm('bCategorySaved'));
             }
             setCategoryModalOpen(false);
@@ -479,7 +495,11 @@ export function ServiceManagement() {
     const handleDeleteCategory = async (key: string) => {
         const k = String(key || '').trim();
         if (!k || k === 'all') return;
-        const used = services.filter(s => beautyServiceMainKey(s) === k || beautyServiceSubKey(s) === k);
+        const used = services.filter(
+            s =>
+                keysReferSameCategory(beautyServiceMainKey(s), k) ||
+                keysReferSameCategory(beautyServiceSubKey(s), k),
+        );
         if (used.length > 0) {
             setReassignFromKey(k);
             setReassignTargetKey('');
@@ -499,14 +519,20 @@ export function ServiceManagement() {
         setReassignSaving(true);
         try {
             const toRename = services.filter(
-                s => beautyServiceMainKey(s) === from || beautyServiceSubKey(s) === from,
+                s =>
+                    keysReferSameCategory(beautyServiceMainKey(s), from) ||
+                    keysReferSameCategory(beautyServiceSubKey(s), from),
             );
             if (toRename.length > 0) {
                 await Promise.allSettled(
                     toRename.map(s => {
                         const patch: Partial<BeautyService> = { ...s };
-                        if (String(s.parent_category ?? '').trim() === from) patch.parent_category = to;
-                        if (String(s.category ?? '').trim() === from) patch.category = to as BeautyService['category'];
+                        if (keysReferSameCategory(String(s.parent_category ?? ''), from)) {
+                            patch.parent_category = to;
+                        }
+                        if (keysReferSameCategory(String(s.category ?? ''), from)) {
+                            patch.category = to as BeautyService['category'];
+                        }
                         return updateService(s.id, patch);
                     }),
                 );
@@ -1125,6 +1151,7 @@ export function ServiceManagement() {
                     title={categoryModalMode === 'edit' ? tm('bEditCategory') : tm('bNewCategory')}
                     headerIcon={<FormOutlined className="text-xl" aria-hidden />}
                     maxWidthClass="max-w-md"
+                    nested
                     cancelLabel={tm('cancel')}
                     confirmLabel={categoryModalSaving ? tm('bSaving') : tm('save')}
                     confirmLoading={categoryModalSaving}
@@ -1159,13 +1186,14 @@ export function ServiceManagement() {
                         String(
                             services.filter(
                                 s =>
-                                    beautyServiceMainKey(s) === reassignFromKey ||
-                                    beautyServiceSubKey(s) === reassignFromKey,
+                                    keysReferSameCategory(beautyServiceMainKey(s), reassignFromKey) ||
+                                    keysReferSameCategory(beautyServiceSubKey(s), reassignFromKey),
                             ).length,
                         ),
                     )}
                     headerIcon={<FormOutlined className="text-xl" aria-hidden />}
                     maxWidthClass="max-w-md"
+                    nested
                     cancelLabel={tm('cancel')}
                     confirmLabel={reassignSaving ? tm('bSaving') : tm('bCategoryReassignDelete')}
                     confirmLoading={reassignSaving}
@@ -1352,6 +1380,7 @@ export function ServiceManagement() {
                                                 okText={tm('delete')}
                                                 cancelText={tm('cancel')}
                                                 disabled={!String(editing.parent_category ?? '').trim()}
+                                                zIndex={MODAL_OVERLAY_NESTED_Z}
                                                 onConfirm={() =>
                                                     handleDeleteCategory(String(editing.parent_category ?? ''))
                                                 }
@@ -1449,6 +1478,7 @@ export function ServiceManagement() {
                                                 okText={tm('delete')}
                                                 cancelText={tm('cancel')}
                                                 disabled={!String(editing.category ?? '').trim()}
+                                                zIndex={MODAL_OVERLAY_NESTED_Z}
                                                 onConfirm={() =>
                                                     handleDeleteCategory(String(editing.category ?? ''))
                                                 }

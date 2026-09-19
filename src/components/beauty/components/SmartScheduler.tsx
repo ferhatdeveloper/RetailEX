@@ -25,6 +25,7 @@ import { StaffTimelineView } from './StaffTimelineView';
 import { QueueModeResourceList } from './QueueModeResourceList';
 import { AppointmentPOS } from './AppointmentPOS';
 import { formatMoneyAmount } from '../../../utils/formatMoney';
+import { getZoomCompensatedFullscreenStyle } from '../../../utils/appZoomCompensation';
 import { safeInvoke, IS_BROWSER } from '../../../utils/env';
 import { useBeautyTimeFormat } from '../../../hooks/useBeautyTimeFormat';
 import { LS_BEAUTY_TIME_FORMAT } from '../../../utils/beautyTimeFormat';
@@ -1339,20 +1340,15 @@ export function SmartScheduler() {
         const prefillDateStr = newPrefillDate ?? formatLocalYmd(currentDate);
         return createPortal(
             <div
-                style={{
-                    position: 'fixed',
-                    inset: 0,
+                style={getZoomCompensatedFullscreenStyle({
                     zIndex: 100000,
                     background: '#f7f6fb',
                     display: 'flex',
                     flexDirection: 'column',
-                    height: '100dvh',
-                    width: '100vw',
-                    maxWidth: '100vw',
                     overflow: 'hidden',
-                }}
+                })}
             >
-                <div style={{ flex: 1, minHeight: 0, display: 'flex', flexDirection: 'column', overflow: 'hidden' }}>
+                <div style={{ flex: 1, minHeight: 0, minWidth: 0, width: '100%', display: 'flex', flexDirection: 'column', overflow: 'hidden' }}>
                     <AppointmentPOS
                         prefillDate={prefillDateStr}
                         prefillTime={prefillTime}

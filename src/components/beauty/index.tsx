@@ -44,6 +44,7 @@ import { LanguageSelectionModal } from '../system/LanguageSelectionModal';
 import { FirmSelector } from '../system/FirmSelector';
 import { useFirmaDonem } from '../../contexts/FirmaDonemContext';
 import { normalizeFirmEnabledModules } from '../../utils/firmShellModules';
+import { getZoomCompensatedFullscreenStyle } from '../../utils/appZoomCompensation';
 import { RetailExFlatModal, RetailExFlatFieldLabel } from '../shared/RetailExFlatModal';
 import './ClinicStyles.css';
 
@@ -744,20 +745,15 @@ function BeautyModuleShell({ sales = [], products = [], onRequestManagementAcces
 
             {activeTab === 'product_sales' && createPortal(
                 <div
-                    style={{
-                        position: 'fixed',
-                        inset: 0,
+                    style={getZoomCompensatedFullscreenStyle({
                         zIndex: 100000,
                         background: '#f7f6fb',
                         display: 'flex',
                         flexDirection: 'column',
-                        height: '100dvh',
-                        width: '100vw',
-                        maxWidth: '100vw',
                         overflow: 'hidden',
-                    }}
+                    })}
                 >
-                    <div style={{ flex: 1, minHeight: 0, display: 'flex', flexDirection: 'column', overflow: 'hidden' }}>
+                    <div style={{ flex: 1, minHeight: 0, minWidth: 0, width: '100%', display: 'flex', flexDirection: 'column', overflow: 'hidden' }}>
                         <AppointmentPOS
                             initialTab="products"
                             salesMode="products_only"
