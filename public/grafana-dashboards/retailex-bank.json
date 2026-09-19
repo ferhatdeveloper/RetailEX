@@ -1,0 +1,192 @@
+{
+  "annotations": {
+    "list": []
+  },
+  "editable": true,
+  "fiscalYearStartMonth": 0,
+  "graphTooltip": 1,
+  "id": null,
+  "links": [],
+  "panels": [
+    {
+      "id": 1,
+      "title": "Banka satır sayısı",
+      "type": "stat",
+      "gridPos": {
+        "h": 5,
+        "w": 12,
+        "x": 0,
+        "y": 0
+      },
+      "datasource": {
+        "type": "postgres",
+        "uid": "postgres"
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "format": "table",
+          "rawQuery": true,
+          "rawSql": "SELECT count(*)::int AS value FROM rex_${firm}_${period}_bank_lines;"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short"
+        },
+        "overrides": []
+      },
+      "options": {
+        "colorMode": "value",
+        "graphMode": "none",
+        "justifyMode": "auto",
+        "orientation": "auto",
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ],
+          "fields": "",
+          "values": false
+        },
+        "textMode": "auto"
+      }
+    },
+    {
+      "id": 2,
+      "title": "Net tutar (${currency})",
+      "type": "stat",
+      "gridPos": {
+        "h": 5,
+        "w": 12,
+        "x": 12,
+        "y": 0
+      },
+      "datasource": {
+        "type": "postgres",
+        "uid": "postgres"
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "format": "table",
+          "rawQuery": true,
+          "rawSql": "SELECT COALESCE(sum(amount),0)::float AS value FROM rex_${firm}_${period}_bank_lines;"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "none",
+          "decimals": 0
+        },
+        "overrides": []
+      },
+      "options": {
+        "colorMode": "value",
+        "graphMode": "none",
+        "justifyMode": "auto",
+        "orientation": "auto",
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ],
+          "fields": "",
+          "values": false
+        },
+        "textMode": "auto"
+      }
+    },
+    {
+      "id": 3,
+      "title": "Son banka hareketleri",
+      "type": "table",
+      "gridPos": {
+        "h": 12,
+        "w": 24,
+        "x": 0,
+        "y": 5
+      },
+      "datasource": {
+        "type": "postgres",
+        "uid": "postgres"
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "format": "table",
+          "rawQuery": true,
+          "rawSql": "SELECT *\n         FROM rex_${firm}_${period}_bank_lines\n         ORDER BY created_at DESC NULLS LAST\n         LIMIT 100;"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {},
+        "overrides": []
+      }
+    }
+  ],
+  "refresh": "1m",
+  "schemaVersion": 39,
+  "tags": [
+    "retailex",
+    "ready",
+    "bank",
+    "finance",
+    "erp"
+  ],
+  "templating": {
+    "list": [
+      {
+        "name": "firm",
+        "type": "textbox",
+        "label": "Firma",
+        "query": "001",
+        "current": {
+          "selected": true,
+          "text": "001",
+          "value": "001"
+        },
+        "hide": 0
+      },
+      {
+        "name": "period",
+        "type": "textbox",
+        "label": "Dönem",
+        "query": "01",
+        "current": {
+          "selected": true,
+          "text": "01",
+          "value": "01"
+        },
+        "hide": 0
+      },
+      {
+        "name": "currency",
+        "type": "query",
+        "label": "Para birimi",
+        "datasource": {
+          "type": "postgres",
+          "uid": "postgres"
+        },
+        "query": "SELECT COALESCE(\n  (SELECT NULLIF(trim(ana_para_birimi),'') FROM firms WHERE firm_nr IN ('${firm}', ltrim('${firm}','0')) LIMIT 1),\n  (SELECT NULLIF(trim(default_currency),'') FROM public.system_settings WHERE id = 1 LIMIT 1),\n  'IQD'\n);",
+        "current": {
+          "selected": true,
+          "text": "IQD",
+          "value": "IQD"
+        },
+        "hide": 0,
+        "refresh": 1,
+        "regex": "",
+        "sort": 0,
+        "includeAll": false
+      }
+    ]
+  },
+  "time": {
+    "from": "now-24h",
+    "to": "now"
+  },
+  "timepicker": {},
+  "timezone": "browser",
+  "title": "RetailEX Banka Hareketleri",
+  "uid": "retailex-bank",
+  "version": 1
+}

@@ -188,8 +188,59 @@ export async function syncGrafanaDashboardsViaApi(): Promise<GrafanaDashboardsSy
   if (IS_TAURI) {
     return { ok: false, reason: 'Masaüstünde Grafana sync yok.' };
   }
+  const bridge = getBridgeUrl();
+
+  // 1) Frontend static /grafana-dashboards/*.json → bridge import
+  //    Dokploy’da bridge volume boş olsa bile nginx’teki JSON’lar yeter
   try {
-    const bridge = getBridgeUrl();
+    const meta = await import('../utils/grafanaAppReportsCatalog');
+    const uids = [
+      ...meta.GRAFANA_APP_REPORTS_META.map((m) => m.uid),
+      ...GRAFANA_READY_REPORTS.filter((r) => !r.isBuilder).map((r) => r.uid),
+    ];
+    const unique = Array.from(new Set(uids));
+    const batch: Record<string, unknown>[] = [];
+    for (const uid of unique) {
+      try {
+        const r = await fetch(`/grafana-dashboards/${uid}.json`, { credentials: 'same-origin' });
+        if (!r.ok) continue;
+        const dash = (await r.json()) as Record<string, unknown>;
+        if (dash && dash.uid) batch.push(dash);
+      } catch {
+        /* skip */
+      }
+    }
+    if (batch.length > 0) {
+      let okCount = 0;
+      const chunk = 8;
+      for (let i = 0; i < batch.length; i += chunk) {
+        const slice = batch.slice(i, i + chunk);
+        const res = await fetch(`${bridge}/api/grafana/dashboards/import`, {
+          method: 'POST',
+          credentials: 'same-origin',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ dashboards: slice }),
+        });
+        const body = (await res.json().catch(() => ({}))) as {
+          error?: string;
+          okCount?: number;
+        };
+        if (!res.ok) {
+          // Disk sync’e düş
+          break;
+        }
+        okCount += Number(body.okCount || 0);
+      }
+      if (okCount > 0) {
+        return { ok: true, total: batch.length, okCount, failCount: batch.length - okCount };
+      }
+    }
+  } catch {
+    /* disk sync dene */
+  }
+
+  // 2) Bridge disk sync (imaj / volume)
+  try {
     const res = await fetch(`${bridge}/api/grafana/dashboards/sync`, {
       method: 'POST',
       credentials: 'same-origin',
@@ -201,17 +252,50 @@ export async function syncGrafanaDashboardsViaApi(): Promise<GrafanaDashboardsSy
       okCount?: number;
       failCount?: number;
     };
-    if (!res.ok) {
-      return { ok: false, reason: body.error || `HTTP ${res.status}` };
+    if (res.ok && Number(body.okCount || 0) > 0) {
+      return {
+        ok: true,
+        total: Number(body.total || 0),
+        okCount: Number(body.okCount || 0),
+        failCount: Number(body.failCount || 0),
+      };
     }
     return {
-      ok: true,
-      total: Number(body.total || 0),
-      okCount: Number(body.okCount || 0),
-      failCount: Number(body.failCount || 0),
+      ok: false,
+      reason:
+        body.error ||
+        'Pano JSON bulunamadı. Frontend + bridge redeploy edin (public/grafana-dashboards).',
     };
   } catch (e) {
     return { ok: false, reason: e instanceof Error ? e.message : String(e) };
+  }
+}
+
+/** Tek pano eksikse public JSON’dan import et */
+export async function ensureGrafanaDashboardUid(uid: string): Promise<boolean> {
+  if (!uid || IS_TAURI) return false;
+  const bridge = getBridgeUrl();
+  try {
+    const check = await fetch(`${bridge}/api/grafana/dashboards/uid/${encodeURIComponent(uid)}`, {
+      credentials: 'same-origin',
+    });
+    if (check.ok) return true;
+  } catch {
+    /* import dene */
+  }
+  try {
+    const r = await fetch(`/grafana-dashboards/${uid}.json`, { credentials: 'same-origin' });
+    if (!r.ok) return false;
+    const dashboard = await r.json();
+    const res = await fetch(`${bridge}/api/grafana/dashboards/import`, {
+      method: 'POST',
+      credentials: 'same-origin',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ dashboard }),
+    });
+    return res.ok;
+  } catch {
+    return false;
   }
 }
 

@@ -1,7 +1,7 @@
 /**
  * Menü görünürlük parametreleri: güzellik/anket raporları + sanal santral + fiyat değişimi
  * + ürün listesi satış/alış dip toplamları + günlük/dönem rapor özet kartları
- * + günlük rapor tedarikçi ödemeleri.
+ * + günlük rapor tedarikçi ödemeleri + Windows yazıcı servisi.
  * Kaynak: PostgreSQL `system_settings.report_menu_params` ↔ localStorage önbellek.
  * Varsayılan: çoğu menü/özellik kapalı; rapor kartları ve `daily-report-supplier-payments` varsayılan açık.
  */
@@ -22,6 +22,12 @@ export const REPORT_MENU_PARAM_KEYS = [
   'product-list-sales-purchase-totals',
   /** Günlük rapor — tedarikçiye ödenen (CH_ODEME) tutarlar (varsayılan açık) */
   'daily-report-supplier-payments',
+  /**
+   * Windows Printer servisi (RetailEX_Print_Server) — varsayılan kapalı.
+   * Kapalı: browser `window.print` / yerel yazdırma.
+   * Açık: unified print queue → Windows yazıcı servisi.
+   */
+  'print-use-windows-printer-service',
   /** Günlük rapor KPI kartları (varsayılan açık) */
   'daily-report-card-total-sales',
   'daily-report-card-total-revenue',
@@ -62,6 +68,7 @@ const DEFAULT_PARAMS: ReportMenuParams = {
   'stock-price-change-slips': false,
   'product-list-sales-purchase-totals': false,
   'daily-report-supplier-payments': true,
+  'print-use-windows-printer-service': false,
   'daily-report-card-total-sales': true,
   'daily-report-card-total-revenue': true,
   'daily-report-card-total-discount': true,

@@ -155,4 +155,4 @@ Restoran sohbetinde eklenen tek yeni tablo: **rest.return_log**. Diğer özellik
 - `154_report_menu_params_daily_supplier_payments.sql` — `report_menu_params` içine `daily-report-supplier-payments: true` (yoksa ekler); günlük rapor tedarikçi ödemeleri varsayılan açık.
 - `155_report_menu_params_kpi_cards.sql` — günlük (`daily-report-card-*`) ve dönem özeti (`period-summary-card-*`) KPI kart anahtarları; varsayılan açık (yoksa ekler).
 - `156_custom_saved_reports.sql` — `custom_saved_reports` (UUID, firm_nr, name, sql_text); Rapor Oluşturucu kayıtlı SELECT’ler.
-
+- `157_report_menu_params_windows_printer_service.sql` — `report_menu_params` içine `print-use-windows-printer-service: false` (yoksa ekler); Windows Printer servisi varsayılan kapalı → browser yazdırma.

@@ -30,6 +30,7 @@ import {
   fetchGrafanaSchema,
   listGrafanaDashboardsViaApi,
   syncGrafanaDashboardsViaApi,
+  ensureGrafanaDashboardUid,
   type GrafanaSchemaTable,
 } from '../../services/grafanaDatasourceService';
 import { buildSelectSql } from '../../services/tenantReportSchemaService';
@@ -117,6 +118,8 @@ export function GrafanaReportBuilderModule() {
 
   const [syncMsg, setSyncMsg] = useState<string | null>(null);
   const [syncingDashboards, setSyncingDashboards] = useState(false);
+  const [iframeNonce, setIframeNonce] = useState(0);
+  const [panelsBootstrapped, setPanelsBootstrapped] = useState(false);
 
   const [grafanaDbLabel, setGrafanaDbLabel] = useState<string | null>(null);
   const [serverModalOpen, setServerModalOpen] = useState(false);
@@ -201,9 +204,41 @@ export function GrafanaReportBuilderModule() {
     [firm, period]
   );
 
+  const syncDashboards = useCallback(async () => {
+    setSyncingDashboards(true);
+    setSyncMsg(null);
+    const result = await syncGrafanaDashboardsViaApi();
+    setSyncingDashboards(false);
+    if (!result.ok) {
+      setSyncMsg(result.reason);
+      return;
+    }
+    setSyncMsg(
+      lang === 'en'
+        ? `Dashboards synced: ${result.okCount}/${result.total}`
+        : `Panolar yüklendi: ${result.okCount}/${result.total}`
+    );
+    await loadCatalog();
+    setIframeNonce((n) => n + 1);
+    setPanelsBootstrapped(true);
+  }, [lang, loadCatalog]);
+
   useEffect(() => {
     void linkGrafanaDb();
-    void loadCatalog();
+    void (async () => {
+      setPanelsBootstrapped(false);
+      await syncGrafanaDashboardsViaApi().catch(() => undefined);
+      await loadCatalog();
+      const defaultUid =
+        STATIC_REPORTS.find((r) => r.category === 'general' && !r.isBuilder)?.uid ||
+        STATIC_REPORTS.find((r) => r.category === 'executive' && !r.isBuilder)?.uid ||
+        STATIC_REPORTS.find((r) => !r.isBuilder)?.uid;
+      if (defaultUid) {
+        await ensureGrafanaDashboardUid(defaultUid).catch(() => false);
+      }
+      setIframeNonce((n) => n + 1);
+      setPanelsBootstrapped(true);
+    })();
   }, [linkGrafanaDb, loadCatalog, selectedFirm?.firm_nr, selectedPeriod?.nr]);
 
   useEffect(() => {
@@ -232,6 +267,27 @@ export function GrafanaReportBuilderModule() {
       })
       .filter((c) => c.items.length > 0);
   }, [reports, search]);
+
+  const openReport = useCallback(
+    async (r: GrafanaReadyReport) => {
+      setExploreSql(null);
+      if (!r.isBuilder && r.uid) {
+        const ok = await ensureGrafanaDashboardUid(r.uid);
+        if (!ok) {
+          setSyncMsg(
+            lang === 'en'
+              ? `Dashboard missing: ${r.uid}. Click Load panels.`
+              : `Pano yok: ${r.uid}. «Panoları yükle»ye basın.`
+          );
+          return;
+        }
+        setSyncMsg(null);
+      }
+      setGrafanaId(r.id);
+      setIframeNonce((n) => n + 1);
+    },
+    [lang]
+  );
 
   const openTableInExplore = (table: GrafanaSchemaTable, columns?: string[]) => {
     const sql = buildSelectSql(
@@ -461,10 +517,7 @@ export function GrafanaReportBuilderModule() {
                         <button
                           key={r.id}
                           type="button"
-                          onClick={() => {
-                            setExploreSql(null);
-                            setGrafanaId(r.id);
-                          }}
+                          onClick={() => void openReport(r)}
                           className={`w-full text-left rounded-xl border px-3 py-2.5 transition-colors ${
                             isOn || (r.id === grafanaId && r.id === 'builder-pg' && exploreSql)
                               ? active
@@ -616,14 +669,23 @@ export function GrafanaReportBuilderModule() {
             </a>
           </div>
           <div className="flex-1 min-h-0 relative overflow-hidden">
-            <iframe
-              key={embedUrl}
-              title={reportTitle(grafanaSelected, lang)}
-              src={embedUrl}
-              className="absolute inset-0 w-full h-full border-0"
-              allow="fullscreen"
-              referrerPolicy="no-referrer-when-downgrade"
-            />
+            {!panelsBootstrapped || syncingDashboards ? (
+              <div className={`absolute inset-0 flex items-center justify-center gap-2 ${muted}`}>
+                <Loader2 className="h-5 w-5 animate-spin" />
+                <span className="text-sm">
+                  {lang === 'en' ? 'Loading dashboards…' : 'Panolar yükleniyor…'}
+                </span>
+              </div>
+            ) : (
+              <iframe
+                key={`${embedUrl}#${iframeNonce}`}
+                title={reportTitle(grafanaSelected, lang)}
+                src={embedUrl}
+                className="absolute inset-0 w-full h-full border-0"
+                allow="fullscreen"
+                referrerPolicy="no-referrer-when-downgrade"
+              />
+            )}
           </div>
           <p className={`shrink-0 px-4 py-1.5 text-[10px] ${muted}`}>
             Grafana · {baseUrl} · {lang === 'en' ? 'anonymous (no login)' : 'anonim (giriş yok)'}

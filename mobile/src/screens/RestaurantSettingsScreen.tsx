@@ -60,7 +60,7 @@ export function RestaurantSettingsScreen({ navigation }: Props) {
       const conf = await getRestaurantPrinterConfig();
       setPrinterConfig(conf);
       setPrinterCount(conf.printerProfiles?.length ?? 0);
-      setPrintViaWindowsService(conf.printViaWindowsService !== false);
+      setPrintViaWindowsService(conf.printViaWindowsService === true);
     } catch {
       setPrinterConfig(null);
       setPrinterCount(null);

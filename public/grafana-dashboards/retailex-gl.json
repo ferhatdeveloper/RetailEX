@@ -1,0 +1,178 @@
+{
+  "annotations": {
+    "list": []
+  },
+  "editable": true,
+  "fiscalYearStartMonth": 0,
+  "graphTooltip": 1,
+  "id": null,
+  "links": [],
+  "panels": [
+    {
+      "id": 1,
+      "title": "Cari trcode",
+      "type": "barchart",
+      "gridPos": {
+        "h": 8,
+        "w": 12,
+        "x": 0,
+        "y": 0
+      },
+      "datasource": {
+        "type": "postgres",
+        "uid": "postgres"
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "format": "table",
+          "rawQuery": true,
+          "rawSql": "SELECT COALESCE(trcode::text,'?') AS metric, count(*)::int AS value FROM rex_${firm}_${period}_account_movements GROUP BY 1 ORDER BY 2 DESC;"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {},
+        "overrides": []
+      },
+      "options": {
+        "legend": {
+          "displayMode": "list",
+          "placement": "bottom",
+          "showLegend": true
+        },
+        "orientation": "horizontal",
+        "xTickLabelRotation": 0,
+        "xTickLabelSpacing": 0
+      }
+    },
+    {
+      "id": 2,
+      "title": "Kasa trcode",
+      "type": "barchart",
+      "gridPos": {
+        "h": 8,
+        "w": 12,
+        "x": 12,
+        "y": 0
+      },
+      "datasource": {
+        "type": "postgres",
+        "uid": "postgres"
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "format": "table",
+          "rawQuery": true,
+          "rawSql": "SELECT COALESCE(trcode::text,'?') AS metric, count(*)::int AS value FROM rex_${firm}_${period}_cash_lines GROUP BY 1 ORDER BY 2 DESC;"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {},
+        "overrides": []
+      },
+      "options": {
+        "legend": {
+          "displayMode": "list",
+          "placement": "bottom",
+          "showLegend": true
+        },
+        "orientation": "horizontal",
+        "xTickLabelRotation": 0,
+        "xTickLabelSpacing": 0
+      }
+    },
+    {
+      "id": 3,
+      "title": "Son cari hareketler",
+      "type": "table",
+      "gridPos": {
+        "h": 10,
+        "w": 24,
+        "x": 0,
+        "y": 8
+      },
+      "datasource": {
+        "type": "postgres",
+        "uid": "postgres"
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "format": "table",
+          "rawQuery": true,
+          "rawSql": "SELECT date, amount, sign, trcode, module_nr, definition FROM rex_${firm}_${period}_account_movements ORDER BY date DESC NULLS LAST LIMIT 100;"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {},
+        "overrides": []
+      }
+    }
+  ],
+  "refresh": "2m",
+  "schemaVersion": 39,
+  "tags": [
+    "retailex",
+    "ready",
+    "accounting",
+    "erp"
+  ],
+  "templating": {
+    "list": [
+      {
+        "name": "firm",
+        "type": "textbox",
+        "label": "Firma",
+        "query": "001",
+        "current": {
+          "selected": true,
+          "text": "001",
+          "value": "001"
+        },
+        "hide": 0
+      },
+      {
+        "name": "period",
+        "type": "textbox",
+        "label": "Dönem",
+        "query": "01",
+        "current": {
+          "selected": true,
+          "text": "01",
+          "value": "01"
+        },
+        "hide": 0
+      },
+      {
+        "name": "currency",
+        "type": "query",
+        "label": "Para birimi",
+        "datasource": {
+          "type": "postgres",
+          "uid": "postgres"
+        },
+        "query": "SELECT COALESCE(\n  (SELECT NULLIF(trim(ana_para_birimi),'') FROM firms WHERE firm_nr IN ('${firm}', ltrim('${firm}','0')) LIMIT 1),\n  (SELECT NULLIF(trim(default_currency),'') FROM public.system_settings WHERE id = 1 LIMIT 1),\n  'IQD'\n);",
+        "current": {
+          "selected": true,
+          "text": "IQD",
+          "value": "IQD"
+        },
+        "hide": 0,
+        "refresh": 1,
+        "regex": "",
+        "sort": 0,
+        "includeAll": false
+      }
+    ]
+  },
+  "time": {
+    "from": "now-30d",
+    "to": "now"
+  },
+  "timepicker": {},
+  "timezone": "browser",
+  "title": "RetailEX Genel Muhasebe Aktivite",
+  "uid": "retailex-gl",
+  "version": 1
+}

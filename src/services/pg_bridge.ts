@@ -1989,7 +1989,6 @@ app.post('/api/grafana/dashboards/sync', async (c) => {
             try {
                 const raw = fs.readFileSync(full, 'utf8');
                 const dashboard = JSON.parse(raw) as Record<string, unknown>;
-                // Grafana import: id null olmalı
                 dashboard.id = null;
                 const putBody: Record<string, unknown> = {
                     dashboard,
@@ -2045,6 +2044,91 @@ app.post('/api/grafana/dashboards/sync', async (c) => {
     } catch (e: any) {
         console.error('[PG Bridge] grafana dashboards sync:', e);
         return c.json({ error: e?.message || String(e) }, 500);
+    }
+});
+
+/**
+ * Frontend static JSON → Grafana (bridge diskte dosya olmasa da çalışır).
+ * Body: { dashboard } | { dashboards: [...] }
+ */
+app.post('/api/grafana/dashboards/import', async (c) => {
+    try {
+        const body = (await c.req.json().catch(() => ({}))) as {
+            dashboard?: Record<string, unknown>;
+            dashboards?: Record<string, unknown>[];
+        };
+        const list = Array.isArray(body.dashboards)
+            ? body.dashboards
+            : body.dashboard
+              ? [body.dashboard]
+              : [];
+        if (list.length === 0) {
+            return c.json({ error: 'dashboard veya dashboards gerekli' }, 400);
+        }
+
+        const folderUid = await ensureGrafanaFolder('RetailEX');
+        const results: Array<{ uid?: string; ok: boolean; error?: string }> = [];
+
+        for (const dash of list) {
+            try {
+                const dashboard = { ...dash, id: null };
+                const putBody: Record<string, unknown> = {
+                    dashboard,
+                    overwrite: true,
+                    message: 'RetailEX import',
+                };
+                if (folderUid) putBody.folderUid = folderUid;
+                const putRes = await fetch(`${grafanaBaseUrl()}/api/dashboards/db`, {
+                    method: 'POST',
+                    headers: {
+                        Authorization: grafanaAdminAuthHeader(),
+                        'Content-Type': 'application/json',
+                    },
+                    body: JSON.stringify(putBody),
+                });
+                const putJson = (await putRes.json().catch(() => ({}))) as {
+                    uid?: string;
+                    message?: string;
+                };
+                if (!putRes.ok) {
+                    results.push({ ok: false, error: putJson.message || `HTTP ${putRes.status}` });
+                } else {
+                    results.push({ ok: true, uid: String(putJson.uid || dashboard.uid || '') });
+                }
+            } catch (e: any) {
+                results.push({ ok: false, error: e?.message || String(e) });
+            }
+        }
+
+        const okCount = results.filter((r) => r.ok).length;
+        return c.json({
+            ok: okCount === results.length,
+            total: results.length,
+            okCount,
+            failCount: results.length - okCount,
+            results,
+        });
+    } catch (e: any) {
+        console.error('[PG Bridge] grafana dashboards import:', e);
+        return c.json({ error: e?.message || String(e) }, 500);
+    }
+});
+
+app.get('/api/grafana/dashboards/uid/:uid', async (c) => {
+    try {
+        const uid = String(c.req.param('uid') || '').trim();
+        if (!uid) return c.json({ error: 'uid gerekli' }, 400);
+        const res = await fetch(`${grafanaBaseUrl()}/api/dashboards/uid/${encodeURIComponent(uid)}`, {
+            headers: { Authorization: grafanaAdminAuthHeader() },
+        });
+        if (res.status === 404) return c.json({ ok: false, exists: false, uid }, 404);
+        if (!res.ok) {
+            const t = await res.text();
+            return c.json({ error: t.slice(0, 200) }, 502);
+        }
+        return c.json({ ok: true, exists: true, uid });
+    } catch (e: any) {
+        return c.json({ error: e?.message || String(e) }, 503);
     }
 });
 

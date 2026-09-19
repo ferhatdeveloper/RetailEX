@@ -68,10 +68,6 @@ export function getGrafanaBaseUrl(): string {
   return '/__grafana';
 }
 
-function slugify(uid: string): string {
-  return uid.replace(/^retailex-/, 'retailex-');
-}
-
 function varQs(vars?: { firm?: string; period?: string }): string {
   const parts: string[] = [];
   if (vars?.firm) parts.push(`var-firm=${encodeURIComponent(vars.firm)}`);
@@ -85,8 +81,8 @@ export function dashEmbed(
   extra = '&refresh=2m',
   vars?: { firm?: string; period?: string }
 ): string {
-  const slug = slugify(uid);
-  return `/d/${uid}/${slug}?orgId=1${extra}&kiosk&theme=${theme}${varQs(vars)}`;
+  // Slug opsiyonel — Grafana uid ile bulur; yanlış slug "Dashboard not found" vermesin
+  return `/d/${encodeURIComponent(uid)}?orgId=1${extra}&kiosk&theme=${theme}${varQs(vars)}`;
 }
 
 function r(

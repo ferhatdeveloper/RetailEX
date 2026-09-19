@@ -1,5 +1,6 @@
 import { ERP_SETTINGS, DB_SETTINGS, postgres } from './postgres';
 import { getRestaurantPrinterConfig } from './restaurantPrinterConfigService';
+import { isReportMenuParamEnabled } from './reportMenuParamsService';
 import {
   assemblePrintTranslations,
   resolvePrintLocale,
@@ -113,15 +114,17 @@ async function isGlobalPrinterServiceEnabled(): Promise<boolean> {
 
 /**
  * Windows yazıcı servisi aktif mi?
- * Mantık:
- *   1. Restoran modülü restaurant_printer_config.printViaWindowsService === true  → AKTİF
- *   2. Global printer_service.enabled === true                                    → AKTİF
- *   3. Aksi durumda (kayıt yok veya false)                                        → KAPALI
+ * Mantık (herhangi biri true → AKTİF; aksi halde browser / yerel yazdırma):
+ *   1. Sistem Yönetimi → Parametre: `print-use-windows-printer-service` (varsayılan kapalı)
+ *   2. Restoran: restaurant_printer_config.printViaWindowsService === true (explicit)
+ *   3. Global app_settings.printer_service.enabled === true
  *
- * Restoran modülü için varsayılan true (Migration 126 + useRestaurantStore default).
- * Diğer modüller için global flag ile kontrol edilir.
+ * Web'de Windows servisi yoksa çağıranlar enqueue hata/uyarı sonrası `window.print` fallback kullanır.
  */
 export async function isWindowsPrinterServiceEnabled(): Promise<boolean> {
+  if (isReportMenuParamEnabled('print-use-windows-printer-service')) {
+    return true;
+  }
   const [restaurantConfig, globalEnabled] = await Promise.all([
     getRestaurantPrinterConfig().catch(() => null),
     isGlobalPrinterServiceEnabled(),

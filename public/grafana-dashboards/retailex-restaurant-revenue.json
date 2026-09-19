@@ -1,0 +1,190 @@
+{
+  "annotations": {
+    "list": []
+  },
+  "editable": true,
+  "fiscalYearStartMonth": 0,
+  "graphTooltip": 1,
+  "id": null,
+  "links": [],
+  "panels": [
+    {
+      "id": 1,
+      "title": "Satış fiş (genel)",
+      "type": "stat",
+      "gridPos": {
+        "h": 4,
+        "w": 6,
+        "x": 0,
+        "y": 0
+      },
+      "datasource": {
+        "type": "postgres",
+        "uid": "postgres"
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "format": "table",
+          "rawQuery": true,
+          "rawSql": "SELECT count(*)::int AS value FROM rex_${firm}_${period}_sales WHERE COALESCE(is_cancelled,false)=false;"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short"
+        },
+        "overrides": []
+      },
+      "options": {
+        "colorMode": "value",
+        "graphMode": "none",
+        "justifyMode": "auto",
+        "orientation": "auto",
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ],
+          "fields": "",
+          "values": false
+        },
+        "textMode": "auto"
+      }
+    },
+    {
+      "id": 2,
+      "title": "Ciro (${currency})",
+      "type": "stat",
+      "gridPos": {
+        "h": 4,
+        "w": 6,
+        "x": 6,
+        "y": 0
+      },
+      "datasource": {
+        "type": "postgres",
+        "uid": "postgres"
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "format": "table",
+          "rawQuery": true,
+          "rawSql": "SELECT COALESCE(sum(total_net),0)::float AS value FROM rex_${firm}_${period}_sales WHERE COALESCE(is_cancelled,false)=false;"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "none",
+          "decimals": 0
+        },
+        "overrides": []
+      },
+      "options": {
+        "colorMode": "value",
+        "graphMode": "none",
+        "justifyMode": "auto",
+        "orientation": "auto",
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ],
+          "fields": "",
+          "values": false
+        },
+        "textMode": "auto"
+      }
+    },
+    {
+      "id": 3,
+      "title": "İade log (rest)",
+      "type": "table",
+      "gridPos": {
+        "h": 12,
+        "w": 24,
+        "x": 0,
+        "y": 4
+      },
+      "datasource": {
+        "type": "postgres",
+        "uid": "postgres"
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "format": "table",
+          "rawQuery": true,
+          "rawSql": "SELECT * FROM rest.return_log ORDER BY created_at DESC NULLS LAST LIMIT 100;"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {},
+        "overrides": []
+      }
+    }
+  ],
+  "refresh": "2m",
+  "schemaVersion": 39,
+  "tags": [
+    "retailex",
+    "ready",
+    "restaurant"
+  ],
+  "templating": {
+    "list": [
+      {
+        "name": "firm",
+        "type": "textbox",
+        "label": "Firma",
+        "query": "001",
+        "current": {
+          "selected": true,
+          "text": "001",
+          "value": "001"
+        },
+        "hide": 0
+      },
+      {
+        "name": "period",
+        "type": "textbox",
+        "label": "Dönem",
+        "query": "01",
+        "current": {
+          "selected": true,
+          "text": "01",
+          "value": "01"
+        },
+        "hide": 0
+      },
+      {
+        "name": "currency",
+        "type": "query",
+        "label": "Para birimi",
+        "datasource": {
+          "type": "postgres",
+          "uid": "postgres"
+        },
+        "query": "SELECT COALESCE(\n  (SELECT NULLIF(trim(ana_para_birimi),'') FROM firms WHERE firm_nr IN ('${firm}', ltrim('${firm}','0')) LIMIT 1),\n  (SELECT NULLIF(trim(default_currency),'') FROM public.system_settings WHERE id = 1 LIMIT 1),\n  'IQD'\n);",
+        "current": {
+          "selected": true,
+          "text": "IQD",
+          "value": "IQD"
+        },
+        "hide": 0,
+        "refresh": 1,
+        "regex": "",
+        "sort": 0,
+        "includeAll": false
+      }
+    ]
+  },
+  "time": {
+    "from": "now-30d",
+    "to": "now"
+  },
+  "timepicker": {},
+  "timezone": "browser",
+  "title": "RetailEX Restoran Ciro",
+  "uid": "retailex-restaurant-revenue",
+  "version": 1
+}

@@ -81,6 +81,7 @@ CREATE TABLE IF NOT EXISTS public.system_settings (
   eticaret_settings JSONB DEFAULT '{}'::jsonb,
   menu_preferences JSONB DEFAULT '{}'::jsonb,
   -- Menü/özellik + rapor KPI kart bayrakları (boolean JSON); anahtarlar reportMenuParamsService
+  -- (print-use-windows-printer-service varsayılan kapalı → browser yazdırma)
   report_menu_params JSONB DEFAULT '{}'::jsonb,
   updated_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP
 );

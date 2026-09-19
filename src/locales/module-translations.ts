@@ -1294,7 +1294,7 @@ export const moduleTranslations: Record<string, Record<Language, string>> = {
   custTabCari: { tr: 'Cari & Bakiye', en: 'Accounts & balance', ar: 'الحسابات والرصيد', ku: 'هەژمار و باڵانس' },
   buyersLabel: { tr: 'Alıcılar', en: 'Buyers', ar: 'المشترون', ku: 'کڕیاران' },
   sellersLabel: { tr: 'Satıcılar', en: 'Suppliers', ar: 'الموردون', ku: 'دابینکەران' },
-  newSupplier: { tr: 'Yeni Satıcı', en: 'New supplier', ar: 'مورد جديد', ku: 'دابینکەری نوێ' },
+  newSupplier: { tr: 'Yeni Tedarikçi', en: 'New Supplier', ar: 'مورد جديد', ku: 'دابینکەری نوێ' },
   custColLastPurchase: { tr: 'Son Alışveriş', en: 'Last purchase', ar: 'آخر شراء', ku: 'دوایین کڕین' },
   custColActions: { tr: 'İşlemler', en: 'Actions', ar: 'إجراءات', ku: 'کردارەکان' },
   custModalEditTitle: { tr: 'Müşteri Düzenle', en: 'Edit customer', ar: 'تعديل عميل', ku: 'دەستکاری کڕیار' },
@@ -3090,10 +3090,10 @@ export const moduleTranslations: Record<string, Record<Language, string>> = {
     ku: 'مێنیوی تایبەتمەندی',
   },
   featureMenuParamsHint: {
-    tr: 'Kapalı özellikler menüde veya ilgili ekranda görünmez. Çoğu varsayılan kapalı; günlük rapor tedarikçi ödemeleri ve rapor özet kartları varsayılan açık.',
-    en: 'Disabled features are hidden from the menu or related screens. Most default off; daily report supplier payments and report KPI cards default on.',
-    ar: 'الميزات المعطلة لا تظهر في القائمة أو الشاشات ذات الصلة. معظمها مغلق افتراضياً؛ مدفوعات الموردين وبطاقات ملخص التقارير مفعّلة افتراضياً.',
-    ku: 'تایبەتمەندیی داخراو لە مێنیو یان شاشەی پەیوەندیدار دیار نابێت. زۆربە بنەڕەت داخراون؛ پارەدانی دابینکەر و کارتی کورتەی ڕاپۆرت بنەڕەت کراوە.',
+    tr: 'Kapalı özellikler menüde veya ilgili ekranda görünmez. Çoğu varsayılan kapalı; günlük rapor tedarikçi ödemeleri ve rapor özet kartları varsayılan açık. Windows Printer servisi varsayılan kapalı (tarayıcı yazdırma).',
+    en: 'Disabled features are hidden from the menu or related screens. Most default off; daily report supplier payments and report KPI cards default on. Windows Printer service defaults off (browser print).',
+    ar: 'الميزات المعطلة لا تظهر في القائمة أو الشاشات ذات الصلة. معظمها مغلق افتراضياً؛ مدفوعات الموردين وبطاقات ملخص التقارير مفعّلة افتراضياً. خدمة طابعة ويندوز مغلقة افتراضياً (طباعة المتصفح).',
+    ku: 'تایبەتمەندیی داخراو لە مێنیو یان شاشەی پەیوەندیدار دیار نابێت. زۆربە بنەڕەت داخراون؛ پارەدانی دابینکەر و کارتی کورتەی ڕاپۆرت بنەڕەت کراوە. خزمەتگوزاری چاپکەری ویندۆز بنەڕەت داخراوە (چاپکردنی وێبگەڕ).',
   },
   dailyReportCardParamsSection: {
     tr: 'Günlük rapor — özet kartlar',
@@ -3250,6 +3250,12 @@ export const moduleTranslations: Record<string, Record<Language, string>> = {
     en: 'Daily report — Supplier payments (default on)',
     ar: 'التقرير اليومي — مدفوعات الموردين (الافتراضي مفعّل)',
     ku: 'ڕاپۆرتی ڕۆژانە — پارەدانی دابینکەر (بنەڕەت کراوە)',
+  },
+  menuParamPrintUseWindowsPrinterService: {
+    tr: 'Windows Printer servisini kullan (varsayılan kapalı → tarayıcı yazdırma)',
+    en: 'Use Windows Printer service (default off → browser print)',
+    ar: 'استخدام خدمة طابعة ويندوز (الافتراضي مغلق → طباعة المتصفح)',
+    ku: 'خزمەتگوزاری چاپکەری ویندۆز بەکاربهێنە (بنەڕەت داخراو → چاپکردنی وێبگەڕ)',
   },
   reportMenuParamsHint: {
     tr: 'Kapalı raporlar Raporlar menüsünde görünmez. Varsayılan: kapalı.',
@@ -7352,6 +7358,16 @@ export const supplierTranslations = {
   crmBalance: { tr: 'Bakiye', en: 'Balance', ar: 'الرصيد', ku: 'باڵانس' },
   actions: { tr: 'İşlemler', en: 'Actions', ar: 'إجراءات', ku: 'کردارەکان' },
   refreshData: { tr: 'Yenile', en: 'Refresh', ar: 'تحديث', ku: 'نوێکردنەوە' },
+  newCustomer: { tr: 'Yeni Müşteri', en: 'New Customer', ar: 'عميل جديد', ku: 'کڕیاری نوێ' },
+  /** Cari listesi toolbar — kısa etiket (cariOpeningTitle daha uzun) */
+  devirFisi: { tr: 'Devir Fişi', en: 'Opening Slip', ar: 'سند افتتاح', ku: 'پسوولەی گواستنەوە' },
+  partyMergeOpenButton: { tr: 'Birleştir', en: 'Merge', ar: 'دمج', ku: 'یەکخستنەوە' },
+  exportToExcel: {
+    tr: "Excel'e Aktar",
+    en: 'Export to Excel',
+    ar: 'تصدير إلى Excel',
+    ku: 'هەناردە بۆ Excel',
+  },
   newCurrentAccount: { tr: 'Yeni Cari Hesap', en: 'New Current Account', ar: 'حساب جاري جديد', ku: 'هەژماری جاری نوێ' },
   save: { tr: 'Kaydet', en: 'Save', ar: 'حفظ', ku: 'پاشەکەوتکردن' },
   add: { tr: 'Ekle', en: 'Add', ar: 'إضافة', ku: 'زیادکردن' },

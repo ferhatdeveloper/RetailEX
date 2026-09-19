@@ -552,6 +552,7 @@ function DefinitionsParametersView() {
     { key: 'stock-price-change-slips', labelKey: 'menuParamStockPriceChange' },
     { key: 'product-list-sales-purchase-totals', labelKey: 'menuParamProductListSalesPurchaseTotals' },
     { key: 'daily-report-supplier-payments', labelKey: 'menuParamDailyReportSupplierPayments' },
+    { key: 'print-use-windows-printer-service', labelKey: 'menuParamPrintUseWindowsPrinterService' },
   ];
 
   const dailyReportCardParamRows: { key: ReportMenuParamKey; labelKey: string }[] = [

@@ -1,0 +1,101 @@
+{
+  "annotations": {
+    "list": []
+  },
+  "editable": true,
+  "fiscalYearStartMonth": 0,
+  "graphTooltip": 1,
+  "id": null,
+  "links": [],
+  "panels": [
+    {
+      "id": 1,
+      "title": "ABC (ciro payı)",
+      "type": "table",
+      "gridPos": {
+        "h": 12,
+        "w": 24,
+        "x": 0,
+        "y": 0
+      },
+      "datasource": {
+        "type": "postgres",
+        "uid": "postgres"
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "format": "table",
+          "rawQuery": true,
+          "rawSql": "WITH t AS (SELECT item_code, item_name, sum(net_amount) AS net FROM rex_${firm}_${period}_sale_items GROUP BY 1,2), s AS (SELECT *, sum(net) OVER () AS toplam, sum(net) OVER (ORDER BY net DESC) AS kumul FROM t) SELECT item_code, item_name, net, round(100*net/NULLIF(toplam,0),2) AS pay_pct, CASE WHEN kumul/NULLIF(toplam,0)<=0.8 THEN 'A' WHEN kumul/NULLIF(toplam,0)<=0.95 THEN 'B' ELSE 'C' END AS abc FROM s ORDER BY net DESC LIMIT 200;"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {},
+        "overrides": []
+      }
+    }
+  ],
+  "refresh": "2m",
+  "schemaVersion": 39,
+  "tags": [
+    "retailex",
+    "ready",
+    "app-report",
+    "stock"
+  ],
+  "templating": {
+    "list": [
+      {
+        "name": "firm",
+        "type": "textbox",
+        "label": "Firma",
+        "query": "001",
+        "current": {
+          "selected": true,
+          "text": "001",
+          "value": "001"
+        },
+        "hide": 0
+      },
+      {
+        "name": "period",
+        "type": "textbox",
+        "label": "Dönem",
+        "query": "01",
+        "current": {
+          "selected": true,
+          "text": "01",
+          "value": "01"
+        },
+        "hide": 0
+      },
+      {
+        "name": "currency",
+        "type": "query",
+        "label": "Para birimi",
+        "datasource": {
+          "type": "postgres",
+          "uid": "postgres"
+        },
+        "query": "SELECT COALESCE((SELECT NULLIF(trim(ana_para_birimi),'') FROM firms WHERE firm_nr IN ('${firm}', ltrim('${firm}','0')) LIMIT 1),(SELECT NULLIF(trim(default_currency),'') FROM public.system_settings WHERE id = 1 LIMIT 1),'IQD');",
+        "current": {
+          "selected": true,
+          "text": "IQD",
+          "value": "IQD"
+        },
+        "hide": 0,
+        "refresh": 1
+      }
+    ]
+  },
+  "time": {
+    "from": "now-30d",
+    "to": "now"
+  },
+  "timepicker": {},
+  "timezone": "browser",
+  "title": "RetailEX Stok ABC Analizi",
+  "uid": "retailex-rpt-stock-abc",
+  "version": 1
+}

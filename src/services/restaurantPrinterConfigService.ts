@@ -13,18 +13,18 @@ export type RestaurantPrinterConfig = {
   printViaWindowsService?: boolean;
 };
 
-// PG'den okunan değer boş ise veya kısmi ise, varsayılan olarak
-// printViaWindowsService=true kabul edilir (migration 126 + restoran modülü
-// varsayılanı). Yalnızca explicit false durumunda kapatılır.
+// Kayıt yoksa veya anahtar yoksa varsayılan kapalı (browser yazdırma).
+// Açık yalnızca explicit true (migration 126 seed veya kullanıcı tercihi).
+// Sistem genelinde ayrıca report_menu_params.print-use-windows-printer-service.
 function normalizeConfig(v: Partial<RestaurantPrinterConfig> | null | undefined): RestaurantPrinterConfig {
   if (!v) {
-    return { printerProfiles: [], printerRoutes: [], printViaWindowsService: true };
+    return { printerProfiles: [], printerRoutes: [], printViaWindowsService: false };
   }
   return {
     printerProfiles: Array.isArray(v.printerProfiles) ? v.printerProfiles : [],
     printerRoutes: Array.isArray(v.printerRoutes) ? v.printerRoutes : [],
     commonPrinterId: v.commonPrinterId,
-    printViaWindowsService: v.printViaWindowsService !== false,
+    printViaWindowsService: v.printViaWindowsService === true,
   };
 }
 
@@ -33,7 +33,7 @@ export async function getRestaurantPrinterConfig(firmNr?: string): Promise<Resta
   const empty: RestaurantPrinterConfig = {
     printerProfiles: [],
     printerRoutes: [],
-    printViaWindowsService: true,
+    printViaWindowsService: false,
   };
   try {
     const { rows } = await postgres.query<{ value: RestaurantPrinterConfig }>(

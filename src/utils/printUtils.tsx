@@ -134,6 +134,7 @@ export const printInvoice = async (invoice: Invoice, typeLabel: string = 'FATURA
       }
     } catch (error) {
       console.warn('[printUtils] unified enqueue failed, local print fallback:', error);
+      toast.warning('Windows yazıcı servisine ulaşılamadı; tarayıcı yazdırma kullanılıyor.');
     }
 
     doc.open();

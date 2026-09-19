@@ -67,8 +67,6 @@ export function SupplierModule({ initialFilter = 'all' }: { initialFilter?: Cari
   const [suppliers, setSuppliers] = useState<Supplier[]>([]);
   const [loading, setLoading] = useState(true);
   const [searchQuery, setSearchQuery] = useState('');
-  /** Cari listesinde "Açıklama / Not" kolonuna göre ek filtre */
-  const [notesFilter, setNotesFilter] = useState('');
   const [showAddModal, setShowAddModal] = useState(false);
   const [editingSupplier, setEditingSupplier] = useState<Supplier | null>(null);
   /** CallerID ile açılırken önceden doldurulacak telefon. */
@@ -276,15 +274,13 @@ export function SupplierModule({ initialFilter = 'all' }: { initialFilter?: Cari
     if (accountTypeFilter === 'customer' && s.cardType !== 'customer') return false;
     if (accountTypeFilter === 'supplier' && s.cardType !== 'supplier') return false;
     const q = searchQuery.toLowerCase();
-    const nq = notesFilter.toLowerCase().trim();
-    const matchesMain =
+    return (
       (s.name?.toLowerCase() || '').includes(q) ||
       (s.code?.toLowerCase() || '').includes(q) ||
       (s.phone || '').includes(searchQuery) ||
       (s.email?.toLowerCase() || '').includes(q) ||
-      (s.id?.toLowerCase() || '').includes(q);
-    const matchesNotes = !nq || (s.notes?.toLowerCase() || '').includes(nq);
-    return matchesMain && matchesNotes;
+      (s.id?.toLowerCase() || '').includes(q)
+    );
   });
 
   /** Cari listesindeki demo kayıtlar (müşteri + tedarikçi) */
@@ -777,20 +773,20 @@ export function SupplierModule({ initialFilter = 'all' }: { initialFilter?: Cari
             const colorClass = side === 'B' ? 'text-red-600' : 'text-orange-600';
             const badgeClass = side === 'B' ? 'bg-red-100 text-red-700' : 'bg-orange-100 text-orange-700';
             return (
-              <div className="flex flex-col items-end gap-0.5 font-bold">
+              <div
+                className="flex flex-col items-end gap-0.5 font-bold"
+                title={hint || undefined}
+              >
                 <div className="flex items-center gap-1.5 flex-wrap justify-end">
                   <span className={colorClass}>
                     {formatNumber(Math.abs(val), mainDec, mainShowDec)} {mainCurrency}
                   </span>
                   {sideLabel && (
-                    <span className={`text-[8px] px-1.5 py-0.5 rounded font-black whitespace-nowrap ${badgeClass}`} title={hint}>
+                    <span className={`text-[8px] px-1.5 py-0.5 rounded font-black whitespace-nowrap ${badgeClass}`}>
                       {sideLabel}
                     </span>
                   )}
                 </div>
-                {hint && sideLabel && (
-                  <span className="text-[9px] text-gray-500 font-medium max-w-[140px] text-right leading-tight">{hint}</span>
-                )}
                 {rep != null && reportingCurrency !== mainCurrency && (
                   <span className="text-[10px] text-gray-400 font-medium">
                     ({formatNumber(rep, repDec, repShowDec)} {reportingCurrency})
@@ -1007,7 +1003,7 @@ export function SupplierModule({ initialFilter = 'all' }: { initialFilter?: Cari
               title="Eski programdan cari borç devri"
             >
               <ArrowRightLeft className="w-3 h-3" />
-              <span>Devir Fişi</span>
+              <span>{tm('devirFisi')}</span>
             </button>
             <button
               type="button"
@@ -1017,7 +1013,7 @@ export function SupplierModule({ initialFilter = 'all' }: { initialFilter?: Cari
               title="Excel modülü cari içe aktarım şablonu ile aynı sütunlar"
             >
               <Download className={`w-3 h-3 ${exportingExcel ? 'animate-pulse' : ''}`} />
-              <span>{tm('export')} Excel</span>
+              <span>{tm('exportToExcel')}</span>
             </button>
             <button
               type="button"
@@ -1026,7 +1022,7 @@ export function SupplierModule({ initialFilter = 'all' }: { initialFilter?: Cari
               title="Listeden 2 cari işaretleyip birleştirin"
             >
               <GitMerge className="w-3 h-3" />
-              <span>Birleştir{(isPartyTab ? partySelected : gridSelected).length > 0 ? ` (${(isPartyTab ? partySelected : gridSelected).length})` : ''}</span>
+              <span>{tm('partyMergeOpenButton')}{(isPartyTab ? partySelected : gridSelected).length > 0 ? ` (${(isPartyTab ? partySelected : gridSelected).length})` : ''}</span>
             </button>
             <button
               type="button"
@@ -1042,7 +1038,7 @@ export function SupplierModule({ initialFilter = 'all' }: { initialFilter?: Cari
               className="flex items-center gap-1 px-2 py-1 bg-orange-100 text-orange-800 hover:bg-orange-50 transition-colors text-[10px] font-bold"
             >
               <Truck className="w-3 h-3" />
-              <span>{tm('newSupplier') || tm('supplierLabel')}</span>
+              <span>{tm('newSupplier')}</span>
             </button>
           </div>
         </div>
@@ -1084,40 +1080,15 @@ export function SupplierModule({ initialFilter = 'all' }: { initialFilter?: Cari
             ))}
           </div>
           {!isPartyTab && (
-          <div className="flex flex-wrap items-center gap-2">
-            <div className="relative flex-1 min-w-[180px]">
-              <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" />
-              <input
-                type="text"
-                placeholder={tm('searchCurrentAccountPlaceholder')}
-                value={searchQuery}
-                onChange={e => setSearchQuery(e.target.value)}
-                className="w-full pl-10 pr-4 py-1.5 text-sm border border-gray-300 rounded focus:outline-none focus:ring-2 focus:ring-blue-500"
-              />
-            </div>
-            <div className="relative w-full sm:w-72">
-              <FileText className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-amber-500" />
-              <input
-                type="text"
-                placeholder={tm('description') + '…'}
-                value={notesFilter}
-                onChange={e => setNotesFilter(e.target.value)}
-                title={tm('description')}
-                aria-label={tm('description')}
-                className="w-full pl-10 pr-4 py-1.5 text-sm border border-gray-300 rounded focus:outline-none focus:ring-2 focus:ring-amber-400 bg-amber-50/30 placeholder:text-amber-700/60"
-              />
-              {notesFilter && (
-                <button
-                  type="button"
-                  onClick={() => setNotesFilter('')}
-                  className="absolute right-2 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-700 text-xs"
-                  title="Temizle"
-                  aria-label="Açıklama filtresini temizle"
-                >
-                  ✕
-                </button>
-              )}
-            </div>
+          <div className="relative flex-1 min-w-[180px]">
+            <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" />
+            <input
+              type="text"
+              placeholder={tm('searchCurrentAccountPlaceholder')}
+              value={searchQuery}
+              onChange={e => setSearchQuery(e.target.value)}
+              className="w-full pl-10 pr-4 py-1.5 text-sm border border-gray-300 rounded focus:outline-none focus:ring-2 focus:ring-blue-500"
+            />
           </div>
           )}
         </div>

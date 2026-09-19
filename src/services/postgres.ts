@@ -1515,6 +1515,13 @@ export class PostgresConnection {
       } catch (e: any) {
         console.warn('[connect] syncRuntimeSettingsFromPostgres:', e?.message || String(e));
       }
+      try {
+        const { loadReportMenuParams } = await import('./reportMenuParamsService');
+        await loadReportMenuParams();
+      } catch (e: unknown) {
+        const msg = e instanceof Error ? e.message : String(e);
+        console.warn('[connect] loadReportMenuParams:', msg);
+      }
     }
 
     this.startHybridAutoSync();

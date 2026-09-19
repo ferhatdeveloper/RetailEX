@@ -140,8 +140,25 @@ function currentSourceDb(): 'local' | 'remote' {
 }
 
 export async function isWindowsPrinterServiceEnabled(): Promise<boolean> {
-  const cfg = await getRestaurantPrinterConfig();
-  return cfg.printViaWindowsService === true;
+  const conf = await getRestaurantPrinterConfig();
+  // Sistem parametresi (web ile aynı anahtar) — mobil restoran config yanında kontrol
+  try {
+    const { rows } = await pgQuery<{ report_menu_params?: unknown }>(
+      `SELECT report_menu_params FROM public.system_settings WHERE id = 1 LIMIT 1`,
+      [],
+    );
+    const raw = rows[0]?.report_menu_params;
+    const params =
+      typeof raw === 'string'
+        ? (JSON.parse(raw) as Record<string, unknown>)
+        : raw && typeof raw === 'object'
+          ? (raw as Record<string, unknown>)
+          : null;
+    if (params?.['print-use-windows-printer-service'] === true) return true;
+  } catch {
+    /* kolon yok veya okunamadı — restoran config'e düş */
+  }
+  return conf.printViaWindowsService === true;
 }
 
 type KitchenJobInsert = {
