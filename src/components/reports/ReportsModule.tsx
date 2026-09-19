@@ -155,6 +155,20 @@ import {
   ReloadOutlined,
 } from '@ant-design/icons';
 
+/** Hizmet Bazlı Rapor — düz grid satırı (Malzemeler / DevEx). */
+type ServiceBreakdownFlatRow = {
+  id: string;
+  serviceName: string;
+  date: string;
+  time: string;
+  customerName: string;
+  staffName: string;
+  deviceName: string;
+  receiptNumber: string;
+  amount: number;
+  appointment?: BeautyAppointment;
+};
+
 const { Sider, Content } = Layout;
 
 /** Mobil çekmece: yönetim içerik alanı z-[10], üst çubuk z-[100] — menü bunların üstünde */
@@ -1875,6 +1889,43 @@ export function ReportsModule({
   );
 
   const serviceBreakdownGrouped = businessType === 'beauty' ? beautyServiceGrouped : erpServiceBreakdownGrouped;
+
+  const serviceBreakdownFlatRows = useMemo((): ServiceBreakdownFlatRow[] => {
+    const rows: ServiceBreakdownFlatRow[] = [];
+    for (const g of serviceBreakdownGrouped) {
+      for (const item of g.items) {
+        if (businessType === 'beauty') {
+          const a = item as BeautyAppointment;
+          rows.push({
+            id: String(a.id ?? `${g.serviceName}-${rows.length}`),
+            serviceName: g.serviceName,
+            date: String(a.date ?? a.appointment_date ?? ''),
+            time: String(a.time ?? a.appointment_time ?? ''),
+            customerName: String(a.customer_name ?? '').trim() || '—',
+            staffName: String(a.specialist_name ?? a.staff_name ?? '').trim() || '—',
+            deviceName: String(a.device_name ?? '').trim() || '—',
+            receiptNumber: '',
+            amount: Number(a.total_price ?? 0),
+            appointment: a,
+          });
+        } else {
+          const a = item as ErpServiceBreakdownLine;
+          rows.push({
+            id: a.id,
+            serviceName: a.serviceName || g.serviceName,
+            date: a.date,
+            time: '',
+            customerName: a.customerName,
+            staffName: a.staffName,
+            deviceName: a.deviceName,
+            receiptNumber: a.receiptNumber,
+            amount: a.amount,
+          });
+        }
+      }
+    }
+    return rows;
+  }, [serviceBreakdownGrouped, businessType]);
 
   /** Randevu iptalleri (ciro raporundan ayrı; ödeme alınmış olsa bile iptal statüsü) */
   const beautyCancelledGrouped = useMemo(() => {
@@ -7987,217 +8038,73 @@ export function ReportsModule({
 
                 {isBeautyServiceReportTab && (
                   <Spin spinning={loadingBeautyServiceReport}>
-                    {serviceBreakdownGrouped.length === 0 ? (
+                    {serviceBreakdownFlatRows.length === 0 ? (
                       <div className="bg-white rounded-xl border border-slate-200 p-12 text-center text-slate-500">
                         {tm('noDataFound')}
                       </div>
                     ) : (
-                      <div className="space-y-6">
-                        {serviceBreakdownGrouped.map((g) => {
-                          const rpt = reportFilters.forTab('beauty-service-report');
-                          const columnDefs = isErpServiceBreakdown
-                            ? [
-                                { key: 'date', label: tm('date'), type: 'date' as const, width: 'min-w-[140px]' },
-                                { key: 'customerName', label: tm('customer'), type: 'text' as const, width: 'min-w-[140px]' },
-                                { key: 'staffName', label: tm('cashier'), type: 'text' as const, width: 'min-w-[140px]' },
-                                { key: 'receiptNumber', label: tm('reportsThOrderNo'), type: 'text' as const, width: 'min-w-[120px]' },
-                                { key: 'amount', label: tm('amount'), type: 'number' as const, align: 'right' as const, width: 'min-w-[120px]' },
-                              ]
-                            : [
-                                { key: 'date', label: tm('date'), type: 'date' as const, width: 'min-w-[140px]' },
-                                { key: 'customer_name', label: tm('customer'), type: 'text' as const, width: 'min-w-[140px]' },
-                                { key: 'specialist_name', label: tm('bStaffView'), type: 'text' as const, width: 'min-w-[140px]' },
-                                { key: 'device_name', label: tm('bDeviceView'), type: 'text' as const, width: 'min-w-[140px]' },
-                                { key: 'total_price', label: tm('amount'), type: 'number' as const, align: 'right' as const, width: 'min-w-[120px]' },
-                              ];
-                          const visibleItems = rpt.filtered(
-                            g.items.map((it: any) => {
-                              if (isErpServiceBreakdown) {
-                                const a = it as ErpServiceBreakdownLine;
-                                return {
-                                  date: a.date,
-                                  customerName: a.customerName,
-                                  staffName: a.staffName,
-                                  receiptNumber: a.receiptNumber,
-                                  amount: a.amount,
-                                };
-                              }
-                              const a = it as BeautyAppointment;
-                              return {
-                                date: a.date ?? a.appointment_date ?? '',
-                                customer_name: a.customer_name ?? '',
-                                specialist_name: a.specialist_name ?? a.staff_name ?? '',
-                                device_name: a.device_name ?? '',
-                                total_price: a.total_price ?? 0,
-                              };
-                            }),
-                          );
-                          const visibleIndexes = new Set(visibleItems.map((v: any) => JSON.stringify(v)));
-                          return (
-                          <div
-                            key={g.serviceName}
-                            className="bg-white rounded-xl border border-slate-200 overflow-hidden shadow-sm"
-                          >
-                            <div
-                              role={isErpServiceBreakdown ? undefined : 'button'}
-                              tabIndex={isErpServiceBreakdown ? undefined : 0}
-                              className={`px-4 py-3 flex flex-wrap items-center justify-between gap-2 text-white font-bold select-none ${
-                                isErpServiceBreakdown ? '' : 'cursor-pointer hover:brightness-110 transition-[filter]'
-                              }`}
-                              style={{ backgroundColor: bizConfig.color }}
-                              title={isErpServiceBreakdown ? undefined : tm('beautyServiceHeaderCrmHint')}
-                              onClick={
-                                isErpServiceBreakdown
-                                  ? undefined
-                                  : () => {
-                                      const first = g.items[0] as BeautyAppointment;
-                                      if (first) setBeautyCrmModalAppointment(first);
-                                    }
-                              }
-                              onKeyDown={
-                                isErpServiceBreakdown
-                                  ? undefined
-                                  : (e) => {
-                                      if (e.key === 'Enter' || e.key === ' ') {
-                                        e.preventDefault();
-                                        const first = g.items[0] as BeautyAppointment;
-                                        if (first) setBeautyCrmModalAppointment(first);
-                                      }
-                                    }
-                              }
-                            >
-                              <span className="text-base">{g.serviceName}</span>
-                              <span className="text-sm font-semibold opacity-95">
-                                {tm('subTotal')}: {formatLedgerAmount(g.sum, reportCurrency)}
-                              </span>
-                            </div>
-                            <div className="overflow-x-auto">
-                              <table className="w-full text-[13px]">
-                                <thead>
-                                  <ReportColumnFilters
-                                    columns={columnDefs}
-                                    values={rpt.values}
-                                    onFilterChange={rpt.setFilter}
-                                    onClear={rpt.clearAll}>
-                                  <tr className="bg-slate-300 border-b border-slate-400 text-[14px] uppercase tracking-wide text-slate-950">
-                                    <th className="px-4 py-3 font-black text-left">{tm('date')}</th>
-                                    <th className="px-4 py-3 font-black text-left">{tm('customer')}</th>
-                                    {isErpServiceBreakdown ? (
-                                      <>
-                                        <th className="px-4 py-3 font-black text-left">{tm('cashier')}</th>
-                                        <th className="px-4 py-3 font-black text-left">{tm('reportsThOrderNo')}</th>
-                                      </>
-                                    ) : (
-                                      <>
-                                        <th className="px-4 py-3 font-black text-left">{tm('bStaffView')}</th>
-                                        <th className="px-4 py-3 font-black text-left">{tm('bDeviceView')}</th>
-                                      </>
-                                    )}
-                                    <th className="px-4 py-3 font-black text-right">{tm('amount')}</th>
-                                  </tr>
-                                  </ReportColumnFilters>
-                                </thead>
-                                <tbody className="divide-y divide-slate-100">
-                                  {g.items.filter((row: any) => {
-                                    if (isErpServiceBreakdown) {
-                                      const a = row as ErpServiceBreakdownLine;
-                                      const v = {
-                                        date: a.date,
-                                        customerName: a.customerName,
-                                        staffName: a.staffName,
-                                        receiptNumber: a.receiptNumber,
-                                        amount: a.amount,
-                                      };
-                                      return visibleIndexes.has(JSON.stringify(v));
-                                    }
-                                    const a = row as BeautyAppointment;
-                                    const v = {
-                                      date: a.date ?? a.appointment_date ?? '',
-                                      customer_name: a.customer_name ?? '',
-                                      specialist_name: a.specialist_name ?? a.staff_name ?? '',
-                                      device_name: a.device_name ?? '',
-                                      total_price: a.total_price ?? 0,
-                                    };
-                                    return visibleIndexes.has(JSON.stringify(v));
-                                  }).map((row) => {
-                                    if (isErpServiceBreakdown) {
-                                      const a = row as ErpServiceBreakdownLine;
-                                      return (
-                                        <tr key={a.id} className="hover:bg-slate-50/90">
-                                          <td className="px-4 py-3 text-left tabular-nums text-slate-900 whitespace-nowrap font-medium">
-                                            {formatReportDateCell(a.date)}
-                                          </td>
-                                          <td className="px-4 py-3 text-left text-slate-900 font-medium">{a.customerName}</td>
-                                          <td className="px-4 py-3 text-left text-slate-900 font-medium">{a.staffName}</td>
-                                          <td className="px-4 py-3 text-left text-slate-900 font-medium">{a.receiptNumber}</td>
-                                          <td className="px-4 py-3 text-right tabular-nums font-semibold text-slate-950">
-                                            {formatLedgerAmount(a.amount, reportCurrency)}
-                                          </td>
-                                        </tr>
-                                      );
-                                    }
-                                    const a = row as BeautyAppointment;
-                                    return (
-                                      <tr
-                                        key={a.id}
-                                        role="button"
-                                        tabIndex={0}
-                                        onClick={() => setBeautyCrmModalAppointment(a)}
-                                        onKeyDown={(e) => {
-                                          if (e.key === 'Enter' || e.key === ' ') {
-                                            e.preventDefault();
-                                            setBeautyCrmModalAppointment(a);
-                                          }
-                                        }}
-                                        className="cursor-pointer hover:bg-pink-50/90"
-                                      >
-                                        <td className="px-4 py-3 text-left tabular-nums text-slate-900 whitespace-nowrap font-medium">
-                                          {formatReportDateCell(
-                                            a.date ?? a.appointment_date,
-                                            a.time ?? a.appointment_time,
-                                          )}
-                                        </td>
-                                        <td className="px-4 py-3 text-left text-slate-900 font-medium">
-                                          {String(a.customer_name ?? '').trim() || '—'}
-                                        </td>
-                                        <td className="px-4 py-3 text-left text-slate-900 font-medium">
-                                          {String(a.specialist_name ?? a.staff_name ?? '').trim() || '—'}
-                                        </td>
-                                        <td className="px-4 py-3 text-left text-slate-900 font-medium">
-                                          {String(a.device_name ?? '').trim() || '—'}
-                                        </td>
-                                        <td className="px-4 py-3 text-right tabular-nums font-semibold text-slate-950">
-                                          {formatLedgerAmount(Number(a.total_price ?? 0), reportCurrency)}
-                                        </td>
-                                      </tr>
-                                    );
-                                  })}
-                                </tbody>
-                                <ReportTableFooter
-                                  rows={visibleItems as any[]}
-                                  columns={
-                                    isErpServiceBreakdown
-                                      ? [
-                                          { key: 'date', label: tm('date'), align: 'left' },
-                                          { key: 'customerName', label: tm('customer'), align: 'left' },
-                                          { key: 'staffName', label: tm('cashier'), align: 'left' },
-                                          { key: 'receiptNumber', label: tm('reportsThOrderNo'), align: 'left' },
-                                          { key: 'amount', label: tm('amount'), aggregate: 'sum', align: 'right', formatter: (v) => formatLedgerAmount(v, reportCurrency) },
-                                        ]
-                                      : [
-                                          { key: 'date', label: tm('date'), align: 'left' },
-                                          { key: 'customer_name', label: tm('customer'), align: 'left' },
-                                          { key: 'specialist_name', label: tm('bStaffView'), align: 'left' },
-                                          { key: 'device_name', label: tm('bDeviceView'), align: 'left' },
-                                          { key: 'total_price', label: tm('amount'), aggregate: 'sum', align: 'right', formatter: (v) => formatLedgerAmount(v, reportCurrency) },
-                                        ]
-                                  }
-                                />
-                              </table>
-                            </div>
-                          </div>
-                          );
-                        })}
+                      <div className="bg-white rounded-xl border border-slate-200 overflow-hidden shadow-sm p-2">
+                        <ReportColumnTable
+                          data={serviceBreakdownFlatRows}
+                          height={560}
+                          footerLabel={tm('grandTotal')}
+                          onRowClick={
+                            isErpServiceBreakdown
+                              ? undefined
+                              : (row) => {
+                                  if (row.appointment) setBeautyCrmModalAppointment(row.appointment);
+                                }
+                          }
+                          columns={
+                            (isErpServiceBreakdown
+                              ? [
+                                  { key: 'serviceName', header: tm('service'), size: 180 },
+                                  {
+                                    key: 'date',
+                                    header: tm('date'),
+                                    type: 'date',
+                                    size: 140,
+                                    cell: (row) => formatReportDateCell(row.date),
+                                  },
+                                  { key: 'customerName', header: tm('customer'), size: 160 },
+                                  { key: 'staffName', header: tm('cashier'), size: 140 },
+                                  { key: 'receiptNumber', header: tm('reportsThOrderNo'), size: 120 },
+                                  {
+                                    key: 'amount',
+                                    header: tm('amount'),
+                                    type: 'number',
+                                    align: 'right',
+                                    size: 130,
+                                    footerSum: true,
+                                    footerFormat: (n) => formatLedgerAmount(n, reportCurrency),
+                                    cell: (row) => formatLedgerAmount(row.amount, reportCurrency),
+                                  },
+                                ]
+                              : [
+                                  { key: 'serviceName', header: tm('service'), size: 180 },
+                                  {
+                                    key: 'date',
+                                    header: tm('date'),
+                                    type: 'date',
+                                    size: 150,
+                                    cell: (row) => formatReportDateCell(row.date, row.time || undefined),
+                                  },
+                                  { key: 'customerName', header: tm('customer'), size: 160 },
+                                  { key: 'staffName', header: tm('bStaffView'), size: 140 },
+                                  { key: 'deviceName', header: tm('bDeviceView'), size: 140 },
+                                  {
+                                    key: 'amount',
+                                    header: tm('amount'),
+                                    type: 'number',
+                                    align: 'right',
+                                    size: 130,
+                                    footerSum: true,
+                                    footerFormat: (n) => formatLedgerAmount(n, reportCurrency),
+                                    cell: (row) => formatLedgerAmount(row.amount, reportCurrency),
+                                  },
+                                ]) as ReportColumnTableCol<ServiceBreakdownFlatRow>[]
+                          }
+                        />
                       </div>
                     )}
                   </Spin>

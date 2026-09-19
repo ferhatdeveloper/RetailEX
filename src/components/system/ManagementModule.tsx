@@ -181,6 +181,13 @@ import { usePermission } from '../../shared/hooks/usePermission';
 import { getStaticMenuSections } from '../../config/staticMenuConfig';
 import { remapLegacyStaticHiddenModules, subscribeRuntimeHiddenModules } from '../../services/menuPreferencesRuntime';
 import { syncMenuPreferences } from '../../services/menuPreferencesService';
+import {
+  getRuntimeReportMenuParams,
+  isMenuItemHiddenByParams,
+  loadReportMenuParams,
+  subscribeReportMenuParams,
+  type ReportMenuParams,
+} from '../../services/reportMenuParamsService';
 
 // Custom z-index constants to ensure consistent layering
 const Z_INDEX = {
@@ -410,10 +417,31 @@ export function ManagementModule({
     return localStorage.getItem('retailos_rtl_mode') === 'true';
   });
   const [hiddenModules, setHiddenModules] = useState<string[]>([]);
+  const [reportMenuParams, setReportMenuParams] = useState<ReportMenuParams>(() =>
+    getRuntimeReportMenuParams(),
+  );
 
   useEffect(() => {
     return subscribeRuntimeHiddenModules(setHiddenModules);
   }, []);
+
+  useEffect(() => {
+    let cancelled = false;
+    void loadReportMenuParams().then((p) => {
+      if (!cancelled) setReportMenuParams(p);
+    });
+    const unsub = subscribeReportMenuParams((p) => setReportMenuParams(p));
+    return () => {
+      cancelled = true;
+      unsub();
+    };
+  }, []);
+
+  useEffect(() => {
+    if (isMenuItemHiddenByParams(String(currentScreen), reportMenuParams)) {
+      setCurrentScreen('dashboard');
+    }
+  }, [currentScreen, reportMenuParams]);
 
 
   // Generate menu with current language translations and convert to expected format
@@ -812,6 +840,10 @@ export function ManagementModule({
             return false;
           }
 
+          if (item.id != null && isMenuItemHiddenByParams(String(item.id), reportMenuParams)) {
+            return false;
+          }
+
           const isIntegrationsItem = item.id === 'integrations';
 
           // 1. Check hidden_modules from config (DeskApp: Entegrasyonlar menüde kalsın)
@@ -847,7 +879,7 @@ export function ManagementModule({
       const items = section.items ?? section.children ?? [];
       return items.length > 0;
     });
-  }, [dynamicMenuSections, staticMenuSections, effectiveHiddenModules, hasPermission, isAdmin, gibEdocumentMenuEnabled, isTauri]);
+  }, [dynamicMenuSections, staticMenuSections, effectiveHiddenModules, hasPermission, isAdmin, gibEdocumentMenuEnabled, isTauri, reportMenuParams]);
 
   // Menü güncellemelerini dinle - useCallback ile sarmalanmış
   const handleMenuUpdate = useCallback((e?: CustomEvent) => {

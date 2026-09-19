@@ -1,8 +1,8 @@
--- Rapor menüsü parametreleri: güzellik anket / aranmayanlar raporlarının menü görünürlüğü
+-- Menü görünürlük parametreleri: güzellik anket/aranmayanlar + sanal santral + fiyat değişimi
 ALTER TABLE public.system_settings
   ADD COLUMN IF NOT EXISTS report_menu_params JSONB DEFAULT '{}'::jsonb;
 
 COMMENT ON COLUMN public.system_settings.report_menu_params IS
-  'Rapor menüsü parametreleri (varsayılan kapalı): beauty-overdue-uncalled-report, beauty-survey-report, beauty-survey-trend-report, beauty-survey-staff-report, beauty-survey-service-report, beauty-survey-nps-report, beauty-survey-comments-report → boolean.';
+  'Menü görünürlük parametreleri (varsayılan kapalı): beauty-overdue-uncalled-report, beauty-survey-*, virtual-pbx-caller-id, stock-price-change-slips → boolean.';
 
 NOTIFY pgrst, 'reload schema';

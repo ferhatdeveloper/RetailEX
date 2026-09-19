@@ -28,7 +28,10 @@ import { RestaurantCallerIdSettings } from '../restaurant/components/RestaurantC
 import { RECEIPT_PRODUCT_NAME_FIELD_OPTIONS } from '../../utils/receiptProductName';
 import {
   getRuntimeReportMenuParams,
+  loadReportMenuParams,
+  subscribeReportMenuParams,
   type ReportMenuParamKey,
+  type ReportMenuParams,
 } from '../../services/reportMenuParamsService';
 
 type SystemView =
@@ -81,6 +84,7 @@ export function SystemManagementModule({ routeHint }: SystemManagementModuleProp
   const { isMobile } = useResponsive();
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
   const [sidebarVisible, setSidebarVisible] = useState(readSidebarVisiblePreference);
+  const [menuParams, setMenuParams] = useState<ReportMenuParams>(() => getRuntimeReportMenuParams());
 
   const setSidebarVisiblePersisted = useCallback((visible: boolean) => {
     setSidebarVisible(visible);
@@ -103,6 +107,26 @@ export function SystemManagementModule({ routeHint }: SystemManagementModuleProp
     if (!isMobile) setMobileMenuOpen(false);
   }, [isMobile]);
 
+  useEffect(() => {
+    let cancelled = false;
+    void loadReportMenuParams().then((p) => {
+      if (!cancelled) setMenuParams(p);
+    });
+    const unsub = subscribeReportMenuParams((p) => setMenuParams(p));
+    return () => {
+      cancelled = true;
+      unsub();
+    };
+  }, []);
+
+  const showVirtualPbx = menuParams['virtual-pbx-caller-id'] === true;
+
+  useEffect(() => {
+    if (!showVirtualPbx && currentView === 'callerIdVirtualPbx') {
+      setCurrentView('userManagement');
+    }
+  }, [showVirtualPbx, currentView]);
+
   const menuItems = [
     { id: 'userManagement' as const, label: 'Kullanıcı Yönetimi', icon: Users, color: 'blue' },
     { id: 'roleAuthorization' as const, label: 'Rol & Yetkilendirme', icon: Shield, color: 'purple' },
@@ -111,7 +135,9 @@ export function SystemManagementModule({ routeHint }: SystemManagementModuleProp
     { id: 'invoiceLabelDesigner' as const, label: tm('invoiceLabelDesigner'), icon: FileText, color: 'indigo' },
     { id: 'printerSettings' as const, label: 'Yazıcı Ayarları', icon: Printer, color: 'slate' },
     { id: 'printOptions' as const, label: 'Yazdırma Seçenekleri', icon: Printer, color: 'blue' },
-    { id: 'callerIdVirtualPbx' as const, label: 'Sanal santral (Caller ID)', icon: Phone, color: 'violet' },
+    ...(showVirtualPbx
+      ? [{ id: 'callerIdVirtualPbx' as const, label: tm('menuParamVirtualPbx'), icon: Phone, color: 'violet' }]
+      : []),
     { id: 'dataBroadcast' as const, label: 'Bilgi Gönder/AI Merkezi', icon: Radio, color: 'orange' },
     { id: 'pendingPosDevices' as const, label: 'Kasa Cihazları', icon: Monitor, color: 'amber' },
     { id: 'backupRestore' as const, label: 'Yedekleme/Geri Yükleme', icon: HardDrive, color: 'indigo' },
@@ -513,6 +539,11 @@ function DefinitionsParametersView() {
     { key: 'beauty-survey-comments-report', labelKey: 'bSurveyCommentsReportMenu' },
   ];
 
+  const featureParamRows: { key: ReportMenuParamKey; labelKey: string }[] = [
+    { key: 'virtual-pbx-caller-id', labelKey: 'menuParamVirtualPbx' },
+    { key: 'stock-price-change-slips', labelKey: 'menuParamStockPriceChange' },
+  ];
+
   const toggleParam = (key: ReportMenuParamKey) => {
     setParams((prev) => ({ ...prev, [key]: !prev[key] }));
   };
@@ -531,6 +562,37 @@ function DefinitionsParametersView() {
     }
   };
 
+  const renderParamList = (rows: { key: ReportMenuParamKey; labelKey: string }[]) => (
+    <ul className="divide-y divide-gray-100">
+      {rows.map((row) => {
+        const on = params[row.key] === true;
+        return (
+          <li key={row.key} className="flex items-center justify-between gap-4 px-4 py-3">
+            <div className="min-w-0">
+              <p className="text-sm font-medium text-gray-900 truncate">{tm(row.labelKey)}</p>
+              <p className="text-[11px] text-gray-400 font-mono truncate">{row.key}</p>
+            </div>
+            <button
+              type="button"
+              role="switch"
+              aria-checked={on}
+              onClick={() => toggleParam(row.key)}
+              className={`relative inline-flex h-7 w-12 shrink-0 items-center rounded-full transition-colors ${
+                on ? 'bg-green-600' : 'bg-gray-300'
+              }`}
+            >
+              <span
+                className={`inline-block h-5 w-5 transform rounded-full bg-white shadow transition-transform ${
+                  on ? 'translate-x-6' : 'translate-x-1'
+                }`}
+              />
+            </button>
+          </li>
+        );
+      })}
+    </ul>
+  );
+
   return (
     <div className="p-6 space-y-6">
       <div className="bg-white rounded-lg shadow-sm border p-6">
@@ -540,48 +602,30 @@ function DefinitionsParametersView() {
         </h3>
         <p className="text-sm text-gray-500 mb-6">{tm('parameterSettingsSubtitle')}</p>
 
-        <div className="border border-gray-200 rounded-lg overflow-hidden">
-          <div className="px-4 py-3 bg-gray-50 border-b border-gray-200">
-            <h4 className="text-sm font-semibold text-gray-800">{tm('reportMenuParamsSection')}</h4>
-            <p className="text-xs text-gray-500 mt-0.5">{tm('reportMenuParamsHint')}</p>
+        {loading ? (
+          <div className="flex items-center justify-center gap-2 py-10 text-gray-500 text-sm">
+            <Loader2 className="h-5 w-5 animate-spin" />
+            {tm('loading')}
           </div>
-
-          {loading ? (
-            <div className="flex items-center justify-center gap-2 py-10 text-gray-500 text-sm">
-              <Loader2 className="h-5 w-5 animate-spin" />
-              {tm('loading')}
+        ) : (
+          <div className="space-y-4">
+            <div className="border border-gray-200 rounded-lg overflow-hidden">
+              <div className="px-4 py-3 bg-gray-50 border-b border-gray-200">
+                <h4 className="text-sm font-semibold text-gray-800">{tm('reportMenuParamsSection')}</h4>
+                <p className="text-xs text-gray-500 mt-0.5">{tm('reportMenuParamsHint')}</p>
+              </div>
+              {renderParamList(reportParamRows)}
             </div>
-          ) : (
-            <ul className="divide-y divide-gray-100">
-              {reportParamRows.map((row) => {
-                const on = params[row.key] === true;
-                return (
-                  <li key={row.key} className="flex items-center justify-between gap-4 px-4 py-3">
-                    <div className="min-w-0">
-                      <p className="text-sm font-medium text-gray-900 truncate">{tm(row.labelKey)}</p>
-                      <p className="text-[11px] text-gray-400 font-mono truncate">{row.key}</p>
-                    </div>
-                    <button
-                      type="button"
-                      role="switch"
-                      aria-checked={on}
-                      onClick={() => toggleParam(row.key)}
-                      className={`relative inline-flex h-7 w-12 shrink-0 items-center rounded-full transition-colors ${
-                        on ? 'bg-green-600' : 'bg-gray-300'
-                      }`}
-                    >
-                      <span
-                        className={`inline-block h-5 w-5 transform rounded-full bg-white shadow transition-transform ${
-                          on ? 'translate-x-6' : 'translate-x-1'
-                        }`}
-                      />
-                    </button>
-                  </li>
-                );
-              })}
-            </ul>
-          )}
-        </div>
+
+            <div className="border border-gray-200 rounded-lg overflow-hidden">
+              <div className="px-4 py-3 bg-gray-50 border-b border-gray-200">
+                <h4 className="text-sm font-semibold text-gray-800">{tm('featureMenuParamsSection')}</h4>
+                <p className="text-xs text-gray-500 mt-0.5">{tm('featureMenuParamsHint')}</p>
+              </div>
+              {renderParamList(featureParamRows)}
+            </div>
+          </div>
+        )}
 
         <div className="mt-4 flex flex-wrap items-center gap-3">
           <button

@@ -313,17 +313,6 @@ export function ProductManagement({ products, setProducts }: ProductManagementPr
     });
   }, [displayProducts, searchQuery, categoryFilter, showServicesOnly, showTodayOnly, duplicateDetectBy, duplicateKeys]);
 
-  /** Görünen listedeki belge Satış/Alış toplamı (dip indirim ölçekli API). */
-  const listDocumentMoneyTotals = useMemo(() => {
-    let sales = 0;
-    let purchased = 0;
-    for (const p of filteredProducts) {
-      sales += Number(p.totalSales) || 0;
-      purchased += Number(p.totalPurchased) || 0;
-    }
-    return { sales, purchased, count: filteredProducts.length };
-  }, [filteredProducts]);
-
   const mobilePageCount = Math.max(1, Math.ceil(filteredProducts.length / MOBILE_PAGE_SIZE));
   const mobilePagedProducts = useMemo(() => {
     const start = mobilePage * MOBILE_PAGE_SIZE;
@@ -899,17 +888,6 @@ export function ProductManagement({ products, setProducts }: ProductManagementPr
                   })
                 )}
               </div>
-              <div className="shrink-0 border-t-2 border-blue-300 bg-blue-50 px-3 py-2 text-[11px] font-bold text-blue-900 flex flex-wrap items-center gap-x-4 gap-y-1 tabular-nums">
-                <span>{tm('total')} ({listDocumentMoneyTotals.count})</span>
-                <span>
-                  {tm('salesTotal')}: {formatCurrency(listDocumentMoneyTotals.sales, 2, false)}
-                </span>
-                {showPurchasePricing ? (
-                  <span>
-                    {tm('purchaseTotal')}: {formatCurrency(listDocumentMoneyTotals.purchased, 2, false)}
-                  </span>
-                ) : null}
-              </div>
               <div className="shrink-0 border-t border-gray-200 px-2 py-2 flex items-center gap-2 bg-gray-50">
                 <button
                   type="button"
@@ -939,19 +917,7 @@ export function ProductManagement({ products, setProducts }: ProductManagementPr
               enableColumnVisibility
               showColumnVisibilityToolbar={false}
               enableExcelExport={false}
-              autoFooterSums
-              footerLabel={
-                <span className="inline-flex flex-wrap items-center gap-x-3 gap-y-0.5">
-                  <span>
-                    {tm('salesTotal')}: {formatCurrency(listDocumentMoneyTotals.sales, 2, false)}
-                  </span>
-                  {showPurchasePricing ? (
-                    <span>
-                      {tm('purchaseTotal')}: {formatCurrency(listDocumentMoneyTotals.purchased, 2, false)}
-                    </span>
-                  ) : null}
-                </span>
-              }
+              autoFooterSums={false}
               columnVisibility={columnVisibility}
               onColumnVisibilityChange={setColumnVisibility}
               onRowContextMenu={(e, product) => {

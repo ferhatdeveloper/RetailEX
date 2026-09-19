@@ -89,7 +89,7 @@ export const MENU_SECTIONS: MenuSection[] = [
         children: [
           { id: 'stockmovements', label: 'Malzeme Yönetim Fişleri', screen: 'stockmovements' },
           { id: 'stok-devir', label: 'Stok Devir Fişi', screen: 'stok-devir' },
-          { id: 'stock-price', label: 'Stok Fiyat Değişim Fişleri', screen: 'stock-price-change-slips' },
+          // stock-price-change-slips: varsayılan kapalı (web report_menu_params); mobilde menüde yok
         ],
       },
       {
@@ -346,7 +346,7 @@ export const MENU_SECTIONS: MenuSection[] = [
       { id: 'invoice-label', label: 'Fatura Etiket Tasarımı', screen: 'invoice-label-designer' },
       { id: 'roleauth', label: 'Rol & Yetkilendirme', screen: 'roleauth' },
       { id: 'menumanagement', label: 'Menü Yönetimi', screen: 'menumanagement' },
-      { id: 'virtual-pbx', label: 'Sanal santral (Caller ID)', screen: 'virtual-pbx-caller-id' },
+      // virtual-pbx-caller-id: varsayılan kapalı (web report_menu_params); mobilde menüde yok
       { id: 'pendingpos', label: 'Kasa Cihazları', screen: 'pendingposdevices' },
       { id: 'supabase-mig', label: 'Supabase Veri Aktarımı', screen: 'supabase-migration' },
       { id: 'backup', label: 'Yedekleme', screen: 'backuprestore' },

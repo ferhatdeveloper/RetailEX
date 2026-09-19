@@ -22,6 +22,13 @@ import {
   layeredCostForProduct,
   type LayeredInventoryValuation,
 } from '../../services/layeredInventoryCost';
+import {
+  getRuntimeReportMenuParams,
+  isMenuItemHiddenByParams,
+  loadReportMenuParams,
+  subscribeReportMenuParams,
+  type ReportMenuParams,
+} from '../../services/reportMenuParamsService';
 
 const DASHBOARD_SHORTCUTS_LS = 'retailos_dashboard_shortcut_ids';
 
@@ -62,6 +69,26 @@ export function DashboardModule({ products, customers, sales, setCurrentScreen, 
   const [selectedActions, setSelectedActions] = useState<string[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [layeredValuation, setLayeredValuation] = useState<LayeredInventoryValuation | null>(null);
+  const [reportMenuParams, setReportMenuParams] = useState<ReportMenuParams>(() =>
+    getRuntimeReportMenuParams(),
+  );
+
+  useEffect(() => {
+    let cancelled = false;
+    void loadReportMenuParams().then((p) => {
+      if (!cancelled) setReportMenuParams(p);
+    });
+    const unsub = subscribeReportMenuParams((p) => setReportMenuParams(p));
+    return () => {
+      cancelled = true;
+      unsub();
+    };
+  }, []);
+
+  const isDashboardIdHidden = useCallback(
+    (id: string) => isMenuItemHiddenByParams(id, reportMenuParams),
+    [reportMenuParams],
+  );
 
   const baseActions = useMemo(() => {
     const m = t.menu;
@@ -95,17 +122,18 @@ export function DashboardModule({ products, customers, sales, setCurrentScreen, 
     ];
   }, [t]);
 
-  // Filter actions based on menuMode + mevzuat (IQ: GİB e-belge kısayolu yok)
+  // Filter actions based on menuMode + mevzuat (IQ: GİB e-belge kısayolu yok) + menü parametreleri
   const allAvailableActions = useMemo(() => {
     const gibOk =
       selectedFirm == null ? true : isGibEdocumentUiEnabled(selectedFirm.regulatory_region);
-    const source = gibOk ? baseActions : baseActions.filter((a: any) => a.id !== 'etransform');
+    let source = gibOk ? baseActions : baseActions.filter((a: any) => a.id !== 'etransform');
+    source = source.filter((a: any) => !isDashboardIdHidden(String(a.id)));
     if (menuMode === 1) {
       const hiddenIds = ['crm', 'production', 'quality', 'hr', 'settings', 'integrations', 'budget'];
       return source.filter((a: any) => !hiddenIds.includes(a.id));
     }
     return source;
-  }, [menuMode, selectedFirm, baseActions]);
+  }, [menuMode, selectedFirm, baseActions, isDashboardIdHidden]);
 
   // Load shortcuts: Tauri → SQLite komutları; web → localStorage
   useEffect(() => {
@@ -270,8 +298,19 @@ export function DashboardModule({ products, customers, sales, setCurrentScreen, 
   };
 
   const currentQuickActions = useMemo(() => {
-    return selectedActions.map((id: string) => allAvailableActions.find((a: any) => a.id === id)).filter(Boolean) as typeof allAvailableActions;
-  }, [selectedActions, allAvailableActions]);
+    return selectedActions
+      .filter((id: string) => !isDashboardIdHidden(id))
+      .map((id: string) => allAvailableActions.find((a: any) => a.id === id))
+      .filter(Boolean) as typeof allAvailableActions;
+  }, [selectedActions, allAvailableActions, isDashboardIdHidden]);
+
+  // Parametre kapalıysa kayıtlı kısayollardan da düş
+  useEffect(() => {
+    setSelectedActions((prev) => {
+      const next = prev.filter((id) => !isDashboardIdHidden(id));
+      return next.length === prev.length ? prev : next;
+    });
+  }, [isDashboardIdHidden]);
 
   // Group actions by category
   const groupedActions = useMemo(() => {
@@ -420,15 +459,16 @@ export function DashboardModule({ products, customers, sales, setCurrentScreen, 
   const COLORS = ['#3B82F6', '#10B981', '#F59E0B', '#EF4444', '#8B5CF6', '#EC4899', '#14B8A6', '#F97316'];
 
   const deepInsightPanels = useMemo(
-    () => [
-      { id: 'profit-dashboard', title: 'Kar panosu', blurb: 'Ciro, marj ve kârlılık özeti', Icon: TrendingUp, grad: 'from-emerald-500 to-teal-600' },
-      { id: 'reports', title: 'Rapor merkezi', blurb: 'Satış, stok ve operasyon raporları', Icon: BarChart3, grad: 'from-indigo-500 to-violet-600' },
-      { id: 'new-modules', title: 'Modül vitrini', blurb: 'Yeni ve gelişmiş fonksiyonlar', Icon: Sparkles, grad: 'from-amber-500 to-orange-600' },
-      { id: 'accounting-mgmt', title: 'Muhasebe panosu', blurb: 'Mizan, bilanço, gelir tablosu', Icon: Calculator, grad: 'from-slate-600 to-slate-800' },
-      { id: 'product-analytics', title: 'Ürün analitiği', blurb: 'SKU, kategori ve fiyat performansı', Icon: Target, grad: 'from-pink-500 to-rose-600' },
-      { id: 'store-management', title: 'Mağaza paneli', blurb: 'Şube ve mağaza operasyonları', Icon: Store, grad: 'from-cyan-500 to-blue-600' },
-    ],
-    []
+    () =>
+      [
+        { id: 'profit-dashboard', title: 'Kar panosu', blurb: 'Ciro, marj ve kârlılık özeti', Icon: TrendingUp, grad: 'from-emerald-500 to-teal-600' },
+        { id: 'reports', title: 'Rapor merkezi', blurb: 'Satış, stok ve operasyon raporları', Icon: BarChart3, grad: 'from-indigo-500 to-violet-600' },
+        { id: 'new-modules', title: 'Modül vitrini', blurb: 'Yeni ve gelişmiş fonksiyonlar', Icon: Sparkles, grad: 'from-amber-500 to-orange-600' },
+        { id: 'accounting-mgmt', title: 'Muhasebe panosu', blurb: 'Mizan, bilanço, gelir tablosu', Icon: Calculator, grad: 'from-slate-600 to-slate-800' },
+        { id: 'product-analytics', title: 'Ürün analitiği', blurb: 'SKU, kategori ve fiyat performansı', Icon: Target, grad: 'from-pink-500 to-rose-600' },
+        { id: 'store-management', title: 'Mağaza paneli', blurb: 'Şube ve mağaza operasyonları', Icon: Store, grad: 'from-cyan-500 to-blue-600' },
+      ].filter((p) => !isDashboardIdHidden(p.id)),
+    [isDashboardIdHidden]
   );
 
   return (

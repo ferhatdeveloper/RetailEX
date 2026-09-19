@@ -1,11 +1,11 @@
 /**
- * Rapor menüsü parametreleri: hangi güzellik/anket raporları sol menüde görünsün.
+ * Menü görünürlük parametreleri: güzellik/anket raporları + sanal santral + fiyat değişimi.
  * Kaynak: PostgreSQL `system_settings.report_menu_params` ↔ localStorage önbellek.
- * Varsayılan: tüm parametreli raporlar kapalı (menüde gizli).
+ * Varsayılan: tüm parametreli menü öğeleri kapalı (gizli).
  */
 import { postgres, DB_SETTINGS } from './postgres';
 
-/** Menüde parametre ile aç/kapa edilen rapor sekmeleri */
+/** Menüde parametre ile aç/kapa edilen ekran / rapor sekmeleri */
 export const REPORT_MENU_PARAM_KEYS = [
   'beauty-overdue-uncalled-report',
   'beauty-survey-report',
@@ -14,6 +14,8 @@ export const REPORT_MENU_PARAM_KEYS = [
   'beauty-survey-service-report',
   'beauty-survey-nps-report',
   'beauty-survey-comments-report',
+  'virtual-pbx-caller-id',
+  'stock-price-change-slips',
 ] as const;
 
 export type ReportMenuParamKey = (typeof REPORT_MENU_PARAM_KEYS)[number];
@@ -30,6 +32,8 @@ const DEFAULT_PARAMS: ReportMenuParams = {
   'beauty-survey-service-report': false,
   'beauty-survey-nps-report': false,
   'beauty-survey-comments-report': false,
+  'virtual-pbx-caller-id': false,
+  'stock-price-change-slips': false,
 };
 
 type Listener = (params: ReportMenuParams) => void;
@@ -58,12 +62,15 @@ export function isReportMenuParamKey(key: string): key is ReportMenuParamKey {
   return (REPORT_MENU_PARAM_KEYS as readonly string[]).includes(key);
 }
 
-/** Parametre kapalıysa menüden gizlenmeli */
+/** Parametre kapalıysa menüden gizlenmeli (rapor sekmesi veya yönetim ekranı) */
 export function isReportTabHiddenByParams(tabKey: string, params?: ReportMenuParams): boolean {
   if (!isReportMenuParamKey(tabKey)) return false;
   const p = params ?? getRuntimeReportMenuParams();
   return p[tabKey] !== true;
 }
+
+/** Alias — yönetim / stok menü öğeleri için */
+export const isMenuItemHiddenByParams = isReportTabHiddenByParams;
 
 function notify(params: ReportMenuParams): void {
   listeners.forEach((fn) => {
