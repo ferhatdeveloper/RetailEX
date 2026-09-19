@@ -30,4 +30,9 @@ describe('sqlFirmScopedCardMatch', () => {
     expect(sql).toContain('c.firm_nr');
     expect(sql).toContain('$1');
   });
+
+  it('rakamsız firm_nr satırlarını hariç tutmaz (JS cardFirmNrMatches ile uyumlu)', () => {
+    const sql = sqlFirmScopedCardMatch('c', '$1');
+    expect(sql).toMatch(/length\(.*\) = 0 THEN NULL/s);
+  });
 });

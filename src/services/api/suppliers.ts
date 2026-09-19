@@ -17,6 +17,8 @@ import {
   computeSupplierBalanceFromLedger,
   normalizeFirmTableNr,
   accountLedgerNameMatch,
+  cardFirmNrMatches,
+  sqlFirmScopedCardMatch,
 } from './accountBalance';
 import { buildCariDbPayload } from './cariAccountFields';
 import { filterSupplierRowsHiddenByCustomerCode, resolveCanonicalCariAccountId } from './cariAccountResolve';
@@ -114,14 +116,15 @@ export const supplierAPI = {
         const pn = String(ERP_SETTINGS.periodNr ?? '01').padStart(2, '0');
         const salesPath = `/rex_${firmNr}_${pn}_sales`;
         const cashPath = `/rex_${firmNr}_${pn}_cash_lines`;
-        const [customers, suppliers, salesRows, cashRows] = await Promise.all([
+        const [customersRaw, suppliers, salesRows, cashRows] = await Promise.all([
           safeGet(
             `/${custTable}`,
             {
+              // firm_nr eq.001 güzellik/eski kartlarda '1'/boş satırları düşürür — JS'te esnek eşle.
               select: '*',
-              firm_nr: `eq.${firmNr}`,
               is_active: 'eq.true',
               order: 'name.asc',
+              limit: '5000',
             }
           ),
           safeGet(
@@ -145,7 +148,9 @@ export const supplierAPI = {
         ]);
         const sales = Array.isArray(salesRows) ? salesRows : [];
         const cash = Array.isArray(cashRows) ? cashRows : [];
-        const customerList = Array.isArray(customers) ? customers : [];
+        const customerList = (Array.isArray(customersRaw) ? customersRaw : []).filter((r) =>
+          cardFirmNrMatches(r?.firm_nr, firmNr),
+        );
         const supplierList = filterSupplierRowsHiddenByCustomerCode(
           Array.isArray(suppliers) ? suppliers : [],
           customerList,
@@ -198,7 +203,8 @@ export const supplierAPI = {
           c.is_active, c.created_at, 'customer' as card_type
         FROM ${custTable} c
         LEFT JOIN account_balances b ON c.id = b.id
-        WHERE c.firm_nr = $1 AND c.is_active = true
+        WHERE ${sqlFirmScopedCardMatch('c', '$1')}
+          AND COALESCE(c.is_active, true) = true
 
         UNION ALL
 
@@ -220,7 +226,7 @@ export const supplierAPI = {
         WHERE s.is_active = true
           AND NOT EXISTS (
             SELECT 1 FROM ${custTable} c2
-            WHERE c2.firm_nr = $1::text
+            WHERE ${sqlFirmScopedCardMatch('c2', '$1')}
               AND (
                 (
                   UPPER(TRIM(COALESCE(c2.code, ''))) = UPPER(TRIM(COALESCE(s.code, '')))

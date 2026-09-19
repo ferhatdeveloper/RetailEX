@@ -36,6 +36,7 @@ import {
   lookupLayeredOnHand,
   consumeFifoForQuantity,
   buildCostProfitRows,
+  lookupPeriodCogs,
   type LayerMovement,
   type LayeredOnHand,
   type FifoApplyResult,
@@ -744,6 +745,579 @@ export async function getCostProfitAnalysis(opts: {
     lines,
     valuation?.periodCogsByProductId || new Map(),
     valuation?.aliases,
+  );
+}
+
+const CUSTOMER_COST_EPS = 0.0000001;
+const UNNAMED_CUSTOMER = 'Peşin / Belirtilmemiş';
+
+export type CustomerCostProfitRow = {
+  customerId: string;
+  customerCode: string;
+  customerName: string;
+  transactionCount: number;
+  totalRevenue: number;
+  totalCost: number;
+  grossProfit: number;
+  profitMargin: number;
+  avgTransactionValue: number;
+};
+
+type CustomerSaleLineRaw = SaleLineRaw & {
+  customerId: string;
+  customerCode: string;
+  customerName: string;
+};
+
+function customerAggKey(line: {
+  customerId?: string;
+  customerCode?: string;
+  customerName?: string;
+}): string {
+  const id = String(line.customerId || '').trim();
+  if (id) return `id:${id}`;
+  const code = String(line.customerCode || '').trim();
+  if (code) return `code:${code}`;
+  const name = String(line.customerName || '').trim() || UNNAMED_CUSTOMER;
+  return `name:${name}`;
+}
+
+function productAllocKey(line: { productId?: string; productCode?: string; lineKind?: string }): string {
+  const kind = line.lineKind === 'service' ? 'S' : 'P';
+  const pid = String(line.productId || '').trim();
+  const code = String(line.productCode || '').trim();
+  return `${kind}|${pid || code || '?'}`;
+}
+
+/**
+ * Müşteri bazlı brüt kâr: aynı satış/SMM zinciri (getCostProfitAnalysis).
+ * Malzeme FIFO dönem SMM'si müşteri miktar/ciro payına orantılı dağıtılır —
+ * böylece müşteri toplamları ürün sekmesi / dashboard brüt kârı ile uyumlu kalır.
+ */
+function buildCustomerCostProfitRows(
+  lines: CustomerSaleLineRaw[],
+  periodCogsByProductId: Map<string, number>,
+  aliases: Map<string, string> | undefined,
+  txnCountByCustomerKey: Map<string, number>,
+): CustomerCostProfitRow[] {
+  const productTotals = new Map<string, { qty: number; revenue: number }>();
+  for (const line of lines) {
+    if (line.lineKind === 'service') continue;
+    const key = productAllocKey(line);
+    const cur = productTotals.get(key) || { qty: 0, revenue: 0 };
+    cur.qty += Number(line.quantity) || 0;
+    cur.revenue += Number(line.revenue) || 0;
+    productTotals.set(key, cur);
+  }
+
+  const byCustomer = new Map<
+    string,
+    {
+      customerId: string;
+      customerCode: string;
+      customerName: string;
+      totalRevenue: number;
+      totalCost: number;
+    }
+  >();
+
+  for (const line of lines) {
+    const ck = customerAggKey(line);
+    const revenue = Number(line.revenue) || 0;
+    const fallback = Number(line.fallbackCogs) || 0;
+    let cogs = 0;
+
+    if (line.lineKind === 'service') {
+      cogs = Math.abs(fallback) > CUSTOMER_COST_EPS ? fallback : 0;
+    } else {
+      const layered = lookupPeriodCogs(
+        periodCogsByProductId,
+        aliases,
+        line.productId,
+        line.productCode,
+      );
+      if (Math.abs(layered) > CUSTOMER_COST_EPS) {
+        const tot = productTotals.get(productAllocKey(line));
+        const totalQty = tot?.qty ?? 0;
+        const totalRev = tot?.revenue ?? 0;
+        const qty = Number(line.quantity) || 0;
+        if (Math.abs(totalQty) > CUSTOMER_COST_EPS) {
+          cogs = layered * (qty / totalQty);
+        } else if (Math.abs(totalRev) > 0.009) {
+          cogs = layered * (revenue / totalRev);
+        } else {
+          cogs = fallback;
+        }
+      } else {
+        cogs = Math.abs(fallback) > CUSTOMER_COST_EPS ? fallback : 0;
+      }
+    }
+
+    const cur = byCustomer.get(ck) || {
+      customerId: String(line.customerId || '').trim(),
+      customerCode: String(line.customerCode || '').trim(),
+      customerName: String(line.customerName || '').trim() || UNNAMED_CUSTOMER,
+      totalRevenue: 0,
+      totalCost: 0,
+    };
+    if (!cur.customerCode && line.customerCode) cur.customerCode = String(line.customerCode).trim();
+    if (
+      (!cur.customerName || cur.customerName === UNNAMED_CUSTOMER) &&
+      String(line.customerName || '').trim()
+    ) {
+      cur.customerName = String(line.customerName).trim();
+    }
+    cur.totalRevenue += revenue;
+    cur.totalCost += cogs;
+    byCustomer.set(ck, cur);
+  }
+
+  return Array.from(byCustomer.entries())
+    .map(([ck, row]) => {
+      const grossProfit = row.totalRevenue - row.totalCost;
+      const transactionCount = txnCountByCustomerKey.get(ck) || 0;
+      return {
+        customerId: row.customerId || row.customerCode || ck,
+        customerCode: row.customerCode,
+        customerName: row.customerName,
+        transactionCount,
+        totalRevenue: row.totalRevenue,
+        totalCost: row.totalCost,
+        grossProfit,
+        profitMargin:
+          Math.abs(row.totalRevenue) > 0.009 ? (grossProfit / row.totalRevenue) * 100 : 0,
+        avgTransactionValue: transactionCount > 0 ? row.totalRevenue / transactionCount : 0,
+      };
+    })
+    .filter(
+      (r) =>
+        Math.abs(r.totalRevenue) > 0.009 ||
+        Math.abs(r.totalCost) > CUSTOMER_COST_EPS ||
+        r.transactionCount > 0,
+    )
+    .sort((a, b) => b.grossProfit - a.grossProfit);
+}
+
+async function loadCustomerCostProfitSaleLinesSql(opts: {
+  firmNr: string;
+  periodNr: string;
+  start: string;
+  end: string;
+}): Promise<{ lines: CustomerSaleLineRaw[]; txnByKey: Map<string, number> }> {
+  const profitCtes = buildProfitCostCtes('$1');
+  const { rows } = await postgres.query<Record<string, unknown>>(
+    `
+    WITH ${profitCtes}
+    SELECT
+      COALESCE(s.customer_id::text, '') AS customer_id,
+      COALESCE(NULLIF(TRIM(c.code), ''), '') AS customer_code,
+      COALESCE(
+        NULLIF(TRIM(c.name), ''),
+        NULLIF(TRIM(s.customer_name), ''),
+        '${UNNAMED_CUSTOMER}'
+      ) AS customer_name,
+      COALESCE((${SQL_LINE_RESOLVED_PRODUCT_ID})::text, '') AS product_id,
+      ${SQL_DISPLAY_ITEM_CODE} AS product_code,
+      COALESCE(
+        NULLIF(TRIM(si.item_name), ''),
+        p.name,
+        svc.name,
+        bsvc.name,
+        '—'
+      ) AS product_name,
+      CASE WHEN ${SQL_IS_SERVICE_LINE} THEN 'service' ELSE 'product' END AS line_kind,
+      COALESCE(SUM(${SIGNED_LINE_QTY_EXPR}), 0) AS quantity,
+      COALESCE(SUM(${SIGNED_LINE_REVENUE_EXPR}), 0) AS revenue,
+      COALESCE(SUM(${SIGNED_LINE_COST_EXPR}), 0) AS fallback_cogs
+    FROM sale_items si
+    INNER JOIN sales s ON s.id = si.invoice_id
+    LEFT JOIN customers c ON c.id = s.customer_id
+    ${PRODUCTS_JOIN}
+    ${SERVICE_COST_JOINS}
+    ${LAST_PURCHASE_JOIN}
+    ${INVOICE_LINE_SCALE_JOIN}
+    WHERE ${SQL_NOT_REMOVED_SALE}
+      AND ${SQL_RETAIL_PRODUCT_SALE}
+      AND COALESCE(si.item_type, 'Malzeme') NOT IN ('Promosyon', 'İndirim')
+      AND LEFT(COALESCE(s.date, s.created_at)::text, 10) >= $2
+      AND LEFT(COALESCE(s.date, s.created_at)::text, 10) <= $3
+    GROUP BY 1, 2, 3, 4, 5, 6, 7
+    HAVING ABS(COALESCE(SUM(${SIGNED_LINE_QTY_EXPR}), 0)) > 0.0001
+        OR ABS(COALESCE(SUM(${SIGNED_LINE_REVENUE_EXPR}), 0)) > 0.009
+    `,
+    [opts.firmNr, opts.start, opts.end],
+    { firmNr: opts.firmNr, periodNr: opts.periodNr },
+  );
+
+  const lines: CustomerSaleLineRaw[] = (rows || []).map((r) => ({
+    customerId: String(r.customer_id ?? ''),
+    customerCode: String(r.customer_code ?? ''),
+    customerName: String(r.customer_name ?? UNNAMED_CUSTOMER),
+    productId: String(r.product_id ?? ''),
+    productCode: displayItemCode(r.product_code),
+    productName: String(r.product_name ?? ''),
+    quantity: Number(r.quantity ?? 0) || 0,
+    revenue: Number(r.revenue ?? 0) || 0,
+    fallbackCogs: Number(r.fallback_cogs ?? 0) || 0,
+    lineKind: r.line_kind === 'service' ? ('service' as const) : ('product' as const),
+  }));
+
+  const { rows: txnRows } = await postgres.query<Record<string, unknown>>(
+    `
+    SELECT
+      COALESCE(s.customer_id::text, '') AS customer_id,
+      COALESCE(NULLIF(TRIM(c.code), ''), '') AS customer_code,
+      COALESCE(
+        NULLIF(TRIM(c.name), ''),
+        NULLIF(TRIM(s.customer_name), ''),
+        '${UNNAMED_CUSTOMER}'
+      ) AS customer_name,
+      COUNT(DISTINCT s.id) AS txn_count
+    FROM sales s
+    LEFT JOIN customers c ON c.id = s.customer_id
+    WHERE ${SQL_NOT_REMOVED_SALE}
+      AND ${SQL_RETAIL_PRODUCT_SALE}
+      AND LEFT(COALESCE(s.date, s.created_at)::text, 10) >= $1
+      AND LEFT(COALESCE(s.date, s.created_at)::text, 10) <= $2
+    GROUP BY 1, 2, 3
+    `,
+    [opts.start, opts.end],
+    { firmNr: opts.firmNr, periodNr: opts.periodNr },
+  );
+
+  const txnByKey = new Map<string, number>();
+  for (const r of txnRows || []) {
+    const key = customerAggKey({
+      customerId: String(r.customer_id ?? ''),
+      customerCode: String(r.customer_code ?? ''),
+      customerName: String(r.customer_name ?? ''),
+    });
+    txnByKey.set(key, parseInt(String(r.txn_count ?? 0), 10) || 0);
+  }
+
+  return { lines, txnByKey };
+}
+
+async function loadCustomerCostProfitSaleLinesRest(opts: {
+  firmNr: string;
+  periodNr: string;
+  start: string;
+  end: string;
+}): Promise<{ lines: CustomerSaleLineRaw[]; txnByKey: Map<string, number> }> {
+  const { postgrest } = await import('./api/postgrestClient');
+  const fn = opts.firmNr;
+  const pn = opts.periodNr;
+  const [sales, items, products, services, beautyServices, consumables, customers] =
+    await Promise.all([
+      postgrest
+        .get<Record<string, unknown>[]>(
+          `/rex_${fn}_${pn}_sales`,
+          {
+            select:
+              'id,date,fiche_type,is_cancelled,status,trcode,created_at,net_amount,customer_id,customer_name',
+            order: 'date.desc',
+            limit: 12000,
+          },
+          { schema: 'public' },
+        )
+        .catch(() => [] as Record<string, unknown>[]),
+      postgrest
+        .get<Record<string, unknown>[]>(
+          `/rex_${fn}_${pn}_sale_items`,
+          {
+            select:
+              'invoice_id,product_id,item_code,item_name,item_type,quantity,net_amount,unit_price,unit_cost,total_cost',
+            limit: 20000,
+          },
+          { schema: 'public' },
+        )
+        .catch(() => [] as Record<string, unknown>[]),
+      postgrest
+        .get<Record<string, unknown>[]>(
+          `/rex_${fn}_products`,
+          { select: 'id,code,barcode,name', limit: 8000 },
+          { schema: 'public' },
+        )
+        .catch(() => [] as Record<string, unknown>[]),
+      postgrest
+        .get<Record<string, unknown>[]>(
+          `/rex_${fn}_services`,
+          { select: 'id,code,name,purchase_price', limit: 8000 },
+          { schema: 'public' },
+        )
+        .catch(() => [] as Record<string, unknown>[]),
+      postgrest
+        .get<Record<string, unknown>[]>(
+          `/rex_${fn}_beauty_services`,
+          { select: 'id,name,cost_price', limit: 8000 },
+          { schema: 'beauty' },
+        )
+        .catch(() => [] as Record<string, unknown>[]),
+      postgrest
+        .get<Record<string, unknown>[]>(
+          `/rex_${fn}_beauty_service_consumables`,
+          { select: 'service_id,product_id,qty_per_service', limit: 12000 },
+          { schema: 'beauty' },
+        )
+        .catch(() => [] as Record<string, unknown>[]),
+      postgrest
+        .get<Record<string, unknown>[]>(
+          `/rex_${fn}_customers`,
+          { select: 'id,code,name', limit: 8000 },
+          { schema: 'public' },
+        )
+        .catch(() => [] as Record<string, unknown>[]),
+    ]);
+
+  const salesById = new Map((sales || []).map((s) => [String(s.id), s]));
+  const productById = new Map((products || []).map((p) => [String(p.id), p]));
+  const serviceById = new Map((services || []).map((s) => [String(s.id), s]));
+  const beautyById = new Map((beautyServices || []).map((s) => [String(s.id), s]));
+  const customerById = new Map((customers || []).map((c) => [String(c.id), c]));
+  const serviceByCode = new Map<string, Record<string, unknown>>();
+  for (const s of services || []) {
+    const code = String(s.code || '').trim();
+    if (code) serviceByCode.set(code, s);
+  }
+  const productIdByCode = new Map<string, string>();
+  for (const p of products || []) {
+    const id = String(p.id);
+    const code = String(p.code || '').trim();
+    const barcode = String(p.barcode || '').trim();
+    if (code) productIdByCode.set(code, id);
+    if (barcode) productIdByCode.set(barcode, id);
+  }
+
+  type PurchaseHit = { unitCost: number; dateKey: string; createdAt: string };
+  const lastById = new Map<string, PurchaseHit>();
+  const lastByCode = new Map<string, PurchaseHit>();
+  const resolvePurchaseProductId = (it: Record<string, unknown>): string => {
+    const fromLine = resolveLineProductId(it);
+    if (fromLine) return fromLine;
+    const code = String(it.item_code || '').trim();
+    if (!code) return '';
+    return productIdByCode.get(code) || '';
+  };
+  for (const it of items || []) {
+    const inv = salesById.get(String(it.invoice_id));
+    if (!inv || skipInvoiceStatus(inv.status, inv.is_cancelled)) continue;
+    if (!isPurchaseFiche(inv)) continue;
+    const itemType = String(it.item_type || 'Malzeme');
+    if (itemType === 'Promosyon' || itemType === 'İndirim') continue;
+    const unitCost = unitCostFromPurchaseLine(it);
+    if (!unitCost) continue;
+    const dateKey = String(inv.date || '').slice(0, 10);
+    const createdAt = String(inv.created_at || '');
+    const hit: PurchaseHit = { unitCost, dateKey, createdAt };
+    const newer = (prev: PurchaseHit | undefined) =>
+      !prev ||
+      dateKey > prev.dateKey ||
+      (dateKey === prev.dateKey && createdAt > prev.createdAt);
+    const pid = resolvePurchaseProductId(it);
+    if (pid && newer(lastById.get(pid))) lastById.set(pid, hit);
+    const code = String(it.item_code || '').trim();
+    if (code && newer(lastByCode.get(code))) lastByCode.set(code, hit);
+  }
+
+  const recipeByService = new Map<string, number>();
+  for (const c of consumables || []) {
+    const sid = String(c.service_id || '').trim();
+    const cpid = String(c.product_id || '').trim();
+    if (!sid || !cpid) continue;
+    const qty = Number(c.qty_per_service ?? 0) || 0;
+    if (!qty) continue;
+    const consProd = productById.get(cpid);
+    const consCode = String(consProd?.code || '').trim();
+    const consBarcode = String(consProd?.barcode || '').trim();
+    const unit =
+      lastById.get(cpid)?.unitCost ||
+      (consCode && lastByCode.get(consCode)?.unitCost) ||
+      (consBarcode && lastByCode.get(consBarcode)?.unitCost) ||
+      0;
+    recipeByService.set(sid, (recipeByService.get(sid) || 0) + qty * unit);
+  }
+
+  const saleOk = new Set(
+    (sales || [])
+      .filter((s) => {
+        if (skipInvoiceStatus(s.status, s.is_cancelled)) return false;
+        if (!isRetailOrBeautyProductSale(s)) return false;
+        const d = asCalendarDate(s.date || s.created_at);
+        return d >= opts.start && d <= opts.end;
+      })
+      .map((s) => String(s.id)),
+  );
+
+  const linesNetByInvoice = new Map<string, number>();
+  for (const it of items || []) {
+    const iid = String(it.invoice_id || '');
+    if (!iid) continue;
+    linesNetByInvoice.set(iid, (linesNetByInvoice.get(iid) || 0) + (Number(it.net_amount ?? 0) || 0));
+  }
+
+  const txnByKey = new Map<string, number>();
+  const seenInvoiceByCustomer = new Map<string, Set<string>>();
+  for (const sid of saleOk) {
+    const inv = salesById.get(sid);
+    if (!inv) continue;
+    const cust = inv.customer_id ? customerById.get(String(inv.customer_id)) : undefined;
+    const meta = {
+      customerId: String(inv.customer_id || '').trim(),
+      customerCode: String(cust?.code || '').trim(),
+      customerName:
+        String(cust?.name || '').trim() ||
+        String(inv.customer_name || '').trim() ||
+        UNNAMED_CUSTOMER,
+    };
+    const ck = customerAggKey(meta);
+    if (!seenInvoiceByCustomer.has(ck)) seenInvoiceByCustomer.set(ck, new Set());
+    seenInvoiceByCustomer.get(ck)!.add(sid);
+  }
+  for (const [ck, set] of seenInvoiceByCustomer) {
+    txnByKey.set(ck, set.size);
+  }
+
+  const map = new Map<string, CustomerSaleLineRaw>();
+  for (const it of items || []) {
+    if (!saleOk.has(String(it.invoice_id))) continue;
+    const itemType = String(it.item_type || 'Malzeme');
+    if (itemType === 'Promosyon' || itemType === 'İndirim') continue;
+    const inv = salesById.get(String(it.invoice_id));
+    if (!inv) continue;
+    const cust = inv.customer_id ? customerById.get(String(inv.customer_id)) : undefined;
+    const customerId = String(inv.customer_id || '').trim();
+    const customerCode = String(cust?.code || '').trim();
+    const customerName =
+      String(cust?.name || '').trim() ||
+      String(inv.customer_name || '').trim() ||
+      UNNAMED_CUSTOMER;
+    const sgn = isSalesReturnFiche(inv) ? -1 : 1;
+    const pid =
+      resolveLineProductId(it) ||
+      productIdByCode.get(String(it.item_code || '').trim()) ||
+      '';
+    const prod = pid ? productById.get(pid) : undefined;
+    const beauty = pid ? beautyById.get(pid) : undefined;
+    const svc =
+      (pid && serviceById.get(pid)) ||
+      serviceByCode.get(String(it.item_code || '').trim()) ||
+      undefined;
+    const isService = isServiceLineType(itemType) || !!(svc || beauty);
+    const lineKind: CostProfitLineKind = isService ? 'service' : 'product';
+    const code = displayItemCode(prod?.code, svc?.code, it.item_code);
+    const qty = sgn * (Number(it.quantity ?? 0) || 0);
+    const rawLineNet = Number(it.net_amount ?? 0) || 0;
+    const revenue =
+      sgn *
+      scaleLineRevenueToInvoiceNet(
+        rawLineNet,
+        linesNetByInvoice.get(String(it.invoice_id)) || 0,
+        Number(inv.net_amount ?? 0) || 0,
+      );
+    const lpc =
+      (pid && lastById.get(pid)?.unitCost) ||
+      (String(it.item_code || '').trim() &&
+        lastByCode.get(String(it.item_code || '').trim())?.unitCost) ||
+      (String(prod?.code || '').trim() &&
+        lastByCode.get(String(prod?.code || '').trim())?.unitCost) ||
+      0;
+    const recipeUnit =
+      (pid && recipeByService.get(pid)) ||
+      (svc && recipeByService.get(String(svc.id))) ||
+      0;
+    const serviceUnit = restServiceUnitCost({
+      lineUnitCost: it.unit_cost,
+      purchasePrice: svc?.purchase_price,
+      beautyCostPrice: beauty?.cost_price,
+      recipeUnitCost: recipeUnit,
+    });
+    const absQty = Math.abs(Number(it.quantity ?? 0) || 0);
+    const fallbackCogs =
+      sgn *
+      lineCostAmount({
+        quantity: absQty,
+        lastPurchaseUnit: lpc,
+        itemType,
+        serviceUnitCost: serviceUnit,
+        isService,
+      });
+    const ck = customerAggKey({ customerId, customerCode, customerName });
+    const key = `${ck}|${isService ? 'S' : 'P'}|${pid || code}`;
+    const cur = map.get(key) || {
+      customerId,
+      customerCode,
+      customerName,
+      productId: pid,
+      productCode: code,
+      productName: String(it.item_name ?? prod?.name ?? svc?.name ?? beauty?.name ?? ''),
+      quantity: 0,
+      revenue: 0,
+      fallbackCogs: 0,
+      lineKind,
+    };
+    cur.quantity += qty;
+    cur.revenue += revenue;
+    cur.fallbackCogs += fallbackCogs;
+    if (!cur.productName && it.item_name) cur.productName = String(it.item_name);
+    map.set(key, cur);
+  }
+
+  return { lines: Array.from(map.values()), txnByKey };
+}
+
+export async function getCustomerCostProfitAnalysis(opts: {
+  startDate: string;
+  endDate: string;
+  firmNr?: string | number;
+  periodNr?: string | number;
+}): Promise<CustomerCostProfitRow[]> {
+  const start = toSqlDateInputString(opts.startDate) || String(opts.startDate || '').slice(0, 10);
+  const end = toSqlDateInputString(opts.endDate) || String(opts.endDate || '').slice(0, 10);
+  if (!start || !end) return [];
+  const firmNr = padFirm(opts.firmNr);
+  const periodNr = padPeriod(opts.periodNr);
+
+  let lines: CustomerSaleLineRaw[] = [];
+  let txnByKey = new Map<string, number>();
+  try {
+    if (DB_SETTINGS.connectionProvider === 'rest_api') {
+      const loaded = await loadCustomerCostProfitSaleLinesRest({ firmNr, periodNr, start, end });
+      lines = loaded.lines;
+      txnByKey = loaded.txnByKey;
+    } else {
+      const loaded = await loadCustomerCostProfitSaleLinesSql({ firmNr, periodNr, start, end });
+      lines = loaded.lines;
+      txnByKey = loaded.txnByKey;
+    }
+  } catch (err) {
+    console.warn('[layeredInventoryCost] customer sale lines failed, REST yedek', err);
+    try {
+      const loaded = await loadCustomerCostProfitSaleLinesRest({ firmNr, periodNr, start, end });
+      lines = loaded.lines;
+      txnByKey = loaded.txnByKey;
+    } catch (err2) {
+      console.error('[layeredInventoryCost] customer cost-profit sale lines failed', err2);
+      return [];
+    }
+  }
+
+  let valuation: LayeredInventoryValuation | null = null;
+  try {
+    valuation = await fetchLayeredInventoryValuation({
+      firmNr,
+      periodNr,
+      cogsFromKey: start,
+      cogsToKey: end,
+    });
+  } catch (err) {
+    console.warn('[layeredInventoryCost] FIFO layers unavailable (customer); SMM yedek/0', err);
+  }
+
+  return buildCustomerCostProfitRows(
+    lines,
+    valuation?.periodCogsByProductId || new Map(),
+    valuation?.aliases,
+    txnByKey,
   );
 }
 

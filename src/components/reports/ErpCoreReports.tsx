@@ -44,6 +44,7 @@ import { DevExDataGrid } from '../shared/DevExDataGrid';
 import { buildReportGridColumns, REPORT_GRID_DEFAULTS, ReportColumnTable, type ReportColumnTableCol } from './shared/ReportDataGrid';
 
 type CardFilter = 'all' | 'customer' | 'supplier';
+type ExtractCardFilter = 'customer' | 'supplier' | 'employee';
 
 function cariTypeLabel(tm: (k: string) => string, cardType: string): string {
   if (cardType === 'supplier') return tm('erpCardSuppliers');
@@ -1501,7 +1502,7 @@ export function CariExtractReport() {
   const initial = defaultRange();
   const [startDate, setStartDate] = useState(initial.start);
   const [endDate, setEndDate] = useState(initial.end);
-  const [cardType, setCardType] = useState<'customer' | 'supplier'>('customer');
+  const [cardType, setCardType] = useState<ExtractCardFilter>('customer');
   const [accounts, setAccounts] = useState<CariBalanceRow[]>([]);
   const [accountId, setAccountId] = useState('');
   const [rows, setRows] = useState<CariExtractRow[]>([]);
@@ -1622,9 +1623,10 @@ export function CariExtractReport() {
       }
       filters={
         <>
-          <select value={cardType} onChange={(e) => setCardType(e.target.value as 'customer' | 'supplier')} className={`rounded-lg border px-2 py-2 text-sm ${inputCls}`}>
+          <select value={cardType} onChange={(e) => setCardType(e.target.value as ExtractCardFilter)} className={`rounded-lg border px-2 py-2 text-sm ${inputCls}`}>
             <option value="customer">{tm('erpCardCustomers')}</option>
             <option value="supplier">{tm('erpCardSuppliers')}</option>
+            <option value="employee">{tm('erpCardEmployees')}</option>
           </select>
           <select value={accountId} onChange={(e) => setAccountId(e.target.value)} className={`max-w-[220px] rounded-lg border px-2 py-2 text-sm ${inputCls}`}>
             {accounts.length === 0 && <option value="">{tm('erpNoRows')}</option>}

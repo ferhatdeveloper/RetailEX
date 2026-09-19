@@ -248,6 +248,28 @@ describe('Tedarikçi 4×2 muhasebe matris', () => {
   });
 });
 
+describe('kart bakiyesi yedek (ledger yoksa)', () => {
+  it('defter hareketi yoksa kart bakiyesini kullanır', () => {
+    const bal = computeCustomerBalanceFromLedger('id-1', 'YUSUF', [], [], 45000);
+    expect(bal).toBe(45000);
+  });
+
+  it('defter hareketi varken kart bakiyesini yok sayar', () => {
+    const sales = [
+      {
+        customer_id: 'id-1',
+        customer_name: 'YUSUF',
+        net_amount: 10000,
+        fiche_type: 'sales_invoice',
+        is_cancelled: false,
+        payment_method: 'veresiye',
+      },
+    ];
+    const bal = computeCustomerBalanceFromLedger('id-1', 'YUSUF', sales, [], 45000);
+    expect(bal).toBe(10000);
+  });
+});
+
 describe('CTE SQL ifadeleri söz dizimi (regresyon)', () => {
   it('müşteri CTE cash_lines ifadesinde yeni helper kullanılıyor', () => {
     const cte = sqlCustomerAccountBalancesCte('rex_001_customers', '$1::text');

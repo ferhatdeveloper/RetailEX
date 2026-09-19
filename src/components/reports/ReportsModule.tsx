@@ -705,7 +705,7 @@ type ReportTab =
   // AI & Genel
   'chat-ai' | 'daily' | 'monthly-days-summary' | 'yearly-months-summary' | 'z-report' | 'comparison' |
   // Restoran Otomasyon Özel
-  'end-of-day' | 'cash-report' | 'product-reports' | 'category-reports' | 'staff-reports' | 'table-reports' | 'payment-reports' | 'discount-reports' | 'detailed-sales' | 'sales-movements' | 'receipts' | 'courier-reports' | 'cash-register-reports' | 'turnover-reports' | 'analysis' |
+  'end-of-day' | 'product-reports' | 'category-reports' | 'staff-reports' | 'table-reports' | 'payment-reports' | 'discount-reports' | 'detailed-sales' | 'sales-movements' | 'receipts' | 'courier-reports' | 'cash-register-reports' | 'turnover-reports' | 'analysis' |
   // Satış Raporları
   'top-products' | 'category-analysis' | 'hourly-analysis' | 'cashiers' | 'customer-sales' | 'sales-trend' | 'sales-target' | 'sales-returns' | 'product-gross-profit' |
   // Finansal Raporlar
@@ -719,7 +719,7 @@ type ReportTab =
   // Güzellik özel
   'beauty-service-report' | 'beauty-cancelled-report' | 'beauty-appointment-product-report' | 'beauty-commission-report' | 'beauty-staff-treatment-report' | 'beauty-survey-report' | 'beauty-survey-trend-report' | 'beauty-survey-staff-report' | 'beauty-survey-service-report' | 'beauty-survey-nps-report' | 'beauty-survey-comments-report' | 'beauty-overdue-uncalled-report';
 
-/** Sol menüde gösterilmez: ekranı yok veya yalnızca “yakında” placeholder idi. */
+/** Sol menüde gösterilmez: ekranı yok, gizlenen rapor veya yalnızca “yakında” placeholder idi. */
 const REPORT_TABS_HIDDEN_FROM_MENU = new Set<string>([
   'design-center',
   'commission',
@@ -733,6 +733,7 @@ const REPORT_TABS_HIDDEN_FROM_MENU = new Set<string>([
   'courier-reports',
   'cash-register-reports',
   'turnover-reports',
+  'stock-abc', // Stok ABC Analizi — menüden gizlendi; rapor kodu duruyor
 ]);
 
 /** Yalnızca iş kolu Restoran iken menüde / sekmede anlamlı */
@@ -4945,7 +4946,6 @@ export function ReportsModule({
           { key: 'discount-report', label: tm('indirimRaporu'), icon: <TagsOutlined /> },
           { key: 'cash-status', label: tm('kasaDurumu'), icon: <BankOutlined /> },
           { key: 'commission', label: tm('komisyonRaporu'), icon: <SafetyCertificateOutlined /> },
-          { key: 'cash-report', label: tm('kasaRaporu'), icon: <BankOutlined /> },
         ],
       },
     ];
@@ -8904,66 +8904,6 @@ export function ReportsModule({
                           <span className="text-sm tabular-nums text-right whitespace-nowrap shrink-0">
                             {formatNumber(st.discountTotal, 2, false)}
                           </span>
-                        </div>
-                      </div>
-                    </div>
-                  </div>
-                </div>
-              );
-            })()}
-
-            {selectedTab === 'cash-report' && (() => {
-              const payments = restStats.payments;
-
-              const chartData = Object.entries(payments).map(([name, value]: [string, any]) => ({
-                name,
-                value: Number(value || 0),
-                fill: name === 'NAKİT' ? '#64b5f6' : name === 'POS' ? '#b39ddb' : '#9575cd'
-              }));
-
-              return (
-                <div className="space-y-6">
-                  <div className="bg-white rounded-2xl border border-slate-200 p-6 shadow-sm">
-                    <h3 className="text-sm font-bold text-slate-500 uppercase tracking-wider mb-6">{tm('reportsCashMovementTitle')}</h3>
-                    <div className="h-[250px]">
-                      <ResponsiveContainer width="100%" height="100%">
-                        <BarChart data={chartData}>
-                          <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#f1f5f9" />
-                          <XAxis dataKey="name" axisLine={false} tickLine={false} />
-                          <YAxis axisLine={false} tickLine={false} />
-                          <Tooltip formatter={(val: number) => formatNumber(val, 2, false)} />
-                          <Bar dataKey="value" radius={[4, 4, 0, 0]} barSize={50} />
-                        </BarChart>
-                      </ResponsiveContainer>
-                    </div>
-                  </div>
-
-                  <div className="bg-white rounded-2xl border border-slate-200 overflow-hidden shadow-sm">
-                    <div className="p-3 flex justify-between items-center text-white font-bold" style={{ backgroundColor: bizConfig.color }}>
-                      <div className="flex items-center gap-2">
-                        <HistoryOutlined />
-                        <span>{tm('reportsCashColDesc')}</span>
-                      </div>
-                      <div className="flex gap-20">
-                        <span>{tm('reportsCashColQty')}</span>
-                        <span>{tm('reportsCashColAmount')}</span>
-                      </div>
-                    </div>
-                    <div className="divide-y divide-slate-100">
-                      {Object.entries(payments).map(([method, total], i) => (
-                        <div key={i} className={`p-3 flex justify-between items-center ${i % 2 === 0 ? 'bg-orange-50' : 'bg-white'}`}>
-                          <span className="text-sm font-bold text-slate-700">{method}</span>
-                          <div className="flex gap-20">
-                            <span className="text-sm font-bold">-</span>
-                            <span className="text-sm font-bold">{formatNumber(total as number, 2, false)}</span>
-                          </div>
-                        </div>
-                      ))}
-                      <div className="p-3 flex justify-between items-center bg-purple-100 font-bold">
-                        <span className="text-sm font-bold text-slate-700">{tm('reportsTotalsRow')}</span>
-                        <div className="flex gap-20">
-                          <span className="text-sm font-bold">-</span>
-                          <span className="text-sm font-bold">{formatNumber(Object.values(payments).reduce((s: number, v: any) => s + Number(v || 0), 0), 2, false)}</span>
                         </div>
                       </div>
                     </div>

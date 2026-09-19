@@ -12,6 +12,8 @@ import {
   sqlResolvedCustomerBalanceExpr,
   computeCustomerBalanceFromLedger,
   normalizeFirmTableNr,
+  cardFirmNrMatches,
+  sqlFirmScopedCardMatch,
 } from './accountBalance';
 import {
   SQL_ORDER_CUSTOMERS_BY_FILE_ID,
@@ -38,7 +40,6 @@ export const customerAPI = {
             `/${tableName}`,
             {
               select: '*',
-              firm_nr: `eq.${firmNr}`,
               is_active: 'eq.true',
               order: 'file_id.asc.nullslast,name.asc',
             },
@@ -70,7 +71,9 @@ export const customerAPI = {
         const sales = Array.isArray(salesRows) ? salesRows : [];
         const cash = Array.isArray(cashRows) ? cashRows : [];
         return sortByFileIdAsc(
-          (Array.isArray(rows) ? rows : []).map((r) =>
+          (Array.isArray(rows) ? rows : [])
+            .filter((r) => cardFirmNrMatches(r.firm_nr, firmNr))
+            .map((r) =>
             mapDatabaseCustomerToCustomer({
               ...r,
               balance: computeCustomerBalanceFromLedger(
@@ -89,7 +92,8 @@ export const customerAPI = {
         SELECT c.*, ${sqlResolvedCustomerBalanceExpr('c')} AS balance
         FROM ${tableName} c
         LEFT JOIN account_balances b ON c.id = b.id
-        WHERE c.firm_nr = $1 AND c.is_active = true
+        WHERE ${sqlFirmScopedCardMatch('c', '$1')}
+          AND COALESCE(c.is_active, true) = true
         ORDER BY ${SQL_ORDER_CUSTOMERS_BY_FILE_ID}`,
         [firmNr],
         { firmNr, periodNr: ERP_SETTINGS.periodNr },

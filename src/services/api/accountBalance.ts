@@ -34,12 +34,19 @@ export function cardFirmNrMatches(rowFirmNr: unknown, sessionFirmNr: string): bo
   return a === normalizeFirmTableNr(sessionFirmNr);
 }
 
-/** SQL: boş firm_nr veya 1↔001 eşleşmesi (güzellik müşteri kartları). */
+/** SQL: boş firm_nr / yalnızca harf → dahil; 1↔001 eşleşmesi (güzellik müşteri kartları). */
 export function sqlFirmScopedCardMatch(alias: string, bind: string): string {
+  const rowDigits = `regexp_replace(trim(COALESCE(${alias}.firm_nr::text, '')), '[^0-9]', '', 'g')`;
+  const bindDigits = `regexp_replace(trim(COALESCE(${bind}::text, '')), '[^0-9]', '', 'g')`;
+  const norm = (digitsExpr: string) => `CASE
+    WHEN length(${digitsExpr}) = 0 THEN NULL
+    WHEN length(${digitsExpr}) <= 3 THEN lpad(${digitsExpr}, 3, '0')
+    ELSE left(${digitsExpr}, 10)
+  END`;
   return `(
     NULLIF(BTRIM(COALESCE(${alias}.firm_nr::text, '')), '') IS NULL
-    OR lpad(regexp_replace(trim(COALESCE(${alias}.firm_nr::text, '')), '[^0-9]', '', 'g'), 3, '0')
-       = lpad(regexp_replace(trim(${bind}::text), '[^0-9]', '', 'g'), 3, '0')
+    OR ${norm(rowDigits)} IS NULL
+    OR ${norm(rowDigits)} = ${norm(bindDigits)}
   )`;
 }
 
@@ -204,11 +211,14 @@ export function sqlResolvedSupplierBalanceExpr(_cardAlias = 's'): string {
   return `COALESCE(b.calculated_balance, 0)`;
 }
 
-/** Hareket varsa ledger; yoksa 0 (manuel bakiye yalnızca açılış fişi / fatura ile) */
+/**
+ * Hareket varsa yalnızca ledger; yoksa kart bakiyesi (açılış / güzellik yazımı).
+ * Açılış tercihen `opening_balance` fişi ile deftere yazılmalı; kart yedek kaynaktır.
+ */
 export function sqlResolvedCustomerBalanceExpr(cardAlias = 'c'): string {
   return `CASE
-    WHEN b.txn_count > 0 THEN COALESCE(b.calculated_balance, 0)
-    ELSE 0
+    WHEN COALESCE(b.txn_count, 0) > 0 THEN COALESCE(b.calculated_balance, 0)
+    ELSE COALESCE(${cardAlias}.balance, 0)
   END`;
 }
 
@@ -412,7 +422,7 @@ export function computeCustomerBalanceFromLedger(
   }
   const txnCount = salesTxn + cashTxn;
   if (txnCount > 0) return salesSum + cashSum;
-  return 0;
+  return Number(_storedBalance) || 0;
 }
 
 /** PostgREST: tedarikçi defter bakiyesi — alış/iade + kasa hareketleri */
