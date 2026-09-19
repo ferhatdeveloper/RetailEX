@@ -8,6 +8,7 @@ import { useState, useEffect, useMemo } from 'react';
 import { formatNumber } from '../../utils/formatNumber';
 import { useLanguage } from '../../contexts/LanguageContext';
 import { useFirmaDonem } from '../../contexts/FirmaDonemContext';
+import { useTheme } from '../../contexts/ThemeContext';
 import {
   fetchLayeredInventoryValuation,
   layeredCostForProduct,
@@ -22,19 +23,20 @@ import {
 } from '../../services/menuFavoritesService';
 import { PercentBodyModal, PercentBodyModalScrollBody } from '../shared/PercentBodyModal';
 
+/** Flat solid accents — no gradient tiles */
 const FAVORITE_TILE_COLORS = [
-  'from-blue-500 to-blue-600',
-  'from-green-500 to-green-600',
-  'from-purple-500 to-purple-600',
-  'from-pink-500 to-pink-600',
-  'from-indigo-500 to-indigo-600',
-  'from-teal-500 to-teal-600',
-  'from-orange-500 to-orange-600',
-  'from-cyan-500 to-cyan-600',
-  'from-emerald-500 to-emerald-600',
-  'from-violet-500 to-violet-600',
-  'from-rose-500 to-rose-600',
-  'from-amber-500 to-amber-600',
+  'bg-blue-600',
+  'bg-emerald-600',
+  'bg-violet-600',
+  'bg-rose-600',
+  'bg-indigo-600',
+  'bg-teal-600',
+  'bg-orange-600',
+  'bg-cyan-600',
+  'bg-sky-600',
+  'bg-fuchsia-600',
+  'bg-amber-600',
+  'bg-lime-700',
 ];
 
 interface DashboardModuleProps {
@@ -55,6 +57,7 @@ export function DashboardModule({
   menuSections = [],
 }: DashboardModuleProps) {
   const { t } = useLanguage();
+  const { darkMode } = useTheme();
   const { selectedFirm, selectedPeriod } = useFirmaDonem();
   const { favoriteIds, setFavorites, maxFavorites } = useMenuFavorites();
   /** Çeviri nesnesi bazen geniş JSON'dan `unknown`/`{}` gelebilir; metin çocuklarında güvenli metin */
@@ -285,14 +288,36 @@ export function DashboardModule({
       </div>
 
       <div className="p-3 space-y-3">
-        {/* Favoriler — menüden yıldız ile veya Düzenle ile özelleştirilir */}
+        {/* Favoriler — flat chip satırı; menü yıldızı veya Düzenle */}
         <div>
-          <div className="flex items-center gap-1.5 mb-2">
-            <Star className="w-4 h-4 text-amber-500 fill-amber-500" />
-            <h3 className="text-sm text-gray-800">{tLabel(t.favorites, tLabel(t.quickAccess, 'Favoriler'))}</h3>
+          <div className="flex items-center justify-between gap-3 mb-2.5">
+            <div className="flex items-center gap-2 min-w-0">
+              <Star
+                className={`w-4 h-4 shrink-0 ${darkMode ? 'text-amber-400 fill-amber-400' : 'text-amber-500 fill-amber-500'}`}
+                aria-hidden
+              />
+              <h3
+                className={`text-sm font-semibold tracking-tight truncate ${
+                  darkMode ? 'text-gray-100' : 'text-gray-900'
+                }`}
+              >
+                {tLabel(t.favorites, tLabel(t.quickAccess, 'Favoriler'))}
+              </h3>
+            </div>
+            <button
+              type="button"
+              onClick={openCustomizeModal}
+              className={`shrink-0 rounded-md px-2.5 py-1 text-xs font-medium transition-colors focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-1 ${
+                darkMode
+                  ? 'text-blue-400 hover:bg-blue-500/10 hover:text-blue-300 focus-visible:outline-blue-400'
+                  : 'text-blue-600 hover:bg-blue-50 hover:text-blue-700 focus-visible:outline-blue-500'
+              }`}
+            >
+              {tLabel(t.editFavorites, tLabel(t.editQuickAccess, 'Düzenle'))}
+            </button>
           </div>
           {favoriteTiles.length > 0 ? (
-            <div className="flex flex-wrap gap-1.5">
+            <div className="flex flex-wrap items-center gap-2">
               {favoriteTiles.map((action) => {
                 const Icon = action.Icon;
                 return (
@@ -300,26 +325,38 @@ export function DashboardModule({
                     key={action.id}
                     type="button"
                     onClick={() => setCurrentScreen(action.id)}
-                    className="inline-flex items-center gap-1.5 rounded-md border border-gray-200 bg-white px-1.5 py-1 text-gray-700 hover:border-gray-300 hover:bg-gray-50 transition-colors"
+                    className={`group inline-flex items-center gap-2 rounded-lg border px-2 py-1.5 transition-colors focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-1 ${
+                      darkMode
+                        ? 'border-gray-700 bg-gray-800 text-gray-200 hover:border-blue-500/55 hover:bg-blue-500/10 focus-visible:outline-blue-400'
+                        : 'border-gray-200 bg-white text-gray-800 hover:border-blue-300 hover:bg-blue-50/90 focus-visible:outline-blue-500'
+                    }`}
                   >
                     <span
-                      className={`inline-flex h-6 w-6 shrink-0 items-center justify-center rounded bg-gradient-to-br ${action.color} text-white`}
+                      className={`inline-flex h-7 w-7 shrink-0 items-center justify-center rounded-md text-white ${action.color}`}
                       aria-hidden
                     >
-                      <Icon className="w-3.5 h-3.5" />
+                      <Icon className="w-3.5 h-3.5" strokeWidth={2.25} />
                     </span>
-                    <span className="text-xs font-medium pr-0.5">{String(action.label)}</span>
+                    <span className="text-[13px] font-medium leading-none pr-0.5">
+                      {String(action.label)}
+                    </span>
                   </button>
                 );
               })}
             </div>
           ) : (
-            <div className="rounded-lg border border-dashed border-gray-300 bg-white/70 px-4 py-6 text-center">
-              <Star className="w-8 h-8 text-amber-400 mx-auto mb-2" />
-              <p className="text-sm text-gray-700">
+            <div
+              className={`rounded-lg border border-dashed px-4 py-6 text-center ${
+                darkMode
+                  ? 'border-gray-600 bg-gray-800/50'
+                  : 'border-gray-300 bg-gray-50/80'
+              }`}
+            >
+              <Star className="w-7 h-7 mx-auto mb-2 text-amber-400" aria-hidden />
+              <p className={`text-sm font-medium ${darkMode ? 'text-gray-200' : 'text-gray-700'}`}>
                 {tLabel(t.noFavoritesYet, 'Henüz favori eklenmedi')}
               </p>
-              <p className="text-[11px] text-gray-500 mt-1">
+              <p className={`text-[11px] mt-1 ${darkMode ? 'text-gray-400' : 'text-gray-500'}`}>
                 {tLabel(
                   t.noFavoritesHint,
                   'Menüdeki yıldız ile ekran ekleyin veya Düzenle’den seçin',
@@ -327,15 +364,6 @@ export function DashboardModule({
               </p>
             </div>
           )}
-          <div className="text-right mt-1">
-            <button
-              type="button"
-              className="text-[10px] text-blue-500 hover:text-blue-600 font-medium"
-              onClick={openCustomizeModal}
-            >
-              {tLabel(t.editFavorites, tLabel(t.editQuickAccess, 'Düzenle'))}
-            </button>
-          </div>
         </div>
 
         {/* Kurumsal Özet Panel - Modern KPI Cards yerine */}
