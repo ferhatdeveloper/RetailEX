@@ -93,15 +93,16 @@ POSTGRES_PASSWORD='...' bash database/scripts/dokploy-redeploy-sync.sh
 
 ---
 
-## Grafana (Sistem Sağlığı iframe)
+## Grafana (Sistem Sağlığı + Rapor Oluşturucu)
 
 Compose’a `grafana` + `prometheus` + `cadvisor` eklenince **Git push + Redeploy** ile algılanır (resmi imaj; Vite rebuild yok).
 
-1. Secrets: `GF_SECURITY_ADMIN_PASSWORD` (ve isteğe `GF_SERVER_ROOT_URL=https://<alan>/__grafana/`)
-2. Yalnız izleme: `POSTGRES_PASSWORD='...' bash database/scripts/dokploy-redeploy-grafana.sh`
-3. React gömme + nginx `/__grafana` için **frontend rebuild** gerekir (`dokploy-redeploy-frontend.sh` veya tam deploy)
-4. Uygulama: **Sistem Yönetimi → Sistem Sağlığı**
-
+1. Secrets: `POSTGRES_PASSWORD` (Grafana PG datasource), isteğe `GF_SERVER_ROOT_URL=https://<alan>/__grafana/`
+2. Giriş formu **kapalı** (`GF_AUTH_DISABLE_LOGIN_FORM`); anonim **Editor** — iframe şifre sormaz
+3. Yalnız izleme: `POSTGRES_PASSWORD='...' bash database/scripts/dokploy-redeploy-grafana.sh`
+4. React gömme + nginx `/__grafana` için **frontend rebuild**
+5. Menü: **Raporlar & Analiz → Rapor Oluşturucu** (hazır panolar + Explore)
+6. Eski Grafana volume’da login kalırsa: `docker compose … up -d --force-recreate grafana`
 ---
 
 ## ASLA

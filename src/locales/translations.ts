@@ -60,6 +60,7 @@ export interface MenuTranslations {
   financeManagement: string;
   firmPeriodDefinitions: string;
   generalReport: string;
+  reportBuilder: string;
   generalSettings: string;
   graphicalAnalysis: string;
   groupCodes: string;
@@ -1931,6 +1932,7 @@ export const translations: any = {
       financeManagement: 'Finans Yönetimi',
       firmPeriodDefinitions: 'Firma/Dönem Tanımları',
       generalReport: 'Genel Rapor',
+      reportBuilder: 'Rapor Oluşturucu',
       generalSettings: 'Genel Ayarlar',
       graphicalAnalysis: 'Grafiksel Analiz',
       groupCodes: 'Grup Kodları',
@@ -3659,6 +3661,7 @@ export const translations: any = {
       financeManagement: 'Finance Management',
       firmPeriodDefinitions: 'Firm/Period Definitions',
       generalReport: 'General Report',
+      reportBuilder: 'Report Builder',
       generalSettings: 'General Settings',
       graphicalAnalysis: 'Graphical Analysis',
       groupCodes: 'Group Codes',
@@ -5253,6 +5256,7 @@ export const translations: any = {
       financeManagement: 'إدارة المالية',
       firmPeriodDefinitions: 'تعريفات الشركة/الفترة',
       generalReport: 'تقرير عام',
+      reportBuilder: 'منشئ التقارير',
       generalSettings: 'الإعدادات العامة',
       graphicalAnalysis: 'التحليل الرسومي',
       groupCodes: 'أكواد المجموعات',
@@ -6841,6 +6845,7 @@ export const translations: any = {
       financeManagement: 'بەڕێوەبردنی دارایی',
       firmPeriodDefinitions: 'پێناسەی کۆمپانیا/ماوە',
       generalReport: 'ڕاپۆرتی گشتی',
+      reportBuilder: 'ڕاپۆرت دروستکەر',
       generalSettings: 'ڕێکخستنە گشتییەکان',
       graphicalAnalysis: 'شیکاری گرافیکی',
       groupCodes: 'کۆدی گروپەکان',

@@ -2990,6 +2990,7 @@ export const moduleTranslations: Record<string, Record<Language, string>> = {
   graphicalAnalysis: { tr: 'Grafiksel Analiz', en: 'Graphical Analysis', ar: 'التحليل البياني', ku: 'شیکاری گرافیکی' },
   advancedBI: { tr: 'Gelişmiş BI', en: 'Advanced BI', ar: 'ذكاء الأعمال المتقدم', ku: 'BI پێشکەوتوو' },
   customReports: { tr: 'Özel Raporlar', en: 'Custom Reports', ar: 'التقارير المخصصة', ku: 'ڕاپۆرتی تایبەت' },
+  reportBuilder: { tr: 'Rapor Oluşturucu', en: 'Report Builder', ar: 'منشئ التقارير', ku: 'ڕاپۆرت دروستکەر' },
   advancedReports: { tr: 'Gelişmiş Raporlar', en: 'Advanced Reports', ar: 'التقارير المتقدمة', ku: 'ڕاپۆرتی پێشکەوتوو' },
   profitAnalysisDashboard: { tr: 'Karlılık Analizi Dashboard', en: 'Profit Analysis Dashboard', ar: 'لوحة تحليل الربحية', ku: 'داشبۆردی شیکاری قازانج' },
 

@@ -77,6 +77,9 @@ const ServiceModule = lazyWithChunkRecovery(() => import('../modules/ServiceModu
 const ProjectModule = lazyWithChunkRecovery(() => import('../modules/ProjectModule').then(m => ({ default: m.ProjectModule })));
 const IntegrationsModule = lazyWithChunkRecovery(() => import('../modules/IntegrationsModule').then(m => ({ default: m.IntegrationsModule })));
 const ReportsModule = lazyWithChunkRecovery(() => import('../reports/ReportsModule'));
+const GrafanaReportBuilderModule = lazyWithChunkRecovery(() =>
+  import('../reports/GrafanaReportBuilderModule').then((m) => ({ default: m.GrafanaReportBuilderModule }))
+);
 const CategoryGroupSalesProfitReport = lazyWithChunkRecovery(() => import('../reports/CategoryGroupSalesProfitReport').then(m => ({ default: m.CategoryGroupSalesProfitReport })));
 const ProfitDashboard = lazyWithChunkRecovery(() => import('../reports/ProfitDashboard').then(m => ({ default: m.ProfitDashboard })));
 const SettingsPanel = lazyWithChunkRecovery(() => import('./SettingsPanel').then(m => ({ default: m.SettingsPanel })));
@@ -242,7 +245,7 @@ type ExtendedScreen = ManagementScreen | 'dashboard' | 'finance' | 'stock' | 'pu
   'product-analytics' | 'profit-dashboard' | 'graphanalysis' | 'reconciliation' | 'wave-picking' | 'ai-stock-prediction' | 'material-extract' | 'cost-centers' |
   'universal-report-hub' | 'customer-extract' | 'store-performance' | 'inventory-aging' | 'nebim-migration' |
   'cash-slips' | 'bank-slips' | 'pos-slips' | 'current-slips' | 'cari-devir' | 'cari-devir-excel' | 'stockcounting' | 'stockcounting-mobile' |
-  'salesreports' | 'stockreports' | 'customeranalysis' | 'mizan' | 'income-statement' | 'balance-sheet' | 'advanced-reports' | 'reports' | 'customreports' | 'category-group-profit-report' | 'materials' | 'MYFisleri' |
+  'salesreports' | 'stockreports' | 'customeranalysis' | 'mizan' | 'income-statement' | 'balance-sheet' | 'advanced-reports' | 'reports' | 'customreports' | 'grafana-report-builder' | 'category-group-profit-report' | 'materials' | 'MYFisleri' |
   'stockmovements-deficit' | 'stockmovements-surplus' | 'stock-price-change-slips' |
   'inventory-count-ops' |
   'analytics-group' | 'sales-stock-group' | 'finance-reps-group' | 'advanced-reps-group' |
@@ -1486,6 +1489,8 @@ export function ManagementModule({
         case 'reports':
         case 'customreports':
           return <ReportsModule sales={sales} products={products} />;
+        case 'grafana-report-builder':
+          return <GrafanaReportBuilderModule />;
         case 'profit-dashboard':
           return <ProfitDashboard />;
         case 'category-group-profit-report':

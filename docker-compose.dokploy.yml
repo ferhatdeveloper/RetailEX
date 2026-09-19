@@ -203,11 +203,17 @@ services:
       GF_SECURITY_ADMIN_USER: ${GF_SECURITY_ADMIN_USER:-admin}
       GF_SECURITY_ADMIN_PASSWORD: ${GF_SECURITY_ADMIN_PASSWORD:-change_this_grafana_password}
       GF_USERS_ALLOW_SIGN_UP: "false"
-      # React iframe gömme (Sistem Sağlığı)
+      # React iframe — giriş formu yok; anonim Editor (Explore / hazır panolar)
       GF_SECURITY_ALLOW_EMBEDDING: "true"
       GF_AUTH_ANONYMOUS_ENABLED: "true"
-      GF_AUTH_ANONYMOUS_ORG_ROLE: Viewer
-      GF_AUTH_DISABLE_LOGIN_FORM: "false"
+      GF_AUTH_ANONYMOUS_ORG_ROLE: Editor
+      GF_AUTH_ANONYMOUS_ORG_NAME: Main Org.
+      GF_AUTH_DISABLE_LOGIN_FORM: "true"
+      GF_AUTH_BASIC_ENABLED: "false"
+      GF_USERS_VIEWERS_CAN_EDIT: "true"
+      GF_EXPLORE_ENABLED: "true"
+      # Postgres datasource provisioning (${POSTGRES_PASSWORD})
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?POSTGRES_PASSWORD is required}
       # Nginx alt yol: https://<alan>/__grafana/
       GF_SERVER_ROOT_URL: ${GF_SERVER_ROOT_URL:-%(protocol)s://%(domain)s/__grafana/}
       GF_SERVER_SERVE_FROM_SUB_PATH: "true"

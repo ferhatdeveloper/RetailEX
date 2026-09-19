@@ -317,6 +317,11 @@ export const getStaticMenuSections = (t: Translations) => [
                 icon: FileSpreadsheet
             },
             {
+                label: t.menu.reportBuilder,
+                screen: 'grafana-report-builder',
+                icon: BarChart3
+            },
+            {
                 label: t.menu.categoryGroupSalesProfitReport,
                 screen: 'category-group-profit-report',
                 icon: Layers
@@ -465,6 +470,7 @@ export const staticMenuSections = getStaticMenuSections({
         customerAnalysis: 'Müşteri Analizi',
         advancedReports100: 'Gelişmiş Raporlar',
         customReports: 'Özel Raporlar',
+        reportBuilder: 'Rapor Oluşturucu',
         categoryGroupSalesProfitReport: 'Kategori grubu satış ve kar',
         generalReport: 'Genel Rapor',
         firmPeriodDefinitions: 'Firma/Dönem Tanımları',

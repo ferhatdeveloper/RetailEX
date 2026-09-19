@@ -80,7 +80,7 @@
   ],
   "refresh": "30s",
   "schemaVersion": 39,
-  "tags": ["retailex", "dokploy"],
+  "tags": ["retailex", "dokploy", "ready"],
   "templating": { "list": [] },
   "time": { "from": "now-1h", "to": "now" },
   "timepicker": {},

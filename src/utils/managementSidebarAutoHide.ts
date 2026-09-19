@@ -6,6 +6,7 @@
 const EXACT_SCREENS = new Set<string>([
   // Raporlar & Analiz
   'customreports',
+  'grafana-report-builder',
   'reports',
   'category-group-profit-report',
   'product-analytics',

@@ -10,3 +10,22 @@ datasources:
     editable: false
     jsonData:
       timeInterval: 15s
+
+  - name: PostgreSQL
+    type: postgres
+    access: proxy
+    uid: postgres
+    url: postgres:5432
+    user: postgres
+    isDefault: false
+    editable: false
+    secureJsonData:
+      password: ${POSTGRES_PASSWORD}
+    jsonData:
+      database: postgres
+      sslmode: disable
+      maxOpenConns: 4
+      maxIdleConns: 2
+      connMaxLifetime: 14400
+      postgresVersion: 1500
+      timescaledb: false

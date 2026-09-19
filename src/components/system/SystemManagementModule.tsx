@@ -33,7 +33,7 @@ import {
   type ReportMenuParamKey,
   type ReportMenuParams,
 } from '../../services/reportMenuParamsService';
-import { getGrafanaBaseUrl, getGrafanaEmbedUrl } from '../../utils/grafanaEmbed';
+import { getGrafanaBaseUrl, getGrafanaSystemHealthEmbedUrl } from '../../utils/grafanaEmbed';
 
 type SystemView =
   | 'userManagement'
@@ -1279,7 +1279,7 @@ function LogAuditView() {
 // System Health View — Grafana panosu (Dokploy: /__grafana → grafana:3000)
 function SystemHealthView() {
   const { darkMode } = useTheme();
-  const embedUrl = getGrafanaEmbedUrl({ dark: darkMode });
+  const embedUrl = getGrafanaSystemHealthEmbedUrl({ dark: darkMode });
   const baseUrl = getGrafanaBaseUrl();
   const [iframeError, setIframeError] = useState(false);
 
