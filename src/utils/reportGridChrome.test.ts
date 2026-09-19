@@ -2,7 +2,10 @@ import { describe, expect, it } from 'vitest';
 import {
   coerceReportNumber,
   excelCellDisplay,
+  formatReportFooterSum,
   isReportCodeColumnId,
+  isReportMoneyColumnId,
+  isReportMoneySumColumnId,
   isReportSumColumnId,
   reportDisplayCode,
 } from './reportGridChrome';
@@ -35,6 +38,27 @@ describe('reportGridChrome', () => {
     expect(isReportSumColumnId('totalPurchased')).toBe(true);
     expect(isReportSumColumnId('minStock')).toBe(false);
     expect(isReportSumColumnId('maxStock')).toBe(false);
+  });
+
+  it('footer para birimi yalnızca tutar kolonlarında', () => {
+    expect(isReportMoneyColumnId('outAmount')).toBe(true);
+    expect(isReportMoneyColumnId('inAmt')).toBe(true);
+    expect(isReportMoneyColumnId('revenue')).toBe(true);
+    expect(isReportMoneyColumnId('total_cost')).toBe(true);
+    expect(isReportMoneyColumnId('totalRevenue')).toBe(true);
+    expect(isReportMoneyColumnId('beforeDiscount')).toBe(true);
+    expect(isReportMoneyColumnId('discount')).toBe(true);
+    expect(isReportMoneyColumnId('incoming')).toBe(true);
+    expect(isReportMoneyColumnId('stockValue')).toBe(true);
+    expect(isReportMoneyColumnId('inQty')).toBe(false);
+    expect(isReportMoneyColumnId('quantity_sold')).toBe(false);
+    expect(isReportMoneyColumnId('stock')).toBe(false);
+    expect(isReportMoneyColumnId('salesCount')).toBe(false);
+    expect(isReportMoneyColumnId('price')).toBe(false);
+    expect(isReportMoneySumColumnId('outAmount')).toBe(true);
+    expect(isReportMoneySumColumnId('inQty')).toBe(false);
+    expect(formatReportFooterSum(600000, 'inAmount', 'IQD')).toMatch(/IQD/);
+    expect(formatReportFooterSum(70, 'inQty', 'IQD')).not.toMatch(/IQD/);
   });
 
   it('UUID ürün kodunu Excel hücresinde gizler', () => {

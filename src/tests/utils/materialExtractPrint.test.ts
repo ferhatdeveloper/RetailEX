@@ -23,9 +23,11 @@ const LABELS = {
     description: 'Açıklama',
     inQty: 'Giriş miktar',
     inAmt: 'Giriş tutar',
+    purchaseUnitPrice: 'Alış Birim Fiyatı',
     outQty: 'Çıkış miktar',
     outAmt: 'Çıkış tutar',
-    runningBalance: 'Kümülatif Bakiye',
+    salesUnitPrice: 'Satış Birim Fiyatı',
+    runningBalance: 'Kümülatif Kalan Bakiye',
     total: 'Toplam',
     dateRange: 'Tarih Aralığı',
     empty: 'Kayıt bulunamadı',
@@ -130,6 +132,12 @@ describe('buildMaterialExtractPrintHtml', () => {
         expect(html).toContain('Satınalma faturası');
         expect(html).toContain('AF-1');
         expect(html).toContain('@page { size: A4');
+        expect(html).toContain('Alış Birim Fiyatı');
+        expect(html).toContain('Satış Birim Fiyatı');
+        expect(html).toContain('Kümülatif Kalan Bakiye');
+        expect(html.indexOf('Alış Birim Fiyatı')).toBeLessThan(html.indexOf('Çıkış miktar'));
+        expect(html.indexOf('Çıkış tutar')).toBeLessThan(html.indexOf('Satış Birim Fiyatı'));
+        expect(html.indexOf('Satış Birim Fiyatı')).toBeLessThan(html.indexOf('Kümülatif Kalan Bakiye'));
     });
 
     it('UUID ürün kodunu gizler', () => {
@@ -154,8 +162,12 @@ describe('buildMaterialExtractPrintContext', () => {
         expect(items).toHaveLength(2);
         expect(items[0].inQty).toBe(10);
         expect(items[0].outQty).toBe('');
+        expect(items[0].purchaseUnitPrice).toBe(2);
+        expect(items[0].salesUnitPrice).toBe('');
         expect(items[1].outAmt).toBe(15);
         expect(items[1].inAmt).toBe('');
+        expect(items[1].salesUnitPrice).toBe(5);
+        expect(items[1].purchaseUnitPrice).toBe('');
     });
 });
 
@@ -189,14 +201,24 @@ describe('localStorage print design', () => {
 });
 
 describe('convertTemplateToReportTemplate extract columns', () => {
-    it('Giriş/Çıkış miktar kolonlarını inQty/outQty alanına bağlar', () => {
+    it('Giriş/Çıkış ve alış/satış birim fiyatı alanlarına bağlar', () => {
         const tpl = DEFAULT_TEMPLATES.find((t) => t.id === 'default-a4-material-extract');
         expect(tpl).toBeTruthy();
         const report = convertTemplateToReportTemplate(tpl!);
         const table = report.components.find((c) => c.type === 'table');
         const fields = table?.columns?.map((c) => c.field) ?? [];
-        expect(fields).toEqual(
-            expect.arrayContaining(['dateLabel', 'typeLabel', 'documentNo', 'inQty', 'outQty', 'runningBalance']),
-        );
+        expect(fields).toEqual([
+            'dateLabel',
+            'typeLabel',
+            'documentNo',
+            'description',
+            'inQty',
+            'inAmt',
+            'purchaseUnitPrice',
+            'outQty',
+            'outAmt',
+            'salesUnitPrice',
+            'runningBalance',
+        ]);
     });
 });

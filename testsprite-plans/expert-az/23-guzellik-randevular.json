@@ -1,0 +1,15 @@
+{
+  "projectId": "e344cf40-19d9-41c3-b5fd-bc2f4665ff95",
+  "type": "frontend",
+  "name": "Güzellik 020 — Randevular takvim/liste açılır",
+  "description": "Demo Güzellik (020) Güzellik Merkezi → Randevular ekranı takvim veya randevu listesini gösterir.",
+  "priority": "p0",
+  "planSteps": [
+    { "type": "action", "description": "Navigate to the RetailEX login page" },
+    { "type": "action", "description": "Connect tenant retailex_demo if needed, then sign in as admin / admin" },
+    { "type": "action", "description": "Select firm Demo Güzellik (020), pick a store if needed, and enter the app" },
+    { "type": "action", "description": "Open the top shell module labeled Güzellik Merkezi" },
+    { "type": "action", "description": "In the beauty sidebar under Operasyonlar, click Randevular" },
+    { "type": "assertion", "description": "Verify the Randevular calendar or appointment list UI is visible with date controls or appointment slots/list" }
+  ]
+}

@@ -118,7 +118,12 @@ export function labelMaterialExtractFiche(
         return tm('consumption') || 'Sarf';
     }
     if (trcode === 2) return tm('productionEntry') || 'Üretim Girişi';
-    if (trcode === 5) return tm('warehouseReceipt') || 'Ambar Fişi';
+    if (trcode === 5) return tm('slipInterWarehouseTransfer') || tm('warehouseReceipt') || 'Ambar Fişi';
+    if (trcode === 11) return tm('slipWastage') || 'Fire Fişi';
+    if (trcode === 26) return tm('slipCountSurplus') || 'Sayım Fazlası Fişi';
+    if (trcode === 50) return tm('slipCountDeficit') || 'Sayım Eksiği Fişi';
+    if (trcode === 51) return tm('slipWarehouseEntry') || 'Depo Giriş Fişi';
+    if (trcode === 52) return tm('slipWarehouseExit') || 'Depo Çıkış Fişi';
     if (trcode === 8) {
         return isOutboundMovement(movType) ? (tm('salesInvoice') || 'Satış Faturası') : satinalma;
     }

@@ -1,0 +1,16 @@
+{
+  "projectId": "e344cf40-19d9-41c3-b5fd-bc2f4665ff95",
+  "type": "frontend",
+  "name": "Market 001 — Fiyat & Kampanya Yönetimi ve Yeni Kampanya",
+  "description": "Demo Market (001) Retail → Fiyat & Kampanya ekranı açılır; Aktif Kampanyalar / Yeni Kampanya kontrolü görünür.",
+  "priority": "p1",
+  "planSteps": [
+    { "type": "action", "description": "Navigate to the RetailEX login page" },
+    { "type": "action", "description": "Connect tenant retailex_demo if needed, then sign in as admin / admin" },
+    { "type": "action", "description": "Select firm Demo Market (001), pick a store if needed, and enter the app" },
+    { "type": "action", "description": "Open the top shell module labeled Yönetim" },
+    { "type": "action", "description": "In the Yönetim sidebar under Retail, click Fiyat & Kampanya" },
+    { "type": "action", "description": "If Yeni Kampanya is visible, click it then close with İptal or back without saving" },
+    { "type": "assertion", "description": "Verify the page shows Fiyat & Kampanya Yönetimi with Fiyat Listeleri and/or Aktif Kampanyalar sections visible" }
+  ]
+}

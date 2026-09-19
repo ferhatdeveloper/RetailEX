@@ -1,0 +1,15 @@
+{
+  "projectId": "e344cf40-19d9-41c3-b5fd-bc2f4665ff95",
+  "type": "frontend",
+  "name": "Login — retailex_demo kiracısı ile admin girişi firma seçimine ulaşır",
+  "description": "Kiracı kodu retailex_demo bağlandıktan sonra admin/admin kimlik bilgileriyle giriş yapılır ve firma seçim (organizasyon) adımı görünür.",
+  "priority": "p0",
+  "planSteps": [
+    { "type": "action", "description": "Navigate to the RetailEX login page" },
+    { "type": "action", "description": "If a tenant code field is shown, enter retailex_demo as the tenant code" },
+    { "type": "action", "description": "Click the button to connect to the tenant (Kiracıya bağlan or equivalent)" },
+    { "type": "action", "description": "Enter username admin and password admin in the credential fields" },
+    { "type": "action", "description": "Submit the login form to continue to organization or firm selection" },
+    { "type": "assertion", "description": "Verify the organization/firm selection step is visible with a firm picker showing Demo Market or firm codes such as 001, and the page is not stuck on an error toast about tenant connection" }
+  ]
+}

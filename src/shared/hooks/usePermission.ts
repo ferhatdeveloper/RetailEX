@@ -55,9 +55,15 @@ export const usePermission = () => {
   const isManager = useCallback(() => isRole(USER_ROLES.MANAGER), [isRole]);
   const isAdmin = useCallback(() => isRole(USER_ROLES.ADMIN), [isRole]);
 
-  /** Alış maliyeti, birim alış, satır kârı / marj (ürün listesi maliyet sütunu dahil) */
+  /** Alış maliyeti, birim alış, satır kârı / marj */
   const canViewPurchasePricing = useCallback(
     () => hasPermission('purchase-pricing', 'READ'),
+    [hasPermission]
+  );
+
+  /** Malzeme listesi Satış/Alış Toplam dip satırı (sistem parametresi ile birlikte) */
+  const canViewProductListSalesPurchaseTotals = useCallback(
+    () => hasPermission('product-list-sales-purchase-totals', 'READ'),
     [hasPermission]
   );
 
@@ -78,6 +84,7 @@ export const usePermission = () => {
     isManager,
     isAdmin,
     canViewPurchasePricing,
+    canViewProductListSalesPurchaseTotals,
     needsManagerAuth,
   }), [
     user,
@@ -89,6 +96,7 @@ export const usePermission = () => {
     isManager,
     isAdmin,
     canViewPurchasePricing,
+    canViewProductListSalesPurchaseTotals,
     needsManagerAuth
   ]);
 };

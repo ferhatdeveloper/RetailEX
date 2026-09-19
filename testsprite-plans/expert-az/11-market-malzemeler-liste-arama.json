@@ -1,0 +1,18 @@
+{
+  "projectId": "e344cf40-19d9-41c3-b5fd-bc2f4665ff95",
+  "type": "frontend",
+  "name": "Market 001 — Malzemeler listesi arama ile açılır (varyant yok)",
+  "description": "Demo Market (001) Yönetim → Malzeme Yönetimi → Ana Kayıtlar → Malzemeler listesinde ürünler görünür; TSHIRT-VAR/PHONE-VAR yok.",
+  "priority": "p0",
+  "planSteps": [
+    { "type": "action", "description": "Navigate to the RetailEX login page" },
+    { "type": "action", "description": "Connect tenant retailex_demo if the tenant step is shown" },
+    { "type": "action", "description": "Sign in with username admin and password admin" },
+    { "type": "action", "description": "Select firm Demo Market (001), pick a store if prompted, and enter the app" },
+    { "type": "action", "description": "Open the top shell module labeled Yönetim" },
+    { "type": "action", "description": "In the Yönetim sidebar, expand Malzeme Yönetimi then Ana Kayıtlar" },
+    { "type": "action", "description": "Click the menu item Malzemeler" },
+    { "type": "action", "description": "If a search field is visible on the Malzemeler screen, type a short product keyword such as iPhone or Gıda" },
+    { "type": "assertion", "description": "Verify the Malzemeler list table or grid shows at least one product row and does not show product codes TSHIRT-VAR or PHONE-VAR" }
+  ]
+}

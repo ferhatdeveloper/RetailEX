@@ -10,6 +10,7 @@ export type ModuleId =
   | 'products' | 'stock' | 'customers' | 'suppliers'
   | 'finance' | 'accounting' | 'mizan' | 'income-statement' | 'balance-sheet'
   | 'purchase' | 'sales-orders' | 'sales-invoices' | 'purchase-invoices' | 'purchase-pricing'
+  | 'product-list-sales-purchase-totals'
   | 'etransform' | 'returns' | 'production' | 'assets' | 'budget'
   | 'contracts' | 'quality' | 'service' | 'projects'
   | 'integrations' | 'reports' | 'excel' | 'scale'

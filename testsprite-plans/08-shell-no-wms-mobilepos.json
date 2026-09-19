@@ -1,0 +1,13 @@
+{
+  "projectId": "e344cf40-19d9-41c3-b5fd-bc2f4665ff95",
+  "type": "frontend",
+  "name": "Kabuk — WMS ve Mobile POS sekmeleri görünmez",
+  "description": "Demo Market girişi sonrası üst kabukta WMS ve Mobile POS / mobil POS sekmeleri görünmemelidir.",
+  "priority": "p0",
+  "planSteps": [
+    { "type": "action", "description": "Navigate to the RetailEX login page" },
+    { "type": "action", "description": "Connect tenant retailex_demo if needed, then sign in as admin / admin" },
+    { "type": "action", "description": "Select firm Demo Market (001), enter the app shell" },
+    { "type": "assertion", "description": "Verify the top module shell shows allowed modules such as Market POS and Yönetim, and does NOT show any tab or icon labeled WMS, Depo WMS, Mobile POS, or Mobil POS" }
+  ]
+}

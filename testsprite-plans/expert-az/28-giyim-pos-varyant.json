@@ -1,0 +1,16 @@
+{
+  "projectId": "e344cf40-19d9-41c3-b5fd-bc2f4665ff95",
+  "type": "frontend",
+  "name": "Giyim 030 — Satışlar POS varyant seçimi",
+  "description": "Demo Giyim (030) Satışlar POS’ta varyantlı ürün seçildiğinde beden/renk seçimi veya varyantlı ürün görünür.",
+  "priority": "p1",
+  "planSteps": [
+    { "type": "action", "description": "Navigate to the RetailEX login page" },
+    { "type": "action", "description": "Connect tenant retailex_demo if needed, then sign in as admin / admin" },
+    { "type": "action", "description": "Select firm Demo Giyim (030), pick a store if needed, and enter the app" },
+    { "type": "action", "description": "Click the top shell module labeled Satışlar" },
+    { "type": "action", "description": "On the POS product grid or catalog, locate a variant product such as TSHIRT-VAR or a clothing item with variants" },
+    { "type": "action", "description": "Click that product to open variant selection if prompted" },
+    { "type": "assertion", "description": "Verify either a size/color variant picker is shown for the product, or the product is added with a clear variant attribute — POS remains usable without error" }
+  ]
+}

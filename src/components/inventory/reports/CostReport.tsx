@@ -7,6 +7,8 @@ import { TrendingDown } from 'lucide-react';
 import { useLanguage } from '../../../contexts/LanguageContext';
 import { useFirmaDonem } from '../../../contexts/FirmaDonemContext';
 import { formatNumber } from '../../../utils/formatNumber';
+import { formatLedgerAmount, getFirmLedgerCurrency, getGlobalCurrency } from '../../../utils/currency';
+import { getAppDefaultCurrency } from '../../../services/postgres';
 import { format } from 'date-fns';
 import { toSqlDateInputString } from '../../../utils/localCalendarDate';
 
@@ -55,7 +57,10 @@ export function CostReport() {
     const [loading, setLoading] = useState(true);
     const { tm } = useLanguage();
     const { selectedFirm, selectedPeriod } = useFirmaDonem();
-    const currency = selectedFirm?.ana_para_birimi || 'IQD';
+    const currency = getFirmLedgerCurrency(
+        selectedFirm,
+        getAppDefaultCurrency() || getGlobalCurrency(),
+    );
 
     const today = useMemo(() => new Date(), []);
     const monthStart = useMemo(() => {
@@ -124,23 +129,23 @@ export function CostReport() {
 
     const columnHelper = createColumnHelper<CostRow>();
     const columns = useMemo<ColumnDef<CostRow, any>[]>(() => [
-        columnHelper.accessor('product_code', { header: tm('materialCode') }),
-        columnHelper.accessor('product_name', { header: tm('materialName') }),
         columnHelper.accessor('line_kind_label', {
             id: 'line_kind',
             header: tm('type') || 'Tür',
         }),
+        columnHelper.accessor('product_code', { header: tm('materialCode') }),
+        columnHelper.accessor('product_name', { header: tm('materialName') }),
         columnHelper.accessor('quantity_sold', {
             header: tm('soldQuantity'),
             cell: info => formatNumber(Number(info.getValue()) || 0, 2),
         }),
         columnHelper.accessor('revenue', {
             header: tm('salesRevenue'),
-            cell: info => `${formatNumber(Number(info.getValue()) || 0, 2)} ${currency}`,
+            cell: info => formatLedgerAmount(Number(info.getValue()) || 0, currency),
         }),
         columnHelper.accessor('cogs', {
             header: tm('cogs') || 'Satılan Mal Maliyeti',
-            cell: info => `${formatNumber(Number(info.getValue()) || 0, 2)} ${currency}`,
+            cell: info => formatLedgerAmount(Number(info.getValue()) || 0, currency),
         }),
         columnHelper.accessor('profit', {
             header: tm('grossProfit') || 'Brüt Kar',
@@ -148,7 +153,7 @@ export function CostReport() {
                 const v = Number(info.getValue()) || 0;
                 return (
                     <span className={v >= 0 ? 'text-green-600 font-bold' : 'text-red-600 font-bold'}>
-                        {formatNumber(v, 2)} {currency}
+                        {formatLedgerAmount(v, currency)}
                     </span>
                 );
             },

@@ -1,0 +1,14 @@
+{
+  "projectId": "e344cf40-19d9-41c3-b5fd-bc2f4665ff95",
+  "type": "frontend",
+  "name": "Restoran 010 — menü veya masa kabuğu açılır",
+  "description": "Demo Restoran (010) seçildikten sonra Restoran kabuğu menü/masa görünümü ile açılır.",
+  "priority": "p0",
+  "planSteps": [
+    { "type": "action", "description": "Navigate to the RetailEX login page" },
+    { "type": "action", "description": "Connect tenant retailex_demo if needed, then sign in as admin / admin" },
+    { "type": "action", "description": "Select firm Demo Restoran (CODE 010), pick a store if needed, and enter the app" },
+    { "type": "action", "description": "Open the Restaurant / Restoran module from the top shell tabs" },
+    { "type": "assertion", "description": "Verify the restaurant shell is active showing floor/tables, menu, or restaurant dashboard content labeled for restaurant operations, not stuck on Market POS only" }
+  ]
+}

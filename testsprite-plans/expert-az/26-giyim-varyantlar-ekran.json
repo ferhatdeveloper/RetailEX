@@ -1,0 +1,15 @@
+{
+  "projectId": "e344cf40-19d9-41c3-b5fd-bc2f4665ff95",
+  "type": "frontend",
+  "name": "Giyim 030 — Varyantlar tanım ekranı açılır",
+  "description": "Demo Giyim (030) Yönetim → Ana Kayıtlar → Varyantlar ekranı açılır.",
+  "priority": "p0",
+  "planSteps": [
+    { "type": "action", "description": "Navigate to the RetailEX login page" },
+    { "type": "action", "description": "Connect tenant retailex_demo if needed, then sign in as admin / admin" },
+    { "type": "action", "description": "Select firm Demo Giyim (030), pick a store if needed, and enter the app" },
+    { "type": "action", "description": "Open the top shell module labeled Yönetim" },
+    { "type": "action", "description": "In the Yönetim sidebar under Malzeme Yönetimi → Ana Kayıtlar, click Varyantlar" },
+    { "type": "assertion", "description": "Verify the Varyantlar definitions screen is visible with variant groups, attributes, or a list/table for size/color variants" }
+  ]
+}

@@ -6,6 +6,7 @@ import { createColumnHelper, ColumnDef } from '@tanstack/react-table';
 import { FileText } from 'lucide-react';
 import { format } from 'date-fns';
 import { useLanguage } from '../../../contexts/LanguageContext';
+import { receiptNotesForDisplay } from '../../../utils/receiptNotes';
 
 interface SlipRow {
     id: string;
@@ -41,7 +42,7 @@ export function SlipListReport() {
                         : (tm('warehouseSlip') || 'Ambar Fişi'),
                     customer_name: m.customer_name || '',
                     movement_type: m.movement_type || '',
-                    description: m.description || '',
+                    description: receiptNotesForDisplay(m.description),
                 }));
                 if (!cancelled) setRows(mapped);
             } catch (err) {

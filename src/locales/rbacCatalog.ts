@@ -78,6 +78,7 @@ export function buildRbacModuleGroups(tm: (k: string) => string): RbacModuleGrou
       color: 'blue',
       modules: [
         m('products', ['READ', 'CREATE', 'UPDATE', 'DELETE']),
+        m('product-list-sales-purchase-totals', ['READ']),
         m('stock', ['READ', 'CREATE', 'UPDATE', 'DELETE', 'EXECUTE']),
         m('store-transfer', ['READ', 'CREATE', 'UPDATE', 'EXECUTE']),
         m('purchase', ['READ', 'CREATE', 'UPDATE', 'DELETE']),

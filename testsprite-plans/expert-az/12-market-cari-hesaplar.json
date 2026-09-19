@@ -1,0 +1,18 @@
+{
+  "projectId": "e344cf40-19d9-41c3-b5fd-bc2f4665ff95",
+  "type": "frontend",
+  "name": "Market 001 — Cari Hesaplar listesi ve yeni iptal",
+  "description": "Demo Market (001) Finans → Kartlar → Cari Hesaplar listesi açılır; Yeni açılarak İptal ile kapatılır.",
+  "priority": "p0",
+  "planSteps": [
+    { "type": "action", "description": "Navigate to the RetailEX login page" },
+    { "type": "action", "description": "Connect tenant retailex_demo if needed, then sign in as admin / admin" },
+    { "type": "action", "description": "Select firm Demo Market (001), pick a store if needed, and enter the app" },
+    { "type": "action", "description": "Open the top shell module labeled Yönetim" },
+    { "type": "action", "description": "In the Yönetim sidebar, open Finans / Finans Yönetimi then Kartlar" },
+    { "type": "action", "description": "Click the menu item Cari Hesaplar" },
+    { "type": "action", "description": "Click Yeni or equivalent new-account control if visible" },
+    { "type": "action", "description": "Close the form with İptal or the dialog close control without saving" },
+    { "type": "assertion", "description": "Verify the Cari Hesaplar list screen remains visible with a table, toolbar, or empty-state for current accounts — not a blank error page" }
+  ]
+}

@@ -88,20 +88,11 @@ export const MENU_SECTIONS: MenuSection[] = [
         screen: 'material-movements',
         children: [
           { id: 'stockmovements', label: 'Malzeme Yönetim Fişleri', screen: 'stockmovements' },
-          { id: 'stok-devir', label: 'Stok Devir Fişi', screen: 'stok-devir' },
+          // stok-devir (Stok Devir Fişi) — menüden kaldırıldı
           // stock-price-change-slips: varsayılan kapalı (web report_menu_params); mobilde menüde yok
         ],
       },
-      {
-        id: 'inventory-count',
-        label: 'Sayım İşlemleri',
-        screen: 'inventory-count-ops',
-        children: [
-          { id: 'mobile-count', label: 'Mobil Sayım / Fiş Oluştur', screen: 'mobile-inventory-count' },
-          { id: 'deficit', label: 'Sayım Eksiği Fişleri', screen: 'stockmovements-deficit' },
-          { id: 'surplus', label: 'Sayım Fazlası Fişleri', screen: 'stockmovements-surplus' },
-        ],
-      },
+      // inventory-count (Sayım İşlemleri) — menüden kaldırıldı; fiş türleri Malzeme Yönetim Fişleri’nde kalır
       {
         id: 'material-reports',
         label: 'Raporlar',
@@ -535,7 +526,6 @@ const LIVE_MAP: Record<string, LiveRoute> = {
   stockmovements: 'StockMovements',
   'stockmovements-deficit': 'StockMovements',
   'stockmovements-surplus': 'StockMovements',
-  'stok-devir': 'StockMovements',
   'stock-price-change-slips': 'StockMovements',
   restaurant: 'Restaurant',
   'restaurant-tables': 'Restaurant',

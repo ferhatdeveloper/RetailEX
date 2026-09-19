@@ -1,0 +1,16 @@
+{
+  "projectId": "e344cf40-19d9-41c3-b5fd-bc2f4665ff95",
+  "type": "frontend",
+  "name": "Restoran 010 — Kasa karosu açılır",
+  "description": "Demo Restoran (010) Restoran kabuğunda mali gün açıldıktan sonra Kasa karosu kasa/modül ekranını açar.",
+  "priority": "p2",
+  "planSteps": [
+    { "type": "action", "description": "Navigate to the RetailEX login page" },
+    { "type": "action", "description": "Connect tenant retailex_demo if needed, then sign in as admin / admin" },
+    { "type": "action", "description": "Select firm Demo Restoran or Firma 010, pick a store if needed, and enter the app" },
+    { "type": "action", "description": "Open the top shell module labeled Restoran" },
+    { "type": "action", "description": "If Günü başlat is visible, click it and complete the register/opening-cash modal to activate the day" },
+    { "type": "action", "description": "Click the dashboard tile labeled Kasa after it is enabled (not grayed out)" },
+    { "type": "assertion", "description": "Verify a Kasa cash module screen titled Kasa ve finans or cash list/operations is visible within the Restoran shell" }
+  ]
+}

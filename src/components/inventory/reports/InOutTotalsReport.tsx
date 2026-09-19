@@ -11,6 +11,8 @@ import { ArrowRightLeft } from 'lucide-react';
 import { useLanguage } from '../../../contexts/LanguageContext';
 import { useFirmaDonem } from '../../../contexts/FirmaDonemContext';
 import { formatNumber } from '../../../utils/formatNumber';
+import { formatLedgerAmount, getFirmLedgerCurrency, getGlobalCurrency } from '../../../utils/currency';
+import { getAppDefaultCurrency } from '../../../services/postgres';
 
 function monthStartKey(): string {
     const today = localTodayDateKey();
@@ -28,7 +30,10 @@ export function InOutTotalsReport() {
     const [loading, setLoading] = useState(true);
     const { tm } = useLanguage();
     const { selectedFirm, selectedPeriod } = useFirmaDonem();
-    const currency = selectedFirm?.ana_para_birimi || 'IQD';
+    const currency = getFirmLedgerCurrency(
+        selectedFirm,
+        getAppDefaultCurrency() || getGlobalCurrency(),
+    );
     const [startDate, setStartDate] = useState(monthStartKey);
     const [endDate, setEndDate] = useState(localTodayDateKey);
 
@@ -108,7 +113,7 @@ export function InOutTotalsReport() {
             header: tm('extractInAmount') || 'Giriş tutar',
             cell: info => (
                 <span className="text-green-700 font-medium">
-                    {formatNumber(Number(info.getValue()) || 0, 2)} {currency}
+                    {formatLedgerAmount(Number(info.getValue()) || 0, currency)}
                 </span>
             ),
         }),
@@ -124,7 +129,7 @@ export function InOutTotalsReport() {
             header: tm('extractOutAmount') || 'Çıkış tutar',
             cell: info => (
                 <span className="text-red-700 font-medium">
-                    {formatNumber(Number(info.getValue()) || 0, 2)} {currency}
+                    {formatLedgerAmount(Number(info.getValue()) || 0, currency)}
                 </span>
             ),
         }),

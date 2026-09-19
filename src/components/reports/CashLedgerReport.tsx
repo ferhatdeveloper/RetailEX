@@ -21,7 +21,7 @@ import { useLanguage } from '../../contexts/LanguageContext';
 import { useTheme } from '../../contexts/ThemeContext';
 import { useFirmaDonem } from '../../contexts/FirmaDonemContext';
 import { formatNumber } from '../../utils/formatNumber';
-import { getFirmLedgerCurrency, getGlobalCurrency } from '../../utils/currency';
+import { formatLedgerAmount, getFirmLedgerCurrency, getGlobalCurrency } from '../../utils/currency';
 import { getAppDefaultCurrency } from '../../services/postgres';
 import {
   buildReportDateRangeChange,
@@ -390,14 +390,14 @@ export function CashLedgerReport() {
               columnId: 'incoming',
               getValue: (r) => Number(r.incoming) || 0,
               format: (sum) => (
-                <span className="text-emerald-600">{formatNumber(sum, 2, false)}</span>
+                <span className="text-emerald-600">{formatLedgerAmount(sum, currency)}</span>
               ),
             },
             {
               columnId: 'outgoing',
               getValue: (r) => Number(r.outgoing) || 0,
               format: (sum) => (
-                <span className="text-red-500">{formatNumber(sum, 2, false)}</span>
+                <span className="text-red-500">{formatLedgerAmount(sum, currency)}</span>
               ),
             },
           ]}

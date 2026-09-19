@@ -15,6 +15,7 @@ import {
 import { useLanguage } from '../../contexts/LanguageContext';
 import { displayItemCode } from '../../utils/lastPurchaseCostSql';
 import { formatNumber } from '../../utils/formatNumber';
+import { formatReportDateCell } from '../../utils/dateLocale';
 import { expiryReturnLineAmounts } from '../../utils/expiryPurchaseReturn';
 
 export function PurchaseExpiryReport() {
@@ -108,18 +109,24 @@ export function PurchaseExpiryReport() {
       })
     : null;
 
+  const formatExpiryCell = (row: ExpiringPurchaseItem) => {
+    const expired = row.daysLeft < 0;
+    const label = expired ? `${Math.abs(row.daysLeft)} g. geçti` : `${row.daysLeft} gün`;
+    return `${formatReportDateCell(row.expiryDate)} - ${label}`;
+  };
+
   const columnHelper = createColumnHelper<ExpiringPurchaseItem>();
   const columns = [
-    columnHelper.accessor('expiryDate', {
+    columnHelper.accessor(row => formatExpiryCell(row), {
+      id: 'expiryDate',
       header: 'SKT',
       cell: info => {
         const row = info.row.original;
         const expired = row.daysLeft < 0;
         const urgent = row.daysLeft <= 1;
-        const label = expired ? `${Math.abs(row.daysLeft)} g. geçti` : `${row.daysLeft} gün`;
         return (
           <span className={`rounded-full px-2 py-1 text-xs font-black ${expired || urgent ? 'bg-red-100 text-red-700' : 'bg-amber-100 text-amber-800'}`}>
-            {info.getValue()} · {label}
+            {info.getValue()}
           </span>
         );
       },
@@ -149,16 +156,29 @@ export function PurchaseExpiryReport() {
       cell: info => info.getValue() || '-',
       size: 180,
     }),
-    columnHelper.accessor('invoiceNo', {
-      header: tm('expiryPurchaseInvoice'),
-      cell: info => (
-        <div className="flex flex-col">
-          <span className="font-mono text-xs font-bold text-blue-700">{info.getValue() || '-'}</span>
-          <span className="text-xs text-slate-500">{info.row.original.invoiceDate}</span>
-        </div>
-      ),
-      size: 150,
-    }),
+    columnHelper.accessor(
+      row => {
+        const no = row.invoiceNo || '-';
+        const d = row.invoiceDate ? formatReportDateCell(row.invoiceDate) : '';
+        return d ? `${no}\n${d}` : no;
+      },
+      {
+        id: 'invoiceNo',
+        header: tm('expiryPurchaseInvoice'),
+        cell: info => {
+          const row = info.row.original;
+          return (
+            <div className="flex flex-col">
+              <span className="font-mono text-xs font-bold text-blue-700">{row.invoiceNo || '-'}</span>
+              {row.invoiceDate ? (
+                <span className="text-xs text-slate-500">{formatReportDateCell(row.invoiceDate)}</span>
+              ) : null}
+            </div>
+          );
+        },
+        size: 150,
+      },
+    ),
     columnHelper.accessor('batchNo', {
       header: tm('expiryBatch'),
       cell: info => info.getValue() || '-',

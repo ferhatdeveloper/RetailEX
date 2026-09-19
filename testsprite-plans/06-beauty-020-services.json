@@ -1,0 +1,15 @@
+{
+  "projectId": "e344cf40-19d9-41c3-b5fd-bc2f4665ff95",
+  "type": "frontend",
+  "name": "Güzellik 020 — hizmet listesi boş değildir",
+  "description": "Demo Güzellik (020) firmasında güzellik modülü açılır ve hizmet listesinde en az bir hizmet vardır.",
+  "priority": "p0",
+  "planSteps": [
+    { "type": "action", "description": "Navigate to the RetailEX login page" },
+    { "type": "action", "description": "Connect tenant retailex_demo if needed, then sign in as admin / admin" },
+    { "type": "action", "description": "Select firm Demo Güzellik (CODE 020), pick a store if needed, and enter the app" },
+    { "type": "action", "description": "Open the Beauty / Güzellik module from the top shell" },
+    { "type": "action", "description": "Navigate to the services / hizmetler list or catalog within beauty" },
+    { "type": "assertion", "description": "Verify the beauty services list shows at least one named service row or card (non-empty); an empty-only placeholder without any service must fail" }
+  ]
+}

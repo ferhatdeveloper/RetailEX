@@ -559,7 +559,8 @@ export const DEFAULT_TEMPLATES: Template[] = [
   {
     id: 'default-a4-material-extract',
     name: 'A4 Malzeme Ekstresi',
-    description: 'Malzeme ekstresi A4 rapor şablonu — tarih, fiş, giriş/çıkış ve kümülatif bakiye',
+    description:
+      'Malzeme ekstresi A4 — giriş/çıkış, alış/satış birim fiyatı ve kümülatif kalan bakiye',
     type: 'invoice',
     format: 'A4',
     width: 210,
@@ -644,9 +645,11 @@ export const DEFAULT_TEMPLATES: Template[] = [
           'Açıklama',
           'Giriş Miktar',
           'Giriş Tutar',
+          'Alış Birim Fiyatı',
           'Çıkış Miktar',
           'Çıkış Tutar',
-          'Kümülatif',
+          'Satış Birim Fiyatı',
+          'Kümülatif Kalan Bakiye',
         ],
       },
       {

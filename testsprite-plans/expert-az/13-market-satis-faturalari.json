@@ -1,0 +1,16 @@
+{
+  "projectId": "e344cf40-19d9-41c3-b5fd-bc2f4665ff95",
+  "type": "frontend",
+  "name": "Market 001 — Satış Faturaları listesi A→Z",
+  "description": "Demo Market (001) Faturalar → Satış Faturaları → Perakende Satış veya Toptan Satış Faturası listesi açılır.",
+  "priority": "p0",
+  "planSteps": [
+    { "type": "action", "description": "Navigate to the RetailEX login page" },
+    { "type": "action", "description": "Connect tenant retailex_demo if needed, then sign in as admin / admin" },
+    { "type": "action", "description": "Select firm Demo Market (001), pick a store if needed, and enter the app" },
+    { "type": "action", "description": "Open the top shell module labeled Yönetim" },
+    { "type": "action", "description": "In the Yönetim sidebar, expand Faturalar then Satış Faturaları" },
+    { "type": "action", "description": "Click Perakende Satış or Toptan Satış Faturası" },
+    { "type": "assertion", "description": "Verify the Satış Faturaları screen titled Satış Faturaları or retail/wholesale sales list is visible with a list table, filters, or empty-state — not a blank error page" }
+  ]
+}

@@ -172,6 +172,13 @@ const mods: Record<string, { n: Entry }> = {
   loyalty: { n: M('Sadakat Sistemi', 'Loyalty', 'الولاء') },
   'gift-cards': { n: M('Hediye Çekleri', 'Gift cards', 'بطاقات الهدايا') },
   products: { n: M('Ürün ve Malzeme Kartları', 'Product master data', 'بطاقات المنتجات') },
+  'product-list-sales-purchase-totals': {
+    n: M(
+      'Malzeme listesi satış/alış dip toplamı',
+      'Product list sales/purchase footer totals',
+      'إجمالي تذييل المبيعات/المشتريات في قائمة المواد',
+    ),
+  },
   stock: { n: M('Envanter Hareketleri', 'Inventory movements', 'حركات المخزون') },
   'store-transfer': { n: M('Depolar Arası Sevk', 'Inter-store transfer', 'النقل بين المستودعات') },
   purchase: { n: M('Satınalma Yönetimi', 'Purchasing', 'المشتريات') },
@@ -214,6 +221,11 @@ const descs: Record<string, Entry> = {
   loyalty: M('Müşteri puanları ve sadakat programları', 'Loyalty points', 'نقاط الولاء'),
   'gift-cards': M('Sanal ve fiziksel hediye çeki yönetimi', 'Gift card management', 'بطاقات الهدايا'),
   products: M('Malzeme, hizmet ve ticari mal tanımları', 'Items & services master', 'تعريف الأصناف'),
+  'product-list-sales-purchase-totals': M(
+    'Malzeme listesinde Satış Toplam ve Alış Toplam dip satırını gösterir (sistem parametresi de açık olmalı)',
+    'Shows Sales Total and Purchase Total footer row on the product list (system parameter must also be on)',
+    'يعرض صف إجمالي المبيعات والمشتريات في قائمة المواد (يجب تفعيل معلمة النظام أيضاً)',
+  ),
   stock: M('Giriş, çıkış, sarf ve fire fişleri', 'Receipts, issues, adjustments', 'حركات المخزون'),
   'store-transfer': M('Şubeler arası transfer ve onay süreci', 'Transfers between stores', 'النقل بين الفروع'),
   purchase: M('Tedarikçi siparişleri ve alım süreci', 'Purchase orders', 'أوامر الشراء'),

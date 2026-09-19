@@ -24,13 +24,16 @@ import { ColumnVisibilityMenu } from './ColumnVisibilityMenu';
 import { exportDataGridToExcel, printDataGridHtml } from '../../utils/gridExcelExport';
 import { ActiveFiltersBar, filterOperatorI18nKey, type ActiveFilterChip } from './ActiveFiltersBar';
 import { GRID_POPOVER_Z } from './FullscreenBodyPortal';
-import { formatNumber } from '../../utils/formatNumber';
 import {
   coerceReportNumber,
+  formatReportFooterSum,
   isReportCodeColumnId,
   isReportSumColumnId,
   reportDisplayCode,
 } from '../../utils/reportGridChrome';
+import { getFirmLedgerCurrency, getGlobalCurrency } from '../../utils/currency';
+import { getAppDefaultCurrency } from '../../services/postgres';
+import { useFirmaDonem } from '../../contexts/FirmaDonemContext';
 
 const DEFAULT_PAGE_SIZE_OPTIONS = [10, 15, 20, 25, 50, 100];
 
@@ -91,6 +94,11 @@ export interface DevExDataGridProps<T> {
   }>;
   /** Dip toplam etiketi (ör. "Dip Toplam") — ilk uygun metin kolonuna yazılır */
   footerLabel?: ReactNode;
+  /**
+   * Footer tutar kolonları için para birimi (varsayılan: firma ana para birimi).
+   * Verilmezse `getFirmLedgerCurrency(selectedFirm)`.
+   */
+  footerCurrency?: string | null;
 }
 
 type GridColumnMeta = {
@@ -787,6 +795,7 @@ export function DevExDataGrid<T>({
   autoFooterSums = true,
   footerSumColumns,
   footerLabel,
+  footerCurrency: footerCurrencyProp,
 }: DevExDataGridProps<T>) {
   const [sorting, setSorting] = useState<SortingState>(() => initialSorting ?? []);
   const [columnFilters, setColumnFilters] = useState<ColumnFiltersState>([]);
@@ -802,6 +811,13 @@ export function DevExDataGrid<T>({
   const { isMobile, isTablet } = useResponsive();
   const { tm } = useLanguage();
   const { darkMode } = useTheme();
+  const { selectedFirm } = useFirmaDonem();
+  const footerCurrency = useMemo(
+    () =>
+      String(footerCurrencyProp || '').trim() ||
+      getFirmLedgerCurrency(selectedFirm, getAppDefaultCurrency() || getGlobalCurrency()),
+    [footerCurrencyProp, selectedFirm],
+  );
   const headerBg = darkMode ? 'bg-gray-700' : 'bg-[#E3F2FD]';
   const rowHover = darkMode ? 'hover:bg-gray-700' : 'hover:bg-[#BBDEFB]';
   const rowStripeEven = darkMode ? 'bg-gray-800' : 'bg-white';
@@ -876,18 +892,26 @@ export function DevExDataGrid<T>({
     if (!autoFooterSums) return [] as NonNullable<DevExDataGridProps<T>['footerSumColumns']>;
     return codedColumns
       .filter((col) => isReportSumColumnId(columnDefId(col)))
-      .map((col) => ({
-        columnId: columnDefId(col),
-        getValue: (row: T) => coerceReportNumber(readRowColumnValue(col, row, 0)),
-        format: (sum: number) => formatNumber(sum, 2, false),
-      }));
-  }, [autoFooterSums, codedColumns]);
+      .map((col) => {
+        const columnId = columnDefId(col);
+        return {
+          columnId,
+          getValue: (row: T) => coerceReportNumber(readRowColumnValue(col, row, 0)),
+          format: (sum: number) => formatReportFooterSum(sum, columnId, footerCurrency),
+        };
+      });
+  }, [autoFooterSums, codedColumns, footerCurrency]);
 
   const mergedFooterSumColumns = useMemo(() => {
-    const explicit = footerSumColumns ?? [];
+    const explicit = (footerSumColumns ?? []).map((def) => ({
+      ...def,
+      format:
+        def.format ??
+        ((sum: number) => formatReportFooterSum(sum, def.columnId, footerCurrency)),
+    }));
     const ids = new Set(explicit.map((d) => d.columnId));
     return [...explicit, ...autoSumColumns.filter((d) => !ids.has(d.columnId))];
-  }, [footerSumColumns, autoSumColumns]);
+  }, [footerSumColumns, autoSumColumns, footerCurrency]);
 
   const printEnabled = enablePrint ?? (onPrint != null || enableExcelExport);
 

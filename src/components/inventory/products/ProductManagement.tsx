@@ -46,6 +46,12 @@ import { useLanguage } from '../../../contexts/LanguageContext';
 import { useFirmaDonem } from '../../../contexts/FirmaDonemContext';
 import { usePermission } from '../../../shared/hooks/usePermission';
 import { useResponsive } from '../../../hooks/useResponsive';
+import {
+  getRuntimeReportMenuParams,
+  isReportMenuParamEnabled,
+  subscribeReportMenuParams,
+  type ReportMenuParams,
+} from '../../../services/reportMenuParamsService';
 import { BulkProductImageUpdateModal } from './BulkProductImageUpdateModal';
 import { BulkProductFieldUpdateModal } from './BulkProductFieldUpdateModal';
 import { BulkProductLabelPrint } from './BulkProductLabelPrint';
@@ -92,8 +98,14 @@ const PRODUCT_STOCK_REFRESH_MS = 120000;
 export function ProductManagement({ products, setProducts }: ProductManagementProps) {
   const { t, tm } = useLanguage();
   const { selectedFirm } = useFirmaDonem();
-  const { canViewPurchasePricing } = usePermission();
+  const { canViewPurchasePricing, canViewProductListSalesPurchaseTotals } = usePermission();
   const showPurchasePricing = canViewPurchasePricing();
+  const [reportMenuParams, setReportMenuParams] = useState<ReportMenuParams>(() =>
+    getRuntimeReportMenuParams(),
+  );
+  const showSalesPurchaseFooter =
+    isReportMenuParamEnabled('product-list-sales-purchase-totals', reportMenuParams) &&
+    canViewProductListSalesPurchaseTotals();
   const { isMobile } = useResponsive();
   const updateProduct = useProductStore((state) => state.updateProduct);
   const deleteProduct = useProductStore((state) => state.deleteProduct);
@@ -147,6 +159,8 @@ export function ProductManagement({ products, setProducts }: ProductManagementPr
       alive = false;
     };
   }, [lastSync]);
+
+  useEffect(() => subscribeReportMenuParams(setReportMenuParams), []);
 
   // Manuel yenileme fonksiyonu
   const handleRefresh = async () => {
@@ -529,6 +543,30 @@ export function ProductManagement({ products, setProducts }: ProductManagementPr
       }),
     [columnVisibility, showPurchasePricing, columnLabelOverrides]
   );
+
+  const productFooterSumColumns = useMemo(() => {
+    if (!showSalesPurchaseFooter) return undefined;
+    const defs: Array<{
+      columnId: string;
+      getValue: (row: Product) => number;
+      format: (sum: number) => string;
+    }> = [];
+    if (columnVisibility.totalSales !== false) {
+      defs.push({
+        columnId: 'totalSales',
+        getValue: (row) => Number(row.totalSales) || 0,
+        format: (sum) => formatCurrency(sum, 2, false),
+      });
+    }
+    if (showPurchasePricing && columnVisibility.totalPurchased !== false) {
+      defs.push({
+        columnId: 'totalPurchased',
+        getValue: (row) => Number(row.totalPurchased) || 0,
+        format: (sum) => formatCurrency(sum, 2, false),
+      });
+    }
+    return defs.length > 0 ? defs : undefined;
+  }, [showSalesPurchaseFooter, showPurchasePricing, columnVisibility]);
 
   const columnVisibilityControl = (
     <ColumnVisibilityMenu
@@ -918,6 +956,8 @@ export function ProductManagement({ products, setProducts }: ProductManagementPr
               showColumnVisibilityToolbar={false}
               enableExcelExport={false}
               autoFooterSums={false}
+              footerSumColumns={productFooterSumColumns}
+              footerLabel={productFooterSumColumns ? tm('reportsTotalUpper') : undefined}
               columnVisibility={columnVisibility}
               onColumnVisibilityChange={setColumnVisibility}
               onRowContextMenu={(e, product) => {
@@ -971,11 +1011,6 @@ export function ProductManagement({ products, setProducts }: ProductManagementPr
                 [tm('invThProductCode').toUpperCase(), mobileActionProduct.code || '—'],
                 [tm('productName').toUpperCase(), mobileActionProduct.name || '—'],
                 [tm('category').toUpperCase(), mobileActionProduct.category || '—'],
-                ...(showPurchasePricing
-                  ? [
-                      [tm('cost').toUpperCase(), mobileActionProduct.cost != null && String(mobileActionProduct.cost).trim() !== '' ? formatCurrency(Number(mobileActionProduct.cost), 2, false) : '—'] as [string, string],
-                    ]
-                  : []),
                 [tm('unitPrice').toUpperCase(), formatCurrency(Number(mobileActionProduct.price) || 0, 2, false)],
                 [tm('productGridColPriceUsd').toUpperCase(), (mobileActionProduct as any).salePriceUSD != null && (mobileActionProduct as any).salePriceUSD !== '' ? formatAmountWithCode(Number((mobileActionProduct as any).salePriceUSD), 'USD', 2) : '—'],
                 ...(showPurchasePricing

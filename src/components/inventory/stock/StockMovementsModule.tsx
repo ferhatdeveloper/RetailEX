@@ -3,11 +3,18 @@ import {
     TrendingDown, Plus, Search, Trash2, X, Edit2, Eye,
     Printer, RefreshCw, Filter, ChevronLeft, ChevronRight,
     MoreHorizontal, FileText, Download, Share2, Check,
-    FileMinus, Archive
+    FileMinus, Archive, ChevronDown
 } from 'lucide-react';
 import { useLanguage } from '../../../contexts/LanguageContext';
 import { postgres } from '../../../services/postgres';
-import { stockMovementAPI, StockMovement, STOCK_SLIP_TRCODES } from '../../../services/stockMovementAPI';
+import {
+    stockMovementAPI,
+    StockMovement,
+    STOCK_SLIP_TRCODES,
+    MATERIAL_SLIP_ADD_MENU,
+    labelStockSlipDocumentType,
+    type MaterialSlipAddMenuItem,
+} from '../../../services/stockMovementAPI';
 import { Button } from '../../ui/button';
 import { Input } from '../../ui/input';
 import {
@@ -15,10 +22,54 @@ import {
     DropdownMenuContent,
     DropdownMenuItem,
     DropdownMenuTrigger,
-} from "../../ui/dropdown-menu";
+} from '../../ui/dropdown-menu';
+import { PercentBodyModal, PercentBodyModalScrollBody } from '../../shared/PercentBodyModal';
 
 export interface StockMovementsModuleProps {
     defaultFilter?: 'shortage' | 'surplus' | 'all';
+}
+
+type FormState = {
+    movement_type: string;
+    warehouse_id: string;
+    target_warehouse_id: string;
+    movement_date: string;
+    description: string;
+    trcode: number;
+};
+
+function defaultFormForFilter(
+    defaultFilter: 'shortage' | 'surplus' | 'all',
+    warehouseId = '',
+): FormState {
+    if (defaultFilter === 'shortage') {
+        return {
+            movement_type: 'out',
+            warehouse_id: warehouseId,
+            target_warehouse_id: '',
+            movement_date: new Date().toISOString().split('T')[0],
+            description: '',
+            trcode: STOCK_SLIP_TRCODES.SHORTAGE,
+        };
+    }
+    if (defaultFilter === 'surplus') {
+        return {
+            movement_type: 'in',
+            warehouse_id: warehouseId,
+            target_warehouse_id: '',
+            movement_date: new Date().toISOString().split('T')[0],
+            description: '',
+            trcode: STOCK_SLIP_TRCODES.SURPLUS,
+        };
+    }
+    return {
+        movement_type: 'in',
+        warehouse_id: warehouseId,
+        target_warehouse_id: '',
+        movement_date: new Date().toISOString().split('T')[0],
+        description: '',
+        trcode: STOCK_SLIP_TRCODES.WAREHOUSE_IN,
+    };
 }
 
 export function StockMovementsModule({ defaultFilter = 'all' }: StockMovementsModuleProps) {
@@ -29,15 +80,9 @@ export function StockMovementsModule({ defaultFilter = 'all' }: StockMovementsMo
     const [activeTab, setActiveTab] = useState<'all' | 'in' | 'out'>('all');
     const [selectedId, setSelectedId] = useState<string | null>(null);
     const [showCreateModal, setShowCreateModal] = useState(false);
+    const [selectedSlipLabel, setSelectedSlipLabel] = useState('');
 
-    // Form State
-    const [formData, setFormData] = useState({
-        movement_type: defaultFilter === 'shortage' ? 'out' : (defaultFilter === 'surplus' ? 'in' : 'in'),
-        warehouse_id: '',
-        movement_date: new Date().toISOString().split('T')[0],
-        description: '',
-        trcode: defaultFilter === 'shortage' ? STOCK_SLIP_TRCODES.SHORTAGE : (defaultFilter === 'surplus' ? STOCK_SLIP_TRCODES.SURPLUS : undefined)
-    });
+    const [formData, setFormData] = useState<FormState>(() => defaultFormForFilter(defaultFilter));
     const [warehouses, setWarehouses] = useState<any[]>([]);
 
     useEffect(() => {
@@ -50,7 +95,7 @@ export function StockMovementsModule({ defaultFilter = 'all' }: StockMovementsMo
             const { rows } = await postgres.query('SELECT id, name FROM stores WHERE is_active = true');
             setWarehouses(rows);
             if (rows.length > 0 && !formData.warehouse_id) {
-                setFormData(prev => ({ ...prev, warehouse_id: rows[0].id }));
+                setFormData((prev) => ({ ...prev, warehouse_id: rows[0].id }));
             }
         } catch (error) {
             console.error('Error loading warehouses:', error);
@@ -62,11 +107,10 @@ export function StockMovementsModule({ defaultFilter = 'all' }: StockMovementsMo
             setLoading(true);
             let data = await stockMovementAPI.getAll();
 
-            // Filter by trcode if defaultFilter is set
             if (defaultFilter === 'shortage') {
-                data = data.filter(m => m.trcode === STOCK_SLIP_TRCODES.SHORTAGE);
+                data = data.filter((m) => m.trcode === STOCK_SLIP_TRCODES.SHORTAGE);
             } else if (defaultFilter === 'surplus') {
-                data = data.filter(m => m.trcode === STOCK_SLIP_TRCODES.SURPLUS);
+                data = data.filter((m) => m.trcode === STOCK_SLIP_TRCODES.SURPLUS);
             }
 
             setMovements(data);
@@ -77,30 +121,60 @@ export function StockMovementsModule({ defaultFilter = 'all' }: StockMovementsMo
         }
     };
 
+    const openCreateForSlip = (item: MaterialSlipAddMenuItem) => {
+        const wh = warehouses[0]?.id || formData.warehouse_id || '';
+        setFormData({
+            movement_type: item.movement_type,
+            warehouse_id: wh,
+            target_warehouse_id: '',
+            movement_date: new Date().toISOString().split('T')[0],
+            description: '',
+            trcode: item.trcode,
+        });
+        setSelectedSlipLabel(tm(item.labelKey) || item.labelKey);
+        setShowCreateModal(true);
+    };
+
+    const closeCreateModal = () => {
+        setShowCreateModal(false);
+        setSelectedSlipLabel('');
+    };
+
     const handleCreate = async () => {
         if (!formData.warehouse_id) {
             alert(tm('selectWarehouse'));
             return;
         }
+        if (formData.movement_type === 'transfer') {
+            if (!formData.target_warehouse_id) {
+                alert(tm('selectTargetWarehouse') || 'Hedef depo seçiniz');
+                return;
+            }
+            if (formData.target_warehouse_id === formData.warehouse_id) {
+                alert(tm('selectTargetWarehouse') || 'Hedef depo kaynak depodan farklı olmalı');
+                return;
+            }
+        }
 
         try {
             setLoading(true);
-            await stockMovementAPI.create({
-                ...formData,
-                status: 'completed'
-            }, []); // Initial implementation with no items for now, just the header
+            await stockMovementAPI.create(
+                {
+                    movement_type: formData.movement_type,
+                    warehouse_id: formData.warehouse_id,
+                    target_warehouse_id:
+                        formData.movement_type === 'transfer' ? formData.target_warehouse_id : undefined,
+                    movement_date: formData.movement_date,
+                    description: formData.description,
+                    trcode: formData.trcode,
+                    status: 'completed',
+                },
+                [],
+            );
 
-            setShowCreateModal(false);
+            closeCreateModal();
             await loadMovements();
-
-            // Reset form
-            setFormData({
-                movement_type: defaultFilter === 'shortage' ? 'out' : (defaultFilter === 'surplus' ? 'in' : 'in'),
-                warehouse_id: warehouses[0]?.id || '',
-                movement_date: new Date().toISOString().split('T')[0],
-                description: '',
-                trcode: defaultFilter === 'shortage' ? STOCK_SLIP_TRCODES.SHORTAGE : (defaultFilter === 'surplus' ? STOCK_SLIP_TRCODES.SURPLUS : undefined)
-            });
+            setFormData(defaultFormForFilter(defaultFilter, warehouses[0]?.id || ''));
         } catch (error) {
             console.error('Error creating movement:', error);
             alert(tm('errorOccurred'));
@@ -131,28 +205,79 @@ export function StockMovementsModule({ defaultFilter = 'all' }: StockMovementsMo
     };
 
     const filteredMovements = movements.filter((m: StockMovement) => {
-        const matchesTab = activeTab === 'all' || m.movement_type === activeTab;
-        const matchesSearch = m.document_no?.toLowerCase().includes(searchQuery.toLowerCase()) ||
-            (m as any).warehouses?.name?.toLowerCase().includes(searchQuery.toLowerCase());
-        return matchesTab && matchesSearch;
+        const tabOk =
+            activeTab === 'all'
+                ? true
+                : activeTab === 'in'
+                  ? m.movement_type === 'in' || m.movement_type === 'transfer'
+                  : m.movement_type === 'out';
+        const matchesSearch =
+            m.document_no?.toLowerCase().includes(searchQuery.toLowerCase()) ||
+            (m as any).warehouses?.name?.toLowerCase().includes(searchQuery.toLowerCase()) ||
+            labelStockSlipDocumentType(tm, m.trcode, m.movement_type)
+                .toLowerCase()
+                .includes(searchQuery.toLowerCase());
+        return tabOk && matchesSearch;
     });
+
+    const AddSlipMenu = ({
+        triggerClassName,
+        compact = false,
+    }: {
+        triggerClassName?: string;
+        compact?: boolean;
+    }) => (
+        <DropdownMenu>
+            <DropdownMenuTrigger asChild>
+                <Button
+                    className={
+                        triggerClassName ||
+                        'h-7 px-3 gap-1 bg-white text-blue-700 hover:bg-blue-50 transition-colors text-[10px] font-bold border-none shadow-sm'
+                    }
+                >
+                    <Plus className="w-3 h-3" />
+                    {tm('add')}
+                    <ChevronDown className="w-3 h-3 opacity-70" />
+                </Button>
+            </DropdownMenuTrigger>
+            <DropdownMenuContent align="end" className={compact ? 'w-64' : 'w-72'}>
+                {MATERIAL_SLIP_ADD_MENU.map((item) => (
+                    <DropdownMenuItem
+                        key={item.key}
+                        className="text-xs py-2 cursor-pointer"
+                        onSelect={() => openCreateForSlip(item)}
+                    >
+                        {tm(item.labelKey) || item.labelKey}
+                    </DropdownMenuItem>
+                ))}
+            </DropdownMenuContent>
+        </DropdownMenu>
+    );
 
     return (
         <div className="h-full flex flex-col bg-gray-50">
-            {/* Header - Premium Minimal */}
+            {/* Header */}
             <div className="bg-gradient-to-r from-blue-600 to-blue-700 text-white px-4 py-2 flex-shrink-0 shadow-sm">
                 <div className="flex items-center justify-between">
                     <div className="flex items-center gap-3">
-                        {defaultFilter === 'shortage' ? <FileMinus className="w-4 h-4" /> :
-                            defaultFilter === 'surplus' ? <Archive className="w-4 h-4" /> :
-                                <TrendingDown className="w-4 h-4" />}
+                        {defaultFilter === 'shortage' ? (
+                            <FileMinus className="w-4 h-4" />
+                        ) : defaultFilter === 'surplus' ? (
+                            <Archive className="w-4 h-4" />
+                        ) : (
+                            <TrendingDown className="w-4 h-4" />
+                        )}
                         <div className="flex items-center gap-2">
                             <h2 className="text-sm font-medium">
-                                {defaultFilter === 'shortage' ? t.menu.countDeficitSlips :
-                                    defaultFilter === 'surplus' ? t.menu.countSurplusSlips :
-                                        tm('materialManagementSlips')}
+                                {defaultFilter === 'shortage'
+                                    ? t.menu.countDeficitSlips
+                                    : defaultFilter === 'surplus'
+                                      ? t.menu.countSurplusSlips
+                                      : tm('materialManagementSlips')}
                             </h2>
-                            <span className="text-blue-100 text-[10px]">• {filteredMovements.length} {tm('recordsCounter')}</span>
+                            <span className="text-blue-100 text-[10px]">
+                                • {filteredMovements.length} {tm('recordsCounter')}
+                            </span>
                         </div>
                     </div>
 
@@ -204,30 +329,40 @@ export function StockMovementsModule({ defaultFilter = 'all' }: StockMovementsMo
                             <Printer className="w-3 h-3" />
                             <span>{tm('print')}</span>
                         </Button>
-                        <Button
-                            onClick={() => setShowCreateModal(true)}
-                            className="h-7 px-3 gap-1 bg-white text-blue-700 hover:bg-blue-50 transition-colors text-[10px] font-bold border-none shadow-sm"
-                        >
-                            <Plus className="w-3 h-3" />
-                            {tm('add')}
-                        </Button>
+                        {defaultFilter === 'all' ? (
+                            <AddSlipMenu />
+                        ) : (
+                            <Button
+                                onClick={() => {
+                                    const item =
+                                        defaultFilter === 'shortage'
+                                            ? MATERIAL_SLIP_ADD_MENU.find((x) => x.key === 'shortage')!
+                                            : MATERIAL_SLIP_ADD_MENU.find((x) => x.key === 'surplus')!;
+                                    openCreateForSlip(item);
+                                }}
+                                className="h-7 px-3 gap-1 bg-white text-blue-700 hover:bg-blue-50 transition-colors text-[10px] font-bold border-none shadow-sm"
+                            >
+                                <Plus className="w-3 h-3" />
+                                {tm('add')}
+                            </Button>
+                        )}
                     </div>
                 </div>
             </div>
 
-            {/* Filter Bar - Clean Minimal */}
+            {/* Filter Bar */}
             <div className="bg-white border-b px-4 py-2 flex items-center justify-between sticky top-0 z-10">
                 <div className="flex items-center gap-4">
-                    {/* Tabs */}
                     <div className="flex bg-gray-100 p-0.5 rounded-lg">
                         {['all', 'in', 'out'].map((tab: string) => (
                             <button
                                 key={tab}
                                 onClick={() => setActiveTab(tab as any)}
-                                className={`px-4 py-1.5 text-xs font-medium rounded-md transition-all ${activeTab === tab
-                                    ? 'bg-white text-blue-600 shadow-sm'
-                                    : 'text-gray-500 hover:text-gray-700'
-                                    }`}
+                                className={`px-4 py-1.5 text-xs font-medium rounded-md transition-all ${
+                                    activeTab === tab
+                                        ? 'bg-white text-blue-600 shadow-sm'
+                                        : 'text-gray-500 hover:text-gray-700'
+                                }`}
                             >
                                 {tab === 'all' ? tm('all') : tab === 'in' ? tm('in') : tm('out')}
                             </button>
@@ -237,13 +372,21 @@ export function StockMovementsModule({ defaultFilter = 'all' }: StockMovementsMo
                     <div className="w-px h-4 bg-gray-200" />
 
                     <div className="flex items-center gap-2">
-                        <Button variant="ghost" size="sm" className="h-8 px-2.5 gap-1.5 text-gray-600 hover:bg-gray-50 text-xs">
+                        <Button
+                            variant="ghost"
+                            size="sm"
+                            className="h-8 px-2.5 gap-1.5 text-gray-600 hover:bg-gray-50 text-xs"
+                        >
                             <Filter className="w-3.5 h-3.5" />
                             <span>{tm('filter')}</span>
                         </Button>
                         <DropdownMenu>
                             <DropdownMenuTrigger asChild>
-                                <Button variant="ghost" size="sm" className="h-8 w-8 p-0 text-gray-500 hover:bg-gray-50">
+                                <Button
+                                    variant="ghost"
+                                    size="sm"
+                                    className="h-8 w-8 p-0 text-gray-500 hover:bg-gray-50"
+                                >
                                     <MoreHorizontal className="w-4 h-4" />
                                 </Button>
                             </DropdownMenuTrigger>
@@ -276,7 +419,7 @@ export function StockMovementsModule({ defaultFilter = 'all' }: StockMovementsMo
                 </div>
             </div>
 
-            {/* Data Grid Section */}
+            {/* Data Grid */}
             <div className="flex-1 overflow-auto p-4">
                 {loading && movements.length === 0 ? (
                     <div className="flex flex-col items-center justify-center h-full gap-4">
@@ -289,32 +432,60 @@ export function StockMovementsModule({ defaultFilter = 'all' }: StockMovementsMo
                             <table className="w-full text-sm text-left border-collapse">
                                 <thead>
                                     <tr className="bg-gray-50/80 border-b border-gray-200 sticky top-0 z-20">
-                                        <th className="px-4 py-3 font-semibold text-gray-600 uppercase tracking-wider text-[11px] border-r border-gray-100">{tm('slipNo')}</th>
-                                        <th className="px-4 py-3 font-semibold text-gray-600 uppercase tracking-wider text-[11px] border-r border-gray-100">{tm('date')}</th>
-                                        <th className="px-4 py-3 font-semibold text-gray-600 uppercase tracking-wider text-[11px] border-r border-gray-100">{tm('type')}</th>
-                                        <th className="px-4 py-3 font-semibold text-gray-600 uppercase tracking-wider text-[11px] border-r border-gray-100">{tm('warehouse')}</th>
-                                        <th className="px-4 py-3 font-semibold text-gray-600 uppercase tracking-wider text-[11px] border-r border-gray-100">{tm('status')}</th>
-                                        <th className="px-4 py-3 font-semibold text-gray-600 uppercase tracking-wider text-[11px] text-center">{tm('actions')}</th>
+                                        <th className="px-4 py-3 font-semibold text-gray-600 uppercase tracking-wider text-[11px] border-r border-gray-100">
+                                            {tm('documentType') || 'Belge Türü'}
+                                        </th>
+                                        <th className="px-4 py-3 font-semibold text-gray-600 uppercase tracking-wider text-[11px] border-r border-gray-100">
+                                            {tm('slipNo')}
+                                        </th>
+                                        <th className="px-4 py-3 font-semibold text-gray-600 uppercase tracking-wider text-[11px] border-r border-gray-100">
+                                            {tm('date')}
+                                        </th>
+                                        <th className="px-4 py-3 font-semibold text-gray-600 uppercase tracking-wider text-[11px] border-r border-gray-100">
+                                            {tm('warehouse')}
+                                        </th>
+                                        <th className="px-4 py-3 font-semibold text-gray-600 uppercase tracking-wider text-[11px] text-center">
+                                            {tm('actions')}
+                                        </th>
                                     </tr>
                                 </thead>
                                 <tbody className="divide-y divide-gray-100">
                                     {filteredMovements.length === 0 ? (
                                         <tr>
-                                            <td colSpan={6} className="px-6 py-24 text-center">
+                                            <td colSpan={5} className="px-6 py-24 text-center">
                                                 <div className="flex flex-col items-center gap-3">
                                                     <div className="w-16 h-16 bg-gray-50 rounded-full flex items-center justify-center">
                                                         <TrendingDown className="w-8 h-8 text-gray-300" />
                                                     </div>
-                                                    <p className="text-gray-400 font-medium">{tm('noTransactionSlip')}</p>
-                                                    <Button
-                                                        variant="outline"
-                                                        size="sm"
-                                                        className="mt-2 border-dashed"
-                                                        onClick={() => setShowCreateModal(true)}
-                                                    >
-                                                        <Plus className="w-4 h-4 mr-2" />
-                                                        {tm('add')}
-                                                    </Button>
+                                                    <p className="text-gray-400 font-medium">
+                                                        {tm('noTransactionSlip')}
+                                                    </p>
+                                                    {defaultFilter === 'all' ? (
+                                                        <AddSlipMenu
+                                                            triggerClassName="mt-2 h-8 px-3 gap-1.5 border border-dashed border-gray-300 bg-white text-gray-700 hover:bg-gray-50 text-xs font-medium"
+                                                            compact
+                                                        />
+                                                    ) : (
+                                                        <Button
+                                                            variant="outline"
+                                                            size="sm"
+                                                            className="mt-2 border-dashed"
+                                                            onClick={() => {
+                                                                const item =
+                                                                    defaultFilter === 'shortage'
+                                                                        ? MATERIAL_SLIP_ADD_MENU.find(
+                                                                              (x) => x.key === 'shortage',
+                                                                          )!
+                                                                        : MATERIAL_SLIP_ADD_MENU.find(
+                                                                              (x) => x.key === 'surplus',
+                                                                          )!;
+                                                                openCreateForSlip(item);
+                                                            }}
+                                                        >
+                                                            <Plus className="w-4 h-4 mr-2" />
+                                                            {tm('add')}
+                                                        </Button>
+                                                    )}
                                                 </div>
                                             </td>
                                         </tr>
@@ -322,31 +493,32 @@ export function StockMovementsModule({ defaultFilter = 'all' }: StockMovementsMo
                                         filteredMovements.map((m: StockMovement) => {
                                             const rowKey = `${(m as any).source_kind || 'slip'}-${m.id}`;
                                             const isSelected = selectedId === m.id;
+                                            const docType = labelStockSlipDocumentType(
+                                                tm,
+                                                m.trcode,
+                                                m.movement_type,
+                                            );
                                             return (
                                                 <tr
                                                     key={rowKey}
                                                     onClick={() => setSelectedId(isSelected ? null : m.id)}
-                                                    className={`group transition-all cursor-pointer border-l-4 ${isSelected
-                                                        ? 'bg-orange-50/40 border-l-orange-500'
-                                                        : 'hover:bg-gray-50 border-l-transparent'
-                                                        }`}
+                                                    className={`group transition-all cursor-pointer border-l-4 ${
+                                                        isSelected
+                                                            ? 'bg-orange-50/40 border-l-orange-500'
+                                                            : 'hover:bg-gray-50 border-l-transparent'
+                                                    }`}
                                                 >
-                                                    <td className="px-4 py-2.5 font-mono font-medium text-gray-700 border-r border-gray-50 whitespace-nowrap">{m.document_no}</td>
-                                                    <td className="px-4 py-2.5 text-gray-600 border-r border-gray-50 whitespace-nowrap">{new Date(m.movement_date).toLocaleDateString('tr-TR')}</td>
-                                                    <td className="px-4 py-2.5 border-r border-gray-50">
-                                                        <span className={`inline-flex items-center px-2 py-0.5 rounded-md text-[11px] font-bold uppercase ${m.movement_type === 'in'
-                                                            ? 'bg-green-100 text-green-700'
-                                                            : 'bg-red-100 text-red-700'
-                                                            }`}>
-                                                            {m.movement_type === 'in' ? tm('in') : tm('out')}
-                                                        </span>
+                                                    <td className="px-4 py-2.5 text-gray-800 border-r border-gray-50 whitespace-nowrap font-medium">
+                                                        {docType}
                                                     </td>
-                                                    <td className="px-4 py-2.5 text-gray-600 border-r border-gray-50">{(m as any).warehouses?.name || '-'}</td>
-                                                    <td className="px-4 py-2.5 border-r border-gray-50">
-                                                        <span className="flex items-center gap-1.5">
-                                                            <div className={`w-1.5 h-1.5 rounded-full ${m.status === 'completed' ? 'bg-green-500 shadow-[0_0_8px_rgba(34,197,94,0.4)]' : 'bg-gray-400'}`} />
-                                                            <span className="text-gray-700 font-medium capitalize">{m.status}</span>
-                                                        </span>
+                                                    <td className="px-4 py-2.5 font-mono font-medium text-gray-700 border-r border-gray-50 whitespace-nowrap">
+                                                        {m.document_no}
+                                                    </td>
+                                                    <td className="px-4 py-2.5 text-gray-600 border-r border-gray-50 whitespace-nowrap">
+                                                        {new Date(m.movement_date).toLocaleDateString('tr-TR')}
+                                                    </td>
+                                                    <td className="px-4 py-2.5 text-gray-600 border-r border-gray-50">
+                                                        {(m as any).warehouses?.name || '-'}
                                                     </td>
                                                     <td className="px-4 py-2.5 text-center">
                                                         <div className="flex items-center justify-center gap-1">
@@ -387,7 +559,9 @@ export function StockMovementsModule({ defaultFilter = 'all' }: StockMovementsMo
                     <div className="w-px h-3 bg-gray-200" />
                     <div>
                         <span className="text-gray-400 mr-2 uppercase tracking-tighter">{tm('total')}:</span>
-                        <span className="text-gray-900">{movements.length} {tm('records')}</span>
+                        <span className="text-gray-900">
+                            {movements.length} {tm('records')}
+                        </span>
                     </div>
                 </div>
 
@@ -406,157 +580,185 @@ export function StockMovementsModule({ defaultFilter = 'all' }: StockMovementsMo
                 </div>
             </div>
 
-            {/* Create Modal */}
+            {/* Create Modal — PercentBodyModal */}
             {showCreateModal && (
-                <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
-                    <div className="bg-white rounded-xl shadow-2xl w-full max-w-2xl max-h-[90vh] overflow-hidden flex flex-col">
-                        {/* Modal Header */}
-                        <div className="bg-gradient-to-r from-blue-600 to-blue-700 px-6 py-4 flex items-center justify-between">
-                            <div className="flex items-center gap-3">
-                                <div className="w-10 h-10 bg-white/20 rounded-lg flex items-center justify-center backdrop-blur-sm">
-                                    <Plus className="w-6 h-6 text-white" />
-                                </div>
-                                <div>
-                                    <h2 className="text-xl font-bold text-white">{tm('add')} - {tm('materialTransactionSlips')}</h2>
-                                    <p className="text-blue-100 text-sm">{tm('new')} {tm('slipNo')}</p>
-                                </div>
+                <PercentBodyModal
+                    onClose={closeCreateModal}
+                    size="form"
+                    ariaLabel={`${tm('add')} - ${selectedSlipLabel || tm('materialTransactionSlips')}`}
+                >
+                    <div className="bg-gradient-to-r from-blue-600 to-indigo-600 px-6 py-4 flex items-center justify-between shrink-0 text-white">
+                        <div className="flex items-center gap-3 min-w-0">
+                            <div className="w-10 h-10 bg-white/20 rounded-lg flex items-center justify-center backdrop-blur-sm shrink-0">
+                                <Plus className="w-6 h-6 text-white" />
                             </div>
-                            <button
-                                onClick={() => setShowCreateModal(false)}
-                                className="w-8 h-8 rounded-lg hover:bg-white/20 flex items-center justify-center transition-colors"
-                            >
-                                <X className="w-5 h-5 text-white" />
-                            </button>
+                            <div className="min-w-0">
+                                <h2 className="text-lg font-bold truncate">
+                                    {tm('add')} — {selectedSlipLabel || tm('materialTransactionSlips')}
+                                </h2>
+                                <p className="text-blue-100 text-sm">
+                                    {tm('new')} {tm('slipNo')}
+                                </p>
+                            </div>
                         </div>
+                        <button
+                            type="button"
+                            onClick={closeCreateModal}
+                            className="w-8 h-8 rounded-lg hover:bg-white/20 flex items-center justify-center transition-colors shrink-0"
+                        >
+                            <X className="w-5 h-5 text-white" />
+                        </button>
+                    </div>
 
-                        {/* Modal Body */}
-                        <div className="flex-1 overflow-y-auto p-6">
-                            <div className="space-y-6">
-                                {/* Document Info */}
-                                <div className="grid grid-cols-2 gap-4">
-                                    <div>
-                                        <label className="block text-sm font-semibold text-gray-700 mb-2">
-                                            {tm('slipNo')} *
-                                        </label>
-                                        <Input
-                                            placeholder="AUTO-GENERATED"
-                                            disabled
-                                            className="bg-gray-50 font-mono"
-                                        />
-                                    </div>
-                                    <div>
-                                        <label className="block text-sm font-semibold text-gray-700 mb-2">
-                                            {tm('date')} *
-                                        </label>
-                                        <Input
-                                            type="date"
-                                            value={formData.movement_date}
-                                            onChange={(e) => setFormData(prev => ({ ...prev, movement_date: e.target.value }))}
-                                            className="font-medium"
-                                        />
-                                    </div>
-                                </div>
-
-                                {/* Movement Type */}
+                    <PercentBodyModalScrollBody className="p-6">
+                        <div className="space-y-5">
+                            <div className="grid grid-cols-2 gap-4">
                                 <div>
-                                    <label className="block text-sm font-semibold text-gray-700 mb-2">
-                                        {tm('type')} *
+                                    <label className="block text-[11px] font-bold text-slate-500 uppercase tracking-wider mb-1.5">
+                                        {tm('slipNo')} *
                                     </label>
-                                    <div className="flex gap-3">
-                                        <button
-                                            onClick={() => setFormData(prev => ({ ...prev, movement_type: 'in' }))}
-                                            className={`flex-1 px-4 py-3 rounded-lg border-2 transition-colors ${formData.movement_type === 'in'
-                                                ? 'border-green-500 bg-green-50 text-green-700 font-bold'
-                                                : 'border-gray-200 bg-white text-gray-500 font-medium hover:bg-gray-50'}`}
-                                        >
-                                            <div className="flex items-center justify-center gap-2">
-                                                <div className={`w-2 h-2 rounded-full ${formData.movement_type === 'in' ? 'bg-green-500' : 'bg-gray-300'}`} />
-                                                {tm('in')}
-                                            </div>
-                                        </button>
-                                        <button
-                                            onClick={() => setFormData(prev => ({ ...prev, movement_type: 'out' }))}
-                                            className={`flex-1 px-4 py-3 rounded-lg border-2 transition-colors ${formData.movement_type === 'out'
-                                                ? 'border-red-500 bg-red-50 text-red-700 font-bold'
-                                                : 'border-gray-200 bg-white text-gray-500 font-medium hover:bg-gray-50'}`}
-                                        >
-                                            <div className="flex items-center justify-center gap-2">
-                                                <div className={`w-2 h-2 rounded-full ${formData.movement_type === 'out' ? 'bg-red-500' : 'bg-gray-300'}`} />
-                                                {tm('out')}
-                                            </div>
-                                        </button>
-                                    </div>
-                                </div>
-
-                                {/* Warehouse */}
-                                <div>
-                                    <label className="block text-sm font-semibold text-gray-700 mb-2">
-                                        {tm('warehouse')} *
-                                    </label>
-                                    <select
-                                        value={formData.warehouse_id}
-                                        onChange={(e) => setFormData(prev => ({ ...prev, warehouse_id: e.target.value }))}
-                                        className="w-full px-3 py-2 border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 bg-white font-medium text-sm"
-                                    >
-                                        {warehouses.map(w => (
-                                            <option key={w.id} value={w.id}>{w.name}</option>
-                                        ))}
-                                    </select>
-                                </div>
-
-                                {/* Description */}
-                                <div>
-                                    <label className="block text-sm font-semibold text-gray-700 mb-2">
-                                        {tm('description')}
-                                    </label>
-                                    <textarea
-                                        rows={3}
-                                        value={formData.description}
-                                        onChange={(e) => setFormData(prev => ({ ...prev, description: e.target.value }))}
-                                        placeholder={`${tm('enterValue')}...`}
-                                        className="w-full px-3 py-2 border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent resize-none"
+                                    <Input
+                                        placeholder="AUTO-GENERATED"
+                                        disabled
+                                        className="bg-gray-50 font-mono"
                                     />
                                 </div>
+                                <div>
+                                    <label className="block text-[11px] font-bold text-slate-500 uppercase tracking-wider mb-1.5">
+                                        {tm('date')} *
+                                    </label>
+                                    <Input
+                                        type="date"
+                                        value={formData.movement_date}
+                                        onChange={(e) =>
+                                            setFormData((prev) => ({
+                                                ...prev,
+                                                movement_date: e.target.value,
+                                            }))
+                                        }
+                                        className="font-medium"
+                                    />
+                                </div>
+                            </div>
 
-                                {/* Info Box */}
-                                <div className="bg-blue-50 border border-blue-200 rounded-lg p-4">
-                                    <div className="flex gap-3">
-                                        <div className="w-5 h-5 rounded-full bg-blue-500 flex items-center justify-center flex-shrink-0 mt-0.5">
-                                            <span className="text-white text-xs font-bold">i</span>
-                                        </div>
-                                        <div className="text-sm text-blue-800">
-                                            <p className="font-semibold mb-1">{tm('information')}</p>
-                                            <p className="text-blue-700">{tm('slipAutoGenerateInfo')}</p>
-                                        </div>
+                            <div>
+                                <label className="block text-[11px] font-bold text-slate-500 uppercase tracking-wider mb-1.5">
+                                    {tm('documentType') || 'Belge Türü'} *
+                                </label>
+                                <Input
+                                    value={selectedSlipLabel || labelStockSlipDocumentType(tm, formData.trcode, formData.movement_type)}
+                                    disabled
+                                    className="bg-slate-50 font-medium"
+                                />
+                            </div>
+
+                            <div>
+                                <label className="block text-[11px] font-bold text-slate-500 uppercase tracking-wider mb-1.5">
+                                    {formData.movement_type === 'transfer'
+                                        ? `${tm('warehouse')} *`
+                                        : `${tm('warehouse')} *`}
+                                </label>
+                                <div className="relative">
+                                    <select
+                                        value={formData.warehouse_id}
+                                        onChange={(e) =>
+                                            setFormData((prev) => ({
+                                                ...prev,
+                                                warehouse_id: e.target.value,
+                                            }))
+                                        }
+                                        className="w-full px-3 py-2.5 pr-11 border border-slate-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-blue-500 bg-white font-medium text-sm appearance-none"
+                                    >
+                                        {warehouses.map((w) => (
+                                            <option key={w.id} value={w.id}>
+                                                {w.name}
+                                            </option>
+                                        ))}
+                                    </select>
+                                    <ChevronDown className="absolute right-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400 pointer-events-none" />
+                                </div>
+                            </div>
+
+                            {formData.movement_type === 'transfer' && (
+                                <div>
+                                    <label className="block text-[11px] font-bold text-slate-500 uppercase tracking-wider mb-1.5">
+                                        {tm('targetWarehouse') || 'Hedef Depo'} *
+                                    </label>
+                                    <div className="relative">
+                                        <select
+                                            value={formData.target_warehouse_id}
+                                            onChange={(e) =>
+                                                setFormData((prev) => ({
+                                                    ...prev,
+                                                    target_warehouse_id: e.target.value,
+                                                }))
+                                            }
+                                            className="w-full px-3 py-2.5 pr-11 border border-slate-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-blue-500 bg-white font-medium text-sm appearance-none"
+                                        >
+                                            <option value="">
+                                                {tm('selectTargetWarehouse') || 'Hedef depo seçiniz'}
+                                            </option>
+                                            {warehouses
+                                                .filter((w) => w.id !== formData.warehouse_id)
+                                                .map((w) => (
+                                                    <option key={w.id} value={w.id}>
+                                                        {w.name}
+                                                    </option>
+                                                ))}
+                                        </select>
+                                        <ChevronDown className="absolute right-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400 pointer-events-none" />
+                                    </div>
+                                </div>
+                            )}
+
+                            <div>
+                                <label className="block text-[11px] font-bold text-slate-500 uppercase tracking-wider mb-1.5">
+                                    {tm('description')}
+                                </label>
+                                <textarea
+                                    rows={3}
+                                    value={formData.description}
+                                    onChange={(e) =>
+                                        setFormData((prev) => ({
+                                            ...prev,
+                                            description: e.target.value,
+                                        }))
+                                    }
+                                    placeholder={`${tm('enterValue')}...`}
+                                    className="w-full px-3 py-2 border border-slate-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent resize-none"
+                                />
+                            </div>
+
+                            <div className="bg-blue-50 border border-blue-200 rounded-lg p-4">
+                                <div className="flex gap-3">
+                                    <div className="w-5 h-5 rounded-full bg-blue-500 flex items-center justify-center flex-shrink-0 mt-0.5">
+                                        <span className="text-white text-xs font-bold">i</span>
+                                    </div>
+                                    <div className="text-sm text-blue-800">
+                                        <p className="font-semibold mb-1">{tm('information')}</p>
+                                        <p className="text-blue-700">{tm('slipAutoGenerateInfo')}</p>
                                     </div>
                                 </div>
                             </div>
                         </div>
+                    </PercentBodyModalScrollBody>
 
-                        {/* Modal Footer */}
-                        <div className="border-t bg-gray-50 px-6 py-4 flex items-center justify-between">
-                            <Button
-                                variant="outline"
-                                onClick={() => setShowCreateModal(false)}
-                                className="px-6"
-                            >
-                                <X className="w-4 h-4 mr-2" />
-                                {tm('cancel')}
-                            </Button>
-                            <Button
-                                className="px-6 bg-blue-600 hover:bg-blue-700 text-white"
-                                onClick={handleCreate}
-                                disabled={loading}
-                            >
-                                <Check className="w-4 h-4 mr-2" />
-                                {tm('save')}
-                            </Button>
-                        </div>
+                    <div className="border-t bg-slate-50/50 px-6 py-4 flex items-center justify-between shrink-0">
+                        <Button variant="outline" onClick={closeCreateModal} className="px-6 rounded-2xl">
+                            <X className="w-4 h-4 mr-2" />
+                            {tm('cancel')}
+                        </Button>
+                        <Button
+                            className="px-6 bg-blue-600 hover:bg-blue-700 text-white rounded-2xl"
+                            onClick={handleCreate}
+                            disabled={loading}
+                        >
+                            <Check className="w-4 h-4 mr-2" />
+                            {tm('save')}
+                        </Button>
                     </div>
-                </div>
+                </PercentBodyModal>
             )}
         </div>
     );
 }
-
-

@@ -1,0 +1,13 @@
+{
+  "projectId": "e344cf40-19d9-41c3-b5fd-bc2f4665ff95",
+  "type": "frontend",
+  "name": "Firma 010 — Restoran sekmesi kabukta görünür",
+  "description": "Demo Restoran seçildikten sonra üst kabukta Restoran modül sekmesi görünür; WMS/Mobile POS görünmez.",
+  "priority": "p1",
+  "planSteps": [
+    { "type": "action", "description": "Navigate to the RetailEX login page" },
+    { "type": "action", "description": "Connect tenant retailex_demo if needed, then sign in as admin / admin" },
+    { "type": "action", "description": "Select firm Demo Restoran (010) and enter the app" },
+    { "type": "assertion", "description": "Verify the top shell includes a Restoran / Restaurant module control and does not include WMS or Mobile POS tabs" }
+  ]
+}

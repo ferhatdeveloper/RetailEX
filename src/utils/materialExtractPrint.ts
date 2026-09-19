@@ -38,8 +38,10 @@ export type MaterialExtractPrintLabels = {
   description: string;
   inQty: string;
   inAmt: string;
+  purchaseUnitPrice?: string;
   outQty: string;
   outAmt: string;
+  salesUnitPrice?: string;
   runningBalance: string;
   total: string;
   dateRange: string;
@@ -191,8 +193,10 @@ type MappedExtractItem = {
   description: string;
   inQty: number | '';
   inAmt: number | '';
+  purchaseUnitPrice: number | '';
   outQty: number | '';
   outAmt: number | '';
+  salesUnitPrice: number | '';
   runningBalance: number;
   running_balance: number;
   productName: string;
@@ -220,8 +224,10 @@ function mapPrintRows(input: MaterialExtractPrintInput): MappedExtractItem[] {
       description: desc,
       inQty: inbound ? row.quantity : '',
       inAmt: inbound ? row.amount : '',
+      purchaseUnitPrice: inbound ? row.unit_price : '',
       outQty: outbound ? row.quantity : '',
       outAmt: outbound ? row.amount : '',
+      salesUnitPrice: outbound ? row.unit_price : '',
       runningBalance: row.running_balance,
       running_balance: row.running_balance,
       productName: desc || typeLabel,
@@ -251,9 +257,11 @@ export function buildMaterialExtractPrintHtml(input: MaterialExtractPrintInput):
   const logo = input.logoDataUrl
     ? `<img src="${escapeHtml(input.logoDataUrl)}" alt="" style="max-height:48px;max-width:160px;object-fit:contain" />`
     : '';
+  const purchaseUnitHdr = L.purchaseUnitPrice || 'Alış Birim Fiyatı';
+  const salesUnitHdr = L.salesUnitPrice || 'Satış Birim Fiyatı';
   const bodyRows =
     items.length === 0
-      ? `<tr><td colspan="9" style="text-align:center;padding:16px;color:#64748b">${escapeHtml(L.empty)}</td></tr>`
+      ? `<tr><td colspan="11" style="text-align:center;padding:16px;color:#64748b">${escapeHtml(L.empty)}</td></tr>`
       : items
           .map(
             (r) => `<tr>
@@ -263,8 +271,10 @@ export function buildMaterialExtractPrintHtml(input: MaterialExtractPrintInput):
 <td>${escapeHtml(r.description)}</td>
 <td class="num in">${escapeHtml(cellNum(r.inQty))}</td>
 <td class="num in">${escapeHtml(cellNum(r.inAmt))}</td>
+<td class="num in">${escapeHtml(cellNum(r.purchaseUnitPrice))}</td>
 <td class="num out">${escapeHtml(cellNum(r.outQty))}</td>
 <td class="num out">${escapeHtml(cellNum(r.outAmt))}</td>
+<td class="num out">${escapeHtml(cellNum(r.salesUnitPrice))}</td>
 <td class="num bal">${escapeHtml(formatNumber(r.runningBalance, 2))}</td>
 </tr>`,
           )
@@ -326,8 +336,10 @@ export function buildMaterialExtractPrintHtml(input: MaterialExtractPrintInput):
         <th>${escapeHtml(L.description)}</th>
         <th class="num">${escapeHtml(L.inQty)}</th>
         <th class="num">${escapeHtml(L.inAmt)}</th>
+        <th class="num">${escapeHtml(purchaseUnitHdr)}</th>
         <th class="num">${escapeHtml(L.outQty)}</th>
         <th class="num">${escapeHtml(L.outAmt)}</th>
+        <th class="num">${escapeHtml(salesUnitHdr)}</th>
         <th class="num">${escapeHtml(L.runningBalance)}</th>
       </tr>
     </thead>
@@ -337,8 +349,10 @@ export function buildMaterialExtractPrintHtml(input: MaterialExtractPrintInput):
         <td colspan="4">${escapeHtml(L.total)}</td>
         <td class="num in">${escapeHtml(formatNumber(input.totals.totalInQty, 2))}</td>
         <td class="num in">${escapeHtml(formatNumber(input.totals.totalInAmount, 2))}</td>
+        <td class="num in"></td>
         <td class="num out">${escapeHtml(formatNumber(input.totals.totalOutQty, 2))}</td>
         <td class="num out">${escapeHtml(formatNumber(input.totals.totalOutAmount, 2))}</td>
+        <td class="num out"></td>
         <td class="num bal">${escapeHtml(formatNumber(lastBalance, 2))}</td>
       </tr>
     </tfoot>

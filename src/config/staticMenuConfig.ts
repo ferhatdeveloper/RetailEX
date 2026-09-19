@@ -3,11 +3,11 @@
 
 import {
     PieChart, Store, Map, MapPin, Settings, Zap, FileSpreadsheet,
-    FileText, FileCheck, FileMinus, Truck, Archive,
+    FileText, FileCheck, FileMinus, Truck,
     ShoppingCart, FileSignature, Users, Target, ShoppingBag, ClipboardList,
     Package, Warehouse, TrendingDown, Boxes, QrCode, Tag, Scale,
     Briefcase, GitBranch, Calendar, CalendarClock, Award, Wallet, CreditCard, Database,
-    Globe, Receipt, Building, Calculator, TrendingUpDown, Gift, Percent, Send,
+    Globe, Receipt, Building, TrendingUpDown, Gift, Percent, Send,
     PackageSearch, PackagePlus, Beef, Wrench, Shield, UserCog, UtensilsCrossed, Phone, Bell,
     Smartphone, Mail, BarChart3, TrendingUp, UserCheck, Layers, Clock, AlertCircle,
     Radio, ArrowRightLeft, MoreVertical, Menu, Sparkles, Banknote, Mic, Landmark, Layout, HardDrive, RefreshCw, Monitor, Printer
@@ -68,20 +68,12 @@ export const getStaticMenuSections = (t: Translations) => [
                 children: [
 
                     { label: t.menu.materialManagementSlips, screen: 'stockmovements', icon: TrendingDown },
-                    { label: 'Stok Devir Fişi', screen: 'stok-devir', icon: ArrowRightLeft },
+                    // stok-devir (Stok Devir Fişi) — menüden kaldırıldı; bileşen kodu duruyor
                     { label: t.menu.stockPriceChangeSlips, screen: 'stock-price-change-slips', icon: Percent }
                 ]
             },
-            {
-                label: t.menu.inventoryCountOps,
-                screen: 'inventory-count-ops',
-                icon: Calculator,
-                children: [
-                    { label: t.menu.mobileCount, screen: 'mobile-inventory-count', icon: Smartphone },
-                    { label: t.menu.countDeficitSlips, screen: 'stockmovements-deficit', icon: FileMinus },
-                    { label: t.menu.countSurplusSlips, screen: 'stockmovements-surplus', icon: Archive }
-                ]
-            },
+            // inventory-count-ops (Sayım İşlemleri) — menüden kaldırıldı; Mobil Sayım / Eksiği / Fazlası
+            // fiş türleri Malzeme Yönetim Fişleri + Ekle menüsünde kalır
             {
                 label: t.menu.reports,
                 screen: 'material-reports',

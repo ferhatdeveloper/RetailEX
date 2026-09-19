@@ -1,0 +1,14 @@
+{
+  "projectId": "e344cf40-19d9-41c3-b5fd-bc2f4665ff95",
+  "type": "frontend",
+  "name": "Firma 020 — Güzellik kabuğu açılır",
+  "description": "Demo Güzellik (020) ile girişte Güzellik modülü kabukta açılabilir.",
+  "priority": "p1",
+  "planSteps": [
+    { "type": "action", "description": "Navigate to the RetailEX login page" },
+    { "type": "action", "description": "Connect tenant retailex_demo if needed, then sign in as admin / admin" },
+    { "type": "action", "description": "Select firm Demo Güzellik (020) and enter the app" },
+    { "type": "action", "description": "Open the Güzellik / Beauty shell module" },
+    { "type": "assertion", "description": "Verify the beauty clinic shell or calendar/dashboard content is visible and the active firm context is Demo Güzellik or 020" }
+  ]
+}

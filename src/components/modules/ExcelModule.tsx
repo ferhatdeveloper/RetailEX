@@ -112,7 +112,6 @@ const TEMPLATES: Record<EntityType, { label: string; sheetName: string; sample: 
         'Birim': 'Adet',
         'Alış Fiyatı': 50.00,
         'Satış Fiyatı*': 100.00,
-        'KDV Oranı (%)': 18,
         'Mevcut Stok': '',
         'Min Stok': 5,
         'Max Stok': 200,
@@ -133,7 +132,6 @@ const TEMPLATES: Record<EntityType, { label: string; sheetName: string; sample: 
         'Birim': 'Adet',
         'Alış Fiyatı': 120.00,
         'Satış Fiyatı*': 250.00,
-        'KDV Oranı (%)': 18,
         'Mevcut Stok': '',
         'Min Stok': 3,
         'Max Stok': 50,
@@ -271,7 +269,6 @@ const TEMPLATES: Record<EntityType, { label: string; sheetName: string; sample: 
         'Kategori': 'Bakım',
         'Birim': 'Saat',
         'Birim Fiyat*': 150.00,
-        'KDV Oranı (%)': 18,
         'Açıklama': 'Standart teknik servis hizmeti',
         'Aktif (E/H)': 'E',
       },
@@ -281,7 +278,6 @@ const TEMPLATES: Record<EntityType, { label: string; sheetName: string; sample: 
         'Kategori': 'Kurulum',
         'Birim': 'Adet',
         'Birim Fiyat*': 500.00,
-        'KDV Oranı (%)': 18,
         'Açıklama': 'Cihaz kurulum ve devreye alma',
         'Aktif (E/H)': 'E',
       },
@@ -373,7 +369,6 @@ const TEMPLATES: Record<EntityType, { label: string; sheetName: string; sample: 
         'Müşteri Adı': 'Örnek Müşteri',
         'Ara Toplam': 1000,
         'İndirim': 0,
-        'KDV': 180,
         'Toplam': 1180,
         'Ödenen': 1180,
         'Kalan': 0,
@@ -525,6 +520,18 @@ function parseLocaleNumberTR(val: any): number {
 function numFromExcel(val: any, fallback = 0): number {
   const n = parseLocaleNumberTR(val);
   return Number.isNaN(n) ? fallback : n;
+}
+
+/** Eski Excel dosyalarındaki KDV kolonu — yoksa undefined (güncellemede dokunma). */
+function pickOptionalTaxRateFromRow(row: Record<string, unknown>): number | undefined {
+  const keys = ['KDV Oranı (%)', 'KDV Oranı', 'KDV', 'tax_rate', 'vat_rate'];
+  for (const k of keys) {
+    if (!(k in row)) continue;
+    const raw = row[k];
+    if (raw === null || raw === undefined || String(raw).trim() === '') return undefined;
+    return numFromExcel(raw, 18);
+  }
+  return undefined;
 }
 
 /** Ürün Excel: açılış/mevcut stok (boş hücre = güncellemede stok alanına dokunma). */
@@ -808,7 +815,6 @@ async function exportProducts(): Promise<void> {
     'Birim': p.unit || 'Adet',
     'Alış Fiyatı': p.cost || 0,
     'Satış Fiyatı*': p.price || 0,
-    'KDV Oranı (%)': p.taxRate ?? (p as any).vat_rate ?? 18,
     'Mevcut Stok': p.stock ?? 0,
     'Min Stok': p.minStock ?? p.min_stock ?? 0,
     'Max Stok': (p as any).maxStock ?? (p as any).max_stock ?? 0,
@@ -910,7 +916,6 @@ async function exportServices(): Promise<void> {
       'Kategori': String(s.category ?? erp?.category ?? ''),
       'Birim': erp?.unit || 'Adet',
       'Birim Fiyat*': erp != null ? Number(erp.unit_price ?? 0) : Number(s.price ?? 0),
-      'KDV Oranı (%)': erp != null ? Number(erp.tax_rate ?? 18) : 18,
       'Açıklama': String(s.description ?? erp?.description ?? ''),
       'Aktif (E/H)': s.is_active !== false ? 'E' : 'H',
       'Süre (dk)': s.duration_min ?? 30,
@@ -1062,7 +1067,6 @@ async function exportBeautySales(): Promise<void> {
       'Müşteri Adı': s.customer_name ?? '',
       'Ara Toplam': Number(s.subtotal ?? 0),
       'İndirim': Number(s.discount ?? 0),
-      'KDV': Number(s.tax ?? 0),
       'Toplam': Number(s.total ?? 0),
       'Ödenen': Number(s.paid_amount ?? 0),
       'Kalan': Number(s.remaining_amount ?? 0),
@@ -1394,6 +1398,7 @@ async function importProducts(rows: any[], options?: ImportRunOptions): Promise<
       continue;
     }
     const openingStock = pickCurrentStockFromProductRow(row);
+    const taxRateFromExcel = pickOptionalTaxRateFromRow(row);
     const payload = {
       code,
       name,
@@ -1404,7 +1409,7 @@ async function importProducts(rows: any[], options?: ImportRunOptions): Promise<
       unit: strFromExcel(row['Birim']) || 'Adet',
       cost: numFromExcel(row['Alış Fiyatı']),
       price: numFromExcel(row['Satış Fiyatı*'] ?? row['Satış Fiyatı']),
-      taxRate: numFromExcel(row['KDV Oranı (%)'], 18),
+      taxRate: taxRateFromExcel ?? 18,
       min_stock: numFromExcel(row['Min Stok']),
       max_stock: numFromExcel(row['Max Stok']),
       special_code_1: strFromExcel(row['Özel Kod 1']),
@@ -1462,7 +1467,6 @@ async function importProducts(rows: any[], options?: ImportRunOptions): Promise<
           unit: payload.unit,
           cost: payload.cost,
           price: payload.price,
-          taxRate: payload.taxRate,
           minStock: payload.min_stock,
           maxStock: payload.max_stock,
           specialCode1: payload.special_code_1,
@@ -1471,6 +1475,9 @@ async function importProducts(rows: any[], options?: ImportRunOptions): Promise<
           description: payload.description,
           isActive: payload.is_active,
         };
+        if (taxRateFromExcel !== undefined) {
+          upd.taxRate = taxRateFromExcel;
+        }
         if (payload.image_url) {
           upd.image_url = payload.image_url;
         }
@@ -1608,28 +1615,36 @@ async function importServices(rows: any[]): Promise<ImportResult> {
       result.errors.push({ row: rowNum, message: 'Hizmet Kodu ve Hizmet Adı zorunludur.' });
       continue;
     }
-    const payload = {
+    const taxRateFromExcel = pickOptionalTaxRateFromRow(row);
+    const payload: Record<string, any> = {
       code,
       name,
       category: strFromExcel(row['Kategori']),
       unit: strFromExcel(row['Birim']) || 'Adet',
       unit_price: numFromExcel(row['Birim Fiyat*']),
-      tax_rate: numFromExcel(row['KDV Oranı (%)'], 18),
       description: strFromExcel(row['Açıklama']),
       is_active: boolFromExcel(row['Aktif (E/H)'] ?? 'E'),
     };
+    if (taxRateFromExcel !== undefined) {
+      payload.tax_rate = taxRateFromExcel;
+    } else {
+      payload.tax_rate = 18;
+    }
     try {
       const existing = await serviceAPI.getByCode(code);
       if (existing) {
-        await serviceAPI.update(existing.id, {
+        const serviceUpdate: Record<string, any> = {
           name: payload.name,
           category: payload.category,
           unit: payload.unit,
           unit_price: payload.unit_price,
-          tax_rate: payload.tax_rate,
           description: payload.description,
           is_active: payload.is_active,
-        });
+        };
+        if (taxRateFromExcel !== undefined) {
+          serviceUpdate.tax_rate = taxRateFromExcel;
+        }
+        await serviceAPI.update(existing.id, serviceUpdate);
         result.success++;
       } else {
         await serviceAPI.create(payload);

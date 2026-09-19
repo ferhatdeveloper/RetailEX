@@ -8,6 +8,8 @@ import { Banknote } from 'lucide-react';
 import { useLanguage } from '../../../contexts/LanguageContext';
 import { useFirmaDonem } from '../../../contexts/FirmaDonemContext';
 import { formatNumber } from '../../../utils/formatNumber';
+import { formatLedgerAmount, getFirmLedgerCurrency, getGlobalCurrency } from '../../../utils/currency';
+import { getAppDefaultCurrency } from '../../../services/postgres';
 import {
     fetchLayeredInventoryValuation,
     layeredAvgForProduct,
@@ -36,7 +38,10 @@ export function MaterialValueReport() {
     const [loading, setLoading] = useState(true);
     const { tm } = useLanguage();
     const { selectedFirm, selectedPeriod } = useFirmaDonem();
-    const currency = selectedFirm?.ana_para_birimi || 'IQD';
+    const currency = getFirmLedgerCurrency(
+        selectedFirm,
+        getAppDefaultCurrency() || getGlobalCurrency(),
+    );
 
     useEffect(() => {
         let cancelled = false;
@@ -95,13 +100,13 @@ export function MaterialValueReport() {
         }),
         columnHelper.accessor('average_unit_cost', {
             header: tm('avgUnitCost') || 'Ortalama Birim Maliyet',
-            cell: info => `${formatNumber(Number(info.getValue()) || 0, 2)} ${currency}`,
+            cell: info => formatLedgerAmount(Number(info.getValue()) || 0, currency),
         }),
         columnHelper.accessor('total_cost', {
             header: tm('totalValue') || 'Toplam Değer',
             cell: info => (
                 <span className="font-bold text-blue-600">
-                    {formatNumber(Number(info.getValue()) || 0, 2)} {currency}
+                    {formatLedgerAmount(Number(info.getValue()) || 0, currency)}
                 </span>
             ),
         }),
@@ -129,6 +134,14 @@ export function MaterialValueReport() {
                         data={rows}
                         columns={columns}
                         {...REPORT_GRID_DEFAULTS}
+                        autoFooterSums={false}
+                        footerSumColumns={[
+                            {
+                                columnId: 'total_cost',
+                                getValue: (r) => Number(r.total_cost) || 0,
+                                format: (sum) => formatLedgerAmount(sum, currency),
+                            },
+                        ]}
                         excelFileName={tm('materialValueReport') || 'malzeme_deger'}
                         printTitle={tm('materialValueReport') || 'Malzeme Değer Raporu'}
                         height="100%"

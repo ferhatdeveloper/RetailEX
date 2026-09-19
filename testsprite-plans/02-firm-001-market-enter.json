@@ -1,0 +1,15 @@
+{
+  "projectId": "e344cf40-19d9-41c3-b5fd-bc2f4665ff95",
+  "type": "frontend",
+  "name": "Firma 001 — Demo Market seçilip ana kabuğa girilir",
+  "description": "retailex_demo üzerinde admin girişi sonrası Demo Market (001) seçilir ve ana uygulama kabuğu açılır.",
+  "priority": "p0",
+  "planSteps": [
+    { "type": "action", "description": "Navigate to the RetailEX login page" },
+    { "type": "action", "description": "Connect tenant retailex_demo if the tenant step is shown" },
+    { "type": "action", "description": "Sign in with username admin and password admin" },
+    { "type": "action", "description": "On the firm selection step, open the firm picker and choose Demo Market (CODE 001)" },
+    { "type": "action", "description": "Select an available store if prompted, then submit system login to enter the app" },
+    { "type": "assertion", "description": "Verify the main app shell loads (top module bar or dashboard) and the selected firm context reflects Demo Market or 001, without remaining on the login form" }
+  ]
+}

@@ -1,0 +1,16 @@
+{
+  "projectId": "e344cf40-19d9-41c3-b5fd-bc2f4665ff95",
+  "type": "frontend",
+  "name": "Min/Max Stok Kontrol tablosunda Depo/Ambar kolonu görünür",
+  "description": "Giriş sonrası mevcut herhangi bir firma ile Min/Max Stok Kontrol raporunda tablo başlığında Depo veya Ambar kolonu görünür.",
+  "priority": "p1",
+  "planSteps": [
+    { "type": "action", "description": "Navigate to the RetailEX login page" },
+    { "type": "action", "description": "If a tenant code field is shown, enter retailex_demo and connect to the tenant" },
+    { "type": "action", "description": "Enter username admin and password admin, then submit login" },
+    { "type": "action", "description": "On Firma Seçimi, select any available firm from the list (e.g. FIRMA 031 or TEST — do not require firm 001) and enter the main application shell" },
+    { "type": "action", "description": "Open Malzeme or Stok reports menu and navigate to Min/Max Stok Kontrol (Minimum Maksimum Stok / Kritik Stok & Tükenenler)" },
+    { "type": "assertion", "description": "Verify the Min/Max Stok Kontrol page title or subtitle (Kritik Stok) is visible" },
+    { "type": "assertion", "description": "Verify the data grid column headers include a Depo or Ambar column (e.g. Depo / Ambar)" }
+  ]
+}

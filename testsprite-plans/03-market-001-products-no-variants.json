@@ -1,0 +1,15 @@
+{
+  "projectId": "e344cf40-19d9-41c3-b5fd-bc2f4665ff95",
+  "type": "frontend",
+  "name": "Market 001 — ürün listesi açılır ve varyant ürün görünmez",
+  "description": "Demo Market (001) oturumunda yönetim ürün listesinde ürünler listelenir; TSHIRT-VAR / PHONE-VAR veya varyant satırları görünmemelidir.",
+  "priority": "p0",
+  "planSteps": [
+    { "type": "action", "description": "Navigate to the RetailEX login page" },
+    { "type": "action", "description": "Connect tenant retailex_demo if needed, then sign in as admin / admin" },
+    { "type": "action", "description": "Select firm Demo Market (001), pick a store if needed, and enter the app" },
+    { "type": "action", "description": "Open the Management / Yönetim module from the top shell" },
+    { "type": "action", "description": "Navigate to the products / ürünler list screen" },
+    { "type": "assertion", "description": "Verify a product list table or grid is visible with at least one product row, and no product named TSHIRT-VAR or PHONE-VAR and no variant-matrix indicator for clothing variants appears in the list" }
+  ]
+}

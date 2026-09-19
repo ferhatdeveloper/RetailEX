@@ -12,6 +12,7 @@ const LABELS: Record<string, string> = {
     purchaseReturn: 'Alış İade',
     productionEntry: 'Üretim Girişi',
     warehouseReceipt: 'Ambar Fişi',
+    slipInterWarehouseTransfer: 'Depolar Arası Transfer Fişi',
     in: 'Giriş',
     out: 'Çıkış',
 };
@@ -55,8 +56,10 @@ describe('labelMaterialExtractFiche', () => {
         expect(labelMaterialExtractFiche(tm, 2, 'in', 'slip', '')).toBe('Üretim Girişi');
     });
 
-    it('giriş + trcode 5 + slip → Ambar Fişi', () => {
-        expect(labelMaterialExtractFiche(tm, 5, 'in', 'slip', '')).toBe('Ambar Fişi');
+    it('giriş + trcode 5 + slip → Depolar Arası Transfer Fişi', () => {
+        expect(labelMaterialExtractFiche(tm, 5, 'in', 'slip', '')).toBe(
+            'Depolar Arası Transfer Fişi',
+        );
     });
 });
 

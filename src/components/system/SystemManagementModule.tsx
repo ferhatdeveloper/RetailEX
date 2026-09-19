@@ -542,6 +542,7 @@ function DefinitionsParametersView() {
   const featureParamRows: { key: ReportMenuParamKey; labelKey: string }[] = [
     { key: 'virtual-pbx-caller-id', labelKey: 'menuParamVirtualPbx' },
     { key: 'stock-price-change-slips', labelKey: 'menuParamStockPriceChange' },
+    { key: 'product-list-sales-purchase-totals', labelKey: 'menuParamProductListSalesPurchaseTotals' },
   ];
 
   const toggleParam = (key: ReportMenuParamKey) => {

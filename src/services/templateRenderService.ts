@@ -70,8 +70,22 @@ function elementToReportComponent(element: TemplateElement): ReportComponent {
         const norm = col.toLocaleLowerCase('tr-TR');
         if (norm.includes('giriş miktar') || norm.includes('giris miktar')) return 'inQty';
         if (norm.includes('giriş tutar') || norm.includes('giris tutar')) return 'inAmt';
+        if (
+          norm.includes('alış birim') ||
+          norm.includes('alis birim') ||
+          norm.includes('purchase unit')
+        ) {
+          return 'purchaseUnitPrice';
+        }
         if (norm.includes('çıkış miktar') || norm.includes('cikis miktar') || norm.includes('çıkis miktar')) return 'outQty';
         if (norm.includes('çıkış tutar') || norm.includes('cikis tutar') || norm.includes('çıkis tutar')) return 'outAmt';
+        if (
+          norm.includes('satış birim') ||
+          norm.includes('satis birim') ||
+          norm.includes('sales unit')
+        ) {
+          return 'salesUnitPrice';
+        }
         if (norm.includes('kümülatif') || norm.includes('kumulatif') || norm.includes('bakiye')) return 'runningBalance';
         if (norm.includes('fiş tipi') || norm.includes('fis tipi') || norm.includes('fiche type')) return 'typeLabel';
         if (norm.includes('fiş no') || norm.includes('fis no') || norm.includes('fiche no')) return 'documentNo';

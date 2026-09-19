@@ -130,19 +130,118 @@ export type PriceDriftCandidate = ComputedPriceDriftCandidate;
 
 /**
  * Logo ERP Standard Stock Slip TRCODEs
+ * (Depo Giriş/Çıkış: jRetail materialReceiptList ile hizalı uygulama kodları)
  */
 export const STOCK_SLIP_TRCODES = {
     CONSUMPTION: 1,      // Sarf Fişi
     PRODUCTION_IN: 2,    // Üretimden Giriş
-    TRANSFER: 5,         // Ambar Fişi
+    TRANSFER: 5,         // Depolar Arası Transfer / Ambar Fişi
     WASTAGE: 11,         // Fire Fişi
-    OPENING: 14,         // Devir Fişi
+    OPENING: 14,         // Devir Fişi (Ekle menüsünde yok)
     COUNTING: 25,        // Sayım Fişi
     SURPLUS: 26,         // Sayım Fazlası
     SHORTAGE: 50,        // Sayım Eksiği
+    /** Depo Giriş Fişi — jRetail materialReceiptList */
+    WAREHOUSE_IN: 51,
+    /** Depo Çıkış Fişi — jRetail materialReceiptList */
+    WAREHOUSE_OUT: 52,
     /** Fiyat değişim fişi (Excel toplu fiyat vb.) — stok miktarı değişmez */
     PRICE_CHANGE: 78,
 };
+
+/** + Ekle menü sırası (jRetail materialReceiptList) — Stok Devir yok */
+export const MATERIAL_SLIP_ADD_MENU = [
+    {
+        key: 'transfer',
+        trcode: STOCK_SLIP_TRCODES.TRANSFER,
+        movement_type: 'transfer' as const,
+        labelKey: 'slipInterWarehouseTransfer',
+    },
+    {
+        key: 'warehouse_in',
+        trcode: STOCK_SLIP_TRCODES.WAREHOUSE_IN,
+        movement_type: 'in' as const,
+        labelKey: 'slipWarehouseEntry',
+    },
+    {
+        key: 'warehouse_out',
+        trcode: STOCK_SLIP_TRCODES.WAREHOUSE_OUT,
+        movement_type: 'out' as const,
+        labelKey: 'slipWarehouseExit',
+    },
+    {
+        key: 'surplus',
+        trcode: STOCK_SLIP_TRCODES.SURPLUS,
+        movement_type: 'in' as const,
+        labelKey: 'slipCountSurplus',
+    },
+    {
+        key: 'shortage',
+        trcode: STOCK_SLIP_TRCODES.SHORTAGE,
+        movement_type: 'out' as const,
+        labelKey: 'slipCountDeficit',
+    },
+    {
+        key: 'consumption',
+        trcode: STOCK_SLIP_TRCODES.CONSUMPTION,
+        movement_type: 'out' as const,
+        labelKey: 'slipConsumption',
+    },
+    {
+        key: 'wastage',
+        trcode: STOCK_SLIP_TRCODES.WASTAGE,
+        movement_type: 'out' as const,
+        labelKey: 'slipWastage',
+    },
+    {
+        key: 'production_in',
+        trcode: STOCK_SLIP_TRCODES.PRODUCTION_IN,
+        movement_type: 'in' as const,
+        labelKey: 'slipProductionEntry',
+    },
+] as const;
+
+export type MaterialSlipAddMenuItem = (typeof MATERIAL_SLIP_ADD_MENU)[number];
+
+/** Liste / modal Belge Türü etiketi (tm anahtarları) */
+export function labelStockSlipDocumentType(
+    tm: (key: string) => string,
+    trcode: number | null | undefined,
+    movementType?: string,
+): string {
+    const code = Number(trcode ?? 0);
+    switch (code) {
+        case STOCK_SLIP_TRCODES.TRANSFER:
+            return tm('slipInterWarehouseTransfer') || 'Depolar Arası Transfer Fişi';
+        case STOCK_SLIP_TRCODES.WAREHOUSE_IN:
+            return tm('slipWarehouseEntry') || 'Depo Giriş Fişi';
+        case STOCK_SLIP_TRCODES.WAREHOUSE_OUT:
+            return tm('slipWarehouseExit') || 'Depo Çıkış Fişi';
+        case STOCK_SLIP_TRCODES.SURPLUS:
+            return tm('slipCountSurplus') || 'Sayım Fazlası Fişi';
+        case STOCK_SLIP_TRCODES.SHORTAGE:
+            return tm('slipCountDeficit') || 'Sayım Eksiği Fişi';
+        case STOCK_SLIP_TRCODES.CONSUMPTION:
+            return tm('slipConsumption') || 'Sarf Fişi';
+        case STOCK_SLIP_TRCODES.WASTAGE:
+            return tm('slipWastage') || 'Fire Fişi';
+        case STOCK_SLIP_TRCODES.PRODUCTION_IN:
+            return tm('slipProductionEntry') || 'Üretimden Giriş Fişi';
+        case STOCK_SLIP_TRCODES.OPENING:
+            return tm('openingBalance') || 'Devir';
+        case STOCK_SLIP_TRCODES.COUNTING:
+            return tm('slipType') || 'Sayım Fişi';
+        case STOCK_SLIP_TRCODES.PRICE_CHANGE:
+            return tm('stockPriceChangeSlips') || 'Fiyat Değişim Fişi';
+        default: {
+            const mt = String(movementType || '').toLowerCase();
+            if (mt === 'transfer') return tm('slipInterWarehouseTransfer') || 'Depolar Arası Transfer Fişi';
+            if (mt === 'in') return tm('in') || 'Giriş';
+            if (mt === 'out') return tm('out') || 'Çıkış';
+            return tm('otherType') || 'Diğer';
+        }
+    }
+}
 
 class StockMovementAPI {
     /**
@@ -1107,6 +1206,170 @@ class StockMovementAPI {
     }
 
     /**
+     * Malzeme ekstresi — tarih aralığında tüm malzemelerin hareket satırları
+     * (ambar fişi + fatura). Ürün filtresi yok; üst sınır ile kırpılır.
+     */
+    async getExtractMovementsInDateRange(options: {
+        startDate: string;
+        endDate: string;
+        limit?: number;
+        firmNr?: string | number;
+        periodNr?: string | number;
+    }): Promise<{ rows: any[]; truncated: boolean; limit: number }> {
+        const start = toSqlDateInputString(options.startDate);
+        const end = toSqlDateInputString(options.endDate);
+        const limit = Math.min(Math.max(Number(options.limit) || 10_000, 1), 25_000);
+        if (!start || !end) return { rows: [], truncated: false, limit };
+
+        const firmNr = String(options.firmNr ?? ERP_SETTINGS.firmNr ?? '001').padStart(3, '0').slice(0, 10);
+        const periodNr = String(options.periodNr ?? ERP_SETTINGS.periodNr ?? '01').padStart(2, '0').slice(0, 10);
+        const fp = { firmNr, periodNr };
+        const fetchCap = limit + 1;
+
+        const mapExtractRow = (r: any) => {
+            const classified = resolveExtractSourceMeta(r);
+            const productCode = (() => {
+                const shown = displayItemCode(r.product_code, r.productCode, r.item_code, r.barcode);
+                return shown === '—' ? '' : shown;
+            })();
+            return {
+                ...r,
+                product_id: String(r.product_id || '').trim(),
+                product_code: productCode,
+                product_name: String(r.product_name || r.item_name || '').trim(),
+                source_type: classified.source_type,
+                fiche_type: classified.fiche_type,
+                movement: {
+                    document_no: r.document_no,
+                    movement_type: r.movement_type,
+                    movement_date: r.movement_date,
+                    status: r.status,
+                    trcode: r.trcode,
+                    fiche_type: classified.fiche_type,
+                    source_type: classified.source_type,
+                    warehouses: { name: r.warehouse_name },
+                },
+            };
+        };
+
+        let slipRows: any[] = [];
+        let invoiceRows: any[] = [];
+
+        try {
+            const { rows } = await postgres.query(
+                `SELECT
+                    i.id, i.movement_id, i.product_id::text AS product_id,
+                    COALESCE(p.code, '') AS product_code,
+                    COALESCE(p.name, '') AS product_name,
+                    i.quantity, i.unit_price, i.cost_price,
+                    i.notes, i.created_at,
+                    m.document_no, m.movement_type, m.movement_date, m.status, m.trcode,
+                    COALESCE(s.name, '') AS warehouse_name,
+                    'slip' AS source_type,
+                    '' AS fiche_type,
+                    COALESCE(m.exchange_rate, 1.0) AS currency_rate,
+                    'IQD' AS currency
+                 FROM stock_movement_items i
+                 JOIN stock_movements m ON i.movement_id = m.id
+                 LEFT JOIN products p ON p.id = i.product_id
+                 LEFT JOIN stores s ON m.warehouse_id = s.id
+                 WHERE m.movement_date::date >= $1::date
+                   AND m.movement_date::date <= $2::date
+                   AND LOWER(COALESCE(m.movement_type, '')) <> 'price_change'
+                 ORDER BY m.movement_date ASC NULLS LAST, m.created_at ASC NULLS LAST, i.id ASC
+                 LIMIT $3`,
+                [start, end, fetchCap],
+                fp,
+            );
+            slipRows = rows || [];
+        } catch (err) {
+            console.warn('[StockMovementAPI] getExtractMovementsInDateRange slips failed:', err);
+        }
+
+        try {
+            const { rows } = await postgres.query(
+                `SELECT
+                    si.id,
+                    si.invoice_id AS movement_id,
+                    COALESCE(si.product_id::text, p.id::text, si.item_code) AS product_id,
+                    COALESCE(NULLIF(TRIM(p.code), ''), ${SQL_NON_UUID_ITEM_CODE}, '—') AS product_code,
+                    COALESCE(p.name, si.item_name, '') AS product_name,
+                    si.quantity,
+                    COALESCE(
+                      NULLIF(si.unit_price, 0),
+                      CASE
+                        WHEN ABS(COALESCE(si.quantity, 0)) > 0.0000001
+                        THEN COALESCE(NULLIF(si.net_amount, 0), NULLIF(si.total_amount, 0), 0)
+                             / NULLIF(ABS(si.quantity), 0)
+                        ELSE 0
+                      END
+                    ) AS unit_price,
+                    COALESCE(si.unit_cost, 0) AS cost_price,
+                    COALESCE(NULLIF(TRIM(sl.customer_name), ''), sl.notes, '') AS notes,
+                    sl.date AS created_at,
+                    sl.fiche_no AS document_no,
+                    CASE
+                        WHEN sl.fiche_type = 'purchase_invoice' THEN 'in'
+                        WHEN sl.fiche_type = 'sales_invoice' THEN 'out'
+                        WHEN sl.fiche_type = 'return_invoice' AND sl.trcode = 3 THEN 'in'
+                        WHEN sl.fiche_type = 'return_invoice' AND sl.trcode IN (2, 6) THEN 'out'
+                        ELSE 'out'
+                    END AS movement_type,
+                    sl.date AS movement_date,
+                    sl.status,
+                    sl.trcode,
+                    sl.fiche_type,
+                    COALESCE(st.name, 'Merkez Ambar') AS warehouse_name,
+                    'invoice' AS source_type,
+                    COALESCE(sl.currency_rate, 1.0) AS currency_rate,
+                    COALESCE(sl.currency, 'IQD') AS currency
+                 FROM sale_items si
+                 JOIN sales sl ON si.invoice_id = sl.id
+                 LEFT JOIN products p ON p.id = si.product_id
+                    OR (si.product_id IS NULL AND p.code = si.item_code)
+                    OR (si.product_id IS NULL AND p.id::text = si.item_code)
+                 LEFT JOIN stores st ON sl.store_id = st.id
+                 WHERE sl.date::date >= $1::date
+                   AND sl.date::date <= $2::date
+                   AND LOWER(TRIM(COALESCE(sl.fiche_type, ''))) IN (
+                     'purchase_invoice', 'sales_invoice', 'return_invoice',
+                     'service', 'hizmet', 'beauty', 'beauty_sale', 'pos', 'retail'
+                   )
+                   AND COALESCE(sl.is_cancelled, false) = false
+                   AND LOWER(TRIM(COALESCE(sl.status, ''))) NOT IN ('iptal', 'silindi', 'cancelled', 'canceled', 'deleted')
+                   AND LOWER(TRIM(COALESCE(si.item_type, 'Malzeme'))) NOT IN ('hizmet', 'service', 'package', 'paket')
+                   AND LOWER(TRIM(COALESCE(p.material_type, ''))) IS DISTINCT FROM 'service'
+                 ORDER BY sl.date ASC NULLS LAST, sl.created_at ASC NULLS LAST, si.id ASC
+                 LIMIT $3`,
+                [start, end, fetchCap],
+                fp,
+            );
+            invoiceRows = rows || [];
+        } catch (err) {
+            console.warn('[StockMovementAPI] getExtractMovementsInDateRange invoices failed:', err);
+        }
+
+        const combined = [...slipRows, ...invoiceRows];
+        combined.sort((a, b) => {
+            const da = new Date(a.movement_date || a.created_at).getTime();
+            const db = new Date(b.movement_date || b.created_at).getTime();
+            if (da !== db) return da - db;
+            return String(a.id || '').localeCompare(String(b.id || ''));
+        });
+
+        const truncated =
+            slipRows.length > limit ||
+            invoiceRows.length > limit ||
+            combined.length > limit;
+        const sliced = combined.slice(0, limit).map(mapExtractRow);
+
+        console.log(
+            `[StockMovementAPI] getExtractMovementsInDateRange(${start}..${end}): slips=${slipRows.length}, invoices=${invoiceRows.length}, out=${sliced.length}, truncated=${truncated}`,
+        );
+        return { rows: sliced, truncated, limit };
+    }
+
+    /**
      * Tarih aralığında ürün bazında giriş/çıkış toplamları.
      * Kaynak: getProductMovements ile aynı — ambar fiş kalemleri + sale_items (alış/satış/iade).
      * Bitiş günü `::date` ile dahildir; tutarlar netlenmez.
@@ -1478,11 +1741,18 @@ class StockMovementAPI {
         const periodNr = padPeriodNr();
         const fp = { firmNr, periodNr };
 
-        let trcode = movement.trcode || STOCK_SLIP_TRCODES.CONSUMPTION;
-        if (movement.movement_type === 'in') trcode = STOCK_SLIP_TRCODES.PRODUCTION_IN;
-        if (movement.movement_type === 'transfer') trcode = STOCK_SLIP_TRCODES.TRANSFER;
-        if (movement.movement_type === 'adjustment') trcode = STOCK_SLIP_TRCODES.COUNTING;
-        if (movement.movement_type === 'price_change') trcode = STOCK_SLIP_TRCODES.PRICE_CHANGE;
+        /** Açık trcode varsa koru (Sayım Fazlası vb.); yoksa movement_type’tan türet */
+        let trcode =
+            movement.trcode != null && !Number.isNaN(Number(movement.trcode))
+                ? Number(movement.trcode)
+                : undefined;
+        if (trcode == null) {
+            trcode = STOCK_SLIP_TRCODES.CONSUMPTION;
+            if (movement.movement_type === 'in') trcode = STOCK_SLIP_TRCODES.PRODUCTION_IN;
+            if (movement.movement_type === 'transfer') trcode = STOCK_SLIP_TRCODES.TRANSFER;
+            if (movement.movement_type === 'adjustment') trcode = STOCK_SLIP_TRCODES.COUNTING;
+            if (movement.movement_type === 'price_change') trcode = STOCK_SLIP_TRCODES.PRICE_CHANGE;
+        }
 
         const baseDoc =
             (movement.document_no && String(movement.document_no).trim()) ||

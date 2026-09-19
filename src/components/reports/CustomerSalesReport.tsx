@@ -4,8 +4,11 @@ import { SearchOutlined } from '@ant-design/icons';
 import { Input } from 'antd';
 import type { Sale, Customer } from '../../App';
 import { formatNumber } from '../../utils/formatNumber';
+import { formatLedgerAmount, getFirmLedgerCurrency, getGlobalCurrency } from '../../utils/currency';
+import { getAppDefaultCurrency } from '../../services/postgres';
 import { isReturnSale } from '../../utils/posZReport';
 import { useLanguage } from '../../contexts/LanguageContext';
+import { useFirmaDonem } from '../../contexts/FirmaDonemContext';
 import { localCalendarDateKey, localTodayDateKey } from '../../utils/localCalendarDate';
 import { formatReportDateCell } from '../../utils/dateLocale';
 import { ReportYmdDatePicker } from '../shared/ReportDateRangePresets';
@@ -35,6 +38,11 @@ function matchesSearchBlob(term: string, fields: Array<string | undefined | null
 
 export function CustomerSalesReport({ sales, customers }: CustomerSalesReportProps) {
   const { tm } = useLanguage();
+  const { selectedFirm } = useFirmaDonem();
+  const currency = getFirmLedgerCurrency(
+    selectedFirm,
+    getAppDefaultCurrency() || getGlobalCurrency(),
+  );
   const [dateRange, setDateRange] = useState(() => {
     const end = localTodayDateKey();
     const startDate = new Date();
@@ -239,10 +247,10 @@ export function CustomerSalesReport({ sales, customers }: CustomerSalesReportPro
                 align: 'right',
                 size: 150,
                 footerSum: true,
-                footerFormat: (n) => `${formatNumber(n, 2, false)} IQD`,
+                footerFormat: (n) => formatLedgerAmount(n, currency),
                 cell: (row) => (
                   <span className="text-green-600 font-semibold">
-                    {formatNumber(row.totalRevenue, 2, false)} IQD
+                    {formatLedgerAmount(row.totalRevenue, currency)}
                   </span>
                 ),
               },
@@ -252,7 +260,7 @@ export function CustomerSalesReport({ sales, customers }: CustomerSalesReportPro
                 type: 'number',
                 align: 'right',
                 size: 140,
-                cell: (row) => `${formatNumber(row.avgSale, 2, false)} IQD`,
+                cell: (row) => formatLedgerAmount(row.avgSale, currency),
               },
               {
                 key: 'lastSaleDate',

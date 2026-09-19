@@ -1,0 +1,15 @@
+{
+  "projectId": "e344cf40-19d9-41c3-b5fd-bc2f4665ff95",
+  "type": "frontend",
+  "name": "Market 001 — Kasa Kartları veya Kasa İşlemleri açılır",
+  "description": "Demo Market (001) Finans → Kasa Kartları veya Kasa İşlemleri ekranı yüklenir.",
+  "priority": "p1",
+  "planSteps": [
+    { "type": "action", "description": "Navigate to the RetailEX login page" },
+    { "type": "action", "description": "Connect tenant retailex_demo if needed, then sign in as admin / admin" },
+    { "type": "action", "description": "Select firm Demo Market (001), pick a store if needed, and enter the app" },
+    { "type": "action", "description": "Open the top shell module labeled Yönetim" },
+    { "type": "action", "description": "In the Yönetim sidebar under Finans, open Kartlar then Kasa Kartları, or under Hareketler open Kasa İşlemleri" },
+    { "type": "assertion", "description": "Verify a cash register screen is visible showing kasa cards, kasa list, or cash operations content labeled Kasa — not a blank error page" }
+  ]
+}

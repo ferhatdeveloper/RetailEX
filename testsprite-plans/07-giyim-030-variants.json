@@ -1,0 +1,14 @@
+{
+  "projectId": "e344cf40-19d9-41c3-b5fd-bc2f4665ff95",
+  "type": "frontend",
+  "name": "Giyim 030 — varyantlı ürünler görünür",
+  "description": "Demo Giyim (030) firmasında ürün listesinde TSHIRT-VAR / PHONE-VAR veya varyantlı giyim ürünleri görünür.",
+  "priority": "p0",
+  "planSteps": [
+    { "type": "action", "description": "Navigate to the RetailEX login page" },
+    { "type": "action", "description": "Connect tenant retailex_demo if needed, then sign in as admin / admin" },
+    { "type": "action", "description": "Select firm Demo Giyim (CODE 030), pick a store if needed, and enter the app" },
+    { "type": "action", "description": "Open Management / Yönetim and go to the products / ürünler list" },
+    { "type": "assertion", "description": "Verify the product list shows at least one variant product such as TSHIRT-VAR or PHONE-VAR, or a product row clearly marked as having size/color variants" }
+  ]
+}

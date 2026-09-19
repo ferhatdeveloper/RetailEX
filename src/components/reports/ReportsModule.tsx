@@ -5491,7 +5491,7 @@ export function ReportsModule({
                           align: 'right',
                           size: 120,
                           footerSum: true,
-                          footerFormat: (n) => formatNumber(n, 2, false),
+                          footerFormat: (n) => formatLedgerAmount(n, reportCurrency),
                           cell: (row) => formatNumber(row.beforeDiscount ?? ((Number(row.total) || 0) + (Number(row.discount) || 0)), 2, false),
                         },
                         {
@@ -5501,7 +5501,7 @@ export function ReportsModule({
                           align: 'right',
                           size: 110,
                           footerSum: true,
-                          footerFormat: (n) => formatNumber(n, 2, false),
+                          footerFormat: (n) => formatLedgerAmount(n, reportCurrency),
                           cell: (row) => formatNumber(Number(row.discount) || 0, 2, false),
                         },
                         {
@@ -5511,7 +5511,7 @@ export function ReportsModule({
                           align: 'right',
                           size: 140,
                           footerSum: true,
-                          footerFormat: (n) => formatNumber(n, 2, false),
+                          footerFormat: (n) => formatLedgerAmount(n, reportCurrency),
                           cell: (row) => {
                             const remaining = Number(row.remaining) > 0.009
                               ? Number(row.remaining)
@@ -5601,7 +5601,7 @@ export function ReportsModule({
                           align: 'right',
                           size: 120,
                           footerSum: true,
-                          footerFormat: (n) => formatNumber(n, 2, false),
+                          footerFormat: (n) => formatLedgerAmount(n, reportCurrency),
                           cell: (row) => (
                             <span className="font-medium text-rose-700 tabular-nums">
                               {formatNumber(row.amount, 2, false)}

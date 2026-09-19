@@ -1,5 +1,7 @@
 import { looksLikeUuid } from './pgUuid';
 import { displayItemCode } from './lastPurchaseCostSql';
+import { formatLedgerAmount } from './currency';
+import { formatNumber } from './formatNumber';
 
 const CODE_ID_RE =
   /(^|_)(code|itemcode|item_code|productcode|product_code|materialcode|material_code)(_|$)/i;
@@ -11,6 +13,14 @@ const UNIT_PRICE_RE = /(^|_)(price|unit_price|unitprice|avg|average)(_|$)/i;
 
 const SUM_ID_RE =
   /qty|quantity|miktar|adet|amount|tutar|total|toplam|revenue|cogs|profit|stock|value|debit|credit|balance|incoming|outgoing|inqty|outqty|inamt|outamt|inamount|outamount|sold|satilan|net_|gross_|count/i;
+
+/** Miktar / adet / stok sayımı — footer'da para birimi yok. */
+const QTY_LIKE_COLUMN_RE =
+  /(^|_)(qty|quantity|miktar|adet|count|inqty|outqty)(_|$)|quantity_sold|sold_qty|soldqty|salescount|productcount|transactioncount/i;
+
+/** Tutar / para kolonları — footer'da sistem (firma) para birimi. */
+const MONEY_COLUMN_RE =
+  /(amount|tutar|(^|_)amt(_|$)|inamt|outamt|revenue|cogs|profit|value|debit|credit|balance|incoming|outgoing|collected|recv|pay|inflow|outflow|beforediscount|before_discount|(^|_)(total|cost|sales|purchased|gross)(_|$)|total_cost|totalcost|totalsales|totalpurchased|totalrevenue|grossprofit|stockvalue|stock_value)/i;
 
 export function isReportCodeColumnId(id: unknown): boolean {
   const s = String(id || '').trim();
@@ -27,6 +37,41 @@ export function isReportSumColumnId(id: unknown): boolean {
   if (s.endsWith('_cost') && !s.includes('total') && s !== 'cogs') return false;
   if (/(^|_)(min|max|critical)(_)?stock/.test(s) || /^(min|max|critical)stock$/.test(s)) return false;
   return SUM_ID_RE.test(s);
+}
+
+/**
+ * Para/tutar kolon kimliği — footer'da firma para birimi gösterilir.
+ * Miktar (qty/stock/count) false; stockValue true.
+ */
+export function isReportMoneyColumnId(id: unknown): boolean {
+  const s = String(id || '').trim().toLowerCase();
+  if (!s || s === 'select' || s === 'actions') return false;
+  if (/percent|margin|oran|rate|avg|average/.test(s)) return false;
+  if (/stockvalue|stock_value|stockval/.test(s)) return true;
+  if (QTY_LIKE_COLUMN_RE.test(s)) return false;
+  if (s === 'stock' || /(^|_)stock$/.test(s)) return false;
+  if (s === 'unit_cost' || s === 'average_unit_cost' || UNIT_PRICE_RE.test(s)) return false;
+  if (/(^|_)discount(_|$)|beforediscount|before_discount/.test(s)) return true;
+  return MONEY_COLUMN_RE.test(s);
+}
+
+/** Toplanabilir ve para birimli kolon (otomatik dip toplam formatı). */
+export function isReportMoneySumColumnId(id: unknown): boolean {
+  return isReportSumColumnId(id) && isReportMoneyColumnId(id);
+}
+
+/**
+ * Dip toplam metni: tutar kolonlarında formatLedgerAmount, aksi halde düz sayı.
+ */
+export function formatReportFooterSum(
+  sum: number,
+  columnId: string,
+  currency?: string | null,
+): string {
+  if (isReportMoneyColumnId(columnId)) {
+    return formatLedgerAmount(sum, currency);
+  }
+  return formatNumber(sum, 2, false);
 }
 
 export function coerceReportNumber(value: unknown): number {

@@ -1,0 +1,14 @@
+{
+  "projectId": "e344cf40-19d9-41c3-b5fd-bc2f4665ff95",
+  "type": "frontend",
+  "name": "Market 001 — Satışlar POS kabuğu açılır (WMS/Mobil POS yok)",
+  "description": "Demo Market (001) üst kabukta Satışlar açılır; WMS ve Mobil POS görünmez.",
+  "priority": "p0",
+  "planSteps": [
+    { "type": "action", "description": "Navigate to the RetailEX login page" },
+    { "type": "action", "description": "Connect tenant retailex_demo if needed, then sign in as admin / admin" },
+    { "type": "action", "description": "Select firm Demo Market (001), pick a store if needed, and enter the app" },
+    { "type": "action", "description": "Click the top shell module labeled Satışlar" },
+    { "type": "assertion", "description": "Verify the Market POS / Satışlar sales screen is active with product or cart UI, and the top shell does not show tabs labeled WMS or Mobil POS" }
+  ]
+}

@@ -4,8 +4,11 @@ import {
   DevExDataGrid,
   type DevExDataGridProps,
 } from '../../shared/DevExDataGrid';
-import { isReportSumColumnId } from '../../../utils/reportGridChrome';
+import { formatReportFooterSum, isReportSumColumnId } from '../../../utils/reportGridChrome';
 import { formatReportDateCell } from '../../../utils/dateLocale';
+import { useFirmaDonem } from '../../../contexts/FirmaDonemContext';
+import { getFirmLedgerCurrency, getGlobalCurrency } from '../../../utils/currency';
+import { getAppDefaultCurrency } from '../../../services/postgres';
 
 /** Malzeme / Envanter Listesi ile aynı sayfa boyutu. */
 export const REPORT_GRID_PAGE_SIZE = 50;
@@ -118,6 +121,12 @@ export function ReportColumnTable<T extends object>({
   height?: string | number;
   footerLabel?: ReactNode;
 }) {
+  const { selectedFirm } = useFirmaDonem();
+  const footerCurrency = useMemo(
+    () => getFirmLedgerCurrency(selectedFirm, getAppDefaultCurrency() || getGlobalCurrency()),
+    [selectedFirm],
+  );
+
   const gridColumns = useMemo(
     () =>
       buildReportGridColumns<T>(
@@ -143,9 +152,11 @@ export function ReportColumnTable<T extends object>({
             const n = Number((row as Record<string, unknown>)[c.key]);
             return Number.isFinite(n) ? n : 0;
           },
-          format: c.footerFormat,
+          format:
+            c.footerFormat ??
+            ((sum: number) => formatReportFooterSum(sum, c.key, footerCurrency)),
         })),
-    [columns],
+    [columns, footerCurrency],
   );
 
   const heightStyle = typeof height === 'number' ? `${height}px` : height;

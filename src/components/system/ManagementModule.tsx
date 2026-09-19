@@ -56,7 +56,6 @@ const BalanceSheetReport = lazyWithChunkRecovery(() => import('../accounting/rep
 const SupplierModule = lazyWithChunkRecovery(() => import('../trading/contacts/SupplierModule').then(m => ({ default: m.SupplierModule })));
 const CariDevirFisiModule = lazyWithChunkRecovery(() => import('../trading/contacts/CariDevirFisiModule').then(m => ({ default: m.CariDevirFisiModule })));
 const CariDevirExcelImportModule = lazyWithChunkRecovery(() => import('../trading/contacts/CariDevirExcelImportModule').then(m => ({ default: m.CariDevirExcelImportModule })));
-const StokDevirFisiModule = lazyWithChunkRecovery(() => import('../inventory/stock/StokDevirFisiModule').then(m => ({ default: m.StokDevirFisiModule })));
 const CustomerCallPlanModule = lazyWithChunkRecovery(() => import('../trading/contacts/CustomerCallPlanModule').then(m => ({ default: m.CustomerCallPlanModule })));
 const PurchaseExpiryReport = lazyWithChunkRecovery(() => import('../reports/PurchaseExpiryReport').then(m => ({ default: m.PurchaseExpiryReport })));
 const PriceManagementModule = lazyWithChunkRecovery(() => import('../trading/invoices/PriceManagementModule').then(m => ({ default: m.PriceManagementModule })));
@@ -242,7 +241,7 @@ type ExtendedScreen = ManagementScreen | 'dashboard' | 'finance' | 'stock' | 'pu
   'modulemanagement' | 'menumanagement' | 'onlineorders' | 'productsync' | 'price-change-vouchers' | 'new-modules' | 'accounting-mgmt' | 'workflow-automation' | 'voice-assistant' | 'cashier-scale' | 'scale-management' | 'db-migrations' | 'hybrid-sync' | 'store-management' | 'security-modules' | 'demo-data' |
   'product-analytics' | 'profit-dashboard' | 'graphanalysis' | 'reconciliation' | 'wave-picking' | 'ai-stock-prediction' | 'material-extract' | 'cost-centers' |
   'universal-report-hub' | 'customer-extract' | 'store-performance' | 'inventory-aging' | 'nebim-migration' |
-  'cash-slips' | 'bank-slips' | 'pos-slips' | 'current-slips' | 'cari-devir' | 'cari-devir-excel' | 'stok-devir' | 'stockcounting' | 'stockcounting-mobile' |
+  'cash-slips' | 'bank-slips' | 'pos-slips' | 'current-slips' | 'cari-devir' | 'cari-devir-excel' | 'stockcounting' | 'stockcounting-mobile' |
   'salesreports' | 'stockreports' | 'customeranalysis' | 'mizan' | 'income-statement' | 'balance-sheet' | 'advanced-reports' | 'reports' | 'customreports' | 'category-group-profit-report' | 'materials' | 'MYFisleri' |
   'stockmovements-deficit' | 'stockmovements-surplus' | 'stock-price-change-slips' |
   'inventory-count-ops' |
@@ -411,7 +410,7 @@ export function ManagementModule({
     if (currentScreen === 'sales-stock-group') setCurrentScreen('salesreports');
     if (currentScreen === 'finance-reps-group') setCurrentScreen('mizan');
     if (currentScreen === 'advanced-reps-group') setCurrentScreen('advanced-reports');
-    if (currentScreen === 'inventory-count-ops') setCurrentScreen('mobile-inventory-count');
+    // inventory-count-ops — Sayım İşlemleri menüden kaldırıldı; redirect yok
   }, [currentScreen]);
   const [rtlMode, setRtlMode] = useState(() => {
     return localStorage.getItem('retailos_rtl_mode') === 'true';
@@ -1144,8 +1143,7 @@ export function ManagementModule({
           return <CariDevirFisiModule />;
         case 'cari-devir-excel':
           return <CariDevirExcelImportModule />;
-        case 'stok-devir':
-          return <StokDevirFisiModule />;
+        // stok-devir — menüden kaldırıldı; deep-link / eski screen id render edilmez
         case 'customer-call-plan':
           return <CustomerCallPlanModule />;
 
@@ -1174,18 +1172,15 @@ export function ManagementModule({
         case 'hareketler': // JSON ID - Main menu but if clicked
           return <StockMovementsModule />;
 
-        case 'stockmovements-deficit':
-          return <StockMovementsModule defaultFilter="shortage" />;
-
-        case 'stockmovements-surplus':
-          return <StockMovementsModule defaultFilter="surplus" />;
+        // stockmovements-deficit / stockmovements-surplus — Sayım İşlemleri menüden kaldırıldı;
+        // deep-link / eski screen id render edilmez (fiş türleri + Ekle menüsünde kalır)
+        // mobile-inventory-count — aynı şekilde menüden kaldırıldı
 
         case 'stock-price-change-slips':
           return <StockPriceChangeSlipsModule />;
 
-        // Material Management - Counting
+        // Material Management - Counting (WMS sayım ekranları; Malzeme menü Sayım İşlemleri değil)
         case 'stockcount':
-        case 'mobile-inventory-count':
         case 'stockcount_store':
         case 'stockcounting':
         case 'stockcounting-mobile':

@@ -1,0 +1,41 @@
+{
+  "projectId": "e344cf40-19d9-41c3-b5fd-bc2f4665ff95",
+  "type": "frontend",
+  "name": "Restoran 010 — Servis kat/masa planı açılır",
+  "description": "Demo Restoran (010) Restoran kabuğunda Günü başlat (gerekirse) + Servis; garson/PIN sonrası kat/masa planı.",
+  "priority": "p0",
+  "planSteps": [
+    {
+      "type": "action",
+      "description": "Navigate to the RetailEX login page"
+    },
+    {
+      "type": "action",
+      "description": "Connect tenant retailex_demo if needed, then sign in as admin / admin"
+    },
+    {
+      "type": "action",
+      "description": "Select firm Demo Restoran (010), pick a store if needed, and enter the app"
+    },
+    {
+      "type": "action",
+      "description": "Open the top shell module labeled Restoran"
+    },
+    {
+      "type": "action",
+      "description": "If the fiscal day is closed and Günü başlat is visible, click Günü başlat; if the day is already open, skip this"
+    },
+    {
+      "type": "action",
+      "description": "Click the dashboard tile labeled Servis"
+    },
+    {
+      "type": "action",
+      "description": "If a waiter or staff PIN selection modal appears, select an available staff and confirm to enter the floor"
+    },
+    {
+      "type": "assertion",
+      "description": "Verify the restaurant Servis floor is active with table cards, Masa labels, or Masa durumu indicators — not only the main Restoran dashboard tile grid"
+    }
+  ]
+}

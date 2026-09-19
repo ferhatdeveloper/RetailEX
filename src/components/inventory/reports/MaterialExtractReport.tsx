@@ -5,6 +5,8 @@ import { stockMovementAPI } from '../../../services/stockMovementAPI';
 import { productAPI } from '../../../services/api/products';
 import type { Product } from '../../../core/types';
 import { formatNumber } from '../../../utils/formatNumber';
+import { formatLedgerAmount, getFirmLedgerCurrency, getGlobalCurrency } from '../../../utils/currency';
+import { getAppDefaultCurrency } from '../../../services/postgres';
 import { format } from 'date-fns';
 import { useLanguage } from '../../../contexts/LanguageContext';
 import { useFirmaDonem } from '../../../contexts/FirmaDonemContext';
@@ -21,6 +23,8 @@ import {
     resolveExtractSourceMeta,
 } from '../../../utils/materialExtractLabels';
 import { displayItemCode } from '../../../utils/lastPurchaseCostSql';
+import { formatReportDateCell } from '../../../utils/dateLocale';
+import { receiptNotesForDisplay } from '../../../utils/receiptNotes';
 import { PercentBodyModal, PercentBodyModalScrollBody } from '../../shared/PercentBodyModal';
 import { ReportHtmlPrintPreviewModal } from '../../reports/ReportHtmlPrintPreviewModal';
 import { ReportViewerModule } from '../../reports/ReportViewerModule';
@@ -56,6 +60,9 @@ import {
     type MaterialExtractPrintRow,
 } from '../../../utils/materialExtractPrint';
 
+/** Tüm malzemeler modunda satır üst sınırı (API ile aynı). */
+const ALL_MATERIALS_ROW_LIMIT = 10_000;
+
 interface ExtractRow {
     id: string;
     date: string;
@@ -70,6 +77,9 @@ interface ExtractRow {
     amount: number;
     running_balance: number;
     warehouse_name?: string;
+    product_id?: string;
+    product_code?: string;
+    product_name?: string;
 }
 
 const BUILTIN_SELECTION: ExtractPrintSelection = {
@@ -80,15 +90,19 @@ const BUILTIN_SELECTION: ExtractPrintSelection = {
 
 /**
  * Malzeme Ekstresi — tenant-aware.
- * Seçili ürünün dönem içindeki tüm hareketlerini (ambar fişleri + faturalar)
- * tarih sırasıyla listeler ve kümülatif miktar bakiyesi hesaplar.
+ * Malzeme seçilirse tek ürün ekstresi; boş bırakılırsa tarih aralığında
+ * tüm malzemelerin hareketleri (ambar fişleri + faturalar).
+ * Kümülatif bakiye tek üründe global, tümünde ürün bazında.
  * Para kolonları giriş/çıkış olarak ayrıdır; tek tutarda netlenmez.
  */
 export function MaterialExtractReport() {
     const { tm } = useLanguage();
     const { selectedFirm } = useFirmaDonem();
     const { isMobile } = useResponsive();
-    const currency = selectedFirm?.ana_para_birimi || 'IQD';
+    const currency = getFirmLedgerCurrency(
+        selectedFirm,
+        getAppDefaultCurrency() || getGlobalCurrency(),
+    );
     const firmNr = String(selectedFirm?.firm_nr || '001').trim().padStart(3, '0');
 
     const templates = useTemplateStore((s) => s.templates);
@@ -106,6 +120,10 @@ export function MaterialExtractReport() {
     const [selectedProduct, setSelectedProduct] = useState<Product | null>(null);
     const [showDropdown, setShowDropdown] = useState(false);
     const [rows, setRows] = useState<ExtractRow[]>([]);
+    /** Rapor en az bir kez başarıyla hazırlandı (seçimsiz tümü dahil). */
+    const [reportReady, setReportReady] = useState(false);
+    /** true = malzeme seçilmeden tüm malzemeler yüklendi */
+    const [allMaterialsMode, setAllMaterialsMode] = useState(false);
     const dropdownRef = useRef<HTMLDivElement>(null);
 
     const [printOpen, setPrintOpen] = useState(false);
@@ -175,84 +193,148 @@ export function MaterialExtractReport() {
         setSelectedProduct(null);
         setSearchText('');
         setRows([]);
+        setReportReady(false);
+        setAllMaterialsMode(false);
         setShowDropdown(opts?.openDropdown !== false);
     };
 
+    const mapMovementToExtractRow = (
+        m: any,
+        idx: number,
+        balance: number,
+        productMeta?: { id?: string; code?: string; name?: string },
+    ): ExtractRow => {
+        const qty = Number(m.quantity) || 0;
+        const unitPrice = Number(m.unit_price) || 0;
+        const movType = m.movement?.movement_type || m.movement_type || '';
+        const classified = resolveExtractSourceMeta({
+            movement_type: movType,
+            trcode: Number(m.movement?.trcode || m.trcode || 0),
+            source_type: String(
+                m.source_type ||
+                m.source_kind ||
+                m.movement?.source_type ||
+                m.movement?.source_kind ||
+                '',
+            ).trim(),
+            fiche_type: String(
+                m.fiche_type ||
+                m.ficheType ||
+                m.movement?.fiche_type ||
+                m.movement?.ficheType ||
+                m.sales_fiche_type ||
+                '',
+            ).trim(),
+        });
+        const code =
+            productMeta?.code ||
+            displayItemCode(m.product_code, m.productCode, selectedProduct?.code, selectedProduct?.barcode);
+        return {
+            id: `${m.id || idx}`,
+            date: m.movement?.movement_date || m.movement_date || m.created_at,
+            trcode: Number(m.movement?.trcode || m.trcode || 0),
+            movement_type: movType,
+            source_type: classified.source_type,
+            fiche_type: classified.fiche_type,
+            document_no: m.movement?.document_no || m.document_no || '',
+            description: receiptNotesForDisplay(
+                m.notes || m.description || m.customer_name || m.supplier || '',
+            ),
+            quantity: qty,
+            unit_price: unitPrice,
+            amount: qty * unitPrice,
+            running_balance: balance,
+            warehouse_name: m.movement?.warehouses?.name || m.warehouse_name || '',
+            product_id: productMeta?.id || String(m.product_id || '').trim() || undefined,
+            product_code: code === '—' ? '' : code,
+            product_name: productMeta?.name || String(m.product_name || '').trim() || selectedProduct?.name || '',
+        };
+    };
+
     const loadReport = async () => {
-        if (!selectedProduct?.id) {
+        if (!startDate || !endDate) {
+            toast.error(tm('dateRangeLabel') || 'Tarih aralığı gerekli');
             return;
         }
         setLoading(true);
         try {
-            const movements = await stockMovementAPI.getProductMovements(selectedProduct.id, {
-                code: selectedProduct.code,
-                barcode: selectedProduct.barcode,
-            });
-            const start = new Date(startDate).getTime();
-            const end = new Date(endDate).getTime() + 86_400_000;
-            const filtered = movements.filter((m: any) => {
-                const date = new Date(m.movement?.movement_date || m.movement_date || m.created_at).getTime();
-                return date >= start && date <= end;
-            });
-            // Tarihe göre artan sırala ve kümülatif bakiyeyi hesapla
-            filtered.sort((a: any, b: any) => {
-                const da = new Date(a.movement?.movement_date || a.movement_date || a.created_at).getTime();
-                const db = new Date(b.movement?.movement_date || b.movement_date || b.created_at).getTime();
-                return da - db;
-            });
-            let balance = 0;
-            const mapped: ExtractRow[] = filtered.map((m: any, idx: number) => {
-                const qty = Number(m.quantity) || 0;
-                const unitPrice = Number(m.unit_price) || 0;
-                const movType = m.movement?.movement_type || m.movement_type || '';
-                const classified = resolveExtractSourceMeta({
-                    movement_type: movType,
-                    trcode: Number(m.movement?.trcode || m.trcode || 0),
-                    source_type: String(
-                        m.source_type ||
-                        m.source_kind ||
-                        m.movement?.source_type ||
-                        m.movement?.source_kind ||
-                        '',
-                    ).trim(),
-                    fiche_type: String(
-                        m.fiche_type ||
-                        m.ficheType ||
-                        m.movement?.fiche_type ||
-                        m.movement?.ficheType ||
-                        m.sales_fiche_type ||
-                        '',
-                    ).trim(),
+            if (selectedProduct?.id) {
+                const movements = await stockMovementAPI.getProductMovements(selectedProduct.id, {
+                    code: selectedProduct.code,
+                    barcode: selectedProduct.barcode,
                 });
-                if (movType === 'in') balance += qty;
-                else if (movType === 'out') balance -= qty;
-                return {
-                    id: `${m.id || idx}`,
-                    date: m.movement?.movement_date || m.movement_date || m.created_at,
-                    trcode: Number(m.movement?.trcode || m.trcode || 0),
-                    movement_type: movType,
-                    source_type: classified.source_type,
-                    fiche_type: classified.fiche_type,
-                    document_no: m.movement?.document_no || m.document_no || '',
-                    description: m.notes || m.description || m.customer_name || m.supplier || '',
-                    quantity: qty,
-                    unit_price: unitPrice,
-                    amount: qty * unitPrice,
-                    running_balance: balance,
-                    warehouse_name: m.movement?.warehouses?.name || m.warehouse_name || '',
-                };
-            });
-            setRows(mapped);
+                const start = new Date(startDate).getTime();
+                const end = new Date(endDate).getTime() + 86_400_000;
+                const filtered = movements.filter((m: any) => {
+                    const date = new Date(m.movement?.movement_date || m.movement_date || m.created_at).getTime();
+                    return date >= start && date <= end;
+                });
+                filtered.sort((a: any, b: any) => {
+                    const da = new Date(a.movement?.movement_date || a.movement_date || a.created_at).getTime();
+                    const db = new Date(b.movement?.movement_date || b.movement_date || b.created_at).getTime();
+                    return da - db;
+                });
+                let balance = 0;
+                const mapped: ExtractRow[] = filtered.map((m: any, idx: number) => {
+                    const qty = Number(m.quantity) || 0;
+                    const movType = m.movement?.movement_type || m.movement_type || '';
+                    if (movType === 'in') balance += qty;
+                    else if (movType === 'out') balance -= qty;
+                    return mapMovementToExtractRow(m, idx, balance, {
+                        id: selectedProduct.id,
+                        code: displayItemCode(selectedProduct.code, selectedProduct.barcode),
+                        name: selectedProduct.name || '',
+                    });
+                });
+                setRows(mapped);
+                setAllMaterialsMode(false);
+                setReportReady(true);
+            } else {
+                const result = await stockMovementAPI.getExtractMovementsInDateRange({
+                    startDate,
+                    endDate,
+                    limit: ALL_MATERIALS_ROW_LIMIT,
+                    firmNr: selectedFirm?.firm_nr,
+                });
+                const balances = new Map<string, number>();
+                const mapped: ExtractRow[] = result.rows.map((m: any, idx: number) => {
+                    const qty = Number(m.quantity) || 0;
+                    const movType = m.movement?.movement_type || m.movement_type || '';
+                    const key =
+                        String(m.product_id || '').trim() ||
+                        displayItemCode(m.product_code) ||
+                        `row-${idx}`;
+                    let bal = balances.get(key) || 0;
+                    if (movType === 'in') bal += qty;
+                    else if (movType === 'out') bal -= qty;
+                    balances.set(key, bal);
+                    return mapMovementToExtractRow(m, idx, bal, {
+                        id: String(m.product_id || '').trim(),
+                        code: displayItemCode(m.product_code),
+                        name: String(m.product_name || '').trim(),
+                    });
+                });
+                setRows(mapped);
+                setAllMaterialsMode(true);
+                setReportReady(true);
+                if (result.truncated) {
+                    toast.warning(
+                        (tm('extractRowLimitWarning') || '').replace('{limit}', String(result.limit)) ||
+                            `Sonuç üst sınıra ulaştı (${result.limit} satır).`,
+                    );
+                }
+            }
         } catch (err) {
             console.error('[MaterialExtractReport] loadReport failed', err);
+            toast.error(tm('error') || 'Rapor yüklenemedi');
         } finally {
             setLoading(false);
         }
     };
 
-    // Ürün veya tarih değişince otomatik yükle
+    // Tek malzeme seçiliyken ürün/tarih değişince otomatik yükle (tümü için yalnızca buton)
     useEffect(() => {
-        if (selectedProduct) loadReport();
+        if (selectedProduct) void loadReport();
         // eslint-disable-next-line react-hooks/exhaustive-deps
     }, [selectedProduct?.id, startDate, endDate]);
 
@@ -285,21 +367,41 @@ export function MaterialExtractReport() {
             const outbound = isOutboundMovement(row.movement_type);
             return {
                 ...row,
-                dateLabel: row.date ? format(new Date(row.date), 'dd.MM.yyyy') : '',
+                dateLabel: row.date ? formatReportDateCell(row.date) : '',
+                productCodeLabel: displayItemCode(row.product_code) === '—' ? '' : displayItemCode(row.product_code),
+                productNameLabel: row.product_name || '',
                 typeLabel: labelTrcode(row.trcode, row.movement_type, row.source_type, row.fiche_type),
                 descLabel: row.description || row.warehouse_name || '',
                 inQty: inbound ? row.quantity : null,
                 inAmt: inbound ? row.amount : null,
+                purchaseUnitPrice: inbound ? row.unit_price : null,
                 outQty: outbound ? row.quantity : null,
                 outAmt: outbound ? row.amount : null,
+                salesUnitPrice: outbound ? row.unit_price : null,
             };
         });
     }, [rows, tm]);
+
+    const showProductColumns = allMaterialsMode || !selectedProduct;
 
     const gridColumns = useMemo(
         () =>
             buildReportGridColumns<(typeof gridRows)[number]>([
                 { id: 'dateLabel', header: tm('date'), filterKind: 'date', size: 110 },
+                ...(showProductColumns
+                    ? [
+                          {
+                              id: 'productCodeLabel' as const,
+                              header: tm('materialCode') || 'Malzeme Kodu',
+                              size: 120,
+                          },
+                          {
+                              id: 'productNameLabel' as const,
+                              header: tm('materialName') || 'Malzeme Adı',
+                              size: 180,
+                          },
+                      ]
+                    : []),
                 { id: 'typeLabel', header: tm('ficheType') || 'Fiş Tipi', size: 130 },
                 { id: 'document_no', header: tm('ficheNo') || 'Fiş No', size: 120 },
                 { id: 'descLabel', header: tm('description') || 'Açıklama', size: 180 },
@@ -324,6 +426,16 @@ export function MaterialExtractReport() {
                         ),
                 },
                 {
+                    id: 'purchaseUnitPrice',
+                    header: tm('extractPurchaseUnitPrice') || 'Alış Birim Fiyatı',
+                    align: 'right',
+                    size: 130,
+                    cell: (r) =>
+                        r.purchaseUnitPrice == null ? '' : (
+                            <span className="text-green-700">{formatNumber(r.purchaseUnitPrice, 2)}</span>
+                        ),
+                },
+                {
                     id: 'outQty',
                     header: tm('extractOutQty'),
                     align: 'right',
@@ -344,83 +456,121 @@ export function MaterialExtractReport() {
                         ),
                 },
                 {
-                    id: 'unit_price',
-                    header: tm('unitPrice') || 'Birim Fiyat',
+                    id: 'salesUnitPrice',
+                    header: tm('extractSalesUnitPrice') || 'Satış Birim Fiyatı',
                     align: 'right',
-                    size: 120,
-                    cell: (r) => formatNumber(r.unit_price, 2),
+                    size: 130,
+                    cell: (r) =>
+                        r.salesUnitPrice == null ? '' : (
+                            <span className="text-red-700">{formatNumber(r.salesUnitPrice, 2)}</span>
+                        ),
                 },
                 {
                     id: 'running_balance',
-                    header: tm('runningQuantity') || 'Kümülatif Bakiye',
+                    header: tm('runningQuantity') || 'Kümülatif Kalan Bakiye',
                     align: 'right',
-                    size: 140,
+                    size: 150,
                     cell: (r) => (
                         <span className="font-bold">{formatNumber(r.running_balance, 2)}</span>
                     ),
                 },
             ]),
-        [tm],
+        [tm, showProductColumns],
     );
 
     const exportExcel = () => {
-        if (!selectedProduct || rows.length === 0) return;
+        if (!reportReady || rows.length === 0) return;
         const hDate = tm('date');
+        const hCode = tm('materialCode') || 'Malzeme Kodu';
+        const hName = tm('materialName') || 'Malzeme Adı';
         const hFicheType = tm('ficheType') || 'Fiş Tipi';
         const hFicheNo = tm('ficheNo') || 'Fiş No';
         const hDesc = tm('description') || 'Açıklama';
         const hInQty = tm('extractInQty');
         const hInAmt = tm('extractInAmount');
+        const hPurchaseUnit = tm('extractPurchaseUnitPrice') || 'Alış Birim Fiyatı';
         const hOutQty = tm('extractOutQty');
         const hOutAmt = tm('extractOutAmount');
-        const hUnit = tm('unitPrice') || 'Birim Fiyat';
-        const hBal = tm('runningQuantity') || 'Kümülatif Bakiye';
-        const headers = [hDate, hFicheType, hFicheNo, hDesc, hInQty, hInAmt, hOutQty, hOutAmt, hUnit, hBal];
+        const hSalesUnit = tm('extractSalesUnitPrice') || 'Satış Birim Fiyatı';
+        const hBal = tm('runningQuantity') || 'Kümülatif Kalan Bakiye';
+        const headers = showProductColumns
+            ? [hDate, hCode, hName, hFicheType, hFicheNo, hDesc, hInQty, hInAmt, hPurchaseUnit, hOutQty, hOutAmt, hSalesUnit, hBal]
+            : [hDate, hFicheType, hFicheNo, hDesc, hInQty, hInAmt, hPurchaseUnit, hOutQty, hOutAmt, hSalesUnit, hBal];
         const exportRows = rows.map((row) => {
             const inbound = isInboundMovement(row.movement_type);
             const outbound = isOutboundMovement(row.movement_type);
-            return {
-                [hDate]: row.date ? format(new Date(row.date), 'dd.MM.yyyy') : '',
+            const base: Record<string, string | number> = {
+                [hDate]: row.date ? formatReportDateCell(row.date) : '',
                 [hFicheType]: labelTrcode(row.trcode, row.movement_type, row.source_type, row.fiche_type),
                 [hFicheNo]: row.document_no,
                 [hDesc]: row.description || row.warehouse_name || '',
                 [hInQty]: inbound ? row.quantity : '',
                 [hInAmt]: inbound ? row.amount : '',
+                [hPurchaseUnit]: inbound ? row.unit_price : '',
                 [hOutQty]: outbound ? row.quantity : '',
                 [hOutAmt]: outbound ? row.amount : '',
-                [hUnit]: row.unit_price,
+                [hSalesUnit]: outbound ? row.unit_price : '',
                 [hBal]: row.running_balance,
             };
+            if (showProductColumns) {
+                base[hCode] = displayItemCode(row.product_code) === '—' ? '' : displayItemCode(row.product_code);
+                base[hName] = row.product_name || '';
+            }
+            return base;
         });
         const lastBalance = rows[rows.length - 1]?.running_balance ?? 0;
-        const codeForFile = productCodeLabel === '—' ? 'urun' : productCodeLabel.replace(/[^\w.-]+/g, '_');
+        const codeForFile = selectedProduct
+            ? productCodeLabel === '—'
+                ? 'urun'
+                : productCodeLabel.replace(/[^\w.-]+/g, '_')
+            : 'tum_malzemeler';
+        const noteLabel = selectedProduct
+            ? `${productCodeLabel} — ${selectedProduct.name || ''} • ${currency}`
+            : `${tm('extractAllMaterialsLabel') || 'Tüm malzemeler'} • ${currency}`;
         exportReportToXlsx({
             fileName: `Malzeme_Ekstresi_${codeForFile}_${startDate}_${endDate}`,
             sheetName: tm('materialExtractReport') || 'Malzeme Ekstresi',
             headers,
             rows: exportRows,
-            totals: {
-                [hDate]: '',
-                [hFicheType]: '',
-                [hFicheNo]: '',
-                [hDesc]: tm('totalUppercase') || 'Toplam',
-                [hInQty]: totals.totalInQty,
-                [hInAmt]: totals.totalInAmount,
-                [hOutQty]: totals.totalOutQty,
-                [hOutAmt]: totals.totalOutAmount,
-                [hUnit]: '',
-                [hBal]: lastBalance,
-            },
+            totals: showProductColumns
+                ? {
+                      [hDate]: '',
+                      [hCode]: '',
+                      [hName]: '',
+                      [hFicheType]: '',
+                      [hFicheNo]: '',
+                      [hDesc]: tm('totalUppercase') || 'Toplam',
+                      [hInQty]: totals.totalInQty,
+                      [hInAmt]: totals.totalInAmount,
+                      [hPurchaseUnit]: '',
+                      [hOutQty]: totals.totalOutQty,
+                      [hOutAmt]: totals.totalOutAmount,
+                      [hSalesUnit]: '',
+                      [hBal]: lastBalance,
+                  }
+                : {
+                      [hDate]: '',
+                      [hFicheType]: '',
+                      [hFicheNo]: '',
+                      [hDesc]: tm('totalUppercase') || 'Toplam',
+                      [hInQty]: totals.totalInQty,
+                      [hInAmt]: totals.totalInAmount,
+                      [hPurchaseUnit]: '',
+                      [hOutQty]: totals.totalOutQty,
+                      [hOutAmt]: totals.totalOutAmount,
+                      [hSalesUnit]: '',
+                      [hBal]: lastBalance,
+                  },
             metadata: {
                 companyName: selectedFirm?.name || selectedFirm?.firma_adi || 'RetailEX',
-                period: `${startDate} → ${endDate}`,
-                note: `${productCodeLabel} — ${selectedProduct.name || ''} • ${currency}`,
+                period: `${formatReportDateCell(startDate)} → ${formatReportDateCell(endDate)}`,
+                note: noteLabel,
             },
         });
     };
 
     const buildPrintInput = async (): Promise<MaterialExtractPrintInput | null> => {
-        if (!selectedProduct || rows.length === 0) return null;
+        if (!reportReady || rows.length === 0) return null;
         const receipt = await getReceiptSettings(firmNr).catch(() => ({}));
         const header = companyHeaderFromReceiptSettings(
             receipt,
@@ -429,8 +579,10 @@ export function MaterialExtractReport() {
         return {
             ...header,
             reportTitle: tm('materialExtractReport') || 'Malzeme Ekstresi',
-            productCode: selectedProduct.code || selectedProduct.barcode || '',
-            productName: selectedProduct.name || '',
+            productCode: selectedProduct
+                ? selectedProduct.code || selectedProduct.barcode || ''
+                : tm('extractAllMaterialsLabel') || 'Tüm malzemeler',
+            productName: selectedProduct?.name || (allMaterialsMode ? '' : ''),
             dateFrom: startDate,
             dateTo: endDate,
             currency,
@@ -444,9 +596,11 @@ export function MaterialExtractReport() {
                 description: tm('description') || 'Açıklama',
                 inQty: tm('extractInQty'),
                 inAmt: tm('extractInAmount'),
+                purchaseUnitPrice: tm('extractPurchaseUnitPrice') || 'Alış Birim Fiyatı',
                 outQty: tm('extractOutQty'),
                 outAmt: tm('extractOutAmount'),
-                runningBalance: tm('runningQuantity') || 'Kümülatif Bakiye',
+                salesUnitPrice: tm('extractSalesUnitPrice') || 'Satış Birim Fiyatı',
+                runningBalance: tm('runningQuantity') || 'Kümülatif Kalan Bakiye',
                 total: tm('totalUppercase') || 'Toplam',
                 dateRange: tm('dateRangeLabel') || 'Tarih Aralığı',
                 empty: tm('noRecordsFound') || 'Kayıt bulunamadı',
@@ -481,7 +635,7 @@ export function MaterialExtractReport() {
     };
 
     const openPrintModal = async () => {
-        if (!selectedProduct || rows.length === 0) {
+        if (!reportReady || rows.length === 0) {
             toast.error(tm('extractPrintNeedRows') || 'Yazdırmak için önce raporu hazırlayın.');
             return;
         }
@@ -526,7 +680,7 @@ export function MaterialExtractReport() {
     };
 
     const handleConfirmPrint = async () => {
-        if (!selectedProduct || rows.length === 0) {
+        if (!reportReady || rows.length === 0) {
             toast.error(tm('extractPrintNeedRows') || 'Yazdırmak için önce raporu hazırlayın.');
             return;
         }
@@ -554,7 +708,7 @@ export function MaterialExtractReport() {
                         paperHint: 'A4',
                         connection: 'system',
                         refType: 'material_extract',
-                        refId: selectedProduct.id ?? null,
+                        refId: selectedProduct?.id ?? null,
                         sourceSystem: 'web',
                     });
                     toast.success(tm('extractPrintQueued') || 'Yazıcı kuyruğuna eklendi.');
@@ -584,7 +738,7 @@ export function MaterialExtractReport() {
                     data: context,
                     connection: 'system',
                     refType: 'material_extract',
-                    refId: selectedProduct.id ?? null,
+                    refId: selectedProduct?.id ?? null,
                     sourceSystem: 'web',
                     priority: 80,
                 });
@@ -605,7 +759,7 @@ export function MaterialExtractReport() {
                     data: context,
                     connection: 'system',
                     refType: 'material_extract',
-                    refId: selectedProduct.id ?? null,
+                    refId: selectedProduct?.id ?? null,
                     sourceSystem: 'web',
                     priority: 80,
                 });
@@ -626,8 +780,9 @@ export function MaterialExtractReport() {
         }
     };
 
-    const canExport = Boolean(selectedProduct) && rows.length > 0 && !loading;
+    const canExport = reportReady && rows.length > 0 && !loading;
     const builtinActive = printSelection.kind === 'builtin';
+    const dateRangeDisplay = `${formatReportDateCell(startDate)} → ${formatReportDateCell(endDate)}`;
 
     return (
         <div className="h-full flex flex-col bg-white">
@@ -648,6 +803,8 @@ export function MaterialExtractReport() {
                                 if (selectedProduct) {
                                     setSelectedProduct(null);
                                     setRows([]);
+                                    setReportReady(false);
+                                    setAllMaterialsMode(false);
                                 }
                                 setShowDropdown(true);
                             }}
@@ -723,8 +880,9 @@ export function MaterialExtractReport() {
                 </div>
 
                 <button
-                    onClick={loadReport}
-                    disabled={!selectedProduct || loading}
+                    type="button"
+                    onClick={() => void loadReport()}
+                    disabled={loading || !startDate || !endDate}
                     className="px-6 py-2 bg-gray-800 text-white rounded font-bold text-sm hover:bg-black transition-all disabled:opacity-50 disabled:cursor-not-allowed"
                 >
                     {loading ? (tm('loading') || 'Yükleniyor...') : (tm('prepareReport') || 'Raporu Hazırla')}
@@ -737,12 +895,16 @@ export function MaterialExtractReport() {
                     {tm('materialExtractReport') || 'Malzeme Ekstresi'}
                 </h1>
                 <div className="mt-2 flex justify-center gap-4 text-xs text-gray-500 flex-wrap">
-                    {selectedProduct && (
+                    {selectedProduct ? (
                         <span className="font-semibold">
                             {productCodeLabel} — {selectedProduct.name}
                         </span>
-                    )}
-                    <span>{tm('dateRangeLabel') || 'Tarih Aralığı'}: {startDate} → {endDate}</span>
+                    ) : reportReady && allMaterialsMode ? (
+                        <span className="font-semibold">
+                            {tm('extractAllMaterialsLabel') || 'Tüm malzemeler'}
+                        </span>
+                    ) : null}
+                    <span>{tm('dateRangeLabel') || 'Tarih Aralığı'}: {dateRangeDisplay}</span>
                     <span>•</span>
                     <span>{currency}</span>
                 </div>
@@ -750,11 +912,11 @@ export function MaterialExtractReport() {
 
             {/* Tablo — Malzeme / Envanter Listesi ile aynı DevExDataGrid */}
             <div className="flex-1 min-h-0 overflow-hidden px-6 pb-6">
-                {!selectedProduct ? (
+                {!reportReady && !loading ? (
                     <div className="h-full flex items-center justify-center">
-                        <div className="text-center max-w-md text-gray-400">
+                        <div className="text-center max-w-lg text-gray-400">
                             <Search className="w-12 h-12 mx-auto mb-3 opacity-40" />
-                            <p>{tm('selectMaterialHint') || 'Ekstresini görmek istediğiniz malzemeyi yukarıdan seçin.'}</p>
+                            <p>{tm('selectMaterialHint')}</p>
                         </div>
                     </div>
                 ) : loading ? (
@@ -788,7 +950,7 @@ export function MaterialExtractReport() {
                                 columnId: 'inAmt',
                                 getValue: (r) => Number(r.inAmt) || 0,
                                 format: (sum) => (
-                                    <span className="text-green-700">{formatNumber(sum, 2)} {currency}</span>
+                                    <span className="text-green-700">{formatLedgerAmount(sum, currency)}</span>
                                 ),
                             },
                             {
@@ -802,7 +964,7 @@ export function MaterialExtractReport() {
                                 columnId: 'outAmt',
                                 getValue: (r) => Number(r.outAmt) || 0,
                                 format: (sum) => (
-                                    <span className="text-red-700">{formatNumber(sum, 2)} {currency}</span>
+                                    <span className="text-red-700">{formatLedgerAmount(sum, currency)}</span>
                                 ),
                             },
                         ]}
@@ -823,8 +985,9 @@ export function MaterialExtractReport() {
                                     {tm('extractPrint') || tm('print') || 'Yazdır'}
                                 </h2>
                                 <p className="text-blue-100 text-xs font-semibold uppercase tracking-wider mt-0.5 opacity-90">
-                                    {productCodeLabel}
-                                    {selectedProduct?.name ? ` — ${selectedProduct.name}` : ''}
+                                    {selectedProduct
+                                        ? `${productCodeLabel}${selectedProduct.name ? ` — ${selectedProduct.name}` : ''}`
+                                        : (tm('extractAllMaterialsLabel') || 'Tüm malzemeler')}
                                 </p>
                             </div>
                             <button
