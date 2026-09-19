@@ -29,6 +29,17 @@ const firmPeriodVars = {
       current: { selected: true, text: '01', value: '01' },
       hide: 0,
     },
+    {
+      name: 'currency',
+      type: 'query',
+      label: 'Para birimi',
+      datasource: { type: 'postgres', uid: 'postgres' },
+      query:
+        "SELECT COALESCE(\n  (SELECT NULLIF(trim(ana_para_birimi),'') FROM firms WHERE firm_nr IN ('${firm}', ltrim('${firm}','0')) LIMIT 1),\n  (SELECT NULLIF(trim(default_currency),'') FROM public.system_settings WHERE id = 1 LIMIT 1),\n  'IQD'\n);",
+      current: { selected: true, text: 'IQD', value: 'IQD' },
+      hide: 0,
+      refresh: 1,
+    },
   ],
 };
 
@@ -37,14 +48,19 @@ function ds() {
 }
 
 function stat(id, title, sql, x, y, w = 6, h = 4, unit = 'short') {
+  const money = unit === 'currencyTRY' || unit === 'money';
+  const displayTitle = money && !/\$\{currency\}/.test(title) ? `${title} (\${currency})` : title;
   return {
     id,
-    title,
+    title: displayTitle,
     type: 'stat',
     gridPos: { h, w, x, y },
     datasource: ds(),
     targets: [{ refId: 'A', format: 'table', rawQuery: true, rawSql: sql }],
-    fieldConfig: { defaults: { unit }, overrides: [] },
+    fieldConfig: {
+      defaults: money ? { unit: 'none', decimals: 0 } : { unit },
+      overrides: [],
+    },
     options: {
       colorMode: 'value',
       graphMode: 'none',
