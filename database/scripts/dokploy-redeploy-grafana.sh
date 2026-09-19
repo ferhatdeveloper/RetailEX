@@ -24,5 +24,6 @@ docker compose -p "${COMPOSE_PROJECT_NAME}" -f "${COMPOSE}" up -d --no-build \
   prometheus cadvisor grafana
 
 echo ""
-echo "Grafana: http://127.0.0.1:${GRAFANA_PORT:-3000}  veya  https://<alan>/__grafana/"
-echo "React gömme: Sistem Yönetimi → Sistem Sağlığı (nginx /__grafana proxy; frontend rebuild gerekir)"
+echo "Grafana: yalnızca Docker ağı (grafana:3000) → https://<alan>/__grafana/"
+echo "React gömme: Sistem Sağlığı / Rapor Oluşturucu (frontend rebuild gerekir)"
+echo "Not: host :3000 yayınlanmaz (port çakışması önlemi)"
