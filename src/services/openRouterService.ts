@@ -28,13 +28,21 @@ export type OpenRouterChatResult = {
   raw?: unknown;
 };
 
-function buildPayload(cfg: OpenRouterConfig, messages: OpenRouterChatMessage[]) {
-  return {
+function buildPayload(
+  cfg: OpenRouterConfig,
+  messages: OpenRouterChatMessage[],
+  overrides?: { temperature?: number; maxTokens?: number; responseFormat?: 'json_object' },
+) {
+  const payload: Record<string, unknown> = {
     model: cfg.model,
     messages,
-    temperature: cfg.temperature,
-    max_tokens: cfg.maxTokens,
+    temperature: overrides?.temperature ?? cfg.temperature,
+    max_tokens: overrides?.maxTokens ?? cfg.maxTokens,
   };
+  if (overrides?.responseFormat === 'json_object') {
+    payload.response_format = { type: 'json_object' };
+  }
+  return payload;
 }
 
 function buildOpenRouterHeaders(cfg: OpenRouterConfig, apiKey: string): Record<string, string> {
@@ -62,6 +70,7 @@ function extractAssistantText(data: unknown): string {
 async function chatViaBridge(
   cfg: OpenRouterConfig,
   messages: OpenRouterChatMessage[],
+  overrides?: { temperature?: number; maxTokens?: number; responseFormat?: 'json_object' },
 ): Promise<OpenRouterChatResult> {
   const bridge = getBridgeUrl();
   const res = await fetch(`${bridge}/api/openrouter/chat`, {
@@ -72,7 +81,7 @@ async function chatViaBridge(
       baseUrl: cfg.baseUrl,
       siteUrl: cfg.siteUrl,
       siteName: cfg.siteName,
-      ...buildPayload(cfg, messages),
+      ...buildPayload(cfg, messages, overrides),
     }),
   });
   const data = (await res.json().catch(() => ({}))) as Record<string, unknown>;
@@ -103,12 +112,13 @@ async function chatDirect(
   cfg: OpenRouterConfig,
   messages: OpenRouterChatMessage[],
   apiKey: string,
+  overrides?: { temperature?: number; maxTokens?: number; responseFormat?: 'json_object' },
 ): Promise<OpenRouterChatResult> {
   const base = (cfg.baseUrl || 'https://openrouter.ai/api/v1').replace(/\/+$/, '');
   const res = await fetch(`${base}/chat/completions`, {
     method: 'POST',
     headers: buildOpenRouterHeaders(cfg, apiKey),
-    body: JSON.stringify(buildPayload(cfg, messages)),
+    body: JSON.stringify(buildPayload(cfg, messages, overrides)),
   });
   const data = await res.json().catch(() => ({}));
   if (!res.ok) {
@@ -133,7 +143,12 @@ async function chatDirect(
  */
 export async function openRouterChat(
   messages: OpenRouterChatMessage[],
-  options?: { config?: OpenRouterConfig },
+  options?: {
+    config?: OpenRouterConfig;
+    temperature?: number;
+    maxTokens?: number;
+    responseFormat?: 'json_object';
+  },
 ): Promise<OpenRouterChatResult> {
   const cfg = options?.config ?? loadOpenRouterConfig();
   if (!cfg.enabled) {
@@ -143,16 +158,22 @@ export async function openRouterChat(
     return { ok: false, content: '', error: 'OpenRouter model seçilmedi.' };
   }
 
+  const overrides = {
+    temperature: options?.temperature,
+    maxTokens: options?.maxTokens,
+    responseFormat: options?.responseFormat,
+  };
+
   try {
     // Web / Tauri: köprü proxy (CORS + isteğe bağlı OPENROUTER_API_KEY env)
     if (typeof window !== 'undefined') {
-      return await chatViaBridge(cfg, messages);
+      return await chatViaBridge(cfg, messages, overrides);
     }
     const key = cfg.apiKey.trim();
     if (!key) {
       return { ok: false, content: '', error: 'OpenRouter API anahtarı yok.' };
     }
-    return await chatDirect(cfg, messages, key);
+    return await chatDirect(cfg, messages, key, overrides);
   } catch (e: unknown) {
     const msg = e instanceof Error ? e.message : String(e);
     if (msg === 'Failed to fetch' || /NetworkError|köprü/i.test(msg)) {
@@ -258,7 +279,8 @@ export function buildReportContextSummary(
 }
 
 /**
- * Rapor sorusu — OpenRouter ile dile göre perakende asistan yanıtı.
+ * Rapor sorusu — OpenRouter ile tutarlı (dil bağımsız sistem prompt + JSON) yanıt.
+ * Aynı kaynak veri için tr/en/ar/ku yalnızca cevap dili değişir; sayılar/olgular sabit kalır.
  */
 export async function analyzeReportWithOpenRouter(
   question: string,
@@ -275,31 +297,122 @@ export async function analyzeReportWithOpenRouter(
     throw new Error(translate('reportChatOpenRouterOff', language));
   }
 
-  const context = buildReportContextSummary(reportData, language);
+  // Bağlam her zaman EN etiketleriyle — dil değişince sayı/olgu sapması azalır
+  const context = buildReportContextSummary(reportData, 'en');
+  const replyLang = REPLY_LANGUAGE_NAMES[language] || 'Turkish';
+  const knownSuggestTr = [
+    'reportChatSuggestDaily',
+    'reportChatSuggestZ',
+    'reportChatSuggestCompare',
+    'reportChatSuggestTopProducts',
+    'reportChatSuggestProductSales',
+    'reportChatSuggestCategory',
+    'reportChatSuggestCashier',
+    'reportChatSuggestHourly',
+    'reportChatSuggestStock',
+  ].map((k) => translate(k, 'tr'));
+
   const system: OpenRouterChatMessage = {
     role: 'system',
-    content: translate('reportChatSystemPrompt', language),
+    content: [
+      'You are the RetailEX retail / restaurant / beauty ERP assistant.',
+      'Use ONLY the provided report summary. Never invent numbers or facts.',
+      'Be brief and deterministic: same question + same data must yield the same facts in every UI language.',
+      `Write the "answer" field in ${replyLang} (locale code: ${language}).`,
+      'Respond with valid JSON only (no markdown fences):',
+      '{"answer":"string","suggested_reports":["string",...]}',
+      `suggested_reports: 0–4 items chosen from this fixed Turkish catalog (keep these exact strings): ${JSON.stringify(knownSuggestTr)}`,
+      'If no report suggestion fits, use an empty array.',
+    ].join(' '),
   };
   const history: OpenRouterChatMessage[] = conversationHistory
     .slice(-8)
     .map((m) => ({ role: m.role, content: m.content }));
   const user: OpenRouterChatMessage = {
     role: 'user',
-    content: translate('reportChatUserPrompt', language)
-      .replace('{context}', context)
-      .replace('{question}', question),
+    content: `Report summary (canonical English labels):\n${context}\n\nUser question:\n${question}`,
   };
 
-  const result = await openRouterChat([system, ...history, user], { config: cfg });
+  // Düşük temperature — dil değiştirince tutarsız anlatımı azaltır
+  const analysisTemp = Math.min(Number(cfg.temperature) || 0.15, 0.2);
+
+  const result = await openRouterChat([system, ...history, user], {
+    config: cfg,
+    temperature: analysisTemp,
+    responseFormat: 'json_object',
+  });
   if (!result.ok) {
     throw new Error(result.error || 'OpenRouter yanıt vermedi');
   }
 
-  const suggested = extractSuggestedReports(result.content, language);
+  const parsed = parseStructuredReportAnswer(result.content);
+  const answer = parsed.answer || result.content;
+  const suggested =
+    parsed.suggested.length > 0
+      ? localizeSuggestedReports(parsed.suggested, language)
+      : extractSuggestedReports(answer, language);
+
   return {
-    answer: result.content,
+    answer,
     suggested_reports: suggested,
   };
+}
+
+const REPLY_LANGUAGE_NAMES: Record<Language, string> = {
+  tr: 'Turkish',
+  en: 'English',
+  ar: 'Arabic',
+  ku: 'Kurdish (Sorani)',
+};
+
+function parseStructuredReportAnswer(raw: string): {
+  answer: string;
+  suggested: string[];
+} {
+  const trimmed = raw.trim();
+  const jsonMatch = trimmed.match(/\{[\s\S]*\}/);
+  if (!jsonMatch) {
+    return { answer: trimmed, suggested: [] };
+  }
+  try {
+    const obj = JSON.parse(jsonMatch[0]) as {
+      answer?: unknown;
+      suggested_reports?: unknown;
+    };
+    const answer = typeof obj.answer === 'string' ? obj.answer.trim() : '';
+    const suggested = Array.isArray(obj.suggested_reports)
+      ? obj.suggested_reports.filter((x): x is string => typeof x === 'string' && x.trim().length > 0)
+      : [];
+    return { answer: answer || trimmed, suggested };
+  } catch {
+    return { answer: trimmed, suggested: [] };
+  }
+}
+
+/** Model TR katalog adlarını döndürür; UI diline çevir. */
+function localizeSuggestedReports(names: string[], language: Language): string[] {
+  const keys = [
+    'reportChatSuggestDaily',
+    'reportChatSuggestZ',
+    'reportChatSuggestCompare',
+    'reportChatSuggestTopProducts',
+    'reportChatSuggestProductSales',
+    'reportChatSuggestCategory',
+    'reportChatSuggestCashier',
+    'reportChatSuggestHourly',
+    'reportChatSuggestStock',
+  ];
+  const out: string[] = [];
+  for (const name of names) {
+    const idx = keys.findIndex(
+      (k) =>
+        translate(k, 'tr') === name ||
+        translate(k, language) === name ||
+        translate(k, 'en') === name,
+    );
+    if (idx >= 0) out.push(translate(keys[idx], language));
+  }
+  return out.slice(0, 4);
 }
 
 function extractSuggestedReports(text: string, language: Language = 'tr'): string[] {

@@ -176,7 +176,7 @@ function isColumnReorderable(columnId: string): boolean {
 
 const DEFAULT_PAGE_SIZE_OPTIONS = [10, 15, 20, 25, 50, 100];
 
-/** Huni ve kolon seçici — body portal + compositor katmanı (sticky thead/tfoot üstüne binmesin). */
+/** Huni / kolon menüsü — body portal; GRID_POPOVER_Z modal overlay üstünde (Analiz drill-down). */
 const FILTER_MENU_Z_INDEX = GRID_POPOVER_Z;
 /** Sticky dip toplam / sayfalama — yalnızca tablo kaydırma kutusunun içinde */
 const GRID_CHROME_Z_INDEX = 1;

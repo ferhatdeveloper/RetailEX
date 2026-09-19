@@ -279,15 +279,25 @@ app.post('/api/openrouter/chat', async (c) => {
         if (siteUrl) headers['HTTP-Referer'] = siteUrl;
         if (siteName) headers['X-Title'] = siteName;
 
+        const upstreamBody: Record<string, unknown> = {
+            model,
+            messages,
+            temperature,
+            max_tokens: maxTokens,
+        };
+        const rf = body?.response_format;
+        if (
+            rf &&
+            typeof rf === 'object' &&
+            (rf as { type?: string }).type === 'json_object'
+        ) {
+            upstreamBody.response_format = { type: 'json_object' };
+        }
+
         const upstream = await fetch(`${baseUrl}/chat/completions`, {
             method: 'POST',
             headers,
-            body: JSON.stringify({
-                model,
-                messages,
-                temperature,
-                max_tokens: maxTokens,
-            }),
+            body: JSON.stringify(upstreamBody),
         });
         const text = await upstream.text();
         let data: unknown = null;

@@ -146,39 +146,150 @@ describe('stockInOutTotals — EL KREMI senaryosu', () => {
             }),
         ).toBe(false);
 
-        const rows = aggregateInOutTotals([
-            {
-                productId: 'p-1',
-                productCode: 'ELKREMI',
-                productName: 'EL KREMI',
-                quantity: 2,
-                totalAmount: 500,
-                ficheType: 'sales_invoice',
-                movementType: 'out',
-                itemType: 'Malzeme',
-            },
-            {
-                productId: 'beauty-service-Sac',
-                productName: 'SAC BOYAMA',
-                quantity: 1,
-                totalAmount: 15000,
-                ficheType: 'beauty_sale',
-                movementType: 'out',
-                itemType: 'service',
-            },
-            {
-                productId: 'kas-1',
+        // Regresyon: item_type boş/Malzeme + güzellik kart UUID (katalogda ürün yok)
+        const beautySvcId = 'aaaaaaaa-bbbb-cccc-dddd-eeeeeeee0001';
+        const beautyKeys = new Set([beautySvcId]);
+        expect(
+            isInOutTotalsServiceLine(
+                {
+                    productId: beautySvcId,
+                    productName: 'SAÇ BOYAMA',
+                    itemType: 'Malzeme',
+                    ficheType: 'sales_invoice',
+                    quantity: 3,
+                },
+                beautyKeys,
+            ),
+        ).toBe(true);
+        expect(
+            isInOutTotalsServiceLine({
+                productId: beautySvcId,
                 productName: 'KAŞ ALMA',
-                quantity: 1,
-                totalAmount: 5000,
-                ficheType: 'beauty_sale',
-                movementType: 'out',
-                itemType: 'Hizmet',
-            },
-        ]);
+                isService: true,
+                ficheType: 'pos',
+                quantity: 2,
+            }),
+        ).toBe(true);
+
+        const rows = aggregateInOutTotals(
+            [
+                {
+                    productId: 'p-1',
+                    productCode: 'ELKREMI',
+                    productName: 'EL KREMI',
+                    quantity: 2,
+                    totalAmount: 500,
+                    ficheType: 'sales_invoice',
+                    movementType: 'out',
+                    itemType: 'Malzeme',
+                },
+                {
+                    productId: 'beauty-service-Sac',
+                    productName: 'SAC BOYAMA',
+                    quantity: 1,
+                    totalAmount: 15000,
+                    ficheType: 'beauty_sale',
+                    movementType: 'out',
+                    itemType: 'service',
+                },
+                {
+                    productId: 'kas-1',
+                    productName: 'KAŞ ALMA',
+                    quantity: 1,
+                    totalAmount: 5000,
+                    ficheType: 'beauty_sale',
+                    movementType: 'out',
+                    itemType: 'Hizmet',
+                },
+                {
+                    productId: beautySvcId,
+                    productName: 'SAÇ BOYAMA',
+                    quantity: 3,
+                    totalAmount: 135000,
+                    ficheType: 'sales_invoice',
+                    movementType: 'out',
+                    itemType: 'Malzeme',
+                },
+            ],
+            beautyKeys,
+        );
         expect(rows).toHaveLength(1);
         expect(rows[0].productCode).toBe('ELKREMI');
         expect(rows[0].outQty).toBe(2);
         expect(rows[0].outAmount).toBe(500);
+    });
+
+    it('serviceKeys ile güzellik UUID (item_type Malzeme) dışlanır', () => {
+        const beautyId = 'aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee';
+        const keys = new Set([beautyId]);
+        expect(
+            isInOutTotalsServiceLine(
+                {
+                    productId: beautyId,
+                    productName: 'SAÇ BOYAMA',
+                    itemType: 'Malzeme',
+                    ficheType: 'sales_invoice',
+                    quantity: 1,
+                },
+                keys,
+            ),
+        ).toBe(true);
+        const rows = aggregateInOutTotals(
+            [
+                {
+                    productId: 'p-1',
+                    productCode: '01',
+                    productName: 'SABUN',
+                    quantity: 1,
+                    totalAmount: 100,
+                    ficheType: 'sales_invoice',
+                    movementType: 'out',
+                    itemType: 'Malzeme',
+                },
+                {
+                    productId: beautyId,
+                    productName: 'SAÇ BOYAMA',
+                    quantity: 1,
+                    totalAmount: 15000,
+                    ficheType: 'sales_invoice',
+                    movementType: 'out',
+                    itemType: 'Malzeme',
+                },
+            ],
+            { serviceKeys: keys },
+        );
+        expect(rows).toHaveLength(1);
+        expect(rows[0].productCode).toBe('01');
+    });
+
+    it('includeServices true iken hizmet satırları da gelir', () => {
+        const rows = aggregateInOutTotals(
+            [
+                {
+                    productId: 'p-1',
+                    productCode: 'ELKREMI',
+                    productName: 'EL KREMI',
+                    quantity: 2,
+                    totalAmount: 500,
+                    ficheType: 'sales_invoice',
+                    movementType: 'out',
+                    itemType: 'Malzeme',
+                },
+                {
+                    productId: 'beauty-service-Sac',
+                    productName: 'SAÇ BOYAMA',
+                    quantity: 1,
+                    totalAmount: 15000,
+                    ficheType: 'beauty_sale',
+                    movementType: 'out',
+                    itemType: 'service',
+                },
+            ],
+            { includeServices: true },
+        );
+        expect(rows).toHaveLength(2);
+        const svc = rows.find((r) => r.isService);
+        expect(svc?.productName).toBe('SAÇ BOYAMA');
+        expect(svc?.outAmount).toBe(15000);
     });
 });

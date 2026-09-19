@@ -4737,6 +4737,13 @@ export const moduleTranslations: Record<string, Record<Language, string>> = {
 
   // Reports - In/Out Totals
   inOutTotals: { tr: 'Giriş/Çıkış Toplamları', en: 'In/Out Totals', ar: 'إجمالي الدخول/الخروج', ku: 'کۆی هاتن/چوون' },
+  includeServicesInOut: {
+    tr: 'Hizmetleri de göster',
+    en: 'Also show services',
+    ar: 'إظهار الخدمات أيضاً',
+    ku: 'خزمەتگوزارییەکانیش پیشان بدە',
+  },
+  lineKind: { tr: 'Tür', en: 'Type', ar: 'النوع', ku: 'جۆر' },
   netChange: { tr: 'Net Değişim', en: 'Net Change', ar: 'صافي التغيير', ku: 'گۆڕانکاری پوخت' },
   totalOut: { tr: 'Toplam Çıkış', en: 'Total Out', ar: 'إجمالي الخروج', ku: 'کۆی دەرچوون' },
   totalIn: { tr: 'Toplam Giriş', en: 'Total In', ar: 'إجمالي الدخول', ku: 'کۆی هاتن' },
@@ -8082,6 +8089,32 @@ export const excelModuleTranslations = {
     ar: 'مفتاح API مطلوب للاختبار.',
     ku: 'بۆ تاقیکردنەوە کلیلی API پێویستە.',
   },
+  orAiModalTitle: {
+    tr: 'OpenRouter API',
+    en: 'OpenRouter API',
+    ar: 'OpenRouter API',
+    ku: 'OpenRouter API',
+  },
+  orAiModalSubtitle: {
+    tr: 'AI çeviri ve rapor asistanı',
+    en: 'AI translation & report assistant',
+    ar: 'ترجمة الذكاء الاصطناعي ومساعد التقارير',
+    ku: 'وەرگێڕانی AI و یارمەتیدەری ڕاپۆرت',
+  },
+  orAiModalHint: {
+    tr: 'API anahtarı yalnızca bu cihazda saklanır. Aynı anahtar tüm dillerde (TR/EN/AR/KU) tutarlı AI yanıtları üretir.',
+    en: 'The API key is stored only on this device. The same key produces consistent AI answers in all languages (TR/EN/AR/KU).',
+    ar: 'يُحفظ مفتاح API على هذا الجهاز فقط. ينتج المفتاح نفسه إجابات متسقة بجميع اللغات (TR/EN/AR/KU).',
+    ku: 'کلیلی API تەنها لەم ئامێرەدا هەڵدەگیرێت. هەمان کلیل لە هەموو زمانەکاندا (TR/EN/AR/KU) وەڵامی یەکگرتوو دەدات.',
+  },
+  orAiModalLangEntry: {
+    tr: 'API anahtarı ve model — tutarlı çok dilli yanıt',
+    en: 'API key & model — consistent multilingual answers',
+    ar: 'مفتاح API والنموذج — إجابات متعددة اللغات متسقة',
+    ku: 'کلیلی API و مۆدێل — وەڵامی فرەزمانی یەکگرتوو',
+  },
+  orAiShowKey: { tr: 'Anahtarı göster', en: 'Show key', ar: 'إظهار المفتاح', ku: 'کلیل پیشان بدە' },
+  orAiHideKey: { tr: 'Anahtarı gizle', en: 'Hide key', ar: 'إخفاء المفتاح', ku: 'کلیل بشارەوە' },
 
   // Report Chat AI
   reportChatTitle: { tr: 'Chat AI (Beta)', en: 'Chat AI (Beta)', ar: 'دردشة الذكاء الاصطناعي (تجريبي)', ku: 'چاتی AI (بێتا)' },
@@ -8108,10 +8141,10 @@ export const excelModuleTranslations = {
     ku: 'بۆ ناردن Enter دابگرە',
   },
   reportChatWelcome: {
-    tr: 'Merhaba!\n\nRaporlar hakkında sorular sorabilirsiniz. OpenRouter yapılandırıldıysa yanıtlar yapay zeka modelinden gelir (Entegrasyonlar → Yapay Zeka).\n\nÖrnek sorular:\n• "Bugünkü satışlar nasıl?"\n• "En çok satan ürünler neler?"\n• "Kasiyer performansı nasıl?"\n• "Stok durumu nedir?"',
-    en: 'Hello!\n\nYou can ask questions about reports. If OpenRouter is configured, answers come from the AI model (Integrations → AI).\n\nExample questions:\n• "How are today\'s sales?"\n• "What are the top products?"\n• "How is cashier performance?"\n• "What is the stock status?"',
-    ar: 'مرحباً!\n\nيمكنك طرح أسئلة حول التقارير. إذا تم إعداد OpenRouter، تأتي الإجابات من نموذج الذكاء الاصطناعي (التكاملات → الذكاء الاصطناعي).\n\nأسئلة مثال:\n• "كيف مبيعات اليوم؟"\n• "ما أكثر المنتجات مبيعاً؟"\n• "كيف أداء أمين الصندوق؟"\n• "ما حالة المخزون؟"',
-    ku: 'سڵاو!\n\nدەتوانیت دەربارەی ڕاپۆرتەکان پرسیار بکەیت. ئەگەر OpenRouter ڕێکخرا بێت، وەڵامەکان لە مۆدێلی AI دێن (یەکخستنەکان → زیرەکی دەستکرد).\n\nنمونەی پرسیار:\n• "فرۆشتنی ئەمڕۆ چۆنە؟"\n• "زۆرترین فرۆشراوەکان چین؟"\n• "کارایی کاشێر چۆنە؟"\n• "دۆخی کۆگا چیە؟"',
+    tr: 'Merhaba!\n\nRaporlar hakkında sorular sorabilirsiniz. OpenRouter yapılandırıldıysa yanıtlar yapay zeka modelinden gelir (üst bardaki dil ikonu → OpenRouter API, veya Entegrasyonlar → Yapay Zeka).\n\nÖrnek sorular:\n• "Bugünkü satışlar nasıl?"\n• "En çok satan ürünler neler?"\n• "Kasiyer performansı nasıl?"\n• "Stok durumu nedir?"',
+    en: 'Hello!\n\nYou can ask questions about reports. If OpenRouter is configured, answers come from the AI model (top-bar language icon → OpenRouter API, or Integrations → AI).\n\nExample questions:\n• "How are today\'s sales?"\n• "What are the top products?"\n• "How is cashier performance?"\n• "What is the stock status?"',
+    ar: 'مرحباً!\n\nيمكنك طرح أسئلة حول التقارير. إذا تم إعداد OpenRouter، تأتي الإجابات من نموذج الذكاء الاصطناعي (أيقونة اللغة في الشريط العلوي → OpenRouter API، أو التكاملات → الذكاء الاصطناعي).\n\nأسئلة مثال:\n• "كيف مبيعات اليوم؟"\n• "ما أكثر المنتجات مبيعاً؟"\n• "كيف أداء أمين الصندوق؟"\n• "ما حالة المخزون؟"',
+    ku: 'سڵاو!\n\nدەتوانیت دەربارەی ڕاپۆرتەکان پرسیار بکەیت. ئەگەر OpenRouter ڕێکخرا بێت، وەڵامەکان لە مۆدێلی AI دێن (ئایکۆنی زمانی سەرەوە → OpenRouter API، یان یەکخستنەکان → زیرەکی دەستکرد).\n\nنمونەی پرسیار:\n• "فرۆشتنی ئەمڕۆ چۆنە؟"\n• "زۆرترین فرۆشراوەکان چین؟"\n• "کارایی کاشێر چۆنە؟"\n• "دۆخی کۆگا چیە؟"',
   },
   reportChatError: {
     tr: 'Üzgünüm, bir hata oluştu. Lütfen tekrar deneyin.',
@@ -8162,16 +8195,16 @@ export const excelModuleTranslations = {
     ku: 'ببورە، ئێستا ناتوانم وەڵام بدەمەوە. تکایە پرسیارێکی دیاریکراوتر بکە یان تابـی ڕاپۆرتی پەیوەندیدار بکەرەوە.',
   },
   reportChatAiUnavailable: {
-    tr: 'Yapay zeka şu anda kullanılamıyor. Entegrasyonlar → Yapay Zeka (OpenRouter) bölümünden API anahtarını girip etkinleştirin.',
-    en: 'AI is currently unavailable. Enter and enable an API key under Integrations → AI (OpenRouter).',
-    ar: 'الذكاء الاصطناعي غير متاح حالياً. أدخل مفتاح API وفعّله من التكاملات → الذكاء الاصطناعي (OpenRouter).',
-    ku: 'زیرەکی دەستکرد ئێستا بەردەست نییە. لە یەکخستنەکان → زیرەکی دەستکرد (OpenRouter) کلیلی API بنووسە و چالاک بکە.',
+    tr: 'Yapay zeka şu anda kullanılamıyor. Üst bardaki dil ikonu → OpenRouter API, veya Entegrasyonlar → Yapay Zeka bölümünden API anahtarını girip etkinleştirin.',
+    en: 'AI is currently unavailable. Enter and enable an API key via the top-bar language icon → OpenRouter API, or Integrations → AI (OpenRouter).',
+    ar: 'الذكاء الاصطناعي غير متاح حالياً. أدخل مفتاح API وفعّله من أيقونة اللغة في الشريط العلوي → OpenRouter API، أو التكاملات → الذكاء الاصطناعي (OpenRouter).',
+    ku: 'زیرەکی دەستکرد ئێستا بەردەست نییە. ئایکۆنی زمانی سەرەوە → OpenRouter API، یان یەکخستنەکان → زیرەکی دەستکرد (OpenRouter) کلیلی API بنووسە و چالاک بکە.',
   },
   reportChatOpenRouterOff: {
-    tr: 'OpenRouter kapalı. Entegrasyonlar → Yapay Zeka ile açın.',
-    en: 'OpenRouter is off. Enable it under Integrations → AI.',
-    ar: 'OpenRouter معطّل. فعّله من التكاملات → الذكاء الاصطناعي.',
-    ku: 'OpenRouter داخراوە. لە یەکخستنەکان → زیرەکی دەستکرد بیکەرەوە.',
+    tr: 'OpenRouter kapalı. Dil ikonu → OpenRouter API ile açın.',
+    en: 'OpenRouter is off. Enable it via the language icon → OpenRouter API.',
+    ar: 'OpenRouter معطّل. فعّله من أيقونة اللغة → OpenRouter API.',
+    ku: 'OpenRouter داخراوە. ئایکۆنی زمان → OpenRouter API بیکەرەوە.',
   },
   reportChatSuggestDaily: { tr: 'Günlük Rapor', en: 'Daily Report', ar: 'التقرير اليومي', ku: 'ڕاپۆرتی ڕۆژانە' },
   reportChatSuggestZ: { tr: 'Z Raporu', en: 'Z Report', ar: 'تقرير Z', ku: 'ڕاپۆرتی Z' },

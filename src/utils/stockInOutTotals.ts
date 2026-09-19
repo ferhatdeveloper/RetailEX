@@ -10,6 +10,24 @@ export interface InOutTotalsRow {
     inAmount: number;
     outQty: number;
     outAmount: number;
+    /** true → güzellik/hizmet satırı (includeServices açıkken gelir) */
+    isService?: boolean;
+}
+
+/** aggregateInOutTotals seçenekleri (Set geriye dönük serviceKeys). */
+export type AggregateInOutTotalsOptions = {
+    /** true → hizmet satırlarını da topla (varsayılan: false / ürün-only) */
+    includeServices?: boolean;
+    /** beauty_services / beauty_packages / ERP hizmet kart id (küçük harf) */
+    serviceKeys?: Set<string>;
+};
+
+function resolveAggregateOptions(
+    options?: Set<string> | AggregateInOutTotalsOptions,
+): AggregateInOutTotalsOptions {
+    if (!options) return {};
+    if (options instanceof Set) return { serviceKeys: options };
+    return options;
 }
 
 export interface StockInOutLine {
@@ -35,34 +53,75 @@ export interface StockInOutLine {
 
 /**
  * Giriş/çıkış toplamları yalnızca malzeme/stok satırları içindir.
- * analysisSaleLine + fatura türü (service/hizmet) ile hizalı.
+ * analysisSaleLine + fatura türü (service/hizmet) + güzellik kart id ile hizalı.
+ *
+ * @param serviceKeys — beauty_services / beauty_packages id (küçük harf); item_type
+ *   boş/Malzeme olsa bile güzellik hizmet UUID'lerini dışlar.
  */
-export function isInOutTotalsServiceLine(line: StockInOutLine): boolean {
+export function isInOutTotalsServiceLine(
+    line: StockInOutLine,
+    serviceKeys?: Set<string>,
+): boolean {
+    if (line.isService === true) return true;
+
     const fiche = String(line.ficheType || '').trim().toLowerCase();
     if (fiche === 'service' || fiche === 'hizmet') return true;
 
-    const itemType = line.itemType ?? line.lineType;
     const materialType = String(line.materialType || '').trim().toLowerCase();
+    if (materialType === 'service') return true;
+
+    const itemTypeRaw = String(line.itemType ?? line.lineType ?? '').trim();
+    const itemTypeLower = itemTypeRaw.toLocaleLowerCase('tr-TR');
+    if (
+        itemTypeLower === 'hizmet' ||
+        itemTypeLower === 'service' ||
+        itemTypeLower === 'package' ||
+        itemTypeLower === 'paket'
+    ) {
+        return true;
+    }
+
+    const pid = String(line.productId || '').trim();
+    const pidLower = pid.toLowerCase();
+    if (pidLower && serviceKeys?.has(pidLower)) return true;
+
+    const codeLower = String(line.productCode || line.itemCode || '')
+        .trim()
+        .toLowerCase();
+    if (
+        pidLower.startsWith('beauty-service') ||
+        pidLower.startsWith('beauty-package') ||
+        codeLower.startsWith('beauty-service') ||
+        codeLower.startsWith('beauty-package')
+    ) {
+        return true;
+    }
+
     const catalogHint = {
-        id: String(line.productId || ''),
+        id: pid,
         code: String(line.productCode || line.itemCode || ''),
         name: String(line.productName || ''),
-        isService: line.isService === true || materialType === 'service',
+        isService: false as boolean,
         materialType: (line.materialType || undefined) as
             | 'service'
             | 'commercial_goods'
             | undefined,
     };
+    const catalog =
+        catalogHint.id || catalogHint.code
+            ? [catalogHint]
+            : [];
 
     return (
         classifyAnalysisSaleLine(
             {
                 productId: line.productId,
                 productName: line.productName,
-                lineType: itemType,
-                item_type: itemType,
+                lineType: itemTypeRaw || undefined,
+                item_type: itemTypeRaw || undefined,
             },
-            catalogHint.id || catalogHint.code || catalogHint.isService ? [catalogHint] : [],
+            catalog,
+            serviceKeys,
         ) === 'service'
     );
 }
@@ -166,10 +225,17 @@ function lineKey(line: StockInOutLine): string {
 }
 
 /** Aynı ürünün giriş/çıkış miktar ve tutarlarını ayrı toplar; para netlenmez. */
-export function aggregateInOutTotals(lines: StockInOutLine[]): InOutTotalsRow[] {
+export function aggregateInOutTotals(
+    lines: StockInOutLine[],
+    options?: Set<string> | AggregateInOutTotalsOptions,
+): InOutTotalsRow[] {
+    const opts = resolveAggregateOptions(options);
+    const includeServices = opts.includeServices === true;
+    const serviceKeys = opts.serviceKeys;
     const agg = new Map<string, InOutTotalsRow>();
     for (const line of lines) {
-        if (isInOutTotalsServiceLine(line)) continue;
+        const asService = isInOutTotalsServiceLine(line, serviceKeys);
+        if (asService && !includeServices) continue;
         const dir = classifyStockLineDirection(line);
         if (dir === 'skip') continue;
         const key = lineKey(line);
@@ -188,9 +254,11 @@ export function aggregateInOutTotals(lines: StockInOutLine[]): InOutTotalsRow[] 
             inAmount: 0,
             outQty: 0,
             outAmount: 0,
+            isService: asService,
         };
         if (!row.productCode && code) row.productCode = code;
         if (!row.productName && name) row.productName = name;
+        if (asService) row.isService = true;
         if (dir === 'in') {
             row.inQty += qty;
             row.inAmount += amount;
@@ -224,6 +292,7 @@ export function collapseInOutTotalsRows(rows: InOutTotalsRow[]): InOutTotalsRow[
             prev.outAmount += r.outAmount;
             if (!prev.productCode && r.productCode) prev.productCode = r.productCode;
             if (!prev.productName && r.productName) prev.productName = r.productName;
+            if (r.isService) prev.isService = true;
         }
     }
     return Array.from(byKey.values()).sort((a, b) => (b.inQty + b.outQty) - (a.inQty + a.outQty));

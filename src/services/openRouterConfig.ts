@@ -37,7 +37,7 @@ export const DEFAULT_OPENROUTER_CONFIG: OpenRouterConfig = {
   model: 'openai/gpt-4o-mini',
   siteUrl: typeof window !== 'undefined' ? window.location.origin : 'https://retailex.app',
   siteName: 'RetailEX',
-  temperature: 0.3,
+  temperature: 0.15,
   maxTokens: 2048,
 };
 
@@ -60,7 +60,7 @@ export function loadOpenRouterConfig(): OpenRouterConfig {
       model: String(parsed.model || DEFAULT_OPENROUTER_CONFIG.model).trim(),
       siteUrl: String(parsed.siteUrl ?? DEFAULT_OPENROUTER_CONFIG.siteUrl),
       siteName: String(parsed.siteName || 'RetailEX'),
-      temperature: Number.isFinite(temp) ? Math.min(2, Math.max(0, temp)) : 0.3,
+      temperature: Number.isFinite(temp) ? Math.min(2, Math.max(0, temp)) : 0.15,
       maxTokens: Number.isFinite(maxTok) ? Math.min(16000, Math.max(256, Math.round(maxTok))) : 2048,
     };
   } catch {

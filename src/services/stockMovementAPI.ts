@@ -99,6 +99,90 @@ function resolveLineKind(r: {
     return 'product';
 }
 
+/** Güzellik hizmet/paket kart id'leri — sale_items.product_id eşlemesi için. */
+async function loadBeautyServiceKeys(
+    firmNr: string,
+    candidateIds: string[],
+): Promise<Set<string>> {
+    const keys = new Set<string>();
+    const uuids = [
+        ...new Set(
+            candidateIds
+                .map((id) => String(id || '').trim())
+                .filter((id) => UUID_RE.test(id)),
+        ),
+    ];
+    if (uuids.length === 0) return keys;
+
+    const chunkSize = 35;
+    const addRows = (rows: any[] | null | undefined) => {
+        for (const r of Array.isArray(rows) ? rows : []) {
+            const id = String(r?.id ?? '').trim().toLowerCase();
+            if (id) keys.add(id);
+        }
+    };
+
+    if (shouldUseTenantPostgrestApi()) {
+        try {
+            const { postgrest } = await import('./api/postgrestClient');
+            const svcPath = `/rex_${firmNr}_beauty_services`;
+            const pkgPath = `/rex_${firmNr}_beauty_packages`;
+            for (let i = 0; i < uuids.length; i += chunkSize) {
+                const chunk = uuids.slice(i, i + chunkSize);
+                const inFilter = `in.(${chunk.join(',')})`;
+                const [svcs, pkgs] = await Promise.all([
+                    postgrest
+                        .get<any[]>(
+                            svcPath,
+                            { select: 'id', id: inFilter, limit: chunk.length },
+                            { schema: 'beauty' },
+                        )
+                        .catch(() => [] as any[]),
+                    postgrest
+                        .get<any[]>(
+                            pkgPath,
+                            { select: 'id', id: inFilter, limit: chunk.length },
+                            { schema: 'beauty' },
+                        )
+                        .catch(() => [] as any[]),
+                ]);
+                addRows(svcs);
+                addRows(pkgs);
+            }
+            if (keys.size > 0) return keys;
+        } catch (e) {
+            console.warn('[StockMovementAPI] loadBeautyServiceKeys PostgREST:', e);
+        }
+    }
+
+    try {
+        const fp = { firmNr, periodNr: padPeriodNr() };
+        for (let i = 0; i < uuids.length; i += chunkSize) {
+            const chunk = uuids.slice(i, i + chunkSize);
+            const placeholders = chunk.map((_, idx) => `$${idx + 1}::uuid`).join(',');
+            const { rows: svcRows } = await postgres
+                .query(
+                    `SELECT id::text AS id FROM beauty_services WHERE id IN (${placeholders})`,
+                    chunk,
+                    fp,
+                )
+                .catch(() => ({ rows: [] as any[] }));
+            addRows(svcRows);
+            const { rows: pkgRows } = await postgres
+                .query(
+                    `SELECT id::text AS id FROM beauty_packages WHERE id IN (${placeholders})`,
+                    chunk,
+                    fp,
+                )
+                .catch(() => ({ rows: [] as any[] }));
+            addRows(pkgRows);
+        }
+    } catch (e) {
+        console.warn('[StockMovementAPI] loadBeautyServiceKeys SQL:', e);
+    }
+    return keys;
+}
+
 export interface StockMovementItem {
     id: string;
     movement_id: string;
@@ -1379,10 +1463,13 @@ class StockMovementAPI {
         endDate: string;
         firmNr?: string | number;
         periodNr?: string | number;
+        /** true → hizmet/güzellik satırlarını da dahil et (varsayılan: yalnızca ürün) */
+        includeServices?: boolean;
     }): Promise<InOutTotalsRow[]> {
         const start = toSqlDateInputString(options.startDate);
         const end = toSqlDateInputString(options.endDate);
         if (!start || !end) return [];
+        const includeServices = options.includeServices === true;
         const firmNr = String(options.firmNr ?? ERP_SETTINGS.firmNr ?? '001').padStart(3, '0').slice(0, 10);
         const periodNr = String(options.periodNr ?? ERP_SETTINGS.periodNr ?? '01').padStart(2, '0').slice(0, 10);
         const fp = { firmNr, periodNr };
@@ -1536,6 +1623,16 @@ class StockMovementAPI {
                     for (const it of Array.isArray(items) ? items : []) {
                         const sl = saleById.get(String(it.invoice_id));
                         if (!sl) continue;
+                        if (
+                            !includeServices &&
+                            resolveLineKind({
+                                item_type: it.item_type,
+                                item_code: it.item_code,
+                                product_code: it.item_code,
+                            }) === 'service'
+                        ) {
+                            continue;
+                        }
                         const ft = String(sl.fiche_type || '');
                         let movementType = 'out';
                         if (ft === 'purchase_invoice') movementType = 'in';
@@ -1566,6 +1663,7 @@ class StockMovementAPI {
                             .filter((id) => UUID_RE.test(id)),
                     ),
                 ];
+                const productIdSet = new Set<string>();
                 if (lineProductIds.length > 0) {
                     const byId = new Map<string, { code?: string; name?: string; material_type?: string }>();
                     for (let i = 0; i < lineProductIds.length; i += chunkSize) {
@@ -1583,7 +1681,14 @@ class StockMovementAPI {
                             .catch(() => [] as any[]);
                         for (const p of Array.isArray(prows) ? prows : []) {
                             if (p?.id) {
-                                byId.set(String(p.id), {
+                                const id = String(p.id);
+                                productIdSet.add(id.toLowerCase());
+                                byId.set(id, {
+                                    code: p.code,
+                                    name: p.name,
+                                    material_type: p.material_type,
+                                });
+                                byId.set(id.toLowerCase(), {
                                     code: p.code,
                                     name: p.name,
                                     material_type: p.material_type,
@@ -1592,7 +1697,8 @@ class StockMovementAPI {
                         }
                     }
                     for (const line of lines) {
-                        const p = byId.get(String(line.productId || ''));
+                        const pid = String(line.productId || '');
+                        const p = byId.get(pid) || byId.get(pid.toLowerCase());
                         if (!p) continue;
                         if (!line.productCode && p.code) line.productCode = String(p.code);
                         if (!line.productName && p.name) line.productName = String(p.name);
@@ -1604,7 +1710,26 @@ class StockMovementAPI {
                     }
                 }
 
-                let totals = aggregateInOutTotals(lines);
+                // item_type boş/Malzeme olsa bile beauty_services kartı = hizmet
+                // + ürün kartında bulunmayan UUID → stok dışı / hizmet (SAÇ BOYAMA vb.)
+                const unresolvedIds = lineProductIds.filter(
+                    (id) => !productIdSet.has(id.toLowerCase()),
+                );
+                const serviceKeys = await loadBeautyServiceKeys(firmNr, [
+                    ...unresolvedIds,
+                    ...lines
+                        .filter((l) => l.sourceType === 'invoice')
+                        .map((l) => String(l.productId || '').trim()),
+                ]);
+                for (const id of unresolvedIds) {
+                    serviceKeys.add(String(id).toLowerCase());
+                }
+                for (const line of lines) {
+                    const pid = String(line.productId || '').trim().toLowerCase();
+                    if (pid && serviceKeys.has(pid)) line.isService = true;
+                }
+
+                let totals = aggregateInOutTotals(lines, { includeServices, serviceKeys });
                 const needIds = totals
                     .filter((r) => UUID_RE.test(r.productId) && !String(r.productCode || '').trim())
                     .map((r) => r.productId);
@@ -1674,6 +1799,10 @@ class StockMovementAPI {
         }
 
         try {
+            const serviceExcludeSql = includeServices
+                ? ''
+                : ` AND LOWER(TRIM(COALESCE(si.item_type, 'Malzeme'))) NOT IN ('hizmet', 'service', 'package', 'paket')
+                   AND LOWER(TRIM(COALESCE(p.material_type, ''))) IS DISTINCT FROM 'service'`;
             const { rows } = await postgres.query(
                 `SELECT
                     COALESCE(si.product_id::text, p.id::text, si.item_code) AS product_id,
@@ -1717,19 +1846,38 @@ class StockMovementAPI {
                    )
                    AND COALESCE(sl.is_cancelled, false) = false
                    AND LOWER(TRIM(COALESCE(sl.status, ''))) NOT IN ('iptal', 'silindi', 'cancelled', 'canceled', 'deleted')
-                   AND LOWER(TRIM(COALESCE(si.item_type, 'Malzeme'))) NOT IN ('hizmet', 'service', 'package', 'paket')
-                   AND LOWER(TRIM(COALESCE(p.material_type, ''))) IS DISTINCT FROM 'service'`,
+                   ${serviceExcludeSql}`,
                 [start, end],
                 fp,
             );
             for (const r of rows || []) {
+                if (
+                    !includeServices &&
+                    resolveLineKind({
+                        item_type: r.item_type,
+                        material_type: r.material_type,
+                        item_code: r.item_code,
+                        product_code: r.product_code,
+                    }) === 'service'
+                ) {
+                    continue;
+                }
                 lines.push(toLine(r, 'invoice'));
             }
         } catch (err) {
             console.warn('[StockMovementAPI] getInOutTotalsByDateRange invoices failed:', err);
         }
 
-        return aggregateInOutTotals(lines);
+        const serviceKeys = await loadBeautyServiceKeys(
+            firmNr,
+            lines.map((l) => String(l.productId || '').trim()),
+        );
+        for (const line of lines) {
+            const pid = String(line.productId || '').trim().toLowerCase();
+            if (pid && serviceKeys.has(pid)) line.isService = true;
+        }
+
+        return aggregateInOutTotals(lines, { includeServices, serviceKeys });
     }
 
     /**

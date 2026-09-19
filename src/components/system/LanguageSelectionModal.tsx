@@ -1,8 +1,10 @@
-﻿import { X, Check, Globe } from 'lucide-react';
+﻿import { useState } from 'react';
+import { X, Check, Globe, Bot } from 'lucide-react';
 import { useLanguage } from '../../contexts/LanguageContext';
 import { useTheme } from '../../contexts/ThemeContext';
 import { translations } from '../../locales/translations';
 import { ModalLayer } from '../shared/FullscreenBodyPortal';
+import { OpenRouterApiSettingsModal } from '../integrations/OpenRouterApiSettingsModal';
 import Turkey from 'country-flag-icons/react/3x2/TR';
 import UnitedKingdom from 'country-flag-icons/react/3x2/GB';
 import SaudiArabia from 'country-flag-icons/react/3x2/SA';
@@ -29,9 +31,10 @@ const languages: LanguageOption[] = [
 ];
 
 export function LanguageSelectionModal({ onClose, rtlMode, setRtlMode }: LanguageSelectionModalProps) {
-  const { language, setLanguage } = useLanguage();
+  const { language, setLanguage, tm } = useLanguage();
   const { darkMode } = useTheme();
   const t = translations[language];
+  const [showOpenRouterModal, setShowOpenRouterModal] = useState(false);
 
   const handleLanguageChange = (code: 'tr' | 'en' | 'ar' | 'ku', defaultRtl: boolean) => {
     setLanguage(code);
@@ -42,6 +45,7 @@ export function LanguageSelectionModal({ onClose, rtlMode, setRtlMode }: Languag
   };
 
   return (
+    <>
     <ModalLayer className="bg-black/50 backdrop-blur-sm flex items-center justify-center p-4">
       <div className={`rounded-lg sm:rounded-xl w-full max-w-sm max-h-[90vh] overflow-y-auto shadow-2xl transition-all ${darkMode ? 'bg-gray-900 border border-gray-800' : 'bg-white'
         } ${rtlMode ? 'rtl' : 'ltr'}`}>
@@ -121,6 +125,33 @@ export function LanguageSelectionModal({ onClose, rtlMode, setRtlMode }: Languag
           </div>
         </div>
 
+        {/* OpenRouter AI çeviri / asistan ayarı */}
+        <div className={`px-3 pb-3 ${darkMode ? 'border-gray-800' : ''}`}>
+          <button
+            type="button"
+            onClick={() => setShowOpenRouterModal(true)}
+            className={`w-full px-3 py-2.5 rounded-lg border transition-all flex items-center gap-3 text-left ${
+              darkMode
+                ? 'bg-gray-800/80 border-gray-700 text-gray-100 hover:bg-gray-700'
+                : 'bg-indigo-50/80 border-indigo-100 text-indigo-900 hover:bg-indigo-50'
+            }`}
+          >
+            <div
+              className={`w-8 h-8 rounded-lg flex items-center justify-center shrink-0 ${
+                darkMode ? 'bg-indigo-500/20 text-indigo-300' : 'bg-indigo-100 text-indigo-600'
+              }`}
+            >
+              <Bot className="w-4 h-4" />
+            </div>
+            <div className="flex-1 min-w-0">
+              <div className="font-medium text-sm">{tm('orAiModalTitle')}</div>
+              <div className={`text-xs ${darkMode ? 'text-gray-400' : 'text-indigo-600/80'}`}>
+                {tm('orAiModalLangEntry')}
+              </div>
+            </div>
+          </button>
+        </div>
+
         {/* RTL Toggle Section */}
         <div className={`px-3 pb-3 pt-2 border-t mt-1 ${darkMode ? 'border-gray-800' : 'border-gray-100'}`}>
           <label className={`block text-xs font-medium mb-2 ${darkMode ? 'text-gray-400' : 'text-gray-500'}`}>
@@ -169,5 +200,9 @@ export function LanguageSelectionModal({ onClose, rtlMode, setRtlMode }: Languag
         </div>
       </div>
     </ModalLayer>
+    {showOpenRouterModal && (
+      <OpenRouterApiSettingsModal onClose={() => setShowOpenRouterModal(false)} />
+    )}
+    </>
   );
 }
