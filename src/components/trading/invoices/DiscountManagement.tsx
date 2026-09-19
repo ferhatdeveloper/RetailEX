@@ -343,6 +343,7 @@ export function DiscountManagement() {
             enableSorting
             enablePagination
             pageSize={20}
+            storageNamespace="discountLogs"
           />
         </div>
       )}
@@ -366,6 +367,7 @@ export function DiscountManagement() {
             enableSorting
             enablePagination
             pageSize={10}
+            storageNamespace="discountReasons"
           />
         </div>
       )}
@@ -382,6 +384,7 @@ export function DiscountManagement() {
             enableFiltering={false}
             enableSorting={false}
             enablePagination={false}
+            storageNamespace="discountApprovalRules"
           />
           
           {/* Info Panel */}

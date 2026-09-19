@@ -904,6 +904,7 @@ export function MaterialExtractReport() {
                         data={gridRows}
                         columns={gridColumns}
                         {...REPORT_GRID_DEFAULTS}
+                        storageNamespace="materialExtractReport"
                         autoFooterSums={false}
                         height="100%"
                         excelFileName={tm('materialExtractReport') || 'malzeme_ekstresi'}

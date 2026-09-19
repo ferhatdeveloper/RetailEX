@@ -703,6 +703,7 @@ export function CustomerManagementModule({ customers, setCustomers, sales }: Cus
             initialSorting={[{ id: 'file_id', desc: false }]}
             enableFiltering={false}
             enableColumnResizing={true}
+            storageNamespace="customerManagementList"
             onRowContextMenu={handleRowRightClick}
             onRowDoubleClick={handleViewDetails}
           />

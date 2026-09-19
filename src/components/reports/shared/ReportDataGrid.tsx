@@ -25,7 +25,7 @@ export const REPORT_GRID_DEFAULTS = {
   autoFooterSums: true as const,
   /** Toolbar + kolon başlığında kolona göre grupla */
   enableGrouping: true as const,
-  /** Kolon başlığı sürükle-bırak (persist için `columnOrderStorageKey` verin) */
+  /** Kolon başlığı sürükle-bırak; sıra localStorage’da otomatik kalıcı (veya `columnOrderStorageKey` / `storageNamespace`) */
   enableColumnReorder: true as const,
   density: 'compact' as const,
   pageSize: REPORT_GRID_PAGE_SIZE,
@@ -118,12 +118,17 @@ export function ReportColumnTable<T extends object>({
   onRowClick,
   height = 520,
   footerLabel,
+  storageNamespace,
+  columnOrderStorageKey,
 }: {
   data: T[];
   columns: ReportColumnTableCol<T>[];
   onRowClick?: (row: T) => void;
   height?: string | number;
   footerLabel?: ReactNode;
+  /** Aynı ekranda birden fazla tablo için sabit ad alanı */
+  storageNamespace?: string;
+  columnOrderStorageKey?: string;
 }) {
   const { selectedFirm } = useFirmaDonem();
   const footerCurrency = useMemo(
@@ -168,12 +173,14 @@ export function ReportColumnTable<T extends object>({
   return (
     <div className="min-h-[280px]" style={{ height: heightStyle }}>
       <DevExDataGrid<T>
+        {...REPORT_GRID_DEFAULTS}
         data={data}
         columns={gridColumns}
         onRowClick={onRowClick}
         footerSumColumns={footerSumColumns.length > 0 ? footerSumColumns : undefined}
         footerLabel={footerLabel}
-        {...REPORT_GRID_DEFAULTS}
+        storageNamespace={storageNamespace}
+        columnOrderStorageKey={columnOrderStorageKey}
         height="100%"
       />
     </div>

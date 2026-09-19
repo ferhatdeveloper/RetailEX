@@ -296,6 +296,7 @@ export function BankRegisterManagement() {
                         enableSorting
                         enablePagination
                         pageSize={20}
+                        storageNamespace="bankOpsRegisters"
                     />
                 )}
 
@@ -307,6 +308,7 @@ export function BankRegisterManagement() {
                         enableSorting
                         enablePagination
                         pageSize={20}
+                        storageNamespace="bankOpsTransactions"
                     />
                 )}
             </div>

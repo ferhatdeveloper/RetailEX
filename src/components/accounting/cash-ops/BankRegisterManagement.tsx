@@ -255,6 +255,7 @@ export function BankRegisterManagement() {
                         enableSorting
                         enablePagination
                         pageSize={20}
+                        storageNamespace="bankRegisterBanks"
                         onRowDoubleClick={handleRowDoubleClick}
                     />
                 )}
@@ -267,6 +268,7 @@ export function BankRegisterManagement() {
                         enableSorting
                         enablePagination
                         pageSize={20}
+                        storageNamespace="bankRegisterTransactions"
                     />
                 )}
             </div>

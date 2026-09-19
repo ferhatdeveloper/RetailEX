@@ -64,6 +64,53 @@ export function toColumnOrderStorageKey(visibilityStorageKey: string): string {
   return `${visibilityStorageKey}_columnOrder`;
 }
 
+/** localStorage anahtarı için güvenli segment (path / namespace). */
+export function sanitizeStorageNamespace(raw: string): string {
+  const cleaned = String(raw || '')
+    .trim()
+    .replace(/[^a-zA-Z0-9._-]+/g, '_')
+    .replace(/^_+|_+$/g, '')
+    .slice(0, 120);
+  return cleaned || 'grid';
+}
+
+/** Kolon id şeması için stabil kısa hash (sıra bağımsız). */
+export function hashDevExColumnIds(columnIds: string[]): string {
+  const s = [...columnIds]
+    .filter((id) => Boolean(id) && !PINNED_COLUMN_IDS.has(id))
+    .sort()
+    .join('|');
+  if (!s) return '0';
+  let h = 2166136261;
+  for (let i = 0; i < s.length; i++) {
+    h ^= s.charCodeAt(i);
+    h = Math.imul(h, 16777619);
+  }
+  return (h >>> 0).toString(36);
+}
+
+/**
+ * Sürükle-bırak sıra tercihi için otomatik localStorage anahtarı.
+ * - `storageNamespace` varsa: `retailex_colOrder_v1_{namespace}` (şema değişince de kalıcı)
+ * - yoksa: `retailex_colOrder_v1_{pathname}_{columnIdsHash}` (aynı path’te çoklu grid ayrımı)
+ */
+export function buildAutoColumnOrderStorageKey(
+  storageNamespace: string | undefined,
+  columnIds: string[],
+  pathname?: string,
+): string {
+  if (storageNamespace && storageNamespace.trim()) {
+    return `retailex_colOrder_v1_${sanitizeStorageNamespace(storageNamespace)}`;
+  }
+  const pathSource =
+    pathname ||
+    (typeof window !== 'undefined' ? window.location.pathname : '') ||
+    'app';
+  const ns = sanitizeStorageNamespace(pathSource);
+  const hash = hashDevExColumnIds(columnIds);
+  return `retailex_colOrder_v1_${ns}_${hash}`;
+}
+
 export function loadColumnOrderFromStorage(storageKey: string): string[] | null {
   if (typeof window === 'undefined' || !storageKey) return null;
   try {
@@ -85,6 +132,24 @@ export function saveColumnOrderToStorage(storageKey: string, order: string[]): v
   } catch {
     /* quota / private mode */
   }
+}
+
+function resolveInitialColumnOrder(opts: {
+  columnOrderProp?: string[];
+  columnOrderStorageKey?: string;
+  storageNamespace?: string;
+  enableColumnReorder?: boolean;
+  columns: ColumnDef<unknown, unknown>[];
+}): string[] {
+  const { columnOrderProp, columnOrderStorageKey, storageNamespace, enableColumnReorder, columns } = opts;
+  if (columnOrderProp != null) return columnOrderProp;
+  if (enableColumnReorder === false) return [];
+  const ids = columns.map((c) => columnDefId(c)).filter((id): id is string => Boolean(id));
+  const key =
+    columnOrderStorageKey ||
+    (ids.length > 0 ? buildAutoColumnOrderStorageKey(storageNamespace, ids) : undefined);
+  if (!key) return [];
+  return loadColumnOrderFromStorage(key) ?? [];
 }
 
 /** Tercih edilen sırayı mevcut kolon id’leriyle birleştir; select/actions sabit. */
@@ -143,8 +208,15 @@ export interface DevExDataGridProps<T> {
    * Sıra tercihi localStorage anahtarı (görünürlük ile aynı kalıp).
    * Örn. `retailex_invoiceList_columnOrder_v1` —
    * `toColumnOrderStorageKey(INVOICE_LIST_COLUMN_VISIBILITY_KEY)` ile üretilebilir.
+   * Verilmezse ve sürükleme açıksa (kontrolsüz mod) otomatik üretilir:
+   * `buildAutoColumnOrderStorageKey(storageNamespace ?? pathname, columnIds)`.
    */
   columnOrderStorageKey?: string;
+  /**
+   * Otomatik persist anahtarı için sabit ad alanı (aynı path’te birden fazla grid).
+   * Örn. `materialExtract`, `customerList`. Verilmezse `location.pathname` kullanılır.
+   */
+  storageNamespace?: string;
   pageSize?: number;
   onRowClick?: (row: T) => void;
   onRowDoubleClick?: (row: T) => void;
@@ -1208,6 +1280,7 @@ export function DevExDataGrid<T>({
   columnOrder: columnOrderProp,
   onColumnOrderChange,
   columnOrderStorageKey,
+  storageNamespace,
   pageSize = 20,
   onRowClick,
   onRowDoubleClick,
@@ -1242,13 +1315,16 @@ export function DevExDataGrid<T>({
   }));
   const [rowSelection, setRowSelection] = useState<Record<string, boolean>>(selectedRowIds || {});
   const [internalColumnVisibility, setInternalColumnVisibility] = useState<Record<string, boolean>>(columnVisibility || {});
-  const [internalColumnOrder, setInternalColumnOrder] = useState<string[]>(() => {
-    if (columnOrderProp?.length) return columnOrderProp;
-    if (columnOrderStorageKey) {
-      return loadColumnOrderFromStorage(columnOrderStorageKey) ?? [];
-    }
-    return [];
-  });
+  const [internalColumnOrder, setInternalColumnOrder] = useState<string[]>(() =>
+    resolveInitialColumnOrder({
+      columnOrderProp,
+      columnOrderStorageKey,
+      storageNamespace,
+      enableColumnReorder,
+      columns: columns as ColumnDef<unknown, unknown>[],
+    }),
+  );
+  const columnOrderLoadedKeyRef = useRef<string | null>(null);
   const [openFilterColumn, setOpenFilterColumn] = useState<string | null>(null);
   const [filterMenuAnchor, setFilterMenuAnchor] = useState<{ top: number; left: number } | null>(null);
   const [internalGroupByColumnId, setInternalGroupByColumnId] = useState<string | null>(
@@ -1335,7 +1411,7 @@ export function DevExDataGrid<T>({
   }, [columnVisibility]);
 
   useEffect(() => {
-    if (columnOrderProp) {
+    if (columnOrderProp != null) {
       setInternalColumnOrder(columnOrderProp);
     }
   }, [columnOrderProp]);
@@ -1347,6 +1423,52 @@ export function DevExDataGrid<T>({
   useEffect(() => {
     setPagination((prev) => (prev.pageIndex === 0 ? prev : { ...prev, pageIndex: 0 }));
   }, [data.length]);
+
+  const propColumnIdsFingerprint = useMemo(
+    () =>
+      columns
+        .map((col) => columnDefId(col))
+        .filter((id): id is string => Boolean(id)),
+    [columns],
+  );
+
+  /** Açık key > otomatik (path/namespace + kolon hash). Kontrollü `columnOrder` iken LS yok. */
+  const resolvedColumnOrderStorageKey = useMemo(() => {
+    if (columnOrderStorageKey) return columnOrderStorageKey;
+    if (columnOrderProp != null) return undefined;
+    if (enableColumnReorder === false) return undefined;
+    if (typeof window === 'undefined') return undefined;
+    if (propColumnIdsFingerprint.length === 0) return undefined;
+    return buildAutoColumnOrderStorageKey(storageNamespace, propColumnIdsFingerprint);
+  }, [
+    columnOrderStorageKey,
+    columnOrderProp,
+    enableColumnReorder,
+    storageNamespace,
+    propColumnIdsFingerprint,
+  ]);
+
+  /** Kolonlar geç gelirse / key değişirse kayıtlı sırayı yükle; şema değişiminde mevcut sırayı yeni key’e taşı. */
+  useEffect(() => {
+    if (columnOrderProp != null) return;
+    if (!resolvedColumnOrderStorageKey) return;
+    if (columnOrderLoadedKeyRef.current === resolvedColumnOrderStorageKey) return;
+    const prevKey = columnOrderLoadedKeyRef.current;
+    columnOrderLoadedKeyRef.current = resolvedColumnOrderStorageKey;
+    const stored = loadColumnOrderFromStorage(resolvedColumnOrderStorageKey);
+    if (stored && stored.length > 0) {
+      setInternalColumnOrder(stored);
+      return;
+    }
+    if (prevKey) {
+      setInternalColumnOrder((current) => {
+        if (current.length > 0) {
+          saveColumnOrderToStorage(resolvedColumnOrderStorageKey, current);
+        }
+        return current;
+      });
+    }
+  }, [resolvedColumnOrderStorageKey, columnOrderProp]);
 
   const resolvedPageSizeOptions = useMemo(() => {
     const total = data.length;
@@ -1547,15 +1669,15 @@ export function DevExDataGrid<T>({
   const applyColumnOrder = useCallback(
     (nextRaw: string[]) => {
       const next = mergeDevExColumnOrder(nextRaw, allColumnIds);
-      if (!columnOrderProp) {
+      if (columnOrderProp == null) {
         setInternalColumnOrder(next);
       }
       onColumnOrderChange?.(next);
-      if (columnOrderStorageKey) {
-        saveColumnOrderToStorage(columnOrderStorageKey, next);
+      if (resolvedColumnOrderStorageKey) {
+        saveColumnOrderToStorage(resolvedColumnOrderStorageKey, next);
       }
     },
-    [allColumnIds, columnOrderProp, onColumnOrderChange, columnOrderStorageKey],
+    [allColumnIds, columnOrderProp, onColumnOrderChange, resolvedColumnOrderStorageKey],
   );
 
   const columnReorderEnabled = enableColumnReorder !== false && !isMobile;
