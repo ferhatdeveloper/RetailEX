@@ -6,9 +6,13 @@
 
 export type GrafanaReportCategory =
   | 'executive'
+  | 'general'
   | 'sales'
   | 'stock'
+  | 'materials'
   | 'finance'
+  | 'payment'
+  | 'purchase'
   | 'accounting'
   | 'customers'
   | 'wms'
@@ -35,15 +39,19 @@ export const GRAFANA_CATEGORY_LABELS: Record<
   { tr: string; en: string; order: number }
 > = {
   executive: { tr: 'Yönetim', en: 'Executive', order: 1 },
-  sales: { tr: 'Satış & POS', en: 'Sales & POS', order: 2 },
-  stock: { tr: 'Stok & Malzeme', en: 'Stock', order: 3 },
-  finance: { tr: 'Kasa & Finans', en: 'Cash & Finance', order: 4 },
-  accounting: { tr: 'Muhasebe', en: 'Accounting', order: 5 },
-  customers: { tr: 'Cari', en: 'AR/AP', order: 6 },
-  wms: { tr: 'WMS / Depo', en: 'WMS', order: 7 },
-  restaurant: { tr: 'Restoran', en: 'Restaurant', order: 8 },
-  beauty: { tr: 'Güzellik', en: 'Beauty', order: 9 },
-  hr: { tr: 'İK / Üretim', en: 'HR / Production', order: 10 },
+  general: { tr: 'Genel', en: 'General', order: 2 },
+  sales: { tr: 'Satış & POS', en: 'Sales & POS', order: 3 },
+  stock: { tr: 'Stok', en: 'Stock', order: 4 },
+  materials: { tr: 'Malzeme raporları', en: 'Materials', order: 5 },
+  finance: { tr: 'Kasa & Finans', en: 'Cash & Finance', order: 6 },
+  payment: { tr: 'Ödeme ve işlemler', en: 'Payments', order: 7 },
+  purchase: { tr: 'Satın alma', en: 'Purchasing', order: 8 },
+  accounting: { tr: 'Muhasebe', en: 'Accounting', order: 9 },
+  customers: { tr: 'Cari', en: 'AR/AP', order: 10 },
+  wms: { tr: 'WMS / Depo', en: 'WMS', order: 11 },
+  restaurant: { tr: 'Restoran', en: 'Restaurant', order: 12 },
+  beauty: { tr: 'Güzellik', en: 'Beauty', order: 13 },
+  hr: { tr: 'İK / Üretim', en: 'HR / Production', order: 14 },
   ops: { tr: 'Sistem', en: 'System', order: 90 },
   tools: { tr: 'Araçlar', en: 'Tools', order: 99 },
 };
@@ -658,6 +666,9 @@ export function categoryFromGrafanaTags(tags: string[] | undefined): GrafanaRepo
   if (t.includes('beauty')) return 'beauty';
   if (t.includes('restaurant')) return 'restaurant';
   if (t.includes('accounting')) return 'accounting';
+  if (t.includes('materials') || t.includes('material')) return 'materials';
+  if (t.includes('purchase')) return 'purchase';
+  if (t.includes('payment') || t.includes('discount')) return 'payment';
   if (t.includes('customers') || (t.includes('finance') && t.includes('aging'))) return 'customers';
   if (t.includes('stock') || t.includes('warehouse')) return 'stock';
   if (t.includes('sales') || t.includes('pos') || t.includes('payments') || t.includes('invoices'))
@@ -666,6 +677,7 @@ export function categoryFromGrafanaTags(tags: string[] | undefined): GrafanaRepo
     return 'finance';
   if (t.includes('hr') || t.includes('production')) return 'hr';
   if (t.includes('executive')) return 'executive';
+  if (t.includes('general') || t.includes('app-report')) return 'general';
   if (t.includes('ops') || t.includes('system')) return 'ops';
   if (t.includes('erp')) return 'sales';
   return 'executive';

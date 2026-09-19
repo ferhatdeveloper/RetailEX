@@ -24,6 +24,7 @@ import {
   type GrafanaReadyReport,
   type GrafanaReportCategory,
 } from '../../utils/grafanaEmbed';
+import { grafanaAppReportsAsReady } from '../../utils/grafanaAppReportsCatalog';
 import {
   ensureGrafanaDbForCurrentServer,
   fetchGrafanaSchema,
@@ -32,6 +33,12 @@ import {
 } from '../../services/grafanaDatasourceService';
 import { buildSelectSql } from '../../services/tenantReportSchemaService';
 import { GrafanaServerCodeModal } from './GrafanaServerCodeModal';
+
+const STATIC_REPORTS: GrafanaReadyReport[] = (() => {
+  const app = grafanaAppReportsAsReady();
+  const seen = new Set(app.map((r) => r.uid));
+  return [...app, ...GRAFANA_READY_REPORTS.filter((r) => !seen.has(r.uid))];
+})();
 
 function reportTitle(r: GrafanaReadyReport, lang: string): string {
   return lang === 'en' ? r.titleEn : r.titleTr;
@@ -84,7 +91,7 @@ export function GrafanaReportBuilderModule() {
   const period = padPeriod(selectedPeriod?.nr);
 
   const [leftPane, setLeftPane] = useState<LeftPane>('reports');
-  const [reports, setReports] = useState<GrafanaReadyReport[]>(GRAFANA_READY_REPORTS);
+  const [reports, setReports] = useState<GrafanaReadyReport[]>(STATIC_REPORTS);
   const [catalogSource, setCatalogSource] = useState<'api' | 'static'>('static');
   const [catalogLoading, setCatalogLoading] = useState(false);
   const [catalogError, setCatalogError] = useState<string | null>(null);
@@ -101,9 +108,10 @@ export function GrafanaReportBuilderModule() {
 
   const [grafanaId, setGrafanaId] = useState(
     () =>
-      GRAFANA_READY_REPORTS.find((r) => r.category === 'executive')?.id ||
-      GRAFANA_READY_REPORTS.find((r) => r.category === 'sales' && !r.isBuilder)?.id ||
-      GRAFANA_READY_REPORTS[0].id
+      STATIC_REPORTS.find((r) => r.category === 'general')?.id ||
+      STATIC_REPORTS.find((r) => r.category === 'executive')?.id ||
+      STATIC_REPORTS.find((r) => r.category === 'sales' && !r.isBuilder)?.id ||
+      STATIC_REPORTS[0].id
   );
 
   const [grafanaDbLabel, setGrafanaDbLabel] = useState<string | null>(null);
@@ -144,15 +152,26 @@ export function GrafanaReportBuilderModule() {
     setCatalogLoading(true);
     setCatalogError(null);
     const result = await listGrafanaDashboardsViaApi();
-    setReports(result.reports);
+    const app = grafanaAppReportsAsReady();
+    const byUid = new Map<string, GrafanaReadyReport>();
+    for (const r of app) byUid.set(r.uid, r);
+    for (const r of result.reports) {
+      if (!byUid.has(r.uid)) byUid.set(r.uid, r);
+    }
+    for (const r of STATIC_REPORTS) {
+      if (!byUid.has(r.uid)) byUid.set(r.uid, r);
+    }
+    const merged = Array.from(byUid.values());
+    setReports(merged);
     setCatalogSource(result.source);
     if (result.error) setCatalogError(result.error);
     setGrafanaId((prev) => {
-      if (result.reports.some((r) => r.id === prev)) return prev;
+      if (merged.some((r) => r.id === prev)) return prev;
       return (
-        result.reports.find((r) => r.category === 'executive')?.id ||
-        result.reports.find((r) => !r.isBuilder && r.category !== 'ops')?.id ||
-        result.reports[0]?.id ||
+        merged.find((r) => r.category === 'general')?.id ||
+        merged.find((r) => r.category === 'executive')?.id ||
+        merged.find((r) => !r.isBuilder && r.category !== 'ops')?.id ||
+        merged[0]?.id ||
         prev
       );
     });
@@ -228,9 +247,10 @@ export function GrafanaReportBuilderModule() {
 
   const grafanaSelected =
     reports.find((r) => r.id === grafanaId) ||
+    reports.find((r) => r.category === 'general') ||
     reports.find((r) => r.category === 'executive') ||
     reports[0] ||
-    GRAFANA_READY_REPORTS[0];
+    STATIC_REPORTS[0];
 
   const theme = darkMode ? 'dark' : 'light';
   const embedPath =

@@ -182,9 +182,20 @@ export async function listGrafanaDashboardsViaApi(): Promise<{
   error?: string;
 }> {
   if (IS_TAURI) {
-    return { source: 'static', reports: GRAFANA_READY_REPORTS };
+    try {
+      const { grafanaAppReportsAsReady } = await import('../utils/grafanaAppReportsCatalog');
+      const appReports = grafanaAppReportsAsReady();
+      return {
+        source: 'static',
+        reports: [...appReports, ...GRAFANA_READY_REPORTS.filter((r) => !appReports.some((a) => a.uid === r.uid))],
+      };
+    } catch {
+      return { source: 'static', reports: GRAFANA_READY_REPORTS };
+    }
   }
   try {
+    const { grafanaAppReportsAsReady } = await import('../utils/grafanaAppReportsCatalog');
+    const appReports = grafanaAppReportsAsReady();
     const bridge = getBridgeUrl();
     const res = await fetch(`${bridge}/api/grafana/dashboards?q=retailex`, {
       method: 'GET',
@@ -197,19 +208,31 @@ export async function listGrafanaDashboardsViaApi(): Promise<{
     if (!res.ok) {
       return {
         source: 'static',
-        reports: GRAFANA_READY_REPORTS,
+        reports: [...appReports, ...GRAFANA_READY_REPORTS.filter((r) => !appReports.some((a) => a.uid === r.uid))],
         error: body.error || `HTTP ${res.status}`,
       };
     }
     const apiList = Array.isArray(body.dashboards) ? body.dashboards : [];
     if (apiList.length === 0) {
-      return { source: 'static', reports: GRAFANA_READY_REPORTS, error: 'API boş liste' };
+      return {
+        source: 'static',
+        reports: [...appReports, ...GRAFANA_READY_REPORTS.filter((r) => !appReports.some((a) => a.uid === r.uid))],
+        error: 'API boş liste',
+      };
     }
 
     const byUid = new Map(GRAFANA_READY_REPORTS.map((r) => [r.uid, r]));
+    for (const a of appReports) byUid.set(a.uid, a);
     const tools = GRAFANA_READY_REPORTS.filter((r) => r.isBuilder);
     const merged: GrafanaReadyReport[] = [];
     const seen = new Set<string>();
+
+    // Önce uygulama raporları (Genel Rapor eşleşmesi)
+    for (const a of appReports) {
+      if (seen.has(a.uid)) continue;
+      seen.add(a.uid);
+      merged.push(a);
+    }
 
     for (const d of apiList) {
       const uid = d.uid;
@@ -223,15 +246,17 @@ export async function listGrafanaDashboardsViaApi(): Promise<{
       const category: GrafanaReportCategory = categoryFromGrafanaTags(d.tags);
       const title = d.title || uid;
       merged.push({
-        id: uid.replace(/^retailex-/, '') || uid,
+        id: uid.replace(/^retailex-rpt-/, '').replace(/^retailex-/, '') || uid,
         uid,
         category,
-        titleTr: title,
-        titleEn: title,
+        titleTr: title.replace(/^RetailEX\s+/i, ''),
+        titleEn: title.replace(/^RetailEX\s+/i, ''),
         descriptionTr:
-          (d.tags || []).filter((t) => t !== 'retailex' && t !== 'ready').join(' · ') || 'Grafana',
+          (d.tags || []).filter((t) => t !== 'retailex' && t !== 'ready' && t !== 'app-report').join(' · ') ||
+          'Grafana',
         descriptionEn:
-          (d.tags || []).filter((t) => t !== 'retailex' && t !== 'ready').join(' · ') || 'Grafana',
+          (d.tags || []).filter((t) => t !== 'retailex' && t !== 'ready' && t !== 'app-report').join(' · ') ||
+          'Grafana',
         embedPath: (theme, vars) => dashEmbed(uid, theme, '&refresh=2m', vars),
       });
     }
@@ -247,11 +272,21 @@ export async function listGrafanaDashboardsViaApi(): Promise<{
 
     return { source: 'api', reports: merged };
   } catch (e) {
-    return {
-      source: 'static',
-      reports: GRAFANA_READY_REPORTS,
-      error: e instanceof Error ? e.message : String(e),
-    };
+    try {
+      const { grafanaAppReportsAsReady } = await import('../utils/grafanaAppReportsCatalog');
+      const appReports = grafanaAppReportsAsReady();
+      return {
+        source: 'static',
+        reports: [...appReports, ...GRAFANA_READY_REPORTS.filter((r) => !appReports.some((a) => a.uid === r.uid))],
+        error: e instanceof Error ? e.message : String(e),
+      };
+    } catch {
+      return {
+        source: 'static',
+        reports: GRAFANA_READY_REPORTS,
+        error: e instanceof Error ? e.message : String(e),
+      };
+    }
   }
 }
 
