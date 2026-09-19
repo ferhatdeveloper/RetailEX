@@ -29,6 +29,7 @@ import {
   ensureGrafanaDbForCurrentServer,
   fetchGrafanaSchema,
   listGrafanaDashboardsViaApi,
+  syncGrafanaDashboardsViaApi,
   type GrafanaSchemaTable,
 } from '../../services/grafanaDatasourceService';
 import { buildSelectSql } from '../../services/tenantReportSchemaService';
@@ -113,6 +114,9 @@ export function GrafanaReportBuilderModule() {
       STATIC_REPORTS.find((r) => r.category === 'sales' && !r.isBuilder)?.id ||
       STATIC_REPORTS[0].id
   );
+
+  const [syncMsg, setSyncMsg] = useState<string | null>(null);
+  const [syncingDashboards, setSyncingDashboards] = useState(false);
 
   const [grafanaDbLabel, setGrafanaDbLabel] = useState<string | null>(null);
   const [serverModalOpen, setServerModalOpen] = useState(false);
@@ -293,6 +297,23 @@ export function GrafanaReportBuilderModule() {
         <div className="flex items-center gap-2 shrink-0">
           <button
             type="button"
+            onClick={() => void syncDashboards()}
+            disabled={syncingDashboards}
+            className={`inline-flex items-center gap-1 text-xs font-medium px-2.5 py-1.5 rounded-lg border ${
+              darkMode
+                ? 'border-teal-700 text-teal-300 hover:bg-gray-700'
+                : 'border-teal-300 text-teal-800 hover:bg-teal-50'
+            }`}
+          >
+            {syncingDashboards ? (
+              <Loader2 className="h-3.5 w-3.5 animate-spin" />
+            ) : (
+              <Database className="h-3.5 w-3.5" />
+            )}
+            {lang === 'en' ? 'Load panels' : 'Panoları yükle'}
+          </button>
+          <button
+            type="button"
             onClick={() => {
               if (leftPane === 'tables') void loadSchema(schemaSearch);
               else void loadCatalog();
@@ -325,9 +346,15 @@ export function GrafanaReportBuilderModule() {
         </div>
       </div>
 
-      {(grafanaLinkError || catalogError || schemaError) && (
-        <div className="shrink-0 px-4 py-2 text-xs text-amber-700 bg-amber-50 border-b border-amber-200">
-          {grafanaLinkError || schemaError || catalogError}{' '}
+      {(grafanaLinkError || catalogError || schemaError || syncMsg) && (
+        <div
+          className={`shrink-0 px-4 py-2 text-xs border-b ${
+            syncMsg && !grafanaLinkError && !schemaError && !catalogError
+              ? 'text-teal-800 bg-teal-50 border-teal-200'
+              : 'text-amber-700 bg-amber-50 border-amber-200'
+          }`}
+        >
+          {grafanaLinkError || schemaError || catalogError || syncMsg}{' '}
           {grafanaLinkError && (
             <button
               type="button"
@@ -338,6 +365,15 @@ export function GrafanaReportBuilderModule() {
               }}
             >
               {lang === 'en' ? 'Enter server code' : 'Server kodu gir'}
+            </button>
+          )}
+          {(grafanaLinkError || schemaError || catalogError) && (
+            <button
+              type="button"
+              className="underline font-semibold ml-2"
+              onClick={() => void syncDashboards()}
+            >
+              {lang === 'en' ? 'Load panels' : 'Panoları yükle'}
             </button>
           )}
         </div>

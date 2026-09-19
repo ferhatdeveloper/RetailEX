@@ -173,6 +173,48 @@ export async function fetchGrafanaSchema(opts: {
   }
 }
 
+export type GrafanaDashboardsSyncResult =
+  | {
+      ok: true;
+      total: number;
+      okCount: number;
+      failCount: number;
+      missingBefore?: string[];
+    }
+  | { ok: false; reason: string };
+
+/** Repo JSON panolarını Grafana’ya yükler (Dashboard not found çözümü). */
+export async function syncGrafanaDashboardsViaApi(): Promise<GrafanaDashboardsSyncResult> {
+  if (IS_TAURI) {
+    return { ok: false, reason: 'Masaüstünde Grafana sync yok.' };
+  }
+  try {
+    const bridge = getBridgeUrl();
+    const res = await fetch(`${bridge}/api/grafana/dashboards/sync`, {
+      method: 'POST',
+      credentials: 'same-origin',
+      headers: { 'Content-Type': 'application/json' },
+    });
+    const body = (await res.json().catch(() => ({}))) as {
+      error?: string;
+      total?: number;
+      okCount?: number;
+      failCount?: number;
+    };
+    if (!res.ok) {
+      return { ok: false, reason: body.error || `HTTP ${res.status}` };
+    }
+    return {
+      ok: true,
+      total: Number(body.total || 0),
+      okCount: Number(body.okCount || 0),
+      failCount: Number(body.failCount || 0),
+    };
+  } catch (e) {
+    return { ok: false, reason: e instanceof Error ? e.message : String(e) };
+  }
+}
+
 /**
  * Grafana API üzerinden panoları çeker; başarısızsa statik katalog.
  */

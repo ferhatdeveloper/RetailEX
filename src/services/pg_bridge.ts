@@ -1908,6 +1908,173 @@ LIMIT 20000
     }
 });
 
+function resolveGrafanaDashboardsDir(): string {
+    const envPath = (process.env.GRAFANA_DASHBOARDS_PATH || '').trim();
+    const candidates = [
+        envPath,
+        path.join(process.cwd(), 'docker/grafana/dashboards'),
+        path.join(process.cwd(), '../docker/grafana/dashboards'),
+        '/app/docker/grafana/dashboards',
+        '/var/lib/grafana/dashboards',
+    ].filter(Boolean);
+    for (const p of candidates) {
+        try {
+            if (fs.existsSync(p) && fs.statSync(p).isDirectory()) return p;
+        } catch {
+            /* next */
+        }
+    }
+    return '';
+}
+
+async function ensureGrafanaFolder(title: string): Promise<string | null> {
+    try {
+        const searchRes = await fetch(
+            `${grafanaBaseUrl()}/api/folders?limit=100`,
+            { headers: { Authorization: grafanaAdminAuthHeader() } }
+        );
+        if (searchRes.ok) {
+            const folders = (await searchRes.json()) as Array<{ title?: string; uid?: string }>;
+            const hit = (Array.isArray(folders) ? folders : []).find(
+                (f) => String(f.title || '').toLowerCase() === title.toLowerCase()
+            );
+            if (hit?.uid) return String(hit.uid);
+        }
+        const createRes = await fetch(`${grafanaBaseUrl()}/api/folders`, {
+            method: 'POST',
+            headers: {
+                Authorization: grafanaAdminAuthHeader(),
+                'Content-Type': 'application/json',
+            },
+            body: JSON.stringify({ title }),
+        });
+        if (createRes.ok) {
+            const body = (await createRes.json()) as { uid?: string };
+            return body.uid ? String(body.uid) : null;
+        }
+    } catch (e) {
+        console.warn('[PG Bridge] grafana folder:', e);
+    }
+    return null;
+}
+
+/**
+ * Repo’daki JSON panoları Grafana API ile yükler (overwrite).
+ * Dosya provisioning gecikse bile Rapor Oluşturucu çalışır.
+ */
+app.post('/api/grafana/dashboards/sync', async (c) => {
+    try {
+        const dir = resolveGrafanaDashboardsDir();
+        if (!dir) {
+            return c.json(
+                {
+                    error:
+                        'Dashboard klasörü bulunamadı. Bridge imajını yeniden build edin veya GRAFANA_DASHBOARDS_PATH ayarlayın.',
+                },
+                500
+            );
+        }
+        const files = fs
+            .readdirSync(dir)
+            .filter((f) => f.endsWith('.json') && f.startsWith('retailex-'));
+        if (files.length === 0) {
+            return c.json({ error: `Klasörde retailex-*.json yok: ${dir}` }, 404);
+        }
+
+        const folderUid = await ensureGrafanaFolder('RetailEX');
+        const results: Array<{ file: string; uid?: string; ok: boolean; error?: string }> = [];
+
+        for (const file of files) {
+            const full = path.join(dir, file);
+            try {
+                const raw = fs.readFileSync(full, 'utf8');
+                const dashboard = JSON.parse(raw) as Record<string, unknown>;
+                // Grafana import: id null olmalı
+                dashboard.id = null;
+                const putBody: Record<string, unknown> = {
+                    dashboard,
+                    overwrite: true,
+                    message: 'RetailEX sync',
+                };
+                if (folderUid) putBody.folderUid = folderUid;
+
+                const putRes = await fetch(`${grafanaBaseUrl()}/api/dashboards/db`, {
+                    method: 'POST',
+                    headers: {
+                        Authorization: grafanaAdminAuthHeader(),
+                        'Content-Type': 'application/json',
+                    },
+                    body: JSON.stringify(putBody),
+                });
+                const putJson = (await putRes.json().catch(() => ({}))) as {
+                    status?: string;
+                    uid?: string;
+                    message?: string;
+                };
+                if (!putRes.ok) {
+                    results.push({
+                        file,
+                        ok: false,
+                        error: putJson.message || `HTTP ${putRes.status}`,
+                    });
+                } else {
+                    results.push({
+                        file,
+                        uid: String(putJson.uid || dashboard.uid || ''),
+                        ok: true,
+                    });
+                }
+            } catch (e: any) {
+                results.push({ file, ok: false, error: e?.message || String(e) });
+            }
+        }
+
+        const okCount = results.filter((r) => r.ok).length;
+        const failCount = results.length - okCount;
+        console.log(
+            `[PG Bridge] Grafana dashboards sync: ${okCount}/${results.length} ok (dir=${dir})`
+        );
+        return c.json({
+            ok: failCount === 0,
+            dir,
+            total: results.length,
+            okCount,
+            failCount,
+            results,
+        });
+    } catch (e: any) {
+        console.error('[PG Bridge] grafana dashboards sync:', e);
+        return c.json({ error: e?.message || String(e) }, 500);
+    }
+});
+
+app.get('/api/grafana/dashboards/sync-status', async (c) => {
+    try {
+        const dir = resolveGrafanaDashboardsDir();
+        const localFiles = dir
+            ? fs.readdirSync(dir).filter((f) => f.endsWith('.json') && f.startsWith('retailex-'))
+            : [];
+        const searchRes = await fetch(
+            `${grafanaBaseUrl()}/api/search?type=dash-db&query=retailex&limit=500`,
+            { headers: { Authorization: grafanaAdminAuthHeader() } }
+        );
+        const remote = searchRes.ok
+            ? ((await searchRes.json()) as Array<{ uid?: string }>).map((d) => String(d.uid || ''))
+            : [];
+        const localUids = localFiles.map((f) => f.replace(/\.json$/, ''));
+        const missing = localUids.filter((u) => !remote.includes(u));
+        return c.json({
+            ok: true,
+            dir: dir || null,
+            localCount: localFiles.length,
+            remoteCount: remote.length,
+            missing,
+        });
+    } catch (e: any) {
+        return c.json({ error: e?.message || String(e) }, 503);
+    }
+});
+
 // Port: BRIDGE_PORT (tercih) veya PORT; varsayılan 3001
 const port = (() => {
     const raw = (process.env.BRIDGE_PORT || process.env.PORT || '3001').trim();

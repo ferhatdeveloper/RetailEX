@@ -19,12 +19,17 @@ export COMPOSE_PROJECT_NAME
 
 cd "${REPO_ROOT}"
 
-echo "=== Dokploy: grafana + prometheus + cadvisor ==="
-docker compose -p "${COMPOSE_PROJECT_NAME}" -f "${COMPOSE}" up -d --no-build \
+echo "=== Dokploy: grafana + prometheus + cadvisor (force recreate) ==="
+docker compose -p "${COMPOSE_PROJECT_NAME}" -f "${COMPOSE}" up -d --no-build --force-recreate \
   prometheus cadvisor grafana
 
+echo ""
+echo "Grafana panoları (API sync) — bridge yeniden deploy sonrası:"
+echo "  curl -X POST https://<alan>/api/grafana/dashboards/sync"
+echo "  veya Rapor Oluşturucu → «Panoları yükle»"
 echo ""
 echo "Grafana: yalnızca Docker ağı (grafana:3000) → https://<alan>/__grafana/"
 echo "ZORUNLU: nginx ^~ /__grafana için frontend rebuild:"
 echo "  POSTGRES_PASSWORD='...' bash database/scripts/dokploy-redeploy-frontend.sh"
 echo "Not: host :3000 yayınlanmaz (port çakışması önlemi)"
+echo "Not: yeni JSON panolar için grafana + bridge redeploy (volume + sync API)"
