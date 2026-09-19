@@ -207,6 +207,22 @@ interface InvoiceItemsGridProps {
     onRequestQuickCreate?: (rowIndex: number, kind: 'product' | 'service') => void;
     /** Aktif arama metni — sonuç yok CTA'sı için */
     productSearch?: string;
+    /** Tablo dip toplam + dip indirim */
+    gridFooter?: {
+        quantity: number;
+        amount: number;
+        discountAmount: number;
+        netAfterLines: number;
+        footerDiscount: number;
+        footerDiscountPercent: number;
+        net: number;
+        footerDiscountMode: 'percentage' | 'amount';
+        footerDiscountPercentStr: string;
+        footerDiscountAmountStr: string;
+        onPercentChange: (raw: string) => void;
+        onAmountChange: (raw: string) => void;
+        onMode: (mode: 'percentage' | 'amount') => void;
+    };
 }
 
 export const InvoiceItemsGrid = React.memo(({
@@ -240,6 +256,7 @@ export const InvoiceItemsGrid = React.memo(({
     onCodeFieldFocus,
     onRequestQuickCreate,
     productSearch,
+    gridFooter,
 }: InvoiceItemsGridProps) => {
     const { language } = useLanguage();
     const { isMobile } = useResponsive();
@@ -249,6 +266,8 @@ export const InvoiceItemsGrid = React.memo(({
     const isColumnVisible = (columnId: string) => {
         return itemColumnVisibility[columnId] !== false;
     };
+
+    const leadingFooterColSpan = ['type', 'code', 'description', 'description2'].filter(isColumnVisible).length;
 
     const catalogByCode = useMemo(() => {
         const map = new Map<string, (typeof productCatalog)[number]>();
@@ -371,28 +390,143 @@ export const InvoiceItemsGrid = React.memo(({
         );
     };
 
-    const cariTextColor = useMemo(() => {
-        switch (invoiceType.category) {
-            case 'Satis': return 'text-blue-600';
-            case 'Alis': return 'text-teal-600';
-            case 'Hizmet':
-                if (invoiceType.code === 9 || invoiceType.code === 7) return 'text-blue-600';
-                if (invoiceType.code === 4 || invoiceType.code === 8) return 'text-teal-600';
-                return 'text-indigo-600';
-            case 'Iade': return 'text-red-600';
-            case 'Irsaliye': return 'text-orange-600';
-            case 'Siparis': return 'text-purple-600';
-            case 'Teklif': return 'text-indigo-600';
-            default: return 'text-gray-600';
-        }
-    }, [invoiceType.category, invoiceType.code]);
+    const renderTableFooter = () => {
+        if (!gridFooter) return null;
+        const money = (n: number) => formatNumber(n, 2, true);
+        const extraAfterNet =
+            (invoiceType.category === 'Alis'
+                ? Number(isColumnVisible('profitMarginPercent')) + Number(isColumnVisible('expiryDate'))
+                : 0) +
+            (invoiceType.category === 'Irsaliye'
+                ? Number(isColumnVisible('batchNo')) + Number(isColumnVisible('expiryDate'))
+                : 0) +
+            (invoiceType.category === 'Satis' && invoiceType.code === 1 ? Number(isColumnVisible('expiryDate')) : 0) +
+            (invoiceType.category === 'Satis' ? Number(isColumnVisible('profit')) : 0) +
+            1;
+        const restPad = extraAfterNet > 0 ? <td colSpan={extraAfterNet} className="px-2 py-1.5 border-t-2 border-blue-300 bg-blue-50" /> : null;
+        const labelTd = (label: React.ReactNode) =>
+            leadingFooterColSpan > 0 ? (
+                <td
+                    colSpan={leadingFooterColSpan}
+                    className="px-2 py-1.5 text-left font-bold text-blue-900 border-t-2 border-r border-blue-300 bg-blue-50"
+                >
+                    {label}
+                </td>
+            ) : null;
+        return (
+            <tfoot className="sticky bottom-0 z-[1]">
+                <tr>
+                    {labelTd(
+                        <>
+                            {tm('invoiceListDipTotal')}
+                            <span className="ml-1 font-semibold text-blue-600/80">
+                                ({items.filter((it) => (it.quantity || 0) > 0 || (it.netAmount || 0) > 0 || Boolean(it.code)).length})
+                            </span>
+                        </>,
+                    )}
+                    {isColumnVisible('quantity') && (
+                        <td className="px-2 py-1.5 text-right font-bold tabular-nums text-blue-900 border-t-2 border-r border-blue-300 bg-blue-50">
+                            {formatNumber(gridFooter.quantity, 3, true)}
+                        </td>
+                    )}
+                    {isColumnVisible('unit') && <td className="border-t-2 border-r border-blue-300 bg-blue-50" />}
+                    {isColumnVisible('unitPrice') && <td className="border-t-2 border-r border-blue-300 bg-blue-50" />}
+                    {isColumnVisible('amount') && (
+                        <td className="px-2 py-1.5 text-right font-bold tabular-nums text-blue-900 border-t-2 border-r border-blue-300 bg-blue-50">
+                            {money(gridFooter.amount)}
+                        </td>
+                    )}
+                    {isColumnVisible('discountPercent') && <td className="border-t-2 border-r border-blue-300 bg-blue-50" />}
+                    {isColumnVisible('discountAmount') && (
+                        <td className="px-2 py-1.5 text-right font-bold tabular-nums text-red-600 border-t-2 border-r border-blue-300 bg-blue-50">
+                            {gridFooter.discountAmount > 0 ? `-${money(gridFooter.discountAmount)}` : money(0)}
+                        </td>
+                    )}
+                    {isColumnVisible('netAmount') && (
+                        <td className="px-2 py-1.5 text-right font-bold tabular-nums text-blue-900 border-t-2 border-r border-blue-300 bg-blue-50">
+                            {money(gridFooter.netAfterLines)}
+                        </td>
+                    )}
+                    {restPad}
+                </tr>
+                <tr>
+                    {labelTd(
+                        <div className="flex flex-wrap items-center gap-2 font-semibold">
+                            <span title={tm('footerDiscountHint')}>{tm('footerDiscount')}</span>
+                            <button
+                                type="button"
+                                onClick={() => gridFooter.onMode('percentage')}
+                                className={`px-1.5 py-0.5 text-[10px] rounded border ${
+                                    gridFooter.footerDiscountMode === 'percentage'
+                                        ? 'bg-blue-600 text-white border-blue-600'
+                                        : 'bg-white text-gray-700 border-gray-300'
+                                }`}
+                            >
+                                %
+                            </button>
+                            <button
+                                type="button"
+                                onClick={() => gridFooter.onMode('amount')}
+                                className={`px-1.5 py-0.5 text-[10px] rounded border ${
+                                    gridFooter.footerDiscountMode === 'amount'
+                                        ? 'bg-blue-600 text-white border-blue-600'
+                                        : 'bg-white text-gray-700 border-gray-300'
+                                }`}
+                            >
+                                {currency}
+                            </button>
+                            <input
+                                type="text"
+                                inputMode="decimal"
+                                autoComplete="off"
+                                value={gridFooter.footerDiscountPercentStr}
+                                onChange={(e) => gridFooter.onPercentChange(e.target.value)}
+                                placeholder="%"
+                                className="w-14 px-1 py-0.5 text-xs text-right rounded border border-gray-300 bg-white"
+                                aria-label="%"
+                            />
+                            <input
+                                type="text"
+                                inputMode="decimal"
+                                autoComplete="off"
+                                value={gridFooter.footerDiscountAmountStr}
+                                onChange={(e) => gridFooter.onAmountChange(e.target.value)}
+                                placeholder={tm('discountAmount')}
+                                className="w-24 px-1 py-0.5 text-xs text-right rounded border border-gray-300 bg-white"
+                                aria-label={tm('discountAmount')}
+                            />
+                        </div>,
+                    )}
+                    {isColumnVisible('quantity') && <td className="border-t border-r border-blue-200 bg-blue-50/80" />}
+                    {isColumnVisible('unit') && <td className="border-t border-r border-blue-200 bg-blue-50/80" />}
+                    {isColumnVisible('unitPrice') && <td className="border-t border-r border-blue-200 bg-blue-50/80" />}
+                    {isColumnVisible('amount') && <td className="border-t border-r border-blue-200 bg-blue-50/80" />}
+                    {isColumnVisible('discountPercent') && (
+                        <td className="px-2 py-1.5 text-right tabular-nums text-blue-800 border-t border-r border-blue-200 bg-blue-50/80">
+                            {gridFooter.footerDiscountPercent > 0 ? `${formatNumber(gridFooter.footerDiscountPercent, 2, false)}%` : ''}
+                        </td>
+                    )}
+                    {isColumnVisible('discountAmount') && (
+                        <td className="px-2 py-1.5 text-right font-bold tabular-nums text-red-600 border-t border-r border-blue-200 bg-blue-50/80">
+                            {gridFooter.footerDiscount > 0 ? `-${money(gridFooter.footerDiscount)}` : money(0)}
+                        </td>
+                    )}
+                    {isColumnVisible('netAmount') && (
+                        <td className="px-2 py-1.5 text-right font-bold tabular-nums text-blue-900 border-t border-r border-blue-200 bg-blue-50/80">
+                            {money(gridFooter.net)}
+                        </td>
+                    )}
+                    {restPad && (
+                        <td colSpan={extraAfterNet} className="border-t border-blue-200 bg-blue-50/80" />
+                    )}
+                </tr>
+            </tfoot>
+        );
+    };
 
     if (isMobile) {
         return (
             <div className="bg-white rounded border border-gray-200 overflow-hidden flex flex-col min-h-0">
-                <div className="bg-gray-50 border-b border-gray-200 px-3 py-2 shrink-0">
-                    <span className={`text-sm font-medium ${cariTextColor}`}>{tm('invoiceTypeLabel')} {invoiceType.name}</span>
-                </div>
                 <div className="flex-1 overflow-y-auto overscroll-contain bg-gray-50/80 min-h-[100px] max-h-[min(58vh,520px)]">
                     {items.map((item, index) => (
                         <div
@@ -621,17 +755,70 @@ export const InvoiceItemsGrid = React.memo(({
                         </div>
                     ))}
                 </div>
+                {gridFooter && (
+                    <div className="shrink-0 border-t-2 border-blue-300 bg-blue-50 px-3 py-2 space-y-2 text-[11px] font-bold text-blue-900">
+                        <div className="flex justify-between gap-2 tabular-nums">
+                            <span>{tm('invoiceListDipTotal')}</span>
+                            <span>{formatNumber(gridFooter.netAfterLines, 2, true)}</span>
+                        </div>
+                        {gridFooter.discountAmount > 0 && (
+                            <div className="flex justify-between gap-2 tabular-nums text-red-600 font-semibold">
+                                <span>{tm('itemDiscount')}</span>
+                                <span>-{formatNumber(gridFooter.discountAmount, 2, true)}</span>
+                            </div>
+                        )}
+                        <div className="flex flex-wrap items-center gap-2 font-semibold">
+                            <span title={tm('footerDiscountHint')}>{tm('footerDiscount')}</span>
+                            <button
+                                type="button"
+                                onClick={() => gridFooter.onMode('percentage')}
+                                className={`px-1.5 py-0.5 text-[10px] rounded border ${
+                                    gridFooter.footerDiscountMode === 'percentage'
+                                        ? 'bg-blue-600 text-white border-blue-600'
+                                        : 'bg-white text-gray-700 border-gray-300'
+                                }`}
+                            >
+                                %
+                            </button>
+                            <button
+                                type="button"
+                                onClick={() => gridFooter.onMode('amount')}
+                                className={`px-1.5 py-0.5 text-[10px] rounded border ${
+                                    gridFooter.footerDiscountMode === 'amount'
+                                        ? 'bg-blue-600 text-white border-blue-600'
+                                        : 'bg-white text-gray-700 border-gray-300'
+                                }`}
+                            >
+                                {currency}
+                            </button>
+                            <input
+                                type="text"
+                                inputMode="decimal"
+                                autoComplete="off"
+                                value={gridFooter.footerDiscountPercentStr}
+                                onChange={(e) => gridFooter.onPercentChange(e.target.value)}
+                                placeholder="%"
+                                className="w-14 px-1 py-1 text-xs text-right rounded border border-gray-300 bg-white font-normal"
+                            />
+                            <input
+                                type="text"
+                                inputMode="decimal"
+                                autoComplete="off"
+                                value={gridFooter.footerDiscountAmountStr}
+                                onChange={(e) => gridFooter.onAmountChange(e.target.value)}
+                                placeholder={tm('discountAmount')}
+                                className="w-24 px-1 py-1 text-xs text-right rounded border border-gray-300 bg-white font-normal"
+                            />
+                            <span className="ml-auto tabular-nums">{formatNumber(gridFooter.net, 2, true)}</span>
+                        </div>
+                    </div>
+                )}
             </div>
         );
     }
 
     return (
         <div className="bg-white rounded border border-gray-200 overflow-hidden">
-            <div className="bg-gray-50 border-b border-gray-200 px-3 py-2">
-                <div className="flex items-center gap-2">
-                    <span className={`text-sm font-medium ${cariTextColor}`}>{tm('invoiceTypeLabel')} {invoiceType.name}</span>
-                </div>
-            </div>
             <div className="overflow-auto" style={{ height: '400px' }}>
                 <table className="w-full text-sm">
                     <thead className="bg-gray-50 sticky top-0 border-b border-gray-200">
@@ -979,6 +1166,7 @@ export const InvoiceItemsGrid = React.memo(({
                             </tr>
                         ))}
                     </tbody>
+                    {renderTableFooter()}
                 </table>
             </div>
         </div>

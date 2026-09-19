@@ -1,6 +1,6 @@
 /** Cari hesap ekstresi — ortak yardımcılar */
 
-import { paymentMethodImpliesCustomerDebt } from './paymentMethodUtils';
+import { splitPaymentRows } from './saleCollectedAmounts';
 
 export type ExtCardType = 'customer' | 'supplier' | 'employee' | 'partner' | undefined;
 
@@ -257,11 +257,16 @@ export function buildEkstreRows(
     const ftLower = String(row.fiche_type ?? '').trim().toLowerCase();
     const typeInfo = ficheTypeToInfo(String(row.fiche_type ?? ''), Number(row.trcode), cancelled);
     const { isReturn, isOpening } = typeInfo as { isReturn: boolean; isOpening?: boolean };
+    const saleSplit = splitPaymentRows(
+      amount,
+      Array.isArray(row.payments) ? (row.payments as Array<{ method?: string; amount?: number; currency?: string }>) : null,
+      row.payment_method,
+    );
     const isCustomerCashSale =
       !isSupplierAccount &&
       !cancelled &&
       (ftLower === 'sales_invoice' || ftLower === 'service' || ftLower === 'hizmet') &&
-      !paymentMethodImpliesCustomerDebt(row.payment_method as string);
+      Math.abs(saleSplit.remaining) <= 1e-9;
     let delta = 0;
     if (!cancelled) {
       // Kasa satırları (CH_TAHSILAT / CH_ODEME) ayrı imza ile işlenir —

@@ -1469,6 +1469,11 @@ export const RestPOS: React.FC<RestPOSProps> = ({
                 discount: discountTotal,
                 total: totalVal,
                 paymentMethod,
+                payments: paymentData.payments?.map((p: { method?: string; amount?: number; currency?: string }) => ({
+                    method: p.method === 'gateway' ? 'card' : String(p.method || 'cash'),
+                    amount: Number(p.amount) || 0,
+                    currency: p.currency,
+                })),
                 cashier: typeof currentStaff === 'object' ? (currentStaff as any)?.name : (currentStaff || tmR('resPosWaiterDefault')),
                 table: table?.number !== undefined ? String(table.number) : undefined,
                 notes: orderNote || undefined,
@@ -1486,6 +1491,9 @@ export const RestPOS: React.FC<RestPOSProps> = ({
                 subtotal: saleForReceipt.subtotal,
                 discount: discountTotal,
                 total: totalVal,
+                customerId: selectedCustomer?.id,
+                customerName: selectedCustomer?.name,
+                payments: saleForReceipt.payments,
             };
 
             if (table) {

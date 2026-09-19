@@ -3,6 +3,7 @@ import { Banknote, TrendingUp, TrendingDown, CreditCard, Calendar, Download, Fil
 import type { Sale } from '../../../App';
 import { formatNumber } from '../../../utils/formatNumber';
 import { useLanguage } from '../../../contexts/LanguageContext';
+import { saleCollectedSplit } from '../../../utils/saleCollectedAmounts';
 
 interface FinanceModuleProps {
   sales: Sale[];
@@ -46,12 +47,14 @@ export function FinanceModule({ sales }: FinanceModuleProps) {
   const netRevenue = filteredSales.reduce((sum, sale) => sum + sale.subtotal, 0);
   const grossRevenue = filteredSales.reduce((sum, sale) => sum + sale.total, 0);
 
-  // Payment method breakdown
+  // Payment method breakdown — belge tutarı değil tahsilat
   const paymentMethods = ['Tümü', ...Array.from(new Set(sales.map(s => s.paymentMethod)))];
   const paymentBreakdown = filteredSales.reduce((acc, sale) => {
-    acc[sale.paymentMethod] = (acc[sale.paymentMethod] || 0) + sale.total;
+    const split = saleCollectedSplit(sale);
+    acc[sale.paymentMethod] = (acc[sale.paymentMethod] || 0) + (Number(split.collected) || 0);
     return acc;
   }, {} as Record<string, number>);
+  const cashCollected = filteredSales.reduce((sum, sale) => sum + (Number(saleCollectedSplit(sale).cash) || 0), 0);
 
   // Hourly breakdown for today
   const hourlyData = Array.from({ length: 24 }, (_, i) => ({
@@ -74,7 +77,7 @@ export function FinanceModule({ sales }: FinanceModuleProps) {
     closingTime: filteredSales.length > 0 ? new Date(filteredSales[0].date) : new Date(),
     transactionCount: filteredSales.length,
     totalSales: totalRevenue,
-    cash: paymentBreakdown['Nakit'] || 0,
+    cash: cashCollected,
     creditCard: paymentBreakdown['Kredi Kartı'] || 0,
     debitCard: paymentBreakdown['Banka Kartı'] || 0,
     mobile: paymentBreakdown['Mobil Ödeme'] || 0,

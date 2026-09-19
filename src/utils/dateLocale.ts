@@ -36,6 +36,38 @@ function safeDate(input: DateInput): Date | null {
     return Number.isFinite(d.getTime()) ? d : null;
 }
 
+/** YYYY-MM-DD (isteğe bağlı saat) → yerel takvim günü; UTC kayması yok. */
+function calendarDate(input: DateInput): Date | null {
+    if (typeof input === 'string') {
+        const trimmed = input.trim();
+        const iso = trimmed.match(/^(\d{4})-(\d{2})-(\d{2})/);
+        if (iso) {
+            const y = Number(iso[1]);
+            const m = Number(iso[2]);
+            const d = Number(iso[3]);
+            const time = trimmed.match(/T(\d{2}):(\d{2})(?::(\d{2}))?/);
+            if (time && !trimmed.endsWith('Z') && !/[+-]\d{2}:\d{2}$/.test(trimmed)) {
+                return new Date(y, m - 1, d, Number(time[1]), Number(time[2]), Number(time[3] || 0));
+            }
+            return new Date(y, m - 1, d);
+        }
+        const dmy = trimmed.match(/^(\d{1,2})\.(\d{1,2})\.(\d{4})/);
+        if (dmy) {
+            return new Date(Number(dmy[3]), Number(dmy[2]) - 1, Number(dmy[1]));
+        }
+    }
+    return safeDate(input);
+}
+
+function pad2(n: number): string {
+    return String(n).padStart(2, '0');
+}
+
+/** Sabit sayısal tarih — dil/locale bağımsız: 19.09.2026 */
+export function formatDotDate(date: Date): string {
+    return `${pad2(date.getDate())}.${pad2(date.getMonth() + 1)}.${date.getFullYear()}`;
+}
+
 const formatterCache = new Map<string, Intl.DateTimeFormat>();
 
 function getFormatter(
@@ -115,22 +147,16 @@ export function formatShortMonthDay(
 
 /**
  * Kısa sayısal tarih — tablo hücresi, fatura listesi.
- * TR: `12.08.2026`
- * EN: `08/12/2026`
- * AR: `12‏/8‏/2026`
+ * Tüm dillerde `19.09.2026` (gg.aa.yyyy). `locale` imza uyumu için durur.
  */
 export function formatShortDate(
     date: DateInput,
-    locale: string,
+    _locale?: string,
     opts: FormatOptions = {},
 ): string {
-    const d = safeDate(date);
+    const d = calendarDate(date);
     if (!d) return opts.fallback ?? FALLBACK_DEFAULT;
-    return getFormatter(safeLocale(locale), {
-        day: '2-digit',
-        month: '2-digit',
-        year: 'numeric',
-    }).format(d);
+    return formatDotDate(d);
 }
 
 /**
@@ -183,19 +209,17 @@ export function formatTimeShort(
 
 /**
  * Tarih + saat (kısa) — liste satırı, randevu paneli.
- * TR: `12.08.2026 14:30`
+ * `19.09.2026 14:30` (gün her zaman gg.aa.yyyy, saat 24 saat).
  */
 export function formatDateTimeShort(
     date: DateInput,
-    locale: string,
+    _locale?: string,
     opts: FormatOptions = {},
 ): string {
-    const d = safeDate(date);
+    const d = calendarDate(date);
     if (!d) return opts.fallback ?? FALLBACK_DEFAULT;
-    return getFormatter(safeLocale(locale), {
-        dateStyle: 'short',
-        timeStyle: 'short',
-    }).format(d);
+    const timed = typeof date === 'string' && /T\d{2}:/.test(date) ? safeDate(date) ?? d : d;
+    return `${formatDotDate(timed)} ${pad2(timed.getHours())}:${pad2(timed.getMinutes())}`;
 }
 
 /**

@@ -14,6 +14,9 @@ import { formatMoneyAmount } from '../../../utils/formatMoney';
 import { beautyAppointmentDateKey, formatLocalYmd, getWeekRangeLocal, getMonthRangeLocal } from '../../../utils/dateLocal';
 import { beautyAptVisibleOnSchedule } from '../../../utils/beautyAppointmentVisibility';
 import { beautyService } from '../../../services/beautyService';
+import { beautySalePocketCollected, beautySaleRemainingCari, extraCustomerCollectionsNotOnSales } from '../../../utils/saleCollectedAmounts';
+import { fetchKasaIslemleri } from '../../../services/api/kasa';
+import type { BeautySale } from '../../../types/beauty';
 import { useBeautyTimeFormat } from '../../../hooks/useBeautyTimeFormat';
 import { BeautyServiceReportCrmModal } from '../../reports/BeautyServiceReportCrmModal';
 import '../ClinicStyles.css';
@@ -89,6 +92,8 @@ export function ClinicDashboard() {
         x.setDate(x.getDate() + 14);
         return formatLocalYmd(x);
     });
+    const [todaySales, setTodaySales] = useState<BeautySale[]>([]);
+    const [todayExtraCash, setTodayExtraCash] = useState(0);
 
     const STATUS_CFG: Record<string, { label: string; color: string; bg: string }> = useMemo(() => ({
         scheduled:   { label: tm('bAppointmentScheduled'), color: '#6366f1', bg: '#eef2ff' },
@@ -106,6 +111,27 @@ export function ClinicDashboard() {
         loadServices();
         loadSpecialists();
         void loadDevices();
+        void Promise.all([
+            beautyService.getSalesWithItemsForLocalCalendarDay(todayStr).catch(() => [] as BeautySale[]),
+            fetchKasaIslemleri({
+                baslangic_tarihi: todayStr,
+                bitis_tarihi: `${todayStr}T23:59:59`,
+            }).catch(() => []),
+        ]).then(([salesRows, kasaRows]) => {
+            const sales = Array.isArray(salesRows) ? salesRows : [];
+            setTodaySales(sales);
+            setTodayExtraCash(extraCustomerCollectionsNotOnSales(
+                kasaRows,
+                sales.map((s) => ({
+                    total: Number(s.total) || 0,
+                    paymentMethod: s.payment_method,
+                    receiptNumber: s.invoice_number,
+                })),
+            ));
+        }).catch(() => {
+            setTodaySales([]);
+            setTodayExtraCash(0);
+        });
     }, []);
 
     useEffect(() => {
@@ -286,7 +312,11 @@ export function ClinicDashboard() {
         const inProg    = todayApts.filter(a => a.status === AppointmentStatus.IN_PROGRESS);
         const cancelled = todayAll.filter(a => a.status === AppointmentStatus.CANCELLED);
         const remaining = [...pending, ...inProg];
-        const revenue   = completed.reduce((s, a) => s + (a.total_price || 0), 0);
+        const revenue = todaySales.reduce((s, sale) => s + beautySalePocketCollected(sale), 0) + todayExtraCash;
+        const remainingCari = Math.max(
+            0,
+            todaySales.reduce((s, sale) => s + beautySaleRemainingCari(sale), 0) - todayExtraCash,
+        );
         const expectedRevenue = remaining.reduce((s, a) => s + (a.total_price || 0), 0);
         const rate      = todayApts.length ? Math.round((completed.length / todayApts.length) * 100) : 0;
 
@@ -301,12 +331,13 @@ export function ClinicDashboard() {
             inProg: inProg.length,
             cancelled: cancelled.length,
             revenue,
+            remainingCari,
             expectedRevenue,
             remaining: remaining.length,
             rate,
             total: todayApts.length,
         };
-    }, [appointments, todayStr]);
+    }, [appointments, todayStr, todaySales, todayExtraCash]);
 
     const fmt = (n: number) => formatMoneyAmount(n, { minFrac: 0, maxFrac: 0 });
 
@@ -346,7 +377,7 @@ export function ClinicDashboard() {
 
             {/* ── KPI Strip ───────────────────────────────────────── */}
             <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(160px, 1fr))', gap: 12, marginBottom: 20 }}>
-                <KpiCard label={tm('bKpiDailyRevenue')}       value={fmt(stats.revenue)}   accent={T.violet}  icon={TrendingUp} />
+                <KpiCard label={tm('cebeGirenNakit')} value={fmt(stats.revenue)} sub={stats.remainingCari > 0 ? `${tm('kalanCari')}: ${fmt(stats.remainingCari)}` : undefined} accent={T.violet}  icon={TrendingUp} />
                 <KpiCard label={tm('bKpiCompletedLabel')}         value={stats.completed}      sub={tm('bKpiCompletionRateSub').replace('{n}', String(stats.rate))} accent={T.green}   icon={CheckCircle2} />
                 <KpiCard label={tm('bKpiPendingLabel')}           value={stats.pending}        sub={tm('bKpiInProgressSub').replace('{n}', String(stats.inProg))} accent={T.amber} icon={Clock} />
                 <KpiCard label={tm('bKpiCancelledLabel') || 'İptal'} value={stats.cancelled} accent={T.pink} icon={Activity} />

@@ -2,9 +2,7 @@ import React, { useState, useEffect, useMemo } from 'react';
 import { stockMovementAPI, type StockMovementLine } from '../../../services/stockMovementAPI';
 import { DevExDataGrid } from '../../shared/DevExDataGrid';
 import { REPORT_GRID_DEFAULTS } from '../../reports/shared/ReportDataGrid';
-import { exportDataGridToExcel } from '../../../utils/gridExcelExport';
 import { createColumnHelper, ColumnDef } from '@tanstack/react-table';
-import { Download } from 'lucide-react';
 import { format } from 'date-fns';
 import { useLanguage } from '../../../contexts/LanguageContext';
 import { formatNumber } from '../../../utils/formatNumber';
@@ -111,17 +109,7 @@ export function TransactionBreakdownReport() {
     return (
         <div className="h-full flex flex-col bg-white rounded-lg shadow-sm border border-gray-200">
             <div className="p-4 border-b border-gray-200 bg-gray-50">
-                <div className="flex justify-between items-center w-full flex-wrap gap-3">
                     <h1 className="text-xl font-bold text-gray-800">{tm('transactionBreakdown') || 'Hareket Dökümü'}</h1>
-                    <button
-                        type="button"
-                        onClick={() => exportDataGridToExcel(rows, columns, tm('transactionBreakdown') || 'hareket_dokumu')}
-                        className="flex items-center gap-2 px-4 py-2 border rounded-lg hover:bg-gray-50 text-gray-600"
-                    >
-                        <Download className="w-4 h-4" />
-                        {tm('export') || 'Aktar'}
-                    </button>
-                </div>
             </div>
 
             <div className="flex-1 overflow-hidden p-4">

@@ -6,6 +6,12 @@ import { cn } from '../ui/utils';
  * Yönetim modülü mobil ana alan `z-[10]`; MainLayout üst çubuk `z-[100]`.
  * `fixed` tam ekran içerik bu bağlamda üst çubuğun altında kalır; `document.body` portalı ile üstte çizilir.
  */
+/**
+ * Tablo huni / kolon seçici — `document.body` portalı.
+ * Sticky thead/tfoot compositor katmanının üstünde, tam ekran modalın altında.
+ */
+export const GRID_POPOVER_Z = 2147483600;
+
 /** Tam ekran modal / ekstre — güzellik takvimi ve üst layout’un üstünde (inline style zorunlu). */
 export const MODAL_OVERLAY_Z = 2147483646;
 

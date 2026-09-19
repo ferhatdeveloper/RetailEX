@@ -3,9 +3,8 @@ import { productAPI } from '../../../services/api/products';
 import type { Product } from '../../../core/types';
 import { DevExDataGrid } from '../../shared/DevExDataGrid';
 import { REPORT_GRID_DEFAULTS } from '../../reports/shared/ReportDataGrid';
-import { exportDataGridToExcel } from '../../../utils/gridExcelExport';
 import { createColumnHelper, ColumnDef } from '@tanstack/react-table';
-import { Download, Banknote } from 'lucide-react';
+import { Banknote } from 'lucide-react';
 import { useLanguage } from '../../../contexts/LanguageContext';
 import { useFirmaDonem } from '../../../contexts/FirmaDonemContext';
 import { formatNumber } from '../../../utils/formatNumber';
@@ -85,8 +84,6 @@ export function MaterialValueReport() {
             });
     }, [products, valuation]);
 
-    const totalValue = useMemo(() => rows.reduce((acc, r) => acc + r.total_cost, 0), [rows]);
-
     const columnHelper = createColumnHelper<ValuationRow>();
     const columns = useMemo<ColumnDef<ValuationRow, any>[]>(() => [
         columnHelper.accessor('product_code', { header: tm('materialCode') }),
@@ -112,30 +109,11 @@ export function MaterialValueReport() {
 
     return (
         <div className="h-full flex flex-col bg-white rounded-lg shadow-sm border border-gray-200">
-            <div className="p-4 border-b border-gray-200 flex justify-between items-center bg-gray-50">
-                <div>
-                    <h2 className="font-semibold text-gray-800 flex items-center gap-2">
-                        <Banknote className="w-5 h-5 text-green-600" />
-                        {tm('materialValueReport') || 'Malzeme Değer Raporu'}
-                    </h2>
-                    <div className="text-sm text-gray-500 mt-1">
-                        {tm('totalInventoryValue') || 'Toplam Envanter Değeri'}:{' '}
-                        <span className="font-bold text-green-700 text-lg">
-                            {formatNumber(totalValue, 2)} {currency}
-                        </span>
-                        <span className="ml-3 text-xs text-gray-400">
-                            ({rows.length} {tm('material') || 'malzeme'})
-                        </span>
-                    </div>
-                </div>
-                <button
-                    type="button"
-                    onClick={() => exportDataGridToExcel(rows, columns, tm('materialValueReport') || 'malzeme_deger')}
-                    className="flex items-center gap-2 px-4 py-2 bg-white border border-gray-300 hover:bg-gray-50 text-gray-700 rounded-lg transition-colors shadow-sm"
-                >
-                    <Download className="w-4 h-4" />
-                    {tm('excel')}
-                </button>
+            <div className="p-4 border-b border-gray-200 bg-gray-50">
+                <h2 className="font-semibold text-gray-800 flex items-center gap-2">
+                    <Banknote className="w-5 h-5 text-green-600" />
+                    {tm('materialValueReport') || 'Malzeme Değer Raporu'}
+                </h2>
             </div>
 
             <div className="flex-1 overflow-hidden p-4">
@@ -147,7 +125,14 @@ export function MaterialValueReport() {
                         </div>
                     </div>
                 ) : (
-                    <DevExDataGrid data={rows} columns={columns} {...REPORT_GRID_DEFAULTS} height="100%" />
+                    <DevExDataGrid
+                        data={rows}
+                        columns={columns}
+                        {...REPORT_GRID_DEFAULTS}
+                        excelFileName={tm('materialValueReport') || 'malzeme_deger'}
+                        printTitle={tm('materialValueReport') || 'Malzeme Değer Raporu'}
+                        height="100%"
+                    />
                 )}
             </div>
         </div>

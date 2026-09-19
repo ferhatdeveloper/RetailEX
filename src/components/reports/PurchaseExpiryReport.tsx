@@ -1,8 +1,10 @@
 import { useEffect, useState } from 'react';
-import { AlertTriangle, FileMinus, RefreshCw } from 'lucide-react';
+import { AlertTriangle, FileMinus, RefreshCw, X } from 'lucide-react';
+import { toast } from 'sonner';
 import { createColumnHelper } from '@tanstack/react-table';
 import { DevExDataGrid } from '../shared/DevExDataGrid';
 import { REPORT_GRID_DEFAULTS } from './shared/ReportDataGrid';
+import { PercentBodyModal, PercentBodyModalScrollBody } from '../shared/PercentBodyModal';
 import {
   EXPIRY_REPORT_ALL_FUTURE,
   EXPIRY_REPORT_ALL_RECORDED,
@@ -12,14 +14,19 @@ import {
 } from '../../services/api/expiryReports';
 import { useLanguage } from '../../contexts/LanguageContext';
 import { displayItemCode } from '../../utils/lastPurchaseCostSql';
+import { formatNumber } from '../../utils/formatNumber';
+import { expiryReturnLineAmounts } from '../../utils/expiryPurchaseReturn';
 
 export function PurchaseExpiryReport() {
   const { tm } = useLanguage();
   const [rows, setRows] = useState<ExpiringPurchaseItem[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
-  // Varsayılan: sonraki 30 gün (bugün … bugün+30, henüz dolmamış)
   const [daysAhead, setDaysAhead] = useState(EXPIRY_REPORT_DEFAULT_DAYS);
+  const [pending, setPending] = useState<ExpiringPurchaseItem | null>(null);
+  const [returnQty, setReturnQty] = useState('');
+  const [resolvingId, setResolvingId] = useState<string | null>(null);
+  const [saving, setSaving] = useState(false);
 
   const load = async () => {
     setLoading(true);
@@ -37,6 +44,69 @@ export function PurchaseExpiryReport() {
   useEffect(() => {
     void load();
   }, [daysAhead]);
+
+  const rowKey = (row: ExpiringPurchaseItem) =>
+    `${row.invoiceId}|${row.saleItemId || ''}|${row.itemCode}|${row.expiryDate}|${row.batchNo || ''}`;
+
+  const openReturn = async (row: ExpiringPurchaseItem) => {
+    const key = rowKey(row);
+    setResolvingId(key);
+    try {
+      const source = await expiryReportsAPI.resolveReturnSource(row);
+      if (!source?.supplierId) {
+        toast.error(tm('expiryReturnNoSupplier'));
+        return;
+      }
+      setPending(source);
+      setReturnQty(String(source.quantity || row.quantity || ''));
+    } catch (e: unknown) {
+      toast.error(e instanceof Error ? e.message : tm('expiryReturnFailed'));
+    } finally {
+      setResolvingId(null);
+    }
+  };
+
+  const closeReturn = () => {
+    if (saving) return;
+    setPending(null);
+    setReturnQty('');
+  };
+
+  const confirmReturn = async () => {
+    if (!pending) return;
+    const qty = Number(String(returnQty).replace(',', '.'));
+    if (!Number.isFinite(qty) || qty <= 0) {
+      toast.error(tm('expiryReturnQtyInvalid'));
+      return;
+    }
+    setSaving(true);
+    try {
+      const saved = await expiryReportsAPI.createPurchaseReturn(pending, qty);
+      toast.success(tm('expiryReturnSaved').replace('{no}', saved.invoice_no || ''));
+      window.dispatchEvent(new CustomEvent('invoiceCreated', {
+        detail: { category: 'Iade', invoiceNo: saved.invoice_no, invoiceType: 6 },
+      }));
+      setPending(null);
+      setReturnQty('');
+      await load();
+    } catch (e: unknown) {
+      const code = e instanceof Error ? e.message : '';
+      if (code === 'NO_SUPPLIER') toast.error(tm('expiryReturnNoSupplier'));
+      else if (code === 'INVALID_QTY') toast.error(tm('expiryReturnQtyInvalid'));
+      else toast.error(tm('expiryReturnFailed'));
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  const preview = pending
+    ? expiryReturnLineAmounts({
+        quantity: Number(String(returnQty).replace(',', '.')) || 0,
+        unitPrice: Number(pending.unitPrice) || 0,
+        discountRate: pending.discountRate,
+        vatRate: pending.vatRate,
+      })
+    : null;
 
   const columnHelper = createColumnHelper<ExpiringPurchaseItem>();
   const columns = [
@@ -83,7 +153,7 @@ export function PurchaseExpiryReport() {
       header: tm('expiryPurchaseInvoice'),
       cell: info => (
         <div className="flex flex-col">
-          <span className="font-mono text-xs font-bold text-blue-700">{info.getValue()}</span>
+          <span className="font-mono text-xs font-bold text-blue-700">{info.getValue() || '-'}</span>
           <span className="text-xs text-slate-500">{info.row.original.invoiceDate}</span>
         </div>
       ),
@@ -97,14 +167,25 @@ export function PurchaseExpiryReport() {
     columnHelper.display({
       id: 'returnHint',
       header: tm('purchaseReturn'),
-      cell: ({ row }) => (
-        row.original.invoiceId ? (
-          <span className="inline-flex items-center gap-1 rounded-lg bg-orange-50 px-2 py-1 text-xs font-bold text-orange-700" title={tm('expiryReturnHint')}>
+      cell: ({ row }) => {
+        const busy = resolvingId === rowKey(row.original);
+        return (
+          <button
+            type="button"
+            disabled={busy || saving}
+            onClick={(e) => {
+              e.preventDefault();
+              e.stopPropagation();
+              void openReturn(row.original);
+            }}
+            className="inline-flex items-center gap-1 rounded-lg bg-orange-50 px-2 py-1 text-xs font-bold text-orange-700 hover:bg-orange-100 disabled:opacity-50"
+            title={tm('expiryReturnHint')}
+          >
             <FileMinus className="h-3.5 w-3.5" />
-            {tm('expiryReturnCandidate')}
-          </span>
-        ) : <span className="text-slate-400">-</span>
-      ),
+            {busy ? tm('expiryReturnResolving') : tm('expiryReturnButton')}
+          </button>
+        );
+      },
       size: 110,
     }),
   ];
@@ -188,6 +269,72 @@ export function PurchaseExpiryReport() {
           )}
         </div>
       </div>
+
+      {pending ? (
+        <PercentBodyModal size="form" onClose={closeReturn} ariaLabel={tm('expiryReturnConfirmTitle')}>
+          <div className="flex min-h-0 flex-col">
+            <div className="flex shrink-0 items-center justify-between gap-3 bg-orange-600 px-4 py-3 text-white">
+              <div>
+                <h3 className="text-sm font-black uppercase tracking-tight">{tm('expiryReturnConfirmTitle')}</h3>
+                <p className="text-[11px] font-medium text-orange-100">{tm('expiryReturnConfirmHint')}</p>
+              </div>
+              <button type="button" onClick={closeReturn} className="rounded-lg p-1 hover:bg-white/10" aria-label={tm('cancel')}>
+                <X className="h-4 w-4" />
+              </button>
+            </div>
+            <PercentBodyModalScrollBody className="space-y-3 p-4 text-sm">
+              <div className="grid grid-cols-2 gap-2 text-xs">
+                <div className="rounded-lg border border-slate-200 bg-slate-50 px-3 py-2">
+                  <div className="font-bold text-slate-500">{tm('expirySupplierAccount')}</div>
+                  <div className="font-semibold text-slate-900">{pending.supplierName || '-'}</div>
+                </div>
+                <div className="rounded-lg border border-slate-200 bg-slate-50 px-3 py-2">
+                  <div className="font-bold text-slate-500">{tm('expiryReturnSourceInvoice')}</div>
+                  <div className="font-mono font-semibold text-blue-700">{pending.invoiceNo || '-'}</div>
+                </div>
+                <div className="rounded-lg border border-slate-200 bg-slate-50 px-3 py-2 col-span-2">
+                  <div className="font-bold text-slate-500">{tm('product')}</div>
+                  <div className="font-semibold text-slate-900">{pending.itemName}</div>
+                  <div className="font-mono text-[11px] text-slate-500">{displayItemCode(pending.itemCode)}</div>
+                </div>
+              </div>
+              <label className="block text-xs font-bold text-slate-600">
+                {tm('quantity')}
+                <input
+                  type="text"
+                  inputMode="decimal"
+                  value={returnQty}
+                  onChange={(e) => setReturnQty(e.target.value)}
+                  className="mt-1 w-full rounded-lg border border-slate-200 px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-orange-500"
+                />
+              </label>
+              {preview ? (
+                <p className="text-xs font-medium text-slate-600">
+                  {tm('expiryReturnAmount')}: {formatNumber(preview.total, 2, false)}
+                </p>
+              ) : null}
+            </PercentBodyModalScrollBody>
+            <div className="flex shrink-0 justify-end gap-2 border-t border-slate-200 bg-slate-50 px-4 py-3">
+              <button
+                type="button"
+                disabled={saving}
+                onClick={closeReturn}
+                className="rounded-lg border border-slate-300 px-3 py-1.5 text-xs font-bold text-slate-700 hover:bg-white"
+              >
+                {tm('cancel')}
+              </button>
+              <button
+                type="button"
+                disabled={saving}
+                onClick={() => void confirmReturn()}
+                className="rounded-lg bg-orange-600 px-3 py-1.5 text-xs font-bold text-white hover:bg-orange-700 disabled:opacity-50"
+              >
+                {saving ? tm('expiryReturnSaving') : tm('confirm')}
+              </button>
+            </div>
+          </div>
+        </PercentBodyModal>
+      ) : null}
     </div>
   );
 }

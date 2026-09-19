@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { defaultInvoiceLineTypeFor, isServiceInvoiceType } from '../../utils/invoiceLineType';
+import { defaultInvoiceLineTypeFor, isInvoicePurchaseSide, isServiceInvoiceType } from '../../utils/invoiceLineType';
 
 describe('isServiceInvoiceType / defaultInvoiceLineTypeFor', () => {
   it('Alınan Hizmet (trcode 4) ve Verilen Hizmet (9) satır türü Hizmet', () => {
@@ -18,7 +18,19 @@ describe('isServiceInvoiceType / defaultInvoiceLineTypeFor', () => {
   it('alış / satış malzeme faturalarında Malzeme kalır', () => {
     expect(isServiceInvoiceType({ code: 1, category: 'Alis', name: 'Alış Faturası' })).toBe(false);
     expect(isServiceInvoiceType({ code: 0, category: 'Satis', name: 'Satış Faturası' })).toBe(false);
+    expect(isServiceInvoiceType({ code: 7, category: 'Satis', name: 'Perakende Satış' })).toBe(false);
+    expect(isServiceInvoiceType({ code: 8, category: 'Satis', name: 'Satış Faturaları' })).toBe(false);
     expect(defaultInvoiceLineTypeFor({ code: 1, category: 'Alis' })).toBe('Malzeme');
     expect(defaultInvoiceLineTypeFor({ code: 0, category: 'Satis' })).toBe('Malzeme');
+    expect(defaultInvoiceLineTypeFor({ code: 7, category: 'Satis' })).toBe('Malzeme');
+    expect(defaultInvoiceLineTypeFor({ code: 8, category: 'Satis' })).toBe('Malzeme');
+  });
+
+  it('Logo 7/8 satış faturası alış/tedarikçi tarafı değildir', () => {
+    expect(isInvoicePurchaseSide({ code: 8, category: 'Satis', name: 'Satış Faturaları' })).toBe(false);
+    expect(isInvoicePurchaseSide({ code: 7, category: 'Satis', name: 'Perakende Satış' })).toBe(false);
+    expect(isInvoicePurchaseSide({ code: 1, category: 'Alis' })).toBe(true);
+    expect(isInvoicePurchaseSide({ code: 4, category: 'Hizmet' })).toBe(true);
+    expect(isInvoicePurchaseSide({ code: 6, category: 'Iade' })).toBe(true);
   });
 });

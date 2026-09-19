@@ -173,8 +173,11 @@ export const salesAPI = {
       // Karma ödeme: veresiye + nakit/kart → faturayı veresiye yaz, peşin kısmı için anında CH_TAHSILAT
       const paymentRows = Array.isArray((sale as any).payments) ? (sale as any).payments : [];
       if (paymentRows.length > 0) {
+        const existingHf = (((sale as any).header_fields as Record<string, unknown>) || {});
         invoiceData.header_fields = {
-          ...(((sale as any).header_fields as Record<string, unknown>) || {}),
+          ...existingHf,
+          // invoicesAPI karma peşin CH_TAHSILAT yazmasın — POS tahsilatı sales.ts yazar
+          source: existingHf.source ?? 'pos',
           payments: paymentRows.map((p: { method?: string; amount?: number; currency?: string; cash_register_id?: string | null }) => ({
             method: String(p.method || 'cash'),
             amount: Number(p.amount) || 0,

@@ -20,6 +20,10 @@ import { posPaymentAdditionalDiscount, roundPosMoneyAmount, posMoneyEpsilon, get
 import { getCurrencyDecimalPlaces } from '../../utils/currency';
 import { POSCancelReasonModal } from './POSCancelReasonModal';
 import { fetchKasalar, type Kasa } from '../../services/api/kasa';
+import {
+  POS_CARI_REMAINING_THRESHOLD,
+  buildVeresiyeForRemaining as buildVeresiyeForRemainingHelper,
+} from '../../utils/posCariRemainder';
 
 // Helper function to format number with Turkish formatting (nokta binlik, virgül ondalık)
 const formatNumberInput = (value: string): string => {
@@ -101,7 +105,7 @@ export type POSPaymentModalDraftContext = {
 type Payment = POSPaymentModalPaymentRow;
 
 /** Kalan tutar eşiği — müşteri varsa cariye yazılabilir. */
-const CARI_REMAINING_THRESHOLD = 0.009;
+const CARI_REMAINING_THRESHOLD = POS_CARI_REMAINING_THRESHOLD;
 
 interface POSPaymentModalProps {
   total: number;
@@ -316,16 +320,8 @@ export function POSPaymentModal({
   const writeRemainingToCariLabel =
     tm('posWriteRemainingToCari') || t.writeRemainingToCari || 'Kalanı cariye yaz';
 
-  const buildVeresiyeForRemaining = (amount: number): Payment => ({
-    method: 'veresiye',
-    amount: roundPosMoneyAmount(amount, baseCurrency),
-    currency: baseCurrency,
-    ...(selectedCashRegister && {
-      cash_register_id: selectedCashRegister.id,
-      cash_register_name: selectedCashRegister.kasa_adi,
-      cash_register_code: selectedCashRegister.kasa_kodu,
-    }),
-  });
+  const buildVeresiyeForRemaining = (amount: number): Payment =>
+    buildVeresiyeForRemainingHelper(amount, baseCurrency, selectedCashRegister);
 
   const handleWriteRemainingToCari = () => {
     if (!selectedCustomer) {

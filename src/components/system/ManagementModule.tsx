@@ -1337,7 +1337,7 @@ export function ManagementModule({
             />
           );
         case 'sales-invoice-standard':
-          return <InvoiceListModule products={products} defaultCategory="Satis" defaultInvoiceTypeFilter="8" title={t.salesInvoicesTitle} description={t.salesInvoicesDesc} />;
+          return <InvoiceListModule products={products} defaultCategory="Satis" defaultInvoiceTypeFilter="all" title={t.salesInvoicesTitle} description={t.salesInvoicesDesc} />;
         case 'sales-invoice-retail':
           return <InvoiceListModule products={products} defaultCategory="Satis" defaultInvoiceTypeFilter="7" title={t.retailSalesTitle} description={t.retailSalesDesc} />;
         case 'sales-invoice-wholesale':

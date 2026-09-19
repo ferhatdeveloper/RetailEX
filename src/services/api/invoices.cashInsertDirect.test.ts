@@ -13,9 +13,13 @@
  */
 import { describe, expect, it } from 'vitest';
 import {
+  invoiceCashLineInsertUpdatesStoredCari,
+  invoiceChTahsilatStoredDelta,
+  invoiceMixedCustomerStoredDelta,
   invoiceShouldPostMixedPrepaidTahsilat,
   isPrepaidInvoicePaymentRow,
   resolveInvoicePrimaryPaymentMethod,
+  shouldApplyChTahsilatCustomerBalanceAfterCashInsert,
 } from './invoices';
 
 describe('writeCashRegisterLineForInvoice — direkt INSERT semantiği', () => {
@@ -227,6 +231,30 @@ describe('karma veresiye + peşin — CH_TAHSILAT planı', () => {
     })).toBe(false);
   });
 
+  it('RestoranPOS notu + cash/veresiye satırında yazılmaz', () => {
+    expect(invoiceShouldPostMixedPrepaidTahsilat({
+      notes: 'RestoranPOS|rest_order_id:00000000-0000-0000-0000-000000000001',
+      header_fields: {
+        payments: [
+          { method: 'cash', amount: 40 },
+          { method: 'veresiye', amount: 60 },
+        ],
+      },
+    })).toBe(false);
+  });
+
+  it('header source=pos iken karma peşin yazılmaz', () => {
+    expect(invoiceShouldPostMixedPrepaidTahsilat({
+      header_fields: {
+        source: 'pos',
+        payments: [
+          { method: 'cash', amount: 40 },
+          { method: 'veresiye', amount: 60 },
+        ],
+      },
+    })).toBe(false);
+  });
+
   it('nakit ve kart peşin satırdır; açık cari değildir', () => {
     expect(isPrepaidInvoicePaymentRow('NAKIT')).toBe(true);
     expect(isPrepaidInvoicePaymentRow('KREDIKARTI')).toBe(true);
@@ -238,5 +266,36 @@ describe('karma veresiye + peşin — CH_TAHSILAT planı', () => {
       [{ method: 'NAKIT' }, { method: 'ACIK_CARI' }],
       'NAKIT',
     )).toBe('ACIK_CARI');
+  });
+
+  it('fatura formu: düz INSERT cariyi güncellemez — applyChTahsilat bir kez çalışır', () => {
+    expect(invoiceCashLineInsertUpdatesStoredCari('direct')).toBe(false);
+    expect(shouldApplyChTahsilatCustomerBalanceAfterCashInsert('direct')).toBe(true);
+    expect(invoiceMixedCustomerStoredDelta(100, 40, 'direct')).toBe(60);
+    expect(invoiceMixedCustomerStoredDelta(100, 40, 'direct')).toBe(
+      100 + invoiceChTahsilatStoredDelta(40),
+    );
+  });
+
+  it('createKasaIslemi yazdıysa applyChTahsilat tekrarlanmaz (çift düşüş yok)', () => {
+    expect(invoiceCashLineInsertUpdatesStoredCari('createKasaIslemi')).toBe(true);
+    expect(shouldApplyChTahsilatCustomerBalanceAfterCashInsert('createKasaIslemi')).toBe(false);
+    expect(invoiceMixedCustomerStoredDelta(100, 40, 'createKasaIslemi')).toBe(60);
+    const doubleApply = 100 + invoiceChTahsilatStoredDelta(40) * 2;
+    expect(doubleApply).toBe(20);
+    expect(invoiceMixedCustomerStoredDelta(100, 40, 'direct')).not.toBe(doubleApply);
+    expect(invoiceMixedCustomerStoredDelta(100, 40, 'createKasaIslemi')).not.toBe(doubleApply);
+  });
+
+  it('GüzellikPOS notu da POS yoludur — invoicesAPI karma tahsilat yazmaz', () => {
+    expect(invoiceShouldPostMixedPrepaidTahsilat({
+      notes: 'GüzellikPOS Satışı',
+      header_fields: {
+        payments: [
+          { method: 'cash', amount: 30 },
+          { method: 'credit', amount: 70 },
+        ],
+      },
+    })).toBe(false);
   });
 });

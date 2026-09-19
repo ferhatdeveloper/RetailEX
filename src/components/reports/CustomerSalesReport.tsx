@@ -156,12 +156,6 @@ export function CustomerSalesReport({ sales, customers }: CustomerSalesReportPro
     });
   }, [sales, customers, filterTerm, dateRange.start, dateRange.end]);
 
-  const totalCustomers = useMemo(() => new Set(filteredSales.map((s) => s.customerId)).size, [filteredSales]);
-  const totalRevenue = useMemo(
-    () => filteredCustomerSales.reduce((sum, c) => sum + c.totalRevenue, 0),
-    [filteredCustomerSales],
-  );
-
   return (
     <div className="space-y-4">
       <div className="bg-white rounded-lg border p-4">
@@ -196,27 +190,6 @@ export function CustomerSalesReport({ sales, customers }: CustomerSalesReportPro
               onChange={(e) => setDateRange({ ...dateRange, end: e.target.value })}
               className="px-3 py-2 border rounded-lg text-sm"
             />
-          </div>
-        </div>
-
-        <div className="grid grid-cols-4 gap-4">
-          <div className="bg-blue-50 rounded-lg p-4 border border-blue-200">
-            <p className="text-sm text-gray-600">{tm('rptCustTotalCustomers')}</p>
-            <p className="text-2xl font-bold text-blue-600 mt-1">{totalCustomers}</p>
-          </div>
-          <div className="bg-green-50 rounded-lg p-4 border border-green-200">
-            <p className="text-sm text-gray-600">{legendRevenue}</p>
-            <p className="text-2xl font-bold text-green-600 mt-1">{formatNumber(totalRevenue, 2, false)} IQD</p>
-          </div>
-          <div className="bg-purple-50 rounded-lg p-4 border border-purple-200">
-            <p className="text-sm text-gray-600">{tm('avgSaleLabel')}</p>
-            <p className="text-2xl font-bold text-purple-600 mt-1">
-              {totalCustomers > 0 ? formatNumber(totalRevenue / totalCustomers, 2, false) : '0'} IQD
-            </p>
-          </div>
-          <div className="bg-orange-50 rounded-lg p-4 border border-orange-200">
-            <p className="text-sm text-gray-600">{tm('rptCustActiveCustomer')}</p>
-            <p className="text-2xl font-bold text-orange-600 mt-1">{customerSales.length}</p>
           </div>
         </div>
       </div>

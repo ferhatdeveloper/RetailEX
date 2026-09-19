@@ -110,6 +110,49 @@ describe('compute balance from ledger with cash', () => {
     expect(bal).toBe(1200);
   });
 
+  it('karma fatura: tam veresiye + bir CH_TAHSILAT — çift düşmez', () => {
+    const mixedSales = [
+      {
+        customer_id: 'c1',
+        net_amount: 1000,
+        fiche_type: 'sales_invoice',
+        is_cancelled: false,
+        payment_method: 'veresiye',
+      },
+    ];
+    const prepaid = [{ customer_id: 'c1', amount: 400, transaction_type: 'CH_TAHSILAT' }];
+    expect(computeCustomerBalanceFromLedger('c1', 'Test', mixedSales, prepaid)).toBe(600);
+    const storedOnce = 1000 + cariCashStoredBalanceDelta(400, 'CH_TAHSILAT');
+    const storedTwice = storedOnce + cariCashStoredBalanceDelta(400, 'CH_TAHSILAT');
+    expect(storedOnce).toBe(600);
+    expect(storedTwice).toBe(200);
+  });
+
+  it('iade trcode 3 / return_invoice müşteri bakiyesini azaltır', () => {
+    const rows = [
+      {
+        customer_id: 'c1',
+        net_amount: 1000,
+        fiche_type: 'sales_invoice',
+        is_cancelled: false,
+        payment_method: 'veresiye',
+      },
+      {
+        customer_id: 'c1',
+        net_amount: 250,
+        fiche_type: 'return_invoice',
+        is_cancelled: false,
+        payment_method: 'veresiye',
+      },
+    ];
+    expect(computeCustomerBalanceFromLedger('c1', 'Test', rows, [])).toBe(750);
+  });
+
+  it('createKasaIslemi tedarikçi CH_ODEME saklanan delta borcu azaltır', () => {
+    expect(cariCashStoredBalanceDelta(200, 'CH_ODEME', 'supplier')).toBe(-200);
+    expect(cariCashStoredBalanceDelta(200, 'CH_TAHSILAT', 'customer')).toBe(-200);
+  });
+
   it('peşin alış tedarikçi borcuna yazılmaz', () => {
     const purchase = [
       {

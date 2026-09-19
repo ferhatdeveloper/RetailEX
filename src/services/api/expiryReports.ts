@@ -7,6 +7,16 @@ import {
   isExpiryYmdInRange,
   type ExpiryRangeBounds,
 } from '../../utils/expiryReportRange';
+import { looksLikeUuid } from '../../utils/pgUuid';
+import { PURCHASE_ONLY_TRCODES } from '../../utils/lastPurchaseCostSql';
+import {
+  buildExpiryPurchaseReturnInvoice,
+  canReturnExpiringPurchase,
+  clampExpiryReturnQty,
+  isAlreadyReturnDocument,
+} from '../../utils/expiryPurchaseReturn';
+import { invoicesAPI } from './invoices';
+import type { Invoice } from '../../core/types';
 
 export {
   EXPIRY_REPORT_ALL_FUTURE,
@@ -32,6 +42,14 @@ export interface ExpiringPurchaseItem {
   expiryDate: string;
   batchNo?: string;
   daysLeft: number;
+  productId?: string;
+  unitPrice?: number;
+  vatRate?: number;
+  discountRate?: number;
+  saleItemId?: string;
+  trcode?: number;
+  ficheType?: string;
+  paymentMethod?: string;
 }
 
 /** Logo alış trcode — invoices.TRCODES_BY_INVOICE_CATEGORY.Alis + alış iade (6) */
@@ -41,6 +59,14 @@ function isPurchaseSaleRow(sale: Record<string, unknown>): boolean {
   const trcode = Number(sale.trcode ?? sale.invoice_type ?? 0);
   const fiche = String(sale.fiche_type ?? '').toLowerCase();
   if (PURCHASE_TRCODES.includes(trcode as (typeof PURCHASE_TRCODES)[number])) return true;
+  return fiche === 'purchase_invoice' || fiche === 'a';
+}
+
+function isPurchaseSourceSaleRow(sale: Record<string, unknown>): boolean {
+  const trcode = Number(sale.trcode ?? sale.invoice_type ?? 0);
+  const fiche = String(sale.fiche_type ?? '').toLowerCase();
+  if (isAlreadyReturnDocument(trcode, fiche)) return false;
+  if (PURCHASE_ONLY_TRCODES.includes(trcode as (typeof PURCHASE_ONLY_TRCODES)[number])) return true;
   return fiche === 'purchase_invoice' || fiche === 'a';
 }
 
@@ -62,23 +88,44 @@ function daysBetweenYmd(fromYmd: string, toYmd: string): number {
   return Math.round((b - a) / 86400000);
 }
 
+function optionalText(value: unknown): string | undefined {
+  const s = String(value ?? '').trim();
+  return s ? s : undefined;
+}
+
+function optionalNumber(value: unknown): number | undefined {
+  if (value == null || value === '') return undefined;
+  const n = Number(value);
+  return Number.isFinite(n) ? n : undefined;
+}
+
 function rowToExpiringItem(row: Record<string, unknown>, todayYmd?: string): ExpiringPurchaseItem {
   const expiry = expiryYmd(row.expiry_date);
   const today = todayYmd || localTodayDateKey();
   const daysLeft = expiry ? daysBetweenYmd(today, expiry) : 0;
+  const productId = optionalText(row.product_id);
+  const itemCode = String(row.item_code ?? '');
   return {
     invoiceId: String(row.invoice_id ?? ''),
     invoiceNo: String(row.invoice_no ?? ''),
     invoiceDate: expiryYmd(row.invoice_date) || String(row.invoice_date ?? '').slice(0, 10),
-    supplierId: row.supplier_id ? String(row.supplier_id) : undefined,
+    supplierId: optionalText(row.supplier_id),
     supplierName: String(row.supplier_name ?? ''),
-    itemCode: String(row.item_code ?? ''),
+    itemCode,
     itemName: String(row.item_name ?? ''),
     quantity: Number(row.quantity ?? 0),
     unit: String(row.unit ?? ''),
     expiryDate: expiry,
-    batchNo: row.batch_no ? String(row.batch_no) : undefined,
+    batchNo: optionalText(row.batch_no),
     daysLeft,
+    productId: productId || (looksLikeUuid(itemCode) ? itemCode : undefined),
+    unitPrice: optionalNumber(row.unit_price),
+    vatRate: optionalNumber(row.vat_rate),
+    discountRate: optionalNumber(row.discount_rate),
+    saleItemId: optionalText(row.sale_item_id ?? row.id),
+    trcode: optionalNumber(row.trcode),
+    ficheType: optionalText(row.fiche_type),
+    paymentMethod: optionalText(row.payment_method),
   };
 }
 
@@ -167,6 +214,47 @@ export const expiryReportsAPI = {
     const merged = mergeExpiryRows(await mapSettledRows(chunks));
     return merged.filter((row) => isExpiryYmdInRange(row.expiryDate, bounds));
   },
+
+  async resolveReturnSource(row: ExpiringPurchaseItem): Promise<ExpiringPurchaseItem | null> {
+    if (isAlreadyReturnDocument(row.trcode, row.ficheType)) return null;
+    if (canReturnExpiringPurchase(row)) return row;
+    const last = await fetchLastPurchaseForProduct(row.productId, row.itemCode);
+    if (!last) return null;
+    return {
+      ...row,
+      invoiceId: last.invoiceId || row.invoiceId,
+      invoiceNo: last.invoiceNo || row.invoiceNo,
+      invoiceDate: last.invoiceDate || row.invoiceDate,
+      supplierId: last.supplierId || row.supplierId,
+      supplierName: last.supplierName || row.supplierName,
+      productId: row.productId || last.productId,
+      unitPrice: (row.unitPrice && row.unitPrice > 0) ? row.unitPrice : last.unitPrice,
+      vatRate: row.vatRate ?? last.vatRate,
+      discountRate: row.discountRate ?? last.discountRate,
+      saleItemId: last.saleItemId || row.saleItemId,
+      trcode: last.trcode,
+      ficheType: last.ficheType,
+      paymentMethod: last.paymentMethod || row.paymentMethod,
+    };
+  },
+
+  async createPurchaseReturn(source: ExpiringPurchaseItem, quantity: number): Promise<Invoice> {
+    const resolved = (await this.resolveReturnSource(source)) || source;
+    if (!canReturnExpiringPurchase(resolved)) {
+      throw new Error('NO_SUPPLIER');
+    }
+    const qty = clampExpiryReturnQty(quantity, Number(resolved.quantity) || 0);
+    if (qty <= 0) throw new Error('INVALID_QTY');
+    const invoice = buildExpiryPurchaseReturnInvoice({
+      source: resolved,
+      quantity: qty,
+      firmaId: String(ERP_SETTINGS.firmNr || '0'),
+      donemId: String(ERP_SETTINGS.periodNr || '01'),
+    });
+    const saved = await invoicesAPI.create(invoice);
+    if (!saved) throw new Error('CREATE_FAILED');
+    return saved;
+  },
 };
 
 async function fetchPurchaseItemsSql(
@@ -191,12 +279,20 @@ async function fetchPurchaseItemsSql(
           s.date AS invoice_date,
           s.customer_id AS supplier_id,
           COALESCE(NULLIF(TRIM(sup.name), ''), NULLIF(TRIM(c.name), ''), s.customer_name, '') AS supplier_name,
+          it.id AS sale_item_id,
+          it.product_id,
           it.item_code,
           it.item_name,
           it.quantity,
           it.unit,
+          it.unit_price,
+          it.vat_rate,
+          it.discount_rate,
           it.expiry_date,
-          it.batch_no
+          it.batch_no,
+          s.trcode,
+          s.fiche_type,
+          s.payment_method
         FROM ${itemsTable} it
         INNER JOIN ${salesTable} s ON s.id = it.invoice_id
         LEFT JOIN ${suppliersTable} sup ON sup.id = s.customer_id
@@ -232,6 +328,7 @@ async function fetchProductCardItemsSql(
           NULL AS invoice_date,
           NULL AS supplier_id,
           '' AS supplier_name,
+          p.id AS product_id,
           p.code AS item_code,
           COALESCE(NULLIF(TRIM(p.name), ''), p.code, '') AS item_name,
           COALESCE(p.stock, 0) AS quantity,
@@ -275,6 +372,7 @@ async function fetchLotItemsSql(
               NULL AS invoice_date,
               NULL AS supplier_id,
               '' AS supplier_name,
+              lot.product_id AS product_id,
               COALESCE(p.code, '') AS item_code,
               COALESCE(NULLIF(TRIM(p.name), ''), lot.lot_no, '') AS item_name,
               COALESCE(lot.quantity, 0) AS quantity,
@@ -324,7 +422,7 @@ async function fetchPurchaseItemsRest(
   const salesRows = await postgrest.get<Record<string, unknown>[]>(
     `/${salesTable}`,
     {
-      select: 'id,fiche_no,date,customer_id,customer_name,trcode,fiche_type,is_cancelled',
+      select: 'id,fiche_no,date,customer_id,customer_name,trcode,fiche_type,is_cancelled,payment_method',
       id: `in.(${invoiceIds.join(',')})`,
       limit: '5000',
     },
@@ -368,6 +466,10 @@ async function fetchPurchaseItemsRest(
           invoice_date: sale.date,
           supplier_id: sale.customer_id,
           supplier_name: names.get(String(sale.customer_id)) || sale.customer_name || '',
+          sale_item_id: item.id,
+          trcode: sale.trcode,
+          fiche_type: sale.fiche_type,
+          payment_method: sale.payment_method,
         },
         todayYmd,
       );
@@ -403,6 +505,7 @@ async function fetchProductCardItemsRest(
           invoice_date: '',
           supplier_id: '',
           supplier_name: '',
+          product_id: row.id,
           item_code: row.code,
           item_name: row.name || row.code,
           quantity: row.stock,
@@ -453,6 +556,7 @@ async function fetchLotItemsRest(
           invoice_date: '',
           supplier_id: '',
           supplier_name: '',
+          product_id: lot.product_id,
           item_code: product?.code,
           item_name: product?.name || lot.lot_no,
           quantity: lot.quantity,
@@ -464,4 +568,177 @@ async function fetchLotItemsRest(
       );
     })
     .filter((row): row is ExpiringPurchaseItem => row != null);
+}
+
+async function fetchLastPurchaseForProduct(
+  productId?: string,
+  itemCode?: string,
+): Promise<ExpiringPurchaseItem | null> {
+  const pid = String(productId || '').trim();
+  const code = String(itemCode || '').trim();
+  if (!pid && !code) return null;
+  const fn = normalizeFirmTableNr(ERP_SETTINGS.firmNr);
+  const pn = String(ERP_SETTINGS.periodNr ?? '01').padStart(2, '0');
+  const todayYmd = localTodayDateKey();
+  try {
+    if (DB_SETTINGS.connectionProvider === 'rest_api') {
+      return await fetchLastPurchaseRest(fn, pn, todayYmd, pid, code);
+    }
+    return await fetchLastPurchaseSql(fn, pn, todayYmd, pid, code);
+  } catch (e) {
+    console.warn('[expiryReports] son alış tedarikçisi okunamadı:', e);
+    return null;
+  }
+}
+
+async function fetchLastPurchaseSql(
+  fn: string,
+  pn: string,
+  todayYmd: string,
+  productId: string,
+  itemCode: string,
+): Promise<ExpiringPurchaseItem | null> {
+  const salesTable = `rex_${fn}_${pn}_sales`;
+  const itemsTable = `rex_${fn}_${pn}_sale_items`;
+  const suppliersTable = `rex_${fn}_suppliers`;
+  const customersTable = `rex_${fn}_customers`;
+  const sourceTrcodes = PURCHASE_ONLY_TRCODES.join(', ');
+  const { rows } = await postgres.query(
+    `
+        SELECT
+          s.id AS invoice_id,
+          s.fiche_no AS invoice_no,
+          s.date AS invoice_date,
+          s.customer_id AS supplier_id,
+          COALESCE(NULLIF(TRIM(sup.name), ''), NULLIF(TRIM(c.name), ''), s.customer_name, '') AS supplier_name,
+          it.id AS sale_item_id,
+          it.product_id,
+          it.item_code,
+          it.item_name,
+          it.quantity,
+          it.unit,
+          it.unit_price,
+          it.vat_rate,
+          it.discount_rate,
+          it.expiry_date,
+          it.batch_no,
+          s.trcode,
+          s.fiche_type,
+          s.payment_method
+        FROM ${itemsTable} it
+        INNER JOIN ${salesTable} s ON s.id = it.invoice_id
+        LEFT JOIN ${suppliersTable} sup ON sup.id = s.customer_id
+        LEFT JOIN ${customersTable} c ON c.id = s.customer_id
+        WHERE (
+            ($1 <> '' AND (it.product_id::text = $1 OR it.item_code = $1))
+            OR ($2 <> '' AND it.item_code = $2)
+          )
+          AND (
+            COALESCE(s.trcode, 0) IN (${sourceTrcodes})
+            OR LOWER(COALESCE(s.fiche_type, '')) IN ('purchase_invoice', 'a')
+          )
+          AND COALESCE(s.trcode, 0) NOT IN (2, 3, 6)
+          AND LOWER(COALESCE(s.fiche_type, '')) <> 'return_invoice'
+          AND COALESCE(s.is_cancelled, false) = false
+        ORDER BY s.date DESC NULLS LAST
+        LIMIT 1
+      `,
+    [productId, itemCode],
+    queryOpts(fn, pn),
+  );
+  const row = rows[0];
+  return row ? rowToExpiringItem(row, todayYmd) : null;
+}
+
+async function fetchLastPurchaseRest(
+  fn: string,
+  pn: string,
+  todayYmd: string,
+  productId: string,
+  itemCode: string,
+): Promise<ExpiringPurchaseItem | null> {
+  const { postgrest } = await import('./postgrestClient');
+  const itemsTable = `rex_${fn}_${pn}_sale_items`;
+  const salesTable = `rex_${fn}_${pn}_sales`;
+  const suppliersTable = `rex_${fn}_suppliers`;
+  const customersTable = `rex_${fn}_customers`;
+  const ors: string[] = [];
+  if (productId) {
+    ors.push(`product_id.eq.${productId}`);
+    ors.push(`item_code.eq.${productId}`);
+  }
+  if (itemCode && itemCode !== productId) {
+    ors.push(`item_code.eq.${itemCode}`);
+  }
+  if (!ors.length) return null;
+  const itemRows = await postgrest.get<Record<string, unknown>[]>(
+    `/${itemsTable}`,
+    {
+      select: '*',
+      or: `(${ors.join(',')})`,
+      limit: '400',
+    },
+    { schema: 'public' },
+  ).catch(() => [] as Record<string, unknown>[]);
+  const invoiceIds = Array.from(new Set((itemRows || []).map((row) => String(row.invoice_id || '')).filter(Boolean)));
+  if (!invoiceIds.length) return null;
+  const salesRows = await postgrest.get<Record<string, unknown>[]>(
+    `/${salesTable}`,
+    {
+      select: 'id,fiche_no,date,customer_id,customer_name,trcode,fiche_type,is_cancelled,payment_method',
+      id: `in.(${invoiceIds.join(',')})`,
+      limit: '400',
+    },
+    { schema: 'public' },
+  ).catch(() => [] as Record<string, unknown>[]);
+  const salesById = new Map((salesRows || []).map((row) => [String(row.id), row]));
+  const ranked = (itemRows || [])
+    .map((item) => {
+      const sale = salesById.get(String(item.invoice_id));
+      if (!sale) return null;
+      if (sale.is_cancelled === true || sale.is_cancelled === 'true') return null;
+      if (!isPurchaseSourceSaleRow(sale)) return null;
+      return { item, sale, date: expiryYmd(sale.date) || String(sale.date || '') };
+    })
+    .filter((x): x is NonNullable<typeof x> => x != null)
+    .sort((a, b) => String(b.date).localeCompare(String(a.date)));
+  const top = ranked[0];
+  if (!top) return null;
+  const supplierId = String(top.sale.customer_id || '');
+  let supplierName = String(top.sale.customer_name || '');
+  if (supplierId) {
+    const named = await postgrest
+      .get<Record<string, unknown>[]>(
+        `/${suppliersTable}`,
+        { select: 'id,name', id: `eq.${supplierId}`, limit: '1' },
+        { schema: 'public' },
+      )
+      .catch(() => [] as Record<string, unknown>[]);
+    if (named[0]?.name) supplierName = String(named[0].name);
+    else {
+      const cust = await postgrest
+        .get<Record<string, unknown>[]>(
+          `/${customersTable}`,
+          { select: 'id,name', id: `eq.${supplierId}`, limit: '1' },
+          { schema: 'public' },
+        )
+        .catch(() => [] as Record<string, unknown>[]);
+      if (cust[0]?.name) supplierName = String(cust[0].name);
+    }
+  }
+  return rowToExpiringItem(
+    {
+      ...top.item,
+      invoice_id: top.sale.id,
+      invoice_no: top.sale.fiche_no,
+      invoice_date: top.sale.date,
+      supplier_id: top.sale.customer_id,
+      supplier_name: supplierName,
+      sale_item_id: top.item.id,
+      trcode: top.sale.trcode,
+      fiche_type: top.sale.fiche_type,
+      payment_method: top.sale.payment_method,
+    },
+    todayYmd,
+  );
 }

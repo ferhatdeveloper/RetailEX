@@ -51,7 +51,7 @@ import {
   summarizePurchasePromotionReport,
   type PurchasePromotionReportLine,
 } from '../../utils/purchasePromotionReport';
-import { buildPosZReportForRange, isReturnSale } from '../../utils/posZReport';
+import { applyExtraCashCollections, buildPosZReportForRange, isReturnSale, posZCollectedAmount } from '../../utils/posZReport';
 import { normalizePaymentMethodBucket, paymentMethodBucketTranslationKey } from '../../utils/paymentMethodUtils';
 import { extraCustomerCollectionsNotOnSales, saleCollectedSplit } from '../../utils/saleCollectedAmounts';
 import { BeautyServiceReportCrmModal } from './BeautyServiceReportCrmModal';
@@ -2773,7 +2773,11 @@ export function ReportsModule({
     const canceledSalesRows = allDaySales.filter((s) => isRemovedSaleStatus(s.status) && !isReturnSale(s));
 
     const buildFromErpSales = () => {
-      const base = buildPosZReportForRange(reportRangeSales, selectedDateFrom, selectedDateTo, dateLabel);
+      const extraCash = extraCustomerCollectionsNotOnSales(kasaLinesForSelectedDate, reportRangeSales);
+      const base = applyExtraCashCollections(
+        buildPosZReportForRange(reportRangeSales, selectedDateFrom, selectedDateTo, dateLabel),
+        extraCash,
+      );
       const netSales = base.totalAmount - base.refundAmount;
       return {
         dateFrom: selectedDateFrom,
@@ -2809,6 +2813,7 @@ export function ReportsModule({
       const totalAmount = restOrdersClosedOnSelectedDate.reduce((sum, o) => sum + restOrderNetAmount(o), 0);
       let cashAmount = 0;
       let cardAmount = 0;
+      let creditAmount = 0;
       restOrdersClosedOnSelectedDate.forEach((o: any) => {
         const split = saleCollectedSplit({
           total: restOrderNetAmount(o),
@@ -2816,7 +2821,11 @@ export function ReportsModule({
         });
         cashAmount += Number(split.cash) || 0;
         cardAmount += Number(split.card) || 0;
+        creditAmount += Number(split.credit) || 0;
       });
+      const extraCash = extraCustomerCollectionsNotOnSales(kasaLinesForSelectedDate, reportRangeSales);
+      cashAmount += extraCash;
+      creditAmount = Math.max(0, creditAmount - extraCash);
       const totalDiscount = restOrdersClosedOnSelectedDate.reduce(
         (sum, o) => sum + Number((o as any).discount_amount || 0),
         0
@@ -2840,6 +2849,8 @@ export function ReportsModule({
         netAfterExpenses: totalAmount - totalExpensesForSelectedDate,
         cashAmount,
         cardAmount,
+        creditAmount,
+        otherAmount: 0,
         totalDiscount,
         firstSale: ro.length > 0 ? String(ro[0].order_no || ro[0].id || '-') : '-',
         lastSale: ro.length > 0 ? String(ro[ro.length - 1].order_no || ro[ro.length - 1].id || '-') : '-',
@@ -4169,7 +4180,7 @@ export function ReportsModule({
 
         <div class="section-title">${escHtml(tm('reportsZPrintAccountSummary'))}</div>
         <div class="formula">
-          <div class="row"><span class="label">${escHtml(tm('reportsZPrintCashCardCollected'))}</span><span>${formatNumber(zReport.totalAmount, 2, false)}</span></div>
+          <div class="row"><span class="label">${escHtml(tm('reportsZPrintCashCardCollected'))}</span><span>${formatNumber(posZCollectedAmount(zReport), 2, false)}</span></div>
           <div class="row"><span class="label">${escHtml(tm('reportsZPrintTotalExpense'))}</span><span>- ${formatNumber(zReport.totalExpenses, 2, false)}</span></div>
           <div class="row final"><span>${escHtml(tm('reportsZPrintNetAfterExpensesUpper'))}</span><span>${formatNumber(zReport.netAfterExpenses, 2, false)}</span></div>
         </div>
@@ -5639,6 +5650,10 @@ export function ReportsModule({
                         <div className="flex items-center justify-between p-4 bg-gray-50 rounded-lg">
                           <span>{tm('reportsCardPayments')}</span>
                           <span className="text-lg">{formatNumber(zReport.cardAmount, 2, false)}</span>
+                        </div>
+                        <div className="flex items-center justify-between p-4 bg-gray-50 rounded-lg">
+                          <span>{tm('kalanCari')}</span>
+                          <span className="text-lg">{formatNumber(zReport.creditAmount ?? 0, 2, false)}</span>
                         </div>
                         {(zReport.cashierStats?.length ?? 0) > 0 && (
                           <div className="mt-4 overflow-x-auto">

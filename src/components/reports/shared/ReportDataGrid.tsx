@@ -4,6 +4,7 @@ import {
   DevExDataGrid,
   type DevExDataGridProps,
 } from '../../shared/DevExDataGrid';
+import { isReportSumColumnId } from '../../../utils/reportGridChrome';
 
 /** Malzeme / Envanter Listesi ile aynı sayfa boyutu. */
 export const REPORT_GRID_PAGE_SIZE = 50;
@@ -15,7 +16,9 @@ export const REPORT_GRID_DEFAULTS = {
   enablePagination: true as const,
   enableColumnVisibility: true as const,
   showColumnVisibilityToolbar: true as const,
-  enableExcelExport: false as const,
+  enableExcelExport: true as const,
+  enablePrint: true as const,
+  autoFooterSums: true as const,
   density: 'compact' as const,
   pageSize: REPORT_GRID_PAGE_SIZE,
   pageSizeOptions: REPORT_GRID_PAGE_SIZE_OPTIONS,
@@ -129,7 +132,7 @@ export function ReportColumnTable<T extends object>({
   const footerSumColumns = useMemo(
     () =>
       columns
-        .filter((c) => c.footerSum)
+        .filter((c) => c.footerSum || (c.type === 'number' && isReportSumColumnId(c.key)))
         .map((c) => ({
           columnId: c.key,
           getValue: (row: T) => {

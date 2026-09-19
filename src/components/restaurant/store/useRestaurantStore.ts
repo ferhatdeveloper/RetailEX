@@ -30,6 +30,10 @@ export type CloseBillSaleOverride = {
     subtotal: number;
     discount: number;
     total: number;
+    customerId?: string;
+    customerName?: string;
+    /** POSPaymentModal satırları — karma nakit+veresiye CH_TAHSILAT için zorunlu */
+    payments?: Array<{ method: string; amount: number; currency?: string }>;
 };
 
 interface RestaurantState {
@@ -525,6 +529,17 @@ export const useRestaurantStore = create<RestaurantState>()(
                     const effectiveTotal = saleOv
                         ? Number(saleOv.total ?? 0)
                         : (tableSnapshot.total || 0) - orderDiscountAmount;
+                    const saleCustomerId = saleOv?.customerId ?? tableSnapshot.customerId;
+                    const saleCustomerName = saleOv?.customerName ?? tableSnapshot.customerName;
+                    const salePayments = Array.isArray(saleOv?.payments) && saleOv.payments.length > 0
+                        ? saleOv.payments
+                        : Array.isArray(paymentData.payments)
+                            ? paymentData.payments.map((p: { method?: string; amount?: number; currency?: string }) => ({
+                                method: p.method === 'gateway' ? 'card' : String(p.method || 'cash'),
+                                amount: Number(p.amount) || 0,
+                                currency: p.currency,
+                            }))
+                            : undefined;
 
                     try {
                         const salesStore = useSaleStore.getState();
@@ -544,6 +559,9 @@ export const useRestaurantStore = create<RestaurantState>()(
                                 total: o.price * o.quantity
                             })),
                             paymentMethod,
+                            customerId: saleCustomerId,
+                            customerName: saleCustomerName,
+                            ...(salePayments && salePayments.length > 0 ? { payments: salePayments } : {}),
                             status: 'completed',
                             cashier: tableSnapshot.waiter || 'Garson',
                             /** Günlük raporda ERP fişi silindiğinde aynı işlemin RES-* adisyon satırı tekrar çıkmasın diye */
@@ -556,12 +574,12 @@ export const useRestaurantStore = create<RestaurantState>()(
                     }
 
                     try {
-                        if (tableSnapshot.customerId) {
+                        if (saleCustomerId) {
                             const customerStore = useCustomerStore.getState();
-                            await customerStore.updatePurchaseHistory(tableSnapshot.customerId, effectiveTotal);
+                            await customerStore.updatePurchaseHistory(saleCustomerId, effectiveTotal);
                             // Veresiye cari borcu salesAPI → invoicesAPI.create içinde tek kez yazılır; burada tekrar ekleme.
                             const points = Math.floor(effectiveTotal / 100);
-                            if (points > 0) await customerStore.updatePoints(tableSnapshot.customerId, points);
+                            if (points > 0) await customerStore.updatePoints(saleCustomerId, points);
                         }
                     } catch (e) { console.error('[closeBill] customer update failed:', e); }
 

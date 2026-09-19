@@ -165,6 +165,51 @@ function receiptKey(raw: unknown): string {
   return String(raw ?? '').trim().toLowerCase();
 }
 
+/** Güzellik/klinik satış: kayıtlı tahsilat varsa o; yoksa belge kırılımı. */
+export function beautySalePocketCollected(sale: {
+  total?: number;
+  payment_method?: string;
+  paid_amount?: number;
+  remaining_amount?: number;
+  payments?: SalePaymentRow[] | null;
+}): number {
+  const paid = Number(sale.paid_amount);
+  const rem = Number(sale.remaining_amount);
+  if (Number.isFinite(paid) && (Math.abs(paid) > 1e-9 || Math.abs(rem) > 1e-9)) {
+    return Math.max(0, paid);
+  }
+  return Math.max(
+    0,
+    saleCollectedSplit({
+      total: Number(sale.total) || 0,
+      paymentMethod: sale.payment_method,
+      payments: sale.payments,
+    }).collected,
+  );
+}
+
+export function beautySaleRemainingCari(sale: {
+  total?: number;
+  payment_method?: string;
+  paid_amount?: number;
+  remaining_amount?: number;
+  payments?: SalePaymentRow[] | null;
+}): number {
+  const paid = Number(sale.paid_amount);
+  const rem = Number(sale.remaining_amount);
+  if (Number.isFinite(rem) && (Math.abs(paid) > 1e-9 || Math.abs(rem) > 1e-9)) {
+    return Math.max(0, rem);
+  }
+  return Math.max(
+    0,
+    saleCollectedSplit({
+      total: Number(sale.total) || 0,
+      paymentMethod: sale.payment_method,
+      payments: sale.payments,
+    }).remaining,
+  );
+}
+
 /**
  * Aynı gün peşin satış / payments[] nakit satırı zaten KPI'da.
  * Buraya yalnızca:

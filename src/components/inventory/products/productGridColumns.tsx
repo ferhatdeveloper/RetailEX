@@ -216,11 +216,20 @@ export function buildProductGridColumns(options: {
     const meta = PRODUCT_GRID_COLUMN_META[id];
     const header = (labelOverrides[id] ?? meta.label).toUpperCase();
 
+    const formatMeta =
+      meta.format === 'date'
+        ? { filterKind: 'date' as const, format: 'date' as const }
+        : meta.format === 'currency' || meta.format === 'currencyUsd' || meta.format === 'currencyEur'
+          ? { filterKind: 'number' as const, format: 'currency' as const, align: 'right' as const }
+          : meta.format === 'number' || meta.format === 'percent'
+            ? { filterKind: 'number' as const, format: 'number' as const, align: 'right' as const }
+            : undefined;
+
     return columnHelper.accessor(id as keyof Product, {
       id,
       header,
       size: meta.size,
-      meta: meta.format === 'date' ? { filterKind: 'date', format: 'date' } : undefined,
+      meta: formatMeta,
       cell: (info) => {
         const raw = info.getValue();
         if (id === 'stock') {

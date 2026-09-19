@@ -2,7 +2,7 @@
  * ERP çekirdek raporları — cari yaşlandırma, cari özet, kasa/banka, alış özeti, vade/tahsilat.
  */
 import { useCallback, useEffect, useMemo, useState } from 'react';
-import { Download, Loader2, RefreshCw } from 'lucide-react';
+import { Loader2, RefreshCw } from 'lucide-react';
 import { toast } from 'sonner';
 import { useLanguage } from '../../contexts/LanguageContext';
 import { useTheme } from '../../contexts/ThemeContext';
@@ -114,16 +114,6 @@ function ReportShell({
               {loading ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <RefreshCw className="h-3.5 w-3.5" />}
               {tm('refresh') || 'Yenile'}
             </button>
-            {onExport && (
-              <button
-                type="button"
-                onClick={onExport}
-                className="inline-flex items-center gap-1.5 rounded-lg bg-emerald-600 px-3 py-2 text-xs font-bold text-white hover:bg-emerald-700"
-              >
-                <Download className="h-3.5 w-3.5" />
-                Excel / CSV
-              </button>
-            )}
           </div>
         </div>
       </div>
@@ -436,6 +426,15 @@ const CASH_OUTFLOW_TYPES = new Set([
   'GIDER_PUSULASI',
   'BANKA_YATIRILAN',
 ]);
+/** Belge/fatura tutarı kasa hareketi değildir — veresiye 100 nakit akışa yazılmaz. */
+const NOT_CASH_FLOW_TYPES = new Set([
+  'SATIS_FATURASI',
+  'HIZMET_FATURASI',
+  'ALIS_FATURASI',
+  'SALES_INVOICE',
+  'PURCHASE_INVOICE',
+  'RETURN_INVOICE',
+]);
 
 function cashBankTxnLabel(tm: (k: string) => string, raw: string): string {
   const tt = String(raw || '').toUpperCase();
@@ -536,44 +535,32 @@ export function CashBankMovementReport() {
     return name;
   };
 
-  const totals = useMemo(() => {
-    let inflow = 0;
-    let outflow = 0;
-    let transfer = 0;
-    let net = 0;
-    for (const r of rows) {
-      const tt = String(r.transactionType || '').toUpperCase();
-      const amount = Math.abs(Number(r.amount) || 0);
-      const signed = Number(r.netAmount) || 0;
-      net += signed;
-      if (tt === 'VIRMAN') {
-        transfer += signed;
-      } else if (CASH_INFLOW_TYPES.has(tt)) {
-        inflow += amount;
-      } else if (CASH_OUTFLOW_TYPES.has(tt)) {
-        outflow += amount;
-      } else if (signed >= 0) {
-        inflow += amount;
-      } else {
-        outflow += amount;
-      }
-    }
-    return { inflow, outflow, transfer, net };
-  }, [rows]);
-
-  const tableCls = darkMode ? 'bg-gray-800 border-gray-700' : 'bg-white border-gray-200';
   const inputCls = darkMode ? 'bg-gray-900 border-gray-600' : 'bg-white border-gray-300';
 
   const gridRows = useMemo(
     () =>
-      rows.map((r) => ({
-        ...r,
-        sourceLabel: r.source === 'cash' ? tm('erpSourceCash') : tm('erpSourceBank'),
-        registerLabel: displayRegister(r),
-        txnLabel: cashBankTxnLabel(tm, r.transactionType),
-        descLabel: String(r.definition || '').trim(),
-        accountLabel: String(r.accountName || '').trim(),
-      })),
+      rows
+        .filter((r) => !NOT_CASH_FLOW_TYPES.has(String(r.transactionType || '').toUpperCase()))
+        .map((r) => {
+          const tt = String(r.transactionType || '').toUpperCase();
+          const amount = Math.abs(Number(r.amount) || 0);
+          const signed = Number(r.netAmount) || 0;
+          const inflowAmount = CASH_INFLOW_TYPES.has(tt) ? amount : 0;
+          const outflowAmount = CASH_OUTFLOW_TYPES.has(tt) ? amount : 0;
+          const transferAmount = tt === 'VIRMAN' ? signed : 0;
+          return {
+            ...r,
+            sourceLabel: r.source === 'cash' ? tm('erpSourceCash') : tm('erpSourceBank'),
+            registerLabel: displayRegister(r),
+            txnLabel: cashBankTxnLabel(tm, r.transactionType),
+            descLabel: String(r.definition || '').trim(),
+            accountLabel: String(r.accountName || '').trim(),
+            inflowAmount,
+            outflowAmount,
+            transferAmount,
+            classifiedNet: inflowAmount - outflowAmount + transferAmount,
+          };
+        }),
     [rows, tm],
   );
 
@@ -588,13 +575,27 @@ export function CashBankMovementReport() {
         { id: 'descLabel', header: tm('reportsCashColDesc'), size: 200 },
         { id: 'accountLabel', header: tm('erpColAccount'), size: 160 },
         {
-          id: 'netAmount',
-          header: tm('erpColAmount'),
+          id: 'inflowAmount',
+          header: tm('erpInflow'),
+          align: 'right',
+          size: 120,
+          cell: (r) => (r.inflowAmount ? formatLedgerAmount(r.inflowAmount, currency) : '—'),
+        },
+        {
+          id: 'outflowAmount',
+          header: tm('erpOutflow'),
+          align: 'right',
+          size: 120,
+          cell: (r) => (r.outflowAmount ? formatLedgerAmount(r.outflowAmount, currency) : '—'),
+        },
+        {
+          id: 'classifiedNet',
+          header: tm('erpNetMovement'),
           align: 'right',
           size: 130,
           cell: (r) => (
-            <span className={`font-semibold ${r.netAmount < 0 ? 'text-red-500' : 'text-emerald-600'}`}>
-              {formatLedgerAmount(r.netAmount, currency)}
+            <span className={`font-semibold ${r.classifiedNet < 0 ? 'text-red-500' : 'text-emerald-600'}`}>
+              {formatLedgerAmount(r.classifiedNet, currency)}
             </span>
           ),
         },
@@ -611,8 +612,8 @@ export function CashBankMovementReport() {
       onExport={() =>
         exportCsv(
           'kasa_banka_hareket',
-          ['Kaynak', 'Kasa/Banka', 'Fiş', 'Tarih', 'Tip', 'Açıklama', 'Cari', 'Net'],
-          rows.map((r) => [
+          ['Kaynak', 'Kasa/Banka', 'Fiş', 'Tarih', 'Tip', 'Açıklama', 'Cari', 'Giriş', 'Çıkış', 'Net'],
+          gridRows.map((r) => [
             r.source,
             displayRegister(r),
             r.ficheNo,
@@ -620,7 +621,9 @@ export function CashBankMovementReport() {
             cashBankTxnLabel(tm, r.transactionType),
             r.definition,
             r.accountName,
-            String(r.netAmount),
+            String(r.inflowAmount),
+            String(r.outflowAmount),
+            String(r.classifiedNet),
           ]),
         )
       }
@@ -631,38 +634,30 @@ export function CashBankMovementReport() {
         </>
       }
     >
-      <div className="grid grid-cols-1 gap-3 md:grid-cols-4">
-        <div className={`rounded-lg border p-3 ${tableCls}`}>
-          <p className="text-xs opacity-60">{tm('erpInflow')}</p>
-          <p className="text-xl font-bold text-emerald-500">
-            {formatLedgerAmount(totals.inflow, currency)}
-          </p>
-        </div>
-        <div className={`rounded-lg border p-3 ${tableCls}`}>
-          <p className="text-xs opacity-60">{tm('erpOutflow')}</p>
-          <p className="text-xl font-bold text-red-500">
-            {formatLedgerAmount(totals.outflow, currency)}
-          </p>
-        </div>
-        <div className={`rounded-lg border p-3 ${tableCls}`}>
-          <p className="text-xs opacity-60">{tm('erpTxnVirman')}</p>
-          <p className="text-xl font-bold text-blue-500">
-            {formatLedgerAmount(totals.transfer, currency)}
-          </p>
-        </div>
-        <div className={`rounded-lg border p-3 ${tableCls}`}>
-          <p className="text-xs opacity-60">{tm('erpNetMovement')}</p>
-          <p className="text-xl font-bold">
-            {formatLedgerAmount(totals.net, currency)}
-          </p>
-        </div>
-      </div>
       <div className="h-[520px]">
         <DevExDataGrid
           data={gridRows}
           columns={gridColumns}
           enableFiltering
           {...REPORT_GRID_DEFAULTS}
+          footerLabel={tm('reportsTotalUpper') || tm('total') || 'Toplam'}
+          footerSumColumns={[
+            {
+              columnId: 'inflowAmount',
+              getValue: (r) => Number(r.inflowAmount) || 0,
+              format: (n) => formatLedgerAmount(n, currency),
+            },
+            {
+              columnId: 'outflowAmount',
+              getValue: (r) => Number(r.outflowAmount) || 0,
+              format: (n) => formatLedgerAmount(n, currency),
+            },
+            {
+              columnId: 'classifiedNet',
+              getValue: (r) => Number(r.classifiedNet) || 0,
+              format: (n) => formatLedgerAmount(n, currency),
+            },
+          ]}
           height="100%"
         />
       </div>
@@ -1560,7 +1555,6 @@ export function CariExtractReport() {
     void load();
   }, [load]);
 
-  const tableCls = darkMode ? 'bg-gray-800 border-gray-700' : 'bg-white border-gray-200';
   const inputCls = darkMode ? 'bg-gray-900 border-gray-600' : 'bg-white border-gray-300';
   const closing = rows.length ? rows[rows.length - 1].balance : 0;
 
@@ -1645,16 +1639,30 @@ export function CariExtractReport() {
         </>
       }
     >
-      <div className={`rounded-lg border p-3 ${tableCls}`}>
-        <p className="text-xs opacity-60">{tm('erpColBalance')}</p>
-        <p className="text-xl font-bold">{formatLedgerAmount(closing, currency)}</p>
-      </div>
       <div className="h-[520px]">
         <DevExDataGrid
           data={gridRows}
           columns={gridColumns}
           enableFiltering
           {...REPORT_GRID_DEFAULTS}
+          footerLabel={tm('reportsTotalUpper') || tm('total') || 'Toplam'}
+          footerSumColumns={[
+            {
+              columnId: 'debit',
+              getValue: (r) => Number(r.debit) || 0,
+              format: (n) => formatLedgerAmount(n, currency),
+            },
+            {
+              columnId: 'credit',
+              getValue: (r) => Number(r.credit) || 0,
+              format: (n) => formatLedgerAmount(n, currency),
+            },
+            {
+              columnId: 'balance',
+              getValue: () => 0,
+              format: () => formatLedgerAmount(closing, currency),
+            },
+          ]}
           height="100%"
         />
       </div>

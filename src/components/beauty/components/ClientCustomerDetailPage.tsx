@@ -56,6 +56,7 @@ import type {
     BeautyCustomerHealth,
 } from '../../../types/beauty';
 import { formatMoneyAmount } from '../../../utils/formatMoney';
+import { beautySalePocketCollected } from '../../../utils/saleCollectedAmounts';
 import { fetchCurrentAccounts } from '../../../services/api/currentAccounts';
 import { ERP_SETTINGS } from '../../../services/postgres';
 import { toast } from 'sonner';
@@ -622,7 +623,7 @@ export function ClientCustomerDetailPage({ customerId, onBack }: ClientCustomerD
             return { totalSpent: 0, appointmentCount: 0, lastVisitLabel: '-' };
         }
         const paidSales = salesHistory.filter(s => (s.payment_status || 'paid') === 'paid');
-        const sumSales = paidSales.reduce((acc, s) => acc + Number(s.total ?? 0), 0);
+        const sumSales = paidSales.reduce((acc, s) => acc + beautySalePocketCollected(s), 0);
         const totalSpent = sumSales > 0 ? sumSales : Number(selected.total_spent ?? 0);
         const appointmentCount =
             pastAppointments.length > 0 ? pastAppointments.length : Number(selected.appointment_count ?? 0);

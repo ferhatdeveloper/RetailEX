@@ -478,21 +478,21 @@ export function StockPriceChangeSlipsModule() {
             </button>
           </div>
         </div>
-      </div>
+        </div>
 
       <div className="flex-1 min-h-0 flex flex-col overflow-hidden p-3 gap-3">
         {drift.length > 0 ? (
           <div className="shrink-0 rounded border border-blue-200 bg-white">
             <div className="flex flex-wrap items-center justify-between gap-2 px-3 py-2 border-b border-blue-100">
-              <div>
+            <div>
                 <div className="text-xs font-semibold text-gray-800">
-                  {tm('stockPriceSlipsDriftTitle') || 'Son fiş fiyatı ile kartı karşılaştır'}
+                {tm('stockPriceSlipsDriftTitle') || 'Son fiş fiyatı ile kartı karşılaştır'}
                 </div>
                 <p className="text-[10px] text-gray-500 mt-0.5">
-                  {tm('stockPriceSlipsDriftDesc') ||
+                {tm('stockPriceSlipsDriftDesc') ||
                     'Fiş yalnızca denetim izidir; kart fiyatını tekrar yazmaz.'}
-                </p>
-              </div>
+              </p>
+            </div>
               <div className="flex items-center gap-2">
                 <label className="flex items-center gap-1 text-[10px] text-gray-600">
                   <input
@@ -508,16 +508,16 @@ export function StockPriceChangeSlipsModule() {
                 <button
                   type="button"
                   className="px-2 py-1 text-[10px] bg-blue-600 text-white hover:bg-blue-700 disabled:opacity-50"
-                  onClick={() => void createSlipFromSelection()}
-                  disabled={creatingSlip || selectedDrift.size === 0}
-                >
-                  {tm('stockPriceSlipsDriftCreate') || 'Seçilenler için fiş oluştur'}
+                onClick={() => void createSlipFromSelection()}
+                disabled={creatingSlip || selectedDrift.size === 0}
+              >
+                {tm('stockPriceSlipsDriftCreate') || 'Seçilenler için fiş oluştur'}
                 </button>
               </div>
             </div>
             <ReportColumnTable data={drift} columns={driftCols} height={240} />
           </div>
-        ) : null}
+          ) : null}
 
         <div className="flex-1 min-h-0 rounded border border-gray-200 bg-white overflow-hidden">
           {loading ? (
@@ -599,8 +599,8 @@ export function StockPriceChangeSlipsModule() {
         >
           <div className="flex items-center justify-between px-4 py-2 border-b bg-blue-600 text-white shrink-0">
             <h3 className="text-sm font-semibold">{tm('stockPriceSlipsNew') || 'Yeni fiş'}</h3>
-            <button
-              type="button"
+                            <button
+                              type="button"
               onClick={() => !savingCreate && setShowCreate(false)}
               className="p-1 hover:bg-white/10"
               aria-label={tm('stockPriceSlipsClose')}
@@ -629,7 +629,7 @@ export function StockPriceChangeSlipsModule() {
                     >
                       <span className="truncate">{p.name}</span>
                       <span className="font-mono text-[10px] text-gray-500 shrink-0">{productCodeOf(p)}</span>
-                    </button>
+                            </button>
                   ))}
                 </div>
               ) : searchQ.trim().length >= 2 && !searching ? (
@@ -646,7 +646,7 @@ export function StockPriceChangeSlipsModule() {
               <p className="text-xs text-gray-500 py-6 text-center">{tm('stockPriceSlipsNeedLine')}</p>
             ) : (
               <div className="overflow-x-auto border border-gray-200 rounded">
-                <table className="w-full text-xs">
+                                  <table className="w-full text-xs">
                   <thead className="bg-gray-50">
                     <tr>
                       <th className="px-2 py-1.5 text-left">{tm('stockPriceSlipsProduct')}</th>
@@ -655,8 +655,8 @@ export function StockPriceChangeSlipsModule() {
                       <th className="px-2 py-1.5 text-right">{tm('stockPriceSlipsNewCost')}</th>
                       <th className="px-2 py-1.5 text-right">{tm('stockPriceSlipsNewSale')}</th>
                       <th className="w-8" />
-                    </tr>
-                  </thead>
+                                      </tr>
+                                    </thead>
                   <tbody>
                     {drafts.map((d) => (
                       <tr key={d.product_id} className="border-t border-gray-100">
@@ -687,7 +687,7 @@ export function StockPriceChangeSlipsModule() {
                               )
                             }
                           />
-                        </td>
+                                          </td>
                         <td className="px-1">
                           <button
                             type="button"
@@ -697,13 +697,13 @@ export function StockPriceChangeSlipsModule() {
                           >
                             <Trash2 className="w-3.5 h-3.5" />
                           </button>
-                        </td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
-              </div>
-            )}
+                                          </td>
+                                        </tr>
+                                      ))}
+                                    </tbody>
+                                  </table>
+                                </div>
+                              )}
           </PercentBodyModalScrollBody>
           <div className="shrink-0 px-4 py-3 border-t bg-gray-50 flex justify-end gap-2">
             <button
@@ -722,7 +722,7 @@ export function StockPriceChangeSlipsModule() {
             >
               {savingCreate ? tm('saving') || 'Kaydediliyor…' : tm('stockPriceSlipsSaveSlip') || 'Fişi kaydet'}
             </button>
-          </div>
+            </div>
         </PercentBodyModal>
       ) : null}
     </div>

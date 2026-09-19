@@ -1,6 +1,8 @@
 import type { ColumnDef } from '@tanstack/react-table';
 import * as XLSX from 'xlsx';
 import { buildStyledWorksheet } from './excelStyles';
+import { coerceReportNumber, excelCellDisplay, isReportSumColumnId } from './reportGridChrome';
+import { printReportHtml } from './reportHtmlPrint';
 
 function cellText(value: unknown): string {
   if (value == null) return '';
@@ -18,61 +20,83 @@ function headerLabel<T>(col: ColumnDef<T, unknown>): string {
 function coerceNumber(value: unknown): number | null {
   if (typeof value === 'number' && Number.isFinite(value)) return value;
   if (typeof value === 'string') {
-    const cleaned = value.replace(/\s/g, '').replace(/\./g, '').replace(',', '.');
-    const n = Number(cleaned);
-    return Number.isFinite(n) ? n : null;
+    const n = coerceReportNumber(value);
+    return n === 0 && String(value).trim() === '' ? null : n;
   }
   return null;
 }
 
+function columnIdOf<T>(col: ColumnDef<T, unknown>): string {
+  if (col.id) return String(col.id);
+  if ('accessorKey' in col && col.accessorKey != null) return String(col.accessorKey);
+  return '';
+}
+
+function readExportValue<T>(col: ColumnDef<T, unknown>, row: T, rowIdx: number): unknown {
+  if ('accessorKey' in col && col.accessorKey) {
+    return (row as Record<string, unknown>)[String(col.accessorKey)];
+  }
+  if ('accessorFn' in col && typeof col.accessorFn === 'function') {
+    try {
+      return col.accessorFn(row, rowIdx);
+    } catch {
+      return '';
+    }
+  }
+  return (row as Record<string, unknown>)[columnIdOf(col)];
+}
+
+function buildExportAoa<T>(
+  rows: T[],
+  columns: ColumnDef<T, unknown>[],
+): { headers: string[]; aoa: unknown[][] } {
+  const exportCols = columns.filter((c) => c.id !== 'select' && c.id !== 'actions');
+  const headers = exportCols.map((c) => headerLabel(c));
+  const accessorIds = exportCols.map((c) => columnIdOf(c));
+  const aoa: unknown[][] = [headers];
+  const sums = new Array(exportCols.length).fill(0);
+  const summable = exportCols.map((c) => isReportSumColumnId(columnIdOf(c)));
+
+  for (let rowIdx = 0; rowIdx < rows.length; rowIdx++) {
+    const row = rows[rowIdx];
+    const aoaRow: unknown[] = [];
+    for (let i = 0; i < exportCols.length; i++) {
+      const col = exportCols[i]!;
+      const id = accessorIds[i]!;
+      const val = excelCellDisplay(
+        id,
+        readExportValue(col, row, rowIdx),
+        row as Record<string, unknown>,
+      );
+      aoaRow.push(val);
+      if (summable[i]) sums[i] += coerceReportNumber(val);
+    }
+    aoa.push(aoaRow);
+  }
+
+  if (rows.length > 0 && summable.some(Boolean)) {
+    aoa.push(
+      exportCols.map((_, i) => {
+        if (i === 0) return 'Toplam';
+        if (summable[i]) return sums[i];
+        return '';
+      }),
+    );
+  }
+
+  return { headers, aoa };
+}
+
 /**
  * DevExDataGrid / TanStack tablosundan profesyonel stilde Excel (.xlsx) indirir.
- *
- * Stil özellikleri:
- * - Başlık (1. satır, merged): mavi arka plan, beyaz kalın yazı
- * - Alt başlık (2. satır): dosya adı + tarih
- * - Veri başlıkları (3. satır): kalın, mavi arka plan
- * - Zebra satırlar (alternatif slate-100)
- * - Para birimi sütunları: para birimi bazlı ondalık (IQD → 0, USD → 2, KWD → 3)
- * - Tarih sütunları: dd.mm.yyyy
- * - Sayfa düzeni: landscape, kenar boşlukları, yazdırma başlığı, autofilter, donmuş başlık
  */
 export function exportDataGridToExcel<T>(
   rows: T[],
   columns: ColumnDef<T, unknown>[],
   fileName = 'export',
 ): void {
-  const exportCols = columns.filter((c) => c.id !== 'select' && c.id !== 'actions');
-  const headers = exportCols.map((c) => headerLabel(c));
-  const accessorIds = exportCols.map((c) => String(c.id || ''));
+  const { headers, aoa } = buildExportAoa(rows, columns);
 
-  // AOA: [headers, ...data rows]
-  const aoa: unknown[][] = [headers];
-
-  for (let rowIdx = 0; rowIdx < rows.length; rowIdx++) {
-    const row = rows[rowIdx];
-    const aoaRow: unknown[] = [];
-    for (let i = 0; i < exportCols.length; i++) {
-      const col = exportCols[i];
-      const id = accessorIds[i];
-      let val: unknown = '';
-      if ('accessorKey' in col && col.accessorKey) {
-        val = (row as Record<string, unknown>)[String(col.accessorKey)];
-      } else if ('accessorFn' in col && typeof col.accessorFn === 'function') {
-        try {
-          val = col.accessorFn(row, rowIdx);
-        } catch {
-          val = '';
-        }
-      } else {
-        val = (row as Record<string, unknown>)[id];
-      }
-      aoaRow.push(val);
-    }
-    aoa.push(aoaRow);
-  }
-
-  // Para birimi sütunları
   const currencyColumns = headers.filter((h) =>
     /(tutar|fiyat|toplam|harcama|amount|price|total|borç|alacak|bakiye|debt|credit|balance)/i.test(h),
   );
@@ -102,5 +126,43 @@ export function exportDataGridToExcel<T>(
   XLSX.writeFile(wb, `${safeName}.xlsx`);
 }
 
-// Eski davranışı korumak için re-export
+export async function printDataGridHtml<T>(
+  rows: T[],
+  columns: ColumnDef<T, unknown>[],
+  title = 'Rapor',
+): Promise<void> {
+  const { headers, aoa } = buildExportAoa(rows, columns);
+  const bodyRows = aoa.slice(1);
+  const tableRows = bodyRows
+    .map(
+      (r, idx) =>
+        `<tr class="${idx === bodyRows.length - 1 && rows.length > 0 ? 'total' : ''}">${r
+          .map((c) => `<td>${escapeHtml(cellText(c))}</td>`)
+          .join('')}</tr>`,
+    )
+    .join('');
+  const html = `<!DOCTYPE html><html><head><meta charset="utf-8"/><title>${escapeHtml(title)}</title>
+<style>
+  body{font-family:Segoe UI,Arial,sans-serif;font-size:12px;color:#0f172a;margin:16px}
+  h1{font-size:16px;margin:0 0 12px}
+  table{border-collapse:collapse;width:100%}
+  th,td{border:1px solid #cbd5e1;padding:4px 6px;text-align:left}
+  th{background:#e2e8f0}
+  tr.total td{font-weight:700;background:#eff6ff}
+</style></head><body>
+<h1>${escapeHtml(title)}</h1>
+<table><thead><tr>${headers.map((h) => `<th>${escapeHtml(h)}</th>`).join('')}</tr></thead>
+<tbody>${tableRows}</tbody></table>
+</body></html>`;
+  await printReportHtml(html);
+}
+
+function escapeHtml(s: string): string {
+  return s
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;');
+}
+
 export { cellText, headerLabel, coerceNumber };

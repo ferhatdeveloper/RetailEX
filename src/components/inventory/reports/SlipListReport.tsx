@@ -2,9 +2,8 @@ import React, { useState, useEffect, useMemo } from 'react';
 import { stockMovementAPI, type StockMovement } from '../../../services/stockMovementAPI';
 import { DevExDataGrid } from '../../shared/DevExDataGrid';
 import { REPORT_GRID_DEFAULTS } from '../../reports/shared/ReportDataGrid';
-import { exportDataGridToExcel } from '../../../utils/gridExcelExport';
 import { createColumnHelper, ColumnDef } from '@tanstack/react-table';
-import { Download, FileText } from 'lucide-react';
+import { FileText } from 'lucide-react';
 import { format } from 'date-fns';
 import { useLanguage } from '../../../contexts/LanguageContext';
 
@@ -92,19 +91,11 @@ export function SlipListReport() {
 
     return (
         <div className="h-full flex flex-col bg-white rounded-lg shadow-sm border border-gray-200">
-            <div className="p-4 border-b border-gray-200 flex justify-between items-center bg-gray-50">
+            <div className="p-4 border-b border-gray-200 bg-gray-50">
                 <div className="flex items-center gap-2">
                     <FileText className="w-5 h-5 text-blue-600" />
                     <h2 className="font-semibold text-gray-800">{tm('slipList') || 'Fiş Listesi'}</h2>
                 </div>
-                <button
-                    type="button"
-                    onClick={() => exportDataGridToExcel(rows, columns, tm('slipList') || 'fis_listesi')}
-                    className="flex items-center gap-2 px-4 py-2 bg-white border border-gray-300 hover:bg-gray-50 text-gray-700 rounded-lg transition-colors shadow-sm"
-                >
-                    <Download className="w-4 h-4" />
-                    {tm('export') || 'Aktar'}
-                </button>
             </div>
 
             <div className="flex-1 overflow-hidden p-4">

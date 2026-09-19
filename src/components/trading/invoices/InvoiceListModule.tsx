@@ -6,6 +6,8 @@ import { ReportTemplate } from '../../reports/designerUtils';
 import { TemplateManager } from '../../modules/TemplateManager';
 import type { Sale, Invoice } from '../../../core/types';
 import { formatNumber } from '../../../utils/formatNumber';
+import { formatDateTimeShort, formatShortDate } from '../../../utils/dateLocale';
+import { invoiceLineMixLabelKey, type InvoiceLineMix } from '../../../utils/invoiceLineMix';
 import { DevExDataGrid } from '../../shared/DevExDataGrid';
 import { ColumnVisibilityMenu } from '../../shared/ColumnVisibilityMenu';
 import { UniversalInvoiceForm } from './UniversalInvoiceForm';
@@ -141,7 +143,7 @@ export function InvoiceListModule({
   }, [columnVisibility]);
 
   const INVOICE_TYPES: InvoiceType[] = [
-    { code: 8, name: tm('wholesale'), category: 'Satis', color: 'bg-purple-100 text-purple-700 border-purple-300', icon: 'FileText', translationKey: 'wholesale' },
+    { code: 8, name: tm('salesInvoices'), category: 'Satis', color: 'bg-purple-100 text-purple-700 border-purple-300', icon: 'FileText', translationKey: 'salesInvoices' },
     { code: 7, name: tm('retailSale'), category: 'Satis', color: 'bg-blue-100 text-blue-700 border-blue-300', icon: 'FileText', translationKey: 'retailSale' },
     { code: 3, name: tm('salesReturn'), category: 'Iade', color: 'bg-red-100 text-red-700 border-red-300', icon: 'FileMinus', translationKey: 'salesReturn' },
     { code: 1, name: tm('purchaseInvoices'), category: 'Alis', color: 'bg-cyan-100 text-cyan-700 border-cyan-300', icon: 'FileCheck', translationKey: 'purchaseInvoices' },
@@ -362,13 +364,20 @@ export function InvoiceListModule({
 
   const [isLoading, setIsLoading] = useState(true);
   const [searchQuery, setSearchQuery] = useState('');
+  const [debouncedSearch, setDebouncedSearch] = useState('');
   const [statusFilter, setStatusFilter] = useState<string>(initialPrefs?.statusFilter ?? 'all');
   const [dateFilter, setDateFilter] = useState<string>(initialPrefs?.dateFilter ?? 'all');
   const [customDateFrom, setCustomDateFrom] = useState<string>(initialPrefs?.customDateFrom ?? '');
   const [customDateTo, setCustomDateTo] = useState<string>(initialPrefs?.customDateTo ?? '');
-  const [invoiceTypeFilter, setInvoiceTypeFilter] = useState<string>(
-    initialPrefs?.invoiceTypeFilter ?? (defaultInvoiceTypeFilter || 'all'),
-  );
+  const [invoiceTypeFilter, setInvoiceTypeFilter] = useState<string>(() => {
+    const fallback = defaultInvoiceTypeFilter || 'all';
+    const saved = initialPrefs?.invoiceTypeFilter ?? fallback;
+    // Eski "Satış Faturaları = 8" tercihi perakende (7) belgelerini gizliyordu.
+    if ((!defaultInvoiceTypeFilter || defaultInvoiceTypeFilter === 'all') && saved === '8') {
+      return 'all';
+    }
+    return saved;
+  });
   const [selectedInvoice, setSelectedInvoice] = useState<ListInvoice | null>(null);
   const [showDetailModal, setShowDetailModal] = useState(false);
   const [showInvoiceTypeModal, setShowInvoiceTypeModal] = useState(false);
@@ -408,9 +417,6 @@ export function InvoiceListModule({
   const [purchaseCreateSaveOptions, setPurchaseCreateSaveOptions] = useState<{
     skipProductStockUpdate?: boolean;
   } | null>(null);
-
-  // Debounce için
-  const [searchDebounce, setSearchDebounce] = useState<NodeJS.Timeout | null>(null);
 
   // Tarih filtreleri
   const getDateRange = () => {
@@ -465,7 +471,16 @@ export function InvoiceListModule({
     // Dönem henüz seçilmediyse (firma değişimi ara durumu) eski dönemle sorgu atma
     if (selectedFirm && !selectedPeriod && !periodNrKey) return;
     void loadInvoices();
-  }, [currentPage, pageSize, dateFilter, customDateFrom, customDateTo, statusFilter, invoiceTypeFilter, defaultCategory, firmNrKey, periodNrKey]);
+  }, [currentPage, pageSize, dateFilter, customDateFrom, customDateTo, statusFilter, invoiceTypeFilter, defaultCategory, firmNrKey, periodNrKey, debouncedSearch]);
+
+  useEffect(() => {
+    const delay = searchQuery ? 500 : 0;
+    const timeout = setTimeout(() => {
+      setDebouncedSearch(searchQuery);
+      setCurrentPage(1);
+    }, delay);
+    return () => clearTimeout(timeout);
+  }, [searchQuery]);
 
   useEffect(() => {
     void loadTemplatesFromDatabase();
@@ -483,26 +498,6 @@ export function InvoiceListModule({
     setCurrentPage(1);
     onInitialSearchConsumed?.();
   }, [initialSearchQuery, onInitialSearchConsumed]);
-
-  // Arama için debounce
-  useEffect(() => {
-    if (searchDebounce) {
-      clearTimeout(searchDebounce);
-    }
-
-    const timeout = setTimeout(() => {
-      setCurrentPage(1); // Arama yapıldığında ilk sayfaya dön
-      loadInvoices();
-    }, 500); // 500ms debounce
-
-    setSearchDebounce(timeout);
-
-    return () => {
-      if (searchDebounce) {
-        clearTimeout(searchDebounce);
-      }
-    };
-  }, [searchQuery]);
 
   // Sayfa bağlamı (defaultInvoiceTypeFilter) ile senkronize.
   //
@@ -541,7 +536,7 @@ export function InvoiceListModule({
       // Bağlam belirsiz.
       lastAppliedContextRef.current = null;
       userOverrideRef.current = null;
-      if (!initialPrefs?.invoiceTypeFilter) {
+      if (!initialPrefs?.invoiceTypeFilter || initialPrefs.invoiceTypeFilter === '8') {
         setInvoiceTypeFilter('all');
       }
     }
@@ -662,7 +657,7 @@ export function InvoiceListModule({
       const result = await invoicesAPI.getPaginated({
         page: currentPage,
         pageSize: pageSize,
-        search: searchQuery || undefined,
+        search: debouncedSearch || undefined,
         status: statusFilter !== 'all' && !statusCancelled ? statusFilter : undefined,
         startDate: dateRange.start ? String(dateRange.start) : undefined,
         endDate: dateRange.end ? String(dateRange.end) : undefined,
@@ -677,18 +672,9 @@ export function InvoiceListModule({
 
       if (requestId !== loadInvoicesRequestIdRef.current) return;
 
-      // Client-side fatura türü ve kategori filtresi
-      let filteredData = result.data;
-
-      // Fatura türü filtresi
-      if (invoiceTypeFilter !== 'all') {
-        filteredData = (filteredData as ListInvoice[]).filter(inv => {
-          const invoiceType = inv.invoice_type ?? inv.trcode ?? 0;
-          return invoiceType.toString() === invoiceTypeFilter;
-        });
-      }
-
-      /* Kategori: API ile aynı Logo trcode grupları (INVOICE_TYPES tek kod=tek kategori değil; 4,13,6 çakışıyor) */
+      // API zaten trcode/kategori süzüyor. İstemci eşitliği (7!==8) perakende
+      // satırlarını "Satış Faturaları" filtresinde yok ediyordu.
+      let filteredData = result.data as ListInvoice[];
       if (categoryFilterList.length > 0) {
         filteredData = filteredData.filter((inv) =>
           categoryFilterList.some((cat) => invoiceMatchesModuleCategory(inv, cat)),
@@ -765,17 +751,14 @@ export function InvoiceListModule({
 
   const formatInvoiceDateStr = (dateValue: string | undefined) => {
     if (!dateValue) return '—';
-    try {
-      const date = new Date(dateValue);
-      if (isNaN(date.getTime())) return tm('invalidDate');
-      return date.toLocaleDateString(tm('localeCode'), {
-        day: '2-digit',
-        month: '2-digit',
-        year: 'numeric'
-      });
-    } catch {
-      return '—';
-    }
+    return formatShortDate(dateValue, tm('localeCode'), { fallback: tm('invalidDate') });
+  };
+
+  const lineMixBadgeClass = (mix: InvoiceLineMix) => {
+    if (mix === 'product') return 'bg-blue-50 text-blue-700 border-blue-200';
+    if (mix === 'service') return 'bg-indigo-50 text-indigo-700 border-indigo-200';
+    if (mix === 'mixed') return 'bg-violet-50 text-violet-800 border-violet-200';
+    return 'bg-gray-50 text-gray-600 border-gray-200';
   };
 
   const getInvoiceTypeMeta = (invoice: ListInvoice) => {
@@ -858,20 +841,35 @@ export function InvoiceListModule({
     }
   };
 
+  const resolveNewInvoiceType = (): InvoiceType | undefined => {
+    if (defaultInvoiceTypeFilter && defaultInvoiceTypeFilter !== 'all') {
+      const code = parseInt(defaultInvoiceTypeFilter, 10);
+      if (Number.isFinite(code)) {
+        const found = INVOICE_TYPES.find((t) => t.code === code);
+        if (found) return found;
+      }
+    }
+    if (defaultCategory === 'Satis') {
+      const sales = INVOICE_TYPES.find((t) => t.code === 8);
+      return sales
+        ? { ...sales, name: tm('salesInvoices'), translationKey: 'salesInvoices' }
+        : undefined;
+    }
+    if (defaultCategory === 'Alis') {
+      return INVOICE_TYPES.find((t) => t.code === 1);
+    }
+    return undefined;
+  };
+
   const handleCreateInvoice = () => {
     setEditInvoiceData(null);
     setPurchaseCreateSaveOptions(null);
-    // Eğer varsayılan fatura türü filtresi varsa, direkt o türle form aç
-    if (defaultInvoiceTypeFilter && defaultInvoiceTypeFilter !== 'all') {
-      const invoiceTypeCode = parseInt(defaultInvoiceTypeFilter);
-      const invoiceType = INVOICE_TYPES.find(t => t.code === invoiceTypeCode);
-      if (invoiceType) {
-        setNewFormCounter((c) => c + 1);
-        setSelectedInvoiceType(invoiceType);
-        return;
-      }
+    const createType = resolveNewInvoiceType();
+    if (createType) {
+      setNewFormCounter((c) => c + 1);
+      setSelectedInvoiceType(createType);
+      return;
     }
-    // Yoksa fatura türü seçim modalını aç
     setShowInvoiceTypeModal(true);
     setSelectedCategory(defaultCategory || 'all');
   };
@@ -1272,17 +1270,11 @@ export function InvoiceListModule({
                 }}
                 className="bg-transparent py-1.5 text-xs focus:outline-none min-w-[140px]"
               >
-                {/* defaultCategory varsa "all" gösterme — kullanıcıyı sayfanın
-                    bağlamı içinde tut (örn. Hizmet → sadece Hizmet türleri). */}
-                {!defaultCategory && (
-                  <option value="all">{tm('allInvoiceTypes')}</option>
-                )}
+                <option value="all">{tm('allInvoiceTypes')}</option>
                 {(!defaultCategory || defaultCategory === 'Satis') && (
                   <optgroup label={tm('salesInvoices')}>
                     <option value="8">{tm('salesInvoices')}</option>
                     <option value="7">{tm('retailSale')}</option>
-                    <option value="8">{tm('wholesale')}</option>
-                    <option value="8">{tm('consignmentSale')}</option>
                   </optgroup>
                 )}
                 {(!defaultCategory || defaultCategory === 'Alis') && (
@@ -1401,6 +1393,11 @@ export function InvoiceListModule({
                         <div className="flex items-center gap-2 pt-0.5">
                           <TypeIcon className="w-3.5 h-3.5 text-gray-500 shrink-0" aria-hidden />
                           <span className="text-[11px] font-medium text-gray-800 truncate">{meta.label}</span>
+                          {inv.line_mix && inv.line_mix !== 'unknown' && (
+                            <span className={`shrink-0 px-1.5 py-0.5 rounded-full text-[10px] font-semibold border ${lineMixBadgeClass(inv.line_mix)}`}>
+                              {tm(invoiceLineMixLabelKey(inv.line_mix))}
+                            </span>
+                          )}
                         </div>
                         <div className="flex justify-between gap-2">
                           <span className="text-gray-500 shrink-0">{tm('total')}</span>
@@ -1924,13 +1921,9 @@ export function InvoiceListModule({
                       <div>
                         <div className="text-xs text-gray-500 uppercase tracking-wide mb-1">{tm('date')}</div>
                         <div className="text-lg font-semibold text-gray-900">
-                          {new Date(selectedInvoice.invoice_date || selectedInvoice.date || '').toLocaleDateString(tm('localeCode'), {
-                            day: '2-digit',
-                            month: '2-digit',
-                            year: 'numeric',
-                            hour: '2-digit',
-                            minute: '2-digit'
-                          })}
+                          {/T\d{2}:/.test(String(selectedInvoice.invoice_date || selectedInvoice.date || ''))
+                            ? formatDateTimeShort(selectedInvoice.invoice_date || selectedInvoice.date || '', tm('localeCode'))
+                            : formatInvoiceDateStr(selectedInvoice.invoice_date || selectedInvoice.date)}
                         </div>
                       </div>
                       <div>

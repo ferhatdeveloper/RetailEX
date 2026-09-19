@@ -604,5 +604,7 @@ export interface Invoice {
   document_no?: string;
   /** Fatura formu başlık alanları (özel kod, depo, satış elemanı vb.) */
   header_fields?: Record<string, unknown>;
+  /** Liste: ürün / hizmet / karma */
+  line_mix?: 'product' | 'service' | 'mixed' | 'unknown';
 }
 

@@ -4,9 +4,8 @@ import { productAPI } from '../../../services/api/products';
 import type { Product } from '../../../core/types';
 import { DevExDataGrid } from '../../shared/DevExDataGrid';
 import { REPORT_GRID_DEFAULTS } from '../../reports/shared/ReportDataGrid';
-import { exportDataGridToExcel } from '../../../utils/gridExcelExport';
 import { createColumnHelper, ColumnDef } from '@tanstack/react-table';
-import { Download, Building2 } from 'lucide-react';
+import { Building2 } from 'lucide-react';
 import { useLanguage } from '../../../contexts/LanguageContext';
 import { formatNumber } from '../../../utils/formatNumber';
 import { useFirmaDonem } from '../../../contexts/FirmaDonemContext';
@@ -90,7 +89,7 @@ export function WarehouseStatusReport() {
 
     return (
         <div className="h-full flex flex-col bg-white rounded-lg shadow-sm border border-gray-200">
-            <div className="p-4 border-b border-gray-200 flex justify-between items-center bg-gray-50">
+            <div className="p-4 border-b border-gray-200 bg-gray-50">
                 <div className="flex items-center gap-2">
                     <Building2 className="w-5 h-5 text-gray-700" />
                     <div>
@@ -102,14 +101,6 @@ export function WarehouseStatusReport() {
                         </p>
                     </div>
                 </div>
-                <button
-                    type="button"
-                    onClick={() => exportDataGridToExcel(rows, columns, tm('warehouseStatus') || 'ambar_durum')}
-                    className="flex items-center gap-2 px-4 py-2 bg-white border border-gray-300 hover:bg-gray-50 text-gray-700 rounded-lg transition-colors shadow-sm"
-                >
-                    <Download className="w-4 h-4" />
-                    {tm('excel')}
-                </button>
             </div>
 
             <div className="flex-1 overflow-hidden p-4">

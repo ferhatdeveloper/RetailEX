@@ -16,17 +16,27 @@ import {
   Column,
   FilterFn,
 } from '@tanstack/react-table';
-import { ChevronDown, ChevronUp, Filter, Download } from 'lucide-react';
+import { ChevronDown, ChevronUp, Filter, Download, Printer } from 'lucide-react';
 import { useResponsive } from '../../hooks/useResponsive';
 import { useLanguage } from '../../contexts/LanguageContext';
 import { useTheme } from '../../contexts/ThemeContext';
 import { ColumnVisibilityMenu } from './ColumnVisibilityMenu';
-import { exportDataGridToExcel } from '../../utils/gridExcelExport';
+import { exportDataGridToExcel, printDataGridHtml } from '../../utils/gridExcelExport';
 import { ActiveFiltersBar, filterOperatorI18nKey, type ActiveFilterChip } from './ActiveFiltersBar';
+import { GRID_POPOVER_Z } from './FullscreenBodyPortal';
+import { formatNumber } from '../../utils/formatNumber';
+import {
+  coerceReportNumber,
+  isReportCodeColumnId,
+  isReportSumColumnId,
+  reportDisplayCode,
+} from '../../utils/reportGridChrome';
 
 const DEFAULT_PAGE_SIZE_OPTIONS = [10, 15, 20, 25, 50, 100];
-const FILTER_MENU_Z_INDEX = 12000;
-/** Sticky dip toplam / sayfalama — tablo gövdesinin üstünde, Kolonlar/huni portal overlay'inin altında */
+
+/** Huni ve kolon seçici — body portal + compositor katmanı (sticky thead/tfoot üstüne binmesin). */
+const FILTER_MENU_Z_INDEX = GRID_POPOVER_Z;
+/** Sticky dip toplam / sayfalama — yalnızca tablo kaydırma kutusunun içinde */
 const GRID_CHROME_Z_INDEX = 1;
 
 export interface DevExDataGridProps<T> {
@@ -59,6 +69,17 @@ export interface DevExDataGridProps<T> {
   /** true ise filtrelenmiş satırları Excel olarak indirir */
   enableExcelExport?: boolean;
   excelFileName?: string;
+  /** true ise Excel yanındaki Yazdır (varsayılan: Excel açıksa açık) */
+  enablePrint?: boolean;
+  printTitle?: string;
+  /** Verilirse yerleşik tablo yazdırma yerine bu çağrılır */
+  onPrint?: () => void;
+  printDisabled?: boolean;
+  /**
+   * Sayısal kolonlarda otomatik dip toplam (miktar/tutar).
+   * Birim fiyat ve yüzde toplanmaz. Varsayılan: açık.
+   */
+  autoFooterSums?: boolean;
   /**
    * Tablo altında sticky dip toplam satırı.
    * Toplamlar `getFilteredRowModel` satırları üzerinden hesaplanır.
@@ -690,6 +711,51 @@ function FilterMenu({ column, onClose }: FilterMenuProps) {
   return <ValueListFilterMenu column={column} onClose={onClose} />;
 }
 
+function columnDefId<T>(col: ColumnDef<T, any>): string {
+  if (col.id) return String(col.id);
+  if ('accessorKey' in col && col.accessorKey != null) return String(col.accessorKey);
+  return '';
+}
+
+function readRowColumnValue<T>(col: ColumnDef<T, any>, row: T, rowIndex: number): unknown {
+  if ('accessorFn' in col && typeof col.accessorFn === 'function') {
+    try {
+      return col.accessorFn(row, rowIndex);
+    } catch {
+      return undefined;
+    }
+  }
+  const key = 'accessorKey' in col && col.accessorKey != null ? String(col.accessorKey) : columnDefId(col);
+  return (row as Record<string, unknown>)[key];
+}
+
+function withReportCodeCells<T>(cols: ColumnDef<T, any>[]): ColumnDef<T, any>[] {
+  return cols.map((col) => {
+    const id = columnDefId(col);
+    if (!isReportCodeColumnId(id)) return col;
+    const originalCell = col.cell;
+    return {
+      ...col,
+      cell: (ctx) => {
+        const row = ctx.row.original as Record<string, unknown>;
+        const shown = reportDisplayCode(
+          ctx.getValue(),
+          row.barcode,
+          row.code,
+          row.product_code,
+          row.productCode,
+          row.itemCode,
+          row.item_code,
+        );
+        if (typeof originalCell === 'function') {
+          return originalCell({ ...ctx, getValue: () => shown });
+        }
+        return shown;
+      },
+    };
+  });
+}
+
 export function DevExDataGrid<T>({
   data,
   columns,
@@ -714,6 +780,11 @@ export function DevExDataGrid<T>({
   density = 'compact',
   enableExcelExport = true,
   excelFileName = 'retailex_export',
+  enablePrint,
+  printTitle,
+  onPrint,
+  printDisabled,
+  autoFooterSums = true,
   footerSumColumns,
   footerLabel,
 }: DevExDataGridProps<T>) {
@@ -799,8 +870,29 @@ export function DevExDataGrid<T>({
     }
   }, [selectedRowIds]);
 
+  const codedColumns = useMemo(() => withReportCodeCells(columns), [columns]);
+
+  const autoSumColumns = useMemo(() => {
+    if (!autoFooterSums) return [] as NonNullable<DevExDataGridProps<T>['footerSumColumns']>;
+    return codedColumns
+      .filter((col) => isReportSumColumnId(columnDefId(col)))
+      .map((col) => ({
+        columnId: columnDefId(col),
+        getValue: (row: T) => coerceReportNumber(readRowColumnValue(col, row, 0)),
+        format: (sum: number) => formatNumber(sum, 2, false),
+      }));
+  }, [autoFooterSums, codedColumns]);
+
+  const mergedFooterSumColumns = useMemo(() => {
+    const explicit = footerSumColumns ?? [];
+    const ids = new Set(explicit.map((d) => d.columnId));
+    return [...explicit, ...autoSumColumns.filter((d) => !ids.has(d.columnId))];
+  }, [footerSumColumns, autoSumColumns]);
+
+  const printEnabled = enablePrint ?? (onPrint != null || enableExcelExport);
+
   const finalColumns = useMemo(() => {
-    if (!enableSelection) return columns;
+    if (!enableSelection) return codedColumns;
 
     const selectionColumn: ColumnDef<T, any> = {
       id: 'select',
@@ -841,8 +933,8 @@ export function DevExDataGrid<T>({
       size: 40,
     };
 
-    return [selectionColumn, ...columns];
-  }, [columns, enableSelection, setRowSelection, tm]);
+    return [selectionColumn, ...codedColumns];
+  }, [codedColumns, enableSelection, setRowSelection, tm]);
 
   const table = useReactTable({
     data,
@@ -945,17 +1037,18 @@ export function DevExDataGrid<T>({
   );
 
   const filteredRowsForFooter = table.getFilteredRowModel().rows;
-  const showFooterRow = Boolean(footerLabel) || Boolean(footerSumColumns?.length);
+  const resolvedFooterLabel = footerLabel ?? (mergedFooterSumColumns.length > 0 ? (tm('total') || 'Toplam') : undefined);
+  const showFooterRow = Boolean(resolvedFooterLabel) || Boolean(mergedFooterSumColumns.length);
   const footerSumByColumnId = useMemo(() => {
-    if (!footerSumColumns?.length) return new Map<string, ReactNode>();
+    if (!mergedFooterSumColumns.length) return new Map<string, ReactNode>();
     const originals = filteredRowsForFooter.map((r) => r.original);
     const map = new Map<string, ReactNode>();
-    for (const def of footerSumColumns) {
+    for (const def of mergedFooterSumColumns) {
       const sum = originals.reduce((acc, row) => acc + (Number(def.getValue(row)) || 0), 0);
       map.set(def.columnId, def.format ? def.format(sum, originals) : sum);
     }
     return map;
-  }, [footerSumColumns, data, columnFilters, sorting]);
+  }, [mergedFooterSumColumns, data, columnFilters, sorting]);
 
   // Mobile Card View
   if (isMobile) {
@@ -999,6 +1092,32 @@ export function DevExDataGrid<T>({
             ))
           )}
         </div>
+
+        {showFooterRow && (
+          <div className={`shrink-0 border-t-2 px-3 py-2 text-xs font-bold ${darkMode ? 'bg-gray-900 border-blue-500 text-blue-100' : 'bg-blue-50 border-blue-300 text-blue-900'}`}>
+            {resolvedFooterLabel != null && (
+              <div className="flex flex-wrap items-center gap-x-3 gap-y-1">
+                <span>{resolvedFooterLabel}</span>
+                <span className={darkMode ? 'text-gray-400' : 'text-blue-600/80'}>({filteredRowsForFooter.length})</span>
+              </div>
+            )}
+            {mergedFooterSumColumns.length > 0 && (
+              <div className="mt-1 space-y-0.5">
+                {mergedFooterSumColumns.map((def) => {
+                  const node = footerSumByColumnId.get(def.columnId);
+                  if (node == null) return null;
+                  const col = table.getColumn(def.columnId);
+                  return (
+                    <div key={def.columnId} className="flex justify-between gap-3 tabular-nums">
+                      <span className="font-semibold truncate">{gridColumnHeaderLabel(col, def.columnId)}</span>
+                      <span>{node}</span>
+                    </div>
+                  );
+                })}
+              </div>
+            )}
+          </div>
+        )}
 
         {/* Mobile Pagination */}
         {enablePagination && (
@@ -1056,11 +1175,50 @@ export function DevExDataGrid<T>({
           : undefined
       }
     >
-      {((enableColumnVisibility && showColumnVisibilityToolbar) || enableExcelExport) && (
-        <div className="flex items-center justify-end gap-2 px-3 py-1.5 bg-gray-50 border border-gray-300 border-b-0 shrink-0">
+      {((enableColumnVisibility && showColumnVisibilityToolbar) || enableExcelExport || printEnabled) && (
+        <div className="flex items-center justify-end gap-1.5 px-3 py-1.5 bg-gray-50 border border-gray-300 border-b-0 shrink-0">
+          {enableExcelExport && (
+            <button
+              type="button"
+              onClick={() =>
+                exportDataGridToExcel(
+                  table.getFilteredRowModel().rows.map((r) => r.original),
+                  columns,
+                  excelFileName,
+                )
+              }
+              className="inline-flex items-center gap-1 px-2 py-1 text-[10px] font-medium text-emerald-800 bg-emerald-50 border border-emerald-200 rounded hover:bg-emerald-100"
+              title={tm('exportExcel') || 'Excel'}
+            >
+              <Download className="w-3 h-3" />
+              Excel
+            </button>
+          )}
+          {printEnabled && (
+            <button
+              type="button"
+              disabled={printDisabled}
+              onClick={() => {
+                if (onPrint) {
+                  onPrint();
+                  return;
+                }
+                void printDataGridHtml(
+                  table.getFilteredRowModel().rows.map((r) => r.original),
+                  columns,
+                  printTitle || excelFileName || tm('print') || 'Rapor',
+                );
+              }}
+              className="inline-flex items-center gap-1 px-2 py-1 text-[10px] font-medium text-blue-800 bg-blue-50 border border-blue-200 rounded hover:bg-blue-100 disabled:opacity-40"
+              title={tm('print') || 'Yazdır'}
+            >
+              <Printer className="w-3 h-3" />
+              {tm('print') || 'Yazdır'}
+            </button>
+          )}
           {enableColumnVisibility && showColumnVisibilityToolbar && (
-          /* Kolonlar: ColumnVisibilityMenu document.body portal + yüksek z-index; footer/sayfalama altında kalmaz */
           <ColumnVisibilityMenu
+            variant="grid"
             columns={leafColumnsForVisibility.map((col) => {
               const header = col.columnDef.header;
               const label = typeof header === 'string' ? header : col.id;
@@ -1088,23 +1246,6 @@ export function DevExDataGrid<T>({
             }}
           />
           )}
-          {enableExcelExport && (
-            <button
-              type="button"
-              onClick={() =>
-                exportDataGridToExcel(
-                  table.getFilteredRowModel().rows.map((r) => r.original),
-                  columns,
-                  excelFileName,
-                )
-              }
-              className="inline-flex items-center gap-1 px-2 py-1 text-[10px] font-medium text-emerald-800 bg-emerald-50 border border-emerald-200 rounded hover:bg-emerald-100"
-              title={tm('exportExcel') || 'Excel'}
-            >
-              <Download className="w-3 h-3" />
-              Excel
-            </button>
-          )}
         </div>
       )}
 
@@ -1115,7 +1256,7 @@ export function DevExDataGrid<T>({
       )}
 
       {/* Table Container */}
-      <div className={`flex-1 overflow-auto border isolate ${darkMode ? 'border-gray-600 bg-gray-800' : 'border-gray-300 bg-white'}`}>
+      <div className={`relative z-0 flex-1 overflow-auto border isolate ${darkMode ? 'border-gray-600 bg-gray-800' : 'border-gray-300 bg-white'}`}>
         <table
           className="border-collapse"
           style={{ tableLayout: 'fixed', width: '100%', minWidth: tableMinWidth }}
@@ -1125,7 +1266,7 @@ export function DevExDataGrid<T>({
               <col key={col.id} style={gridColumnWidthStyle(col.getSize())} />
             ))}
           </colgroup>
-          <thead className={`sticky top-0 z-30 shadow-[0_1px_0_0_rgba(0,0,0,0.08)] ${headerBg}`}>
+          <thead className={`sticky top-0 z-[1] shadow-[0_1px_0_0_rgba(0,0,0,0.08)] ${headerBg}`}>
             {table.getHeaderGroups().map((headerGroup) => (
               <tr key={headerGroup.id} className={`border-b ${darkMode ? 'border-gray-600' : 'border-gray-300'} ${headerBg}`}>
                 {headerGroup.headers.map((header) => (
@@ -1203,36 +1344,46 @@ export function DevExDataGrid<T>({
                 })}
               </tr>
             ))}
-            {showFooterRow && (() => {
-              const footerBg = darkMode ? 'bg-gray-900' : 'bg-blue-50';
-              const labelColId = visibleLeafColumns.find(
-                (c) => c.id !== 'select' && c.id !== 'actions' && !footerSumByColumnId.has(c.id),
-              )?.id;
-              return (
+          </tbody>
+          {showFooterRow && (() => {
+            const footerBg = darkMode ? 'bg-gray-900' : 'bg-blue-50';
+            const labelStart = visibleLeafColumns.findIndex(
+              (c) => c.id !== 'select' && c.id !== 'actions' && !footerSumByColumnId.has(c.id),
+            );
+            const firstSumIdx = visibleLeafColumns.findIndex((c) => footerSumByColumnId.has(c.id));
+            const labelEnd =
+              labelStart >= 0
+                ? firstSumIdx > labelStart
+                  ? firstSumIdx
+                  : visibleLeafColumns.length
+                : -1;
+            const labelColId = labelStart >= 0 ? visibleLeafColumns[labelStart]?.id : undefined;
+            return (
+              <tfoot className={`sticky bottom-0 z-[1] ${footerBg} shadow-[0_-1px_0_0_rgba(0,0,0,0.12)]`}>
                 <tr
                   className={`border-t-2 ${footerBg} ${
                     darkMode ? 'border-blue-500' : 'border-blue-300'
                   }`}
                 >
-                  {visibleLeafColumns.map((col) => {
+                  {visibleLeafColumns.map((col, idx) => {
+                    if (labelStart >= 0 && idx > labelStart && idx < labelEnd) return null;
                     const sumNode = footerSumByColumnId.get(col.id);
                     const align = resolveGridColumnAlign(col, sumNode != null);
+                    const colSpan = col.id === labelColId && labelEnd > labelStart + 1 ? labelEnd - labelStart : undefined;
                     return (
                       <td
                         key={`footer-${col.id}`}
-                        className={`sticky bottom-0 px-2 py-1.5 border-r last:border-r-0 box-border whitespace-nowrap ${cellTextSize} font-bold ${footerBg} ${gridColumnAlignClass(align)} ${
+                        colSpan={colSpan}
+                        className={`px-2 py-1.5 border-r last:border-r-0 box-border ${cellTextSize} font-bold ${footerBg} ${gridColumnAlignClass(align)} ${
                           darkMode ? 'text-blue-200 border-gray-600' : 'text-blue-900 border-blue-200'
-                        }`}
-                        style={{
-                          ...gridColumnWidthStyle(col.getSize()),
-                          zIndex: GRID_CHROME_Z_INDEX,
-                        }}
+                        } ${sumNode != null ? 'whitespace-nowrap' : ''}`}
+                        style={gridColumnWidthStyle(colSpan ? visibleLeafColumns.slice(labelStart, labelEnd).reduce((w, c) => w + c.getSize(), 0) : col.getSize())}
                       >
                         {sumNode != null ? (
                           sumNode
-                        ) : col.id === labelColId && footerLabel != null ? (
+                        ) : col.id === labelColId && resolvedFooterLabel != null ? (
                           <span className={darkMode ? 'text-blue-100' : 'text-blue-800'}>
-                            {footerLabel}
+                            {resolvedFooterLabel}
                             <span className={`ml-1 font-semibold ${darkMode ? 'text-gray-400' : 'text-blue-600/80'}`}>
                               ({filteredRowsForFooter.length})
                             </span>
@@ -1242,9 +1393,9 @@ export function DevExDataGrid<T>({
                     );
                   })}
                 </tr>
-              );
-            })()}
-          </tbody>
+              </tfoot>
+            );
+          })()}
         </table>
 
         {/* No Data */}
@@ -1259,7 +1410,7 @@ export function DevExDataGrid<T>({
         createPortal(
           <div
             className="fixed inset-0"
-            style={{ zIndex: FILTER_MENU_Z_INDEX }}
+            style={{ zIndex: FILTER_MENU_Z_INDEX, isolation: 'isolate', transform: 'translateZ(0)' }}
             onMouseDown={closeFilterMenu}
           >
             <div

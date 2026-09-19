@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import type { Sale } from '../../core/types';
-import { buildPosZReport, buildPosZReportForRange, isReturnSale } from '../../utils/posZReport';
+import { applyExtraCashCollections, buildPosZReport, buildPosZReportForRange, isReturnSale, posZCollectedAmount } from '../../utils/posZReport';
 import { localCalendarDateKey } from '../../utils/localCalendarDate';
 
 const today = new Date().toISOString();
@@ -78,5 +78,73 @@ describe('posZReport returns', () => {
     expect(report.refundAmount).toBe(50);
     expect(report.totalAmount).toBe(500);
     expect(report.cardAmount).toBe(450);
+  });
+
+  it('veresiye 100 + payments nakit 40: cebe 40, cari 60 — belge 100 nakit sayılmaz', () => {
+    const sales: Sale[] = [
+      {
+        id: '1',
+        receiptNumber: 'VER-1',
+        date: today,
+        items: [],
+        subtotal: 100,
+        discount: 0,
+        total: 100,
+        paymentMethod: 'veresiye',
+        payments: [{ method: 'cash', amount: 40 }],
+        status: 'completed',
+        cashier: 'Ali',
+      } as Sale,
+    ];
+    const report = buildPosZReport(sales, localCalendarDateKey(today));
+    expect(report.totalAmount).toBe(100);
+    expect(report.cashAmount).toBe(40);
+    expect(report.creditAmount).toBe(60);
+    expect(posZCollectedAmount(report)).toBe(40);
+    expect(report.cashierStats[0]?.cashTotal).toBe(40);
+    expect(report.cashierStats[0]?.creditTotal).toBe(60);
+  });
+
+  it('veresiye etiket + payments tam nakit: hayalet kasa yok', () => {
+    const sales: Sale[] = [
+      {
+        id: '1',
+        receiptNumber: 'VER-GHOST',
+        date: today,
+        items: [],
+        subtotal: 100,
+        discount: 0,
+        total: 100,
+        paymentMethod: 'veresiye',
+        payments: [{ method: 'cash', amount: 100 }],
+        status: 'completed',
+      } as Sale,
+    ];
+    const report = buildPosZReport(sales, localCalendarDateKey(today));
+    expect(report.cashAmount).toBe(0);
+    expect(report.creditAmount).toBe(100);
+    expect(posZCollectedAmount(report)).toBe(0);
+  });
+
+  it('sonradan CH_TAHSILAT 40 Z nakitine eklenir', () => {
+    const sales: Sale[] = [
+      {
+        id: '1',
+        receiptNumber: 'VER-2',
+        date: today,
+        items: [],
+        subtotal: 100,
+        discount: 0,
+        total: 100,
+        paymentMethod: 'veresiye',
+        status: 'completed',
+      } as Sale,
+    ];
+    const base = buildPosZReport(sales, localCalendarDateKey(today));
+    expect(base.cashAmount).toBe(0);
+    const withExtra = applyExtraCashCollections(base, 40);
+    expect(withExtra.cashAmount).toBe(40);
+    expect(withExtra.creditAmount).toBe(60);
+    expect(posZCollectedAmount(withExtra)).toBe(40);
   });
 });

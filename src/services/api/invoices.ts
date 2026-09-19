@@ -19,6 +19,7 @@ import {
   isServiceInvoiceType,
 } from '../../utils/invoiceLineType';
 import { sanitizeInvoiceHeaderFields } from '../../utils/invoiceHeaderFields';
+import { invoiceLineMixFromItemTypes, type InvoiceLineMix } from '../../utils/invoiceLineMix';
 import { allocateNextInvoiceCode } from '../invoiceCodeFormatService';
 import { generateDefaultInvoiceStamp } from '../../utils/invoiceCodeFormat';
 import { saleItemVisibleCode, splitInvoiceLineIdentity } from '../../utils/invoiceLineDisplayCode';
@@ -29,7 +30,20 @@ import {
   paymentMethodImpliesSupplierDebt,
 } from '../../utils/paymentMethodUtils';
 import { cariCashStoredBalanceDelta } from './accountBalance';
+import {
+  invoiceCashLineInsertUpdatesStoredCari,
+  invoiceChTahsilatStoredDelta,
+  invoiceMixedCustomerStoredDelta,
+  shouldApplyChTahsilatCustomerBalanceAfterCashInsert,
+} from '../../utils/invoiceCashPosting';
 export type { Invoice };
+export type { InvoiceCashLineWriter } from '../../utils/invoiceCashPosting';
+export {
+  invoiceCashLineInsertUpdatesStoredCari,
+  invoiceChTahsilatStoredDelta,
+  invoiceMixedCustomerStoredDelta,
+  shouldApplyChTahsilatCustomerBalanceAfterCashInsert,
+};
 
 /**
  * Müşterinin son N faturası — özet başlık (satır içermez).
@@ -201,7 +215,7 @@ export function invoiceShouldPostMixedPrepaidTahsilat(inv: {
   if (origin === 'pos' || origin === 'sales') return false;
 
   const notes = String(inv?.notes || '');
-  if (/MarketPOS|GüzellikPOS|Market Satışı|Güzellik Satışı/i.test(notes)) return false;
+  if (/MarketPOS|GüzellikPOS|RestoranPOS|RestPOS|Market Satışı|Güzellik Satışı/i.test(notes)) return false;
 
   const payments = Array.isArray(hf.payments) ? hf.payments : [];
   let formLike = 0;
@@ -211,7 +225,7 @@ export function invoiceShouldPostMixedPrepaidTahsilat(inv: {
     if (!m) continue;
     const lower = m.toLowerCase();
     const upper = m.toUpperCase();
-    if (lower === 'cash' || lower === 'card' || lower === 'credit' || lower === 'gateway' || lower === 'kart') {
+    if (lower === 'cash' || lower === 'card' || lower === 'credit' || lower === 'gateway' || lower === 'kart' || lower === 'veresiye') {
       posLike += 1;
       continue;
     }
@@ -1047,7 +1061,7 @@ async function writeCashRegisterLineSql(
   );
   const inserted = upsertResult.rows?.[0]?.inserted === true;
 
-  if (inserted) {
+    if (inserted) {
     await postgres.query(
       `UPDATE rex_001_cash_registers
           SET balance = COALESCE(balance, 0) + $1::numeric,
@@ -1055,7 +1069,10 @@ async function writeCashRegisterLineSql(
         WHERE id = $2::text::uuid`,
       [amount, targetRegisterId]
     );
-    if (String(transactionType).toUpperCase() === 'CH_TAHSILAT') {
+    if (
+      String(transactionType).toUpperCase() === 'CH_TAHSILAT' &&
+      shouldApplyChTahsilatCustomerBalanceAfterCashInsert('direct')
+    ) {
       await applyChTahsilatCustomerBalance(firmNr, customerId, amount, false);
     }
   }
@@ -1221,7 +1238,10 @@ async function writeCashRegisterLineRest(
       // bakiye PATCH başarısız → cash_lines yazıldı, bakiye tutmuyor olabilir.
       console.warn('[InvoicesAPI] rest_api: kasa bakiyesi güncellenemedi:', (_e as any)?.message || String(_e));
     }
-    if (String(transactionType).toUpperCase() === 'CH_TAHSILAT') {
+    if (
+      String(transactionType).toUpperCase() === 'CH_TAHSILAT' &&
+      shouldApplyChTahsilatCustomerBalanceAfterCashInsert('direct')
+    ) {
       await applyChTahsilatCustomerBalance(firmNr, customerId, amount, true);
     }
   }
@@ -1670,6 +1690,72 @@ async function hydrateInvoiceItemDisplayCodes(items: Invoice['items'] | undefine
     const mapped = found.get(pid);
     (it as { code: string }).code = mapped || '';
   }
+}
+
+async function attachInvoiceLineMix(
+  invoices: Invoice[],
+  firmNr: string | number,
+  periodNr: string | number,
+): Promise<Invoice[]> {
+  if (!invoices.length) return invoices;
+  const ids = invoices.map((inv) => String(inv.id || '').trim()).filter(Boolean);
+  if (ids.length === 0) return invoices;
+
+  const typesByInvoice = new Map<string, string[]>();
+  const recordRow = (invoiceId: unknown, itemType: unknown) => {
+    const id = String(invoiceId || '').trim();
+    if (!id) return;
+    const list = typesByInvoice.get(id) || [];
+    list.push(String(itemType ?? ''));
+    typesByInvoice.set(id, list);
+  };
+
+  try {
+    const fn = String(firmNr).padStart(3, '0');
+    const pn = String(periodNr).padStart(2, '0');
+    if (DB_SETTINGS.connectionProvider === 'rest_api') {
+      const { postgrest } = await import('./postgrestClient');
+      const itemsTable = `/rex_${fn}_${pn}_sale_items`;
+      const chunkSize = 80;
+      for (let i = 0; i < ids.length; i += chunkSize) {
+        const chunk = ids.slice(i, i + chunkSize);
+        const rows = await postgrest.get<Array<{ invoice_id?: string; item_type?: string }>>(
+          itemsTable,
+          {
+            select: 'invoice_id,item_type',
+            invoice_id: `in.(${chunk.join(',')})`,
+            limit: 20000,
+          },
+          { schema: 'public' },
+        );
+        for (const row of Array.isArray(rows) ? rows : []) {
+          recordRow(row.invoice_id, row.item_type);
+        }
+      }
+    } else {
+      const { rows } = await postgres.query(
+        `SELECT invoice_id::text AS invoice_id, item_type
+         FROM sale_items
+         WHERE invoice_id::text = ANY($1::text[])`,
+        [ids],
+        { firmNr: fn, periodNr: pn },
+      );
+      for (const row of rows || []) {
+        recordRow(row.invoice_id, row.item_type);
+      }
+    }
+  } catch (error) {
+    console.warn('[InvoicesAPI] attachInvoiceLineMix failed:', error);
+  }
+
+  return invoices.map((inv) => {
+    const id = String(inv.id || '').trim();
+    const mix: InvoiceLineMix = invoiceLineMixFromItemTypes(typesByInvoice.get(id) || [], {
+      invoiceType: inv.invoice_type,
+      invoiceCategory: inv.invoice_category,
+    });
+    return { ...inv, line_mix: mix };
+  });
 }
 
 export const invoicesAPI = {
@@ -2244,7 +2330,11 @@ export const invoicesAPI = {
         const total = filteredRows.length;
         const start = Math.max(0, (page - 1) * pageSize);
         const end = start + pageSize;
-        const invoices = filteredRows.slice(start, end).map(mapDatabaseInvoiceToInvoice);
+        const invoices = await attachInvoiceLineMix(
+          filteredRows.slice(start, end).map(mapDatabaseInvoiceToInvoice),
+          firmNr,
+          periodNr,
+        );
 
         return {
           data: invoices,
@@ -2358,7 +2448,11 @@ export const invoicesAPI = {
       params.push((page - 1) * pageSize);
 
       const { rows } = await postgres.query(sql, params, queryOpts);
-      const invoices = rows.map(mapDatabaseInvoiceToInvoice);
+      const invoices = await attachInvoiceLineMix(
+        rows.map(mapDatabaseInvoiceToInvoice),
+        firmNr,
+        periodNr,
+      );
 
       return {
         data: invoices,
@@ -4072,7 +4166,7 @@ function mapDatabaseInvoiceToInvoice(dbInv: any): Invoice {
     invoice_no: dbInv.fiche_no || dbInv.document_no,
     document_no: String(dbInv.document_no || '').trim() || undefined,
     header_fields: sanitizeInvoiceHeaderFields(dbInv.header_fields),
-    invoice_date: dbInv.created_at || dbInv.date,
+    invoice_date: dbInv.date || dbInv.created_at,
     customer_id: dbInv.customer_id,
     customer_name: category === 'Alis' ? partnerNameAlis : partnerNameSatis,
     supplier_id: dbInv.customer_id,
@@ -4087,6 +4181,7 @@ function mapDatabaseInvoiceToInvoice(dbInv: any): Invoice {
     notes: dbInv.notes,
     invoice_category: category,
     created_at: dbInv.created_at || dbInv.date,
+    line_mix: undefined,
     items: [],
     source: 'invoice',
     invoice_type: inferredType,

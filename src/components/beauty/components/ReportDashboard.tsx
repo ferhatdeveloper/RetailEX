@@ -77,7 +77,7 @@ export function ReportDashboard() {
     const productRevenue = (stats!.productStaffPerformance || []).reduce((s, r) => s + r.revenue, 0);
 
     const kpiStats = [
-        { label: tm('bMonthlyRevenue'),    value: fmt(stats!.monthlyRevenue),         ...revenueChg, icon: Banknote, color: 'purple' },
+        { label: tm('cebeGirenNakit'),    value: fmt(stats!.monthlyRevenue),         ...revenueChg, icon: Banknote, color: 'purple' },
         { label: tm('bTransactionCount'), value: stats!.transactionCount.toString(), ...txChg,       icon: Activity,   color: 'blue' },
         { label: tm('bNewCustomersKPI'),  value: stats!.newCustomers.toString(),     pct: '—', up: true, icon: Users, color: 'pink' },
         { label: tm('bAvgCart'),          value: fmt(stats!.avgCartValue),           pct: '—', up: true, icon: ShoppingBag, color: 'orange' },

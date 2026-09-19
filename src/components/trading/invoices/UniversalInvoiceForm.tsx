@@ -13,6 +13,7 @@ import { useAuth } from '../../../contexts/AuthContext';
 import { useAutoJournal, formatJournalResult } from '../../../hooks/useAutoJournal';
 import { toast } from 'sonner';
 import { formatNumber } from '../../../utils/formatNumber';
+import { formatShortDate } from '../../../utils/dateLocale';
 import { parseDecimalStringForInput, formatDecimalForTrInput, parseInvoiceWeightQuantity } from '../../../utils/numberFormatter';
 import { normalizeWeightProductQuantity, syncWeightLineQuantities, hydrateWeightLineFromDb } from '../../../utils/scaleQuantity';
 import {
@@ -31,7 +32,6 @@ import type { Invoice } from '../../../core/types';
 import { ProductHistoryModal } from '../purchase/PurchaseInvoiceLineEnhanced';
 import { SupplierHistoryModal } from '../contacts/SupplierHistoryModal';
 import { CustomerHistoryModal } from '../contacts/CustomerHistoryModal';
-import { ColumnVisibilityMenu } from '../../shared/ColumnVisibilityMenu';
 import { batchCalculateFIFOCost } from '../../../hooks/useFIFOCost';
 import { CostAccountingService } from '../../../services/costAccountingService';
 import { POSProductCatalogModal } from '../../pos/POSProductCatalogModal';
@@ -535,19 +535,13 @@ export function UniversalInvoiceForm({
       cancelled = true;
     };
   }, [invoiceType.code, editData?.invoice_no]);
-  const [editDate, setEditDate] = useState(() => {
-    if (editData?.invoice_date) {
-      return new Date(editData.invoice_date).toLocaleDateString(tm('localeCode'));
-    }
-    return new Date().toLocaleDateString(tm('localeCode'));
-  });
+  const [editDate, setEditDate] = useState(() =>
+    formatShortDate(editData?.invoice_date || new Date(), tm('localeCode')),
+  );
   const [transactionNo, setTransactionNo] = useState('0000004');
-  const [transactionDate, setTransactionDate] = useState(() => {
-    if (editData?.invoice_date) {
-      return new Date(editData.invoice_date).toLocaleDateString(tm('localeCode'));
-    }
-    return new Date().toLocaleDateString(tm('localeCode'));
-  });
+  const [transactionDate, setTransactionDate] = useState(() =>
+    formatShortDate(editData?.invoice_date || new Date(), tm('localeCode')),
+  );
   const [specialCode, setSpecialCode] = useState('');
   const [tradingGroup, setTradingGroup] = useState('');
 
@@ -1242,36 +1236,6 @@ export function UniversalInvoiceForm({
     }
   }, [supplierCode, suppliers]);
 
-  const isColumnVisible = useCallback(
-    (columnId: string) => {
-      if (itemColumnVisibility[columnId] === false) return false;
-      if (!canViewPurchasePricing()) {
-        if (invoiceType.category === 'Satis' && columnId === 'profit') return false;
-        if (invoiceType.category === 'Alis' && columnId === 'profitMarginPercent') return false;
-      }
-      return true;
-    },
-    [itemColumnVisibility, canViewPurchasePricing, invoiceType.category]
-  );
-
-  const itemColumns = useMemo(() => [
-    { id: 'type', label: tm('type'), visible: isColumnVisible('type') },
-    { id: 'code', label: tm('code'), visible: isColumnVisible('code') },
-    { id: 'description', label: tm('description'), visible: isColumnVisible('description') },
-    { id: 'description2', label: tm('description2'), visible: isColumnVisible('description2') },
-    { id: 'quantity', label: tm('quantity'), visible: isColumnVisible('quantity') },
-    { id: 'unit', label: tm('unit'), visible: isColumnVisible('unit') },
-    { id: 'unitPrice', label: tm('price'), visible: isColumnVisible('unitPrice') },
-    { id: 'discountPercent', label: tm('discountPercent'), visible: isColumnVisible('discountPercent') },
-    { id: 'discountAmount', label: tm('discountAmount'), visible: isColumnVisible('discountAmount') },
-    { id: 'amount', label: tm('gross'), visible: isColumnVisible('amount') },
-    ...(invoiceType.category === 'Alis' ? [{ id: 'profitMarginPercent', label: tm('profitPercent'), visible: isColumnVisible('profitMarginPercent') }] : []),
-    ...(invoiceType.category === 'Alis' || invoiceType.category === 'Irsaliye' || (invoiceType.category === 'Satis' && invoiceType.code === 1) ? [{ id: 'expiryDate', label: tm('expiryDate'), visible: isColumnVisible('expiryDate') }] : []),
-    ...(invoiceType.category === 'Irsaliye' ? [{ id: 'batchNo', label: tm('batchNo'), visible: isColumnVisible('batchNo') }] : []),
-    ...(invoiceType.category === 'Satis' ? [{ id: 'profit', label: tm('profit'), visible: isColumnVisible('profit') }] : []),
-    { id: 'netAmount', label: tm('net'), visible: isColumnVisible('netAmount') },
-  ], [itemColumnVisibility, invoiceType.category, invoiceType.code, tm, isColumnVisible]);
-
   /** Grid yalnızca `itemColumnVisibility` okuduğu için RBAC ile zorunlu gizlemeyi burada birleştiriyoruz */
   const effectiveItemColumnVisibility = useMemo(() => {
     const merged: Record<string, boolean> = { ...itemColumnVisibility };
@@ -1281,29 +1245,6 @@ export function UniversalInvoiceForm({
     }
     return merged;
   }, [itemColumnVisibility, canViewPurchasePricing, invoiceType.category]);
-
-  const handleToggleColumn = (columnId: string) => {
-    setItemColumnVisibility((prev: any) => ({
-      ...prev,
-      [columnId]: !prev[columnId]
-    }));
-  };
-
-  const handleShowAllColumns = () => {
-    const allVisible = Object.keys(itemColumnVisibility).reduce((acc, key) => ({
-      ...acc,
-      [key]: true
-    }), {});
-    setItemColumnVisibility(allVisible);
-  };
-
-  const handleHideAllColumns = () => {
-    const allHidden = Object.keys(itemColumnVisibility).reduce((acc, key) => ({
-      ...acc,
-      [key]: false
-    }), {});
-    setItemColumnVisibility(allHidden);
-  };
 
   useEffect(() => {
     try {
@@ -1348,9 +1289,9 @@ export function UniversalInvoiceForm({
       case 'Alis': return { gradient: 'from-teal-600 to-teal-700', solid: 'bg-teal-600' };
       case 'Hizmet':
         // Verilen (9/7) → mavi, Alınan (4/8) → teal
-        if (invoiceType.code === 9 || invoiceType.code === 7) {
+        if (invoiceType.code === 9) {
           return { gradient: 'from-blue-600 to-blue-700', solid: 'bg-blue-600' };
-        } else if (invoiceType.code === 4 || invoiceType.code === 8) {
+        } else if (invoiceType.code === 4) {
           return { gradient: 'from-teal-600 to-teal-700', solid: 'bg-teal-600' };
         }
         return { gradient: 'from-indigo-600 to-indigo-700', solid: 'bg-indigo-600' };
@@ -1369,8 +1310,8 @@ export function UniversalInvoiceForm({
         case 'Satis': return 'border-blue-500 bg-gray-800';
         case 'Alis': return 'border-teal-500 bg-gray-800';
         case 'Hizmet':
-          if (invoiceType.code === 9 || invoiceType.code === 7) return 'border-blue-500 bg-gray-800';
-          if (invoiceType.code === 4 || invoiceType.code === 8) return 'border-teal-500 bg-gray-800';
+          if (invoiceType.code === 9) return 'border-blue-500 bg-gray-800';
+          if (invoiceType.code === 4) return 'border-teal-500 bg-gray-800';
           return 'border-indigo-500 bg-gray-800';
         case 'Iade': return 'border-red-500 bg-gray-800';
         case 'Irsaliye': return 'border-orange-500 bg-gray-800';
@@ -1383,9 +1324,9 @@ export function UniversalInvoiceForm({
       case 'Satis': return 'border-blue-600 bg-blue-50';
       case 'Alis': return 'border-teal-600 bg-teal-50';
       case 'Hizmet':
-        if (invoiceType.code === 9 || invoiceType.code === 7) {
+        if (invoiceType.code === 9) {
           return 'border-blue-600 bg-blue-50';
-        } else if (invoiceType.code === 4 || invoiceType.code === 8) {
+        } else if (invoiceType.code === 4) {
           return 'border-teal-600 bg-teal-50';
         }
         return 'border-indigo-600 bg-indigo-50';
@@ -1403,9 +1344,9 @@ export function UniversalInvoiceForm({
       case 'Satis': return 'text-blue-600';
       case 'Alis': return 'text-teal-600';
       case 'Hizmet':
-        if (invoiceType.code === 9 || invoiceType.code === 7) {
+        if (invoiceType.code === 9) {
           return 'text-blue-600';
-        } else if (invoiceType.code === 4 || invoiceType.code === 8) {
+        } else if (invoiceType.code === 4) {
           return 'text-teal-600';
         }
         return 'text-indigo-600';
@@ -3396,6 +3337,7 @@ export function UniversalInvoiceForm({
     let lineDiscount = 0;
     let totalGross = 0;
     let netAfterLines = 0;
+    let quantity = 0;
 
     items.forEach(item => {
       if (invoiceType.category === 'Alis' && !isInvoiceSupplierPayableLineType(item.type)) return;
@@ -3403,6 +3345,7 @@ export function UniversalInvoiceForm({
       const itemTotalDiscount = (item.discountAmount || 0);
       const itemNet = itemGross - itemTotalDiscount;
 
+      quantity += Number(item.quantity) || 0;
       totalGross += itemGross;
       lineDiscount += itemTotalDiscount;
       netAfterLines += itemNet;
@@ -3427,6 +3370,7 @@ export function UniversalInvoiceForm({
     const rate = currency !== ledgerCurrency ? effectiveInvoiceCurrencyRate : 1;
     return {
       totalExpenses: 0,
+      quantity,
       lineDiscount,
       footerDiscount,
       footerDiscountPercent:
@@ -3435,6 +3379,7 @@ export function UniversalInvoiceForm({
           : derivedFooterPercent,
       totalDiscount,
       subtotal: totalGross,       // Fatura dövizinde (FC)
+      netAfterLines,
       totalVat: 0,
       net: totalNet,              // Fatura dövizinde (FC)
       rate,
@@ -4354,7 +4299,7 @@ export function UniversalInvoiceForm({
                   </div>
                 )}
 
-                <div className="mb-3 flex w-full items-center gap-2 justify-end relative">
+                <div className="mb-3 relative">
                   {/* Donanım barkod okuyucu — gizli alan; Enter ile satır ekler */}
                   <input
                     ref={quickBarcodeRef}
@@ -4375,24 +4320,6 @@ export function UniversalInvoiceForm({
                     tabIndex={0}
                     autoFocus
                   />
-                  <button
-                    type="button"
-                    onClick={() => setShowCameraScanner(true)}
-                    className="inline-flex items-center justify-center gap-2 shrink-0 px-3 py-2 rounded-lg bg-blue-600 text-white text-sm font-medium hover:bg-blue-700 active:scale-[0.99] transition-transform min-h-[44px] min-w-[44px]"
-                    title={tm('cameraScan')}
-                  >
-                    <Camera className="w-4 h-4 shrink-0" />
-                    <span className="whitespace-nowrap hidden sm:inline">{tm('cameraBtn')}</span>
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => imageToInvoiceInputRef.current?.click()}
-                    className="inline-flex items-center justify-center gap-2 shrink-0 px-3 py-2 rounded-lg bg-indigo-600 text-white text-sm font-medium hover:bg-indigo-700 active:scale-[0.99] transition-transform min-h-[44px] min-w-[44px]"
-                    title="Resimden fatura"
-                  >
-                    <ScanLine className="w-4 h-4 shrink-0" />
-                    <span className="whitespace-nowrap hidden sm:inline">Resim→Fatura</span>
-                  </button>
                   <input
                     ref={imageToInvoiceInputRef}
                     type="file"
@@ -4403,13 +4330,6 @@ export function UniversalInvoiceForm({
                       e.target.value = '';
                       if (file) void handleImageToInvoice(file);
                     }}
-                  />
-                  <ColumnVisibilityMenu
-                    columns={itemColumns}
-                    onToggle={handleToggleColumn}
-                    onShowAll={handleShowAllColumns}
-                    onHideAll={handleHideAllColumns}
-                    variant="filterBar"
                   />
                 </div>
 
@@ -4542,193 +4462,52 @@ export function UniversalInvoiceForm({
                     onCodeFieldFocus={handleInvoiceCodeFieldFocus}
                     onRequestQuickCreate={handleQuickCreateRequest}
                     productSearch={productSearch}
+                    gridFooter={{
+                      quantity: totals.quantity,
+                      amount: totals.subtotal,
+                      discountAmount: totals.lineDiscount,
+                      netAfterLines: totals.netAfterLines,
+                      footerDiscount: totals.footerDiscount,
+                      footerDiscountPercent: totals.footerDiscountPercent,
+                      net: totals.net,
+                      footerDiscountMode,
+                      footerDiscountPercentStr,
+                      footerDiscountAmountStr,
+                      onPercentChange: applyFooterDiscountPercent,
+                      onAmountChange: applyFooterDiscountAmount,
+                      onMode: (mode) => {
+                        if (mode === 'percentage') {
+                          const pct = totals.footerDiscountPercent || 0;
+                          setFooterDiscountMode('percentage');
+                          setFooterDiscountPercent(pct);
+                          setFooterDiscountPercentStr(pct > 0 ? formatDecimalForTrInput(pct) : '');
+                          setFooterDiscountAmount(totals.footerDiscount);
+                          setFooterDiscountAmountStr(
+                            totals.footerDiscount > 0 ? formatDecimalForTrInput(totals.footerDiscount) : ''
+                          );
+                        } else {
+                          const amt = totals.footerDiscount || 0;
+                          setFooterDiscountMode('amount');
+                          setFooterDiscountAmount(amt);
+                          setFooterDiscountAmountStr(amt > 0 ? formatDecimalForTrInput(amt) : '');
+                          const pct = totals.footerDiscountPercent || 0;
+                          setFooterDiscountPercent(pct);
+                          setFooterDiscountPercentStr(pct > 0 ? formatDecimalForTrInput(pct) : '');
+                        }
+                      },
+                    }}
                   />
                 </div>
 
-                {/* Totals Area */}
-                <div className="flex justify-end gap-4 items-start">
-                  {/* Totals Box */}
-                  <div className={`${getCariBorderColor()} border p-4 rounded-lg w-full max-w-sm space-y-2 shadow-sm ${darkMode ? 'text-gray-100' : ''}`}>
-                    {currency !== ledgerCurrency && (
-                      <div className={`flex justify-between text-xs pb-1 border-b ${darkMode ? 'text-gray-400 border-gray-700' : 'text-gray-500 border-gray-100'}`}>
-                        <span>{tm('grossTotal')} ({currency})</span>
-                        <span>{formatNumber(totals.subtotal, 2, true)}</span>
-                      </div>
-                    )}
-                    <div className="flex justify-between">
-                      <span className={darkMode ? 'text-gray-300' : 'text-gray-600'}>{tm('grossTotal')}{currency !== ledgerCurrency ? ` (${ledgerCurrency})` : ''}</span>
-                      <span>{formatNumber(currency !== ledgerCurrency ? totals.subtotalIQD : totals.subtotal, 2, false)}</span>
-                    </div>
-                    {totals.lineDiscount > 0 && (
-                      <>
-                        {currency !== ledgerCurrency && (
-                          <div className={`flex justify-between text-xs ${darkMode ? 'text-gray-400' : 'text-gray-500'}`}>
-                            <span>{tm('lineDiscountTotal')} ({currency})</span>
-                            <span className="text-red-400">-{formatNumber(totals.lineDiscount, 2, true)}</span>
-                          </div>
-                        )}
-                        <div className="flex justify-between">
-                          <span className={darkMode ? 'text-gray-300' : 'text-gray-600'}>{tm('lineDiscountTotal')}</span>
-                          <span className="text-red-500">-{formatNumber(currency !== ledgerCurrency ? totals.lineDiscountIQD : totals.lineDiscount, 2, false)}</span>
-                        </div>
-                      </>
-                    )}
-
-                    {/* Dip (fatura seviyesi) indirim */}
-                    <div className={`rounded-md border p-2 space-y-2 ${darkMode ? 'border-gray-600 bg-gray-900/40' : 'border-gray-200 bg-white/70'}`}>
-                      <div className="flex items-center justify-between gap-2">
-                        <span className={`text-sm font-medium ${darkMode ? 'text-gray-200' : 'text-gray-700'}`} title={tm('footerDiscountHint')}>
-                          {tm('footerDiscount')}
-                        </span>
-                        <div className="flex gap-1 shrink-0">
-                          <button
-                            type="button"
-                            onClick={() => {
-                              const pct = totals.footerDiscountPercent || 0;
-                              setFooterDiscountMode('percentage');
-                              setFooterDiscountPercent(pct);
-                              setFooterDiscountPercentStr(pct > 0 ? formatDecimalForTrInput(pct) : '');
-                              setFooterDiscountAmount(totals.footerDiscount);
-                              setFooterDiscountAmountStr(
-                                totals.footerDiscount > 0 ? formatDecimalForTrInput(totals.footerDiscount) : ''
-                              );
-                            }}
-                            className={`px-2 py-1 text-xs rounded border transition-colors ${
-                              footerDiscountMode === 'percentage'
-                                ? 'bg-blue-600 text-white border-blue-600'
-                                : darkMode
-                                  ? 'bg-gray-700 text-gray-200 border-gray-600 hover:border-blue-400'
-                                  : 'bg-white text-gray-700 border-gray-300 hover:border-blue-400'
-                            }`}
-                          >
-                            %
-                          </button>
-                          <button
-                            type="button"
-                            onClick={() => {
-                              const amt = totals.footerDiscount || 0;
-                              setFooterDiscountMode('amount');
-                              setFooterDiscountAmount(amt);
-                              setFooterDiscountAmountStr(amt > 0 ? formatDecimalForTrInput(amt) : '');
-                              const pct = totals.footerDiscountPercent || 0;
-                              setFooterDiscountPercent(pct);
-                              setFooterDiscountPercentStr(pct > 0 ? formatDecimalForTrInput(pct) : '');
-                            }}
-                            className={`px-2 py-1 text-xs rounded border transition-colors ${
-                              footerDiscountMode === 'amount'
-                                ? 'bg-blue-600 text-white border-blue-600'
-                                : darkMode
-                                  ? 'bg-gray-700 text-gray-200 border-gray-600 hover:border-blue-400'
-                                  : 'bg-white text-gray-700 border-gray-300 hover:border-blue-400'
-                            }`}
-                          >
-                            {currency || ledgerCurrency}
-                          </button>
-                        </div>
-                      </div>
-                      <div className="flex gap-2 items-center">
-                        <div className="flex-1">
-                          <label className={`block text-[10px] uppercase tracking-wide mb-0.5 ${darkMode ? 'text-gray-400' : 'text-gray-500'}`}>%</label>
-                          <input
-                            type="text"
-                            inputMode="decimal"
-                            autoComplete="off"
-                            value={footerDiscountPercentStr}
-                            onChange={(e) => applyFooterDiscountPercent(e.target.value)}
-                            onBlur={() => {
-                              if (footerDiscountMode === 'percentage') {
-                                const pct = Math.min(100, Math.max(0, footerDiscountPercent || 0));
-                                setFooterDiscountPercent(pct);
-                                setFooterDiscountPercentStr(pct > 0 ? formatDecimalForTrInput(pct) : '');
-                                setFooterDiscountAmount(totals.footerDiscount);
-                                setFooterDiscountAmountStr(
-                                  totals.footerDiscount > 0 ? formatDecimalForTrInput(totals.footerDiscount) : ''
-                                );
-                              }
-                            }}
-                            placeholder="0"
-                            className={`w-full px-2 py-1.5 text-sm text-right rounded border outline-none focus:ring-2 focus:ring-blue-500 ${
-                              darkMode
-                                ? 'bg-gray-800 border-gray-600 text-gray-100'
-                                : 'bg-white border-gray-300 text-gray-800'
-                            }`}
-                          />
-                        </div>
-                        <div className="flex-1">
-                          <label className={`block text-[10px] uppercase tracking-wide mb-0.5 ${darkMode ? 'text-gray-400' : 'text-gray-500'}`}>
-                            {tm('discountAmount')}
-                          </label>
-                          <input
-                            type="text"
-                            inputMode="decimal"
-                            autoComplete="off"
-                            value={footerDiscountAmountStr}
-                            onChange={(e) => applyFooterDiscountAmount(e.target.value)}
-                            onBlur={() => {
-                              if (footerDiscountMode === 'amount') {
-                                const amt = Math.max(0, footerDiscountAmount || 0);
-                                setFooterDiscountAmount(amt);
-                                setFooterDiscountAmountStr(amt > 0 ? formatDecimalForTrInput(amt) : '');
-                                const pct = totals.footerDiscountPercent || 0;
-                                setFooterDiscountPercent(pct);
-                                setFooterDiscountPercentStr(pct > 0 ? formatDecimalForTrInput(pct) : '');
-                              }
-                            }}
-                            placeholder="0"
-                            className={`w-full px-2 py-1.5 text-sm text-right rounded border outline-none focus:ring-2 focus:ring-blue-500 ${
-                              darkMode
-                                ? 'bg-gray-800 border-gray-600 text-gray-100'
-                                : 'bg-white border-gray-300 text-gray-800'
-                            }`}
-                          />
-                        </div>
-                      </div>
-                      {totals.footerDiscount > 0 && currency !== ledgerCurrency && (
-                        <div className={`flex justify-between text-xs ${darkMode ? 'text-gray-400' : 'text-gray-500'}`}>
-                          <span>{tm('footerDiscount')} ({ledgerCurrency})</span>
-                          <span className="text-red-400">-{formatNumber(totals.footerDiscountIQD, 2, false)}</span>
-                        </div>
-                      )}
-                    </div>
-
-                    <div className="flex justify-between">
-                      <span className={darkMode ? 'text-gray-300' : 'text-gray-600'}>{tm('discountTotal')}</span>
-                      <span className="text-red-500">-{formatNumber(currency !== ledgerCurrency ? totals.totalDiscountIQD : totals.totalDiscount, 2, false)}</span>
-                    </div>
-                    {invoiceType.category === 'Satis' && totalCost > 0 && canViewPurchasePricing() && (
-                      <>
-                        <div className={`flex justify-between border-t pt-2 mt-2 ${darkMode ? 'border-gray-700' : 'border-gray-100'}`}>
-                          <span className={darkMode ? 'text-gray-300' : 'text-gray-600'}>{tm('costPurchase')}</span>
-                          <span className={darkMode ? 'text-gray-200' : 'text-gray-700'}>{formatNumber(totalCost, 2, false)}</span>
-                        </div>
-                        <div className={`flex justify-between border-t pt-2 mt-2 ${darkMode ? 'border-gray-700' : 'border-gray-100'}`}>
-                          <span className={`font-semibold ${darkMode ? 'text-gray-200' : 'text-gray-600'}`}>{tm('profitSalesPurchase')}</span>
-                          <span className={totalGrossProfit >= 0 ? 'text-green-600 font-bold' : 'text-red-600 font-bold'}>
-                            {formatNumber(totalGrossProfit, 2, false)}
-                          </span>
-                        </div>
-                        <div className={`flex justify-between text-xs ${darkMode ? 'text-gray-400' : 'text-gray-500'}`}>
-                          <span>{tm('profitMarginLabel')}</span>
-                          <span>{formatNumber(profitMargin, 2, false)}%</span>
-                        </div>
-                      </>
-                    )}
-                    <div className={`flex justify-between border-t pt-2 mt-2 ${darkMode ? 'border-gray-700' : 'border-gray-100'}`}>
-                      <span className={`font-bold text-lg ${darkMode ? 'text-white' : 'text-gray-900'}`}>
-                        {tm('net')}{currency !== ledgerCurrency ? ` (${ledgerCurrency})` : ''}
-                      </span>
-                      <span className={`${getCariTextColor()} text-2xl font-bold`}>
-                        {formatNumber(currency !== ledgerCurrency ? totals.netIQD : totals.net, 2, false)}
-                      </span>
-                    </div>
-                    {currency !== ledgerCurrency && (
-                      <div className={`flex justify-between text-xs pt-1 ${darkMode ? 'text-gray-500' : 'text-gray-400'}`}>
-                        <span>{tm('net')} ({currency})</span>
-                        <span>{formatNumber(totals.net, 2, true)} {currency}</span>
-                      </div>
-                    )}
+                {invoiceType.category === 'Satis' && totalCost > 0 && canViewPurchasePricing() && (
+                  <div className="flex justify-end gap-6 text-sm tabular-nums px-1 mt-1">
+                    <span className="text-gray-600">{tm('costPurchase')}: <strong>{formatNumber(totalCost, 2, false)}</strong></span>
+                    <span className={totalGrossProfit >= 0 ? 'text-green-700' : 'text-red-600'}>
+                      {tm('profitSalesPurchase')}: <strong>{formatNumber(totalGrossProfit, 2, false)}</strong>
+                      <span className="text-gray-500 font-normal"> ({formatNumber(profitMargin, 2, false)}%)</span>
+                    </span>
                   </div>
-                </div>
+                )}
 
                 <div className="flex justify-end gap-2 mt-3 items-center flex-wrap">
                   <select

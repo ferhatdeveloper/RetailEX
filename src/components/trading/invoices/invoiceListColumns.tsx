@@ -3,6 +3,8 @@ import { createColumnHelper } from '@tanstack/react-table';
 import type { ComponentType } from 'react';
 import type { Invoice } from '../../../core/types';
 import { formatNumber } from '../../../utils/formatNumber';
+import { formatShortDate } from '../../../utils/dateLocale';
+import { invoiceLineMixLabelKey, type InvoiceLineMix } from '../../../utils/invoiceLineMix';
 import { paymentFormCodeTranslationKey } from '../../../utils/paymentMethodUtils';
 import { getInvoiceHeaderField } from '../../../utils/invoiceHeaderFields';
 import { Eye, Edit, FileText } from 'lucide-react';
@@ -14,6 +16,7 @@ export type ListInvoice = Invoice & {
   date?: string;
   document_no?: string;
   header_fields?: Record<string, unknown>;
+  line_mix?: InvoiceLineMix;
 };
 
 export type InvoiceListColumnId =
@@ -22,6 +25,7 @@ export type InvoiceListColumnId =
   | 'customer_name'
   | 'invoice_date'
   | 'invoice_type'
+  | 'line_mix'
   | 'special_code'
   | 'trading_group'
   | 'authorization'
@@ -55,6 +59,7 @@ export const INVOICE_LIST_COLUMN_META: Record<InvoiceListColumnId, ColumnMeta> =
   customer_name: { id: 'customer_name', labelKey: 'customerSupplier', defaultVisible: true },
   invoice_date: { id: 'invoice_date', labelKey: 'date', defaultVisible: true },
   invoice_type: { id: 'invoice_type', labelKey: 'invoiceType', defaultVisible: true },
+  line_mix: { id: 'line_mix', labelKey: 'lineMix', defaultVisible: true },
   special_code: { id: 'special_code', labelKey: 'specialCode', defaultVisible: false },
   trading_group: { id: 'trading_group', labelKey: 'tradingGroup', defaultVisible: false },
   authorization: { id: 'authorization', labelKey: 'authorization', defaultVisible: false },
@@ -165,17 +170,7 @@ export function buildInvoiceListColumns(options: BuildInvoiceListColumnsOptions)
 
   const formatDate = (dateValue: string | undefined) => {
     if (!dateValue) return '—';
-    try {
-      const date = new Date(dateValue);
-      if (isNaN(date.getTime())) return tm('invalidDate');
-      return date.toLocaleDateString(localeCode, {
-        day: '2-digit',
-        month: '2-digit',
-        year: 'numeric',
-      });
-    } catch {
-      return '—';
-    }
+    return formatShortDate(dateValue, localeCode, { fallback: tm('invalidDate') });
   };
 
   const statusColors: Record<string, string> = {
@@ -276,6 +271,30 @@ export function buildInvoiceListColumns(options: BuildInvoiceListColumnsOptions)
               <FileText className="w-4 h-4 text-gray-400 flex-shrink-0" />
               <span className="text-sm text-gray-600">{tm('salesInvoices')}</span>
             </div>
+          );
+        },
+        enableSorting: false,
+      }),
+    );
+  }
+
+  if (isVisible('line_mix')) {
+    const mixClass: Record<InvoiceLineMix, string> = {
+      product: 'bg-blue-50 text-blue-700 border-blue-200',
+      service: 'bg-indigo-50 text-indigo-700 border-indigo-200',
+      mixed: 'bg-violet-50 text-violet-800 border-violet-200',
+      unknown: 'bg-gray-50 text-gray-600 border-gray-200',
+    };
+    defs.push(
+      columnHelper.display({
+        id: 'line_mix',
+        header: tm('lineMix'),
+        cell: ({ row }) => {
+          const mix = (row.original.line_mix || 'unknown') as InvoiceLineMix;
+          return (
+            <span className={`inline-flex px-2 py-0.5 rounded-full text-[11px] font-semibold border ${mixClass[mix]}`}>
+              {tm(invoiceLineMixLabelKey(mix))}
+            </span>
           );
         },
         enableSorting: false,

@@ -5588,13 +5588,24 @@ export const beautyService = {
             '07':'TEM','08':'AĞU','09':'EYL','10':'EKİ','11':'KAS','12':'ARA',
         };
 
+        const pocketSql = `
+            CASE
+              WHEN COALESCE(paid_amount, 0) > 0.009 OR COALESCE(remaining_amount, 0) > 0.009
+                THEN COALESCE(paid_amount, 0)
+              WHEN LOWER(TRIM(COALESCE(payment_method, ''))) IN (
+                'veresiye', 'credit', 'open_account', 'cari', 'açık hesap', 'acik hesap',
+                'açık cari', 'acik cari', 'acik_cari', 'açık_cari'
+              ) OR LOWER(TRIM(COALESCE(payment_method, ''))) LIKE '%veresiye%'
+                THEN 0
+              ELSE COALESCE(total, 0)
+            END`;
         const [monthlyRes, prevRes, newCustRes, trendRes, svcRes, staffRes, productStaffRes] = await Promise.all([
-            // Current month stats
+            // Current month stats — cebe giren (paid_amount), belge tutarı değil
             postgres.query(`
                 SELECT
-                    COALESCE(SUM(total), 0)::float  AS revenue,
+                    COALESCE(SUM(${pocketSql}), 0)::float  AS revenue,
                     COUNT(*)::int                    AS transactions,
-                    COALESCE(AVG(total), 0)::float  AS avg_cart
+                    COALESCE(AVG(${pocketSql}), 0)::float  AS avg_cart
                 FROM ${st}
                 WHERE payment_status = 'paid'
                   AND created_at >= date_trunc('month', CURRENT_DATE)
@@ -5602,7 +5613,7 @@ export const beautyService = {
             // Previous month stats (for % change)
             postgres.query(`
                 SELECT
-                    COALESCE(SUM(total), 0)::float AS revenue,
+                    COALESCE(SUM(${pocketSql}), 0)::float AS revenue,
                     COUNT(*)::int                   AS transactions
                 FROM ${st}
                 WHERE payment_status = 'paid'
@@ -5619,7 +5630,7 @@ export const beautyService = {
             postgres.query(`
                 SELECT
                     to_char(date_trunc('month', created_at), 'YYYY-MM') AS month,
-                    COALESCE(SUM(total), 0)::float  AS revenue,
+                    COALESCE(SUM(${pocketSql}), 0)::float  AS revenue,
                     COUNT(*)::int                    AS transactions
                 FROM ${st}
                 WHERE payment_status = 'paid'

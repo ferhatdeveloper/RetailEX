@@ -84,6 +84,34 @@ export function appendRemainingOpenAccountRow(
   ];
 }
 
+/** Tek yöntemle kısmi tahsilat: peşin satır + kalan ACIK_CARI. */
+export function buildPrepaidAndRemainderPayments(opts: {
+  method: string;
+  collected: number;
+  invoiceTotal: number;
+  currency?: InvoicePaymentRow['currency'];
+  cashRegisterId: string | null;
+  cashRegisterName?: string | null;
+  cashRegisterCode?: string | null;
+}): InvoicePaymentRow[] {
+  const total = Math.max(0, Number(opts.invoiceTotal) || 0);
+  const collected = Math.max(0, Math.min(Number(opts.collected) || 0, total));
+  const remaining = total - collected;
+  const currency = opts.currency || 'IQD';
+  const rows: InvoicePaymentRow[] = [];
+  if (collected > 0.009) {
+    rows.push({
+      method: opts.method,
+      amount: collected,
+      currency,
+      cashRegisterId: opts.cashRegisterId,
+      cashRegisterName: opts.cashRegisterName,
+      cashRegisterCode: opts.cashRegisterCode,
+    });
+  }
+  return appendRemainingOpenAccountRow(rows, total);
+}
+
 export function InvoicePaymentInfoModal({
   currentPaymentMethod,
   onSelect,
@@ -113,6 +141,16 @@ export function InvoicePaymentInfoModal({
   const [draftRegisterId, setDraftRegisterId] = useState<string>('');
   // Eklenen ödeme satırları
   const [addedPayments, setAddedPayments] = useState<InvoicePaymentRow[]>([]);
+  const [collectedNowStr, setCollectedNowStr] = useState(() =>
+    Number.isFinite(Number(invoiceTotal)) && Number(invoiceTotal) > 0
+      ? String(invoiceTotal)
+      : '',
+  );
+
+  useEffect(() => {
+    if (!Number.isFinite(Number(invoiceTotal))) return;
+    setCollectedNowStr(Number(invoiceTotal) > 0 ? String(invoiceTotal) : '');
+  }, [invoiceTotal]);
 
   useEffect(() => {
     setSelectedMethod(
@@ -259,6 +297,31 @@ export function InvoicePaymentInfoModal({
       return;
     }
     const method = selectedMethod || 'ACIK_CARI';
+    if (paymentMethodImpliesPaidNow(method) && Number.isFinite(Number(invoiceTotal))) {
+      const collected = parseAmount(collectedNowStr);
+      const payments = buildPrepaidAndRemainderPayments({
+        method,
+        collected: collected > 0 ? collected : Number(invoiceTotal),
+        invoiceTotal: Number(invoiceTotal),
+        cashRegisterId: selectedCashRegister?.id || null,
+        cashRegisterName: selectedCashRegister?.kasa_adi || null,
+        cashRegisterCode: selectedCashRegister?.kasa_kodu || null,
+      });
+      if (payments.some((p) => p.method === 'ACIK_CARI')) {
+        const primary = resolvePrimaryInvoicePaymentMethod(payments, method);
+        const first = payments[0];
+        onSelect(primary, {
+          paymentMethod: primary,
+          cashRegisterId: first.cashRegisterId || null,
+          cashRegisterName: first.cashRegisterName || null,
+          cashRegisterCode: first.cashRegisterCode || null,
+          notes,
+          payments,
+        });
+        onClose();
+        return;
+      }
+    }
     onSelect(method, {
       paymentMethod: method,
       cashRegisterId: showCashRegisterPicker ? selectedCashRegister?.id || null : null,
@@ -358,6 +421,35 @@ export function InvoicePaymentInfoModal({
                   {`${selectedCashRegister.kasa_adi} · ${selectedCashRegister.kasa_kodu}`}
                 </p>
               )}
+            </div>
+          )}
+
+          {!multiPaymentEnabled && showCashRegisterPicker && Number.isFinite(Number(invoiceTotal)) && (
+            <div className="mb-4 rounded-lg border border-amber-200 bg-amber-50/70 p-3 space-y-2">
+              <label className="block text-sm font-medium text-gray-700">
+                {tm('tahsilEdilen')}
+              </label>
+              <input
+                type="text"
+                inputMode="decimal"
+                value={collectedNowStr}
+                onChange={(e) => setCollectedNowStr(e.target.value)}
+                className="w-full px-3 py-2 border border-gray-300 rounded text-right font-mono bg-white focus:outline-none focus:border-blue-600"
+                aria-label={tm('tahsilEdilen')}
+              />
+              {(() => {
+                const collected = parseAmount(collectedNowStr);
+                const remaining = Number(invoiceTotal) - (collected > 0 ? collected : 0);
+                if (remaining <= 0.009) return null;
+                return (
+                  <p className="text-xs text-amber-800">
+                    {tm('writeRemainingToOpenAccountHint')} · {tm('kalanCari')}:{' '}
+                    <span className="font-mono font-semibold">
+                      {remaining.toLocaleString('tr-TR', { minimumFractionDigits: 0, maximumFractionDigits: 2 })}
+                    </span>
+                  </p>
+                );
+              })()}
             </div>
           )}
 

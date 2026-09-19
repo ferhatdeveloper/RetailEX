@@ -1,7 +1,8 @@
-﻿import { useState, useEffect, useRef, useMemo } from 'react';
+import { useState, useEffect, useRef, useMemo } from 'react';
 import { createPortal } from 'react-dom';
 import { Eye, EyeOff, Columns3, Search } from 'lucide-react';
 import { useLanguage } from '../../contexts/LanguageContext';
+import { GRID_POPOVER_Z } from './FullscreenBodyPortal';
 
 interface Column {
   id: string;
@@ -14,8 +15,8 @@ interface ColumnVisibilityMenuProps {
   onToggle: (columnId: string) => void;
   onShowAll: () => void;
   onHideAll: () => void;
-  /** Üst mavi toolbar | arama satırı (Bugün yanı) | varsayılan */
-  variant?: 'default' | 'toolbar' | 'filterBar';
+  /** Üst mavi toolbar | arama satırı (Bugün yanı) | ızgara chrome | varsayılan */
+  variant?: 'default' | 'toolbar' | 'filterBar' | 'grid';
 }
 
 export function ColumnVisibilityMenu({
@@ -41,8 +42,6 @@ export function ColumnVisibilityMenu({
 
   const MENU_WIDTH = 300;
   const MENU_HEIGHT = 440;
-  /** FilterMenu (12000) ve sticky dip toplam / sayfalama üstünde; portal overlay. */
-  const COLUMN_CHOOSER_Z_INDEX = 20000;
 
   const updateMenuPos = () => {
     const rect = buttonRef.current?.getBoundingClientRect();
@@ -87,6 +86,7 @@ export function ColumnVisibilityMenu({
 
   const isToolbar = variant === 'toolbar';
   const isFilterBar = variant === 'filterBar';
+  const isGrid = variant === 'grid';
 
   const filteredColumns = useMemo(() => {
     const q = search.trim().toLocaleLowerCase(locale);
@@ -103,7 +103,7 @@ export function ColumnVisibilityMenu({
   const menuPanel = isOpen && menuPos ? (
     <div
       className="fixed inset-0"
-      style={{ zIndex: COLUMN_CHOOSER_Z_INDEX }}
+      style={{ zIndex: GRID_POPOVER_Z, isolation: 'isolate', transform: 'translateZ(0)' }}
       onMouseDown={closeMenu}
     >
       <div
@@ -208,11 +208,13 @@ export function ColumnVisibilityMenu({
               }`
             : isToolbar
               ? 'flex items-center gap-1 px-2 py-1 bg-white/10 hover:bg-white/20 transition-colors text-[10px] font-bold'
+              : isGrid
+                ? 'inline-flex items-center gap-1 px-2 py-1 text-[10px] font-medium text-slate-700 bg-white border border-gray-300 rounded hover:bg-gray-50'
               : 'px-3 py-2 bg-white border border-gray-300 rounded-lg hover:bg-gray-50 flex items-center gap-2 text-sm'
         }
         title={tm('columnVisibilityHint')}
       >
-        <Columns3 className={isToolbar ? 'w-3 h-3 shrink-0' : 'w-4 h-4 shrink-0'} />
+        <Columns3 className={isToolbar || isGrid ? 'w-3 h-3 shrink-0' : 'w-4 h-4 shrink-0'} />
         <span>{tm('columns')}</span>
       </button>
 

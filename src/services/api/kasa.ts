@@ -20,6 +20,12 @@ function padKasaPeriodNr(): string {
   return String(ERP_SETTINGS.periodNr || '01').trim().padStart(2, '0').slice(0, 10);
 }
 
+function storedCariTypeFromKind(
+  kind: 'customer' | 'supplier' | 'employee' | 'partner' | null | undefined,
+): 'customer' | 'supplier' {
+  return kind === 'supplier' ? 'supplier' : 'customer';
+}
+
 /**
  * Kasa tutarı: TR binlik "450.000" → 450000. Number/parseFloat("450.000")=450 yapmaz.
  */
@@ -929,7 +935,11 @@ async function createKasaIslemiViaPostgrest(
   }
 
   if (islem.cari_hesap_id && (islem.islem_tipi === 'CH_ODEME' || islem.islem_tipi === 'CH_TAHSILAT')) {
-    const delta = cariCashStoredBalanceDelta(islem.tutar, islem.islem_tipi);
+    const delta = cariCashStoredBalanceDelta(
+      islem.tutar,
+      islem.islem_tipi,
+      storedCariTypeFromKind(cariKind),
+    );
     if (delta !== 0) {
       const firmNr = normalizeFirmTableNr(ERP_SETTINGS.firmNr);
       const partnerId = String(islem.cari_hesap_id).trim();
@@ -1343,7 +1353,11 @@ export async function createKasaIslemi(incoming: KasaIslemi): Promise<KasaIslemi
     // Eski "önce customer dene, yoksa supplier" yaklaşımı supplier ödemelerini müşteri tablosuna
     // düşürüyordu. cariKind=null ise (UUID hiçbir yerde yok) yine de fallback denenir.
     if (islem.cari_hesap_id && (islem.islem_tipi === 'CH_ODEME' || islem.islem_tipi === 'CH_TAHSILAT')) {
-      const delta = cariCashStoredBalanceDelta(islem.tutar, islem.islem_tipi);
+      const delta = cariCashStoredBalanceDelta(
+        islem.tutar,
+        islem.islem_tipi,
+        storedCariTypeFromKind(cariKind),
+      );
       if (delta !== 0) {
         const deltaStr = delta.toString();
         const partnerId = islem.cari_hesap_id;
@@ -1644,13 +1658,6 @@ export async function deleteKasaIslemi(id: string): Promise<void> {
     // tedarikçi UUID'si yazılmış olabilir — bu durumda partyId NULL'dır ve customerId
     // üzerinden tespit yaparız.
     if ((customerId || partyId) && (trType === 'CH_ODEME' || trType === 'CH_TAHSILAT')) {
-      const delta = -cariCashStoredBalanceDelta(amount, trType);
-      if (delta !== 0) {
-        const deltaStr = delta.toString();
-        // Tedarikçi ödemelerinde party_id dolu (yeni davranış). Müşteri tahsilatlarında
-        // customer_id dolu. Eski veride customer_id'ye tedarikçi UUID'si yazılmışsa
-        // türü yeniden tespit edip doğru tabloya geri al.
-        let delKind: ReturnType<typeof resolveCariAccountKind> extends Promise<infer T> ? T : never = null;
         const probeId = String(partyId || customerId || '');
         // CH_ODEME → tedarikçi ödemesi, CH_TAHSILAT → müşteri tahsilatı.
         // Her iki yönde aynı UUID hem customers hem suppliers'da olabilir; caller hint
@@ -1659,7 +1666,13 @@ export async function deleteKasaIslemi(id: string): Promise<void> {
           trType === 'CH_ODEME' ? 'supplier'
           : trType === 'CH_TAHSILAT' ? 'customer'
           : null;
-        delKind = await resolveCariAccountKind(probeId, delHint);
+        const delKind = await resolveCariAccountKind(probeId, delHint);
+        const delta = -cariCashStoredBalanceDelta(amount, trType, storedCariTypeFromKind(delKind));
+      if (delta !== 0) {
+        const deltaStr = delta.toString();
+        // Tedarikçi ödemelerinde party_id dolu (yeni davranış). Müşteri tahsilatlarında
+        // customer_id dolu. Eski veride customer_id'ye tedarikçi UUID'si yazılmışsa
+        // türü yeniden tespit edip doğru tabloya geri al.
         await ensurePartyPeriodTables();
         if (partyId && (delKind === 'employee' || delKind === 'partner')) {
           // Personel/Şirket ortağı kasa işlemleri için party bakiyesi zaten aşağıdaki
@@ -1854,8 +1867,6 @@ async function deleteKasaIslemiViaPostgrest(id: string): Promise<void> {
   // Tedarikçi ödemelerinde party_id dolu; müşteri tahsilatlarında customer_id dolu.
   // customerId veya partyIdFromRow → tür tespiti → doğru tablo.
   if ((customerId || partyIdFromRow) && (trType === 'CH_ODEME' || trType === 'CH_TAHSILAT')) {
-    const delta = -cariCashStoredBalanceDelta(amount, trType);
-    if (delta !== 0) {
       const probeId = String(partyIdFromRow || customerId || '');
       // CH_ODEME → tedarikçi ödemesi, CH_TAHSILAT → müşteri tahsilatı.
       // aynı UUID her iki tabloda olabilir → caller hint ile doğru tablo.
@@ -1864,6 +1875,8 @@ async function deleteKasaIslemiViaPostgrest(id: string): Promise<void> {
         : trType === 'CH_TAHSILAT' ? 'customer'
         : null;
       const delKind = await resolveCariAccountKind(probeId, delHint);
+    const delta = -cariCashStoredBalanceDelta(amount, trType, storedCariTypeFromKind(delKind));
+    if (delta !== 0) {
       const firmNr = normalizeFirmTableNr(ERP_SETTINGS.firmNr);
       const patchPartner = async (path: string, withFirm: boolean, partnerId: string) => {
         try {
@@ -2127,16 +2140,17 @@ export function isCariCashTransactionType(trType: string | null | undefined): bo
   return t === 'CH_TAHSILAT' || t === 'CH_ODEME';
 }
 
-/** Cari saklanan balance neti — create/delete ile aynı (üçüncü argüman yok). */
+/** Cari saklanan balance neti — create/delete ile aynı işaret (müşteri varsayılan). */
 export function kasaIslemiCariDeltaOnUpdate(
   oldAmount: number,
   oldType: string,
   newAmount: number,
   newType: string,
+  cariType: 'customer' | 'supplier' | null | undefined = 'customer',
 ): number {
   return (
-    cariCashStoredBalanceDelta(newAmount, newType) -
-    cariCashStoredBalanceDelta(oldAmount, oldType)
+    cariCashStoredBalanceDelta(newAmount, newType, cariType) -
+    cariCashStoredBalanceDelta(oldAmount, oldType, cariType)
   );
 }
 
@@ -2310,26 +2324,37 @@ async function applyCariAndPartyDeltasOnUpdate(opts: {
 }): Promise<void> {
   const oldP = opts.oldPartnerId;
   const newP = opts.newPartnerId;
+  const hintForType = (trType: string): 'supplier' | 'customer' | null =>
+    trType === 'CH_ODEME' ? 'supplier' : trType === 'CH_TAHSILAT' ? 'customer' : null;
   if (oldP && newP && oldP === newP) {
     const hintType = isCariCashTransactionType(opts.oldType) ? opts.oldType : opts.newType;
+    const kind = await resolveCariAccountKind(oldP, hintForType(hintType));
     await bumpCariStoredBalance(
       oldP,
       hintType,
-      kasaIslemiCariDeltaOnUpdate(opts.oldAmount, opts.oldType, opts.newAmount, opts.newType),
+      kasaIslemiCariDeltaOnUpdate(
+        opts.oldAmount,
+        opts.oldType,
+        opts.newAmount,
+        opts.newType,
+        storedCariTypeFromKind(kind),
+      ),
     );
   } else {
     if (oldP) {
+      const kind = await resolveCariAccountKind(oldP, hintForType(opts.oldType));
       await bumpCariStoredBalance(
         oldP,
         opts.oldType,
-        -cariCashStoredBalanceDelta(opts.oldAmount, opts.oldType),
+        -cariCashStoredBalanceDelta(opts.oldAmount, opts.oldType, storedCariTypeFromKind(kind)),
       );
     }
     if (newP) {
+      const kind = await resolveCariAccountKind(newP, hintForType(opts.newType));
       await bumpCariStoredBalance(
         newP,
         opts.newType,
-        cariCashStoredBalanceDelta(opts.newAmount, opts.newType),
+        cariCashStoredBalanceDelta(opts.newAmount, opts.newType, storedCariTypeFromKind(kind)),
       );
     }
   }

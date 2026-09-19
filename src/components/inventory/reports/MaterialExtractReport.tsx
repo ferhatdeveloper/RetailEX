@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useMemo, useRef } from 'react';
-import { Search, Printer, X, FileSpreadsheet, FileText, LayoutTemplate, Database } from 'lucide-react';
+import { Search, Printer, X, FileText, LayoutTemplate, Database } from 'lucide-react';
 import { toast } from 'sonner';
 import { stockMovementAPI } from '../../../services/stockMovementAPI';
 import { productAPI } from '../../../services/api/products';
@@ -18,6 +18,7 @@ import {
     isInboundMovement,
     isOutboundMovement,
     labelMaterialExtractFiche,
+    resolveExtractSourceMeta,
 } from '../../../utils/materialExtractLabels';
 import { displayItemCode } from '../../../utils/lastPurchaseCostSql';
 import { PercentBodyModal, PercentBodyModalScrollBody } from '../../shared/PercentBodyModal';
@@ -204,13 +205,9 @@ export function MaterialExtractReport() {
                 const qty = Number(m.quantity) || 0;
                 const unitPrice = Number(m.unit_price) || 0;
                 const movType = m.movement?.movement_type || m.movement_type || '';
-                if (movType === 'in') balance += qty;
-                else if (movType === 'out') balance -= qty;
-                return {
-                    id: `${m.id || idx}`,
-                    date: m.movement?.movement_date || m.movement_date || m.created_at,
-                    trcode: Number(m.movement?.trcode || m.trcode || 0),
+                const classified = resolveExtractSourceMeta({
                     movement_type: movType,
+                    trcode: Number(m.movement?.trcode || m.trcode || 0),
                     source_type: String(
                         m.source_type ||
                         m.source_kind ||
@@ -226,6 +223,16 @@ export function MaterialExtractReport() {
                         m.sales_fiche_type ||
                         '',
                     ).trim(),
+                });
+                if (movType === 'in') balance += qty;
+                else if (movType === 'out') balance -= qty;
+                return {
+                    id: `${m.id || idx}`,
+                    date: m.movement?.movement_date || m.movement_date || m.created_at,
+                    trcode: Number(m.movement?.trcode || m.trcode || 0),
+                    movement_type: movType,
+                    source_type: classified.source_type,
+                    fiche_type: classified.fiche_type,
                     document_no: m.movement?.document_no || m.document_no || '',
                     description: m.notes || m.description || m.customer_name || m.supplier || '',
                     quantity: qty,
@@ -722,27 +729,6 @@ export function MaterialExtractReport() {
                 >
                     {loading ? (tm('loading') || 'Yükleniyor...') : (tm('prepareReport') || 'Raporu Hazırla')}
                 </button>
-
-                <div className="flex-1 flex justify-end gap-2">
-                    <button
-                        type="button"
-                        onClick={() => void openPrintModal()}
-                        disabled={!canExport}
-                        className="inline-flex items-center gap-1.5 px-3 py-2 bg-blue-600 text-white rounded-lg text-xs font-bold uppercase tracking-wide hover:bg-blue-700 shadow-sm shadow-blue-200/60 disabled:opacity-40 disabled:cursor-not-allowed disabled:shadow-none"
-                    >
-                        <Printer className="w-4 h-4" />
-                        {tm('extractPrint') || tm('print') || 'Yazdır'}
-                    </button>
-                    <button
-                        type="button"
-                        onClick={exportExcel}
-                        disabled={!canExport}
-                        className="inline-flex items-center gap-1.5 px-3 py-2 bg-emerald-600 text-white rounded-lg text-xs font-bold uppercase tracking-wide hover:bg-emerald-700 shadow-sm shadow-emerald-200/60 disabled:opacity-40 disabled:cursor-not-allowed disabled:shadow-none"
-                    >
-                        <FileSpreadsheet className="w-4 h-4" />
-                        {tm('exportExcel') || tm('export') || 'Excel'}
-                    </button>
-                </div>
             </div>
 
             {/* Rapor Başlığı */}
@@ -784,6 +770,11 @@ export function MaterialExtractReport() {
                         columns={gridColumns}
                         {...REPORT_GRID_DEFAULTS}
                         height="100%"
+                        excelFileName={tm('materialExtractReport') || 'malzeme_ekstresi'}
+                        printTitle={tm('materialExtractReport') || 'Malzeme Ekstresi'}
+                        onPrint={() => void openPrintModal()}
+                        printDisabled={!canExport}
+                        enableExcelExport={canExport}
                         footerLabel={tm('totalUppercase') || 'Toplam'}
                         footerSumColumns={[
                             {

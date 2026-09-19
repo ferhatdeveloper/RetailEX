@@ -2,9 +2,8 @@ import React, { useState, useEffect, useMemo } from 'react';
 import { getCostProfitAnalysis, type CostProfitRow } from '../../../services/layeredInventoryCost';
 import { DevExDataGrid } from '../../shared/DevExDataGrid';
 import { REPORT_GRID_DEFAULTS } from '../../reports/shared/ReportDataGrid';
-import { exportDataGridToExcel } from '../../../utils/gridExcelExport';
 import { createColumnHelper, ColumnDef } from '@tanstack/react-table';
-import { Download, TrendingDown } from 'lucide-react';
+import { TrendingDown } from 'lucide-react';
 import { useLanguage } from '../../../contexts/LanguageContext';
 import { useFirmaDonem } from '../../../contexts/FirmaDonemContext';
 import { formatNumber } from '../../../utils/formatNumber';
@@ -84,18 +83,6 @@ export function CostReport() {
         return () => { cancelled = true; };
     }, [startDate, endDate, selectedFirm?.firm_nr, selectedPeriod?.nr]);
 
-    const totals = useMemo(() => {
-        const tot = rows.reduce(
-            (acc, r) => {
-                acc.revenue += r.revenue;
-                acc.cogs += r.cogs;
-                return acc;
-            },
-            { revenue: 0, cogs: 0 }
-        );
-        return { ...tot, profit: tot.revenue - tot.cogs };
-    }, [rows]);
-
     const costSourceNote = useMemo(() => {
         const hasNone = rows.some((r) => r.cost_source === 'none');
         const hasLayer = rows.some((r) => r.cost_source === 'fifo_layers');
@@ -158,42 +145,12 @@ export function CostReport() {
     return (
         <div className="h-full flex flex-col bg-white rounded-lg shadow-sm border border-gray-200">
             <div className="p-4 border-b border-gray-200 bg-gray-50 space-y-3">
-                <div className="flex justify-between items-start flex-wrap gap-3">
-                    <div>
-                        <h2 className="font-semibold text-gray-800 flex items-center gap-2">
-                            <TrendingDown className="w-5 h-5 text-purple-600" />
-                            {tm('costAndProfitAnalysis') || 'Maliyet ve Kar Analizi'}
-                        </h2>
-                        <div className="flex gap-4 mt-2 text-sm flex-wrap">
-                            <div>
-                                {tm('totalRevenue') || 'Toplam Gelir'}:{' '}
-                                <span className="font-bold text-gray-900">
-                                    {formatNumber(totals.revenue, 2)} {currency}
-                                </span>
-                            </div>
-                            <div>
-                                {tm('totalCost') || 'Toplam Maliyet'}:{' '}
-                                <span className="font-bold text-red-600">
-                                    {formatNumber(totals.cogs, 2)} {currency}
-                                </span>
-                            </div>
-                            <div>
-                                {tm('grossProfit') || 'Brüt Kar'}:{' '}
-                                <span className={`font-bold ${totals.profit >= 0 ? 'text-green-600' : 'text-red-600'}`}>
-                                    {formatNumber(totals.profit, 2)} {currency}
-                                </span>
-                            </div>
-                        </div>
-                        <p className="mt-1 text-[11px] text-gray-500 max-w-3xl">{costSourceNote}</p>
-                    </div>
-                    <button
-                        type="button"
-                        onClick={() => exportDataGridToExcel(rows, columns, tm('costAndProfitAnalysis') || 'maliyet_kar')}
-                        className="flex items-center gap-2 px-4 py-2 bg-white border border-gray-300 hover:bg-gray-50 text-gray-700 rounded-lg transition-colors shadow-sm"
-                    >
-                        <Download className="w-4 h-4" />
-                        {tm('excel')}
-                    </button>
+                <div>
+                    <h2 className="font-semibold text-gray-800 flex items-center gap-2">
+                        <TrendingDown className="w-5 h-5 text-purple-600" />
+                        {tm('costAndProfitAnalysis') || 'Maliyet ve Kar Analizi'}
+                    </h2>
+                    <p className="mt-1 text-[11px] text-gray-500 max-w-3xl">{costSourceNote}</p>
                 </div>
                 <div className="flex gap-3 items-end flex-wrap">
                     <div>
@@ -234,7 +191,14 @@ export function CostReport() {
                         {tm('noRecordsFound') || 'Kayıt bulunamadı'}
                     </div>
                 ) : (
-                    <DevExDataGrid data={rows} columns={columns} {...REPORT_GRID_DEFAULTS} height="100%" />
+                    <DevExDataGrid
+                        data={rows}
+                        columns={columns}
+                        {...REPORT_GRID_DEFAULTS}
+                        excelFileName={tm('costAndProfitAnalysis') || 'maliyet_kar'}
+                        printTitle={tm('costAndProfitAnalysis') || 'Maliyet ve Kar Analizi'}
+                        height="100%"
+                    />
                 )}
             </div>
         </div>

@@ -1,5 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import {
+  beautySalePocketCollected,
+  beautySaleRemainingCari,
   extraCustomerCollectionsNotOnSales,
   saleCollectedSplit,
   splitPaymentRows,
@@ -90,6 +92,21 @@ describe('extraCustomerCollectionsNotOnSales — çift sayım yok', () => {
       }],
     );
     expect(extra).toBe(0);
+  });
+
+  it('güzellik paid_amount 40 / remaining 60: cebe 40', () => {
+    expect(beautySalePocketCollected({
+      total: 100,
+      payment_method: 'veresiye',
+      paid_amount: 40,
+      remaining_amount: 60,
+    })).toBe(40);
+    expect(beautySaleRemainingCari({
+      total: 100,
+      payment_method: 'veresiye',
+      paid_amount: 40,
+      remaining_amount: 60,
+    })).toBe(60);
   });
 
   it('eski karma (payments yok) veresiye fişindeki CH_TAHSILAT 40 sayılır', () => {

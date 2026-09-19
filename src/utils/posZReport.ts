@@ -1,7 +1,6 @@
 import type { Sale } from '../core/types';
 import { formatNumber } from './formatNumber';
 import { localCalendarDateKey } from './localCalendarDate';
-import { normalizePaymentMethodBucket } from './paymentMethodUtils';
 import { saleCollectedSplit } from './saleCollectedAmounts';
 
 export interface PosPaymentBreakdown {
@@ -46,14 +45,6 @@ export interface CashierDayStats {
   otherTotal: number;
 }
 
-function normalizePaymentMethod(raw: unknown): 'cash' | 'card' | 'credit' | 'other' {
-  const bucket = normalizePaymentMethodBucket(raw);
-  if (bucket === 'cash') return 'cash';
-  if (bucket === 'card') return 'card';
-  if (bucket === 'credit') return 'credit';
-  return 'other';
-}
-
 export function isReturnSale(sale: Sale): boolean {
   const status = String(sale.status ?? '').toLowerCase();
   return Number(sale.total) < 0 || status === 'refunded' || status === 'return';
@@ -64,7 +55,31 @@ export function isCanceledSale(sale: Sale): boolean {
   return status === 'cancelled' || status === 'canceled';
 }
 
-/** Satışlardan ödeme kırılımı — payments[] varsa satır satır, yoksa paymentMethod */
+function addSplitToBreakdown(result: PosPaymentBreakdown, sale: Sale): void {
+  const split = saleCollectedSplit(sale);
+  const cash = Math.abs(Number(split.cash) || 0);
+  const card = Math.abs(Number(split.card) || 0);
+  const credit = Math.abs(Number(split.credit) || 0);
+  const other = Math.abs(Number(split.transfer) || 0);
+  if (cash > 1e-9) {
+    result.cash += cash;
+    result.cashCount += 1;
+  }
+  if (card > 1e-9) {
+    result.card += card;
+    result.cardCount += 1;
+  }
+  if (credit > 1e-9) {
+    result.credit += credit;
+    result.creditCount += 1;
+  }
+  if (other > 1e-9) {
+    result.other += other;
+    result.otherCount += 1;
+  }
+}
+
+/** Satışlardan ödeme kırılımı — belge tutarı değil tahsilat (saleCollectedSplit) */
 export function aggregatePosPayments(sales: Sale[]): PosPaymentBreakdown {
   const result: PosPaymentBreakdown = {
     cash: 0,
@@ -81,23 +96,7 @@ export function aggregatePosPayments(sales: Sale[]): PosPaymentBreakdown {
     if (isReturnSale(sale) || isCanceledSale(sale)) continue;
     const total = Math.abs(Number(sale.total) || 0);
     if (!(total > 0)) continue;
-
-    const rows = (sale as Sale & { payments?: Array<{ method?: string; amount?: number; currency?: string }> }).payments;
-    if (Array.isArray(rows) && rows.length > 0) {
-      const exchangeRates: Record<string, number> = { IQD: 1, USD: 1310, EUR: 1450 };
-      for (const row of rows) {
-        const amount = Math.abs(Number(row.amount) || 0) * (exchangeRates[String(row.currency || 'IQD').toUpperCase()] || 1);
-        if (!(amount > 0)) continue;
-        const bucket = normalizePaymentMethod(row.method);
-        result[bucket] += amount;
-        result[`${bucket}Count` as keyof PosPaymentBreakdown] = (result[`${bucket}Count` as keyof PosPaymentBreakdown] as number) + 1;
-      }
-      continue;
-    }
-
-    const bucket = normalizePaymentMethod(sale.paymentMethod);
-    result[bucket] += total;
-    result[`${bucket}Count` as keyof PosPaymentBreakdown] = (result[`${bucket}Count` as keyof PosPaymentBreakdown] as number) + 1;
+    addSplitToBreakdown(result, sale);
   }
 
   return result;
@@ -120,39 +119,18 @@ export function aggregateReturnPayments(sales: Sale[]): PosPaymentBreakdown {
     if (!isReturnSale(sale) || isCanceledSale(sale)) continue;
     const total = Math.abs(Number(sale.total) || 0);
     if (!(total > 0)) continue;
-
-    const rows = (sale as Sale & { payments?: Array<{ method?: string; amount?: number; currency?: string }> }).payments;
-    if (Array.isArray(rows) && rows.length > 0) {
-      const exchangeRates: Record<string, number> = { IQD: 1, USD: 1310, EUR: 1450 };
-      for (const row of rows) {
-        const amount = Math.abs(Number(row.amount) || 0) * (exchangeRates[String(row.currency || 'IQD').toUpperCase()] || 1);
-        if (!(amount > 0)) continue;
-        const bucket = normalizePaymentMethod(row.method);
-        result[bucket] += amount;
-        result[`${bucket}Count` as keyof PosPaymentBreakdown] = (result[`${bucket}Count` as keyof PosPaymentBreakdown] as number) + 1;
-      }
-      continue;
-    }
-
-    const bucket = normalizePaymentMethod(sale.paymentMethod);
-    result[bucket] += total;
-    result[`${bucket}Count` as keyof PosPaymentBreakdown] = (result[`${bucket}Count` as keyof PosPaymentBreakdown] as number) + 1;
+    addSplitToBreakdown(result, sale);
   }
 
   return result;
 }
 
-function addPaymentToCashierStats(
-  stats: CashierDayStats,
-  sale: Sale,
-  amount: number,
-  method?: string,
-): void {
-  const bucket = normalizePaymentMethod(method ?? sale.paymentMethod);
-  if (bucket === 'cash') stats.cashTotal += amount;
-  else if (bucket === 'card') stats.cardTotal += amount;
-  else if (bucket === 'credit') stats.creditTotal += amount;
-  else stats.otherTotal += amount;
+function addSplitToCashierStats(stats: CashierDayStats, sale: Sale): void {
+  const split = saleCollectedSplit(sale);
+  stats.cashTotal += Math.abs(Number(split.cash) || 0);
+  stats.cardTotal += Math.abs(Number(split.card) || 0);
+  stats.creditTotal += Math.abs(Number(split.credit) || 0);
+  stats.otherTotal += Math.abs(Number(split.transfer) || 0);
 }
 
 /** Gün sonu — kasiyer / personel bazlı ciro özeti */
@@ -207,16 +185,7 @@ export function aggregateCashierPerformance(
     stats.salesCount += 1;
     stats.grossRevenue += total;
 
-    const paymentRows = (sale as Sale & { payments?: Array<{ method?: string; amount?: number; currency?: string }> }).payments;
-    if (Array.isArray(paymentRows) && paymentRows.length > 0) {
-      const exchangeRates: Record<string, number> = { IQD: 1, USD: 1310, EUR: 1450 };
-      for (const row of paymentRows) {
-        const amt = Math.abs(Number(row.amount) || 0) * (exchangeRates[String(row.currency || 'IQD').toUpperCase()] || 1);
-        if (amt > 0) addPaymentToCashierStats(stats, sale, amt, row.method);
-      }
-    } else {
-      addPaymentToCashierStats(stats, sale, total);
-    }
+    addSplitToCashierStats(stats, sale);
 
     stats.netRevenue = stats.grossRevenue - stats.returnTotal;
   }
@@ -300,6 +269,30 @@ export function buildPosZReportForRange(
   const daySales = sales.filter(inRange);
   const dateKey = dateFrom === dateTo ? dateFrom : dateFrom;
   return summarizePosZReportFromDaySales(daySales, dateLabel, dateKey, dateTo);
+}
+
+/** Sonradan CH_TAHSILAT (satış satırında yok) — cebe nakit, belge tutarı değil. */
+export function applyExtraCashCollections(report: PosZReport, extraCash: number): PosZReport {
+  const extra = Math.max(0, Number(extraCash) || 0);
+  if (!(extra > 1e-9)) return report;
+  return {
+    ...report,
+    cashAmount: report.cashAmount + extra,
+    creditAmount: Math.max(0, report.creditAmount - extra),
+    payments: {
+      ...report.payments,
+      cash: report.payments.cash + extra,
+      credit: Math.max(0, report.payments.credit - extra),
+    },
+  };
+}
+
+export function posZCollectedAmount(report: Pick<PosZReport, 'cashAmount' | 'cardAmount' | 'otherAmount'>): number {
+  return (
+    (Number(report.cashAmount) || 0) +
+    (Number(report.cardAmount) || 0) +
+    (Number(report.otherAmount) || 0)
+  );
 }
 
 function escHtml(value: string): string {
@@ -388,7 +381,7 @@ export function printPosZReport(
       <div class="row"><span>Kart (${payments.cardCount}):</span><span>${formatNumber(report.cardAmount, 2, false)}</span></div>
       <div class="row"><span>Veresiye/Cari (${payments.creditCount}):</span><span>${formatNumber(report.creditAmount, 2, false)}</span></div>
       <div class="row"><span>Diğer (${payments.otherCount}):</span><span>${formatNumber(report.otherAmount, 2, false)}</span></div>
-      <div class="row final"><span>TOPLAM TAHSİLAT</span><span>${formatNumber(report.totalAmount, 2, false)}</span></div>
+      <div class="row final"><span>TOPLAM TAHSİLAT</span><span>${formatNumber(posZCollectedAmount(report), 2, false)}</span></div>
       ${cashierRowsHtml}
       ${
         options?.openingCash != null

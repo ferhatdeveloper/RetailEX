@@ -5,9 +5,8 @@ import { collapseInOutTotalsRows, type InOutTotalsRow } from '../../../utils/sto
 import { toSqlDateInputString, localTodayDateKey } from '../../../utils/localCalendarDate';
 import { DevExDataGrid } from '../../shared/DevExDataGrid';
 import { REPORT_GRID_DEFAULTS } from '../../reports/shared/ReportDataGrid';
-import { exportDataGridToExcel } from '../../../utils/gridExcelExport';
 import { createColumnHelper, ColumnDef } from '@tanstack/react-table';
-import { Download, ArrowRightLeft } from 'lucide-react';
+import { ArrowRightLeft } from 'lucide-react';
 import { useLanguage } from '../../../contexts/LanguageContext';
 import { useFirmaDonem } from '../../../contexts/FirmaDonemContext';
 import { formatNumber } from '../../../utils/formatNumber';
@@ -74,21 +73,6 @@ export function InOutTotalsReport() {
         return () => { cancelled = true; };
     }, [startDate, endDate, selectedFirm?.firm_nr, selectedPeriod?.nr]);
 
-    const grand = useMemo(
-        () =>
-            rows.reduce(
-                (acc, r) => {
-                    acc.inQty += r.inQty;
-                    acc.inAmount += r.inAmount;
-                    acc.outQty += r.outQty;
-                    acc.outAmount += r.outAmount;
-                    return acc;
-                },
-                { inQty: 0, inAmount: 0, outQty: 0, outAmount: 0 },
-            ),
-        [rows],
-    );
-
     const columnHelper = createColumnHelper<InOutTotalsRow>();
     const columns = useMemo<ColumnDef<InOutTotalsRow, any>[]>(() => [
         columnHelper.accessor('productCode', { header: tm('materialCode') }),
@@ -130,43 +114,11 @@ export function InOutTotalsReport() {
     return (
         <div className="h-full flex flex-col bg-white rounded-lg shadow-sm border border-gray-200">
             <div className="p-4 border-b border-gray-200 bg-gray-50 space-y-3">
-                <div className="flex justify-between items-center flex-wrap gap-3">
-                    <div className="flex items-center gap-2">
-                        <ArrowRightLeft className="w-5 h-5 text-blue-600" />
-                        <h2 className="font-semibold text-gray-800">
-                            {tm('inOutTotals') || 'Giriş Çıkış Toplamları'}
-                        </h2>
-                    </div>
-                    <button
-                        type="button"
-                        onClick={() => exportDataGridToExcel(rows, columns, tm('inOutTotals') || 'giris_cikis')}
-                        className="flex items-center gap-2 px-4 py-2 bg-white border border-gray-300 hover:bg-gray-50 text-gray-700 rounded-lg transition-colors shadow-sm"
-                    >
-                        <Download className="w-4 h-4" />
-                        {tm('excel')}
-                    </button>
-                </div>
-                <div className="flex gap-4 text-sm flex-wrap">
-                    <div>
-                        {tm('extractInQty')}:{' '}
-                        <span className="font-bold text-green-700">{formatNumber(grand.inQty, 2)}</span>
-                    </div>
-                    <div>
-                        {tm('extractInAmount')}:{' '}
-                        <span className="font-bold text-green-700">
-                            {formatNumber(grand.inAmount, 2)} {currency}
-                        </span>
-                    </div>
-                    <div>
-                        {tm('extractOutQty')}:{' '}
-                        <span className="font-bold text-red-700">{formatNumber(grand.outQty, 2)}</span>
-                    </div>
-                    <div>
-                        {tm('extractOutAmount')}:{' '}
-                        <span className="font-bold text-red-700">
-                            {formatNumber(grand.outAmount, 2)} {currency}
-                        </span>
-                    </div>
+                <div className="flex items-center gap-2">
+                    <ArrowRightLeft className="w-5 h-5 text-blue-600" />
+                    <h2 className="font-semibold text-gray-800">
+                        {tm('inOutTotals') || 'Giriş Çıkış Toplamları'}
+                    </h2>
                 </div>
                 <div className="flex gap-3 items-end flex-wrap">
                     <div>
@@ -207,7 +159,14 @@ export function InOutTotalsReport() {
                         {tm('noRecordsFound') || 'Kayıt bulunamadı'}
                     </div>
                 ) : (
-                    <DevExDataGrid data={rows} columns={columns} {...REPORT_GRID_DEFAULTS} height="100%" />
+                    <DevExDataGrid
+                        data={rows}
+                        columns={columns}
+                        {...REPORT_GRID_DEFAULTS}
+                        excelFileName={tm('inOutTotals') || 'giris_cikis'}
+                        printTitle={tm('inOutTotals') || 'Giriş Çıkış Toplamları'}
+                        height="100%"
+                    />
                 )}
             </div>
         </div>

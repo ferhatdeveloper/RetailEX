@@ -3,9 +3,8 @@ import { productAPI } from '../../../services/api/products';
 import { Product } from '../../../core/types';
 import { DevExDataGrid } from '../../shared/DevExDataGrid';
 import { REPORT_GRID_DEFAULTS } from '../../reports/shared/ReportDataGrid';
-import { exportDataGridToExcel } from '../../../utils/gridExcelExport';
 import { createColumnHelper, ColumnDef } from '@tanstack/react-table';
-import { Download, AlertTriangle, Filter } from 'lucide-react';
+import { AlertTriangle } from 'lucide-react';
 import { useLanguage } from '../../../contexts/LanguageContext';
 import { useFirmaDonem } from '../../../contexts/FirmaDonemContext';
 
@@ -84,26 +83,10 @@ export function MinMaxStockReport() {
     return (
         <div className="h-full flex flex-col bg-white rounded-lg shadow-sm border border-gray-200">
             <div className="p-4 border-b border-gray-200">
-                <div className="flex justify-between items-center mb-6">
                     <div>
                         <h1 className="text-2xl font-bold text-gray-800">{tm('minMaxStockControl')}</h1>
                         <p className="text-sm text-gray-500">{tm('criticalStock')} & {tm('outOfStock')}</p>
                     </div>
-                    <div className="flex gap-2">
-                        <button className="flex items-center gap-2 px-4 py-2 border rounded-lg hover:bg-gray-50 text-gray-600">
-                            <Filter className="w-4 h-4" />
-                            {tm('filter')}
-                        </button>
-                        <button
-                            type="button"
-                            onClick={() => exportDataGridToExcel(products, columns, tm('minMaxStockControl') || 'min_max_stok')}
-                            className="flex items-center gap-2 px-4 py-2 border rounded-lg hover:bg-gray-50 text-gray-600"
-                        >
-                            <Download className="w-4 h-4" />
-                            {tm('export')}
-                        </button>
-                    </div>
-                </div>
 
                 <div className="flex gap-2">
                     <button

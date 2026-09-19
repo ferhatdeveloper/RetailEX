@@ -1,6 +1,7 @@
 /** Fatura satırı Tür alanı — Malzeme / Hizmet / Promosyon / İndirim (UI + sale_items.item_type) */
 
-/** Hizmet faturası (trcode 4 Alınan / 9 Verilen; eski 7/8) veya kategori Hizmet */
+/** Hizmet faturası: Logo trcode 4 Alınan, 9 Verilen — veya kategori Hizmet.
+ *  7 = perakende satış, 8 = satış/toptan faturası (hizmet değil). */
 export function isServiceInvoiceType(invoiceType: {
   category?: string;
   code?: number | string;
@@ -9,7 +10,8 @@ export function isServiceInvoiceType(invoiceType: {
   const cat = String(invoiceType.category || '').trim();
   const code = Number(invoiceType.code);
   if (cat === 'Hizmet') return true;
-  if (code === 4 || code === 9 || code === 7 || code === 8) return true;
+  if (code === 4 || code === 9) return true;
+  if (code === 7 || code === 8) return false;
   const name = String(invoiceType.name || '').toLocaleLowerCase('tr-TR');
   if (!name) return false;
   if (name.includes('alınan hizmet') || name.includes('alinan hizmet')) return true;
@@ -29,10 +31,8 @@ export function defaultInvoiceLineTypeFor(invoiceType: {
   return isServiceInvoiceType(invoiceType) ? 'Hizmet' : 'Malzeme';
 }
 
-/**
- * Alış / tedarikçi tarafı: Alış, Alış İade (6), Alınan Hizmet (4; eski 8).
- * İsimde "Alınan" geçen hizmet faturaları da dahil.
- */
+/** Alış / tedarikçi tarafı: Alış, Alış İade (6), Alınan Hizmet (4).
+ *  trcode 8 satış/toptan faturasıdır — alış değil. */
 export function isInvoicePurchaseSide(invoiceType: {
   category?: string;
   code?: number;
@@ -40,7 +40,8 @@ export function isInvoicePurchaseSide(invoiceType: {
 }): boolean {
   if (invoiceType.category === 'Alis') return true;
   const code = Number(invoiceType.code);
-  if (code === 6 || code === 4 || code === 8) return true;
+  if (code === 6 || code === 4) return true;
+  if (code === 7 || code === 8 || code === 3 || code === 9) return false;
   const name = String(invoiceType.name || '');
   const lower = name.toLocaleLowerCase('tr-TR');
   if (lower.includes('alınan') || lower.includes('alinan') || lower.includes('received')) {
