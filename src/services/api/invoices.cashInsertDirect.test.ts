@@ -12,6 +12,11 @@
  * yeni SQL şablonunun doğru olduğunu izole eder.
  */
 import { describe, expect, it } from 'vitest';
+import {
+  invoiceShouldPostMixedPrepaidTahsilat,
+  isPrepaidInvoicePaymentRow,
+  resolveInvoicePrimaryPaymentMethod,
+} from './invoices';
 
 describe('writeCashRegisterLineForInvoice — direkt INSERT semantiği', () => {
   it('cash_lines INSERT: doğru kolon sırası ve parametreler', () => {
@@ -194,5 +199,44 @@ describe('writeCashRegisterLineForInvoice — çoklu ödeme (Market POS pattern)
       { method: 'NAKIT', amount: 100, currency: 'IQD' },
     ]);
     expect(result?.[0].ficheNo).toBe('BASE');
+  });
+});
+
+describe('karma veresiye + peşin — CH_TAHSILAT planı', () => {
+  it('fatura formu kaynaklı karma ödemede peşin yazılır', () => {
+    expect(invoiceShouldPostMixedPrepaidTahsilat({
+      header_fields: {
+        source: 'invoice_form',
+        payments: [
+          { method: 'NAKIT', amount: 50 },
+          { method: 'ACIK_CARI', amount: 50 },
+        ],
+      },
+    })).toBe(true);
+  });
+
+  it('POS / sales.ts yolunda yazılmaz (çift kayıt yok)', () => {
+    expect(invoiceShouldPostMixedPrepaidTahsilat({
+      notes: 'MarketPOS Satışı',
+      header_fields: {
+        payments: [
+          { method: 'cash', amount: 40 },
+          { method: 'credit', amount: 60 },
+        ],
+      },
+    })).toBe(false);
+  });
+
+  it('nakit ve kart peşin satırdır; açık cari değildir', () => {
+    expect(isPrepaidInvoicePaymentRow('NAKIT')).toBe(true);
+    expect(isPrepaidInvoicePaymentRow('KREDIKARTI')).toBe(true);
+    expect(isPrepaidInvoicePaymentRow('ACIK_CARI')).toBe(false);
+  });
+
+  it('herhangi bir ACIK_CARI satırı birincil yöntemi Veresiye yapar', () => {
+    expect(resolveInvoicePrimaryPaymentMethod(
+      [{ method: 'NAKIT' }, { method: 'ACIK_CARI' }],
+      'NAKIT',
+    )).toBe('ACIK_CARI');
   });
 });

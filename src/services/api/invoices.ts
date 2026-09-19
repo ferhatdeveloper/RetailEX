@@ -25,8 +25,10 @@ import { saleItemVisibleCode, splitInvoiceLineIdentity } from '../../utils/invoi
 import type { PurchasePromotionReportLine } from '../../utils/purchasePromotionReport';
 import {
   paymentMethodImpliesCustomerDebt,
+  paymentMethodImpliesPaidNow,
   paymentMethodImpliesSupplierDebt,
 } from '../../utils/paymentMethodUtils';
+import { cariCashStoredBalanceDelta } from './accountBalance';
 export type { Invoice };
 
 /**
@@ -175,6 +177,135 @@ export function paymentMethodImpliesCashInKasa(pm: string | undefined | null): b
   // Kısaltmalar ve eski kodlar
   if (p === 'n' || p === 'na' || p === 'nak') return true;
   return false;
+}
+
+/** Karma ödeme satırında nakit/kart peşin kısım (CH_TAHSILAT adayı) */
+export function isPrepaidInvoicePaymentRow(method: string | undefined | null): boolean {
+  return paymentMethodImpliesPaidNow(method);
+}
+
+/**
+ * UniversalInvoiceForm karma ödemesi — sales.ts POS yolundan ayır.
+ * POS (cash/card/credit + MarketPOS notu) CH_TAHSILAT'ı sales.ts yazar; burada yazılırsa çift kayıt olur.
+ */
+export function invoiceShouldPostMixedPrepaidTahsilat(inv: {
+  notes?: string | null;
+  header_fields?: unknown;
+  source?: unknown;
+}): boolean {
+  const hf = (inv?.header_fields && typeof inv.header_fields === 'object' && !Array.isArray(inv.header_fields))
+    ? (inv.header_fields as Record<string, unknown>)
+    : {};
+  const origin = String(hf.source ?? inv?.source ?? '').trim().toLowerCase();
+  if (origin === 'invoice_form') return true;
+  if (origin === 'pos' || origin === 'sales') return false;
+
+  const notes = String(inv?.notes || '');
+  if (/MarketPOS|GüzellikPOS|Market Satışı|Güzellik Satışı/i.test(notes)) return false;
+
+  const payments = Array.isArray(hf.payments) ? hf.payments : [];
+  let formLike = 0;
+  let posLike = 0;
+  for (const raw of payments) {
+    const m = String((raw as { method?: string })?.method || '').trim();
+    if (!m) continue;
+    const lower = m.toLowerCase();
+    const upper = m.toUpperCase();
+    if (lower === 'cash' || lower === 'card' || lower === 'credit' || lower === 'gateway' || lower === 'kart') {
+      posLike += 1;
+      continue;
+    }
+    if (
+      upper === 'NAKIT' ||
+      upper === 'KREDIKARTI' ||
+      upper === 'ACIK_CARI' ||
+      upper === 'HAVAL' ||
+      upper === 'CEK' ||
+      upper === 'SENET' ||
+      upper === 'VERESIYE'
+    ) {
+      formLike += 1;
+    }
+  }
+  if (formLike > 0) return true;
+  if (posLike > 0) return false;
+  return origin === 'invoice_form';
+}
+
+export function resolveInvoicePrimaryPaymentMethod(
+  payments: Array<{ method?: string }> | null | undefined,
+  fallback: string | undefined | null,
+): string {
+  const rows = Array.isArray(payments) ? payments : [];
+  if (rows.some((row) => paymentMethodImpliesCustomerDebt(String(row?.method || '')))) {
+    return 'ACIK_CARI';
+  }
+  return String(rows[0]?.method || fallback || 'ACIK_CARI');
+}
+
+async function invoiceFicheHasChTahsilat(
+  ficheNo: string,
+  firmNr: string,
+  periodNr: string,
+  isRest: boolean,
+): Promise<boolean> {
+  const trimmed = String(ficheNo || '').trim();
+  if (!trimmed) return false;
+  try {
+    if (isRest) {
+      const { postgrest } = await import('./postgrestClient');
+      const fn = String(firmNr).trim().padStart(3, '0').slice(0, 10);
+      const pn = String(periodNr).trim().padStart(2, '0').slice(0, 10);
+      const cashPath = `/rex_${fn}_${pn}_cash_lines`;
+      const rows = await postgrest.get<any[]>(
+        cashPath,
+        {
+          select: 'id,transaction_type,fiche_no',
+          or: `(fiche_no.eq.${trimmed},fiche_no.like.${trimmed}-*)`,
+          limit: 20,
+        },
+        { schema: 'public' },
+      );
+      return (Array.isArray(rows) ? rows : []).some(
+        (r) => String(r?.transaction_type || '').toUpperCase() === 'CH_TAHSILAT',
+      );
+    }
+    const { rows } = await postgres.query(
+      `SELECT 1 FROM cash_lines
+        WHERE UPPER(TRIM(COALESCE(transaction_type, ''))) = 'CH_TAHSILAT'
+          AND (fiche_no::text = $1::text OR fiche_no::text LIKE $1 || '-%')
+        LIMIT 1`,
+      [trimmed],
+      { firmNr, periodNr },
+    );
+    return Array.isArray(rows) && rows.length > 0;
+  } catch (e) {
+    console.warn('[InvoicesAPI] CH_TAHSILAT varlık kontrolü:', e);
+    return false;
+  }
+}
+
+async function applyChTahsilatCustomerBalance(
+  firmNr: string,
+  customerId: string | null,
+  amount: number,
+  isRest: boolean,
+): Promise<void> {
+  if (!customerId || !isValidUuid(customerId)) return;
+  const delta = cariCashStoredBalanceDelta(amount, 'CH_TAHSILAT');
+  if (!delta) return;
+  if (isRest) {
+    await customerAPI.addBalance(customerId, delta).catch((e) => {
+      console.warn('[InvoicesAPI] CH_TAHSILAT cari bakiye (rest):', e);
+    });
+    return;
+  }
+  await postgres.query(
+    `UPDATE customers SET balance = COALESCE(balance, 0) + $1::numeric WHERE id = $2::uuid AND firm_nr = $3`,
+    [delta, customerId, firmNr],
+  ).catch((e) => {
+    console.warn('[InvoicesAPI] CH_TAHSILAT cari bakiye (sql):', e);
+  });
 }
 
 /** Kasa hareketleri `rex_{firma}_{dönem}_cash_lines` tablosunda; silme sorgusu satışın dönemine göre çözülmeli */
@@ -699,8 +830,55 @@ async function writeCashRegisterLineForInvoice(inv: Invoice, firmNr: string): Pr
       paymentMethodImpliesCustomerDebt(String(row?.method || '')),
     );
     if (mixedCredit) {
-      // Karma veresiye: belge tutarı cari borç; peşin kısım sales.ts CH_TAHSILAT
-      // (kasa + müşteri bakiyesi). Nakit satırını burada yazmak tahsilatı çiftler.
+      // Karma veresiye: belge tutarı zaten cari borç (payment_method=Veresiye).
+      // Fatura formundan gelen peşin satırlar CH_TAHSILAT ile kasaya + cari düşüş.
+      // POS (sales.ts) aynı tahsilatı create sonrası yazar — burada atlanır.
+      if (purchaseSide || !invoiceShouldPostMixedPrepaidTahsilat(inv)) {
+        return;
+      }
+      if (await invoiceFicheHasChTahsilat(ficheNo, firmNr, periodNr, isRest)) {
+        return;
+      }
+      for (let i = 0; i < paymentsRaw.length; i++) {
+        const row = paymentsRaw[i] || {};
+        if (!isPrepaidInvoicePaymentRow(String(row.method || ''))) continue;
+        const rowAmount = Math.abs(Number(row.amount || 0));
+        if (!Number.isFinite(rowAmount) || rowAmount <= 0) continue;
+        const rowCandidates: string[] = [];
+        const rowRegisterId = isValidUuid(row.cash_register_id)
+          ? String(row.cash_register_id)
+          : null;
+        if (rowRegisterId) rowCandidates.push(rowRegisterId);
+        for (const c of defaultCandidates) {
+          if (!rowCandidates.includes(c)) rowCandidates.push(c);
+        }
+        const prepaidCount = paymentsRaw.filter((p: { method?: string }) =>
+          isPrepaidInvoicePaymentRow(String(p?.method || '')),
+        ).length;
+        const subFicheNo = prepaidCount > 1 ? `${ficheNo}-T${i + 1}` : `${ficheNo}-T1`;
+        const subAciklama = `${labelPrefix} — ${inv.invoice_no || ''} — kısmi tahsilat`;
+        try {
+          if (isRest) {
+            await writeCashRegisterLineRest(
+              inv, firmNr, periodNr, rowCandidates, rowAmount, subFicheNo, tarih, subAciklama, customerId,
+              1, 'CH_TAHSILAT',
+            );
+          } else {
+            await writeCashRegisterLineSql(
+              firmNr, periodNr, rowCandidates, rowAmount, subFicheNo, tarih, subAciklama, customerId, null,
+              1, 'CH_TAHSILAT',
+            );
+          }
+        } catch (e: any) {
+          console.error('[InvoicesAPI] ⚠️ Karma peşin CH_TAHSILAT yazılamadı:', {
+            error: e?.message || String(e),
+            invoice_no: inv.invoice_no,
+            row_index: i,
+            row_method: row.method,
+            row_amount: rowAmount,
+          });
+        }
+      }
       return;
     }
     for (let i = 0; i < paymentsRaw.length; i++) {
@@ -804,7 +982,9 @@ async function writeCashRegisterLineSql(
   tarih: string,
   aciklama: string,
   customerId: string | null,
-  targetRegisterIdRef: string | null
+  targetRegisterIdRef: string | null,
+  sign = 1,
+  transactionType = 'KASA_GIRIS',
 ): Promise<void> {
   let targetRegisterId = targetRegisterIdRef;
   for (const cand of candidates) {
@@ -846,8 +1026,8 @@ async function writeCashRegisterLineSql(
        tax_rate, withholding_tax_rate
      ) VALUES (
        $1::text, $2::text, $3::text::uuid, $4::text, $5::text,
-       $6::numeric, 1,
-       $7::text, 'KASA_GIRIS',
+       $6::numeric, $9::integer,
+       $7::text, $10::text,
        $8::text::uuid, NULL, 'YEREL', 1, 0,
        0, '',
        NULL, NULL, NULL, NULL,
@@ -858,11 +1038,12 @@ async function writeCashRegisterLineSql(
            date = EXCLUDED.date,
            definition = EXCLUDED.definition,
            register_id = EXCLUDED.register_id,
+           transaction_type = EXCLUDED.transaction_type,
            customer_id = COALESCE(EXCLUDED.customer_id, cash_lines.customer_id),
            updated_at = NOW()
      RETURNING id, (xmax = 0) AS inserted`,
     [String(firmNr), periodNr, targetRegisterId, ficheNo, tarih,
-     amount, aciklama, customerId]
+     amount, aciklama, customerId, sign, transactionType]
   );
   const inserted = upsertResult.rows?.[0]?.inserted === true;
 
@@ -874,6 +1055,9 @@ async function writeCashRegisterLineSql(
         WHERE id = $2::text::uuid`,
       [amount, targetRegisterId]
     );
+    if (String(transactionType).toUpperCase() === 'CH_TAHSILAT') {
+      await applyChTahsilatCustomerBalance(firmNr, customerId, amount, false);
+    }
   }
 }
 
@@ -891,7 +1075,9 @@ async function writeCashRegisterLineRest(
   ficheNo: string,
   tarih: string,
   aciklama: string,
-  customerId: string | null
+  customerId: string | null,
+  _sign = 1,
+  transactionType = 'KASA_GIRIS',
 ): Promise<void> {
   const { postgrest } = await import('./postgrestClient');
   const firmPad = String(firmNr).padStart(3, '0');
@@ -968,7 +1154,7 @@ async function writeCashRegisterLineRest(
     amount: amount,
     sign: 1,
     definition: aciklama,
-    transaction_type: 'KASA_GIRIS',
+    transaction_type: transactionType,
     customer_id: customerId,
     party_id: null,
     currency_code: 'YEREL',
@@ -1034,6 +1220,9 @@ async function writeCashRegisterLineRest(
     } catch (_e) {
       // bakiye PATCH başarısız → cash_lines yazıldı, bakiye tutmuyor olabilir.
       console.warn('[InvoicesAPI] rest_api: kasa bakiyesi güncellenemedi:', (_e as any)?.message || String(_e));
+    }
+    if (String(transactionType).toUpperCase() === 'CH_TAHSILAT') {
+      await applyChTahsilatCustomerBalance(firmNr, customerId, amount, true);
     }
   }
 }

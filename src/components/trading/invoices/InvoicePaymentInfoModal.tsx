@@ -1,8 +1,9 @@
-﻿import { X, CreditCard, Wallet, Banknote, Building2, Users, Plus, Trash2, ShoppingCart } from 'lucide-react';
+import { X, CreditCard, Wallet, Banknote, Building2, Users, Plus, Trash2, ShoppingCart } from 'lucide-react';
 import { useEffect, useMemo, useState } from 'react';
 import { useLanguage } from '../../../contexts/LanguageContext';
 import {
   dbPaymentMethodToFormCode,
+  paymentMethodImpliesCustomerDebt,
   paymentMethodImpliesPaidNow,
 } from '../../../utils/paymentMethodUtils';
 import { PercentBodyModal } from '../../shared/PercentBodyModal';
@@ -53,6 +54,34 @@ interface InvoicePaymentInfoModalProps {
   onClose: () => void;
   /** Perakende POS: yalnızca nakit / kart */
   retailPosMode?: boolean;
+  /** Fatura net tutarı — çoklu ödemede kalan = total − satır toplamı */
+  invoiceTotal?: number;
+}
+
+export function resolvePrimaryInvoicePaymentMethod(rows: InvoicePaymentRow[], fallback?: string): string {
+  if (rows.some((r) => paymentMethodImpliesCustomerDebt(r.method) || dbPaymentMethodToFormCode(r.method) === 'ACIK_CARI')) {
+    return 'ACIK_CARI';
+  }
+  return rows[0]?.method || fallback || 'ACIK_CARI';
+}
+
+export function appendRemainingOpenAccountRow(
+  rows: InvoicePaymentRow[],
+  invoiceTotal: number | undefined,
+): InvoicePaymentRow[] {
+  if (!Number.isFinite(Number(invoiceTotal))) return rows;
+  const paid = rows.reduce((s, p) => s + (Number.isFinite(p.amount) ? p.amount : 0), 0);
+  const remaining = Number(invoiceTotal) - paid;
+  if (remaining <= 0.009) return rows;
+  return [
+    ...rows,
+    {
+      method: 'ACIK_CARI',
+      amount: remaining,
+      currency: rows[0]?.currency || 'IQD',
+      cashRegisterId: null,
+    },
+  ];
 }
 
 export function InvoicePaymentInfoModal({
@@ -60,6 +89,7 @@ export function InvoicePaymentInfoModal({
   onSelect,
   onClose,
   retailPosMode = false,
+  invoiceTotal,
 }: InvoicePaymentInfoModalProps) {
   const { tm } = useLanguage();
   const initialCode =
@@ -199,21 +229,31 @@ export function InvoicePaymentInfoModal({
     [addedPayments],
   );
 
+  const remainingAmount = useMemo(() => {
+    if (!Number.isFinite(Number(invoiceTotal))) return 0;
+    return Number(invoiceTotal) - totalDraftAmount;
+  }, [invoiceTotal, totalDraftAmount]);
+
+  const handleWriteRemainingToOpenAccount = () => {
+    setAddedPayments((prev) => appendRemainingOpenAccountRow(prev, invoiceTotal));
+  };
+
   const handleSave = () => {
     // Çoklu ödeme modu açıksa ve en az 1 satır eklendiyse, bu satırlar
     // birincil bilgi kaynağıdır. Tek-ödeme alanları (paymentMethod /
     // cashRegisterId) yalnızca geriye dönük uyumluluk için ilk satırdan
     // doldurulur — yeni createInvoice akışı payments[] dizisini kullanır.
     if (multiPaymentEnabled && addedPayments.length > 0) {
-      const first = addedPayments[0];
-      const method = first.method;
+      const payments = appendRemainingOpenAccountRow(addedPayments, invoiceTotal);
+      const first = payments[0];
+      const method = resolvePrimaryInvoicePaymentMethod(payments, first.method);
       onSelect(method, {
         paymentMethod: method,
         cashRegisterId: first.cashRegisterId || null,
         cashRegisterName: first.cashRegisterName || null,
         cashRegisterCode: first.cashRegisterCode || null,
         notes,
-        payments: addedPayments,
+        payments,
       });
       onClose();
       return;
@@ -392,7 +432,24 @@ export function InvoicePaymentInfoModal({
                     <div className="text-[11px] text-gray-600 text-right pt-1 border-t border-gray-200">
                       {tm('total') || 'Toplam'}: <span className="font-mono font-semibold">{totalDraftAmount.toLocaleString('tr-TR', { minimumFractionDigits: 0, maximumFractionDigits: 2 })} IQD</span>
                     </div>
+                    {Number.isFinite(Number(invoiceTotal)) && (
+                      <div className="flex items-center justify-between gap-2 text-[11px] text-gray-700">
+                        <span>{tm('belgeTutari')}: <span className="font-mono">{Number(invoiceTotal).toLocaleString('tr-TR', { minimumFractionDigits: 0, maximumFractionDigits: 2 })}</span></span>
+                        <span className={remainingAmount > 0.009 ? 'text-amber-700 font-semibold' : 'text-emerald-700'}>
+                          {tm('kalanCari')}: <span className="font-mono">{remainingAmount.toLocaleString('tr-TR', { minimumFractionDigits: 0, maximumFractionDigits: 2 })}</span>
+                        </span>
+                      </div>
+                    )}
                   </div>
+                )}
+                {Number.isFinite(Number(invoiceTotal)) && remainingAmount > 0.009 && (
+                  <button
+                    type="button"
+                    onClick={handleWriteRemainingToOpenAccount}
+                    className="w-full px-3 py-1.5 text-xs font-medium bg-amber-50 text-amber-800 border border-amber-300 rounded hover:bg-amber-100"
+                  >
+                    {tm('writeRemainingToOpenAccount')}
+                  </button>
                 )}
 
                 {/* Yeni satır formu */}

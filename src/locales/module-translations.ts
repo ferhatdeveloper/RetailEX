@@ -400,6 +400,8 @@ export const moduleTranslations: Record<string, Record<Language, string>> = {
   cashRegisterRequired: { tr: 'Nakit veya kart ödemesi için kasa seçimi zorunludur', en: 'A cash register is required for cash or card payments', ar: 'اختيار الصندوق مطلوب للمدفوعات النقدية أو ببطاقة', ku: 'بۆ پارەدانی نەقد یان کارت هەڵبژاردنی سندوق پێویستە' },
   multiplePaymentToggle: { tr: 'Birden fazla ödeme yöntemi kullan', en: 'Use multiple payment methods', ar: 'استخدام طرق دفع متعددة', ku: 'بەکارهێنانی چەند شێوازی پارەدان' },
   multiplePaymentHint: { tr: 'Birden fazla yöntemle ödeme alabilirsiniz (ör. yarısı nakit, yarısı kart). Her satır kendi kasasına yazılır.', en: 'You can accept payment with multiple methods (e.g. half cash, half card). Each line is posted to its own cash register.', ar: 'يمكنك قبول الدفع بطرق متعددة (مثلاً نصف نقدي ونصف بطاقة). كل سطر يُسجَّل في صندوقه الخاص.', ku: 'دەتوانیت پارە بە چەند شێوازێک وەربگریت (نموونە نیوەی نەقد، نیوەی کارت). هەر هێڵێک دەنووسرێتە سندوقەکەی.' },
+  writeRemainingToOpenAccount: { tr: 'Kalanı açık cariye yaz', en: 'Post remainder to open account', ar: 'ترحيل المتبقي إلى الحساب الجاري', ku: 'ماوە بنووسە بۆ هەژماری کراوە' },
+  writeRemainingToOpenAccountHint: { tr: 'Kalan tutar müşteri açık carisine (veresiye) yazılır; peşin kısım kasaya tahsilat olur.', en: 'The remainder is posted to the customer open account; the prepaid portion goes to cash as a collection.', ar: 'يُرحَّل المتبقي إلى حساب العميل الجاري؛ والجزء المدفوع مقدماً يذهب إلى الصندوق كتحصيل.', ku: 'ماوە دەنووسرێتە سەر هەژماری کراوەی کڕیار؛ بەشی پێشەکی دەچێتە سندوق وەک وەرگرتن.' },
   cashRegisterPaymentTypeLabel: { tr: 'Ödeme Türü: {type}', en: 'Payment Type: {type}', ar: 'نوع الدفع: {type}', ku: 'جۆری پارەدان: {type}' },
   selectCashRegister: { tr: 'Kasa seçin (opsiyonel)', en: 'Select cash register (optional)', ar: 'اختر الصندوق (اختياري)', ku: 'سندوق هەڵبژێرە (ئارەزوومەندانە)' },
   transactionHistory: { tr: 'İşlem Geçmişi', en: 'Transaction History', ar: 'سجل المعاملات', ku: 'مێژووی کارەکان' },
@@ -4719,6 +4721,18 @@ export const moduleTranslations: Record<string, Record<Language, string>> = {
     en: 'Sale will be posted to the customer account on credit',
     ar: 'سيُرحَّل البيع آجلاً إلى حساب العميل',
     ku: 'فرۆشتن وەک قەرز دەنووسرێتە هەژماری کڕیار',
+  },
+  posWriteRemainingToCari: {
+    tr: 'Kalanı cariye yaz',
+    en: 'Post remainder to account',
+    ar: 'ترحيل المتبقي إلى الحساب الجاري',
+    ku: 'ماوە بنووسە بۆ جاری',
+  },
+  posSelectCustomerForCari: {
+    tr: 'Kalanı cariye yazmak için müşteri seçin.',
+    en: 'Select a customer to post the remainder to their account.',
+    ar: 'اختر عميلاً لترحيل المتبقي إلى الحساب الجاري.',
+    ku: 'بۆ نووسینی ماوە بۆ جاری کڕیار هەڵبژێرە.',
   },
   posExpenseOperations: {
     tr: 'Gider İşlemleri',

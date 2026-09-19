@@ -88,6 +88,7 @@ import {
   isPosRetailPaymentContext,
   paymentFormCodeTranslationKey,
   paymentMethodImpliesCashRegisterOnInvoice,
+  paymentMethodImpliesCustomerDebt,
   RETAIL_SALES_INVOICE_TRCODE,
 } from '../../../utils/paymentMethodUtils';
 import { buildInvoiceHeaderFieldsFromForm, readInvoiceHeaderFields, sanitizeInvoiceHeaderPartyValue } from '../../../utils/invoiceHeaderFields';
@@ -3894,7 +3895,9 @@ export function UniversalInvoiceForm({
         firma_name: selectedFirm?.name || '',
         donem_id: selectedPeriod?.logicalref?.toString() || '0',
         donem_name: selectedPeriod?.donem_adi || '',
-        payment_method: resolvePaymentMethodForDb(),
+        payment_method: paymentRows.some((p) => paymentMethodImpliesCustomerDebt(p.method))
+          ? formCodeToDbPaymentMethod('ACIK_CARI', { posRetail: isPosRetail })
+          : resolvePaymentMethodForDb(),
         cashier: effectiveCashierName,
         // Açık cari / veresiye ödemede kasaya bağlanmamalı — DB'de null kalmalı
         // ve kasa defterine yansımamalı. Nakit/kart gibi kasaya bağlanan
@@ -3918,37 +3921,41 @@ export function UniversalInvoiceForm({
         })(),
         notes: description,
         document_no: documentNo.trim() || resolvedInvoiceNo,
-        header_fields: buildInvoiceHeaderFieldsFromForm({
-          documentNo,
-          specialCode,
-          tradingGroup,
-          authorizationCode,
-          warehouse,
-          workplace,
-          salespersonCode,
-          editDate,
-          customerBarcode,
-          deliveryCode,
-          campaignCode,
-          time,
-          footerDiscountMode,
-          footerDiscountPercent: totals.footerDiscountPercent,
-          footerDiscountAmount: totals.footerDiscount,
-          cashRegister: {
-            id: cashRegisterId || null,
-            name: cashRegisterName || null,
-            code: cashRegisterCode || null,
-          },
-          payments: paymentRows.map((p) => ({
-            method: p.method,
-            amount: p.amount,
-            currency: p.currency,
-            cash_register_id: p.cashRegisterId,
-            cash_register_name: p.cashRegisterName,
-            cash_register_code: p.cashRegisterCode,
-            notes: p.notes,
-          })),
-        }),
+        header_fields: {
+          ...buildInvoiceHeaderFieldsFromForm({
+            documentNo,
+            specialCode,
+            tradingGroup,
+            authorizationCode,
+            warehouse,
+            workplace,
+            salespersonCode,
+            editDate,
+            customerBarcode,
+            deliveryCode,
+            campaignCode,
+            time,
+            footerDiscountMode,
+            footerDiscountPercent: totals.footerDiscountPercent,
+            footerDiscountAmount: totals.footerDiscount,
+            cashRegister: {
+              id: cashRegisterId || null,
+              name: cashRegisterName || null,
+              code: cashRegisterCode || null,
+            },
+            payments: paymentRows.map((p) => ({
+              method: p.method,
+              amount: p.amount,
+              currency: p.currency,
+              cash_register_id: p.cashRegisterId,
+              cash_register_name: p.cashRegisterName,
+              cash_register_code: p.cashRegisterCode,
+              notes: p.notes,
+            })),
+          }),
+          source: 'invoice_form',
+        },
+        source: 'invoice_form',
         currency: currency || ledgerCurrency,
         currency_rate: effectiveInvoiceCurrencyRate || 1,
         credit_amount: 0,
@@ -5455,6 +5462,7 @@ export function UniversalInvoiceForm({
             <InvoicePaymentInfoModal
               currentPaymentMethod={paymentMethod}
               retailPosMode={isPosRetail}
+              invoiceTotal={totals.netIQD}
               onSelect={(method, extra) => {
                 setPaymentMethod(method);
                 if (extra) {

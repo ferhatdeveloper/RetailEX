@@ -100,6 +100,9 @@ export type POSPaymentModalDraftContext = {
 
 type Payment = POSPaymentModalPaymentRow;
 
+/** Kalan tutar eşiği — müşteri varsa cariye yazılabilir. */
+const CARI_REMAINING_THRESHOLD = 0.009;
+
 interface POSPaymentModalProps {
   total: number;
   subtotal: number;
@@ -306,6 +309,33 @@ export function POSPaymentModal({
     ? roundPosMoneyAmount(totalPaid - finalTotal, baseCurrency)
     : 0;
 
+  const hasCariRemainder = remaining > CARI_REMAINING_THRESHOLD;
+  const canPostRemainderToCari = Boolean(selectedCustomer) && hasCariRemainder;
+  const selectCustomerForCariMessage =
+    tm('posSelectCustomerForCari') || t.selectCustomerForCari || t.pleaseSelectCustomer || 'Kalanı cariye yazmak için müşteri seçin.';
+  const writeRemainingToCariLabel =
+    tm('posWriteRemainingToCari') || t.writeRemainingToCari || 'Kalanı cariye yaz';
+
+  const buildVeresiyeForRemaining = (amount: number): Payment => ({
+    method: 'veresiye',
+    amount: roundPosMoneyAmount(amount, baseCurrency),
+    currency: baseCurrency,
+    ...(selectedCashRegister && {
+      cash_register_id: selectedCashRegister.id,
+      cash_register_name: selectedCashRegister.kasa_adi,
+      cash_register_code: selectedCashRegister.kasa_kodu,
+    }),
+  });
+
+  const handleWriteRemainingToCari = () => {
+    if (!selectedCustomer) {
+      alert(selectCustomerForCariMessage);
+      return;
+    }
+    if (!hasCariRemainder) return;
+    setPayments((prev) => [...prev, buildVeresiyeForRemaining(remaining)]);
+  };
+
   const handleNumpadClick = (value: string) => {
     if (value === 'clear') {
       setCurrentAmount('');
@@ -423,9 +453,23 @@ export function POSPaymentModal({
 
   const handleConfirmPayment = async () => {
     if (isLoading) return;
-    if (remaining > posMoneyEpsilon(baseCurrency)) {
-      alert(t.insufficientPayment || 'Ödeme tutarı yetersiz!');
-      return;
+
+    let paymentsToSubmit = payments.map((p) => ({ ...p }));
+    let totalPaidAfter = totalPaid;
+    let remainingAfter = remaining;
+    let changeAfter = change;
+
+    if (remainingAfter > CARI_REMAINING_THRESHOLD) {
+      if (!selectedCustomer) {
+        alert(selectCustomerForCariMessage);
+        return;
+      }
+      const veresiyeRow = buildVeresiyeForRemaining(remainingAfter);
+      paymentsToSubmit = [...paymentsToSubmit, veresiyeRow];
+      const amountInBase = veresiyeRow.amount * (exchangeRates[veresiyeRow.currency] ?? 1);
+      totalPaidAfter = roundPosMoneyAmount(totalPaidAfter + amountInBase, baseCurrency);
+      remainingAfter = 0;
+      changeAfter = 0;
     }
 
     setIsLoading(true);
@@ -445,9 +489,9 @@ export function POSPaymentModal({
     }
     const effectiveShowReceiptPreview = printImmediatelyOnService ? false : showReceiptPreview;
     const paymentPayload = {
-      payments: payments,
-      totalPaid: totalPaid,
-      change: change,
+      payments: paymentsToSubmit,
+      totalPaid: totalPaidAfter,
+      change: changeAfter,
       discount: calculatedDiscount,
       finalTotal: finalTotal,
       autoPrint: showAutoPrintOption ? autoPrint : false,
@@ -707,9 +751,28 @@ export function POSPaymentModal({
                       </div>
 
                       {remaining > 0 ? (
-                        <div className="flex justify-between text-red-600 font-medium">
-                          <span>{t.remainingAmount || 'Kalan'}:</span>
-                          <span className="font-mono">{formatCurrency(remaining)}</span>
+                        <div className="space-y-2">
+                          <div className="flex justify-between text-red-600 font-medium">
+                            <span>{t.remainingAmount || 'Kalan'}:</span>
+                            <span className="font-mono">{formatCurrency(remaining)}</span>
+                          </div>
+                          {canPostRemainderToCari ? (
+                            <button
+                              type="button"
+                              onClick={handleWriteRemainingToCari}
+                              className={`w-full px-3 py-2 text-sm font-medium rounded transition-colors ${
+                                darkMode
+                                  ? 'bg-orange-900/40 hover:bg-orange-900/60 text-orange-300 border border-orange-700'
+                                  : 'bg-orange-50 hover:bg-orange-100 text-orange-800 border border-orange-300'
+                              }`}
+                            >
+                              {writeRemainingToCariLabel}
+                            </button>
+                          ) : hasCariRemainder && !selectedCustomer ? (
+                            <p className={`text-xs ${darkMode ? 'text-amber-300' : 'text-amber-700'}`}>
+                              {selectCustomerForCariMessage}
+                            </p>
+                          ) : null}
                         </div>
                       ) : (
                         <div className={`p-3 rounded-lg mt-2 ${darkMode ? 'bg-green-900/30 border-2 border-green-600' : 'bg-green-50 border-2 border-green-400'
@@ -1005,6 +1068,25 @@ export function POSPaymentModal({
                   {t.addPaymentLabel || 'Ödeme Ekle'}
                 </button>
               </div>
+
+              {canPostRemainderToCari && (
+                <button
+                  type="button"
+                  onClick={handleWriteRemainingToCari}
+                  className={`w-full py-3 text-sm font-medium transition-colors ${
+                    darkMode
+                      ? 'bg-orange-900/40 hover:bg-orange-900/60 text-orange-300 border border-orange-700'
+                      : 'bg-orange-50 hover:bg-orange-100 text-orange-800 border border-orange-300'
+                  }`}
+                >
+                  {writeRemainingToCariLabel} ({formatCurrency(remaining)})
+                </button>
+              )}
+              {hasCariRemainder && !selectedCustomer && (
+                <p className={`text-xs ${darkMode ? 'text-amber-300' : 'text-amber-700'}`}>
+                  {selectCustomerForCariMessage}
+                </p>
+              )}
             </div>
 
             {/* Right - Numpad (conditional) */}
@@ -1267,7 +1349,8 @@ export function POSPaymentModal({
           <button
             type="button"
             onClick={handleConfirmPayment}
-            disabled={remaining > 0.01 || isLoading || draftPrintLoading}
+            disabled={isLoading || draftPrintLoading || (hasCariRemainder && !selectedCustomer)}
+            title={hasCariRemainder && !selectedCustomer ? selectCustomerForCariMessage : undefined}
             className={`flex-1 px-4 py-3 bg-green-600 text-white rounded hover:bg-green-700 transition-colors disabled:opacity-50 disabled:cursor-not-allowed font-medium flex items-center justify-center gap-2 sm:min-w-[11rem]`}
           >
             {isLoading ? (

@@ -36,6 +36,8 @@ export type InvoiceHeaderFields = {
     cash_register_code?: string | null;
     notes?: string;
   }>;
+  /** Fatura formu vs POS — karma peşin CH_TAHSILAT yazımını ayırır */
+  source?: string;
 };
 
 export function readInvoiceHeaderFields(raw: unknown): InvoiceHeaderFields {

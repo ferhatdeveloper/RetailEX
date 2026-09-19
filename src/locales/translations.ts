@@ -1072,6 +1072,7 @@ export interface Translations {
   selectAtLeastOneShortcut: string;
   selectCampaign: string;
   selectCustomer: string;
+  selectCustomerForCari: string;
   selectCustomerTitle: string;
   selectDonem: string;
   selectFirmPrompt: string;
@@ -1255,6 +1256,7 @@ export interface Translations {
   wmsModule: string;
   wrongProduct: string;
   wrongProductAdded: string;
+  writeRemainingToCari: string;
   wsConnected: string;
   wsConnecting: string;
   wsDisconnected: string;
@@ -2470,6 +2472,7 @@ export const translations: any = {
     selectAtLeastOneShortcut: 'En az 1 kısayol seçmelisiniz',
     selectCampaign: 'Kampanya Seç',
     selectCustomer: 'Müşteri Seç',
+    selectCustomerForCari: 'Kalanı cariye yazmak için müşteri seçin.',
     selectCustomerTitle: 'Müşteri Seçin',
     selectDonem: 'Dönem Seçin',
     selectFirmPrompt: 'Firma Seçin',
@@ -2854,6 +2857,7 @@ export const translations: any = {
     wmsModule: 'WMS',
     wrongProduct: 'Yanlış Ürün',
     wrongProductAdded: 'Yanlış ürün eklendi',
+    writeRemainingToCari: 'Kalanı cariye yaz',
     wsConnected: 'Bağlı',
     wsConnecting: 'Bağlanıyor...',
     wsDisconnected: 'Bağlantı Yok',
@@ -4168,6 +4172,7 @@ export const translations: any = {
     selectAtLeastOneShortcut: 'You must select at least 1 shortcut',
     selectCampaign: 'Select Campaign',
     selectCustomer: 'Select Customer',
+    selectCustomerForCari: 'Select a customer to post the remainder to their account.',
     selectCustomerTitle: 'Select Customer',
     selectDonem: 'Select Period',
     selectFirmPrompt: 'Select Firm',
@@ -4397,6 +4402,7 @@ export const translations: any = {
     wmsModule: 'WMS',
     wrongProduct: 'Wrong Product',
     wrongProductAdded: 'Wrong product added',
+    writeRemainingToCari: 'Post remainder to account',
     wsConnected: 'Connected',
     wsConnecting: 'Connecting...',
     wsDisconnected: 'Disconnected',
@@ -5742,6 +5748,7 @@ export const translations: any = {
     selectAtLeastOneShortcut: 'يجب عليك اختيار اختصار واحد على الأقل',
     selectCampaign: 'اختر الحملة',
     selectCustomer: 'اختر العميل',
+    selectCustomerForCari: 'اختر عميلاً لترحيل المتبقي إلى الحساب الجاري.',
     selectCustomerTitle: 'اختر العميل',
     selectDonem: 'اختر الفترة',
     selectFirmPrompt: 'اختر الشركة',
@@ -5973,6 +5980,7 @@ export const translations: any = {
     wmsModule: 'نظام إدارة المستودعات',
     wrongProduct: 'منتج خاطئ',
     wrongProductAdded: 'تمت إضافة منتج خاطئ',
+    writeRemainingToCari: 'ترحيل المتبقي إلى الحساب الجاري',
     wsConnected: 'متصل',
     wsConnecting: 'جاري الاتصال...',
     wsDisconnected: 'غير متصل',
@@ -7315,6 +7323,7 @@ export const translations: any = {
     selectAtLeastOneShortcut: 'En az 1 kısayol seçmelisiniz',
     selectCampaign: 'کەمپەین هەڵبژێرە',
     selectCustomer: 'کڕیار هەڵبژێرە',
+    selectCustomerForCari: 'بۆ نووسینی ماوە بۆ جاری کڕیار هەڵبژێرە.',
     selectCustomerTitle: 'کڕیار هەڵبژێرە',
     selectDonem: 'ماوە هەڵبژێرە',
     selectFirmPrompt: 'Firma Seçin',
@@ -7598,6 +7607,7 @@ export const translations: any = {
     wmsModule: 'WMS',
     wrongProduct: 'Yanlış Ürün',
     wrongProductAdded: 'Yanlış ürün eklendi',
+    writeRemainingToCari: 'ماوە بنووسە بۆ جاری',
     wsConnected: 'پەیوەستە',
     wsConnecting: 'باردەکرێت...',
     wsDisconnected: 'پەیوەست نییە',
