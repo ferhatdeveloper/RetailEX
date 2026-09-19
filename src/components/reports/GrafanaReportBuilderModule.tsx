@@ -41,6 +41,8 @@ import {
   saveCustomReport,
   type SavedCustomReport,
 } from '../../services/savedCustomReportService';
+import { ensureGrafanaDbForCurrentServer } from '../../services/grafanaDatasourceService';
+import { GrafanaServerCodeModal } from './GrafanaServerCodeModal';
 
 type MainTab = 'data' | 'grafana';
 
@@ -100,6 +102,11 @@ export function GrafanaReportBuilderModule() {
   const [reportName, setReportName] = useState('');
   const [saving, setSaving] = useState(false);
   const [saveMsg, setSaveMsg] = useState<string | null>(null);
+  const [grafanaDbLabel, setGrafanaDbLabel] = useState<string | null>(null);
+  const [serverModalOpen, setServerModalOpen] = useState(false);
+  const [serverModalReason, setServerModalReason] = useState<string | null>(null);
+  const [grafanaLinkError, setGrafanaLinkError] = useState<string | null>(null);
+  const [grafanaLinking, setGrafanaLinking] = useState(false);
 
   const shell = darkMode ? 'bg-gray-900 text-gray-100' : 'bg-gray-50 text-gray-900';
   const card = darkMode ? 'bg-gray-800 border-gray-700' : 'bg-white border-gray-200';
@@ -150,6 +157,32 @@ export function GrafanaReportBuilderModule() {
     void loadSchema(search);
     void loadSaved();
   }, [selectedFirm?.firm_nr, selectedPeriod?.nr, loadSchema, loadSaved]);
+
+  const linkGrafanaDb = useCallback(async () => {
+    setGrafanaLinking(true);
+    setGrafanaLinkError(null);
+    const result = await ensureGrafanaDbForCurrentServer();
+    setGrafanaLinking(false);
+    if (result.ok) {
+      setGrafanaDbLabel(result.database);
+      setServerModalOpen(false);
+      return;
+    }
+    if (result.needServerCode) {
+      setServerModalReason(result.reason);
+      setServerModalOpen(true);
+      return;
+    }
+    setGrafanaLinkError(result.reason);
+  }, []);
+
+  useEffect(() => {
+    void linkGrafanaDb();
+  }, [linkGrafanaDb]);
+
+  useEffect(() => {
+    if (mainTab === 'grafana') void linkGrafanaDb();
+  }, [mainTab, linkGrafanaDb]);
 
   useEffect(() => {
     const t = window.setTimeout(() => {
@@ -279,32 +312,76 @@ export function GrafanaReportBuilderModule() {
               {firmLabel}
               {' · '}
               {lang === 'en' ? 'Period' : 'Dönem'} {ctx.periodNr}
-              {ctx.databaseName ? ` · ${ctx.databaseName}` : ''}
+              {grafanaDbLabel
+                ? ` · Grafana DB ${grafanaDbLabel}`
+                : ctx.databaseName
+                  ? ` · ${ctx.databaseName}`
+                  : ''}
+              {grafanaLinking ? (lang === 'en' ? ' · linking…' : ' · bağlanıyor…') : ''}
             </p>
           </div>
         </div>
 
-        <div className="flex items-center gap-1 rounded-lg border p-0.5 shrink-0 dark:border-gray-600 border-gray-200">
+        <div className="flex items-center gap-2 shrink-0">
           <button
             type="button"
-            onClick={() => setMainTab('data')}
-            className={`px-3 py-1.5 text-xs font-semibold rounded-md ${
-              mainTab === 'data' ? active : muted
+            onClick={() => void linkGrafanaDb()}
+            className={`text-xs font-medium px-2.5 py-1.5 rounded-lg border ${
+              darkMode
+                ? 'border-gray-600 text-teal-300 hover:bg-gray-700'
+                : 'border-teal-200 text-teal-700 hover:bg-teal-50'
             }`}
           >
-            {lang === 'en' ? 'Data tables' : 'Veri tabloları'}
+            {lang === 'en' ? 'Reconnect DB' : 'DB bağla'}
           </button>
-          <button
-            type="button"
-            onClick={() => setMainTab('grafana')}
-            className={`px-3 py-1.5 text-xs font-semibold rounded-md ${
-              mainTab === 'grafana' ? active : muted
-            }`}
-          >
-            Grafana
-          </button>
+          <div className="flex items-center gap-1 rounded-lg border p-0.5 dark:border-gray-600 border-gray-200">
+            <button
+              type="button"
+              onClick={() => setMainTab('data')}
+              className={`px-3 py-1.5 text-xs font-semibold rounded-md ${
+                mainTab === 'data' ? active : muted
+              }`}
+            >
+              {lang === 'en' ? 'Data tables' : 'Veri tabloları'}
+            </button>
+            <button
+              type="button"
+              onClick={() => setMainTab('grafana')}
+              className={`px-3 py-1.5 text-xs font-semibold rounded-md ${
+                mainTab === 'grafana' ? active : muted
+              }`}
+            >
+              Grafana
+            </button>
+          </div>
         </div>
       </div>
+
+      {grafanaLinkError && (
+        <div className="shrink-0 px-4 py-2 text-xs text-amber-700 bg-amber-50 border-b border-amber-200">
+          {grafanaLinkError}{' '}
+          <button
+            type="button"
+            className="underline font-semibold"
+            onClick={() => {
+              setServerModalReason(grafanaLinkError);
+              setServerModalOpen(true);
+            }}
+          >
+            {lang === 'en' ? 'Enter server code' : 'Server kodu gir'}
+          </button>
+        </div>
+      )}
+
+      <GrafanaServerCodeModal
+        open={serverModalOpen}
+        reason={serverModalReason}
+        onClose={() => setServerModalOpen(false)}
+        onConnected={({ database }) => {
+          setGrafanaDbLabel(database);
+          setGrafanaLinkError(null);
+        }}
+      />
 
       {mainTab === 'data' ? (
         <div className="flex flex-1 min-h-0">

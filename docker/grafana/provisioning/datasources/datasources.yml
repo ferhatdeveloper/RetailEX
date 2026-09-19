@@ -18,11 +18,11 @@ datasources:
     url: postgres:5432
     user: postgres
     isDefault: false
-    editable: false
+    # Köprü Grafana API ile database alanı güncellenir
+    editable: true
     secureJsonData:
       password: ${POSTGRES_PASSWORD}
     jsonData:
-      # ERP panoları için server DB adı (örn. guzel). Varsayılan: postgres (küme özeti).
       database: ${GRAFANA_POSTGRES_DATABASE:-postgres}
       sslmode: disable
       maxOpenConns: 4

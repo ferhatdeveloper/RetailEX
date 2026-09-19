@@ -1552,6 +1552,127 @@ app.post('/api/pg_query', async (c) => {
 
 registerQrMenuBridgeRoutes(app);
 
+/** Grafana HTTP API — admin basic auth (Docker ağı: http://grafana:3000) */
+function grafanaAdminAuthHeader(): string {
+    const user = (process.env.GRAFANA_ADMIN_USER || process.env.GF_SECURITY_ADMIN_USER || 'admin').trim();
+    const pass = (
+        process.env.GRAFANA_ADMIN_PASSWORD ||
+        process.env.GF_SECURITY_ADMIN_PASSWORD ||
+        'change_this_grafana_password'
+    ).trim();
+    return 'Basic ' + Buffer.from(`${user}:${pass}`).toString('base64');
+}
+
+function grafanaBaseUrl(): string {
+    return (process.env.GRAFANA_URL || 'http://grafana:3000').replace(/\/+$/, '');
+}
+
+function isSafePgDatabaseName(name: string): boolean {
+    return /^[a-zA-Z][a-zA-Z0-9_]{0,62}$/.test(name);
+}
+
+app.get('/api/grafana/health', async (c) => {
+    try {
+        const res = await fetch(`${grafanaBaseUrl()}/api/health`, { method: 'GET' });
+        const text = await res.text();
+        return c.json({ ok: res.ok, status: res.status, body: text.slice(0, 200) });
+    } catch (e: any) {
+        return c.json({ ok: false, error: e?.message || String(e) }, 503);
+    }
+});
+
+app.get('/api/grafana/postgres-database', async (c) => {
+    try {
+        const res = await fetch(`${grafanaBaseUrl()}/api/datasources/uid/postgres`, {
+            headers: { Authorization: grafanaAdminAuthHeader() },
+        });
+        if (!res.ok) {
+            const t = await res.text();
+            return c.json({ error: `Grafana datasource okunamadı: ${res.status} ${t.slice(0, 200)}` }, 502);
+        }
+        const ds = (await res.json()) as { jsonData?: { database?: string }; database?: string };
+        const database = String(ds.jsonData?.database || ds.database || '').trim();
+        return c.json({ database });
+    } catch (e: any) {
+        return c.json({ error: e?.message || String(e) }, 503);
+    }
+});
+
+/**
+ * Grafana PostgreSQL datasource → server DB adı.
+ * Body: { database: "guzel" }
+ */
+app.post('/api/grafana/postgres-database', async (c) => {
+    try {
+        const body = (await c.req.json().catch(() => ({}))) as { database?: string };
+        const database = String(body.database || '').trim();
+        if (!database) return c.json({ error: 'database gerekli' }, 400);
+        if (!isSafePgDatabaseName(database)) {
+            return c.json({ error: 'Geçersiz veritabanı adı' }, 400);
+        }
+
+        const getRes = await fetch(`${grafanaBaseUrl()}/api/datasources/uid/postgres`, {
+            headers: { Authorization: grafanaAdminAuthHeader() },
+        });
+        if (!getRes.ok) {
+            const t = await getRes.text();
+            return c.json(
+                { error: `Grafana datasource bulunamadı: ${getRes.status} ${t.slice(0, 200)}` },
+                502
+            );
+        }
+        const ds = (await getRes.json()) as Record<string, unknown>;
+        const id = ds.id;
+        if (id == null) return c.json({ error: 'Grafana datasource id yok' }, 502);
+
+        const jsonData = {
+            ...((ds.jsonData as Record<string, unknown>) || {}),
+            database,
+            sslmode: 'disable',
+            postgresVersion: 1500,
+            timescaledb: false,
+        };
+
+        const putBody = {
+            id,
+            uid: ds.uid || 'postgres',
+            name: ds.name || 'PostgreSQL',
+            type: 'postgres',
+            access: ds.access || 'proxy',
+            url: ds.url || 'postgres:5432',
+            user: ds.user || 'postgres',
+            database,
+            basicAuth: false,
+            isDefault: false,
+            jsonData,
+            // Şifreyi silme — mevcut secure alanı koru
+            secureJsonFields: { password: true },
+        };
+
+        const putRes = await fetch(`${grafanaBaseUrl()}/api/datasources/${id}`, {
+            method: 'PUT',
+            headers: {
+                Authorization: grafanaAdminAuthHeader(),
+                'Content-Type': 'application/json',
+            },
+            body: JSON.stringify(putBody),
+        });
+        if (!putRes.ok) {
+            const t = await putRes.text();
+            return c.json(
+                { error: `Grafana datasource güncellenemedi: ${putRes.status} ${t.slice(0, 300)}` },
+                502
+            );
+        }
+
+        console.log(`[PG Bridge] Grafana PostgreSQL database → ${database}`);
+        return c.json({ ok: true, database });
+    } catch (e: any) {
+        console.error('[PG Bridge] grafana postgres-database:', e);
+        return c.json({ error: e?.message || String(e) }, 500);
+    }
+});
+
 // Port: BRIDGE_PORT (tercih) veya PORT; varsayılan 3001
 const port = (() => {
     const raw = (process.env.BRIDGE_PORT || process.env.PORT || '3001').trim();
