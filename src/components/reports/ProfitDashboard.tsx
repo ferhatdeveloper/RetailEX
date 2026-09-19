@@ -109,8 +109,8 @@ export function ProfitDashboard() {
             COUNT(DISTINCT NULLIF(TRIM(COALESCE(customer_id::text, '')), '')) AS customer_count
           FROM sales
           WHERE ${SQL_COUNTABLE_SALE_STATUS_PLAIN}
-            AND (date AT TIME ZONE 'UTC')::date >= $1::date
-            AND (date AT TIME ZONE 'UTC')::date <= $2::date
+            AND (date::timestamptz AT TIME ZONE 'UTC')::date >= $1::date
+            AND (date::timestamptz AT TIME ZONE 'UTC')::date <= $2::date
           `,
           [start, end],
         );
@@ -124,8 +124,8 @@ export function ProfitDashboard() {
             COALESCE(SUM(net_amount), 0) AS total_rev
           FROM sales
           WHERE ${SQL_COUNTABLE_SALE_STATUS_PLAIN}
-            AND (date AT TIME ZONE 'UTC')::date >= $1::date
-            AND (date AT TIME ZONE 'UTC')::date <= $2::date
+            AND (date::timestamptz AT TIME ZONE 'UTC')::date >= $1::date
+            AND (date::timestamptz AT TIME ZONE 'UTC')::date <= $2::date
             AND NULLIF(TRIM(COALESCE(customer_name, '')), '') IS NOT NULL
           GROUP BY 1
           ORDER BY total_rev DESC

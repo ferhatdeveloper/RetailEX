@@ -18,6 +18,7 @@ import {
   ficheTypeToInfo,
   getCariBalanceDirection,
   preferIntegerAmountDisplay,
+  resolveEkstreDescription,
   type EkstreRow,
 } from '../../../utils/cariAccountStatement';
 
@@ -332,7 +333,15 @@ export function CariAccountStatementPanel({ account, onClose }: CariAccountState
                     <td className="px-4 py-2">
                       <span className={`rounded-full px-2 py-0.5 text-[10px] font-black uppercase ${color}`}>{label}</span>
                     </td>
-                    <td className="max-w-md break-words px-4 py-2 align-top text-gray-700">{row.notes || ''}</td>
+                    <td className="max-w-md break-words px-4 py-2 align-top text-gray-700">
+                      {resolveEkstreDescription(
+                        row.notes,
+                        row.fiche_type,
+                        Number(row.trcode) || 0,
+                        row.is_cancelled === true,
+                        tm,
+                      )}
+                    </td>
                     <td className="whitespace-nowrap px-4 py-2 text-right font-bold text-red-600">
                       {borcD ? (
                         <div className="flex flex-col items-end">

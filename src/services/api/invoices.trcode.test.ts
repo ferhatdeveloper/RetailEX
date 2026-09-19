@@ -11,6 +11,7 @@
 import { describe, expect, it } from 'vitest';
 import {
   deriveFicheTypeFromTrcode,
+  excludedSiblingReturnTrcodes,
   TRCODES_BY_INVOICE_CATEGORY,
 } from './invoices';
 
@@ -71,5 +72,23 @@ describe('TRCODES_BY_INVOICE_CATEGORY — kategori başına trcode listesi', () 
     expect(TRCODES_BY_INVOICE_CATEGORY.Alis).toContain(1);
     expect(TRCODES_BY_INVOICE_CATEGORY.Alis).toContain(4);
     expect(TRCODES_BY_INVOICE_CATEGORY.Alis).toContain(5);
+  });
+});
+describe('excludedSiblingReturnTrcodes — satış/alış iade ayrımı', () => {
+  it('invoiceType 3 (satış iade) alış iade trcode 6 hariç tutar', () => {
+    expect(excludedSiblingReturnTrcodes(3)).toEqual([6]);
+  });
+
+  it('invoiceType 6 (alış iade) satış iade 2/3 hariç tutar', () => {
+    expect(excludedSiblingReturnTrcodes(6)).toEqual([2, 3]);
+  });
+
+  it('invoiceType 2 genel iade 3 ve 6 hariç tutar', () => {
+    expect(excludedSiblingReturnTrcodes(2)).toEqual([3, 6]);
+  });
+
+  it('satış/alış dışı tipte boş', () => {
+    expect(excludedSiblingReturnTrcodes(8)).toEqual([]);
+    expect(excludedSiblingReturnTrcodes(1)).toEqual([]);
   });
 });

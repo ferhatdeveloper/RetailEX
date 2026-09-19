@@ -76,7 +76,7 @@ export type RestReportKind =
 const REPORT_TABS: { id: RestReportKind; label: string }[] = [
   { id: 'z', label: 'Z Raporu' },
   { id: 'daily', label: 'Günlük' },
-  { id: 'eod', label: 'Gün Sonu' },
+  // eod (Gün Sonu) — menüden kaldırıldı; rapor kodu duruyor
   { id: 'product', label: 'Ürün Adedi' },
   { id: 'category', label: 'Kategori' },
   { id: 'void', label: 'İptal / İade' },

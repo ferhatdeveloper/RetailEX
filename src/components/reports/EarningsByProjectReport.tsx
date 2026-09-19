@@ -30,6 +30,7 @@ import { ReportDateRangePresets } from '../shared/ReportDateRangePresets';
 import { erpReportsAPI, type EarningsByProjectRow } from '../../services/api/erpReports';
 import { supplierAPI } from '../../services/api/suppliers';
 import type { Supplier } from '../../core/types';
+import { ReportColumnTable, type ReportColumnTableCol } from './shared/ReportDataGrid';
 
 type SelectOption = { value: string; label: string };
 
@@ -181,31 +182,137 @@ export function EarningsByProjectReport() {
     });
   }, [rows, cariIds, projectId, category]);
 
-  const totals = useMemo(() => {
-    let discount = 0;
-    let collected = 0;
-    let invoiceAmount = 0;
-    let loadingExpense = 0;
-    let spent = 0;
-    let dailyExpense = 0;
-    let profit = 0;
-    for (const r of filtered) {
-      discount += r.discount;
-      collected += r.collected;
-      invoiceAmount += r.invoiceAmount;
-      loadingExpense += r.loadingExpense;
-      spent += r.spent;
-      dailyExpense += r.dailyExpense;
-      profit += r.profit;
-    }
-    return { discount, collected, invoiceAmount, loadingExpense, spent, dailyExpense, profit };
-  }, [filtered]);
+  const categories = useMemo(() => Array.from(new Set(rows.map((r) => r.category))).sort(), [rows]);
 
   const tableCls = darkMode ? 'bg-gray-800 border-gray-700' : 'bg-white border-gray-200';
-  const thCls = darkMode ? 'bg-gray-900/60 text-gray-300' : 'bg-gray-50 text-gray-600';
-  const tfootCls = darkMode ? 'bg-gray-900/80 text-gray-100' : 'bg-gray-100 text-gray-900';
 
-  const categories = useMemo(() => Array.from(new Set(rows.map((r) => r.category))).sort(), [rows]);
+  const tableColumns = useMemo<ReportColumnTableCol<EarningsByProjectRow>[]>(
+    () => [
+      { key: 'date', header: tm('rprColDate') || 'Tarih', type: 'date', size: 110 },
+      {
+        key: 'invoiceNo',
+        header: tm('rprColInvoiceNo') || 'Fatura No',
+        size: 140,
+        cell: (r) => <span className="font-mono text-xs">{r.invoiceNo || '—'}</span>,
+      },
+      { key: 'customerName', header: tm('rprColCustomer') || 'Müşteri', size: 160 },
+      {
+        key: 'projectName',
+        header: tm('rprColProject') || 'Proje',
+        size: 140,
+        cell: (r) => r.projectName ?? '—',
+      },
+      {
+        key: 'category',
+        header: tm('rprColCategory') || 'Kategori',
+        size: 120,
+        cell: (r) => (
+          <span
+            className={`inline-block rounded px-2 py-0.5 text-[10px] font-bold ${
+              r.isReturn
+                ? 'bg-red-100 text-red-700 dark:bg-red-900/40 dark:text-red-300'
+                : 'bg-blue-100 text-blue-700 dark:bg-blue-900/40 dark:text-blue-300'
+            }`}
+          >
+            {r.category}
+          </span>
+        ),
+      },
+      {
+        key: 'description',
+        header: tm('rprColDescription') || 'Açıklama',
+        size: 200,
+        cell: (r) => (
+          <span className="block max-w-[200px] truncate" title={r.description}>
+            {r.description || '—'}
+          </span>
+        ),
+      },
+      {
+        key: 'discount',
+        header: tm('rprColDiscount') || 'İskonto',
+        type: 'number',
+        align: 'right',
+        size: 100,
+        footerSum: true,
+        footerFormat: (n) => formatNumber(n, 2, false),
+        cell: (r) => formatNumber(r.discount, 2, false),
+      },
+      {
+        key: 'collected',
+        header: tm('rprColCollected') || 'Tahsil Edilen',
+        type: 'number',
+        align: 'right',
+        size: 120,
+        footerSum: true,
+        footerFormat: (n) => formatNumber(n, 2, false),
+        cell: (r) => formatNumber(r.collected, 2, false),
+      },
+      {
+        key: 'invoiceAmount',
+        header: tm('rprColInvoiceAmount') || 'Fatura Tutarı',
+        type: 'number',
+        align: 'right',
+        size: 130,
+        footerSum: true,
+        footerFormat: (n) => `${formatNumber(n, 2, false)} ${currency}`,
+        cell: (r) => (
+          <span className={`font-semibold ${r.invoiceAmount < 0 ? 'text-red-500' : ''}`}>
+            {formatNumber(r.invoiceAmount, 2, false)} {currency}
+          </span>
+        ),
+      },
+      {
+        key: 'loadingExpense',
+        header: tm('rprColLoadingExpense') || 'Yükleme Gideri',
+        type: 'number',
+        align: 'right',
+        size: 120,
+        footerSum: true,
+        footerFormat: (n) => formatNumber(n, 2, false),
+        cell: (r) => formatNumber(r.loadingExpense, 2, false),
+      },
+      {
+        key: 'spent',
+        header: tm('rprColSpent') || 'Harcanan',
+        type: 'number',
+        align: 'right',
+        size: 110,
+        footerSum: true,
+        footerFormat: (n) => formatNumber(n, 2, false),
+        cell: (r) => formatNumber(r.spent, 2, false),
+      },
+      {
+        key: 'dailyExpense',
+        header: tm('rprColDailyExpense') || 'Günlük Gider',
+        type: 'number',
+        align: 'right',
+        size: 120,
+        footerSum: true,
+        footerFormat: (n) => formatNumber(n, 2, false),
+        cell: (r) => formatNumber(r.dailyExpense, 2, false),
+      },
+      {
+        key: 'profit',
+        header: tm('rprColProfit') || 'Kâr',
+        type: 'number',
+        align: 'right',
+        size: 120,
+        footerSum: true,
+        footerFormat: (n) => (
+          <span className={n < 0 ? 'text-red-500' : 'text-emerald-600'}>
+            {formatNumber(n, 2, false)} {currency}
+          </span>
+        ),
+        cell: (r) => (
+          <span className={`font-bold ${r.profit < 0 ? 'text-red-500' : 'text-emerald-600'}`}>
+            {formatNumber(r.profit, 2, false)} {currency}
+          </span>
+        ),
+      },
+    ],
+    [tm, currency],
+  );
 
   return (
     <ReportShell
@@ -279,89 +386,17 @@ export function EarningsByProjectReport() {
         </div>
       }
     >
-      <div className={`overflow-auto rounded-lg border max-h-[600px] ${tableCls}`}>
-        <table className="w-full min-w-[1100px] text-sm">
-          <thead className={`sticky top-0 ${thCls}`}>
-            <tr>
-              <th className="px-3 py-2 text-left">{tm('rprColDate') || 'Tarih'}</th>
-              <th className="px-3 py-2 text-left">{tm('rprColInvoiceNo') || 'Fatura No'}</th>
-              <th className="px-3 py-2 text-left">{tm('rprColCustomer') || 'Müşteri'}</th>
-              <th className="px-3 py-2 text-left">{tm('rprColProject') || 'Proje'}</th>
-              <th className="px-3 py-2 text-left">{tm('rprColCategory') || 'Kategori'}</th>
-              <th className="px-3 py-2 text-left">{tm('rprColDescription') || 'Açıklama'}</th>
-              <th className="px-3 py-2 text-right">{tm('rprColDiscount') || 'İskonto'}</th>
-              <th className="px-3 py-2 text-right">{tm('rprColCollected') || 'Tahsil Edilen'}</th>
-              <th className="px-3 py-2 text-right">{tm('rprColInvoiceAmount') || 'Fatura Tutarı'}</th>
-              <th className="px-3 py-2 text-right">{tm('rprColLoadingExpense') || 'Yükleme Gideri'}</th>
-              <th className="px-3 py-2 text-right">{tm('rprColSpent') || 'Harcanan'}</th>
-              <th className="px-3 py-2 text-right">{tm('rprColDailyExpense') || 'Günlük Gider'}</th>
-              <th className="px-3 py-2 text-right">{tm('rprColProfit') || 'Kâr'}</th>
-            </tr>
-          </thead>
-          <tbody>
-            {filtered.length === 0 && !loading && (
-              <tr>
-                <td colSpan={13} className="px-3 py-8 text-center opacity-60">
-                  {tm('erpNoRows') || 'Veri yok'}
-                </td>
-              </tr>
-            )}
-            {filtered.map((r) => (
-              <tr
-                key={r.id}
-                className={darkMode ? 'border-t border-gray-700' : 'border-t border-gray-100'}
-              >
-                <td className="px-3 py-2 whitespace-nowrap">{r.date}</td>
-                <td className="px-3 py-2 font-mono text-xs">{r.invoiceNo}</td>
-                <td className="px-3 py-2">{r.customerName}</td>
-                <td className="px-3 py-2">{r.projectName ?? '—'}</td>
-                <td className="px-3 py-2">
-                  <span
-                    className={`inline-block px-2 py-0.5 text-[10px] font-bold rounded ${
-                      r.isReturn
-                        ? 'bg-red-100 text-red-700 dark:bg-red-900/40 dark:text-red-300'
-                        : 'bg-blue-100 text-blue-700 dark:bg-blue-900/40 dark:text-blue-300'
-                    }`}
-                  >
-                    {r.category}
-                  </span>
-                </td>
-                <td className="px-3 py-2 max-w-[260px] truncate" title={r.description}>
-                  {r.description}
-                </td>
-                <td className="px-3 py-2 text-right">{formatNumber(r.discount, 2, false)}</td>
-                <td className="px-3 py-2 text-right">{formatNumber(r.collected, 2, false)}</td>
-                <td className={`px-3 py-2 text-right font-semibold ${r.invoiceAmount < 0 ? 'text-red-500' : ''}`}>
-                  {formatNumber(r.invoiceAmount, 2, false)} {currency}
-                </td>
-                <td className="px-3 py-2 text-right">{formatNumber(r.loadingExpense, 2, false)}</td>
-                <td className="px-3 py-2 text-right">{formatNumber(r.spent, 2, false)}</td>
-                <td className="px-3 py-2 text-right">{formatNumber(r.dailyExpense, 2, false)}</td>
-                <td className={`px-3 py-2 text-right font-bold ${r.profit < 0 ? 'text-red-500' : 'text-emerald-600'}`}>
-                  {formatNumber(r.profit, 2, false)} {currency}
-                </td>
-              </tr>
-            ))}
-          </tbody>
-          {filtered.length > 0 && (
-            <tfoot>
-              <tr className={`font-bold ${tfootCls}`}>
-                <td className="px-3 py-2" colSpan={6}>
-                  {tm('rprTotal') || 'TOPLAM'}
-                </td>
-                <td className="px-3 py-2 text-right">{formatNumber(totals.discount, 2, false)}</td>
-                <td className="px-3 py-2 text-right">{formatNumber(totals.collected, 2, false)}</td>
-                <td className="px-3 py-2 text-right">{formatNumber(totals.invoiceAmount, 2, false)}</td>
-                <td className="px-3 py-2 text-right">{formatNumber(totals.loadingExpense, 2, false)}</td>
-                <td className="px-3 py-2 text-right">{formatNumber(totals.spent, 2, false)}</td>
-                <td className="px-3 py-2 text-right">{formatNumber(totals.dailyExpense, 2, false)}</td>
-                <td className={`px-3 py-2 text-right ${totals.profit < 0 ? 'text-red-500' : 'text-emerald-600'}`}>
-                  {formatNumber(totals.profit, 2, false)} {currency}
-                </td>
-              </tr>
-            </tfoot>
-          )}
-        </table>
+      <div className={`rounded-lg border p-2 ${tableCls}`}>
+        {filtered.length === 0 && !loading ? (
+          <div className="px-3 py-8 text-center opacity-60">{tm('erpNoRows') || 'Veri yok'}</div>
+        ) : (
+          <ReportColumnTable
+            data={filtered}
+            columns={tableColumns}
+            height={560}
+            footerLabel={tm('rprTotal') || 'TOPLAM'}
+          />
+        )}
       </div>
     </ReportShell>
   );

@@ -20,6 +20,7 @@ import { formatNumber } from '../../utils/formatNumber';
 import { getReportingCurrency } from '../../utils/currency';
 import { localTodayDateKey, toSqlDateInputString } from '../../utils/localCalendarDate';
 import { postgres } from '../../services/postgres';
+import { ReportColumnTable, type ReportColumnTableCol } from './shared/ReportDataGrid';
 
 export type ChequeStatus =
     | 'pending'
@@ -199,7 +200,6 @@ export function ChequeTrackingReport() {
     const panel = darkMode ? 'bg-gray-800 border-gray-700 text-gray-100' : 'bg-white border-gray-200 text-gray-900';
     const muted = darkMode ? 'text-gray-400' : 'text-gray-500';
     const inputCls = darkMode ? 'bg-gray-900 border-gray-600' : 'bg-white border-gray-300';
-    const thCls = darkMode ? 'bg-gray-900/60 text-gray-300' : 'bg-gray-50 text-gray-600';
 
     const statusBadge = (s: ChequeStatus) => {
         const map: Record<ChequeStatus, string> = {
@@ -211,6 +211,74 @@ export function ChequeTrackingReport() {
         };
         return map[s];
     };
+
+    const tableColumns = useMemo<ReportColumnTableCol<ChequeRow>[]>(
+        () => [
+            {
+                key: 'type',
+                header: tm('type'),
+                size: 110,
+                cell: (r) => typeLabel(r.type),
+            },
+            {
+                key: 'documentNo',
+                header: tm('documentNo'),
+                size: 130,
+                cell: (r) => <span className="font-mono text-xs">{r.documentNo}</span>,
+            },
+            {
+                key: 'partyName',
+                header: tm('customer'),
+                size: 200,
+                cell: (r) => (
+                    <div>
+                        <div className="font-medium">{r.partyName}</div>
+                        <div className="text-xs opacity-60">
+                            {r.partyCode} · {partyLabel(r.partyType)}
+                        </div>
+                    </div>
+                ),
+            },
+            {
+                key: 'amount',
+                header: tm('amount'),
+                type: 'number',
+                align: 'right',
+                size: 130,
+                footerSum: true,
+                footerFormat: (n) => `${formatNumber(n, 2, false)} ${currency}`,
+                cell: (r) => (
+                    <span className="font-semibold">
+                        {formatNumber(r.amount, 2, false)} {r.currencyCode || currency}
+                    </span>
+                ),
+            },
+            { key: 'dueDate', header: tm('date'), type: 'date', size: 110 },
+            {
+                key: 'bankName',
+                header: tm('chequeColBank'),
+                size: 140,
+                cell: (r) => r.bankName || '-',
+            },
+            {
+                key: 'status',
+                header: tm('status'),
+                size: 120,
+                cell: (r) => (
+                    <span className={`rounded-full px-2 py-0.5 text-xs font-bold ${statusBadge(r.status)}`}>
+                        {statusLabel(r.status)}
+                    </span>
+                ),
+            },
+            {
+                key: 'notes',
+                header: tm('description'),
+                size: 180,
+                cell: (r) => <span className="text-xs opacity-70">{r.notes || '-'}</span>,
+            },
+        ],
+        [tm, currency],
+    );
 
     return (
         <div className="space-y-4">
@@ -389,56 +457,17 @@ export function ChequeTrackingReport() {
                 </div>
             </div>
 
-            <div className={`overflow-auto rounded-lg border max-h-[520px] ${panel}`}>
-                <table className="w-full min-w-[960px] text-sm">
-                    <thead className={`sticky top-0 ${thCls}`}>
-                        <tr>
-                            <th className="px-3 py-2 text-left">{tm('type')}</th>
-                            <th className="px-3 py-2 text-left">{tm('documentNo')}</th>
-                            <th className="px-3 py-2 text-left">{tm('customer')}</th>
-                            <th className="px-3 py-2 text-right">{tm('amount')}</th>
-                            <th className="px-3 py-2 text-left">{tm('date')}</th>
-                            <th className="px-3 py-2 text-left">{tm('chequeColBank')}</th>
-                            <th className="px-3 py-2 text-left">{tm('status')}</th>
-                            <th className="px-3 py-2 text-left">{tm('description')}</th>
-                        </tr>
-                    </thead>
-                    <tbody>
-                        {filtered.length === 0 && !loading && (
-                            <tr>
-                                <td colSpan={8} className="px-3 py-8 text-center opacity-60">
-                                    {tm('chequeEmpty')}
-                                </td>
-                            </tr>
-                        )}
-                        {filtered.map((r) => (
-                            <tr
-                                key={r.id}
-                                className={darkMode ? 'border-t border-gray-700' : 'border-t border-gray-100'}
-                            >
-                                <td className="px-3 py-2 font-medium">{typeLabel(r.type)}</td>
-                                <td className="px-3 py-2 font-mono text-xs">{r.documentNo}</td>
-                                <td className="px-3 py-2">
-                                    <div className="font-medium">{r.partyName}</div>
-                                    <div className="text-xs opacity-60">
-                                        {r.partyCode} · {partyLabel(r.partyType)}
-                                    </div>
-                                </td>
-                                <td className="px-3 py-2 text-right font-semibold">
-                                    {formatNumber(r.amount, 2, false)} {r.currencyCode || currency}
-                                </td>
-                                <td className="px-3 py-2">{r.dueDate}</td>
-                                <td className="px-3 py-2">{r.bankName || '-'}</td>
-                                <td className="px-3 py-2">
-                                    <span className={`rounded-full px-2 py-0.5 text-xs font-bold ${statusBadge(r.status)}`}>
-                                        {statusLabel(r.status)}
-                                    </span>
-                                </td>
-                                <td className="px-3 py-2 text-xs opacity-70">{r.notes || '-'}</td>
-                            </tr>
-                        ))}
-                    </tbody>
-                </table>
+            <div className={`rounded-lg border p-2 ${panel}`}>
+                {filtered.length === 0 && !loading ? (
+                    <div className="px-3 py-8 text-center opacity-60">{tm('chequeEmpty')}</div>
+                ) : (
+                    <ReportColumnTable
+                        data={filtered}
+                        columns={tableColumns}
+                        height={520}
+                        footerLabel={tm('total')}
+                    />
+                )}
             </div>
         </div>
     );

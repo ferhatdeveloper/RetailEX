@@ -1375,6 +1375,7 @@ export function ManagementModule({
         case 'sales-invoice-return':
           return (
             <InvoiceListModule
+              key="sales-invoice-return"
               products={products}
               defaultCategory="Iade"
               defaultInvoiceTypeFilter="3"
@@ -1416,7 +1417,16 @@ export function ManagementModule({
             />
           );
         case 'purchase-invoice-return':
-          return <InvoiceListModule products={products} defaultCategory="Iade" defaultInvoiceTypeFilter="6" title={t.purchaseReturnTitle} description={t.purchaseReturnDesc} />;
+          return (
+            <InvoiceListModule
+              key="purchase-invoice-return"
+              products={products}
+              defaultCategory="Iade"
+              defaultInvoiceTypeFilter="6"
+              title={t.purchaseReturnTitle}
+              description={t.purchaseReturnDesc}
+            />
+          );
         case 'serviceinvoice':
           return <InvoiceListModule products={products} defaultCategory="Hizmet" title={t.serviceInvoices} description={t.serviceInvoices} />;
         case 'serviceinvoice-received':

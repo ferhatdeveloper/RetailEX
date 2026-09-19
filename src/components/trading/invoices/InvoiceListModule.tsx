@@ -127,6 +127,10 @@ export function InvoiceListModule({
   const firmNrKey = selectedFirm?.firm_nr != null ? String(selectedFirm.firm_nr) : '';
   const periodNrKey = selectedPeriod?.nr != null ? String(selectedPeriod.nr).padStart(2, '0') : '';
   const isSalesReturnList = defaultInvoiceTypeFilter === '3';
+  const isPurchaseReturnList = defaultInvoiceTypeFilter === '6';
+  /** Satış İade / Alış İade sayfalarında karşı tarafın trcode'u seçilmesin */
+  const lockedReturnTrcode =
+    isSalesReturnList ? 3 : isPurchaseReturnList ? 6 : null;
   const returnProcessorColumnLabel = isSalesReturnList ? tm('salesReturnProcessedBy') : tm('cashier');
   const showGibQueueAction = selectedFirm?.regulatory_region === 'TR';
   const [columnVisibility, setColumnVisibility] = useState(loadInvoiceListColumnVisibility);
@@ -842,6 +846,10 @@ export function InvoiceListModule({
   };
 
   const resolveNewInvoiceType = (): InvoiceType | undefined => {
+    // Satış İade (3) / Alış İade (6) sayfaları: her zaman sayfa bağlamındaki trcode
+    if (lockedReturnTrcode != null) {
+      return INVOICE_TYPES.find((t) => t.code === lockedReturnTrcode);
+    }
     if (defaultInvoiceTypeFilter && defaultInvoiceTypeFilter !== 'all') {
       const code = parseInt(defaultInvoiceTypeFilter, 10);
       if (Number.isFinite(code)) {
@@ -857,6 +865,10 @@ export function InvoiceListModule({
     }
     if (defaultCategory === 'Alis') {
       return INVOICE_TYPES.find((t) => t.code === 1);
+    }
+    // Genel İade kategorisi (filtre yok): varsayılan satış iade — alış iade değil
+    if (defaultCategory === 'Iade') {
+      return INVOICE_TYPES.find((t) => t.code === 3);
     }
     return undefined;
   };
@@ -875,6 +887,8 @@ export function InvoiceListModule({
   };
 
   const handleSelectInvoiceType = (type: InvoiceType) => {
+    // Satış İade / Alış İade sayfalarında karşı trcode seçimini engelle
+    if (lockedReturnTrcode != null && type.code !== lockedReturnTrcode) return;
     setEditInvoiceData(null);
     setPurchaseCreateSaveOptions(null);
     setNewFormCounter((c) => c + 1);
@@ -933,6 +947,10 @@ export function InvoiceListModule({
 
   // Kategorilere göre filtreleme (alış iadesi TRCODE 6 → UI'da Iade; alış sekmesinde de görünsün)
   const invoiceTypeMatchesPickerCategory = (type: InvoiceType, category: string): boolean => {
+    // Satış İade sayfasında alış iade (6); Alış İade sayfasında satış iade (3) asla listelenmesin
+    if (lockedReturnTrcode != null && type.code !== lockedReturnTrcode) {
+      return false;
+    }
     if (category === 'all') return true;
     if (type.category === category) return true;
     if (category === 'Alis' && type.code === 6) return true;
@@ -1284,8 +1302,12 @@ export function InvoiceListModule({
                 )}
                 {(!defaultCategory || defaultCategory === 'Iade') && (
                   <optgroup label={tm('return')}>
-                    <option value="3">{tm('salesReturn')}</option>
-                    <option value="6">{tm('purchaseReturn')}</option>
+                    {(lockedReturnTrcode == null || lockedReturnTrcode === 3) && (
+                      <option value="3">{tm('salesReturn')}</option>
+                    )}
+                    {(lockedReturnTrcode == null || lockedReturnTrcode === 6) && (
+                      <option value="6">{tm('purchaseReturn')}</option>
+                    )}
                   </optgroup>
                 )}
                 {(!defaultCategory || defaultCategory === 'Hizmet') && (

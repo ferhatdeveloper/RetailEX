@@ -41,6 +41,13 @@ import {
 
 const ROW_LIMIT = 3000;
 
+/**
+ * Takvim günü (UTC) — `AT TIME ZONE` yalnızca timestamp/timestamptz kabul eder.
+ * Text kolonlarda `col AT TIME ZONE 'UTC'` → `timezone(unknown, text)` hatası verir;
+ * önce `::timestamptz` cast zorunlu.
+ */
+const sqlUtcDate = (col: string) => `(${col}::timestamptz AT TIME ZONE 'UTC')::date`;
+
 export type AgingBucket = 'current' | 'd1_30' | 'd31_60' | 'd61_90' | 'd90_plus';
 
 export interface CariAgingRow {
@@ -468,7 +475,7 @@ export const erpReportsAPI = {
           COALESCE(c.name, s.customer_name, '') AS account_name,
           c.payment_terms,
           s.fiche_no,
-          (s.date AT TIME ZONE 'UTC')::date::text AS invoice_date,
+          ${sqlUtcDate('s.date')}::text AS invoice_date,
           CASE
             WHEN LOWER(TRIM(COALESCE(s.fiche_type, ''))) = 'return_invoice'
               THEN -ABS(COALESCE(s.net_amount, 0))
@@ -502,7 +509,7 @@ export const erpReportsAPI = {
           COALESCE(sup.name, c.name, s.customer_name, '') AS account_name,
           COALESCE(sup.payment_terms, c.payment_terms) AS payment_terms,
           s.fiche_no,
-          (s.date AT TIME ZONE 'UTC')::date::text AS invoice_date,
+          ${sqlUtcDate('s.date')}::text AS invoice_date,
           CASE
             WHEN LOWER(TRIM(COALESCE(s.fiche_type, ''))) = 'return_invoice'
               THEN -ABS(COALESCE(s.net_amount, 0))
@@ -810,7 +817,7 @@ export const erpReportsAPI = {
           COALESCE(cr.name, cr.code, '') AS register_name,
           COALESCE(cr.code, '') AS register_code,
           COALESCE(cl.fiche_no, '') AS fiche_no,
-          (cl.date AT TIME ZONE 'UTC')::date::text AS date,
+          ${sqlUtcDate('cl.date')}::text AS date,
           COALESCE(cl.transaction_type, '') AS transaction_type,
           COALESCE(cl.definition, '') AS definition,
           COALESCE(cl.amount, 0) AS amount,
@@ -824,8 +831,8 @@ export const erpReportsAPI = {
         LEFT JOIN LATERAL (
           SELECT name FROM suppliers WHERE id = cl.customer_id LIMIT 1
         ) s ON TRUE
-        WHERE (cl.date AT TIME ZONE 'UTC')::date >= $1::date
-          AND (cl.date AT TIME ZONE 'UTC')::date <= $2::date
+        WHERE ${sqlUtcDate('cl.date')} >= $1::date
+          AND ${sqlUtcDate('cl.date')} <= $2::date
           ${cashRegisterClause}
       `);
     }
@@ -838,7 +845,7 @@ export const erpReportsAPI = {
           COALESCE(br.name, br.code, '') AS register_name,
           COALESCE(br.code, '') AS register_code,
           COALESCE(bl.fiche_no, '') AS fiche_no,
-          (bl.date AT TIME ZONE 'UTC')::date::text AS date,
+          ${sqlUtcDate('bl.date')}::text AS date,
           COALESCE(bl.transaction_type, '') AS transaction_type,
           COALESCE(bl.definition, '') AS definition,
           COALESCE(bl.amount, 0) AS amount,
@@ -852,8 +859,8 @@ export const erpReportsAPI = {
         LEFT JOIN LATERAL (
           SELECT name FROM suppliers WHERE id = bl.customer_id LIMIT 1
         ) s ON TRUE
-        WHERE (bl.date AT TIME ZONE 'UTC')::date >= $1::date
-          AND (bl.date AT TIME ZONE 'UTC')::date <= $2::date
+        WHERE ${sqlUtcDate('bl.date')} >= $1::date
+          AND ${sqlUtcDate('bl.date')} <= $2::date
       `);
     }
     if (!parts.length) return [];
@@ -940,7 +947,7 @@ export const erpReportsAPI = {
     let labelExpr: string;
     let supplierExpr: string;
     if (groupBy === 'month') {
-      groupExpr = `to_char((s.date AT TIME ZONE 'UTC')::date, 'YYYY-MM')`;
+      groupExpr = `to_char(${sqlUtcDate('s.date')}, 'YYYY-MM')`;
       labelExpr = groupExpr;
       supplierExpr = `''`;
     } else if (groupBy === 'supplier') {
@@ -948,7 +955,7 @@ export const erpReportsAPI = {
       labelExpr = groupExpr;
       supplierExpr = groupExpr;
     } else {
-      groupExpr = `to_char((s.date AT TIME ZONE 'UTC')::date, 'YYYY-MM-DD')`;
+      groupExpr = `to_char(${sqlUtcDate('s.date')}, 'YYYY-MM-DD')`;
       labelExpr = groupExpr;
       supplierExpr = `''`;
     }
@@ -978,8 +985,8 @@ export const erpReportsAPI = {
       FROM sales s
       WHERE COALESCE(s.is_cancelled, false) = false
         AND ${SQL_COUNTABLE_SALE_STATUS}
-        AND (s.date AT TIME ZONE 'UTC')::date >= $1::date
-        AND (s.date AT TIME ZONE 'UTC')::date <= $2::date
+        AND ${sqlUtcDate('s.date')} >= $1::date
+        AND ${sqlUtcDate('s.date')} <= $2::date
         AND (
           s.fiche_type = 'purchase_invoice'
           OR s.trcode IN (1, 4, 5, 6, 13, 26, 41, 42)
@@ -1166,8 +1173,8 @@ export const erpReportsAPI = {
       LEFT JOIN customers c ON c.id = s.customer_id
       WHERE COALESCE(s.is_cancelled, false) = false
         AND ${SQL_COUNTABLE_SALE_STATUS}
-        AND (s.date AT TIME ZONE 'UTC')::date >= $1::date
-        AND (s.date AT TIME ZONE 'UTC')::date <= $2::date
+        AND ${sqlUtcDate('s.date')} >= $1::date
+        AND ${sqlUtcDate('s.date')} <= $2::date
         AND (
           s.trcode = ${PURCHASE_RETURN_TRCODE}
           OR (
@@ -1312,7 +1319,7 @@ export const erpReportsAPI = {
       SELECT
         s.id::text AS id,
         COALESCE(s.fiche_no, '') AS fiche_no,
-        (s.date AT TIME ZONE 'UTC')::date::text AS date,
+        ${sqlUtcDate('s.date')}::text AS date,
         COALESCE(s.customer_name, '') AS account_name,
         COALESCE(s.payment_method, '') AS payment_method,
         COALESCE(s.net_amount, 0) AS net_amount,
@@ -1325,8 +1332,8 @@ export const erpReportsAPI = {
           LOWER(TRIM(COALESCE(s.fiche_type, ''))) = 'return_invoice'
           OR s.trcode IN (2, 3)
         )
-        AND (s.date AT TIME ZONE 'UTC')::date >= $1::date
-        AND (s.date AT TIME ZONE 'UTC')::date <= $2::date
+        AND ${sqlUtcDate('s.date')} >= $1::date
+        AND ${sqlUtcDate('s.date')} <= $2::date
       ORDER BY s.date DESC
       LIMIT ${ROW_LIMIT}
       `,
@@ -1636,8 +1643,8 @@ export const erpReportsAPI = {
         AND ${SQL_PL_SALES_OR_RETURN}
         AND COALESCE(si.item_type, 'Malzeme') NOT IN ('Promosyon', 'İndirim')
         ${lineKindSql}
-        AND (s.date AT TIME ZONE 'UTC')::date >= $2::date
-        AND (s.date AT TIME ZONE 'UTC')::date <= $3::date
+        AND ${sqlUtcDate('s.date')} >= $2::date
+        AND ${sqlUtcDate('s.date')} <= $3::date
       GROUP BY 1, 2, 3, 4
       HAVING ABS(COALESCE(SUM(${SIGNED_LINE_REVENUE_EXPR}), 0)) > 0.009
          OR ABS(COALESCE(SUM(${SIGNED_LINE_QTY_EXPR}), 0)) > 0.0001
@@ -1975,7 +1982,7 @@ export const erpReportsAPI = {
       `
       SELECT
         s.id::text AS id,
-        (s.date AT TIME ZONE 'UTC')::date::text AS date,
+        ${sqlUtcDate('s.date')}::text AS date,
         COALESCE(s.fiche_no, '') AS invoice_no,
         s.customer_id::text AS customer_id,
         COALESCE(c.code, '') AS customer_code,
@@ -2001,7 +2008,7 @@ export const erpReportsAPI = {
       FROM sales s
       LEFT JOIN customers c ON c.id = s.customer_id
       WHERE s.firm_nr = $1::text
-        AND (s.date AT TIME ZONE 'UTC')::date BETWEEN $2::date AND $3::date
+        AND ${sqlUtcDate('s.date')} BETWEEN $2::date AND $3::date
         AND COALESCE(s.is_cancelled, false) = false
         AND ${SQL_COUNTABLE_SALE_STATUS}
         AND s.fiche_type IN ('sales_invoice', 'service', 'hizmet', 'return_invoice')
@@ -2064,18 +2071,19 @@ export const erpReportsAPI = {
     if (!from || !to) return [];
     const values: unknown[] = [from, to];
     let cariClause = '';
+    // trx_date CTE'de date tipinde kalmalı — text + AT TIME ZONE → timezone(unknown, text)
     if (params.cariId) {
       values.push(String(params.cariId));
-      cariClause = `WHERE (x.trx_date AT TIME ZONE 'UTC')::date BETWEEN $1::date AND $2::date AND x.customer_id = $${values.length}::uuid`;
+      cariClause = `WHERE x.trx_date BETWEEN $1::date AND $2::date AND x.customer_id = $${values.length}::uuid`;
     } else {
-      cariClause = `WHERE (x.trx_date AT TIME ZONE 'UTC')::date BETWEEN $1::date AND $2::date`;
+      cariClause = `WHERE x.trx_date BETWEEN $1::date AND $2::date`;
     }
 
     const sql = `
       WITH x AS (
         SELECT
           cl.id::text AS id,
-          (cl.date AT TIME ZONE 'UTC')::date::text AS trx_date,
+          ${sqlUtcDate('cl.date')} AS trx_date,
           COALESCE(cl.fiche_no, '') AS fiche_no,
           cl.customer_id AS customer_id,
           cl.amount AS amount,
@@ -2086,7 +2094,7 @@ export const erpReportsAPI = {
         UNION ALL
         SELECT
           bl.id::text AS id,
-          (bl.date AT TIME ZONE 'UTC')::date::text AS trx_date,
+          ${sqlUtcDate('bl.date')} AS trx_date,
           COALESCE(bl.fiche_no, '') AS fiche_no,
           bl.customer_id AS customer_id,
           bl.amount AS amount,
@@ -2097,7 +2105,7 @@ export const erpReportsAPI = {
       )
       SELECT
         x.id,
-        x.trx_date AS date,
+        x.trx_date::text AS date,
         x.fiche_no,
         ROW_NUMBER() OVER (PARTITION BY x.fiche_no ORDER BY x.id) AS sequence,
         UPPER(COALESCE(NULLIF(TRIM(x.tx_type), ''), 'OFFICE')) AS grp,
@@ -2179,9 +2187,9 @@ export const erpReportsAPI = {
     } else {
       joins = `LEFT JOIN products p ON p.id = si.product_id`;
     }
-    // Alış fiyatı filtresi: products.last_purchase_price tercih edilir; yoksa satır maliyeti (unit_cost).
+    // Alış fiyatı filtresi: products.purchase_price tercih edilir; yoksa satır maliyeti (unit_cost).
     // Etiket "Alış Fiyatı" olduğundan eski unit_price (satış fiyatı) yerine alış maliyeti baz alınır.
-    const purchasePriceExpr = `COALESCE(NULLIF(p.last_purchase_price, 0), NULLIF(si.unit_cost, 0), si.unit_price)`;
+    const purchasePriceExpr = `COALESCE(NULLIF(p.purchase_price, 0), NULLIF(si.unit_cost, 0), si.unit_price)`;
     if (typeof params.priceMin === 'number' && Number.isFinite(params.priceMin)) {
       values.push(params.priceMin);
       where += ` AND ${purchasePriceExpr} >= $${values.length}`;
@@ -2206,7 +2214,7 @@ export const erpReportsAPI = {
       )
       SELECT
         si.id::text AS id,
-        (s.date AT TIME ZONE 'UTC')::date::text AS date,
+        ${sqlUtcDate('s.date')}::text AS date,
         COALESCE(s.fiche_no, '') AS receipt_no,
         COALESCE(NULLIF(TRIM(p.group_code), ''), 'OLD') AS grp,
         COALESCE(NULLIF(TRIM(p.sub_group_code), ''), '') AS sub_group,
@@ -2225,7 +2233,7 @@ export const erpReportsAPI = {
       ${joins}
       WHERE ${where}
         AND s.firm_nr = $1::text
-        AND (s.date AT TIME ZONE 'UTC')::date BETWEEN $2::date AND $3::date
+        AND ${sqlUtcDate('s.date')} BETWEEN $2::date AND $3::date
         AND COALESCE(s.is_cancelled, false) = false
         AND ${SQL_COUNTABLE_SALE_STATUS}
         AND s.fiche_type IN ('sales_invoice', 'service', 'hizmet')
@@ -2458,7 +2466,7 @@ export const erpReportsAPI = {
     const values: unknown[] = [firmNr, from, to];
     const where: string[] = [
       `s.firm_nr = $1::text`,
-      `(s.date AT TIME ZONE 'UTC')::date BETWEEN $2::date AND $3::date`,
+      `${sqlUtcDate('s.date')} BETWEEN $2::date AND $3::date`,
       `COALESCE(s.is_cancelled, false) = false`,
       `${SQL_COUNTABLE_SALE_STATUS}`,
       `s.fiche_type IN ('sales_invoice', 'service', 'hizmet', 'return_invoice')`,
@@ -2492,7 +2500,7 @@ export const erpReportsAPI = {
       )
       SELECT
         si.id::text AS id,
-        (s.date AT TIME ZONE 'UTC')::date::text AS date,
+        ${sqlUtcDate('s.date')}::text AS date,
         COALESCE(s.fiche_no, '') AS invoice_no,
         COALESCE(c.name, s.customer_name, '') AS customer,
         COALESCE(NULLIF(TRIM(si.item_name), ''), p.name, '') AS product,

@@ -3089,10 +3089,10 @@ export const moduleTranslations: Record<string, Record<Language, string>> = {
     ku: 'مێنیوی تایبەتمەندی',
   },
   featureMenuParamsHint: {
-    tr: 'Kapalı özellikler menüde veya ilgili ekranda görünmez. Varsayılan: kapalı.',
-    en: 'Disabled features are hidden from the menu or related screens. Default: off.',
-    ar: 'الميزات المعطلة لا تظهر في القائمة أو الشاشات ذات الصلة. الافتراضي: مغلق.',
-    ku: 'تایبەتمەندیی داخراو لە مێنیو یان شاشەی پەیوەندیدار دیار نابێت. بنەڕەت: داخراو.',
+    tr: 'Kapalı özellikler menüde veya ilgili ekranda görünmez. Çoğu varsayılan kapalı; günlük rapor tedarikçi ödemeleri varsayılan açık.',
+    en: 'Disabled features are hidden from the menu or related screens. Most default off; daily report supplier payments default on.',
+    ar: 'الميزات المعطلة لا تظهر في القائمة أو الشاشات ذات الصلة. معظمها مغلق افتراضياً؛ مدفوعات الموردين في التقرير اليومي مفعّلة افتراضياً.',
+    ku: 'تایبەتمەندیی داخراو لە مێنیو یان شاشەی پەیوەندیدار دیار نابێت. زۆربە بنەڕەت داخراون؛ پارەدانی دابینکەری ڕاپۆرتی ڕۆژانە بنەڕەت کراوە.',
   },
   menuParamVirtualPbx: {
     tr: 'Sanal santral (Caller ID)',
@@ -3111,6 +3111,12 @@ export const moduleTranslations: Record<string, Record<Language, string>> = {
     en: 'Product list — Sales/Purchase totals (footer)',
     ar: 'قائمة المواد — إجمالي المبيعات/المشتريات (التذييل)',
     ku: 'لیستی کەلوپەل — کۆی فرۆشتن/کڕین (خوارەوە)',
+  },
+  menuParamDailyReportSupplierPayments: {
+    tr: 'Günlük rapor — Tedarikçiye ödenen tutarlar (varsayılan açık)',
+    en: 'Daily report — Supplier payments (default on)',
+    ar: 'التقرير اليومي — مدفوعات الموردين (الافتراضي مفعّل)',
+    ku: 'ڕاپۆرتی ڕۆژانە — پارەدانی دابینکەر (بنەڕەت کراوە)',
   },
   reportMenuParamsHint: {
     tr: 'Kapalı raporlar Raporlar menüsünde görünmez. Varsayılan: kapalı.',
@@ -4197,6 +4203,60 @@ export const moduleTranslations: Record<string, Record<Language, string>> = {
     en: 'All (Ctrl+A)',
     ar: 'الكل (Ctrl+A)',
     ku: 'هەموو (Ctrl+A)',
+  },
+  gridGroupBy: {
+    tr: 'Grupla',
+    en: 'Group',
+    ar: 'تجميع',
+    ku: 'گرووپ',
+  },
+  gridGroupByColumn: {
+    tr: 'Kolona göre grupla',
+    en: 'Group by column',
+    ar: 'تجميع حسب العمود',
+    ku: 'بەپێی ستون گرووپ بکە',
+  },
+  gridGroupByThisColumn: {
+    tr: 'Bu kolona göre grupla',
+    en: 'Group by this column',
+    ar: 'تجميع حسب هذا العمود',
+    ku: 'بەم ستونە گرووپ بکە',
+  },
+  gridGroupClear: {
+    tr: 'Gruplamayı kaldır',
+    en: 'Clear grouping',
+    ar: 'إزالة التجميع',
+    ku: 'گرووپ لابدە',
+  },
+  gridGroupNone: {
+    tr: 'Gruplama yok',
+    en: 'No grouping',
+    ar: 'بدون تجميع',
+    ku: 'گرووپ نییە',
+  },
+  gridGroupSubtotal: {
+    tr: 'Grup toplamı',
+    en: 'Group total',
+    ar: 'إجمالي المجموعة',
+    ku: 'کۆی گرووپ',
+  },
+  gridGroupColumnMenuTitle: {
+    tr: 'Kolon menüsü',
+    en: 'Column menu',
+    ar: 'قائمة العمود',
+    ku: 'مێنیوی ستون',
+  },
+  gridGroupedBy: {
+    tr: 'Gruplu',
+    en: 'Grouped by',
+    ar: 'مجمّع حسب',
+    ku: 'گرووپکراو',
+  },
+  gridGroupColumnMenuTitle: {
+    tr: 'Kolon menüsü',
+    en: 'Column menu',
+    ar: 'قائمة العمود',
+    ku: 'مێنیوی ستوون',
   },
   productBulkDeleteBtn: {
     tr: 'Toplu Sil {count}',
@@ -8628,6 +8688,30 @@ export const excelModuleTranslations = {
   reportsPlColCategory: { tr: 'Kategori', en: 'Category', ar: 'الفئة', ku: 'هاوپۆل' },
   reportsPlColProduct: { tr: 'Ürün', en: 'Product', ar: 'المنتج', ku: 'بەرهەم' },
   reportsDeleteInvoiceBtn: { tr: 'Faturayı iptal/iade et', en: 'Cancel/Refund invoice', ar: 'إلغاء/استرداد الفاتورة', ku: 'هەڵوەشاندن/گەڕاندنەوەی وەسڵ' },
+  reportsCreateSalesReturnBtn: {
+    tr: 'Satış iadesi oluştur',
+    en: 'Create sales return',
+    ar: 'إنشاء مرتجع مبيعات',
+    ku: 'گەڕاندنەوەی فرۆشتن دروست بکە',
+  },
+  reportsCreateSalesReturnOpening: {
+    tr: 'Satış iade formu açılıyor…',
+    en: 'Opening sales return form…',
+    ar: 'جارٍ فتح نموذج مرتجع المبيعات…',
+    ku: 'فۆڕمی گەڕاندنەوەی فرۆشتن دەکرێتەوە…',
+  },
+  reportsCreateSalesReturnFail: {
+    tr: 'Satış iade formu açılamadı.',
+    en: 'Could not open sales return form.',
+    ar: 'تعذر فتح نموذج مرتجع المبيعات.',
+    ku: 'فۆڕمی گەڕاندنەوەی فرۆشتن نەکرایەوە.',
+  },
+  reportsCreateSalesReturnAlreadyReturn: {
+    tr: 'Bu kayıt zaten iade/iptal; satış iadesi oluşturulamaz.',
+    en: 'This record is already a return/cancel; cannot create a sales return.',
+    ar: 'هذا السجل مرتجع/ملغى بالفعل؛ لا يمكن إنشاء مرتجع مبيعات.',
+    ku: 'ئەم تۆمارە پێشتر گەڕاندنەوە/هەڵوەشاندنە؛ گەڕاندنەوەی فرۆشتن دروست ناکرێت.',
+  },
   reportsCancelRestOrderBtn: {
     tr: 'Adisyon kaydını iptal et',
     en: 'Cancel order record',
@@ -10123,6 +10207,12 @@ export const excelModuleTranslations = {
     ku: '{count} مامەڵە ({pct}٪)',
   },
   reportsPaymentTxnShort: { tr: '{n} işlem', en: '{n} txns', ar: '{n} عملية', ku: '{n} مامەڵە' },
+  reportsExtraCashCollections: {
+    tr: 'Ek tahsilat (cari / kasa)',
+    en: 'Extra collection (AR / cash)',
+    ar: 'تحصيل إضافي',
+    ku: 'کۆکردنەوەی زیادە',
+  },
 
   reportsCashMovementTitle: {
     tr: 'Kasa Hareket Raporları',

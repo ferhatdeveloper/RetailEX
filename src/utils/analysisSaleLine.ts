@@ -16,6 +16,34 @@ export interface AnalysisSaleLineInput {
   item_type?: string;
 }
 
+/** Kategori kartı (id / code → görünen ad) — category_id veya category_code UUID/kod çözümü */
+export type AnalysisCategoryLookupRow = { id?: string; code?: string; name?: string };
+
+const UUID_RE =
+  /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
+function resolveCategoryLabel(
+  raw: string,
+  lookup?: AnalysisCategoryLookupRow[],
+): string {
+  const v = String(raw ?? '').trim();
+  if (!v) return '';
+  if (lookup?.length) {
+    const lower = v.toLowerCase();
+    const hit = lookup.find((c) => {
+      const id = String(c.id ?? '').trim().toLowerCase();
+      const code = String(c.code ?? '').trim().toLowerCase();
+      const name = String(c.name ?? '').trim().toLowerCase();
+      return (id && id === lower) || (code && code === lower) || (name && name === lower);
+    });
+    const n = String(hit?.name ?? '').trim();
+    if (n) return n;
+  }
+  // Eşleşmeyen UUID'yi kategori adı sanma — boş bırak, sonraki fallback'e düş
+  if (UUID_RE.test(v)) return '';
+  return v;
+}
+
 export interface AnalysisSplitAmount {
   service: number;
   product: number;
@@ -44,10 +72,15 @@ function productIdKey(item: AnalysisSaleLineInput): string {
   return String(item.productId ?? '').trim();
 }
 
+type CatalogProductPick = Pick<
+  Product,
+  'id' | 'code' | 'name' | 'isService' | 'materialType' | 'category' | 'categoryCode' | 'categoryId'
+>;
+
 function findCatalogProduct(
-  products: Array<Pick<Product, 'id' | 'code' | 'name' | 'isService' | 'materialType' | 'category' | 'categoryCode'>>,
+  products: Array<CatalogProductPick>,
   productId: string,
-): (typeof products)[number] | undefined {
+): CatalogProductPick | undefined {
   const key = productId.trim();
   if (!key) return undefined;
   const lower = key.toLowerCase();
@@ -95,14 +128,22 @@ export function classifyAnalysisSaleLine(
 
 export function resolveAnalysisSaleCategory(
   item: AnalysisSaleLineInput,
-  products: Array<Pick<Product, 'id' | 'code' | 'name' | 'isService' | 'materialType' | 'category' | 'categoryCode'>>,
+  products: Array<CatalogProductPick>,
   beautyServices: Array<{ id?: string; name?: string; parent_category?: string; category?: string }>,
   labels: { other: string; service: string; tm: (key: string) => string },
   serviceKeys?: Set<string>,
+  categoryLookup?: AnalysisCategoryLookupRow[],
 ): string {
   const pid = productIdKey(item);
   const p = findCatalogProduct(products, pid);
-  const fromProduct = String(p?.category ?? p?.categoryCode ?? '').trim();
+
+  const fromCategoryId = resolveCategoryLabel(String(p?.categoryId ?? '').trim(), categoryLookup);
+  if (fromCategoryId) return fromCategoryId;
+
+  const fromProduct = resolveCategoryLabel(
+    String(p?.category ?? p?.categoryCode ?? '').trim(),
+    categoryLookup,
+  );
   if (fromProduct) return fromProduct;
 
   const nameKey = String(item.productName ?? '').trim().toLowerCase();
@@ -121,6 +162,9 @@ export function resolveAnalysisSaleCategory(
         const lab = labels.tm(i18nKey);
         if (lab && lab !== i18nKey) return lab;
       }
+      // slug/kod ise kategori kartından ad çözümle
+      const fromLookup = resolveCategoryLabel(key, categoryLookup);
+      if (fromLookup) return fromLookup;
       return key;
     }
     return labels.service;

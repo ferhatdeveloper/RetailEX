@@ -45,4 +45,20 @@ describe('receiptNotesForDisplay', () => {
     expect(receiptNotesForDisplay(undefined)).toBe('');
     expect(receiptNotesForDisplay('   ')).toBe('');
   });
+
+  it('yapışık önek + boşluklu beauty_sale_id / res_appt UUID gizlenir', () => {
+    expect(
+      receiptNotesForDisplay(
+        'GüzellikPOSbeauty_sale_id cda5bcac-5a3b-4f99-bde5-68c3e3a3f2c2|res_appt 3f333b42-c733-4135-82ed-ffe9279671e3',
+      ),
+    ).toBe('GüzellikPOS');
+  });
+
+  it('pipe yok, boşluklu teknik id gizlenir', () => {
+    expect(
+      receiptNotesForDisplay(
+        'GüzellikPOSbeauty_sale_id cda5bcac-5a3b-4f99-bde5-68c3e3a3f2c2 res_appt 3f333b42-c733-4135-82ed-ffe9279671e3',
+      ),
+    ).toBe('GüzellikPOS');
+  });
 });

@@ -527,15 +527,15 @@ export function MenuManagementPanel({ onClose }: MenuManagementPanelProps) {
       // Alt menüleri ekle
       const subItems = [
         // Satış Faturaları alt menüleri
-        { parent_screen_id: 'salesinvoice', screen_id: 'salesinvoice', label: 'Satış Faturası', label_en: 'Sales Invoice', label_ar: 'فاتورة المبيعات', icon_name: 'FileText', order: 0 },
-        { parent_screen_id: 'salesinvoice', screen_id: 'salesinvoice', label: 'Perakende Satış', label_en: 'Retail Sale', label_ar: 'بيع التجزئة', icon_name: 'FileText', order: 1 },
-        { parent_screen_id: 'salesinvoice', screen_id: 'salesinvoice', label: 'Toptan Satış', label_en: 'Wholesale Sale', label_ar: 'بيع الجملة', icon_name: 'FileText', order: 2 },
-        { parent_screen_id: 'salesinvoice', screen_id: 'salesinvoice', label: 'Satış İade', label_en: 'Sales Return', label_ar: 'إرجاع المبيعات', icon_name: 'FileMinus', order: 3 },
-        { parent_screen_id: 'salesinvoice', screen_id: 'salesinvoice', label: 'Konsinye Satış', label_en: 'Consignment Sale', label_ar: 'بيع بالعمولة', icon_name: 'FileText', order: 4 },
+        { parent_screen_id: 'salesinvoice', screen_id: 'sales-invoice-standard', label: 'Satış Faturası', label_en: 'Sales Invoice', label_ar: 'فاتورة المبيعات', icon_name: 'FileText', order: 0 },
+        { parent_screen_id: 'salesinvoice', screen_id: 'sales-invoice-retail', label: 'Perakende Satış', label_en: 'Retail Sale', label_ar: 'بيع التجزئة', icon_name: 'FileText', order: 1 },
+        { parent_screen_id: 'salesinvoice', screen_id: 'sales-invoice-wholesale', label: 'Toptan Satış', label_en: 'Wholesale Sale', label_ar: 'بيع الجملة', icon_name: 'FileText', order: 2 },
+        { parent_screen_id: 'salesinvoice', screen_id: 'sales-invoice-return', label: 'Satış İade', label_en: 'Sales Return', label_ar: 'إرجاع المبيعات', icon_name: 'FileMinus', order: 3 },
+        { parent_screen_id: 'salesinvoice', screen_id: 'sales-invoice-consignment', label: 'Konsinye Satış', label_en: 'Consignment Sale', label_ar: 'بيع بالعمولة', icon_name: 'FileText', order: 4 },
 
         // Alış & Satın alma alt menüleri
-        { parent_screen_id: 'purchaseinvoice', screen_id: 'purchaseinvoice', label: 'Alış Faturası', label_en: 'Purchase Invoice', label_ar: 'فاتورة الشراء', icon_name: 'FileCheck', order: 0 },
-        { parent_screen_id: 'purchaseinvoice', screen_id: 'purchaseinvoice', label: 'Alış İade', label_en: 'Purchase Return', label_ar: 'إرجاع الشراء', icon_name: 'FileMinus', order: 1 },
+        { parent_screen_id: 'purchaseinvoice', screen_id: 'purchase-invoice-standard', label: 'Alış Faturası', label_en: 'Purchase Invoice', label_ar: 'فاتورة الشراء', icon_name: 'FileCheck', order: 0 },
+        { parent_screen_id: 'purchaseinvoice', screen_id: 'purchase-invoice-return', label: 'Alış İade', label_en: 'Purchase Return', label_ar: 'إرجاع الشراء', icon_name: 'FileMinus', order: 1 },
         { parent_screen_id: 'purchaseinvoice', screen_id: 'purchase', label: 'Satın Alma Siparişleri', label_en: 'Purchase Orders', label_ar: 'طلبات الشراء', icon_name: 'ShoppingBag', order: 2 },
         { parent_screen_id: 'purchaseinvoice', screen_id: 'purchaserequest', label: 'Satın Alma Talepleri', label_en: 'Purchase Requests', label_ar: 'طلبات الشراء', icon_name: 'ClipboardList', order: 3 },
         { parent_screen_id: 'purchaseinvoice', screen_id: 'suppliers', label: 'Tedarikçi Kartları', label_en: 'Supplier Cards', label_ar: 'بطاقات الموردين', icon_name: 'Truck', order: 4 },

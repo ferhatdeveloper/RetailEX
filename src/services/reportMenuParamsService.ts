@@ -1,8 +1,8 @@
 /**
  * Menü görünürlük parametreleri: güzellik/anket raporları + sanal santral + fiyat değişimi
- * + ürün listesi satış/alış dip toplamları.
+ * + ürün listesi satış/alış dip toplamları + günlük rapor tedarikçi ödemeleri.
  * Kaynak: PostgreSQL `system_settings.report_menu_params` ↔ localStorage önbellek.
- * Varsayılan: tüm parametreli menü öğeleri / özellikler kapalı (gizli).
+ * Varsayılan: çoğu menü/özellik kapalı; `daily-report-supplier-payments` varsayılan açık.
  */
 import { postgres, DB_SETTINGS } from './postgres';
 
@@ -19,6 +19,8 @@ export const REPORT_MENU_PARAM_KEYS = [
   'stock-price-change-slips',
   /** Malzeme listesi Satış/Alış Toplam dip satırı (varsayılan kapalı) */
   'product-list-sales-purchase-totals',
+  /** Günlük rapor — tedarikçiye ödenen (CH_ODEME) tutarlar (varsayılan açık) */
+  'daily-report-supplier-payments',
 ] as const;
 
 export type ReportMenuParamKey = (typeof REPORT_MENU_PARAM_KEYS)[number];
@@ -38,6 +40,7 @@ const DEFAULT_PARAMS: ReportMenuParams = {
   'virtual-pbx-caller-id': false,
   'stock-price-change-slips': false,
   'product-list-sales-purchase-totals': false,
+  'daily-report-supplier-payments': true,
 };
 
 type Listener = (params: ReportMenuParams) => void;
@@ -76,7 +79,7 @@ export function isReportTabHiddenByParams(tabKey: string, params?: ReportMenuPar
 /** Alias — yönetim / stok menü öğeleri için */
 export const isMenuItemHiddenByParams = isReportTabHiddenByParams;
 
-/** Parametre açık mı? (varsayılan kapalı) — menü dışı özellik bayrakları için */
+/** Parametre açık mı? — menü dışı özellik bayrakları için (DEFAULT_PARAMS'a bakın) */
 export function isReportMenuParamEnabled(
   key: ReportMenuParamKey,
   params?: ReportMenuParams,

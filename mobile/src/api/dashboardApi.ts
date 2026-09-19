@@ -168,6 +168,8 @@ async function fetchDashboardStatsViaBridge(): Promise<DashboardStats> {
     SQL_COUNTABLE_SALE,
     'COALESCE(date::date, created_at::date) = CURRENT_DATE',
     firmMatchSql('firm_nr', '$1', '$2'),
+    // Alış iade (trcode 6) satış ciroya girmez; satış iade 2/3 negatif işaretlenir
+    `COALESCE(trcode, 0) <> 6`,
     `(LOWER(TRIM(COALESCE(fiche_type, ''))) IN (
         'sales_invoice', 'sales', 'retail', 'service', 'hizmet', 'return_invoice'
       ) OR COALESCE(trcode, 0) IN (0, 2, 3, 7, 8, 9, 14)

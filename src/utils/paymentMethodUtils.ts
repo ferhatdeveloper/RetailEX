@@ -1,7 +1,30 @@
-/** Form ödeme kodları (InvoicePaymentInfoModal) */
+/** Form ödeme kodları (InvoicePaymentInfoModal / raporlar — tek kaynak) */
 export type PaymentFormCode = 'NAKIT' | 'KREDIKARTI' | 'ACIK_CARI' | 'HAVAL' | 'CEK' | 'SENET';
 
-const FORM_CODES: PaymentFormCode[] = ['NAKIT', 'KREDIKARTI', 'ACIK_CARI', 'HAVAL', 'CEK', 'SENET'];
+/** Yapıdaki tüm ödeme tipleri (fatura ödeme modalı ile aynı sıra) */
+export const SYSTEM_PAYMENT_FORM_CODES: readonly PaymentFormCode[] = [
+  'NAKIT',
+  'KREDIKARTI',
+  'ACIK_CARI',
+  'HAVAL',
+  'CEK',
+  'SENET',
+] as const;
+
+const FORM_CODES: PaymentFormCode[] = [...SYSTEM_PAYMENT_FORM_CODES];
+
+/** Rapor KPI / pasta renkleri + tm() anahtarı */
+export const PAYMENT_FORM_CODE_META: Record<
+  PaymentFormCode,
+  { nameKey: string; color: string }
+> = {
+  NAKIT: { nameKey: 'paymentCash', color: '#10b981' },
+  KREDIKARTI: { nameKey: 'paymentCreditCard', color: '#3b82f6' },
+  ACIK_CARI: { nameKey: 'paymentOpenAccount', color: '#8b5cf6' },
+  HAVAL: { nameKey: 'paymentTransfer', color: '#f59e0b' },
+  CEK: { nameKey: 'paymentCheck', color: '#14b8a6' },
+  SENET: { nameKey: 'paymentPromissory', color: '#f43f5e' },
+};
 
 /** DB / POS değerini forma yüklenecek koda çevirir */
 export function dbPaymentMethodToFormCode(raw: unknown): PaymentFormCode | '' {

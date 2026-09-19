@@ -88,6 +88,40 @@ describe('resolveAnalysisSaleCategory', () => {
       ),
     ).toBe('Hizmet');
   });
+
+  it('category_id ile kategori adını lookup üzerinden çözer', () => {
+    const withId = [
+      { id: 'p-2', code: 'SKU2', name: 'Krem', isService: false, category: '', categoryId: 'cat-uuid-1' },
+    ];
+    expect(
+      resolveAnalysisSaleCategory({ productId: 'p-2' }, withId, [], { other: 'Diğer', service: 'Hizmet', tm }, undefined, [
+        { id: 'cat-uuid-1', code: 'KOZ', name: 'Kozmetik' },
+      ]),
+    ).toBe('Kozmetik');
+  });
+
+  it('category_code UUID ise lookup adı kullanır, eşleşmezse Diğer’e düşmez (boş→fallback)', () => {
+    const withUuidCode = [
+      {
+        id: 'p-3',
+        code: 'SKU3',
+        name: 'Maske',
+        isService: false,
+        category: 'aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee',
+        categoryCode: 'aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee',
+      },
+    ];
+    expect(
+      resolveAnalysisSaleCategory(
+        { productId: 'p-3' },
+        withUuidCode,
+        [],
+        { other: 'Diğer', service: 'Hizmet', tm },
+        undefined,
+        [{ id: 'aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee', code: 'MSK', name: 'Cilt Bakımı' }],
+      ),
+    ).toBe('Cilt Bakımı');
+  });
 });
 
 describe('allocateSaleKindAmounts', () => {

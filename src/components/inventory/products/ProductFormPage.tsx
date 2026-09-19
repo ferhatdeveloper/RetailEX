@@ -1756,7 +1756,8 @@ export const ProductFormPage = React.memo(({ productId, onClose, onSave }: Produ
       code: formData.code, // SEND THE ACTUAL CODE
       name: formData.description_tr, // Use Turkish description as name
       barcode: primaryBarcode,
-      category: formData.categoryId || formData.category, // Send ID to database if available
+      category: formData.categoryId || formData.category, // UUID → category_id; ad yedek
+      categoryId: formData.categoryId || undefined,
       price: formData.salePrice,
       cost: formData.purchasePrice,
       stock: formData.stock,

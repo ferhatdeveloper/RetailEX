@@ -152,4 +152,5 @@ Restoran sohbetinde eklenen tek yeni tablo: **rest.return_log**. Diğer özellik
 - `151_sale_items_item_type_plu_catchup.sql` — 098/104 sonrası açılan firmalar için `sale_items.item_type` + `products.plu_code` catch-up; CREATE_PERIOD_TABLES / CREATE_FIRM_TABLES sarmalayıcı.
 - `152_invoice_code_formats.sql` — `app_settings` key=`invoice_code_formats` (JSONB: default.pattern / byType.{trcode}); boş şablon = YYYYMMDD damga. Yeni tablo yok.
 - `153_system_settings_report_menu_params.sql` — `system_settings.report_menu_params` (JSONB); güzellik anket/aranmayanlar + sanal santral (`virtual-pbx-caller-id`) + fiyat değişimi (`stock-price-change-slips`) + malzeme listesi satış/alış dip toplamı (`product-list-sales-purchase-totals`); varsayılan kapalı.
+- `154_report_menu_params_daily_supplier_payments.sql` — `report_menu_params` içine `daily-report-supplier-payments: true` (yoksa ekler); günlük rapor tedarikçi ödemeleri varsayılan açık.
 

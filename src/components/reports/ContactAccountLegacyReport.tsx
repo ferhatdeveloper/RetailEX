@@ -26,6 +26,7 @@ import {
 } from '../../utils/reportDatePresets';
 import { ReportDateRangePresets } from '../shared/ReportDateRangePresets';
 import { ReportKpiStrip } from './shared/ReportKpiStrip';
+import { ReportColumnTable, type ReportColumnTableCol } from './shared/ReportDataGrid';
 import { erpReportsAPI } from '../../services/api/erpReports';
 import { supplierAPI } from '../../services/api/suppliers';
 import type { Supplier } from '../../core/types';
@@ -214,8 +215,112 @@ export function ContactAccountLegacyReport() {
   }, [filtered]);
 
   const tableCls = darkMode ? 'bg-gray-800 border-gray-700' : 'bg-white border-gray-200';
-  const thCls = darkMode ? 'bg-gray-900/60 text-gray-300' : 'bg-gray-50 text-gray-600';
-  const tfootCls = darkMode ? 'bg-gray-900/80 text-gray-100' : 'bg-gray-100 text-gray-900';
+
+  const tableColumns = useMemo<ReportColumnTableCol<ContactAccountLegacyRow>[]>(
+    () => [
+      { key: 'date', header: tm('rprColDate') || 'Tarih', type: 'date', size: 110 },
+      {
+        key: 'invoiceNo',
+        header: tm('rprColInvoiceNo') || 'ID',
+        size: 140,
+        cell: (r) => <span className="font-mono text-xs">{r.invoiceNo || '—'}</span>,
+      },
+      { key: 'customerName', header: tm('rprColCustomer') || 'Cari', size: 180 },
+      {
+        key: 'group',
+        header: tm('rprColGroup') || 'Grup',
+        size: 110,
+        cell: (r) => (
+          <span className="inline-block rounded bg-slate-100 px-2 py-0.5 text-[10px] font-bold text-slate-700 dark:bg-slate-700 dark:text-slate-200">
+            {r.group || '—'}
+          </span>
+        ),
+      },
+      {
+        key: 'subGroup',
+        header: tm('rprColSubGroup') || 'Alt Grup',
+        size: 120,
+        cell: (r) => <span className="text-xs">{r.subGroup || '—'}</span>,
+      },
+      {
+        key: 'productName',
+        header: tm('rprColProduct') || 'Ürün',
+        size: 220,
+        cell: (r) => (
+          <span className="block max-w-[220px] truncate" title={r.productName}>
+            {r.productName || '—'}
+          </span>
+        ),
+      },
+      {
+        key: 'exitQuantity',
+        header: tm('rprColExitQuantity') || 'Çıkış Miktar',
+        type: 'number',
+        align: 'right',
+        size: 110,
+        footerSum: true,
+        footerFormat: (n) => formatNumber(n, 2, false),
+        cell: (r) => formatNumber(r.exitQuantity, 2, false),
+      },
+      {
+        key: 'purchasePrice',
+        header: tm('rprColPurchasePrice') || 'Alış Fiyatı',
+        type: 'number',
+        align: 'right',
+        size: 110,
+        cell: (r) => formatNumber(r.purchasePrice, 2, false),
+      },
+      {
+        key: 'discount',
+        header: tm('rprColDiscount') || 'İskonto',
+        type: 'number',
+        align: 'right',
+        size: 90,
+        cell: (r) => formatNumber(r.discount, 2, false),
+      },
+      {
+        key: 'counterMoney',
+        header: tm('rprColCounterMoney') || 'Karşılık Parası',
+        type: 'number',
+        align: 'right',
+        size: 120,
+        footerSum: true,
+        footerFormat: (n) => formatNumber(n, 2, false),
+        cell: (r) => formatNumber(r.counterMoney, 2, false),
+      },
+      {
+        key: 'totalAmount',
+        header: tm('rprColTotal') || 'Toplam',
+        type: 'number',
+        align: 'right',
+        size: 120,
+        footerSum: true,
+        footerFormat: (n) => `${formatNumber(n, 2, false)} ${currency}`,
+        cell: (r) => (
+          <span className="font-semibold">
+            {formatNumber(r.totalAmount, 2, false)} {currency}
+          </span>
+        ),
+      },
+      {
+        key: 'remainingBalance',
+        header: tm('rprColRemainingBalance') || 'Kalan Bakiye',
+        type: 'number',
+        align: 'right',
+        size: 130,
+        footerSum: true,
+        footerFormat: (n) => (
+          <span className={n > 0 ? 'text-red-500' : ''}>{formatNumber(n, 2, false)} {currency}</span>
+        ),
+        cell: (r) => (
+          <span className={`font-bold ${r.remainingBalance > 0 ? 'text-red-500' : ''}`}>
+            {formatNumber(r.remainingBalance, 2, false)} {currency}
+          </span>
+        ),
+      },
+    ],
+    [tm, currency],
+  );
 
   return (
     <ReportShell
@@ -324,75 +429,17 @@ export function ContactAccountLegacyReport() {
           },
         ]}
       />
-      <div className={`overflow-auto rounded-lg border max-h-[600px] ${tableCls}`}>
-        <table className="w-full min-w-[1100px] text-sm">
-          <thead className={`sticky top-0 ${thCls}`}>
-            <tr>
-              <th className="px-3 py-2 text-left">{tm('rprColDate') || 'Tarih'}</th>
-              <th className="px-3 py-2 text-left">{tm('rprColInvoiceNo') || 'ID'}</th>
-              <th className="px-3 py-2 text-left">{tm('rprColCustomer') || 'Cari'}</th>
-              <th className="px-3 py-2 text-left">{tm('rprColGroup') || 'Grup'}</th>
-              <th className="px-3 py-2 text-left">{tm('rprColSubGroup') || 'Alt Grup'}</th>
-              <th className="px-3 py-2 text-left">{tm('rprColProduct') || 'Ürün'}</th>
-              <th className="px-3 py-2 text-right">{tm('rprColExitQuantity') || 'Çıkış Miktar'}</th>
-              <th className="px-3 py-2 text-right">{tm('rprColPurchasePrice') || 'Alış Fiyatı'}</th>
-              <th className="px-3 py-2 text-right">{tm('rprColDiscount') || 'İskonto'}</th>
-              <th className="px-3 py-2 text-right">{tm('rprColCounterMoney') || 'Karşılık Parası'}</th>
-              <th className="px-3 py-2 text-right">{tm('rprColTotal') || 'Toplam'}</th>
-              <th className="px-3 py-2 text-right">{tm('rprColRemainingBalance') || 'Kalan Bakiye'}</th>
-            </tr>
-          </thead>
-          <tbody>
-            {filtered.length === 0 && !loading && (
-              <tr>
-                <td colSpan={12} className="px-3 py-8 text-center opacity-60">
-                  {tm('erpNoRows') || 'Veri yok'}
-                </td>
-              </tr>
-            )}
-            {filtered.map((r) => (
-              <tr key={r.id} className={darkMode ? 'border-t border-gray-700' : 'border-t border-gray-100'}>
-                <td className="px-3 py-2 whitespace-nowrap">{r.date}</td>
-                <td className="px-3 py-2 font-mono text-xs">{r.invoiceNo}</td>
-                <td className="px-3 py-2">{r.customerName}</td>
-                <td className="px-3 py-2">
-                  <span className="inline-block px-2 py-0.5 text-[10px] font-bold rounded bg-slate-100 text-slate-700 dark:bg-slate-700 dark:text-slate-200">
-                    {r.group}
-                  </span>
-                </td>
-                <td className="px-3 py-2 text-xs">{r.subGroup}</td>
-                <td className="px-3 py-2 max-w-[260px] truncate" title={r.productName}>
-                  {r.productName}
-                </td>
-                <td className="px-3 py-2 text-right">{formatNumber(r.exitQuantity, 2, false)}</td>
-                <td className="px-3 py-2 text-right">{formatNumber(r.purchasePrice, 2, false)}</td>
-                <td className="px-3 py-2 text-right">{formatNumber(r.discount, 2, false)}</td>
-                <td className="px-3 py-2 text-right">{formatNumber(r.counterMoney, 2, false)}</td>
-                <td className="px-3 py-2 text-right font-semibold">
-                  {formatNumber(r.totalAmount, 2, false)} {currency}
-                </td>
-                <td className={`px-3 py-2 text-right font-bold ${r.remainingBalance > 0 ? 'text-red-500' : ''}`}>
-                  {formatNumber(r.remainingBalance, 2, false)} {currency}
-                </td>
-              </tr>
-            ))}
-          </tbody>
-          {filtered.length > 0 && (
-            <tfoot>
-              <tr className={`font-bold ${tfootCls}`}>
-                <td className="px-3 py-2" colSpan={6}>
-                  {tm('rprTotal') || 'TOPLAM'}
-                </td>
-                <td className="px-3 py-2 text-right">{formatNumber(totals.qty, 2, false)}</td>
-                <td className="px-3 py-2" colSpan={3} />
-                <td className="px-3 py-2 text-right">{formatNumber(totals.total, 2, false)}</td>
-                <td className={`px-3 py-2 text-right ${totals.remaining > 0 ? 'text-red-500' : ''}`}>
-                  {formatNumber(totals.remaining, 2, false)}
-                </td>
-              </tr>
-            </tfoot>
-          )}
-        </table>
+      <div className={`rounded-lg border p-2 ${tableCls}`}>
+        {filtered.length === 0 && !loading ? (
+          <div className="px-3 py-8 text-center opacity-60">{tm('erpNoRows') || 'Veri yok'}</div>
+        ) : (
+          <ReportColumnTable
+            data={filtered}
+            columns={tableColumns}
+            height={560}
+            footerLabel={tm('rprTotal') || 'TOPLAM'}
+          />
+        )}
       </div>
     </ReportShell>
   );

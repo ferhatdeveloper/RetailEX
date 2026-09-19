@@ -292,7 +292,7 @@ export function DashboardModule({
             <h3 className="text-sm text-gray-800">{tLabel(t.favorites, tLabel(t.quickAccess, 'Favoriler'))}</h3>
           </div>
           {favoriteTiles.length > 0 ? (
-            <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-2">
+            <div className="flex flex-wrap gap-1.5">
               {favoriteTiles.map((action) => {
                 const Icon = action.Icon;
                 return (
@@ -300,14 +300,15 @@ export function DashboardModule({
                     key={action.id}
                     type="button"
                     onClick={() => setCurrentScreen(action.id)}
-                    className={`group bg-gradient-to-br ${action.color} rounded-lg p-2 text-white transition-all duration-300 hover:scale-105 hover:shadow-lg`}
+                    className="inline-flex items-center gap-1.5 rounded-md border border-gray-200 bg-white px-1.5 py-1 text-gray-700 hover:border-gray-300 hover:bg-gray-50 transition-colors"
                   >
-                    <div className="flex flex-col items-center gap-1.5">
-                      <div className="w-8 h-8 bg-white/20 rounded flex items-center justify-center group-hover:bg-white/30 transition-all">
-                        <Icon className="w-4 h-4" />
-                      </div>
-                      <span className="text-[10px] text-center">{String(action.label)}</span>
-                    </div>
+                    <span
+                      className={`inline-flex h-6 w-6 shrink-0 items-center justify-center rounded bg-gradient-to-br ${action.color} text-white`}
+                      aria-hidden
+                    >
+                      <Icon className="w-3.5 h-3.5" />
+                    </span>
+                    <span className="text-xs font-medium pr-0.5">{String(action.label)}</span>
                   </button>
                 );
               })}

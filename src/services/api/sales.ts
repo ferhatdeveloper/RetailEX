@@ -6,6 +6,7 @@
 import { postgres, ERP_SETTINGS } from '../postgres';
 import { SQL_COUNTABLE_SALE_STATUS_PLAIN } from '../../utils/saleInvoiceStatus';
 import type { Sale, SaleItem } from '../../core/types/models';
+import type { Invoice } from '../../core/types';
 
 import { invoicesAPI } from './invoices';
 import { batchCalculateFIFOCost } from '../../hooks/useFIFOCost';
@@ -19,6 +20,11 @@ import {
   resolveWriteCashierName,
   sanitizeStoredCashierName,
 } from '../../utils/loginCashierName';
+import {
+  isSalesReturnFiche,
+  PURCHASE_RETURN_TRCODE,
+  SALES_RETURN_TRCODES,
+} from '../../utils/lastPurchaseCostSql';
 
 async function enrichSalesWithLineItems(sales: Sale[]): Promise<Sale[]> {
   if (!sales.length) return sales;
@@ -466,7 +472,7 @@ export const salesAPI = {
 
       const merged = [
         ...salesResult.data.map(mapInvoiceToSale),
-        ...returnsResult.data.map(mapInvoiceToSale),
+        ...returnsResult.data.filter((inv) => !isPurchaseReturnInvoice(inv)).map(mapInvoiceToSale),
       ].sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime());
 
       return merged.slice(0, limit);
@@ -512,7 +518,11 @@ export const salesAPI = {
             invoiceType,
             pageSize,
           });
-          all.push(...result.data.map(mapInvoiceToSale));
+          all.push(
+            ...result.data
+              .filter((inv) => invoiceCategory !== 'Iade' || !isPurchaseReturnInvoice(inv))
+              .map(mapInvoiceToSale),
+          );
           totalPages = Math.max(1, result.totalPages || 1);
           if (!result.data.length) break;
           page += 1;
@@ -675,15 +685,25 @@ export const salesAPI = {
 };
 
 // Helper to map Invoice to Sale
-import type { Invoice } from '../../core/types';
 
 function resolveInvoiceTrcode(invoice: Invoice): number {
   return Number((invoice as Invoice & { trcode?: number }).trcode ?? invoice.invoice_type ?? 0);
 }
 
-/** Müşteri satış iadesi (trcode 3) — POS / Z raporu için negatif satış satırı */
+/** Alış iadesi (trcode 6) — günlük satış ciro / detay listesine girmez */
+function isPurchaseReturnInvoice(invoice: Invoice): boolean {
+  return resolveInvoiceTrcode(invoice) === PURCHASE_RETURN_TRCODE;
+}
+
+/** Müşteri satış iadesi (trcode 2/3) — POS / Z / günlük rapor için negatif satış satırı */
 function isCustomerSalesReturnInvoice(invoice: Invoice): boolean {
-  return resolveInvoiceTrcode(invoice) === 3;
+  if (isPurchaseReturnInvoice(invoice)) return false;
+  const tr = resolveInvoiceTrcode(invoice);
+  if ((SALES_RETURN_TRCODES as readonly number[]).includes(tr)) return true;
+  return isSalesReturnFiche({
+    fiche_type: (invoice as Invoice & { fiche_type?: string }).fiche_type,
+    trcode: tr,
+  });
 }
 
 function mapInvoiceToSale(invoice: Invoice): Sale {

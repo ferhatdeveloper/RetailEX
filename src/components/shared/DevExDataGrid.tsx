@@ -16,7 +16,7 @@ import {
   Column,
   FilterFn,
 } from '@tanstack/react-table';
-import { ChevronDown, ChevronUp, Filter, Download, Printer } from 'lucide-react';
+import { ChevronDown, ChevronUp, Filter, Download, Printer, Layers } from 'lucide-react';
 import { useResponsive } from '../../hooks/useResponsive';
 import { useLanguage } from '../../contexts/LanguageContext';
 import { useTheme } from '../../contexts/ThemeContext';
@@ -99,6 +99,70 @@ export interface DevExDataGridProps<T> {
    * Verilmezse `getFirmLedgerCurrency(selectedFirm)`.
    */
   footerCurrency?: string | null;
+  /**
+   * Kolona göre gruplama (controlled). `null` / `undefined` = gruplama yok.
+   * Veride zaten `getRowKind` ile group/subtotal satırları varsa yalnızca UI senkronu için kullanılır (çift genişletme yok).
+   */
+  groupByColumnId?: string | null;
+  onGroupByColumnIdChange?: (columnId: string | null) => void;
+  /**
+   * Kolon başlığı sağ tık / Layers: «Bu kolona göre grupla».
+   * Varsayılan: açık. Veride zaten group/subtotal satırları varsa native genişletme yapılmaz.
+   */
+  enableGrouping?: boolean;
+  /**
+   * Önceden enjekte edilmiş satır türü (ör. Malzeme Ekstresi `_rowKind`).
+   * Grup başlığı / alt toplam satırlarına dip toplam stiline yakın arka plan uygular.
+   */
+  getRowKind?: (row: T) => DevExGridRowKind | undefined;
+  /** Ek satır sınıfı (grup stillerinden sonra birleştirilir) */
+  getRowClassName?: (row: T, index: number) => string | undefined;
+  /**
+   * Otomatik grup footer satırında toplanacak kolonlar.
+   * Verilmezse `footerSumColumns` / autoFooterSums kullanılır.
+   */
+  groupFooterSumColumns?: Array<{
+    columnId: string;
+    getValue: (row: T) => number;
+    format?: (sum: number, rows: T[]) => ReactNode;
+  }>;
+}
+
+/** Satır türü — grup başlığı / grup alt toplamı / detay */
+export type DevExGridRowKind = 'detail' | 'group' | 'subtotal';
+
+/** Dahili otomatik gruplama meta alanları (satır objesine yazılır) */
+export const DEVEX_GRID_ROW_KIND = '__devexRowKind';
+export const DEVEX_GRID_ROW_ID = '__devexRowId';
+export const DEVEX_GRID_GROUP_LABEL = '__devexGroupLabel';
+export const DEVEX_GRID_GROUP_COLUMN_ID = '__devexGroupColumnId';
+export const DEVEX_GRID_GROUP_SUMS = '__devexGroupSums';
+
+export function resolveDevExGridRowKind<T>(
+  row: T,
+  getRowKind?: (row: T) => DevExGridRowKind | undefined,
+): DevExGridRowKind {
+  const custom = getRowKind?.(row);
+  if (custom === 'group' || custom === 'subtotal' || custom === 'detail') return custom;
+  const rec = row as Record<string, unknown>;
+  const meta = rec[DEVEX_GRID_ROW_KIND] ?? rec._rowKind;
+  if (meta === 'group' || meta === 'subtotal' || meta === 'detail') return meta;
+  return 'detail';
+}
+
+/** Grup başlığı: soft sky/slate; grup dip toplam: soft amber — dark mode uyumlu. */
+function devExGridRowKindClass(kind: DevExGridRowKind, darkMode: boolean): string {
+  if (kind === 'group') {
+    return darkMode
+      ? 'bg-slate-600/95 hover:bg-slate-500 text-slate-50 !border-slate-500'
+      : 'bg-sky-100/95 hover:bg-sky-200/90 text-slate-900 !border-sky-200';
+  }
+  if (kind === 'subtotal') {
+    return darkMode
+      ? 'bg-amber-900/50 hover:bg-amber-900/65 text-amber-50 !border-amber-800/60'
+      : 'bg-amber-50 hover:bg-amber-100/95 text-amber-950 !border-amber-200';
+  }
+  return '';
 }
 
 type GridColumnMeta = {
@@ -737,6 +801,154 @@ function readRowColumnValue<T>(col: ColumnDef<T, any>, row: T, rowIndex: number)
   return (row as Record<string, unknown>)[key];
 }
 
+function formatGroupCellLabel(value: unknown): string {
+  if (value == null) return '—';
+  const s = String(value).trim();
+  return s || '—';
+}
+
+/**
+ * Kolon değerine göre sıralayıp grup başlığı (+ isteğe bağlı grup alt toplamı) satırları ekler.
+ */
+export function buildDevExGroupedRows<T>(
+  data: T[],
+  columnId: string,
+  columns: ColumnDef<T, any>[],
+  options?: {
+    groupSubtotalLabel?: string;
+    footerSumColumns?: Array<{
+      columnId: string;
+      getValue: (row: T) => number;
+      format?: (sum: number, rows: T[]) => ReactNode;
+    }>;
+  },
+): T[] {
+  if (!columnId || data.length === 0) return data;
+
+  const col = columns.find((c) => columnDefId(c) === columnId);
+  const indexed = data.map((row, i) => {
+    const raw = col ? readRowColumnValue(col, row, i) : (row as Record<string, unknown>)[columnId];
+    return { row, i, key: formatGroupCellLabel(raw) };
+  });
+  indexed.sort((a, b) => a.key.localeCompare(b.key, 'tr', { sensitivity: 'base' }) || a.i - b.i);
+
+  const sumDefs = options?.footerSumColumns ?? [];
+  const subtotalLabel = options?.groupSubtotalLabel || 'Grup toplamı';
+  const out: T[] = [];
+
+  let gi = 0;
+  while (gi < indexed.length) {
+    const key = indexed[gi].key;
+    const group: typeof indexed = [];
+    while (gi < indexed.length && indexed[gi].key === key) {
+      group.push(indexed[gi]);
+      gi += 1;
+    }
+    const first = group[0].row;
+    const detailRows = group.map((g) => g.row);
+    const safeKey = key.replace(/\s+/g, '_').slice(0, 80);
+
+    const header = {
+      ...(first as object),
+      [columnId]: key === '—' ? '' : key,
+      [DEVEX_GRID_ROW_KIND]: 'group' as const,
+      [DEVEX_GRID_ROW_ID]: `devex-group-${columnId}-${safeKey}-${out.length}`,
+      [DEVEX_GRID_GROUP_LABEL]: key,
+      [DEVEX_GRID_GROUP_COLUMN_ID]: columnId,
+    } as T;
+    out.push(header);
+    for (const r of detailRows) out.push(r);
+
+    if (sumDefs.length > 0) {
+      const sums: Record<string, number> = {};
+      for (const def of sumDefs) {
+        sums[def.columnId] = detailRows.reduce((acc, row) => acc + (Number(def.getValue(row)) || 0), 0);
+      }
+      const footer = {
+        ...(first as object),
+        [columnId]: key === '—' ? '' : key,
+        [DEVEX_GRID_ROW_KIND]: 'subtotal' as const,
+        [DEVEX_GRID_ROW_ID]: `devex-subtotal-${columnId}-${safeKey}-${out.length}`,
+        [DEVEX_GRID_GROUP_LABEL]: subtotalLabel,
+        [DEVEX_GRID_GROUP_COLUMN_ID]: columnId,
+        [DEVEX_GRID_GROUP_SUMS]: sums,
+      } as T;
+      out.push(footer);
+    }
+  }
+
+  return out;
+}
+
+function decorateColumnsForAutoGroupRows<T>(
+  columns: ColumnDef<T, any>[],
+  options: {
+    getRowKind?: (row: T) => DevExGridRowKind | undefined;
+    footerSumFormats: Map<string, (sum: number, rows: T[]) => ReactNode>;
+    firstLabelColumnId?: string;
+  },
+): ColumnDef<T, any>[] {
+  const { getRowKind, footerSumFormats, firstLabelColumnId } = options;
+  return columns.map((col) => {
+    const id = columnDefId(col);
+    if (id === 'select' || id === 'actions') return col;
+    const originalCell = col.cell;
+    return {
+      ...col,
+      cell: (ctx: any) => {
+        const row = ctx.row.original as T;
+        const kind = resolveDevExGridRowKind(row, getRowKind);
+        const rec = row as Record<string, unknown>;
+        const metaKind = rec[DEVEX_GRID_ROW_KIND];
+
+        // Yalnızca otomatik üretilen meta satırlarda hücreleri sadeleştir
+        if (metaKind !== 'group' && metaKind !== 'subtotal') {
+          if (typeof originalCell === 'function') return originalCell(ctx);
+          if (originalCell != null) return flexRender(originalCell, ctx);
+          const v = ctx.getValue?.();
+          if (v == null || v === '') return null;
+          return v as ReactNode;
+        }
+
+        if (kind === 'group') {
+          const gCol = String(rec[DEVEX_GRID_GROUP_COLUMN_ID] || '');
+          const label = String(rec[DEVEX_GRID_GROUP_LABEL] ?? '');
+          if (id === gCol || (!gCol && id === firstLabelColumnId)) {
+            return <span className="font-bold text-blue-900 dark:text-blue-100">{label || '—'}</span>;
+          }
+          if (id === firstLabelColumnId && gCol && id !== gCol) {
+            return <span className="font-bold text-blue-800/80 dark:text-blue-200/90">{label || '—'}</span>;
+          }
+          return null;
+        }
+
+        if (kind === 'subtotal') {
+          const sums = rec[DEVEX_GRID_GROUP_SUMS] as Record<string, number> | undefined;
+          if (sums && Object.prototype.hasOwnProperty.call(sums, id)) {
+            const sum = Number(sums[id]) || 0;
+            const fmt = footerSumFormats.get(id);
+            return fmt ? fmt(sum, []) : sum;
+          }
+          if (id === firstLabelColumnId || id === String(rec[DEVEX_GRID_GROUP_COLUMN_ID] || '')) {
+            return (
+              <span className="font-semibold text-slate-700 dark:text-slate-200">
+                {String(rec[DEVEX_GRID_GROUP_LABEL] || 'Grup toplamı')}
+              </span>
+            );
+          }
+          return null;
+        }
+
+        if (typeof originalCell === 'function') return originalCell(ctx);
+        if (originalCell != null) return flexRender(originalCell, ctx);
+        const v = ctx.getValue?.();
+        if (v == null || v === '') return null;
+        return v as ReactNode;
+      },
+    };
+  });
+}
+
 function withReportCodeCells<T>(cols: ColumnDef<T, any>[]): ColumnDef<T, any>[] {
   return cols.map((col) => {
     const id = columnDefId(col);
@@ -796,6 +1008,12 @@ export function DevExDataGrid<T>({
   footerSumColumns,
   footerLabel,
   footerCurrency: footerCurrencyProp,
+  groupByColumnId: groupByColumnIdProp,
+  onGroupByColumnIdChange,
+  enableGrouping: enableGroupingProp,
+  getRowKind,
+  getRowClassName,
+  groupFooterSumColumns,
 }: DevExDataGridProps<T>) {
   const [sorting, setSorting] = useState<SortingState>(() => initialSorting ?? []);
   const [columnFilters, setColumnFilters] = useState<ColumnFiltersState>([]);
@@ -807,6 +1025,14 @@ export function DevExDataGrid<T>({
   const [internalColumnVisibility, setInternalColumnVisibility] = useState<Record<string, boolean>>(columnVisibility || {});
   const [openFilterColumn, setOpenFilterColumn] = useState<string | null>(null);
   const [filterMenuAnchor, setFilterMenuAnchor] = useState<{ top: number; left: number } | null>(null);
+  const [internalGroupByColumnId, setInternalGroupByColumnId] = useState<string | null>(
+    groupByColumnIdProp ?? null,
+  );
+  const [columnHeaderMenu, setColumnHeaderMenu] = useState<{
+    columnId: string;
+    top: number;
+    left: number;
+  } | null>(null);
   const filterColumnsRef = useRef<Map<string, Column<any, unknown>>>(new Map());
   const { isMobile, isTablet } = useResponsive();
   const { tm } = useLanguage();
@@ -826,6 +1052,39 @@ export function DevExDataGrid<T>({
   const cellWeight = density === 'comfortable' ? 'font-medium' : '';
   const cellColor = darkMode ? 'text-gray-50' : 'text-gray-900';
   const cellBorder = darkMode ? 'border-gray-600' : 'border-gray-200';
+
+  const resolvedGroupByColumnId =
+    groupByColumnIdProp !== undefined ? groupByColumnIdProp : internalGroupByColumnId;
+  /** Varsayılan açık (`enableGrouping={false}` ile kapatılır). */
+  const groupingEnabled = enableGroupingProp !== false;
+
+  const setGroupByColumnId = useCallback(
+    (columnId: string | null) => {
+      if (groupByColumnIdProp === undefined) {
+        setInternalGroupByColumnId(columnId);
+      }
+      onGroupByColumnIdChange?.(columnId);
+      setColumnHeaderMenu(null);
+    },
+    [groupByColumnIdProp, onGroupByColumnIdChange],
+  );
+
+  useEffect(() => {
+    if (groupByColumnIdProp !== undefined) {
+      setInternalGroupByColumnId(groupByColumnIdProp);
+    }
+  }, [groupByColumnIdProp]);
+
+  const closeColumnHeaderMenu = useCallback(() => setColumnHeaderMenu(null), []);
+
+  useEffect(() => {
+    if (!columnHeaderMenu) return;
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') closeColumnHeaderMenu();
+    };
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  }, [columnHeaderMenu, closeColumnHeaderMenu]);
 
   const closeFilterMenu = useCallback(() => {
     setOpenFilterColumn(null);
@@ -913,10 +1172,90 @@ export function DevExDataGrid<T>({
     return [...explicit, ...autoSumColumns.filter((d) => !ids.has(d.columnId))];
   }, [footerSumColumns, autoSumColumns, footerCurrency]);
 
+  const resolvedGroupFooterSumColumns = useMemo(() => {
+    if (groupFooterSumColumns != null) {
+      return groupFooterSumColumns.map((def) => ({
+        ...def,
+        format:
+          def.format ??
+          ((sum: number) => formatReportFooterSum(sum, def.columnId, footerCurrency)),
+      }));
+    }
+    return mergedFooterSumColumns;
+  }, [groupFooterSumColumns, mergedFooterSumColumns, footerCurrency]);
+
+  const dataHasExternalGroupRows = useMemo(() => {
+    if (data.length === 0) return false;
+    return data.some((row) => {
+      const kind = resolveDevExGridRowKind(row, getRowKind);
+      return kind === 'group' || kind === 'subtotal';
+    });
+  }, [data, getRowKind]);
+
+  const tableSourceData = useMemo(() => {
+    const colId = resolvedGroupByColumnId ? String(resolvedGroupByColumnId).trim() : '';
+    if (!colId || dataHasExternalGroupRows) return data;
+    return buildDevExGroupedRows(data, colId, codedColumns, {
+      groupSubtotalLabel: tm('extractGroupSubtotal') || tm('gridGroupSubtotal') || 'Grup toplamı',
+      footerSumColumns: resolvedGroupFooterSumColumns.length > 0 ? resolvedGroupFooterSumColumns : undefined,
+    });
+  }, [
+    data,
+    resolvedGroupByColumnId,
+    dataHasExternalGroupRows,
+    codedColumns,
+    resolvedGroupFooterSumColumns,
+    tm,
+  ]);
+
   const printEnabled = enablePrint ?? (onPrint != null || enableExcelExport);
 
+  const footerSumFormats = useMemo(() => {
+    const map = new Map<string, (sum: number, rows: T[]) => ReactNode>();
+    for (const def of resolvedGroupFooterSumColumns) {
+      map.set(
+        def.columnId,
+        def.format ?? ((sum: number) => formatReportFooterSum(sum, def.columnId, footerCurrency)),
+      );
+    }
+    return map;
+  }, [resolvedGroupFooterSumColumns, footerCurrency]);
+
+  const firstLabelColumnId = useMemo(() => {
+    for (const col of codedColumns) {
+      const id = columnDefId(col);
+      if (!id || id === 'select' || id === 'actions') continue;
+      if (isReportSumColumnId(id)) continue;
+      return id;
+    }
+    return codedColumns[0] ? columnDefId(codedColumns[0]) : undefined;
+  }, [codedColumns]);
+
+  const groupingDecoratedColumns = useMemo(() => {
+    const needsDecorate =
+      (!dataHasExternalGroupRows && Boolean(resolvedGroupByColumnId)) ||
+      tableSourceData.some((row) => {
+        const meta = (row as Record<string, unknown>)[DEVEX_GRID_ROW_KIND];
+        return meta === 'group' || meta === 'subtotal';
+      });
+    if (!needsDecorate) return codedColumns;
+    return decorateColumnsForAutoGroupRows(codedColumns, {
+      getRowKind,
+      footerSumFormats,
+      firstLabelColumnId,
+    });
+  }, [
+    codedColumns,
+    dataHasExternalGroupRows,
+    resolvedGroupByColumnId,
+    tableSourceData,
+    getRowKind,
+    footerSumFormats,
+    firstLabelColumnId,
+  ]);
+
   const finalColumns = useMemo(() => {
-    if (!enableSelection) return codedColumns;
+    if (!enableSelection) return groupingDecoratedColumns;
 
     const selectionColumn: ColumnDef<T, any> = {
       id: 'select',
@@ -957,11 +1296,11 @@ export function DevExDataGrid<T>({
       size: 40,
     };
 
-    return [selectionColumn, ...codedColumns];
-  }, [codedColumns, enableSelection, setRowSelection, tm]);
+    return [selectionColumn, ...groupingDecoratedColumns];
+  }, [groupingDecoratedColumns, enableSelection, setRowSelection, tm]);
 
   const table = useReactTable({
-    data,
+    data: tableSourceData,
     columns: finalColumns,
     state: {
       sorting,
@@ -983,6 +1322,13 @@ export function DevExDataGrid<T>({
     ...(enablePagination ? { getPaginationRowModel: getPaginationRowModel() } : {}),
     autoResetPageIndex: false,
     enableRowSelection: true,
+    getRowId: (row, index) => {
+      const metaId = (row as Record<string, unknown>)[DEVEX_GRID_ROW_ID];
+      if (metaId != null && String(metaId).trim()) return String(metaId);
+      const id = (row as Record<string, unknown>).id;
+      if (id != null && String(id).trim()) return String(id);
+      return String(index);
+    },
     filterFns: {
       gridColumnFilter: gridColumnFilterFn,
     },
@@ -1061,18 +1407,52 @@ export function DevExDataGrid<T>({
   );
 
   const filteredRowsForFooter = table.getFilteredRowModel().rows;
+  const detailRowsForFooter = useMemo(
+    () =>
+      filteredRowsForFooter.filter(
+        (r) => resolveDevExGridRowKind(r.original, getRowKind) === 'detail',
+      ),
+    [filteredRowsForFooter, getRowKind],
+  );
   const resolvedFooterLabel = footerLabel ?? (mergedFooterSumColumns.length > 0 ? (tm('total') || 'Toplam') : undefined);
   const showFooterRow = Boolean(resolvedFooterLabel) || Boolean(mergedFooterSumColumns.length);
   const footerSumByColumnId = useMemo(() => {
     if (!mergedFooterSumColumns.length) return new Map<string, ReactNode>();
-    const originals = filteredRowsForFooter.map((r) => r.original);
+    const originals = detailRowsForFooter.map((r) => r.original);
     const map = new Map<string, ReactNode>();
     for (const def of mergedFooterSumColumns) {
       const sum = originals.reduce((acc, row) => acc + (Number(def.getValue(row)) || 0), 0);
       map.set(def.columnId, def.format ? def.format(sum, originals) : sum);
     }
     return map;
-  }, [mergedFooterSumColumns, data, columnFilters, sorting]);
+  }, [mergedFooterSumColumns, detailRowsForFooter]);
+
+  const groupableColumns = useMemo(
+    () =>
+      table
+        .getAllLeafColumns()
+        .filter((col) => col.id !== 'select' && col.id !== 'actions' && col.getCanHide()),
+    [table, finalColumns, resolvedColumnVisibility],
+  );
+
+  const resolveRowVisualClass = useCallback(
+    (row: T, idx: number, isSelected: boolean) => {
+      const kind = resolveDevExGridRowKind(row, getRowKind);
+      const kindClass = devExGridRowKindClass(kind, darkMode);
+      const custom = getRowClassName?.(row, idx) ?? '';
+      if (kindClass) {
+        const selectedCls =
+          enableSelection && isSelected ? (darkMode ? 'ring-1 ring-inset ring-blue-400/50' : 'ring-1 ring-inset ring-blue-300') : '';
+        return `${kindClass} ${selectedCls} ${custom}`.trim();
+      }
+      const stripe = idx % 2 === 0 ? rowStripeEven : rowStripeOdd;
+      const selectedCls =
+        enableSelection && isSelected ? (darkMode ? 'bg-blue-900/50' : 'bg-blue-100') : '';
+      return `${rowHover} ${stripe} ${selectedCls} ${custom}`.trim();
+    },
+    [getRowKind, getRowClassName, darkMode, rowHover, rowStripeEven, rowStripeOdd, enableSelection],
+  );
+
 
   // Mobile Card View
   if (isMobile) {
@@ -1122,7 +1502,7 @@ export function DevExDataGrid<T>({
             {resolvedFooterLabel != null && (
               <div className="flex flex-wrap items-center gap-x-3 gap-y-1">
                 <span>{resolvedFooterLabel}</span>
-                <span className={darkMode ? 'text-gray-400' : 'text-blue-600/80'}>({filteredRowsForFooter.length})</span>
+                <span className={darkMode ? 'text-gray-400' : 'text-blue-600/80'}>({detailRowsForFooter.length})</span>
               </div>
             )}
             {mergedFooterSumColumns.length > 0 && (
@@ -1199,8 +1579,36 @@ export function DevExDataGrid<T>({
           : undefined
       }
     >
-      {((enableColumnVisibility && showColumnVisibilityToolbar) || enableExcelExport || printEnabled) && (
+      {((enableColumnVisibility && showColumnVisibilityToolbar) || enableExcelExport || printEnabled || groupingEnabled) && (
         <div className="flex items-center justify-end gap-1.5 px-3 py-1.5 bg-gray-50 border border-gray-300 border-b-0 shrink-0">
+          {groupingEnabled && (
+            <label
+              className="inline-flex items-center gap-1 mr-auto px-1.5 py-0.5 text-[10px] font-medium text-slate-700"
+              title={tm('gridGroupByColumn') || 'Kolona göre grupla'}
+            >
+              <Layers className="w-3 h-3 text-indigo-600 shrink-0" aria-hidden />
+              <span className="hidden sm:inline whitespace-nowrap">{tm('gridGroupBy') || 'Grupla'}</span>
+              <select
+                className="max-w-[10rem] px-1.5 py-0.5 border border-slate-300 rounded bg-white text-[10px] font-medium text-slate-800 focus:outline-none focus:ring-1 focus:ring-blue-500"
+                value={resolvedGroupByColumnId ?? ''}
+                onChange={(e) => {
+                  const v = e.target.value.trim();
+                  setGroupByColumnId(v || null);
+                }}
+              >
+                <option value="">{tm('gridGroupNone') || 'Gruplama yok'}</option>
+                {groupableColumns.map((col) => {
+                  const header = col.columnDef.header;
+                  const label = typeof header === 'string' ? header : col.id;
+                  return (
+                    <option key={col.id} value={col.id}>
+                      {label}
+                    </option>
+                  );
+                })}
+              </select>
+            </label>
+          )}
           {enableExcelExport && (
             <button
               type="button"
@@ -1298,11 +1706,22 @@ export function DevExDataGrid<T>({
                     key={header.id}
                     className={`px-2 py-1 text-left border-r last:border-r-0 relative box-border ${headerBg} ${darkMode ? 'text-gray-100 border-gray-600' : 'text-gray-800 border-gray-300'} ${density === 'comfortable' ? 'text-xs font-semibold py-1.5' : 'text-[10px] font-medium'}`}
                     style={gridColumnWidthStyle(header.getSize())}
+                    onContextMenu={(e) => {
+                      if (!groupingEnabled) return;
+                      if (header.id === 'select' || header.id === 'actions') return;
+                      e.preventDefault();
+                      e.stopPropagation();
+                      closeFilterMenu();
+                      const menuW = 220;
+                      const left = Math.max(8, Math.min(e.clientX, window.innerWidth - menuW - 8));
+                      const top = Math.max(8, Math.min(e.clientY, window.innerHeight - 120));
+                      setColumnHeaderMenu({ columnId: header.column.id, top, left });
+                    }}
                   >
-                    <div className="flex items-center justify-between gap-1">
+                    <div className="flex items-center gap-1">
                       {/* Header Text + Sort */}
                       <div
-                        className="flex items-center gap-1 cursor-pointer select-none flex-1"
+                        className="flex items-center gap-1 cursor-pointer select-none flex-1 min-w-0"
                         onClick={header.column.getToggleSortingHandler()}
                       >
                         {flexRender(header.column.columnDef.header, header.getContext())}
@@ -1316,6 +1735,29 @@ export function DevExDataGrid<T>({
                           </span>
                         )}
                       </div>
+
+                      {groupingEnabled && header.id !== 'select' && header.id !== 'actions' && (
+                        <button
+                          type="button"
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            const id = header.column.id;
+                            setGroupByColumnId(resolvedGroupByColumnId === id ? null : id);
+                          }}
+                          className={`p-0.5 rounded transition-colors shrink-0 ${
+                            resolvedGroupByColumnId === header.column.id
+                              ? 'text-indigo-700 bg-indigo-100'
+                              : 'text-gray-400 hover:text-indigo-600 hover:bg-indigo-50'
+                          }`}
+                          title={
+                            resolvedGroupByColumnId === header.column.id
+                              ? tm('gridGroupClear') || 'Gruplamayı kaldır'
+                              : tm('gridGroupByThisColumn') || 'Bu kolona göre grupla'
+                          }
+                        >
+                          <Layers className="w-2.5 h-2.5" />
+                        </button>
+                      )}
 
                       {/* Filter Icon (huni) */}
                       {enableFiltering && header.column.getCanFilter() && header.id !== 'select' && header.id !== 'actions' && (
@@ -1340,26 +1782,48 @@ export function DevExDataGrid<T>({
           </thead>
 
           <tbody>
-            {table.getRowModel().rows.map((row, idx) => (
+            {table.getRowModel().rows.map((row, idx) => {
+              const kind = resolveDevExGridRowKind(row.original, getRowKind);
+              const isChromeRow = kind === 'group' || kind === 'subtotal';
+              return (
               <tr
                 key={row.id}
                 onClick={(e) => {
+                  if (isChromeRow) return;
                   if (enableSelection && (e.ctrlKey || e.metaKey)) {
                     row.toggleSelected(!row.getIsSelected());
                     return;
                   }
                   onRowClick?.(row.original);
                 }}
-                onDoubleClick={() => onRowDoubleClick?.(row.original)}
-                onContextMenu={(e) => onRowContextMenu?.(e, row.original)}
-                className={`border-b transition-colors cursor-pointer ${darkMode ? 'border-gray-700' : 'border-gray-200'} ${rowHover} ${idx % 2 === 0 ? rowStripeEven : rowStripeOdd} ${enableSelection && row.getIsSelected() ? (darkMode ? 'bg-blue-900/50' : 'bg-blue-100') : ''}`}
+                onDoubleClick={() => {
+                  if (isChromeRow) return;
+                  onRowDoubleClick?.(row.original);
+                }}
+                onContextMenu={(e) => {
+                  if (isChromeRow) return;
+                  onRowContextMenu?.(e, row.original);
+                }}
+                className={`border-b transition-colors ${isChromeRow ? '' : 'cursor-pointer'} ${darkMode ? 'border-gray-700' : 'border-gray-200'} ${resolveRowVisualClass(row.original, idx, row.getIsSelected())}`}
               >
                 {row.getVisibleCells().map((cell) => {
                   const align = resolveGridColumnAlign(cell.column, footerSumByColumnId.has(cell.column.id));
+                  const cellKindBg =
+                    kind === 'group'
+                      ? darkMode
+                        ? 'bg-slate-600/95'
+                        : 'bg-sky-100/95'
+                      : kind === 'subtotal'
+                        ? darkMode
+                          ? 'bg-amber-900/50'
+                          : 'bg-amber-50'
+                        : '';
                   return (
                     <td
                       key={cell.id}
-                      className={`px-2 py-1 border-r last:border-r-0 box-border overflow-hidden ${cellTextSize} ${cellWeight} ${cellColor} ${cellBorder} ${gridColumnAlignClass(align)}`}
+                      className={`px-2 py-1 border-r last:border-r-0 box-border overflow-hidden ${cellTextSize} ${
+                        kind === 'group' ? 'font-bold' : kind === 'subtotal' ? 'font-semibold' : cellWeight
+                      } ${cellColor} ${cellBorder} ${gridColumnAlignClass(align)} ${cellKindBg}`}
                       style={gridColumnWidthStyle(cell.column.getSize())}
                     >
                       {flexRender(cell.column.columnDef.cell, cell.getContext())}
@@ -1367,7 +1831,8 @@ export function DevExDataGrid<T>({
                   );
                 })}
               </tr>
-            ))}
+              );
+            })}
           </tbody>
           {showFooterRow && (() => {
             const footerBg = darkMode ? 'bg-gray-900' : 'bg-blue-50';
@@ -1409,7 +1874,7 @@ export function DevExDataGrid<T>({
                           <span className={darkMode ? 'text-blue-100' : 'text-blue-800'}>
                             {resolvedFooterLabel}
                             <span className={`ml-1 font-semibold ${darkMode ? 'text-gray-400' : 'text-blue-600/80'}`}>
-                              ({filteredRowsForFooter.length})
+                              ({detailRowsForFooter.length})
                             </span>
                           </span>
                         ) : null}
@@ -1443,6 +1908,50 @@ export function DevExDataGrid<T>({
               onMouseDown={(e) => e.stopPropagation()}
             >
               <FilterMenu key={openFilterColumn} column={portalFilterColumn} onClose={closeFilterMenu} />
+            </div>
+          </div>,
+          document.body
+        )}
+
+      {columnHeaderMenu &&
+        createPortal(
+          <div
+            className="fixed inset-0"
+            style={{ zIndex: FILTER_MENU_Z_INDEX, isolation: 'isolate', transform: 'translateZ(0)' }}
+            onMouseDown={closeColumnHeaderMenu}
+          >
+            <div
+              role="menu"
+              aria-label={tm('gridGroupColumnMenuTitle') || 'Kolon menüsü'}
+              className={`absolute min-w-[12rem] rounded-md border shadow-lg py-1 text-[11px] ${
+                darkMode ? 'bg-gray-800 border-gray-600 text-gray-100' : 'bg-white border-gray-200 text-gray-800'
+              }`}
+              style={{ top: columnHeaderMenu.top, left: columnHeaderMenu.left }}
+              onMouseDown={(e) => e.stopPropagation()}
+            >
+              <button
+                type="button"
+                role="menuitem"
+                className={`w-full text-left px-3 py-2 flex items-center gap-2 ${
+                  darkMode ? 'hover:bg-gray-700' : 'hover:bg-sky-50'
+                }`}
+                onClick={() => setGroupByColumnId(columnHeaderMenu.columnId)}
+              >
+                <Layers className="w-3.5 h-3.5 text-indigo-600 shrink-0" aria-hidden />
+                {tm('gridGroupByThisColumn') || 'Bu kolona göre grupla'}
+              </button>
+              {resolvedGroupByColumnId && (
+                <button
+                  type="button"
+                  role="menuitem"
+                  className={`w-full text-left px-3 py-2 ${
+                    darkMode ? 'hover:bg-gray-700' : 'hover:bg-amber-50'
+                  }`}
+                  onClick={() => setGroupByColumnId(null)}
+                >
+                  {tm('gridGroupClear') || tm('gridClearGrouping') || 'Gruplamayı kaldır'}
+                </button>
+              )}
             </div>
           </div>,
           document.body

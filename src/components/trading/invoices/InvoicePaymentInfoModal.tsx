@@ -5,6 +5,8 @@ import {
   dbPaymentMethodToFormCode,
   paymentMethodImpliesCustomerDebt,
   paymentMethodImpliesPaidNow,
+  SYSTEM_PAYMENT_FORM_CODES,
+  PAYMENT_FORM_CODE_META,
 } from '../../../utils/paymentMethodUtils';
 import { PercentBodyModal } from '../../shared/PercentBodyModal';
 import { fetchKasalar, type Kasa } from '../../../services/api/kasa';
@@ -188,14 +190,19 @@ export function InvoicePaymentInfoModal({
 
   const paymentMethods: PaymentMethod[] = useMemo(
     () => {
-      const all: PaymentMethod[] = [
-        { code: 'NAKIT', nameKey: 'paymentCash', icon: Banknote },
-        { code: 'KREDIKARTI', nameKey: 'paymentCreditCard', icon: CreditCard },
-        { code: 'ACIK_CARI', nameKey: 'paymentOpenAccount', icon: Users },
-        { code: 'HAVAL', nameKey: 'paymentTransfer', icon: Building2 },
-        { code: 'CEK', nameKey: 'paymentCheck', icon: Wallet },
-        { code: 'SENET', nameKey: 'paymentPromissory', icon: CreditCard },
-      ];
+      const iconByCode: Record<string, typeof Banknote> = {
+        NAKIT: Banknote,
+        KREDIKARTI: CreditCard,
+        ACIK_CARI: Users,
+        HAVAL: Building2,
+        CEK: Wallet,
+        SENET: CreditCard,
+      };
+      const all: PaymentMethod[] = SYSTEM_PAYMENT_FORM_CODES.map((code) => ({
+        code,
+        nameKey: PAYMENT_FORM_CODE_META[code].nameKey,
+        icon: iconByCode[code] || CreditCard,
+      }));
       return retailPosMode
         ? all.filter((m) => m.code === 'NAKIT' || m.code === 'KREDIKARTI' || m.code === 'ACIK_CARI')
         : all;

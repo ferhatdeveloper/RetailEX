@@ -934,7 +934,7 @@ async function fetchCariExtractOpeningNet(opts: {
          ), 0)::float8 AS net
          FROM ${accountMovementsTable()} am
          WHERE am.${idCol}::text = $1
-           AND COALESCE(am.date::date, (am.date AT TIME ZONE 'UTC')::date) < $2::date`,
+           AND (am.date::timestamptz AT TIME ZONE 'UTC')::date < $2::date`,
         [accountId, startDate],
       );
       return Number(res.rows[0]?.net ?? 0);
@@ -954,14 +954,14 @@ async function fetchCariExtractOpeningNet(opts: {
            AND COALESCE(s.is_cancelled, false) = false
            AND ${SQL_COUNTABLE_SALE}
            AND ${ficheFilter}
-           AND COALESCE(s.date::date, (s.date AT TIME ZONE 'UTC')::date) < $2::date
+           AND (s.date::timestamptz AT TIME ZONE 'UTC')::date < $2::date
          UNION ALL
          SELECT
            -ABS(COALESCE(cl.amount, 0)) AS signed_amt
          FROM ${cashLinesTable()} cl
          WHERE cl.customer_id::text = $1
            AND UPPER(TRIM(COALESCE(cl.transaction_type, ''))) IN ('CH_TAHSILAT', 'CH_ODEME')
-           AND COALESCE(cl.date::date, (cl.date AT TIME ZONE 'UTC')::date) < $2::date
+           AND (cl.date::timestamptz AT TIME ZONE 'UTC')::date < $2::date
        ) u`,
       [accountId, startDate],
     );
@@ -1242,7 +1242,7 @@ async function fetchCariExtractViaBridge(opts: {
     }>(
       `SELECT
          am.id::text AS id,
-         COALESCE(am.date::date, (am.date AT TIME ZONE 'UTC')::date)::text AS date,
+         (am.date::timestamptz AT TIME ZONE 'UTC')::date::text AS date,
          COALESCE(am.fiche_no, '') AS fiche_no,
          COALESCE(am.definition, '') AS definition,
          ABS(COALESCE(am.amount, 0))::float8 AS amount,
@@ -1250,8 +1250,8 @@ async function fetchCariExtractViaBridge(opts: {
          'movement'::text AS source
        FROM ${movTable} am
        WHERE am.${idCol}::text = $1
-         AND COALESCE(am.date::date, (am.date AT TIME ZONE 'UTC')::date) >= $2::date
-         AND COALESCE(am.date::date, (am.date AT TIME ZONE 'UTC')::date) <= $3::date
+         AND (am.date::timestamptz AT TIME ZONE 'UTC')::date >= $2::date
+         AND (am.date::timestamptz AT TIME ZONE 'UTC')::date <= $3::date
        ORDER BY am.date ASC, am.created_at ASC NULLS LAST
        LIMIT $4`,
       [accountId, start, end, limit],
@@ -1277,7 +1277,7 @@ async function fetchCariExtractViaBridge(opts: {
         `SELECT * FROM (
            SELECT
              s.id::text AS id,
-             COALESCE(s.date::date, (s.date AT TIME ZONE 'UTC')::date)::text AS date,
+             (s.date::timestamptz AT TIME ZONE 'UTC')::date::text AS date,
              COALESCE(s.fiche_no, '') AS fiche_no,
              (${saleDefinitionSql}) AS definition,
              ABS(COALESCE(s.net_amount, s.total_net, 0))::float8 AS amount,
@@ -1289,12 +1289,12 @@ async function fetchCariExtractViaBridge(opts: {
              AND COALESCE(s.is_cancelled, false) = false
              AND ${SQL_COUNTABLE_SALE}
              AND ${ficheFilter}
-             AND COALESCE(s.date::date, (s.date AT TIME ZONE 'UTC')::date) >= $2::date
-             AND COALESCE(s.date::date, (s.date AT TIME ZONE 'UTC')::date) <= $3::date
+             AND (s.date::timestamptz AT TIME ZONE 'UTC')::date >= $2::date
+             AND (s.date::timestamptz AT TIME ZONE 'UTC')::date <= $3::date
            UNION ALL
            SELECT
              cl.id::text AS id,
-             COALESCE(cl.date::date, (cl.date AT TIME ZONE 'UTC')::date)::text AS date,
+             (cl.date::timestamptz AT TIME ZONE 'UTC')::date::text AS date,
              COALESCE(cl.fiche_no, '') AS fiche_no,
              COALESCE(NULLIF(TRIM(cl.definition), ''), UPPER(TRIM(COALESCE(cl.transaction_type, ''))), 'Kasa') AS definition,
              ABS(COALESCE(cl.amount, 0))::float8 AS amount,
@@ -1304,8 +1304,8 @@ async function fetchCariExtractViaBridge(opts: {
            FROM ${cash} cl
            WHERE cl.customer_id::text = $1
              AND UPPER(TRIM(COALESCE(cl.transaction_type, ''))) IN ('CH_TAHSILAT', 'CH_ODEME')
-             AND COALESCE(cl.date::date, (cl.date AT TIME ZONE 'UTC')::date) >= $2::date
-             AND COALESCE(cl.date::date, (cl.date AT TIME ZONE 'UTC')::date) <= $3::date
+             AND (cl.date::timestamptz AT TIME ZONE 'UTC')::date >= $2::date
+             AND (cl.date::timestamptz AT TIME ZONE 'UTC')::date <= $3::date
          ) u
          ORDER BY u.date ASC, u.sort_ts ASC NULLS LAST
          LIMIT $4`,

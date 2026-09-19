@@ -54,8 +54,8 @@ const SALES_FILTER = `
   AND ${SQL_COUNTABLE_SALE_STATUS}
   AND ${SQL_PL_SALES_OR_RETURN}
   AND COALESCE(si.item_type, 'Malzeme') NOT IN ('Promosyon', 'İndirim')
-  AND (s.date AT TIME ZONE 'UTC')::date >= $2::date
-  AND (s.date AT TIME ZONE 'UTC')::date <= $3::date
+  AND (s.date::timestamptz AT TIME ZONE 'UTC')::date >= $2::date
+  AND (s.date::timestamptz AT TIME ZONE 'UTC')::date <= $3::date
 `.trim();
 
 const CATEGORY_NAME_EXPR = `
@@ -151,8 +151,8 @@ export function ProfitLossReport() {
             WITH ${PROFIT_CTES}
             SELECT
               ''::text AS product_id,
-              to_char((s.date AT TIME ZONE 'UTC')::date, 'YYYY-MM-DD') AS product_code,
-              to_char((s.date AT TIME ZONE 'UTC')::date, 'YYYY-MM-DD') AS product_name,
+              to_char((s.date::timestamptz AT TIME ZONE 'UTC')::date, 'YYYY-MM-DD') AS product_code,
+              to_char((s.date::timestamptz AT TIME ZONE 'UTC')::date, 'YYYY-MM-DD') AS product_name,
               ${SQL_LINE_KIND_EXPR} AS line_kind,
               SUM(${SIGNED_LINE_QTY_EXPR}) AS quantity,
               SUM(${SIGNED_LINE_REVENUE_EXPR}) AS revenue,
@@ -166,9 +166,9 @@ export function ProfitLossReport() {
             ${INVOICE_LINE_SCALE_JOIN}
             WHERE ${SALES_FILTER}
             ${kindFilter}
-            GROUP BY (s.date AT TIME ZONE 'UTC')::date, ${SQL_LINE_KIND_EXPR}
+            GROUP BY (s.date::timestamptz AT TIME ZONE 'UTC')::date, ${SQL_LINE_KIND_EXPR}
             HAVING SUM(ABS(si.quantity)) > 0
-            ORDER BY (s.date AT TIME ZONE 'UTC')::date DESC, ${SQL_LINE_KIND_EXPR}
+            ORDER BY (s.date::timestamptz AT TIME ZONE 'UTC')::date DESC, ${SQL_LINE_KIND_EXPR}
           `;
           break;
         case 'monthly':
@@ -176,8 +176,8 @@ export function ProfitLossReport() {
             WITH ${PROFIT_CTES}
             SELECT
               ''::text AS product_id,
-              to_char(date_trunc('month', s.date AT TIME ZONE 'UTC'), 'YYYY-MM') AS product_code,
-              to_char(date_trunc('month', s.date AT TIME ZONE 'UTC'), 'YYYY-MM') AS product_name,
+              to_char(date_trunc('month', s.date::timestamptz AT TIME ZONE 'UTC'), 'YYYY-MM') AS product_code,
+              to_char(date_trunc('month', s.date::timestamptz AT TIME ZONE 'UTC'), 'YYYY-MM') AS product_name,
               ${SQL_LINE_KIND_EXPR} AS line_kind,
               SUM(${SIGNED_LINE_QTY_EXPR}) AS quantity,
               SUM(${SIGNED_LINE_REVENUE_EXPR}) AS revenue,
@@ -191,9 +191,9 @@ export function ProfitLossReport() {
             ${INVOICE_LINE_SCALE_JOIN}
             WHERE ${SALES_FILTER}
             ${kindFilter}
-            GROUP BY date_trunc('month', s.date AT TIME ZONE 'UTC'), ${SQL_LINE_KIND_EXPR}
+            GROUP BY date_trunc('month', s.date::timestamptz AT TIME ZONE 'UTC'), ${SQL_LINE_KIND_EXPR}
             HAVING SUM(ABS(si.quantity)) > 0
-            ORDER BY date_trunc('month', s.date AT TIME ZONE 'UTC') DESC, ${SQL_LINE_KIND_EXPR}
+            ORDER BY date_trunc('month', s.date::timestamptz AT TIME ZONE 'UTC') DESC, ${SQL_LINE_KIND_EXPR}
           `;
           break;
         default:

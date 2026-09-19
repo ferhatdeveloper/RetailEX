@@ -9,6 +9,7 @@ import { invoicesAPI } from '../../services/api/invoices';
 import { supplierAPI } from '../../services/api/suppliers';
 import { fetchKasaIslemleri } from '../../services/api/kasa';
 import { isReturnSale } from '../../utils/posZReport';
+import { saleCollectedSplit } from '../../utils/saleCollectedAmounts';
 import { mergeExpensesWithCashOuts } from '../../utils/reportUnifiedExpenses';
 import type { Sale } from '../../App';
 import type { Invoice, Supplier } from '../../core/types/models';

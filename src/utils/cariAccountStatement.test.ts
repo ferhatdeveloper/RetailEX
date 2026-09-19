@@ -64,6 +64,16 @@ describe('resolveEkstreDescription', () => {
   it('gerçek açıklama metnini korur', () => {
     expect(resolveEkstreDescription('Mal alımı', 'purchase_invoice', 1)).toBe('Mal alımı');
   });
+
+  it('GüzellikPOS teknik UUID’leri gizler', () => {
+    expect(
+      resolveEkstreDescription(
+        'GüzellikPOSbeauty_sale_id cda5bcac-5a3b-4f99-bde5-68c3e3a3f2c2|res_appt 3f333b42-c733-4135-82ed-ffe9279671e3',
+        'sales_invoice',
+        8,
+      ),
+    ).toBe('GüzellikPOS');
+  });
 });
 
 describe('buildEkstreRows — müşteri peşin satış', () => {

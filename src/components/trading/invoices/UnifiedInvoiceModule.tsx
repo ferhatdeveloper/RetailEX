@@ -109,8 +109,8 @@ export function UnifiedInvoiceModule({ customers = [], products = [], defaultCat
   const handleCreateInvoice = (invoiceTypeCode?: number) => {
     setShowInvoiceTypeModal(true);
 
-    // Varsayılan olarak kategori seçilmez, kullanıcı seçsin
-    setSelectedCategory('all');
+    // Satış sekmesinden açılırsa Satış (+ satış iade); alış sekmesinden Alış (+ alış iade)
+    setSelectedCategory(activeTab === 'purchase' ? 'Alis' : 'Satis');
     setHoveredInvoiceType(null);
 
     // Eğer özel bir fatura tipi kodu verilmişse onu hover et ve kategoriyi seç (opsiyonel)
@@ -135,7 +135,10 @@ export function UnifiedInvoiceModule({ customers = [], products = [], defaultCat
   };
 
   // Kategorilere göre filtreleme (alış iadesi TRCODE 6 → Iade; alış sekmesinde de görünsün)
+  // Satış sekmesinde alış iade (6); alış sekmesinde satış iade (3) gösterilmez.
   const invoiceTypeMatchesPickerCategory = (type: InvoiceType, category: string): boolean => {
+    if (activeTab === 'sales' && type.code === 6) return false;
+    if (activeTab === 'purchase' && type.code === 3) return false;
     if (category === 'all') return true;
     if (type.category === category) return true;
     if (category === 'Alis' && type.code === 6) return true;

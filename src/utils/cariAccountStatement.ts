@@ -1,6 +1,7 @@
 /** Cari hesap ekstresi — ortak yardımcılar */
 
 import { splitPaymentRows } from './saleCollectedAmounts';
+import { receiptNotesForDisplay } from './receiptNotes';
 
 export type ExtCardType = 'customer' | 'supplier' | 'employee' | 'partner' | undefined;
 
@@ -213,7 +214,7 @@ export function isRawFicheTypeKey(text: unknown): boolean {
   return RAW_FICHE_TYPE_KEYS.has(s.toLowerCase());
 }
 
-/** Ekstre açıklama: ham `purchase_invoice` yerine çevrilmiş etiket. */
+/** Ekstre açıklama: ham `purchase_invoice` yerine çevrilmiş etiket; UUID/teknik id gizlenir. */
 export function resolveEkstreDescription(
   notes: unknown,
   ficheType: unknown,
@@ -227,7 +228,11 @@ export function resolveEkstreDescription(
   if (!n || isRawFicheTypeKey(n) || n.toLowerCase() === ft.toLowerCase()) {
     return info.label;
   }
-  return n;
+  const cleaned = receiptNotesForDisplay(n);
+  if (!cleaned || isRawFicheTypeKey(cleaned) || cleaned.toLowerCase() === ft.toLowerCase()) {
+    return info.label;
+  }
+  return cleaned;
 }
 
 export type EkstreRow = {

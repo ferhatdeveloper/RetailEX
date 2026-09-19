@@ -546,6 +546,19 @@ function legacyFicheTypesByInvoiceType(invoiceType?: number | null): string[] {
   }
 }
 
+/**
+ * Aynı fiche_type=return_invoice paylaşan kardeş iade trcode'ları.
+ * invoiceType=3 filtresi yalnızca `fiche_type IN (return_invoice)` ile açılırsa
+ * alış iadesi (trcode 6) günlük satış raporuna pozitif ciro olarak sızıyordu.
+ */
+export function excludedSiblingReturnTrcodes(invoiceType?: number | null): number[] {
+  const t = Number(invoiceType || 0);
+  if (t === 6) return [2, 3];
+  if (t === 3) return [6];
+  if (t === 2) return [3, 6];
+  return [];
+}
+
 /** Birden fazla modül kategorisi için trcode / fiche_type birleşimi (liste API filtresi). */
 function trcodeAndFicheTypesForCategories(categories: string[]): {
   trcodes: number[];
@@ -2275,7 +2288,11 @@ export const invoicesAPI = {
 
         if (invoiceType !== undefined && invoiceType !== null && invoiceType !== 0) {
           const legacyFicheTypes = legacyFicheTypesByInvoiceType(invoiceType);
-          if (legacyFicheTypes.length > 0) {
+          const excludeTr = excludedSiblingReturnTrcodes(invoiceType);
+          if (legacyFicheTypes.length > 0 && excludeTr.length > 0) {
+            // trcode eşleşmesi VEYA (legacy fiche_type VE kardeş iade trcode değil)
+            baseFilters.or = `(trcode.eq.${String(invoiceType)},and(fiche_type.in.(${legacyFicheTypes.join(',')}),trcode.not.in.(${excludeTr.join(',')})))`;
+          } else if (legacyFicheTypes.length > 0) {
             baseFilters.or = `(trcode.eq.${String(invoiceType)},fiche_type.in.(${legacyFicheTypes.join(',')}))`;
           } else {
             baseFilters.trcode = `eq.${String(invoiceType)}`;
@@ -2324,6 +2341,22 @@ export const invoicesAPI = {
           const d = String(r?.date || '').substring(0, 10);
           if (startDate && d < String(startDate).substring(0, 10)) return false;
           if (endDate && d > String(endDate).substring(0, 10)) return false;
+          // PostgREST or/and sözdizimi zayıf olabilir — kardeş iade trcode savunması
+          if (
+            invoiceType !== undefined &&
+            invoiceType !== null &&
+            invoiceType !== 0
+          ) {
+            const excludeTr = excludedSiblingReturnTrcodes(invoiceType);
+            if (excludeTr.length > 0) {
+              const tr = Number(r?.trcode ?? 0);
+              const ft = String(r?.fiche_type || '').trim().toLowerCase();
+              const matchesType = tr === Number(invoiceType);
+              const matchesLegacyFiche =
+                (ft === 'return_invoice' || ft === 'i') && !excludeTr.includes(tr);
+              if (!matchesType && !matchesLegacyFiche) return false;
+            }
+          }
           return true;
         });
 
@@ -2356,7 +2389,19 @@ export const invoicesAPI = {
       // Filter by fiche_type or trcode based on category
       if (invoiceType !== undefined && invoiceType !== null && invoiceType !== 0) {
         const legacyFicheTypes = legacyFicheTypesByInvoiceType(invoiceType);
-        if (legacyFicheTypes.length > 0) {
+        const excludeTr = excludedSiblingReturnTrcodes(invoiceType);
+        if (legacyFicheTypes.length > 0 && excludeTr.length > 0) {
+          // Satış iade (3) ≠ alış iade (6): ortak return_invoice fiche_type yüzünden karışmasın
+          sql += ` AND (
+            trcode::text = $${paramIndex}::text
+            OR (
+              fiche_type::text = ANY($${paramIndex + 1}::text[])
+              AND COALESCE(trcode, 0) NOT IN (${excludeTr.join(',')})
+            )
+          )`;
+          params.push(String(invoiceType), legacyFicheTypes);
+          paramIndex += 2;
+        } else if (legacyFicheTypes.length > 0) {
           sql += ` AND (trcode::text = $${paramIndex}::text OR fiche_type::text = ANY($${paramIndex + 1}::text[]))`;
           params.push(String(invoiceType), legacyFicheTypes);
           paramIndex += 2;
@@ -4199,5 +4244,6 @@ function mapDatabaseInvoiceToInvoice(dbInv: any): Invoice {
     store_id: dbInv.store_id || undefined,
     created_by_user_id: dbInv.created_by_user_id || undefined,
     is_cancelled: dbInv.is_cancelled === true || isInvoiceCancelledStatus(dbInv.status),
+    fiche_type: dbInv.fiche_type != null ? String(dbInv.fiche_type) : undefined,
   } as Invoice;
 }

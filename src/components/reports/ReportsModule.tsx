@@ -34,6 +34,7 @@ import {
   isPlaceholderCashierName,
   isPlaceholderDeviceName,
   resolveCashierDisplayName,
+  resolveWriteCashierName,
 } from '../../utils/loginCashierName';
 import { mergeExpensesWithCashOuts } from '../../utils/reportUnifiedExpenses';
 import type { BeautyAppointment, BeautySale, BeautyStaffTreatmentReport } from '../../types/beauty';
@@ -43,11 +44,12 @@ import { formatDateTimeShort, formatReportDateCell, formatShortDate } from '../.
 import { type ReportDatePreset, type ReportDateRangeValue } from '../../utils/reportDatePresets';
 import { ReportDateRangePresets } from '../shared/ReportDateRangePresets';
 import { buildErpServiceBreakdownGroups, type ErpServiceBreakdownLine } from '../../utils/serviceBreakdownReport';
-import {
+  import {
   addAnalysisSplitAmount,
   allocateSaleKindAmounts,
   classifyAnalysisSaleLine,
   resolveAnalysisSaleCategory,
+  type AnalysisCategoryLookupRow,
   type AnalysisSaleLineKind,
   type SaleKindBucket,
 } from '../../utils/analysisSaleLine';
@@ -56,8 +58,13 @@ import {
   type PurchasePromotionReportLine,
 } from '../../utils/purchasePromotionReport';
 import { applyExtraCashCollections, buildPosZReportForRange, isReturnSale, posZCollectedAmount } from '../../utils/posZReport';
-import { normalizePaymentMethodBucket, paymentMethodBucketTranslationKey } from '../../utils/paymentMethodUtils';
+import { normalizePaymentMethodBucket, paymentMethodBucketTranslationKey, PAYMENT_FORM_CODE_META, type PaymentFormCode } from '../../utils/paymentMethodUtils';
 import { extraCustomerCollectionsNotOnSales, saleCollectedSplit } from '../../utils/saleCollectedAmounts';
+import {
+  buildPaymentTypeDistribution,
+  buildPaymentTypeMovements,
+  type PaymentTypeMovement,
+} from '../../utils/paymentTypeDistribution';
 import { BeautyServiceReportCrmModal } from './BeautyServiceReportCrmModal';
 import {
   CariAgingReport,
@@ -97,6 +104,7 @@ import {
 import { OverdueUncalledFollowUpReport } from '../beauty/components/OverdueUncalledFollowUpReport';
 import {
   getRuntimeReportMenuParams,
+  isReportMenuParamEnabled,
   isReportTabHiddenByParams,
   loadReportMenuParams,
   subscribeReportMenuParams,
@@ -751,6 +759,7 @@ const REPORT_TABS_HIDDEN_FROM_MENU = new Set<string>([
   'cash-register-reports',
   'turnover-reports',
   'stock-abc', // Stok ABC Analizi — menüden gizlendi; rapor kodu duruyor
+  'end-of-day', // Gün Sonu Raporu — menüden gizlendi; rapor kodu duruyor
 ]);
 
 /** Yalnızca iş kolu Restoran iken menüde / sekmede anlamlı */
@@ -955,9 +964,7 @@ export function ReportsModule({
   const [reportConfirmMessage, setReportConfirmMessage] = useState('');
   const [reportConfirmReason, setReportConfirmReason] = useState('');
   const reportConfirmResolverRef = useRef<((result: { approved: boolean; reason: string }) => void) | null>(null);
-  const [cashExpensesForSelectedDate, setCashExpensesForSelectedDate] = useState(0);
   const [kasaLinesForSelectedDate, setKasaLinesForSelectedDate] = useState<KasaIslemi[]>([]);
-  const [totalExpensesForSelectedDate, setTotalExpensesForSelectedDate] = useState(0);
   const [dailyExpenseRows, setDailyExpenseRows] = useState<DailyExpenseRow[]>([]);
   const [comparisonPeriod, setComparisonPeriod] = useState<'week' | 'month'>('week');
   const [comparisonOrders, setComparisonOrders] = useState<any[]>([]);
@@ -1098,16 +1105,10 @@ export function ReportsModule({
       });
 
       unified.sort((a, b) => String(b.date).localeCompare(String(a.date)));
-      const totalAll = unified.reduce((sum, row) => sum + row.amount, 0);
-      const totalCash = unified.reduce((sum, row) => sum + (row.isCash ? row.amount : 0), 0);
       setDailyExpenseRows(unified);
-      setCashExpensesForSelectedDate(totalCash);
-      setTotalExpensesForSelectedDate(totalAll);
       setKasaLinesForSelectedDate(Array.isArray(cashLines) ? cashLines : []);
     } catch {
       setDailyExpenseRows([]);
-      setCashExpensesForSelectedDate(0);
-      setTotalExpensesForSelectedDate(0);
       setKasaLinesForSelectedDate([]);
     }
   }, [selectedDateFrom, selectedDateTo]);
@@ -1194,6 +1195,7 @@ export function ReportsModule({
   const [loadingAnalysisOrders, setLoadingAnalysisOrders] = useState(false);
   const [floorNameById, setFloorNameById] = useState<Record<string, string>>({});
   const [analysisModal, setAnalysisModal] = useState<{ kind: AnalysisReportKind; title: string } | null>(null);
+  const [paymentTypeDetailCode, setPaymentTypeDetailCode] = useState<PaymentFormCode | null>(null);
 
   const [beautyServiceFrom, setBeautyServiceFrom] = useState(() => {
     const d = new Date();
@@ -1294,6 +1296,8 @@ export function ReportsModule({
   const beautyServicesCatalog = useBeautyStore((s) => s.services);
   const storeProducts = useProductStore((s) => s.products);
   const catalogProducts = storeProducts.length > 0 ? storeProducts : products;
+  /** Kategori Analizi / analiz raporları — id/code → ad */
+  const [reportCategoryLookup, setReportCategoryLookup] = useState<AnalysisCategoryLookupRow[]>([]);
   const analysisServiceKeys = useMemo(() => {
     const keys = new Set<string>();
     for (const s of beautyServicesCatalog) {
@@ -1827,16 +1831,40 @@ export function ReportsModule({
   }, [reloadStaffTreatmentReport]);
 
   useEffect(() => {
-    if (
-      businessType !== 'beauty' ||
-      (selectedTab !== 'analysis' &&
-        selectedTab !== 'beauty-service-report' &&
-        selectedTab !== 'beauty-cancelled-report' &&
-        selectedTab !== 'beauty-appointment-product-report' &&
-        selectedTab !== 'beauty-commission-report')
-    ) return;
+    const needsBeautyCatalog =
+      selectedTab === 'category-analysis' ||
+      selectedTab === 'analysis' ||
+      (businessType === 'beauty' &&
+        (selectedTab === 'beauty-service-report' ||
+          selectedTab === 'beauty-cancelled-report' ||
+          selectedTab === 'beauty-appointment-product-report' ||
+          selectedTab === 'beauty-commission-report'));
+    if (!needsBeautyCatalog) return;
     void loadBeautyServicesCatalog();
   }, [businessType, selectedTab, loadBeautyServicesCatalog]);
+
+  useEffect(() => {
+    if (selectedTab !== 'category-analysis' && selectedTab !== 'analysis') return;
+    let cancelled = false;
+    void import('../../services/api/masterData')
+      .then(({ categoryAPI }) => categoryAPI.getAll())
+      .then((rows) => {
+        if (cancelled) return;
+        setReportCategoryLookup(
+          (Array.isArray(rows) ? rows : []).map((c: { id?: string; code?: string; name?: string }) => ({
+            id: String(c.id ?? '').trim(),
+            code: String(c.code ?? '').trim(),
+            name: String(c.name ?? '').trim(),
+          })),
+        );
+      })
+      .catch(() => {
+        if (!cancelled) setReportCategoryLookup([]);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [selectedTab, selectedFirm?.firm_nr]);
 
   const beautyServiceGrouped = useMemo(() => {
     const rows = beautyServiceAppointments.filter((a) => {
@@ -2654,8 +2682,26 @@ export function ReportsModule({
     });
   }, [dailyKindVisibleRows, tm]);
 
+  /** Param kapalıysa CH_ODEME (tedarikçi/cari ödeme) günlük giderden çıkarılır */
+  const showDailySupplierPayments = isReportMenuParamEnabled(
+    'daily-report-supplier-payments',
+    reportMenuParams,
+  );
+  const dailyExpenseRowsForReport = useMemo(() => {
+    if (showDailySupplierPayments) return dailyExpenseRows;
+    return dailyExpenseRows.filter((r) => r.typeCode !== 'CH_ODEME');
+  }, [dailyExpenseRows, showDailySupplierPayments]);
+  const totalExpensesForReport = useMemo(
+    () => dailyExpenseRowsForReport.reduce((sum, row) => sum + row.amount, 0),
+    [dailyExpenseRowsForReport],
+  );
+  const cashExpensesForReport = useMemo(
+    () => dailyExpenseRowsForReport.reduce((sum, row) => sum + (row.isCash ? row.amount : 0), 0),
+    [dailyExpenseRowsForReport],
+  );
+
   const dailyExpenseGridRows = useMemo(() => {
-    return dailyExpenseRows.map((row) => {
+    return dailyExpenseRowsForReport.map((row) => {
       const dateRaw = String(row.date || '');
       const parsed = new Date(dateRaw);
       const timeLabel = Number.isNaN(parsed.getTime())
@@ -2682,7 +2728,7 @@ export function ReportsModule({
         payLabel,
       };
     });
-  }, [dailyExpenseRows, selectedDateFrom, selectedDateTo, tm, labelDailyExpenseType]);
+  }, [dailyExpenseRowsForReport, selectedDateFrom, selectedDateTo, tm, labelDailyExpenseType]);
 
   const dailyReturnRows = useMemo(
     () => dailySales.filter((s) => isReturnSale(s)),
@@ -2825,6 +2871,87 @@ export function ReportsModule({
     }
   }, [businessType, closeDailyRowReceiptModal, confirmReportAction, dailyRowReceiptModal?.erpSale, loadReportRangeSales, loadRestOrdersForSelectedDate, tm]);
 
+  /** Günlük rapor fişinden satış iade (trcode 3) formu — alış iade (6) değil */
+  const handleCreateSalesReturnFromDailyRow = useCallback(async () => {
+    const sale = dailyRowReceiptModal?.erpSale;
+    if (!sale) {
+      toast.error(tm('reportsCreateSalesReturnFail'));
+      return;
+    }
+    const id = sale.id && isSaleRowUuid(String(sale.id)) ? String(sale.id).trim() : '';
+    if (!id) {
+      toast.error(tm('reportsCreateSalesReturnFail'));
+      return;
+    }
+    if (isReturnSale(sale) || isRemovedSaleStatus(sale.status)) {
+      toast.error(tm('reportsCreateSalesReturnAlreadyReturn'));
+      return;
+    }
+    try {
+      toast.info(tm('reportsCreateSalesReturnOpening'));
+      const { invoicesAPI } = await import('../../services/api/invoices');
+      const full = await invoicesAPI.getById(id);
+      const src = full ?? null;
+      const receiptNo = String(sale.receiptNumber || src?.invoice_no || '').trim();
+      const items = Array.isArray(src?.items)
+        ? src!.items.map((it: any) => ({ ...it }))
+        : Array.isArray(sale.items)
+          ? sale.items.map((it: any, index: number) => ({
+              id: `ret-${index}`,
+              type: 'Malzeme',
+              code: it.productId || it.productCode || it.code || '',
+              productId: it.productId,
+              productName: it.productName,
+              description: it.productName || it.description || '',
+              quantity: Math.abs(Number(it.quantity) || 0),
+              unit: it.unit || 'Adet',
+              unitPrice: Number(it.price ?? it.unitPrice) || 0,
+              price: Number(it.price ?? it.unitPrice) || 0,
+              discount: Number(it.discount) || 0,
+              discountPercent: Number(it.discount) || 0,
+              total: Math.abs(Number(it.total) || 0),
+              netAmount: Math.abs(Number(it.total) || 0),
+              multiplier: it.multiplier || 1,
+            }))
+          : [];
+      const editData: Record<string, unknown> = {
+        // Yeni fatura — kaynak fiş no'sunu invoice_no olarak taşıma (yeni numara üretilsin)
+        customer_id: src?.customer_id || sale.customerId,
+        customer_name: src?.customer_name || sale.customerName,
+        customer_code: (src as any)?.customer_code,
+        payment_method: src?.payment_method || sale.paymentMethod || 'ACIK_CARI',
+        currency: src?.currency || reportCurrency,
+        currency_rate: src?.currency_rate ?? 1,
+        document_no: receiptNo || undefined,
+        notes: receiptNo ? `Satış iade — Fiş: ${receiptNo}` : 'Satış iade',
+        cashier: resolveWriteCashierName(
+          (src as any)?.cashier || sale.cashier || '',
+        ),
+        store_id:
+          (src?.store_id && !isPlaceholderDeviceName(String(src.store_id))
+            ? String(src.store_id)
+            : sale.storeId && !isPlaceholderDeviceName(String(sale.storeId))
+              ? String(sale.storeId)
+              : undefined),
+        source: 'daily-report-return',
+        items,
+      };
+      closeDailyRowReceiptModal();
+      const detail = {
+        screen: 'sales-invoice-return' as const,
+        posSalesReturn: { editData, openForm: true },
+      };
+      window.dispatchEvent(new CustomEvent('switchToManagement'));
+      window.dispatchEvent(new CustomEvent('navigateToScreen', { detail }));
+      window.setTimeout(() => {
+        window.dispatchEvent(new CustomEvent('navigateToScreen', { detail }));
+      }, 150);
+    } catch (e: any) {
+      console.error('[ReportsModule] Satış iade oluştur:', e);
+      toast.error(e?.message || tm('reportsCreateSalesReturnFail'));
+    }
+  }, [closeDailyRowReceiptModal, dailyRowReceiptModal?.erpSale, reportCurrency, tm]);
+
   const handleDeleteDailyRestOrder = useCallback(async () => {
     const o = dailyRowReceiptModal?.restOrder;
     const id = o?.id != null ? String(o.id).trim() : '';
@@ -2870,8 +2997,8 @@ export function ReportsModule({
         amountBeforeDiscount: base.amountBeforeDiscount,
         totalAmount: base.totalAmount,
         netSales,
-        totalExpenses: totalExpensesForSelectedDate,
-        netAfterExpenses: netSales - totalExpensesForSelectedDate,
+        totalExpenses: totalExpensesForReport,
+        netAfterExpenses: netSales - totalExpensesForReport,
         cashAmount: base.cashAmount,
         cardAmount: base.cardAmount,
         creditAmount: base.creditAmount,
@@ -2927,8 +3054,8 @@ export function ReportsModule({
         amountBeforeDiscount,
         totalAmount,
         netSales: totalAmount,
-        totalExpenses: totalExpensesForSelectedDate,
-        netAfterExpenses: totalAmount - totalExpensesForSelectedDate,
+        totalExpenses: totalExpensesForReport,
+        netAfterExpenses: totalAmount - totalExpensesForReport,
         cashAmount,
         cardAmount,
         creditAmount,
@@ -3012,58 +3139,57 @@ export function ReportsModule({
   };
 
   const getPaymentDistribution = () => {
-    const emptyBucket = () => ({ amount: 0, count: 0, percentage: 0 });
-    const finalize = (
-      cashAmt: number,
-      cashCnt: number,
-      cardAmt: number,
-      cardCnt: number,
-      transferAmt: number,
-      transferCnt: number
-    ) => {
-      const totalAmt = cashAmt + cardAmt + transferAmt;
-      const pct = (n: number) => (totalAmt > 0 ? (n / totalAmt) * 100 : 0);
-      const cash = { amount: cashAmt, count: cashCnt, percentage: pct(cashAmt) };
-      const card = { amount: cardAmt, count: cardCnt, percentage: pct(cardAmt) };
-      const transfer = { amount: transferAmt, count: transferCnt, percentage: pct(transferAmt) };
-      const chartData = [
-        { name: tm('reportsPaymentPieCash'), value: cashAmt, count: cashCnt },
-        { name: tm('reportsPaymentPieCard'), value: cardAmt, count: cardCnt },
-        { name: tm('reportsPaymentPieTransfer'), value: transferAmt, count: transferCnt },
-      ].filter((d) => d.value > 0);
-      return { chartData, cash, card, transfer };
+    const saleInputs = dailyActiveRows.map((row) => ({
+      id: row.key,
+      total: Number(row.total) || 0,
+      paymentMethod: row.erpSale?.paymentMethod ?? row.paymentMethod,
+      payments: row.erpSale?.payments ?? null,
+      receiptNumber: row.receiptNumber,
+      date: row.date,
+      cashier: row.cashier,
+      customerName: row.customerName,
+      description: row.customerName || row.receiptNumber || '—',
+    }));
+    const dist = buildPaymentTypeDistribution(saleInputs, {
+      extraCash: extraCollections,
+      includeZero: true,
+    });
+    const cash = dist.byCode.NAKIT;
+    const card = dist.byCode.KREDIKARTI;
+    const transfer = dist.byCode.HAVAL;
+    const chartData = dist.chartData.map((d) => ({
+      name: tm(d.nameKey),
+      value: d.value,
+      count: d.count,
+      code: d.code,
+      color: d.color,
+    }));
+    return {
+      ...dist,
+      chartData,
+      cash,
+      card,
+      transfer,
+      types: dist.types.map((t) => ({ ...t, label: tm(t.nameKey) })),
     };
+  };
 
-    let cashAmt = 0;
-    let cardAmt = 0;
-    let transferAmt = 0;
-    let cashCnt = 0;
-    let cardCnt = 0;
-    let transferCnt = 0;
-    for (const row of dailyActiveRows) {
-      const n = Number(row.total) || 0;
-      if (n === 0) continue;
-      const split = row.erpSale
-        ? saleCollectedSplit(row.erpSale)
-        : saleCollectedSplit({ total: n, paymentMethod: row.paymentMethod });
-      if (split.cash > 0) {
-        cashAmt += split.cash;
-        cashCnt += 1;
-      }
-      if (split.card > 0) {
-        cardAmt += split.card;
-        cardCnt += 1;
-      }
-      if (split.transfer > 0) {
-        transferAmt += split.transfer;
-        transferCnt += 1;
-      }
-    }
-    if (extraCollections > 0) {
-      cashAmt += extraCollections;
-      cashCnt += 1;
-    }
-    return finalize(cashAmt, cashCnt, cardAmt, cardCnt, transferAmt, transferCnt);
+  const getPaymentTypeMovements = (code: PaymentFormCode): PaymentTypeMovement[] => {
+    const saleInputs = dailyActiveRows.map((row) => ({
+      id: row.key,
+      total: Number(row.total) || 0,
+      paymentMethod: row.erpSale?.paymentMethod ?? row.paymentMethod,
+      payments: row.erpSale?.payments ?? null,
+      receiptNumber: row.receiptNumber,
+      date: row.date,
+      cashier: row.cashier,
+      customerName: row.customerName,
+      description: row.customerName || row.receiptNumber || '—',
+    }));
+    return buildPaymentTypeMovements(saleInputs, code, {
+      extraCash: extraCollections,
+      extraCashLabel: tm('reportsExtraCashCollections') || 'Ek tahsilat (CH)',
+    });
   };
 
   const getCashierPerformance = () => {
@@ -3205,7 +3331,10 @@ export function ReportsModule({
         .sort((a, b) => b.totalRevenue - a.totalRevenue);
     }
 
-    if (!erpSalesForReportPeriod || !Array.isArray(erpSalesForReportPeriod) || !products || !Array.isArray(products)) return [];
+    if (!erpSalesForReportPeriod || !Array.isArray(erpSalesForReportPeriod)) return [];
+    const catalog = catalogProducts?.length ? catalogProducts : products || [];
+    const otherCat = tm('bCatOther') || 'Diğer';
+    const serviceCat = tm('rptAnalysisColService') || tm('service') || 'Hizmet';
     const categoryMap = new Map<
       string,
       {
@@ -3218,39 +3347,63 @@ export function ReportsModule({
       }
     >();
 
-    erpSalesForReportPeriod.forEach(sale => {
-      sale.items.forEach(item => {
-        const product = products.find(p => p.id === item.productId);
-        if (product) {
-          const categoryName = String(product.category || 'Diğer');
-          const existing = categoryMap.get(categoryName);
-          const qty = Number(item.quantity || 0);
-          const subtotal = Number(item.total || 0);
-          const productName = String(product.name || (item as any).productName || '—');
+    erpSalesForReportPeriod.forEach((sale) => {
+      (sale.items || []).forEach((item) => {
+        const lineIn = {
+          productId: String(item.productId ?? (item as { product_id?: string }).product_id ?? '').trim(),
+          productName: String(item.productName ?? (item as { product_name?: string }).product_name ?? '').trim(),
+          lineType: String(item.lineType ?? (item as { item_type?: string }).item_type ?? '').trim(),
+          item_type: String((item as { item_type?: string }).item_type ?? item.lineType ?? '').trim(),
+        };
+        const categoryName = resolveAnalysisSaleCategory(
+          lineIn,
+          catalog,
+          beautyServicesCatalog,
+          { other: otherCat, service: serviceCat, tm },
+          analysisServiceKeys,
+          reportCategoryLookup,
+        );
+        const catalogProduct = catalog.find(
+          (p) =>
+            String(p.id ?? '').trim() === lineIn.productId ||
+            String(p.id ?? '').trim().toLowerCase() === lineIn.productId.toLowerCase() ||
+            String(p.code ?? '').trim().toLowerCase() === lineIn.productId.toLowerCase(),
+        );
+        const productKey = (
+          String(catalogProduct?.id ?? '').trim() ||
+          lineIn.productId ||
+          lineIn.productName ||
+          '—'
+        ).trim() || '—';
+        const productName = String(
+          catalogProduct?.name || lineIn.productName || (item as { productName?: string }).productName || '—',
+        );
+        const qty = Number(item.quantity || 0);
+        const subtotal = Number(item.total || 0);
+        const existing = categoryMap.get(categoryName);
 
-          if (existing) {
-            existing.totalRevenue += subtotal;
-            existing.totalQuantity += qty;
-            existing.avgPrice = existing.totalQuantity > 0 ? existing.totalRevenue / existing.totalQuantity : 0;
-            existing.productIds.add(String(product.id));
+        if (existing) {
+          existing.totalRevenue += subtotal;
+          existing.totalQuantity += qty;
+          existing.avgPrice = existing.totalQuantity > 0 ? existing.totalRevenue / existing.totalQuantity : 0;
+          existing.productIds.add(productKey);
 
-            const idx = existing.items.findIndex((i) => i.product_name === productName);
-            if (idx >= 0) {
-              existing.items[idx].quantity += qty;
-              existing.items[idx].subtotal += subtotal;
-            } else {
-              existing.items.push({ product_name: productName, quantity: qty, subtotal });
-            }
+          const idx = existing.items.findIndex((i) => i.product_name === productName);
+          if (idx >= 0) {
+            existing.items[idx].quantity += qty;
+            existing.items[idx].subtotal += subtotal;
           } else {
-            categoryMap.set(categoryName, {
-              name: categoryName,
-              totalRevenue: subtotal,
-              totalQuantity: qty,
-              avgPrice: qty > 0 ? subtotal / qty : 0,
-              productIds: new Set([String(product.id)]),
-              items: [{ product_name: productName, quantity: qty, subtotal }],
-            });
+            existing.items.push({ product_name: productName, quantity: qty, subtotal });
           }
+        } else {
+          categoryMap.set(categoryName, {
+            name: categoryName,
+            totalRevenue: subtotal,
+            totalQuantity: qty,
+            avgPrice: qty > 0 ? subtotal / qty : 0,
+            productIds: new Set([productKey]),
+            items: [{ product_name: productName, quantity: qty, subtotal }],
+          });
         }
       });
     });
@@ -3297,25 +3450,22 @@ export function ReportsModule({
       }));
   };
 
-  // Cash Status Report — seçili gün + getPaymentDistribution ile aynı nakit/kart/havale; açılış: bugünse persist
+  // Cash Status Report — seçili dönem + getPaymentDistribution ile aynı ödeme tipi listesi
   const getCashStatus = () => {
     const dist = getPaymentDistribution();
     const cashTotal = dist.cash.amount;
     const cardTotal = dist.card.amount;
     const transferTotal = dist.transfer.amount;
-    const todayTotal = cashTotal + cardTotal + transferTotal;
+    const todayTotal = dist.totalAmount;
 
     const todayKey = localTodayDateKey();
     const openingCash =
       selectedDateFrom === todayKey && selectedDateTo === todayKey
         ? readOpeningCashForReports(businessType)
         : 0;
-    const expenses = cashExpensesForSelectedDate;
+    const expenses = cashExpensesForReport;
 
-    // E1: Kapanış bakiyesi — açılış + bugünkü tahsilatlar (nakit + kart + banka transferi)
-    // - nakit dışı giderler. Kart ve banka virmanları kasaya fiziki olarak girmediği için
-    // nakit kapanışından ayrı tutulur; burada `closingCash` yalnız nakit bakiye.
-    // Operatör için ayrıca brüt tahsilat + kart + virman toplamı da döndürülür.
+    // E1: Kapanış bakiyesi — açılış + bugünkü nakit tahsilat − nakit giderler
     const closingCash = openingCash + cashTotal - expenses;
     const netCashMovement = cashTotal - expenses;
     const totalCollection = cashTotal + cardTotal + transferTotal;
@@ -3347,6 +3497,7 @@ export function ReportsModule({
       closingCash,
       cashDifference: 0,
       cards,
+      paymentTypes: dist.types,
     };
   };
 
@@ -3943,7 +4094,7 @@ export function ReportsModule({
         ? `<div class="center muted" style="margin:3mm 0">${escHtml(L('reportsPrintNoRecords'))}</div>`
         : saleBlocks80;
 
-    const expenseRowsA4 = dailyExpenseRows
+    const expenseRowsA4 = dailyExpenseRowsForReport
       .map((row) => {
         const bucket = normalizePaymentMethodBucket(row.paymentMethod);
         const payLabel =
@@ -3979,9 +4130,9 @@ export function ReportsModule({
   </table>`;
 
     const expenseBlocks80 =
-      dailyExpenseRows.length === 0
+      dailyExpenseRowsForReport.length === 0
         ? `<div class="center muted" style="margin:3mm 0">${escHtml(L('reportsPrintNoRecords'))}</div>`
-        : dailyExpenseRows
+        : dailyExpenseRowsForReport
             .map(
               (row) => `
   <div class="sale-block">
@@ -4016,8 +4167,8 @@ export function ReportsModule({
     <div class="card"><div>${escHtml(L('reportsPrintSummaryTotalDisc'))}</div><strong>${formatNumber(printDisc, 2, false)}</strong></div>
     <div class="card"><div>${escHtml(L('cashLabel'))}</div><strong>${formatNumber(printCash, 2, false)}</strong></div>
     <div class="card"><div>${escHtml(L('cardLabel'))}</div><strong>${formatNumber(printCard, 2, false)}</strong></div>
-    <div class="card"><div>${escHtml(L('totalExpense'))}</div><strong>${formatNumber(totalExpensesForSelectedDate, 2, false)}</strong></div>
-    <div class="card"><div>${escHtml(L('dailyNetAfterExpense'))}</div><strong>${formatNumber(printNet - totalExpensesForSelectedDate, 2, false)}</strong></div>
+    <div class="card"><div>${escHtml(L('totalExpense'))}</div><strong>${formatNumber(totalExpensesForReport, 2, false)}</strong></div>
+    <div class="card"><div>${escHtml(L('dailyNetAfterExpense'))}</div><strong>${formatNumber(printNet - totalExpensesForReport, 2, false)}</strong></div>
   </div>
   <h3 style="font-size:14px;margin:0 0 8px">${escHtml(L('reportsPrintPosLinesTitle'))}</h3>
   <table class="t">
@@ -4098,8 +4249,8 @@ export function ReportsModule({
   <div class="row"><span>${escHtml(L('reportsPrintSummaryTotalDisc'))}</span><span>${formatNumber(printDisc, 2, false)}</span></div>
   <div class="row"><span>${escHtml(L('cashLabel'))}</span><span>${formatNumber(printCash, 2, false)}</span></div>
   <div class="row"><span>${escHtml(L('cardLabel'))}</span><span>${formatNumber(printCard, 2, false)}</span></div>
-  <div class="row"><span>${escHtml(L('totalExpense'))}</span><span class="bold">${formatNumber(totalExpensesForSelectedDate, 2, false)}</span></div>
-  <div class="row"><span>${escHtml(L('dailyNetAfterExpense'))}</span><span class="bold">${formatNumber(printNet - totalExpensesForSelectedDate, 2, false)}</span></div>
+  <div class="row"><span>${escHtml(L('totalExpense'))}</span><span class="bold">${formatNumber(totalExpensesForReport, 2, false)}</span></div>
+  <div class="row"><span>${escHtml(L('dailyNetAfterExpense'))}</span><span class="bold">${formatNumber(printNet - totalExpensesForReport, 2, false)}</span></div>
   <div class="divider"></div>
   <div class="section-title">${escHtml(L('reportsPrintPosDetail80'))}</div>
   ${emptySales80}
@@ -4618,7 +4769,7 @@ export function ReportsModule({
         other: otherCat,
         service: serviceCatFallback,
         tm,
-      }, analysisServiceKeys);
+      }, analysisServiceKeys, reportCategoryLookup);
 
     switch (kind) {
       case 'sales-by-month': {
@@ -5390,9 +5541,9 @@ export function ReportsModule({
                     <div className="flex items-center justify-between">
                       <div>
                         <p className="text-sm text-gray-600">{tm('totalExpense')}</p>
-                        <p className="text-2xl font-bold mt-1 text-rose-600">{formatNumber(totalExpensesForSelectedDate, 2, false)}</p>
+                        <p className="text-2xl font-bold mt-1 text-rose-600">{formatNumber(totalExpensesForReport, 2, false)}</p>
                         <p className="text-xs text-slate-500 mt-1">
-                          {tm('expenseCount')}: {dailyExpenseRows.length}
+                          {tm('expenseCount')}: {dailyExpenseRowsForReport.length}
                         </p>
                       </div>
                       <Wallet className="w-12 h-12 text-rose-400 opacity-40" />
@@ -5402,7 +5553,7 @@ export function ReportsModule({
                     <div className="flex items-center justify-between">
                       <div>
                         <p className="text-sm text-gray-600">{tm('expenseCashTotal')}</p>
-                        <p className="text-2xl font-bold mt-1 text-orange-700">{formatNumber(cashExpensesForSelectedDate, 2, false)}</p>
+                        <p className="text-2xl font-bold mt-1 text-orange-700">{formatNumber(cashExpensesForReport, 2, false)}</p>
                       </div>
                       <Banknote className="w-12 h-12 text-orange-400 opacity-30" />
                     </div>
@@ -5411,8 +5562,8 @@ export function ReportsModule({
                     <div className="flex items-center justify-between">
                       <div>
                         <p className="text-sm text-gray-600">{tm('dailyNetAfterExpense')}</p>
-                        <p className={`text-2xl font-bold mt-1 ${dailyTotal - totalExpensesForSelectedDate >= 0 ? 'text-emerald-700' : 'text-rose-600'}`}>
-                          {formatNumber(dailyTotal - totalExpensesForSelectedDate, 2, false)}
+                        <p className={`text-2xl font-bold mt-1 ${dailyTotal - totalExpensesForReport >= 0 ? 'text-emerald-700' : 'text-rose-600'}`}>
+                          {formatNumber(dailyTotal - totalExpensesForReport, 2, false)}
                         </p>
                       </div>
                       <TrendingUp className="w-12 h-12 text-emerald-400 opacity-30" />
@@ -5667,6 +5818,15 @@ export function ReportsModule({
               destroyOnClose
               footer={
                 <div className="flex flex-wrap items-center justify-end gap-2">
+                  {dailyRowReceiptModal?.source === 'erp' &&
+                    dailyRowReceiptModal.erpSale &&
+                    isSaleRowUuid(String(dailyRowReceiptModal.erpSale.id)) &&
+                    !isReturnSale(dailyRowReceiptModal.erpSale) &&
+                    !isRemovedSaleStatus(dailyRowReceiptModal.erpSale.status) && (
+                      <Button onClick={() => void handleCreateSalesReturnFromDailyRow()}>
+                        {tm('reportsCreateSalesReturnBtn')}
+                      </Button>
+                    )}
                   {canDeleteErpSale &&
                     dailyRowReceiptModal?.source === 'erp' &&
                     dailyRowReceiptModal.erpSale &&
@@ -6352,6 +6512,20 @@ export function ReportsModule({
               const cashStatus = getCashStatus();
               return (
                 <div className="space-y-4">
+                  <div className="bg-white rounded-lg border p-4">
+                    <div className="flex flex-row flex-wrap items-center gap-3 sm:gap-4 min-w-0">
+                      <Calendar className="w-5 h-5 text-gray-600 shrink-0 hidden sm:block" aria-hidden />
+                      <ReportDateRangePresets
+                        value={dailyReportDateRange}
+                        onChange={setDailyReportDateRange}
+                        tm={tm}
+                        min={reportDateInputMin}
+                        max={reportDateInputMax}
+                        className="min-w-0 flex-1"
+                      />
+                    </div>
+                  </div>
+
                   <div className="grid grid-cols-4 gap-4">
                     <div className="bg-white rounded-lg border-2 border-blue-200 p-4">
                       <div className="flex items-center justify-between">
@@ -6400,27 +6574,22 @@ export function ReportsModule({
                     <div className="bg-white rounded-lg border p-4">
                       <h3 className="text-lg mb-4">{tm('paymentDistribution')}</h3>
                       <div className="space-y-3">
-                        <div className="flex items-center justify-between p-3 bg-gray-50 rounded-lg">
-                          <span className="flex items-center gap-2">
-                            <div className="w-3 h-3 bg-green-500 rounded"></div>
-                            {tm('cashLabel')}
-                          </span>
-                          <span className="font-semibold text-green-600">{formatNumber(cashStatus.todayCash, 2, false)} {reportCurrency}</span>
-                        </div>
-                        <div className="flex items-center justify-between p-3 bg-gray-50 rounded-lg">
-                          <span className="flex items-center gap-2">
-                            <div className="w-3 h-3 bg-blue-500 rounded"></div>
-                            {tm('cardLabel')}
-                          </span>
-                          <span className="font-semibold text-blue-600">{formatNumber(cashStatus.todayCard, 2, false)} {reportCurrency}</span>
-                        </div>
-                        <div className="flex items-center justify-between p-3 bg-gray-50 rounded-lg">
-                          <span className="flex items-center gap-2">
-                            <div className="w-3 h-3 bg-orange-500 rounded"></div>
-                            {tm('transferLabel')}
-                          </span>
-                          <span className="font-semibold text-orange-600">{formatNumber(cashStatus.todayTransfer, 2, false)} {reportCurrency}</span>
-                        </div>
+                        {cashStatus.paymentTypes.map((pt) => (
+                          <button
+                            key={pt.code}
+                            type="button"
+                            onClick={() => setPaymentTypeDetailCode(pt.code)}
+                            className="w-full flex items-center justify-between p-3 bg-gray-50 rounded-lg hover:bg-slate-100 hover:border-slate-200 border border-transparent transition-colors text-left cursor-pointer"
+                          >
+                            <span className="flex items-center gap-2">
+                              <div className="w-3 h-3 rounded" style={{ backgroundColor: pt.color }} />
+                              {pt.label}
+                            </span>
+                            <span className="font-semibold tabular-nums" style={{ color: pt.color }}>
+                              {formatNumber(pt.amount, 2, false)} {reportCurrency}
+                            </span>
+                          </button>
+                        ))}
                         <div className="flex items-center justify-between p-3 bg-green-50 rounded-lg border-2 border-green-200">
                           <span className="font-semibold">{tm('totalLabel_rep')}</span>
                           <span className="font-bold text-green-700 text-lg">{formatNumber(cashStatus.todayTotal, 2, false)} {reportCurrency}</span>
@@ -6454,53 +6623,48 @@ export function ReportsModule({
             })()}
 
             {selectedTab === 'payment-distribution' && (() => {
-              const paymentDist: any = getPaymentDistribution();
-              const COLORS = ['#10b981', '#3b82f6', '#f59e0b'];
+              const paymentDist = getPaymentDistribution();
               return (
                 <div className="space-y-4">
-                  <div className="grid grid-cols-3 gap-4">
-                    <div className="bg-white rounded-lg border-2 border-green-200 p-4">
-                      <div className="flex items-center justify-between">
-                        <div>
-                          <p className="text-sm text-gray-600">{tm('cashLabel')}</p>
-                          <p className="text-2xl text-green-600 mt-1 font-bold">{formatNumber(paymentDist.cash.amount, 2, false)} {reportCurrency}</p>
-                          <p className="text-xs text-gray-500 mt-1">
-                            {tm('reportsPaymentTxnLine')
-                              .replace('{count}', String(paymentDist.cash.count))
-                              .replace('{pct}', paymentDist.cash.percentage.toFixed(1))}
-                          </p>
-                        </div>
-                        <Banknote className="w-12 h-12 text-green-600 opacity-20" />
-                      </div>
+                  <div className="bg-white rounded-lg border p-4">
+                    <div className="flex flex-row flex-wrap items-center gap-3 sm:gap-4 min-w-0">
+                      <Calendar className="w-5 h-5 text-gray-600 shrink-0 hidden sm:block" aria-hidden />
+                      <ReportDateRangePresets
+                        value={dailyReportDateRange}
+                        onChange={setDailyReportDateRange}
+                        tm={tm}
+                        min={reportDateInputMin}
+                        max={reportDateInputMax}
+                        className="min-w-0 flex-1"
+                      />
                     </div>
-                    <div className="bg-white rounded-lg border-2 border-blue-200 p-4">
-                      <div className="flex items-center justify-between">
-                        <div>
-                          <p className="text-sm text-gray-600">{tm('cardLabel')}</p>
-                          <p className="text-2xl text-blue-600 mt-1 font-bold">{formatNumber(paymentDist.card.amount, 2, false)} {reportCurrency}</p>
-                          <p className="text-xs text-gray-500 mt-1">
-                            {tm('reportsPaymentTxnLine')
-                              .replace('{count}', String(paymentDist.card.count))
-                              .replace('{pct}', paymentDist.card.percentage.toFixed(1))}
-                          </p>
+                  </div>
+
+                  <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-3">
+                    {paymentDist.types.map((pt) => (
+                      <button
+                        key={pt.code}
+                        type="button"
+                        onClick={() => setPaymentTypeDetailCode(pt.code)}
+                        className="bg-white rounded-lg border-2 p-4 text-left hover:shadow-md transition-all cursor-pointer focus:outline-none focus-visible:ring-2 focus-visible:ring-offset-2"
+                        style={{ borderColor: `${pt.color}55` }}
+                      >
+                        <div className="flex items-center justify-between gap-2">
+                          <div className="min-w-0">
+                            <p className="text-sm text-gray-600 truncate">{pt.label}</p>
+                            <p className="text-xl mt-1 font-bold tabular-nums truncate" style={{ color: pt.color }}>
+                              {formatNumber(pt.amount, 2, false)} {reportCurrency}
+                            </p>
+                            <p className="text-xs text-gray-500 mt-1">
+                              {tm('reportsPaymentTxnLine')
+                                .replace('{count}', String(pt.count))
+                                .replace('{pct}', pt.percentage.toFixed(1))}
+                            </p>
+                          </div>
+                          <CreditCard className="w-10 h-10 opacity-20 shrink-0" style={{ color: pt.color }} />
                         </div>
-                        <CreditCard className="w-12 h-12 text-blue-600 opacity-20" />
-                      </div>
-                    </div>
-                    <div className="bg-white rounded-lg border-2 border-orange-200 p-4">
-                      <div className="flex items-center justify-between">
-                        <div>
-                          <p className="text-sm text-gray-600">{tm('transferLabel')}</p>
-                          <p className="text-2xl text-orange-600 mt-1 font-bold">{formatNumber(paymentDist.transfer.amount, 2, false)} {reportCurrency}</p>
-                          <p className="text-xs text-gray-500 mt-1">
-                            {tm('reportsPaymentTxnLine')
-                              .replace('{count}', String(paymentDist.transfer.count))
-                              .replace('{pct}', paymentDist.transfer.percentage.toFixed(1))}
-                          </p>
-                        </div>
-                        <CreditCard className="w-12 h-12 text-orange-600 opacity-20" />
-                      </div>
-                    </div>
+                      </button>
+                    ))}
                   </div>
 
                   <div className="bg-white rounded-lg border p-4">
@@ -6508,41 +6672,52 @@ export function ReportsModule({
                       <PieChartIcon className="w-5 h-5 text-blue-600" />
                       {t.paymentMethodDistribution}
                     </h3>
-                    <div className="grid grid-cols-2 gap-4">
-                      <ResponsiveContainer width="100%" height={300}>
-                        <RePieChart>
-                          <Pie
-                            data={paymentDist.chartData}
-                            cx="50%"
-                            cy="50%"
-                            labelLine={false}
-                            label={({ name, percent }) => `${name} ${(percent * 100).toFixed(0)}%`}
-                            outerRadius={100}
-                            fill="#8884d8"
-                            dataKey="value"
-                          >
-                            {paymentDist.chartData.map((entry: any, index: number) => (
-                              <Cell key={`cell-${index}`} fill={COLORS[index % COLORS.length]} />
-                            ))}
-                          </Pie>
-                          <Tooltip formatter={(value: number) => formatNumber(value, 2, false)} />
-                        </RePieChart>
-                      </ResponsiveContainer>
-                      <div className="space-y-3">
-                        {paymentDist.chartData.map((item: any, idx: number) => (
-                          <div key={item.name} className="flex items-center justify-between p-3 bg-gray-50 rounded-lg">
-                            <div className="flex items-center gap-3">
-                              <div className="w-4 h-4 rounded" style={{ backgroundColor: COLORS[idx] }}></div>
-                              <span className="font-medium">{item.name}</span>
-                            </div>
-                            <div className="text-right">
-                              <p className="font-semibold">{formatNumber(item.value, 2, false)} {reportCurrency}</p>
-                              <p className="text-xs text-gray-500">{tm('reportsPaymentTxnShort').replace('{n}', String(item.count))}</p>
-                            </div>
-                          </div>
-                        ))}
+                    {paymentDist.chartData.length === 0 ? (
+                      <div className="p-8 text-center text-sm text-slate-500 bg-slate-50 rounded-lg">
+                        {tm('reportsPaymentDistNoPositive')}
                       </div>
-                    </div>
+                    ) : (
+                      <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                        <ResponsiveContainer width="100%" height={300}>
+                          <RePieChart>
+                            <Pie
+                              data={paymentDist.chartData}
+                              cx="50%"
+                              cy="50%"
+                              labelLine={false}
+                              label={({ name, percent }) => `${name} ${(percent * 100).toFixed(0)}%`}
+                              outerRadius={100}
+                              fill="#8884d8"
+                              dataKey="value"
+                            >
+                              {paymentDist.chartData.map((entry: { code?: string; color?: string }, index: number) => (
+                                <Cell key={`cell-${entry.code || index}`} fill={entry.color || '#94a3b8'} />
+                              ))}
+                            </Pie>
+                            <Tooltip formatter={(value: number) => `${formatNumber(value, 2, false)} ${reportCurrency}`} />
+                          </RePieChart>
+                        </ResponsiveContainer>
+                        <div className="space-y-3">
+                          {paymentDist.types.map((item) => (
+                            <button
+                              key={item.code}
+                              type="button"
+                              onClick={() => setPaymentTypeDetailCode(item.code)}
+                              className="w-full flex items-center justify-between p-3 bg-gray-50 rounded-lg hover:bg-slate-100 transition-colors text-left cursor-pointer"
+                            >
+                              <div className="flex items-center gap-3 min-w-0">
+                                <div className="w-4 h-4 rounded shrink-0" style={{ backgroundColor: item.color }} />
+                                <span className="font-medium truncate">{item.label}</span>
+                              </div>
+                              <div className="text-right shrink-0">
+                                <p className="font-semibold tabular-nums">{formatNumber(item.amount, 2, false)} {reportCurrency}</p>
+                                <p className="text-xs text-gray-500">{tm('reportsPaymentTxnShort').replace('{n}', String(item.count))}</p>
+                              </div>
+                            </button>
+                          ))}
+                        </div>
+                      </div>
+                    )}
                   </div>
                 </div>
               );
@@ -9403,6 +9578,107 @@ export function ReportsModule({
               </div>
             </PercentBodyModal>
             )}
+
+            {paymentTypeDetailCode && (() => {
+              const meta = PAYMENT_FORM_CODE_META[paymentTypeDetailCode];
+              const title = tm(meta.nameKey);
+              const movements = getPaymentTypeMovements(paymentTypeDetailCode);
+              const movementRows = movements.map((m) => ({
+                ...m,
+                dateLabel: m.date ? formatReportDateCell(m.date) : '—',
+                amountDisplay: formatNumber(m.amount, 2, false),
+              }));
+              return (
+                <PercentBodyModal
+                  onClose={() => setPaymentTypeDetailCode(null)}
+                  size="wide"
+                  ariaLabel={title}
+                >
+                  <div className="bg-gradient-to-r from-blue-600 to-indigo-600 px-6 py-4 text-white shrink-0 flex items-center justify-between gap-3">
+                    <div className="min-w-0">
+                      <h2 className="text-lg font-black truncate">{title}</h2>
+                      <p className="text-xs text-white/80 mt-0.5">
+                        {formatReportsDateRangeTr(selectedDateFrom, selectedDateTo)} · {movements.length}{' '}
+                        {tm('transactionCount') || 'işlem'}
+                      </p>
+                    </div>
+                    <button
+                      type="button"
+                      onClick={() => setPaymentTypeDetailCode(null)}
+                      className="shrink-0 w-9 h-9 rounded-xl border border-white/30 bg-white/10 text-white hover:bg-white/20 flex items-center justify-center"
+                      aria-label={tm('close')}
+                    >
+                      <X size={16} />
+                    </button>
+                  </div>
+                  <PercentBodyModalScrollBody className="p-4 flex flex-col min-h-0">
+                    {movements.length === 0 ? (
+                      <div className="py-16 text-center text-slate-500 text-sm">{tm('noDataFound')}</div>
+                    ) : (
+                      <div className="min-h-[360px] flex-1">
+                        <ReportColumnTable
+                          data={movementRows}
+                          height={480}
+                          footerLabel={tm('totalLabel_rep') || 'Toplam'}
+                          columns={[
+                            {
+                              key: 'date',
+                              header: tm('date') || 'Tarih',
+                              type: 'date',
+                              size: 140,
+                              cell: (row) => row.dateLabel,
+                            },
+                            {
+                              key: 'receiptNumber',
+                              header: tm('receiptNo') || tm('documentNo') || 'Fiş No',
+                              size: 140,
+                            },
+                            {
+                              key: 'description',
+                              header: tm('description') || 'Açıklama',
+                              size: 220,
+                            },
+                            {
+                              key: 'customerName',
+                              header: tm('customer') || 'Müşteri',
+                              size: 160,
+                            },
+                            {
+                              key: 'cashier',
+                              header: tm('cashier') || 'Kasiyer',
+                              size: 120,
+                            },
+                            {
+                              key: 'amount',
+                              header: tm('amount') || 'Tutar',
+                              type: 'number',
+                              align: 'right',
+                              size: 140,
+                              footerSum: true,
+                              footerFormat: (n) => `${formatNumber(n, 2, false)} ${reportCurrency}`,
+                              cell: (row) => (
+                                <span className="font-semibold tabular-nums">
+                                  {row.amountDisplay} {reportCurrency}
+                                </span>
+                              ),
+                            },
+                          ]}
+                        />
+                      </div>
+                    )}
+                  </PercentBodyModalScrollBody>
+                  <div className="p-4 border-t border-slate-100 bg-slate-50/50 flex justify-end shrink-0">
+                    <button
+                      type="button"
+                      onClick={() => setPaymentTypeDetailCode(null)}
+                      className="rounded-2xl bg-blue-600 text-white font-bold uppercase text-sm tracking-wider px-6 py-2.5 shadow-lg shadow-blue-200/50 hover:bg-blue-700 active:scale-[0.98]"
+                    >
+                      {tm('close')}
+                    </button>
+                  </div>
+                </PercentBodyModal>
+              );
+            })()}
           </Content>
         </Layout>
       </Layout>

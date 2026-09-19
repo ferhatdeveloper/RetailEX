@@ -179,8 +179,8 @@ export function CategoryGroupSalesProfitReport() {
           AND ${SQL_PL_SALES_OR_RETURN}
           AND COALESCE(si.item_type, 'Malzeme') NOT IN ('Promosyon', 'İndirim')
           ${lineKindSql}
-          AND (s.date AT TIME ZONE 'UTC')::date >= $2::date
-          AND (s.date AT TIME ZONE 'UTC')::date <= $3::date
+          AND (s.date::timestamptz AT TIME ZONE 'UTC')::date >= $2::date
+          AND (s.date::timestamptz AT TIME ZONE 'UTC')::date <= $3::date
         GROUP BY
           COALESCE(
             parent_cat.name,

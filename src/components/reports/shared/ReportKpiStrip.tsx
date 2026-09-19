@@ -17,10 +17,10 @@ export type ReportKpiStripProps = {
   /** Default card chrome; overridden per item via item.className */
   itemClassName?: string;
   /**
-   * Column count. Defaults to item count (capped at 4).
-   * Always side-by-side; wraps only when columns=4 on very small screens.
+   * Column count. Defaults to item count (capped at 5).
+   * Side-by-side; wraps on small screens when columns ≥ 4.
    */
-  columns?: 2 | 3 | 4;
+  columns?: 2 | 3 | 4 | 5;
 };
 
 /**
@@ -33,7 +33,7 @@ export function ReportKpiStrip({
   itemClassName,
   columns,
 }: ReportKpiStripProps) {
-  const cols = columns ?? Math.min(Math.max(items.length, 1), 4);
+  const cols = columns ?? Math.min(Math.max(items.length, 1), 5);
 
   return (
     <div
@@ -42,6 +42,7 @@ export function ReportKpiStrip({
         cols === 2 && 'grid-cols-2',
         cols === 3 && 'grid-cols-3',
         cols === 4 && 'grid-cols-2 md:grid-cols-4',
+        cols === 5 && 'grid-cols-2 sm:grid-cols-3 md:grid-cols-5',
         className,
       )}
       role="group"

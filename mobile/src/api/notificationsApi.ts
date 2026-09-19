@@ -183,7 +183,7 @@ async function fetchOverdueCollectionDuesViaBridge(limit: number): Promise<Overd
          COALESCE(c.code, '') AS account_code,
          COALESCE(c.name, s.customer_name, '') AS account_name,
          COALESCE(s.fiche_no, '') AS fiche_no,
-         COALESCE(s.date::date, (s.date AT TIME ZONE 'UTC')::date)::text AS invoice_date,
+         (s.date::timestamptz AT TIME ZONE 'UTC')::date::text AS invoice_date,
          CASE
            WHEN LOWER(TRIM(COALESCE(s.fiche_type, ''))) = 'return_invoice'
              THEN -ABS(COALESCE(s.net_amount, s.total_net, 0))

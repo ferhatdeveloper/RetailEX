@@ -29,19 +29,20 @@ export type ProductDocumentMoneyTotals = {
 
 /** Malzeme listesi: uzun metin kolonları hariç (ağ payload + parse maliyeti) */
 const PRODUCT_LIST_SELECT =
-  'id,firm_nr,code,barcode,name,name2,description_tr,description_en,description_ar,description_ku,image_url,image_url_cdn,category_code,group_code,sub_group_code,brand,model,manufacturer,supplier,origin,material_type,unit,unitset_id,vat_rate,price,cost,stock,min_stock,max_stock,critical_stock,is_active,has_variants,special_code_1,special_code_2,special_code_3,special_code_4,special_code_5,special_code_6,price_list_1,price_list_2,price_list_3,price_list_4,price_list_5,price_list_6,currency,purchase_price_usd,purchase_price_eur,sale_price_usd,sale_price_eur,custom_exchange_rate,auto_calculate_usd,follow_up_reminder_days,is_scale_product,plu_code,expiry_date,expiry_tracking,shelf_life_days,created_at,updated_at';
+  'id,firm_nr,code,barcode,name,name2,description_tr,description_en,description_ar,description_ku,image_url,image_url_cdn,category_id,category_code,group_code,sub_group_code,brand,model,manufacturer,supplier,origin,material_type,unit,unitset_id,vat_rate,price,cost,stock,min_stock,max_stock,critical_stock,is_active,has_variants,special_code_1,special_code_2,special_code_3,special_code_4,special_code_5,special_code_6,price_list_1,price_list_2,price_list_3,price_list_4,price_list_5,price_list_6,currency,purchase_price_usd,purchase_price_eur,sale_price_usd,sale_price_eur,custom_exchange_rate,auto_calculate_usd,follow_up_reminder_days,is_scale_product,plu_code,expiry_date,expiry_tracking,shelf_life_days,created_at,updated_at';
 const PRODUCT_LIST_SELECT_SQL = PRODUCT_LIST_SELECT.replace(/,/g, ', ');
 /** Migration 035/047/104 öncesi tenant şemaları */
 const PRODUCT_LIST_SELECT_FALLBACK = PRODUCT_LIST_SELECT
   .replace(',expiry_date,expiry_tracking,shelf_life_days', '')
   .replace(',plu_code', '')
   .replace(',is_scale_product', '')
-  .replace(',follow_up_reminder_days', '');
+  .replace(',follow_up_reminder_days', '')
+  .replace(',category_id', '');
 const PRODUCT_LIST_SELECT_FALLBACK_SQL = PRODUCT_LIST_SELECT_FALLBACK.replace(/,/g, ', ');
 
 /** Malzeme / stok raporları: yalnızca rapor kolonları (payload ve parse süresini kısaltır). */
 const PRODUCT_REPORT_LIST_SELECT =
-  'id,firm_nr,code,barcode,name,name2,category_code,stock,min_stock,max_stock,price,cost,unit,brand,is_active,special_code_1,special_code_2,special_code_3,special_code_4,special_code_5,special_code_6';
+  'id,firm_nr,code,barcode,name,name2,category_id,category_code,stock,min_stock,max_stock,price,cost,unit,brand,is_active,special_code_1,special_code_2,special_code_3,special_code_4,special_code_5,special_code_6';
 const PRODUCT_REPORT_LIST_SELECT_SQL = PRODUCT_REPORT_LIST_SELECT.replace(/,/g, ', ');
 /** Eski tenant şemalarında eksik kolona takılmamak için güvenli fallback select listesi. */
 const PRODUCT_REPORT_LIST_SELECT_FALLBACK =
@@ -105,6 +106,7 @@ const PRODUCT_DB_FIELD_MAPPING: Record<string, string> = {
   criticalStock: 'critical_stock',
   category: 'category_code',
   categoryCode: 'category_code',
+  categoryId: 'category_id',
   groupCode: 'group_code',
   subGroupCode: 'sub_group_code',
   specialCode1: 'special_code_1',
@@ -1536,16 +1538,19 @@ export const productAPI = {
       const tableName = `rex_${firmNrPadded()}_products`;
       const p = product as any;
       const trunc = (s: unknown, max: number) => String(s ?? '').slice(0, max);
+      const rawCategory = String(p.categoryId || p.category_id || product.category || '').trim();
+      const categoryIdUuid = uuidOrNull(rawCategory);
+      const categoryCodeRaw = String(
+        p.categoryCode || p.category_code || (categoryIdUuid ? '' : product.category) || '',
+      ).trim();
 
       const productData = {
         name: trunc(p.name ?? product.name, 255) || 'Ürün',
         code: trunc(product.code || '', 100),
         barcode: trunc(product.barcode || (await this.generateNextBarcode()), 100),
-        // V2: 'category' kolonu kaldırıldı → category_code kullan
-        category_code: trunc(
-          p.categoryCode || p.category_code || product.category || '',
-          50,
-        ),
+        // V2: ad/kod category_code; UUID seçim category_id
+        category_id: categoryIdUuid,
+        category_code: trunc(categoryCodeRaw, 50),
         price: product.price || 0,
         cost: product.cost || 0,
         stock: product.stock || 0,
@@ -1772,6 +1777,21 @@ export const productAPI = {
         }
         if (dbKey === 'unitset_id') {
           fieldValues.set(dbKey, uuidOrNull(value));
+          return;
+        }
+        if (dbKey === 'category_id') {
+          fieldValues.set(dbKey, uuidOrNull(value));
+          return;
+        }
+        if (dbKey === 'category_code') {
+          const s = String(value ?? '').trim();
+          const asUuid = uuidOrNull(s);
+          if (asUuid) {
+            fieldValues.set('category_id', asUuid);
+            // UUID seçimde category_code'u kod ile doldurma (form categoryCode ayrı gelir)
+            return;
+          }
+          fieldValues.set(dbKey, s.slice(0, 50));
           return;
         }
         if (dbKey === 'plu_code') {
@@ -2107,7 +2127,18 @@ export const productAPI = {
           return;
         }
         if (dbKey === 'category_code') {
-          patchBody[dbKey] = String(value ?? '').slice(0, 50);
+          const s = String(value ?? '').trim();
+          const asUuid = uuidOrNull(s);
+          if (asUuid) {
+            patchBody.category_id = asUuid;
+            // UUID'yi category_code'a yazma — ad lookup category_id üzerinden
+            return;
+          }
+          patchBody[dbKey] = s.slice(0, 50);
+          return;
+        }
+        if (dbKey === 'category_id') {
+          patchBody[dbKey] = uuidOrNull(value);
           return;
         }
         patchBody[dbKey] = value;
@@ -2197,6 +2228,10 @@ function mapDatabaseProductToProduct(dbProduct: any): Product {
     code: dbProduct.code,
     barcode: dbProduct.barcode,
     category: dbProduct.category || dbProduct.category_code || '',
+    categoryId:
+      dbProduct.category_id != null && String(dbProduct.category_id).trim() !== ''
+        ? String(dbProduct.category_id).trim()
+        : undefined,
     price: parseFloat(dbProduct.price || 0),
     /** Kart maliyeti: `cost` boş/0 iken çoğu kurulumda alış `purchase_price` kolonundadır */
     cost: (() => {

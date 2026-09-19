@@ -215,16 +215,15 @@ export function CariAgingReport() {
         </select>
       }
     >
-      <div className="grid grid-cols-2 gap-3 md:grid-cols-5">
-        {(Object.keys(summary) as AgingBucket[]).map((k) => (
-          <div key={k} className={`rounded-lg border p-3 ${tableCls}`}>
-            <p className="text-[10px] font-bold uppercase tracking-wide opacity-60">{bucketLabel(tm, k)}</p>
-            <p className="mt-1 text-lg font-bold">
-              {formatNumber(summary[k], 2, false)} {currency}
-            </p>
-          </div>
-        ))}
-      </div>
+      <ReportKpiStrip
+        columns={5}
+        itemClassName={tableCls}
+        items={(Object.keys(summary) as AgingBucket[]).map((k) => ({
+          key: k,
+          label: bucketLabel(tm, k),
+          value: `${formatNumber(summary[k], 2, false)} ${currency}`,
+        }))}
+      />
       <div className="h-[520px]">
         <DevExDataGrid
           data={rows.map((r) => ({
@@ -715,8 +714,63 @@ export function PurchaseSummaryReport() {
   );
 
   const tableCls = darkMode ? 'bg-gray-800 border-gray-700' : 'bg-white border-gray-200';
-  const thCls = darkMode ? 'bg-gray-900/60 text-gray-300' : 'bg-gray-50 text-gray-600';
   const inputCls = darkMode ? 'bg-gray-900 border-gray-600' : 'bg-white border-gray-300';
+
+  const tableColumns = useMemo<ReportColumnTableCol<PurchaseSummaryRow>[]>(() => {
+    const cols: ReportColumnTableCol<PurchaseSummaryRow>[] = [
+      { key: 'periodLabel', header: tm('erpColPeriod'), size: 140 },
+    ];
+    if (groupBy === 'supplier') {
+      cols.push({ key: 'supplierName', header: tm('erpColSupplier'), size: 200 });
+    }
+    cols.push(
+      {
+        key: 'invoiceCount',
+        header: tm('erpInvoiceCount'),
+        type: 'number',
+        align: 'right',
+        size: 110,
+        footerSum: true,
+        footerFormat: (n) => formatNumber(n, 0, false),
+        cell: (r) => r.invoiceCount,
+      },
+      {
+        key: 'totalAmount',
+        header: tm('erpPurchaseAmount'),
+        type: 'number',
+        align: 'right',
+        size: 130,
+        footerSum: true,
+        footerFormat: (n) => `${formatNumber(n, 2, false)} ${currency}`,
+        cell: (r) => formatNumber(r.totalAmount, 2, false),
+      },
+      {
+        key: 'returnAmount',
+        header: tm('erpReturnAmount'),
+        type: 'number',
+        align: 'right',
+        size: 130,
+        footerSum: true,
+        footerFormat: (n) => `${formatNumber(n, 2, false)} ${currency}`,
+        cell: (r) => formatNumber(r.returnAmount, 2, false),
+      },
+      {
+        key: 'netAmount',
+        header: tm('erpNetPurchase'),
+        type: 'number',
+        align: 'right',
+        size: 140,
+        footerSum: true,
+        footerFormat: (n) => `${formatNumber(n, 2, false)} ${currency}`,
+        cell: (r) => (
+          <span className="font-semibold">
+            {formatNumber(r.netAmount, 2, false)} {currency}
+          </span>
+        ),
+      },
+    );
+    return cols;
+  }, [groupBy, tm, currency]);
 
   return (
     <ReportShell
@@ -766,40 +820,12 @@ export function PurchaseSummaryReport() {
           </p>
         </div>
       </div>
-      <div className={`overflow-auto rounded-lg border max-h-[520px] ${tableCls}`}>
-        <table className="w-full min-w-[720px] text-sm">
-          <thead className={`sticky top-0 ${thCls}`}>
-            <tr>
-              <th className="px-3 py-2 text-left">{tm('erpColPeriod')}</th>
-              {groupBy === 'supplier' && <th className="px-3 py-2 text-left">{tm('erpColSupplier')}</th>}
-              <th className="px-3 py-2 text-right">{tm('erpInvoiceCount')}</th>
-              <th className="px-3 py-2 text-right">{tm('erpPurchaseAmount')}</th>
-              <th className="px-3 py-2 text-right">{tm('erpReturnAmount')}</th>
-              <th className="px-3 py-2 text-right">{tm('erpNetPurchase')}</th>
-            </tr>
-          </thead>
-          <tbody>
-            {rows.length === 0 && !loading && (
-              <tr>
-                <td colSpan={groupBy === 'supplier' ? 6 : 5} className="px-3 py-8 text-center opacity-60">
-                  {tm('erpNoRows')}
-                </td>
-              </tr>
-            )}
-            {rows.map((r) => (
-              <tr key={r.periodKey} className={darkMode ? 'border-t border-gray-700' : 'border-t border-gray-100'}>
-                <td className="px-3 py-2 font-medium">{r.periodLabel}</td>
-                {groupBy === 'supplier' && <td className="px-3 py-2">{r.supplierName}</td>}
-                <td className="px-3 py-2 text-right">{r.invoiceCount}</td>
-                <td className="px-3 py-2 text-right">{formatNumber(r.totalAmount, 2, false)}</td>
-                <td className="px-3 py-2 text-right">{formatNumber(r.returnAmount, 2, false)}</td>
-                <td className="px-3 py-2 text-right font-semibold">
-                  {formatNumber(r.netAmount, 2, false)} {currency}
-                </td>
-              </tr>
-            ))}
-          </tbody>
-        </table>
+      <div className={`rounded-lg border p-2 ${tableCls}`}>
+        {rows.length === 0 && !loading ? (
+          <div className="px-3 py-8 text-center opacity-60">{tm('erpNoRows')}</div>
+        ) : (
+          <ReportColumnTable data={rows} columns={tableColumns} height={520} footerLabel={tm('reportsTotalsRow')} />
+        )}
       </div>
     </ReportShell>
   );
@@ -851,7 +877,6 @@ export function SupplierPurchaseReturnsReport() {
   );
 
   const tableCls = darkMode ? 'bg-gray-800 border-gray-700' : 'bg-white border-gray-200';
-  const thCls = darkMode ? 'bg-gray-900/60 text-gray-300' : 'bg-gray-50 text-gray-600';
   const inputCls = darkMode ? 'bg-gray-900 border-gray-600 text-gray-100' : 'bg-white border-gray-300';
   const presetBtn = (active: boolean) =>
     [
@@ -862,6 +887,73 @@ export function SupplierPurchaseReturnsReport() {
           ? 'border-gray-600 bg-gray-900 text-gray-200 hover:bg-gray-700'
           : 'border-gray-300 bg-white text-gray-700 hover:bg-gray-50',
     ].join(' ');
+
+  const tableColumns = useMemo<ReportColumnTableCol<SupplierPurchaseReturnRow>[]>(
+    () => [
+      {
+        key: 'supplierCode',
+        header: tm('erpColSupplierCode'),
+        size: 110,
+        cell: (r) => <span className="font-mono text-xs">{r.supplierCode || '—'}</span>,
+      },
+      { key: 'supplierName', header: tm('erpColSupplier'), size: 200 },
+      {
+        key: 'purchaseCount',
+        header: tm('erpPurchaseCount'),
+        type: 'number',
+        align: 'right',
+        size: 100,
+        footerSum: true,
+        footerFormat: (n) => formatNumber(n, 0, false),
+        cell: (r) => r.purchaseCount,
+      },
+      {
+        key: 'purchaseAmount',
+        header: tm('erpPurchaseAmount'),
+        type: 'number',
+        align: 'right',
+        size: 130,
+        footerSum: true,
+        footerFormat: (n) => formatNumber(n, 2, false),
+        cell: (r) => formatNumber(r.purchaseAmount, 2, false),
+      },
+      {
+        key: 'returnCount',
+        header: tm('erpReturnCount'),
+        type: 'number',
+        align: 'right',
+        size: 100,
+        footerSum: true,
+        footerFormat: (n) => formatNumber(n, 0, false),
+        cell: (r) => r.returnCount,
+      },
+      {
+        key: 'returnAmount',
+        header: tm('erpReturnAmount'),
+        type: 'number',
+        align: 'right',
+        size: 130,
+        footerSum: true,
+        footerFormat: (n) => <span className="text-red-500">{formatNumber(n, 2, false)}</span>,
+        cell: (r) => <span className="text-red-500">{formatNumber(r.returnAmount, 2, false)}</span>,
+      },
+      {
+        key: 'netAmount',
+        header: tm('erpNetPurchase'),
+        type: 'number',
+        align: 'right',
+        size: 140,
+        footerSum: true,
+        footerFormat: (n) => `${formatNumber(n, 2, false)} ${currency}`,
+        cell: (r) => (
+          <span className="font-semibold">
+            {formatNumber(r.netAmount, 2, false)} {currency}
+          </span>
+        ),
+      },
+    ],
+    [tm, currency],
+  );
 
   return (
     <ReportShell
@@ -948,63 +1040,12 @@ export function SupplierPurchaseReturnsReport() {
           </p>
         </div>
       </div>
-      <div className={`overflow-auto rounded-lg border max-h-[520px] ${tableCls}`}>
-        <table className="w-full min-w-[860px] text-sm">
-          <thead className={`sticky top-0 ${thCls}`}>
-            <tr>
-              <th className="px-3 py-2 text-left">{tm('erpColSupplierCode')}</th>
-              <th className="px-3 py-2 text-left">{tm('erpColSupplier')}</th>
-              <th className="px-3 py-2 text-right">{tm('erpPurchaseCount')}</th>
-              <th className="px-3 py-2 text-right">{tm('erpPurchaseAmount')}</th>
-              <th className="px-3 py-2 text-right">{tm('erpReturnCount')}</th>
-              <th className="px-3 py-2 text-right">{tm('erpReturnAmount')}</th>
-              <th className="px-3 py-2 text-right">{tm('erpNetPurchase')}</th>
-            </tr>
-          </thead>
-          <tbody>
-            {rows.length === 0 && !loading && (
-              <tr>
-                <td colSpan={7} className="px-3 py-8 text-center opacity-60">
-                  {tm('erpNoRows')}
-                </td>
-              </tr>
-            )}
-            {rows.map((r) => (
-              <tr
-                key={r.supplierId || `${r.supplierCode}-${r.supplierName}`}
-                className={darkMode ? 'border-t border-gray-700' : 'border-t border-gray-100'}
-              >
-                <td className="px-3 py-2 font-mono text-xs">{r.supplierCode || '—'}</td>
-                <td className="px-3 py-2 font-medium">{r.supplierName}</td>
-                <td className="px-3 py-2 text-right">{r.purchaseCount}</td>
-                <td className="px-3 py-2 text-right">{formatNumber(r.purchaseAmount, 2, false)}</td>
-                <td className="px-3 py-2 text-right">{r.returnCount}</td>
-                <td className="px-3 py-2 text-right text-red-500">{formatNumber(r.returnAmount, 2, false)}</td>
-                <td className="px-3 py-2 text-right font-semibold">
-                  {formatNumber(r.netAmount, 2, false)} {currency}
-                </td>
-              </tr>
-            ))}
-          </tbody>
-          {rows.length > 0 && (
-            <tfoot className={darkMode ? 'border-t-2 border-gray-600 bg-gray-900/40' : 'border-t-2 border-gray-200 bg-gray-50'}>
-              <tr>
-                <td className="px-3 py-2 font-bold" colSpan={2}>
-                  {tm('reportsTotalsRow')}
-                </td>
-                <td className="px-3 py-2 text-right font-bold">{totals.purchaseCount}</td>
-                <td className="px-3 py-2 text-right font-bold">{formatNumber(totals.purchase, 2, false)}</td>
-                <td className="px-3 py-2 text-right font-bold">{totals.returnCount}</td>
-                <td className="px-3 py-2 text-right font-bold text-red-500">
-                  {formatNumber(totals.returns, 2, false)}
-                </td>
-                <td className="px-3 py-2 text-right font-bold">
-                  {formatNumber(totals.net, 2, false)} {currency}
-                </td>
-              </tr>
-            </tfoot>
-          )}
-        </table>
+      <div className={`rounded-lg border p-2 ${tableCls}`}>
+        {rows.length === 0 && !loading ? (
+          <div className="px-3 py-8 text-center opacity-60">{tm('erpNoRows')}</div>
+        ) : (
+          <ReportColumnTable data={rows} columns={tableColumns} height={520} footerLabel={tm('reportsTotalsRow')} />
+        )}
       </div>
     </ReportShell>
   );
@@ -1045,7 +1086,6 @@ export function CollectionDueReport() {
   }, [rows]);
 
   const tableCls = darkMode ? 'bg-gray-800 border-gray-700' : 'bg-white border-gray-200';
-  const thCls = darkMode ? 'bg-gray-900/60 text-gray-300' : 'bg-gray-50 text-gray-600';
   const inputCls = darkMode ? 'bg-gray-900 border-gray-600' : 'bg-white border-gray-300';
 
   const statusLabel = (s: CollectionDueRow['status']) => {
@@ -1053,6 +1093,81 @@ export function CollectionDueReport() {
     if (s === 'due_soon') return tm('erpStatusDueSoon');
     return tm('erpStatusUpcoming');
   };
+
+  const gridRows = useMemo(
+    () =>
+      rows.map((r, i) => ({
+        ...r,
+        rowKey: `${r.ficheNo}-${i}`,
+        statusText: statusLabel(r.status),
+      })),
+    [rows, tm],
+  );
+
+  const tableColumns = useMemo<ReportColumnTableCol<(typeof gridRows)[number]>[]>(
+    () => [
+      {
+        key: 'accountName',
+        header: tm('erpColAccount'),
+        size: 200,
+        cell: (r) => (
+          <div>
+            <div className="font-medium">{r.accountName}</div>
+            <div className="font-mono text-xs opacity-60">{r.accountCode}</div>
+          </div>
+        ),
+      },
+      {
+        key: 'ficheNo',
+        header: tm('erpColFiche'),
+        size: 120,
+        cell: (r) => <span className="font-mono text-xs">{r.ficheNo}</span>,
+      },
+      { key: 'invoiceDate', header: tm('erpColInvoiceDate'), type: 'date', size: 110 },
+      { key: 'dueDate', header: tm('erpColDueDate'), type: 'date', size: 110 },
+      {
+        key: 'amount',
+        header: tm('erpColAmount'),
+        type: 'number',
+        align: 'right',
+        size: 130,
+        footerSum: true,
+        footerFormat: (n) => `${formatNumber(n, 2, false)} ${currency}`,
+        cell: (r) => (
+          <span className="font-semibold">
+            {formatNumber(r.amount, 2, false)} {currency}
+          </span>
+        ),
+      },
+      {
+        key: 'daysUntilDue',
+        header: tm('erpColDaysToDue'),
+        type: 'number',
+        align: 'right',
+        size: 90,
+        cell: (r) => r.daysUntilDue,
+      },
+      {
+        key: 'statusText',
+        header: tm('status'),
+        size: 120,
+        cell: (r) => (
+          <span
+            className={`rounded-full px-2 py-0.5 text-xs font-bold ${
+              r.status === 'overdue'
+                ? 'bg-red-100 text-red-700'
+                : r.status === 'due_soon'
+                  ? 'bg-amber-100 text-amber-800'
+                  : 'bg-blue-100 text-blue-700'
+            }`}
+          >
+            {r.statusText}
+          </span>
+        ),
+      },
+    ],
+    [tm, currency],
+  );
 
   return (
     <ReportShell
@@ -1109,57 +1224,12 @@ export function CollectionDueReport() {
           </p>
         </div>
       </div>
-      <div className={`overflow-auto rounded-lg border max-h-[520px] ${tableCls}`}>
-        <table className="w-full min-w-[880px] text-sm">
-          <thead className={`sticky top-0 ${thCls}`}>
-            <tr>
-              <th className="px-3 py-2 text-left">{tm('erpColAccount')}</th>
-              <th className="px-3 py-2 text-left">{tm('erpColFiche')}</th>
-              <th className="px-3 py-2 text-left">{tm('erpColInvoiceDate')}</th>
-              <th className="px-3 py-2 text-left">{tm('erpColDueDate')}</th>
-              <th className="px-3 py-2 text-right">{tm('erpColAmount')}</th>
-              <th className="px-3 py-2 text-right">{tm('erpColDaysToDue')}</th>
-              <th className="px-3 py-2 text-left">{tm('status')}</th>
-            </tr>
-          </thead>
-          <tbody>
-            {rows.length === 0 && !loading && (
-              <tr>
-                <td colSpan={7} className="px-3 py-8 text-center opacity-60">
-                  {tm('erpNoRows')}
-                </td>
-              </tr>
-            )}
-            {rows.map((r, i) => (
-              <tr key={`${r.ficheNo}-${i}`} className={darkMode ? 'border-t border-gray-700' : 'border-t border-gray-100'}>
-                <td className="px-3 py-2">
-                  <div className="font-medium">{r.accountName}</div>
-                  <div className="font-mono text-xs opacity-60">{r.accountCode}</div>
-                </td>
-                <td className="px-3 py-2 font-mono text-xs">{r.ficheNo}</td>
-                <td className="px-3 py-2">{r.invoiceDate}</td>
-                <td className="px-3 py-2">{r.dueDate}</td>
-                <td className="px-3 py-2 text-right font-semibold">
-                  {formatNumber(r.amount, 2, false)} {currency}
-                </td>
-                <td className="px-3 py-2 text-right">{r.daysUntilDue}</td>
-                <td className="px-3 py-2">
-                  <span
-                    className={`rounded-full px-2 py-0.5 text-xs font-bold ${
-                      r.status === 'overdue'
-                        ? 'bg-red-100 text-red-700'
-                        : r.status === 'due_soon'
-                          ? 'bg-amber-100 text-amber-800'
-                          : 'bg-blue-100 text-blue-700'
-                    }`}
-                  >
-                    {statusLabel(r.status)}
-                  </span>
-                </td>
-              </tr>
-            ))}
-          </tbody>
-        </table>
+      <div className={`rounded-lg border p-2 ${tableCls}`}>
+        {gridRows.length === 0 && !loading ? (
+          <div className="px-3 py-8 text-center opacity-60">{tm('erpNoRows')}</div>
+        ) : (
+          <ReportColumnTable data={gridRows} columns={tableColumns} height={520} />
+        )}
       </div>
     </ReportShell>
   );
@@ -1201,8 +1271,50 @@ export function SalesReturnsReport() {
 
   const total = useMemo(() => rows.reduce((s, r) => s + r.netAmount, 0), [rows]);
   const tableCls = darkMode ? 'bg-gray-800 border-gray-700' : 'bg-white border-gray-200';
-  const thCls = darkMode ? 'bg-gray-900/60 text-gray-300' : 'bg-gray-50 text-gray-600';
   const inputCls = darkMode ? 'bg-gray-900 border-gray-600' : 'bg-white border-gray-300';
+
+  const tableColumns = useMemo<ReportColumnTableCol<SalesReturnRow>[]>(
+    () => [
+      {
+        key: 'ficheNo',
+        header: tm('erpColFiche'),
+        size: 130,
+        cell: (r) => <span className="font-mono text-xs">{r.ficheNo}</span>,
+      },
+      { key: 'date', header: tm('erpColDate'), type: 'date', size: 110 },
+      {
+        key: 'accountName',
+        header: tm('erpColAccount'),
+        size: 180,
+        cell: (r) => r.accountName || '—',
+      },
+      {
+        key: 'paymentMethod',
+        header: tm('erpColTxnType'),
+        size: 140,
+        cell: (r) => r.paymentMethod || '—',
+      },
+      {
+        key: 'netAmount',
+        header: tm('erpColAmount'),
+        type: 'number',
+        align: 'right',
+        size: 140,
+        footerSum: true,
+        footerFormat: (n) => (
+          <span className="text-red-500">
+            {formatNumber(n, 2, false)} {currency}
+          </span>
+        ),
+        cell: (r) => (
+          <span className="font-semibold text-red-500">
+            {formatNumber(r.netAmount, 2, false)} {currency}
+          </span>
+        ),
+      },
+    ],
+    [tm, currency],
+  );
 
   return (
     <ReportShell
@@ -1230,36 +1342,12 @@ export function SalesReturnsReport() {
           {formatNumber(total, 2, false)} {currency} · {rows.length} {tm('erpInvoiceCount')}
         </p>
       </div>
-      <div className={`overflow-auto rounded-lg border max-h-[520px] ${tableCls}`}>
-        <table className="w-full min-w-[800px] text-sm">
-          <thead className={`sticky top-0 ${thCls}`}>
-            <tr>
-              <th className="px-3 py-2 text-left">{tm('erpColFiche')}</th>
-              <th className="px-3 py-2 text-left">{tm('erpColDate')}</th>
-              <th className="px-3 py-2 text-left">{tm('erpColAccount')}</th>
-              <th className="px-3 py-2 text-left">{tm('erpColTxnType')}</th>
-              <th className="px-3 py-2 text-right">{tm('erpColAmount')}</th>
-            </tr>
-          </thead>
-          <tbody>
-            {rows.length === 0 && !loading && (
-              <tr>
-                <td colSpan={5} className="px-3 py-8 text-center opacity-60">{tm('erpNoRows')}</td>
-              </tr>
-            )}
-            {rows.map((r) => (
-              <tr key={r.id || r.ficheNo} className={darkMode ? 'border-t border-gray-700' : 'border-t border-gray-100'}>
-                <td className="px-3 py-2 font-mono text-xs">{r.ficheNo}</td>
-                <td className="px-3 py-2">{r.date}</td>
-                <td className="px-3 py-2">{r.accountName || '—'}</td>
-                <td className="px-3 py-2">{r.paymentMethod || '—'}</td>
-                <td className="px-3 py-2 text-right font-semibold text-red-500">
-                  {formatNumber(r.netAmount, 2, false)} {currency}
-                </td>
-              </tr>
-            ))}
-          </tbody>
-        </table>
+      <div className={`rounded-lg border p-2 ${tableCls}`}>
+        {rows.length === 0 && !loading ? (
+          <div className="px-3 py-8 text-center opacity-60">{tm('erpNoRows')}</div>
+        ) : (
+          <ReportColumnTable data={rows} columns={tableColumns} height={520} footerLabel={tm('reportsTotalsRow')} />
+        )}
       </div>
     </ReportShell>
   );
@@ -1707,7 +1795,74 @@ export function CriticalStockReport() {
   }, [load, selectedFirm?.firm_nr]);
 
   const tableCls = darkMode ? 'bg-gray-800 border-gray-700' : 'bg-white border-gray-200';
-  const thCls = darkMode ? 'bg-gray-900/60 text-gray-300' : 'bg-gray-50 text-gray-600';
+
+  const tableColumns = useMemo<ReportColumnTableCol<CriticalStockRow>[]>(
+    () => [
+      {
+        key: 'productName',
+        header: tm('erpColProduct'),
+        size: 240,
+        cell: (r) => (
+          <div>
+            <div className="font-medium">{r.productName}</div>
+            {r.productCode && r.productCode !== '—' && !looksLikeUuid(r.productCode) ? (
+              <div className="font-mono text-xs opacity-60">{r.productCode}</div>
+            ) : null}
+          </div>
+        ),
+      },
+      { key: 'warehouseCode', header: tm('erpColWarehouse'), size: 110 },
+      {
+        key: 'stock',
+        header: tm('reportsColStock'),
+        type: 'number',
+        align: 'right',
+        size: 100,
+        cell: (r) => <span className="font-semibold">{formatNumber(r.stock, 2, false)}</span>,
+      },
+      {
+        key: 'minStock',
+        header: tm('erpColMinStock'),
+        type: 'number',
+        align: 'right',
+        size: 90,
+        cell: (r) => formatNumber(r.minStock, 2, false),
+      },
+      {
+        key: 'criticalStock',
+        header: tm('erpColCriticalLevel'),
+        type: 'number',
+        align: 'right',
+        size: 100,
+        cell: (r) => formatNumber(r.criticalStock, 2, false),
+      },
+      {
+        key: 'stockValue',
+        header: tm('reportsColStockValue'),
+        type: 'number',
+        align: 'right',
+        size: 130,
+        footerSum: true,
+        footerFormat: (n) => `${formatNumber(n, 2, false)} ${currency}`,
+        cell: (r) => `${formatNumber(r.stockValue, 2, false)} ${currency}`,
+      },
+      {
+        key: 'status',
+        header: tm('status'),
+        size: 120,
+        cell: (r) => (
+          <span
+            className={`rounded-full px-2 py-0.5 text-xs font-bold ${
+              r.status === 'critical' ? 'bg-red-100 text-red-700' : 'bg-amber-100 text-amber-800'
+            }`}
+          >
+            {r.status === 'critical' ? tm('erpStatusCritical') : tm('erpStatusBelowMin')}
+          </span>
+        ),
+      },
+    ],
+    [tm, currency],
+  );
 
   return (
     <ReportShell
@@ -1732,53 +1887,12 @@ export function CriticalStockReport() {
         )
       }
     >
-      <div className={`overflow-auto rounded-lg border max-h-[560px] ${tableCls}`}>
-        <table className="w-full min-w-[900px] text-sm">
-          <thead className={`sticky top-0 ${thCls}`}>
-            <tr>
-              <th className="px-3 py-2 text-left">{tm('erpColProduct')}</th>
-              <th className="px-3 py-2 text-left">{tm('erpColWarehouse')}</th>
-              <th className="px-3 py-2 text-right">{tm('reportsColStock')}</th>
-              <th className="px-3 py-2 text-right">{tm('erpColMinStock')}</th>
-              <th className="px-3 py-2 text-right">{tm('erpColCriticalLevel')}</th>
-              <th className="px-3 py-2 text-right">{tm('reportsColStockValue')}</th>
-              <th className="px-3 py-2 text-left">{tm('status')}</th>
-            </tr>
-          </thead>
-          <tbody>
-            {rows.length === 0 && !loading && (
-              <tr>
-                <td colSpan={7} className="px-3 py-8 text-center opacity-60">{tm('erpNoRows')}</td>
-              </tr>
-            )}
-            {rows.map((r) => (
-              <tr key={r.productId} className={darkMode ? 'border-t border-gray-700' : 'border-t border-gray-100'}>
-                <td className="px-3 py-2">
-                  <div className="font-medium">{r.productName}</div>
-                  {r.productCode && r.productCode !== '—' && !looksLikeUuid(r.productCode) ? (
-                    <div className="font-mono text-xs opacity-60">{r.productCode}</div>
-                  ) : null}
-                </td>
-                <td className="px-3 py-2">{r.warehouseCode}</td>
-                <td className="px-3 py-2 text-right font-semibold">{formatNumber(r.stock, 2, false)}</td>
-                <td className="px-3 py-2 text-right">{formatNumber(r.minStock, 2, false)}</td>
-                <td className="px-3 py-2 text-right">{formatNumber(r.criticalStock, 2, false)}</td>
-                <td className="px-3 py-2 text-right">
-                  {formatNumber(r.stockValue, 2, false)} {currency}
-                </td>
-                <td className="px-3 py-2">
-                  <span
-                    className={`rounded-full px-2 py-0.5 text-xs font-bold ${
-                      r.status === 'critical' ? 'bg-red-100 text-red-700' : 'bg-amber-100 text-amber-800'
-                    }`}
-                  >
-                    {r.status === 'critical' ? tm('erpStatusCritical') : tm('erpStatusBelowMin')}
-                  </span>
-                </td>
-              </tr>
-            ))}
-          </tbody>
-        </table>
+      <div className={`rounded-lg border p-2 ${tableCls}`}>
+        {rows.length === 0 && !loading ? (
+          <div className="px-3 py-8 text-center opacity-60">{tm('erpNoRows')}</div>
+        ) : (
+          <ReportColumnTable data={rows} columns={tableColumns} height={560} footerLabel={tm('reportsTotalsRow')} />
+        )}
       </div>
     </ReportShell>
   );
@@ -1809,7 +1923,57 @@ export function WarehouseStockReport() {
   }, [load, selectedFirm?.firm_nr]);
 
   const tableCls = darkMode ? 'bg-gray-800 border-gray-700' : 'bg-white border-gray-200';
-  const thCls = darkMode ? 'bg-gray-900/60 text-gray-300' : 'bg-gray-50 text-gray-600';
+
+  const tableColumns = useMemo<ReportColumnTableCol<WarehouseStockRow>[]>(
+    () => [
+      { key: 'warehouseCode', header: tm('erpColWarehouse'), size: 160 },
+      {
+        key: 'skuCount',
+        header: tm('erpColSkuCount'),
+        type: 'number',
+        align: 'right',
+        size: 100,
+        footerSum: true,
+        footerFormat: (n) => formatNumber(n, 0, false),
+        cell: (r) => r.skuCount,
+      },
+      {
+        key: 'totalQty',
+        header: tm('reportsCashColQty'),
+        type: 'number',
+        align: 'right',
+        size: 120,
+        footerSum: true,
+        footerFormat: (n) => formatNumber(n, 2, false),
+        cell: (r) => formatNumber(r.totalQty, 2, false),
+      },
+      {
+        key: 'totalValue',
+        header: tm('reportsColStockValue'),
+        type: 'number',
+        align: 'right',
+        size: 140,
+        footerSum: true,
+        footerFormat: (n) => `${formatNumber(n, 2, false)} ${currency}`,
+        cell: (r) => (
+          <span className="font-semibold">
+            {formatNumber(r.totalValue, 2, false)} {currency}
+          </span>
+        ),
+      },
+      {
+        key: 'criticalCount',
+        header: tm('erpCriticalStockTitle'),
+        type: 'number',
+        align: 'right',
+        size: 110,
+        footerSum: true,
+        footerFormat: (n) => formatNumber(n, 0, false),
+        cell: (r) => <span className="text-red-500">{r.criticalCount}</span>,
+      },
+    ],
+    [tm, currency],
+  );
 
   return (
     <ReportShell
@@ -1831,36 +1995,12 @@ export function WarehouseStockReport() {
         )
       }
     >
-      <div className={`overflow-auto rounded-lg border max-h-[560px] ${tableCls}`}>
-        <table className="w-full min-w-[700px] text-sm">
-          <thead className={`sticky top-0 ${thCls}`}>
-            <tr>
-              <th className="px-3 py-2 text-left">{tm('erpColWarehouse')}</th>
-              <th className="px-3 py-2 text-right">{tm('erpColSkuCount')}</th>
-              <th className="px-3 py-2 text-right">{tm('reportsCashColQty')}</th>
-              <th className="px-3 py-2 text-right">{tm('reportsColStockValue')}</th>
-              <th className="px-3 py-2 text-right">{tm('erpCriticalStockTitle')}</th>
-            </tr>
-          </thead>
-          <tbody>
-            {rows.length === 0 && !loading && (
-              <tr>
-                <td colSpan={5} className="px-3 py-8 text-center opacity-60">{tm('erpNoRows')}</td>
-              </tr>
-            )}
-            {rows.map((r) => (
-              <tr key={r.warehouseCode} className={darkMode ? 'border-t border-gray-700' : 'border-t border-gray-100'}>
-                <td className="px-3 py-2 font-medium">{r.warehouseCode}</td>
-                <td className="px-3 py-2 text-right">{r.skuCount}</td>
-                <td className="px-3 py-2 text-right">{formatNumber(r.totalQty, 2, false)}</td>
-                <td className="px-3 py-2 text-right font-semibold">
-                  {formatNumber(r.totalValue, 2, false)} {currency}
-                </td>
-                <td className="px-3 py-2 text-right text-red-500">{r.criticalCount}</td>
-              </tr>
-            ))}
-          </tbody>
-        </table>
+      <div className={`rounded-lg border p-2 ${tableCls}`}>
+        {rows.length === 0 && !loading ? (
+          <div className="px-3 py-8 text-center opacity-60">{tm('erpNoRows')}</div>
+        ) : (
+          <ReportColumnTable data={rows} columns={tableColumns} height={560} footerLabel={tm('reportsTotalsRow')} />
+        )}
       </div>
     </ReportShell>
   );

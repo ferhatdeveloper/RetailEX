@@ -548,6 +548,7 @@ function DefinitionsParametersView() {
     { key: 'virtual-pbx-caller-id', labelKey: 'menuParamVirtualPbx' },
     { key: 'stock-price-change-slips', labelKey: 'menuParamStockPriceChange' },
     { key: 'product-list-sales-purchase-totals', labelKey: 'menuParamProductListSalesPurchaseTotals' },
+    { key: 'daily-report-supplier-payments', labelKey: 'menuParamDailyReportSupplierPayments' },
   ];
 
   const toggleParam = (key: ReportMenuParamKey) => {
