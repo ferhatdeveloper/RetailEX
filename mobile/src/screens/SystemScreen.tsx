@@ -58,6 +58,11 @@ export function systemRouteTab(screenId?: string): Tab {
       return 'backup';
     case 'users':
     case 'usermanagement':
+    case 'generalsettings':
+    case 'definitions':
+    case 'parameter-settings':
+    case 'parameters':
+    case 'parametre':
     default:
       return 'users';
   }

@@ -122,7 +122,7 @@ export const translations = {
   generalSettings: { tr: 'Genel Ayarlar', en: 'General Settings', ar: 'الإعدادات العامة', ku: 'ڕێکخستنە گشتیەکان' },
   userManagement: { tr: 'Kullanıcı Yönetimi', en: 'User Management', ar: 'إدارة المستخدمين', ku: 'بەڕێوەبردنی بەکارهێنەر' },
   roleAuthorization: { tr: 'Rol & Yetkilendirme', en: 'Role & Authorization', ar: 'الدور والتفويض', ku: 'ڕۆڵ و دەسەڵات' },
-  definitionsParameters: { tr: 'Tanımlar & Parametreler', en: 'Definitions & Parameters', ar: 'التعريفات والمعلمات', ku: 'پێناسە و پارامیتەرەکان' },
+  definitionsParameters: { tr: 'Parametre', en: 'Parameters', ar: 'المعلمات', ku: 'پارامێتەر' },
   backupRestore: { tr: 'Yedekleme & Geri Yükleme', en: 'Backup & Restore', ar: 'النسخ الاحتياطي والاستعادة', ku: 'پاشەکەوت و گەڕانەوە' },
   integrationCenter: { tr: 'Entegrasyon Merkezi', en: 'Integration Center', ar: 'مركز التكامل', ku: 'ناوەندی یەکخستن' },
   logAudit: { tr: 'Log & Denetim', en: 'Log & Audit', ar: 'السجل والمراجعة', ku: 'لۆگ و پشکنین' },

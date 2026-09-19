@@ -237,7 +237,7 @@ type ExtendedScreen = ManagementScreen | 'dashboard' | 'finance' | 'stock' | 'pu
   'personnel' | 'attendance' | 'payroll' | 'performance' | 'training' |
   'waybill-sales' | 'waybill-purchase' | 'waybill-transfer' | 'waybill-fire' |
   'roleauth' | 'roles' | 'role_management' | 'authorization' |
-  'financereports' | 'generalsettings' | 'definitions' | 'backuprestore' | 'systemhealth' | 'pendingposdevices' | 'smsmanage' | 'emailcamp' | 'logaudit' | 'databroadcast' |
+  'financereports' | 'generalsettings' | 'definitions' | 'parameter-settings' | 'parameters' | 'parametre' | 'backuprestore' | 'systemhealth' | 'pendingposdevices' | 'smsmanage' | 'emailcamp' | 'logaudit' | 'databroadcast' |
   'modulemanagement' | 'menumanagement' | 'onlineorders' | 'productsync' | 'price-change-vouchers' | 'new-modules' | 'accounting-mgmt' | 'workflow-automation' | 'voice-assistant' | 'cashier-scale' | 'scale-management' | 'db-migrations' | 'hybrid-sync' | 'store-management' | 'security-modules' | 'demo-data' |
   'product-analytics' | 'profit-dashboard' | 'graphanalysis' | 'reconciliation' | 'wave-picking' | 'ai-stock-prediction' | 'material-extract' | 'cost-centers' |
   'universal-report-hub' | 'customer-extract' | 'store-performance' | 'inventory-aging' | 'nebim-migration' |
@@ -1493,6 +1493,9 @@ export function ManagementModule({
         case 'settings':
         case 'generalsettings':
         case 'definitions':
+        case 'parameter-settings':
+        case 'parameters':
+        case 'parametre':
         case 'backuprestore':
         case 'systemhealth':
         case 'pendingposdevices':

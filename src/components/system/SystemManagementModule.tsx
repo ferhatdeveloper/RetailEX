@@ -66,6 +66,9 @@ const ROUTE_HINT_TO_VIEW: Partial<Record<string, SystemView>> = {
   settings: 'userManagement',
   generalsettings: 'definitionsParameters',
   definitions: 'definitionsParameters',
+  'parameter-settings': 'definitionsParameters',
+  parameters: 'definitionsParameters',
+  parametre: 'definitionsParameters',
   backuprestore: 'backupRestore',
   systemhealth: 'systemHealth',
   pendingposdevices: 'pendingPosDevices',
@@ -131,7 +134,7 @@ export function SystemManagementModule({ routeHint }: SystemManagementModuleProp
   const menuItems = [
     { id: 'userManagement' as const, label: 'Kullanıcı Yönetimi', icon: Users, color: 'blue' },
     { id: 'roleAuthorization' as const, label: 'Rol & Yetkilendirme', icon: Shield, color: 'purple' },
-    { id: 'definitionsParameters' as const, label: 'Tanımlar/Parametreler', icon: Settings, color: 'green' },
+    { id: 'definitionsParameters' as const, label: tm('definitionsParameters'), icon: Settings, color: 'green' },
     { id: 'receiptSettings' as const, label: 'Fiş / Firma Bilgisi', icon: Receipt, color: 'amber' },
     { id: 'invoiceLabelDesigner' as const, label: tm('invoiceLabelDesigner'), icon: FileText, color: 'indigo' },
     { id: 'printerSettings' as const, label: 'Yazıcı Ayarları', icon: Printer, color: 'slate' },

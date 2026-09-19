@@ -259,6 +259,8 @@ export function ModuleScreen() {
     notifications: 'Kritik stok + vadesi geçmiş açık cari hatırlatmaları canlı.',
     usermanagement: 'Kullanıcı listesi canlı (public.users). Rol / log / kasa sekmeleri Sistem ekranında.',
     roleauth: 'Roller listesi canlı (public.roles). Yetki düzenleme web’de.',
+    generalsettings:
+      'Rapor menüsü ve özellik parametreleri (daily-report-supplier-payments vb.) web / DeskApp › Sistem Yönetimi › Parametre’de ayarlanır.',
     logaudit: 'Audit log listesi canlı (public.audit_logs).',
     pendingposdevices: 'Kasa cihaz kayıtları canlı (pos_terminal_registrations).',
     backuprestore: 'Tam yedekleme DeskApp’te; mobil şema migration özeti gösterir.',

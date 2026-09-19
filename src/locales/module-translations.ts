@@ -3068,7 +3068,7 @@ export const moduleTranslations: Record<string, Record<Language, string>> = {
   saveRate: { tr: 'Kuru Kaydet', en: 'Save Rate', ar: 'حفظ السعر', ku: 'پاشەکەوتکردنی نرخ' },
   deleteRate: { tr: 'Kuru Sil', en: 'Delete Rate', ar: 'حذف السعر', ku: 'سڕینەوەی نرخ' },
   generalSettings: { tr: 'Genel Ayarlar', en: 'General Settings', ar: 'الإعدادات العامة', ku: 'ڕێکخستنەکانی گشتی' },
-  definitionsParameters: { tr: 'Tanımlamalar & Parametreler', en: 'Definitions & Parameters', ar: 'التعريفات والمعاملات', ku: 'پێناسەکان و پارامێتەرەکان' },
+  definitionsParameters: { tr: 'Parametre', en: 'Parameters', ar: 'المعلمات', ku: 'پارامێتەر' },
   parameterSettingsTitle: { tr: 'Parametre Ayarları', en: 'Parameter Settings', ar: 'إعدادات المعلمات', ku: 'ڕێکخستنی پارامێتەر' },
   parameterSettingsSubtitle: {
     tr: 'Sistem tanımları ve menü görünürlük parametreleri',
