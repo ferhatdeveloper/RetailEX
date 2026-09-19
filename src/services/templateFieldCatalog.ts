@@ -90,6 +90,11 @@ const INVOICE_FIELD_META: Record<string, { category: TemplateFieldCategory; samp
     sample: '(tablo)',
     description: 'Satır listesi — tablo öğesinde kullanın',
   },
+  '{{reportTitle}}': { category: 'document', sample: 'Malzeme Ekstresi' },
+  '{{productCode}}': { category: 'product', sample: 'URN-00142' },
+  '{{productName}}': { category: 'product', sample: 'Organik Zeytinyağı 500ml' },
+  '{{dateFrom}}': { category: 'document', sample: '01.09.2026' },
+  '{{dateTo}}': { category: 'document', sample: '19.09.2026' },
 };
 
 const INVOICE_EXTENDED: TemplateFieldDef[] = [

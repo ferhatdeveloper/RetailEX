@@ -68,6 +68,15 @@ function elementToReportComponent(element: TemplateElement): ReportComponent {
       header: col,
       field: (() => {
         const norm = col.toLocaleLowerCase('tr-TR');
+        if (norm.includes('giriş miktar') || norm.includes('giris miktar')) return 'inQty';
+        if (norm.includes('giriş tutar') || norm.includes('giris tutar')) return 'inAmt';
+        if (norm.includes('çıkış miktar') || norm.includes('cikis miktar') || norm.includes('çıkis miktar')) return 'outQty';
+        if (norm.includes('çıkış tutar') || norm.includes('cikis tutar') || norm.includes('çıkis tutar')) return 'outAmt';
+        if (norm.includes('kümülatif') || norm.includes('kumulatif') || norm.includes('bakiye')) return 'runningBalance';
+        if (norm.includes('fiş tipi') || norm.includes('fis tipi') || norm.includes('fiche type')) return 'typeLabel';
+        if (norm.includes('fiş no') || norm.includes('fis no') || norm.includes('fiche no')) return 'documentNo';
+        if (norm.includes('açıklama') || norm.includes('aciklama')) return 'description';
+        if (norm === 'tarih' || norm === 'date') return 'dateLabel';
         if (norm.includes('ürün') || norm.includes('malzeme')) return 'productName';
         if (norm.includes('miktar') || norm.includes('adet')) return 'quantity';
         if (norm.includes('birim') || norm.includes('fiyat')) return 'unitPrice';

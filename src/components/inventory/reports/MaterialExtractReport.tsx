@@ -1,5 +1,6 @@
-﻿import React, { useState, useEffect, useMemo, useRef } from 'react';
-import { Search, Download, Printer, X } from 'lucide-react';
+import React, { useState, useEffect, useMemo, useRef } from 'react';
+import { Search, Printer, X, FileSpreadsheet, FileText, LayoutTemplate, Database } from 'lucide-react';
+import { toast } from 'sonner';
 import { stockMovementAPI } from '../../../services/stockMovementAPI';
 import { productAPI } from '../../../services/api/products';
 import type { Product } from '../../../core/types';
@@ -18,6 +19,41 @@ import {
     isOutboundMovement,
     labelMaterialExtractFiche,
 } from '../../../utils/materialExtractLabels';
+import { displayItemCode } from '../../../utils/lastPurchaseCostSql';
+import { PercentBodyModal, PercentBodyModalScrollBody } from '../../shared/PercentBodyModal';
+import { ReportHtmlPrintPreviewModal } from '../../reports/ReportHtmlPrintPreviewModal';
+import { ReportViewerModule } from '../../reports/ReportViewerModule';
+import type { ReportTemplate } from '../../reports/designerUtils';
+import { useTemplateStore } from '../../../store/useTemplateStore';
+import {
+    getBindingForScope,
+    listFastReportDesigns,
+    saveBindings,
+} from '../../../services/printDesignBindingService';
+import type { PrintDesignOption } from '../../../core/types/printDesignBindings';
+import { convertTemplateToReportTemplate } from '../../../services/templateRenderService';
+import { getReceiptSettings } from '../../../services/receiptSettingsService';
+import {
+    enqueueFastReportFrxJob,
+    enqueueFastReportTemplateJob,
+    enqueueHtmlDocumentJob,
+    isWindowsPrinterServiceEnabled,
+} from '../../../services/unifiedPrintQueueService';
+import { printReportHtml, shouldPreviewReportPrint } from '../../../utils/reportHtmlPrint';
+import { useResponsive } from '../../../hooks/useResponsive';
+import {
+    MATERIAL_EXTRACT_BUILTIN_ID,
+    MATERIAL_EXTRACT_PRINT_SCOPE,
+    buildMaterialExtractPrintContext,
+    buildMaterialExtractPrintHtml,
+    collectMaterialExtractDesignTemplates,
+    companyHeaderFromReceiptSettings,
+    readStoredExtractPrintDesign,
+    writeStoredExtractPrintDesign,
+    type ExtractPrintSelection,
+    type MaterialExtractPrintInput,
+    type MaterialExtractPrintRow,
+} from '../../../utils/materialExtractPrint';
 
 interface ExtractRow {
     id: string;
@@ -35,6 +71,12 @@ interface ExtractRow {
     warehouse_name?: string;
 }
 
+const BUILTIN_SELECTION: ExtractPrintSelection = {
+    kind: 'builtin',
+    id: MATERIAL_EXTRACT_BUILTIN_ID,
+    name: null,
+};
+
 /**
  * Malzeme Ekstresi — tenant-aware.
  * Seçili ürünün dönem içindeki tüm hareketlerini (ambar fişleri + faturalar)
@@ -44,7 +86,18 @@ interface ExtractRow {
 export function MaterialExtractReport() {
     const { tm } = useLanguage();
     const { selectedFirm } = useFirmaDonem();
+    const { isMobile } = useResponsive();
     const currency = selectedFirm?.ana_para_birimi || 'IQD';
+    const firmNr = String(selectedFirm?.firm_nr || '001').trim().padStart(3, '0');
+
+    const templates = useTemplateStore((s) => s.templates);
+    const {
+        loadTemplatesFromDatabase,
+        getTemplatesForScope,
+        getTemplatesByType,
+        resolveTemplateForScope,
+        setTemplateDefaultForScope,
+    } = useTemplateStore();
 
     const [loading, setLoading] = useState(false);
     const [products, setProducts] = useState<Product[]>([]);
@@ -54,6 +107,20 @@ export function MaterialExtractReport() {
     const [rows, setRows] = useState<ExtractRow[]>([]);
     const dropdownRef = useRef<HTMLDivElement>(null);
 
+    const [printOpen, setPrintOpen] = useState(false);
+    const [printLoadingOptions, setPrintLoadingOptions] = useState(false);
+    const [printBusy, setPrintBusy] = useState(false);
+    const [printSelection, setPrintSelection] = useState<ExtractPrintSelection>(BUILTIN_SELECTION);
+    const [printMakeDefault, setPrintMakeDefault] = useState(false);
+    const [frxOptions, setFrxOptions] = useState<PrintDesignOption[]>([]);
+    const [printPreview, setPrintPreview] = useState<{ html: string; title: string } | null>(null);
+    const [viewerState, setViewerState] = useState<{ template: ReportTemplate; data: Record<string, unknown> } | null>(null);
+
+    const designTemplates = useMemo(
+        () => collectMaterialExtractDesignTemplates(getTemplatesForScope, getTemplatesByType),
+        [templates, getTemplatesForScope, getTemplatesByType],
+    );
+
     const today = useMemo(() => new Date(), []);
     const monthStart = useMemo(() => {
         const d = new Date(today);
@@ -62,6 +129,8 @@ export function MaterialExtractReport() {
     }, [today]);
     const [startDate, setStartDate] = useState(format(monthStart, 'yyyy-MM-dd'));
     const [endDate, setEndDate] = useState(format(today, 'yyyy-MM-dd'));
+
+    const productCodeLabel = displayItemCode(selectedProduct?.code, selectedProduct?.barcode);
 
     // Ürün listesi tek seferde yüklensin
     useEffect(() => {
@@ -317,8 +386,9 @@ export function MaterialExtractReport() {
             };
         });
         const lastBalance = rows[rows.length - 1]?.running_balance ?? 0;
+        const codeForFile = productCodeLabel === '—' ? 'urun' : productCodeLabel.replace(/[^\w.-]+/g, '_');
         exportReportToXlsx({
-            fileName: `Malzeme_Ekstresi_${selectedProduct.code || 'urun'}_${startDate}_${endDate}`,
+            fileName: `Malzeme_Ekstresi_${codeForFile}_${startDate}_${endDate}`,
             sheetName: tm('materialExtractReport') || 'Malzeme Ekstresi',
             headers,
             rows: exportRows,
@@ -337,10 +407,220 @@ export function MaterialExtractReport() {
             metadata: {
                 companyName: selectedFirm?.name || selectedFirm?.firma_adi || 'RetailEX',
                 period: `${startDate} → ${endDate}`,
-                note: `${selectedProduct.code || ''} — ${selectedProduct.name || ''} • ${currency}`,
+                note: `${productCodeLabel} — ${selectedProduct.name || ''} • ${currency}`,
             },
         });
     };
+
+    const buildPrintInput = async (): Promise<MaterialExtractPrintInput | null> => {
+        if (!selectedProduct || rows.length === 0) return null;
+        const receipt = await getReceiptSettings(firmNr).catch(() => ({}));
+        const header = companyHeaderFromReceiptSettings(
+            receipt,
+            selectedFirm?.name || selectedFirm?.firma_adi || 'RetailEX',
+        );
+        return {
+            ...header,
+            reportTitle: tm('materialExtractReport') || 'Malzeme Ekstresi',
+            productCode: selectedProduct.code || selectedProduct.barcode || '',
+            productName: selectedProduct.name || '',
+            dateFrom: startDate,
+            dateTo: endDate,
+            currency,
+            rows: rows as MaterialExtractPrintRow[],
+            totals,
+            labels: {
+                reportTitle: tm('materialExtractReport') || 'Malzeme Ekstresi',
+                date: tm('date'),
+                ficheType: tm('ficheType') || 'Fiş Tipi',
+                ficheNo: tm('ficheNo') || 'Fiş No',
+                description: tm('description') || 'Açıklama',
+                inQty: tm('extractInQty'),
+                inAmt: tm('extractInAmount'),
+                outQty: tm('extractOutQty'),
+                outAmt: tm('extractOutAmount'),
+                runningBalance: tm('runningQuantity') || 'Kümülatif Bakiye',
+                total: tm('totalUppercase') || 'Toplam',
+                dateRange: tm('dateRangeLabel') || 'Tarih Aralığı',
+                empty: tm('noRecordsFound') || 'Kayıt bulunamadı',
+            },
+            labelFiche: (row) =>
+                labelMaterialExtractFiche(tm, row.trcode, row.movement_type, row.source_type, row.fiche_type),
+        };
+    };
+
+    const persistDefaultSelection = async (sel: ExtractPrintSelection) => {
+        writeStoredExtractPrintDesign(sel);
+        try {
+            await saveBindings(firmNr, [
+                {
+                    scope: MATERIAL_EXTRACT_PRINT_SCOPE,
+                    designKind: sel.kind,
+                    designId: sel.kind === 'builtin' ? null : sel.id,
+                    designName: sel.name,
+                    isActive: true,
+                },
+            ]);
+        } catch (err) {
+            console.warn('[MaterialExtractReport] saveBindings failed', err);
+        }
+        if (sel.kind === 'design_center' && sel.id) {
+            try {
+                await setTemplateDefaultForScope(sel.id, MATERIAL_EXTRACT_PRINT_SCOPE);
+            } catch (err) {
+                console.warn('[MaterialExtractReport] setTemplateDefaultForScope failed', err);
+            }
+        }
+    };
+
+    const openPrintModal = async () => {
+        if (!selectedProduct || rows.length === 0) {
+            toast.error(tm('extractPrintNeedRows') || 'Yazdırmak için önce raporu hazırlayın.');
+            return;
+        }
+        setPrintOpen(true);
+        setPrintMakeDefault(false);
+        setPrintLoadingOptions(true);
+        try {
+            await loadTemplatesFromDatabase();
+            let frx: PrintDesignOption[] = [];
+            try {
+                frx = await listFastReportDesigns(firmNr);
+            } catch (err) {
+                console.warn('[MaterialExtractReport] listFastReportDesigns failed', err);
+                frx = [];
+            }
+            setFrxOptions(frx);
+
+            const stored = readStoredExtractPrintDesign();
+            const resolved = resolveTemplateForScope('invoice', MATERIAL_EXTRACT_PRINT_SCOPE);
+            let next: ExtractPrintSelection = BUILTIN_SELECTION;
+
+            const binding = await getBindingForScope(firmNr, MATERIAL_EXTRACT_PRINT_SCOPE).catch(() => null);
+            if (binding?.designKind === 'fastreport_frx' && binding.designId) {
+                next = { kind: 'fastreport_frx', id: binding.designId, name: binding.designName };
+            } else if (binding?.designKind === 'design_center' && binding.designId) {
+                next = { kind: 'design_center', id: binding.designId, name: binding.designName };
+            } else if (binding?.designKind === 'builtin') {
+                next = BUILTIN_SELECTION;
+            } else if (resolved?.id) {
+                next = { kind: 'design_center', id: resolved.id, name: resolved.name };
+            } else if (stored) {
+                next = stored.kind === 'builtin' ? BUILTIN_SELECTION : stored;
+            }
+
+            setPrintSelection(next);
+        } catch (err) {
+            console.error('[MaterialExtractReport] openPrintModal failed', err);
+            setPrintSelection(BUILTIN_SELECTION);
+        } finally {
+            setPrintLoadingOptions(false);
+        }
+    };
+
+    const handleConfirmPrint = async () => {
+        if (!selectedProduct || rows.length === 0) {
+            toast.error(tm('extractPrintNeedRows') || 'Yazdırmak için önce raporu hazırlayın.');
+            return;
+        }
+        setPrintBusy(true);
+        try {
+            const input = await buildPrintInput();
+            if (!input) return;
+            if (printMakeDefault) {
+                await persistDefaultSelection(printSelection);
+            } else {
+                writeStoredExtractPrintDesign(printSelection);
+            }
+
+            if (printSelection.kind === 'builtin') {
+                const html = buildMaterialExtractPrintHtml(input);
+                const title = `${input.reportTitle} — ${displayItemCode(input.productCode)}`;
+                if (shouldPreviewReportPrint(isMobile)) {
+                    setPrintOpen(false);
+                    setPrintPreview({ html, title });
+                    return;
+                }
+                if (await isWindowsPrinterServiceEnabled()) {
+                    await enqueueHtmlDocumentJob({
+                        html,
+                        paperHint: 'A4',
+                        connection: 'system',
+                        refType: 'material_extract',
+                        refId: selectedProduct.id ?? null,
+                        sourceSystem: 'web',
+                    });
+                    toast.success(tm('extractPrintQueued') || 'Yazıcı kuyruğuna eklendi.');
+                    setPrintOpen(false);
+                    return;
+                }
+                await printReportHtml(html);
+                setPrintOpen(false);
+                return;
+            }
+
+            const context = buildMaterialExtractPrintContext(input);
+
+            if (printSelection.kind === 'fastreport_frx') {
+                if (!printSelection.id) {
+                    toast.error(tm('extractPrintFailed') || 'Yazdırma hazırlanamadı.');
+                    return;
+                }
+                if (!(await isWindowsPrinterServiceEnabled())) {
+                    toast.error(tm('extractPrintNeedService') || 'FastReport .frx için Windows yazıcı servisi açık olmalı.');
+                    return;
+                }
+                await enqueueFastReportFrxJob({
+                    designId: printSelection.id,
+                    designName: printSelection.name,
+                    scope: MATERIAL_EXTRACT_PRINT_SCOPE,
+                    data: context,
+                    connection: 'system',
+                    refType: 'material_extract',
+                    refId: selectedProduct.id ?? null,
+                    sourceSystem: 'web',
+                    priority: 80,
+                });
+                toast.success(tm('extractPrintQueued') || 'Yazıcı kuyruğuna eklendi.');
+                setPrintOpen(false);
+                return;
+            }
+
+            const selectedTemplate = designTemplates.find((t) => t.id === printSelection.id);
+            if (!selectedTemplate) {
+                toast.error(tm('extractPrintFailed') || 'Seçili şablon bulunamadı.');
+                return;
+            }
+            if (await isWindowsPrinterServiceEnabled()) {
+                await enqueueFastReportTemplateJob({
+                    templateId: selectedTemplate.id,
+                    type: 'invoice',
+                    data: context,
+                    connection: 'system',
+                    refType: 'material_extract',
+                    refId: selectedProduct.id ?? null,
+                    sourceSystem: 'web',
+                    priority: 80,
+                });
+                toast.success(tm('extractPrintQueued') || 'Yazıcı kuyruğuna eklendi.');
+                setPrintOpen(false);
+                return;
+            }
+            setViewerState({
+                template: convertTemplateToReportTemplate(selectedTemplate),
+                data: context,
+            });
+            setPrintOpen(false);
+        } catch (err) {
+            console.error('[MaterialExtractReport] print failed', err);
+            toast.error(tm('extractPrintFailed') || tm('reportToastPrintFrameFail') || 'Yazdırma hazırlanamadı.');
+        } finally {
+            setPrintBusy(false);
+        }
+    };
+
+    const canExport = Boolean(selectedProduct) && rows.length > 0 && !loading;
+    const builtinActive = printSelection.kind === 'builtin';
 
     return (
         <div className="h-full flex flex-col bg-white">
@@ -398,12 +678,12 @@ export function MaterialExtractReport() {
                                     type="button"
                                     onClick={() => {
                                         setSelectedProduct(p);
-                                        setSearchText(`${p.code || ''} - ${p.name || ''}`);
+                                        setSearchText(`${displayItemCode(p.code, p.barcode)} - ${p.name || ''}`);
                                         setShowDropdown(false);
                                     }}
                                     className="w-full px-3 py-2 text-left text-sm hover:bg-indigo-50 border-b last:border-b-0"
                                 >
-                                    <div className="font-mono text-xs text-gray-500">{p.code || '—'}</div>
+                                    <div className="font-mono text-xs text-gray-500">{displayItemCode(p.code, p.barcode)}</div>
                                     <div className="font-medium text-gray-800">{p.name}</div>
                                 </button>
                             ))}
@@ -444,17 +724,23 @@ export function MaterialExtractReport() {
                 </button>
 
                 <div className="flex-1 flex justify-end gap-2">
-                    <button className="p-2 hover:bg-gray-200 rounded border transition-colors" title={tm('print') || 'Yazdır'}>
+                    <button
+                        type="button"
+                        onClick={() => void openPrintModal()}
+                        disabled={!canExport}
+                        className="inline-flex items-center gap-1.5 px-3 py-2 bg-blue-600 text-white rounded-lg text-xs font-bold uppercase tracking-wide hover:bg-blue-700 shadow-sm shadow-blue-200/60 disabled:opacity-40 disabled:cursor-not-allowed disabled:shadow-none"
+                    >
                         <Printer className="w-4 h-4" />
+                        {tm('extractPrint') || tm('print') || 'Yazdır'}
                     </button>
                     <button
                         type="button"
                         onClick={exportExcel}
-                        disabled={!selectedProduct || rows.length === 0}
-                        className="p-2 hover:bg-gray-200 rounded border transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
-                        title={tm('exportExcel') || tm('export') || 'Excel'}
+                        disabled={!canExport}
+                        className="inline-flex items-center gap-1.5 px-3 py-2 bg-emerald-600 text-white rounded-lg text-xs font-bold uppercase tracking-wide hover:bg-emerald-700 shadow-sm shadow-emerald-200/60 disabled:opacity-40 disabled:cursor-not-allowed disabled:shadow-none"
                     >
-                        <Download className="w-4 h-4" />
+                        <FileSpreadsheet className="w-4 h-4" />
+                        {tm('exportExcel') || tm('export') || 'Excel'}
                     </button>
                 </div>
             </div>
@@ -467,7 +753,7 @@ export function MaterialExtractReport() {
                 <div className="mt-2 flex justify-center gap-4 text-xs text-gray-500 flex-wrap">
                     {selectedProduct && (
                         <span className="font-semibold">
-                            {selectedProduct.code} — {selectedProduct.name}
+                            {productCodeLabel} — {selectedProduct.name}
                         </span>
                     )}
                     <span>{tm('dateRangeLabel') || 'Tarih Aralığı'}: {startDate} → {endDate}</span>
@@ -532,6 +818,206 @@ export function MaterialExtractReport() {
                     />
                 )}
             </div>
+
+            {printOpen && (
+                <PercentBodyModal
+                    onClose={() => setPrintOpen(false)}
+                    size="wide"
+                    ariaLabel={tm('extractPrintSelectDesign') || tm('specialPrint')}
+                >
+                    <div className="bg-gradient-to-r from-blue-600 to-indigo-600 px-8 py-6 text-white shrink-0">
+                        <div className="flex items-center justify-between">
+                            <div>
+                                <h2 className="text-xl font-black uppercase tracking-tight">
+                                    {tm('extractPrint') || tm('print') || 'Yazdır'}
+                                </h2>
+                                <p className="text-blue-100 text-xs font-semibold uppercase tracking-wider mt-0.5 opacity-90">
+                                    {productCodeLabel}
+                                    {selectedProduct?.name ? ` — ${selectedProduct.name}` : ''}
+                                </p>
+                            </div>
+                            <button
+                                type="button"
+                                onClick={() => setPrintOpen(false)}
+                                className="w-12 h-12 rounded-2xl bg-white/20 hover:bg-white/30 flex items-center justify-center transition-colors"
+                            >
+                                <X className="w-5 h-5" />
+                            </button>
+                        </div>
+                    </div>
+                    <PercentBodyModalScrollBody className="p-8 space-y-5">
+                        <div className="rounded-2xl border border-slate-200 bg-slate-50 p-4">
+                            <div className="text-[11px] font-bold text-slate-500 uppercase tracking-wider mb-1.5">
+                                {tm('specialPrintDocumentType')}
+                            </div>
+                            <div className="text-base font-semibold text-slate-900">
+                                {tm('materialExtractReport') || 'Malzeme Ekstresi'}
+                            </div>
+                        </div>
+
+                        {printLoadingOptions ? (
+                            <div className="flex items-center justify-center py-10 text-slate-500 text-sm">
+                                <div className="w-4 h-4 border-2 border-blue-600 border-t-transparent rounded-full animate-spin mr-2" />
+                                {tm('loading') || 'Yükleniyor...'}
+                            </div>
+                        ) : (
+                            <>
+                                <div>
+                                    <div className="text-[11px] font-bold text-slate-500 uppercase tracking-wider mb-2">
+                                        {tm('extractPrintSelectDesign') || tm('specialPrintDesignSelect')}
+                                    </div>
+                                    <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
+                                        <button
+                                            type="button"
+                                            onClick={() => setPrintSelection(BUILTIN_SELECTION)}
+                                            className={`p-4 text-left border-2 rounded-2xl transition-all ${
+                                                builtinActive
+                                                    ? 'border-blue-600 bg-blue-50 shadow-sm'
+                                                    : 'border-slate-200 hover:border-blue-200 bg-white'
+                                            }`}
+                                        >
+                                            <FileText className={`w-5 h-5 mb-2 ${builtinActive ? 'text-blue-600' : 'text-slate-400'}`} />
+                                            <div className="text-sm font-bold text-slate-900">
+                                                {tm('extractPrintBuiltin') || 'Yerleşik A4 Malzeme Ekstresi'}
+                                            </div>
+                                            <div className="text-[11px] text-slate-500 mt-1">
+                                                {tm('extractPrintBuiltinDesc') || 'A4 · RetailEX yerleşik çıktı'}
+                                            </div>
+                                        </button>
+                                    </div>
+                                </div>
+
+                                {designTemplates.length > 0 && (
+                                    <div>
+                                        <div className="text-[11px] font-bold text-slate-500 uppercase tracking-wider mb-2 flex items-center gap-1.5">
+                                            <LayoutTemplate className="w-3.5 h-3.5" />
+                                            {tm('extractPrintDesignCenter') || 'Dizayn Merkezi'}
+                                        </div>
+                                        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
+                                            {designTemplates.map((template) => {
+                                                const active =
+                                                    printSelection.kind === 'design_center' &&
+                                                    printSelection.id === template.id;
+                                                return (
+                                                    <button
+                                                        key={template.id}
+                                                        type="button"
+                                                        onClick={() =>
+                                                            setPrintSelection({
+                                                                kind: 'design_center',
+                                                                id: template.id,
+                                                                name: template.name,
+                                                            })
+                                                        }
+                                                        className={`p-4 text-left border-2 rounded-2xl transition-all ${
+                                                            active
+                                                                ? 'border-indigo-600 bg-indigo-50 shadow-sm'
+                                                                : 'border-slate-200 hover:border-indigo-200 bg-white'
+                                                        }`}
+                                                    >
+                                                        <LayoutTemplate className={`w-5 h-5 mb-2 ${active ? 'text-indigo-600' : 'text-slate-400'}`} />
+                                                        <div className="text-sm font-bold text-slate-900 line-clamp-2">{template.name}</div>
+                                                        <div className="text-[11px] text-slate-500 mt-1">
+                                                            {template.format} · {template.width}×{template.height} mm
+                                                        </div>
+                                                    </button>
+                                                );
+                                            })}
+                                        </div>
+                                    </div>
+                                )}
+
+                                {frxOptions.length > 0 && (
+                                    <div>
+                                        <div className="text-[11px] font-bold text-slate-500 uppercase tracking-wider mb-2 flex items-center gap-1.5">
+                                            <Database className="w-3.5 h-3.5" />
+                                            {tm('extractPrintFastReport') || 'FastReport .frx'}
+                                        </div>
+                                        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
+                                            {frxOptions.map((opt) => {
+                                                const active =
+                                                    printSelection.kind === 'fastreport_frx' &&
+                                                    printSelection.id === opt.id;
+                                                return (
+                                                    <button
+                                                        key={opt.id}
+                                                        type="button"
+                                                        onClick={() =>
+                                                            setPrintSelection({
+                                                                kind: 'fastreport_frx',
+                                                                id: opt.id,
+                                                                name: opt.name,
+                                                            })
+                                                        }
+                                                        className={`p-4 text-left border-2 rounded-2xl transition-all ${
+                                                            active
+                                                                ? 'border-amber-500 bg-amber-50 shadow-sm'
+                                                                : 'border-slate-200 hover:border-amber-200 bg-white'
+                                                        }`}
+                                                    >
+                                                        <Database className={`w-5 h-5 mb-2 ${active ? 'text-amber-600' : 'text-slate-400'}`} />
+                                                        <div className="text-sm font-bold text-slate-900 line-clamp-2">{opt.name}</div>
+                                                        <div className="text-[11px] text-slate-500 mt-1">{opt.sourceLabel}</div>
+                                                    </button>
+                                                );
+                                            })}
+                                        </div>
+                                    </div>
+                                )}
+                            </>
+                        )}
+
+                        <label className="flex items-start gap-3 p-4 border border-slate-200 rounded-2xl bg-white">
+                            <input
+                                type="checkbox"
+                                checked={printMakeDefault}
+                                onChange={(e) => setPrintMakeDefault(e.target.checked)}
+                                className="mt-1 h-4 w-4 rounded border-slate-300 text-blue-600"
+                            />
+                            <span className="text-sm text-slate-700 font-medium">
+                                {tm('specialPrintMakeDefault')}
+                            </span>
+                        </label>
+                    </PercentBodyModalScrollBody>
+                    <div className="p-6 border-t border-slate-100 bg-slate-50/50 flex gap-4 shrink-0">
+                        <button
+                            type="button"
+                            onClick={() => setPrintOpen(false)}
+                            className="flex-1 py-3 rounded-2xl border-2 border-slate-200 text-slate-600 font-bold uppercase text-sm tracking-wider hover:bg-slate-100 active:scale-[0.98]"
+                        >
+                            {tm('cancel')}
+                        </button>
+                        <button
+                            type="button"
+                            onClick={() => void handleConfirmPrint()}
+                            disabled={printBusy || printLoadingOptions}
+                            className="flex-1 py-3 rounded-2xl bg-blue-600 text-white font-bold uppercase text-sm tracking-wider shadow-lg shadow-blue-200/50 hover:bg-blue-700 disabled:opacity-50 active:scale-[0.98] inline-flex items-center justify-center gap-2"
+                        >
+                            <Printer className="w-4 h-4" />
+                            {printBusy ? tm('preparing') : (tm('extractPrint') || tm('print'))}
+                        </button>
+                    </div>
+                </PercentBodyModal>
+            )}
+
+            {printPreview && (
+                <ReportHtmlPrintPreviewModal
+                    html={printPreview.html}
+                    title={printPreview.title}
+                    onClose={() => setPrintPreview(null)}
+                    printLabel={tm('extractPrint') || tm('print') || 'Yazdır'}
+                    closeLabel={tm('cancel')}
+                    hintLabel={tm('extractPrintSelectDesign') || tm('specialPrintDesignSelect')}
+                />
+            )}
+
+            {viewerState && (
+                <ReportViewerModule
+                    template={viewerState.template}
+                    data={viewerState.data}
+                    onClose={() => setViewerState(null)}
+                />
+            )}
         </div>
     );
 }

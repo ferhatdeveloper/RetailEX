@@ -26,7 +26,8 @@ export type TemplateUsageScope =
   | 'invoice_quote'
   | 'product_bulk_label'
   | 'shelf_label'
-  | 'warehouse_label';
+  | 'warehouse_label'
+  | 'material_extract';
 
 export const TEMPLATE_USAGE_SCOPES: TemplateUsageScope[] = [
   'global',
@@ -41,6 +42,7 @@ export const TEMPLATE_USAGE_SCOPES: TemplateUsageScope[] = [
   'product_bulk_label',
   'shelf_label',
   'warehouse_label',
+  'material_extract',
 ];
 
 export const TEMPLATE_USAGE_SCOPE_LABELS: Record<TemplateUsageScope, string> = {
@@ -56,6 +58,7 @@ export const TEMPLATE_USAGE_SCOPE_LABELS: Record<TemplateUsageScope, string> = {
   product_bulk_label: 'Toplu Ürün Etiketi',
   shelf_label: 'Raf Etiketi',
   warehouse_label: 'Depo Etiketi',
+  material_extract: 'Malzeme Ekstresi',
 };
 
 export interface TemplateElement {
@@ -151,6 +154,13 @@ export const INVOICE_FIELDS = {
   
   // Items table
   '{{items}}': 'Ürün Listesi (Tablo)',
+
+  // Material extract / reports
+  '{{reportTitle}}': 'Rapor başlığı',
+  '{{productCode}}': 'Malzeme kodu',
+  '{{productName}}': 'Malzeme adı',
+  '{{dateFrom}}': 'Başlangıç tarihi',
+  '{{dateTo}}': 'Bitiş tarihi',
 };
 
 export const LABEL_FIELDS = {
@@ -545,6 +555,113 @@ export const DEFAULT_TEMPLATES: Template[] = [
       { id: 'scl-barcode', type: 'barcode', x: 2, y: 10, width: 36, height: 9, field: '{{barcode}}' },
       { id: 'scl-price', type: 'text', x: 1, y: 20, width: 38, height: 4, content: '{{price}}', fontSize: 9, fontWeight: 'bold', textAlign: 'center' }
     ]
-  }
+  },
+  {
+    id: 'default-a4-material-extract',
+    name: 'A4 Malzeme Ekstresi',
+    description: 'Malzeme ekstresi A4 rapor şablonu — tarih, fiş, giriş/çıkış ve kümülatif bakiye',
+    type: 'invoice',
+    format: 'A4',
+    width: 210,
+    height: 297,
+    orientation: 'portrait',
+    engine: 'fastreport-like',
+    usageScopes: ['material_extract', 'global'],
+    defaultScopes: ['material_extract'],
+    margin: { top: 12, right: 12, bottom: 12, left: 12 },
+    isDefault: false,
+    createdAt: new Date().toISOString(),
+    updatedAt: new Date().toISOString(),
+    elements: [
+      {
+        id: 'me-store',
+        type: 'text',
+        x: 15,
+        y: 12,
+        width: 110,
+        height: 18,
+        content: '{{storeName}}\n{{storeAddress}}',
+        fontSize: 11,
+        fontWeight: 'bold',
+        textAlign: 'left',
+      },
+      {
+        id: 'me-meta',
+        type: 'text',
+        x: 130,
+        y: 12,
+        width: 65,
+        height: 18,
+        content: '{{date}}\n{{storeTaxNo}}',
+        fontSize: 9,
+        textAlign: 'right',
+      },
+      {
+        id: 'me-title',
+        type: 'text',
+        x: 15,
+        y: 34,
+        width: 180,
+        height: 12,
+        content: '{{reportTitle}}',
+        fontSize: 16,
+        fontWeight: 'bold',
+        textAlign: 'center',
+      },
+      {
+        id: 'me-product',
+        type: 'text',
+        x: 15,
+        y: 48,
+        width: 180,
+        height: 16,
+        content: '{{productCode}} — {{productName}}\n{{dateFrom}} → {{dateTo}}',
+        fontSize: 10,
+        textAlign: 'center',
+      },
+      {
+        id: 'me-line',
+        type: 'line',
+        x: 15,
+        y: 66,
+        width: 180,
+        height: 1,
+        borderWidth: 1,
+        borderColor: '#1D4ED8',
+      },
+      {
+        id: 'me-items',
+        type: 'table',
+        x: 15,
+        y: 70,
+        width: 180,
+        height: 190,
+        field: '{{items}}',
+        columns: [
+          'Tarih',
+          'Fiş Tipi',
+          'Fiş No',
+          'Açıklama',
+          'Giriş Miktar',
+          'Giriş Tutar',
+          'Çıkış Miktar',
+          'Çıkış Tutar',
+          'Kümülatif',
+        ],
+      },
+      {
+        id: 'me-totals',
+        type: 'text',
+        x: 15,
+        y: 268,
+        width: 180,
+        height: 16,
+        content: 'Giriş: {{subtotal}}   Çıkış: {{discount}}   Bakiye: {{total}}',
+        fontSize: 10,
+        fontWeight: 'bold',
+        textAlign: 'right',
+      },
+    ],
+  },
 ];
 
