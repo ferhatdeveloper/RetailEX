@@ -299,7 +299,7 @@ export function GrafanaReportBuilderModule() {
     (ctx.firmNr ? `Firma ${ctx.firmNr}` : '—');
 
   return (
-    <div className={`flex h-full min-h-0 flex-col ${shell}`}>
+    <div className={`flex h-full min-h-0 flex-col overflow-hidden ${shell}`}>
       <div
         className={`shrink-0 flex flex-wrap items-center justify-between gap-2 px-4 py-2 border-b ${
           darkMode ? 'border-gray-700 bg-gray-800/90' : 'border-gray-200 bg-white'
@@ -387,9 +387,9 @@ export function GrafanaReportBuilderModule() {
       />
 
       {mainTab === 'data' ? (
-        <div className="flex flex-1 min-h-0">
+        <div className="flex flex-1 min-h-0 overflow-hidden">
           <aside
-            className={`w-80 shrink-0 border-r flex flex-col min-h-0 ${
+            className={`w-80 shrink-0 border-r flex flex-col min-h-0 overflow-hidden ${
               darkMode ? 'border-gray-700 bg-gray-850' : 'border-gray-200 bg-white'
             }`}
           >
@@ -423,7 +423,7 @@ export function GrafanaReportBuilderModule() {
               </button>
             </div>
 
-            <div className="flex-1 min-h-0 overflow-y-auto p-2 space-y-1">
+            <div className="flex-1 min-h-0 overflow-y-auto overscroll-contain p-2 space-y-1">
               <p className={`px-2 pt-1 text-[10px] font-bold uppercase tracking-wider ${muted}`}>
                 {lang === 'en' ? 'Saved reports' : 'Kayıtlı raporlar'}
               </p>
@@ -538,8 +538,12 @@ export function GrafanaReportBuilderModule() {
             </div>
           </aside>
 
-          <section className="flex-1 min-w-0 min-h-0 flex flex-col">
-            <div className={`shrink-0 p-3 border-b space-y-2 ${darkMode ? 'border-gray-700' : 'border-gray-200'}`}>
+          <section className="flex-1 min-w-0 min-h-0 flex flex-col overflow-hidden">
+            <div
+              className={`shrink-0 max-h-[min(42vh,22rem)] overflow-y-auto overscroll-contain p-3 border-b space-y-2 ${
+                darkMode ? 'border-gray-700' : 'border-gray-200'
+              }`}
+            >
               <div className="flex flex-wrap items-center gap-2">
                 <input
                   value={reportName}
@@ -584,9 +588,9 @@ export function GrafanaReportBuilderModule() {
               <textarea
                 value={sql}
                 onChange={(e) => setSql(e.target.value)}
-                rows={5}
+                rows={4}
                 spellCheck={false}
-                className={`w-full font-mono text-xs rounded-xl border p-3 outline-none focus:ring-2 focus:ring-teal-500/40 resize-y min-h-[100px] ${inputCls}`}
+                className={`w-full font-mono text-xs rounded-xl border p-3 outline-none focus:ring-2 focus:ring-teal-500/40 resize-y min-h-[80px] max-h-40 ${inputCls}`}
                 placeholder="SELECT … FROM … LIMIT 100"
               />
               {runError && <p className="text-xs text-red-500">{runError}</p>}
@@ -597,9 +601,9 @@ export function GrafanaReportBuilderModule() {
               )}
             </div>
 
-            <div className="flex-1 min-h-0 overflow-auto p-3">
+            <div className="flex-1 min-h-0 overflow-auto overscroll-contain p-3">
               {resultRows.length === 0 && !runError ? (
-                <div className={`h-full min-h-[240px] flex items-center justify-center text-sm ${muted}`}>
+                <div className={`h-full min-h-[160px] flex items-center justify-center text-sm ${muted}`}>
                   {lang === 'en'
                     ? 'Select columns, run SELECT, then save the report.'
                     : 'Tablo/alan seçin, SELECT çalıştırın, raporu kaydedin.'}
@@ -617,13 +621,13 @@ export function GrafanaReportBuilderModule() {
           </section>
         </div>
       ) : (
-        <div className="flex flex-1 min-h-0">
+        <div className="flex flex-1 min-h-0 overflow-hidden">
           <aside
-            className={`w-72 shrink-0 border-r flex flex-col min-h-0 ${
+            className={`w-72 shrink-0 border-r flex flex-col min-h-0 overflow-hidden ${
               darkMode ? 'border-gray-700' : 'border-gray-200 bg-white'
             }`}
           >
-            <div className="flex-1 min-h-0 overflow-y-auto p-2 space-y-1.5">
+            <div className="flex-1 min-h-0 overflow-y-auto overscroll-contain p-2 space-y-1.5">
               {(
                 [
                   { key: 'erp' as const, tr: 'İş raporları', en: 'Business reports' },
@@ -666,7 +670,7 @@ export function GrafanaReportBuilderModule() {
               })}
             </div>
           </aside>
-          <section className="flex-1 min-w-0 min-h-0 flex flex-col">
+          <section className="flex-1 min-w-0 min-h-0 flex flex-col overflow-hidden">
             <div
               className={`shrink-0 flex items-center justify-between gap-2 px-4 py-2 border-b ${
                 darkMode ? 'border-gray-700' : 'border-gray-200'
@@ -690,7 +694,7 @@ export function GrafanaReportBuilderModule() {
                 {lang === 'en' ? 'Open full' : 'Tam ekran'}
               </a>
             </div>
-            <div className="flex-1 min-h-0 relative" style={{ minHeight: 'min(72vh, 720px)' }}>
+            <div className="flex-1 min-h-0 relative overflow-hidden">
               <iframe
                 key={embedUrl}
                 title={reportTitle(grafanaSelected, lang)}

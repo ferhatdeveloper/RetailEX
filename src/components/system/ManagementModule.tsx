@@ -1490,7 +1490,11 @@ export function ManagementModule({
         case 'customreports':
           return <ReportsModule sales={sales} products={products} />;
         case 'grafana-report-builder':
-          return <GrafanaReportBuilderModule />;
+          return (
+            <div className="h-full min-h-0 overflow-hidden flex flex-col">
+              <GrafanaReportBuilderModule />
+            </div>
+          );
         case 'profit-dashboard':
           return <ProfitDashboard />;
         case 'category-group-profit-report':
