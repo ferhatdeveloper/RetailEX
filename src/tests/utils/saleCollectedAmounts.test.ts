@@ -135,6 +135,23 @@ describe('extraCustomerCollectionsNotOnSales — çift sayım yok', () => {
 });
 
 describe('resolvePosCheckoutSettlement — kısmi nakit + kalan cari', () => {
+  it('15k belge / 5k nakit / 10k veresiye: Alınan=5k, kalan=10k, belge veresiye (CH_TAHSILAT 5k)', () => {
+    const s = resolvePosCheckoutSettlement(15000, [
+      { method: 'cash', amount: 5000, currency: 'IQD', cash_register_name: 'MERKEZ KASA' },
+      { method: 'veresiye', amount: 10000, currency: 'IQD' },
+    ]);
+    expect(s.paymentMethod).toBe('veresiye');
+    expect(s.document).toBe(15000);
+    expect(s.collected).toBe(5000);
+    expect(s.cash).toBe(5000);
+    expect(s.remaining).toBe(10000);
+    expect(s.credit).toBe(10000);
+    // Peşin kısım kasaya; veresiye satırında kasa adı olmamalı (UI etiketi ayrı)
+    expect(s.payments[0]?.cash_register_name).toBe('MERKEZ KASA');
+    expect(s.payments[1]?.method).toBe('veresiye');
+    expect(s.payments[1]?.cash_register_name).toBeUndefined();
+  });
+
   it('45k belge / 25k nakit / 20k veresiye: method=veresiye, cebe 25k, kalan 20k', () => {
     const s = resolvePosCheckoutSettlement(45000, [
       { method: 'cash', amount: 25000, currency: 'IQD' },

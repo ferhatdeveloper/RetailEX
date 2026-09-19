@@ -19,9 +19,6 @@ export type PosVeresiyePaymentRow = {
   method: 'veresiye';
   amount: number;
   currency: PosCariCurrency;
-  cash_register_id?: string;
-  cash_register_name?: string;
-  cash_register_code?: string;
 };
 
 export function hasPosCariRemainder(
@@ -31,23 +28,20 @@ export function hasPosCariRemainder(
   return Number(remaining) > threshold;
 }
 
-/** Kalan tutarı yuvarlanmış veresiye (cari) satırına çevirir. */
+/**
+ * Kalan tutarı yuvarlanmış veresiye (cari) satırına çevirir.
+ * Veresiye kasa hareketi değildir — kasa adı/id eklenmez (etiket: Veresiye/Cari).
+ */
 export function buildVeresiyeForRemaining(
   amount: number,
   currency: PosCariCurrency,
-  cashRegister?: PosVeresiyeCashRegister | null,
+  _cashRegister?: PosVeresiyeCashRegister | null,
 ): PosVeresiyePaymentRow {
-  const row: PosVeresiyePaymentRow = {
+  return {
     method: 'veresiye',
     amount: roundPosMoneyAmount(amount, currency),
     currency,
   };
-  if (cashRegister?.id) {
-    row.cash_register_id = cashRegister.id;
-    if (cashRegister.kasa_adi) row.cash_register_name = cashRegister.kasa_adi;
-    if (cashRegister.kasa_kodu) row.cash_register_code = cashRegister.kasa_kodu;
-  }
-  return row;
 }
 
 /**
@@ -60,6 +54,7 @@ export function appendVeresiyeForRemaining<T extends { method: string; amount: n
   opts: {
     hasCustomer: boolean;
     currency: PosCariCurrency;
+    /** Geriye uyum — veresiye satırına yazılmaz */
     cashRegister?: PosVeresiyeCashRegister | null;
     threshold?: number;
   },
@@ -72,7 +67,7 @@ export function appendVeresiyeForRemaining<T extends { method: string; amount: n
     return { payments: [...payments], remaining, appended: false };
   }
   return {
-    payments: [...payments, buildVeresiyeForRemaining(remaining, opts.currency, opts.cashRegister)],
+    payments: [...payments, buildVeresiyeForRemaining(remaining, opts.currency)],
     remaining: 0,
     appended: true,
   };

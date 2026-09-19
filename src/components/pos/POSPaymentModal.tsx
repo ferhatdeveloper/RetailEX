@@ -322,7 +322,19 @@ export function POSPaymentModal({
     tm('posWriteRemainingToCari') || t.writeRemainingToCari || 'Kalanı cariye yaz';
 
   const buildVeresiyeForRemaining = (amount: number): Payment =>
-    buildVeresiyeForRemainingHelper(amount, baseCurrency, selectedCashRegister);
+    buildVeresiyeForRemainingHelper(amount, baseCurrency);
+
+  /** Peşin/kart/QR satırına kasa; veresiye satırına kasa adı yazılmaz. */
+  const cashRegisterFieldsForMethod = (
+    method: Payment['method'],
+  ): Pick<Payment, 'cash_register_id' | 'cash_register_name' | 'cash_register_code'> => {
+    if (method === 'veresiye' || !selectedCashRegister) return {};
+    return {
+      cash_register_id: selectedCashRegister.id,
+      cash_register_name: selectedCashRegister.kasa_adi,
+      cash_register_code: selectedCashRegister.kasa_kodu,
+    };
+  };
 
   const handleWriteRemainingToCari = () => {
     if (!selectedCustomer) {
@@ -360,11 +372,7 @@ export function POSPaymentModal({
       amount: normalizedAmount,
       currency: currentCurrency,
       ...(currentMethod === 'gateway' && { gatewayProvider: selectedGateway }),
-      ...(selectedCashRegister && {
-        cash_register_id: selectedCashRegister.id,
-        cash_register_name: selectedCashRegister.kasa_adi,
-        cash_register_code: selectedCashRegister.kasa_kodu,
-      }),
+      ...cashRegisterFieldsForMethod(currentMethod),
     };
 
     // If gateway payment, show QR code
@@ -812,11 +820,15 @@ export function POSPaymentModal({
                               {payment.gatewayProvider.toUpperCase()}
                             </span>
                           )}
-                          {payment.cash_register_name && (
+                          {payment.method === 'veresiye' ? (
+                            <span className={`text-[10px] px-1.5 py-0.5 rounded ${darkMode ? 'bg-orange-900/40 text-orange-300' : 'bg-orange-100 text-orange-800'}`}>
+                              {t.veresiyeLabel || 'Veresiye (Cari)'}
+                            </span>
+                          ) : payment.cash_register_name ? (
                             <span className={`text-[10px] px-1.5 py-0.5 rounded ${darkMode ? 'bg-emerald-900/40 text-emerald-300' : 'bg-emerald-100 text-emerald-700'}`}>
                               {payment.cash_register_name}
                             </span>
-                          )}
+                          ) : null}
                         </div>
                         <button
                           onClick={() => handleRemovePayment(index)}
@@ -863,47 +875,6 @@ export function POSPaymentModal({
                     </button>
                   ))}
                 </div>
-              </div>
-
-              {/* Cash Register Selection — buton → kasa listesi modalı */}
-              <div className={`border p-3 ${darkMode ? 'bg-gray-800 border-gray-700' : 'bg-emerald-50 border-emerald-200'}`}>
-                <div className="flex items-center justify-between mb-2">
-                  <h4 className={`text-sm flex items-center gap-2 ${darkMode ? 'text-emerald-400' : 'text-emerald-800'}`}>
-                    <Wallet className="w-4 h-4" />
-                    {tm('cashRegisterLabel') || 'Kasa Seçimi'}
-                  </h4>
-                  {selectedCashRegister && (
-                    <span className={`text-[10px] px-2 py-0.5 rounded-full ${darkMode ? 'bg-emerald-900/40 text-emerald-300' : 'bg-emerald-100 text-emerald-700'}`}>
-                      {(tm('cashRegisterPaymentTypeLabel') || 'Ödeme Türü: {type}').replace('{type}', currentMethod === 'cash' ? (t.cashLabel || 'Nakit')
-                        : currentMethod === 'card' ? (t.cardLabel || 'Kart')
-                        : currentMethod === 'gateway' ? (t.gatewayLabel || 'QR Ödeme')
-                        : (t.veresiyeLabel || 'Veresiye'))}
-                    </span>
-                  )}
-                </div>
-                <button
-                  type="button"
-                  aria-label={tm('cashRegisterLabel') || 'Kasa Seçimi'}
-                  disabled={cashRegistersLoading || cashRegisters.length === 0}
-                  onClick={() => setShowCashRegisterModal(true)}
-                  className={`w-full px-3 py-2.5 text-sm border text-left flex items-center justify-between gap-2 focus:outline-none focus:border-emerald-600 disabled:opacity-50 ${
-                    darkMode ? 'bg-gray-700 border-gray-600 text-white hover:border-emerald-500' : 'bg-white border-gray-300 hover:border-emerald-500'
-                  }`}
-                >
-                  <span className="truncate font-medium">
-                    {cashRegistersLoading
-                      ? (tm('loading') || 'Yükleniyor...')
-                      : selectedCashRegister
-                        ? `${selectedCashRegister.kasa_adi} (${selectedCashRegister.kasa_kodu}) — ${selectedCashRegister.id_doviz_kodu} · ${selectedCashRegister.bakiye.toLocaleString('tr-TR')}`
-                        : (tm('selectCashRegister') || 'Kasa seçin')}
-                  </span>
-                  <ChevronDown className={`w-4 h-4 shrink-0 ${darkMode ? 'text-gray-400' : 'text-gray-500'}`} aria-hidden />
-                </button>
-                {selectedCashRegister && (
-                  <p className={`text-[11px] mt-1 ${darkMode ? 'text-gray-400' : 'text-gray-600'}`}>
-                    {`${selectedCashRegister.kasa_adi} · Bakiye: ${selectedCashRegister.bakiye.toLocaleString('tr-TR')} ${selectedCashRegister.id_doviz_kodu}`}
-                  </p>
-                )}
               </div>
 
               {/* Amount Input */}
@@ -976,11 +947,7 @@ export function POSPaymentModal({
                       amount: amountToAdd,
                       currency: currentCurrency,
                       ...(currentMethod === 'gateway' && { gatewayProvider: selectedGateway }),
-                      ...(selectedCashRegister && {
-                        cash_register_id: selectedCashRegister.id,
-                        cash_register_name: selectedCashRegister.kasa_adi,
-                        cash_register_code: selectedCashRegister.kasa_kodu,
-                      }),
+                      ...cashRegisterFieldsForMethod(currentMethod),
                     };
                     if (currentMethod === 'gateway' && selectedGateway) {
                       const result = await paymentGateway.initiatePayment(
@@ -1258,9 +1225,33 @@ export function POSPaymentModal({
             </div>
           </div>
 
-          <div className={`text-[10px] px-2 py-1 rounded-full shrink-0 ${darkMode ? 'bg-blue-900/30 text-blue-400' : 'bg-blue-50 text-blue-600'}`}>
-            POS ID: {receiptNumber.split('-').pop()}
-          </div>
+          {/* Kasa seçimi — eski POS ID yerinde */}
+          <button
+            type="button"
+            aria-label={tm('cashRegisterLabel') || 'Kasa Seçimi'}
+            disabled={cashRegistersLoading || cashRegisters.length === 0}
+            onClick={() => setShowCashRegisterModal(true)}
+            className={`max-w-[min(100%,22rem)] text-left flex items-center gap-1.5 px-2.5 py-1 rounded-full shrink-0 border transition-colors disabled:opacity-50 focus:outline-none focus:ring-2 focus:ring-emerald-500/40 ${
+              darkMode
+                ? 'bg-emerald-900/30 border-emerald-800/60 text-emerald-300 hover:bg-emerald-900/50'
+                : 'bg-emerald-50 border-emerald-200 text-emerald-800 hover:bg-emerald-100'
+            }`}
+            title={
+              selectedCashRegister
+                ? `${selectedCashRegister.kasa_adi} (${selectedCashRegister.kasa_kodu}) — ${selectedCashRegister.id_doviz_kodu} · ${selectedCashRegister.bakiye.toLocaleString('tr-TR')}`
+                : (tm('selectCashRegister') || 'Kasa seçin')
+            }
+          >
+            <Wallet className="w-3.5 h-3.5 shrink-0" aria-hidden />
+            <span className="text-[10px] font-medium truncate min-w-0">
+              {cashRegistersLoading
+                ? (tm('loading') || 'Yükleniyor...')
+                : selectedCashRegister
+                  ? `${selectedCashRegister.kasa_adi} (${selectedCashRegister.kasa_kodu}) — ${selectedCashRegister.id_doviz_kodu} · ${selectedCashRegister.bakiye.toLocaleString('tr-TR')}`
+                  : (tm('selectCashRegister') || 'Kasa seçin')}
+            </span>
+            <ChevronDown className="w-3 h-3 shrink-0 opacity-70" aria-hidden />
+          </button>
         </div>
 
         {/* Footer */}

@@ -20,6 +20,18 @@ describe('POS kalanı cariye — eşik / buildVeresiye', () => {
     expect(row.currency).toBe('USD');
   });
 
+  it('veresiye satırına kasa adı/id yazılmaz (cari etiketi için)', () => {
+    const row = buildVeresiyeForRemaining(10000, 'IQD', {
+      id: 'kasa-1',
+      kasa_adi: 'MERKEZ KASA',
+      kasa_kodu: '0001',
+    });
+    expect(row.method).toBe('veresiye');
+    expect(row).not.toHaveProperty('cash_register_id');
+    expect(row).not.toHaveProperty('cash_register_name');
+    expect(row).not.toHaveProperty('cash_register_code');
+  });
+
   it('onay: 40 nakit + kalan 60 → veresiye eklenir', () => {
     const result = appendVeresiyeForRemaining(
       [{ method: 'cash', amount: 40 }],
