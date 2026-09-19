@@ -27,7 +27,7 @@ const LABELS = {
     outQty: 'Çıkış miktar',
     outAmt: 'Çıkış tutar',
     salesUnitPrice: 'Satış Birim Fiyatı',
-    runningBalance: 'Kümülatif Kalan Bakiye',
+    runningBalance: 'Kalan Bakiye',
     total: 'Toplam',
     dateRange: 'Tarih Aralığı',
     empty: 'Kayıt bulunamadı',
@@ -134,10 +134,11 @@ describe('buildMaterialExtractPrintHtml', () => {
         expect(html).toContain('@page { size: A4');
         expect(html).toContain('Alış Birim Fiyatı');
         expect(html).toContain('Satış Birim Fiyatı');
-        expect(html).toContain('Kümülatif Kalan Bakiye');
+        expect(html).toContain('Kalan Bakiye');
+        expect(html).not.toContain('Kümülatif');
         expect(html.indexOf('Alış Birim Fiyatı')).toBeLessThan(html.indexOf('Çıkış miktar'));
         expect(html.indexOf('Çıkış tutar')).toBeLessThan(html.indexOf('Satış Birim Fiyatı'));
-        expect(html.indexOf('Satış Birim Fiyatı')).toBeLessThan(html.indexOf('Kümülatif Kalan Bakiye'));
+        expect(html.indexOf('Satış Birim Fiyatı')).toBeLessThan(html.indexOf('Kalan Bakiye'));
     });
 
     it('UUID ürün kodunu gizler', () => {

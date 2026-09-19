@@ -165,7 +165,6 @@ export function ServiceCardsModule() {
                                     <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Hizmet Adı</th>
                                     <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Kategori</th>
                                     <th className="px-6 py-3 text-right text-xs font-medium text-gray-500 uppercase">Birim Fiyat</th>
-                                    <th className="px-6 py-3 text-center text-xs font-medium text-gray-500 uppercase">TAX %</th>
                                     <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Durum</th>
                                     <th className="px-6 py-3 text-right text-xs font-medium text-gray-500 uppercase">İşlemler</th>
                                 </tr>
@@ -173,7 +172,7 @@ export function ServiceCardsModule() {
                             <tbody className="bg-white divide-y divide-gray-200">
                                 {filteredServices.length === 0 ? (
                                     <tr>
-                                        <td colSpan={7} className="px-6 py-12 text-center text-gray-500">
+                                        <td colSpan={6} className="px-6 py-12 text-center text-gray-500">
                                             <FileText className="w-12 h-12 mx-auto mb-3 text-gray-300" />
                                             <p className="text-lg font-medium">Henüz hizmet yok</p>
                                             <p className="text-sm mt-1">Yeni hizmet eklemek için yukarıdaki butonu kullanın</p>
@@ -200,9 +199,6 @@ export function ServiceCardsModule() {
                                             </td>
                                             <td className="px-6 py-4 whitespace-nowrap text-right text-sm font-medium text-gray-900">
                                                 {service.unit_price.toFixed(2)}
-                                            </td>
-                                            <td className="px-6 py-4 whitespace-nowrap text-center text-sm text-gray-500">
-                                                %{service.tax_rate}
                                             </td>
                                             <td className="px-6 py-4 whitespace-nowrap">
                                                 <button

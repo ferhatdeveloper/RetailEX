@@ -3,7 +3,7 @@
 import { useState, useEffect, useRef, useCallback } from 'react';
 import {
   Settings, Users, Shield, Database, Radio, HardDrive,
-  Activity, Bell, Key, FileText, Cpu, Network, AlertCircle, Download, Loader2,
+  Activity, Bell, Key, FileText, AlertCircle, Download, Loader2,
   Upload, CheckCircle, Clock, User, Lock, Trash2, Edit, Plus, Save, X, Receipt, Image, Printer,
   Phone, Menu, PanelLeftClose, Monitor,
 } from 'lucide-react';
@@ -33,6 +33,7 @@ import {
   type ReportMenuParamKey,
   type ReportMenuParams,
 } from '../../services/reportMenuParamsService';
+import { getGrafanaBaseUrl, getGrafanaEmbedUrl } from '../../utils/grafanaEmbed';
 
 type SystemView =
   | 'userManagement'
@@ -275,7 +276,11 @@ export function SystemManagementModule({ routeHint }: SystemManagementModuleProp
         )}
         {currentView === 'backupRestore' && <BackupRestoreView />}
         {currentView === 'logAudit' && <LogAuditView />}
-        {currentView === 'systemHealth' && <SystemHealthView />}
+        {currentView === 'systemHealth' && (
+          <div className="h-full min-h-[min(70vh,640px)] flex flex-col overflow-hidden">
+            <SystemHealthView />
+          </div>
+        )}
         </div>
       </div>
     </div>
@@ -1227,68 +1232,77 @@ function LogAuditView() {
   );
 }
 
-// System Health View
+// System Health View — Grafana panosu (Dokploy: /__grafana → grafana:3000)
 function SystemHealthView() {
-  const metrics = [
-    { label: 'CPU Kullanımı', value: 35, unit: '%', status: 'good', icon: Cpu },
-    { label: 'RAM Kullanımı', value: 62, unit: '%', status: 'warning', icon: Cpu },
-    { label: 'Disk Kullanımı', value: 48, unit: '%', status: 'good', icon: HardDrive },
-    { label: 'Network Trafiği', value: 125, unit: 'Mb/s', status: 'good', icon: Network },
-  ];
+  const { darkMode } = useTheme();
+  const embedUrl = getGrafanaEmbedUrl({ dark: darkMode });
+  const baseUrl = getGrafanaBaseUrl();
+  const [iframeError, setIframeError] = useState(false);
 
   return (
-    <div className="p-6 space-y-6">
-      <div className="grid grid-cols-4 gap-4">
-        {metrics.map((metric, index) => {
-          const Icon = metric.icon;
-          return (
-            <div key={index} className="bg-white rounded-lg shadow-sm border p-4">
-              <div className="flex items-center justify-between mb-3">
-                <Icon className={`h-8 w-8 ${metric.status === 'good' ? 'text-green-600' : 'text-yellow-600'
-                  }`} />
-                <span className={`text-2xl font-bold ${metric.status === 'good' ? 'text-green-600' : 'text-yellow-600'
-                  }`}>
-                  {metric.value}{metric.unit}
-                </span>
-              </div>
-              <p className="text-sm text-gray-600">{metric.label}</p>
-            </div>
-          );
-        })}
-      </div>
-
-      <div className="bg-white rounded-lg shadow-sm border">
-        <div className="p-4 border-b">
-          <h3 className="font-semibold text-gray-900 flex items-center gap-2">
-            <Activity className="h-5 w-5 text-teal-600" />
-            Sistem Durumu
-          </h3>
-        </div>
-        <div className="p-6">
-          <div className="space-y-3">
-            <div className="flex items-center justify-between p-3 bg-green-50 border border-green-200 rounded-lg">
-              <div className="flex items-center gap-2">
-                <CheckCircle className="h-5 w-5 text-green-600" />
-                <span className="font-medium text-green-900">Veritabanı Bağlantısı</span>
-              </div>
-              <span className="text-green-700 text-sm">Aktif</span>
-            </div>
-            <div className="flex items-center justify-between p-3 bg-green-50 border border-green-200 rounded-lg">
-              <div className="flex items-center gap-2">
-                <CheckCircle className="h-5 w-5 text-green-600" />
-                <span className="font-medium text-green-900">API Servisleri</span>
-              </div>
-              <span className="text-green-700 text-sm">Çalışıyor</span>
-            </div>
-            <div className="flex items-center justify-between p-3 bg-green-50 border border-green-200 rounded-lg">
-              <div className="flex items-center gap-2">
-                <CheckCircle className="h-5 w-5 text-green-600" />
-                <span className="font-medium text-green-900">Yedekleme Sistemi</span>
-              </div>
-              <span className="text-green-700 text-sm">Normal</span>
-            </div>
+    <div className={`flex flex-col h-full min-h-0 ${darkMode ? 'bg-gray-900' : 'bg-gray-50'}`}>
+      <div
+        className={`shrink-0 flex flex-wrap items-center justify-between gap-2 px-4 py-2 border-b ${
+          darkMode ? 'bg-gray-800 border-gray-700' : 'bg-white border-gray-200'
+        }`}
+      >
+        <div className="flex items-center gap-2 min-w-0">
+          <Activity className={`h-5 w-5 shrink-0 ${darkMode ? 'text-teal-400' : 'text-teal-600'}`} />
+          <div className="min-w-0">
+            <h3 className={`font-semibold text-sm truncate ${darkMode ? 'text-gray-100' : 'text-gray-900'}`}>
+              Sistem Sağlığı — Grafana
+            </h3>
+            <p className={`text-xs truncate ${darkMode ? 'text-gray-400' : 'text-gray-500'}`}>
+              Konteyner CPU / RAM (Prometheus + cAdvisor)
+            </p>
           </div>
         </div>
+        <a
+          href={baseUrl}
+          target="_blank"
+          rel="noopener noreferrer"
+          className={`text-xs font-medium px-3 py-1.5 rounded-lg border shrink-0 ${
+            darkMode
+              ? 'border-gray-600 text-teal-300 hover:bg-gray-700'
+              : 'border-teal-200 text-teal-700 hover:bg-teal-50'
+          }`}
+        >
+          Grafana’yı aç
+        </a>
+      </div>
+
+      <div className="flex-1 min-h-0 relative" style={{ minHeight: 'min(70vh, 640px)' }}>
+        {iframeError ? (
+          <div
+            className={`absolute inset-0 flex flex-col items-center justify-center gap-3 p-6 text-center ${
+              darkMode ? 'text-gray-300' : 'text-gray-600'
+            }`}
+          >
+            <AlertCircle className="h-10 w-10 text-amber-500" />
+            <p className="font-medium">Grafana yüklenemedi</p>
+            <p className="text-sm max-w-md">
+              Dokploy’da <code className="text-xs">grafana</code> servisinin çalıştığını ve frontend nginx
+              proxy’sinin (<code className="text-xs">/__grafana</code>) güncel olduğunu kontrol edin.
+            </p>
+            <a
+              href={baseUrl}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="text-sm text-teal-600 hover:underline"
+            >
+              {baseUrl}
+            </a>
+          </div>
+        ) : (
+          <iframe
+            title="Grafana Sistem Sağlığı"
+            src={embedUrl}
+            className="absolute inset-0 w-full h-full border-0 bg-transparent"
+            allow="fullscreen"
+            referrerPolicy="no-referrer-when-downgrade"
+            onError={() => setIframeError(true)}
+          />
+        )}
       </div>
     </div>
   );

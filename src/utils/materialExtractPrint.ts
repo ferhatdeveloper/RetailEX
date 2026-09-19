@@ -28,6 +28,12 @@ export type MaterialExtractPrintRow = {
   amount: number;
   running_balance: number;
   warehouse_name?: string;
+  /** group | subtotal — yerleşik HTML yazdırmada özel satır */
+  printRowKind?: 'group' | 'subtotal';
+  printInQty?: number;
+  printInAmt?: number;
+  printOutQty?: number;
+  printOutAmt?: number;
 };
 
 export type MaterialExtractPrintLabels = {
@@ -197,8 +203,8 @@ type MappedExtractItem = {
   outQty: number | '';
   outAmt: number | '';
   salesUnitPrice: number | '';
-  runningBalance: number;
-  running_balance: number;
+  runningBalance: number | '';
+  running_balance: number | '';
   productName: string;
   quantity: number;
   unitPrice: number;
@@ -207,10 +213,39 @@ type MappedExtractItem = {
   name: string;
   date: string;
   ficheType: string;
+  printRowKind?: 'group' | 'subtotal';
 };
 
 function mapPrintRows(input: MaterialExtractPrintInput): MappedExtractItem[] {
   return input.rows.map((row) => {
+    const kind = row.printRowKind;
+    if (kind === 'group' || kind === 'subtotal') {
+      const desc = row.description || '';
+      return {
+        dateLabel: '',
+        typeLabel: '',
+        documentNo: '',
+        document_no: '',
+        description: desc,
+        inQty: kind === 'subtotal' ? (row.printInQty ?? '') : '',
+        inAmt: kind === 'subtotal' ? (row.printInAmt ?? '') : '',
+        purchaseUnitPrice: '',
+        outQty: kind === 'subtotal' ? (row.printOutQty ?? '') : '',
+        outAmt: kind === 'subtotal' ? (row.printOutAmt ?? '') : '',
+        salesUnitPrice: '',
+        runningBalance: kind === 'subtotal' ? row.running_balance : '',
+        running_balance: kind === 'subtotal' ? row.running_balance : '',
+        productName: desc,
+        quantity: 0,
+        unitPrice: 0,
+        unit_price: 0,
+        total: 0,
+        name: desc,
+        date: '',
+        ficheType: '',
+        printRowKind: kind,
+      };
+    }
     const inbound = isInboundMovement(row.movement_type);
     const outbound = isOutboundMovement(row.movement_type);
     const typeLabel = input.labelFiche(row);
@@ -263,8 +298,14 @@ export function buildMaterialExtractPrintHtml(input: MaterialExtractPrintInput):
     items.length === 0
       ? `<tr><td colspan="11" style="text-align:center;padding:16px;color:#64748b">${escapeHtml(L.empty)}</td></tr>`
       : items
-          .map(
-            (r) => `<tr>
+          .map((r) => {
+            const trClass =
+              r.printRowKind === 'group' ? ' class="row-group"' : r.printRowKind === 'subtotal' ? ' class="row-subtotal"' : '';
+            const bal =
+              r.runningBalance === '' || r.runningBalance == null
+                ? ''
+                : formatNumber(Number(r.runningBalance) || 0, 2);
+            return `<tr${trClass}>
 <td>${escapeHtml(r.dateLabel)}</td>
 <td>${escapeHtml(r.typeLabel)}</td>
 <td>${escapeHtml(r.documentNo)}</td>
@@ -275,9 +316,9 @@ export function buildMaterialExtractPrintHtml(input: MaterialExtractPrintInput):
 <td class="num out">${escapeHtml(cellNum(r.outQty))}</td>
 <td class="num out">${escapeHtml(cellNum(r.outAmt))}</td>
 <td class="num out">${escapeHtml(cellNum(r.salesUnitPrice))}</td>
-<td class="num bal">${escapeHtml(formatNumber(r.runningBalance, 2))}</td>
-</tr>`,
-          )
+<td class="num bal">${escapeHtml(bal)}</td>
+</tr>`;
+          })
           .join('');
 
   return `<!DOCTYPE html>
@@ -302,6 +343,8 @@ export function buildMaterialExtractPrintHtml(input: MaterialExtractPrintInput):
   td.in { color: #047857; }
   td.out { color: #b91c1c; }
   td.bal { font-weight: 700; }
+  tr.row-group td { background: #e0e7ff; font-weight: 700; color: #312e81; }
+  tr.row-subtotal td { background: #f1f5f9; font-weight: 700; }
   tfoot td { background: #f1f5f9; font-weight: 700; }
 </style>
 </head>

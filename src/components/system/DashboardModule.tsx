@@ -1,47 +1,41 @@
 import {
-  TrendingUp, TrendingDown, Banknote, ShoppingCart, Package, Users,
-  AlertTriangle, Clock, Zap, FileText, UserPlus, PackagePlus,
-  BarChart3, Layers, TrendingUpDown, Wallet, Settings, X,
-  Truck, Receipt, Building, Target, Wrench, Calendar, Globe, RefreshCw,
-  CreditCard, Shield, Database, Percent, Award, GitBranch, Calculator,
-  ClipboardList, Send, Mail, Phone, Smartphone, Bell, Download, Tag, UserCog,
-  FileSpreadsheet
+  TrendingUp, Banknote, Package, Users,
+  AlertTriangle, Clock, Star, Wallet, X, LayoutGrid,
 } from 'lucide-react';
-import { BarChart, Bar, LineChart, Line, PieChart, Pie, Cell, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer } from 'recharts';
+import { BarChart, Bar, LineChart, Line, PieChart, Pie, Cell, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer } from 'recharts';
 import type { Product, Customer, Sale } from '../../core/types';
-import { useState, useEffect, useMemo, useCallback } from 'react';
+import { useState, useEffect, useMemo } from 'react';
 import { formatNumber } from '../../utils/formatNumber';
-import { invoke } from '@tauri-apps/api/core';
-import { IS_TAURI } from '../../utils/env';
-import { isGibEdocumentUiEnabled } from '../../config/eInvoice.config';
 import { useLanguage } from '../../contexts/LanguageContext';
 import { useFirmaDonem } from '../../contexts/FirmaDonemContext';
-import { logger } from '../../services/loggingService';
 import {
   fetchLayeredInventoryValuation,
   layeredCostForProduct,
   type LayeredInventoryValuation,
 } from '../../services/layeredInventoryCost';
+import { useMenuFavorites } from '../../hooks/useMenuFavorites';
 import {
-  getRuntimeReportMenuParams,
-  isMenuItemHiddenByParams,
-  loadReportMenuParams,
-  subscribeReportMenuParams,
-  type ReportMenuParams,
-} from '../../services/reportMenuParamsService';
+  flattenMenuLeaves,
+  filterFavoriteIdsByAllowed,
+  MAX_MENU_FAVORITES,
+  type MenuFavoriteLeaf,
+} from '../../services/menuFavoritesService';
+import { PercentBodyModal, PercentBodyModalScrollBody } from '../shared/PercentBodyModal';
 
-const DASHBOARD_SHORTCUTS_LS = 'retailos_dashboard_shortcut_ids';
-
-interface DashboardShortcut {
-  id?: number;
-  user_id: string;
-  shortcut_id: string;
-  label: string;
-  icon: string;
-  color: string;
-  category: string;
-  sort_order: number;
-}
+const FAVORITE_TILE_COLORS = [
+  'from-blue-500 to-blue-600',
+  'from-green-500 to-green-600',
+  'from-purple-500 to-purple-600',
+  'from-pink-500 to-pink-600',
+  'from-indigo-500 to-indigo-600',
+  'from-teal-500 to-teal-600',
+  'from-orange-500 to-orange-600',
+  'from-cyan-500 to-cyan-600',
+  'from-emerald-500 to-emerald-600',
+  'from-violet-500 to-violet-600',
+  'from-rose-500 to-rose-600',
+  'from-amber-500 to-amber-600',
+];
 
 interface DashboardModuleProps {
   products: Product[];
@@ -49,11 +43,20 @@ interface DashboardModuleProps {
   sales: Sale[];
   setCurrentScreen: (screen: string) => void;
   menuMode?: number;
+  /** RBAC ile filtrelenmiş menü — favori etiket/ikon ve düzenleme listesi */
+  menuSections?: unknown[];
 }
 
-export function DashboardModule({ products, customers, sales, setCurrentScreen, menuMode = 0 }: DashboardModuleProps) {
+export function DashboardModule({
+  products,
+  customers,
+  sales,
+  setCurrentScreen,
+  menuSections = [],
+}: DashboardModuleProps) {
   const { t } = useLanguage();
   const { selectedFirm, selectedPeriod } = useFirmaDonem();
+  const { favoriteIds, setFavorites, maxFavorites } = useMenuFavorites();
   /** Çeviri nesnesi bazen geniş JSON'dan `unknown`/`{}` gelebilir; metin çocuklarında güvenli metin */
   const tLabel = (v: unknown, fallback: string) =>
     typeof v === 'string' || typeof v === 'number' ? String(v) : fallback;
@@ -66,262 +69,64 @@ export function DashboardModule({ products, customers, sales, setCurrentScreen, 
       ? (selectedPeriod.donem_adi || selectedPeriod.name || `Dönem ${selectedPeriod.nr}`).trim()
       : '';
   const [showCustomizeModal, setShowCustomizeModal] = useState(false);
-  const [selectedActions, setSelectedActions] = useState<string[]>([]);
-  const [isLoading, setIsLoading] = useState(true);
+  const [draftFavoriteIds, setDraftFavoriteIds] = useState<string[]>([]);
   const [layeredValuation, setLayeredValuation] = useState<LayeredInventoryValuation | null>(null);
-  const [reportMenuParams, setReportMenuParams] = useState<ReportMenuParams>(() =>
-    getRuntimeReportMenuParams(),
+
+  const menuLeaves = useMemo(() => flattenMenuLeaves(menuSections), [menuSections]);
+  const allowedIdSet = useMemo(() => new Set(menuLeaves.map((l) => l.id)), [menuLeaves]);
+  const leafById = useMemo(() => {
+    const map = new Map<string, MenuFavoriteLeaf>();
+    for (const leaf of menuLeaves) map.set(leaf.id, leaf);
+    return map;
+  }, [menuLeaves]);
+
+  const visibleFavoriteIds = useMemo(
+    () => filterFavoriteIdsByAllowed(favoriteIds, allowedIdSet),
+    [favoriteIds, allowedIdSet],
   );
 
-  useEffect(() => {
-    let cancelled = false;
-    void loadReportMenuParams().then((p) => {
-      if (!cancelled) setReportMenuParams(p);
+  const favoriteTiles = useMemo(() => {
+    return visibleFavoriteIds.map((id, index) => {
+      const leaf = leafById.get(id);
+      const IconComp = (leaf?.icon || LayoutGrid) as typeof LayoutGrid;
+      return {
+        id,
+        label: leaf?.label || id,
+        Icon: IconComp,
+        color: FAVORITE_TILE_COLORS[index % FAVORITE_TILE_COLORS.length],
+      };
     });
-    const unsub = subscribeReportMenuParams((p) => setReportMenuParams(p));
-    return () => {
-      cancelled = true;
-      unsub();
-    };
-  }, []);
+  }, [visibleFavoriteIds, leafById]);
 
-  const isDashboardIdHidden = useCallback(
-    (id: string) => isMenuItemHiddenByParams(id, reportMenuParams),
-    [reportMenuParams],
-  );
+  const groupedLeaves = useMemo(() => {
+    return menuLeaves.reduce(
+      (acc, leaf) => {
+        const cat = leaf.sectionTitle || 'Menü';
+        if (!acc[cat]) acc[cat] = [];
+        acc[cat].push(leaf);
+        return acc;
+      },
+      {} as Record<string, MenuFavoriteLeaf[]>,
+    );
+  }, [menuLeaves]);
 
-  const baseActions = useMemo(() => {
-    const m = t.menu;
-    return [
-      { id: 'newsale', icon: ShoppingCart, label: tLabel(t.posModule, 'Satış (POS)'), color: 'from-blue-500 to-blue-600', category: tLabel(m.retailSales, 'Satış') },
-      { id: 'salesorder', icon: ClipboardList, label: tLabel(m.salesOrder, 'Satış siparişi'), color: 'from-blue-400 to-blue-500', category: tLabel(m.orders, 'Siparişler') },
-      { id: 'salesinvoice', icon: FileText, label: tLabel(m.salesInvoices, 'Satış faturaları'), color: 'from-blue-600 to-blue-700', category: tLabel(m.invoices, 'Faturalar') },
-      { id: 'addproduct', icon: PackagePlus, label: tLabel(t.productManagement, 'Ürün yönetimi'), color: 'from-green-500 to-green-600', category: tLabel(m.materialManagement, 'Malzeme') },
-      { id: 'products', icon: Package, label: tLabel(m.materials, 'Malzemeler'), color: 'from-green-400 to-green-500', category: tLabel(m.materialManagement, 'Malzeme yönetimi') },
-      { id: 'stock', icon: Layers, label: tLabel(m.stockManagementPanel, 'Stok paneli'), color: 'from-green-600 to-green-700', category: tLabel(m.inventoryManagement, 'Stok işlemleri') },
-      { id: 'addcustomer', icon: UserPlus, label: tLabel(t.newCustomer, 'Yeni müşteri'), color: 'from-purple-500 to-purple-600', category: tLabel(m.currentAccounts, 'Cari hesaplar') },
-      { id: 'customers', icon: Users, label: tLabel(m.currentAccounts, 'Cari kartlar'), color: 'from-purple-400 to-purple-500', category: tLabel(m.cards, 'Kartlar') },
-      { id: 'crm', icon: Target, label: tLabel(m.customerAnalysis, 'Müşteri analizi'), color: 'from-purple-600 to-purple-700', category: tLabel(m.reportsAndAnalysis, 'Raporlar') },
-      { id: 'finance', icon: Banknote, label: tLabel(m.cashOperations, 'Kasa işlemleri'), color: 'from-orange-500 to-orange-600', category: tLabel(m.financeManagement, 'Finans') },
-      { id: 'accounting', icon: Calculator, label: tLabel(m.accountingManagement, 'Muhasebe'), color: 'from-orange-400 to-orange-500', category: tLabel(m.journalAndSlips, 'Yevmiye & fişler') },
-      { id: 'budget', icon: Wallet, label: tLabel(m.incomeStatement, 'Gelir tablosu'), color: 'from-orange-600 to-orange-700', category: tLabel(m.financeManagement, 'Finans') },
-      { id: 'invoices', icon: Receipt, label: tLabel(t.invoices, 'Faturalar'), color: 'from-pink-500 to-pink-600', category: tLabel(m.invoices, 'Faturalar') },
-      { id: 'purchaseinvoice', icon: FileText, label: tLabel(m.purchaseInvoice, 'Alış faturası'), color: 'from-pink-400 to-pink-500', category: tLabel(m.invoices, 'Faturalar') },
-      { id: 'etransform', icon: Send, label: tLabel(m.eInvoiceArchive, 'E-dönüşüm'), color: 'from-pink-600 to-pink-700', category: tLabel(m.invoices, 'Faturalar') },
-      { id: 'reports', icon: BarChart3, label: tLabel(m.reportsAndAnalysis, 'Raporlar'), color: 'from-indigo-500 to-indigo-600', category: tLabel(m.reports, 'Raporlar') },
-      { id: 'dashboard', icon: TrendingUpDown, label: tLabel(t.dashboard, 'Dashboard'), color: 'from-indigo-400 to-indigo-500', category: tLabel(m.reportsAndAnalysis, 'Raporlar') },
-      { id: 'purchase', icon: ShoppingCart, label: tLabel(t.purchasing, 'Satın alma'), color: 'from-teal-500 to-teal-600', category: tLabel(m.purchasing, 'Satın alma') },
-      { id: 'suppliers', icon: Truck, label: tLabel(m.supplierCards, 'Tedarikçi kartları'), color: 'from-teal-400 to-teal-500', category: tLabel(m.cards, 'Kartlar') },
-      { id: 'logistics', icon: Truck, label: tLabel(m.logisticsShipping, 'Teslimat'), color: 'from-cyan-500 to-cyan-600', category: tLabel(m.waybills, 'İrsaliyeler') },
-      { id: 'production', icon: GitBranch, label: tLabel(undefined, 'Üretim'), color: 'from-amber-500 to-amber-600', category: tLabel(m.movements, 'Hareketler') },
-      { id: 'quality', icon: Award, label: tLabel(undefined, 'Kalite'), color: 'from-amber-400 to-amber-500', category: tLabel(m.designCenter, 'Tasarım') },
-      { id: 'hr', icon: UserCog, label: tLabel(m.userManagement, 'İnsan kaynakları'), color: 'from-rose-500 to-rose-600', category: tLabel(m.roleAndAuthorization, 'Rol & yetki') },
-      { id: 'settings', icon: Settings, label: tLabel(m.generalSettings, 'Ayarlar'), color: 'from-gray-500 to-gray-600', category: tLabel(m.systemManagement, 'Sistem') },
-      { id: 'integrations', icon: Zap, label: tLabel(m.integrations, 'Entegrasyonlar'), color: 'from-yellow-500 to-yellow-600', category: tLabel(m.communicationAndNotifications, 'İletişim') },
-      { id: 'excel', icon: FileSpreadsheet, label: tLabel(m.excelOperations, 'Excel işlemleri'), color: 'from-emerald-500 to-emerald-600', category: tLabel(m.materialManagement, 'Malzeme') },
-    ];
-  }, [t]);
-
-  // Filter actions based on menuMode + mevzuat (IQ: GİB e-belge kısayolu yok) + menü parametreleri
-  const allAvailableActions = useMemo(() => {
-    const gibOk =
-      selectedFirm == null ? true : isGibEdocumentUiEnabled(selectedFirm.regulatory_region);
-    let source = gibOk ? baseActions : baseActions.filter((a: any) => a.id !== 'etransform');
-    source = source.filter((a: any) => !isDashboardIdHidden(String(a.id)));
-    if (menuMode === 1) {
-      const hiddenIds = ['crm', 'production', 'quality', 'hr', 'settings', 'integrations', 'budget'];
-      return source.filter((a: any) => !hiddenIds.includes(a.id));
-    }
-    return source;
-  }, [menuMode, selectedFirm, baseActions, isDashboardIdHidden]);
-
-  // Load shortcuts: Tauri → SQLite komutları; web → localStorage
-  useEffect(() => {
-    const defaultIds = () =>
-      ['newsale', 'addproduct', 'addcustomer', 'invoices', 'reports', 'stock'].filter(id =>
-        allAvailableActions.some(a => a.id === id)
-      );
-
-    const loadShortcuts = async () => {
-      try {
-        setIsLoading(true);
-
-        if (!IS_TAURI) {
-          const raw = localStorage.getItem(DASHBOARD_SHORTCUTS_LS);
-          if (raw) {
-            try {
-              const ids = JSON.parse(raw) as string[];
-              const valid = ids.filter((id: string) => allAvailableActions.some((a: any) => a.id === id));
-              if (valid.length) {
-                setSelectedActions(valid);
-                return;
-              }
-            } catch {
-              /* ignore */
-            }
-          }
-          const saved = localStorage.getItem('retailos_quick_actions');
-          if (saved) {
-            const oldShortcuts = JSON.parse(saved) as string[];
-            const validOldShortcuts = oldShortcuts.filter((id: string) =>
-              allAvailableActions.some((a: any) => a.id === id)
-            );
-            localStorage.setItem(DASHBOARD_SHORTCUTS_LS, JSON.stringify(validOldShortcuts));
-            localStorage.removeItem('retailos_quick_actions');
-            setSelectedActions(validOldShortcuts.length ? validOldShortcuts : defaultIds());
-            return;
-          }
-          setSelectedActions(defaultIds());
-          return;
-        }
-
-        const shortcuts = await invoke<DashboardShortcut[]>('get_dashboard_shortcuts', {
-          userId: 'default'
-        });
-
-        if (shortcuts.length === 0) {
-          // Check for localStorage migration
-          const saved = localStorage.getItem('retailos_quick_actions');
-          if (saved) {
-            console.log('Migrating shortcuts from localStorage to database...');
-            const oldShortcuts = JSON.parse(saved) as string[];
-            const validOldShortcuts = oldShortcuts.filter((id: string) => allAvailableActions.some((a: any) => a.id === id));
-
-            const newShortcuts: DashboardShortcut[] = validOldShortcuts.map((id, index) => {
-              const action = allAvailableActions.find(a => a.id === id);
-              if (!action) return null;
-              return {
-                user_id: 'default',
-                shortcut_id: id,
-                label: action.label,
-                icon: (action.icon as any).name || id,
-                color: action.color,
-                category: action.category,
-                sort_order: index
-              };
-            }).filter(s => s !== null) as DashboardShortcut[];
-
-            await invoke('save_dashboard_shortcuts', {
-              userId: 'default',
-              shortcuts: newShortcuts
-            });
-            localStorage.removeItem('retailos_quick_actions');
-            setSelectedActions(validOldShortcuts);
-          } else {
-            // Set defaults
-            const defaults = defaultIds();
-            const defaultShortcuts: DashboardShortcut[] = defaults.map((id, index) => {
-              const action = allAvailableActions.find(a => a.id === id);
-              if (!action) return null;
-              return {
-                user_id: 'default',
-                shortcut_id: id,
-                label: action.label,
-                icon: (action.icon as any).name || id,
-                color: action.color,
-                category: action.category,
-                sort_order: index
-              };
-            }).filter(s => s !== null) as DashboardShortcut[];
-
-            await invoke('save_dashboard_shortcuts', {
-              userId: 'default',
-              shortcuts: defaultShortcuts
-            });
-            setSelectedActions(defaults);
-          }
-        } else {
-          // Load from database - filter out any that are no longer available in current mode
-          const shortcutIds = shortcuts
-            .sort((a, b) => a.sort_order - b.sort_order)
-            .map(s => s.shortcut_id)
-            .filter((id: string) => allAvailableActions.some((a: any) => a.id === id));
-          setSelectedActions(shortcutIds);
-        }
-      } catch (error) {
-        console.error('Failed to load shortcuts:', error);
-        // Fallback to mode-appropriate defaults on error
-        const defaults = ['newsale', 'addproduct', 'addcustomer', 'invoices', 'reports', 'stock'].filter(id =>
-          allAvailableActions.some(a => a.id === id)
-        );
-        setSelectedActions(defaults);
-      } finally {
-        setIsLoading(false);
-      }
-    };
-    loadShortcuts();
-  }, [allAvailableActions]); // Reload when available actions change (e.g. menu mode change)
-
-  // Save shortcuts to database
-  const saveQuickActions = async () => {
-    try {
-      const shortcuts: DashboardShortcut[] = selectedActions.map((id, index) => {
-        const action = allAvailableActions.find(a => a.id === id);
-        if (!action) return null;
-        return {
-          user_id: 'default',
-          shortcut_id: id,
-          label: action.label,
-          icon: (action.icon as any).name || id,
-          color: action.color,
-          category: action.category,
-          sort_order: index
-        };
-      }).filter(s => s !== null) as DashboardShortcut[];
-
-      if (!IS_TAURI) {
-        localStorage.setItem(DASHBOARD_SHORTCUTS_LS, JSON.stringify(selectedActions));
-        setShowCustomizeModal(false);
-        return;
-      }
-
-      await invoke('save_dashboard_shortcuts', {
-        userId: 'default',
-        shortcuts
-      });
-      setShowCustomizeModal(false);
-    } catch (error) {
-      logger.crudError('DashboardModule', 'saveShortcuts', error);
-      alert(t.shortcutsSaveError || 'Kısayollar kaydedilemedi. Lütfen tekrar deneyin.');
-    }
+  const openCustomizeModal = () => {
+    setDraftFavoriteIds([...visibleFavoriteIds]);
+    setShowCustomizeModal(true);
   };
 
-  // Toggle action selection
-  const toggleAction = (actionId: string) => {
-    if (selectedActions.includes(actionId)) {
-      setSelectedActions(selectedActions.filter(id => id !== actionId));
-    } else {
-      if (selectedActions.length < 8) {
-        setSelectedActions([...selectedActions, actionId]);
-      }
-    }
+  const toggleDraftFavorite = (id: string) => {
+    setDraftFavoriteIds((prev) => {
+      if (prev.includes(id)) return prev.filter((x) => x !== id);
+      if (prev.length >= maxFavorites) return prev;
+      return [...prev, id];
+    });
   };
 
-  const currentQuickActions = useMemo(() => {
-    return selectedActions
-      .filter((id: string) => !isDashboardIdHidden(id))
-      .map((id: string) => allAvailableActions.find((a: any) => a.id === id))
-      .filter(Boolean) as typeof allAvailableActions;
-  }, [selectedActions, allAvailableActions, isDashboardIdHidden]);
-
-  // Parametre kapalıysa kayıtlı kısayollardan da düş
-  useEffect(() => {
-    setSelectedActions((prev) => {
-      const next = prev.filter((id) => !isDashboardIdHidden(id));
-      return next.length === prev.length ? prev : next;
-    });
-  }, [isDashboardIdHidden]);
-
-  // Group actions by category
-  const groupedActions = useMemo(() => {
-    return allAvailableActions.reduce((acc: any, action: any) => {
-      if (!acc[action.category]) {
-        acc[action.category] = [];
-      }
-      acc[action.category].push(action);
-      return acc;
-    }, {} as Record<string, typeof allAvailableActions>);
-  }, [allAvailableActions]);
+  const saveFavorites = () => {
+    setFavorites(filterFavoriteIdsByAllowed(draftFavoriteIds, allowedIdSet));
+    setShowCustomizeModal(false);
+  };
 
   useEffect(() => {
     let cancelled = false;
@@ -480,43 +285,54 @@ export function DashboardModule({ products, customers, sales, setCurrentScreen, 
       </div>
 
       <div className="p-3 space-y-3">
-        {/* Quick Actions - Hızlı Kısayollar */}
+        {/* Favoriler — menüden yıldız ile veya Düzenle ile özelleştirilir */}
         <div>
           <div className="flex items-center gap-1.5 mb-2">
-            <Zap className="w-4 h-4 text-blue-600" />
-            <h3 className="text-sm text-gray-800">{tLabel(t.quickAccess, 'Hızlı Erişim')}</h3>
+            <Star className="w-4 h-4 text-amber-500 fill-amber-500" />
+            <h3 className="text-sm text-gray-800">{tLabel(t.favorites, tLabel(t.quickAccess, 'Favoriler'))}</h3>
           </div>
-          <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-2">
-            {currentQuickActions.map((action) => {
-              const Icon = action.icon;
-              return (
-                <button
-                  key={action.id}
-                  onClick={() => {
-                    if (action.id === 'newsale') setCurrentScreen('salesinvoice');
-                    else if (action.id === 'addproduct') setCurrentScreen('products');
-                    else if (action.id === 'addcustomer') setCurrentScreen('suppliers');
-                    else if (action.id === 'customers') setCurrentScreen('suppliers');
-                    else setCurrentScreen(action.id);
-                  }}
-                  className={`group bg-gradient-to-br ${action.color} rounded-lg p-2 text-white transition-all duration-300 hover:scale-105 hover:shadow-lg`}
-                >
-                  <div className="flex flex-col items-center gap-1.5">
-                    <div className="w-8 h-8 bg-white/20 rounded flex items-center justify-center group-hover:bg-white/30 transition-all">
-                      <Icon className="w-4 h-4" />
+          {favoriteTiles.length > 0 ? (
+            <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-2">
+              {favoriteTiles.map((action) => {
+                const Icon = action.Icon;
+                return (
+                  <button
+                    key={action.id}
+                    type="button"
+                    onClick={() => setCurrentScreen(action.id)}
+                    className={`group bg-gradient-to-br ${action.color} rounded-lg p-2 text-white transition-all duration-300 hover:scale-105 hover:shadow-lg`}
+                  >
+                    <div className="flex flex-col items-center gap-1.5">
+                      <div className="w-8 h-8 bg-white/20 rounded flex items-center justify-center group-hover:bg-white/30 transition-all">
+                        <Icon className="w-4 h-4" />
+                      </div>
+                      <span className="text-[10px] text-center">{String(action.label)}</span>
                     </div>
-                    <span className="text-[10px] text-center">{String(action.label)}</span>
-                  </div>
-                </button>
-              );
-            })}
-          </div>
+                  </button>
+                );
+              })}
+            </div>
+          ) : (
+            <div className="rounded-lg border border-dashed border-gray-300 bg-white/70 px-4 py-6 text-center">
+              <Star className="w-8 h-8 text-amber-400 mx-auto mb-2" />
+              <p className="text-sm text-gray-700">
+                {tLabel(t.noFavoritesYet, 'Henüz favori eklenmedi')}
+              </p>
+              <p className="text-[11px] text-gray-500 mt-1">
+                {tLabel(
+                  t.noFavoritesHint,
+                  'Menüdeki yıldız ile ekran ekleyin veya Düzenle’den seçin',
+                )}
+              </p>
+            </div>
+          )}
           <div className="text-right mt-1">
             <button
+              type="button"
               className="text-[10px] text-blue-500 hover:text-blue-600 font-medium"
-              onClick={() => setShowCustomizeModal(true)}
+              onClick={openCustomizeModal}
             >
-              {tLabel(t.editQuickAccess, 'Hızlı Erişimleri Düzenle')}
+              {tLabel(t.editFavorites, tLabel(t.editQuickAccess, 'Düzenle'))}
             </button>
           </div>
         </div>
@@ -793,76 +609,78 @@ export function DashboardModule({ products, customers, sales, setCurrentScreen, 
         </div>
       </div>
 
-      {/* Customize Quick Actions Modal */}
+      {/* Favorileri düzenle */}
       {showCustomizeModal && (
-        <div className="fixed inset-0 bg-black/60 backdrop-blur-sm flex items-center justify-center z-50 p-4">
-          <div className="bg-white rounded-2xl shadow-2xl w-full max-w-4xl max-h-[90vh] overflow-hidden">
-            {/* Modal Header */}
-            <div className="bg-gradient-to-r from-blue-600 to-blue-700 px-6 py-4 flex items-center justify-between">
-              <div>
-                <h3 className="text-xl text-white">{String(t.customizeQuickAccess ?? 'Hızlı Erişimleri Özelleştir')}</h3>
-                <p className="text-blue-100 text-sm mt-1">{String(t.max8Shortcuts ?? 'En fazla 8 kısayol seçebilirsiniz')} ({selectedActions.length}/8)</p>
-              </div>
-              <button
-                className="text-white hover:bg-white/20 rounded-lg p-2 transition-colors"
-                onClick={() => setShowCustomizeModal(false)}
-              >
-                <X className="w-5 h-5" />
-              </button>
+        <PercentBodyModal
+          onClose={() => setShowCustomizeModal(false)}
+          size="wide"
+          ariaLabel={tLabel(t.customizeFavorites, tLabel(t.customizeQuickAccess, 'Favorileri Düzenle'))}
+        >
+          <div className="bg-gradient-to-r from-blue-600 to-indigo-600 px-6 py-4 flex items-center justify-between shrink-0 text-white">
+            <div>
+              <h3 className="text-xl">
+                {tLabel(t.customizeFavorites, tLabel(t.customizeQuickAccess, 'Favorileri Düzenle'))}
+              </h3>
+              <p className="text-blue-100 text-sm mt-1">
+                {tLabel(t.maxFavoritesHint, tLabel(t.max8Shortcuts, `En fazla ${MAX_MENU_FAVORITES} favori seçebilirsiniz`))}{' '}
+                ({draftFavoriteIds.length}/{maxFavorites})
+              </p>
             </div>
+            <button
+              type="button"
+              className="text-white hover:bg-white/20 rounded-lg p-2 transition-colors"
+              onClick={() => setShowCustomizeModal(false)}
+              aria-label={tLabel(t.cancel, 'İptal')}
+            >
+              <X className="w-5 h-5" />
+            </button>
+          </div>
 
-            {/* Modal Content */}
-            <div className="p-6 overflow-y-auto max-h-[calc(90vh-180px)] scrollbar-thin scrollbar-thumb-gray-400 scrollbar-track-gray-100">
+          <PercentBodyModalScrollBody className="p-6">
+            {menuLeaves.length === 0 ? (
+              <p className="text-sm text-gray-500 text-center py-8">
+                {tLabel(t.noMenuItemsForFavorites, 'Favoriye eklenebilecek menü öğesi yok')}
+              </p>
+            ) : (
               <div className="space-y-6">
-                {Object.keys(groupedActions).map(category => (
+                {Object.keys(groupedLeaves).map((category) => (
                   <div key={category}>
                     <h4 className="text-sm text-gray-600 uppercase tracking-wider mb-3 flex items-center gap-2">
-                      <div className="w-8 h-0.5 bg-gradient-to-r from-blue-500 to-transparent"></div>
+                      <div className="w-8 h-0.5 bg-gradient-to-r from-blue-500 to-transparent" />
                       {category}
                     </h4>
                     <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-                      {groupedActions[category].map((action: any) => {
-                        const Icon = action.icon;
-                        const isSelected = selectedActions.includes(action.id);
-                        const isDisabled = !isSelected && selectedActions.length >= 8;
-
+                      {groupedLeaves[category].map((leaf) => {
+                        const Icon = (leaf.icon || LayoutGrid) as typeof LayoutGrid;
+                        const isSelected = draftFavoriteIds.includes(leaf.id);
+                        const isDisabled = !isSelected && draftFavoriteIds.length >= maxFavorites;
                         return (
                           <button
-                            key={action.id}
-                            onClick={() => !isDisabled && toggleAction(action.id)}
+                            key={leaf.id}
+                            type="button"
+                            onClick={() => !isDisabled && toggleDraftFavorite(leaf.id)}
                             disabled={isDisabled}
-                            className={`flex items-center gap-3 p-3 rounded-xl border-2 transition-all ${isSelected
-                              ? `border-blue-500 bg-blue-50 shadow-md`
-                              : isDisabled
-                                ? 'border-gray-200 bg-gray-50 opacity-50 cursor-not-allowed'
-                                : 'border-gray-200 hover:border-blue-300 hover:bg-gray-50'
-                              }`}
+                            className={`flex items-center gap-3 p-3 rounded-xl border-2 transition-all ${
+                              isSelected
+                                ? 'border-amber-500 bg-amber-50 shadow-md'
+                                : isDisabled
+                                  ? 'border-gray-200 bg-gray-50 opacity-50 cursor-not-allowed'
+                                  : 'border-gray-200 hover:border-amber-300 hover:bg-gray-50'
+                            }`}
                           >
-                            {/* Icon */}
-                            <div className={`w-12 h-12 bg-gradient-to-br ${action.color} rounded-lg flex items-center justify-center flex-shrink-0`}>
-                              <div className="w-10 h-10 bg-white/20 rounded-lg flex items-center justify-center">
-                                <Icon className="w-5 h-5 text-white" />
-                              </div>
+                            <div className="w-10 h-10 rounded-lg bg-blue-100 text-blue-700 flex items-center justify-center flex-shrink-0">
+                              <Icon className="w-5 h-5" />
                             </div>
-
-                            {/* Label */}
-                            <div className="flex-1 text-left">
-                              <p className={`text-sm ${isSelected ? 'text-gray-900' : 'text-gray-700'}`}>
-                                {action.label}
+                            <div className="flex-1 text-left min-w-0">
+                              <p className={`text-sm truncate ${isSelected ? 'text-gray-900' : 'text-gray-700'}`}>
+                                {leaf.label}
                               </p>
                             </div>
-
-                            {/* Checkbox */}
-                            <div className={`w-6 h-6 rounded border-2 flex items-center justify-center flex-shrink-0 ${isSelected
-                              ? 'bg-blue-500 border-blue-500'
-                              : 'border-gray-300'
-                              }`}>
-                              {isSelected && (
-                                <svg className="w-4 h-4 text-white" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={3} d="M5 13l4 4L19 7" />
-                                </svg>
-                              )}
-                            </div>
+                            <Star
+                              className={`w-5 h-5 flex-shrink-0 ${
+                                isSelected ? 'text-amber-500 fill-amber-500' : 'text-gray-300'
+                              }`}
+                            />
                           </button>
                         );
                       })}
@@ -870,45 +688,32 @@ export function DashboardModule({ products, customers, sales, setCurrentScreen, 
                   </div>
                 ))}
               </div>
-            </div>
+            )}
+          </PercentBodyModalScrollBody>
 
-            {/* Modal Footer */}
-            <div className="border-t border-gray-200 px-6 py-4 bg-gray-50 flex items-center justify-between">
-              <p className="text-sm text-gray-600">
-                {selectedActions.length === 0 ? (
-                  <span className="text-red-600">{String(t.min1Shortcut ?? 'En az 1 kısayol seçmelisiniz')}</span>
-                ) : (
-                  <span>{selectedActions.length} {String(t.shortcutsSelected ?? 'kısayol seçildi')}</span>
-                )}
-              </p>
-              <div className="flex gap-3">
-                <button
-                  className="px-4 py-2 text-gray-700 hover:bg-gray-200 rounded-lg transition-colors"
-                  onClick={() => {
-                    setShowCustomizeModal(false);
-                    // Reset to saved state
-                    const saved = localStorage.getItem('retailos_quick_actions');
-                    if (saved) {
-                      setSelectedActions(JSON.parse(saved));
-                    }
-                  }}
-                >
-                  {t.cancel || 'İptal'}
-                </button>
-                <button
-                  className={`px-6 py-2 rounded-lg transition-all ${selectedActions.length === 0
-                    ? 'bg-gray-300 text-gray-500 cursor-not-allowed'
-                    : 'bg-gradient-to-r from-blue-600 to-blue-700 text-white hover:shadow-lg'
-                    }`}
-                  onClick={saveQuickActions}
-                  disabled={selectedActions.length === 0}
-                >
-                  {t.save != null ? String(t.save) : 'Kaydet'}
-                </button>
-              </div>
+          <div className="border-t border-gray-200 px-6 py-4 bg-gray-50 flex items-center justify-between shrink-0">
+            <p className="text-sm text-gray-600">
+              {draftFavoriteIds.length}{' '}
+              {tLabel(t.favoritesSelected, tLabel(t.shortcutsSelected, 'favori seçildi'))}
+            </p>
+            <div className="flex gap-3">
+              <button
+                type="button"
+                className="px-4 py-2 text-gray-700 hover:bg-gray-200 rounded-lg transition-colors"
+                onClick={() => setShowCustomizeModal(false)}
+              >
+                {tLabel(t.cancel, 'İptal')}
+              </button>
+              <button
+                type="button"
+                className="px-6 py-2 rounded-lg bg-gradient-to-r from-blue-600 to-blue-700 text-white hover:shadow-lg transition-all"
+                onClick={saveFavorites}
+              >
+                {tLabel(t.save, 'Kaydet')}
+              </button>
             </div>
           </div>
-        </div>
+        </PercentBodyModal>
       )}
     </div>
   );

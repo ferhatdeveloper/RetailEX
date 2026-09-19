@@ -25,6 +25,18 @@ import {
 } from '../../ui/dropdown-menu';
 import { PercentBodyModal, PercentBodyModalScrollBody } from '../../shared/PercentBodyModal';
 
+/** jRetail materialReceiptList + Ekle menü yedek etiketleri (tm boşsa) */
+const SLIP_TYPE_FALLBACK: Record<string, string> = {
+    slipInterWarehouseTransfer: 'Depolar Arası Transfer Fişi',
+    slipWarehouseEntry: 'Depo Giriş Fişi',
+    slipWarehouseExit: 'Depo Çıkış Fişi',
+    slipCountSurplus: 'Sayım Fazlası Fişi',
+    slipCountDeficit: 'Sayım Eksikliği Fişi',
+    slipConsumption: 'Sarf Fişi',
+    slipWastage: 'Fire Fişi',
+    slipProductionEntry: 'Üretimden Giriş Fişi',
+};
+
 export interface StockMovementsModuleProps {
     defaultFilter?: 'shortage' | 'surplus' | 'all';
 }
@@ -79,11 +91,15 @@ export function StockMovementsModule({ defaultFilter = 'all' }: StockMovementsMo
     const [searchQuery, setSearchQuery] = useState('');
     const [activeTab, setActiveTab] = useState<'all' | 'in' | 'out'>('all');
     const [selectedId, setSelectedId] = useState<string | null>(null);
+    const [showSlipTypeModal, setShowSlipTypeModal] = useState(false);
     const [showCreateModal, setShowCreateModal] = useState(false);
     const [selectedSlipLabel, setSelectedSlipLabel] = useState('');
 
     const [formData, setFormData] = useState<FormState>(() => defaultFormForFilter(defaultFilter));
     const [warehouses, setWarehouses] = useState<any[]>([]);
+
+    const slipTypeLabel = (item: MaterialSlipAddMenuItem) =>
+        tm(item.labelKey) || SLIP_TYPE_FALLBACK[item.labelKey] || item.labelKey;
 
     useEffect(() => {
         loadMovements();
@@ -131,13 +147,19 @@ export function StockMovementsModule({ defaultFilter = 'all' }: StockMovementsMo
             description: '',
             trcode: item.trcode,
         });
-        setSelectedSlipLabel(tm(item.labelKey) || item.labelKey);
+        setSelectedSlipLabel(slipTypeLabel(item));
+        setShowSlipTypeModal(false);
         setShowCreateModal(true);
     };
 
     const closeCreateModal = () => {
         setShowCreateModal(false);
         setSelectedSlipLabel('');
+    };
+
+    const openSlipTypePicker = () => {
+        setShowCreateModal(false);
+        setShowSlipTypeModal(true);
     };
 
     const handleCreate = async () => {
@@ -220,39 +242,8 @@ export function StockMovementsModule({ defaultFilter = 'all' }: StockMovementsMo
         return tabOk && matchesSearch;
     });
 
-    const AddSlipMenu = ({
-        triggerClassName,
-        compact = false,
-    }: {
-        triggerClassName?: string;
-        compact?: boolean;
-    }) => (
-        <DropdownMenu>
-            <DropdownMenuTrigger asChild>
-                <Button
-                    className={
-                        triggerClassName ||
-                        'h-7 px-3 gap-1 bg-white text-blue-700 hover:bg-blue-50 transition-colors text-[10px] font-bold border-none shadow-sm'
-                    }
-                >
-                    <Plus className="w-3 h-3" />
-                    {tm('add')}
-                    <ChevronDown className="w-3 h-3 opacity-70" />
-                </Button>
-            </DropdownMenuTrigger>
-            <DropdownMenuContent align="end" className={compact ? 'w-64' : 'w-72'}>
-                {MATERIAL_SLIP_ADD_MENU.map((item) => (
-                    <DropdownMenuItem
-                        key={item.key}
-                        className="text-xs py-2 cursor-pointer"
-                        onSelect={() => openCreateForSlip(item)}
-                    >
-                        {tm(item.labelKey) || item.labelKey}
-                    </DropdownMenuItem>
-                ))}
-            </DropdownMenuContent>
-        </DropdownMenu>
-    );
+    const addButtonClass =
+        'h-7 px-3 gap-1 bg-white text-blue-700 hover:bg-blue-50 transition-colors text-[10px] font-bold border-none shadow-sm';
 
     return (
         <div className="h-full flex flex-col bg-gray-50">
@@ -330,9 +321,14 @@ export function StockMovementsModule({ defaultFilter = 'all' }: StockMovementsMo
                             <span>{tm('print')}</span>
                         </Button>
                         {defaultFilter === 'all' ? (
-                            <AddSlipMenu />
+                            <Button type="button" onClick={openSlipTypePicker} className={addButtonClass}>
+                                <Plus className="w-3 h-3" />
+                                {tm('add')}
+                                <ChevronDown className="w-3 h-3 opacity-70" />
+                            </Button>
                         ) : (
                             <Button
+                                type="button"
                                 onClick={() => {
                                     const item =
                                         defaultFilter === 'shortage'
@@ -340,7 +336,7 @@ export function StockMovementsModule({ defaultFilter = 'all' }: StockMovementsMo
                                             : MATERIAL_SLIP_ADD_MENU.find((x) => x.key === 'surplus')!;
                                     openCreateForSlip(item);
                                 }}
-                                className="h-7 px-3 gap-1 bg-white text-blue-700 hover:bg-blue-50 transition-colors text-[10px] font-bold border-none shadow-sm"
+                                className={addButtonClass}
                             >
                                 <Plus className="w-3 h-3" />
                                 {tm('add')}
@@ -461,12 +457,20 @@ export function StockMovementsModule({ defaultFilter = 'all' }: StockMovementsMo
                                                         {tm('noTransactionSlip')}
                                                     </p>
                                                     {defaultFilter === 'all' ? (
-                                                        <AddSlipMenu
-                                                            triggerClassName="mt-2 h-8 px-3 gap-1.5 border border-dashed border-gray-300 bg-white text-gray-700 hover:bg-gray-50 text-xs font-medium"
-                                                            compact
-                                                        />
+                                                        <Button
+                                                            type="button"
+                                                            variant="outline"
+                                                            size="sm"
+                                                            className="mt-2 border-dashed"
+                                                            onClick={openSlipTypePicker}
+                                                        >
+                                                            <Plus className="w-4 h-4 mr-2" />
+                                                            {tm('add')}
+                                                            <ChevronDown className="w-3.5 h-3.5 ml-1 opacity-70" />
+                                                        </Button>
                                                     ) : (
                                                         <Button
+                                                            type="button"
                                                             variant="outline"
                                                             size="sm"
                                                             className="mt-2 border-dashed"
@@ -579,6 +583,59 @@ export function StockMovementsModule({ defaultFilter = 'all' }: StockMovementsMo
                     </button>
                 </div>
             </div>
+
+            {/* Fiş türü seçimi — jRetail + Ekle menüsü (portal; toolbar overflow/z-index sorununu aşar) */}
+            {showSlipTypeModal && (
+                <PercentBodyModal
+                    onClose={() => setShowSlipTypeModal(false)}
+                    size="list"
+                    ariaLabel={tm('documentType') || 'Belge Türü'}
+                >
+                    <div className="bg-gradient-to-r from-blue-600 to-indigo-600 px-6 py-4 flex items-center justify-between shrink-0 text-white">
+                        <div className="min-w-0">
+                            <h2 className="text-lg font-bold truncate">
+                                {tm('add')} — {tm('documentType') || 'Belge Türü'}
+                            </h2>
+                            <p className="text-blue-100 text-sm">
+                                {tm('materialManagementSlips') || 'Malzeme Yönetim Fişleri'}
+                            </p>
+                        </div>
+                        <button
+                            type="button"
+                            onClick={() => setShowSlipTypeModal(false)}
+                            className="w-8 h-8 rounded-lg hover:bg-white/20 flex items-center justify-center transition-colors shrink-0"
+                            aria-label={tm('cancel')}
+                        >
+                            <X className="w-5 h-5 text-white" />
+                        </button>
+                    </div>
+                    <PercentBodyModalScrollBody className="p-3">
+                        <ul className="divide-y divide-slate-100 rounded-xl border border-slate-200 overflow-hidden bg-white">
+                            {MATERIAL_SLIP_ADD_MENU.map((item) => (
+                                <li key={item.key}>
+                                    <button
+                                        type="button"
+                                        onClick={() => openCreateForSlip(item)}
+                                        className="w-full text-left px-4 py-3 text-sm font-medium text-slate-800 hover:bg-blue-50 hover:text-blue-800 transition-colors"
+                                    >
+                                        {slipTypeLabel(item)}
+                                    </button>
+                                </li>
+                            ))}
+                        </ul>
+                    </PercentBodyModalScrollBody>
+                    <div className="border-t bg-slate-50/50 px-6 py-3 flex justify-end shrink-0">
+                        <Button
+                            type="button"
+                            variant="outline"
+                            onClick={() => setShowSlipTypeModal(false)}
+                            className="rounded-2xl"
+                        >
+                            {tm('cancel')}
+                        </Button>
+                    </div>
+                </PercentBodyModal>
+            )}
 
             {/* Create Modal — PercentBodyModal */}
             {showCreateModal && (

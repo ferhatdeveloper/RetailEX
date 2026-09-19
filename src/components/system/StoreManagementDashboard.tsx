@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React from 'react';
 import {
     Store,
     TrendingUp,
@@ -8,7 +8,8 @@ import {
     MapPin,
     Phone,
     ArrowRight,
-    Plus
+    Plus,
+    Loader2,
 } from 'lucide-react';
 import {
     BarChart,
@@ -20,78 +21,29 @@ import {
     ResponsiveContainer
 } from 'recharts';
 import { useTheme } from '../../contexts/ThemeContext';
-
-interface StoreData {
-    id: string;
-    name: string;
-    location: string;
-    manager: string;
-    status: 'open' | 'closed' | 'maintenance';
-    dailyRevenue: number;
-    staffCount: number;
-    phone: string;
-}
+import { useFirmaDonem } from '../../contexts/FirmaDonemContext';
+import { useStorePanelDashboard } from '../../hooks/useInfiniteStores';
+import { formatLedgerAmount, getFirmLedgerCurrency, getGlobalCurrency } from '../../utils/currency';
+import { getAppDefaultCurrency } from '../../services/postgres';
 
 export function StoreManagementDashboard() {
     const { darkMode } = useTheme();
+    const { selectedFirm } = useFirmaDonem();
+    const currency = getFirmLedgerCurrency(
+        selectedFirm,
+        getAppDefaultCurrency() || getGlobalCurrency(),
+    );
+    const { data, isLoading, isError } = useStorePanelDashboard();
 
-    // Mock Data
-    const stores: StoreData[] = [
-        {
-            id: 'ST-001',
-            name: 'Merkez Mağaza',
-            location: 'İstanbul, Kadıköy',
-            manager: 'Ahmet Yılmaz',
-            status: 'open',
-            dailyRevenue: 45250,
-            staffCount: 12,
-            phone: '+90 216 555 0001'
-        },
-        {
-            id: 'ST-002',
-            name: 'Vadistanbul AVM',
-            location: 'İstanbul, Sarıyer',
-            manager: 'Ayşe Demir',
-            status: 'open',
-            dailyRevenue: 38900,
-            staffCount: 8,
-            phone: '+90 212 555 0002'
-        },
-        {
-            id: 'ST-003',
-            name: 'Alsancak Şube',
-            location: 'İzmir, Konak',
-            manager: 'Mehmet Kaya',
-            status: 'maintenance',
-            dailyRevenue: 0,
-            staffCount: 6,
-            phone: '+90 232 555 0003'
-        },
-        {
-            id: 'ST-004',
-            name: 'Kızılay AVM',
-            location: 'Ankara, Çankaya',
-            manager: 'Zeynep Çelik',
-            status: 'open',
-            dailyRevenue: 29500,
-            staffCount: 7,
-            phone: '+90 312 555 0004'
-        }
-    ];
+    const stores = data?.stores ?? [];
+    const chartData = data?.weeklyRevenue ?? [];
+    const totalRevenue = data?.totalDailyRevenue ?? 0;
+    const activeStores = data?.activeStores ?? 0;
+    const totalStores = data?.totalStores ?? 0;
+    const totalStaff = data?.totalStaff ?? 0;
+    const criticalStock = data?.criticalStockCount ?? 0;
 
-    const chartData = [
-        { name: 'Pzt', revenue: 120000 },
-        { name: 'Sal', revenue: 135000 },
-        { name: 'Çar', revenue: 110000 },
-        { name: 'Per', revenue: 145000 },
-        { name: 'Cum', revenue: 190000 },
-        { name: 'Cmt', revenue: 210000 },
-        { name: 'Paz', revenue: 175000 },
-    ];
-
-    const totalRevenue = stores.reduce((acc, store) => acc + store.dailyRevenue, 0);
-    const activeStores = stores.filter(s => s.status === 'open').length;
-    const totalStaff = stores.reduce((acc, store) => acc + store.staffCount, 0);
+    const fmt = (n: number) => formatLedgerAmount(n, currency);
 
     return (
         <div className={`h-full flex flex-col p-6 overflow-y-auto ${darkMode ? 'bg-gray-900 text-white' : 'bg-slate-50 text-slate-900'}`}>
@@ -113,13 +65,25 @@ export function StoreManagementDashboard() {
                 </button>
             </div>
 
+            {isLoading && (
+                <div className={`flex items-center gap-2 mb-6 text-sm ${darkMode ? 'text-gray-400' : 'text-slate-500'}`}>
+                    <Loader2 className="w-4 h-4 animate-spin" />
+                    Mağaza verileri yükleniyor…
+                </div>
+            )}
+            {isError && (
+                <div className="mb-6 text-sm text-red-600">
+                    Mağaza verileri alınamadı. Bağlantıyı kontrol edin.
+                </div>
+            )}
+
             {/* KPI Cards */}
             <div className="grid grid-cols-1 md:grid-cols-4 gap-6 mb-8">
                 {[
-                    { title: 'Toplam Günlük Ciro', value: totalRevenue.toLocaleString('tr-TR'), icon: TrendingUp, color: 'text-green-600', bg: 'bg-green-100 dark:bg-green-900/30' },
-                    { title: 'Aktif Mağazalar', value: `${activeStores}/${stores.length}`, icon: Store, color: 'text-blue-600', bg: 'bg-blue-100 dark:bg-blue-900/30' },
-                    { title: 'Toplam Personel', value: totalStaff, icon: Users, color: 'text-purple-600', bg: 'bg-purple-100 dark:bg-purple-900/30' },
-                    { title: 'Kritik Stok Uyarıları', value: '12', icon: AlertTriangle, color: 'text-amber-600', bg: 'bg-amber-100 dark:bg-amber-900/30' },
+                    { title: 'Toplam Günlük Ciro', value: fmt(totalRevenue), icon: TrendingUp, color: 'text-green-600', bg: 'bg-green-100 dark:bg-green-900/30' },
+                    { title: 'Aktif Mağazalar', value: `${activeStores}/${totalStores}`, icon: Store, color: 'text-blue-600', bg: 'bg-blue-100 dark:bg-blue-900/30' },
+                    { title: 'Toplam Personel', value: String(totalStaff), icon: Users, color: 'text-purple-600', bg: 'bg-purple-100 dark:bg-purple-900/30' },
+                    { title: 'Kritik Stok Uyarıları', value: String(criticalStock), icon: AlertTriangle, color: 'text-amber-600', bg: 'bg-amber-100 dark:bg-amber-900/30' },
                 ].map((stat, idx) => (
                     <div key={idx} className={`p-6 rounded-2xl shadow-sm border ${darkMode ? 'bg-gray-800 border-gray-700' : 'bg-white border-slate-200'}`}>
                         <div className="flex items-center justify-between">
@@ -141,6 +105,11 @@ export function StoreManagementDashboard() {
                 {/* Store List */}
                 <div className="lg:col-span-2 space-y-4">
                     <h2 className="text-xl font-semibold mb-4">Mağazalarım</h2>
+                    {!isLoading && stores.length === 0 ? (
+                        <div className={`p-8 rounded-2xl border text-center ${darkMode ? 'bg-gray-800 border-gray-700 text-gray-400' : 'bg-white border-slate-200 text-slate-500'}`}>
+                            Bu firmada tanımlı mağaza yok.
+                        </div>
+                    ) : (
                     <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                         {stores.map((store) => (
                             <div
@@ -172,24 +141,30 @@ export function StoreManagementDashboard() {
                                 </div>
 
                                 <div className="space-y-2 text-sm">
+                                    {store.location ? (
                                     <div className={`flex items-center gap-2 ${darkMode ? 'text-gray-400' : 'text-slate-500'}`}>
-                                        <MapPin className="w-4 h-4" />
+                                        <MapPin className="w-4 h-4 shrink-0" />
                                         {store.location}
                                     </div>
+                                    ) : null}
+                                    {store.manager ? (
                                     <div className={`flex items-center gap-2 ${darkMode ? 'text-gray-400' : 'text-slate-500'}`}>
-                                        <Users className="w-4 h-4" />
+                                        <Users className="w-4 h-4 shrink-0" />
                                         {store.manager}
                                     </div>
+                                    ) : null}
+                                    {store.phone ? (
                                     <div className={`flex items-center gap-2 ${darkMode ? 'text-gray-400' : 'text-slate-500'}`}>
-                                        <Phone className="w-4 h-4" />
+                                        <Phone className="w-4 h-4 shrink-0" />
                                         {store.phone}
                                     </div>
+                                    ) : null}
                                 </div>
 
                                 <div className="mt-4 pt-4 border-t border-dashed border-gray-200 dark:border-gray-700 flex justify-between items-center">
                                     <div>
                                         <span className={`text-xs ${darkMode ? 'text-gray-500' : 'text-slate-500'}`}>Günlük Ciro</span>
-                                        <p className="font-bold text-lg">{store.dailyRevenue.toLocaleString('tr-TR')}</p>
+                                        <p className="font-bold text-lg">{fmt(store.dailyRevenue)}</p>
                                     </div>
                                     <button className="p-2 rounded-full bg-blue-50 text-blue-600 hover:bg-blue-100 dark:bg-blue-900/20 dark:text-blue-400 transition-colors">
                                         <ArrowRight className="w-4 h-4" />
@@ -198,6 +173,7 @@ export function StoreManagementDashboard() {
                             </div>
                         ))}
                     </div>
+                    )}
                 </div>
 
                 {/* Analytics Chart */}
@@ -219,7 +195,11 @@ export function StoreManagementDashboard() {
                                     tick={{ fill: darkMode ? '#9ca3af' : '#64748b' }}
                                     axisLine={false}
                                     tickLine={false}
-                                    tickFormatter={(value) => `${value / 1000}k`}
+                                    tickFormatter={(value) => {
+                                        const n = Number(value) || 0;
+                                        if (Math.abs(n) >= 1000) return `${Math.round(n / 1000)}k`;
+                                        return String(n);
+                                    }}
                                 />
                                 <Tooltip
                                     contentStyle={{
@@ -229,7 +209,7 @@ export function StoreManagementDashboard() {
                                         boxShadow: '0 4px 6px -1px rgb(0 0 0 / 0.1)'
                                     }}
                                     itemStyle={{ color: darkMode ? '#fff' : '#0f172a' }}
-                                    formatter={(value: any) => [value.toLocaleString('tr-TR'), 'Ciro']}
+                                    formatter={(value: any) => [fmt(Number(value) || 0), 'Ciro']}
                                 />
                                 <Bar
                                     dataKey="revenue"
@@ -245,16 +225,16 @@ export function StoreManagementDashboard() {
                         <h3 className="font-medium text-sm text-gray-500 uppercase tracking-widest">Hızlı İşlemler</h3>
                         <div className="grid grid-cols-2 gap-3">
                             <button className={`p-3 rounded-xl text-left text-sm font-medium border transition-colors ${darkMode ? 'border-gray-700 hover:bg-gray-700' : 'border-slate-200 hover:bg-slate-50'}`}>
-                                📊 Satış Raporları
+                                Satış Raporları
                             </button>
                             <button className={`p-3 rounded-xl text-left text-sm font-medium border transition-colors ${darkMode ? 'border-gray-700 hover:bg-gray-700' : 'border-slate-200 hover:bg-slate-50'}`}>
-                                📦 Stok Transferi
+                                Stok Transferi
                             </button>
                             <button className={`p-3 rounded-xl text-left text-sm font-medium border transition-colors ${darkMode ? 'border-gray-700 hover:bg-gray-700' : 'border-slate-200 hover:bg-slate-50'}`}>
-                                👥 Personel Planlama
+                                Personel Planlama
                             </button>
                             <button className={`p-3 rounded-xl text-left text-sm font-medium border transition-colors ${darkMode ? 'border-gray-700 hover:bg-gray-700' : 'border-slate-200 hover:bg-slate-50'}`}>
-                                ⚙️ Bölge Ayarları
+                                Bölge Ayarları
                             </button>
                         </div>
                     </div>
@@ -264,4 +244,3 @@ export function StoreManagementDashboard() {
         </div>
     );
 }
-

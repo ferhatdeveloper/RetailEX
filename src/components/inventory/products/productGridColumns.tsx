@@ -7,7 +7,8 @@ import { formatCurrency } from '../../../utils/currency';
 import { formatScaleQuantityDisplay } from '../../../utils/scaleQuantity';
 import { isProductStockLow, isWeightBasedUnit } from '../../../utils/productUnits';
 
-export const PRODUCT_COLUMN_VISIBILITY_KEY = 'retailex_productManagement_columnVisibility_v2';
+/** v3: KDV (taxRate) varsayılan gizli; eski v2 tercihlerinden KDV açık taşıma. */
+export const PRODUCT_COLUMN_VISIBILITY_KEY = 'retailex_productManagement_columnVisibility_v3';
 
 export type ProductGridColumnId = keyof typeof PRODUCT_GRID_COLUMN_META;
 
@@ -53,7 +54,7 @@ export const PRODUCT_GRID_COLUMN_META: Record<string, ColumnMeta> = {
   purchasePriceEUR: { id: 'purchasePriceEUR', label: 'Alış (EUR)', defaultVisible: false, purchaseOnly: true, size: 120, format: 'currencyEur' },
   currency: { id: 'currency', label: 'Para Birimi', defaultVisible: false, size: 90 },
   customExchangeRate: { id: 'customExchangeRate', label: 'Özel Kur', defaultVisible: false, size: 100, format: 'number' },
-  taxRate: { id: 'taxRate', label: 'KDV', defaultVisible: true, size: 100, format: 'percent' },
+  taxRate: { id: 'taxRate', label: 'KDV', defaultVisible: false, size: 100, format: 'percent' },
   stock: { id: 'stock', label: 'Stok', defaultVisible: true, size: 100, format: 'number' },
   minStock: { id: 'minStock', label: 'Min Stok', defaultVisible: false, size: 90, format: 'number' },
   maxStock: { id: 'maxStock', label: 'Max Stok', defaultVisible: false, size: 90, format: 'number' },
@@ -86,14 +87,20 @@ export function defaultProductColumnVisibility(): Record<string, boolean> {
 export function loadProductColumnVisibility(): Record<string, boolean> {
   const defaults = defaultProductColumnVisibility();
   try {
-    const rawV2 = localStorage.getItem(PRODUCT_COLUMN_VISIBILITY_KEY);
+    const rawV3 = localStorage.getItem(PRODUCT_COLUMN_VISIBILITY_KEY);
+    const rawV2 = localStorage.getItem('retailex_productManagement_columnVisibility_v2');
     const rawV1 = localStorage.getItem('retailex_productManagement_columnVisibility');
-    const raw = rawV2 ?? rawV1;
+    const raw = rawV3 ?? rawV2 ?? rawV1;
     if (!raw) return defaults;
     const parsed = JSON.parse(raw) as Record<string, boolean>;
-    return Object.fromEntries(
+    const merged = Object.fromEntries(
       PRODUCT_GRID_COLUMN_ORDER.map((id) => [id, parsed[id] ?? defaults[id]])
     );
+    // v1/v2: KDV eski varsayılan açıktı — özel v3 seçimi yoksa gizle
+    if (!rawV3) {
+      merged.taxRate = false;
+    }
+    return merged;
   } catch {
     return defaults;
   }

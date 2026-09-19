@@ -99,7 +99,6 @@ const PREVIEW_TABS: PreviewTabDef[] = [
       { title: 'Barkod', dataIndex: 'barcode', width: 120 },
       { title: 'Birim', dataIndex: 'unit', width: 70 },
       { title: 'Fiyat', dataIndex: 'price', width: 90, align: 'right' },
-      { title: 'KDV %', dataIndex: 'vat', width: 70, align: 'right' },
     ],
   },
   {

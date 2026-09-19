@@ -26,6 +26,10 @@ export function ServiceManagement() {
   const [showForm, setShowForm] = useState(false);
   const [editingServiceId, setEditingServiceId] = useState<string | undefined>(undefined);
   const [contextMenu, setContextMenu] = useState<{ x: number; y: number; service: Service } | null>(null);
+  /** KDV varsayılan gizli; Kolonlar menüsünden açılabilir */
+  const [columnVisibility, setColumnVisibility] = useState<Record<string, boolean>>({
+    tax_rate: false,
+  });
 
   const loadServices = async (silent = false) => {
     try {
@@ -109,7 +113,8 @@ export function ServiceManagement() {
       size: 120
     }),
     columnHelper.accessor('tax_rate', {
-      header: 'TAX',
+      id: 'tax_rate',
+      header: tm('productGridColTax') || 'KDV',
       cell: info => (
         <span className="px-2 py-1 bg-slate-100 text-slate-600 rounded text-xs font-bold">%{info.getValue()}</span>
       ),
@@ -201,6 +206,9 @@ export function ServiceManagement() {
           <DevExDataGrid
             data={filteredServices}
             columns={columns}
+            enableColumnVisibility
+            columnVisibility={columnVisibility}
+            onColumnVisibilityChange={setColumnVisibility}
             onRowContextMenu={(e, service) => {
               e.preventDefault();
               setContextMenu({ x: e.clientX, y: e.clientY, service });

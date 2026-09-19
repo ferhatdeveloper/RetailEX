@@ -1089,6 +1089,7 @@ export function ManagementModule({
             sales={sales}
             setCurrentScreen={setScreenFromSidebar}
             menuMode={hiddenModules.length > 5 ? 1 : 2}
+            menuSections={menuSections}
           />;
         // Material Management - Products
         case 'products':
@@ -1634,6 +1635,7 @@ export function ManagementModule({
             sales={sales}
             setCurrentScreen={setScreenFromSidebar}
             menuMode={0}
+            menuSections={menuSections}
           />;
       }
     } catch (error) {

@@ -649,7 +649,7 @@ export const DEFAULT_TEMPLATES: Template[] = [
           'Çıkış Miktar',
           'Çıkış Tutar',
           'Satış Birim Fiyatı',
-          'Kümülatif Kalan Bakiye',
+          'Kalan Bakiye',
         ],
       },
       {

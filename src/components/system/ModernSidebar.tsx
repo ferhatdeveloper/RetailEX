@@ -4,12 +4,14 @@ import {
   ShoppingCart, TrendingUp, Wallet, Users, Settings, Tag, Scale,
   Boxes, FileSignature, Truck, BarChart3, Receipt, Warehouse,
   FileCheck, Target, GitBranch, Building2, Store, PackagePlus,
-  ShoppingBag, Wrench, Search, X, Languages, Moon, Sun
+  ShoppingBag, Wrench, Search, X, Languages, Moon, Sun, Star
 } from 'lucide-react';
 import { useTheme } from '../../contexts/ThemeContext';
 import type { Language } from '../../locales/module-translations';
 import { useResponsive } from '../../hooks/useResponsive';
 import { Translations } from '../../locales/translations';
+import { useMenuFavorites } from '../../hooks/useMenuFavorites';
+import { MAX_MENU_FAVORITES } from '../../services/menuFavoritesService';
 
 interface MenuSection {
   title: string;
@@ -66,6 +68,7 @@ export function ModernSidebar({
 }: ModernSidebarProps) {
   const { darkMode, toggleDarkMode } = useTheme();
   const { isMobile } = useResponsive();
+  const { isFavorite, toggleFavorite, favoriteIds, maxFavorites } = useMenuFavorites();
   const [expandedItems, setExpandedItems] = useState<string[]>([]);
 
   const toggleItem = (itemId: string) => {
@@ -139,28 +142,78 @@ export function ModernSidebar({
     }
 
     // Leaf items (actual navigation items) - Badge gösterilmiyor
+    const leafId = item.id != null && item.id !== '' ? String(item.id) : '';
+    const favorited = leafId ? isFavorite(leafId) : false;
+    const favoriteFull = !favorited && favoriteIds.length >= maxFavorites;
+
     return (
-      <button
-        key={item.id != null && item.id !== '' ? String(item.id) : `leaf:${item.label}`}
-        onClick={() => {
-          if (item.id != null && item.id !== '') setCurrentScreen(item.id);
-        }}
-        className={`w-full flex items-center gap-2 sm:gap-3 ${pySize} ${fontSize} ${fontWeight} transition-all duration-200 ${basePadding} active:scale-[0.98] ${isActive
+      <div
+        key={leafId || `leaf:${item.label}`}
+        className={`group/leaf w-full flex items-center gap-1 ${pySize} ${fontSize} ${fontWeight} transition-all duration-200 ${basePadding} ${isActive
           ? darkMode
             ? 'bg-blue-600 text-white shadow-md'
             : 'bg-blue-50 text-blue-700 border-l-4 border-blue-600'
           : darkMode
             ? level === 0
-              ? 'text-gray-200 hover:bg-gray-700 hover:text-white active:bg-gray-600'
-              : 'text-gray-400 hover:bg-gray-700 hover:text-white active:bg-gray-600'
+              ? 'text-gray-200 hover:bg-gray-700 hover:text-white'
+              : 'text-gray-400 hover:bg-gray-700 hover:text-white'
             : level === 0
-              ? 'text-gray-700 hover:bg-gray-100 hover:text-gray-900 active:bg-gray-200'
-              : 'text-gray-600 hover:bg-gray-200 hover:text-gray-900 active:bg-gray-300'
+              ? 'text-gray-700 hover:bg-gray-100 hover:text-gray-900'
+              : 'text-gray-600 hover:bg-gray-200 hover:text-gray-900'
           }`}
       >
-        {Icon && <Icon className={`${iconSize} shrink-0`} />}
-        <span className="flex-1 text-left truncate">{item.label}</span>
-      </button>
+        <button
+          type="button"
+          onClick={() => {
+            if (leafId) setCurrentScreen(leafId);
+          }}
+          className="flex-1 min-w-0 flex items-center gap-2 sm:gap-3 active:scale-[0.98] text-left"
+        >
+          {Icon && <Icon className={`${iconSize} shrink-0`} />}
+          <span className="flex-1 truncate">{item.label}</span>
+        </button>
+        {leafId ? (
+          <button
+            type="button"
+            onClick={(e) => {
+              e.preventDefault();
+              e.stopPropagation();
+              if (favoriteFull && !favorited) return;
+              toggleFavorite(leafId);
+            }}
+            disabled={favoriteFull && !favorited}
+            title={
+              favorited
+                ? String(t.removeFromFavorites ?? 'Favorilerden çıkar')
+                : favoriteFull
+                  ? String(t.maxFavoritesHint ?? `En fazla ${MAX_MENU_FAVORITES} favori`)
+                  : String(t.addToFavorites ?? 'Favorilere ekle')
+            }
+            className={`shrink-0 p-1 rounded transition-colors disabled:opacity-40 ${
+              isActive
+                ? 'hover:bg-white/20'
+                : darkMode
+                  ? 'hover:bg-gray-600'
+                  : 'hover:bg-gray-200'
+            } ${favorited || isMobile ? 'opacity-100' : 'opacity-40 sm:opacity-0 sm:group-hover/leaf:opacity-100 focus:opacity-100'}`}
+            aria-label={favorited ? String(t.removeFromFavorites ?? 'Favorilerden çıkar') : String(t.addToFavorites ?? 'Favorilere ekle')}
+          >
+            <Star
+              className={`w-3.5 h-3.5 ${
+                favorited
+                  ? isActive
+                    ? 'text-amber-300 fill-amber-300'
+                    : 'text-amber-500 fill-amber-500'
+                  : isActive
+                    ? 'text-white/80'
+                    : darkMode
+                      ? 'text-gray-400'
+                      : 'text-gray-400'
+              }`}
+            />
+          </button>
+        ) : null}
+      </div>
     );
   };
 

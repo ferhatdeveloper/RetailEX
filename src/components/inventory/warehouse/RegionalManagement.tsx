@@ -1,35 +1,46 @@
 // Regional & Franchise Management Module
 
-import { useState } from 'react';
-import { 
+import { useMemo, useState } from 'react';
+import {
   Map,
   Building,
   Users,
   Banknote,
   TrendingUp,
   TrendingDown,
-  Award,
-  AlertCircle,
-  CheckCircle,
   Calendar,
   FileText,
   Phone,
-  Mail,
   MapPin,
-  Target,
   BarChart3,
-  Settings,
   Download,
   Plus,
   Edit,
-  Trash2,
-  X
+  X,
+  Loader2,
 } from 'lucide-react';
 import { useRegionStats } from '../../../hooks/useInfiniteStores';
+import { formatLedgerAmount, getFirmLedgerCurrency, getGlobalCurrency } from '../../../utils/currency';
+import { getAppDefaultCurrency } from '../../../services/postgres';
+import { useFirmaDonem } from '../../../contexts/FirmaDonemContext';
+import type { RegionStats } from '../../../services/storeApiService';
+
+function useFirmCurrency() {
+  const { selectedFirm } = useFirmaDonem();
+  return getFirmLedgerCurrency(selectedFirm, getAppDefaultCurrency() || getGlobalCurrency());
+}
+
+function formatGrowth(g: number | null | undefined): string {
+  if (g == null || !Number.isFinite(g)) return '—';
+  const sign = g > 0 ? '+' : '';
+  return `${sign}${g.toFixed(1)}%`;
+}
 
 export function RegionalManagement() {
   const [selectedView, setSelectedView] = useState<'regional' | 'franchise' | 'managers' | 'reports'>('regional');
-  const { data: regionStats } = useRegionStats();
+  const { data: regionStats, isLoading } = useRegionStats();
+  const currency = useFirmCurrency();
+  const formatCurrency = (value: number) => formatLedgerAmount(value, currency);
 
   const viewTabs = [
     { id: 'regional' as const, label: 'Bölgesel Yönetim', icon: Map },
@@ -40,7 +51,6 @@ export function RegionalManagement() {
 
   return (
     <div className="h-full flex flex-col bg-gray-50">
-      {/* Header */}
       <div className="bg-white border-b shadow-sm">
         <div className="px-6 py-4">
           <div className="flex items-center justify-between mb-4">
@@ -49,9 +59,7 @@ export function RegionalManagement() {
                 <Map className="h-6 w-6 text-blue-600" />
                 Bölgesel & Franchise Yönetimi
               </h1>
-              <p className="text-sm text-gray-600 mt-1">
-                Bölge, franchise ve müdür yönetimi
-              </p>
+              <p className="text-sm text-gray-600 mt-1">Bölge, franchise ve müdür yönetimi</p>
             </div>
             <div className="flex items-center gap-3">
               <button className="px-4 py-2 border border-gray-300 rounded-lg hover:bg-gray-50 flex items-center gap-2">
@@ -65,9 +73,8 @@ export function RegionalManagement() {
             </div>
           </div>
 
-          {/* View Tabs */}
           <div className="flex gap-2">
-            {viewTabs.map(tab => {
+            {viewTabs.map((tab) => {
               const Icon = tab.icon;
               return (
                 <button
@@ -88,12 +95,19 @@ export function RegionalManagement() {
         </div>
       </div>
 
-      {/* Content Area - SCROLLABLE */}
       <div className="flex-1 overflow-auto">
         <div className="p-6">
-          {selectedView === 'regional' && <RegionalView regionStats={regionStats} />}
-          {selectedView === 'franchise' && <FranchiseView />}
-          {selectedView === 'managers' && <ManagersView />}
+          {isLoading && (
+            <div className="flex items-center gap-2 text-sm text-gray-500 mb-4">
+              <Loader2 className="h-4 w-4 animate-spin" />
+              Bölge verileri yükleniyor…
+            </div>
+          )}
+          {selectedView === 'regional' && (
+            <RegionalView regionStats={regionStats} formatCurrency={formatCurrency} />
+          )}
+          {selectedView === 'franchise' && <FranchiseView formatCurrency={formatCurrency} />}
+          {selectedView === 'managers' && <ManagersView regionStats={regionStats} />}
           {selectedView === 'reports' && <ReportsView />}
         </div>
       </div>
@@ -101,43 +115,42 @@ export function RegionalManagement() {
   );
 }
 
-// Regional View
-function RegionalView({ regionStats }: any) {
+function RegionalView({
+  regionStats,
+  formatCurrency,
+}: {
+  regionStats?: RegionStats[];
+  formatCurrency: (n: number) => string;
+}) {
   const [showEditModal, setShowEditModal] = useState(false);
   const [showReportModal, setShowReportModal] = useState(false);
-  const [selectedRegion, setSelectedRegion] = useState<any>(null);
+  const [selectedRegion, setSelectedRegion] = useState<RegionStats | null>(null);
 
-  const formatCurrency = (value: number) => {
-    return new Intl.NumberFormat('tr-TR', {
-      minimumFractionDigits: 0,
-      maximumFractionDigits: 0
-    }).format(value) + ' IQD';
-  };
-
-  const handleEditClick = (region: any) => {
-    setSelectedRegion(region);
-    setShowEditModal(true);
-  };
-
-  const handleReportClick = (region: any) => {
-    setSelectedRegion(region);
-    setShowReportModal(true);
-  };
+  const totals = useMemo(() => {
+    const list = regionStats || [];
+    return {
+      regions: list.length,
+      stores: list.reduce((s, r) => s + r.storeCount, 0),
+      revenue: list.reduce((s, r) => s + r.revenue, 0),
+      staff: list.reduce((s, r) => s + r.staffCount, 0),
+      avgGrowth: (() => {
+        const withG = list.filter((r) => r.growth != null);
+        if (!withG.length) return null;
+        return withG.reduce((s, r) => s + (r.growth || 0), 0) / withG.length;
+      })(),
+    };
+  }, [regionStats]);
 
   return (
     <div className="space-y-6">
-      {/* Regional KPIs */}
       <div className="grid grid-cols-4 gap-4">
         <div className="bg-white rounded-lg shadow-sm border p-4">
           <div className="flex items-center justify-between mb-2">
             <span className="text-sm text-gray-600">Toplam Bölge</span>
             <Map className="h-5 w-5 text-blue-600" />
           </div>
-          <div className="text-2xl font-bold text-gray-900">8</div>
-          <div className="text-sm text-green-600 flex items-center gap-1 mt-1">
-            <TrendingUp className="h-3 w-3" />
-            <span>Aktif</span>
-          </div>
+          <div className="text-2xl font-bold text-gray-900">{totals.regions}</div>
+          <div className="text-sm text-gray-600 mt-1">stores.region</div>
         </div>
 
         <div className="bg-white rounded-lg shadow-sm border p-4">
@@ -145,9 +158,7 @@ function RegionalView({ regionStats }: any) {
             <span className="text-sm text-gray-600">Toplam Mağaza</span>
             <Building className="h-5 w-5 text-green-600" />
           </div>
-          <div className="text-2xl font-bold text-gray-900">
-            {regionStats?.reduce((sum: number, r: any) => sum + r.storeCount, 0) || 10000}
-          </div>
+          <div className="text-2xl font-bold text-gray-900">{totals.stores}</div>
           <div className="text-sm text-gray-600 mt-1">Tüm bölgelerde</div>
         </div>
 
@@ -156,12 +167,22 @@ function RegionalView({ regionStats }: any) {
             <span className="text-sm text-gray-600">Toplam Ciro</span>
             <Banknote className="h-5 w-5 text-purple-600" />
           </div>
-          <div className="text-2xl font-bold text-purple-600">
-            {formatCurrency(regionStats?.reduce((sum: number, r: any) => sum + r.revenue, 0) || 0)}
-          </div>
-          <div className="text-sm text-green-600 flex items-center gap-1 mt-1">
-            <TrendingUp className="h-3 w-3" />
-            <span>+12.5%</span>
+          <div className="text-2xl font-bold text-purple-600">{formatCurrency(totals.revenue)}</div>
+          <div className="text-sm text-gray-600 flex items-center gap-1 mt-1">
+            {totals.avgGrowth == null ? (
+              <span>Son 30 gün</span>
+            ) : (
+              <>
+                {totals.avgGrowth >= 0 ? (
+                  <TrendingUp className="h-3 w-3 text-green-600" />
+                ) : (
+                  <TrendingDown className="h-3 w-3 text-red-600" />
+                )}
+                <span className={totals.avgGrowth >= 0 ? 'text-green-600' : 'text-red-600'}>
+                  {formatGrowth(totals.avgGrowth)}
+                </span>
+              </>
+            )}
           </div>
         </div>
 
@@ -170,157 +191,155 @@ function RegionalView({ regionStats }: any) {
             <span className="text-sm text-gray-600">Mağaza Personeli</span>
             <Users className="h-5 w-5 text-orange-600" />
           </div>
-          <div className="text-2xl font-bold text-gray-900">8</div>
-          <div className="text-sm text-gray-600 mt-1">Her bölgede 1</div>
+          <div className="text-2xl font-bold text-gray-900">{totals.staff}</div>
+          <div className="text-sm text-gray-600 mt-1">Aktif kullanıcı</div>
         </div>
       </div>
 
-      {/* Regional Performance Table */}
       <div className="bg-white rounded-lg shadow-sm border">
         <div className="p-4 border-b">
           <h3 className="font-semibold text-gray-900">Bölgesel Performans Detayları</h3>
         </div>
         <div className="overflow-auto max-h-[500px]">
-          <table className="w-full">
-            <thead className="bg-gray-50 sticky top-0">
-              <tr>
-                <th className="text-left py-3 px-4 text-sm font-medium text-gray-700">Bölge</th>
-                <th className="text-right py-3 px-4 text-sm font-medium text-gray-700">Mağaza</th>
-                <th className="text-right py-3 px-4 text-sm font-medium text-gray-700">Ciro</th>
-                <th className="text-right py-3 px-4 text-sm font-medium text-gray-700">İşlemler</th>
-                <th className="text-right py-3 px-4 text-sm font-medium text-gray-700">Ort. Sepet</th>
-                <th className="text-right py-3 px-4 text-sm font-medium text-gray-700">Büyüme</th>
-                <th className="text-left py-3 px-4 text-sm font-medium text-gray-700">Bölge Müdürü</th>
-                <th className="text-right py-3 px-4 text-sm font-medium text-gray-700">İşlemler</th>
-              </tr>
-            </thead>
-            <tbody>
-              {regionStats?.map((region: any, index: number) => (
-                <tr key={region.regionId} className="border-b hover:bg-gray-50">
-                  <td className="py-3 px-4">
-                    <div className="flex items-center gap-2">
-                      <MapPin className="h-4 w-4 text-blue-600" />
-                      <span className="font-medium">{region.regionName}</span>
-                    </div>
-                  </td>
-                  <td className="text-right py-3 px-4">{region.storeCount}</td>
-                  <td className="text-right py-3 px-4 font-semibold text-green-600">
-                    {formatCurrency(region.revenue)}
-                  </td>
-                  <td className="text-right py-3 px-4">
-                    {new Intl.NumberFormat('tr-TR').format(region.transactions)}
-                  </td>
-                  <td className="text-right py-3 px-4">{formatCurrency(region.avgBasket)}</td>
-                  <td className="text-right py-3 px-4">
-                    <div className="flex items-center justify-end gap-1">
-                      {index % 2 === 0 ? (
-                        <TrendingUp className="h-4 w-4 text-green-600" />
-                      ) : (
-                        <TrendingDown className="h-4 w-4 text-red-600" />
-                      )}
-                      <span className={index % 2 === 0 ? 'text-green-600' : 'text-red-600'}>
-                        {index % 2 === 0 ? '+' : '-'}{(Math.random() * 10).toFixed(1)}%
-                      </span>
-                    </div>
-                  </td>
-                  <td className="py-3 px-4">
-                    <div className="text-sm">
-                      <div className="font-medium">Mohammed Al-Sadr</div>
-                      <div className="text-gray-600">+964 750 123 45 67</div>
-                    </div>
-                  </td>
-                  <td className="text-right py-3 px-4">
-                    <div className="flex items-center justify-end gap-2">
-                      <button className="p-1 hover:bg-blue-50 rounded text-blue-600" onClick={() => handleEditClick(region)}>
-                        <Edit className="h-4 w-4" />
-                      </button>
-                      <button className="p-1 hover:bg-gray-100 rounded text-gray-600" onClick={() => handleReportClick(region)}>
-                        <FileText className="h-4 w-4" />
-                      </button>
-                    </div>
-                  </td>
+          {!regionStats?.length ? (
+            <p className="text-sm text-gray-500 text-center py-10">Bölge / mağaza kaydı yok.</p>
+          ) : (
+            <table className="w-full">
+              <thead className="bg-gray-50 sticky top-0">
+                <tr>
+                  <th className="text-left py-3 px-4 text-sm font-medium text-gray-700">Bölge</th>
+                  <th className="text-right py-3 px-4 text-sm font-medium text-gray-700">Mağaza</th>
+                  <th className="text-right py-3 px-4 text-sm font-medium text-gray-700">Ciro</th>
+                  <th className="text-right py-3 px-4 text-sm font-medium text-gray-700">İşlemler</th>
+                  <th className="text-right py-3 px-4 text-sm font-medium text-gray-700">Ort. Sepet</th>
+                  <th className="text-right py-3 px-4 text-sm font-medium text-gray-700">Büyüme</th>
+                  <th className="text-left py-3 px-4 text-sm font-medium text-gray-700">Bölge Müdürü</th>
+                  <th className="text-right py-3 px-4 text-sm font-medium text-gray-700">İşlemler</th>
                 </tr>
-              ))}
-            </tbody>
-          </table>
+              </thead>
+              <tbody>
+                {regionStats.map((region) => {
+                  const g = region.growth;
+                  return (
+                    <tr key={region.regionId} className="border-b hover:bg-gray-50">
+                      <td className="py-3 px-4">
+                        <div className="flex items-center gap-2">
+                          <MapPin className="h-4 w-4 text-blue-600" />
+                          <span className="font-medium">{region.regionName}</span>
+                        </div>
+                      </td>
+                      <td className="text-right py-3 px-4">{region.storeCount}</td>
+                      <td className="text-right py-3 px-4 font-semibold text-green-600">
+                        {formatCurrency(region.revenue)}
+                      </td>
+                      <td className="text-right py-3 px-4">
+                        {new Intl.NumberFormat('tr-TR').format(region.transactions)}
+                      </td>
+                      <td className="text-right py-3 px-4">{formatCurrency(region.avgBasket)}</td>
+                      <td className="text-right py-3 px-4">
+                        {g == null ? (
+                          <span className="text-gray-400">—</span>
+                        ) : (
+                          <div className="flex items-center justify-end gap-1">
+                            {g >= 0 ? (
+                              <TrendingUp className="h-4 w-4 text-green-600" />
+                            ) : (
+                              <TrendingDown className="h-4 w-4 text-red-600" />
+                            )}
+                            <span className={g >= 0 ? 'text-green-600' : 'text-red-600'}>
+                              {formatGrowth(g)}
+                            </span>
+                          </div>
+                        )}
+                      </td>
+                      <td className="py-3 px-4">
+                        <div className="text-sm">
+                          <div className="font-medium">{region.managerName || '—'}</div>
+                          <div className="text-gray-600">{region.managerPhone || ''}</div>
+                        </div>
+                      </td>
+                      <td className="text-right py-3 px-4">
+                        <div className="flex items-center justify-end gap-2">
+                          <button
+                            className="p-1 hover:bg-blue-50 rounded text-blue-600"
+                            onClick={() => {
+                              setSelectedRegion(region);
+                              setShowEditModal(true);
+                            }}
+                          >
+                            <Edit className="h-4 w-4" />
+                          </button>
+                          <button
+                            className="p-1 hover:bg-gray-100 rounded text-gray-600"
+                            onClick={() => {
+                              setSelectedRegion(region);
+                              setShowReportModal(true);
+                            }}
+                          >
+                            <FileText className="h-4 w-4" />
+                          </button>
+                        </div>
+                      </td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
+          )}
         </div>
       </div>
 
-      {/* Edit Modal */}
       {showEditModal && selectedRegion && (
         <div className="fixed inset-0 bg-black/50 backdrop-blur-sm flex items-center justify-center z-50 p-4">
           <div className="bg-white rounded-lg shadow-xl max-w-lg w-full">
             <div className="p-4 border-b flex items-center justify-between bg-gradient-to-r from-blue-600 to-blue-700">
               <h3 className="text-lg font-semibold text-white flex items-center gap-2">
                 <Edit className="h-5 w-5" />
-                Bölge Bilgilerini Düzenle
+                Bölge Bilgileri
               </h3>
               <button onClick={() => setShowEditModal(false)} className="text-white/80 hover:text-white">
                 <X className="h-5 w-5" />
               </button>
             </div>
             <div className="p-6 space-y-4">
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-2">Bölge Adı</label>
-                <input
-                  type="text"
-                  defaultValue={selectedRegion.regionName}
-                  className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
-                />
-              </div>
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-2">Mağaza Personeli</label>
-                <input
-                  type="text"
-                  defaultValue="Mohammed Al-Sadr"
-                  className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
-                />
-              </div>
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-2">Telefon</label>
-                <input
-                  type="text"
-                  defaultValue="+964 750 123 45 67"
-                  className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
-                />
-              </div>
-              <div className="bg-blue-50 border border-blue-200 rounded-lg p-4">
-                <div className="flex justify-between text-sm mb-2">
+              <div className="bg-blue-50 border border-blue-200 rounded-lg p-4 space-y-2 text-sm">
+                <div className="flex justify-between">
+                  <span className="text-gray-600">Bölge:</span>
+                  <span className="font-semibold">{selectedRegion.regionName}</span>
+                </div>
+                <div className="flex justify-between">
                   <span className="text-gray-600">Mağaza Sayısı:</span>
                   <span className="font-semibold">{selectedRegion.storeCount}</span>
                 </div>
-                <div className="flex justify-between text-sm mb-2">
+                <div className="flex justify-between">
                   <span className="text-gray-600">Toplam Ciro:</span>
                   <span className="font-semibold text-green-600">{formatCurrency(selectedRegion.revenue)}</span>
                 </div>
-                <div className="flex justify-between text-sm">
-                  <span className="text-gray-600">İşlem Sayısı:</span>
-                  <span className="font-semibold">{new Intl.NumberFormat('tr-TR').format(selectedRegion.transactions)}</span>
+                <div className="flex justify-between">
+                  <span className="text-gray-600">Müdür:</span>
+                  <span className="font-semibold">{selectedRegion.managerName || '—'}</span>
+                </div>
+                <div className="flex justify-between">
+                  <span className="text-gray-600">Telefon:</span>
+                  <span className="font-semibold">{selectedRegion.managerPhone || '—'}</span>
                 </div>
               </div>
+              <p className="text-xs text-gray-500">
+                Bölge adı ve müdür bilgisi mağaza kartlarından (`stores.region`, `manager_name`) gelir.
+              </p>
             </div>
-            <div className="p-4 border-t bg-gray-50 flex gap-2">
+            <div className="p-4 border-t bg-gray-50">
               <button
                 onClick={() => setShowEditModal(false)}
-                className="flex-1 px-4 py-2 border border-gray-300 rounded-lg hover:bg-gray-100 text-gray-700"
+                className="w-full px-4 py-2 border border-gray-300 rounded-lg hover:bg-gray-100 text-gray-700"
               >
-                İptal
-              </button>
-              <button
-                onClick={() => {
-                  setShowEditModal(false);
-                  // Burada kaydetme işlemi yapılacak
-                }}
-                className="flex-1 px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700"
-              >
-                Kaydet
+                Kapat
               </button>
             </div>
           </div>
         </div>
       )}
 
-      {/* Report Modal */}
       {showReportModal && selectedRegion && (
         <div className="fixed inset-0 bg-black/50 backdrop-blur-sm flex items-center justify-center z-50 p-4">
           <div className="bg-white rounded-lg shadow-xl max-w-2xl w-full">
@@ -334,7 +353,6 @@ function RegionalView({ regionStats }: any) {
               </button>
             </div>
             <div className="p-6 space-y-6 max-h-[70vh] overflow-auto">
-              {/* Summary Cards */}
               <div className="grid grid-cols-3 gap-4">
                 <div className="bg-gradient-to-br from-blue-500 to-blue-600 rounded-lg p-4 text-white">
                   <div className="text-sm opacity-90 mb-1">Toplam Ciro</div>
@@ -342,7 +360,9 @@ function RegionalView({ regionStats }: any) {
                 </div>
                 <div className="bg-gradient-to-br from-green-500 to-green-600 rounded-lg p-4 text-white">
                   <div className="text-sm opacity-90 mb-1">İşlem Sayısı</div>
-                  <div className="text-2xl font-bold">{new Intl.NumberFormat('tr-TR').format(selectedRegion.transactions)}</div>
+                  <div className="text-2xl font-bold">
+                    {new Intl.NumberFormat('tr-TR').format(selectedRegion.transactions)}
+                  </div>
                 </div>
                 <div className="bg-gradient-to-br from-purple-500 to-purple-600 rounded-lg p-4 text-white">
                   <div className="text-sm opacity-90 mb-1">Ort. Sepet</div>
@@ -350,7 +370,6 @@ function RegionalView({ regionStats }: any) {
                 </div>
               </div>
 
-              {/* Details */}
               <div className="bg-gray-50 border border-gray-200 rounded-lg p-4">
                 <h4 className="font-semibold text-gray-900 mb-3">Detaylar</h4>
                 <div className="space-y-2 text-sm">
@@ -363,40 +382,48 @@ function RegionalView({ regionStats }: any) {
                     <span className="font-medium">{selectedRegion.storeCount}</span>
                   </div>
                   <div className="flex justify-between">
-                    <span className="text-gray-600">Mağaza Personeli:</span>
-                    <span className="font-medium">Mohammed Al-Sadr</span>
+                    <span className="text-gray-600">Personel:</span>
+                    <span className="font-medium">{selectedRegion.staffCount}</span>
+                  </div>
+                  <div className="flex justify-between">
+                    <span className="text-gray-600">Müdür:</span>
+                    <span className="font-medium">{selectedRegion.managerName || '—'}</span>
                   </div>
                   <div className="flex justify-between">
                     <span className="text-gray-600">İletişim:</span>
-                    <span className="font-medium">+964 750 123 45 67</span>
+                    <span className="font-medium">{selectedRegion.managerPhone || '—'}</span>
                   </div>
                 </div>
               </div>
 
-              {/* Performance Indicator */}
               <div className="bg-white border border-gray-200 rounded-lg p-4">
-                <h4 className="font-semibold text-gray-900 mb-3">Performans</h4>
-                <div className="flex items-center gap-2">
-                  <TrendingUp className="h-5 w-5 text-green-600" />
-                  <span className="text-sm text-green-600 font-medium">
-                    Bu ayın büyümesi: +{(Math.random() * 15 + 5).toFixed(1)}%
-                  </span>
-                </div>
-                <div className="mt-3 w-full bg-gray-200 rounded-full h-2">
-                  <div className="bg-green-500 h-2 rounded-full" style={{ width: '87%' }}></div>
-                </div>
+                <h4 className="font-semibold text-gray-900 mb-3">Performans (önceki 30 güne göre)</h4>
+                {selectedRegion.growth == null ? (
+                  <span className="text-sm text-gray-500">Karşılaştırma verisi yok</span>
+                ) : (
+                  <div className="flex items-center gap-2">
+                    {selectedRegion.growth >= 0 ? (
+                      <TrendingUp className="h-5 w-5 text-green-600" />
+                    ) : (
+                      <TrendingDown className="h-5 w-5 text-red-600" />
+                    )}
+                    <span
+                      className={`text-sm font-medium ${
+                        selectedRegion.growth >= 0 ? 'text-green-600' : 'text-red-600'
+                      }`}
+                    >
+                      Büyüme: {formatGrowth(selectedRegion.growth)}
+                    </span>
+                  </div>
+                )}
               </div>
             </div>
-            <div className="p-4 border-t bg-gray-50 flex gap-2">
+            <div className="p-4 border-t bg-gray-50">
               <button
                 onClick={() => setShowReportModal(false)}
-                className="flex-1 px-4 py-2 border border-gray-300 rounded-lg hover:bg-gray-100 text-gray-700"
+                className="w-full px-4 py-2 border border-gray-300 rounded-lg hover:bg-gray-100 text-gray-700"
               >
                 Kapat
-              </button>
-              <button className="flex-1 px-4 py-2 bg-purple-600 text-white rounded-lg hover:bg-purple-700 flex items-center justify-center gap-2">
-                <Download className="h-4 w-4" />
-                PDF İndir
               </button>
             </div>
           </div>
@@ -406,194 +433,121 @@ function RegionalView({ regionStats }: any) {
   );
 }
 
-// Franchise View
-function FranchiseView() {
-  const franchises = [
-    { id: 1, name: 'Franchise A', owner: 'Ali Veli', stores: 15, revenue: 2500000000, royalty: 5, status: 'Aktif', contract: '2023-01-15' },
-    { id: 2, name: 'Franchise B', owner: 'Ayşe Fatma', stores: 8, revenue: 1200000000, royalty: 5, status: 'Aktif', contract: '2023-06-20' },
-    { id: 3, name: 'Franchise C', owner: 'Mehmet Can', stores: 12, revenue: 1800000000, royalty: 5, status: 'Beklemede', contract: '2024-03-10' },
-  ];
-
-  const formatCurrency = (value: number) => {
-    return new Intl.NumberFormat('tr-TR', {
-      minimumFractionDigits: 0,
-      maximumFractionDigits: 0
-    }).format(value) + ' IQD';
-  };
-
+/** Franchise kaydı şeması yok — boş durum; demo liste yok */
+function FranchiseView({ formatCurrency }: { formatCurrency: (n: number) => string }) {
   return (
     <div className="space-y-6">
-      {/* Franchise KPIs */}
       <div className="grid grid-cols-4 gap-4">
         <div className="bg-white rounded-lg shadow-sm border p-4">
           <div className="flex items-center justify-between mb-2">
             <span className="text-sm text-gray-600">Franchise Sayısı</span>
             <Building className="h-5 w-5 text-blue-600" />
           </div>
-          <div className="text-2xl font-bold text-gray-900">3</div>
-          <div className="text-sm text-green-600 mt-1">+1 bu yıl</div>
+          <div className="text-2xl font-bold text-gray-900">0</div>
         </div>
-
         <div className="bg-white rounded-lg shadow-sm border p-4">
           <div className="flex items-center justify-between mb-2">
             <span className="text-sm text-gray-600">Franchise Mağaza</span>
             <Building className="h-5 w-5 text-green-600" />
           </div>
-          <div className="text-2xl font-bold text-gray-900">35</div>
-          <div className="text-sm text-gray-600 mt-1">Toplam</div>
+          <div className="text-2xl font-bold text-gray-900">0</div>
         </div>
-
         <div className="bg-white rounded-lg shadow-sm border p-4">
           <div className="flex items-center justify-between mb-2">
             <span className="text-sm text-gray-600">Toplam Royalty</span>
             <Banknote className="h-5 w-5 text-purple-600" />
           </div>
-          <div className="text-2xl font-bold text-purple-600">
-            {formatCurrency(275000000)}
-          </div>
-          <div className="text-sm text-gray-600 mt-1">Bu yıl</div>
+          <div className="text-2xl font-bold text-purple-600">{formatCurrency(0)}</div>
         </div>
-
         <div className="bg-white rounded-lg shadow-sm border p-4">
           <div className="flex items-center justify-between mb-2">
             <span className="text-sm text-gray-600">Ortalama Royalty</span>
-            <Award className="h-5 w-5 text-orange-600" />
+            <Banknote className="h-5 w-5 text-orange-600" />
           </div>
-          <div className="text-2xl font-bold text-gray-900">%5</div>
-          <div className="text-sm text-gray-600 mt-1">Ciro üzerinden</div>
+          <div className="text-2xl font-bold text-gray-900">—</div>
         </div>
       </div>
 
-      {/* Franchise List */}
-      <div className="bg-white rounded-lg shadow-sm border">
-        <div className="p-4 border-b">
-          <h3 className="font-semibold text-gray-900">Franchise Listesi</h3>
-        </div>
-        <div className="overflow-auto max-h-96">
-          <table className="w-full">
-            <thead className="bg-gray-50 sticky top-0">
-              <tr>
-                <th className="text-left py-3 px-4 text-sm font-medium text-gray-700">Franchise Adı</th>
-                <th className="text-left py-3 px-4 text-sm font-medium text-gray-700">Franchise Sahibi</th>
-                <th className="text-right py-3 px-4 text-sm font-medium text-gray-700">Mağaza Sayısı</th>
-                <th className="text-right py-3 px-4 text-sm font-medium text-gray-700">Toplam Ciro</th>
-                <th className="text-right py-3 px-4 text-sm font-medium text-gray-700">Royalty %</th>
-                <th className="text-right py-3 px-4 text-sm font-medium text-gray-700">Royalty Tutarı</th>
-                <th className="text-left py-3 px-4 text-sm font-medium text-gray-700">Sözleşme</th>
-                <th className="text-left py-3 px-4 text-sm font-medium text-gray-700">Durum</th>
-                <th className="text-right py-3 px-4 text-sm font-medium text-gray-700">İşlemler</th>
-              </tr>
-            </thead>
-            <tbody>
-              {franchises.map(franchise => (
-                <tr key={franchise.id} className="border-b hover:bg-gray-50">
-                  <td className="py-3 px-4">
-                    <div className="flex items-center gap-2">
-                      <Building className="h-4 w-4 text-blue-600" />
-                      <span className="font-medium">{franchise.name}</span>
-                    </div>
-                  </td>
-                  <td className="py-3 px-4">
-                    <div className="text-sm">
-                      <div className="font-medium">{franchise.owner}</div>
-                      <div className="text-gray-600">franchise@email.com</div>
-                    </div>
-                  </td>
-                  <td className="text-right py-3 px-4">{franchise.stores}</td>
-                  <td className="text-right py-3 px-4 font-semibold text-green-600">
-                    {formatCurrency(franchise.revenue)}
-                  </td>
-                  <td className="text-right py-3 px-4">%{franchise.royalty}</td>
-                  <td className="text-right py-3 px-4 font-semibold text-purple-600">
-                    {formatCurrency(franchise.revenue * franchise.royalty / 100)}
-                  </td>
-                  <td className="py-3 px-4 text-sm text-gray-600">{franchise.contract}</td>
-                  <td className="py-3 px-4">
-                    <span className={`px-2 py-1 rounded-full text-xs ${
-                      franchise.status === 'Aktif' ? 'bg-green-100 text-green-700' :
-                      'bg-yellow-100 text-yellow-700'
-                    }`}>
-                      {franchise.status}
-                    </span>
-                  </td>
-                  <td className="text-right py-3 px-4">
-                    <div className="flex items-center justify-end gap-2">
-                      <button className="p-1 hover:bg-blue-50 rounded text-blue-600">
-                        <Edit className="h-4 w-4" />
-                      </button>
-                      <button className="p-1 hover:bg-gray-100 rounded text-gray-600">
-                        <FileText className="h-4 w-4" />
-                      </button>
-                    </div>
-                  </td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
+      <div className="bg-white rounded-lg shadow-sm border p-10 text-center">
+        <Building className="h-12 w-12 text-gray-300 mx-auto mb-3" />
+        <h3 className="font-semibold text-gray-900 mb-1">Franchise kaydı yok</h3>
+        <p className="text-sm text-gray-500">
+          Franchise tablosu henüz tanımlı değil. Demo veri gösterilmiyor.
+        </p>
       </div>
     </div>
   );
 }
 
-// Managers View
-function ManagersView() {
-  const managers = [
-    { id: 1, name: 'Mohammed Al-Sadr', region: 'Baghdad Region', stores: 2500, phone: '+964 750 123 45 67', email: 'mohammed@retailos.com', experience: '8 years', performance: 95 },
-    { id: 2, name: 'Fatima Hassan', region: 'Basra Region', stores: 2000, phone: '+964 750 234 56 78', email: 'fatima@retailos.com', experience: '6 years', performance: 92 },
-    { id: 3, name: 'Ahmed Al-Maliki', region: 'Erbil Region', stores: 1800, phone: '+964 750 345 67 89', email: 'ahmed@retailos.com', experience: '5 years', performance: 88 },
-  ];
+function ManagersView({ regionStats }: { regionStats?: RegionStats[] }) {
+  const managers = useMemo(() => {
+    return (regionStats || [])
+      .filter((r) => r.managerName)
+      .map((r) => ({
+        id: r.regionId,
+        name: r.managerName,
+        region: r.regionName,
+        stores: r.storeCount,
+        phone: r.managerPhone,
+        staff: r.staffCount,
+        revenue: r.revenue,
+        growth: r.growth,
+      }));
+  }, [regionStats]);
+
+  if (!managers.length) {
+    return (
+      <div className="bg-white rounded-lg shadow-sm border p-10 text-center">
+        <Users className="h-12 w-12 text-gray-300 mx-auto mb-3" />
+        <h3 className="font-semibold text-gray-900 mb-1">Bölge müdürü yok</h3>
+        <p className="text-sm text-gray-500">
+          Mağaza kartlarında `manager_name` dolu kayıt bulunamadı.
+        </p>
+      </div>
+    );
+  }
 
   return (
     <div className="space-y-6">
-      {/* Manager Cards */}
-      <div className="grid grid-cols-3 gap-6">
-        {managers.map(manager => (
+      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+        {managers.map((manager) => (
           <div key={manager.id} className="bg-white rounded-lg shadow-sm border p-6">
             <div className="flex items-start justify-between mb-4">
               <div className="flex items-center gap-3">
                 <div className="w-12 h-12 rounded-full bg-gradient-to-br from-blue-400 to-blue-600 text-white flex items-center justify-center text-xl font-bold">
-                  {manager.name.split(' ').map(n => n[0]).join('')}
+                  {manager.name
+                    .split(/\s+/)
+                    .filter(Boolean)
+                    .slice(0, 2)
+                    .map((n) => n[0])
+                    .join('')
+                    .toLocaleUpperCase('tr-TR')}
                 </div>
                 <div>
                   <h4 className="font-semibold text-gray-900">{manager.name}</h4>
                   <p className="text-sm text-gray-600">{manager.region}</p>
                 </div>
               </div>
-              <button className="p-1 hover:bg-gray-100 rounded">
-                <Edit className="h-4 w-4 text-gray-600" />
-              </button>
             </div>
 
             <div className="space-y-3">
-              <div className="flex items-center gap-2 text-sm text-gray-600">
-                <Phone className="h-4 w-4" />
-                <span>{manager.phone}</span>
-              </div>
-              <div className="flex items-center gap-2 text-sm text-gray-600">
-                <Mail className="h-4 w-4" />
-                <span>{manager.email}</span>
-              </div>
+              {manager.phone ? (
+                <div className="flex items-center gap-2 text-sm text-gray-600">
+                  <Phone className="h-4 w-4" />
+                  <span>{manager.phone}</span>
+                </div>
+              ) : null}
               <div className="flex items-center gap-2 text-sm text-gray-600">
                 <Building className="h-4 w-4" />
                 <span>{manager.stores} mağaza</span>
               </div>
               <div className="flex items-center gap-2 text-sm text-gray-600">
+                <Users className="h-4 w-4" />
+                <span>{manager.staff} personel</span>
+              </div>
+              <div className="flex items-center gap-2 text-sm text-gray-600">
                 <Calendar className="h-4 w-4" />
-                <span>{manager.experience} deneyim</span>
-              </div>
-            </div>
-
-            <div className="mt-4 pt-4 border-t">
-              <div className="flex items-center justify-between mb-2">
-                <span className="text-sm text-gray-600">Performans Skoru</span>
-                <span className="text-sm font-semibold text-green-600">{manager.performance}%</span>
-              </div>
-              <div className="w-full bg-gray-200 rounded-full h-2">
-                <div 
-                  className="bg-green-500 h-2 rounded-full"
-                  style={{ width: `${manager.performance}%` }}
-                ></div>
+                <span>Büyüme: {formatGrowth(manager.growth)}</span>
               </div>
             </div>
           </div>
@@ -603,18 +557,14 @@ function ManagersView() {
   );
 }
 
-// Reports View
 function ReportsView() {
   return (
     <div className="bg-white rounded-lg shadow-sm border p-8 text-center">
       <FileText className="h-16 w-16 text-gray-400 mx-auto mb-4" />
       <h3 className="text-xl font-semibold text-gray-900 mb-2">Bölgesel Raporlar</h3>
       <p className="text-gray-600 mb-4">
-        Detaylı bölgesel ve franchise raporları yakında eklenecek
+        Detaylı bölgesel raporlar için Mağaza Paneli ve Çoklu Mağaza analitiğini kullanın.
       </p>
-      <button className="px-6 py-3 bg-blue-600 text-white rounded-lg hover:bg-blue-700">
-        Rapor Şablonlarını Görüntüle
-      </button>
     </div>
   );
 }
