@@ -80,7 +80,10 @@ export function GrafanaReportBuilderModule() {
 
   const [mainTab, setMainTab] = useState<MainTab>('data');
   const [grafanaId, setGrafanaId] = useState(
-    () => GRAFANA_READY_REPORTS.find((r) => !r.isBuilder)?.id || GRAFANA_READY_REPORTS[0].id
+    () =>
+      GRAFANA_READY_REPORTS.find((r) => r.category === 'erp' && !r.isBuilder)?.id ||
+      GRAFANA_READY_REPORTS.find((r) => !r.isBuilder && r.category !== 'ops')?.id ||
+      GRAFANA_READY_REPORTS[0].id
   );
 
   const [ctx, setCtx] = useState<TenantSchemaContext>(() => getTenantReportContext());
@@ -624,7 +627,6 @@ export function GrafanaReportBuilderModule() {
               {(
                 [
                   { key: 'erp' as const, tr: 'İş raporları', en: 'Business reports' },
-                  { key: 'ops' as const, tr: 'Operasyon', en: 'Operations' },
                   { key: 'tools' as const, tr: 'Araçlar', en: 'Tools' },
                 ] as const
               ).map((cat) => {
