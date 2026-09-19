@@ -1,21 +1,51 @@
 /**
  * Grafana gömme — aynı origin `/__grafana` (nginx → grafana:3000).
- * İsteğe bağlı: VITE_GRAFANA_URL
+ * Katalog: docker/grafana/dashboards + Explore araçları.
+ * Canlı liste: bridge GET /api/grafana/dashboards
  */
+
+export type GrafanaReportCategory =
+  | 'executive'
+  | 'sales'
+  | 'stock'
+  | 'finance'
+  | 'accounting'
+  | 'customers'
+  | 'wms'
+  | 'restaurant'
+  | 'beauty'
+  | 'hr'
+  | 'ops'
+  | 'tools';
 
 export type GrafanaReadyReport = {
   id: string;
-  /** Grafana dashboard uid veya explore */
   uid: string;
   titleTr: string;
   titleEn: string;
   descriptionTr: string;
   descriptionEn: string;
-  category: 'ops' | 'erp' | 'tools';
-  /** Embed path (kiosk) */
-  embedPath: (theme: 'light' | 'dark') => string;
-  /** Rapor oluşturucu / Explore */
+  category: GrafanaReportCategory;
+  embedPath: (theme: 'light' | 'dark', vars?: { firm?: string; period?: string }) => string;
   isBuilder?: boolean;
+};
+
+export const GRAFANA_CATEGORY_LABELS: Record<
+  GrafanaReportCategory,
+  { tr: string; en: string; order: number }
+> = {
+  executive: { tr: 'Yönetim', en: 'Executive', order: 1 },
+  sales: { tr: 'Satış & POS', en: 'Sales & POS', order: 2 },
+  stock: { tr: 'Stok & Malzeme', en: 'Stock', order: 3 },
+  finance: { tr: 'Kasa & Finans', en: 'Cash & Finance', order: 4 },
+  accounting: { tr: 'Muhasebe', en: 'Accounting', order: 5 },
+  customers: { tr: 'Cari', en: 'AR/AP', order: 6 },
+  wms: { tr: 'WMS / Depo', en: 'WMS', order: 7 },
+  restaurant: { tr: 'Restoran', en: 'Restaurant', order: 8 },
+  beauty: { tr: 'Güzellik', en: 'Beauty', order: 9 },
+  hr: { tr: 'İK / Üretim', en: 'HR / Production', order: 10 },
+  ops: { tr: 'Sistem', en: 'System', order: 90 },
+  tools: { tr: 'Araçlar', en: 'Tools', order: 99 },
 };
 
 export function getGrafanaBaseUrl(): string {
@@ -30,18 +60,465 @@ export function getGrafanaBaseUrl(): string {
   return '/__grafana';
 }
 
-function dash(
-  uid: string,
-  slug: string,
-  theme: string,
-  extra = '&refresh=1m'
-): string {
-  return `/d/${uid}/${slug}?orgId=1${extra}&kiosk&theme=${theme}`;
+function slugify(uid: string): string {
+  return uid.replace(/^retailex-/, 'retailex-');
 }
 
-/** Hazır panolar — provisioning `docker/grafana/dashboards` ile aynı uid */
+function varQs(vars?: { firm?: string; period?: string }): string {
+  const parts: string[] = [];
+  if (vars?.firm) parts.push(`var-firm=${encodeURIComponent(vars.firm)}`);
+  if (vars?.period) parts.push(`var-period=${encodeURIComponent(vars.period)}`);
+  return parts.length ? `&${parts.join('&')}` : '';
+}
+
+export function dashEmbed(
+  uid: string,
+  theme: string,
+  extra = '&refresh=2m',
+  vars?: { firm?: string; period?: string }
+): string {
+  const slug = slugify(uid);
+  return `/d/${uid}/${slug}?orgId=1${extra}&kiosk&theme=${theme}${varQs(vars)}`;
+}
+
+function r(
+  partial: Omit<GrafanaReadyReport, 'embedPath'> & { refresh?: string }
+): GrafanaReadyReport {
+  const refresh = partial.refresh ?? '&refresh=2m';
+  const { refresh: _r, ...rest } = partial as typeof partial & { refresh?: string };
+  void _r;
+  return {
+    ...rest,
+    embedPath: (t, vars) => dashEmbed(rest.uid, t, refresh, vars),
+  };
+}
+
+/** Statik katalog — API yoksa / birleşimde kullanılır */
 export const GRAFANA_READY_REPORTS: GrafanaReadyReport[] = [
-  {
+  // Yönetim
+  r({
+    id: 'executive',
+    uid: 'retailex-executive',
+    category: 'executive',
+    titleTr: 'Yönetim panosu',
+    titleEn: 'Executive dashboard',
+    descriptionTr: 'Ciro, fiş, müşteri, ödeme özeti',
+    descriptionEn: 'Revenue, fiches, customers, payments',
+    refresh: '&refresh=1m',
+  }),
+  r({
+    id: 'period-compare',
+    uid: 'retailex-period-compare',
+    category: 'executive',
+    titleTr: 'Dönem karşılaştırması',
+    titleEn: 'Period comparison',
+    descriptionTr: 'Günlük fiş / ciro / kar',
+    descriptionEn: 'Daily fiches, revenue, profit',
+  }),
+  r({
+    id: 'store-performance',
+    uid: 'retailex-store-performance',
+    category: 'executive',
+    titleTr: 'Mağaza performansı',
+    titleEn: 'Store performance',
+    descriptionTr: 'Mağaza bazlı satış',
+    descriptionEn: 'Sales by store',
+  }),
+  r({
+    id: 'stores',
+    uid: 'retailex-stores',
+    category: 'executive',
+    titleTr: 'Mağazalar',
+    titleEn: 'Stores',
+    descriptionTr: 'Mağaza listesi ve adet',
+    descriptionEn: 'Store list and count',
+    refresh: '&refresh=10m',
+  }),
+
+  // Satış & POS
+  r({
+    id: 'sales',
+    uid: 'retailex-sales',
+    category: 'sales',
+    titleTr: 'Satış özeti',
+    titleEn: 'Sales overview',
+    descriptionTr: 'Ciro, fiş, ödeme, günlük satış',
+    descriptionEn: 'Revenue, fiches, payments, daily sales',
+    refresh: '&refresh=1m',
+  }),
+  r({
+    id: 'pos-z',
+    uid: 'retailex-pos-z',
+    category: 'sales',
+    titleTr: 'POS / Z özeti',
+    titleEn: 'POS / Z summary',
+    descriptionTr: 'Bugünkü fiş, ciro, kasiyer',
+    descriptionEn: 'Today fiches, revenue, cashiers',
+    refresh: '&refresh=30s',
+  }),
+  r({
+    id: 'payments',
+    uid: 'retailex-payments',
+    category: 'sales',
+    titleTr: 'Ödeme dağılımı',
+    titleEn: 'Payment mix',
+    descriptionTr: 'Ödeme yöntemi adet / tutar',
+    descriptionEn: 'Payment method count and amount',
+  }),
+  r({
+    id: 'sales-trend',
+    uid: 'retailex-sales-trend',
+    category: 'sales',
+    titleTr: 'Satış trend',
+    titleEn: 'Sales trend',
+    descriptionTr: 'Günlük / haftalık ciro',
+    descriptionEn: 'Daily and weekly revenue',
+  }),
+  r({
+    id: 'sales-returns',
+    uid: 'retailex-sales-returns',
+    category: 'sales',
+    titleTr: 'İade / iptal',
+    titleEn: 'Returns / voids',
+    descriptionTr: 'İptal fiş ve tutarlar',
+    descriptionEn: 'Cancelled fiches and amounts',
+  }),
+  r({
+    id: 'cashiers',
+    uid: 'retailex-cashiers',
+    category: 'sales',
+    titleTr: 'Kasiyer performansı',
+    titleEn: 'Cashier performance',
+    descriptionTr: 'Kasiyer fiş ve ciro',
+    descriptionEn: 'Cashier fiches and revenue',
+  }),
+  r({
+    id: 'category-profit',
+    uid: 'retailex-category-profit',
+    category: 'sales',
+    titleTr: 'Ürün / kalem karlılık',
+    titleEn: 'Line item profitability',
+    descriptionTr: 'Brüt kar ve en karlı kalemler',
+    descriptionEn: 'Gross profit and top lines',
+  }),
+  r({
+    id: 'invoices',
+    uid: 'retailex-invoices',
+    category: 'sales',
+    titleTr: 'Fatura / fiş tipleri',
+    titleEn: 'Invoice / fiche types',
+    descriptionTr: 'trcode dağılımı, aylık ciro',
+    descriptionEn: 'trcode breakdown, monthly revenue',
+  }),
+  r({
+    id: 'documents',
+    uid: 'retailex-documents',
+    category: 'sales',
+    titleTr: 'Belge türü analizi',
+    titleEn: 'Document type analytics',
+    descriptionTr: 'trcode ve fiche_type',
+    descriptionEn: 'trcode and fiche_type',
+  }),
+  r({
+    id: 'invoice-lines',
+    uid: 'retailex-invoice-lines',
+    category: 'sales',
+    titleTr: 'Fatura kalem detayı',
+    titleEn: 'Invoice line detail',
+    descriptionTr: 'Son satış kalemleri',
+    descriptionEn: 'Recent sale lines',
+  }),
+  r({
+    id: 'purchases',
+    uid: 'retailex-purchases',
+    category: 'sales',
+    titleTr: 'Satın alma özeti',
+    titleEn: 'Purchase summary',
+    descriptionTr: 'Alış fişleri',
+    descriptionEn: 'Purchase fiches',
+  }),
+
+  // Stok
+  r({
+    id: 'stock',
+    uid: 'retailex-stock',
+    category: 'stock',
+    titleTr: 'Stok / malzeme',
+    titleEn: 'Stock / materials',
+    descriptionTr: 'Ürün kartı, kritik stok',
+    descriptionEn: 'Products, critical stock',
+    refresh: '&refresh=5m',
+  }),
+  r({
+    id: 'inventory-value',
+    uid: 'retailex-inventory-value',
+    category: 'stock',
+    titleTr: 'Stok değer',
+    titleEn: 'Inventory value',
+    descriptionTr: 'Maliyet değeri sıralı ürünler',
+    descriptionEn: 'Products by cost value',
+  }),
+  r({
+    id: 'stock-alerts',
+    uid: 'retailex-stock-alerts',
+    category: 'stock',
+    titleTr: 'Kritik stok & SKT',
+    titleEn: 'Critical stock & expiry',
+    descriptionTr: 'Min stok ve SKT uyarıları',
+    descriptionEn: 'Min stock and expiry alerts',
+  }),
+  r({
+    id: 'stock-movements',
+    uid: 'retailex-stock-movements',
+    category: 'stock',
+    titleTr: 'Stok hareket',
+    titleEn: 'Stock movements',
+    descriptionTr: 'En çok satılan kalemler',
+    descriptionEn: 'Top sold items',
+  }),
+  r({
+    id: 'warehouse-stock',
+    uid: 'retailex-warehouse-stock',
+    category: 'stock',
+    titleTr: 'Ambar / stok durumu',
+    titleEn: 'Warehouse stock status',
+    descriptionTr: 'Sıfır / negatif stok',
+    descriptionEn: 'Zero / negative stock',
+  }),
+
+  // Finans
+  r({
+    id: 'cash',
+    uid: 'retailex-cash',
+    category: 'finance',
+    titleTr: 'Kasa hareketleri',
+    titleEn: 'Cash movements',
+    descriptionTr: 'Giriş/çıkış ve günlük net',
+    descriptionEn: 'In/out and daily net',
+  }),
+  r({
+    id: 'cash-flow',
+    uid: 'retailex-cash-flow',
+    category: 'finance',
+    titleTr: 'Kasa defteri / nakit akış',
+    titleEn: 'Cash ledger / cash flow',
+    descriptionTr: 'Kasa giriş çıkış neti',
+    descriptionEn: 'Cash in/out net',
+  }),
+  r({
+    id: 'bank',
+    uid: 'retailex-bank',
+    category: 'finance',
+    titleTr: 'Banka hareketleri',
+    titleEn: 'Bank movements',
+    descriptionTr: 'Banka satırları ve net',
+    descriptionEn: 'Bank lines and net',
+  }),
+  r({
+    id: 'registers',
+    uid: 'retailex-registers',
+    category: 'finance',
+    titleTr: 'Kasa & banka kartları',
+    titleEn: 'Cash & bank registers',
+    descriptionTr: 'Kasa / banka bakiyeleri',
+    descriptionEn: 'Register balances',
+  }),
+  r({
+    id: 'expenses',
+    uid: 'retailex-expenses',
+    category: 'finance',
+    titleTr: 'Gider özeti',
+    titleEn: 'Expense summary',
+    descriptionTr: 'Gider kategori ve listesi',
+    descriptionEn: 'Expense categories and list',
+  }),
+  r({
+    id: 'collections',
+    uid: 'retailex-collections',
+    category: 'finance',
+    titleTr: 'Tahsilat & ödeme',
+    titleEn: 'Collections & payments',
+    descriptionTr: 'Kasa / banka / cari hareket',
+    descriptionEn: 'Cash, bank and AR movements',
+  }),
+  r({
+    id: 'cheques',
+    uid: 'retailex-cheques',
+    category: 'finance',
+    titleTr: 'Çek / senet',
+    titleEn: 'Cheques / promissory',
+    descriptionTr: 'Çek kartları',
+    descriptionEn: 'Cheque cards',
+  }),
+  r({
+    id: 'campaigns',
+    uid: 'retailex-campaigns',
+    category: 'finance',
+    titleTr: 'Kampanyalar',
+    titleEn: 'Campaigns',
+    descriptionTr: 'logic.campaigns listesi',
+    descriptionEn: 'Campaign list',
+  }),
+
+  // Muhasebe
+  r({
+    id: 'mizan',
+    uid: 'retailex-mizan',
+    category: 'accounting',
+    titleTr: 'Mizan (özet)',
+    titleEn: 'Trial balance (summary)',
+    descriptionTr: 'Kasa, banka, cari net',
+    descriptionEn: 'Cash, bank, AR net',
+  }),
+  r({
+    id: 'pnl',
+    uid: 'retailex-pnl',
+    category: 'accounting',
+    titleTr: 'Kar / zarar',
+    titleEn: 'P&L',
+    descriptionTr: 'Satış, brüt kar, gider',
+    descriptionEn: 'Sales, gross profit, expenses',
+  }),
+  r({
+    id: 'gl',
+    uid: 'retailex-gl',
+    category: 'accounting',
+    titleTr: 'Genel muhasebe aktivite',
+    titleEn: 'GL activity',
+    descriptionTr: 'Cari / kasa trcode',
+    descriptionEn: 'AR and cash trcodes',
+  }),
+
+  // Cari
+  r({
+    id: 'customers',
+    uid: 'retailex-customers',
+    category: 'customers',
+    titleTr: 'Cari / müşteri',
+    titleEn: 'Customers / parties',
+    descriptionTr: 'Müşteri ve tedarikçi kartları',
+    descriptionEn: 'Customer and supplier cards',
+    refresh: '&refresh=5m',
+  }),
+  r({
+    id: 'cari-aging',
+    uid: 'retailex-cari-aging',
+    category: 'customers',
+    titleTr: 'Cari yaşlandırma',
+    titleEn: 'AR/AP aging',
+    descriptionTr: 'Müşteri / tedarikçi bakiye',
+    descriptionEn: 'Customer / supplier balances',
+  }),
+  r({
+    id: 'cari-extract',
+    uid: 'retailex-cari-extract',
+    category: 'customers',
+    titleTr: 'Cari ekstre özeti',
+    titleEn: 'AR/AP statement',
+    descriptionTr: 'Hesap hareketleri',
+    descriptionEn: 'Account movements',
+  }),
+  r({
+    id: 'customer-sales',
+    uid: 'retailex-customer-sales',
+    category: 'customers',
+    titleTr: 'Müşteri satış analizi',
+    titleEn: 'Customer sales analysis',
+    descriptionTr: 'En çok satılan müşteriler',
+    descriptionEn: 'Top customers by revenue',
+  }),
+
+  // WMS
+  r({
+    id: 'wms-ops',
+    uid: 'retailex-wms-ops',
+    category: 'wms',
+    titleTr: 'WMS operasyon',
+    titleEn: 'WMS operations',
+    descriptionTr: 'Sayım, kabul, sevkiyat, görev',
+    descriptionEn: 'Count, receive, dispatch, tasks',
+  }),
+  r({
+    id: 'wms-inout',
+    uid: 'retailex-wms-inout',
+    category: 'wms',
+    titleTr: 'WMS mal kabul & sevkiyat',
+    titleEn: 'WMS receiving & dispatch',
+    descriptionTr: 'Son kabul / sevkiyat fişleri',
+    descriptionEn: 'Recent receive / dispatch slips',
+  }),
+  r({
+    id: 'wms-inventory',
+    uid: 'retailex-wms-inventory',
+    category: 'wms',
+    titleTr: 'WMS depo / bin',
+    titleEn: 'WMS bins / warehouse',
+    descriptionTr: 'Bin, personel, transfer',
+    descriptionEn: 'Bins, personnel, transfers',
+  }),
+
+  // Restoran
+  r({
+    id: 'restaurant-revenue',
+    uid: 'retailex-restaurant-revenue',
+    category: 'restaurant',
+    titleTr: 'Restoran ciro',
+    titleEn: 'Restaurant revenue',
+    descriptionTr: 'Satış + iade log',
+    descriptionEn: 'Sales + return log',
+  }),
+  r({
+    id: 'restaurant-voids',
+    uid: 'retailex-restaurant-voids',
+    category: 'restaurant',
+    titleTr: 'Restoran iptal / iade',
+    titleEn: 'Restaurant voids / returns',
+    descriptionTr: 'İade nedenleri',
+    descriptionEn: 'Return reasons',
+  }),
+
+  // Güzellik
+  r({
+    id: 'beauty-ops',
+    uid: 'retailex-beauty-ops',
+    category: 'beauty',
+    titleTr: 'Güzellik operasyon',
+    titleEn: 'Beauty operations',
+    descriptionTr: 'Randevu, hizmet, satış',
+    descriptionEn: 'Appointments, services, sales',
+  }),
+  r({
+    id: 'beauty-services',
+    uid: 'retailex-beauty-services',
+    category: 'beauty',
+    titleTr: 'Güzellik hizmet & komisyon',
+    titleEn: 'Beauty services & commission',
+    descriptionTr: 'Hizmet ve uzman kartları',
+    descriptionEn: 'Service and specialist cards',
+  }),
+
+  // İK / üretim
+  r({
+    id: 'hr',
+    uid: 'retailex-hr',
+    category: 'hr',
+    titleTr: 'Personel / satış elemanı',
+    titleEn: 'Staff / sales reps',
+    descriptionTr: 'Satış elemanı listesi',
+    descriptionEn: 'Sales rep list',
+  }),
+  r({
+    id: 'production',
+    uid: 'retailex-production',
+    category: 'hr',
+    titleTr: 'Üretim siparişleri',
+    titleEn: 'Production orders',
+    descriptionTr: 'Üretim plan / gerçekleşen',
+    descriptionEn: 'Planned vs produced',
+  }),
+
+  // Sistem (liste UI'da gizli tutulabilir)
+  r({
     id: 'home',
     uid: 'retailex-home',
     category: 'ops',
@@ -49,118 +526,59 @@ export const GRAFANA_READY_REPORTS: GrafanaReadyReport[] = [
     titleEn: 'Home',
     descriptionTr: 'DB / bağlantı / konteyner özeti',
     descriptionEn: 'DB, connections and container summary',
-    embedPath: (t) => dash('retailex-home', 'retailex-ana-panel', t, '&refresh=30s'),
-  },
-  {
+    refresh: '&refresh=30s',
+  }),
+  r({
     id: 'ops-overview',
     uid: 'retailex-ops',
     category: 'ops',
     titleTr: 'Operasyon özeti',
     titleEn: 'Operations overview',
-    descriptionTr: 'Konteyner + PostgreSQL tek bakışta',
-    descriptionEn: 'Containers and Postgres at a glance',
-    embedPath: (t) => dash('retailex-ops', 'retailex-operasyon', t, '&refresh=30s'),
-  },
-  {
+    descriptionTr: 'Konteyner + PostgreSQL',
+    descriptionEn: 'Containers and Postgres',
+    refresh: '&refresh=30s',
+  }),
+  r({
     id: 'containers',
     uid: 'retailex-containers',
     category: 'ops',
     titleTr: 'Konteyner durumu',
     titleEn: 'Container health',
-    descriptionTr: 'CPU, RAM, ağ ve disk (Prometheus)',
-    descriptionEn: 'CPU, RAM, network and disk (Prometheus)',
-    embedPath: (t) => dash('retailex-containers', 'retailex-konteynerler', t, '&refresh=30s'),
-  },
-  {
+    descriptionTr: 'CPU, RAM, ağ, disk',
+    descriptionEn: 'CPU, RAM, network, disk',
+    refresh: '&refresh=30s',
+  }),
+  r({
     id: 'postgres',
     uid: 'retailex-postgres',
     category: 'ops',
     titleTr: 'PostgreSQL sağlık',
     titleEn: 'PostgreSQL health',
-    descriptionTr: 'Boyutlar, bağlantılar, uzun sorgular',
-    descriptionEn: 'Sizes, connections, long-running queries',
-    embedPath: (t) => dash('retailex-postgres', 'retailex-postgresql', t, '&refresh=1m'),
-  },
-  {
-    id: 'sales',
-    uid: 'retailex-sales',
-    category: 'erp',
-    titleTr: 'Satış özeti',
-    titleEn: 'Sales overview',
-    descriptionTr: 'Ciro, fiş, ödeme, günlük satış (firma/dönem)',
-    descriptionEn: 'Revenue, fiches, payments, daily sales',
-    embedPath: (t) => dash('retailex-sales', 'retailex-satis-ozeti', t),
-  },
-  {
-    id: 'invoices',
-    uid: 'retailex-invoices',
-    category: 'erp',
-    titleTr: 'Fatura / fiş tipleri',
-    titleEn: 'Invoice / fiche types',
-    descriptionTr: 'trcode dağılımı, aylık ciro, çok satanlar',
-    descriptionEn: 'trcode breakdown, monthly revenue, top items',
-    embedPath: (t) => dash('retailex-invoices', 'retailex-fatura-fis', t, '&refresh=2m'),
-  },
-  {
-    id: 'stock',
-    uid: 'retailex-stock',
-    category: 'erp',
-    titleTr: 'Stok / malzeme',
-    titleEn: 'Stock / materials',
-    descriptionTr: 'Ürün kartı, kritik stok, kategori',
-    descriptionEn: 'Products, critical stock, categories',
-    embedPath: (t) => dash('retailex-stock', 'retailex-stok', t, '&refresh=5m'),
-  },
-  {
-    id: 'cash',
-    uid: 'retailex-cash',
-    category: 'erp',
-    titleTr: 'Kasa hareketleri',
-    titleEn: 'Cash movements',
-    descriptionTr: 'Giriş/çıkış ve günlük kasa neti',
-    descriptionEn: 'In/out and daily cash net',
-    embedPath: (t) => dash('retailex-cash', 'retailex-kasa', t),
-  },
-  {
-    id: 'bank',
-    uid: 'retailex-bank',
-    category: 'erp',
-    titleTr: 'Banka hareketleri',
-    titleEn: 'Bank movements',
-    descriptionTr: 'Banka satırları ve net tutar',
-    descriptionEn: 'Bank lines and net amount',
-    embedPath: (t) => dash('retailex-bank', 'retailex-banka', t),
-  },
-  {
-    id: 'customers',
-    uid: 'retailex-customers',
-    category: 'erp',
-    titleTr: 'Cari / müşteri',
-    titleEn: 'Customers / parties',
-    descriptionTr: 'Müşteri ve tedarikçi kartları',
-    descriptionEn: 'Customer and supplier cards',
-    embedPath: (t) => dash('retailex-customers', 'retailex-cari', t, '&refresh=5m'),
-  },
-  {
-    id: 'stores',
-    uid: 'retailex-stores',
-    category: 'erp',
-    titleTr: 'Mağazalar',
-    titleEn: 'Stores',
-    descriptionTr: 'Mağaza listesi ve adet',
-    descriptionEn: 'Store list and count',
-    embedPath: (t) => dash('retailex-stores', 'retailex-magazalar', t, '&refresh=10m'),
-  },
-  {
+    descriptionTr: 'Boyutlar, bağlantılar',
+    descriptionEn: 'Sizes, connections',
+    refresh: '&refresh=1m',
+  }),
+  r({
     id: 'schema',
     uid: 'retailex-schema',
     category: 'ops',
     titleTr: 'Şema / tablolar',
     titleEn: 'Schema / tables',
-    descriptionTr: 'rex_ tabloları ve kolonlar',
-    descriptionEn: 'rex_ tables and columns',
-    embedPath: (t) => dash('retailex-schema', 'retailex-sema', t, '&refresh=10m'),
-  },
+    descriptionTr: 'rex_ tabloları',
+    descriptionEn: 'rex_ tables',
+    refresh: '&refresh=10m',
+  }),
+  r({
+    id: 'sync-health',
+    uid: 'retailex-sync-health',
+    category: 'ops',
+    titleTr: 'Senkron & sağlık',
+    titleEn: 'Sync & health',
+    descriptionTr: 'sync_queue ve servis sağlık',
+    descriptionEn: 'sync_queue and service health',
+  }),
+
+  // Araçlar
   {
     id: 'builder-prom',
     uid: 'explore-prom',
@@ -190,16 +608,43 @@ export const GRAFANA_READY_REPORTS: GrafanaReadyReport[] = [
 export function getGrafanaEmbedUrl(opts?: {
   dark?: boolean;
   reportId?: string;
+  uid?: string;
+  firm?: string;
+  period?: string;
 }): string {
   const base = getGrafanaBaseUrl();
   const theme = opts?.dark ? 'dark' : 'light';
+  const vars = { firm: opts?.firm, period: opts?.period };
+  if (opts?.uid) {
+    return `${base}${dashEmbed(opts.uid, theme, '&refresh=2m', vars)}`;
+  }
   const report =
     GRAFANA_READY_REPORTS.find((r) => r.id === opts?.reportId) ||
+    GRAFANA_READY_REPORTS.find((r) => r.category === 'executive') ||
     GRAFANA_READY_REPORTS[0];
-  return `${base}${report.embedPath(theme)}`;
+  return `${base}${report.embedPath(theme, vars)}`;
 }
 
-/** Sistem Sağlığı varsayılanı */
 export function getGrafanaSystemHealthEmbedUrl(opts?: { dark?: boolean }): string {
   return getGrafanaEmbedUrl({ ...opts, reportId: 'ops-overview' });
+}
+
+/** Grafana search tag → kategori */
+export function categoryFromGrafanaTags(tags: string[] | undefined): GrafanaReportCategory {
+  const t = (tags || []).map((x) => String(x).toLowerCase());
+  if (t.includes('wms')) return 'wms';
+  if (t.includes('beauty')) return 'beauty';
+  if (t.includes('restaurant')) return 'restaurant';
+  if (t.includes('accounting')) return 'accounting';
+  if (t.includes('customers') || (t.includes('finance') && t.includes('aging'))) return 'customers';
+  if (t.includes('stock') || t.includes('warehouse')) return 'stock';
+  if (t.includes('sales') || t.includes('pos') || t.includes('payments') || t.includes('invoices'))
+    return 'sales';
+  if (t.includes('cash') || t.includes('finance') || t.includes('expenses') || t.includes('campaigns'))
+    return 'finance';
+  if (t.includes('hr') || t.includes('production')) return 'hr';
+  if (t.includes('executive')) return 'executive';
+  if (t.includes('ops') || t.includes('system')) return 'ops';
+  if (t.includes('erp')) return 'sales';
+  return 'executive';
 }

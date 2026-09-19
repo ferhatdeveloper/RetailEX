@@ -1,5 +1,6 @@
 /**
  * Grafana PostgreSQL datasource — sunucu kodu → database_name → köprü API.
+ * Dashboard listesi: GET /api/grafana/dashboards
  */
 
 import { getBridgeUrl, IS_TAURI } from '../utils/env';
@@ -9,11 +10,26 @@ import {
   resolveEffectiveTenantDatabaseName,
 } from './postgres';
 import { fetchTenantRegistryRow, tenantRowToAppConfigPatch } from './merkezTenantRegistry';
+import {
+  GRAFANA_READY_REPORTS,
+  categoryFromGrafanaTags,
+  dashEmbed,
+  type GrafanaReadyReport,
+  type GrafanaReportCategory,
+} from '../utils/grafanaEmbed';
 
 export type GrafanaDbEnsureResult =
   | { ok: true; database: string; serverCode: string }
   | { ok: false; needServerCode: true; reason: string }
   | { ok: false; needServerCode: false; reason: string };
+
+export type GrafanaApiDashboard = {
+  uid: string;
+  title: string;
+  url: string;
+  tags: string[];
+  folder: string;
+};
 
 function readStoredServerCode(): string {
   const fromSettings = String(DB_SETTINGS.merkezTenantCode || '').trim();
@@ -43,7 +59,6 @@ function persistServerConfig(patch: Record<string, unknown>): void {
 
 async function setGrafanaPostgresDatabase(database: string): Promise<void> {
   if (IS_TAURI) {
-    // Masaüstü: Grafana yığını yoksa sessiz geç
     return;
   }
   const bridge = getBridgeUrl();
@@ -60,9 +75,87 @@ async function setGrafanaPostgresDatabase(database: string): Promise<void> {
 }
 
 /**
- * Mevcut oturum/server kodundan DB adını çözüp Grafana datasource’a yazar.
- * Çözülemezse needServerCode: true — UI modal açmalı.
+ * Grafana API üzerinden panoları çeker; başarısızsa statik katalog.
  */
+export async function listGrafanaDashboardsViaApi(): Promise<{
+  source: 'api' | 'static';
+  reports: GrafanaReadyReport[];
+  error?: string;
+}> {
+  if (IS_TAURI) {
+    return { source: 'static', reports: GRAFANA_READY_REPORTS };
+  }
+  try {
+    const bridge = getBridgeUrl();
+    const res = await fetch(`${bridge}/api/grafana/dashboards?q=retailex`, {
+      method: 'GET',
+      credentials: 'same-origin',
+    });
+    const body = (await res.json().catch(() => ({}))) as {
+      error?: string;
+      dashboards?: GrafanaApiDashboard[];
+    };
+    if (!res.ok) {
+      return {
+        source: 'static',
+        reports: GRAFANA_READY_REPORTS,
+        error: body.error || `HTTP ${res.status}`,
+      };
+    }
+    const apiList = Array.isArray(body.dashboards) ? body.dashboards : [];
+    if (apiList.length === 0) {
+      return { source: 'static', reports: GRAFANA_READY_REPORTS, error: 'API boş liste' };
+    }
+
+    const byUid = new Map(GRAFANA_READY_REPORTS.map((r) => [r.uid, r]));
+    const tools = GRAFANA_READY_REPORTS.filter((r) => r.isBuilder);
+    const merged: GrafanaReadyReport[] = [];
+    const seen = new Set<string>();
+
+    for (const d of apiList) {
+      const uid = d.uid;
+      if (!uid || seen.has(uid)) continue;
+      seen.add(uid);
+      const known = byUid.get(uid);
+      if (known) {
+        merged.push(known);
+        continue;
+      }
+      const category: GrafanaReportCategory = categoryFromGrafanaTags(d.tags);
+      const title = d.title || uid;
+      merged.push({
+        id: uid.replace(/^retailex-/, '') || uid,
+        uid,
+        category,
+        titleTr: title,
+        titleEn: title,
+        descriptionTr:
+          (d.tags || []).filter((t) => t !== 'retailex' && t !== 'ready').join(' · ') || 'Grafana',
+        descriptionEn:
+          (d.tags || []).filter((t) => t !== 'retailex' && t !== 'ready').join(' · ') || 'Grafana',
+        embedPath: (theme, vars) => dashEmbed(uid, theme, '&refresh=2m', vars),
+      });
+    }
+
+    for (const t of tools) {
+      if (!seen.has(t.uid)) merged.push(t);
+    }
+
+    for (const r of GRAFANA_READY_REPORTS) {
+      if (r.isBuilder) continue;
+      if (!seen.has(r.uid)) merged.push(r);
+    }
+
+    return { source: 'api', reports: merged };
+  } catch (e) {
+    return {
+      source: 'static',
+      reports: GRAFANA_READY_REPORTS,
+      error: e instanceof Error ? e.message : String(e),
+    };
+  }
+}
+
 export async function ensureGrafanaDbForCurrentServer(): Promise<GrafanaDbEnsureResult> {
   try {
     await ensureTenantDatabaseFromRegistry().catch(() => undefined);
@@ -119,9 +212,6 @@ export async function ensureGrafanaDbForCurrentServer(): Promise<GrafanaDbEnsure
   }
 }
 
-/**
- * Kullanıcının girdiği server kodunu kaydet, DB çöz, Grafana’ya bağla.
- */
 export async function connectGrafanaWithServerCode(serverCodeRaw: string): Promise<GrafanaDbEnsureResult> {
   const serverCode = String(serverCodeRaw || '').trim();
   if (!serverCode) {

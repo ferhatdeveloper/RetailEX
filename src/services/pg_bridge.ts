@@ -1581,6 +1581,46 @@ app.get('/api/grafana/health', async (c) => {
     }
 });
 
+/**
+ * Grafana hazır panolar — search API.
+ * Query: ?q=retailex (opsiyonel)
+ */
+app.get('/api/grafana/dashboards', async (c) => {
+    try {
+        const q = String(c.req.query('q') || 'retailex').trim() || 'retailex';
+        const url = `${grafanaBaseUrl()}/api/search?type=dash-db&query=${encodeURIComponent(q)}&limit=500`;
+        const res = await fetch(url, {
+            headers: { Authorization: grafanaAdminAuthHeader() },
+        });
+        if (!res.ok) {
+            const t = await res.text();
+            return c.json(
+                { error: `Grafana search başarısız: ${res.status} ${t.slice(0, 200)}` },
+                502
+            );
+        }
+        const items = (await res.json()) as Array<{
+            uid?: string;
+            title?: string;
+            url?: string;
+            tags?: string[];
+            folderTitle?: string;
+        }>;
+        const dashboards = (Array.isArray(items) ? items : [])
+            .filter((d) => d?.uid)
+            .map((d) => ({
+                uid: String(d.uid),
+                title: String(d.title || d.uid),
+                url: String(d.url || `/d/${d.uid}`),
+                tags: Array.isArray(d.tags) ? d.tags.map(String) : [],
+                folder: String(d.folderTitle || ''),
+            }));
+        return c.json({ ok: true, count: dashboards.length, dashboards });
+    } catch (e: any) {
+        return c.json({ error: e?.message || String(e) }, 503);
+    }
+});
+
 app.get('/api/grafana/postgres-database', async (c) => {
     try {
         const res = await fetch(`${grafanaBaseUrl()}/api/datasources/uid/postgres`, {
