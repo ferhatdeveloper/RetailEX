@@ -8,6 +8,8 @@ import {
   isReportMoneySumColumnId,
   isReportSumColumnId,
   reportDisplayCode,
+  resolveDevExCompactNumericKind,
+  resolveDevExCompactNumericSizing,
 } from './reportGridChrome';
 
 describe('reportGridChrome', () => {
@@ -73,5 +75,21 @@ describe('reportGridChrome', () => {
     expect(coerceReportNumber('1.250,5')).toBe(1250.5);
     expect(coerceReportNumber(10)).toBe(10);
     expect(coerceReportNumber(null)).toBe(0);
+  });
+
+  it('DevEx sayısal kolonları dar genişlik türüne ayırır; metin kolonlarını dokunmaz', () => {
+    expect(resolveDevExCompactNumericKind('inQty')).toBe('qty');
+    expect(resolveDevExCompactNumericKind('outAmt')).toBe('amount');
+    expect(resolveDevExCompactNumericKind('purchaseUnitPrice')).toBe('price');
+    expect(resolveDevExCompactNumericKind('running_balance')).toBe('balance');
+    expect(resolveDevExCompactNumericKind('amount', { type: 'currency' })).toBe('amount');
+    expect(resolveDevExCompactNumericKind('descLabel')).toBeNull();
+    expect(resolveDevExCompactNumericKind('productNameLabel')).toBeNull();
+    expect(resolveDevExCompactNumericKind('dateLabel', { filterKind: 'date' })).toBeNull();
+    expect(resolveDevExCompactNumericKind('inQty', { compactWidth: false })).toBeNull();
+
+    expect(resolveDevExCompactNumericSizing('inQty', {}, 120)?.size).toBe(72);
+    expect(resolveDevExCompactNumericSizing('inAmt', {}, 150)?.size).toBe(88);
+    expect(resolveDevExCompactNumericSizing('inQty', {}, 60)?.size).toBe(60);
   });
 });

@@ -46,6 +46,8 @@ import {
   isReportCodeColumnId,
   isReportSumColumnId,
   reportDisplayCode,
+  resolveDevExCompactNumericSizing,
+  type DevExCompactNumericMeta,
 } from '../../utils/reportGridChrome';
 import { getFirmLedgerCurrency, getGlobalCurrency } from '../../utils/currency';
 import { getAppDefaultCurrency } from '../../services/postgres';
@@ -326,7 +328,10 @@ function devExGridRowKindClass(kind: DevExGridRowKind, darkMode: boolean): strin
 type GridColumnMeta = {
   filterKind?: string;
   format?: string;
+  type?: string;
   align?: 'left' | 'right' | 'center';
+  /** false: sayısal kolon daraltması uygulanmaz */
+  compactWidth?: boolean;
 };
 
 function readGridColumnMeta(column: { columnDef: { meta?: unknown } }): GridColumnMeta {
@@ -1138,6 +1143,32 @@ function withReportCodeCells<T>(cols: ColumnDef<T, any>[]): ColumnDef<T, any>[] 
   });
 }
 
+/**
+ * Sayısal / para kolonları: dar size / minSize / maxSize + sağ hizalama.
+ * Id örüntüsü (qty, amount, price, tutar, miktar…) veya meta.type/format/filterKind.
+ */
+function withCompactNumericColumnSizing<T>(cols: ColumnDef<T, any>[]): ColumnDef<T, any>[] {
+  return cols.map((col) => {
+    const id = columnDefId(col);
+    if (!id || id === 'select' || id === 'actions') return col;
+    const meta = (col.meta as DevExCompactNumericMeta | undefined) ?? {};
+    const sizing = resolveDevExCompactNumericSizing(id, meta, col.size);
+    if (!sizing) return col;
+    const nextMeta: GridColumnMeta = {
+      ...meta,
+      align: meta.align ?? 'right',
+      format: meta.format ?? (meta.type === 'currency' ? 'currency' : 'number'),
+    };
+    return {
+      ...col,
+      size: sizing.size,
+      minSize: col.minSize ?? sizing.minSize,
+      maxSize: col.maxSize ?? sizing.maxSize,
+      meta: nextMeta,
+    };
+  });
+}
+
 type SortableHeaderThProps<T> = {
   header: Header<T, unknown>;
   enableReorder: boolean;
@@ -1499,7 +1530,10 @@ export function DevExDataGrid<T>({
     }
   }, [selectedRowIds]);
 
-  const codedColumns = useMemo(() => withReportCodeCells(columns), [columns]);
+  const codedColumns = useMemo(
+    () => withCompactNumericColumnSizing(withReportCodeCells(columns)),
+    [columns],
+  );
 
   const autoSumColumns = useMemo(() => {
     if (!autoFooterSums) return [] as NonNullable<DevExDataGridProps<T>['footerSumColumns']>;

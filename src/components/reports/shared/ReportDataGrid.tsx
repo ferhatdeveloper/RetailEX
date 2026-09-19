@@ -44,34 +44,58 @@ export type ReportGridColumn<T> = {
   accessor?: (row: T) => unknown;
   cell?: (row: T) => ReactNode;
   size?: number;
+  minSize?: number;
+  maxSize?: number;
   align?: 'left' | 'right' | 'center';
   enableColumnFilter?: boolean;
   filterKind?: 'date' | 'text' | 'number';
+  /** number | currency → sağ hiza + dar genişlik (DevEx ortak kural) */
+  type?: 'text' | 'number' | 'currency' | 'date';
 };
 
 /** Kolon başlığında huni filtresi üreten factory — Malzeme listesi ile aynı FilterMenu. */
 export function buildReportGridColumns<T>(cols: ReportGridColumn<T>[]): ColumnDef<T, unknown>[] {
   return cols.map((c) => {
-    const align = c.align ?? (c.filterKind === 'number' ? 'right' : undefined);
+    const resolvedType = c.type ?? (c.filterKind === 'number' ? 'number' : c.filterKind === 'date' ? 'date' : undefined);
+    const align =
+      c.align ??
+      (resolvedType === 'number' || resolvedType === 'currency' || c.filterKind === 'number' ? 'right' : undefined);
+    const filterKind =
+      c.filterKind ??
+      (resolvedType === 'date' ? 'date' : resolvedType === 'number' || resolvedType === 'currency' ? 'number' : undefined);
     return {
       id: c.id,
       accessorFn: c.accessor ?? ((row: T) => (row as Record<string, unknown>)[c.id]),
       header: c.header,
       size: c.size,
+      minSize: c.minSize,
+      maxSize: c.maxSize,
       enableColumnFilter: c.enableColumnFilter !== false,
       filterFn: 'gridColumnFilter',
       meta: {
-        ...(c.filterKind
-          ? { filterKind: c.filterKind, format: c.filterKind === 'date' ? 'date' : undefined }
+        ...(filterKind
+          ? {
+              filterKind,
+              format:
+                resolvedType === 'currency'
+                  ? 'currency'
+                  : filterKind === 'date'
+                    ? 'date'
+                    : filterKind === 'number'
+                      ? 'number'
+                      : undefined,
+              type: resolvedType,
+            }
           : {}),
         ...(align ? { align } : {}),
+        ...(resolvedType ? { type: resolvedType } : {}),
       },
       cell: (info) => {
         const row = info.row.original as T;
         const inner = c.cell ? c.cell(row) : (() => {
           const v = info.getValue();
           if (v == null || v === '') return '—';
-          if (c.filterKind === 'date') {
+          if (filterKind === 'date') {
             return formatReportDateCell(v as string | number | Date);
           }
           return v as ReactNode;
@@ -100,7 +124,7 @@ export function ReportDataGrid<T>(props: ReportDataGridProps<T>) {
 export type ReportColumnTableCol<T> = {
   key: string;
   header: string;
-  type?: 'text' | 'number' | 'date';
+  type?: 'text' | 'number' | 'date' | 'currency';
   align?: 'left' | 'right' | 'center';
   size?: number;
   cell?: (row: T) => ReactNode;
@@ -144,7 +168,8 @@ export function ReportColumnTable<T extends object>({
           header: c.header,
           align: c.align,
           size: c.size,
-          filterKind: c.type === 'date' ? 'date' : c.type === 'number' ? 'number' : 'text',
+          filterKind: c.type === 'date' ? 'date' : c.type === 'number' || c.type === 'currency' ? 'number' : 'text',
+          type: c.type === 'currency' ? 'currency' : c.type === 'number' ? 'number' : c.type === 'date' ? 'date' : undefined,
           cell: c.cell,
         })),
       ),

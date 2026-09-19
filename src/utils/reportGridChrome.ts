@@ -28,6 +28,113 @@ export function isReportCodeColumnId(id: unknown): boolean {
   return CODE_ID_RE.test(s);
 }
 
+/** DevEx / rapor ızgarası — sayısal kolon dar varsayılan genişlikleri (px). */
+export const DEVEX_COMPACT_NUMERIC_SIZE = {
+  qty: 72,
+  amount: 88,
+  price: 88,
+  balance: 80,
+  number: 80,
+} as const;
+
+export type DevExCompactNumericKind = keyof typeof DEVEX_COMPACT_NUMERIC_SIZE;
+
+export const DEVEX_COMPACT_NUMERIC_MIN_SIZE = 52;
+export const DEVEX_COMPACT_NUMERIC_MAX_SIZE = 120;
+
+const COMPACT_QTY_ID_RE =
+  /(^|_)(qty|quantity|miktar|adet|count|inqty|outqty|in_qty|out_qty)(_|$)|quantity_sold|sold_qty|soldqty/i;
+
+const COMPACT_PRICE_ID_RE =
+  /(price|unit_?price|unitprice|birim.?fiyat|purchaseunitprice|salesunitprice|(^|_)(avg|average)(_|$))/i;
+
+const COMPACT_BALANCE_ID_RE =
+  /(balance|bakiye|running_?balance|(^|_)kalan(_|$))/i;
+
+const COMPACT_AMOUNT_ID_RE =
+  /(amount|tutar|(^|_)amt(_|$)|inamt|outamt|in_amt|out_amt|revenue|cogs|profit|value|debit|credit|incoming|outgoing|(^|_)(total|toplam)(_|$))/i;
+
+const COMPACT_GENERIC_NUMERIC_ID_RE =
+  /(qty|quantity|miktar|adet|amount|tutar|price|fiyat|balance|bakiye|kalan|stock|stok|cost|maliyet|debit|credit|borc|alacak)/i;
+
+export type DevExCompactNumericMeta = {
+  filterKind?: string;
+  format?: string;
+  type?: string;
+  align?: string;
+  /** false ise daraltma uygulanmaz */
+  compactWidth?: boolean;
+};
+
+/**
+ * Kolon id / meta → dar sayısal tür (qty / amount / price / balance / number).
+ * Metin kolonları (açıklama, ad) eşleşmez.
+ */
+export function resolveDevExCompactNumericKind(
+  id: unknown,
+  meta?: DevExCompactNumericMeta | null,
+): DevExCompactNumericKind | null {
+  if (meta?.compactWidth === false) return null;
+  const s = String(id || '').trim().toLowerCase();
+  if (!s || s === 'select' || s === 'actions') return null;
+  if (CODE_ID_RE.test(s)) return null;
+
+  const looksTextOnly =
+    /name|title|description|aciklama|açıklama|note|fiche|invoice|supplier|customer|barcode|uuid|date|tarih|status|brand|category|skt|batch|typelabel|desclabel/i.test(
+      s,
+    ) && !COMPACT_GENERIC_NUMERIC_ID_RE.test(s);
+  if (looksTextOnly) return null;
+
+  const metaType = String(meta?.type || meta?.format || meta?.filterKind || '').toLowerCase();
+  const metaSaysNumeric =
+    metaType === 'number' ||
+    metaType === 'currency' ||
+    meta?.format === 'number' ||
+    meta?.format === 'currency' ||
+    meta?.filterKind === 'number';
+
+  if (COMPACT_PRICE_ID_RE.test(s)) return 'price';
+  if (COMPACT_BALANCE_ID_RE.test(s)) return 'balance';
+  if (COMPACT_QTY_ID_RE.test(s) && !/amt|amount|tutar|price|fiyat/i.test(s)) return 'qty';
+  if (COMPACT_AMOUNT_ID_RE.test(s) || metaType === 'currency') return 'amount';
+  if (metaSaysNumeric) return 'number';
+  if (meta?.align === 'right' && COMPACT_GENERIC_NUMERIC_ID_RE.test(s)) return 'number';
+  if (COMPACT_GENERIC_NUMERIC_ID_RE.test(s)) return 'number';
+  return null;
+}
+
+/**
+ * Sayısal kolon genişliği: tanımsız / TanStack default / eski geniş değerler → compact.
+ * Bilinçli daha dar `size` (compact’tan küçük) korunur. `meta.compactWidth: false` ile opt-out.
+ */
+export function resolveDevExCompactNumericSizing(
+  id: unknown,
+  meta?: DevExCompactNumericMeta | null,
+  existingSize?: number | null,
+): { size: number; minSize: number; maxSize: number } | null {
+  const kind = resolveDevExCompactNumericKind(id, meta);
+  if (!kind) return null;
+  const compact = DEVEX_COMPACT_NUMERIC_SIZE[kind];
+  const existing =
+    typeof existingSize === 'number' && Number.isFinite(existingSize) && existingSize > 0
+      ? existingSize
+      : null;
+  // Daha dar bilinçli size korunur; aksi halde compact (110–150+ dahil daraltılır)
+  const size = existing != null && existing < compact ? existing : compact;
+  return {
+    size,
+    minSize: DEVEX_COMPACT_NUMERIC_MIN_SIZE,
+    maxSize: Math.max(DEVEX_COMPACT_NUMERIC_MAX_SIZE, size),
+  };
+}
+
+export function isDevExCompactNumericColumn(
+  id: unknown,
+  meta?: DevExCompactNumericMeta | null,
+): boolean {
+  return resolveDevExCompactNumericKind(id, meta) != null;
+}
+
 export function isReportSumColumnId(id: unknown): boolean {
   const s = String(id || '').trim().toLowerCase();
   if (!s || s === 'select' || s === 'actions') return false;
