@@ -11,6 +11,7 @@ import { useLanguage } from '../../contexts/LanguageContext';
 import { useTheme } from '../../contexts/ThemeContext';
 import { getAppDefaultCurrency } from '../../services/postgres';
 import { toast } from 'sonner';
+import { displayItemCode } from '../../utils/lastPurchaseCostSql';
 
 export type ProductMovementTarget = {
   productId?: string;
@@ -262,8 +263,12 @@ export function ProductMovementHistoryModal({
           </div>
           <h2 className="mt-1 text-lg font-bold truncate">{target.productName || '—'}</h2>
           <p className="text-xs text-blue-100 font-mono mt-0.5">
-            {target.productCode || lookupId}
-            <span className="mx-2 opacity-50">·</span>
+            {displayItemCode(target.productCode) !== '—' ? (
+              <>
+                {displayItemCode(target.productCode)}
+                <span className="mx-2 opacity-50">·</span>
+              </>
+            ) : null}
             {rangeNote}
           </p>
         </div>

@@ -1,13 +1,16 @@
 import { describe, expect, it } from 'vitest';
 import {
   buildProfitCostCtes,
+  displayItemCode,
   isPlSalesOrReturnFiche,
   isPurchaseFiche,
   isSalesReturnFiche,
   isServiceLineType,
+  isUuidText,
   LINE_COST_EXPR,
   lineCostAmount,
   resolveLineProductId,
+  restServiceUnitCost,
   scaleLineRevenueToInvoiceNet,
   unitCostFromPurchaseLine,
 } from '../../utils/lastPurchaseCostSql';
@@ -111,5 +114,57 @@ describe('lastPurchaseCostSql — muhasebe yardımcıları', () => {
       }),
     ).toBe(30000);
     expect(lineCostAmount({ quantity: 1, itemType: 'service', serviceUnitCost: 0 })).toBe(0);
+  });
+
+  it('displayItemCode UUID item_code atlar, p.code / svc.code tercih eder', () => {
+    const uuid = 'dbde53c4-a766-4506-b4d0-0938d3d1ff25';
+    expect(isUuidText(uuid)).toBe(true);
+    expect(isUuidText('PROD-1')).toBe(false);
+    // UUID item_code ve boş / '—' atlanır; ilk insan kodu (p.code / svc.code)
+    expect(displayItemCode(uuid, 'PROD-1')).toBe('PROD-1');
+    expect(displayItemCode('', '—', uuid, 'SVC-10')).toBe('SVC-10');
+    expect(displayItemCode('P-CODE', uuid)).toBe('P-CODE');
+    // Yalnızca UUID → em dash
+    expect(displayItemCode(uuid)).toBe('—');
+    expect(displayItemCode(null, '', '—', uuid)).toBe('—');
+  });
+
+  it('restServiceUnitCost zinciri: 0 satır → purchase_price → beauty cost_price → reçete', () => {
+    expect(
+      restServiceUnitCost({
+        lineUnitCost: 0,
+        purchasePrice: 100,
+        beautyCostPrice: 50,
+        recipeUnitCost: 25,
+      }),
+    ).toBe(100);
+    expect(
+      restServiceUnitCost({
+        lineUnitCost: 0,
+        purchasePrice: 0,
+        beautyCostPrice: 50,
+        recipeUnitCost: 25,
+      }),
+    ).toBe(50);
+    expect(
+      restServiceUnitCost({
+        lineUnitCost: 0,
+        purchasePrice: 0,
+        beautyCostPrice: 0,
+        recipeUnitCost: 25,
+      }),
+    ).toBe(25);
+  });
+
+  it('isService true iken Malzeme satırında hizmet birim maliyeti kullanılır', () => {
+    expect(
+      lineCostAmount({
+        quantity: 2,
+        itemType: 'Malzeme',
+        isService: true,
+        serviceUnitCost: 8000,
+        lastPurchaseUnit: 999,
+      }),
+    ).toBe(16000);
   });
 });

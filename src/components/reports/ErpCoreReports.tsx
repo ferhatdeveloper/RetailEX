@@ -8,6 +8,7 @@ import { useLanguage } from '../../contexts/LanguageContext';
 import { useTheme } from '../../contexts/ThemeContext';
 import { useFirmaDonem } from '../../contexts/FirmaDonemContext';
 import { formatNumber } from '../../utils/formatNumber';
+import { looksLikeUuid } from '../../utils/pgUuid';
 import { getGlobalCurrency, getFirmLedgerCurrency, formatLedgerAmount, getCurrencyDecimalPlaces } from '../../utils/currency';
 import { getAppDefaultCurrency } from '../../services/postgres';
 import { formatMoneyAmount } from '../../utils/formatMoney';
@@ -40,7 +41,7 @@ import {
   type ProductMovementTarget,
 } from './ProductMovementHistoryModal';
 import { DevExDataGrid } from '../shared/DevExDataGrid';
-import { buildReportGridColumns, REPORT_GRID_DEFAULTS } from './shared/ReportDataGrid';
+import { buildReportGridColumns, REPORT_GRID_DEFAULTS, ReportColumnTable, type ReportColumnTableCol } from './shared/ReportDataGrid';
 
 type CardFilter = 'all' | 'customer' | 'supplier';
 
@@ -1314,8 +1315,90 @@ export function ProductGrossProfitReport() {
   }, [rows]);
 
   const tableCls = darkMode ? 'bg-gray-800 border-gray-700' : 'bg-white border-gray-200';
-  const thCls = darkMode ? 'bg-gray-900/60 text-gray-300' : 'bg-gray-50 text-gray-600';
   const inputCls = darkMode ? 'bg-gray-900 border-gray-600' : 'bg-white border-gray-300';
+
+  const tableColumns = useMemo<ReportColumnTableCol<ProductGrossProfitRow>[]>(() => {
+    const cols: ReportColumnTableCol<ProductGrossProfitRow>[] = [];
+    if (lineKind === 'all') {
+      cols.push({
+        key: 'lineKind',
+        header: tm('reportsDailyKindLabel'),
+        size: 110,
+        cell: (row) =>
+          row.lineKind === 'service' ? tm('reportsDailyKindService') : tm('reportsDailyKindProduct'),
+      });
+    }
+    cols.push(
+      {
+        key: 'productName',
+        header: tm('erpColProduct'),
+        size: 280,
+        cell: (row) => {
+          const code = String(row.productCode ?? '').trim();
+          const showCode = Boolean(code) && code !== '—' && !looksLikeUuid(code);
+          return (
+            <div>
+              <p className="text-sm font-medium">{row.productName}</p>
+              {showCode ? <p className="font-mono text-xs opacity-60">{code}</p> : null}
+            </div>
+          );
+        },
+      },
+      {
+        key: 'quantity',
+        header: tm('reportsCashColQty'),
+        type: 'number',
+        align: 'right',
+        size: 100,
+        footerSum: true,
+        footerFormat: (n) => formatNumber(n, 2, false),
+        cell: (row) => formatNumber(row.quantity, 2, false),
+      },
+      {
+        key: 'revenue',
+        header: tm('erpColRevenue'),
+        type: 'number',
+        align: 'right',
+        size: 140,
+        footerSum: true,
+        footerFormat: (n) => `${formatNumber(n, 2, false)} ${currency}`,
+        cell: (row) => `${formatNumber(row.revenue, 2, false)} ${currency}`,
+      },
+      {
+        key: 'cost',
+        header: tm('erpColCost'),
+        type: 'number',
+        align: 'right',
+        size: 140,
+        footerSum: true,
+        footerFormat: (n) => `${formatNumber(n, 2, false)} ${currency}`,
+        cell: (row) => `${formatNumber(row.cost, 2, false)} ${currency}`,
+      },
+      {
+        key: 'grossProfit',
+        header: tm('erpColGrossProfit'),
+        type: 'number',
+        align: 'right',
+        size: 140,
+        footerSum: true,
+        footerFormat: (n) => `${formatNumber(n, 2, false)} ${currency}`,
+        cell: (row) => (
+          <span className={row.grossProfit >= 0 ? 'text-emerald-500 font-semibold' : 'text-red-500 font-semibold'}>
+            {formatNumber(row.grossProfit, 2, false)} {currency}
+          </span>
+        ),
+      },
+      {
+        key: 'marginPct',
+        header: tm('erpColMargin'),
+        type: 'number',
+        align: 'right',
+        size: 90,
+        cell: (row) => `${formatNumber(row.marginPct, 1, false)}%`,
+      },
+    );
+    return cols;
+  }, [lineKind, tm, currency]);
 
   return (
     <ReportShell
@@ -1327,15 +1410,19 @@ export function ProductGrossProfitReport() {
         exportCsv(
           'urun_brut_kar',
           ['Kod', 'Ürün', 'Miktar', 'Ciro', 'Maliyet', 'Brüt Kâr', 'Marj %'],
-          rows.map((r) => [
-            r.productCode,
-            r.productName,
-            String(r.quantity),
-            String(r.revenue),
-            String(r.cost),
-            String(r.grossProfit),
-            String(r.marginPct.toFixed(1)),
-          ]),
+          rows.map((r) => {
+            const raw = String(r.productCode ?? '').trim();
+            const exportCode = raw && raw !== '—' && !looksLikeUuid(raw) ? raw : '—';
+            return [
+              exportCode,
+              r.productName,
+              String(r.quantity),
+              String(r.revenue),
+              String(r.cost),
+              String(r.grossProfit),
+              String(r.marginPct.toFixed(1)),
+            ];
+          }),
         )
       }
       filters={
@@ -1370,62 +1457,33 @@ export function ProductGrossProfitReport() {
           </p>
         </div>
       </div>
-      <div className={`overflow-auto rounded-lg border max-h-[520px] ${tableCls}`}>
-        <table className="w-full min-w-[900px] text-sm">
-          <thead className={`sticky top-0 ${thCls}`}>
-            <tr>
-              <th className="px-3 py-2 text-left">{tm('erpColProduct')}</th>
-              <th className="px-3 py-2 text-right">{tm('reportsCashColQty')}</th>
-              <th className="px-3 py-2 text-right">{tm('erpColRevenue')}</th>
-              <th className="px-3 py-2 text-right">{tm('erpColCost')}</th>
-              <th className="px-3 py-2 text-right">{tm('erpColGrossProfit')}</th>
-              <th className="px-3 py-2 text-right">{tm('erpColMargin')}</th>
-            </tr>
-          </thead>
-          <tbody>
-            {rows.length === 0 && !loading && (
-              <tr>
-                <td colSpan={6} className="px-3 py-8 text-center opacity-60">{tm('erpNoRows')}</td>
-              </tr>
-            )}
-            {rows.map((r) => (
-              <tr
-                key={`${r.productCode}-${r.productId}`}
-                className={`${darkMode ? 'border-t border-gray-700' : 'border-t border-gray-100'} cursor-pointer ${
-                  darkMode ? 'hover:bg-gray-700/60' : 'hover:bg-emerald-50/80'
-                }`}
-                onClick={(e) => {
-                  e.preventDefault();
-                  e.stopPropagation();
-                  if (!r.productCode && !r.productId) {
-                    toast.error(tm('reportsPlMovLoadError') || 'Ürün kimliği bulunamadı');
-                    return;
-                  }
-                  setMovementTarget({
-                    productId: r.productId || undefined,
-                    productCode: r.productCode,
-                    productName: r.productName,
-                    startDate,
-                    endDate,
-                  });
-                }}
-                title={tm('reportsPlMovClickHint')}
-              >
-                <td className="px-3 py-2">
-                  <div className="font-medium">{r.productName}</div>
-                  <div className="font-mono text-xs opacity-60">{r.productCode}</div>
-                </td>
-                <td className="px-3 py-2 text-right">{formatNumber(r.quantity, 2, false)}</td>
-                <td className="px-3 py-2 text-right">{formatNumber(r.revenue, 2, false)}</td>
-                <td className="px-3 py-2 text-right">{formatNumber(r.cost, 2, false)}</td>
-                <td className={`px-3 py-2 text-right font-semibold ${r.grossProfit >= 0 ? 'text-emerald-500' : 'text-red-500'}`}>
-                  {formatNumber(r.grossProfit, 2, false)}
-                </td>
-                <td className="px-3 py-2 text-right">{formatNumber(r.marginPct, 1, false)}%</td>
-              </tr>
-            ))}
-          </tbody>
-        </table>
+      <div className={`rounded-lg border p-2 ${tableCls}`}>
+        {rows.length === 0 && !loading ? (
+          <div className="px-3 py-8 text-center opacity-60">{tm('erpNoRows')}</div>
+        ) : (
+          <ReportColumnTable
+            data={rows}
+            columns={tableColumns}
+            height={520}
+            footerLabel={tm('reportsTotalUpper')}
+            onRowClick={(r) => {
+              if (r.lineKind === 'service') return;
+              const raw = String(r.productCode ?? '').trim();
+              const code = raw && raw !== '—' && !looksLikeUuid(raw) ? raw : '';
+              if (!r.productId && !code) {
+                toast.error(tm('reportsPlMovLoadError') || 'Ürün kimliği bulunamadı');
+                return;
+              }
+              setMovementTarget({
+                productId: r.productId || undefined,
+                productCode: code,
+                productName: r.productName,
+                startDate,
+                endDate,
+              });
+            }}
+          />
+        )}
       </div>
       {movementTarget ? (
         <ProductMovementHistoryModal
@@ -1677,7 +1735,9 @@ export function CriticalStockReport() {
               <tr key={r.productId} className={darkMode ? 'border-t border-gray-700' : 'border-t border-gray-100'}>
                 <td className="px-3 py-2">
                   <div className="font-medium">{r.productName}</div>
-                  <div className="font-mono text-xs opacity-60">{r.productCode}</div>
+                  {r.productCode && r.productCode !== '—' && !looksLikeUuid(r.productCode) ? (
+                    <div className="font-mono text-xs opacity-60">{r.productCode}</div>
+                  ) : null}
                 </td>
                 <td className="px-3 py-2">{r.warehouseCode}</td>
                 <td className="px-3 py-2 text-right font-semibold">{formatNumber(r.stock, 2, false)}</td>

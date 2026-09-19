@@ -17,10 +17,12 @@ import {
   SIGNED_LINE_PROFIT_EXPR,
   SIGNED_LINE_QTY_EXPR,
   SIGNED_LINE_REVENUE_EXPR,
+  SQL_DISPLAY_ITEM_CODE,
   SQL_LINE_KIND_EXPR,
   SQL_LINE_RESOLVED_PRODUCT_ID,
   SQL_PL_SALES_OR_RETURN,
   SQL_SERVICE_CATEGORY_EXPR,
+  displayItemCode,
   sqlLineKindFilter,
 } from '../../utils/lastPurchaseCostSql';
 import {
@@ -199,7 +201,7 @@ export function ProfitLossReport() {
             WITH ${PROFIT_CTES}
             SELECT
               MAX(COALESCE((${SQL_LINE_RESOLVED_PRODUCT_ID})::text, '')) AS product_id,
-              COALESCE(NULLIF(TRIM(p.code), ''), NULLIF(TRIM(svc.code), ''), NULLIF(TRIM(si.item_code), ''), '') AS product_code,
+              ${SQL_DISPLAY_ITEM_CODE} AS product_code,
               COALESCE(NULLIF(TRIM(si.item_name), ''), p.name, svc.name, bsvc.name, 'Bilinmeyen') AS product_name,
               ${SQL_LINE_KIND_EXPR} AS line_kind,
               SUM(${SIGNED_LINE_QTY_EXPR}) AS quantity,
@@ -216,7 +218,7 @@ export function ProfitLossReport() {
             ${kindFilter}
             GROUP BY
               ${SQL_LINE_KIND_EXPR},
-              COALESCE(NULLIF(TRIM(p.code), ''), NULLIF(TRIM(svc.code), ''), NULLIF(TRIM(si.item_code), ''), ''),
+              ${SQL_DISPLAY_ITEM_CODE},
               COALESCE(NULLIF(TRIM(si.item_name), ''), p.name, svc.name, bsvc.name, 'Bilinmeyen')
             HAVING SUM(ABS(si.quantity)) > 0
             ORDER BY SUM(${SIGNED_LINE_PROFIT_EXPR}) DESC
@@ -238,7 +240,7 @@ export function ProfitLossReport() {
         const revenue = parseFloat(String(r.revenue)) || 0;
         const cost = parseFloat(String(r.cost)) || 0;
         const profit = r.profit != null ? parseFloat(String(r.profit)) : revenue - cost;
-        const code = r.product_code || '';
+        const code = displayItemCode(r.product_code);
         const name = r.product_name || '';
         const productId = String(r.product_id || '').trim();
         const kind = normalizeLineKind(r.line_kind);
@@ -336,7 +338,7 @@ export function ProfitLossReport() {
         cell: (row) => (
           <div>
             <p className="text-sm font-medium text-gray-900">{row.productName}</p>
-            {reportType === 'product' && row.productCode ? (
+            {reportType === 'product' && row.productCode && row.productCode !== '—' ? (
               <p className="text-xs text-gray-500">{row.productCode}</p>
             ) : null}
           </div>

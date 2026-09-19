@@ -11,6 +11,7 @@ import {
   type ExpiringPurchaseItem,
 } from '../../services/api/expiryReports';
 import { useLanguage } from '../../contexts/LanguageContext';
+import { displayItemCode } from '../../utils/lastPurchaseCostSql';
 
 export function PurchaseExpiryReport() {
   const { tm } = useLanguage();
@@ -56,12 +57,17 @@ export function PurchaseExpiryReport() {
     }),
     columnHelper.accessor('itemName', {
       header: tm('product'),
-      cell: info => (
-        <div className="flex flex-col">
-          <span className="font-semibold text-slate-900">{info.getValue()}</span>
-          <span className="font-mono text-xs text-slate-500">{info.row.original.itemCode}</span>
-        </div>
-      ),
+      cell: info => {
+        const code = displayItemCode(info.row.original.itemCode);
+        return (
+          <div className="flex flex-col">
+            <span className="font-semibold text-slate-900">{info.getValue()}</span>
+            {code !== '—' ? (
+              <span className="font-mono text-xs text-slate-500">{code}</span>
+            ) : null}
+          </div>
+        );
+      },
     }),
     columnHelper.accessor('quantity', {
       header: tm('quantity'),

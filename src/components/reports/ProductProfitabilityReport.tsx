@@ -16,6 +16,7 @@ import { TrendingUp, TrendingDown, Package, Banknote, Percent, Download, Search,
 import { useFirmaDonem } from '../../contexts/FirmaDonemContext';
 import { useLanguage } from '../../contexts/LanguageContext';
 import { CostAccountingService } from '../../services/costAccountingService';
+import { displayItemCode } from '../../utils/lastPurchaseCostSql';
 import { toast } from 'sonner';
 
 interface ProductProfitData {
@@ -94,7 +95,7 @@ export function ProductProfitabilityReport() {
 
         if (!productMap.has(key)) {
           productMap.set(key, {
-            productCode: movement.product_code,
+            productCode: displayItemCode(movement.product_code),
             productName: movement.product_name,
             totalQuantitySold: 0,
             totalRevenue: 0,
@@ -187,7 +188,7 @@ export function ProductProfitabilityReport() {
     // Başlıkta bu açıkça belirtilir; işaret korunur (Math.abs YOK).
     let csv = 'Ürün Kodu,Ürün Adı,Miktar,Satış Tutarı (KDV Hariç IQD),Maliyet (KDV Hariç IQD),Brüt Kar (KDV Hariç IQD),Kar Marjı %\n';
     filteredData.forEach(p => {
-      csv += `${p.productCode},${p.productName},${p.totalQuantitySold},${p.totalRevenue},${p.totalCost},${p.grossProfit},${p.profitMargin.toFixed(2)}\n`;
+      csv += `${displayItemCode(p.productCode)},${p.productName},${p.totalQuantitySold},${p.totalRevenue},${p.totalCost},${p.grossProfit},${p.profitMargin.toFixed(2)}\n`;
     });
 
     const blob = new Blob([csv], { type: 'text/csv' });
@@ -368,13 +369,13 @@ export function ProductProfitabilityReport() {
                   
                   return (
                     <tr 
-                      key={product.productCode} 
+                      key={`${idx}-${product.productCode}`}
                       className={`border-t hover:bg-gray-50 ${
                         idx % 2 === 0 ? 'bg-white' : 'bg-gray-50/50'
                       }`}
                     >
                       <td className="px-4 py-3 font-mono text-blue-600">
-                        {product.productCode}
+                        {displayItemCode(product.productCode)}
                       </td>
                       <td className="px-4 py-3">{product.productName}</td>
                       <td className="px-4 py-3 text-right">

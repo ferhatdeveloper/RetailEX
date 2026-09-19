@@ -10,6 +10,7 @@ import {
     type StockInOutLine,
 } from '../utils/stockInOutTotals';
 import { resolveExtractSourceMeta } from '../utils/materialExtractLabels';
+import { displayItemCode, isUuidText, SQL_NON_UUID_ITEM_CODE } from '../utils/lastPurchaseCostSql';
 
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
@@ -254,7 +255,7 @@ class StockMovementAPI {
                             WHEN sl.fiche_type = 'return_invoice' THEN 'out'
                             ELSE 'out'
                         END AS movement_type,
-                        COALESCE(p.code, si.item_code, '') AS product_code,
+                        COALESCE(NULLIF(TRIM(p.code), ''), ${SQL_NON_UUID_ITEM_CODE}, '—') AS product_code,
                         COALESCE(p.name, si.item_name, '') AS product_name,
                         si.quantity,
                         COALESCE(
@@ -930,7 +931,10 @@ class StockMovementAPI {
 
         const toLine = (r: any, sourceType: 'slip' | 'invoice'): StockInOutLine => ({
             productId: String(r.product_id || r.productId || '').trim(),
-            productCode: String(r.product_code || r.item_code || r.productCode || '').trim(),
+            productCode: (() => {
+                const shown = displayItemCode(r.product_code, r.productCode, r.item_code);
+                return shown === '—' ? '' : shown;
+            })(),
             productName: String(r.product_name || r.item_name || r.productName || '').trim(),
             itemCode: String(r.item_code || '').trim(),
             quantity: Number(r.quantity) || 0,
@@ -1075,7 +1079,7 @@ class StockMovementAPI {
                             toLine(
                                 {
                                     ...it,
-                                    product_code: it.item_code,
+                                    product_code: isUuidText(it.item_code) ? '' : it.item_code,
                                     product_name: it.item_name,
                                     movement_type: movementType,
                                     movement_date: sl.date,
@@ -1157,7 +1161,7 @@ class StockMovementAPI {
             const { rows } = await postgres.query(
                 `SELECT
                     COALESCE(si.product_id::text, p.id::text, si.item_code) AS product_id,
-                    COALESCE(p.code, si.item_code, '') AS product_code,
+                    COALESCE(NULLIF(TRIM(p.code), ''), ${SQL_NON_UUID_ITEM_CODE}, '—') AS product_code,
                     COALESCE(p.name, si.item_name, '') AS product_name,
                     si.item_code,
                     si.quantity,

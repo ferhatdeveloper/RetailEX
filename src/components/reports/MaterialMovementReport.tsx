@@ -3,6 +3,7 @@ import { Package, TrendingUp, TrendingDown, ArrowRight, Filter, Calendar, Loader
 import { formatNumber } from '../../utils/formatNumber';
 import { postgres } from '../../services/postgres';
 import { useLanguage } from '../../contexts/LanguageContext';
+import { displayItemCode } from '../../utils/lastPurchaseCostSql';
 
 interface Movement {
   id: string;
@@ -194,7 +195,7 @@ export function MaterialMovementReport() {
           return {
             id: r.id,
             date: r.date ? new Date(r.date).toLocaleString(dateLocale) : '',
-            productCode: r.product_code || '',
+            productCode: displayItemCode(r.product_code),
             productName: r.product_name || '',
             type: dbTypeToUiType(dbTypeRow),
             quantity: displayQty,
@@ -381,7 +382,9 @@ export function MaterialMovementReport() {
                     <td className="px-4 py-3">
                       <div>
                         <p className="text-sm font-medium text-gray-900">{movement.productName}</p>
-                        <p className="text-xs text-gray-500">{movement.productCode}</p>
+                        {movement.productCode && movement.productCode !== '—' ? (
+                          <p className="text-xs text-gray-500">{movement.productCode}</p>
+                        ) : null}
                       </div>
                     </td>
                     <td className="px-4 py-3">

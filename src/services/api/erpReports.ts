@@ -27,9 +27,11 @@ import {
   isPlSalesOrReturnFiche,
   isPurchaseFiche,
   isSalesReturnFiche,
+  displayItemCode,
   isServiceLineType,
   LAST_PURCHASE_JOIN,
   lineCostAmount,
+  restServiceUnitCost,
   PRODUCTS_JOIN,
   SERVICE_COST_JOINS,
   resolveLineProductId,
@@ -38,6 +40,7 @@ import {
   SIGNED_LINE_PROFIT_EXPR,
   SIGNED_LINE_QTY_EXPR,
   SIGNED_LINE_REVENUE_EXPR,
+  SQL_DISPLAY_ITEM_CODE,
   SQL_IS_SERVICE_LINE,
   SQL_LINE_RESOLVED_PRODUCT_ID,
   SQL_PL_SALES_OR_RETURN,
@@ -1524,7 +1527,7 @@ export const erpReportsAPI = {
       const { postgrest } = await import('./postgrestClient');
       const fn = firmNr;
       const pn = padPeriod();
-      const [sales, items, products, services] = await Promise.all([
+      const [sales, items, products, services, beautyServices, consumables] = await Promise.all([
         postgrest
           .get<Record<string, unknown>[]>(
             `/rex_${fn}_${pn}_sales`,
@@ -1561,6 +1564,20 @@ export const erpReportsAPI = {
             { schema: 'public' },
           )
           .catch(() => [] as Record<string, unknown>[]),
+        postgrest
+          .get<Record<string, unknown>[]>(
+            `/rex_${fn}_beauty_services`,
+            { select: 'id,name,cost_price', limit: '8000' },
+            { schema: 'beauty' },
+          )
+          .catch(() => [] as Record<string, unknown>[]),
+        postgrest
+          .get<Record<string, unknown>[]>(
+            `/rex_${fn}_beauty_service_consumables`,
+            { select: 'service_id,product_id,qty_per_service', limit: '12000' },
+            { schema: 'beauty' },
+          )
+          .catch(() => [] as Record<string, unknown>[]),
       ]);
 
       const salesById = new Map((sales || []).map((s) => [String(s.id), s]));
@@ -1569,6 +1586,9 @@ export const erpReportsAPI = {
       );
       const serviceById = new Map(
         (services || []).map((s) => [String(s.id), s]),
+      );
+      const beautyById = new Map(
+        (beautyServices || []).map((s) => [String(s.id), s]),
       );
       const serviceByCode = new Map<string, Record<string, unknown>>();
       for (const s of services || []) {
@@ -1619,6 +1639,24 @@ export const erpReportsAPI = {
         if (code && newer(lastByCode.get(code))) lastByCode.set(code, hit);
       }
 
+      const recipeByService = new Map<string, number>();
+      for (const c of consumables || []) {
+        const sid = String(c.service_id || '').trim();
+        const cpid = String(c.product_id || '').trim();
+        if (!sid || !cpid) continue;
+        const qty = Number(c.qty_per_service ?? 0) || 0;
+        const consProd = productById.get(cpid);
+        const consCode = String(consProd?.code || '').trim();
+        const consBarcode = String(consProd?.barcode || '').trim();
+        const unit =
+          lastById.get(cpid)?.unitCost ||
+          (consCode && lastByCode.get(consCode)?.unitCost) ||
+          (consBarcode && lastByCode.get(consBarcode)?.unitCost) ||
+          0;
+        if (!qty) continue;
+        recipeByService.set(sid, (recipeByService.get(sid) || 0) + qty * unit);
+      }
+
       const linesNetByInvoice = new Map<string, number>();
       for (const it of items || []) {
         const iid = String(it.invoice_id || '');
@@ -1647,21 +1685,21 @@ export const erpReportsAPI = {
         if (!saleOk.has(String(it.invoice_id))) continue;
         const itemType = String(it.item_type || 'Malzeme');
         if (itemType === 'Promosyon' || itemType === 'İndirim') continue;
-        const isService = isServiceLineType(itemType);
+        const pid = resolveLineProductId(it);
+        const prod = pid ? productById.get(pid) : undefined;
+        const beauty = pid ? beautyById.get(pid) : undefined;
+        const svc =
+          (pid && serviceById.get(pid)) ||
+          serviceByCode.get(String(it.item_code || '').trim()) ||
+          undefined;
+        const isService =
+          isServiceLineType(itemType) || !!(svc || beauty);
         if (lineKind === 'product' && isService) continue;
         if (lineKind === 'service' && !isService) continue;
         const inv = salesById.get(String(it.invoice_id));
         if (!inv) continue;
         const sgn = isSalesReturnFiche(inv) ? -1 : 1;
-        const pid = resolveLineProductId(it);
-        const prod = pid ? productById.get(pid) : undefined;
-        const svc =
-          (pid && serviceById.get(pid)) ||
-          serviceByCode.get(String(it.item_code || '').trim()) ||
-          undefined;
-        const code =
-          String(prod?.code || svc?.code || '').trim() ||
-          String(it.item_code || it.product_id || '—');
+        const code = displayItemCode(prod?.code, svc?.code, it.item_code);
         const qty = sgn * (Number(it.quantity ?? 0) || 0);
         const rawLineNet = Number(it.net_amount ?? 0) || 0;
         const revenue =
@@ -1678,11 +1716,16 @@ export const erpReportsAPI = {
           (String(prod?.code || '').trim() &&
             lastByCode.get(String(prod?.code || '').trim())?.unitCost) ||
           0;
-        const serviceUnit =
-          Number(it.unit_cost ?? 0) ||
-          Number(svc?.purchase_price ?? 0) ||
-          Number(prod?.cost ?? 0) ||
+        const recipeUnit =
+          (pid && recipeByService.get(pid)) ||
+          (svc && recipeByService.get(String(svc.id))) ||
           0;
+        const serviceUnit = restServiceUnitCost({
+          lineUnitCost: it.unit_cost,
+          purchasePrice: svc?.purchase_price,
+          beautyCostPrice: beauty?.cost_price,
+          recipeUnitCost: recipeUnit,
+        });
         const absQty = Number(it.quantity ?? 0) || 0;
         const cost =
           sgn *
@@ -1691,13 +1734,14 @@ export const erpReportsAPI = {
             lastPurchaseUnit: lpc,
             itemType,
             serviceUnitCost: serviceUnit,
+            isService,
           });
         const gp = revenue - cost;
-        const mapKey = `${isService ? 'S' : 'P'}|${code}`;
+        const mapKey = `${isService ? 'S' : 'P'}|${pid || code}`;
         const cur = map.get(mapKey) || {
           productId: pid,
           productCode: code,
-          productName: String(it.item_name ?? prod?.name ?? svc?.name ?? ''),
+          productName: String(it.item_name ?? prod?.name ?? svc?.name ?? beauty?.name ?? ''),
           quantity: 0,
           revenue: 0,
           cost: 0,
@@ -1727,16 +1771,12 @@ export const erpReportsAPI = {
       WITH ${profitCtes}
       SELECT
         COALESCE((${SQL_LINE_RESOLVED_PRODUCT_ID})::text, '') AS product_id,
-        COALESCE(
-          NULLIF(TRIM(p.code), ''),
-          NULLIF(TRIM(svc.code), ''),
-          NULLIF(TRIM(si.item_code), ''),
-          '—'
-        ) AS product_code,
+        ${SQL_DISPLAY_ITEM_CODE} AS product_code,
         COALESCE(
           NULLIF(TRIM(si.item_name), ''),
           p.name,
           svc.name,
+          bsvc.name,
           '—'
         ) AS product_name,
         CASE WHEN ${SQL_IS_SERVICE_LINE} THEN 'service' ELSE 'product' END AS line_kind,
@@ -1772,7 +1812,7 @@ export const erpReportsAPI = {
       const grossProfit = Number(r.gross_profit ?? revenue - cost);
       return {
         productId: String(r.product_id ?? ''),
-        productCode: String(r.product_code ?? ''),
+        productCode: displayItemCode(r.product_code),
         productName: String(r.product_name ?? ''),
         quantity: Number(r.quantity ?? 0),
         revenue,

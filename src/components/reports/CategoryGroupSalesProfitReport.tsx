@@ -19,10 +19,14 @@ import {
   SIGNED_LINE_PROFIT_EXPR,
   SIGNED_LINE_QTY_EXPR,
   SIGNED_LINE_REVENUE_EXPR,
+  SQL_DISPLAY_ITEM_CODE,
   SQL_IS_SERVICE_LINE,
+  SQL_LINE_KIND_EXPR,
   SQL_LINE_RESOLVED_PRODUCT_ID,
   SQL_PL_SALES_OR_RETURN,
   SQL_SERVICE_CATEGORY_EXPR,
+  displayItemCode,
+  isUuidText,
   sqlLineKindFilter,
 } from '../../utils/lastPurchaseCostSql';
 import { toast } from 'sonner';
@@ -37,9 +41,22 @@ export interface CategoryGroupProductRow {
   productId: string;
   productCode: string;
   productName: string;
+  lineKind: 'product' | 'service';
   quantity: number;
   revenue: number;
   grossProfit: number;
+}
+
+/** UUID / tire kod hareket açmaz; hizmet satırında stok hareketi yok. */
+function movementLookupCode(code: string): string {
+  const shown = displayItemCode(code);
+  return shown === '—' ? '' : shown;
+}
+
+function canOpenProductMovement(p: CategoryGroupProductRow): boolean {
+  if (p.lineKind === 'service') return false;
+  if (isUuidText(p.productCode)) return false;
+  return Boolean(p.productId || movementLookupCode(p.productCode));
 }
 
 function groupRows(rows: CategoryGroupProductRow[]) {
@@ -120,6 +137,7 @@ export function CategoryGroupSalesProfitReport() {
         product_id: string;
         product_code: string;
         product_name: string;
+        line_kind: string;
         qty: string | number;
         revenue: string | number;
         gross_profit: string | number;
@@ -139,8 +157,9 @@ export function CategoryGroupSalesProfitReport() {
             CASE WHEN ${SQL_IS_SERVICE_LINE} THEN ${SQL_SERVICE_CATEGORY_EXPR} ELSE 'Diğer' END
           ) AS category_name,
           MAX(COALESCE((${SQL_LINE_RESOLVED_PRODUCT_ID})::text, '')) AS product_id,
-          COALESCE(NULLIF(TRIM(p.code), ''), NULLIF(TRIM(si.item_code), ''), '') AS product_code,
-          COALESCE(NULLIF(TRIM(si.item_name), ''), p.name, 'Bilinmeyen') AS product_name,
+          ${SQL_DISPLAY_ITEM_CODE} AS product_code,
+          COALESCE(NULLIF(TRIM(si.item_name), ''), p.name, svc.name, bsvc.name, 'Bilinmeyen') AS product_name,
+          ${SQL_LINE_KIND_EXPR} AS line_kind,
           SUM(${SIGNED_LINE_QTY_EXPR}) AS qty,
           SUM(${SIGNED_LINE_REVENUE_EXPR}) AS revenue,
           SUM(${SIGNED_LINE_PROFIT_EXPR}) AS gross_profit
@@ -173,8 +192,9 @@ export function CategoryGroupSalesProfitReport() {
             NULLIF(TRIM(COALESCE(p.category_code, '')), ''),
             CASE WHEN ${SQL_IS_SERVICE_LINE} THEN ${SQL_SERVICE_CATEGORY_EXPR} ELSE 'Diğer' END
           ),
-          COALESCE(NULLIF(TRIM(p.code), ''), NULLIF(TRIM(si.item_code), ''), ''),
-          COALESCE(NULLIF(TRIM(si.item_name), ''), p.name, 'Bilinmeyen')
+          ${SQL_DISPLAY_ITEM_CODE},
+          COALESCE(NULLIF(TRIM(si.item_name), ''), p.name, svc.name, bsvc.name, 'Bilinmeyen'),
+          ${SQL_LINE_KIND_EXPR}
         HAVING SUM(ABS(si.quantity)) <> 0
         ORDER BY 1, 2, SUM(${SIGNED_LINE_REVENUE_EXPR}) DESC
         `,
@@ -186,8 +206,9 @@ export function CategoryGroupSalesProfitReport() {
         groupName: r.group_name,
         categoryName: r.category_name,
         productId: String(r.product_id || '').trim(),
-        productCode: r.product_code,
+        productCode: displayItemCode(r.product_code),
         productName: r.product_name,
+        lineKind: r.line_kind === 'service' ? 'service' : 'product',
         quantity: Number(r.qty) || 0,
         revenue: Number(r.revenue) || 0,
         grossProfit: Number(r.gross_profit) || 0,
@@ -416,34 +437,45 @@ export function CategoryGroupSalesProfitReport() {
                                 <tbody className="divide-y divide-slate-100">
                                   {bucket.products
                                     .sort((a, b) => b.revenue - a.revenue)
-                                    .map((p, i) => (
+                                    .map((p, i) => {
+                                      const openable = canOpenProductMovement(p);
+                                      return (
                                       <tr
                                         key={`${p.productId}-${p.productCode}-${i}`}
-                                        className="hover:bg-emerald-50/80 cursor-pointer"
+                                        className={
+                                          openable
+                                            ? 'hover:bg-emerald-50/80 cursor-pointer'
+                                            : 'hover:bg-slate-50 cursor-default'
+                                        }
                                         onClick={(e) => {
                                           e.preventDefault();
                                           e.stopPropagation();
-                                          if (!p.productCode && !p.productId) {
+                                          if (p.lineKind === 'service' || isUuidText(p.productCode)) return;
+                                          const code = movementLookupCode(p.productCode);
+                                          if (!p.productId && !code) {
                                             toast.error(tm('rptProfitProductCodeMissing'));
                                             return;
                                           }
                                           setMovementTarget({
                                             productId: p.productId || undefined,
-                                            productCode: p.productCode,
+                                            productCode: code,
                                             productName: p.productName,
                                             startDate: toSqlDateInputString(dateFrom) || undefined,
                                             endDate: toSqlDateInputString(dateTo) || undefined,
                                           });
                                         }}
-                                        title={tm('rptProfitRowClickHint')}
+                                        title={openable ? tm('rptProfitRowClickHint') : undefined}
                                       >
                                         <td className="px-8 py-2 pl-14 font-medium text-slate-800">{p.productName}</td>
-                                        <td className="px-2 py-2 text-right text-slate-500">{p.productCode || '—'}</td>
+                                        <td className="px-2 py-2 text-right text-slate-500">
+                                          {displayItemCode(p.productCode)}
+                                        </td>
                                         <td className="px-2 py-2 text-right tabular-nums">{fmt(p.quantity)}</td>
                                         <td className="px-2 py-2 text-right tabular-nums text-emerald-700">{fmt(p.revenue)}</td>
                                         <td className="px-2 py-2 text-right tabular-nums text-indigo-700">{fmt(p.grossProfit)}</td>
                                       </tr>
-                                    ))}
+                                      );
+                                    })}
                                 </tbody>
                               </table>
                             </div>

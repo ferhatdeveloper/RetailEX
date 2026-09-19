@@ -29,6 +29,24 @@ export const SALES_TRCODES_SQL = '7, 8';
 export const SQL_UUID_TEXT_RE =
   "^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$";
 
+/** Ekranda UUID gösterme — kart kodu yoksa item_code yalnızca UUID değilse */
+export const SQL_NON_UUID_ITEM_CODE = `
+CASE
+  WHEN NULLIF(TRIM(si.item_code), '') IS NULL THEN NULL
+  WHEN TRIM(si.item_code) ~* '${SQL_UUID_TEXT_RE}' THEN NULL
+  ELSE NULLIF(TRIM(si.item_code), '')
+END
+`.trim();
+
+export const SQL_DISPLAY_ITEM_CODE = `
+COALESCE(
+  NULLIF(TRIM(p.code), ''),
+  NULLIF(TRIM(svc.code), ''),
+  ${SQL_NON_UUID_ITEM_CODE},
+  '—'
+)
+`.trim();
+
 /** Satış/alış satırından ürün UUID (product_id veya UUID item_code) */
 export const SQL_LINE_RESOLVED_PRODUCT_ID = `
 COALESCE(
@@ -386,6 +404,20 @@ export function resolveLineProductId(it: {
   return '';
 }
 
+export function isUuidText(value: unknown): boolean {
+  return UUID_RE.test(String(value ?? '').trim());
+}
+
+/** Rapor alt satırı: kart kodu; UUID item_code gösterilmez. */
+export function displayItemCode(...vals: unknown[]): string {
+  for (const v of vals) {
+    const s = String(v ?? '').trim();
+    if (!s || s === '—' || isUuidText(s)) continue;
+    return s;
+  }
+  return '—';
+}
+
 export function isServiceLineType(itemType?: unknown): boolean {
   const t = String(itemType || '').trim().toLocaleLowerCase('tr-TR');
   return t === 'hizmet' || t === 'service' || t === 'package' || t === 'paket';
@@ -415,6 +447,25 @@ export function unitCostFromPurchaseLine(it: {
   return Number(it.unit_cost ?? 0) || 0;
 }
 
+/** REST: satır unit_cost → hizmet alış → güzellik cost_price → reçete (0 atlanır). */
+export function restServiceUnitCost(opts: {
+  lineUnitCost?: unknown;
+  purchasePrice?: unknown;
+  beautyCostPrice?: unknown;
+  recipeUnitCost?: unknown;
+}): number {
+  for (const v of [
+    opts.lineUnitCost,
+    opts.purchasePrice,
+    opts.beautyCostPrice,
+    opts.recipeUnitCost,
+  ]) {
+    const n = Number(v ?? 0);
+    if (n) return n;
+  }
+  return 0;
+}
+
 /**
  * Satır COGS: malzeme → son alış birim × miktar; hizmet → hizmet birim maliyeti × miktar.
  * İşaret (iade) çağıran tarafta uygulanır.
@@ -424,9 +475,12 @@ export function lineCostAmount(opts: {
   lastPurchaseUnit?: number;
   itemType?: unknown;
   serviceUnitCost?: number;
+  /** item_type Malzeme olsa bile güzellik/hizmet kartı eşleştiyse true */
+  isService?: boolean;
 }): number {
   const qty = Number(opts.quantity) || 0;
-  if (isServiceLineType(opts.itemType)) {
+  const asService = opts.isService === true || isServiceLineType(opts.itemType);
+  if (asService) {
     const u = Number(opts.serviceUnitCost) || 0;
     if (u) return u * qty;
     return 0;
