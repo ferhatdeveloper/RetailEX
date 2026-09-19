@@ -31,6 +31,9 @@ ENV VITE_BRIDGE_URL=${VITE_BRIDGE_URL}
 # Dokploy/pg_bridge: PG_DUMP_TOKEN kullanılıyorsa köprü ile aynı değer (build zamanı bundle’a gider)
 ARG VITE_PG_DUMP_INTERNAL=
 ENV VITE_PG_DUMP_INTERNAL=${VITE_PG_DUMP_INTERNAL}
+# Boş = aynı origin /__grafana (nginx → grafana). Ayrı alan adı için tam URL.
+ARG VITE_GRAFANA_URL=
+ENV VITE_GRAFANA_URL=${VITE_GRAFANA_URL}
 # Vite önbelleği (transform / optimize) — büyük modül grafiğinde yeniden build’i hızlandırır
 # Start/DONE satırları: log kesilse bile tamamlanma/OOM ayrımı yapılabilsin
 RUN --mount=type=cache,target=/app/node_modules/.vite,sharing=locked \

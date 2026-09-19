@@ -11,6 +11,7 @@ services:
         VITE_BRIDGE_URL: ""
         VITE_MERKEZ_REST_URL: ${VITE_MERKEZ_REST_URL:-https://api.retailex.app/merkez}
         VITE_PG_DUMP_INTERNAL: ${VITE_PG_DUMP_INTERNAL:-}
+        VITE_GRAFANA_URL: ${VITE_GRAFANA_URL:-}
     image: retailex-web:latest
     container_name: retailex_frontend
     restart: always

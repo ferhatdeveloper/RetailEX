@@ -101,9 +101,10 @@ code=$(curl -s -o /dev/null -w '%{http_code}' --max-time 5 "http://127.0.0.1:${R
 echo "127.0.0.1:${RETAILEX_WEB_PORT:-8080} → HTTP ${code}"
 
 section "Konteyner özeti"
-docker ps --format 'table {{.Names}}\t{{.Status}}' | grep -E 'retailex|saas_postgres|postgrest|NAMES' || true
+docker ps --format 'table {{.Names}}\t{{.Status}}' | grep -E 'retailex|saas_postgres|postgrest|grafana|prometheus|cadvisor|NAMES' || true
 
 echo ""
 echo "=== Deploy tamamlandı ==="
 echo "Dış 404 ise Dokploy → Domains → retailex.app → retailex_frontend:80"
+echo "Grafana: /__grafana/ (Sistem Sağlığı) — yoksa: bash database/scripts/dokploy-redeploy-grafana.sh"
 echo "Yalnız UI: POSTGRES_PASSWORD='...' bash database/scripts/dokploy-redeploy-frontend.sh"

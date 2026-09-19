@@ -158,6 +158,69 @@ services:
     networks:
       - berqenas_net
 
+  # Grafana — React Sistem Sağlığı iframe: aynı origin /__grafana (nginx.frontend.conf)
+  # Git push + Redeploy ile algılanır (resmi imaj; Vite rebuild gerekmez). UI gömme için frontend rebuild.
+  # Hızlı: POSTGRES_PASSWORD='...' bash database/scripts/dokploy-redeploy-grafana.sh
+  prometheus:
+    image: prom/prometheus:v3.2.1
+    container_name: retailex_prometheus
+    restart: always
+    command:
+      - --config.file=/etc/prometheus/prometheus.yml
+      - --storage.tsdb.path=/prometheus
+      - --storage.tsdb.retention.time=15d
+      - --web.enable-lifecycle
+    volumes:
+      - ./docker/prometheus/prometheus.yml:/etc/prometheus/prometheus.yml:ro
+      - saas_prometheus_data:/prometheus
+    networks:
+      - berqenas_net
+
+  cadvisor:
+    image: gcr.io/cadvisor/cadvisor:v0.49.1
+    container_name: retailex_cadvisor
+    restart: always
+    privileged: true
+    devices:
+      - /dev/kmsg
+    volumes:
+      - /:/rootfs:ro
+      - /var/run:/var/run:ro
+      - /sys:/sys:ro
+      - /var/lib/docker/:/var/lib/docker:ro
+      - /dev/disk/:/dev/disk:ro
+    networks:
+      - berqenas_net
+
+  grafana:
+    image: grafana/grafana:11.5.2
+    container_name: retailex_grafana
+    restart: always
+    depends_on:
+      - prometheus
+      - cadvisor
+    environment:
+      GF_SECURITY_ADMIN_USER: ${GF_SECURITY_ADMIN_USER:-admin}
+      GF_SECURITY_ADMIN_PASSWORD: ${GF_SECURITY_ADMIN_PASSWORD:-change_this_grafana_password}
+      GF_USERS_ALLOW_SIGN_UP: "false"
+      # React iframe gömme (Sistem Sağlığı)
+      GF_SECURITY_ALLOW_EMBEDDING: "true"
+      GF_AUTH_ANONYMOUS_ENABLED: "true"
+      GF_AUTH_ANONYMOUS_ORG_ROLE: Viewer
+      GF_AUTH_DISABLE_LOGIN_FORM: "false"
+      # Nginx alt yol: https://<alan>/__grafana/
+      GF_SERVER_ROOT_URL: ${GF_SERVER_ROOT_URL:-%(protocol)s://%(domain)s/__grafana/}
+      GF_SERVER_SERVE_FROM_SUB_PATH: "true"
+      GF_SERVER_DOMAIN: ${GF_SERVER_DOMAIN:-}
+    ports:
+      - "${GRAFANA_PORT:-3000}:3000"
+    volumes:
+      - saas_grafana_data:/var/lib/grafana
+      - ./docker/grafana/provisioning:/etc/grafana/provisioning:ro
+      - ./docker/grafana/dashboards:/var/lib/grafana/dashboards:ro
+    networks:
+      - berqenas_net
+
   retailex_bridge:
     build:
       context: .
@@ -199,6 +262,7 @@ services:
         VITE_MERKEZ_REST_URL: ${VITE_MERKEZ_REST_URL:-https://api.retailex.app/merkez}
         # 1 = yalnız köprü iç pg_dump; 0 = yalnız harici connStr; boş = otomatik (api:443 / PostgREST → iç)
         VITE_PG_DUMP_INTERNAL: ${VITE_PG_DUMP_INTERNAL:-}
+        VITE_GRAFANA_URL: ${VITE_GRAFANA_URL:-}
     image: retailex-web:latest
     container_name: retailex_frontend
     restart: always
@@ -207,6 +271,7 @@ services:
     depends_on:
       - retailex_bridge
       - retailex_whatsapp_bridge
+      - grafana
     healthcheck:
       test: ["CMD-SHELL", "wget -qO- http://127.0.0.1:80/ >/dev/null 2>&1 || exit 1"]
       interval: 15s
@@ -591,4 +656,6 @@ networks:
 volumes:
   saas_postgres_data:
   saas_pgadmin_data:
+  saas_prometheus_data:
+  saas_grafana_data:
   retailex_wa_bridge_data:
