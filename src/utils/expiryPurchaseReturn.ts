@@ -50,8 +50,8 @@ export function canReturnExpiringPurchase(row: {
 
 export function clampExpiryReturnQty(qty: number, maxQty: number): number {
   if (!Number.isFinite(qty) || qty <= 0) return 0;
-  const max = Number.isFinite(maxQty) && maxQty > 0 ? maxQty : qty;
-  return Math.min(qty, max);
+  if (!Number.isFinite(maxQty) || maxQty <= 0) return 0;
+  return Math.min(qty, maxQty);
 }
 
 export function expiryReturnLineAmounts(args: {

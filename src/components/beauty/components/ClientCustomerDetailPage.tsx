@@ -56,7 +56,7 @@ import type {
     BeautyCustomerHealth,
 } from '../../../types/beauty';
 import { formatMoneyAmount } from '../../../utils/formatMoney';
-import { beautySalePocketCollected } from '../../../utils/saleCollectedAmounts';
+import { beautySalePocketCollected, beautySaleRemainingCari } from '../../../utils/saleCollectedAmounts';
 import { fetchCurrentAccounts } from '../../../services/api/currentAccounts';
 import { ERP_SETTINGS } from '../../../services/postgres';
 import { toast } from 'sonner';
@@ -427,8 +427,13 @@ export function ClientCustomerDetailPage({ customerId, onBack }: ClientCustomerD
                 credit_card: 'bPaymentMethodCard',
                 transfer: 'bPaymentMethodTransfer',
                 bank_transfer: 'bPaymentMethodTransfer',
+                credit: 'bVeresiyeCari',
+                veresiye: 'bVeresiyeCari',
+                open_account: 'bVeresiyeCari',
+                acik_cari: 'bVeresiyeCari',
             };
-            const k = map[m];
+            const key = String(m ?? '').trim().toLowerCase();
+            const k = map[key];
             return k ? tm(k) : m;
         },
         [tm],
@@ -617,14 +622,41 @@ export function ClientCustomerDetailPage({ customerId, onBack }: ClientCustomerD
             .slice(0, 3);
     }, [selected, mergedCustomers]);
 
-    /** Karttaki total_spent / appointment_count güncellenmemiş olsa bile yüklenen satış ve randevulardan özet göster */
+    /**
+     * Özet KPI — muhasebe ayrımı:
+     * - Toplam Harcama = belge/ciro (sale.total)
+     * - Alınan tutar = nakit/kart/havale (beautySalePocketCollected)
+     * - Veresiye (cari) = cariye yazılan kalan (beautySaleRemainingCari)
+     * Bakiye (üstte) = açık cari ledger; satış kalanı ile aynı yönde (müşteri borcu +).
+     */
     const profileStats = useMemo(() => {
         if (!selected) {
-            return { totalSpent: 0, appointmentCount: 0, lastVisitLabel: '-' };
+            return {
+                totalSpent: 0,
+                collectedAmount: 0,
+                veresiyeCari: 0,
+                appointmentCount: 0,
+                lastVisitLabel: '-',
+            };
         }
-        const paidSales = salesHistory.filter(s => (s.payment_status || 'paid') === 'paid');
-        const sumSales = paidSales.reduce((acc, s) => acc + beautySalePocketCollected(s), 0);
-        const totalSpent = sumSales > 0 ? sumSales : Number(selected.total_spent ?? 0);
+        const activeSales = salesHistory.filter(s => {
+            const st = String(s.payment_status || 'paid').toLowerCase();
+            return st !== 'cancelled' && st !== 'canceled' && st !== 'void';
+        });
+        const sumDocument = activeSales.reduce((acc, s) => acc + Math.max(0, Number(s.total) || 0), 0);
+        const collectedAmount = activeSales.reduce((acc, s) => acc + beautySalePocketCollected(s), 0);
+        const veresiyeCari = activeSales.reduce((acc, s) => acc + beautySaleRemainingCari(s), 0);
+        /** Belge tutarı; satış yoksa kart total_spent, o da yoksa tamamlanmış randevu fiyatları */
+        let totalSpent = activeSales.length > 0 ? sumDocument : Number(selected.total_spent ?? 0);
+        if (!(totalSpent > 0) && activeSales.length === 0) {
+            const fromApts = pastAppointments
+                .filter(a => {
+                    const st = String(a.status ?? '').toLowerCase();
+                    return st === 'completed' || st === 'in_progress';
+                })
+                .reduce((acc, a) => acc + Math.max(0, Number(a.total_price) || 0), 0);
+            if (fromApts > 0) totalSpent = fromApts;
+        }
         const appointmentCount =
             pastAppointments.length > 0 ? pastAppointments.length : Number(selected.appointment_count ?? 0);
         let bestYmd: string | undefined;
@@ -637,7 +669,7 @@ export function ClientCustomerDetailPage({ customerId, onBack }: ClientCustomerD
         const fromSel = selected.last_appointment_date ? String(selected.last_appointment_date).slice(0, 10) : undefined;
         if (fromSel && (!bestYmd || fromSel > bestYmd)) bestYmd = fromSel;
         const lastVisitLabel = bestYmd ? new Date(bestYmd).toLocaleDateString(dateLocale) : '-';
-        return { totalSpent, appointmentCount, lastVisitLabel };
+        return { totalSpent, collectedAmount, veresiyeCari, appointmentCount, lastVisitLabel };
     }, [selected, salesHistory, pastAppointments, dateLocale]);
 
     const historyColumns: ColumnsType<UnifiedHistoryRow> = useMemo(
@@ -843,6 +875,28 @@ export function ClientCustomerDetailPage({ customerId, onBack }: ClientCustomerD
                 render: (_, r) => <Typography.Text strong>{formatCurrency(r.total)}</Typography.Text>,
             },
             {
+                title: tm('bCollectedAmount'),
+                key: 'paid',
+                width: 120,
+                align: 'right' as const,
+                render: (_, r) => formatCurrency(beautySalePocketCollected(r)),
+            },
+            {
+                title: tm('bVeresiyeCari'),
+                key: 'cari',
+                width: 120,
+                align: 'right' as const,
+                render: (_, r) => {
+                    const rem = beautySaleRemainingCari(r);
+                    if (rem <= 1e-9) return '—';
+                    return (
+                        <Typography.Text type="warning" strong>
+                            {formatCurrency(rem)}
+                        </Typography.Text>
+                    );
+                },
+            },
+            {
                 title: tm('bPaymentMethod'),
                 dataIndex: 'payment_method',
                 width: 120,
@@ -889,9 +943,26 @@ export function ClientCustomerDetailPage({ customerId, onBack }: ClientCustomerD
                 title: tm('status'),
                 key: 'ps',
                 width: 100,
-                render: (_, r) => (
-                    <Tag color={r.payment_status === 'paid' ? 'success' : 'warning'}>{paymentStatusLabel(String(r.payment_status))}</Tag>
-                ),
+                render: (_, r) => {
+                    const collected = beautySalePocketCollected(r);
+                    const rem = beautySaleRemainingCari(r);
+                    const st = String(r.payment_status || 'paid').toLowerCase();
+                    let label = paymentStatusLabel(String(r.payment_status));
+                    let color: string = st === 'paid' ? 'success' : 'warning';
+                    if (st !== 'cancelled' && st !== 'canceled' && st !== 'void') {
+                        if (rem > 1e-9 && collected > 1e-9) {
+                            label = tm('bPaymentStatusPartial');
+                            color = 'warning';
+                        } else if (rem > 1e-9 && collected <= 1e-9) {
+                            label = tm('bVeresiyeCari');
+                            color = 'orange';
+                        } else if (rem <= 1e-9 && collected > 1e-9) {
+                            label = tm('bPaymentStatusPaid');
+                            color = 'success';
+                        }
+                    }
+                    return <Tag color={color}>{label}</Tag>;
+                },
             },
             {
                 title: tm('bSaleInvoice'),
@@ -1180,6 +1251,26 @@ export function ClientCustomerDetailPage({ customerId, onBack }: ClientCustomerD
                   ),
                   children: (
                       <Card bordered className="!shadow-none" styles={{ body: { padding: 0 } }}>
+                          {!histLoading && salesHistory.length > 0 ? (
+                              <div className="flex flex-wrap gap-4 border-b border-[#f0f0f0] px-3 py-2 text-sm">
+                                  <Typography.Text type="secondary">
+                                      {tm('bTotalSpent')}:{' '}
+                                      <Typography.Text strong>{formatCurrency(profileStats.totalSpent)}</Typography.Text>
+                                  </Typography.Text>
+                                  <Typography.Text type="secondary">
+                                      {tm('bCollectedAmount')}:{' '}
+                                      <Typography.Text strong className="!text-green-700">
+                                          {formatCurrency(profileStats.collectedAmount)}
+                                      </Typography.Text>
+                                  </Typography.Text>
+                                  <Typography.Text type="secondary">
+                                      {tm('bVeresiyeCari')}:{' '}
+                                      <Typography.Text strong className="!text-orange-600">
+                                          {formatCurrency(profileStats.veresiyeCari)}
+                                      </Typography.Text>
+                                  </Typography.Text>
+                              </div>
+                          ) : null}
                           <Table<BeautySale>
                               size="middle"
                               bordered
@@ -1460,7 +1551,7 @@ export function ClientCustomerDetailPage({ customerId, onBack }: ClientCustomerD
                                 />
 
                                 <Row gutter={[16, 16]} className="mt-4">
-                                    <Col xs={24} sm={12} lg={6}>
+                                    <Col xs={24} sm={12} lg={8} xl={4}>
                                         <Card size="small" bordered className="!shadow-none h-full">
                                             <Statistic
                                                 title={tm('bLoyaltyPoints')}
@@ -1469,7 +1560,7 @@ export function ClientCustomerDetailPage({ customerId, onBack }: ClientCustomerD
                                             />
                                         </Card>
                                     </Col>
-                                    <Col xs={24} sm={12} lg={6}>
+                                    <Col xs={24} sm={12} lg={8} xl={4}>
                                         <Card size="small" bordered className="!shadow-none h-full">
                                             <Statistic
                                                 title={tm('bTotalSpent')}
@@ -1478,7 +1569,25 @@ export function ClientCustomerDetailPage({ customerId, onBack }: ClientCustomerD
                                             />
                                         </Card>
                                     </Col>
-                                    <Col xs={24} sm={12} lg={6}>
+                                    <Col xs={24} sm={12} lg={8} xl={4}>
+                                        <Card size="small" bordered className="!shadow-none h-full">
+                                            <Statistic
+                                                title={tm('bCollectedAmount')}
+                                                value={formatCurrency(profileStats.collectedAmount)}
+                                                prefix={<CheckCircleOutlined className="text-green-600" />}
+                                            />
+                                        </Card>
+                                    </Col>
+                                    <Col xs={24} sm={12} lg={8} xl={4}>
+                                        <Card size="small" bordered className="!shadow-none h-full">
+                                            <Statistic
+                                                title={tm('bVeresiyeCari')}
+                                                value={formatCurrency(profileStats.veresiyeCari)}
+                                                prefix={<AccountBookOutlined className="text-orange-500" />}
+                                            />
+                                        </Card>
+                                    </Col>
+                                    <Col xs={24} sm={12} lg={8} xl={4}>
                                         <Card size="small" bordered className="!shadow-none h-full">
                                             <Statistic
                                                 title={tm('bAppointmentCountLabel')}
@@ -1487,7 +1596,7 @@ export function ClientCustomerDetailPage({ customerId, onBack }: ClientCustomerD
                                             />
                                         </Card>
                                     </Col>
-                                    <Col xs={24} sm={12} lg={6}>
+                                    <Col xs={24} sm={12} lg={8} xl={4}>
                                         <Card size="small" bordered className="!shadow-none h-full">
                                             <Statistic
                                                 title={tm('bLastVisit')}

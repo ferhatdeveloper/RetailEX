@@ -1,27 +1,23 @@
 /**
  * ExRetailOS - Product Profitability Report
- * 
- * Ürün bazlı karlılık analizi
- * - Satış miktarı
- * - Satış tutarı
- * - Maliyet (FIFO)
- * - Brüt kar
- * - Kar marjı %
- * 
- * @created 2024-12-18
+ *
+ * Ürün / hizmet bazlı karlılık analizi — gerçek satış + SMM
+ * (CostReport ile aynı getCostProfitAnalysis zinciri).
  */
 
-import { useState, useEffect } from 'react';
-import { TrendingUp, TrendingDown, Package, Banknote, Percent, Download, Search, Filter } from 'lucide-react';
+import { useState, useEffect, useMemo, useCallback } from 'react';
+import { TrendingUp, TrendingDown, Package, Banknote, Download, Search } from 'lucide-react';
 import { useFirmaDonem } from '../../contexts/FirmaDonemContext';
 import { useLanguage } from '../../contexts/LanguageContext';
-import { CostAccountingService } from '../../services/costAccountingService';
+import { getCostProfitAnalysis } from '../../services/layeredInventoryCost';
 import { displayItemCode } from '../../utils/lastPurchaseCostSql';
+import { toSqlDateInputString, localTodayDateKey } from '../../utils/localCalendarDate';
 import { toast } from 'sonner';
 
 interface ProductProfitData {
   productCode: string;
   productName: string;
+  lineKind: 'product' | 'service';
   totalQuantitySold: number;
   totalRevenue: number;
   totalCost: number;
@@ -31,9 +27,32 @@ interface ProductProfitData {
   avgUnitCost: number;
 }
 
+function defaultMonthRange(): { start: string; end: string } {
+  const end = localTodayDateKey();
+  const d = new Date();
+  d.setDate(1);
+  const start = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-01`;
+  return { start, end };
+}
+
 export function ProductProfitabilityReport() {
   const { tm } = useLanguage();
-  const { selectedFirma, selectedDonem } = useFirmaDonem();
+  const { selectedFirma, selectedDonem, selectedFirm, selectedPeriod } = useFirmaDonem();
+  const firm = selectedFirm || selectedFirma;
+  const period = selectedPeriod || selectedDonem;
+
+  const initialRange = useMemo(() => {
+    const fromPeriodStart = toSqlDateInputString(period?.beg_date || '');
+    const fromPeriodEnd = toSqlDateInputString(period?.end_date || '');
+    if (fromPeriodStart && fromPeriodEnd) {
+      return { start: fromPeriodStart, end: fromPeriodEnd };
+    }
+    return defaultMonthRange();
+  }, [period?.beg_date, period?.end_date]);
+
+  const [startDate, setStartDate] = useState(initialRange.start);
+  const [endDate, setEndDate] = useState(initialRange.end);
+  const [lineKindFilter, setLineKindFilter] = useState<'all' | 'product' | 'service'>('all');
   const [loading, setLoading] = useState(false);
   const [data, setData] = useState<ProductProfitData[]>([]);
   const [searchQuery, setSearchQuery] = useState('');
@@ -41,127 +60,83 @@ export function ProductProfitabilityReport() {
   const [filterProfitable, setFilterProfitable] = useState<'all' | 'profitable' | 'loss'>('all');
 
   useEffect(() => {
-    if (selectedFirma && selectedDonem) {
-      loadData();
-    }
-  }, [selectedFirma, selectedDonem]);
+    setStartDate(initialRange.start);
+    setEndDate(initialRange.end);
+  }, [initialRange.start, initialRange.end]);
 
-  const loadData = async () => {
-    if (!selectedFirma || !selectedDonem) return;
+  const loadData = useCallback(async () => {
+    if (!firm) return;
 
     setLoading(true);
     try {
-      // Maliyet muhasebesi: sadece OUT çıkışları maliyet tüketir (FIFO).
-      // İade/transfer/adjustment ayrı olarak OUT ile birlikte gelmiyor; bu yüzden
-      // ayrı IN çağrısı yaparak iade (purchase return) kayıtlarını gelirden
-      // çıkarmadan önce birleştiriyoruz. Backend service imzasını değiştirmek
-      // mümkün olmadığı için iki ayrı sorgu paralel çalıştırılır.
-      const firmaId = selectedFirma.id ?? String(selectedFirma.logicalref);
-      const donemId = selectedDonem.id ?? String(selectedDonem.logicalref);
-
-      const [outMovements, inMovements] = await Promise.all([
-        CostAccountingService.getStockMovements({
-          firma_id: firmaId,
-          donem_id: donemId,
-          movement_type: 'OUT'
-        }),
-        CostAccountingService.getStockMovements({
-          firma_id: firmaId,
-          donem_id: donemId,
-          movement_type: 'IN'
-        })
-      ]);
-
-      const allMovements = [...outMovements, ...inMovements];
-
-      // Aggregate by product
-      const productMap = new Map<string, ProductProfitData>();
-
-      allMovements.forEach(movement => {
-        const key = movement.product_code;
-        if (!key) return;
-
-        const isOut = movement.movement_type === 'OUT';
-        // Satış hasılatı sadece OUT hareketlerinden gelir; IN'ler alış/iade olarak
-        // maliyet tarafında değerlendirilir (iade varsa gelirden düşülmesi gerekir —
-        // backend bunu desteklemediğinden şimdilik IN'leri maliyet tarafında negatif
-        // alarak toplam maliyeti düşürüyoruz; bu yaklaşım "alış iadesi = stoktan düş"
-        // varsayımıyla uyumlu).
-        const signedQty = isOut ? movement.quantity : -movement.quantity;
-        const signedRevenue = isOut ? (movement.total_price || 0) : 0;
-        const signedCost = isOut
-          ? (movement.total_cost || 0)
-          : -(movement.total_cost || 0); // iade alışı: stok maliyetini düşürür
-
-        if (!productMap.has(key)) {
-          productMap.set(key, {
-            productCode: displayItemCode(movement.product_code),
-            productName: movement.product_name,
-            totalQuantitySold: 0,
-            totalRevenue: 0,
-            totalCost: 0,
-            grossProfit: 0,
-            profitMargin: 0,
-            avgUnitPrice: 0,
-            avgUnitCost: 0
-          });
-        }
-
-        const product = productMap.get(key)!;
-        product.totalQuantitySold += signedQty;
-        product.totalRevenue += signedRevenue;
-        product.totalCost += signedCost;
+      const start = toSqlDateInputString(startDate) || startDate;
+      const end = toSqlDateInputString(endDate) || endDate;
+      const rows = await getCostProfitAnalysis({
+        startDate: start,
+        endDate: end,
+        firmNr: firm.firm_nr,
+        periodNr: period?.nr,
       });
 
-      // Calculate metrics
-      const results: ProductProfitData[] = [];
-      productMap.forEach(product => {
-        product.grossProfit = product.totalRevenue - product.totalCost;
-        // Negatif ciro olmaması gerekir; koruma amaçlı mutlak değer kullanmıyoruz.
-        product.profitMargin = product.totalRevenue > 0
-          ? (product.grossProfit / product.totalRevenue) * 100
-          : 0;
-        const qtyAbs = Math.abs(product.totalQuantitySold);
-        product.avgUnitPrice = qtyAbs > 0
-          ? product.totalRevenue / qtyAbs
-          : 0;
-        product.avgUnitCost = qtyAbs > 0
-          ? product.totalCost / qtyAbs
-          : 0;
-
-        results.push(product);
+      const results: ProductProfitData[] = rows.map((r) => {
+        const qty = Number(r.quantity) || 0;
+        const revenue = Number(r.revenue) || 0;
+        const cost = Number(r.cogs) || 0;
+        const grossProfit = Number(r.profit) || revenue - cost;
+        const qtyAbs = Math.abs(qty);
+        return {
+          productCode: displayItemCode(r.productCode),
+          productName: r.productName || '',
+          lineKind: r.lineKind === 'service' ? 'service' : 'product',
+          totalQuantitySold: qty,
+          totalRevenue: revenue,
+          totalCost: cost,
+          grossProfit,
+          profitMargin: Number(r.marginPercent) || (revenue > 0 ? (grossProfit / revenue) * 100 : 0),
+          avgUnitPrice: qtyAbs > 0 ? revenue / qtyAbs : 0,
+          avgUnitCost: qtyAbs > 0 ? cost / qtyAbs : 0,
+        };
       });
 
       setData(results);
     } catch (error) {
       console.error('[ProductProfitabilityReport] Error:', error);
       toast.error(tm('rptProfitLoadError'));
+      setData([]);
     } finally {
       setLoading(false);
     }
-  };
+  }, [firm, period?.nr, startDate, endDate, tm]);
+
+  useEffect(() => {
+    if (firm) {
+      void loadData();
+    }
+  }, [firm, loadData]);
 
   const formatMoney = (amount: number) => {
     return amount.toLocaleString('en-IQ', {
       minimumFractionDigits: 0,
-      maximumFractionDigits: 0
+      maximumFractionDigits: 0,
     });
   };
 
-  // Filter and sort
-  let filteredData = data.filter(p => {
-    const matchesSearch = !searchQuery || 
+  let filteredData = data.filter((p) => {
+    const matchesKind =
+      lineKindFilter === 'all' ||
+      (lineKindFilter === 'product' && p.lineKind === 'product') ||
+      (lineKindFilter === 'service' && p.lineKind === 'service');
+    const matchesSearch =
+      !searchQuery ||
       p.productCode.toLowerCase().includes(searchQuery.toLowerCase()) ||
       p.productName.toLowerCase().includes(searchQuery.toLowerCase());
-    
-    const matchesFilter = filterProfitable === 'all' ||
+    const matchesFilter =
+      filterProfitable === 'all' ||
       (filterProfitable === 'profitable' && p.grossProfit > 0) ||
       (filterProfitable === 'loss' && p.grossProfit < 0);
-    
-    return matchesSearch && matchesFilter;
+    return matchesKind && matchesSearch && matchesFilter;
   });
 
-  // Sort
   filteredData.sort((a, b) => {
     if (sortBy === 'profit') return b.grossProfit - a.grossProfit;
     if (sortBy === 'revenue') return b.totalRevenue - a.totalRevenue;
@@ -169,7 +144,6 @@ export function ProductProfitabilityReport() {
     return 0;
   });
 
-  // Summary
   const totalRevenueSum = filteredData.reduce((sum, p) => sum + p.totalRevenue, 0);
   const totalCostSum = filteredData.reduce((sum, p) => sum + p.totalCost, 0);
   const totalProfitSum = filteredData.reduce((sum, p) => sum + p.grossProfit, 0);
@@ -178,30 +152,34 @@ export function ProductProfitabilityReport() {
     totalRevenue: totalRevenueSum,
     totalCost: totalCostSum,
     totalProfit: totalProfitSum,
-    profitableProducts: filteredData.filter(p => p.grossProfit > 0).length,
-    lossProducts: filteredData.filter(p => p.grossProfit < 0).length,
+    profitableProducts: filteredData.filter((p) => p.grossProfit > 0).length,
+    lossProducts: filteredData.filter((p) => p.grossProfit < 0).length,
     profitMargin: totalRevenueSum > 0 ? (totalProfitSum / totalRevenueSum) * 100 : 0,
   };
 
   const exportToExcel = () => {
-    // Simple CSV export (KDV hariç — bölge: IRAK, KDV uygulanmaz).
-    // Başlıkta bu açıkça belirtilir; işaret korunur (Math.abs YOK).
-    let csv = 'Ürün Kodu,Ürün Adı,Miktar,Satış Tutarı (KDV Hariç IQD),Maliyet (KDV Hariç IQD),Brüt Kar (KDV Hariç IQD),Kar Marjı %\n';
-    filteredData.forEach(p => {
-      csv += `${displayItemCode(p.productCode)},${p.productName},${p.totalQuantitySold},${p.totalRevenue},${p.totalCost},${p.grossProfit},${p.profitMargin.toFixed(2)}\n`;
+    let csv =
+      'Tür,Ürün Kodu,Ürün Adı,Miktar,Satış Tutarı (KDV Hariç IQD),Maliyet (KDV Hariç IQD),Brüt Kar (KDV Hariç IQD),Kar Marjı %\n';
+    filteredData.forEach((p) => {
+      const kind =
+        p.lineKind === 'service'
+          ? tm('reportsDailyKindService')
+          : tm('reportsDailyKindProduct');
+      csv += `${kind},${displayItemCode(p.productCode)},${p.productName},${p.totalQuantitySold},${p.totalRevenue},${p.totalCost},${p.grossProfit},${p.profitMargin.toFixed(2)}\n`;
     });
 
-    const blob = new Blob([csv], { type: 'text/csv' });
+    const blob = new Blob(['\uFEFF' + csv], { type: 'text/csv;charset=utf-8' });
     const url = window.URL.createObjectURL(blob);
     const a = document.createElement('a');
     a.href = url;
-    a.download = `product-profitability-${selectedDonem?.donem_adi ?? selectedDonem?.name ?? 'donem'}.csv`;
+    a.download = `product-profitability-${period?.donem_adi ?? period?.name ?? 'donem'}.csv`;
     a.click();
+    window.URL.revokeObjectURL(url);
 
     toast.success(tm('rptProfitExportOk'));
   };
 
-  if (!selectedFirma || !selectedDonem) {
+  if (!firm || !period) {
     return (
       <div className="bg-yellow-50 border border-yellow-200 rounded-lg p-4">
         <div className="flex items-center gap-2 text-yellow-800">
@@ -212,9 +190,10 @@ export function ProductProfitabilityReport() {
     );
   }
 
+  const currency = firm.ana_para_birimi || 'IQD';
+
   return (
     <div className="space-y-4">
-      {/* Header */}
       <div className="bg-white rounded-lg border p-4">
         <div className="flex items-center justify-between mb-4">
           <div className="flex items-center gap-3">
@@ -222,11 +201,11 @@ export function ProductProfitabilityReport() {
             <div>
               <h2 className="text-xl font-semibold">{tm('rptProfitProductTitle')}</h2>
               <div className="text-sm text-gray-600">
-                {selectedFirma.firma_adi} / {selectedDonem.donem_adi}
+                {firm.firma_adi} / {period.donem_adi ?? period.name}
               </div>
             </div>
           </div>
-          
+
           <button
             onClick={exportToExcel}
             disabled={filteredData.length === 0}
@@ -237,9 +216,30 @@ export function ProductProfitabilityReport() {
           </button>
         </div>
 
-        {/* Filters */}
-        <div className="flex gap-3">
-          <div className="flex-1 relative">
+        <div className="flex gap-3 flex-wrap items-end">
+          <div>
+            <label className="block text-[10px] font-bold text-gray-500 uppercase mb-1">
+              {tm('rptProfitDateFrom')}
+            </label>
+            <input
+              type="date"
+              value={startDate}
+              onChange={(e) => setStartDate(toSqlDateInputString(e.target.value) || e.target.value)}
+              className="px-3 py-2 border rounded-lg text-sm"
+            />
+          </div>
+          <div>
+            <label className="block text-[10px] font-bold text-gray-500 uppercase mb-1">
+              {tm('rptProfitDateTo')}
+            </label>
+            <input
+              type="date"
+              value={endDate}
+              onChange={(e) => setEndDate(toSqlDateInputString(e.target.value) || e.target.value)}
+              className="px-3 py-2 border rounded-lg text-sm"
+            />
+          </div>
+          <div className="flex-1 min-w-[12rem] relative">
             <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" />
             <input
               type="text"
@@ -251,8 +251,18 @@ export function ProductProfitabilityReport() {
           </div>
 
           <select
+            value={lineKindFilter}
+            onChange={(e) => setLineKindFilter(e.target.value as 'all' | 'product' | 'service')}
+            className="px-3 py-2 border rounded-lg"
+          >
+            <option value="all">{tm('reportsDailyKindAll')}</option>
+            <option value="product">{tm('reportsDailyKindProduct')}</option>
+            <option value="service">{tm('reportsDailyKindService')}</option>
+          </select>
+
+          <select
             value={filterProfitable}
-            onChange={(e) => setFilterProfitable(e.target.value as any)}
+            onChange={(e) => setFilterProfitable(e.target.value as 'all' | 'profitable' | 'loss')}
             className="px-3 py-2 border rounded-lg"
           >
             <option value="all">{tm('rptProfitFilterAll')}</option>
@@ -262,7 +272,7 @@ export function ProductProfitabilityReport() {
 
           <select
             value={sortBy}
-            onChange={(e) => setSortBy(e.target.value as any)}
+            onChange={(e) => setSortBy(e.target.value as 'profit' | 'revenue' | 'margin')}
             className="px-3 py-2 border rounded-lg"
           >
             <option value="profit">{tm('rptProfitSortByProfit')}</option>
@@ -270,9 +280,12 @@ export function ProductProfitabilityReport() {
             <option value="margin">{tm('rptProfitSortByMargin')}</option>
           </select>
         </div>
+        <p className="mt-2 text-[11px] text-gray-500">
+          {tm('costProfitCogsMixedNote') ||
+            'Malzeme SMM: FIFO katman. Hizmet SMM: kart cost_price / alış / reçete. Kâr = satış − SMM.'}
+        </p>
       </div>
 
-      {/* Summary Cards */}
       <div className="grid grid-cols-4 gap-4">
         <div className="bg-gradient-to-br from-blue-50 to-blue-100 border-2 border-blue-200 rounded-lg p-4">
           <div className="flex items-center gap-2 mb-2">
@@ -293,7 +306,7 @@ export function ProductProfitabilityReport() {
             <div className="text-sm text-green-700">{tm('rptProfitTotalSales')}</div>
           </div>
           <div className="text-2xl font-bold text-green-900">
-            {formatMoney(summary.totalRevenue)} IQD
+            {formatMoney(summary.totalRevenue)} {currency}
           </div>
         </div>
 
@@ -303,41 +316,49 @@ export function ProductProfitabilityReport() {
             <div className="text-sm text-orange-700">{tm('rptProfitTotalCost')}</div>
           </div>
           <div className="text-2xl font-bold text-orange-900">
-            {formatMoney(summary.totalCost)} IQD
+            {formatMoney(summary.totalCost)} {currency}
           </div>
         </div>
 
-        <div className={`bg-gradient-to-br rounded-lg p-4 border-2 ${
-          summary.totalProfit >= 0
-            ? 'from-emerald-50 to-emerald-100 border-emerald-200'
-            : 'from-red-50 to-red-100 border-red-200'
-        }`}>
+        <div
+          className={`bg-gradient-to-br rounded-lg p-4 border-2 ${
+            summary.totalProfit >= 0
+              ? 'from-emerald-50 to-emerald-100 border-emerald-200'
+              : 'from-red-50 to-red-100 border-red-200'
+          }`}
+        >
           <div className="flex items-center gap-2 mb-2">
             {summary.totalProfit >= 0 ? (
               <TrendingUp className="w-5 h-5 text-emerald-600" />
             ) : (
               <TrendingDown className="w-5 h-5 text-red-600" />
             )}
-            <div className={`text-sm ${
-              summary.totalProfit >= 0 ? 'text-emerald-700' : 'text-red-700'
-            }`}>
+            <div
+              className={`text-sm ${
+                summary.totalProfit >= 0 ? 'text-emerald-700' : 'text-red-700'
+              }`}
+            >
               {tm('rptProfitTotalProfit')}
             </div>
           </div>
-          <div className={`text-2xl font-bold ${
-            summary.totalProfit >= 0 ? 'text-emerald-900' : 'text-red-900'
-          }`}>
-            {summary.totalProfit < 0 ? '-' : ''}{formatMoney(Math.abs(summary.totalProfit))} IQD
+          <div
+            className={`text-2xl font-bold ${
+              summary.totalProfit >= 0 ? 'text-emerald-900' : 'text-red-900'
+            }`}
+          >
+            {summary.totalProfit < 0 ? '-' : ''}
+            {formatMoney(Math.abs(summary.totalProfit))} {currency}
           </div>
-          <div className={`text-xs mt-1 ${
-            summary.totalProfit >= 0 ? 'text-emerald-600' : 'text-red-600'
-          }`}>
+          <div
+            className={`text-xs mt-1 ${
+              summary.totalProfit >= 0 ? 'text-emerald-600' : 'text-red-600'
+            }`}
+          >
             {tm('rptProfitMarginValue').replace('{n}', summary.profitMargin.toFixed(2))}
           </div>
         </div>
       </div>
 
-      {/* Data Table */}
       <div className="bg-white rounded-lg border overflow-hidden">
         {loading ? (
           <div className="p-8 text-center">
@@ -345,14 +366,13 @@ export function ProductProfitabilityReport() {
             <div className="mt-2 text-gray-600">{tm('rptProfitLoading')}</div>
           </div>
         ) : filteredData.length === 0 ? (
-          <div className="p-8 text-center text-gray-500">
-            {tm('rptProfitNoData')}
-          </div>
+          <div className="p-8 text-center text-gray-500">{tm('rptProfitNoData')}</div>
         ) : (
           <div className="overflow-auto max-h-[600px]">
             <table className="w-full text-sm">
               <thead className="bg-gray-50 sticky top-0">
                 <tr>
+                  <th className="text-left px-4 py-3 font-semibold">{tm('reportsDailyKindLabel')}</th>
                   <th className="text-left px-4 py-3 font-semibold">{tm('rptProfitColProductCode')}</th>
                   <th className="text-left px-4 py-3 font-semibold">{tm('rptProfitColProductName')}</th>
                   <th className="text-right px-4 py-3 font-semibold">{tm('rptProfitColQty')}</th>
@@ -366,14 +386,18 @@ export function ProductProfitabilityReport() {
               <tbody>
                 {filteredData.map((product, idx) => {
                   const isProfitable = product.grossProfit >= 0;
-                  
                   return (
-                    <tr 
-                      key={`${idx}-${product.productCode}`}
+                    <tr
+                      key={`${idx}-${product.lineKind}-${product.productCode}`}
                       className={`border-t hover:bg-gray-50 ${
                         idx % 2 === 0 ? 'bg-white' : 'bg-gray-50/50'
                       }`}
                     >
+                      <td className="px-4 py-3 text-xs text-gray-600">
+                        {product.lineKind === 'service'
+                          ? tm('reportsDailyKindService')
+                          : tm('reportsDailyKindProduct')}
+                      </td>
                       <td className="px-4 py-3 font-mono text-blue-600">
                         {displayItemCode(product.productCode)}
                       </td>
@@ -382,29 +406,34 @@ export function ProductProfitabilityReport() {
                         {product.totalQuantitySold.toFixed(2)}
                       </td>
                       <td className="px-4 py-3 text-right">
-                        {formatMoney(product.avgUnitPrice)} IQD
+                        {formatMoney(product.avgUnitPrice)} {currency}
                       </td>
                       <td className="px-4 py-3 text-right font-semibold text-blue-700">
-                        {formatMoney(product.totalRevenue)} IQD
+                        {formatMoney(product.totalRevenue)} {currency}
                       </td>
                       <td className="px-4 py-3 text-right font-semibold text-orange-700">
-                        {formatMoney(product.totalCost)} IQD
+                        {formatMoney(product.totalCost)} {currency}
                       </td>
-                      <td className={`px-4 py-3 text-right font-bold ${
-                        isProfitable ? 'text-green-700' : 'text-red-700'
-                      }`}>
+                      <td
+                        className={`px-4 py-3 text-right font-bold ${
+                          isProfitable ? 'text-green-700' : 'text-red-700'
+                        }`}
+                      >
                         <div className="flex items-center justify-end gap-1">
                           {isProfitable ? (
                             <TrendingUp className="w-4 h-4" />
                           ) : (
                             <TrendingDown className="w-4 h-4" />
                           )}
-                          {product.grossProfit < 0 ? '-' : ''}{formatMoney(Math.abs(product.grossProfit))} IQD
+                          {product.grossProfit < 0 ? '-' : ''}
+                          {formatMoney(Math.abs(product.grossProfit))} {currency}
                         </div>
                       </td>
-                      <td className={`px-4 py-3 text-right font-bold ${
-                        isProfitable ? 'text-green-700' : 'text-red-700'
-                      }`}>
+                      <td
+                        className={`px-4 py-3 text-right font-bold ${
+                          isProfitable ? 'text-green-700' : 'text-red-700'
+                        }`}
+                      >
                         {product.profitMargin.toFixed(2)}%
                       </td>
                     </tr>
@@ -413,21 +442,28 @@ export function ProductProfitabilityReport() {
               </tbody>
               <tfoot className="bg-gray-100 border-t-2 border-gray-300">
                 <tr>
-                  <td colSpan={4} className="px-4 py-3 font-bold">{tm('rptPeriodTotalRow')}</td>
+                  <td colSpan={5} className="px-4 py-3 font-bold">
+                    {tm('rptPeriodTotalRow')}
+                  </td>
                   <td className="px-4 py-3 text-right font-bold text-blue-700">
-                    {formatMoney(summary.totalRevenue)} IQD
+                    {formatMoney(summary.totalRevenue)} {currency}
                   </td>
                   <td className="px-4 py-3 text-right font-bold text-orange-700">
-                    {formatMoney(summary.totalCost)} IQD
+                    {formatMoney(summary.totalCost)} {currency}
                   </td>
-                  <td className={`px-4 py-3 text-right font-bold ${
-                    summary.totalProfit >= 0 ? 'text-green-700' : 'text-red-700'
-                  }`}>
-                    {summary.totalProfit < 0 ? '-' : ''}{formatMoney(Math.abs(summary.totalProfit))} IQD
+                  <td
+                    className={`px-4 py-3 text-right font-bold ${
+                      summary.totalProfit >= 0 ? 'text-green-700' : 'text-red-700'
+                    }`}
+                  >
+                    {summary.totalProfit < 0 ? '-' : ''}
+                    {formatMoney(Math.abs(summary.totalProfit))} {currency}
                   </td>
-                  <td className={`px-4 py-3 text-right font-bold ${
-                    summary.totalProfit >= 0 ? 'text-green-700' : 'text-red-700'
-                  }`}>
+                  <td
+                    className={`px-4 py-3 text-right font-bold ${
+                      summary.totalProfit >= 0 ? 'text-green-700' : 'text-red-700'
+                    }`}
+                  >
                     {summary.profitMargin.toFixed(2)}%
                   </td>
                 </tr>

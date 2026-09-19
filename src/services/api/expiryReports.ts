@@ -15,6 +15,10 @@ import {
   clampExpiryReturnQty,
   isAlreadyReturnDocument,
 } from '../../utils/expiryPurchaseReturn';
+import {
+  expiryLotMatchKey,
+  finalizeExpiryReportQuantities,
+} from '../../utils/expiryReportQuantity';
 import { invoicesAPI } from './invoices';
 import type { Invoice } from '../../core/types';
 
@@ -173,23 +177,108 @@ function lotExpiryRaw(row: Record<string, unknown>): unknown {
   return row.expiration_date ?? row.expiry_date ?? row.expire_date ?? null;
 }
 
-async function mapSettledRows(
-  results: PromiseSettledResult<ExpiringPurchaseItem[]>[],
-): Promise<ExpiringPurchaseItem[]> {
-  const rows: ExpiringPurchaseItem[] = [];
-  let lastErr: unknown;
-  let ok = 0;
-  for (const r of results) {
-    if (r.status === 'fulfilled') {
-      ok += 1;
-      rows.push(...r.value);
-    } else {
-      lastErr = r.reason;
-      console.warn('[expiryReports] SKT kaynağı atlandı:', r.reason);
+/**
+ * Envanter Listesi ile aynı kaynak: rex_{fn}_products.stock
+ * Anahtarlar: id:{uuid} ve code:{kod} (satır eşlemesi için)
+ */
+async function fetchProductStockMap(
+  fn: string,
+  pn: string,
+  rows: ExpiringPurchaseItem[],
+): Promise<Map<string, number>> {
+  const map = new Map<string, number>();
+  if (!rows.length) return map;
+
+  const ids = Array.from(
+    new Set(rows.map((r) => String(r.productId || '').trim()).filter(Boolean)),
+  );
+  const codes = Array.from(
+    new Set(rows.map((r) => String(r.itemCode || '').trim()).filter(Boolean)),
+  );
+
+  try {
+    if (DB_SETTINGS.connectionProvider === 'rest_api') {
+      const { postgrest } = await import('./postgrestClient');
+      const productsTable = `rex_${fn}_products`;
+      const fetched: Record<string, unknown>[] = [];
+      if (ids.length) {
+        const part = await postgrest
+          .get<Record<string, unknown>[]>(
+            `/${productsTable}`,
+            {
+              select: 'id,code,stock',
+              id: `in.(${ids.join(',')})`,
+              limit: '5000',
+            },
+            { schema: 'public' },
+          )
+          .catch(() => [] as Record<string, unknown>[]);
+        fetched.push(...part);
+      }
+      const missingCodes = codes.filter((c) => !fetched.some((p) => String(p.code || '') === c));
+      if (missingCodes.length) {
+        const part = await postgrest
+          .get<Record<string, unknown>[]>(
+            `/${productsTable}`,
+            {
+              select: 'id,code,stock',
+              code: `in.(${missingCodes.join(',')})`,
+              limit: '5000',
+            },
+            { schema: 'public' },
+          )
+          .catch(() => [] as Record<string, unknown>[]);
+        fetched.push(...part);
+      }
+      for (const p of fetched) {
+        const stock = Math.max(0, Number(p.stock) || 0);
+        const id = String(p.id || '').trim();
+        const code = String(p.code || '').trim();
+        if (id) map.set(`id:${id}`, stock);
+        if (code) map.set(`code:${code}`, stock);
+      }
+      return map;
     }
+
+    const productsTable = `rex_${fn}_products`;
+    const params: string[] = [];
+    const clauses: string[] = [];
+    if (ids.length) {
+      const placeholders = ids.map((id) => {
+        params.push(id);
+        return `$${params.length}`;
+      });
+      clauses.push(`p.id::text IN (${placeholders.join(', ')})`);
+    }
+    if (codes.length) {
+      const placeholders = codes.map((code) => {
+        params.push(code);
+        return `$${params.length}`;
+      });
+      clauses.push(`p.code IN (${placeholders.join(', ')})`);
+    }
+    if (!clauses.length) return map;
+
+    const { rows: productRows } = await postgres.query(
+      `
+        SELECT p.id, p.code, COALESCE(p.stock, 0) AS stock
+        FROM ${productsTable} p
+        WHERE ${clauses.join(' OR ')}
+      `,
+      params,
+      queryOpts(fn, pn),
+    );
+    for (const p of productRows) {
+      const stock = Math.max(0, Number(p.stock) || 0);
+      const id = String(p.id || '').trim();
+      const code = String(p.code || '').trim();
+      if (id) map.set(`id:${id}`, stock);
+      if (code) map.set(`code:${code}`, stock);
+    }
+  } catch (e) {
+    console.warn('[expiryReports] ürün stokları okunamadı:', e);
   }
-  if (ok === 0 && lastErr) throw lastErr;
-  return rows;
+  return map;
 }
 
 export const expiryReportsAPI = {
@@ -199,7 +288,7 @@ export const expiryReportsAPI = {
     const todayYmd = localTodayDateKey();
     const bounds = expiryRangeBounds(daysAhead, todayYmd);
 
-    const chunks = DB_SETTINGS.connectionProvider === 'rest_api'
+    const settled = DB_SETTINGS.connectionProvider === 'rest_api'
       ? await Promise.allSettled([
           fetchPurchaseItemsRest(fn, pn, todayYmd, bounds),
           fetchProductCardItemsRest(fn, todayYmd, bounds),
@@ -211,8 +300,34 @@ export const expiryReportsAPI = {
           fetchLotItemsSql(fn, pn, todayYmd, bounds),
         ]);
 
-    const merged = mergeExpiryRows(await mapSettledRows(chunks));
-    return merged.filter((row) => isExpiryYmdInRange(row.expiryDate, bounds));
+    const purchaseRows = settled[0].status === 'fulfilled' ? settled[0].value : [];
+    const productRows = settled[1].status === 'fulfilled' ? settled[1].value : [];
+    const lotRows = settled[2].status === 'fulfilled' ? settled[2].value : [];
+    if (
+      settled[0].status === 'rejected' &&
+      settled[1].status === 'rejected' &&
+      settled[2].status === 'rejected'
+    ) {
+      throw settled[0].reason || settled[1].reason || settled[2].reason;
+    }
+    for (const r of settled) {
+      if (r.status === 'rejected') {
+        console.warn('[expiryReports] SKT kaynağı atlandı:', r.reason);
+      }
+    }
+
+    const lotQtyByKey = new Map<string, number>();
+    for (const row of lotRows) {
+      const key = expiryLotMatchKey(row);
+      lotQtyByKey.set(key, Math.max(0, Number(row.quantity) || 0));
+    }
+
+    const merged = mergeExpiryRows([...purchaseRows, ...productRows, ...lotRows]);
+    const inRange = merged.filter((row) => isExpiryYmdInRange(row.expiryDate, bounds));
+    const stockByProductKey = await fetchProductStockMap(fn, pn, inRange);
+    const aligned = finalizeExpiryReportQuantities(inRange, stockByProductKey, lotQtyByKey);
+    aligned.sort((a, b) => a.expiryDate.localeCompare(b.expiryDate) || a.itemName.localeCompare(b.itemName, 'tr'));
+    return aligned;
   },
 
   async resolveReturnSource(row: ExpiringPurchaseItem): Promise<ExpiringPurchaseItem | null> {

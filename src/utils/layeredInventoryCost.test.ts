@@ -160,5 +160,48 @@ describe('buildCostProfitRows — kâr = satış − SMM', () => {
     expect(rows[0].cogs).toBe(0);
     expect(rows[0].profit).toBe(201000);
     expect(rows[0].costSource).toBe('none');
+    expect(rows[0].lineKind).toBe('product');
+  });
+
+  it('hizmet: FIFO yok sayılır; kart/reçete fallback SMM kullanılır', () => {
+    const rows = buildCostProfitRows(
+      [
+        {
+          productId: 'svc-sac',
+          productCode: 'SAC',
+          productName: 'SAC BOYAMA',
+          quantity: 1,
+          revenue: 50000,
+          fallbackCogs: 12000,
+          lineKind: 'service',
+        },
+      ],
+      new Map([['svc-sac', 999999]]),
+    );
+    expect(rows).toHaveLength(1);
+    expect(rows[0].cogs).toBe(12000);
+    expect(rows[0].profit).toBe(38000);
+    expect(rows[0].costSource).toBe('service_cost');
+    expect(rows[0].lineKind).toBe('service');
+  });
+
+  it('hizmet maliyet yoksa SMM 0; gelir bozulmaz', () => {
+    const rows = buildCostProfitRows(
+      [
+        {
+          productId: 'svc-kas',
+          productCode: 'KAS',
+          productName: 'KAS ALMA',
+          quantity: 2,
+          revenue: 10000,
+          fallbackCogs: 0,
+          lineKind: 'service',
+        },
+      ],
+      new Map(),
+    );
+    expect(rows[0].cogs).toBe(0);
+    expect(rows[0].profit).toBe(10000);
+    expect(rows[0].costSource).toBe('none');
   });
 });

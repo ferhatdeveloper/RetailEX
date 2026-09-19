@@ -286,21 +286,29 @@ export function sumLayeredCost(byProductId: Map<string, LayeredOnHand>): number 
   return s;
 }
 
+export type CostProfitLineKind = 'service' | 'product';
+
 export type CostProfitAggLine = {
   productId: string;
   productCode: string;
   productName: string;
   quantity: number;
   revenue: number;
-  /** Satır unit_cost × miktar (katman yoksa yedek; kart alış değil) */
+  /**
+   * Malzeme: satır unit_cost × miktar (katman yoksa yedek; kart alış değil).
+   * Hizmet: unit_cost → purchase_price → beauty cost_price → reçete × miktar.
+   */
   fallbackCogs: number;
+  /** Hizmet | Malzeme — stoklu FIFO yalnızca product için */
+  lineKind?: CostProfitLineKind;
 };
 
 export type CostProfitRow = CostProfitAggLine & {
   cogs: number;
   profit: number;
   marginPercent: number;
-  costSource: 'fifo_layers' | 'movement_unit_cost' | 'none';
+  lineKind: CostProfitLineKind;
+  costSource: 'fifo_layers' | 'movement_unit_cost' | 'service_cost' | 'none';
 };
 
 export function lookupPeriodCogs(
@@ -320,7 +328,11 @@ export function lookupPeriodCogs(
   return 0;
 }
 
-/** Satış satırları + dönem FIFO SMM. Katman 0 ise gelir yine gösterilir. */
+/**
+ * Satış satırları + SMM.
+ * Malzeme: dönem FIFO katman; yoksa fallback. Hizmet: stok yok — yalnızca fallback (kart/reçete).
+ * Katman 0 olsa bile gelir gösterilir.
+ */
 export function buildCostProfitRows(
   lines: CostProfitAggLine[],
   periodCogsByProductId: Map<string, number>,
@@ -328,29 +340,43 @@ export function buildCostProfitRows(
 ): CostProfitRow[] {
   return (lines || [])
     .map((line) => {
-      const layered = lookupPeriodCogs(
-        periodCogsByProductId,
-        aliases,
-        line.productId,
-        line.productCode,
-      );
+      const lineKind: CostProfitLineKind =
+        line.lineKind === 'service' ? 'service' : 'product';
+      const fallback = Number(line.fallbackCogs) || 0;
       let cogs = 0;
       let costSource: CostProfitRow['costSource'] = 'none';
-      if (Math.abs(layered) > COST_EPS) {
-        cogs = layered;
-        costSource = 'fifo_layers';
-      } else if (Math.abs(Number(line.fallbackCogs) || 0) > COST_EPS) {
-        cogs = Number(line.fallbackCogs) || 0;
-        costSource = 'movement_unit_cost';
+
+      if (lineKind === 'service') {
+        // Hizmet stok katmanı tüketmez; FIFO ile 0 ezilmesin.
+        if (Math.abs(fallback) > COST_EPS) {
+          cogs = fallback;
+          costSource = 'service_cost';
+        }
+      } else {
+        const layered = lookupPeriodCogs(
+          periodCogsByProductId,
+          aliases,
+          line.productId,
+          line.productCode,
+        );
+        if (Math.abs(layered) > COST_EPS) {
+          cogs = layered;
+          costSource = 'fifo_layers';
+        } else if (Math.abs(fallback) > COST_EPS) {
+          cogs = fallback;
+          costSource = 'movement_unit_cost';
+        }
       }
+
       const revenue = Number(line.revenue) || 0;
       const profit = revenue - cogs;
       const marginPercent = Math.abs(revenue) > 0.009 ? (profit / revenue) * 100 : 0;
       return {
         ...line,
+        lineKind,
         quantity: Number(line.quantity) || 0,
         revenue,
-        fallbackCogs: Number(line.fallbackCogs) || 0,
+        fallbackCogs: fallback,
         cogs,
         profit,
         marginPercent,

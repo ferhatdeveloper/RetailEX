@@ -14,6 +14,8 @@ interface CostRow {
     product_id: string;
     product_code: string;
     product_name: string;
+    line_kind: 'service' | 'product';
+    line_kind_label: string;
     quantity_sold: number;
     revenue: number;
     cogs: number;
@@ -22,11 +24,17 @@ interface CostRow {
     cost_source: CostProfitRow['costSource'];
 }
 
-function mapAnalysisRow(r: CostProfitRow): CostRow {
+function mapAnalysisRow(
+    r: CostProfitRow,
+    labels: { service: string; material: string },
+): CostRow {
+    const lineKind = r.lineKind === 'service' ? 'service' : 'product';
     return {
         product_id: r.productId,
         product_code: r.productCode,
         product_name: r.productName,
+        line_kind: lineKind,
+        line_kind_label: lineKind === 'service' ? labels.service : labels.material,
         quantity_sold: r.quantity,
         revenue: r.revenue,
         cogs: r.cogs,
@@ -38,8 +46,8 @@ function mapAnalysisRow(r: CostProfitRow): CostRow {
 
 /**
  * Maliyet ve Karlılık Analizi — tenant-aware.
- * Satış kalemleri sale_items JOIN sales (perakende / POS / güzellik ürün).
- * SMM = FIFO alış katmanı × satılan miktar; kart alış (products.cost) kullanılmaz.
+ * Satış kalemleri sale_items JOIN sales (perakende / POS / güzellik).
+ * Malzeme SMM = FIFO alış katmanı; Hizmet SMM = unit_cost → kart alış/cost_price → reçete.
  * getPaginated items:[] kullanılmaz — aksi halde tablo her zaman boş kalır.
  */
 export function CostReport() {
@@ -58,6 +66,14 @@ export function CostReport() {
     const [startDate, setStartDate] = useState(format(monthStart, 'yyyy-MM-dd'));
     const [endDate, setEndDate] = useState(format(today, 'yyyy-MM-dd'));
 
+    const kindLabels = useMemo(
+        () => ({
+            service: tm('service') || 'Hizmet',
+            material: tm('material') || 'Malzeme',
+        }),
+        [tm],
+    );
+
     useEffect(() => {
         let cancelled = false;
         async function load() {
@@ -71,7 +87,7 @@ export function CostReport() {
                     firmNr: selectedFirm?.firm_nr,
                     periodNr: selectedPeriod?.nr,
                 });
-                if (!cancelled) setRows(list.map(mapAnalysisRow));
+                if (!cancelled) setRows(list.map((r) => mapAnalysisRow(r, kindLabels)));
             } catch (err) {
                 console.error('[CostReport] load failed', err);
                 if (!cancelled) setRows([]);
@@ -81,25 +97,39 @@ export function CostReport() {
         }
         load();
         return () => { cancelled = true; };
-    }, [startDate, endDate, selectedFirm?.firm_nr, selectedPeriod?.nr]);
+    }, [startDate, endDate, selectedFirm?.firm_nr, selectedPeriod?.nr, kindLabels]);
 
     const costSourceNote = useMemo(() => {
         const hasNone = rows.some((r) => r.cost_source === 'none');
         const hasLayer = rows.some((r) => r.cost_source === 'fifo_layers');
+        const hasService = rows.some((r) => r.cost_source === 'service_cost');
         const hasMove = rows.some((r) => r.cost_source === 'movement_unit_cost');
-        if (hasLayer && !hasNone && !hasMove) {
+        if (hasService && !hasNone) {
+            return (
+                tm('costProfitCogsMixedNote') ||
+                'Malzeme SMM: FIFO katman. Hizmet SMM: kart cost_price / alış / reçete. Kâr = satış − SMM.'
+            );
+        }
+        if (hasLayer && !hasNone && !hasMove && !hasService) {
             return tm('costProfitCogsLayerNote') || 'SMM: FIFO alış katmanları (kart alış kullanılmaz). Kâr = satış − SMM.';
         }
         if (hasNone) {
-            return tm('costProfitCogsMissingNote') || 'SMM: katman/hareket maliyeti yoksa 0 — gelir yine gösterilir. Kart alış kullanılmaz.';
+            return tm('costProfitCogsMissingNote') || 'SMM: katman/hareket/hizmet maliyeti yoksa 0 — gelir yine gösterilir.';
         }
-        return tm('costProfitCogsLayerNote') || 'SMM: FIFO katman veya hareket birim maliyeti. Kart alış kullanılmaz. Kâr = satış − SMM.';
+        return (
+            tm('costProfitCogsMixedNote') ||
+            'Malzeme SMM: FIFO veya hareket birim maliyeti. Hizmet: kart/reçete. Kâr = satış − SMM.'
+        );
     }, [rows, tm]);
 
     const columnHelper = createColumnHelper<CostRow>();
     const columns = useMemo<ColumnDef<CostRow, any>[]>(() => [
         columnHelper.accessor('product_code', { header: tm('materialCode') }),
         columnHelper.accessor('product_name', { header: tm('materialName') }),
+        columnHelper.accessor('line_kind_label', {
+            id: 'line_kind',
+            header: tm('type') || 'Tür',
+        }),
         columnHelper.accessor('quantity_sold', {
             header: tm('soldQuantity'),
             cell: info => formatNumber(Number(info.getValue()) || 0, 2),

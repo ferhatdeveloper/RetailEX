@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useCallback, useMemo, useRef } from 'react';
-import { BarChart3, TrendingUp, Banknote, ShoppingCart, Calendar, Download, FileText, Clock, User, Package, TrendingDown, Award, PieChart as PieChartIcon, CreditCard, AlertCircle, Percent, AlertTriangle, ClipboardList, MessageSquare, LineChart as LineChartLucide, Users, Scissors, ThumbsUp, PhoneMissed, Wallet } from 'lucide-react';
+import { BarChart3, TrendingUp, Banknote, ShoppingCart, Calendar, Download, FileText, Clock, User, Package, TrendingDown, Award, PieChart as PieChartIcon, CreditCard, AlertCircle, Percent, AlertTriangle, ClipboardList, MessageSquare, LineChart as LineChartLucide, Users, Scissors, ThumbsUp, PhoneMissed, Wallet, X } from 'lucide-react';
 import type { Sale, Product } from '../../App';
 import { MaterialMovementReport } from './MaterialMovementReport';
 import { ProfitLossReport } from './ProfitLossReport';
@@ -26,7 +26,8 @@ import { beautyService } from '../../services/beautyService';
 import { expenseAPI } from '../../services/api/expenses';
 import { fetchKasaIslemleri, type KasaIslemi } from '../../services/api/kasa';
 import { userAPI } from '../../services/api/users';
-import { ReportColumnTable } from './shared/ReportDataGrid';
+import { ReportColumnTable, type ReportColumnTableCol } from './shared/ReportDataGrid';
+import { PercentBodyModal, PercentBodyModalScrollBody } from '../shared/PercentBodyModal';
 import {
   displayUserCashierName,
   isPlaceholderCashierName,
@@ -45,6 +46,7 @@ import {
   allocateSaleKindAmounts,
   classifyAnalysisSaleLine,
   resolveAnalysisSaleCategory,
+  type AnalysisSaleLineKind,
   type SaleKindBucket,
 } from '../../utils/analysisSaleLine';
 import {
@@ -4339,16 +4341,32 @@ export function ReportsModule({
           };
         }
         case 'product-sales-range': {
-          const map = new Map<string, { product: string; qty: number; revenue: number }>();
+          const kindService = tm('resProductKindService') || tm('rptAnalysisColService') || 'Hizmet';
+          const kindMaterial = tm('resProductKindMaterial') || tm('material') || 'Malzeme';
+          const map = new Map<string, { product: string; productCode: string; kind: AnalysisSaleLineKind; qty: number; revenue: number }>();
           for (const o of orders) {
             eachRestOrderItem(o, (it: any) => {
               const pid = it.product_id != null && String(it.product_id).trim() !== '' ? String(it.product_id) : '';
               const pname = String(it.product_name ?? '—').trim() || '—';
-              const k = pid || `name:${pname}`;
-              const cur = map.get(k) || { product: pname, qty: 0, revenue: 0 };
+              const lineIn = {
+                productId: pid,
+                productName: pname,
+                lineType: String(it.line_type ?? it.lineType ?? it.item_type ?? ''),
+              };
+              const kind = classifyAnalysisSaleLine(lineIn, catalogProducts, analysisServiceKeys);
+              const fromItem = String(it.product_code ?? it.productCode ?? '').trim();
+              const fromCatalog = catalogProducts.find(
+                (p) =>
+                  String(p.id ?? '').trim() === pid ||
+                  String(p.code ?? '').trim().toLowerCase() === pid.toLowerCase(),
+              );
+              const productCode = fromItem || String(fromCatalog?.code ?? '').trim();
+              const k = `${kind}\t${pid || `name:${pname}`}`;
+              const cur = map.get(k) || { product: pname, productCode, kind, qty: 0, revenue: 0 };
               cur.qty += Number(it.quantity ?? 0);
               cur.revenue += Number(it.subtotal ?? 0);
               cur.product = pname;
+              if (!cur.productCode && productCode) cur.productCode = productCode;
               map.set(k, cur);
             });
           }
@@ -4356,6 +4374,8 @@ export function ReportsModule({
             .sort((a, b) => b.qty - a.qty)
             .map((r, i) => ({
               key: `p-${i}`,
+              kindLabel: r.kind === 'service' ? kindService : kindMaterial,
+              productCode: r.productCode || '—',
               product: r.product,
               qty: r.qty,
               revenue: r.revenue,
@@ -4363,6 +4383,8 @@ export function ReportsModule({
             }));
           return {
             columns: [
+              { title: tm('resProductColKind'), dataIndex: 'kindLabel', key: 'kindLabel' },
+              { title: tm('resProductColCode'), dataIndex: 'productCode', key: 'productCode' },
               { title: tm('resProductColProduct'), dataIndex: 'product', key: 'product' },
               {
                 title: tm('resProductColQty'),
@@ -4614,16 +4636,27 @@ export function ReportsModule({
         };
       }
       case 'product-sales-range': {
-        const map = new Map<string, { product: string; qty: number; revenue: number }>();
+        const kindService = tm('resProductKindService') || tm('rptAnalysisColService') || 'Hizmet';
+        const kindMaterial = tm('resProductKindMaterial') || tm('material') || 'Malzeme';
+        const map = new Map<string, { product: string; productCode: string; kind: AnalysisSaleLineKind; qty: number; revenue: number }>();
         for (const s of retailSales) {
           for (const it of s.items || []) {
             const pid = it.productId != null && String(it.productId).trim() !== '' ? String(it.productId) : '';
             const pname = String(it.productName ?? '—').trim() || '—';
-            const k = pid || `name:${pname}`;
-            const cur = map.get(k) || { product: pname, qty: 0, revenue: 0 };
+            const kind = classifyItem(it);
+            const fromItem = String(it.productCode ?? '').trim();
+            const fromCatalog = catalogProducts.find(
+              (p) =>
+                String(p.id ?? '').trim() === pid ||
+                String(p.code ?? '').trim().toLowerCase() === pid.toLowerCase(),
+            );
+            const productCode = fromItem || String(fromCatalog?.code ?? '').trim();
+            const k = `${kind}\t${pid || `name:${pname}`}`;
+            const cur = map.get(k) || { product: pname, productCode, kind, qty: 0, revenue: 0 };
             cur.qty += Number(it.quantity ?? 0);
             cur.revenue += Number(it.total ?? 0);
             cur.product = pname;
+            if (!cur.productCode && productCode) cur.productCode = productCode;
             map.set(k, cur);
           }
         }
@@ -4631,6 +4664,8 @@ export function ReportsModule({
           .sort((a, b) => b.qty - a.qty)
           .map((r, i) => ({
             key: `rp-${i}`,
+            kindLabel: r.kind === 'service' ? kindService : kindMaterial,
+            productCode: r.productCode || '—',
             product: r.product,
             qty: r.qty,
             revenue: r.revenue,
@@ -4638,6 +4673,8 @@ export function ReportsModule({
           }));
         return {
           columns: [
+            { title: tm('resProductColKind'), dataIndex: 'kindLabel', key: 'kindLabel' },
+            { title: tm('resProductColCode'), dataIndex: 'productCode', key: 'productCode' },
             { title: tm('resProductColProduct'), dataIndex: 'product', key: 'product' },
             {
               title: tm('resProductColQty'),
@@ -9383,85 +9420,91 @@ export function ReportsModule({
               );
             })()}
 
-            <Modal
-              open={!!analysisModal}
-              title={<span className="text-lg font-black text-slate-800">{analysisModal?.title}</span>}
-              onCancel={() => setAnalysisModal(null)}
-              footer={
-                <div className="flex justify-end border-t border-slate-100 pt-3">
-                  <Button type="primary" size="large" onClick={() => setAnalysisModal(null)}>
-                    {tm('close')}
-                  </Button>
-                </div>
-              }
-              closable
-              destroyOnHidden
-              centered={false}
-              width="100%"
-              style={{ top: 0, margin: 0, padding: 0, maxWidth: '100vw' }}
-              styles={{
-                wrapper: { padding: 0, overflow: 'hidden' },
-                container: {
-                  width: '100vw',
-                  maxWidth: '100vw',
-                  height: '100vh',
-                  margin: 0,
-                  top: 0,
-                  paddingBottom: 0,
-                  borderRadius: 0,
-                  display: 'flex',
-                  flexDirection: 'column',
-                  overflow: 'hidden',
-                },
-                header: { flexShrink: 0 },
-                body: { flex: 1, minHeight: 0, overflow: 'auto', padding: 20 },
-                footer: { flexShrink: 0, marginTop: 0 },
-              }}
-              maskClosable
+            {analysisModal && (
+            <PercentBodyModal
+              onClose={() => setAnalysisModal(null)}
+              size="wide"
+              ariaLabel={analysisModal.title}
             >
-              {analysisModal &&
-                (() => {
-                  const showRestaurantSpinner = businessType === 'restaurant' && loadingAnalysisOrders;
-                  const { columns, dataSource, chartData } = showRestaurantSpinner
-                    ? { columns: [] as ColumnsType<Record<string, unknown>>, dataSource: [], chartData: undefined as { name: string; value: number }[] | undefined }
-                    : getAnalysisColumnsAndData(analysisModal.kind);
-                  return (
-                    <div className="space-y-4">
-                      {showRestaurantSpinner ? (
-                        <div className="flex flex-col items-center justify-center gap-3 py-24 text-slate-500">
-                          <Spin size="large" />
-                          <span>Siparişler yükleniyor…</span>
-                        </div>
-                      ) : (
-                        <>
-                          {chartData && chartData.length > 0 && (
-                            <div className="bg-white rounded-xl border border-slate-100 p-4 h-[min(320px,40vh)]">
-                              <ResponsiveContainer width="100%" height="100%">
-                                <BarChart data={chartData} margin={{ top: 8, right: 8, left: 0, bottom: 0 }}>
-                                  <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#f1f5f9" />
-                                  <XAxis dataKey="name" axisLine={false} tickLine={false} tick={{ fontSize: 10 }} interval={0} angle={-35} textAnchor="end" height={70} />
-                                  <YAxis axisLine={false} tickLine={false} width={48} />
-                                  <Tooltip formatter={(val: number) => formatNumber(val, 2, false)} />
-                                  <Bar dataKey="value" fill={bizConfig.color} radius={[4, 4, 0, 0]} maxBarSize={48} />
-                                </BarChart>
-                              </ResponsiveContainer>
-                            </div>
-                          )}
-                          <Table<Record<string, unknown>>
-                            columns={columns}
-                            dataSource={dataSource}
-                            rowKey="key"
-                            pagination={{ pageSize: 50, showSizeChanger: true, pageSizeOptions: [25, 50, 100, 200] }}
-                            scroll={{ x: 'max-content', y: 'calc(100vh - 380px)' }}
-                            size="small"
-                            locale={{ emptyText: tm('reportTableEmptyPeriod') }}
+              <div className="bg-gradient-to-r from-blue-600 to-indigo-600 px-6 py-4 text-white shrink-0 flex items-center justify-between gap-3">
+                <h2 className="text-lg font-black truncate min-w-0">{analysisModal.title}</h2>
+                <button
+                  type="button"
+                  onClick={() => setAnalysisModal(null)}
+                  className="shrink-0 w-9 h-9 rounded-xl border border-white/30 bg-white/10 text-white hover:bg-white/20 flex items-center justify-center"
+                  aria-label={tm('close')}
+                >
+                  <X size={16} />
+                </button>
+              </div>
+              <PercentBodyModalScrollBody className="p-4 flex flex-col gap-4 min-h-0">
+                {(() => {
+                    const showRestaurantSpinner = businessType === 'restaurant' && loadingAnalysisOrders;
+                    const { columns, dataSource, chartData } = showRestaurantSpinner
+                      ? { columns: [] as ColumnsType<Record<string, unknown>>, dataSource: [], chartData: undefined as { name: string; value: number }[] | undefined }
+                      : getAnalysisColumnsAndData(analysisModal.kind);
+                    const gridCols: ReportColumnTableCol<Record<string, unknown>>[] = columns.map((col) => {
+                      const c = col as {
+                        key?: React.Key;
+                        dataIndex?: string | string[];
+                        title?: React.ReactNode;
+                        align?: 'left' | 'right' | 'center';
+                        render?: (value: unknown, record: Record<string, unknown>, index: number) => React.ReactNode;
+                      };
+                      const dataIndex = Array.isArray(c.dataIndex) ? String(c.dataIndex[0] ?? '') : String(c.dataIndex ?? '');
+                      const key = String(c.key ?? dataIndex);
+                      return {
+                        key,
+                        header: typeof c.title === 'string' ? c.title : key,
+                        type: c.align === 'right' ? 'number' : 'text',
+                        align: c.align,
+                        cell: c.render
+                          ? (row) => c.render!(dataIndex ? row[dataIndex] : undefined, row, 0)
+                          : undefined,
+                      };
+                    });
+                    return showRestaurantSpinner ? (
+                      <div className="flex flex-col items-center justify-center gap-3 py-24 text-slate-500">
+                        <Spin size="large" />
+                        <span>{tm('reportsAnalysisDataLoading') || 'Siparişler yükleniyor…'}</span>
+                      </div>
+                    ) : (
+                      <>
+                        {chartData && chartData.length > 0 && (
+                          <div className="bg-white rounded-xl border border-slate-100 p-4 h-[min(240px,28vh)] shrink-0">
+                            <ResponsiveContainer width="100%" height="100%">
+                              <BarChart data={chartData} margin={{ top: 8, right: 8, left: 0, bottom: 0 }}>
+                                <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#f1f5f9" />
+                                <XAxis dataKey="name" axisLine={false} tickLine={false} tick={{ fontSize: 10 }} interval={0} angle={-35} textAnchor="end" height={70} />
+                                <YAxis axisLine={false} tickLine={false} width={48} />
+                                <Tooltip formatter={(val: number) => formatNumber(val, 2, false)} />
+                                <Bar dataKey="value" fill={bizConfig.color} radius={[4, 4, 0, 0]} maxBarSize={48} />
+                              </BarChart>
+                            </ResponsiveContainer>
+                          </div>
+                        )}
+                        <div className="min-h-[320px] flex-1">
+                          <ReportColumnTable
+                            data={dataSource}
+                            columns={gridCols}
+                            height={chartData && chartData.length > 0 ? 420 : 520}
                           />
-                        </>
-                      )}
-                    </div>
-                  );
-                })()}
-            </Modal>
+                        </div>
+                      </>
+                    );
+                  })()}
+              </PercentBodyModalScrollBody>
+              <div className="p-4 border-t border-slate-100 bg-slate-50/50 flex justify-end shrink-0">
+                <button
+                  type="button"
+                  onClick={() => setAnalysisModal(null)}
+                  className="rounded-2xl bg-blue-600 text-white font-bold uppercase text-sm tracking-wider px-6 py-2.5 shadow-lg shadow-blue-200/50 hover:bg-blue-700 active:scale-[0.98]"
+                >
+                  {tm('close')}
+                </button>
+              </div>
+            </PercentBodyModal>
+            )}
           </Content>
         </Layout>
       </Layout>

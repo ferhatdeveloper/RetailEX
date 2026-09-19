@@ -2,6 +2,7 @@ import React, { useState, useEffect, useMemo } from 'react';
 import { stockMovementAPI } from '../../../services/stockMovementAPI';
 import { productAPI } from '../../../services/api/products';
 import { collapseInOutTotalsRows, type InOutTotalsRow } from '../../../utils/stockInOutTotals';
+import { classifyAnalysisSaleLine } from '../../../utils/analysisSaleLine';
 import { toSqlDateInputString, localTodayDateKey } from '../../../utils/localCalendarDate';
 import { DevExDataGrid } from '../../shared/DevExDataGrid';
 import { REPORT_GRID_DEFAULTS } from '../../reports/shared/ReportDataGrid';
@@ -20,7 +21,7 @@ function monthStartKey(): string {
 /**
  * Giriş/Çıkış Toplamları — tenant-aware.
  * getProductMovements ile aynı kaynak: ambar fiş kalemleri (alış/sarf giriş)
- * + fatura kalemleri (satış/çıkış). Giriş ve çıkış tutarları ayrı kolonlarda; netlenmez.
+ * + fatura kalemleri (satış/çıkış). Hizmet satırları hariç; tutarlar netlenmez.
  */
 export function InOutTotalsReport() {
     const [rows, setRows] = useState<InOutTotalsRow[]>([]);
@@ -47,19 +48,37 @@ export function InOutTotalsReport() {
                     }),
                     productAPI.getAllForReports({ firmNr: selectedFirm?.firm_nr }).catch(() => []),
                 ]);
+                const catalog = products.map((p) => ({
+                    id: p.id,
+                    code: p.code,
+                    name: p.name,
+                    isService: p.isService === true || p.materialType === 'service',
+                    materialType: p.materialType,
+                }));
                 const byId = new Map(products.map((p) => [String(p.id), p]));
                 const byCode = new Map(products.filter((p) => p.code).map((p) => [String(p.code), p]));
                 const filled = collapseInOutTotalsRows(
-                    totals.map((r) => {
-                        const p = byId.get(r.productId) || byCode.get(r.productCode);
-                        if (!p) return r;
-                        return {
-                            ...r,
-                            productId: r.productId || p.id || r.productCode,
-                            productCode: r.productCode || p.code || '',
-                            productName: r.productName || p.name || '',
-                        };
-                    }),
+                    totals
+                        .map((r) => {
+                            const p = byId.get(r.productId) || byCode.get(r.productCode);
+                            if (!p) return r;
+                            return {
+                                ...r,
+                                productId: r.productId || p.id || r.productCode,
+                                productCode: r.productCode || p.code || '',
+                                productName: r.productName || p.name || '',
+                            };
+                        })
+                        .filter(
+                            (r) =>
+                                classifyAnalysisSaleLine(
+                                    {
+                                        productId: r.productId,
+                                        productName: r.productName,
+                                    },
+                                    catalog,
+                                ) === 'product',
+                        ),
                 );
                 if (!cancelled) setRows(filled);
             } catch (err) {

@@ -3,6 +3,7 @@ import {
     aggregateInOutTotals,
     classifyStockLineDirection,
     collapseInOutTotalsRows,
+    isInOutTotalsServiceLine,
     isSqlDateInInclusiveRange,
     sqlDateExclusiveUpperBound,
     stockLineAmount,
@@ -87,5 +88,97 @@ describe('stockInOutTotals — EL KREMI senaryosu', () => {
         ]);
         expect(rows[0].inAmount).toBe(1000);
         expect(rows[0].outAmount).toBe(300);
+    });
+
+    it('hizmet satırlarını (item_type / beauty / material_type) dışlar', () => {
+        expect(
+            isInOutTotalsServiceLine({
+                productId: 'beauty-service-Sac',
+                productName: 'SAC BOYAMA',
+                itemType: 'service',
+                ficheType: 'beauty_sale',
+                quantity: 1,
+            }),
+        ).toBe(true);
+        expect(
+            isInOutTotalsServiceLine({
+                productId: 'svc-1',
+                productName: 'KAŞ ALMA',
+                itemType: 'Hizmet',
+                ficheType: 'pos',
+                quantity: 1,
+            }),
+        ).toBe(true);
+        expect(
+            isInOutTotalsServiceLine({
+                productId: 'pkg-1',
+                productName: 'Paket',
+                itemType: 'package',
+                quantity: 1,
+            }),
+        ).toBe(true);
+        expect(
+            isInOutTotalsServiceLine({
+                productId: 'h-1',
+                productName: 'Danışmanlık',
+                ficheType: 'hizmet',
+                quantity: 1,
+            }),
+        ).toBe(true);
+        expect(
+            isInOutTotalsServiceLine({
+                productId: 'p-1',
+                productCode: 'ELKREMI',
+                productName: 'EL KREMI',
+                materialType: 'service',
+                ficheType: 'sales_invoice',
+                quantity: 1,
+            }),
+        ).toBe(true);
+        expect(
+            isInOutTotalsServiceLine({
+                productId: 'p-1',
+                productCode: 'ELKREMI',
+                productName: 'EL KREMI',
+                itemType: 'Malzeme',
+                ficheType: 'sales_invoice',
+                quantity: 1,
+            }),
+        ).toBe(false);
+
+        const rows = aggregateInOutTotals([
+            {
+                productId: 'p-1',
+                productCode: 'ELKREMI',
+                productName: 'EL KREMI',
+                quantity: 2,
+                totalAmount: 500,
+                ficheType: 'sales_invoice',
+                movementType: 'out',
+                itemType: 'Malzeme',
+            },
+            {
+                productId: 'beauty-service-Sac',
+                productName: 'SAC BOYAMA',
+                quantity: 1,
+                totalAmount: 15000,
+                ficheType: 'beauty_sale',
+                movementType: 'out',
+                itemType: 'service',
+            },
+            {
+                productId: 'kas-1',
+                productName: 'KAŞ ALMA',
+                quantity: 1,
+                totalAmount: 5000,
+                ficheType: 'beauty_sale',
+                movementType: 'out',
+                itemType: 'Hizmet',
+            },
+        ]);
+        expect(rows).toHaveLength(1);
+        expect(rows[0].productCode).toBe('ELKREMI');
+        expect(rows[0].outQty).toBe(2);
+        expect(rows[0].outAmount).toBe(500);
     });
 });

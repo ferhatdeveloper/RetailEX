@@ -13,8 +13,16 @@ import { useFirmaDonem } from '../../../contexts/FirmaDonemContext';
 interface WarehouseStockRow {
     productCode: string;
     productName: string;
+    category: string;
+    brand: string;
+    specialCode1: string;
+    specialCode2: string;
+    specialCode3: string;
+    specialCode4: string;
+    specialCode5: string;
+    specialCode6: string;
     total: number;
-    [warehouseId: string]: any;
+    [warehouseId: string]: string | number;
 }
 
 /**
@@ -26,6 +34,17 @@ export function WarehouseStatusReport() {
     const [warehouses, setWarehouses] = useState<Warehouse[]>([]);
     const [products, setProducts] = useState<Product[]>([]);
     const [loading, setLoading] = useState(true);
+    /** Malzeme listesi / Envanter ile aynı: Özel Kod 2 varsayılan açık; diğerleri Kolonlar’dan seçilir */
+    const [columnVisibility, setColumnVisibility] = useState<Record<string, boolean>>({
+        category: true,
+        brand: true,
+        specialCode1: false,
+        specialCode2: true,
+        specialCode3: false,
+        specialCode4: false,
+        specialCode5: false,
+        specialCode6: false,
+    });
     const { tm } = useLanguage();
     const { selectedFirm } = useFirmaDonem();
 
@@ -52,11 +71,21 @@ export function WarehouseStatusReport() {
     }, [selectedFirm?.firm_nr]);
 
     const rows = useMemo<WarehouseStockRow[]>(() => {
+        const trimOrEmpty = (v: unknown) =>
+            v != null && String(v).trim() !== '' ? String(v).trim() : '';
         return products.map(p => {
             const total = Number(p.stock) || 0;
             const row: WarehouseStockRow = {
                 productCode: p.code || '',
                 productName: p.name || '',
+                category: trimOrEmpty(p.category),
+                brand: trimOrEmpty(p.brand),
+                specialCode1: trimOrEmpty(p.specialCode1),
+                specialCode2: trimOrEmpty(p.specialCode2),
+                specialCode3: trimOrEmpty(p.specialCode3),
+                specialCode4: trimOrEmpty(p.specialCode4),
+                specialCode5: trimOrEmpty(p.specialCode5),
+                specialCode6: trimOrEmpty(p.specialCode6),
                 total,
             };
             // Çoklu depo şeması yok — tüm stok ilk depoya atanır
@@ -68,10 +97,60 @@ export function WarehouseStatusReport() {
     }, [products, warehouses]);
 
     const columnHelper = createColumnHelper<WarehouseStockRow>();
+    const specialCodeHeader = (n: number) => `${tm('specialCode')} ${n}`;
+    const specialCodeCell = (value: unknown) =>
+        value != null && String(value).trim() !== '' ? String(value).trim() : '—';
+
     const columns = useMemo<ColumnDef<WarehouseStockRow, any>[]>(() => {
         const base: ColumnDef<WarehouseStockRow, any>[] = [
             columnHelper.accessor('productCode', { header: tm('materialCode') }),
             columnHelper.accessor('productName', { header: tm('materialName') }),
+            columnHelper.accessor('category', {
+                id: 'category',
+                header: tm('category'),
+                cell: info => specialCodeCell(info.getValue()),
+            }),
+            columnHelper.accessor('brand', {
+                id: 'brand',
+                header: tm('brand'),
+                cell: info => specialCodeCell(info.getValue()),
+            }),
+            columnHelper.accessor('specialCode1', {
+                id: 'specialCode1',
+                header: specialCodeHeader(1),
+                cell: info => specialCodeCell(info.getValue()),
+                size: 100,
+            }),
+            columnHelper.accessor('specialCode2', {
+                id: 'specialCode2',
+                header: specialCodeHeader(2),
+                cell: info => specialCodeCell(info.getValue()),
+                size: 110,
+            }),
+            columnHelper.accessor('specialCode3', {
+                id: 'specialCode3',
+                header: specialCodeHeader(3),
+                cell: info => specialCodeCell(info.getValue()),
+                size: 100,
+            }),
+            columnHelper.accessor('specialCode4', {
+                id: 'specialCode4',
+                header: specialCodeHeader(4),
+                cell: info => specialCodeCell(info.getValue()),
+                size: 100,
+            }),
+            columnHelper.accessor('specialCode5', {
+                id: 'specialCode5',
+                header: specialCodeHeader(5),
+                cell: info => specialCodeCell(info.getValue()),
+                size: 100,
+            }),
+            columnHelper.accessor('specialCode6', {
+                id: 'specialCode6',
+                header: specialCodeHeader(6),
+                cell: info => specialCodeCell(info.getValue()),
+                size: 100,
+            }),
             columnHelper.accessor('total', {
                 header: tm('totalStock') || 'Toplam Stok',
                 cell: info => <span className="font-bold">{formatNumber(Number(info.getValue()) || 0, 2)}</span>,
@@ -112,7 +191,16 @@ export function WarehouseStatusReport() {
                         </div>
                     </div>
                 ) : (
-                    <DevExDataGrid data={rows} columns={columns} {...REPORT_GRID_DEFAULTS} height="100%" />
+                    <DevExDataGrid
+                        data={rows}
+                        columns={columns}
+                        {...REPORT_GRID_DEFAULTS}
+                        columnVisibility={columnVisibility}
+                        onColumnVisibilityChange={setColumnVisibility}
+                        excelFileName={tm('warehouseStatus') || 'malzeme-ambar-durum'}
+                        printTitle={tm('warehouseStatus') || 'Malzeme Ambar Durum'}
+                        height="100%"
+                    />
                 )}
             </div>
         </div>

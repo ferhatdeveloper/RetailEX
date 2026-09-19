@@ -1,3 +1,4 @@
+import { classifyAnalysisSaleLine } from './analysisSaleLine';
 import { toSqlDateInputString } from './localCalendarDate';
 
 /** Ürün bazında giriş/çıkış özeti — tutarlar netlenmez. */
@@ -16,6 +17,11 @@ export interface StockInOutLine {
     productCode?: string;
     productName?: string;
     itemCode?: string;
+    /** sale_items.item_type — Hizmet / Malzeme / service / package */
+    itemType?: string;
+    lineType?: string;
+    isService?: boolean;
+    materialType?: string;
     quantity?: number;
     unitPrice?: number;
     costPrice?: number;
@@ -25,6 +31,40 @@ export interface StockInOutLine {
     trcode?: number;
     sourceType?: string;
     movementDate?: string | Date | null;
+}
+
+/**
+ * Giriş/çıkış toplamları yalnızca malzeme/stok satırları içindir.
+ * analysisSaleLine + fatura türü (service/hizmet) ile hizalı.
+ */
+export function isInOutTotalsServiceLine(line: StockInOutLine): boolean {
+    const fiche = String(line.ficheType || '').trim().toLowerCase();
+    if (fiche === 'service' || fiche === 'hizmet') return true;
+
+    const itemType = line.itemType ?? line.lineType;
+    const materialType = String(line.materialType || '').trim().toLowerCase();
+    const catalogHint = {
+        id: String(line.productId || ''),
+        code: String(line.productCode || line.itemCode || ''),
+        name: String(line.productName || ''),
+        isService: line.isService === true || materialType === 'service',
+        materialType: (line.materialType || undefined) as
+            | 'service'
+            | 'commercial_goods'
+            | undefined,
+    };
+
+    return (
+        classifyAnalysisSaleLine(
+            {
+                productId: line.productId,
+                productName: line.productName,
+                lineType: itemType,
+                item_type: itemType,
+            },
+            catalogHint.id || catalogHint.code || catalogHint.isService ? [catalogHint] : [],
+        ) === 'service'
+    );
 }
 
 /**
@@ -129,6 +169,7 @@ function lineKey(line: StockInOutLine): string {
 export function aggregateInOutTotals(lines: StockInOutLine[]): InOutTotalsRow[] {
     const agg = new Map<string, InOutTotalsRow>();
     for (const line of lines) {
+        if (isInOutTotalsServiceLine(line)) continue;
         const dir = classifyStockLineDirection(line);
         if (dir === 'skip') continue;
         const key = lineKey(line);

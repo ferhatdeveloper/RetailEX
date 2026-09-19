@@ -47,6 +47,10 @@ describe('clampExpiryReturnQty / amounts', () => {
     expect(clampExpiryReturnQty(-1, 10)).toBe(0);
   });
 
+  it('kalan stok 0 ise iade miktarı 0', () => {
+    expect(clampExpiryReturnQty(10, 0)).toBe(0);
+  });
+
   it('KDV ve iskonto satır tutarını üretir', () => {
     const a = expiryReturnLineAmounts({ quantity: 10, unitPrice: 100, discountRate: 10, vatRate: 10 });
     expect(a.subtotal).toBe(1000);

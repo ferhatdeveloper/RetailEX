@@ -1,4 +1,4 @@
-﻿import { X, Search, Database, Check, Plus } from 'lucide-react';
+import { X, Search, Database, Check, Plus } from 'lucide-react';
 import { useState, useMemo, useEffect } from 'react';
 import { toast } from 'sonner';
 import {
@@ -7,7 +7,7 @@ import {
   type MasterDataQuickAddVariant,
 } from '../../utils/masterDataQuickAdd';
 import { useLanguage } from '../../contexts/LanguageContext';
-import { ModalLayer } from './FullscreenBodyPortal';
+import { PercentBodyModal, PercentBodyModalScrollBody } from './PercentBodyModal';
 
 export interface MasterDataItem {
     id: string;
@@ -76,12 +76,12 @@ export function MasterDataSelectionModal({
     const filteredItems = useMemo(() => {
         const source = localItems.length ? localItems : items;
         if (!searchTerm.trim()) return source;
-        const term = searchTerm.toLowerCase();
+        const term = searchTerm.toLocaleLowerCase('tr-TR');
         return source.filter(
             (item: MasterDataItem) =>
-                item.code.toLowerCase().includes(term) ||
-                item.name.toLowerCase().includes(term) ||
-                item.description?.toLowerCase().includes(term)
+                item.code.toLocaleLowerCase('tr-TR').includes(term) ||
+                item.name.toLocaleLowerCase('tr-TR').includes(term) ||
+                item.description?.toLocaleLowerCase('tr-TR').includes(term)
         );
     }, [searchTerm, items, localItems]);
 
@@ -161,159 +161,171 @@ export function MasterDataSelectionModal({
     };
 
     return (
-        <ModalLayer nested className="bg-black/40 backdrop-blur-md flex items-center justify-center p-4">
-            <div className="bg-white w-full max-w-lg shadow-2xl rounded-lg flex flex-col max-h-[85vh]">
-                <div className="p-3 border-b border-gray-200 flex items-center justify-between bg-gradient-to-r from-blue-700 to-blue-800 rounded-t-lg">
-                    <h3 className="text-sm font-semibold text-white flex items-center gap-2">
-                        <Database className="w-4 h-4" />
-                        {title} {isMulti && <span className="text-[10px] font-normal bg-white/20 px-1.5 py-0.5 rounded ml-1">{tm('multiSelect')}</span>}
-                    </h3>
-                    <button
-                        onClick={onClose}
-                        className="text-white hover:bg-white/10 p-1 rounded-md transition-colors"
-                    >
-                        <X className="w-5 h-5" />
-                    </button>
-                </div>
+        <PercentBodyModal
+            onClose={onClose}
+            size="list"
+            nested
+            ariaLabel={title}
+        >
+            <div className="p-3 border-b border-gray-200 flex items-center justify-between shrink-0 bg-gradient-to-r from-blue-700 to-blue-800">
+                <h3 className="text-sm font-semibold text-white flex items-center gap-2">
+                    <Database className="w-4 h-4" />
+                    {title}{' '}
+                    {isMulti && (
+                        <span className="text-[10px] font-normal bg-white/20 px-1.5 py-0.5 rounded ml-1">
+                            {tm('multiSelect')}
+                        </span>
+                    )}
+                </h3>
+                <button
+                    type="button"
+                    onClick={onClose}
+                    className="text-white hover:bg-white/10 p-1 rounded-md transition-colors"
+                >
+                    <X className="w-5 h-5" />
+                </button>
+            </div>
 
-                <div className="p-3 border-b border-gray-200 bg-gray-50">
-                    <div className="relative">
-                        <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" />
-                        <input
-                            type="text"
-                            placeholder={tm('searchEllipsis')}
-                            value={searchTerm}
-                            onChange={(e: React.ChangeEvent<HTMLInputElement>) => setSearchTerm(e.target.value)}
-                            className="w-full pl-9 pr-4 py-2 border border-gray-300 rounded text-sm focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 transition-all"
-                            autoFocus
-                        />
-                    </div>
+            <div className="p-3 border-b border-gray-200 bg-gray-50 shrink-0">
+                <div className="relative">
+                    <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" />
+                    <input
+                        type="text"
+                        placeholder={tm('searchEllipsis')}
+                        value={searchTerm}
+                        onChange={(e: React.ChangeEvent<HTMLInputElement>) => setSearchTerm(e.target.value)}
+                        className="w-full pl-9 pr-4 py-2 border border-gray-300 rounded text-sm focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 transition-all"
+                        autoFocus
+                    />
                 </div>
+            </div>
 
-                {canQuickAdd && (
-                    <div className="px-4 py-2 border-b border-gray-100 bg-white">
-                        {!showQuickAdd ? (
+            {canQuickAdd && (
+                <div className="px-4 py-2 border-b border-gray-100 bg-white shrink-0">
+                    {!showQuickAdd ? (
+                        <button
+                            type="button"
+                            onClick={() => openQuickAdd(searchTerm)}
+                            className="inline-flex items-center gap-1 text-xs font-medium text-blue-700 hover:text-blue-900"
+                        >
+                            <Plus className="w-3 h-3" />
+                            {tm('addNew')}
+                        </button>
+                    ) : (
+                        <div className="flex flex-wrap items-end gap-2">
+                            <input
+                                value={quickCode}
+                                onChange={(e) => setQuickCode(e.target.value)}
+                                placeholder={quickAddVariant === 'taxRate' ? tm('ratePercent') : tm('code')}
+                                className="flex-1 min-w-[80px] px-2 py-1.5 border rounded text-xs"
+                            />
+                            <input
+                                value={quickName}
+                                onChange={(e) => setQuickName(e.target.value)}
+                                placeholder={quickAddVariant === 'taxRate' ? tm('description') : tm('name')}
+                                className="flex-[2] min-w-[120px] px-2 py-1.5 border rounded text-xs"
+                            />
+                            <button
+                                type="button"
+                                disabled={quickSaving}
+                                onClick={() => void handleQuickAdd()}
+                                className="px-3 py-1.5 bg-blue-600 text-white text-xs rounded disabled:opacity-50"
+                            >
+                                {tm('save')}
+                            </button>
+                            <button
+                                type="button"
+                                onClick={() => setShowQuickAdd(false)}
+                                className="px-2 py-1.5 text-xs text-gray-600"
+                            >
+                                {tm('cancel')}
+                            </button>
+                        </div>
+                    )}
+                </div>
+            )}
+
+            <PercentBodyModalScrollBody className="p-2">
+                {filteredItems.length === 0 ? (
+                    <div className="text-center py-10">
+                        <Database className="w-12 h-12 mx-auto mb-2 text-gray-200" />
+                        <p className="text-sm text-gray-500 italic">{tm('noRecordsFound')}</p>
+                        {canQuickAdd && searchTerm.trim() && !showQuickAdd && (
                             <button
                                 type="button"
                                 onClick={() => openQuickAdd(searchTerm)}
-                                className="inline-flex items-center gap-1 text-xs font-medium text-blue-700 hover:text-blue-900"
+                                className="mt-4 inline-flex items-center gap-1 px-3 py-1.5 text-xs font-medium text-blue-700 border border-blue-200 rounded-md hover:bg-blue-50"
                             >
                                 <Plus className="w-3 h-3" />
-                                {tm('addNew')}
+                                {tm('addAsQuoted').replace('{q}', searchTerm.trim())}
                             </button>
-                        ) : (
-                            <div className="flex flex-wrap items-end gap-2">
-                                <input
-                                    value={quickCode}
-                                    onChange={(e) => setQuickCode(e.target.value)}
-                                    placeholder={quickAddVariant === 'taxRate' ? tm('ratePercent') : tm('code')}
-                                    className="flex-1 min-w-[80px] px-2 py-1.5 border rounded text-xs"
-                                />
-                                <input
-                                    value={quickName}
-                                    onChange={(e) => setQuickName(e.target.value)}
-                                    placeholder={quickAddVariant === 'taxRate' ? tm('description') : tm('name')}
-                                    className="flex-[2] min-w-[120px] px-2 py-1.5 border rounded text-xs"
-                                />
-                                <button
-                                    type="button"
-                                    disabled={quickSaving}
-                                    onClick={() => void handleQuickAdd()}
-                                    className="px-3 py-1.5 bg-blue-600 text-white text-xs rounded disabled:opacity-50"
-                                >
-                                    {tm('save')}
-                                </button>
-                                <button
-                                    type="button"
-                                    onClick={() => setShowQuickAdd(false)}
-                                    className="px-2 py-1.5 text-xs text-gray-600"
-                                >
-                                    {tm('cancel')}
-                                </button>
-                            </div>
                         )}
                     </div>
-                )}
-
-                <div className="flex-1 overflow-auto p-2">
-                    {filteredItems.length === 0 ? (
-                        <div className="text-center py-10">
-                            <Database className="w-12 h-12 mx-auto mb-2 text-gray-200" />
-                            <p className="text-sm text-gray-500 italic">{tm('noRecordsFound')}</p>
-                            {canQuickAdd && searchTerm.trim() && !showQuickAdd && (
-                                <button
-                                    type="button"
-                                    onClick={() => openQuickAdd(searchTerm)}
-                                    className="mt-4 inline-flex items-center gap-1 px-3 py-1.5 text-xs font-medium text-blue-700 border border-blue-200 rounded-md hover:bg-blue-50"
-                                >
-                                    <Plus className="w-3 h-3" />
-                                    {tm('addAsQuoted').replace('{q}', searchTerm.trim())}
-                                </button>
-                            )}
-                        </div>
-                    ) : (
-                        <div className="grid grid-cols-1 gap-1">
-                            {filteredItems.map((item: MasterDataItem) => (
-                                <button
-                                    key={item.id}
-                                    onClick={() => handleItemClick(item)}
-                                    className={`w-full group px-3 py-2 rounded-md border text-left transition-all flex items-center justify-between ${isItemSelected(item)
-                                        ? 'border-blue-500 bg-blue-50'
-                                        : 'border-transparent hover:border-gray-300 hover:bg-gray-50'
-                                        }`}
-                                >
-                                    <div className="flex items-center gap-3">
-                                        {isMulti && (
-                                            <div className={`w-4 h-4 rounded border flex items-center justify-center transition-colors ${isItemSelected(item) ? 'bg-blue-600 border-blue-600' : 'bg-white border-gray-300'}`}>
-                                                {isItemSelected(item) && <Check className="w-3 h-3 text-white" />}
-                                            </div>
-                                        )}
-                                        <div className="flex-1">
-                                            <div className="flex items-center gap-2">
-                                                <span className="font-semibold text-gray-900 text-xs">
-                                                    {item.code}
-                                                </span>
-                                                <span className="text-gray-300 text-xs">|</span>
-                                                <span className="text-gray-800 text-xs">
-                                                    {item.name}
-                                                </span>
-                                            </div>
-                                            {item.description && (
-                                                <p className="text-[10px] text-gray-500 mt-1 line-clamp-1">
-                                                    {item.description}
-                                                </p>
-                                            )}
-                                        </div>
-                                    </div>
-                                    {!isMulti && isItemSelected(item) && (
-                                        <div className="w-4 h-4 rounded-full bg-blue-600 flex items-center justify-center">
-                                            <div className="w-1.5 h-1.5 rounded-full bg-white" />
+                ) : (
+                    <div className="grid grid-cols-1 gap-1">
+                        {filteredItems.map((item: MasterDataItem) => (
+                            <button
+                                key={item.id}
+                                type="button"
+                                onClick={() => handleItemClick(item)}
+                                className={`w-full group px-3 py-2 rounded-md border text-left transition-all flex items-center justify-between ${isItemSelected(item)
+                                    ? 'border-blue-500 bg-blue-50'
+                                    : 'border-transparent hover:border-gray-300 hover:bg-gray-50'
+                                    }`}
+                            >
+                                <div className="flex items-center gap-3">
+                                    {isMulti && (
+                                        <div className={`w-4 h-4 rounded border flex items-center justify-center transition-colors ${isItemSelected(item) ? 'bg-blue-600 border-blue-600' : 'bg-white border-gray-300'}`}>
+                                            {isItemSelected(item) && <Check className="w-3 h-3 text-white" />}
                                         </div>
                                     )}
-                                </button>
-                            ))}
-                        </div>
-                    )}
-                </div>
+                                    <div className="flex-1">
+                                        <div className="flex items-center gap-2">
+                                            <span className="font-semibold text-gray-900 text-xs">
+                                                {item.code}
+                                            </span>
+                                            <span className="text-gray-300 text-xs">|</span>
+                                            <span className="text-gray-800 text-xs">
+                                                {item.name}
+                                            </span>
+                                        </div>
+                                        {item.description && (
+                                            <p className="text-[10px] text-gray-500 mt-1 line-clamp-1">
+                                                {item.description}
+                                            </p>
+                                        )}
+                                    </div>
+                                </div>
+                                {!isMulti && isItemSelected(item) && (
+                                    <div className="w-4 h-4 rounded-full bg-blue-600 flex items-center justify-center">
+                                        <div className="w-1.5 h-1.5 rounded-full bg-white" />
+                                    </div>
+                                )}
+                            </button>
+                        ))}
+                    </div>
+                )}
+            </PercentBodyModalScrollBody>
 
-                <div className="p-3 border-t border-gray-200 bg-gray-50 flex justify-end gap-2 rounded-b-lg">
+            <div className="p-3 border-t border-gray-200 bg-gray-50 flex justify-end gap-2 shrink-0">
+                <button
+                    type="button"
+                    onClick={onClose}
+                    className="px-4 py-2 text-xs font-medium bg-white border border-gray-300 text-gray-700 rounded-md hover:bg-gray-50 transition-colors shadow-sm"
+                >
+                    {isMulti ? tm('cancel') : tm('close')}
+                </button>
+                {isMulti && (
                     <button
-                        onClick={onClose}
-                        className="px-4 py-2 text-xs font-medium bg-white border border-gray-300 text-gray-700 rounded-md hover:bg-gray-50 transition-colors shadow-sm"
+                        type="button"
+                        onClick={handleConfirm}
+                        className="px-4 py-2 text-xs font-medium bg-blue-600 text-white rounded-md hover:bg-blue-700 transition-colors shadow-sm flex items-center gap-1"
                     >
-                        {isMulti ? tm('cancel') : tm('close')}
+                        <Check className="w-3 h-3" />
+                        {tm('okWithCount').replace('{n}', String(selectedItems.length))}
                     </button>
-                    {isMulti && (
-                        <button
-                            onClick={handleConfirm}
-                            className="px-4 py-2 text-xs font-medium bg-blue-600 text-white rounded-md hover:bg-blue-700 transition-colors shadow-sm flex items-center gap-1"
-                        >
-                            <Check className="w-3 h-3" />
-                            {tm('okWithCount').replace('{n}', String(selectedItems.length))}
-                        </button>
-                    )}
-                </div>
+                )}
             </div>
-        </ModalLayer>
+        </PercentBodyModal>
     );
 }

@@ -9,7 +9,7 @@
  * @created 2024-12-18
  */
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import {
   TrendingUp,
   TrendingDown,
@@ -26,14 +26,35 @@ import { useFirmaDonem } from '../../contexts/FirmaDonemContext';
 import { useLanguage } from '../../contexts/LanguageContext';
 import { ProductProfitabilityReport } from './ProductProfitabilityReport';
 import { CustomerProfitabilityReport } from '../trading/contacts/CustomerProfitabilityReport';
+import { getCostProfitAnalysis } from '../../services/layeredInventoryCost';
 import { postgres } from '../../services/postgres';
 import { SQL_COUNTABLE_SALE_STATUS_PLAIN } from '../../utils/saleInvoiceStatus';
+import { toSqlDateInputString, localTodayDateKey } from '../../utils/localCalendarDate';
+import { displayItemCode } from '../../utils/lastPurchaseCostSql';
 
 type TabType = 'overview' | 'products' | 'customers';
 
+function periodOrMonthRange(period: { beg_date?: string; end_date?: string } | null | undefined): {
+  start: string;
+  end: string;
+} {
+  const start = toSqlDateInputString(period?.beg_date || '');
+  const end = toSqlDateInputString(period?.end_date || '');
+  if (start && end) return { start, end };
+  const today = localTodayDateKey();
+  const d = new Date();
+  d.setDate(1);
+  return {
+    start: `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-01`,
+    end: today,
+  };
+}
+
 export function ProfitDashboard() {
   const { tm } = useLanguage();
-  const { selectedFirma, selectedDonem } = useFirmaDonem();
+  const { selectedFirma, selectedDonem, selectedFirm, selectedPeriod } = useFirmaDonem();
+  const firm = selectedFirm || selectedFirma;
+  const period = selectedPeriod || selectedDonem;
   const [activeTab, setActiveTab] = useState<TabType>('overview');
   const [loading, setLoading] = useState(false);
   const [kpiData, setKpiData] = useState({
@@ -52,97 +73,95 @@ export function ProfitDashboard() {
   });
   const trends = { revenueChange: 0, profitChange: 0, marginChange: 0, transactionChange: 0 };
 
-  useEffect(() => {
-    if (selectedFirma && selectedDonem) loadKpiData();
-  }, [selectedFirma, selectedDonem]);
-
-  const loadKpiData = async () => {
+  const loadKpiData = useCallback(async () => {
+    if (!firm || !period) return;
     setLoading(true);
     try {
-      const { rows: kpiRows } = await postgres.query(`
-        SELECT
-          COALESCE(SUM(net_amount), 0)   AS total_revenue,
-          COALESCE(SUM(total_cost), 0)   AS total_cost,
-          COALESCE(SUM(gross_profit), 0) AS gross_profit,
-          CASE WHEN COALESCE(SUM(net_amount), 0) > 0
-            THEN (COALESCE(SUM(gross_profit), 0) / SUM(net_amount)) * 100
-            ELSE 0 END                   AS profit_margin,
-          COUNT(*)                       AS transaction_count,
-          COUNT(DISTINCT customer_id)    AS customer_count
-        FROM sales
-        WHERE fiche_type = 'sales_invoice' AND ${SQL_COUNTABLE_SALE_STATUS_PLAIN}
-      `);
+      const { start, end } = periodOrMonthRange(period);
+      const profitRows = await getCostProfitAnalysis({
+        startDate: start,
+        endDate: end,
+        firmNr: firm.firm_nr,
+        periodNr: period.nr,
+      });
 
-      const { rows: topProductRows } = await postgres.query(`
-        SELECT si.product_code, si.product_name, SUM(si.gross_profit) AS total_profit
-        FROM sale_items si
-        JOIN sales s ON si.invoice_id = s.id
-        WHERE s.fiche_type = 'sales_invoice'
-        GROUP BY si.product_code, si.product_name
-        ORDER BY SUM(si.gross_profit) DESC
-        LIMIT 1
-      `);
+      const totalRevenue = profitRows.reduce((s, r) => s + (Number(r.revenue) || 0), 0);
+      const totalCost = profitRows.reduce((s, r) => s + (Number(r.cogs) || 0), 0);
+      const grossProfit = profitRows.reduce((s, r) => s + (Number(r.profit) || 0), 0);
+      const profitMargin = totalRevenue > 0 ? (grossProfit / totalRevenue) * 100 : 0;
+      const profitableProducts = profitRows.filter((r) => (Number(r.profit) || 0) > 0).length;
+      const lossProducts = profitRows.filter((r) => (Number(r.profit) || 0) < 0).length;
+      const topByProfit = [...profitRows].sort(
+        (a, b) => (Number(b.profit) || 0) - (Number(a.profit) || 0),
+      )[0];
+      const topProduct = topByProfit
+        ? `${displayItemCode(topByProfit.productCode)} - ${topByProfit.productName}`
+        : '-';
 
-      const { rows: topCustomerRows } = await postgres.query(`
-        SELECT customer_name, SUM(gross_profit) AS total_profit
-        FROM sales
-        WHERE fiche_type = 'sales_invoice'
-          AND customer_name IS NOT NULL AND customer_name != ''
-        GROUP BY customer_name
-        ORDER BY SUM(gross_profit) DESC
-        LIMIT 1
-      `);
+      let transactionCount = 0;
+      let customerCount = 0;
+      let topCustomer = '-';
+      try {
+        const { rows: kpiRows } = await postgres.query(
+          `
+          SELECT
+            COUNT(*) AS transaction_count,
+            COUNT(DISTINCT NULLIF(TRIM(COALESCE(customer_id::text, '')), '')) AS customer_count
+          FROM sales
+          WHERE ${SQL_COUNTABLE_SALE_STATUS_PLAIN}
+            AND (date AT TIME ZONE 'UTC')::date >= $1::date
+            AND (date AT TIME ZONE 'UTC')::date <= $2::date
+          `,
+          [start, end],
+        );
+        transactionCount = parseInt(String(kpiRows[0]?.transaction_count ?? 0), 10) || 0;
+        customerCount = parseInt(String(kpiRows[0]?.customer_count ?? 0), 10) || 0;
 
-      const { rows: prodCountRows } = await postgres.query(`
-        SELECT
-          COUNT(DISTINCT CASE WHEN t.total_profit > 0  THEN t.product_code END) AS profitable,
-          COUNT(DISTINCT CASE WHEN t.total_profit <= 0 THEN t.product_code END) AS loss_count,
-          COUNT(DISTINCT t.product_code)                                        AS total_count
-        FROM (
-          SELECT si.product_code, SUM(si.gross_profit) AS total_profit
-          FROM sale_items si
-          JOIN sales s ON si.invoice_id = s.id
-          WHERE s.fiche_type = 'sales_invoice'
-          GROUP BY si.product_code
-        ) t
-      `);
-
-      // Katalog SKU adedi (stok toplamı değil) — KPI «Ürün Sayısı»
-      const { rows: catalogCountRows } = await postgres.query(`
-        SELECT COUNT(*)::int AS sku_count
-        FROM products
-        WHERE COALESCE(is_active, true) = true
-      `);
-
-      const k = kpiRows[0] || {};
-      const pc = prodCountRows[0] || {};
-      const tp = topProductRows[0];
-      const tc = topCustomerRows[0];
-      const txCount = parseInt(k.transaction_count) || 0;
-      const totalRev = parseFloat(k.total_revenue) || 0;
-      const catalogSku = parseInt(catalogCountRows[0]?.sku_count) || 0;
-      const soldSku = parseInt(pc.total_count) || 0;
+        const { rows: topCustomerRows } = await postgres.query(
+          `
+          SELECT
+            COALESCE(NULLIF(TRIM(customer_name), ''), '-') AS customer_name,
+            COALESCE(SUM(net_amount), 0) AS total_rev
+          FROM sales
+          WHERE ${SQL_COUNTABLE_SALE_STATUS_PLAIN}
+            AND (date AT TIME ZONE 'UTC')::date >= $1::date
+            AND (date AT TIME ZONE 'UTC')::date <= $2::date
+            AND NULLIF(TRIM(COALESCE(customer_name, '')), '') IS NOT NULL
+          GROUP BY 1
+          ORDER BY total_rev DESC
+          LIMIT 1
+          `,
+          [start, end],
+        );
+        topCustomer = String(topCustomerRows[0]?.customer_name || '-');
+      } catch (metaErr) {
+        console.warn('[ProfitDashboard] sales meta KPI fallback', metaErr);
+      }
 
       setKpiData({
-        totalRevenue: totalRev,
-        totalCost: parseFloat(k.total_cost) || 0,
-        grossProfit: parseFloat(k.gross_profit) || 0,
-        profitMargin: parseFloat(k.profit_margin) || 0,
-        transactionCount: txCount,
-        productCount: catalogSku > 0 ? catalogSku : soldSku,
-        customerCount: parseInt(k.customer_count) || 0,
-        avgTransactionValue: txCount > 0 ? totalRev / txCount : 0,
-        topProduct: tp ? `${tp.product_code} - ${tp.product_name}` : '-',
-        topCustomer: tc ? tc.customer_name : '-',
-        profitableProducts: parseInt(pc.profitable) || 0,
-        lossProducts: parseInt(pc.loss_count) || 0,
+        totalRevenue,
+        totalCost,
+        grossProfit,
+        profitMargin,
+        transactionCount,
+        productCount: profitRows.length,
+        customerCount,
+        avgTransactionValue: transactionCount > 0 ? totalRevenue / transactionCount : 0,
+        topProduct,
+        topCustomer,
+        profitableProducts,
+        lossProducts,
       });
     } catch (err) {
       console.error('[ProfitDashboard] loadKpiData failed:', err);
     } finally {
       setLoading(false);
     }
-  };
+  }, [firm, period]);
+
+  useEffect(() => {
+    if (firm && period) void loadKpiData();
+  }, [firm, period, loadKpiData]);
 
   const formatMoney = (amount: number) => {
     return amount.toLocaleString('en-IQ', {
@@ -151,7 +170,7 @@ export function ProfitDashboard() {
     });
   };
 
-  if (!selectedFirma || !selectedDonem) {
+  if (!firm || !period) {
     return (
       <div className="bg-yellow-50 border border-yellow-200 rounded-lg p-6">
         <div className="flex items-center gap-3 text-yellow-800">
@@ -173,7 +192,7 @@ export function ProfitDashboard() {
           <div>
             <h1 className="text-2xl font-bold mb-2">{tm('rptProfitDashTitle')}</h1>
             <p className="text-purple-100">
-              {selectedFirma.firma_adi} / {selectedDonem.donem_adi}
+              {firm.firma_adi} / {period.donem_adi ?? period.name}
             </p>
           </div>
           <div className="text-right">

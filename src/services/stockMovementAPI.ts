@@ -64,6 +64,39 @@ export interface StockMovementLine {
     warehouse_name: string;
     customer_name: string;
     description: string;
+    /** Hizmet | Malzeme — CostReport / analysisSaleLine ile aynı kova */
+    line_kind: 'service' | 'product';
+}
+
+/** Depo görünen adı: kod + ad; yoksa yalnız ad/kod. */
+function formatWarehouseLabel(code?: unknown, name?: unknown): string {
+    const c = String(code ?? '').trim();
+    const n = String(name ?? '').trim();
+    if (c && n) return `${c}, ${n}`;
+    return n || c || '';
+}
+
+/** Satır türü: item_type / material_type / beauty-service kodları. */
+function resolveLineKind(r: {
+    item_type?: unknown;
+    material_type?: unknown;
+    item_code?: unknown;
+    product_code?: unknown;
+}): 'service' | 'product' {
+    const itemType = String(r.item_type ?? '').trim().toLocaleLowerCase('tr-TR');
+    if (
+        itemType === 'hizmet' ||
+        itemType === 'service' ||
+        itemType === 'package' ||
+        itemType === 'paket'
+    ) {
+        return 'service';
+    }
+    const mat = String(r.material_type ?? '').trim().toLowerCase();
+    if (mat === 'service') return 'service';
+    const code = String(r.item_code ?? r.product_code ?? '').trim().toLowerCase();
+    if (code.startsWith('beauty-service') || code.startsWith('beauty-package')) return 'service';
+    return 'product';
 }
 
 export interface StockMovementItem {
@@ -207,6 +240,22 @@ class StockMovementAPI {
     async getAllLines(): Promise<StockMovementLine[]> {
         const LINE_CAP = 15000;
         try {
+            let defaultWarehouse = '';
+            try {
+                const { rows: whRows } = await postgres.query(
+                    `SELECT code, name FROM stores
+                     WHERE firm_nr = $1 AND COALESCE(is_active, true) = true
+                     ORDER BY COALESCE(is_main, false) DESC, COALESCE("default", false) DESC, name ASC NULLS LAST
+                     LIMIT 1`,
+                    [padFirmNr()],
+                );
+                if (whRows?.[0]) {
+                    defaultWarehouse = formatWarehouseLabel(whRows[0].code, whRows[0].name);
+                }
+            } catch (err) {
+                console.warn('[StockMovementAPI] getAllLines default warehouse failed:', err);
+            }
+
             let slipRows: any[] = [];
             try {
                 const { rows } = await postgres.query(
@@ -220,9 +269,12 @@ class StockMovementAPI {
                         COALESCE(p.name, '') AS product_name,
                         i.quantity,
                         i.unit_price,
-                        COALESCE(s.name, '') AS warehouse_name,
+                        COALESCE(NULLIF(TRIM(s.code), ''), '') AS warehouse_code,
+                        COALESCE(NULLIF(TRIM(s.name), ''), '') AS warehouse_name_raw,
                         '' AS customer_name,
-                        COALESCE(i.notes, m.description, '') AS description
+                        COALESCE(i.notes, m.description, '') AS description,
+                        COALESCE(p.material_type, '') AS material_type,
+                        'Malzeme' AS item_type
                      FROM stock_movement_items i
                      JOIN stock_movements m ON i.movement_id = m.id
                      LEFT JOIN products p ON p.id = i.product_id
@@ -263,14 +315,19 @@ class StockMovementAPI {
                             ELSE 0
                           END
                         ) AS unit_price,
-                        COALESCE(st.name, '') AS warehouse_name,
+                        COALESCE(NULLIF(TRIM(st.code), ''), '') AS warehouse_code,
+                        COALESCE(NULLIF(TRIM(st.name), ''), '') AS warehouse_name_raw,
+                        NULLIF(TRIM(COALESCE(sl.header_fields->>'warehouse', '')), '') AS warehouse_header,
                         COALESCE(
                             NULLIF(TRIM(sl.customer_name), ''),
                             c.name,
                             sup.name,
                             ''
                         ) AS customer_name,
-                        COALESCE(si.item_name, sl.notes, '') AS description
+                        COALESCE(si.item_name, sl.notes, '') AS description,
+                        COALESCE(si.item_type, 'Malzeme') AS item_type,
+                        COALESCE(p.material_type, '') AS material_type,
+                        COALESCE(si.item_code, '') AS item_code
                      FROM sale_items si
                      JOIN sales sl ON si.invoice_id = sl.id
                      LEFT JOIN products p ON p.id = si.product_id
@@ -302,26 +359,33 @@ class StockMovementAPI {
                 product_name: String(r.product_name || ''),
                 quantity: Number(r.quantity) || 0,
                 unit_price: Number(r.unit_price) || 0,
-                warehouse_name: String(r.warehouse_name || ''),
+                warehouse_name:
+                    formatWarehouseLabel(r.warehouse_code, r.warehouse_name_raw) || defaultWarehouse,
                 customer_name: String(r.customer_name || ''),
                 description: String(r.description || ''),
+                line_kind: resolveLineKind(r),
             }));
 
-            const invoices: StockMovementLine[] = invRows.map((r: any) => ({
-                id: `inv-line-${r.id}`,
-                document_no: String(r.document_no || ''),
-                movement_date: r.movement_date || r.created_at || '',
-                created_at: r.created_at || '',
-                movement_type: String(r.movement_type || ''),
-                source_kind: 'invoice' as const,
-                product_code: String(r.product_code || ''),
-                product_name: String(r.product_name || ''),
-                quantity: Number(r.quantity) || 0,
-                unit_price: Number(r.unit_price) || 0,
-                warehouse_name: String(r.warehouse_name || ''),
-                customer_name: String(r.customer_name || ''),
-                description: String(r.description || ''),
-            }));
+            const invoices: StockMovementLine[] = invRows.map((r: any) => {
+                const fromStore = formatWarehouseLabel(r.warehouse_code, r.warehouse_name_raw);
+                const fromHeader = String(r.warehouse_header || '').trim();
+                return {
+                    id: `inv-line-${r.id}`,
+                    document_no: String(r.document_no || ''),
+                    movement_date: r.movement_date || r.created_at || '',
+                    created_at: r.created_at || '',
+                    movement_type: String(r.movement_type || ''),
+                    source_kind: 'invoice' as const,
+                    product_code: String(r.product_code || ''),
+                    product_name: String(r.product_name || ''),
+                    quantity: Number(r.quantity) || 0,
+                    unit_price: Number(r.unit_price) || 0,
+                    warehouse_name: fromStore || fromHeader || defaultWarehouse,
+                    customer_name: String(r.customer_name || ''),
+                    description: String(r.description || ''),
+                    line_kind: resolveLineKind(r),
+                };
+            });
 
             const combined = [...slips, ...invoices];
             combined.sort((a, b) => {
@@ -1069,6 +1133,13 @@ class StockMovementAPI {
             })(),
             productName: String(r.product_name || r.item_name || r.productName || '').trim(),
             itemCode: String(r.item_code || '').trim(),
+            itemType: String(r.item_type ?? r.itemType ?? r.lineType ?? '').trim() || undefined,
+            lineType: String(r.item_type ?? r.itemType ?? r.lineType ?? '').trim() || undefined,
+            materialType: String(r.material_type ?? r.materialType ?? '').trim() || undefined,
+            isService:
+                r.is_service === true ||
+                r.isService === true ||
+                String(r.material_type ?? r.materialType ?? '').trim().toLowerCase() === 'service',
             quantity: Number(r.quantity) || 0,
             unitPrice: Number(r.unit_price ?? r.unitPrice) || 0,
             costPrice: Number(r.cost_price ?? r.costPrice ?? r.unit_cost) || 0,
@@ -1192,7 +1263,7 @@ class StockMovementAPI {
                         .get<any[]>(
                             itemsPath,
                             {
-                                select: 'id,invoice_id,product_id,item_code,item_name,quantity,unit_price,total_amount,net_amount,unit_cost',
+                                select: 'id,invoice_id,product_id,item_code,item_name,item_type,quantity,unit_price,total_amount,net_amount,unit_cost',
                                 invoice_id: `in.(${chunk.join(',')})`,
                                 limit: 20000,
                             },
@@ -1224,10 +1295,56 @@ class StockMovementAPI {
                     }
                 }
 
+                // Agregasyon öncesi: ürün kartı material_type=service işaretle + kod/ad doldur
+                const lineProductIds = [
+                    ...new Set(
+                        lines
+                            .map((l) => String(l.productId || '').trim())
+                            .filter((id) => UUID_RE.test(id)),
+                    ),
+                ];
+                if (lineProductIds.length > 0) {
+                    const byId = new Map<string, { code?: string; name?: string; material_type?: string }>();
+                    for (let i = 0; i < lineProductIds.length; i += chunkSize) {
+                        const chunk = lineProductIds.slice(i, i + chunkSize);
+                        const prows = await postgrest
+                            .get<any[]>(
+                                prodPath,
+                                {
+                                    select: 'id,code,name,material_type',
+                                    id: `in.(${chunk.join(',')})`,
+                                    limit: chunk.length,
+                                },
+                                { schema: 'public' },
+                            )
+                            .catch(() => [] as any[]);
+                        for (const p of Array.isArray(prows) ? prows : []) {
+                            if (p?.id) {
+                                byId.set(String(p.id), {
+                                    code: p.code,
+                                    name: p.name,
+                                    material_type: p.material_type,
+                                });
+                            }
+                        }
+                    }
+                    for (const line of lines) {
+                        const p = byId.get(String(line.productId || ''));
+                        if (!p) continue;
+                        if (!line.productCode && p.code) line.productCode = String(p.code);
+                        if (!line.productName && p.name) line.productName = String(p.name);
+                        if (!line.materialType && p.material_type) {
+                            line.materialType = String(p.material_type);
+                            line.isService =
+                                String(p.material_type).trim().toLowerCase() === 'service';
+                        }
+                    }
+                }
+
                 let totals = aggregateInOutTotals(lines);
                 const needIds = totals
-                    .map((r) => r.productId)
-                    .filter((id) => UUID_RE.test(id));
+                    .filter((r) => UUID_RE.test(r.productId) && !String(r.productCode || '').trim())
+                    .map((r) => r.productId);
                 if (needIds.length > 0) {
                     const byId = new Map<string, { code?: string; name?: string }>();
                     for (let i = 0; i < needIds.length; i += chunkSize) {
@@ -1235,7 +1352,11 @@ class StockMovementAPI {
                         const prows = await postgrest
                             .get<any[]>(
                                 prodPath,
-                                { select: 'id,code,name', id: `in.(${chunk.join(',')})`, limit: chunk.length },
+                                {
+                                    select: 'id,code,name',
+                                    id: `in.(${chunk.join(',')})`,
+                                    limit: chunk.length,
+                                },
                                 { schema: 'public' },
                             )
                             .catch(() => [] as any[]);
@@ -1296,6 +1417,8 @@ class StockMovementAPI {
                     COALESCE(NULLIF(TRIM(p.code), ''), ${SQL_NON_UUID_ITEM_CODE}, '—') AS product_code,
                     COALESCE(p.name, si.item_name, '') AS product_name,
                     si.item_code,
+                    si.item_type,
+                    p.material_type,
                     si.quantity,
                     COALESCE(
                       NULLIF(si.unit_price, 0),
@@ -1330,7 +1453,9 @@ class StockMovementAPI {
                      'service', 'hizmet', 'beauty', 'beauty_sale', 'pos', 'retail'
                    )
                    AND COALESCE(sl.is_cancelled, false) = false
-                   AND LOWER(TRIM(COALESCE(sl.status, ''))) NOT IN ('iptal', 'silindi', 'cancelled', 'canceled', 'deleted')`,
+                   AND LOWER(TRIM(COALESCE(sl.status, ''))) NOT IN ('iptal', 'silindi', 'cancelled', 'canceled', 'deleted')
+                   AND LOWER(TRIM(COALESCE(si.item_type, 'Malzeme'))) NOT IN ('hizmet', 'service', 'package', 'paket')
+                   AND LOWER(TRIM(COALESCE(p.material_type, ''))) IS DISTINCT FROM 'service'`,
                 [start, end],
                 fp,
             );

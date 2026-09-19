@@ -12,16 +12,22 @@ import {
   unitCostFromPurchaseLine,
   isServiceLineType,
   SQL_LINE_RESOLVED_PRODUCT_ID,
+  SQL_IS_SERVICE_LINE,
+  SQL_DISPLAY_ITEM_CODE,
   SQL_PL_SALES_OR_RETURN,
   SIGNED_LINE_QTY_EXPR,
   SIGNED_LINE_REVENUE_EXPR,
-  SQL_SALES_SIGN,
+  SIGNED_LINE_COST_EXPR,
   buildProfitCostCtes,
   PRODUCTS_JOIN,
-  SERVICES_JOIN,
+  SERVICE_COST_JOINS,
+  LAST_PURCHASE_JOIN,
   INVOICE_LINE_SCALE_JOIN,
   resolveLineProductId,
   scaleLineRevenueToInvoiceNet,
+  displayItemCode,
+  restServiceUnitCost,
+  lineCostAmount,
 } from '../utils/lastPurchaseCostSql';
 import { localCalendarDateKey, localTodayDateKey, toSqlDateInputString } from '../utils/localCalendarDate';
 import {
@@ -34,6 +40,7 @@ import {
   type LayeredOnHand,
   type FifoApplyResult,
   type CostProfitRow,
+  type CostProfitLineKind,
 } from '../utils/layeredInventoryCost';
 
 export type OnHandProduct = {
@@ -408,6 +415,7 @@ type SaleLineRaw = {
   quantity: number;
   revenue: number;
   fallbackCogs: number;
+  lineKind: CostProfitLineKind;
 };
 
 async function loadCostProfitSaleLinesSql(opts: {
@@ -422,34 +430,30 @@ async function loadCostProfitSaleLinesSql(opts: {
     WITH ${profitCtes}
     SELECT
       COALESCE((${SQL_LINE_RESOLVED_PRODUCT_ID})::text, '') AS product_id,
-      COALESCE(
-        NULLIF(TRIM(p.code), ''),
-        NULLIF(TRIM(svc.code), ''),
-        NULLIF(TRIM(si.item_code), ''),
-        '—'
-      ) AS product_code,
+      ${SQL_DISPLAY_ITEM_CODE} AS product_code,
       COALESCE(
         NULLIF(TRIM(si.item_name), ''),
         p.name,
         svc.name,
+        bsvc.name,
         '—'
       ) AS product_name,
+      CASE WHEN ${SQL_IS_SERVICE_LINE} THEN 'service' ELSE 'product' END AS line_kind,
       COALESCE(SUM(${SIGNED_LINE_QTY_EXPR}), 0) AS quantity,
       COALESCE(SUM(${SIGNED_LINE_REVENUE_EXPR}), 0) AS revenue,
-      COALESCE(SUM(
-        (${SQL_SALES_SIGN}) * ABS(COALESCE(si.quantity, 0)) * COALESCE(NULLIF(si.unit_cost, 0), 0)
-      ), 0) AS fallback_cogs
+      COALESCE(SUM(${SIGNED_LINE_COST_EXPR}), 0) AS fallback_cogs
     FROM sale_items si
     INNER JOIN sales s ON s.id = si.invoice_id
     ${PRODUCTS_JOIN}
-    ${SERVICES_JOIN}
+    ${SERVICE_COST_JOINS}
+    ${LAST_PURCHASE_JOIN}
     ${INVOICE_LINE_SCALE_JOIN}
     WHERE ${SQL_NOT_REMOVED_SALE}
       AND ${SQL_RETAIL_PRODUCT_SALE}
       AND COALESCE(si.item_type, 'Malzeme') NOT IN ('Promosyon', 'İndirim')
       AND LEFT(COALESCE(s.date, s.created_at)::text, 10) >= $2
       AND LEFT(COALESCE(s.date, s.created_at)::text, 10) <= $3
-    GROUP BY 1, 2, 3
+    GROUP BY 1, 2, 3, 4
     HAVING ABS(COALESCE(SUM(${SIGNED_LINE_QTY_EXPR}), 0)) > 0.0001
         OR ABS(COALESCE(SUM(${SIGNED_LINE_REVENUE_EXPR}), 0)) > 0.009
     `,
@@ -458,11 +462,12 @@ async function loadCostProfitSaleLinesSql(opts: {
   );
   return (rows || []).map((r) => ({
     productId: String(r.product_id ?? ''),
-    productCode: String(r.product_code ?? ''),
+    productCode: displayItemCode(r.product_code),
     productName: String(r.product_name ?? ''),
     quantity: Number(r.quantity ?? 0) || 0,
     revenue: Number(r.revenue ?? 0) || 0,
     fallbackCogs: Number(r.fallback_cogs ?? 0) || 0,
+    lineKind: r.line_kind === 'service' ? ('service' as const) : ('product' as const),
   }));
 }
 
@@ -475,7 +480,7 @@ async function loadCostProfitSaleLinesRest(opts: {
   const { postgrest } = await import('./api/postgrestClient');
   const fn = opts.firmNr;
   const pn = opts.periodNr;
-  const [sales, items, products] = await Promise.all([
+  const [sales, items, products, services, beautyServices, consumables] = await Promise.all([
     postgrest
       .get<Record<string, unknown>[]>(
         `/rex_${fn}_${pn}_sales`,
@@ -505,10 +510,38 @@ async function loadCostProfitSaleLinesRest(opts: {
         { schema: 'public' },
       )
       .catch(() => [] as Record<string, unknown>[]),
+    postgrest
+      .get<Record<string, unknown>[]>(
+        `/rex_${fn}_services`,
+        { select: 'id,code,name,purchase_price', limit: '8000' },
+        { schema: 'public' },
+      )
+      .catch(() => [] as Record<string, unknown>[]),
+    postgrest
+      .get<Record<string, unknown>[]>(
+        `/rex_${fn}_beauty_services`,
+        { select: 'id,name,cost_price', limit: '8000' },
+        { schema: 'beauty' },
+      )
+      .catch(() => [] as Record<string, unknown>[]),
+    postgrest
+      .get<Record<string, unknown>[]>(
+        `/rex_${fn}_beauty_service_consumables`,
+        { select: 'service_id,product_id,qty_per_service', limit: '12000' },
+        { schema: 'beauty' },
+      )
+      .catch(() => [] as Record<string, unknown>[]),
   ]);
 
   const salesById = new Map((sales || []).map((s) => [String(s.id), s]));
   const productById = new Map((products || []).map((p) => [String(p.id), p]));
+  const serviceById = new Map((services || []).map((s) => [String(s.id), s]));
+  const beautyById = new Map((beautyServices || []).map((s) => [String(s.id), s]));
+  const serviceByCode = new Map<string, Record<string, unknown>>();
+  for (const s of services || []) {
+    const code = String(s.code || '').trim();
+    if (code) serviceByCode.set(code, s);
+  }
   const productIdByCode = new Map<string, string>();
   for (const p of products || []) {
     const id = String(p.id);
@@ -516,6 +549,55 @@ async function loadCostProfitSaleLinesRest(opts: {
     const barcode = String(p.barcode || '').trim();
     if (code) productIdByCode.set(code, id);
     if (barcode) productIdByCode.set(barcode, id);
+  }
+
+  type PurchaseHit = { unitCost: number; dateKey: string; createdAt: string };
+  const lastById = new Map<string, PurchaseHit>();
+  const lastByCode = new Map<string, PurchaseHit>();
+  const resolvePurchaseProductId = (it: Record<string, unknown>): string => {
+    const fromLine = resolveLineProductId(it);
+    if (fromLine) return fromLine;
+    const code = String(it.item_code || '').trim();
+    if (!code) return '';
+    return productIdByCode.get(code) || '';
+  };
+  for (const it of items || []) {
+    const inv = salesById.get(String(it.invoice_id));
+    if (!inv || skipInvoiceStatus(inv.status, inv.is_cancelled)) continue;
+    if (!isPurchaseFiche(inv)) continue;
+    const itemType = String(it.item_type || 'Malzeme');
+    if (itemType === 'Promosyon' || itemType === 'İndirim') continue;
+    const unitCost = unitCostFromPurchaseLine(it);
+    if (!unitCost) continue;
+    const dateKey = String(inv.date || '').slice(0, 10);
+    const createdAt = String(inv.created_at || '');
+    const hit: PurchaseHit = { unitCost, dateKey, createdAt };
+    const newer = (prev: PurchaseHit | undefined) =>
+      !prev ||
+      dateKey > prev.dateKey ||
+      (dateKey === prev.dateKey && createdAt > prev.createdAt);
+    const pid = resolvePurchaseProductId(it);
+    if (pid && newer(lastById.get(pid))) lastById.set(pid, hit);
+    const code = String(it.item_code || '').trim();
+    if (code && newer(lastByCode.get(code))) lastByCode.set(code, hit);
+  }
+
+  const recipeByService = new Map<string, number>();
+  for (const c of consumables || []) {
+    const sid = String(c.service_id || '').trim();
+    const cpid = String(c.product_id || '').trim();
+    if (!sid || !cpid) continue;
+    const qty = Number(c.qty_per_service ?? 0) || 0;
+    if (!qty) continue;
+    const consProd = productById.get(cpid);
+    const consCode = String(consProd?.code || '').trim();
+    const consBarcode = String(consProd?.barcode || '').trim();
+    const unit =
+      lastById.get(cpid)?.unitCost ||
+      (consCode && lastByCode.get(consCode)?.unitCost) ||
+      (consBarcode && lastByCode.get(consBarcode)?.unitCost) ||
+      0;
+    recipeByService.set(sid, (recipeByService.get(sid) || 0) + qty * unit);
   }
 
   const saleOk = new Set(
@@ -549,9 +631,14 @@ async function loadCostProfitSaleLinesRest(opts: {
       productIdByCode.get(String(it.item_code || '').trim()) ||
       '';
     const prod = pid ? productById.get(pid) : undefined;
-    const code =
-      String(prod?.code || '').trim() ||
-      String(it.item_code || it.product_id || '—');
+    const beauty = pid ? beautyById.get(pid) : undefined;
+    const svc =
+      (pid && serviceById.get(pid)) ||
+      serviceByCode.get(String(it.item_code || '').trim()) ||
+      undefined;
+    const isService = isServiceLineType(itemType) || !!(svc || beauty);
+    const lineKind: CostProfitLineKind = isService ? 'service' : 'product';
+    const code = displayItemCode(prod?.code, svc?.code, it.item_code);
     const qty = sgn * (Number(it.quantity ?? 0) || 0);
     const rawLineNet = Number(it.net_amount ?? 0) || 0;
     const revenue =
@@ -561,16 +648,42 @@ async function loadCostProfitSaleLinesRest(opts: {
         linesNetByInvoice.get(String(it.invoice_id)) || 0,
         Number(inv.net_amount ?? 0) || 0,
       );
+    const lpc =
+      (pid && lastById.get(pid)?.unitCost) ||
+      (String(it.item_code || '').trim() &&
+        lastByCode.get(String(it.item_code || '').trim())?.unitCost) ||
+      (String(prod?.code || '').trim() &&
+        lastByCode.get(String(prod?.code || '').trim())?.unitCost) ||
+      0;
+    const recipeUnit =
+      (pid && recipeByService.get(pid)) ||
+      (svc && recipeByService.get(String(svc.id))) ||
+      0;
+    const serviceUnit = restServiceUnitCost({
+      lineUnitCost: it.unit_cost,
+      purchasePrice: svc?.purchase_price,
+      beautyCostPrice: beauty?.cost_price,
+      recipeUnitCost: recipeUnit,
+    });
     const absQty = Math.abs(Number(it.quantity ?? 0) || 0);
-    const fallbackCogs = sgn * absQty * (Number(it.unit_cost ?? 0) || 0);
-    const key = `${pid || code}`;
+    const fallbackCogs =
+      sgn *
+      lineCostAmount({
+        quantity: absQty,
+        lastPurchaseUnit: lpc,
+        itemType,
+        serviceUnitCost: serviceUnit,
+        isService,
+      });
+    const key = `${isService ? 'S' : 'P'}|${pid || code}`;
     const cur = map.get(key) || {
       productId: pid,
       productCode: code,
-      productName: String(it.item_name ?? prod?.name ?? ''),
+      productName: String(it.item_name ?? prod?.name ?? svc?.name ?? beauty?.name ?? ''),
       quantity: 0,
       revenue: 0,
       fallbackCogs: 0,
+      lineKind,
     };
     cur.quantity += qty;
     cur.revenue += revenue;
@@ -582,7 +695,8 @@ async function loadCostProfitSaleLinesRest(opts: {
 }
 
 /**
- * Maliyet ve Karlılık Analizi: satış satırları (perakende/POS/güzellik ürün) + katmanlı SMM.
+ * Maliyet ve Karlılık Analizi: satış satırları (perakende/POS/güzellik) + SMM.
+ * Malzeme: FIFO katman; Hizmet: kart cost_price / alış / reçete (stok yok).
  * getPaginated items:[] kullanılmaz; ürün kartı cost kullanılmaz.
  */
 export async function getCostProfitAnalysis(opts: {

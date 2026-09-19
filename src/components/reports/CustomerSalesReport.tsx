@@ -5,7 +5,6 @@ import { Input } from 'antd';
 import type { Sale, Customer } from '../../App';
 import { formatNumber } from '../../utils/formatNumber';
 import { isReturnSale } from '../../utils/posZReport';
-import { BarChart, Bar, LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer } from 'recharts';
 import { useLanguage } from '../../contexts/LanguageContext';
 import { localCalendarDateKey, localTodayDateKey } from '../../utils/localCalendarDate';
 import { ReportColumnTable } from './shared/ReportDataGrid';
@@ -194,29 +193,14 @@ export function CustomerSalesReport({ sales, customers }: CustomerSalesReportPro
         </div>
       </div>
 
-      <div className="bg-white rounded-lg border p-4">
-        <div className="flex items-center justify-between mb-4">
-          <h4 className="text-lg font-semibold">{tm('rptCustTop10Chart')}</h4>
-          <span className="text-xs text-slate-500">
-            {filterTerm ? `${tm('rptCustFilteredCount')}: ${filteredCustomerSales.length}` : ''}
-          </span>
-        </div>
-        <ResponsiveContainer width="100%" height={400}>
-          <BarChart data={filteredCustomerSales.slice(0, 10)}>
-            <CartesianGrid strokeDasharray="3 3" />
-            <XAxis dataKey="customer.name" angle={-45} textAnchor="end" height={100} />
-            <YAxis />
-            <Tooltip formatter={(value: number) => formatNumber(value, 2, false) + ' IQD'} />
-            <Legend />
-            <Bar dataKey="totalRevenue" fill="#3b82f6" name={legendRevenue} />
-            <Bar dataKey="salesCount" fill="#10b981" name={legendSalesCount} />
-          </BarChart>
-        </ResponsiveContainer>
-      </div>
-
       <div className="bg-white rounded-lg border">
-        <div className="p-4 border-b">
+        <div className="p-4 border-b flex items-center justify-between gap-2">
           <h4 className="text-lg font-semibold">{tm('rptCustDetailsSection')}</h4>
+          {filterTerm ? (
+            <span className="text-xs text-slate-500">
+              {tm('rptCustFilteredCount')}: {filteredCustomerSales.length}
+            </span>
+          ) : null}
         </div>
         <div className="p-2">
           <ReportColumnTable

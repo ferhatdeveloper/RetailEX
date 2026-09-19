@@ -41,7 +41,7 @@ const PRODUCT_LIST_SELECT_FALLBACK_SQL = PRODUCT_LIST_SELECT_FALLBACK.replace(/,
 
 /** Malzeme / stok raporları: yalnızca rapor kolonları (payload ve parse süresini kısaltır). */
 const PRODUCT_REPORT_LIST_SELECT =
-  'id,firm_nr,code,barcode,name,name2,category_code,stock,min_stock,max_stock,price,cost,unit,brand,is_active';
+  'id,firm_nr,code,barcode,name,name2,category_code,stock,min_stock,max_stock,price,cost,unit,brand,is_active,special_code_1,special_code_2,special_code_3,special_code_4,special_code_5,special_code_6';
 const PRODUCT_REPORT_LIST_SELECT_SQL = PRODUCT_REPORT_LIST_SELECT.replace(/,/g, ', ');
 /** Eski tenant şemalarında eksik kolona takılmamak için güvenli fallback select listesi. */
 const PRODUCT_REPORT_LIST_SELECT_FALLBACK =
