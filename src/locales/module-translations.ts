@@ -6127,10 +6127,31 @@ export const moduleTranslations: Record<string, Record<Language, string>> = {
   bVipCustomer: { tr: 'V.I.P Müşteri', en: 'V.I.P Customer', ar: 'عميل VIP', ku: 'کڕیاری VIP' },
   bLoyaltyPoints: { tr: 'Sadakat Puanı', en: 'Loyalty Points', ar: 'نقاط الولاء', ku: 'خاڵی دڵسۆزی' },
   bTotalSpent: { tr: 'Toplam Harcama', en: 'Total Spent', ar: 'إجمالي الإنفاق', ku: 'کۆی خەرجکراو' },
-  /** Peşin nakit/kart/havale — cariye yazılmayan tahsilat */
+  /** Peşin nakit/kart/havale — cariye yazılmayan tahsilat (satır veya KPI) */
   bCollectedAmount: { tr: 'Alınan tutar', en: 'Amount received', ar: 'المبلغ المستلم', ku: 'بڕی وەرگیراو' },
+  /** Özet KPI: tüm satışların peşin tahsilatı (son satış değil) */
+  bCollectedAmountAll: {
+    tr: 'Alınan tutar (tümü)',
+    en: 'Amount received (all)',
+    ar: 'المبلغ المستلم (الكل)',
+    ku: 'بڕی وەرگیراو (هەموو)',
+  },
   /** Satıştan cariye (veresiye) yazılan kalan */
   bVeresiyeCari: { tr: 'Veresiye (cari)', en: 'On account (credit)', ar: 'آجل (جاري)', ku: 'قەرز (جاری)' },
+  /** Özet KPI: tüm satışların açık cari kalanı (son satış değil) */
+  bVeresiyeCariAll: {
+    tr: 'Açık veresiye (tümü)',
+    en: 'Open credit (all)',
+    ar: 'الآجل المفتوح (الكل)',
+    ku: 'قەرزی کراوە (هەموو)',
+  },
+  /** Özet KPI altında: kümülatif açıklama + son satış kırılımı */
+  bCustomerKpiCumulativeHint: {
+    tr: 'Kart KPI’ları tüm satışların toplamıdır (son satış değil). Son satış: peşin {paid}, cari {credit}.',
+    en: 'Card KPIs sum all sales (not the last sale only). Last sale: prepaid {paid}, credit {credit}.',
+    ar: 'مؤشرات البطاقة تجمع كل المبيعات (وليست آخر عملية فقط). آخر عملية: نقداً {paid}، آجل {credit}.',
+    ku: 'KPIی کارت کۆی هەموو فرۆشتنەکانە (تەنها دوایین نەبێت). دوایین فرۆشتن: پێشەکی {paid}، قەرز {credit}.',
+  },
   bAppointmentCountLabel: { tr: 'Randevu Sayısı', en: 'Appointments', ar: 'المواعيد', ku: 'ژمارەی ئامادەبوون' },
   bLastVisit: { tr: 'Son Ziyaret', en: 'Last Visit', ar: 'آخر زيارة', ku: 'دوایین سەردان' },
   bEditInfo: { tr: 'Bilgileri Düzenle', en: 'Edit Info', ar: 'تعديل المعلومات', ku: 'زانیاری دەستکاری بکە' },

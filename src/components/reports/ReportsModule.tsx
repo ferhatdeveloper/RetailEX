@@ -37,7 +37,7 @@ import {
   resolveWriteCashierName,
 } from '../../utils/loginCashierName';
 import { mergeExpensesWithCashOuts } from '../../utils/reportUnifiedExpenses';
-import type { BeautyAppointment, BeautySale, BeautyStaffTreatmentReport } from '../../types/beauty';
+import type { BeautyAppointment, BeautySale, BeautyService, BeautyStaffTreatmentReport } from '../../types/beauty';
 import { beautyServiceMainKey, beautyServiceSubKey } from '../beauty/beautyServiceCategoryUtils';
 import { localCalendarDateKey, localTodayDateKey, formatIsoDateTr } from '../../utils/localCalendarDate';
 import { formatDateTimeShort, formatReportDateCell, formatShortDate } from '../../utils/dateLocale';
@@ -164,10 +164,28 @@ import {
   ReloadOutlined,
 } from '@ant-design/icons';
 
+/** Hizmet katalogundan ana / alt kategori görünen adları. */
+function resolveBeautyServiceCategoryLabels(
+  serviceId: unknown,
+  byId: Map<string, BeautyService>,
+): { categoryName: string; subCategoryName: string } {
+  const svc = byId.get(String(serviceId ?? '').trim());
+  if (!svc) return { categoryName: '—', subCategoryName: '—' };
+  const main = beautyServiceMainKey(svc);
+  const sub = beautyServiceSubKey(svc);
+  const hasParent = String(svc.parent_category ?? '').trim().length > 0;
+  return {
+    categoryName: main && main !== 'uncategorized' ? main : '—',
+    subCategoryName: hasParent && sub && sub !== 'uncategorized' ? sub : '—',
+  };
+}
+
 /** Hizmet Bazlı Rapor — düz grid satırı (Malzemeler / DevEx). */
 type ServiceBreakdownFlatRow = {
   id: string;
   serviceName: string;
+  categoryName: string;
+  subCategoryName: string;
   date: string;
   time: string;
   customerName: string;
@@ -182,13 +200,14 @@ type ServiceBreakdownFlatRow = {
 type BeautyCancelledAppointmentRow = {
   id: string;
   serviceName: string;
+  categoryName: string;
+  subCategoryName: string;
   date: string;
   time: string;
   customerName: string;
   staffName: string;
   deviceName: string;
   amount: number;
-  status: string;
   appointment: BeautyAppointment;
 };
 
@@ -199,7 +218,6 @@ type BeautyCancelledPaymentRow = {
   customerName: string;
   paymentMethod: string;
   amount: number;
-  status: string;
 };
 
 const { Sider, Content } = Layout;
@@ -480,39 +498,6 @@ type BusinessType = ReportBusinessType;
 
 const REPORTS_BUSINESS_TYPE_STORAGE_KEY = 'retailex_reports_business_type';
 
-/** Grid DURUM — DB İngilizce kodunu tm ile gösterir (Completed → Tamamlandı). */
-function reportGridStatusLabel(tm: (key: string) => string, status: unknown): string {
-  const raw = String(status ?? '').trim();
-  if (!raw || raw === '—') return '—';
-  const st = raw.toLocaleLowerCase('en-US');
-  switch (st) {
-    case 'completed':
-    case 'complete':
-    case 'done':
-      return tm('reportsDetStatusCompleted');
-    case 'cancelled':
-    case 'canceled':
-      return tm('reportsDetStatusCancelled');
-    case 'refunded':
-    case 'refund':
-      return tm('reportsDetStatusRefunded');
-    case 'scheduled':
-      return tm('bAppointmentScheduled');
-    case 'confirmed':
-      return tm('bAppointmentConfirmed');
-    case 'in_progress':
-    case 'started':
-      return tm('bAppointmentStarted');
-    case 'no_show':
-    case 'noshow':
-      return tm('bAppointmentNoShow');
-    case 'pending':
-      return tm('pending');
-    default:
-      return raw;
-  }
-}
-
 function parseStoredReportsBusinessType(): BusinessType | null {
   if (typeof window === 'undefined') return null;
   try {
@@ -696,6 +681,7 @@ type DailyExpenseRow = {
 };
 
 type BeautyAppointmentProductRow = {
+  id: string;
   key: string;
   saleId: string;
   appointmentId: string;
@@ -707,6 +693,9 @@ type BeautyAppointmentProductRow = {
   productName: string;
   productCode: string;
   productBarcode: string;
+  productCodeDisplay: string;
+  categoryName: string;
+  subCategoryName: string;
   quantity: number;
   unitPrice: number;
   total: number;
@@ -715,28 +704,31 @@ type BeautyAppointmentProductRow = {
   crmAppointment: BeautyAppointment | null;
 };
 
-type BeautyAppointmentProductGroup = {
-  groupKey: string;
-  productName: string;
-  productCode: string;
-  lineCount: number;
-  transactionCount: number;
-  totalQty: number;
-  totalRevenue: number;
-  items: BeautyAppointmentProductRow[];
-};
-
 type BeautyProductReportSearchMode = 'all' | 'name' | 'code';
 type BeautyProductReportViewMode = 'detail' | 'grouped';
 
-function beautyProductCatalogLookup(products: Product[]): Map<string, { code: string; barcode: string }> {
-  const map = new Map<string, { code: string; barcode: string }>();
+type BeautyProductCatalogEntry = {
+  code: string;
+  barcode: string;
+  categoryName: string;
+  subCategoryName: string;
+};
+
+function beautyProductCatalogLookup(products: Product[]): Map<string, BeautyProductCatalogEntry> {
+  const map = new Map<string, BeautyProductCatalogEntry>();
   for (const p of products) {
     const id = String(p.id ?? '').trim().toLowerCase();
     if (!id) continue;
+    const categoryName = productCategoryForReport(p);
+    const sub =
+      String(p.subGroupCode ?? '').trim() ||
+      String(p.groupCode ?? '').trim() ||
+      '';
     map.set(id, {
       code: String(p.code ?? p.sku ?? '').trim(),
       barcode: String(p.barcode ?? '').trim(),
+      categoryName,
+      subCategoryName: sub || '—',
     });
   }
   return map;
@@ -1319,6 +1311,14 @@ export function ReportsModule({
   const [beautyProductSearchMode, setBeautyProductSearchMode] = useState<BeautyProductReportSearchMode>('all');
   const [beautyProductViewMode, setBeautyProductViewMode] = useState<BeautyProductReportViewMode>('detail');
   const beautyServicesCatalog = useBeautyStore((s) => s.services);
+  const beautyServiceById = useMemo(() => {
+    const m = new Map<string, BeautyService>();
+    for (const s of beautyServicesCatalog) {
+      const id = String(s.id ?? '').trim();
+      if (id) m.set(id, s);
+    }
+    return m;
+  }, [beautyServicesCatalog]);
   const storeProducts = useProductStore((s) => s.products);
   const catalogProducts = storeProducts.length > 0 ? storeProducts : products;
   /** Kategori Analizi / analiz raporları — id/code → ad */
@@ -1949,9 +1949,12 @@ export function ReportsModule({
       for (const item of g.items) {
         if (businessType === 'beauty') {
           const a = item as BeautyAppointment;
+          const cats = resolveBeautyServiceCategoryLabels(a.service_id, beautyServiceById);
           rows.push({
             id: String(a.id ?? `${g.serviceName}-${rows.length}`),
             serviceName: g.serviceName,
+            categoryName: cats.categoryName,
+            subCategoryName: cats.subCategoryName,
             date: String(a.date ?? a.appointment_date ?? ''),
             time: String(a.time ?? a.appointment_time ?? ''),
             customerName: String(a.customer_name ?? '').trim() || '—',
@@ -1966,6 +1969,8 @@ export function ReportsModule({
           rows.push({
             id: a.id,
             serviceName: a.serviceName || g.serviceName,
+            categoryName: '—',
+            subCategoryName: '—',
             date: a.date,
             time: '',
             customerName: a.customerName,
@@ -1978,7 +1983,7 @@ export function ReportsModule({
       }
     }
     return rows;
-  }, [serviceBreakdownGrouped, businessType]);
+  }, [serviceBreakdownGrouped, businessType, beautyServiceById]);
 
   /** Randevu iptalleri — flat DevEx satırları (ciro raporundan ayrı; ödeme alınmış olsa bile) */
   const beautyCancelledAppointmentRows = useMemo((): BeautyCancelledAppointmentRow[] => {
@@ -1989,24 +1994,34 @@ export function ReportsModule({
       return true;
     });
     return rows
-      .map((a) => ({
-        id: String(a.id ?? ''),
-        serviceName: (a.service_name && String(a.service_name).trim()) || '—',
-        date: String(a.date ?? a.appointment_date ?? ''),
-        time: String(a.time ?? a.appointment_time ?? ''),
-        customerName: String(a.customer_name ?? '').trim() || '—',
-        staffName: String(a.specialist_name ?? a.staff_name ?? '').trim() || '—',
-        deviceName: String(a.device_name ?? '').trim() || '—',
-        amount: Number(a.total_price ?? 0),
-        status: String(a.status ?? 'cancelled'),
-        appointment: a,
-      }))
+      .map((a) => {
+        const cats = resolveBeautyServiceCategoryLabels(a.service_id, beautyServiceById);
+        return {
+          id: String(a.id ?? ''),
+          serviceName: (a.service_name && String(a.service_name).trim()) || '—',
+          categoryName: cats.categoryName,
+          subCategoryName: cats.subCategoryName,
+          date: String(a.date ?? a.appointment_date ?? ''),
+          time: String(a.time ?? a.appointment_time ?? ''),
+          customerName: String(a.customer_name ?? '').trim() || '—',
+          staffName: String(a.specialist_name ?? a.staff_name ?? '').trim() || '—',
+          deviceName: String(a.device_name ?? '').trim() || '—',
+          amount: Number(a.total_price ?? 0),
+          appointment: a,
+        };
+      })
       .sort((x, y) => {
         if (x.serviceName !== y.serviceName) return x.serviceName.localeCompare(y.serviceName, 'tr');
         if (x.date !== y.date) return x.date.localeCompare(y.date);
         return x.time.localeCompare(y.time);
       });
-  }, [beautyServiceAppointments, beautyMainCategoryFilter, beautySubCategoryFilter, appointmentMatchesMainCategory]);
+  }, [
+    beautyServiceAppointments,
+    beautyMainCategoryFilter,
+    beautySubCategoryFilter,
+    appointmentMatchesMainCategory,
+    beautyServiceById,
+  ]);
 
   /** İptal edilen ödemeler (beauty_sales.payment_status = cancelled/refunded) */
   const beautyCancelledPaymentRows = useMemo((): BeautyCancelledPaymentRow[] => {
@@ -2039,7 +2054,6 @@ export function ReportsModule({
         customerName: String(s.customer_name ?? '').trim() || '—',
         paymentMethod: String(s.payment_method ?? '').trim() || '—',
         amount: Number(s.total ?? 0),
-        status: String((s as any).payment_status ?? 'cancelled'),
       }));
   }, [beautyServiceSales, beautyMainCategoryFilter, beautySubCategoryFilter, beautyServicesCatalog]);
 
@@ -2098,8 +2112,11 @@ export function ReportsModule({
         const catalog = productId ? beautyProductCatalogById.get(productId.toLowerCase()) : undefined;
         const productCode = catalog?.code ?? '';
         const productBarcode = catalog?.barcode ?? '';
+        const productCodeDisplay = productCode || productBarcode || '—';
+        const rowId = `${sale.id}-${item.id || idx}`;
         rows.push({
-          key: `${sale.id}-${item.id || idx}`,
+          id: rowId,
+          key: rowId,
           saleId: String(sale.id),
           appointmentId,
           createdAt,
@@ -2110,6 +2127,9 @@ export function ReportsModule({
           productName,
           productCode,
           productBarcode,
+          productCodeDisplay,
+          categoryName: catalog?.categoryName ?? '—',
+          subCategoryName: catalog?.subCategoryName ?? '—',
           quantity: Number(item.quantity ?? 0) || 0,
           unitPrice: Number(item.unit_price ?? 0) || 0,
           total: Number(item.total ?? 0) || 0,
@@ -2171,47 +2191,6 @@ export function ReportsModule({
     beautyProductSearchQuery,
     beautyProductSearchMode,
   ]);
-
-  const beautyAppointmentProductGrouped = useMemo<BeautyAppointmentProductGroup[]>(() => {
-    const map = new Map<string, BeautyAppointmentProductGroup>();
-    for (const row of beautyAppointmentProductRows) {
-      const groupKey =
-        row.productId.trim() ||
-        row.productName.trim().toLocaleLowerCase('tr') ||
-        row.key;
-      const existing = map.get(groupKey);
-      if (!existing) {
-        map.set(groupKey, {
-          groupKey,
-          productName: row.productName,
-          productCode: row.productCode,
-          lineCount: 1,
-          transactionCount: 0,
-          totalQty: row.quantity,
-          totalRevenue: row.total,
-          items: [row],
-        });
-      } else {
-        existing.lineCount += 1;
-        existing.totalQty += row.quantity;
-        existing.totalRevenue += row.total;
-        existing.items.push(row);
-        if (!existing.productCode && row.productCode) existing.productCode = row.productCode;
-      }
-    }
-    for (const g of map.values()) {
-      g.transactionCount = new Set(g.items.map((r) => `${r.saleId}|${r.appointmentId}`)).size;
-      g.items.sort((a, b) => {
-        if (a.appointmentDate !== b.appointmentDate) {
-          return b.appointmentDate.localeCompare(a.appointmentDate);
-        }
-        return b.appointmentTime.localeCompare(a.appointmentTime);
-      });
-    }
-    return Array.from(map.values()).sort((a, b) =>
-      a.productName.localeCompare(b.productName, 'tr', { sensitivity: 'base' }),
-    );
-  }, [beautyAppointmentProductRows]);
 
   const beautyAppointmentProductSourceInfo = useMemo(() => {
     let paidSales = 0;
@@ -6040,41 +6019,65 @@ export function ReportsModule({
                   <div className="p-6 space-y-6">
                     {/* Sales Summary */}
                     <div>
-                      <h4 className="text-sm text-gray-600 mb-3">{tm('reportsSalesSummarySection')}</h4>
-                      <p className="text-xs text-slate-500 mb-3">
-                        {tm('reportsSalesSummaryFootnote')}
-                      </p>
-                      <div className="grid grid-cols-2 lg:grid-cols-7 gap-4">
-                        <div className="p-4 bg-gray-50 rounded-lg">
-                          <p className="text-sm text-gray-600">{tm('reportsTotalTransactions')}</p>
-                          <p className="text-3xl text-blue-600 mt-1">{zReport.totalSales}</p>
-                        </div>
-                        <div className="p-4 bg-slate-50 rounded-lg border border-slate-200">
-                          <p className="text-sm text-gray-600">{tm('reportsBeforeDiscountGross')}</p>
-                          <p className="text-2xl font-bold text-slate-800 mt-1">{formatNumber(zReport.amountBeforeDiscount, 2, false)}</p>
-                        </div>
-                        <div className="p-4 bg-orange-50 rounded-lg border border-orange-100">
-                          <p className="text-sm text-gray-600">{tm('reportsTotalDiscount')}</p>
-                          <p className="text-2xl font-bold text-orange-600 mt-1">{formatNumber(zReport.totalDiscount, 2, false)}</p>
-                        </div>
-                        <div className="p-4 bg-red-50 rounded-lg border border-red-100">
-                          <p className="text-sm text-gray-600">{tm('reportsSalesReturnMinus')}</p>
-                          <p className="text-2xl font-bold text-red-700 mt-1">{formatNumber(zReport.refundAmount, 2, false)}</p>
-                          <p className="text-xs text-slate-500 mt-1">{tm('reportsPaymentTxnShort').replace('{n}', String(zReport.returnCount ?? 0))}</p>
-                        </div>
-                        <div className="p-4 bg-green-50 rounded-lg border border-green-100">
-                          <p className="text-sm text-gray-600">{tm('reportsNetTurnover')}</p>
-                          <p className="text-2xl font-bold text-green-700 mt-1">{formatNumber(zReport.netSales ?? (zReport.totalAmount - zReport.refundAmount), 2, false)}</p>
-                        </div>
-                        <div className="p-4 bg-rose-50 rounded-lg border border-rose-100">
-                          <p className="text-sm text-gray-600">{tm('totalExpense')}</p>
-                          <p className="text-2xl font-bold text-rose-700 mt-1">{formatNumber(zReport.totalExpenses, 2, false)}</p>
-                        </div>
-                        <div className="p-4 bg-indigo-50 rounded-lg border border-indigo-100">
-                          <p className="text-sm text-gray-600">{tm('reportsNetAfterExpenses')}</p>
-                          <p className="text-2xl font-bold text-indigo-700 mt-1">{formatNumber(zReport.netAfterExpenses, 2, false)}</p>
-                        </div>
-                      </div>
+                      <h4 className={`text-sm mb-2 ${darkMode ? 'text-slate-400' : 'text-gray-600'}`}>
+                        {tm('reportsSalesSummarySection')}
+                      </h4>
+                      <ReportKpiStrip
+                        columns={7}
+                        itemClassName={
+                          darkMode
+                            ? 'bg-slate-800/80 border-slate-600 shadow-none'
+                            : 'bg-white border-slate-200 shadow-none'
+                        }
+                        items={[
+                          {
+                            key: 'tx',
+                            label: tm('reportsTotalTransactions'),
+                            value: zReport.totalSales,
+                            valueClassName: darkMode ? 'text-blue-400' : 'text-blue-600',
+                          },
+                          {
+                            key: 'gross',
+                            label: tm('reportsBeforeDiscountGross'),
+                            value: formatNumber(zReport.amountBeforeDiscount, 2, false),
+                          },
+                          {
+                            key: 'discount',
+                            label: tm('reportsTotalDiscount'),
+                            value: formatNumber(zReport.totalDiscount, 2, false),
+                            valueClassName: darkMode ? 'text-orange-400' : 'text-orange-600',
+                          },
+                          {
+                            key: 'refund',
+                            label: tm('reportsSalesReturnMinus'),
+                            value: formatNumber(zReport.refundAmount, 2, false),
+                            valueClassName: darkMode ? 'text-red-400' : 'text-red-600',
+                            hint: tm('reportsPaymentTxnShort').replace('{n}', String(zReport.returnCount ?? 0)),
+                          },
+                          {
+                            key: 'net',
+                            label: tm('reportsNetTurnover'),
+                            value: formatNumber(
+                              zReport.netSales ?? zReport.totalAmount - zReport.refundAmount,
+                              2,
+                              false,
+                            ),
+                            valueClassName: darkMode ? 'text-emerald-400' : 'text-emerald-700',
+                          },
+                          {
+                            key: 'expense',
+                            label: tm('totalExpense'),
+                            value: formatNumber(zReport.totalExpenses, 2, false),
+                            valueClassName: darkMode ? 'text-rose-400' : 'text-rose-600',
+                          },
+                          {
+                            key: 'netAfter',
+                            label: tm('reportsNetAfterExpenses'),
+                            value: formatNumber(zReport.netAfterExpenses, 2, false),
+                            valueClassName: darkMode ? 'text-indigo-400' : 'text-indigo-700',
+                          },
+                        ]}
+                      />
                     </div>
 
                     {/* Payment Summary */}
@@ -8321,15 +8324,11 @@ export function ReportsModule({
                   >
                     {tm('refresh')}
                   </Button>
-                  {!isBeautyServiceReportTab && (
+                  {!isBeautyServiceReportTab &&
+                    !isBeautyCancelledReportTab &&
+                    !isBeautyAppointmentProductReportTab && (
                     <p className="text-xs text-slate-500 flex-1 min-w-[200px]">
-                      {isAnyBeautySurveyReportTab
-                        ? tm('bSurveyReportDateHint')
-                        : isBeautyCancelledReportTab
-                        ? `${tm('beautyCancelledAppointmentsHint')} ${tm('beautyCancelledPaymentsHint')}`
-                        : isBeautyAppointmentProductReportTab
-                          ? tm('beautyAppointmentProductSalesHint')
-                          : null}
+                      {isAnyBeautySurveyReportTab ? tm('bSurveyReportDateHint') : null}
                     </p>
                   )}
                 </div>
@@ -8380,6 +8379,8 @@ export function ReportsModule({
                                 ]
                               : [
                                   { key: 'serviceName', header: tm('service'), size: 180 },
+                                  { key: 'categoryName', header: tm('categoryLabel'), size: 140 },
+                                  { key: 'subCategoryName', header: tm('beautySubCategoryFilterLabel'), size: 140 },
                                   {
                                     key: 'date',
                                     header: tm('date'),
@@ -8453,182 +8454,65 @@ export function ReportsModule({
                             },
                           ]}
                         />
-
-                        {beautyProductViewMode === 'grouped' ? (
-                          <div className="space-y-6">
-                            {beautyAppointmentProductGrouped.map((g) => (
-                              <div
-                                key={g.groupKey}
-                                className="bg-white rounded-xl border border-slate-200 overflow-hidden shadow-sm"
-                              >
-                                <div
-                                  className="px-4 py-3 flex flex-wrap items-center justify-between gap-2 text-white font-bold"
-                                  style={{ backgroundColor: bizConfig.color }}
-                                >
-                                  <div className="min-w-0">
-                                    <span className="text-base block truncate">{g.productName}</span>
-                                    {g.productCode ? (
-                                      <span className="text-xs font-semibold opacity-90">
-                                        {tm('code')}: {g.productCode}
-                                        {g.lineCount > 1
-                                          ? ` · ${formatNumber(g.lineCount, 0, false)} ${tm('beautyAppointmentProductLineCount')}`
-                                          : ''}
-                                      </span>
-                                    ) : null}
-                                  </div>
-                                  <span className="text-sm font-semibold opacity-95 shrink-0">
-                                    {tm('quantity')}: {formatNumber(g.totalQty, 2, false)} · {tm('subTotal')}:{' '}
-                                    {formatNumber(g.totalRevenue, 2, false)} {reportCurrency}
-                                  </span>
-                                </div>
-                                <div className="overflow-x-auto">
-                                  <table className="w-full text-[13px]">
-                                    <thead>
-                                      <ReportColumnFilters
-                                        columns={[
-                                          { key: 'appointmentDate', label: tm('date'), type: 'date', width: 'min-w-[140px]' },
-                                          { key: 'customerName', label: tm('customer'), type: 'text', width: 'min-w-[140px]' },
-                                          { key: 'quantity', label: tm('quantity'), type: 'number', align: 'right', width: 'min-w-[100px]' },
-                                          { key: 'total', label: tm('amount'), type: 'number', align: 'right', width: 'min-w-[120px]' },
-                                          { key: 'staffName', label: tm('bStaffView'), type: 'text', width: 'min-w-[120px]' },
-                                          { key: 'paymentMethod', label: tm('paymentType'), type: 'text', width: 'min-w-[120px]' },
-                                        ]}
-                                        values={reportFilters.forTab('beauty-appointment-product-report').values}
-                                        onFilterChange={reportFilters.forTab('beauty-appointment-product-report').setFilter}
-                                        onClear={reportFilters.forTab('beauty-appointment-product-report').clearAll}>
-                                      <tr className="bg-slate-100 border-b border-slate-200 text-left text-[12px] uppercase tracking-wide text-slate-800">
-                                        <th className="px-4 py-2 font-black">{tm('date')}</th>
-                                        <th className="px-4 py-2 font-black">{tm('customer')}</th>
-                                        <th className="px-4 py-2 font-black text-right">{tm('quantity')}</th>
-                                        <th className="px-4 py-2 font-black text-right">{tm('amount')}</th>
-                                        <th className="px-4 py-2 font-black">{tm('bStaffView')}</th>
-                                        <th className="px-4 py-2 font-black">{tm('paymentType')}</th>
-                                      </tr>
-                                      </ReportColumnFilters>
-                                    </thead>
-                                    <tbody className="divide-y divide-slate-100">
-                                      {g.items.map((row) => {
-                                        const canOpenCrm = row.crmAppointment != null;
-                                        return (
-                                          <tr
-                                            key={row.key}
-                                            role={canOpenCrm ? 'button' : undefined}
-                                            tabIndex={canOpenCrm ? 0 : undefined}
-                                            onClick={() => {
-                                              if (row.crmAppointment) {
-                                                setBeautyCrmModalAppointment(row.crmAppointment);
-                                              }
-                                            }}
-                                            onKeyDown={(e) => {
-                                              if (!row.crmAppointment) return;
-                                              if (e.key === 'Enter' || e.key === ' ') {
-                                                e.preventDefault();
-                                                setBeautyCrmModalAppointment(row.crmAppointment);
-                                              }
-                                            }}
-                                            className={canOpenCrm ? 'cursor-pointer hover:bg-pink-50/90' : undefined}
-                                          >
-                                            <td className="px-4 py-2 tabular-nums text-slate-900 whitespace-nowrap">
-                                              {formatReportDateCell(row.appointmentDate, row.appointmentTime)}
-                                            </td>
-                                            <td className="px-4 py-2 text-slate-900">{row.customerName}</td>
-                                            <td className="px-4 py-2 text-right tabular-nums font-semibold">
-                                              {formatNumber(row.quantity, 2, false)}
-                                            </td>
-                                            <td className="px-4 py-2 text-right tabular-nums font-semibold">
-                                              {formatNumber(row.total, 2, false)} {reportCurrency}
-                                            </td>
-                                            <td className="px-4 py-2 text-slate-900">{row.staffName}</td>
-                                            <td className="px-4 py-2 text-slate-900">{row.paymentMethod}</td>
-                                          </tr>
-                                        );
-                                      })}
-                                    </tbody>
-                                  </table>
-                                </div>
-                              </div>
-                            ))}
-                          </div>
-                        ) : (
-                          <div className="bg-white rounded-xl border border-slate-200 overflow-hidden shadow-sm">
-                            <div className="overflow-x-auto">
-                              <table className="w-full text-[13px]">
-                                <thead>
-                                  <ReportColumnFilters
-                                    columns={[
-                                      { key: 'appointmentDate', label: tm('date'), type: 'date', width: 'min-w-[140px]' },
-                                      { key: 'customerName', label: tm('customer'), type: 'text', width: 'min-w-[140px]' },
-                                      { key: 'productName', label: tm('product'), type: 'text', width: 'min-w-[140px]' },
-                                      { key: 'productCodeOrBarcode', label: tm('code'), type: 'text', width: 'min-w-[120px]' },
-                                      { key: 'quantity', label: tm('quantity'), type: 'number', align: 'right', width: 'min-w-[100px]' },
-                                      { key: 'unitPrice', label: tm('price'), type: 'number', align: 'right', width: 'min-w-[100px]' },
-                                      { key: 'total', label: tm('amount'), type: 'number', align: 'right', width: 'min-w-[120px]' },
-                                      { key: 'staffName', label: tm('bStaffView'), type: 'text', width: 'min-w-[120px]' },
-                                      { key: 'paymentMethod', label: tm('paymentType'), type: 'text', width: 'min-w-[120px]' },
-                                    ]}
-                                    values={reportFilters.forTab('beauty-appointment-product-report').values}
-                                    onFilterChange={reportFilters.forTab('beauty-appointment-product-report').setFilter}
-                                    onClear={reportFilters.forTab('beauty-appointment-product-report').clearAll}>
-                                  <tr className="bg-slate-300 border-b border-slate-400 text-left text-[14px] uppercase tracking-wide text-slate-950">
-                                    <th className="px-4 py-3 font-black">{tm('date')}</th>
-                                    <th className="px-4 py-3 font-black">{tm('customer')}</th>
-                                    <th className="px-4 py-3 font-black">{tm('product')}</th>
-                                    <th className="px-4 py-3 font-black">{tm('code')}</th>
-                                    <th className="px-4 py-3 font-black text-right">{tm('quantity')}</th>
-                                    <th className="px-4 py-3 font-black text-right">{tm('price')}</th>
-                                    <th className="px-4 py-3 font-black text-right">{tm('amount')}</th>
-                                    <th className="px-4 py-3 font-black">{tm('bStaffView')}</th>
-                                    <th className="px-4 py-3 font-black">{tm('paymentType')}</th>
-                                  </tr>
-                                  </ReportColumnFilters>
-                                </thead>
-                                <tbody className="divide-y divide-slate-100">
-                                  {beautyAppointmentProductRows.map((row) => {
-                                    const canOpenCrm = row.crmAppointment != null;
-                                    return (
-                                      <tr
-                                        key={row.key}
-                                        role={canOpenCrm ? 'button' : undefined}
-                                        tabIndex={canOpenCrm ? 0 : undefined}
-                                        onClick={() => {
-                                          if (row.crmAppointment) setBeautyCrmModalAppointment(row.crmAppointment);
-                                        }}
-                                        onKeyDown={(e) => {
-                                          if (!row.crmAppointment) return;
-                                          if (e.key === 'Enter' || e.key === ' ') {
-                                            e.preventDefault();
-                                            setBeautyCrmModalAppointment(row.crmAppointment);
-                                          }
-                                        }}
-                                        className={canOpenCrm ? 'cursor-pointer hover:bg-pink-50/90' : undefined}
-                                      >
-                                        <td className="px-4 py-3 tabular-nums text-slate-900 whitespace-nowrap font-medium">
-                                          {formatReportDateCell(row.appointmentDate, row.appointmentTime)}
-                                        </td>
-                                        <td className="px-4 py-3 text-slate-900 font-medium">{row.customerName}</td>
-                                        <td className="px-4 py-3 text-slate-900 font-medium">{row.productName}</td>
-                                        <td className="px-4 py-3 text-slate-700 font-medium tabular-nums">
-                                          {row.productCode || row.productBarcode || '—'}
-                                        </td>
-                                        <td className="px-4 py-3 text-right tabular-nums font-semibold text-slate-950">
-                                          {formatNumber(row.quantity, 2, false)}
-                                        </td>
-                                        <td className="px-4 py-3 text-right tabular-nums text-slate-900">
-                                          {formatNumber(row.unitPrice, 2, false)} {reportCurrency}
-                                        </td>
-                                        <td className="px-4 py-3 text-right tabular-nums font-semibold text-slate-950">
-                                          {formatNumber(row.total, 2, false)} {reportCurrency}
-                                        </td>
-                                        <td className="px-4 py-3 text-slate-900 font-medium">{row.staffName}</td>
-                                        <td className="px-4 py-3 text-slate-900 font-medium">{row.paymentMethod}</td>
-                                      </tr>
-                                    );
-                                  })}
-                                </tbody>
-                              </table>
-                            </div>
-                          </div>
-                        )}
+                        <div className="bg-white rounded-xl border border-slate-200 overflow-hidden shadow-sm p-2">
+                          <ReportColumnTable
+                            data={beautyAppointmentProductRows}
+                            height={560}
+                            footerLabel={tm('grandTotal')}
+                            storageNamespace="beauty-appointment-product-sales"
+                            groupByColumnId={beautyProductViewMode === 'grouped' ? 'productName' : null}
+                            onRowClick={(row) => {
+                              if (row.crmAppointment) setBeautyCrmModalAppointment(row.crmAppointment);
+                            }}
+                            columns={
+                              [
+                                {
+                                  key: 'appointmentDate',
+                                  header: tm('date'),
+                                  type: 'date',
+                                  size: 150,
+                                  cell: (row) =>
+                                    formatReportDateCell(row.appointmentDate, row.appointmentTime || undefined),
+                                },
+                                { key: 'customerName', header: tm('customer'), size: 160 },
+                                { key: 'productName', header: tm('product'), size: 160 },
+                                { key: 'productCodeDisplay', header: tm('code'), size: 130 },
+                                { key: 'categoryName', header: tm('categoryLabel'), size: 140 },
+                                { key: 'subCategoryName', header: tm('beautySubCategoryFilterLabel'), size: 140 },
+                                {
+                                  key: 'quantity',
+                                  header: tm('quantity'),
+                                  type: 'number',
+                                  align: 'right',
+                                  size: 100,
+                                  footerSum: true,
+                                  footerFormat: (n) => formatNumber(n, 2, false),
+                                  cell: (row) => formatNumber(row.quantity, 2, false),
+                                },
+                                {
+                                  key: 'unitPrice',
+                                  header: tm('price'),
+                                  type: 'number',
+                                  align: 'right',
+                                  size: 120,
+                                  cell: (row) => formatLedgerAmount(row.unitPrice, reportCurrency),
+                                },
+                                {
+                                  key: 'total',
+                                  header: tm('amount'),
+                                  type: 'number',
+                                  align: 'right',
+                                  size: 130,
+                                  footerSum: true,
+                                  footerFormat: (n) => formatLedgerAmount(n, reportCurrency),
+                                  cell: (row) => formatLedgerAmount(row.total, reportCurrency),
+                                },
+                                { key: 'staffName', header: tm('bStaffView'), size: 140 },
+                                { key: 'paymentMethod', header: tm('paymentType'), size: 120 },
+                              ] as ReportColumnTableCol<BeautyAppointmentProductRow>[]
+                            }
+                          />
+                        </div>
                       </div>
                     )}
                   </Spin>
@@ -8644,10 +8528,7 @@ export function ReportsModule({
 
                 {isBeautyCancelledReportTab && beautyCancelledAppointmentRows.length > 0 && (
                   <div className="space-y-4 mt-10">
-                    <div>
-                      <h3 className="text-xl font-extrabold tracking-tight text-slate-900">{tm('beautyCancelledAppointmentsSection')}</h3>
-                      <p className="text-sm font-medium text-slate-700 mt-1">{tm('beautyCancelledAppointmentsHint')}</p>
-                    </div>
+                    <h3 className="text-xl font-extrabold tracking-tight text-slate-900">{tm('beautyCancelledAppointmentsSection')}</h3>
                     <div className="bg-white rounded-xl border border-slate-200 overflow-hidden shadow-sm p-2">
                       <ReportColumnTable
                         data={beautyCancelledAppointmentRows}
@@ -8659,6 +8540,8 @@ export function ReportsModule({
                         columns={
                           [
                             { key: 'serviceName', header: tm('service'), size: 180 },
+                            { key: 'categoryName', header: tm('categoryLabel'), size: 140 },
+                            { key: 'subCategoryName', header: tm('beautySubCategoryFilterLabel'), size: 140 },
                             {
                               key: 'date',
                               header: tm('date'),
@@ -8679,16 +8562,6 @@ export function ReportsModule({
                               footerFormat: (n) => formatLedgerAmount(n, reportCurrency),
                               cell: (row) => formatLedgerAmount(row.amount, reportCurrency),
                             },
-                            {
-                              key: 'status',
-                              header: tm('status'),
-                              size: 110,
-                              cell: (row) => (
-                                <span className="inline-flex items-center rounded-md border border-red-200 bg-red-50 px-2 py-0.5 text-xs font-bold text-red-700">
-                                  {reportGridStatusLabel(tm, row.status)}
-                                </span>
-                              ),
-                            },
                           ] as ReportColumnTableCol<BeautyCancelledAppointmentRow>[]
                         }
                       />
@@ -8698,10 +8571,7 @@ export function ReportsModule({
 
                 {isBeautyCancelledReportTab && beautyCancelledPaymentRows.length > 0 && (
                   <div className="space-y-4 mt-10">
-                    <div>
-                      <h3 className="text-xl font-extrabold tracking-tight text-slate-900">{tm('beautyCancelledPaymentsSection')}</h3>
-                      <p className="text-sm font-medium text-slate-700 mt-1">{tm('beautyCancelledPaymentsHint')}</p>
-                    </div>
+                    <h3 className="text-xl font-extrabold tracking-tight text-slate-900">{tm('beautyCancelledPaymentsSection')}</h3>
                     <div className="bg-white rounded-xl border border-slate-200 overflow-hidden shadow-sm p-2">
                       <ReportColumnTable
                         data={beautyCancelledPaymentRows}
@@ -8728,16 +8598,6 @@ export function ReportsModule({
                               footerSum: true,
                               footerFormat: (n) => formatLedgerAmount(n, reportCurrency),
                               cell: (row) => formatLedgerAmount(row.amount, reportCurrency),
-                            },
-                            {
-                              key: 'status',
-                              header: tm('status'),
-                              size: 110,
-                              cell: (row) => (
-                                <span className="inline-flex items-center rounded-md border border-red-200 bg-red-50 px-2 py-0.5 text-xs font-bold text-red-700">
-                                  {reportGridStatusLabel(tm, row.status)}
-                                </span>
-                              ),
                             },
                           ] as ReportColumnTableCol<BeautyCancelledPaymentRow>[]
                         }
