@@ -92,12 +92,18 @@ export function KasaIslemDetayModal({
 
   const getIslemTipiLabel = (tip: string) => {
     const labels: Record<string, string> = {
-      CH_TAHSILAT: 'CH Tahsilat',
-      CH_ODEME: 'CH Ödeme',
-      KASA_GIRIS: 'Kasa Giriş',
-      KASA_CIKIS: 'Kasa Çıkış',
-      ACILIS: 'Açılış',
-      KAPANIS: 'Kapanış',
+      CH_TAHSILAT: tm('chCollection'),
+      CH_ODEME: tm('chPayment'),
+      KASA_GIRIS: tm('cashIn'),
+      KASA_CIKIS: tm('cashOut'),
+      GIDER_PUSULASI: tm('expenseVoucher'),
+      SATIS_FATURASI: tm('cashSalesInvoice'),
+      ALIS_FATURASI: tm('cashPurchaseInvoice'),
+      HIZMET_FATURASI: tm('cashServiceInvoice'),
+      ACILIS: tm('openingDebit'),
+      KAPANIS: tm('openingCredit'),
+      ACILIS_BORC: tm('openingDebit'),
+      ACILIS_ALACAK: tm('openingCredit'),
     };
     return labels[tip] || tip;
   };

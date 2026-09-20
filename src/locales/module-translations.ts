@@ -443,6 +443,8 @@ export const moduleTranslations: Record<string, Record<Language, string>> = {
   cashSalesInvoice: { tr: 'Satış faturası', en: 'Sales invoice', ar: 'فاتورة مبيعات', ku: 'وەسڵی فرۆشتن' },
   cashPurchaseInvoice: { tr: 'Alış faturası', en: 'Purchase invoice', ar: 'فاتورة شراء', ku: 'وەسڵی کڕین' },
   cashServiceInvoice: { tr: 'Hizmet faturası', en: 'Service invoice', ar: 'فاتورة خدمة', ku: 'وەسڵی خزمەتگوزاری' },
+  cashReceivedServiceInvoice: { tr: 'Alınan hizmet faturası', en: 'Received service invoice', ar: 'فاتورة خدمة مستلمة', ku: 'وەسڵی خزمەتگوزاری وەرگیراو' },
+  cashGivenServiceInvoice: { tr: 'Verilen hizmet faturası', en: 'Issued service invoice', ar: 'فاتورة خدمة صادرة', ku: 'وەسڵی خزمەتگوزاری دراو' },
   cashSalesInvoiceDesc: { tr: 'Mevcut satış faturasına kasa tahsilatı', en: 'Cash collection against an existing sales invoice', ar: 'تحصيل نقدي مقابل فاتورة مبيعات قائمة', ku: 'وەرگرتنی نەقد بەرامبەر وەسڵی فرۆشتنی بەردەست' },
   cashPurchaseInvoiceDesc: { tr: 'Mevcut alış faturasına kasa ödemesi', en: 'Cash payment against an existing purchase invoice', ar: 'دفع نقدي مقابل فاتورة شراء قائمة', ku: 'پارەدانی نەقد بەرامبەر وەسڵی کڕینی بەردەست' },
   cashServiceInvoiceDesc: { tr: 'Mevcut hizmet faturasına kasa tahsilatı', en: 'Cash collection against an existing service invoice', ar: 'تحصيل نقدي مقابل فاتورة خدمة قائمة', ku: 'وەرگرتنی نەقد بەرامبەر وەسڵی خزمەتگوزاری بەردەست' },

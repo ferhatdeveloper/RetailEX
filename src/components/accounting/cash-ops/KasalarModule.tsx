@@ -525,7 +525,7 @@ export function KasalarModule({ initialKasaId, onBack }: Props) {
 
         <div className="flex items-center gap-1">
           <button className="h-9 px-3 gap-2 text-gray-600 hover:bg-gray-100 transition-colors flex items-center text-sm font-medium rounded-md">
-            <MoreVertical className="w-4 h-4" /> Filtrele
+            <MoreVertical className="w-4 h-4" /> {tm('filter')}
           </button>
         </div>
       </div>
@@ -825,6 +825,50 @@ interface KasaIslemleriTableProps {
   selectedId?: string | null;
 }
 
+function resolveKasaIslemTipiLabel(
+  tipRaw: string | undefined | null,
+  aciklamaRaw: string | undefined | null,
+  tm: (key: string) => string,
+): string {
+  const tip = String(tipRaw || '').trim();
+  const defNorm = String(aciklamaRaw || '').toLocaleLowerCase('tr-TR');
+  // Fatura bağlantılı kasa satırları: açıklama metninden kategori (çok dilli etiket)
+  if (defNorm.includes('hizmet fatur')) {
+    if (defNorm.includes('alınan') || defNorm.includes('alinan')) return tm('cashReceivedServiceInvoice');
+    if (defNorm.includes('verilen')) return tm('cashGivenServiceInvoice');
+    return tm('cashServiceInvoice');
+  }
+  if (defNorm.includes('satış fatur') || defNorm.includes('satis fatur')) return tm('cashSalesInvoice');
+  if (defNorm.includes('alış fatur') || defNorm.includes('alis fatur')) return tm('cashPurchaseInvoice');
+
+  const labels: Record<string, string> = {
+    CH_TAHSILAT: tm('chCollection'),
+    CH_ODEME: tm('chPayment'),
+    KASA_GIRIS: tm('cashIn'),
+    KASA_CIKIS: tm('cashOut'),
+    GIDER_PUSULASI: tm('expenseVoucher') || 'Gider pusulası',
+    SATIS_FATURASI: tm('cashSalesInvoice'),
+    ALIS_FATURASI: tm('cashPurchaseInvoice'),
+    HIZMET_FATURASI: tm('cashServiceInvoice'),
+    ACILIS: tm('openingDebit'),
+    KAPANIS: tm('openingCredit'),
+    ACILIS_BORC: tm('openingDebit'),
+    ACILIS_ALACAK: tm('openingCredit'),
+  };
+  return labels[tip] || tip;
+}
+
+/** Açıklama satırındaki TR fatura önekini diline göre çevir (fiş no kısmı aynı kalır). */
+function localizeKasaIslemAciklamaPrefix(prefix: string, tm: (key: string) => string): string {
+  const n = prefix.toLocaleLowerCase('tr-TR').trim();
+  if (n.includes('alınan hizmet') || n.includes('alinan hizmet')) return tm('cashReceivedServiceInvoice');
+  if (n.includes('verilen hizmet')) return tm('cashGivenServiceInvoice');
+  if (n.includes('hizmet fatur')) return tm('cashServiceInvoice');
+  if (n.includes('satış fatur') || n.includes('satis fatur')) return tm('cashSalesInvoice');
+  if (n.includes('alış fatur') || n.includes('alis fatur')) return tm('cashPurchaseInvoice');
+  return prefix;
+}
+
 function KasaIslemleriTable({
   islemler,
   loading,
@@ -851,54 +895,34 @@ function KasaIslemleriTable({
       },
       size: 120,
     }),
-    columnHelper.accessor('islem_tipi', {
-      id: 'tur',
-      header: tm('type'),
-      cell: info => {
-        const tip = String(info.getValue() || '');
-        const def = String(info.row.original.islem_aciklamasi || '');
-        const defNorm = def.toLocaleLowerCase('tr-TR');
-        // Fatura bağlantılı kasa satırları: tip kodu yerine fatura kategorisi etiketi
-        let label = '';
-        if (defNorm.includes('hizmet fatur')) {
-          label = defNorm.includes('alınan') || defNorm.includes('alinan')
-            ? 'Alınan hizmet faturası'
-            : defNorm.includes('verilen')
-              ? 'Verilen hizmet faturası'
-              : 'Hizmet faturası';
-        } else if (defNorm.includes('satış fatur') || defNorm.includes('satis fatur')) {
-          label = 'Satış faturası';
-        } else if (defNorm.includes('alış fatur') || defNorm.includes('alis fatur')) {
-          label = 'Alış faturası';
-        } else {
-          const labels: Record<string, string> = {
-            'CH_TAHSILAT': tm('chCollection'),
-            'CH_ODEME': tm('chPayment'),
-            'KASA_GIRIS': tm('cashIn'),
-            'KASA_CIKIS': tm('cashOut'),
-            'GIDER_PUSULASI': tm('expenseVoucher') || 'Gider pusulası',
-            'SATIS_FATURASI': tm('cashSalesInvoice'),
-            'ALIS_FATURASI': tm('cashPurchaseInvoice'),
-            'HIZMET_FATURASI': tm('cashServiceInvoice'),
-            'ACILIS': tm('openingDebit'),
-            'KAPANIS': tm('openingCredit'),
-            'ACILIS_BORC': tm('openingDebit'),
-            'ACILIS_ALACAK': tm('openingCredit'),
-          };
-          label = labels[tip] || tip;
-        }
-        const isGiris = tip === 'CH_TAHSILAT' || tip === 'KASA_GIRIS' || tip === 'ACILIS' || tip === 'ACILIS_BORC' || tip === 'SATIS_FATURASI' || tip === 'HIZMET_FATURASI';
-        return (
-          <span className={`inline-flex items-center px-2 py-0.5 rounded-md text-[11px] font-bold ${isGiris
-            ? 'bg-green-100 text-green-700'
-            : 'bg-red-100 text-red-700'
-            }`}>
-            {label}
-          </span>
-        );
+    columnHelper.accessor(
+      (row) => resolveKasaIslemTipiLabel(row.islem_tipi, row.islem_aciklamasi, tm),
+      {
+        id: 'tur',
+        header: tm('type'),
+        cell: (info) => {
+          const tip = String(info.row.original.islem_tipi || '');
+          const label = String(info.getValue() || '');
+          const isGiris =
+            tip === 'CH_TAHSILAT' ||
+            tip === 'KASA_GIRIS' ||
+            tip === 'ACILIS' ||
+            tip === 'ACILIS_BORC' ||
+            tip === 'SATIS_FATURASI' ||
+            tip === 'HIZMET_FATURASI';
+          return (
+            <span
+              className={`inline-flex items-center px-2 py-0.5 rounded-md text-[11px] font-bold ${
+                isGiris ? 'bg-green-100 text-green-700' : 'bg-red-100 text-red-700'
+              }`}
+            >
+              {label}
+            </span>
+          );
+        },
+        size: 160,
       },
-      size: 160,
-    }),
+    ),
     columnHelper.accessor((row) => formatKasaCariLabel(row), {
       id: 'cari_hesap',
       header: tm('currentAccountTitle'),
@@ -925,14 +949,15 @@ function KasaIslemleriTable({
         // Fatura satırında fiş no vurgusu: "Satış faturası — INV-001"
         const parts = def.split('—').map((p) => p.trim()).filter(Boolean);
         if (parts.length >= 2) {
+          const title = localizeKasaIslemAciklamaPrefix(parts[0], tm);
           return (
             <div className="min-w-0">
-              <div className="font-medium text-gray-900 truncate">{parts[0]}</div>
+              <div className="font-medium text-gray-900 truncate">{title}</div>
               <div className="text-[11px] text-gray-500 font-mono truncate">{parts.slice(1).join(' — ')}</div>
             </div>
           );
         }
-        return def;
+        return localizeKasaIslemAciklamaPrefix(def, tm);
       },
       size: 250,
     }),
