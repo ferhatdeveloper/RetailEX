@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useState, type ReactNode } from 'react';
 import {
   Area,
   AreaChart,
@@ -28,7 +28,7 @@ import {
   X,
 } from 'lucide-react';
 import { toast } from 'sonner';
-import { PercentBodyModal, PercentBodyModalScrollBody } from './PercentBodyModal';
+import { PercentBodyModal } from './PercentBodyModal';
 import { useLanguage } from '../../contexts/LanguageContext';
 import { useTheme } from '../../contexts/ThemeContext';
 import {
@@ -130,7 +130,6 @@ export function DevExGroupPivotChartModal({
 
   const shell = darkMode ? 'bg-gray-800 text-gray-100 border-gray-600' : 'bg-white text-gray-900 border-gray-200';
   const muted = darkMode ? 'text-gray-400' : 'text-gray-500';
-  const panel = darkMode ? 'bg-gray-900/80 border-gray-700' : 'bg-slate-50 border-gray-200';
   const card = darkMode ? 'bg-gray-800 border-gray-600' : 'bg-white border-gray-200';
   const inputCls = darkMode
     ? 'bg-gray-700 border-gray-600 text-gray-100'
@@ -177,8 +176,8 @@ export function DevExGroupPivotChartModal({
   const renderChart = () => {
     if (!hasChartData) {
       return (
-        <div className={`flex h-full min-h-[18rem] items-center justify-center rounded-xl border ${card}`}>
-          <p className={`text-sm px-6 text-center ${muted}`}>
+        <div className={`flex h-full w-full items-center justify-center ${card}`}>
+          <p className={`text-sm px-6 text-center max-w-md ${muted}`}>
             {tm('gridPivotMetricEmpty') ||
               'Seçili metrikte değer yok. Başka bir metrik seçin (ör. Çıkış tutar veya Kayıt adedi).'}
           </p>
@@ -186,114 +185,115 @@ export function DevExGroupPivotChartModal({
       );
     }
 
-    const commonMargin = { top: 12, right: 16, left: 8, bottom: 8 };
+    const commonMargin = { top: 16, right: 20, left: 8, bottom: 8 };
+
+    const wrap = (node: ReactNode) => (
+      <div className={`relative h-full w-full min-h-[280px] rounded-xl border ${card}`}>
+        <div className="absolute inset-0 p-2">{node}</div>
+      </div>
+    );
 
     if (chartKind === 'pie') {
-      return (
-        <div className={`h-[22rem] rounded-xl border p-3 ${card}`}>
-          <ResponsiveContainer width="100%" height="100%">
-            <PieChart>
-              <Pie
-                data={chartPoints}
-                dataKey={dataKey}
-                nameKey="name"
-                cx="50%"
-                cy="48%"
-                innerRadius={48}
-                outerRadius={100}
-                paddingAngle={2}
-              >
-                {chartPoints.map((_, i) => (
-                  <Cell key={`c-${i}`} fill={CHART_COLORS[i % CHART_COLORS.length]} />
-                ))}
-              </Pie>
-              <Tooltip />
-              <Legend />
-            </PieChart>
-          </ResponsiveContainer>
-        </div>
+      return wrap(
+        <ResponsiveContainer width="100%" height="100%">
+          <PieChart>
+            <Pie
+              data={chartPoints}
+              dataKey={dataKey}
+              nameKey="name"
+              cx="50%"
+              cy="48%"
+              innerRadius="28%"
+              outerRadius="70%"
+              paddingAngle={2}
+            >
+              {chartPoints.map((_, i) => (
+                <Cell key={`c-${i}`} fill={CHART_COLORS[i % CHART_COLORS.length]} />
+              ))}
+            </Pie>
+            <Tooltip />
+            <Legend />
+          </PieChart>
+        </ResponsiveContainer>,
       );
     }
 
     if (chartKind === 'hbar') {
-      return (
-        <div className={`h-[22rem] rounded-xl border p-3 ${card}`}>
-          <ResponsiveContainer width="100%" height="100%">
-            <BarChart data={chartPoints} layout="vertical" margin={{ ...commonMargin, left: 72 }}>
-              <CartesianGrid strokeDasharray="3 3" stroke={gridStroke} />
-              <XAxis type="number" tick={{ fontSize: 10, fill: tickFill }} />
-              <YAxis type="category" dataKey="name" width={70} tick={{ fontSize: 10, fill: tickFill }} />
-              <Tooltip />
-              <Bar dataKey={dataKey} name={activeMetric?.label} fill="#4f46e5" radius={[0, 4, 4, 0]} />
-            </BarChart>
-          </ResponsiveContainer>
-        </div>
+      return wrap(
+        <ResponsiveContainer width="100%" height="100%">
+          <BarChart data={chartPoints} layout="vertical" margin={{ ...commonMargin, left: 80 }}>
+            <CartesianGrid strokeDasharray="3 3" stroke={gridStroke} />
+            <XAxis type="number" tick={{ fontSize: 11, fill: tickFill }} />
+            <YAxis type="category" dataKey="name" width={78} tick={{ fontSize: 11, fill: tickFill }} />
+            <Tooltip />
+            <Legend />
+            <Bar dataKey={dataKey} name={activeMetric?.label} fill="#4f46e5" radius={[0, 4, 4, 0]} />
+          </BarChart>
+        </ResponsiveContainer>,
       );
     }
 
     if (chartKind === 'line') {
-      return (
-        <div className={`h-[22rem] rounded-xl border p-3 ${card}`}>
-          <ResponsiveContainer width="100%" height="100%">
-            <LineChart data={chartPoints} margin={{ ...commonMargin, bottom: 40 }}>
-              <CartesianGrid strokeDasharray="3 3" stroke={gridStroke} />
-              <XAxis dataKey="name" angle={-25} textAnchor="end" height={56} tick={{ fontSize: 10, fill: tickFill }} />
-              <YAxis tick={{ fontSize: 10, fill: tickFill }} />
-              <Tooltip />
-              <Legend />
-              <Line type="monotone" dataKey={dataKey} name={activeMetric?.label} stroke="#4f46e5" strokeWidth={2} dot />
-            </LineChart>
-          </ResponsiveContainer>
-        </div>
+      return wrap(
+        <ResponsiveContainer width="100%" height="100%">
+          <LineChart data={chartPoints} margin={{ ...commonMargin, bottom: 48 }}>
+            <CartesianGrid strokeDasharray="3 3" stroke={gridStroke} />
+            <XAxis dataKey="name" angle={-22} textAnchor="end" height={58} tick={{ fontSize: 11, fill: tickFill }} />
+            <YAxis tick={{ fontSize: 11, fill: tickFill }} />
+            <Tooltip />
+            <Legend />
+            <Line type="monotone" dataKey={dataKey} name={activeMetric?.label} stroke="#4f46e5" strokeWidth={2.5} dot />
+          </LineChart>
+        </ResponsiveContainer>,
       );
     }
 
     if (chartKind === 'area') {
-      return (
-        <div className={`h-[22rem] rounded-xl border p-3 ${card}`}>
-          <ResponsiveContainer width="100%" height="100%">
-            <AreaChart data={chartPoints} margin={{ ...commonMargin, bottom: 40 }}>
-              <CartesianGrid strokeDasharray="3 3" stroke={gridStroke} />
-              <XAxis dataKey="name" angle={-25} textAnchor="end" height={56} tick={{ fontSize: 10, fill: tickFill }} />
-              <YAxis tick={{ fontSize: 10, fill: tickFill }} />
-              <Tooltip />
-              <Legend />
-              <Area
-                type="monotone"
-                dataKey={dataKey}
-                name={activeMetric?.label}
-                stroke="#4f46e5"
-                fill="#6366f1"
-                fillOpacity={0.35}
-              />
-            </AreaChart>
-          </ResponsiveContainer>
-        </div>
+      return wrap(
+        <ResponsiveContainer width="100%" height="100%">
+          <AreaChart data={chartPoints} margin={{ ...commonMargin, bottom: 48 }}>
+            <CartesianGrid strokeDasharray="3 3" stroke={gridStroke} />
+            <XAxis dataKey="name" angle={-22} textAnchor="end" height={58} tick={{ fontSize: 11, fill: tickFill }} />
+            <YAxis tick={{ fontSize: 11, fill: tickFill }} />
+            <Tooltip />
+            <Legend />
+            <Area
+              type="monotone"
+              dataKey={dataKey}
+              name={activeMetric?.label}
+              stroke="#4f46e5"
+              fill="#6366f1"
+              fillOpacity={0.4}
+            />
+          </AreaChart>
+        </ResponsiveContainer>,
       );
     }
 
-    // bar
-    return (
-      <div className={`h-[22rem] rounded-xl border p-3 ${card}`}>
-        <ResponsiveContainer width="100%" height="100%">
-          <BarChart data={chartPoints} margin={{ ...commonMargin, bottom: 40 }}>
-            <CartesianGrid strokeDasharray="3 3" stroke={gridStroke} />
-            <XAxis dataKey="name" angle={-25} textAnchor="end" height={56} tick={{ fontSize: 10, fill: tickFill }} />
-            <YAxis tick={{ fontSize: 10, fill: tickFill }} />
-            <Tooltip />
-            <Legend />
-            <Bar dataKey={dataKey} name={activeMetric?.label} fill="#4f46e5" radius={[4, 4, 0, 0]} />
-          </BarChart>
-        </ResponsiveContainer>
-      </div>
+    return wrap(
+      <ResponsiveContainer width="100%" height="100%">
+        <BarChart data={chartPoints} margin={{ ...commonMargin, bottom: 48 }}>
+          <CartesianGrid strokeDasharray="3 3" stroke={gridStroke} />
+          <XAxis dataKey="name" angle={-22} textAnchor="end" height={58} tick={{ fontSize: 11, fill: tickFill }} />
+          <YAxis tick={{ fontSize: 11, fill: tickFill }} />
+          <Tooltip />
+          <Legend />
+          <Bar dataKey={dataKey} name={activeMetric?.label} fill="#4f46e5" radius={[4, 4, 0, 0]} />
+        </BarChart>
+      </ResponsiveContainer>,
     );
   };
 
   return (
-    <PercentBodyModal onClose={onClose} size="full" ariaLabel={tm('gridPivotChartTitle') || 'Grup pivot / grafik'}>
-      <div className={`flex items-center justify-between gap-3 px-4 py-3 border-b shrink-0 ${shell}`}>
+    <PercentBodyModal
+      onClose={onClose}
+      size="full"
+      shellClassName={darkMode ? '!bg-gray-900 text-gray-100' : ''}
+      ariaLabel={tm('gridPivotChartTitle') || 'Grup pivot / grafik'}
+    >
+      <div className={`flex items-center justify-between gap-3 px-4 py-2.5 border-b shrink-0 ${shell}`}>
         <div className="min-w-0">
-          <h2 className="text-base font-bold tracking-tight truncate">
+          <h2 className="text-sm font-bold tracking-tight truncate">
             {tm('gridPivotDashTitle') || 'Grup dashboard'}
           </h2>
           <p className={`text-[11px] ${muted} truncate`}>
@@ -313,180 +313,177 @@ export function DevExGroupPivotChartModal({
         </button>
       </div>
 
-      <PercentBodyModalScrollBody className={`min-h-0 ${darkMode ? 'bg-gray-950' : 'bg-slate-100'}`}>
-        <div className="grid grid-cols-1 lg:grid-cols-[15rem_minmax(0,1fr)_14rem] gap-3 p-3 h-full min-h-0">
-          {/* Sol: grafik türü + metrik */}
-          <aside className={`rounded-xl border p-3 space-y-3 ${panel}`}>
-            <div>
-              <p className={`text-[10px] font-bold uppercase tracking-wide mb-2 ${muted}`}>
-                {tm('gridPivotChartType') || 'Grafik türü'}
-              </p>
-              <div className="grid grid-cols-2 gap-1.5">
-                {CHART_KINDS.map(({ id, icon: Icon, labelKey, fallback }) => {
-                  const active = chartKind === id;
-                  return (
-                    <button
-                      key={id}
-                      type="button"
-                      onClick={() => setChartKind(id)}
-                      className={`flex flex-col items-center gap-1 rounded-lg border px-2 py-2.5 text-[10px] font-semibold transition-colors ${
-                        active
-                          ? 'border-indigo-500 bg-indigo-600 text-white shadow-sm'
-                          : darkMode
-                            ? 'border-gray-600 bg-gray-800 text-gray-200 hover:border-indigo-400'
-                            : 'border-gray-200 bg-white text-gray-700 hover:border-indigo-300'
-                      }`}
-                    >
-                      <Icon className="w-4 h-4" />
-                      {tm(labelKey) || fallback}
-                    </button>
-                  );
-                })}
-              </div>
-            </div>
-
-            <label className="block space-y-1">
-              <span className={`text-[10px] font-bold uppercase tracking-wide ${muted}`}>
-                {tm('gridPivotMetric') || 'Metrik'}
-              </span>
-              <select
-                className={`w-full rounded-lg border px-2.5 py-2 text-xs ${inputCls}`}
-                value={metricId}
-                onChange={(e) => setMetricId(e.target.value)}
-                disabled={chartKind === 'pivot'}
-              >
-                {metricOptions.map((m) => (
-                  <option key={m.id} value={m.id}>
-                    {m.label}
-                  </option>
-                ))}
-              </select>
-            </label>
-
-            <div className="space-y-1.5 pt-1 border-t border-dashed border-gray-300 dark:border-gray-600">
-              <span className={`text-[10px] font-bold uppercase tracking-wide ${muted}`}>
-                {tm('gridPivotDashSave') || 'Dashboard kaydet'}
-              </span>
-              <input
-                className={`w-full rounded-lg border px-2.5 py-2 text-xs ${inputCls}`}
-                value={dashTitle}
-                onChange={(e) => setDashTitle(e.target.value)}
-                placeholder={tm('gridPivotDashTitlePh') || 'Dashboard adı'}
-              />
+      {/* Kompakt toolbar — alan grafik için kalsın */}
+      <div
+        className={`flex flex-wrap items-center gap-2 px-3 py-2 border-b shrink-0 ${
+          darkMode ? 'bg-gray-800/80 border-gray-700' : 'bg-white border-gray-200'
+        }`}
+      >
+        <div className="flex flex-wrap gap-1">
+          {CHART_KINDS.map(({ id, icon: Icon, labelKey, fallback }) => {
+            const active = chartKind === id;
+            return (
               <button
+                key={id}
                 type="button"
-                onClick={handleSave}
-                className="w-full inline-flex items-center justify-center gap-1.5 rounded-lg bg-indigo-600 px-3 py-2 text-xs font-bold text-white hover:bg-indigo-700"
+                onClick={() => setChartKind(id)}
+                className={`inline-flex items-center gap-1 rounded-md border px-2 py-1.5 text-[10px] font-semibold ${
+                  active
+                    ? 'border-indigo-600 bg-indigo-600 text-white'
+                    : darkMode
+                      ? 'border-gray-600 bg-gray-800 text-gray-200 hover:border-indigo-400'
+                      : 'border-gray-200 bg-white text-gray-700 hover:border-indigo-300'
+                }`}
               >
-                <BookmarkPlus className="w-3.5 h-3.5" />
-                {activeDashId ? tm('gridPivotDashUpdate') || 'Güncelle' : tm('gridPivotDashSaveBtn') || 'Kaydet'}
+                <Icon className="w-3.5 h-3.5" />
+                {tm(labelKey) || fallback}
               </button>
-            </div>
-          </aside>
+            );
+          })}
+        </div>
 
-          {/* Orta: içerik */}
-          <section className="min-w-0 min-h-0 flex flex-col gap-2">
-            {chartKind === 'pivot' ? (
-              <div className={`flex-1 overflow-auto rounded-xl border shadow-sm ${card}`}>
-                <table className="min-w-full text-xs">
-                  <thead className={darkMode ? 'bg-indigo-950/80 sticky top-0' : 'bg-indigo-50 sticky top-0'}>
-                    <tr>
-                      <th className="text-left px-3 py-2.5 font-bold border-b">{groupLabel}</th>
-                      <th className="text-right px-3 py-2.5 font-bold border-b">
-                        {tm('gridPivotRowCount') || 'Kayıt adedi'}
+        <label className={`inline-flex items-center gap-1.5 text-[11px] ${muted}`}>
+          <span className="font-semibold uppercase tracking-wide text-[9px]">
+            {tm('gridPivotMetric') || 'Metrik'}
+          </span>
+          <select
+            className={`rounded-md border px-2 py-1.5 text-xs min-w-[9rem] ${inputCls}`}
+            value={metricId}
+            onChange={(e) => setMetricId(e.target.value)}
+            disabled={chartKind === 'pivot'}
+          >
+            {metricOptions.map((m) => (
+              <option key={m.id} value={m.id}>
+                {m.label}
+              </option>
+            ))}
+          </select>
+        </label>
+
+        <div className="flex-1" />
+
+        <input
+          className={`rounded-md border px-2 py-1.5 text-xs w-44 max-w-full ${inputCls}`}
+          value={dashTitle}
+          onChange={(e) => setDashTitle(e.target.value)}
+          placeholder={tm('gridPivotDashTitlePh') || 'Dashboard adı'}
+        />
+        <button
+          type="button"
+          onClick={handleSave}
+          className="inline-flex items-center gap-1 rounded-md bg-indigo-600 px-3 py-1.5 text-[11px] font-bold text-white hover:bg-indigo-700"
+        >
+          <BookmarkPlus className="w-3.5 h-3.5" />
+          {activeDashId ? tm('gridPivotDashUpdate') || 'Güncelle' : tm('gridPivotDashSaveBtn') || 'Kaydet'}
+        </button>
+      </div>
+
+      {/* Ana alan: grafik/pivot + kayıtlı liste */}
+      <div className={`flex-1 min-h-0 flex gap-0 overflow-hidden ${darkMode ? 'bg-gray-950' : 'bg-slate-100'}`}>
+        <div className="flex-1 min-w-0 min-h-0 p-3 flex flex-col">
+          {rows.length === 0 ? (
+            <div className={`flex-1 flex items-center justify-center rounded-xl border ${card}`}>
+              <p className={`text-sm ${muted}`}>{tm('gridPivotNoData') || 'Grafik için grup verisi yok.'}</p>
+            </div>
+          ) : chartKind === 'pivot' ? (
+            <div className={`flex-1 min-h-0 overflow-auto rounded-xl border shadow-sm ${card}`}>
+              <table className="min-w-full text-xs">
+                <thead className={darkMode ? 'bg-indigo-950/80 sticky top-0 z-[1]' : 'bg-indigo-50 sticky top-0 z-[1]'}>
+                  <tr>
+                    <th className="text-left px-3 py-2.5 font-bold border-b">{groupLabel}</th>
+                    <th className="text-right px-3 py-2.5 font-bold border-b">
+                      {tm('gridPivotRowCount') || 'Kayıt adedi'}
+                    </th>
+                    {metrics.map((m) => (
+                      <th key={m.id} className="text-right px-3 py-2.5 font-bold border-b">
+                        {m.label}
                       </th>
+                    ))}
+                  </tr>
+                </thead>
+                <tbody>
+                  {rows.map((r, idx) => (
+                    <tr
+                      key={r.key}
+                      className={
+                        idx % 2 === 0
+                          ? darkMode
+                            ? 'bg-gray-800'
+                            : 'bg-white'
+                          : darkMode
+                            ? 'bg-gray-800/60'
+                            : 'bg-slate-50'
+                      }
+                    >
+                      <td className="px-3 py-2 border-b font-medium">{r.label}</td>
+                      <td className="px-3 py-2 border-b text-right tabular-nums">{formatNumber(r.count, 0)}</td>
                       {metrics.map((m) => (
-                        <th key={m.id} className="text-right px-3 py-2.5 font-bold border-b">
-                          {m.label}
-                        </th>
+                        <td key={m.id} className="px-3 py-2 border-b text-right tabular-nums">
+                          {formatNumber(r.values[m.id] ?? 0, 2)}
+                        </td>
                       ))}
                     </tr>
-                  </thead>
-                  <tbody>
-                    {rows.map((r, idx) => (
-                      <tr
-                        key={r.key}
-                        className={
-                          idx % 2 === 0
-                            ? darkMode
-                              ? 'bg-gray-800'
-                              : 'bg-white'
-                            : darkMode
-                              ? 'bg-gray-800/60'
-                              : 'bg-slate-50'
-                        }
-                      >
-                        <td className="px-3 py-2 border-b font-medium">{r.label}</td>
-                        <td className="px-3 py-2 border-b text-right tabular-nums">{formatNumber(r.count, 0)}</td>
-                        {metrics.map((m) => (
-                          <td key={m.id} className="px-3 py-2 border-b text-right tabular-nums">
-                            {formatNumber(r.values[m.id] ?? 0, 2)}
-                          </td>
-                        ))}
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
-              </div>
-            ) : (
-              renderChart()
-            )}
-          </section>
-
-          {/* Sağ: kayıtlı dashboardlar */}
-          <aside className={`rounded-xl border p-3 flex flex-col min-h-0 ${panel}`}>
-            <p className={`text-[10px] font-bold uppercase tracking-wide mb-2 flex items-center gap-1 ${muted}`}>
-              <Bookmark className="w-3 h-3" />
-              {tm('gridPivotDashList') || 'Kayıtlı dashboardlar'}
-            </p>
-            <div className="flex-1 overflow-y-auto space-y-1.5 min-h-[8rem]">
-              {saved.length === 0 ? (
-                <p className={`text-[11px] ${muted}`}>
-                  {tm('gridPivotDashEmpty') || 'Henüz kayıt yok. Soldan kaydedin.'}
-                </p>
-              ) : (
-                saved.map((d) => (
-                  <div
-                    key={d.id}
-                    className={`rounded-lg border px-2 py-2 ${
-                      activeDashId === d.id
-                        ? 'border-indigo-500 bg-indigo-50 dark:bg-indigo-950/40'
-                        : darkMode
-                          ? 'border-gray-600 bg-gray-800'
-                          : 'border-gray-200 bg-white'
-                    }`}
-                  >
-                    <button
-                      type="button"
-                      className="w-full text-left"
-                      onClick={() => handleLoad(d)}
-                    >
-                      <div className="text-[11px] font-semibold truncate">{d.title}</div>
-                      <div className={`text-[10px] ${muted} truncate`}>
-                        {d.groupColumnLabel} · {d.chartKind}
-                      </div>
-                    </button>
-                    <button
-                      type="button"
-                      className="mt-1 inline-flex items-center gap-1 text-[10px] text-red-600 hover:underline"
-                      onClick={() => handleDelete(d.id)}
-                    >
-                      <Trash2 className="w-3 h-3" />
-                      {tm('delete') || 'Sil'}
-                    </button>
-                  </div>
-                ))
-              )}
+                  ))}
+                </tbody>
+              </table>
             </div>
-          </aside>
+          ) : (
+            <div className="flex-1 min-h-0 w-full">{renderChart()}</div>
+          )}
         </div>
-      </PercentBodyModalScrollBody>
 
-      <div className={`flex justify-end gap-2 px-4 py-3 border-t shrink-0 ${shell}`}>
+        <aside
+          className={`w-52 shrink-0 border-l flex flex-col min-h-0 ${
+            darkMode ? 'bg-gray-900 border-gray-700' : 'bg-white border-gray-200'
+          }`}
+        >
+          <p className={`px-3 py-2 text-[10px] font-bold uppercase tracking-wide flex items-center gap-1 border-b ${muted} ${darkMode ? 'border-gray-700' : 'border-gray-100'}`}>
+            <Bookmark className="w-3 h-3" />
+            {tm('gridPivotDashList') || 'Kayıtlı'}
+          </p>
+          <div className="flex-1 overflow-y-auto p-2 space-y-1.5">
+            {saved.length === 0 ? (
+              <p className={`text-[11px] px-1 ${muted}`}>
+                {tm('gridPivotDashEmpty') || 'Henüz kayıt yok.'}
+              </p>
+            ) : (
+              saved.map((d) => (
+                <div
+                  key={d.id}
+                  className={`rounded-lg border px-2 py-1.5 ${
+                    activeDashId === d.id
+                      ? 'border-indigo-500 bg-indigo-50 dark:bg-indigo-950/40'
+                      : darkMode
+                        ? 'border-gray-600 bg-gray-800'
+                        : 'border-gray-200 bg-slate-50'
+                  }`}
+                >
+                  <button type="button" className="w-full text-left" onClick={() => handleLoad(d)}>
+                    <div className="text-[11px] font-semibold truncate">{d.title}</div>
+                    <div className={`text-[10px] ${muted} truncate`}>
+                      {d.groupColumnLabel} · {d.chartKind}
+                    </div>
+                  </button>
+                  <button
+                    type="button"
+                    className="mt-0.5 inline-flex items-center gap-1 text-[10px] text-red-600 hover:underline"
+                    onClick={() => handleDelete(d.id)}
+                  >
+                    <Trash2 className="w-3 h-3" />
+                    {tm('delete') || 'Sil'}
+                  </button>
+                </div>
+              ))
+            )}
+          </div>
+        </aside>
+      </div>
+
+      <div className={`flex justify-end px-4 py-2 border-t shrink-0 ${shell}`}>
         <button
           type="button"
           onClick={onClose}
-          className={`px-4 py-2 text-sm font-semibold rounded-lg border ${
+          className={`px-4 py-1.5 text-sm font-semibold rounded-lg border ${
             darkMode ? 'border-gray-600 hover:bg-gray-700' : 'border-gray-300 hover:bg-gray-50'
           }`}
         >
