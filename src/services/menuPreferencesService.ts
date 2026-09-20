@@ -14,6 +14,11 @@ import {
   readHiddenModulesFromLocalStorage,
   buildDefaultPresetLabel,
 } from './menuPreferencesRuntime';
+import {
+  FACTORY_MENU_PRESET_ID,
+  FACTORY_MENU_PRESET_NAME,
+  buildFactoryMenuPreferences,
+} from '../config/defaultMenuView';
 
 export {
   remapLegacyStaticHiddenModules,
@@ -145,15 +150,27 @@ export function emptyMenuPreferences(): MenuPreferences {
   return defaultMenuPreferences();
 }
 
-/** Statik menü fabrika varsayılanı: gizli modül yok, özel sıra yok */
+/** Fabrika varsayılanı: sade menü (guzel profili); istenirse gizli modüller açılır */
 export function defaultMenuPreferences(): MenuPreferences {
-  return { hidden_modules: [] };
+  return buildFactoryMenuPreferences();
 }
 
-/** Kayıtlı profil yokken varsayılan menüyü uygula (PG'ye yazmaz) */
+/** Varsayılan menüyü uygula ve fabrika profilini aktif kaydet (diğer profiller korunur) */
 export async function applyDefaultMenuPreferences(): Promise<MenuPreferences> {
   const prefs = defaultMenuPreferences();
-  const store: MenuPreferencesStore = { version: 2, presets: [] };
+  const store = await loadMenuPreferencesStoreFromDb('sistem');
+  const now = new Date().toISOString();
+  const factory: MenuPreferencePreset = {
+    id: FACTORY_MENU_PRESET_ID,
+    name: FACTORY_MENU_PRESET_NAME,
+    saved_by: 'sistem',
+    saved_at: now,
+    hidden_modules: normalizeHiddenModules(prefs.hidden_modules),
+    item_orders: normalizeItemOrders(prefs.item_orders),
+  };
+  store.presets = [factory, ...store.presets.filter((p) => p.id !== FACTORY_MENU_PRESET_ID)];
+  store.active_preset_id = FACTORY_MENU_PRESET_ID;
+  await writeMenuPreferencesStoreToDb(store);
   applyMenuPreferencesToLocalStorage(prefs, store);
   await applyMenuPreferencesToTauriConfig(prefs);
   return prefs;
@@ -645,10 +662,8 @@ export async function syncMenuPreferences(fallbackUser = 'sistem'): Promise<Menu
     return fromLocal;
   }
 
-  const empty = defaultMenuPreferences();
-  applyMenuPreferencesToLocalStorage(empty, { version: 2, presets: [] });
-  await applyMenuPreferencesToTauriConfig(empty);
-  return empty;
+  // Kayıt yoksa fabrika varsayılanını (sade menü) PG + yerel’e yaz
+  return applyDefaultMenuPreferences();
 }
 
 /** Kaydet: PG + localStorage (+ Tauri) — geriye uyumluluk; yeni kayıtlar saveMenuPreferencePreset kullanmalı */

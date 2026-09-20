@@ -12543,6 +12543,18 @@ export const excelModuleTranslations = {
   menuPanelSaveAria: { tr: 'Menü kaydı', en: 'Menu save', ar: 'حفظ القائمة', ku: 'پاشەکەوتکردنی مێنو' },
   menuPanelLoadAria: { tr: 'Yükleme seçenekleri', en: 'Load options', ar: 'خيارات التحميل', ku: 'هەڵبژاردەکانی بارکردن' },
   menuPanelDefaultLoadFailed: { tr: 'Varsayılan menü yüklenemedi.', en: 'Could not load default menu.', ar: 'تعذر تحميل القائمة الافتراضية.', ku: 'مێنوی بنەڕەتی بارنەکرا.' },
+  menuPanelFactoryDefaultTitle: {
+    tr: 'Varsayılan menü',
+    en: 'Default menu',
+    ar: 'القائمة الافتراضية',
+    ku: 'مێنوی بنەڕەتی',
+  },
+  menuPanelFactoryDefaultHint: {
+    tr: 'Sade görünüm (fabrika). İstenirse gizli modüller Menü Yönetimi’nden açılır.',
+    en: 'Streamlined factory view. Hidden modules can be enabled in Menu Management.',
+    ar: 'عرض المصنع المبسط. يمكن فتح الوحدات المخفية من إدارة القائمة.',
+    ku: 'دیمەنی کارگە (سادە). مۆدیولە شاراوەکان لە بەڕێوەبردنی مێنو دەکرێنەوە.',
+  },
 
   printerTitle: { tr: 'Yazıcı Ayarları', en: 'Printer Settings', ar: 'إعدادات الطابعة', ku: 'ڕێکخستنی چاپکەر' },
   printerSubtitle: { tr: 'Fatura ve etiket yazdırma yapılandırması', en: 'Invoice and label printing configuration', ar: 'تكوين طباعة الفواتير والملصقات', ku: 'ڕێکخستنی چاپکردنی وەسڵ و نیشانە' },

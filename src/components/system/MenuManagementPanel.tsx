@@ -1481,8 +1481,13 @@ export function MenuManagementPanel({ onClose }: MenuManagementPanelProps) {
             <div className="space-y-2">
               <div className="flex items-center gap-3 p-3 border border-dashed border-gray-300 rounded-lg bg-gray-50">
                 <div className="flex-1 min-w-0">
-                  <div className="font-medium text-sm text-gray-900">Varsayılan menü</div>
-                  <div className="text-xs text-gray-500 mt-0.5">Kayıtlı profil yoksa otomatik bu düzen yüklenir</div>
+                  <div className="font-medium text-sm text-gray-900">
+                    {tm('menuPanelFactoryDefaultTitle') || 'Varsayılan menü'}
+                  </div>
+                  <div className="text-xs text-gray-500 mt-0.5">
+                    {tm('menuPanelFactoryDefaultHint') ||
+                      'Sade görünüm (fabrika). İstenirse gizli modüller Menü Yönetimi’nden açılır.'}
+                  </div>
                 </div>
                 <button
                   type="button"
