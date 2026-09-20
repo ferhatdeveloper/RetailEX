@@ -11,6 +11,12 @@
  * @created 2024-12-24
  */
 
+import {
+  expandRbacModuleIds,
+  isRbacParentModule,
+  RBAC_POS_GRANULAR_ACTIONS,
+} from '../utils/rbacPermissionMap';
+
 // ===== TYPES =====
 
 export type PermissionAction = 'CREATE' | 'READ' | 'UPDATE' | 'DELETE' | 'EXECUTE';
@@ -213,46 +219,69 @@ export const SYSTEM_ROLES: Role[] = [
 export function hasPermission(
   userRoles: Role[],
   module: ModuleId,
-  action: PermissionAction
+  action: PermissionAction | string
 ): boolean {
   // Admin has all permissions
   if (userRoles.some(role => role.id === 'admin' || role.name?.toLowerCase() === 'admin')) {
     return true;
   }
 
-  // Map incoming action to standard RBAC action
-  const actionLower = action.toLowerCase();
-  let mappedAction: PermissionAction = action.toUpperCase() as PermissionAction;
+  const actionLower = String(action || '').toLowerCase();
+  let mappedAction: PermissionAction = String(action || '').toUpperCase() as PermissionAction;
 
-  if (['view', 'read', 'list', 'show', 'browse'].includes(actionLower)) mappedAction = 'READ';
-  else if (['sell', 'execute', 'print', 'approve', 'discount', 'refund', 'cancel_sale', 'void', 'pay'].includes(actionLower)) mappedAction = 'EXECUTE';
-  else if (['edit', 'update', 'modify', 'save'].includes(actionLower)) mappedAction = 'UPDATE';
-  else if (['add', 'create', 'insert', 'new'].includes(actionLower)) mappedAction = 'CREATE';
-  else if (['delete', 'remove', 'destroy', 'purge'].includes(actionLower)) mappedAction = 'DELETE';
+  // Granüler POS aksiyonları EXECUTE’a düşmesin — ayrı modül id ile kontrol edilir
+  if (RBAC_POS_GRANULAR_ACTIONS.has(actionLower)) {
+    mappedAction = 'EXECUTE';
+  } else if (['view', 'read', 'list', 'show', 'browse'].includes(actionLower)) {
+    mappedAction = 'READ';
+  } else if (['sell', 'execute', 'print', 'approve', 'pay'].includes(actionLower)) {
+    mappedAction = 'EXECUTE';
+  } else if (['edit', 'update', 'modify', 'save'].includes(actionLower)) {
+    mappedAction = 'UPDATE';
+  } else if (['add', 'create', 'insert', 'new'].includes(actionLower)) {
+    mappedAction = 'CREATE';
+  } else if (['delete', 'remove', 'destroy', 'purge'].includes(actionLower)) {
+    mappedAction = 'DELETE';
+  }
 
-  // Check each role
+  const requestedModules = [...expandRbacModuleIds(String(module || ''))];
+  // pos.discount isteği → ayrıca üst "pos" EXECUTE ile de karşılanabilir
+  if (String(module).includes('.')) {
+    const parent = String(module).split('.')[0];
+    if (parent && !requestedModules.includes(parent)) requestedModules.push(parent);
+  }
+
   for (const role of userRoles) {
     for (const permission of role.permissions || []) {
-      // Robust string handling for legacy DB formats
       if (typeof permission === 'string') {
         const pStr = permission as string;
         if (pStr === '*') return true;
-        if (pStr === `${module}.*` || pStr === module) return true;
-        const [pModule, pAction] = pStr.split('.');
-        if (pModule === module && (!pAction || pAction === '*' || pAction.toUpperCase() === mappedAction)) {
-          return true;
+        for (const req of requestedModules) {
+          if (pStr === `${req}.*` || pStr === req) return true;
+          const [pModule, pAction] = pStr.split('.');
+          if (
+            (pModule === req || isRbacParentModule(pModule, req)) &&
+            (!pAction || pAction === '*' || pAction.toUpperCase() === mappedAction)
+          ) {
+            return true;
+          }
         }
         continue;
       }
 
-      // Wildcard module
-      if (permission.module === '*' && (permission.actions.includes(mappedAction) || permission.actions.includes('*' as any))) {
-        return true;
-      }
+      const permModule = String(permission.module || '');
+      const actions = permission.actions || [];
+      const hasAction = actions.includes(mappedAction) || actions.includes('*' as any);
 
-      // Specific module
-      if (permission.module === module && (permission.actions.includes(mappedAction) || permission.actions.includes('*' as any))) {
-        return true;
+      if (permModule === '*' && hasAction) return true;
+
+      for (const req of requestedModules) {
+        if (
+          (permModule === req || isRbacParentModule(permModule, req)) &&
+          hasAction
+        ) {
+          return true;
+        }
       }
     }
   }

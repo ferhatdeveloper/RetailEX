@@ -70,7 +70,22 @@ export const roleAPI = {
          VALUES ($1, $2, $3, $4, $5) RETURNING *`,
                 [role.name, role.description, JSON.stringify(role.permissions), role.color, role.landing_route ?? null]
             );
-            return rows[0];
+            const r = rows[0];
+            if (!r) return null;
+            let perms = r.permissions;
+            if (typeof perms === 'string') {
+                try { perms = JSON.parse(perms); } catch { perms = []; }
+            }
+            return {
+                id: r.id,
+                name: r.name,
+                description: r.description,
+                permissions: Array.isArray(perms) ? perms : [],
+                userCount: 0,
+                color: r.color || '#3B82F6',
+                is_system_role: r.is_system_role,
+                landing_route: r.landing_route ?? null,
+            };
         } catch (error) {
             console.error('[RoleAPI] create failed:', error);
             throw error;

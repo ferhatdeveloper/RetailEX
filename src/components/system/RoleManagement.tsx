@@ -1,11 +1,13 @@
 import { useState, useEffect, useCallback, useMemo } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { Plus, Edit2, Trash2, Shield, Lock, Eye, Check, X, CheckCircle } from 'lucide-react';
+import { Plus, Edit2, Trash2, Shield, Lock, Eye, X, CheckCircle, Copy, Users } from 'lucide-react';
+import { toast } from 'sonner';
 import { roleAPI, Role as RoleType } from '../../services/api/roles';
 import { logger } from '../../services/loggingService';
 import { DataTable, type Column } from '../shared/DataTable';
 import { Permission, PermissionAction } from '../../services/rbacService';
 import { useLanguage } from '../../contexts/LanguageContext';
+import { useTheme } from '../../contexts/ThemeContext';
 import { moduleTranslations } from '../../locales/module-translations';
 import {
   buildRbacModuleGroups,
@@ -19,6 +21,7 @@ interface RoleManagementProps {
 
 export function RoleManagement({ onBack }: RoleManagementProps) {
   const navigate = useNavigate();
+  const { darkMode } = useTheme();
   const { language, tm: globalTm } = useLanguage();
   const tm = useCallback(
     (key: string) => moduleTranslations[key]?.[language as 'tr' | 'en' | 'ar' | 'ku'] || globalTm(key),
@@ -30,6 +33,7 @@ export function RoleManagement({ onBack }: RoleManagementProps) {
   const [roles, setRoles] = useState<RoleType[]>([]);
   const [loading, setLoading] = useState(true);
   const [showPermissionsModal, setShowPermissionsModal] = useState<RoleType | null>(null);
+  const [copyingId, setCopyingId] = useState<string | null>(null);
 
   useEffect(() => {
     loadRoles();
@@ -49,6 +53,32 @@ export function RoleManagement({ onBack }: RoleManagementProps) {
 
   const handleEdit = (role: RoleType) => {
     navigate(`/system/roles/${role.id}`);
+  };
+
+  const handleCopy = async (role: RoleType) => {
+    setCopyingId(role.id);
+    try {
+      const suffix = tm('roleMgmtCopySuffix');
+      const created = await roleAPI.create({
+        name: `${role.name} ${suffix}`.trim(),
+        description: role.description || '',
+        permissions: Array.isArray(role.permissions) ? structuredClone(role.permissions) : [],
+        color: role.color || '#3B82F6',
+        landing_route: role.landing_route ?? null,
+      });
+      if (created?.id) {
+        toast.success(tm('roleMgmtCopySuccess'));
+        await loadRoles();
+        navigate(`/system/roles/${created.id}`);
+      } else {
+        toast.error(tm('roleMgmtCopyError'));
+      }
+    } catch (error) {
+      logger.crudError('RoleManagement', 'copyRole', error);
+      toast.error(tm('roleMgmtCopyError'));
+    } finally {
+      setCopyingId(null);
+    }
   };
 
   const handleDelete = async (id: string) => {
@@ -85,11 +115,38 @@ export function RoleManagement({ onBack }: RoleManagementProps) {
             <Shield className="h-5 w-5 text-white" />
           </div>
           <div>
-            <p className="font-bold text-gray-900">{value} {row.is_system_role && <span className="ml-2 text-[10px] bg-red-100 text-red-700 px-2 py-0.5 rounded-full tracking-wider font-bold">{tm('roleMgmtSystemGroup')}</span>}</p>
-            <p className="text-xs text-gray-500 font-medium mt-0.5">{row.description}</p>
+            <p className={`font-bold ${darkMode ? 'text-gray-100' : 'text-gray-900'}`}>
+              {value}{' '}
+              {row.is_system_role && (
+                <span className="ml-2 text-[10px] bg-red-100 text-red-700 dark:bg-red-950/50 dark:text-red-300 px-2 py-0.5 rounded-full tracking-wider font-bold">
+                  {tm('roleMgmtSystemGroup')}
+                </span>
+              )}
+            </p>
+            <p className={`text-xs font-medium mt-0.5 ${darkMode ? 'text-gray-400' : 'text-gray-500'}`}>
+              {row.description}
+            </p>
+            {row.landing_route ? (
+              <p className={`text-[10px] mt-0.5 ${darkMode ? 'text-blue-300' : 'text-blue-600'}`}>
+                {tm('roleMgmtLandingLabel')}: {row.landing_route}
+              </p>
+            ) : null}
           </div>
         </div>
       )
+    },
+    {
+      id: 'userCount',
+      header: tm('roleMgmtColUsers'),
+      accessor: (row: RoleType) => row.userCount || 0,
+      width: 110,
+      sortable: true,
+      cell: (value: any) => (
+        <span className={`inline-flex items-center gap-1.5 text-sm font-semibold ${darkMode ? 'text-gray-200' : 'text-gray-700'}`}>
+          <Users className="w-3.5 h-3.5 opacity-70" />
+          {Number(value) || 0}
+        </span>
+      ),
     },
     {
       id: 'permissions',
@@ -110,7 +167,11 @@ export function RoleManagement({ onBack }: RoleManagementProps) {
               });
               setShowPermissionsModal({ ...row, permissions: normalizedPermissions });
             }}
-            className="flex items-center gap-2 px-3 py-1.5 bg-blue-50 hover:bg-blue-100 text-blue-700 rounded-lg transition-colors group border border-blue-100/50"
+            className={`flex items-center gap-2 px-3 py-1.5 rounded-lg transition-colors group border ${
+              darkMode
+                ? 'bg-blue-950/40 hover:bg-blue-900/50 text-blue-300 border-blue-800/50'
+                : 'bg-blue-50 hover:bg-blue-100 text-blue-700 border-blue-100/50'
+            }`}
           >
             <Lock className="h-3.5 w-3.5" />
             <span className="font-bold text-sm tracking-tight">{tm('roleMgmtServiceCount').replace('{n}', String(distinctModules))}</span>
@@ -123,20 +184,37 @@ export function RoleManagement({ onBack }: RoleManagementProps) {
       id: 'actions',
       header: tm('roleMgmtColActions'),
       accessor: (row: RoleType) => row,
-      width: 150,
+      width: 180,
       cell: (_: any, row: RoleType) => (
         <div className="flex items-center gap-2">
           <button
             onClick={() => handleEdit(row)}
-            className="p-2.5 text-blue-600 bg-blue-50/50 hover:bg-blue-100 rounded-xl transition-colors border border-transparent shadow-sm"
+            className={`p-2.5 rounded-xl transition-colors border border-transparent shadow-sm ${
+              darkMode
+                ? 'text-blue-400 bg-blue-950/40 hover:bg-blue-900/50'
+                : 'text-blue-600 bg-blue-50/50 hover:bg-blue-100'
+            }`}
             title={tm('roleMgmtEditTitle')}
           >
             <Edit2 className="h-4 w-4" />
           </button>
           <button
+            type="button"
+            onClick={() => void handleCopy(row)}
+            disabled={copyingId === row.id}
+            className={`p-2.5 rounded-xl transition-colors border border-transparent shadow-sm disabled:opacity-50 ${
+              darkMode
+                ? 'text-emerald-400 bg-emerald-950/40 hover:bg-emerald-900/50'
+                : 'text-emerald-700 bg-emerald-50/50 hover:bg-emerald-100'
+            }`}
+            title={tm('roleMgmtCopyTitle')}
+          >
+            <Copy className="h-4 w-4" />
+          </button>
+          <button
             onClick={() => handleDelete(row.id)}
             disabled={row.is_system_role}
-            className={`p-2.5 rounded-xl transition-all shadow-sm ${row.is_system_role ? 'text-slate-300 bg-slate-50 cursor-not-allowed border outline-none' : 'text-red-600 bg-red-50/50 hover:bg-red-500 hover:text-white hover:shadow-red-500/30 active:scale-95'}`}
+            className={`p-2.5 rounded-xl transition-all shadow-sm ${row.is_system_role ? 'text-slate-300 bg-slate-50 dark:bg-gray-800 dark:text-gray-600 cursor-not-allowed border outline-none' : darkMode ? 'text-red-400 bg-red-950/40 hover:bg-red-600 hover:text-white' : 'text-red-600 bg-red-50/50 hover:bg-red-500 hover:text-white hover:shadow-red-500/30 active:scale-95'}`}
             title={row.is_system_role ? tm('roleMgmtDeleteDisabled') : tm('roleMgmtDeleteTitle')}
           >
             <Trash2 className="h-4 w-4" />
@@ -145,13 +223,13 @@ export function RoleManagement({ onBack }: RoleManagementProps) {
       )
     }
   ],
-    [tm]
+    [tm, darkMode, copyingId]
   );
 
   return (
-    <div className="h-full flex flex-col bg-slate-50">
+    <div className={`h-full flex flex-col ${darkMode ? 'bg-gray-900' : 'bg-slate-50'}`}>
       {/* Header */}
-      <div className="bg-white border-b border-slate-200 px-8 py-6 z-10 shadow-sm relative overflow-hidden">
+      <div className={`border-b px-8 py-6 z-10 shadow-sm relative overflow-hidden ${darkMode ? 'bg-gray-800 border-gray-700' : 'bg-white border-slate-200'}`}>
         {/* Subtle background decoration */}
         <div className="absolute right-0 top-0 opacity-[0.03] transform scale-[3] translate-x-10 translate-y-10">
           <Shield className="w-64 h-64 text-blue-900" />
@@ -159,14 +237,23 @@ export function RoleManagement({ onBack }: RoleManagementProps) {
 
         <div className="flex items-center justify-between relative z-10 w-full max-w-7xl mx-auto">
           <div className="flex items-center gap-5">
+            {onBack ? (
+              <button
+                type="button"
+                onClick={onBack}
+                className={`text-sm font-medium px-3 py-2 rounded-lg ${darkMode ? 'text-gray-300 hover:bg-gray-700' : 'text-gray-600 hover:bg-gray-100'}`}
+              >
+                ←
+              </button>
+            ) : null}
             <div className="w-14 h-14 bg-gradient-to-br from-blue-600 to-indigo-700 rounded-2xl shadow-lg shadow-blue-500/30 flex items-center justify-center border border-white/20">
               <Shield className="h-7 w-7 text-white" />
             </div>
             <div>
-              <h2 className="text-2xl font-black text-slate-900 tracking-tight">
+              <h2 className={`text-2xl font-black tracking-tight ${darkMode ? 'text-gray-100' : 'text-slate-900'}`}>
                 {tm('roleMgmtTitle')}
               </h2>
-              <p className="text-sm text-slate-500 font-medium mt-1">
+              <p className={`text-sm font-medium mt-1 ${darkMode ? 'text-gray-400' : 'text-slate-500'}`}>
                 {tm('roleMgmtSubtitle')}
               </p>
             </div>
@@ -188,7 +275,7 @@ export function RoleManagement({ onBack }: RoleManagementProps) {
             <div className="w-10 h-10 border-4 border-blue-600 border-t-transparent rounded-full animate-spin shadow-sm"></div>
           </div>
         ) : (
-          <div className="bg-white rounded-3xl shadow-xl shadow-slate-200/50 border border-slate-100 overflow-hidden animate-in slide-in-from-bottom-4 duration-500">
+          <div className={`rounded-3xl shadow-xl border overflow-hidden animate-in slide-in-from-bottom-4 duration-500 ${darkMode ? 'bg-gray-800 shadow-black/30 border-gray-700' : 'bg-white shadow-slate-200/50 border-slate-100'}`}>
             <DataTable
               data={roles}
               columns={columns}

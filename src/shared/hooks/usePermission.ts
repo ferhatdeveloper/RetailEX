@@ -9,6 +9,7 @@ export const usePermission = () => {
   /**
    * Check if user has permission for an action on a module.
    * Format: hasPermission('pos', 'CREATE') or hasPermission('products', 'READ')
+   * Granüler: hasPermission('pos.discount') → önce tam modül id, sonra üst pos EXECUTE.
    */
   const hasPermission = useCallback((moduleOrCode: string, action?: string): boolean => {
     // Admin bypass
@@ -21,8 +22,10 @@ export const usePermission = () => {
       return contextHasPermission(moduleOrCode, action);
     }
 
-    // Legacy support: hasPermission('module.action') or hasPermission('permissionCode')
+    // Legacy / granüler: hasPermission('pos.discount')
     if (moduleOrCode.includes('.')) {
+      if (contextHasPermission(moduleOrCode, 'EXECUTE')) return true;
+      if (contextHasPermission(moduleOrCode, 'READ')) return true;
       const [module, act] = moduleOrCode.split('.');
       return contextHasPermission(module, act.toUpperCase());
     }
@@ -33,9 +36,24 @@ export const usePermission = () => {
 
   const getMaxDiscount = useCallback((): number => {
     if (!user) return 0;
-    // Map role names/IDs to discount limits
     const roleId = user.roles?.[0]?.id || '';
     const roleName = user.roles?.[0]?.name?.toLowerCase() || '';
+
+    // Rol JSONB conditions.maxAmount → indirim tavanı (%)
+    for (const role of user.roles || []) {
+      for (const p of role.permissions || []) {
+        if (typeof p !== 'object' || !p) continue;
+        const mod = String((p as any).module || '');
+        const max = Number((p as any).conditions?.maxAmount);
+        if (
+          Number.isFinite(max) &&
+          max >= 0 &&
+          (mod === 'pos.discount' || mod === 'pos')
+        ) {
+          return max;
+        }
+      }
+    }
 
     if (roleId === 'admin' || roleName === 'admin') return DISCOUNT_LIMITS.admin;
     if (roleId === 'manager' || roleName === 'manager') return DISCOUNT_LIMITS.manager;

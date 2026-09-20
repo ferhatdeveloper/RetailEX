@@ -34,6 +34,7 @@ import {
   type ReportMenuParams,
 } from '../../services/reportMenuParamsService';
 import { getGrafanaBaseUrl, getGrafanaSystemHealthEmbedUrl } from '../../utils/grafanaEmbed';
+import { RoleManagement } from './RoleManagement';
 
 type SystemView =
   | 'userManagement'
@@ -492,21 +493,11 @@ function UserManagementView() {
   );
 }
 
-// Role Authorization View
+// Role Authorization View — canlı RoleManagement
 function RoleAuthorizationView() {
   return (
-    <div className="p-6">
-      <div className="bg-white rounded-lg shadow-sm border p-6">
-        <h3 className="font-semibold text-gray-900 mb-4 flex items-center gap-2">
-          <Shield className="h-5 w-5 text-purple-600" />
-          Rol ve Yetkilendirme Yönetimi
-        </h3>
-        <p className="text-gray-600 mb-4">Kullanıcı rollerini ve yetkilerini yönetin</p>
-        <div className="text-center py-8">
-          <Shield className="h-16 w-16 text-gray-300 mx-auto mb-3" />
-          <p className="text-gray-500">Rol yönetimi ekranı hazırlanıyor...</p>
-        </div>
-      </div>
+    <div className="h-full min-h-0">
+      <RoleManagement />
     </div>
   );
 }
