@@ -15,7 +15,10 @@ export type DevExPivotDashboardSnapshot = {
   scope: string;
   groupColumnLabel: string;
   chartKind: DevExPivotChartKind;
+  /** Geriye dönük: birincil / ilk metrik */
   metricId: string;
+  /** Karşılaştırma için seçili metrikler (boşsa [metricId]) */
+  metricIds?: string[];
   rows: DevExPivotRow[];
   metrics: DevExPivotMetricDef[];
 };
@@ -92,6 +95,10 @@ export function saveDevExPivotDashboard(
     groupColumnLabel: input.groupColumnLabel,
     chartKind: input.chartKind,
     metricId: input.metricId,
+    metricIds:
+      Array.isArray(input.metricIds) && input.metricIds.length > 0
+        ? normalizePivotMetricIds(input.metricIds)
+        : [input.metricId],
     rows: input.rows,
     metrics: input.metrics,
   };
@@ -132,3 +139,42 @@ function sumMetric(rows: readonly DevExPivotRow[], metricId: string): number {
 export function pivotMetricHasData(rows: readonly DevExPivotRow[], metricId: string): boolean {
   return sumMetric(rows, metricId) > 0;
 }
+
+/** Grafik dataKey: __count__ → count */
+export function pivotMetricDataKey(metricId: string): string {
+  return metricId === '__count__' ? 'count' : metricId;
+}
+
+const MAX_COMPARE_METRICS = 6;
+
+/** Seçili metrik id listesini temizle (min 1, max 6, tekil). */
+export function normalizePivotMetricIds(ids: readonly string[], fallback = '__count__'): string[] {
+  const seen = new Set<string>();
+  const out: string[] = [];
+  for (const raw of ids) {
+    const id = String(raw || '').trim();
+    if (!id || seen.has(id)) continue;
+    seen.add(id);
+    out.push(id);
+    if (out.length >= MAX_COMPARE_METRICS) break;
+  }
+  return out.length > 0 ? out : [fallback];
+}
+
+/** Kayıtlı snapshot’tan metrik listesi (geriye dönük metricId). */
+export function resolveSnapshotMetricIds(dash: {
+  metricId?: string;
+  metricIds?: string[];
+}): string[] {
+  if (Array.isArray(dash.metricIds) && dash.metricIds.length > 0) {
+    return normalizePivotMetricIds(dash.metricIds, dash.metricId || '__count__');
+  }
+  return normalizePivotMetricIds([dash.metricId || '__count__']);
+}
+
+/** Seçili id’lerden en az biri veri taşıyor mu? */
+export function pivotMetricsHaveData(rows: readonly DevExPivotRow[], metricIds: readonly string[]): boolean {
+  return normalizePivotMetricIds(metricIds).some((id) => pivotMetricHasData(rows, id));
+}
+
+export { MAX_COMPARE_METRICS };

@@ -197,6 +197,8 @@ export type PivotGrafanaInput = {
   rows: Array<{ label: string; count: number; values: Record<string, number> }>;
   metrics: Array<{ id: string; label: string }>;
   metricId: string;
+  /** Karşılaştırma metrikleri (yoksa [metricId]) */
+  metricIds?: string[];
   chartKind?: string;
 };
 
@@ -215,11 +217,20 @@ function metricValue(
 export function buildPivotGrafanaDashboard(input: PivotGrafanaInput): Record<string, unknown> {
   const title = input.title.trim() || 'RetailEX Pivot Dashboard';
   const uid = slugUid(title, 'rex-pvt');
-  const metricId = input.metricId || '__count__';
+  const compareIds =
+    Array.isArray(input.metricIds) && input.metricIds.length > 0
+      ? input.metricIds
+      : [input.metricId || '__count__'];
+  const metricId = compareIds[0] || '__count__';
   const metricLabel =
     metricId === '__count__'
       ? 'Kayıt adedi'
       : input.metrics.find((m) => m.id === metricId)?.label || metricId;
+  const compareLabels = compareIds.map((id) =>
+    id === '__count__'
+      ? 'Kayıt adedi'
+      : input.metrics.find((m) => m.id === id)?.label || id,
+  );
 
   const headerCols = [
     input.groupColumnLabel || 'Grup',
@@ -250,7 +261,7 @@ export function buildPivotGrafanaDashboard(input: PivotGrafanaInput): Record<str
           `## ${title}`,
           '',
           `- **Grup:** ${input.groupColumnLabel}`,
-          `- **Metrik (grafik):** ${metricLabel}`,
+          `- **Metrik (grafik):** ${compareLabels.join(' · ')}`,
           `- **Tür:** ${input.chartKind || 'bar'}`,
           `- **Oluşturma:** ${new Date().toISOString()}`,
           '',
@@ -270,28 +281,40 @@ export function buildPivotGrafanaDashboard(input: PivotGrafanaInput): Record<str
     },
   ];
 
-  // Grup özeti markdown (bargauge benzeri liste)
-  const ranked = [...input.rows]
-    .map((r) => ({ label: r.label, value: metricValue(r, metricId) }))
-    .sort((a, b) => b.value - a.value);
-  const gaugeMd = ranked
-    .map((r, i) => `${i + 1}. **${r.label.replace(/\|/g, '/')}** — \`${r.value}\``)
-    .join('\n');
-  panels.push({
-    id: 3,
-    type: 'text',
-    title: `${metricLabel} sıralama`,
-    gridPos: { h: 10, w: 10, x: 14, y: 3 },
-    options: {
-      mode: 'markdown',
-      content: gaugeMd || '_Veri yok_',
-    },
+  // Karşılaştırma metrikleri için sıralama panelleri (en fazla 3)
+  let rankY = 3;
+  compareIds.slice(0, 3).forEach((mid, mi) => {
+    const mLabel =
+      mid === '__count__'
+        ? 'Kayıt adedi'
+        : input.metrics.find((m) => m.id === mid)?.label || mid;
+    const ranked = [...input.rows]
+      .map((r) => ({ label: r.label, value: metricValue(r, mid) }))
+      .sort((a, b) => b.value - a.value);
+    const gaugeMd = ranked
+      .map((r, i) => `${i + 1}. **${r.label.replace(/\|/g, '/')}** — \`${r.value}\``)
+      .join('\n');
+    const w = compareIds.length === 1 ? 10 : compareIds.length === 2 ? 5 : 3;
+    const x = 14 + (mi % 3) * (compareIds.length <= 2 ? 5 : 3);
+    panels.push({
+      id: 3 + mi,
+      type: 'text',
+      title: `${mLabel} sıralama`,
+      gridPos: { h: 10, w: Math.min(w, 10), x: Math.min(x, 21), y: rankY },
+      options: {
+        mode: 'markdown',
+        content: gaugeMd || '_Veri yok_',
+      },
+    });
   });
 
-  // Stat panelleri (ilk 8 grup)
+  // Stat panelleri (ilk metrik, ilk 8 grup)
   let x = 0;
   let y = 13;
-  ranked.slice(0, 8).forEach((r, idx) => {
+  const rankedPrimary = [...input.rows]
+    .map((r) => ({ label: r.label, value: metricValue(r, metricId) }))
+    .sort((a, b) => b.value - a.value);
+  rankedPrimary.slice(0, 8).forEach((r, idx) => {
     if (x >= 24) {
       x = 0;
       y += 4;

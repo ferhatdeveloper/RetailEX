@@ -4452,6 +4452,30 @@ export const moduleTranslations: Record<string, Record<Language, string>> = {
     ar: 'مقياس',
     ku: 'پێوەر',
   },
+  gridPivotMetrics: {
+    tr: 'Metrikler',
+    en: 'Metrics',
+    ar: 'مقاييس',
+    ku: 'پێوەرەکان',
+  },
+  gridPivotMetricsCompareHint: {
+    tr: 'Karşılaştırma için birden fazla pivot alanı seçin (en fazla 6)',
+    en: 'Select multiple pivot fields to compare (max 6)',
+    ar: 'اختر عدة حقول للمقارنة (بحد أقصى 6)',
+    ku: 'بۆ بەراورد چەند خانە هەڵبژێرە (زۆرینە 6)',
+  },
+  gridPivotMetricsPieHint: {
+    tr: 'Pasta grafikte tek metrik kullanılır',
+    en: 'Pie chart uses a single metric',
+    ar: 'المخطط الدائري يستخدم مقياساً واحداً',
+    ku: 'هێڵکاری بازنەیی تاک پێوەر بەکاردەهێنێت',
+  },
+  gridPivotMetricsMax: {
+    tr: 'En fazla 6 metrik karşılaştırılabilir',
+    en: 'At most 6 metrics can be compared',
+    ar: 'يمكن مقارنة 6 مقاييس كحد أقصى',
+    ku: 'زۆرینە 6 پێوەر بەراورد دەکرێت',
+  },
   gridPivotRowCount: {
     tr: 'Kayıt adedi',
     en: 'Row count',

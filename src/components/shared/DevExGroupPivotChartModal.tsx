@@ -41,8 +41,12 @@ import {
 import {
   deleteDevExPivotDashboard,
   listDevExPivotDashboards,
+  MAX_COMPARE_METRICS,
+  normalizePivotMetricIds,
   pickBestPivotMetricId,
-  pivotMetricHasData,
+  pivotMetricDataKey,
+  pivotMetricsHaveData,
+  resolveSnapshotMetricIds,
   saveDevExPivotDashboard,
   type DevExPivotChartKind,
   type DevExPivotDashboardSnapshot,
@@ -114,9 +118,12 @@ export function DevExGroupPivotChartModal({
   const [metrics, setMetrics] = useState(initialMetrics);
   const [groupLabel, setGroupLabel] = useState(groupColumnLabel);
   const [chartKind, setChartKind] = useState<DevExPivotChartKind>('bar');
-  const [metricId, setMetricId] = useState(() =>
-    pickBestPivotMetricId(initialRows, initialMetrics, defaultMetricId),
+  const [metricIds, setMetricIds] = useState<string[]>(() =>
+    normalizePivotMetricIds([
+      pickBestPivotMetricId(initialRows, initialMetrics, defaultMetricId),
+    ]),
   );
+  const [metricsMenuOpen, setMetricsMenuOpen] = useState(false);
   const [dashTitle, setDashTitle] = useState(
     () => `${reportTitle || tm('gridPivotChartTitle') || 'Dashboard'} — ${groupColumnLabel}`.slice(0, 80),
   );
@@ -129,7 +136,11 @@ export function DevExGroupPivotChartModal({
     setRows(initialRows);
     setMetrics(initialMetrics);
     setGroupLabel(groupColumnLabel);
-    setMetricId(pickBestPivotMetricId(initialRows, initialMetrics, defaultMetricId));
+    setMetricIds(
+      normalizePivotMetricIds([
+        pickBestPivotMetricId(initialRows, initialMetrics, defaultMetricId),
+      ]),
+    );
   }, [initialRows, initialMetrics, groupColumnLabel, defaultMetricId]);
 
   const chartPoints = useMemo(() => toDevExPivotChartPoints(rows), [rows]);
@@ -137,9 +148,45 @@ export function DevExGroupPivotChartModal({
     () => [{ id: '__count__', label: tm('gridPivotRowCount') || 'Kayıt adedi' }, ...metrics],
     [metrics, tm],
   );
-  const activeMetric = metricOptions.find((m) => m.id === metricId) || metricOptions[0];
-  const dataKey = activeMetric?.id === '__count__' ? 'count' : activeMetric?.id || 'count';
-  const hasChartData = pivotMetricHasData(rows, dataKey === 'count' ? '__count__' : dataKey);
+  const selectedSeries = useMemo(() => {
+    const ids =
+      chartKind === 'pie'
+        ? normalizePivotMetricIds(metricIds.slice(0, 1))
+        : normalizePivotMetricIds(metricIds);
+    return ids.map((id, i) => {
+      const opt = metricOptions.find((m) => m.id === id);
+      return {
+        id,
+        dataKey: pivotMetricDataKey(id),
+        label: opt?.label || id,
+        color: CHART_COLORS[i % CHART_COLORS.length],
+      };
+    });
+  }, [metricIds, metricOptions, chartKind]);
+  const hasChartData = pivotMetricsHaveData(
+    rows,
+    selectedSeries.map((s) => s.id),
+  );
+
+  const toggleMetricId = (id: string) => {
+    setMetricIds((prev) => {
+      if (prev.includes(id)) {
+        if (prev.length <= 1) return prev;
+        return normalizePivotMetricIds(prev.filter((x) => x !== id));
+      }
+      if (chartKind === 'pie') {
+        return [id];
+      }
+      if (prev.length >= MAX_COMPARE_METRICS) {
+        toast.message(
+          tm('gridPivotMetricsMax') ||
+            `En fazla ${MAX_COMPARE_METRICS} metrik karşılaştırılabilir.`,
+        );
+        return prev;
+      }
+      return normalizePivotMetricIds([...prev, id]);
+    });
+  };
 
   const shell = darkMode ? 'bg-gray-800 text-gray-100 border-gray-600' : 'bg-white text-gray-900 border-gray-200';
   const muted = darkMode ? 'text-gray-400' : 'text-gray-500';
@@ -157,7 +204,8 @@ export function DevExGroupPivotChartModal({
       scope,
       groupColumnLabel: groupLabel,
       chartKind,
-      metricId,
+      metricId: metricIds[0] || '__count__',
+      metricIds,
       rows,
       metrics,
     });
@@ -188,7 +236,8 @@ export function DevExGroupPivotChartModal({
         groupColumnLabel: groupLabel,
         rows,
         metrics,
-        metricId,
+        metricId: metricIds[0] || '__count__',
+        metricIds,
         chartKind,
       });
       if (!result.ok) {
@@ -229,7 +278,7 @@ export function DevExGroupPivotChartModal({
     setRows(dash.rows);
     setMetrics(dash.metrics);
     setChartKind(dash.chartKind);
-    setMetricId(dash.metricId);
+    setMetricIds(resolveSnapshotMetricIds(dash));
     toast.message(tm('gridPivotDashLoaded') || 'Dashboard yüklendi');
   };
 
@@ -263,12 +312,13 @@ export function DevExGroupPivotChartModal({
     );
 
     if (chartKind === 'pie') {
+      const pie = selectedSeries[0];
       return wrap(
         <ResponsiveContainer width="100%" height="100%">
           <PieChart>
             <Pie
               data={chartPoints}
-              dataKey={dataKey}
+              dataKey={pie?.dataKey || 'count'}
               nameKey="name"
               cx="50%"
               cy="48%"
@@ -296,7 +346,15 @@ export function DevExGroupPivotChartModal({
             <YAxis type="category" dataKey="name" width={78} tick={{ fontSize: 11, fill: tickFill }} />
             <Tooltip />
             <Legend />
-            <Bar dataKey={dataKey} name={activeMetric?.label} fill="#4f46e5" radius={[0, 4, 4, 0]} />
+            {selectedSeries.map((s) => (
+              <Bar
+                key={s.id}
+                dataKey={s.dataKey}
+                name={s.label}
+                fill={s.color}
+                radius={[0, 4, 4, 0]}
+              />
+            ))}
           </BarChart>
         </ResponsiveContainer>,
       );
@@ -311,7 +369,17 @@ export function DevExGroupPivotChartModal({
             <YAxis tick={{ fontSize: 11, fill: tickFill }} />
             <Tooltip />
             <Legend />
-            <Line type="monotone" dataKey={dataKey} name={activeMetric?.label} stroke="#4f46e5" strokeWidth={2.5} dot />
+            {selectedSeries.map((s) => (
+              <Line
+                key={s.id}
+                type="monotone"
+                dataKey={s.dataKey}
+                name={s.label}
+                stroke={s.color}
+                strokeWidth={2.5}
+                dot
+              />
+            ))}
           </LineChart>
         </ResponsiveContainer>,
       );
@@ -326,14 +394,17 @@ export function DevExGroupPivotChartModal({
             <YAxis tick={{ fontSize: 11, fill: tickFill }} />
             <Tooltip />
             <Legend />
-            <Area
-              type="monotone"
-              dataKey={dataKey}
-              name={activeMetric?.label}
-              stroke="#4f46e5"
-              fill="#6366f1"
-              fillOpacity={0.4}
-            />
+            {selectedSeries.map((s) => (
+              <Area
+                key={s.id}
+                type="monotone"
+                dataKey={s.dataKey}
+                name={s.label}
+                stroke={s.color}
+                fill={s.color}
+                fillOpacity={0.35}
+              />
+            ))}
           </AreaChart>
         </ResponsiveContainer>,
       );
@@ -347,7 +418,15 @@ export function DevExGroupPivotChartModal({
           <YAxis tick={{ fontSize: 11, fill: tickFill }} />
           <Tooltip />
           <Legend />
-          <Bar dataKey={dataKey} name={activeMetric?.label} fill="#4f46e5" radius={[4, 4, 0, 0]} />
+          {selectedSeries.map((s) => (
+            <Bar
+              key={s.id}
+              dataKey={s.dataKey}
+              name={s.label}
+              fill={s.color}
+              radius={[4, 4, 0, 0]}
+            />
+          ))}
         </BarChart>
       </ResponsiveContainer>,
     );
@@ -412,23 +491,67 @@ export function DevExGroupPivotChartModal({
           })}
         </div>
 
-        <label className={`inline-flex items-center gap-1.5 text-[11px] ${muted}`}>
-          <span className="font-semibold uppercase tracking-wide text-[9px]">
-            {tm('gridPivotMetric') || 'Metrik'}
-          </span>
-          <select
-            className={`rounded-md border px-2 py-1.5 text-xs min-w-[9rem] ${inputCls}`}
-            value={metricId}
-            onChange={(e) => setMetricId(e.target.value)}
+        <div className="relative">
+          <button
+            type="button"
             disabled={chartKind === 'pivot'}
+            onClick={() => setMetricsMenuOpen((v) => !v)}
+            className={`inline-flex items-center gap-1.5 rounded-md border px-2 py-1.5 text-[11px] font-semibold disabled:opacity-50 ${
+              darkMode
+                ? 'border-gray-600 bg-gray-800 text-gray-100 hover:border-indigo-400'
+                : 'border-gray-200 bg-white text-gray-800 hover:border-indigo-300'
+            }`}
           >
-            {metricOptions.map((m) => (
-              <option key={m.id} value={m.id}>
-                {m.label}
-              </option>
-            ))}
-          </select>
-        </label>
+            <span className="uppercase tracking-wide text-[9px] opacity-70">
+              {tm('gridPivotMetrics') || 'Metrikler'}
+            </span>
+            <span className="tabular-nums">
+              {selectedSeries.length}/{metricOptions.length}
+            </span>
+          </button>
+          {metricsMenuOpen && chartKind !== 'pivot' && (
+            <div
+              className={`absolute left-0 top-full z-20 mt-1 w-64 max-h-64 overflow-y-auto rounded-lg border shadow-lg p-2 space-y-1 ${
+                darkMode ? 'bg-gray-900 border-gray-600' : 'bg-white border-gray-200'
+              }`}
+            >
+              <p className={`px-1 pb-1 text-[10px] ${muted}`}>
+                {chartKind === 'pie'
+                  ? tm('gridPivotMetricsPieHint') || 'Pasta: tek metrik'
+                  : tm('gridPivotMetricsCompareHint') ||
+                    `Karşılaştırma için birden fazla seçin (max ${MAX_COMPARE_METRICS})`}
+              </p>
+              {metricOptions.map((m) => {
+                const checked = metricIds.includes(m.id);
+                return (
+                  <label
+                    key={m.id}
+                    className={`flex items-center gap-2 rounded-md px-2 py-1.5 text-xs cursor-pointer ${
+                      darkMode ? 'hover:bg-gray-800' : 'hover:bg-slate-50'
+                    }`}
+                  >
+                    <input
+                      type="checkbox"
+                      className="rounded border-gray-400"
+                      checked={checked}
+                      onChange={() => toggleMetricId(m.id)}
+                    />
+                    <span className="truncate">{m.label}</span>
+                  </label>
+                );
+              })}
+              <button
+                type="button"
+                className={`w-full mt-1 rounded-md px-2 py-1 text-[10px] font-bold ${
+                  darkMode ? 'bg-gray-800 text-gray-300' : 'bg-slate-100 text-slate-600'
+                }`}
+                onClick={() => setMetricsMenuOpen(false)}
+              >
+                {tm('close') || 'Kapat'}
+              </button>
+            </div>
+          )}
+        </div>
 
         <div className="flex-1" />
 

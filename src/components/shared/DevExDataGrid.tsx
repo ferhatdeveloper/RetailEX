@@ -2092,35 +2092,39 @@ export function DevExDataGrid<T>({
   ]);
 
   const groupPivotMetrics = useMemo(() => {
-    if (resolvedGroupFooterSumColumns.length > 0) {
-      return resolvedGroupFooterSumColumns.map((def) => {
-        const col = codedColumns.find((c) => columnDefId(c) === def.columnId);
-        const header = col?.header;
-        const label =
-          typeof header === 'string' && header.trim() ? header : def.columnId;
-        return {
-          id: def.columnId,
-          label,
-          getValue: def.getValue,
-        };
+    const byId = new Map<
+      string,
+      { id: string; label: string; getValue: (row: T) => number }
+    >();
+
+    for (const def of resolvedGroupFooterSumColumns) {
+      const col = codedColumns.find((c) => columnDefId(c) === def.columnId);
+      const header = col?.header;
+      const label =
+        typeof header === 'string' && header.trim() ? header : def.columnId;
+      byId.set(def.columnId, {
+        id: def.columnId,
+        label,
+        getValue: def.getValue,
       });
     }
-    return codedColumns
-      .map((col) => {
-        const id = columnDefId(col);
-        if (!id || !isReportSumColumnId(id)) return null;
-        const header = col.header;
-        const label = typeof header === 'string' && header.trim() ? header : id;
-        return {
-          id,
-          label,
-          getValue: (row: T) => {
-            const raw = readRowColumnValue(col, row, 0);
-            return coerceReportNumber(raw);
-          },
-        };
-      })
-      .filter((m): m is { id: string; label: string; getValue: (row: T) => number } => m != null);
+
+    for (const col of codedColumns) {
+      const id = columnDefId(col);
+      if (!id || byId.has(id) || !isReportSumColumnId(id)) continue;
+      const header = col.header;
+      const label = typeof header === 'string' && header.trim() ? header : id;
+      byId.set(id, {
+        id,
+        label,
+        getValue: (row: T) => {
+          const raw = readRowColumnValue(col, row, 0);
+          return coerceReportNumber(raw);
+        },
+      });
+    }
+
+    return Array.from(byId.values());
   }, [resolvedGroupFooterSumColumns, codedColumns]);
 
   const groupPivotRows = useMemo(() => {
