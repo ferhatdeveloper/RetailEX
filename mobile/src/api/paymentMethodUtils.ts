@@ -51,12 +51,11 @@ export function paymentMethodImpliesPaidNow(pm: string | undefined | null): bool
 }
 
 /**
- * POS / satış: kasa defterine KASA_GIRIS yazılmalı mı.
- * Web `invoices.ts`: yalnızca nakit/cash — kart kasayı şişirmesin.
+ * POS / satış: kasa defterine peşin tahsilat yazılmalı mı (nakit + kart).
+ * Web `invoices.paymentMethodImpliesCashInKasa` ile uyumlu.
  */
 export function paymentMethodImpliesCashInKasa(pm: string | undefined | null): boolean {
-  const p = String(pm || '').toLowerCase().trim();
-  return p === 'cash' || p === 'nakit';
+  return paymentMethodImpliesPaidNow(pm);
 }
 
 /**

@@ -3731,6 +3731,12 @@ export const moduleTranslations: Record<string, Record<Language, string>> = {
   paymentCredit: { tr: 'Veresiye', en: 'On account', ar: 'آجل', ku: 'قەرز' },
   belgeTutari: { tr: 'Belge tutarı', en: 'Document amount', ar: 'مبلغ المستند', ku: 'بڕی بەڵگە' },
   tahsilEdilen: { tr: 'Tahsil edilen', en: 'Amount collected', ar: 'المحصّل', ku: 'وەرگیراو' },
+  paymentFullAmountAutoHint: {
+    tr: 'Nakit / kart seçildiğinde tutar fatura netinden otomatik alınır; kısmi tahsilat için çoklu ödeme kullanın.',
+    en: 'For cash/card the amount is taken from the invoice net automatically; use multiple payments for partial collection.',
+    ar: 'عند اختيار نقد/بطاقة يُؤخذ المبلغ من صافي الفاتورة تلقائياً؛ استخدم الدفع المتعدد للتحصيل الجزئي.',
+    ku: 'نەقد/کارت هەڵبژێردرا، بڕەکە لە خالصی پسوولەوە خۆکار دەگیرێت؛ بۆ بەشەکی وەرگرتن چەند پارەدان بەکاربهێنە.',
+  },
   kalanCari: { tr: 'Kalan (cari)', en: 'Remaining (account)', ar: 'المتبقي (جاري)', ku: 'ماوە (جاری)' },
   cebeGirenNakit: { tr: 'Tahsilat', en: 'Collection', ar: 'تحصيل', ku: 'وەرگرتن' },
   paymentTransfer: { tr: 'Havale/EFT', en: 'Wire Transfer', ar: 'حوالة بنكية', ku: 'گواستنەوەی بانکی' },

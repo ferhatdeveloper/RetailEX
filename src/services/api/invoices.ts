@@ -181,16 +181,10 @@ function salesHeaderRowToRevertInvoice(h: Record<string, unknown>, id: string): 
   });
 }
 
-/** Satış faturasında kasa defterine yansıyacak tahsilat (nakit / POS cash) */
+/** Satış faturasında kasa defterine yansıyacak peşin tahsilat (nakit / kart) */
 export function paymentMethodImpliesCashInKasa(pm: string | undefined | null): boolean {
-  const p = String(pm || '').trim().toLowerCase();
-  if (!p) return false;
-  if (p === 'cash' || p === 'nakit') return true;
-  // Form kodu (NAKIT/KREDIKARTI vb.) bazen DB'ye ham yazılabilir — esnek eşleme
-  if (p === 'nakit' || p.includes('nakit') || p.startsWith('nak')) return true;
-  // Kısaltmalar ve eski kodlar
-  if (p === 'n' || p === 'na' || p === 'nak') return true;
-  return false;
+  // Kart da kasaya (veya POS kasa defterine) yazılır — yalnızca nakit değil.
+  return paymentMethodImpliesPaidNow(pm);
 }
 
 /** Karma ödeme satırında nakit/kart peşin kısım (CH_TAHSILAT adayı) */
@@ -1048,10 +1042,12 @@ async function writeCashRegisterLineSql(
   sign = 1,
   transactionType = 'KASA_GIRIS',
 ): Promise<void> {
+  const firmPad = String(firmNr).padStart(3, '0');
+  const cashRegistersTable = `rex_${firmPad}_cash_registers`;
   let targetRegisterId = targetRegisterIdRef;
   for (const cand of candidates) {
     const verify = await postgres.query<{ id: string }>(
-      `SELECT id FROM rex_001_cash_registers
+      `SELECT id FROM ${cashRegistersTable}
         WHERE id = $1::text::uuid AND is_active = true
         LIMIT 1`,
       [cand]
@@ -1063,7 +1059,7 @@ async function writeCashRegisterLineSql(
   }
   if (!targetRegisterId) {
     const fallback = await postgres.query<{ id: string }>(
-      `SELECT id FROM rex_001_cash_registers
+      `SELECT id FROM ${cashRegistersTable}
         WHERE firm_nr = $1::text AND is_active = true
         ORDER BY (name ILIKE 'MERKEZ KASA') DESC,
                  (name ILIKE 'PATRON KASA') DESC,
@@ -1109,13 +1105,14 @@ async function writeCashRegisterLineSql(
   );
   const inserted = upsertResult.rows?.[0]?.inserted === true;
 
-    if (inserted) {
+  if (inserted) {
+    const balanceDelta = Number(sign) >= 0 ? amount : -amount;
     await postgres.query(
-      `UPDATE rex_001_cash_registers
+      `UPDATE ${cashRegistersTable}
           SET balance = COALESCE(balance, 0) + $1::numeric,
               updated_at = NOW()
         WHERE id = $2::text::uuid`,
-      [amount, targetRegisterId]
+      [balanceDelta, targetRegisterId]
     );
     if (
       String(transactionType).toUpperCase() === 'CH_TAHSILAT' &&
@@ -1141,20 +1138,21 @@ async function writeCashRegisterLineRest(
   tarih: string,
   aciklama: string,
   customerId: string | null,
-  _sign = 1,
+  sign = 1,
   transactionType = 'KASA_GIRIS',
 ): Promise<void> {
   const { postgrest } = await import('./postgrestClient');
   const firmPad = String(firmNr).padStart(3, '0');
   const periodPad = String(periodNr).padStart(2, '0');
   const cashLinesTable = `/rex_${firmPad}_${periodPad}_cash_lines`;
+  const cashRegistersPath = `/rex_${firmPad}_cash_registers`;
 
   // 1) Hedef kasa: önce candidates'tan PostgREST GET ile doğrula
   let targetRegisterId: string | null = null;
   for (const cand of candidates) {
     try {
       const rows = await postgrest.get<any[]>(
-        `/rex_001_cash_registers`,
+        cashRegistersPath,
         {
           params: { id: `eq.${cand}`, is_active: 'eq.true', limit: 1 },
           schema: 'public',
@@ -1170,7 +1168,7 @@ async function writeCashRegisterLineRest(
     // Fallback: aktif kasalardan ilki (PostgREST filter + order)
     try {
       const rows = await postgrest.get<any[]>(
-        `/rex_001_cash_registers`,
+        cashRegistersPath,
         {
           params: {
             select: 'id,name,code',
@@ -1217,7 +1215,7 @@ async function writeCashRegisterLineRest(
     fiche_no: ficheNo,
     date: tarih,
     amount: amount,
-    sign: 1,
+    sign: Number(sign) >= 0 ? 1 : -1,
     definition: aciklama,
     transaction_type: transactionType,
     customer_id: customerId,
@@ -1269,17 +1267,18 @@ async function writeCashRegisterLineRest(
   }
 
   if (insertedOk) {
-    // 4) Kasa bakiyesi PATCH (artı amount). PostgREST'te balance += yok;
+    // 4) Kasa bakiyesi PATCH. PostgREST'te balance += yok;
     // mevcut balance'ı GET edip SET ediyoruz.
     try {
       const cur = await postgrest.get<any[]>(
-        `/rex_001_cash_registers`,
+        cashRegistersPath,
         { params: { id: `eq.${targetRegisterId}`, select: 'balance', limit: 1 }, schema: 'public' }
       );
       const curBalance = Number(cur?.[0]?.balance ?? 0);
+      const balanceDelta = Number(sign) >= 0 ? amount : -amount;
       await postgrest.patch(
-        `/rex_001_cash_registers?id=eq.${targetRegisterId}`,
-        { balance: curBalance + amount, updated_at: new Date().toISOString() },
+        `${cashRegistersPath}?id=eq.${targetRegisterId}`,
+        { balance: curBalance + balanceDelta, updated_at: new Date().toISOString() },
         { schema: 'public' }
       );
     } catch (_e) {
