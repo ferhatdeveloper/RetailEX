@@ -733,7 +733,7 @@ export function UniversalInvoiceForm({
   });
   const [currencyRate, setCurrencyRate] = useState(() => parseFloat((editData as any)?.currency_rate) || 1); // Kuru (sayı; DB/hesap)
   const [currencyRateStr, setCurrencyRateStr] = useState(''); // Kur metin kutusu: 1,54 veya 1.54
-  const [currencyRateType, setCurrencyRateType] = useState('Satış'); // Kur Türü (Alış, Satış, Efektif Alış, Efektif Satış)
+  const currencyRateType = 'Satış'; // Varsayılan satış kuru (UI’da kur türü seçici yok)
   const [isCurrencyTransaction, setIsCurrencyTransaction] = useState(false); // Dövizli İşlem Checkbox
   const [unitSets, setUnitSets] = useState<any[]>([]); // Birim setleri
   const [masterUnits, setMasterUnits] = useState<UnitMasterRow[]>([]); // Kart birimleri (units)
@@ -4828,7 +4828,7 @@ export function UniversalInvoiceForm({
                 <div className="bg-white rounded border border-gray-200 p-6">
                   <div className="space-y-6">
                     {/* Üst Kısım - Döviz ve Toplam Bilgileri */}
-                    <div className="grid grid-cols-6 gap-4">
+                    <div className="grid grid-cols-2 sm:grid-cols-4 gap-4">
                       <div>
                         <label className="block text-sm font-medium text-gray-700 mb-1">{tm('transactionCurrency')}</label>
                         <select
@@ -4854,7 +4854,7 @@ export function UniversalInvoiceForm({
                           className="block text-sm font-medium text-gray-700 mb-1"
                           title={`${ledgerCurrency} tutarı = satır (döviz) × kur. Örn. adet × 6 $ × 1,54`}
                         >
-                          {tm('currencyRateShort')} (1 {currency} = ? {ledgerCurrency})
+                          {tm('currencyRateShort')}
                         </label>
                         <input
                           type="text"
@@ -4872,22 +4872,6 @@ export function UniversalInvoiceForm({
                           disabled={currency === ledgerCurrency}
                           className={`w-full px-3 py-2 border rounded text-sm ${currency === ledgerCurrency ? 'border-gray-200 bg-gray-100 text-gray-400' : 'border-orange-300 font-semibold bg-orange-50'}`}
                         />
-                      </div>
-                      <div>
-                        <label className="block text-sm font-medium text-gray-700 mb-1">{tm('currencyRateType')}</label>
-                        <select
-                          value={currencyRateType}
-                          onChange={(e) => {
-                            currencyRateUserTouchedRef.current = false;
-                            setCurrencyRateType(e.target.value);
-                          }}
-                          className="w-full px-3 py-2 border border-gray-300 rounded text-sm"
-                        >
-                          <option value="Satış">{tm('sales')}</option>
-                          <option value="Alış">{tm('purchase')}</option>
-                          <option value="Efektif Satış">Efektif Satış</option>
-                          <option value="Efektif Alış">Efektif Alış</option>
-                        </select>
                       </div>
                       <div className="flex items-end pb-2">
                         <label className="flex items-center gap-2 cursor-pointer select-none">

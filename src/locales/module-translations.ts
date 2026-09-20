@@ -2850,6 +2850,7 @@ export const moduleTranslations: Record<string, Record<Language, string>> = {
   currencyToUse: { tr: 'Kullanılacak Para Birimi', en: 'Currency to Use', ar: 'العملة المراد استخدامها', ku: 'دراوی بەکارهێنراو' },
   localCurrency: { tr: 'Yerel Para Birimi', en: 'Local Currency', ar: 'العملة المحلية', ku: 'دراوی ناوخۆیی' },
   transactionCurrency: { tr: 'İşlem Dövizi', en: 'Transaction Currency', ar: 'عملة المعاملة', ku: 'دراوی مامەڵە' },
+  currencyRateShort: { tr: 'Kur', en: 'Currency Rate', ar: 'سعر الصرف', ku: 'نرخی دراو' },
   foreignCurrencyAmount: { tr: 'Dövizli Tutar:', en: 'Foreign Currency Amount:', ar: 'المبلغ بالعملة الأجنبية:', ku: 'بڕی دراوی بیانی:' },
   reportingCurrency: { tr: 'Raporlama Dövizi', en: 'Reporting Currency', ar: 'عملة التقارير', ku: 'دراوی ڕاپۆرت' },
   reportingCurrencyRate: { tr: 'Raporlama Döviz Kuru', en: 'Reporting Rate', ar: 'سعر عملة التقارير', ku: 'کۆدی دراوی ڕاپۆرت' },
