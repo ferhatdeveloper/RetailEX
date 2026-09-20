@@ -826,7 +826,10 @@ export function UniversalInvoiceForm({
   const [isFormExpanded, setIsFormExpanded] = useState(false);
   const [showProductHistoryModal, setShowProductHistoryModal] = useState(false);
   const [selectedProductForHistory, setSelectedProductForHistory] = useState<{ code: string; name: string; id: string } | null>(null);
-  const [bulkPriceIncreasePercent, setBulkPriceIncreasePercent] = useState<number | ''>('');
+  const [bulkPriceTarget, setBulkPriceTarget] = useState<'purchase' | 'sale'>('purchase');
+  const [bulkPriceMode, setBulkPriceMode] = useState<'percent' | 'amount'>('percent');
+  const [bulkPriceDirection, setBulkPriceDirection] = useState<'increase' | 'decrease'>('increase');
+  const [bulkPriceValue, setBulkPriceValue] = useState<number | ''>('');
   const [showProductCatalogModal, setShowProductCatalogModal] = useState(false);
   const [showServiceCatalogModal, setShowServiceCatalogModal] = useState(false);
 
@@ -1969,36 +1972,127 @@ export function UniversalInvoiceForm({
     });
   }, [invoiceType.category, unitSets]);
 
-  // Toplu fiyat artırımı
+  const applyBulkPriceDelta = (base: number, value: number, mode: 'percent' | 'amount', direction: 'increase' | 'decrease'): number => {
+    const sign = direction === 'increase' ? 1 : -1;
+    const next = mode === 'percent' ? base * (1 + (sign * value) / 100) : base + sign * value;
+    return Math.max(0, Number.isFinite(next) ? next : 0);
+  };
+
+  const resolveLineSalePrice = (item: InvoiceItem): number => {
+    if (item.unitPrice > 0 && item.profitMarginPercent != null && Number(item.profitMarginPercent) !== 0) {
+      return item.unitPrice * (1 + Number(item.profitMarginPercent) / 100);
+    }
+    const catalog = [...(productsProp || []), ...storeProducts];
+    const product = catalog.find(
+      (p: any) =>
+        (item.productId && String(p.id) === String(item.productId)) ||
+        (item.code && String(p.code || '').toLowerCase() === String(item.code).toLowerCase())
+    ) as any;
+    if (product) {
+      const sale =
+        Number(product.priceList1 ?? product.price_list_1 ?? product.price ?? product.sale_price ?? 0) || 0;
+      if (sale > 0) return sale;
+    }
+    return item.unitPrice > 0 ? item.unitPrice : 0;
+  };
+
+  // Toplu fiyat: alış/satış × yüzde/tutar × artır/azalt
   const handleBulkPriceIncrease = () => {
-    if (bulkPriceIncreasePercent === '' || bulkPriceIncreasePercent === 0) {
-      toast.error('Lütfen geçerli bir yüzde girin');
+    const raw = Number(bulkPriceValue);
+    if (bulkPriceValue === '' || !Number.isFinite(raw) || raw <= 0) {
+      toast.error(tm('bulkPriceInvalidValue'));
       return;
     }
 
-    const updatedItems = items.map(item => {
-      if (item.code && item.unitPrice > 0) {
-        const newPrice = item.unitPrice * (1 + Number(bulkPriceIncreasePercent) / 100);
-        const priceDiff = item.lastPurchasePrice ? newPrice - item.lastPurchasePrice : 0;
-        const priceDiffPercent = item.lastPurchasePrice && item.lastPurchasePrice > 0
-          ? ((newPrice - item.lastPurchasePrice) / item.lastPurchasePrice) * 100
-          : 0;
+    let changed = 0;
+    const saleUpdates: Array<{ id: string; salePrice: number }> = [];
 
+    const updatedItems = items.map((item) => {
+      if (!item.code) return item;
+
+      if (bulkPriceTarget === 'purchase') {
+        if (!(item.unitPrice > 0)) return item;
+        const newPrice = applyBulkPriceDelta(item.unitPrice, raw, bulkPriceMode, bulkPriceDirection);
+        const priceDiff = item.lastPurchasePrice ? newPrice - item.lastPurchasePrice : 0;
+        const priceDiffPercent =
+          item.lastPurchasePrice && item.lastPurchasePrice > 0
+            ? ((newPrice - item.lastPurchasePrice) / item.lastPurchasePrice) * 100
+            : 0;
+        const subtotal = item.quantity * newPrice;
+        const discountAmount = subtotal * ((item.discountPercent || 0) / 100);
+        changed += 1;
         return {
           ...item,
           unitPrice: newPrice,
           priceDifference: priceDiff,
           priceDifferencePercent: priceDiffPercent,
-          amount: item.quantity * newPrice * (1 - item.discountPercent / 100),
-          netAmount: item.quantity * newPrice * (1 - item.discountPercent / 100)
+          amount: subtotal,
+          netAmount: subtotal - discountAmount,
+          discountAmount,
         };
       }
-      return item;
+
+      // Satış: satır kar marjı + ürün kartı satış fiyatı
+      const currentSale = resolveLineSalePrice(item);
+      if (!(currentSale > 0) && !(item.unitPrice > 0)) return item;
+      const baseSale = currentSale > 0 ? currentSale : item.unitPrice;
+      const newSale = applyBulkPriceDelta(baseSale, raw, bulkPriceMode, bulkPriceDirection);
+      const purchase = item.unitPrice > 0 ? item.unitPrice : newSale;
+      const newMargin = purchase > 0 ? ((newSale - purchase) / purchase) * 100 : 0;
+      if (item.productId) {
+        saleUpdates.push({ id: String(item.productId), salePrice: newSale });
+      }
+      changed += 1;
+      return {
+        ...item,
+        profitMarginPercent: newMargin,
+      };
     });
 
+    if (changed === 0) {
+      toast.error(tm('bulkPriceNoItems'));
+      return;
+    }
+
     setItems(updatedItems);
-    toast.success(tm('priceBulkUpdateSuccess').replace('{percent}', bulkPriceIncreasePercent.toString()));
-    setBulkPriceIncreasePercent('');
+
+    if (bulkPriceTarget === 'sale' && saleUpdates.length > 0) {
+      void (async () => {
+        const unique = new Map<string, number>();
+        for (const u of saleUpdates) unique.set(u.id, u.salePrice);
+        await Promise.all(
+          Array.from(unique.entries()).map(async ([id, salePrice]) => {
+            try {
+              await productAPI.update(id, {
+                price: salePrice,
+                priceList1: salePrice,
+              } as any);
+            } catch (err) {
+              console.warn('Toplu satış fiyatı kart güncellemesi:', (err as any)?.message || String(err));
+            }
+          })
+        );
+        storeSetProducts(
+          storeProducts.map((p: any) => {
+            const next = unique.get(String(p.id));
+            if (next == null) return p;
+            return { ...p, price: next, priceList1: next };
+          })
+        );
+      })();
+    }
+
+    const targetLabel = bulkPriceTarget === 'purchase' ? tm('bulkPriceTargetPurchase') : tm('bulkPriceTargetSale');
+    const dirLabel = bulkPriceDirection === 'increase' ? tm('bulkPriceDirectionIncrease') : tm('bulkPriceDirectionDecrease');
+    const modeLabel = bulkPriceMode === 'percent' ? `%${raw}` : String(raw);
+    toast.success(
+      tm('bulkPriceApplySuccess')
+        .replace('{count}', String(changed))
+        .replace('{target}', targetLabel)
+        .replace('{direction}', dirLabel)
+        .replace('{value}', modeLabel)
+    );
+    setBulkPriceValue('');
   };
 
   const handleShowProductHistory = (productCode: string, productName: string, productId: string) => {
@@ -4350,20 +4444,57 @@ export function UniversalInvoiceForm({
 
                 {/* Items Grid */}
                 <div className="space-y-3">
-                  {/* Toplu Fiyat Artırımı - Sadece Alış Faturaları için */}
+                  {/* Toplu fiyat + Excel — yan yana (yalnızca Alış) */}
                   {invoiceType.category === 'Alis' && (
                     <div className="flex flex-col gap-2">
-                      <div className="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
-                        <div className="flex flex-wrap items-center gap-3">
-                          <span className="text-sm text-gray-700 dark:text-gray-200 font-medium">{tm('bulkPriceIncrease')}:</span>
-                          <input
-                            type="number"
-                            value={bulkPriceIncreasePercent}
-                            onChange={(e) => setBulkPriceIncreasePercent(e.target.value === '' ? '' : parseFloat(e.target.value))}
-                            className="w-24 px-2 py-1 border border-gray-300 dark:border-gray-600 rounded text-sm text-right bg-white dark:bg-gray-800 text-gray-900 dark:text-gray-100"
-                            placeholder="%"
-                            step="0.1"
-                          />
+                      <div className="flex flex-col gap-3 xl:flex-row xl:items-center xl:justify-between">
+                        <div className="flex flex-wrap items-center gap-2">
+                          <span className="text-sm text-gray-700 dark:text-gray-200 font-medium whitespace-nowrap">
+                            {tm('bulkPriceAdjust')}:
+                          </span>
+                          <select
+                            value={bulkPriceTarget}
+                            onChange={(e) => setBulkPriceTarget(e.target.value as 'purchase' | 'sale')}
+                            className="px-2 py-1 border border-gray-300 dark:border-gray-600 rounded text-sm bg-white dark:bg-gray-800 text-gray-900 dark:text-gray-100"
+                            aria-label={tm('bulkPriceTargetPurchase')}
+                          >
+                            <option value="purchase">{tm('bulkPriceTargetPurchase')}</option>
+                            <option value="sale">{tm('bulkPriceTargetSale')}</option>
+                          </select>
+                          <select
+                            value={bulkPriceDirection}
+                            onChange={(e) => setBulkPriceDirection(e.target.value as 'increase' | 'decrease')}
+                            className="px-2 py-1 border border-gray-300 dark:border-gray-600 rounded text-sm bg-white dark:bg-gray-800 text-gray-900 dark:text-gray-100"
+                          >
+                            <option value="increase">{tm('bulkPriceDirectionIncrease')}</option>
+                            <option value="decrease">{tm('bulkPriceDirectionDecrease')}</option>
+                          </select>
+                          <select
+                            value={bulkPriceMode}
+                            onChange={(e) => setBulkPriceMode(e.target.value as 'percent' | 'amount')}
+                            className="px-2 py-1 border border-gray-300 dark:border-gray-600 rounded text-sm bg-white dark:bg-gray-800 text-gray-900 dark:text-gray-100"
+                          >
+                            <option value="percent">{tm('bulkPriceModePercent')}</option>
+                            <option value="amount">{tm('bulkPriceModeAmount')}</option>
+                          </select>
+                          <div className="relative">
+                            <input
+                              type="number"
+                              value={bulkPriceValue}
+                              onChange={(e) =>
+                                setBulkPriceValue(e.target.value === '' ? '' : parseFloat(e.target.value))
+                              }
+                              className="w-24 px-2 py-1 border border-gray-300 dark:border-gray-600 rounded text-sm text-right bg-white dark:bg-gray-800 text-gray-900 dark:text-gray-100 pr-7"
+                              placeholder={bulkPriceMode === 'percent' ? '%' : '0'}
+                              step="0.1"
+                              min="0"
+                            />
+                            {bulkPriceMode === 'percent' && (
+                              <span className="pointer-events-none absolute right-2 top-1/2 -translate-y-1/2 text-xs text-gray-500 dark:text-gray-400">
+                                %
+                              </span>
+                            )}
+                          </div>
                           <button
                             type="button"
                             onClick={handleBulkPriceIncrease}
@@ -4371,9 +4502,11 @@ export function UniversalInvoiceForm({
                           >
                             {tm('apply')}
                           </button>
-                          <span className="text-xs text-gray-600 dark:text-gray-300 max-w-md">{tm('bulkPriceIncreaseDesc')}</span>
+                          <span className="text-xs text-gray-600 dark:text-gray-300 max-w-sm">
+                            {tm('bulkPriceAdjustDesc')}
+                          </span>
                         </div>
-                        <div className="flex flex-wrap items-center gap-2 lg:justify-end">
+                        <div className="flex flex-wrap items-center gap-2 xl:justify-end">
                           <button
                             type="button"
                             onClick={() => void handleDownloadPurchaseInvoiceExcelTemplate()}
