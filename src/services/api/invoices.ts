@@ -1176,15 +1176,14 @@ async function writeCashRegisterLineRest(
   const cashRegistersPath = `/rex_${firmPad}_cash_registers`;
 
   // 1) Hedef kasa: önce candidates'tan PostgREST GET ile doğrula
+  // NOT: postgrest.get(path, query, options) — query düz obje; { params, schema } YANLIŞ.
   let targetRegisterId: string | null = null;
   for (const cand of candidates) {
     try {
       const rows = await postgrest.get<any[]>(
         cashRegistersPath,
-        {
-          params: { id: `eq.${cand}`, is_active: 'eq.true', limit: 1 },
-          schema: 'public',
-        }
+        { id: `eq.${cand}`, is_active: 'eq.true', select: 'id', limit: 1 },
+        { schema: 'public' },
       );
       if (rows?.[0]?.id) {
         targetRegisterId = rows[0].id;
@@ -1195,18 +1194,17 @@ async function writeCashRegisterLineRest(
   if (!targetRegisterId) {
     // Fallback: aktif kasalardan ilki (PostgREST filter + order)
     try {
+      const firmEq = `eq.${String(firmNr).padStart(3, '0')}`;
       const rows = await postgrest.get<any[]>(
         cashRegistersPath,
         {
-          params: {
-            select: 'id,name,code',
-            firm_nr: `eq.${firmNr}`,
-            is_active: 'eq.true',
-            order: 'code.asc',
-            limit: 10,
-          },
-          schema: 'public',
-        }
+          select: 'id,name,code',
+          firm_nr: firmEq,
+          is_active: 'eq.true',
+          order: 'code.asc',
+          limit: 10,
+        },
+        { schema: 'public' },
       );
       // MERKEZ KASA / PATRON KASA tercihli
       const sorted = (rows || []).slice().sort((a, b) => {
@@ -1218,9 +1216,15 @@ async function writeCashRegisterLineRest(
       targetRegisterId = sorted[0]?.id || null;
     } catch (_e) { /* ignore */ }
   }
+  // Lookup başarısız olsa bile formdan gelen UUID'ye güven (rest_api filtre hatası)
   if (!targetRegisterId) {
-    console.warn('[InvoicesAPI] rest_api: aktif kasa bulunamadı (firmNr=%s).', firmNr);
-    return;
+    const trusted = candidates.find((c) => isValidUuid(c));
+    if (trusted) targetRegisterId = trusted;
+  }
+  if (!targetRegisterId) {
+    const msg = `[InvoicesAPI] rest_api: aktif kasa bulunamadı (firmNr=${firmNr}, candidates=${candidates.join(',') || '—'})`;
+    console.error(msg);
+    throw new Error(msg);
   }
 
   // 2) Mevcut cash_lines var mı? (idempotent edit senkronizasyonu)
@@ -1228,10 +1232,8 @@ async function writeCashRegisterLineRest(
   try {
     const rows = await postgrest.get<any[]>(
       cashLinesTable,
-      {
-        params: { fiche_no: `eq.${ficheNo}`, select: 'id', limit: 1 },
-        schema: 'public',
-      }
+      { fiche_no: `eq.${ficheNo}`, select: 'id', limit: 1 },
+      { schema: 'public' },
     );
     if (rows?.[0]?.id) existing = rows[0];
   } catch (_e) { /* yeni INSERT kabul */ }
@@ -1308,7 +1310,8 @@ async function writeCashRegisterLineRest(
     try {
       const cur = await postgrest.get<any[]>(
         cashRegistersPath,
-        { params: { id: `eq.${targetRegisterId}`, select: 'balance', limit: 1 }, schema: 'public' }
+        { id: `eq.${targetRegisterId}`, select: 'balance', limit: 1 },
+        { schema: 'public' },
       );
       const curBalance = Number(cur?.[0]?.balance ?? 0);
       const balanceDelta = Number(sign) >= 0 ? amount : -amount;
