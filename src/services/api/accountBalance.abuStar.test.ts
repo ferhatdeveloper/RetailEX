@@ -249,9 +249,10 @@ describe('Tedarikçi 4×2 muhasebe matris', () => {
 });
 
 describe('kart bakiyesi yedek (ledger yoksa)', () => {
-  it('defter hareketi yoksa kart bakiyesini kullanır', () => {
-    const bal = computeCustomerBalanceFromLedger('id-1', 'YUSUF', [], [], 45000);
-    expect(bal).toBe(45000);
+  it('defter hareketi yoksa orphan kart bakiyesini sıfırlar', () => {
+    // Fatura silindi + kasa satırı silindi; kartta −40k kaldıysa 0 olmalı
+    const bal = computeCustomerBalanceFromLedger('id-1', 'YUSUF', [], [], -40000);
+    expect(bal).toBe(0);
   });
 
   it('defter hareketi varken kart bakiyesini yok sayar', () => {

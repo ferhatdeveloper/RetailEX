@@ -327,6 +327,39 @@ function buildCashLinePgOpts(firmRaw?: string | null, periodRaw?: string | null)
  * Satış fişi kasa satırları: tam eşleşme + sonekli (`FİŞ-T1`, `FİŞ-1`, …).
  * `cashLineExistsForFicheNo` ile aynı kural — yalnızca exact silme orphan CH_* bırakıyordu.
  */
+async function reverseCashLineStoredCariBalance(
+  line: {
+    amount?: unknown;
+    transaction_type?: string | null;
+    customer_id?: string | null;
+    party_id?: string | null;
+  },
+  firmNr: string,
+): Promise<void> {
+  const tt = String(line.transaction_type || '').toUpperCase().trim();
+  if (tt !== 'CH_TAHSILAT' && tt !== 'CH_ODEME') return;
+  const amt = Math.abs(parseFloat(String(line.amount ?? 0)) || 0);
+  if (!amt) return;
+  const custId = line.customer_id && isValidUuid(line.customer_id) ? String(line.customer_id) : '';
+  const partyId = line.party_id && isValidUuid(line.party_id) ? String(line.party_id) : '';
+  if (custId) {
+    const applied = cariCashStoredBalanceDelta(amt, tt, 'customer');
+    if (!applied) return;
+    // createKasaIslemi / applyChTahsilat ile yazılan delta'nın tersi
+    await customerAPI.addBalance(custId, -applied).catch((e) => {
+      console.warn('[InvoicesAPI] kasa satırı cari geri alma (müşteri):', e);
+    });
+    return;
+  }
+  if (partyId) {
+    const applied = cariCashStoredBalanceDelta(amt, tt, 'supplier');
+    if (!applied) return;
+    await adjustSupplierBalanceDeltaPostgrest(partyId, -applied, firmNr).catch((e) => {
+      console.warn('[InvoicesAPI] kasa satırı cari geri alma (tedarikçi):', e);
+    });
+  }
+}
+
 async function removeCashLinesByFicheNoPostgrest(
   ficheNo: string,
   opt: { firmNr: string; periodNr: string }
@@ -337,7 +370,7 @@ async function removeCashLinesByFicheNoPostgrest(
     const pn = String(opt.periodNr).trim().padStart(2, '0').slice(0, 10);
     const cashPath = `/rex_${fn}_${pn}_cash_lines`;
     const regPath = `/rex_${fn}_cash_registers`;
-    const selectCols = 'id,register_id,amount,sign,fiche_no';
+    const selectCols = 'id,register_id,amount,sign,fiche_no,transaction_type,customer_id,party_id';
     const exact = await postgrest.get<any[]>(
       cashPath,
       { select: selectCols, fiche_no: `eq.${ficheNo}`, limit: '500' },
@@ -379,6 +412,7 @@ async function removeCashLinesByFicheNoPostgrest(
           /* kasa defteri güncellenemezse yine de satır silinir */
         }
       }
+      await reverseCashLineStoredCariBalance(line, fn);
     }
     // Exact + sonekli satırları sil (or filter)
     await postgrest.delete(
@@ -418,7 +452,7 @@ async function removeCashRegisterLinesForSaleFiche(
     }
 
     const { rows: cashRows } = await postgres.query(
-      `SELECT id, register_id, amount, sign FROM cash_lines
+      `SELECT id, register_id, amount, sign, transaction_type, customer_id, party_id FROM cash_lines
        WHERE fiche_no::text = $1::text OR fiche_no::text LIKE $2::text`,
       [trimmed, likePat],
       { firmNr: opt.firmNr, periodNr: opt.periodNr }
@@ -437,6 +471,7 @@ async function removeCashRegisterLinesForSaleFiche(
           { firmNr: opt.firmNr }
         );
       }
+      await reverseCashLineStoredCariBalance(line, String(opt.firmNr));
     }
     await postgres.query(
       `DELETE FROM cash_lines WHERE fiche_no::text = $1::text OR fiche_no::text LIKE $2::text`,

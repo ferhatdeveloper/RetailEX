@@ -178,10 +178,9 @@ export function ClientCustomerDetailPage({ customerId, onBack }: ClientCustomerD
     const [surveyModalOpen, setSurveyModalOpen] = useState(false);
     const [historyKindFilter, setHistoryKindFilter] = useState<
         'all' | 'appointment' | 'service_fee' | 'sale' | 'package'
-    >('service_fee');
+    >('all');
 
     useEffect(() => {
-        loadCustomers();
         loadPackages();
         loadSpecialists();
     }, []);
@@ -189,6 +188,11 @@ export function ClientCustomerDetailPage({ customerId, onBack }: ClientCustomerD
     useEffect(() => {
         void (async () => {
             try {
+                const { repairCariLedgerConsistency } = await import(
+                    '../../../services/api/accountLedgerRepair'
+                );
+                await repairCariLedgerConsistency().catch(() => undefined);
+                await loadCustomers();
                 const accounts = await fetchCurrentAccounts(ERP_SETTINGS.firmNr, 'MUSTERI');
                 setCurrentAccountCustomers(
                     accounts
@@ -214,13 +218,18 @@ export function ClientCustomerDetailPage({ customerId, onBack }: ClientCustomerD
                 setErpAccountsLoaded(true);
             }
         })();
-    }, []);
+    }, [loadCustomers]);
 
     const mergedCustomers = useMemo(() => {
         const map = new Map<string, BeautyCustomer>();
         for (const c of customers) map.set(c.id, c);
         for (const c of currentAccountCustomers) {
-            if (!map.has(c.id)) map.set(c.id, c);
+            const existing = map.get(c.id);
+            if (existing) {
+                map.set(c.id, { ...existing, balance: c.balance });
+            } else {
+                map.set(c.id, c);
+            }
         }
         return Array.from(map.values()).sort((a, b) => (a.name ?? '').localeCompare(b.name ?? '', 'tr'));
     }, [customers, currentAccountCustomers]);
@@ -308,7 +317,7 @@ export function ClientCustomerDetailPage({ customerId, onBack }: ClientCustomerD
     }, [customerId]);
 
     useEffect(() => {
-        setHistoryKindFilter('service_fee');
+        setHistoryKindFilter('all');
     }, [customerId]);
 
     useEffect(() => {
@@ -484,9 +493,67 @@ export function ClientCustomerDetailPage({ customerId, onBack }: ClientCustomerD
             return dt.toLocaleString(dateLocale, { dateStyle: 'short', timeStyle: 'short' });
         };
 
+        /** Satış ↔ randevu: notes / linked_appointment_id / aynı gün+tutar+hizmet */
+        const appointmentIdsLinkedToSale = new Set<string>();
+        const toYmd = (raw?: string | null) => {
+            if (!raw) return '';
+            const s = String(raw).trim();
+            if (/^\d{4}-\d{2}-\d{2}/.test(s)) return s.slice(0, 10);
+            const dt = new Date(s);
+            if (Number.isNaN(dt.getTime())) return '';
+            const y = dt.getFullYear();
+            const m = String(dt.getMonth() + 1).padStart(2, '0');
+            const d = String(dt.getDate()).padStart(2, '0');
+            return `${y}-${m}-${d}`;
+        };
+        const normName = (n?: string | null) =>
+            String(n ?? '')
+                .trim()
+                .toLocaleLowerCase('tr');
+
+        for (const s of salesHistory) {
+            const st = String(s.payment_status || 'paid').toLowerCase();
+            if (st === 'cancelled' || st === 'canceled' || st === 'void') continue;
+
+            const fromLink = String(s.linked_appointment_id ?? '').trim();
+            if (fromLink) appointmentIdsLinkedToSale.add(fromLink.toLowerCase());
+
+            const fromNotes = beautyService.parseRexAppointmentIdFromNotes(s.notes);
+            if (fromNotes) appointmentIdsLinkedToSale.add(fromNotes.toLowerCase());
+
+            const notes = String(s.notes ?? '');
+            for (const m of notes.matchAll(/rex_appt[:\s]+([0-9a-fA-F-]{36})/gi)) {
+                appointmentIdsLinkedToSale.add(m[1].toLowerCase());
+            }
+
+            const saleYmd = toYmd(s.created_at);
+            const saleTotal = Math.round(Number(s.total) || 0);
+            const itemNames = new Set(
+                (s.items ?? [])
+                    .map((it) => normName(it.name))
+                    .filter(Boolean),
+            );
+            if (!saleYmd || !(saleTotal > 0)) continue;
+            for (const a of pastAppointments) {
+                const aptId = String(a.id ?? '').trim().toLowerCase();
+                if (!aptId || appointmentIdsLinkedToSale.has(aptId)) continue;
+                const aptYmd = toYmd(a.appointment_date ?? a.date);
+                const aptTotal = Math.round(Number(a.total_price) || 0);
+                const aptName = normName(a.service_name);
+                if (aptYmd !== saleYmd || aptTotal !== saleTotal) continue;
+                // Aynı gün + aynı tutar; hizmet adı satış kaleminde varsa veya tek kalemli satışsa eşle
+                if (aptName && itemNames.size > 0 && itemNames.has(aptName)) {
+                    appointmentIdsLinkedToSale.add(aptId);
+                } else if (itemNames.size <= 1 && aptTotal === saleTotal) {
+                    appointmentIdsLinkedToSale.add(aptId);
+                }
+            }
+        }
+
         type Primary = Extract<UnifiedHistoryRow, { kind: 'appointment' | 'sale' | 'package' }>;
         const primaries: Primary[] = [];
         for (const a of pastAppointments) {
+            if (appointmentIdsLinkedToSale.has(String(a.id).toLowerCase())) continue;
             primaries.push({
                 key: `apt-${a.id}`,
                 kind: 'appointment',
@@ -509,13 +576,16 @@ export function ClientCustomerDetailPage({ customerId, onBack }: ClientCustomerD
         }
         primaries.sort((x, y) => y.sortMs - x.sortMs);
 
-        const rows: UnifiedHistoryRow[] = [];
+        /**
+         * Hizmet ücreti satırları ayrı (filtre: Hizmet ücreti).
+         * «Tümü» yalnızca birincil hareketleri gösterir — aksi halde 1 işlem = randevu+ücret+satış+ücret (4 satır).
+         */
+        const feeRows: UnifiedHistoryRow[] = [];
         for (const row of primaries) {
-            rows.push(row);
             if (row.kind === 'appointment') {
                 const a = row.appointment;
                 const aptNotes = String(a.notes ?? '').trim();
-                rows.push({
+                feeRows.push({
                     key: `apt-${a.id}-fee`,
                     kind: 'service_fee',
                     sortMs: row.sortMs,
@@ -533,7 +603,7 @@ export function ClientCustomerDetailPage({ customerId, onBack }: ClientCustomerD
                 const items = s.items?.length ? s.items : null;
                 if (items) {
                     items.forEach((it, idx) => {
-                        rows.push({
+                        feeRows.push({
                             key: `sale-${s.id}-fee-${it.id ?? idx}`,
                             kind: 'service_fee',
                             sortMs: row.sortMs,
@@ -545,7 +615,7 @@ export function ClientCustomerDetailPage({ customerId, onBack }: ClientCustomerD
                         });
                     });
                 } else {
-                    rows.push({
+                    feeRows.push({
                         key: `sale-${s.id}-fee`,
                         kind: 'service_fee',
                         sortMs: row.sortMs,
@@ -565,7 +635,7 @@ export function ClientCustomerDetailPage({ customerId, onBack }: ClientCustomerD
                       ? tm('bStatusActive')
                       : tm('bConsumed');
                 const pkgDet = `${tm('bExpiry')}: ${p.expiry_date ? new Date(p.expiry_date).toLocaleDateString(dateLocale) : '—'} · ${st}`;
-                rows.push({
+                feeRows.push({
                     key: `pkg-${p.id}-fee`,
                     kind: 'service_fee',
                     sortMs: row.sortMs,
@@ -577,7 +647,32 @@ export function ClientCustomerDetailPage({ customerId, onBack }: ClientCustomerD
                 });
             }
         }
-        return rows;
+        // Aynı gün + aynı hizmet adı + aynı tutar: randevu ücreti ile satış kalemi çiftini tek satıra indir
+        const feeSeen = new Set<string>();
+        const dedupedFees: UnifiedHistoryRow[] = [];
+        const feeSorted = [...feeRows].sort((a, b) => {
+            // Satış kaynaklı ücretler (key sale-*) önce kalsın
+            const ap = a.key.startsWith('sale-') ? 0 : 1;
+            const bp = b.key.startsWith('sale-') ? 0 : 1;
+            if (ap !== bp) return ap - bp;
+            return b.sortMs - a.sortMs;
+        });
+        for (const f of feeSorted) {
+            if (f.kind !== 'service_fee') continue;
+            const ymd = (() => {
+                const dt = new Date(f.sortMs);
+                if (Number.isNaN(dt.getTime())) return '';
+                const y = dt.getFullYear();
+                const m = String(dt.getMonth() + 1).padStart(2, '0');
+                const d = String(dt.getDate()).padStart(2, '0');
+                return `${y}-${m}-${d}`;
+            })();
+            const sig = `${ymd}|${Math.round(Number(f.amount) || 0)}|${normName(f.contextTitle)}`;
+            if (feeSeen.has(sig)) continue;
+            feeSeen.add(sig);
+            dedupedFees.push(f);
+        }
+        return [...primaries, ...dedupedFees].sort((x, y) => y.sortMs - x.sortMs);
     }, [
         pastAppointments,
         salesHistory,
@@ -591,7 +686,10 @@ export function ClientCustomerDetailPage({ customerId, onBack }: ClientCustomerD
     ]);
 
     const filteredUnifiedHistory = useMemo(() => {
-        if (historyKindFilter === 'all') return unifiedCustomerHistory;
+        if (historyKindFilter === 'all') {
+            // Birincil hareketler: satış / randevu / paket (hizmet ücreti kopyaları hariç)
+            return unifiedCustomerHistory.filter(r => r.kind !== 'service_fee');
+        }
         return unifiedCustomerHistory.filter(r => {
             if (historyKindFilter === 'appointment') return r.kind === 'appointment';
             if (historyKindFilter === 'service_fee') return r.kind === 'service_fee';

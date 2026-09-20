@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import {
+  formatInvoiceMasterLabel,
   isHardcodedDemoSalespersonRow,
   isHardcodedDemoWarehouseRow,
   isHardcodedDemoWorkplaceRow,
@@ -38,5 +39,16 @@ describe('invoiceDetailMasters demo satır filtresi', () => {
     expect(isHardcodedDemoWarehouseRow({ code: 'AMB01', name: 'MERKEZ AMBAR' })).toBe(false);
     expect(isHardcodedDemoWorkplaceRow({ code: '001', name: 'Şube 1' })).toBe(true);
     expect(isHardcodedDemoWorkplaceRow({ code: '001', name: 'Şube A' })).toBe(false);
+  });
+});
+
+describe('formatInvoiceMasterLabel', () => {
+  it('kod ve adı modal ile aynı formatta birleştirir', () => {
+    expect(formatInvoiceMasterLabel('AMB01', 'MERKEZ AMBAR')).toBe('AMB01, MERKEZ AMBAR');
+  });
+
+  it('eksik kod veya ad için boş döner', () => {
+    expect(formatInvoiceMasterLabel('', 'Merkez')).toBe('');
+    expect(formatInvoiceMasterLabel('001', '')).toBe('');
   });
 });

@@ -749,7 +749,12 @@ export function AppointmentPOS({
         const map = new Map<string, BeautyCustomer>();
         for (const c of customers) map.set(c.id, c);
         for (const c of currentAccountCustomers) {
-            if (!map.has(c.id)) map.set(c.id, c);
+            const existing = map.get(c.id);
+            if (existing) {
+                map.set(c.id, { ...existing, balance: c.balance });
+            } else {
+                map.set(c.id, c);
+            }
         }
         return Array.from(map.values()).sort((a, b) => (a.name ?? '').localeCompare(b.name ?? '', 'tr'));
     }, [customers, currentAccountCustomers]);

@@ -2,13 +2,14 @@
 import React, { useEffect, useState } from 'react';
 import {
     User, Mail, Phone, Award, Plus, Edit2,
-    Trash2, Search, UserCheck, UserX, BarChart2,
-    Star, X, Save, ToggleLeft, ToggleRight
+    Search, UserCheck, UserX, BarChart2,
+    X, Save, ToggleLeft, ToggleRight
 } from 'lucide-react';
 import { useBeautyStore } from '../store/useBeautyStore';
 import { BeautySpecialist } from '../../../types/beauty';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
+import { useLanguage } from '../../../contexts/LanguageContext';
 import '../ClinicStyles.css';
 
 const SPECIALIST_COLORS = [
@@ -21,13 +22,15 @@ const EMPTY_FORM: Partial<BeautySpecialist> = {
 };
 
 export function StaffManagement() {
+    const { tm, language } = useLanguage();
     const { specialists, isLoading, loadSpecialists, createSpecialist, updateSpecialist, toggleSpecialist } = useBeautyStore();
     const [searchTerm, setSearchTerm] = useState('');
     const [showModal, setShowModal] = useState(false);
     const [editing, setEditing] = useState<Partial<BeautySpecialist>>(EMPTY_FORM);
     const [isEdit, setIsEdit] = useState(false);
     const [saving, setSaving] = useState(false);
-    const [deleteConfirm, setDeleteConfirm] = useState<string | null>(null);
+
+    const locale = language === 'ar' ? 'ar' : language === 'ku' ? 'ku' : language === 'en' ? 'en-US' : 'tr-TR';
 
     useEffect(() => { loadSpecialists(); }, []);
 
@@ -53,12 +56,6 @@ export function StaffManagement() {
         await toggleSpecialist(staff.id, !staff.is_active);
     };
 
-    // For delete we just toggle to inactive (no hard delete action in store)
-    const handleDelete = async (id: string) => {
-        await toggleSpecialist(id, false);
-        setDeleteConfirm(null);
-    };
-
     const initials = (name: string) => name.split(' ').map(n => n[0]).join('').toUpperCase().slice(0, 2);
 
     return (
@@ -66,9 +63,11 @@ export function StaffManagement() {
             {/* Header */}
             <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
                 <div>
-                    <h1 className="text-2xl font-bold text-gray-900 tracking-tight">Personel Yönetimi</h1>
+                    <h1 className="text-2xl font-bold text-gray-900 tracking-tight">{tm('bStaffMgmtTitle')}</h1>
                     <p className="text-sm text-gray-500 mt-1">
-                        {isLoading ? 'Yükleniyor...' : `${specialists.length} personel kayıtlı`}
+                        {isLoading
+                            ? tm('bLoading')
+                            : tm('bStaffRegisteredCount').replace('{n}', String(specialists.length))}
                     </p>
                 </div>
                 <Button
@@ -76,7 +75,7 @@ export function StaffManagement() {
                     className="bg-purple-600 hover:bg-purple-700 text-white font-bold px-6 py-6 rounded-2xl shadow-lg shadow-purple-600/20 active:scale-95 transition-all flex items-center gap-2"
                 >
                     <Plus size={20} />
-                    <span>YENİ PERSONEL EKLE</span>
+                    <span className="uppercase">{tm('bAddNewStaff')}</span>
                 </Button>
             </div>
 
@@ -87,8 +86,10 @@ export function StaffManagement() {
                         <User size={28} />
                     </div>
                     <div>
-                        <p className="text-[10px] font-black text-gray-400 uppercase tracking-widest leading-none mb-1">TOPLAM EKİP</p>
-                        <p className="text-2xl font-black text-gray-900">{specialists.length} KİŞİ</p>
+                        <p className="text-[10px] font-black text-gray-400 uppercase tracking-widest leading-none mb-1">{tm('bTotalTeam')}</p>
+                        <p className="text-2xl font-black text-gray-900">
+                            {tm('bPeopleCount').replace('{n}', String(specialists.length))}
+                        </p>
                     </div>
                 </div>
                 <div className="bg-white p-6 rounded-[2rem] border border-gray-100 shadow-sm flex items-center gap-4">
@@ -96,8 +97,10 @@ export function StaffManagement() {
                         <UserCheck size={28} />
                     </div>
                     <div>
-                        <p className="text-[10px] font-black text-gray-400 uppercase tracking-widest leading-none mb-1">AKTİF ÇALIŞAN</p>
-                        <p className="text-2xl font-black text-gray-900">{specialists.filter(s => s.is_active).length} KİŞİ</p>
+                        <p className="text-[10px] font-black text-gray-400 uppercase tracking-widest leading-none mb-1">{tm('bActiveEmployees')}</p>
+                        <p className="text-2xl font-black text-gray-900">
+                            {tm('bPeopleCount').replace('{n}', String(specialists.filter(s => s.is_active).length))}
+                        </p>
                     </div>
                 </div>
                 <div className="bg-white p-6 rounded-[2rem] border border-gray-100 shadow-sm flex items-center gap-4">
@@ -105,8 +108,10 @@ export function StaffManagement() {
                         <UserX size={28} />
                     </div>
                     <div>
-                        <p className="text-[10px] font-black text-gray-400 uppercase tracking-widest leading-none mb-1">PASİF ÇALIŞAN</p>
-                        <p className="text-2xl font-black text-gray-900">{specialists.filter(s => !s.is_active).length} KİŞİ</p>
+                        <p className="text-[10px] font-black text-gray-400 uppercase tracking-widest leading-none mb-1">{tm('bInactiveEmployees')}</p>
+                        <p className="text-2xl font-black text-gray-900">
+                            {tm('bPeopleCount').replace('{n}', String(specialists.filter(s => !s.is_active).length))}
+                        </p>
                     </div>
                 </div>
             </div>
@@ -115,7 +120,7 @@ export function StaffManagement() {
             <div className="relative">
                 <Search className="absolute left-4 top-1/2 -translate-y-1/2 text-gray-400" size={20} />
                 <Input
-                    placeholder="İsim veya uzmanlık alanına göre personel ara..."
+                    placeholder={tm('bStaffSearchPlaceholder')}
                     value={searchTerm}
                     onChange={(e) => setSearchTerm(e.target.value)}
                     className="pl-12 h-14 bg-white border-gray-100 rounded-2xl focus:ring-purple-500/10 focus:border-purple-500 transition-all font-bold uppercase text-sm shadow-sm"
@@ -124,13 +129,13 @@ export function StaffManagement() {
 
             {/* Staff Grid */}
             {isLoading ? (
-                <div className="py-20 text-center text-slate-400 text-sm">Yükleniyor...</div>
+                <div className="py-20 text-center text-slate-400 text-sm">{tm('bLoading')}</div>
             ) : filteredStaff.length === 0 ? (
                 <div className="py-20 text-center">
                     <div className="w-20 h-20 bg-gray-100 rounded-3xl flex items-center justify-center mx-auto mb-4 text-gray-300"><User size={40} /></div>
-                    <h3 className="text-lg font-bold text-gray-400 uppercase tracking-widest">Personel Bulunamadı</h3>
+                    <h3 className="text-lg font-bold text-gray-400 uppercase tracking-widest">{tm('bStaffNotFound')}</h3>
                     <Button onClick={openCreate} variant="outline" className="mt-4 text-purple-600 border-purple-200 rounded-xl">
-                        <Plus size={16} className="mr-2" /> İlk personeli ekle
+                        <Plus size={16} className="mr-2" /> {tm('bAddFirstStaff')}
                     </Button>
                 </div>
             ) : (
@@ -170,7 +175,7 @@ export function StaffManagement() {
                                     <button
                                         onClick={() => handleToggle(staff)}
                                         className={`p-3 rounded-2xl transition-all shadow-sm ${staff.is_active ? 'bg-green-50 text-green-500 hover:bg-orange-100 hover:text-orange-500' : 'bg-gray-50 text-gray-400 hover:bg-green-100 hover:text-green-600'}`}
-                                        title={staff.is_active ? 'Pasife Al' : 'Aktive Et'}
+                                        title={staff.is_active ? tm('bDeactivateStaff') : tm('bActivateStaff')}
                                     >
                                         {staff.is_active ? <ToggleRight size={18} /> : <ToggleLeft size={18} />}
                                     </button>
@@ -195,7 +200,7 @@ export function StaffManagement() {
                                         <BarChart2 size={20} style={{ color: staff.color ?? '#9333ea' }} />
                                     </div>
                                     <div className="flex-1">
-                                        <p className="text-[10px] font-black uppercase tracking-[0.2em] leading-none mb-1 opacity-70" style={{ color: staff.color ?? '#9333ea' }}>PRİM ORANI</p>
+                                        <p className="text-[10px] font-black uppercase tracking-[0.2em] leading-none mb-1 opacity-70" style={{ color: staff.color ?? '#9333ea' }}>{tm('bCommissionRateLabel')}</p>
                                         <p className="text-2xl font-black tracking-tight leading-none" style={{ color: staff.color ?? '#9333ea' }}>%{staff.commission_rate}</p>
                                     </div>
                                 </div>
@@ -204,15 +209,17 @@ export function StaffManagement() {
                                         <Award size={20} />
                                     </div>
                                     <div className="flex-1">
-                                        <p className="text-[10px] font-black uppercase tracking-[0.2em] leading-none mb-1 text-emerald-700/80">URUN ADET PRIMI</p>
-                                        <p className="text-2xl font-black tracking-tight leading-none text-emerald-700">{Number(staff.product_unit_commission ?? 0).toLocaleString('tr-TR')}</p>
+                                        <p className="text-[10px] font-black uppercase tracking-[0.2em] leading-none mb-1 text-emerald-700/80">{tm('bProductUnitCommissionLabel')}</p>
+                                        <p className="text-2xl font-black tracking-tight leading-none text-emerald-700">
+                                            {Number(staff.product_unit_commission ?? 0).toLocaleString(locale)}
+                                        </p>
                                     </div>
                                 </div>
                             </div>
 
                             {!staff.is_active && (
                                 <div className="absolute inset-0 bg-white/60 backdrop-blur-[1px] flex items-center justify-center z-20">
-                                    <div className="bg-gray-900 text-white px-4 py-2 rounded-full text-xs font-bold uppercase tracking-widest shadow-xl">PASİF</div>
+                                    <div className="bg-gray-900 text-white px-4 py-2 rounded-full text-xs font-bold uppercase tracking-widest shadow-xl">{tm('inactive')}</div>
                                 </div>
                             )}
                             <div className="absolute -bottom-10 -right-10 w-40 h-40 bg-purple-50 rounded-full blur-3xl opacity-0 group-hover:opacity-100 transition-opacity" />
@@ -225,7 +232,7 @@ export function StaffManagement() {
                         className="bg-gray-50 rounded-[2.5rem] border-4 border-dashed border-gray-200 flex flex-col items-center justify-center p-8 text-gray-400 hover:border-purple-300 hover:bg-purple-50/30 transition-all cursor-pointer group min-h-[280px]"
                     >
                         <div className="w-16 h-16 rounded-full bg-gray-100 flex items-center justify-center mb-4 group-hover:bg-purple-100 group-hover:text-purple-600 transition-all"><Plus size={32} /></div>
-                        <p className="text-[10px] font-black uppercase tracking-widest">YENİ PERSONEL EKLE</p>
+                        <p className="text-[10px] font-black uppercase tracking-widest">{tm('bAddNewStaff')}</p>
                     </div>
                 </div>
             )}
@@ -236,57 +243,55 @@ export function StaffManagement() {
                     <div className="bg-white rounded-3xl shadow-2xl w-full max-w-md overflow-hidden animate-in zoom-in-95 duration-200">
                         <div className="p-6 text-white flex items-center justify-between" style={{ backgroundColor: editing.color ?? '#9333ea' }}>
                             <div>
-                                <h2 className="text-lg font-black">{isEdit ? 'Personel Düzenle' : 'Yeni Personel'}</h2>
+                                <h2 className="text-lg font-black">{isEdit ? tm('bEditStaffTitle') : tm('bNewStaffTitle')}</h2>
                                 <p className="text-white/70 text-xs mt-1">
-                                    {isEdit
-                                        ? 'Kullanıcı Yönetimi ile aynı kayıt; prim ve uzmanlık burada güncellenir.'
-                                        : 'Yeni kart yalnızca güzellikte kullanılır; asıl personel Kullanıcı Yönetimi’nden eklenir.'}
+                                    {isEdit ? tm('bEditStaffHint') : tm('bNewStaffHint')}
                                 </p>
                             </div>
                             <button onClick={() => setShowModal(false)} className="p-2 hover:bg-white/20 rounded-xl transition"><X size={20} /></button>
                         </div>
                         <div className="p-6 space-y-4 max-h-[65vh] overflow-y-auto custom-scrollbar">
                             <div>
-                                <label className="text-[10px] font-black text-slate-500 uppercase tracking-wider mb-1 block">Tam Ad <span className="text-red-500">*</span></label>
+                                <label className="text-[10px] font-black text-slate-500 uppercase tracking-wider mb-1 block">{tm('bFullNameLabel')} <span className="text-red-500">*</span></label>
                                 <Input value={editing.name ?? ''} onChange={e => setEditing(p => ({ ...p, name: e.target.value }))} placeholder="Zahra" className="border-slate-200 rounded-xl focus:border-purple-400" />
                             </div>
                             <div className="grid grid-cols-2 gap-3">
                                 <div>
-                                    <label className="text-[10px] font-black text-slate-500 uppercase tracking-wider mb-1 block">Telefon</label>
+                                    <label className="text-[10px] font-black text-slate-500 uppercase tracking-wider mb-1 block">{tm('bPhone')}</label>
                                     <Input value={editing.phone ?? ''} onChange={e => setEditing(p => ({ ...p, phone: e.target.value }))} placeholder="05xx xxx xx xx" className="border-slate-200 rounded-xl focus:border-purple-400" />
                                 </div>
                                 <div>
-                                    <label className="text-[10px] font-black text-slate-500 uppercase tracking-wider mb-1 block">E-posta</label>
-                                    <Input type="email" value={editing.email ?? ''} onChange={e => setEditing(p => ({ ...p, email: e.target.value }))} placeholder="ayse@klinik.com" className="border-slate-200 rounded-xl focus:border-purple-400" />
+                                    <label className="text-[10px] font-black text-slate-500 uppercase tracking-wider mb-1 block">{tm('bEmail')}</label>
+                                    <Input type="email" value={editing.email ?? ''} onChange={e => setEditing(p => ({ ...p, email: e.target.value }))} placeholder="name@clinic.com" className="border-slate-200 rounded-xl focus:border-purple-400" />
                                 </div>
                             </div>
                             <div className="grid grid-cols-2 gap-3">
                                 <div>
-                                    <label className="text-[10px] font-black text-slate-500 uppercase tracking-wider mb-1 block">Uzmanlık</label>
-                                    <Input value={editing.specialty ?? ''} onChange={e => setEditing(p => ({ ...p, specialty: e.target.value }))} placeholder="Lazer Uzmanı" className="border-slate-200 rounded-xl focus:border-purple-400" />
+                                    <label className="text-[10px] font-black text-slate-500 uppercase tracking-wider mb-1 block">{tm('bSpecialtyLabel')}</label>
+                                    <Input value={editing.specialty ?? ''} onChange={e => setEditing(p => ({ ...p, specialty: e.target.value }))} placeholder="Laser" className="border-slate-200 rounded-xl focus:border-purple-400" />
                                 </div>
                                 <div>
-                                    <label className="text-[10px] font-black text-slate-500 uppercase tracking-wider mb-1 block">Prim (%)</label>
+                                    <label className="text-[10px] font-black text-slate-500 uppercase tracking-wider mb-1 block">{tm('bCommissionPercentShort')}</label>
                                     <Input type="number" min={0} max={100} value={editing.commission_rate ?? 0} onChange={e => setEditing(p => ({ ...p, commission_rate: Number(e.target.value) }))} className="border-slate-200 rounded-xl focus:border-purple-400" />
                                 </div>
                             </div>
                             <div>
-                                <label className="text-[10px] font-black text-slate-500 uppercase tracking-wider mb-1 block">Urun Adet Primi</label>
+                                <label className="text-[10px] font-black text-slate-500 uppercase tracking-wider mb-1 block">{tm('bProductUnitCommissionLabel')}</label>
                                 <Input
                                     type="number"
                                     min={0}
                                     step="0.01"
                                     value={editing.product_unit_commission ?? 0}
                                     onChange={e => setEditing(p => ({ ...p, product_unit_commission: Number(e.target.value) }))}
-                                    placeholder="Orn: 10000"
+                                    placeholder="10000"
                                     className="border-slate-200 rounded-xl focus:border-purple-400"
                                 />
                                 <p className="text-[11px] text-slate-500 mt-1">
-                                    Urun satisinda personelin her sattigi adet icin sabit prim tutari.
+                                    {tm('bProductUnitCommissionHint')}
                                 </p>
                             </div>
                             <div>
-                                <label className="text-[10px] font-black text-slate-500 uppercase tracking-wider mb-2 block">Renk</label>
+                                <label className="text-[10px] font-black text-slate-500 uppercase tracking-wider mb-2 block">{tm('bColorLabel')}</label>
                                 <div className="flex gap-2 flex-wrap">
                                     {SPECIALIST_COLORS.map(color => (
                                         <button key={color} onClick={() => setEditing(p => ({ ...p, color }))} className={`w-8 h-8 rounded-full transition-all ${editing.color === color ? 'ring-2 ring-offset-2 ring-slate-400 scale-110' : 'opacity-70 hover:opacity-100'}`} style={{ backgroundColor: color }} />
@@ -296,14 +301,14 @@ export function StaffManagement() {
                             {isEdit && (
                                 <div className="flex items-center gap-3 p-4 bg-gray-50 rounded-2xl border border-gray-100">
                                     <input type="checkbox" checked={editing.is_active ?? true} onChange={e => setEditing(p => ({ ...p, is_active: e.target.checked }))} className="w-5 h-5 rounded text-purple-600" />
-                                    <span className="text-sm font-bold text-gray-900 uppercase">Aktif</span>
+                                    <span className="text-sm font-bold text-gray-900 uppercase">{tm('active')}</span>
                                 </div>
                             )}
                         </div>
                         <div className="px-6 pb-6 flex gap-3">
-                            <Button variant="outline" onClick={() => setShowModal(false)} className="flex-1 rounded-xl border-slate-200 font-bold">İptal</Button>
+                            <Button variant="outline" onClick={() => setShowModal(false)} className="flex-1 rounded-xl border-slate-200 font-bold">{tm('cancel')}</Button>
                             <Button onClick={handleSave} disabled={!editing.name?.trim() || saving} className="flex-1 rounded-xl text-white font-bold" style={{ backgroundColor: editing.color ?? '#9333ea' }}>
-                                <Save size={16} className="mr-2" />{saving ? 'Kaydediliyor...' : 'Kaydet'}
+                                <Save size={16} className="mr-2" />{saving ? tm('bSaving') : tm('save')}
                             </Button>
                         </div>
                     </div>

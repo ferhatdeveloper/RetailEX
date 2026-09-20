@@ -7,9 +7,27 @@ import {
 } from './accountBalance';
 
 describe('cariCashLineLedgerContrib', () => {
-  it('CH_TAHSILAT borcu azaltır (negatif katkı) — müşteri varsayılan', () => {
-    expect(cariCashLineLedgerContrib(500, 'CH_TAHSILAT')).toBe(-500);
-    expect(cariCashStoredBalanceDelta(500, 'CH_TAHSILAT')).toBe(-500);
+  it('karışık ödeme fatura silindikten sonra orphan kart bakiyesini sıfırlar (50k satış −40k tahsilat)', () => {
+    // Senaryo: satış +50k, nakit tahsilat −40k → net +10k açık hesap.
+    // Silmede yalnızca fatura geri alınırsa (−50) kart −40 kalır; hareket yoksa 0 olmalı.
+    expect(computeCustomerBalanceFromLedger('c1', 'TEST', [], [], -40000)).toBe(0);
+  });
+
+  it('karışık ödeme canlı defterde net açık hesabı gösterir (veresiye satış + kısmi tahsilat)', () => {
+    const sales = [
+      {
+        customer_id: 'c1',
+        customer_name: 'TEST',
+        net_amount: 50000,
+        fiche_type: 'sales_invoice',
+        is_cancelled: false,
+        payment_method: 'veresiye',
+      },
+    ];
+    const cash = [
+      { customer_id: 'c1', amount: 40000, transaction_type: 'CH_TAHSILAT' },
+    ];
+    expect(computeCustomerBalanceFromLedger('c1', 'TEST', sales, cash, 0)).toBe(10000);
   });
 
   it('CH_ODEME müşteriye ödeme → borç artar (pozitif katkı)', () => {

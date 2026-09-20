@@ -93,6 +93,10 @@ import {
   RETAIL_SALES_INVOICE_TRCODE,
 } from '../../../utils/paymentMethodUtils';
 import { buildInvoiceHeaderFieldsFromForm, readInvoiceHeaderFields, sanitizeInvoiceHeaderPartyValue } from '../../../utils/invoiceHeaderFields';
+import {
+  resolveDefaultInvoiceWarehouseLabel,
+  resolveDefaultInvoiceWorkplaceLabel,
+} from '../../../utils/invoiceDetailMasters';
 import { fetchKasalar as fetchKasaListForRegister, type Kasa as KasaRow } from '../../../services/api/kasa';
 import { allocateNextInvoiceCode } from '../../../services/invoiceCodeFormatService';
 import { looksLikeUuid } from '../../../utils/pgUuid';
@@ -705,7 +709,7 @@ export function UniversalInvoiceForm({
     const name = String(user?.full_name || user?.username || '').trim();
     return name;
   }, [user?.full_name, user?.username]);
-  const [warehouse, setWarehouse] = useState(''); // Depo (Ambar) — demo "000, Merkez" yok
+  const [warehouse, setWarehouse] = useState(''); // Depo (Ambar) — sistem varsayılanı useEffect ile
   const [fromWarehouse, setFromWarehouse] = useState(''); // Çıkış deposu (Transfer)
   const [toWarehouse, setToWarehouse] = useState(''); // Giriş deposu (Transfer)
   const [consignmentCommission, setConsignmentCommission] = useState(0); // Konsinye komisyon %
@@ -717,7 +721,7 @@ export function UniversalInvoiceForm({
 
   // Logo formatına uygun ek alanlar
   const [documentNo, setDocumentNo] = useState(''); // Belge No
-  const [workplace, setWorkplace] = useState(''); // İşyeri — demo "000, Merkez" yok
+  const [workplace, setWorkplace] = useState(''); // İşyeri — sistem varsayılanı useEffect ile
   const [salespersonCode, setSalespersonCode] = useState(''); // Satış Elemanı Kodu
   const [authorizationCode, setAuthorizationCode] = useState(''); // Yetki Kodu
   const [selectedCariBalance, setSelectedCariBalance] = useState<number | null>(null);
@@ -743,18 +747,12 @@ export function UniversalInvoiceForm({
   const [unitSets, setUnitSets] = useState<any[]>([]); // Birim setleri
   const [masterUnits, setMasterUnits] = useState<UnitMasterRow[]>([]); // Kart birimleri (units)
   const [transactionType, setTransactionType] = useState(''); // İşlem
-  const [shippingAccountCode, setShippingAccountCode] = useState(''); // Sevkiyat Hesabı Kodu
-  const [shippingAccountTitle, setShippingAccountTitle] = useState(''); // Sevkiyat Hesabı Ünvanı
-  const [shippingAddressCode, setShippingAddressCode] = useState(''); // Sevkiyat Adresi Kodu
-  const [shippingAddressDesc, setShippingAddressDesc] = useState(''); // Sevkiyat Adresi Açıklaması
   const [waybillType, setWaybillType] = useState(''); // İrsaliye Türü
   const [waybillNo, setWaybillNo] = useState(''); // İrsaliye No
   const [waybillDocumentNo, setWaybillDocumentNo] = useState(''); // İrsaliye Belge No
   const [description, setDescription] = useState(() => String((editData as any)?.notes || '')); // Açıklama
   const [documentTrackingNo, setDocumentTrackingNo] = useState(''); // Doküman İzleme Numarası
   const [paymentType, setPaymentType] = useState('İşlem Yapılmayacak'); // Ödeme Tipi
-  const [isElectronicDoc, setIsElectronicDoc] = useState(false); // Elektronik Belge
-  const [receiptType, setReceiptType] = useState(''); // Dekont Türü
   const [transactionStatus, setTransactionStatus] = useState('Operation Completed'); // İşlem Statüsü
   const [creditCardNo, setCreditCardNo] = useState(''); // Kredi Kart No
   const [serialNo, setSerialNo] = useState(''); // Seri No
@@ -764,8 +762,6 @@ export function UniversalInvoiceForm({
   const [campaignCode, setCampaignCode] = useState(''); // Kampanya Kodu
   const [returnTransactionType, setReturnTransactionType] = useState(''); // İade Hakkı Doğuran İşlem Türü
   const [isTaxFree, setIsTaxFree] = useState(false); // Tax Free
-  const [affectCollateralRisk, setAffectCollateralRisk] = useState(false); // Teminat Riskini Etkileyecek
-  const [affectRisk, setAffectRisk] = useState(false); // Riski Etkileyecek
   const [time, setTime] = useState(new Date().toLocaleTimeString(tm('localeCode'), { hour: '2-digit', minute: '2-digit', second: '2-digit' })); // Zaman
   const [distributedTotal, setDistributedTotal] = useState(0); // Dağılacak Toplam
 
@@ -1294,8 +1290,6 @@ export function UniversalInvoiceForm({
   const [showWorkplaceModal, setShowWorkplaceModal] = useState(false);
   const [showWarehouseModal, setShowWarehouseModal] = useState(false);
   const [showSalespersonModal, setShowSalespersonModal] = useState(false);
-  const [showShippingAccountModal, setShowShippingAccountModal] = useState(false);
-  const [showShippingAddressModal, setShowShippingAddressModal] = useState(false);
   const [showDeliveryCodeModal, setShowDeliveryCodeModal] = useState(false);
   const [showCampaignModal, setShowCampaignModal] = useState(false);
   const [showReturnTransactionTypeModal, setShowReturnTransactionTypeModal] = useState(false);
@@ -3031,6 +3025,30 @@ export function UniversalInvoiceForm({
     if (authName) setCashierName(authName);
   }, [isSalesReturnForm, editData, cashierName, resolveAuthUserDisplayName]);
 
+  /** Yeni fatura: Ambar / İşyeri — oturum veya ilk aktif mağaza/depo */
+  useEffect(() => {
+    if ((editData as any)?.id) return;
+    let cancelled = false;
+    void (async () => {
+      const prefWh = selectedWarehouse as { code?: string; nr?: number; name?: string } | null;
+      const prefWp = selectedBranch as { code?: string; nr?: number; name?: string } | null;
+      const [whLabel, wpLabel] = await Promise.all([
+        resolveDefaultInvoiceWarehouseLabel(prefWh),
+        resolveDefaultInvoiceWorkplaceLabel(prefWp),
+      ]);
+      if (cancelled) return;
+      if (whLabel) {
+        setWarehouse((prev) => (String(prev || '').trim() ? prev : whLabel));
+      }
+      if (wpLabel) {
+        setWorkplace((prev) => (String(prev || '').trim() ? prev : wpLabel));
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [editData?.id, selectedWarehouse, selectedBranch]);
+
   // EditData değiştiğinde items'ı güncelle
   useEffect(() => {
     if (editData) {
@@ -3091,6 +3109,24 @@ export function UniversalInvoiceForm({
         if (hf.deliveryCode) setDeliveryCode(hf.deliveryCode);
         if (hf.campaignCode) setCampaignCode(hf.campaignCode);
         if (hf.time) setTime(hf.time);
+
+        // Kayıtta ambar/işyeri boşsa (veya demo temizlendiyse) sistem varsayılanını doldur
+        void (async () => {
+          const whSaved = sanitizeInvoiceHeaderPartyValue(hf.warehouse);
+          const wpSaved = sanitizeInvoiceHeaderPartyValue(hf.workplace);
+          if (!whSaved) {
+            const whLabel = await resolveDefaultInvoiceWarehouseLabel(
+              selectedWarehouse as { code?: string; nr?: number; name?: string } | null,
+            );
+            if (whLabel) setWarehouse((prev) => (String(prev || '').trim() ? prev : whLabel));
+          }
+          if (!wpSaved) {
+            const wpLabel = await resolveDefaultInvoiceWorkplaceLabel(
+              selectedBranch as { code?: string; nr?: number; name?: string } | null,
+            );
+            if (wpLabel) setWorkplace((prev) => (String(prev || '').trim() ? prev : wpLabel));
+          }
+        })();
 
         const hfMode = String(hf.footerDiscountMode || '').trim();
         const hfPct = parseFloat(String(hf.footerDiscountPercent ?? ''));
@@ -4956,108 +4992,6 @@ export function UniversalInvoiceForm({
                       </div>
                     </div>
 
-                    {/* Sevkiyat Hesabı */}
-                    <div className="border-t pt-4">
-                      <h3 className="text-sm font-semibold text-gray-700 mb-3">Sevkiyat Hesabı</h3>
-                      <div className="grid grid-cols-3 gap-4">
-                        <div>
-                          <label className="block text-sm font-medium text-gray-700 mb-1">{tm('accountCodeLabel')}</label>
-                          <div className="flex gap-1">
-                            <input
-                              type="text"
-                              value={shippingAccountCode}
-                              onChange={(e) => setShippingAccountCode(e.target.value)}
-                              className="flex-1 px-3 py-2 border border-gray-300 rounded text-sm"
-                            />
-                            <button
-                              onClick={() => setShowShippingAccountModal(true)}
-                              className="px-2 py-2 border border-gray-300 rounded hover:bg-gray-50"
-                            >
-                              <MoreVertical className="w-4 h-4 text-gray-600" />
-                            </button>
-                          </div>
-                        </div>
-                        <div>
-                          <label className="block text-sm font-medium text-gray-700 mb-1">{tm('accountTitleLabel')}</label>
-                          <div className="flex gap-1">
-                            <input
-                              type="text"
-                              value={shippingAccountTitle}
-                              onChange={(e) => setShippingAccountTitle(e.target.value)}
-                              className="flex-1 px-3 py-2 border border-gray-300 rounded text-sm"
-                            />
-                            <button
-                              onClick={() => setShowShippingAccountModal(true)}
-                              className="px-2 py-2 border border-gray-300 rounded hover:bg-gray-50"
-                            >
-                              <MoreVertical className="w-4 h-4 text-gray-600" />
-                            </button>
-                          </div>
-                        </div>
-                        <div className="flex items-end gap-4">
-                          <label className="flex items-center gap-2 text-sm">
-                            <input
-                              type="checkbox"
-                              checked={affectCollateralRisk}
-                              onChange={(e) => setAffectCollateralRisk(e.target.checked)}
-                              className="w-4 h-4"
-                            />
-                            <span>Teminat Riskini Etkileyecek</span>
-                          </label>
-                          <label className="flex items-center gap-2 text-sm">
-                            <input
-                              type="checkbox"
-                              checked={affectRisk}
-                              onChange={(e) => setAffectRisk(e.target.checked)}
-                              className="w-4 h-4"
-                            />
-                            <span>{tm('affectRisk')}</span>
-                          </label>
-                        </div>
-                      </div>
-                    </div>
-
-                    {/* Sevkiyat Adresi */}
-                    <div className="border-t pt-4">
-                      <h3 className="text-sm font-semibold text-gray-700 mb-3">{tm('shippingAddress')}</h3>
-                      <div className="grid grid-cols-2 gap-4">
-                        <div>
-                          <label className="block text-sm font-medium text-gray-700 mb-1">{tm('code')}</label>
-                          <div className="flex gap-1">
-                            <input
-                              type="text"
-                              value={shippingAddressCode}
-                              onChange={(e) => setShippingAddressCode(e.target.value)}
-                              className="flex-1 px-3 py-2 border border-gray-300 rounded text-sm"
-                            />
-                            <button
-                              onClick={() => setShowShippingAddressModal(true)}
-                              className="px-2 py-2 border border-gray-300 rounded hover:bg-gray-50"
-                            >
-                              <MoreVertical className="w-4 h-4 text-gray-600" />
-                            </button>
-                          </div>
-                        </div>
-                        <div>
-                          <label className="block text-sm font-medium text-gray-700 mb-1">{tm('descriptionLabel')}</label>
-                          <div className="flex gap-1">
-                            <input
-                              type="text"
-                              value={shippingAddressDesc}
-                              onChange={(e) => setShippingAddressDesc(e.target.value)}
-                              className="flex-1 px-3 py-2 border border-gray-300 rounded text-sm"
-                            />
-                            <button
-                              onClick={() => setShowShippingAddressModal(true)}
-                              className="px-2 py-2 border border-gray-300 rounded hover:bg-gray-50"
-                            >
-                              <MoreVertical className="w-4 h-4 text-gray-600" />
-                            </button>
-                          </div>
-                        </div>
-                      </div>
-                    </div>
-
                     {/* İrsaliye Bilgileri */}
                     {invoiceType.category === 'Satis' && (
                       <div className="border-t pt-4">
@@ -5117,7 +5051,7 @@ export function UniversalInvoiceForm({
 
                     {/* Doküman İzleme ve Ödeme */}
                     <div className="border-t pt-4">
-                      <div className="grid grid-cols-4 gap-4">
+                      <div className="grid grid-cols-2 gap-4">
                         <div>
                           <label className="block text-sm font-medium text-gray-700 mb-1">{tm('documentTrackingNo')}</label>
                           <input
@@ -5138,35 +5072,6 @@ export function UniversalInvoiceForm({
                             <option value="Nakit">{tm('cash')}</option>
                             <option value="Kredi Kartı">{tm('creditCard')}</option>
                             <option value="Veresiye">{tm('paymentCredit')}</option>
-                          </select>
-                        </div>
-                        <div className="flex items-end">
-                          <label className="flex items-center gap-2 text-sm">
-                            <input
-                              type="checkbox"
-                              checked={isElectronicDoc}
-                              onChange={(e) => setIsElectronicDoc(e.target.checked)}
-                              className="w-4 h-4"
-                            />
-                            <span>{tm('electronicDoc')}</span>
-                          </label>
-                        </div>
-                        <div>
-                          <label className="block text-sm font-medium text-gray-700 mb-1">{tm('receiptType')}</label>
-                          <select
-                            value={receiptType}
-                            onChange={(e) => setReceiptType(e.target.value)}
-                            className="w-full px-3 py-2 border border-gray-300 rounded text-sm"
-                          >
-                            <option value="">{tm('selectOne')}</option>
-                            <option value="CASH">{tm('cash')}</option>
-                            <option value="CREDIT_CARD">{tm('creditCard')}</option>
-                            <option value="BANK_TRANSFER">{tm('bankTransfer')}</option>
-                            <option value="CHECK">{tm('check')}</option>
-                            <option value="BANK_CARD">{tm('bankCard')}</option>
-                            <option value="MOBILE_PAYMENT">{tm('mobilePayment')}</option>
-                            <option value="CREDIT">{tm('credit')}</option>
-                            <option value="OTHER">{tm('other')}</option>
                           </select>
                         </div>
                       </div>

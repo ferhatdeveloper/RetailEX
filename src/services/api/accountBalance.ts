@@ -212,13 +212,14 @@ export function sqlResolvedSupplierBalanceExpr(_cardAlias = 's'): string {
 }
 
 /**
- * Hareket varsa yalnızca ledger; yoksa kart bakiyesi (açılış / güzellik yazımı).
- * Açılış tercihen `opening_balance` fişi ile deftere yazılmalı; kart yedek kaynaktır.
+ * Hareket varsa yalnızca ledger; yoksa 0.
+ * Kart `balance` yedek kullanılmaz — fatura silme sonrası orphan (ör. −40k) kalırdı.
+ * Açılış `opening_balance` fişi ile deftere yazılmalı (txn_count > 0).
  */
-export function sqlResolvedCustomerBalanceExpr(cardAlias = 'c'): string {
+export function sqlResolvedCustomerBalanceExpr(_cardAlias = 'c'): string {
   return `CASE
     WHEN COALESCE(b.txn_count, 0) > 0 THEN COALESCE(b.calculated_balance, 0)
-    ELSE COALESCE(${cardAlias}.balance, 0)
+    ELSE 0
   END`;
 }
 
@@ -421,8 +422,10 @@ export function computeCustomerBalanceFromLedger(
     cashSum += contrib;
   }
   const txnCount = salesTxn + cashTxn;
+  // Hareket yoksa saklanan bakiyeyi koruma — iptal/silme sonrası orphan (ör. −40k) kalır.
+  // Açılış bakiyesi de defter kaynaklarında (satış/kasa) yoksa 0; SQL repair CTE ile aynı.
   if (txnCount > 0) return salesSum + cashSum;
-  return Number(_storedBalance) || 0;
+  return 0;
 }
 
 /** PostgREST: tedarikçi defter bakiyesi — alış/iade + kasa hareketleri */

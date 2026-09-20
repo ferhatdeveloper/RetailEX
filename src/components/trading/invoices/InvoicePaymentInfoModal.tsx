@@ -9,7 +9,7 @@ import {
   SYSTEM_PAYMENT_FORM_CODES,
   PAYMENT_FORM_CODE_META,
 } from '../../../utils/paymentMethodUtils';
-import { PercentBodyModal } from '../../shared/PercentBodyModal';
+import { PercentBodyModal, PercentBodyModalScrollBody } from '../../shared/PercentBodyModal';
 import { fetchKasalar, type Kasa } from '../../../services/api/kasa';
 
 interface PaymentMethod {
@@ -335,7 +335,7 @@ export function InvoicePaymentInfoModal({
   };
 
   return (
-    <PercentBodyModal onClose={onClose} size={multiPaymentEnabled ? 'list' : 'compact'} ariaLabel={tm('paymentInfo')}>
+    <PercentBodyModal onClose={onClose} size="form" ariaLabel={tm('paymentInfo')}>
         <div className="p-3 border-b border-gray-200 flex items-center justify-between shrink-0 bg-gradient-to-r from-blue-600 to-blue-700">
           <h3 className="text-base text-white flex items-center gap-2">
             <CreditCard className="w-5 h-5" />
@@ -346,11 +346,11 @@ export function InvoicePaymentInfoModal({
           </button>
         </div>
 
-        <div className="p-4">
+        <PercentBodyModalScrollBody className="p-4">
           <div className="mb-4">
             <label className="block text-sm font-medium text-gray-700 mb-2">{tm('paymentMethodLabel')}</label>
             <div className="mb-2 text-xs text-gray-500">{tm('paymentMethodOpenAccountHint')}</div>
-            <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
+            <div className="grid grid-cols-2 gap-2">
               {paymentMethods.map((method) => {
                 const Icon = method.icon;
                 return (
@@ -599,7 +599,7 @@ export function InvoicePaymentInfoModal({
             )}
           </div>
 
-          <div className="mb-4">
+          <div className="mb-1">
             <label className="block text-sm font-medium text-gray-700 mb-2">{tm('notes')}</label>
             <textarea
               value={notes}
@@ -609,7 +609,7 @@ export function InvoicePaymentInfoModal({
               className="w-full px-3 py-2 border border-gray-300 rounded focus:outline-none focus:border-blue-600"
             />
           </div>
-        </div>
+        </PercentBodyModalScrollBody>
 
         <div className="p-4 border-t border-gray-200 bg-gray-50 flex gap-2 shrink-0">
           <button

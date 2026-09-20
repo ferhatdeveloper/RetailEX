@@ -52,11 +52,16 @@ export function ClientCRM({ onOpenCustomer }: ClientCRMProps) {
     const [saving, setSaving] = useState(false);
     const [currentAccountCustomers, setCurrentAccountCustomers] = useState<BeautyCustomer[]>([]);
 
-    useEffect(() => { loadCustomers(); }, []);
-
     useEffect(() => {
         void (async () => {
             try {
+                const { repairCariLedgerConsistency } = await import(
+                    '../../../services/api/accountLedgerRepair'
+                );
+                await repairCariLedgerConsistency().catch(() => {
+                    /* sessiz — liste yine defter bakiyesi ile güncellenir */
+                });
+                await loadCustomers();
                 const accounts = await fetchCurrentAccounts(ERP_SETTINGS.firmNr, 'MUSTERI');
                 setCurrentAccountCustomers(
                     accounts
@@ -77,13 +82,19 @@ export function ClientCRM({ onOpenCustomer }: ClientCRMProps) {
                 logger.error('ClientCRM', 'fetchCurrentAccounts failed', e);
             }
         })();
-    }, []);
+    }, [loadCustomers]);
 
     const mergedCustomers = useMemo(() => {
         const map = new Map<string, BeautyCustomer>();
         for (const c of customers) map.set(c.id, c);
         for (const c of currentAccountCustomers) {
-            if (!map.has(c.id)) map.set(c.id, c);
+            const existing = map.get(c.id);
+            if (existing) {
+                // ERP cari defter bakiyesi güzellik kartındaki stale balance'ı ezer
+                map.set(c.id, { ...existing, balance: c.balance });
+            } else {
+                map.set(c.id, c);
+            }
         }
         return Array.from(map.values()).sort((a, b) => (a.name ?? '').localeCompare(b.name ?? '', 'tr'));
     }, [customers, currentAccountCustomers]);

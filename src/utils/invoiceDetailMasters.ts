@@ -154,3 +154,59 @@ export async function listInvoiceWorkplaces(): Promise<InvoicePickerMaster[]> {
     return [];
   }
 }
+
+/** Fatura seçici etiketi: `KOD, Ad` (modal onSelect ile aynı). */
+export function formatInvoiceMasterLabel(code?: unknown, name?: unknown): string {
+  const c = String(code ?? '').trim();
+  const n = String(name ?? '').trim();
+  if (!c || !n) return '';
+  return `${c}, ${n}`;
+}
+
+function labelFromPreferredStore(
+  preferred: { code?: string | null; nr?: number | null; name?: string | null } | null | undefined,
+  kind: 'warehouse' | 'workplace',
+): string {
+  if (!preferred) return '';
+  const code = String(preferred.code ?? (preferred.nr != null ? preferred.nr : '')).trim();
+  const name = String(preferred.name ?? '').trim();
+  if (!code || !name) return '';
+  const row = { code, name };
+  if (kind === 'warehouse' && isHardcodedDemoWarehouseRow(row)) return '';
+  if (kind === 'workplace' && isHardcodedDemoWorkplaceRow(row)) return '';
+  return formatInvoiceMasterLabel(code, name);
+}
+
+/** Yeni fatura: oturum ambarı veya ilk aktif depo. */
+export async function resolveDefaultInvoiceWarehouseLabel(
+  preferred?: { code?: string | null; nr?: number | null; name?: string | null } | null,
+): Promise<string> {
+  const fromPreferred = labelFromPreferredStore(preferred, 'warehouse');
+  if (fromPreferred) return fromPreferred;
+  const rows = await listInvoiceWarehouses();
+  const first = rows[0];
+  return first ? formatInvoiceMasterLabel(first.code, first.name) : '';
+}
+
+/** Yeni fatura: oturum şubesi / BRANCH tipi mağaza veya ilk aktif işyeri. */
+export async function resolveDefaultInvoiceWorkplaceLabel(
+  preferred?: { code?: string | null; nr?: number | null; name?: string | null } | null,
+): Promise<string> {
+  const fromPreferred = labelFromPreferredStore(preferred, 'workplace');
+  if (fromPreferred) return fromPreferred;
+  try {
+    const firmNr = String(ERP_SETTINGS.firmNr || '').trim();
+    if (!firmNr) return '';
+    const rows = await organizationAPI.getStoresByFirmNr(firmNr);
+    const usable = (rows || [])
+      .filter((r) => keepMaster(r))
+      .filter((r) => !isHardcodedDemoWorkplaceRow(r));
+    const branch = usable.find((r) => String(r.type || '').toUpperCase() === 'BRANCH');
+    const pick = branch || usable[0];
+    return pick ? formatInvoiceMasterLabel(pick.code, pick.name) : '';
+  } catch {
+    const rows = await listInvoiceWorkplaces();
+    const first = rows[0];
+    return first ? formatInvoiceMasterLabel(first.code, first.name) : '';
+  }
+}
