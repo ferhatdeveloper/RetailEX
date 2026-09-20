@@ -21,7 +21,9 @@ import {
   BarChart3,
   Bookmark,
   BookmarkPlus,
+  ExternalLink,
   LineChart as LineChartIcon,
+  Loader2,
   PieChart as PieChartIcon,
   Table2,
   Trash2,
@@ -45,6 +47,14 @@ import {
   type DevExPivotChartKind,
   type DevExPivotDashboardSnapshot,
 } from '../../utils/devExPivotDashboardStore';
+import {
+  createGrafanaDashboardFromPivot,
+} from '../../services/grafanaClientApi';
+import {
+  buildGrafanaDashboardEmbedUrl,
+  isGrafanaClientReady,
+  loadGrafanaClientConfig,
+} from '../../services/grafanaClientConfig';
 import { formatNumber } from '../../utils/formatNumber';
 
 const CHART_COLORS = [
@@ -111,6 +121,7 @@ export function DevExGroupPivotChartModal({
   );
   const [saved, setSaved] = useState<DevExPivotDashboardSnapshot[]>(() => listDevExPivotDashboards(scope));
   const [activeDashId, setActiveDashId] = useState<string | null>(null);
+  const [grafanaBusy, setGrafanaBusy] = useState(false);
 
   useEffect(() => {
     setRows(initialRows);
@@ -151,6 +162,51 @@ export function DevExGroupPivotChartModal({
     setActiveDashId(snap.id);
     refreshSaved();
     toast.success(tm('gridPivotDashSaved') || 'Dashboard kaydedildi');
+  };
+
+  const handleGrafanaPublish = async () => {
+    if (rows.length === 0) {
+      toast.error(tm('gridPivotNoData') || 'Grafik için grup verisi yok.');
+      return;
+    }
+    const cfg = loadGrafanaClientConfig();
+    if (!isGrafanaClientReady(cfg)) {
+      toast.error(
+        tm('gridPivotGrafanaNeedConfig') ||
+          'Grafana URL + API token gerekli. Dil menüsü → OpenRouter API → Grafana sekmesi.',
+      );
+      return;
+    }
+    setGrafanaBusy(true);
+    try {
+      const result = await createGrafanaDashboardFromPivot({
+        title: dashTitle || `${reportTitle || 'RetailEX'} — ${groupLabel}`,
+        groupColumnLabel: groupLabel,
+        rows,
+        metrics,
+        metricId,
+        chartKind,
+      });
+      if (!result.ok) {
+        toast.error(result.error || tm('gridPivotGrafanaFail') || 'Grafana panosu oluşturulamadı');
+        return;
+      }
+      toast.success(tm('gridPivotGrafanaOk') || 'Grafana panosu oluşturuldu');
+      const openUrl =
+        result.url ||
+        (result.uid ? buildGrafanaDashboardEmbedUrl(result.uid, darkMode ? 'dark' : 'light', cfg) : '');
+      if (openUrl) {
+        let abs = openUrl;
+        if (abs.startsWith('/')) {
+          const base = (cfg.baseUrl || '').replace(/\/+$/, '');
+          abs = base ? `${base}${abs}` : `${window.location.origin}${abs}`;
+        }
+        abs = abs.replace('&kiosk', '').replace('?kiosk&', '?').replace('?kiosk', '');
+        window.open(abs, '_blank', 'noopener,noreferrer');
+      }
+    } finally {
+      setGrafanaBusy(false);
+    }
   };
 
   const handleLoad = (dash: DevExPivotDashboardSnapshot) => {
@@ -375,6 +431,16 @@ export function DevExGroupPivotChartModal({
         >
           <BookmarkPlus className="w-3.5 h-3.5" />
           {activeDashId ? tm('gridPivotDashUpdate') || 'Güncelle' : tm('gridPivotDashSaveBtn') || 'Kaydet'}
+        </button>
+        <button
+          type="button"
+          disabled={grafanaBusy || rows.length === 0}
+          onClick={() => void handleGrafanaPublish()}
+          className="inline-flex items-center gap-1 rounded-md border border-orange-500 bg-orange-50 px-3 py-1.5 text-[11px] font-bold text-orange-800 hover:bg-orange-100 disabled:opacity-50 dark:bg-orange-950/40 dark:text-orange-200 dark:border-orange-600"
+          title={tm('gridPivotGrafanaHint') || 'Grafana’da pano oluştur (URL + token gerekir)'}
+        >
+          {grafanaBusy ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <ExternalLink className="w-3.5 h-3.5" />}
+          {tm('gridPivotGrafanaSend') || 'Grafana’ya gönder'}
         </button>
       </div>
 

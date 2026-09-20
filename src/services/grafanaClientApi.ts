@@ -6,6 +6,7 @@ import { getBridgeUrl, IS_TAURI } from '../utils/env';
 import {
   isGrafanaClientReady,
   loadGrafanaClientConfig,
+  buildGrafanaDashboardEmbedUrl,
   type GrafanaClientConfig,
 } from './grafanaClientConfig';
 import { listGrafanaDashboardsViaApi, type GrafanaApiDashboard } from './grafanaDatasourceService';
@@ -137,19 +138,19 @@ export async function listGrafanaDashboardsForAssistant(q = 'retailex'): Promise
   }
 }
 
-function slugUid(title: string): string {
+function slugUid(title: string, prefix = 'rex-ai'): string {
   const base = title
     .toLowerCase()
     .replace(/[^a-z0-9]+/g, '-')
     .replace(/^-+|-+$/g, '')
     .slice(0, 32);
   const suffix = Math.random().toString(36).slice(2, 8);
-  return `rex-ai-${base || 'dash'}-${suffix}`;
+  return `${prefix}-${base || 'dash'}-${suffix}`;
 }
 
 /** Minimal text + stat panelli dashboard JSON */
 export function buildSimpleAiDashboard(title: string): Record<string, unknown> {
-  const uid = slugUid(title);
+  const uid = slugUid(title, 'rex-ai');
   const now = Date.now();
   return {
     uid,
@@ -190,15 +191,176 @@ export function buildSimpleAiDashboard(title: string): Record<string, unknown> {
   };
 }
 
-export async function createGrafanaDashboardForAssistant(title: string): Promise<{
+export type PivotGrafanaInput = {
+  title: string;
+  groupColumnLabel: string;
+  rows: Array<{ label: string; count: number; values: Record<string, number> }>;
+  metrics: Array<{ id: string; label: string }>;
+  metricId: string;
+  chartKind?: string;
+};
+
+function metricValue(
+  row: { count: number; values: Record<string, number> },
+  metricId: string,
+): number {
+  if (metricId === '__count__' || metricId === 'count') return Number(row.count) || 0;
+  return Number(row.values[metricId]) || 0;
+}
+
+/**
+ * DevEx grup pivot anlık verisinden Grafana dashboard JSON
+ * (markdown tablo + grup başına stat + bargauge metni).
+ */
+export function buildPivotGrafanaDashboard(input: PivotGrafanaInput): Record<string, unknown> {
+  const title = input.title.trim() || 'RetailEX Pivot Dashboard';
+  const uid = slugUid(title, 'rex-pvt');
+  const metricId = input.metricId || '__count__';
+  const metricLabel =
+    metricId === '__count__'
+      ? 'Kayıt adedi'
+      : input.metrics.find((m) => m.id === metricId)?.label || metricId;
+
+  const headerCols = [
+    input.groupColumnLabel || 'Grup',
+    'Kayıt',
+    ...input.metrics.map((m) => m.label),
+  ];
+  const mdHeader = `| ${headerCols.join(' | ')} |`;
+  const mdSep = `| ${headerCols.map(() => '---').join(' | ')} |`;
+  const mdRows = input.rows.map((r) => {
+    const cells = [
+      r.label.replace(/\|/g, '/'),
+      String(r.count),
+      ...input.metrics.map((m) => String(Number(r.values[m.id]) || 0)),
+    ];
+    return `| ${cells.join(' | ')} |`;
+  });
+  const tableMd = [mdHeader, mdSep, ...mdRows].join('\n');
+
+  const panels: Record<string, unknown>[] = [
+    {
+      id: 1,
+      type: 'text',
+      title: title,
+      gridPos: { h: 3, w: 24, x: 0, y: 0 },
+      options: {
+        mode: 'markdown',
+        content: [
+          `## ${title}`,
+          '',
+          `- **Grup:** ${input.groupColumnLabel}`,
+          `- **Metrik (grafik):** ${metricLabel}`,
+          `- **Tür:** ${input.chartKind || 'bar'}`,
+          `- **Oluşturma:** ${new Date().toISOString()}`,
+          '',
+          '_Anlık özet — RetailEX DevEx grup pivot. Canlı SQL için Grafana datasource ekleyin._',
+        ].join('\n'),
+      },
+    },
+    {
+      id: 2,
+      type: 'text',
+      title: 'Pivot tablo',
+      gridPos: { h: 10, w: 14, x: 0, y: 3 },
+      options: {
+        mode: 'markdown',
+        content: tableMd || '_Veri yok_',
+      },
+    },
+  ];
+
+  // Grup özeti markdown (bargauge benzeri liste)
+  const ranked = [...input.rows]
+    .map((r) => ({ label: r.label, value: metricValue(r, metricId) }))
+    .sort((a, b) => b.value - a.value);
+  const gaugeMd = ranked
+    .map((r, i) => `${i + 1}. **${r.label.replace(/\|/g, '/')}** — \`${r.value}\``)
+    .join('\n');
+  panels.push({
+    id: 3,
+    type: 'text',
+    title: `${metricLabel} sıralama`,
+    gridPos: { h: 10, w: 10, x: 14, y: 3 },
+    options: {
+      mode: 'markdown',
+      content: gaugeMd || '_Veri yok_',
+    },
+  });
+
+  // Stat panelleri (ilk 8 grup)
+  let x = 0;
+  let y = 13;
+  ranked.slice(0, 8).forEach((r, idx) => {
+    if (x >= 24) {
+      x = 0;
+      y += 4;
+    }
+    panels.push({
+      id: 10 + idx,
+      type: 'stat',
+      title: r.label.slice(0, 40),
+      gridPos: { h: 4, w: 3, x, y },
+      options: {
+        reduceOptions: { calcs: ['lastNotNull'] },
+        colorMode: 'background',
+        graphMode: 'none',
+        textMode: 'value_and_name',
+      },
+      fieldConfig: {
+        defaults: {
+          unit: 'none',
+          thresholds: {
+            mode: 'absolute',
+            steps: [
+              { color: 'blue', value: null },
+              { color: 'green', value: 0 },
+            ],
+          },
+        },
+      },
+      // Grafana testdata CSV — stat için sabit değer
+      targets: [
+        {
+          refId: 'A',
+          datasource: { type: 'grafana-testdata-datasource', uid: 'grafana' },
+          scenarioId: 'csv_content',
+          stringInput: `metric\n${r.value}`,
+        },
+      ],
+    });
+    x += 3;
+  });
+
+  return {
+    uid,
+    title,
+    tags: ['retailex', 'pivot', 'devex-group'],
+    timezone: 'browser',
+    schemaVersion: 39,
+    version: 1,
+    refresh: '',
+    time: { from: 'now-24h', to: 'now' },
+    panels,
+  };
+}
+
+/**
+ * Hazır dashboard JSON’u Grafana’ya yazar (istemci API veya bridge).
+ */
+export async function publishGrafanaDashboard(
+  dashboard: Record<string, unknown>,
+  message = 'RetailEX',
+): Promise<{
   ok: boolean;
   uid?: string;
   url?: string;
   error?: string;
   source: 'client' | 'bridge';
+  needsClientConfig?: boolean;
 }> {
-  const dashboard = buildSimpleAiDashboard(title);
   const cfg = loadGrafanaClientConfig();
+  const uidHint = String(dashboard.uid || '');
 
   if (isGrafanaClientReady(cfg)) {
     try {
@@ -208,14 +370,13 @@ export async function createGrafanaDashboardForAssistant(title: string): Promise
         body: JSON.stringify({
           dashboard: { ...dashboard, id: null },
           overwrite: false,
-          message: 'RetailEX AI Asistan',
+          message,
         }),
       });
       const body = (await res.json().catch(() => ({}))) as {
         uid?: string;
         url?: string;
         message?: string;
-        status?: string;
       };
       if (!res.ok) {
         return {
@@ -224,10 +385,17 @@ export async function createGrafanaDashboardForAssistant(title: string): Promise
           source: 'client',
         };
       }
+      const uid = String(body.uid || uidHint || '');
+      let url = body.url ? String(body.url) : undefined;
+      if (!url && uid) {
+        url = buildGrafanaDashboardEmbedUrl(uid, 'light', cfg).replace('&kiosk', '');
+      } else if (url && url.startsWith('/') && cfg.baseUrl) {
+        url = `${cfg.baseUrl.replace(/\/+$/, '')}${url}`;
+      }
       return {
         ok: true,
-        uid: String(body.uid || dashboard.uid || ''),
-        url: body.url ? String(body.url) : undefined,
+        uid,
+        url,
         source: 'client',
       };
     } catch (e: unknown) {
@@ -242,8 +410,9 @@ export async function createGrafanaDashboardForAssistant(title: string): Promise
   if (IS_TAURI) {
     return {
       ok: false,
-      error: 'Masaüstünde Grafana oluşturmak için istemci URL + API token ayarlayın.',
+      error: 'Grafana için dil menüsü → OpenRouter API / Grafana sekmesinde URL + API token girin.',
       source: 'bridge',
+      needsClientConfig: true,
     };
   }
 
@@ -260,24 +429,59 @@ export async function createGrafanaDashboardForAssistant(title: string): Promise
       results?: Array<{ ok: boolean; uid?: string; error?: string }>;
     };
     if (!res.ok) {
-      return { ok: false, error: body.error || `HTTP ${res.status}`, source: 'bridge' };
+      return {
+        ok: false,
+        error: body.error || `HTTP ${res.status}`,
+        source: 'bridge',
+        needsClientConfig: true,
+      };
     }
     const first = body.results?.[0];
     if (first?.ok && first.uid) {
-      return { ok: true, uid: first.uid, source: 'bridge' };
+      return {
+        ok: true,
+        uid: first.uid,
+        url: buildGrafanaDashboardEmbedUrl(first.uid),
+        source: 'bridge',
+      };
     }
     return {
       ok: false,
       error: first?.error || body.error || 'Dashboard oluşturulamadı',
       source: 'bridge',
+      needsClientConfig: true,
     };
   } catch (e: unknown) {
     return {
       ok: false,
       error: e instanceof Error ? e.message : String(e),
       source: 'bridge',
+      needsClientConfig: true,
     };
   }
+}
+
+export async function createGrafanaDashboardForAssistant(title: string): Promise<{
+  ok: boolean;
+  uid?: string;
+  url?: string;
+  error?: string;
+  source: 'client' | 'bridge';
+}> {
+  return publishGrafanaDashboard(buildSimpleAiDashboard(title), 'RetailEX AI Asistan');
+}
+
+export async function createGrafanaDashboardFromPivot(
+  input: PivotGrafanaInput,
+): Promise<{
+  ok: boolean;
+  uid?: string;
+  url?: string;
+  error?: string;
+  source: 'client' | 'bridge';
+  needsClientConfig?: boolean;
+}> {
+  return publishGrafanaDashboard(buildPivotGrafanaDashboard(input), 'RetailEX DevEx Pivot');
 }
 
 export async function testGrafanaClientConnection(cfg?: GrafanaClientConfig): Promise<{

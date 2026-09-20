@@ -4560,6 +4560,36 @@ export const moduleTranslations: Record<string, Record<Language, string>> = {
     ar: 'لا قيم لهذا المقياس. اختر مقياساً آخر.',
     ku: 'بۆ ئەم پێوەرە نرخ نییە. پێوەرێکی تر هەڵبژێرە.',
   },
+  gridPivotGrafanaSend: {
+    tr: "Grafana'ya gönder",
+    en: 'Send to Grafana',
+    ar: 'إرسال إلى Grafana',
+    ku: 'بینێرە بۆ Grafana',
+  },
+  gridPivotGrafanaHint: {
+    tr: 'Grafana’da pano oluştur (URL + API token gerekir)',
+    en: 'Create Grafana dashboard (URL + API token required)',
+    ar: 'إنشاء لوحة Grafana (يتطلب الرابط ورمز API)',
+    ku: 'پانۆی Grafana دروست بکە (URL + token پێویستە)',
+  },
+  gridPivotGrafanaNeedConfig: {
+    tr: 'Grafana URL + API token gerekli. Dil menüsü → OpenRouter API → Grafana sekmesi.',
+    en: 'Grafana URL + API token required. Language menu → OpenRouter API → Grafana tab.',
+    ar: 'يلزم عنوان Grafana ورمز API. قائمة اللغة → OpenRouter → Grafana.',
+    ku: 'URL + tokenـی Grafana پێویستە. مێنیوی زمان → OpenRouter → Grafana.',
+  },
+  gridPivotGrafanaOk: {
+    tr: 'Grafana panosu oluşturuldu',
+    en: 'Grafana dashboard created',
+    ar: 'تم إنشاء لوحة Grafana',
+    ku: 'پانۆی Grafana دروست کرا',
+  },
+  gridPivotGrafanaFail: {
+    tr: 'Grafana panosu oluşturulamadı',
+    en: 'Could not create Grafana dashboard',
+    ar: 'تعذر إنشاء لوحة Grafana',
+    ku: 'پانۆی Grafana دروست نەبوو',
+  },
   productBulkDeleteBtn: {
     tr: 'Toplu Sil {count}',
     en: 'Bulk delete {count}',
