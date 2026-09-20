@@ -846,21 +846,36 @@ async function writeCashRegisterLineForInvoice(inv: Invoice, firmNr: string): Pr
   // kart ise tek satır yazılır.
   const headerFields = (inv as any)?.header_fields ?? {};
   const paymentsRaw = Array.isArray(headerFields.payments) ? headerFields.payments : null;
-  const periodNr = String((ERP_SETTINGS as any).periodNr ?? '01');
+  // KasalarModule ile aynı pad: rex_{firma}_{dönem}_cash_lines
+  const periodNr = normalizePeriodNrForRow(
+    (inv as any).donem_id ?? (inv as any).period_nr ?? ERP_SETTINGS.periodNr,
+  );
   const ficheNo = String(inv.invoice_no || '').trim() || `INV-${String(inv.id || '').slice(0, 8)}`;
-  const tarih = inv.invoice_date || inv.created_at || new Date().toISOString();
+  // Form UI tarihi dd.MM.yyyy olabilir — TIMESTAMPTZ için YYYY-MM-DD zorunlu
+  const ymd =
+    toSqlDateInputString(inv.invoice_date) ||
+    toSqlDateInputString(inv.created_at) ||
+    toSqlDateInputString(new Date());
+  const tarih = ymd ? `${ymd}T12:00:00` : new Date().toISOString();
   const customerId = inv.customer_id && isValidUuid(inv.customer_id)
     ? inv.customer_id
     : (inv.supplier_id && isValidUuid(inv.supplier_id) ? inv.supplier_id : null);
 
-  // Tek-ödeme fallback aday kasaları
+  // Tek-ödeme fallback aday kasaları (kök alan + header_fields)
+  const rootCashRegisterId = isValidUuid((inv as any).cash_register_id)
+    ? String((inv as any).cash_register_id)
+    : null;
   const headerCashRegisterId = isValidUuid(headerFields.cash_register_id)
     ? String(headerFields.cash_register_id)
     : null;
   const configuredCashRegisterId = isValidUuid((ERP_SETTINGS as any).selected_cash_registers?.[0])
     ? String((ERP_SETTINGS as any).selected_cash_registers[0])
     : null;
-  const defaultCandidates = [headerCashRegisterId, configuredCashRegisterId].filter(Boolean) as string[];
+  const defaultCandidates = [
+    rootCashRegisterId,
+    headerCashRegisterId,
+    configuredCashRegisterId,
+  ].filter(Boolean) as string[];
 
   /**
    * Skandal (2026-09-01, 2. dalga): `rest_api` modunda `postgres.query`
@@ -1252,17 +1267,25 @@ async function writeCashRegisterLineRest(
       prefer: 'return=minimal',
     });
     insertedOk = true;
-  } catch (_e) {
-    // Çakışma → PATCH'e düş
+  } catch (insertErr: any) {
+    // Çakışma → PATCH'e düş; tarih/şema hataları buradan görünür
     try {
       await postgrest.patch(
         `${cashLinesTable}?fiche_no=eq.${ficheNo}`,
         { amount, date: tarih, definition: aciklama, register_id: targetRegisterId, customer_id: customerId },
         { schema: 'public' }
       );
-    } catch (_e2) {
-      // skip — log error caller'da
-      throw _e;
+    } catch (patchErr: any) {
+      console.error('[InvoicesAPI] rest_api cash_lines yazılamadı:', {
+        table: cashLinesTable,
+        fiche_no: ficheNo,
+        date: tarih,
+        register_id: targetRegisterId,
+        amount,
+        insert: insertErr?.message || String(insertErr),
+        patch: patchErr?.message || String(patchErr),
+      });
+      throw insertErr;
     }
   }
 
@@ -1342,7 +1365,13 @@ async function createInvoiceViaPostgrest(invoice: Invoice, opts: {
     firm_nr: String(opts.firmNr),
     period_nr: String(opts.periodNr),
     fiche_no: String(invoice.invoice_no),
-    date: invoice.created_at || new Date().toISOString(),
+    date: (() => {
+      const ymd =
+        toSqlDateInputString(invoice.invoice_date) ||
+        toSqlDateInputString(invoice.created_at) ||
+        toSqlDateInputString(new Date());
+      return ymd ? `${ymd}T12:00:00` : new Date().toISOString();
+    })(),
     fiche_type: opts.ficheType,
     trcode: Number(opts.trcode),
     customer_id: customerId,
@@ -1379,7 +1408,13 @@ async function createInvoiceViaPostgrest(invoice: Invoice, opts: {
     firm_nr: String(opts.firmNr),
     period_nr: String(opts.periodNr),
     fiche_no: String(invoice.invoice_no),
-    date: invoice.created_at || new Date().toISOString(),
+    date: (() => {
+      const ymd =
+        toSqlDateInputString(invoice.invoice_date) ||
+        toSqlDateInputString(invoice.created_at) ||
+        toSqlDateInputString(new Date());
+      return ymd ? `${ymd}T12:00:00` : new Date().toISOString();
+    })(),
     fiche_type: opts.ficheType,
     trcode: Number(opts.trcode),
     customer_id: customerId,
@@ -1880,7 +1915,17 @@ export const invoicesAPI = {
             pm_implies_cash: paymentMethodImpliesCashInKasa((cashInput as any).payment_method),
           });
         }
-        await writeCashRegisterLineForInvoice(cashInput, firmNr);
+        try {
+          await writeCashRegisterLineForInvoice(cashInput, firmNr);
+        } catch (cashErr: any) {
+          console.error('[InvoicesAPI] rest_api → kasa satırı yazılamadı (fatura kaydı tamam):', {
+            error: cashErr?.message || String(cashErr),
+            invoice_no: cashInput.invoice_no,
+            invoice_date: cashInput.invoice_date,
+            payment_method: (cashInput as any).payment_method,
+            cash_register_id: (cashInput as any).cash_register_id,
+          });
+        }
         void import('../messaging/messagingService').then(({ messagingService }) =>
           messagingService.maybeEnqueueInvoiceNotification(invoice, saved.id!, firmNr, periodNr)
         ).catch((e) => console.warn('[InvoicesAPI] WhatsApp kuyruk:', e));
@@ -1909,7 +1954,13 @@ export const invoicesAPI = {
             String(firmNr),
             String(periodNr),
             String(invoice.invoice_no),
-            invoice.created_at || new Date(),
+            (() => {
+              const ymd =
+                toSqlDateInputString(invoice.invoice_date) ||
+                toSqlDateInputString(invoice.created_at) ||
+                toSqlDateInputString(new Date());
+              return ymd ? `${ymd}T12:00:00` : new Date().toISOString();
+            })(),
             ficheType,
             Number(trcode),
             // customer_id yoksa supplier_id'yi kullan (alış faturalarında tedarikçi UUID buraya yazılır)

@@ -3921,7 +3921,7 @@ export function UniversalInvoiceForm({
 
       const invoiceData: any = {
         invoice_no: resolvedInvoiceNo,
-        invoice_date: transactionDate,
+        invoice_date: transactionDateToIsoDateString(transactionDate),
         invoice_type: invoiceType.code,
         invoice_category: invoiceType.category as any,
         // Tedarikçi tarafı (Alış + Alış İade) → customer_id = supplierId (sales tablosunda tek cari alanı)
