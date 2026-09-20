@@ -2919,6 +2919,8 @@ export function DevExDataGrid<T>({
           rows={groupPivotRows}
           metrics={groupPivotMetrics.map(({ id, label }) => ({ id, label }))}
           defaultMetricId={groupPivotMetrics[0]?.id}
+          storageNamespace={storageNamespace || excelFileName || 'default'}
+          reportTitle={printTitle || excelFileName}
         />
       )}
 
