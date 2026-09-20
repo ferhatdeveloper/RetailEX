@@ -588,6 +588,11 @@ export function UniversalInvoiceForm({
         ) || 'ACIK_CARI'
       );
     }
+    // Perakende satış: varsayılan nakit — aksi halde form «Açık Cari» kalır
+    // ve tutar kasaya yazılmaz (veresiye / cari borç doğru davranış).
+    if (invoiceType.code === RETAIL_SALES_INVOICE_TRCODE) {
+      return 'NAKIT';
+    }
     return 'ACIK_CARI';
   }); // Form kodu: NAKIT, KREDIKARTI, ACIK_CARI, …
   const [cashierName, setCashierName] = useState(() => editData?.cashier || ''); // Kasiyer / iade yapan
