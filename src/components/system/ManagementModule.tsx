@@ -764,9 +764,9 @@ export function ManagementModule({
 
   const languages = [
     { code: 'tr' as const, name: 'Türkçe', flag: '🇹🇷' },
-    { code: 'en' as const, name: 'English', flag: '????' },
-    { code: 'ar' as const, name: '???????', flag: '????' },
-    { code: 'ku' as const, name: '????? (??????)', flag: '??????', expenseAnalysis: '?????? ??????????', reporting: '??????????' }
+    { code: 'en' as const, name: 'English', flag: '🇬🇧' },
+    { code: 'ar' as const, name: 'العربية', flag: '🇮🇶' },
+    { code: 'ku' as const, name: 'کوردی (Kurdî)', flag: '☀️' },
   ];
 
   const toggleSection = useCallback((title: string) => {

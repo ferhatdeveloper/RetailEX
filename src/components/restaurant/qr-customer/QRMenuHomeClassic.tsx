@@ -19,8 +19,8 @@ const DEFAULT_VIDEO =
 const LANGS = [
   { code: 'tr' as const, name: 'Türkçe', flag: '🇹🇷' },
   { code: 'en' as const, name: 'English', flag: '🇬🇧' },
-  { code: 'ar' as const, name: 'العربية', flag: '🇸🇦' },
-  { code: 'ku' as const, name: 'کوردی', flag: '🇮🇶' },
+  { code: 'ar' as const, name: 'العربية', flag: '🇮🇶' },
+  { code: 'ku' as const, name: 'کوردی', flag: '☀️' },
 ];
 
 /**

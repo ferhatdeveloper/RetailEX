@@ -10,6 +10,7 @@ import {
   Users,
 } from 'lucide-react';
 import { useAuth } from '../../contexts/AuthContext';
+import { useLanguage } from '../../contexts/LanguageContext';
 import { useOptionalFirmaDonem } from '../../contexts/FirmaDonemContext';
 import {
   DB_SETTINGS,
@@ -339,23 +340,24 @@ export function HybridSyncPanel({ compact = false, darkMode = false, directionOv
 
 /** Yönetim modülü tam ekran */
 export function HybridSyncModule({ onBack }: { onBack?: () => void }) {
+  const { t } = useLanguage();
   return (
     <div className="flex h-full flex-col bg-gray-50 dark:bg-gray-900">
       <div className="border-b bg-white px-4 py-3 dark:border-gray-700 dark:bg-gray-800">
         <div className="flex items-center justify-between">
-          <h1 className="text-lg font-bold text-gray-900 dark:text-gray-100">Şube Veri Senkronu</h1>
+          <h1 className="text-lg font-bold text-gray-900 dark:text-gray-100">{t.menu.hybridSync}</h1>
           {onBack && (
             <button
               type="button"
               onClick={onBack}
               className="text-sm font-medium text-blue-600 hover:underline"
             >
-              Geri
+              {t.back}
             </button>
           )}
         </div>
         <p className="mt-1 text-sm text-gray-500">
-          Şube ve kasiyer bazında merkez ile veri gönder / al (hibrit mod).
+          {t.menu.hybridSyncHint}
         </p>
       </div>
       <div className="flex-1 overflow-auto p-4">

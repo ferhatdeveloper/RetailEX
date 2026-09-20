@@ -28,7 +28,7 @@ export const getStaticMenuSections = (t: Translations) => [
                 badge: t.menu.newBadge,
                 children: [
                     { label: t.menu.storePanel, screen: 'store-management', icon: Store },
-                    { label: 'Şube Veri Senkronu', screen: 'hybrid-sync', icon: RefreshCw },
+                    { label: t.menu.hybridSync, screen: 'hybrid-sync', icon: RefreshCw },
                     { label: t.menu.storeTransfer, screen: 'interstore-transfer', icon: ArrowRightLeft },
                     { label: t.menu.multiStoreManagement, screen: 'multistore', icon: Store },
                     { label: t.menu.regionalFranchiseManagement, screen: 'regional', icon: Map },

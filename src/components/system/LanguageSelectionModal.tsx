@@ -7,7 +7,7 @@ import { ModalLayer } from '../shared/FullscreenBodyPortal';
 import { OpenRouterApiSettingsModal } from '../integrations/OpenRouterApiSettingsModal';
 import Turkey from 'country-flag-icons/react/3x2/TR';
 import UnitedKingdom from 'country-flag-icons/react/3x2/GB';
-import SaudiArabia from 'country-flag-icons/react/3x2/SA';
+import Iraq from 'country-flag-icons/react/3x2/IQ';
 
 interface LanguageSelectionModalProps {
   onClose: () => void;
@@ -81,7 +81,7 @@ export function LanguageSelectionModal({ onClose, rtlMode, setRtlMode }: Languag
                 ) : lang.code === 'en' ? (
                   <UnitedKingdom className="w-full h-full object-cover" />
                 ) : lang.code === 'ar' ? (
-                  <SaudiArabia className="w-full h-full object-cover" />
+                  <Iraq className="w-full h-full object-cover" />
                 ) : lang.code === 'ku' ? (
                   <svg className="w-full h-full" viewBox="0 0 3 2" xmlns="http://www.w3.org/2000/svg">
                     <rect width="3" height="0.67" y="0" fill="#E31837" />

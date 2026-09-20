@@ -143,6 +143,9 @@ export interface MenuTranslations {
   storeConfiguration: string;
   storeManagement: string;
   storePanel: string;
+  /** Hibrit şube ↔ merkez veri senkronu */
+  hybridSync: string;
+  hybridSyncHint: string;
   storeTransfer: string;
   supplierCards: string;
   systemHealth: string;
@@ -2015,6 +2018,8 @@ export const translations: any = {
       storeConfiguration: 'Mağaza Yapılandırması',
       storeManagement: 'Mağaza Yönetimi',
       storePanel: 'Mağaza Paneli',
+      hybridSync: 'Şube Veri Senkronu',
+      hybridSyncHint: 'Şube ve kasiyer bazında merkez ile veri gönder / al (hibrit mod).',
       storeTransfer: 'Mağaza Transferi',
       supplierCards: 'Tedarikçi Kartları',
       systemHealth: 'Sistem Sağlığı',
@@ -3787,6 +3792,8 @@ export const translations: any = {
       storeConfiguration: 'Store Configuration',
       storeManagement: 'Store Management',
       storePanel: 'Store Panel',
+      hybridSync: 'Branch Data Sync',
+      hybridSyncHint: 'Send / receive data with headquarters by branch and cashier (hybrid mode).',
       storeTransfer: 'Store Transfer',
       supplierCards: 'Supplier Cards',
       systemHealth: 'System Health',
@@ -5384,6 +5391,8 @@ export const translations: any = {
       storeConfiguration: 'تكوين المتجر',
       storeManagement: 'إدارة المتجر',
       storePanel: 'لوحة المتجر',
+      hybridSync: 'مزامنة بيانات الفرع',
+      hybridSyncHint: 'إرسال / استلام البيانات مع المركز حسب الفرع والكاشير (وضع هجين).',
       storeTransfer: 'تحويل بين المتاجر',
       supplierCards: 'بطاقات الموردين',
       systemHealth: 'صحة النظام',
@@ -6973,6 +6982,8 @@ export const translations: any = {
       storeConfiguration: 'تكوين المتجر',
       storeManagement: 'إدارة المتجر',
       storePanel: 'لوحة المتجر',
+      hybridSync: 'هاوکێشی داتای لق',
+      hybridSyncHint: 'لق و کاشێر بەپێی ناوەند داتا بنێرە / وەربگرە (دۆخی هایبرید).',
       storeTransfer: 'تحويل بين المتاجر',
       supplierCards: 'بطاقات الموردين',
       systemHealth: 'صحة النظام',
