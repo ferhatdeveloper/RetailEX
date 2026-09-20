@@ -255,7 +255,7 @@ export function SupplierEditModal({
     'w-full px-4 py-3 border border-slate-200 rounded-2xl focus:ring-2 focus:ring-blue-500 focus:border-blue-400 outline-none text-slate-800 font-medium bg-white';
 
   return (
-    <PercentBodyModal onClose={onClose} size="form" ariaLabel={modalTitle}>
+    <PercentBodyModal onClose={onClose} size="full" ariaLabel={modalTitle}>
       <form
         onSubmit={(e) => {
           e.preventDefault();
@@ -453,7 +453,7 @@ export function SupplierEditModal({
             </div>
 
             {isCustomer && (
-              <div className="sm:col-span-2 border border-slate-200 bg-slate-50/80 p-4">
+              <div className="sm:col-span-2 w-full border border-slate-200 bg-slate-50/80 p-4">
                 <div className="mb-3 flex items-start gap-2">
                   <CalendarClock className="mt-0.5 h-4 w-4 shrink-0 text-blue-600" />
                   <div>
@@ -466,65 +466,77 @@ export function SupplierEditModal({
                   </div>
                 </div>
 
-                <label className="mb-1.5 flex items-center gap-1.5 text-[11px] font-bold uppercase tracking-wider text-slate-500">
-                  <UserRound className="h-3.5 w-3.5" />
-                  {tm('callPlanCaller')}
-                </label>
-                <select
-                  value={formData.call_plan_caller_user_id}
-                  onChange={(e) => handleCallerChange(e.target.value)}
-                  className={`${inputClass} mb-1`}
-                >
-                  <option value="">{tm('callPlanCallerNone')}</option>
-                  {callUsers.map((u) => (
-                    <option key={u.id} value={u.id}>
-                      {u.full_name || u.username}
-                      {u.role_name ? ` · ${u.role_name}` : ''}
-                    </option>
-                  ))}
-                </select>
-                <p className="mb-3 text-[11px] text-slate-500">{tm('callPlanCallerHint')}</p>
+                <div className="grid grid-cols-1 gap-4 lg:grid-cols-12">
+                  <div className="lg:col-span-4">
+                    <label className="mb-1.5 flex items-center gap-1.5 text-[11px] font-bold uppercase tracking-wider text-slate-500">
+                      <UserRound className="h-3.5 w-3.5" />
+                      {tm('callPlanCaller')}
+                    </label>
+                    <select
+                      value={formData.call_plan_caller_user_id}
+                      onChange={(e) => handleCallerChange(e.target.value)}
+                      className={inputClass}
+                    >
+                      <option value="">{tm('callPlanCallerNone')}</option>
+                      {callUsers.map((u) => (
+                        <option key={u.id} value={u.id}>
+                          {u.full_name || u.username}
+                          {u.role_name ? ` · ${u.role_name}` : ''}
+                        </option>
+                      ))}
+                    </select>
+                    <p className="mt-1 text-[11px] text-slate-500">{tm('callPlanCallerHint')}</p>
+                  </div>
 
-                <div className="grid grid-cols-7 gap-1">
-                  {getLocalizedWeekdayLabels(dateLocale, true).map((day) => {
-                    const selected = formData.call_plan_weekdays.includes(day.value);
-                    return (
-                      <button
-                        key={day.value}
-                        type="button"
-                        onClick={() => toggleWeekday(day.value)}
-                        aria-pressed={selected}
-                        className={`min-h-[40px] border px-0.5 py-2 text-[10px] font-bold uppercase tracking-wide transition-colors sm:text-xs ${
-                          selected
-                            ? 'border-blue-600 bg-blue-600 text-white'
-                            : 'border-slate-200 bg-white text-slate-600 hover:border-slate-300'
-                        }`}
-                      >
-                        {day.label}
-                      </button>
-                    );
-                  })}
-                </div>
-                {formData.call_plan_weekdays.length > 0 ? (
-                  <p className="mt-2 text-[11px] font-semibold text-blue-700">
-                    {tm('callPlanSelectedDays').replace(
-                      '{days}',
-                      customerCallWeekdaysLabel(formData.call_plan_weekdays, dateLocale)
+                  <div className="lg:col-span-8">
+                    <p className="mb-1.5 text-[11px] font-bold uppercase tracking-wider text-slate-500">
+                      {tm('callPlanSelectDays')}
+                    </p>
+                    <div className="flex w-full gap-2">
+                      {getLocalizedWeekdayLabels(dateLocale).map((day) => {
+                        const selected = formData.call_plan_weekdays.includes(day.value);
+                        return (
+                          <button
+                            key={day.value}
+                            type="button"
+                            onClick={() => toggleWeekday(day.value)}
+                            aria-pressed={selected}
+                            className={`min-h-[48px] flex-1 border px-1 py-2 text-xs font-bold uppercase tracking-wide transition-colors sm:text-sm ${
+                              selected
+                                ? 'border-blue-600 bg-blue-600 text-white'
+                                : 'border-slate-200 bg-white text-slate-600 hover:border-slate-300'
+                            }`}
+                          >
+                            {day.label}
+                          </button>
+                        );
+                      })}
+                    </div>
+                    {formData.call_plan_weekdays.length > 0 ? (
+                      <p className="mt-2 text-[11px] font-semibold text-blue-700">
+                        {tm('callPlanSelectedDays').replace(
+                          '{days}',
+                          customerCallWeekdaysLabel(formData.call_plan_weekdays, dateLocale)
+                        )}
+                      </p>
+                    ) : (
+                      <p className="mt-2 text-[11px] text-slate-500">{tm('callPlanNoDaysHint')}</p>
                     )}
-                  </p>
-                ) : (
-                  <p className="mt-2 text-[11px] text-slate-500">{tm('callPlanNoDaysHint')}</p>
-                )}
-                <label className="mt-3 mb-1 block text-[11px] font-bold uppercase tracking-wider text-slate-500">
-                  {tm('callPlanNote')}
-                </label>
-                <textarea
-                  value={formData.call_plan_note}
-                  onChange={(e) => setFormData({ ...formData, call_plan_note: e.target.value })}
-                  rows={2}
-                  placeholder={tm('callPlanNote')}
-                  className={`${inputClass} resize-none`}
-                />
+                  </div>
+
+                  <div className="lg:col-span-12">
+                    <label className="mb-1 block text-[11px] font-bold uppercase tracking-wider text-slate-500">
+                      {tm('callPlanNote')}
+                    </label>
+                    <textarea
+                      value={formData.call_plan_note}
+                      onChange={(e) => setFormData({ ...formData, call_plan_note: e.target.value })}
+                      rows={2}
+                      placeholder={tm('callPlanNote')}
+                      className={`${inputClass} resize-none`}
+                    />
+                  </div>
+                </div>
               </div>
             )}
           </div>

@@ -1231,8 +1231,8 @@ export function CustomerCallPlanModule() {
             <p className="mb-4 text-[11px] text-slate-500">{tm('callPlanCallerHint')}</p>
 
             <p className="mb-3 text-[11px] font-bold uppercase tracking-wider text-slate-500">{tm('callPlanSelectDays')}</p>
-            <div className="grid grid-cols-7 gap-1">
-              {getLocalizedWeekdayLabels(dateLocale, true).map(day => {
+            <div className="flex w-full gap-2">
+              {getLocalizedWeekdayLabels(dateLocale).map(day => {
                 const selected = selectedDays.includes(day.value);
                 return (
                   <button
@@ -1240,7 +1240,7 @@ export function CustomerCallPlanModule() {
                     type="button"
                     aria-pressed={selected}
                     onClick={() => toggleDay(day.value)}
-                    className={`min-h-[44px] border px-0.5 py-2 text-[10px] font-bold uppercase tracking-wide transition-colors sm:text-xs ${
+                    className={`min-h-[48px] flex-1 border px-1 py-2 text-xs font-bold uppercase tracking-wide transition-colors sm:text-sm ${
                       selected
                         ? 'border-blue-600 bg-blue-600 text-white'
                         : 'border-slate-200 bg-white text-slate-600 hover:border-slate-300'
