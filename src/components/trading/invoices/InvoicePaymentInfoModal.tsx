@@ -1,5 +1,6 @@
 import { X, CreditCard, Wallet, Banknote, Building2, Users, Plus, Trash2, ShoppingCart } from 'lucide-react';
 import { useEffect, useMemo, useState } from 'react';
+import { toast } from 'sonner';
 import { useLanguage } from '../../../contexts/LanguageContext';
 import {
   dbPaymentMethodToFormCode,
@@ -294,6 +295,10 @@ export function InvoicePaymentInfoModal({
       return;
     }
     const method = selectedMethod || 'ACIK_CARI';
+    if (paymentMethodImpliesPaidNow(method) && cashRegisters.length > 0 && !selectedCashRegister?.id) {
+      toast.error(tm('cashRegisterRequired'));
+      return;
+    }
     // Nakit / kart: tutar = fatura neti (manuel tahsil alanı yok).
     // payments[] her zaman yazılır ki createInvoice kasa satırını kaçırmasın.
     if (paymentMethodImpliesPaidNow(method) && Number.isFinite(Number(invoiceTotal))) {

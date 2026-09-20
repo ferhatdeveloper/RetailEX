@@ -588,11 +588,6 @@ export function UniversalInvoiceForm({
         ) || 'ACIK_CARI'
       );
     }
-    // Perakende satış: varsayılan nakit — aksi halde form «Açık Cari» kalır
-    // ve tutar kasaya yazılmaz (veresiye / cari borç doğru davranış).
-    if (invoiceType.code === RETAIL_SALES_INVOICE_TRCODE) {
-      return 'NAKIT';
-    }
     return 'ACIK_CARI';
   }); // Form kodu: NAKIT, KREDIKARTI, ACIK_CARI, …
   const [cashierName, setCashierName] = useState(() => editData?.cashier || ''); // Kasiyer / iade yapan
@@ -626,6 +621,32 @@ export function UniversalInvoiceForm({
     const raw = (editData as any)?.payments ?? (editData as any)?.payment_rows;
     return Array.isArray(raw) ? raw : [];
   });
+  /** Satış tarafında Kaydet → önce ödeme tipi modalı; kullanıcı onaylamadan kayıt yok */
+  const [paymentInfoConfirmed, setPaymentInfoConfirmed] = useState(() => Boolean(editData));
+  const paymentInfoConfirmedRef = useRef(Boolean(editData));
+  const pendingSaveAfterPaymentRef = useRef(false);
+  const paymentSnapshotRef = useRef({
+    method: '' as string,
+    cashRegisterId: '' as string,
+    cashRegisterName: '' as string,
+    cashRegisterCode: '' as string,
+    paymentRows: [] as Array<{
+      method: string;
+      amount: number;
+      currency: 'IQD' | 'USD' | 'EUR';
+      cashRegisterId: string | null;
+      cashRegisterName?: string | null;
+      cashRegisterCode?: string | null;
+      notes?: string;
+    }>,
+  });
+  paymentSnapshotRef.current = {
+    method: paymentMethod,
+    cashRegisterId,
+    cashRegisterName,
+    cashRegisterCode,
+    paymentRows,
+  };
   // Kasa listesi — ödeme tipi seçildiğinde uygun kasaları önermek için
   const [cashRegisters, setCashRegisters] = useState<KasaRow[]>([]);
   const [cashRegistersLoading, setCashRegistersLoading] = useState(false);
@@ -3772,6 +3793,58 @@ export function UniversalInvoiceForm({
       return;
     }
 
+    // Satış / verilen hizmet / satış iade: kayıtta ödeme tipi zorunlu kontrol.
+    // Varsayılan «Açık Cari» ile sessiz kayıt yok — kullanıcı Nakit/Kart/Cari seçer.
+    const needsPaymentTypeGate =
+      !isPurchaseSide &&
+      (invoiceType.category === 'Satis' ||
+        invoiceType.code === 9 ||
+        (invoiceType.category === 'Iade' && invoiceType.code === 3));
+    if (needsPaymentTypeGate && !paymentInfoConfirmedRef.current) {
+      pendingSaveAfterPaymentRef.current = true;
+      setShowPaymentInfoModal(true);
+      toast.message(tm('paymentTypeRequiredBeforeSave'));
+      return;
+    }
+
+    const paySnap = paymentSnapshotRef.current;
+    let effectivePaymentMethod = paySnap.method || paymentMethod;
+    let effectiveCashRegisterId = paySnap.cashRegisterId || cashRegisterId;
+    let effectiveCashRegisterName = paySnap.cashRegisterName || cashRegisterName;
+    let effectiveCashRegisterCode = paySnap.cashRegisterCode || cashRegisterCode;
+    let effectivePaymentRows = paySnap.paymentRows.length > 0 ? paySnap.paymentRows : paymentRows;
+
+    if (paymentMethodImpliesCashRegisterOnInvoice(effectivePaymentMethod)) {
+      const rowHasRegister = effectivePaymentRows.some(
+        (p) => paymentMethodImpliesPaidNow(p.method) && Boolean(p.cashRegisterId),
+      );
+      if (!effectiveCashRegisterId && !rowHasRegister) {
+        const first = cashRegisters[0];
+        if (first?.id) {
+          effectiveCashRegisterId = first.id;
+          effectiveCashRegisterName = first.kasa_adi || '';
+          effectiveCashRegisterCode = first.kasa_kodu || '';
+          paymentSnapshotRef.current = {
+            ...paymentSnapshotRef.current,
+            cashRegisterId: effectiveCashRegisterId,
+            cashRegisterName: effectiveCashRegisterName,
+            cashRegisterCode: effectiveCashRegisterCode,
+          };
+          setCashRegisterId(effectiveCashRegisterId);
+          setCashRegisterName(effectiveCashRegisterName);
+          setCashRegisterCode(effectiveCashRegisterCode);
+        } else {
+          pendingSaveAfterPaymentRef.current = true;
+          setShowPaymentInfoModal(true);
+          toast.error('❌ ' + tm('cashRegisterRequired'));
+          return;
+        }
+      }
+    }
+
+    const resolveEffectivePaymentMethodForDb = () =>
+      formCodeToDbPaymentMethod(effectivePaymentMethod, { posRetail: isPosRetail });
+
     setSaving(true);
     try {
       // ===== 1. MALİYET HESAPLAMALARI =====
@@ -3955,17 +4028,17 @@ export function UniversalInvoiceForm({
         firma_name: selectedFirm?.name || '',
         donem_id: selectedPeriod?.logicalref?.toString() || '0',
         donem_name: selectedPeriod?.donem_adi || '',
-        payment_method: paymentRows.some((p) => paymentMethodImpliesCustomerDebt(p.method))
+        payment_method: effectivePaymentRows.some((p) => paymentMethodImpliesCustomerDebt(p.method))
           ? formCodeToDbPaymentMethod('ACIK_CARI', { posRetail: isPosRetail })
-          : resolvePaymentMethodForDb(),
+          : resolveEffectivePaymentMethodForDb(),
         cashier: effectiveCashierName,
         // Açık cari / veresiye ödemede kasaya bağlanmamalı — DB'de null kalmalı
         // ve kasa defterine yansımamalı. Nakit/kart gibi kasaya bağlanan
         // ödemelerde seçilen (veya otomatik atanan) kasa yazılır.
-        ...(paymentMethodImpliesCashRegisterOnInvoice(paymentMethod)
+        ...(paymentMethodImpliesCashRegisterOnInvoice(effectivePaymentMethod)
           ? {
-              cash_register_id: cashRegisterId || undefined,
-              cash_register_name: cashRegisterName || undefined,
+              cash_register_id: effectiveCashRegisterId || undefined,
+              cash_register_name: effectiveCashRegisterName || undefined,
             }
           : {
               cash_register_id: undefined,
@@ -3999,22 +4072,22 @@ export function UniversalInvoiceForm({
             footerDiscountPercent: totals.footerDiscountPercent,
             footerDiscountAmount: totals.footerDiscount,
             cashRegister: {
-              id: cashRegisterId || null,
-              name: cashRegisterName || null,
-              code: cashRegisterCode || null,
+              id: effectiveCashRegisterId || null,
+              name: effectiveCashRegisterName || null,
+              code: effectiveCashRegisterCode || null,
             },
             payments: (() => {
               const netTotal = Math.abs(Number(totals.netIQD) || 0);
-              const rows = paymentRows.length > 0
-                ? paymentRows
-                : (paymentMethodImpliesCashRegisterOnInvoice(paymentMethod) && netTotal > 0
+              const rows = effectivePaymentRows.length > 0
+                ? effectivePaymentRows
+                : (paymentMethodImpliesCashRegisterOnInvoice(effectivePaymentMethod) && netTotal > 0
                   ? [{
-                      method: paymentMethod,
+                      method: effectivePaymentMethod,
                       amount: netTotal,
                       currency: 'IQD' as const,
-                      cashRegisterId: cashRegisterId || null,
-                      cashRegisterName: cashRegisterName || null,
-                      cashRegisterCode: cashRegisterCode || null,
+                      cashRegisterId: effectiveCashRegisterId || null,
+                      cashRegisterName: effectiveCashRegisterName || null,
+                      cashRegisterCode: effectiveCashRegisterCode || null,
                     }]
                   : []);
               const prepaid = rows.filter((p) => paymentMethodImpliesPaidNow(p.method));
@@ -4177,7 +4250,7 @@ export function UniversalInvoiceForm({
           discount: totals.totalDiscountIQD,
           tax: totals.totalVat,
           total: totals.netIQD,
-          paymentMethod: resolvePaymentMethodForDb()
+          paymentMethod: resolveEffectivePaymentMethodForDb()
         };
 
         if (window.electronAPI?.printer) {
@@ -5417,19 +5490,36 @@ export function UniversalInvoiceForm({
               retailPosMode={isPosRetail}
               invoiceTotal={totals.netIQD}
               onSelect={(method, extra) => {
+                const nextRows = Array.isArray(extra?.payments) ? extra.payments : [];
+                const nextRegisterId = extra?.cashRegisterId || '';
+                const nextRegisterName = extra?.cashRegisterName || '';
+                const nextRegisterCode = extra?.cashRegisterCode || '';
                 setPaymentMethod(method);
-                if (extra) {
-                  setCashRegisterId(extra.cashRegisterId || '');
-                  setCashRegisterName(extra.cashRegisterName || '');
-                  setCashRegisterCode(extra.cashRegisterCode || '');
-                  if (Array.isArray(extra.payments)) {
-                    setPaymentRows(extra.payments);
-                  } else {
-                    setPaymentRows([]);
-                  }
+                setCashRegisterId(nextRegisterId);
+                setCashRegisterName(nextRegisterName);
+                setCashRegisterCode(nextRegisterCode);
+                setPaymentRows(nextRows);
+                paymentSnapshotRef.current = {
+                  method,
+                  cashRegisterId: nextRegisterId,
+                  cashRegisterName: nextRegisterName,
+                  cashRegisterCode: nextRegisterCode,
+                  paymentRows: nextRows,
+                };
+                setPaymentInfoConfirmed(true);
+                paymentInfoConfirmedRef.current = true;
+                const shouldContinueSave = pendingSaveAfterPaymentRef.current;
+                pendingSaveAfterPaymentRef.current = false;
+                if (shouldContinueSave) {
+                  window.setTimeout(() => {
+                    void handleSave();
+                  }, 0);
                 }
               }}
-              onClose={() => setShowPaymentInfoModal(false)}
+              onClose={() => {
+                pendingSaveAfterPaymentRef.current = false;
+                setShowPaymentInfoModal(false);
+              }}
             />
           )}
           {showWorkplaceModal && <InvoiceWorkplaceModal currentWorkplace={workplace} onSelect={setWorkplace} onClose={() => setShowWorkplaceModal(false)} />}
