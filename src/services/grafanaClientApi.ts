@@ -335,7 +335,7 @@ export function buildPivotGrafanaDashboard(input: PivotGrafanaInput): Record<str
   return {
     uid,
     title,
-    tags: ['retailex', 'pivot', 'devex-group'],
+    tags: ['retailex', 'ready', 'pivot', 'devex-group'],
     timezone: 'browser',
     schemaVersion: 39,
     version: 1,
@@ -410,7 +410,7 @@ export async function publishGrafanaDashboard(
   if (IS_TAURI) {
     return {
       ok: false,
-      error: 'Grafana için dil menüsü → OpenRouter API / Grafana sekmesinde URL + API token girin.',
+      error: 'Masaüstünde Grafana URL + API token gerekli (OpenRouter API → Grafana sekmesi).',
       source: 'bridge',
       needsClientConfig: true,
     };
@@ -431,9 +431,10 @@ export async function publishGrafanaDashboard(
     if (!res.ok) {
       return {
         ok: false,
-        error: body.error || `HTTP ${res.status}`,
+        error:
+          body.error ||
+          `Grafana bridge HTTP ${res.status}. Stack’te grafana + bridge çalışıyor mu?`,
         source: 'bridge',
-        needsClientConfig: true,
       };
     }
     const first = body.results?.[0];
@@ -441,7 +442,7 @@ export async function publishGrafanaDashboard(
       return {
         ok: true,
         uid: first.uid,
-        url: buildGrafanaDashboardEmbedUrl(first.uid),
+        url: buildGrafanaDashboardEmbedUrl(first.uid, 'light').replace('&kiosk', ''),
         source: 'bridge',
       };
     }
@@ -449,14 +450,12 @@ export async function publishGrafanaDashboard(
       ok: false,
       error: first?.error || body.error || 'Dashboard oluşturulamadı',
       source: 'bridge',
-      needsClientConfig: true,
     };
   } catch (e: unknown) {
     return {
       ok: false,
       error: e instanceof Error ? e.message : String(e),
       source: 'bridge',
-      needsClientConfig: true,
     };
   }
 }

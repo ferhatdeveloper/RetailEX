@@ -141,7 +141,10 @@ export function OpenRouterApiSettingsModal({
       const nextGf = saveGrafanaClientConfig({
         baseUrl: gf.baseUrl.trim(),
         apiToken: gf.apiToken.trim(),
-        useClientApi: gf.useClientApi,
+        // URL + token doluysa istemci API’yi otomatik aç (toggle unutulmasın)
+        useClientApi:
+          gf.useClientApi ||
+          Boolean(gf.baseUrl.trim() && gf.apiToken.trim()),
       });
       setCfg(nextOr);
       setGf(nextGf);

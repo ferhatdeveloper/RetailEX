@@ -53,8 +53,9 @@ import {
 import {
   buildGrafanaDashboardEmbedUrl,
   isGrafanaClientReady,
-  loadGrafanaClientConfig,
 } from '../../services/grafanaClientConfig';
+import { IS_TAURI } from '../../utils/env';
+import { OpenRouterApiSettingsModal } from '../integrations/OpenRouterApiSettingsModal';
 import { formatNumber } from '../../utils/formatNumber';
 
 const CHART_COLORS = [
@@ -122,6 +123,7 @@ export function DevExGroupPivotChartModal({
   const [saved, setSaved] = useState<DevExPivotDashboardSnapshot[]>(() => listDevExPivotDashboards(scope));
   const [activeDashId, setActiveDashId] = useState<string | null>(null);
   const [grafanaBusy, setGrafanaBusy] = useState(false);
+  const [grafanaSettingsOpen, setGrafanaSettingsOpen] = useState(false);
 
   useEffect(() => {
     setRows(initialRows);
@@ -169,12 +171,14 @@ export function DevExGroupPivotChartModal({
       toast.error(tm('gridPivotNoData') || 'Grafik için grup verisi yok.');
       return;
     }
-    const cfg = loadGrafanaClientConfig();
-    if (!isGrafanaClientReady(cfg)) {
-      toast.error(
+    // Web/Dokploy: bridge → POST /api/grafana/dashboards/import (admin auth, token gerekmez).
+    // Tauri: yalnızca istemci URL + token.
+    if (IS_TAURI && !isGrafanaClientReady()) {
+      toast.message(
         tm('gridPivotGrafanaNeedConfig') ||
-          'Grafana URL + API token gerekli. Dil menüsü → OpenRouter API → Grafana sekmesi.',
+          'Masaüstünde Grafana URL + API token gerekli. Açılan pencerede Grafana sekmesine girin.',
       );
+      setGrafanaSettingsOpen(true);
       return;
     }
     setGrafanaBusy(true);
@@ -188,19 +192,28 @@ export function DevExGroupPivotChartModal({
         chartKind,
       });
       if (!result.ok) {
+        if (result.needsClientConfig || (IS_TAURI && !isGrafanaClientReady())) {
+          toast.message(
+            tm('gridPivotGrafanaNeedConfig') ||
+              'Grafana URL + API token gerekli. Açılan pencerede Grafana sekmesine girin.',
+          );
+          setGrafanaSettingsOpen(true);
+          return;
+        }
         toast.error(result.error || tm('gridPivotGrafanaFail') || 'Grafana panosu oluşturulamadı');
         return;
       }
       toast.success(tm('gridPivotGrafanaOk') || 'Grafana panosu oluşturuldu');
+      const theme = darkMode ? 'dark' : 'light';
       const openUrl =
         result.url ||
-        (result.uid ? buildGrafanaDashboardEmbedUrl(result.uid, darkMode ? 'dark' : 'light', cfg) : '');
+        (result.uid ? buildGrafanaDashboardEmbedUrl(result.uid, theme) : '');
       if (openUrl) {
         let abs = openUrl;
         if (abs.startsWith('/')) {
-          const base = (cfg.baseUrl || '').replace(/\/+$/, '');
-          abs = base ? `${base}${abs}` : `${window.location.origin}${abs}`;
+          abs = `${window.location.origin}${abs}`;
         }
+        // Yeni sekmede tam Grafana UI (kiosk kapalı)
         abs = abs.replace('&kiosk', '').replace('?kiosk&', '?').replace('?kiosk', '');
         window.open(abs, '_blank', 'noopener,noreferrer');
       }
@@ -341,6 +354,7 @@ export function DevExGroupPivotChartModal({
   };
 
   return (
+    <>
     <PercentBodyModal
       onClose={onClose}
       size="full"
@@ -437,7 +451,10 @@ export function DevExGroupPivotChartModal({
           disabled={grafanaBusy || rows.length === 0}
           onClick={() => void handleGrafanaPublish()}
           className="inline-flex items-center gap-1 rounded-md border border-orange-500 bg-orange-50 px-3 py-1.5 text-[11px] font-bold text-orange-800 hover:bg-orange-100 disabled:opacity-50 dark:bg-orange-950/40 dark:text-orange-200 dark:border-orange-600"
-          title={tm('gridPivotGrafanaHint') || 'Grafana’da pano oluştur (URL + token gerekir)'}
+          title={
+            tm('gridPivotGrafanaHint') ||
+            'Sistem Grafana’ya gönder (web: /api/grafana bridge; masaüstü: URL + token)'
+          }
         >
           {grafanaBusy ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <ExternalLink className="w-3.5 h-3.5" />}
           {tm('gridPivotGrafanaSend') || 'Grafana’ya gönder'}
@@ -557,5 +574,17 @@ export function DevExGroupPivotChartModal({
         </button>
       </div>
     </PercentBodyModal>
+    {grafanaSettingsOpen && (
+      <OpenRouterApiSettingsModal
+        initialTab="grafana"
+        onClose={() => {
+          setGrafanaSettingsOpen(false);
+          if (isGrafanaClientReady()) {
+            toast.message(tm('gridPivotGrafanaReadyRetry') || 'Grafana ayarı kaydedildi. Tekrar «Grafana’ya gönder»e basın.');
+          }
+        }}
+      />
+    )}
+    </>
   );
 }
