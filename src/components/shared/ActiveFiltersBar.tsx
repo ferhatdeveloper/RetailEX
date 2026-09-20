@@ -34,7 +34,7 @@ export function filterOperatorI18nKey(op: string): string {
     '=': 'equals',
     '!=': 'notEquals',
   };
-  const normalized = aliases[op] ?? op;
+  const normalized = String(aliases[op] ?? op ?? '').trim() || 'contains';
   if (normalized === 'multiSelect') return 'multiSelect';
   return `reportColumnFiltersOp${normalized.charAt(0).toUpperCase()}${normalized.slice(1)}`;
 }

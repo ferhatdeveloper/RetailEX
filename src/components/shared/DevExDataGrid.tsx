@@ -401,10 +401,25 @@ const DATE_PRESET_I18N: Record<DateFilterPreset, string> = {
 };
 
 function isDateKindFilterPayload(payload: Exclude<GridFilterPayload, string>): boolean {
+  if (!payload || typeof payload !== 'object') return false;
   if (payload.kind === 'date') return true;
-  if (payload.preset) return true;
+  if (payload.preset && DATE_PRESET_I18N[payload.preset as DateFilterPreset]) return true;
   const mode = payload.mode ?? payload.operator;
+  // Eski kayıtlar: yalnızca tarih menüsü `range` / `before` / `after` yazar (sayısal `between` değil)
   return mode === 'range' || mode === 'before' || mode === 'after';
+}
+
+/** toLocaleLowerCase / localeCompare için güvenli BCP-47; geçersiz → tr-TR */
+function safeGridLocale(locale: unknown): string {
+  if (typeof locale !== 'string' || !locale.trim()) return 'tr-TR';
+  const trimmed = locale.trim();
+  try {
+    // Intl kabul etmezse RangeError — filtre menüsünü düşürmesin
+    void new Intl.Locale(trimmed);
+    return trimmed;
+  } catch {
+    return 'tr-TR';
+  }
 }
 
 const EMPTY_FILTER_KEY = '__EMPTY__';
@@ -432,7 +447,8 @@ function formatFilterChipValue(payload: GridFilterPayload | undefined): string {
     return String(payload.value ?? payload.from ?? payload.to ?? '').trim();
   }
   if (payload.mode === 'multiselect') {
-    return (payload.values ?? []).filter((v) => v && v !== EMPTY_FILTER_KEY).join(', ');
+    const values = Array.isArray(payload.values) ? payload.values : [];
+    return values.filter((v) => v && v !== EMPTY_FILTER_KEY).join(', ');
   }
   return String(payload.value ?? '').trim();
 }
@@ -468,7 +484,7 @@ function gridFilterChipValueLabel(
     return String(payload.value ?? payload.from ?? payload.to ?? '').trim();
   }
   if (payload.mode === 'multiselect') {
-    const values = payload.values ?? [];
+    const values = Array.isArray(payload.values) ? payload.values : [];
     if (values.length === 0) return tm('gridFilterEmpty');
     const labels = values.map((v) =>
       formatFilterLabel(v === EMPTY_FILTER_KEY ? null : v, columnId, tm, localeCode),
@@ -516,13 +532,17 @@ function formatFilterLabel(
   if (columnId === 'created_at' || columnId === 'updated_at') {
     const d = new Date(String(value));
     if (Number.isFinite(d.getTime())) {
-      return d.toLocaleString(localeCode || 'tr-TR', {
-        day: '2-digit',
-        month: '2-digit',
-        year: 'numeric',
-        hour: '2-digit',
-        minute: '2-digit',
-      });
+      try {
+        return d.toLocaleString(safeGridLocale(localeCode), {
+          day: '2-digit',
+          month: '2-digit',
+          year: 'numeric',
+          hour: '2-digit',
+          minute: '2-digit',
+        });
+      } catch {
+        return d.toISOString();
+      }
     }
   }
   return String(value);
@@ -530,6 +550,13 @@ function formatFilterLabel(
 
 function parseCellDate(value: unknown): number | null {
   if (value == null || value === '') return null;
+  if (value instanceof Date) {
+    return Number.isFinite(value.getTime()) ? value.getTime() : null;
+  }
+  if (typeof value === 'number') {
+    return Number.isFinite(value) ? value : null;
+  }
+  if (typeof value === 'object') return null;
   const d = new Date(String(value));
   return Number.isFinite(d.getTime()) ? d.getTime() : null;
 }
@@ -563,13 +590,15 @@ function isNumberFilterColumn(columnId: string, column: Column<any, unknown>): b
 }
 
 /** Filtre değeri / hücre → sayı; boş veya geçersiz → null */
-function parseFilterNumber(value: unknown): number | null {
+export function parseFilterNumber(value: unknown): number | null {
   if (value == null || value === '' || value === EMPTY_FILTER_KEY) return null;
   if (typeof value === 'number') return Number.isFinite(value) ? value : null;
+  if (typeof value === 'boolean') return value ? 1 : 0;
+  if (typeof value === 'object') return null;
   const raw = String(value).trim();
   if (!raw) return null;
   // Saf sayısal girdi (karşılaştırma operatörleri); metin içinde gömülü rakamları yok say
-  if (!/^-?\d+([.,]\d+)?$/.test(raw) && typeof value !== 'number') {
+  if (!/^-?\d+([.,]\d+)?$/.test(raw)) {
     // Para birimi / binlik ayırıcılı: 1.234,56 veya 1,234.56
     if (!/^-?[\d.,]+$/.test(raw)) return null;
   }
@@ -606,12 +635,28 @@ function combineDateTimeInput(
   return `${d}T${t}`;
 }
 
-function parseRangeBoundMs(value: string, bound: 'start' | 'end', includeTime: boolean): number | null {
-  const trimmed = value.trim();
+/** Tarih sınırı → ms; non-string / geçersiz → null (asla throw yok) */
+export function parseRangeBoundMs(
+  value: unknown,
+  bound: 'start' | 'end',
+  includeTime: boolean,
+): number | null {
+  if (value == null || value === '') return null;
+  if (value instanceof Date) {
+    const ms = value.getTime();
+    return Number.isFinite(ms) ? ms : null;
+  }
+  if (typeof value === 'number') {
+    return Number.isFinite(value) ? value : null;
+  }
+  if (typeof value === 'object') return null;
+  const trimmed = String(value).trim();
   if (!trimmed) return null;
   if (!includeTime && /^\d{4}-\d{2}-\d{2}$/.test(trimmed)) {
     const [y, m, day] = trimmed.split('-').map(Number);
+    if (!Number.isFinite(y) || !Number.isFinite(m) || !Number.isFinite(day)) return null;
     const dt = new Date(y, m - 1, day);
+    if (!Number.isFinite(dt.getTime())) return null;
     if (bound === 'end') dt.setHours(23, 59, 59, 999);
     else dt.setHours(0, 0, 0, 0);
     return dt.getTime();
@@ -623,8 +668,11 @@ function parseRangeBoundMs(value: string, bound: 'start' | 'end', includeTime: b
   return dt.getTime();
 }
 
-/** Kolon huni filtresi — FilterMenu `{ mode, value }` ile uyumlu */
-export const gridColumnFilterFn: FilterFn<any> = (row, columnId, filterValue) => {
+function gridColumnFilterFnInner(
+  row: { getValue: (columnId: string) => unknown },
+  columnId: string,
+  filterValue: unknown,
+): boolean {
   const payload = filterValue as GridFilterPayload | undefined;
   if (payload == null || payload === '') return true;
 
@@ -633,18 +681,26 @@ export const gridColumnFilterFn: FilterFn<any> = (row, columnId, filterValue) =>
     return cellValue.includes(payload.toLowerCase());
   }
 
-  const mode = payload.mode ?? payload.operator ?? 'contains';
+  if (typeof payload !== 'object') return true;
+
+  const mode = String(payload.mode ?? payload.operator ?? 'contains');
   const cellRaw = row.getValue(columnId);
 
   // Tarih filtreleri (kind:date / range / before / after) — sayısal between'den önce
-  if (isDateKindFilterPayload(payload) && (DATE_COMPARE_MODES.has(mode) || mode === 'range')) {
+  if (isDateKindFilterPayload(payload) && DATE_COMPARE_MODES.has(mode)) {
     const includeTime = !!payload.includeTime;
     const cellMs = parseCellDate(cellRaw);
     if (cellMs == null) return false;
 
     if (mode === 'range') {
-      const fromMs = payload.from ? parseRangeBoundMs(payload.from, 'start', includeTime) : null;
-      const toMs = payload.to ? parseRangeBoundMs(payload.to, 'end', includeTime) : null;
+      const fromMs =
+        payload.from != null && String(payload.from).trim() !== ''
+          ? parseRangeBoundMs(payload.from, 'start', includeTime)
+          : null;
+      const toMs =
+        payload.to != null && String(payload.to).trim() !== ''
+          ? parseRangeBoundMs(payload.to, 'end', includeTime)
+          : null;
       if (fromMs == null && toMs == null) return true;
       if (fromMs != null && cellMs < fromMs) return false;
       if (toMs != null && cellMs > toMs) return false;
@@ -686,7 +742,7 @@ export const gridColumnFilterFn: FilterFn<any> = (row, columnId, filterValue) =>
   }
 
   if (mode === 'multiselect') {
-    const values = payload.values ?? [];
+    const values = Array.isArray(payload.values) ? payload.values.map(String) : [];
     if (values.length === 0) return false;
     const cellStr = cellToFilterKey(cellRaw);
     return values.includes(cellStr);
@@ -697,8 +753,10 @@ export const gridColumnFilterFn: FilterFn<any> = (row, columnId, filterValue) =>
     if (cellNum == null) return false;
 
     if (mode === 'between') {
-      const fromNum = payload.from != null && String(payload.from).trim() !== '' ? parseFilterNumber(payload.from) : null;
-      const toNum = payload.to != null && String(payload.to).trim() !== '' ? parseFilterNumber(payload.to) : null;
+      const fromNum =
+        payload.from != null && String(payload.from).trim() !== '' ? parseFilterNumber(payload.from) : null;
+      const toNum =
+        payload.to != null && String(payload.to).trim() !== '' ? parseFilterNumber(payload.to) : null;
       if (fromNum == null && toNum == null) return true;
       if (fromNum != null && cellNum < fromNum) return false;
       if (toNum != null && cellNum > toNum) return false;
@@ -752,6 +810,18 @@ export const gridColumnFilterFn: FilterFn<any> = (row, columnId, filterValue) =>
     case 'contains':
     default:
       return cellValue.includes(searchValue);
+  }
+}
+
+/**
+ * Kolon huni filtresi — FilterMenu `{ mode, value }` ile uyumlu.
+ * Her satırda throw olursa tüm ReportsModule çöker; bu yüzden catch → true.
+ */
+export const gridColumnFilterFn: FilterFn<any> = (row, columnId, filterValue) => {
+  try {
+    return gridColumnFilterFnInner(row, columnId, filterValue);
+  } catch {
+    return true;
   }
 };
 
@@ -1014,7 +1084,7 @@ function DateRangeFilterMenu({ column, onClose }: FilterMenuProps) {
 
 function ValueListFilterMenu({ column, onClose }: FilterMenuProps) {
   const { tm } = useLanguage();
-  const localeCode = tm('localeCode');
+  const localeCode = safeGridLocale(tm('localeCode'));
   const sortLocale = localeCode.split('-')[0] || 'tr';
   const existing = column.getFilterValue() as GridFilterPayload | undefined;
   const columnId = column.id;
@@ -1101,7 +1171,7 @@ function ValueListFilterMenu({ column, onClose }: FilterMenuProps) {
   }, [columnId, allKeys, existing]);
 
   const filteredEntries = useMemo(() => {
-    const locale = tm('localeCode');
+    const locale = safeGridLocale(tm('localeCode'));
     const q = listSearch.trim().toLocaleLowerCase(locale);
     if (!q) return valueEntries;
     return valueEntries.filter((e) => e.label.toLocaleLowerCase(locale).includes(q));
@@ -1570,7 +1640,13 @@ function withCompactNumericColumnSizing<T>(cols: ColumnDef<T, any>[]): ColumnDef
     const nextMeta: GridColumnMeta = {
       ...meta,
       align: meta.align ?? 'right',
-      format: meta.format ?? (meta.type === 'currency' ? 'currency' : 'number'),
+      format:
+        meta.format ??
+        (meta.filterKind === 'date' || meta.type === 'date'
+          ? 'date'
+          : meta.type === 'currency'
+            ? 'currency'
+            : 'number'),
     };
     return {
       ...col,
@@ -2194,7 +2270,7 @@ export function DevExDataGrid<T>({
     },
   });
 
-  const localeCode = tm('localeCode');
+  const localeCode = safeGridLocale(tm('localeCode'));
   const activeFilterChips: ActiveFilterChip[] = useMemo(() => {
     if (!enableFiltering) return [];
     return columnFilters

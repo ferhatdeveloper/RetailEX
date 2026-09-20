@@ -95,8 +95,17 @@ export function buildReportGridColumns<T>(cols: ReportGridColumn<T>[]): ColumnDe
         const inner = c.cell ? c.cell(row) : (() => {
           const v = info.getValue();
           if (v == null || v === '') return '—';
-          if (filterKind === 'date') {
+          if (filterKind === 'date' || resolvedType === 'date') {
             return formatReportDateCell(v as string | number | Date);
+          }
+          // React child olarak Date/object → "Objects are not valid as a React child"
+          if (v instanceof Date) return formatReportDateCell(v);
+          if (typeof v === 'object') {
+            try {
+              return String(v);
+            } catch {
+              return '—';
+            }
           }
           return v as ReactNode;
         })();

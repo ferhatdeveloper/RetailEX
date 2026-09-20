@@ -27,7 +27,16 @@ export function ColumnVisibilityMenu({
   variant = 'default',
 }: ColumnVisibilityMenuProps) {
   const { tm } = useLanguage();
-  const locale = tm('localeCode');
+  const locale = (() => {
+    const raw = tm('localeCode');
+    if (typeof raw !== 'string' || !raw.trim()) return 'tr-TR';
+    try {
+      void new Intl.Locale(raw.trim());
+      return raw.trim();
+    } catch {
+      return 'tr-TR';
+    }
+  })();
   const [isOpen, setIsOpen] = useState(false);
   const [search, setSearch] = useState('');
   const [menuPos, setMenuPos] = useState<{

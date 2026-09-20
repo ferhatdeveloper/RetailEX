@@ -559,8 +559,8 @@ export function KasalarModule({ initialKasaId, onBack }: Props) {
       </div>
 
       {/* Grid Content */}
-      <div className="flex-1 overflow-hidden p-4 flex gap-4 min-h-0">
-        <div className="flex-1 min-w-0 bg-white rounded-xl shadow-sm border border-gray-200 overflow-hidden flex flex-col">
+      <div className="flex-1 overflow-hidden p-4 min-h-0">
+        <div className="h-full bg-white rounded-xl shadow-sm border border-gray-200 overflow-hidden flex flex-col">
           <div className="flex-1 overflow-auto">
             <KasaIslemleriTable
               islemler={filteredTransactions}
@@ -587,40 +587,6 @@ export function KasalarModule({ initialKasaId, onBack }: Props) {
             />
           </div>
         </div>
-
-        {/* Seçili satır cari özeti */}
-        <aside className="w-64 shrink-0 bg-white rounded-xl shadow-sm border border-gray-200 p-4 flex flex-col gap-3 overflow-y-auto">
-          <h3 className="text-xs font-bold uppercase tracking-wider text-gray-500">{tm('currentAccountInfo') || 'Cari Özeti'}</h3>
-          {selectedIslem && selectedId ? (
-            <>
-              <div>
-                <div className="text-[11px] text-gray-400 mb-0.5">{tm('ficheNo') || 'Fiş No'}</div>
-                <div className="font-mono text-sm font-semibold text-gray-900 truncate">{selectedIslem.islem_no || '-'}</div>
-              </div>
-              <div>
-                <div className="text-[11px] text-gray-400 mb-0.5">{tm('currentAccountTitle') || 'Cari Hesap'}</div>
-                <div className="text-sm font-medium text-gray-900 break-words">
-                  {formatKasaCariLabel(selectedIslem) || '—'}
-                </div>
-                {selectedIslem.cari_hesap_kodu && (
-                  <div className="text-[11px] text-gray-500 font-mono mt-0.5">{selectedIslem.cari_hesap_kodu}</div>
-                )}
-              </div>
-              <div>
-                <div className="text-[11px] text-gray-400 mb-0.5">{tm('description') || 'Açıklama'}</div>
-                <div className="text-xs text-gray-700 break-words">{selectedIslem.islem_aciklamasi || '—'}</div>
-              </div>
-              <div>
-                <div className="text-[11px] text-gray-400 mb-0.5">{tm('amount') || 'Tutar'}</div>
-                <div className="text-sm font-bold text-gray-900">{formatCurrency(selectedIslem.tutar || 0)}</div>
-              </div>
-            </>
-          ) : (
-            <p className="text-xs text-gray-400 leading-relaxed">
-              Satır seçince cari kodu ve unvan burada görünür.
-            </p>
-          )}
-        </aside>
       </div>
 
       {/* Bottom Status Bar */}

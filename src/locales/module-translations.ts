@@ -3724,7 +3724,7 @@ export const moduleTranslations: Record<string, Record<Language, string>> = {
   belgeTutari: { tr: 'Belge tutarı', en: 'Document amount', ar: 'مبلغ المستند', ku: 'بڕی بەڵگە' },
   tahsilEdilen: { tr: 'Tahsil edilen', en: 'Amount collected', ar: 'المحصّل', ku: 'وەرگیراو' },
   kalanCari: { tr: 'Kalan (cari)', en: 'Remaining (account)', ar: 'المتبقي (جاري)', ku: 'ماوە (جاری)' },
-  cebeGirenNakit: { tr: 'Cebe giren nakit (tahsilat)', en: 'Cash in pocket (collections)', ar: 'النقد الداخل (تحصيل)', ku: 'نەقدی گیرفان (وەرگرتن)' },
+  cebeGirenNakit: { tr: 'Tahsilat', en: 'Collection', ar: 'تحصيل', ku: 'وەرگرتن' },
   paymentTransfer: { tr: 'Havale/EFT', en: 'Wire Transfer', ar: 'حوالة بنكية', ku: 'گواستنەوەی بانکی' },
   paymentCheck: { tr: 'Çek', en: 'Check', ar: 'شيك', ku: 'چێک' },
   paymentPromissory: { tr: 'Senet', en: 'Promissory Note', ar: 'سند لأمر', ku: 'سند' },
