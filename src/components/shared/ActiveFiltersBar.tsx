@@ -24,7 +24,15 @@ export function filterOperatorI18nKey(op: string): string {
   const aliases: Record<string, string> = {
     notContains: 'doesNotContain',
     range: 'between',
+    /** Tarih «arasında» — range ile aynı etiket */
+    dateRange: 'between',
     multiselect: 'multiSelect',
+    '>': 'gt',
+    '>=': 'gte',
+    '<': 'lt',
+    '<=': 'lte',
+    '=': 'equals',
+    '!=': 'notEquals',
   };
   const normalized = aliases[op] ?? op;
   if (normalized === 'multiSelect') return 'multiSelect';

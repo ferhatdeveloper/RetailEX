@@ -668,6 +668,172 @@ export async function deleteKasa(id: string): Promise<void> {
   }
 }
 
+/** Cari kod + unvan gösterimi (liste / detay / özet). */
+export function formatKasaCariLabel(islem: Pick<KasaIslemi, 'cari_hesap_kodu' | 'cari_hesap_unvani'>): string {
+  const code = String(islem.cari_hesap_kodu || '').trim();
+  const name = String(islem.cari_hesap_unvani || '').trim();
+  if (code && name) return `${code} — ${name}`;
+  return name || code || '';
+}
+
+type CashLineAccountLookup = { code?: string; name?: string; kind?: string };
+
+/**
+ * REST / eksik JOIN sonrası customer_id + party_id → kod/unvan.
+ * Açıklama (definition) asla cari unvanı yerine konmaz.
+ */
+async function resolveCashLineAccountLookups(
+  rows: Array<{ customer_id?: string | null; party_id?: string | null }>,
+): Promise<{
+  byCustomer: Map<string, CashLineAccountLookup>;
+  byParty: Map<string, CashLineAccountLookup>;
+}> {
+  const byCustomer = new Map<string, CashLineAccountLookup>();
+  const byParty = new Map<string, CashLineAccountLookup>();
+  const customerIds = Array.from(
+    new Set(rows.map((r) => String(r.customer_id || '').trim()).filter(Boolean)),
+  );
+  const partyIds = Array.from(
+    new Set(rows.map((r) => String(r.party_id || '').trim()).filter(Boolean)),
+  );
+  if (customerIds.length === 0 && partyIds.length === 0) {
+    return { byCustomer, byParty };
+  }
+
+  const firmNr = padKasaFirmNr();
+
+  if (DB_SETTINGS.connectionProvider === 'rest_api') {
+    const { postgrest } = await import('./postgrestClient');
+    const chunk = <T,>(arr: T[], size: number) => {
+      const out: T[][] = [];
+      for (let i = 0; i < arr.length; i += size) out.push(arr.slice(i, i + size));
+      return out;
+    };
+    for (const ids of chunk(customerIds, 80)) {
+      const fetched = await postgrest
+        .get<any[]>(
+          `/rex_${firmNr}_customers`,
+          { select: 'id,code,name', id: `in.(${ids.join(',')})` },
+          { schema: 'public' },
+        )
+        .catch(() => [] as any[]);
+      for (const row of Array.isArray(fetched) ? fetched : []) {
+        if (!row?.id) continue;
+        byCustomer.set(String(row.id), {
+          code: row.code != null ? String(row.code) : undefined,
+          name: row.name != null ? String(row.name) : undefined,
+          kind: 'customer',
+        });
+      }
+    }
+    for (const ids of chunk(partyIds, 80)) {
+      const suppliers = await postgrest
+        .get<any[]>(
+          `/rex_${firmNr}_suppliers`,
+          { select: 'id,code,name', id: `in.(${ids.join(',')})` },
+          { schema: 'public' },
+        )
+        .catch(() => [] as any[]);
+      for (const row of Array.isArray(suppliers) ? suppliers : []) {
+        if (!row?.id) continue;
+        byParty.set(String(row.id), {
+          code: row.code != null ? String(row.code) : undefined,
+          name: row.name != null ? String(row.name) : undefined,
+          kind: 'supplier',
+        });
+      }
+      const missing = ids.filter((id) => !byParty.has(id));
+      if (missing.length === 0) continue;
+      const parties = await postgrest
+        .get<any[]>(
+          `/rex_${firmNr}_parties`,
+          { select: 'id,code,name,card_type', id: `in.(${missing.join(',')})` },
+          { schema: 'public' },
+        )
+        .catch(() => [] as any[]);
+      for (const row of Array.isArray(parties) ? parties : []) {
+        if (!row?.id) continue;
+        byParty.set(String(row.id), {
+          code: row.code != null ? String(row.code) : undefined,
+          name: row.name != null ? String(row.name) : undefined,
+          kind: row.card_type != null ? String(row.card_type) : 'employee',
+        });
+      }
+    }
+    return { byCustomer, byParty };
+  }
+
+  if (customerIds.length > 0) {
+    const { rows: custRows } = await postgres.query<{ id: string; code?: string; name?: string }>(
+      `SELECT id, code, name FROM customers WHERE id = ANY($1::uuid[])`,
+      [customerIds],
+    );
+    for (const row of custRows || []) {
+      byCustomer.set(String(row.id), {
+        code: row.code != null ? String(row.code) : undefined,
+        name: row.name != null ? String(row.name) : undefined,
+        kind: 'customer',
+      });
+    }
+  }
+  if (partyIds.length > 0) {
+    const { rows: supRows } = await postgres.query<{ id: string; code?: string; name?: string }>(
+      `SELECT id, code, name FROM suppliers WHERE id = ANY($1::uuid[])`,
+      [partyIds],
+    );
+    for (const row of supRows || []) {
+      byParty.set(String(row.id), {
+        code: row.code != null ? String(row.code) : undefined,
+        name: row.name != null ? String(row.name) : undefined,
+        kind: 'supplier',
+      });
+    }
+    const missing = partyIds.filter((id) => !byParty.has(id));
+    if (missing.length > 0) {
+      const { rows: partyRows } = await postgres.query<{
+        id: string;
+        code?: string;
+        name?: string;
+        card_type?: string;
+      }>(
+        `SELECT id, code, name, card_type FROM parties WHERE id = ANY($1::uuid[])`,
+        [missing],
+      );
+      for (const row of partyRows || []) {
+        byParty.set(String(row.id), {
+          code: row.code != null ? String(row.code) : undefined,
+          name: row.name != null ? String(row.name) : undefined,
+          kind: row.card_type != null ? String(row.card_type) : 'employee',
+        });
+      }
+    }
+  }
+  return { byCustomer, byParty };
+}
+
+function applyCashLineAccountLookups(
+  row: any,
+  lookups: {
+    byCustomer: Map<string, CashLineAccountLookup>;
+    byParty: Map<string, CashLineAccountLookup>;
+  },
+): any {
+  const custId = String(row.customer_id || '').trim();
+  const partyId = String(row.party_id || '').trim();
+  const cust = custId ? lookups.byCustomer.get(custId) : undefined;
+  const party = !cust && partyId ? lookups.byParty.get(partyId) : undefined;
+  const hit = cust || party;
+  if (!hit) return row;
+  return {
+    ...row,
+    current_account_name: row.current_account_name || hit.name,
+    current_account_code: row.current_account_code || hit.code,
+    current_account_resolved_id:
+      row.current_account_resolved_id || (cust ? custId : partyId) || undefined,
+    current_account_kind: row.current_account_kind || hit.kind,
+  };
+}
+
 /**
  * Kasa işlemlerini getir
  */
@@ -701,8 +867,8 @@ export async function fetchKasaIslemleri(params?: {
         target_kasa.code as target_register_code
       FROM ${table} cl
       LEFT JOIN customers c ON cl.customer_id = c.id
-      LEFT JOIN suppliers s ON cl.party_id = s.id AND cl.transaction_type = 'CH_ODEME'
-      LEFT JOIN parties p ON cl.party_id = p.id AND cl.transaction_type <> 'CH_ODEME'
+      LEFT JOIN suppliers s ON cl.party_id = s.id
+      LEFT JOIN parties p ON cl.party_id = p.id AND s.id IS NULL
       LEFT JOIN cash_registers target_kasa ON cl.target_register_id = target_kasa.id
       WHERE 1=1
     `;
@@ -746,16 +912,24 @@ export async function fetchKasaIslemleri(params?: {
       rows = result.rows || [];
     }
 
-    // Assuming a logger exists, otherwise this line would cause an error.
-    // If logger is not defined, it should be removed or replaced with console.log
-    //    // logger.sql('Postgres', 'Fetched cash transactions', { count: rows.length });
+    const needsLookup = rows.some(
+      (r) =>
+        (r.customer_id || r.party_id) &&
+        (!r.current_account_name || !r.current_account_code),
+    );
+    if (needsLookup) {
+      const lookups = await resolveCashLineAccountLookups(rows);
+      rows = rows.map((r) => applyCashLineAccountLookups(r, lookups));
+    }
+
     console.log('[Kasa] Fetched cash transactions:', rows.length);
 
-    return rows.map(row => ({
+    // Cari unvanı = gerçek cari; definition yalnızca islem_aciklamasi olarak kalır.
+    return rows.map((row) => ({
       ...mapDbIslemToIslem(row),
-      cari_hesap_unvani: row.current_account_name || row.definition, // Map fetched name
-      cari_hesap_kodu: row.current_account_code,
-      target_register_name: row.target_register_name, // Add target register name
+      cari_hesap_unvani: row.current_account_name || undefined,
+      cari_hesap_kodu: row.current_account_code || undefined,
+      target_register_name: row.target_register_name,
     }));
   } catch (error: any) {
     console.error('[Kasa] İşlem fetch error:', error);
@@ -834,8 +1008,8 @@ async function createKasaIslemiViaPostgrest(
     sign,
     definition: islem.islem_aciklamasi || '',
     transaction_type: islem.islem_tipi || '',
-    customer_id: cariSplit.customer_id,
-    party_id: cariSplit.party_id,
+    customer_id: cariSplit.customer_id || (cariKind === 'customer' || !cariKind ? islem.cari_hesap_id : null) || null,
+    party_id: cariSplit.party_id || islem.party_id || null,
     currency_code: islem.doviz_kodu || 'YEREL',
     exchange_rate: 1,
     f_amount: islem.dovizli_tutar || 0,
@@ -1077,7 +1251,16 @@ async function createKasaIslemiViaPostgrest(
     }
   }
 
-  return mapDbIslemToIslem(mainRow);
+  return {
+    ...mapDbIslemToIslem(mainRow),
+    cari_hesap_id:
+      islem.cari_hesap_id ||
+      (mainRow as any)?.customer_id ||
+      (mainRow as any)?.party_id ||
+      undefined,
+    cari_hesap_kodu: islem.cari_hesap_kodu,
+    cari_hesap_unvani: islem.cari_hesap_unvani,
+  };
 }
 
 /**
@@ -1114,7 +1297,27 @@ export async function createKasaIslemi(incoming: KasaIslemi): Promise<KasaIslemi
         name: islem.cari_hesap_unvani,
       });
       if (canon.id) {
-        islem = { ...islem, cari_hesap_id: canon.id };
+        islem = {
+          ...islem,
+          cari_hesap_id: canon.id,
+          cari_hesap_kodu: islem.cari_hesap_kodu || canon.code,
+        };
+      }
+      // Kod/unvan eksikse karttan tamamla (liste Cari kolonu JOIN ile dolar)
+      if (!islem.cari_hesap_kodu || !islem.cari_hesap_unvani) {
+        const lookups = await resolveCashLineAccountLookups([
+          { customer_id: islem.cari_hesap_id, party_id: islem.party_id },
+        ]);
+        const hit =
+          lookups.byCustomer.get(String(islem.cari_hesap_id)) ||
+          (islem.party_id ? lookups.byParty.get(String(islem.party_id)) : undefined);
+        if (hit) {
+          islem = {
+            ...islem,
+            cari_hesap_kodu: islem.cari_hesap_kodu || hit.code,
+            cari_hesap_unvani: islem.cari_hesap_unvani || hit.name,
+          };
+        }
       }
     }
 
@@ -1539,6 +1742,9 @@ export async function createKasaIslemi(incoming: KasaIslemi): Promise<KasaIslemi
     await postgres.query('COMMIT');
 
     const mapped = mapDbIslemToIslem(rows[0]);
+    mapped.cari_hesap_id = islem.cari_hesap_id || mapped.cari_hesap_id;
+    mapped.cari_hesap_kodu = islem.cari_hesap_kodu || mapped.cari_hesap_kodu;
+    mapped.cari_hesap_unvani = islem.cari_hesap_unvani || mapped.cari_hesap_unvani;
     if (isGiderPusulasiType(islem.islem_tipi) && !skipExpenseMirror && mapped?.id) {
       await upsertExpenseLinkedToCashLine({
         cashLineId: String(mapped.id),

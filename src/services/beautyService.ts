@@ -3149,6 +3149,255 @@ export const beautyService = {
         );
     },
 
+    /**
+     * ERP fatura soft-delete sonrası bağlı beauty_sales iptali.
+     * Bağlantı: notes içindeki `beauty_sale_id:<uuid>` ve/veya `invoice_number` = fiş no.
+     * Sadakat puanı geri alınır (satışta floor(total/100) verilmişti).
+     */
+    async voidBeautySalesLinkedToErpInvoice(opts: {
+        invoiceNo?: string | null;
+        notes?: string | null;
+    }): Promise<number> {
+        const fiche = String(opts.invoiceNo ?? '').trim();
+        const notesRaw = String(opts.notes ?? '');
+        const idFromNotes = notesRaw.match(/beauty_sale_id:([0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12})/i)?.[1];
+        if (!fiche && !idFromNotes) return 0;
+
+        const activeStatusSql = `LOWER(TRIM(COALESCE(payment_status, 'paid'))) NOT IN ('cancelled', 'canceled', 'void')`;
+
+        type VoidRow = { id: string; customer_id?: string | null; total?: number | string | null };
+        let toVoid: VoidRow[] = [];
+
+        if (shouldUseTenantPostgrestApi()) {
+            const { postgrest } = await import('./api/postgrestClient');
+            const fn = erpFirmNrForRow();
+            const pn = erpPeriodNrForRow();
+            const path = `/rex_${fn}_${pn}_beauty_sales`;
+            const byId = new Map<string, VoidRow>();
+            const pushRows = (rows: VoidRow[] | null | undefined) => {
+                for (const r of Array.isArray(rows) ? rows : []) {
+                    if (r?.id) byId.set(String(r.id), r);
+                }
+            };
+            if (idFromNotes) {
+                try {
+                    pushRows(
+                        await postgrest.get<VoidRow[]>(
+                            path,
+                            { select: 'id,customer_id,total,payment_status', id: `eq.${idFromNotes}`, limit: 5 },
+                            { schema: 'beauty' },
+                        ),
+                    );
+                } catch (e) {
+                    console.warn('[beautyService] voidBeautySales by id:', e);
+                }
+            }
+            if (fiche) {
+                try {
+                    pushRows(
+                        await postgrest.get<VoidRow[]>(
+                            path,
+                            {
+                                select: 'id,customer_id,total,payment_status',
+                                invoice_number: `eq.${fiche}`,
+                                limit: 50,
+                            },
+                            { schema: 'beauty' },
+                        ),
+                    );
+                } catch (e) {
+                    console.warn('[beautyService] voidBeautySales by invoice_number:', e);
+                }
+            }
+            toVoid = [...byId.values()].filter((r) => {
+                const st = String((r as VoidRow & { payment_status?: string }).payment_status || 'paid').toLowerCase();
+                return st !== 'cancelled' && st !== 'canceled' && st !== 'void';
+            });
+            for (const row of toVoid) {
+                await postgrest.patch(
+                    `${path}?id=eq.${encodeURIComponent(String(row.id))}`,
+                    { payment_status: 'cancelled' },
+                    { schema: 'beauty', prefer: 'return=minimal' },
+                );
+            }
+        } else {
+            const table = postgres.getMovementTableName('beauty_sales', 'beauty');
+            const clauses: string[] = [];
+            const params: unknown[] = [];
+            if (idFromNotes) {
+                params.push(idFromNotes);
+                clauses.push(`id::text = $${params.length}::text`);
+            }
+            if (fiche) {
+                params.push(fiche);
+                clauses.push(`TRIM(COALESCE(invoice_number, '')) = $${params.length}`);
+            }
+            if (clauses.length === 0) return 0;
+            const { rows } = await postgres.query<VoidRow>(
+                `SELECT id, customer_id, total
+                 FROM ${table}
+                 WHERE (${clauses.join(' OR ')})
+                   AND ${activeStatusSql}`,
+                params,
+            );
+            toVoid = Array.isArray(rows) ? rows : [];
+            if (toVoid.length > 0) {
+                const ids = toVoid.map((r) => String(r.id));
+                await postgres.query(
+                    `UPDATE ${table}
+                     SET payment_status = 'cancelled'
+                     WHERE id::text = ANY($1::text[])`,
+                    [ids],
+                );
+            }
+        }
+
+        for (const row of toVoid) {
+            const cid = pgUuidOrNull(row.customer_id);
+            const tot = Number(row.total ?? 0);
+            if (!cid || !(tot > 0)) continue;
+            const pts = Math.floor(tot / 100);
+            try {
+                if (pts > 0) await useCustomerStore.getState().updatePoints(cid, -pts);
+            } catch (e) {
+                console.warn('[beautyService] Puan geri alma başarısız:', e);
+            }
+            try {
+                if (shouldUseTenantPostgrestApi()) {
+                    const { postgrest } = await import('./api/postgrestClient');
+                    const fn = erpFirmNrForRow();
+                    const ctPath = `/rex_${fn}_customers`;
+                    const cur = await postgrest.get<{ total_spent?: number }[]>(
+                        ctPath,
+                        { select: 'total_spent', id: `eq.${cid}`, limit: 1 },
+                        { schema: 'public' },
+                    );
+                    const prev = Number(Array.isArray(cur) ? cur[0]?.total_spent : 0) || 0;
+                    await postgrest.patch(
+                        `${ctPath}?id=eq.${encodeURIComponent(cid)}`,
+                        { total_spent: Math.max(0, prev - tot) },
+                        { schema: 'public', prefer: 'return=minimal' },
+                    );
+                } else {
+                    const ct = postgres.getCardTableName('customers');
+                    await postgres.query(
+                        `UPDATE ${ct}
+                         SET total_spent = GREATEST(0, COALESCE(total_spent, 0)::numeric - $1::numeric)
+                         WHERE id::text = $2::text`,
+                        [String(tot), cid],
+                    );
+                }
+            } catch (e) {
+                console.warn('[beautyService] total_spent geri alma başarısız:', e);
+            }
+        }
+
+        return toVoid.length;
+    },
+
+    /**
+     * Müşteri geçmişi yüklenirken: ERP’de soft-delete edilmiş fişe bağlı
+     * hâlâ `paid` kalan beauty_sales kayıtlarını iptal eder (orphan KPI/geçmiş onarımı).
+     */
+    async syncVoidOrphanBeautySalesAfterCancelledErp(customerIds: string[]): Promise<number> {
+        const ids = filterUuidIds(customerIds);
+        if (!ids.length) return 0;
+
+        type OrphanRow = { id: string; customer_id?: string | null; total?: number | string | null; invoice_number?: string | null };
+        let orphans: OrphanRow[] = [];
+
+        if (shouldUseTenantPostgrestApi()) {
+            const { postgrest } = await import('./api/postgrestClient');
+            const fn = erpFirmNrForRow();
+            const pn = erpPeriodNrForRow();
+            const beautyPath = `/rex_${fn}_${pn}_beauty_sales`;
+            const salesPath = `/rex_${fn}_${pn}_sales`;
+            const beautyRows: OrphanRow[] = [];
+            for (let i = 0; i < ids.length; i += BEAUTY_PGREST_CHUNK) {
+                const chunk = ids.slice(i, i + BEAUTY_PGREST_CHUNK);
+                try {
+                    const part = await postgrest.get<(OrphanRow & { payment_status?: string })[]>(
+                        beautyPath,
+                        {
+                            select: 'id,customer_id,total,invoice_number,payment_status',
+                            customer_id: `in.(${chunk.join(',')})`,
+                            limit: 400,
+                        },
+                        { schema: 'beauty' },
+                    );
+                    for (const r of Array.isArray(part) ? part : []) {
+                        const st = String(r.payment_status || 'paid').toLowerCase();
+                        if (st === 'cancelled' || st === 'canceled' || st === 'void') continue;
+                        if (!String(r.invoice_number || '').trim()) continue;
+                        beautyRows.push(r);
+                    }
+                } catch (e) {
+                    console.warn('[beautyService] syncVoid orphan fetch:', e);
+                }
+            }
+            for (const row of beautyRows) {
+                const invNo = String(row.invoice_number || '').trim();
+                try {
+                    const erp = await postgrest.get<{ id: string; is_cancelled?: boolean; status?: string }[]>(
+                        salesPath,
+                        {
+                            select: 'id,is_cancelled,status',
+                            fiche_no: `eq.${invNo}`,
+                            limit: 3,
+                        },
+                        { schema: 'public' },
+                    );
+                    const hit = (Array.isArray(erp) ? erp : []).find(
+                        (s) =>
+                            s.is_cancelled === true ||
+                            ['iptal', 'silindi', 'cancelled', 'canceled', 'deleted'].includes(
+                                String(s.status || '').toLowerCase().trim(),
+                            ),
+                    );
+                    if (hit) orphans.push(row);
+                } catch {
+                    /* ERP satırı okunamazsa atla */
+                }
+            }
+        } else {
+            const beautyT = postgres.getMovementTableName('beauty_sales', 'beauty');
+            const salesT = postgres.getMovementTableName('sales');
+            const idParams = ids.map((_, i) => `$${i + 1}`).join(', ');
+            try {
+                const { rows } = await postgres.query<OrphanRow>(
+                    `SELECT bs.id, bs.customer_id, bs.total, bs.invoice_number
+                     FROM ${beautyT} bs
+                     WHERE bs.customer_id::text IN (${idParams})
+                       AND LOWER(TRIM(COALESCE(bs.payment_status, 'paid'))) NOT IN ('cancelled', 'canceled', 'void')
+                       AND TRIM(COALESCE(bs.invoice_number, '')) <> ''
+                       AND EXISTS (
+                         SELECT 1 FROM ${salesT} s
+                         WHERE TRIM(s.fiche_no::text) = TRIM(bs.invoice_number)
+                           AND (
+                             COALESCE(s.is_cancelled, false) = true
+                             OR LOWER(TRIM(COALESCE(s.status, ''))) IN ('iptal', 'silindi', 'cancelled', 'canceled', 'deleted')
+                           )
+                       )`,
+                    ids,
+                );
+                orphans = Array.isArray(rows) ? rows : [];
+            } catch (e) {
+                console.warn('[beautyService] syncVoid orphan SQL:', e);
+                return 0;
+            }
+        }
+
+        let voided = 0;
+        for (const row of orphans) {
+            const n = await beautyService.voidBeautySalesLinkedToErpInvoice({
+                invoiceNo: row.invoice_number,
+                notes: `GüzellikPOS|beauty_sale_id:${row.id}|`,
+            });
+            voided += n;
+        }
+        return voided;
+    },
+
     /** Randevuya bağlı satış kalemlerinde personeli ve prim tutarını günceller (audit log yazar). */
     async reassignSaleItemsStaffForAppointment(opts: {
         appointmentId: string;
@@ -4970,6 +5219,20 @@ export const beautyService = {
             if (merged.length > parts.length) {
                 out = await loadSales(merged);
             }
+        }
+        try {
+            const voided = await beautyService.syncVoidOrphanBeautySalesAfterCancelledErp(parts);
+            if (voided > 0) {
+                out = await loadSales(parts);
+                try {
+                    const { repairCariLedgerConsistency } = await import('./api/accountLedgerRepair');
+                    await repairCariLedgerConsistency();
+                } catch (e) {
+                    console.warn('[beautyService] orphan void sonrası cari onarım:', e);
+                }
+            }
+        } catch (e) {
+            console.warn('[beautyService] getSalesByCustomer orphan sync:', e);
         }
         return beautyService.enrichSalesWithLinkedAppointments(out);
     },

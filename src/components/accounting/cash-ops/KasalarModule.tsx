@@ -42,6 +42,7 @@ import {
   deleteKasa,
   deleteKasaIslemi,
   fetchCashBreakdown,
+  formatKasaCariLabel,
   type Kasa,
   type KasaIslemi,
   type KasaIslemTipi,
@@ -558,22 +559,68 @@ export function KasalarModule({ initialKasaId, onBack }: Props) {
       </div>
 
       {/* Grid Content */}
-      <div className="flex-1 overflow-hidden p-4">
-        <div className="h-full bg-white rounded-xl shadow-sm border border-gray-200 overflow-hidden flex flex-col">
+      <div className="flex-1 overflow-hidden p-4 flex gap-4 min-h-0">
+        <div className="flex-1 min-w-0 bg-white rounded-xl shadow-sm border border-gray-200 overflow-hidden flex flex-col">
           <div className="flex-1 overflow-auto">
             <KasaIslemleriTable
               islemler={filteredTransactions}
               loading={loading}
+              onRowClick={(islem) => {
+                setSelectedId(islem.id || null);
+                setSelectedIslem(islem);
+              }}
               onRowDoubleClick={(islem) => {
+                setSelectedId(islem.id || null);
                 setSelectedIslem(islem);
                 setShowIslemDetayModal(true);
               }}
               onRowContextMenu={(e, islem) => handleRowContextMenu(e, islem)}
-              onSelectionChange={(id) => setSelectedId(id)}
+              onSelectionChange={(id) => {
+                setSelectedId(id);
+                if (!id) setSelectedIslem(null);
+                else {
+                  const hit = filteredTransactions.find((x) => x.id === id) || null;
+                  if (hit) setSelectedIslem(hit);
+                }
+              }}
               selectedId={selectedId}
             />
           </div>
         </div>
+
+        {/* Seçili satır cari özeti */}
+        <aside className="w-64 shrink-0 bg-white rounded-xl shadow-sm border border-gray-200 p-4 flex flex-col gap-3 overflow-y-auto">
+          <h3 className="text-xs font-bold uppercase tracking-wider text-gray-500">{tm('currentAccountInfo') || 'Cari Özeti'}</h3>
+          {selectedIslem && selectedId ? (
+            <>
+              <div>
+                <div className="text-[11px] text-gray-400 mb-0.5">{tm('ficheNo') || 'Fiş No'}</div>
+                <div className="font-mono text-sm font-semibold text-gray-900 truncate">{selectedIslem.islem_no || '-'}</div>
+              </div>
+              <div>
+                <div className="text-[11px] text-gray-400 mb-0.5">{tm('currentAccountTitle') || 'Cari Hesap'}</div>
+                <div className="text-sm font-medium text-gray-900 break-words">
+                  {formatKasaCariLabel(selectedIslem) || '—'}
+                </div>
+                {selectedIslem.cari_hesap_kodu && (
+                  <div className="text-[11px] text-gray-500 font-mono mt-0.5">{selectedIslem.cari_hesap_kodu}</div>
+                )}
+              </div>
+              <div>
+                <div className="text-[11px] text-gray-400 mb-0.5">{tm('description') || 'Açıklama'}</div>
+                <div className="text-xs text-gray-700 break-words">{selectedIslem.islem_aciklamasi || '—'}</div>
+              </div>
+              <div>
+                <div className="text-[11px] text-gray-400 mb-0.5">{tm('amount') || 'Tutar'}</div>
+                <div className="text-sm font-bold text-gray-900">{formatCurrency(selectedIslem.tutar || 0)}</div>
+              </div>
+            </>
+          ) : (
+            <p className="text-xs text-gray-400 leading-relaxed">
+              Satır seçince cari kodu ve unvan burada görünür.
+            </p>
+          )}
+        </aside>
       </div>
 
       {/* Bottom Status Bar */}
@@ -620,10 +667,39 @@ export function KasalarModule({ initialKasaId, onBack }: Props) {
           islem={selectedIslem}
           onClose={() => {
             setShowIslemDetayModal(false);
-            setSelectedIslem(null);
+          }}
+          onEdit={() => {
+            setShowIslemDetayModal(false);
+            handleEditIslem(selectedIslem);
+          }}
+          onRefresh={() => {
+            if (selectedKasa?.id) loadKasaIslemleri(selectedKasa.id);
           }}
           onIslemClick={(islemType) => {
-            console.log('Processed selected:', islemType);
+            if (islemType === 'guncelle') {
+              setShowIslemDetayModal(false);
+              handleEditIslem(selectedIslem);
+            } else if (islemType === 'kayit_bilgisi') {
+              toast.info(
+                [
+                  selectedIslem.islem_no || '-',
+                  formatKasaCariLabel(selectedIslem) || 'Cari yok',
+                  selectedIslem.id || '',
+                ].filter(Boolean).join(' · '),
+              );
+            } else if (islemType === 'ekstre' || islemType === 'hesap_ozeti') {
+              if (!selectedIslem.cari_hesap_id) {
+                toast.warning(tm('noCurrentAccount') || 'Bu işlemde cari hesap yok');
+                return;
+              }
+              toast.info(
+                `${formatKasaCariLabel(selectedIslem) || selectedIslem.cari_hesap_id} — ${tm('cariHesapOzeti') || 'Cari özeti'}`,
+              );
+            } else if (islemType === 'ondegerlere_don') {
+              setSelectedId(null);
+              setSelectedIslem(null);
+              setShowIslemDetayModal(false);
+            }
           }}
         />
       )}
@@ -776,6 +852,7 @@ export function KasalarModule({ initialKasaId, onBack }: Props) {
 interface KasaIslemleriTableProps {
   islemler: KasaIslemi[];
   loading: boolean;
+  onRowClick?: (islem: KasaIslemi) => void;
   onRowDoubleClick?: (islem: KasaIslemi) => void;
   onRowContextMenu?: (e: React.MouseEvent, islem: KasaIslemi) => void;
   onSelectionChange?: (id: string | null) => void;
@@ -785,6 +862,7 @@ interface KasaIslemleriTableProps {
 function KasaIslemleriTable({
   islemler,
   loading,
+  onRowClick,
   onRowDoubleClick,
   onRowContextMenu,
   onSelectionChange,
@@ -855,9 +933,22 @@ function KasaIslemleriTable({
       },
       size: 160,
     }),
-    columnHelper.accessor('cari_hesap_unvani', {
+    columnHelper.accessor((row) => formatKasaCariLabel(row), {
+      id: 'cari_hesap',
       header: tm('currentAccountTitle'),
-      cell: info => <span className="font-medium text-gray-900">{info.getValue() || '-'}</span>,
+      cell: (info) => {
+        const row = info.row.original;
+        const label = formatKasaCariLabel(row);
+        if (!label) return <span className="text-gray-400">-</span>;
+        return (
+          <div className="min-w-0">
+            <div className="font-medium text-gray-900 truncate">{row.cari_hesap_unvani || label}</div>
+            {row.cari_hesap_kodu ? (
+              <div className="text-[11px] text-gray-500 font-mono truncate">{row.cari_hesap_kodu}</div>
+            ) : null}
+          </div>
+        );
+      },
       size: 200,
     }),
     columnHelper.accessor('islem_aciklamasi', {
@@ -922,8 +1013,13 @@ function KasaIslemleriTable({
       enableFiltering
       enablePagination
       pageSize={20}
+      onRowClick={(row) => {
+        onRowClick?.(row as KasaIslemi);
+        onSelectionChange?.((row as KasaIslemi).id || null);
+      }}
       onRowDoubleClick={onRowDoubleClick}
       onRowContextMenu={onRowContextMenu}
+      selectedRowIds={selectedId ? { [selectedId]: true } : undefined}
     />
   );
 }

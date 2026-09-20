@@ -1,6 +1,6 @@
 import { useState, useMemo } from 'react';
 import { X, TrendingUp, TrendingDown, Plus, Minus, Wallet, FileText, ArrowRightLeft } from 'lucide-react';
-import { Kasa, KasaIslemi } from '../../../services/api/kasa';
+import { Kasa, KasaIslemi, formatKasaCariLabel } from '../../../services/api/kasa';
 import { formatCurrency } from '../../../utils/formatNumber';
 import { DevExDataGrid } from '../../shared/DevExDataGrid';
 import { createColumnHelper } from '@tanstack/react-table';
@@ -82,8 +82,26 @@ export function KasaIslemleriModal({ kasa, islemler, loading, onClose, onIslemCl
       header: tm('transactionNo').toUpperCase(),
       size: 120,
     }),
+    columnHelper.accessor((row) => formatKasaCariLabel(row), {
+      id: 'cari_hesap',
+      header: (tm('currentAccountTitle') || 'Cari').toUpperCase(),
+      cell: (info) => {
+        const row = info.row.original;
+        const label = formatKasaCariLabel(row);
+        if (!label) return '-';
+        return (
+          <div className="min-w-0">
+            <div className="font-medium truncate">{row.cari_hesap_unvani || label}</div>
+            {row.cari_hesap_kodu ? (
+              <div className="text-[11px] text-gray-500 font-mono truncate">{row.cari_hesap_kodu}</div>
+            ) : null}
+          </div>
+        );
+      },
+      size: 160,
+    }),
     columnHelper.accessor('islem_aciklamasi', {
-      header: (t.description + '/' + tm('title')).toUpperCase(),
+      header: t.description.toUpperCase(),
       cell: info => {
         const val = info.getValue();
         const row = info.row.original;
@@ -92,7 +110,7 @@ export function KasaIslemleriModal({ kasa, islemler, loading, onClose, onIslemCl
         }
         return val || '-';
       },
-      size: 150,
+      size: 180,
     }),
     columnHelper.accessor('tutar', {
       header: t.amount.toUpperCase(),
@@ -100,10 +118,6 @@ export function KasaIslemleriModal({ kasa, islemler, loading, onClose, onIslemCl
         const tutar = info.getValue();
         return formatCurrency(tutar) + ' ' + kasa.id_doviz_kodu;
       },
-      size: 120,
-    }),
-    columnHelper.accessor('islem_no', {
-      header: (tm('voucher') + '/' + tm('transactionNo')).toUpperCase(),
       size: 120,
     }),
   ];

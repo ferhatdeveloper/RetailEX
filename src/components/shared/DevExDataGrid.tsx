@@ -40,9 +40,11 @@ import { ColumnVisibilityMenu } from './ColumnVisibilityMenu';
 import { exportDataGridToExcel, printDataGridHtml } from '../../utils/gridExcelExport';
 import { ActiveFiltersBar, filterOperatorI18nKey, type ActiveFilterChip } from './ActiveFiltersBar';
 import { GRID_POPOVER_Z } from './FullscreenBodyPortal';
+import { resolveReportDateRange, type ReportDatePreset } from '../../utils/reportDatePresets';
 import {
   coerceReportNumber,
   formatReportFooterSum,
+  isDevExCompactNumericColumn,
   isReportCodeColumnId,
   isReportSumColumnId,
   reportDisplayCode,
@@ -368,6 +370,10 @@ interface FilterMenuProps {
   onClose: () => void;
 }
 
+type DateFilterPreset = Extract<ReportDatePreset, 'today' | 'week' | 'month' | 'lastMonth'>;
+
+type DateCompareMode = 'equals' | 'before' | 'after' | 'range';
+
 type GridFilterPayload =
   | string
   | {
@@ -379,7 +385,27 @@ type GridFilterPayload =
       /** Tarih aralığında saat sınırı kullan */
       includeTime?: boolean;
       values?: string[];
+      /** Tarih filtresi — sayısal/metin equals ile çakışmayı önler */
+      kind?: 'date';
+      /** Hızlı dönem kısayolu (chip etiketi) */
+      preset?: DateFilterPreset;
     };
+
+const DATE_COMPARE_MODES = new Set<string>(['equals', 'before', 'after', 'range']);
+
+const DATE_PRESET_I18N: Record<DateFilterPreset, string> = {
+  today: 'bCallBoardToday',
+  week: 'bCallBoardWeek',
+  month: 'bCallBoardMonth',
+  lastMonth: 'reportDatePresetLastMonth',
+};
+
+function isDateKindFilterPayload(payload: Exclude<GridFilterPayload, string>): boolean {
+  if (payload.kind === 'date') return true;
+  if (payload.preset) return true;
+  const mode = payload.mode ?? payload.operator;
+  return mode === 'range' || mode === 'before' || mode === 'after';
+}
 
 const EMPTY_FILTER_KEY = '__EMPTY__';
 
@@ -393,11 +419,17 @@ const BOOL_FILTER_COLUMNS = new Set(['hasVariants', 'isScaleProduct']);
 function formatFilterChipValue(payload: GridFilterPayload | undefined): string {
   if (payload == null || payload === '') return '';
   if (typeof payload === 'string') return payload;
-  if (payload.mode === 'range') {
+  if (payload.preset && DATE_PRESET_I18N[payload.preset]) {
+    return payload.preset;
+  }
+  if (payload.mode === 'range' || payload.mode === 'between') {
     const from = String(payload.from ?? '').trim();
     const to = String(payload.to ?? '').trim();
     if (from && to) return `${from} – ${to}`;
     return from || to;
+  }
+  if (payload.mode === 'before' || payload.mode === 'after' || (payload.mode === 'equals' && payload.kind === 'date')) {
+    return String(payload.value ?? payload.from ?? payload.to ?? '').trim();
   }
   if (payload.mode === 'multiselect') {
     return (payload.values ?? []).filter((v) => v && v !== EMPTY_FILTER_KEY).join(', ');
@@ -426,8 +458,14 @@ function gridFilterChipValueLabel(
 ): string {
   if (payload == null || payload === '') return '';
   if (typeof payload === 'string') return payload;
-  if (payload.mode === 'range') {
+  if (payload.preset && DATE_PRESET_I18N[payload.preset]) {
+    return tm(DATE_PRESET_I18N[payload.preset]);
+  }
+  if (payload.mode === 'range' || payload.mode === 'between') {
     return formatFilterChipValue(payload);
+  }
+  if (payload.mode === 'before' || payload.mode === 'after' || (payload.mode === 'equals' && payload.kind === 'date')) {
+    return String(payload.value ?? payload.from ?? payload.to ?? '').trim();
   }
   if (payload.mode === 'multiselect') {
     const values = payload.values ?? [];
@@ -446,7 +484,14 @@ function isGridFilterActive(payload: unknown): boolean {
   if (typeof payload === 'string') return payload.trim() !== '';
   const p = payload as GridFilterPayload;
   if (typeof p !== 'object') return false;
-  if (p.mode === 'range') return !!(p.from || p.to);
+  if (p.preset) return true;
+  if (p.mode === 'range' || p.mode === 'between') return !!(p.from || p.to);
+  if (p.mode === 'before' || p.mode === 'after') {
+    return String(p.value ?? p.from ?? p.to ?? '').trim() !== '';
+  }
+  if (p.mode === 'equals' && p.kind === 'date') {
+    return String(p.value ?? p.from ?? '').trim() !== '';
+  }
   if (p.mode === 'multiselect') return Array.isArray(p.values);
   return String(p.value ?? '').trim() !== '';
 }
@@ -493,8 +538,48 @@ const DATE_FILTER_COLUMN_IDS = new Set(['created_at', 'updated_at', 'expiry_date
 
 function isDateFilterColumn(columnId: string, column: Column<any, unknown>): boolean {
   if (DATE_FILTER_COLUMN_IDS.has(columnId)) return true;
-  const meta = column.columnDef.meta as { filterKind?: string; format?: string } | undefined;
-  return meta?.filterKind === 'date' || meta?.format === 'date';
+  const meta = column.columnDef.meta as { filterKind?: string; format?: string; type?: string } | undefined;
+  return meta?.filterKind === 'date' || meta?.format === 'date' || meta?.type === 'date';
+}
+
+const NUMBER_COMPARE_MODES = new Set([
+  'equals',
+  'notEquals',
+  'gt',
+  'gte',
+  'lt',
+  'lte',
+  'between',
+]);
+
+type NumberCompareMode = 'equals' | 'notEquals' | 'gt' | 'gte' | 'lt' | 'lte' | 'between';
+
+function isNumberFilterColumn(columnId: string, column: Column<any, unknown>): boolean {
+  if (isDateFilterColumn(columnId, column)) return false;
+  const meta = readGridColumnMeta(column);
+  if (meta.filterKind === 'number' || meta.format === 'number' || meta.format === 'currency') return true;
+  if (meta.type === 'number' || meta.type === 'currency') return true;
+  return isDevExCompactNumericColumn(columnId, meta);
+}
+
+/** Filtre değeri / hücre → sayı; boş veya geçersiz → null */
+function parseFilterNumber(value: unknown): number | null {
+  if (value == null || value === '' || value === EMPTY_FILTER_KEY) return null;
+  if (typeof value === 'number') return Number.isFinite(value) ? value : null;
+  const raw = String(value).trim();
+  if (!raw) return null;
+  // Saf sayısal girdi (karşılaştırma operatörleri); metin içinde gömülü rakamları yok say
+  if (!/^-?\d+([.,]\d+)?$/.test(raw) && typeof value !== 'number') {
+    // Para birimi / binlik ayırıcılı: 1.234,56 veya 1,234.56
+    if (!/^-?[\d.,]+$/.test(raw)) return null;
+  }
+  const n = coerceReportNumber(raw);
+  if (n === 0 && !/[0-9]/.test(raw.replace(/[^\d]/g, ''))) return null;
+  return Number.isFinite(n) ? n : null;
+}
+
+function bothNumericComparable(a: unknown, b: unknown): boolean {
+  return parseFilterNumber(a) != null && parseFilterNumber(b) != null;
 }
 
 function splitDateTimeInput(raw?: string): { date: string; time: string } {
@@ -551,16 +636,53 @@ export const gridColumnFilterFn: FilterFn<any> = (row, columnId, filterValue) =>
   const mode = payload.mode ?? payload.operator ?? 'contains';
   const cellRaw = row.getValue(columnId);
 
-  if (mode === 'range') {
+  // Tarih filtreleri (kind:date / range / before / after) — sayısal between'den önce
+  if (isDateKindFilterPayload(payload) && (DATE_COMPARE_MODES.has(mode) || mode === 'range')) {
     const includeTime = !!payload.includeTime;
-    const fromMs = payload.from ? parseRangeBoundMs(payload.from, 'start', includeTime) : null;
-    const toMs = payload.to ? parseRangeBoundMs(payload.to, 'end', includeTime) : null;
-    if (fromMs == null && toMs == null) return true;
     const cellMs = parseCellDate(cellRaw);
     if (cellMs == null) return false;
-    if (fromMs != null && cellMs < fromMs) return false;
-    if (toMs != null && cellMs > toMs) return false;
-    return true;
+
+    if (mode === 'range') {
+      const fromMs = payload.from ? parseRangeBoundMs(payload.from, 'start', includeTime) : null;
+      const toMs = payload.to ? parseRangeBoundMs(payload.to, 'end', includeTime) : null;
+      if (fromMs == null && toMs == null) return true;
+      if (fromMs != null && cellMs < fromMs) return false;
+      if (toMs != null && cellMs > toMs) return false;
+      return true;
+    }
+
+    if (mode === 'equals') {
+      const raw = String(payload.value ?? payload.from ?? '').trim();
+      if (!raw) return true;
+      const dayStart = parseRangeBoundMs(raw, 'start', includeTime);
+      const dayEnd = parseRangeBoundMs(raw, 'end', includeTime);
+      if (dayStart == null) return true;
+      if (includeTime) {
+        // Aynı dakika: saniye/ms farkını yok say
+        const minute = 60_000;
+        return Math.floor(cellMs / minute) === Math.floor(dayStart / minute);
+      }
+      if (dayEnd == null) return cellMs >= dayStart;
+      return cellMs >= dayStart && cellMs <= dayEnd;
+    }
+
+    if (mode === 'before') {
+      const raw = String(payload.value ?? payload.to ?? '').trim();
+      if (!raw) return true;
+      // Tarih-only: o günün başlangıcından önce; saat dahil: verilen andan önce
+      const bound = parseRangeBoundMs(raw, 'start', includeTime);
+      if (bound == null) return true;
+      return cellMs < bound;
+    }
+
+    if (mode === 'after') {
+      const raw = String(payload.value ?? payload.from ?? '').trim();
+      if (!raw) return true;
+      // Tarih-only: o günün bitişinden sonra; saat dahil: verilen andan sonra
+      const bound = parseRangeBoundMs(raw, 'end', includeTime);
+      if (bound == null) return true;
+      return cellMs > bound;
+    }
   }
 
   if (mode === 'multiselect') {
@@ -570,6 +692,48 @@ export const gridColumnFilterFn: FilterFn<any> = (row, columnId, filterValue) =>
     return values.includes(cellStr);
   }
 
+  if (mode === 'between' || (NUMBER_COMPARE_MODES.has(mode) && mode !== 'equals' && mode !== 'notEquals')) {
+    const cellNum = parseFilterNumber(cellRaw);
+    if (cellNum == null) return false;
+
+    if (mode === 'between') {
+      const fromNum = payload.from != null && String(payload.from).trim() !== '' ? parseFilterNumber(payload.from) : null;
+      const toNum = payload.to != null && String(payload.to).trim() !== '' ? parseFilterNumber(payload.to) : null;
+      if (fromNum == null && toNum == null) return true;
+      if (fromNum != null && cellNum < fromNum) return false;
+      if (toNum != null && cellNum > toNum) return false;
+      return true;
+    }
+
+    const cmp = parseFilterNumber(payload.value);
+    if (cmp == null) return true;
+    switch (mode) {
+      case 'gt':
+        return cellNum > cmp;
+      case 'gte':
+        return cellNum >= cmp;
+      case 'lt':
+        return cellNum < cmp;
+      case 'lte':
+        return cellNum <= cmp;
+      default:
+        break;
+    }
+  }
+
+  if (mode === 'equals' || mode === 'notEquals') {
+    if (bothNumericComparable(cellRaw, payload.value)) {
+      const eq = parseFilterNumber(cellRaw)! === parseFilterNumber(payload.value)!;
+      return mode === 'equals' ? eq : !eq;
+    }
+    if (mode === 'notEquals') {
+      const searchValue = String(payload.value ?? '').toLowerCase();
+      if (!searchValue) return true;
+      return String(cellRaw ?? '').toLowerCase() !== searchValue;
+    }
+    // equals: metin karşılaştırmasına düş
+  }
+
   const searchValue = String(payload.value ?? '').toLowerCase();
   if (!searchValue) return true;
   const cellValue = String(cellRaw ?? '').toLowerCase();
@@ -577,6 +741,8 @@ export const gridColumnFilterFn: FilterFn<any> = (row, columnId, filterValue) =>
   switch (mode) {
     case 'equals':
       return cellValue === searchValue;
+    case 'notEquals':
+      return cellValue !== searchValue;
     case 'startsWith':
       return cellValue.startsWith(searchValue);
     case 'endsWith':
@@ -592,25 +758,80 @@ export const gridColumnFilterFn: FilterFn<any> = (row, columnId, filterValue) =>
 function DateRangeFilterMenu({ column, onClose }: FilterMenuProps) {
   const { tm } = useLanguage();
   const existing = column.getFilterValue() as GridFilterPayload | undefined;
-  const existingRange =
-    existing && typeof existing === 'object' && existing.mode === 'range' ? existing : undefined;
+  const existingDate =
+    existing && typeof existing === 'object' && isDateKindFilterPayload(existing) ? existing : undefined;
 
-  const initFrom = splitDateTimeInput(existingRange?.from);
-  const initTo = splitDateTimeInput(existingRange?.to);
+  const initMode: DateCompareMode = (() => {
+    const m = existingDate?.mode;
+    if (m === 'equals' || m === 'before' || m === 'after' || m === 'range') return m;
+    return 'range';
+  })();
 
-  const [includeTime, setIncludeTime] = useState(!!existingRange?.includeTime);
+  const initSingle =
+    initMode === 'equals' || initMode === 'before' || initMode === 'after'
+      ? splitDateTimeInput(String(existingDate?.value ?? existingDate?.from ?? existingDate?.to ?? ''))
+      : { date: '', time: '' };
+  const initFrom = splitDateTimeInput(existingDate?.from);
+  const initTo = splitDateTimeInput(existingDate?.to);
+
+  const [dateMode, setDateMode] = useState<DateCompareMode>(initMode);
+  const [includeTime, setIncludeTime] = useState(!!existingDate?.includeTime);
+  const [activePreset, setActivePreset] = useState<DateFilterPreset | null>(existingDate?.preset ?? null);
+  const [singleDate, setSingleDate] = useState(initSingle.date);
+  const [singleTime, setSingleTime] = useState(initSingle.time || (initMode === 'after' ? '00:00' : '23:59'));
   const [fromDate, setFromDate] = useState(initFrom.date);
   const [fromTime, setFromTime] = useState(initFrom.time || '00:00');
   const [toDate, setToDate] = useState(initTo.date);
   const [toTime, setToTime] = useState(initTo.time || '23:59');
 
+  const applyPreset = (preset: DateFilterPreset) => {
+    const { from, to } = resolveReportDateRange(preset);
+    setDateMode('range');
+    setActivePreset(preset);
+    setIncludeTime(false);
+    setFromDate(from);
+    setToDate(to);
+    setFromTime('00:00');
+    setToTime('23:59');
+    column.setFilterValue({
+      kind: 'date',
+      mode: 'range',
+      from,
+      to,
+      includeTime: false,
+      preset,
+    });
+    onClose();
+  };
+
   const handleApply = () => {
-    const from = combineDateTimeInput(fromDate, fromTime, includeTime, 'start');
-    const to = combineDateTimeInput(toDate, toTime, includeTime, 'end');
-    if (!from && !to) {
-      column.setFilterValue(undefined);
+    if (dateMode === 'range') {
+      const from = combineDateTimeInput(fromDate, fromTime, includeTime, 'start');
+      const to = combineDateTimeInput(toDate, toTime, includeTime, 'end');
+      if (!from && !to) {
+        column.setFilterValue(undefined);
+      } else {
+        column.setFilterValue({
+          kind: 'date',
+          mode: 'range',
+          from,
+          to,
+          includeTime,
+          preset: activePreset ?? undefined,
+        });
+      }
     } else {
-      column.setFilterValue({ mode: 'range', from, to, includeTime });
+      const value = combineDateTimeInput(singleDate, singleTime, includeTime, 'start');
+      if (!value) {
+        column.setFilterValue(undefined);
+      } else {
+        column.setFilterValue({
+          kind: 'date',
+          mode: dateMode,
+          value,
+          includeTime,
+        });
+      }
     }
     onClose();
   };
@@ -620,61 +841,153 @@ function DateRangeFilterMenu({ column, onClose }: FilterMenuProps) {
     onClose();
   };
 
+  const onModeChange = (next: DateCompareMode) => {
+    setDateMode(next);
+    setActivePreset(null);
+  };
+
+  const presetButtons: Array<{ id: DateFilterPreset; labelKey: string }> = [
+    { id: 'today', labelKey: DATE_PRESET_I18N.today },
+    { id: 'week', labelKey: DATE_PRESET_I18N.week },
+    { id: 'month', labelKey: DATE_PRESET_I18N.month },
+    { id: 'lastMonth', labelKey: DATE_PRESET_I18N.lastMonth },
+  ];
+
   return (
     <div
       className="bg-white border border-gray-300 rounded shadow-xl w-[300px] flex flex-col overflow-hidden"
       onClick={(e) => e.stopPropagation()}
     >
       <div className="shrink-0 px-2 py-1.5 border-b border-gray-200 bg-[#E3F2FD]">
-        <span className="text-[10px] font-semibold text-gray-700">{tm('gridFilterDateRange')}</span>
+        <span className="text-[10px] font-semibold text-gray-700">{tm('gridFilterDateFilter')}</span>
       </div>
 
       <div className="p-3 space-y-3">
+        <div className="space-y-1">
+          <span className="text-[10px] font-semibold text-gray-600 uppercase">{tm('gridFilterDatePresets')}</span>
+          <div className="flex flex-wrap gap-1">
+            {presetButtons.map((btn) => (
+              <button
+                key={btn.id}
+                type="button"
+                onClick={() => applyPreset(btn.id)}
+                className={`px-2 py-1 rounded text-[10px] font-semibold transition-colors ${
+                  activePreset === btn.id
+                    ? 'bg-blue-600 text-white'
+                    : 'bg-white text-slate-600 border border-slate-200 hover:bg-slate-50'
+                }`}
+              >
+                {tm(btn.labelKey)}
+              </button>
+            ))}
+          </div>
+        </div>
+
+        <select
+          value={dateMode}
+          onChange={(e) => onModeChange(e.target.value as DateCompareMode)}
+          className="w-full px-2 py-1.5 text-[11px] border border-gray-300 rounded bg-white focus:outline-none focus:ring-1 focus:ring-blue-500"
+        >
+          <option value="equals">{tm('reportColumnFiltersOpEquals')}</option>
+          <option value="before">{tm('reportColumnFiltersOpBefore')}</option>
+          <option value="after">{tm('reportColumnFiltersOpAfter')}</option>
+          <option value="range">{tm('reportColumnFiltersOpBetween')}</option>
+        </select>
+
         <label className="flex items-center gap-2 text-[11px] text-gray-700 cursor-pointer">
           <input
             type="checkbox"
             checked={includeTime}
-            onChange={(e) => setIncludeTime(e.target.checked)}
+            onChange={(e) => {
+              setIncludeTime(e.target.checked);
+              setActivePreset(null);
+            }}
             className="w-3.5 h-3.5 shrink-0"
           />
           <span>{tm('gridFilterIncludeTime')}</span>
         </label>
 
-        <div className="space-y-1.5">
-          <span className="text-[10px] font-semibold text-gray-600 uppercase">{tm('dateFrom')}</span>
-          <input
-            type="date"
-            value={fromDate}
-            onChange={(e) => setFromDate(e.target.value)}
-            className="w-full px-2 py-1.5 text-[11px] border border-gray-300 rounded focus:outline-none focus:ring-1 focus:ring-blue-500"
-          />
-          {includeTime && (
-            <input
-              type="time"
-              value={fromTime}
-              onChange={(e) => setFromTime(e.target.value)}
-              className="w-full px-2 py-1.5 text-[11px] border border-gray-300 rounded focus:outline-none focus:ring-1 focus:ring-blue-500"
-            />
-          )}
-        </div>
+        {dateMode === 'range' ? (
+          <>
+            <div className="space-y-1.5">
+              <span className="text-[10px] font-semibold text-gray-600 uppercase">{tm('dateFrom')}</span>
+              <input
+                type="date"
+                value={fromDate}
+                onChange={(e) => {
+                  setFromDate(e.target.value);
+                  setActivePreset(null);
+                }}
+                className="w-full px-2 py-1.5 text-[11px] border border-gray-300 rounded focus:outline-none focus:ring-1 focus:ring-blue-500"
+              />
+              {includeTime && (
+                <input
+                  type="time"
+                  value={fromTime}
+                  onChange={(e) => {
+                    setFromTime(e.target.value);
+                    setActivePreset(null);
+                  }}
+                  className="w-full px-2 py-1.5 text-[11px] border border-gray-300 rounded focus:outline-none focus:ring-1 focus:ring-blue-500"
+                />
+              )}
+            </div>
 
-        <div className="space-y-1.5">
-          <span className="text-[10px] font-semibold text-gray-600 uppercase">{tm('dateTo')}</span>
-          <input
-            type="date"
-            value={toDate}
-            onChange={(e) => setToDate(e.target.value)}
-            className="w-full px-2 py-1.5 text-[11px] border border-gray-300 rounded focus:outline-none focus:ring-1 focus:ring-blue-500"
-          />
-          {includeTime && (
+            <div className="space-y-1.5">
+              <span className="text-[10px] font-semibold text-gray-600 uppercase">{tm('dateTo')}</span>
+              <input
+                type="date"
+                value={toDate}
+                onChange={(e) => {
+                  setToDate(e.target.value);
+                  setActivePreset(null);
+                }}
+                className="w-full px-2 py-1.5 text-[11px] border border-gray-300 rounded focus:outline-none focus:ring-1 focus:ring-blue-500"
+              />
+              {includeTime && (
+                <input
+                  type="time"
+                  value={toTime}
+                  onChange={(e) => {
+                    setToTime(e.target.value);
+                    setActivePreset(null);
+                  }}
+                  className="w-full px-2 py-1.5 text-[11px] border border-gray-300 rounded focus:outline-none focus:ring-1 focus:ring-blue-500"
+                />
+              )}
+            </div>
+          </>
+        ) : (
+          <div className="space-y-1.5">
+            <span className="text-[10px] font-semibold text-gray-600 uppercase">
+              {dateMode === 'before'
+                ? tm('reportColumnFiltersOpBefore')
+                : dateMode === 'after'
+                  ? tm('reportColumnFiltersOpAfter')
+                  : tm('reportColumnFiltersOpEquals')}
+            </span>
             <input
-              type="time"
-              value={toTime}
-              onChange={(e) => setToTime(e.target.value)}
+              type="date"
+              value={singleDate}
+              onChange={(e) => {
+                setSingleDate(e.target.value);
+                setActivePreset(null);
+              }}
               className="w-full px-2 py-1.5 text-[11px] border border-gray-300 rounded focus:outline-none focus:ring-1 focus:ring-blue-500"
             />
-          )}
-        </div>
+            {includeTime && (
+              <input
+                type="time"
+                value={singleTime}
+                onChange={(e) => {
+                  setSingleTime(e.target.value);
+                  setActivePreset(null);
+                }}
+                className="w-full px-2 py-1.5 text-[11px] border border-gray-300 rounded focus:outline-none focus:ring-1 focus:ring-blue-500"
+              />
+            )}
+          </div>
+        )}
 
         <p className="text-[10px] text-gray-500 leading-snug">{tm('gridFilterDateRangeHint')}</p>
       </div>
@@ -685,7 +998,7 @@ function DateRangeFilterMenu({ column, onClose }: FilterMenuProps) {
           onClick={handleApply}
           className="flex-1 px-2 py-1.5 text-[11px] bg-blue-600 text-white rounded hover:bg-blue-700 font-medium"
         >
-          {tm('apply')}
+          {tm('apply')} ({tm(filterOperatorI18nKey(dateMode))})
         </button>
         <button
           type="button"
@@ -705,6 +1018,7 @@ function ValueListFilterMenu({ column, onClose }: FilterMenuProps) {
   const sortLocale = localeCode.split('-')[0] || 'tr';
   const existing = column.getFilterValue() as GridFilterPayload | undefined;
   const columnId = column.id;
+  const isNumericColumn = isNumberFilterColumn(columnId, column);
 
   const valueEntries = useMemo(() => {
     const counts = new Map<string, number>();
@@ -731,23 +1045,51 @@ function ValueListFilterMenu({ column, onClose }: FilterMenuProps) {
         label: formatFilterLabel(key === EMPTY_FILTER_KEY ? null : key, columnId, tm, localeCode),
         count,
       }))
-      .sort((a, b) => a.label.localeCompare(b.label, sortLocale));
-  }, [column, columnId, tm, localeCode, sortLocale]);
+      .sort((a, b) => {
+        if (isNumericColumn) {
+          const na = parseFilterNumber(a.key === EMPTY_FILTER_KEY ? null : a.key);
+          const nb = parseFilterNumber(b.key === EMPTY_FILTER_KEY ? null : b.key);
+          if (na != null && nb != null) return na - nb;
+          if (na != null) return -1;
+          if (nb != null) return 1;
+        }
+        return a.label.localeCompare(b.label, sortLocale);
+      });
+  }, [column, columnId, tm, localeCode, sortLocale, isNumericColumn]);
 
   const allKeys = useMemo(() => valueEntries.map((e) => e.key), [valueEntries]);
 
+  const existingAdvancedMode =
+    existing && typeof existing === 'object' && existing.mode && existing.mode !== 'multiselect'
+      ? existing.mode
+      : null;
+
   const [listSearch, setListSearch] = useState('');
   const [selectedValues, setSelectedValues] = useState<string[]>([]);
-  const [showTextFilter, setShowTextFilter] = useState(
-    () => !!(existing && typeof existing === 'object' && existing.mode && existing.mode !== 'multiselect')
-  );
+  const [showAdvancedFilter, setShowAdvancedFilter] = useState(() => !!existingAdvancedMode);
   const [textMode, setTextMode] = useState<'contains' | 'equals' | 'startsWith' | 'endsWith'>(
-    existing && typeof existing === 'object' && existing.mode && existing.mode !== 'multiselect' && existing.mode !== 'range'
-      ? (existing.mode as 'contains' | 'equals' | 'startsWith' | 'endsWith')
+    existingAdvancedMode &&
+      (existingAdvancedMode === 'contains' ||
+        existingAdvancedMode === 'equals' ||
+        existingAdvancedMode === 'startsWith' ||
+        existingAdvancedMode === 'endsWith')
+      ? existingAdvancedMode
       : 'contains'
   );
+  const [numberMode, setNumberMode] = useState<NumberCompareMode>(() => {
+    if (existingAdvancedMode && NUMBER_COMPARE_MODES.has(existingAdvancedMode)) {
+      return existingAdvancedMode as NumberCompareMode;
+    }
+    return 'gte';
+  });
   const [textValue, setTextValue] = useState(
     existing && typeof existing === 'object' && existing.value ? String(existing.value) : ''
+  );
+  const [numberFrom, setNumberFrom] = useState(
+    existing && typeof existing === 'object' && existing.from != null ? String(existing.from) : ''
+  );
+  const [numberTo, setNumberTo] = useState(
+    existing && typeof existing === 'object' && existing.to != null ? String(existing.to) : ''
   );
 
   useEffect(() => {
@@ -796,8 +1138,22 @@ function ValueListFilterMenu({ column, onClose }: FilterMenuProps) {
     onClose();
   };
 
-  const handleApplyText = () => {
-    if (textValue.trim()) {
+  const handleApplyAdvanced = () => {
+    if (isNumericColumn) {
+      if (numberMode === 'between') {
+        const from = numberFrom.trim();
+        const to = numberTo.trim();
+        if (!from && !to) {
+          column.setFilterValue(undefined);
+        } else {
+          column.setFilterValue({ mode: 'between', from: from || undefined, to: to || undefined });
+        }
+      } else if (textValue.trim()) {
+        column.setFilterValue({ mode: numberMode, value: textValue.trim() });
+      } else {
+        column.setFilterValue(undefined);
+      }
+    } else if (textValue.trim()) {
       column.setFilterValue({ mode: textMode, value: textValue.trim() });
     } else {
       column.setFilterValue(undefined);
@@ -810,11 +1166,19 @@ function ValueListFilterMenu({ column, onClose }: FilterMenuProps) {
     setSelectedValues(allKeys);
     setListSearch('');
     setTextValue('');
+    setNumberFrom('');
+    setNumberTo('');
     onClose();
   };
 
   const FILTER_MENU_HEIGHT = 440;
-  const filterListHeight = showTextFilter ? 120 : 220;
+  const filterListHeight = showAdvancedFilter ? 120 : 220;
+  const advancedToggleLabel = isNumericColumn
+    ? tm('gridFilterNumberFilter')
+    : tm('gridFilterTextFilter');
+  const applyAdvancedOpLabel = isNumericColumn
+    ? tm(filterOperatorI18nKey(numberMode))
+    : tm(textMode);
 
   return (
     <div
@@ -883,37 +1247,86 @@ function ValueListFilterMenu({ column, onClose }: FilterMenuProps) {
       <div className="shrink-0 p-2 space-y-2 bg-gray-50/80">
         <button
           type="button"
-          onClick={() => setShowTextFilter((v) => !v)}
+          onClick={() => setShowAdvancedFilter((v) => !v)}
           className="text-[10px] text-blue-600 hover:underline"
         >
-          {showTextFilter ? `▾ ${tm('gridFilterValueList')}` : `▸ ${tm('gridFilterTextFilter')}`}
+          {showAdvancedFilter ? `▾ ${tm('gridFilterValueList')}` : `▸ ${advancedToggleLabel}`}
         </button>
 
-        {showTextFilter && (
+        {showAdvancedFilter && (
           <div className="space-y-2 pt-1 border-t border-gray-200">
-            <select
-              value={textMode}
-              onChange={(e) => setTextMode(e.target.value as typeof textMode)}
-              className="w-full px-2 py-1 text-[10px] border border-gray-300 rounded bg-white"
-            >
-              <option value="contains">{tm('contains')}</option>
-              <option value="equals">{tm('equals')}</option>
-              <option value="startsWith">{tm('startsWith')}</option>
-              <option value="endsWith">{tm('endsWith')}</option>
-            </select>
-            <input
-              type="text"
-              value={textValue}
-              onChange={(e) => setTextValue(e.target.value)}
-              placeholder={tm('value')}
-              className="w-full px-2 py-1 text-[10px] border border-gray-300 rounded bg-white"
-            />
+            {isNumericColumn ? (
+              <>
+                <select
+                  value={numberMode}
+                  onChange={(e) => setNumberMode(e.target.value as NumberCompareMode)}
+                  className="w-full px-2 py-1 text-[10px] border border-gray-300 rounded bg-white"
+                >
+                  <option value="equals">{tm('reportColumnFiltersOpEquals')}</option>
+                  <option value="notEquals">{tm('reportColumnFiltersOpNotEquals')}</option>
+                  <option value="gt">{tm('reportColumnFiltersOpGt')}</option>
+                  <option value="gte">{tm('reportColumnFiltersOpGte')}</option>
+                  <option value="lt">{tm('reportColumnFiltersOpLt')}</option>
+                  <option value="lte">{tm('reportColumnFiltersOpLte')}</option>
+                  <option value="between">{tm('reportColumnFiltersOpBetween')}</option>
+                </select>
+                {numberMode === 'between' ? (
+                  <div className="flex gap-1">
+                    <input
+                      type="number"
+                      inputMode="decimal"
+                      value={numberFrom}
+                      onChange={(e) => setNumberFrom(e.target.value)}
+                      placeholder={tm('dateFrom')}
+                      className="w-1/2 px-2 py-1 text-[10px] border border-gray-300 rounded bg-white"
+                    />
+                    <input
+                      type="number"
+                      inputMode="decimal"
+                      value={numberTo}
+                      onChange={(e) => setNumberTo(e.target.value)}
+                      placeholder={tm('dateTo')}
+                      className="w-1/2 px-2 py-1 text-[10px] border border-gray-300 rounded bg-white"
+                    />
+                  </div>
+                ) : (
+                  <input
+                    type="number"
+                    inputMode="decimal"
+                    value={textValue}
+                    onChange={(e) => setTextValue(e.target.value)}
+                    placeholder={tm('value')}
+                    className="w-full px-2 py-1 text-[10px] border border-gray-300 rounded bg-white"
+                  />
+                )}
+              </>
+            ) : (
+              <>
+                <select
+                  value={textMode}
+                  onChange={(e) => setTextMode(e.target.value as typeof textMode)}
+                  className="w-full px-2 py-1 text-[10px] border border-gray-300 rounded bg-white"
+                >
+                  <option value="contains">{tm('contains')}</option>
+                  <option value="equals">{tm('equals')}</option>
+                  <option value="startsWith">{tm('startsWith')}</option>
+                  <option value="endsWith">{tm('endsWith')}</option>
+                </select>
+                <input
+                  type="text"
+                  value={textValue}
+                  onChange={(e) => setTextValue(e.target.value)}
+                  placeholder={tm('value')}
+                  className="w-full px-2 py-1 text-[10px] border border-gray-300 rounded bg-white"
+                />
+              </>
+            )}
             <button
               type="button"
-              onClick={handleApplyText}
+              onClick={handleApplyAdvanced}
               className="w-full px-2 py-1 text-[10px] bg-gray-100 text-gray-700 rounded hover:bg-gray-200"
             >
-              {tm('apply')} ({tm('contains')})
+              {tm('apply')} ({applyAdvancedOpLabel})
             </button>
           </div>
         )}

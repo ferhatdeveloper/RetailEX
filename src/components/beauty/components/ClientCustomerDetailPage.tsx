@@ -31,7 +31,6 @@ import {
     HistoryOutlined,
     SolutionOutlined,
     CommentOutlined,
-    AccountBookOutlined,
     HeartOutlined,
     CheckCircleOutlined,
     StarOutlined,
@@ -43,6 +42,7 @@ import {
 import { useBeautyStore } from '../store/useBeautyStore';
 import { beautyService, type BeautyCustomerProfileQueryOpts } from '../../../services/beautyService';
 import { useLanguage } from '../../../contexts/LanguageContext';
+import { useFirmaDonem } from '../../../contexts/FirmaDonemContext';
 import { useBeautyTimeFormat } from '../../../hooks/useBeautyTimeFormat';
 import { formatBeautyTime } from '../../../utils/beautyTimeFormat';
 import { logger } from '../../../services/loggingService';
@@ -58,7 +58,7 @@ import type {
 import { formatMoneyAmount } from '../../../utils/formatMoney';
 import { beautySalePocketCollected, beautySaleRemainingCari } from '../../../utils/saleCollectedAmounts';
 import { fetchCurrentAccounts } from '../../../services/api/currentAccounts';
-import { ERP_SETTINGS } from '../../../services/postgres';
+import { ERP_SETTINGS, getAppDefaultCurrency } from '../../../services/postgres';
 import { toast } from 'sonner';
 import { User, Package } from 'lucide-react';
 import { RetailExFlatModal } from '../../shared/RetailExFlatModal';
@@ -73,6 +73,15 @@ import {
     RETAILEX_PRIMARY,
     RETAILEX_TEXT_PRIMARY,
 } from '../../../theme/retailexAntdTheme';
+
+/** Ant Design AccountBookOutlined üzerinde ¥ (yen/yuan) vardır — para birimi için kullanma. */
+function CurrencyBadge({ code, className }: { code: string; className?: string }) {
+    return (
+        <span className={`text-xs font-semibold tabular-nums tracking-wide ${className ?? ''}`.trim()}>
+            {code}
+        </span>
+    );
+}
 
 const EMPTY_FORM: Partial<BeautyCustomer> = { ...BEAUTY_CUSTOMER_EMPTY_FORM };
 
@@ -138,8 +147,13 @@ type UnifiedHistoryRow =
 export function ClientCustomerDetailPage({ customerId, onBack }: ClientCustomerDetailPageProps) {
     const { customers, packages, specialists, isLoading, loadCustomers, loadPackages, loadSpecialists, updateCustomer } = useBeautyStore();
     const { tm } = useLanguage();
+    const { selectedFirm } = useFirmaDonem();
     const { format: beautyTimeFormat } = useBeautyTimeFormat();
     const dateLocale = tm('localeCode');
+    const currency =
+        (selectedFirm?.ana_para_birimi && String(selectedFirm.ana_para_birimi).trim().toUpperCase()) ||
+        getAppDefaultCurrency() ||
+        'IQD';
     const [erpAccountsLoaded, setErpAccountsLoaded] = useState(false);
     const [showModal, setShowModal] = useState(false);
     const [editing, setEditing] = useState<Partial<BeautyCustomer>>(EMPTY_FORM);
@@ -481,6 +495,8 @@ export function ClientCustomerDetailPage({ customerId, onBack }: ClientCustomerD
             });
         }
         for (const s of salesHistory) {
+            const st = String(s.payment_status || 'paid').toLowerCase();
+            if (st === 'cancelled' || st === 'canceled' || st === 'void') continue;
             primaries.push({ key: `sale-${s.id}`, kind: 'sale', sortMs: saleSortMs(s), sale: s });
         }
         for (const p of customerPackages) {
@@ -590,14 +606,23 @@ export function ClientCustomerDetailPage({ customerId, onBack }: ClientCustomerD
     const showLoader = !selected && (isLoading || !erpAccountsLoaded);
     const showMissing = !selected && erpAccountsLoaded && !isLoading;
 
+    const activeSalesHistory = useMemo(
+        () =>
+            salesHistory.filter((s) => {
+                const st = String(s.payment_status || 'paid').toLowerCase();
+                return st !== 'cancelled' && st !== 'canceled' && st !== 'void';
+            }),
+        [salesHistory],
+    );
+
     const historyDataSummary = useMemo(
         () => ({
             appointments: pastAppointments.length,
-            sales: salesHistory.length,
+            sales: activeSalesHistory.length,
             packages: customerPackages.length,
             feedbacks: feedbacks.length,
         }),
-        [pastAppointments.length, salesHistory.length, customerPackages.length, feedbacks.length],
+        [pastAppointments.length, activeSalesHistory.length, customerPackages.length, feedbacks.length],
     );
 
     const suggestedHistoryCustomers = useMemo(() => {
@@ -1261,12 +1286,12 @@ export function ClientCustomerDetailPage({ customerId, onBack }: ClientCustomerD
                   key: 'payments',
                   label: (
                       <span>
-                          <AccountBookOutlined /> {tm('bTabPaymentHistory')}
+                          <HistoryOutlined /> {tm('bTabPaymentHistory')}
                       </span>
                   ),
                   children: (
                       <Card bordered className="!shadow-none" styles={{ body: { padding: 0 } }}>
-                          {!histLoading && salesHistory.length > 0 ? (
+                          {!histLoading && activeSalesHistory.length > 0 ? (
                               <div className="flex flex-wrap gap-4 border-b border-[#f0f0f0] px-3 py-2 text-sm">
                                   <Typography.Text type="secondary">
                                       {tm('bTotalSpent')}:{' '}
@@ -1292,7 +1317,7 @@ export function ClientCustomerDetailPage({ customerId, onBack }: ClientCustomerD
                               rowKey="id"
                               loading={histLoading}
                               columns={paymentColumns}
-                              dataSource={salesHistory}
+                              dataSource={activeSalesHistory}
                               scroll={{ x: 'max-content' }}
                               pagination={{ pageSize: 10, showSizeChanger: true }}
                               expandable={{
@@ -1557,7 +1582,8 @@ export function ClientCustomerDetailPage({ customerId, onBack }: ClientCustomerD
                                             key: 'balance',
                                             label: (
                                                 <Space>
-                                                    <AccountBookOutlined /> {tm('bBalance')}
+                                                    <CurrencyBadge code={currency} className="text-[#722ed1]" />
+                                                    {tm('bBalance')}
                                                 </Space>
                                             ),
                                             children: formatCurrency(selected.balance ?? 0),
@@ -1598,7 +1624,7 @@ export function ClientCustomerDetailPage({ customerId, onBack }: ClientCustomerD
                                             <Statistic
                                                 title={tm('bVeresiyeCariAll')}
                                                 value={formatCurrency(profileStats.veresiyeCari)}
-                                                prefix={<AccountBookOutlined className="text-orange-500" />}
+                                                prefix={<CurrencyBadge code={currency} className="text-orange-500" />}
                                             />
                                         </Card>
                                     </Col>

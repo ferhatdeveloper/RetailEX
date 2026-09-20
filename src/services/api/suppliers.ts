@@ -638,8 +638,9 @@ export const supplierAPI = {
         const cashPath = `/rex_${fn}_${pn}_cash_lines`;
 
         const salesByIdQuery: Record<string, string> = {
-          select: 'fiche_no,date,trcode,fiche_type,net_amount,currency,notes,is_cancelled,customer_id,customer_name,payment_method',
+          select: 'fiche_no,date,trcode,fiche_type,net_amount,currency,notes,is_cancelled,customer_id,customer_name,payment_method,status',
           customer_id: `eq.${accountId}`,
+          is_cancelled: 'eq.false',
           order: 'date.asc',
         };
         if (startDate && endDate) {
@@ -706,7 +707,8 @@ export const supplierAPI = {
         const accountIdStr = String(accountId || '');
         const filterEkstreSale = (r: any) =>
           isCariEkstreSaleRow(r, cardType) &&
-          String(r?.fiche_type || '').toLowerCase() !== 'cancelled';
+          String(r?.fiche_type || '').toLowerCase() !== 'cancelled' &&
+          r?.is_cancelled !== true;
         const byIdSales = (Array.isArray(saleRows) ? saleRows : [])
           .filter(filterEkstreSale)
           .map(mapSalesRowToEkstre);
@@ -761,6 +763,8 @@ export const supplierAPI = {
                COALESCE(is_cancelled, false) AS is_cancelled, payment_method
         FROM sales t
         WHERE ${accountMatchSales}${ledgerFicheFilter}${dateFilter}
+          AND COALESCE(t.is_cancelled, false) = false
+          AND LOWER(TRIM(COALESCE(t.status, ''))) NOT IN ('iptal', 'silindi', 'cancelled', 'canceled', 'deleted', 'refunded')
         UNION ALL
         SELECT fiche_no, date, 0 AS trcode, transaction_type AS fiche_type,
                ABS(amount) AS total_amount, currency_code AS currency, definition AS notes,

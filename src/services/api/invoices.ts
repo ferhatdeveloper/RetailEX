@@ -329,7 +329,10 @@ function buildCashLinePgOpts(firmRaw?: string | null, periodRaw?: string | null)
   return { firmNr, periodNr };
 }
 
-/** `rest_api`: fiş no ile kasa satırlarını bul, kasa defteri bakiyesini düzelt, satırları sil */
+/**
+ * Satış fişi kasa satırları: tam eşleşme + sonekli (`FİŞ-T1`, `FİŞ-1`, …).
+ * `cashLineExistsForFicheNo` ile aynı kural — yalnızca exact silme orphan CH_* bırakıyordu.
+ */
 async function removeCashLinesByFicheNoPostgrest(
   ficheNo: string,
   opt: { firmNr: string; periodNr: string }
@@ -340,12 +343,24 @@ async function removeCashLinesByFicheNoPostgrest(
     const pn = String(opt.periodNr).trim().padStart(2, '0').slice(0, 10);
     const cashPath = `/rex_${fn}_${pn}_cash_lines`;
     const regPath = `/rex_${fn}_cash_registers`;
-    const cashRows = await postgrest.get<any[]>(
+    const selectCols = 'id,register_id,amount,sign,fiche_no';
+    const exact = await postgrest.get<any[]>(
       cashPath,
-      { select: 'id,register_id,amount,sign', fiche_no: `eq.${ficheNo}` },
+      { select: selectCols, fiche_no: `eq.${ficheNo}`, limit: '500' },
       { schema: 'public' }
     );
-    if (!Array.isArray(cashRows) || cashRows.length === 0) return false;
+    const prefixed = await postgrest.get<any[]>(
+      cashPath,
+      { select: selectCols, fiche_no: `like.${ficheNo}-*`, limit: '500' },
+      { schema: 'public' }
+    );
+    const byId = new Map<string, any>();
+    for (const row of [...(Array.isArray(exact) ? exact : []), ...(Array.isArray(prefixed) ? prefixed : [])]) {
+      const id = row?.id != null ? String(row.id) : '';
+      if (id) byId.set(id, row);
+    }
+    const cashRows = [...byId.values()];
+    if (cashRows.length === 0) return false;
 
     for (const line of cashRows) {
       const regId = line.register_id;
@@ -371,8 +386,9 @@ async function removeCashLinesByFicheNoPostgrest(
         }
       }
     }
+    // Exact + sonekli satırları sil (or filter)
     await postgrest.delete(
-      `${cashPath}?fiche_no=eq.${encodeURIComponent(String(ficheNo))}`,
+      `${cashPath}?or=(fiche_no.eq.${encodeURIComponent(ficheNo)},fiche_no.like.${encodeURIComponent(ficheNo)}-*)`,
       { schema: 'public', prefer: 'return=minimal' }
     );
     return true;
@@ -382,13 +398,14 @@ async function removeCashLinesByFicheNoPostgrest(
   }
 }
 
-/** Fiş no ile kasa satırını bul (WHERE yalnızca fiche_no — tablo adı zaten firma+dönem ile ayrılmış), bakiyeyi geri al, satırı sil */
+/** Fiş no (+ sonek) ile kasa satırını bul, bakiyeyi geri al, satırı sil */
 async function removeCashRegisterLinesForSaleFiche(
   ficheNo: string,
   primaryOpts: { firmNr: string; periodNr: string }
 ): Promise<void> {
   const trimmed = String(ficheNo || '').trim();
   if (!trimmed) return;
+  const likePat = `${trimmed}-%`;
 
   const attempts: { firmNr: string; periodNr: string }[] = [
     primaryOpts,
@@ -407,8 +424,9 @@ async function removeCashRegisterLinesForSaleFiche(
     }
 
     const { rows: cashRows } = await postgres.query(
-      `SELECT id, register_id, amount, sign FROM cash_lines WHERE fiche_no::text = $1::text`,
-      [trimmed],
+      `SELECT id, register_id, amount, sign FROM cash_lines
+       WHERE fiche_no::text = $1::text OR fiche_no::text LIKE $2::text`,
+      [trimmed, likePat],
       { firmNr: opt.firmNr, periodNr: opt.periodNr }
     );
     if (!cashRows?.length) continue;
@@ -426,11 +444,28 @@ async function removeCashRegisterLinesForSaleFiche(
         );
       }
     }
-    await postgres.query(`DELETE FROM cash_lines WHERE fiche_no::text = $1::text`, [trimmed], {
-      firmNr: opt.firmNr,
-      periodNr: opt.periodNr,
-    });
+    await postgres.query(
+      `DELETE FROM cash_lines WHERE fiche_no::text = $1::text OR fiche_no::text LIKE $2::text`,
+      [trimmed, likePat],
+      {
+        firmNr: opt.firmNr,
+        periodNr: opt.periodNr,
+      }
+    );
     return;
+  }
+}
+
+/** ERP soft-delete sonrası güzellik satışı + sadakat geri alma (orphan KPI/geçmiş önler). */
+async function voidBeautySalesForDeletedInvoice(opts: {
+  invoiceNo?: string | null;
+  notes?: string | null;
+}): Promise<void> {
+  try {
+    const { beautyService } = await import('../beautyService');
+    await beautyService.voidBeautySalesLinkedToErpInvoice(opts);
+  } catch (e) {
+    console.warn('[InvoicesAPI] Bağlı beauty_sales iptal edilemedi:', e);
   }
 }
 
@@ -2803,6 +2838,10 @@ export const invoicesAPI = {
           console.warn('[InvoicesAPI] cancel ledger revert:', e);
         }
         (invoice as Record<string, unknown>).is_cancelled = true;
+        await voidBeautySalesForDeletedInvoice({
+          invoiceNo: existingFull.invoice_no,
+          notes: existingFull.notes != null ? String(existingFull.notes) : null,
+        });
       }
 
       if (resyncLedger) {
@@ -3852,10 +3891,6 @@ export const invoicesAPI = {
         header = null;
       }
 
-      if (header && (header as Invoice & { is_cancelled?: boolean }).is_cancelled === true) {
-        return true;
-      }
-
       let ficheNo = header?.invoice_no ? String(header.invoice_no).trim() : '';
       let notes = header?.notes != null ? String(header.notes) : '';
       let paymentMethod = header?.payment_method;
@@ -3864,6 +3899,27 @@ export const invoicesAPI = {
       let saleFirmNr: string | null = header ? String((header as any).firma_id ?? '').trim() || null : null;
       let salePeriodNr: string | null = header ? String((header as any).donem_id ?? '').trim() || null : null;
       let invoiceForRevert: Invoice | null = header;
+
+      // Zaten soft-delete: ledger yeniden ters çevrilmez (çift bakiye), ama orphan
+      // beauty_sales / sonekli cash_lines onarımı yine denenir.
+      if (header && (header as Invoice & { is_cancelled?: boolean }).is_cancelled === true) {
+        const cashOptsRepair = buildCashLinePgOpts(saleFirmNr, salePeriodNr);
+        if (ficheNo) {
+          try {
+            await removeCashRegisterLinesForSaleFiche(ficheNo, cashOptsRepair);
+          } catch (e) {
+            console.warn('[InvoicesAPI] delete repair cash:', e);
+          }
+        }
+        await voidBeautySalesForDeletedInvoice({ invoiceNo: ficheNo, notes });
+        try {
+          const { repairCariLedgerConsistency } = await import('./accountLedgerRepair');
+          await repairCariLedgerConsistency();
+        } catch (e) {
+          console.warn('[InvoicesAPI] Cari bakiye onarımı atlandı:', e);
+        }
+        return true;
+      }
 
       if (!header) {
         if (DB_SETTINGS.connectionProvider === 'rest_api') {
@@ -3995,6 +4051,9 @@ export const invoicesAPI = {
           console.warn('[InvoicesAPI] Bağlı restoran adisyonu iptal edilemedi:', e);
         }
       }
+
+      // 4) Güzellik satışı (beauty_sales) — ERP soft-delete ile orphan KPI/geçmiş kalmasın
+      await voidBeautySalesForDeletedInvoice({ invoiceNo: ficheNo, notes });
 
       try {
         const { repairCariLedgerConsistency } = await import('./accountLedgerRepair');

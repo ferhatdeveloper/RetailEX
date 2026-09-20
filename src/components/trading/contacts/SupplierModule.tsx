@@ -490,14 +490,14 @@ export function SupplierModule({ initialFilter = 'all' }: { initialFilter?: Cari
       };
       cols.push(
         columnHelper.accessor('id', {
-          header: tm('custColUniqueId') || tm('cariColRefId') || 'ID',
+          header: tm('custColUniqueId'),
           cell: info => {
             const id = info.getValue() as string;
             return (
               <button
                 type="button"
                 onClick={(e) => { e.stopPropagation(); void copyId(id); }}
-                title={`${id} — Kopyala`}
+                title={`${id} — ${tm('copy')}`}
                 className="inline-flex items-center gap-1 font-mono text-[10px] text-slate-500 hover:text-blue-600"
               >
                 <span>{shortUuid(id)}</span>
@@ -532,18 +532,9 @@ export function SupplierModule({ initialFilter = 'all' }: { initialFilter?: Cari
       cols.push(
         columnHelper.accessor('name', {
           header: tm('currentAccountTitle'),
-          cell: info => {
-            const row = info.row.original;
-            const isCustomer = row.cardType === 'customer';
-            return (
-              <div className="min-w-0">
-                <span className="font-semibold text-gray-800">{info.getValue()}</span>
-                <span className={`ml-2 text-[9px] font-black uppercase px-1.5 py-0.5 rounded ${isCustomer ? 'bg-blue-100 text-blue-700' : 'bg-orange-100 text-orange-700'}`}>
-                  {row.code || '—'}
-                </span>
-              </div>
-            );
-          }
+          cell: info => (
+            <span className="font-semibold text-gray-800">{info.getValue()}</span>
+          ),
         })
       );
     }

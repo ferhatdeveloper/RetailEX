@@ -1,6 +1,7 @@
 /** Cari hesaplar listesi kolon görünürlüğü (localStorage). */
 
-export const SUPPLIER_LIST_COLUMN_VISIBILITY_KEY = 'retailex_supplierList_columnVisibility_v2';
+/** v3: Benzersiz ID (UUID) varsayılan gizli; eski v2 tercihlerinden UUID açık taşıma. */
+export const SUPPLIER_LIST_COLUMN_VISIBILITY_KEY = 'retailex_supplierList_columnVisibility_v3';
 export const SUPPLIER_LIST_COLUMN_ORDER_KEY = 'retailex_supplierList_columnOrder_v1';
 
 /**
@@ -55,7 +56,7 @@ type ColumnMeta = {
 
 export const SUPPLIER_LIST_COLUMN_META: Record<SupplierListColumnId, ColumnMeta> = {
   code: { id: 'code', labelKey: 'code', defaultVisible: true },
-  id: { id: 'id', labelKey: 'custColUniqueId', defaultVisible: true },
+  id: { id: 'id', labelKey: 'custColUniqueId', defaultVisible: false },
   cardType: { id: 'cardType', labelKey: 'type', defaultVisible: true },
   name: { id: 'name', labelKey: 'currentAccountTitle', defaultVisible: true },
   contact: { id: 'contact', labelKey: 'contact', defaultVisible: true },
@@ -107,12 +108,19 @@ export function defaultSupplierListColumnVisibility(): Record<string, boolean> {
 export function loadSupplierListColumnVisibility(): Record<string, boolean> {
   const defaults = defaultSupplierListColumnVisibility();
   try {
-    const raw = localStorage.getItem(SUPPLIER_LIST_COLUMN_VISIBILITY_KEY);
+    const rawV3 = localStorage.getItem(SUPPLIER_LIST_COLUMN_VISIBILITY_KEY);
+    const rawV2 = localStorage.getItem('retailex_supplierList_columnVisibility_v2');
+    const raw = rawV3 ?? rawV2;
     if (!raw) return defaults;
     const parsed = JSON.parse(raw) as Record<string, boolean>;
-    return Object.fromEntries(
+    const merged = Object.fromEntries(
       SUPPLIER_LIST_COLUMN_ORDER.map((id) => [id, parsed[id] ?? defaults[id]])
     );
+    // v2: UUID eski varsayılan açıktı — özel v3 seçimi yoksa gizle
+    if (!rawV3) {
+      merged.id = false;
+    }
+    return merged;
   } catch {
     return defaults;
   }

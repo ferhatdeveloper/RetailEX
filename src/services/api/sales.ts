@@ -236,6 +236,10 @@ export const salesAPI = {
         preferredKasaId?: string | null,
       ) => {
         if (tutar <= 0) return;
+        if (islemTipi === 'CH_TAHSILAT' && !sale.customerId) {
+          console.warn('[SalesAPI] CH_TAHSILAT skipped — customerId missing');
+          return;
+        }
         let targetKasaId =
           (preferredKasaId && String(preferredKasaId).trim()) ||
           ERP_SETTINGS.selected_cash_registers?.[0];
@@ -250,6 +254,26 @@ export const salesAPI = {
         const kasaAciklama = String(sale.notes || '').includes('GüzellikPOS')
           ? `Güzellik Satışı - ${sale.receiptNumber}${aciklamaSuffix}`
           : `Market Satışı - ${sale.receiptNumber}${aciklamaSuffix}`;
+
+        let cariKodu: string | undefined;
+        let cariUnvan = sale.customerName || undefined;
+        if (islemTipi === 'CH_TAHSILAT' && sale.customerId) {
+          try {
+            const { resolveCanonicalCariAccountId } = await import('./cariAccountResolve');
+            const canon = await resolveCanonicalCariAccountId(String(sale.customerId));
+            if (canon.code) cariKodu = String(canon.code);
+            if (!cariUnvan) {
+              const { rows } = await postgres.query<{ name?: string }>(
+                `SELECT name FROM customers WHERE id = $1::uuid LIMIT 1`,
+                [canon.id || sale.customerId],
+              );
+              if (rows[0]?.name) cariUnvan = String(rows[0].name);
+            }
+          } catch (cariLookupErr) {
+            console.warn('[SalesAPI] Cari kod/unvan lookup failed:', cariLookupErr);
+          }
+        }
+
         const islem: KasaIslemi = {
           firma_id: String(firmNr),
           kasa_id: targetKasaId,
@@ -259,7 +283,8 @@ export const salesAPI = {
           tutar,
           islem_aciklamasi: kasaAciklama,
           cari_hesap_id: sale.customerId || undefined,
-          cari_hesap_unvani: sale.customerName || 'Peşin Müşteri',
+          cari_hesap_kodu: cariKodu,
+          cari_hesap_unvani: cariUnvan || (islemTipi === 'CH_TAHSILAT' ? 'Peşin Müşteri' : undefined),
           doviz_kodu: 'YEREL',
           dovizli_tutar: 0,
           target_register_id: undefined,

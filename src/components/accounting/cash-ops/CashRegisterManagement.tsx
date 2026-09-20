@@ -11,7 +11,7 @@ import {
 import { DevExDataGrid } from '../../shared/DevExDataGrid';
 import { createColumnHelper } from '@tanstack/react-table';
 import { formatCurrency } from '../../../utils/formatNumber';
-import { fetchKasalar, fetchKasaIslemleri, deleteKasaIslemi, cloneKasa, type Kasa, type KasaIslemi } from '../../../services/api/kasa';
+import { fetchKasalar, fetchKasaIslemleri, deleteKasaIslemi, cloneKasa, formatKasaCariLabel, type Kasa, type KasaIslemi } from '../../../services/api/kasa';
 import { KasaDefinitionModal } from './KasaDefinitionModal';
 import { KasaIslemleriModal } from './KasaIslemleriModal';
 import { toast } from 'sonner';
@@ -199,6 +199,24 @@ export function CashRegisterManagement({ onEnterKasa, initialTab = 'sessions' }:
     txColumnHelper.accessor('islem_tipi', {
       header: tm('type').toUpperCase(),
       size: 130
+    }),
+    txColumnHelper.accessor((row) => formatKasaCariLabel(row), {
+      id: 'cari_hesap',
+      header: (tm('currentAccountTitle') || 'Cari').toUpperCase(),
+      cell: (info) => {
+        const row = info.row.original;
+        const label = formatKasaCariLabel(row);
+        if (!label) return <span className="text-gray-400">-</span>;
+        return (
+          <div className="min-w-0">
+            <div className="font-medium text-gray-900 truncate">{row.cari_hesap_unvani || label}</div>
+            {row.cari_hesap_kodu ? (
+              <div className="text-[11px] text-gray-500 font-mono truncate">{row.cari_hesap_kodu}</div>
+            ) : null}
+          </div>
+        );
+      },
+      size: 180,
     }),
     txColumnHelper.accessor('tutar', {
       header: t.amount.toUpperCase(),

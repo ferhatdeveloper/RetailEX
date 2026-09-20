@@ -1280,6 +1280,7 @@ export const moduleTranslations: Record<string, Record<Language, string>> = {
   },
   custMgmtNewBtn: { tr: 'Yeni Müşteri', en: 'New customer', ar: 'عميل جديد', ku: 'کڕیاری نوێ' },
   custColCode: { tr: 'Kod', en: 'Code', ar: 'الرمز', ku: 'کۆد' },
+  custColUniqueId: { tr: 'Benzersiz ID', en: 'Unique ID', ar: 'المعرف الفريد', ku: 'ناسنامەی بێهاوتا' },
   custColName: { tr: 'Ad Soyad', en: 'Full name', ar: 'الاسم الكامل', ku: 'ناوی تەواو' },
   custColContact: { tr: 'İletişim', en: 'Contact', ar: 'اتصال', ku: 'پەیوەندی' },
   custColCompanyTax: { tr: 'Şirket/Vergi', en: 'Company / Tax', ar: 'الشركة / الضريبة', ku: 'کۆمپانیا/باج' },
@@ -4175,7 +4176,25 @@ export const moduleTranslations: Record<string, Record<Language, string>> = {
   },
   gridFilterValueList: { tr: 'Değer listesi', en: 'Value list', ar: 'قائمة القيم', ku: 'لیستی نرخەکان' },
   gridFilterTextFilter: { tr: 'Metin filtresi', en: 'Text filter', ar: 'تصفية نصية', ku: 'پاڵاوتنی دەق' },
+  gridFilterNumberFilter: {
+    tr: 'Sayısal filtre',
+    en: 'Number filter',
+    ar: 'تصفية رقمية',
+    ku: 'پاڵاوتنی ژمارەیی',
+  },
   gridFilterDateRange: { tr: 'Tarih aralığı', en: 'Date range', ar: 'نطاق التاريخ', ku: 'مەودای بەروار' },
+  gridFilterDateFilter: {
+    tr: 'Tarih filtresi',
+    en: 'Date filter',
+    ar: 'تصفية التاريخ',
+    ku: 'پاڵاوتنی بەروار',
+  },
+  gridFilterDatePresets: {
+    tr: 'Hızlı dönem',
+    en: 'Quick period',
+    ar: 'فترة سريعة',
+    ku: 'ماوەی خێرا',
+  },
   gridFilterIncludeTime: { tr: 'Saat dahil', en: 'Include time', ar: 'تضمين الوقت', ku: 'کات لەگەڵ بێت' },
   gridFilterDateRangeHint: {
     tr: 'Başlangıç ve/veya bitiş tarihi seçin. Yalnızca tarih seçilirse günün tamamı kapsanır.',
