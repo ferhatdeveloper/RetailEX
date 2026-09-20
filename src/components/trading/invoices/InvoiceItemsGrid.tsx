@@ -381,7 +381,7 @@ export const InvoiceItemsGrid = React.memo(({
                     e.preventDefault();
                     onRequestQuickCreate(rowIndex, kind);
                 }}
-                className="w-full text-left px-3 py-2 text-sm bg-blue-50/60 hover:bg-blue-100 text-blue-700 border-t border-blue-100 flex items-center gap-2"
+                className="w-full text-left px-3 py-2 text-sm bg-blue-50 dark:bg-blue-950/60/60 hover:bg-blue-100 text-blue-700 dark:text-blue-300 border-t border-blue-100 flex items-center gap-2"
             >
                 <span className="inline-flex w-5 h-5 items-center justify-center rounded-full bg-blue-600 text-white text-xs font-bold leading-none">+</span>
                 <span className="font-medium truncate">{label}</span>
@@ -403,12 +403,12 @@ export const InvoiceItemsGrid = React.memo(({
             (invoiceType.category === 'Satis' && invoiceType.code === 1 ? Number(isColumnVisible('expiryDate')) : 0) +
             (invoiceType.category === 'Satis' ? Number(isColumnVisible('profit')) : 0) +
             1;
-        const restPad = extraAfterNet > 0 ? <td colSpan={extraAfterNet} className="px-2 py-1.5 border-t-2 border-blue-300 bg-blue-50" /> : null;
+        const restPad = extraAfterNet > 0 ? <td colSpan={extraAfterNet} className="px-2 py-1.5 border-t-2 border-blue-300 dark:border-blue-700 bg-blue-50 dark:bg-blue-950/60" /> : null;
         const labelTd = (label: React.ReactNode) =>
             leadingFooterColSpan > 0 ? (
                 <td
                     colSpan={leadingFooterColSpan}
-                    className="px-2 py-1.5 text-left font-bold text-blue-900 border-t-2 border-r border-blue-300 bg-blue-50"
+                    className="px-2 py-1.5 text-left font-bold text-blue-900 dark:text-blue-100 border-t-2 border-r border-blue-300 dark:border-blue-700 bg-blue-50 dark:bg-blue-950/60"
                 >
                     {label}
                 </td>
@@ -419,31 +419,31 @@ export const InvoiceItemsGrid = React.memo(({
                     {labelTd(
                         <>
                             {tm('invoiceListDipTotal')}
-                            <span className="ml-1 font-semibold text-blue-600/80">
+                            <span className="ml-1 font-semibold text-blue-600/80 dark:text-blue-300/80">
                                 ({items.filter((it) => (it.quantity || 0) > 0 || (it.netAmount || 0) > 0 || Boolean(it.code)).length})
                             </span>
                         </>,
                     )}
                     {isColumnVisible('quantity') && (
-                        <td className="px-2 py-1.5 text-right font-bold tabular-nums text-blue-900 border-t-2 border-r border-blue-300 bg-blue-50">
+                        <td className="px-2 py-1.5 text-right font-bold tabular-nums text-blue-900 dark:text-blue-100 border-t-2 border-r border-blue-300 dark:border-blue-700 bg-blue-50 dark:bg-blue-950/60">
                             {formatNumber(gridFooter.quantity, 3, true)}
                         </td>
                     )}
-                    {isColumnVisible('unit') && <td className="border-t-2 border-r border-blue-300 bg-blue-50" />}
-                    {isColumnVisible('unitPrice') && <td className="border-t-2 border-r border-blue-300 bg-blue-50" />}
+                    {isColumnVisible('unit') && <td className="border-t-2 border-r border-blue-300 dark:border-blue-700 bg-blue-50 dark:bg-blue-950/60" />}
+                    {isColumnVisible('unitPrice') && <td className="border-t-2 border-r border-blue-300 dark:border-blue-700 bg-blue-50 dark:bg-blue-950/60" />}
                     {isColumnVisible('amount') && (
-                        <td className="px-2 py-1.5 text-right font-bold tabular-nums text-blue-900 border-t-2 border-r border-blue-300 bg-blue-50">
+                        <td className="px-2 py-1.5 text-right font-bold tabular-nums text-blue-900 dark:text-blue-100 border-t-2 border-r border-blue-300 dark:border-blue-700 bg-blue-50 dark:bg-blue-950/60">
                             {money(gridFooter.amount)}
                         </td>
                     )}
-                    {isColumnVisible('discountPercent') && <td className="border-t-2 border-r border-blue-300 bg-blue-50" />}
+                    {isColumnVisible('discountPercent') && <td className="border-t-2 border-r border-blue-300 dark:border-blue-700 bg-blue-50 dark:bg-blue-950/60" />}
                     {isColumnVisible('discountAmount') && (
-                        <td className="px-2 py-1.5 text-right font-bold tabular-nums text-red-600 border-t-2 border-r border-blue-300 bg-blue-50">
+                        <td className="px-2 py-1.5 text-right font-bold tabular-nums text-red-600 dark:text-red-400 border-t-2 border-r border-blue-300 dark:border-blue-700 bg-blue-50 dark:bg-blue-950/60">
                             {gridFooter.discountAmount > 0 ? `-${money(gridFooter.discountAmount)}` : money(0)}
                         </td>
                     )}
                     {isColumnVisible('netAmount') && (
-                        <td className="px-2 py-1.5 text-right font-bold tabular-nums text-blue-900 border-t-2 border-r border-blue-300 bg-blue-50">
+                        <td className="px-2 py-1.5 text-right font-bold tabular-nums text-blue-900 dark:text-blue-100 border-t-2 border-r border-blue-300 dark:border-blue-700 bg-blue-50 dark:bg-blue-950/60">
                             {money(gridFooter.netAfterLines)}
                         </td>
                     )}
@@ -459,7 +459,7 @@ export const InvoiceItemsGrid = React.memo(({
                                 className={`px-1.5 py-0.5 text-[10px] rounded border ${
                                     gridFooter.footerDiscountMode === 'percentage'
                                         ? 'bg-blue-600 text-white border-blue-600'
-                                        : 'bg-white text-gray-700 border-gray-300'
+                                        : 'bg-white dark:bg-gray-800 text-gray-700 dark:text-gray-200 border-gray-300 dark:border-gray-600'
                                 }`}
                             >
                                 %
@@ -470,7 +470,7 @@ export const InvoiceItemsGrid = React.memo(({
                                 className={`px-1.5 py-0.5 text-[10px] rounded border ${
                                     gridFooter.footerDiscountMode === 'amount'
                                         ? 'bg-blue-600 text-white border-blue-600'
-                                        : 'bg-white text-gray-700 border-gray-300'
+                                        : 'bg-white dark:bg-gray-800 text-gray-700 dark:text-gray-200 border-gray-300 dark:border-gray-600'
                                 }`}
                             >
                                 {currency}
@@ -482,7 +482,7 @@ export const InvoiceItemsGrid = React.memo(({
                                 value={gridFooter.footerDiscountPercentStr}
                                 onChange={(e) => gridFooter.onPercentChange(e.target.value)}
                                 placeholder="%"
-                                className="w-14 px-1 py-0.5 text-xs text-right rounded border border-gray-300 bg-white"
+                                className="w-14 px-1 py-0.5 text-xs text-right rounded border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-800 dark:text-gray-100"
                                 aria-label="%"
                             />
                             <input
@@ -492,32 +492,32 @@ export const InvoiceItemsGrid = React.memo(({
                                 value={gridFooter.footerDiscountAmountStr}
                                 onChange={(e) => gridFooter.onAmountChange(e.target.value)}
                                 placeholder={tm('discountAmount')}
-                                className="w-24 px-1 py-0.5 text-xs text-right rounded border border-gray-300 bg-white"
+                                className="w-24 px-1 py-0.5 text-xs text-right rounded border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-800 dark:text-gray-100"
                                 aria-label={tm('discountAmount')}
                             />
                         </div>,
                     )}
-                    {isColumnVisible('quantity') && <td className="border-t border-r border-blue-200 bg-blue-50/80" />}
-                    {isColumnVisible('unit') && <td className="border-t border-r border-blue-200 bg-blue-50/80" />}
-                    {isColumnVisible('unitPrice') && <td className="border-t border-r border-blue-200 bg-blue-50/80" />}
-                    {isColumnVisible('amount') && <td className="border-t border-r border-blue-200 bg-blue-50/80" />}
+                    {isColumnVisible('quantity') && <td className="border-t border-r border-blue-200 dark:border-blue-800 bg-blue-50/80 dark:bg-blue-950/50" />}
+                    {isColumnVisible('unit') && <td className="border-t border-r border-blue-200 dark:border-blue-800 bg-blue-50/80 dark:bg-blue-950/50" />}
+                    {isColumnVisible('unitPrice') && <td className="border-t border-r border-blue-200 dark:border-blue-800 bg-blue-50/80 dark:bg-blue-950/50" />}
+                    {isColumnVisible('amount') && <td className="border-t border-r border-blue-200 dark:border-blue-800 bg-blue-50/80 dark:bg-blue-950/50" />}
                     {isColumnVisible('discountPercent') && (
-                        <td className="px-2 py-1.5 text-right tabular-nums text-blue-800 border-t border-r border-blue-200 bg-blue-50/80">
+                        <td className="px-2 py-1.5 text-right tabular-nums text-blue-800 dark:text-blue-200 border-t border-r border-blue-200 dark:border-blue-800 bg-blue-50/80 dark:bg-blue-950/50">
                             {gridFooter.footerDiscountPercent > 0 ? `${formatNumber(gridFooter.footerDiscountPercent, 2, false)}%` : ''}
                         </td>
                     )}
                     {isColumnVisible('discountAmount') && (
-                        <td className="px-2 py-1.5 text-right font-bold tabular-nums text-red-600 border-t border-r border-blue-200 bg-blue-50/80">
+                        <td className="px-2 py-1.5 text-right font-bold tabular-nums text-red-600 dark:text-red-400 border-t border-r border-blue-200 dark:border-blue-800 bg-blue-50/80 dark:bg-blue-950/50">
                             {gridFooter.footerDiscount > 0 ? `-${money(gridFooter.footerDiscount)}` : money(0)}
                         </td>
                     )}
                     {isColumnVisible('netAmount') && (
-                        <td className="px-2 py-1.5 text-right font-bold tabular-nums text-blue-900 border-t border-r border-blue-200 bg-blue-50/80">
+                        <td className="px-2 py-1.5 text-right font-bold tabular-nums text-blue-900 dark:text-blue-100 border-t border-r border-blue-200 dark:border-blue-800 bg-blue-50/80 dark:bg-blue-950/50">
                             {money(gridFooter.net)}
                         </td>
                     )}
                     {restPad && (
-                        <td colSpan={extraAfterNet} className="border-t border-blue-200 bg-blue-50/80" />
+                        <td colSpan={extraAfterNet} className="border-t border-blue-200 dark:border-blue-800 bg-blue-50/80 dark:bg-blue-950/50" />
                     )}
                 </tr>
             </tfoot>
@@ -532,7 +532,7 @@ export const InvoiceItemsGrid = React.memo(({
                         <div
                             key={item.id}
                             className={`grid grid-cols-[auto_1fr] gap-2 pl-2 pr-3 py-2 border-b border-gray-100/90 items-start ${
-                                currentRowIndex === index ? 'bg-blue-50/90' : 'bg-white'
+                                currentRowIndex === index ? 'bg-blue-50 dark:bg-blue-950/60/90' : 'bg-white'
                             }`}
                             onClick={() => setCurrentRowIndex(index)}
                         >
@@ -547,7 +547,7 @@ export const InvoiceItemsGrid = React.memo(({
                                         e.stopPropagation();
                                         removeItem(index);
                                     }}
-                                    className="p-1.5 text-red-600 hover:bg-red-50 rounded-lg touch-manipulation"
+                                    className="p-1.5 text-red-600 dark:text-red-400 hover:bg-red-50 rounded-lg touch-manipulation"
                                     aria-label={tm('delete')}
                                 >
                                     <Trash2 className="w-4 h-4" />
@@ -558,7 +558,7 @@ export const InvoiceItemsGrid = React.memo(({
                                         onClick={() =>
                                             handleShowProductHistory(getProductCode(item.code, item.productId), item.description, item.productId || item.code)
                                         }
-                                        className="p-1.5 text-blue-600 hover:bg-blue-50 rounded-lg touch-manipulation"
+                                        className="p-1.5 text-blue-600 hover:bg-blue-50 dark:bg-blue-950/60 rounded-lg touch-manipulation"
                                         title={tm('itemHistoryTooltip')}
                                     >
                                         <History className="w-4 h-4" />
@@ -587,14 +587,14 @@ export const InvoiceItemsGrid = React.memo(({
                                         onChange={(e) => updateItem(index, 'description', e.target.value)}
                                         onFocus={() => setCurrentRowIndex(index)}
                                         onDoubleClick={() => openCatalogForRow(index)}
-                                        className="flex-1 min-w-0 border-0 bg-transparent font-semibold text-[13px] text-gray-900 leading-snug py-0.5 focus:ring-0 focus:outline-none placeholder:text-gray-400"
+                                        className="flex-1 min-w-0 border-0 bg-transparent font-semibold text-[13px] text-gray-900 dark:text-gray-100 leading-snug py-0.5 focus:ring-0 focus:outline-none placeholder:text-gray-400"
                                         placeholder={tm('itemDescription')}
                                     />
                                     <div className="shrink-0 text-right">
                                         <div className="text-[9px] font-bold text-blue-600 uppercase tracking-wide leading-tight">
                                             {tm('itemNetTotal')}
                                         </div>
-                                        <div className="text-[12px] font-bold tabular-nums text-blue-700 leading-tight">
+                                        <div className="text-[12px] font-bold tabular-nums text-blue-700 dark:text-blue-300 leading-tight">
                                             {formatNumber(item.netAmount, 2, true)}
                                         </div>
                                         {currency !== ledgerCurrency && item.netAmount > 0 && (
@@ -619,7 +619,7 @@ export const InvoiceItemsGrid = React.memo(({
                                                 setCurrentRowIndex(index);
                                                 onCodeFieldFocus?.(index, getProductCode(items[index]?.code || '', items[index]?.productId));
                                             }}
-                                            className="min-w-0 flex-1 border-0 bg-transparent text-[11px] font-mono text-gray-600 tracking-tight py-0.5 focus:ring-0 focus:outline-none placeholder:text-gray-400"
+                                            className="min-w-0 flex-1 border-0 bg-transparent text-[11px] font-mono text-gray-600 dark:text-gray-300 tracking-tight py-0.5 focus:ring-0 focus:outline-none placeholder:text-gray-400"
                                             placeholder={tm('itemCode')}
                                         />
                                     </div>
@@ -634,7 +634,7 @@ export const InvoiceItemsGrid = React.memo(({
                                     {searchingRowIndex === index && filteredProducts.length === 0 && (productSearch || '').trim().length > 0 && (
                                         <div
                                             ref={productDropdownRef}
-                                            className="absolute left-0 right-0 top-full z-[60] mt-1 bg-white border border-blue-200 rounded-lg shadow-lg overflow-hidden"
+                                            className="absolute left-0 right-0 top-full z-[60] mt-1 bg-white border border-blue-200 dark:border-blue-800 rounded-lg shadow-lg overflow-hidden"
                                         >
                                             {renderEmptySearchCTA(index)}
                                         </div>
@@ -668,7 +668,7 @@ export const InvoiceItemsGrid = React.memo(({
                                                 onBlur={() => qtyField.onBlur(index, item)}
                                                 placeholder={quantityInputPlaceholder(item.unit, tm)}
                                                 title={quantityInputTitle(item.unit, tm) || undefined}
-                                                className="w-full px-2 py-1.5 rounded-lg border border-gray-200 text-xs text-right tabular-nums bg-white"
+                                                className="w-full px-2 py-1.5 rounded-lg border border-gray-200 dark:border-gray-600 text-xs text-right tabular-nums bg-white dark:bg-gray-800 dark:text-gray-100"
                                             />
                                         </label>
                                     )}
@@ -686,7 +686,7 @@ export const InvoiceItemsGrid = React.memo(({
                                                 }
                                                 onFocus={() => setCurrentRowIndex(index)}
                                                 step="0.01"
-                                                className="w-full px-2 py-1.5 rounded-lg border border-gray-200 text-xs text-right tabular-nums bg-white"
+                                                className="w-full px-2 py-1.5 rounded-lg border border-gray-200 dark:border-gray-600 text-xs text-right tabular-nums bg-white dark:bg-gray-800 dark:text-gray-100"
                                             />
                                         </label>
                                     )}
@@ -700,7 +700,7 @@ export const InvoiceItemsGrid = React.memo(({
                                                     updateItem(index, 'discountPercent', parseFloat(e.target.value) || 0)
                                                 }
                                                 onFocus={() => setCurrentRowIndex(index)}
-                                                className="w-full px-2 py-1.5 rounded-lg border border-gray-200 text-xs text-right tabular-nums bg-white"
+                                                className="w-full px-2 py-1.5 rounded-lg border border-gray-200 dark:border-gray-600 text-xs text-right tabular-nums bg-white dark:bg-gray-800 dark:text-gray-100"
                                                 placeholder="%"
                                             />
                                         </label>
@@ -715,7 +715,7 @@ export const InvoiceItemsGrid = React.memo(({
                                             onChange={(e) => updateItem(index, 'unit', e.target.value)}
                                             onFocus={() => setCurrentRowIndex(index)}
                                             onClick={(e) => e.stopPropagation()}
-                                            className="w-full px-2 py-1.5 rounded-lg border border-gray-200 text-xs font-medium text-blue-800 bg-white disabled:opacity-50 disabled:cursor-not-allowed"
+                                            className="w-full px-2 py-1.5 rounded-lg border border-gray-200 text-xs font-medium text-blue-800 dark:text-blue-200 bg-white dark:bg-gray-800 disabled:opacity-50 disabled:cursor-not-allowed"
                                         >
                                             {unitSelectOptionsForItem(item).map((o) => (
                                                 <option key={o.id} value={o.name}>
@@ -756,13 +756,13 @@ export const InvoiceItemsGrid = React.memo(({
                     ))}
                 </div>
                 {gridFooter && (
-                    <div className="shrink-0 border-t-2 border-blue-300 bg-blue-50 px-3 py-2 space-y-2 text-[11px] font-bold text-blue-900">
+                    <div className="shrink-0 border-t-2 border-blue-300 dark:border-blue-700 bg-blue-50 dark:bg-blue-950/60 px-3 py-2 space-y-2 text-[11px] font-bold text-blue-900 dark:text-blue-100">
                         <div className="flex justify-between gap-2 tabular-nums">
                             <span>{tm('invoiceListDipTotal')}</span>
                             <span>{formatNumber(gridFooter.netAfterLines, 2, true)}</span>
                         </div>
                         {gridFooter.discountAmount > 0 && (
-                            <div className="flex justify-between gap-2 tabular-nums text-red-600 font-semibold">
+                            <div className="flex justify-between gap-2 tabular-nums text-red-600 dark:text-red-400 font-semibold">
                                 <span>{tm('itemDiscount')}</span>
                                 <span>-{formatNumber(gridFooter.discountAmount, 2, true)}</span>
                             </div>
@@ -775,7 +775,7 @@ export const InvoiceItemsGrid = React.memo(({
                                 className={`px-1.5 py-0.5 text-[10px] rounded border ${
                                     gridFooter.footerDiscountMode === 'percentage'
                                         ? 'bg-blue-600 text-white border-blue-600'
-                                        : 'bg-white text-gray-700 border-gray-300'
+                                        : 'bg-white dark:bg-gray-800 text-gray-700 dark:text-gray-200 border-gray-300 dark:border-gray-600'
                                 }`}
                             >
                                 %
@@ -786,7 +786,7 @@ export const InvoiceItemsGrid = React.memo(({
                                 className={`px-1.5 py-0.5 text-[10px] rounded border ${
                                     gridFooter.footerDiscountMode === 'amount'
                                         ? 'bg-blue-600 text-white border-blue-600'
-                                        : 'bg-white text-gray-700 border-gray-300'
+                                        : 'bg-white dark:bg-gray-800 text-gray-700 dark:text-gray-200 border-gray-300 dark:border-gray-600'
                                 }`}
                             >
                                 {currency}
@@ -798,7 +798,7 @@ export const InvoiceItemsGrid = React.memo(({
                                 value={gridFooter.footerDiscountPercentStr}
                                 onChange={(e) => gridFooter.onPercentChange(e.target.value)}
                                 placeholder="%"
-                                className="w-14 px-1 py-1 text-xs text-right rounded border border-gray-300 bg-white font-normal"
+                                className="w-14 px-1 py-1 text-xs text-right rounded border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-800 dark:text-gray-100 font-normal"
                             />
                             <input
                                 type="text"
@@ -807,7 +807,7 @@ export const InvoiceItemsGrid = React.memo(({
                                 value={gridFooter.footerDiscountAmountStr}
                                 onChange={(e) => gridFooter.onAmountChange(e.target.value)}
                                 placeholder={tm('discountAmount')}
-                                className="w-24 px-1 py-1 text-xs text-right rounded border border-gray-300 bg-white font-normal"
+                                className="w-24 px-1 py-1 text-xs text-right rounded border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-800 dark:text-gray-100 font-normal"
                             />
                             <span className="ml-auto tabular-nums">{formatNumber(gridFooter.net, 2, true)}</span>
                         </div>
@@ -864,7 +864,7 @@ export const InvoiceItemsGrid = React.memo(({
                         {items.map((item, index) => (
                             <tr
                                 key={item.id}
-                                className={`border-b border-gray-100 transition-colors ${currentRowIndex === index ? 'bg-blue-50' : 'hover:bg-gray-50'}`}
+                                className={`border-b border-gray-100 transition-colors ${currentRowIndex === index ? 'bg-blue-50 dark:bg-blue-950/60' : 'hover:bg-gray-50'}`}
                             >
                                 {isColumnVisible('type') && (
                                     <td className="border-r border-gray-100 p-0 w-20">
@@ -900,7 +900,7 @@ export const InvoiceItemsGrid = React.memo(({
                                             <button
                                                 type="button"
                                                 onClick={() => handleShowProductHistory(getProductCode(item.code, item.productId), item.description, item.productId || item.code)}
-                                                className="absolute right-1 top-1 opacity-0 group-hover:opacity-100 transition-opacity p-1 text-blue-600 hover:text-blue-700"
+                                                className="absolute right-1 top-1 opacity-0 group-hover:opacity-100 transition-opacity p-1 text-blue-600 hover:text-blue-700 dark:text-blue-300"
                                                 title={tm('itemHistoryTooltip')}
                                             >
                                                 <History className="w-3 h-3" />
@@ -917,7 +917,7 @@ export const InvoiceItemsGrid = React.memo(({
                                         {searchingRowIndex === index && filteredProducts.length === 0 && (productSearch || '').trim().length > 0 && (
                                             <div
                                                 ref={productDropdownRef}
-                                                className="absolute top-full left-0 w-96 bg-white border border-blue-200 rounded shadow-lg z-50 overflow-hidden"
+                                                className="absolute top-full left-0 w-96 bg-white border border-blue-200 dark:border-blue-800 rounded shadow-lg z-50 overflow-hidden"
                                             >
                                                 {renderEmptySearchCTA(index)}
                                             </div>
@@ -986,7 +986,7 @@ export const InvoiceItemsGrid = React.memo(({
                                                 updateItem(index, 'unit', e.target.value);
                                             }}
                                             onFocus={() => setCurrentRowIndex(index)}
-                                            className="w-full px-1.5 py-1 border-0 focus:outline-none text-sm bg-transparent font-medium text-blue-700 disabled:opacity-50 disabled:cursor-not-allowed"
+                                            className="w-full px-1.5 py-1 border-0 focus:outline-none text-sm bg-transparent font-medium text-blue-700 dark:text-blue-300 disabled:opacity-50 disabled:cursor-not-allowed"
                                         >
                                             {unitSelectOptionsForItem(item).map((o) => (
                                                 <option key={o.id} value={o.name}>{o.name}</option>
@@ -1041,7 +1041,7 @@ export const InvoiceItemsGrid = React.memo(({
                                     </td>
                                 )}
                                 {isColumnVisible('netAmount') && (
-                                    <td className="border-r border-gray-100 px-1.5 py-1 text-right font-semibold text-blue-700 bg-blue-50/30 w-28">
+                                    <td className="border-r border-gray-100 px-1.5 py-1 text-right font-semibold text-blue-700 dark:text-blue-300 bg-blue-50 dark:bg-blue-950/60/30 w-28">
                                         {formatNumber(item.netAmount, 2, true)}
                                         {currency !== ledgerCurrency && item.netAmount > 0 && (
                                             <div className="text-xs text-blue-400 font-normal leading-tight">
@@ -1092,11 +1092,11 @@ export const InvoiceItemsGrid = React.memo(({
                                                                     value={item.expiryDate || ''}
                                                                     onChange={(e) => updateItem(index, 'expiryDate', e.target.value)}
                                                                     onFocus={() => setCurrentRowIndex(index)}
-                                                                    className={`w-full px-1 py-1 border-0 focus:outline-none text-xs bg-transparent ${isExpired ? 'text-red-600' : isExpiringSoon ? 'text-yellow-600' : ''}`}
+                                                                    className={`w-full px-1 py-1 border-0 focus:outline-none text-xs bg-transparent ${isExpired ? 'text-red-600 dark:text-red-400' : isExpiringSoon ? 'text-yellow-600' : ''}`}
                                                                 />
-                                                                <Calendar className={`w-3 h-3 ${isExpired ? 'text-red-600' : isExpiringSoon ? 'text-yellow-600' : 'text-gray-400'}`} />
+                                                                <Calendar className={`w-3 h-3 ${isExpired ? 'text-red-600 dark:text-red-400' : isExpiringSoon ? 'text-yellow-600' : 'text-gray-400'}`} />
                                                             </div>
-                                                            {isExpired && <div className="text-[10px] text-red-600 text-center">{tm('itemExpired')}</div>}
+                                                            {isExpired && <div className="text-[10px] text-red-600 dark:text-red-400 text-center">{tm('itemExpired')}</div>}
                                                             {!isExpired && isExpiringSoon && <div className="text-[10px] text-yellow-600 text-center">{daysDiff} {tm('itemDaysRemaining')}!</div>}
                                                         </div>
                                                     );
@@ -1149,7 +1149,7 @@ export const InvoiceItemsGrid = React.memo(({
                                 {invoiceType.category === 'Satis' && (
                                     <>
                                         {isColumnVisible('profit') && (
-                                            <td className={`border-r border-gray-100 px-1.5 py-1 text-right font-medium w-24 ${(item.profitMargin || 0) < 0 ? 'text-red-600 bg-red-50/30' : 'text-green-600 bg-green-50/30'}`}>
+                                            <td className={`border-r border-gray-100 px-1.5 py-1 text-right font-medium w-24 ${(item.profitMargin || 0) < 0 ? 'text-red-600 dark:text-red-400 bg-red-50/30' : 'text-green-600 bg-green-50/30'}`}>
                                                 {formatNumber(item.grossProfit, 2, true)}
                                             </td>
                                         )}

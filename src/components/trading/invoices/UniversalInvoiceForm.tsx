@@ -1340,6 +1340,21 @@ export function UniversalInvoiceForm({
 
   // Cari hesap text rengi
   const getCariTextColor = () => {
+    if (darkMode) {
+      switch (invoiceType.category) {
+        case 'Satis': return 'text-blue-400';
+        case 'Alis': return 'text-teal-400';
+        case 'Hizmet':
+          if (invoiceType.code === 9) return 'text-blue-400';
+          if (invoiceType.code === 4) return 'text-teal-400';
+          return 'text-indigo-400';
+        case 'Iade': return 'text-red-400';
+        case 'Irsaliye': return 'text-orange-400';
+        case 'Siparis': return 'text-purple-400';
+        case 'Teklif': return 'text-indigo-400';
+        default: return 'text-gray-300';
+      }
+    }
     switch (invoiceType.category) {
       case 'Satis': return 'text-blue-600';
       case 'Alis': return 'text-teal-600';
@@ -4340,12 +4355,12 @@ export function UniversalInvoiceForm({
                     <div className="flex flex-col gap-2">
                       <div className="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
                         <div className="flex flex-wrap items-center gap-3">
-                          <span className="text-sm text-gray-700 font-medium">{tm('bulkPriceIncrease')}:</span>
+                          <span className="text-sm text-gray-700 dark:text-gray-200 font-medium">{tm('bulkPriceIncrease')}:</span>
                           <input
                             type="number"
                             value={bulkPriceIncreasePercent}
                             onChange={(e) => setBulkPriceIncreasePercent(e.target.value === '' ? '' : parseFloat(e.target.value))}
-                            className="w-24 px-2 py-1 border border-gray-300 rounded text-sm text-right"
+                            className="w-24 px-2 py-1 border border-gray-300 dark:border-gray-600 rounded text-sm text-right bg-white dark:bg-gray-800 text-gray-900 dark:text-gray-100"
                             placeholder="%"
                             step="0.1"
                           />
@@ -4356,13 +4371,13 @@ export function UniversalInvoiceForm({
                           >
                             {tm('apply')}
                           </button>
-                          <span className="text-xs text-gray-600 max-w-md">{tm('bulkPriceIncreaseDesc')}</span>
+                          <span className="text-xs text-gray-600 dark:text-gray-300 max-w-md">{tm('bulkPriceIncreaseDesc')}</span>
                         </div>
                         <div className="flex flex-wrap items-center gap-2 lg:justify-end">
                           <button
                             type="button"
                             onClick={() => void handleDownloadPurchaseInvoiceExcelTemplate()}
-                            className="inline-flex items-center gap-2 px-3 py-1.5 rounded border border-teal-200 bg-teal-50 text-teal-800 text-sm font-medium hover:bg-teal-100 transition-colors"
+                            className="inline-flex items-center gap-2 px-3 py-1.5 rounded border border-teal-200 dark:border-teal-700 bg-teal-50 dark:bg-teal-950/50 text-teal-800 dark:text-teal-200 text-sm font-medium hover:bg-teal-100 dark:hover:bg-teal-900/60 transition-colors"
                             title={tm('purchaseInvoiceExcelTemplateBtn')}
                           >
                             <FileSpreadsheet className="w-4 h-4 shrink-0" />
@@ -4372,7 +4387,7 @@ export function UniversalInvoiceForm({
                             type="button"
                             disabled={purchaseExcelImporting}
                             onClick={() => purchaseExcelInputRef.current?.click()}
-                            className="inline-flex items-center gap-2 px-3 py-1.5 rounded border border-slate-200 bg-white text-slate-800 text-sm font-medium hover:bg-slate-50 transition-colors disabled:opacity-50"
+                            className="inline-flex items-center gap-2 px-3 py-1.5 rounded border border-slate-200 dark:border-gray-600 bg-white dark:bg-gray-800 text-slate-800 dark:text-gray-100 text-sm font-medium hover:bg-slate-50 dark:hover:bg-gray-700 transition-colors disabled:opacity-50"
                             title={tm('purchaseInvoiceExcelImportBtn')}
                           >
                             <Upload className="w-4 h-4 shrink-0" />
@@ -4387,7 +4402,7 @@ export function UniversalInvoiceForm({
                           />
                         </div>
                       </div>
-                      <p className="text-xs text-gray-500">{tm('purchaseInvoiceExcelHint')}</p>
+                      <p className="text-xs text-gray-500 dark:text-gray-400">{tm('purchaseInvoiceExcelHint')}</p>
                       {purchaseExcelImportReport && purchaseExcelImportReport.issues.length > 0 && (
                         <div
                           role="status"

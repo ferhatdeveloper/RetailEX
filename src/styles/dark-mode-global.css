@@ -1,18 +1,22 @@
 /**
  * RetailEX — html.dark altında sabit açık tema sınıflarını nötrleştirir.
  * Fiş / baskı / bilinçli açık alanlar: class="theme-lock-light" veya data-theme-lock="light"
+ *
+ * Kritik: bg-blue-50 / bg-teal-50 gibi pastel kartlar dönüştürülmezse
+ * text-gray-* açık metin + pastel zemin → okunaksız (Tedarikçi Seç vb.).
  */
 
 .dark {
   color-scheme: dark;
 }
 
+/* ——— Arka planlar ——— */
 .dark .bg-white:not(.theme-lock-light):not([data-theme-lock='light']) {
-  background-color: rgb(31 41 55) !important;
+  background-color: rgb(31 41 55) !important; /* gray-800 */
 }
 
 .dark .bg-gray-50:not(.theme-lock-light):not([data-theme-lock='light']) {
-  background-color: rgb(17 24 39) !important;
+  background-color: rgb(17 24 39) !important; /* gray-900 */
 }
 
 .dark .bg-gray-100:not(.theme-lock-light):not([data-theme-lock='light']) {
@@ -27,58 +31,155 @@
   background-color: rgb(30 41 59) !important;
 }
 
+/* Pastel seçim / vurgu kartları */
+.dark .bg-blue-50:not(.theme-lock-light):not([data-theme-lock='light']) {
+  background-color: rgb(30 58 138 / 0.35) !important; /* blue-900/35 */
+}
+.dark .bg-teal-50:not(.theme-lock-light):not([data-theme-lock='light']) {
+  background-color: rgb(19 78 74 / 0.4) !important;
+}
+.dark .bg-indigo-50:not(.theme-lock-light):not([data-theme-lock='light']) {
+  background-color: rgb(49 46 129 / 0.4) !important;
+}
+.dark .bg-amber-50:not(.theme-lock-light):not([data-theme-lock='light']),
+.dark .bg-yellow-50:not(.theme-lock-light):not([data-theme-lock='light']) {
+  background-color: rgb(120 53 15 / 0.35) !important;
+}
+.dark .bg-green-50:not(.theme-lock-light):not([data-theme-lock='light']),
+.dark .bg-emerald-50:not(.theme-lock-light):not([data-theme-lock='light']) {
+  background-color: rgb(6 78 59 / 0.4) !important;
+}
+.dark .bg-red-50:not(.theme-lock-light):not([data-theme-lock='light']) {
+  background-color: rgb(127 29 29 / 0.35) !important;
+}
+.dark .bg-orange-50:not(.theme-lock-light):not([data-theme-lock='light']) {
+  background-color: rgb(124 45 18 / 0.35) !important;
+}
+.dark .bg-purple-50:not(.theme-lock-light):not([data-theme-lock='light']) {
+  background-color: rgb(88 28 135 / 0.35) !important;
+}
+.dark .bg-cyan-50:not(.theme-lock-light):not([data-theme-lock='light']) {
+  background-color: rgb(22 78 99 / 0.4) !important;
+}
+
+/* Opacity’li pastel (bg-blue-50/80 vb.) — attribute selector ile sınıf adı */
+.dark [class*='bg-blue-50/']:not(.theme-lock-light):not([data-theme-lock='light']) {
+  background-color: rgb(30 58 138 / 0.45) !important;
+}
+.dark [class*='bg-teal-50/']:not(.theme-lock-light):not([data-theme-lock='light']) {
+  background-color: rgb(19 78 74 / 0.45) !important;
+}
+.dark [class*='bg-amber-50/']:not(.theme-lock-light):not([data-theme-lock='light']),
+.dark [class*='bg-yellow-50/']:not(.theme-lock-light):not([data-theme-lock='light']) {
+  background-color: rgb(120 53 15 / 0.4) !important;
+}
+
+/* ——— Metin ——— */
 .dark .text-gray-900:not(.theme-lock-light):not([data-theme-lock='light']) {
   color: rgb(243 244 246) !important;
 }
-
 .dark .text-gray-800:not(.theme-lock-light):not([data-theme-lock='light']) {
   color: rgb(229 231 235) !important;
 }
-
 .dark .text-gray-700:not(.theme-lock-light):not([data-theme-lock='light']) {
   color: rgb(209 213 219) !important;
 }
-
 .dark .text-gray-600:not(.theme-lock-light):not([data-theme-lock='light']) {
+  color: rgb(156 163 175) !important;
+}
+.dark .text-gray-500:not(.theme-lock-light):not([data-theme-lock='light']) {
   color: rgb(156 163 175) !important;
 }
 
 .dark .text-slate-900:not(.theme-lock-light):not([data-theme-lock='light']) {
   color: rgb(241 245 249) !important;
 }
-
 .dark .text-slate-800:not(.theme-lock-light):not([data-theme-lock='light']) {
   color: rgb(226 232 240) !important;
 }
+.dark .text-slate-700:not(.theme-lock-light):not([data-theme-lock='light']) {
+  color: rgb(203 213 225) !important;
+}
+.dark .text-slate-600:not(.theme-lock-light):not([data-theme-lock='light']) {
+  color: rgb(148 163 184) !important;
+}
 
+/* Koyu mavi/teal başlık metinleri pastel kartlarda kalıyordu */
+.dark .text-blue-900:not(.theme-lock-light):not([data-theme-lock='light']),
+.dark .text-blue-800:not(.theme-lock-light):not([data-theme-lock='light']) {
+  color: rgb(191 219 254) !important; /* blue-200 */
+}
+.dark .text-teal-900:not(.theme-lock-light):not([data-theme-lock='light']),
+.dark .text-teal-800:not(.theme-lock-light):not([data-theme-lock='light']) {
+  color: rgb(153 246 228) !important;
+}
+.dark .text-indigo-900:not(.theme-lock-light):not([data-theme-lock='light']),
+.dark .text-indigo-800:not(.theme-lock-light):not([data-theme-lock='light']) {
+  color: rgb(199 210 254) !important;
+}
+.dark .text-amber-900:not(.theme-lock-light):not([data-theme-lock='light']),
+.dark .text-amber-800:not(.theme-lock-light):not([data-theme-lock='light']) {
+  color: rgb(253 230 138) !important;
+}
+
+/* ——— Kenarlık ——— */
 .dark .border-gray-100:not(.theme-lock-light):not([data-theme-lock='light']),
 .dark .border-gray-200:not(.theme-lock-light):not([data-theme-lock='light']) {
   border-color: rgb(55 65 81) !important;
 }
-
 .dark .border-gray-300:not(.theme-lock-light):not([data-theme-lock='light']) {
   border-color: rgb(75 85 99) !important;
 }
-
 .dark .border-slate-200:not(.theme-lock-light):not([data-theme-lock='light']) {
   border-color: rgb(51 65 85) !important;
+}
+.dark .border-blue-200:not(.theme-lock-light):not([data-theme-lock='light']),
+.dark .border-blue-300:not(.theme-lock-light):not([data-theme-lock='light']) {
+  border-color: rgb(30 64 175) !important;
+}
+.dark .border-teal-200:not(.theme-lock-light):not([data-theme-lock='light']),
+.dark .border-teal-300:not(.theme-lock-light):not([data-theme-lock='light']) {
+  border-color: rgb(15 118 110) !important;
 }
 
 .dark .divide-gray-200 > :not([hidden]) ~ :not([hidden]):not(.theme-lock-light) {
   border-color: rgb(55 65 81) !important;
 }
 
-.dark .hover\:bg-gray-50:hover:not(.theme-lock-light):not([data-theme-lock='light']) {
-  background-color: rgb(55 65 81) !important;
-}
-
+/* ——— Hover ——— */
+.dark .hover\:bg-gray-50:hover:not(.theme-lock-light):not([data-theme-lock='light']),
 .dark .hover\:bg-gray-100:hover:not(.theme-lock-light):not([data-theme-lock='light']) {
   background-color: rgb(55 65 81) !important;
+}
+.dark .hover\:bg-blue-50:hover:not(.theme-lock-light):not([data-theme-lock='light']),
+.dark .hover\:bg-blue-100:hover:not(.theme-lock-light):not([data-theme-lock='light']) {
+  background-color: rgb(30 58 138 / 0.45) !important;
+}
+.dark .hover\:bg-teal-50:hover:not(.theme-lock-light):not([data-theme-lock='light']),
+.dark .hover\:bg-teal-100:hover:not(.theme-lock-light):not([data-theme-lock='light']) {
+  background-color: rgb(19 78 74 / 0.5) !important;
+}
+.dark .hover\:bg-indigo-50:hover:not(.theme-lock-light):not([data-theme-lock='light']) {
+  background-color: rgb(49 46 129 / 0.45) !important;
+}
+.dark .hover\:bg-amber-50:hover:not(.theme-lock-light):not([data-theme-lock='light']) {
+  background-color: rgb(120 53 15 / 0.45) !important;
+}
+.dark .hover\:bg-slate-50:hover:not(.theme-lock-light):not([data-theme-lock='light']) {
+  background-color: rgb(51 65 85) !important;
+}
+
+/* Placeholder */
+.dark input::placeholder,
+.dark textarea::placeholder {
+  color: rgb(107 114 128) !important;
 }
 
 @media print {
   .dark .bg-white,
   .dark .bg-gray-50,
+  .dark .bg-blue-50,
+  .dark .bg-teal-50,
   .dark .text-gray-900 {
     background-color: white !important;
     color: black !important;

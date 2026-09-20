@@ -191,16 +191,16 @@ export const InvoiceHeader: React.FC<InvoiceHeaderProps> = ({
                 type="text"
                 readOnly
                 value={paymentDisplayLabel}
-                className="w-[8.5rem] sm:w-[10.5rem] px-2 py-1 border border-gray-300 rounded text-sm bg-white cursor-pointer truncate focus:outline-none focus:ring-1 focus:ring-blue-500"
+                className="w-[8.5rem] sm:w-[10.5rem] px-2 py-1 border border-gray-300 dark:border-gray-600 rounded text-sm bg-white dark:bg-gray-800 cursor-pointer truncate focus:outline-none focus:ring-1 focus:ring-blue-500"
                 onClick={() => setShowPaymentInfoModal(true)}
             />
             <button
                 type="button"
                 onClick={() => setShowPaymentInfoModal(true)}
-                className="shrink-0 px-1.5 py-1 border border-gray-300 rounded hover:bg-gray-50"
+                className="shrink-0 px-1.5 py-1 border border-gray-300 dark:border-gray-600 rounded hover:bg-gray-50 dark:hover:bg-gray-700"
                 title={tm('paymentInfo')}
             >
-                <MoreVertical className="w-3.5 h-3.5 text-gray-600" />
+                <MoreVertical className="w-3.5 h-3.5 text-gray-600 dark:text-gray-300" />
             </button>
         </div>
     );
@@ -230,15 +230,15 @@ export const InvoiceHeader: React.FC<InvoiceHeaderProps> = ({
                     value={isPurchaseSide ? supplierTitle : customerTitle}
                     readOnly
                     placeholder={`${tm('selectCurrent')}...`}
-                    className={`flex-1 min-w-0 px-2 py-1 border-2 rounded text-sm bg-white cursor-pointer font-medium hover:border-gray-400 transition-colors truncate ${cariBorderColor}`}
+                    className={`flex-1 min-w-0 px-2 py-1 border-2 rounded text-sm bg-white dark:bg-gray-800 cursor-pointer font-medium hover:border-gray-400 transition-colors truncate ${cariBorderColor}`}
                     onClick={openCariModal}
                 />
                 <button
                     type="button"
                     onClick={openCariModal}
-                    className="shrink-0 px-1.5 py-1 border border-gray-300 rounded hover:bg-gray-50"
+                    className="shrink-0 px-1.5 py-1 border border-gray-300 dark:border-gray-600 rounded hover:bg-gray-50 dark:hover:bg-gray-700"
                 >
-                    <MoreVertical className="w-3.5 h-3.5 text-gray-600" />
+                    <MoreVertical className="w-3.5 h-3.5 text-gray-600 dark:text-gray-300" />
                 </button>
                 {isPurchaseSide && (supplierCode || supplierTitle) && (
                     <button
@@ -273,8 +273,8 @@ export const InvoiceHeader: React.FC<InvoiceHeaderProps> = ({
     const cariMetaBadges = showCariMeta ? (
         <div className="flex flex-wrap items-center gap-2">
             {selectedCariBalance != null && (
-                <div className="flex items-center gap-2 px-2 py-0.5 rounded-full bg-gray-50 border border-gray-200 w-fit">
-                    <span className="text-[10px] font-bold text-gray-500 uppercase tracking-tighter">{tm('balanceShort')}:</span>
+                <div className="flex items-center gap-2 px-2 py-0.5 rounded-full bg-gray-50 dark:bg-gray-700 border border-gray-200 dark:border-gray-600 w-fit">
+                    <span className="text-[10px] font-bold text-gray-500 dark:text-gray-300 uppercase tracking-tighter">{tm('balanceShort')}:</span>
                     <span className={`text-xs font-black ${(selectedCariBalance || 0) >= 0 ? 'text-green-600' : 'text-red-600'}`}>
                         {new Intl.NumberFormat('tr-TR', { minimumFractionDigits: 2 }).format(selectedCariBalance ?? 0)}{' '}
                         <span className="text-[10px] opacity-70">{selectedCariCurrency}</span>
@@ -282,26 +282,26 @@ export const InvoiceHeader: React.FC<InvoiceHeaderProps> = ({
                 </div>
             )}
             {selectedCariPhone?.trim() ? (
-                <div className="flex items-center gap-2 px-2 py-0.5 rounded-full bg-gray-50 border border-gray-200 w-fit">
-                    <span className="text-[10px] font-bold text-gray-500 uppercase tracking-tighter">{tm('phoneShort')}:</span>
-                    <span className="text-xs font-semibold text-gray-800">{selectedCariPhone.trim()}</span>
+                <div className="flex items-center gap-2 px-2 py-0.5 rounded-full bg-gray-50 dark:bg-gray-700 border border-gray-200 dark:border-gray-600 w-fit">
+                    <span className="text-[10px] font-bold text-gray-500 dark:text-gray-300 uppercase tracking-tighter">{tm('phoneShort')}:</span>
+                    <span className="text-xs font-semibold text-gray-800 dark:text-gray-100">{selectedCariPhone.trim()}</span>
                 </div>
             ) : null}
         </div>
     ) : null;
 
     return (
-        <div className="bg-white rounded border border-gray-200 px-3 py-2 mb-3">
+        <div className="bg-white dark:bg-gray-800 rounded border border-gray-200 dark:border-gray-600 px-3 py-2 mb-3">
             {/* Form Header - Collapse/Expand */}
             <button
                 onClick={() => setIsFormExpanded(!isFormExpanded)}
-                className="w-full flex items-center justify-between mb-2 pb-1.5 border-b border-gray-200 hover:bg-gray-50 -mx-3 px-3 py-1.5 rounded transition-colors"
+                className="w-full flex items-center justify-between mb-2 pb-1.5 border-b border-gray-200 dark:border-gray-600 hover:bg-gray-50 dark:hover:bg-gray-700 -mx-3 px-3 py-1.5 rounded transition-colors"
             >
-                <span className="text-sm font-medium text-gray-700">{tm('invoiceInfo')}</span>
+                <span className="text-sm font-medium text-gray-700 dark:text-gray-200">{tm('invoiceInfo')}</span>
                 {isFormExpanded ? (
-                    <ChevronDown className="w-4 h-4 text-gray-600" />
+                    <ChevronDown className="w-4 h-4 text-gray-600 dark:text-gray-300" />
                 ) : (
-                    <ChevronRight className="w-4 h-4 text-gray-600" />
+                    <ChevronRight className="w-4 h-4 text-gray-600 dark:text-gray-300" />
                 )}
             </button>
 
@@ -310,7 +310,7 @@ export const InvoiceHeader: React.FC<InvoiceHeaderProps> = ({
                     {/* Column 1 - Fatura Bilgileri */}
                     <div className="space-y-3">
                         <div>
-                            <label className="block mb-1 text-gray-700 text-xs font-semibold">
+                            <label className="block mb-1 text-gray-700 dark:text-gray-200 text-xs font-semibold">
                                 {tm('invoiceNo')}
                             </label>
                             <div className="flex items-center gap-1">
@@ -320,10 +320,10 @@ export const InvoiceHeader: React.FC<InvoiceHeaderProps> = ({
                                 readOnly={!invoiceNoEditable}
                                 onChange={(e) => setInvoiceNo?.(e.target.value)}
                                 title={invoiceNoEditable ? tm('invoiceNo') : undefined}
-                                className={`flex-1 min-w-0 px-2 py-1 border border-gray-300 rounded text-sm font-mono tabular-nums ${
+                                className={`flex-1 min-w-0 px-2 py-1 border border-gray-300 dark:border-gray-600 rounded text-sm font-mono tabular-nums ${
                                     invoiceNoEditable
-                                        ? 'bg-white focus:outline-none focus:ring-1 focus:ring-blue-500'
-                                        : 'bg-gray-50 text-gray-800'
+                                        ? 'bg-white dark:bg-gray-800 focus:outline-none focus:ring-1 focus:ring-blue-500'
+                                        : 'bg-gray-50 dark:bg-gray-700 text-gray-800 dark:text-gray-100'
                                 }`}
                             />
                             {invoiceNoEditable ? (
@@ -337,55 +337,55 @@ export const InvoiceHeader: React.FC<InvoiceHeaderProps> = ({
                         </div>
 
                         <div>
-                            <label className="block mb-1 text-gray-700 text-xs">{tm('date')}</label>
+                            <label className="block mb-1 text-gray-700 dark:text-gray-200 text-xs">{tm('date')}</label>
                             <div className="flex gap-1">
                                 <input
                                     type="text"
                                     value={transactionDate}
                                     onChange={(e) => setTransactionDate(e.target.value)}
-                                    className="flex-1 px-2 py-1 border border-gray-300 rounded text-sm focus:outline-none focus:ring-1 focus:ring-blue-500"
+                                    className="flex-1 px-2 py-1 border border-gray-300 dark:border-gray-600 rounded text-sm focus:outline-none focus:ring-1 focus:ring-blue-500"
                                 />
                                 <button
                                     onClick={() => setShowTransactionDateModal(true)}
-                                    className="px-2 py-1 border border-gray-300 rounded hover:bg-gray-50"
+                                    className="px-2 py-1 border border-gray-300 dark:border-gray-600 rounded hover:bg-gray-50 dark:hover:bg-gray-700"
                                 >
-                                    <MoreVertical className="w-4 h-4 text-gray-600" />
+                                    <MoreVertical className="w-4 h-4 text-gray-600 dark:text-gray-300" />
                                 </button>
                             </div>
                         </div>
 
                         <div>
-                            <label className="block mb-1 text-gray-700 text-xs">{tm('time')}</label>
+                            <label className="block mb-1 text-gray-700 dark:text-gray-200 text-xs">{tm('time')}</label>
                             <input
                                 type="text"
                                 value={time}
                                 onChange={(e) => setTime(e.target.value)}
-                                className="w-full px-2 py-1 border border-gray-300 rounded text-sm focus:outline-none focus:ring-1 focus:ring-blue-500"
+                                className="w-full px-2 py-1 border border-gray-300 dark:border-gray-600 rounded text-sm focus:outline-none focus:ring-1 focus:ring-blue-500"
                             />
                         </div>
 
                         <div>
-                            <label className="block mb-1 text-gray-700 text-xs">{tm('documentNo')}</label>
+                            <label className="block mb-1 text-gray-700 dark:text-gray-200 text-xs">{tm('documentNo')}</label>
                             <input
                                 type="text"
                                 value={documentNo}
                                 onChange={(e) => setDocumentNo(e.target.value)}
-                                className="w-full px-2 py-1 border border-gray-300 rounded text-sm focus:outline-none focus:ring-1 focus:ring-blue-500"
+                                className="w-full px-2 py-1 border border-gray-300 dark:border-gray-600 rounded text-sm focus:outline-none focus:ring-1 focus:ring-blue-500"
                             />
                         </div>
 
                         <div>
-                            <label className="block mb-1 text-gray-700 text-xs">{tm('barcode')}</label>
+                            <label className="block mb-1 text-gray-700 dark:text-gray-200 text-xs">{tm('barcode')}</label>
                             <div className="flex gap-1">
                                 <input
                                     type="text"
                                     value={customerBarcode}
                                     onChange={(e) => setCustomerBarcode(e.target.value)}
-                                    className="flex-1 px-2 py-1 border border-gray-300 rounded text-sm bg-white"
+                                    className="flex-1 px-2 py-1 border border-gray-300 dark:border-gray-600 rounded text-sm bg-white dark:bg-gray-800"
                                     placeholder={tm('scanBarcodePlaceholder')}
                                 />
-                                <button className="px-2 py-1 border border-gray-300 rounded hover:bg-gray-50">
-                                    <Barcode className="w-4 h-4 text-gray-600" />
+                                <button className="px-2 py-1 border border-gray-300 dark:border-gray-600 rounded hover:bg-gray-50 dark:hover:bg-gray-700">
+                                    <Barcode className="w-4 h-4 text-gray-600 dark:text-gray-300" />
                                 </button>
                             </div>
                         </div>
@@ -394,73 +394,73 @@ export const InvoiceHeader: React.FC<InvoiceHeaderProps> = ({
                     {/* Column 2 - Devam */}
                     <div className="space-y-3">
                         <div>
-                            <label className="block mb-1 text-gray-700 text-xs">{tm('editDate')}</label>
+                            <label className="block mb-1 text-gray-700 dark:text-gray-200 text-xs">{tm('editDate')}</label>
                             <div className="flex gap-1">
                                 <input
                                     type="text"
                                     value={editDate}
                                     onChange={(e) => setEditDate(e.target.value)}
-                                    className="flex-1 px-2 py-1 border border-gray-300 rounded text-sm focus:outline-none focus:ring-1 focus:ring-blue-500"
+                                    className="flex-1 px-2 py-1 border border-gray-300 dark:border-gray-600 rounded text-sm focus:outline-none focus:ring-1 focus:ring-blue-500"
                                 />
                                 <button
                                     onClick={() => setShowEditDateModal(true)}
-                                    className="px-2 py-1 border border-gray-300 rounded hover:bg-gray-50"
+                                    className="px-2 py-1 border border-gray-300 dark:border-gray-600 rounded hover:bg-gray-50 dark:hover:bg-gray-700"
                                 >
-                                    <MoreVertical className="w-4 h-4 text-gray-600" />
+                                    <MoreVertical className="w-4 h-4 text-gray-600 dark:text-gray-300" />
                                 </button>
                             </div>
                         </div>
 
                         <div>
-                            <label className="block mb-1 text-gray-700 text-xs">{tm('specialCode')}</label>
+                            <label className="block mb-1 text-gray-700 dark:text-gray-200 text-xs">{tm('specialCode')}</label>
                             <div className="flex gap-1">
                                 <input
                                     type="text"
                                     value={specialCode}
                                     onChange={(e) => setSpecialCode(e.target.value)}
-                                    className="flex-1 px-2 py-1 border border-gray-300 rounded text-sm focus:outline-none focus:ring-1 focus:ring-blue-500"
+                                    className="flex-1 px-2 py-1 border border-gray-300 dark:border-gray-600 rounded text-sm focus:outline-none focus:ring-1 focus:ring-blue-500"
                                 />
                                 <button
                                     onClick={() => setShowSpecialCodeModal(true)}
-                                    className="px-2 py-1 border border-gray-300 rounded hover:bg-gray-50"
+                                    className="px-2 py-1 border border-gray-300 dark:border-gray-600 rounded hover:bg-gray-50 dark:hover:bg-gray-700"
                                 >
-                                    <MoreVertical className="w-4 h-4 text-gray-600" />
+                                    <MoreVertical className="w-4 h-4 text-gray-600 dark:text-gray-300" />
                                 </button>
                             </div>
                         </div>
 
                         <div>
-                            <label className="block mb-1 text-gray-700 text-xs">{tm('tradingGroup')}</label>
+                            <label className="block mb-1 text-gray-700 dark:text-gray-200 text-xs">{tm('tradingGroup')}</label>
                             <div className="flex gap-1">
                                 <input
                                     type="text"
                                     value={tradingGroup}
                                     onChange={(e) => setTradingGroup(e.target.value)}
-                                    className="flex-1 px-2 py-1 border border-gray-300 rounded text-sm bg-white"
+                                    className="flex-1 px-2 py-1 border border-gray-300 dark:border-gray-600 rounded text-sm bg-white dark:bg-gray-800"
                                 />
                                 <button
                                     onClick={() => setShowTradingGroupModal(true)}
-                                    className="px-2 py-1 border border-gray-300 rounded hover:bg-gray-50"
+                                    className="px-2 py-1 border border-gray-300 dark:border-gray-600 rounded hover:bg-gray-50 dark:hover:bg-gray-700"
                                 >
-                                    <MoreVertical className="w-4 h-4 text-gray-600" />
+                                    <MoreVertical className="w-4 h-4 text-gray-600 dark:text-gray-300" />
                                 </button>
                             </div>
                         </div>
 
                         <div>
-                            <label className="block mb-1 text-gray-700 text-xs">{tm('authorization')}</label>
+                            <label className="block mb-1 text-gray-700 dark:text-gray-200 text-xs">{tm('authorization')}</label>
                             <div className="flex gap-1">
                                 <input
                                     type="text"
                                     value={authorizationCode}
                                     onChange={(e) => setAuthorizationCode(e.target.value)}
-                                    className="flex-1 px-2 py-1 border border-gray-300 rounded text-sm bg-white"
+                                    className="flex-1 px-2 py-1 border border-gray-300 dark:border-gray-600 rounded text-sm bg-white dark:bg-gray-800"
                                 />
                                 <button
                                     onClick={() => setShowAuthorizationModal(true)}
-                                    className="px-2 py-1 border border-gray-300 rounded hover:bg-gray-50"
+                                    className="px-2 py-1 border border-gray-300 dark:border-gray-600 rounded hover:bg-gray-50 dark:hover:bg-gray-700"
                                 >
-                                    <MoreVertical className="w-4 h-4 text-gray-600" />
+                                    <MoreVertical className="w-4 h-4 text-gray-600 dark:text-gray-300" />
                                 </button>
                             </div>
                         </div>
@@ -477,7 +477,7 @@ export const InvoiceHeader: React.FC<InvoiceHeaderProps> = ({
                         </div>
 
                         <div>
-                            <label className="block mb-1 text-gray-700 text-xs">{tm('accountCodeLabel')}</label>
+                            <label className="block mb-1 text-gray-700 dark:text-gray-200 text-xs">{tm('accountCodeLabel')}</label>
                             <div className="flex gap-1">
                                 <input
                                     type="text"
@@ -492,7 +492,7 @@ export const InvoiceHeader: React.FC<InvoiceHeaderProps> = ({
                                         }
                                     }}
                                     placeholder={tm('selectOrEnterPlaceholder')}
-                                    className="flex-1 px-2 py-1 border border-gray-300 rounded text-sm bg-white"
+                                    className="flex-1 px-2 py-1 border border-gray-300 dark:border-gray-600 rounded text-sm bg-white dark:bg-gray-800"
                                 />
                                 <button
                                     onClick={() => {
@@ -502,22 +502,22 @@ export const InvoiceHeader: React.FC<InvoiceHeaderProps> = ({
                                             setShowCustomerModal(true);
                                         }
                                     }}
-                                    className="px-2 py-1 border border-gray-300 rounded hover:bg-gray-50"
+                                    className="px-2 py-1 border border-gray-300 dark:border-gray-600 rounded hover:bg-gray-50 dark:hover:bg-gray-700"
                                 >
-                                    <MoreVertical className="w-4 h-4 text-gray-600" />
+                                    <MoreVertical className="w-4 h-4 text-gray-600 dark:text-gray-300" />
                                 </button>
                             </div>
                         </div>
 
                         <div>
-                            <label className="block mb-1 text-gray-700 text-xs">{tm('accountTitleLabel')}</label>
+                            <label className="block mb-1 text-gray-700 dark:text-gray-200 text-xs">{tm('accountTitleLabel')}</label>
                             <div className="flex gap-1">
                                 <input
                                     type="text"
                                     value={isPurchaseSide ? supplierTitle : customerTitle}
                                     readOnly
                                     placeholder={tm('selectShortPlaceholder')}
-                                    className="flex-1 px-2 py-1 border border-gray-300 rounded text-sm bg-white cursor-pointer"
+                                    className="flex-1 px-2 py-1 border border-gray-300 dark:border-gray-600 rounded text-sm bg-white dark:bg-gray-800 cursor-pointer"
                                     onClick={() => {
                                         if (isPurchaseSide) {
                                             setShowSupplierModal(true);
@@ -534,9 +534,9 @@ export const InvoiceHeader: React.FC<InvoiceHeaderProps> = ({
                                             setShowCustomerModal(true);
                                         }
                                     }}
-                                    className="px-2 py-1 border border-gray-300 rounded hover:bg-gray-50"
+                                    className="px-2 py-1 border border-gray-300 dark:border-gray-600 rounded hover:bg-gray-50 dark:hover:bg-gray-700"
                                 >
-                                    <MoreVertical className="w-4 h-4 text-gray-600" />
+                                    <MoreVertical className="w-4 h-4 text-gray-600 dark:text-gray-300" />
                                 </button>
                                 {isPurchaseSide && (supplierCode || supplierTitle) && (
                                     <button
@@ -570,7 +570,7 @@ export const InvoiceHeader: React.FC<InvoiceHeaderProps> = ({
                     {/* Column 4 - Cari Hesap Devam */}
                     <div className="space-y-3">
                         <div>
-                            <label className="block mb-1 text-gray-700 text-xs">{tm('paymentMethodLabel')}</label>
+                            <label className="block mb-1 text-gray-700 dark:text-gray-200 text-xs">{tm('paymentMethodLabel')}</label>
                             {paymentModalTriggerEl}
                             {paymentExtraLabel ? (
                                 <p className="mt-1 text-[11px] text-blue-600 font-medium truncate">{paymentExtraLabel}</p>
@@ -580,7 +580,7 @@ export const InvoiceHeader: React.FC<InvoiceHeaderProps> = ({
                         {/* Kasa seçimi — ödeme tipine göre bağlı kasayı seç */}
                         <div>
                             <div className="flex items-center justify-between mb-1">
-                                <label className="block text-gray-700 text-xs">{tm('cashRegisterLabel') || 'Kasa Seçimi'}</label>
+                                <label className="block text-gray-700 dark:text-gray-200 text-xs">{tm('cashRegisterLabel') || 'Kasa Seçimi'}</label>
                                 {cashRegisterName && (
                                     <span className="text-[10px] px-1.5 py-0.5 rounded-full bg-emerald-100 text-emerald-700">
                                         {tm('cashRegisterPaymentTypeLabel')
@@ -614,71 +614,71 @@ export const InvoiceHeader: React.FC<InvoiceHeaderProps> = ({
                         </div>
 
                         <div>
-                            <label className="block mb-1 text-gray-700 text-xs">{tm('warehouseField')}</label>
+                            <label className="block mb-1 text-gray-700 dark:text-gray-200 text-xs">{tm('warehouseField')}</label>
                             <div className="flex gap-1">
                                 <input
                                     type="text"
                                     value={warehouse}
                                     readOnly
-                                    className="flex-1 px-2 py-1 border border-gray-300 rounded text-sm bg-white cursor-pointer"
+                                    className="flex-1 px-2 py-1 border border-gray-300 dark:border-gray-600 rounded text-sm bg-white dark:bg-gray-800 cursor-pointer"
                                     onClick={() => setShowWarehouseModal(true)}
                                 />
                                 <button
                                     onClick={() => setShowWarehouseModal(true)}
-                                    className="px-2 py-1 border border-gray-300 rounded hover:bg-gray-50"
+                                    className="px-2 py-1 border border-gray-300 dark:border-gray-600 rounded hover:bg-gray-50 dark:hover:bg-gray-700"
                                 >
-                                    <MoreVertical className="w-4 h-4 text-gray-600" />
+                                    <MoreVertical className="w-4 h-4 text-gray-600 dark:text-gray-300" />
                                 </button>
                             </div>
                         </div>
 
                         <div>
-                            <label className="block mb-1 text-gray-700 text-xs">{tm('workplace')}</label>
+                            <label className="block mb-1 text-gray-700 dark:text-gray-200 text-xs">{tm('workplace')}</label>
                             <div className="flex gap-1">
                                 <input
                                     type="text"
                                     value={workplace}
                                     readOnly
-                                    className="flex-1 px-2 py-1 border border-gray-300 rounded text-sm bg-white cursor-pointer"
+                                    className="flex-1 px-2 py-1 border border-gray-300 dark:border-gray-600 rounded text-sm bg-white dark:bg-gray-800 cursor-pointer"
                                     onClick={() => setShowWorkplaceModal(true)}
                                 />
                                 <button
                                     onClick={() => setShowWorkplaceModal(true)}
-                                    className="px-2 py-1 border border-gray-300 rounded hover:bg-gray-50"
+                                    className="px-2 py-1 border border-gray-300 dark:border-gray-600 rounded hover:bg-gray-50 dark:hover:bg-gray-700"
                                 >
-                                    <MoreVertical className="w-4 h-4 text-gray-600" />
+                                    <MoreVertical className="w-4 h-4 text-gray-600 dark:text-gray-300" />
                                 </button>
                             </div>
                         </div>
 
                         <div>
-                            <label className="block mb-1 text-gray-700 text-xs">{tm('salespersonLabel')}</label>
+                            <label className="block mb-1 text-gray-700 dark:text-gray-200 text-xs">{tm('salespersonLabel')}</label>
                             <div className="flex gap-1">
                                 <input
                                     type="text"
                                     value={salespersonCode}
                                     readOnly
-                                    className="flex-1 px-2 py-1 border border-gray-300 rounded text-sm bg-white cursor-pointer"
+                                    className="flex-1 px-2 py-1 border border-gray-300 dark:border-gray-600 rounded text-sm bg-white dark:bg-gray-800 cursor-pointer"
                                     onClick={() => setShowSalespersonModal(true)}
                                 />
                                 <button
                                     onClick={() => setShowSalespersonModal(true)}
-                                    className="px-2 py-1 border border-gray-300 rounded hover:bg-gray-50"
+                                    className="px-2 py-1 border border-gray-300 dark:border-gray-600 rounded hover:bg-gray-50 dark:hover:bg-gray-700"
                                 >
-                                    <MoreVertical className="w-4 h-4 text-gray-600" />
+                                    <MoreVertical className="w-4 h-4 text-gray-600 dark:text-gray-300" />
                                 </button>
                             </div>
                         </div>
 
                         {showCashierField && (
                             <div>
-                                <label className="block mb-1 text-gray-700 text-xs">{cashierLabel}</label>
+                                <label className="block mb-1 text-gray-700 dark:text-gray-200 text-xs">{cashierLabel}</label>
                                 <input
                                     type="text"
                                     value={cashierName}
                                     readOnly={cashierReadOnly}
                                     onChange={(e) => onCashierNameChange?.(e.target.value)}
-                                    className={`w-full px-2 py-1 border border-gray-300 rounded text-sm ${cashierReadOnly ? 'bg-gray-50 text-gray-700' : 'bg-white'}`}
+                                    className={`w-full px-2 py-1 border border-gray-300 dark:border-gray-600 rounded text-sm ${cashierReadOnly ? 'bg-gray-50 dark:bg-gray-700 text-gray-700 dark:text-gray-200' : 'bg-white dark:bg-gray-800'}`}
                                     placeholder={tm('cashierNamePlaceholder')}
                                 />
                             </div>
@@ -689,13 +689,13 @@ export const InvoiceHeader: React.FC<InvoiceHeaderProps> = ({
                 <div className="flex flex-wrap items-center justify-between gap-x-4 gap-y-2 w-full text-sm">
                     <div className="flex flex-wrap items-center gap-x-4 gap-y-2 flex-1 min-w-0 order-1">
                         <div className="inline-flex items-center gap-1.5 shrink-0">
-                            <span className="text-[11px] font-semibold text-gray-500 uppercase whitespace-nowrap">{tm('paymentMethodLabel')}</span>
+                            <span className="text-[11px] font-semibold text-gray-500 dark:text-gray-300 uppercase whitespace-nowrap">{tm('paymentMethodLabel')}</span>
                             {paymentModalTriggerEl}
                         </div>
                         {cariSummaryEl}
                         {setDescription ? (
                             <div className="inline-flex items-center gap-1.5 flex-1 min-w-[10rem] max-w-md">
-                                <span className="text-[11px] font-semibold text-gray-500 uppercase whitespace-nowrap shrink-0">
+                                <span className="text-[11px] font-semibold text-gray-500 dark:text-gray-300 uppercase whitespace-nowrap shrink-0">
                                     {tm('description')}
                                 </span>
                                 <input
@@ -703,7 +703,7 @@ export const InvoiceHeader: React.FC<InvoiceHeaderProps> = ({
                                     value={description ?? ''}
                                     onChange={(e) => setDescription(e.target.value)}
                                     placeholder={`${tm('description')}...`}
-                                    className="flex-1 min-w-0 px-2 py-1 border border-gray-300 rounded text-sm bg-white focus:outline-none focus:ring-1 focus:ring-blue-500 truncate"
+                                    className="flex-1 min-w-0 px-2 py-1 border border-gray-300 dark:border-gray-600 rounded text-sm bg-white dark:bg-gray-800 focus:outline-none focus:ring-1 focus:ring-blue-500 truncate"
                                 />
                             </div>
                         ) : null}
@@ -711,16 +711,16 @@ export const InvoiceHeader: React.FC<InvoiceHeaderProps> = ({
 
                     <div className="flex flex-wrap items-center gap-x-4 gap-y-2 shrink-0 order-2 sm:ml-auto">
                         <div className="inline-flex items-center gap-1.5 shrink-0">
-                            <span className="text-[11px] font-semibold text-gray-500 uppercase whitespace-nowrap">{tm('invoiceNo')}</span>
+                            <span className="text-[11px] font-semibold text-gray-500 dark:text-gray-300 uppercase whitespace-nowrap">{tm('invoiceNo')}</span>
                             <input
                                 type="text"
                                 value={invoiceNo}
                                 readOnly={!invoiceNoEditable}
                                 onChange={(e) => setInvoiceNo?.(e.target.value)}
-                                className={`w-[7.5rem] sm:w-[9rem] px-2 py-1 border border-gray-300 rounded text-sm font-mono tabular-nums truncate ${
+                                className={`w-[7.5rem] sm:w-[9rem] px-2 py-1 border border-gray-300 dark:border-gray-600 rounded text-sm font-mono tabular-nums truncate ${
                                     invoiceNoEditable
-                                        ? 'bg-white focus:outline-none focus:ring-1 focus:ring-blue-500'
-                                        : 'bg-gray-50 text-gray-800'
+                                        ? 'bg-white dark:bg-gray-800 focus:outline-none focus:ring-1 focus:ring-blue-500'
+                                        : 'bg-gray-50 dark:bg-gray-700 text-gray-800 dark:text-gray-100'
                                 }`}
                                 title={invoiceNo}
                             />
@@ -734,32 +734,32 @@ export const InvoiceHeader: React.FC<InvoiceHeaderProps> = ({
                         </div>
 
                         <div className="inline-flex items-center gap-1.5 shrink-0">
-                            <span className="text-[11px] font-semibold text-gray-500 uppercase whitespace-nowrap">{tm('date')}</span>
+                            <span className="text-[11px] font-semibold text-gray-500 dark:text-gray-300 uppercase whitespace-nowrap">{tm('date')}</span>
                             <div className="flex gap-1">
                                 <input
                                     type="text"
                                     value={transactionDate}
                                     onChange={(e) => setTransactionDate(e.target.value)}
-                                    className="w-[6.5rem] sm:w-[7.5rem] px-2 py-1 border border-gray-300 rounded text-sm tabular-nums focus:outline-none focus:ring-1 focus:ring-blue-500 bg-white"
+                                    className="w-[6.5rem] sm:w-[7.5rem] px-2 py-1 border border-gray-300 dark:border-gray-600 rounded text-sm tabular-nums focus:outline-none focus:ring-1 focus:ring-blue-500 bg-white dark:bg-gray-800"
                                 />
                                 <button
                                     type="button"
                                     onClick={() => setShowTransactionDateModal(true)}
-                                    className="shrink-0 px-1.5 py-1 border border-gray-300 rounded hover:bg-gray-50"
+                                    className="shrink-0 px-1.5 py-1 border border-gray-300 dark:border-gray-600 rounded hover:bg-gray-50 dark:hover:bg-gray-700"
                                     title={tm('date')}
                                 >
-                                    <MoreVertical className="w-3.5 h-3.5 text-gray-600" />
+                                    <MoreVertical className="w-3.5 h-3.5 text-gray-600 dark:text-gray-300" />
                                 </button>
                             </div>
                         </div>
 
                         <div className="inline-flex items-center gap-1.5 shrink-0">
-                            <span className="text-[11px] font-semibold text-gray-500 uppercase whitespace-nowrap">{tm('documentNo')}</span>
+                            <span className="text-[11px] font-semibold text-gray-500 dark:text-gray-300 uppercase whitespace-nowrap">{tm('documentNo')}</span>
                             <input
                                 type="text"
                                 value={documentNo}
                                 onChange={(e) => setDocumentNo(e.target.value)}
-                                className="w-[5.5rem] sm:w-[7rem] px-2 py-1 border border-gray-300 rounded text-sm focus:outline-none focus:ring-1 focus:ring-blue-500 bg-white"
+                                className="w-[5.5rem] sm:w-[7rem] px-2 py-1 border border-gray-300 dark:border-gray-600 rounded text-sm focus:outline-none focus:ring-1 focus:ring-blue-500 bg-white dark:bg-gray-800"
                                 placeholder="..."
                             />
                         </div>
