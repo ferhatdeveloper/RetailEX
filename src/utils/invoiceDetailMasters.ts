@@ -101,6 +101,27 @@ export async function listInvoiceSalespersons(): Promise<InvoicePickerMaster[]> 
   }
 }
 
+/** Satış elemanı hızlı ekleme (fatura seçim modalı). */
+export async function createInvoiceSalesperson(input: {
+  code: string;
+  name: string;
+  phone?: string;
+}): Promise<InvoicePickerMaster> {
+  const code = String(input.code || '').trim();
+  const name = String(input.name || '').trim();
+  if (!code || !name) throw new Error('Kod ve ad zorunlu');
+  const firmNr = String(ERP_SETTINGS.firmNr || '').trim();
+  const { rows } = await postgres.query<InvoicePickerMaster>(
+    `INSERT INTO sales_reps (firm_nr, code, name, phone, is_active)
+     VALUES ($1, $2, $3, $4, true)
+     RETURNING code, name, phone, email`,
+    [firmNr, code, name, input.phone?.trim() || null],
+  );
+  const row = rows?.[0];
+  if (!row) throw new Error('Satış elemanı oluşturulamadı');
+  return row;
+}
+
 export async function listInvoiceWarehouses(): Promise<InvoicePickerMaster[]> {
   try {
     const rows = await warehouseAPI.getActive();

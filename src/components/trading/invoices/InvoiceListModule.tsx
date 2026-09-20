@@ -1116,14 +1116,14 @@ export function InvoiceListModule({
       <div className="h-full flex items-center justify-center">
         <div className="text-center">
           <div className="w-12 h-12 border-4 border-blue-600 border-t-transparent rounded-full animate-spin mx-auto mb-3"></div>
-          <p className="text-gray-600">{tm('loadingInvoices')}</p>
+          <p className="text-gray-600 dark:text-gray-300">{tm('loadingInvoices')}</p>
         </div>
       </div>
     );
   }
 
   return (
-    <div className="h-full flex flex-col bg-gray-50 theme-lock-light" data-theme-lock="light">
+    <div className="h-full flex flex-col bg-gray-50 dark:bg-gray-900">
       {/* Header */}
       <div className="bg-gradient-to-r from-blue-600 to-blue-700 text-white px-4 py-2 flex-shrink-0">
         <div className="flex items-center justify-between">
@@ -1177,7 +1177,7 @@ export function InvoiceListModule({
       </div>
 
       {/* Filters */}
-      <div className="bg-white border-b px-4 py-2 space-y-2">
+      <div className="bg-white dark:bg-gray-800 border-b border-gray-200 dark:border-gray-700 px-4 py-2 space-y-2">
         <div className="flex items-center gap-3 flex-wrap">
           {/* Search */}
           <div className="flex-1 min-w-[200px]">
@@ -1188,7 +1188,7 @@ export function InvoiceListModule({
                 placeholder={tm('searchPlaceholder')}
                 value={searchQuery}
                 onChange={(e) => setSearchQuery(e.target.value)}
-                className="w-full pl-8 pr-3 py-1.5 bg-gray-50 border border-gray-200 rounded text-xs focus:outline-none focus:ring-1 focus:ring-blue-500 focus:bg-white transition-all"
+                className="w-full pl-8 pr-3 py-1.5 bg-gray-50 dark:bg-gray-900 border border-gray-200 dark:border-gray-600 rounded text-xs text-gray-900 dark:text-gray-100 focus:outline-none focus:ring-1 focus:ring-blue-500 focus:bg-white dark:focus:bg-gray-900 transition-all"
               />
             </div>
           </div>
@@ -1251,15 +1251,15 @@ export function InvoiceListModule({
             )}
 
             {/* Status Filter */}
-            <div className="flex items-center gap-1.5 bg-gray-50 border border-gray-200 rounded px-2">
-              <FilterIcon className="w-3.5 h-3.5 text-gray-500" />
+            <div className="flex items-center gap-1.5 bg-gray-50 dark:bg-gray-800 border border-gray-200 dark:border-gray-600 rounded px-2">
+              <FilterIcon className="w-3.5 h-3.5 text-gray-500 dark:text-gray-400" />
               <select
                 value={statusFilter}
                 onChange={(e) => {
                   setStatusFilter(e.target.value);
                   setCurrentPage(1);
                 }}
-                className="bg-transparent py-1.5 text-xs focus:outline-none min-w-[110px]"
+                className="bg-transparent py-1.5 text-xs focus:outline-none min-w-[110px] dark:text-gray-200 dark:[color-scheme:dark]"
               >
                 <option value="all">{tm('allStatuses')}</option>
                 <option value="completed">{tm('completed')}</option>
@@ -1275,8 +1275,8 @@ export function InvoiceListModule({
             {/* Type Filter — sayfa bağlamına (defaultCategory) göre sadece
                 ilgili fatura türlerini gösterir; örn. Hizmet sayfasında
                 dropdown'dan "Retail Sale" görünmesin (2026-09-01 kasap). */}
-            <div className="flex items-center gap-1.5 bg-gray-50 border border-gray-200 rounded px-2">
-              <FileText className="w-3.5 h-3.5 text-gray-500" />
+            <div className="flex items-center gap-1.5 bg-gray-50 dark:bg-gray-800 border border-gray-200 dark:border-gray-600 rounded px-2">
+              <FileText className="w-3.5 h-3.5 text-gray-500 dark:text-gray-400" />
               <select
                 value={invoiceTypeFilter}
                 onChange={(e) => {
@@ -1287,7 +1287,7 @@ export function InvoiceListModule({
                   setInvoiceTypeFilter(next);
                   setCurrentPage(1);
                 }}
-                className="bg-transparent py-1.5 text-xs focus:outline-none min-w-[140px]"
+                className="bg-transparent py-1.5 text-xs focus:outline-none min-w-[140px] dark:text-gray-200 dark:[color-scheme:dark]"
               >
                 <option value="all">{tm('allInvoiceTypes')}</option>
                 {(!defaultCategory || defaultCategory === 'Satis') && (
@@ -1538,9 +1538,9 @@ export function InvoiceListModule({
               footerLabel={invoiceGridFooterLabel}
             />
 
-            <div className="mt-4 flex items-center justify-between px-4 py-3 bg-white border-t border-gray-200">
+            <div className="mt-4 flex items-center justify-between px-4 py-3 bg-white dark:bg-gray-800 border-t border-gray-200 dark:border-gray-700">
               <div className="flex items-center gap-4">
-                <span className="text-sm text-gray-600">
+                <span className="text-sm text-gray-600 dark:text-gray-300">
                   {tm('totalUppercase')} {totalCount} {tm('records')}
                 </span>
                 <select
@@ -1549,7 +1549,7 @@ export function InvoiceListModule({
                     setPageSize(Number(e.target.value));
                     setCurrentPage(1);
                   }}
-                  className="px-3 py-1.5 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+                  className="px-3 py-1.5 border border-gray-300 dark:border-gray-600 rounded-lg text-sm bg-white dark:bg-gray-900 text-gray-900 dark:text-gray-100 focus:outline-none focus:ring-2 focus:ring-blue-500"
                 >
                   {INVOICE_LIST_PAGE_SIZES.map((n) => (
                     <option key={n} value={n}>
@@ -1563,31 +1563,31 @@ export function InvoiceListModule({
                 <button
                   onClick={() => setCurrentPage(1)}
                   disabled={currentPage === 1}
-                  className="px-3 py-1.5 border border-gray-300 rounded-lg text-sm disabled:opacity-50 disabled:cursor-not-allowed hover:bg-gray-50"
+                  className="px-3 py-1.5 border border-gray-300 dark:border-gray-600 rounded-lg text-sm text-gray-800 dark:text-gray-200 disabled:opacity-50 disabled:cursor-not-allowed hover:bg-gray-50 dark:hover:bg-gray-700"
                 >
                   {tm('first')}
                 </button>
                 <button
                   onClick={() => setCurrentPage((p) => Math.max(1, p - 1))}
                   disabled={currentPage === 1}
-                  className="px-3 py-1.5 border border-gray-300 rounded-lg text-sm disabled:opacity-50 disabled:cursor-not-allowed hover:bg-gray-50"
+                  className="px-3 py-1.5 border border-gray-300 dark:border-gray-600 rounded-lg text-sm text-gray-800 dark:text-gray-200 disabled:opacity-50 disabled:cursor-not-allowed hover:bg-gray-50 dark:hover:bg-gray-700"
                 >
                   {tm('previous')}
                 </button>
-                <span className="px-4 py-1.5 text-sm text-gray-700">
+                <span className="px-4 py-1.5 text-sm text-gray-700 dark:text-gray-300">
                   {tm('page')} {currentPage} / {totalPages || 1}
                 </span>
                 <button
                   onClick={() => setCurrentPage((p) => Math.min(totalPages || 1, p + 1))}
                   disabled={currentPage >= totalPages}
-                  className="px-3 py-1.5 border border-gray-300 rounded-lg text-sm disabled:opacity-50 disabled:cursor-not-allowed hover:bg-gray-50"
+                  className="px-3 py-1.5 border border-gray-300 dark:border-gray-600 rounded-lg text-sm text-gray-800 dark:text-gray-200 disabled:opacity-50 disabled:cursor-not-allowed hover:bg-gray-50 dark:hover:bg-gray-700"
                 >
                   {tm('next')}
                 </button>
                 <button
                   onClick={() => setCurrentPage(totalPages || 1)}
                   disabled={currentPage >= totalPages}
-                  className="px-3 py-1.5 border border-gray-300 rounded-lg text-sm disabled:opacity-50 disabled:cursor-not-allowed hover:bg-gray-50"
+                  className="px-3 py-1.5 border border-gray-300 dark:border-gray-600 rounded-lg text-sm text-gray-800 dark:text-gray-200 disabled:opacity-50 disabled:cursor-not-allowed hover:bg-gray-50 dark:hover:bg-gray-700"
                 >
                   {tm('last')}
                 </button>

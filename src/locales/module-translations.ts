@@ -6026,6 +6026,28 @@ export const moduleTranslations: Record<string, Record<Language, string>> = {
   selectTedarikci: { tr: 'Tedarikçi Seç', en: 'Select Supplier', ar: 'اختر المورد', ku: 'دابینکەر هەڵبژێرە' },
   addNewCustomerCari: { tr: 'Yeni müşteri ekle', en: 'Add new customer', ar: 'إضافة عميل جديد', ku: 'موشتەری نوێ زیاد بکە' },
   addNewSupplierCari: { tr: 'Yeni tedarikçi ekle', en: 'Add new supplier', ar: 'إضافة مورد جديد', ku: 'دابینکەری نوێ زیاد بکە' },
+  addNewWarehouse: { tr: 'Yeni ambar ekle', en: 'Add new warehouse', ar: 'إضافة مستودع جديد', ku: 'ئەمباری نوێ زیاد بکە' },
+  addNewWorkplace: { tr: 'Yeni işyeri ekle', en: 'Add new workplace', ar: 'إضافة مكان عمل جديد', ku: 'شوێنی کاری نوێ زیاد بکە' },
+  addNewSalesperson: { tr: 'Yeni satış elemanı ekle', en: 'Add new salesperson', ar: 'إضافة مندوب مبيعات جديد', ku: 'فرۆشیاری نوێ زیاد بکە' },
+  pickerManagePage: { tr: 'Yönetim', en: 'Manage', ar: 'إدارة', ku: 'بەڕێوەبردن' },
+  openWarehouseDefinitions: {
+    tr: 'Ambar tanımlarına git',
+    en: 'Go to warehouse definitions',
+    ar: 'الانتقال إلى تعريفات المستودع',
+    ku: 'بڕۆ بۆ پێناسەی ئەمبار',
+  },
+  openCariManagement: {
+    tr: 'Cari yönetimine git',
+    en: 'Go to account management',
+    ar: 'الانتقال إلى إدارة الحسابات',
+    ku: 'بڕۆ بۆ بەڕێوەبردنی حساب',
+  },
+  openCustomerManagement: {
+    tr: 'Müşteri yönetimine git',
+    en: 'Go to customer management',
+    ar: 'الانتقال إلى إدارة العملاء',
+    ku: 'بڕۆ بۆ بەڕێوەبردنی موشتەری',
+  },
   cariSelectSearchPlaceholder: {
     tr: 'Kod, ünvan veya telefon ile ara...',
     en: 'Search by code, name or phone...',

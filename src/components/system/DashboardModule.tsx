@@ -266,8 +266,52 @@ export function DashboardModule({
 
   const COLORS = ['#3B82F6', '#10B981', '#F59E0B', '#EF4444', '#8B5CF6', '#EC4899', '#14B8A6', '#F97316'];
 
+  const cardShell = darkMode
+    ? 'bg-gray-800 border border-gray-700 rounded'
+    : 'bg-white border border-gray-300 rounded';
+  const sectionHead = darkMode
+    ? 'bg-blue-950/50 border-b border-gray-700 px-3 py-1.5'
+    : 'bg-[#E3F2FD] border-b border-gray-300 px-3 py-1.5';
+  const sectionTitle = darkMode ? 'text-[11px] text-gray-200' : 'text-[11px] text-gray-700';
+  const chartCard = darkMode ? 'bg-gray-800 rounded-lg overflow-hidden border border-gray-700' : 'bg-white rounded-lg overflow-hidden';
+  const chartHead = (tone: 'blue' | 'green' | 'purple' | 'orange' | 'red' | 'yellow') => {
+    if (darkMode) {
+      const map = {
+        blue: 'bg-blue-950/50',
+        green: 'bg-emerald-950/50',
+        purple: 'bg-violet-950/50',
+        orange: 'bg-orange-950/45',
+        red: 'bg-red-950/45',
+        yellow: 'bg-amber-950/45',
+      } as const;
+      return `px-3 py-2 border-b border-gray-700 ${map[tone]}`;
+    }
+    const map = {
+      blue: 'from-blue-50 to-blue-100',
+      green: 'from-green-50 to-green-100',
+      purple: 'from-purple-50 to-purple-100',
+      orange: 'from-orange-50 to-orange-100',
+      red: 'from-red-50 to-red-100',
+      yellow: 'from-yellow-50 to-yellow-100',
+    } as const;
+    return `px-3 py-2 bg-gradient-to-r ${map[tone]}`;
+  };
+  const chartTitle = darkMode ? 'text-sm text-gray-100' : 'text-sm text-gray-800';
+  const chartSub = darkMode ? 'text-[10px] text-gray-400 mt-0.5' : 'text-[10px] text-gray-600 mt-0.5';
+  const cellLabel = darkMode ? 'text-[10px] text-gray-400' : 'text-[10px] text-gray-600';
+  const cellValue = darkMode ? 'text-base text-gray-100' : 'text-base text-gray-900';
+  const cellMuted = darkMode ? 'text-[9px] text-gray-500 mt-0.5' : 'text-[9px] text-gray-500 mt-0.5';
+  const gridStroke = darkMode ? '#374151' : '#E5E7EB';
+  const axisStroke = darkMode ? '#9CA3AF' : '#6B7280';
+
   return (
-    <div className="h-full overflow-auto bg-gradient-to-br from-gray-50 to-gray-100 scrollbar-thin scrollbar-thumb-gray-300">
+    <div
+      className={`h-full overflow-auto scrollbar-thin ${
+        darkMode
+          ? 'bg-gray-900 scrollbar-thumb-gray-600'
+          : 'bg-gradient-to-br from-gray-50 to-gray-100 scrollbar-thumb-gray-300'
+      }`}
+    >
       {/* Modern Minimal Header */}
       <div className="bg-gradient-to-r from-blue-600 to-blue-700 px-4 py-2">
         <div className="flex items-center justify-between gap-3 flex-wrap">
@@ -367,97 +411,97 @@ export function DashboardModule({
         </div>
 
         {/* Kurumsal Özet Panel - Modern KPI Cards yerine */}
-        <div className="bg-white border border-gray-300 rounded">
-          <div className="bg-[#E3F2FD] border-b border-gray-300 px-3 py-1.5">
-            <h3 className="text-[11px] text-gray-700">{tLabel(t.dailySummary, 'Günlük Özet')}</h3>
+        <div className={cardShell}>
+          <div className={sectionHead}>
+            <h3 className={sectionTitle}>{tLabel(t.dailySummary, 'Günlük Özet')}</h3>
           </div>
-          <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-5 divide-x divide-gray-200">
+          <div className={`grid grid-cols-2 md:grid-cols-3 lg:grid-cols-5 divide-x ${darkMode ? 'divide-gray-700' : 'divide-gray-200'}`}>
             <div className="p-3">
               <div className="flex items-center gap-2 mb-1">
                 <Banknote className="w-4 h-4 text-blue-600" />
-                <span className="text-[10px] text-gray-600">{tLabel(t.todaysSales, 'Bugünkü Satış')}</span>
+                <span className={cellLabel}>{tLabel(t.todaysSales, 'Bugünkü Satış')}</span>
                 {revenueChange !== 0 && (
                   <span className={`text-[9px] ${revenueChange > 0 ? 'text-green-600' : 'text-red-600'}`}>
                     {revenueChange > 0 ? '↑' : '↓'} {formatNumber(Math.abs(revenueChange), 1, false)}%
                   </span>
                 )}
               </div>
-              <div className="text-base text-gray-900">{formatNumber(totalRevenue, 2, false)} {currency}</div>
-              <div className="text-[9px] text-gray-500 mt-0.5">{todaysSales.length} {tLabel(t.transaction, 'işlem')}</div>
+              <div className={cellValue}>{formatNumber(totalRevenue, 2, false)} {currency}</div>
+              <div className={cellMuted}>{todaysSales.length} {tLabel(t.transaction, 'işlem')}</div>
             </div>
 
             <div className="p-3">
               <div className="flex items-center gap-2 mb-1">
                 <TrendingUp className="w-4 h-4 text-green-600" />
-                <span className="text-[10px] text-gray-600">{tLabel(t.weeklySales, 'Haftalık Satış')}</span>
+                <span className={cellLabel}>{tLabel(t.weeklySales, 'Haftalık Satış')}</span>
               </div>
-              <div className="text-base text-gray-900">{formatNumber(weekRevenue, 2, false)} {currency}</div>
-              <div className="text-[9px] text-gray-500 mt-0.5">{weekSales.length} {tLabel(t.transaction, 'işlem')}</div>
+              <div className={cellValue}>{formatNumber(weekRevenue, 2, false)} {currency}</div>
+              <div className={cellMuted}>{weekSales.length} {tLabel(t.transaction, 'işlem')}</div>
             </div>
 
             <div className="p-3">
               <div className="flex items-center gap-2 mb-1">
                 <TrendingUp className="w-4 h-4 text-emerald-600" />
-                <span className="text-[10px] text-gray-600">{tLabel(t.todaysProfit, 'Bugünkü Kâr')}</span>
+                <span className={cellLabel}>{tLabel(t.todaysProfit, 'Bugünkü Kâr')}</span>
                 {profitChange !== 0 && (
                   <span className={`text-[9px] ${profitChange > 0 ? 'text-green-600' : 'text-red-600'}`}>
                     {profitChange > 0 ? '↑' : '↓'} {formatNumber(Math.abs(profitChange), 1, false)}%
                   </span>
                 )}
               </div>
-              <div className="text-base text-emerald-700 font-semibold">{formatNumber(totalProfitToday, 2, false)} {currency}</div>
-              <div className="text-[9px] text-gray-500 mt-0.5">{tLabel(t.profitMargin, 'Kâr Marjı')}: {totalRevenue > 0 ? formatNumber((totalProfitToday / totalRevenue) * 100, 1, false) : 0}%</div>
+              <div className={`text-base font-semibold ${darkMode ? 'text-emerald-400' : 'text-emerald-700'}`}>{formatNumber(totalProfitToday, 2, false)} {currency}</div>
+              <div className={cellMuted}>{tLabel(t.profitMargin, 'Kâr Marjı')}: {totalRevenue > 0 ? formatNumber((totalProfitToday / totalRevenue) * 100, 1, false) : 0}%</div>
             </div>
 
             <div className="p-3">
               <div className="flex items-center gap-2 mb-1">
                 <Package className="w-4 h-4 text-purple-600" />
-                <span className="text-[10px] text-gray-600">{tLabel(t.totalProductsDashboard, 'Toplam Ürün')}</span>
+                <span className={cellLabel}>{tLabel(t.totalProductsDashboard, 'Toplam Ürün')}</span>
                 {lowStockProducts.length > 0 && (
                   <span className="text-[9px] text-red-600">
                     ⚠ {lowStockProducts.length}
                   </span>
                 )}
               </div>
-              <div className="text-base text-gray-900">{products.length}</div>
-              <div className="text-[9px] text-gray-500 mt-0.5">{tLabel(t.stockManagement, 'Stok')}: {formatNumber(totalStockSaleValue, 0, false)} {currency}</div>
+              <div className={cellValue}>{products.length}</div>
+              <div className={cellMuted}>{tLabel(t.stockManagement, 'Stok')}: {formatNumber(totalStockSaleValue, 0, false)} {currency}</div>
             </div>
 
             <div className="p-3">
               <div className="flex items-center gap-2 mb-1">
                 <Users className="w-4 h-4 text-orange-600" />
-                <span className="text-[10px] text-gray-600">{tLabel(t.activeCustomers, 'Aktif Müşteri')}</span>
+                <span className={cellLabel}>{tLabel(t.activeCustomers, 'Aktif Müşteri')}</span>
               </div>
-              <div className="text-base text-gray-900">{customers.length}</div>
-              <div className="text-[9px] text-gray-500 mt-0.5">{tLabel(t.registeredCustomers, 'Kayıtlı müşteri')}</div>
+              <div className={cellValue}>{customers.length}</div>
+              <div className={cellMuted}>{tLabel(t.registeredCustomers, 'Kayıtlı müşteri')}</div>
             </div>
           </div>
         </div>
 
         {/* Finansal Özet - Kurumsal Tablo */}
-        <div className="bg-white border border-gray-300 rounded">
-          <div className="bg-[#E3F2FD] border-b border-gray-300 px-3 py-1.5">
+        <div className={cardShell}>
+          <div className={sectionHead}>
             <div className="flex items-center gap-2">
-              <Wallet className="w-4 h-4 text-blue-600" />
-              <h3 className="text-[11px] text-gray-700">{t.financialSummary || 'Finansal Özet'}</h3>
+              <Wallet className={`w-4 h-4 ${darkMode ? 'text-blue-400' : 'text-blue-600'}`} />
+              <h3 className={sectionTitle}>{t.financialSummary || 'Finansal Özet'}</h3>
             </div>
           </div>
-          <div className="grid grid-cols-4 divide-x divide-gray-200">
+          <div className={`grid grid-cols-4 divide-x ${darkMode ? 'divide-gray-700' : 'divide-gray-200'}`}>
             <div className="p-3">
-              <div className="text-[10px] text-gray-600 mb-1">{t.stockValueCost || 'Stok Değeri (Maliyet)'}</div>
-              <div className="text-sm text-gray-900">{formatNumber(totalStockValue, 2, false)} {currency}</div>
+              <div className={`${cellLabel} mb-1`}>{t.stockValueCost || 'Stok Değeri (Maliyet)'}</div>
+              <div className={`text-sm ${darkMode ? 'text-gray-100' : 'text-gray-900'}`}>{formatNumber(totalStockValue, 2, false)} {currency}</div>
             </div>
             <div className="p-3">
-              <div className="text-[10px] text-gray-600 mb-1">{t.stockValueSales || 'Stok Değeri (Satış)'}</div>
-              <div className="text-sm text-gray-900">{formatNumber(totalStockSaleValue, 2, false)} {currency}</div>
+              <div className={`${cellLabel} mb-1`}>{t.stockValueSales || 'Stok Değeri (Satış)'}</div>
+              <div className={`text-sm ${darkMode ? 'text-gray-100' : 'text-gray-900'}`}>{formatNumber(totalStockSaleValue, 2, false)} {currency}</div>
             </div>
             <div className="p-3">
-              <div className="text-[10px] text-gray-600 mb-1">{t.potentialProfit || 'Potansiyel Kar'}</div>
-              <div className="text-sm text-green-600">{formatNumber(potentialProfit, 2, false)} {currency}</div>
+              <div className={`${cellLabel} mb-1`}>{t.potentialProfit || 'Potansiyel Kar'}</div>
+              <div className={`text-sm ${darkMode ? 'text-green-400' : 'text-green-600'}`}>{formatNumber(potentialProfit, 2, false)} {currency}</div>
             </div>
             <div className="p-3">
-              <div className="text-[10px] text-gray-600 mb-1">{t.profitMarginDashboard || 'Kar Marjı'}</div>
-              <div className="text-sm text-blue-600">
+              <div className={`${cellLabel} mb-1`}>{t.profitMarginDashboard || 'Kar Marjı'}</div>
+              <div className={`text-sm ${darkMode ? 'text-blue-400' : 'text-blue-600'}`}>
                 {totalStockValue > 0 ? formatNumber((potentialProfit / totalStockValue) * 100, 1, false) : 0}%
               </div>
             </div>
@@ -467,17 +511,17 @@ export function DashboardModule({
         {/* Charts Row 1 */}
         <div className="grid grid-cols-1 lg:grid-cols-2 gap-3">
           {/* Sales Trend */}
-          <div className="bg-white rounded-lg overflow-hidden">
-            <div className="px-3 py-2 bg-gradient-to-r from-blue-50 to-blue-100">
-              <h3 className="text-sm text-gray-800">{t.last7DaysSalesTrend || 'Son 7 Gün Satış Trendi'}</h3>
-              <p className="text-[10px] text-gray-600 mt-0.5">{t.dailySalesPerformance || 'Günlük satış performansı'}</p>
+          <div className={chartCard}>
+            <div className={chartHead('blue')}>
+              <h3 className={chartTitle}>{t.last7DaysSalesTrend || 'Son 7 Gün Satış Trendi'}</h3>
+              <p className={chartSub}>{t.dailySalesPerformance || 'Günlük satış performansı'}</p>
             </div>
             <div className="p-3">
               <ResponsiveContainer width="100%" height={200}>
                 <LineChart data={last7Days}>
-                  <CartesianGrid strokeDasharray="3 3" stroke="#E5E7EB" />
-                  <XAxis dataKey="date" stroke="#6B7280" style={{ fontSize: '10px' }} />
-                  <YAxis stroke="#6B7280" style={{ fontSize: '10px' }} />
+                  <CartesianGrid strokeDasharray="3 3" stroke={gridStroke} />
+                  <XAxis dataKey="date" stroke={axisStroke} style={{ fontSize: '10px' }} />
+                  <YAxis stroke={axisStroke} style={{ fontSize: '10px' }} />
                   <Tooltip />
                   <Line type="monotone" dataKey="revenue" stroke="#3B82F6" strokeWidth={2} dot={{ fill: '#3B82F6', r: 3 }} activeDot={{ r: 5 }} />
                 </LineChart>
@@ -486,10 +530,10 @@ export function DashboardModule({
           </div>
 
           {/* Payment Methods */}
-          <div className="bg-white rounded-lg overflow-hidden">
-            <div className="px-3 py-2 bg-gradient-to-r from-green-50 to-green-100">
-              <h3 className="text-sm text-gray-800">{t.paymentMethodsChart || 'Ödeme Yöntemleri'}</h3>
-              <p className="text-[10px] text-gray-600 mt-0.5">{t.customerPaymentPreferences || 'Müşteri ödeme tercihleri'}</p>
+          <div className={chartCard}>
+            <div className={chartHead('green')}>
+              <h3 className={chartTitle}>{t.paymentMethodsChart || 'Ödeme Yöntemleri'}</h3>
+              <p className={chartSub}>{t.customerPaymentPreferences || 'Müşteri ödeme tercihleri'}</p>
             </div>
             <div className="p-3">
               <ResponsiveContainer width="100%" height={200}>
@@ -518,17 +562,17 @@ export function DashboardModule({
         {/* Charts Row 2 */}
         <div className="grid grid-cols-1 lg:grid-cols-2 gap-3">
           {/* Top Products */}
-          <div className="bg-white rounded-lg overflow-hidden">
-            <div className="px-3 py-2 bg-gradient-to-r from-purple-50 to-purple-100">
-              <h3 className="text-sm text-gray-800">{t.topSellingProductsInfo || 'En Çok Satan Ürünler'}</h3>
-              <p className="text-[10px] text-gray-600 mt-0.5">{t.rankingByRevenue || 'Ciro bazında sıralama'}</p>
+          <div className={chartCard}>
+            <div className={chartHead('purple')}>
+              <h3 className={chartTitle}>{t.topSellingProductsInfo || 'En Çok Satan Ürünler'}</h3>
+              <p className={chartSub}>{t.rankingByRevenue || 'Ciro bazında sıralama'}</p>
             </div>
             <div className="p-3">
               <ResponsiveContainer width="100%" height={200}>
                 <BarChart data={topProducts} layout="horizontal">
-                  <CartesianGrid strokeDasharray="3 3" stroke="#E5E7EB" />
-                  <XAxis type="number" stroke="#6B7280" style={{ fontSize: '10px' }} />
-                  <YAxis type="category" dataKey="name" stroke="#6B7280" style={{ fontSize: '10px' }} width={80} />
+                  <CartesianGrid strokeDasharray="3 3" stroke={gridStroke} />
+                  <XAxis type="number" stroke={axisStroke} style={{ fontSize: '10px' }} />
+                  <YAxis type="category" dataKey="name" stroke={axisStroke} style={{ fontSize: '10px' }} width={80} />
                   <Tooltip />
                   <Bar dataKey="revenue" fill="#10B981" radius={[0, 6, 6, 0]} />
                 </BarChart>
@@ -537,17 +581,17 @@ export function DashboardModule({
           </div>
 
           {/* Category Distribution */}
-          <div className="bg-white rounded-lg overflow-hidden">
-            <div className="px-3 py-2 bg-gradient-to-r from-orange-50 to-orange-100">
-              <h3 className="text-sm text-gray-800">{t.categoryBasedStock || 'Kategori Bazlı Stok'}</h3>
-              <p className="text-[10px] text-gray-600 mt-0.5">{t.inventoryDistribution || 'Envanter dağılımı'}</p>
+          <div className={chartCard}>
+            <div className={chartHead('orange')}>
+              <h3 className={chartTitle}>{t.categoryBasedStock || 'Kategori Bazlı Stok'}</h3>
+              <p className={chartSub}>{t.inventoryDistribution || 'Envanter dağılımı'}</p>
             </div>
             <div className="p-3">
               <ResponsiveContainer width="100%" height={200}>
                 <BarChart data={categoryChartData}>
-                  <CartesianGrid strokeDasharray="3 3" stroke="#E5E7EB" />
-                  <XAxis dataKey="name" stroke="#6B7280" style={{ fontSize: '10px' }} />
-                  <YAxis stroke="#6B7280" style={{ fontSize: '10px' }} />
+                  <CartesianGrid strokeDasharray="3 3" stroke={gridStroke} />
+                  <XAxis dataKey="name" stroke={axisStroke} style={{ fontSize: '10px' }} />
+                  <YAxis stroke={axisStroke} style={{ fontSize: '10px' }} />
                   <Tooltip
                     formatter={(value: number, name: string) => {
                       if (name === 'count') return [value, tLabel(t.productCount, 'Ürün')];
@@ -565,72 +609,82 @@ export function DashboardModule({
         {/* Alerts & Stock Warnings */}
         <div className="grid grid-cols-1 lg:grid-cols-2 gap-3">
           {/* Critical Stock Alerts */}
-          <div className="bg-white rounded-lg overflow-hidden">
-            <div className="px-3 py-2 bg-gradient-to-r from-red-50 to-red-100">
+          <div className={chartCard}>
+            <div className={chartHead('red')}>
               <div className="flex items-center gap-1.5">
-                <AlertTriangle className="w-4 h-4 text-red-600" />
-                <h3 className="text-sm text-gray-800">{t.criticalStockAlerts || 'Kritik Stok Uyarıları'}</h3>
+                <AlertTriangle className={`w-4 h-4 ${darkMode ? 'text-red-400' : 'text-red-600'}`} />
+                <h3 className={chartTitle}>{t.criticalStockAlerts || 'Kritik Stok Uyarıları'}</h3>
               </div>
-              <p className="text-[10px] text-gray-600 mt-0.5">{criticalStockProducts.length} {t.productsAtCriticalLevel || 'ürün kritik seviyede'}</p>
+              <p className={chartSub}>{criticalStockProducts.length} {t.productsAtCriticalLevel || 'ürün kritik seviyede'}</p>
             </div>
-            <div className="p-3 max-h-64 overflow-auto scrollbar-thin scrollbar-thumb-gray-400 scrollbar-track-gray-100">
+            <div className={`p-3 max-h-64 overflow-auto scrollbar-thin ${darkMode ? 'scrollbar-thumb-gray-600 scrollbar-track-gray-800' : 'scrollbar-thumb-gray-400 scrollbar-track-gray-100'}`}>
               {criticalStockProducts.length > 0 ? (
                 <div className="space-y-2">
                   {criticalStockProducts.slice(0, 10).map(product => (
-                    <div key={product.id} className="flex items-center justify-between p-2 bg-red-50 rounded hover:bg-red-100 transition-colors">
+                    <div
+                      key={product.id}
+                      className={`flex items-center justify-between p-2 rounded transition-colors ${
+                        darkMode ? 'bg-red-950/40 hover:bg-red-950/60' : 'bg-red-50 hover:bg-red-100'
+                      }`}
+                    >
                       <div className="flex-1">
-                        <p className="text-[11px] text-gray-800">{product.name}</p>
+                        <p className={`text-[11px] ${darkMode ? 'text-gray-200' : 'text-gray-800'}`}>{product.name}</p>
                         <p className="text-[9px] text-gray-500">{product.category}</p>
                       </div>
                       <div className="text-right">
-                        <p className="text-[11px] text-red-600">{t.remainingQty || 'Kalan:'} {product.stock}</p>
-                        <p className="text-[9px] text-red-500">{t.urgentOrder || 'Acil sipariş!'}</p>
+                        <p className={`text-[11px] ${darkMode ? 'text-red-400' : 'text-red-600'}`}>{t.remainingQty || 'Kalan:'} {product.stock}</p>
+                        <p className={`text-[9px] ${darkMode ? 'text-red-400/80' : 'text-red-500'}`}>{t.urgentOrder || 'Acil sipariş!'}</p>
                       </div>
                     </div>
                   ))}
                 </div>
               ) : (
                 <div className="text-center py-8">
-                  <div className="w-12 h-12 bg-green-100 rounded-full flex items-center justify-center mx-auto mb-2">
-                    <Package className="w-6 h-6 text-green-600" />
+                  <div className={`w-12 h-12 rounded-full flex items-center justify-center mx-auto mb-2 ${darkMode ? 'bg-emerald-950/50' : 'bg-green-100'}`}>
+                    <Package className={`w-6 h-6 ${darkMode ? 'text-emerald-400' : 'text-green-600'}`} />
                   </div>
-                  <p className="text-[11px] text-gray-500">{t.noCriticalStock || 'Kritik stok seviyesinde ürün yok'}</p>
+                  <p className={`text-[11px] ${darkMode ? 'text-gray-400' : 'text-gray-500'}`}>{t.noCriticalStock || 'Kritik stok seviyesinde ürün yok'}</p>
                 </div>
               )}
             </div>
           </div>
 
           {/* Low Stock Warnings */}
-          <div className="bg-white rounded-lg overflow-hidden">
-            <div className="px-3 py-2 bg-gradient-to-r from-yellow-50 to-yellow-100">
+          <div className={chartCard}>
+            <div className={chartHead('yellow')}>
               <div className="flex items-center gap-1.5">
-                <Clock className="w-4 h-4 text-yellow-600" />
-                <h3 className="text-sm text-gray-800">{t.lowStockWarningsItem || 'Düşük Stok Uyarıları'}</h3>
+                <Clock className={`w-4 h-4 ${darkMode ? 'text-amber-400' : 'text-yellow-600'}`} />
+                <h3 className={chartTitle}>{t.lowStockWarningsItem || 'Düşük Stok Uyarıları'}</h3>
               </div>
-              <p className="text-[10px] text-gray-600 mt-0.5">{lowStockProducts.length} {t.productsAtLowLevel || 'ürün düşük seviyede'}</p>
+              <p className={chartSub}>{lowStockProducts.length} {t.productsAtLowLevel || 'ürün düşük seviyede'}</p>
             </div>
-            <div className="p-3 max-h-64 overflow-auto scrollbar-thin scrollbar-thumb-gray-400 scrollbar-track-gray-100">
+            <div className={`p-3 max-h-64 overflow-auto scrollbar-thin ${darkMode ? 'scrollbar-thumb-gray-600 scrollbar-track-gray-800' : 'scrollbar-thumb-gray-400 scrollbar-track-gray-100'}`}>
               {lowStockProducts.length > 0 ? (
                 <div className="space-y-2">
                   {lowStockProducts.slice(0, 10).map(product => (
-                    <div key={product.id} className="flex items-center justify-between p-2 bg-yellow-50 rounded hover:bg-yellow-100 transition-colors">
+                    <div
+                      key={product.id}
+                      className={`flex items-center justify-between p-2 rounded transition-colors ${
+                        darkMode ? 'bg-amber-950/40 hover:bg-amber-950/60' : 'bg-yellow-50 hover:bg-yellow-100'
+                      }`}
+                    >
                       <div className="flex-1">
-                        <p className="text-[11px] text-gray-800">{product.name}</p>
+                        <p className={`text-[11px] ${darkMode ? 'text-gray-200' : 'text-gray-800'}`}>{product.name}</p>
                         <p className="text-[9px] text-gray-500">{product.category}</p>
                       </div>
                       <div className="text-right">
-                        <p className="text-[11px] text-yellow-600">{t.remainingQty || 'Kalan:'} {product.stock}</p>
-                        <p className="text-[9px] text-yellow-500">{t.orderRecommended || 'Sipariş önerilir'}</p>
+                        <p className={`text-[11px] ${darkMode ? 'text-amber-400' : 'text-yellow-600'}`}>{t.remainingQty || 'Kalan:'} {product.stock}</p>
+                        <p className={`text-[9px] ${darkMode ? 'text-amber-400/80' : 'text-yellow-500'}`}>{t.orderRecommended || 'Sipariş önerilir'}</p>
                       </div>
                     </div>
                   ))}
                 </div>
               ) : (
                 <div className="text-center py-8">
-                  <div className="w-12 h-12 bg-green-100 rounded-full flex items-center justify-center mx-auto mb-2">
-                    <Package className="w-6 h-6 text-green-600" />
+                  <div className={`w-12 h-12 rounded-full flex items-center justify-center mx-auto mb-2 ${darkMode ? 'bg-emerald-950/50' : 'bg-green-100'}`}>
+                    <Package className={`w-6 h-6 ${darkMode ? 'text-emerald-400' : 'text-green-600'}`} />
                   </div>
-                  <p className="text-[11px] text-gray-500">{String(t.noLowStockInfo ?? 'Düşük stok seviyesinde ürün yok')}</p>
+                  <p className={`text-[11px] ${darkMode ? 'text-gray-400' : 'text-gray-500'}`}>{String(t.noLowStockInfo ?? 'Düşük stok seviyesinde ürün yok')}</p>
                 </div>
               )}
             </div>
