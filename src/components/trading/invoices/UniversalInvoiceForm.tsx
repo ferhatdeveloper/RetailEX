@@ -737,9 +737,6 @@ export function UniversalInvoiceForm({
   const [isCurrencyTransaction, setIsCurrencyTransaction] = useState(false); // Dövizli İşlem Checkbox
   const [unitSets, setUnitSets] = useState<any[]>([]); // Birim setleri
   const [masterUnits, setMasterUnits] = useState<UnitMasterRow[]>([]); // Kart birimleri (units)
-  const [waybillType, setWaybillType] = useState(''); // İrsaliye Türü
-  const [waybillNo, setWaybillNo] = useState(''); // İrsaliye No
-  const [waybillDocumentNo, setWaybillDocumentNo] = useState(''); // İrsaliye Belge No
   const [description, setDescription] = useState(() => String((editData as any)?.notes || '')); // Açıklama
   const [documentTrackingNo, setDocumentTrackingNo] = useState(''); // Doküman İzleme Numarası
   const [paymentType, setPaymentType] = useState('İşlem Yapılmayacak'); // Ödeme Tipi
@@ -4916,42 +4913,6 @@ export function UniversalInvoiceForm({
                         )}
                       </div>
                     </div>
-
-                    {/* İrsaliye Bilgileri */}
-                    {invoiceType.category === 'Satis' && (
-                      <div className="border-t pt-4">
-                        <h3 className="text-sm font-semibold text-gray-700 mb-3">{tm('waybillInfo')}</h3>
-                        <div className="grid grid-cols-3 gap-4">
-                          <div>
-                            <label className="block text-sm font-medium text-gray-700 mb-1">{tm('type')}</label>
-                            <input
-                              type="text"
-                              value={waybillType || `${invoiceType.name} İrsaliyesi`}
-                              onChange={(e) => setWaybillType(e.target.value)}
-                              className="w-full px-3 py-2 border border-gray-300 rounded text-sm"
-                            />
-                          </div>
-                          <div>
-                            <label className="block text-sm font-medium text-gray-700 mb-1">{tm('waybillNo')}</label>
-                            <input
-                              type="text"
-                              value={waybillNo || invoiceNo}
-                              onChange={(e) => setWaybillNo(e.target.value)}
-                              className="w-full px-3 py-2 border border-gray-300 rounded text-sm"
-                            />
-                          </div>
-                          <div>
-                            <label className="block text-sm font-medium text-gray-700 mb-1">{tm('documentNo')}</label>
-                            <input
-                              type="text"
-                              value={waybillDocumentNo}
-                              onChange={(e) => setWaybillDocumentNo(e.target.value)}
-                              className="w-full px-3 py-2 border border-gray-300 rounded text-sm"
-                            />
-                          </div>
-                        </div>
-                      </div>
-                    )}
 
                     {/* Açıklama */}
                     <div className="border-t pt-4">

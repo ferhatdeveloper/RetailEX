@@ -1,5 +1,7 @@
 ﻿import { useState, useEffect, useRef } from 'react';
 import { Upload, Printer, Eye, Download, Trash2, FileText, Settings, AlertCircle, CheckCircle, Loader } from 'lucide-react';
+import { useLanguage } from '../../contexts/LanguageContext';
+import { toast } from 'sonner';
 
 interface Document {
   id: string;
@@ -22,7 +24,11 @@ interface ScanSettings {
   duplex: boolean;
 }
 
+/** Ücretsiz plan: fatura başına ek belge üst sınırı (lisans sonrası artırılır). */
+const FREE_ATTACHMENT_LIMIT = 10;
+
 export function DocumentManager() {
+  const { tm } = useLanguage();
   const [documents, setDocuments] = useState<Document[]>([]);
   const wasConnectedRef = useRef(false);
   const [scanners, setScanners] = useState<Scanner[]>([]);
@@ -93,14 +99,20 @@ export function DocumentManager() {
           if (data.type === 'scanners_list') {
             setScanners(data.scanners || []);
           } else if (data.type === 'scan_complete') {
-            const newDoc: Document = {
-              id: Date.now().toString(),
-              name: String(data.filename ?? 'tarama'),
-              size: Number(data.fileSize || 0) / 1024,
-              uploadDate: new Date().toLocaleDateString('tr-TR'),
-              dataUrl: data.imageData
-            };
-            setDocuments((prev: Document[]) => [...prev, newDoc]);
+            setDocuments((prev: Document[]) => {
+              if (prev.length >= FREE_ATTACHMENT_LIMIT) {
+                toast.error(tm('attachmentLimitReached'));
+                return prev;
+              }
+              const newDoc: Document = {
+                id: Date.now().toString(),
+                name: String(data.filename ?? 'tarama'),
+                size: Number(data.fileSize || 0) / 1024,
+                uploadDate: new Date().toLocaleDateString('tr-TR'),
+                dataUrl: data.imageData
+              };
+              return [...prev, newDoc];
+            });
             setIsScanning(false);
           } else if (data.type === 'scan_progress') {
             console.log(`📊 Tarama ilerliyor: ${data.progress}%`);
@@ -169,8 +181,16 @@ export function DocumentManager() {
     const files = event.target.files;
     if (!files) return;
 
+    const remaining = FREE_ATTACHMENT_LIMIT - documents.length;
+    if (remaining <= 0) {
+      toast.error(tm('attachmentLimitReached'));
+      event.target.value = '';
+      return;
+    }
+
     const newDocuments: Document[] = [];
-    for (let i = 0; i < files.length; i++) {
+    const take = Math.min(files.length, remaining);
+    for (let i = 0; i < take; i++) {
       const file = files[i];
       newDocuments.push({
         id: Date.now().toString() + i,
@@ -179,10 +199,18 @@ export function DocumentManager() {
         uploadDate: new Date().toLocaleDateString('tr-TR')
       });
     }
+    if (files.length > remaining) {
+      toast.error(tm('attachmentLimitReached'));
+    }
     setDocuments([...documents, ...newDocuments]);
+    event.target.value = '';
   };
 
   const handleScan = () => {
+    if (documents.length >= FREE_ATTACHMENT_LIMIT) {
+      toast.error(tm('attachmentLimitReached'));
+      return;
+    }
     if (!wsConnected || !ws || !selectedScanner) {
       alert('Tarayıcı servisi bağlı değil veya tarayıcı seçilmedi!');
       return;
@@ -371,8 +399,11 @@ export function DocumentManager() {
 
       {/* Uploaded Documents List */}
       <div>
+        <div className="mb-3 rounded-lg border border-amber-200 bg-amber-50 px-3 py-2.5 text-xs text-amber-900 leading-relaxed">
+          {tm('attachmentFreeLicenseNote')}
+        </div>
         <div className="text-sm text-gray-600 mb-2">
-          Yüklenen Dosyalar ({documents.length}/10)
+          {tm('uploadedFilesCount').replace('{count}', String(documents.length))}
         </div>
         <div className="space-y-2">
           {documents.map((doc) => (
