@@ -1453,7 +1453,7 @@ export function ManagementModule({
         case 'role_management':
         case 'authorization':
         case 'roles_mgmt':
-          return <RoleManagement />;
+          return <RoleManagement defaultGroupId="backoffice" />;
         case 'eledger':
         case 'etransform':
           return <ETransformModule />;

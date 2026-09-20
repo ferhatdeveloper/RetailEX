@@ -818,7 +818,7 @@ function RestaurantContent({
                 <RestaurantReservations onBack={() => setActiveTab('dashboard')} />
             )}
             {activeTab === 'management' && (
-                <Suspense fallback={<LoadingSpinner />}><RoleManagement onBack={() => setActiveTab('dashboard')} /></Suspense>
+                <Suspense fallback={<LoadingSpinner />}><RoleManagement onBack={() => setActiveTab('dashboard')} defaultGroupId="rest" /></Suspense>
             )}
             {activeTab === 'delivery' && (
                 <Suspense fallback={<LoadingSpinner />}><DeliveryManagement onBack={() => setActiveTab('dashboard')} /></Suspense>

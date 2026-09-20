@@ -34,7 +34,7 @@ export function SettingsPanel() {
         {/* TOP: Role Management Module */}
         <div className="bg-white rounded-lg border border-indigo-200 shadow-sm overflow-hidden">
           <div className="bg-indigo-50/50">
-            <RoleManagement />
+            <RoleManagement defaultGroupId="backoffice" />
           </div>
         </div>
 

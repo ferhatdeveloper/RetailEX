@@ -167,7 +167,7 @@ export function RestaurantSettings({ onBack }: { onBack: () => void }) {
                         )}
                         {activeTab === 'roles' && (
                             <div className="bg-white rounded-3xl shadow-sm border border-slate-100 h-full overflow-hidden">
-                                <RoleManagement />
+                                <RoleManagement defaultGroupId="rest" />
                             </div>
                         )}
                         {activeTab === 'printers' && (

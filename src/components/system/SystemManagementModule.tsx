@@ -497,7 +497,7 @@ function UserManagementView() {
 function RoleAuthorizationView() {
   return (
     <div className="h-full min-h-0">
-      <RoleManagement />
+      <RoleManagement defaultGroupId="backoffice" />
     </div>
   );
 }

@@ -97,7 +97,7 @@ export function AppRouter() {
                       element={
                         <ProtectedRoute>
                           <ThemeAwarePageShell>
-                            <RoleManagement />
+                            <RoleManagement defaultGroupId="backoffice" />
                           </ThemeAwarePageShell>
                         </ProtectedRoute>
                       }

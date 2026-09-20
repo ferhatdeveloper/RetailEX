@@ -1,5 +1,4 @@
 import { useState, useEffect, useCallback, useMemo } from 'react';
-import { useNavigate } from 'react-router-dom';
 import { Plus, Edit2, Trash2, Shield, Lock, Eye, X, CheckCircle, Copy, Users } from 'lucide-react';
 import { toast } from 'sonner';
 import { roleAPI, Role as RoleType } from '../../services/api/roles';
@@ -14,13 +13,18 @@ import {
   RBAC_ACTION_TM_KEYS,
   type RbacModuleConfig,
 } from '../../locales/rbacCatalog';
+import { PercentBodyModal, PercentBodyModalScrollBody } from '../shared/PercentBodyModal';
+import { RoleForm } from './RoleForm';
 
 interface RoleManagementProps {
   onBack?: () => void;
+  /** Açılışta gösterilecek yetki matrisi grubu (ör. Sistem → backoffice, Restoran → rest) */
+  defaultGroupId?: string;
 }
 
-export function RoleManagement({ onBack }: RoleManagementProps) {
-  const navigate = useNavigate();
+type FormView = null | { mode: 'new' } | { mode: 'edit'; roleId: string };
+
+export function RoleManagement({ onBack, defaultGroupId = 'backoffice' }: RoleManagementProps) {
   const { darkMode } = useTheme();
   const { language, tm: globalTm } = useLanguage();
   const tm = useCallback(
@@ -34,9 +38,10 @@ export function RoleManagement({ onBack }: RoleManagementProps) {
   const [loading, setLoading] = useState(true);
   const [showPermissionsModal, setShowPermissionsModal] = useState<RoleType | null>(null);
   const [copyingId, setCopyingId] = useState<string | null>(null);
+  const [formView, setFormView] = useState<FormView>(null);
 
   useEffect(() => {
-    loadRoles();
+    void loadRoles();
   }, []);
 
   const loadRoles = async () => {
@@ -51,8 +56,13 @@ export function RoleManagement({ onBack }: RoleManagementProps) {
     }
   };
 
+  const closeForm = () => {
+    setFormView(null);
+    void loadRoles();
+  };
+
   const handleEdit = (role: RoleType) => {
-    navigate(`/system/roles/${role.id}`);
+    setFormView({ mode: 'edit', roleId: role.id });
   };
 
   const handleCopy = async (role: RoleType) => {
@@ -69,7 +79,7 @@ export function RoleManagement({ onBack }: RoleManagementProps) {
       if (created?.id) {
         toast.success(tm('roleMgmtCopySuccess'));
         await loadRoles();
-        navigate(`/system/roles/${created.id}`);
+        setFormView({ mode: 'edit', roleId: created.id });
       } else {
         toast.error(tm('roleMgmtCopyError'));
       }
@@ -96,186 +106,221 @@ export function RoleManagement({ onBack }: RoleManagementProps) {
     }
   };
 
-  // DataTable columns
+  const btnFlat = (tone: 'blue' | 'emerald' | 'red' | 'muted') => {
+    if (tone === 'muted') {
+      return darkMode
+        ? 'p-2 border border-gray-700 text-gray-600 cursor-not-allowed'
+        : 'p-2 border border-gray-200 text-gray-300 cursor-not-allowed';
+    }
+    const map = {
+      blue: darkMode
+        ? 'p-2 border border-gray-600 text-blue-400 hover:bg-gray-700'
+        : 'p-2 border border-gray-300 text-blue-600 hover:bg-gray-100',
+      emerald: darkMode
+        ? 'p-2 border border-gray-600 text-emerald-400 hover:bg-gray-700'
+        : 'p-2 border border-gray-300 text-emerald-700 hover:bg-gray-100',
+      red: darkMode
+        ? 'p-2 border border-gray-600 text-red-400 hover:bg-gray-700'
+        : 'p-2 border border-gray-300 text-red-600 hover:bg-gray-100',
+    };
+    return map[tone];
+  };
+
   const columns: Column<RoleType>[] = useMemo(
     () => [
-    {
-      id: 'name',
-      header: tm('roleMgmtColRoleName'),
-      accessor: 'name',
-      minWidth: 200,
-      sortable: true,
-      filterable: true,
-      cell: (value: any, row: RoleType) => (
-        <div className="flex items-center gap-3">
-          <div
-            className="w-10 h-10 rounded-xl flex items-center justify-center shadow-[0_2px_10px_-3px_rgba(0,0,0,0.1)] border border-white"
-            style={{ backgroundColor: row.color || '#3B82F6' }}
-          >
-            <Shield className="h-5 w-5 text-white" />
-          </div>
-          <div>
-            <p className={`font-bold ${darkMode ? 'text-gray-100' : 'text-gray-900'}`}>
-              {value}{' '}
-              {row.is_system_role && (
-                <span className="ml-2 text-[10px] bg-red-100 text-red-700 dark:bg-red-950/50 dark:text-red-300 px-2 py-0.5 rounded-full tracking-wider font-bold">
-                  {tm('roleMgmtSystemGroup')}
-                </span>
-              )}
-            </p>
-            <p className={`text-xs font-medium mt-0.5 ${darkMode ? 'text-gray-400' : 'text-gray-500'}`}>
-              {row.description}
-            </p>
-            {row.landing_route ? (
-              <p className={`text-[10px] mt-0.5 ${darkMode ? 'text-blue-300' : 'text-blue-600'}`}>
-                {tm('roleMgmtLandingLabel')}: {row.landing_route}
+      {
+        id: 'name',
+        header: tm('roleMgmtColRoleName'),
+        accessor: 'name',
+        minWidth: 200,
+        sortable: true,
+        filterable: true,
+        cell: (value: any, row: RoleType) => (
+          <div className="flex items-center gap-3">
+            <div
+              className="w-9 h-9 flex items-center justify-center border border-transparent"
+              style={{ backgroundColor: row.color || '#3B82F6' }}
+            >
+              <Shield className="h-4 w-4 text-white" />
+            </div>
+            <div>
+              <p className={`font-semibold text-sm ${darkMode ? 'text-gray-100' : 'text-gray-900'}`}>
+                {value}{' '}
+                {row.is_system_role && (
+                  <span
+                    className={`ml-1.5 text-[10px] px-1.5 py-0.5 font-bold ${
+                      darkMode ? 'bg-red-950/50 text-red-300' : 'bg-red-100 text-red-700'
+                    }`}
+                  >
+                    {tm('roleMgmtSystemGroup')}
+                  </span>
+                )}
               </p>
-            ) : null}
+              <p className={`text-xs mt-0.5 ${darkMode ? 'text-gray-400' : 'text-gray-500'}`}>
+                {row.description}
+              </p>
+              {row.landing_route ? (
+                <p className={`text-[10px] mt-0.5 ${darkMode ? 'text-blue-300' : 'text-blue-600'}`}>
+                  {tm('roleMgmtLandingLabel')}: {row.landing_route}
+                </p>
+              ) : null}
+            </div>
           </div>
-        </div>
-      )
-    },
-    {
-      id: 'userCount',
-      header: tm('roleMgmtColUsers'),
-      accessor: (row: RoleType) => row.userCount || 0,
-      width: 110,
-      sortable: true,
-      cell: (value: any) => (
-        <span className={`inline-flex items-center gap-1.5 text-sm font-semibold ${darkMode ? 'text-gray-200' : 'text-gray-700'}`}>
-          <Users className="w-3.5 h-3.5 opacity-70" />
-          {Number(value) || 0}
-        </span>
-      ),
-    },
-    {
-      id: 'permissions',
-      header: tm('roleMgmtColPermissions'),
-      accessor: (row: RoleType) => row.permissions?.length || 0,
-      width: 170,
-      sortable: false,
-      cell: (value: any, row: RoleType) => {
-        // Advanced logic to count how many distinct modules this user has any access to
-        const distinctModules = (row.permissions || []).length;
-
-        return (
-          <button
-            onClick={() => {
-              const normalizedPermissions: Permission[] = (row.permissions || []).map(p => {
-                if (typeof p === 'string') return { module: p, actions: ['READ'] };
-                return p as Permission;
-              });
-              setShowPermissionsModal({ ...row, permissions: normalizedPermissions });
-            }}
-            className={`flex items-center gap-2 px-3 py-1.5 rounded-lg transition-colors group border ${
-              darkMode
-                ? 'bg-blue-950/40 hover:bg-blue-900/50 text-blue-300 border-blue-800/50'
-                : 'bg-blue-50 hover:bg-blue-100 text-blue-700 border-blue-100/50'
+        ),
+      },
+      {
+        id: 'userCount',
+        header: tm('roleMgmtColUsers'),
+        accessor: (row: RoleType) => row.userCount || 0,
+        width: 110,
+        sortable: true,
+        cell: (value: any) => (
+          <span
+            className={`inline-flex items-center gap-1.5 text-sm font-semibold ${
+              darkMode ? 'text-gray-200' : 'text-gray-700'
             }`}
           >
-            <Lock className="h-3.5 w-3.5" />
-            <span className="font-bold text-sm tracking-tight">{tm('roleMgmtServiceCount').replace('{n}', String(distinctModules))}</span>
-            <Eye className="h-3.5 w-3.5 opacity-0 group-hover:opacity-100 transition-opacity ml-1" />
-          </button>
-        )
-      }
-    },
-    {
-      id: 'actions',
-      header: tm('roleMgmtColActions'),
-      accessor: (row: RoleType) => row,
-      width: 180,
-      cell: (_: any, row: RoleType) => (
-        <div className="flex items-center gap-2">
-          <button
-            onClick={() => handleEdit(row)}
-            className={`p-2.5 rounded-xl transition-colors border border-transparent shadow-sm ${
-              darkMode
-                ? 'text-blue-400 bg-blue-950/40 hover:bg-blue-900/50'
-                : 'text-blue-600 bg-blue-50/50 hover:bg-blue-100'
-            }`}
-            title={tm('roleMgmtEditTitle')}
-          >
-            <Edit2 className="h-4 w-4" />
-          </button>
-          <button
-            type="button"
-            onClick={() => void handleCopy(row)}
-            disabled={copyingId === row.id}
-            className={`p-2.5 rounded-xl transition-colors border border-transparent shadow-sm disabled:opacity-50 ${
-              darkMode
-                ? 'text-emerald-400 bg-emerald-950/40 hover:bg-emerald-900/50'
-                : 'text-emerald-700 bg-emerald-50/50 hover:bg-emerald-100'
-            }`}
-            title={tm('roleMgmtCopyTitle')}
-          >
-            <Copy className="h-4 w-4" />
-          </button>
-          <button
-            onClick={() => handleDelete(row.id)}
-            disabled={row.is_system_role}
-            className={`p-2.5 rounded-xl transition-all shadow-sm ${row.is_system_role ? 'text-slate-300 bg-slate-50 dark:bg-gray-800 dark:text-gray-600 cursor-not-allowed border outline-none' : darkMode ? 'text-red-400 bg-red-950/40 hover:bg-red-600 hover:text-white' : 'text-red-600 bg-red-50/50 hover:bg-red-500 hover:text-white hover:shadow-red-500/30 active:scale-95'}`}
-            title={row.is_system_role ? tm('roleMgmtDeleteDisabled') : tm('roleMgmtDeleteTitle')}
-          >
-            <Trash2 className="h-4 w-4" />
-          </button>
-        </div>
-      )
-    }
-  ],
+            <Users className="w-3.5 h-3.5 opacity-70" />
+            {Number(value) || 0}
+          </span>
+        ),
+      },
+      {
+        id: 'permissions',
+        header: tm('roleMgmtColPermissions'),
+        accessor: (row: RoleType) => row.permissions?.length || 0,
+        width: 170,
+        sortable: false,
+        cell: (_value: any, row: RoleType) => {
+          const distinctModules = (row.permissions || []).length;
+          return (
+            <button
+              type="button"
+              onClick={() => {
+                const normalizedPermissions: Permission[] = (row.permissions || []).map((p) => {
+                  if (typeof p === 'string') return { module: p, actions: ['READ'] };
+                  return p as Permission;
+                });
+                setShowPermissionsModal({ ...row, permissions: normalizedPermissions });
+              }}
+              className={`flex items-center gap-2 px-2.5 py-1.5 text-sm border ${
+                darkMode
+                  ? 'bg-gray-900 border-gray-600 text-blue-300 hover:border-blue-500'
+                  : 'bg-white border-gray-300 text-blue-700 hover:border-blue-400'
+              }`}
+            >
+              <Lock className="h-3.5 w-3.5" />
+              <span className="font-semibold">
+                {tm('roleMgmtServiceCount').replace('{n}', String(distinctModules))}
+              </span>
+              <Eye className="h-3.5 w-3.5 opacity-60" />
+            </button>
+          );
+        },
+      },
+      {
+        id: 'actions',
+        header: tm('roleMgmtColActions'),
+        accessor: (row: RoleType) => row,
+        width: 160,
+        cell: (_: any, row: RoleType) => (
+          <div className="flex items-center gap-1.5">
+            <button
+              type="button"
+              onClick={() => handleEdit(row)}
+              className={btnFlat('blue')}
+              title={tm('roleMgmtEditTitle')}
+            >
+              <Edit2 className="h-4 w-4" />
+            </button>
+            <button
+              type="button"
+              onClick={() => void handleCopy(row)}
+              disabled={copyingId === row.id}
+              className={`${btnFlat('emerald')} disabled:opacity-50`}
+              title={tm('roleMgmtCopyTitle')}
+            >
+              <Copy className="h-4 w-4" />
+            </button>
+            <button
+              type="button"
+              onClick={() => void handleDelete(row.id)}
+              disabled={row.is_system_role}
+              className={row.is_system_role ? btnFlat('muted') : btnFlat('red')}
+              title={row.is_system_role ? tm('roleMgmtDeleteDisabled') : tm('roleMgmtDeleteTitle')}
+            >
+              <Trash2 className="h-4 w-4" />
+            </button>
+          </div>
+        ),
+      },
+    ],
     [tm, darkMode, copyingId]
   );
 
-  return (
-    <div className={`h-full flex flex-col ${darkMode ? 'bg-gray-900' : 'bg-slate-50'}`}>
-      {/* Header */}
-      <div className={`border-b px-8 py-6 z-10 shadow-sm relative overflow-hidden ${darkMode ? 'bg-gray-800 border-gray-700' : 'bg-white border-slate-200'}`}>
-        {/* Subtle background decoration */}
-        <div className="absolute right-0 top-0 opacity-[0.03] transform scale-[3] translate-x-10 translate-y-10">
-          <Shield className="w-64 h-64 text-blue-900" />
-        </div>
+  if (formView) {
+    return (
+      <RoleForm
+        embeddedMode={formView.mode}
+        embeddedRoleId={formView.mode === 'edit' ? formView.roleId : null}
+        onEmbeddedClose={closeForm}
+        defaultGroupId={defaultGroupId}
+      />
+    );
+  }
 
-        <div className="flex items-center justify-between relative z-10 w-full max-w-7xl mx-auto">
-          <div className="flex items-center gap-5">
-            {onBack ? (
-              <button
-                type="button"
-                onClick={onBack}
-                className={`text-sm font-medium px-3 py-2 rounded-lg ${darkMode ? 'text-gray-300 hover:bg-gray-700' : 'text-gray-600 hover:bg-gray-100'}`}
-              >
-                ←
-              </button>
-            ) : null}
-            <div className="w-14 h-14 bg-gradient-to-br from-blue-600 to-indigo-700 rounded-2xl shadow-lg shadow-blue-500/30 flex items-center justify-center border border-white/20">
-              <Shield className="h-7 w-7 text-white" />
-            </div>
-            <div>
-              <h2 className={`text-2xl font-black tracking-tight ${darkMode ? 'text-gray-100' : 'text-slate-900'}`}>
-                {tm('roleMgmtTitle')}
-              </h2>
-              <p className={`text-sm font-medium mt-1 ${darkMode ? 'text-gray-400' : 'text-slate-500'}`}>
-                {tm('roleMgmtSubtitle')}
-              </p>
-            </div>
-          </div>
-          <button
-            onClick={() => navigate('/system/roles/new')}
-            className="flex items-center gap-2 px-6 py-3 bg-gradient-to-r from-blue-600 to-indigo-600 text-white rounded-xl hover:shadow-xl hover:shadow-blue-500/30 hover:-translate-y-0.5 active:scale-95 transition-all font-black tracking-wide text-sm"
+  return (
+    <div className={`h-full flex flex-col ${darkMode ? 'bg-gray-900' : 'bg-gray-50'}`}>
+      <div
+        className={`shrink-0 border-b px-5 py-4 flex items-center justify-between gap-3 ${
+          darkMode ? 'bg-gray-800 border-gray-700' : 'bg-white border-gray-200'
+        }`}
+      >
+        <div className="flex items-center gap-3 min-w-0">
+          {onBack ? (
+            <button
+              type="button"
+              onClick={onBack}
+              className={`text-sm px-2.5 py-1.5 border ${
+                darkMode
+                  ? 'border-gray-600 text-gray-300 hover:bg-gray-700'
+                  : 'border-gray-300 text-gray-600 hover:bg-gray-100'
+              }`}
+            >
+              ←
+            </button>
+          ) : null}
+          <div
+            className={`w-10 h-10 flex items-center justify-center ${
+              darkMode ? 'bg-blue-900 text-blue-200' : 'bg-blue-600 text-white'
+            }`}
           >
-            <Plus className="h-5 w-5" strokeWidth={3} />
-            {tm('roleMgmtAddRole')}
-          </button>
+            <Shield className="h-5 w-5" />
+          </div>
+          <div className="min-w-0">
+            <h2 className={`text-lg font-semibold truncate ${darkMode ? 'text-gray-100' : 'text-gray-900'}`}>
+              {tm('roleMgmtTitle')}
+            </h2>
+            <p className={`text-xs ${darkMode ? 'text-gray-400' : 'text-gray-500'}`}>{tm('roleMgmtSubtitle')}</p>
+          </div>
         </div>
+        <button
+          type="button"
+          onClick={() => setFormView({ mode: 'new' })}
+          className="flex items-center gap-2 px-4 py-2 bg-blue-600 text-white text-sm font-semibold hover:bg-blue-700"
+        >
+          <Plus className="h-4 w-4" strokeWidth={2.5} />
+          {tm('roleMgmtAddRole')}
+        </button>
       </div>
 
-      {/* Content */}
-      <div className="flex-1 overflow-auto p-8 w-full max-w-7xl mx-auto">
+      <div className="flex-1 min-h-0 overflow-auto p-4">
         {loading ? (
           <div className="flex items-center justify-center h-48">
-            <div className="w-10 h-10 border-4 border-blue-600 border-t-transparent rounded-full animate-spin shadow-sm"></div>
+            <div className="w-8 h-8 border-2 border-blue-600 border-t-transparent rounded-full animate-spin" />
           </div>
         ) : (
-          <div className={`rounded-3xl shadow-xl border overflow-hidden animate-in slide-in-from-bottom-4 duration-500 ${darkMode ? 'bg-gray-800 shadow-black/30 border-gray-700' : 'bg-white shadow-slate-200/50 border-slate-100'}`}>
+          <div className={`border overflow-hidden ${darkMode ? 'border-gray-700 bg-gray-800' : 'border-gray-200 bg-white'}`}>
             <DataTable
               data={roles}
               columns={columns}
@@ -283,103 +328,160 @@ export function RoleManagement({ onBack }: RoleManagementProps) {
               exportable={false}
               columnResizable={false}
               stickyHeader={true}
-              maxHeight="calc(100vh - 280px)"
+              maxHeight="calc(100vh - 220px)"
               emptyMessage={tm('roleMgmtEmpty')}
             />
           </div>
         )}
       </div>
 
-      {/* View Permissions Summary Modal */}
       {showPermissionsModal && (
-        <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-sm flex items-center justify-center z-50 p-4">
-          <div className="bg-white rounded-3xl w-full max-w-4xl max-h-[85vh] overflow-hidden flex flex-col shadow-2xl animate-in zoom-in-95 duration-200">
-            {/* Header */}
-            <div className="p-8 border-b relative overflow-hidden" style={{ backgroundColor: `${showPermissionsModal.color || '#3b82f6'}1a` }}>
-              <div className="absolute right-0 top-0 opacity-10 transform scale-[3] translate-x-10 translate-y-10 border">
-                <Shield className="w-64 h-64" style={{ color: showPermissionsModal.color || '#3b82f6' }} />
+        <PercentBodyModal
+          onClose={() => setShowPermissionsModal(null)}
+          size="wide"
+          ariaLabel={showPermissionsModal.name}
+        >
+          <div
+            className={`shrink-0 border-b px-5 py-4 flex items-start justify-between gap-3 ${
+              darkMode ? 'bg-gray-800 border-gray-700' : 'bg-white border-gray-200'
+            }`}
+          >
+            <div className="flex gap-3 items-center min-w-0">
+              <div
+                className="w-12 h-12 flex items-center justify-center shrink-0"
+                style={{ backgroundColor: showPermissionsModal.color || '#3b82f6' }}
+              >
+                <Shield className="h-6 w-6 text-white" />
               </div>
-
-              <div className="relative z-10 flex justify-between items-start">
-                <div className="flex gap-6 items-center">
-                  <div className="w-20 h-20 rounded-2xl bg-white shadow-xl flex items-center justify-center border border-white/50 relative">
-                    <Shield className="h-10 w-10" style={{ color: showPermissionsModal.color || '#3b82f6' }} />
-                  </div>
-                  <div>
-                    <h3 className="text-3xl font-black text-slate-900 tracking-tighter uppercase">{showPermissionsModal.name}</h3>
-                    <p className="text-sm font-bold text-slate-600 tracking-widest mt-1">{showPermissionsModal.description || tm('roleMgmtModalDefaultDesc')}</p>
-                    <div className="mt-4 flex gap-2">
-                      <span className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-white/70 backdrop-blur border text-xs font-bold text-slate-700 shadow-sm">
-                        <Lock className="w-3.5 h-3.5 text-blue-600" />
-                        {tm('roleMgmtModalPermCount').replace(
-                          '{n}',
-                          String(showPermissionsModal.permissions.reduce((acc: number, p: any) => acc + (p.actions?.length || 0), 0))
-                        )}
-                      </span>
-                    </div>
-                  </div>
-                </div>
-
-                <button onClick={() => setShowPermissionsModal(null)} className="scroll-mt-0 bg-white/50 hover:bg-white p-2.5 rounded-xl transition-all shadow-sm group active:scale-90">
-                  <X className="w-6 h-6 text-slate-500 group-hover:text-slate-800" />
-                </button>
+              <div className="min-w-0">
+                <h3 className={`text-lg font-semibold truncate ${darkMode ? 'text-gray-100' : 'text-gray-900'}`}>
+                  {showPermissionsModal.name}
+                </h3>
+                <p className={`text-xs ${darkMode ? 'text-gray-400' : 'text-gray-500'}`}>
+                  {showPermissionsModal.description || tm('roleMgmtModalDefaultDesc')}
+                </p>
+                <span
+                  className={`inline-flex items-center gap-1.5 mt-2 px-2 py-1 text-xs border ${
+                    darkMode ? 'border-gray-600 text-gray-300' : 'border-gray-300 text-gray-700'
+                  }`}
+                >
+                  <Lock className="w-3.5 h-3.5" />
+                  {tm('roleMgmtModalPermCount').replace(
+                    '{n}',
+                    String(
+                      showPermissionsModal.permissions.reduce(
+                        (acc: number, p: any) => acc + (p.actions?.length || 0),
+                        0
+                      )
+                    )
+                  )}
+                </span>
               </div>
             </div>
+            <button
+              type="button"
+              onClick={() => setShowPermissionsModal(null)}
+              className={`p-2 border ${
+                darkMode
+                  ? 'border-gray-600 text-gray-300 hover:bg-gray-700'
+                  : 'border-gray-300 text-gray-500 hover:bg-gray-100'
+              }`}
+            >
+              <X className="w-5 h-5" />
+            </button>
+          </div>
 
-            {/* Body */}
-            <div className="flex-1 p-8 overflow-y-auto custom-scrollbar bg-slate-50/50 text-slate-800">
-              <div className="space-y-6">
-                {moduleGroups.map(group => {
-                  // Filter to see if this role has any permissions in this group
-                  const activeModulesInGroup = group.modules.map(module => {
-                    const rolePerm = showPermissionsModal.permissions.find((p: any) => p.module === module.id);
+          <PercentBodyModalScrollBody
+            className={`p-4 ${darkMode ? 'bg-gray-900' : 'bg-gray-50'}`}
+          >
+            <div className="space-y-4">
+              {moduleGroups.map((group) => {
+                const activeModulesInGroup = group.modules
+                  .map((module) => {
+                    const rolePerm = showPermissionsModal.permissions.find(
+                      (p: any) => p.module === module.id
+                    );
                     if (rolePerm && rolePerm.actions.length > 0) {
                       return { module, actions: rolePerm.actions as PermissionAction[] };
                     }
                     return null;
-                  }).filter(Boolean) as { module: RbacModuleConfig; actions: PermissionAction[] }[];
+                  })
+                  .filter(Boolean) as { module: RbacModuleConfig; actions: PermissionAction[] }[];
 
-                  if (activeModulesInGroup.length === 0) return null;
+                if (activeModulesInGroup.length === 0) return null;
 
-                  return (
-                    <div key={group.id} className="bg-white border border-slate-200 rounded-3xl shadow-sm p-6 overflow-hidden">
-                      <h4 className="flex items-center gap-3 text-lg font-black text-slate-900 tracking-tight mb-5 pb-4 border-b border-slate-100">
-                        <span className="text-2xl">{group.icon}</span>
-                        {group.name}
-                      </h4>
-
-                      <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                        {activeModulesInGroup.map(({ module, actions }) => (
-                          <div key={module.id} className="p-4 bg-slate-50 rounded-2xl border border-slate-100 flex gap-4 transition-all hover:border-slate-300 hover:shadow-md">
-                            <div className="mt-1 flex-shrink-0">
-                              <div className="w-8 h-8 rounded-full bg-blue-100 text-blue-600 flex items-center justify-center shadow-inner">
-                                <CheckCircle className="w-5 h-5" />
-                              </div>
+                return (
+                  <div
+                    key={group.id}
+                    className={`border p-4 ${
+                      darkMode ? 'border-gray-700 bg-gray-800' : 'border-gray-200 bg-white'
+                    }`}
+                  >
+                    <h4
+                      className={`flex items-center gap-2 text-sm font-semibold mb-3 pb-2 border-b ${
+                        darkMode
+                          ? 'text-gray-100 border-gray-700'
+                          : 'text-gray-900 border-gray-100'
+                      }`}
+                    >
+                      <span className="text-lg">{group.icon}</span>
+                      {group.name}
+                    </h4>
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-2">
+                      {activeModulesInGroup.map(({ module, actions }) => (
+                        <div
+                          key={module.id}
+                          className={`p-3 border flex gap-3 ${
+                            darkMode ? 'border-gray-700 bg-gray-900/50' : 'border-gray-200 bg-gray-50'
+                          }`}
+                        >
+                          <CheckCircle
+                            className={`w-4 h-4 mt-0.5 shrink-0 ${
+                              darkMode ? 'text-blue-400' : 'text-blue-600'
+                            }`}
+                          />
+                          <div>
+                            <div
+                              className={`font-semibold text-sm ${
+                                darkMode ? 'text-gray-100' : 'text-gray-800'
+                              }`}
+                            >
+                              {module.name}
                             </div>
-                            <div>
-                              <div className="font-extrabold text-slate-800 text-sm tracking-tight">{module.name}</div>
-                              <div className="text-[11px] font-medium text-slate-500 mt-0.5 pr-2">{module.description}</div>
-                              <div className="mt-3 flex flex-wrap gap-1.5">
-                                {actions.map(act => {
-                                  const isDanger = act === 'DELETE';
-                                  return (
-                                    <span key={act} className={`px-2 py-0.5 text-[10px] font-black uppercase tracking-wider rounded-md border ${isDanger ? 'bg-red-50 text-red-600 border-red-200' : 'bg-white shadow-sm border-slate-200 text-slate-600'}`}>
-                                      {actionLabel(act)}
-                                    </span>
-                                  )
-                                })}
-                              </div>
+                            <div className={`text-[11px] mt-0.5 ${darkMode ? 'text-gray-400' : 'text-gray-500'}`}>
+                              {module.description}
+                            </div>
+                            <div className="mt-2 flex flex-wrap gap-1">
+                              {actions.map((act) => {
+                                const isDanger = act === 'DELETE';
+                                return (
+                                  <span
+                                    key={act}
+                                    className={`px-1.5 py-0.5 text-[10px] font-bold uppercase border ${
+                                      isDanger
+                                        ? darkMode
+                                          ? 'bg-red-950/40 text-red-300 border-red-800'
+                                          : 'bg-red-50 text-red-600 border-red-200'
+                                        : darkMode
+                                          ? 'bg-gray-800 text-gray-300 border-gray-600'
+                                          : 'bg-white text-gray-600 border-gray-200'
+                                    }`}
+                                  >
+                                    {actionLabel(act)}
+                                  </span>
+                                );
+                              })}
                             </div>
                           </div>
-                        ))}
-                      </div>
+                        </div>
+                      ))}
                     </div>
-                  )
-                })}
-              </div>
+                  </div>
+                );
+              })}
             </div>
-          </div>
-        </div>
+          </PercentBodyModalScrollBody>
+        </PercentBodyModal>
       )}
     </div>
   );
