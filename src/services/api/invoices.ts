@@ -952,6 +952,7 @@ async function writeCashRegisterLineForInvoice(inv: Invoice, firmNr: string): Pr
       }
       return;
     }
+    let wroteAnyCashLine = false;
     for (let i = 0; i < paymentsRaw.length; i++) {
       const row = paymentsRaw[i] || {};
       const rowMethod = String(row.method || '').toLowerCase().trim();
@@ -960,7 +961,17 @@ async function writeCashRegisterLineForInvoice(inv: Invoice, firmNr: string): Pr
       if (!paymentMethodImpliesCashInKasa(rowMethod)) {
         continue;
       }
-      const rowAmount = Math.abs(Number(row.amount || 0));
+      let rowAmount = Math.abs(Number(row.amount || 0));
+      // Ödeme modalı satır tutarı 0 kalmış olabilir (kalem eklenmeden önce seçildi).
+      // Tek peşin satırda fatura netine düş.
+      if (!(rowAmount > 0)) {
+        const prepaidRows = paymentsRaw.filter((p: { method?: string }) =>
+          paymentMethodImpliesCashInKasa(String(p?.method || '')),
+        );
+        if (prepaidRows.length === 1) {
+          rowAmount = Math.abs(Number(inv.total_amount || 0));
+        }
+      }
       if (!Number.isFinite(rowAmount) || rowAmount <= 0) continue;
       // Satır kendi kasasını taşır; yoksa defaultCandidates fallback
       const rowCandidates: string[] = [];
@@ -989,6 +1000,7 @@ async function writeCashRegisterLineForInvoice(inv: Invoice, firmNr: string): Pr
             sign, transactionType,
           );
         }
+        wroteAnyCashLine = true;
       } catch (e: any) {
         console.error('[InvoicesAPI] ⚠️ Kasa satırı (çoklu ödeme) yazılamadı:', {
           error: e?.message || String(e),
@@ -1003,7 +1015,8 @@ async function writeCashRegisterLineForInvoice(inv: Invoice, firmNr: string): Pr
         });
       }
     }
-    return;
+    // payments[] vardı ama tutar 0 / yazılamadı → tek-ödeme fallback
+    if (wroteAnyCashLine) return;
   }
 
   // Tek-ödeme modu: paymentMethod nakit/kart değilse atla

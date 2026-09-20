@@ -89,6 +89,7 @@ import {
   paymentFormCodeTranslationKey,
   paymentMethodImpliesCashRegisterOnInvoice,
   paymentMethodImpliesCustomerDebt,
+  paymentMethodImpliesPaidNow,
   RETAIL_SALES_INVOICE_TRCODE,
 } from '../../../utils/paymentMethodUtils';
 import { buildInvoiceHeaderFieldsFromForm, readInvoiceHeaderFields, sanitizeInvoiceHeaderPartyValue } from '../../../utils/invoiceHeaderFields';
@@ -3997,15 +3998,37 @@ export function UniversalInvoiceForm({
               name: cashRegisterName || null,
               code: cashRegisterCode || null,
             },
-            payments: paymentRows.map((p) => ({
-              method: p.method,
-              amount: p.amount,
-              currency: p.currency,
-              cash_register_id: p.cashRegisterId,
-              cash_register_name: p.cashRegisterName,
-              cash_register_code: p.cashRegisterCode,
-              notes: p.notes,
-            })),
+            payments: (() => {
+              const netTotal = Math.abs(Number(totals.netIQD) || 0);
+              const rows = paymentRows.length > 0
+                ? paymentRows
+                : (paymentMethodImpliesCashRegisterOnInvoice(paymentMethod) && netTotal > 0
+                  ? [{
+                      method: paymentMethod,
+                      amount: netTotal,
+                      currency: 'IQD' as const,
+                      cashRegisterId: cashRegisterId || null,
+                      cashRegisterName: cashRegisterName || null,
+                      cashRegisterCode: cashRegisterCode || null,
+                    }]
+                  : []);
+              const prepaid = rows.filter((p) => paymentMethodImpliesPaidNow(p.method));
+              const normalized =
+                prepaid.length === 1 && !(Number(prepaid[0].amount) > 0) && netTotal > 0
+                  ? rows.map((p) =>
+                      paymentMethodImpliesPaidNow(p.method) ? { ...p, amount: netTotal } : p,
+                    )
+                  : rows;
+              return normalized.map((p) => ({
+                method: p.method,
+                amount: p.amount,
+                currency: p.currency,
+                cash_register_id: p.cashRegisterId,
+                cash_register_name: p.cashRegisterName,
+                cash_register_code: p.cashRegisterCode,
+                notes: p.notes,
+              }));
+            })(),
           }),
           source: 'invoice_form',
         },
