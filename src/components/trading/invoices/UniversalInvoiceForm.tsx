@@ -4444,96 +4444,94 @@ export function UniversalInvoiceForm({
 
                 {/* Items Grid */}
                 <div className="space-y-3">
-                  {/* Toplu fiyat + Excel — yan yana (yalnızca Alış) */}
+                  {/* Toplu fiyat + Excel — tek satır yan yana (yalnızca Alış) */}
                   {invoiceType.category === 'Alis' && (
                     <div className="flex flex-col gap-2">
-                      <div className="flex flex-col gap-3 xl:flex-row xl:items-center xl:justify-between">
-                        <div className="flex flex-wrap items-center gap-2">
-                          <span className="text-sm text-gray-700 dark:text-gray-200 font-medium whitespace-nowrap">
-                            {tm('bulkPriceAdjust')}:
-                          </span>
-                          <select
-                            value={bulkPriceTarget}
-                            onChange={(e) => setBulkPriceTarget(e.target.value as 'purchase' | 'sale')}
-                            className="px-2 py-1 border border-gray-300 dark:border-gray-600 rounded text-sm bg-white dark:bg-gray-800 text-gray-900 dark:text-gray-100"
-                            aria-label={tm('bulkPriceTargetPurchase')}
-                          >
-                            <option value="purchase">{tm('bulkPriceTargetPurchase')}</option>
-                            <option value="sale">{tm('bulkPriceTargetSale')}</option>
-                          </select>
-                          <select
-                            value={bulkPriceDirection}
-                            onChange={(e) => setBulkPriceDirection(e.target.value as 'increase' | 'decrease')}
-                            className="px-2 py-1 border border-gray-300 dark:border-gray-600 rounded text-sm bg-white dark:bg-gray-800 text-gray-900 dark:text-gray-100"
-                          >
-                            <option value="increase">{tm('bulkPriceDirectionIncrease')}</option>
-                            <option value="decrease">{tm('bulkPriceDirectionDecrease')}</option>
-                          </select>
-                          <select
-                            value={bulkPriceMode}
-                            onChange={(e) => setBulkPriceMode(e.target.value as 'percent' | 'amount')}
-                            className="px-2 py-1 border border-gray-300 dark:border-gray-600 rounded text-sm bg-white dark:bg-gray-800 text-gray-900 dark:text-gray-100"
-                          >
-                            <option value="percent">{tm('bulkPriceModePercent')}</option>
-                            <option value="amount">{tm('bulkPriceModeAmount')}</option>
-                          </select>
-                          <div className="relative">
-                            <input
-                              type="number"
-                              value={bulkPriceValue}
-                              onChange={(e) =>
-                                setBulkPriceValue(e.target.value === '' ? '' : parseFloat(e.target.value))
-                              }
-                              className="w-24 px-2 py-1 border border-gray-300 dark:border-gray-600 rounded text-sm text-right bg-white dark:bg-gray-800 text-gray-900 dark:text-gray-100 pr-7"
-                              placeholder={bulkPriceMode === 'percent' ? '%' : '0'}
-                              step="0.1"
-                              min="0"
-                            />
-                            {bulkPriceMode === 'percent' && (
-                              <span className="pointer-events-none absolute right-2 top-1/2 -translate-y-1/2 text-xs text-gray-500 dark:text-gray-400">
-                                %
-                              </span>
-                            )}
-                          </div>
-                          <button
-                            type="button"
-                            onClick={handleBulkPriceIncrease}
-                            className="px-4 py-1 bg-blue-600 text-white rounded hover:bg-blue-700 text-sm transition-colors"
-                          >
-                            {tm('apply')}
-                          </button>
-                          <span className="text-xs text-gray-600 dark:text-gray-300 max-w-sm">
-                            {tm('bulkPriceAdjustDesc')}
-                          </span>
-                        </div>
-                        <div className="flex flex-wrap items-center gap-2 xl:justify-end">
-                          <button
-                            type="button"
-                            onClick={() => void handleDownloadPurchaseInvoiceExcelTemplate()}
-                            className="inline-flex items-center gap-2 px-3 py-1.5 rounded border border-teal-200 dark:border-teal-700 bg-teal-50 dark:bg-teal-950/50 text-teal-800 dark:text-teal-200 text-sm font-medium hover:bg-teal-100 dark:hover:bg-teal-900/60 transition-colors"
-                            title={tm('purchaseInvoiceExcelTemplateBtn')}
-                          >
-                            <FileSpreadsheet className="w-4 h-4 shrink-0" />
-                            {tm('purchaseInvoiceExcelTemplateBtn')}
-                          </button>
-                          <button
-                            type="button"
-                            disabled={purchaseExcelImporting}
-                            onClick={() => purchaseExcelInputRef.current?.click()}
-                            className="inline-flex items-center gap-2 px-3 py-1.5 rounded border border-slate-200 dark:border-gray-600 bg-white dark:bg-gray-800 text-slate-800 dark:text-gray-100 text-sm font-medium hover:bg-slate-50 dark:hover:bg-gray-700 transition-colors disabled:opacity-50"
-                            title={tm('purchaseInvoiceExcelImportBtn')}
-                          >
-                            <Upload className="w-4 h-4 shrink-0" />
-                            {purchaseExcelImporting ? tm('purchaseInvoiceExcelImporting') : tm('purchaseInvoiceExcelImportBtn')}
-                          </button>
+                      <div className="flex flex-wrap items-center gap-2">
+                        <span
+                          className="text-sm text-gray-700 dark:text-gray-200 font-medium whitespace-nowrap"
+                          title={tm('bulkPriceAdjustDesc')}
+                        >
+                          {tm('bulkPriceAdjust')}:
+                        </span>
+                        <select
+                          value={bulkPriceTarget}
+                          onChange={(e) => setBulkPriceTarget(e.target.value as 'purchase' | 'sale')}
+                          className="px-2 py-1 border border-gray-300 dark:border-gray-600 rounded text-sm bg-white dark:bg-gray-800 text-gray-900 dark:text-gray-100"
+                          aria-label={tm('bulkPriceTargetPurchase')}
+                        >
+                          <option value="purchase">{tm('bulkPriceTargetPurchase')}</option>
+                          <option value="sale">{tm('bulkPriceTargetSale')}</option>
+                        </select>
+                        <select
+                          value={bulkPriceDirection}
+                          onChange={(e) => setBulkPriceDirection(e.target.value as 'increase' | 'decrease')}
+                          className="px-2 py-1 border border-gray-300 dark:border-gray-600 rounded text-sm bg-white dark:bg-gray-800 text-gray-900 dark:text-gray-100"
+                        >
+                          <option value="increase">{tm('bulkPriceDirectionIncrease')}</option>
+                          <option value="decrease">{tm('bulkPriceDirectionDecrease')}</option>
+                        </select>
+                        <select
+                          value={bulkPriceMode}
+                          onChange={(e) => setBulkPriceMode(e.target.value as 'percent' | 'amount')}
+                          className="px-2 py-1 border border-gray-300 dark:border-gray-600 rounded text-sm bg-white dark:bg-gray-800 text-gray-900 dark:text-gray-100"
+                        >
+                          <option value="percent">{tm('bulkPriceModePercent')}</option>
+                          <option value="amount">{tm('bulkPriceModeAmount')}</option>
+                        </select>
+                        <div className="relative">
                           <input
-                            ref={purchaseExcelInputRef}
-                            type="file"
-                            accept=".xlsx,.xls,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet,application/vnd.ms-excel"
-                            className="hidden"
-                            onChange={(ev) => void handlePurchaseExcelInputChange(ev)}
+                            type="number"
+                            value={bulkPriceValue}
+                            onChange={(e) =>
+                              setBulkPriceValue(e.target.value === '' ? '' : parseFloat(e.target.value))
+                            }
+                            className={`w-24 px-2 py-1 border border-gray-300 dark:border-gray-600 rounded text-sm text-right bg-white dark:bg-gray-800 text-gray-900 dark:text-gray-100 ${
+                              bulkPriceMode === 'percent' ? 'pr-7' : ''
+                            }`}
+                            placeholder={bulkPriceMode === 'percent' ? '' : '0'}
+                            step="0.1"
+                            min="0"
                           />
+                          {bulkPriceMode === 'percent' && (
+                            <span className="pointer-events-none absolute right-2 top-1/2 -translate-y-1/2 text-xs text-gray-500 dark:text-gray-400">
+                              %
+                            </span>
+                          )}
                         </div>
+                        <button
+                          type="button"
+                          onClick={handleBulkPriceIncrease}
+                          className="px-4 py-1 bg-blue-600 text-white rounded hover:bg-blue-700 text-sm transition-colors"
+                        >
+                          {tm('apply')}
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => void handleDownloadPurchaseInvoiceExcelTemplate()}
+                          className="inline-flex items-center gap-2 px-3 py-1.5 rounded border border-teal-200 dark:border-teal-700 bg-teal-50 dark:bg-teal-950/50 text-teal-800 dark:text-teal-200 text-sm font-medium hover:bg-teal-100 dark:hover:bg-teal-900/60 transition-colors"
+                          title={tm('purchaseInvoiceExcelTemplateBtn')}
+                        >
+                          <FileSpreadsheet className="w-4 h-4 shrink-0" />
+                          {tm('purchaseInvoiceExcelTemplateBtn')}
+                        </button>
+                        <button
+                          type="button"
+                          disabled={purchaseExcelImporting}
+                          onClick={() => purchaseExcelInputRef.current?.click()}
+                          className="inline-flex items-center gap-2 px-3 py-1.5 rounded border border-slate-200 dark:border-gray-600 bg-white dark:bg-gray-800 text-slate-800 dark:text-gray-100 text-sm font-medium hover:bg-slate-50 dark:hover:bg-gray-700 transition-colors disabled:opacity-50"
+                          title={tm('purchaseInvoiceExcelImportBtn')}
+                        >
+                          <Upload className="w-4 h-4 shrink-0" />
+                          {purchaseExcelImporting ? tm('purchaseInvoiceExcelImporting') : tm('purchaseInvoiceExcelImportBtn')}
+                        </button>
+                        <input
+                          ref={purchaseExcelInputRef}
+                          type="file"
+                          accept=".xlsx,.xls,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet,application/vnd.ms-excel"
+                          className="hidden"
+                          onChange={(ev) => void handlePurchaseExcelInputChange(ev)}
+                        />
                       </div>
                       <p className="text-xs text-gray-500 dark:text-gray-400">{tm('purchaseInvoiceExcelHint')}</p>
                       {purchaseExcelImportReport && purchaseExcelImportReport.issues.length > 0 && (
