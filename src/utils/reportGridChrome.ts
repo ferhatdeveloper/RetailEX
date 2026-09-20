@@ -28,19 +28,22 @@ export function isReportCodeColumnId(id: unknown): boolean {
   return CODE_ID_RE.test(s);
 }
 
-/** DevEx / rapor ızgarası — sayısal kolon dar varsayılan genişlikleri (px). */
+/**
+ * DevEx / rapor ızgarası — sayısal kolon varsayılan genişlikleri (px).
+ * Türkçe başlıklar (Giriş miktar, Alış Birim Fiyatı…) kesilmesin diye okunabilir min.
+ */
 export const DEVEX_COMPACT_NUMERIC_SIZE = {
-  qty: 72,
-  amount: 88,
-  price: 88,
-  balance: 80,
-  number: 80,
+  qty: 104,
+  amount: 112,
+  price: 128,
+  balance: 112,
+  number: 100,
 } as const;
 
 export type DevExCompactNumericKind = keyof typeof DEVEX_COMPACT_NUMERIC_SIZE;
 
-export const DEVEX_COMPACT_NUMERIC_MIN_SIZE = 52;
-export const DEVEX_COMPACT_NUMERIC_MAX_SIZE = 120;
+export const DEVEX_COMPACT_NUMERIC_MIN_SIZE = 72;
+export const DEVEX_COMPACT_NUMERIC_MAX_SIZE = 180;
 
 const COMPACT_QTY_ID_RE =
   /(^|_)(qty|quantity|miktar|adet|count|inqty|outqty|in_qty|out_qty)(_|$)|quantity_sold|sold_qty|soldqty/i;
@@ -119,11 +122,18 @@ export function resolveDevExCompactNumericSizing(
     typeof existingSize === 'number' && Number.isFinite(existingSize) && existingSize > 0
       ? existingSize
       : null;
-  // Daha dar bilinçli size korunur; aksi halde compact (110–150+ dahil daraltılır)
-  const size = existing != null && existing < compact ? existing : compact;
+  // Daha dar bilinçli size korunur; bilinçli daha geniş size (başlık okunabilirliği) ezilmez
+  const size =
+    existing == null
+      ? compact
+      : existing < compact
+        ? existing
+        : existing > compact
+          ? existing
+          : compact;
   return {
     size,
-    minSize: DEVEX_COMPACT_NUMERIC_MIN_SIZE,
+    minSize: Math.min(DEVEX_COMPACT_NUMERIC_MIN_SIZE, size),
     maxSize: Math.max(DEVEX_COMPACT_NUMERIC_MAX_SIZE, size),
   };
 }

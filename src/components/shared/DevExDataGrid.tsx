@@ -1731,7 +1731,10 @@ function SortableHeaderTh<T>({
               aria-hidden
             />
           )}
-          <span className="truncate min-w-0">
+          <span
+            className="min-w-0 flex-1 whitespace-normal break-words leading-tight line-clamp-2 text-left"
+            title={gridColumnHeaderLabel(header.column, columnId)}
+          >
             {flexRender(header.column.columnDef.header, header.getContext())}
           </span>
           {header.column.getIsSorted() && (

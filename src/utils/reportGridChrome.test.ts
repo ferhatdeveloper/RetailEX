@@ -88,8 +88,10 @@ describe('reportGridChrome', () => {
     expect(resolveDevExCompactNumericKind('dateLabel', { filterKind: 'date' })).toBeNull();
     expect(resolveDevExCompactNumericKind('inQty', { compactWidth: false })).toBeNull();
 
-    expect(resolveDevExCompactNumericSizing('inQty', {}, 120)?.size).toBe(72);
-    expect(resolveDevExCompactNumericSizing('inAmt', {}, 150)?.size).toBe(88);
+    expect(resolveDevExCompactNumericSizing('inQty', {}, 120)?.size).toBe(120);
+    expect(resolveDevExCompactNumericSizing('inAmt', {}, 150)?.size).toBe(150);
     expect(resolveDevExCompactNumericSizing('inQty', {}, 60)?.size).toBe(60);
+    expect(resolveDevExCompactNumericSizing('inQty', {}, null)?.size).toBe(104);
+    expect(resolveDevExCompactNumericSizing('purchaseUnitPrice', {}, null)?.size).toBe(128);
   });
 });

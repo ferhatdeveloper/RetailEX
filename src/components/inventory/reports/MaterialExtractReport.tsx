@@ -448,7 +448,7 @@ export function MaterialExtractReport() {
                     header: tm('extractInQty'),
                     align: 'right',
                     type: 'number',
-                    size: 72,
+                    size: 110,
                     cell: (r) =>
                         r.inQty == null ? (
                             ''
@@ -461,7 +461,7 @@ export function MaterialExtractReport() {
                     header: tm('extractInAmount'),
                     align: 'right',
                     type: 'currency',
-                    size: 88,
+                    size: 118,
                     cell: (r) =>
                         r.inAmt == null ? (
                             ''
@@ -474,7 +474,7 @@ export function MaterialExtractReport() {
                     header: tm('extractPurchaseUnitPrice') || 'Alış Birim Fiyatı',
                     align: 'right',
                     type: 'currency',
-                    size: 88,
+                    size: 130,
                     cell: (r) =>
                         r.purchaseUnitPrice == null ? (
                             ''
@@ -487,7 +487,7 @@ export function MaterialExtractReport() {
                     header: tm('extractOutQty'),
                     align: 'right',
                     type: 'number',
-                    size: 72,
+                    size: 110,
                     cell: (r) =>
                         r.outQty == null ? (
                             ''
@@ -500,7 +500,7 @@ export function MaterialExtractReport() {
                     header: tm('extractOutAmount'),
                     align: 'right',
                     type: 'currency',
-                    size: 88,
+                    size: 118,
                     cell: (r) =>
                         r.outAmt == null ? (
                             ''
@@ -513,7 +513,7 @@ export function MaterialExtractReport() {
                     header: tm('extractSalesUnitPrice') || 'Satış Birim Fiyatı',
                     align: 'right',
                     type: 'currency',
-                    size: 88,
+                    size: 130,
                     cell: (r) =>
                         r.salesUnitPrice == null ? (
                             ''
@@ -526,7 +526,7 @@ export function MaterialExtractReport() {
                     header: tm('runningQuantity') || 'Kalan Bakiye',
                     align: 'right',
                     type: 'number',
-                    size: 80,
+                    size: 118,
                     cell: (r) => (
                         <span className="font-bold">{formatNumber(r.running_balance, 2)}</span>
                     ),
