@@ -508,7 +508,7 @@ export function UniversalInvoiceForm({
   /** Elle kur girildiyse tarih/master güncellemesi ezmesin; döviz veya kur türü değişince sıfırlanır */
   const currencyRateUserTouchedRef = useRef(false);
 
-  const [activeTab, setActiveTab] = useState<'fatura' | 'detaylar' | 'detaylarII' | 'ekliDosyalar'>('fatura');
+  const [activeTab, setActiveTab] = useState<'fatura' | 'detaylar' | 'ekliDosyalar'>('fatura');
   const [saving, setSaving] = useState(false);
 
   // Form States - Her fatura türü için ortak
@@ -714,7 +714,6 @@ export function UniversalInvoiceForm({
   const [toWarehouse, setToWarehouse] = useState(''); // Giriş deposu (Transfer)
   const [consignmentCommission, setConsignmentCommission] = useState(0); // Konsinye komisyon %
   const [consignmentDeliveryDate, setConsignmentDeliveryDate] = useState(''); // Konsinye teslim tarihi
-  const [taxRate, setTaxRate] = useState(0); // TAX oranı (Alış için)
   const [expenseAmount, setExpenseAmount] = useState(0); // Masraf tutarı (Alış için)
   const [approvalStatus, setApprovalStatus] = useState('BEKLEMEDE'); // Onay durumu (Sipariş/Teklif)
   const [approvalDate, setApprovalDate] = useState(''); // Onay tarihi
@@ -734,14 +733,6 @@ export function UniversalInvoiceForm({
   });
   const [currencyRate, setCurrencyRate] = useState(() => parseFloat((editData as any)?.currency_rate) || 1); // Kuru (sayı; DB/hesap)
   const [currencyRateStr, setCurrencyRateStr] = useState(''); // Kur metin kutusu: 1,54 veya 1.54
-  const [reportingCurrency, setReportingCurrency] = useState(() => {
-    const ed = (editData as any)?.reporting_currency;
-    if (ed) return String(ed).trim().toUpperCase().slice(0, 10);
-    const rc = selectedFirm?.raporlama_para_birimi || selectedFirm?.ana_para_birimi || getAppDefaultCurrency();
-    return String(rc).trim().toUpperCase().slice(0, 10);
-  });
-  const [reportingCurrencyRate, setReportingCurrencyRate] = useState(1); // Raporlama Döviz Kuru
-  const [valuationRate, setValuationRate] = useState(1); // Değerleme Kuru
   const [currencyRateType, setCurrencyRateType] = useState('Satış'); // Kur Türü (Alış, Satış, Efektif Alış, Efektif Satış)
   const [isCurrencyTransaction, setIsCurrencyTransaction] = useState(false); // Dövizli İşlem Checkbox
   const [unitSets, setUnitSets] = useState<any[]>([]); // Birim setleri
@@ -752,17 +743,9 @@ export function UniversalInvoiceForm({
   const [description, setDescription] = useState(() => String((editData as any)?.notes || '')); // Açıklama
   const [documentTrackingNo, setDocumentTrackingNo] = useState(''); // Doküman İzleme Numarası
   const [paymentType, setPaymentType] = useState('İşlem Yapılmayacak'); // Ödeme Tipi
-  const [transactionStatus, setTransactionStatus] = useState('Operation Completed'); // İşlem Statüsü
-  const [creditCardNo, setCreditCardNo] = useState(''); // Kredi Kart No
-  const [serialNo, setSerialNo] = useState(''); // Seri No
-  const [deliveryCode, setDeliveryCode] = useState(''); // Teslimat Kodu
-  const [isDeposit, setIsDeposit] = useState(false); // Emanet
-  const [isTransfer, setIsTransfer] = useState(false); // Devir
-  const [campaignCode, setCampaignCode] = useState(''); // Kampanya Kodu
-  const [returnTransactionType, setReturnTransactionType] = useState(''); // İade Hakkı Doğuran İşlem Türü
-  const [isTaxFree, setIsTaxFree] = useState(false); // Tax Free
+  const [deliveryCode, setDeliveryCode] = useState(''); // Teslimat Kodu (header_fields)
+  const [campaignCode, setCampaignCode] = useState(''); // Kampanya Kodu (header_fields)
   const [time, setTime] = useState(new Date().toLocaleTimeString(tm('localeCode'), { hour: '2-digit', minute: '2-digit', second: '2-digit' })); // Zaman
-  const [distributedTotal, setDistributedTotal] = useState(0); // Dağılacak Toplam
 
   // Items
   // EditData varsa items'ı yükle
@@ -1030,9 +1013,7 @@ export function UniversalInvoiceForm({
     if (!selectedFirm) return;
     const ac = normalizeCurrencyCode(selectedFirm.ana_para_birimi || getAppDefaultCurrency());
     setCurrency(ac);
-    const rc = normalizeCurrencyCode(selectedFirm.raporlama_para_birimi || ac);
-    setReportingCurrency(rc);
-  }, [editData, selectedFirm?.logicalref, selectedFirm?.ana_para_birimi, selectedFirm?.raporlama_para_birimi]);
+  }, [editData, selectedFirm?.logicalref, selectedFirm?.ana_para_birimi]);
 
   useEffect(() => {
     currencyRateUserTouchedRef.current = false;
@@ -1289,9 +1270,6 @@ export function UniversalInvoiceForm({
   const [showWorkplaceModal, setShowWorkplaceModal] = useState(false);
   const [showWarehouseModal, setShowWarehouseModal] = useState(false);
   const [showSalespersonModal, setShowSalespersonModal] = useState(false);
-  const [showDeliveryCodeModal, setShowDeliveryCodeModal] = useState(false);
-  const [showCampaignModal, setShowCampaignModal] = useState(false);
-  const [showReturnTransactionTypeModal, setShowReturnTransactionTypeModal] = useState(false);
 
   const gridRefs = useRef<{ [key: string]: HTMLInputElement | null }>({});
   const productDropdownRef = useRef<HTMLDivElement>(null);
@@ -4415,16 +4393,6 @@ export function UniversalInvoiceForm({
             </button>
             <button
               type="button"
-              onClick={() => setActiveTab('detaylarII')}
-              className={`px-6 py-2 text-sm transition-colors ${activeTab === 'detaylarII'
-                ? 'bg-white text-gray-900'
-                : 'text-white hover:bg-white/10'
-                }`}
-            >
-              {tm('detailsII')}
-            </button>
-            <button
-              type="button"
               onClick={() => setActiveTab('ekliDosyalar')}
               className={`px-6 py-2 text-sm transition-colors ${activeTab === 'ekliDosyalar'
                 ? 'bg-white text-gray-900'
@@ -4947,26 +4915,6 @@ export function UniversalInvoiceForm({
                           <div className="text-xs text-gray-400 mt-0.5">{formatNumber(totals.net, 2, true)} {currency}</div>
                         )}
                       </div>
-                      <div>
-                        <label className="block text-sm font-medium text-gray-700 mb-1">{tm('distributedTotal')}</label>
-                        <input
-                          type="number"
-                          value={distributedTotal}
-                          onChange={(e) => setDistributedTotal(parseFloat(e.target.value) || 0)}
-                          step="0.01"
-                          className="w-full px-3 py-2 border border-gray-300 rounded text-sm"
-                        />
-                      </div>
-                      <div>
-                        <label className="block text-sm font-medium text-gray-700 mb-1">{tm('taxRate')}</label>
-                        <input
-                          type="number"
-                          value={taxRate}
-                          onChange={(e) => setTaxRate(parseFloat(e.target.value) || 0)}
-                          className="w-full px-3 py-2 border border-gray-300 rounded text-sm"
-                          step="0.01"
-                        />
-                      </div>
                     </div>
 
                     {/* İrsaliye Bilgileri */}
@@ -5050,163 +4998,6 @@ export function UniversalInvoiceForm({
                             <option value="Kredi Kartı">{tm('creditCard')}</option>
                             <option value="Veresiye">{tm('paymentCredit')}</option>
                           </select>
-                        </div>
-                      </div>
-                    </div>
-                  </div>
-                </div>
-              )
-            }
-
-            {/* Detaylar II Sekmesi - Logo Formatı */}
-            {
-              activeTab === 'detaylarII' && (
-                <div className="bg-white rounded border border-gray-200 p-6">
-                  <div className="space-y-6">
-                    <div className="grid grid-cols-5 gap-4">
-                      <div>
-                        <label className="block text-sm font-medium text-gray-700 mb-1">{tm('transactionStatus')}</label>
-                        <select
-                          value={transactionStatus}
-                          onChange={(e) => setTransactionStatus(e.target.value)}
-                          className="w-full px-3 py-2 border border-gray-300 rounded text-sm"
-                        >
-                          <option value="Operation Completed">{tm('operationCompleted')}</option>
-                          <option value="Pending">{tm('pending')}</option>
-                          <option value="Cancelled">{tm('cancelled')}</option>
-                        </select>
-                      </div>
-                      <div>
-                        <label className="block text-sm font-medium text-gray-700 mb-1">{tm('reportingCurrency')}</label>
-                        <select
-                          value={reportingCurrency}
-                          onChange={(e) => setReportingCurrency(e.target.value)}
-                          className="w-full px-3 py-2 border border-green-300 bg-green-50 rounded text-sm font-bold"
-                        >
-                          {invoiceCurrencyCodes.map(code => (
-                            <option key={`rep-${code}`} value={code}>{code}</option>
-                          ))}
-                        </select>
-                      </div>
-                      <div>
-                        <label className="block text-sm font-medium text-gray-700 mb-1">{tm('reportingCurrencyRate')}</label>
-                        <input
-                          type="number"
-                          value={reportingCurrencyRate}
-                          onChange={(e) => setReportingCurrencyRate(parseFloat(e.target.value) || 1)}
-                          step="0.0001"
-                          className="w-full px-3 py-2 border border-green-300 rounded text-sm font-medium"
-                        />
-                      </div>
-                      <div>
-                        <label className="block text-sm font-medium text-gray-700 mb-1">{tm('valuationRate')}</label>
-                        <input
-                          type="number"
-                          value={valuationRate}
-                          onChange={(e) => setValuationRate(parseFloat(e.target.value) || 1)}
-                          step="0.0001"
-                          className="w-full px-3 py-2 border border-gray-300 rounded text-sm"
-                        />
-                      </div>
-                      <div>
-                        <label className="block text-sm font-medium text-gray-700 mb-1">{tm('creditCardNo')}</label>
-                        <input
-                          type="text"
-                          value={creditCardNo}
-                          onChange={(e) => setCreditCardNo(e.target.value)}
-                          className="w-full px-3 py-2 border border-gray-300 rounded text-sm"
-                        />
-                      </div>
-                    </div>
-
-                    <div className="border-t pt-4">
-                      <div className="grid grid-cols-4 gap-4">
-                        <div>
-                          <label className="block text-sm font-medium text-gray-700 mb-1">{tm('deliveryCode')}</label>
-                          <div className="flex gap-1">
-                            <input
-                              type="text"
-                              value={deliveryCode}
-                              onChange={(e) => setDeliveryCode(e.target.value)}
-                              className="flex-1 px-3 py-2 border border-gray-300 rounded text-sm"
-                            />
-                            <button
-                              onClick={() => setShowDeliveryCodeModal(true)}
-                              className="px-2 py-2 border border-gray-300 rounded hover:bg-gray-50"
-                            >
-                              <MoreVertical className="w-4 h-4 text-gray-600" />
-                            </button>
-                          </div>
-                        </div>
-                        <div className="flex items-end gap-4">
-                          <label className="flex items-center gap-2 text-sm">
-                            <input
-                              type="checkbox"
-                              checked={isDeposit}
-                              onChange={(e) => setIsDeposit(e.target.checked)}
-                              className="w-4 h-4"
-                            />
-                            <span>{tm('deposit')}</span>
-                          </label>
-                          <label className="flex items-center gap-2 text-sm">
-                            <input
-                              type="checkbox"
-                              checked={isTransfer}
-                              onChange={(e) => setIsTransfer(e.target.checked)}
-                              className="w-4 h-4"
-                            />
-                            <span>{tm('transfer')}</span>
-                          </label>
-                        </div>
-                        <div>
-                          <label className="block text-sm font-medium text-gray-700 mb-1">{tm('campaignCode')}</label>
-                          <div className="flex gap-1">
-                            <input
-                              type="text"
-                              value={campaignCode}
-                              onChange={(e) => setCampaignCode(e.target.value)}
-                              className="flex-1 px-3 py-2 border border-gray-300 rounded text-sm"
-                            />
-                            <button
-                              onClick={() => setShowCampaignModal(true)}
-                              className="px-2 py-2 border border-gray-300 rounded hover:bg-gray-50"
-                            >
-                              <MoreVertical className="w-4 h-4 text-gray-600" />
-                            </button>
-                          </div>
-                        </div>
-                      </div>
-                    </div>
-
-                    <div className="border-t pt-4">
-                      <div className="grid grid-cols-2 gap-4">
-                        <div>
-                          <label className="block text-sm font-medium text-gray-700 mb-1">{tm('returnTransactionTypeLabel')}</label>
-                          <div className="flex gap-1">
-                            <input
-                              type="text"
-                              value={returnTransactionType}
-                              onChange={(e) => setReturnTransactionType(e.target.value)}
-                              className="flex-1 px-3 py-2 border border-gray-300 rounded text-sm"
-                            />
-                            <button
-                              onClick={() => setShowReturnTransactionTypeModal(true)}
-                              className="px-2 py-2 border border-gray-300 rounded hover:bg-gray-50"
-                            >
-                              <MoreVertical className="w-4 h-4 text-gray-600" />
-                            </button>
-                          </div>
-                        </div>
-                        <div className="flex items-end">
-                          <label className="flex items-center gap-2 text-sm">
-                            <input
-                              type="checkbox"
-                              checked={isTaxFree}
-                              onChange={(e) => setIsTaxFree(e.target.checked)}
-                              className="w-4 h-4"
-                            />
-                            <span>{tm('taxFree')}</span>
-                          </label>
                         </div>
                       </div>
                     </div>
