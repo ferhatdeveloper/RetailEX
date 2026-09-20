@@ -1,8 +1,8 @@
-﻿import React, { useState, useEffect, useCallback } from 'react';
+﻿import React, { useRef, useState, useEffect, useCallback } from 'react';
 import {
   GripVertical, Plus, Edit2, Trash2, Save, X,
   ChevronDown, ChevronRight, Menu as MenuIcon, Settings,
-  RefreshCw, Eye, EyeOff, CloudDownload
+  RefreshCw, Eye, EyeOff, CloudDownload, Download, Upload
 } from 'lucide-react';
 import { supabase } from '../../utils/supabase/client';
 import { logger } from '../../services/loggingService';
@@ -132,6 +132,7 @@ export function MenuManagementPanel({ onClose }: MenuManagementPanelProps) {
   const [showLoadPresetModal, setShowLoadPresetModal] = useState(false);
   const [presetName, setPresetName] = useState('');
   const [loadPresets, setLoadPresets] = useState<MenuPreferencePreset[]>([]);
+  const importFileRef = useRef<HTMLInputElement>(null);
   const [pendingSavePayload, setPendingSavePayload] = useState<{
     hidden_modules: string[];
     item_orders: Record<string, number>;
@@ -302,6 +303,66 @@ export function MenuManagementPanel({ onClose }: MenuManagementPanelProps) {
       alert(tm('menuPanelPresetDeleteFailed'));
     } finally {
       setSaving(false);
+    }
+  };
+
+  const handleDownloadPreset = async (preset: MenuPreferencePreset) => {
+    try {
+      const svc = await loadMenuPrefsService();
+      svc.downloadMenuPresetJson(preset);
+    } catch (e) {
+      logger.crudError('MenuManagement', 'downloadPreset', e);
+      alert(tm('menuPanelPresetDownloadFailed'));
+    }
+  };
+
+  const handleDownloadAllPresets = async () => {
+    if (loadPresets.length === 0) {
+      alert(tm('menuPanelPresetNothingToDownload'));
+      return;
+    }
+    try {
+      const svc = await loadMenuPrefsService();
+      svc.downloadMenuPresetsBundleJson(loadPresets);
+    } catch (e) {
+      logger.crudError('MenuManagement', 'downloadAllPresets', e);
+      alert(tm('menuPanelPresetDownloadFailed'));
+    }
+  };
+
+  const handleImportPresetFile = async (file: File | null) => {
+    if (!file) return;
+    try {
+      setSaving(true);
+      const text = await file.text();
+      const raw = JSON.parse(text) as unknown;
+      const svc = await loadMenuPrefsService();
+      const items = svc.parseMenuPresetImportJson(raw);
+      const created = await svc.importMenuPreferencePresets(items, currentUsername, {
+        applyFirst: true,
+      });
+      const presets = await svc.listMenuPreferencePresets(currentUsername);
+      setLoadPresets(presets);
+      if (created[0]) {
+        setHiddenModules(created[0].hidden_modules ?? []);
+        setShowLoadPresetModal(false);
+        await loadMenuItems();
+        window.dispatchEvent(new CustomEvent('menuUpdated', { detail: { forceReload: true } }));
+      }
+      alert(
+        tm('menuPanelPresetImportOk').replace('{n}', String(created.length)) ||
+          `${created.length} menü profili içe aktarıldı.`,
+      );
+    } catch (e) {
+      logger.crudError('MenuManagement', 'importPreset', e);
+      alert(
+        e instanceof Error
+          ? e.message
+          : tm('menuPanelPresetImportFailed') || 'Menü profili yüklenemedi.',
+      );
+    } finally {
+      setSaving(false);
+      if (importFileRef.current) importFileRef.current.value = '';
     }
   };
 
@@ -1384,6 +1445,39 @@ export function MenuManagementPanel({ onClose }: MenuManagementPanelProps) {
             </button>
           </div>
           <PercentBodyModalScrollBody className="p-4">
+            <input
+              ref={importFileRef}
+              type="file"
+              accept="application/json,.json"
+              className="hidden"
+              onChange={(e) => void handleImportPresetFile(e.target.files?.[0] ?? null)}
+            />
+            <div className="flex flex-wrap gap-2 mb-3">
+              <button
+                type="button"
+                disabled={saving}
+                onClick={() => importFileRef.current?.click()}
+                className="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold rounded-lg border border-teal-600 text-teal-800 bg-teal-50 hover:bg-teal-100 disabled:opacity-50"
+                title={tm('menuPanelPresetImportHint') || 'Başka firmadan indirilen JSON profili yükle'}
+              >
+                <Upload className="w-3.5 h-3.5" />
+                {tm('menuPanelPresetImportBtn') || 'Dosyadan yükle'}
+              </button>
+              <button
+                type="button"
+                disabled={saving || loadPresets.length === 0}
+                onClick={() => void handleDownloadAllPresets()}
+                className="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold rounded-lg border border-gray-300 text-gray-700 bg-white hover:bg-gray-50 disabled:opacity-50"
+                title={tm('menuPanelPresetDownloadAllHint') || 'Tüm profilleri JSON olarak indir (başka firmaya aktarım)'}
+              >
+                <Download className="w-3.5 h-3.5" />
+                {tm('menuPanelPresetDownloadAllBtn') || 'Tümünü indir'}
+              </button>
+            </div>
+            <p className="text-[11px] text-gray-500 mb-3">
+              {tm('menuPanelPresetTransferHint') ||
+                'İndirilen JSON’u başka firma / sunucuda «Dosyadan yükle» ile aktarın.'}
+            </p>
             <div className="space-y-2">
               <div className="flex items-center gap-3 p-3 border border-dashed border-gray-300 rounded-lg bg-gray-50">
                 <div className="flex-1 min-w-0">
@@ -1417,7 +1511,7 @@ export function MenuManagementPanel({ onClose }: MenuManagementPanelProps) {
               {loadPresets.map((preset) => (
                   <div
                     key={preset.id}
-                    className="flex items-center gap-3 p-3 border border-gray-200 rounded-lg bg-white hover:border-teal-300"
+                    className="flex items-center gap-2 p-3 border border-gray-200 rounded-lg bg-white hover:border-teal-300"
                   >
                     <div className="flex-1 min-w-0">
                       <div className="font-medium text-sm text-gray-900 truncate">{preset.name}</div>
@@ -1425,6 +1519,15 @@ export function MenuManagementPanel({ onClose }: MenuManagementPanelProps) {
                         {preset.saved_by} · {new Date(preset.saved_at).toLocaleString('tr-TR')} · {preset.hidden_modules.length} gizli modül
                       </div>
                     </div>
+                    <button
+                      type="button"
+                      onClick={() => void handleDownloadPreset(preset)}
+                      disabled={saving}
+                      className="shrink-0 p-1.5 text-teal-700 hover:bg-teal-50 rounded disabled:opacity-50"
+                      title={tm('menuPanelPresetDownloadBtn') || 'İndir (JSON)'}
+                    >
+                      <Download className="w-4 h-4" />
+                    </button>
                     <button
                       type="button"
                       onClick={() => handleApplyPreset(preset.id)}

@@ -397,6 +397,204 @@ export async function deleteMenuPreferencePreset(presetId: string, fallbackUser 
   }
 }
 
+/** Başka firmaya aktarım — tek profil JSON */
+export const MENU_PRESET_EXPORT_FORMAT = 'retailex-menu-preset' as const;
+export const MENU_PRESETS_BUNDLE_FORMAT = 'retailex-menu-presets' as const;
+
+export type MenuPresetExportFile = {
+  format: typeof MENU_PRESET_EXPORT_FORMAT;
+  version: 1;
+  exported_at: string;
+  preset: {
+    name: string;
+    hidden_modules: string[];
+    item_orders?: Record<string, number>;
+  };
+};
+
+export type MenuPresetsBundleExportFile = {
+  format: typeof MENU_PRESETS_BUNDLE_FORMAT;
+  version: 1;
+  exported_at: string;
+  presets: Array<{
+    name: string;
+    hidden_modules: string[];
+    item_orders?: Record<string, number>;
+  }>;
+};
+
+export function buildMenuPresetExport(preset: MenuPreferencePreset): MenuPresetExportFile {
+  return {
+    format: MENU_PRESET_EXPORT_FORMAT,
+    version: 1,
+    exported_at: new Date().toISOString(),
+    preset: {
+      name: preset.name,
+      hidden_modules: normalizeHiddenModules(preset.hidden_modules),
+      item_orders: normalizeItemOrders(preset.item_orders),
+    },
+  };
+}
+
+export function buildMenuPresetsBundleExport(
+  presets: readonly MenuPreferencePreset[],
+): MenuPresetsBundleExportFile {
+  return {
+    format: MENU_PRESETS_BUNDLE_FORMAT,
+    version: 1,
+    exported_at: new Date().toISOString(),
+    presets: presets.map((p) => ({
+      name: p.name,
+      hidden_modules: normalizeHiddenModules(p.hidden_modules),
+      item_orders: normalizeItemOrders(p.item_orders),
+    })),
+  };
+}
+
+function sanitizeExportFileName(name: string): string {
+  const base = String(name || 'menu-preset')
+    .trim()
+    .replace(/[^\p{L}\p{N}\-_ .]+/gu, '')
+    .replace(/\s+/g, '-')
+    .slice(0, 60);
+  return base || 'menu-preset';
+}
+
+/** Tarayıcıda JSON indirme */
+export function downloadMenuPresetJson(preset: MenuPreferencePreset): void {
+  const payload = buildMenuPresetExport(preset);
+  const blob = new Blob([JSON.stringify(payload, null, 2)], {
+    type: 'application/json;charset=utf-8',
+  });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = `RetailEX-menu-${sanitizeExportFileName(preset.name)}.json`;
+  a.rel = 'noopener';
+  document.body.appendChild(a);
+  a.click();
+  a.remove();
+  URL.revokeObjectURL(url);
+}
+
+export function downloadMenuPresetsBundleJson(presets: readonly MenuPreferencePreset[]): void {
+  const payload = buildMenuPresetsBundleExport(presets);
+  const blob = new Blob([JSON.stringify(payload, null, 2)], {
+    type: 'application/json;charset=utf-8',
+  });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = `RetailEX-menu-presets-${new Date().toISOString().slice(0, 10)}.json`;
+  a.rel = 'noopener';
+  document.body.appendChild(a);
+  a.click();
+  a.remove();
+  URL.revokeObjectURL(url);
+}
+
+export type ParsedMenuPresetImport = {
+  name: string;
+  hidden_modules: string[];
+  item_orders?: Record<string, number>;
+};
+
+/** İndirilen JSON → içe aktarılacak profil listesi */
+export function parseMenuPresetImportJson(raw: unknown): ParsedMenuPresetImport[] {
+  if (!raw || typeof raw !== 'object') {
+    throw new Error('Geçersiz menü profil dosyası');
+  }
+  const o = raw as Record<string, unknown>;
+
+  if (o.format === MENU_PRESET_EXPORT_FORMAT && o.preset && typeof o.preset === 'object') {
+    const p = o.preset as Record<string, unknown>;
+    return [
+      {
+        name: String(p.name || '').trim() || 'İçe aktarılan menü',
+        hidden_modules: normalizeHiddenModules(p.hidden_modules),
+        item_orders: normalizeItemOrders(p.item_orders),
+      },
+    ];
+  }
+
+  if (o.format === MENU_PRESETS_BUNDLE_FORMAT && Array.isArray(o.presets)) {
+    const list = o.presets
+      .map((p) => {
+        if (!p || typeof p !== 'object') return null;
+        const pr = p as Record<string, unknown>;
+        return {
+          name: String(pr.name || '').trim() || 'İçe aktarılan menü',
+          hidden_modules: normalizeHiddenModules(pr.hidden_modules),
+          item_orders: normalizeItemOrders(pr.item_orders),
+        };
+      })
+      .filter((p): p is ParsedMenuPresetImport => p != null);
+    if (list.length === 0) throw new Error('Dosyada menü profili yok');
+    return list;
+  }
+
+  // Geriye dönük: düz preset veya legacy prefs
+  if (Array.isArray(o.hidden_modules) || o.item_orders) {
+    return [
+      {
+        name: String(o.name || '').trim() || 'İçe aktarılan menü',
+        hidden_modules: normalizeHiddenModules(o.hidden_modules),
+        item_orders: normalizeItemOrders(o.item_orders),
+      },
+    ];
+  }
+
+  throw new Error('Tanınmayan menü profil formatı (retailex-menu-preset beklenir)');
+}
+
+/**
+ * Başka firmadan gelen profil(ler)i bu firmanın store’una ekler.
+ * Varsayılan: ilk profil aktif uygulanır (menü hemen değişir).
+ */
+export async function importMenuPreferencePresets(
+  items: readonly ParsedMenuPresetImport[],
+  savedBy: string,
+  opts?: { applyFirst?: boolean },
+): Promise<MenuPreferencePreset[]> {
+  if (!items.length) return [];
+  const applyFirst = opts?.applyFirst !== false;
+  const created: MenuPreferencePreset[] = [];
+
+  for (let i = 0; i < items.length; i++) {
+    const item = items[i];
+    if (i === 0 && applyFirst) {
+      created.push(
+        await saveMenuPreferencePreset({
+          name: item.name,
+          saved_by: savedBy,
+          hidden_modules: item.hidden_modules,
+          item_orders: item.item_orders,
+        }),
+      );
+      continue;
+    }
+
+    const store = await loadMenuPreferencesStoreFromDb(savedBy);
+    const now = new Date().toISOString();
+    const preset: MenuPreferencePreset = {
+      id: newPresetId(),
+      name: String(item.name || '').trim() || buildDefaultPresetLabel(savedBy),
+      saved_by: String(savedBy || 'sistem').trim() || 'sistem',
+      saved_at: now,
+      hidden_modules: normalizeHiddenModules(item.hidden_modules),
+      item_orders: normalizeItemOrders(item.item_orders),
+    };
+    store.presets.push(preset);
+    await writeMenuPreferencesStoreToDb(store);
+    const active = resolveActivePreset(store);
+    if (active) {
+      applyMenuPreferencesToLocalStorage(presetToMenuPreferences(active), store);
+    }
+    created.push(preset);
+  }
+  return created;
+}
+
 /**
  * PG → localStorage senkron (PG öncelikli).
  * PG boşsa yerel önbelleği PG'ye taşır (ilk kurulum migrasyonu).
