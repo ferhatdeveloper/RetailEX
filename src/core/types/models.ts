@@ -167,6 +167,8 @@ export interface Customer {
   call_plan_enabled?: boolean;
   call_plan_weekdays?: number[] | null;
   call_plan_note?: string | null;
+  call_plan_caller_user_id?: string | null;
+  call_plan_caller_name?: string | null;
   call_last_status?: string | null;
   call_last_note?: string | null;
   call_last_at?: string | null;
@@ -212,6 +214,8 @@ export interface Supplier {
   call_plan_enabled?: boolean;
   call_plan_weekdays?: number[] | null;
   call_plan_note?: string | null;
+  call_plan_caller_user_id?: string | null;
+  call_plan_caller_name?: string | null;
   call_last_status?: string | null;
   call_last_note?: string | null;
   call_last_at?: string | null;

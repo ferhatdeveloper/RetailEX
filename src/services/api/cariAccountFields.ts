@@ -29,6 +29,8 @@ const CUSTOMER_DB_COLUMNS = new Set([
   'call_plan_enabled',
   'call_plan_weekdays',
   'call_plan_note',
+  'call_plan_caller_user_id',
+  'call_plan_caller_name',
   'call_last_status',
   'call_last_note',
   'call_last_at',

@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { CalendarClock, ChevronDown, Clock, Edit, FileText, MessageSquare, MessageSquarePlus, Phone, Plus, RefreshCw, Search, Send, Settings, StickyNote, User, Wallet, X, BarChart3, List } from 'lucide-react';
+import { CalendarClock, ChevronDown, Clock, Edit, FileText, MessageSquare, MessageSquarePlus, Phone, Plus, RefreshCw, Search, Send, Settings, StickyNote, User, UserRound, Wallet, X, BarChart3, List } from 'lucide-react';
 import { toast } from 'sonner';
 import { DevExDataGrid } from '../../shared/DevExDataGrid';
 import { ContextMenu } from '../../shared/ContextMenu';
@@ -7,6 +7,7 @@ import { PercentBodyModal, PercentBodyModalScrollBody } from '../../shared/Perce
 import { WhatsAppBulkSendPreviewModal } from '../../shared/WhatsAppBulkSendPreviewModal';
 import { createColumnHelper } from '@tanstack/react-table';
 import { supplierAPI, type Supplier } from '../../../services/api/suppliers';
+import { userAPI, type User } from '../../../services/api/users';
 import { useLanguage } from '../../../contexts/LanguageContext';
 import {
   buildCallPlanBulkPreviewList,
@@ -49,6 +50,9 @@ export function CustomerCallPlanModule() {
   const [editing, setEditing] = useState<Supplier | null>(null);
   const [selectedDays, setSelectedDays] = useState<number[]>([]);
   const [planNote, setPlanNote] = useState('');
+  const [callerUserId, setCallerUserId] = useState('');
+  const [callerName, setCallerName] = useState('');
+  const [callUsers, setCallUsers] = useState<User[]>([]);
   const [lastStatus, setLastStatus] = useState('planned');
   const [lastNote, setLastNote] = useState('');
   const [saving, setSaving] = useState(false);
@@ -147,6 +151,22 @@ export function CustomerCallPlanModule() {
   useEffect(() => {
     void load();
   }, []);
+
+  useEffect(() => {
+    if (!editing) return;
+    let cancelled = false;
+    void userAPI
+      .getAll()
+      .then((rows) => {
+        if (!cancelled) setCallUsers(rows.filter((u) => u.is_active !== false));
+      })
+      .catch(() => {
+        if (!cancelled) setCallUsers([]);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [editing]);
 
   /**
    * Pazartesi rollover kuralı — uzun süre açık kalan sekmede yeni haftaya geçildiğinde
@@ -261,6 +281,8 @@ export function CustomerCallPlanModule() {
         call_plan_enabled: true,
         call_plan_weekdays: r.call_plan_weekdays,
         call_plan_note: r.call_plan_note ?? '',
+        call_plan_caller_user_id: r.call_plan_caller_user_id ?? undefined,
+        call_plan_caller_name: r.call_plan_caller_name ?? undefined,
         call_last_status: r.call_last_status,
         call_last_note: r.call_last_note ?? undefined,
         call_last_at: r.call_last_at ?? undefined,
@@ -292,6 +314,8 @@ export function CustomerCallPlanModule() {
     setEditing(customer);
     setSelectedDays(normalizeCustomerCallWeekdays(customer.call_plan_weekdays));
     setPlanNote(String(customer.call_plan_note ?? ''));
+    setCallerUserId(String(customer.call_plan_caller_user_id ?? ''));
+    setCallerName(String(customer.call_plan_caller_name ?? ''));
     setLastStatus(normalizeCustomerCallStatus(customer.call_last_status));
     setLastNote(String(customer.call_last_note ?? ''));
   };
@@ -309,12 +333,21 @@ export function CustomerCallPlanModule() {
     setSaving(true);
     try {
       const nextDays = normalizeCustomerCallWeekdays(selectedDays);
+      const nextCallerId = nextDays.length > 0 ? callerUserId.trim() || null : null;
+      const nextCallerName = nextCallerId
+        ? callerName.trim() ||
+          callUsers.find((u) => u.id === nextCallerId)?.full_name ||
+          callUsers.find((u) => u.id === nextCallerId)?.username ||
+          null
+        : null;
       await supplierAPI.update(editing.id, {
         ...editing,
         cardType: 'customer',
         call_plan_enabled: nextDays.length > 0,
         call_plan_weekdays: nextDays,
         call_plan_note: planNote.trim() || null,
+        call_plan_caller_user_id: nextCallerId,
+        call_plan_caller_name: nextCallerName,
         call_last_status: normalizeCustomerCallStatus(lastStatus),
         call_last_note: lastNote.trim() || null,
         call_last_at: new Date().toISOString(),
@@ -559,6 +592,17 @@ export function CustomerCallPlanModule() {
       size: 180,
     }),
     columnHelper.display({
+      id: 'caller',
+      header: tm('callPlanCaller'),
+      cell: ({ row }) => (
+        <span className="inline-flex items-center gap-1 text-xs font-semibold text-slate-700">
+          <UserRound className="h-3.5 w-3.5 text-slate-400" />
+          {row.original.call_plan_caller_name || '—'}
+        </span>
+      ),
+      size: 140,
+    }),
+    columnHelper.display({
       id: 'note',
       header: tm('callPlanNote'),
       cell: ({ row }) => (
@@ -648,6 +692,17 @@ export function CustomerCallPlanModule() {
         </span>
       ),
       size: 160,
+    }),
+    reportColumnHelper.display({
+      id: 'caller',
+      header: tm('callPlanCaller'),
+      cell: ({ row }) => (
+        <span className="inline-flex items-center gap-1 text-xs font-semibold text-slate-700">
+          <UserRound className="h-3.5 w-3.5 text-slate-400" />
+          {row.original.call_plan_caller_name || '—'}
+        </span>
+      ),
+      size: 140,
     }),
     reportColumnHelper.display({
       id: 'note',
@@ -1151,9 +1206,33 @@ export function CustomerCallPlanModule() {
           </div>
 
           <PercentBodyModalScrollBody className="p-6 sm:p-8">
+            <label className="mb-1.5 flex items-center gap-1.5 text-[11px] font-bold uppercase tracking-wider text-slate-500">
+              <UserRound className="h-3.5 w-3.5" />
+              {tm('callPlanCaller')}
+            </label>
+            <select
+              value={callerUserId}
+              onChange={(e) => {
+                const id = e.target.value;
+                const user = callUsers.find((u) => u.id === id);
+                setCallerUserId(id);
+                setCallerName(user ? user.full_name || user.username : '');
+              }}
+              className="mb-1 w-full appearance-none rounded-xl border border-slate-200 bg-white px-4 py-3 text-sm font-medium text-slate-800 outline-none focus:border-blue-400 focus:ring-2 focus:ring-blue-500"
+            >
+              <option value="">{tm('callPlanCallerNone')}</option>
+              {callUsers.map((u) => (
+                <option key={u.id} value={u.id}>
+                  {u.full_name || u.username}
+                  {u.role_name ? ` · ${u.role_name}` : ''}
+                </option>
+              ))}
+            </select>
+            <p className="mb-4 text-[11px] text-slate-500">{tm('callPlanCallerHint')}</p>
+
             <p className="mb-3 text-[11px] font-bold uppercase tracking-wider text-slate-500">{tm('callPlanSelectDays')}</p>
-            <div className="flex w-full flex-wrap gap-2 md:flex-nowrap">
-              {getLocalizedWeekdayLabels(dateLocale).map(day => {
+            <div className="grid grid-cols-7 gap-1">
+              {getLocalizedWeekdayLabels(dateLocale, true).map(day => {
                 const selected = selectedDays.includes(day.value);
                 return (
                   <button
@@ -1161,23 +1240,23 @@ export function CustomerCallPlanModule() {
                     type="button"
                     aria-pressed={selected}
                     onClick={() => toggleDay(day.value)}
-                    className={`min-h-[48px] min-w-[5rem] flex-1 basis-[calc((100%-3rem)/7)] rounded-2xl border px-2 py-2 text-sm font-black transition-all md:text-base ${
+                    className={`min-h-[44px] border px-0.5 py-2 text-[10px] font-bold uppercase tracking-wide transition-colors sm:text-xs ${
                       selected
-                        ? 'border-blue-600 bg-blue-600 text-white shadow-md ring-2 ring-blue-200'
-                        : 'border-amber-200 bg-white text-amber-700 hover:bg-amber-100'
+                        ? 'border-blue-600 bg-blue-600 text-white'
+                        : 'border-slate-200 bg-white text-slate-600 hover:border-slate-300'
                     }`}
                   >
-                    {selected ? `✓ ${day.label}` : day.label}
+                    {day.label}
                   </button>
                 );
               })}
             </div>
             {selectedDays.length > 0 ? (
-              <p className="mt-3 rounded-2xl bg-blue-50 px-4 py-2.5 text-xs font-bold text-blue-700">
+              <p className="mt-3 border border-blue-100 bg-blue-50 px-4 py-2.5 text-xs font-bold text-blue-700">
                 {tm('callPlanSelectedDays').replace('{days}', customerCallWeekdaysLabel(selectedDays, dateLocale))}
               </p>
             ) : (
-              <p className="mt-3 rounded-2xl bg-slate-50 px-4 py-2.5 text-xs font-bold text-slate-500">
+              <p className="mt-3 border border-slate-100 bg-slate-50 px-4 py-2.5 text-xs font-bold text-slate-500">
                 {tm('callPlanNoDaysHint')}
               </p>
             )}
@@ -1190,7 +1269,7 @@ export function CustomerCallPlanModule() {
                   onChange={e => setPlanNote(e.target.value)}
                   rows={3}
                   placeholder={tm('callPlanNote')}
-                  className="w-full rounded-2xl border border-slate-200 px-4 py-3 text-sm font-medium text-slate-800 outline-none focus:border-blue-400 focus:ring-2 focus:ring-blue-500"
+                  className="w-full rounded-xl border border-slate-200 px-4 py-3 text-sm font-medium text-slate-800 outline-none focus:border-blue-400 focus:ring-2 focus:ring-blue-500"
                 />
               </div>
 

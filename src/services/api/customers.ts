@@ -329,6 +329,10 @@ export const customerAPI = {
           call_plan_enabled: customer.call_plan_enabled === true,
           call_plan_weekdays: customer.call_plan_enabled === true ? customer.call_plan_weekdays ?? [] : [],
           call_plan_note: customer.call_plan_note || null,
+          call_plan_caller_user_id:
+            customer.call_plan_enabled === true ? customer.call_plan_caller_user_id || null : null,
+          call_plan_caller_name:
+            customer.call_plan_enabled === true ? customer.call_plan_caller_name || null : null,
           call_last_status: customer.call_last_status || 'planned',
           call_last_note: customer.call_last_note || null,
           call_last_at: customer.call_last_at || null,
@@ -353,6 +357,7 @@ export const customerAPI = {
       const baseCols = [
         'code', 'name', 'phone', 'phone2', 'email', 'address', 'notes', 'age', 'birth_date', 'occupation', 'file_id',
         'gender', 'customer_tier', 'heard_from', 'call_plan_enabled', 'call_plan_weekdays', 'call_plan_note',
+        'call_plan_caller_user_id', 'call_plan_caller_name',
         'call_last_status', 'call_last_note', 'call_last_at', 'points', 'total_spent', 'is_active', 'firm_nr',
         ...logoCols,
       ];
@@ -374,6 +379,8 @@ export const customerAPI = {
           customer.call_plan_enabled === true,
           customer.call_plan_enabled === true ? customer.call_plan_weekdays ?? [] : [],
           customer.call_plan_note || null,
+          customer.call_plan_enabled === true ? customer.call_plan_caller_user_id || null : null,
+          customer.call_plan_enabled === true ? customer.call_plan_caller_name || null : null,
           customer.call_last_status || 'planned',
           customer.call_last_note || null,
           customer.call_last_at || null,
@@ -668,6 +675,12 @@ function mapDatabaseCustomerToCustomer(dbCustomer: any): Customer {
       ? dbCustomer.call_plan_weekdays.map(Number).filter((n: number) => Number.isFinite(n))
       : [],
     call_plan_note: dbCustomer.call_plan_note || undefined,
+    call_plan_caller_user_id: dbCustomer.call_plan_caller_user_id
+      ? String(dbCustomer.call_plan_caller_user_id)
+      : undefined,
+    call_plan_caller_name: dbCustomer.call_plan_caller_name
+      ? String(dbCustomer.call_plan_caller_name)
+      : undefined,
     call_last_status: dbCustomer.call_last_status || undefined,
     call_last_note: dbCustomer.call_last_note || undefined,
     call_last_at: dbCustomer.call_last_at || undefined,

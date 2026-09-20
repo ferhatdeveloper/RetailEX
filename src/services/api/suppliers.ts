@@ -198,6 +198,7 @@ export const supplierAPI = {
           c.age, c.file_id, c.occupation, c.gender, c.customer_tier, c.heard_from,
           c.points, c.total_spent,
           c.call_plan_enabled, c.call_plan_weekdays, c.call_plan_note,
+          c.call_plan_caller_user_id, c.call_plan_caller_name,
           c.call_last_status, c.call_last_note, c.call_last_at,
           ${sqlResolvedCustomerBalanceExpr('c')} as balance,
           c.is_active, c.created_at, 'customer' as card_type
@@ -218,6 +219,7 @@ export const supplierAPI = {
           NULL::varchar AS gender, NULL::varchar AS customer_tier, NULL::varchar AS heard_from,
           NULL::numeric AS points, NULL::numeric AS total_spent,
           false AS call_plan_enabled, ARRAY[]::smallint[] AS call_plan_weekdays, NULL::text AS call_plan_note,
+          NULL::uuid AS call_plan_caller_user_id, NULL::text AS call_plan_caller_name,
           NULL::varchar AS call_last_status, NULL::text AS call_last_note, NULL::timestamptz AS call_last_at,
           ${sqlResolvedSupplierBalanceExpr('s')} as balance,
           s.is_active, s.created_at, 'supplier' as card_type
@@ -380,11 +382,22 @@ export const supplierAPI = {
       columns.push('firm_nr');
       values.push(ERP_SETTINGS.firmNr);
       if (!isSupplier) {
-        columns.push('call_plan_enabled', 'call_plan_weekdays', 'call_plan_note', 'call_last_status', 'call_last_note', 'call_last_at');
+        columns.push(
+          'call_plan_enabled',
+          'call_plan_weekdays',
+          'call_plan_note',
+          'call_plan_caller_user_id',
+          'call_plan_caller_name',
+          'call_last_status',
+          'call_last_note',
+          'call_last_at',
+        );
         values.push(
           account.call_plan_enabled === true,
           account.call_plan_enabled === true ? account.call_plan_weekdays ?? [] : [],
           account.call_plan_note || null,
+          account.call_plan_enabled === true ? account.call_plan_caller_user_id || null : null,
+          account.call_plan_enabled === true ? account.call_plan_caller_name || null : null,
           account.call_last_status || 'planned',
           account.call_last_note || null,
           account.call_last_at || null,
@@ -407,6 +420,25 @@ export const supplierAPI = {
             payment_terms: account.payment_terms,
             credit_limit: account.credit_limit,
             firm_nr: ERP_SETTINGS.firmNr,
+            ...(isSupplier
+              ? {}
+              : {
+                  call_plan_enabled: account.call_plan_enabled === true,
+                  call_plan_weekdays:
+                    account.call_plan_enabled === true ? account.call_plan_weekdays ?? [] : [],
+                  call_plan_note: account.call_plan_note || null,
+                  call_plan_caller_user_id:
+                    account.call_plan_enabled === true
+                      ? account.call_plan_caller_user_id || null
+                      : null,
+                  call_plan_caller_name:
+                    account.call_plan_enabled === true
+                      ? account.call_plan_caller_name || null
+                      : null,
+                  call_last_status: account.call_last_status || 'planned',
+                  call_last_note: account.call_last_note || null,
+                  call_last_at: account.call_last_at || null,
+                }),
           },
           isSupplier ? 'supplier' : 'customer',
           { forceActive: true },
@@ -546,6 +578,9 @@ export const supplierAPI = {
       call_plan_enabled: account.call_plan_enabled ?? existing.call_plan_enabled,
       call_plan_weekdays: account.call_plan_weekdays ?? existing.call_plan_weekdays,
       call_plan_note: account.call_plan_note ?? existing.call_plan_note,
+      call_plan_caller_user_id:
+        account.call_plan_caller_user_id ?? existing.call_plan_caller_user_id,
+      call_plan_caller_name: account.call_plan_caller_name ?? existing.call_plan_caller_name,
       call_last_status: account.call_last_status ?? existing.call_last_status,
       call_last_note: account.call_last_note ?? existing.call_last_note,
       call_last_at: account.call_last_at ?? existing.call_last_at,
@@ -881,6 +916,12 @@ function mapDatabaseSupplierToSupplier(dbSupplier: any): Supplier {
       ? dbSupplier.call_plan_weekdays.map(Number).filter((n: number) => Number.isFinite(n))
       : [],
     call_plan_note: dbSupplier.call_plan_note || undefined,
+    call_plan_caller_user_id: dbSupplier.call_plan_caller_user_id
+      ? String(dbSupplier.call_plan_caller_user_id)
+      : undefined,
+    call_plan_caller_name: dbSupplier.call_plan_caller_name
+      ? String(dbSupplier.call_plan_caller_name)
+      : undefined,
     call_last_status: dbSupplier.call_last_status || undefined,
     call_last_note: dbSupplier.call_last_note || undefined,
     call_last_at: dbSupplier.call_last_at || undefined,

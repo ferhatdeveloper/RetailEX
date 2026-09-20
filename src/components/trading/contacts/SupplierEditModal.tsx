@@ -1,8 +1,9 @@
 import React, { useEffect, useState } from 'react';
-import { X, Loader2, CalendarClock, Truck, Users, Copy, Check } from 'lucide-react';
+import { X, Loader2, CalendarClock, Truck, Users, Copy, Check, UserRound } from 'lucide-react';
 import { toast } from 'sonner';
 import { useLanguage } from '../../../contexts/LanguageContext';
 import { supplierAPI } from '../../../services/api/suppliers';
+import { userAPI, type User } from '../../../services/api/users';
 import type { Supplier } from '../../../core/types/models';
 import {
   PercentBodyModal,
@@ -41,6 +42,8 @@ interface FormState {
   call_plan_enabled: boolean;
   call_plan_weekdays: number[];
   call_plan_note: string;
+  call_plan_caller_user_id: string;
+  call_plan_caller_name: string;
   cardType: SupplierCardType;
 }
 
@@ -59,6 +62,8 @@ const EMPTY_FORM: FormState = {
   call_plan_enabled: false,
   call_plan_weekdays: [],
   call_plan_note: '',
+  call_plan_caller_user_id: '',
+  call_plan_caller_name: '',
   cardType: 'supplier',
 };
 
@@ -89,6 +94,8 @@ export function SupplierEditModal({
         call_plan_enabled: initial.call_plan_enabled === true,
         call_plan_weekdays: normalizeCustomerCallWeekdays(initial.call_plan_weekdays),
         call_plan_note: initial.call_plan_note || '',
+        call_plan_caller_user_id: initial.call_plan_caller_user_id || '',
+        call_plan_caller_name: initial.call_plan_caller_name || '',
         cardType: (initial.cardType as SupplierCardType) || 'supplier',
       };
     }
@@ -100,6 +107,23 @@ export function SupplierEditModal({
   });
   const [saving, setSaving] = useState(false);
   const [codeCopied, setCodeCopied] = useState(false);
+  const [callUsers, setCallUsers] = useState<User[]>([]);
+
+  useEffect(() => {
+    if (formData.cardType !== 'customer') return;
+    let cancelled = false;
+    void userAPI
+      .getAll()
+      .then((rows) => {
+        if (!cancelled) setCallUsers(rows.filter((u) => u.is_active !== false));
+      })
+      .catch(() => {
+        if (!cancelled) setCallUsers([]);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [formData.cardType]);
 
   /** Yeni kayıtlarda otomatik kod üret. */
   useEffect(() => {
@@ -128,6 +152,15 @@ export function SupplierEditModal({
     }));
   };
 
+  const handleCallerChange = (userId: string) => {
+    const user = callUsers.find((u) => u.id === userId);
+    setFormData((prev) => ({
+      ...prev,
+      call_plan_caller_user_id: userId,
+      call_plan_caller_name: user ? user.full_name || user.username : '',
+    }));
+  };
+
   const handleCardTypeChange = (target: SupplierCardType) => {
     if (target === formData.cardType) return;
     setFormData((prev) => ({ ...prev, cardType: target }));
@@ -153,6 +186,16 @@ export function SupplierEditModal({
       formData.cardType === 'customer' && formData.call_plan_weekdays.length > 0
         ? normalizeCustomerCallWeekdays(formData.call_plan_weekdays)
         : [];
+    const callerId =
+      formData.cardType === 'customer' && weekdays.length > 0
+        ? formData.call_plan_caller_user_id.trim() || null
+        : null;
+    const callerName = callerId
+      ? formData.call_plan_caller_name.trim() ||
+        callUsers.find((u) => u.id === callerId)?.full_name ||
+        callUsers.find((u) => u.id === callerId)?.username ||
+        null
+      : null;
     const saveData = {
       ...formData,
       call_plan_enabled: weekdays.length > 0,
@@ -161,6 +204,8 @@ export function SupplierEditModal({
         formData.cardType === 'customer' && weekdays.length > 0
           ? formData.call_plan_note.trim() || null
           : null,
+      call_plan_caller_user_id: callerId,
+      call_plan_caller_name: callerName,
     };
     setSaving(true);
     try {
@@ -408,11 +453,11 @@ export function SupplierEditModal({
             </div>
 
             {isCustomer && (
-              <div className="sm:col-span-2 rounded-2xl border border-slate-200 bg-slate-50/80 p-4">
+              <div className="sm:col-span-2 border border-slate-200 bg-slate-50/80 p-4">
                 <div className="mb-3 flex items-start gap-2">
-                  <CalendarClock className="mt-0.5 h-4 w-4 text-blue-600" />
+                  <CalendarClock className="mt-0.5 h-4 w-4 shrink-0 text-blue-600" />
                   <div>
-                    <p className="text-[11px] font-black uppercase tracking-wider text-slate-700">
+                    <p className="text-[11px] font-bold uppercase tracking-wider text-slate-700">
                       {tm('customerCallPlanSectionTitle')}
                     </p>
                     <p className="text-[11px] font-medium text-slate-500">
@@ -420,8 +465,28 @@ export function SupplierEditModal({
                     </p>
                   </div>
                 </div>
-                <div className="flex flex-wrap gap-2">
-                  {getLocalizedWeekdayLabels(dateLocale).map((day) => {
+
+                <label className="mb-1.5 flex items-center gap-1.5 text-[11px] font-bold uppercase tracking-wider text-slate-500">
+                  <UserRound className="h-3.5 w-3.5" />
+                  {tm('callPlanCaller')}
+                </label>
+                <select
+                  value={formData.call_plan_caller_user_id}
+                  onChange={(e) => handleCallerChange(e.target.value)}
+                  className={`${inputClass} mb-1`}
+                >
+                  <option value="">{tm('callPlanCallerNone')}</option>
+                  {callUsers.map((u) => (
+                    <option key={u.id} value={u.id}>
+                      {u.full_name || u.username}
+                      {u.role_name ? ` · ${u.role_name}` : ''}
+                    </option>
+                  ))}
+                </select>
+                <p className="mb-3 text-[11px] text-slate-500">{tm('callPlanCallerHint')}</p>
+
+                <div className="grid grid-cols-7 gap-1">
+                  {getLocalizedWeekdayLabels(dateLocale, true).map((day) => {
                     const selected = formData.call_plan_weekdays.includes(day.value);
                     return (
                       <button
@@ -429,9 +494,9 @@ export function SupplierEditModal({
                         type="button"
                         onClick={() => toggleWeekday(day.value)}
                         aria-pressed={selected}
-                        className={`rounded-full border px-3 py-1.5 text-xs font-black uppercase tracking-wide transition-all ${
+                        className={`min-h-[40px] border px-0.5 py-2 text-[10px] font-bold uppercase tracking-wide transition-colors sm:text-xs ${
                           selected
-                            ? 'border-blue-600 bg-blue-600 text-white shadow-md'
+                            ? 'border-blue-600 bg-blue-600 text-white'
                             : 'border-slate-200 bg-white text-slate-600 hover:border-slate-300'
                         }`}
                       >
@@ -441,18 +506,23 @@ export function SupplierEditModal({
                   })}
                 </div>
                 {formData.call_plan_weekdays.length > 0 ? (
-                  <p className="mt-2 text-[11px] font-bold text-blue-700">
-                    Seçili: {customerCallWeekdaysLabel(formData.call_plan_weekdays, dateLocale)}
+                  <p className="mt-2 text-[11px] font-semibold text-blue-700">
+                    {tm('callPlanSelectedDays').replace(
+                      '{days}',
+                      customerCallWeekdaysLabel(formData.call_plan_weekdays, dateLocale)
+                    )}
                   </p>
-                ) : null}
-                <label className="mt-3 mb-1 block text-[11px] font-bold text-slate-500 uppercase tracking-wider">
-                  Plan notu
+                ) : (
+                  <p className="mt-2 text-[11px] text-slate-500">{tm('callPlanNoDaysHint')}</p>
+                )}
+                <label className="mt-3 mb-1 block text-[11px] font-bold uppercase tracking-wider text-slate-500">
+                  {tm('callPlanNote')}
                 </label>
                 <textarea
                   value={formData.call_plan_note}
                   onChange={(e) => setFormData({ ...formData, call_plan_note: e.target.value })}
                   rows={2}
-                  placeholder="Örn. Kampanya, rutin kontrol"
+                  placeholder={tm('callPlanNote')}
                   className={`${inputClass} resize-none`}
                 />
               </div>

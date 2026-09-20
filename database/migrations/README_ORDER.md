@@ -157,3 +157,4 @@ Restoran sohbetinde eklenen tek yeni tablo: **rest.return_log**. Diğer özellik
 - `156_custom_saved_reports.sql` — `custom_saved_reports` (UUID, firm_nr, name, sql_text); Rapor Oluşturucu kayıtlı SELECT’ler.
 - `157_report_menu_params_windows_printer_service.sql` — `report_menu_params` içine `print-use-windows-printer-service: false` (yoksa ekler); Windows Printer servisi varsayılan kapalı → browser yazdırma.
 - `158_factory_default_menu_preferences.sql` — `system_settings.menu_preferences` fabrika varsayılanı (guzel / sade menü) tüm kiracılarda aktif; diğer profiller korunur.
+- `159_customer_call_plan_caller.sql` — müşteri arama planına `call_plan_caller_user_id` / `call_plan_caller_name` (arayan kişi).

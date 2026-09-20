@@ -19,6 +19,8 @@ export type CustomerCallPlanWeeklyRow = {
   customer_name: string;
   call_plan_weekdays: number[];
   call_plan_note?: string | null;
+  call_plan_caller_user_id?: string | null;
+  call_plan_caller_name?: string | null;
   call_last_status: string;
   call_last_note?: string | null;
   call_last_at?: string | null;
@@ -51,6 +53,10 @@ function mapWeeklyRow(raw: Record<string, unknown>): CustomerCallPlanWeeklyRow {
     customer_name: String(raw.customer_name ?? ''),
     call_plan_weekdays: weekdays,
     call_plan_note: raw.call_plan_note != null ? String(raw.call_plan_note) : null,
+    call_plan_caller_user_id: raw.call_plan_caller_user_id
+      ? String(raw.call_plan_caller_user_id)
+      : null,
+    call_plan_caller_name: raw.call_plan_caller_name != null ? String(raw.call_plan_caller_name) : null,
     call_last_status: String(raw.call_last_status ?? 'planned'),
     call_last_note: raw.call_last_note != null ? String(raw.call_last_note) : null,
     call_last_at: raw.call_last_at != null ? String(raw.call_last_at) : null,
@@ -68,6 +74,8 @@ function customerToWeeklyDraft(customer: Supplier, weekStart: string): Omit<Cust
     customer_name: customer.name,
     call_plan_weekdays: normalizeCustomerCallWeekdays(customer.call_plan_weekdays),
     call_plan_note: customer.call_plan_note || null,
+    call_plan_caller_user_id: customer.call_plan_caller_user_id || null,
+    call_plan_caller_name: customer.call_plan_caller_name || null,
     call_last_status: customer.call_last_status || 'planned',
     call_last_note: customer.call_last_note || null,
     call_last_at: customer.call_last_at || null,
@@ -159,6 +167,8 @@ async function archiveWeek(weekStart: string, customers: Supplier[]): Promise<vo
         customer_name: row.customer_name,
         call_plan_weekdays: row.call_plan_weekdays,
         call_plan_note: row.call_plan_note,
+        call_plan_caller_user_id: row.call_plan_caller_user_id,
+        call_plan_caller_name: row.call_plan_caller_name,
         call_last_status: row.call_last_status,
         call_last_note: row.call_last_note,
         call_last_at: row.call_last_at,
@@ -182,13 +192,16 @@ async function archiveWeek(weekStart: string, customers: Supplier[]): Promise<vo
     await postgres.query(
       `INSERT INTO public.customer_call_plan_weekly (
          firm_nr, week_start, week_end, customer_id, customer_code, customer_name,
-         call_plan_weekdays, call_plan_note, call_last_status, call_last_note, call_last_at
-       ) VALUES ($1, $2::date, $3::date, $4, $5, $6, $7::smallint[], $8, $9, $10, $11)
+         call_plan_weekdays, call_plan_note, call_plan_caller_user_id, call_plan_caller_name,
+         call_last_status, call_last_note, call_last_at
+       ) VALUES ($1, $2::date, $3::date, $4, $5, $6, $7::smallint[], $8, $9, $10, $11, $12, $13)
        ON CONFLICT (firm_nr, week_start, customer_id) DO UPDATE SET
          customer_code = EXCLUDED.customer_code,
          customer_name = EXCLUDED.customer_name,
          call_plan_weekdays = EXCLUDED.call_plan_weekdays,
          call_plan_note = EXCLUDED.call_plan_note,
+         call_plan_caller_user_id = EXCLUDED.call_plan_caller_user_id,
+         call_plan_caller_name = EXCLUDED.call_plan_caller_name,
          call_last_status = EXCLUDED.call_last_status,
          call_last_note = EXCLUDED.call_last_note,
          call_last_at = EXCLUDED.call_last_at,
@@ -202,6 +215,8 @@ async function archiveWeek(weekStart: string, customers: Supplier[]): Promise<vo
         row.customer_name,
         row.call_plan_weekdays,
         row.call_plan_note,
+        row.call_plan_caller_user_id,
+        row.call_plan_caller_name,
         row.call_last_status,
         row.call_last_note,
         row.call_last_at,
