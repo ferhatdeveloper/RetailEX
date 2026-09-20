@@ -746,7 +746,6 @@ export function UniversalInvoiceForm({
   const [isCurrencyTransaction, setIsCurrencyTransaction] = useState(false); // Dövizli İşlem Checkbox
   const [unitSets, setUnitSets] = useState<any[]>([]); // Birim setleri
   const [masterUnits, setMasterUnits] = useState<UnitMasterRow[]>([]); // Kart birimleri (units)
-  const [transactionType, setTransactionType] = useState(''); // İşlem
   const [waybillType, setWaybillType] = useState(''); // İrsaliye Türü
   const [waybillNo, setWaybillNo] = useState(''); // İrsaliye No
   const [waybillDocumentNo, setWaybillDocumentNo] = useState(''); // İrsaliye Belge No
@@ -4935,28 +4934,6 @@ export function UniversalInvoiceForm({
                           />
                           <span className="text-sm font-medium text-gray-700">{tm('currencyTransaction')}</span>
                         </label>
-                      </div>
-                      <div>
-                        <label className="block text-sm font-medium text-gray-700 mb-1">{tm('transactionField')}</label>
-                        <select
-                          value={transactionType}
-                          onChange={(e) => setTransactionType(e.target.value)}
-                          className="w-full px-3 py-2 border border-gray-300 rounded text-sm"
-                        >
-                          <option value="">{tm('select')}...</option>
-                          <option value="NORMAL">{tm('normalTransaction')}</option>
-                          <option value="CONSIGNMENT">{tm('consignment')}</option>
-                          <option value="RETURN">{tm('salesReturn')}</option>
-                          <option value="EXCHANGE">{tm('exchangeTransaction')}</option>
-                          <option value="SAMPLE">{tm('sampleTransaction')}</option>
-                          <option value="PROMOTION">{tm('promotionTransaction')}</option>
-                          <option value="DAMAGED">{tm('damagedTransaction')}</option>
-                        </select>
-                        {invoiceType.category === 'Alis' && transactionType === 'PROMOTION' && (
-                          <p className="text-xs text-amber-700 mt-1.5 bg-amber-50 border border-amber-200 rounded px-2 py-1.5">
-                            {tm('purchasePromoHint')}
-                          </p>
-                        )}
                       </div>
                       <div>
                         <label className="block text-sm font-medium text-gray-700 mb-1">{tm('totalWithCurrency')} ({ledgerCurrency})</label>
