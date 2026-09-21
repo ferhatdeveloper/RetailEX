@@ -188,12 +188,26 @@ export const InvoiceHeader: React.FC<InvoiceHeaderProps> = ({
     const fieldLabelClass =
         'block mb-1 text-[11px] font-semibold text-gray-500 dark:text-gray-300 uppercase tracking-wide';
     /**
-     * Collapsed: sola yaslı kompakt 2×3 — her zaman 2 sütun (tek sütuna düşmez).
-     * Tam genişliğe yayılmaz; alanlar yaklaşık eşit genişlik (~15.5rem).
+     * Collapsed: sola yaslı kompakt 2×3.
+     * Kök neden: statik Tailwind (src/index.css) içinde `inline-grid`, `gap-x-3`,
+     * `w-[15.5rem]`, `max-w-full` YOK. Commit’ler `grid-cols-2` yazsa da
+     * `display:grid` uygulanmadığı için alanlar alt alta düşüyordu.
+     * Düzen burada inline style ile zorunlu — Tailwind grid sınıflarına güvenilmez.
      */
-    const compactCardClass = 'w-fit max-w-full';
-    const compactGridClass = 'inline-grid grid-cols-2 gap-x-3 gap-y-2 max-w-full';
-    const compactCellClass = 'min-w-0 w-[15.5rem] max-w-full flex flex-col';
+    const compactGridStyle: React.CSSProperties = {
+        display: 'grid',
+        gridTemplateColumns: '1fr 1fr',
+        gap: '0.5rem 0.75rem',
+        width: 'min(100%, 33.5rem)',
+        maxWidth: '100%',
+        boxSizing: 'border-box',
+    };
+    const compactCellStyle: React.CSSProperties = {
+        minWidth: 0,
+        display: 'flex',
+        flexDirection: 'column',
+    };
+    const compactCellClass = 'min-w-0';
     /** Tek yükseklik + birleşik input+(...) kontrol */
     const fieldInputClass =
         'min-w-0 h-8 px-2 border border-gray-300 dark:border-gray-600 text-sm leading-none bg-white dark:bg-gray-800 focus:outline-none focus:ring-1 focus:ring-blue-500';
@@ -242,7 +256,7 @@ export const InvoiceHeader: React.FC<InvoiceHeaderProps> = ({
         (!isPurchaseSide && Boolean(customerCode || customerTitle));
 
     const cariSummaryEl = (
-        <div className={compactCellClass}>
+        <div className={compactCellClass} style={compactCellStyle}>
             <label className={`${fieldLabelClass} ${cariTextColor}`}>
                 {isPurchaseSide ? tm('supplier') : tm('customer')}
             </label>
@@ -710,14 +724,16 @@ export const InvoiceHeader: React.FC<InvoiceHeaderProps> = ({
                     </div>
                 </div>
             ) : (
-                <div className={compactCardClass}>
+                <div>
                     {/*
-                      Sola yaslı kompakt kart — 2 eşit sütun, 3 satır:
-                      A: Fatura No + Tarih | B: Ödeme + Müşteri | C: Belge No + Açıklama
+                      Sola yaslı kompakt kart — 2 eşit sütun, 3 satır (inline grid):
+                      A: Fatura No | Tarih
+                      B: Ödeme | Müşteri
+                      C: Belge No | Açıklama
                     */}
-                    <div className={compactGridClass}>
-                        {/* Satır A */}
-                        <div className={compactCellClass}>
+                    <div style={compactGridStyle}>
+                        {/* Satır 1: FATURA NO | TARİH */}
+                        <div className={compactCellClass} style={compactCellStyle}>
                             <label className={fieldLabelClass}>{tm('invoiceNo')}</label>
                             <div className={inputGroupClass}>
                                 <input
@@ -743,7 +759,7 @@ export const InvoiceHeader: React.FC<InvoiceHeaderProps> = ({
                             </div>
                         </div>
 
-                        <div className={compactCellClass}>
+                        <div className={compactCellClass} style={compactCellStyle}>
                             <label className={fieldLabelClass}>{tm('date')}</label>
                             <div className={inputGroupClass}>
                                 <input
@@ -763,8 +779,8 @@ export const InvoiceHeader: React.FC<InvoiceHeaderProps> = ({
                             </div>
                         </div>
 
-                        {/* Satır B */}
-                        <div className={compactCellClass}>
+                        {/* Satır 2: ÖDEME | MÜŞTERİ */}
+                        <div className={compactCellClass} style={compactCellStyle}>
                             <label className={fieldLabelClass}>{tm('paymentMethodLabel')}</label>
                             {paymentModalTriggerEl}
                             {paymentExtraLabel ? (
@@ -775,8 +791,8 @@ export const InvoiceHeader: React.FC<InvoiceHeaderProps> = ({
                         </div>
                         {cariSummaryEl}
 
-                        {/* Satır C */}
-                        <div className={compactCellClass}>
+                        {/* Satır 3: BELGE | AÇIKLAMA */}
+                        <div className={compactCellClass} style={compactCellStyle}>
                             <label className={fieldLabelClass}>{tm('documentNo')}</label>
                             <input
                                 type="text"
@@ -788,7 +804,7 @@ export const InvoiceHeader: React.FC<InvoiceHeaderProps> = ({
                         </div>
 
                         {setDescription ? (
-                            <div className={compactCellClass}>
+                            <div className={compactCellClass} style={compactCellStyle}>
                                 <label className={fieldLabelClass}>{tm('description')}</label>
                                 <input
                                     type="text"
