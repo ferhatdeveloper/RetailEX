@@ -930,9 +930,13 @@ async function writeCashRegisterLineForInvoice(inv: Invoice, firmNr: string): Pr
     toSqlDateInputString(inv.created_at) ||
     toSqlDateInputString(new Date());
   const tarih = ymd ? `${ymd}T12:00:00` : new Date().toISOString();
-  const customerId = inv.customer_id && isValidUuid(inv.customer_id)
+  const accountId = inv.customer_id && isValidUuid(inv.customer_id)
     ? inv.customer_id
     : (inv.supplier_id && isValidUuid(inv.supplier_id) ? inv.supplier_id : null);
+  // Tedarikçi tarafı (alış / alınan hizmet) → party_id; müşteri → customer_id
+  // (KasalarModule JOIN: customers←customer_id, suppliers←party_id)
+  const cashCustomerId = purchaseSide ? null : accountId;
+  const cashPartyId = purchaseSide ? accountId : null;
 
   // Tek-ödeme fallback aday kasaları (kök alan + header_fields)
   const rootCashRegisterId = isValidUuid((inv as any).cash_register_id)
@@ -1004,13 +1008,13 @@ async function writeCashRegisterLineForInvoice(inv: Invoice, firmNr: string): Pr
         try {
           if (isRest) {
             await writeCashRegisterLineRest(
-              inv, firmNr, periodNr, rowCandidates, rowAmount, subFicheNo, tarih, subAciklama, customerId,
-              1, 'CH_TAHSILAT',
+              inv, firmNr, periodNr, rowCandidates, rowAmount, subFicheNo, tarih, subAciklama,
+              cashCustomerId, cashPartyId, 1, 'CH_TAHSILAT',
             );
           } else {
             await writeCashRegisterLineSql(
-              firmNr, periodNr, rowCandidates, rowAmount, subFicheNo, tarih, subAciklama, customerId, null,
-              1, 'CH_TAHSILAT',
+              firmNr, periodNr, rowCandidates, rowAmount, subFicheNo, tarih, subAciklama,
+              cashCustomerId, cashPartyId, null, 1, 'CH_TAHSILAT',
             );
           }
         } catch (e: any) {
@@ -1064,13 +1068,13 @@ async function writeCashRegisterLineForInvoice(inv: Invoice, firmNr: string): Pr
       try {
         if (isRest) {
           await writeCashRegisterLineRest(
-            inv, firmNr, periodNr, rowCandidates, rowAmount, subFicheNo, tarih, subAciklama, customerId,
-            sign, transactionType,
+            inv, firmNr, periodNr, rowCandidates, rowAmount, subFicheNo, tarih, subAciklama,
+            cashCustomerId, cashPartyId, sign, transactionType,
           );
         } else {
           await writeCashRegisterLineSql(
-            firmNr, periodNr, rowCandidates, rowAmount, subFicheNo, tarih, subAciklama, customerId, null,
-            sign, transactionType,
+            firmNr, periodNr, rowCandidates, rowAmount, subFicheNo, tarih, subAciklama,
+            cashCustomerId, cashPartyId, null, sign, transactionType,
           );
         }
         wroteAnyCashLine = true;
@@ -1102,13 +1106,13 @@ async function writeCashRegisterLineForInvoice(inv: Invoice, firmNr: string): Pr
   try {
     if (isRest) {
       await writeCashRegisterLineRest(
-        inv, firmNr, periodNr, defaultCandidates, amount, ficheNo, tarih, aciklama, customerId,
-        sign, transactionType,
+        inv, firmNr, periodNr, defaultCandidates, amount, ficheNo, tarih, aciklama,
+        cashCustomerId, cashPartyId, sign, transactionType,
       );
     } else {
       await writeCashRegisterLineSql(
-        firmNr, periodNr, defaultCandidates, amount, ficheNo, tarih, aciklama, customerId, null,
-        sign, transactionType,
+        firmNr, periodNr, defaultCandidates, amount, ficheNo, tarih, aciklama,
+        cashCustomerId, cashPartyId, null, sign, transactionType,
       );
     }
   } catch (e: any) {
@@ -1139,6 +1143,7 @@ async function writeCashRegisterLineSql(
   tarih: string,
   aciklama: string,
   customerId: string | null,
+  partyId: string | null,
   targetRegisterIdRef: string | null,
   sign = 1,
   transactionType = 'KASA_GIRIS',
@@ -1187,7 +1192,7 @@ async function writeCashRegisterLineSql(
        $1::text, $2::text, $3::text::uuid, $4::text, $5::text,
        $6::numeric, $9::integer,
        $7::text, $10::text,
-       $8::text::uuid, NULL, 'YEREL', 1, 0,
+       $8::text::uuid, $11::text::uuid, 'YEREL', 1, 0,
        0, '',
        NULL, NULL, NULL, NULL,
        0, 0
@@ -1198,11 +1203,12 @@ async function writeCashRegisterLineSql(
            definition = EXCLUDED.definition,
            register_id = EXCLUDED.register_id,
            transaction_type = EXCLUDED.transaction_type,
-           customer_id = COALESCE(EXCLUDED.customer_id, cash_lines.customer_id),
+           customer_id = EXCLUDED.customer_id,
+           party_id = EXCLUDED.party_id,
            updated_at = NOW()
      RETURNING id, (xmax = 0) AS inserted`,
     [String(firmNr), periodNr, targetRegisterId, ficheNo, tarih,
-     amount, aciklama, customerId, sign, transactionType]
+     amount, aciklama, customerId, sign, transactionType, partyId]
   );
   const inserted = upsertResult.rows?.[0]?.inserted === true;
 
@@ -1239,6 +1245,7 @@ async function writeCashRegisterLineRest(
   tarih: string,
   aciklama: string,
   customerId: string | null,
+  partyId: string | null,
   sign = 1,
   transactionType = 'KASA_GIRIS',
 ): Promise<void> {
@@ -1322,7 +1329,7 @@ async function writeCashRegisterLineRest(
     definition: aciklama,
     transaction_type: transactionType,
     customer_id: customerId,
-    party_id: null,
+    party_id: partyId,
     currency_code: 'YEREL',
     exchange_rate: 1,
     f_amount: 0,
@@ -1340,7 +1347,14 @@ async function writeCashRegisterLineRest(
     try {
       await postgrest.patch(
         `${cashLinesTable}?id=eq.${existing.id}`,
-        { amount, date: tarih, definition: aciklama, register_id: targetRegisterId, customer_id: customerId },
+        {
+          amount,
+          date: tarih,
+          definition: aciklama,
+          register_id: targetRegisterId,
+          customer_id: customerId,
+          party_id: partyId,
+        },
         { schema: 'public' }
       );
       return; // UPDATE → bakiye değişmedi
@@ -1360,7 +1374,14 @@ async function writeCashRegisterLineRest(
     try {
       await postgrest.patch(
         `${cashLinesTable}?fiche_no=eq.${ficheNo}`,
-        { amount, date: tarih, definition: aciklama, register_id: targetRegisterId, customer_id: customerId },
+        {
+          amount,
+          date: tarih,
+          definition: aciklama,
+          register_id: targetRegisterId,
+          customer_id: customerId,
+          party_id: partyId,
+        },
         { schema: 'public' }
       );
     } catch (patchErr: any) {

@@ -693,7 +693,7 @@ async function resolveCashLineAccountLookups(
   const customerIds = Array.from(
     new Set(rows.map((r) => String(r.customer_id || '').trim()).filter(Boolean)),
   );
-  const partyIds = Array.from(
+  let partyIds = Array.from(
     new Set(rows.map((r) => String(r.party_id || '').trim()).filter(Boolean)),
   );
   if (customerIds.length === 0 && partyIds.length === 0) {
@@ -701,6 +701,13 @@ async function resolveCashLineAccountLookups(
   }
 
   const firmNr = padKasaFirmNr();
+
+  /** customer_id'de kalan tedarikçi UUID'leri (eski alış/hizmet satırları) için party aramasına ekle */
+  const mergeUnresolvedCustomerIdsIntoPartyLookup = () => {
+    for (const id of customerIds) {
+      if (!byCustomer.has(id) && !partyIds.includes(id)) partyIds.push(id);
+    }
+  };
 
   if (DB_SETTINGS.connectionProvider === 'rest_api') {
     const { postgrest } = await import('./postgrestClient');
@@ -726,6 +733,7 @@ async function resolveCashLineAccountLookups(
         });
       }
     }
+    mergeUnresolvedCustomerIdsIntoPartyLookup();
     for (const ids of chunk(partyIds, 80)) {
       const suppliers = await postgrest
         .get<any[]>(
@@ -776,6 +784,7 @@ async function resolveCashLineAccountLookups(
       });
     }
   }
+  mergeUnresolvedCustomerIdsIntoPartyLookup();
   if (partyIds.length > 0) {
     const { rows: supRows } = await postgres.query<{ id: string; code?: string; name?: string }>(
       `SELECT id, code, name FROM suppliers WHERE id = ANY($1::uuid[])`,
@@ -821,15 +830,19 @@ function applyCashLineAccountLookups(
   const custId = String(row.customer_id || '').trim();
   const partyId = String(row.party_id || '').trim();
   const cust = custId ? lookups.byCustomer.get(custId) : undefined;
-  const party = !cust && partyId ? lookups.byParty.get(partyId) : undefined;
+  // party_id yoksa veya customer_id yanlışlıkla tedarikçi UUID taşıyorsa party map'ten çöz
+  const party =
+    (!cust && partyId ? lookups.byParty.get(partyId) : undefined) ||
+    (!cust && custId ? lookups.byParty.get(custId) : undefined);
   const hit = cust || party;
   if (!hit) return row;
+  const resolvedId = cust ? custId : partyId || custId;
   return {
     ...row,
     current_account_name: row.current_account_name || hit.name,
     current_account_code: row.current_account_code || hit.code,
     current_account_resolved_id:
-      row.current_account_resolved_id || (cust ? custId : partyId) || undefined,
+      row.current_account_resolved_id || resolvedId || undefined,
     current_account_kind: row.current_account_kind || hit.kind,
   };
 }
@@ -868,7 +881,12 @@ export async function fetchKasaIslemleri(params?: {
       FROM ${table} cl
       LEFT JOIN customers c ON cl.customer_id = c.id
       LEFT JOIN suppliers s ON cl.party_id = s.id
-      LEFT JOIN parties p ON cl.party_id = p.id AND s.id IS NULL
+        OR (c.id IS NULL AND cl.customer_id IS NOT NULL AND cl.customer_id = s.id)
+      LEFT JOIN parties p ON (
+          (cl.party_id IS NOT NULL AND cl.party_id = p.id)
+          OR (c.id IS NULL AND s.id IS NULL AND cl.customer_id IS NOT NULL AND cl.customer_id = p.id)
+        )
+        AND s.id IS NULL
       LEFT JOIN cash_registers target_kasa ON cl.target_register_id = target_kasa.id
       WHERE 1=1
     `;
