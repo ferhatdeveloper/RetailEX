@@ -126,6 +126,11 @@ export function ClinicDashboard() {
                     total: Number(s.total) || 0,
                     paymentMethod: s.payment_method,
                     receiptNumber: s.invoice_number,
+                    paid_amount: s.paid_amount,
+                    remaining_amount: s.remaining_amount,
+                    payments: (s as { payments?: unknown }).payments as
+                        | Array<{ method?: string; amount?: number; currency?: string }>
+                        | undefined,
                 })),
             ));
         }).catch(() => {

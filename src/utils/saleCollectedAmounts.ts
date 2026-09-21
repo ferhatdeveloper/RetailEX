@@ -303,17 +303,29 @@ export function beautySaleRemainingCari(sale: {
  * Aynı gün peşin satış / payments[] nakit satırı zaten KPI'da.
  * Buraya yalnızca:
  * - fişi o günün satışında olmayan CH_TAHSILAT (sonradan tahsilat)
- * - veresiye kaydı payments[] olmadan duran eski karma satışın CH_TAHSILAT'ı
+ * - veresiye kaydı paid_amount/payments olmadan duran eski karma satışın CH_TAHSILAT'ı
+ *
+ * Güzellik checkout `paid_amount` yazar ve aynı anda CH_TAHSILAT üretir —
+ * ikisini birden eklemek TAHSİLAT KPI'sını 2× şişirir (ör. 55k kasa → 110k dashboard).
  */
+export type ExtraCollectionSaleRef = {
+  total?: number;
+  paymentMethod?: string | null;
+  payments?: SalePaymentRow[] | null;
+  receiptNumber?: string | null;
+  paid_amount?: number | null;
+  remaining_amount?: number | null;
+};
+
 export function extraCustomerCollectionsNotOnSales(
   cashLines: KasaCollectionLine[] | null | undefined,
-  sales: Array<Pick<Sale, 'total' | 'paymentMethod' | 'payments' | 'receiptNumber'>>,
+  sales: Array<ExtraCollectionSaleRef | Pick<Sale, 'total' | 'paymentMethod' | 'payments' | 'receiptNumber'>>,
 ): number {
   if (!Array.isArray(cashLines) || cashLines.length === 0) return 0;
-  const byReceipt = new Map<string, (typeof sales)[number]>();
+  const byReceipt = new Map<string, ExtraCollectionSaleRef>();
   for (const s of sales) {
-    const k = receiptKey(s.receiptNumber);
-    if (k) byReceipt.set(k, s);
+    const k = receiptKey((s as ExtraCollectionSaleRef).receiptNumber ?? (s as Sale).receiptNumber);
+    if (k) byReceipt.set(k, s as ExtraCollectionSaleRef);
   }
   let extra = 0;
   for (const line of cashLines) {
@@ -326,7 +338,21 @@ export function extraCustomerCollectionsNotOnSales(
       extra += amt;
       continue;
     }
-    const split = saleCollectedSplit(sale);
+    const pocketAlready = beautySalePocketCollected({
+      total: Number(sale.total) || 0,
+      payment_method: sale.paymentMethod ?? undefined,
+      paid_amount: sale.paid_amount ?? undefined,
+      remaining_amount: sale.remaining_amount ?? undefined,
+      payments: sale.payments,
+    });
+    // Checkout peşin kısım + CH_TAHSILAT: paid_amount/payments KPI'da — ekleme.
+    if (pocketAlready > 1e-9) continue;
+
+    const split = saleCollectedSplit({
+      total: Number(sale.total) || 0,
+      paymentMethod: sale.paymentMethod ?? undefined,
+      payments: sale.payments,
+    });
     const hasPaymentRows = Array.isArray(sale.payments) && sale.payments.length > 0;
     if (!hasPaymentRows && Math.abs(split.remaining) > 1e-9 && Math.abs(split.cash) < 1e-9) {
       extra += amt;

@@ -118,6 +118,41 @@ describe('extraCustomerCollectionsNotOnSales — çift sayım yok', () => {
     expect(extra).toBe(40);
   });
 
+  it('güzellik paid_amount + aynı fiş CH_TAHSILAT: çift sayım yok (55→110 bug)', () => {
+    const sales = [
+      {
+        total: 35000,
+        paymentMethod: 'veresiye',
+        receiptNumber: 'BEA-2026-MUB3Q6X7',
+        paid_amount: 30000,
+        remaining_amount: 5000,
+      },
+      {
+        total: 30000,
+        paymentMethod: 'veresiye',
+        receiptNumber: 'BEA-2026-MUB3Y46W',
+        paid_amount: 25000,
+        remaining_amount: 5000,
+      },
+    ];
+    const pocket = sales.reduce((s, row) => s + beautySalePocketCollected({
+      total: row.total,
+      payment_method: row.paymentMethod,
+      paid_amount: row.paid_amount,
+      remaining_amount: row.remaining_amount,
+    }), 0);
+    expect(pocket).toBe(55000);
+    const extra = extraCustomerCollectionsNotOnSales(
+      [
+        { islem_tipi: 'CH_TAHSILAT', tutar: 30000, islem_no: 'BEA-2026-MUB3Q6X7' },
+        { islem_tipi: 'CH_TAHSILAT', tutar: 25000, islem_no: 'BEA-2026-MUB3Y46W' },
+      ],
+      sales,
+    );
+    expect(extra).toBe(0);
+    expect(pocket + extra).toBe(55000);
+  });
+
   it('güzellik KPI: paid 0 + rem 0 + veresiye → belge kalanı (eski bozuk kayıt)', () => {
     expect(beautySalePocketCollected({
       total: 45000,
