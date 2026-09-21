@@ -70,7 +70,9 @@ export function ReportKpiStrip({
             {item.value}
           </div>
           {item.hint != null && item.hint !== false ? (
-            <p className="mt-0.5 truncate text-[10px] leading-tight text-slate-500 dark:text-slate-400">{item.hint}</p>
+            <div className="mt-0.5 text-[10px] leading-tight text-slate-500 dark:text-slate-400">
+              {item.hint}
+            </div>
           ) : null}
         </div>
       ))}

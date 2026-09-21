@@ -527,10 +527,69 @@ function resolveInitialReportsBusinessType(initial: BusinessType): BusinessType 
   return parseStoredReportsBusinessType() ?? 'retail';
 }
 
-/** ERP fişlerinden detaylı satış grupları (perakende / market / güzellik). */
-function buildErpDetailedSaleGroups(salesDay: Sale[], tm: (key: string) => string) {
-  return salesDay.map((sale) => {
-    const orderId = String(sale.receiptNumber ?? sale.id ?? '—');
+/** Detaylı satış — DevEx satırı (fatura kalemi). */
+type DetailedSaleLineRow = {
+  id: string;
+  open: string;
+  close: string;
+  invoiceNo: string;
+  table: string;
+  product: string;
+  cari: string;
+  qty: number;
+  price: number;
+  total: number;
+  /** DevEx DEFAULT_HIDDEN — kolon menüsünden açılır */
+  status: string;
+  note: string;
+};
+
+/** Restoran sipariş kalemlerinden düz fatura satırları. */
+function buildRestaurantDetailedSaleLines(orders: any[], tm: (key: string) => string): DetailedSaleLineRow[] {
+  const out: DetailedSaleLineRow[] = [];
+  orders.forEach((order: any, orderIdx: number) => {
+    const rawItems = Array.isArray(order.items) ? order.items : [];
+    const visibleItems = rawItems.filter((it: any) => it?.is_void !== true);
+    const open = formatRestReportDateTime(order.opened_at ?? order.openedAt);
+    const close = formatRestReportDateTime(order.closed_at ?? order.closedAt);
+    const tableLabel =
+      order.table_number != null && String(order.table_number).trim() !== ''
+        ? String(order.table_number)
+        : order.table_id != null
+          ? String(order.table_id)
+          : '—';
+    const invoiceNo = String(order.order_no ?? order.id ?? '—');
+    const cari =
+      order.customer_name != null && String(order.customer_name).trim() !== ''
+        ? String(order.customer_name)
+        : tm('resTicketWalkIn');
+    const statusClosed = order.status === 'closed';
+    const statusLabel = statusClosed ? tm('closed') : tm('active');
+    visibleItems.forEach((it: any, lineIdx: number) => {
+      out.push({
+        id: `${invoiceNo}-${orderIdx}-${lineIdx}`,
+        open,
+        close,
+        invoiceNo,
+        table: tableLabel,
+        product: String(it.product_name ?? it.productName ?? '—'),
+        cari,
+        qty: Number(it.quantity ?? 0),
+        price: Number(it.unit_price ?? it.unitPrice ?? 0),
+        total: Number(it.subtotal ?? 0),
+        status: statusLabel,
+        note: String(it.notes ?? it.note ?? it.special_request ?? '').trim() || '—',
+      });
+    });
+  });
+  return out;
+}
+
+/** ERP fişlerinden detaylı satış kalemleri (perakende / market / güzellik). */
+function buildErpDetailedSaleLines(salesDay: Sale[], tm: (key: string) => string): DetailedSaleLineRow[] {
+  const out: DetailedSaleLineRow[] = [];
+  salesDay.forEach((sale, saleIdx) => {
+    const invoiceNo = String(sale.receiptNumber ?? sale.id ?? '—');
     const open = formatRestReportDateTime(sale.date);
     const close = sale.created_at ? formatRestReportDateTime(sale.created_at) : open;
     const tableLabel = sale.table != null && String(sale.table).trim() !== '' ? String(sale.table) : '—';
@@ -541,33 +600,24 @@ function buildErpDetailedSaleGroups(salesDay: Sale[], tm: (key: string) => strin
     let statusLabel = tm('reportsDetStatusCompleted');
     if (sale.status === 'cancelled') statusLabel = tm('reportsDetStatusCancelled');
     else if (sale.status === 'refunded') statusLabel = tm('reportsDetStatusRefunded');
-    const rows = (sale.items || []).map((it) => ({
-      open,
-      close,
-      table: tableLabel,
-      product: String(it.productName ?? '—'),
-      cari,
-      qty: Number(it.quantity ?? 0),
-      price: Number(it.price ?? 0),
-      total: Number(it.total ?? 0),
-      status: statusLabel,
-      statusClosed: false,
-    }));
-    const qtySum = rows.reduce((s, r) => s + r.qty, 0);
-    const lineTotal = rows.reduce((s, r) => s + r.total, 0);
-    const discount = Number(sale.discount ?? 0);
-    const totalForSummary = lineTotal > 0 ? lineTotal : Number(sale.total ?? 0);
-    return {
-      id: orderId,
-      items: rows,
-      summary: {
-        qty: qtySum,
-        total: totalForSummary,
-        discount,
-        count: rows.length,
-      },
-    };
+    (sale.items || []).forEach((it, lineIdx) => {
+      out.push({
+        id: `${invoiceNo}-${saleIdx}-${lineIdx}`,
+        open,
+        close,
+        invoiceNo,
+        table: tableLabel,
+        product: String(it.productName ?? '—'),
+        cari,
+        qty: Number(it.quantity ?? 0),
+        price: Number(it.price ?? 0),
+        total: Number(it.total ?? 0),
+        status: statusLabel,
+        note: '—',
+      });
+    });
   });
+  return out;
 }
 
 /** Kasa durumu: yalnızca seçili gün bugünse POS/restoran persist açılış tutarı. */
@@ -1070,6 +1120,7 @@ export function ReportsModule({
 
   const [restOrders, setRestOrders] = useState<any[]>([]);
   const [loadingOrders, setLoadingOrders] = useState(false);
+  const [detailedSalesSearch, setDetailedSalesSearch] = useState('');
 
   const loadReportRangeSales = useCallback(async () => {
     setLoadingReportRangeSales(true);
@@ -9181,185 +9232,119 @@ export function ReportsModule({
             })()}
 
             {selectedTab === 'detailed-sales' && (() => {
-              const detailedGroups =
+              const allLines: DetailedSaleLineRow[] =
                 businessType === 'restaurant'
-                  ? restOrders.map((order: any) => {
-                      const rawItems = Array.isArray(order.items) ? order.items : [];
-                      const visibleItems = rawItems.filter((it: any) => it?.is_void !== true);
-                      const open = formatRestReportDateTime(order.opened_at ?? order.openedAt);
-                      const close = formatRestReportDateTime(order.closed_at ?? order.closedAt);
-                      const tableLabel =
-                        order.table_number != null && String(order.table_number).trim() !== ''
-                          ? String(order.table_number)
-                          : order.table_id != null
-                            ? String(order.table_id)
-                            : '—';
-                      const orderId = String(order.order_no ?? order.id ?? '—');
-                      const cari =
-                        order.customer_name != null && String(order.customer_name).trim() !== ''
-                          ? String(order.customer_name)
-                          : tm('resTicketWalkIn');
-                      const statusClosed = order.status === 'closed';
-                      const statusLabel = statusClosed ? tm('closed') : tm('active');
-                      type DetailedSaleRow = {
-                        open: string;
-                        close: string;
-                        table: string;
-                        product: string;
-                        cari: string;
-                        qty: number;
-                        price: number;
-                        total: number;
-                        status: string;
-                        statusClosed: boolean;
-                      };
+                  ? buildRestaurantDetailedSaleLines(restOrders, tm)
+                  : buildErpDetailedSaleLines(dailySales, tm);
 
-                      const rows: DetailedSaleRow[] = visibleItems.map((it: any): DetailedSaleRow => ({
-                        open,
-                        close,
-                        table: tableLabel,
-                        product: String(it.product_name ?? it.productName ?? '—'),
-                        cari,
-                        qty: Number(it.quantity ?? 0),
-                        price: Number(it.unit_price ?? it.unitPrice ?? 0),
-                        total: Number(it.subtotal ?? 0),
-                        status: statusLabel,
-                        statusClosed,
-                      }));
-                      const qtySum = rows.reduce((s, r) => s + r.qty, 0);
-                      const lineTotal = rows.reduce((s, r) => s + r.total, 0);
-                      const discount = Number(order.discount_amount ?? 0);
-                      const totalForSummary = lineTotal > 0 ? lineTotal : restOrderNetAmount(order);
-                      return {
-                        id: orderId,
-                        items: rows,
-                        summary: {
-                          qty: qtySum,
-                          total: totalForSummary,
-                          discount,
-                          count: rows.length,
-                        },
-                      };
-                    })
-                  : buildErpDetailedSaleGroups(dailySales, tm);
+              const q = detailedSalesSearch.trim().toLocaleLowerCase('tr-TR');
+              const detailedLines = !q
+                ? allLines
+                : allLines.filter((row) => {
+                    const hay = [
+                      row.invoiceNo,
+                      row.product,
+                      row.cari,
+                      row.table,
+                      row.open,
+                      row.close,
+                      row.note,
+                      row.status,
+                    ]
+                      .join(' ')
+                      .toLocaleLowerCase('tr-TR');
+                    return hay.includes(q);
+                  });
 
-              const totalLineCount = detailedGroups.reduce((s, g) => s + g.items.length, 0);
+              const detailedColumns: ReportColumnTableCol<DetailedSaleLineRow>[] = [
+                { key: 'open', header: tm('reportsThOpenTime'), size: 120 },
+                { key: 'close', header: tm('reportsThCloseTime'), size: 120 },
+                { key: 'invoiceNo', header: tm('invoiceNo'), size: 130 },
+                { key: 'table', header: tm('reportsThTableName'), size: 90 },
+                { key: 'product', header: tm('reportsThProductName'), size: 180 },
+                { key: 'cari', header: tm('reportsThCari'), size: 140 },
+                {
+                  key: 'qty',
+                  header: tm('reportsThQty'),
+                  type: 'number',
+                  align: 'right',
+                  size: 90,
+                  footerSum: true,
+                  footerFormat: (n) => formatNumber(n, 2, false),
+                  cell: (row) => formatNumber(row.qty, 2, false),
+                },
+                {
+                  key: 'price',
+                  header: tm('reportsThUnitPrice'),
+                  type: 'number',
+                  align: 'right',
+                  size: 110,
+                  cell: (row) => formatNumber(row.price, 2, false),
+                },
+                {
+                  key: 'total',
+                  header: tm('reportsThLineTotal'),
+                  type: 'number',
+                  align: 'right',
+                  size: 120,
+                  footerSum: true,
+                  footerFormat: (n) => formatNumber(n, 2, false),
+                  cell: (row) => formatNumber(row.total, 2, false),
+                },
+                { key: 'status', header: tm('rptTargetColStatus'), size: 100 },
+                { key: 'note', header: tm('reportsThLineNote'), size: 140 },
+              ];
 
               return (
-                <div className="space-y-4">
-                  <div className="flex items-center justify-between bg-white p-3 rounded-xl border border-slate-200 shadow-sm">
-                    <div className="flex items-center gap-4 flex-1 flex-wrap">
-                      <ReportDateRangePresets
-                        value={dailyReportDateRange}
-                        onChange={setDailyReportDateRange}
-                        tm={tm}
-                        min={reportDateInputMin}
-                        max={reportDateInputMax}
-                      />
-                      <Input
-                        placeholder={tm('reportsSearchKeywordPlaceholder')}
-                        prefix={<SearchOutlined className="text-slate-400" />}
-                        className="max-w-md border-slate-200"
-                      />
-                      <Button icon={<FilterOutlined />}>{tm('resFloorFilterLabel')}</Button>
-                    </div>
-                    <div className="flex items-center gap-2">
-                      <Button icon={<MailOutlined />} type="text" />
-                      <Button icon={<FilePdfOutlined />} type="text" />
-                      <Button icon={<FileExcelOutlined />} type="text" />
-                      <Button icon={<PrinterOutlined />} type="text" />
-                    </div>
-                  </div>
-
-                  <div className="bg-white rounded-xl border border-slate-200 shadow-sm overflow-hidden text-[11px]">
-                    <div className="flex items-center gap-2 p-2 bg-slate-50 border-b border-slate-100 italic text-slate-500">
-                      <HistoryOutlined className="w-3 h-3" />
-                      <span>{tm('reportsSectionDetails')}</span>
-                      {loadingOrders && businessType === 'restaurant' && (
-                        <span className="text-amber-600 not-italic">{tm('reportsLoadingShort')}</span>
-                      )}
-                    </div>
-
-                    {/* Table Header */}
-                    <div className="grid grid-cols-12 gap-2 p-2 bg-slate-50 border-b border-slate-200 font-bold text-blue-600 uppercase tracking-tighter">
-                      <div className="col-span-1">{tm('reportsThOpenTime')}</div>
-                      <div className="col-span-1">{tm('reportsThCloseTime')}</div>
-                      <div className="col-span-1">{tm('reportsThOrderNo')}</div>
-                      <div className="col-span-1">{tm('reportsThTableName')}</div>
-                      <div className="col-span-1">{tm('reportsThProductName')}</div>
-                      <div className="col-span-1">{tm('reportsThCari')}</div>
-                      <div className="col-span-1 text-center">{tm('reportsThQty')}</div>
-                      <div className="col-span-1">{tm('reportsThUnitPrice')}</div>
-                      <div className="col-span-1">{tm('reportsThLineTotal')}</div>
-                      <div className="col-span-1">{tm('rptTargetColStatus')}</div>
-                      <div className="col-span-2">{tm('reportsThLineNote')}</div>
-                    </div>
-
-                    {businessType === 'restaurant' && loadingOrders ? (
-                      <div className="p-8 text-center text-slate-500 text-sm">{tm('reportsOrdersLoading')}</div>
-                    ) : detailedGroups.length === 0 ? (
-                      <div className="p-8 text-center text-slate-500 text-sm">
-                        {businessType === 'restaurant'
-                          ? tm('reportsNoOrdersForDate')
-                          : tm('reportsNoSalesForDate')}
-                      </div>
-                    ) : (
-                      detailedGroups.map((group, idx) => (
-                        <div key={`${group.id}-${idx}`} className="border-b border-slate-100 last:border-0">
-                          <div className="bg-slate-50/50 p-2 flex justify-between items-center">
-                            <div className="flex items-center gap-2">
-                              <CaretDownOutlined className="text-red-500 w-3 h-3" />
-                              <span className="text-red-600 font-bold">
-                                {tm('reportsOrderNoLine').replace('{id}', group.id)}
-                              </span>
-                            </div>
-                            <div className="flex items-center gap-4 text-[10px]">
-                              <span className="text-green-600 font-bold">
-                                {tm('reportsOrderLineSummary')
-                                  .replace('{qty}', group.summary.qty.toFixed(1))
-                                  .replace('{total}', group.summary.total.toFixed(2))
-                                  .replace('{disc}', group.summary.discount.toFixed(1))}
-                              </span>
-                              <span className="bg-red-500 text-white w-4 h-4 rounded-full flex items-center justify-center font-black">
-                                {group.summary.count}
-                              </span>
-                            </div>
-                          </div>
-                          {group.items.length === 0 ? (
-                            <div className="p-3 text-slate-400 italic border-b border-slate-50">{tm('reportsNoLineItems')}</div>
-                          ) : (
-                            group.items.map((item: any, i: number) => (
-                              <div
-                                key={i}
-                                className="grid grid-cols-12 gap-2 p-2 hover:bg-red-50/10 text-slate-600 transition-colors border-b border-slate-50 last:border-0"
-                              >
-                                <div className="col-span-1">{item.open}</div>
-                                <div className="col-span-1">{item.close}</div>
-                                <div className="col-span-1">{group.id}</div>
-                                <div className="col-span-1">{item.table}</div>
-                                <div className="col-span-1 font-bold text-slate-800">{item.product}</div>
-                                <div className="col-span-1">{item.cari}</div>
-                                <div className="col-span-1 text-center font-bold">{item.qty}</div>
-                                <div className="col-span-1 font-bold">{formatNumber(Number(item.price), 2, false)}</div>
-                                <div className="col-span-1 font-black">{formatNumber(Number(item.total), 2, false)}</div>
-                                <div
-                                  className={`col-span-1 font-bold ${
-                                    item.statusClosed ? 'text-slate-600' : 'text-green-500'
-                                  }`}
-                                >
-                                  {item.status}
-                                </div>
-                                <div className="col-span-2">---</div>
-                              </div>
-                            ))
-                          )}
-                        </div>
-                      ))
+                <div className="space-y-3">
+                  <div className="flex items-center gap-3 flex-wrap bg-white p-2.5 rounded-xl border border-slate-200 shadow-sm">
+                    <ReportDateRangePresets
+                      value={dailyReportDateRange}
+                      onChange={setDailyReportDateRange}
+                      tm={tm}
+                      min={reportDateInputMin}
+                      max={reportDateInputMax}
+                    />
+                    <Input
+                      allowClear
+                      value={detailedSalesSearch}
+                      onChange={(e) => setDetailedSalesSearch(e.target.value)}
+                      placeholder={tm('reportsSearchKeywordPlaceholder')}
+                      prefix={<SearchOutlined className="text-slate-400" />}
+                      className="max-w-sm border-slate-200"
+                    />
+                    {loadingOrders && businessType === 'restaurant' && (
+                      <span className="text-xs text-amber-600 flex items-center gap-1.5">
+                        <Spin size="small" /> {tm('reportsLoadingShort')}
+                      </span>
                     )}
-                    <div className="p-2 bg-slate-100 flex justify-end items-center font-bold text-slate-500 border-t border-slate-200">
-                      <span>{tm('reportsTotalRecordsCount').replace('{n}', String(totalLineCount))}</span>
-                    </div>
+                    <span className="text-xs text-slate-500 ml-auto">
+                      {tm('reportsTotalRecordsCount').replace('{n}', String(detailedLines.length))}
+                    </span>
                   </div>
+
+                  {businessType === 'restaurant' && loadingOrders && detailedLines.length === 0 ? (
+                    <div className="bg-white rounded-xl border border-slate-200 p-8 text-center text-slate-500 text-sm">
+                      {tm('reportsOrdersLoading')}
+                    </div>
+                  ) : detailedLines.length === 0 ? (
+                    <div className="bg-white rounded-xl border border-slate-200 p-8 text-center text-slate-500 text-sm">
+                      {businessType === 'restaurant'
+                        ? tm('reportsNoOrdersForDate')
+                        : tm('reportsNoSalesForDate')}
+                    </div>
+                  ) : (
+                    <div className="bg-white rounded-xl border border-slate-200 overflow-hidden shadow-sm p-2">
+                      <ReportColumnTable
+                        data={detailedLines}
+                        columns={detailedColumns}
+                        height={560}
+                        footerLabel={tm('grandTotal')}
+                        storageNamespace="reports-detailed-sales"
+                        groupByColumnId="invoiceNo"
+                      />
+                    </div>
+                  )}
                 </div>
               );
             })()}

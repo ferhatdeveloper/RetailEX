@@ -17,7 +17,9 @@ import {
 import {
   FACTORY_MENU_PRESET_ID,
   FACTORY_MENU_PRESET_NAME,
+  MENU_HIDDEN_UPGRADE_VERSION,
   buildFactoryMenuPreferences,
+  hiddenModulesForUpgradeVersion,
 } from '../config/defaultMenuView';
 
 export {
@@ -48,6 +50,11 @@ export interface MenuPreferencesStore {
   version: 2;
   active_preset_id?: string;
   presets: MenuPreferencePreset[];
+  /**
+   * Uygulanmış gizli-modül yükseltme sürümü (`MENU_HIDDEN_UPGRADE_VERSION`).
+   * Eski preset’lere yeni fabrika gizlemelerini bir kerelik eklemek için.
+   */
+  hidden_upgrade_version?: number;
 }
 
 const MENU_PREFS_STORE_KEY = 'retailex_menu_preferences_store';
@@ -93,9 +100,76 @@ function presetFromLegacy(prefs: MenuPreferences, savedBy = 'sistem'): MenuPrefe
   };
 }
 
+function readHiddenUpgradeVersion(raw: unknown): number {
+  const n = typeof raw === 'number' ? raw : Number(raw);
+  return Number.isFinite(n) && n >= 0 ? Math.floor(n) : 0;
+}
+
+function sameHiddenList(a: string[], b: string[]): boolean {
+  if (a.length !== b.length) return false;
+  const sb = new Set(b);
+  return a.every((id) => sb.has(id));
+}
+
+/** Fabrika preset: her zaman güncel DEFAULT_MENU_HIDDEN_MODULES */
+function refreshFactoryPresetHidden(preset: MenuPreferencePreset): MenuPreferencePreset {
+  if (preset.id !== FACTORY_MENU_PRESET_ID) return preset;
+  const factory = buildFactoryMenuPreferences();
+  const hidden_modules = normalizeHiddenModules(factory.hidden_modules);
+  const item_orders = normalizeItemOrders(factory.item_orders) ?? preset.item_orders;
+  if (
+    sameHiddenList(preset.hidden_modules ?? [], hidden_modules) &&
+    JSON.stringify(preset.item_orders ?? {}) === JSON.stringify(item_orders ?? {})
+  ) {
+    return preset;
+  }
+  return { ...preset, hidden_modules, item_orders };
+}
+
+/**
+ * 1) Fabrika preset → güncel DEFAULT
+ * 2) hidden_upgrade_version gerideyse tüm preset’lere yeni gizlemeleri bir kerelik ekle
+ */
+export function applyMenuHiddenUpgrades(store: MenuPreferencesStore): {
+  store: MenuPreferencesStore;
+  changed: boolean;
+} {
+  const fromVer = readHiddenUpgradeVersion(store.hidden_upgrade_version);
+  const additions =
+    fromVer < MENU_HIDDEN_UPGRADE_VERSION
+      ? hiddenModulesForUpgradeVersion(fromVer, MENU_HIDDEN_UPGRADE_VERSION)
+      : [];
+
+  let changed = fromVer < MENU_HIDDEN_UPGRADE_VERSION;
+  const presets = store.presets.map((preset) => {
+    let next = refreshFactoryPresetHidden(preset);
+    if (next !== preset) changed = true;
+
+    if (additions.length > 0 && next.id !== FACTORY_MENU_PRESET_ID) {
+      const merged = normalizeHiddenModules([...(next.hidden_modules ?? []), ...additions]);
+      if (!sameHiddenList(next.hidden_modules ?? [], merged)) {
+        next = { ...next, hidden_modules: merged };
+        changed = true;
+      }
+    }
+    return next;
+  });
+
+  if (!changed) return { store, changed: false };
+
+  return {
+    store: {
+      ...store,
+      presets,
+      hidden_upgrade_version: Math.max(fromVer, MENU_HIDDEN_UPGRADE_VERSION),
+    },
+    changed: true,
+  };
+}
+
 function normalizeStore(raw: unknown, fallbackUser = 'sistem'): MenuPreferencesStore {
   if (!raw || typeof raw !== 'object') {
-    return { version: 2, presets: [] };
+    return { version: 2, presets: [], hidden_upgrade_version: 0 };
   }
   const o = raw as Record<string, unknown>;
 
@@ -117,16 +191,22 @@ function normalizeStore(raw: unknown, fallbackUser = 'sistem'): MenuPreferencesS
       version: 2,
       active_preset_id: typeof o.active_preset_id === 'string' ? o.active_preset_id : undefined,
       presets,
+      hidden_upgrade_version: readHiddenUpgradeVersion(o.hidden_upgrade_version),
     };
   }
 
   const legacy = normalizePrefs(raw);
   if (legacy && ((legacy.hidden_modules?.length ?? 0) > 0 || legacy.item_orders)) {
     const preset = presetFromLegacy(legacy, fallbackUser);
-    return { version: 2, active_preset_id: preset.id, presets: [preset] };
+    return {
+      version: 2,
+      active_preset_id: preset.id,
+      presets: [preset],
+      hidden_upgrade_version: 0,
+    };
   }
 
-  return { version: 2, presets: [] };
+  return { version: 2, presets: [], hidden_upgrade_version: 0 };
 }
 
 function presetToMenuPreferences(preset: MenuPreferencePreset): MenuPreferences {
@@ -170,6 +250,7 @@ export async function applyDefaultMenuPreferences(): Promise<MenuPreferences> {
   };
   store.presets = [factory, ...store.presets.filter((p) => p.id !== FACTORY_MENU_PRESET_ID)];
   store.active_preset_id = FACTORY_MENU_PRESET_ID;
+  store.hidden_upgrade_version = MENU_HIDDEN_UPGRADE_VERSION;
   await writeMenuPreferencesStoreToDb(store);
   applyMenuPreferencesToLocalStorage(prefs, store);
   await applyMenuPreferencesToTauriConfig(prefs);
@@ -613,30 +694,58 @@ export async function importMenuPreferencePresets(
 }
 
 /**
+ * Store’a gizli-modül yükseltmelerini uygula; değiştiyse PG’ye yaz.
+ * Web localStorage / Tauri önbelleği her zaman yükseltmiş store ile güncellenir.
+ */
+async function syncStoreWithHiddenUpgrades(
+  store: MenuPreferencesStore,
+  opts?: { writeDb?: boolean },
+): Promise<{ store: MenuPreferencesStore; prefs: MenuPreferences | null }> {
+  const { store: upgraded, changed } = applyMenuHiddenUpgrades(store);
+  if (changed && opts?.writeDb !== false) {
+    try {
+      await writeMenuPreferencesStoreToDb(upgraded);
+    } catch (e) {
+      console.warn('[menuPreferences] Gizli-modül yükseltmesi PG yazımı başarısız:', e);
+    }
+  }
+  const active = resolveActivePreset(upgraded);
+  const prefs = active ? presetToMenuPreferences(active) : null;
+  if (prefs) {
+    applyMenuPreferencesToLocalStorage(prefs, upgraded);
+    await applyMenuPreferencesToTauriConfig(prefs);
+  }
+  return { store: upgraded, prefs };
+}
+
+/**
  * PG → localStorage senkron (PG öncelikli).
  * PG boşsa yerel önbelleği PG'ye taşır (ilk kurulum migrasyonu).
+ * Mevcut preset’ler: fabrika → güncel DEFAULT; diğerleri → bir kerelik upgrade ekleri.
  */
 export async function syncMenuPreferences(fallbackUser = 'sistem'): Promise<MenuPreferences> {
   const fromDbStore = await loadMenuPreferencesStoreFromDb(fallbackUser);
   const activeDb = resolveActivePreset(fromDbStore);
 
   if (activeDb) {
-    const prefs = presetToMenuPreferences(activeDb);
-    applyMenuPreferencesToLocalStorage(prefs, fromDbStore);
-    await applyMenuPreferencesToTauriConfig(prefs);
-    return prefs;
+    const { prefs } = await syncStoreWithHiddenUpgrades(fromDbStore);
+    return prefs ?? presetToMenuPreferences(activeDb);
   }
 
   const fromLocalStore = readMenuPreferencesStoreFromLocalStorage();
   const activeLocal = fromLocalStore ? resolveActivePreset(fromLocalStore) : null;
 
-  if (activeLocal) {
-    try {
-      await writeMenuPreferencesStoreToDb(fromLocalStore!);
-    } catch (e) {
-      console.warn('[menuPreferences] Yerel → PG migrasyonu başarısız:', e);
+  if (activeLocal && fromLocalStore) {
+    const { prefs, store } = await syncStoreWithHiddenUpgrades(fromLocalStore);
+    if (!prefs) {
+      try {
+        await writeMenuPreferencesStoreToDb(store);
+      } catch (e) {
+        console.warn('[menuPreferences] Yerel → PG migrasyonu başarısız:', e);
+      }
+      return presetToMenuPreferences(activeLocal);
     }
-    return presetToMenuPreferences(activeLocal);
+    return prefs;
   }
 
   const fromLocal = readMenuPreferencesFromLocalStorage();
@@ -653,9 +762,8 @@ export async function syncMenuPreferences(fallbackUser = 'sistem'): Promise<Menu
         migrated.presets = [p];
         migrated.active_preset_id = p.id;
       }
-      await writeMenuPreferencesStoreToDb(migrated);
-      applyMenuPreferencesToLocalStorage(fromLocal, migrated);
-      return fromLocal;
+      const { prefs } = await syncStoreWithHiddenUpgrades(migrated);
+      return prefs ?? fromLocal;
     } catch (e) {
       console.warn('[menuPreferences] Yerel → PG migrasyonu başarısız:', e);
     }

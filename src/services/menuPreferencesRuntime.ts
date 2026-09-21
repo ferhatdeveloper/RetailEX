@@ -3,6 +3,13 @@
  * Lazy MenuManagementPanel chunk'ının çökmesini önler.
  */
 
+import {
+  FACTORY_MENU_PRESET_ID,
+  MENU_HIDDEN_UPGRADE_VERSION,
+  buildFactoryMenuPreferences,
+  hiddenModulesForUpgradeVersion,
+} from '../config/defaultMenuView';
+
 export interface MenuPreferencesLite {
   hidden_modules: string[];
   item_orders?: Record<string, number>;
@@ -13,6 +20,7 @@ export interface MenuPreferencesStoreLite {
   version: 2;
   active_preset_id?: string;
   presets: unknown[];
+  hidden_upgrade_version?: number;
 }
 
 const HIDDEN_MODULES_KEY = 'retailex_hidden_modules';
@@ -52,6 +60,27 @@ export function normalizeHiddenModules(raw: unknown): string[] {
   return [...new Set(remapLegacyStaticHiddenModules(list))];
 }
 
+/** Sync öncesi localStorage: bekleyen upgrade eklerini birleştir (sürüm damgası yokken de gizle) */
+export function mergePendingHiddenUpgrades(
+  hidden: string[],
+  store?: MenuPreferencesStoreLite | null,
+  activePresetId?: string,
+): string[] {
+  const fromVer =
+    typeof store?.hidden_upgrade_version === 'number' && Number.isFinite(store.hidden_upgrade_version)
+      ? Math.max(0, Math.floor(store.hidden_upgrade_version))
+      : 0;
+  const activeId = activePresetId || store?.active_preset_id;
+  if (activeId === FACTORY_MENU_PRESET_ID) {
+    return normalizeHiddenModules(buildFactoryMenuPreferences().hidden_modules);
+  }
+  if (fromVer >= MENU_HIDDEN_UPGRADE_VERSION) {
+    return normalizeHiddenModules(hidden);
+  }
+  const additions = hiddenModulesForUpgradeVersion(fromVer, MENU_HIDDEN_UPGRADE_VERSION);
+  return normalizeHiddenModules([...hidden, ...additions]);
+}
+
 type HiddenModulesListener = (hidden: string[]) => void;
 const hiddenModulesListeners = new Set<HiddenModulesListener>();
 let runtimeHiddenModules: string[] | null = null;
@@ -66,23 +95,45 @@ function notifyHiddenModulesListeners(hidden: string[]): void {
   });
 }
 
+function readStoreLiteFromLocalStorage(): MenuPreferencesStoreLite | null {
+  if (typeof localStorage === 'undefined') return null;
+  try {
+    const raw = localStorage.getItem(MENU_PREFS_STORE_KEY);
+    if (!raw) return null;
+    const parsed = JSON.parse(raw);
+    if (!parsed || typeof parsed !== 'object') return null;
+    return parsed as MenuPreferencesStoreLite;
+  } catch {
+    return null;
+  }
+}
+
 export function readHiddenModulesFromLocalStorage(): string[] {
   if (typeof localStorage === 'undefined') return [];
+  const store = readStoreLiteFromLocalStorage();
   try {
     const raw = localStorage.getItem(HIDDEN_MODULES_KEY);
     if (raw) {
       const parsed = JSON.parse(raw);
-      if (Array.isArray(parsed)) return normalizeHiddenModules(parsed);
+      if (Array.isArray(parsed)) {
+        return mergePendingHiddenUpgrades(normalizeHiddenModules(parsed), store);
+      }
     }
     const webRaw = localStorage.getItem('retailex_web_config');
     if (webRaw) {
       const web = JSON.parse(webRaw);
-      if (Array.isArray(web.hidden_modules)) return normalizeHiddenModules(web.hidden_modules);
+      if (Array.isArray(web.hidden_modules)) {
+        const webStore =
+          web.menu_preferences && typeof web.menu_preferences === 'object'
+            ? (web.menu_preferences as MenuPreferencesStoreLite)
+            : store;
+        return mergePendingHiddenUpgrades(normalizeHiddenModules(web.hidden_modules), webStore);
+      }
     }
   } catch {
     /* ignore */
   }
-  return [];
+  return mergePendingHiddenUpgrades([], store);
 }
 
 export function writeHiddenModulesToLocalStorage(

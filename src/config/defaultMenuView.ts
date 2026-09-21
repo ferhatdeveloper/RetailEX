@@ -56,6 +56,30 @@ export const DEFAULT_MENU_HIDDEN_MODULES: readonly string[] = [
   'cost-centers',
 ] as const;
 
+/**
+ * Eski DB/localStorage preset’lerine bir kerelik eklenen gizlemeler.
+ * `MENU_HIDDEN_UPGRADE_VERSION` artınca sync tüm preset’lere yeni maddeleri ekler;
+ * sonra Menü Yönetimi’nden tekrar açılabilir (sürekli zorlama yok).
+ */
+export const MENU_HIDDEN_UPGRADE_VERSION = 1;
+
+export const MENU_HIDDEN_UPGRADE_ADDITIONS: Readonly<Record<number, readonly string[]>> = {
+  1: ['payment-plans', 'cost-centers'],
+};
+
+/** `fromVersion` (hariç) → `toVersion` (dahil) arası eklenen screen_id’ler */
+export function hiddenModulesForUpgradeVersion(fromVersion: number, toVersion: number): string[] {
+  const from = Number.isFinite(fromVersion) ? Math.max(0, Math.floor(fromVersion)) : 0;
+  const to = Number.isFinite(toVersion) ? Math.max(0, Math.floor(toVersion)) : 0;
+  if (to <= from) return [];
+  const out: string[] = [];
+  for (let v = from + 1; v <= to; v++) {
+    const add = MENU_HIDDEN_UPGRADE_ADDITIONS[v];
+    if (add?.length) out.push(...add);
+  }
+  return out;
+}
+
 /** Statik menü sıra (screen_id → display_order) */
 export const DEFAULT_MENU_ITEM_ORDERS: Readonly<Record<string, number>> = {
   hr: 12,

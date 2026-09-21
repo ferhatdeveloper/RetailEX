@@ -1,5 +1,5 @@
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
-import { Calendar, Eye, Landmark, Loader2, TrendingDown, TrendingUp, Wallet } from 'lucide-react';
+import { Eye, Loader2 } from 'lucide-react';
 import { formatNumber } from '../../utils/formatNumber';
 import { expenseAPI, type Expense } from '../../services/api/expenses';
 import { salesAPI } from '../../services/api/sales';
@@ -36,6 +36,7 @@ import { PeriodExpenseShareDetailModal } from './PeriodExpenseShareDetailModal';
 import { PeriodSupplierPayablesDetailModal } from './PeriodSupplierPayablesDetailModal';
 import { PartnerDetailReportModal } from './PartnerDetailReportModal';
 import { ReportColumnTable, type ReportColumnTableCol } from './shared/ReportDataGrid';
+import { ReportKpiStrip, type ReportKpiItem } from './shared/ReportKpiStrip';
 
 export type PeriodSummaryMode = 'monthly-days' | 'yearly-months';
 
@@ -713,21 +714,168 @@ export function PeriodSummaryReport({ mode, currency }: PeriodSummaryReportProps
   ]);
 
   const title = mode === 'monthly-days' ? tm('aylikGunOzeti') : tm('yillikAyOzeti');
-  const subtitle = mode === 'monthly-days' ? tm('aylikGunOzetiDesc') : tm('yillikAyOzetiDesc');
+
+  const kpiItems = useMemo((): ReportKpiItem[] => {
+    const items: ReportKpiItem[] = [];
+
+    if (showPeriodCardRevenue) {
+      items.push({
+        key: 'revenue',
+        label: tm('rptPeriodTotalRevenue'),
+        value: money(totals.revenue),
+        valueClassName: 'text-emerald-700 dark:text-emerald-400',
+        hint: `${totals.saleCount} ${tm('rptPeriodColSaleCount').toLowerCase()}`,
+      });
+    }
+
+    if (showPeriodCardExpenses) {
+      items.push({
+        key: 'expenses',
+        label: tm('rptPeriodTotalExpenses'),
+        value: money(totals.expenses),
+        valueClassName: 'text-red-600 dark:text-red-400',
+        hint: (
+          <button
+            type="button"
+            className="font-semibold text-rose-700 hover:underline dark:text-rose-400"
+            onClick={() =>
+              setExpenseDetail({ title: tm('rptPeriodExpenseDetailTitle'), periodKey: null })
+            }
+          >
+            {tm('rptPeriodOpenExpenseDetail')}
+          </button>
+        ),
+      });
+    }
+
+    if (showPeriodCardPurchases) {
+      items.push({
+        key: 'purchases',
+        label: tm('rptPeriodTotalPurchases'),
+        value: money(totals.purchases),
+        valueClassName: 'text-amber-700 dark:text-amber-400',
+      });
+    }
+
+    if (showPeriodCardSupplierPayables) {
+      const partnerHints = showPartnerCols
+        ? partnerSlices
+            .map((p) => `${p.name}: ${money(supplierPayables.byId[p.id] ?? 0)}`)
+            .join(' · ')
+        : '';
+      items.push({
+        key: 'supplier-payables',
+        label: tm('rptPeriodSupplierOpenDebt'),
+        value: money(supplierPayables.payable),
+        valueClassName: 'text-amber-800 dark:text-amber-300',
+        hint: (
+          <span className="inline-flex flex-wrap items-center gap-x-2 gap-y-0.5">
+            <span>
+              {supplierPayables.count}{' '}
+              {tm('rptPeriodSupplierDetailKicker').toLocaleLowerCase('tr-TR')}
+            </span>
+            {partnerHints ? <span className="text-amber-800 dark:text-amber-300">{partnerHints}</span> : null}
+            <button
+              type="button"
+              className="font-semibold text-amber-800 hover:underline dark:text-amber-300"
+              onClick={() => setSupplierDetailOpen(true)}
+            >
+              {tm('rptPeriodOpenSupplierDetail')}
+            </button>
+          </span>
+        ),
+      });
+    }
+
+    if (showPeriodCardNet) {
+      items.push({
+        key: 'net',
+        label: tm('rptPeriodColNet'),
+        value: money(totals.netRemaining),
+        valueClassName:
+          totals.netRemaining >= 0
+            ? 'text-emerald-700 dark:text-emerald-400'
+            : 'text-red-600 dark:text-red-400',
+      });
+    }
+
+    if (showPartnerCols) {
+      partnerSlices.forEach((p, idx) => {
+        const fullPartner = partners.find((x) => x.id === p.id);
+        const partnerBalance = Number(fullPartner?.balance || 0);
+        const isNeg = partnerBalance < 0;
+        items.push({
+          key: `partner-${p.id}`,
+          label: `${p.name} (%${p.sharePct})`,
+          value: money(totals.partnerShares[p.id] ?? 0),
+          valueClassName: partnerColColors[idx % partnerColColors.length],
+          className: 'border-blue-100 bg-blue-50/40 dark:border-blue-800 dark:bg-blue-950/30',
+          hint: (
+            <span className="inline-flex flex-wrap items-center gap-x-2 gap-y-0.5">
+              <span className="font-semibold text-red-600 dark:text-red-400">
+                {tm('rptPeriodExpenseShare')}: {money(totals.expenseShares[p.id] ?? 0)}
+              </span>
+              {fullPartner ? (
+                <>
+                  <span className={`font-mono font-bold ${isNeg ? 'text-red-700' : 'text-emerald-700'}`}>
+                    DB: {money(partnerBalance)}
+                  </span>
+                  <button
+                    type="button"
+                    onClick={() => setPartnerDetail(fullPartner)}
+                    className="inline-flex items-center gap-0.5 font-semibold text-indigo-700 hover:underline dark:text-indigo-300"
+                  >
+                    <Eye className="w-3 h-3" />
+                    Detay
+                  </button>
+                </>
+              ) : null}
+            </span>
+          ),
+        });
+      });
+    }
+
+    if (showPeriodCardPaymentSplit) {
+      items.push({
+        key: 'payment-split',
+        label: tm('rptPeriodPaymentSplit'),
+        value: (
+          <span className="text-xs font-semibold text-slate-800 dark:text-slate-100">
+            {tm('rptPeriodColCash')}: {money(totals.cash)}
+          </span>
+        ),
+        hint: `${tm('rptPeriodColCard')}: ${money(totals.card)}`,
+      });
+    }
+
+    return items;
+  }, [
+    showPeriodCardRevenue,
+    showPeriodCardExpenses,
+    showPeriodCardPurchases,
+    showPeriodCardSupplierPayables,
+    showPeriodCardNet,
+    showPeriodCardPaymentSplit,
+    showPartnerCols,
+    partnerSlices,
+    partners,
+    supplierPayables,
+    totals,
+    money,
+    tm,
+    partnerColColors,
+  ]);
+
+  const kpiColumns = Math.min(Math.max(kpiItems.length, 2), 6) as 2 | 3 | 4 | 5 | 6;
 
   return (
-    <div className="space-y-4">
-      <div className="bg-white rounded-lg border p-4">
-        <div className="flex flex-wrap items-center justify-between gap-4">
-          <div className="flex items-center gap-3">
-            <Calendar className="w-6 h-6 text-blue-600 shrink-0" />
-            <div>
-              <h3 className="text-lg font-semibold text-slate-800">{title}</h3>
-              <p className="text-sm text-slate-500">{subtitle}</p>
-            </div>
-          </div>
-          <label className="flex items-center gap-2 text-sm text-slate-700">
-            <span className="font-medium whitespace-nowrap">
+    <div className="space-y-3">
+      <div className="rounded-lg border bg-white px-3 py-2">
+        <div className="flex flex-wrap items-end justify-between gap-2">
+          <h3 className="text-sm font-semibold text-slate-800">{title}</h3>
+          <label className="flex flex-col gap-0.5 min-w-[9rem]">
+            <span className="text-[10px] font-semibold uppercase tracking-wide text-slate-500">
               {mode === 'monthly-days' ? tm('rptPeriodSelectMonth') : tm('rptPeriodSelectYear')}
             </span>
             {mode === 'monthly-days' ? (
@@ -740,7 +888,7 @@ export function PeriodSummaryReport({ mode, currency }: PeriodSummaryReportProps
                   const v = e.target.value;
                   if (v) setSelectedMonth(v);
                 }}
-                className="px-4 py-2 border rounded-lg focus:outline-none focus:border-blue-500"
+                className="h-8 px-2 text-sm rounded border outline-none focus:ring-2 focus:ring-blue-500/30 focus:border-blue-500"
               />
             ) : (
               <input
@@ -752,15 +900,15 @@ export function PeriodSummaryReport({ mode, currency }: PeriodSummaryReportProps
                   const y = parseInt(e.target.value, 10);
                   if (Number.isFinite(y)) setSelectedYear(y);
                 }}
-                className="w-28 px-4 py-2 border rounded-lg focus:outline-none focus:border-blue-500"
+                className="h-8 w-28 px-2 text-sm rounded border outline-none focus:ring-2 focus:ring-blue-500/30 focus:border-blue-500"
               />
             )}
           </label>
         </div>
       </div>
 
-      <p className="text-xs text-slate-500 bg-slate-50 border border-slate-200 rounded-lg px-3 py-2 flex flex-wrap items-center gap-x-4 gap-y-2">
-        <label className="inline-flex items-center gap-2 cursor-pointer select-none font-medium text-slate-700">
+      <div className="flex flex-wrap items-center gap-x-3 gap-y-1 text-[11px] text-slate-500">
+        <label className="inline-flex items-center gap-1.5 cursor-pointer select-none font-medium text-slate-700">
           <input
             type="checkbox"
             checked={partnerSplit.enabled}
@@ -771,7 +919,7 @@ export function PeriodSummaryReport({ mode, currency }: PeriodSummaryReportProps
         </label>
         {partnerSplit.enabled ? (
           partnerSlices.length > 0 ? (
-            <span className="text-slate-500">
+            <span>
               {tm('rptPeriodPartnerSplitFromCards')}
               {Math.abs(partnerPctTotal - 100) > 0.01
                 ? ` ${tm('rptPeriodPartnerPctWarn').replace('{total}', String(partnerPctTotal))}`
@@ -780,146 +928,17 @@ export function PeriodSummaryReport({ mode, currency }: PeriodSummaryReportProps
           ) : (
             <span className="text-amber-700">{tm('rptPeriodPartnerNoPartners')}</span>
           )
-        ) : (
-          <span>{tm('rptPeriodPartnerSplitDisabledHint')}</span>
-        )}
-      </p>
-
-      <div
-        className={`grid grid-cols-1 sm:grid-cols-2 gap-4 ${
-          showPartnerCols ? 'lg:grid-cols-3 xl:grid-cols-4' : 'lg:grid-cols-2 xl:grid-cols-4'
-        }`}
-      >
-        {showPeriodCardRevenue ? (
-        <div className="bg-white rounded-lg border p-4">
-          <div className="flex items-center gap-2 text-slate-500 text-sm mb-1">
-            <TrendingUp className="w-4 h-4 text-green-600" />
-            {tm('rptPeriodTotalRevenue')}
-          </div>
-          <p className="text-2xl font-bold text-slate-800">{money(totals.revenue)}</p>
-          <p className="text-xs text-slate-400 mt-1">
-            {totals.saleCount} {tm('rptPeriodColSaleCount').toLowerCase()}
-          </p>
-        </div>
-        ) : null}
-        {showPeriodCardExpenses ? (
-        <div className="bg-white rounded-lg border p-4">
-          <div className="flex items-center gap-2 text-slate-500 text-sm mb-1">
-            <TrendingDown className="w-4 h-4 text-red-500" />
-            {tm('rptPeriodTotalExpenses')}
-          </div>
-          <p className="text-2xl font-bold text-red-600">{money(totals.expenses)}</p>
-          <button
-            type="button"
-            className="mt-2 text-xs font-bold uppercase tracking-wider text-rose-700 hover:underline"
-            onClick={() =>
-              setExpenseDetail({ title: tm('rptPeriodExpenseDetailTitle'), periodKey: null })
-            }
-          >
-            {tm('rptPeriodOpenExpenseDetail')}
-          </button>
-        </div>
-        ) : null}
-        {showPeriodCardPurchases ? (
-        <div className="bg-white rounded-lg border p-4">
-          <div className="flex items-center gap-2 text-slate-500 text-sm mb-1">
-            <Landmark className="w-4 h-4 text-amber-600" />
-            {tm('rptPeriodTotalPurchases')}
-          </div>
-          <p className="text-2xl font-bold text-amber-700">{money(totals.purchases)}</p>
-          <p className="text-xs text-slate-400 mt-1">{tm('rptPeriodPurchasesHint')}</p>
-        </div>
-        ) : null}
-        {showPeriodCardSupplierPayables ? (
-        <div className="bg-white rounded-lg border p-4 border-amber-100">
-          <div className="flex items-center gap-2 text-slate-500 text-sm mb-1">
-            <Landmark className="w-4 h-4 text-amber-700" />
-            {tm('rptPeriodSupplierOpenDebt')}
-          </div>
-          <p className="text-2xl font-bold text-amber-800">{money(supplierPayables.payable)}</p>
-          <p className="text-xs text-slate-400 mt-1">
-            {supplierPayables.count} {tm('rptPeriodSupplierDetailKicker').toLocaleLowerCase('tr-TR')}
-          </p>
-          {showPartnerCols
-            ? partnerSlices.map((p) => (
-                <p key={p.id} className="text-xs font-semibold text-amber-800 mt-1">
-                  {p.name} · {tm('rptPeriodSupplierDebtShare')}: {money(supplierPayables.byId[p.id] ?? 0)}
-                </p>
-              ))
-            : null}
-          <button
-            type="button"
-            className="mt-2 text-xs font-bold uppercase tracking-wider text-amber-800 hover:underline"
-            onClick={() => setSupplierDetailOpen(true)}
-          >
-            {tm('rptPeriodOpenSupplierDetail')}
-          </button>
-          <p className="text-[11px] text-slate-500 mt-2">{tm('rptPeriodSupplierDetailHint')}</p>
-        </div>
-        ) : null}
-        {showPeriodCardNet ? (
-        <div className="bg-white rounded-lg border p-4">
-          <div className="flex items-center gap-2 text-slate-500 text-sm mb-1">
-            <Wallet className="w-4 h-4 text-blue-600" />
-            {tm('rptPeriodColNet')}
-          </div>
-          <p className={`text-2xl font-bold ${totals.netRemaining >= 0 ? 'text-emerald-700' : 'text-red-600'}`}>
-            {money(totals.netRemaining)}
-          </p>
-        </div>
-        ) : null}
-        {showPartnerCols ? (
-          partnerSlices.map((p, idx) => {
-            const fullPartner = partners.find((x) => x.id === p.id);
-            const partnerBalance = Number(fullPartner?.balance || 0);
-            const isNeg = partnerBalance < 0;
-            return (
-              <div key={p.id} className="bg-white rounded-lg border p-4 border-blue-100 bg-blue-50/40">
-                <p className="text-slate-500 text-sm mb-1">
-                  {p.name} (%{p.sharePct})
-                </p>
-                <p className={`text-2xl font-bold ${partnerColColors[idx % partnerColColors.length]}`}>
-                  {money(totals.partnerShares[p.id] ?? 0)}
-                </p>
-                <p className="text-xs font-semibold text-red-600 mt-1">
-                  {tm('rptPeriodExpenseShare')}: {money(totals.expenseShares[p.id] ?? 0)}
-                </p>
-                {fullPartner ? (
-                  <>
-                    <p className={`text-xs mt-2 font-mono font-bold ${isNeg ? 'text-red-700' : 'text-emerald-700'}`}>
-                      DB Bakiye: {money(partnerBalance)}
-                    </p>
-                    <button
-                      type="button"
-                      onClick={() => setPartnerDetail(fullPartner)}
-                      className="mt-2 inline-flex items-center gap-1 text-[11px] font-bold uppercase tracking-wider text-indigo-700 hover:text-indigo-900 hover:underline"
-                    >
-                      <Eye className="w-3 h-3" />
-                      Detay Raporu Aç
-                    </button>
-                  </>
-                ) : null}
-              </div>
-            );
-          })
-        ) : null}
-        {showPeriodCardPaymentSplit ? (
-        <div className="bg-white rounded-lg border p-4">
-          <p className="text-slate-500 text-sm mb-1">{tm('rptPeriodPaymentSplit')}</p>
-          <p className="text-sm text-slate-700">
-            {tm('rptPeriodColCash')}: <span className="font-semibold">{money(totals.cash)}</span>
-          </p>
-          <p className="text-sm text-slate-700">
-            {tm('rptPeriodColCard')}: <span className="font-semibold">{money(totals.card)}</span>
-          </p>
-        </div>
         ) : null}
       </div>
 
-      <div className="bg-white rounded-lg border p-4 relative">
+      {kpiItems.length > 0 ? (
+        <ReportKpiStrip columns={kpiColumns} items={kpiItems} itemClassName="shadow-none" />
+      ) : null}
+
+      <div className="relative rounded-lg border bg-white p-2">
         {loading ? (
-          <div className="absolute inset-0 z-10 flex items-center justify-center bg-white/70 rounded-lg">
-            <Loader2 className="w-8 h-8 text-blue-600 animate-spin" aria-hidden />
+          <div className="absolute inset-0 z-10 flex items-center justify-center rounded-lg bg-white/70">
+            <Loader2 className="h-6 w-6 animate-spin text-blue-600" aria-hidden />
           </div>
         ) : null}
         <ReportColumnTable
