@@ -3975,7 +3975,7 @@ export function UniversalInvoiceForm({
 
       // ===== 2. VERİTABANINA KAYDET =====
       let resolvedSupplierId = supplierId;
-      if (invoiceType.category === 'Alis' && !resolvedSupplierId) {
+      if (isPurchaseSide && !resolvedSupplierId) {
         const normTr = (s: string) => s.trim().toLocaleLowerCase('tr-TR');
         if (supplierCode) {
           const byCode = suppliers.find((s) => s.code === supplierCode);

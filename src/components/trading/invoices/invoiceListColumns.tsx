@@ -288,19 +288,24 @@ export function buildInvoiceListColumns(options: BuildInvoiceListColumnsOptions)
       unknown: 'bg-gray-50 text-gray-600 border-gray-200',
     };
     defs.push(
-      columnHelper.display({
-        id: 'line_mix',
-        header: tm('lineMix'),
-        cell: ({ row }) => {
-          const mix = (row.original.line_mix || 'unknown') as InvoiceLineMix;
-          return (
-            <span className={`inline-flex px-2 py-0.5 rounded-full text-[11px] font-semibold border ${mixClass[mix]}`}>
-              {tm(invoiceLineMixLabelKey(mix))}
-            </span>
-          );
+      columnHelper.accessor(
+        (row) => {
+          const mix = (row.line_mix || 'unknown') as InvoiceLineMix;
+          return tm(invoiceLineMixLabelKey(mix));
         },
-        enableSorting: false,
-      }),
+        {
+          id: 'line_mix',
+          header: tm('lineMix'),
+          cell: ({ row }) => {
+            const mix = (row.original.line_mix || 'unknown') as InvoiceLineMix;
+            return (
+              <span className={`inline-flex px-2 py-0.5 rounded-full text-[11px] font-semibold border ${mixClass[mix]}`}>
+                {tm(invoiceLineMixLabelKey(mix))}
+              </span>
+            );
+          },
+        },
+      ),
     );
   }
 

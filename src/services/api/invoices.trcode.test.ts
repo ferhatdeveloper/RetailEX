@@ -74,6 +74,46 @@ describe('TRCODES_BY_INVOICE_CATEGORY — kategori başına trcode listesi', () 
     expect(TRCODES_BY_INVOICE_CATEGORY.Alis).toContain(5);
   });
 });
+
+describe('resolveInvoiceBalanceLedgerTarget — Alınan Hizmet tedarikçi cari', () => {
+  it('trcode 4 + Hizmet + veresiye → supplier (müşteri değil)', async () => {
+    const { resolveInvoiceBalanceLedgerTarget, invoiceIsPurchaseLedgerSide } = await import('./invoices');
+    const inv = {
+      invoice_category: 'Hizmet',
+      invoice_type: 4,
+      total_amount: 10000,
+      payment_method: 'credit',
+      customer_id: '00000000-0000-4000-a000-000000000099',
+    } as any;
+    expect(invoiceIsPurchaseLedgerSide(inv)).toBe(true);
+    expect(resolveInvoiceBalanceLedgerTarget(inv, 'credit')).toBe('supplier');
+    expect(resolveInvoiceBalanceLedgerTarget(inv, 'veresiye')).toBe('supplier');
+  });
+
+  it('trcode 9 + Hizmet + veresiye → customer (verilen hizmet)', async () => {
+    const { resolveInvoiceBalanceLedgerTarget, invoiceIsPurchaseLedgerSide } = await import('./invoices');
+    const inv = {
+      invoice_category: 'Hizmet',
+      invoice_type: 9,
+      total_amount: 10000,
+      payment_method: 'credit',
+    } as any;
+    expect(invoiceIsPurchaseLedgerSide(inv)).toBe(false);
+    expect(resolveInvoiceBalanceLedgerTarget(inv, 'credit')).toBe('customer');
+  });
+
+  it('peşin alınan hizmet → none (kasa, cari borç yok)', async () => {
+    const { resolveInvoiceBalanceLedgerTarget } = await import('./invoices');
+    const inv = {
+      invoice_category: 'Hizmet',
+      invoice_type: 4,
+      total_amount: 10000,
+      payment_method: 'cash',
+    } as any;
+    expect(resolveInvoiceBalanceLedgerTarget(inv, 'cash')).toBe('none');
+  });
+});
+
 describe('excludedSiblingReturnTrcodes — satış/alış iade ayrımı', () => {
   it('invoiceType 3 (satış iade) alış iade trcode 6 hariç tutar', () => {
     expect(excludedSiblingReturnTrcodes(3)).toEqual([6]);

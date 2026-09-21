@@ -667,18 +667,59 @@ function resolveTrcodeFromInvoice(inv: Invoice): number {
       return 8;
     case 'Iade':
       return 3;
+    case 'Hizmet':
+      return 9;
     default:
       return 8;
   }
 }
 
+/** Alış / Alınan Hizmet (trcode 4) / Alış İade — tedarikçi cari tarafı */
+export function invoiceIsPurchaseLedgerSide(inv: Invoice): boolean {
+  return isInvoicePurchaseSide({
+    category: inv.invoice_category,
+    code: resolveTrcodeFromInvoice(inv),
+    name: String((inv as { invoice_type_name?: string }).invoice_type_name || ''),
+  });
+}
+
+/** Veresiye faturada bakiye hangi tabloya yazılır */
+export function resolveInvoiceBalanceLedgerTarget(
+  inv: Invoice,
+  paymentMethod?: string | null,
+): 'supplier' | 'customer' | 'none' {
+  const pm = paymentMethod ?? (inv as { payment_method?: string }).payment_method;
+  const trcode = resolveTrcodeFromInvoice(inv);
+  const ficheType = deriveFicheTypeFromTrcode(trcode);
+  if (invoiceIsPurchaseLedgerSide(inv) && paymentMethodImpliesSupplierDebt(pm)) {
+    return 'supplier';
+  }
+  if (
+    (inv.invoice_category === 'Satis' ||
+      (inv.invoice_category === 'Hizmet' && !invoiceIsPurchaseLedgerSide(inv))) &&
+    paymentMethodImpliesCustomerDebt(pm)
+  ) {
+    return 'customer';
+  }
+  if (inv.invoice_category === 'Iade' && (trcode === 3 || ficheType === 'return_invoice')) {
+    return 'customer';
+  }
+  return 'none';
+}
+
 /** Alış faturasında tedarikçi borcuna yazılacak tutar — promosyon/indirim satırları hariç */
 export function computeInvoiceSupplierPayableAmount(inv: Invoice): number {
-  if (inv.invoice_category !== 'Alis') return Number(inv.total_amount || 0);
+  if (!invoiceIsPurchaseLedgerSide(inv)) return Number(inv.total_amount || 0);
   if (inv.items?.length) {
     return inv.items.reduce((sum, item) => sum + invoiceLinePayableNetAmount(item as any), 0);
   }
   return Number(inv.total_amount || 0);
+}
+
+function invoiceLedgerBalanceAmount(inv: Invoice): number {
+  return invoiceIsPurchaseLedgerSide(inv)
+    ? computeInvoiceSupplierPayableAmount(inv)
+    : Number(inv.total_amount || 0);
 }
 
 function invoiceItemAffectsStock(item: Record<string, unknown>, category: string | undefined): boolean {
@@ -744,17 +785,14 @@ async function applyInvoiceBalanceSideEffectsSql(
   const accountId = inv.customer_id || inv.supplier_id;
   const salePm = (inv as any).payment_method as string | undefined;
   if (!accountId || !isValidUuid(String(accountId))) return;
-  const baseAmt =
-    inv.invoice_category === 'Alis' ? computeInvoiceSupplierPayableAmount(inv) : Number(inv.total_amount || 0);
+  const baseAmt = invoiceLedgerBalanceAmount(inv);
   if (!baseAmt || Number.isNaN(baseAmt)) return;
   const amount = baseAmt * mult;
   const trcode = resolveTrcodeFromInvoice(inv);
   const ficheType = deriveFicheTypeFromTrcode(trcode);
+  const target = resolveInvoiceBalanceLedgerTarget(inv, salePm);
 
-  if (
-    (inv.invoice_category === 'Satis' || inv.invoice_category === 'Hizmet')
-    && paymentMethodImpliesCustomerDebt(salePm)
-  ) {
+  if (target === 'customer' && inv.invoice_category !== 'Iade') {
     await postgres
       .query(
         `UPDATE customers SET balance = COALESCE(balance, 0) + $1::numeric WHERE id = $2::uuid AND firm_nr = $3`,
@@ -762,7 +800,7 @@ async function applyInvoiceBalanceSideEffectsSql(
         queryOpts
       )
       .catch(() => {});
-  } else if (inv.invoice_category === 'Alis' && paymentMethodImpliesSupplierDebt(salePm)) {
+  } else if (target === 'supplier') {
     await postgres
       .query(`UPDATE suppliers SET balance = COALESCE(balance, 0) + $1::numeric WHERE id = $2::uuid`, [amount, accountId], queryOpts)
       .catch(() => {});
@@ -791,18 +829,18 @@ async function applyInvoiceBalanceSideEffectsSql(
 async function revertInvoiceBalanceUpdatesRestApi(inv: Invoice, firmNr: string): Promise<void> {
   const accountId = inv.customer_id || inv.supplier_id;
   if (!accountId || !isValidUuid(String(accountId))) return;
-  const amt =
-    inv.invoice_category === 'Alis' ? computeInvoiceSupplierPayableAmount(inv) : Number(inv.total_amount || 0);
+  const amt = invoiceLedgerBalanceAmount(inv);
   if (!amt || Number.isNaN(amt)) return;
   const trcode = resolveTrcodeFromInvoice(inv);
   const ficheType = deriveFicheTypeFromTrcode(trcode);
   const salePm = (inv as any).payment_method as string | undefined;
+  const target = resolveInvoiceBalanceLedgerTarget(inv, salePm);
 
-  if ((inv.invoice_category === 'Satis' || inv.invoice_category === 'Hizmet') && paymentMethodImpliesCustomerDebt(salePm)) {
+  if (target === 'customer' && inv.invoice_category !== 'Iade') {
     await customerAPI.addBalance(accountId, -amt);
     return;
   }
-  if (inv.invoice_category === 'Alis' && paymentMethodImpliesSupplierDebt(salePm)) {
+  if (target === 'supplier') {
     await adjustSupplierBalanceDeltaPostgrest(accountId, -amt, firmNr);
     return;
   }
@@ -1655,19 +1693,14 @@ async function applyInvoiceBalanceUpdatesRestApi(
   const accountId = invoice.customer_id || invoice.supplier_id;
   const salePm = (invoice as any).payment_method as string | undefined;
   if (!accountId || !isValidUuid(accountId)) return;
-  const amount =
-    invoice.invoice_category === 'Alis'
-      ? computeInvoiceSupplierPayableAmount(invoice)
-      : Number(invoice.total_amount || 0);
+  const amount = invoiceLedgerBalanceAmount(invoice);
+  const target = resolveInvoiceBalanceLedgerTarget(invoice, salePm);
 
-  if (
-    (invoice.invoice_category === 'Satis' || invoice.invoice_category === 'Hizmet')
-    && paymentMethodImpliesCustomerDebt(salePm)
-  ) {
+  if (target === 'customer' && invoice.invoice_category !== 'Iade') {
     await customerAPI.addBalance(accountId, amount);
     return;
   }
-  if (invoice.invoice_category === 'Alis' && paymentMethodImpliesSupplierDebt(salePm)) {
+  if (target === 'supplier') {
     await adjustSupplierBalanceDeltaPostgrest(accountId, amount, firmNr);
     return;
   }
@@ -2253,23 +2286,18 @@ export const invoicesAPI = {
       const accountId = invoice.customer_id || invoice.supplier_id;
       const salePm = (invoice as any).payment_method as string | undefined;
       if (accountId && isValidUuid(accountId)) {
-        const amount =
-          invoice.invoice_category === 'Alis'
-            ? computeInvoiceSupplierPayableAmount(invoice)
-            : Number(invoice.total_amount || 0);
+        const amount = invoiceLedgerBalanceAmount(invoice);
+        const target = resolveInvoiceBalanceLedgerTarget(invoice, salePm);
 
-        if (
-          (invoice.invoice_category === 'Satis' || invoice.invoice_category === 'Hizmet')
-          && paymentMethodImpliesCustomerDebt(salePm)
-        ) {
-          // Veresiye satış: müşteri borcu artar
+        if (target === 'customer' && invoice.invoice_category !== 'Iade') {
+          // Veresiye satış / verilen hizmet: müşteri borcu artar
           await postgres.query(
             `UPDATE customers SET balance = COALESCE(balance, 0) + $1::numeric WHERE id = $2::uuid AND firm_nr = $3`,
             [amount, accountId, firmNr],
             queryOptions
           ).catch(() => { }); // Müşteri bulunamazsa sessizce geç
-        } else if (invoice.invoice_category === 'Alis' && paymentMethodImpliesSupplierDebt(salePm)) {
-          // Alış: yalnızca açık hesap / veresiye — peşin alışta tedarikçi borcu yazılmaz
+        } else if (target === 'supplier') {
+          // Alış / alınan hizmet: yalnızca açık hesap / veresiye — peşin alışta tedarikçi borcu yazılmaz
           await postgres.query(
             `UPDATE suppliers SET balance = COALESCE(balance, 0) + $1::numeric WHERE id = $2::uuid`,
             [amount, accountId],
@@ -3811,12 +3839,10 @@ export const invoicesAPI = {
       const saleQueryOpts = { firmNr: saleFirmNr, periodNr: salePeriodNr };
       if (invoice) {
         const accountId = invoice.customer_id || invoice.supplier_id;
-        const amount = Number(invoice.total_amount || invoice.total || 0);
+        const amount = invoiceLedgerBalanceAmount(invoice);
+        const target = resolveInvoiceBalanceLedgerTarget(invoice, invoice.payment_method);
         if (accountId && isValidUuid(accountId) && amount > 0) {
-          if (
-            (invoice.invoice_category === 'Satis' || invoice.invoice_category === 'Hizmet')
-            && paymentMethodImpliesCustomerDebt(invoice.payment_method)
-          ) {
+          if (target === 'customer' && invoice.invoice_category !== 'Iade') {
             if (DB_SETTINGS.connectionProvider === 'rest_api') {
               await customerAPI.addBalance(accountId, -amount).catch(() => { });
             } else {
@@ -3826,7 +3852,7 @@ export const invoicesAPI = {
                 saleQueryOpts
               ).catch(() => { });
             }
-          } else if (invoice.invoice_category === 'Alis' && paymentMethodImpliesSupplierDebt(invoice.payment_method)) {
+          } else if (target === 'supplier') {
             if (DB_SETTINGS.connectionProvider === 'rest_api') {
               try {
                 const { postgrest } = await import('./postgrestClient');
