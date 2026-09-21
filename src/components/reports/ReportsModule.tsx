@@ -111,11 +111,7 @@ import {
   subscribeReportMenuParams,
   type ReportMenuParams,
 } from '../../services/reportMenuParamsService';
-import { ReportColumnFilters, type ReportColumnFilterDef } from './shared/ReportColumnFilters';
-import { useReportColumnFiltersPool } from './shared/useReportColumnFilters';
-import { ReportFilterBar } from './shared/ReportFilterBar';
-import { ReportTableFooter } from './shared/ReportTableFooter';
-import { Layout, Menu, ConfigProvider, theme, Input, Button, Dropdown, Modal, Table, Spin, Select } from 'antd';
+import { Layout, Menu, ConfigProvider, theme, Input, Button, Dropdown, Modal, Spin, Select } from 'antd';
 import { toast } from 'sonner';
 import { usePermission } from '../../shared/hooks/usePermission';
 import { useResponsive } from '../../hooks/useResponsive';
@@ -1291,12 +1287,6 @@ export function ReportsModule({
   const [beautyMainCategoryFilter, setBeautyMainCategoryFilter] = useState('');
   const [beautySubCategoryFilter, setBeautySubCategoryFilter] = useState('');
 
-  /**
-   * Tüm rapor tabloları için kolon-bazlı filtre state pool'u.
-   * Her rapor sekmesi (selectedTab) kendi filtre sözlüğünü paylaşımsız tutar.
-   * Bileşen render edildiğinde `rpt = reportFilters.forTab(selectedTab)` ile API alınır.
-   */
-  const reportFilters = useReportColumnFiltersPool();
   const [beautyStaffTreatmentFrom, setBeautyStaffTreatmentFrom] = useState(() => {
     const d = new Date();
     d.setDate(1);
@@ -5440,10 +5430,12 @@ export function ReportsModule({
                 />
               )}
               <div className="min-w-0 flex-1">
-                <h1 className="text-lg sm:text-xl font-black text-slate-800 flex items-center gap-2 leading-tight">
+                <h1 className={`font-black text-slate-800 flex items-center gap-2 leading-tight ${selectedTab === 'profit-loss' ? 'text-base sm:text-lg' : 'text-lg sm:text-xl'}`}>
                   {allMenuItems.flatMap(g => g.children).find(i => i?.key === selectedTab)?.label || tm('report')}
                 </h1>
-                <p className="text-xs text-slate-500 font-medium mt-0.5">{tm('checkDataAndPerformance')}</p>
+                {selectedTab !== 'profit-loss' ? (
+                  <p className="text-xs text-slate-500 font-medium mt-0.5">{tm('checkDataAndPerformance')}</p>
+                ) : null}
               </div>
             </div>
             <div className="flex flex-wrap items-center gap-2 sm:gap-3 w-full sm:w-auto justify-end">
@@ -6140,55 +6132,66 @@ export function ReportsModule({
                           <span className="text-lg">{formatNumber(zReport.creditAmount ?? 0, 2, false)}</span>
                         </div>
                         {(zReport.cashierStats?.length ?? 0) > 0 && (
-                          <div className="mt-4 overflow-x-auto">
+                          <div className="mt-4">
                             <h4 className="text-sm text-gray-600 mb-3">Kasiyer / personel cirosu</h4>
-                            <table className="w-full text-sm min-w-[640px]">
-                              <thead>
-                                <ReportColumnFilters
-                                  columns={[
-                                    { key: 'name', label: tm('cashierLabel'), type: 'text', width: 'min-w-[140px]' },
-                                    { key: 'salesCount', label: tm('reportsThReceipts'), type: 'number', align: 'right', width: 'min-w-[100px]' },
-                                    { key: 'grossRevenue', label: tm('reportsThGross'), type: 'number', align: 'right', width: 'min-w-[120px]' },
-                                    { key: 'returnTotal', label: tm('reportsThReturn'), type: 'number', align: 'right', width: 'min-w-[120px]' },
-                                    { key: 'netRevenue', label: tm('reportsThNet'), type: 'number', align: 'right', width: 'min-w-[120px]' },
-                                  ]}
-                                  values={reportFilters.forTab('z-report').values}
-                                  onFilterChange={reportFilters.forTab('z-report').setFilter}
-                                  onClear={reportFilters.forTab('z-report').clearAll}>
-                                <tr className="text-left text-xs text-gray-500 border-b">
-                                  <th className="py-2 pr-3">Kasiyer</th>
-                                  <th className="py-2 pr-3 text-right">Fiş</th>
-                                  <th className="py-2 pr-3 text-right">Brüt</th>
-                                  <th className="py-2 pr-3 text-right">İade</th>
-                                  <th className="py-2 text-right">Net</th>
-                                </tr>
-                                </ReportColumnFilters>
-                              </thead>
-                              <tbody>
-                                {(() => {
-                                  const rpt = reportFilters.forTab('z-report');
-                                  const visibleRows = rpt.filtered(zReport.cashierStats as any);
-                                  if (visibleRows.length === 0) {
-                                    return (
-                                      <tr>
-                                        <td colSpan={5} className="py-6 text-center text-slate-500 text-sm">
-                                          {tm('noDataFound')}
-                                        </td>
-                                      </tr>
-                                    );
-                                  }
-                                  return visibleRows.map((row: any) => (
-                                  <tr key={row.name} className="border-b border-gray-100 last:border-0">
-                                    <td className="py-2 pr-3 font-medium">{row.name}</td>
-                                    <td className="py-2 pr-3 text-right tabular-nums">{row.salesCount}</td>
-                                    <td className="py-2 pr-3 text-right tabular-nums">{formatNumber(row.grossRevenue, 2, false)}</td>
-                                    <td className="py-2 pr-3 text-right tabular-nums text-red-600">{formatNumber(row.returnTotal, 2, false)}</td>
-                                    <td className="py-2 text-right tabular-nums font-semibold">{formatNumber(row.netRevenue, 2, false)}</td>
-                                  </tr>
-                                  ));
-                                })()}
-                              </tbody>
-                            </table>
+                            <ReportColumnTable
+                              data={(zReport.cashierStats ?? []) as Array<{
+                                name: string;
+                                salesCount: number;
+                                grossRevenue: number;
+                                returnTotal: number;
+                                netRevenue: number;
+                              }>}
+                              height={320}
+                              storageNamespace="z-report-cashiers"
+                              footerLabel={tm('reportsTotalsRow')}
+                              columns={[
+                                { key: 'name', header: tm('cashierLabel'), size: 160 },
+                                {
+                                  key: 'salesCount',
+                                  header: tm('reportsThReceipts'),
+                                  type: 'number',
+                                  align: 'right',
+                                  size: 100,
+                                  footerSum: true,
+                                  cell: (row) => formatNumber(row.salesCount, 0, false),
+                                },
+                                {
+                                  key: 'grossRevenue',
+                                  header: tm('reportsThGross'),
+                                  type: 'number',
+                                  align: 'right',
+                                  size: 120,
+                                  footerSum: true,
+                                  footerFormat: (n) => formatLedgerAmount(n, reportCurrency),
+                                  cell: (row) => formatNumber(row.grossRevenue, 2, false),
+                                },
+                                {
+                                  key: 'returnTotal',
+                                  header: tm('reportsThReturn'),
+                                  type: 'number',
+                                  align: 'right',
+                                  size: 120,
+                                  footerSum: true,
+                                  footerFormat: (n) => formatLedgerAmount(n, reportCurrency),
+                                  cell: (row) => (
+                                    <span className="text-red-600">{formatNumber(row.returnTotal, 2, false)}</span>
+                                  ),
+                                },
+                                {
+                                  key: 'netRevenue',
+                                  header: tm('reportsThNet'),
+                                  type: 'number',
+                                  align: 'right',
+                                  size: 120,
+                                  footerSum: true,
+                                  footerFormat: (n) => formatLedgerAmount(n, reportCurrency),
+                                  cell: (row) => (
+                                    <span className="font-semibold">{formatNumber(row.netRevenue, 2, false)}</span>
+                                  ),
+                                },
+                              ]}
+                            />
                           </div>
                         )}
                       </div>
@@ -6214,7 +6217,6 @@ export function ReportsModule({
             )}
 
             {selectedTab === 'cashiers' && (() => {
-              const rpt = reportFilters.forTab('cashiers');
               const rows = cashierPerformance.map((c) => ({
                 name: c.name,
                 salesCount: c.salesCount,
@@ -6223,95 +6225,90 @@ export function ReportsModule({
                 cashSales: c.cashSales,
                 cardSales: c.cardSales,
               }));
-              const visible = rpt.filtered(rows);
               return (
                 <div className="bg-white rounded-lg border">
                   <div className="p-4 border-b">
                     <h3 className="text-lg">{tm('cashierPerformanceReport')}</h3>
                   </div>
-                  <div className="overflow-x-auto overflow-y-auto max-h-[600px]" style={{ scrollbarWidth: 'thin', scrollbarColor: '#cbd5e1 #f1f5f9' }}>
-                    <table className="w-full min-w-[800px]">
-                      <thead className="bg-gray-50 border-b sticky top-0">
-                        <ReportColumnFilters
-                          columns={[
-                            { key: 'name', label: tm('cashierLabel'), type: 'text', align: 'left', width: 'min-w-[160px]' },
-                            { key: 'salesCount', label: tm('transactionCount'), type: 'number', align: 'right', width: 'min-w-[120px]' },
-                            { key: 'totalRevenue', label: tm('totalRevenueLabel'), type: 'number', align: 'right', width: 'min-w-[140px]' },
-                            { key: 'avgSale', label: tm('avgSaleLabel'), type: 'number', align: 'right', width: 'min-w-[140px]' },
-                            { key: 'cashSales', label: tm('cashLabel'), type: 'number', align: 'right', width: 'min-w-[120px]' },
-                            { key: 'cardSales', label: tm('cardLabel'), type: 'number', align: 'right', width: 'min-w-[120px]' },
-                          ]}
-                          values={rpt.values}
-                          onFilterChange={rpt.setFilter}
-                          onClear={rpt.clearAll}>
-                        <tr>
-                          <th className="px-4 py-3 text-left text-sm">{tm('cashierLabel')}</th>
-                          <th className="px-4 py-3 text-right text-sm">{tm('transactionCount')}</th>
-                          <th className="px-4 py-3 text-right text-sm">{tm('totalRevenueLabel')}</th>
-                          <th className="px-4 py-3 text-right text-sm">{tm('avgSaleLabel')}</th>
-                          <th className="px-4 py-3 text-right text-sm">{tm('cashLabel')}</th>
-                          <th className="px-4 py-3 text-right text-sm">{tm('cardLabel')}</th>
-                        </tr>
-                        </ReportColumnFilters>
-                      </thead>
-                      <tbody className="divide-y">
-                        {visible.length === 0 ? (
-                          <tr>
-                            <td colSpan={6} className="px-4 py-10 text-center text-slate-500 text-sm">
-                              {tm('noDataFound')}
-                            </td>
-                          </tr>
-                        ) : (
-                          visible.map((cashier) => (
-                            <tr key={cashier.name} className="hover:bg-gray-50">
-                              <td className="px-4 py-3">
-                                <div className="flex items-center gap-2">
-                                  <div className="w-8 h-8 bg-blue-600 rounded flex items-center justify-center text-white text-sm">
-                                    {cashier.name && cashier.name.length > 0 ? cashier.name.charAt(0).toUpperCase() : '?'}
-                                  </div>
-                                  <span>{cashier.name}</span>
-                                </div>
-                              </td>
-                              <td className="px-4 py-3 text-right">
-                                <span className="px-2 py-1 bg-blue-100 text-blue-700 rounded text-sm">
-                                  {cashier.salesCount}
-                                </span>
-                              </td>
-                              <td className="px-4 py-3 text-right text-lg text-green-600">
-                                {formatNumber(cashier.totalRevenue, 2, false)}
-                              </td>
-                              <td className="px-4 py-3 text-right text-sm">
-                                {formatNumber(cashier.avgSale, 2, false)}
-                              </td>
-                              <td className="px-4 py-3 text-right text-sm">
-                                {formatNumber(cashier.cashSales, 2, false)}
-                              </td>
-                              <td className="px-4 py-3 text-right text-sm">
-                                {formatNumber(cashier.cardSales, 2, false)}
-                              </td>
-                            </tr>
-                          ))
-                        )}
-                      </tbody>
-                      <ReportTableFooter
-                        rows={visible}
-                        columns={[
-                          { key: 'name', label: tm('cashierLabel'), align: 'left' },
-                          { key: 'salesCount', label: tm('transactionCount'), aggregate: 'sum', align: 'right' },
-                          { key: 'totalRevenue', label: tm('totalRevenueLabel'), aggregate: 'sum', align: 'right', formatter: (v) => `${formatNumber(v, 2, false)} ${reportCurrency}` },
-                          { key: 'avgSale', label: tm('avgSaleLabel'), aggregate: 'avg', align: 'right', formatter: (v) => `${formatNumber(v, 2, false)} ${reportCurrency}` },
-                          { key: 'cashSales', label: tm('cashLabel'), aggregate: 'sum', align: 'right', formatter: (v) => `${formatNumber(v, 2, false)} ${reportCurrency}` },
-                          { key: 'cardSales', label: tm('cardLabel'), aggregate: 'sum', align: 'right', formatter: (v) => `${formatNumber(v, 2, false)} ${reportCurrency}` },
-                        ]}
-                      />
-                    </table>
+                  <div className="p-2">
+                    <ReportColumnTable
+                      data={rows}
+                      height={560}
+                      storageNamespace="cashiers"
+                      footerLabel={tm('reportsTotalsRow')}
+                      columns={[
+                        {
+                          key: 'name',
+                          header: tm('cashierLabel'),
+                          size: 180,
+                          cell: (cashier) => (
+                            <div className="flex items-center gap-2">
+                              <div className="w-8 h-8 bg-blue-600 rounded flex items-center justify-center text-white text-sm">
+                                {cashier.name && cashier.name.length > 0 ? cashier.name.charAt(0).toUpperCase() : '?'}
+                              </div>
+                              <span>{cashier.name}</span>
+                            </div>
+                          ),
+                        },
+                        {
+                          key: 'salesCount',
+                          header: tm('transactionCount'),
+                          type: 'number',
+                          align: 'right',
+                          size: 120,
+                          footerSum: true,
+                          cell: (row) => (
+                            <span className="px-2 py-1 bg-blue-100 text-blue-700 rounded text-sm">{row.salesCount}</span>
+                          ),
+                        },
+                        {
+                          key: 'totalRevenue',
+                          header: tm('totalRevenueLabel'),
+                          type: 'number',
+                          align: 'right',
+                          size: 140,
+                          footerSum: true,
+                          footerFormat: (n) => formatLedgerAmount(n, reportCurrency),
+                          cell: (row) => (
+                            <span className="text-lg text-green-600">{formatNumber(row.totalRevenue, 2, false)}</span>
+                          ),
+                        },
+                        {
+                          key: 'avgSale',
+                          header: tm('avgSaleLabel'),
+                          type: 'number',
+                          align: 'right',
+                          size: 140,
+                          cell: (row) => formatNumber(row.avgSale, 2, false),
+                        },
+                        {
+                          key: 'cashSales',
+                          header: tm('cashLabel'),
+                          type: 'number',
+                          align: 'right',
+                          size: 120,
+                          footerSum: true,
+                          footerFormat: (n) => formatLedgerAmount(n, reportCurrency),
+                          cell: (row) => formatNumber(row.cashSales, 2, false),
+                        },
+                        {
+                          key: 'cardSales',
+                          header: tm('cardLabel'),
+                          type: 'number',
+                          align: 'right',
+                          size: 120,
+                          footerSum: true,
+                          footerFormat: (n) => formatLedgerAmount(n, reportCurrency),
+                          cell: (row) => formatNumber(row.cardSales, 2, false),
+                        },
+                      ]}
+                    />
                   </div>
                 </div>
               );
             })()}
 
             {selectedTab === 'top-products' && (() => {
-              const rpt = reportFilters.forTab('top-products');
               const topProductsAll = getTopProducts(20);
               const rows = topProductsAll.map((p) => ({
                 id: p.id,
@@ -6323,7 +6320,6 @@ export function ReportsModule({
                 avgPrice: p.avgPrice,
                 stock: p.stock,
               }));
-              const visible = rpt.filtered(rows);
               return (
                 <div className="space-y-4">
                   <div className="bg-white rounded-lg border p-4">
@@ -6336,84 +6332,84 @@ export function ReportsModule({
                         Seçili güne ait satış kalemi yok. Tarihi değiştirin veya restoran modunda kapalı siparişlerin yüklendiğinden emin olun.
                       </p>
                     ) : (
-                    <div className="overflow-x-auto overflow-y-auto max-h-[600px]" style={{ scrollbarWidth: 'thin', scrollbarColor: '#cbd5e1 #f1f5f9' }}>
-                      <table className="w-full min-w-[900px]">
-                        <thead className="bg-gray-50 border-b sticky top-0">
-                          <ReportColumnFilters
-                            columns={[
-                              { key: 'rank', label: tm('rankLabel'), type: 'number', align: 'right', width: 'min-w-[90px]' },
-                              { key: 'name', label: tm('productNameLabel'), type: 'text', width: 'min-w-[180px]' },
-                              { key: 'category', label: tm('categoryLabel'), type: 'text', width: 'min-w-[140px]' },
-                              { key: 'quantity', label: tm('salesQuantityLabel'), type: 'number', align: 'right', width: 'min-w-[120px]' },
-                              { key: 'revenue', label: tm('totalRevenueLabel'), type: 'number', align: 'right', width: 'min-w-[140px]' },
-                              { key: 'avgPrice', label: tm('avgPriceLabel'), type: 'number', align: 'right', width: 'min-w-[120px]' },
-                              { key: 'stock', label: tm('stockLabel'), type: 'number', align: 'right', width: 'min-w-[110px]' },
-                            ]}
-                            values={rpt.values}
-                            onFilterChange={rpt.setFilter}
-                            onClear={rpt.clearAll}>
-                          <tr>
-                            <th className="px-4 py-3 text-left text-sm">{tm('rankLabel')}</th>
-                            <th className="px-4 py-3 text-left text-sm">{tm('productNameLabel')}</th>
-                            <th className="px-4 py-3 text-left text-sm">{tm('categoryLabel')}</th>
-                            <th className="px-4 py-3 text-right text-sm">{tm('salesQuantityLabel')}</th>
-                            <th className="px-4 py-3 text-right text-sm">{tm('totalRevenueLabel')}</th>
-                            <th className="px-4 py-3 text-right text-sm">{tm('avgPriceLabel')}</th>
-                            <th className="px-4 py-3 text-right text-sm">{tm('stockLabel')}</th>
-                          </tr>
-                          </ReportColumnFilters>
-                        </thead>
-                        <tbody className="divide-y">
-                          {visible.length === 0 ? (
-                            <tr>
-                              <td colSpan={7} className="px-4 py-10 text-center text-slate-500 text-sm">
-                                {tm('noDataFound')}
-                              </td>
-                            </tr>
-                          ) : (
-                            visible.map((product) => (
-                              <tr key={product.id} className="hover:bg-gray-50">
-                                <td className="px-4 py-3">
-                                  <div className={`w-8 h-8 rounded flex items-center justify-center text-white text-sm font-bold ${product.rank <= 3 ? 'bg-yellow-500' : 'bg-gray-400'
-                                    }`}>
-                                    {product.rank}
-                                  </div>
-                                </td>
-                                <td className="px-4 py-3 font-medium">{product.name}</td>
-                                <td className="px-4 py-3 text-sm text-gray-600">{product.category}</td>
-                                <td className="px-4 py-3 text-right">
-                                  <span className="px-2 py-1 bg-blue-100 text-blue-700 rounded text-sm font-semibold">
-                                    {product.quantity}
-                                  </span>
-                                </td>
-                                <td className="px-4 py-3 text-right text-green-600 font-semibold">
-                                  {formatNumber(product.revenue, 2, false)} {reportCurrency}
-                                </td>
-                                <td className="px-4 py-3 text-right text-sm">{formatNumber(product.avgPrice, 2, false)} {reportCurrency}</td>
-                                <td className="px-4 py-3 text-right">
-                                  <span className={`px-2 py-1 rounded text-sm ${product.stock < 30 ? 'bg-red-100 text-red-700' : 'bg-green-100 text-green-700'
-                                    }`}>
-                                    {product.stock}
-                                  </span>
-                                </td>
-                              </tr>
-                            ))
-                          )}
-                        </tbody>
-                        <ReportTableFooter
-                          rows={visible}
-                          columns={[
-                            { key: 'rank', label: tm('rankLabel'), align: 'center' },
-                            { key: 'name', label: tm('productNameLabel'), align: 'left' },
-                            { key: 'category', label: tm('categoryLabel'), align: 'left' },
-                            { key: 'quantity', label: tm('salesQuantityLabel'), aggregate: 'sum', align: 'right' },
-                            { key: 'revenue', label: tm('totalRevenueLabel'), aggregate: 'sum', align: 'right', formatter: (v) => `${formatNumber(v, 2, false)} ${reportCurrency}` },
-                            { key: 'avgPrice', label: tm('avgPriceLabel'), aggregate: 'avg', align: 'right', formatter: (v) => `${formatNumber(v, 2, false)} ${reportCurrency}` },
-                            { key: 'stock', label: tm('stockLabel'), aggregate: 'sum', align: 'right' },
-                          ]}
-                        />
-                      </table>
-                    </div>
+                      <ReportColumnTable
+                        data={rows}
+                        height={560}
+                        storageNamespace="top-products"
+                        footerLabel={tm('reportsTotalsRow')}
+                        columns={[
+                          {
+                            key: 'rank',
+                            header: tm('rankLabel'),
+                            type: 'number',
+                            align: 'center',
+                            size: 90,
+                            cell: (product) => (
+                              <div
+                                className={`w-8 h-8 rounded flex items-center justify-center text-white text-sm font-bold ${
+                                  product.rank <= 3 ? 'bg-yellow-500' : 'bg-gray-400'
+                                }`}
+                              >
+                                {product.rank}
+                              </div>
+                            ),
+                          },
+                          { key: 'name', header: tm('productNameLabel'), size: 180 },
+                          { key: 'category', header: tm('categoryLabel'), size: 140 },
+                          {
+                            key: 'quantity',
+                            header: tm('salesQuantityLabel'),
+                            type: 'number',
+                            align: 'right',
+                            size: 120,
+                            footerSum: true,
+                            cell: (row) => (
+                              <span className="px-2 py-1 bg-blue-100 text-blue-700 rounded text-sm font-semibold">
+                                {row.quantity}
+                              </span>
+                            ),
+                          },
+                          {
+                            key: 'revenue',
+                            header: tm('totalRevenueLabel'),
+                            type: 'number',
+                            align: 'right',
+                            size: 140,
+                            footerSum: true,
+                            footerFormat: (n) => formatLedgerAmount(n, reportCurrency),
+                            cell: (row) => (
+                              <span className="text-green-600 font-semibold">
+                                {formatNumber(row.revenue, 2, false)} {reportCurrency}
+                              </span>
+                            ),
+                          },
+                          {
+                            key: 'avgPrice',
+                            header: tm('avgPriceLabel'),
+                            type: 'number',
+                            align: 'right',
+                            size: 120,
+                            cell: (row) => `${formatNumber(row.avgPrice, 2, false)} ${reportCurrency}`,
+                          },
+                          {
+                            key: 'stock',
+                            header: tm('stockLabel'),
+                            type: 'number',
+                            align: 'right',
+                            size: 110,
+                            footerSum: true,
+                            cell: (row) => (
+                              <span
+                                className={`px-2 py-1 rounded text-sm ${
+                                  row.stock < 30 ? 'bg-red-100 text-red-700' : 'bg-green-100 text-green-700'
+                                }`}
+                              >
+                                {row.stock}
+                              </span>
+                            ),
+                          },
+                        ]}
+                      />
                     )}
                   </div>
                 </div>
@@ -6465,88 +6461,85 @@ export function ReportsModule({
                         {tm('categoryPerformance')}
                       </h3>
                       {(() => {
-                        const rpt = reportFilters.forTab('category-analysis');
-                        const rows = categories.map((c) => ({
+                        const rows = categories.map((c, idx) => ({
                           name: c.name,
                           totalRevenue: c.totalRevenue,
                           totalQuantity: c.totalQuantity,
                           productCount: c.productCount,
                           avgPrice: c.avgPrice,
+                          colorIdx: idx,
                         }));
-                        const visible = rpt.filtered(rows);
                         return (
-                          <div className="overflow-x-auto overflow-y-auto max-h-[300px]" style={{ scrollbarWidth: 'thin', scrollbarColor: '#cbd5e1 #f1f5f9' }}>
-                            <table className="w-full min-w-[700px]">
-                              <thead className="bg-gray-50 border-b sticky top-0">
-                                <ReportColumnFilters
-                                  columns={[
-                                    { key: 'name', label: tm('categoryLabel'), type: 'text', width: 'min-w-[180px]' },
-                                    { key: 'totalRevenue', label: tm('totalRevenueLabel'), type: 'number', align: 'right', width: 'min-w-[140px]' },
-                                    { key: 'productCount', label: tm('erpColSkuCount'), type: 'number', align: 'right', width: 'min-w-[100px]' },
-                                    { key: 'totalQuantity', label: tm('salesQuantityLabel'), type: 'number', align: 'right', width: 'min-w-[120px]' },
-                                    { key: 'avgPrice', label: tm('avgPriceLabel'), type: 'number', align: 'right', width: 'min-w-[120px]' },
-                                  ]}
-                                  values={rpt.values}
-                                  onFilterChange={rpt.setFilter}
-                                  onClear={rpt.clearAll}>
-                                <tr>
-                                  <th className="px-4 py-2 text-left text-sm">{tm('categoryLabel')}</th>
-                                  <th className="px-4 py-2 text-right text-sm">{tm('totalRevenueLabel')}</th>
-                                  <th className="px-4 py-2 text-right text-sm">{tm('erpColSkuCount')}</th>
-                                  <th className="px-4 py-2 text-right text-sm">{tm('salesQuantityLabel')}</th>
-                                  <th className="px-4 py-2 text-right text-sm">{tm('avgPriceLabel')}</th>
-                                </tr>
-                                </ReportColumnFilters>
-                              </thead>
-                              <tbody className="divide-y">
-                                {visible.length === 0 ? (
-                                  <tr>
-                                    <td colSpan={5} className="px-4 py-10 text-center text-slate-500 text-sm">
-                                      {tm('noDataFound')}
-                                    </td>
-                                  </tr>
-                                ) : (
-                                  visible.map((cat) => {
-                                    const idx = rows.findIndex((r) => r.name === cat.name);
-                                    return (
-                                      <tr key={cat.name} className="hover:bg-gray-50">
-                                        <td className="px-4 py-2">
-                                          <div className="flex items-center gap-2">
-                                            <div className="w-3 h-3 rounded" style={{ backgroundColor: COLORS[(idx >= 0 ? idx : 0) % COLORS.length] }}></div>
-                                            {cat.name}
-                                          </div>
-                                        </td>
-                                        <td className="px-4 py-2 text-right font-semibold text-green-600">
-                                          {formatNumber(cat.totalRevenue, 2, false)} {reportCurrency}
-                                        </td>
-                                        <td className="px-4 py-2 text-right">
-                                          <span className="px-2 py-1 bg-slate-100 text-slate-700 rounded text-sm">
-                                            {cat.productCount}
-                                          </span>
-                                        </td>
-                                        <td className="px-4 py-2 text-right">
-                                          <span className="px-2 py-1 bg-blue-100 text-blue-700 rounded text-sm">
-                                            {cat.totalQuantity}
-                                          </span>
-                                        </td>
-                                        <td className="px-4 py-2 text-right text-sm">{formatNumber(cat.avgPrice, 2, false)} {reportCurrency}</td>
-                                      </tr>
-                                    );
-                                  })
-                                )}
-                              </tbody>
-                              <ReportTableFooter
-                                rows={visible}
-                                columns={[
-                                  { key: 'name', label: tm('categoryLabel'), align: 'left' },
-                                  { key: 'totalRevenue', label: tm('totalRevenueLabel'), aggregate: 'sum', align: 'right', formatter: (v) => `${formatNumber(v, 2, false)} ${reportCurrency}` },
-                                  { key: 'productCount', label: tm('erpColSkuCount'), aggregate: 'sum', align: 'right' },
-                                  { key: 'totalQuantity', label: tm('salesQuantityLabel'), aggregate: 'sum', align: 'right' },
-                                  { key: 'avgPrice', label: tm('avgPriceLabel'), aggregate: 'avg', align: 'right', formatter: (v) => `${formatNumber(v, 2, false)} ${reportCurrency}` },
-                                ]}
-                              />
-                            </table>
-                          </div>
+                          <ReportColumnTable
+                            data={rows}
+                            height={320}
+                            storageNamespace="category-analysis"
+                            footerLabel={tm('reportsTotalsRow')}
+                            columns={[
+                              {
+                                key: 'name',
+                                header: tm('categoryLabel'),
+                                size: 180,
+                                cell: (cat) => (
+                                  <div className="flex items-center gap-2">
+                                    <div
+                                      className="w-3 h-3 rounded"
+                                      style={{ backgroundColor: COLORS[cat.colorIdx % COLORS.length] }}
+                                    />
+                                    {cat.name}
+                                  </div>
+                                ),
+                              },
+                              {
+                                key: 'totalRevenue',
+                                header: tm('totalRevenueLabel'),
+                                type: 'number',
+                                align: 'right',
+                                size: 140,
+                                footerSum: true,
+                                footerFormat: (n) => formatLedgerAmount(n, reportCurrency),
+                                cell: (row) => (
+                                  <span className="font-semibold text-green-600">
+                                    {formatNumber(row.totalRevenue, 2, false)} {reportCurrency}
+                                  </span>
+                                ),
+                              },
+                              {
+                                key: 'productCount',
+                                header: tm('erpColSkuCount'),
+                                type: 'number',
+                                align: 'right',
+                                size: 100,
+                                footerSum: true,
+                                cell: (row) => (
+                                  <span className="px-2 py-1 bg-slate-100 text-slate-700 rounded text-sm">
+                                    {row.productCount}
+                                  </span>
+                                ),
+                              },
+                              {
+                                key: 'totalQuantity',
+                                header: tm('salesQuantityLabel'),
+                                type: 'number',
+                                align: 'right',
+                                size: 120,
+                                footerSum: true,
+                                cell: (row) => (
+                                  <span className="px-2 py-1 bg-blue-100 text-blue-700 rounded text-sm">
+                                    {row.totalQuantity}
+                                  </span>
+                                ),
+                              },
+                              {
+                                key: 'avgPrice',
+                                header: tm('avgPriceLabel'),
+                                type: 'number',
+                                align: 'right',
+                                size: 120,
+                                cell: (row) => `${formatNumber(row.avgPrice, 2, false)} ${reportCurrency}`,
+                              },
+                            ]}
+                          />
                         );
                       })()}
                     </div>
@@ -6591,84 +6584,55 @@ export function ReportsModule({
                     <div className="p-4 border-b">
                       <h4 className="text-md">{tm('detailedHourlyData')}</h4>
                     </div>
-                    <div className="overflow-x-auto overflow-y-auto max-h-[600px]" style={{ scrollbarWidth: 'thin', scrollbarColor: '#cbd5e1 #f1f5f9' }}>
-                      <table className="w-full min-w-[700px]">
-                        <thead className="bg-gray-50 border-b sticky top-0">
-                          <ReportColumnFilters
-                            columns={[
-                              { key: 'label', label: tm('hourLabel'), type: 'text', width: 'min-w-[140px]' },
-                              { key: 'sales', label: tm('transactionCount'), type: 'number', align: 'right', width: 'min-w-[140px]' },
-                              { key: 'revenue', label: tm('totalRevenueLabel'), type: 'number', align: 'right', width: 'min-w-[140px]' },
-                              { key: 'avgSale', label: tm('avgSaleLabel'), type: 'number', align: 'right', width: 'min-w-[140px]' },
-                            ]}
-                            values={reportFilters.forTab('hourly-analysis').values}
-                            onFilterChange={reportFilters.forTab('hourly-analysis').setFilter}
-                            onClear={reportFilters.forTab('hourly-analysis').clearAll}>
-                          <tr>
-                            <th className="px-4 py-3 text-left text-sm">{tm('hourLabel')}</th>
-                            <th className="px-4 py-3 text-right text-sm">{tm('transactionCount')}</th>
-                            <th className="px-4 py-3 text-right text-sm">{tm('totalRevenueLabel')}</th>
-                            <th className="px-4 py-3 text-right text-sm">{tm('avgSaleLabel')}</th>
-                          </tr>
-                          </ReportColumnFilters>
-                        </thead>
-                        <tbody className="divide-y">
-                          {hourlyData.map((hour) => {
-                            const rpt = reportFilters.forTab('hourly-analysis');
-                            const row = {
-                              hour: hour.hour,
-                              label: hour.label,
-                              sales: hour.sales,
-                              revenue: hour.revenue,
-                              avgSale: hour.revenue && hour.sales ? hour.revenue / hour.sales : 0,
-                            };
-                            if (
-                              rpt.activeCount > 0 &&
-                              rpt.filtered([row]).length === 0
-                            ) {
-                              return null;
-                            }
-                            return (
-                              <tr key={hour.hour} className="hover:bg-gray-50">
-                                <td className="px-4 py-3 font-medium">{hour.label}</td>
-                                <td className="px-4 py-3 text-right">
-                                  <span className="px-2 py-1 bg-blue-100 text-blue-700 rounded text-sm">
-                                    {hour.sales}
-                                  </span>
-                                </td>
-                                <td className="px-4 py-3 text-right text-green-600 font-semibold">
-                                  {formatNumber(hour.revenue, 2, false)} {reportCurrency}
-                                </td>
-                                <td className="px-4 py-3 text-right text-sm">
-                                  {hour.sales > 0 ? formatNumber(hour.revenue / hour.sales, 2, false) : '0'} {reportCurrency}
-                                </td>
-                              </tr>
-                            );
-                          })}
-                        </tbody>
-                        {(() => {
-                          const rptFooter = reportFilters.forTab('hourly-analysis');
-                          const allHourlyRows = hourlyData.map((h) => ({
-                            hour: h.hour,
-                            label: h.label,
-                            sales: h.sales,
-                            revenue: h.revenue,
-                            avgSale: h.sales > 0 ? h.revenue / h.sales : 0,
-                          }));
-                          const visibleHourly = rptFooter.filtered(allHourlyRows);
-                          return (
-                            <ReportTableFooter
-                              rows={visibleHourly}
-                              columns={[
-                                { key: 'label', label: tm('hourLabel'), align: 'left' },
-                                { key: 'sales', label: tm('transactionCount'), aggregate: 'sum', align: 'right' },
-                                { key: 'revenue', label: tm('totalRevenueLabel'), aggregate: 'sum', align: 'right', formatter: (v) => `${formatNumber(v, 2, false)} ${reportCurrency}` },
-                                { key: 'avgSale', label: tm('avgSaleLabel'), aggregate: 'avg', align: 'right', formatter: (v) => `${formatNumber(v, 2, false)} ${reportCurrency}` },
-                              ]}
-                            />
-                          );
-                        })()}
-                      </table>
+                    <div className="p-2">
+                      <ReportColumnTable
+                        data={hourlyData.map((h) => ({
+                          hour: h.hour,
+                          label: h.label,
+                          sales: h.sales,
+                          revenue: h.revenue,
+                          avgSale: h.sales > 0 ? h.revenue / h.sales : 0,
+                        }))}
+                        height={480}
+                        storageNamespace="hourly-analysis"
+                        footerLabel={tm('reportsTotalsRow')}
+                        columns={[
+                          { key: 'label', header: tm('hourLabel'), size: 140 },
+                          {
+                            key: 'sales',
+                            header: tm('transactionCount'),
+                            type: 'number',
+                            align: 'right',
+                            size: 140,
+                            footerSum: true,
+                            cell: (row) => (
+                              <span className="px-2 py-1 bg-blue-100 text-blue-700 rounded text-sm">{row.sales}</span>
+                            ),
+                          },
+                          {
+                            key: 'revenue',
+                            header: tm('totalRevenueLabel'),
+                            type: 'number',
+                            align: 'right',
+                            size: 140,
+                            footerSum: true,
+                            footerFormat: (n) => formatLedgerAmount(n, reportCurrency),
+                            cell: (row) => (
+                              <span className="text-green-600 font-semibold">
+                                {formatNumber(row.revenue, 2, false)} {reportCurrency}
+                              </span>
+                            ),
+                          },
+                          {
+                            key: 'avgSale',
+                            header: tm('avgSaleLabel'),
+                            type: 'number',
+                            align: 'right',
+                            size: 140,
+                            cell: (row) => `${formatNumber(row.avgSale, 2, false)} ${reportCurrency}`,
+                          },
+                        ]}
+                      />
                     </div>
                   </div>
                   </>
@@ -6925,7 +6889,6 @@ export function ReportsModule({
                       </h3>
                     </div>
                     {(() => {
-                      const rpt = reportFilters.forTab('discount-report');
                       const rows = discounts.map((d) => ({
                         name: d.name,
                         salesCount: d.salesCount,
@@ -6933,73 +6896,62 @@ export function ReportsModule({
                         avgDiscount: d.avgDiscount,
                         ratePct: totalDiscount > 0 ? (d.discountAmount / totalDiscount) * 100 : 0,
                       }));
-                      const visible = rpt.filtered(rows);
                       return (
-                        <div className="overflow-x-auto overflow-y-auto max-h-[600px]" style={{ scrollbarWidth: 'thin', scrollbarColor: '#cbd5e1 #f1f5f9' }}>
-                          <table className="w-full min-w-[800px]">
-                            <thead className="bg-gray-50 border-b sticky top-0">
-                              <ReportColumnFilters
-                                columns={[
-                                  { key: 'name', label: tm('reportsDiscountTypeCol'), type: 'text', width: 'min-w-[180px]' },
-                                  { key: 'salesCount', label: tm('transactionCount'), type: 'number', align: 'right', width: 'min-w-[120px]' },
-                                  { key: 'discountAmount', label: tm('reportsTotalDiscount'), type: 'number', align: 'right', width: 'min-w-[140px]' },
-                                  { key: 'avgDiscount', label: tm('reportsAverageDiscountCol'), type: 'number', align: 'right', width: 'min-w-[140px]' },
-                                  { key: 'ratePct', label: tm('reportsRatePercentCol'), type: 'number', align: 'right', width: 'min-w-[120px]' },
-                                ]}
-                                values={rpt.values}
-                                onFilterChange={rpt.setFilter}
-                                onClear={rpt.clearAll}>
-                              <tr>
-                                <th className="px-4 py-3 text-left text-sm">{tm('reportsDiscountTypeCol')}</th>
-                                <th className="px-4 py-3 text-right text-sm">{tm('transactionCount')}</th>
-                                <th className="px-4 py-3 text-right text-sm">{tm('reportsTotalDiscount')}</th>
-                                <th className="px-4 py-3 text-right text-sm">{tm('reportsAverageDiscountCol')}</th>
-                                <th className="px-4 py-3 text-right text-sm">{tm('reportsRatePercentCol')}</th>
-                              </tr>
-                              </ReportColumnFilters>
-                            </thead>
-                            <tbody className="divide-y">
-                              {visible.length === 0 ? (
-                                <tr>
-                                  <td colSpan={5} className="px-4 py-10 text-center text-slate-500 text-sm">
-                                    {tm('noDataFound')}
-                                  </td>
-                                </tr>
-                              ) : (
-                                visible.map((discount) => (
-                                  <tr key={discount.name} className="hover:bg-gray-50">
-                                    <td className="px-4 py-3 font-medium">{discount.name}</td>
-                                    <td className="px-4 py-3 text-right">
-                                      <span className="px-2 py-1 bg-blue-100 text-blue-700 rounded text-sm">
-                                        {discount.salesCount}
-                                      </span>
-                                    </td>
-                                    <td className="px-4 py-3 text-right text-orange-600 font-semibold">
-                                      {formatNumber(discount.discountAmount, 2, false)} {reportCurrency}
-                                    </td>
-                                    <td className="px-4 py-3 text-right text-sm">
-                                      {formatNumber(discount.avgDiscount, 2, false)} {reportCurrency}
-                                    </td>
-                                    <td className="px-4 py-3 text-right">
-                                      <span className="px-2 py-1 bg-green-100 text-green-700 rounded text-sm">
-                                        {discount.ratePct.toFixed(1)}%
-                                      </span>
-                                    </td>
-                                  </tr>
-                                ))
-                              )}
-                            </tbody>
-                            <ReportTableFooter
-                              rows={visible}
-                              columns={[
-                                { key: 'name', label: tm('reportsDiscountTypeCol'), align: 'left' },
-                                { key: 'salesCount', label: tm('transactionCount'), aggregate: 'sum', align: 'right' },
-                                { key: 'discountAmount', label: tm('reportsTotalDiscount'), aggregate: 'sum', align: 'right', formatter: (v) => `${formatNumber(v, 2, false)} ${reportCurrency}` },
-                                { key: 'avgDiscount', label: tm('reportsAverageDiscountCol'), aggregate: 'avg', align: 'right', formatter: (v) => `${formatNumber(v, 2, false)} ${reportCurrency}` },
-                                { key: 'ratePct', label: tm('reportsRatePercentCol'), aggregate: 'sum', align: 'right', formatter: (v) => `${formatNumber(v, 1, false)}%` },
-                              ]}
-                            />
-                          </table>
+                        <div className="p-2">
+                          <ReportColumnTable
+                            data={rows}
+                            height={560}
+                            storageNamespace="discount-report"
+                            footerLabel={tm('reportsTotalsRow')}
+                            columns={[
+                              { key: 'name', header: tm('reportsDiscountTypeCol'), size: 180 },
+                              {
+                                key: 'salesCount',
+                                header: tm('transactionCount'),
+                                type: 'number',
+                                align: 'right',
+                                size: 120,
+                                footerSum: true,
+                                cell: (row) => (
+                                  <span className="px-2 py-1 bg-blue-100 text-blue-700 rounded text-sm">{row.salesCount}</span>
+                                ),
+                              },
+                              {
+                                key: 'discountAmount',
+                                header: tm('reportsTotalDiscount'),
+                                type: 'number',
+                                align: 'right',
+                                size: 140,
+                                footerSum: true,
+                                footerFormat: (n) => formatLedgerAmount(n, reportCurrency),
+                                cell: (row) => (
+                                  <span className="text-orange-600 font-semibold">
+                                    {formatNumber(row.discountAmount, 2, false)} {reportCurrency}
+                                  </span>
+                                ),
+                              },
+                              {
+                                key: 'avgDiscount',
+                                header: tm('reportsAverageDiscountCol'),
+                                type: 'number',
+                                align: 'right',
+                                size: 140,
+                                cell: (row) => `${formatNumber(row.avgDiscount, 2, false)} ${reportCurrency}`,
+                              },
+                              {
+                                key: 'ratePct',
+                                header: tm('reportsRatePercentCol'),
+                                type: 'number',
+                                align: 'right',
+                                size: 120,
+                                cell: (row) => (
+                                  <span className="px-2 py-1 bg-green-100 text-green-700 rounded text-sm">
+                                    {row.ratePct.toFixed(1)}%
+                                  </span>
+                                ),
+                              },
+                            ]}
+                          />
                         </div>
                       );
                     })()}
@@ -7069,7 +7021,6 @@ export function ReportsModule({
                       </span>
                     </div>
                     {(() => {
-                      const rpt = reportFilters.forTab('stock-status');
                       const rows = stockStatus.lowStockItems.map((it) => ({
                         name: it.name,
                         category: it.category,
@@ -7079,84 +7030,81 @@ export function ReportsModule({
                         value: it.value,
                         status: it.stock === 0 ? tm('reportsOutOfStock') : tm('reportsLowBadge'),
                       }));
-                      const visible = rpt.filtered(rows);
                       return (
-                        <div className="overflow-x-auto overflow-y-auto max-h-[600px]" style={{ scrollbarWidth: 'thin', scrollbarColor: '#cbd5e1 #f1f5f9' }}>
-                          <table className="w-full min-w-[900px]">
-                            <thead className="bg-gray-50 border-b sticky top-0">
-                              <ReportColumnFilters
-                                columns={[
-                                  { key: 'name', label: tm('productNameLabel'), type: 'text', width: 'min-w-[180px]' },
-                                  { key: 'category', label: tm('categoryLabel'), type: 'text', width: 'min-w-[140px]' },
-                                  { key: 'stock', label: tm('reportsCurrentStock'), type: 'number', align: 'right', width: 'min-w-[120px]' },
-                                  { key: 'minStock', label: tm('reportsMinStockCol'), type: 'number', align: 'right', width: 'min-w-[120px]' },
-                                  { key: 'price', label: tm('reportsPriceCol'), type: 'number', align: 'right', width: 'min-w-[120px]' },
-                                  { key: 'value', label: tm('reportsStockValue'), type: 'number', align: 'right', width: 'min-w-[120px]' },
-                                  { key: 'status', label: tm('reportsStatusCol'), type: 'text', align: 'center', width: 'min-w-[120px]' },
-                                ]}
-                                values={rpt.values}
-                                onFilterChange={rpt.setFilter}
-                                onClear={rpt.clearAll}>
-                              <tr>
-                                <th className="px-4 py-3 text-left text-sm">{tm('productNameLabel')}</th>
-                                <th className="px-4 py-3 text-left text-sm">{tm('categoryLabel')}</th>
-                                <th className="px-4 py-3 text-right text-sm">{tm('reportsCurrentStock')}</th>
-                                <th className="px-4 py-3 text-right text-sm">{tm('reportsMinStockCol')}</th>
-                                <th className="px-4 py-3 text-right text-sm">{tm('reportsPriceCol')}</th>
-                                <th className="px-4 py-3 text-right text-sm">{tm('reportsStockValue')}</th>
-                                <th className="px-4 py-3 text-center text-sm">{tm('reportsStatusCol')}</th>
-                              </tr>
-                              </ReportColumnFilters>
-                            </thead>
-                            <tbody className="divide-y">
-                              {visible.length === 0 ? (
-                                <tr>
-                                  <td colSpan={7} className="px-4 py-10 text-center text-gray-500 text-sm">
-                                    {tm('reportsNoLowStockProducts')}
-                                  </td>
-                                </tr>
-                              ) : (
-                                visible.map((item, idx) => (
-                                  <tr key={`${item.name}-${idx}`} className="hover:bg-gray-50">
-                                    <td className="px-4 py-3 font-medium">{item.name}</td>
-                                    <td className="px-4 py-3 text-sm text-gray-600">{item.category}</td>
-                                    <td className="px-4 py-3 text-right">
-                                      <span className={`px-2 py-1 rounded text-sm font-semibold ${item.stock === 0
+                        <div className="p-2">
+                          <ReportColumnTable
+                            data={rows}
+                            height={560}
+                            storageNamespace="stock-status"
+                            footerLabel={tm('reportsTotalsRow')}
+                            columns={[
+                              { key: 'name', header: tm('productNameLabel'), size: 180 },
+                              { key: 'category', header: tm('categoryLabel'), size: 140 },
+                              {
+                                key: 'stock',
+                                header: tm('reportsCurrentStock'),
+                                type: 'number',
+                                align: 'right',
+                                size: 120,
+                                footerSum: true,
+                                cell: (item) => (
+                                  <span
+                                    className={`px-2 py-1 rounded text-sm font-semibold ${
+                                      item.stock === 0
                                         ? 'bg-red-100 text-red-700'
                                         : item.stock <= item.minStock
                                           ? 'bg-orange-100 text-orange-700'
                                           : 'bg-green-100 text-green-700'
-                                        }`}>
-                                        {item.stock}
-                                      </span>
-                                    </td>
-                                    <td className="px-4 py-3 text-right text-sm">{item.minStock}</td>
-                                    <td className="px-4 py-3 text-right text-sm">{formatNumber(item.price, 2, false)} {reportCurrency}</td>
-                                    <td className="px-4 py-3 text-right text-sm">{formatNumber(item.value, 2, false)} {reportCurrency}</td>
-                                    <td className="px-4 py-3 text-center">
-                                      {item.stock === 0 ? (
-                                        <span className="px-2 py-1 bg-red-100 text-red-700 rounded text-xs">{tm('reportsOutOfStock')}</span>
-                                      ) : (
-                                        <span className="px-2 py-1 bg-orange-100 text-orange-700 rounded text-xs">{tm('reportsLowBadge')}</span>
-                                      )}
-                                    </td>
-                                  </tr>
-                                ))
-                              )}
-                            </tbody>
-                            <ReportTableFooter
-                              rows={visible}
-                              columns={[
-                                { key: 'name', label: tm('productNameLabel'), align: 'left' },
-                                { key: 'category', label: tm('categoryLabel'), align: 'left' },
-                                { key: 'stock', label: tm('reportsCurrentStock'), aggregate: 'sum', align: 'right' },
-                                { key: 'minStock', label: tm('reportsMinStockCol'), aggregate: 'sum', align: 'right' },
-                                { key: 'price', label: tm('reportsPriceCol'), aggregate: 'avg', align: 'right', formatter: (v) => `${formatNumber(v, 2, false)} ${reportCurrency}` },
-                                { key: 'value', label: tm('reportsStockValue'), aggregate: 'sum', align: 'right', formatter: (v) => `${formatNumber(v, 2, false)} ${reportCurrency}` },
-                                { key: 'status', label: tm('reportsStatusCol'), align: 'center' },
-                              ]}
-                            />
-                          </table>
+                                    }`}
+                                  >
+                                    {item.stock}
+                                  </span>
+                                ),
+                              },
+                              {
+                                key: 'minStock',
+                                header: tm('reportsMinStockCol'),
+                                type: 'number',
+                                align: 'right',
+                                size: 120,
+                                footerSum: true,
+                              },
+                              {
+                                key: 'price',
+                                header: tm('reportsPriceCol'),
+                                type: 'number',
+                                align: 'right',
+                                size: 120,
+                                cell: (row) => `${formatNumber(row.price, 2, false)} ${reportCurrency}`,
+                              },
+                              {
+                                key: 'value',
+                                header: tm('reportsStockValue'),
+                                type: 'number',
+                                align: 'right',
+                                size: 120,
+                                footerSum: true,
+                                footerFormat: (n) => formatLedgerAmount(n, reportCurrency),
+                                cell: (row) => `${formatNumber(row.value, 2, false)} ${reportCurrency}`,
+                              },
+                              {
+                                key: 'status',
+                                header: tm('reportsStatusCol'),
+                                align: 'center',
+                                size: 120,
+                                cell: (item) =>
+                                  item.stock === 0 ? (
+                                    <span className="px-2 py-1 bg-red-100 text-red-700 rounded text-xs">
+                                      {tm('reportsOutOfStock')}
+                                    </span>
+                                  ) : (
+                                    <span className="px-2 py-1 bg-orange-100 text-orange-700 rounded text-xs">
+                                      {tm('reportsLowBadge')}
+                                    </span>
+                                  ),
+                              },
+                            ]}
+                          />
                         </div>
                       );
                     })()}
@@ -7293,7 +7241,6 @@ export function ReportsModule({
                       <span className="text-xs text-gray-500">{tm('reportProductCompareSubtitle')}</span>
                     </div>
                     {(() => {
-                      const rpt = reportFilters.forTab('comparison');
                       const rows = comparison.productRows.map((r) => ({
                         name: r.name,
                         prevQty: r.prevQty,
@@ -7303,75 +7250,88 @@ export function ReportsModule({
                         currRev: r.currRev,
                         revPct: r.revPct,
                       }));
-                      const visible = rpt.filtered(rows);
                       return (
-                        <div className="overflow-x-auto max-h-[420px] overflow-y-auto" style={{ scrollbarWidth: 'thin', scrollbarColor: '#cbd5e1 #f1f5f9' }}>
-                          <table className="w-full min-w-[720px] text-sm">
-                            <thead className="bg-gray-50 border-b sticky top-0 z-10">
-                              <ReportColumnFilters
-                                columns={[
-                                  { key: 'name', label: tm('reportColProduct'), type: 'text', width: 'min-w-[180px]' },
-                                  { key: 'prevQty', label: tm('reportColPrevQty'), type: 'number', align: 'right', width: 'min-w-[120px]' },
-                                  { key: 'currQty', label: tm('reportColCurrQty'), type: 'number', align: 'right', width: 'min-w-[120px]' },
-                                  { key: 'qtyPct', label: tm('reportColQtyDelta'), type: 'number', align: 'right', width: 'min-w-[120px]' },
-                                  { key: 'prevRev', label: tm('reportColPrevRev'), type: 'number', align: 'right', width: 'min-w-[120px]' },
-                                  { key: 'currRev', label: tm('reportColCurrRev'), type: 'number', align: 'right', width: 'min-w-[120px]' },
-                                  { key: 'revPct', label: tm('reportColRevDelta'), type: 'number', align: 'right', width: 'min-w-[120px]' },
-                                ]}
-                                values={rpt.values}
-                                onFilterChange={rpt.setFilter}
-                                onClear={rpt.clearAll}>
-                              <tr>
-                                <th className="px-3 py-2 text-left font-medium text-gray-700">{tm('reportColProduct')}</th>
-                                <th className="px-3 py-2 text-right font-medium text-gray-700">{tm('reportColPrevQty')}</th>
-                                <th className="px-3 py-2 text-right font-medium text-gray-700">{tm('reportColCurrQty')}</th>
-                                <th className="px-3 py-2 text-right font-medium text-gray-700">{tm('reportColQtyDelta')}</th>
-                                <th className="px-3 py-2 text-right font-medium text-gray-700">{tm('reportColPrevRev')}</th>
-                                <th className="px-3 py-2 text-right font-medium text-gray-700">{tm('reportColCurrRev')}</th>
-                                <th className="px-3 py-2 text-right font-medium text-gray-700">{tm('reportColRevDelta')}</th>
-                              </tr>
-                              </ReportColumnFilters>
-                            </thead>
-                            <tbody className="divide-y divide-gray-100">
-                              {visible.length === 0 ? (
-                                <tr>
-                                  <td colSpan={7} className="px-4 py-8 text-center text-gray-500">
-                                    {tm('reportCompareNoProductRows')}
-                                  </td>
-                                </tr>
-                              ) : (
-                                visible.map((row) => (
-                                  <tr key={row.name} className="hover:bg-gray-50">
-                                    <td className="px-3 py-2 font-medium text-gray-900 max-w-[220px] truncate" title={row.name}>
-                                      {row.name}
-                                    </td>
-                                    <td className="px-3 py-2 text-right tabular-nums">{formatNumber(row.prevQty, 2, false)}</td>
-                                    <td className="px-3 py-2 text-right tabular-nums">{formatNumber(row.currQty, 2, false)}</td>
-                                    <td className={`px-3 py-2 text-right tabular-nums font-medium ${trendClass(row.qtyPct)}`}>
-                                      {trendArrow(row.qtyPct)} {Math.abs(row.qtyPct)}%
-                                    </td>
-                                    <td className="px-3 py-2 text-right tabular-nums">{formatNumber(row.prevRev, 2, false)}</td>
-                                    <td className="px-3 py-2 text-right tabular-nums">{formatNumber(row.currRev, 2, false)}</td>
-                                    <td className={`px-3 py-2 text-right tabular-nums font-medium ${trendClass(row.revPct)}`}>
-                                      {trendArrow(row.revPct)} {Math.abs(row.revPct)}%
-                                    </td>
-                                  </tr>
-                                ))
-                              )}
-                            </tbody>
-                            <ReportTableFooter
-                              rows={visible}
-                              columns={[
-                                { key: 'name', label: tm('reportColProduct'), align: 'left' },
-                                { key: 'prevQty', label: tm('reportColPrevQty'), aggregate: 'sum', align: 'right' },
-                                { key: 'currQty', label: tm('reportColCurrQty'), aggregate: 'sum', align: 'right' },
-                                { key: 'qtyPct', label: tm('reportColQtyDelta'), aggregate: 'avg', align: 'right', formatter: (v) => `${formatNumber(v, 1, false)}%` },
-                                { key: 'prevRev', label: tm('reportColPrevRev'), aggregate: 'sum', align: 'right', formatter: (v) => `${formatNumber(v, 2, false)} ${reportCurrency}` },
-                                { key: 'currRev', label: tm('reportColCurrRev'), aggregate: 'sum', align: 'right', formatter: (v) => `${formatNumber(v, 2, false)} ${reportCurrency}` },
-                                { key: 'revPct', label: tm('reportColRevDelta'), aggregate: 'avg', align: 'right', formatter: (v) => `${formatNumber(v, 1, false)}%` },
-                              ]}
-                            />
-                          </table>
+                        <div className="p-2">
+                          <ReportColumnTable
+                            data={rows}
+                            height={420}
+                            storageNamespace="period-comparison-products"
+                            footerLabel={tm('reportsTotalsRow')}
+                            columns={[
+                              {
+                                key: 'name',
+                                header: tm('reportColProduct'),
+                                size: 180,
+                                cell: (row) => (
+                                  <span className="font-medium text-gray-900 truncate" title={row.name}>
+                                    {row.name}
+                                  </span>
+                                ),
+                              },
+                              {
+                                key: 'prevQty',
+                                header: tm('reportColPrevQty'),
+                                type: 'number',
+                                align: 'right',
+                                size: 120,
+                                footerSum: true,
+                                cell: (row) => formatNumber(row.prevQty, 2, false),
+                              },
+                              {
+                                key: 'currQty',
+                                header: tm('reportColCurrQty'),
+                                type: 'number',
+                                align: 'right',
+                                size: 120,
+                                footerSum: true,
+                                cell: (row) => formatNumber(row.currQty, 2, false),
+                              },
+                              {
+                                key: 'qtyPct',
+                                header: tm('reportColQtyDelta'),
+                                type: 'number',
+                                align: 'right',
+                                size: 120,
+                                cell: (row) => (
+                                  <span className={`font-medium ${trendClass(row.qtyPct)}`}>
+                                    {trendArrow(row.qtyPct)} {Math.abs(row.qtyPct)}%
+                                  </span>
+                                ),
+                              },
+                              {
+                                key: 'prevRev',
+                                header: tm('reportColPrevRev'),
+                                type: 'number',
+                                align: 'right',
+                                size: 120,
+                                footerSum: true,
+                                footerFormat: (n) => formatLedgerAmount(n, reportCurrency),
+                                cell: (row) => formatNumber(row.prevRev, 2, false),
+                              },
+                              {
+                                key: 'currRev',
+                                header: tm('reportColCurrRev'),
+                                type: 'number',
+                                align: 'right',
+                                size: 120,
+                                footerSum: true,
+                                footerFormat: (n) => formatLedgerAmount(n, reportCurrency),
+                                cell: (row) => formatNumber(row.currRev, 2, false),
+                              },
+                              {
+                                key: 'revPct',
+                                header: tm('reportColRevDelta'),
+                                type: 'number',
+                                align: 'right',
+                                size: 120,
+                                cell: (row) => (
+                                  <span className={`font-medium ${trendClass(row.revPct)}`}>
+                                    {trendArrow(row.revPct)} {Math.abs(row.revPct)}%
+                                  </span>
+                                ),
+                              },
+                            ]}
+                          />
                         </div>
                       );
                     })()}
@@ -7424,7 +7384,6 @@ export function ReportsModule({
 
                 <Spin spinning={loadingPurchasePromoReport}>
                   {(() => {
-                    const rpt = reportFilters.forTab('purchase-promotion-report');
                     const rows = purchasePromoLines.map((r) => ({
                       invoiceDate: r.invoiceDate,
                       invoiceNo: r.invoiceNo,
@@ -7432,91 +7391,68 @@ export function ReportsModule({
                       productCode: r.productCode,
                       productName: r.productName,
                       quantity: r.quantity,
+                      unit: r.unit ?? '',
                       allocatedUnitCost: r.allocatedUnitCost,
                       allocatedTotalCost: r.allocatedTotalCost,
                       invoicePaidTotal: r.invoicePaidTotal,
                     }));
-                    const visible = rpt.filtered(rows);
                     return (
-                      <div className="bg-white rounded-xl border border-slate-200 overflow-hidden shadow-sm">
-                        <div className="overflow-x-auto">
-                          <table className="min-w-full text-sm">
-                            <thead className="bg-slate-50 text-slate-600">
-                              <ReportColumnFilters
-                                columns={[
-                                  { key: 'invoiceDate', label: tm('date'), type: 'date', width: 'min-w-[140px]' },
-                                  { key: 'invoiceNo', label: tm('invoiceNo'), type: 'text', width: 'min-w-[120px]' },
-                                  { key: 'supplierName', label: tm('supplier'), type: 'text', width: 'min-w-[160px]' },
-                                  { key: 'productCode', label: tm('productGridColCode'), type: 'text', width: 'min-w-[120px]' },
-                                  { key: 'productName', label: tm('productName'), type: 'text', width: 'min-w-[160px]' },
-                                  { key: 'quantity', label: tm('quantity'), type: 'number', align: 'right', width: 'min-w-[100px]' },
-                                  { key: 'allocatedUnitCost', label: tm('unitCost'), type: 'number', align: 'right', width: 'min-w-[120px]' },
-                                  { key: 'allocatedTotalCost', label: tm('purchasePromotionAllocatedCost'), type: 'number', align: 'right', width: 'min-w-[140px]' },
-                                  { key: 'invoicePaidTotal', label: tm('purchasePromotionInvoicePaid'), type: 'number', align: 'right', width: 'min-w-[140px]' },
-                                ]}
-                                values={rpt.values}
-                                onFilterChange={rpt.setFilter}
-                                onClear={rpt.clearAll}>
-                              <tr>
-                                <th className="px-3 py-2 text-left">{tm('date')}</th>
-                                <th className="px-3 py-2 text-left">{tm('invoiceNo')}</th>
-                                <th className="px-3 py-2 text-left">{tm('supplier')}</th>
-                                <th className="px-3 py-2 text-left">{tm('productGridColCode')}</th>
-                                <th className="px-3 py-2 text-left">{tm('productName')}</th>
-                                <th className="px-3 py-2 text-right">{tm('quantity')}</th>
-                                <th className="px-3 py-2 text-right">{tm('unitCost')}</th>
-                                <th className="px-3 py-2 text-right">{tm('purchasePromotionAllocatedCost')}</th>
-                                <th className="px-3 py-2 text-right">{tm('purchasePromotionInvoicePaid')}</th>
-                              </tr>
-                              </ReportColumnFilters>
-                            </thead>
-                            <tbody>
-                              {visible.length === 0 ? (
-                                <tr>
-                                  <td colSpan={9} className="px-3 py-10 text-center text-slate-500">
-                                    {tm('noDataFound')}
-                                  </td>
-                                </tr>
-                              ) : (
-                                visible.map((row) => (
-                                  <tr key={row.invoiceNo + '|' + row.productCode} className="border-t border-slate-100 hover:bg-slate-50/80">
-                                    <td className="px-3 py-2 whitespace-nowrap">{row.invoiceDate}</td>
-                                    <td className="px-3 py-2 whitespace-nowrap font-medium">{row.invoiceNo}</td>
-                                    <td className="px-3 py-2">{row.supplierName}</td>
-                                    <td className="px-3 py-2 font-mono text-xs">{row.productCode}</td>
-                                    <td className="px-3 py-2">{row.productName}</td>
-                                    <td className="px-3 py-2 text-right tabular-nums">
-                                      {formatNumber(row.quantity, 2, false)} {purchasePromoLines.find((l) => l.productCode === row.productCode)?.unit ?? ''}
-                                    </td>
-                                    <td className="px-3 py-2 text-right tabular-nums">
-                                      {formatNumber(row.allocatedUnitCost, 2, false)} {reportCurrency}
-                                    </td>
-                                    <td className="px-3 py-2 text-right tabular-nums">
-                                      {formatNumber(row.allocatedTotalCost, 2, false)} {reportCurrency}
-                                    </td>
-                                    <td className="px-3 py-2 text-right tabular-nums">
-                                      {formatNumber(row.invoicePaidTotal, 2, false)} {reportCurrency}
-                                    </td>
-                                  </tr>
-                                ))
-                              )}
-                            </tbody>
-                            <ReportTableFooter
-                              rows={visible}
-                              columns={[
-                                { key: 'invoiceDate', label: tm('date'), align: 'left' },
-                                { key: 'invoiceNo', label: tm('invoiceNo'), align: 'left' },
-                                { key: 'supplierName', label: tm('supplier'), align: 'left' },
-                                { key: 'productCode', label: tm('productGridColCode'), align: 'left' },
-                                { key: 'productName', label: tm('productName'), align: 'left' },
-                                { key: 'quantity', label: tm('quantity'), aggregate: 'sum', align: 'right' },
-                                { key: 'allocatedUnitCost', label: tm('unitCost'), aggregate: 'avg', align: 'right', formatter: (v) => `${formatNumber(v, 2, false)} ${reportCurrency}` },
-                                { key: 'allocatedTotalCost', label: tm('purchasePromotionAllocatedCost'), aggregate: 'sum', align: 'right', formatter: (v) => `${formatNumber(v, 2, false)} ${reportCurrency}` },
-                                { key: 'invoicePaidTotal', label: tm('purchasePromotionInvoicePaid'), aggregate: 'sum', align: 'right', formatter: (v) => `${formatNumber(v, 2, false)} ${reportCurrency}` },
-                              ]}
-                            />
-                          </table>
-                        </div>
+                      <div className="bg-white rounded-xl border border-slate-200 overflow-hidden shadow-sm p-2">
+                        <ReportColumnTable
+                          data={rows}
+                          height={520}
+                          storageNamespace="purchase-promotion-report"
+                          footerLabel={tm('reportsTotalsRow')}
+                          columns={[
+                            { key: 'invoiceDate', header: tm('date'), type: 'date', size: 140 },
+                            { key: 'invoiceNo', header: tm('invoiceNo'), size: 120 },
+                            { key: 'supplierName', header: tm('supplier'), size: 160 },
+                            {
+                              key: 'productCode',
+                              header: tm('productGridColCode'),
+                              size: 120,
+                              cell: (row) => <span className="font-mono text-xs">{row.productCode}</span>,
+                            },
+                            { key: 'productName', header: tm('productName'), size: 160 },
+                            {
+                              key: 'quantity',
+                              header: tm('quantity'),
+                              type: 'number',
+                              align: 'right',
+                              size: 100,
+                              footerSum: true,
+                              cell: (row) => `${formatNumber(row.quantity, 2, false)} ${row.unit}`,
+                            },
+                            {
+                              key: 'allocatedUnitCost',
+                              header: tm('unitCost'),
+                              type: 'number',
+                              align: 'right',
+                              size: 120,
+                              cell: (row) => `${formatNumber(row.allocatedUnitCost, 2, false)} ${reportCurrency}`,
+                            },
+                            {
+                              key: 'allocatedTotalCost',
+                              header: tm('purchasePromotionAllocatedCost'),
+                              type: 'number',
+                              align: 'right',
+                              size: 140,
+                              footerSum: true,
+                              footerFormat: (n) => formatLedgerAmount(n, reportCurrency),
+                              cell: (row) => `${formatNumber(row.allocatedTotalCost, 2, false)} ${reportCurrency}`,
+                            },
+                            {
+                              key: 'invoicePaidTotal',
+                              header: tm('purchasePromotionInvoicePaid'),
+                              type: 'number',
+                              align: 'right',
+                              size: 140,
+                              footerSum: true,
+                              footerFormat: (n) => formatLedgerAmount(n, reportCurrency),
+                              cell: (row) => `${formatNumber(row.invoicePaidTotal, 2, false)} ${reportCurrency}`,
+                            },
+                          ]}
+                        />
                       </div>
                     );
                   })()}
@@ -7644,140 +7580,169 @@ export function ReportsModule({
                         <p className="text-gray-600">{tm('reportsExpiringEmpty').replace('{n}', String(expiringDays))}</p>
                       </div>
                     ) : (
-                      <div className="overflow-x-auto overflow-y-auto max-h-[600px]" style={{ scrollbarWidth: 'thin', scrollbarColor: '#cbd5e1 #f1f5f9' }}>
-                        <table className="w-full min-w-[1000px]">
-                          <thead className="bg-gray-50 border-b sticky top-0">
-                            {(() => {
-                              const rpt = reportFilters.forTab('expiring-products');
-                              return (
-                                <ReportColumnFilters
-                                  columns={[
-                                    { key: 'product_code', label: tm('reportsExpiringThProductCode'), type: 'text', width: 'min-w-[140px]' },
-                                    { key: 'product_name', label: tm('reportsThProductName'), type: 'text', width: 'min-w-[180px]' },
-                                    { key: 'lot_no', label: tm('reportsExpiringThLotSerial'), type: 'text', width: 'min-w-[120px]' },
-                                    { key: 'warehouse', label: tm('warehouse'), type: 'text', width: 'min-w-[120px]' },
-                                    { key: 'available_quantity', label: tm('reportsThQty'), type: 'number', align: 'right', width: 'min-w-[100px]' },
-                                    { key: 'expiry_date', label: tm('reportsExpiringThExpiryDate'), type: 'date', width: 'min-w-[140px]' },
-                                    { key: 'remainingDays', label: tm('reportsExpiringThRemainingDays'), type: 'number', align: 'right', width: 'min-w-[120px]' },
-                                    { key: 'unit_cost', label: tm('reportsColUnitCost'), type: 'number', align: 'right', width: 'min-w-[120px]' },
-                                    { key: 'productValue', label: tm('reportsExpiringTotalValue'), type: 'number', align: 'right', width: 'min-w-[140px]' },
-                                    { key: 'statusLabel', label: tm('rptTargetColStatus'), type: 'text', align: 'center', width: 'min-w-[120px]' },
-                                  ]}
-                                  values={rpt.values}
-                                  onFilterChange={rpt.setFilter}
-                                  onClear={rpt.clearAll}
-                                >
-                            <tr>
-                              <th className="px-4 py-3 text-left text-sm">{tm('reportsExpiringThProductCode')}</th>
-                              <th className="px-4 py-3 text-left text-sm">{tm('reportsThProductName')}</th>
-                              <th className="px-4 py-3 text-left text-sm">{tm('reportsExpiringThLotSerial')}</th>
-                              <th className="px-4 py-3 text-left text-sm">{tm('warehouse')}</th>
-                              <th className="px-4 py-3 text-right text-sm">{tm('reportsThQty')}</th>
-                              <th className="px-4 py-3 text-left text-sm">{tm('reportsExpiringThExpiryDate')}</th>
-                              <th className="px-4 py-3 text-right text-sm">{tm('reportsExpiringThRemainingDays')}</th>
-                              <th className="px-4 py-3 text-right text-sm">{tm('reportsColUnitCost')}</th>
-                              <th className="px-4 py-3 text-right text-sm">{tm('reportsExpiringTotalValue')}</th>
-                              <th className="px-4 py-3 text-center text-sm">{tm('rptTargetColStatus')}</th>
-                            </tr>
-                                </ReportColumnFilters>
-                              );
-                            })()}
-                          </thead>
-                          <tbody className="divide-y">
-                            {expiringProducts
-                              .sort((a, b) => {
-                                if (!a.expiry_date) return 1;
-                                if (!b.expiry_date) return -1;
-                                return new Date(a.expiry_date).getTime() - new Date(b.expiry_date).getTime();
-                              })
-                              .map((product, idx) => {
-                                if (!product.expiry_date) return null;
-                                const days = getDaysUntilExpiry(product.expiry_date);
-                                const status = getExpiryStatus(product.expiry_date);
-                                const productValue = (product.unit_cost || 0) * (product.available_quantity || 0);
-
-                                return (
-                                  <tr key={product.id || idx} className="hover:bg-gray-50">
-                                    <td className="px-4 py-3 text-sm font-medium">{product.product_code || '-'}</td>
-                                    <td className="px-4 py-3">
-                                      <div>
-                                        <p className="font-medium">{product.product_name || '-'}</p>
-                                      </div>
-                                    </td>
-                                    <td className="px-4 py-3 text-sm">
-                                      {product.lot_no && (
-                                        <span className="px-2 py-1 bg-blue-100 text-blue-700 rounded text-xs">
-                                          {tm('reportsExpiringLotPrefix')} {product.lot_no}
-                                        </span>
-                                      )}
-                                      {product.serial_no && (
-                                        <span className="px-2 py-1 bg-purple-100 text-purple-700 rounded text-xs ml-1">
-                                          {tm('reportsExpiringSerialPrefix')} {product.serial_no}
-                                        </span>
-                                      )}
-                                    </td>
-                                    <td className="px-4 py-3 text-sm">{product.warehouse_name || '-'}</td>
-                                    <td className="px-4 py-3 text-right">
+                      <div className="p-2">
+                        {(() => {
+                          const rows = expiringProducts
+                            .filter((p) => p.expiry_date)
+                            .sort((a, b) => {
+                              if (!a.expiry_date) return 1;
+                              if (!b.expiry_date) return -1;
+                              return new Date(a.expiry_date).getTime() - new Date(b.expiry_date).getTime();
+                            })
+                            .map((product) => {
+                              const days = getDaysUntilExpiry(product.expiry_date!);
+                              const statusInfo = getExpiryStatus(product.expiry_date!);
+                              const productValue = (product.unit_cost || 0) * (product.available_quantity || 0);
+                              return {
+                                id: product.id,
+                                product_code: product.product_code || '-',
+                                product_name: product.product_name || '-',
+                                lot_no: product.lot_no || '',
+                                serial_no: product.serial_no || '',
+                                warehouse: product.warehouse_name || '-',
+                                available_quantity: product.available_quantity || 0,
+                                expiry_date: product.expiry_date!,
+                                remainingDays: days,
+                                unit_cost: product.unit_cost || 0,
+                                productValue,
+                                status: statusInfo.label,
+                                statusColor: statusInfo.color,
+                              };
+                            });
+                          const noExpiryCount = expiringProducts.filter((p) => !p.expiry_date).length;
+                          return (
+                            <>
+                              <ReportColumnTable
+                                data={rows}
+                                height={520}
+                                storageNamespace="expiring-products"
+                                footerLabel={tm('reportsFooterTotalUpper')}
+                                columns={[
+                                  { key: 'product_code', header: tm('reportsExpiringThProductCode'), size: 140 },
+                                  { key: 'product_name', header: tm('reportsThProductName'), size: 180 },
+                                  {
+                                    key: 'lot_no',
+                                    header: tm('reportsExpiringThLotSerial'),
+                                    size: 140,
+                                    cell: (row) => (
+                                      <span>
+                                        {row.lot_no ? (
+                                          <span className="px-2 py-1 bg-blue-100 text-blue-700 rounded text-xs">
+                                            {tm('reportsExpiringLotPrefix')} {row.lot_no}
+                                          </span>
+                                        ) : null}
+                                        {row.serial_no ? (
+                                          <span className="px-2 py-1 bg-purple-100 text-purple-700 rounded text-xs ml-1">
+                                            {tm('reportsExpiringSerialPrefix')} {row.serial_no}
+                                          </span>
+                                        ) : null}
+                                      </span>
+                                    ),
+                                  },
+                                  { key: 'warehouse', header: tm('warehouse'), size: 120 },
+                                  {
+                                    key: 'available_quantity',
+                                    header: tm('reportsThQty'),
+                                    type: 'number',
+                                    align: 'right',
+                                    size: 100,
+                                    footerSum: true,
+                                    cell: (row) => (
                                       <span className="px-2 py-1 bg-gray-100 text-gray-700 rounded text-sm font-semibold">
-                                        {product.available_quantity || 0}
+                                        {row.available_quantity}
                                       </span>
-                                    </td>
-                                    <td className="px-4 py-3">
-                                      <div className="flex items-center gap-2">
+                                    ),
+                                  },
+                                  {
+                                    key: 'expiry_date',
+                                    header: tm('reportsExpiringThExpiryDate'),
+                                    type: 'date',
+                                    size: 140,
+                                    cell: (row) => (
+                                      <span className="inline-flex items-center gap-2 text-sm">
                                         <Calendar className="w-4 h-4 text-gray-400" />
-                                        <span className="text-sm">
-                                          {formatShortDate(product.expiry_date)}
+                                        {formatShortDate(row.expiry_date)}
+                                      </span>
+                                    ),
+                                  },
+                                  {
+                                    key: 'remainingDays',
+                                    header: tm('reportsExpiringThRemainingDays'),
+                                    type: 'number',
+                                    align: 'right',
+                                    size: 120,
+                                    cell: (row) => {
+                                      const days = row.remainingDays;
+                                      return (
+                                        <span
+                                          className={`px-2 py-1 rounded text-sm font-semibold ${
+                                            days < 0
+                                              ? 'bg-red-100 text-red-700'
+                                              : days <= 7
+                                                ? 'bg-orange-100 text-orange-700'
+                                                : days <= 30
+                                                  ? 'bg-yellow-100 text-yellow-700'
+                                                  : 'bg-green-100 text-green-700'
+                                          }`}
+                                        >
+                                          {days < 0
+                                            ? tm('reportsExpiringDaysOverdue').replace('{n}', String(Math.abs(days)))
+                                            : tm('reportsDaysWithN').replace('{n}', String(days))}
                                         </span>
-                                      </div>
-                                    </td>
-                                    <td className="px-4 py-3 text-right">
-                                      <span className={`px-2 py-1 rounded text-sm font-semibold ${days < 0
-                                        ? 'bg-red-100 text-red-700'
-                                        : days <= 7
-                                          ? 'bg-orange-100 text-orange-700'
-                                          : days <= 30
-                                            ? 'bg-yellow-100 text-yellow-700'
-                                            : 'bg-green-100 text-green-700'
-                                        }`}>
-                                        {days < 0
-                                          ? tm('reportsExpiringDaysOverdue').replace('{n}', String(Math.abs(days)))
-                                          : tm('reportsDaysWithN').replace('{n}', String(days))}
+                                      );
+                                    },
+                                  },
+                                  {
+                                    key: 'unit_cost',
+                                    header: tm('reportsColUnitCost'),
+                                    type: 'number',
+                                    align: 'right',
+                                    size: 120,
+                                    cell: (row) => `${formatNumber(row.unit_cost, 2, false)} ${reportCurrency}`,
+                                  },
+                                  {
+                                    key: 'productValue',
+                                    header: tm('reportsExpiringTotalValue'),
+                                    type: 'number',
+                                    align: 'right',
+                                    size: 140,
+                                    footerSum: true,
+                                    footerFormat: (n) => formatLedgerAmount(n, reportCurrency),
+                                    cell: (row) => (
+                                      <span className="font-semibold">
+                                        {formatNumber(row.productValue, 2, false)} {reportCurrency}
                                       </span>
-                                    </td>
-                                    <td className="px-4 py-3 text-right text-sm">{formatNumber(product.unit_cost || 0, 2, false)} {reportCurrency}</td>
-                                    <td className="px-4 py-3 text-right text-sm font-semibold">{formatNumber(productValue, 2, false)} {reportCurrency}</td>
-                                    <td className="px-4 py-3 text-center">
-                                      <span className={`px-2 py-1 rounded text-xs font-semibold ${status.color === 'red'
-                                        ? 'bg-red-100 text-red-700'
-                                        : status.color === 'orange'
-                                          ? 'bg-orange-100 text-orange-700'
-                                          : 'bg-yellow-100 text-yellow-700'
-                                        }`}>
-                                        {status.label}
+                                    ),
+                                  },
+                                  {
+                                    key: 'status',
+                                    header: tm('rptTargetColStatus'),
+                                    align: 'center',
+                                    size: 120,
+                                    cell: (row) => (
+                                      <span
+                                        className={`px-2 py-1 rounded text-xs font-semibold ${
+                                          row.statusColor === 'red'
+                                            ? 'bg-red-100 text-red-700'
+                                            : row.statusColor === 'orange'
+                                              ? 'bg-orange-100 text-orange-700'
+                                              : 'bg-yellow-100 text-yellow-700'
+                                        }`}
+                                      >
+                                        {row.status}
                                       </span>
-                                    </td>
-                                  </tr>
-                                );
-                              })}
-                            {expiringProducts.filter(p => !p.expiry_date).length > 0 && (
-                              <tr className="bg-gray-50">
-                                <td colSpan={10} className="px-4 py-3 text-center text-sm text-gray-500">
-                                  {tm('reportsExpiringNoExpiryNote').replace(
-                                    '{n}',
-                                    String(expiringProducts.filter(p => !p.expiry_date).length)
-                                  )}
-                                </td>
-                              </tr>
-                            )}
-                          </tbody>
-                          <tfoot className="bg-gray-50 border-t">
-                            <tr>
-                              <td colSpan={8} className="px-4 py-3 text-right font-semibold">{tm('reportsFooterTotalUpper')}</td>
-                              <td className="px-4 py-3 text-right font-bold text-green-600">{formatNumber(totalValue, 2, false)} {reportCurrency}</td>
-                              <td></td>
-                            </tr>
-                          </tfoot>
-                        </table>
+                                    ),
+                                  },
+                                ]}
+                              />
+                              {noExpiryCount > 0 && (
+                                <p className="text-center text-sm text-gray-500 py-2">
+                                  {tm('reportsExpiringNoExpiryNote').replace('{n}', String(noExpiryCount))}
+                                </p>
+                              )}
+                            </>
+                          );
+                        })()}
                       </div>
                     )}
                   </div>
@@ -7877,7 +7842,6 @@ export function ReportsModule({
                       <h3 className="text-lg font-semibold">{tm('reportsStockAgeDetailTitle')}</h3>
                     </div>
                     {(() => {
-                      const rpt = reportFilters.forTab('stock-aging');
                       const rows = ag.rows.map((r) => ({
                         name: r.name,
                         category: r.category,
@@ -7887,69 +7851,55 @@ export function ReportsModule({
                         bucket: r.bucket,
                         bucketKey: r.bucketKey,
                       }));
-                      const visible = rpt.filtered(rows);
                       return (
-                        <div className="overflow-x-auto overflow-y-auto max-h-[560px]" style={{ scrollbarWidth: 'thin', scrollbarColor: '#cbd5e1 #f1f5f9' }}>
-                          <table className="w-full min-w-[880px]">
-                            <thead className="bg-gray-50 border-b sticky top-0">
-                              <ReportColumnFilters
-                                columns={[
-                                  { key: 'name', label: tm('reportColProduct'), type: 'text', width: 'min-w-[180px]' },
-                                  { key: 'category', label: tm('reportsColCategory'), type: 'text', width: 'min-w-[140px]' },
-                                  { key: 'stock', label: tm('reportsColStock'), type: 'number', align: 'right', width: 'min-w-[110px]' },
-                                  { key: 'daysSinceMovement', label: tm('reportsStockAgeThLastMove'), type: 'number', align: 'right', width: 'min-w-[120px]' },
-                                  { key: 'value', label: tm('reportsColStockValue'), type: 'number', align: 'right', width: 'min-w-[120px]' },
-                                  { key: 'bucket', label: tm('reportsStockAgeThBucket'), type: 'text', align: 'center', width: 'min-w-[140px]' },
-                                ]}
-                                values={rpt.values}
-                                onFilterChange={rpt.setFilter}
-                                onClear={rpt.clearAll}>
-                              <tr>
-                                <th className="px-4 py-3 text-left text-sm">{tm('reportColProduct')}</th>
-                                <th className="px-4 py-3 text-left text-sm">{tm('reportsColCategory')}</th>
-                                <th className="px-4 py-3 text-right text-sm">{tm('reportsColStock')}</th>
-                                <th className="px-4 py-3 text-right text-sm">{tm('reportsStockAgeThLastMove')}</th>
-                                <th className="px-4 py-3 text-right text-sm">{tm('reportsColStockValue')}</th>
-                                <th className="px-4 py-3 text-center text-sm">{tm('reportsStockAgeThBucket')}</th>
-                              </tr>
-                              </ReportColumnFilters>
-                            </thead>
-                            <tbody className="divide-y">
-                              {visible.length === 0 ? (
-                                <tr>
-                                  <td colSpan={6} className="px-4 py-12 text-center text-gray-500 text-sm">
-                                    {tm('reportsStockAgeEmpty')}
-                                  </td>
-                                </tr>
-                              ) : (
-                                visible.map((r) => (
-                                  <tr key={r.name} className="hover:bg-gray-50">
-                                    <td className="px-4 py-3 font-medium">{r.name}</td>
-                                    <td className="px-4 py-3 text-sm text-gray-600">{r.category}</td>
-                                    <td className="px-4 py-3 text-right tabular-nums">{r.stock}</td>
-                                    <td className="px-4 py-3 text-right tabular-nums">
-                                      {tm('reportsDaysWithN').replace('{n}', String(r.daysSinceMovement))}
-                                    </td>
-                                    <td className="px-4 py-3 text-right tabular-nums">{formatNumber(r.value, 2, false)} {reportCurrency}</td>
-                                    <td className="px-4 py-3 text-center">
-                                      <span className={`px-2 py-1 rounded text-xs font-medium ${bucketStyle(r.bucketKey)}`}>{r.bucket}</span>
-                                    </td>
-                                  </tr>
-                                ))
-                              )}
-                            </tbody>
-                            <ReportTableFooter
-                              rows={visible}
-                              columns={[
-                                { key: 'name', label: tm('reportColProduct'), align: 'left' },
-                                { key: 'category', label: tm('reportsColCategory'), align: 'left' },
-                                { key: 'stock', label: tm('reportsColStock'), aggregate: 'sum', align: 'right' },
-                                { key: 'daysSinceMovement', label: tm('reportsStockAgeThLastMove'), aggregate: 'avg', align: 'right', formatter: (v) => tm('reportsDaysWithN').replace('{n}', formatNumber(v, 1, false)) },
-                                { key: 'value', label: tm('reportsColStockValue'), aggregate: 'sum', align: 'right', formatter: (v) => `${formatNumber(v, 2, false)} ${reportCurrency}` },
-                                { key: 'bucket', label: tm('reportsStockAgeThBucket'), align: 'center' },
-                              ]}
-                            />
-                          </table>
+                        <div className="p-2">
+                          <ReportColumnTable
+                            data={rows}
+                            height={520}
+                            storageNamespace="stock-aging"
+                            footerLabel={tm('reportsTotalsRow')}
+                            columns={[
+                              { key: 'name', header: tm('reportColProduct'), size: 180 },
+                              { key: 'category', header: tm('reportsColCategory'), size: 140 },
+                              {
+                                key: 'stock',
+                                header: tm('reportsColStock'),
+                                type: 'number',
+                                align: 'right',
+                                size: 110,
+                                footerSum: true,
+                              },
+                              {
+                                key: 'daysSinceMovement',
+                                header: tm('reportsStockAgeThLastMove'),
+                                type: 'number',
+                                align: 'right',
+                                size: 120,
+                                cell: (r) => tm('reportsDaysWithN').replace('{n}', String(r.daysSinceMovement)),
+                              },
+                              {
+                                key: 'value',
+                                header: tm('reportsColStockValue'),
+                                type: 'number',
+                                align: 'right',
+                                size: 120,
+                                footerSum: true,
+                                footerFormat: (n) => formatLedgerAmount(n, reportCurrency),
+                                cell: (r) => `${formatNumber(r.value, 2, false)} ${reportCurrency}`,
+                              },
+                              {
+                                key: 'bucket',
+                                header: tm('reportsStockAgeThBucket'),
+                                align: 'center',
+                                size: 140,
+                                cell: (r) => (
+                                  <span className={`px-2 py-1 rounded text-xs font-medium ${bucketStyle(r.bucketKey)}`}>
+                                    {r.bucket}
+                                  </span>
+                                ),
+                              },
+                            ]}
+                          />
                         </div>
                       );
                     })()}
@@ -7978,7 +7928,6 @@ export function ReportsModule({
                       </span>
                     </div>
                     {(() => {
-                      const rpt = reportFilters.forTab('stock-turnover');
                       const rows = to.rows.map((r) => ({
                         name: r.name,
                         category: r.category,
@@ -7989,81 +7938,72 @@ export function ReportsModule({
                         annualizedTurnover: r.annualizedTurnover,
                         daysCover: r.daysCover,
                       }));
-                      const visible = rpt.filtered(rows);
                       return (
-                        <div className="overflow-x-auto overflow-y-auto max-h-[560px]" style={{ scrollbarWidth: 'thin', scrollbarColor: '#cbd5e1 #f1f5f9' }}>
-                          <table className="w-full min-w-[960px]">
-                            <thead className="bg-gray-50 border-b sticky top-0">
-                              <ReportColumnFilters
-                                columns={[
-                                  { key: 'name', label: tm('reportColProduct'), type: 'text', width: 'min-w-[180px]' },
-                                  { key: 'category', label: tm('reportsColCategory'), type: 'text', width: 'min-w-[140px]' },
-                                  { key: 'soldQty', label: tm('reportsStockTurnThSoldQty'), type: 'number', align: 'right', width: 'min-w-[110px]' },
-                                  { key: 'revenue', label: tm('totalRevenueLabel'), type: 'number', align: 'right', width: 'min-w-[120px]' },
-                                  { key: 'stock', label: tm('invCurrentStockLbl'), type: 'number', align: 'right', width: 'min-w-[110px]' },
-                                  { key: 'ratio', label: tm('reportsStockTurnThSalesStockRatio'), type: 'number', align: 'right', width: 'min-w-[120px]' },
-                                  { key: 'annualizedTurnover', label: tm('reportsStockTurnThAnnualTurn'), type: 'number', align: 'right', width: 'min-w-[120px]' },
-                                  { key: 'daysCover', label: tm('reportsStockTurnThStockDays'), type: 'number', align: 'right', width: 'min-w-[120px]' },
-                                ]}
-                                values={rpt.values}
-                                onFilterChange={rpt.setFilter}
-                                onClear={rpt.clearAll}>
-                              <tr>
-                                <th className="px-4 py-3 text-left text-sm">{tm('reportColProduct')}</th>
-                                <th className="px-4 py-3 text-left text-sm">{tm('reportsColCategory')}</th>
-                                <th className="px-4 py-3 text-right text-sm">{tm('reportsStockTurnThSoldQty')}</th>
-                                <th className="px-4 py-3 text-right text-sm">{tm('totalRevenueLabel')}</th>
-                                <th className="px-4 py-3 text-right text-sm">{tm('invCurrentStockLbl')}</th>
-                                <th className="px-4 py-3 text-right text-sm">{tm('reportsStockTurnThSalesStockRatio')}</th>
-                                <th className="px-4 py-3 text-right text-sm">{tm('reportsStockTurnThAnnualTurn')}</th>
-                                <th className="px-4 py-3 text-right text-sm">{tm('reportsStockTurnThStockDays')}</th>
-                              </tr>
-                              </ReportColumnFilters>
-                            </thead>
-                            <tbody className="divide-y">
-                              {visible.length === 0 ? (
-                                <tr>
-                                  <td colSpan={8} className="px-4 py-12 text-center text-gray-500 text-sm">
-                                    {tm('reportsStockTurnEmpty')}
-                                  </td>
-                                </tr>
-                              ) : (
-                                visible.map((r) => (
-                                  <tr key={r.name} className="hover:bg-gray-50">
-                                    <td className="px-4 py-3 font-medium">{r.name}</td>
-                                    <td className="px-4 py-3 text-sm text-gray-600">{r.category}</td>
-                                    <td className="px-4 py-3 text-right tabular-nums">{r.soldQty}</td>
-                                    <td className="px-4 py-3 text-right tabular-nums">{formatNumber(r.revenue, 2, false)} {reportCurrency}</td>
-                                    <td className="px-4 py-3 text-right tabular-nums">{r.stock}</td>
-                                    <td className="px-4 py-3 text-right tabular-nums">
-                                      {r.ratio == null ? '—' : formatNumber(r.ratio, 2, false)}
-                                    </td>
-                                    <td className="px-4 py-3 text-right tabular-nums">
-                                      {r.annualizedTurnover == null ? '—' : formatNumber(r.annualizedTurnover, 2, false)}
-                                    </td>
-                                    <td className="px-4 py-3 text-right tabular-nums text-sm text-slate-600">
-                                      {r.daysCover == null
-                                        ? '—'
-                                        : tm('reportsDaysWithN').replace('{n}', formatNumber(r.daysCover, 1, false))}
-                                    </td>
-                                  </tr>
-                                ))
-                              )}
-                            </tbody>
-                            <ReportTableFooter
-                              rows={visible}
-                              columns={[
-                                { key: 'name', label: tm('reportColProduct'), align: 'left' },
-                                { key: 'category', label: tm('reportsColCategory'), align: 'left' },
-                                { key: 'soldQty', label: tm('reportsStockTurnThSoldQty'), aggregate: 'sum', align: 'right' },
-                                { key: 'revenue', label: tm('totalRevenueLabel'), aggregate: 'sum', align: 'right', formatter: (v) => `${formatNumber(v, 2, false)} ${reportCurrency}` },
-                                { key: 'stock', label: tm('invCurrentStockLbl'), aggregate: 'sum', align: 'right' },
-                                { key: 'ratio', label: tm('reportsStockTurnThSalesStockRatio'), aggregate: 'avg', align: 'right' },
-                                { key: 'annualizedTurnover', label: tm('reportsStockTurnThAnnualTurn'), aggregate: 'avg', align: 'right' },
-                                { key: 'daysCover', label: tm('reportsStockTurnThStockDays'), aggregate: 'avg', align: 'right', formatter: (v) => tm('reportsDaysWithN').replace('{n}', formatNumber(v, 1, false)) },
-                              ]}
-                            />
-                          </table>
+                        <div className="p-2">
+                          <ReportColumnTable
+                            data={rows}
+                            height={520}
+                            storageNamespace="stock-turnover"
+                            footerLabel={tm('reportsTotalsRow')}
+                            columns={[
+                              { key: 'name', header: tm('reportColProduct'), size: 180 },
+                              { key: 'category', header: tm('reportsColCategory'), size: 140 },
+                              {
+                                key: 'soldQty',
+                                header: tm('reportsStockTurnThSoldQty'),
+                                type: 'number',
+                                align: 'right',
+                                size: 110,
+                                footerSum: true,
+                              },
+                              {
+                                key: 'revenue',
+                                header: tm('totalRevenueLabel'),
+                                type: 'number',
+                                align: 'right',
+                                size: 120,
+                                footerSum: true,
+                                footerFormat: (n) => formatLedgerAmount(n, reportCurrency),
+                                cell: (r) => `${formatNumber(r.revenue, 2, false)} ${reportCurrency}`,
+                              },
+                              {
+                                key: 'stock',
+                                header: tm('invCurrentStockLbl'),
+                                type: 'number',
+                                align: 'right',
+                                size: 110,
+                                footerSum: true,
+                              },
+                              {
+                                key: 'ratio',
+                                header: tm('reportsStockTurnThSalesStockRatio'),
+                                type: 'number',
+                                align: 'right',
+                                size: 120,
+                                cell: (r) => (r.ratio == null ? '—' : formatNumber(r.ratio, 2, false)),
+                              },
+                              {
+                                key: 'annualizedTurnover',
+                                header: tm('reportsStockTurnThAnnualTurn'),
+                                type: 'number',
+                                align: 'right',
+                                size: 120,
+                                cell: (r) =>
+                                  r.annualizedTurnover == null ? '—' : formatNumber(r.annualizedTurnover, 2, false),
+                              },
+                              {
+                                key: 'daysCover',
+                                header: tm('reportsStockTurnThStockDays'),
+                                type: 'number',
+                                align: 'right',
+                                size: 120,
+                                cell: (r) =>
+                                  r.daysCover == null
+                                    ? '—'
+                                    : tm('reportsDaysWithN').replace('{n}', formatNumber(r.daysCover, 1, false)),
+                              },
+                            ]}
+                          />
                         </div>
                       );
                     })()}
@@ -8149,7 +8089,6 @@ export function ReportsModule({
                       <h3 className="text-lg font-semibold">{tm('reportsAbcTableTitle')}</h3>
                     </div>
                     {(() => {
-                      const rpt = reportFilters.forTab('stock-abc');
                       const rows = abc.rows.map((r) => ({
                         abc: r.abc,
                         name: r.name,
@@ -8160,85 +8099,86 @@ export function ReportsModule({
                         metric: r.metric,
                         cumPct: r.cumPct,
                       }));
-                      const visible = rpt.filtered(rows);
                       return (
-                        <div className="overflow-x-auto overflow-y-auto max-h-[400px]" style={{ scrollbarWidth: 'thin', scrollbarColor: '#cbd5e1 #f1f5f9' }}>
-                          <table className="w-full min-w-[800px]">
-                            <thead className="bg-gray-50 border-b sticky top-0">
-                              <ReportColumnFilters
-                                columns={[
-                                  { key: 'abc', label: tm('reportsAbcThClass'), type: 'text', align: 'left', width: 'min-w-[80px]' },
-                                  { key: 'name', label: tm('reportColProduct'), type: 'text', width: 'min-w-[180px]' },
-                                  { key: 'category', label: tm('reportsColCategory'), type: 'text', width: 'min-w-[140px]' },
-                                  { key: 'revenue', label: tm('reportsAbcThRevenuePeriod'), type: 'number', align: 'right', width: 'min-w-[140px]' },
-                                  { key: 'stock', label: tm('reportsColStock'), type: 'number', align: 'right', width: 'min-w-[100px]' },
-                                  { key: 'stockValue', label: tm('reportsColStockValue'), type: 'number', align: 'right', width: 'min-w-[120px]' },
-                                  { key: 'metric', label: tm('reportsAbcThMetric'), type: 'number', align: 'right', width: 'min-w-[120px]' },
-                                  { key: 'cumPct', label: tm('reportsAbcThCumPct'), type: 'number', align: 'right', width: 'min-w-[120px]' },
-                                ]}
-                                values={rpt.values}
-                                onFilterChange={rpt.setFilter}
-                                onClear={rpt.clearAll}>
-                              <tr>
-                                <th className="px-4 py-3 text-left text-sm">{tm('reportsAbcThClass')}</th>
-                                <th className="px-4 py-3 text-left text-sm">{tm('reportColProduct')}</th>
-                                <th className="px-4 py-3 text-left text-sm">{tm('reportsColCategory')}</th>
-                                <th className="px-4 py-3 text-right text-sm">{tm('reportsAbcThRevenuePeriod')}</th>
-                                <th className="px-4 py-3 text-right text-sm">{tm('reportsColStock')}</th>
-                                <th className="px-4 py-3 text-right text-sm">{tm('reportsColStockValue')}</th>
-                                <th className="px-4 py-3 text-right text-sm">{tm('reportsAbcThMetric')}</th>
-                                <th className="px-4 py-3 text-right text-sm">{tm('reportsAbcThCumPct')}</th>
-                              </tr>
-                              </ReportColumnFilters>
-                            </thead>
-                            <tbody className="divide-y">
-                              {visible.length === 0 ? (
-                                <tr>
-                                  <td colSpan={8} className="px-4 py-12 text-center text-gray-500 text-sm">
-                                    {tm('reportsAbcEmptyRows')}
-                                  </td>
-                                </tr>
-                              ) : (
-                                visible.map((r) => (
-                                  <tr key={r.name + r.abc} className="hover:bg-gray-50">
-                                    <td className="px-4 py-3">
-                                      <span
-                                        className={`px-2 py-1 rounded text-xs font-bold ${
-                                          r.abc === 'A'
-                                            ? 'bg-green-100 text-green-800'
-                                            : r.abc === 'B'
-                                              ? 'bg-amber-100 text-amber-800'
-                                              : 'bg-slate-100 text-slate-700'
-                                        }`}
-                                      >
-                                        {r.abc}
-                                      </span>
-                                    </td>
-                                    <td className="px-4 py-3 font-medium">{r.name}</td>
-                                    <td className="px-4 py-3 text-sm text-gray-600">{r.category}</td>
-                                    <td className="px-4 py-3 text-right tabular-nums">{formatNumber(r.revenue, 2, false)} {reportCurrency}</td>
-                                    <td className="px-4 py-3 text-right tabular-nums">{r.stock}</td>
-                                    <td className="px-4 py-3 text-right tabular-nums">{formatNumber(r.stockValue, 2, false)} {reportCurrency}</td>
-                                    <td className="px-4 py-3 text-right tabular-nums font-medium">{formatNumber(r.metric, 2, false)} {reportCurrency}</td>
-                                    <td className="px-4 py-3 text-right tabular-nums">{formatNumber(r.cumPct, 1, false)}%</td>
-                                  </tr>
-                                ))
-                              )}
-                            </tbody>
-                            <ReportTableFooter
-                              rows={visible}
-                              columns={[
-                                { key: 'abc', label: tm('reportsAbcThClass'), align: 'left' },
-                                { key: 'name', label: tm('reportColProduct'), align: 'left' },
-                                { key: 'category', label: tm('reportsColCategory'), align: 'left' },
-                                { key: 'revenue', label: tm('reportsAbcThRevenuePeriod'), aggregate: 'sum', align: 'right', formatter: (v) => `${formatNumber(v, 2, false)} ${reportCurrency}` },
-                                { key: 'stock', label: tm('reportsColStock'), aggregate: 'sum', align: 'right' },
-                                { key: 'stockValue', label: tm('reportsColStockValue'), aggregate: 'sum', align: 'right', formatter: (v) => `${formatNumber(v, 2, false)} ${reportCurrency}` },
-                                { key: 'metric', label: tm('reportsAbcThMetric'), aggregate: 'sum', align: 'right', formatter: (v) => `${formatNumber(v, 2, false)} ${reportCurrency}` },
-                                { key: 'cumPct', label: tm('reportsAbcThCumPct'), aggregate: 'max', align: 'right', formatter: (v) => `${formatNumber(v, 1, false)}%` },
-                              ]}
-                            />
-                          </table>
+                        <div className="p-2">
+                          <ReportColumnTable
+                            data={rows}
+                            height={400}
+                            storageNamespace="stock-abc"
+                            footerLabel={tm('reportsTotalsRow')}
+                            columns={[
+                              {
+                                key: 'abc',
+                                header: tm('reportsAbcThClass'),
+                                size: 80,
+                                cell: (r) => (
+                                  <span
+                                    className={`px-2 py-1 rounded text-xs font-bold ${
+                                      r.abc === 'A'
+                                        ? 'bg-green-100 text-green-800'
+                                        : r.abc === 'B'
+                                          ? 'bg-amber-100 text-amber-800'
+                                          : 'bg-slate-100 text-slate-700'
+                                    }`}
+                                  >
+                                    {r.abc}
+                                  </span>
+                                ),
+                              },
+                              { key: 'name', header: tm('reportColProduct'), size: 180 },
+                              { key: 'category', header: tm('reportsColCategory'), size: 140 },
+                              {
+                                key: 'revenue',
+                                header: tm('reportsAbcThRevenuePeriod'),
+                                type: 'number',
+                                align: 'right',
+                                size: 140,
+                                footerSum: true,
+                                footerFormat: (n) => formatLedgerAmount(n, reportCurrency),
+                                cell: (r) => `${formatNumber(r.revenue, 2, false)} ${reportCurrency}`,
+                              },
+                              {
+                                key: 'stock',
+                                header: tm('reportsColStock'),
+                                type: 'number',
+                                align: 'right',
+                                size: 100,
+                                footerSum: true,
+                              },
+                              {
+                                key: 'stockValue',
+                                header: tm('reportsColStockValue'),
+                                type: 'number',
+                                align: 'right',
+                                size: 120,
+                                footerSum: true,
+                                footerFormat: (n) => formatLedgerAmount(n, reportCurrency),
+                                cell: (r) => `${formatNumber(r.stockValue, 2, false)} ${reportCurrency}`,
+                              },
+                              {
+                                key: 'metric',
+                                header: tm('reportsAbcThMetric'),
+                                type: 'number',
+                                align: 'right',
+                                size: 120,
+                                footerSum: true,
+                                footerFormat: (n) => formatLedgerAmount(n, reportCurrency),
+                                cell: (r) => (
+                                  <span className="font-medium">
+                                    {formatNumber(r.metric, 2, false)} {reportCurrency}
+                                  </span>
+                                ),
+                              },
+                              {
+                                key: 'cumPct',
+                                header: tm('reportsAbcThCumPct'),
+                                type: 'number',
+                                align: 'right',
+                                size: 120,
+                                cell: (r) => `${formatNumber(r.cumPct, 1, false)}%`,
+                              },
+                            ]}
+                          />
                         </div>
                       );
                     })()}
@@ -8673,31 +8613,50 @@ export function ReportsModule({
                   <p className="text-xs text-slate-500 flex-1 min-w-[200px]">{tm('beautyStaffTreatmentReportHint')}</p>
                 </div>
                 <Spin spinning={loadingStaffTreatmentReport}>
-                  <div className="bg-white rounded-xl border border-slate-200 overflow-hidden shadow-sm">
-                    <Table
-                      size="middle"
-                      bordered
-                      rowKey={(r) => `${r.staff_id}-${r.day_ymd}`}
-                      pagination={{ pageSize: 20, showSizeChanger: true }}
-                      locale={{ emptyText: tm('noDataFound') }}
-                      dataSource={staffTreatmentReport?.rows ?? []}
+                  <div className="bg-white rounded-xl border border-slate-200 overflow-hidden shadow-sm p-2">
+                    <ReportColumnTable
+                      data={(staffTreatmentReport?.rows ?? []).map((r) => ({
+                        day_ymd: r.day_ymd,
+                        staff_name: r.staff_name,
+                        appointment_count: r.appointment_count,
+                        shots_count: r.shots_count,
+                        degree_count: r.degree_count,
+                        samples: [
+                          ...(r.shots_samples ?? []).map((s) => `${tm('bReceiptTreatmentShots')}: ${s}`),
+                          ...(r.degree_samples ?? []).map((d) => `${tm('bReceiptTreatmentDegree')}: ${d}`),
+                        ].join(' · ') || '—',
+                        staff_id: r.staff_id,
+                      }))}
+                      height={520}
+                      storageNamespace="beauty-staff-treatment"
                       columns={[
-                        { title: tm('date'), dataIndex: 'day_ymd', width: 120 },
-                        { title: tm('bStaffView'), dataIndex: 'staff_name' },
-                        { title: tm('beautyStaffTreatmentApptCount'), dataIndex: 'appointment_count', align: 'right' as const, width: 110 },
-                        { title: tm('bReceiptTreatmentShots'), dataIndex: 'shots_count', align: 'right' as const, width: 100 },
-                        { title: tm('bReceiptTreatmentDegree'), dataIndex: 'degree_count', align: 'right' as const, width: 100 },
+                        { key: 'day_ymd', header: tm('date'), type: 'date', size: 120 },
+                        { key: 'staff_name', header: tm('bStaffView'), size: 160 },
                         {
-                          title: tm('beautyStaffTreatmentSamples'),
-                          key: 'samples',
-                          render: (_, r) => {
-                            const parts = [
-                              ...(r.shots_samples ?? []).map((s) => `${tm('bReceiptTreatmentShots')}: ${s}`),
-                              ...(r.degree_samples ?? []).map((d) => `${tm('bReceiptTreatmentDegree')}: ${d}`),
-                            ];
-                            return parts.length ? parts.join(' · ') : '—';
-                          },
+                          key: 'appointment_count',
+                          header: tm('beautyStaffTreatmentApptCount'),
+                          type: 'number',
+                          align: 'right',
+                          size: 110,
+                          footerSum: true,
                         },
+                        {
+                          key: 'shots_count',
+                          header: tm('bReceiptTreatmentShots'),
+                          type: 'number',
+                          align: 'right',
+                          size: 100,
+                          footerSum: true,
+                        },
+                        {
+                          key: 'degree_count',
+                          header: tm('bReceiptTreatmentDegree'),
+                          type: 'number',
+                          align: 'right',
+                          size: 100,
+                          footerSum: true,
+                        },
+                        { key: 'samples', header: tm('beautyStaffTreatmentSamples'), size: 280 },
                       ]}
                     />
                   </div>

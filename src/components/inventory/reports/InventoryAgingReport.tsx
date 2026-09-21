@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import {
     Calendar, Clock, AlertTriangle,
     ArrowRight, Sparkles, Filter
@@ -6,6 +6,7 @@ import {
 import { dynamicReportEngine, ReportRow } from '../../../services/reports/DynamicReportEngine';
 import { aiReportService, AIInsight } from '../../../services/ai/AIReportService';
 import { formatNumber } from '../../../utils/formatNumber';
+import { ReportColumnTable, type ReportColumnTableCol } from '../../reports/shared/ReportDataGrid';
 
 export function InventoryAgingReport() {
     const [loading, setLoading] = useState(true);
@@ -28,6 +29,83 @@ export function InventoryAgingReport() {
     useEffect(() => {
         loadData();
     }, []);
+
+    type AgingGridRow = ReportRow & { status: string; product_code: string };
+
+    const gridRows = useMemo<AgingGridRow[]>(
+        () =>
+            data.map((row) => ({
+                ...row,
+                status: row.aging_bucket,
+                product_code: row.id.split('-')[0],
+            })),
+        [data],
+    );
+
+    const gridColumns = useMemo<ReportColumnTableCol<AgingGridRow>[]>(
+        () => [
+            {
+                key: 'product_name',
+                header: 'Ürün Adı',
+                size: 220,
+                cell: (row) => (
+                    <div>
+                        <span className="font-bold text-slate-900">{row.product_name}</span>
+                        <span className="block text-[10px] text-slate-400 font-mono mt-0.5">{row.product_code}</span>
+                    </div>
+                ),
+            },
+            {
+                key: 'current_stock',
+                header: 'Bakiye',
+                type: 'number',
+                align: 'center',
+                size: 100,
+                footerSum: true,
+            },
+            {
+                key: 'days_since_last_move',
+                header: 'Son Hareket (Gün)',
+                type: 'number',
+                align: 'center',
+                size: 140,
+                cell: (row) => <span className="font-mono">{row.days_since_last_move || '0'}</span>,
+            },
+            {
+                key: 'status',
+                header: 'Yaşlandırma Durumu',
+                size: 160,
+                cell: (row) => (
+                    <span
+                        className={`px-3 py-1 rounded-full text-[10px] font-black uppercase ${
+                            row.aging_bucket.startsWith('Critical')
+                                ? 'bg-red-100 text-red-600'
+                                : row.aging_bucket.startsWith('Slow')
+                                  ? 'bg-orange-100 text-orange-600'
+                                  : 'bg-slate-100 text-slate-600'
+                        }`}
+                    >
+                        {row.aging_bucket}
+                    </span>
+                ),
+            },
+            {
+                key: 'id',
+                header: 'Eylem Önerisi',
+                size: 120,
+                align: 'right',
+                cell: () => (
+                    <button
+                        type="button"
+                        className="text-indigo-600 hover:text-indigo-800 font-bold text-xs flex items-center gap-1 justify-end ml-auto"
+                    >
+                        Detay <ArrowRight className="w-3 h-3" />
+                    </button>
+                ),
+            },
+        ],
+        [],
+    );
 
     return (
         <div className="h-full flex flex-col bg-slate-50">
@@ -90,43 +168,13 @@ export function InventoryAgingReport() {
                 </div>
 
                 {/* Detail Table */}
-                <div className="bg-white rounded-2xl border border-slate-200 shadow-sm overflow-hidden">
-                    <table className="w-full text-left">
-                        <thead className="bg-slate-50 border-b border-slate-200 text-[10px] font-black text-slate-500 uppercase tracking-widest">
-                            <tr>
-                                <th className="px-6 py-4">Ürün Adı</th>
-                                <th className="px-6 py-4 text-center">Bakiye</th>
-                                <th className="px-6 py-4 text-center">Son Hareket (Gün)</th>
-                                <th className="px-6 py-4 text-center">Yaşlandırma Durumu</th>
-                                <th className="px-6 py-4 text-right">Eylem Önerisi</th>
-                            </tr>
-                        </thead>
-                        <tbody className="divide-y divide-slate-100 text-sm">
-                            {data.map((row, idx) => (
-                                <tr key={idx} className="hover:bg-slate-50/80 transition-colors">
-                                    <td className="px-6 py-4">
-                                        <span className="font-bold text-slate-900">{row.product_name}</span>
-                                        <span className="block text-[10px] text-slate-400 font-mono mt-0.5">{row.id.split('-')[0]}</span>
-                                    </td>
-                                    <td className="px-6 py-4 text-center font-bold">{row.current_stock}</td>
-                                    <td className="px-6 py-4 text-center font-mono">{row.days_since_last_move || '0'}</td>
-                                    <td className="px-6 py-4 text-center">
-                                        <span className={`px-3 py-1 rounded-full text-[10px] font-black uppercase ${row.aging_bucket.startsWith('Critical') ? 'bg-red-100 text-red-600' :
-                                                row.aging_bucket.startsWith('Slow') ? 'bg-orange-100 text-orange-600' :
-                                                    'bg-slate-100 text-slate-600'
-                                            }`}>
-                                            {row.aging_bucket}
-                                        </span>
-                                    </td>
-                                    <td className="px-6 py-4 text-right">
-                                        <button className="text-indigo-600 hover:text-indigo-800 font-bold text-xs flex items-center gap-1 justify-end ml-auto">
-                                            Detay <ArrowRight className="w-3 h-3" />
-                                        </button>
-                                    </td>
-                                </tr>
-                            ))}
-                        </tbody>
-                    </table>
+                <div className="bg-white rounded-2xl border border-slate-200 shadow-sm overflow-hidden p-4">
+                    <ReportColumnTable
+                        data={gridRows}
+                        columns={gridColumns}
+                        height={560}
+                        storageNamespace="inventory-aging"
+                    />
                 </div>
             </div>
         </div>

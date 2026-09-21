@@ -9,6 +9,7 @@ import { toSqlDateInputString } from '../../utils/localCalendarDate';
 import { splitAmountByPartners, type PeriodPartnerShareSlice } from '../../utils/periodSummaryPartnerSplit';
 import type { Expense } from '../../services/api/expenses';
 import { useLanguage } from '../../contexts/LanguageContext';
+import { ReportColumnTable, type ReportColumnTableCol } from './shared/ReportDataGrid';
 
 export type PeriodExpenseShareDetailScope = {
   title: string;
@@ -78,19 +79,66 @@ export function PeriodExpenseShareDetailModal({
 
   const money = (v: number) => `${formatNumber(v, 0, false)} ${currency}`;
 
-  const dip = useMemo(() => {
-    const amount = rows.reduce((s, e) => s + (Number(e.amount) || 0), 0);
-    const byId: Record<string, number> = {};
-    for (const p of visiblePartners) byId[p.id] = 0;
-    for (const e of rows) {
+  type ExpenseGridRow = Expense & { expenseDay: string; amountNum: number; [key: string]: unknown };
+
+  const gridRows = useMemo((): ExpenseGridRow[] => {
+    return rows.map((e) => {
       const shares = splitAmountByPartners(
         Number(e.amount) || 0,
         visiblePartners.length ? visiblePartners : partners,
       );
-      for (const s of shares) byId[s.id] = (byId[s.id] || 0) + s.amount;
-    }
-    return { amount, byId };
+      const partnerFields: Record<string, number> = {};
+      for (const p of visiblePartners) {
+        partnerFields[`share_${p.id}`] = shares.find((s) => s.id === p.id)?.amount ?? 0;
+      }
+      return {
+        ...e,
+        expenseDay: toSqlDateInputString(e.expense_date || '') || '—',
+        amountNum: Number(e.amount) || 0,
+        ...partnerFields,
+      };
+    });
   }, [rows, visiblePartners, partners]);
+
+  const tableColumns = useMemo((): ReportColumnTableCol<ExpenseGridRow>[] => {
+    const cols: ReportColumnTableCol<ExpenseGridRow>[] = [
+      { key: 'expenseDay', header: tm('dateLabel'), type: 'date', size: 110 },
+      { key: 'category', header: tm('rptPeriodFilterCategory'), size: 120 },
+      {
+        key: 'description',
+        header: tm('description'),
+        size: 200,
+        cell: (e) => (
+          <span className="max-w-xs truncate block" title={e.description}>
+            {e.description || '—'}
+          </span>
+        ),
+      },
+      {
+        key: 'amountNum',
+        header: `${tm('rptPeriodColExpenses')} (${currency})`,
+        type: 'number',
+        align: 'right',
+        footerSum: true,
+        footerFormat: (n) => <span className="font-bold text-blue-900">{money(n)}</span>,
+        cell: (e) => <span className="font-mono font-semibold text-red-600">{money(e.amountNum)}</span>,
+      },
+    ];
+    for (const p of visiblePartners) {
+      cols.push({
+        key: `share_${p.id}`,
+        header: `${p.name} (%${p.sharePct})`,
+        type: 'number',
+        align: 'right',
+        footerSum: true,
+        footerFormat: (n) => <span className="font-bold text-blue-900">{money(n)}</span>,
+        cell: (e) => (
+          <span className="font-mono text-rose-700">{money(Number(e[`share_${p.id}`]) || 0)}</span>
+        ),
+      });
+    }
+    return cols;
+  }, [visiblePartners, tm, currency, money]);
 
   return (
     <PercentBodyModal onClose={onClose} size="wide" ariaLabel={title}>
@@ -154,56 +202,18 @@ export function PeriodExpenseShareDetailModal({
           {rows.length === 0 ? (
             <div className="p-10 text-center text-sm text-slate-400">{tm('noRecordFound')}</div>
           ) : (
-            <table className="w-full text-sm">
-              <thead className="sticky top-0 z-[1] bg-slate-100 text-[11px] font-black uppercase tracking-wider text-slate-600">
-                <tr>
-                  <th className="px-3 py-2 text-left">{tm('dateLabel')}</th>
-                  <th className="px-3 py-2 text-left">{tm('rptPeriodFilterCategory')}</th>
-                  <th className="px-3 py-2 text-left">{tm('description')}</th>
-                  <th className="px-3 py-2 text-right">{tm('rptPeriodColExpenses')} ({currency})</th>
-                  {visiblePartners.map((p) => (
-                    <th key={p.id} className="px-3 py-2 text-right">
-                      {p.name} (%{p.sharePct})
-                    </th>
-                  ))}
-                </tr>
-              </thead>
-              <tbody>
-                {rows.map((e) => {
-                  const shares = splitAmountByPartners(Number(e.amount) || 0, visiblePartners.length ? visiblePartners : partners);
-                  const byId: Record<string, number> = {};
-                  for (const s of shares) byId[s.id] = s.amount;
-                  const day = toSqlDateInputString(e.expense_date || '') || '—';
-                  return (
-                    <tr key={e.id} className="border-t border-slate-100">
-                      <td className="px-3 py-2 font-mono text-xs text-slate-600 whitespace-nowrap">{day}</td>
-                      <td className="px-3 py-2">{e.category || '—'}</td>
-                      <td className="px-3 py-2 text-slate-700 max-w-xs truncate" title={e.description}>{e.description || '—'}</td>
-                      <td className="px-3 py-2 text-right font-mono font-semibold text-red-600">{money(Number(e.amount) || 0)}</td>
-                      {visiblePartners.map((p) => (
-                        <td key={p.id} className="px-3 py-2 text-right font-mono text-rose-700">
-                          {money(byId[p.id] ?? 0)}
-                        </td>
-                      ))}
-                    </tr>
-                  );
-                })}
-              </tbody>
-              <tfoot className="sticky bottom-0 z-[2] border-t-2 border-blue-300 bg-blue-50">
-                <tr>
-                  <td colSpan={3} className="px-3 py-2 text-[11px] font-black uppercase tracking-wider text-blue-800">
-                    {tm('invoiceListDipTotal')}
-                    <span className="ml-1 font-semibold text-blue-600/80">({rows.length})</span>
-                  </td>
-                  <td className="px-3 py-2 text-right font-bold tabular-nums text-blue-900">{money(dip.amount)}</td>
-                  {visiblePartners.map((p) => (
-                    <td key={p.id} className="px-3 py-2 text-right font-bold tabular-nums text-blue-900">
-                      {money(dip.byId[p.id] ?? 0)}
-                    </td>
-                  ))}
-                </tr>
-              </tfoot>
-            </table>
+            <ReportColumnTable
+              data={gridRows}
+              columns={tableColumns}
+              height={420}
+              footerLabel={
+                <>
+                  {tm('invoiceListDipTotal')}
+                  <span className="ml-1 font-semibold text-blue-600/80">({rows.length})</span>
+                </>
+              }
+              storageNamespace="period-expense-share-detail"
+            />
           )}
         </PercentBodyModalScrollBody>
 

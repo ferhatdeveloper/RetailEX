@@ -1,5 +1,6 @@
 /**
- * Menü görünürlük parametreleri: güzellik/anket raporları + sanal santral + fiyat değişimi
+ * Menü görünürlük parametreleri: güzellik/anket raporları + borç/alacak yaşlandırma
+ * + vade/tahsilat takibi + stok yaşlandırma + sanal santral + fiyat değişimi
  * + ürün listesi satış/alış dip toplamları + günlük/dönem rapor özet kartları
  * + günlük rapor tedarikçi ödemeleri + Windows yazıcı servisi.
  * Kaynak: PostgreSQL `system_settings.report_menu_params` ↔ localStorage önbellek.
@@ -16,6 +17,12 @@ export const REPORT_MENU_PARAM_KEYS = [
   'beauty-survey-service-report',
   'beauty-survey-nps-report',
   'beauty-survey-comments-report',
+  /** Finansal raporlar — Borç/Alacak Yaşlandırma (varsayılan kapalı) */
+  'debt-aging',
+  /** Finansal raporlar — Vade / Tahsilat Takibi (varsayılan kapalı) */
+  'collection-due',
+  /** Stok raporları — Stok Yaşlandırma (varsayılan kapalı) */
+  'stock-aging',
   'virtual-pbx-caller-id',
   'stock-price-change-slips',
   /** Malzeme listesi Satış/Alış Toplam dip satırı (varsayılan kapalı) */
@@ -64,6 +71,9 @@ const DEFAULT_PARAMS: ReportMenuParams = {
   'beauty-survey-service-report': false,
   'beauty-survey-nps-report': false,
   'beauty-survey-comments-report': false,
+  'debt-aging': false,
+  'collection-due': false,
+  'stock-aging': false,
   'virtual-pbx-caller-id': false,
   'stock-price-change-slips': false,
   'product-list-sales-purchase-totals': false,

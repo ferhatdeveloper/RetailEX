@@ -6,6 +6,7 @@ import { useLanguage } from '../../contexts/LanguageContext';
 import { displayItemCode } from '../../utils/lastPurchaseCostSql';
 import { formatReportDateCell } from '../../utils/dateLocale';
 import { ReportYmdDatePicker } from '../shared/ReportDateRangePresets';
+import { ReportColumnTable } from './shared/ReportDataGrid';
 
 interface Movement {
   id: string;
@@ -349,66 +350,88 @@ export function MaterialMovementReport() {
           </h3>
           {loading && <Loader2 className="w-5 h-5 text-gray-400 animate-spin" />}
         </div>
-        <div className="overflow-auto">
+        <div className="p-2">
           {movements.length === 0 && !loading ? (
             <div className="p-8 text-center text-gray-400">{tm('noRecordFound')}</div>
           ) : (
-            <table className="w-full">
-              <thead className="bg-gray-50 border-b">
-                <tr>
-                  <th className="px-4 py-3 text-left text-sm">{tm('mmDateTimeCol')}</th>
-                  <th className="px-4 py-3 text-left text-sm">{tm('reportColProduct')}</th>
-                  <th className="px-4 py-3 text-left text-sm">{tm('mmMovementTypeCol')}</th>
-                  <th className="px-4 py-3 text-right text-sm">{tm('reportsThQty')}</th>
-                  <th className="px-4 py-3 text-right text-sm">{tm('reportsColUnitCost')}</th>
-                  <th className="px-4 py-3 text-right text-sm">{tm('mmRowTotal')}</th>
-                  <th className="px-4 py-3 text-left text-sm">{tm('warehouse')}</th>
-                  <th className="px-4 py-3 text-left text-sm">{tm('mmReferenceCol')}</th>
-                </tr>
-              </thead>
-              <tbody className="divide-y divide-gray-200">
-                {movements.map((movement) => (
-                  <tr key={movement.id} className="hover:bg-gray-50">
-                    <td className="px-4 py-3 text-sm text-gray-900">{movement.date}</td>
-                    <td className="px-4 py-3">
-                      <div>
-                        <p className="text-sm font-medium text-gray-900">{movement.productName}</p>
-                        {movement.productCode && movement.productCode !== '—' ? (
-                          <p className="text-xs text-gray-500">{movement.productCode}</p>
-                        ) : null}
-                      </div>
-                    </td>
-                    <td className="px-4 py-3">
-                      <span
-                        className={`inline-flex px-2 py-1 text-xs font-medium rounded-full ${getTypeColor(movement.type)}`}
-                      >
-                        {getTypeLabel(movement.type)}
-                      </span>
-                    </td>
-                    <td className="px-4 py-3 text-right">
-                      <span className={`text-sm font-medium ${movement.quantity > 0 ? 'text-green-600' : 'text-red-600'}`}>
-                        {movement.quantity > 0 ? '+' : ''}
-                        {movement.quantity} {displayUnit(movement.unit)}
-                      </span>
-                    </td>
-                    <td className="px-4 py-3 text-right text-sm text-gray-900">
-                      {formatNumber(movement.unitCost, 2, false)} IQD
-                    </td>
-                    <td className="px-4 py-3 text-right">
-                      <span className={`text-sm font-medium ${movement.totalCost > 0 ? 'text-green-600' : 'text-red-600'}`}>
-                        {movement.totalCost > 0 ? '+' : ''}
-                        {formatNumber(movement.totalCost, 2, false)} IQD
-                      </span>
-                    </td>
-                    <td className="px-4 py-3 text-sm text-gray-900">{movement.warehouse}</td>
-                    <td className="px-4 py-3">
+            <ReportColumnTable
+              data={movements}
+              height={520}
+              storageNamespace="material-movement"
+              columns={[
+                { key: 'date', header: tm('mmDateTimeCol'), type: 'date', size: 140 },
+                {
+                  key: 'productName',
+                  header: tm('reportColProduct'),
+                  size: 220,
+                  cell: (movement) => (
+                    <div>
+                      <p className="text-sm font-medium text-gray-900">{movement.productName}</p>
+                      {movement.productCode && movement.productCode !== '—' ? (
+                        <p className="text-xs text-gray-500">{movement.productCode}</p>
+                      ) : null}
+                    </div>
+                  ),
+                },
+                {
+                  key: 'type',
+                  header: tm('mmMovementTypeCol'),
+                  size: 120,
+                  cell: (movement) => (
+                    <span
+                      className={`inline-flex px-2 py-1 text-xs font-medium rounded-full ${getTypeColor(movement.type)}`}
+                    >
+                      {getTypeLabel(movement.type)}
+                    </span>
+                  ),
+                },
+                {
+                  key: 'quantity',
+                  header: tm('reportsThQty'),
+                  type: 'number',
+                  align: 'right',
+                  cell: (movement) => (
+                    <span className={`text-sm font-medium ${movement.quantity > 0 ? 'text-green-600' : 'text-red-600'}`}>
+                      {movement.quantity > 0 ? '+' : ''}
+                      {movement.quantity} {displayUnit(movement.unit)}
+                    </span>
+                  ),
+                },
+                {
+                  key: 'unitCost',
+                  header: tm('reportsColUnitCost'),
+                  type: 'number',
+                  align: 'right',
+                  cell: (movement) => `${formatNumber(movement.unitCost, 2, false)} IQD`,
+                },
+                {
+                  key: 'totalCost',
+                  header: tm('mmRowTotal'),
+                  type: 'number',
+                  align: 'right',
+                  footerSum: true,
+                  footerFormat: (n) => `${formatNumber(n, 2, false)} IQD`,
+                  cell: (movement) => (
+                    <span className={`text-sm font-medium ${movement.totalCost > 0 ? 'text-green-600' : 'text-red-600'}`}>
+                      {movement.totalCost > 0 ? '+' : ''}
+                      {formatNumber(movement.totalCost, 2, false)} IQD
+                    </span>
+                  ),
+                },
+                { key: 'warehouse', header: tm('warehouse'), size: 120 },
+                {
+                  key: 'reference',
+                  header: tm('mmReferenceCol'),
+                  size: 180,
+                  cell: (movement) => (
+                    <div>
                       <p className="text-sm text-gray-900">{movement.reference}</p>
-                      {movement.note && <p className="text-xs text-gray-500">{movement.note}</p>}
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
+                      {movement.note ? <p className="text-xs text-gray-500">{movement.note}</p> : null}
+                    </div>
+                  ),
+                },
+              ]}
+            />
           )}
         </div>
       </div>

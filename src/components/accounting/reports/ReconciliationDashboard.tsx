@@ -1,10 +1,11 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import {
     CheckCircle, AlertCircle, RefreshCw, ArrowRightLeft,
     HelpCircle, History, Filter, FileText
 } from 'lucide-react';
 import { reconciliationService, ReconciliationResult } from '../../../services/accounting/ReconciliationService';
 import { formatNumber } from '../../../utils/formatNumber';
+import { ReportColumnTable, type ReportColumnTableCol } from '../../reports/shared/ReportDataGrid';
 
 export function ReconciliationDashboard() {
     const [loading, setLoading] = useState(true);
@@ -29,6 +30,97 @@ export function ReconciliationDashboard() {
 
     const totalDiff = data.reduce((sum, item) => sum + Math.abs(item.difference), 0);
     const statusSeverity = totalDiff === 0 ? 'success' : totalDiff < 1000 ? 'warning' : 'critical';
+
+    type ReconGridRow = ReconciliationResult & { status: string; account_info: string };
+
+    const gridRows = useMemo<ReconGridRow[]>(
+        () =>
+            data.map((item) => ({
+                ...item,
+                status: item.difference === 0 ? 'Tam Eşleşme' : 'Uyumsuzluk',
+                account_info: `${item.account_code} • ${item.account_type.toUpperCase()}`,
+            })),
+        [data],
+    );
+
+    const columns = useMemo<ReportColumnTableCol<ReconGridRow>[]>(
+        () => [
+            {
+                key: 'account_name',
+                header: 'Hesap Bilgisi',
+                size: 220,
+                cell: (item) => (
+                    <div className="flex flex-col">
+                        <span className="font-medium text-gray-900">{item.account_name}</span>
+                        <span className="text-xs text-gray-500">{item.account_info}</span>
+                    </div>
+                ),
+            },
+            {
+                key: 'logo_balance',
+                header: 'Logo Bakiyesi',
+                type: 'number',
+                align: 'right',
+                size: 130,
+                cell: (item) => <span className="font-mono">{formatNumber(item.logo_balance, 2, false)}</span>,
+            },
+            {
+                key: 'rex_balance',
+                header: 'RetailEX Bakiyesi',
+                type: 'number',
+                align: 'right',
+                size: 140,
+                cell: (item) => <span className="font-mono">{formatNumber(item.rex_balance, 2, false)}</span>,
+            },
+            {
+                key: 'difference',
+                header: 'Fark',
+                type: 'number',
+                align: 'right',
+                size: 120,
+                cell: (item) => (
+                    <span
+                        className={`font-mono font-bold ${
+                            item.difference !== 0 ? 'text-red-600' : 'text-green-600'
+                        }`}
+                    >
+                        {item.difference > 0 ? '+' : ''}
+                        {formatNumber(item.difference, 2, false)}
+                    </span>
+                ),
+            },
+            {
+                key: 'status',
+                header: 'Durum',
+                size: 130,
+                cell: (item) => (
+                    <span
+                        className={`px-2 py-1 rounded-full text-[10px] uppercase font-bold ${
+                            item.difference === 0 ? 'bg-green-100 text-green-700' : 'bg-red-100 text-red-700'
+                        }`}
+                    >
+                        {item.status}
+                    </span>
+                ),
+            },
+            {
+                key: 'account_code',
+                header: 'İşlem',
+                size: 140,
+                align: 'right',
+                cell: (item) => (
+                    <button
+                        type="button"
+                        disabled={item.difference === 0}
+                        className="px-3 py-1 bg-white border border-gray-200 text-indigo-600 rounded hover:bg-indigo-50 transition-colors text-xs font-medium disabled:opacity-30"
+                    >
+                        Düzelt & Senkron Et
+                    </button>
+                ),
+            },
+        ],
+        [],
+    );
 
     return (
         <div className="h-full flex flex-col bg-gray-50">
@@ -97,50 +189,14 @@ export function ReconciliationDashboard() {
                             <button className="p-2 hover:bg-gray-200 rounded-lg text-gray-500"><Filter className="w-4 h-4" /></button>
                         </div>
                     </div>
-                    <table className="w-full">
-                        <thead>
-                            <tr className="bg-gray-50 text-left border-b border-gray-200">
-                                <th className="px-6 py-3 text-xs font-semibold text-gray-500 uppercase">Hesap Bilgisi</th>
-                                <th className="px-6 py-3 text-xs font-semibold text-gray-500 uppercase text-right">Logo Bakiyesi</th>
-                                <th className="px-6 py-3 text-xs font-semibold text-gray-500 uppercase text-right">RetailEX Bakiyesi</th>
-                                <th className="px-6 py-3 text-xs font-semibold text-gray-500 uppercase text-right">Fark</th>
-                                <th className="px-6 py-3 text-xs font-semibold text-gray-500 uppercase">Durum</th>
-                                <th className="px-6 py-3 text-xs font-semibold text-gray-500 uppercase text-right">İşlem</th>
-                            </tr>
-                        </thead>
-                        <tbody className="divide-y divide-gray-100">
-                            {data.map((item) => (
-                                <tr key={item.account_code} className="hover:bg-gray-50 transition-colors">
-                                    <td className="px-6 py-4">
-                                        <div className="flex flex-col">
-                                            <span className="font-medium text-gray-900">{item.account_name}</span>
-                                            <span className="text-xs text-gray-500">{item.account_code} • {item.account_type.toUpperCase()}</span>
-                                        </div>
-                                    </td>
-                                    <td className="px-6 py-4 text-right font-mono">{formatNumber(item.logo_balance, 2, false)}</td>
-                                    <td className="px-6 py-4 text-right font-mono">{formatNumber(item.rex_balance, 2, false)}</td>
-                                    <td className={`px-6 py-4 text-right font-mono font-bold ${item.difference !== 0 ? 'text-red-600' : 'text-green-600'
-                                        }`}>
-                                        {item.difference > 0 ? '+' : ''}{formatNumber(item.difference, 2, false)}
-                                    </td>
-                                    <td className="px-6 py-4">
-                                        <span className={`px-2 py-1 rounded-full text-[10px] uppercase font-bold ${item.difference === 0 ? 'bg-green-100 text-green-700' : 'bg-red-100 text-red-700'
-                                            }`}>
-                                            {item.difference === 0 ? 'Tam Eşleşme' : 'Uyumsuzluk'}
-                                        </span>
-                                    </td>
-                                    <td className="px-6 py-4 text-right">
-                                        <button
-                                            disabled={item.difference === 0}
-                                            className="px-3 py-1 bg-white border border-gray-200 text-indigo-600 rounded hover:bg-indigo-50 transition-colors text-xs font-medium disabled:opacity-30"
-                                        >
-                                            Düzelt & Senkron Et
-                                        </button>
-                                    </td>
-                                </tr>
-                            ))}
-                        </tbody>
-                    </table>
+                    <div className="p-4">
+                        <ReportColumnTable
+                            data={gridRows}
+                            columns={columns}
+                            height={520}
+                            storageNamespace="accounting-reconciliation"
+                        />
+                    </div>
                 </div>
 
                 {/* Audit Hints */}

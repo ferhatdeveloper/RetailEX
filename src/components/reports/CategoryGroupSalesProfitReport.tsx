@@ -31,6 +31,7 @@ import {
 } from '../../utils/lastPurchaseCostSql';
 import { toast } from 'sonner';
 import { ReportKpiStrip } from './shared/ReportKpiStrip';
+import { ReportColumnTable } from './shared/ReportDataGrid';
 import {
   ProductMovementHistoryModal,
   type ProductMovementTarget,
@@ -438,61 +439,68 @@ export function CategoryGroupSalesProfitReport() {
                             </span>
                           </button>
                           {cOpen && (
-                            <div className="overflow-x-auto">
-                              <table className="w-full min-w-[640px] text-sm">
-                                <thead className="bg-slate-50 text-left text-xs uppercase tracking-wide text-slate-500">
-                                  <tr>
-                                    <th className="px-8 py-2 pl-14">{tm('rptProfitColProduct')}</th>
-                                    <th className="px-2 py-2 text-right">{tm('rptProfitColCode')}</th>
-                                    <th className="px-2 py-2 text-right">{tm('rptProfitColPcs')}</th>
-                                    <th className="px-2 py-2 text-right">{tm('rptPeriodColRevenue')}</th>
-                                    <th className="px-2 py-2 text-right">{tm('rptProfitColGrossShort')}</th>
-                                  </tr>
-                                </thead>
-                                <tbody className="divide-y divide-slate-100">
-                                  {bucket.products
-                                    .sort((a, b) => b.revenue - a.revenue)
-                                    .map((p, i) => {
-                                      const openable = canOpenProductMovement(p);
-                                      return (
-                                      <tr
-                                        key={`${p.productId}-${p.productCode}-${i}`}
-                                        className={
-                                          openable
-                                            ? 'hover:bg-emerald-50/80 cursor-pointer'
-                                            : 'hover:bg-slate-50 cursor-default'
-                                        }
-                                        onClick={(e) => {
-                                          e.preventDefault();
-                                          e.stopPropagation();
-                                          if (p.lineKind === 'service' || isUuidText(p.productCode)) return;
-                                          const code = movementLookupCode(p.productCode);
-                                          if (!p.productId && !code) {
-                                            toast.error(tm('rptProfitProductCodeMissing'));
-                                            return;
-                                          }
-                                          setMovementTarget({
-                                            productId: p.productId || undefined,
-                                            productCode: code,
-                                            productName: p.productName,
-                                            startDate: toSqlDateInputString(dateFrom) || undefined,
-                                            endDate: toSqlDateInputString(dateTo) || undefined,
-                                          });
-                                        }}
-                                        title={openable ? tm('rptProfitRowClickHint') : undefined}
-                                      >
-                                        <td className="px-8 py-2 pl-14 font-medium text-slate-800">{p.productName}</td>
-                                        <td className="px-2 py-2 text-right text-slate-500">
-                                          {displayItemCode(p.productCode)}
-                                        </td>
-                                        <td className="px-2 py-2 text-right tabular-nums">{fmt(p.quantity)}</td>
-                                        <td className="px-2 py-2 text-right tabular-nums text-emerald-700">{fmt(p.revenue)}</td>
-                                        <td className="px-2 py-2 text-right tabular-nums text-indigo-700">{fmt(p.grossProfit)}</td>
-                                      </tr>
-                                      );
-                                    })}
-                                </tbody>
-                              </table>
+                            <div className="px-4 pb-3 pl-10">
+                              <ReportColumnTable
+                                data={[...bucket.products].sort((a, b) => b.revenue - a.revenue)}
+                                height={320}
+                                storageNamespace={`cat-group-${ck}`}
+                                onRowClick={(p) => {
+                                  if (p.lineKind === 'service' || isUuidText(p.productCode)) return;
+                                  const code = movementLookupCode(p.productCode);
+                                  if (!p.productId && !code) {
+                                    toast.error(tm('rptProfitProductCodeMissing'));
+                                    return;
+                                  }
+                                  setMovementTarget({
+                                    productId: p.productId || undefined,
+                                    productCode: code,
+                                    productName: p.productName,
+                                    startDate: toSqlDateInputString(dateFrom) || undefined,
+                                    endDate: toSqlDateInputString(dateTo) || undefined,
+                                  });
+                                }}
+                                columns={[
+                                  {
+                                    key: 'productName',
+                                    header: tm('rptProfitColProduct'),
+                                    size: 220,
+                                    cell: (p) => <span className="font-medium text-slate-800">{p.productName}</span>,
+                                  },
+                                  {
+                                    key: 'productCode',
+                                    header: tm('rptProfitColCode'),
+                                    align: 'right',
+                                    cell: (p) => displayItemCode(p.productCode),
+                                  },
+                                  {
+                                    key: 'quantity',
+                                    header: tm('rptProfitColPcs'),
+                                    type: 'number',
+                                    align: 'right',
+                                    footerSum: true,
+                                    footerFormat: (n) => fmt(n),
+                                    cell: (p) => fmt(p.quantity),
+                                  },
+                                  {
+                                    key: 'revenue',
+                                    header: tm('rptPeriodColRevenue'),
+                                    type: 'number',
+                                    align: 'right',
+                                    footerSum: true,
+                                    footerFormat: (n) => fmt(n),
+                                    cell: (p) => <span className="text-emerald-700">{fmt(p.revenue)}</span>,
+                                  },
+                                  {
+                                    key: 'grossProfit',
+                                    header: tm('rptProfitColGrossShort'),
+                                    type: 'number',
+                                    align: 'right',
+                                    footerSum: true,
+                                    footerFormat: (n) => fmt(n),
+                                    cell: (p) => <span className="text-indigo-700">{fmt(p.grossProfit)}</span>,
+                                  },
+                                ]}
+                              />
                             </div>
                           )}
                         </div>

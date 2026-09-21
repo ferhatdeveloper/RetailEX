@@ -13,6 +13,7 @@ import { ColumnVisibilityMenu } from '../../shared/ColumnVisibilityMenu';
 import { UniversalInvoiceForm } from './UniversalInvoiceForm';
 import {
   buildInvoiceListColumns,
+  INVOICE_LIST_COLUMN_META,
   INVOICE_LIST_COLUMN_ORDER,
   INVOICE_LIST_COLUMN_ORDER_KEY,
   INVOICE_LIST_COLUMN_VISIBILITY_KEY,
@@ -139,7 +140,10 @@ export function InvoiceListModule({
   useEffect(() => {
     try {
       const payload = Object.fromEntries(
-        INVOICE_LIST_COLUMN_ORDER.map((id) => [id, columnVisibility[id] !== false]),
+        INVOICE_LIST_COLUMN_ORDER.map((id) => [
+          id,
+          columnVisibility[id] ?? INVOICE_LIST_COLUMN_META[id].defaultVisible,
+        ]),
       );
       localStorage.setItem(INVOICE_LIST_COLUMN_VISIBILITY_KEY, JSON.stringify(payload));
     } catch {

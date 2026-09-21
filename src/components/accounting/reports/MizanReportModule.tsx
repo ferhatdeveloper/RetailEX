@@ -7,12 +7,13 @@
  * @created 2024-12-18
  */
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useMemo } from 'react';
 import { FileText, Download, Printer, Calendar, Filter, RefreshCw, CheckCircle2, AlertCircle } from 'lucide-react';
 import { useFirmaDonem } from '../../../contexts/FirmaDonemContext';
 import { useLanguage } from '../../../contexts/LanguageContext';
 import { MizanService, type MizanLine, type MizanSummary, formatMoney, getBakiyeType } from '../../../services/mizanService';
 import { toast } from 'sonner';
+import { ReportColumnTable, type ReportColumnTableCol } from '../../reports/shared/ReportDataGrid';
 
 export function MizanReportModule() {
   const { selectedFirma, selectedDonem } = useFirmaDonem();
@@ -122,6 +123,122 @@ export function MizanReportModule() {
   const handlePrint = () => {
     window.print();
   };
+
+  const mizanColumns = useMemo<ReportColumnTableCol<MizanLine>[]>(
+    () => [
+      { key: 'hesap_kodu', header: tm('accAccountCode'), size: 110 },
+      {
+        key: 'hesap_adi',
+        header: tm('accAccountName'),
+        size: 200,
+        cell: (line) => (
+          <span className={line.seviye === 1 ? '' : 'pl-2'}>{line.hesap_adi}</span>
+        ),
+      },
+      {
+        key: 'hesap_tipi',
+        header: tm('accTypeShort'),
+        size: 100,
+        align: 'center',
+        cell: (line) => (
+          <span
+            className={`px-2 py-1 rounded text-xs ${
+              line.hesap_tipi === 'AKTIF'
+                ? 'bg-blue-100 text-blue-700'
+                : line.hesap_tipi === 'PASIF'
+                  ? 'bg-red-100 text-red-700'
+                  : line.hesap_tipi === 'GELIR'
+                    ? 'bg-green-100 text-green-700'
+                    : line.hesap_tipi === 'GIDER'
+                      ? 'bg-orange-100 text-orange-700'
+                      : 'bg-purple-100 text-purple-700'
+            }`}
+          >
+            {line.hesap_tipi}
+          </span>
+        ),
+      },
+      {
+        key: 'onceki_donem_borc',
+        header: `${tm('accPrevPeriod')} ${tm('directionDebtShort')}`,
+        type: 'number',
+        align: 'right',
+        size: 120,
+        cell: (line) => (line.onceki_donem_borc > 0 ? formatMoney(line.onceki_donem_borc) : '-'),
+      },
+      {
+        key: 'onceki_donem_alacak',
+        header: `${tm('accPrevPeriod')} ${tm('directionCreditShort')}`,
+        type: 'number',
+        align: 'right',
+        size: 120,
+        cell: (line) => (line.onceki_donem_alacak > 0 ? formatMoney(line.onceki_donem_alacak) : '-'),
+      },
+      {
+        key: 'donem_borc',
+        header: `${tm('accPeriodMovement')} ${tm('directionDebtShort')}`,
+        type: 'number',
+        align: 'right',
+        size: 120,
+        footerSum: true,
+        cell: (line) => (line.donem_borc > 0 ? formatMoney(line.donem_borc) : '-'),
+      },
+      {
+        key: 'donem_alacak',
+        header: `${tm('accPeriodMovement')} ${tm('directionCreditShort')}`,
+        type: 'number',
+        align: 'right',
+        size: 120,
+        footerSum: true,
+        cell: (line) => (line.donem_alacak > 0 ? formatMoney(line.donem_alacak) : '-'),
+      },
+      {
+        key: 'toplam_borc',
+        header: `${tm('total')} ${tm('directionDebtShort')}`,
+        type: 'number',
+        align: 'right',
+        size: 120,
+        footerSum: true,
+        cell: (line) => (line.toplam_borc > 0 ? formatMoney(line.toplam_borc) : '-'),
+      },
+      {
+        key: 'toplam_alacak',
+        header: `${tm('total')} ${tm('directionCreditShort')}`,
+        type: 'number',
+        align: 'right',
+        size: 120,
+        footerSum: true,
+        cell: (line) => (line.toplam_alacak > 0 ? formatMoney(line.toplam_alacak) : '-'),
+      },
+      {
+        key: 'bakiye_borc',
+        header: `${tm('balanceShort')} ${tm('directionDebtShort')}`,
+        type: 'number',
+        align: 'right',
+        size: 120,
+        cell: (line) =>
+          line.bakiye_borc > 0 ? (
+            <span className="text-blue-700">{formatMoney(line.bakiye_borc)}</span>
+          ) : (
+            '-'
+          ),
+      },
+      {
+        key: 'bakiye_alacak',
+        header: `${tm('balanceShort')} ${tm('directionCreditShort')}`,
+        type: 'number',
+        align: 'right',
+        size: 120,
+        cell: (line) =>
+          line.bakiye_alacak > 0 ? (
+            <span className="text-green-700">{formatMoney(line.bakiye_alacak)}</span>
+          ) : (
+            '-'
+          ),
+      },
+    ],
+    [tm],
+  );
   
   return (
     <div className="space-y-4 p-6">
@@ -311,127 +428,22 @@ export function MizanReportModule() {
             <p className="text-sm">{tm('accStartWithInvoice')}</p>
           </div>
         ) : (
-          <div className="overflow-x-auto">
-            <table className="w-full">
-              <thead className="bg-gradient-to-r from-blue-600 to-blue-700 text-white">
-                <tr>
-                  <th className="px-4 py-3 text-left text-sm" rowSpan={2}>{tm('accAccountCode')}</th>
-                  <th className="px-4 py-3 text-left text-sm" rowSpan={2}>{tm('accAccountName')}</th>
-                  <th className="px-4 py-3 text-center text-sm" rowSpan={2}>{tm('accTypeShort')}</th>
-                  <th className="px-4 py-3 text-center text-sm border-l border-blue-500" colSpan={2}>{tm('accPrevPeriod')}</th>
-                  <th className="px-4 py-3 text-center text-sm border-l border-blue-500" colSpan={2}>{tm('accPeriodMovement')}</th>
-                  <th className="px-4 py-3 text-center text-sm border-l border-blue-500" colSpan={2}>{tm('total')}</th>
-                  <th className="px-4 py-3 text-center text-sm border-l border-blue-500" colSpan={2}>{tm('balanceShort')}</th>
-                </tr>
-                <tr>
-                  <th className="px-4 py-2 text-center text-xs border-l border-blue-500">{tm('directionDebtShort')}</th>
-                  <th className="px-4 py-2 text-center text-xs">{tm('directionCreditShort')}</th>
-                  <th className="px-4 py-2 text-center text-xs border-l border-blue-500">{tm('directionDebtShort')}</th>
-                  <th className="px-4 py-2 text-center text-xs">{tm('directionCreditShort')}</th>
-                  <th className="px-4 py-2 text-center text-xs border-l border-blue-500">{tm('directionDebtShort')}</th>
-                  <th className="px-4 py-2 text-center text-xs">{tm('directionCreditShort')}</th>
-                  <th className="px-4 py-2 text-center text-xs border-l border-blue-500">{tm('directionDebtShort')}</th>
-                  <th className="px-4 py-2 text-center text-xs">{tm('directionCreditShort')}</th>
-                </tr>
-              </thead>
-              <tbody className="divide-y divide-gray-200">
-                {filteredLines.map((line, index) => (
-                  <tr
-                    key={line.hesap_kodu}
-                    className={`
-                      hover:bg-blue-50 transition-colors
-                      ${line.seviye === 1 ? 'bg-gray-50' : ''}
-                      ${index % 2 === 0 ? 'bg-white' : 'bg-gray-50/50'}
-                    `}
-                  >
-                    <td className={`px-4 py-2 text-sm ${line.seviye === 1 ? '' : 'text-gray-700'}`}>
-                      {line.hesap_kodu}
-                    </td>
-                    <td className={`px-4 py-2 text-sm ${line.seviye === 1 ? '' : 'pl-6'}`}>
-                      {line.hesap_adi}
-                    </td>
-                    <td className="px-4 py-2 text-xs text-center">
-                      <span className={`
-                        px-2 py-1 rounded text-xs
-                        ${line.hesap_tipi === 'AKTIF' ? 'bg-blue-100 text-blue-700' : ''}
-                        ${line.hesap_tipi === 'PASIF' ? 'bg-red-100 text-red-700' : ''}
-                        ${line.hesap_tipi === 'GELIR' ? 'bg-green-100 text-green-700' : ''}
-                        ${line.hesap_tipi === 'GIDER' ? 'bg-orange-100 text-orange-700' : ''}
-                        ${line.hesap_tipi === 'SERMAYE' ? 'bg-purple-100 text-purple-700' : ''}
-                      `}>
-                        {line.hesap_tipi}
-                      </span>
-                    </td>
-                    
-                    {/* Önceki Dönem */}
-                    <td className="px-4 py-2 text-sm text-right border-l">
-                      {line.onceki_donem_borc > 0 ? formatMoney(line.onceki_donem_borc) : '-'}
-                    </td>
-                    <td className="px-4 py-2 text-sm text-right">
-                      {line.onceki_donem_alacak > 0 ? formatMoney(line.onceki_donem_alacak) : '-'}
-                    </td>
-                    
-                    {/* Dönem Hareket */}
-                    <td className="px-4 py-2 text-sm text-right border-l text-blue-600">
-                      {line.donem_borc > 0 ? formatMoney(line.donem_borc) : '-'}
-                    </td>
-                    <td className="px-4 py-2 text-sm text-right text-green-600">
-                      {line.donem_alacak > 0 ? formatMoney(line.donem_alacak) : '-'}
-                    </td>
-                    
-                    {/* Toplam */}
-                    <td className="px-4 py-2 text-sm text-right border-l">
-                      {line.toplam_borc > 0 ? formatMoney(line.toplam_borc) : '-'}
-                    </td>
-                    <td className="px-4 py-2 text-sm text-right">
-                      {line.toplam_alacak > 0 ? formatMoney(line.toplam_alacak) : '-'}
-                    </td>
-                    
-                    {/* Bakiye */}
-                    <td className="px-4 py-2 text-sm text-right border-l">
-                      {line.bakiye_borc > 0 ? (
-                        <span className="text-blue-700">{formatMoney(line.bakiye_borc)}</span>
-                      ) : '-'}
-                    </td>
-                    <td className="px-4 py-2 text-sm text-right">
-                      {line.bakiye_alacak > 0 ? (
-                        <span className="text-green-700">{formatMoney(line.bakiye_alacak)}</span>
-                      ) : '-'}
-                    </td>
-                  </tr>
-                ))}
-                
-                {/* TOPLAM Satırı */}
-                {summary && (
-                  <tr className="bg-gradient-to-r from-gray-100 to-gray-200 font-semibold">
-                    <td colSpan={3} className="px-4 py-3 text-sm">
-                      {tm('accTotalAccountsLabel').replace('{n}', String(filteredLines.length))}
-                    </td>
-                    <td className="px-4 py-3 text-sm text-right border-l">-</td>
-                    <td className="px-4 py-3 text-sm text-right">-</td>
-                    <td className="px-4 py-3 text-sm text-right border-l text-blue-700">
-                      {formatMoney(summary.toplam_borc)}
-                    </td>
-                    <td className="px-4 py-3 text-sm text-right text-green-700">
-                      {formatMoney(summary.toplam_alacak)}
-                    </td>
-                    <td className="px-4 py-3 text-sm text-right border-l text-blue-700">
-                      {formatMoney(summary.toplam_borc)}
-                    </td>
-                    <td className="px-4 py-3 text-sm text-right text-green-700">
-                      {formatMoney(summary.toplam_alacak)}
-                    </td>
-                    <td colSpan={2} className="px-4 py-3 text-center border-l">
-                      {summary.dengeli ? (
-                        <span className="text-green-600">✓ {tm('accBalancedUpper')}</span>
-                      ) : (
-                        <span className="text-red-600">✗ {tm('accUnbalancedWithDiff').replace('{diff}', formatMoney(summary.fark))}</span>
-                      )}
-                    </td>
-                  </tr>
-                )}
-              </tbody>
-            </table>
+          <div className="p-4">
+            <ReportColumnTable
+              data={filteredLines}
+              columns={mizanColumns}
+              height={560}
+              storageNamespace="accounting-mizan-report"
+              footerLabel={
+                summary
+                  ? `${tm('accTotalAccountsLabel').replace('{n}', String(filteredLines.length))}${
+                      summary.dengeli
+                        ? ` · ✓ ${tm('accBalancedUpper')}`
+                        : ` · ✗ ${tm('accUnbalancedWithDiff').replace('{diff}', formatMoney(summary.fark))}`
+                    }`
+                  : undefined
+              }
+            />
           </div>
         )}
       </div>

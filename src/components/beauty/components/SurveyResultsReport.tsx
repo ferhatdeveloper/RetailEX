@@ -1,5 +1,5 @@
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
-import { ChevronDown, ChevronRight, ClipboardList, Star, ThumbsUp, Users } from 'lucide-react';
+import { ClipboardList, Star, ThumbsUp, Users } from 'lucide-react';
 import { beautyService } from '../../../services/beautyService';
 import { useLanguage } from '../../../contexts/LanguageContext';
 import { formatLocalYmd } from '../../../utils/dateLocal';
@@ -7,6 +7,7 @@ import { formatReportDateCell } from '../../../utils/dateLocale';
 import type { BeautySurveyResponseRow, BeautySurveyResultsReport } from '../../../types/beauty';
 import { SurveyReportToolbar } from './SurveyReportToolbar';
 import { ReportKpiStrip } from '../../reports/shared/ReportKpiStrip';
+import { ReportColumnTable, type ReportColumnTableCol } from '../../reports/shared/ReportDataGrid';
 import type { BeautySurveyReportEmbedProps } from './SurveyExtraReports';
 import {
     SurveyRatingRespondentsModal,
@@ -28,13 +29,6 @@ function starBadgeClass(star: number): string {
     return 'bg-red-100 text-red-800 border-red-200';
 }
 
-function formatAnswerRating(ans: { rating?: number; text?: string; yes_no?: boolean; label_snapshot?: string }) {
-    if (typeof ans.rating === 'number') return `${ans.rating}★`;
-    if (typeof ans.yes_no === 'boolean') return ans.yes_no ? '✓' : '✗';
-    if (ans.text?.trim()) return ans.text.trim();
-    return '—';
-}
-
 export function SurveyResultsReport(embed?: BeautySurveyReportEmbedProps) {
     const { tm, language } = useLanguage();
     const [internalStart, setInternalStart] = useState(() => {
@@ -51,7 +45,6 @@ export function SurveyResultsReport(embed?: BeautySurveyReportEmbedProps) {
     const reloadKey = embed?.reloadKey ?? 0;
     const [surveyId, setSurveyId] = useState<string>('all');
     const [ratingFilter, setRatingFilter] = useState<RatingFilter>('all');
-    const [expandedId, setExpandedId] = useState<string | null>(null);
     const [starDrillDown, setStarDrillDown] = useState<SurveyRatingDrillDown | null>(null);
     const [loading, setLoading] = useState(false);
     const [error, setError] = useState<string | null>(null);
@@ -67,7 +60,6 @@ export function SurveyResultsReport(embed?: BeautySurveyReportEmbedProps) {
             });
             setData(res);
             setRatingFilter('all');
-            setExpandedId(null);
             setStarDrillDown(null);
         } catch (e: unknown) {
             setError(e instanceof Error ? e.message : String(e));
@@ -112,92 +104,101 @@ export function SurveyResultsReport(embed?: BeautySurveyReportEmbedProps) {
         setRatingFilter(String(drill.star) as RatingFilter);
     }, []);
 
-    const groupedByRating = useMemo(() => {
-        const stars = ratingFilter === 'all' ? ([5, 4, 3, 2, 1] as const) : ([Number(ratingFilter)] as const);
-        return stars
-            .map((star) => ({
-                star,
-                items: filteredResponses
-                    .filter((r) => ratingStar(r.overall_rating) === star)
-                    .sort(
-                        (a, b) =>
-                            new Date(b.created_at).getTime() - new Date(a.created_at).getTime(),
-                    ),
-            }))
-            .filter((g) => g.items.length > 0);
-    }, [filteredResponses, ratingFilter]);
+    type SurveyResponseGridRow = BeautySurveyResponseRow & { rating_star: number; appt_when: string };
 
-    const renderResponseRow = (r: BeautySurveyResponseRow) => {
-        const star = ratingStar(r.overall_rating);
-        const expanded = expandedId === r.id;
-        const ratingAnswers = r.survey_answers.filter((a) => typeof a.rating === 'number');
+    const responseGridRows = useMemo<SurveyResponseGridRow[]>(
+        () =>
+            [...filteredResponses]
+                .sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime())
+                .map((r) => ({
+                    ...r,
+                    rating_star: ratingStar(r.overall_rating),
+                    appt_when: [r.appointment_date, r.appointment_time].filter(Boolean).join(' ') || '—',
+                })),
+        [filteredResponses],
+    );
 
-        return (
-            <React.Fragment key={r.id}>
-                <tr
-                    className={cn(
-                        'border-b border-gray-50 hover:bg-violet-50/30 cursor-pointer',
-                        expanded && 'bg-violet-50/40',
-                    )}
-                    onClick={() => setExpandedId(expanded ? null : r.id)}
-                >
-                    <td className="py-2.5 px-3 w-8">
-                        {r.survey_answers.length > 0 ? (
-                            expanded ? <ChevronDown size={14} /> : <ChevronRight size={14} />
-                        ) : null}
-                    </td>
-                    <td className="py-2.5 px-3">
-                        <span
-                            className={cn(
-                                'inline-flex items-center gap-1 px-2 py-0.5 rounded-full border text-[11px] font-black tabular-nums',
-                                starBadgeClass(star),
-                            )}
-                        >
-                            <Star size={11} className="fill-current" />
-                            {star}
-                        </span>
-                    </td>
-                    <td className="py-2.5 px-3 whitespace-nowrap">{formatDateTime(r.created_at)}</td>
-                    <td className="py-2.5 px-3 font-medium text-gray-800">{r.customer_name}</td>
-                    <td className="py-2.5 px-3 text-gray-600 whitespace-nowrap">{r.customer_phone ?? '—'}</td>
-                    <td className="py-2.5 px-3 text-gray-600">{r.service_name ?? '—'}</td>
-                    <td className="py-2.5 px-3 text-gray-600">{r.specialist_name ?? '—'}</td>
-                    <td className="py-2.5 px-3 whitespace-nowrap">
-                        {[r.appointment_date, r.appointment_time].filter(Boolean).join(' ') || '—'}
-                    </td>
-                    <td className="py-2.5 px-3 text-gray-600">{r.survey_name ?? '—'}</td>
-                    <td className="py-2.5 px-3 text-right font-bold text-amber-700 tabular-nums">
+    const responseColumns = useMemo<ReportColumnTableCol<SurveyResponseGridRow>[]>(
+        () => [
+            {
+                key: 'rating_star',
+                header: tm('bSurveyReportScore'),
+                type: 'number',
+                size: 90,
+                cell: (r) => (
+                    <span
+                        className={cn(
+                            'inline-flex items-center gap-1 px-2 py-0.5 rounded-full border text-[11px] font-black tabular-nums',
+                            starBadgeClass(r.rating_star),
+                        )}
+                    >
+                        <Star size={11} className="fill-current" />
+                        {r.rating_star}
+                    </span>
+                ),
+            },
+            {
+                key: 'created_at',
+                header: tm('date'),
+                type: 'date',
+                size: 120,
+                cell: (r) => formatDateTime(r.created_at),
+            },
+            { key: 'customer_name', header: tm('customer'), size: 160 },
+            {
+                key: 'customer_phone',
+                header: tm('bSurveyReportCustomerPhone'),
+                size: 130,
+                cell: (r) => r.customer_phone ?? '—',
+            },
+            {
+                key: 'service_name',
+                header: tm('bSurveyReportLastService'),
+                size: 160,
+                cell: (r) => r.service_name ?? '—',
+            },
+            {
+                key: 'specialist_name',
+                header: tm('bSurveyReportLegacyStaff'),
+                size: 140,
+                cell: (r) => r.specialist_name ?? '—',
+            },
+            { key: 'appt_when', header: tm('bSurveyReportApptDate'), size: 140 },
+            {
+                key: 'survey_name',
+                header: tm('bSurveyName'),
+                size: 140,
+                cell: (r) => r.survey_name ?? '—',
+            },
+            {
+                key: 'overall_rating',
+                header: tm('bSurveyReportAvgRating'),
+                type: 'number',
+                align: 'right',
+                size: 100,
+                cell: (r) => (
+                    <span className="font-bold text-amber-700 tabular-nums">
                         {r.overall_rating.toFixed(1)}
                         {r.would_recommend ? ' ✓' : ''}
-                    </td>
-                    <td className="py-2.5 px-3 text-gray-600 max-w-xs truncate">
-                        {r.comment ?? (ratingAnswers.length ? tm('bSurveyReportHasAnswers') : '—')}
-                    </td>
-                </tr>
-                {expanded && r.survey_answers.length > 0 && (
-                    <tr className="bg-gray-50/80">
-                        <td colSpan={11} className="px-4 py-3">
-                            <div className="grid grid-cols-1 md:grid-cols-2 gap-2 text-xs">
-                                {r.survey_answers.map((ans, idx) => (
-                                    <div
-                                        key={`${r.id}-${ans.question_id}-${idx}`}
-                                        className="flex items-start justify-between gap-3 rounded-lg border border-gray-200 bg-white px-3 py-2"
-                                    >
-                                        <span className="text-gray-600 leading-snug">
-                                            {ans.label_snapshot ?? ans.question_id.slice(0, 8)}
-                                        </span>
-                                        <span className="font-bold text-violet-700 shrink-0 tabular-nums">
-                                            {formatAnswerRating(ans)}
-                                        </span>
-                                    </div>
-                                ))}
-                            </div>
-                        </td>
-                    </tr>
-                )}
-            </React.Fragment>
-        );
-    };
+                    </span>
+                ),
+            },
+            {
+                key: 'comment',
+                header: tm('bSurveyReportComment'),
+                size: 220,
+                cell: (r) => {
+                    const ratingAnswers = r.survey_answers.filter((a) => typeof a.rating === 'number');
+                    return (
+                        <span className="text-gray-600 truncate block max-w-xs">
+                            {r.comment ?? (ratingAnswers.length ? tm('bSurveyReportHasAnswers') : '—')}
+                        </span>
+                    );
+                },
+            },
+        ],
+        [tm],
+    );
 
     return (
         <div className="p-6 space-y-6 bg-gray-50 min-h-full">
@@ -441,47 +442,17 @@ export function SurveyResultsReport(embed?: BeautySurveyReportEmbedProps) {
                         {ratingFilter !== 'all' ? ` / ${responses.length}` : ''})
                     </span>
                 </div>
-                {groupedByRating.length === 0 ? (
+                {responseGridRows.length === 0 ? (
                     <p className="text-sm text-gray-500 py-10 text-center">{tm('bSurveyReportNoData')}</p>
                 ) : (
-                    <div className="divide-y divide-gray-100">
-                        {groupedByRating.map((group) => (
-                            <div key={group.star}>
-                                <div
-                                    className={cn(
-                                        'px-5 py-3 flex items-center gap-2 border-b border-gray-50',
-                                        starBadgeClass(group.star),
-                                    )}
-                                >
-                                    <Star size={14} className="fill-current" />
-                                    <span className="text-sm font-black">
-                                        {tm('bSurveyReportRatingGroup')
-                                            .replace('{star}', String(group.star))
-                                            .replace('{count}', String(group.items.length))}
-                                    </span>
-                                </div>
-                                <div className="overflow-x-auto">
-                                    <table className="w-full text-xs">
-                                        <thead>
-                                            <tr className="bg-gray-50/80 text-left text-gray-500 border-b border-gray-100">
-                                                <th className="py-2 px-3 w-8" />
-                                                <th className="py-2 px-3 font-bold">{tm('bSurveyReportScore')}</th>
-                                                <th className="py-2 px-3 font-bold">{tm('date')}</th>
-                                                <th className="py-2 px-3 font-bold">{tm('customer')}</th>
-                                                <th className="py-2 px-3 font-bold">{tm('bSurveyReportCustomerPhone')}</th>
-                                                <th className="py-2 px-3 font-bold">{tm('bSurveyReportLastService')}</th>
-                                                <th className="py-2 px-3 font-bold">{tm('bSurveyReportLegacyStaff')}</th>
-                                                <th className="py-2 px-3 font-bold">{tm('bSurveyReportApptDate')}</th>
-                                                <th className="py-2 px-3 font-bold">{tm('bSurveyName')}</th>
-                                                <th className="py-2 px-3 font-bold text-right">{tm('bSurveyReportAvgRating')}</th>
-                                                <th className="py-2 px-3 font-bold">{tm('bSurveyReportComment')}</th>
-                                            </tr>
-                                        </thead>
-                                        <tbody>{group.items.map(renderResponseRow)}</tbody>
-                                    </table>
-                                </div>
-                            </div>
-                        ))}
+                    <div className="p-4">
+                        <ReportColumnTable
+                            data={responseGridRows}
+                            columns={responseColumns}
+                            height={560}
+                            groupByColumnId="rating_star"
+                            storageNamespace="beauty-survey-results-by-rating"
+                        />
                     </div>
                 )}
             </div>

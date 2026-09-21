@@ -7,10 +7,13 @@ import { formatLocalYmd } from '../../../utils/dateLocal';
 import { formatReportDateCell } from '../../../utils/dateLocale';
 import { ReportYmdDatePicker } from '../../shared/ReportDateRangePresets';
 import { ReportKpiStrip } from '../../reports/shared/ReportKpiStrip';
+import { ReportColumnTable, type ReportColumnTableCol } from '../../reports/shared/ReportDataGrid';
 
 const fmt = (n: number) => formatMoneyAmount(n, { minFrac: 0, maxFrac: 0 });
 
 type CommissionReportData = Awaited<ReturnType<typeof beautyService.getCommissionReport>>;
+type StaffRow = NonNullable<CommissionReportData>['rows'][number];
+type HistoryRow = NonNullable<CommissionReportData>['history_rows'][number];
 
 export function CommissionReport() {
     const { tm } = useLanguage();
@@ -23,7 +26,6 @@ export function CommissionReport() {
     const [loading, setLoading] = useState(false);
     const [error, setError] = useState<string | null>(null);
     const [data, setData] = useState<CommissionReportData | null>(null);
-    const [historyStaffId, setHistoryStaffId] = useState<string>('all');
 
     const load = async () => {
         setLoading(true);
@@ -53,11 +55,141 @@ export function CommissionReport() {
         total_transactions: 0,
     }, [data]);
 
-    const historyRows = useMemo(() => {
-        const rows = data?.history_rows ?? [];
-        if (historyStaffId === 'all') return rows;
-        return rows.filter((r) => r.specialist_id === historyStaffId);
-    }, [data?.history_rows, historyStaffId]);
+    const staffRows = data?.rows ?? [];
+    const historyRows = data?.history_rows ?? [];
+
+    const staffColumns = useMemo<ReportColumnTableCol<StaffRow>[]>(
+        () => [
+            {
+                key: 'name',
+                header: tm('bStaffName'),
+                size: 200,
+                cell: (r) => <span className="font-bold text-gray-900">{r.name}</span>,
+            },
+            {
+                key: 'service_revenue',
+                header: tm('bServiceRevenueTotal'),
+                type: 'number',
+                align: 'right',
+                size: 140,
+                footerSum: true,
+                footerFormat: (n) => fmt(n),
+                cell: (r) => <span className="font-semibold text-gray-700">{fmt(r.service_revenue)}</span>,
+            },
+            {
+                key: 'service_commission',
+                header: tm('bServiceCommissionTotal'),
+                type: 'number',
+                align: 'right',
+                size: 140,
+                footerSum: true,
+                footerFormat: (n) => fmt(n),
+                cell: (r) => <span className="font-semibold text-purple-700">{fmt(r.service_commission)}</span>,
+            },
+            {
+                key: 'service_rate_effective',
+                header: tm('bServiceCommissionRate'),
+                type: 'number',
+                align: 'right',
+                size: 120,
+                cell: (r) => (
+                    <span className="font-semibold text-purple-700">%{r.service_rate_effective.toFixed(2)}</span>
+                ),
+            },
+            {
+                key: 'product_revenue',
+                header: tm('bProductRevenueTotal'),
+                type: 'number',
+                align: 'right',
+                size: 140,
+                footerSum: true,
+                footerFormat: (n) => fmt(n),
+                cell: (r) => <span className="font-semibold text-gray-700">{fmt(r.product_revenue)}</span>,
+            },
+            {
+                key: 'product_commission',
+                header: tm('bProductCommissionTotal'),
+                type: 'number',
+                align: 'right',
+                size: 140,
+                footerSum: true,
+                footerFormat: (n) => fmt(n),
+                cell: (r) => <span className="font-semibold text-emerald-700">{fmt(r.product_commission)}</span>,
+            },
+            {
+                key: 'product_rate_effective',
+                header: tm('bProductCommissionRate'),
+                type: 'number',
+                align: 'right',
+                size: 120,
+                cell: (r) => (
+                    <span className="font-semibold text-emerald-700">%{r.product_rate_effective.toFixed(2)}</span>
+                ),
+            },
+            {
+                key: 'total_commission',
+                header: tm('bTotalCommission'),
+                type: 'number',
+                align: 'right',
+                size: 140,
+                footerSum: true,
+                footerFormat: (n) => fmt(n),
+                cell: (r) => <span className="font-black text-gray-900">{fmt(r.total_commission)}</span>,
+            },
+        ],
+        [tm],
+    );
+
+    const historyColumns = useMemo<ReportColumnTableCol<HistoryRow>[]>(
+        () => [
+            {
+                key: 'date_ymd',
+                header: tm('date'),
+                type: 'date',
+                size: 120,
+                cell: (r) => (
+                    <span className="font-semibold text-gray-700">{formatReportDateCell(r.date_ymd)}</span>
+                ),
+            },
+            {
+                key: 'name',
+                header: tm('bStaffName'),
+                size: 200,
+                cell: (r) => <span className="font-bold text-gray-900">{r.name}</span>,
+            },
+            {
+                key: 'service_commission',
+                header: tm('bServiceCommissionTotal'),
+                type: 'number',
+                align: 'right',
+                size: 140,
+                footerSum: true,
+                footerFormat: (n) => fmt(n),
+                cell: (r) => <span className="font-semibold text-purple-700">{fmt(r.service_commission)}</span>,
+            },
+            {
+                key: 'product_commission',
+                header: tm('bProductCommissionTotal'),
+                type: 'number',
+                align: 'right',
+                size: 140,
+                footerSum: true,
+                footerFormat: (n) => fmt(n),
+                cell: (r) => <span className="font-semibold text-emerald-700">{fmt(r.product_commission)}</span>,
+            },
+            {
+                key: 'total_commission',
+                header: tm('bTotalCommission'),
+                type: 'number',
+                align: 'right',
+                size: 140,
+                footerSum: true,
+                footerFormat: (n) => fmt(n),
+                cell: (r) => <span className="font-black text-gray-900">{fmt(r.total_commission)}</span>,
+            },
+        ],
+        [tm],
+    );
 
     return (
         <div className="p-6 space-y-6 bg-gray-50 min-h-full">
@@ -129,94 +261,42 @@ export function CommissionReport() {
                 </div>
                 {error ? (
                     <div className="p-6 text-sm font-semibold text-red-600">{error}</div>
-                ) : (data?.rows?.length ?? 0) === 0 ? (
+                ) : staffRows.length === 0 && !loading ? (
                     <div className="p-10 text-center text-gray-400 text-sm font-bold">{tm('bNoStaffData')}</div>
                 ) : (
-                    <div className="overflow-x-auto">
-                        <table className="w-full text-left min-w-[1100px]">
-                            <thead className="bg-gray-50/70">
-                                <tr>
-                                    <th className="px-6 py-3 text-[10px] font-black text-gray-400 uppercase tracking-[0.16em]">{tm('bStaffName')}</th>
-                                    <th className="px-6 py-3 text-[10px] font-black text-gray-400 uppercase tracking-[0.16em]">{tm('bServiceRevenueTotal')}</th>
-                                    <th className="px-6 py-3 text-[10px] font-black text-gray-400 uppercase tracking-[0.16em]">{tm('bServiceCommissionTotal')}</th>
-                                    <th className="px-6 py-3 text-[10px] font-black text-gray-400 uppercase tracking-[0.16em]">{tm('bServiceCommissionRate')}</th>
-                                    <th className="px-6 py-3 text-[10px] font-black text-gray-400 uppercase tracking-[0.16em]">{tm('bProductRevenueTotal')}</th>
-                                    <th className="px-6 py-3 text-[10px] font-black text-gray-400 uppercase tracking-[0.16em]">{tm('bProductCommissionTotal')}</th>
-                                    <th className="px-6 py-3 text-[10px] font-black text-gray-400 uppercase tracking-[0.16em]">{tm('bProductCommissionRate')}</th>
-                                    <th className="px-6 py-3 text-[10px] font-black text-gray-400 uppercase tracking-[0.16em]">{tm('bTotalCommission')}</th>
-                                </tr>
-                            </thead>
-                            <tbody className="divide-y divide-gray-100">
-                                {data!.rows.map((r) => (
-                                    <tr key={`${r.specialist_id}-${r.name}`} className="hover:bg-gray-50/50">
-                                        <td className="px-6 py-4 font-bold text-gray-900">{r.name}</td>
-                                        <td className="px-6 py-4 font-semibold text-gray-700">{fmt(r.service_revenue)}</td>
-                                        <td className="px-6 py-4 font-semibold text-purple-700">{fmt(r.service_commission)}</td>
-                                        <td className="px-6 py-4 font-semibold text-purple-700">%{r.service_rate_effective.toFixed(2)}</td>
-                                        <td className="px-6 py-4 font-semibold text-gray-700">{fmt(r.product_revenue)}</td>
-                                        <td className="px-6 py-4 font-semibold text-emerald-700">{fmt(r.product_commission)}</td>
-                                        <td className="px-6 py-4 font-semibold text-emerald-700">%{r.product_rate_effective.toFixed(2)}</td>
-                                        <td className="px-6 py-4 font-black text-gray-900">{fmt(r.total_commission)}</td>
-                                    </tr>
-                                ))}
-                            </tbody>
-                        </table>
+                    <div className="p-2">
+                        <ReportColumnTable
+                            data={staffRows}
+                            columns={staffColumns}
+                            height={420}
+                            footerLabel={tm('rprTotal') || 'Toplam'}
+                            storageNamespace="beauty-commission-staff"
+                        />
                     </div>
                 )}
             </div>
 
             <div className="bg-white rounded-3xl border border-gray-100 shadow-sm overflow-hidden">
-                <div className="px-6 py-4 border-b border-gray-100 flex items-center justify-between gap-3 flex-wrap">
-                    <div className="flex items-center gap-2 text-gray-900 font-black">
-                        <CalendarDays size={16} className="text-purple-600" />
-                        {tm('bCommissionHistoryTitle')}
-                    </div>
-                    <div className="flex items-center gap-2">
-                        <span className="text-xs font-bold text-gray-500">{tm('bStaffName')}</span>
-                        <select
-                            value={historyStaffId}
-                            onChange={(e) => setHistoryStaffId(e.target.value)}
-                            className="h-9 px-3 rounded-xl border border-gray-200 text-xs font-bold text-gray-700 bg-white"
-                        >
-                            <option value="all">{tm('bAll')}</option>
-                            {(data?.rows ?? []).map((r) => (
-                                <option key={r.specialist_id} value={r.specialist_id}>{r.name}</option>
-                            ))}
-                        </select>
-                    </div>
+                <div className="px-6 py-4 border-b border-gray-100 flex items-center gap-2 text-gray-900 font-black">
+                    <CalendarDays size={16} className="text-purple-600" />
+                    {tm('bCommissionHistoryTitle')}
                 </div>
                 {error ? (
                     <div className="p-6 text-sm font-semibold text-red-600">{error}</div>
-                ) : historyRows.length === 0 ? (
+                ) : historyRows.length === 0 && !loading ? (
                     <div className="p-10 text-center text-gray-400 text-sm font-bold">{tm('bNoCommissionHistory')}</div>
                 ) : (
-                    <div className="overflow-x-auto">
-                        <table className="w-full text-left min-w-[760px]">
-                            <thead className="bg-gray-50/70">
-                                <tr>
-                                    <th className="px-6 py-3 text-[10px] font-black text-gray-400 uppercase tracking-[0.16em]">{tm('date')}</th>
-                                    <th className="px-6 py-3 text-[10px] font-black text-gray-400 uppercase tracking-[0.16em]">{tm('bStaffName')}</th>
-                                    <th className="px-6 py-3 text-[10px] font-black text-gray-400 uppercase tracking-[0.16em]">{tm('bServiceCommissionTotal')}</th>
-                                    <th className="px-6 py-3 text-[10px] font-black text-gray-400 uppercase tracking-[0.16em]">{tm('bProductCommissionTotal')}</th>
-                                    <th className="px-6 py-3 text-[10px] font-black text-gray-400 uppercase tracking-[0.16em]">{tm('bTotalCommission')}</th>
-                                </tr>
-                            </thead>
-                            <tbody className="divide-y divide-gray-100">
-                                {historyRows.map((r, idx) => (
-                                    <tr key={`${r.date_ymd}-${r.specialist_id}-${idx}`} className="hover:bg-gray-50/50">
-                                        <td className="px-6 py-4 font-semibold text-gray-700">{formatReportDateCell(r.date_ymd)}</td>
-                                        <td className="px-6 py-4 font-bold text-gray-900">{r.name}</td>
-                                        <td className="px-6 py-4 font-semibold text-purple-700">{fmt(r.service_commission)}</td>
-                                        <td className="px-6 py-4 font-semibold text-emerald-700">{fmt(r.product_commission)}</td>
-                                        <td className="px-6 py-4 font-black text-gray-900">{fmt(r.total_commission)}</td>
-                                    </tr>
-                                ))}
-                            </tbody>
-                        </table>
+                    <div className="p-2">
+                        <ReportColumnTable
+                            data={historyRows}
+                            columns={historyColumns}
+                            height={480}
+                            footerLabel={tm('rprTotal') || 'Toplam'}
+                            storageNamespace="beauty-commission-history"
+                        />
                     </div>
                 )}
             </div>
         </div>
     );
 }
-

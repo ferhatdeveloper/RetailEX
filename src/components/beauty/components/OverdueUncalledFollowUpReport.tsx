@@ -16,7 +16,16 @@ import {
 } from '../../../utils/beautyFollowUpReminderUtils';
 import { FollowUpReminderActionModal } from './FollowUpReminderActionModal';
 import { ReportKpiStrip } from '../../reports/shared/ReportKpiStrip';
+import { ReportColumnTable, type ReportColumnTableCol } from '../../reports/shared/ReportDataGrid';
 import { cn } from '../../ui/utils';
+
+type OverdueFollowUpGridRow = BeautyFollowUpReminder & {
+  grid_id: string;
+  days_overdue: number;
+  subject: string;
+  kind_label: string;
+  status: string;
+};
 
 function defaultRange(): { start: string; end: string } {
   const today = new Date();
@@ -104,9 +113,6 @@ export function OverdueUncalledFollowUpReport() {
   const panel = darkMode ? 'bg-gray-800 border-gray-700 text-gray-100' : 'bg-white border-gray-100 text-gray-900';
   const muted = darkMode ? 'text-gray-400' : 'text-gray-500';
   const tableWrap = darkMode ? 'bg-gray-800 border-gray-700' : 'bg-white border-gray-100';
-  const thCls = darkMode ? 'bg-gray-900/60 text-gray-300' : 'bg-gray-50/70 text-gray-400';
-  const rowHover = darkMode ? 'hover:bg-gray-700/40' : 'hover:bg-rose-50/40';
-  const borderRow = darkMode ? 'divide-gray-700' : 'divide-gray-100';
   const inputCls = darkMode
     ? 'border-gray-600 bg-gray-900 text-gray-100'
     : 'border-gray-200 bg-white text-gray-700';
@@ -143,6 +149,96 @@ export function OverdueUncalledFollowUpReport() {
     );
     toast.success(tm('bOverdueUncalledExportOk'));
   };
+
+  const gridRows = useMemo<OverdueFollowUpGridRow[]>(
+    () =>
+      rows.map((r) => {
+        const grid_id = `${r.customer_id}|${r.service_id}|${r.product_id ?? ''}|${r.last_completed_date}|${r.due_date}|${r.reminder_kind ?? 'service'}`;
+        return {
+          ...r,
+          grid_id,
+          days_overdue: followUpDaysOverdue(r.due_date, todayYmd),
+          subject: subjectLabel(r),
+          kind_label:
+            r.reminder_kind === 'product'
+              ? tm('bOverdueUncalledKindProduct')
+              : tm('bOverdueUncalledKindService'),
+          status: statusLabel(r.follow_up_status),
+        };
+      }),
+    [rows, todayYmd, tm, statusLabel],
+  );
+
+  const gridColumns = useMemo<ReportColumnTableCol<OverdueFollowUpGridRow>[]>(
+    () => [
+      {
+        key: 'due_date',
+        header: tm('date'),
+        type: 'date',
+        size: 110,
+        cell: (r) => (
+          <span className="font-semibold tabular-nums">{formatReportDateCell(r.due_date)}</span>
+        ),
+      },
+      {
+        key: 'days_overdue',
+        header: tm('bOverdueUncalledDaysCol'),
+        type: 'number',
+        align: 'right',
+        size: 90,
+        cell: (r) => <span className="font-black text-rose-600 tabular-nums">{r.days_overdue}</span>,
+      },
+      {
+        key: 'customer_name',
+        header: tm('customer'),
+        size: 160,
+        cell: (r) => <span className="font-bold">{r.customer_name || '—'}</span>,
+      },
+      {
+        key: 'customer_phone',
+        header: tm('bPhone'),
+        size: 130,
+        cell: (r) => <span className="font-semibold tabular-nums">{r.customer_phone || '—'}</span>,
+      },
+      { key: 'subject', header: tm('bOverdueUncalledSubjectCol'), size: 180 },
+      { key: 'kind_label', header: tm('bOverdueUncalledKindCol'), size: 120 },
+      { key: 'status', header: tm('bFollowUpStatusLabel'), size: 130 },
+      {
+        key: 'note',
+        header: tm('bFollowUpNoteLabel'),
+        size: 200,
+        cell: (r) => (
+          <span className={cn('text-xs max-w-[220px] truncate block', muted)} title={r.note}>
+            {r.note?.trim() || '—'}
+          </span>
+        ),
+      },
+      {
+        key: 'last_completed_date',
+        header: tm('bOverdueUncalledLastCompletedCol'),
+        type: 'date',
+        size: 120,
+      },
+      {
+        key: 'grid_id',
+        header: '',
+        size: 100,
+        cell: (r) => (
+          <button
+            type="button"
+            onClick={(e) => {
+              e.stopPropagation();
+              setActionTarget(r);
+            }}
+            className="text-xs font-extrabold text-rose-600 hover:text-rose-700 underline-offset-2 hover:underline"
+          >
+            {tm('bFollowUpManage')}
+          </button>
+        ),
+      },
+    ],
+    [tm, muted],
+  );
 
   return (
     <div className={cn('p-6 space-y-6 min-h-full', darkMode ? 'bg-gray-900' : 'bg-gray-50')}>
@@ -228,57 +324,13 @@ export function OverdueUncalledFollowUpReport() {
         ) : rows.length === 0 ? (
           <div className={cn('p-10 text-center text-sm font-bold', muted)}>{tm('bOverdueUncalledEmpty')}</div>
         ) : (
-          <div className="overflow-x-auto">
-            <table className="w-full text-left min-w-[960px]">
-              <thead className={thCls}>
-                <tr>
-                  <th className="px-4 py-3 text-[10px] font-black uppercase tracking-[0.16em]">{tm('date')}</th>
-                  <th className="px-4 py-3 text-[10px] font-black uppercase tracking-[0.16em]">{tm('bOverdueUncalledDaysCol')}</th>
-                  <th className="px-4 py-3 text-[10px] font-black uppercase tracking-[0.16em]">{tm('customer')}</th>
-                  <th className="px-4 py-3 text-[10px] font-black uppercase tracking-[0.16em]">{tm('bPhone')}</th>
-                  <th className="px-4 py-3 text-[10px] font-black uppercase tracking-[0.16em]">{tm('bOverdueUncalledSubjectCol')}</th>
-                  <th className="px-4 py-3 text-[10px] font-black uppercase tracking-[0.16em]">{tm('bOverdueUncalledKindCol')}</th>
-                  <th className="px-4 py-3 text-[10px] font-black uppercase tracking-[0.16em]">{tm('bFollowUpStatusLabel')}</th>
-                  <th className="px-4 py-3 text-[10px] font-black uppercase tracking-[0.16em]">{tm('bFollowUpNoteLabel')}</th>
-                  <th className="px-4 py-3 text-[10px] font-black uppercase tracking-[0.16em]">{tm('bOverdueUncalledLastCompletedCol')}</th>
-                  <th className="px-4 py-3 text-[10px] font-black uppercase tracking-[0.16em]" />
-                </tr>
-              </thead>
-              <tbody className={cn('divide-y', borderRow)}>
-                {rows.map((r) => {
-                  const days = followUpDaysOverdue(r.due_date, todayYmd);
-                  const key = `${r.customer_id}|${r.service_id}|${r.product_id ?? ''}|${r.last_completed_date}|${r.due_date}|${r.reminder_kind ?? 'service'}`;
-                  return (
-                    <tr key={key} className={rowHover}>
-                      <td className="px-4 py-3 font-semibold tabular-nums">{formatReportDateCell(r.due_date)}</td>
-                      <td className="px-4 py-3 font-black text-rose-600 tabular-nums">{days}</td>
-                      <td className="px-4 py-3 font-bold">{r.customer_name || '—'}</td>
-                      <td className="px-4 py-3 font-semibold tabular-nums">{r.customer_phone || '—'}</td>
-                      <td className="px-4 py-3 font-semibold">{subjectLabel(r)}</td>
-                      <td className="px-4 py-3 text-xs font-bold">
-                        {r.reminder_kind === 'product'
-                          ? tm('bOverdueUncalledKindProduct')
-                          : tm('bOverdueUncalledKindService')}
-                      </td>
-                      <td className="px-4 py-3 text-xs font-bold">{statusLabel(r.follow_up_status)}</td>
-                      <td className={cn('px-4 py-3 text-xs max-w-[220px] truncate', muted)} title={r.note}>
-                        {r.note?.trim() || '—'}
-                      </td>
-                      <td className="px-4 py-3 font-semibold tabular-nums">{r.last_completed_date}</td>
-                      <td className="px-4 py-3">
-                        <button
-                          type="button"
-                          onClick={() => setActionTarget(r)}
-                          className="text-xs font-extrabold text-rose-600 hover:text-rose-700 underline-offset-2 hover:underline"
-                        >
-                          {tm('bFollowUpManage')}
-                        </button>
-                      </td>
-                    </tr>
-                  );
-                })}
-              </tbody>
-            </table>
+          <div className="p-4">
+            <ReportColumnTable
+              data={gridRows}
+              columns={gridColumns}
+              height={560}
+              storageNamespace="beauty-overdue-uncalled"
+            />
           </div>
         )}
       </div>

@@ -9,7 +9,8 @@ import { paymentFormCodeTranslationKey } from '../../../utils/paymentMethodUtils
 import { getInvoiceHeaderField } from '../../../utils/invoiceHeaderFields';
 import { Eye, Edit, FileText } from 'lucide-react';
 
-export const INVOICE_LIST_COLUMN_VISIBILITY_KEY = 'retailex_invoiceList_columnVisibility_v2';
+/** v3: Durum/İşlem varsayılan gizli — eski v2 tercihlerinde status:true kalmasın */
+export const INVOICE_LIST_COLUMN_VISIBILITY_KEY = 'retailex_invoiceList_columnVisibility_v3';
 /** Kolon sürükle-bırak sırası — görünürlük key kalıbı ile uyumlu */
 export const INVOICE_LIST_COLUMN_ORDER_KEY = 'retailex_invoiceList_columnOrder_v1';
 

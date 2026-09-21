@@ -5,6 +5,7 @@ import { formatNumber } from '../../utils/formatNumber';
 import { isReturnSale } from '../../utils/posZReport';
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer, Cell } from 'recharts';
 import { useLanguage } from '../../contexts/LanguageContext';
+import { ReportColumnTable } from './shared/ReportDataGrid';
 
 interface SalesTargetReportProps {
   sales: Sale[];
@@ -158,66 +159,80 @@ export function SalesTargetReport({ sales }: SalesTargetReportProps) {
         </ResponsiveContainer>
       </div>
 
-      <div className="bg-white rounded-lg border">
-        <div className="p-4 border-b">
-          <h4 className="text-lg font-semibold">{tm('rptTargetMonthlyDetails')}</h4>
-        </div>
-        <div
-          className="overflow-x-auto overflow-y-auto max-h-[500px]"
-          style={{ scrollbarWidth: 'thin', scrollbarColor: '#cbd5e1 #f1f5f9' }}
-        >
-          <table className="w-full min-w-[800px]">
-            <thead className="bg-gray-50 border-b sticky top-0">
-              <tr>
-                <th className="px-4 py-3 text-left text-sm">{tm('rptTargetColMonth')}</th>
-                <th className="px-4 py-3 text-right text-sm">{tm('rptTargetColTarget')}</th>
-                <th className="px-4 py-3 text-right text-sm">{tm('rptTargetColActual')}</th>
-                <th className="px-4 py-3 text-right text-sm">{tm('rptTargetColDiff')}</th>
-                <th className="px-4 py-3 text-right text-sm">{tm('rptTargetColAchievement')}</th>
-                <th className="px-4 py-3 text-center text-sm">{tm('rptTargetColStatus')}</th>
-              </tr>
-            </thead>
-            <tbody className="divide-y">
-              {monthlyData.map((month, index) => (
-                <tr key={index} className="hover:bg-gray-50">
-                  <td className="px-4 py-3 font-medium">{month.month}</td>
-                  <td className="px-4 py-3 text-right text-gray-600">{formatNumber(month.target, 2, false)} IQD</td>
-                  <td className="px-4 py-3 text-right text-green-600 font-semibold">
-                    {formatNumber(month.actual, 2, false)} IQD
-                  </td>
-                  <td
-                    className={`px-4 py-3 text-right font-semibold ${
-                      month.difference >= 0 ? 'text-green-600' : 'text-red-600'
-                    }`}
-                  >
-                    {month.difference >= 0 ? '+' : ''}
-                    {formatNumber(month.difference, 2, false)} IQD
-                  </td>
-                  <td className="px-4 py-3 text-right">
-                    <span
-                      className={`px-2 py-1 rounded text-sm font-semibold ${
-                        month.percentage >= 100
-                          ? 'bg-green-100 text-green-700'
-                          : month.percentage >= 80
-                            ? 'bg-orange-100 text-orange-700'
-                            : 'bg-red-100 text-red-700'
-                      }`}
-                    >
-                      {month.percentage.toFixed(1)}%
-                    </span>
-                  </td>
-                  <td className="px-4 py-3 text-center">
-                    {month.percentage >= 100 ? (
-                      <CheckCircle className="w-5 h-5 text-green-600 mx-auto" />
-                    ) : (
-                      <XCircle className="w-5 h-5 text-red-600 mx-auto" />
-                    )}
-                  </td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
+      <div className="bg-white rounded-lg border p-4">
+        <h4 className="text-lg font-semibold mb-3">{tm('rptTargetMonthlyDetails')}</h4>
+        <ReportColumnTable
+          data={monthlyData}
+          height={500}
+          storageNamespace="sales-target-monthly"
+          columns={[
+            { key: 'month', header: tm('rptTargetColMonth'), size: 160 },
+            {
+              key: 'target',
+              header: tm('rptTargetColTarget'),
+              type: 'number',
+              align: 'right',
+              footerSum: true,
+              footerFormat: (n) => `${formatNumber(n, 2, false)} IQD`,
+              cell: (row) => `${formatNumber(row.target, 2, false)} IQD`,
+            },
+            {
+              key: 'actual',
+              header: tm('rptTargetColActual'),
+              type: 'number',
+              align: 'right',
+              footerSum: true,
+              footerFormat: (n) => `${formatNumber(n, 2, false)} IQD`,
+              cell: (row) => (
+                <span className="text-green-600 font-semibold">{formatNumber(row.actual, 2, false)} IQD</span>
+              ),
+            },
+            {
+              key: 'difference',
+              header: tm('rptTargetColDiff'),
+              type: 'number',
+              align: 'right',
+              footerSum: true,
+              footerFormat: (n) => `${n >= 0 ? '+' : ''}${formatNumber(n, 2, false)} IQD`,
+              cell: (row) => (
+                <span className={row.difference >= 0 ? 'text-green-600 font-semibold' : 'text-red-600 font-semibold'}>
+                  {row.difference >= 0 ? '+' : ''}
+                  {formatNumber(row.difference, 2, false)} IQD
+                </span>
+              ),
+            },
+            {
+              key: 'percentage',
+              header: tm('rptTargetColAchievement'),
+              type: 'number',
+              align: 'right',
+              cell: (row) => (
+                <span
+                  className={`px-2 py-1 rounded text-sm font-semibold ${
+                    row.percentage >= 100
+                      ? 'bg-green-100 text-green-700'
+                      : row.percentage >= 80
+                        ? 'bg-orange-100 text-orange-700'
+                        : 'bg-red-100 text-red-700'
+                  }`}
+                >
+                  {row.percentage.toFixed(1)}%
+                </span>
+              ),
+            },
+            {
+              key: 'status',
+              header: tm('rptTargetColStatus'),
+              align: 'center',
+              cell: (row) =>
+                row.percentage >= 100 ? (
+                  <CheckCircle className="w-5 h-5 text-green-600 mx-auto" />
+                ) : (
+                  <XCircle className="w-5 h-5 text-red-600 mx-auto" />
+                ),
+            },
+          ]}
+        />
       </div>
     </div>
   );

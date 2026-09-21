@@ -41,6 +41,7 @@ import {
   ficheTypeToInfo,
 } from '../../../utils/cariAccountStatement';
 import {
+  SUPPLIER_LIST_COLUMN_META,
   SUPPLIER_LIST_COLUMN_ORDER,
   SUPPLIER_LIST_COLUMN_ORDER_KEY,
   SUPPLIER_LIST_COLUMN_VISIBILITY_KEY,
@@ -91,7 +92,10 @@ export function SupplierModule({ initialFilter = 'all' }: { initialFilter?: Cari
   useEffect(() => {
     try {
       const payload = Object.fromEntries(
-        SUPPLIER_LIST_COLUMN_ORDER.map((id) => [id, columnVisibility[id] !== false])
+        SUPPLIER_LIST_COLUMN_ORDER.map((id) => [
+          id,
+          columnVisibility[id] ?? SUPPLIER_LIST_COLUMN_META[id].defaultVisible,
+        ])
       );
       localStorage.setItem(SUPPLIER_LIST_COLUMN_VISIBILITY_KEY, JSON.stringify(payload));
     } catch {

@@ -1,7 +1,7 @@
 // 📊 Profit & Loss Reports - Kar-Zarar Raporları
 // Detaylı finansal raporlar (gerçek `stock_movements` verisinden hesaplanır).
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useMemo } from 'react';
 import {
   TrendingUp, TrendingDown, Banknote, Package,
   Download, Calendar, BarChart3,
@@ -9,6 +9,7 @@ import {
 } from 'lucide-react';
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer, PieChart as RechartsPieChart, Pie, Cell } from 'recharts';
 import { postgres } from '../../../services/postgres';
+import { ReportColumnTable, type ReportColumnTableCol } from '../../reports/shared/ReportDataGrid';
 
 interface ProfitLossReportsProps {
   darkMode: boolean;
@@ -238,6 +239,184 @@ const products: ProductPL[] = rawRows.map((r) => {
 
   const COLORS = ['#ef4444', '#f97316', '#eab308', '#f59e0b', '#10b981'];
 
+  const fmtK = (n: number) => `${(n / 1000).toFixed(0)}K`;
+
+  const productColumns = useMemo<ReportColumnTableCol<ProductPL>[]>(
+    () => [
+      {
+        key: 'product_name',
+        header: 'Ürün',
+        size: 200,
+        cell: (product) => (
+          <div>
+            <div className={`font-medium ${textClass}`}>{product.product_name}</div>
+            <div className="text-xs text-gray-500">{product.category}</div>
+          </div>
+        ),
+      },
+      {
+        key: 'sales_quantity',
+        header: 'Satış',
+        type: 'number',
+        align: 'center',
+        size: 90,
+        footerSum: true,
+      },
+      {
+        key: 'sales_revenue',
+        header: 'Gelir',
+        type: 'number',
+        align: 'right',
+        size: 100,
+        footerSum: true,
+        cell: (p) => fmtK(p.sales_revenue),
+      },
+      {
+        key: 'total_cost',
+        header: 'Maliyet',
+        type: 'number',
+        align: 'right',
+        size: 100,
+        footerSum: true,
+        cell: (p) => <span className="text-red-600">{fmtK(p.total_cost)}</span>,
+      },
+      {
+        key: 'gross_profit',
+        header: 'Brüt Kar',
+        type: 'number',
+        align: 'right',
+        size: 100,
+        footerSum: true,
+        cell: (p) => <span className="text-green-600">{fmtK(p.gross_profit)}</span>,
+      },
+      {
+        key: 'total_deductions',
+        header: 'Kesintiler',
+        type: 'number',
+        align: 'right',
+        size: 100,
+        footerSum: true,
+        cell: (p) => <span className="text-orange-600">-{fmtK(p.total_deductions)}</span>,
+      },
+      {
+        key: 'net_profit',
+        header: 'Net Kar',
+        type: 'number',
+        align: 'right',
+        size: 110,
+        footerSum: true,
+        cell: (p) => (
+          <span className={`text-lg font-bold ${p.net_profit > 0 ? 'text-green-600' : 'text-red-600'}`}>
+            {fmtK(p.net_profit)}
+          </span>
+        ),
+      },
+      {
+        key: 'profit_margin_percent',
+        header: 'Marj %',
+        type: 'number',
+        align: 'right',
+        size: 90,
+        cell: (p) => (
+          <span
+            className={`font-bold ${
+              p.profit_margin_percent >= 20
+                ? 'text-green-600'
+                : p.profit_margin_percent >= 10
+                  ? 'text-yellow-600'
+                  : 'text-red-600'
+            }`}
+          >
+            {p.profit_margin_percent.toFixed(1)}%
+          </span>
+        ),
+      },
+      {
+        key: 'category',
+        header: 'Detay',
+        size: 80,
+        cell: (product) => (
+          <button
+            type="button"
+            onClick={(e) => {
+              e.stopPropagation();
+              setSelectedItem(product);
+              setShowDetailModal(true);
+            }}
+            className="p-2 hover:bg-blue-100 dark:hover:bg-blue-900/20 rounded text-blue-600"
+          >
+            <Eye className="w-4 h-4" />
+          </button>
+        ),
+      },
+    ],
+    [textClass],
+  );
+
+  const categoryColumns = useMemo<ReportColumnTableCol<CategoryPL>[]>(
+    () => [
+      {
+        key: 'category',
+        header: 'Kategori',
+        size: 180,
+        cell: (c) => <span className={`text-lg font-bold ${textClass}`}>{c.category}</span>,
+      },
+      {
+        key: 'total_revenue',
+        header: 'Toplam Gelir',
+        type: 'number',
+        align: 'right',
+        size: 130,
+        footerSum: true,
+        cell: (c) => <span className={`text-lg font-bold ${textClass}`}>{fmtK(c.total_revenue)}</span>,
+      },
+      {
+        key: 'total_cost',
+        header: 'Toplam Maliyet',
+        type: 'number',
+        align: 'right',
+        size: 130,
+        footerSum: true,
+        cell: (c) => <span className="text-lg font-bold text-red-600">{fmtK(c.total_cost)}</span>,
+      },
+      {
+        key: 'gross_profit',
+        header: 'Brüt Kar',
+        type: 'number',
+        align: 'right',
+        size: 120,
+        footerSum: true,
+        cell: (c) => <span className="text-lg font-bold text-green-600">{fmtK(c.gross_profit)}</span>,
+      },
+      {
+        key: 'net_profit',
+        header: 'Net Kar',
+        type: 'number',
+        align: 'right',
+        size: 120,
+        footerSum: true,
+        cell: (c) => <span className="text-xl font-bold text-purple-600">{fmtK(c.net_profit)}</span>,
+      },
+      {
+        key: 'profit_percent',
+        header: 'Kar %',
+        type: 'number',
+        align: 'right',
+        size: 100,
+        cell: (c) => (
+          <span
+            className={`text-xl font-bold ${
+              c.profit_percent >= 20 ? 'text-green-600' : c.profit_percent >= 10 ? 'text-yellow-600' : 'text-red-600'
+            }`}
+          >
+            {c.profit_percent.toFixed(1)}%
+          </span>
+        ),
+      },
+    ],
+    [textClass],
+  );
+
   return (
     <div className={`min-h-screen ${bgClass} p-6`}>
       {/* Header */}
@@ -447,68 +626,14 @@ const products: ProductPL[] = rawRows.map((r) => {
           <div className="p-4 border-b border-gray-200 dark:border-gray-700">
             <h3 className={`text-lg font-bold ${textClass}`}>Ürün Bazlı Kar-Zarar</h3>
           </div>
-          <div className="overflow-x-auto">
-            <table className="w-full">
-              <thead className={darkMode ? 'bg-gray-700' : 'bg-gray-50'}>
-                <tr>
-                  <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Ürün</th>
-                  <th className="px-4 py-3 text-center text-xs font-medium text-gray-500 uppercase">Satış</th>
-                  <th className="px-4 py-3 text-center text-xs font-medium text-gray-500 uppercase">Gelir</th>
-                  <th className="px-4 py-3 text-center text-xs font-medium text-gray-500 uppercase">Maliyet</th>
-                  <th className="px-4 py-3 text-center text-xs font-medium text-gray-500 uppercase">Brüt Kar</th>
-                  <th className="px-4 py-3 text-center text-xs font-medium text-gray-500 uppercase">Kesintiler</th>
-                  <th className="px-4 py-3 text-center text-xs font-medium text-gray-500 uppercase">Net Kar</th>
-                  <th className="px-4 py-3 text-center text-xs font-medium text-gray-500 uppercase">Marj %</th>
-                  <th className="px-4 py-3 text-center text-xs font-medium text-gray-500 uppercase">Detay</th>
-                </tr>
-              </thead>
-              <tbody className="divide-y divide-gray-200 dark:divide-gray-700">
-                {productPL.map((product, index) => (
-                  <tr key={index} className="hover:bg-gray-50 dark:hover:bg-gray-700/50">
-                    <td className="px-4 py-4">
-                      <div className={`font-medium ${textClass}`}>{product.product_name}</div>
-                      <div className="text-xs text-gray-500">{product.category}</div>
-                    </td>
-                    <td className="px-4 py-4 text-center">
-                      <span className={`font-bold ${textClass}`}>{product.sales_quantity}</span>
-                    </td>
-                    <td className="px-4 py-4 text-center">
-                      <span className="text-sm">{(product.sales_revenue / 1000).toFixed(0)}K</span>
-                    </td>
-                    <td className="px-4 py-4 text-center">
-                      <span className="text-sm text-red-600">{(product.total_cost / 1000).toFixed(0)}K</span>
-                    </td>
-                    <td className="px-4 py-4 text-center">
-                      <span className="text-sm text-green-600">{(product.gross_profit / 1000).toFixed(0)}K</span>
-                    </td>
-                    <td className="px-4 py-4 text-center">
-                      <span className="text-sm text-orange-600">-{(product.total_deductions / 1000).toFixed(0)}K</span>
-                    </td>
-                    <td className="px-4 py-4 text-center">
-                      <span className={`text-lg font-bold ${product.net_profit > 0 ? 'text-green-600' : 'text-red-600'}`}>
-                        {(product.net_profit / 1000).toFixed(0)}K
-                      </span>
-                    </td>
-                    <td className="px-4 py-4 text-center">
-                      <span className={`font-bold ${product.profit_margin_percent >= 20 ? 'text-green-600' : product.profit_margin_percent >= 10 ? 'text-yellow-600' : 'text-red-600'}`}>
-                        {product.profit_margin_percent.toFixed(1)}%
-                      </span>
-                    </td>
-                    <td className="px-4 py-4 text-center">
-                      <button
-                        onClick={() => {
-                          setSelectedItem(product);
-                          setShowDetailModal(true);
-                        }}
-                        className="p-2 hover:bg-blue-100 dark:hover:bg-blue-900/20 rounded text-blue-600"
-                      >
-                        <Eye className="w-4 h-4" />
-                      </button>
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
+          <div className="p-4">
+            <ReportColumnTable
+              data={productPL}
+              columns={productColumns}
+              height={560}
+              storageNamespace="wms-pl-product"
+              footerLabel="Toplam"
+            />
           </div>
         </div>
       )}
@@ -519,45 +644,14 @@ const products: ProductPL[] = rawRows.map((r) => {
           <div className="p-4 border-b border-gray-200 dark:border-gray-700">
             <h3 className={`text-lg font-bold ${textClass}`}>Kategori Bazlı Kar-Zarar</h3>
           </div>
-          <div className="overflow-x-auto">
-            <table className="w-full">
-              <thead className={darkMode ? 'bg-gray-700' : 'bg-gray-50'}>
-                <tr>
-                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Kategori</th>
-                  <th className="px-6 py-3 text-center text-xs font-medium text-gray-500 uppercase">Toplam Gelir</th>
-                  <th className="px-6 py-3 text-center text-xs font-medium text-gray-500 uppercase">Toplam Maliyet</th>
-                  <th className="px-6 py-3 text-center text-xs font-medium text-gray-500 uppercase">Brüt Kar</th>
-                  <th className="px-6 py-3 text-center text-xs font-medium text-gray-500 uppercase">Net Kar</th>
-                  <th className="px-6 py-3 text-center text-xs font-medium text-gray-500 uppercase">Kar %</th>
-                </tr>
-              </thead>
-              <tbody className="divide-y divide-gray-200 dark:divide-gray-700">
-                {categoryPL.map((category, index) => (
-                  <tr key={index} className="hover:bg-gray-50 dark:hover:bg-gray-700/50">
-                    <td className="px-6 py-4">
-                      <span className={`text-lg font-bold ${textClass}`}>{category.category}</span>
-                    </td>
-                    <td className="px-6 py-4 text-center">
-                      <span className={`text-lg font-bold ${textClass}`}>{(category.total_revenue / 1000).toFixed(0)}K</span>
-                    </td>
-                    <td className="px-6 py-4 text-center">
-                      <span className="text-lg font-bold text-red-600">{(category.total_cost / 1000).toFixed(0)}K</span>
-                    </td>
-                    <td className="px-6 py-4 text-center">
-                      <span className="text-lg font-bold text-green-600">{(category.gross_profit / 1000).toFixed(0)}K</span>
-                    </td>
-                    <td className="px-6 py-4 text-center">
-                      <span className="text-xl font-bold text-purple-600">{(category.net_profit / 1000).toFixed(0)}K</span>
-                    </td>
-                    <td className="px-6 py-4 text-center">
-                      <span className={`text-xl font-bold ${category.profit_percent >= 20 ? 'text-green-600' : category.profit_percent >= 10 ? 'text-yellow-600' : 'text-red-600'}`}>
-                        {category.profit_percent.toFixed(1)}%
-                      </span>
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
+          <div className="p-4">
+            <ReportColumnTable
+              data={categoryPL}
+              columns={categoryColumns}
+              height={480}
+              storageNamespace="wms-pl-category"
+              footerLabel="Toplam"
+            />
           </div>
         </div>
       )}

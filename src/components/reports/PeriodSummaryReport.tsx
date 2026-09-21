@@ -1,7 +1,5 @@
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
-import { Calendar, Landmark, TrendingDown, TrendingUp, Wallet } from 'lucide-react';
-import { Table, Spin } from 'antd';
-import type { ColumnsType } from 'antd/es/table';
+import { Calendar, Eye, Landmark, Loader2, TrendingDown, TrendingUp, Wallet } from 'lucide-react';
 import { formatNumber } from '../../utils/formatNumber';
 import { expenseAPI, type Expense } from '../../services/api/expenses';
 import { salesAPI } from '../../services/api/sales';
@@ -37,7 +35,7 @@ import {
 import { PeriodExpenseShareDetailModal } from './PeriodExpenseShareDetailModal';
 import { PeriodSupplierPayablesDetailModal } from './PeriodSupplierPayablesDetailModal';
 import { PartnerDetailReportModal } from './PartnerDetailReportModal';
-import { Eye } from 'lucide-react';
+import { ReportColumnTable, type ReportColumnTableCol } from './shared/ReportDataGrid';
 
 export type PeriodSummaryMode = 'monthly-days' | 'yearly-months';
 
@@ -501,61 +499,92 @@ export function PeriodSummaryReport({ mode, currency }: PeriodSummaryReportProps
   const showPartnerCols = partnerSplit.enabled && partnerSlices.length > 0;
   const partnerColColors = ['text-blue-700', 'text-indigo-700', 'text-violet-700', 'text-cyan-700', 'text-teal-700'];
 
-  const columns: ColumnsType<PeriodSummaryRow> = useMemo(() => {
-    const base: ColumnsType<PeriodSummaryRow> = [
+  type PeriodSummaryGridRow = PeriodSummaryRow & Record<string, number | string | Record<string, number>>;
+
+  const gridRows = useMemo((): PeriodSummaryGridRow[] => {
+    return rows.map((r) => ({
+      ...r,
+      ...Object.fromEntries(
+        partnerSlices.map((p) => [`partner-${p.id}`, r.partnerShares[p.id] ?? 0] as const),
+      ),
+    }));
+  }, [rows, partnerSlices]);
+
+  const tableColumns = useMemo((): ReportColumnTableCol<PeriodSummaryGridRow>[] => {
+    const base: ReportColumnTableCol<PeriodSummaryGridRow>[] = [
       {
-        title: mode === 'monthly-days' ? tm('rptPeriodColDay') : tm('rptPeriodColMonth'),
-        dataIndex: 'periodLabel',
         key: 'periodLabel',
-        fixed: 'left',
-        width: 160,
+        header: mode === 'monthly-days' ? tm('rptPeriodColDay') : tm('rptPeriodColMonth'),
+        size: 160,
       },
       {
-        title: tm('rptPeriodColSaleCount'),
-        dataIndex: 'saleCount',
         key: 'saleCount',
+        header: tm('rptPeriodColSaleCount'),
+        type: 'number',
         align: 'right',
-        width: 90,
-        render: (v: number) => (v > 0 ? v : '—'),
+        size: 90,
+        footerSum: true,
+        footerFormat: (n) => String(Math.round(n)),
+        cell: (row) => (row.saleCount > 0 ? row.saleCount : '—'),
       },
       {
-        title: `${tm('rptPeriodColRevenue')} (${currency})`,
-        dataIndex: 'revenue',
         key: 'revenue',
+        header: `${tm('rptPeriodColRevenue')} (${currency})`,
+        type: 'number',
         align: 'right',
-        render: (v: number) => (v > 0 ? money(v) : '—'),
+        footerSum: true,
+        footerFormat: (n) => money(n),
+        cell: (row) => (row.revenue > 0 ? money(row.revenue) : '—'),
       },
       {
-        title: `${tm('rptPeriodColCash')} (${currency})`,
-        dataIndex: 'cash',
         key: 'cash',
+        header: `${tm('rptPeriodColCash')} (${currency})`,
+        type: 'number',
         align: 'right',
-        render: (v: number) => (v > 0 ? money(v) : '—'),
+        footerSum: true,
+        footerFormat: (n) => money(n),
+        cell: (row) => (row.cash > 0 ? money(row.cash) : '—'),
       },
       {
-        title: `${tm('rptPeriodColCard')} (${currency})`,
-        dataIndex: 'card',
         key: 'card',
+        header: `${tm('rptPeriodColCard')} (${currency})`,
+        type: 'number',
         align: 'right',
-        render: (v: number) => (v > 0 ? money(v) : '—'),
+        footerSum: true,
+        footerFormat: (n) => money(n),
+        cell: (row) => (row.card > 0 ? money(row.card) : '—'),
       },
       {
-        title: `${tm('rptPeriodColDiscount')} (${currency})`,
-        dataIndex: 'discount',
         key: 'discount',
+        header: `${tm('rptPeriodColDiscount')} (${currency})`,
+        type: 'number',
         align: 'right',
-        render: (v: number) => (v > 0 ? money(v) : '—'),
+        footerSum: true,
+        footerFormat: (n) => money(n),
+        cell: (row) => (row.discount > 0 ? money(row.discount) : '—'),
       },
       {
-        title: `${tm('rptPeriodColReturns') || 'İade'} (${currency})`,
-        dataIndex: 'returnsAmount',
         key: 'returnsAmount',
+        header: `${tm('rptPeriodColReturns') || 'İade'} (${currency})`,
+        type: 'number',
         align: 'right',
-        render: (v: number, row) => {
+        footerSum: true,
+        footerFormat: (n) =>
+          n > 0 ? (
+            <span className="text-orange-600" title={`${totals.returnsCount} ${tm('rptPeriodColReturnsCount') || 'iade adedi'}`}>
+              {money(n)}
+            </span>
+          ) : (
+            '—'
+          ),
+        cell: (row) => {
           if (!hasPeriodActivity(row)) return '—';
-          return v > 0 ? (
-            <span className="text-orange-600" title={`${row.returnsCount} ${tm('rptPeriodColReturnsCount') || 'iade adedi'}`}>
-              {money(v)}
+          return row.returnsAmount > 0 ? (
+            <span
+              className="text-orange-600"
+              title={`${row.returnsCount} ${tm('rptPeriodColReturnsCount') || 'iade adedi'}`}
+            >
+              {money(row.returnsAmount)}
             </span>
           ) : (
             '—'
@@ -563,11 +592,13 @@ export function PeriodSummaryReport({ mode, currency }: PeriodSummaryReportProps
         },
       },
       {
-        title: `${tm('rptPeriodColExpenses')} (${currency})`,
-        dataIndex: 'expenses',
         key: 'expenses',
+        header: `${tm('rptPeriodColExpenses')} (${currency})`,
+        type: 'number',
         align: 'right',
-        render: (v: number, row) => {
+        footerSum: true,
+        footerFormat: (n) => <span className="text-red-600">{money(n)}</span>,
+        cell: (row) => {
           if (!hasPeriodActivity(row)) return '—';
           return (
             <button
@@ -581,36 +612,42 @@ export function PeriodSummaryReport({ mode, currency }: PeriodSummaryReportProps
                 });
               }}
             >
-              {money(v)}
+              {money(row.expenses)}
             </button>
           );
         },
       },
       {
-        title: `${tm('rptPeriodColPurchases')} (${currency})`,
-        dataIndex: 'purchases',
         key: 'purchases',
+        header: `${tm('rptPeriodColPurchases')} (${currency})`,
+        type: 'number',
         align: 'right',
-        render: (v: number, row) => {
+        footerSum: true,
+        footerFormat: (n) => <span className="text-amber-700">{money(n)}</span>,
+        cell: (row) => {
           if (!hasPeriodActivity(row)) return '—';
-          return v > 0 ? <span className="text-amber-700">{money(v)}</span> : '—';
+          return row.purchases > 0 ? <span className="text-amber-700">{money(row.purchases)}</span> : '—';
         },
       },
       {
-        title: `${tm('rptPeriodColNet')} (${currency})`,
-        dataIndex: 'netRemaining',
         key: 'netRemaining',
+        header: `${tm('rptPeriodColNet')} (${currency})`,
+        type: 'number',
         align: 'right',
-        render: (v: number, row) => {
+        footerSum: true,
+        footerFormat: (n) => (
+          <span className={n >= 0 ? 'text-emerald-700' : 'text-red-600'}>{money(n)}</span>
+        ),
+        cell: (row) => {
           if (!hasPeriodActivity(row)) return '—';
-          const cls = v >= 0 ? 'text-emerald-700 font-semibold' : 'text-red-600 font-semibold';
-          return <span className={cls}>{money(v)}</span>;
+          const cls = row.netRemaining >= 0 ? 'text-emerald-700 font-semibold' : 'text-red-600 font-semibold';
+          return <span className={cls}>{money(row.netRemaining)}</span>;
         },
       },
     ];
 
     const filtered = base.filter((col) => {
-      const key = String(col.key ?? '');
+      const key = col.key;
       if (key === 'revenue') return showPeriodCardRevenue;
       if (key === 'cash' || key === 'card') return showPeriodCardPaymentSplit;
       if (key === 'expenses') return showPeriodCardExpenses;
@@ -623,28 +660,40 @@ export function PeriodSummaryReport({ mode, currency }: PeriodSummaryReportProps
 
     return [
       ...filtered,
-      ...partnerSlices.map((p, idx) => ({
-        title: `${p.name} (%${p.sharePct}) (${currency})`,
-        dataIndex: ['partnerShares', p.id] as unknown as string,
-        key: `partner-${p.id}`,
-        align: 'right' as const,
-        render: (_: unknown, row: PeriodSummaryRow) => {
-          if (!hasPeriodActivity(row)) return '—';
-          const v = row.partnerShares[p.id] ?? 0;
-          const expShare = row.expenseShares[p.id] ?? 0;
-          const cls = partnerColColors[idx % partnerColColors.length];
-          return (
+      ...partnerSlices.map((p, idx) => {
+        const partnerKey = `partner-${p.id}`;
+        return {
+          key: partnerKey,
+          header: `${p.name} (%${p.sharePct}) (${currency})`,
+          type: 'number' as const,
+          align: 'right' as const,
+          footerSum: true,
+          footerFormat: (n: number) => (
             <div className="leading-tight">
-              <span className={`${cls} font-medium`}>{money(v)}</span>
-              {expShare ? (
-                <div className="text-[10px] font-semibold text-red-600">
-                  {tm('rptPeriodExpenseShare')}: {money(expShare)}
-                </div>
-              ) : null}
+              <span className={partnerColColors[idx % partnerColColors.length]}>{money(n)}</span>
+              <div className="text-[10px] font-semibold text-red-600">
+                {tm('rptPeriodExpenseShare')}: {money(totals.expenseShares[p.id] ?? 0)}
+              </div>
             </div>
-          );
-        },
-      })),
+          ),
+          cell: (row: PeriodSummaryGridRow) => {
+            if (!hasPeriodActivity(row)) return '—';
+            const v = row.partnerShares[p.id] ?? 0;
+            const expShare = row.expenseShares[p.id] ?? 0;
+            const cls = partnerColColors[idx % partnerColColors.length];
+            return (
+              <div className="leading-tight">
+                <span className={`${cls} font-medium`}>{money(v)}</span>
+                {expShare ? (
+                  <div className="text-[10px] font-semibold text-red-600">
+                    {tm('rptPeriodExpenseShare')}: {money(expShare)}
+                  </div>
+                ) : null}
+              </div>
+            );
+          },
+        } satisfies ReportColumnTableCol<PeriodSummaryGridRow>;
+      }),
     ];
   }, [
     mode,
@@ -658,6 +707,9 @@ export function PeriodSummaryReport({ mode, currency }: PeriodSummaryReportProps
     showPeriodCardExpenses,
     showPeriodCardPurchases,
     showPeriodCardNet,
+    totals.returnsCount,
+    totals.expenseShares,
+    partnerColColors,
   ]);
 
   const title = mode === 'monthly-days' ? tm('aylikGunOzeti') : tm('yillikAyOzeti');
@@ -864,141 +916,26 @@ export function PeriodSummaryReport({ mode, currency }: PeriodSummaryReportProps
         ) : null}
       </div>
 
-      <div className="bg-white rounded-lg border p-4">
-        <Spin spinning={loading}>
-          <Table<PeriodSummaryRow>
-            columns={columns}
-            dataSource={rows}
-            pagination={false}
-            size="small"
-            scroll={{ x: showPartnerCols ? 1280 + partnerSlices.length * 180 : 1280 }}
-            onRow={(row) => ({
-              onClick: () => {
-                if (!hasPeriodActivity(row) || !(row.expenses > 0) || !partnerSlices.length) return;
-                setExpenseDetail({
-                  title: `${tm('rptPeriodExpenseDetailTitle')} · ${row.periodLabel}`,
-                  periodKey: row.periodKey,
-                });
-              },
-              className: row.expenses > 0 && partnerSlices.length ? 'cursor-pointer' : undefined,
-            })}
-            summary={() => {
-              const cells: React.ReactNode[] = [];
-              let idx = 0;
-              for (const col of columns) {
-                const key = String(col.key ?? '');
-                if (key === 'periodLabel') {
-                  cells.push(
-                    <Table.Summary.Cell key={key} index={idx++}>
-                      {tm('rptPeriodTotalRow')}
-                    </Table.Summary.Cell>,
-                  );
-                  continue;
-                }
-                if (key === 'saleCount') {
-                  cells.push(
-                    <Table.Summary.Cell key={key} index={idx++} align="right">
-                      {totals.saleCount}
-                    </Table.Summary.Cell>,
-                  );
-                  continue;
-                }
-                if (key === 'revenue') {
-                  cells.push(
-                    <Table.Summary.Cell key={key} index={idx++} align="right">
-                      {money(totals.revenue)}
-                    </Table.Summary.Cell>,
-                  );
-                  continue;
-                }
-                if (key === 'cash') {
-                  cells.push(
-                    <Table.Summary.Cell key={key} index={idx++} align="right">
-                      {money(totals.cash)}
-                    </Table.Summary.Cell>,
-                  );
-                  continue;
-                }
-                if (key === 'card') {
-                  cells.push(
-                    <Table.Summary.Cell key={key} index={idx++} align="right">
-                      {money(totals.card)}
-                    </Table.Summary.Cell>,
-                  );
-                  continue;
-                }
-                if (key === 'discount') {
-                  cells.push(
-                    <Table.Summary.Cell key={key} index={idx++} align="right">
-                      {money(totals.discount)}
-                    </Table.Summary.Cell>,
-                  );
-                  continue;
-                }
-                if (key === 'returnsAmount') {
-                  cells.push(
-                    <Table.Summary.Cell key={key} index={idx++} align="right">
-                      <span
-                        className="text-orange-600"
-                        title={`${totals.returnsCount} ${tm('rptPeriodColReturnsCount') || 'iade adedi'}`}
-                      >
-                        {totals.returnsAmount > 0 ? money(totals.returnsAmount) : '—'}
-                      </span>
-                    </Table.Summary.Cell>,
-                  );
-                  continue;
-                }
-                if (key === 'expenses') {
-                  cells.push(
-                    <Table.Summary.Cell key={key} index={idx++} align="right">
-                      <span className="text-red-600">{money(totals.expenses)}</span>
-                    </Table.Summary.Cell>,
-                  );
-                  continue;
-                }
-                if (key === 'purchases') {
-                  cells.push(
-                    <Table.Summary.Cell key={key} index={idx++} align="right">
-                      <span className="text-amber-700">{money(totals.purchases)}</span>
-                    </Table.Summary.Cell>,
-                  );
-                  continue;
-                }
-                if (key === 'netRemaining') {
-                  cells.push(
-                    <Table.Summary.Cell key={key} index={idx++} align="right">
-                      <span className={totals.netRemaining >= 0 ? 'text-emerald-700' : 'text-red-600'}>
-                        {money(totals.netRemaining)}
-                      </span>
-                    </Table.Summary.Cell>,
-                  );
-                  continue;
-                }
-                if (key.startsWith('partner-')) {
-                  const partnerId = key.slice('partner-'.length);
-                  const pIdx = partnerSlices.findIndex((p) => p.id === partnerId);
-                  cells.push(
-                    <Table.Summary.Cell key={key} index={idx++} align="right">
-                      <div className="leading-tight">
-                        <span className={partnerColColors[Math.max(0, pIdx) % partnerColColors.length]}>
-                          {money(totals.partnerShares[partnerId] ?? 0)}
-                        </span>
-                        <div className="text-[10px] font-semibold text-red-600">
-                          {tm('rptPeriodExpenseShare')}: {money(totals.expenseShares[partnerId] ?? 0)}
-                        </div>
-                      </div>
-                    </Table.Summary.Cell>,
-                  );
-                }
-              }
-              return (
-                <Table.Summary fixed>
-                  <Table.Summary.Row className="bg-slate-50 font-semibold">{cells}</Table.Summary.Row>
-                </Table.Summary>
-              );
-            }}
-          />
-        </Spin>
+      <div className="bg-white rounded-lg border p-4 relative">
+        {loading ? (
+          <div className="absolute inset-0 z-10 flex items-center justify-center bg-white/70 rounded-lg">
+            <Loader2 className="w-8 h-8 text-blue-600 animate-spin" aria-hidden />
+          </div>
+        ) : null}
+        <ReportColumnTable
+          data={gridRows}
+          columns={tableColumns}
+          height={560}
+          footerLabel={tm('rptPeriodTotalRow')}
+          storageNamespace="period-summary"
+          onRowClick={(row) => {
+            if (!hasPeriodActivity(row) || !(row.expenses > 0) || !partnerSlices.length) return;
+            setExpenseDetail({
+              title: `${tm('rptPeriodExpenseDetailTitle')} · ${row.periodLabel}`,
+              periodKey: row.periodKey,
+            });
+          }}
+        />
       </div>
 
       {expenseDetail ? (

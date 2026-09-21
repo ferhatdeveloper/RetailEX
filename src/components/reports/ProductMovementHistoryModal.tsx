@@ -12,6 +12,7 @@ import { useTheme } from '../../contexts/ThemeContext';
 import { getAppDefaultCurrency } from '../../services/postgres';
 import { toast } from 'sonner';
 import { displayItemCode } from '../../utils/lastPurchaseCostSql';
+import { ReportColumnTable } from './shared/ReportDataGrid';
 
 export type ProductMovementTarget = {
   productId?: string;
@@ -245,9 +246,6 @@ export function ProductMovementHistoryModal({
   }, [target.startDate, target.endDate, tm]);
 
   const shell = darkMode ? 'bg-gray-900 text-gray-100' : 'bg-white text-gray-900';
-  const th = darkMode ? 'bg-gray-800/80 text-gray-300 border-gray-700' : 'bg-slate-50 text-slate-500 border-slate-100';
-  const tdBorder = darkMode ? 'border-gray-800' : 'border-slate-100';
-
   return (
     <PercentBodyModal
       onClose={onClose}
@@ -291,54 +289,84 @@ export function ProductMovementHistoryModal({
         ) : rows.length === 0 ? (
           <div className="p-12 text-center text-sm opacity-60">{tm('reportsPlMovEmpty')}</div>
         ) : (
-          <table className="w-full min-w-[720px] text-sm">
-            <thead className={`sticky top-0 z-[1] border-b ${th}`}>
-              <tr>
-                <th className="px-4 py-2.5 text-left font-semibold">{tm('reportsPlMovColDate')}</th>
-                <th className="px-4 py-2.5 text-left font-semibold">{tm('reportsPlMovColDoc')}</th>
-                <th className="px-4 py-2.5 text-left font-semibold">{tm('reportsPlMovColType')}</th>
-                <th className="px-4 py-2.5 text-right font-semibold">{tm('reportsPlMovColQty')}</th>
-                <th className="px-4 py-2.5 text-right font-semibold">{tm('reportsPlMovColUnit')}</th>
-                <th className="px-4 py-2.5 text-right font-semibold">{tm('reportsPlMovColAmount')}</th>
-                <th className="px-4 py-2.5 text-right font-semibold">{tm('reportsPlMovColProfit')}</th>
-                <th className="px-4 py-2.5 text-left font-semibold">{tm('reportsPlMovColPartner')}</th>
-              </tr>
-            </thead>
-            <tbody>
-              {rows.map((r) => (
-                <tr key={r.id} className={`border-t ${tdBorder} hover:bg-black/[0.03] dark:hover:bg-white/[0.04]`}>
-                  <td className="px-4 py-2 whitespace-nowrap tabular-nums">{r.date || '—'}</td>
-                  <td className="px-4 py-2 font-mono text-xs">{r.documentNo}</td>
-                  <td className="px-4 py-2">
+          <div className="p-2">
+            <ReportColumnTable
+              data={rows}
+              height={480}
+              storageNamespace="product-movement-history"
+              columns={[
+                { key: 'date', header: tm('reportsPlMovColDate'), type: 'date', size: 110 },
+                {
+                  key: 'documentNo',
+                  header: tm('reportsPlMovColDoc'),
+                  size: 120,
+                  cell: (r) => <span className="font-mono text-xs">{r.documentNo}</span>,
+                },
+                {
+                  key: 'typeLabel',
+                  header: tm('reportsPlMovColType'),
+                  size: 120,
+                  cell: (r) => (
                     <span className={`inline-flex rounded-full px-2 py-0.5 text-[11px] font-semibold ${r.typeTone}`}>
                       {r.typeLabel}
                     </span>
-                  </td>
-                  <td className="px-4 py-2 text-right tabular-nums">{formatNumber(r.quantity, 3, false)}</td>
-                  <td className="px-4 py-2 text-right tabular-nums">
-                    {formatNumber(r.unitPrice, 2, false)} {currency}
-                  </td>
-                  <td className="px-4 py-2 text-right tabular-nums font-medium">
-                    {formatNumber(r.amount, 2, false)} {currency}
-                  </td>
-                  <td
-                    className={`px-4 py-2 text-right tabular-nums font-medium ${
-                      r.grossProfit == null
-                        ? 'opacity-40'
-                        : r.grossProfit >= 0
-                          ? 'text-emerald-700 dark:text-emerald-400'
-                          : 'text-rose-700 dark:text-rose-400'
-                    }`}
-                  >
-                    {r.grossProfit == null
-                      ? '—'
-                      : `${formatNumber(r.grossProfit, 2, false)} ${currency}`}
-                  </td>
-                  <td className="px-4 py-2 text-xs opacity-70 max-w-[12rem] truncate">{r.partner || '—'}</td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
+                  ),
+                },
+                {
+                  key: 'quantity',
+                  header: tm('reportsPlMovColQty'),
+                  type: 'number',
+                  align: 'right',
+                  cell: (r) => formatNumber(r.quantity, 3, false),
+                },
+                {
+                  key: 'unitPrice',
+                  header: tm('reportsPlMovColUnit'),
+                  type: 'number',
+                  align: 'right',
+                  cell: (r) => `${formatNumber(r.unitPrice, 2, false)} ${currency}`,
+                },
+                {
+                  key: 'amount',
+                  header: tm('reportsPlMovColAmount'),
+                  type: 'number',
+                  align: 'right',
+                  footerSum: true,
+                  footerFormat: (n) => `${formatNumber(n, 2, false)} ${currency}`,
+                  cell: (r) => (
+                    <span className="font-medium">{formatNumber(r.amount, 2, false)} {currency}</span>
+                  ),
+                },
+                {
+                  key: 'grossProfit',
+                  header: tm('reportsPlMovColProfit'),
+                  type: 'number',
+                  align: 'right',
+                  footerSum: true,
+                  footerFormat: (n) => `${formatNumber(n, 2, false)} ${currency}`,
+                  cell: (r) => (
+                    <span
+                      className={
+                        r.grossProfit == null
+                          ? 'opacity-40'
+                          : r.grossProfit >= 0
+                            ? 'text-emerald-700 dark:text-emerald-400 font-medium'
+                            : 'text-rose-700 dark:text-rose-400 font-medium'
+                      }
+                    >
+                      {r.grossProfit == null ? '—' : `${formatNumber(r.grossProfit, 2, false)} ${currency}`}
+                    </span>
+                  ),
+                },
+                {
+                  key: 'partner',
+                  header: tm('reportsPlMovColPartner'),
+                  size: 140,
+                  cell: (r) => <span className="text-xs opacity-70 truncate max-w-[12rem]">{r.partner || '—'}</span>,
+                },
+              ]}
+            />
+          </div>
         )}
       </PercentBodyModalScrollBody>
 

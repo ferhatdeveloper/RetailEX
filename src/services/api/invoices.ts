@@ -529,13 +529,18 @@ function normalizePeriodNrForRow(v: string | number | undefined | null): string 
   return raw.padStart(2, '0').slice(0, 10);
 }
 
+/** Logo hizmet belge trcode — Alınan (4) / Verilen (9). Ürün Alış/Satış listelerinden ayrılır. */
+export const SERVICE_DOC_TRCODES: readonly number[] = [4, 9];
+
 /** Logo trcode grupları — getPaginated SQL ile birebir; liste ekranı istemci filtresi burayı kullanmalı (INVOICE_TYPES ile değil). */
 export const TRCODES_BY_INVOICE_CATEGORY: Record<string, readonly number[]> = {
   // trcode 6 = Alış İade → Iade (Alis'ten çıkarıldı; 2026-09-01 kasap
   // BADIA skandalı: trcode 6 purchase_invoice olarak işaretleniyordu,
   // alış iade tedarikçi bakiyesini artırıyordu).
-  Alis: [1, 4, 5, 13, 26, 41, 42],
-  Satis: [7, 8, 9, 14, 29, 30, 31, 32],
+  // trcode 4 = Alınan Hizmet → yalnızca Hizmet (Alış ürün listesine karışmasın).
+  // trcode 9 = Verilen Hizmet → yalnızca Hizmet (Satış ürün listesine karışmasın).
+  Alis: [1, 5, 13, 26, 41, 42],
+  Satis: [7, 8, 14, 29, 30, 31, 32],
   Iade: [2, 3, 6],
   Irsaliye: [10, 11, 12, 13, 25],
   Siparis: [20, 21],
@@ -628,18 +633,30 @@ function trcodeAndFicheTypesForCategories(categories: string[]): {
   trcodes: number[];
   ficheTypes: string[];
   includesAlis: boolean;
+  /** Ürün Alış/Satış listesinde hizmet belgelerini fiche_type OR dalından hariç tut */
+  excludeServiceDocs: boolean;
 } {
   const trcodeSet = new Set<number>();
   const ficheSet = new Set<string>();
   let includesAlis = false;
+  let includesSatis = false;
+  let includesHizmet = false;
   for (const raw of categories) {
     const key = normalizeInvoiceCategoryKey(raw);
     if (!key) continue;
     if (key === 'Alis') includesAlis = true;
+    if (key === 'Satis') includesSatis = true;
+    if (key === 'Hizmet') includesHizmet = true;
     for (const tc of TRCODES_BY_INVOICE_CATEGORY[key] || []) trcodeSet.add(tc);
     for (const ft of legacyFicheTypesByCategory(key)) ficheSet.add(ft);
   }
-  return { trcodes: [...trcodeSet], ficheTypes: [...ficheSet], includesAlis };
+  return {
+    trcodes: [...trcodeSet],
+    ficheTypes: [...ficheSet],
+    includesAlis,
+    // Hizmet menüsü açıkken 4/9 zaten trcode listesinde; ürün Alış/Satış'ta fiche OR sızıntısını kes
+    excludeServiceDocs: (includesAlis || includesSatis) && !includesHizmet,
+  };
 }
 
 export function deriveFicheTypeFromTrcode(trcode: number): string {
@@ -1740,6 +1757,13 @@ export function invoiceMatchesModuleCategory(
 ): boolean {
   if (!moduleCategory) return true;
   const tc = Number(inv.invoice_type ?? inv.trcode ?? 0);
+  // Ürün Alış / Satış listeleri: Alınan/Verilen Hizmet belgeleri ayrı menüde (Hizmet)
+  if (
+    (moduleCategory === 'Alis' || moduleCategory === 'Satis') &&
+    (SERVICE_DOC_TRCODES.includes(tc) || inv.invoice_category === 'Hizmet')
+  ) {
+    return false;
+  }
   const moduleCodes = TRCODES_BY_INVOICE_CATEGORY[moduleCategory];
   if (tc > 0 && moduleCodes?.includes(tc)) return true;
 
@@ -1747,7 +1771,7 @@ export function invoiceMatchesModuleCategory(
     if (inv.invoice_category === moduleCategory) return true;
     // Hizmet / İade ekranları: trcode öncelikli (4,9 → Hizmet; 6 → İade) — yanlış infer edilmiş kategori
     if (moduleCategory === 'Hizmet' && inv.invoice_category !== 'Hizmet') {
-      return [4, 9, 21, 24].includes(tc);
+      return SERVICE_DOC_TRCODES.includes(tc) || [21, 24].includes(tc);
     }
     if (moduleCategory === 'Iade' && inv.invoice_category !== 'Iade') {
       return [2, 3, 6].includes(tc);
@@ -1757,6 +1781,12 @@ export function invoiceMatchesModuleCategory(
 
   if (moduleCodes?.includes(tc)) return true;
   const ft = String(inv.fiche_type ?? '').trim();
+  if (
+    (moduleCategory === 'Alis' || moduleCategory === 'Satis') &&
+    SERVICE_DOC_TRCODES.includes(tc)
+  ) {
+    return false;
+  }
   return legacyFicheTypesByCategory(moduleCategory).includes(ft);
 }
 
@@ -2483,13 +2513,21 @@ export const invoicesAPI = {
             baseFilters.trcode = `eq.${String(invoiceType)}`;
           }
         } else if (categoryKeys.length > 0) {
-          const { trcodes, ficheTypes } = trcodeAndFicheTypesForCategories(categoryKeys);
+          const { trcodes, ficheTypes, excludeServiceDocs } = trcodeAndFicheTypesForCategories(categoryKeys);
           if (trcodes.length > 0 && ficheTypes.length > 0) {
-            baseFilters.or = `(trcode.in.(${trcodes.join(',')}),fiche_type.in.(${ficheTypes.join(',')}))`;
+            if (excludeServiceDocs) {
+              baseFilters.or = `(trcode.in.(${trcodes.join(',')}),and(fiche_type.in.(${ficheTypes.join(',')}),trcode.not.in.(${SERVICE_DOC_TRCODES.join(',')})))`;
+            } else {
+              baseFilters.or = `(trcode.in.(${trcodes.join(',')}),fiche_type.in.(${ficheTypes.join(',')}))`;
+            }
           } else if (trcodes.length > 0) {
             baseFilters.trcode = `in.(${trcodes.join(',')})`;
           } else if (ficheTypes.length > 0) {
-            baseFilters.fiche_type = `in.(${ficheTypes.join(',')})`;
+            if (excludeServiceDocs) {
+              baseFilters.and = `(fiche_type.in.(${ficheTypes.join(',')}),trcode.not.in.(${SERVICE_DOC_TRCODES.join(',')}))`;
+            } else {
+              baseFilters.fiche_type = `in.(${ficheTypes.join(',')})`;
+            }
           }
         }
 
@@ -2540,6 +2578,13 @@ export const invoicesAPI = {
               const matchesLegacyFiche =
                 (ft === 'return_invoice' || ft === 'i') && !excludeTr.includes(tr);
               if (!matchesType && !matchesLegacyFiche) return false;
+            }
+          }
+          // Ürün Alış/Satış: hizmet belgeleri (4/9) fiche_type sızıntısına karşı
+          if (categoryKeys.length > 0) {
+            const { excludeServiceDocs } = trcodeAndFicheTypesForCategories(categoryKeys);
+            if (excludeServiceDocs && SERVICE_DOC_TRCODES.includes(Number(r?.trcode ?? 0))) {
+              return false;
             }
           }
           return true;
@@ -2596,12 +2641,21 @@ export const invoicesAPI = {
           paramIndex++;
         }
       } else if (categoryKeys.length > 0) {
-        const { trcodes, ficheTypes, includesAlis } = trcodeAndFicheTypesForCategories(categoryKeys);
+        const { trcodes, ficheTypes, includesAlis, excludeServiceDocs } =
+          trcodeAndFicheTypesForCategories(categoryKeys);
 
         if (trcodes.length > 0) {
           sql += ` AND (trcode::int IN (${trcodes.join(',')})`;
           if (ficheTypes.length > 0) {
-            sql += ` OR fiche_type::text = ANY($${paramIndex}::text[])`;
+            if (excludeServiceDocs) {
+              // Alınan/Verilen Hizmet purchase_invoice/sales_invoice fiche ile yazılır; ürün listesine sızmasın
+              sql += ` OR (
+                fiche_type::text = ANY($${paramIndex}::text[])
+                AND COALESCE(trcode, 0) NOT IN (${SERVICE_DOC_TRCODES.join(',')})
+              )`;
+            } else {
+              sql += ` OR fiche_type::text = ANY($${paramIndex}::text[])`;
+            }
             params.push(ficheTypes);
             paramIndex++;
           }
@@ -2615,7 +2669,11 @@ export const invoicesAPI = {
           sql += `)`;
         } else {
           const ficheTypesFallback = ficheTypes.length ? ficheTypes : ['sales_invoice'];
-          sql += ` AND fiche_type::text = ANY($${paramIndex}::text[])`;
+          if (excludeServiceDocs) {
+            sql += ` AND fiche_type::text = ANY($${paramIndex}::text[]) AND COALESCE(trcode, 0) NOT IN (${SERVICE_DOC_TRCODES.join(',')})`;
+          } else {
+            sql += ` AND fiche_type::text = ANY($${paramIndex}::text[])`;
+          }
           params.push(ficheTypesFallback);
           paramIndex++;
         }
@@ -4375,6 +4433,8 @@ function inferInvoiceCategoryFromDbRow(dbInv: any): Invoice['invoice_category'] 
   const ft = String(dbInv?.fiche_type || '').toLowerCase();
   const tc = Number(dbInv?.trcode ?? dbInv?.invoice_type ?? 0);
   if (tc === 6) return 'Iade';
+  // Alınan (4) / Verilen (9) Hizmet: fiche_type purchase/sales_invoice olsa da kategori Hizmet
+  if (SERVICE_DOC_TRCODES.includes(tc)) return 'Hizmet';
   if (ft === 'purchase_invoice' || ft === 'a') return 'Alis';
   if (ft === 'sales_invoice' || ft === 's') return 'Satis';
   if (ft === 'return_invoice' || ft === 'i') return 'Iade';
@@ -4403,13 +4463,20 @@ function mapDatabaseInvoiceToInvoice(dbInv: any): Invoice {
           ? 8
           : category === 'Iade'
             ? 3
-            : 0;
+            : category === 'Hizmet'
+              ? 9
+              : 0;
 
   const joinCust = dbInv.join_customer_name;
   const joinSup = dbInv.join_supplier_name;
   /* Alış: customer_id tedarikçi UUID; customers join boş — ünvan suppliers veya sales.customer_name */
   const partnerNameAlis = joinSup || dbInv.customer_name || '';
   const partnerNameSatis = joinCust || dbInv.customer_name || '';
+  // Alınan Hizmet (4) kategori Hizmet olsa da cari tedarikçi tarafı
+  const purchaseSide = isInvoicePurchaseSide({
+    category,
+    code: inferredType,
+  });
 
   const netAmount = normalizeSalesHeaderNetAmount(dbInv, category);
 
@@ -4420,9 +4487,9 @@ function mapDatabaseInvoiceToInvoice(dbInv: any): Invoice {
     header_fields: sanitizeInvoiceHeaderFields(dbInv.header_fields),
     invoice_date: dbInv.date || dbInv.created_at,
     customer_id: dbInv.customer_id,
-    customer_name: category === 'Alis' ? partnerNameAlis : partnerNameSatis,
+    customer_name: purchaseSide ? partnerNameAlis : partnerNameSatis,
     supplier_id: dbInv.customer_id,
-    supplier_name: category === 'Alis' ? partnerNameAlis : (joinSup || dbInv.supplier_name || ''),
+    supplier_name: purchaseSide ? partnerNameAlis : (joinSup || dbInv.supplier_name || ''),
     trcode: inferredType || undefined,
     subtotal: parseFloat(dbInv.total_net || 0) || parseFloat(dbInv.total_gross || 0),
     tax: parseFloat(dbInv.total_vat || 0),

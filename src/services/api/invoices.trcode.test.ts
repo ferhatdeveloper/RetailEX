@@ -68,10 +68,53 @@ describe('TRCODES_BY_INVOICE_CATEGORY — kategori başına trcode listesi', () 
     expect(TRCODES_BY_INVOICE_CATEGORY.Iade).toContain(3);
   });
 
-  it('Alis listesinde temel alış trcode 1, 4, 5 olmalı', () => {
+  it('Alis ürün listesinde temel alış trcode 1, 5 olmalı; Alınan Hizmet (4) olmamalı', () => {
     expect(TRCODES_BY_INVOICE_CATEGORY.Alis).toContain(1);
-    expect(TRCODES_BY_INVOICE_CATEGORY.Alis).toContain(4);
     expect(TRCODES_BY_INVOICE_CATEGORY.Alis).toContain(5);
+    expect(TRCODES_BY_INVOICE_CATEGORY.Alis).not.toContain(4);
+  });
+
+  it('Satis ürün listesinde Verilen Hizmet (9) olmamalı; Hizmet menüsünde 4 ve 9 olmalı', () => {
+    expect(TRCODES_BY_INVOICE_CATEGORY.Satis).not.toContain(9);
+    expect(TRCODES_BY_INVOICE_CATEGORY.Satis).toContain(7);
+    expect(TRCODES_BY_INVOICE_CATEGORY.Satis).toContain(8);
+    expect(TRCODES_BY_INVOICE_CATEGORY.Hizmet).toContain(4);
+    expect(TRCODES_BY_INVOICE_CATEGORY.Hizmet).toContain(9);
+  });
+});
+
+describe('invoiceMatchesModuleCategory — ürün vs hizmet ayrımı', () => {
+  it('Alınan Hizmet (trcode 4) Alış listesine uymaz, Hizmet listesine uyar', async () => {
+    const { invoiceMatchesModuleCategory } = await import('./invoices');
+    const inv = { invoice_type: 4, trcode: 4, invoice_category: 'Hizmet' as const };
+    expect(invoiceMatchesModuleCategory(inv, 'Alis')).toBe(false);
+    expect(invoiceMatchesModuleCategory(inv, 'Hizmet')).toBe(true);
+  });
+
+  it('yanlışlıkla Alis kategorisi yazılmış trcode 4 yine Alış listesine uymaz', async () => {
+    const { invoiceMatchesModuleCategory } = await import('./invoices');
+    const inv = {
+      invoice_type: 4,
+      trcode: 4,
+      invoice_category: 'Alis' as const,
+      fiche_type: 'purchase_invoice',
+    };
+    expect(invoiceMatchesModuleCategory(inv, 'Alis')).toBe(false);
+    expect(invoiceMatchesModuleCategory(inv, 'Hizmet')).toBe(true);
+  });
+
+  it('Verilen Hizmet (trcode 9) Satış listesine uymaz', async () => {
+    const { invoiceMatchesModuleCategory } = await import('./invoices');
+    const inv = { invoice_type: 9, trcode: 9, invoice_category: 'Hizmet' as const };
+    expect(invoiceMatchesModuleCategory(inv, 'Satis')).toBe(false);
+    expect(invoiceMatchesModuleCategory(inv, 'Hizmet')).toBe(true);
+  });
+
+  it('ürün alış (trcode 1) Alış listesine uyar', async () => {
+    const { invoiceMatchesModuleCategory } = await import('./invoices');
+    const inv = { invoice_type: 1, trcode: 1, invoice_category: 'Alis' as const };
+    expect(invoiceMatchesModuleCategory(inv, 'Alis')).toBe(true);
+    expect(invoiceMatchesModuleCategory(inv, 'Hizmet')).toBe(false);
   });
 });
 

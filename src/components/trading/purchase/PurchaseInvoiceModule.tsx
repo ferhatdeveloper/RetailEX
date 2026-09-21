@@ -59,7 +59,8 @@ export function PurchaseInvoiceModule({ onCreateInvoice, onSwitchTab, activeTab:
 
   // Column visibility state
   const [columnVisibility, setColumnVisibility] = useState(() => {
-    const saved = localStorage.getItem('purchaseInvoiceColumnVisibility_v2');
+    // v3: Durum varsayılan gizli — eski v2’de status:true kalmasın
+    const saved = localStorage.getItem('purchaseInvoiceColumnVisibility_v3');
     return saved ? JSON.parse(saved) : {
       invoice_no: true,
       supplier_name: true,
@@ -71,7 +72,7 @@ export function PurchaseInvoiceModule({ onCreateInvoice, onSwitchTab, activeTab:
 
   // Save column visibility to localStorage
   useEffect(() => {
-    localStorage.setItem('purchaseInvoiceColumnVisibility_v2', JSON.stringify(columnVisibility));
+    localStorage.setItem('purchaseInvoiceColumnVisibility_v3', JSON.stringify(columnVisibility));
   }, [columnVisibility]);
 
   // Fetch invoices

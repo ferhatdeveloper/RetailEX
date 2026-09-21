@@ -158,3 +158,6 @@ Restoran sohbetinde eklenen tek yeni tablo: **rest.return_log**. Diğer özellik
 - `157_report_menu_params_windows_printer_service.sql` — `report_menu_params` içine `print-use-windows-printer-service: false` (yoksa ekler); Windows Printer servisi varsayılan kapalı → browser yazdırma.
 - `158_factory_default_menu_preferences.sql` — `system_settings.menu_preferences` fabrika varsayılanı (guzel / sade menü) tüm kiracılarda aktif; diğer profiller korunur.
 - `159_customer_call_plan_caller.sql` — müşteri arama planına `call_plan_caller_user_id` / `call_plan_caller_name` (arayan kişi).
+- `160_menu_hide_payment_plans_cost_centers.sql` — `payment-plans` + `cost-centers` tüm menü preset’lerinde varsayılan gizli (Menü Yönetimi’nden açılır).
+- `161_report_menu_params_debt_aging_collection_due.sql` — `report_menu_params` içine `debt-aging` + `collection-due: false` (yoksa ekler); Borç/Alacak Yaşlandırma ve Vade/Tahsilat Takibi varsayılan kapalı.
+- `162_report_menu_params_stock_aging.sql` — `report_menu_params` içine `stock-aging: false` (yoksa ekler); Stok Yaşlandırma varsayılan kapalı.

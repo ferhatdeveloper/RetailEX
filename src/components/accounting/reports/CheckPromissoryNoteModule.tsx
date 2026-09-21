@@ -13,7 +13,7 @@
  * @created 2024-12-24
  */
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useMemo } from 'react';
 import { 
   FileText, 
   Plus, 
@@ -36,6 +36,7 @@ import { useLanguage } from '../../../contexts/LanguageContext';
 import { useFirmaDonem } from '../../../contexts/FirmaDonemContext';
 import { toast } from 'sonner';
 import { fetchChecks, createCheck, updateCheck, deleteCheck as deleteCheckAPI, updateCheckStatus } from '../../../services/api/checks';
+import { ReportColumnTable, type ReportColumnTableCol } from '../../reports/shared/ReportDataGrid';
 
 // ===== TYPES =====
 
@@ -183,6 +184,152 @@ export function CheckPromissoryNoteModule() {
     }
   };
 
+  type CheckGridRow = CheckPromissoryNote & { status: CheckStatus };
+
+  const checkGridRows = useMemo<CheckGridRow[]>(
+    () => filteredChecks.map((c) => ({ ...c, status: c.durum })),
+    [filteredChecks],
+  );
+
+  const checkColumns = useMemo<ReportColumnTableCol<CheckGridRow>[]>(
+    () => [
+      {
+        key: 'tip',
+        header: 'Tip',
+        size: 140,
+        cell: (check) => (
+          <>
+            <span
+              className={`inline-flex items-center px-2 py-1 rounded text-xs font-medium ${
+                check.tip === 'CEK' ? 'bg-blue-100 text-blue-700' : 'bg-purple-100 text-purple-700'
+              }`}
+            >
+              {check.tip === 'CEK' ? 'Çek' : 'Senet'}
+            </span>
+            <span
+              className={`ml-2 inline-flex items-center px-2 py-1 rounded text-xs font-medium ${
+                check.yon === 'ALINAN' ? 'bg-green-100 text-green-700' : 'bg-red-100 text-red-700'
+              }`}
+            >
+              {check.yon === 'ALINAN' ? 'Alınan' : 'Verilen'}
+            </span>
+          </>
+        ),
+      },
+      {
+        key: 'cek_no',
+        header: 'Çek/Senet No',
+        size: 130,
+        cell: (check) => <span className="font-mono font-medium">{check.cek_no}</span>,
+      },
+      {
+        key: 'cari_adi',
+        header: 'Cari',
+        size: 180,
+        cell: (check) => (
+          <div className="flex items-center gap-2">
+            <User className="w-4 h-4 text-gray-400" />
+            <span className="text-sm">{check.cari_adi}</span>
+          </div>
+        ),
+      },
+      {
+        key: 'banka_adi',
+        header: 'Banka',
+        size: 160,
+        cell: (check) => (
+          <div className="flex items-center gap-2">
+            <Building2 className="w-4 h-4 text-gray-400" />
+            <span className="text-sm">{check.banka_adi}</span>
+          </div>
+        ),
+      },
+      {
+        key: 'tutar',
+        header: 'Tutar',
+        type: 'number',
+        align: 'right',
+        size: 130,
+        footerSum: true,
+        cell: (check) => (
+          <span className="font-semibold">
+            {check.tutar.toLocaleString('tr-TR')} {check.doviz_kodu}
+          </span>
+        ),
+      },
+      {
+        key: 'vade_tarihi',
+        header: 'Vade',
+        type: 'date',
+        size: 130,
+        cell: (check) => {
+          const vadeTarihi = new Date(check.vade_tarihi);
+          const today = new Date();
+          const isOverdue = vadeTarihi < today;
+          const isDueSoon =
+            Math.ceil((vadeTarihi.getTime() - today.getTime()) / (1000 * 60 * 60 * 24)) <= 7;
+          return (
+            <div
+              className={`flex items-center gap-2 ${
+                isOverdue ? 'text-red-600' : isDueSoon ? 'text-orange-600' : 'text-gray-700'
+              }`}
+            >
+              <Calendar className="w-4 h-4" />
+              <span className="text-sm">{vadeTarihi.toLocaleDateString('tr-TR')}</span>
+              {isOverdue && <AlertTriangle className="w-4 h-4" />}
+            </div>
+          );
+        },
+      },
+      {
+        key: 'status',
+        header: 'Durum',
+        size: 130,
+        cell: (check) => (
+          <span
+            className={`inline-flex items-center px-2 py-1 rounded border text-xs font-medium ${getStatusColor(check.status)}`}
+          >
+            {getStatusLabel(check.status)}
+          </span>
+        ),
+      },
+      {
+        key: 'id',
+        header: 'İşlemler',
+        size: 100,
+        align: 'center',
+        cell: (check) => (
+          <div className="flex items-center justify-center gap-2">
+            <button
+              type="button"
+              onClick={(e) => {
+                e.stopPropagation();
+                setSelectedCheck(check);
+                setShowDetailModal(true);
+              }}
+              className="p-1 text-blue-600 hover:bg-blue-50 rounded"
+              title="Detay"
+            >
+              <Eye className="w-4 h-4" />
+            </button>
+            <button
+              type="button"
+              onClick={(e) => {
+                e.stopPropagation();
+                handleDelete(check.id);
+              }}
+              className="p-1 text-red-600 hover:bg-red-50 rounded"
+              title="Sil"
+            >
+              <Trash2 className="w-4 h-4" />
+            </button>
+          </div>
+        ),
+      },
+    ],
+    [],
+  );
+
   return (
     <div className="h-full flex flex-col bg-gray-50">
       {/* Header */}
@@ -317,105 +464,19 @@ export function CheckPromissoryNoteModule() {
 
       {/* Table */}
       <div className="flex-1 overflow-auto px-6 py-4">
-        <div className="bg-white rounded-lg border overflow-hidden">
-          <table className="w-full">
-            <thead>
-              <tr className="bg-gray-50 border-b">
-                <th className="px-4 py-3 text-left text-xs font-medium text-gray-700 uppercase">Tip</th>
-                <th className="px-4 py-3 text-left text-xs font-medium text-gray-700 uppercase">Çek/Senet No</th>
-                <th className="px-4 py-3 text-left text-xs font-medium text-gray-700 uppercase">Cari</th>
-                <th className="px-4 py-3 text-left text-xs font-medium text-gray-700 uppercase">Banka</th>
-                <th className="px-4 py-3 text-right text-xs font-medium text-gray-700 uppercase">Tutar</th>
-                <th className="px-4 py-3 text-left text-xs font-medium text-gray-700 uppercase">Vade</th>
-                <th className="px-4 py-3 text-left text-xs font-medium text-gray-700 uppercase">Durum</th>
-                <th className="px-4 py-3 text-center text-xs font-medium text-gray-700 uppercase">İşlemler</th>
-              </tr>
-            </thead>
-            <tbody className="divide-y divide-gray-200">
-              {filteredChecks.map(check => {
-                const vadeTarihi = new Date(check.vade_tarihi);
-                const today = new Date();
-                const isOverdue = vadeTarihi < today;
-                const isDueSoon = Math.ceil((vadeTarihi.getTime() - today.getTime()) / (1000 * 60 * 60 * 24)) <= 7;
-
-                return (
-                  <tr key={check.id} className="hover:bg-gray-50">
-                    <td className="px-4 py-3">
-                      <span className={`inline-flex items-center px-2 py-1 rounded text-xs font-medium ${
-                        check.tip === 'CEK' ? 'bg-blue-100 text-blue-700' : 'bg-purple-100 text-purple-700'
-                      }`}>
-                        {check.tip === 'CEK' ? 'Çek' : 'Senet'}
-                      </span>
-                      <span className={`ml-2 inline-flex items-center px-2 py-1 rounded text-xs font-medium ${
-                        check.yon === 'ALINAN' ? 'bg-green-100 text-green-700' : 'bg-red-100 text-red-700'
-                      }`}>
-                        {check.yon === 'ALINAN' ? 'Alınan' : 'Verilen'}
-                      </span>
-                    </td>
-                    <td className="px-4 py-3">
-                      <div className="font-mono font-medium">{check.cek_no}</div>
-                    </td>
-                    <td className="px-4 py-3">
-                      <div className="flex items-center gap-2">
-                        <User className="w-4 h-4 text-gray-400" />
-                        <span className="text-sm">{check.cari_adi}</span>
-                      </div>
-                    </td>
-                    <td className="px-4 py-3">
-                      <div className="flex items-center gap-2">
-                        <Building2 className="w-4 h-4 text-gray-400" />
-                        <span className="text-sm">{check.banka_adi}</span>
-                      </div>
-                    </td>
-                    <td className="px-4 py-3 text-right">
-                      <span className="font-semibold">
-                        {check.tutar.toLocaleString('tr-TR')} {check.doviz_kodu}
-                      </span>
-                    </td>
-                    <td className="px-4 py-3">
-                      <div className={`flex items-center gap-2 ${isOverdue ? 'text-red-600' : isDueSoon ? 'text-orange-600' : 'text-gray-700'}`}>
-                        <Calendar className="w-4 h-4" />
-                        <span className="text-sm">{new Date(check.vade_tarihi).toLocaleDateString('tr-TR')}</span>
-                        {isOverdue && <AlertTriangle className="w-4 h-4" />}
-                      </div>
-                    </td>
-                    <td className="px-4 py-3">
-                      <span className={`inline-flex items-center px-2 py-1 rounded border text-xs font-medium ${getStatusColor(check.durum)}`}>
-                        {getStatusLabel(check.durum)}
-                      </span>
-                    </td>
-                    <td className="px-4 py-3">
-                      <div className="flex items-center justify-center gap-2">
-                        <button
-                          onClick={() => {
-                            setSelectedCheck(check);
-                            setShowDetailModal(true);
-                          }}
-                          className="p-1 text-blue-600 hover:bg-blue-50 rounded"
-                          title="Detay"
-                        >
-                          <Eye className="w-4 h-4" />
-                        </button>
-                        <button
-                          onClick={() => handleDelete(check.id)}
-                          className="p-1 text-red-600 hover:bg-red-50 rounded"
-                          title="Sil"
-                        >
-                          <Trash2 className="w-4 h-4" />
-                        </button>
-                      </div>
-                    </td>
-                  </tr>
-                );
-              })}
-            </tbody>
-          </table>
-
-          {filteredChecks.length === 0 && (
+        <div className="bg-white rounded-lg border overflow-hidden p-4">
+          {checkGridRows.length === 0 ? (
             <div className="text-center py-12 text-gray-500">
               <FileText className="w-12 h-12 mx-auto mb-3 opacity-30" />
               <p>Kayıt bulunamadı</p>
             </div>
+          ) : (
+            <ReportColumnTable
+              data={checkGridRows}
+              columns={checkColumns}
+              height={560}
+              storageNamespace="accounting-check-promissory"
+            />
           )}
         </div>
       </div>

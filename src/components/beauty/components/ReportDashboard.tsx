@@ -1,5 +1,5 @@
 
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useMemo, useState } from 'react';
 import {
     BarChart3, TrendingUp, TrendingDown, Banknote,
     Users, Activity, Download, Calendar, ArrowUpRight,
@@ -14,6 +14,7 @@ import { cn } from '@/components/ui/utils';
 import { formatMoneyAmount } from '../../../utils/formatMoney';
 import { getAppDefaultCurrency } from '../../../services/postgres';
 import '../ClinicStyles.css';
+import { ReportColumnTable, type ReportColumnTableCol } from '../../reports/shared/ReportDataGrid';
 
 const pctChange = (current: number, prev: number): { pct: string; up: boolean } => {
     if (prev === 0) return { pct: current > 0 ? '+100%' : '0%', up: current > 0 };
@@ -42,6 +43,125 @@ export function ReportDashboard() {
         skincare: tm('bCatSkincare'), makeup: tm('bCatMakeup'), nails: tm('bCatNails'),
         spa: tm('bCatSpa'), other: tm('bCatOther'),
     };
+
+    type StaffPerfRow = NonNullable<ReportStats>['staffPerformance'][number];
+    type ProductStaffRow = NonNullable<ReportStats>['productStaffPerformance'][number];
+
+    const staffPerfColumns = useMemo<ReportColumnTableCol<StaffPerfRow>[]>(
+        () => [
+            {
+                key: 'name',
+                header: tm('bStaffName'),
+                size: 200,
+                cell: (staff) => (
+                    <div className="flex items-center gap-3">
+                        <div className="w-10 h-10 bg-purple-100 rounded-2xl flex items-center justify-center text-purple-600 font-black text-sm uppercase">
+                            {staff.name.charAt(0)}
+                        </div>
+                        <span className="font-bold text-gray-900 text-sm">{staff.name}</span>
+                    </div>
+                ),
+            },
+            {
+                key: 'transactions',
+                header: tm('bStaffTransactions'),
+                type: 'number',
+                size: 120,
+                cell: (staff) => (
+                    <span className="font-bold text-gray-600 text-xs">
+                        {staff.transactions} {tm('bTransactions')}
+                    </span>
+                ),
+            },
+            {
+                key: 'revenue',
+                header: tm('bStaffRevenue'),
+                type: 'number',
+                align: 'right',
+                size: 130,
+                footerSum: true,
+                footerFormat: (n) => fmt(n),
+                cell: (staff) => <span className="font-black text-gray-900 text-sm">{fmt(staff.revenue)}</span>,
+            },
+            {
+                key: 'commission',
+                header: tm('bStaffEarnings'),
+                type: 'number',
+                align: 'right',
+                size: 130,
+                footerSum: true,
+                footerFormat: (n) => fmt(n),
+                cell: (staff) => <span className="font-bold text-purple-600 text-sm">{fmt(staff.commission)}</span>,
+            },
+            {
+                key: 'commission_rate',
+                header: tm('bStaffCommission'),
+                type: 'number',
+                align: 'right',
+                size: 100,
+                cell: (staff) => <span className="font-bold text-gray-500 text-xs">%{staff.commission_rate}</span>,
+            },
+        ],
+        [tm, fmt],
+    );
+
+    const productStaffColumns = useMemo<ReportColumnTableCol<ProductStaffRow>[]>(
+        () => [
+            {
+                key: 'name',
+                header: tm('bStaffName'),
+                size: 200,
+                cell: (staff) => (
+                    <div className="flex items-center gap-3">
+                        <div className="w-10 h-10 bg-emerald-100 rounded-2xl flex items-center justify-center text-emerald-700 font-black text-sm uppercase">
+                            {staff.name.charAt(0)}
+                        </div>
+                        <span className="font-bold text-gray-900 text-sm">{staff.name}</span>
+                    </div>
+                ),
+            },
+            {
+                key: 'transactions',
+                header: tm('bProductSalesCount'),
+                type: 'number',
+                size: 120,
+                cell: (staff) => (
+                    <span className="font-bold text-gray-600 text-xs">
+                        {staff.transactions} {tm('bTransactions')}
+                    </span>
+                ),
+            },
+            {
+                key: 'revenue',
+                header: tm('bProductSalesRevenue'),
+                type: 'number',
+                align: 'right',
+                size: 130,
+                footerSum: true,
+                footerFormat: (n) => fmt(n),
+                cell: (staff) => <span className="font-black text-gray-900 text-sm">{fmt(staff.revenue)}</span>,
+            },
+            {
+                key: 'commission',
+                header: tm('bProductSalesCommissionAmount'),
+                type: 'number',
+                align: 'right',
+                size: 140,
+                footerSum: true,
+                footerFormat: (n) => fmt(n),
+                cell: (staff) => <span className="font-bold text-emerald-600 text-sm">{fmt(staff.commission)}</span>,
+            },
+            {
+                key: 'commission_rate',
+                header: tm('bStaffCommission'),
+                type: 'number',
+                align: 'right',
+                size: 100,
+                cell: (staff) => <span className="font-bold text-gray-500 text-xs">%{staff.commission_rate}</span>,
+            },
+        ],
+        [tm, fmt],
+    );
 
     useEffect(() => {
         setLoading(true);
@@ -223,36 +343,13 @@ export function ReportDashboard() {
                         <p className="text-xs font-bold">{tm('bNoStaffData')}</p>
                     </div>
                 ) : (
-                    <div className="overflow-x-auto">
-                        <table className="w-full text-left">
-                            <thead>
-                                <tr className="bg-gray-50/50">
-                                    <th className="px-8 py-4 text-[10px] font-black text-gray-400 uppercase tracking-[0.2em]">{tm('bStaffName')}</th>
-                                    <th className="px-8 py-4 text-[10px] font-black text-gray-400 uppercase tracking-[0.2em]">{tm('bStaffTransactions')}</th>
-                                    <th className="px-8 py-4 text-[10px] font-black text-gray-400 uppercase tracking-[0.2em]">{tm('bStaffRevenue')}</th>
-                                    <th className="px-8 py-4 text-[10px] font-black text-gray-400 uppercase tracking-[0.2em]">{tm('bStaffEarnings')}</th>
-                                    <th className="px-8 py-4 text-[10px] font-black text-gray-400 uppercase tracking-[0.2em]">{tm('bStaffCommission')}</th>
-                                </tr>
-                            </thead>
-                            <tbody className="divide-y divide-gray-50">
-                                {stats!.staffPerformance.map((staff, idx) => (
-                                    <tr key={idx} className="hover:bg-gray-50/50 transition-colors">
-                                        <td className="px-8 py-5">
-                                            <div className="flex items-center gap-3">
-                                                <div className="w-10 h-10 bg-purple-100 rounded-2xl flex items-center justify-center text-purple-600 font-black text-sm uppercase">
-                                                    {staff.name.charAt(0)}
-                                                </div>
-                                                <span className="font-bold text-gray-900 text-sm">{staff.name}</span>
-                                            </div>
-                                        </td>
-                                        <td className="px-8 py-5 font-bold text-gray-600 text-xs">{staff.transactions} {tm('bTransactions')}</td>
-                                        <td className="px-8 py-5 font-black text-gray-900 text-sm">{fmt(staff.revenue)}</td>
-                                        <td className="px-8 py-5 font-bold text-purple-600 text-sm">{fmt(staff.commission)}</td>
-                                        <td className="px-8 py-5 font-bold text-gray-500 text-xs">%{staff.commission_rate}</td>
-                                    </tr>
-                                ))}
-                            </tbody>
-                        </table>
+                    <div className="p-6">
+                        <ReportColumnTable
+                            data={stats!.staffPerformance}
+                            columns={staffPerfColumns}
+                            height={420}
+                            storageNamespace="beauty-report-staff-perf"
+                        />
                     </div>
                 )}
             </div>
@@ -269,36 +366,13 @@ export function ReportDashboard() {
                         <p className="text-xs font-bold">{tm('bNoProductStaffData')}</p>
                     </div>
                 ) : (
-                    <div className="overflow-x-auto">
-                        <table className="w-full text-left">
-                            <thead>
-                                <tr className="bg-gray-50/50">
-                                    <th className="px-8 py-4 text-[10px] font-black text-gray-400 uppercase tracking-[0.2em]">{tm('bStaffName')}</th>
-                                    <th className="px-8 py-4 text-[10px] font-black text-gray-400 uppercase tracking-[0.2em]">{tm('bProductSalesCount')}</th>
-                                    <th className="px-8 py-4 text-[10px] font-black text-gray-400 uppercase tracking-[0.2em]">{tm('bProductSalesRevenue')}</th>
-                                    <th className="px-8 py-4 text-[10px] font-black text-gray-400 uppercase tracking-[0.2em]">{tm('bProductSalesCommissionAmount')}</th>
-                                    <th className="px-8 py-4 text-[10px] font-black text-gray-400 uppercase tracking-[0.2em]">{tm('bStaffCommission')}</th>
-                                </tr>
-                            </thead>
-                            <tbody className="divide-y divide-gray-50">
-                                {stats!.productStaffPerformance.map((staff, idx) => (
-                                    <tr key={idx} className="hover:bg-gray-50/50 transition-colors">
-                                        <td className="px-8 py-5">
-                                            <div className="flex items-center gap-3">
-                                                <div className="w-10 h-10 bg-emerald-100 rounded-2xl flex items-center justify-center text-emerald-700 font-black text-sm uppercase">
-                                                    {staff.name.charAt(0)}
-                                                </div>
-                                                <span className="font-bold text-gray-900 text-sm">{staff.name}</span>
-                                            </div>
-                                        </td>
-                                        <td className="px-8 py-5 font-bold text-gray-600 text-xs">{staff.transactions} {tm('bTransactions')}</td>
-                                        <td className="px-8 py-5 font-black text-gray-900 text-sm">{fmt(staff.revenue)}</td>
-                                        <td className="px-8 py-5 font-bold text-emerald-600 text-sm">{fmt(staff.commission)}</td>
-                                        <td className="px-8 py-5 font-bold text-gray-500 text-xs">%{staff.commission_rate}</td>
-                                    </tr>
-                                ))}
-                            </tbody>
-                        </table>
+                    <div className="p-6">
+                        <ReportColumnTable
+                            data={stats!.productStaffPerformance}
+                            columns={productStaffColumns}
+                            height={420}
+                            storageNamespace="beauty-report-product-staff"
+                        />
                     </div>
                 )}
             </div>

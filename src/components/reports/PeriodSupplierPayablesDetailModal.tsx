@@ -8,6 +8,7 @@ import { formatNumber } from '../../utils/formatNumber';
 import { splitAmountByPartners, type PeriodPartnerShareSlice } from '../../utils/periodSummaryPartnerSplit';
 import type { Supplier } from '../../core/types/models';
 import { useLanguage } from '../../contexts/LanguageContext';
+import { ReportColumnTable, type ReportColumnTableCol } from './shared/ReportDataGrid';
 
 type Props = {
   suppliers: Supplier[];
@@ -47,15 +48,71 @@ export function PeriodSupplierPayablesDetailModal({
 
   const money = (v: number) => `${formatNumber(v, 0, false)} ${currency}`;
 
-  const dip = useMemo(() => {
-    const amount = rows.reduce((s, r) => s + (Number(r.balance) || 0), 0);
-    const payable = rows.reduce((s, r) => s + Math.max(Number(r.balance) || 0, 0), 0);
-    const byId: Record<string, number> = {};
-    for (const p of visiblePartners) byId[p.id] = 0;
-    const shares = splitAmountByPartners(payable, visiblePartners.length ? visiblePartners : partners);
-    for (const sh of shares) byId[sh.id] = sh.amount;
-    return { amount, payable, byId };
+  type SupplierGridRow = Supplier & { balanceNum: number; payable: number; [key: string]: unknown };
+
+  const gridRows = useMemo((): SupplierGridRow[] => {
+    return rows.map((s) => {
+      const bal = Number(s.balance) || 0;
+      const payable = Math.max(bal, 0);
+      const shares = splitAmountByPartners(payable, visiblePartners.length ? visiblePartners : partners);
+      const partnerFields: Record<string, number> = {};
+      for (const p of visiblePartners) {
+        partnerFields[`share_${p.id}`] = shares.find((sh) => sh.id === p.id)?.amount ?? 0;
+      }
+      return {
+        ...s,
+        balanceNum: bal,
+        payable,
+        ...partnerFields,
+      };
+    });
   }, [rows, visiblePartners, partners]);
+
+  const tableColumns = useMemo((): ReportColumnTableCol<SupplierGridRow>[] => {
+    const cols: ReportColumnTableCol<SupplierGridRow>[] = [
+      {
+        key: 'code',
+        header: tm('code'),
+        size: 100,
+        cell: (s) => <span className="font-mono text-xs">{s.code || '—'}</span>,
+      },
+      { key: 'name', header: tm('rptPeriodColAccountName'), size: 180 },
+      { key: 'phone', header: tm('phoneLabel'), size: 120 },
+      {
+        key: 'balanceNum',
+        header: `${tm('rptPeriodSupplierOpenDebt')} (${currency})`,
+        type: 'number',
+        align: 'right',
+        footerSum: true,
+        footerFormat: (n) => <span className="font-bold text-blue-900">{money(n)}</span>,
+        cell: (s) => (
+          <span
+            className={`font-mono font-semibold ${
+              s.balanceNum > 0 ? 'text-amber-700' : s.balanceNum < 0 ? 'text-emerald-700' : 'text-slate-400'
+            }`}
+          >
+            {money(s.balanceNum)}
+          </span>
+        ),
+      },
+    ];
+    for (const p of visiblePartners) {
+      cols.push({
+        key: `share_${p.id}`,
+        header: `${p.name} (%${p.sharePct})`,
+        type: 'number',
+        align: 'right',
+        footerSum: true,
+        footerFormat: (n) => <span className="font-bold text-blue-900">{money(n)}</span>,
+        cell: (s) => (
+          <span className="font-mono text-amber-800">
+            {s.payable ? money(Number(s[`share_${p.id}`]) || 0) : ''}
+          </span>
+        ),
+      });
+    }
+    return cols;
+  }, [visiblePartners, tm, currency, money]);
 
   return (
     <PercentBodyModal onClose={onClose} size="wide" ariaLabel={tm('rptPeriodSupplierDetailTitle')}>
@@ -110,62 +167,18 @@ export function PeriodSupplierPayablesDetailModal({
           {rows.length === 0 ? (
             <div className="p-10 text-center text-sm text-slate-400">{tm('noRecordFound')}</div>
           ) : (
-            <table className="w-full text-sm">
-              <thead className="sticky top-0 z-[1] bg-slate-100 text-[11px] font-black uppercase tracking-wider text-slate-600">
-                <tr>
-                  <th className="px-3 py-2 text-left">{tm('code')}</th>
-                  <th className="px-3 py-2 text-left">{tm('rptPeriodColAccountName')}</th>
-                  <th className="px-3 py-2 text-left">{tm('phoneLabel')}</th>
-                  <th className="px-3 py-2 text-right">{tm('rptPeriodSupplierOpenDebt')} ({currency})</th>
-                  {visiblePartners.map((p) => (
-                    <th key={p.id} className="px-3 py-2 text-right">
-                      {p.name} (%{p.sharePct})
-                    </th>
-                  ))}
-                </tr>
-              </thead>
-              <tbody>
-                {rows.map((s) => {
-                  const bal = Number(s.balance) || 0;
-                  const payable = Math.max(bal, 0);
-                  const shares = splitAmountByPartners(
-                    payable,
-                    visiblePartners.length ? visiblePartners : partners,
-                  );
-                  const byId: Record<string, number> = {};
-                  for (const sh of shares) byId[sh.id] = sh.amount;
-                  return (
-                    <tr key={s.id} className="border-t border-slate-100">
-                      <td className="px-3 py-2 font-mono text-xs">{s.code || '—'}</td>
-                      <td className="px-3 py-2 font-medium text-slate-800">{s.name}</td>
-                      <td className="px-3 py-2 text-slate-600">{s.phone || '—'}</td>
-                      <td className={`px-3 py-2 text-right font-mono font-semibold ${bal > 0 ? 'text-amber-700' : bal < 0 ? 'text-emerald-700' : 'text-slate-400'}`}>
-                        {money(bal)}
-                      </td>
-                      {visiblePartners.map((p) => (
-                        <td key={p.id} className="px-3 py-2 text-right font-mono text-amber-800">
-                          {payable ? money(byId[p.id] ?? 0) : ''}
-                        </td>
-                      ))}
-                    </tr>
-                  );
-                })}
-              </tbody>
-              <tfoot className="sticky bottom-0 z-[2] border-t-2 border-blue-300 bg-blue-50">
-                <tr>
-                  <td colSpan={3} className="px-3 py-2 text-[11px] font-black uppercase tracking-wider text-blue-800">
-                    {tm('invoiceListDipTotal')}
-                    <span className="ml-1 font-semibold text-blue-600/80">({rows.length})</span>
-                  </td>
-                  <td className="px-3 py-2 text-right font-bold tabular-nums text-blue-900">{money(dip.amount)}</td>
-                  {visiblePartners.map((p) => (
-                    <td key={p.id} className="px-3 py-2 text-right font-bold tabular-nums text-blue-900">
-                      {money(dip.byId[p.id] ?? 0)}
-                    </td>
-                  ))}
-                </tr>
-              </tfoot>
-            </table>
+            <ReportColumnTable
+              data={gridRows}
+              columns={tableColumns}
+              height={420}
+              footerLabel={
+                <>
+                  {tm('invoiceListDipTotal')}
+                  <span className="ml-1 font-semibold text-blue-600/80">({rows.length})</span>
+                </>
+              }
+              storageNamespace="period-supplier-payables-detail"
+            />
           )}
         </PercentBodyModalScrollBody>
 

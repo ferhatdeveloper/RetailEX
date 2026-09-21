@@ -51,6 +51,9 @@ export const DEFAULT_MENU_HIDDEN_MODULES: readonly string[] = [
   'pendingposdevices',
   'supabase-migration',
   'logaudit',
+  // Finans → Tanımlar: varsayılan kapalı; Menü Yönetimi’nden açılır
+  'payment-plans',
+  'cost-centers',
 ] as const;
 
 /** Statik menü sıra (screen_id → display_order) */

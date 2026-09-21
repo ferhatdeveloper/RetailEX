@@ -8,6 +8,7 @@ import { FileText, Download, Calendar, Filter, PieChart, BarChart3, TrendingUp, 
 import { useTheme } from '../../contexts/ThemeContext';
 import { useLanguage } from '../../contexts/LanguageContext';
 import { toast } from 'sonner';
+import { ReportColumnTable } from './shared/ReportDataGrid';
 
 export function AdvancedReportingModule() {
   const { darkMode } = useTheme();
@@ -39,6 +40,18 @@ export function AdvancedReportingModule() {
       { id: '5', nameKey: 'rptAdvProfitability', categoryKey: 'rptAdvCatFinanceShort', uses: 543, lastRunKey: 'rptAdvHoursAgo', lastRunN: '6' },
     ],
     [],
+  );
+
+  const reportGridRows = useMemo(
+    () =>
+      popularReports.map((report) => ({
+        id: report.id,
+        name: tm(report.nameKey),
+        category: tm(report.categoryKey),
+        uses: report.uses,
+        lastRun: tm(report.lastRunKey).replace('{n}', report.lastRunN),
+      })),
+    [popularReports, tm],
   );
 
   const handleRunReport = async (reportId: string, reportName: string) => {
@@ -209,79 +222,103 @@ export function AdvancedReportingModule() {
             </div>
           </div>
         )}
-        <div className="overflow-x-auto">
-          <table className="w-full">
-            <thead className={`${darkMode ? 'bg-gray-900 border-gray-700' : 'bg-gray-50 border-gray-200'} border-b`}>
-              <tr>
-                <th className={`px-4 py-3 text-left text-xs font-medium ${darkMode ? 'text-gray-300' : 'text-gray-500'} uppercase`}>{tm('rptAdvReportName')}</th>
-                <th className={`px-4 py-3 text-left text-xs font-medium ${darkMode ? 'text-gray-300' : 'text-gray-500'} uppercase`}>{tm('category')}</th>
-                <th className={`px-4 py-3 text-right text-xs font-medium ${darkMode ? 'text-gray-300' : 'text-gray-500'} uppercase`}>{tm('rptAdvUsage')}</th>
-                <th className={`px-4 py-3 text-left text-xs font-medium ${darkMode ? 'text-gray-300' : 'text-gray-500'} uppercase`}>{tm('rptAdvLastRun')}</th>
-                <th className={`px-4 py-3 text-center text-xs font-medium ${darkMode ? 'text-gray-300' : 'text-gray-500'} uppercase`}>{tm('actions')}</th>
-              </tr>
-            </thead>
-            <tbody className={`divide-y ${darkMode ? 'divide-gray-700' : 'divide-gray-100'}`}>
-              {popularReports.map((report) => {
-                const reportName = tm(report.nameKey);
-                return (
-                  <tr key={report.id} className={darkMode ? 'hover:bg-gray-700' : 'hover:bg-gray-50'}>
-                    <td className={`px-4 py-3 font-medium ${darkMode ? 'text-white' : 'text-gray-900'}`}>{reportName}</td>
-                    <td className="px-4 py-3">
-                      <span className={`px-2 py-1 ${darkMode ? 'bg-blue-900 text-blue-300' : 'bg-blue-100 text-blue-700'} rounded text-xs`}>
-                        {tm(report.categoryKey)}
-                      </span>
-                    </td>
-                    <td className={`px-4 py-3 text-right font-semibold ${darkMode ? 'text-white' : 'text-gray-900'}`}>{report.uses}</td>
-                    <td className={`px-4 py-3 text-sm ${darkMode ? 'text-gray-400' : 'text-gray-600'}`}>
-                      {tm(report.lastRunKey).replace('{n}', report.lastRunN)}
-                    </td>
-                    <td className="px-4 py-3">
-                      <div className="flex justify-center gap-2">
-                        <button
-                          onClick={(e) => {
-                            e.stopPropagation();
-                            handleRunReport(report.id, reportName);
-                          }}
-                          disabled={runningReport === report.id}
-                          className={`px-3 py-1 bg-blue-600 text-white rounded hover:bg-blue-700 text-sm flex items-center gap-1 transition-colors ${
-                            runningReport === report.id ? 'opacity-50 cursor-not-allowed' : ''
-                          }`}
-                        >
-                          {runningReport === report.id ? (
-                            <>
-                              <Loader2 className="w-3 h-3 animate-spin" />
-                              {tm('rptAdvRunning')}
-                            </>
-                          ) : (
-                            <>
-                              <Play className="w-3 h-3" />
-                              {tm('rptAdvRun')}
-                            </>
-                          )}
-                        </button>
-                        <button
-                          onClick={(e) => {
-                            e.stopPropagation();
-                            handleDownloadReport(report.id, reportName);
-                          }}
-                          disabled={downloadingReport === report.id}
-                          className={`px-3 py-1 border ${darkMode ? 'border-gray-600 bg-gray-700 text-gray-200 hover:bg-gray-600' : 'border-gray-300 hover:bg-gray-50'} rounded text-sm transition-colors ${
-                            downloadingReport === report.id ? 'opacity-50 cursor-not-allowed' : ''
-                          }`}
-                        >
-                          {downloadingReport === report.id ? (
-                            <Loader2 className="w-4 h-4 animate-spin" />
-                          ) : (
-                            <Download className="w-4 h-4" />
-                          )}
-                        </button>
-                      </div>
-                    </td>
-                  </tr>
-                );
-              })}
-            </tbody>
-          </table>
+        <div className="p-2">
+          <ReportColumnTable
+            data={reportGridRows}
+            height={360}
+            storageNamespace="advanced-reporting-popular"
+            columns={[
+              {
+                key: 'name',
+                header: tm('rptAdvReportName'),
+                size: 220,
+                cell: (row) => (
+                  <span className={darkMode ? 'text-white font-medium' : 'text-gray-900 font-medium'}>{row.name}</span>
+                ),
+              },
+              {
+                key: 'category',
+                header: tm('category'),
+                size: 140,
+                cell: (row) => (
+                  <span
+                    className={`px-2 py-1 rounded text-xs ${
+                      darkMode ? 'bg-blue-900 text-blue-300' : 'bg-blue-100 text-blue-700'
+                    }`}
+                  >
+                    {row.category}
+                  </span>
+                ),
+              },
+              {
+                key: 'uses',
+                header: tm('rptAdvUsage'),
+                type: 'number',
+                align: 'right',
+                cell: (row) => (
+                  <span className={`font-semibold ${darkMode ? 'text-white' : 'text-gray-900'}`}>{row.uses}</span>
+                ),
+              },
+              {
+                key: 'lastRun',
+                header: tm('rptAdvLastRun'),
+                size: 160,
+                cell: (row) => (
+                  <span className={darkMode ? 'text-gray-400 text-sm' : 'text-gray-600 text-sm'}>{row.lastRun}</span>
+                ),
+              },
+              {
+                key: 'actions',
+                header: tm('actions'),
+                align: 'center',
+                size: 200,
+                cell: (row) => (
+                  <div className="flex justify-center gap-2">
+                    <button
+                      type="button"
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        handleRunReport(row.id, row.name);
+                      }}
+                      disabled={runningReport === row.id}
+                      className={`px-3 py-1 bg-blue-600 text-white rounded hover:bg-blue-700 text-sm flex items-center gap-1 transition-colors ${
+                        runningReport === row.id ? 'opacity-50 cursor-not-allowed' : ''
+                      }`}
+                    >
+                      {runningReport === row.id ? (
+                        <>
+                          <Loader2 className="w-3 h-3 animate-spin" />
+                          {tm('rptAdvRunning')}
+                        </>
+                      ) : (
+                        <>
+                          <Play className="w-3 h-3" />
+                          {tm('rptAdvRun')}
+                        </>
+                      )}
+                    </button>
+                    <button
+                      type="button"
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        handleDownloadReport(row.id, row.name);
+                      }}
+                      disabled={downloadingReport === row.id}
+                      className={`px-3 py-1 border ${
+                        darkMode ? 'border-gray-600 bg-gray-700 text-gray-200 hover:bg-gray-600' : 'border-gray-300 hover:bg-gray-50'
+                      } rounded text-sm transition-colors ${downloadingReport === row.id ? 'opacity-50 cursor-not-allowed' : ''}`}
+                    >
+                      {downloadingReport === row.id ? (
+                        <Loader2 className="w-4 h-4 animate-spin" />
+                      ) : (
+                        <Download className="w-4 h-4" />
+                      )}
+                    </button>
+                  </div>
+                ),
+              },
+            ]}
+          />
         </div>
       </div>
 

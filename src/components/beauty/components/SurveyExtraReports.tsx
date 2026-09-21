@@ -16,6 +16,7 @@ import type {
 } from '../../../types/beauty';
 import { SurveyReportToolbar } from './SurveyReportToolbar';
 import { ReportKpiStrip } from '../../reports/shared/ReportKpiStrip';
+import { ReportColumnTable, type ReportColumnTableCol } from '../../reports/shared/ReportDataGrid';
 import { cn } from '../../ui/utils';
 
 function useSurveyDateRange() {
@@ -60,12 +61,73 @@ function BreakdownTable({
     rows,
     nameHeaderKey,
     secondaryHeaderKey,
+    storageNamespace,
 }: {
     rows: BeautySurveyBreakdownRow[];
     nameHeaderKey: string;
     secondaryHeaderKey: string;
+    storageNamespace: string;
 }) {
     const { tm } = useLanguage();
+
+    const columns = useMemo<ReportColumnTableCol<BeautySurveyBreakdownRow>[]>(
+        () => [
+            {
+                key: 'name',
+                header: tm(nameHeaderKey),
+                size: 200,
+                cell: (r) => <span className="font-semibold text-gray-800">{r.name}</span>,
+            },
+            {
+                key: 'response_count',
+                header: tm('bSurveyReportAnswers'),
+                type: 'number',
+                align: 'right',
+                size: 100,
+                footerSum: true,
+            },
+            {
+                key: 'avg_overall_rating',
+                header: tm('bSurveyReportAvgRating'),
+                type: 'number',
+                align: 'right',
+                size: 110,
+                cell: (r) => (
+                    <span className="font-bold text-amber-700 tabular-nums">{r.avg_overall_rating.toFixed(1)}★</span>
+                ),
+            },
+            {
+                key: 'avg_staff_rating',
+                header: tm(secondaryHeaderKey),
+                type: 'number',
+                align: 'right',
+                size: 110,
+                cell: (r) => (
+                    <span className="text-gray-600 tabular-nums">
+                        {r.avg_staff_rating != null ? `${r.avg_staff_rating.toFixed(1)}★` : '—'}
+                    </span>
+                ),
+            },
+            {
+                key: 'would_recommend_pct',
+                header: tm('bSurveyReportRecommend'),
+                type: 'number',
+                align: 'right',
+                size: 110,
+                cell: (r) => <span className="font-bold text-emerald-700 tabular-nums">%{r.would_recommend_pct}</span>,
+            },
+            {
+                key: 'low_score_count',
+                header: tm('bSurveyReportLowScore'),
+                type: 'number',
+                align: 'right',
+                size: 100,
+                footerSum: true,
+                cell: (r) => <span className="font-bold text-red-600 tabular-nums">{r.low_score_count}</span>,
+            },
+        ],
+        [tm, nameHeaderKey, secondaryHeaderKey],
+    );
 
     if (rows.length === 0) {
         return (
@@ -74,40 +136,12 @@ function BreakdownTable({
     }
 
     return (
-        <div className="overflow-x-auto">
-            <table className="w-full text-xs">
-                <thead>
-                    <tr className="border-b border-gray-100 text-left text-[10px] font-black uppercase tracking-wider text-gray-400">
-                        <th className="py-2 px-3">{tm(nameHeaderKey)}</th>
-                        <th className="py-2 px-3 text-right">{tm('bSurveyReportAnswers')}</th>
-                        <th className="py-2 px-3 text-right">{tm('bSurveyReportAvgRating')}</th>
-                        <th className="py-2 px-3 text-right">{tm(secondaryHeaderKey)}</th>
-                        <th className="py-2 px-3 text-right">{tm('bSurveyReportRecommend')}</th>
-                        <th className="py-2 px-3 text-right">{tm('bSurveyReportLowScore')}</th>
-                    </tr>
-                </thead>
-                <tbody>
-                    {rows.map((r) => (
-                        <tr key={r.id} className="border-b border-gray-50 hover:bg-violet-50/30">
-                            <td className="py-2.5 px-3 font-semibold text-gray-800">{r.name}</td>
-                            <td className="py-2.5 px-3 text-right tabular-nums font-bold">{r.response_count}</td>
-                            <td className="py-2.5 px-3 text-right tabular-nums font-bold text-amber-700">
-                                {r.avg_overall_rating.toFixed(1)}★
-                            </td>
-                            <td className="py-2.5 px-3 text-right tabular-nums text-gray-600">
-                                {r.avg_staff_rating != null ? `${r.avg_staff_rating.toFixed(1)}★` : '—'}
-                            </td>
-                            <td className="py-2.5 px-3 text-right tabular-nums font-bold text-emerald-700">
-                                %{r.would_recommend_pct}
-                            </td>
-                            <td className="py-2.5 px-3 text-right tabular-nums font-bold text-red-600">
-                                {r.low_score_count}
-                            </td>
-                        </tr>
-                    ))}
-                </tbody>
-            </table>
-        </div>
+        <ReportColumnTable
+            data={rows}
+            columns={columns}
+            height={420}
+            storageNamespace={storageNamespace}
+        />
     );
 }
 
@@ -275,6 +309,7 @@ export function SurveyStaffReport(embed?: BeautySurveyReportEmbedProps) {
                     rows={data?.rows ?? []}
                     nameHeaderKey="bSurveyReportLegacyStaff"
                     secondaryHeaderKey="bSurveyReportLegacyStaff"
+                    storageNamespace="beauty-survey-staff-breakdown"
                 />
             </div>
         </div>
@@ -334,6 +369,7 @@ export function SurveyServiceReport(embed?: BeautySurveyReportEmbedProps) {
                     rows={data?.rows ?? []}
                     nameHeaderKey="bSurveyReportLegacyService"
                     secondaryHeaderKey="bSurveyReportLegacyService"
+                    storageNamespace="beauty-survey-service-breakdown"
                 />
             </div>
         </div>
@@ -488,6 +524,70 @@ export function SurveyCommentsReport(embed?: BeautySurveyReportEmbedProps) {
 
     const formatDateTime = (iso: string) => formatReportDateCell(iso);
 
+    const commentRows = data?.rows ?? [];
+
+    const commentColumns = useMemo<ReportColumnTableCol<(typeof commentRows)[number]>[]>(
+        () => [
+            {
+                key: 'overall_rating',
+                header: tm('bSurveyReportScore'),
+                type: 'number',
+                size: 100,
+                cell: (r) => {
+                    const star = Math.min(5, Math.max(1, Math.round(r.overall_rating)));
+                    return (
+                        <span
+                            className={cn(
+                                'inline-flex items-center gap-1 px-2 py-0.5 rounded-full border text-[11px] font-black',
+                                starBadgeClass(star),
+                            )}
+                        >
+                            {star}★
+                            {r.would_recommend ? ' ✓' : ''}
+                        </span>
+                    );
+                },
+            },
+            {
+                key: 'created_at',
+                header: tm('date'),
+                type: 'date',
+                size: 120,
+                cell: (r) => <span className="text-gray-600">{formatDateTime(r.created_at)}</span>,
+            },
+            {
+                key: 'customer_name',
+                header: tm('customer'),
+                size: 160,
+                cell: (r) => <span className="font-medium">{r.customer_name}</span>,
+            },
+            {
+                key: 'specialist_name',
+                header: tm('bSurveyReportLegacyStaff'),
+                size: 140,
+                cell: (r) => r.specialist_name ?? '—',
+            },
+            {
+                key: 'service_name',
+                header: tm('bSurveyReportLegacyService'),
+                size: 160,
+                cell: (r) => r.service_name ?? '—',
+            },
+            {
+                key: 'comment',
+                header: tm('bSurveyReportComment'),
+                size: 280,
+                cell: (r) =>
+                    r.comment ? (
+                        <span className="text-gray-700">{r.comment}</span>
+                    ) : (
+                        <span className="text-gray-400 italic">{tm('bSurveyCommentsNoText')}</span>
+                    ),
+            },
+        ],
+        [tm],
+    );
+
     return (
         <div className="p-6 space-y-6 bg-gray-50 min-h-full">
             <SurveyReportToolbar
@@ -556,48 +656,15 @@ export function SurveyCommentsReport(embed?: BeautySurveyReportEmbedProps) {
             />
             <div className="bg-white rounded-2xl border border-gray-100 p-5 shadow-sm overflow-hidden">
                 <h3 className="text-sm font-black text-gray-800 mb-4">{tm('bSurveyCommentsListTitle')}</h3>
-                {(data?.rows ?? []).length === 0 ? (
+                {commentRows.length === 0 ? (
                     <p className="text-sm text-gray-500 py-6 text-center">{tm('bSurveyReportNoData')}</p>
                 ) : (
-                    <div className="overflow-x-auto">
-                        <table className="w-full text-xs">
-                            <thead>
-                                <tr className="border-b border-gray-100 text-left text-[10px] font-black uppercase tracking-wider text-gray-400">
-                                    <th className="py-2 px-3">{tm('bSurveyReportScore')}</th>
-                                    <th className="py-2 px-3">{tm('date')}</th>
-                                    <th className="py-2 px-3">{tm('customer')}</th>
-                                    <th className="py-2 px-3">{tm('bSurveyReportLegacyStaff')}</th>
-                                    <th className="py-2 px-3">{tm('bSurveyReportLegacyService')}</th>
-                                    <th className="py-2 px-3">{tm('bSurveyReportComment')}</th>
-                                </tr>
-                            </thead>
-                            <tbody>
-                                {(data?.rows ?? []).map((r) => {
-                                    const star = Math.min(5, Math.max(1, Math.round(r.overall_rating)));
-                                    return (
-                                        <tr key={r.id} className="border-b border-gray-50 hover:bg-orange-50/30 align-top">
-                                            <td className="py-2.5 px-3">
-                                                <span className={cn(
-                                                    'inline-flex items-center gap-1 px-2 py-0.5 rounded-full border text-[11px] font-black',
-                                                    starBadgeClass(star),
-                                                )}>
-                                                    {star}★
-                                                    {r.would_recommend ? ' ✓' : ''}
-                                                </span>
-                                            </td>
-                                            <td className="py-2.5 px-3 whitespace-nowrap text-gray-600">{formatDateTime(r.created_at)}</td>
-                                            <td className="py-2.5 px-3 font-medium">{r.customer_name}</td>
-                                            <td className="py-2.5 px-3 text-gray-600">{r.specialist_name ?? '—'}</td>
-                                            <td className="py-2.5 px-3 text-gray-600">{r.service_name ?? '—'}</td>
-                                            <td className="py-2.5 px-3 text-gray-700 max-w-md">
-                                                {r.comment || <span className="text-gray-400 italic">{tm('bSurveyCommentsNoText')}</span>}
-                                            </td>
-                                        </tr>
-                                    );
-                                })}
-                            </tbody>
-                        </table>
-                    </div>
+                    <ReportColumnTable
+                        data={commentRows}
+                        columns={commentColumns}
+                        height={520}
+                        storageNamespace="beauty-survey-comments"
+                    />
                 )}
             </div>
         </div>

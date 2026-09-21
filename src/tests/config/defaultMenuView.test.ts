@@ -12,5 +12,7 @@ describe('defaultMenuView', () => {
     expect(prefs.hidden_modules.length).toBeGreaterThan(20);
     expect(prefs.item_orders?.dashboard).toBe(1);
     expect(FACTORY_MENU_PRESET_ID).toBe('retailex-factory-default');
+    expect(prefs.hidden_modules).toContain('payment-plans');
+    expect(prefs.hidden_modules).toContain('cost-centers');
   });
 });

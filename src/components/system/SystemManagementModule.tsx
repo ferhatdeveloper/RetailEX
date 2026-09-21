@@ -536,6 +536,9 @@ function DefinitionsParametersView() {
     { key: 'beauty-survey-service-report', labelKey: 'bSurveyServiceReportMenu' },
     { key: 'beauty-survey-nps-report', labelKey: 'bSurveyNpsReportMenu' },
     { key: 'beauty-survey-comments-report', labelKey: 'bSurveyCommentsReportMenu' },
+    { key: 'debt-aging', labelKey: 'borcAlacakYaslandirma' },
+    { key: 'collection-due', labelKey: 'erpCollectionDueTitle' },
+    { key: 'stock-aging', labelKey: 'stokYaslandirma' },
   ];
 
   const featureParamRows: { key: ReportMenuParamKey; labelKey: string }[] = [

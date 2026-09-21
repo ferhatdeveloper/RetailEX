@@ -1,15 +1,20 @@
-﻿import React, { useState, useEffect } from 'react';
-import { ArrowRightLeft, Plus, Search, Trash2 } from 'lucide-react';
-import { useLanguage } from '../../../contexts/LanguageContext';
+﻿import React, { useState, useEffect, useMemo } from 'react';
+import { ArrowRightLeft, Trash2 } from 'lucide-react';
 import { virmanAPI, VirmanOperation } from '../../../services/virmanAPI';
+import { ReportColumnTable, type ReportColumnTableCol } from '../../reports/shared/ReportDataGrid';
+
+type VirmanGridRow = VirmanOperation & {
+    from_name: string;
+    to_name: string;
+    status: string;
+};
 
 export function VirmanModule() {
-    const { t } = useLanguage();
     const [virmans, setVirmans] = useState<VirmanOperation[]>([]);
     const [loading, setLoading] = useState(true);
 
     useEffect(() => {
-        loadVirmans();
+        void loadVirmans();
     }, []);
 
     const loadVirmans = async () => {
@@ -28,11 +33,69 @@ export function VirmanModule() {
         if (!confirm('Bu virmanı silmek istediğinizden emin misiniz?')) return;
         try {
             await virmanAPI.delete(id);
-            loadVirmans();
+            void loadVirmans();
         } catch (error) {
             alert('Silme hatası');
         }
     };
+
+    const gridRows = useMemo<VirmanGridRow[]>(
+        () =>
+            virmans.map((v) => ({
+                ...v,
+                from_name: (v as VirmanOperation & { from_warehouse?: { name?: string } }).from_warehouse?.name || '-',
+                to_name: (v as VirmanOperation & { to_warehouse?: { name?: string } }).to_warehouse?.name || '-',
+                status: v.status,
+            })),
+        [virmans],
+    );
+
+    const columns = useMemo<ReportColumnTableCol<VirmanGridRow>[]>(
+        () => [
+            {
+                key: 'virman_no',
+                header: 'Virman No',
+                size: 130,
+                cell: (v) => <span className="font-mono text-sm">{v.virman_no}</span>,
+            },
+            {
+                key: 'operation_date',
+                header: 'Tarih',
+                type: 'date',
+                size: 110,
+                cell: (v) => new Date(v.operation_date).toLocaleDateString('tr-TR'),
+            },
+            { key: 'from_name', header: 'Kaynak', size: 160 },
+            { key: 'to_name', header: 'Hedef', size: 160 },
+            {
+                key: 'status',
+                header: 'Durum',
+                size: 120,
+                cell: (v) => (
+                    <span className="px-2 py-1 bg-amber-100 text-amber-800 rounded-full text-xs">{v.status}</span>
+                ),
+            },
+            {
+                key: 'id',
+                header: 'İşlemler',
+                size: 90,
+                align: 'right',
+                cell: (v) => (
+                    <button
+                        type="button"
+                        onClick={(e) => {
+                            e.stopPropagation();
+                            void handleDelete(v.id);
+                        }}
+                        className="text-red-600"
+                    >
+                        <Trash2 className="w-4 h-4" />
+                    </button>
+                ),
+            },
+        ],
+        [],
+    );
 
     return (
         <div className="h-full flex flex-col bg-gray-50">
@@ -53,51 +116,22 @@ export function VirmanModule() {
             <div className="flex-1 overflow-auto p-6">
                 {loading ? (
                     <div className="flex items-center justify-center h-64">Yükleniyor...</div>
+                ) : gridRows.length === 0 ? (
+                    <div className="bg-white rounded-lg shadow-sm border py-12 text-center text-gray-500">
+                        <ArrowRightLeft className="w-12 h-12 mx-auto mb-3 text-gray-300" />
+                        <p>Henüz virman fişi yok</p>
+                    </div>
                 ) : (
-                    <div className="bg-white rounded-lg shadow-sm border">
-                        <table className="w-full">
-                            <thead className="bg-gray-50 border-b">
-                                <tr>
-                                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Virman No</th>
-                                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Tarih</th>
-                                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Kaynak</th>
-                                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Hedef</th>
-                                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Durum</th>
-                                    <th className="px-6 py-3 text-right text-xs font-medium text-gray-500 uppercase">İşlemler</th>
-                                </tr>
-                            </thead>
-                            <tbody className="divide-y">
-                                {virmans.length === 0 ? (
-                                    <tr>
-                                        <td colSpan={6} className="px-6 py-12 text-center text-gray-500">
-                                            <ArrowRightLeft className="w-12 h-12 mx-auto mb-3 text-gray-300" />
-                                            <p>Henüz virman fişi yok</p>
-                                        </td>
-                                    </tr>
-                                ) : (
-                                    virmans.map((v) => (
-                                        <tr key={v.id}>
-                                            <td className="px-6 py-4 font-mono text-sm">{v.virman_no}</td>
-                                            <td className="px-6 py-4 text-sm">{new Date(v.operation_date).toLocaleDateString('tr-TR')}</td>
-                                            <td className="px-6 py-4 text-sm">{(v as any).from_warehouse?.name || '-'}</td>
-                                            <td className="px-6 py-4 text-sm">{(v as any).to_warehouse?.name || '-'}</td>
-                                            <td className="px-6 py-4 text-sm">
-                                                <span className="px-2 py-1 bg-amber-100 text-amber-800 rounded-full text-xs">{v.status}</span>
-                                            </td>
-                                            <td className="px-6 py-4 text-right">
-                                                <button onClick={() => handleDelete(v.id)} className="text-red-600">
-                                                    <Trash2 className="w-4 h-4" />
-                                                </button>
-                                            </td>
-                                        </tr>
-                                    ))
-                                )}
-                            </tbody>
-                        </table>
+                    <div className="bg-white rounded-lg shadow-sm border p-4">
+                        <ReportColumnTable
+                            data={gridRows}
+                            columns={columns}
+                            height={520}
+                            storageNamespace="accounting-virman"
+                        />
                     </div>
                 )}
             </div>
         </div>
     );
 }
-

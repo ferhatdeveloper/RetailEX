@@ -9,6 +9,7 @@ import type { BeautyPackagePurchase } from '../../../types/beauty';
 import { Button } from '@/components/ui/button';
 import { cn } from '@/components/ui/utils';
 import '../ClinicStyles.css';
+import { ReportColumnTable, type ReportColumnTableCol } from '../../reports/shared/ReportDataGrid';
 
 function buildWaUrl(phone: string, text: string): string {
     const digits = normalizePhoneDigits(phone).replace(/\D/g, '');
@@ -154,6 +155,93 @@ export function MonthlySessionSeriesModule() {
             .replace('{customer}', row?.customer_name || '');
         window.open(buildWaUrl(phone, msg), '_blank', 'noopener,noreferrer');
     };
+
+    type ReportRow = (typeof reportRows)[number];
+
+    const reportColumns = useMemo<ReportColumnTableCol<ReportRow>[]>(
+        () => [
+            {
+                key: 'customer_name',
+                header: tm('bMonthlySeriesColCustomer'),
+                size: 180,
+                cell: (row) => (
+                    <div>
+                        <span className="font-medium text-gray-900">{row.customer_name || '—'}</span>
+                        {row.phone && <div className="text-xs text-gray-500">{row.phone}</div>}
+                    </div>
+                ),
+            },
+            {
+                key: 'package_name',
+                header: tm('bMonthlySeriesColPackageOrService'),
+                size: 180,
+                cell: (row) => row.package_name || '—',
+            },
+            {
+                key: 'used_sessions',
+                header: tm('bMonthlySeriesColProgress'),
+                size: 160,
+                cell: (row) => (
+                    <div className="flex flex-col gap-0.5">
+                        <span className="font-medium">
+                            {row.used_sessions ?? row.completed_sessions}/{row.total_sessions}
+                        </span>
+                        {typeof row.remaining_sessions === 'number' && (
+                            <span className="text-xs text-emerald-700 font-semibold" title={tm('bMonthlySeriesRemainingHint')}>
+                                {tm('bMonthlySeriesRemainingLabel')}: {row.remaining_sessions}
+                            </span>
+                        )}
+                        {row.cancelled_sessions > 0 && (
+                            <span className="text-xs text-red-600 font-bold" title={tm('bMonthlySeriesCancelledHint')}>
+                                {row.cancelled_sessions} iptal
+                            </span>
+                        )}
+                    </div>
+                ),
+            },
+            {
+                key: 'next_appointment_date',
+                header: tm('bMonthlySeriesColNext'),
+                type: 'date',
+                size: 120,
+                cell: (row) =>
+                    row.next_appointment_date ? String(row.next_appointment_date).slice(0, 10) : '—',
+            },
+            {
+                key: 'session_series_id',
+                header: tm('bMonthlySeriesColActions'),
+                size: 220,
+                cell: (row) => (
+                    <div className="flex justify-end gap-2">
+                        <Button
+                            size="sm"
+                            variant="outline"
+                            className="rounded-lg text-xs font-bold border-green-200 text-green-700 hover:bg-green-50"
+                            onClick={(e) => {
+                                e.stopPropagation();
+                                void sendApi(row.session_series_id);
+                            }}
+                        >
+                            <MessageCircle size={14} className="mr-1" />
+                            {tm('bMonthlySeriesWpApi')}
+                        </Button>
+                        <Button
+                            size="sm"
+                            variant="ghost"
+                            className="rounded-lg text-xs font-bold text-gray-600"
+                            onClick={(e) => {
+                                e.stopPropagation();
+                                openWaMe(row.phone, row.session_series_id);
+                            }}
+                        >
+                            {tm('bMonthlySeriesWpBrowser')}
+                        </Button>
+                    </div>
+                ),
+            },
+        ],
+        [tm, sendApi, openWaMe],
+    );
 
     return (
         <div className="p-6 space-y-6 bg-gray-50 min-h-screen">
@@ -362,76 +450,13 @@ export function MonthlySessionSeriesModule() {
                     ) : reportRows.length === 0 ? (
                         <div className="py-16 text-center text-gray-400 text-sm font-medium">{tm('bMonthlySeriesEmpty')}</div>
                     ) : (
-                        <div className="overflow-x-auto">
-                            <table className="w-full text-sm">
-                                <thead>
-                                    <tr className="border-b border-gray-100 bg-gray-50/80">
-                                        <th className="text-left py-3 px-4 font-bold text-gray-600">{tm('bMonthlySeriesColCustomer')}</th>
-                                        <th className="text-left py-3 px-4 font-bold text-gray-600">{tm('bMonthlySeriesColPackageOrService')}</th>
-                                        <th className="text-left py-3 px-4 font-bold text-gray-600">{tm('bMonthlySeriesColProgress')}</th>
-                                        <th className="text-left py-3 px-4 font-bold text-gray-600">{tm('bMonthlySeriesColNext')}</th>
-                                        <th className="text-right py-3 px-4 font-bold text-gray-600">{tm('bMonthlySeriesColActions')}</th>
-                                    </tr>
-                                </thead>
-                                <tbody>
-                                    {reportRows.map(row => (
-                                        <tr key={row.session_series_id} className="border-b border-gray-50 hover:bg-purple-50/40">
-                                            <td className="py-3 px-4 font-medium text-gray-900">
-                                                {row.customer_name || '—'}
-                                                {row.phone && <div className="text-xs text-gray-500">{row.phone}</div>}
-                                            </td>
-                                            <td className="py-3 px-4 text-gray-700">{row.package_name || '—'}</td>
-                                            <td className="py-3 px-4">
-                                                <div className="flex flex-col gap-0.5">
-                                                    <span className="font-medium">
-                                                        {row.used_sessions ?? row.completed_sessions}/{row.total_sessions}
-                                                    </span>
-                                                    {typeof row.remaining_sessions === 'number' && (
-                                                        <span
-                                                            className="text-xs text-emerald-700 font-semibold"
-                                                            title={tm('bMonthlySeriesRemainingHint')}
-                                                        >
-                                                            {tm('bMonthlySeriesRemainingLabel')}: {row.remaining_sessions}
-                                                        </span>
-                                                    )}
-                                                    {row.cancelled_sessions > 0 && (
-                                                        <span
-                                                            className="text-xs text-red-600 font-bold"
-                                                            title={tm('bMonthlySeriesCancelledHint')}
-                                                        >
-                                                            {row.cancelled_sessions} iptal
-                                                        </span>
-                                                    )}
-                                                </div>
-                                            </td>
-                                            <td className="py-3 px-4 text-gray-700">
-                                                {row.next_appointment_date
-                                                    ? String(row.next_appointment_date).slice(0, 10)
-                                                    : '—'}
-                                            </td>
-                                            <td className="py-3 px-4 text-right space-x-2">
-                                                <Button
-                                                    size="sm"
-                                                    variant="outline"
-                                                    className="rounded-lg text-xs font-bold border-green-200 text-green-700 hover:bg-green-50"
-                                                    onClick={() => void sendApi(row.session_series_id)}
-                                                >
-                                                    <MessageCircle size={14} className="mr-1" />
-                                                    {tm('bMonthlySeriesWpApi')}
-                                                </Button>
-                                                <Button
-                                                    size="sm"
-                                                    variant="ghost"
-                                                    className="rounded-lg text-xs font-bold text-gray-600"
-                                                    onClick={() => openWaMe(row.phone, row.session_series_id)}
-                                                >
-                                                    {tm('bMonthlySeriesWpBrowser')}
-                                                </Button>
-                                            </td>
-                                        </tr>
-                                    ))}
-                                </tbody>
-                            </table>
+                        <div className="p-4">
+                            <ReportColumnTable
+                                data={reportRows}
+                                columns={reportColumns}
+                                height={560}
+                                storageNamespace="beauty-monthly-session-series"
+                            />
                         </div>
                     )}
                 </div>

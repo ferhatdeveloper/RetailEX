@@ -13,6 +13,7 @@ import {
     Legend, ResponsiveContainer, AreaChart, Area
 } from 'recharts';
 import { DevExDataGrid } from '../shared/DevExDataGrid';
+import { ReportColumnTable } from './shared/ReportDataGrid';
 import { formatNumber } from '../../utils/formatNumber';
 
 interface Field {
@@ -72,6 +73,17 @@ export function InteractiveReportExplorer({ reportName, data }: InteractiveRepor
             value: grouped[key]
         })).sort((a, b) => b.value - a.value);
     }, [data, selectedDimensions, selectedMetrics]);
+
+    const pivotTotal = useMemo(() => pivotData.reduce((sum, row) => sum + row.value, 0), [pivotData]);
+
+    const pivotGridRows = useMemo(
+        () =>
+            pivotData.map((row) => ({
+                ...row,
+                percentOfTotal: pivotTotal > 0 ? (row.value / pivotTotal) * 100 : 0,
+            })),
+        [pivotData, pivotTotal],
+    );
 
     return (
         <div className="flex h-full overflow-hidden bg-gray-50/50">
@@ -291,48 +303,52 @@ export function InteractiveReportExplorer({ reportName, data }: InteractiveRepor
                                 />
                             </div>
                         ) : (
-                            <div className="flex-1 overflow-auto">
-                                {/* Pivot Table View */}
-                                <table className="w-full text-left border-collapse">
-                                    <thead>
-                                        <tr className="bg-gray-50 border-b border-gray-200">
-                                            <th className="px-6 py-4 text-xs font-bold text-gray-500 uppercase tracking-wider">{selectedDimensions[0]}</th>
-                                            <th className="px-6 py-4 text-xs font-bold text-gray-500 uppercase tracking-wider">Metrik: {selectedMetrics[0]}</th>
-                                            <th className="px-6 py-4 text-xs font-bold text-gray-500 uppercase tracking-wider">% Of Total</th>
-                                        </tr>
-                                    </thead>
-                                    <tbody className="divide-y divide-gray-100">
-                                        {pivotData.map((row, idx) => {
-                                            const total = pivotData.reduce((sum, r) => sum + r.value, 0);
-                                            const percentage = ((row.value / total) * 100).toFixed(1);
-                                            return (
-                                                <tr key={idx} className="hover:bg-gray-50 transition-colors">
-                                                    <td className="px-6 py-4 text-sm font-semibold text-gray-900">{row.name}</td>
-                                                    <td className="px-6 py-4 text-sm font-medium text-gray-700">{formatNumber(row.value, 0, false)}</td>
-                                                    <td className="px-6 py-4">
-                                                        <div className="flex items-center gap-3">
-                                                            <div className="flex-1 h-2 bg-gray-100 rounded-full overflow-hidden">
-                                                                <div
-                                                                    className="h-full bg-blue-500 rounded-full"
-                                                                    style={{ width: `${percentage}%` }}
-                                                                />
-                                                            </div>
-                                                            <span className="text-xs font-bold text-gray-500 min-w-[40px]">{percentage}%</span>
+                            <div className="flex-1 min-h-0 p-4">
+                                <ReportColumnTable
+                                    data={pivotGridRows}
+                                    height="100%"
+                                    footerLabel="GRAND TOTAL"
+                                    storageNamespace="interactive-report-pivot"
+                                    columns={[
+                                        {
+                                            key: 'name',
+                                            header: selectedDimensions[0] || '—',
+                                            size: 200,
+                                            cell: (row) => <span className="font-semibold text-gray-900">{row.name}</span>,
+                                        },
+                                        {
+                                            key: 'value',
+                                            header: `Metrik: ${selectedMetrics[0] || '—'}`,
+                                            type: 'number',
+                                            align: 'right',
+                                            footerSum: true,
+                                            footerFormat: (n) => (
+                                                <span className="text-blue-700 font-bold">{formatNumber(n, 0, false)}</span>
+                                            ),
+                                            cell: (row) => formatNumber(row.value, 0, false),
+                                        },
+                                        {
+                                            key: 'percentOfTotal',
+                                            header: '% Of Total',
+                                            type: 'number',
+                                            align: 'right',
+                                            cell: (row) => {
+                                                const percentage = row.percentOfTotal.toFixed(1);
+                                                return (
+                                                    <div className="flex items-center gap-3">
+                                                        <div className="flex-1 h-2 bg-gray-100 rounded-full overflow-hidden">
+                                                            <div
+                                                                className="h-full bg-blue-500 rounded-full"
+                                                                style={{ width: `${percentage}%` }}
+                                                            />
                                                         </div>
-                                                    </td>
-                                                </tr>
-                                            );
-                                        })}
-                                    </tbody>
-                                    <tfoot className="bg-gray-50/50 font-bold border-t-2 border-gray-200">
-                                        <tr>
-                                            <td className="px-6 py-4 text-sm text-gray-900">GRAND TOTAL</td>
-                                            <td className="px-6 py-4 text-sm text-blue-700" colSpan={2}>
-                                                {formatNumber(pivotData.reduce((sum, r) => sum + r.value, 0), 0, false)}
-                                            </td>
-                                        </tr>
-                                    </tfoot>
-                                </table>
+                                                        <span className="text-xs font-bold text-gray-500 min-w-[40px]">{percentage}%</span>
+                                                    </div>
+                                                );
+                                            },
+                                        },
+                                    ]}
+                                />
                             </div>
                         )}
                     </div>

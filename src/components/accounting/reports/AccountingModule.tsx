@@ -1,13 +1,61 @@
-﻿import { FileSpreadsheet, TrendingUp, TrendingDown } from 'lucide-react';
+﻿import { useMemo } from 'react';
+import { FileSpreadsheet, TrendingDown } from 'lucide-react';
 import { formatNumber } from '../../../utils/formatNumber';
+import { ReportColumnTable, type ReportColumnTableCol } from '../../reports/shared/ReportDataGrid';
+
+type AccountRow = {
+  code: string;
+  name: string;
+  balance: number;
+  type: string;
+};
 
 export function AccountingModule() {
-  const accounts = [
+  const accounts: AccountRow[] = [
     { code: '100', name: 'Kasa', balance: 45000, type: 'Aktif' },
     { code: '102', name: 'Bankalar', balance: 125000, type: 'Aktif' },
     { code: '120', name: 'Alıcılar', balance: 85000, type: 'Aktif' },
     { code: '320', name: 'Satıcılar', balance: -65000, type: 'Pasif' },
   ];
+
+  const columns = useMemo<ReportColumnTableCol<AccountRow>[]>(
+    () => [
+      {
+        key: 'code',
+        header: 'HESAP KODU',
+        size: 110,
+        cell: (a) => <span className="font-mono text-[10px]">{a.code}</span>,
+      },
+      { key: 'name', header: 'HESAP ADI', size: 180 },
+      {
+        key: 'type',
+        header: 'TİP',
+        size: 100,
+        cell: (a) => (
+          <span
+            className={`px-2 py-0.5 text-[9px] rounded ${
+              a.type === 'Aktif' ? 'bg-green-100 text-green-700' : 'bg-red-100 text-red-700'
+            }`}
+          >
+            {a.type}
+          </span>
+        ),
+      },
+      {
+        key: 'balance',
+        header: 'BAKİYE',
+        type: 'number',
+        align: 'right',
+        size: 120,
+        cell: (a) => (
+          <span className={`text-[10px] ${a.balance >= 0 ? 'text-green-600' : 'text-red-600'}`}>
+            {formatNumber(Math.abs(a.balance), 0, false)}
+          </span>
+        ),
+      },
+    ],
+    [],
+  );
 
   return (
     <div className="h-full flex flex-col">
@@ -41,37 +89,16 @@ export function AccountingModule() {
         </div>
 
         {/* Hesap Planı Tablosu */}
-        <div className="bg-white border border-gray-300">
-          <div className="bg-[#E3F2FD] border-b border-gray-300 px-3 py-1.5">
+        <div className="bg-white border border-gray-300 p-2">
+          <div className="bg-[#E3F2FD] border-b border-gray-300 px-3 py-1.5 mb-2">
             <h3 className="text-[11px] text-gray-700">Hesap Planı</h3>
           </div>
-          <table className="w-full border-collapse">
-            <thead>
-              <tr className="bg-[#E3F2FD] border-b border-gray-300">
-                <th className="px-2 py-1 text-left text-[10px] text-gray-700 border-r border-gray-300">HESAP KODU</th>
-                <th className="px-2 py-1 text-left text-[10px] text-gray-700 border-r border-gray-300">HESAP ADI</th>
-                <th className="px-2 py-1 text-left text-[10px] text-gray-700 border-r border-gray-300">TİP</th>
-                <th className="px-2 py-1 text-right text-[10px] text-gray-700">BAKİYE</th>
-              </tr>
-            </thead>
-            <tbody>
-              {accounts.map(account => (
-                <tr key={account.code} className="border-b border-gray-200 hover:bg-gray-50">
-                  <td className="px-2 py-0.5 font-mono text-[10px] border-r border-gray-200">{account.code}</td>
-                  <td className="px-2 py-0.5 text-[10px] border-r border-gray-200">{account.name}</td>
-                  <td className="px-2 py-0.5 border-r border-gray-200">
-                    <span className={`px-2 py-0.5 text-[9px] rounded ${account.type === 'Aktif' ? 'bg-green-100 text-green-700' : 'bg-red-100 text-red-700'
-                      }`}>
-                      {account.type}
-                    </span>
-                  </td>
-                  <td className={`px-2 py-0.5 text-right text-[10px] ${account.balance >= 0 ? 'text-green-600' : 'text-red-600'}`}>
-                    {formatNumber(Math.abs(account.balance), 0, false)}
-                  </td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
+          <ReportColumnTable
+            data={accounts}
+            columns={columns}
+            height={320}
+            storageNamespace="accounting-module-chart"
+          />
         </div>
       </div>
     </div>

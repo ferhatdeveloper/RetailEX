@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useCallback, useMemo } from 'react';
-import { TrendingUp, Package, ShoppingCart, Calendar, Filter, Loader2 } from 'lucide-react';
+import { Loader2 } from 'lucide-react';
 import { formatNumber } from '../../utils/formatNumber';
 import { postgres, ERP_SETTINGS, getAppDefaultCurrency } from '../../services/postgres';
 import { useFirmaDonem } from '../../contexts/FirmaDonemContext';
@@ -7,6 +7,7 @@ import { toast } from 'sonner';
 import { toSqlDateInputString } from '../../utils/localCalendarDate';
 import { SQL_COUNTABLE_SALE_STATUS } from '../../utils/saleInvoiceStatus';
 import { useLanguage } from '../../contexts/LanguageContext';
+import { useTheme } from '../../contexts/ThemeContext';
 import {
   buildProfitCostCtes,
   INVOICE_LINE_SCALE_JOIN,
@@ -30,6 +31,7 @@ import {
   type ProductMovementTarget,
 } from './ProductMovementHistoryModal';
 import { ReportColumnTable, type ReportColumnTableCol } from './shared/ReportDataGrid';
+import { ReportKpiStrip } from './shared/ReportKpiStrip';
 
 interface SalesData {
   rowKey: string;
@@ -81,6 +83,7 @@ function normalizeLineKind(raw: unknown): 'product' | 'service' {
 export function ProfitLossReport() {
   const { selectedFirma, selectedDonem } = useFirmaDonem();
   const { tm, language } = useLanguage();
+  const { darkMode } = useTheme();
   const [startDate, setStartDate] = useState('');
   const [endDate, setEndDate] = useState('');
   const [reportType, setReportType] = useState<'product' | 'category' | 'daily' | 'monthly'>('product');
@@ -90,6 +93,12 @@ export function ProfitLossReport() {
   const [movementTarget, setMovementTarget] = useState<ProductMovementTarget | null>(null);
 
   const reportCurrency = getAppDefaultCurrency();
+  const panelClass = darkMode ? 'bg-gray-800 border-gray-700' : 'bg-white border-gray-200';
+  const labelClass = darkMode ? 'text-gray-400' : 'text-slate-500';
+  const inputClass = darkMode
+    ? 'bg-gray-900 border-gray-600 text-gray-100 focus:ring-emerald-500/40'
+    : 'bg-white border-gray-300 text-slate-800 focus:ring-emerald-500';
+  const mutedClass = darkMode ? 'text-gray-400' : 'text-slate-500';
 
   useEffect(() => {
     if (selectedDonem?.beg_date && selectedDonem?.end_date) {
@@ -421,63 +430,65 @@ export function ProfitLossReport() {
 
   if (!selectedFirma || !selectedDonem) {
     return (
-      <div className="bg-amber-50 border border-amber-200 rounded-lg p-4">
-        <p className="text-amber-900 text-sm">
-          {tm('reportsPlNeedFirmPeriod')}
-        </p>
+      <div className={`rounded-lg border p-3 text-sm ${darkMode ? 'bg-amber-950/40 border-amber-800 text-amber-200' : 'bg-amber-50 border-amber-200 text-amber-900'}`}>
+        {tm('reportsPlNeedFirmPeriod')}
       </div>
     );
   }
 
+  const filterFieldClass = `flex flex-col gap-0.5 min-w-[8.5rem]`;
+  const filterControlClass = `h-8 px-2 text-sm rounded border outline-none focus:ring-2 ${inputClass}`;
+
   return (
-    <div className="space-y-4">
-      <div className="bg-white rounded-lg border p-4">
-        <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-4 gap-4">
-          <div>
-            <label className="block text-sm font-medium text-gray-700 mb-2">
-              <Calendar className="w-4 h-4 inline mr-1" />
+    <div className="space-y-3">
+      <div className={`rounded-lg border px-3 py-2 ${panelClass}`}>
+        <div className="flex flex-wrap items-end gap-2">
+          <label className={filterFieldClass}>
+            <span className={`text-[10px] font-semibold uppercase tracking-wide ${labelClass}`}>
               {tm('reportsPlStartDate')}
-            </label>
+            </span>
             <input
               type="date"
               value={toSqlDateInputString(startDate) || ''}
               onChange={(e) => setStartDate(e.target.value)}
-              className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-emerald-500"
+              className={filterControlClass}
             />
-          </div>
-          <div>
-            <label className="block text-sm font-medium text-gray-700 mb-2">
-              <Calendar className="w-4 h-4 inline mr-1" />
+          </label>
+          <label className={filterFieldClass}>
+            <span className={`text-[10px] font-semibold uppercase tracking-wide ${labelClass}`}>
               {tm('reportsPlEndDate')}
-            </label>
+            </span>
             <input
               type="date"
               value={toSqlDateInputString(endDate) || ''}
               onChange={(e) => setEndDate(e.target.value)}
-              className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-emerald-500"
+              className={filterControlClass}
             />
-          </div>
-          <div>
-            <label className="block text-sm font-medium text-gray-700 mb-2">
-              <Filter className="w-4 h-4 inline mr-1" />
+          </label>
+          <label className={`${filterFieldClass} min-w-[10rem] flex-1`}>
+            <span className={`text-[10px] font-semibold uppercase tracking-wide ${labelClass}`}>
               {tm('reportsPlReportType')}
-            </label>
+            </span>
             <select
               value={reportType}
               onChange={(e) => setReportType(e.target.value as typeof reportType)}
-              className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-emerald-500"
+              className={filterControlClass}
             >
               <option value="product">{tm('reportsPlProductBased')}</option>
               <option value="category">{tm('reportsPlCategoryBased')}</option>
               <option value="daily">{tm('reportsPlDaily')}</option>
               <option value="monthly">{tm('reportsPlMonthly')}</option>
             </select>
-          </div>
-          <div>
-            <label className="block text-sm font-medium text-gray-700 mb-2">
+          </label>
+          <div className={filterFieldClass}>
+            <span className={`text-[10px] font-semibold uppercase tracking-wide ${labelClass}`}>
               {tm('reportsDailyKindLabel')}
-            </label>
-            <div className="inline-flex w-full rounded-lg border border-slate-200 overflow-hidden text-xs font-medium">
+            </span>
+            <div
+              className={`inline-flex h-8 rounded border overflow-hidden text-xs font-medium ${
+                darkMode ? 'border-gray-600' : 'border-slate-200'
+              }`}
+            >
               {([
                 ['all', tm('reportsDailyKindAll')],
                 ['service', tm('reportsDailyKindService')],
@@ -487,7 +498,13 @@ export function ProfitLossReport() {
                   key={key}
                   type="button"
                   onClick={() => setLineKind(key)}
-                  className={`flex-1 px-3 py-2 ${lineKind === key ? 'bg-blue-600 text-white' : 'bg-white text-slate-700 hover:bg-slate-50'}`}
+                  className={`px-2.5 h-full whitespace-nowrap ${
+                    lineKind === key
+                      ? 'bg-blue-600 text-white'
+                      : darkMode
+                        ? 'bg-gray-900 text-gray-300 hover:bg-gray-700'
+                        : 'bg-white text-slate-700 hover:bg-slate-50'
+                  }`}
                 >
                   {label}
                 </button>
@@ -495,83 +512,62 @@ export function ProfitLossReport() {
             </div>
           </div>
         </div>
-        <p className="mt-3 text-xs text-gray-500 leading-relaxed">
-          {tm('reportsPlCostSourceNote')}
-          {reportType === 'product' && lineKind !== 'service' ? (
-            <>
-              {' '}
-              {tm('reportsPlMovClickHint')}
-            </>
-          ) : null}
-        </p>
       </div>
 
-      <div className="grid grid-cols-3 gap-4">
-        <div className="bg-white rounded-lg border-2 border-blue-200 p-4">
-          <div className="flex items-center justify-between">
-            <div>
-              <p className="text-sm text-gray-600">{tm('reportsPlTotalRevenue')}</p>
-              <p className="text-2xl font-bold text-blue-600">
-                {formatNumber(totalRevenue, 2, false)} {reportCurrency}
-              </p>
-            </div>
-            <div className="bg-blue-100 rounded-full p-3">
-              <ShoppingCart className="w-6 h-6 text-blue-600" />
-            </div>
-          </div>
-        </div>
+      <ReportKpiStrip
+        columns={3}
+        itemClassName={darkMode ? 'border-gray-700 bg-gray-800 shadow-none' : 'shadow-none'}
+        items={[
+          {
+            key: 'revenue',
+            label: tm('reportsPlTotalRevenue'),
+            value: `${formatNumber(totalRevenue, 2, false)} ${reportCurrency}`,
+            valueClassName: 'text-blue-600 dark:text-blue-400',
+          },
+          {
+            key: 'cost',
+            label: tm('reportsPlTotalCost'),
+            value: `${formatNumber(totalCost, 2, false)} ${reportCurrency}`,
+            valueClassName: 'text-orange-600 dark:text-orange-400',
+            hint:
+              lineKind === 'all'
+                ? `${tm('reportsPlProductCost')}: ${formatNumber(productCost, 2, false)} · ${tm('reportsPlServiceCost')}: ${formatNumber(serviceCost, 2, false)}`
+                : undefined,
+          },
+          {
+            key: 'profit',
+            label: tm('reportsPlGrossProfit'),
+            value: `${formatNumber(totalProfit, 2, false)} ${reportCurrency}`,
+            valueClassName:
+              totalProfit >= 0
+                ? 'text-green-600 dark:text-green-400'
+                : 'text-red-600 dark:text-red-400',
+            hint: `${tm('reportsPlMarginPct')}: %${formatNumber(averageMargin, 2, false)}`,
+          },
+        ]}
+      />
 
-        <div className="bg-white rounded-lg border-2 border-orange-200 p-4">
-          <div className="flex items-center justify-between">
-            <div>
-              <p className="text-sm text-gray-600">{tm('reportsPlTotalCost')}</p>
-              <p className="text-2xl font-bold text-orange-600">
-                {formatNumber(totalCost, 2, false)} {reportCurrency}
-              </p>
-              {lineKind === 'all' ? (
-                <div className="mt-1 space-y-0.5">
-                  <p className="text-xs text-gray-500">
-                    {tm('reportsPlProductCost')}: {formatNumber(productCost, 2, false)} {reportCurrency}
-                  </p>
-                  <p className="text-xs text-gray-500">
-                    {tm('reportsPlServiceCost')}: {formatNumber(serviceCost, 2, false)} {reportCurrency}
-                  </p>
-                </div>
-              ) : null}
-            </div>
-            <div className="bg-orange-100 rounded-full p-3">
-              <Package className="w-6 h-6 text-orange-600" />
-            </div>
+      <div className={`rounded-lg border ${panelClass}`}>
+        <div
+          className={`px-3 py-2 border-b flex items-center justify-between gap-2 ${
+            darkMode ? 'border-gray-700' : 'border-gray-200'
+          }`}
+        >
+          <div className="min-w-0 flex items-center gap-2">
+            <h3 className={`text-sm font-semibold truncate ${darkMode ? 'text-gray-100' : 'text-slate-800'}`}>
+              {sectionTitle}
+            </h3>
+            {reportType === 'product' && lineKind !== 'service' ? (
+              <span className={`hidden sm:inline text-[10px] truncate ${mutedClass}`}>
+                {tm('reportsPlMovClickHint')}
+              </span>
+            ) : null}
           </div>
+          {loading ? <Loader2 className={`w-4 h-4 shrink-0 animate-spin ${mutedClass}`} /> : null}
         </div>
-
-        <div className="bg-white rounded-lg border-2 border-green-200 p-4">
-          <div className="flex items-center justify-between">
-            <div>
-              <p className="text-sm text-gray-600">{tm('reportsPlGrossProfit')}</p>
-              <p className="text-2xl font-bold text-green-600">
-                {formatNumber(totalProfit, 2, false)} {reportCurrency}
-              </p>
-              <p className="text-xs text-gray-500 mt-1">{tm('reportsPlMarginPct')}: %{formatNumber(averageMargin, 2, false)}</p>
-            </div>
-            <div className="bg-green-100 rounded-full p-3">
-              <TrendingUp className="w-6 h-6 text-green-600" />
-            </div>
-          </div>
-        </div>
-      </div>
-
-      <div className="bg-white rounded-lg border">
-        <div className="p-4 border-b flex items-center justify-between">
-          <h3 className="text-lg flex items-center gap-2">
-            <TrendingUp className="w-5 h-5 text-emerald-600" />
-            {sectionTitle}
-          </h3>
-          {loading && <Loader2 className="w-5 h-5 text-gray-400 animate-spin" />}
-        </div>
-        <div className="p-2">
+        <div className="p-1.5">
           {salesData.length === 0 && !loading ? (
-            <div className="p-8 text-center text-gray-400">
+            <div className={`p-6 text-center text-sm ${mutedClass}`}>
               {tm('reportsPlNoData')}
             </div>
           ) : (

@@ -15,6 +15,7 @@ import { Loader2, AlertCircle, CheckCircle2, Calculator, TrendingUp, TrendingDow
 import { partnerAPI } from '../../services/api/partiesPartners';
 import type { PartyLedgerMovement, PartyPartner } from '../../core/types/models';
 import { useLanguage } from '../../contexts/LanguageContext';
+import { ReportColumnTable } from './shared/ReportDataGrid';
 
 interface Props {
   partner: PartyPartner;
@@ -132,6 +133,16 @@ export function PartnerDetailReportModal({
 
   const dbBalanceNum = Number(partner.balance || 0);
   const isNegative = dbBalanceNum < 0;
+
+  const ledgerGridRows = useMemo(
+    () =>
+      computed.withRunning.map((r) => ({
+        ...r,
+        signedAmount: Number(r.amount) * Number(r.sign),
+        displayDate: fmtDate(r.date, locale),
+      })),
+    [computed.withRunning, locale],
+  );
 
   return (
     <PercentBodyModal
@@ -274,94 +285,137 @@ export function PartnerDetailReportModal({
               <h3 className="text-sm font-bold text-slate-700 mb-2">
                 {tm('partnerRptDetail').replace('{n}', String(computed.withRunning.length))}
               </h3>
-              <div className="overflow-x-auto border border-slate-200 rounded-lg">
-                <table className="w-full text-xs">
-                  <thead className="bg-slate-100 text-slate-700 sticky top-0">
-                    <tr>
-                      <th className="px-3 py-2 text-left font-bold">{tm('date')}</th>
-                      <th className="px-3 py-2 text-left font-bold">{tm('transactionType')}</th>
-                      <th className="px-3 py-2 text-left font-bold">{tm('description')}</th>
-                      <th className="px-3 py-2 text-left font-bold">{tm('ficheNo')}</th>
-                      <th className="px-3 py-2 text-right font-bold">{tm('amount')}</th>
-                      <th className="px-3 py-2 text-center font-bold">{tm('partnerRptSign')}</th>
-                      <th className="px-3 py-2 text-right font-bold">{tm('partnerRptCumulative')}</th>
-                    </tr>
-                  </thead>
-                  <tbody className="divide-y divide-slate-100">
-                    {computed.withRunning.map((r, idx) => {
-                      const signed = Number(r.amount) * Number(r.sign);
-                      return (
-                        <tr key={r.id || idx} className={idx % 2 === 0 ? 'bg-white' : 'bg-slate-50/40'}>
-                          <td className="px-3 py-2 font-mono text-slate-600">{fmtDate(r.date, locale)}</td>
-                          <td className="px-3 py-2">
-                            <span
-                              className={`inline-block px-2 py-0.5 rounded text-[10px] font-bold ${
-                                signed > 0
-                                  ? 'bg-emerald-100 text-emerald-700'
-                                  : signed < 0
-                                  ? 'bg-red-100 text-red-700'
-                                  : 'bg-slate-100 text-slate-600'
-                              }`}
-                            >
-                              {txLabel(r.transaction_type)}
-                            </span>
-                          </td>
-                          <td className="px-3 py-2 text-slate-700 max-w-[280px] truncate" title={r.definition || ''}>
-                            {r.definition || '—'}
-                          </td>
-                          <td className="px-3 py-2 font-mono text-[10px] text-slate-500">
-                            {r.fiche_no || '—'}
-                          </td>
-                          <td className={`px-3 py-2 text-right font-mono font-bold ${signed > 0 ? 'text-emerald-700' : 'text-red-700'}`}>
-                            {fmt(signed, currency, locale)}
-                          </td>
-                          <td className="px-3 py-2 text-center font-mono text-slate-600">
-                            {r.sign > 0 ? '+' : r.sign < 0 ? '−' : '0'}
-                          </td>
-                          <td className={`px-3 py-2 text-right font-mono font-semibold ${r.running < 0 ? 'text-red-600' : 'text-slate-700'}`}>
-                            {fmt(r.running, currency, locale)}
-                          </td>
-                        </tr>
-                      );
-                    })}
-                  </tbody>
-                  <tfoot className="bg-slate-100 font-bold border-t-2 border-slate-300">
-                    <tr>
-                      <td colSpan={4} className="px-3 py-3 text-right text-slate-700 uppercase tracking-wider text-[10px]">
-                        {tm('totalUppercase')}
-                      </td>
-                      <td className="px-3 py-3 text-right font-mono">
-                        <span className="text-emerald-700 block">+{fmt(computed.totalIn, currency, locale).replace('+', '')}</span>
-                        <span className="text-red-700 block">−{fmt(computed.totalOut, currency, locale).replace('+', '').replace('−', '')}</span>
-                      </td>
-                      <td className="px-3 py-3 text-center text-[10px] text-slate-600">net</td>
-                      <td className={`px-3 py-3 text-right font-mono text-sm ${computed.cumulative < 0 ? 'text-red-700' : 'text-emerald-700'}`}>
-                        {fmt(computed.cumulative, currency, locale)}
-                      </td>
-                    </tr>
-                    <tr className="bg-amber-50 border-t border-amber-200">
-                      <td colSpan={4} className="px-3 py-2 text-right text-amber-900 font-bold text-[11px]">
-                        {tm('partnerRptRecon')}
-                      </td>
-                      <td colSpan={2} className="px-3 py-2 text-center text-[11px]">
-                        <span className="text-slate-600">{tm('partnerRptLedgerNet')}:</span>{' '}
-                        <span className="font-mono font-bold">{fmt(computed.cumulative, currency, locale)}</span>
-                      </td>
-                      <td className={`px-3 py-2 text-right text-[11px] ${computed.matches ? 'text-emerald-700' : 'text-red-700'}`}>
-                        {computed.matches ? (
-                          <span className="flex items-center justify-end gap-1">
-                            <CheckCircle2 className="w-3 h-3" /> {tm('partnerRptDbEqual')}
+              <div className="border border-slate-200 rounded-lg overflow-hidden">
+                <ReportColumnTable
+                  data={ledgerGridRows}
+                  height={360}
+                  footerLabel={tm('totalUppercase')}
+                  storageNamespace="partner-detail-ledger"
+                  columns={[
+                    {
+                      key: 'displayDate',
+                      header: tm('date'),
+                      size: 100,
+                      cell: (r) => <span className="font-mono text-slate-600">{r.displayDate}</span>,
+                    },
+                    {
+                      key: 'transaction_type',
+                      header: tm('transactionType'),
+                      size: 140,
+                      cell: (r) => (
+                        <span
+                          className={`inline-block px-2 py-0.5 rounded text-[10px] font-bold ${
+                            r.signedAmount > 0
+                              ? 'bg-emerald-100 text-emerald-700'
+                              : r.signedAmount < 0
+                                ? 'bg-red-100 text-red-700'
+                                : 'bg-slate-100 text-slate-600'
+                          }`}
+                        >
+                          {txLabel(r.transaction_type)}
+                        </span>
+                      ),
+                    },
+                    {
+                      key: 'definition',
+                      header: tm('description'),
+                      size: 200,
+                      cell: (r) => (
+                        <span className="max-w-[280px] truncate block" title={r.definition || ''}>
+                          {r.definition || '—'}
+                        </span>
+                      ),
+                    },
+                    {
+                      key: 'fiche_no',
+                      header: tm('ficheNo'),
+                      size: 100,
+                      cell: (r) => <span className="font-mono text-[10px] text-slate-500">{r.fiche_no || '—'}</span>,
+                    },
+                    {
+                      key: 'signedAmount',
+                      header: tm('amount'),
+                      type: 'number',
+                      align: 'right',
+                      footerSum: true,
+                      footerFormat: () => (
+                        <div className="font-mono text-right">
+                          <span className="text-emerald-700 block">
+                            +{fmt(computed.totalIn, currency, locale).replace('+', '')}
                           </span>
-                        ) : (
-                          <span className="flex items-center justify-end gap-1">
-                            <AlertCircle className="w-3 h-3" />{' '}
-                            {tm('partnerRptDiff').replace('{v}', fmt(computed.cumulative - dbBalanceNum, currency, locale))}
+                          <span className="text-red-700 block">
+                            −{fmt(computed.totalOut, currency, locale).replace('+', '').replace('−', '')}
                           </span>
-                        )}
-                      </td>
-                    </tr>
-                  </tfoot>
-                </table>
+                        </div>
+                      ),
+                      cell: (r) => (
+                        <span
+                          className={`font-mono font-bold ${
+                            r.signedAmount > 0 ? 'text-emerald-700' : 'text-red-700'
+                          }`}
+                        >
+                          {fmt(r.signedAmount, currency, locale)}
+                        </span>
+                      ),
+                    },
+                    {
+                      key: 'sign',
+                      header: tm('partnerRptSign'),
+                      align: 'center',
+                      footerSum: true,
+                      footerFormat: () => <span className="text-[10px] text-slate-600">net</span>,
+                      cell: (r) => (
+                        <span className="font-mono text-slate-600">
+                          {r.sign > 0 ? '+' : r.sign < 0 ? '−' : '0'}
+                        </span>
+                      ),
+                    },
+                    {
+                      key: 'running',
+                      header: tm('partnerRptCumulative'),
+                      type: 'number',
+                      align: 'right',
+                      footerSum: true,
+                      footerFormat: () => (
+                        <span
+                          className={`font-mono text-sm ${
+                            computed.cumulative < 0 ? 'text-red-700' : 'text-emerald-700'
+                          }`}
+                        >
+                          {fmt(computed.cumulative, currency, locale)}
+                        </span>
+                      ),
+                      cell: (r) => (
+                        <span
+                          className={`font-mono font-semibold ${
+                            r.running < 0 ? 'text-red-600' : 'text-slate-700'
+                          }`}
+                        >
+                          {fmt(r.running, currency, locale)}
+                        </span>
+                      ),
+                    },
+                  ]}
+                />
+                <div className="bg-amber-50 border-t border-amber-200 px-3 py-2 flex flex-wrap items-center justify-between gap-2 text-[11px]">
+                  <span className="text-amber-900 font-bold">{tm('partnerRptRecon')}</span>
+                  <span className="text-slate-600">
+                    {tm('partnerRptLedgerNet')}:{' '}
+                    <span className="font-mono font-bold">{fmt(computed.cumulative, currency, locale)}</span>
+                  </span>
+                  <span className={computed.matches ? 'text-emerald-700' : 'text-red-700'}>
+                    {computed.matches ? (
+                      <span className="inline-flex items-center gap-1">
+                        <CheckCircle2 className="w-3 h-3" /> {tm('partnerRptDbEqual')}
+                      </span>
+                    ) : (
+                      <span className="inline-flex items-center gap-1">
+                        <AlertCircle className="w-3 h-3" />{' '}
+                        {tm('partnerRptDiff').replace('{v}', fmt(computed.cumulative - dbBalanceNum, currency, locale))}
+                      </span>
+                    )}
+                  </span>
+                </div>
               </div>
             </div>
 

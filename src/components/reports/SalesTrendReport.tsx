@@ -6,6 +6,7 @@ import { isReturnSale } from '../../utils/posZReport';
 import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer } from 'recharts';
 import type { TooltipProps } from 'recharts';
 import { useLanguage } from '../../contexts/LanguageContext';
+import { ReportColumnTable } from './shared/ReportDataGrid';
 
 interface SalesTrendReportProps {
   sales: Sale[];
@@ -190,41 +191,49 @@ export function SalesTrendReport({ sales }: SalesTrendReportProps) {
         </ResponsiveContainer>
       </div>
 
-      <div className="bg-white rounded-lg border">
-        <div className="p-4 border-b">
-          <h4 className="text-lg font-semibold">{tm('rptTrendDailyDetails')}</h4>
-        </div>
-        <div
-          className="overflow-x-auto overflow-y-auto max-h-[400px]"
-          style={{ scrollbarWidth: 'thin', scrollbarColor: '#cbd5e1 #f1f5f9' }}
-        >
-          <table className="w-full min-w-[700px]">
-            <thead className="bg-gray-50 border-b sticky top-0">
-              <tr>
-                <th className="px-4 py-3 text-left text-sm">{tm('rptTrendColDate')}</th>
-                <th className="px-4 py-3 text-right text-sm">{legendSalesCount}</th>
-                <th className="px-4 py-3 text-right text-sm">{tm('totalRevenueLabel')}</th>
-                <th className="px-4 py-3 text-right text-sm">{tm('rptTrendColAvg')}</th>
-              </tr>
-            </thead>
-            <tbody className="divide-y">
-              {trendData.map((day, index) => (
-                <tr key={index} className="hover:bg-gray-50">
-                  <td className="px-4 py-3 font-medium">{day.label}</td>
-                  <td className="px-4 py-3 text-right">
-                    <span className="px-2 py-1 bg-blue-100 text-blue-700 rounded text-sm">{day.sales}</span>
-                  </td>
-                  <td className="px-4 py-3 text-right text-green-600 font-semibold">
-                    {formatNumber(day.revenue, 2, false)} IQD
-                  </td>
-                  <td className="px-4 py-3 text-right text-sm">
-                    {day.sales > 0 ? formatNumber(day.revenue / day.sales, 2, false) : '0'} IQD
-                  </td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
+      <div className="bg-white rounded-lg border p-4">
+        <h4 className="text-lg font-semibold mb-3">{tm('rptTrendDailyDetails')}</h4>
+        <ReportColumnTable
+          data={trendData.map((day) => ({
+            ...day,
+            avgTicket: day.sales > 0 ? day.revenue / day.sales : 0,
+          }))}
+          height={400}
+          footerLabel={tm('rprTotal') || 'Toplam'}
+          storageNamespace="sales-trend-daily"
+          columns={[
+            { key: 'label', header: tm('rptTrendColDate'), size: 180 },
+            {
+              key: 'sales',
+              header: legendSalesCount,
+              type: 'number',
+              align: 'right',
+              footerSum: true,
+              footerFormat: (n) => formatNumber(n, 0, false),
+              cell: (row) => (
+                <span className="px-2 py-1 bg-blue-100 text-blue-700 rounded text-sm">{row.sales}</span>
+              ),
+            },
+            {
+              key: 'revenue',
+              header: tm('totalRevenueLabel'),
+              type: 'number',
+              align: 'right',
+              footerSum: true,
+              footerFormat: (n) => `${formatNumber(n, 2, false)} IQD`,
+              cell: (row) => (
+                <span className="text-green-600 font-semibold">{formatNumber(row.revenue, 2, false)} IQD</span>
+              ),
+            },
+            {
+              key: 'avgTicket',
+              header: tm('rptTrendColAvg'),
+              type: 'number',
+              align: 'right',
+              cell: (row) => `${formatNumber(row.avgTicket, 2, false)} IQD`,
+            },
+          ]}
+        />
       </div>
     </div>
   );

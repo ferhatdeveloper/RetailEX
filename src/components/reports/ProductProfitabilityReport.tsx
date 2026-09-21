@@ -13,6 +13,7 @@ import { getCostProfitAnalysis } from '../../services/layeredInventoryCost';
 import { displayItemCode } from '../../utils/lastPurchaseCostSql';
 import { toSqlDateInputString, localTodayDateKey } from '../../utils/localCalendarDate';
 import { toast } from 'sonner';
+import { ReportColumnTable } from './shared/ReportDataGrid';
 
 interface ProductProfitData {
   productCode: string;
@@ -368,107 +369,127 @@ export function ProductProfitabilityReport() {
         ) : filteredData.length === 0 ? (
           <div className="p-8 text-center text-gray-500">{tm('rptProfitNoData')}</div>
         ) : (
-          <div className="overflow-auto max-h-[600px]">
-            <table className="w-full text-sm">
-              <thead className="bg-gray-50 sticky top-0">
-                <tr>
-                  <th className="text-left px-4 py-3 font-semibold">{tm('reportsDailyKindLabel')}</th>
-                  <th className="text-left px-4 py-3 font-semibold">{tm('rptProfitColProductCode')}</th>
-                  <th className="text-left px-4 py-3 font-semibold">{tm('rptProfitColProductName')}</th>
-                  <th className="text-right px-4 py-3 font-semibold">{tm('rptProfitColQty')}</th>
-                  <th className="text-right px-4 py-3 font-semibold">{tm('rptProfitColAvgPrice')}</th>
-                  <th className="text-right px-4 py-3 font-semibold">{tm('rptProfitColSalesAmount')}</th>
-                  <th className="text-right px-4 py-3 font-semibold">{tm('rptProfitColCost')}</th>
-                  <th className="text-right px-4 py-3 font-semibold">{tm('rptProfitColGrossProfit')}</th>
-                  <th className="text-right px-4 py-3 font-semibold">{tm('rptProfitColMarginPct')}</th>
-                </tr>
-              </thead>
-              <tbody>
-                {filteredData.map((product, idx) => {
-                  const isProfitable = product.grossProfit >= 0;
-                  return (
-                    <tr
-                      key={`${idx}-${product.lineKind}-${product.productCode}`}
-                      className={`border-t hover:bg-gray-50 ${
-                        idx % 2 === 0 ? 'bg-white' : 'bg-gray-50/50'
-                      }`}
+          <div className="p-2">
+            <ReportColumnTable
+              data={filteredData}
+              height={600}
+              footerLabel={tm('rptPeriodTotalRow')}
+              storageNamespace="product-profitability"
+              columns={[
+                {
+                  key: 'lineKind',
+                  header: tm('reportsDailyKindLabel'),
+                  size: 100,
+                  cell: (product) =>
+                    product.lineKind === 'service'
+                      ? tm('reportsDailyKindService')
+                      : tm('reportsDailyKindProduct'),
+                },
+                {
+                  key: 'productCode',
+                  header: tm('rptProfitColProductCode'),
+                  size: 120,
+                  cell: (product) => (
+                    <span className="font-mono text-blue-600">{displayItemCode(product.productCode)}</span>
+                  ),
+                },
+                { key: 'productName', header: tm('rptProfitColProductName'), size: 200 },
+                {
+                  key: 'totalQuantitySold',
+                  header: tm('rptProfitColQty'),
+                  type: 'number',
+                  align: 'right',
+                  cell: (product) => product.totalQuantitySold.toFixed(2),
+                },
+                {
+                  key: 'avgUnitPrice',
+                  header: tm('rptProfitColAvgPrice'),
+                  type: 'number',
+                  align: 'right',
+                  cell: (product) => `${formatMoney(product.avgUnitPrice)} ${currency}`,
+                },
+                {
+                  key: 'totalRevenue',
+                  header: tm('rptProfitColSalesAmount'),
+                  type: 'number',
+                  align: 'right',
+                  footerSum: true,
+                  footerFormat: (n) => (
+                    <span className="text-blue-700 font-bold">
+                      {formatMoney(n)} {currency}
+                    </span>
+                  ),
+                  cell: (product) => (
+                    <span className="font-semibold text-blue-700">
+                      {formatMoney(product.totalRevenue)} {currency}
+                    </span>
+                  ),
+                },
+                {
+                  key: 'totalCost',
+                  header: tm('rptProfitColCost'),
+                  type: 'number',
+                  align: 'right',
+                  footerSum: true,
+                  footerFormat: (n) => (
+                    <span className="text-orange-700 font-bold">
+                      {formatMoney(n)} {currency}
+                    </span>
+                  ),
+                  cell: (product) => (
+                    <span className="font-semibold text-orange-700">
+                      {formatMoney(product.totalCost)} {currency}
+                    </span>
+                  ),
+                },
+                {
+                  key: 'grossProfit',
+                  header: tm('rptProfitColGrossProfit'),
+                  type: 'number',
+                  align: 'right',
+                  footerSum: true,
+                  footerFormat: (n) => (
+                    <span className={n >= 0 ? 'text-green-700 font-bold' : 'text-red-700 font-bold'}>
+                      {n < 0 ? '-' : ''}
+                      {formatMoney(Math.abs(n))} {currency}
+                    </span>
+                  ),
+                  cell: (product) => {
+                    const isProfitable = product.grossProfit >= 0;
+                    return (
+                      <div
+                        className={`flex items-center justify-end gap-1 font-bold ${
+                          isProfitable ? 'text-green-700' : 'text-red-700'
+                        }`}
+                      >
+                        {isProfitable ? <TrendingUp className="w-4 h-4" /> : <TrendingDown className="w-4 h-4" />}
+                        {product.grossProfit < 0 ? '-' : ''}
+                        {formatMoney(Math.abs(product.grossProfit))} {currency}
+                      </div>
+                    );
+                  },
+                },
+                {
+                  key: 'profitMargin',
+                  header: tm('rptProfitColMarginPct'),
+                  type: 'number',
+                  align: 'right',
+                  footerSum: true,
+                  footerFormat: () => (
+                    <span className={summary.totalProfit >= 0 ? 'text-green-700 font-bold' : 'text-red-700 font-bold'}>
+                      {summary.profitMargin.toFixed(2)}%
+                    </span>
+                  ),
+                  cell: (product) => (
+                    <span
+                      className={`font-bold ${product.grossProfit >= 0 ? 'text-green-700' : 'text-red-700'}`}
                     >
-                      <td className="px-4 py-3 text-xs text-gray-600">
-                        {product.lineKind === 'service'
-                          ? tm('reportsDailyKindService')
-                          : tm('reportsDailyKindProduct')}
-                      </td>
-                      <td className="px-4 py-3 font-mono text-blue-600">
-                        {displayItemCode(product.productCode)}
-                      </td>
-                      <td className="px-4 py-3">{product.productName}</td>
-                      <td className="px-4 py-3 text-right">
-                        {product.totalQuantitySold.toFixed(2)}
-                      </td>
-                      <td className="px-4 py-3 text-right">
-                        {formatMoney(product.avgUnitPrice)} {currency}
-                      </td>
-                      <td className="px-4 py-3 text-right font-semibold text-blue-700">
-                        {formatMoney(product.totalRevenue)} {currency}
-                      </td>
-                      <td className="px-4 py-3 text-right font-semibold text-orange-700">
-                        {formatMoney(product.totalCost)} {currency}
-                      </td>
-                      <td
-                        className={`px-4 py-3 text-right font-bold ${
-                          isProfitable ? 'text-green-700' : 'text-red-700'
-                        }`}
-                      >
-                        <div className="flex items-center justify-end gap-1">
-                          {isProfitable ? (
-                            <TrendingUp className="w-4 h-4" />
-                          ) : (
-                            <TrendingDown className="w-4 h-4" />
-                          )}
-                          {product.grossProfit < 0 ? '-' : ''}
-                          {formatMoney(Math.abs(product.grossProfit))} {currency}
-                        </div>
-                      </td>
-                      <td
-                        className={`px-4 py-3 text-right font-bold ${
-                          isProfitable ? 'text-green-700' : 'text-red-700'
-                        }`}
-                      >
-                        {product.profitMargin.toFixed(2)}%
-                      </td>
-                    </tr>
-                  );
-                })}
-              </tbody>
-              <tfoot className="bg-gray-100 border-t-2 border-gray-300">
-                <tr>
-                  <td colSpan={5} className="px-4 py-3 font-bold">
-                    {tm('rptPeriodTotalRow')}
-                  </td>
-                  <td className="px-4 py-3 text-right font-bold text-blue-700">
-                    {formatMoney(summary.totalRevenue)} {currency}
-                  </td>
-                  <td className="px-4 py-3 text-right font-bold text-orange-700">
-                    {formatMoney(summary.totalCost)} {currency}
-                  </td>
-                  <td
-                    className={`px-4 py-3 text-right font-bold ${
-                      summary.totalProfit >= 0 ? 'text-green-700' : 'text-red-700'
-                    }`}
-                  >
-                    {summary.totalProfit < 0 ? '-' : ''}
-                    {formatMoney(Math.abs(summary.totalProfit))} {currency}
-                  </td>
-                  <td
-                    className={`px-4 py-3 text-right font-bold ${
-                      summary.totalProfit >= 0 ? 'text-green-700' : 'text-red-700'
-                    }`}
-                  >
-                    {summary.profitMargin.toFixed(2)}%
-                  </td>
-                </tr>
-              </tfoot>
-            </table>
+                      {product.profitMargin.toFixed(2)}%
+                    </span>
+                  ),
+                },
+              ]}
+            />
           </div>
         )}
       </div>

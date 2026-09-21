@@ -21,6 +21,7 @@ import { toast } from 'sonner';
 import { Select } from 'antd';
 import { Download, Loader2, RefreshCw } from 'lucide-react';
 import { useCallback, useEffect, useMemo, useState } from 'react';
+import { ReportColumnTable, type ReportColumnTableCol } from './shared/ReportDataGrid';
 
 type SelectOption = { value: string; label: string };
 
@@ -255,35 +256,6 @@ export function StaffAttendanceReport({
     });
   }, [filtered, daysInMonth]);
 
-  // Her gün için kaç kişi geldi
-  const perDayCounts = useMemo(() => {
-    const counts = new Array(daysInMonth).fill(0);
-    for (const r of filtered) {
-      for (let d = 0; d < daysInMonth; d++) {
-        if (r.days[d] === 1) counts[d] += 1;
-      }
-    }
-    return counts;
-  }, [filtered, daysInMonth]);
-
-  const footer = useMemo(() => {
-    let totalDays = 0;
-    let totalSalary = 0;
-    let totalExtra = 0;
-    let totalGross = 0;
-    for (const r of enriched) {
-      totalDays += r.totalDays;
-      totalSalary += r.totalSalary;
-      totalExtra += r.extraPayment;
-      totalGross += r.gross;
-    }
-    return { totalDays, totalSalary, totalExtra, totalGross };
-  }, [enriched]);
-
-  const tableCls = darkMode ? 'bg-gray-800 border-gray-700' : 'bg-white border-gray-200';
-  const thCls = darkMode ? 'bg-gray-900/60 text-gray-300' : 'bg-gray-50 text-gray-600';
-  const tfootCls = darkMode ? 'bg-gray-900/80 text-gray-100' : 'bg-gray-100 text-gray-900';
-
   const cellCls = (status: AttendanceStatus): string => {
     if (status === 1) return 'bg-emerald-500 text-white';
     if (status === 0) return 'bg-red-500 text-white';
@@ -314,6 +286,94 @@ export function StaffAttendanceReport({
     ],
     [tm],
   );
+
+  type StaffGridRow = (typeof enriched)[number] & { rowNo: number; [key: string]: unknown };
+
+  const gridRows = useMemo((): StaffGridRow[] => {
+    return enriched.map((r, i) => {
+      const dayFields: Record<string, number | null> = {};
+      for (let d = 0; d < daysInMonth; d++) {
+        const v = r.days[d];
+        dayFields[`day_${d}`] = v === 1 ? 1 : v === 0 ? 0 : null;
+      }
+      return { ...r, rowNo: i + 1, ...dayFields };
+    });
+  }, [enriched, daysInMonth]);
+
+  const attendanceColumns = useMemo((): ReportColumnTableCol<StaffGridRow>[] => {
+    const cols: ReportColumnTableCol<StaffGridRow>[] = [
+      { key: 'rowNo', header: tm('rprColNo') || 'No', size: 48 },
+      { key: 'staffName', header: tm('rprColStaffName') || 'İsim', size: 160 },
+      { key: 'department', header: tm('rprColDepartment') || 'Departman', size: 120 },
+      {
+        key: 'salary',
+        header: tm('rprColSalary') || 'Maaş',
+        type: 'number',
+        align: 'right',
+        footerSum: true,
+        footerFormat: () => `${enriched.length} ${tm('rprPerson') || 'kişi'}`,
+        cell: (row) => formatNumber(row.salary, 2, false),
+      },
+    ];
+    for (let d = 0; d < daysInMonth; d++) {
+      const dayKey = `day_${d}`;
+      cols.push({
+        key: dayKey,
+        header: String(d + 1),
+        align: 'center',
+        size: 36,
+        footerSum: true,
+        footerFormat: (sum) => (
+          <span className="text-[10px]">{sum > 0 ? String(Math.round(sum)) : ''}</span>
+        ),
+        cell: (row) => {
+          const status = row.days[d];
+          if (status == null) return '';
+          return <span className={`inline-block min-w-[1.25rem] rounded px-0.5 ${cellCls(status)}`}>{status}</span>;
+        },
+      });
+    }
+    cols.push(
+      {
+        key: 'totalDays',
+        header: tm('rprColTotalDays') || 'Toplam Gün',
+        type: 'number',
+        align: 'right',
+        footerSum: true,
+        footerFormat: (n) => formatNumber(n, 0, false),
+      },
+      {
+        key: 'totalSalary',
+        header: tm('rprColTotalSalary') || 'Toplam Maaş',
+        type: 'number',
+        align: 'right',
+        footerSum: true,
+        footerFormat: (n) => formatNumber(n, 2, false),
+      },
+      {
+        key: 'extraPayment',
+        header: tm('rprColExtraPayment') || 'Ek Ödemeler',
+        type: 'number',
+        align: 'right',
+        footerSum: true,
+        footerFormat: (n) => formatNumber(n, 2, false),
+      },
+      {
+        key: 'gross',
+        header: tm('rprColGross') || 'Brüt Hak',
+        type: 'number',
+        align: 'right',
+        footerSum: true,
+        footerFormat: (n) => `${formatNumber(n, 2, false)} ${currency}`,
+        cell: (row) => (
+          <span className="font-bold text-blue-600">
+            {formatNumber(row.gross, 2, false)} {currency}
+          </span>
+        ),
+      },
+    );
+    return cols;
+  }, [daysInMonth, tm, enriched.length, currency, cellCls]);
 
   return (
     <ReportShell
@@ -385,75 +445,18 @@ export function StaffAttendanceReport({
         </div>
       }
     >
-      <div className={`overflow-auto rounded-lg border max-h-[640px] ${tableCls}`}>
-        <table className="w-full text-xs" style={{ minWidth: 1200 }}>
-          <thead className={`sticky top-0 ${thCls}`}>
-            <tr>
-              <th className="px-2 py-2 text-left">{tm('rprColNo') || 'No'}</th>
-              <th className="px-2 py-2 text-left">{tm('rprColStaffName') || 'İsim'}</th>
-              <th className="px-2 py-2 text-left">{tm('rprColDepartment') || 'Departman'}</th>
-              <th className="px-2 py-2 text-right">{tm('rprColSalary') || 'Maaş'}</th>
-              {Array.from({ length: daysInMonth }).map((_, i) => (
-                <th key={i} className="px-1 py-2 text-center w-7">
-                  {i + 1}
-                </th>
-              ))}
-              <th className="px-2 py-2 text-right">{tm('rprColTotalDays') || 'Toplam Gün'}</th>
-              <th className="px-2 py-2 text-right">{tm('rprColTotalSalary') || 'Toplam Maaş'}</th>
-              <th className="px-2 py-2 text-right">{tm('rprColExtraPayment') || 'Ek Ödemeler'}</th>
-              <th className="px-2 py-2 text-right">{tm('rprColGross') || 'Brüt Hak'}</th>
-            </tr>
-          </thead>
-          <tbody>
-            {enriched.length === 0 && !loading && (
-              <tr>
-                <td colSpan={daysInMonth + 7} className="px-3 py-8 text-center opacity-60">
-                  {tm('erpNoRows') || 'Veri yok'}
-                </td>
-              </tr>
-            )}
-            {enriched.map((r, idx) => (
-              <tr key={r.staffId} className={darkMode ? 'border-t border-gray-700' : 'border-t border-gray-100'}>
-                <td className="px-2 py-2">{idx + 1}</td>
-                <td className="px-2 py-2 font-medium whitespace-nowrap">{r.staffName}</td>
-                <td className="px-2 py-2 text-xs">{r.department}</td>
-                <td className="px-2 py-2 text-right">{formatNumber(r.salary, 2, false)}</td>
-                {r.days.slice(0, daysInMonth).map((d, i) => (
-                  <td key={i} className={`px-1 py-1 text-center w-7 ${cellCls(d)}`}>
-                    {d == null ? '' : d}
-                  </td>
-                ))}
-                <td className="px-2 py-2 text-right font-bold">{r.totalDays}</td>
-                <td className="px-2 py-2 text-right">{formatNumber(r.totalSalary, 2, false)}</td>
-                <td className="px-2 py-2 text-right">{formatNumber(r.extraPayment, 2, false)}</td>
-                <td className="px-2 py-2 text-right font-bold text-blue-600">
-                  {formatNumber(r.gross, 2, false)} {currency}
-                </td>
-              </tr>
-            ))}
-          </tbody>
-          <tfoot>
-            <tr className={`font-bold ${tfootCls}`}>
-              <td className="px-2 py-2" colSpan={3}>
-                {tm('rprDailyPresence') || 'Günlük Gelen'}
-              </td>
-              <td className="px-2 py-2 text-right">
-                {enriched.length} {tm('rprPerson') || 'kişi'}
-              </td>
-              {perDayCounts.map((c, i) => (
-                <td key={i} className="px-1 py-2 text-center w-7 text-[10px]">
-                  {i < daysInMonth ? c : ''}
-                </td>
-              ))}
-              <td className="px-2 py-2 text-right">{footer.totalDays}</td>
-              <td className="px-2 py-2 text-right">{formatNumber(footer.totalSalary, 2, false)}</td>
-              <td className="px-2 py-2 text-right">{formatNumber(footer.totalExtra, 2, false)}</td>
-              <td className="px-2 py-2 text-right text-blue-600">
-                {formatNumber(footer.totalGross, 2, false)} {currency}
-              </td>
-            </tr>
-          </tfoot>
-        </table>
+      <div className={`rounded-lg border p-2 ${darkMode ? 'bg-gray-800 border-gray-700' : 'bg-white border-gray-200'}`}>
+        {enriched.length === 0 && !loading ? (
+          <div className="px-3 py-8 text-center text-sm opacity-60">{tm('erpNoRows') || 'Veri yok'}</div>
+        ) : (
+          <ReportColumnTable
+            data={gridRows}
+            columns={attendanceColumns}
+            height={640}
+            footerLabel={tm('rprDailyPresence') || 'Günlük Gelen'}
+            storageNamespace={`staff-attendance-${year}-${month}`}
+          />
+        )}
       </div>
     </ReportShell>
   );

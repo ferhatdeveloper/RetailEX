@@ -62,7 +62,7 @@ const PINNED_COLUMN_IDS = new Set(['select', 'actions']);
 
 /**
  * Durum / İşlem kolonları — varsayılan gizli; Kolonlar menüsünden açılır.
- * (id: durum|status|actions|islem|işlem|action)
+ * Tam eşleşme + yaygın alias’lar (statusLabel, is_active, aktif, …).
  */
 export const DEVEX_DEFAULT_HIDDEN_COLUMN_IDS = new Set([
   'durum',
@@ -70,13 +70,32 @@ export const DEVEX_DEFAULT_HIDDEN_COLUMN_IDS = new Set([
   'actions',
   'islem',
   'işlem',
+  'islemler',
+  'işlemler',
   'action',
+  // Aktif/Pasif “Durum” kolonları
+  'is_active',
+  'isactive',
+  'aktif',
+  'active',
+  // Rapor / liste alias’ları
+  'statuslabel',
+  'statustext',
+  'colstatus',
 ]);
 
+/** statusLabel, stock_status, campColStatus, so_col_status vb. */
+const DEVEX_STATUS_ID_RE = /(^|_)(status|durum)(_|$)/i;
+
 export function isDevExDefaultHiddenColumnId(columnId: string | null | undefined): boolean {
-  const id = String(columnId || '').trim().toLowerCase();
-  if (!id) return false;
-  return DEVEX_DEFAULT_HIDDEN_COLUMN_IDS.has(id);
+  const raw = String(columnId || '').trim();
+  if (!raw) return false;
+  const id = raw.toLowerCase().replace(/-/g, '_');
+  if (DEVEX_DEFAULT_HIDDEN_COLUMN_IDS.has(id)) return true;
+  // CamelCase: statusLabel → statuslabel (set’te); campColStatus → campcolstatus
+  if (id.includes('status') || id.includes('durum')) return true;
+  if (DEVEX_STATUS_ID_RE.test(raw)) return true;
+  return false;
 }
 
 /** Tanımsız anahtarları varsayılan gizleme ile doldur; açıkça verilen değerleri koru. */
@@ -1971,9 +1990,11 @@ export function DevExDataGrid<T>({
 
   useEffect(() => {
     if (columnVisibility) {
-      setInternalColumnVisibility(columnVisibility);
+      setInternalColumnVisibility(
+        mergeDevExDefaultColumnVisibility(columns as ColumnDef<any, any>[], columnVisibility),
+      );
     }
-  }, [columnVisibility]);
+  }, [columnVisibility, columns]);
 
   // Kontrollü görünürlük yokken kolon seti değişince Durum/İşlem varsayılanını uygula
   // (resolvedColumnVisibility useMemo içinde merge edilir; ekstra effect yok)

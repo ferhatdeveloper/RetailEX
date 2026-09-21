@@ -1,12 +1,13 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import {
-    BarChart, PieChart, Printer,
-    Download, Search, Sparkles, Filter
+    BarChart, Printer,
+    Download, Sparkles,
 } from 'lucide-react';
 import { dynamicReportEngine, ReportRow } from '../../../services/reports/DynamicReportEngine';
 import { aiReportService } from '../../../services/ai/AIReportService';
 import { formatNumber } from '../../../utils/formatNumber';
 import { useLanguage } from '../../../contexts/LanguageContext';
+import { ReportColumnTable, type ReportColumnTableCol } from '../../reports/shared/ReportDataGrid';
 
 export function GeneralLedgerMizan() {
     const { tm } = useLanguage();
@@ -28,12 +29,77 @@ export function GeneralLedgerMizan() {
     };
 
     useEffect(() => {
-        loadData();
+        void loadData();
     }, []);
+
+    const fmtCell = (n: number | string | undefined, positiveOnly = false) => {
+        const num = parseFloat(String(n ?? 0));
+        if (positiveOnly && !(num > 0)) return '-';
+        return formatNumber(num, 2, false);
+    };
+
+    const columns = useMemo<ReportColumnTableCol<ReportRow>[]>(
+        () => [
+            {
+                key: 'account_code',
+                header: tm('accAccountCode'),
+                size: 120,
+                cell: (r) => <span className="font-bold text-gray-900">{r.account_code}</span>,
+            },
+            { key: 'account_name', header: tm('accAccountName'), size: 220 },
+            {
+                key: 'debit_total',
+                header: `${tm('accAmountIqd')} — ${tm('directionDebtShort')}`,
+                type: 'number',
+                align: 'right',
+                size: 130,
+                footerSum: true,
+                cell: (r) => fmtCell(r.debit_total),
+            },
+            {
+                key: 'credit_total',
+                header: `${tm('accAmountIqd')} — ${tm('directionCreditShort')}`,
+                type: 'number',
+                align: 'right',
+                size: 130,
+                footerSum: true,
+                cell: (r) => fmtCell(r.credit_total),
+            },
+            {
+                key: 'net_balance',
+                header: `${tm('accBalanceIqd')} — ${tm('directionDebtShort')}`,
+                type: 'number',
+                align: 'right',
+                size: 130,
+                cell: (r) => {
+                    const n = parseFloat(String(r.net_balance ?? 0));
+                    return n > 0 ? (
+                        <span className="font-bold text-red-700">{formatNumber(n, 2, false)}</span>
+                    ) : (
+                        '-'
+                    );
+                },
+            },
+            {
+                key: 'id',
+                header: `${tm('accBalanceIqd')} — ${tm('directionCreditShort')}`,
+                size: 130,
+                align: 'right',
+                cell: (r) => {
+                    const n = parseFloat(String(r.net_balance ?? 0));
+                    return n < 0 ? (
+                        <span className="font-bold text-green-700">{formatNumber(Math.abs(n), 2, false)}</span>
+                    ) : (
+                        '-'
+                    );
+                },
+            },
+        ],
+        [tm],
+    );
 
     return (
         <div className="h-full flex flex-col bg-white">
-            {/* Logo-Style Professional Mizan Header */}
             <div className="bg-gray-100 border-b border-gray-300 p-6">
                 <div className="flex justify-between items-start">
                     <div className="flex gap-4 items-center">
@@ -46,13 +112,12 @@ export function GeneralLedgerMizan() {
                         </div>
                     </div>
                     <div className="flex gap-2">
-                        <button className="px-4 py-2 bg-white border border-gray-300 rounded-lg text-xs font-bold hover:bg-gray-50 flex items-center gap-2"><Printer className="w-4 h-4" /> {tm('print')}</button>
-                        <button className="px-4 py-2 bg-white border border-gray-300 rounded-lg text-xs font-bold hover:bg-gray-50 flex items-center gap-2"><Download className="w-4 h-4" /> {tm('accExportExcel')}</button>
+                        <button type="button" className="px-4 py-2 bg-white border border-gray-300 rounded-lg text-xs font-bold hover:bg-gray-50 flex items-center gap-2"><Printer className="w-4 h-4" /> {tm('print')}</button>
+                        <button type="button" className="px-4 py-2 bg-white border border-gray-300 rounded-lg text-xs font-bold hover:bg-gray-50 flex items-center gap-2"><Download className="w-4 h-4" /> {tm('accExportExcel')}</button>
                     </div>
                 </div>
             </div>
 
-            {/* AI Intelligence Briefing */}
             {briefing && (
                 <div className="mx-6 mt-6 p-4 bg-purple-50 border border-purple-100 rounded-xl flex items-center gap-4">
                     <div className="bg-purple-600 p-2 rounded-lg text-white shadow-lg shadow-purple-200">
@@ -60,69 +125,26 @@ export function GeneralLedgerMizan() {
                     </div>
                     <div className="flex-1">
                         <span className="text-[10px] font-black uppercase text-purple-600 tracking-widest">{tm('accAiFinancialSummary')}</span>
-                        <p className="text-sm text-purple-900 font-medium italic">"{briefing}"</p>
+                        <p className="text-sm text-purple-900 font-medium italic">&quot;{briefing}&quot;</p>
                     </div>
                 </div>
             )}
 
-            {/* Corporate Mizan Table */}
             <div className="flex-1 overflow-auto p-6">
-                <div className="border border-gray-300 rounded-xl overflow-hidden shadow-sm">
-                    <table className="w-full text-[11px] border-collapse">
-                        <thead className="bg-gray-50 border-b border-gray-300 font-black uppercase text-gray-600 tracking-widest text-center">
-                            <tr>
-                                <th className="px-4 py-3 text-left border-r border-gray-300">{tm('accAccountCode')}</th>
-                                <th className="px-4 py-3 text-left border-r border-gray-300">{tm('accAccountName')}</th>
-                                <th colSpan={2} className="px-4 py-3 border-r border-gray-300 bg-gray-100/50">{tm('accAmountIqd')}</th>
-                                <th colSpan={2} className="px-4 py-3 bg-red-50/30">{tm('accBalanceIqd')}</th>
-                            </tr>
-                            <tr className="bg-gray-50/50">
-                                <th className="border-r border-gray-300"></th>
-                                <th className="border-r border-gray-300"></th>
-                                <th className="px-4 py-2 border-r border-gray-300">{tm('directionDebtShort')}</th>
-                                <th className="px-4 py-2 border-r border-gray-300">{tm('directionCreditShort')}</th>
-                                <th className="px-4 py-2 border-r border-gray-300">{tm('directionDebtShort')}</th>
-                                <th className="px-4 py-2">{tm('directionCreditShort')}</th>
-                            </tr>
-                        </thead>
-                        <tbody className="divide-y divide-gray-200 text-gray-700">
-                            {data.map((row, idx) => (
-                                <tr key={idx} className="hover:bg-slate-50">
-                                    <td className="px-4 py-2 border-r border-gray-200 font-bold text-gray-900">{row.account_code}</td>
-                                    <td className="px-4 py-2 border-r border-gray-200">{row.account_name}</td>
-                                    <td className="px-4 py-2 border-r border-gray-200 text-right">{formatNumber(row.debit_total, 2, false)}</td>
-                                    <td className="px-4 py-2 border-r border-gray-200 text-right">{formatNumber(row.credit_total, 2, false)}</td>
-                                    <td className="px-4 py-2 border-r border-gray-200 text-right font-bold text-red-700">
-                                        {row.net_balance > 0 ? formatNumber(row.net_balance, 2, false) : '-'}
-                                    </td>
-                                    <td className="px-4 py-2 text-right font-bold text-green-700">
-                                        {row.net_balance < 0 ? formatNumber(Math.abs(row.net_balance), 2, false) : '-'}
-                                    </td>
-                                </tr>
-                            ))}
-                        </tbody>
-                        <tfoot className="bg-gray-900 text-white font-black text-xs">
-                            <tr>
-                                <td colSpan={2} className="px-4 py-4 text-right tracking-[0.3em]">GENEL TOPLAM</td>
-                                <td className="px-4 py-4 text-right border-l border-gray-700">
-                                    {formatNumber(data.reduce((s, r) => s + (parseFloat(r.debit_total) || 0), 0), 2, false)}
-                                </td>
-                                <td className="px-4 py-4 text-right border-l border-gray-700">
-                                    {formatNumber(data.reduce((s, r) => s + (parseFloat(r.credit_total) || 0), 0), 2, false)}
-                                </td>
-                                <td className="px-4 py-4 text-right border-l border-gray-700">
-                                    {formatNumber(data.reduce((s, r) => s + (r.net_balance > 0 ? r.net_balance : 0), 0), 2, false)}
-                                </td>
-                                <td className="px-4 py-4 text-right border-l border-gray-700">
-                                    {formatNumber(data.reduce((s, r) => s + (r.net_balance < 0 ? Math.abs(r.net_balance) : 0), 0), 2, false)}
-                                </td>
-                            </tr>
-                        </tfoot>
-                    </table>
+                <div className="border border-gray-300 rounded-xl overflow-hidden shadow-sm p-3">
+                    {loading ? (
+                        <p className="text-sm text-gray-500 py-12 text-center">Yükleniyor…</p>
+                    ) : (
+                        <ReportColumnTable
+                            data={data}
+                            columns={columns}
+                            height={560}
+                            storageNamespace="accounting-general-ledger-mizan"
+                            footerLabel="GENEL TOPLAM"
+                        />
+                    )}
                 </div>
             </div>
         </div>
     );
 }
-
-

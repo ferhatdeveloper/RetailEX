@@ -6,11 +6,18 @@
  * @created 2024-12-18
  */
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useMemo } from 'react';
 import { TrendingUp, Download, Printer, Calendar, RefreshCw, Banknote, TrendingDown } from 'lucide-react';
 import { useFirmaDonem } from '../../../contexts/FirmaDonemContext';
-import { FinancialReportsService, type IncomeStatementData, formatMoney, formatPercent } from '../../../services/financialReportsService';
+import {
+  FinancialReportsService,
+  type IncomeStatementData,
+  type IncomeStatementLine,
+  formatMoney,
+  formatPercent,
+} from '../../../services/financialReportsService';
 import { toast } from 'sonner';
+import { ReportColumnTable, type ReportColumnTableCol } from '../../reports/shared/ReportDataGrid';
 
 export function IncomeStatementReport() {
   const { selectedFirma, selectedDonem } = useFirmaDonem();
@@ -77,6 +84,68 @@ export function IncomeStatementReport() {
   const handlePrint = () => {
     window.print();
   };
+
+  type IncomeGridRow = IncomeStatementLine & { account_label: string };
+
+  const incomeGridRows = useMemo<IncomeGridRow[]>(() => {
+    if (!data) return [];
+    const rows: IncomeGridRow[] = data.lines.map((line) => ({
+      ...line,
+      account_label: line.hesap_kodu
+        ? `${line.hesap_kodu} ${line.hesap_adi}`
+        : line.hesap_adi,
+    }));
+    rows.push({
+      hesap_kodu: '59',
+      hesap_adi: `DÖNEM NET ${data.donem_net_kari >= 0 ? 'KARI' : 'ZARARI'}`,
+      tutar: data.donem_net_kari,
+      yuzde: data.donem_net_kari_yuzdesi,
+      seviye: 1,
+      grup: 'SONUC',
+      account_label: `DÖNEM NET ${data.donem_net_kari >= 0 ? 'KARI' : 'ZARARI'}`,
+    });
+    return rows;
+  }, [data]);
+
+  const incomeColumns = useMemo<ReportColumnTableCol<IncomeGridRow>[]>(
+    () => [
+      {
+        key: 'account_label',
+        header: 'Hesap',
+        size: 280,
+        cell: (line) => (
+          <span className={line.seviye === 1 ? 'font-semibold' : 'pl-4 text-sm'}>
+            {line.hesap_kodu && (
+              <span className="text-gray-500 mr-2 font-mono text-xs">{line.hesap_kodu}</span>
+            )}
+            {line.hesap_adi}
+          </span>
+        ),
+      },
+      {
+        key: 'tutar',
+        header: 'Tutar (IQD)',
+        type: 'number',
+        align: 'right',
+        size: 140,
+        cell: (line) => (
+          <span className={line.tutar >= 0 ? 'text-gray-900' : 'text-red-600'}>
+            {formatMoney(Math.abs(line.tutar))}
+            {line.tutar < 0 ? ' (-)' : ''}
+          </span>
+        ),
+      },
+      {
+        key: 'yuzde',
+        header: '% (Satışlara Göre)',
+        type: 'number',
+        align: 'right',
+        size: 120,
+        cell: (line) => (line.yuzde !== undefined ? formatPercent(line.yuzde) : '-'),
+      },
+    ],
+    [],
+  );
 
   return (
     <div className="space-y-4 p-6">
@@ -222,61 +291,13 @@ export function IncomeStatementReport() {
             <p>Gelir tablosu henüz hazırlanmadı</p>
           </div>
         ) : (
-          <div className="overflow-x-auto">
-            <table className="w-full">
-              <thead className="bg-gradient-to-r from-green-600 to-green-700 text-white">
-                <tr>
-                  <th className="px-4 py-3 text-left text-sm">Hesap</th>
-                  <th className="px-4 py-3 text-right text-sm">Tutar (IQD)</th>
-                  <th className="px-4 py-3 text-right text-sm">% (Satışlara Göre)</th>
-                </tr>
-              </thead>
-              <tbody className="divide-y divide-gray-200">
-                {data.lines.map((line, index) => (
-                  <tr
-                    key={index}
-                    className={`
-                      hover:bg-gray-50 transition-colors
-                      ${line.seviye === 1 && line.grup === 'SONUC' ? 'bg-yellow-50 font-semibold' : ''}
-                      ${line.seviye === 1 && line.grup !== 'SONUC' ? 'bg-gray-50 font-semibold' : ''}
-                      ${line.hesap_kodu.startsWith('59') ? 'bg-green-100 font-bold' : ''}
-                    `}
-                  >
-                    <td className={`px-4 py-2 text-sm ${line.seviye === 1 ? '' : 'pl-8'
-                      }`}>
-                      {line.hesap_kodu && (
-                        <span className="text-gray-500 mr-2 font-mono text-xs">{line.hesap_kodu}</span>
-                      )}
-                      {line.hesap_adi}
-                    </td>
-                    <td className={`px-4 py-2 text-sm text-right ${line.tutar >= 0 ? 'text-gray-900' : 'text-red-600'
-                      }`}>
-                      {formatMoney(Math.abs(line.tutar))}
-                      {line.tutar < 0 && ' (-)'}
-                    </td>
-                    <td className="px-4 py-2 text-sm text-right text-gray-600">
-                      {line.yuzde !== undefined ? formatPercent(line.yuzde) : '-'}
-                    </td>
-                  </tr>
-                ))}
-
-                {/* Final Net Kar/Zarar Row */}
-                <tr className={`${data.donem_net_kari >= 0 ? 'bg-green-200' : 'bg-red-200'
-                  }`}>
-                  <td className="px-4 py-3 font-bold">
-                    DÖNEM NET {data.donem_net_kari >= 0 ? 'KARI' : 'ZARARI'}
-                  </td>
-                  <td className={`px-4 py-3 text-right font-bold ${data.donem_net_kari >= 0 ? 'text-green-800' : 'text-red-800'
-                    }`}>
-                    {formatMoney(Math.abs(data.donem_net_kari))} IQD
-                  </td>
-                  <td className={`px-4 py-3 text-right font-bold ${data.donem_net_kari >= 0 ? 'text-green-800' : 'text-red-800'
-                    }`}>
-                    {formatPercent(Math.abs(data.donem_net_kari_yuzdesi))}
-                  </td>
-                </tr>
-              </tbody>
-            </table>
+          <div className="p-4">
+            <ReportColumnTable
+              data={incomeGridRows}
+              columns={incomeColumns}
+              height={560}
+              storageNamespace="accounting-income-statement"
+            />
           </div>
         )}
       </div>

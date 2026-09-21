@@ -5,7 +5,8 @@ import type { StockMovement } from '../../../services/stockMovementAPI';
 import { labelStockSlipDocumentType } from '../../../services/stockMovementAPI';
 import { formatShortDate } from '../../../utils/dateLocale';
 
-export const STOCK_MOVEMENTS_COLUMN_VISIBILITY_KEY = 'retailex_stockMovements_columnVisibility_v2';
+/** v3: Durum/İşlem varsayılan gizli — eski v2 tercihlerinde status:true kalmasın */
+export const STOCK_MOVEMENTS_COLUMN_VISIBILITY_KEY = 'retailex_stockMovements_columnVisibility_v3';
 export const STOCK_MOVEMENTS_COLUMN_ORDER_KEY = 'retailex_stockMovements_columnOrder_v1';
 
 export type StockMovementsListColumnId =

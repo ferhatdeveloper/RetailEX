@@ -1,7 +1,8 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import { accountingAPI, YevmiyeFisi, YevmiyeSatiri, HesapPlani } from '../../../services/api/accounting';
 import { Plus, X, Save, AlertCircle } from 'lucide-react';
 import { useLanguage } from '../../../contexts/LanguageContext';
+import { ReportColumnTable, type ReportColumnTableCol } from '../../reports/shared/ReportDataGrid';
 
 export function AccountingDashboard() {
   const { tm } = useLanguage();
@@ -44,6 +45,98 @@ export function AccountingDashboard() {
     if (!satirlar) return 0;
     return satirlar.reduce((sum, s) => sum + (s.alacak || 0), 0);
   };
+
+  type FisGridRow = YevmiyeFisi & { total_borc: number; total_alacak: number; status: string };
+
+  const journalRows = useMemo<FisGridRow[]>(
+    () =>
+      fisler.map((fis) => ({
+        ...fis,
+        total_borc: getTotalBorc(fis.satirlar),
+        total_alacak: getTotalAlacak(fis.satirlar),
+        status: fis.onay_durumu,
+      })),
+    [fisler],
+  );
+
+  const journalColumns = useMemo<ReportColumnTableCol<FisGridRow>[]>(
+    () => [
+      {
+        key: 'fis_no',
+        header: tm('accVoucherNo'),
+        size: 130,
+        cell: (fis) => <span className="text-blue-600 font-medium">{fis.fis_no}</span>,
+      },
+      {
+        key: 'fis_tarihi',
+        header: tm('date'),
+        type: 'date',
+        size: 110,
+        cell: (fis) => new Date(fis.fis_tarihi).toLocaleDateString('tr-TR'),
+      },
+      {
+        key: 'aciklama',
+        header: tm('description'),
+        size: 220,
+        cell: (fis) => <span className="truncate max-w-xs block">{fis.aciklama}</span>,
+      },
+      {
+        key: 'total_borc',
+        header: tm('directionDebtShort'),
+        type: 'number',
+        align: 'right',
+        size: 120,
+        footerSum: true,
+        cell: (fis) =>
+          fis.total_borc.toLocaleString('tr-TR', { minimumFractionDigits: 2 }),
+      },
+      {
+        key: 'total_alacak',
+        header: tm('directionCreditShort'),
+        type: 'number',
+        align: 'right',
+        size: 120,
+        footerSum: true,
+        cell: (fis) =>
+          fis.total_alacak.toLocaleString('tr-TR', { minimumFractionDigits: 2 }),
+      },
+      {
+        key: 'status',
+        header: tm('status'),
+        size: 120,
+        cell: (fis) => (
+          <span
+            className={`px-2.5 py-1 inline-flex text-xs leading-5 font-semibold rounded-full ${
+              fis.onay_durumu === 'ONAYLANDI'
+                ? 'bg-green-100 text-green-800'
+                : fis.onay_durumu === 'TASLAK'
+                  ? 'bg-yellow-100 text-yellow-800'
+                  : 'bg-red-100 text-red-800'
+            }`}
+          >
+            {fis.onay_durumu}
+          </span>
+        ),
+      },
+      {
+        key: 'id',
+        header: tm('actions'),
+        size: 140,
+        align: 'right',
+        cell: () => (
+          <>
+            <button type="button" className="text-blue-600 hover:text-blue-900 transition-colors mr-3">
+              {tm('view')}
+            </button>
+            <button type="button" className="text-gray-400 hover:text-gray-600 transition-colors">
+              {tm('print')}
+            </button>
+          </>
+        ),
+      },
+    ],
+    [tm],
+  );
 
   if (loading) {
     return (
@@ -112,61 +205,26 @@ export function AccountingDashboard() {
       </div>
 
       {/* Fiş Listesi */}
-      <div className="bg-white rounded-xl shadow-sm border border-gray-100 overflow-hidden">
-        <table className="min-w-full divide-y divide-gray-200">
-          <thead className="bg-gray-50">
-            <tr>
-              <th className="px-6 py-3 text-left text-xs font-semibold text-gray-500 uppercase tracking-wider">{tm('accVoucherNo')}</th>
-              <th className="px-6 py-3 text-left text-xs font-semibold text-gray-500 uppercase tracking-wider">{tm('date')}</th>
-              <th className="px-6 py-3 text-left text-xs font-semibold text-gray-500 uppercase tracking-wider">{tm('description')}</th>
-              <th className="px-6 py-3 text-right text-xs font-semibold text-gray-500 uppercase tracking-wider">{tm('directionDebtShort')}</th>
-              <th className="px-6 py-3 text-right text-xs font-semibold text-gray-500 uppercase tracking-wider">{tm('directionCreditShort')}</th>
-              <th className="px-6 py-3 text-left text-xs font-semibold text-gray-500 uppercase tracking-wider">{tm('status')}</th>
-              <th className="px-6 py-3 text-right text-xs font-semibold text-gray-500 uppercase tracking-wider">{tm('actions')}</th>
-            </tr>
-          </thead>
-          <tbody className="bg-white divide-y divide-gray-200">
-            {fisler.map((fis) => (
-              <tr key={fis.id} className="hover:bg-gray-50 transition-colors">
-                <td className="px-6 py-4 whitespace-nowrap text-sm font-medium text-blue-600">{fis.fis_no}</td>
-                <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-600">
-                  {new Date(fis.fis_tarihi).toLocaleDateString('tr-TR')}
-                </td>
-                <td className="px-6 py-4 text-sm text-gray-600 truncate max-w-xs">{fis.aciklama}</td>
-                <td className="px-6 py-4 whitespace-nowrap text-sm text-right font-semibold text-gray-900">
-                  {getTotalBorc(fis.satirlar).toLocaleString('tr-TR', { minimumFractionDigits: 2 })}
-                </td>
-                <td className="px-6 py-4 whitespace-nowrap text-sm text-right font-semibold text-gray-900">
-                  {getTotalAlacak(fis.satirlar).toLocaleString('tr-TR', { minimumFractionDigits: 2 })}
-                </td>
-                <td className="px-6 py-4 whitespace-nowrap">
-                  <span className={`px-2.5 py-1 inline-flex text-xs leading-5 font-semibold rounded-full ${fis.onay_durumu === 'ONAYLANDI' ? 'bg-green-100 text-green-800' :
-                      fis.onay_durumu === 'TASLAK' ? 'bg-yellow-100 text-yellow-800' :
-                        'bg-red-100 text-red-800'
-                    }`}>
-                    {fis.onay_durumu}
-                  </span>
-                </td>
-                <td className="px-6 py-4 whitespace-nowrap text-right text-sm font-medium">
-                  <button className="text-blue-600 hover:text-blue-900 transition-colors mr-3">{tm('view')}</button>
-                  <button className="text-gray-400 hover:text-gray-600 transition-colors">{tm('print')}</button>
-                </td>
-              </tr>
-            ))}
-          </tbody>
-        </table>
-
-        {fisler.length === 0 && (
+      <div className="bg-white rounded-xl shadow-sm border border-gray-100 overflow-hidden p-4">
+        {fisler.length === 0 ? (
           <div className="text-center py-20 bg-white">
             <AlertCircle className="w-12 h-12 text-gray-300 mx-auto mb-4" />
             <p className="text-gray-500 text-lg">{tm('accNoJournalYet')}</p>
             <button
+              type="button"
               onClick={() => setShowNewFisModal(true)}
               className="mt-4 text-blue-600 font-medium hover:underline"
             >
               {tm('accCreateFirstVoucher')}
             </button>
           </div>
+        ) : (
+          <ReportColumnTable
+            data={journalRows}
+            columns={journalColumns}
+            height={520}
+            storageNamespace="accounting-journal-dashboard"
+          />
         )}
       </div>
 

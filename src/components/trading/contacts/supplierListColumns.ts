@@ -1,7 +1,8 @@
 /** Cari hesaplar listesi kolon görünürlüğü (localStorage). */
 
 /** v3: Benzersiz ID (UUID) varsayılan gizli; eski v2 tercihlerinden UUID açık taşıma. */
-export const SUPPLIER_LIST_COLUMN_VISIBILITY_KEY = 'retailex_supplierList_columnVisibility_v4';
+/** v5: Durum/İşlem (isActive/actions) varsayılan gizli — eski v4 tercihlerini sıfırla */
+export const SUPPLIER_LIST_COLUMN_VISIBILITY_KEY = 'retailex_supplierList_columnVisibility_v5';
 export const SUPPLIER_LIST_COLUMN_ORDER_KEY = 'retailex_supplierList_columnOrder_v1';
 
 /**

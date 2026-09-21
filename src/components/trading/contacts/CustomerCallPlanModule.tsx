@@ -915,50 +915,52 @@ export function CustomerCallPlanModule() {
           <>
         <div className="rounded-xl border border-slate-200 bg-white p-3 shadow-sm">
           <div className="mb-3 flex flex-wrap items-end gap-3">
-            <div className="min-w-[200px] flex-1">
-              <label className="mb-1 block text-[10px] font-bold uppercase tracking-wider text-slate-500">{tm('callPlanWeekSelect')}</label>
-              <select
-                value={listWeekStart}
-                onChange={e => setListWeekStart(e.target.value)}
-                className="w-full rounded-lg border border-slate-200 px-3 py-2 text-sm font-semibold text-slate-800 outline-none focus:ring-2 focus:ring-amber-500"
-              >
-                {listWeekOptions.map(week => (
-                  <option key={week} value={week}>
-                    {week === customerCallPlanWeeklyAPI.getCurrentWeekStart()
-                      ? `${tm('callPlanCurrentWeek')} (${formatCallPlanWeekRange(week)})`
-                      : formatCallPlanWeekRange(week)}
-                  </option>
-                ))}
-              </select>
+            <div className="flex min-w-[200px] flex-1 flex-wrap items-end gap-2 sm:gap-3">
+              <div className="min-w-[180px] flex-1 sm:max-w-xs">
+                <label className="mb-1 block text-[10px] font-bold uppercase tracking-wider text-slate-500">{tm('callPlanWeekSelect')}</label>
+                <select
+                  value={listWeekStart}
+                  onChange={e => setListWeekStart(e.target.value)}
+                  className="w-full rounded-lg border border-slate-200 px-3 py-2 text-sm font-semibold text-slate-800 outline-none focus:ring-2 focus:ring-amber-500"
+                >
+                  {listWeekOptions.map(week => (
+                    <option key={week} value={week}>
+                      {week === customerCallPlanWeeklyAPI.getCurrentWeekStart()
+                        ? `${tm('callPlanCurrentWeek')} (${formatCallPlanWeekRange(week)})`
+                        : formatCallPlanWeekRange(week)}
+                    </option>
+                  ))}
+                </select>
+              </div>
+              {isListCurrentWeek ? (
+                <span className="mb-0.5 shrink-0 rounded-full bg-amber-50 px-3 py-1 text-[10px] font-black uppercase tracking-wide text-amber-700">
+                  {tm('callPlanLiveWeekBadge')}
+                </span>
+              ) : (
+                <span className="mb-0.5 shrink-0 rounded-full bg-slate-100 px-3 py-1 text-[10px] font-black uppercase tracking-wide text-slate-600">
+                  {tm('callPlanArchivedBadge')}
+                </span>
+              )}
             </div>
-            {isListCurrentWeek ? (
-              <span className="rounded-full bg-amber-50 px-3 py-1 text-[10px] font-black uppercase tracking-wide text-amber-700">
-                {tm('callPlanLiveWeekBadge')}
-              </span>
-            ) : (
-              <span className="rounded-full bg-slate-100 px-3 py-1 text-[10px] font-black uppercase tracking-wide text-slate-600">
-                {tm('callPlanArchivedBadge')}
-              </span>
-            )}
-          </div>
-          <div className="mb-3 flex flex-wrap gap-2">
-            <button
-              type="button"
-              onClick={() => setDayFilter('all')}
-              className={`rounded-full px-3 py-1.5 text-xs font-black ${dayFilter === 'all' ? 'bg-amber-600 text-white' : 'bg-slate-100 text-slate-600 hover:bg-slate-200'}`}
-            >
-              {tm('all')}
-            </button>
-            {getLocalizedWeekdayLabels(dateLocale).map(day => (
+            <div className="flex min-w-0 flex-wrap items-center gap-2">
               <button
-                key={day.value}
                 type="button"
-                onClick={() => setDayFilter(day.value)}
-                className={`rounded-full px-3 py-1.5 text-xs font-black ${dayFilter === day.value ? 'bg-blue-600 text-white' : 'bg-slate-100 text-slate-600 hover:bg-slate-200'}`}
+                onClick={() => setDayFilter('all')}
+                className={`rounded-full px-3 py-1.5 text-xs font-black ${dayFilter === 'all' ? 'bg-amber-600 text-white' : 'bg-slate-100 text-slate-600 hover:bg-slate-200'}`}
               >
-                {day.label}
+                {tm('all')}
               </button>
-            ))}
+              {getLocalizedWeekdayLabels(dateLocale).map(day => (
+                <button
+                  key={day.value}
+                  type="button"
+                  onClick={() => setDayFilter(day.value)}
+                  className={`rounded-full px-3 py-1.5 text-xs font-black ${dayFilter === day.value ? 'bg-blue-600 text-white' : 'bg-slate-100 text-slate-600 hover:bg-slate-200'}`}
+                >
+                  {day.label}
+                </button>
+              ))}
+            </div>
           </div>
           <div className="relative">
             <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />

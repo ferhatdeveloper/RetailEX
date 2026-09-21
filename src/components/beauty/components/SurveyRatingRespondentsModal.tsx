@@ -1,9 +1,10 @@
-import React from 'react';
+import React, { useMemo } from 'react';
 import { Phone, Star, User, X } from 'lucide-react';
 import { PercentBodyModal, PercentBodyModalScrollBody } from '../../shared/PercentBodyModal';
 import { useLanguage } from '../../../contexts/LanguageContext';
 import type { BeautySurveyResponseRow } from '../../../types/beauty';
 import { cn } from '../../ui/utils';
+import { ReportColumnTable, type ReportColumnTableCol } from '../../reports/shared/ReportDataGrid';
 
 export type SurveyRatingDrillDown = {
     star: number;
@@ -74,6 +75,96 @@ export function SurveyRatingRespondentsModal({ drill, rows, onClose }: Props) {
         return typeof ans?.rating === 'number' ? ratingStar(ans.rating) : null;
     };
 
+    type DrillGridRow = BeautySurveyResponseRow & { display_star: number; appt_when: string };
+
+    const gridRows = useMemo<DrillGridRow[]>(
+        () =>
+            rows.map((r) => ({
+                ...r,
+                display_star: questionRating(r) ?? ratingStar(r.overall_rating),
+                appt_when: [r.appointment_date ?? '', r.appointment_time ?? ''].filter(Boolean).join(' ') || '—',
+            })),
+        [rows, drill.questionId],
+    );
+
+    const gridColumns = useMemo<ReportColumnTableCol<DrillGridRow>[]>(
+        () => [
+            {
+                key: 'display_star',
+                header: tm('bSurveyReportScore'),
+                type: 'number',
+                size: 90,
+                cell: (r) => (
+                    <span
+                        className={cn(
+                            'inline-flex items-center gap-1 px-2 py-0.5 rounded-full border text-[11px] font-black tabular-nums',
+                            starBadgeClass(r.display_star),
+                        )}
+                    >
+                        <Star size={11} className="fill-current" />
+                        {r.display_star}
+                        {r.would_recommend ? ' ✓' : ''}
+                    </span>
+                ),
+            },
+            {
+                key: 'customer_name',
+                header: tm('customer'),
+                size: 160,
+                cell: (r) => (
+                    <div className="flex items-start gap-1.5 font-medium text-gray-800">
+                        <User size={12} className="text-gray-400 mt-0.5 shrink-0" />
+                        <span>{r.customer_name}</span>
+                    </div>
+                ),
+            },
+            {
+                key: 'customer_phone',
+                header: tm('bSurveyReportCustomerPhone'),
+                size: 140,
+                cell: (r) =>
+                    r.customer_phone ? (
+                        <a
+                            href={`tel:${r.customer_phone.replace(/\s/g, '')}`}
+                            className="inline-flex items-center gap-1 text-violet-700 hover:underline font-semibold"
+                            onClick={(e) => e.stopPropagation()}
+                        >
+                            <Phone size={11} />
+                            {r.customer_phone}
+                        </a>
+                    ) : (
+                        '—'
+                    ),
+            },
+            {
+                key: 'service_name',
+                header: tm('bSurveyReportLastService'),
+                size: 160,
+                cell: (r) => r.service_name ?? '—',
+            },
+            {
+                key: 'specialist_name',
+                header: tm('bSurveyReportLegacyStaff'),
+                size: 140,
+                cell: (r) => r.specialist_name ?? '—',
+            },
+            { key: 'appt_when', header: tm('bSurveyReportApptDate'), size: 140 },
+            {
+                key: 'created_at',
+                header: tm('bSurveyReportSurveyDate'),
+                size: 140,
+                cell: (r) => formatDateTime(r.created_at),
+            },
+            {
+                key: 'comment',
+                header: tm('bSurveyReportComment'),
+                size: 200,
+                cell: (r) => r.comment?.trim() || '—',
+            },
+        ],
+        [tm],
+    );
+
     return (
         <PercentBodyModal onClose={onClose} size="wide" ariaLabel={title}>
             <div
@@ -107,85 +198,13 @@ export function SurveyRatingRespondentsModal({ drill, rows, onClose }: Props) {
                         {tm('bSurveyReportNoData')}
                     </p>
                 ) : (
-                    <div className="overflow-x-auto">
-                        <table className="w-full text-xs">
-                            <thead>
-                                <tr className="bg-gray-50/90 text-left text-[10px] font-black uppercase tracking-wider text-gray-400 border-b border-gray-100 sticky top-0 z-10">
-                                    <th className="py-2.5 px-3">{tm('bSurveyReportScore')}</th>
-                                    <th className="py-2.5 px-3">{tm('customer')}</th>
-                                    <th className="py-2.5 px-3">{tm('bSurveyReportCustomerPhone')}</th>
-                                    <th className="py-2.5 px-3">{tm('bSurveyReportLastService')}</th>
-                                    <th className="py-2.5 px-3">{tm('bSurveyReportLegacyStaff')}</th>
-                                    <th className="py-2.5 px-3">{tm('bSurveyReportApptDate')}</th>
-                                    <th className="py-2.5 px-3">{tm('bSurveyReportSurveyDate')}</th>
-                                    <th className="py-2.5 px-3">{tm('bSurveyReportComment')}</th>
-                                </tr>
-                            </thead>
-                            <tbody>
-                                {rows.map((r) => {
-                                    const star = questionRating(r) ?? ratingStar(r.overall_rating);
-                                    const apptWhen = [
-                                        r.appointment_date ?? '',
-                                        r.appointment_time ?? '',
-                                    ]
-                                        .filter(Boolean)
-                                        .join(' ');
-                                    return (
-                                        <tr
-                                            key={r.id}
-                                            className="border-b border-gray-50 hover:bg-violet-50/25 align-top"
-                                        >
-                                            <td className="py-2.5 px-3 whitespace-nowrap">
-                                                <span
-                                                    className={cn(
-                                                        'inline-flex items-center gap-1 px-2 py-0.5 rounded-full border text-[11px] font-black tabular-nums',
-                                                        starBadgeClass(star),
-                                                    )}
-                                                >
-                                                    <Star size={11} className="fill-current" />
-                                                    {star}
-                                                    {r.would_recommend ? ' ✓' : ''}
-                                                </span>
-                                            </td>
-                                            <td className="py-2.5 px-3">
-                                                <div className="flex items-start gap-1.5 font-medium text-gray-800">
-                                                    <User size={12} className="text-gray-400 mt-0.5 shrink-0" />
-                                                    <span>{r.customer_name}</span>
-                                                </div>
-                                            </td>
-                                            <td className="py-2.5 px-3 text-gray-600 whitespace-nowrap">
-                                                {r.customer_phone ? (
-                                                    <a
-                                                        href={`tel:${r.customer_phone.replace(/\s/g, '')}`}
-                                                        className="inline-flex items-center gap-1 text-violet-700 hover:underline font-semibold"
-                                                    >
-                                                        <Phone size={11} />
-                                                        {r.customer_phone}
-                                                    </a>
-                                                ) : (
-                                                    '—'
-                                                )}
-                                            </td>
-                                            <td className="py-2.5 px-3 text-gray-700 max-w-[10rem]">
-                                                {r.service_name ?? '—'}
-                                            </td>
-                                            <td className="py-2.5 px-3 text-gray-700">
-                                                {r.specialist_name ?? '—'}
-                                            </td>
-                                            <td className="py-2.5 px-3 text-gray-600 whitespace-nowrap">
-                                                {apptWhen || '—'}
-                                            </td>
-                                            <td className="py-2.5 px-3 text-gray-500 whitespace-nowrap">
-                                                {formatDateTime(r.created_at)}
-                                            </td>
-                                            <td className="py-2.5 px-3 text-gray-600 max-w-xs">
-                                                {r.comment?.trim() || '—'}
-                                            </td>
-                                        </tr>
-                                    );
-                                })}
-                            </tbody>
-                        </table>
+                    <div className="p-4 min-h-[320px]">
+                        <ReportColumnTable
+                            data={gridRows}
+                            columns={gridColumns}
+                            height="min(70vh, 640px)"
+                            storageNamespace="beauty-survey-rating-drill"
+                        />
                     </div>
                 )}
             </PercentBodyModalScrollBody>
