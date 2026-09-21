@@ -188,13 +188,12 @@ export const InvoiceHeader: React.FC<InvoiceHeaderProps> = ({
     const fieldLabelClass =
         'block mb-1 text-[11px] font-semibold text-gray-500 dark:text-gray-300 uppercase tracking-wide';
     /**
-     * Collapsed: sola yaslı kompakt kart — 2 eşit sütun; satırlar dikey hizalı.
-     * Tam genişliğe yayılmaz; 4 alanlı “şerit” yok.
+     * Collapsed: sola yaslı kompakt 2×3 — her zaman 2 sütun (tek sütuna düşmez).
+     * Tam genişliğe yayılmaz; alanlar yaklaşık eşit genişlik (~15.5rem).
      */
     const compactCardClass = 'w-fit max-w-full';
-    const compactGridClass =
-        'grid gap-x-3 gap-y-2.5 max-w-full grid-cols-1 sm:[grid-template-columns:repeat(2,minmax(0,15rem))]';
-    const compactCellClass = 'min-w-0 flex flex-col';
+    const compactGridClass = 'inline-grid grid-cols-2 gap-x-3 gap-y-2 max-w-full';
+    const compactCellClass = 'min-w-0 w-[15.5rem] max-w-full flex flex-col';
     /** Tek yükseklik + birleşik input+(...) kontrol */
     const fieldInputClass =
         'min-w-0 h-8 px-2 border border-gray-300 dark:border-gray-600 text-sm leading-none bg-white dark:bg-gray-800 focus:outline-none focus:ring-1 focus:ring-blue-500';
