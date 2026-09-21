@@ -713,22 +713,10 @@ export const InvoiceHeader: React.FC<InvoiceHeaderProps> = ({
                 <div className={compactCardClass}>
                     {/*
                       Sola yaslı kompakt kart — 2 eşit sütun, 3 satır:
-                      A: Ödeme + Müşteri | B: Fatura No + Tarih | C: Belge No + Açıklama
+                      A: Fatura No + Tarih | B: Ödeme + Müşteri | C: Belge No + Açıklama
                     */}
                     <div className={compactGridClass}>
                         {/* Satır A */}
-                        <div className={compactCellClass}>
-                            <label className={fieldLabelClass}>{tm('paymentMethodLabel')}</label>
-                            {paymentModalTriggerEl}
-                            {paymentExtraLabel ? (
-                                <p className="mt-1 text-[11px] text-blue-600 dark:text-blue-400 font-medium truncate">
-                                    {paymentExtraLabel}
-                                </p>
-                            ) : null}
-                        </div>
-                        {cariSummaryEl}
-
-                        {/* Satır B */}
                         <div className={compactCellClass}>
                             <label className={fieldLabelClass}>{tm('invoiceNo')}</label>
                             <div className={inputGroupClass}>
@@ -774,6 +762,18 @@ export const InvoiceHeader: React.FC<InvoiceHeaderProps> = ({
                                 </button>
                             </div>
                         </div>
+
+                        {/* Satır B */}
+                        <div className={compactCellClass}>
+                            <label className={fieldLabelClass}>{tm('paymentMethodLabel')}</label>
+                            {paymentModalTriggerEl}
+                            {paymentExtraLabel ? (
+                                <p className="mt-1 text-[11px] text-blue-600 dark:text-blue-400 font-medium truncate">
+                                    {paymentExtraLabel}
+                                </p>
+                            ) : null}
+                        </div>
+                        {cariSummaryEl}
 
                         {/* Satır C */}
                         <div className={compactCellClass}>
