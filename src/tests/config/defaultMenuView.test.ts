@@ -15,14 +15,21 @@ describe('defaultMenuView', () => {
     expect(prefs.hidden_modules.length).toBeGreaterThan(20);
     expect(prefs.item_orders?.dashboard).toBe(1);
     expect(FACTORY_MENU_PRESET_ID).toBe('retailex-factory-default');
+    expect(prefs.hidden_modules).toContain('finance-definitions');
     expect(prefs.hidden_modules).toContain('payment-plans');
     expect(prefs.hidden_modules).toContain('cost-centers');
   });
 
-  it('upgrade v1 Ödeme Planları + Masraf Merkezleri ekler', () => {
-    expect(MENU_HIDDEN_UPGRADE_VERSION).toBe(1);
+  it('upgrade v1 Ödeme Planları + Masraf Merkezleri, v2 Tanımlar üst grubu ekler', () => {
+    expect(MENU_HIDDEN_UPGRADE_VERSION).toBe(2);
     expect(hiddenModulesForUpgradeVersion(0, 1)).toEqual(['payment-plans', 'cost-centers']);
-    expect(hiddenModulesForUpgradeVersion(1, 1)).toEqual([]);
+    expect(hiddenModulesForUpgradeVersion(1, 2)).toEqual(['finance-definitions']);
+    expect(hiddenModulesForUpgradeVersion(0, 2)).toEqual([
+      'payment-plans',
+      'cost-centers',
+      'finance-definitions',
+    ]);
+    expect(hiddenModulesForUpgradeVersion(2, 2)).toEqual([]);
   });
 
   it('applyMenuHiddenUpgrades eski custom preset’e bir kerelik ekler', () => {
@@ -44,7 +51,31 @@ describe('defaultMenuView', () => {
     expect(store.hidden_upgrade_version).toBe(MENU_HIDDEN_UPGRADE_VERSION);
     expect(store.presets[0].hidden_modules).toContain('payment-plans');
     expect(store.presets[0].hidden_modules).toContain('cost-centers');
+    expect(store.presets[0].hidden_modules).toContain('finance-definitions');
     expect(store.presets[0].hidden_modules).toContain('logaudit');
+  });
+
+  it('applyMenuHiddenUpgrades v1→v2 yalnızca finance-definitions ekler', () => {
+    const { store, changed } = applyMenuHiddenUpgrades({
+      version: 2,
+      hidden_upgrade_version: 1,
+      active_preset_id: 'custom-1',
+      presets: [
+        {
+          id: 'custom-1',
+          name: 'Özel',
+          saved_by: 'admin',
+          saved_at: '2026-01-01T00:00:00.000Z',
+          hidden_modules: ['logaudit', 'payment-plans', 'cost-centers'],
+        },
+      ],
+    });
+    expect(changed).toBe(true);
+    expect(store.hidden_upgrade_version).toBe(2);
+    expect(store.presets[0].hidden_modules).toContain('finance-definitions');
+    expect(store.presets[0].hidden_modules).toEqual(
+      expect.arrayContaining(['logaudit', 'payment-plans', 'cost-centers', 'finance-definitions']),
+    );
   });
 
   it('applyMenuHiddenUpgrades fabrika preset’i güncel DEFAULT ile değiştirir', () => {
@@ -93,5 +124,6 @@ describe('defaultMenuView', () => {
     });
     expect(merged).toContain('payment-plans');
     expect(merged).toContain('cost-centers');
+    expect(merged).toContain('finance-definitions');
   });
 });

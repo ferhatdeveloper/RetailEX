@@ -874,6 +874,12 @@ export function ManagementModule({
             return { ...item, children: filterHidden(item.children) };
           }
           return item;
+        })
+        // Çocukları tamamen gizlenmiş üst gruplar (ör. boş Tanımlar) orphan leaf olmasın
+        .filter((item) => {
+          if (Array.isArray(item.children) && item.children.length === 0) return false;
+          if (Array.isArray(item.items) && item.items.length === 0) return false;
+          return true;
         });
     };
 

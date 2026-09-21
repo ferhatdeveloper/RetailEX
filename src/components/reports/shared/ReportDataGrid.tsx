@@ -136,6 +136,10 @@ export type ReportColumnTableCol<T> = {
   type?: 'text' | 'number' | 'date' | 'currency';
   align?: 'left' | 'right' | 'center';
   size?: number;
+  minSize?: number;
+  maxSize?: number;
+  /** false → kolon başlığında huni yok (ör. gün 1–31) */
+  enableColumnFilter?: boolean;
   cell?: (row: T) => ReactNode;
   footerSum?: boolean;
   footerFormat?: (sum: number, rows: T[]) => ReactNode;
@@ -154,6 +158,8 @@ export function ReportColumnTable<T extends object>({
   storageNamespace,
   columnOrderStorageKey,
   groupByColumnId,
+  enableGrouping,
+  enableFiltering,
 }: {
   data: T[];
   columns: ReportColumnTableCol<T>[];
@@ -165,6 +171,9 @@ export function ReportColumnTable<T extends object>({
   columnOrderStorageKey?: string;
   /** Varsayılan grup kolonu (kullanıcı kolon başlığından değiştirebilir) */
   groupByColumnId?: string | null;
+  /** PDKS gün ızgarası gibi sık kolonlarda grup ikonunu kapat */
+  enableGrouping?: boolean;
+  enableFiltering?: boolean;
 }) {
   const { selectedFirm } = useFirmaDonem();
   const footerCurrency = useMemo(
@@ -180,6 +189,9 @@ export function ReportColumnTable<T extends object>({
           header: c.header,
           align: c.align,
           size: c.size,
+          minSize: c.minSize,
+          maxSize: c.maxSize,
+          enableColumnFilter: c.enableColumnFilter,
           filterKind: c.type === 'date' ? 'date' : c.type === 'number' || c.type === 'currency' ? 'number' : 'text',
           type: c.type === 'currency' ? 'currency' : c.type === 'number' ? 'number' : c.type === 'date' ? 'date' : undefined,
           cell: c.cell,
@@ -219,6 +231,8 @@ export function ReportColumnTable<T extends object>({
         storageNamespace={storageNamespace}
         columnOrderStorageKey={columnOrderStorageKey}
         groupByColumnId={groupByColumnId}
+        enableGrouping={enableGrouping}
+        enableFiltering={enableFiltering}
         height="100%"
       />
     </div>

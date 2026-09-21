@@ -161,3 +161,4 @@ Restoran sohbetinde eklenen tek yeni tablo: **rest.return_log**. Diğer özellik
 - `160_menu_hide_payment_plans_cost_centers.sql` — `payment-plans` + `cost-centers` tüm menü preset’lerinde varsayılan gizli (Menü Yönetimi’nden açılır).
 - `161_report_menu_params_debt_aging_collection_due.sql` — `report_menu_params` içine `debt-aging` + `collection-due: false` (yoksa ekler); Borç/Alacak Yaşlandırma ve Vade/Tahsilat Takibi varsayılan kapalı.
 - `162_report_menu_params_stock_aging.sql` — `report_menu_params` içine `stock-aging: false` (yoksa ekler); Stok Yaşlandırma varsayılan kapalı.
+- `163_menu_hide_finance_definitions.sql` — `finance-definitions` (Finans → Tanımlar) tüm menü preset’lerinde varsayılan gizli; boş üst grup orphan kalmasın (Menü Yönetimi’nden açılır).

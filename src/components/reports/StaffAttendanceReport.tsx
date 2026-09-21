@@ -8,6 +8,7 @@
  *  - `extraPayment` = fazla mesai / prim / ikramiye; Brüt Hak = Toplam Maaş + extra.
  *  - Yıl/ay filtresi tek tablo gösterir; birden fazla ay seçilmez.
  *  - "1" (var) → maaş gün sayısına +1; "0" (yok) → hak kazanmaz.
+ *  - Gün hücresine tıklayınca giriş/çıkış saatleri manuel kaydedilir (staff_attendance).
  */
 import { useLanguage } from '../../contexts/LanguageContext';
 import { useTheme } from '../../contexts/ThemeContext';
@@ -16,12 +17,17 @@ import { usePermission } from '../../shared/hooks/usePermission';
 import { formatNumber } from '../../utils/formatNumber';
 import { getReportingCurrency } from '../../utils/currency';
 import { erpReportsAPI } from '../../services/api/erpReports';
+import {
+  staffDbApi,
+  type StaffAttendanceStatus,
+} from '../../services/staffManagementService';
 import { beautyService } from '../../services/beautyService';
 import { toast } from 'sonner';
 import { Select } from 'antd';
-import { Download, Loader2, RefreshCw } from 'lucide-react';
+import { Download, Loader2, RefreshCw, X } from 'lucide-react';
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { ReportColumnTable, type ReportColumnTableCol } from './shared/ReportDataGrid';
+import { PercentBodyModal, PercentBodyModalScrollBody } from '../shared/PercentBodyModal';
 
 type SelectOption = { value: string; label: string };
 
@@ -34,8 +40,22 @@ export interface StaffAttendanceRow {
   salary: number;
   /** index 0 = 1. gün, index 30 = 31. gün */
   days: AttendanceStatus[];
+  clockIns?: (string | null)[];
+  clockOuts?: (string | null)[];
   extraPayment: number;
 }
+
+type DayEditTarget = {
+  staffId: string;
+  staffName: string;
+  department: string;
+  dayIndex: number;
+  dateStr: string;
+};
+
+/** Gün kolonları: başlık 1–31 okunabilir; filtre/grup ikonu kapalı */
+const DAY_COL_SIZE = 56;
+const DAY_COL_MIN = 48;
 
 function exportCsv(fileName: string, headers: string[], rows: string[][]): void {
   const esc = (v: string) => `"${String(v ?? '').replace(/"/g, '""')}"`;
@@ -117,6 +137,255 @@ function getDaysInMonth(year: number, month: number): number {
   return new Date(year, month, 0).getDate();
 }
 
+function attendanceDateStr(year: number, month: number, day: number): string {
+  return `${year}-${String(month).padStart(2, '0')}-${String(day).padStart(2, '0')}`;
+}
+
+function emptyClockArr(len: number): (string | null)[] {
+  return Array.from({ length: len }, () => null);
+}
+
+type DayEditModalProps = {
+  target: DayEditTarget;
+  initialStatus: AttendanceStatus;
+  initialClockIn: string | null;
+  initialClockOut: string | null;
+  onClose: () => void;
+  onSaved: () => void;
+};
+
+function DayEditModal({
+  target,
+  initialStatus,
+  initialClockIn,
+  initialClockOut,
+  onClose,
+  onSaved,
+}: DayEditModalProps) {
+  const { tm } = useLanguage();
+  const { darkMode } = useTheme();
+  const [status, setStatus] = useState<'PRESENT' | 'ABSENT' | 'clear'>(() => {
+    if (initialStatus === 0) return 'ABSENT';
+    if (initialStatus === 1) return 'PRESENT';
+    return 'PRESENT';
+  });
+  const [clockIn, setClockIn] = useState(initialClockIn || '');
+  const [clockOut, setClockOut] = useState(initialClockOut || '');
+  const [notes, setNotes] = useState('');
+  const [saving, setSaving] = useState(false);
+  const [loadingDay, setLoadingDay] = useState(true);
+
+  useEffect(() => {
+    let cancelled = false;
+    (async () => {
+      setLoadingDay(true);
+      try {
+        const day = await staffDbApi.getDayAttendance(target.staffId, target.dateStr);
+        if (cancelled || !day) return;
+        if (day.status === 'ABSENT') setStatus('ABSENT');
+        else if (day.status) setStatus('PRESENT');
+        if (day.clockIn) setClockIn(day.clockIn);
+        if (day.clockOut) setClockOut(day.clockOut);
+        if (day.notes) setNotes(day.notes);
+      } finally {
+        if (!cancelled) setLoadingDay(false);
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [target.staffId, target.dateStr]);
+
+  const inputCls = darkMode
+    ? 'w-full px-4 py-3 border border-gray-600 rounded-2xl bg-gray-900 text-gray-100 focus:ring-2 focus:ring-blue-500 outline-none font-medium'
+    : 'w-full px-4 py-3 border border-slate-200 rounded-2xl bg-white text-slate-800 focus:ring-2 focus:ring-blue-500 focus:border-blue-400 outline-none font-medium';
+  const labelCls = darkMode
+    ? 'text-[11px] font-bold text-gray-400 uppercase tracking-wider mb-1.5 block'
+    : 'text-[11px] font-bold text-slate-500 uppercase tracking-wider mb-1.5 block';
+
+  const handleSave = async () => {
+    setSaving(true);
+    try {
+      if (status === 'clear') {
+        const res = await staffDbApi.deleteDayAttendance(target.staffId, target.dateStr);
+        if (!res.ok) {
+          toast.error(res.error || tm('rprAttendanceSaveFail') || 'Kayıt silinemedi');
+          return;
+        }
+        toast.success(tm('rprAttendanceCleared') || 'Gün kaydı temizlendi');
+        onSaved();
+        onClose();
+        return;
+      }
+      const attStatus: StaffAttendanceStatus = status === 'ABSENT' ? 'ABSENT' : 'PRESENT';
+      const res = await staffDbApi.upsertDayAttendance({
+        staffId: target.staffId,
+        staffName: target.staffName,
+        department: target.department || null,
+        attendanceDate: target.dateStr,
+        status: attStatus,
+        clockIn: status === 'ABSENT' ? null : clockIn || null,
+        clockOut: status === 'ABSENT' ? null : clockOut || null,
+        notes: notes.trim() || null,
+      });
+      if (!res.ok) {
+        toast.error(res.error || tm('rprAttendanceSaveFail') || 'Kayıt başarısız');
+        return;
+      }
+      toast.success(tm('rprAttendanceSaved') || 'Yoklama kaydedildi');
+      onSaved();
+      onClose();
+    } catch (err: unknown) {
+      const msg = err instanceof Error ? err.message : String(err);
+      toast.error(msg);
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  return (
+    <PercentBodyModal
+      onClose={onClose}
+      size="compact"
+      ariaLabel={tm('rprAttendanceEditTitle') || 'Günlük giriş / çıkış'}
+    >
+      <div className="bg-gradient-to-r from-blue-600 to-indigo-600 px-6 py-5 text-white shrink-0 flex items-start justify-between gap-3">
+        <div>
+          <h3 className="text-lg font-bold">{tm('rprAttendanceEditTitle') || 'Günlük giriş / çıkış'}</h3>
+          <p className="text-sm text-blue-100 mt-1">
+            {target.staffName} — {target.dateStr}
+          </p>
+        </div>
+        <button
+          type="button"
+          onClick={onClose}
+          className="rounded-lg p-1.5 hover:bg-white/20 transition-colors"
+          aria-label={tm('close') || 'Kapat'}
+        >
+          <X className="h-5 w-5" />
+        </button>
+      </div>
+      <PercentBodyModalScrollBody className="p-6 space-y-4">
+        {loadingDay ? (
+          <div className="flex items-center justify-center py-8 text-sm opacity-60">
+            <Loader2 className="h-5 w-5 animate-spin mr-2" />
+            {tm('loading') || 'Yükleniyor…'}
+          </div>
+        ) : (
+          <>
+            <div>
+              <span className={labelCls}>{tm('rprAttendanceStatus') || 'Durum'}</span>
+              <div className="flex flex-wrap gap-2">
+                {(
+                  [
+                    { key: 'PRESENT' as const, label: tm('rprAttendancePresent') || 'Var' },
+                    { key: 'ABSENT' as const, label: tm('rprAttendanceAbsent') || 'Yok' },
+                    { key: 'clear' as const, label: tm('rprAttendanceClear') || 'Temizle' },
+                  ] as const
+                ).map((opt) => (
+                  <button
+                    key={opt.key}
+                    type="button"
+                    onClick={() => setStatus(opt.key)}
+                    className={`rounded-xl px-4 py-2 text-sm font-bold border transition-colors ${
+                      status === opt.key
+                        ? opt.key === 'ABSENT'
+                          ? 'bg-red-600 text-white border-red-600'
+                          : opt.key === 'clear'
+                            ? 'bg-slate-600 text-white border-slate-600'
+                            : 'bg-emerald-600 text-white border-emerald-600'
+                        : darkMode
+                          ? 'border-gray-600 text-gray-300 hover:bg-gray-700'
+                          : 'border-slate-200 text-slate-600 hover:bg-slate-50'
+                    }`}
+                  >
+                    {opt.label}
+                  </button>
+                ))}
+              </div>
+            </div>
+            {status === 'PRESENT' && (
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <label className={labelCls} htmlFor="pdks-clock-in">
+                    {tm('rprAttendanceClockIn') || 'Giriş saati'}
+                  </label>
+                  <input
+                    id="pdks-clock-in"
+                    type="time"
+                    value={clockIn}
+                    onChange={(e) => setClockIn(e.target.value)}
+                    className={inputCls}
+                  />
+                </div>
+                <div>
+                  <label className={labelCls} htmlFor="pdks-clock-out">
+                    {tm('rprAttendanceClockOut') || 'Çıkış saati'}
+                  </label>
+                  <input
+                    id="pdks-clock-out"
+                    type="time"
+                    value={clockOut}
+                    onChange={(e) => setClockOut(e.target.value)}
+                    className={inputCls}
+                  />
+                </div>
+              </div>
+            )}
+            {status !== 'clear' && (
+              <div>
+                <label className={labelCls} htmlFor="pdks-notes">
+                  {tm('rprAttendanceNotes') || 'Not'}
+                </label>
+                <input
+                  id="pdks-notes"
+                  type="text"
+                  value={notes}
+                  onChange={(e) => setNotes(e.target.value)}
+                  placeholder={tm('rprAttendanceNotesPh') || 'İsteğe bağlı'}
+                  className={inputCls}
+                />
+              </div>
+            )}
+          </>
+        )}
+      </PercentBodyModalScrollBody>
+      <div
+        className={`p-5 border-t flex gap-3 shrink-0 ${
+          darkMode ? 'border-gray-700 bg-gray-900/50' : 'border-slate-100 bg-slate-50/50'
+        }`}
+      >
+        <button
+          type="button"
+          onClick={onClose}
+          className={`flex-1 rounded-2xl border-2 py-3 font-bold uppercase text-sm tracking-wider active:scale-[0.98] ${
+            darkMode
+              ? 'border-gray-600 text-gray-300 hover:bg-gray-700'
+              : 'border-slate-200 text-slate-600 hover:bg-slate-100'
+          }`}
+        >
+          {tm('cancel') || 'İptal'}
+        </button>
+        <button
+          type="button"
+          disabled={saving || loadingDay}
+          onClick={() => void handleSave()}
+          className="flex-1 rounded-2xl bg-blue-600 text-white py-3 font-bold uppercase text-sm tracking-wider shadow-lg shadow-blue-200/50 hover:bg-blue-700 disabled:opacity-50 active:scale-[0.98]"
+        >
+          {saving ? (
+            <span className="inline-flex items-center gap-2 justify-center">
+              <Loader2 className="h-4 w-4 animate-spin" />
+              {tm('saving') || 'Kaydediliyor…'}
+            </span>
+          ) : (
+            tm('save') || 'Kaydet'
+          )}
+        </button>
+      </div>
+    </PercentBodyModal>
+  );
+}
+
 export function StaffAttendanceReport({
   excelAdminOnly = false,
 }: {
@@ -140,6 +409,7 @@ export function StaffAttendanceReport({
   const [staffLoading, setStaffLoading] = useState(false);
   const [rows, setRows] = useState<StaffAttendanceRow[]>([]);
   const [loading, setLoading] = useState(false);
+  const [editTarget, setEditTarget] = useState<DayEditTarget | null>(null);
 
   useEffect(() => {
     let cancelled = false;
@@ -169,17 +439,19 @@ export function StaffAttendanceReport({
         }
         if (!list.length) {
           const fb = await beautyService.getSpecialists();
-          list = (Array.isArray(fb) ? (fb as unknown as Array<Record<string, unknown>>) : []);
+          list = Array.isArray(fb) ? (fb as unknown as Array<Record<string, unknown>>) : [];
         }
         if (cancelled) return;
-        const staffOpts: SelectOption[] = list.map((s) => ({
-          value: String(s.id ?? s.specialist_id ?? s.code ?? ''),
-          label: String(s.full_name ?? s.name ?? s.title ?? s.id ?? ''),
-        })).filter((o) => o.value);
+        const staffOpts: SelectOption[] = list
+          .map((s) => ({
+            value: String(s.id ?? s.specialist_id ?? s.code ?? ''),
+            label: String(s.full_name ?? s.name ?? s.title ?? s.id ?? ''),
+          }))
+          .filter((o) => o.value);
         setStaffOptions(staffOpts);
         const deptSet = new Set<string>();
         for (const s of list) {
-          const d = s.department ?? (s as any).dept ?? null;
+          const d = s.department ?? (s as { dept?: unknown }).dept ?? null;
           if (typeof d === 'string' && d.trim()) deptSet.add(d.trim());
         }
         setDepartmentOptions(Array.from(deptSet).sort().map((d) => ({ value: d, label: d })));
@@ -220,10 +492,18 @@ export function StaffAttendanceReport({
             department: '',
             salary: 0,
             days: Array.from({ length: Math.max(dim, 31) }, () => null as AttendanceStatus),
+            clockIns: emptyClockArr(Math.max(dim, 31)),
+            clockOuts: emptyClockArr(Math.max(dim, 31)),
             extraPayment: 0,
           }));
       }
-      setRows(data);
+      setRows(
+        data.map((r) => ({
+          ...r,
+          clockIns: r.clockIns ?? emptyClockArr(31),
+          clockOuts: r.clockOuts ?? emptyClockArr(31),
+        })),
+      );
     } catch (err: unknown) {
       const msg = err instanceof Error ? err.message : String(err);
       console.error('[StaffAttendanceReport]', err);
@@ -256,11 +536,27 @@ export function StaffAttendanceReport({
     });
   }, [filtered, daysInMonth]);
 
-  const cellCls = (status: AttendanceStatus): string => {
-    if (status === 1) return 'bg-emerald-500 text-white';
-    if (status === 0) return 'bg-red-500 text-white';
-    return darkMode ? 'bg-gray-700 text-gray-500' : 'bg-gray-100 text-gray-400';
-  };
+  const cellCls = useCallback(
+    (status: AttendanceStatus): string => {
+      if (status === 1) return 'bg-emerald-500 text-white';
+      if (status === 0) return 'bg-red-500 text-white';
+      return darkMode ? 'bg-gray-700 text-gray-400 hover:bg-gray-600' : 'bg-gray-100 text-gray-500 hover:bg-gray-200';
+    },
+    [darkMode],
+  );
+
+  const openDayEdit = useCallback(
+    (row: StaffAttendanceRow, dayIndex: number) => {
+      setEditTarget({
+        staffId: row.staffId,
+        staffName: row.staffName,
+        department: row.department,
+        dayIndex,
+        dateStr: attendanceDateStr(year, month, dayIndex + 1),
+      });
+    },
+    [year, month],
+  );
 
   const yearOptions = useMemo(() => {
     const cur = new Date().getFullYear();
@@ -300,11 +596,15 @@ export function StaffAttendanceReport({
     });
   }, [enriched, daysInMonth]);
 
+  const editRow = editTarget
+    ? enriched.find((r) => r.staffId === editTarget.staffId) ?? null
+    : null;
+
   const attendanceColumns = useMemo((): ReportColumnTableCol<StaffGridRow>[] => {
     const cols: ReportColumnTableCol<StaffGridRow>[] = [
-      { key: 'rowNo', header: tm('rprColNo') || 'No', size: 48 },
-      { key: 'staffName', header: tm('rprColStaffName') || 'İsim', size: 160 },
-      { key: 'department', header: tm('rprColDepartment') || 'Departman', size: 120 },
+      { key: 'rowNo', header: tm('rprColNo') || 'No', size: 48, minSize: 40, enableColumnFilter: false },
+      { key: 'staffName', header: tm('rprColStaffName') || 'İsim', size: 160, minSize: 120 },
+      { key: 'department', header: tm('rprColDepartment') || 'Departman', size: 120, minSize: 90 },
       {
         key: 'salary',
         header: tm('rprColSalary') || 'Maaş',
@@ -317,19 +617,51 @@ export function StaffAttendanceReport({
     ];
     for (let d = 0; d < daysInMonth; d++) {
       const dayKey = `day_${d}`;
+      const dayNum = d + 1;
       cols.push({
         key: dayKey,
-        header: String(d + 1),
+        header: String(dayNum),
         align: 'center',
-        size: 36,
+        size: DAY_COL_SIZE,
+        minSize: DAY_COL_MIN,
+        enableColumnFilter: false,
         footerSum: true,
         footerFormat: (sum) => (
-          <span className="text-[10px]">{sum > 0 ? String(Math.round(sum)) : ''}</span>
+          <span className="text-[10px] font-semibold">{sum > 0 ? String(Math.round(sum)) : ''}</span>
         ),
         cell: (row) => {
-          const status = row.days[d];
-          if (status == null) return '';
-          return <span className={`inline-block min-w-[1.25rem] rounded px-0.5 ${cellCls(status)}`}>{status}</span>;
+          const status = row.days[d] as AttendanceStatus;
+          const cin = row.clockIns?.[d] ?? null;
+          const cout = row.clockOuts?.[d] ?? null;
+          const tipParts = [
+            `${tm('rprDay') || 'Gün'} ${dayNum}`,
+            cin ? `${tm('rprAttendanceClockIn') || 'Giriş'}: ${cin}` : null,
+            cout ? `${tm('rprAttendanceClockOut') || 'Çıkış'}: ${cout}` : null,
+            tm('rprAttendanceClickHint') || 'Düzenlemek için tıklayın',
+          ].filter(Boolean);
+          return (
+            <button
+              type="button"
+              title={tipParts.join(' · ')}
+              aria-label={`${row.staffName}, ${dayNum}`}
+              onClick={(e) => {
+                e.stopPropagation();
+                openDayEdit(row, d);
+              }}
+              className={`mx-auto flex min-h-[1.75rem] w-full min-w-[2.5rem] flex-col items-center justify-center rounded px-0.5 py-0.5 text-[11px] font-bold leading-tight transition-colors ${cellCls(status)}`}
+            >
+              {status == null ? (
+                <span className="opacity-50">+</span>
+              ) : status === 1 && cin ? (
+                <>
+                  <span>{cin}</span>
+                  {cout ? <span className="opacity-90 text-[9px] font-semibold">{cout}</span> : null}
+                </>
+              ) : (
+                <span>{status}</span>
+              )}
+            </button>
+          );
         },
       });
     }
@@ -373,91 +705,113 @@ export function StaffAttendanceReport({
       },
     );
     return cols;
-  }, [daysInMonth, tm, enriched.length, currency, cellCls]);
+  }, [daysInMonth, tm, enriched.length, currency, cellCls, openDayEdit]);
 
   return (
-    <ReportShell
-      title={tm('rprStaffAttendanceTitle') || 'PDKS — Personel Yoklama'}
-      subtitle={tm('rprStaffAttendanceSubtitle') || 'Aylık geliş tablosu — VIVA SOLAR personel'}
-      loading={loading}
-      onRefresh={() => void load()}
-      onExport={
-        canExportExcel
-          ? () => {
-              const header = ['No', 'İsim', 'Departman', 'Maaş'];
-              for (let d = 1; d <= daysInMonth; d++) header.push(`Gün ${d}`);
-              header.push('Toplam Gün', 'Toplam Maaş', 'Ek Ödeme', 'Brüt Hak');
-              const out = enriched.map((r, i) => {
-                const row: string[] = [String(i + 1), r.staffName, r.department, String(r.salary)];
-                for (let d = 0; d < daysInMonth; d++) {
-                  row.push(r.days[d] == null ? '' : String(r.days[d]));
-                }
-                row.push(String(r.totalDays), String(r.totalSalary), String(r.extraPayment), String(r.gross));
-                return row;
-              });
-              exportCsv(`pdks_${year}_${String(month).padStart(2, '0')}`, header, out);
-            }
-          : undefined
-      }
-      filters={
-        <div className="flex flex-wrap items-end gap-2">
-          <div className="flex flex-col gap-1">
-            <span className="text-xs font-semibold text-slate-500">{tm('rprYear') || 'Yıl'}</span>
+    <>
+      <ReportShell
+        title={tm('rprStaffAttendanceTitle') || 'PDKS — Personel Yoklama'}
+        subtitle={
+          tm('rprStaffAttendanceSubtitleEdit') ||
+          'Aylık geliş tablosu — güne tıklayarak giriş/çıkış ekleyin'
+        }
+        loading={loading}
+        onRefresh={() => void load()}
+        onExport={
+          canExportExcel
+            ? () => {
+                const header = ['No', 'İsim', 'Departman', 'Maaş'];
+                for (let d = 1; d <= daysInMonth; d++) header.push(`Gün ${d}`);
+                header.push('Toplam Gün', 'Toplam Maaş', 'Ek Ödeme', 'Brüt Hak');
+                const out = enriched.map((r, i) => {
+                  const row: string[] = [String(i + 1), r.staffName, r.department, String(r.salary)];
+                  for (let d = 0; d < daysInMonth; d++) {
+                    const st = r.days[d];
+                    const cin = r.clockIns?.[d];
+                    const cout = r.clockOuts?.[d];
+                    if (st == null) row.push('');
+                    else if (cin || cout) row.push(`${st}${cin ? ` ${cin}` : ''}${cout ? `-${cout}` : ''}`);
+                    else row.push(String(st));
+                  }
+                  row.push(String(r.totalDays), String(r.totalSalary), String(r.extraPayment), String(r.gross));
+                  return row;
+                });
+                exportCsv(`pdks_${year}_${String(month).padStart(2, '0')}`, header, out);
+              }
+            : undefined
+        }
+        filters={
+          <div className="flex flex-wrap items-end gap-2">
+            <div className="flex flex-col gap-1">
+              <span className="text-xs font-semibold text-slate-500">{tm('rprYear') || 'Yıl'}</span>
+              <Select
+                value={year}
+                onChange={(v) => setYear(Number(v))}
+                style={{ width: 110 }}
+                options={yearOptions.map((y) => ({ label: String(y), value: y }))}
+              />
+            </div>
+            <div className="flex flex-col gap-1">
+              <span className="text-xs font-semibold text-slate-500">{tm('rprMonth') || 'Ay'}</span>
+              <Select
+                value={month}
+                onChange={(v) => setMonth(Number(v))}
+                style={{ width: 130 }}
+                options={monthOptions}
+              />
+            </div>
+            <div className="flex flex-col gap-1">
+              <span className="text-xs font-semibold text-slate-500">{tm('rprDepartment') || 'Departman'}</span>
+              <Select
+                allowClear
+                value={department}
+                onChange={(v) => setDepartment(v as string | undefined)}
+                style={{ width: 170 }}
+                options={departmentOptions}
+              />
+            </div>
             <Select
-              value={year}
-              onChange={(v) => setYear(Number(v))}
-              style={{ width: 110 }}
-              options={yearOptions.map((y) => ({ label: String(y), value: y }))}
-            />
-          </div>
-          <div className="flex flex-col gap-1">
-            <span className="text-xs font-semibold text-slate-500">{tm('rprMonth') || 'Ay'}</span>
-            <Select
-              value={month}
-              onChange={(v) => setMonth(Number(v))}
-              style={{ width: 130 }}
-              options={monthOptions}
-            />
-          </div>
-          <div className="flex flex-col gap-1">
-            <span className="text-xs font-semibold text-slate-500">{tm('rprDepartment') || 'Departman'}</span>
-            <Select
+              mode="multiple"
               allowClear
-              value={department}
-              onChange={(v) => setDepartment(v as string | undefined)}
-              style={{ width: 170 }}
-              options={departmentOptions}
+              showSearch
+              optionFilterProp="label"
+              loading={staffLoading}
+              style={{ minWidth: 220 }}
+              placeholder={tm('rprFilterStaff') || 'Personel'}
+              value={staffIds}
+              onChange={(v) => setStaffIds(v as string[])}
+              options={staffOptions}
+              maxTagCount="responsive"
             />
           </div>
-          <Select
-            mode="multiple"
-            allowClear
-            showSearch
-            optionFilterProp="label"
-            loading={staffLoading}
-            style={{ minWidth: 220 }}
-            placeholder={tm('rprFilterStaff') || 'Personel'}
-            value={staffIds}
-            onChange={(v) => setStaffIds(v as string[])}
-            options={staffOptions}
-            maxTagCount="responsive"
-          />
+        }
+      >
+        <div className={`rounded-lg border p-2 ${darkMode ? 'bg-gray-800 border-gray-700' : 'bg-white border-gray-200'}`}>
+          {enriched.length === 0 && !loading ? (
+            <div className="px-3 py-8 text-center text-sm opacity-60">{tm('erpNoRows') || 'Veri yok'}</div>
+          ) : (
+            <ReportColumnTable
+              data={gridRows}
+              columns={attendanceColumns}
+              height={640}
+              footerLabel={tm('rprDailyPresence') || 'Günlük Gelen'}
+              storageNamespace={`staff-attendance-v2-${year}-${month}`}
+              enableGrouping={false}
+            />
+          )}
         </div>
-      }
-    >
-      <div className={`rounded-lg border p-2 ${darkMode ? 'bg-gray-800 border-gray-700' : 'bg-white border-gray-200'}`}>
-        {enriched.length === 0 && !loading ? (
-          <div className="px-3 py-8 text-center text-sm opacity-60">{tm('erpNoRows') || 'Veri yok'}</div>
-        ) : (
-          <ReportColumnTable
-            data={gridRows}
-            columns={attendanceColumns}
-            height={640}
-            footerLabel={tm('rprDailyPresence') || 'Günlük Gelen'}
-            storageNamespace={`staff-attendance-${year}-${month}`}
-          />
-        )}
-      </div>
-    </ReportShell>
+      </ReportShell>
+
+      {editTarget && (
+        <DayEditModal
+          target={editTarget}
+          initialStatus={editRow?.days[editTarget.dayIndex] ?? null}
+          initialClockIn={editRow?.clockIns?.[editTarget.dayIndex] ?? null}
+          initialClockOut={editRow?.clockOuts?.[editTarget.dayIndex] ?? null}
+          onClose={() => setEditTarget(null)}
+          onSaved={() => void load()}
+        />
+      )}
+    </>
   );
 }

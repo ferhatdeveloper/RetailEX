@@ -618,6 +618,66 @@ function padFirmNr(): string {
   return raw || '001';
 }
 
+function padPeriodNr(): string {
+  const raw = String(ERP_SETTINGS.periodNr ?? '01').padStart(2, '0').slice(0, 2);
+  return raw || '01';
+}
+
+/** "08:30" / "08:30:00" → HH:MM */
+function normalizeTimeHm(v: string | null | undefined): string | null {
+  if (v == null) return null;
+  const s = String(v).trim();
+  if (!s) return null;
+  const m = s.match(/^(\d{1,2}):(\d{2})(?::\d{2})?/);
+  if (!m) return null;
+  const hh = Math.min(23, Math.max(0, Number(m[1])));
+  const mm = Math.min(59, Math.max(0, Number(m[2])));
+  if (!Number.isFinite(hh) || !Number.isFinite(mm)) return null;
+  return `${String(hh).padStart(2, '0')}:${String(mm).padStart(2, '0')}`;
+}
+
+function workedMinutesFromTimes(clockIn: string | null, clockOut: string | null): number {
+  if (!clockIn || !clockOut) return 0;
+  const [ih, im] = clockIn.split(':').map(Number);
+  const [oh, om] = clockOut.split(':').map(Number);
+  const start = ih * 60 + im;
+  let end = oh * 60 + om;
+  if (end < start) end += 24 * 60; // gece vardiyası
+  return Math.max(0, end - start);
+}
+
+export type StaffAttendanceStatus =
+  | 'PRESENT'
+  | 'ABSENT'
+  | 'LATE'
+  | 'HALF_DAY'
+  | 'LEAVE'
+  | 'HOLIDAY'
+  | 'OFF';
+
+export interface StaffDayAttendance {
+  id: string | null;
+  staffId: string;
+  staffName: string;
+  department: string | null;
+  attendanceDate: string;
+  status: StaffAttendanceStatus | null;
+  clockIn: string | null;
+  clockOut: string | null;
+  notes: string | null;
+}
+
+export interface StaffDayAttendanceUpsertInput {
+  staffId: string;
+  staffName: string;
+  department?: string | null;
+  attendanceDate: string; // YYYY-MM-DD
+  status: StaffAttendanceStatus;
+  clockIn?: string | null;
+  clockOut?: string | null;
+  notes?: string | null;
+}
+
 function mapStaffRow(r: Record<string, unknown>): StaffRow {
   return {
     id: String(r.id ?? ''),
@@ -785,6 +845,129 @@ export const staffDbApi = {
         `UPDATE public.staff SET is_active = FALSE, termination_date = CURRENT_DATE
           WHERE id = $1::uuid`,
         [id],
+      );
+      return { ok: true };
+    } catch (err: unknown) {
+      const msg = err instanceof Error ? err.message : String(err);
+      return { ok: false, error: msg };
+    }
+  },
+
+  /**
+   * PDKS — tek gün yoklama kaydı (giriş/çıkış saatleri dahil).
+   * Kaynak: public.staff_attendance (migration 137).
+   */
+  async getDayAttendance(staffId: string, attendanceDate: string): Promise<StaffDayAttendance | null> {
+    const firmNr = padFirmNr();
+    const periodNr = padPeriodNr();
+    const date = String(attendanceDate || '').slice(0, 10);
+    if (!staffId || !date) return null;
+    try {
+      const { rows } = await postgres.query(
+        `SELECT id::text AS id, staff_id::text AS staff_id, staff_name, department,
+                attendance_date::text AS attendance_date, status,
+                to_char(clock_in, 'HH24:MI') AS clock_in,
+                to_char(clock_out, 'HH24:MI') AS clock_out,
+                notes
+           FROM public.staff_attendance
+          WHERE firm_nr = $1 AND period_nr = $2
+            AND staff_id = $3::uuid AND attendance_date = $4::date
+          LIMIT 1`,
+        [firmNr, periodNr, staffId, date],
+      );
+      const r = (rows as Array<Record<string, unknown>>)?.[0];
+      if (!r) return null;
+      return {
+        id: r.id == null ? null : String(r.id),
+        staffId: String(r.staff_id ?? staffId),
+        staffName: String(r.staff_name ?? ''),
+        department: r.department == null ? null : String(r.department),
+        attendanceDate: String(r.attendance_date ?? date).slice(0, 10),
+        status: (r.status as StaffAttendanceStatus) || null,
+        clockIn: normalizeTimeHm(r.clock_in == null ? null : String(r.clock_in)),
+        clockOut: normalizeTimeHm(r.clock_out == null ? null : String(r.clock_out)),
+        notes: r.notes == null ? null : String(r.notes),
+      };
+    } catch (err) {
+      console.warn('[staffDbApi.getDayAttendance]', err);
+      return null;
+    }
+  },
+
+  /**
+   * PDKS — günlük giriş/çıkış upsert (UNIQUE firm+period+staff+date).
+   */
+  async upsertDayAttendance(
+    input: StaffDayAttendanceUpsertInput,
+  ): Promise<{ ok: boolean; id?: string; error?: string }> {
+    const firmNr = padFirmNr();
+    const periodNr = padPeriodNr();
+    const date = String(input.attendanceDate || '').slice(0, 10);
+    if (!input.staffId || !date || !input.status) {
+      return { ok: false, error: 'Eksik parametre' };
+    }
+    const clockIn =
+      input.status === 'ABSENT' || input.status === 'LEAVE' || input.status === 'HOLIDAY' || input.status === 'OFF'
+        ? null
+        : normalizeTimeHm(input.clockIn);
+    const clockOut =
+      input.status === 'ABSENT' || input.status === 'LEAVE' || input.status === 'HOLIDAY' || input.status === 'OFF'
+        ? null
+        : normalizeTimeHm(input.clockOut);
+    const worked = workedMinutesFromTimes(clockIn, clockOut);
+    try {
+      const { rows } = await postgres.query(
+        `INSERT INTO public.staff_attendance (
+           firm_nr, period_nr, staff_id, staff_name, department, attendance_date,
+           clock_in, clock_out, worked_minutes, status, source, notes
+         ) VALUES (
+           $1, $2, $3::uuid, $4, $5, $6::date,
+           $7::time, $8::time, $9, $10, 'manual', $11
+         )
+         ON CONFLICT (firm_nr, period_nr, staff_id, attendance_date) DO UPDATE SET
+           staff_name     = EXCLUDED.staff_name,
+           department     = COALESCE(EXCLUDED.department, public.staff_attendance.department),
+           clock_in       = EXCLUDED.clock_in,
+           clock_out      = EXCLUDED.clock_out,
+           worked_minutes = EXCLUDED.worked_minutes,
+           status         = EXCLUDED.status,
+           source         = 'manual',
+           notes          = EXCLUDED.notes,
+           updated_at     = CURRENT_TIMESTAMP
+         RETURNING id::text`,
+        [
+          firmNr,
+          periodNr,
+          input.staffId,
+          input.staffName || '',
+          input.department ?? null,
+          date,
+          clockIn,
+          clockOut,
+          worked,
+          input.status,
+          input.notes ?? null,
+        ],
+      );
+      return { ok: true, id: String((rows as Array<Record<string, unknown>>)?.[0]?.id ?? '') };
+    } catch (err: unknown) {
+      const msg = err instanceof Error ? err.message : String(err);
+      return { ok: false, error: msg };
+    }
+  },
+
+  /** PDKS — gün kaydını sil (hücreyi boşalt). */
+  async deleteDayAttendance(staffId: string, attendanceDate: string): Promise<{ ok: boolean; error?: string }> {
+    const firmNr = padFirmNr();
+    const periodNr = padPeriodNr();
+    const date = String(attendanceDate || '').slice(0, 10);
+    if (!staffId || !date) return { ok: false, error: 'Eksik parametre' };
+    try {
+      await postgres.query(
+        `DELETE FROM public.staff_attendance
+          WHERE firm_nr = $1 AND period_nr = $2
+            AND staff_id = $3::uuid AND attendance_date = $4::date`,
+        [firmNr, periodNr, staffId, date],
       );
       return { ok: true };
     } catch (err: unknown) {

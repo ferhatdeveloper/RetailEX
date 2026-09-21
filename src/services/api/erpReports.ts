@@ -2329,6 +2329,8 @@ export const erpReportsAPI = {
               END
               ORDER BY d.day
             ) AS days,
+            array_agg(to_char(a.clock_in, 'HH24:MI') ORDER BY d.day) AS clock_ins,
+            array_agg(to_char(a.clock_out, 'HH24:MI') ORDER BY d.day) AS clock_outs,
             0::numeric AS extra_payment
           FROM staff_base sb
           CROSS JOIN days d
@@ -2353,6 +2355,14 @@ export const erpReportsAPI = {
             if (raw === 1 || raw === '1') return 1;
             if (raw === 0 || raw === '0') return 0;
             return null;
+          }),
+          clockIns: Array.from({ length: 31 }, (_, i) => {
+            const v = r.clock_ins?.[i];
+            return v == null || v === '' ? null : String(v).slice(0, 5);
+          }),
+          clockOuts: Array.from({ length: 31 }, (_, i) => {
+            const v = r.clock_outs?.[i];
+            return v == null || v === '' ? null : String(v).slice(0, 5);
           }),
           extraPayment: Number(r.extra_payment ?? 0),
         }));
@@ -2397,7 +2407,7 @@ export const erpReportsAPI = {
           .get<Record<string, unknown>[]>(
             `/staff_attendance`,
             {
-              select: 'staff_id,attendance_date,status',
+              select: 'staff_id,attendance_date,status,clock_in,clock_out',
               firm_nr: `eq.${firmNr}`,
               period_nr: `eq.${periodNr}`,
               attendance_date: `gte.${year}-${String(month).padStart(2, '0')}-01`,
@@ -2407,33 +2417,39 @@ export const erpReportsAPI = {
           )
           .catch(() => [] as Record<string, unknown>[]),
       ]);
-      const byStaff = new Map<string, Map<number, string>>();
+      const byStaff = new Map<string, Map<number, { status: string; clockIn: string | null; clockOut: string | null }>>();
       for (const a of attRows || []) {
         const sid = String(a.staff_id || '');
         if (!sid) continue;
         const d = String(a.attendance_date || '').slice(0, 10);
         const day = Number(d.slice(8, 10));
         if (!Number.isFinite(day) || day < 1 || day > daysInMonth) continue;
-        const m = byStaff.get(sid) || new Map<number, string>();
-        m.set(day, String(a.status || ''));
+        const m = byStaff.get(sid) || new Map();
+        const cin = a.clock_in == null ? null : String(a.clock_in).slice(0, 5);
+        const cout = a.clock_out == null ? null : String(a.clock_out).slice(0, 5);
+        m.set(day, { status: String(a.status || ''), clockIn: cin, clockOut: cout });
         byStaff.set(sid, m);
       }
       return (staffRows || []).map((s) => {
         const sid = String(s.id ?? '');
-        const m = byStaff.get(sid) || new Map<number, string>();
+        const m = byStaff.get(sid) || new Map();
         const days: (1 | 0 | null)[] = Array.from({ length: 31 }, (_, i) => {
-          const status = m.get(i + 1);
-          if (!status) return null;
-          if (status === 'ABSENT') return 0;
-          if (status === 'PRESENT' || status === 'LATE' || status === 'HALF_DAY') return 1;
+          const rec = m.get(i + 1);
+          if (!rec?.status) return null;
+          if (rec.status === 'ABSENT') return 0;
+          if (rec.status === 'PRESENT' || rec.status === 'LATE' || rec.status === 'HALF_DAY') return 1;
           return null;
         });
+        const clockIns = Array.from({ length: 31 }, (_, i) => m.get(i + 1)?.clockIn ?? null);
+        const clockOuts = Array.from({ length: 31 }, (_, i) => m.get(i + 1)?.clockOut ?? null);
         return {
           staffId: sid,
           staffName: String(s.full_name ?? ''),
           department: String(s.department ?? ''),
           salary: Number(s.base_salary ?? 0),
           days,
+          clockIns,
+          clockOuts,
           extraPayment: 0,
         };
       });
