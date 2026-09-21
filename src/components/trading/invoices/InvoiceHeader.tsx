@@ -187,16 +187,22 @@ export const InvoiceHeader: React.FC<InvoiceHeaderProps> = ({
 
     const fieldLabelClass =
         'block mb-1 text-[11px] font-semibold text-gray-500 dark:text-gray-300 uppercase tracking-wide';
-    /** Kompakt collapsed alan — tam genişliğe yayılmaz */
+    /**
+     * Collapsed: sola yaslı kompakt kart — 2 eşit sütun; satırlar dikey hizalı.
+     * Tam genişliğe yayılmaz; 4 alanlı “şerit” yok.
+     */
+    const compactCardClass = 'w-fit max-w-full';
+    const compactGridClass =
+        'grid gap-x-3 gap-y-2.5 max-w-full grid-cols-1 sm:[grid-template-columns:repeat(2,minmax(0,15rem))]';
+    const compactCellClass = 'min-w-0 flex flex-col';
+    /** Tek yükseklik + birleşik input+(...) kontrol */
     const fieldInputClass =
-        'min-w-0 px-2 py-1.5 border border-gray-300 dark:border-gray-600 text-sm bg-white dark:bg-gray-800 focus:outline-none focus:ring-1 focus:ring-blue-500';
-    const fieldInputSoloClass = `${fieldInputClass} rounded`;
-    /** Input + (...) birleşik grup: gap yok, tek kenarlık */
-    const inputGroupClass = 'inline-flex items-stretch min-w-0 max-w-full';
-    const inputGroupFieldClass = `${fieldInputClass} rounded-l rounded-r-none border-r-0`;
+        'min-w-0 h-8 px-2 border border-gray-300 dark:border-gray-600 text-sm leading-none bg-white dark:bg-gray-800 focus:outline-none focus:ring-1 focus:ring-blue-500';
+    const fieldInputSoloClass = `${fieldInputClass} w-full rounded`;
+    const inputGroupClass = 'flex items-stretch w-full min-w-0';
+    const inputGroupFieldClass = `${fieldInputClass} flex-1 rounded-l rounded-r-none border-r-0`;
     const inputGroupBtnClass =
-        'shrink-0 inline-flex items-center justify-center px-1.5 border border-gray-300 dark:border-gray-600 rounded-r rounded-l-none bg-white dark:bg-gray-800 hover:bg-gray-50 dark:hover:bg-gray-700';
-    const compactRowClass = 'flex flex-wrap items-end gap-x-3 gap-y-2 w-fit max-w-full';
+        'shrink-0 inline-flex items-center justify-center w-8 h-8 border border-gray-300 dark:border-gray-600 rounded-r rounded-l-none bg-white dark:bg-gray-800 hover:bg-gray-50 dark:hover:bg-gray-700';
 
     const paymentModalTriggerEl = (
         <div className={inputGroupClass}>
@@ -204,7 +210,7 @@ export const InvoiceHeader: React.FC<InvoiceHeaderProps> = ({
                 type="text"
                 readOnly
                 value={paymentDisplayLabel}
-                className={`${inputGroupFieldClass} w-36 cursor-pointer truncate`}
+                className={`${inputGroupFieldClass} cursor-pointer truncate`}
                 onClick={() => setShowPaymentInfoModal(true)}
             />
             <button
@@ -237,24 +243,24 @@ export const InvoiceHeader: React.FC<InvoiceHeaderProps> = ({
         (!isPurchaseSide && Boolean(customerCode || customerTitle));
 
     const cariSummaryEl = (
-        <div className="min-w-0 w-fit">
+        <div className={compactCellClass}>
             <label className={`${fieldLabelClass} ${cariTextColor}`}>
                 {isPurchaseSide ? tm('supplier') : tm('customer')}
             </label>
-            <div className={`${inputGroupClass} gap-1`}>
+            <div className="flex items-stretch gap-1 w-full min-w-0">
                 <div className={inputGroupClass}>
                     <input
                         type="text"
                         value={isPurchaseSide ? supplierTitle : customerTitle}
                         readOnly
                         placeholder={`${tm('selectCurrent')}...`}
-                        className={`w-52 max-w-[min(13rem,40vw)] min-w-0 px-2 py-1.5 border-2 border-r-0 rounded-l rounded-r-none text-sm bg-white dark:bg-gray-800 cursor-pointer font-medium hover:border-gray-400 transition-colors truncate ${cariBorderColor}`}
+                        className={`flex-1 min-w-0 h-8 px-2 border-2 border-r-0 rounded-l rounded-r-none text-sm leading-none bg-white dark:bg-gray-800 cursor-pointer font-medium hover:border-gray-400 transition-colors truncate ${cariBorderColor}`}
                         onClick={openCariModal}
                     />
                     <button
                         type="button"
                         onClick={openCariModal}
-                        className={`shrink-0 inline-flex items-center justify-center px-1.5 border-2 rounded-r rounded-l-none bg-white dark:bg-gray-800 hover:bg-gray-50 dark:hover:bg-gray-700 ${cariBorderColor}`}
+                        className={`shrink-0 inline-flex items-center justify-center w-8 h-8 border-2 rounded-r rounded-l-none bg-white dark:bg-gray-800 hover:bg-gray-50 dark:hover:bg-gray-700 ${cariBorderColor}`}
                     >
                         <MoreVertical className="w-3.5 h-3.5 text-gray-600 dark:text-gray-300" />
                     </button>
@@ -266,7 +272,7 @@ export const InvoiceHeader: React.FC<InvoiceHeaderProps> = ({
                             setSelectedSupplierHistory({ id: supplierCode, name: supplierTitle });
                             setShowSupplierHistory(true);
                         }}
-                        className="shrink-0 px-1.5 py-1.5 border border-blue-200 dark:border-blue-700 bg-blue-50 dark:bg-blue-900/40 hover:bg-blue-100 dark:hover:bg-blue-900/60 text-blue-600 dark:text-blue-300 rounded transition-colors"
+                        className="shrink-0 inline-flex items-center justify-center w-8 h-8 border border-blue-200 dark:border-blue-700 bg-blue-50 dark:bg-blue-900/40 hover:bg-blue-100 dark:hover:bg-blue-900/60 text-blue-600 dark:text-blue-300 rounded transition-colors"
                         title={tm('supplierHistoryTitle')}
                     >
                         <History className="w-3.5 h-3.5" />
@@ -279,7 +285,7 @@ export const InvoiceHeader: React.FC<InvoiceHeaderProps> = ({
                             setSelectedCustomerHistory({ id: customerCode, name: customerTitle, uuid: customerId || customerCode });
                             setShowCustomerHistory(true);
                         }}
-                        className="shrink-0 px-1.5 py-1.5 border border-blue-200 dark:border-blue-700 bg-blue-50 dark:bg-blue-900/40 hover:bg-blue-100 dark:hover:bg-blue-900/60 text-blue-600 dark:text-blue-300 rounded transition-colors"
+                        className="shrink-0 inline-flex items-center justify-center w-8 h-8 border border-blue-200 dark:border-blue-700 bg-blue-50 dark:bg-blue-900/40 hover:bg-blue-100 dark:hover:bg-blue-900/60 text-blue-600 dark:text-blue-300 rounded transition-colors"
                         title={tm('customerHistoryTitle')}
                     >
                         <History className="w-3.5 h-3.5" />
@@ -705,24 +711,26 @@ export const InvoiceHeader: React.FC<InvoiceHeaderProps> = ({
                     </div>
                 </div>
             ) : (
-                <div className="w-fit max-w-full space-y-2">
-                    {/* Satır 1: Ödeme Şekli + Müşteri/Tedarikçi — kompakt, sola yaslı */}
-                    <div className={compactRowClass}>
-                        <div className="w-fit min-w-0">
+                <div className={compactCardClass}>
+                    {/*
+                      Sola yaslı kompakt kart — 2 eşit sütun, 3 satır:
+                      A: Ödeme + Müşteri | B: Fatura No + Tarih | C: Belge No + Açıklama
+                    */}
+                    <div className={compactGridClass}>
+                        {/* Satır A */}
+                        <div className={compactCellClass}>
                             <label className={fieldLabelClass}>{tm('paymentMethodLabel')}</label>
                             {paymentModalTriggerEl}
                             {paymentExtraLabel ? (
-                                <p className="mt-1 max-w-[9rem] text-[11px] text-blue-600 dark:text-blue-400 font-medium truncate">
+                                <p className="mt-1 text-[11px] text-blue-600 dark:text-blue-400 font-medium truncate">
                                     {paymentExtraLabel}
                                 </p>
                             ) : null}
                         </div>
                         {cariSummaryEl}
-                    </div>
 
-                    {/* Satır 2: Fatura No + Tarih (+ Belge No / Açıklama) */}
-                    <div className={compactRowClass}>
-                        <div className="w-fit min-w-0">
+                        {/* Satır B */}
+                        <div className={compactCellClass}>
                             <label className={fieldLabelClass}>{tm('invoiceNo')}</label>
                             <div className={inputGroupClass}>
                                 <input
@@ -730,10 +738,10 @@ export const InvoiceHeader: React.FC<InvoiceHeaderProps> = ({
                                     value={invoiceNo}
                                     readOnly={!invoiceNoEditable}
                                     onChange={(e) => setInvoiceNo?.(e.target.value)}
-                                    className={`w-40 max-w-[min(10rem,36vw)] min-w-0 px-2 py-1.5 border border-gray-300 dark:border-gray-600 text-sm font-mono tabular-nums truncate ${
+                                    className={`min-w-0 h-8 px-2 border border-gray-300 dark:border-gray-600 text-sm leading-none font-mono tabular-nums truncate ${
                                         invoiceNoEditable
-                                            ? 'rounded-l rounded-r-none border-r-0 bg-white dark:bg-gray-800 focus:outline-none focus:ring-1 focus:ring-blue-500'
-                                            : 'rounded bg-gray-50 dark:bg-gray-700 text-gray-800 dark:text-gray-100'
+                                            ? 'flex-1 rounded-l rounded-r-none border-r-0 bg-white dark:bg-gray-800 focus:outline-none focus:ring-1 focus:ring-blue-500'
+                                            : 'w-full rounded bg-gray-50 dark:bg-gray-700 text-gray-800 dark:text-gray-100'
                                     }`}
                                     title={invoiceNo}
                                 />
@@ -742,20 +750,20 @@ export const InvoiceHeader: React.FC<InvoiceHeaderProps> = ({
                                         entity="invoice"
                                         typeCode={invoiceType.code}
                                         onApply={(code) => setInvoiceNo?.(code)}
-                                        className="!rounded-l-none !rounded-r border border-gray-300 dark:border-gray-600 px-1.5 py-1.5 bg-white dark:bg-gray-800 hover:bg-gray-50 dark:hover:bg-gray-700"
+                                        className="!rounded-l-none !rounded-r !w-8 !h-8 !min-h-0 !p-0 inline-flex items-center justify-center border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-800 hover:bg-gray-50 dark:hover:bg-gray-700"
                                     />
                                 ) : null}
                             </div>
                         </div>
 
-                        <div className="w-fit min-w-0">
+                        <div className={compactCellClass}>
                             <label className={fieldLabelClass}>{tm('date')}</label>
                             <div className={inputGroupClass}>
                                 <input
                                     type="text"
                                     value={transactionDate}
                                     onChange={(e) => setTransactionDate(e.target.value)}
-                                    className={`${inputGroupFieldClass} w-[7.5rem] tabular-nums`}
+                                    className={`${inputGroupFieldClass} tabular-nums`}
                                 />
                                 <button
                                     type="button"
@@ -768,32 +776,33 @@ export const InvoiceHeader: React.FC<InvoiceHeaderProps> = ({
                             </div>
                         </div>
 
-                        <div className="w-fit min-w-0">
+                        {/* Satır C */}
+                        <div className={compactCellClass}>
                             <label className={fieldLabelClass}>{tm('documentNo')}</label>
                             <input
                                 type="text"
                                 value={documentNo}
                                 onChange={(e) => setDocumentNo(e.target.value)}
-                                className={`${fieldInputSoloClass} w-28`}
+                                className={fieldInputSoloClass}
                                 placeholder="..."
                             />
                         </div>
 
                         {setDescription ? (
-                            <div className="w-fit min-w-0">
+                            <div className={compactCellClass}>
                                 <label className={fieldLabelClass}>{tm('description')}</label>
                                 <input
                                     type="text"
                                     value={description ?? ''}
                                     onChange={(e) => setDescription(e.target.value)}
                                     placeholder={`${tm('description')}...`}
-                                    className={`${fieldInputSoloClass} w-44 max-w-[min(11rem,40vw)]`}
+                                    className={fieldInputSoloClass}
                                 />
                             </div>
                         ) : null}
                     </div>
 
-                    {cariMetaBadges ? <div className="pt-0.5">{cariMetaBadges}</div> : null}
+                    {cariMetaBadges ? <div className="pt-2">{cariMetaBadges}</div> : null}
                 </div>
             )}
         </div>
