@@ -188,18 +188,24 @@ export const InvoiceHeader: React.FC<InvoiceHeaderProps> = ({
     const fieldLabelClass =
         'block mb-1 text-[11px] font-semibold text-gray-500 dark:text-gray-300 uppercase tracking-wide';
     /**
-     * Collapsed: sola yaslı kompakt 2×3.
-     * Kök neden: statik Tailwind (src/index.css) içinde `inline-grid`, `gap-x-3`,
-     * `w-[15.5rem]`, `max-w-full` YOK. Commit’ler `grid-cols-2` yazsa da
-     * `display:grid` uygulanmadığı için alanlar alt alta düşüyordu.
-     * Düzen burada inline style ile zorunlu — Tailwind grid sınıflarına güvenilmez.
+     * Collapsed: sola yaslı 3 satır × her satırda 2 alan.
+     * Kök neden: statik Tailwind’de `inline-grid` yok; tek büyük grid’de
+     * bazen 3. çift (Belge|Açıklama) tek sütuna / tam genişliğe düşüyordu.
+     * Her çift kendi inline 2-col grid satırında — Tailwind’e güvenilmez.
      */
-    const compactGridStyle: React.CSSProperties = {
-        display: 'grid',
-        gridTemplateColumns: '1fr 1fr',
-        gap: '0.5rem 0.75rem',
+    const compactStackStyle: React.CSSProperties = {
+        display: 'flex',
+        flexDirection: 'column',
+        gap: '0.5rem',
         width: 'min(100%, 33.5rem)',
         maxWidth: '100%',
+        boxSizing: 'border-box',
+    };
+    const compactRowStyle: React.CSSProperties = {
+        display: 'grid',
+        gridTemplateColumns: '1fr 1fr',
+        gap: '0.75rem',
+        width: '100%',
         boxSizing: 'border-box',
     };
     const compactCellStyle: React.CSSProperties = {
@@ -726,95 +732,99 @@ export const InvoiceHeader: React.FC<InvoiceHeaderProps> = ({
             ) : (
                 <div>
                     {/*
-                      Sola yaslı kompakt kart — 2 eşit sütun, 3 satır (inline grid):
-                      A: Fatura No | Tarih
-                      B: Ödeme | Müşteri
-                      C: Belge No | Açıklama
+                      Sola yaslı kompakt — her satır kendi 2-col inline grid:
+                      1: Fatura No | Tarih
+                      2: Ödeme | Müşteri
+                      3: Belge No | Açıklama
                     */}
-                    <div style={compactGridStyle}>
+                    <div style={compactStackStyle}>
                         {/* Satır 1: FATURA NO | TARİH */}
-                        <div className={compactCellClass} style={compactCellStyle}>
-                            <label className={fieldLabelClass}>{tm('invoiceNo')}</label>
-                            <div className={inputGroupClass}>
-                                <input
-                                    type="text"
-                                    value={invoiceNo}
-                                    readOnly={!invoiceNoEditable}
-                                    onChange={(e) => setInvoiceNo?.(e.target.value)}
-                                    className={`min-w-0 h-8 px-2 border border-gray-300 dark:border-gray-600 text-sm leading-none font-mono tabular-nums truncate ${
-                                        invoiceNoEditable
-                                            ? 'flex-1 rounded-l rounded-r-none border-r-0 bg-white dark:bg-gray-800 focus:outline-none focus:ring-1 focus:ring-blue-500'
-                                            : 'w-full rounded bg-gray-50 dark:bg-gray-700 text-gray-800 dark:text-gray-100'
-                                    }`}
-                                    title={invoiceNo}
-                                />
-                                {invoiceNoEditable ? (
-                                    <CodeFormatFieldButton
-                                        entity="invoice"
-                                        typeCode={invoiceType.code}
-                                        onApply={(code) => setInvoiceNo?.(code)}
-                                        className="!rounded-l-none !rounded-r !w-8 !h-8 !min-h-0 !p-0 inline-flex items-center justify-center border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-800 hover:bg-gray-50 dark:hover:bg-gray-700"
+                        <div style={compactRowStyle}>
+                            <div className={compactCellClass} style={compactCellStyle}>
+                                <label className={fieldLabelClass}>{tm('invoiceNo')}</label>
+                                <div className={inputGroupClass}>
+                                    <input
+                                        type="text"
+                                        value={invoiceNo}
+                                        readOnly={!invoiceNoEditable}
+                                        onChange={(e) => setInvoiceNo?.(e.target.value)}
+                                        className={`min-w-0 h-8 px-2 border border-gray-300 dark:border-gray-600 text-sm leading-none font-mono tabular-nums truncate ${
+                                            invoiceNoEditable
+                                                ? 'flex-1 rounded-l rounded-r-none border-r-0 bg-white dark:bg-gray-800 focus:outline-none focus:ring-1 focus:ring-blue-500'
+                                                : 'w-full rounded bg-gray-50 dark:bg-gray-700 text-gray-800 dark:text-gray-100'
+                                        }`}
+                                        title={invoiceNo}
                                     />
-                                ) : null}
+                                    {invoiceNoEditable ? (
+                                        <CodeFormatFieldButton
+                                            entity="invoice"
+                                            typeCode={invoiceType.code}
+                                            onApply={(code) => setInvoiceNo?.(code)}
+                                            className="!rounded-l-none !rounded-r !w-8 !h-8 !min-h-0 !p-0 inline-flex items-center justify-center border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-800 hover:bg-gray-50 dark:hover:bg-gray-700"
+                                        />
+                                    ) : null}
+                                </div>
                             </div>
-                        </div>
 
-                        <div className={compactCellClass} style={compactCellStyle}>
-                            <label className={fieldLabelClass}>{tm('date')}</label>
-                            <div className={inputGroupClass}>
-                                <input
-                                    type="text"
-                                    value={transactionDate}
-                                    onChange={(e) => setTransactionDate(e.target.value)}
-                                    className={`${inputGroupFieldClass} tabular-nums`}
-                                />
-                                <button
-                                    type="button"
-                                    onClick={() => setShowTransactionDateModal(true)}
-                                    className={inputGroupBtnClass}
-                                    title={tm('date')}
-                                >
-                                    <MoreVertical className="w-3.5 h-3.5 text-gray-600 dark:text-gray-300" />
-                                </button>
+                            <div className={compactCellClass} style={compactCellStyle}>
+                                <label className={fieldLabelClass}>{tm('date')}</label>
+                                <div className={inputGroupClass}>
+                                    <input
+                                        type="text"
+                                        value={transactionDate}
+                                        onChange={(e) => setTransactionDate(e.target.value)}
+                                        className={`${inputGroupFieldClass} tabular-nums`}
+                                    />
+                                    <button
+                                        type="button"
+                                        onClick={() => setShowTransactionDateModal(true)}
+                                        className={inputGroupBtnClass}
+                                        title={tm('date')}
+                                    >
+                                        <MoreVertical className="w-3.5 h-3.5 text-gray-600 dark:text-gray-300" />
+                                    </button>
+                                </div>
                             </div>
                         </div>
 
                         {/* Satır 2: ÖDEME | MÜŞTERİ */}
-                        <div className={compactCellClass} style={compactCellStyle}>
-                            <label className={fieldLabelClass}>{tm('paymentMethodLabel')}</label>
-                            {paymentModalTriggerEl}
-                            {paymentExtraLabel ? (
-                                <p className="mt-1 text-[11px] text-blue-600 dark:text-blue-400 font-medium truncate">
-                                    {paymentExtraLabel}
-                                </p>
-                            ) : null}
-                        </div>
-                        {cariSummaryEl}
-
-                        {/* Satır 3: BELGE | AÇIKLAMA */}
-                        <div className={compactCellClass} style={compactCellStyle}>
-                            <label className={fieldLabelClass}>{tm('documentNo')}</label>
-                            <input
-                                type="text"
-                                value={documentNo}
-                                onChange={(e) => setDocumentNo(e.target.value)}
-                                className={fieldInputSoloClass}
-                                placeholder="..."
-                            />
+                        <div style={compactRowStyle}>
+                            <div className={compactCellClass} style={compactCellStyle}>
+                                <label className={fieldLabelClass}>{tm('paymentMethodLabel')}</label>
+                                {paymentModalTriggerEl}
+                                {paymentExtraLabel ? (
+                                    <p className="mt-1 text-[11px] text-blue-600 dark:text-blue-400 font-medium truncate">
+                                        {paymentExtraLabel}
+                                    </p>
+                                ) : null}
+                            </div>
+                            {cariSummaryEl}
                         </div>
 
-                        {setDescription ? (
+                        {/* Satır 3: BELGE NO | AÇIKLAMA */}
+                        <div style={compactRowStyle}>
+                            <div className={compactCellClass} style={compactCellStyle}>
+                                <label className={fieldLabelClass}>{tm('documentNo')}</label>
+                                <input
+                                    type="text"
+                                    value={documentNo}
+                                    onChange={(e) => setDocumentNo(e.target.value)}
+                                    className={fieldInputSoloClass}
+                                    placeholder="..."
+                                />
+                            </div>
                             <div className={compactCellClass} style={compactCellStyle}>
                                 <label className={fieldLabelClass}>{tm('description')}</label>
                                 <input
                                     type="text"
                                     value={description ?? ''}
-                                    onChange={(e) => setDescription(e.target.value)}
+                                    onChange={(e) => setDescription?.(e.target.value)}
+                                    readOnly={!setDescription}
                                     placeholder={`${tm('description')}...`}
                                     className={fieldInputSoloClass}
                                 />
                             </div>
-                        ) : null}
+                        </div>
                     </div>
 
                     {cariMetaBadges ? <div className="pt-2">{cariMetaBadges}</div> : null}
