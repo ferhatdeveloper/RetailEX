@@ -975,10 +975,10 @@ function KasaIslemleriTable({
       },
       size: 120,
     }),
-    columnHelper.display({
+    columnHelper.accessor(() => tm('approved'), {
       id: 'durum',
       header: tm('status'),
-      cell: info => (
+      cell: () => (
         <span className="flex items-center gap-1.5">
           <div className="w-1.5 h-1.5 rounded-full bg-green-500 shadow-[0_0_8px_rgba(34,197,94,0.4)]" />
           <span className="text-gray-700 font-medium whitespace-nowrap">{tm('approved')}</span>
@@ -1002,8 +1002,10 @@ function KasaIslemleriTable({
       columns={columns as any}
       enableSorting
       enableFiltering
+      enableColumnVisibility
       enablePagination
       pageSize={20}
+      storageNamespace="kasaIslemleriList"
       onRowClick={(row) => {
         onRowClick?.(row as KasaIslemi);
         onSelectionChange?.((row as KasaIslemi).id || null);

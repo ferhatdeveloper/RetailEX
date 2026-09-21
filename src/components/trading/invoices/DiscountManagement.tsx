@@ -381,7 +381,7 @@ export function DiscountManagement() {
           <DevExDataGrid
             data={approvalRules}
             columns={ruleColumns}
-            enableFiltering={false}
+            enableFiltering
             enableSorting={false}
             enablePagination={false}
             storageNamespace="discountApprovalRules"

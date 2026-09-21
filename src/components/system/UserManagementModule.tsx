@@ -369,7 +369,7 @@ export function UserManagementModule() {
             columns={columns}
             enablePagination={true}
             enableSorting={true}
-            enableFiltering={false}
+            enableFiltering
             pageSize={20}
           />
         )}

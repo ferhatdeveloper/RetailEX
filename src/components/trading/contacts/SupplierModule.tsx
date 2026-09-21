@@ -1105,10 +1105,14 @@ export function SupplierModule({ initialFilter = 'all' }: { initialFilter?: Cari
               data={filteredSuppliers}
               columns={columns}
               enableSorting
-              enableFiltering={false}
+              enableFiltering
               enableColumnResizing={true}
               enableExcelExport={false}
               enableSelection
+              enableColumnVisibility
+              showColumnVisibilityToolbar={false}
+              columnVisibility={columnVisibility}
+              onColumnVisibilityChange={setColumnVisibility}
               columnOrderStorageKey={SUPPLIER_LIST_COLUMN_ORDER_KEY}
               onSelectionChange={(rows) => {
                 if (rows.length > 2) {

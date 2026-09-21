@@ -284,7 +284,7 @@ export function CampaignManagement({ campaigns, setCampaigns, products }: Campai
             data={filteredCampaigns}
             columns={columns}
             enableSorting
-            enableFiltering={false}
+            enableFiltering
             enableColumnResizing={true}
             height="calc(100vh - 180px)"
             pageSize={50}

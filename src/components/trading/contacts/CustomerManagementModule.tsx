@@ -701,7 +701,7 @@ export function CustomerManagementModule({ customers, setCustomers, sales }: Cus
             columns={columns}
             enableSorting
             initialSorting={[{ id: 'file_id', desc: false }]}
-            enableFiltering={false}
+            enableFiltering
             enableColumnResizing={true}
             storageNamespace="customerManagementList"
             onRowContextMenu={handleRowRightClick}

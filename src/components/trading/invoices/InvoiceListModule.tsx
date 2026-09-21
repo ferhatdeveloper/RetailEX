@@ -1527,6 +1527,8 @@ export function InvoiceListModule({
               enableFiltering={true}
               enableColumnResizing
               enableColumnReorder
+              enableColumnVisibility
+              showColumnVisibilityToolbar={false}
               columnOrderStorageKey={INVOICE_LIST_COLUMN_ORDER_KEY}
               enablePagination={false}
               enableSelection={defaultCategory === 'Alis' && !isMobile}

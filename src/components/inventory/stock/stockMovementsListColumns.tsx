@@ -5,7 +5,7 @@ import type { StockMovement } from '../../../services/stockMovementAPI';
 import { labelStockSlipDocumentType } from '../../../services/stockMovementAPI';
 import { formatShortDate } from '../../../utils/dateLocale';
 
-export const STOCK_MOVEMENTS_COLUMN_VISIBILITY_KEY = 'retailex_stockMovements_columnVisibility_v1';
+export const STOCK_MOVEMENTS_COLUMN_VISIBILITY_KEY = 'retailex_stockMovements_columnVisibility_v2';
 export const STOCK_MOVEMENTS_COLUMN_ORDER_KEY = 'retailex_stockMovements_columnOrder_v1';
 
 export type StockMovementsListColumnId =
@@ -79,7 +79,7 @@ export const STOCK_MOVEMENTS_COLUMN_META: Record<StockMovementsListColumnId, Col
     id: 'actions',
     labelKey: 'actions',
     fallback: 'İşlemler',
-    defaultVisible: true,
+    defaultVisible: false,
   },
 };
 

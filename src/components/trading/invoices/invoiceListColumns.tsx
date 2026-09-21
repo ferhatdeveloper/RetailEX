@@ -9,7 +9,7 @@ import { paymentFormCodeTranslationKey } from '../../../utils/paymentMethodUtils
 import { getInvoiceHeaderField } from '../../../utils/invoiceHeaderFields';
 import { Eye, Edit, FileText } from 'lucide-react';
 
-export const INVOICE_LIST_COLUMN_VISIBILITY_KEY = 'retailex_invoiceList_columnVisibility_v1';
+export const INVOICE_LIST_COLUMN_VISIBILITY_KEY = 'retailex_invoiceList_columnVisibility_v2';
 /** Kolon sürükle-bırak sırası — görünürlük key kalıbı ile uyumlu */
 export const INVOICE_LIST_COLUMN_ORDER_KEY = 'retailex_invoiceList_columnOrder_v1';
 
@@ -47,7 +47,8 @@ export type InvoiceListColumnId =
   | 'profit_margin'
   | 'notes'
   | 'created_at'
-  | 'status';
+  | 'status'
+  | 'actions';
 
 type ColumnMeta = {
   id: InvoiceListColumnId;
@@ -81,7 +82,8 @@ export const INVOICE_LIST_COLUMN_META: Record<InvoiceListColumnId, ColumnMeta> =
   profit_margin: { id: 'profit_margin', labelKey: 'profitPercent', defaultVisible: false },
   notes: { id: 'notes', labelKey: 'description', defaultVisible: false },
   created_at: { id: 'created_at', labelKey: 'createdAt', defaultVisible: false },
-  status: { id: 'status', labelKey: 'status', defaultVisible: true },
+  status: { id: 'status', labelKey: 'status', defaultVisible: false },
+  actions: { id: 'actions', labelKey: 'actions', defaultVisible: false },
 };
 
 export const INVOICE_LIST_COLUMN_ORDER = Object.keys(INVOICE_LIST_COLUMN_META) as InvoiceListColumnId[];
@@ -467,38 +469,40 @@ export function buildInvoiceListColumns(options: BuildInvoiceListColumnsOptions)
     );
   }
 
-  defs.push(
-    columnHelper.display({
-      id: 'actions',
-      header: tm('actions'),
-      cell: ({ row }) => (
-        <div className="flex gap-1">
-          <button
-            type="button"
-            onClick={(e) => {
-              e.stopPropagation();
-              onViewDetail(row.original);
-            }}
-            className="p-1 text-blue-600 hover:bg-blue-50 rounded transition-colors"
-            title={tm('viewDetails')}
-          >
-            <Eye className="w-4 h-4" />
-          </button>
-          <button
-            type="button"
-            onClick={(e) => {
-              e.stopPropagation();
-              onEdit(row.original);
-            }}
-            className="p-1 text-green-600 hover:bg-green-50 rounded transition-colors"
-            title={tm('edit')}
-          >
-            <Edit className="w-4 h-4" />
-          </button>
-        </div>
-      ),
-    }),
-  );
+  if (isVisible('actions')) {
+    defs.push(
+      columnHelper.display({
+        id: 'actions',
+        header: tm('actions'),
+        cell: ({ row }) => (
+          <div className="flex gap-1">
+            <button
+              type="button"
+              onClick={(e) => {
+                e.stopPropagation();
+                onViewDetail(row.original);
+              }}
+              className="p-1 text-blue-600 hover:bg-blue-50 rounded transition-colors"
+              title={tm('viewDetails')}
+            >
+              <Eye className="w-4 h-4" />
+            </button>
+            <button
+              type="button"
+              onClick={(e) => {
+                e.stopPropagation();
+                onEdit(row.original);
+              }}
+              className="p-1 text-green-600 hover:bg-green-50 rounded transition-colors"
+              title={tm('edit')}
+            >
+              <Edit className="w-4 h-4" />
+            </button>
+          </div>
+        ),
+      }),
+    );
+  }
 
   return defs;
 }

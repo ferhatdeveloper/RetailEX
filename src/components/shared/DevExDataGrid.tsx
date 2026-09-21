@@ -61,6 +61,43 @@ import { useFirmaDonem } from '../../contexts/FirmaDonemContext';
 const PINNED_COLUMN_IDS = new Set(['select', 'actions']);
 
 /**
+ * Durum / İşlem kolonları — varsayılan gizli; Kolonlar menüsünden açılır.
+ * (id: durum|status|actions|islem|işlem|action)
+ */
+export const DEVEX_DEFAULT_HIDDEN_COLUMN_IDS = new Set([
+  'durum',
+  'status',
+  'actions',
+  'islem',
+  'işlem',
+  'action',
+]);
+
+export function isDevExDefaultHiddenColumnId(columnId: string | null | undefined): boolean {
+  const id = String(columnId || '').trim().toLowerCase();
+  if (!id) return false;
+  return DEVEX_DEFAULT_HIDDEN_COLUMN_IDS.has(id);
+}
+
+/** Tanımsız anahtarları varsayılan gizleme ile doldur; açıkça verilen değerleri koru. */
+export function mergeDevExDefaultColumnVisibility(
+  columns: ColumnDef<any, any>[],
+  visibility?: Record<string, boolean> | null,
+): Record<string, boolean> {
+  const next: Record<string, boolean> = { ...(visibility || {}) };
+  for (const col of columns) {
+    let id = '';
+    if (col.id) id = String(col.id);
+    else if ('accessorKey' in col && col.accessorKey != null) id = String(col.accessorKey);
+    if (!id || id === 'select') continue;
+    if (isDevExDefaultHiddenColumnId(id) && next[id] === undefined) {
+      next[id] = false;
+    }
+  }
+  return next;
+}
+
+/**
  * Görünürlük key’inden sıra key’i: `…_columnVisibility_v1` → `…_columnOrder_v1`
  */
 export function toColumnOrderStorageKey(visibilityStorageKey: string): string {
@@ -1768,7 +1805,7 @@ function SortableHeaderTh<T>({
           </button>
         )}
 
-        {enableFiltering && header.column.getCanFilter() && columnId !== 'select' && columnId !== 'actions' && (
+        {enableFiltering && header.column.getCanFilter() && columnId !== 'select' && (
           <button
             type="button"
             onClick={(e) => {
@@ -1797,7 +1834,7 @@ export function DevExDataGrid<T>({
   enableColumnResizing = true,
   enablePagination = true,
   pageSizeOptions = DEFAULT_PAGE_SIZE_OPTIONS,
-  enableColumnVisibility = false,
+  enableColumnVisibility = true,
   showColumnVisibilityToolbar = true,
   columnVisibility,
   onColumnVisibilityChange,
@@ -1839,7 +1876,9 @@ export function DevExDataGrid<T>({
     pageSize,
   }));
   const [rowSelection, setRowSelection] = useState<Record<string, boolean>>(selectedRowIds || {});
-  const [internalColumnVisibility, setInternalColumnVisibility] = useState<Record<string, boolean>>(columnVisibility || {});
+  const [internalColumnVisibility, setInternalColumnVisibility] = useState<Record<string, boolean>>(() =>
+    mergeDevExDefaultColumnVisibility(columns as ColumnDef<any, any>[], columnVisibility),
+  );
   const [internalColumnOrder, setInternalColumnOrder] = useState<string[]>(() =>
     resolveInitialColumnOrder({
       columnOrderProp,
@@ -1936,6 +1975,9 @@ export function DevExDataGrid<T>({
     }
   }, [columnVisibility]);
 
+  // Kontrollü görünürlük yokken kolon seti değişince Durum/İşlem varsayılanını uygula
+  // (resolvedColumnVisibility useMemo içinde merge edilir; ekstra effect yok)
+
   useEffect(() => {
     if (columnOrderProp != null) {
       setInternalColumnOrder(columnOrderProp);
@@ -2005,7 +2047,14 @@ export function DevExDataGrid<T>({
     return [...new Set(merged.filter((n) => Number.isFinite(n) && n > 0))].sort((a, b) => a - b);
   }, [pageSizeOptions, data.length]);
 
-  const resolvedColumnVisibility = columnVisibility ?? internalColumnVisibility;
+  const resolvedColumnVisibility = useMemo(
+    () =>
+      mergeDevExDefaultColumnVisibility(
+        columns as ColumnDef<any, any>[],
+        columnVisibility ?? internalColumnVisibility,
+      ),
+    [columns, columnVisibility, internalColumnVisibility],
+  );
 
   const handleColumnVisibilityChange = (updater: any) => {
     const nextVisibility =
@@ -2552,7 +2601,7 @@ export function DevExDataGrid<T>({
   const tableMinWidth = visibleLeafColumns.reduce((acc, col) => acc + col.getSize(), 0);
   const leafColumnsForVisibility = table
     .getAllLeafColumns()
-    .filter((col) => col.id !== 'select' && col.id !== 'actions' && col.getCanHide());
+    .filter((col) => col.id !== 'select' && col.getCanHide());
 
   return (
     <div
