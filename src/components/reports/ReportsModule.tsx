@@ -285,6 +285,23 @@ function dailyRowShowsCreditSplit(row: { paymentMethod?: string; remaining?: num
   return normalizePaymentMethodBucket(row.paymentMethod) === 'credit';
 }
 
+/** Net tutar alt satırı: kısa T:/K: + hover’da tam etiket */
+function dailyCreditSplitDisplay(
+  collected: number,
+  remaining: number,
+  currency: string,
+  labelCollected: string,
+  labelRemaining: string,
+): { short: string; title: string } {
+  const cur = String(currency || 'IQD').trim() || 'IQD';
+  const cAmt = formatNumber(Number(collected) || 0, 2, false);
+  const rAmt = formatNumber(Number(remaining) || 0, 2, false);
+  return {
+    short: `T: ${cAmt} ${cur} · K: ${rAmt} ${cur}`,
+    title: `${labelCollected}: ${cAmt} ${cur} · ${labelRemaining}: ${rAmt} ${cur}`,
+  };
+}
+
 /** Rapor yazdırma / Z başlığı için yerel tarih metni (YYYY-MM-DD takvim anahtarları). */
 function formatReportsDateRangeTr(fromKey: string, toKey: string): string {
   if (fromKey === toKey) {
@@ -4045,7 +4062,14 @@ export function ReportsModule({
       const remaining = Number(row.remaining) > 0.009
         ? Number(row.remaining)
         : Number(row.total) || 0;
-      return `${netTxt}<div style="font-size:10px;color:#b45309">${escHtml(L('tahsilEdilen'))}: ${formatNumber(Number(row.collected) || 0, 2, false)} · ${escHtml(L('kalanCari'))}: ${formatNumber(remaining, 2, false)}</div>`;
+      const split = dailyCreditSplitDisplay(
+        Number(row.collected) || 0,
+        remaining,
+        reportCurrency,
+        L('tahsilEdilen'),
+        L('kalanCari'),
+      );
+      return `${netTxt}<div style="font-size:10px;color:#b45309" title="${escHtml(split.title)}">${escHtml(split.short)}</div>`;
     };
 
     const saleRowsA4 = dailyKindActiveRows
@@ -4101,8 +4125,17 @@ export function ReportsModule({
         const remaining = Number(row.remaining) > 0.009
           ? Number(row.remaining)
           : Number(row.total) || 0;
-        const creditLine = dailyRowShowsCreditSplit(row)
-          ? `<div class="row sub"><span>${escHtml(L('tahsilEdilen'))} / ${escHtml(L('kalanCari'))}</span><span>${formatNumber(Number(row.collected) || 0, 2, false)} / ${formatNumber(remaining, 2, false)}</span></div>`
+        const creditSplit = dailyRowShowsCreditSplit(row)
+          ? dailyCreditSplitDisplay(
+              Number(row.collected) || 0,
+              remaining,
+              reportCurrency,
+              L('tahsilEdilen'),
+              L('kalanCari'),
+            )
+          : null;
+        const creditLine = creditSplit
+          ? `<div class="row sub"><span title="${escHtml(creditSplit.title)}">${escHtml(creditSplit.short)}</span></div>`
           : '';
         return `
     <div class="sale-block">
@@ -5771,14 +5804,24 @@ export function ReportsModule({
                               : dailyRowShowsCreditSplit(row)
                                 ? Number(row.total) || 0
                                 : 0;
+                            const split = dailyRowShowsCreditSplit(row)
+                              ? dailyCreditSplitDisplay(
+                                  Number(row.collected) || 0,
+                                  remaining,
+                                  reportCurrency,
+                                  tm('tahsilEdilen'),
+                                  tm('kalanCari'),
+                                )
+                              : null;
                             return (
                             <div>
                               <div>{formatNumber(row.total, 2, false)}</div>
-                              {dailyRowShowsCreditSplit(row) && (
-                                <div className="text-[11px] font-normal text-amber-700 mt-0.5">
-                                  {tm('tahsilEdilen')}: {formatNumber(Number(row.collected) || 0, 2, false)}
-                                  {' · '}
-                                  {tm('kalanCari')}: {formatNumber(remaining, 2, false)}
+                              {split && (
+                                <div
+                                  className="text-[11px] font-normal text-amber-700 mt-0.5 cursor-help"
+                                  title={split.title}
+                                >
+                                  {split.short}
                                 </div>
                               )}
                             </div>

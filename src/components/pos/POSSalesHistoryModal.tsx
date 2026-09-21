@@ -412,13 +412,20 @@ export function POSSalesHistoryModal({
                             <div className={`text-sm font-medium ${darkMode ? 'text-white' : 'text-gray-900'}`}>
                               {sale.total.toFixed(2)} IQD
                             </div>
-                            {saleCollectedSplit(sale).remaining > 0.009 && (
-                              <div className="text-[11px] text-amber-700">
-                                {tm('tahsilEdilen')}: {saleCollectedSplit(sale).collected.toFixed(2)}
-                                {' · '}
-                                {tm('kalanCari')}: {saleCollectedSplit(sale).remaining.toFixed(2)}
-                              </div>
-                            )}
+                            {(() => {
+                              const split = saleCollectedSplit(sale);
+                              if (!(split.remaining > 0.009)) return null;
+                              const c = split.collected.toFixed(2);
+                              const r = split.remaining.toFixed(2);
+                              return (
+                                <div
+                                  className="text-[11px] text-amber-700 cursor-help"
+                                  title={`${tm('tahsilEdilen')}: ${c} IQD · ${tm('kalanCari')}: ${r} IQD`}
+                                >
+                                  {`T: ${c} IQD · K: ${r} IQD`}
+                                </div>
+                              );
+                            })()}
                           </div>
 
                           <div className={`flex gap-1 border-l pl-3 ${darkMode ? 'border-gray-700' : 'border-gray-200'}`}>
