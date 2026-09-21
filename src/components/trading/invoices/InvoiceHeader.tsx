@@ -185,19 +185,26 @@ export const InvoiceHeader: React.FC<InvoiceHeaderProps> = ({
         paymentMethodLabel ||
         (resolvedPaymentCode === 'ACIK_CARI' ? tm('paymentOpenAccount') : paymentMethod);
 
+    const fieldLabelClass =
+        'block mb-1 text-[11px] font-semibold text-gray-500 dark:text-gray-300 uppercase tracking-wide';
+    const fieldInputClass =
+        'w-full min-w-0 px-2 py-1.5 border border-gray-300 dark:border-gray-600 rounded text-sm bg-white dark:bg-gray-800 focus:outline-none focus:ring-1 focus:ring-blue-500';
+    const pickerBtnClass =
+        'shrink-0 px-1.5 py-1.5 border border-gray-300 dark:border-gray-600 rounded hover:bg-gray-50 dark:hover:bg-gray-700';
+
     const paymentModalTriggerEl = (
-        <div className="flex gap-1 min-w-0">
+        <div className="flex gap-1 min-w-0 w-full">
             <input
                 type="text"
                 readOnly
                 value={paymentDisplayLabel}
-                className="w-[8.5rem] sm:w-[10.5rem] px-2 py-1 border border-gray-300 dark:border-gray-600 rounded text-sm bg-white dark:bg-gray-800 cursor-pointer truncate focus:outline-none focus:ring-1 focus:ring-blue-500"
+                className={`${fieldInputClass} cursor-pointer truncate`}
                 onClick={() => setShowPaymentInfoModal(true)}
             />
             <button
                 type="button"
                 onClick={() => setShowPaymentInfoModal(true)}
-                className="shrink-0 px-1.5 py-1 border border-gray-300 dark:border-gray-600 rounded hover:bg-gray-50 dark:hover:bg-gray-700"
+                className={pickerBtnClass}
                 title={tm('paymentInfo')}
             >
                 <MoreVertical className="w-3.5 h-3.5 text-gray-600 dark:text-gray-300" />
@@ -220,23 +227,23 @@ export const InvoiceHeader: React.FC<InvoiceHeaderProps> = ({
     };
 
     const cariSummaryEl = (
-        <div className="inline-flex items-center gap-1.5 flex-1 min-w-[10rem] max-w-sm">
-            <span className={`text-[11px] font-semibold uppercase whitespace-nowrap shrink-0 ${cariTextColor}`}>
+        <div className="min-w-0">
+            <label className={`${fieldLabelClass} ${cariTextColor}`}>
                 {isPurchaseSide ? tm('supplier') : tm('customer')}
-            </span>
-            <div className="flex gap-1 min-w-0 flex-1">
+            </label>
+            <div className="flex gap-1 min-w-0">
                 <input
                     type="text"
                     value={isPurchaseSide ? supplierTitle : customerTitle}
                     readOnly
                     placeholder={`${tm('selectCurrent')}...`}
-                    className={`flex-1 min-w-0 px-2 py-1 border-2 rounded text-sm bg-white dark:bg-gray-800 cursor-pointer font-medium hover:border-gray-400 transition-colors truncate ${cariBorderColor}`}
+                    className={`flex-1 min-w-0 px-2 py-1.5 border-2 rounded text-sm bg-white dark:bg-gray-800 cursor-pointer font-medium hover:border-gray-400 transition-colors truncate ${cariBorderColor}`}
                     onClick={openCariModal}
                 />
                 <button
                     type="button"
                     onClick={openCariModal}
-                    className="shrink-0 px-1.5 py-1 border border-gray-300 dark:border-gray-600 rounded hover:bg-gray-50 dark:hover:bg-gray-700"
+                    className={pickerBtnClass}
                 >
                     <MoreVertical className="w-3.5 h-3.5 text-gray-600 dark:text-gray-300" />
                 </button>
@@ -247,7 +254,7 @@ export const InvoiceHeader: React.FC<InvoiceHeaderProps> = ({
                             setSelectedSupplierHistory({ id: supplierCode, name: supplierTitle });
                             setShowSupplierHistory(true);
                         }}
-                        className="shrink-0 px-1.5 py-1 border border-blue-200 bg-blue-50 hover:bg-blue-100 text-blue-600 rounded transition-colors"
+                        className="shrink-0 px-1.5 py-1.5 border border-blue-200 dark:border-blue-700 bg-blue-50 dark:bg-blue-900/40 hover:bg-blue-100 dark:hover:bg-blue-900/60 text-blue-600 dark:text-blue-300 rounded transition-colors"
                         title={tm('supplierHistoryTitle')}
                     >
                         <History className="w-3.5 h-3.5" />
@@ -260,7 +267,7 @@ export const InvoiceHeader: React.FC<InvoiceHeaderProps> = ({
                             setSelectedCustomerHistory({ id: customerCode, name: customerTitle, uuid: customerId || customerCode });
                             setShowCustomerHistory(true);
                         }}
-                        className="shrink-0 px-1.5 py-1 border border-blue-200 bg-blue-50 hover:bg-blue-100 text-blue-600 rounded transition-colors"
+                        className="shrink-0 px-1.5 py-1.5 border border-blue-200 dark:border-blue-700 bg-blue-50 dark:bg-blue-900/40 hover:bg-blue-100 dark:hover:bg-blue-900/60 text-blue-600 dark:text-blue-300 rounded transition-colors"
                         title={tm('customerHistoryTitle')}
                     >
                         <History className="w-3.5 h-3.5" />
@@ -686,66 +693,71 @@ export const InvoiceHeader: React.FC<InvoiceHeaderProps> = ({
                     </div>
                 </div>
             ) : (
-                <div className="flex flex-wrap items-center justify-between gap-x-4 gap-y-2 w-full text-sm">
-                    <div className="flex flex-wrap items-center gap-x-4 gap-y-2 flex-1 min-w-0 order-1">
-                        <div className="inline-flex items-center gap-1.5 shrink-0">
-                            <span className="text-[11px] font-semibold text-gray-500 dark:text-gray-300 uppercase whitespace-nowrap">{tm('paymentMethodLabel')}</span>
+                <div className="space-y-2.5">
+                    <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-x-3 gap-y-2.5">
+                        <div className="min-w-0">
+                            <label className={fieldLabelClass}>{tm('paymentMethodLabel')}</label>
                             {paymentModalTriggerEl}
+                            {paymentExtraLabel ? (
+                                <p className="mt-1 text-[11px] text-blue-600 dark:text-blue-400 font-medium truncate">
+                                    {paymentExtraLabel}
+                                </p>
+                            ) : null}
                         </div>
+
                         {cariSummaryEl}
+
                         {setDescription ? (
-                            <div className="inline-flex items-center gap-1.5 flex-1 min-w-[10rem] max-w-md">
-                                <span className="text-[11px] font-semibold text-gray-500 dark:text-gray-300 uppercase whitespace-nowrap shrink-0">
-                                    {tm('description')}
-                                </span>
+                            <div className="min-w-0 sm:col-span-2 lg:col-span-1">
+                                <label className={fieldLabelClass}>{tm('description')}</label>
                                 <input
                                     type="text"
                                     value={description ?? ''}
                                     onChange={(e) => setDescription(e.target.value)}
                                     placeholder={`${tm('description')}...`}
-                                    className="flex-1 min-w-0 px-2 py-1 border border-gray-300 dark:border-gray-600 rounded text-sm bg-white dark:bg-gray-800 focus:outline-none focus:ring-1 focus:ring-blue-500 truncate"
+                                    className={fieldInputClass}
                                 />
                             </div>
                         ) : null}
-                    </div>
 
-                    <div className="flex flex-wrap items-center gap-x-4 gap-y-2 shrink-0 order-2 sm:ml-auto">
-                        <div className="inline-flex items-center gap-1.5 shrink-0">
-                            <span className="text-[11px] font-semibold text-gray-500 dark:text-gray-300 uppercase whitespace-nowrap">{tm('invoiceNo')}</span>
-                            <input
-                                type="text"
-                                value={invoiceNo}
-                                readOnly={!invoiceNoEditable}
-                                onChange={(e) => setInvoiceNo?.(e.target.value)}
-                                className={`w-[7.5rem] sm:w-[9rem] px-2 py-1 border border-gray-300 dark:border-gray-600 rounded text-sm font-mono tabular-nums truncate ${
-                                    invoiceNoEditable
-                                        ? 'bg-white dark:bg-gray-800 focus:outline-none focus:ring-1 focus:ring-blue-500'
-                                        : 'bg-gray-50 dark:bg-gray-700 text-gray-800 dark:text-gray-100'
-                                }`}
-                                title={invoiceNo}
-                            />
-                            {invoiceNoEditable ? (
-                                <CodeFormatFieldButton
-                                    entity="invoice"
-                                    typeCode={invoiceType.code}
-                                    onApply={(code) => setInvoiceNo?.(code)}
+                        <div className="min-w-0">
+                            <label className={fieldLabelClass}>{tm('invoiceNo')}</label>
+                            <div className="flex items-center gap-1 min-w-0">
+                                <input
+                                    type="text"
+                                    value={invoiceNo}
+                                    readOnly={!invoiceNoEditable}
+                                    onChange={(e) => setInvoiceNo?.(e.target.value)}
+                                    className={`flex-1 min-w-0 px-2 py-1.5 border border-gray-300 dark:border-gray-600 rounded text-sm font-mono tabular-nums truncate ${
+                                        invoiceNoEditable
+                                            ? 'bg-white dark:bg-gray-800 focus:outline-none focus:ring-1 focus:ring-blue-500'
+                                            : 'bg-gray-50 dark:bg-gray-700 text-gray-800 dark:text-gray-100'
+                                    }`}
+                                    title={invoiceNo}
                                 />
-                            ) : null}
+                                {invoiceNoEditable ? (
+                                    <CodeFormatFieldButton
+                                        entity="invoice"
+                                        typeCode={invoiceType.code}
+                                        onApply={(code) => setInvoiceNo?.(code)}
+                                    />
+                                ) : null}
+                            </div>
                         </div>
 
-                        <div className="inline-flex items-center gap-1.5 shrink-0">
-                            <span className="text-[11px] font-semibold text-gray-500 dark:text-gray-300 uppercase whitespace-nowrap">{tm('date')}</span>
-                            <div className="flex gap-1">
+                        <div className="min-w-0">
+                            <label className={fieldLabelClass}>{tm('date')}</label>
+                            <div className="flex gap-1 min-w-0">
                                 <input
                                     type="text"
                                     value={transactionDate}
                                     onChange={(e) => setTransactionDate(e.target.value)}
-                                    className="w-[6.5rem] sm:w-[7.5rem] px-2 py-1 border border-gray-300 dark:border-gray-600 rounded text-sm tabular-nums focus:outline-none focus:ring-1 focus:ring-blue-500 bg-white dark:bg-gray-800"
+                                    className={`${fieldInputClass} tabular-nums`}
                                 />
                                 <button
                                     type="button"
                                     onClick={() => setShowTransactionDateModal(true)}
-                                    className="shrink-0 px-1.5 py-1 border border-gray-300 dark:border-gray-600 rounded hover:bg-gray-50 dark:hover:bg-gray-700"
+                                    className={pickerBtnClass}
                                     title={tm('date')}
                                 >
                                     <MoreVertical className="w-3.5 h-3.5 text-gray-600 dark:text-gray-300" />
@@ -753,22 +765,19 @@ export const InvoiceHeader: React.FC<InvoiceHeaderProps> = ({
                             </div>
                         </div>
 
-                        <div className="inline-flex items-center gap-1.5 shrink-0">
-                            <span className="text-[11px] font-semibold text-gray-500 dark:text-gray-300 uppercase whitespace-nowrap">{tm('documentNo')}</span>
+                        <div className="min-w-0">
+                            <label className={fieldLabelClass}>{tm('documentNo')}</label>
                             <input
                                 type="text"
                                 value={documentNo}
                                 onChange={(e) => setDocumentNo(e.target.value)}
-                                className="w-[5.5rem] sm:w-[7rem] px-2 py-1 border border-gray-300 dark:border-gray-600 rounded text-sm focus:outline-none focus:ring-1 focus:ring-blue-500 bg-white dark:bg-gray-800"
+                                className={fieldInputClass}
                                 placeholder="..."
                             />
                         </div>
                     </div>
 
-                    {paymentExtraLabel ? (
-                        <span className="text-[10px] text-blue-600 font-medium truncate max-w-[8rem] order-3 w-full sm:w-auto">{paymentExtraLabel}</span>
-                    ) : null}
-                    {cariMetaBadges ? <div className="w-full basis-full order-4">{cariMetaBadges}</div> : null}
+                    {cariMetaBadges ? <div className="pt-0.5">{cariMetaBadges}</div> : null}
                 </div>
             )}
         </div>
