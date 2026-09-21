@@ -190,7 +190,7 @@ export const InvoiceHeader: React.FC<InvoiceHeaderProps> = ({
     /**
      * Collapsed: sola yaslı 3 satır × her satırda 2 alan.
      * Kök neden: statik Tailwind’de `inline-grid` yok; tek büyük grid’de
-     * bazen 3. çift (Belge|Açıklama) tek sütuna / tam genişliğe düşüyordu.
+     * bazen 3. çift (Müşteri|Açıklama) tek sütuna / tam genişliğe düşüyordu.
      * Her çift kendi inline 2-col grid satırında — Tailwind’e güvenilmez.
      */
     const compactStackStyle: React.CSSProperties = {
@@ -733,12 +733,12 @@ export const InvoiceHeader: React.FC<InvoiceHeaderProps> = ({
                 <div>
                     {/*
                       Sola yaslı kompakt — her satır kendi 2-col inline grid:
-                      1: Fatura No | Tarih
-                      2: Ödeme | Müşteri
-                      3: Belge No | Açıklama
+                      1: Fatura No | Ödeme Şekli
+                      2: Tarih | Belge No
+                      3: Müşteri | Açıklama
                     */}
                     <div style={compactStackStyle}>
-                        {/* Satır 1: FATURA NO | TARİH */}
+                        {/* Satır 1: FATURA NO | ÖDEME ŞEKLİ */}
                         <div style={compactRowStyle}>
                             <div className={compactCellClass} style={compactCellStyle}>
                                 <label className={fieldLabelClass}>{tm('invoiceNo')}</label>
@@ -767,6 +767,19 @@ export const InvoiceHeader: React.FC<InvoiceHeaderProps> = ({
                             </div>
 
                             <div className={compactCellClass} style={compactCellStyle}>
+                                <label className={fieldLabelClass}>{tm('paymentMethodLabel')}</label>
+                                {paymentModalTriggerEl}
+                                {paymentExtraLabel ? (
+                                    <p className="mt-1 text-[11px] text-blue-600 dark:text-blue-400 font-medium truncate">
+                                        {paymentExtraLabel}
+                                    </p>
+                                ) : null}
+                            </div>
+                        </div>
+
+                        {/* Satır 2: TARİH | BELGE NO */}
+                        <div style={compactRowStyle}>
+                            <div className={compactCellClass} style={compactCellStyle}>
                                 <label className={fieldLabelClass}>{tm('date')}</label>
                                 <div className={inputGroupClass}>
                                     <input
@@ -785,24 +798,6 @@ export const InvoiceHeader: React.FC<InvoiceHeaderProps> = ({
                                     </button>
                                 </div>
                             </div>
-                        </div>
-
-                        {/* Satır 2: ÖDEME | MÜŞTERİ */}
-                        <div style={compactRowStyle}>
-                            <div className={compactCellClass} style={compactCellStyle}>
-                                <label className={fieldLabelClass}>{tm('paymentMethodLabel')}</label>
-                                {paymentModalTriggerEl}
-                                {paymentExtraLabel ? (
-                                    <p className="mt-1 text-[11px] text-blue-600 dark:text-blue-400 font-medium truncate">
-                                        {paymentExtraLabel}
-                                    </p>
-                                ) : null}
-                            </div>
-                            {cariSummaryEl}
-                        </div>
-
-                        {/* Satır 3: BELGE NO | AÇIKLAMA */}
-                        <div style={compactRowStyle}>
                             <div className={compactCellClass} style={compactCellStyle}>
                                 <label className={fieldLabelClass}>{tm('documentNo')}</label>
                                 <input
@@ -813,6 +808,11 @@ export const InvoiceHeader: React.FC<InvoiceHeaderProps> = ({
                                     placeholder="..."
                                 />
                             </div>
+                        </div>
+
+                        {/* Satır 3: MÜŞTERİ | AÇIKLAMA */}
+                        <div style={compactRowStyle}>
+                            {cariSummaryEl}
                             <div className={compactCellClass} style={compactCellStyle}>
                                 <label className={fieldLabelClass}>{tm('description')}</label>
                                 <input
