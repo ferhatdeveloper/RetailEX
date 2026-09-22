@@ -38,7 +38,8 @@ export type CariEkstrePrintLabels = {
   accountAddress: string;
   totalDebit: string;
   totalCredit: string;
-  netBalance: string;
+  /** Dönem sonu resmi bakiye (dip toplam — tek yer) */
+  closingBalance: string;
   printedAt: string;
   empty: string;
   customer: string;
@@ -101,7 +102,7 @@ export function buildCariEkstrePrintLabels(lang: Language): CariEkstrePrintLabel
     accountAddress: t('cariEkstrePrintAccountAddress'),
     totalDebit: t('cariEkstrePrintTotalDebit'),
     totalCredit: t('cariEkstrePrintTotalCredit'),
-    netBalance: t('netAmount'),
+    closingBalance: t('cariEkstrePrintClosingBalance'),
     printedAt: t('cariEkstrePrintPrintedAt'),
     empty: t('noRecordFound'),
     customer: t('customer'),
@@ -291,13 +292,51 @@ export function buildCariEkstrePrintHtml(input: CariEkstrePrintInput): string {
   td.bal .side { font-size: 8px; font-weight: 800; margin-${rtl ? 'right' : 'left'}: 3px; color: #64748b; }
   td.empty { text-align: center; padding: 18px; color: #64748b; }
   tbody tr:nth-child(even) td { background: #f8fafc; }
-  tfoot td { background: #eef2f7; font-weight: 700; border-top: 2px solid #1e3a5f; }
-  .sums {
-    display: flex; flex-wrap: wrap; gap: 14px 22px; margin-top: 10px;
-    font-size: 11px; font-weight: 700;
+  /* Dip toplam: tek resmi özet (header’da B/A/Net yok; tfoot+sums tekrarı yok) */
+  .totals-wrap {
+    margin-top: 10px;
+    display: flex;
+    justify-content: ${rtl ? 'flex-start' : 'flex-end'};
   }
-  .sums .debit { color: #b91c1c; }
-  .sums .credit { color: #047857; }
+  .totals {
+    width: 100%;
+    max-width: 320px;
+    border: 1px solid #94a3b8;
+    border-top: 2.5px solid #1e3a5f;
+    background: #fff;
+  }
+  .totals table { width: 100%; border-collapse: collapse; table-layout: fixed; }
+  .totals td {
+    border: none; border-bottom: 1px solid #e2e8f0;
+    padding: 6px 10px; font-size: 10.5px; vertical-align: middle;
+  }
+  .totals tr:last-child td { border-bottom: none; }
+  .totals .lbl {
+    color: #475569; font-weight: 600; text-align: ${rtl ? 'right' : 'left'};
+    width: 48%;
+  }
+  .totals .amt {
+    font-weight: 700; text-align: ${rtl ? 'left' : 'right'};
+    font-variant-numeric: tabular-nums; white-space: nowrap;
+  }
+  .totals .amt.debit { color: #b91c1c; }
+  .totals .amt.credit { color: #047857; }
+  .totals .closing td {
+    background: #f1f5f9; border-top: 1.5px solid #1e3a5f;
+    padding-top: 8px; padding-bottom: 8px;
+  }
+  .totals .closing .lbl {
+    color: #0f172a; font-weight: 800; text-transform: uppercase;
+    letter-spacing: 0.04em; font-size: 9.5px;
+  }
+  .totals .closing .amt {
+    color: #0f172a; font-weight: 800; font-size: 12px;
+  }
+  .totals .side {
+    display: block; margin-top: 2px;
+    font-size: 8.5px; font-weight: 700; color: #64748b;
+    letter-spacing: 0.03em;
+  }
   .doc-footer {
     margin-top: 14px; padding-top: 8px; border-top: 1px solid #94a3b8;
     display: flex; justify-content: space-between; gap: 12px;
@@ -306,8 +345,8 @@ export function buildCariEkstrePrintHtml(input: CariEkstrePrintInput): string {
   @media print {
     html, body { -webkit-print-color-adjust: exact; print-color-adjust: exact; }
     thead { display: table-header-group; }
-    tfoot { display: table-footer-group; }
     tr { break-inside: avoid; }
+    .totals-wrap { break-inside: avoid; }
   }
 </style>
 </head>
@@ -368,26 +407,29 @@ export function buildCariEkstrePrintHtml(input: CariEkstrePrintInput): string {
       </tr>
     </thead>
     <tbody>${bodyRows}</tbody>
-    <tfoot>
-      <tr>
-        <td colspan="4">${escapeHtml(L.totalDebit)} / ${escapeHtml(L.totalCredit)}</td>
-        <td class="num debit">${escapeHtml(fmtAmt(input.totalDebit, input.currency))}</td>
-        <td class="num credit">${escapeHtml(fmtAmt(input.totalCredit, input.currency))}</td>
-        <td class="num bal">${escapeHtml(fmtAmt(Math.abs(input.netBalance), input.currency))}${
-          netDir.sideLabel
-            ? ` <span class="side">${escapeHtml(netDir.sideLabel)}</span>`
-            : ''
-        }</td>
-      </tr>
-    </tfoot>
   </table>
 
-  <div class="sums">
-    <span class="debit">${escapeHtml(L.totalDebit)}: ${escapeHtml(fmtAmt(input.totalDebit, input.currency))}</span>
-    <span class="credit">${escapeHtml(L.totalCredit)}: ${escapeHtml(fmtAmt(input.totalCredit, input.currency))}</span>
-    <span>${escapeHtml(L.netBalance)}: ${escapeHtml(fmtAmt(Math.abs(input.netBalance), input.currency))}${
-      netDir.sideLabel ? ` · ${escapeHtml(netDir.sideLabel)}` : ''
-    }</span>
+  <div class="totals-wrap">
+    <div class="totals">
+      <table>
+        <tr>
+          <td class="lbl">${escapeHtml(L.totalDebit)}</td>
+          <td class="amt debit">${escapeHtml(fmtAmt(input.totalDebit, input.currency))}</td>
+        </tr>
+        <tr>
+          <td class="lbl">${escapeHtml(L.totalCredit)}</td>
+          <td class="amt credit">${escapeHtml(fmtAmt(input.totalCredit, input.currency))}</td>
+        </tr>
+        <tr class="closing">
+          <td class="lbl">${escapeHtml(L.closingBalance)}</td>
+          <td class="amt">${escapeHtml(fmtAmt(Math.abs(input.netBalance), input.currency))}${
+            netDir.sideLabel
+              ? `<span class="side">${escapeHtml(netDir.sideLabel)}</span>`
+              : ''
+          }</td>
+        </tr>
+      </table>
+    </div>
   </div>
 
   <div class="doc-footer">

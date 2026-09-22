@@ -36,6 +36,13 @@ import {
   invoiceMixedCustomerStoredDelta,
   shouldApplyChTahsilatCustomerBalanceAfterCashInsert,
 } from '../../utils/invoiceCashPosting';
+import {
+  formatInsufficientStockMessage,
+  isBlockNegativeStockSaleEnabledAsync,
+  isStockExemptFromSaleGuard,
+  stockSaleTmFallback,
+  type InsufficientStockHit,
+} from '../../utils/stockSaleGuard';
 export type { Invoice };
 export type { InvoiceCashLineWriter } from '../../utils/invoiceCashPosting';
 export {
@@ -764,11 +771,39 @@ async function collectInvoiceStockDeltasByProduct(inv: Invoice, trcode: number):
   return deltas;
 }
 
+async function assertStockDecreasesAllowed(deltas: Map<string, number>): Promise<void> {
+  const decreaseEntries = [...deltas.entries()].filter(([, d]) => d < 0);
+  if (decreaseEntries.length === 0) return;
+  if (!(await isBlockNegativeStockSaleEnabledAsync())) return;
+
+  const hits: InsufficientStockHit[] = [];
+  for (const [id, delta] of decreaseEntries) {
+    const p = await productAPI.getById(id);
+    if (!p || isStockExemptFromSaleGuard(p)) continue;
+    const available = Number(p.stock ?? 0);
+    const requested = Math.abs(delta);
+    const projected = available + delta;
+    if (projected < 0) {
+      hits.push({
+        productId: id,
+        name: String(p.name || id),
+        availableStock: available,
+        requestedQty: requested,
+        projectedStock: projected,
+      });
+    }
+  }
+  if (hits.length === 0) return;
+  throw new Error(formatInsufficientStockMessage(hits, stockSaleTmFallback));
+}
+
 async function applyProductStockDeltaMap(
   deltas: Map<string, number>,
   queryOpts?: { firmNr: string; periodNr: string }
 ): Promise<void> {
   if (deltas.size === 0) return;
+  await assertStockDecreasesAllowed(deltas);
+
   if (DB_SETTINGS.connectionProvider === 'rest_api') {
     await Promise.all(
       [...deltas.entries()].map(async ([id, delta]) => {
@@ -1682,14 +1717,7 @@ async function applyInvoiceStockUpdatesRestApi(
     deltas.set(prod.id, (deltas.get(prod.id) || 0) + stockModifier);
   }
 
-  await Promise.all(
-    [...deltas.entries()].map(async ([id, delta]) => {
-      const p = await productAPI.getById(id);
-      if (!p) return;
-      const next = Number(p.stock ?? 0) + delta;
-      await productAPI.updateStock(id, next);
-    })
-  );
+  await applyProductStockDeltaMap(deltas);
 }
 
 async function adjustSupplierBalanceDeltaPostgrest(supplierId: string, delta: number, firmNr: string): Promise<void> {
@@ -2025,6 +2053,12 @@ export const invoicesAPI = {
         else if ([20, 21].includes(trcode)) ficheType = 'order';
         // Quotes (Teklif)
         else if ([30, 31].includes(trcode)) ficheType = 'quote';
+      }
+
+      // Stok düşümü (parametre açıksa) kayıt öncesi — orphan fatura oluşmasın
+      if (!createOptions?.skipProductStockUpdate && invoice.items?.length) {
+        const preDeltas = await collectInvoiceStockDeltasByProduct(invoice, trcode);
+        await assertStockDecreasesAllowed(preDeltas);
       }
 
       // PostgREST-only: fatura ve yan etkiler doğrudan HTTP (SQL köprüsü yok / kullanılmıyor)

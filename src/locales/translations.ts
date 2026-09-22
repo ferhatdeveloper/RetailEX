@@ -1106,6 +1106,9 @@ export interface Translations {
   sessionDay: string;
   sessionInformation: string;
   setDateTime: string;
+  /** Tarih override: bir satış sonrası sistem saatine dön */
+  resetDateAfterSale: string;
+  adminPasswordLabel: string;
   sevenDaysButton: string;
   shift: string;
   shiftClick: string;
@@ -2523,6 +2526,8 @@ export const translations: any = {
     sessionDay: 'Gün',
     sessionInformation: 'Oturum Bilgileri',
     setDateTime: 'Tarih ve Saat Ayarla',
+    resetDateAfterSale: 'İşlem sonrası bugüne dön',
+    adminPasswordLabel: 'Yönetici Şifresi',
     sevenDaysButton: '7 Gün',
     shift: 'Vardiya',
     shiftClick: 'Shift + Tıklama',
@@ -2541,8 +2546,7 @@ export const translations: any = {
       atLeastOneShortcut: 'يجب اختيار اختصار واحد على الأقل',
       atLeastOneUnit: 'يجب تعريف وحدة واحدة على الأقل',
       barcodeDefDesc: 'إدارة تعريفات الباركود',
-      brandDefDesc: 'إدارة تعريفات الماركات',
-      categoryBasedStock: 'Kategori Bazlı Stok',
+      brandDefDesc: 'إدارة تعريفات الماركات',      categoryBasedStock: 'Kategori Bazlı Stok',
       clearSearch: 'Temizle (ESC)',
       codeAndNameRequired: 'حقلي الرمز والاسم مطلوبان',
       cogs: 'تكلفة البضاعة المباعة',
@@ -4246,6 +4250,8 @@ export const translations: any = {
     sessionDay: 'Day',
     sessionInformation: 'Session Information',
     setDateTime: 'Set Date and Time',
+    resetDateAfterSale: 'Return to today after one transaction',
+    adminPasswordLabel: 'Admin Password',
     sevenDaysButton: '7 Days',
     shift: 'Shift',
     shiftClick: 'Shift + Click',
@@ -5835,6 +5841,8 @@ export const translations: any = {
     sessionDay: 'يوم',
     sessionInformation: 'معلومات الجلسة',
     setDateTime: 'ضبط التاريخ والوقت',
+    resetDateAfterSale: 'العودة إلى اليوم بعد معاملة واحدة',
+    adminPasswordLabel: 'كلمة مرور المسؤول',
     sevenDaysButton: '7 أيام',
     shift: 'الوردية',
     shiftClick: 'Shift + نقرة',
@@ -7423,6 +7431,8 @@ export const translations: any = {
     sessionDay: 'Gün',
     sessionInformation: 'Oturum Bilgileri',
     setDateTime: 'Tarih ve Saat Ayarla',
+    resetDateAfterSale: 'Piştî danûstandinekê vegere îro',
+    adminPasswordLabel: 'Şîfreya rêveber',
     sevenDaysButton: '7 Gün',
     shift: 'شیفت',
     shiftClick: 'Shift + کرتە',

@@ -21,10 +21,16 @@ import {
   isInvoiceServiceLineType,
   isInvoiceMaterialLineType,
   isInvoiceSupplierPayableLineType,
+  isInvoiceStockLineType,
   defaultInvoiceLineTypeFor,
   isInvoicePurchaseSide,
   isServiceInvoiceType,
 } from '../../../utils/invoiceLineType';
+import {
+  findInsufficientStockHits,
+  formatInsufficientStockMessage,
+  isBlockNegativeStockSaleEnabled,
+} from '../../../utils/stockSaleGuard';
 import { allocatePurchaseInvoiceLineCosts } from '../../../utils/purchasePromoCost';
 import { DocumentManager } from '../../shared/DocumentManager';
 import { printInvoice } from '../../../utils/printUtils';
@@ -3801,6 +3807,42 @@ export function UniversalInvoiceForm({
     if (validItems.length === 0) {
       toast.error('❌ ' + tm('noInvoiceItems'));
       return;
+    }
+
+    // Satış / stok düşüren belge (satış, alış iade): negatif stok engeli (parametre açıksa)
+    const invoiceTrcode = Number(invoiceType.code) || 0;
+    const stockDecreases =
+      (invoiceType.category === 'Satis' && !isServiceInvoiceType(invoiceType)) ||
+      invoiceTrcode === 6 ||
+      invoiceTrcode === 2;
+    if (stockDecreases && isBlockNegativeStockSaleEnabled()) {
+      const demand = validItems
+        .filter((item) => isInvoiceStockLineType(item.type, invoiceType.category))
+        .map((item) => {
+          const product =
+            products.find((p) => p.id === item.code || p.id === item.productId) ||
+            storeProducts.find((p) => p.id === item.code || p.id === item.productId) ||
+            products.find((p) => p.code === item.code) ||
+            storeProducts.find((p) => p.code === item.code);
+          const baseQty =
+            item.baseQuantity != null && Number.isFinite(Number(item.baseQuantity))
+              ? Number(item.baseQuantity)
+              : Number(item.quantity || 0) * (Number(item.multiplier) || 1);
+          return {
+            productId: String(product?.id || item.productId || item.code || ''),
+            name: item.description || product?.name || String(item.code || ''),
+            quantity: baseQty,
+            availableStock: Number(product?.stock ?? 0),
+            isService: product?.isService,
+            materialType: product?.materialType,
+            lineType: item.type,
+          };
+        });
+      const hits = findInsufficientStockHits(demand);
+      if (hits.length > 0) {
+        toast.error(formatInsufficientStockMessage(hits, tm));
+        return;
+      }
     }
 
     // Satış / verilen hizmet / satış iade: kayıtta ödeme tipi zorunlu kontrol.

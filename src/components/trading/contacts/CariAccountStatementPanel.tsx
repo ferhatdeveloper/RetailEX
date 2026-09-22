@@ -175,14 +175,10 @@ export function CariAccountStatementPanel({ account, onClose }: CariAccountState
   const alacHdr = fmtEkstreAmount(totalAlacak);
   const netHdr = fmtEkstreSignedNet();
 
-  const currentBalanceHdr = fmtEkstreAmount(Math.abs(
-    ekstresiData.length > 0 ? netBalance : (account.balance || 0),
-  ));
-  const currentBalanceDir = getCariBalanceDirection(
-    account.cardType,
-    ekstresiData.length > 0 ? netBalance : (account.balance || 0),
-    tm,
-  );
+  /** Dönem verisi yokken kart bakiyesi; veri varken toolbar’daki tek net sonuç kullanılır */
+  const showCardBalanceChip = ekstresiRows.length === 0;
+  const currentBalanceHdr = fmtEkstreAmount(Math.abs(account.balance || 0));
+  const currentBalanceDir = getCariBalanceDirection(account.cardType, account.balance || 0, tm);
 
   return (
     <FullscreenBodyPortal
@@ -203,19 +199,21 @@ export function CariAccountStatementPanel({ account, onClose }: CariAccountState
             <span className={`shrink-0 rounded-full px-2 py-0.5 text-[9px] font-black uppercase ${account.cardType === 'customer' ? 'bg-blue-100 text-blue-700' : 'bg-orange-100 text-orange-700'}`}>
               {account.cardType === 'customer' ? tm('customer') : tm('supplierLabel')}
             </span>
-            <span
-              className={`shrink-0 rounded-lg border px-2.5 py-1 text-xs font-black ${
-                currentBalanceDir.side === 'B'
-                  ? 'bg-red-50 border-red-200 text-red-700'
-                  : currentBalanceDir.side === 'A'
-                    ? 'bg-emerald-50 border-emerald-200 text-emerald-700'
-                    : 'bg-gray-50 border-gray-200 text-gray-500'
-              }`}
-              title={currentBalanceDir.hint}
-            >
-              {tm('custColBalance')}: {currentBalanceHdr.primary} {currentBalanceHdr.code}
-              {currentBalanceDir.sideLabel ? ` · ${currentBalanceDir.sideLabel}` : ''}
-            </span>
+            {showCardBalanceChip ? (
+              <span
+                className={`shrink-0 rounded-lg border px-2.5 py-1 text-xs font-black ${
+                  currentBalanceDir.side === 'B'
+                    ? 'bg-red-50 border-red-200 text-red-700'
+                    : currentBalanceDir.side === 'A'
+                      ? 'bg-emerald-50 border-emerald-200 text-emerald-700'
+                      : 'bg-gray-50 border-gray-200 text-gray-500'
+                }`}
+                title={currentBalanceDir.hint}
+              >
+                {tm('custColBalance')}: {currentBalanceHdr.primary} {currentBalanceHdr.code}
+                {currentBalanceDir.sideLabel ? ` · ${currentBalanceDir.sideLabel}` : ''}
+              </span>
+            ) : null}
           </div>
           <div className="flex flex-wrap items-center gap-2">
             <input
@@ -238,18 +236,24 @@ export function CariAccountStatementPanel({ account, onClose }: CariAccountState
             >
               {tm('bring')}
             </button>
-            <div className="hidden flex-wrap items-center gap-1.5 sm:flex">
-              <span className="rounded border border-red-200 bg-red-50 px-2 py-0.5 text-xs font-black text-red-600">B: {borcHdr.primary} {borcHdr.code}</span>
-              <span className="rounded border border-orange-200 bg-orange-50 px-2 py-0.5 text-xs font-black text-orange-600">A: {alacHdr.primary} {alacHdr.code}</span>
-              <span
-                className={`rounded border px-2 py-0.5 text-xs font-black ${
-                  netBalanceDir.side === 'B' ? 'border-red-200 bg-red-50 text-red-700' : netBalanceDir.side === 'A' ? 'border-orange-200 bg-orange-50 text-orange-700' : 'border-gray-200 bg-gray-50 text-gray-500'
-                }`}
-                title={netBalanceDir.hint}
-              >
-                {tm('netAmount')}: {netHdr.primary} {netHdr.code}{netBalanceDir.sideLabel ? ` · ${netBalanceDir.sideLabel}` : ''}
-              </span>
-            </div>
+            {ekstresiRows.length > 0 ? (
+              <div className="hidden flex-wrap items-center gap-1.5 sm:flex">
+                <span className="rounded border border-red-200 bg-red-50 px-2 py-0.5 text-xs font-black text-red-600">
+                  {tm('debtor')}: {borcHdr.primary} {borcHdr.code}
+                </span>
+                <span className="rounded border border-emerald-200 bg-emerald-50 px-2 py-0.5 text-xs font-black text-emerald-700">
+                  {tm('creditor')}: {alacHdr.primary} {alacHdr.code}
+                </span>
+                <span
+                  className={`rounded border px-2 py-0.5 text-xs font-black ${
+                    netBalanceDir.side === 'B' ? 'border-red-200 bg-red-50 text-red-700' : netBalanceDir.side === 'A' ? 'border-emerald-200 bg-emerald-50 text-emerald-700' : 'border-gray-200 bg-gray-50 text-gray-500'
+                  }`}
+                  title={netBalanceDir.hint}
+                >
+                  {tm('balance')}: {netHdr.primary} {netHdr.code}{netBalanceDir.sideLabel ? ` · ${netBalanceDir.sideLabel}` : ''}
+                </span>
+              </div>
+            ) : null}
             {reportingCurrency !== mainCurrency ? (
               <button
                 type="button"

@@ -549,6 +549,10 @@ function DefinitionsParametersView() {
     { key: 'print-use-windows-printer-service', labelKey: 'menuParamPrintUseWindowsPrinterService' },
   ];
 
+  const stockSaleParamRows: { key: ReportMenuParamKey; labelKey: string }[] = [
+    { key: 'block-negative-stock-sale', labelKey: 'menuParamBlockNegativeStockSale' },
+  ];
+
   const dailyReportCardParamRows: { key: ReportMenuParamKey; labelKey: string }[] = [
     { key: 'daily-report-card-total-sales', labelKey: 'menuParamDailyCardTotalSales' },
     { key: 'daily-report-card-total-revenue', labelKey: 'menuParamDailyCardTotalRevenue' },
@@ -652,6 +656,22 @@ function DefinitionsParametersView() {
                 <p className="text-xs text-gray-500 mt-0.5">{tm('featureMenuParamsHint')}</p>
               </div>
               {renderParamList(featureParamRows)}
+            </div>
+
+            <div className="border border-gray-200 rounded-lg overflow-hidden">
+              <div className="px-4 py-3 bg-gray-50 border-b border-gray-200">
+                <h4 className="text-sm font-semibold text-gray-800">{tm('stockSaleParamsSection')}</h4>
+                <p className="text-xs text-gray-500 mt-0.5">{tm('stockSaleParamsHint')}</p>
+              </div>
+              {renderParamList(stockSaleParamRows)}
+            </div>
+
+            <div className="border border-gray-200 rounded-lg overflow-hidden">
+              <div className="px-4 py-3 bg-gray-50 border-b border-gray-200">
+                <h4 className="text-sm font-semibold text-gray-800">{tm('posSaleParamsSection')}</h4>
+                <p className="text-xs text-gray-500 mt-0.5">{tm('posSaleParamsHint')}</p>
+              </div>
+              {renderParamList(posSaleParamRows)}
             </div>
 
             <div className="border border-gray-200 rounded-lg overflow-hidden">

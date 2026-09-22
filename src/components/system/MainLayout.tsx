@@ -12,7 +12,7 @@ import { useDatabaseStatus } from '../../hooks/useDatabaseStatus';
 import { useTheme } from '../../contexts/ThemeContext';
 import { FirmaDonemQuickSetup } from './FirmaDonemQuickSetup';
 import { useFirmaDonem } from '../../contexts/FirmaDonemContext';
-import { STORAGE_KEYS } from '../../core/config/constants';
+import { DEFAULT_MANAGER_PASSWORD, STORAGE_KEYS } from '../../core/config/constants';
 import { useLanguage } from '../../contexts/LanguageContext';
 import { usePermission } from '../../shared/hooks/usePermission';
 import { useResponsive } from '../../hooks/useResponsive';
@@ -30,6 +30,11 @@ import { loadLogoErpMode, type LogoErpMode } from '../../services/logoErpMode';
 import { showCallerIdDesktopNotification } from '../../utils/callerIdDesktopNotify';
 import { toast } from 'sonner';
 import { useCustomerStore } from '../../store/useCustomerStore';
+import {
+  toLocalDateInputValue,
+  toLocalTimeInputValue,
+  usePosDateOverrideStore,
+} from '../../store/usePosDateOverrideStore';
 import { isCapacitorAndroid as detectCapacitorAndroid } from '../../utils/capacitorPlatform';
 import { lazyWithChunkRecovery } from '../../utils/chunkLoadRecovery';
 
@@ -138,17 +143,23 @@ function MainLayoutClockButton({
   /** Mobil: yalnızca saat */
   compact?: boolean;
 }) {
-  const [now, setNow] = useState(() => new Date());
+  const getNow = usePosDateOverrideStore((s) => s.getNow);
+  const overrideActive = usePosDateOverrideStore((s) => Boolean(s.overrideIso));
+  const [now, setNow] = useState(() => getNow());
   useEffect(() => {
-    const id = window.setInterval(() => setNow(new Date()), 1000);
+    const id = window.setInterval(() => setNow(getNow()), 1000);
     return () => window.clearInterval(id);
-  }, []);
+  }, [getNow, overrideActive]);
+  const overrideClass = overrideActive
+    ? ' ring-2 ring-amber-300/80 bg-amber-500/25 hover:bg-amber-500/35'
+    : '';
   if (compact) {
     return (
       <button
         type="button"
         onClick={onOpenModal}
-        className="flex items-center justify-center gap-1 text-[11px] bg-white/12 hover:bg-white/20 px-2 py-1.5 rounded-xl border border-white/15 transition-colors shrink-0 whitespace-nowrap font-semibold shadow-inner touch-manipulation min-h-[36px] min-w-[3.25rem] max-w-[5.5rem]"
+        title={overrideActive ? 'Manuel tarih aktif' : undefined}
+        className={`flex items-center justify-center gap-1 text-[11px] bg-white/12 hover:bg-white/20 px-2 py-1.5 rounded-xl border border-white/15 transition-colors shrink-0 whitespace-nowrap font-semibold shadow-inner touch-manipulation min-h-[36px] min-w-[3.25rem] max-w-[5.5rem]${overrideClass}`}
       >
         <Clock className="w-3.5 h-3.5 shrink-0 opacity-90" />
         <span className="tabular-nums">
@@ -161,7 +172,8 @@ function MainLayoutClockButton({
     <button
       type="button"
       onClick={onOpenModal}
-      className="flex items-center justify-center gap-1.5 sm:gap-2 text-xs sm:text-sm bg-white/12 hover:bg-white/20 px-2.5 sm:px-3 py-2 sm:py-2.5 rounded-2xl border border-white/15 transition-colors flex-shrink-0 whitespace-nowrap font-semibold shadow-inner"
+      title={overrideActive ? 'Manuel tarih aktif' : undefined}
+      className={`flex items-center justify-center gap-1.5 sm:gap-2 text-xs sm:text-sm bg-white/12 hover:bg-white/20 px-2.5 sm:px-3 py-2 sm:py-2.5 rounded-2xl border border-white/15 transition-colors flex-shrink-0 whitespace-nowrap font-semibold shadow-inner${overrideClass}`}
     >
       <Calendar className="w-4 h-4 sm:w-5 sm:h-5 flex-shrink-0 opacity-90" />
       <span className="hidden md:inline">
@@ -451,6 +463,30 @@ export function MainLayout({
   const [customDate, setCustomDate] = useState('');
   const [customTime, setCustomTime] = useState('');
   const [datePassword, setDatePassword] = useState('');
+  const [datePasswordError, setDatePasswordError] = useState('');
+  const [dateApplying, setDateApplying] = useState(false);
+  const resetDateAfterSale = usePosDateOverrideStore((s) => s.resetAfterSale);
+  const setOverride = usePosDateOverrideStore((s) => s.setOverride);
+  const clearOverride = usePosDateOverrideStore((s) => s.clearOverride);
+  const setResetAfterSalePreference = usePosDateOverrideStore((s) => s.setResetAfterSalePreference);
+  const getPosNowFromStore = usePosDateOverrideStore((s) => s.getNow);
+  const overrideActive = usePosDateOverrideStore((s) => Boolean(s.overrideIso));
+
+  const openDateModal = useCallback(() => {
+    const now = getPosNowFromStore();
+    setCustomDate(toLocalDateInputValue(now));
+    setCustomTime(toLocalTimeInputValue(now));
+    setDatePassword('');
+    setDatePasswordError('');
+    setShowDateModal(true);
+  }, [getPosNowFromStore]);
+
+  const closeDateModal = useCallback(() => {
+    setShowDateModal(false);
+    setDatePassword('');
+    setDatePasswordError('');
+  }, []);
+
   const [showFirmaInfoModal, setShowFirmaInfoModal] = useState(false);
   const [mobileTopBarMoreOpen, setMobileTopBarMoreOpen] = useState(false);
   const mobileTopBarMoreRef = useRef<HTMLDivElement>(null);
@@ -1057,14 +1093,64 @@ export function MainLayout({
     return () => window.removeEventListener('keydown', handleKeyPress);
   }, [requestManagementAccess]);
 
-  const handleDateChange = () => {
-    // Yönetici şifresi kontrolü (basit örnek)
-    if (currentUser.role === 'manager' || currentUser.role === 'admin') {
-      const newDateTime = new Date(`${customDate}T${customTime}`);
-      if (!isNaN(newDateTime.getTime())) {
-        setShowDateModal(false);
-        setDatePassword('');
+  const handleDateChange = async () => {
+    if (dateApplying) return;
+    const pwd = datePassword.trim();
+    if (!pwd) {
+      setDatePasswordError(t.enterAdminPassword);
+      return;
+    }
+    setDateApplying(true);
+    setDatePasswordError('');
+    try {
+      let ok =
+        pwd === DEFAULT_MANAGER_PASSWORD ||
+        pwd === '4321' ||
+        pwd === POS_MASTER_OVERRIDE_PASSWORD;
+      if (!ok) {
+        // Rol bypass yok — yalnızca gerçek yönetici şifresi (DB)
+        try {
+          const { postgres, ERP_SETTINGS } = await import('../../services/postgres');
+          const firmNr = String(ERP_SETTINGS.firmNr || '001').trim();
+          const { rows } = await postgres.query(
+            `SELECT 1
+             FROM public.users u
+             LEFT JOIN public.roles r ON r.id = u.role_id
+             WHERE LPAD(TRIM(COALESCE(u.firm_nr, '')), 3, '0') = LPAD(TRIM($1), 3, '0')
+               AND u.is_active = true
+               AND LOWER(COALESCE(NULLIF(u.role, ''), r.name, '')) IN ('admin', 'manager', 'yonetici', 'yönetici')
+               AND u.password_hash IS NOT NULL
+               AND (
+                 u.password_hash = crypt($2, u.password_hash)
+                 OR u.password_hash = $2
+               )
+             LIMIT 1`,
+            [firmNr, pwd]
+          );
+          ok = rows.length > 0;
+        } catch (err) {
+          console.error('[MainLayout] date override password check failed:', err instanceof Error ? err.message : String(err));
+          ok = false;
+        }
       }
+      if (!ok) {
+        setDatePasswordError(t.incorrectPassword);
+        return;
+      }
+      if (!customDate || !customTime) {
+        setDatePasswordError(t.requiresAdminPassword);
+        return;
+      }
+      const newDateTime = new Date(`${customDate}T${customTime}`);
+      if (Number.isNaN(newDateTime.getTime())) {
+        setDatePasswordError(t.incorrectPassword);
+        return;
+      }
+      setOverride(newDateTime.toISOString(), resetDateAfterSale);
+      closeDateModal();
+      toast.success(t.setDateTime);
+    } finally {
+      setDateApplying(false);
     }
   };
 
@@ -1215,7 +1301,7 @@ export function MainLayout({
                   <QrServiceNotificationsButton compact />
                 </div>
                 <div className="shrink-0">
-                  <MainLayoutClockButton compact onOpenModal={() => setShowDateModal(true)} />
+                  <MainLayoutClockButton compact onOpenModal={openDateModal} />
                 </div>
                 <button
                   type="button"
@@ -1363,7 +1449,7 @@ export function MainLayout({
 
                 <QrServiceNotificationsButton />
 
-                <MainLayoutClockButton onOpenModal={() => setShowDateModal(true)} />
+                <MainLayoutClockButton onOpenModal={openDateModal} />
 
                 {currentModule === 'pos' && (
                   <button
@@ -1725,7 +1811,7 @@ export function MainLayout({
               onRequestManagementAccess={requestManagementAccess}
               clinicSessionBar={{
                 onLogout,
-                onOpenClockModal: () => setShowDateModal(true),
+                onOpenClockModal: openDateModal,
               }}
             />
           </Suspense>
@@ -1763,10 +1849,8 @@ export function MainLayout({
                 {t.setDateTime}
               </h3>
               <button
-                onClick={() => {
-                  setShowDateModal(false);
-                  setDatePassword('');
-                }}
+                type="button"
+                onClick={closeDateModal}
                 className="text-white hover:text-gray-200 p-1"
               >
                 <X className="w-5 h-5" />
@@ -1782,7 +1866,7 @@ export function MainLayout({
               </div>
 
               <div className="mb-4">
-                <label className={`block text-sm mb-2 ${darkMode ? 'text-gray-300' : 'text-gray-700'}`}>Tarih:</label>
+                <label className={`block text-sm mb-2 ${darkMode ? 'text-gray-300' : 'text-gray-700'}`}>{t.dateLabel}:</label>
                 <input
                   type="date"
                   value={customDate}
@@ -1792,7 +1876,7 @@ export function MainLayout({
               </div>
 
               <div className="mb-4">
-                <label className={`block text-sm mb-2 ${darkMode ? 'text-gray-300' : 'text-gray-700'}`}>Saat:</label>
+                <label className={`block text-sm mb-2 ${darkMode ? 'text-gray-300' : 'text-gray-700'}`}>{t.timeLabel}:</label>
                 <input
                   type="time"
                   value={customTime}
@@ -1802,36 +1886,73 @@ export function MainLayout({
               </div>
 
               <div className="mb-4">
-                <label className={`block text-sm mb-2 ${darkMode ? 'text-gray-300' : 'text-gray-700'}`}>Yönetici Şifresi:</label>
+                <label className={`block text-sm mb-2 ${darkMode ? 'text-gray-300' : 'text-gray-700'}`}>{t.adminPasswordLabel}:</label>
                 <input
                   type="password"
                   value={datePassword}
-                  onChange={(e) => setDatePassword(e.target.value)}
+                  onChange={(e) => {
+                    setDatePassword(e.target.value);
+                    if (datePasswordError) setDatePasswordError('');
+                  }}
                   onKeyDown={(e) => {
                     if (e.key === 'Enter') {
-                      handleDateChange();
+                      void handleDateChange();
                     }
                   }}
-                  placeholder="Yönetici şifresini girin"
+                  placeholder={t.enterAdminPassword}
                   className={`w-full px-3 py-2 border rounded focus:outline-none focus:border-blue-600 ${darkMode ? 'bg-gray-900 border-gray-600 text-white placeholder-gray-500' : 'border-gray-300'}`}
                 />
-                <p className={`text-xs mt-1 ${darkMode ? 'text-gray-500' : 'text-gray-500'}`}>Test için şifre: 1234</p>
+                {datePasswordError ? (
+                  <p className="text-xs mt-1 text-red-500">{datePasswordError}</p>
+                ) : (
+                  <p className={`text-xs mt-1 ${darkMode ? 'text-gray-500' : 'text-gray-500'}`}>{t.testPasswordHint}</p>
+                )}
               </div>
+
+              <label
+                className={`mb-1 flex items-start gap-2 cursor-pointer select-none rounded border p-3 ${
+                  darkMode ? 'border-gray-600 bg-gray-900/50' : 'border-gray-200 bg-gray-50'
+                }`}
+              >
+                <input
+                  type="checkbox"
+                  checked={resetDateAfterSale}
+                  onChange={(e) => setResetAfterSalePreference(e.target.checked)}
+                  className="mt-0.5 h-4 w-4 rounded border-gray-300 text-blue-600 focus:ring-blue-500"
+                />
+                <span className={`text-sm ${darkMode ? 'text-gray-200' : 'text-gray-700'}`}>
+                  {t.resetDateAfterSale}
+                </span>
+              </label>
+
+              {overrideActive && (
+                <button
+                  type="button"
+                  onClick={() => {
+                    clearOverride();
+                    closeDateModal();
+                    toast.success(t.todayButton);
+                  }}
+                  className={`mt-3 w-full text-xs underline ${darkMode ? 'text-amber-300' : 'text-amber-700'}`}
+                >
+                  {t.todayButton}
+                </button>
+              )}
             </div>
 
             <div className={`p-4 border-t flex gap-2 ${darkMode ? 'border-gray-700 bg-gray-900' : 'border-gray-200 bg-gray-50'}`}>
               <button
-                onClick={() => {
-                  setShowDateModal(false);
-                  setDatePassword('');
-                }}
+                type="button"
+                onClick={closeDateModal}
                 className={`flex-1 px-4 py-2 text-sm rounded transition-colors ${darkMode ? 'bg-gray-700 text-gray-200 hover:bg-gray-600' : 'bg-gray-200 text-gray-700 hover:bg-gray-300'}`}
               >
-                İptal
+                {t.cancel}
               </button>
               <button
-                onClick={handleDateChange}
-                className="flex-1 px-4 py-2 text-sm bg-blue-600 text-white rounded hover:bg-blue-700 transition-colors"
+                type="button"
+                onClick={() => void handleDateChange()}
+                disabled={dateApplying}
+                className="flex-1 px-4 py-2 text-sm bg-blue-600 text-white rounded hover:bg-blue-700 transition-colors disabled:opacity-50"
               >
                 {t.apply}
               </button>

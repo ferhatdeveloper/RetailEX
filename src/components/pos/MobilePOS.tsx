@@ -11,6 +11,18 @@ import { getReceiptSettings, resolveDefaultReceiptLang } from '../../services/re
 import { APP_VERSION } from '../../core/version';
 import { productAPI } from '../../services/api/products';
 import { mergeScaleCartQuantity, normalizeWeightProductQuantity } from '../../utils/scaleQuantity';
+import {
+  findInsufficientStockHits,
+  formatInsufficientStockMessage,
+  isBlockNegativeStockSaleEnabled,
+  isStockExemptFromSaleGuard,
+} from '../../utils/stockSaleGuard';
+import { getPosNow, notifyPosSaleSuccess } from '../../store/usePosDateOverrideStore';
+import { isPosPaymentBackToSaleAllowed } from '../../utils/posPaymentBackGuard';
+import {
+  loadReportMenuParams,
+  subscribeReportMenuParams,
+} from '../../services/reportMenuParamsService';
 import { parsePosQuantityForProduct, formatDecimalForTrInput } from '../../utils/numberFormatter';
 import { resolveScaleBarcodeSale } from '../../utils/scaleBarcodeSale';
 import { ModalLayer } from '../shared/FullscreenBodyPortal';
@@ -49,6 +61,9 @@ export function MobilePOS({ products, customers, campaigns, onSaleComplete, onBa
   const [searchQuery, setSearchQuery] = useState('');
   const [discount, setDiscount] = useState(0);
   const [showPayment, setShowPayment] = useState(false);
+  const [allowPaymentBackToSale, setAllowPaymentBackToSale] = useState(() =>
+    isPosPaymentBackToSaleAllowed(),
+  );
   const [showCustomerModal, setShowCustomerModal] = useState(false);
   const [showProductsModal, setShowProductsModal] = useState(false);
   const [showQuickActions, setShowQuickActions] = useState(false);
@@ -62,6 +77,20 @@ export function MobilePOS({ products, customers, campaigns, onSaleComplete, onBa
   useEffect(() => {
     return () => {
       if (barcodeAutoTimerRef.current) clearTimeout(barcodeAutoTimerRef.current);
+    };
+  }, []);
+
+  useEffect(() => {
+    let cancelled = false;
+    void loadReportMenuParams().then((p) => {
+      if (!cancelled) setAllowPaymentBackToSale(isPosPaymentBackToSaleAllowed(p));
+    });
+    const unsub = subscribeReportMenuParams((p) => {
+      setAllowPaymentBackToSale(isPosPaymentBackToSaleAllowed(p));
+    });
+    return () => {
+      cancelled = true;
+      unsub();
     };
   }, []);
 
@@ -333,15 +362,34 @@ export function MobilePOS({ products, customers, campaigns, onSaleComplete, onBa
 
     const existingItem = cart.find(itemMatch);
     const price = customPrice !== undefined ? customPrice : (variant?.price || product.price);
+    const nextQty = existingItem
+      ? mergeScaleCartQuantity(existingItem.quantity, qtyAdd, productUnit)
+      : qtyAdd;
+    const mult = multiplier || existingItem?.multiplier || 1;
+    const demandQty = normalizeWeightProductQuantity(nextQty * mult, productUnit);
+
+    if (isBlockNegativeStockSaleEnabled() && !isStockExemptFromSaleGuard(product)) {
+      const hits = findInsufficientStockHits([{
+        productId: product.id,
+        name: product.name,
+        quantity: demandQty,
+        availableStock: Number(variant?.stock ?? product.stock ?? 0),
+        isService: product.isService,
+        materialType: product.materialType,
+      }]);
+      if (hits.length > 0) {
+        showNotif(formatInsufficientStockMessage(hits, tm), 'error');
+        return;
+      }
+    }
 
     if (existingItem) {
-      const mergedQty = mergeScaleCartQuantity(existingItem.quantity, qtyAdd, productUnit);
       setCart(cart.map(item =>
         itemMatch(item)
           ? {
               ...item,
-              quantity: mergedQty,
-              total: mergedQty * price * (1 - item.discount / 100),
+              quantity: nextQty,
+              total: nextQty * price * (1 - item.discount / 100),
             }
           : item
       ));
@@ -365,14 +413,35 @@ export function MobilePOS({ products, customers, campaigns, onSaleComplete, onBa
       removeFromCart(index);
       return;
     }
-    setCart(cart.map((item, idx) => {
-      if (idx === index) {
-        const unit = item.unit || 'Adet';
+    const item = cart[index];
+    if (item && isBlockNegativeStockSaleEnabled()) {
+      const product = products.find((p) => p.id === item.productId);
+      if (product && !isStockExemptFromSaleGuard(product)) {
+        const unit = item.unit || product.unit || 'Adet';
         const q = normalizeWeightProductQuantity(quantity, unit);
-        const newTotal = q * item.price * (1 - item.discount / 100);
-        return { ...item, quantity: q, total: newTotal };
+        const demandQty = normalizeWeightProductQuantity(q * (item.multiplier || 1), unit);
+        const hits = findInsufficientStockHits([{
+          productId: product.id,
+          name: product.name,
+          quantity: demandQty,
+          availableStock: Number(item.variant?.stock ?? product.stock ?? 0),
+          isService: product.isService,
+          materialType: product.materialType,
+        }]);
+        if (hits.length > 0) {
+          showNotif(formatInsufficientStockMessage(hits, tm), 'error');
+          return;
+        }
       }
-      return item;
+    }
+    setCart(cart.map((row, idx) => {
+      if (idx === index) {
+        const unit = row.unit || 'Adet';
+        const q = normalizeWeightProductQuantity(quantity, unit);
+        const newTotal = q * row.price * (1 - row.discount / 100);
+        return { ...row, quantity: q, total: newTotal };
+      }
+      return row;
     }));
   };
 
@@ -459,6 +528,34 @@ export function MobilePOS({ products, customers, campaigns, onSaleComplete, onBa
     setDiscount(0);
   };
 
+  const openPaymentIfStockOk = () => {
+    if (cart.length === 0) return;
+    if (isBlockNegativeStockSaleEnabled()) {
+      const demand = cart.map((item) => {
+        const product = products.find((p) => p.id === item.productId);
+        const unit = item.unit || product?.unit || 'Adet';
+        const baseQty = normalizeWeightProductQuantity(
+          item.quantity * (item.multiplier || 1),
+          unit,
+        );
+        return {
+          productId: item.productId,
+          name: item.productName || product?.name,
+          quantity: baseQty,
+          availableStock: Number(item.variant?.stock ?? product?.stock ?? 0),
+          isService: product?.isService,
+          materialType: product?.materialType,
+        };
+      });
+      const hits = findInsufficientStockHits(demand);
+      if (hits.length > 0) {
+        showNotif(formatInsufficientStockMessage(hits, tm), 'error');
+        return;
+      }
+    }
+    setShowPayment(true);
+  };
+
   // Auto-check campaigns when cart changes
   useEffect(() => {
     checkCampaigns();
@@ -470,7 +567,7 @@ export function MobilePOS({ products, customers, campaigns, onSaleComplete, onBa
       if (e.key === 'F7') {
         e.preventDefault();
         if (cart.length > 0) {
-          setShowPayment(true);
+          openPaymentIfStockOk();
         }
       }
       if (e.key === 'F8') {
@@ -482,7 +579,7 @@ export function MobilePOS({ products, customers, campaigns, onSaleComplete, onBa
           const sale: Sale = {
             id: invoiceNo,
             receiptNumber: invoiceNo,
-            date: new Date().toISOString(),
+            date: getPosNow().toISOString(),
             customerId: selectedCustomer?.id,
             customerName: selectedCustomer?.name,
             items: cart,
@@ -495,6 +592,7 @@ export function MobilePOS({ products, customers, campaigns, onSaleComplete, onBa
           };
 
           onSaleComplete(sale);
+          notifyPosSaleSuccess();
           setCart([]);
           setSelectedCustomer(null);
           setDiscount(0);
@@ -532,12 +630,36 @@ export function MobilePOS({ products, customers, campaigns, onSaleComplete, onBa
   };
 
   const completeSale = (paymentMethod: string) => {
+    if (isBlockNegativeStockSaleEnabled()) {
+      const demand = cart.map((item) => {
+        const product = products.find((p) => p.id === item.productId);
+        const unit = item.unit || product?.unit || 'Adet';
+        const baseQty = normalizeWeightProductQuantity(
+          item.quantity * (item.multiplier || 1),
+          unit,
+        );
+        return {
+          productId: item.productId,
+          name: item.productName || product?.name,
+          quantity: baseQty,
+          availableStock: Number(item.variant?.stock ?? product?.stock ?? 0),
+          isService: product?.isService,
+          materialType: product?.materialType,
+        };
+      });
+      const hits = findInsufficientStockHits(demand);
+      if (hits.length > 0) {
+        showNotif(formatInsufficientStockMessage(hits, tm), 'error');
+        return;
+      }
+    }
+
     const { subtotal, totalDiscount, tax, total } = calculateTotals();
 
     const sale: Sale = {
       id: invoiceNo,
       receiptNumber: invoiceNo,
-      date: new Date().toISOString(),
+      date: getPosNow().toISOString(),
       customerId: selectedCustomer?.id,
       customerName: selectedCustomer?.name,
       items: cart,
@@ -552,6 +674,7 @@ export function MobilePOS({ products, customers, campaigns, onSaleComplete, onBa
     };
 
     onSaleComplete(sale);
+    notifyPosSaleSuccess();
 
     // Automatic Printing Logic
     if (autoPrint) {
@@ -879,7 +1002,7 @@ export function MobilePOS({ products, customers, campaigns, onSaleComplete, onBa
       {/* Floating Payment Button */}
       {cart.length > 0 && (
         <button
-          onClick={() => setShowPayment(true)}
+          onClick={() => openPaymentIfStockOk()}
           className="fixed bottom-20 right-4 w-16 h-16 bg-gradient-to-r from-green-500 to-green-600 text-white rounded-full shadow-2xl flex items-center justify-center hover:from-green-600 hover:to-green-700 transition-all z-30 active:scale-95"
         >
           <CreditCard className="w-7 h-7" />
@@ -1076,8 +1199,28 @@ export function MobilePOS({ products, customers, campaigns, onSaleComplete, onBa
               <div className="h-px bg-gray-200 my-2"></div>
 
               <button
-                onClick={() => setShowPayment(false)}
-                className="w-full px-4 py-3 bg-gray-100 text-gray-700 font-bold rounded-xl hover:bg-gray-200 active:bg-gray-300 transition-colors"
+                onClick={() => {
+                  if (!allowPaymentBackToSale) {
+                    showNotif(
+                      tm('posPaymentBackBlocked') ||
+                        'Bu işlem parametre ile kapatıldı. Ödeme ekranından satışa geri dönüşe izin verilmiyor.',
+                      'warning',
+                    );
+                    return;
+                  }
+                  setShowPayment(false);
+                }}
+                title={
+                  allowPaymentBackToSale
+                    ? undefined
+                    : tm('posPaymentBackBlocked') ||
+                      'Bu işlem parametre ile kapatıldı. Ödeme ekranından satışa geri dönüşe izin verilmiyor.'
+                }
+                className={`w-full px-4 py-3 font-bold rounded-xl transition-colors ${
+                  allowPaymentBackToSale
+                    ? 'bg-gray-100 text-gray-700 hover:bg-gray-200 active:bg-gray-300'
+                    : 'bg-gray-100 text-gray-400 opacity-60 cursor-not-allowed'
+                }`}
               >
                 {t.cancel}
               </button>

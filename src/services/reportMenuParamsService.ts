@@ -2,9 +2,13 @@
  * Menü görünürlük parametreleri: güzellik/anket raporları + borç/alacak yaşlandırma
  * + vade/tahsilat takibi + stok yaşlandırma + sanal santral + fiyat değişimi
  * + ürün listesi satış/alış dip toplamları + günlük/dönem rapor özet kartları
- * + günlük rapor tedarikçi ödemeleri + Windows yazıcı servisi.
+ * + günlük rapor tedarikçi ödemeleri + Windows yazıcı servisi
+ * + negatif stok satış engeli (`block-negative-stock-sale`, varsayılan kapalı = satılabilir)
+ * + POS ödeme→satış geri dönüş (`allow-pos-payment-back-to-sale`, varsayılan açık).
  * Kaynak: PostgreSQL `system_settings.report_menu_params` ↔ localStorage önbellek.
- * Varsayılan: çoğu menü/özellik kapalı; rapor kartları ve `daily-report-supplier-payments` varsayılan açık.
+ * Varsayılan: çoğu menü/özellik kapalı; rapor kartları ve `daily-report-supplier-payments`
+ * varsayılan açık; `block-negative-stock-sale` varsayılan kapalı (eski davranış);
+ * `allow-pos-payment-back-to-sale` varsayılan açık (eski davranış).
  */
 import { postgres, DB_SETTINGS } from './postgres';
 
@@ -35,6 +39,18 @@ export const REPORT_MENU_PARAM_KEYS = [
    * Açık: unified print queue → Windows yazıcı servisi.
    */
   'print-use-windows-printer-service',
+  /**
+   * Negatif / sıfır stokla satış engeli — varsayılan kapalı (satılabilir).
+   * Açık: stok 0 veya satış sonrası negatif olacaksa POS / fatura satışı engellenir.
+   * Kapalı: eski davranış (eksi stok kaydına izin).
+   */
+  'block-negative-stock-sale',
+  /**
+   * POS ödeme ekranından satışa geri dönüş — varsayılan açık (izin ver).
+   * Açık: İptal/X → fiş iptal neden modalı → satış ekranı (eski davranış).
+   * Kapalı: geri dönüş engellenir; fiş iptal modalı açılmaz.
+   */
+  'allow-pos-payment-back-to-sale',
   /** Günlük rapor KPI kartları (varsayılan açık) */
   'daily-report-card-total-sales',
   'daily-report-card-total-revenue',
@@ -79,6 +95,8 @@ const DEFAULT_PARAMS: ReportMenuParams = {
   'product-list-sales-purchase-totals': false,
   'daily-report-supplier-payments': true,
   'print-use-windows-printer-service': false,
+  'block-negative-stock-sale': false,
+  'allow-pos-payment-back-to-sale': true,
   'daily-report-card-total-sales': true,
   'daily-report-card-total-revenue': true,
   'daily-report-card-total-discount': true,

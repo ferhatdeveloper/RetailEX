@@ -20,6 +20,8 @@ export type ProductRow = {
   is_active: boolean;
   /** Ürün kartı KDV % (yoksa 20) */
   vat_rate: number;
+  /** Hizmet kartı — stok engelinden muaf */
+  material_type?: string | null;
 };
 
 export type ProductInput = {
@@ -41,7 +43,7 @@ const LIST_COLS = `id, code, barcode, name, unit,
   COALESCE(price, 0)::float8 AS price,
   COALESCE(cost, 0)::float8 AS cost,
   COALESCE(stock, 0)::float8 AS stock,
-  min_stock, brand, category_code,
+  min_stock, brand, category_code, material_type,
   COALESCE(is_active, true) AS is_active,
   COALESCE(vat_rate, vatrate, 20)::float8 AS vat_rate`;
 
@@ -54,7 +56,7 @@ const LIST_COLS_FALLBACK = `id, code, barcode, name, unit,
   20::float8 AS vat_rate`;
 
 const REST_SELECT =
-  'id,code,barcode,name,unit,price,cost,stock,min_stock,brand,category_code,is_active,vat_rate';
+  'id,code,barcode,name,unit,price,cost,stock,min_stock,brand,category_code,is_active,vat_rate,material_type';
 
 function mapProductRow(r: Record<string, unknown>): ProductRow {
   const vat = Number(r.vat_rate);
@@ -72,6 +74,7 @@ function mapProductRow(r: Record<string, unknown>): ProductRow {
     category_code: r.category_code != null ? String(r.category_code) : null,
     is_active: !(r.is_active === false || r.is_active === 0 || String(r.is_active).toLowerCase() === 'false'),
     vat_rate: vat >= 0 ? vat : 20,
+    material_type: r.material_type != null ? String(r.material_type) : null,
   };
 }
 

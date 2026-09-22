@@ -35,6 +35,11 @@ import { usePrinterSettingsStore } from '../store/printerSettingsStore';
 import { printSaleReceipt } from '../services/printerService';
 import { palette } from '../theme/colors';
 import type { MainStackParamList } from '../navigation/types';
+import {
+  findInsufficientStockHitsMobile,
+  formatInsufficientStockMessageMobile,
+  isBlockNegativeStockSaleEnabledMobile,
+} from '../utils/stockSaleGuard';
 
 type CartLine = {
   productId: string;
@@ -45,6 +50,8 @@ type CartLine = {
   code: string | null;
   categoryCode: string | null;
   vatRate: number;
+  stock: number;
+  materialType: string | null;
 };
 
 type SelectedCustomer = {
@@ -165,30 +172,66 @@ export function PosScreen() {
 
   const total = Math.round((subtotal - applied.discount) * 100) / 100;
 
-  const addProduct = useCallback((p: ProductRow) => {
-    setCart((prev) => {
-      const i = prev.findIndex((l) => l.productId === String(p.id));
-      if (i >= 0) {
-        const next = [...prev];
-        next[i] = { ...next[i]!, qty: next[i]!.qty + 1 };
-        return next;
-      }
-      return [
-        ...prev,
-        {
-          productId: String(p.id),
-          name: p.name,
-          price: Number(p.price) || 0,
-          qty: 1,
-          unit: p.unit,
-          code: p.code,
-          categoryCode: p.category_code ?? null,
-          vatRate:
-            Number.isFinite(p.vat_rate) && p.vat_rate >= 0 ? Number(p.vat_rate) : 20,
-        },
-      ];
-    });
-  }, []);
+  const addProduct = useCallback(
+    (p: ProductRow) => {
+      void (async () => {
+        const block = await isBlockNegativeStockSaleEnabledMobile();
+        setCart((prev) => {
+          const i = prev.findIndex((l) => l.productId === String(p.id));
+          const nextQty = i >= 0 ? prev[i]!.qty + 1 : 1;
+          const stock = Number(p.stock) || (i >= 0 ? prev[i]!.stock : 0);
+          const materialType =
+            p.material_type != null
+              ? String(p.material_type)
+              : i >= 0
+                ? prev[i]!.materialType
+                : null;
+
+          if (block) {
+            const hits = findInsufficientStockHitsMobile([
+              {
+                productId: String(p.id),
+                name: p.name,
+                quantity: nextQty,
+                availableStock: stock,
+                materialType,
+              },
+            ]);
+            if (hits.length > 0) {
+              Alert.alert(
+                t('posAlerts.payment'),
+                formatInsufficientStockMessageMobile(hits),
+              );
+              return prev;
+            }
+          }
+
+          if (i >= 0) {
+            const next = [...prev];
+            next[i] = { ...next[i]!, qty: nextQty, stock, materialType };
+            return next;
+          }
+          return [
+            ...prev,
+            {
+              productId: String(p.id),
+              name: p.name,
+              price: Number(p.price) || 0,
+              qty: 1,
+              unit: p.unit,
+              code: p.code,
+              categoryCode: p.category_code ?? null,
+              vatRate:
+                Number.isFinite(p.vat_rate) && p.vat_rate >= 0 ? Number(p.vat_rate) : 20,
+              stock,
+              materialType,
+            },
+          ];
+        });
+      })();
+    },
+    [t],
+  );
 
   const runSearch = useCallback(
     async (q: string) => {
@@ -237,91 +280,113 @@ export function PosScreen() {
       setCustomerPickerOpen(true);
       return;
     }
-    const discLabel =
-      applied.discount > 0 && applied.campaign
-        ? t('posAlerts.campaignDiscount', {
-            name: applied.campaign.name,
-            discount: formatMoney(applied.discount),
-          })
-        : '';
-    const customerLabel =
-      isCredit && selectedCustomer
-        ? t('posAlerts.creditCustomer', { name: selectedCustomer.name })
-        : '';
-    Alert.alert(
-      t('posAlerts.payment'),
-      t('posAlerts.confirmSave', {
-        method: paymentMethod,
-        total: formatMoney(total),
-        campaign: discLabel,
-      }) + customerLabel,
-      [
-        { text: t('cancel'), style: 'cancel' },
-        {
-          text: t('save'),
-          onPress: () => {
-            void (async () => {
-              setSaving(true);
-              try {
-                const res = await savePosSale(cart, paymentMethod, {
-                  totalDiscount: applied.discount,
-                  campaignId: applied.campaign?.id ?? null,
-                  campaignName: applied.campaign?.name ?? null,
-                  customerId: selectedCustomer?.id ?? null,
-                  customerName: selectedCustomer?.name ?? null,
-                });
-                setCart([]);
-                setSelectedCampaignId(null);
-                setSelectedCustomer(null);
-                if (res.queued) {
+
+    void (async () => {
+      if (await isBlockNegativeStockSaleEnabledMobile()) {
+        const hits = findInsufficientStockHitsMobile(
+          cart.map((l) => ({
+            productId: l.productId,
+            name: l.name,
+            quantity: l.qty,
+            availableStock: l.stock,
+            materialType: l.materialType,
+          })),
+        );
+        if (hits.length > 0) {
+          Alert.alert(
+            t('posAlerts.payment'),
+            formatInsufficientStockMessageMobile(hits),
+          );
+          return;
+        }
+      }
+
+      const discLabel =
+        applied.discount > 0 && applied.campaign
+          ? t('posAlerts.campaignDiscount', {
+              name: applied.campaign.name,
+              discount: formatMoney(applied.discount),
+            })
+          : '';
+      const customerLabel =
+        isCredit && selectedCustomer
+          ? t('posAlerts.creditCustomer', { name: selectedCustomer.name })
+          : '';
+      Alert.alert(
+        t('posAlerts.payment'),
+        t('posAlerts.confirmSave', {
+          method: paymentMethod,
+          total: formatMoney(total),
+          campaign: discLabel,
+        }) + customerLabel,
+        [
+          { text: t('cancel'), style: 'cancel' },
+          {
+            text: t('save'),
+            onPress: () => {
+              void (async () => {
+                setSaving(true);
+                try {
+                  const res = await savePosSale(cart, paymentMethod, {
+                    totalDiscount: applied.discount,
+                    campaignId: applied.campaign?.id ?? null,
+                    campaignName: applied.campaign?.name ?? null,
+                    customerId: selectedCustomer?.id ?? null,
+                    customerName: selectedCustomer?.name ?? null,
+                  });
+                  setCart([]);
+                  setSelectedCampaignId(null);
+                  setSelectedCustomer(null);
+                  if (res.queued) {
+                    Alert.alert(
+                      t('posAlerts.receiptQueuedTitle'),
+                      t('posAlerts.receiptQueuedBody', {
+                        ficheNo: res.ficheNo,
+                        total: formatMoney(res.total),
+                      }),
+                    );
+                    return;
+                  }
                   Alert.alert(
-                    t('posAlerts.receiptQueuedTitle'),
-                    t('posAlerts.receiptQueuedBody', {
+                    t('posAlerts.receiptSavedTitle'),
+                    t('posAlerts.receiptSavedBody', {
                       ficheNo: res.ficheNo,
                       total: formatMoney(res.total),
                     }),
+                    [
+                      {
+                        text: t('posAlerts.detail'),
+                        onPress: () =>
+                          navigation.navigate('InvoiceDetail', { invoiceId: res.id }),
+                      },
+                      { text: t('alert.ok') },
+                    ],
                   );
-                  return;
-                }
-                Alert.alert(
-                  t('posAlerts.receiptSavedTitle'),
-                  t('posAlerts.receiptSavedBody', {
-                    ficheNo: res.ficheNo,
-                    total: formatMoney(res.total),
-                  }),
-                  [
-                    {
-                      text: t('posAlerts.detail'),
-                      onPress: () =>
-                        navigation.navigate('InvoiceDetail', { invoiceId: res.id }),
-                    },
-                    { text: t('alert.ok') },
-                  ],
-                );
-                if (printerSettings.autoPrint) {
-                  const printRes = await printSaleReceipt(printerSettings, res.id);
-                  if (printRes.ok) {
-                    Alert.alert(t('posAlerts.printOk', { defaultValue: 'Yazdırıldı' }), printRes.message);
-                  } else if (printerSettings.enabled) {
-                    Alert.alert(
-                      t('posAlerts.printFail', { defaultValue: 'Yazdırılamadı' }),
-                      printRes.message,
-                    );
+                  if (printerSettings.autoPrint) {
+                    const printRes = await printSaleReceipt(printerSettings, res.id);
+                    if (printRes.ok) {
+                      Alert.alert(t('posAlerts.printOk', { defaultValue: 'Yazdırıldı' }), printRes.message);
+                    } else if (printerSettings.enabled) {
+                      Alert.alert(
+                        t('posAlerts.printFail', { defaultValue: 'Yazdırılamadı' }),
+                        printRes.message,
+                      );
+                    }
                   }
+                } catch (e) {
+                  Alert.alert(
+                    t('alert.saveError'),
+                    e instanceof Error ? e.message : String(e),
+                  );
+                } finally {
+                  setSaving(false);
                 }
-              } catch (e) {
-                Alert.alert(
-                  t('alert.saveError'),
-                  e instanceof Error ? e.message : String(e),
-                );
-              } finally {
-                setSaving(false);
-              }
-            })();
+              })();
+            },
           },
-        },
-      ],
-    );
+        ],
+      );
+    })();
   };
 
   const filteredCampaigns = useMemo(() => {

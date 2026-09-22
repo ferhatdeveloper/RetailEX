@@ -33,6 +33,11 @@ import {
   paymentMethodImpliesCashInKasa,
   paymentMethodImpliesCustomerDebt,
 } from './paymentMethodUtils';
+import {
+  findInsufficientStockHitsMobile,
+  formatInsufficientStockMessageMobile,
+  isBlockNegativeStockSaleEnabledMobile,
+} from '../utils/stockSaleGuard';
 
 export type PosCartLine = PosCartLineInput;
 
@@ -450,12 +455,48 @@ async function savePosSaleViaBridge(
   return { id: ctx.id, ficheNo: ctx.ficheNo, total: ctx.total };
 }
 
+async function assertPosSaleStockAllowed(lines: PosCartLine[]): Promise<void> {
+  if (!(await isBlockNegativeStockSaleEnabledMobile())) return;
+  const demand = [];
+  for (const line of lines) {
+    const pid = String(line.productId || '').trim();
+    if (!pid) continue;
+    let available = 0;
+    let materialType: string | null = null;
+    try {
+      const table = productsTable();
+      const { rows } = await pgQuery<{ stock: number; material_type?: string | null }>(
+        `SELECT COALESCE(stock, 0)::float8 AS stock, material_type
+         FROM ${table} WHERE id = $1::uuid LIMIT 1`,
+        [pid],
+      );
+      available = Number(rows[0]?.stock ?? 0) || 0;
+      materialType = rows[0]?.material_type != null ? String(rows[0].material_type) : null;
+    } catch {
+      /* okunamazsa UI stokuna güven — yine de quantity ile 0 kabul */
+      available = 0;
+    }
+    demand.push({
+      productId: pid,
+      name: line.name,
+      quantity: Number(line.qty) || 0,
+      availableStock: available,
+      materialType,
+    });
+  }
+  const hits = findInsufficientStockHitsMobile(demand);
+  if (hits.length > 0) {
+    throw new Error(formatInsufficientStockMessageMobile(hits));
+  }
+}
+
 async function savePosSaleLive(
   lines: PosCartLine[],
   paymentMethod: string,
   opts?: PosSaleLiveOpts,
 ): Promise<PosSaleResult> {
   if (!lines.length) throw new Error('Sepet boş');
+  await assertPosSaleStockAllowed(lines);
 
   return runDataTransport({
     label: 'savePosSale',

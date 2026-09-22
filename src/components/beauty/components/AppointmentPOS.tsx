@@ -35,6 +35,13 @@ import type { Sale, SaleItem } from '../../../core/types/models';
 import { useFirmaDonem } from '../../../contexts/FirmaDonemContext';
 import { currentLoginCashierName } from '../../../utils/loginCashierName';
 import { salesAPI } from '../../../services/api/sales';
+import {
+    findInsufficientStockHits,
+    formatInsufficientStockMessage,
+    isBlockNegativeStockSaleEnabled,
+    isStockExemptFromSaleGuard,
+} from '../../../utils/stockSaleGuard';
+import { getPosNow, notifyPosSaleSuccess } from '../../../store/usePosDateOverrideStore';
 import { phoneMatchesQuery } from '../../../shared/utils/validators';
 import {
     buildRestaurantAdisyonHtml,
@@ -1026,6 +1033,22 @@ export function AppointmentPOS({
     };
 
     const addRetailProduct = (p: Product) => {
+        if (isBlockNegativeStockSaleEnabled() && !isStockExemptFromSaleGuard(p)) {
+            const ex = cart.find((l) => l.type === 'product' && l.item_id === p.id);
+            const nextQty = (ex?.qty ?? 0) + 1;
+            const hits = findInsufficientStockHits([{
+                productId: p.id,
+                name: p.name,
+                quantity: nextQty,
+                availableStock: Number(p.stock ?? 0),
+                isService: p.isService,
+                materialType: p.materialType,
+            }]);
+            if (hits.length > 0) {
+                toast.error(formatInsufficientStockMessage(hits, tm));
+                return;
+            }
+        }
         const staffId = defaultSpecialistId?.trim() || undefined;
         setCart(c => {
             const ex = c.find(l => l.type === 'product' && l.item_id === p.id);
@@ -1042,7 +1065,28 @@ export function AppointmentPOS({
             }];
         });
     };
-    const chgQty = (uid: string, d: number) => setCart(c => c.map(l => l.uid === uid ? { ...l, qty: Math.max(1, l.qty + d) } : l));
+    const chgQty = (uid: string, d: number) => {
+        if (d > 0 && isBlockNegativeStockSaleEnabled()) {
+            const line = cart.find((l) => l.uid === uid);
+            if (line?.type === 'product') {
+                const product = useProductStore.getState().products.find((x) => x.id === line.item_id);
+                const nextQty = Math.max(1, line.qty + d);
+                const hits = findInsufficientStockHits([{
+                    productId: String(line.item_id),
+                    name: line.name || product?.name,
+                    quantity: nextQty,
+                    availableStock: Number(product?.stock ?? 0),
+                    isService: product?.isService,
+                    materialType: product?.materialType,
+                }]);
+                if (hits.length > 0) {
+                    toast.error(formatInsufficientStockMessage(hits, tm));
+                    return;
+                }
+            }
+        }
+        setCart(c => c.map(l => l.uid === uid ? { ...l, qty: Math.max(1, l.qty + d) } : l));
+    };
     const remLine = (uid: string) => setCart(c => c.filter(l => l.uid !== uid));
     const setStaff = (uid: string, sid: string) => setCart(c => c.map(l => l.uid === uid ? { ...l, staff_id: sid } : l));
     const activeSpecialists = useMemo(() => specialists.filter(s => s.is_active), [specialists]);
@@ -1734,7 +1778,7 @@ export function AppointmentPOS({
             const bookingSale: Sale = {
                 id: `APT-${Date.now()}`,
                 receiptNumber,
-                date: new Date().toISOString(),
+                date: getPosNow().toISOString(),
                 customerId: customer!.id,
                 customerName: customer?.name,
                 items: beautyLinesToReceiptItems(cart, payLang, receiptSettings, products, specialists),
@@ -1865,7 +1909,7 @@ export function AppointmentPOS({
             const sale: Sale = {
                 id: `DRAFT-${Date.now()}`,
                 receiptNumber,
-                date: new Date().toISOString(),
+                date: getPosNow().toISOString(),
                 customerId: customer?.id,
                 customerName: customer?.name,
                 items: beautyLinesToReceiptItems(cart, lang, receiptSettings, products, specialists),
@@ -1929,6 +1973,28 @@ export function AppointmentPOS({
         checkoutSubmitRef.current = true;
         try {
             if (!canSave) return;
+            if (isBlockNegativeStockSaleEnabled()) {
+                const productLines = cart.filter((l) => l.type === 'product');
+                if (productLines.length > 0) {
+                    const currentProducts = useProductStore.getState().products;
+                    const demand = productLines.map((l) => {
+                        const product = currentProducts.find((x) => x.id === l.item_id);
+                        return {
+                            productId: String(l.item_id),
+                            name: l.name || product?.name,
+                            quantity: Math.max(0, Number(l.qty ?? 0)),
+                            availableStock: Number(product?.stock ?? 0),
+                            isService: product?.isService,
+                            materialType: product?.materialType,
+                        };
+                    });
+                    const hits = findInsufficientStockHits(demand);
+                    if (hits.length > 0) {
+                        toast.error(formatInsufficientStockMessage(hits, tm));
+                        return;
+                    }
+                }
+            }
             if (appointmentBookLines.length > 0 && !allBookLinesStaffed) {
                 setShowPay(false);
                 openBookingBlockModal('staff');
@@ -2180,7 +2246,7 @@ export function AppointmentPOS({
             const sale: Sale = {
                 id: Date.now().toString(),
                 receiptNumber,
-                date: new Date().toISOString(),
+                date: getPosNow().toISOString(),
                 customerId: customer?.id,
                 customerName: customer?.name,
                 items: beautyLinesToReceiptItems(cart, payLang, receiptSettings, products, specialists),
@@ -2215,6 +2281,7 @@ export function AppointmentPOS({
             } else {
                 toast.success(tm('bPaymentCompleted'));
             }
+            notifyPosSaleSuccess();
         } catch (e: unknown) {
             setShowPay(false);
             logger.crudError('AppointmentPOS', 'payAndBook', e);

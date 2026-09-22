@@ -25,6 +25,11 @@ import {
   POS_CARI_REMAINING_THRESHOLD,
   buildVeresiyeForRemaining as buildVeresiyeForRemainingHelper,
 } from '../../utils/posCariRemainder';
+import {
+  loadReportMenuParams,
+  subscribeReportMenuParams,
+} from '../../services/reportMenuParamsService';
+import { isPosPaymentBackToSaleAllowed } from '../../utils/posPaymentBackGuard';
 
 // Helper function to format number with Turkish formatting (nokta binlik, virgül ondalık)
 const formatNumberInput = (value: string): string => {
@@ -172,6 +177,9 @@ export function POSPaymentModal({
   const [qrGatewayName, setQrGatewayName] = useState('');
   const [processing, setProcessing] = useState(false);
   const [showCancelReasonModal, setShowCancelReasonModal] = useState(false);
+  const [allowPaymentBackToSale, setAllowPaymentBackToSale] = useState(() =>
+    isPosPaymentBackToSaleAllowed(),
+  );
   
   // Receipt Settings (restoran: Tauri sessiz yazdır; Market POS’ta kapalı)
   const [autoPrint, setAutoPrint] = useState(false);
@@ -185,6 +193,20 @@ export function POSPaymentModal({
   const [receiptLanguage, setReceiptLanguage] = useState<string>(uiLanguage);
   const [printFormat, setPrintFormat] = useState<PosReceiptPrintFormat>('80mm');
   const [showReceiptPreview, setShowReceiptPreview] = useState(defaultShowReceiptPreview);
+
+  useEffect(() => {
+    let cancelled = false;
+    void loadReportMenuParams().then((p) => {
+      if (!cancelled) setAllowPaymentBackToSale(isPosPaymentBackToSaleAllowed(p));
+    });
+    const unsub = subscribeReportMenuParams((p) => {
+      setAllowPaymentBackToSale(isPosPaymentBackToSaleAllowed(p));
+    });
+    return () => {
+      cancelled = true;
+      unsub();
+    };
+  }, []);
 
   useEffect(() => {
     let cancelled = false;
@@ -535,6 +557,13 @@ export function POSPaymentModal({
 
   const handleRequestClose = () => {
     if (isLoading || draftPrintLoading) return;
+    if (!allowPaymentBackToSale) {
+      alert(
+        tm('posPaymentBackBlocked') ||
+          'Bu işlem parametre ile kapatıldı. Ödeme ekranından satışa geri dönüşe izin verilmiyor.',
+      );
+      return;
+    }
     setShowCancelReasonModal(true);
   };
 
@@ -601,7 +630,20 @@ export function POSPaymentModal({
                 {provider.name}
               </button>
             ))}
-            <button onClick={handleRequestClose} className="text-white hover:text-gray-200 p-1">
+            <button
+              onClick={handleRequestClose}
+              title={
+                allowPaymentBackToSale
+                  ? undefined
+                  : tm('posPaymentBackBlocked') ||
+                    'Bu işlem parametre ile kapatıldı. Ödeme ekranından satışa geri dönüşe izin verilmiyor.'
+              }
+              className={`text-white p-1 ${
+                allowPaymentBackToSale
+                  ? 'hover:text-gray-200'
+                  : 'opacity-40 cursor-not-allowed'
+              }`}
+            >
               <X className="w-5 h-5" />
             </button>
           </div>
@@ -1259,10 +1301,21 @@ export function POSPaymentModal({
           <button
             type="button"
             onClick={handleRequestClose}
-            className={`flex-1 px-4 py-3 rounded transition-colors ${darkMode
-              ? 'bg-gray-700 text-gray-200 hover:bg-gray-600'
-              : 'bg-gray-200 text-gray-700 hover:bg-gray-300'
-              }`}
+            title={
+              allowPaymentBackToSale
+                ? undefined
+                : tm('posPaymentBackBlocked') ||
+                  'Bu işlem parametre ile kapatıldı. Ödeme ekranından satışa geri dönüşe izin verilmiyor.'
+            }
+            className={`flex-1 px-4 py-3 rounded transition-colors ${
+              !allowPaymentBackToSale
+                ? darkMode
+                  ? 'bg-gray-800 text-gray-500 cursor-not-allowed opacity-60'
+                  : 'bg-gray-100 text-gray-400 cursor-not-allowed opacity-60'
+                : darkMode
+                  ? 'bg-gray-700 text-gray-200 hover:bg-gray-600'
+                  : 'bg-gray-200 text-gray-700 hover:bg-gray-300'
+            }`}
           >
             {t.cancel || 'İptal'}
           </button>

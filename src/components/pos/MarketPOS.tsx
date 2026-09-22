@@ -102,6 +102,13 @@ import { applyCampaign, CampaignResult } from '../../utils/campaignEngine';
 import { lineDiscountMoneyFromPercent, lineNetAfterPercentDiscount, roundPosMoneyAmount } from '../../utils/discountRounding';
 import { formatPosQuantityInput, parsePosQuantity, formatDecimalForTrInput, parsePosQuantityForProduct } from '../../utils/numberFormatter';
 import { mergeScaleCartQuantity, normalizeWeightProductQuantity } from '../../utils/scaleQuantity';
+import {
+  findInsufficientStockHits,
+  formatInsufficientStockMessage,
+  isBlockNegativeStockSaleEnabled,
+  isStockExemptFromSaleGuard,
+} from '../../utils/stockSaleGuard';
+import { getPosNow, notifyPosSaleSuccess } from '../../store/usePosDateOverrideStore';
 import { POSProductQuantityModal } from './POSProductQuantityModal';
 import { QuickProductSlotButton } from './QuickProductSlotButton';
 // import type { LayoutOrder } from './ScreenSettingsModal';
@@ -528,12 +535,12 @@ export default function MarketPOS({
   const generateNewReceiptNumber = async () => {
     try {
       const counts = await salesAPI.getSequenceCounts();
-      const datePart = new Date().toISOString().slice(0, 10).replace(/-/g, '');
+      const datePart = getPosNow().toISOString().slice(0, 10).replace(/-/g, '');
       const randomPart = String(Math.floor(Math.random() * 999999) + 1).padStart(6, '0');
       setReceiptNumber(`MRK-${datePart}-M${counts.monthly}-D${counts.daily}-${randomPart}`);
     } catch (error) {
       console.error('Failed to generate sequence counts:', error);
-      const datePart = new Date().toISOString().slice(0, 10).replace(/-/g, '');
+      const datePart = getPosNow().toISOString().slice(0, 10).replace(/-/g, '');
       const randomPart = String(Math.floor(Math.random() * 999999) + 1).padStart(6, '0');
       setReceiptNumber(`MRK-${datePart}-${randomPart}`);
     }
@@ -1015,6 +1022,32 @@ export default function MarketPOS({
       price = roundPosMoneyAmount(lineGross / normalizedQty, saleCurrency);
     }
 
+    if (isBlockNegativeStockSaleEnabled() && !isStockExemptFromSaleGuard(product)) {
+      const existingItem = cart.find(item =>
+        variant
+          ? item.product.id === product.id && item.variant?.id === variant.id
+          : item.product.id === product.id && !item.variant && (item.unit === itemUnit)
+      );
+      const nextQty = existingItem
+        ? mergeScaleCartQuantity(existingItem.quantity, normalizedQty, itemUnit)
+        : normalizedQty;
+      const mult = multiplier || existingItem?.multiplier || 1;
+      const demandQty = normalizeWeightProductQuantity(nextQty * mult, itemUnit);
+      const available = Number(variant?.stock ?? product.stock ?? 0);
+      const hits = findInsufficientStockHits([{
+        productId: product.id,
+        name: product.name,
+        quantity: demandQty,
+        availableStock: available,
+        isService: product.isService,
+        materialType: product.materialType,
+      }]);
+      if (hits.length > 0) {
+        showNotif(formatInsufficientStockMessage(hits, tm), 'error');
+        return false;
+      }
+    }
+
     setCart(prev => {
       const existingItem = prev.find(item =>
         variant
@@ -1199,6 +1232,30 @@ export default function MarketPOS({
       if (item) logCartItemRemoved(item, 'quantity_zero');
       setCart(cart.filter((_, i) => i !== index));
       return;
+    }
+
+    const target = cart[index];
+    if (
+      target &&
+      isBlockNegativeStockSaleEnabled() &&
+      !isStockExemptFromSaleGuard(target.product)
+    ) {
+      const unit = target.unit || target.product.unit || t.pcs;
+      const q = normalizeWeightProductQuantity(newQuantity, unit);
+      const demandQty = normalizeWeightProductQuantity(q * (target.multiplier || 1), unit);
+      const available = Number(target.variant?.stock ?? target.product.stock ?? 0);
+      const hits = findInsufficientStockHits([{
+        productId: target.product.id,
+        name: target.product.name,
+        quantity: demandQty,
+        availableStock: available,
+        isService: target.product.isService,
+        materialType: target.product.materialType,
+      }]);
+      if (hits.length > 0) {
+        showNotif(formatInsufficientStockMessage(hits, tm), 'error');
+        return;
+      }
     }
 
     setCart(cart.map((item, i) => {
@@ -1406,12 +1463,60 @@ export default function MarketPOS({
       return;
     }
 
+    if (isBlockNegativeStockSaleEnabled()) {
+      const demand = cart.map((item) => {
+        const unit = item.unit || item.product.unit || t.pcs;
+        const baseQty = normalizeWeightProductQuantity(
+          item.quantity * (item.multiplier || 1),
+          unit,
+        );
+        return {
+          productId: item.product.id,
+          name: item.product.name,
+          quantity: baseQty,
+          availableStock: Number(item.variant?.stock ?? item.product.stock ?? 0),
+          isService: item.product.isService,
+          materialType: item.product.materialType,
+        };
+      });
+      const hits = findInsufficientStockHits(demand);
+      if (hits.length > 0) {
+        showNotif(formatInsufficientStockMessage(hits, tm), 'error');
+        return;
+      }
+    }
+
     setShowPaymentModal(true);
   };
 
   const handlePaymentComplete = async (paymentData: any) => {
     if (paymentSubmitRef.current) return;
     paymentSubmitRef.current = true;
+
+    if (isBlockNegativeStockSaleEnabled()) {
+      const demand = cart.map((item) => {
+        const unit = item.unit || item.product.unit || t.pcs;
+        const baseQty = normalizeWeightProductQuantity(
+          item.quantity * (item.multiplier || 1),
+          unit,
+        );
+        return {
+          productId: item.product.id,
+          name: item.product.name,
+          quantity: baseQty,
+          availableStock: Number(item.variant?.stock ?? item.product.stock ?? 0),
+          isService: item.product.isService,
+          materialType: item.product.materialType,
+        };
+      });
+      const hits = findInsufficientStockHits(demand);
+      if (hits.length > 0) {
+        paymentSubmitRef.current = false;
+        showNotif(formatInsufficientStockMessage(hits, tm), 'error');
+        return;
+      }
+    }
+
     const baseCurrency = selectedFirm?.ana_para_birimi?.trim().toUpperCase() || getGlobalCurrency();
     const saleTotal = roundPosMoneyAmount(paymentData.finalTotal || paymentData.total, baseCurrency);
     const settlement =
@@ -1426,7 +1531,7 @@ export default function MarketPOS({
     const sale: Sale = {
       id: Date.now().toString(),
       receiptNumber,
-      date: new Date().toISOString(),
+      date: getPosNow().toISOString(),
       customerId: selectedCustomer?.id,
       customerName: selectedCustomer?.name || t.retailCustomer,
       ...buildSaleCustomerSnapshot(selectedCustomer),
@@ -1469,6 +1574,8 @@ export default function MarketPOS({
 
     try {
       await onSaleComplete(sale);
+      // Satış kaydı override tarihini taşıdı; bir sonraki fiş için gerekirse bugüne dön
+      notifyPosSaleSuccess();
       void refreshProducts(true).catch((err) =>
         console.warn('[MarketPOS] refreshProducts after sale:', err),
       );

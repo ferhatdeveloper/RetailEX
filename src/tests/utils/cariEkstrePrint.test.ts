@@ -82,9 +82,42 @@ describe('cariEkstrePrint', () => {
     expect(html).toContain(labels.debit);
     expect(html).toContain(labels.credit);
     expect(html).toContain(labels.balance);
+    expect(html).toContain(labels.totalDebit);
+    expect(html).toContain(labels.totalCredit);
+    expect(html).toContain(labels.closingBalance);
+    expect(html).toContain('class="totals"');
+    expect(html).not.toContain('class="sums"');
+    expect(html).not.toContain('<tfoot>');
     expect(html).not.toMatch(/beauty_sale_id/i);
     expect(html).toContain('15.03.2026');
     expect(html).toContain('lang="en"');
+    // Dip toplam tek yerde: her tutar etiketi bir kez (tekrar yok)
+    expect(html.split(labels.totalDebit).length - 1).toBe(1);
+    expect(html.split(labels.closingBalance).length - 1).toBe(1);
+  });
+
+  it('places official totals once in summary footer, not in header chips', () => {
+    const labels = buildCariEkstrePrintLabels('tr');
+    const html = buildCariEkstrePrintHtml({
+      reportTitle: labels.reportTitle,
+      accountCode: 'C-001',
+      accountName: 'Demo',
+      cardTypeLabel: labels.customer,
+      dateFrom: '2026-01-01',
+      dateTo: '2026-12-31',
+      currency: 'IQD',
+      companyName: 'RetailEX',
+      rows: sampleRows,
+      totalDebit: 100,
+      totalCredit: 40,
+      netBalance: 60,
+      labels,
+      printLang: 'tr',
+    });
+    // Üstte cari/dönem bilgisi var; B/A/Net chip tekrarı yok
+    expect(html).toContain('class="party"');
+    expect(html).not.toMatch(/class="sums"/);
+    expect(html.match(/class="totals"/g)?.length).toBe(1);
   });
 
   it('uses Arabic labels and rtl when printLang is ar', () => {

@@ -173,9 +173,18 @@ export async function printPartyStatementDoc(opts: {
     td.credit { color: #047857; font-weight: 600; }
     td.bal { font-weight: 700; }
     tbody tr:nth-child(even) td { background: #f8fafc; }
-    .sum { display: flex; flex-wrap: wrap; gap: 16px; margin-top: 12px; font-weight: 700; font-size: 11px; }
+    .totals-wrap { margin-top: 10px; display: flex; justify-content: flex-end; }
+    .totals { width: 100%; max-width: 300px; border: 1px solid #94a3b8; border-top: 2.5px solid #1e3a5f; background: #fff; }
+    .totals table { width: 100%; border-collapse: collapse; }
+    .totals td { border: none; border-bottom: 1px solid #e2e8f0; padding: 6px 10px; font-size: 10.5px; }
+    .totals tr:last-child td { border-bottom: none; }
+    .totals .lbl { color: #475569; font-weight: 600; text-align: left; width: 52%; }
+    .totals .amt { font-weight: 700; text-align: right; font-variant-numeric: tabular-nums; white-space: nowrap; }
+    .totals .closing td { background: #f1f5f9; border-top: 1.5px solid #1e3a5f; padding-top: 8px; padding-bottom: 8px; }
+    .totals .closing .lbl { color: #0f172a; font-weight: 800; text-transform: uppercase; letter-spacing: 0.04em; font-size: 9.5px; }
+    .totals .closing .amt { color: #0f172a; font-weight: 800; font-size: 12px; }
     .doc-footer { margin-top: 14px; padding-top: 8px; border-top: 1px solid #94a3b8; display: flex; justify-content: space-between; color: #64748b; font-size: 9px; }
-    @media print { html, body { -webkit-print-color-adjust: exact; print-color-adjust: exact; } thead { display: table-header-group; } }
+    @media print { html, body { -webkit-print-color-adjust: exact; print-color-adjust: exact; } thead { display: table-header-group; } .totals-wrap { break-inside: avoid; } }
   </style>
 </head>
 <body>
@@ -202,10 +211,27 @@ export async function printPartyStatementDoc(opts: {
     </thead>
     <tbody>${body}</tbody>
   </table>
-  <div class="sum">
-    <span>${esc(opts.openingLabel)}: ${esc(fmtMoney(opts.statement.opening_balance))}</span>
-    <span>${esc(opts.closingLabel)}: ${esc(fmtMoney(opts.statement.closing_balance))}</span>
-    <span>${esc(opts.cardBalanceLabel)}: ${esc(fmtMoney(opts.statement.card_balance))}</span>
+  <div class="totals-wrap">
+    <div class="totals">
+      <table>
+        <tr>
+          <td class="lbl">${esc(opts.openingLabel)}</td>
+          <td class="amt">${esc(fmtMoney(opts.statement.opening_balance))}</td>
+        </tr>
+        <tr class="closing">
+          <td class="lbl">${esc(opts.closingLabel)}</td>
+          <td class="amt">${esc(fmtMoney(opts.statement.closing_balance))}</td>
+        </tr>
+        ${
+          Math.abs(Number(opts.statement.card_balance) - Number(opts.statement.closing_balance)) > 0.0001
+            ? `<tr>
+          <td class="lbl">${esc(opts.cardBalanceLabel)}</td>
+          <td class="amt">${esc(fmtMoney(opts.statement.card_balance))}</td>
+        </tr>`
+            : ''
+        }
+      </table>
+    </div>
   </div>
   <div class="doc-footer">
     <span>Yazdırma tarihi: ${esc(printedAt)}</span>
