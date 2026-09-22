@@ -3,21 +3,32 @@
  * Pixel-perfect restoration of the original design while adding real functionality
  */
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useMemo } from 'react';
 import {
-  Wallet, TrendingUp, AlertTriangle, Banknote,
-  CheckCircle, Plus, RefreshCw, Trash2, Pencil
+  Wallet, TrendingUp, TrendingDown, Banknote,
+  Plus, RefreshCw, Trash2, Pencil
 } from 'lucide-react';
 import { DevExDataGrid } from '../../shared/DevExDataGrid';
 import { createColumnHelper } from '@tanstack/react-table';
 import { formatCurrency } from '../../../utils/formatNumber';
-import { fetchKasalar, fetchKasaIslemleri, deleteKasaIslemi, cloneKasa, formatKasaCariLabel, type Kasa, type KasaIslemi } from '../../../services/api/kasa';
+import {
+  fetchKasalar,
+  fetchKasaIslemleri,
+  deleteKasaIslemi,
+  cloneKasa,
+  formatKasaCariLabel,
+  computeKasaIslemiSign,
+  parseKasaAmount,
+  type Kasa,
+  type KasaIslemi,
+} from '../../../services/api/kasa';
 import { KasaDefinitionModal } from './KasaDefinitionModal';
 import { KasaIslemleriModal } from './KasaIslemleriModal';
 import { toast } from 'sonner';
 import { useLanguage } from '../../../contexts/LanguageContext';
 import { useFirmaDonem } from '../../../contexts/FirmaDonemContext';
 import { getAppDefaultCurrency } from '../../../services/postgres';
+import { getPosNow, toLocalDateInputValue } from '../../../store/usePosDateOverrideStore';
 
 interface Props {
   onEnterKasa?: (id: string) => void;
@@ -257,16 +268,26 @@ export function CashRegisterManagement({ onEnterKasa, initialTab = 'sessions' }:
     }),
   ];
 
-  const isTodayTxn = (t: KasaIslemi) =>
-    new Date(t.islem_tarihi).toDateString() === new Date().toDateString();
-  const stats = {
-    todayTxnCount: transactions.filter(isTodayTxn).length,
-    totalBalance: kasalar.reduce((sum, k) => sum + (Number(k.bakiye) || 0), 0),
-    totalSalesToday: transactions
-      .filter((t) => isTodayTxn(t) && (t.islem_tipi === 'KASA_GIRIS' || t.islem_tipi === 'CH_TAHSILAT'))
-      .reduce((sum, t) => sum + (Number(t.tutar) || 0), 0),
-    totalDiff: kasalar.reduce((sum, k) => sum + (k.bakiye < 0 ? Math.abs(k.bakiye) : 0), 0)
-  };
+  /** POS tarih override varsa «bugün» onunla; kasa işareti create ile aynı (computeKasaIslemiSign). */
+  const stats = useMemo(() => {
+    const todayKey = toLocalDateInputValue(getPosNow());
+    const isTodayTxn = (t: KasaIslemi) => {
+      const d = new Date(t.islem_tarihi);
+      if (Number.isNaN(d.getTime())) return false;
+      return toLocalDateInputValue(d) === todayKey;
+    };
+    const absAmt = (t: KasaIslemi) => Math.abs(parseKasaAmount(t.tutar));
+    let todayCollection = 0;
+    let todayPayment = 0;
+    for (const t of transactions) {
+      if (!isTodayTxn(t)) continue;
+      const sign = computeKasaIslemiSign(t.islem_tipi);
+      if (sign > 0) todayCollection += absAmt(t);
+      else if (sign < 0) todayPayment += absAmt(t);
+    }
+    const balance = kasalar.reduce((sum, k) => sum + (Number(k.bakiye) || 0), 0);
+    return { todayCollection, todayPayment, balance };
+  }, [transactions, kasalar]);
 
   return (
     <div className="p-6 space-y-6">
@@ -298,48 +319,43 @@ export function CashRegisterManagement({ onEnterKasa, initialTab = 'sessions' }:
         </div>
       </div>
 
-      {/* Statistics */}
-      <div className="grid grid-cols-4 gap-4">
+      {/* Statistics — bugünkü tahsilat / ödeme / kasa bakiyesi */}
+      <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
         <div className="bg-green-50 rounded-lg p-4">
           <div className="flex items-center justify-between">
             <div>
-              <p className="text-sm text-green-600 mb-1 font-semibold">{tm('todayTxnCount')}</p>
-              <p className="text-2xl font-bold text-green-900">{stats.todayTxnCount}</p>
+              <p className="text-sm text-green-600 mb-1 font-semibold">{tm('todayCollection')}</p>
+              <p className="text-xl font-bold text-green-900">
+                {formatCurrency(stats.todayCollection, amountCurrency)}
+              </p>
             </div>
-            <CheckCircle className="w-8 h-8 text-green-600" />
+            <TrendingUp className="w-8 h-8 text-green-600" />
+          </div>
+        </div>
+        <div className="bg-orange-50 rounded-lg p-4">
+          <div className="flex items-center justify-between">
+            <div>
+              <p className="text-sm text-orange-600 mb-1 font-semibold">{tm('todayPayment')}</p>
+              <p className="text-xl font-bold text-orange-900">
+                {formatCurrency(stats.todayPayment, amountCurrency)}
+              </p>
+            </div>
+            <TrendingDown className="w-8 h-8 text-orange-600" />
           </div>
         </div>
         <div className="bg-blue-50 rounded-lg p-4">
           <div className="flex items-center justify-between">
             <div>
-              <p className="text-sm text-blue-600 mb-1 font-semibold">{tm('totalBalance')}</p>
-              <p className="text-xl font-bold text-blue-900">
-                {formatCurrency(stats.totalBalance, amountCurrency)}
+              <p className="text-sm text-blue-600 mb-1 font-semibold">{tm('cashBalance')}</p>
+              <p
+                className={`text-xl font-bold ${
+                  stats.balance < 0 ? 'text-red-700' : 'text-blue-900'
+                }`}
+              >
+                {formatCurrency(stats.balance, amountCurrency)}
               </p>
             </div>
             <Banknote className="w-8 h-8 text-blue-600" />
-          </div>
-        </div>
-        <div className="bg-purple-50 rounded-lg p-4">
-          <div className="flex items-center justify-between">
-            <div>
-              <p className="text-sm text-purple-600 mb-1 font-semibold">{tm('todayCashCollected')}</p>
-              <p className="text-xl font-bold text-purple-900">
-                {formatCurrency(stats.totalSalesToday, amountCurrency)}
-              </p>
-            </div>
-            <TrendingUp className="w-8 h-8 text-purple-600" />
-          </div>
-        </div>
-        <div className="bg-red-50 rounded-lg p-4">
-          <div className="flex items-center justify-between">
-            <div>
-              <p className="text-sm text-red-600 mb-1 font-semibold">{tm('totalDifference')}</p>
-              <p className="text-xl font-bold text-red-900">
-                {formatCurrency(stats.totalDiff, amountCurrency)}
-              </p>
-            </div>
-            <AlertTriangle className="w-8 h-8 text-red-600" />
           </div>
         </div>
       </div>
