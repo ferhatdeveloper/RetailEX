@@ -140,6 +140,12 @@ function beautyToYmd(raw?: string | null): string {
     return `${y}-${m}-${d}`;
 }
 
+function beautyNormName(n?: string | null): string {
+    return String(n ?? '')
+        .trim()
+        .toLocaleLowerCase('tr');
+}
+
 function isActiveBeautySale(s: BeautySale): boolean {
     const st = String(s.payment_status || 'paid').toLowerCase();
     return st !== 'cancelled' && st !== 'canceled' && st !== 'void';
@@ -155,10 +161,6 @@ function collectAppointmentIdsLinkedToSales(
     appointments: BeautyAppointment[],
 ): Set<string> {
     const linked = new Set<string>();
-    const normName = (n?: string | null) =>
-        String(n ?? '')
-            .trim()
-            .toLocaleLowerCase('tr');
 
     for (const s of sales) {
         if (!isActiveBeautySale(s)) continue;
@@ -178,7 +180,7 @@ function collectAppointmentIdsLinkedToSales(
         const saleTotal = Math.round(Number(s.total) || 0);
         const itemNames = new Set(
             (s.items ?? [])
-                .map((it) => normName(it.name))
+                .map((it) => beautyNormName(it.name))
                 .filter(Boolean),
         );
         if (!saleYmd || !(saleTotal > 0)) continue;
@@ -187,7 +189,7 @@ function collectAppointmentIdsLinkedToSales(
             if (!aptId || linked.has(aptId)) continue;
             const aptYmd = beautyToYmd(a.appointment_date ?? a.date);
             const aptTotal = Math.round(Number(a.total_price) || 0);
-            const aptName = normName(a.service_name);
+            const aptName = beautyNormName(a.service_name);
             if (aptYmd !== saleYmd || aptTotal !== saleTotal) continue;
             if (aptName && itemNames.size > 0 && itemNames.has(aptName)) {
                 linked.add(aptId);
@@ -686,7 +688,7 @@ export function ClientCustomerDetailPage({ customerId, onBack }: ClientCustomerD
                 const d = String(dt.getDate()).padStart(2, '0');
                 return `${y}-${m}-${d}`;
             })();
-            const sig = `${ymd}|${Math.round(Number(f.amount) || 0)}|${normName(f.contextTitle)}`;
+            const sig = `${ymd}|${Math.round(Number(f.amount) || 0)}|${beautyNormName(f.contextTitle)}`;
             if (feeSeen.has(sig)) continue;
             feeSeen.add(sig);
             dedupedFees.push(f);
