@@ -179,6 +179,48 @@ export interface ProductGrossProfitRow {
   lineKind?: 'product' | 'service';
 }
 
+/**
+ * Malzeme satırlarında maliyeti Malzeme Değer Raporu ile aynı kaynaktan uygula:
+ * FIFO kalan katman ort. birim maliyet × (işaretli) miktar.
+ * Hizmet satırları ve ortalaması 0 olanlar önceki maliyeti korur.
+ */
+async function applyMaterialValueAvgCostToGrossProfit(
+  rows: ProductGrossProfitRow[],
+  firmNr?: string | number | null,
+): Promise<ProductGrossProfitRow[]> {
+  if (!rows.length) return rows;
+  try {
+    const {
+      fetchLayeredInventoryValuation,
+      layeredAvgForProduct,
+    } = await import('../layeredInventoryCost');
+    const valuation = await fetchLayeredInventoryValuation({
+      firmNr: firmNr ?? ERP_SETTINGS.firmNr,
+    });
+    if (!valuation) return rows;
+    return rows.map((r) => {
+      if (r.lineKind === 'service') return r;
+      const avg = layeredAvgForProduct(valuation, {
+        id: r.productId,
+        code: r.productCode,
+      });
+      if (!(avg > 0)) return r;
+      // quantity satışta +, iadede − → maliyet aynı işaretle
+      const cost = avg * r.quantity;
+      const grossProfit = r.revenue - cost;
+      return {
+        ...r,
+        cost,
+        grossProfit,
+        marginPct: Math.abs(r.revenue) > 0.009 ? (grossProfit / r.revenue) * 100 : 0,
+      };
+    });
+  } catch (e) {
+    console.warn('[erpReports] material-value avg cost overlay failed:', e);
+    return rows;
+  }
+}
+
 export interface CariExtractRow {
   id: string;
   date: string;
@@ -1603,13 +1645,14 @@ export const erpReportsAPI = {
         if (!cur.productName && it.item_name) cur.productName = String(it.item_name);
         map.set(mapKey, cur);
       }
-      return Array.from(map.values())
+      const baseRows = Array.from(map.values())
         .map((r) => ({
           ...r,
           marginPct: Math.abs(r.revenue) > 0.009 ? (r.grossProfit / r.revenue) * 100 : 0,
         }))
         .sort((a, b) => b.grossProfit - a.grossProfit)
         .slice(0, ROW_LIMIT);
+      return applyMaterialValueAvgCostToGrossProfit(baseRows, firmNr);
     }
 
     const profitCtes = buildProfitCostCtes('$1');
@@ -1653,22 +1696,25 @@ export const erpReportsAPI = {
       `,
       [firmNr, start, end],
     );
-    return (rows || []).map((r: any) => {
-      const revenue = Number(r.revenue ?? 0);
-      const cost = Number(r.cost ?? 0);
-      const grossProfit = Number(r.gross_profit ?? revenue - cost);
-      return {
-        productId: String(r.product_id ?? ''),
-        productCode: displayItemCode(r.product_code),
-        productName: String(r.product_name ?? ''),
-        quantity: Number(r.quantity ?? 0),
-        revenue,
-        cost,
-        grossProfit,
-        marginPct: Math.abs(revenue) > 0.009 ? (grossProfit / revenue) * 100 : 0,
-        lineKind: r.line_kind === 'service' ? 'service' : 'product',
-      };
-    });
+    return applyMaterialValueAvgCostToGrossProfit(
+      (rows || []).map((r: any) => {
+        const revenue = Number(r.revenue ?? 0);
+        const cost = Number(r.cost ?? 0);
+        const grossProfit = Number(r.gross_profit ?? revenue - cost);
+        return {
+          productId: String(r.product_id ?? ''),
+          productCode: displayItemCode(r.product_code),
+          productName: String(r.product_name ?? ''),
+          quantity: Number(r.quantity ?? 0),
+          revenue,
+          cost,
+          grossProfit,
+          marginPct: Math.abs(revenue) > 0.009 ? (grossProfit / revenue) * 100 : 0,
+          lineKind: r.line_kind === 'service' ? 'service' : 'product',
+        };
+      }),
+      firmNr,
+    );
   },
 
   async getCariExtract(opts: {

@@ -11342,10 +11342,10 @@ export const excelModuleTranslations = {
   },
   erpProductProfitTitle: { tr: 'Ürün Brüt Kârı', en: 'Product gross profit', ar: 'إجمالي ربح المنتج', ku: 'قازانجی خاوی بەرهەم' },
   erpProductProfitSubtitle: {
-    tr: 'Net satış ve brüt kâr — iade düşülür, dip indirim oranlanır; maliyet öncelikle son alış',
-    en: 'Net sales and gross profit — returns deducted, footer discount prorated; cost prefers last purchase',
-    ar: 'صافي المبيعات والربح — تُخصم المرتجعات ويُوزع خصم الفاتورة؛ التكلفة تفضل آخر شراء',
-    ku: 'فرۆشتنی خاوێن و قازانجی خاو — گەڕاندنەوە دەکەوێتەوە، داشکاندن دابەش دەکرێت؛ تێچوون دوایین کڕین',
+    tr: 'Net satış ve brüt kâr — iade düşülür, dip indirim oranlanır; maliyet = malzeme değer raporu ort. birim maliyet × miktar',
+    en: 'Net sales and gross profit — returns deducted, footer discount prorated; cost = material value avg. unit cost × qty',
+    ar: 'صافي المبيعات والربح — تُخصم المرتجعات ويُوزع خصم الفاتورة؛ التكلفة = متوسط تكلفة الوحدة من تقرير القيمة × الكمية',
+    ku: 'فرۆشتنی خاوێن و قازانجی خاو — گەڕاندنەوە دەکەوێتەوە؛ تێچوون = تێچووی مامناوەندی ڕاپۆرتی نرخی کەلوپەل × بڕ',
   },
   erpCariExtractTitle: { tr: 'Cari Ekstre', en: 'Account statement', ar: 'كشف حساب', ku: 'پوختەی هەژمار' },
   erpCariExtractSubtitle: {
