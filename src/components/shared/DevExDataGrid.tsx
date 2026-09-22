@@ -1929,7 +1929,7 @@ function SortableHeaderTh<T>({
   return (
     <th
       ref={setNodeRef}
-      className={headerClassName}
+      className={`${headerClassName} group/th`}
       style={style}
       onContextMenu={onContextMenu}
     >
@@ -2005,22 +2005,36 @@ function SortableHeaderTh<T>({
           aria-orientation="vertical"
           aria-label={resizeTitle}
           title={`${resizeTitle} — çift tık: varsayılan`}
-          onMouseDown={header.getResizeHandler()}
-          onTouchStart={header.getResizeHandler()}
+          onMouseDown={(e) => {
+            e.stopPropagation();
+            header.getResizeHandler()(e);
+          }}
+          onTouchStart={(e) => {
+            e.stopPropagation();
+            header.getResizeHandler()(e);
+          }}
+          onPointerDown={(e) => e.stopPropagation()}
           onClick={(e) => e.stopPropagation()}
           onDoubleClick={(e) => {
             e.stopPropagation();
             e.preventDefault();
             header.column.resetSize();
           }}
-          className={`absolute right-0 top-0 h-full w-1.5 cursor-col-resize select-none touch-none z-[3] ${
-            header.column.getIsResizing()
-              ? 'bg-blue-500/70'
-              : darkMode
-                ? 'hover:bg-blue-400/50 bg-transparent'
-                : 'hover:bg-blue-500/40 bg-transparent'
+          className={`absolute top-0 bottom-0 z-[5] w-3 -right-1.5 cursor-col-resize select-none touch-none flex justify-center ${
+            header.column.getIsResizing() ? 'opacity-100' : 'opacity-0 hover:opacity-100 group-hover/th:opacity-100'
           }`}
-        />
+        >
+          <span
+            className={`h-full w-0.5 rounded-full pointer-events-none ${
+              header.column.getIsResizing()
+                ? 'bg-blue-600'
+                : darkMode
+                  ? 'bg-blue-400'
+                  : 'bg-blue-500'
+            }`}
+            aria-hidden
+          />
+        </div>
       ) : null}
     </th>
   );
@@ -2697,7 +2711,7 @@ export function DevExDataGrid<T>({
       enableColumnFilter: enableFiltering,
       enableResizing: enableColumnResizing,
       minSize: 48,
-      maxSize: 720,
+      maxSize: 960,
     },
   });
 
@@ -2925,7 +2939,12 @@ export function DevExDataGrid<T>({
 
   // Desktop Table View
   const visibleLeafColumns = table.getVisibleLeafColumns();
-  const tableMinWidth = visibleLeafColumns.reduce((acc, col) => acc + col.getSize(), 0);
+  const tableTotalSize = table.getTotalSize();
+  const tableMinWidth = Math.max(
+    tableTotalSize,
+    visibleLeafColumns.reduce((acc, col) => acc + col.getSize(), 0),
+  );
+  const isColumnResizing = table.getState().columnSizingInfo.isResizingColumn != null;
   const leafColumnsForVisibility = table
     .getAllLeafColumns()
     .filter((col) => col.id !== 'select' && col.getCanHide());
@@ -3052,7 +3071,11 @@ export function DevExDataGrid<T>({
       )}
 
       {/* Table Container */}
-      <div className={`relative z-0 flex-1 overflow-auto border isolate ${darkMode ? 'border-gray-600 bg-gray-800' : 'border-gray-300 bg-white'}`}>
+      <div
+        className={`relative z-0 flex-1 overflow-auto border isolate ${darkMode ? 'border-gray-600 bg-gray-800' : 'border-gray-300 bg-white'} ${
+          isColumnResizing ? 'select-none cursor-col-resize' : ''
+        }`}
+      >
         <DndContext
           sensors={columnReorderSensors}
           collisionDetection={closestCenter}
@@ -3060,7 +3083,12 @@ export function DevExDataGrid<T>({
         >
         <table
           className="border-collapse"
-          style={{ tableLayout: 'fixed', width: '100%', minWidth: tableMinWidth }}
+          style={{
+            tableLayout: 'fixed',
+            // 100% zorlamayın — aksi halde kolon sürüklemesi görsel olarak etkisiz kalır
+            width: tableMinWidth,
+            minWidth: '100%',
+          }}
         >
           <colgroup>
             {visibleLeafColumns.map((col) => (
