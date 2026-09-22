@@ -753,13 +753,23 @@ function invoiceItemAffectsStock(item: Record<string, unknown>, category: string
 
 /** Ürün UUID → stok değişimi (oluşturma ile aynı kurallar) */
 async function collectInvoiceStockDeltasByProduct(inv: Invoice, trcode: number): Promise<Map<string, number>> {
-  const category = inv.invoice_category;
+  const category =
+    inv.invoice_category ||
+    inferInvoiceCategoryFromDbRow({
+      trcode,
+      fiche_type: (inv as any).fiche_type,
+      invoice_type: inv.invoice_type,
+    });
   const deltas = new Map<string, number>();
   if (!inv.items?.length || !category) return deltas;
 
   for (const item of inv.items) {
     if (!invoiceItemAffectsStock(item as Record<string, unknown>, category)) continue;
-    const productId = item.code || item.productId;
+    // UUID productId öncelikli — display code ile yanlış eşleşme / resolve miss önlenir
+    const productId =
+      resolveSaleItemProductUuid(item as { productId?: unknown; code?: unknown }) ||
+      item.productId ||
+      item.code;
     if (!productId) continue;
     const baseQty = invoiceLineStockQuantity(item as Record<string, unknown>);
     const stockModifier = invoiceLineStockDelta(category, Number(trcode), baseQty);
@@ -800,10 +810,15 @@ async function assertStockDecreasesAllowed(deltas: Map<string, number>): Promise
 
 async function applyProductStockDeltaMap(
   deltas: Map<string, number>,
-  queryOpts?: { firmNr: string; periodNr: string }
+  queryOpts?: { firmNr: string; periodNr: string },
+  opts?: { skipNegativeStockGuard?: boolean }
 ): Promise<void> {
   if (deltas.size === 0) return;
-  await assertStockDecreasesAllowed(deltas);
+  // İptal/silme geri alımında negatif stok koruması uygulanmaz — aksi halde alış
+  // faturası silinirken stok düşümü engellenir ve kart stoğu "hayalet" kalır.
+  if (!opts?.skipNegativeStockGuard) {
+    await assertStockDecreasesAllowed(deltas);
+  }
 
   if (DB_SETTINGS.connectionProvider === 'rest_api') {
     await Promise.all(
@@ -811,6 +826,7 @@ async function applyProductStockDeltaMap(
         if (!delta) return;
         const p = await productAPI.getById(id);
         if (!p) return;
+        // Negatif stok clamp yok — önceki fix korunur (Math.max(0, …) kullanılmaz).
         await productAPI.updateStock(id, Number(p.stock ?? 0) + delta);
       })
     );
@@ -825,6 +841,100 @@ async function applyProductStockDeltaMap(
         );
       })
     );
+  }
+}
+
+function invoiceHeaderFieldsRecord(inv: Invoice | null | undefined): Record<string, unknown> {
+  const hf = inv?.header_fields;
+  if (hf && typeof hf === 'object' && !Array.isArray(hf)) {
+    return { ...(hf as Record<string, unknown>) };
+  }
+  return {};
+}
+
+function invoiceStockAlreadyReverted(inv: Invoice | null | undefined): boolean {
+  return invoiceHeaderFieldsRecord(inv).stock_reverted === true;
+}
+
+/** Fatura iptal/silmede ürün kartı stoğunu oluşturma etkisinin tersi ile güncelle */
+async function revertInvoiceStockSideEffects(
+  existing: Invoice,
+  firmNr: string,
+  periodNr: string
+): Promise<void> {
+  const trcode = resolveTrcodeFromInvoice(existing);
+  const deltas = await collectInvoiceStockDeltasByProduct(existing, trcode);
+  if (deltas.size === 0) {
+    if (existing.items?.length) {
+      console.warn('[InvoicesAPI] Stok geri alma: satır var ama stok deltası 0', {
+        id: existing.id,
+        category: existing.invoice_category,
+        trcode,
+        itemCount: existing.items.length,
+      });
+    }
+    return;
+  }
+  const neg = new Map<string, number>();
+  deltas.forEach((v, k) => neg.set(k, -v));
+  await applyProductStockDeltaMap(neg, { firmNr, periodNr }, { skipNegativeStockGuard: true });
+}
+
+async function markInvoiceStockReverted(
+  id: string,
+  firmNr: string,
+  periodNr: string,
+  prevHeaderFields?: unknown
+): Promise<void> {
+  const sid = String(id || '').trim();
+  if (!sid) return;
+  const fn = normalizeFirmNrForRow(firmNr);
+  const pn = normalizePeriodNrForRow(periodNr);
+
+  if (DB_SETTINGS.connectionProvider === 'rest_api') {
+    try {
+      const { postgrest } = await import('./postgrestClient');
+      const salesPath = `/rex_${fn}_${pn}_sales`;
+      let base =
+        prevHeaderFields && typeof prevHeaderFields === 'object' && !Array.isArray(prevHeaderFields)
+          ? { ...(prevHeaderFields as Record<string, unknown>) }
+          : {};
+      try {
+        const cur = await postgrest.get<any[]>(
+          salesPath,
+          { select: 'header_fields', id: `eq.${sid}`, limit: 1 },
+          { schema: 'public' }
+        );
+        const row = Array.isArray(cur) ? cur[0] : null;
+        if (row?.header_fields && typeof row.header_fields === 'object') {
+          base = { ...(row.header_fields as Record<string, unknown>), ...base };
+        }
+      } catch {
+        /* mevcut header okunamazsa prev ile devam */
+      }
+      const nextHf = { ...base, stock_reverted: true };
+      await postgrest.patch(
+        `${salesPath}?id=eq.${encodeURIComponent(sid)}`,
+        { header_fields: nextHf, updated_at: new Date().toISOString() },
+        { schema: 'public', prefer: 'return=minimal' }
+      );
+    } catch (e) {
+      console.warn('[InvoicesAPI] stock_reverted flag (PostgREST):', e);
+    }
+    return;
+  }
+
+  try {
+    await postgres.query(
+      `UPDATE sales
+       SET header_fields = COALESCE(header_fields, '{}'::jsonb) || $2::jsonb,
+           updated_at = NOW()
+       WHERE id::text = $1::text`,
+      [sid, JSON.stringify({ stock_reverted: true })],
+      { firmNr: fn, periodNr: pn }
+    );
+  } catch (e) {
+    console.warn('[InvoicesAPI] stock_reverted flag:', e);
   }
 }
 
@@ -906,11 +1016,7 @@ async function revertInvoiceBalanceUpdatesRestApi(inv: Invoice, firmNr: string):
 }
 
 async function revertInvoiceLedgerSideEffects(existing: Invoice, firmNr: string, periodNr: string): Promise<void> {
-  const trcode = resolveTrcodeFromInvoice(existing);
-  const deltas = await collectInvoiceStockDeltasByProduct(existing, trcode);
-  const neg = new Map<string, number>();
-  deltas.forEach((v, k) => neg.set(k, -v));
-  await applyProductStockDeltaMap(neg, { firmNr, periodNr });
+  await revertInvoiceStockSideEffects(existing, firmNr, periodNr);
 
   const queryOpts = { firmNr, periodNr };
   if (DB_SETTINGS.connectionProvider === 'rest_api') {
@@ -1707,7 +1813,10 @@ async function applyInvoiceStockUpdatesRestApi(
 
   for (const item of invoice.items) {
     if (!invoiceItemAffectsStock(item as Record<string, unknown>, category)) continue;
-    const productId = item.code || item.productId;
+    const productId =
+      resolveSaleItemProductUuid(item as { productId?: unknown; code?: unknown }) ||
+      item.productId ||
+      item.code;
     if (!productId) continue;
     const baseQty = invoiceLineStockQuantity(item as Record<string, unknown>);
     const stockModifier = invoiceLineStockDelta(category, trcode, baseQty);
@@ -3075,12 +3184,29 @@ export const invoicesAPI = {
         !isInvoiceCancelledStatus(prevStatus);
 
       if (isNewCancel) {
+        // Stok reverse zorunlu; başarısızsa iptal kaydı yazılmasın
+        await revertInvoiceStockSideEffects(existingFull, fn0, pn0);
         try {
-          await revertInvoiceLedgerSideEffects(existingFull, fn0, pn0);
+          if (DB_SETTINGS.connectionProvider === 'rest_api') {
+            await revertInvoiceBalanceUpdatesRestApi(existingFull, fn0);
+          } else {
+            await applyInvoiceBalanceSideEffectsSql(existingFull, fn0, { firmNr: fn0, periodNr: pn0 }, -1);
+          }
+          const cashOpts = buildCashLinePgOpts(fn0, pn0);
+          const ficheNoCancel = String(existingFull.invoice_no || '').trim();
+          if (ficheNoCancel) {
+            await removeCashRegisterLinesForSaleFiche(ficheNoCancel, cashOpts);
+          }
         } catch (e) {
-          console.warn('[InvoicesAPI] cancel ledger revert:', e);
+          console.warn('[InvoicesAPI] cancel ledger/cash revert:', e);
         }
         (invoice as Record<string, unknown>).is_cancelled = true;
+        const hfCancel = {
+          ...invoiceHeaderFieldsRecord(existingFull),
+          ...invoiceHeaderFieldsRecord(invoice as Invoice),
+          stock_reverted: true,
+        };
+        (invoice as Record<string, unknown>).header_fields = hfCancel;
         await voidBeautySalesForDeletedInvoice({
           invoiceNo: existingFull.invoice_no,
           notes: existingFull.notes != null ? String(existingFull.notes) : null,
@@ -4137,6 +4263,8 @@ export const invoicesAPI = {
 
       // Zaten soft-delete: ledger yeniden ters çevrilmez (çift bakiye), ama orphan
       // beauty_sales / sonekli cash_lines onarımı yine denenir.
+      // Stok: stock_reverted bayrağı yoksa bir kez geri al (önceki silmede stok
+      // reverse assert/boş satır yüzünden atlanmış olabilir).
       if (header && (header as Invoice & { is_cancelled?: boolean }).is_cancelled === true) {
         const cashOptsRepair = buildCashLinePgOpts(saleFirmNr, salePeriodNr);
         if (ficheNo) {
@@ -4147,6 +4275,28 @@ export const invoicesAPI = {
           }
         }
         await voidBeautySalesForDeletedInvoice({ invoiceNo: ficheNo, notes });
+
+        if (!invoiceStockAlreadyReverted(header)) {
+          try {
+            let invForStock = header;
+            if (!invForStock.items?.length) {
+              const full = await this.getById(String(id).trim());
+              if (full?.items?.length) invForStock = full;
+            }
+            const fnS = normalizeFirmNrForRow(saleFirmNr ?? ERP_SETTINGS.firmNr);
+            const pnS = normalizePeriodNrForRow(salePeriodNr ?? ERP_SETTINGS.periodNr);
+            await revertInvoiceStockSideEffects(invForStock, fnS, pnS);
+            await markInvoiceStockReverted(
+              String(id).trim(),
+              fnS,
+              pnS,
+              invoiceHeaderFieldsRecord(invForStock)
+            );
+          } catch (e) {
+            console.warn('[InvoicesAPI] delete repair stock reverse:', e);
+          }
+        }
+
         try {
           const { repairCariLedgerConsistency } = await import('./accountLedgerRepair');
           await repairCariLedgerConsistency();
@@ -4221,10 +4371,48 @@ export const invoicesAPI = {
       const pnR = normalizePeriodNrForRow(salePeriodNr ?? ERP_SETTINGS.periodNr);
 
       if (invoiceForRevert) {
+        let invRevert: Invoice = invoiceForRevert;
+        // Stok geri alma satırlara bağlı — başlık yedekten geldiyse sale_items yükle
+        if (!invRevert.items?.length && invRevert.id) {
+          try {
+            const full = await this.getById(String(invRevert.id).trim());
+            if (full?.items?.length) {
+              invRevert = {
+                ...invRevert,
+                items: full.items,
+                invoice_category: full.invoice_category || invRevert.invoice_category,
+                invoice_type: full.invoice_type ?? invRevert.invoice_type,
+                header_fields: full.header_fields ?? invRevert.header_fields,
+              };
+            } else if (full && !invRevert.invoice_category) {
+              invRevert = { ...invRevert, ...full, items: full.items || [] };
+            }
+          } catch (e) {
+            console.warn('[InvoicesAPI] delete: sale_items hydrate failed:', e);
+          }
+        }
+        invoiceForRevert = invRevert;
+
+        // Stok reverse zorunlu — başarısızsa soft-delete yapma (hayalet stok kalmasın)
         try {
-          await revertInvoiceLedgerSideEffects(invoiceForRevert, fnR, pnR);
+          await revertInvoiceStockSideEffects(invRevert, fnR, pnR);
         } catch (e) {
-          console.warn('[InvoicesAPI] delete ledger revert:', e);
+          console.error('[InvoicesAPI] delete stock reverse failed — soft-delete iptal:', e);
+          throw e instanceof Error ? e : new Error(String(e));
+        }
+
+        try {
+          if (DB_SETTINGS.connectionProvider === 'rest_api') {
+            await revertInvoiceBalanceUpdatesRestApi(invRevert, fnR);
+          } else {
+            await applyInvoiceBalanceSideEffectsSql(invRevert, fnR, { firmNr: fnR, periodNr: pnR }, -1);
+          }
+          const cashOpts = buildCashLinePgOpts(fnR, pnR);
+          if (ficheNo) {
+            await removeCashRegisterLinesForSaleFiche(ficheNo, cashOpts);
+          }
+        } catch (e) {
+          console.warn('[InvoicesAPI] delete ledger/cash revert:', e);
         }
       } else {
         const cashOptsFallback = buildCashLinePgOpts(saleFirmNr, salePeriodNr);
@@ -4258,6 +4446,12 @@ export const invoicesAPI = {
             softDeleteBody,
             { schema: 'public', prefer: 'return=minimal' }
           );
+          await markInvoiceStockReverted(
+            sid,
+            fnD,
+            pnD,
+            invoiceHeaderFieldsRecord(invoiceForRevert || header)
+          );
         } catch (e) {
           console.warn('[InvoicesAPI] soft delete PostgREST:', e);
           return false;
@@ -4265,14 +4459,22 @@ export const invoicesAPI = {
       } else {
         const { rowCount } = await postgres.query(
           `UPDATE sales
-           SET is_cancelled = true, status = 'Silindi', updated_at = NOW()
+           SET is_cancelled = true,
+               status = 'Silindi',
+               updated_at = NOW(),
+               header_fields = COALESCE(header_fields, '{}'::jsonb) || $3::jsonb
            WHERE id::text = $1::text AND firm_nr::text = $2::text`,
-          [sid, firmNrStr]
+          [sid, firmNrStr, JSON.stringify({ stock_reverted: true })]
         );
         if (!rowCount) {
           await postgres.query(
-            `UPDATE sales SET is_cancelled = true, status = 'Silindi', updated_at = NOW() WHERE id::text = $1::text`,
-            [sid]
+            `UPDATE sales
+             SET is_cancelled = true,
+                 status = 'Silindi',
+                 updated_at = NOW(),
+                 header_fields = COALESCE(header_fields, '{}'::jsonb) || $2::jsonb
+             WHERE id::text = $1::text`,
+            [sid, JSON.stringify({ stock_reverted: true })]
           );
         }
       }

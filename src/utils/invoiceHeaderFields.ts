@@ -23,6 +23,11 @@ export type InvoiceHeaderFields = {
   cash_register_name?: string;
   cash_register_code?: string;
   /**
+   * Soft-delete / iptal sonrası ürün kartı stok reverse uygulandı mı?
+   * Hayalet stok onarımında çift reverse önlemek için.
+   */
+  stock_reverted?: boolean;
+  /**
    * Çoklu ödeme satırları (Market POS pattern). Her satır kendi yöntemini,
    * tutarını, kasasını taşır. Boşsa tek-ödeme modu kullanılır ve bilgi
    * `cash_register_id` alanından çıkarılır.
