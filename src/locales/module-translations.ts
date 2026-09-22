@@ -3392,6 +3392,37 @@ export const moduleTranslations: Record<string, Record<Language, string>> = {
   appointment: { tr: 'Randevu', en: 'Appointment', ar: 'الموعد', ku: 'چاوپێکەوتن' },
   restaurant: { tr: 'Restoran', en: 'Restaurant', ar: 'مطعم', ku: 'چێشتخانە' },
   notifications: { tr: 'Bildirimler', en: 'Notifications', ar: 'الإشعارات', ku: 'ئاگادارکردنەوەکان' },
+  /** MainLayout QR / garson / vale bildirim modalı */
+  qrNotifyEmpty: { tr: 'Bekleyen yok', en: 'None pending', ar: 'لا يوجد معلق', ku: 'چاوەڕوان نییە' },
+  qrNotifyPendingCount: {
+    tr: '{count} bekleyen',
+    en: '{count} pending',
+    ar: '{count} معلق',
+    ku: '{count} چاوەڕوان',
+  },
+  qrNotifyAck: { tr: 'Kabul', en: 'Ack', ar: 'قبول', ku: 'قبوڵ' },
+  qrNotifyDone: { tr: 'Tamamla', en: 'Complete', ar: 'إكمال', ku: 'تەواو' },
+  qrNotifyApprove: {
+    tr: 'Onayla / Adisyon',
+    en: 'Approve / Ticket',
+    ar: 'موافقة / فاتورة',
+    ku: 'پەسەند / پسوڵە',
+  },
+  qrNotifyTable: { tr: 'Masa', en: 'Table', ar: 'طاولة', ku: 'مێز' },
+  qrNotifyApproval: { tr: 'Onay', en: 'Approval', ar: 'موافقة', ku: 'پەسەند' },
+  qrNotifyProduct: { tr: 'Ürün', en: 'Item', ar: 'صنف', ku: 'بەرهەم' },
+  qrNotifyAddedKitchen: {
+    tr: 'Adisyona eklendi · mutfak',
+    en: 'Added to ticket · kitchen',
+    ar: 'أُضيف إلى الفاتورة · المطبخ',
+    ku: 'زیادکرا بۆ پسوڵە · چێشتخانە',
+  },
+  qrNotifyAdded: { tr: 'Adisyona eklendi', en: 'Added to ticket', ar: 'أُضيف إلى الفاتورة', ku: 'زیادکرا بۆ پسوڵە' },
+  qrNotifyTypeQrOrder: { tr: 'QR sipariş', en: 'QR order', ar: 'طلب QR', ku: 'داواکاری QR' },
+  qrNotifyTypeWaiter: { tr: 'Garson', en: 'Waiter', ar: 'نادل', ku: 'گارسۆن' },
+  qrNotifyTypeBill: { tr: 'Hesap', en: 'Bill', ar: 'الحساب', ku: 'حیساب' },
+  qrNotifyTypeHelp: { tr: 'Yardım', en: 'Help', ar: 'مساعدة', ku: 'یارمەتی' },
+  qrNotifyTypeValet: { tr: 'Vale', en: 'Valet', ar: 'خدمة السيارات', ku: 'ڤالێ' },
 
   // Common
   search: { tr: 'Ara', en: 'Search', ar: 'بحث', ku: 'گەڕان' },

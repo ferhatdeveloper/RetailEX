@@ -7697,6 +7697,61 @@ html {
   }
 }
 
+/* MainLayout bildirim zili — hafif sallanma + badge nabız (okunmamış > 0) */
+@keyframes rex-bell-nudge {
+  0%,
+  100% {
+    transform: rotate(0deg);
+  }
+
+  12% {
+    transform: rotate(11deg);
+  }
+
+  24% {
+    transform: rotate(-9deg);
+  }
+
+  36% {
+    transform: rotate(7deg);
+  }
+
+  48% {
+    transform: rotate(-4deg);
+  }
+
+  60% {
+    transform: rotate(2deg);
+  }
+
+  72%,
+  100% {
+    transform: rotate(0deg);
+  }
+}
+
+@keyframes rex-badge-pulse {
+  0%,
+  100% {
+    transform: scale(1);
+    box-shadow: 0 0 0 0 rgba(251, 191, 36, 0.55);
+  }
+
+  50% {
+    transform: scale(1.08);
+    box-shadow: 0 0 0 6px rgba(251, 191, 36, 0);
+  }
+}
+
+.rex-bell-nudge {
+  transform-origin: top center;
+  animation: rex-bell-nudge 1.8s ease-in-out infinite;
+}
+
+.rex-badge-pulse {
+  animation: rex-badge-pulse 1.6s ease-out infinite;
+}
+
 @keyframes enter {
   from {
     opacity: var(--tw-enter-opacity, 1);
