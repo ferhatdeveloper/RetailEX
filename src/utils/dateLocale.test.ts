@@ -15,4 +15,9 @@ describe('formatShortDate — her zaman gg.aa.yyyy', () => {
     const text = formatDateTimeShort('2026-09-19T14:30:00', 'en-US');
     expect(text.startsWith('19.09.2026')).toBe(true);
   });
+
+  it('iş günü UTC öğlesinde (TR 15:00) saat göstermez', () => {
+    expect(formatDateTimeShort('2026-09-19T12:00:00.000Z', 'tr-TR')).toBe('19.09.2026');
+    expect(formatDateTimeShort('2026-09-19T12:00:00', 'tr-TR')).toBe('19.09.2026');
+  });
 });

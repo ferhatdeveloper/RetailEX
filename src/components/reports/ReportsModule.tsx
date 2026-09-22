@@ -41,6 +41,14 @@ import type { BeautyAppointment, BeautySale, BeautyService, BeautyStaffTreatment
 import { beautyServiceMainKey, beautyServiceSubKey } from '../beauty/beautyServiceCategoryUtils';
 import { localCalendarDateKey, localTodayDateKey, formatIsoDateTr } from '../../utils/localCalendarDate';
 import { formatDateTimeShort, formatReportDateCell, formatShortDate } from '../../utils/dateLocale';
+import {
+  formatSaleWallClockDateTime,
+  formatSaleWallClockTime,
+  isBusinessDayClockAnchor,
+  saleWallClockHourLocal,
+  saleWallClockRaw,
+  saleWallClockTimestamp,
+} from '../../utils/saleWallClock';
 import { type ReportDatePreset, type ReportDateRangeValue } from '../../utils/reportDatePresets';
 import { ReportDateRangePresets } from '../shared/ReportDateRangePresets';
 import { buildErpServiceBreakdownGroups, type ErpServiceBreakdownLine } from '../../utils/serviceBreakdownReport';
@@ -407,11 +415,28 @@ function productCategoryForReport(p: Product): string {
 function formatRestReportDateTime(value: unknown): string {
   if (value == null || value === '') return '—';
   if (typeof value === 'string' && value.trim() === '') return '—';
+  if (typeof value === 'string' && isBusinessDayClockAnchor(value)) {
+    return formatShortDate(value) || '—';
+  }
   const d = value instanceof Date ? value : new Date(value as string | number);
   const t = d.getTime();
   if (!Number.isFinite(t) || t <= 0) return '—';
   if (t < 86400000) return '—';
   return formatDateTimeShort(d);
+}
+
+function dailyRowWallClockSource(row: {
+  date?: string;
+  erpSale?: Sale | null;
+  restOrder?: { closed_at?: string; closedAt?: string; opened_at?: string; created_at?: string } | null;
+}) {
+  const rest = row.restOrder;
+  const restCreated =
+    rest?.closed_at || rest?.closedAt || rest?.created_at || rest?.opened_at || undefined;
+  return {
+    date: row.date,
+    created_at: row.erpSale?.created_at || restCreated || undefined,
+  };
 }
 
 type AnalysisReportKind =
@@ -590,8 +615,9 @@ function buildErpDetailedSaleLines(salesDay: Sale[], tm: (key: string) => string
   const out: DetailedSaleLineRow[] = [];
   salesDay.forEach((sale, saleIdx) => {
     const invoiceNo = String(sale.receiptNumber ?? sale.id ?? '—');
-    const open = formatRestReportDateTime(sale.date);
-    const close = sale.created_at ? formatRestReportDateTime(sale.created_at) : open;
+    const wall = formatSaleWallClockDateTime(sale);
+    const open = wall;
+    const close = wall;
     const tableLabel = sale.table != null && String(sale.table).trim() !== '' ? String(sale.table) : '—';
     const cari =
       sale.customerName != null && String(sale.customerName).trim() !== ''
@@ -2616,7 +2642,7 @@ export function ReportsModule({
     if (dailySales.length > 0) {
       return dailySales
         .map(mapErpSale)
-        .sort((a, b) => new Date(a.date).getTime() - new Date(b.date).getTime());
+        .sort((a, b) => saleWallClockTimestamp(dailyRowWallClockSource(a)) - saleWallClockTimestamp(dailyRowWallClockSource(b)));
     }
     return restOrdersClosedOnSelectedDate
       .map((o: any) => {
@@ -2658,7 +2684,7 @@ export function ReportsModule({
           ...kindFieldsFromItems(restItems, net, disc, before, catalogProducts, analysisServiceKeys),
         };
       })
-      .sort((a, b) => new Date(a.date).getTime() - new Date(b.date).getTime());
+      .sort((a, b) => saleWallClockTimestamp(dailyRowWallClockSource(a)) - saleWallClockTimestamp(dailyRowWallClockSource(b)));
   }, [
     businessType,
     dailySales,
@@ -2724,10 +2750,7 @@ export function ReportsModule({
       return tm('reportsDailyKindAll');
     };
     return dailyKindVisibleRows.map((row) => {
-      const parsed = new Date(row.date);
-      const hour = Number.isNaN(parsed.getTime())
-        ? String(row.date || '')
-        : parsed.toLocaleTimeString('tr-TR');
+      const hour = formatSaleWallClockTime(dailyRowWallClockSource(row));
       const bucket = normalizePaymentMethodBucket(row.paymentMethod);
       const st = String(row.status ?? 'completed').toLowerCase();
       const isCancelled = st === 'cancelled' || st === 'canceled';
@@ -2816,13 +2839,21 @@ export function ReportsModule({
     return dailyExpenseRowsForReport.map((row) => {
       const dateRaw = String(row.date || '');
       const parsed = new Date(dateRaw);
-      const timeLabel = Number.isNaN(parsed.getTime())
-        ? (dateRaw.slice(11, 19) || dateRaw.slice(0, 10) || '—')
-        : selectedDateFrom !== selectedDateTo
-          ? parsed.toLocaleString('tr-TR')
-          : /^\d{4}-\d{2}-\d{2}$/.test(dateRaw.slice(0, 10)) && dateRaw.length <= 10
-            ? '—'
-            : parsed.toLocaleTimeString('tr-TR');
+      let timeLabel: string;
+      if (Number.isNaN(parsed.getTime())) {
+        timeLabel = dateRaw.slice(11, 19) || dateRaw.slice(0, 10) || '—';
+      } else if (isBusinessDayClockAnchor(dateRaw)) {
+        timeLabel =
+          selectedDateFrom !== selectedDateTo
+            ? formatShortDate(dateRaw) || '—'
+            : '—';
+      } else if (selectedDateFrom !== selectedDateTo) {
+        timeLabel = parsed.toLocaleString('tr-TR');
+      } else if (/^\d{4}-\d{2}-\d{2}$/.test(dateRaw.slice(0, 10)) && dateRaw.length <= 10) {
+        timeLabel = '—';
+      } else {
+        timeLabel = parsed.toLocaleTimeString('tr-TR');
+      }
       const bucket = normalizePaymentMethodBucket(row.paymentMethod);
       const payLabel =
         row.isCash || bucket === 'cash'
@@ -3265,7 +3296,7 @@ export function ReportsModule({
       paymentMethod: row.erpSale?.paymentMethod ?? row.paymentMethod,
       payments: row.erpSale?.payments ?? null,
       receiptNumber: row.receiptNumber,
-      date: row.date,
+      date: saleWallClockRaw(dailyRowWallClockSource(row)) || row.date,
       cashier: row.cashier,
       customerName: row.customerName,
       description: row.customerName || row.receiptNumber || '—',
@@ -3301,7 +3332,7 @@ export function ReportsModule({
       paymentMethod: row.erpSale?.paymentMethod ?? row.paymentMethod,
       payments: row.erpSale?.payments ?? null,
       receiptNumber: row.receiptNumber,
-      date: row.date,
+      date: saleWallClockRaw(dailyRowWallClockSource(row)) || row.date,
       cashier: row.cashier,
       customerName: row.customerName,
       description: row.customerName || row.receiptNumber || '—',
@@ -3556,9 +3587,8 @@ export function ReportsModule({
     };
 
     for (const row of dailyUnifiedRows) {
-      const t = new Date(row.date).getTime();
-      if (!Number.isFinite(t) || t <= 0) continue;
-      const hour = new Date(row.date).getHours();
+      const hour = saleWallClockHourLocal(dailyRowWallClockSource(row));
+      if (hour == null) continue;
       bump(hour, Number(row.total) || 0);
     }
 
@@ -3768,8 +3798,8 @@ export function ReportsModule({
       });
     } else {
       effectiveCatalogSales.forEach(s => {
-        const t = new Date(s.date).getTime();
-        if (!Number.isFinite(t)) return;
+        const t = saleWallClockTimestamp(s);
+        if (!Number.isFinite(t) || t <= 0) return;
         s.items.forEach(it => upd(String(it.productId), t));
       });
     }
@@ -4128,7 +4158,7 @@ export function ReportsModule({
         return `
         <tr>
           <td>${escHtml(row.receiptNumber)}</td>
-          <td>${escHtml(new Date(row.date).toLocaleTimeString('tr-TR'))}</td>
+          <td>${escHtml(formatSaleWallClockTime(dailyRowWallClockSource(row)))}</td>
           <td>${escHtml(kindPrintLabel(row.kind))}</td>
           <td>${escHtml(cashier)}</td>
           <td>${escHtml(device)}</td>
@@ -4186,7 +4216,7 @@ export function ReportsModule({
           : '';
         return `
     <div class="sale-block">
-      <div class="row"><span class="wrap">${escHtml(row.receiptNumber)}</span><span>${escHtml(new Date(row.date).toLocaleTimeString('tr-TR'))}</span></div>
+      <div class="row"><span class="wrap">${escHtml(row.receiptNumber)}</span><span>${escHtml(formatSaleWallClockTime(dailyRowWallClockSource(row)))}</span></div>
       <div class="sub wrap">${escHtml(kindPrintLabel(row.kind))} · ${escHtml(cashier)} · ${escHtml(device)} · ${escHtml(row.customerName || '—')}</div>
       <div class="row"><span>${escHtml(L('reportsPrintBefore'))}</span><span>${before}</span></div>
       <div class="row"><span>${escHtml(L('reportsColDiscount'))}</span><span>${disc}</span></div>
@@ -4223,7 +4253,7 @@ export function ReportsModule({
         return `
         <tr>
           <td>${escHtml(row.receiptNumber)}</td>
-          <td>${escHtml(new Date(row.date).toLocaleTimeString('tr-TR'))}</td>
+          <td>${escHtml(formatSaleWallClockTime(dailyRowWallClockSource(row)))}</td>
           <td>${escHtml(statusLabel)}</td>
           <td style="text-align:right">${formatNumber(before, 2, false)}</td>
           <td style="text-align:right">${formatNumber(row.total, 2, false)}</td>

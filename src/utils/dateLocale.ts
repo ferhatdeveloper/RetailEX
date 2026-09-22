@@ -210,6 +210,7 @@ export function formatTimeShort(
 /**
  * Tarih + saat (kısa) — liste satırı, randevu paneli.
  * `19.09.2026 14:30` (gün her zaman gg.aa.yyyy, saat 24 saat).
+ * İş günü sabiti (`T12:00:00` / UTC öğle) yalnızca tarih gösterir.
  */
 export function formatDateTimeShort(
     date: DateInput,
@@ -218,6 +219,12 @@ export function formatDateTimeShort(
 ): string {
     const d = calendarDate(date);
     if (!d) return opts.fallback ?? FALLBACK_DEFAULT;
+    if (typeof date === 'string' && isBusinessDayClockAnchorLocal(date)) {
+        return formatDotDate(d);
+    }
+    if (date instanceof Date && isBusinessDayClockAnchorLocal(date.toISOString())) {
+        return formatDotDate(d);
+    }
     const timed = typeof date === 'string' && /[T\s]\d{2}:/.test(date) ? safeDate(date) ?? d : d;
     return `${formatDotDate(timed)} ${pad2(timed.getHours())}:${pad2(timed.getMinutes())}`;
 }
@@ -232,6 +239,7 @@ function normalizeHm(time: string | null | undefined): string {
 /**
  * Rapor ızgara / tablo hücreleri — her zaman `19.09.2026`.
  * Ayrı saat alanı varsa `19.09.2026 - 21:25`; ISO datetime ise `formatDateTimeShort`.
+ * İş günü sabiti (`…T12:00:00` / UTC öğle → TR 15:00) saatsiz gösterilir.
  */
 export function formatReportDateCell(
     date: DateInput,
@@ -245,8 +253,12 @@ export function formatReportDateCell(
 
     if (typeof date === 'string') {
         const trimmed = date.trim();
-        // Ham ISO / SQL timestamp → tarih+saat
+        // Ham ISO / SQL timestamp → tarih+saat (iş günü öğlesi hariç)
         if (/^\d{4}-\d{2}-\d{2}[T\s]\d{2}:\d{2}/.test(trimmed) && !timePart) {
+            if (isBusinessDayClockAnchorLocal(trimmed)) {
+                const dayOnly = formatShortDate(trimmed, undefined, { fallback: '' });
+                return dayOnly || fallback;
+            }
             return formatDateTimeShort(trimmed, undefined, opts);
         }
     }
@@ -254,6 +266,24 @@ export function formatReportDateCell(
     const day = formatShortDate(date, undefined, { fallback: '' });
     if (!day) return fallback;
     return timePart ? `${day} - ${timePart}` : day;
+}
+
+/** invoices/sales `date` alanındaki sahte öğle (UTC+3 → 15:00) — saat göstermemek için */
+function isBusinessDayClockAnchorLocal(raw: string): boolean {
+    const s = String(raw || '').trim();
+    if (!s) return false;
+    if (/^\d{4}-\d{2}-\d{2}$/.test(s)) return true;
+    if (/^\d{4}-\d{2}-\d{2}[T\s](?:12|00):00:00(?:\.\d+)?(?:Z|[+-]\d{2}:?\d{2})?$/i.test(s)) {
+        return true;
+    }
+    const d = new Date(s);
+    if (Number.isNaN(d.getTime())) return false;
+    return (
+        d.getUTCMinutes() === 0 &&
+        d.getUTCSeconds() === 0 &&
+        d.getUTCMilliseconds() === 0 &&
+        (d.getUTCHours() === 12 || d.getUTCHours() === 0)
+    );
 }
 
 /**

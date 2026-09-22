@@ -11,18 +11,12 @@ import { MODAL_OVERLAY_Z } from '../shared/FullscreenBodyPortal';
 import { DevExDataGrid } from '../shared/DevExDataGrid';
 import { addDaysToLocalYmd, formatLocalYmd } from '../../utils/dateLocal';
 import { formatCurrency } from '../../utils/currency';
+import {
+  formatSaleWallClockDateTime,
+  saleWallClockTimestamp,
+} from '../../utils/saleWallClock';
 import { ThermalReceiptPreview } from './ThermalReceiptPreview';
 import { PaymentReceiptPreview } from './PaymentReceiptPreview';
-
-/**
- * Fatura `date` alanı gün sınırı için `…T12:00:00` (UTC öğle) yazılır;
- * UTC+3’te her satır 15:00 görünür. Duvar saati `created_at`’te.
- */
-function saleWallClockRaw(sale: Sale): string {
-  const created = String(sale.created_at || '').trim();
-  if (created) return created;
-  return String(sale.date || '').trim();
-}
 
 function saleLocalDateKey(sale: Sale): string {
   const raw = String(sale.date || sale.created_at || '').trim();
@@ -33,14 +27,11 @@ function saleLocalDateKey(sale: Sale): string {
 }
 
 function saleTimestamp(sale: Sale): number {
-  const t = new Date(saleWallClockRaw(sale)).getTime();
-  return Number.isFinite(t) ? t : 0;
+  return saleWallClockTimestamp(sale);
 }
 
 function formatSaleDateTime(sale: Sale): string {
-  const d = new Date(saleWallClockRaw(sale));
-  if (Number.isNaN(d.getTime())) return '—';
-  return `${d.toLocaleDateString('tr-TR', { day: '2-digit', month: '2-digit', year: 'numeric' })} ${d.toLocaleTimeString('tr-TR', { hour: '2-digit', minute: '2-digit' })}`;
+  return formatSaleWallClockDateTime(sale);
 }
 
 /** Aynı takvim gününde zamana göre 1…n (günlük fiş sırası). */
