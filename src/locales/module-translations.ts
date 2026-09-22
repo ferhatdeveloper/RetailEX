@@ -6737,7 +6737,26 @@ export const moduleTranslations: Record<string, Record<Language, string>> = {
     ku: 'KPIی کارت کۆی هەموو فرۆشتنەکانە (تەنها دوایین نەبێت). دوایین فرۆشتن: پێشەکی {paid}، قەرز {credit}.',
   },
   bAppointmentCountLabel: { tr: 'Randevu Sayısı', en: 'Appointments', ar: 'المواعيد', ku: 'ژمارەی ئامادەبوون' },
+  /** Özet KPI: satış fişine bağlı randevu adedi (satır değil fiş) */
+  bAppointmentCountFicheLabel: {
+    tr: 'Fiş bazında randevu',
+    en: 'Appointments (by receipt)',
+    ar: 'المواعيد حسب الإيصال',
+    ku: 'ئامادەبوون بەپێی پسوڵە',
+  },
+  bAppointmentCountFicheDetail: {
+    tr: '{completed} tamamlanan randevu',
+    en: '{completed} completed appointments',
+    ar: '{completed} مواعيد مكتملة',
+    ku: '{completed} ئامادەبوونی تەواوکراو',
+  },
   bLastVisit: { tr: 'Son Ziyaret', en: 'Last Visit', ar: 'آخر زيارة', ku: 'دوایین سەردان' },
+  bLastVisitCompletedHint: {
+    tr: 'Tamamlanan randevu',
+    en: 'Completed appointment',
+    ar: 'موعد مكتمل',
+    ku: 'ئامادەبوونی تەواوکراو',
+  },
   bEditInfo: { tr: 'Bilgileri Düzenle', en: 'Edit Info', ar: 'تعديل المعلومات', ku: 'زانیاری دەستکاری بکە' },
   bLastService: { tr: 'Son Hizmet', en: 'Last Service', ar: 'آخر خدمة', ku: 'کاری دوایین' },
   bPackage: { tr: 'Paket', en: 'Package', ar: 'باقة', ku: 'پاکەیج' },

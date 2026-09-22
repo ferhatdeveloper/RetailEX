@@ -128,6 +128,77 @@ function packageSortMs(p: BeautyPackagePurchase): number {
     return Number.isNaN(ms) ? 0 : ms;
 }
 
+function beautyToYmd(raw?: string | null): string {
+    if (!raw) return '';
+    const s = String(raw).trim();
+    if (/^\d{4}-\d{2}-\d{2}/.test(s)) return s.slice(0, 10);
+    const dt = new Date(s);
+    if (Number.isNaN(dt.getTime())) return '';
+    const y = dt.getFullYear();
+    const m = String(dt.getMonth() + 1).padStart(2, '0');
+    const d = String(dt.getDate()).padStart(2, '0');
+    return `${y}-${m}-${d}`;
+}
+
+function isActiveBeautySale(s: BeautySale): boolean {
+    const st = String(s.payment_status || 'paid').toLowerCase();
+    return st !== 'cancelled' && st !== 'canceled' && st !== 'void';
+}
+
+function isCompletedBeautyAppointment(a: BeautyAppointment): boolean {
+    return String(a.status ?? '').toLowerCase() === 'completed';
+}
+
+/** Satış ↔ randevu eşlemesi (linked_appointment_id / notes / aynı gün+tutar+hizmet). */
+function collectAppointmentIdsLinkedToSales(
+    sales: BeautySale[],
+    appointments: BeautyAppointment[],
+): Set<string> {
+    const linked = new Set<string>();
+    const normName = (n?: string | null) =>
+        String(n ?? '')
+            .trim()
+            .toLocaleLowerCase('tr');
+
+    for (const s of sales) {
+        if (!isActiveBeautySale(s)) continue;
+
+        const fromLink = String(s.linked_appointment_id ?? '').trim();
+        if (fromLink) linked.add(fromLink.toLowerCase());
+
+        const fromNotes = beautyService.parseRexAppointmentIdFromNotes(s.notes);
+        if (fromNotes) linked.add(fromNotes.toLowerCase());
+
+        const notes = String(s.notes ?? '');
+        for (const m of notes.matchAll(/rex_appt[:\s]+([0-9a-fA-F-]{36})/gi)) {
+            linked.add(m[1].toLowerCase());
+        }
+
+        const saleYmd = beautyToYmd(s.created_at);
+        const saleTotal = Math.round(Number(s.total) || 0);
+        const itemNames = new Set(
+            (s.items ?? [])
+                .map((it) => normName(it.name))
+                .filter(Boolean),
+        );
+        if (!saleYmd || !(saleTotal > 0)) continue;
+        for (const a of appointments) {
+            const aptId = String(a.id ?? '').trim().toLowerCase();
+            if (!aptId || linked.has(aptId)) continue;
+            const aptYmd = beautyToYmd(a.appointment_date ?? a.date);
+            const aptTotal = Math.round(Number(a.total_price) || 0);
+            const aptName = normName(a.service_name);
+            if (aptYmd !== saleYmd || aptTotal !== saleTotal) continue;
+            if (aptName && itemNames.size > 0 && itemNames.has(aptName)) {
+                linked.add(aptId);
+            } else if (itemNames.size <= 1 && aptTotal === saleTotal) {
+                linked.add(aptId);
+            }
+        }
+    }
+    return linked;
+}
+
 type UnifiedHistoryRow =
     | { key: string; kind: 'appointment'; sortMs: number; appointment: BeautyAppointment }
     | { key: string; kind: 'sale'; sortMs: number; sale: BeautySale }
@@ -494,61 +565,10 @@ export function ClientCustomerDetailPage({ customerId, onBack }: ClientCustomerD
         };
 
         /** Satış ↔ randevu: notes / linked_appointment_id / aynı gün+tutar+hizmet */
-        const appointmentIdsLinkedToSale = new Set<string>();
-        const toYmd = (raw?: string | null) => {
-            if (!raw) return '';
-            const s = String(raw).trim();
-            if (/^\d{4}-\d{2}-\d{2}/.test(s)) return s.slice(0, 10);
-            const dt = new Date(s);
-            if (Number.isNaN(dt.getTime())) return '';
-            const y = dt.getFullYear();
-            const m = String(dt.getMonth() + 1).padStart(2, '0');
-            const d = String(dt.getDate()).padStart(2, '0');
-            return `${y}-${m}-${d}`;
-        };
-        const normName = (n?: string | null) =>
-            String(n ?? '')
-                .trim()
-                .toLocaleLowerCase('tr');
-
-        for (const s of salesHistory) {
-            const st = String(s.payment_status || 'paid').toLowerCase();
-            if (st === 'cancelled' || st === 'canceled' || st === 'void') continue;
-
-            const fromLink = String(s.linked_appointment_id ?? '').trim();
-            if (fromLink) appointmentIdsLinkedToSale.add(fromLink.toLowerCase());
-
-            const fromNotes = beautyService.parseRexAppointmentIdFromNotes(s.notes);
-            if (fromNotes) appointmentIdsLinkedToSale.add(fromNotes.toLowerCase());
-
-            const notes = String(s.notes ?? '');
-            for (const m of notes.matchAll(/rex_appt[:\s]+([0-9a-fA-F-]{36})/gi)) {
-                appointmentIdsLinkedToSale.add(m[1].toLowerCase());
-            }
-
-            const saleYmd = toYmd(s.created_at);
-            const saleTotal = Math.round(Number(s.total) || 0);
-            const itemNames = new Set(
-                (s.items ?? [])
-                    .map((it) => normName(it.name))
-                    .filter(Boolean),
-            );
-            if (!saleYmd || !(saleTotal > 0)) continue;
-            for (const a of pastAppointments) {
-                const aptId = String(a.id ?? '').trim().toLowerCase();
-                if (!aptId || appointmentIdsLinkedToSale.has(aptId)) continue;
-                const aptYmd = toYmd(a.appointment_date ?? a.date);
-                const aptTotal = Math.round(Number(a.total_price) || 0);
-                const aptName = normName(a.service_name);
-                if (aptYmd !== saleYmd || aptTotal !== saleTotal) continue;
-                // Aynı gün + aynı tutar; hizmet adı satış kaleminde varsa veya tek kalemli satışsa eşle
-                if (aptName && itemNames.size > 0 && itemNames.has(aptName)) {
-                    appointmentIdsLinkedToSale.add(aptId);
-                } else if (itemNames.size <= 1 && aptTotal === saleTotal) {
-                    appointmentIdsLinkedToSale.add(aptId);
-                }
-            }
-        }
+        const appointmentIdsLinkedToSale = collectAppointmentIdsLinkedToSales(
+            salesHistory,
+            pastAppointments,
+        );
 
         type Primary = Extract<UnifiedHistoryRow, { kind: 'appointment' | 'sale' | 'package' }>;
         const primaries: Primary[] = [];
@@ -562,8 +582,7 @@ export function ClientCustomerDetailPage({ customerId, onBack }: ClientCustomerD
             });
         }
         for (const s of salesHistory) {
-            const st = String(s.payment_status || 'paid').toLowerCase();
-            if (st === 'cancelled' || st === 'canceled' || st === 'void') continue;
+            if (!isActiveBeautySale(s)) continue;
             primaries.push({ key: `sale-${s.id}`, kind: 'sale', sortMs: saleSortMs(s), sale: s });
         }
         for (const p of customerPackages) {
@@ -759,42 +778,81 @@ export function ClientCustomerDetailPage({ customerId, onBack }: ClientCustomerD
                 collectedAmount: 0,
                 veresiyeCari: 0,
                 appointmentCount: 0,
+                appointmentCountDetail: '',
                 lastVisitLabel: '-',
                 activeSaleCount: 0,
                 lastSaleCollected: 0,
                 lastSaleRemaining: 0,
             };
         }
-        const activeSales = salesHistory.filter(s => {
-            const st = String(s.payment_status || 'paid').toLowerCase();
-            return st !== 'cancelled' && st !== 'canceled' && st !== 'void';
-        });
+        const activeSales = salesHistory.filter(isActiveBeautySale);
         const sumDocument = activeSales.reduce((acc, s) => acc + Math.max(0, Number(s.total) || 0), 0);
         const collectedAmount = activeSales.reduce((acc, s) => acc + beautySalePocketCollected(s), 0);
         const veresiyeCari = activeSales.reduce((acc, s) => acc + beautySaleRemainingCari(s), 0);
         /** Belge tutarı; satış yoksa kart total_spent, o da yoksa tamamlanmış randevu fiyatları */
         let totalSpent = activeSales.length > 0 ? sumDocument : Number(selected.total_spent ?? 0);
+        const completedAppointments = pastAppointments.filter(isCompletedBeautyAppointment);
         if (!(totalSpent > 0) && activeSales.length === 0) {
-            const fromApts = pastAppointments
-                .filter(a => {
-                    const st = String(a.status ?? '').toLowerCase();
-                    return st === 'completed' || st === 'in_progress';
-                })
-                .reduce((acc, a) => acc + Math.max(0, Number(a.total_price) || 0), 0);
+            const fromApts = completedAppointments.reduce(
+                (acc, a) => acc + Math.max(0, Number(a.total_price) || 0),
+                0,
+            );
             if (fromApts > 0) totalSpent = fromApts;
         }
-        const appointmentCount =
-            pastAppointments.length > 0 ? pastAppointments.length : Number(selected.appointment_count ?? 0);
-        let bestYmd: string | undefined;
-        for (const a of pastAppointments) {
-            const raw = a.appointment_date ?? a.date;
-            const y = raw ? String(raw).slice(0, 10) : undefined;
-            if (!y) continue;
-            if (!bestYmd || y > bestYmd) bestYmd = y;
+
+        /** Fiş bazında: randevuya bağlı aktif satış fişi adedi (yoksa tamamlanan randevu). */
+        const linkedAptIds = collectAppointmentIdsLinkedToSales(activeSales, pastAppointments);
+        const receiptSaleKeys = new Set<string>();
+        for (const s of activeSales) {
+            const saleKey = String(s.id || `${s.created_at}-${s.total}`);
+            const fromLink = String(s.linked_appointment_id ?? '').trim();
+            const fromNotes = beautyService.parseRexAppointmentIdFromNotes(s.notes);
+            const notes = String(s.notes ?? '');
+            const noteHit = /rex_appt[:\s]+[0-9a-fA-F-]{36}/i.test(notes);
+            if (fromLink || fromNotes || noteHit) {
+                receiptSaleKeys.add(saleKey);
+                continue;
+            }
+            const saleYmd = beautyToYmd(s.created_at);
+            const saleTotal = Math.round(Number(s.total) || 0);
+            if (!saleYmd || !(saleTotal > 0) || linkedAptIds.size === 0) continue;
+            const matched = pastAppointments.some((a) => {
+                const aptId = String(a.id ?? '').trim().toLowerCase();
+                if (!aptId || !linkedAptIds.has(aptId)) return false;
+                return (
+                    beautyToYmd(a.appointment_date ?? a.date) === saleYmd &&
+                    Math.round(Number(a.total_price) || 0) === saleTotal
+                );
+            });
+            if (matched) receiptSaleKeys.add(saleKey);
         }
-        const fromSel = selected.last_appointment_date ? String(selected.last_appointment_date).slice(0, 10) : undefined;
-        if (fromSel && (!bestYmd || fromSel > bestYmd)) bestYmd = fromSel;
-        const lastVisitLabel = bestYmd ? new Date(bestYmd).toLocaleDateString(dateLocale) : '-';
+        let receiptBasedCount = receiptSaleKeys.size;
+        if (receiptBasedCount === 0 && linkedAptIds.size > 0) {
+            receiptBasedCount = linkedAptIds.size;
+        }
+        if (receiptBasedCount === 0) {
+            receiptBasedCount =
+                completedAppointments.length > 0
+                    ? completedAppointments.length
+                    : Number(selected.appointment_count ?? 0);
+        }
+
+        /** Son ziyaret = en son tamamlanan randevu tarihi */
+        let bestCompletedYmd: string | undefined;
+        for (const a of completedAppointments) {
+            const y = beautyToYmd(a.appointment_date ?? a.date);
+            if (!y) continue;
+            if (!bestCompletedYmd || y > bestCompletedYmd) bestCompletedYmd = y;
+        }
+        const lastVisitLabel = bestCompletedYmd
+            ? new Date(bestCompletedYmd).toLocaleDateString(dateLocale)
+            : '-';
+
+        const appointmentCountDetail = tm('bAppointmentCountFicheDetail').replace(
+            '{completed}',
+            String(completedAppointments.length),
+        );
+
         const lastSale = activeSales[0];
         const lastSaleCollected = lastSale ? beautySalePocketCollected(lastSale) : 0;
         const lastSaleRemaining = lastSale ? beautySaleRemainingCari(lastSale) : 0;
@@ -802,13 +860,14 @@ export function ClientCustomerDetailPage({ customerId, onBack }: ClientCustomerD
             totalSpent,
             collectedAmount,
             veresiyeCari,
-            appointmentCount,
+            appointmentCount: receiptBasedCount,
+            appointmentCountDetail,
             lastVisitLabel,
             activeSaleCount: activeSales.length,
             lastSaleCollected,
             lastSaleRemaining,
         };
-    }, [selected, salesHistory, pastAppointments, dateLocale]);
+    }, [selected, salesHistory, pastAppointments, dateLocale, tm]);
 
     const historyColumns: ColumnsType<UnifiedHistoryRow> = useMemo(
         () => [
@@ -1729,10 +1788,15 @@ export function ClientCustomerDetailPage({ customerId, onBack }: ClientCustomerD
                                     <Col xs={24} sm={12} lg={8} xl={4}>
                                         <Card size="small" bordered className="!shadow-none h-full">
                                             <Statistic
-                                                title={tm('bAppointmentCountLabel')}
+                                                title={tm('bAppointmentCountFicheLabel')}
                                                 value={profileStats.appointmentCount}
                                                 prefix={<RiseOutlined className="text-green-600" />}
                                             />
+                                            {profileStats.appointmentCountDetail ? (
+                                                <div className="mt-1 text-[10px] font-medium text-gray-400 leading-tight">
+                                                    {profileStats.appointmentCountDetail}
+                                                </div>
+                                            ) : null}
                                         </Card>
                                     </Col>
                                     <Col xs={24} sm={12} lg={8} xl={4}>
@@ -1742,6 +1806,9 @@ export function ClientCustomerDetailPage({ customerId, onBack }: ClientCustomerD
                                                 value={profileStats.lastVisitLabel}
                                                 prefix={<CalendarOutlined className="text-[#1677ff]" />}
                                             />
+                                            <div className="mt-1 text-[10px] font-medium text-gray-400 leading-tight">
+                                                {tm('bLastVisitCompletedHint')}
+                                            </div>
                                         </Card>
                                     </Col>
                                 </Row>
@@ -1865,22 +1932,30 @@ export function ClientCustomerDetailPage({ customerId, onBack }: ClientCustomerD
                         summary={
                             isEdit && selected
                                 ? (() => {
-                                      const latest = [...pastAppointments].sort(
+                                      const completed = pastAppointments.filter(isCompletedBeautyAppointment);
+                                      const latestCompleted = [...completed].sort(
                                           (a, b) => appointmentSortMs(b) - appointmentSortMs(a),
                                       )[0];
+                                      const linked = collectAppointmentIdsLinkedToSales(
+                                          salesHistory.filter(isActiveBeautySale),
+                                          pastAppointments,
+                                      );
+                                      const ficheCount =
+                                          linked.size > 0
+                                              ? linked.size
+                                              : completed.length > 0
+                                                ? completed.length
+                                                : Number(selected.appointment_count ?? 0);
                                       return {
-                                          appointmentCount:
-                                              pastAppointments.length > 0
-                                                  ? pastAppointments.length
-                                                  : Number(selected.appointment_count ?? 0),
+                                          appointmentCount: ficheCount,
                                           lastServiceName:
                                               selected.last_service_name ??
-                                              latest?.service_name ??
+                                              latestCompleted?.service_name ??
                                               null,
                                           lastAppointmentDate:
+                                              latestCompleted?.appointment_date ??
+                                              latestCompleted?.date ??
                                               selected.last_appointment_date ??
-                                              latest?.appointment_date ??
-                                              latest?.date ??
                                               null,
                                       };
                                   })()
