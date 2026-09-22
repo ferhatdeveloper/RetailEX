@@ -569,7 +569,9 @@ export function AppointmentPOS({
     /** Sepet satırı silinirse birim fiyat modalını kapat */
     useEffect(() => {
         if (!cartLinePriceUid) return;
-        const ok = cart.some(l => l.uid === cartLinePriceUid && l.type === 'service');
+        const ok = cart.some(
+            l => l.uid === cartLinePriceUid && (l.type === 'service' || l.type === 'product'),
+        );
         if (!ok) setCartLinePriceUid(null);
     }, [cart, cartLinePriceUid]);
 
@@ -1155,6 +1157,15 @@ export function AppointmentPOS({
             toast.error(extractTechnicalError(e) || tm('bBookingErrorGeneric'));
         }
     }, [existingAppointment, aptDate, updateAppointment, activeSpecialists, specialists, tm]);
+    const openCartLinePriceEditor = useCallback((line: CartLine) => {
+        if (!isAdmin()) return;
+        if (line.type !== 'service' && line.type !== 'product') return;
+        queueMicrotask(() => {
+            setCartLinePriceUid(line.uid);
+            setCartLinePriceDraft(String(line.unit_price ?? 0));
+        });
+    }, [isAdmin]);
+
     const saveCartLineUnitPrice = useCallback(async () => {
         if (!isAdmin()) {
             setCartLinePriceUid(null);
@@ -1162,7 +1173,7 @@ export function AppointmentPOS({
         }
         if (!cartLinePriceUid) return;
         const line = cart.find(l => l.uid === cartLinePriceUid);
-        if (!line || line.type !== 'service') {
+        if (!line || (line.type !== 'service' && line.type !== 'product')) {
             setCartLinePriceUid(null);
             return;
         }
@@ -1195,7 +1206,8 @@ export function AppointmentPOS({
             setCartLinePriceUid(null);
             return;
         }
-        if (existingAppointment?.id) {
+        // Hizmet satırında randevu total_price senkronu; ürün satırında yalnızca sepet
+        if (line.type === 'service' && existingAppointment?.id) {
             try {
                 const dayYmd =
                     beautyAppointmentDateKey(existingAppointment) ||
@@ -1231,10 +1243,11 @@ export function AppointmentPOS({
         }
         setCart(c => c.map(l => (l.uid === cartLinePriceUid ? { ...l, unit_price: neu } : l)));
         logger.info('AppointmentPOS', 'beauty_cart_line_unit_price_update', {
-            action: 'cart_service_line_unit_price',
+            action: line.type === 'product' ? 'cart_product_line_unit_price' : 'cart_service_line_unit_price',
             lineUid: line.uid,
+            lineType: line.type,
             itemId: line.item_id,
-            serviceName: line.name,
+            itemName: line.name,
             oldUnitPrice: old,
             newUnitPrice: neu,
             qty: line.qty,
