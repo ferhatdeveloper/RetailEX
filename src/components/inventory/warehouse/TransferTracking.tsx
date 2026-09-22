@@ -109,7 +109,7 @@ export function TransferTracking({ transfer, onBack }: TransferTrackingProps) {
   return (
     <div className="min-h-screen bg-gradient-to-br from-blue-50 to-blue-100 overflow-y-auto">
       {/* Header */}
-      <div className="bg-gradient-to-r from-blue-600 to-blue-700 text-white p-4 sticky top-0 z-20 shadow-lg">
+      <div className="bg-gradient-to-r from-blue-600 to-blue-700 text-white p-4 sticky top-0 z-10 shadow-lg">
         <div className="flex items-center gap-3 mb-4">
           <button
             onClick={onBack}

@@ -456,7 +456,7 @@ export function ExpenseManagement({ embeddedInPos = false }: { embeddedInPos?: b
       <div className={showExpenseModal ? 'hidden' : 'contents'} aria-hidden={showExpenseModal}>
       {/* Header */}
       <div
-        className={`sticky top-0 z-30 flex-shrink-0 border-b border-gray-200 shadow-sm ${
+        className={`sticky top-0 z-10 flex-shrink-0 border-b border-gray-200 shadow-sm ${
           embeddedInPos
             ? 'bg-white p-2 sm:p-3'
             : 'bg-gradient-to-r from-red-50 to-orange-50 p-3 sm:p-5'

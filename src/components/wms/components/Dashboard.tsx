@@ -34,7 +34,7 @@ function WmsPageHeader({
   darkMode?: boolean;
 }) {
   return (
-    <div className="bg-gradient-to-r from-blue-600 to-blue-700 shadow-lg sticky top-0 z-50">
+    <div className="bg-gradient-to-r from-blue-600 to-blue-700 shadow-lg sticky top-0 z-10">
       <div className="px-4 py-3 sm:px-6 flex items-center justify-between min-h-[64px]">
         <div className="flex items-center gap-4">
           <button

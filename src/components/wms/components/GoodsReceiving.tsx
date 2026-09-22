@@ -117,7 +117,7 @@ export default function GoodsReceiving({ darkMode, onNavigate }: GoodsReceivingP
   return (
     <div className={`min-h-screen ${bgClass}`}>
       {/* Header */}
-      <div className={`${darkMode ? 'bg-gray-800' : 'bg-white'} border-b shadow-sm sticky top-0 z-40`}>
+      <div className={`${darkMode ? 'bg-gray-800' : 'bg-white'} border-b shadow-sm sticky top-0 z-10`}>
         <div className="px-6 py-4">
           <div className="flex items-center justify-between">
             <div className="flex items-center gap-4">

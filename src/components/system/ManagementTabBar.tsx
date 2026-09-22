@@ -13,7 +13,7 @@ interface ManagementTabBarProps {
 }
 
 /**
- * Yönetim çoklu sekme çubuğu — kurumsal, tek satır, içerikle ayrılmış şerit.
+ * Yönetim çoklu sekme çubuğu — sabit şerit; sayfa sticky header’larının üstünde kalır.
  */
 export function ManagementTabBar({
   onActivate,
@@ -29,17 +29,17 @@ export function ManagementTabBar({
 
   return (
     <div
-      className={`shrink-0 z-20 flex h-10 max-h-10 items-stretch overflow-hidden border-b shadow-sm ${
+      className={`relative z-40 shrink-0 flex h-10 max-h-10 items-stretch overflow-hidden border-b ${
         darkMode
           ? 'bg-gray-900 border-gray-700'
-          : 'bg-slate-200/80 border-slate-300'
+          : 'bg-slate-200 border-slate-300'
       }`}
       role="tablist"
       aria-label="Açık sayfalar"
     >
       <div
         ref={scrollRef}
-        className="flex-1 min-w-0 flex items-end gap-0 overflow-x-auto overflow-y-hidden overscroll-x-contain px-2 pt-1.5 [scrollbar-width:none] [-ms-overflow-style:none] [&::-webkit-scrollbar]:hidden"
+        className="flex-1 min-w-0 flex items-center gap-0.5 overflow-x-auto overflow-y-hidden overscroll-x-contain px-2 [scrollbar-width:none] [-ms-overflow-style:none] [&::-webkit-scrollbar]:hidden"
       >
         {tabs.map((tab) => {
           const active = tab.screenId === activeScreenId;
@@ -63,22 +63,21 @@ export function ManagementTabBar({
                   onClose(tab.screenId);
                 }
               }}
-              className={`group relative flex h-8 max-w-[11.5rem] min-w-[7rem] items-center gap-1.5 px-3 cursor-pointer select-none transition-colors border border-b-0 rounded-t-md -mb-px ${
+              className={`group relative flex h-8 max-w-[11.5rem] min-w-[7rem] items-center gap-1.5 px-3 cursor-pointer select-none transition-colors rounded-md ${
                 active
                   ? darkMode
-                    ? 'bg-gray-800 text-white border-gray-600 z-[1]'
-                    : 'bg-white text-slate-900 border-slate-300 z-[1] shadow-[0_-1px_2px_rgba(15,23,42,0.04)]'
+                    ? 'bg-gray-700 text-white shadow-sm ring-1 ring-gray-600'
+                    : 'bg-white text-slate-900 shadow-sm ring-1 ring-slate-300'
                   : darkMode
-                    ? 'bg-gray-800/40 text-gray-400 border-transparent hover:bg-gray-800/70 hover:text-gray-200'
-                    : 'bg-slate-100/80 text-slate-600 border-transparent hover:bg-slate-50 hover:text-slate-800'
+                    ? 'bg-transparent text-gray-400 hover:bg-gray-800 hover:text-gray-200'
+                    : 'bg-transparent text-slate-600 hover:bg-slate-100 hover:text-slate-900'
               }`}
               title={tab.title}
             >
-              {/* Aktif sekme alt çizgi — içerik zeminine birleşir */}
               {active ? (
                 <span
-                  className={`pointer-events-none absolute inset-x-0 -bottom-px h-0.5 ${
-                    darkMode ? 'bg-blue-500' : 'bg-blue-600'
+                  className={`pointer-events-none absolute inset-x-2 bottom-0 h-0.5 rounded-full ${
+                    darkMode ? 'bg-blue-400' : 'bg-blue-600'
                   }`}
                   aria-hidden
                 />
@@ -100,7 +99,7 @@ export function ManagementTabBar({
                   className={`shrink-0 p-0.5 rounded-sm transition-colors ${
                     active
                       ? darkMode
-                        ? 'text-gray-300 hover:bg-gray-700 hover:text-white'
+                        ? 'text-gray-300 hover:bg-gray-600 hover:text-white'
                         : 'text-slate-500 hover:bg-slate-200 hover:text-slate-800'
                       : darkMode
                         ? 'opacity-0 group-hover:opacity-100 text-gray-400 hover:bg-gray-700'

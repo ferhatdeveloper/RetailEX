@@ -1869,7 +1869,8 @@ export function ManagementModule({
           onActivate={handleActivateTab}
           onClose={handleCloseTab}
         />
-        <div className={`relative flex-1 min-h-0 overflow-hidden isolate ${darkMode ? 'bg-gray-900' : 'bg-white'}`}>
+        {/* z-0: sticky sayfa başlıkları (z-10…50) sekme şeridinin (z-40) üstüne binmesin */}
+        <div className={`relative z-0 flex-1 min-h-0 overflow-hidden isolate ${darkMode ? 'bg-gray-900' : 'bg-white'}`}>
           {(openTabs.length > 0 ? openTabs : [{ screenId: String(currentScreen), title: String(currentScreen) }]).map((tab) => {
             const isActive = tab.screenId === String(currentScreen);
             return (
@@ -1877,12 +1878,11 @@ export function ManagementModule({
                 key={tab.screenId}
                 role="tabpanel"
                 aria-hidden={!isActive}
-                // display:none — keep-alive mount kalır; visibility:hidden çocuklarda sızıntı yapıyordu
-                className={`absolute inset-0 overflow-auto ${
+                className={`absolute inset-0 min-h-0 overflow-auto overscroll-contain ${
                   isActive
                     ? darkMode
-                      ? 'z-10 block bg-gray-900'
-                      : 'z-10 block bg-white'
+                      ? 'z-[1] block bg-gray-900'
+                      : 'z-[1] block bg-white'
                     : 'hidden'
                 }`}
               >
