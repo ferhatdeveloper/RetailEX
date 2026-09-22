@@ -185,7 +185,7 @@ export async function adjustProductStockInCache(
   const row = snap.rows[idx]!;
   snap.rows[idx] = {
     ...row,
-    stock: Math.max(0, (Number(row.stock) || 0) + delta),
+    stock: (Number(row.stock) || 0) + delta,
   };
   await writeSnapshot(PRODUCTS_KEY, snap.rows);
 }
@@ -202,7 +202,7 @@ export async function setProductStockInCache(
   const row = snap.rows[idx]!;
   snap.rows[idx] = {
     ...row,
-    stock: Math.max(0, Number(stock) || 0),
+    stock: Number(stock) || 0,
   };
   await writeSnapshot(PRODUCTS_KEY, snap.rows);
 }

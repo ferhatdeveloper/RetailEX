@@ -72,11 +72,21 @@ export function MaterialValueReport() {
 
     const rows = useMemo<ValuationRow[]>(() => {
         return products
-            .filter(p => (p.stock || 0) > 0)
+            // Sıfır stok satırları değer raporunda gereksiz; negatif stok (izinli satış) gösterilmeli
+            .filter(p => (Number(p.stock) || 0) !== 0)
             .map(p => {
                 const qty = Number(p.stock) || 0;
-                const total_cost = layeredCostForProduct(valuation, p);
-                const average_unit_cost = layeredAvgForProduct(valuation, p);
+                let average_unit_cost = layeredAvgForProduct(valuation, p);
+                let total_cost = layeredCostForProduct(valuation, p);
+                // Negatif eldeki: FIFO katmanı yok; birim maliyet × miktar (eksi değer)
+                if (qty < 0) {
+                    if (!(average_unit_cost > 0)) {
+                        const pAny = p as Product & { cost?: number; purchase_price?: number };
+                        average_unit_cost =
+                            Number(pAny.cost || pAny.purchase_price || p.price) || 0;
+                    }
+                    total_cost = qty * average_unit_cost;
+                }
                 return {
                     product_id: p.id,
                     product_code: p.code || '',

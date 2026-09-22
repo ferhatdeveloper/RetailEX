@@ -2235,7 +2235,7 @@ export function AppointmentPOS({
                     Array.from(productQtyMap.entries()).map(async ([pid, qty]) => {
                         const product = currentProducts.find((x) => x.id === pid);
                         if (!product) return;
-                        await updateStock(product.id, Math.max(0, (product.stock ?? 0) - qty));
+                        await updateStock(product.id, (product.stock ?? 0) - qty);
                     }),
                 );
             }

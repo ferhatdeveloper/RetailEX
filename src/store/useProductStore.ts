@@ -145,7 +145,8 @@ export const useProductStore = create<ProductState>()(
           const id = String(update.id || '').trim();
           const qty = Number(update.quantity);
           if (!UUID_RE.test(id) || !Number.isFinite(qty)) continue;
-          normalizedById.set(id, Math.max(0, qty));
+          // Negatif stok satışına izin varken eksi bakiyeyi sıfırlama (raporlar eksi göstermeli)
+          normalizedById.set(id, qty);
         }
         const safeUpdates = Array.from(normalizedById.entries()).map(([id, quantity]) => ({ id, quantity }));
         if (!safeUpdates.length) {

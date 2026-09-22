@@ -3700,7 +3700,8 @@ export function ReportsModule({
     const totalStockValue = products.reduce((sum, p) => {
       const s = stockOf(p);
       const unitCost = costOf(p);
-      return sum + Math.max(0, s) * unitCost;
+      // Negatif stok izinliyken eksi miktar eksi değere yansır (sıfırlama yok)
+      return sum + s * unitCost;
     }, 0);
 
     const lowStockItems = lowStock.slice(0, 20).map(p => {
@@ -3789,7 +3790,7 @@ export function ReportsModule({
 
     const rows = products
       .filter(p => !(p as any).isService && !(p as any).is_service)
-      .filter(p => stockOf(p) > 0)
+      .filter(p => stockOf(p) !== 0)
       .map(p => {
         const sid = String(p.id);
         const last = lastSale.get(sid);
@@ -3892,12 +3893,12 @@ export function ReportsModule({
       const catalog = products.find(p => p.id === id);
       const soldQty = Number(item.quantity || 0);
       const revenue = Number(item.revenue || 0);
-      const stock = catalog ? Math.max(0, stockOf(catalog)) : 0;
+      const stock = catalog ? stockOf(catalog) : 0;
       const ratio = stock > 0 ? soldQty / stock : soldQty > 0 ? null : 0;
       const dailySales = soldQty / periodDays;
       const annualizedTurnover =
         stock > 0 && dailySales > 0 ? (dailySales * 365) / stock : stock > 0 && soldQty === 0 ? 0 : null;
-      const daysCover = dailySales > 0 ? stock / dailySales : null;
+      const daysCover = dailySales > 0 && stock > 0 ? stock / dailySales : null;
       rows.push({
         id,
         name: catalog ? productLabelForReport(catalog, tm('reportsUnnamedProduct')) : String(item.product?.name ?? '—'),
@@ -3916,8 +3917,8 @@ export function ReportsModule({
       if ((p as any).isService || (p as any).is_service) return;
       const id = p.id;
       if (seen.has(id)) return;
-      const stk = Math.max(0, stockOf(p));
-      if (stk <= 0) return;
+      const stk = stockOf(p);
+      if (stk === 0) return;
       seen.add(id);
       rows.push({
         id,
@@ -3927,8 +3928,8 @@ export function ReportsModule({
         revenue: 0,
         stock: stk,
         periodDays,
-        ratio: 0,
-        annualizedTurnover: 0,
+        ratio: stk > 0 ? 0 : null,
+        annualizedTurnover: stk > 0 ? 0 : null,
         daysCover: null,
       });
     });
@@ -3976,7 +3977,7 @@ export function ReportsModule({
       .filter(p => !(p as any).isService && !(p as any).is_service)
       .map(p => {
         const revenue = revenueById.get(p.id) || 0;
-        const stk = Math.max(0, stockOf(p));
+        const stk = stockOf(p);
         const price = safeNumber(p.price);
         const stockValue = stk * price;
         const metric = revenue > 0 ? revenue : stockValue;
@@ -7079,7 +7080,7 @@ export function ReportsModule({
                         minStock: it.minStock,
                         price: it.price,
                         value: it.value,
-                        status: it.stock === 0 ? tm('reportsOutOfStock') : tm('reportsLowBadge'),
+                        status: it.stock <= 0 ? tm('reportsOutOfStock') : tm('reportsLowBadge'),
                       }));
                       return (
                         <div className="p-2">
@@ -7101,7 +7102,7 @@ export function ReportsModule({
                                 cell: (item) => (
                                   <span
                                     className={`px-2 py-1 rounded text-sm font-semibold ${
-                                      item.stock === 0
+                                      item.stock <= 0
                                         ? 'bg-red-100 text-red-700'
                                         : item.stock <= item.minStock
                                           ? 'bg-orange-100 text-orange-700'
@@ -7144,7 +7145,7 @@ export function ReportsModule({
                                 align: 'center',
                                 size: 120,
                                 cell: (item) =>
-                                  item.stock === 0 ? (
+                                  item.stock <= 0 ? (
                                     <span className="px-2 py-1 bg-red-100 text-red-700 rounded text-xs">
                                       {tm('reportsOutOfStock')}
                                     </span>

@@ -198,7 +198,8 @@ export function applyFifoLayers(
     const layers = layersByProduct.get(pid) || [];
     const row = snapshotOnHand(pid, layers, todayCogsByProduct.get(pid) || 0);
     if (onHand?.has(pid)) {
-      row.quantity = Math.max(0, Number(onHand.get(pid)) || 0);
+      // Kart stoğu negatif olabilir (negatif satış izni); raporlarda eksi göster
+      row.quantity = Number(onHand.get(pid)) || 0;
       row.avgUnitCost = row.quantity > QTY_EPS ? row.layeredCost / row.quantity : 0;
     }
     byProductId.set(pid, row);

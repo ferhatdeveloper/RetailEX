@@ -190,7 +190,7 @@ export function MinMaxStockReport() {
         if (filterType === 'low') {
             list = list.filter((r) => r.stock <= (r.min_stock || 0));
         } else if (filterType === 'out') {
-            list = list.filter((r) => r.stock === 0);
+            list = list.filter((r) => r.stock <= 0);
         }
         return list;
     }, [rows, filterType, warehouseFilter]);

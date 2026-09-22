@@ -553,6 +553,10 @@ function DefinitionsParametersView() {
     { key: 'block-negative-stock-sale', labelKey: 'menuParamBlockNegativeStockSale' },
   ];
 
+  const posSaleParamRows: { key: ReportMenuParamKey; labelKey: string }[] = [
+    { key: 'allow-pos-payment-back-to-sale', labelKey: 'menuParamAllowPosPaymentBackToSale' },
+  ];
+
   const dailyReportCardParamRows: { key: ReportMenuParamKey; labelKey: string }[] = [
     { key: 'daily-report-card-total-sales', labelKey: 'menuParamDailyCardTotalSales' },
     { key: 'daily-report-card-total-revenue', labelKey: 'menuParamDailyCardTotalRevenue' },

@@ -54,7 +54,7 @@ export function StockManagement({ products, setProducts }: StockManagementProps)
     const qty = parseInt(adjustmentQuantity);
     setProducts(products.map(p =>
       p.id === selectedProduct.id
-        ? { ...p, stock: Math.max(0, p.stock + qty) }
+        ? { ...p, stock: p.stock + qty }
         : p
     ));
     

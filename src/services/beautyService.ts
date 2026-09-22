@@ -7805,7 +7805,7 @@ export const beautyService = {
             }
             try {
                 await postgres.query(
-                    `UPDATE ${prodT} SET stock = GREATEST(0, COALESCE(stock,0) - $2::numeric) WHERE id = $1`,
+                    `UPDATE ${prodT} SET stock = COALESCE(stock,0) - $2::numeric WHERE id = $1`,
                     [line.product_id, qty]
                 );
             } catch {

@@ -90,7 +90,7 @@ export function StockModule({ products, setProducts }: StockModuleProps) {
         else if (updateType === 'subtract') newStock -= updateQuantity;
         else newStock = updateQuantity;
 
-        return { ...p, stock: Math.max(0, newStock) };
+        return { ...p, stock: newStock };
       }
       return p;
     });
@@ -573,7 +573,7 @@ export function StockModule({ products, setProducts }: StockModuleProps) {
                       {updateType === 'add'
                         ? (selectedProduct?.stock || 0) + updateQuantity
                         : updateType === 'subtract'
-                          ? Math.max(0, (selectedProduct?.stock || 0) - updateQuantity)
+                          ? (selectedProduct?.stock || 0) - updateQuantity
                           : updateQuantity
                       } {selectedProduct?.unit}
                     </span>
