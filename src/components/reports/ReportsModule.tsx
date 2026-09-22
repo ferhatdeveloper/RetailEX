@@ -4083,9 +4083,11 @@ export function ReportsModule({
     const printDisc = dailyKindActiveRows.reduce((sum, r) => sum + (Number(r.discount) || 0), 0);
     let printCash = dailyCash;
     let printCard = dailyCard;
+    let printVeresiye = dailyRemaining;
     if (dailyKindFilter !== 'all') {
       printCash = 0;
       printCard = 0;
+      printVeresiye = 0;
       for (const row of dailyKindActiveRows) {
         const share = dailyKindAmountShare(row, dailyKindFilter);
         const split = row.erpSale
@@ -4093,6 +4095,9 @@ export function ReportsModule({
           : saleCollectedSplit({ total: Number(row.total) || 0, paymentMethod: row.paymentMethod });
         printCash += (Number(split.cash) || 0) * share;
         printCard += (Number(split.card) || 0) * share;
+        if (row.erpSale ? !isReturnSale(row.erpSale) : String(row.status || '').toLowerCase() !== 'return') {
+          printVeresiye += (Number(split.remaining) || 0) * share;
+        }
       }
     }
 
@@ -4304,6 +4309,7 @@ export function ReportsModule({
     ${showDailyCardTotalDiscount ? `<div class="card"><div>${escHtml(L('reportsPrintSummaryTotalDisc'))}</div><strong>${formatNumber(printDisc, 2, false)}</strong></div>` : ''}
     ${showDailyCardCash ? `<div class="card"><div>${escHtml(L('cashLabel'))}</div><strong>${formatNumber(printCash, 2, false)}</strong></div>` : ''}
     ${showDailyCardCard ? `<div class="card"><div>${escHtml(L('cardLabel'))}</div><strong>${formatNumber(printCard, 2, false)}</strong></div>` : ''}
+    ${showDailyCardRemainingAccount ? `<div class="card"><div>${escHtml(L('veresiyeVerilen'))}</div><strong>${formatNumber(printVeresiye, 2, false)}</strong></div>` : ''}
     ${showDailyCardTotalExpense ? `<div class="card"><div>${escHtml(L('totalExpense'))}</div><strong>${formatNumber(totalExpensesForReport, 2, false)}</strong></div>` : ''}
     ${showDailyCardNet ? `<div class="card"><div>${escHtml(L('dailyNetAfterExpense'))}</div><strong>${formatNumber(reportNetAfterOptionalExpense(printNet, totalExpensesForReport, showDailyCardTotalExpense), 2, false)}</strong></div>` : ''}
   </div>
@@ -4386,6 +4392,7 @@ export function ReportsModule({
   ${showDailyCardTotalDiscount ? `<div class="row"><span>${escHtml(L('reportsPrintSummaryTotalDisc'))}</span><span>${formatNumber(printDisc, 2, false)}</span></div>` : ''}
   ${showDailyCardCash ? `<div class="row"><span>${escHtml(L('cashLabel'))}</span><span>${formatNumber(printCash, 2, false)}</span></div>` : ''}
   ${showDailyCardCard ? `<div class="row"><span>${escHtml(L('cardLabel'))}</span><span>${formatNumber(printCard, 2, false)}</span></div>` : ''}
+  ${showDailyCardRemainingAccount ? `<div class="row"><span>${escHtml(L('veresiyeVerilen'))}</span><span>${formatNumber(printVeresiye, 2, false)}</span></div>` : ''}
   ${showDailyCardTotalExpense ? `<div class="row"><span>${escHtml(L('totalExpense'))}</span><span class="bold">${formatNumber(totalExpensesForReport, 2, false)}</span></div>` : ''}
   ${showDailyCardNet ? `<div class="row"><span>${escHtml(L('dailyNetAfterExpense'))}</span><span class="bold">${formatNumber(reportNetAfterOptionalExpense(printNet, totalExpensesForReport, showDailyCardTotalExpense), 2, false)}</span></div>` : ''}
   <div class="divider"></div>
@@ -4544,6 +4551,10 @@ export function ReportsModule({
         <div class="row">
           <span class="label">${escHtml(tm('cardLabel'))}:</span>
           <span>${formatNumber(zReport.cardAmount, 2, false)}</span>
+        </div>
+        <div class="row">
+          <span class="label">${escHtml(tm('veresiyeVerilen'))}:</span>
+          <span>${formatNumber(zReport.creditAmount ?? 0, 2, false)}</span>
         </div>
         
         <div class="divider"></div>
@@ -5582,8 +5593,9 @@ export function ReportsModule({
                   showDailyCardTotalDiscount ||
                   showDailyCardCash ||
                   showDailyCardCard ||
+                  showDailyCardRemainingAccount ||
                   showDailyCardSalesReturn) && (
-                <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-6 gap-4">
+                <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 xl:grid-cols-7 gap-4">
                   {showDailyCardTotalSales ? (
                   <div className="bg-white rounded-lg p-4 border-2" style={{ borderColor: `${bizConfig.color}44` }}>
                     <div className="flex items-center justify-between">
@@ -5652,6 +5664,19 @@ export function ReportsModule({
                   </div>
                   ) : null}
 
+                  {showDailyCardRemainingAccount ? (
+                  <div className="bg-white rounded-lg p-4 border-2 border-amber-200">
+                    <div className="flex items-center justify-between">
+                      <div>
+                        <p className="text-sm text-gray-600">{tm('veresiyeVerilen')}</p>
+                        <p className="text-2xl font-bold mt-1 text-amber-700">{formatNumber(dailyRemaining, 2, false)}</p>
+                        <p className="text-xs text-slate-500 mt-1">{tm('kalanCari')}</p>
+                      </div>
+                      <Wallet className="w-12 h-12 text-amber-400 opacity-40" />
+                    </div>
+                  </div>
+                  ) : null}
+
                   {showDailyCardSalesReturn ? (
                   <div className="bg-white rounded-lg p-4 border-2 border-red-100">
                     <div className="flex items-center justify-between">
@@ -5690,7 +5715,7 @@ export function ReportsModule({
                     showDailyCardRemainingAccount
                       ? {
                           key: 'kalan',
-                          label: tm('kalanCari'),
+                          label: tm('veresiyeVerilen'),
                           value: formatNumber(dailyRemaining, 2, false),
                           valueClassName: 'text-amber-700',
                           className: 'border-2 border-amber-200',
@@ -6179,9 +6204,9 @@ export function ReportsModule({
                           <span>{tm('reportsCardPayments')}</span>
                           <span className="text-lg">{formatNumber(zReport.cardAmount, 2, false)}</span>
                         </div>
-                        <div className="flex items-center justify-between p-4 bg-gray-50 rounded-lg">
-                          <span>{tm('kalanCari')}</span>
-                          <span className="text-lg">{formatNumber(zReport.creditAmount ?? 0, 2, false)}</span>
+                        <div className="flex items-center justify-between p-4 bg-amber-50 rounded-lg border border-amber-100">
+                          <span>{tm('veresiyeVerilen')}</span>
+                          <span className="text-lg font-semibold text-amber-700">{formatNumber(zReport.creditAmount ?? 0, 2, false)}</span>
                         </div>
                         {(zReport.cashierStats?.length ?? 0) > 0 && (
                           <div className="mt-4">

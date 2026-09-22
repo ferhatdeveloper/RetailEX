@@ -10,6 +10,7 @@ import { useTheme } from '../../contexts/ThemeContext';
 import { MODAL_OVERLAY_Z } from '../shared/FullscreenBodyPortal';
 import { DevExDataGrid } from '../shared/DevExDataGrid';
 import { addDaysToLocalYmd, formatLocalYmd } from '../../utils/dateLocal';
+import { formatCurrency } from '../../utils/currency';
 import { ThermalReceiptPreview } from './ThermalReceiptPreview';
 import { PaymentReceiptPreview } from './PaymentReceiptPreview';
 
@@ -42,10 +43,25 @@ function formatSaleDateTime(sale: Sale): string {
   return `${d.toLocaleDateString('tr-TR', { day: '2-digit', month: '2-digit', year: 'numeric' })} ${d.toLocaleTimeString('tr-TR', { hour: '2-digit', minute: '2-digit' })}`;
 }
 
-function shortSaleId(id: string | undefined): string {
-  const s = String(id || '').trim();
-  if (!s) return '—';
-  return s.length > 8 ? s.slice(0, 8) : s;
+/** Aynı takvim gününde zamana göre 1…n (günlük fiş sırası). */
+function buildDailySeqBySaleId(sales: Sale[]): Map<string, number> {
+  const byDay = new Map<string, Sale[]>();
+  for (const sale of sales) {
+    const ymd = saleLocalDateKey(sale);
+    if (!ymd) continue;
+    const list = byDay.get(ymd);
+    if (list) list.push(sale);
+    else byDay.set(ymd, [sale]);
+  }
+  const seq = new Map<string, number>();
+  for (const daySales of byDay.values()) {
+    daySales.sort((a, b) => saleTimestamp(a) - saleTimestamp(b));
+    daySales.forEach((sale, index) => {
+      const id = String(sale.id || '').trim();
+      if (id) seq.set(id, index + 1);
+    });
+  }
+  return seq;
 }
 
 function ymdInRange(ymd: string, startYmd: string, endYmd: string): boolean {
@@ -91,15 +107,18 @@ export function POSSalesHistoryModal({
 
   const todayYmd = formatLocalYmd(new Date());
 
+  const dailySeqById = useMemo(() => buildDailySeqBySaleId(sales), [sales]);
+
   // Filter + tarih desc (en yeni üstte)
   const filteredSales = useMemo(() => {
-    const q = searchTerm.toLowerCase();
+    const q = searchTerm.trim().toLowerCase();
     const list = sales.filter((sale) => {
+      const dailySeq = dailySeqById.get(String(sale.id || '')) ?? 0;
       const matchesSearch =
         !q ||
         sale.receiptNumber?.toLowerCase().includes(q) ||
         sale.customerName?.toLowerCase().includes(q) ||
-        String(sale.id || '').toLowerCase().includes(q);
+        String(dailySeq).includes(q);
 
       let matchesDate = true;
       if (filterDate !== 'all') {
@@ -122,11 +141,15 @@ export function POSSalesHistoryModal({
     });
 
     return [...list].sort((a, b) => saleTimestamp(b) - saleTimestamp(a));
-  }, [sales, searchTerm, filterDate, startDate, endDate, todayYmd]);
+  }, [sales, searchTerm, filterDate, startDate, endDate, todayYmd, dailySeqById]);
 
   const totalSalesAmount = filteredSales.reduce((sum, sale) => sum + sale.total, 0);
   const totalCollectedAmount = filteredSales.reduce(
     (sum, sale) => sum + saleCollectedSplit(sale).collected,
+    0,
+  );
+  const totalVeresiyeAmount = filteredSales.reduce(
+    (sum, sale) => sum + (Number(saleCollectedSplit(sale).remaining) || 0),
     0,
   );
 
@@ -144,19 +167,20 @@ export function POSSalesHistoryModal({
   const columns = useMemo(() => {
     const col = createColumnHelper<Sale>();
     return [
-      col.accessor('id', {
-        id: 'id',
-        header: 'ID',
-        size: 96,
-        minSize: 72,
+      col.accessor((row) => dailySeqById.get(String(row.id || '')) ?? 0, {
+        id: 'dailySeq',
+        header: 'Sıra',
+        size: 72,
+        minSize: 56,
+        sortingFn: 'basic',
         cell: (info) => {
-          const full = String(info.getValue() || '');
+          const n = Number(info.getValue() || 0);
           return (
             <span
-              className={`font-mono text-[11px] tabular-nums ${darkMode ? 'text-gray-400' : 'text-gray-500'}`}
-              title={full || undefined}
+              className={`font-mono text-sm font-semibold tabular-nums ${darkMode ? 'text-white' : 'text-gray-900'}`}
+              title="Günlük fiş sırası"
             >
-              {shortSaleId(full)}
+              {n > 0 ? n : '—'}
             </span>
           );
         },
@@ -220,8 +244,8 @@ export function POSSalesHistoryModal({
       col.accessor('total', {
         id: 'total',
         header: t.total || 'Tutar',
-        size: 140,
-        minSize: 100,
+        size: 150,
+        minSize: 110,
         meta: { type: 'currency', align: 'right' },
         cell: (info) => {
           const sale = info.row.original;
@@ -229,14 +253,14 @@ export function POSSalesHistoryModal({
           return (
             <div className="text-right">
               <div className={`text-sm font-medium tabular-nums ${darkMode ? 'text-white' : 'text-gray-900'}`}>
-                {Number(info.getValue() || 0).toFixed(2)} IQD
+                {formatCurrency(Number(info.getValue() || 0))}
               </div>
               {split.remaining > 0.009 ? (
                 <div
                   className="text-[11px] text-amber-700 cursor-help"
-                  title={`${tm('tahsilEdilen')}: ${split.collected.toFixed(2)} IQD · ${tm('kalanCari')}: ${split.remaining.toFixed(2)} IQD`}
+                  title={`${tm('tahsilEdilen')}: ${formatCurrency(split.collected)} · ${tm('kalanCari')}: ${formatCurrency(split.remaining)}`}
                 >
-                  {`T: ${split.collected.toFixed(2)} · K: ${split.remaining.toFixed(2)}`}
+                  {`T: ${formatCurrency(split.collected)} · K: ${formatCurrency(split.remaining)}`}
                 </div>
               ) : null}
             </div>
@@ -279,7 +303,7 @@ export function POSSalesHistoryModal({
         },
       }),
     ];
-  }, [t, tm, darkMode, paymentLabel, onPrintReceipt]);
+  }, [t, tm, darkMode, paymentLabel, onPrintReceipt, dailySeqById]);
 
   // Detay görünümü render fonksiyonu
   const renderDetailView = () => {
@@ -572,9 +596,31 @@ export function POSSalesHistoryModal({
             </div>
 
             {/* Footer */}
-            <div className={`flex items-center justify-between px-4 py-3 border-t ${darkMode ? 'border-gray-700 bg-gray-900' : 'border-gray-200 bg-gray-50'}`}>
+            <div className={`flex items-center justify-between gap-4 px-4 py-3 border-t ${darkMode ? 'border-gray-700 bg-gray-900' : 'border-gray-200 bg-gray-50'}`}>
               <div className={`text-sm ${darkMode ? 'text-gray-400' : 'text-gray-600'}`}>
-                {t.totalSalesCount} <span className={`font-medium ${darkMode ? 'text-white' : 'text-gray-900'}`}>{filteredSales.length}</span> {t.salesCount}
+                {t.totalSalesCount}{' '}
+                <span className={`font-medium ${darkMode ? 'text-white' : 'text-gray-900'}`}>{filteredSales.length}</span>{' '}
+                {t.salesCount}
+              </div>
+              <div className={`text-sm tabular-nums ${darkMode ? 'text-gray-300' : 'text-gray-700'}`}>
+                <span className="mr-3">
+                  {t.total || 'Toplam'}:{' '}
+                  <span className={`font-semibold ${darkMode ? 'text-white' : 'text-gray-900'}`}>
+                    {formatCurrency(totalSalesAmount)}
+                  </span>
+                </span>
+                <span className="mr-3">
+                  {tm('tahsilEdilen') || 'Tahsil'}:{' '}
+                  <span className={`font-semibold ${darkMode ? 'text-emerald-300' : 'text-emerald-700'}`}>
+                    {formatCurrency(totalCollectedAmount)}
+                  </span>
+                </span>
+                <span>
+                  {tm('veresiyeVerilen') || tm('veresiye') || 'Veresiye'}:{' '}
+                  <span className={`font-semibold ${darkMode ? 'text-amber-300' : 'text-amber-700'}`}>
+                    {formatCurrency(totalVeresiyeAmount)}
+                  </span>
+                </span>
               </div>
             </div>
           </>

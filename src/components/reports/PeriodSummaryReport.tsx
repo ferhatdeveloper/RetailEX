@@ -48,6 +48,8 @@ interface PeriodSummaryRow {
   revenue: number;
   cash: number;
   card: number;
+  /** Satışta cariye yazılan / tahsil edilmeyen tutar (veresiye verilen) */
+  veresiye: number;
   discount: number;
   returnsCount: number;
   returnsAmount: number;
@@ -115,13 +117,13 @@ function expenseDayKey(raw: string | undefined | null): string {
  */
 function aggregateSales(sales: Sale[], bucketKey: (s: Sale) => string) {
   const map = new Map<string, {
-    saleCount: number; revenue: number; cash: number; card: number; discount: number;
+    saleCount: number; revenue: number; cash: number; card: number; veresiye: number; discount: number;
     returnsCount: number; returnsAmount: number;
   }>();
 
   const bump = (key: string) => {
     const row = map.get(key) || {
-      saleCount: 0, revenue: 0, cash: 0, card: 0, discount: 0,
+      saleCount: 0, revenue: 0, cash: 0, card: 0, veresiye: 0, discount: 0,
       returnsCount: 0, returnsAmount: 0,
     };
     map.set(key, row);
@@ -158,6 +160,10 @@ function aggregateSales(sales: Sale[], bucketKey: (s: Sale) => string) {
     const split = saleCollectedSplit(s);
     row.cash += split.cash;
     row.card += split.card;
+    // Veresiye verilen = cariye kalan (iade satırında şişirmemek için yalnız satış)
+    if (!isReturn) {
+      row.veresiye += Number(split.remaining) || 0;
+    }
 
     if (isReturn) {
       row.revenue -= absTotal;
@@ -395,7 +401,7 @@ export function PeriodSummaryReport({ mode, currency }: PeriodSummaryReportProps
 
     return periodKeys.map((periodKey) => {
       const sale = saleMap.get(periodKey) || {
-        saleCount: 0, revenue: 0, cash: 0, card: 0, discount: 0,
+        saleCount: 0, revenue: 0, cash: 0, card: 0, veresiye: 0, discount: 0,
         returnsCount: 0, returnsAmount: 0,
       };
       const exp = expenseMap.get(periodKey) || 0;
@@ -428,6 +434,7 @@ export function PeriodSummaryReport({ mode, currency }: PeriodSummaryReportProps
         revenue: sale.revenue,
         cash: sale.cash,
         card: sale.card,
+        veresiye: sale.veresiye,
         discount: sale.discount,
         returnsCount: sale.returnsCount,
         returnsAmount: sale.returnsAmount,
@@ -458,6 +465,7 @@ export function PeriodSummaryReport({ mode, currency }: PeriodSummaryReportProps
         revenue: acc.revenue + r.revenue,
         cash: acc.cash + r.cash,
         card: acc.card + r.card,
+        veresiye: acc.veresiye + r.veresiye,
         discount: acc.discount + r.discount,
         returnsCount: acc.returnsCount + r.returnsCount,
         returnsAmount: acc.returnsAmount + r.returnsAmount,
@@ -466,7 +474,7 @@ export function PeriodSummaryReport({ mode, currency }: PeriodSummaryReportProps
         netRemaining: acc.netRemaining + r.netRemaining,
       }),
       {
-        saleCount: 0, revenue: 0, cash: 0, card: 0, discount: 0,
+        saleCount: 0, revenue: 0, cash: 0, card: 0, veresiye: 0, discount: 0,
         returnsCount: 0, returnsAmount: 0,
         expenses: 0, purchases: 0, netRemaining: 0,
       }
@@ -554,6 +562,26 @@ export function PeriodSummaryReport({ mode, currency }: PeriodSummaryReportProps
         footerSum: true,
         footerFormat: (n) => money(n),
         cell: (row) => (row.card > 0 ? money(row.card) : '—'),
+      },
+      {
+        key: 'veresiye',
+        header: `${tm('rptPeriodColVeresiye')} (${currency})`,
+        type: 'number',
+        align: 'right',
+        footerSum: true,
+        footerFormat: (n) => (
+          <span className="text-amber-700" title={tm('veresiyeVerilen')}>
+            {money(n)}
+          </span>
+        ),
+        cell: (row) =>
+          row.veresiye > 0 ? (
+            <span className="text-amber-700 font-medium" title={tm('veresiyeVerilen')}>
+              {money(row.veresiye)}
+            </span>
+          ) : (
+            '—'
+          ),
       },
       {
         key: 'discount',
@@ -650,7 +678,7 @@ export function PeriodSummaryReport({ mode, currency }: PeriodSummaryReportProps
     const filtered = base.filter((col) => {
       const key = col.key;
       if (key === 'revenue') return showPeriodCardRevenue;
-      if (key === 'cash' || key === 'card') return showPeriodCardPaymentSplit;
+      if (key === 'cash' || key === 'card' || key === 'veresiye') return showPeriodCardPaymentSplit;
       if (key === 'expenses') return showPeriodCardExpenses;
       if (key === 'purchases') return showPeriodCardPurchases;
       if (key === 'netRemaining') return showPeriodCardNet;
@@ -845,7 +873,7 @@ export function PeriodSummaryReport({ mode, currency }: PeriodSummaryReportProps
             {tm('rptPeriodColCash')}: {money(totals.cash)}
           </span>
         ),
-        hint: `${tm('rptPeriodColCard')}: ${money(totals.card)}`,
+        hint: `${tm('rptPeriodColCard')}: ${money(totals.card)} · ${tm('rptPeriodColVeresiye')}: ${money(totals.veresiye)}`,
       });
     }
 
