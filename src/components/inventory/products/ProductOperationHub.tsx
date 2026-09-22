@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import {
     X, Package, TrendingUp, Edit3, Barcode, History,
     ShoppingCart, Info, ArrowRightLeft, Printer, Trash2,
@@ -14,6 +14,10 @@ import { useLanguage } from '../../../contexts/LanguageContext';
 import { toast } from 'sonner';
 import { formatShortDate, formatTimeShort } from '../../../utils/dateLocale';
 import type { Language } from '../../../locales/module-translations';
+import { DevExDataGrid } from '../../shared/DevExDataGrid';
+import { createColumnHelper } from '@tanstack/react-table';
+import { formatNumber } from '../../../utils/formatNumber';
+import { getAppDefaultCurrency } from '../../../services/postgres';
 
 function formatNumberOrDash(n: unknown, locale: string, empty: string): string {
     if (n === null || n === undefined || n === '') return empty;
@@ -67,6 +71,37 @@ function movementTypeLabel(mt: string | undefined, tm: (k: string) => string): s
     return tm('pohTypeAdjust');
 }
 
+type PohMovementGridRow = {
+    id: string;
+    dateLabel: string;
+    timeLabel: string;
+    documentNo: string;
+    partner: string;
+    typeLabel: string;
+    typeTone: string;
+    movementType: string;
+    warehouse: string;
+    fxLabel: string;
+    unit: string;
+    unitPrice: number;
+    amount: number;
+    signedQty: number;
+    grossProfit: number | null;
+    isPriceChange: boolean;
+    purchasePrice: number;
+    salePrice: number;
+};
+
+const pohMovCol = createColumnHelper<PohMovementGridRow>();
+
+function resolveMovementUnitPrice(item: any, mt: string): number {
+    const up = Number(item.unit_price ?? 0) || 0;
+    const cp = Number(item.cost_price ?? item.unit_cost ?? 0) || 0;
+    if (mt === 'in') return cp || up;
+    if (mt === 'out') return up || cp;
+    return up || cp;
+}
+
 interface ProductOperationHubProps {
     product: Product;
     onClose: () => void;
@@ -91,6 +126,8 @@ export function ProductOperationHub({ product, onClose, onSave, initialTab = 'ov
     const [filterStartDate, setFilterStartDate] = useState('');
     const [filterEndDate, setFilterEndDate] = useState('');
     const [filterType, setFilterType] = useState<'all' | 'in' | 'out' | 'price_change'>('all');
+    const amountCurrency = getAppDefaultCurrency() || 'IQD';
+    const productUnit = String(product.unit || tm('unitPiece') || 'Adet');
 
     // Load movements when overview or movements tab is active
     useEffect(() => {
@@ -101,6 +138,258 @@ export function ProductOperationHub({ product, onClose, onSave, initialTab = 'ov
             loadHistory();
         }
     }, [activeTab, product.id]);
+
+    const filteredMovementRows = useMemo((): PohMovementGridRow[] => {
+        return (movements || [])
+            .filter((item) => {
+                const m = item.movement;
+                const date = new Date(m?.movement_date || item.created_at);
+                if (filterType !== 'all' && m?.movement_type !== filterType) return false;
+                if (filterStartDate) {
+                    const start = pohParseFilterDate(filterStartDate, language, false);
+                    if (start && date < start) return false;
+                }
+                if (filterEndDate) {
+                    const end = pohParseFilterDate(filterEndDate, language, true);
+                    if (end && date > end) return false;
+                }
+                return true;
+            })
+            .map((item, idx) => {
+                const mt = String(item.movement?.movement_type || '');
+                const isPrice = mt === 'price_change';
+                const qtyAbs = Math.abs(Number(item.quantity) || 0);
+                const signedQty = mt === 'in' ? qtyAbs : mt === 'out' ? -qtyAbs : 0;
+                const unitPrice = resolveMovementUnitPrice(item, mt);
+                const totalFromApi = Math.abs(Number(item.total_amount ?? item.net_amount) || 0);
+                const amountAbs = isPrice ? 0 : totalFromApi || qtyAbs * unitPrice;
+                const gp = Number(item.gross_profit);
+                const unit = String(item.unit_name || item.unit || productUnit || 'Adet');
+                return {
+                    id: String(item.id || `${idx}`),
+                    dateLabel: formatShortDate(item.movement?.movement_date || item.created_at, localeCode, {
+                        fallback: emptyDash,
+                    }),
+                    timeLabel: formatTimeShort(item.movement?.movement_date || item.created_at, localeCode, {
+                        fallback: emptyDash,
+                    }),
+                    documentNo: String(item.movement?.document_no || tm('manual')),
+                    partner: String(item.notes || emptyDash),
+                    typeLabel: movementTypeLabel(mt, tm),
+                    typeTone:
+                        mt === 'in'
+                            ? 'bg-green-100 text-green-700'
+                            : mt === 'out'
+                              ? 'bg-red-100 text-red-700'
+                              : mt === 'price_change'
+                                ? 'bg-violet-100 text-violet-800'
+                                : 'bg-blue-100 text-blue-700',
+                    movementType: mt,
+                    warehouse: String(item.movement?.warehouses?.name || tm('pohMainWarehouse')),
+                    fxLabel: `${item.currency || amountCurrency} / ${
+                        item.currency_rate != null
+                            ? Number(item.currency_rate).toLocaleString(localeCode, { minimumFractionDigits: 2 })
+                            : emptyDash
+                    }`,
+                    unit,
+                    unitPrice,
+                    amount: mt === 'out' ? -amountAbs : amountAbs,
+                    signedQty,
+                    grossProfit: Number.isFinite(gp) && Math.abs(gp) > 0.0000001 ? gp : null,
+                    isPriceChange: isPrice,
+                    purchasePrice: Number(item.cost_price) || 0,
+                    salePrice: Number(item.unit_price) || 0,
+                };
+            });
+    }, [
+        movements,
+        filterType,
+        filterStartDate,
+        filterEndDate,
+        language,
+        localeCode,
+        emptyDash,
+        tm,
+        amountCurrency,
+        productUnit,
+    ]);
+
+    const movementTotals = useMemo(() => {
+        let inQty = 0;
+        let outQty = 0;
+        let inAmt = 0;
+        let outAmt = 0;
+        const byUnit = new Map<
+            string,
+            { unit: string; inQty: number; outQty: number; inAmt: number; outAmt: number }
+        >();
+        for (const r of filteredMovementRows) {
+            if (r.isPriceChange) continue;
+            const u = r.unit || productUnit || 'Adet';
+            let bucket = byUnit.get(u);
+            if (!bucket) {
+                bucket = { unit: u, inQty: 0, outQty: 0, inAmt: 0, outAmt: 0 };
+                byUnit.set(u, bucket);
+            }
+            if (r.signedQty > 0) {
+                inQty += r.signedQty;
+                inAmt += Math.abs(r.amount);
+                bucket.inQty += r.signedQty;
+                bucket.inAmt += Math.abs(r.amount);
+            } else if (r.signedQty < 0) {
+                outQty += Math.abs(r.signedQty);
+                outAmt += Math.abs(r.amount);
+                bucket.outQty += Math.abs(r.signedQty);
+                bucket.outAmt += Math.abs(r.amount);
+            }
+        }
+        return {
+            inQty,
+            outQty,
+            inAmt,
+            outAmt,
+            netQty: inQty - outQty,
+            byUnit: Array.from(byUnit.values()),
+        };
+    }, [filteredMovementRows, productUnit]);
+
+    const movementColumns = useMemo(
+        () => [
+            pohMovCol.accessor('dateLabel', {
+                id: 'dateLabel',
+                header: tm('reportsPlMovColDate'),
+                size: 110,
+                cell: ({ row }) => (
+                    <div>
+                        <span className="font-medium">{row.original.dateLabel}</span>
+                        <span className="block text-[9px] opacity-60">{row.original.timeLabel}</span>
+                    </div>
+                ),
+            }),
+            pohMovCol.accessor('documentNo', {
+                id: 'documentNo',
+                header: tm('pohColDoc'),
+                size: 140,
+                cell: ({ row }) => (
+                    <div>
+                        <span className="font-bold text-gray-800 block text-[11px]">{row.original.documentNo}</span>
+                        <span className="text-[9px] text-gray-400 truncate max-w-[140px] block">
+                            {row.original.partner}
+                        </span>
+                    </div>
+                ),
+            }),
+            pohMovCol.accessor('typeLabel', {
+                id: 'typeLabel',
+                header: tm('invThType'),
+                size: 100,
+                cell: ({ row }) => (
+                    <span
+                        className={`px-1.5 py-0.5 rounded text-[9px] font-bold uppercase ${row.original.typeTone}`}
+                    >
+                        {row.original.typeLabel}
+                    </span>
+                ),
+            }),
+            pohMovCol.accessor('warehouse', {
+                id: 'warehouse',
+                header: tm('warehouse'),
+                size: 120,
+            }),
+            pohMovCol.accessor('unit', {
+                id: 'unit',
+                header: tm('unit'),
+                size: 70,
+            }),
+            pohMovCol.accessor('unitPrice', {
+                id: 'unitPrice',
+                header: tm('unitPrice'),
+                size: 110,
+                meta: { filterKind: 'number', align: 'right' },
+                cell: ({ row }) => {
+                    const r = row.original;
+                    if (r.isPriceChange) {
+                        return (
+                            <div className="text-[10px] font-bold text-violet-700 leading-tight text-right">
+                                <div>
+                                    {tm('purchase')} {formatNumber(r.purchasePrice, 2, false)}
+                                </div>
+                                <div>
+                                    {tm('salePrice')} {formatNumber(r.salePrice, 2, false)}
+                                </div>
+                            </div>
+                        );
+                    }
+                    return (
+                        <span className="tabular-nums">
+                            {r.unitPrice ? formatNumber(r.unitPrice, 2, false) : emptyDash}
+                        </span>
+                    );
+                },
+            }),
+            pohMovCol.accessor('amount', {
+                id: 'amount',
+                header: tm('amount'),
+                size: 120,
+                meta: { filterKind: 'number', align: 'right' },
+                cell: ({ row }) => {
+                    const r = row.original;
+                    if (r.isPriceChange) return <span className="text-gray-400">{emptyDash}</span>;
+                    return (
+                        <span
+                            className={`font-semibold tabular-nums ${
+                                r.amount < 0 ? 'text-red-600' : r.amount > 0 ? 'text-green-700' : 'text-gray-500'
+                            }`}
+                        >
+                            {formatNumber(r.amount, 2, false)}
+                        </span>
+                    );
+                },
+            }),
+            pohMovCol.accessor('fxLabel', {
+                id: 'fxLabel',
+                header: tm('pohColFx'),
+                size: 100,
+            }),
+            pohMovCol.accessor('grossProfit', {
+                id: 'grossProfit',
+                header: tm('reportsPlMovColProfit'),
+                size: 100,
+                meta: { filterKind: 'number', align: 'right' },
+                cell: ({ row }) => {
+                    const gp = row.original.grossProfit;
+                    return (
+                        <span className={`text-[11px] font-bold ${gp != null && gp > 0 ? 'text-green-600' : 'text-gray-400'}`}>
+                            {gp != null ? formatNumber(gp, 2, false) : emptyDash}
+                        </span>
+                    );
+                },
+            }),
+            pohMovCol.accessor('signedQty', {
+                id: 'signedQty',
+                header: tm('reportsPlMovColQty'),
+                size: 100,
+                meta: { filterKind: 'number', align: 'right' },
+                cell: ({ row }) => {
+                    const r = row.original;
+                    if (r.isPriceChange) {
+                        return <span className="text-violet-600 text-[10px] font-bold">{tm('pohFilterPrice')}</span>;
+                    }
+                    return (
+                        <span
+                            className={`text-[11px] font-bold tabular-nums ${
+                                r.signedQty > 0 ? 'text-green-600' : r.signedQty < 0 ? 'text-red-600' : 'text-gray-500'
+                            }`}
+                        >
+                            {r.signedQty > 0 ? '+' : ''}
+                            {formatNumber(r.signedQty, 3, false)} {r.unit}
+                        </span>
+                    );
+                },
+            }),
+        ],
+        [tm, emptyDash]
+    );
 
     const loadHistory = async () => {
         try {
@@ -464,7 +753,7 @@ export function ProductOperationHub({ product, onClose, onSave, initialTab = 'ov
                             </div>
                         </div>
 
-                        <div className="flex-1 overflow-auto">
+                        <div className="flex-1 min-h-0 overflow-hidden flex flex-col">
                             {loadingMovements ? (
                                 <div className="flex flex-col items-center justify-center h-full space-y-2">
                                     <div className="w-8 h-8 border-3 border-blue-600 border-t-transparent rounded-full animate-spin"></div>
@@ -475,95 +764,97 @@ export function ProductOperationHub({ product, onClose, onSave, initialTab = 'ov
                                     <Layers className="w-10 h-10 mb-2 opacity-20" />
                                     <h3 className="text-[11px] font-bold uppercase tracking-wider">{tm('pohNoMovements')}</h3>
                                 </div>
-                            ) : (
-                                <div className="overflow-x-auto">
-                                    <table className="w-full text-left text-xs">
-                                        <thead className="sticky top-0 bg-gray-100 border-b border-gray-200 z-10">
-                                            <tr>
-                                                <th className="px-4 py-2 font-bold text-gray-500 uppercase tracking-tighter">{tm('reportsPlMovColDate')}</th>
-                                                <th className="px-4 py-2 font-bold text-gray-500 uppercase tracking-tighter">{tm('pohColDoc')}</th>
-                                                <th className="px-4 py-2 font-bold text-gray-500 uppercase tracking-tighter">{tm('invThType')}</th>
-                                                <th className="px-4 py-2 font-bold text-gray-500 uppercase tracking-tighter">{tm('warehouse')}</th>
-                                                <th className="px-4 py-2 font-bold text-gray-500 uppercase tracking-tighter">{tm('pohColFx')}</th>
-                                                <th className="px-4 py-2 font-bold text-gray-500 uppercase tracking-tighter text-right">{tm('reportsPlMovColProfit')}</th>
-                                                <th className="px-4 py-2 font-bold text-gray-500 uppercase tracking-tighter text-right">{tm('reportsPlMovColQty')}</th>
-                                            </tr>
-                                        </thead>
-                                        <tbody className="divide-y divide-gray-50">
-                                            {movements
-                                                .filter(item => {
-                                                    const m = item.movement;
-                                                    const date = new Date(m?.movement_date || item.created_at);
-                                                    
-                                                    // Type filter
-                                                    if (filterType !== 'all' && m?.movement_type !== filterType) return false;
-                                                    
-                                                    // Date filter
-                                                    if (filterStartDate) {
-                                                        const start = pohParseFilterDate(filterStartDate, language, false);
-                                                        if (start && date < start) return false;
-                                                    }
-                                                    if (filterEndDate) {
-                                                        const end = pohParseFilterDate(filterEndDate, language, true);
-                                                        if (end && date > end) return false;
-                                                    }
-                                                    
-                                                    return true;
-                                                })
-                                                .map((item) => (
-                                                <tr key={item.id} className="hover:bg-blue-50/30 transition-colors">
-                                                    <td className="px-4 py-2 whitespace-nowrap text-gray-500">
-                                                        <span className="font-medium">{formatShortDate(item.movement?.movement_date || item.created_at, localeCode, { fallback: emptyDash })}</span>
-                                                        <span className="block text-[9px] opacity-60">
-                                                            {formatTimeShort(item.movement?.movement_date || item.created_at, localeCode, { fallback: emptyDash })}
-                                                        </span>
-                                                    </td>
-                                                    <td className="px-4 py-2">
-                                                        <span className="font-bold text-gray-800 block text-[11px]">{item.movement?.document_no || tm('manual')}</span>
-                                                        <span className="text-[9px] text-gray-400 truncate max-w-[120px] block">{item.notes || emptyDash}</span>
-                                                    </td>
-                                                    <td className="px-4 py-2">
-                                                        <span className={`px-1.5 py-0.5 rounded text-[9px] font-bold uppercase ${
-                                                            item.movement?.movement_type === 'in'
-                                                            ? 'bg-green-100 text-green-700'
-                                                            : item.movement?.movement_type === 'out'
-                                                                ? 'bg-red-100 text-red-700'
-                                                                : item.movement?.movement_type === 'price_change'
-                                                                    ? 'bg-violet-100 text-violet-800'
-                                                                    : 'bg-blue-100 text-blue-700'
-                                                            } `}>
-                                                            {movementTypeLabel(item.movement?.movement_type, tm)}
-                                                        </span>
-                                                    </td>
-                                                    <td className="px-4 py-2 text-gray-600 text-[11px]">
-                                                        {item.movement?.warehouses?.name || tm('pohMainWarehouse')}
-                                                    </td>
-                                                    <td className="px-4 py-2 text-gray-600 text-[11px] font-mono">
-                                                        {item.currency || 'IQD'} / {item.currency_rate != null ? Number(item.currency_rate).toLocaleString(localeCode, { minimumFractionDigits: 2 }) : emptyDash}
-                                                    </td>
-                                                    <td className="px-4 py-2 text-right">
-                                                        <span className={`text-[11px] font-bold ${item.gross_profit > 0 ? 'text-green-600' : 'text-gray-400'}`}>
-                                                            {item.gross_profit > 0 ? item.gross_profit.toLocaleString(localeCode) : emptyDash}
-                                                        </span>
-                                                    </td>
-                                                    <td className="px-4 py-2 text-right">
-                                                        {item.movement?.movement_type === 'price_change' ? (
-                                                            <div className="text-[10px] font-bold text-violet-700 leading-tight text-right">
-                                                                <div>{tm('purchase')} {formatNumberOrDash(item.cost_price, localeCode, emptyDash)}</div>
-                                                                <div>{tm('salePrice')} {formatNumberOrDash(item.unit_price, localeCode, emptyDash)}</div>
-                                                            </div>
-                                                        ) : (
-                                                            <span className={`text-[11px] font-bold ${item.movement?.movement_type === 'in' ? 'text-green-600' : 'text-red-600'
-                                                                } `}>
-                                                                {item.movement?.movement_type === 'in' ? '+' : '-'}{item.quantity}
-                                                            </span>
-                                                        )}
-                                                    </td>
-                                                </tr>
-                                            ))}
-                                        </tbody>
-                                    </table>
+                            ) : filteredMovementRows.length === 0 ? (
+                                <div className="flex flex-col items-center justify-center h-full p-8 text-gray-300 text-center">
+                                    <Filter className="w-10 h-10 mb-2 opacity-20" />
+                                    <h3 className="text-[11px] font-bold uppercase tracking-wider">{tm('pohNoMovements')}</h3>
                                 </div>
+                            ) : (
+                                <>
+                                    {movementTotals.byUnit.length > 0 && (
+                                        <div className="shrink-0 px-4 py-2 border-b bg-slate-50/80 flex flex-wrap gap-2">
+                                            {movementTotals.byUnit.map((b) => (
+                                                <div
+                                                    key={b.unit}
+                                                    className="flex flex-wrap items-center gap-x-3 gap-y-1 rounded-lg border border-slate-200 bg-white px-3 py-1.5 text-[10px]"
+                                                >
+                                                    <span className="font-bold text-slate-700 uppercase tracking-wide">
+                                                        {tm('unit')}: {b.unit}
+                                                    </span>
+                                                    <span className="text-green-700 font-semibold">
+                                                        {tm('pohFilterIn')}: +{formatNumber(b.inQty, 3, false)}{' '}
+                                                        {b.unit} · {formatNumber(b.inAmt, 2, false)} {amountCurrency}
+                                                    </span>
+                                                    <span className="text-red-600 font-semibold">
+                                                        {tm('pohFilterOut')}: −{formatNumber(b.outQty, 3, false)}{' '}
+                                                        {b.unit} · {formatNumber(b.outAmt, 2, false)} {amountCurrency}
+                                                    </span>
+                                                    <span className="text-slate-600 font-bold">
+                                                        {tm('pohMovNet')}:{' '}
+                                                        {formatNumber(b.inQty - b.outQty, 3, false)} {b.unit}
+                                                    </span>
+                                                </div>
+                                            ))}
+                                        </div>
+                                    )}
+                                    <div className="flex-1 min-h-0 p-2">
+                                        <DevExDataGrid
+                                            data={filteredMovementRows}
+                                            columns={movementColumns}
+                                            pageSize={50}
+                                            enableFiltering
+                                            enablePagination
+                                            density="compact"
+                                            height="100%"
+                                            storageNamespace="productOperationHubMovements"
+                                            autoFooterSums={false}
+                                            footerLabel={tm('total')}
+                                            footerCurrency={amountCurrency}
+                                            footerSumColumns={[
+                                                {
+                                                    columnId: 'amount',
+                                                    getValue: (r) => (r.isPriceChange ? 0 : Number(r.amount) || 0),
+                                                    format: (sum) => (
+                                                        <span
+                                                            className={`tabular-nums font-bold ${
+                                                                sum < 0 ? 'text-red-600' : 'text-green-700'
+                                                            }`}
+                                                        >
+                                                            {formatNumber(sum, 2, false)} {amountCurrency}
+                                                        </span>
+                                                    ),
+                                                },
+                                                {
+                                                    columnId: 'signedQty',
+                                                    getValue: (r) => (r.isPriceChange ? 0 : Number(r.signedQty) || 0),
+                                                    format: (sum) => (
+                                                        <span
+                                                            className={`tabular-nums font-bold ${
+                                                                sum < 0 ? 'text-red-600' : 'text-green-700'
+                                                            }`}
+                                                        >
+                                                            {sum > 0 ? '+' : ''}
+                                                            {formatNumber(sum, 3, false)}
+                                                        </span>
+                                                    ),
+                                                },
+                                                {
+                                                    columnId: 'grossProfit',
+                                                    getValue: (r) => Number(r.grossProfit) || 0,
+                                                    format: (sum) => (
+                                                        <span
+                                                            className={`tabular-nums font-bold ${
+                                                                sum > 0 ? 'text-green-600' : 'text-gray-500'
+                                                            }`}
+                                                        >
+                                                            {formatNumber(sum, 2, false)}
+                                                        </span>
+                                                    ),
+                                                },
+                                            ]}
+                                        />
+                                    </div>
+                                </>
                             )}
                         </div>
                     </div>
@@ -699,7 +990,11 @@ export function ProductOperationHub({ product, onClose, onSave, initialTab = 'ov
                 </div>
 
                 {/* Content Area */}
-                <div className="flex-1 overflow-y-auto bg-gray-50/30">
+                <div
+                    className={`flex-1 min-h-0 bg-gray-50/30 ${
+                        activeTab === 'movements' ? 'overflow-hidden' : 'overflow-y-auto'
+                    }`}
+                >
                     {renderContent()}
                 </div>
             </div>

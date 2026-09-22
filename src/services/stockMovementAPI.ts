@@ -1079,6 +1079,9 @@ class StockMovementAPI {
                             quantity: row.quantity,
                             unit_price: row.unit_price,
                             cost_price: row.cost_price,
+                            unit_name: row.unit_name || 'Adet',
+                            total_amount:
+                                Math.abs(Number(row.unit_price) || 0) * Math.abs(Number(row.quantity) || 0),
                             created_at: row.created_at,
                             document_no: m.document_no,
                             movement_type: m.movement_type,
@@ -1171,6 +1174,8 @@ class StockMovementAPI {
             const { rows } = await postgres.query(
                 `SELECT
                     i.id, i.movement_id, i.product_id::text as product_id, i.quantity, i.unit_price, i.cost_price,
+                    COALESCE(NULLIF(TRIM(i.unit_name), ''), p.unit, 'Adet') as unit_name,
+                    COALESCE(i.unit_price, 0) * ABS(COALESCE(i.quantity, 0)) as total_amount,
                     i.notes, i.created_at,
                     m.document_no, m.movement_type, m.movement_date, m.status, m.trcode,
                     COALESCE(s.name, '') as warehouse_name,
@@ -1180,6 +1185,7 @@ class StockMovementAPI {
                     0::numeric as gross_profit
                  FROM stock_movement_items i
                  JOIN stock_movements m ON i.movement_id = m.id
+                 LEFT JOIN products p ON p.id = i.product_id
                  LEFT JOIN stores s ON m.warehouse_id = s.id
                  WHERE i.product_id::text = $1
                     OR i.product_id IN (
@@ -1235,7 +1241,8 @@ class StockMovementAPI {
                     COALESCE(sl.currency_rate, 1.0) as currency_rate,
                     COALESCE(sl.currency, 'IQD') as currency,
                     COALESCE(si.unit_cost, 0) as unit_cost,
-                    COALESCE(si.gross_profit, 0) as gross_profit
+                    COALESCE(si.gross_profit, 0) as gross_profit,
+                    COALESCE(NULLIF(TRIM(si.unit), ''), 'Adet') as unit_name
                  FROM sale_items si
                  JOIN sales sl ON si.invoice_id = sl.id
                  LEFT JOIN stores st ON sl.store_id = st.id
