@@ -180,32 +180,32 @@ export interface ProductGrossProfitRow {
 }
 
 /**
- * Malzeme satırlarında maliyeti Malzeme Değer Raporu ile aynı kaynaktan uygula:
- * FIFO kalan katman ort. birim maliyet × (işaretli) miktar.
+ * Malzeme satırlarında maliyet = ağırlıklı ortalama birim maliyet × miktar.
+ * Ortalama = Σ(alış tutarı) / Σ(alış miktarı); alış iadesi düşülür; satış ortalamaya girmez.
  * Hizmet satırları ve ortalaması 0 olanlar önceki maliyeti korur.
  */
-async function applyMaterialValueAvgCostToGrossProfit(
+async function applyWeightedAvgCostToGrossProfit(
   rows: ProductGrossProfitRow[],
   firmNr?: string | number | null,
+  asOfDate?: string | null,
 ): Promise<ProductGrossProfitRow[]> {
   if (!rows.length) return rows;
   try {
     const {
-      fetchLayeredInventoryValuation,
-      layeredAvgForProduct,
-    } = await import('../layeredInventoryCost');
-    const valuation = await fetchLayeredInventoryValuation({
+      fetchWeightedAverageUnitCosts,
+      lookupWeightedAvgUnitCost,
+    } = await import('../weightedAverageUnitCost');
+    const maps = await fetchWeightedAverageUnitCosts({
       firmNr: firmNr ?? ERP_SETTINGS.firmNr,
+      asOfDate: asOfDate || undefined,
     });
-    if (!valuation) return rows;
     return rows.map((r) => {
       if (r.lineKind === 'service') return r;
-      const avg = layeredAvgForProduct(valuation, {
+      const avg = lookupWeightedAvgUnitCost(maps, {
         id: r.productId,
         code: r.productCode,
       });
       if (!(avg > 0)) return r;
-      // quantity satışta +, iadede − → maliyet aynı işaretle
       const cost = avg * r.quantity;
       const grossProfit = r.revenue - cost;
       return {
@@ -216,7 +216,7 @@ async function applyMaterialValueAvgCostToGrossProfit(
       };
     });
   } catch (e) {
-    console.warn('[erpReports] material-value avg cost overlay failed:', e);
+    console.warn('[erpReports] weighted avg cost overlay failed:', e);
     return rows;
   }
 }
@@ -1652,7 +1652,7 @@ export const erpReportsAPI = {
         }))
         .sort((a, b) => b.grossProfit - a.grossProfit)
         .slice(0, ROW_LIMIT);
-      return applyMaterialValueAvgCostToGrossProfit(baseRows, firmNr);
+      return applyWeightedAvgCostToGrossProfit(baseRows, firmNr, end);
     }
 
     const profitCtes = buildProfitCostCtes('$1');
@@ -1696,7 +1696,7 @@ export const erpReportsAPI = {
       `,
       [firmNr, start, end],
     );
-    return applyMaterialValueAvgCostToGrossProfit(
+    return applyWeightedAvgCostToGrossProfit(
       (rows || []).map((r: any) => {
         const revenue = Number(r.revenue ?? 0);
         const cost = Number(r.cost ?? 0);
@@ -1714,6 +1714,7 @@ export const erpReportsAPI = {
         };
       }),
       firmNr,
+      end,
     );
   },
 

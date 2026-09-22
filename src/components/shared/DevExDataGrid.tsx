@@ -550,6 +550,9 @@ function gridFilterChipValueLabel(
     if (labels.length <= 2) return labels.join(', ');
     return tm('activeFiltersSelectedCount').replace('{count}', String(labels.length));
   }
+  if (payload.mode === 'isEmpty' || payload.mode === 'isNotEmpty') {
+    return '—';
+  }
   return String(payload.value ?? '').trim();
 }
 
@@ -559,6 +562,7 @@ function isGridFilterActive(payload: unknown): boolean {
   const p = payload as GridFilterPayload;
   if (typeof p !== 'object') return false;
   if (p.preset) return true;
+  if (p.mode === 'isEmpty' || p.mode === 'isNotEmpty') return true;
   if (p.mode === 'range' || p.mode === 'between') return !!(p.from || p.to);
   if (p.mode === 'before' || p.mode === 'after') {
     return String(p.value ?? p.from ?? p.to ?? '').trim() !== '';
@@ -638,6 +642,57 @@ const NUMBER_COMPARE_MODES = new Set([
 ]);
 
 type NumberCompareMode = 'equals' | 'notEquals' | 'gt' | 'gte' | 'lt' | 'lte' | 'between';
+
+type TextCompareMode =
+  | 'contains'
+  | 'doesNotContain'
+  | 'equals'
+  | 'notEquals'
+  | 'startsWith'
+  | 'endsWith'
+  | 'doesNotStartWith'
+  | 'doesNotEndWith'
+  | 'isEmpty'
+  | 'isNotEmpty';
+
+const TEXT_COMPARE_MODES = new Set<string>([
+  'contains',
+  'doesNotContain',
+  'notContains',
+  'equals',
+  'notEquals',
+  'startsWith',
+  'endsWith',
+  'doesNotStartWith',
+  'doesNotEndWith',
+  'isEmpty',
+  'isNotEmpty',
+]);
+
+const TEXT_COMPARE_MODE_OPTIONS: TextCompareMode[] = [
+  'contains',
+  'doesNotContain',
+  'equals',
+  'notEquals',
+  'startsWith',
+  'endsWith',
+  'doesNotStartWith',
+  'doesNotEndWith',
+  'isEmpty',
+  'isNotEmpty',
+];
+
+function normalizeTextCompareMode(mode: string | null | undefined): TextCompareMode {
+  if (mode === 'notContains') return 'doesNotContain';
+  if (mode && TEXT_COMPARE_MODES.has(mode) && mode !== 'notContains') {
+    return mode as TextCompareMode;
+  }
+  return 'contains';
+}
+
+function textFilterNeedsValue(mode: TextCompareMode): boolean {
+  return mode !== 'isEmpty' && mode !== 'isNotEmpty';
+}
 
 function isNumberFilterColumn(columnId: string, column: Column<any, unknown>): boolean {
   if (isDateFilterColumn(columnId, column)) return false;
@@ -851,22 +906,39 @@ function gridColumnFilterFnInner(
   }
 
   const searchValue = String(payload.value ?? '').toLowerCase();
-  if (!searchValue) return true;
   const cellValue = String(cellRaw ?? '').toLowerCase();
+  const cellBlank = cellRaw == null || String(cellRaw).trim() === '';
 
   switch (mode) {
+    case 'isEmpty':
+      return cellBlank;
+    case 'isNotEmpty':
+      return !cellBlank;
     case 'equals':
+      if (!searchValue) return true;
       return cellValue === searchValue;
     case 'notEquals':
+      if (!searchValue) return true;
       return cellValue !== searchValue;
     case 'startsWith':
+      if (!searchValue) return true;
       return cellValue.startsWith(searchValue);
     case 'endsWith':
+      if (!searchValue) return true;
       return cellValue.endsWith(searchValue);
+    case 'doesNotStartWith':
+      if (!searchValue) return true;
+      return !cellValue.startsWith(searchValue);
+    case 'doesNotEndWith':
+      if (!searchValue) return true;
+      return !cellValue.endsWith(searchValue);
     case 'notContains':
+    case 'doesNotContain':
+      if (!searchValue) return true;
       return !cellValue.includes(searchValue);
     case 'contains':
     default:
+      if (!searchValue) return true;
       return cellValue.includes(searchValue);
   }
 }
@@ -1195,14 +1267,8 @@ function ValueListFilterMenu({ column, onClose }: FilterMenuProps) {
   const [listSearch, setListSearch] = useState('');
   const [selectedValues, setSelectedValues] = useState<string[]>([]);
   const [showAdvancedFilter, setShowAdvancedFilter] = useState(() => !!existingAdvancedMode);
-  const [textMode, setTextMode] = useState<'contains' | 'equals' | 'startsWith' | 'endsWith'>(
-    existingAdvancedMode &&
-      (existingAdvancedMode === 'contains' ||
-        existingAdvancedMode === 'equals' ||
-        existingAdvancedMode === 'startsWith' ||
-        existingAdvancedMode === 'endsWith')
-      ? existingAdvancedMode
-      : 'contains'
+  const [textMode, setTextMode] = useState<TextCompareMode>(() =>
+    normalizeTextCompareMode(existingAdvancedMode)
   );
   const [numberMode, setNumberMode] = useState<NumberCompareMode>(() => {
     if (existingAdvancedMode && NUMBER_COMPARE_MODES.has(existingAdvancedMode)) {
@@ -1281,6 +1347,8 @@ function ValueListFilterMenu({ column, onClose }: FilterMenuProps) {
       } else {
         column.setFilterValue(undefined);
       }
+    } else if (!textFilterNeedsValue(textMode)) {
+      column.setFilterValue({ mode: textMode });
     } else if (textValue.trim()) {
       column.setFilterValue({ mode: textMode, value: textValue.trim() });
     } else {
@@ -1306,7 +1374,7 @@ function ValueListFilterMenu({ column, onClose }: FilterMenuProps) {
     : tm('gridFilterTextFilter');
   const applyAdvancedOpLabel = isNumericColumn
     ? tm(filterOperatorI18nKey(numberMode))
-    : tm(textMode);
+    : tm(filterOperatorI18nKey(textMode));
 
   return (
     <div
@@ -1432,21 +1500,24 @@ function ValueListFilterMenu({ column, onClose }: FilterMenuProps) {
               <>
                 <select
                   value={textMode}
-                  onChange={(e) => setTextMode(e.target.value as typeof textMode)}
+                  onChange={(e) => setTextMode(normalizeTextCompareMode(e.target.value))}
                   className="w-full px-2 py-1 text-[10px] border border-gray-300 rounded bg-white"
                 >
-                  <option value="contains">{tm('contains')}</option>
-                  <option value="equals">{tm('equals')}</option>
-                  <option value="startsWith">{tm('startsWith')}</option>
-                  <option value="endsWith">{tm('endsWith')}</option>
+                  {TEXT_COMPARE_MODE_OPTIONS.map((op) => (
+                    <option key={op} value={op}>
+                      {tm(filterOperatorI18nKey(op))}
+                    </option>
+                  ))}
                 </select>
-                <input
-                  type="text"
-                  value={textValue}
-                  onChange={(e) => setTextValue(e.target.value)}
-                  placeholder={tm('value')}
-                  className="w-full px-2 py-1 text-[10px] border border-gray-300 rounded bg-white"
-                />
+                {textFilterNeedsValue(textMode) ? (
+                  <input
+                    type="text"
+                    value={textValue}
+                    onChange={(e) => setTextValue(e.target.value)}
+                    placeholder={tm('value')}
+                    className="w-full px-2 py-1 text-[10px] border border-gray-300 rounded bg-white"
+                  />
+                ) : null}
               </>
             )}
             <button

@@ -10,12 +10,6 @@ import { useFirmaDonem } from '../../../contexts/FirmaDonemContext';
 import { formatNumber } from '../../../utils/formatNumber';
 import { formatLedgerAmount, getFirmLedgerCurrency, getGlobalCurrency } from '../../../utils/currency';
 import { getAppDefaultCurrency } from '../../../services/postgres';
-import {
-    fetchLayeredInventoryValuation,
-    layeredAvgForProduct,
-    layeredCostForProduct,
-    type LayeredInventoryValuation,
-} from '../../../services/layeredInventoryCost';
 
 interface ValuationRow {
     product_id: string;
@@ -29,12 +23,14 @@ interface ValuationRow {
 
 /**
  * Malzeme Değer Raporu — tenant-aware (rex_{firmNr}_products).
- * Toplam değer ve ort. birim maliyet FIFO kalan alış katmanlarından gelir
- * (kart alış fiyatı × miktar değil). Para birimi firmanın ana_para_birimi (IQD vb.).
+ * Ort. birim maliyet = Σ alış tutarı / Σ alış miktarı (ağırlıklı ortalama).
+ * Toplam değer = eldeki miktar × ort. birim maliyet.
+ * Para birimi firmanın ana_para_birimi (IQD vb.).
  */
 export function MaterialValueReport() {
     const [products, setProducts] = useState<Product[]>([]);
-    const [valuation, setValuation] = useState<LayeredInventoryValuation | null>(null);
+    const [avgByProduct, setAvgByProduct] = useState<Map<string, number>>(new Map());
+    const [avgByCode, setAvgByCode] = useState<Map<string, number>>(new Map());
     const [loading, setLoading] = useState(true);
     const { tm } = useLanguage();
     const { selectedFirm, selectedPeriod } = useFirmaDonem();
@@ -51,15 +47,20 @@ export function MaterialValueReport() {
                 const data = await productAPI.getAllForReports({ firmNr: selectedFirm?.firm_nr });
                 if (cancelled) return;
                 setProducts(data);
-                const layered = await fetchLayeredInventoryValuation({
+                const { fetchWeightedAverageUnitCosts } = await import(
+                    '../../../services/weightedAverageUnitCost'
+                );
+                const maps = await fetchWeightedAverageUnitCosts({
                     firmNr: selectedFirm?.firm_nr,
                     periodNr: selectedPeriod?.nr,
-                    onHandProducts: data,
                 }).catch((err) => {
-                    console.error('[MaterialValueReport] layered cost failed', err);
-                    return null;
+                    console.error('[MaterialValueReport] weighted avg failed', err);
+                    return { byProductId: new Map<string, number>(), byCode: new Map<string, number>() };
                 });
-                if (!cancelled) setValuation(layered);
+                if (!cancelled) {
+                    setAvgByProduct(maps.byProductId);
+                    setAvgByCode(maps.byCode);
+                }
             } catch (err) {
                 console.error('[MaterialValueReport] load failed', err);
             } finally {
@@ -72,21 +73,21 @@ export function MaterialValueReport() {
 
     const rows = useMemo<ValuationRow[]>(() => {
         return products
-            // Sıfır stok satırları değer raporunda gereksiz; negatif stok (izinli satış) gösterilmeli
             .filter(p => (Number(p.stock) || 0) !== 0)
             .map(p => {
                 const qty = Number(p.stock) || 0;
-                let average_unit_cost = layeredAvgForProduct(valuation, p);
-                let total_cost = layeredCostForProduct(valuation, p);
-                // Negatif eldeki: FIFO katmanı yok; birim maliyet × miktar (eksi değer)
-                if (qty < 0) {
-                    if (!(average_unit_cost > 0)) {
-                        const pAny = p as Product & { cost?: number; purchase_price?: number };
-                        average_unit_cost =
-                            Number(pAny.cost || pAny.purchase_price || p.price) || 0;
-                    }
-                    total_cost = qty * average_unit_cost;
+                const id = String(p.id || '');
+                const code = String(p.code || '').trim();
+                let average_unit_cost =
+                    (id && avgByProduct.get(id)) ||
+                    (code && avgByCode.get(code)) ||
+                    0;
+                if (!(average_unit_cost > 0)) {
+                    const pAny = p as Product & { cost?: number; purchase_price?: number };
+                    average_unit_cost =
+                        Number(pAny.cost || pAny.purchase_price || p.price) || 0;
                 }
+                const total_cost = qty * average_unit_cost;
                 return {
                     product_id: p.id,
                     product_code: p.code || '',
@@ -97,7 +98,7 @@ export function MaterialValueReport() {
                     total_cost,
                 };
             });
-    }, [products, valuation]);
+    }, [products, avgByProduct, avgByCode]);
 
     const columnHelper = createColumnHelper<ValuationRow>();
     const columns = useMemo<ColumnDef<ValuationRow, any>[]>(() => [

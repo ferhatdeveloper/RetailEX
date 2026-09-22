@@ -16,10 +16,15 @@ export interface FilterColumnDef {
 
 export type TextOperator =
   | 'contains'
+  | 'doesNotContain'
   | 'equals'
+  | 'notEquals'
   | 'startsWith'
   | 'endsWith'
-  | 'doesNotContain';
+  | 'doesNotStartWith'
+  | 'doesNotEndWith'
+  | 'isEmpty'
+  | 'isNotEmpty';
 
 export type NumberOperator =
   | 'equals'
@@ -302,15 +307,26 @@ function applyOperator(cellValue: unknown, model: FilterValueModel): boolean {
 
   const cellStr = lc(cellValue);
   const needle = v.toLocaleLowerCase('tr-TR');
+  const cellBlank = String(cellValue ?? '').trim() === '';
   switch (model.operator) {
+    case 'isEmpty':
+      return cellBlank;
+    case 'isNotEmpty':
+      return !cellBlank;
     case 'contains':
       return cellStr.includes(needle);
     case 'equals':
       return cellStr === needle;
+    case 'notEquals':
+      return cellStr !== needle;
     case 'startsWith':
       return cellStr.startsWith(needle);
     case 'endsWith':
       return cellStr.endsWith(needle);
+    case 'doesNotStartWith':
+      return !cellStr.startsWith(needle);
+    case 'doesNotEndWith':
+      return !cellStr.endsWith(needle);
     case 'doesNotContain':
       return !cellStr.includes(needle);
     default:

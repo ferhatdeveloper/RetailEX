@@ -47,7 +47,18 @@ export interface ReportColumnFiltersProps {
   headerRowClassName?: string;
 }
 
-const TEXT_OPS: TextOperator[] = ['contains', 'equals', 'startsWith', 'endsWith', 'doesNotContain'];
+const TEXT_OPS: TextOperator[] = [
+  'contains',
+  'doesNotContain',
+  'equals',
+  'notEquals',
+  'startsWith',
+  'endsWith',
+  'doesNotStartWith',
+  'doesNotEndWith',
+  'isEmpty',
+  'isNotEmpty',
+];
 const NUMBER_OPS: NumberOperator[] = ['equals', 'notEquals', 'gt', 'lt', 'gte', 'lte', 'between'];
 const DATE_OPS: DateOperator[] = ['equals', 'before', 'after', 'between'];
 
@@ -91,6 +102,7 @@ function opLabelKey(op: string): string {
 }
 
 function formatChipValue(model: FilterValueModel): string {
+  if (model.operator === 'isEmpty' || model.operator === 'isNotEmpty') return '—';
   const v = (model.value ?? '').trim();
   const v2 = (model.value2 ?? '').trim();
   if (model.operator === 'between' && (v || v2)) {
@@ -107,7 +119,11 @@ function chipsFromValues(
 ): ActiveFilterChip[] {
   const labelFor = (key: string) => columns.find((c) => c.key === key)?.label || key;
   return Object.entries(normalized)
-    .filter(([, m]) => m && ((m.value ?? '').trim() !== '' || (m.value2 ?? '').trim() !== ''))
+    .filter(([, m]) => {
+      if (!m) return false;
+      if (m.operator === 'isEmpty' || m.operator === 'isNotEmpty') return true;
+      return (m.value ?? '').trim() !== '' || (m.value2 ?? '').trim() !== '';
+    })
     .map(([key, m]) => ({
       id: key,
       columnLabel: labelFor(key),
@@ -141,9 +157,16 @@ function ColumnFilterButton({
   const [pos, setPos] = useState({ top: 0, left: 0 });
   const [draft, setDraft] = useState<FilterValueModel>(model);
 
-  const hasValue = (model.value ?? '').trim() !== '' || (model.value2 ?? '').trim() !== '';
+  const hasValue =
+    draft.operator === 'isEmpty' ||
+    draft.operator === 'isNotEmpty' ||
+    (model.value ?? '').trim() !== '' ||
+    (model.value2 ?? '').trim() !== '';
   const modelRef = useRef(model);
   modelRef.current = model;
+  const textNeedsValue =
+    kind !== 'text' ||
+    (draft.operator !== 'isEmpty' && draft.operator !== 'isNotEmpty');
 
   const placePanel = useCallback(() => {
     const el = btnRef.current;
@@ -261,22 +284,24 @@ function ColumnFilterButton({
                 ))}
               </select>
             </label>
-            <input
-              ref={inputRef}
-              disabled={disabled}
-              value={draft.value}
-              onChange={(e) => commitDraft({ ...draft, value: e.target.value })}
-              placeholder={placeholder}
-              type={inputType}
-              inputMode={kind === 'number' ? 'decimal' : undefined}
-              autoComplete="off"
-              spellCheck={false}
-              className="w-full h-8 px-2 text-sm border border-slate-200 rounded-md text-slate-800 outline-none focus:ring-2 focus:ring-blue-400 focus:border-blue-400"
-              onKeyDown={(e) => {
-                if (e.key === 'Enter') setOpen(false);
-              }}
-            />
-            {isBetween && (
+            {textNeedsValue ? (
+              <input
+                ref={inputRef}
+                disabled={disabled}
+                value={draft.value}
+                onChange={(e) => commitDraft({ ...draft, value: e.target.value })}
+                placeholder={placeholder}
+                type={inputType}
+                inputMode={kind === 'number' ? 'decimal' : undefined}
+                autoComplete="off"
+                spellCheck={false}
+                className="w-full h-8 px-2 text-sm border border-slate-200 rounded-md text-slate-800 outline-none focus:ring-2 focus:ring-blue-400 focus:border-blue-400"
+                onKeyDown={(e) => {
+                  if (e.key === 'Enter') setOpen(false);
+                }}
+              />
+            ) : null}
+            {isBetween && textNeedsValue && (
               <input
                 disabled={disabled}
                 value={draft.value2 ?? ''}
