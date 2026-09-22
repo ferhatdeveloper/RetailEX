@@ -759,6 +759,8 @@ function mapInvoiceToSale(invoice: Invoice): Sale {
     id: invoice.id || '',
     receiptNumber: invoice.invoice_no,
     date: invoice.invoice_date,
+    // invoice_date kasıtlı olarak gün ortası (T12:00) — duvar saati için created_at
+    created_at: invoice.created_at || undefined,
     customerId: invoice.customer_id,
     customerName: invoice.customer_name,
     storeId: invoice.store_id && !isPlaceholderDeviceName(invoice.store_id) ? invoice.store_id : undefined,

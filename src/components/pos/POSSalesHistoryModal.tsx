@@ -13,6 +13,16 @@ import { addDaysToLocalYmd, formatLocalYmd } from '../../utils/dateLocal';
 import { ThermalReceiptPreview } from './ThermalReceiptPreview';
 import { PaymentReceiptPreview } from './PaymentReceiptPreview';
 
+/**
+ * Fatura `date` alanı gün sınırı için `…T12:00:00` (UTC öğle) yazılır;
+ * UTC+3’te her satır 15:00 görünür. Duvar saati `created_at`’te.
+ */
+function saleWallClockRaw(sale: Sale): string {
+  const created = String(sale.created_at || '').trim();
+  if (created) return created;
+  return String(sale.date || '').trim();
+}
+
 function saleLocalDateKey(sale: Sale): string {
   const raw = String(sale.date || sale.created_at || '').trim();
   const m = raw.match(/^(\d{4}-\d{2}-\d{2})/);
@@ -22,9 +32,20 @@ function saleLocalDateKey(sale: Sale): string {
 }
 
 function saleTimestamp(sale: Sale): number {
-  const raw = String(sale.date || sale.created_at || '').trim();
-  const t = new Date(raw).getTime();
+  const t = new Date(saleWallClockRaw(sale)).getTime();
   return Number.isFinite(t) ? t : 0;
+}
+
+function formatSaleDateTime(sale: Sale): string {
+  const d = new Date(saleWallClockRaw(sale));
+  if (Number.isNaN(d.getTime())) return '—';
+  return `${d.toLocaleDateString('tr-TR', { day: '2-digit', month: '2-digit', year: 'numeric' })} ${d.toLocaleTimeString('tr-TR', { hour: '2-digit', minute: '2-digit' })}`;
+}
+
+function shortSaleId(id: string | undefined): string {
+  const s = String(id || '').trim();
+  if (!s) return '—';
+  return s.length > 8 ? s.slice(0, 8) : s;
 }
 
 function ymdInRange(ymd: string, startYmd: string, endYmd: string): boolean {
@@ -75,8 +96,10 @@ export function POSSalesHistoryModal({
     const q = searchTerm.toLowerCase();
     const list = sales.filter((sale) => {
       const matchesSearch =
+        !q ||
         sale.receiptNumber?.toLowerCase().includes(q) ||
-        sale.customerName?.toLowerCase().includes(q);
+        sale.customerName?.toLowerCase().includes(q) ||
+        String(sale.id || '').toLowerCase().includes(q);
 
       let matchesDate = true;
       if (filterDate !== 'all') {
@@ -121,6 +144,23 @@ export function POSSalesHistoryModal({
   const columns = useMemo(() => {
     const col = createColumnHelper<Sale>();
     return [
+      col.accessor('id', {
+        id: 'id',
+        header: 'ID',
+        size: 96,
+        minSize: 72,
+        cell: (info) => {
+          const full = String(info.getValue() || '');
+          return (
+            <span
+              className={`font-mono text-[11px] tabular-nums ${darkMode ? 'text-gray-400' : 'text-gray-500'}`}
+              title={full || undefined}
+            >
+              {shortSaleId(full)}
+            </span>
+          );
+        },
+      }),
       col.accessor('receiptNumber', {
         id: 'receiptNumber',
         header: t.receiptNumber || 'Fiş No',
@@ -160,17 +200,11 @@ export function POSSalesHistoryModal({
         size: 140,
         minSize: 110,
         sortingFn: 'basic',
-        cell: (info) => {
-          const sale = info.row.original;
-          const d = new Date(sale.date || sale.created_at || 0);
-          if (Number.isNaN(d.getTime())) return '—';
-          return (
-            <span className={`text-xs tabular-nums ${darkMode ? 'text-gray-300' : 'text-gray-600'}`}>
-              {d.toLocaleDateString('tr-TR', { day: '2-digit', month: '2-digit', year: 'numeric' })}{' '}
-              {d.toLocaleTimeString('tr-TR', { hour: '2-digit', minute: '2-digit' })}
-            </span>
-          );
-        },
+        cell: (info) => (
+          <span className={`text-xs tabular-nums ${darkMode ? 'text-gray-300' : 'text-gray-600'}`}>
+            {formatSaleDateTime(info.row.original)}
+          </span>
+        ),
       }),
       col.accessor((row) => row.customerName || t.generalSale || '', {
         id: 'customerName',
