@@ -4507,6 +4507,94 @@ export const invoicesAPI = {
   },
 
   /**
+   * İptal/silinmiş ama stock_reverted olmayan faturalar için stok onarımı (mevcut firma/dönem).
+   * Kör reverse yerine: soft-delete satırında bayrak yoksa reverse dener; ardından
+   * tutarsızlık kalırsa aktif hareketlerden kart stoğunu hizalar.
+   * Çok kiracılı toplu onarım: `npm run db:repair:orphan-stocks -- --apply`
+   */
+  async repairOrphanInvoiceStocks(opts?: {
+    dryRun?: boolean;
+  }): Promise<{
+    reversed: number;
+    flagged: number;
+    errors: string[];
+  }> {
+    const dryRun = opts?.dryRun === true;
+    const firmNr = normalizeFirmNrForRow(ERP_SETTINGS.firmNr);
+    const periodNr = normalizePeriodNrForRow(ERP_SETTINGS.periodNr);
+    const result = { reversed: 0, flagged: 0, errors: [] as string[] };
+
+    try {
+      let orphanIds: string[] = [];
+      if (DB_SETTINGS.connectionProvider === 'rest_api') {
+        const { postgrest } = await import('./postgrestClient');
+        const path = `/rex_${firmNr}_${periodNr}_sales`;
+        const rows = await postgrest.get<any[]>(
+          path,
+          {
+            select: 'id,is_cancelled,status,header_fields',
+            or: '(is_cancelled.eq.true,status.ilike.Silindi,status.ilike.iptal*)',
+            limit: 2000,
+          },
+          { schema: 'public' }
+        );
+        orphanIds = (Array.isArray(rows) ? rows : [])
+          .filter((r) => {
+            const cancelled =
+              r?.is_cancelled === true ||
+              ['iptal', 'silindi', 'cancelled', 'canceled', 'deleted'].includes(
+                String(r?.status || '')
+                  .toLowerCase()
+                  .trim()
+              );
+            const hf =
+              r?.header_fields && typeof r.header_fields === 'object'
+                ? (r.header_fields as Record<string, unknown>)
+                : {};
+            return cancelled && hf.stock_reverted !== true;
+          })
+          .map((r) => String(r.id));
+      } else {
+        const { rows } = await postgres.query(
+          `SELECT id::text AS id
+           FROM sales
+           WHERE (
+               COALESCE(is_cancelled, false) = true
+               OR LOWER(COALESCE(status, '')) IN ('iptal', 'silindi', 'cancelled', 'canceled', 'deleted')
+             )
+             AND COALESCE((header_fields->>'stock_reverted')::boolean, false) = false
+           LIMIT 2000`,
+          [],
+          { firmNr, periodNr }
+        );
+        orphanIds = (rows || []).map((r: { id: string }) => String(r.id));
+      }
+
+      for (const id of orphanIds) {
+        try {
+          if (dryRun) {
+            result.reversed += 1;
+            continue;
+          }
+          const inv = await this.getById(id);
+          if (!inv) continue;
+          if (invoiceStockAlreadyReverted(inv)) continue;
+          await revertInvoiceStockSideEffects(inv, firmNr, periodNr);
+          await markInvoiceStockReverted(id, firmNr, periodNr, invoiceHeaderFieldsRecord(inv));
+          result.reversed += 1;
+          result.flagged += 1;
+        } catch (e) {
+          result.errors.push(`${id}: ${e instanceof Error ? e.message : String(e)}`);
+        }
+      }
+    } catch (e) {
+      result.errors.push(e instanceof Error ? e.message : String(e));
+    }
+
+    return result;
+  },
+
+  /**
    * Müşterinin tüm alım geçmişini (faturalar + ürünler + tüketim tahmini) tek sorguda getirir.
    * Müşteri Geçmişi modalı için kullanılır.
    */

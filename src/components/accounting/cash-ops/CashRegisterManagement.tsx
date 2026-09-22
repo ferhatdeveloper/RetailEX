@@ -6,7 +6,7 @@
 import { useState, useEffect, useMemo } from 'react';
 import {
   Wallet, TrendingUp, TrendingDown, Banknote,
-  Plus, RefreshCw, Trash2, Pencil
+  Plus, RefreshCw, Trash2, Pencil, X
 } from 'lucide-react';
 import { DevExDataGrid } from '../../shared/DevExDataGrid';
 import { createColumnHelper } from '@tanstack/react-table';
@@ -24,11 +24,14 @@ import {
 } from '../../../services/api/kasa';
 import { KasaDefinitionModal } from './KasaDefinitionModal';
 import { KasaIslemleriModal } from './KasaIslemleriModal';
+import { PercentBodyModal, PercentBodyModalScrollBody } from '../../shared/PercentBodyModal';
 import { toast } from 'sonner';
 import { useLanguage } from '../../../contexts/LanguageContext';
 import { useFirmaDonem } from '../../../contexts/FirmaDonemContext';
 import { getAppDefaultCurrency } from '../../../services/postgres';
 import { getPosNow, toLocalDateInputValue } from '../../../store/usePosDateOverrideStore';
+
+type KpiDetailKind = 'collection' | 'payment' | 'balance';
 
 interface Props {
   onEnterKasa?: (id: string) => void;
@@ -52,6 +55,7 @@ export function CashRegisterManagement({ onEnterKasa, initialTab = 'sessions' }:
   const [selectedKasaIslemleri, setSelectedKasaIslemleri] = useState<KasaIslemi[]>([]);
   const [loadingDetail, setLoadingDetail] = useState(false);
   const [deletingTxId, setDeletingTxId] = useState<string | null>(null);
+  const [kpiDetail, setKpiDetail] = useState<KpiDetailKind | null>(null);
   const amountCurrency = getAppDefaultCurrency() || 'IQD';
 
   const loadData = async () => {
@@ -269,13 +273,15 @@ export function CashRegisterManagement({ onEnterKasa, initialTab = 'sessions' }:
   ];
 
   /** POS tarih override varsa «bugün» onunla; kasa işareti create ile aynı (computeKasaIslemiSign). */
+  const todayKey = useMemo(() => toLocalDateInputValue(getPosNow()), [transactions, kasalar]);
+
+  const isTodayTxn = (t: KasaIslemi) => {
+    const d = new Date(t.islem_tarihi);
+    if (Number.isNaN(d.getTime())) return false;
+    return toLocalDateInputValue(d) === todayKey;
+  };
+
   const stats = useMemo(() => {
-    const todayKey = toLocalDateInputValue(getPosNow());
-    const isTodayTxn = (t: KasaIslemi) => {
-      const d = new Date(t.islem_tarihi);
-      if (Number.isNaN(d.getTime())) return false;
-      return toLocalDateInputValue(d) === todayKey;
-    };
     const absAmt = (t: KasaIslemi) => Math.abs(parseKasaAmount(t.tutar));
     let todayCollection = 0;
     let todayPayment = 0;
@@ -287,7 +293,28 @@ export function CashRegisterManagement({ onEnterKasa, initialTab = 'sessions' }:
     }
     const balance = kasalar.reduce((sum, k) => sum + (Number(k.bakiye) || 0), 0);
     return { todayCollection, todayPayment, balance };
-  }, [transactions, kasalar]);
+  }, [transactions, kasalar, todayKey]);
+
+  const kpiDetailRows = useMemo(() => {
+    if (kpiDetail === 'collection') {
+      return transactions.filter(
+        (t) => isTodayTxn(t) && computeKasaIslemiSign(t.islem_tipi) > 0
+      );
+    }
+    if (kpiDetail === 'payment') {
+      return transactions.filter(
+        (t) => isTodayTxn(t) && computeKasaIslemiSign(t.islem_tipi) < 0
+      );
+    }
+    return [];
+  }, [kpiDetail, transactions, todayKey]);
+
+  const kpiDetailTitle =
+    kpiDetail === 'collection'
+      ? tm('kpiDetailTodayCollection')
+      : kpiDetail === 'payment'
+        ? tm('kpiDetailTodayPayment')
+        : tm('kpiDetailCashBalance');
 
   return (
     <div className="p-6 space-y-6">
@@ -319,45 +346,66 @@ export function CashRegisterManagement({ onEnterKasa, initialTab = 'sessions' }:
         </div>
       </div>
 
-      {/* Statistics — bugünkü tahsilat / ödeme / kasa bakiyesi */}
-      <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
-        <div className="bg-green-50 rounded-lg p-4">
-          <div className="flex items-center justify-between">
-            <div>
-              <p className="text-sm text-green-600 mb-1 font-semibold">{tm('todayCollection')}</p>
-              <p className="text-xl font-bold text-green-900">
+      {/* KPI — her zaman yan yana; tıklanınca detay */}
+      <div className="grid grid-cols-3 gap-3 md:gap-4">
+        <button
+          type="button"
+          onClick={() => setKpiDetail('collection')}
+          title={tm('kpiDetailClickHint')}
+          className="bg-green-50 hover:bg-green-100/90 rounded-lg p-3 md:p-4 text-left transition-colors border border-transparent hover:border-green-200 focus:outline-none focus-visible:ring-2 focus-visible:ring-green-400"
+        >
+          <div className="flex items-center justify-between gap-2">
+            <div className="min-w-0">
+              <p className="text-xs md:text-sm text-green-600 mb-1 font-semibold truncate">
+                {tm('todayCollection')}
+              </p>
+              <p className="text-base md:text-xl font-bold text-green-900 truncate">
                 {formatCurrency(stats.todayCollection, amountCurrency)}
               </p>
             </div>
-            <TrendingUp className="w-8 h-8 text-green-600" />
+            <TrendingUp className="w-6 h-6 md:w-8 md:h-8 text-green-600 shrink-0" />
           </div>
-        </div>
-        <div className="bg-orange-50 rounded-lg p-4">
-          <div className="flex items-center justify-between">
-            <div>
-              <p className="text-sm text-orange-600 mb-1 font-semibold">{tm('todayPayment')}</p>
-              <p className="text-xl font-bold text-orange-900">
+        </button>
+        <button
+          type="button"
+          onClick={() => setKpiDetail('payment')}
+          title={tm('kpiDetailClickHint')}
+          className="bg-orange-50 hover:bg-orange-100/90 rounded-lg p-3 md:p-4 text-left transition-colors border border-transparent hover:border-orange-200 focus:outline-none focus-visible:ring-2 focus-visible:ring-orange-400"
+        >
+          <div className="flex items-center justify-between gap-2">
+            <div className="min-w-0">
+              <p className="text-xs md:text-sm text-orange-600 mb-1 font-semibold truncate">
+                {tm('todayPayment')}
+              </p>
+              <p className="text-base md:text-xl font-bold text-orange-900 truncate">
                 {formatCurrency(stats.todayPayment, amountCurrency)}
               </p>
             </div>
-            <TrendingDown className="w-8 h-8 text-orange-600" />
+            <TrendingDown className="w-6 h-6 md:w-8 md:h-8 text-orange-600 shrink-0" />
           </div>
-        </div>
-        <div className="bg-blue-50 rounded-lg p-4">
-          <div className="flex items-center justify-between">
-            <div>
-              <p className="text-sm text-blue-600 mb-1 font-semibold">{tm('cashBalance')}</p>
+        </button>
+        <button
+          type="button"
+          onClick={() => setKpiDetail('balance')}
+          title={tm('kpiDetailClickHint')}
+          className="bg-blue-50 hover:bg-blue-100/90 rounded-lg p-3 md:p-4 text-left transition-colors border border-transparent hover:border-blue-200 focus:outline-none focus-visible:ring-2 focus-visible:ring-blue-400"
+        >
+          <div className="flex items-center justify-between gap-2">
+            <div className="min-w-0">
+              <p className="text-xs md:text-sm text-blue-600 mb-1 font-semibold truncate">
+                {tm('cashBalance')}
+              </p>
               <p
-                className={`text-xl font-bold ${
+                className={`text-base md:text-xl font-bold truncate ${
                   stats.balance < 0 ? 'text-red-700' : 'text-blue-900'
                 }`}
               >
                 {formatCurrency(stats.balance, amountCurrency)}
               </p>
             </div>
-            <Banknote className="w-8 h-8 text-blue-600" />
+            <Banknote className="w-6 h-6 md:w-8 md:h-8 text-blue-600 shrink-0" />
           </div>
-        </div>
+        </button>
       </div>
 
       {/* Tabs */}
@@ -443,6 +491,118 @@ export function CashRegisterManagement({ onEnterKasa, initialTab = 'sessions' }:
             loadData();
           }}
         />
+      )}
+
+      {kpiDetail && (
+        <PercentBodyModal
+          onClose={() => setKpiDetail(null)}
+          size="list"
+          ariaLabel={kpiDetailTitle}
+        >
+          <div className="shrink-0 flex items-center justify-between gap-3 border-b border-gray-200 bg-gradient-to-r from-slate-700 to-slate-800 px-5 py-3 text-white">
+            <div className="min-w-0">
+              <h2 className="text-base font-bold truncate">{kpiDetailTitle}</h2>
+              <p className="text-xs text-slate-300 mt-0.5">
+                {kpiDetail === 'balance'
+                  ? formatCurrency(stats.balance, amountCurrency)
+                  : kpiDetail === 'collection'
+                    ? formatCurrency(stats.todayCollection, amountCurrency)
+                    : formatCurrency(stats.todayPayment, amountCurrency)}
+                {kpiDetail !== 'balance' ? ` · ${todayKey}` : ''}
+              </p>
+            </div>
+            <button
+              type="button"
+              onClick={() => setKpiDetail(null)}
+              className="rounded-lg p-2 hover:bg-white/10 shrink-0"
+              aria-label={tm('close')}
+            >
+              <X className="w-5 h-5" />
+            </button>
+          </div>
+          <PercentBodyModalScrollBody className="p-4">
+            {kpiDetail === 'balance' ? (
+              kasalar.length === 0 ? (
+                <p className="text-sm text-gray-500 text-center py-8">{tm('kpiDetailEmpty')}</p>
+              ) : (
+                <ul className="space-y-2">
+                  {kasalar.map((k) => {
+                    const bal = Number(k.bakiye) || 0;
+                    return (
+                      <li
+                        key={k.id}
+                        className="flex items-center justify-between gap-3 rounded-lg border border-gray-200 bg-white px-4 py-3"
+                      >
+                        <div className="min-w-0">
+                          <p className="font-semibold text-gray-900 truncate">{k.kasa_adi}</p>
+                          <p className="text-xs text-gray-500 font-mono">{k.kasa_kodu}</p>
+                        </div>
+                        <p
+                          className={`shrink-0 font-bold tabular-nums ${
+                            bal < 0 ? 'text-red-600' : 'text-blue-800'
+                          }`}
+                        >
+                          {formatCurrency(bal, k.id_doviz_kodu || amountCurrency)}
+                        </p>
+                      </li>
+                    );
+                  })}
+                </ul>
+              )
+            ) : kpiDetailRows.length === 0 ? (
+              <p className="text-sm text-gray-500 text-center py-8">{tm('kpiDetailEmpty')}</p>
+            ) : (
+              <ul className="space-y-2">
+                {kpiDetailRows.map((tx) => {
+                  const sign = computeKasaIslemiSign(tx.islem_tipi);
+                  const amt = Math.abs(parseKasaAmount(tx.tutar));
+                  return (
+                    <li
+                      key={tx.id || `${tx.islem_no}-${tx.islem_tarihi}`}
+                      className="rounded-lg border border-gray-200 bg-white px-4 py-3"
+                    >
+                      <div className="flex items-start justify-between gap-3">
+                        <div className="min-w-0">
+                          <p className="text-xs font-semibold text-gray-500 uppercase tracking-wide">
+                            {tx.islem_tipi}
+                          </p>
+                          <p className="text-sm text-gray-800 mt-0.5 truncate">
+                            {tx.aciklama || formatKasaCariLabel(tx) || '—'}
+                          </p>
+                          <p className="text-xs text-gray-400 mt-1">
+                            {tx.islem_tarihi
+                              ? new Date(tx.islem_tarihi).toLocaleString(
+                                  language === 'ar' ? 'ar-SA' : language === 'ku' ? 'ku-Arab' : 'tr-TR'
+                                )
+                              : '—'}
+                            {tx.islem_no ? ` · ${tx.islem_no}` : ''}
+                          </p>
+                        </div>
+                        <p
+                          className={`shrink-0 font-bold tabular-nums ${
+                            sign < 0 ? 'text-orange-700' : 'text-green-700'
+                          }`}
+                        >
+                          {sign < 0 ? '−' : '+'}
+                          {formatCurrency(amt, amountCurrency)}
+                        </p>
+                      </div>
+                    </li>
+                  );
+                })}
+              </ul>
+            )}
+          </PercentBodyModalScrollBody>
+          <div className="shrink-0 border-t border-gray-200 px-5 py-3 flex justify-end bg-gray-50">
+            <button
+              type="button"
+              onClick={() => setKpiDetail(null)}
+              className="rounded-lg bg-slate-800 px-4 py-2 text-sm font-semibold text-white hover:bg-slate-700"
+            >
+              {tm('close')}
+            </button>
+          </div>
+        </PercentBodyModal>
       )}
       {/* Context Menu */}
       {contextMenu && (

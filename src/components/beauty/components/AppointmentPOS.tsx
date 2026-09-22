@@ -317,7 +317,7 @@ export function AppointmentPOS({
         loadServices, loadPackages, loadSpecialists, loadCustomers, loadDevices,
         createAppointment, updateAppointment, loadAppointmentsInRange,
     } = useBeautyStore();
-    const { products, loadProducts, updateStock } = useProductStore();
+    const { products, loadProducts } = useProductStore();
     const { tm, language: uiLanguage } = useLanguage();
     const { isMobile } = useResponsive();
     const { selectedFirm } = useFirmaDonem();
@@ -2235,23 +2235,8 @@ export function AppointmentPOS({
             const splitInvoiceCount =
                 separateLineInvoices && cart.length > 1 ? cart.length : 0;
 
-            const productQtyMap = new Map<string, number>();
-            for (const line of cart) {
-                if (line.type !== 'product') continue;
-                const pid = String(line.item_id ?? '').trim();
-                if (!pid) continue;
-                productQtyMap.set(pid, (productQtyMap.get(pid) ?? 0) + Math.max(0, Number(line.qty ?? 0)));
-            }
-            if (productQtyMap.size > 0) {
-                const currentProducts = useProductStore.getState().products;
-                await Promise.all(
-                    Array.from(productQtyMap.entries()).map(async ([pid, qty]) => {
-                        const product = currentProducts.find((x) => x.id === pid);
-                        if (!product) return;
-                        await updateStock(product.id, (product.stock ?? 0) - qty);
-                    }),
-                );
-            }
+            // Stok: yalnızca ERP fatura oluşturma (salesAPI → invoicesAPI.create) düşer.
+            // Burada tekrar updateStock yapılırsa çift düşüm + silmede tek reverse → hayalet stok.
 
             const receiptSettings = await getReceiptSettings(receiptFirmNr).catch((): ReceiptSettings => ({}));
             const payLang: KitchenReceiptLocale = isKitchenReceiptLocale(paymentData?.language) ? paymentData.language : 'tr';

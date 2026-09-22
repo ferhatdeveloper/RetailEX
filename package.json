@@ -175,6 +175,8 @@
     "db:test:remote": "node scripts/test-remote-pg.mjs",
     "db:validate:stock": "node scripts/db/validate-stock.mjs",
     "db:validate:stock:kasap": "node scripts/db/validate-stock.mjs --database kasap --firm 001 --period 01",
+    "db:repair:orphan-stocks": "node scripts/db/repair-orphan-invoice-stocks.mjs",
+    "db:repair:orphan-stocks:apply": "node scripts/db/repair-orphan-invoice-stocks.mjs --apply",
     "db:firm": "node database/scripts/firm-quick.mjs",
     "db:merkez:tenant-retail-seed": "node scripts/run-merkez-tenant-registry-retail-seed.mjs",
     "db:provision-tenant": "node scripts/provision-tenant.mjs",
