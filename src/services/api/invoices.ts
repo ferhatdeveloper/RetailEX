@@ -24,6 +24,7 @@ import { allocateNextInvoiceCode } from '../invoiceCodeFormatService';
 import { generateDefaultInvoiceStamp } from '../../utils/invoiceCodeFormat';
 import { saleItemVisibleCode, splitInvoiceLineIdentity } from '../../utils/invoiceLineDisplayCode';
 import type { PurchasePromotionReportLine } from '../../utils/purchasePromotionReport';
+import { classifyProductHistoryType } from '../../utils/lastPurchaseCostSql';
 import {
   paymentMethodImpliesCustomerDebt,
   paymentMethodImpliesPaidNow,
@@ -3532,10 +3533,7 @@ export const invoicesAPI = {
             const partner = hd.customer_id ? namesById.get(String(hd.customer_id)) : undefined;
             const ficheType = String(hd.fiche_type || '');
             const trcode = Number(hd.trcode || 0);
-            let type: string = 'sales';
-            if (ficheType === 'purchase_invoice') type = 'purchase';
-            else if (ficheType === 'return_invoice' && trcode === 3) type = 'sales_return';
-            else if (ficheType === 'return_invoice') type = 'purchase_return';
+            const type = classifyProductHistoryType(ficheType, trcode);
             const qty = Math.abs(parseFloat(String(it.quantity ?? 0)) || 0);
             const total = parseFloat(String(it.total_amount ?? 0)) || 0;
             const net = parseFloat(String(it.net_amount ?? 0)) || 0;
@@ -3625,10 +3623,7 @@ export const invoicesAPI = {
       return rows.map(r => {
         const ficheType = String(r.fiche_type || '');
         const trcode = Number(r.trcode || 0);
-        let type: string = 'sales';
-        if (ficheType === 'purchase_invoice') type = 'purchase';
-        else if (ficheType === 'return_invoice' && trcode === 3) type = 'sales_return';
-        else if (ficheType === 'return_invoice') type = 'purchase_return';
+        const type = classifyProductHistoryType(ficheType, trcode);
         const qty = Math.abs(parseFloat(String(r.quantity ?? 0)) || 0);
         const total = parseFloat(String(r.total_amount ?? 0)) || 0;
         const net = parseFloat(String(r.net_amount ?? 0)) || 0;

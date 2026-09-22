@@ -1444,8 +1444,9 @@ export function UniversalInvoiceForm({
           resolvedPrice = (unitInfo.purchase_price > 0) ? unitInfo.purchase_price : 0;
           if (resolvedPrice === 0) {
             const pp = Number((product as any).purchase_price ?? (product as any).purchasePrice ?? 0);
+            // Alış satırı: satış fiyatına (product.price) düşme — yalnızca gerçek alış/kart maliyeti
             resolvedPrice =
-              ((product as any).cost || pp || (product as any).lastPurchasePrice || product.price || 0) * unitMult;
+              ((product as any).cost || pp || (product as any).lastPurchasePrice || 0) * unitMult;
           }
         }
       } else {
@@ -1469,8 +1470,9 @@ export function UniversalInvoiceForm({
         }
         if (resolvedPrice === 0) {
           const pp = Number((product as any).purchase_price ?? (product as any).purchasePrice ?? 0);
+          // Alış satırı: satış fiyatına (product.price) düşme — yalnızca gerçek alış/kart maliyeti
           resolvedPrice =
-            (product as any).cost || pp || (product as any).lastPurchasePrice || product.price || 0;
+            (product as any).cost || pp || (product as any).lastPurchasePrice || 0;
         }
       } else {
         if (useUsdSale) {

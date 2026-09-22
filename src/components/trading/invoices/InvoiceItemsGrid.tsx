@@ -350,8 +350,31 @@ export const InvoiceItemsGrid = React.memo(({
                         )}
                     </div>
                     <div className="text-xs opacity-90 truncate">{product.name}</div>
-                    <div className="text-xs opacity-75 mt-0.5">
-                        {product.unit} • {formatNumber(product.price, 2, true)} {ledgerCurrency}
+                    <div className="text-xs opacity-75 mt-0.5 space-y-0.5">
+                        {(() => {
+                            const purchaseRaw =
+                                Number(
+                                    (product as any).cost ??
+                                        (product as any).lastPurchasePrice ??
+                                        (product as any).purchase_price ??
+                                        (product as any).purchasePrice ??
+                                        0
+                                ) || 0;
+                            const saleRaw = Number(product.price ?? 0) || 0;
+                            const fmt = (n: number) =>
+                                n > 0 ? formatNumber(n, 2, true) : (tm('prodHistNoValue') || '—');
+                            return (
+                                <>
+                                    <div>
+                                        {product.unit || 'Adet'} · {tm('dropdownPurchasePrice')}: {fmt(purchaseRaw)}{' '}
+                                        {ledgerCurrency}
+                                    </div>
+                                    <div>
+                                        {tm('dropdownSalePrice')}: {fmt(saleRaw)} {ledgerCurrency}
+                                    </div>
+                                </>
+                            );
+                        })()}
                     </div>
                 </div>
             );

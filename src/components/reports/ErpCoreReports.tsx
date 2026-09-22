@@ -14,7 +14,7 @@ import { getAppDefaultCurrency } from '../../services/postgres';
 import { formatMoneyAmount } from '../../utils/formatMoney';
 import { toSqlDateInputString, localTodayDateKey } from '../../utils/localCalendarDate';
 import { fetchKasalar, type Kasa } from '../../services/api/kasa';
-import { resolveEkstreDescription } from '../../utils/cariAccountStatement';
+import { ficheTypeToInfo, resolveEkstreDescription } from '../../utils/cariAccountStatement';
 import {
   erpReportsAPI,
   type AgingBucket,
@@ -1659,11 +1659,15 @@ export function CariExtractReport() {
 
   const gridRows = useMemo(
     () =>
-      rows.map((r) => ({
-        ...r,
-        descLabel: resolveEkstreDescription(r.notes, r.ficheType, r.trcode ?? 0, r.isCancelled, tm) || '',
-        ficheTypeLabel: String(r.ficheType || r.source || '').trim(),
-      })),
+      rows.map((r) => {
+        const ft = String(r.ficheType || r.source || '').trim();
+        const { label } = ficheTypeToInfo(ft, Number(r.trcode ?? 0), r.isCancelled === true, tm);
+        return {
+          ...r,
+          descLabel: resolveEkstreDescription(r.notes, r.ficheType, r.trcode ?? 0, r.isCancelled, tm) || '',
+          ficheTypeLabel: label || ft,
+        };
+      }),
     [rows, tm],
   );
 
@@ -1708,11 +1712,12 @@ export function CariExtractReport() {
       onExport={() =>
         exportCsv(
           'cari_ekstre',
-          ['Tarih', 'Fiş', 'Açıklama', 'Borç', 'Alacak', 'Bakiye'],
-          rows.map((r) => [
+          [tm('erpColDate'), tm('erpColFiche'), tm('erpColTxnType'), tm('reportsCashColDesc'), tm('erpColDebit'), tm('erpColCredit'), tm('erpColBalance')],
+          gridRows.map((r) => [
             r.date,
             r.ficheNo,
-            resolveEkstreDescription(r.notes, r.ficheType, r.trcode ?? 0, r.isCancelled, tm),
+            r.ficheTypeLabel,
+            r.descLabel,
             String(r.debit),
             String(r.credit),
             String(r.balance),

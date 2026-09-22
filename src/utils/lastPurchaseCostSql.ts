@@ -25,6 +25,51 @@ export const SALES_RETURN_TRCODES = [2, 3] as const;
 export const SALES_RETURN_TRCODES_SQL = SALES_RETURN_TRCODES.join(', ');
 export const SALES_TRCODES_SQL = '7, 8';
 
+/** Ürün hareket geçmişi satır türü (alış / satış ayrımı). */
+export type ProductHistoryMovementType =
+  | 'purchase'
+  | 'purchase_return'
+  | 'sales'
+  | 'sales_return';
+
+/**
+ * Fatura satırını alış/satış olarak sınıflandır.
+ * Alış ortalaması / son alış yalnızca `purchase` için kullanılır; satış satırı alışa katılmaz.
+ */
+export function classifyProductHistoryType(
+  ficheType: string | null | undefined,
+  trcode: number | null | undefined
+): ProductHistoryMovementType {
+  const ft = String(ficheType || '').toLowerCase().trim();
+  const tc = Number(trcode) || 0;
+
+  if (tc === PURCHASE_RETURN_TRCODE) return 'purchase_return';
+  if ((SALES_RETURN_TRCODES as readonly number[]).includes(tc)) return 'sales_return';
+
+  if (ft === 'return_invoice') {
+    return 'purchase_return';
+  }
+
+  if (
+    ft === 'purchase_invoice' ||
+    ft === 'a' ||
+    (PURCHASE_ONLY_TRCODES as readonly number[]).includes(tc)
+  ) {
+    return 'purchase';
+  }
+
+  return 'sales';
+}
+
+export function isPurchaseHistoryType(type: string | null | undefined): boolean {
+  return String(type || '') === 'purchase';
+}
+
+export function isSalesHistoryType(type: string | null | undefined): boolean {
+  const t = String(type || '');
+  return t === 'sales' || t === 'sales_return';
+}
+
 /** item_code alanı UUID ise ürün id sayılır */
 export const SQL_UUID_TEXT_RE =
   "^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$";
