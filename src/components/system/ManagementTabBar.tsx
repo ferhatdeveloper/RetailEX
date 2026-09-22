@@ -29,7 +29,7 @@ export function ManagementTabBar({
 
   return (
     <div
-      className={`shrink-0 z-20 flex h-10 items-stretch border-b shadow-sm ${
+      className={`shrink-0 z-20 flex h-10 max-h-10 items-stretch overflow-hidden border-b shadow-sm ${
         darkMode
           ? 'bg-gray-900 border-gray-700'
           : 'bg-slate-200/80 border-slate-300'
@@ -39,7 +39,7 @@ export function ManagementTabBar({
     >
       <div
         ref={scrollRef}
-        className="flex-1 min-w-0 flex items-end gap-0 overflow-x-auto overflow-y-hidden px-2 pt-1.5"
+        className="flex-1 min-w-0 flex items-end gap-0 overflow-x-auto overflow-y-hidden overscroll-x-contain px-2 pt-1.5 [scrollbar-width:none] [-ms-overflow-style:none] [&::-webkit-scrollbar]:hidden"
       >
         {tabs.map((tab) => {
           const active = tab.screenId === activeScreenId;
