@@ -129,6 +129,8 @@ const StoreTransferModule = lazyWithChunkRecovery(() => import('../inventory/war
 const MobileInventoryCountModule = lazyWithChunkRecovery(() => import('../inventory/stock/MobileInventoryCountModule').then(m => ({ default: m.MobileInventoryCountModule })));
 const InterStoreTransfersView = lazyWithChunkRecovery(() => import('../inventory/warehouse/InterStoreTransfersView'));
 import { ModernSidebar } from './ModernSidebar';
+import { ManagementTabBar } from './ManagementTabBar';
+import { useManagementTabsStore } from '../../store/useManagementTabsStore';
 const PriceChangeVouchersModule = lazyWithChunkRecovery(() => import('../trading/invoices/PriceChangeVouchersModule').then(m => ({ default: m.PriceChangeVouchersModule })));
 const BarcodeDefinitionsModule = lazyWithChunkRecovery(() => import('../inventory/stock/BarcodeDefinitionsModule').then(m => ({ default: m.BarcodeDefinitionsModule })));
 const SerialLotModule = lazyWithChunkRecovery(() => import('../inventory/stock/SerialLotModule').then(m => ({ default: m.SerialLotModule })));
@@ -260,6 +262,41 @@ import { GIB_EDOCUMENT_SCREEN_IDS, isGibEdocumentUiEnabled } from '../../config/
 import { isIntegrationsAccessGranted } from '../../utils/integrationsAccess';
 import { shouldAutoHideManagementSidebar } from '../../utils/managementSidebarAutoHide';
 
+/** Grup menü id → gerçek ekran */
+const GROUP_SCREEN_REDIRECTS: Record<string, string> = {
+  'analytics-group': 'profit-dashboard',
+  'sales-stock-group': 'salesreports',
+  'finance-reps-group': 'mizan',
+  'advanced-reps-group': 'advanced-reports',
+};
+
+function resolveManagementScreenId(raw: string): string {
+  let id = String(raw ?? '').trim();
+  if (!id) return 'dashboard';
+  if (id === 'Dashboard') id = 'dashboard';
+  return GROUP_SCREEN_REDIRECTS[id] || id;
+}
+
+/** Menü ağacından sekme başlığı */
+function findMenuItemLabel(sections: any[] | null | undefined, screenId: string): string | null {
+  const target = String(screenId);
+  const walk = (items: any[]): string | null => {
+    for (const item of items || []) {
+      if (item?.id != null && String(item.id) === target && item.label) {
+        return String(item.label);
+      }
+      const nested = walk(item.children || []);
+      if (nested) return nested;
+    }
+    return null;
+  };
+  for (const section of sections || []) {
+    const found = walk(section.items || []);
+    if (found) return found;
+  }
+  return null;
+}
+
 export function ManagementModule({
   products,
   setProducts,
@@ -322,25 +359,6 @@ export function ManagementModule({
     }
   }, [effectiveSidebarOpen]);
 
-  // Klavye kısayolu: Ctrl/Cmd + B → sidebar aç/kapa (VS Code/Linear stili).
-  useEffect(() => {
-    const handler = (e: KeyboardEvent) => {
-      if ((e.ctrlKey || e.metaKey) && (e.key === 'b' || e.key === 'B')) {
-        const target = e.target as HTMLElement | null;
-        const isEditable = !!target && (
-          target.tagName === 'INPUT' ||
-          target.tagName === 'TEXTAREA' ||
-          (target as HTMLElement).isContentEditable
-        );
-        if (isEditable) return;
-        e.preventDefault();
-        effectiveSetSidebarOpen(!effectiveSidebarOpen);
-      }
-    };
-    window.addEventListener('keydown', handler);
-    return () => window.removeEventListener('keydown', handler);
-  }, [effectiveSidebarOpen, effectiveSetSidebarOpen]);
-
   // Rol bazlı varsayılan ekran belirleme
   const getDefaultScreenForRole = (roles: string[] = []): ExtendedScreen => {
     if (roles.includes('warehouse_manager') || roles.includes('warehouse_staff') || roles.includes('depo')) return 'stock';
@@ -378,7 +396,58 @@ export function ManagementModule({
     }
   };
 
-  const [currentScreen, setCurrentScreen] = useState<ExtendedScreen>(getInitialScreen);
+  const openTab = useManagementTabsStore((s) => s.openTab);
+  const setActiveTab = useManagementTabsStore((s) => s.setActive);
+  const closeTabStore = useManagementTabsStore((s) => s.closeTab);
+  const resetTabsWith = useManagementTabsStore((s) => s.resetWith);
+  const updateTabTitle = useManagementTabsStore((s) => s.updateTitle);
+  const openTabs = useManagementTabsStore((s) => s.tabs);
+  const currentScreen = useManagementTabsStore((s) => s.activeScreenId) as ExtendedScreen;
+  const menuLabelRef = React.useRef<any[] | null>(null);
+
+  /** Menü / event ile ekran aç — sekme aç veya odakla */
+  const setCurrentScreen = useCallback((raw: ExtendedScreen | string) => {
+    const id = resolveManagementScreenId(String(raw ?? ''));
+    const title = findMenuItemLabel(menuLabelRef.current, id) || id;
+    openTab(id, title);
+  }, [openTab]);
+
+  // İlk yüklemede sekmeleri başlat
+  useLayoutEffect(() => {
+    const state = useManagementTabsStore.getState();
+    if (state.tabs.length === 0) {
+      const initial = resolveManagementScreenId(String(getInitialScreen()));
+      resetTabsWith(initial, findMenuItemLabel(menuLabelRef.current, initial) || initial);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- yalnızca mount
+  }, []);
+
+  // Klavye: Ctrl/Cmd+B sidebar; Ctrl/Cmd+W aktif sekmeyi kapat
+  useEffect(() => {
+    const handler = (e: KeyboardEvent) => {
+      if (!(e.ctrlKey || e.metaKey)) return;
+      const target = e.target as HTMLElement | null;
+      const isEditable = !!target && (
+        target.tagName === 'INPUT' ||
+        target.tagName === 'TEXTAREA' ||
+        target.isContentEditable
+      );
+      if (isEditable) return;
+
+      if (e.key === 'b' || e.key === 'B') {
+        e.preventDefault();
+        effectiveSetSidebarOpen(!effectiveSidebarOpen);
+        return;
+      }
+      if ((e.key === 'w' || e.key === 'W') && useManagementTabsStore.getState().tabs.length > 1) {
+        e.preventDefault();
+        closeTabStore(useManagementTabsStore.getState().activeScreenId);
+      }
+    };
+    window.addEventListener('keydown', handler);
+    return () => window.removeEventListener('keydown', handler);
+  }, [effectiveSidebarOpen, effectiveSetSidebarOpen, closeTabStore]);
+
   const [countPurchaseDraftPrefill, setCountPurchaseDraftPrefill] = useState<CountPurchaseDraftPrefill | null>(null);
   const clearCountPurchaseDraftPrefill = useCallback(() => {
     setCountPurchaseDraftPrefill(null);
@@ -409,12 +478,11 @@ export function ManagementModule({
 
   // Handle Group Screen Redirects via Effect (Avoid Side Effects in Render)
   useEffect(() => {
-    if (currentScreen === 'analytics-group') setCurrentScreen('profit-dashboard');
-    if (currentScreen === 'sales-stock-group') setCurrentScreen('salesreports');
-    if (currentScreen === 'finance-reps-group') setCurrentScreen('mizan');
-    if (currentScreen === 'advanced-reps-group') setCurrentScreen('advanced-reports');
-    // inventory-count-ops — Sayım İşlemleri menüden kaldırıldı; redirect yok
-  }, [currentScreen]);
+    const redirected = resolveManagementScreenId(String(currentScreen));
+    if (redirected !== String(currentScreen)) {
+      setCurrentScreen(redirected as ExtendedScreen);
+    }
+  }, [currentScreen, setCurrentScreen]);
   const [rtlMode, setRtlMode] = useState(() => {
     return localStorage.getItem('retailos_rtl_mode') === 'true';
   });
@@ -784,14 +852,14 @@ export function ManagementModule({
     ) {
       return;
     }
-    const rawId = String(item.id).trim();
-    setCurrentScreen(rawId === 'Dashboard' ? 'dashboard' : item.id);
-    if (isMobile || shouldAutoHideManagementSidebar(rawId === 'Dashboard' ? 'dashboard' : item.id)) {
+    const normalized = resolveManagementScreenId(String(item.id));
+    setCurrentScreen(normalized);
+    if (isMobile || shouldAutoHideManagementSidebar(normalized)) {
       _setSidebarOpenRaw(false);
     }
     setMenuSearchQuery('');
     setSearchResults([]);
-  }, [isMobile, effectiveSetSidebarOpen, selectedFirm]);
+  }, [isMobile, selectedFirm, setCurrentScreen]);
 
   /** Mobilde menüden ekran seçilince drawer kapanır; kapalı drawer z-index ile içeriğin altında kalmalıdır. */
   const setScreenFromSidebar = useCallback(
@@ -803,15 +871,37 @@ export function ManagementModule({
       ) {
         return;
       }
-      const id = String(s ?? '').trim();
-      // Eski menü / dışa aktarım: "Dashboard" ile "dashboard" aynı ekran
-      const normalized = id === 'Dashboard' ? 'dashboard' : s;
+      const normalized = resolveManagementScreenId(String(s ?? ''));
       setCurrentScreen(normalized);
-      if (isMobile || shouldAutoHideManagementSidebar(String(normalized))) {
+      if (isMobile || shouldAutoHideManagementSidebar(normalized)) {
         _setSidebarOpenRaw(false);
       }
     },
-    [isMobile, effectiveSetSidebarOpen, selectedFirm]
+    [isMobile, selectedFirm, setCurrentScreen]
+  );
+
+  const handleActivateTab = useCallback(
+    (screenId: string) => {
+      const id = resolveManagementScreenId(screenId);
+      setActiveTab(id);
+      if (isMobile || shouldAutoHideManagementSidebar(id)) {
+        _setSidebarOpenRaw(false);
+      }
+      try {
+        const userKey = user ? `last_screen_${user.username}` : 'last_screen_guest';
+        localStorage.setItem(userKey, id);
+      } catch {
+        /* ignore */
+      }
+    },
+    [isMobile, setActiveTab, user]
+  );
+
+  const handleCloseTab = useCallback(
+    (screenId: string) => {
+      closeTabStore(screenId);
+    },
+    [closeTabStore]
   );
 
   /** IQ vb.: son ekran GİB modülü kaldıysa panele dön. */
@@ -888,6 +978,18 @@ export function ManagementModule({
       return items.length > 0;
     });
   }, [dynamicMenuSections, staticMenuSections, effectiveHiddenModules, hasPermission, isAdmin, gibEdocumentMenuEnabled, isTauri, reportMenuParams]);
+
+  // Sekme başlıklarını menü diline göre güncelle
+  useEffect(() => {
+    menuLabelRef.current = menuSections;
+    const { tabs } = useManagementTabsStore.getState();
+    for (const tab of tabs) {
+      const label = findMenuItemLabel(menuSections, tab.screenId);
+      if (label && label !== tab.title) {
+        updateTabTitle(tab.screenId, label);
+      }
+    }
+  }, [menuSections, updateTabTitle]);
 
   // Menü güncellemelerini dinle - useCallback ile sarmalanmış
   const handleMenuUpdate = useCallback((e?: CustomEvent) => {
@@ -1063,7 +1165,7 @@ export function ManagementModule({
     setSearchResults(sortedResults);
   }, [menuSearchQuery, menuSections]);
 
-  const renderContent = () => {
+  const renderContent = (screenId: string) => {
     // Shared mock data generator for generic reports
     const getMockData = (type: string) => {
       if (type === 'salesreports') {
@@ -1089,7 +1191,7 @@ export function ManagementModule({
     };
 
     try {
-      switch (currentScreen) {
+      switch (screenId) {
         case 'Dashboard':
         case 'dashboard':
           return <DashboardModule
@@ -1518,7 +1620,7 @@ export function ManagementModule({
         case 'emailcamp':
         case 'invoice-label-designer':
         case 'print-options':
-          return <SystemManagementModule routeHint={currentScreen} />;
+          return <SystemManagementModule routeHint={screenId} />;
         case 'excel':
           return <ExcelModule />;
         case 'multistore':
@@ -1655,7 +1757,7 @@ export function ManagementModule({
           return <SecurityModulesWeb />;
         case 'report-designer':
         case 'label-designer':
-          return <SystemManagementModule routeHint={currentScreen} />;
+          return <SystemManagementModule routeHint={screenId} />;
         default:
           return <DashboardModule
             products={products}
@@ -1667,7 +1769,7 @@ export function ManagementModule({
           />;
       }
     } catch (error) {
-      console.error(`? Error rendering screen \"${currentScreen}\":`, error);
+      console.error(`? Error rendering screen \"${screenId}\":`, error);
       return (
         <div className={`flex items-center justify-center h-full ${darkMode ? 'bg-red-900/20' : 'bg-red-50'}`}>
           <div className={`text-center p-8 rounded-xl shadow-lg max-w-md ${darkMode ? 'bg-gray-800 text-white' : 'bg-white'
@@ -1678,7 +1780,7 @@ export function ManagementModule({
             </div>
             <h3 className={`text-lg mb-2 ${darkMode ? 'text-white' : 'text-gray-900'}`}>{t.moduleLoadError}</h3>
             <p className={`text-sm mb-4 ${darkMode ? 'text-gray-400' : 'text-gray-600'}`}>
-              {t.moduleLoadErrorMessage.replace('{screenName}', currentScreen)}
+              {t.moduleLoadErrorMessage.replace('{screenName}', screenId)}
             </p>
             <button
               onClick={() => setCurrentScreen('dashboard')}
@@ -1761,18 +1863,36 @@ export function ManagementModule({
       {/* Main Content — mobilde üst bardaki hamburger ile, desktop'ta üst bardaki
           panel toggle butonu (veya Ctrl+B) ile aç/kapa. */}
       <div
-        className={`flex-1 min-h-0 min-w-0 h-full overflow-hidden transition-all duration-300 ${darkMode ? 'bg-gray-900' : 'bg-gray-50'} ${isMobile ? 'relative w-full z-[10] touch-manipulation' : ''}`}
+        className={`flex flex-col flex-1 min-h-0 min-w-0 h-full overflow-hidden transition-all duration-300 ${darkMode ? 'bg-gray-900' : 'bg-gray-50'} ${isMobile ? 'relative w-full z-[10] touch-manipulation' : ''}`}
       >
-        <Suspense fallback={
-          <div className="h-full flex items-center justify-center">
-            <div className="text-center">
-              <div className="w-12 h-12 border-4 border-blue-600 border-t-transparent rounded-full animate-spin mx-auto mb-3"></div>
-              <p className={darkMode ? 'text-gray-300' : 'text-gray-600'}>{t.loading}</p>
-            </div>
-          </div>
-        }>
-          {renderContent()}
-        </Suspense>
+        <ManagementTabBar
+          onActivate={handleActivateTab}
+          onClose={handleCloseTab}
+        />
+        <div className="relative flex-1 min-h-0 overflow-hidden">
+          {(openTabs.length > 0 ? openTabs : [{ screenId: String(currentScreen), title: String(currentScreen) }]).map((tab) => {
+            const isActive = tab.screenId === String(currentScreen);
+            return (
+              <div
+                key={tab.screenId}
+                role="tabpanel"
+                aria-hidden={!isActive}
+                className={`absolute inset-0 overflow-hidden ${isActive ? 'z-10' : 'z-0 invisible pointer-events-none'}`}
+              >
+                <Suspense fallback={
+                  <div className="h-full flex items-center justify-center">
+                    <div className="text-center">
+                      <div className="w-12 h-12 border-4 border-blue-600 border-t-transparent rounded-full animate-spin mx-auto mb-3"></div>
+                      <p className={darkMode ? 'text-gray-300' : 'text-gray-600'}>{t.loading}</p>
+                    </div>
+                  </div>
+                }>
+                  {renderContent(tab.screenId as ExtendedScreen)}
+                </Suspense>
+              </div>
+            );
+          })}
+        </div>
       </div>
 
       {/* Language Selection Modal */}
