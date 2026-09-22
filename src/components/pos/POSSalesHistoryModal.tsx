@@ -1,12 +1,14 @@
-﻿import React, { useState, useEffect } from 'react';
+﻿import React, { useState, useEffect, useMemo, useCallback } from 'react';
 import { createPortal } from 'react-dom';
 import { X, FileText, Calendar, Search, Printer, Eye, ArrowLeft, Download, Filter } from 'lucide-react';
+import { createColumnHelper } from '@tanstack/react-table';
 import type { Sale } from '../../core/types';
 import { useLanguage } from '../../contexts/LanguageContext';
 import { saleCollectedSplit } from '../../utils/saleCollectedAmounts';
 import { normalizePaymentMethodBucket } from '../../utils/paymentMethodUtils';
 import { useTheme } from '../../contexts/ThemeContext';
 import { MODAL_OVERLAY_Z } from '../shared/FullscreenBodyPortal';
+import { DevExDataGrid } from '../shared/DevExDataGrid';
 import { addDaysToLocalYmd, formatLocalYmd } from '../../utils/dateLocal';
 import { ThermalReceiptPreview } from './ThermalReceiptPreview';
 import { PaymentReceiptPreview } from './PaymentReceiptPreview';
@@ -17,6 +19,12 @@ function saleLocalDateKey(sale: Sale): string {
   if (m) return m[1];
   const d = new Date(raw);
   return Number.isNaN(d.getTime()) ? '' : formatLocalYmd(d);
+}
+
+function saleTimestamp(sale: Sale): number {
+  const raw = String(sale.date || sale.created_at || '').trim();
+  const t = new Date(raw).getTime();
+  return Number.isFinite(t) ? t : 0;
 }
 
 function ymdInRange(ymd: string, startYmd: string, endYmd: string): boolean {
@@ -62,37 +70,182 @@ export function POSSalesHistoryModal({
 
   const todayYmd = formatLocalYmd(new Date());
 
-  // Filter sales (yerel takvim günü — UTC kayması yok)
-  const filteredSales = sales.filter(sale => {
-    const matchesSearch =
-      sale.receiptNumber?.toLowerCase().includes(searchTerm.toLowerCase()) ||
-      sale.customerName?.toLowerCase().includes(searchTerm.toLowerCase());
+  // Filter + tarih desc (en yeni üstte)
+  const filteredSales = useMemo(() => {
+    const q = searchTerm.toLowerCase();
+    const list = sales.filter((sale) => {
+      const matchesSearch =
+        sale.receiptNumber?.toLowerCase().includes(q) ||
+        sale.customerName?.toLowerCase().includes(q);
 
-    let matchesDate = true;
-    if (filterDate !== 'all') {
-      const saleYmd = saleLocalDateKey(sale);
+      let matchesDate = true;
+      if (filterDate !== 'all') {
+        const saleYmd = saleLocalDateKey(sale);
 
-      if (filterDate === 'today') {
-        matchesDate = saleYmd === todayYmd;
-      } else if (filterDate === 'week') {
-        const weekStart = addDaysToLocalYmd(todayYmd, -6);
-        matchesDate = ymdInRange(saleYmd, weekStart, todayYmd);
-      } else if (filterDate === 'month') {
-        const monthStart = addDaysToLocalYmd(todayYmd, -29);
-        matchesDate = ymdInRange(saleYmd, monthStart, todayYmd);
-      } else if (filterDate === 'custom' && startDate && endDate) {
-        matchesDate = ymdInRange(saleYmd, startDate, endDate);
+        if (filterDate === 'today') {
+          matchesDate = saleYmd === todayYmd;
+        } else if (filterDate === 'week') {
+          const weekStart = addDaysToLocalYmd(todayYmd, -6);
+          matchesDate = ymdInRange(saleYmd, weekStart, todayYmd);
+        } else if (filterDate === 'month') {
+          const monthStart = addDaysToLocalYmd(todayYmd, -29);
+          matchesDate = ymdInRange(saleYmd, monthStart, todayYmd);
+        } else if (filterDate === 'custom' && startDate && endDate) {
+          matchesDate = ymdInRange(saleYmd, startDate, endDate);
+        }
       }
-    }
 
-    return matchesSearch && matchesDate;
-  });
+      return matchesSearch && matchesDate;
+    });
+
+    return [...list].sort((a, b) => saleTimestamp(b) - saleTimestamp(a));
+  }, [sales, searchTerm, filterDate, startDate, endDate, todayYmd]);
 
   const totalSalesAmount = filteredSales.reduce((sum, sale) => sum + sale.total, 0);
   const totalCollectedAmount = filteredSales.reduce(
     (sum, sale) => sum + saleCollectedSplit(sale).collected,
     0,
   );
+
+  const paymentLabel = useCallback(
+    (sale: Sale) => {
+      const bucket = normalizePaymentMethodBucket(sale.paymentMethod);
+      if (bucket === 'cash') return t.cash;
+      if (bucket === 'card') return t.card;
+      if (bucket === 'credit') return t.veresiyeLabel || tm('veresiye');
+      return t.other;
+    },
+    [t, tm],
+  );
+
+  const columns = useMemo(() => {
+    const col = createColumnHelper<Sale>();
+    return [
+      col.accessor('receiptNumber', {
+        id: 'receiptNumber',
+        header: t.receiptNumber || 'Fiş No',
+        size: 220,
+        minSize: 140,
+        cell: (info) => (
+          <span className={`font-mono text-sm font-medium ${darkMode ? 'text-white' : 'text-gray-900'}`}>
+            {info.getValue() || '—'}
+          </span>
+        ),
+      }),
+      col.accessor((row) => normalizePaymentMethodBucket(row.paymentMethod), {
+        id: 'paymentMethod',
+        header: t.paymentMethod || 'Ödeme',
+        size: 110,
+        minSize: 80,
+        cell: (info) => {
+          const bucket = String(info.getValue() || '');
+          const cls =
+            bucket === 'cash'
+              ? 'bg-green-100 text-green-700'
+              : bucket === 'card'
+                ? 'bg-blue-100 text-blue-700'
+                : bucket === 'credit'
+                  ? 'bg-amber-100 text-amber-800'
+                  : 'bg-purple-100 text-purple-700';
+          return (
+            <span className={`inline-flex px-2 py-0.5 rounded text-xs font-medium ${cls}`}>
+              {paymentLabel(info.row.original)}
+            </span>
+          );
+        },
+      }),
+      col.accessor((row) => saleTimestamp(row), {
+        id: 'date',
+        header: t.date || 'Tarih',
+        size: 140,
+        minSize: 110,
+        sortingFn: 'basic',
+        cell: (info) => {
+          const sale = info.row.original;
+          const d = new Date(sale.date || sale.created_at || 0);
+          if (Number.isNaN(d.getTime())) return '—';
+          return (
+            <span className={`text-xs tabular-nums ${darkMode ? 'text-gray-300' : 'text-gray-600'}`}>
+              {d.toLocaleDateString('tr-TR', { day: '2-digit', month: '2-digit', year: 'numeric' })}{' '}
+              {d.toLocaleTimeString('tr-TR', { hour: '2-digit', minute: '2-digit' })}
+            </span>
+          );
+        },
+      }),
+      col.accessor((row) => row.customerName || t.generalSale || '', {
+        id: 'customerName',
+        header: t.customer || 'Müşteri',
+        size: 160,
+        minSize: 100,
+        cell: (info) => (
+          <span className={`text-xs truncate ${darkMode ? 'text-gray-300' : 'text-gray-600'}`}>
+            {info.getValue() || t.generalSale}
+          </span>
+        ),
+      }),
+      col.accessor('total', {
+        id: 'total',
+        header: t.total || 'Tutar',
+        size: 140,
+        minSize: 100,
+        meta: { type: 'currency', align: 'right' },
+        cell: (info) => {
+          const sale = info.row.original;
+          const split = saleCollectedSplit(sale);
+          return (
+            <div className="text-right">
+              <div className={`text-sm font-medium tabular-nums ${darkMode ? 'text-white' : 'text-gray-900'}`}>
+                {Number(info.getValue() || 0).toFixed(2)} IQD
+              </div>
+              {split.remaining > 0.009 ? (
+                <div
+                  className="text-[11px] text-amber-700 cursor-help"
+                  title={`${tm('tahsilEdilen')}: ${split.collected.toFixed(2)} IQD · ${tm('kalanCari')}: ${split.remaining.toFixed(2)} IQD`}
+                >
+                  {`T: ${split.collected.toFixed(2)} · K: ${split.remaining.toFixed(2)}`}
+                </div>
+              ) : null}
+            </div>
+          );
+        },
+      }),
+      col.display({
+        id: 'actions',
+        header: t.actions || '',
+        size: 88,
+        minSize: 72,
+        maxSize: 100,
+        enableSorting: false,
+        enableColumnFilter: false,
+        enableResizing: false,
+        cell: ({ row }) => {
+          const sale = row.original;
+          return (
+            <div className="flex items-center gap-1" onClick={(e) => e.stopPropagation()}>
+              <button
+                type="button"
+                onClick={() => setSelectedSale(sale)}
+                className={`p-1.5 rounded transition-colors ${darkMode ? 'text-blue-400 hover:bg-gray-700' : 'text-blue-600 hover:bg-blue-50'}`}
+                title={t.viewDetails}
+              >
+                <Eye className="w-4 h-4" />
+              </button>
+              {onPrintReceipt ? (
+                <button
+                  type="button"
+                  onClick={() => onPrintReceipt(sale)}
+                  className={`p-1.5 rounded transition-colors ${darkMode ? 'text-gray-400 hover:bg-gray-700' : 'text-gray-600 hover:bg-gray-100'}`}
+                  title={t.printReceipt}
+                >
+                  <Printer className="w-4 h-4" />
+                </button>
+              ) : null}
+            </div>
+          );
+        },
+      }),
+    ];
+  }, [t, tm, darkMode, paymentLabel, onPrintReceipt]);
 
   // Detay görünümü render fonksiyonu
   const renderDetailView = () => {
@@ -348,8 +501,8 @@ export function POSSalesHistoryModal({
               </div>
             )}
 
-            {/* Content - Minimal */}
-            <div className="flex-1 overflow-auto">
+            {/* Content — DevEx grid, tarih desc */}
+            <div className="flex-1 min-h-0 overflow-hidden">
               {isLoading ? (
                 <div className="flex flex-col items-center justify-center h-full text-gray-400 p-8">
                   <div className="w-8 h-8 border-2 border-blue-600 border-t-transparent rounded-full animate-spin mb-3" />
@@ -361,96 +514,26 @@ export function POSSalesHistoryModal({
                   <p className="text-sm">{t.noSalesRecordFound}</p>
                 </div>
               ) : (
-                <div className={`divide-y ${darkMode ? 'divide-gray-700' : 'divide-gray-200'}`}>
-                  {filteredSales.map((sale) => (
-                    <div
-                      key={sale.id}
-                      className={`px-4 py-3 transition-colors ${darkMode ? 'hover:bg-gray-800' : 'hover:bg-gray-50'}`}
-                    >
-                      <div className="flex items-center justify-between gap-4">
-                        <div className="flex items-center gap-3 flex-1 min-w-0">
-                          <span className={`font-mono text-sm font-medium ${darkMode ? 'text-white' : 'text-gray-900'}`}>
-                            {sale.receiptNumber}
-                          </span>
-                          <span className={`px-2 py-0.5 rounded text-xs flex-shrink-0 ${
-                            normalizePaymentMethodBucket(sale.paymentMethod) === 'cash'
-                            ? 'bg-green-100 text-green-700'
-                            : normalizePaymentMethodBucket(sale.paymentMethod) === 'card'
-                              ? 'bg-blue-100 text-blue-700'
-                              : normalizePaymentMethodBucket(sale.paymentMethod) === 'credit'
-                                ? 'bg-amber-100 text-amber-800'
-                                : 'bg-purple-100 text-purple-700'
-                            }`}>
-                            {normalizePaymentMethodBucket(sale.paymentMethod) === 'cash'
-                              ? t.cash
-                              : normalizePaymentMethodBucket(sale.paymentMethod) === 'card'
-                                ? t.card
-                                : normalizePaymentMethodBucket(sale.paymentMethod) === 'credit'
-                                  ? (t.veresiyeLabel || tm('veresiye'))
-                                  : t.other}
-                          </span>
-                          <span className={`text-xs ${darkMode ? 'text-gray-400' : 'text-gray-500'} flex-shrink-0`}>
-                            {new Date(sale.date).toLocaleDateString('tr-TR', {
-                              day: '2-digit',
-                              month: '2-digit',
-                              year: 'numeric'
-                            })} {new Date(sale.date).toLocaleTimeString('tr-TR', {
-                              hour: '2-digit',
-                              minute: '2-digit'
-                            })}
-                          </span>
-                          <span className={`text-xs truncate ${darkMode ? 'text-gray-400' : 'text-gray-500'}`}>
-                            {sale.items.map(item => `${item.productName} (${item.quantity})`).join(', ')}
-                          </span>
-                          <span className={`text-xs ${darkMode ? 'text-gray-500' : 'text-gray-400'} flex-shrink-0`}>
-                            {sale.customerName || t.generalSale}
-                          </span>
-                        </div>
-
-                        <div className="flex items-center gap-3 flex-shrink-0">
-                          <div className="text-right">
-                            <div className={`text-sm font-medium ${darkMode ? 'text-white' : 'text-gray-900'}`}>
-                              {sale.total.toFixed(2)} IQD
-                            </div>
-                            {(() => {
-                              const split = saleCollectedSplit(sale);
-                              if (!(split.remaining > 0.009)) return null;
-                              const c = split.collected.toFixed(2);
-                              const r = split.remaining.toFixed(2);
-                              return (
-                                <div
-                                  className="text-[11px] text-amber-700 cursor-help"
-                                  title={`${tm('tahsilEdilen')}: ${c} IQD · ${tm('kalanCari')}: ${r} IQD`}
-                                >
-                                  {`T: ${c} IQD · K: ${r} IQD`}
-                                </div>
-                              );
-                            })()}
-                          </div>
-
-                          <div className={`flex gap-1 border-l pl-3 ${darkMode ? 'border-gray-700' : 'border-gray-200'}`}>
-                            <button
-                              onClick={() => setSelectedSale(sale)}
-                              className={`p-1.5 rounded transition-colors ${darkMode ? 'text-blue-400 hover:bg-gray-700' : 'text-blue-600 hover:bg-blue-50'}`}
-                              title={t.viewDetails}
-                            >
-                              <Eye className="w-4 h-4" />
-                            </button>
-                            {onPrintReceipt && (
-                              <button
-                                onClick={() => onPrintReceipt(sale)}
-                                className={`p-1.5 rounded transition-colors ${darkMode ? 'text-gray-400 hover:bg-gray-700' : 'text-gray-600 hover:bg-gray-100'}`}
-                                title={t.printReceipt}
-                              >
-                                <Printer className="w-4 h-4" />
-                              </button>
-                            )}
-                          </div>
-                        </div>
-                      </div>
-                    </div>
-                  ))}
-                </div>
+                <DevExDataGrid
+                  data={filteredSales}
+                  columns={columns}
+                  initialSorting={[{ id: 'date', desc: true }]}
+                  enableSorting
+                  enableFiltering
+                  enablePagination
+                  enableColumnResizing
+                  enableColumnVisibility
+                  enableExcelExport
+                  enablePrint
+                  autoFooterSums={false}
+                  density="comfortable"
+                  pageSize={50}
+                  pageSizeOptions={[25, 50, 100, 200]}
+                  storageNamespace="posSalesHistory"
+                  height="100%"
+                  onRowDoubleClick={(sale) => setSelectedSale(sale)}
+                  excelFileName="pos_sales_history"
+                />
               )}
             </div>
 
