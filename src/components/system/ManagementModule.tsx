@@ -1869,7 +1869,7 @@ export function ManagementModule({
           onActivate={handleActivateTab}
           onClose={handleCloseTab}
         />
-        <div className="relative flex-1 min-h-0 overflow-hidden">
+        <div className={`relative flex-1 min-h-0 overflow-hidden isolate ${darkMode ? 'bg-gray-900' : 'bg-white'}`}>
           {(openTabs.length > 0 ? openTabs : [{ screenId: String(currentScreen), title: String(currentScreen) }]).map((tab) => {
             const isActive = tab.screenId === String(currentScreen);
             return (
@@ -1877,7 +1877,14 @@ export function ManagementModule({
                 key={tab.screenId}
                 role="tabpanel"
                 aria-hidden={!isActive}
-                className={`absolute inset-0 overflow-hidden ${isActive ? 'z-10' : 'z-0 invisible pointer-events-none'}`}
+                // display:none — keep-alive mount kalır; visibility:hidden çocuklarda sızıntı yapıyordu
+                className={`absolute inset-0 overflow-auto ${
+                  isActive
+                    ? darkMode
+                      ? 'z-10 block bg-gray-900'
+                      : 'z-10 block bg-white'
+                    : 'hidden'
+                }`}
               >
                 <Suspense fallback={
                   <div className="h-full flex items-center justify-center">
