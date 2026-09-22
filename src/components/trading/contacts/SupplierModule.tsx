@@ -39,7 +39,10 @@ import {
   getCariBalanceDirection,
   preferIntegerAmountDisplay,
   ficheTypeToInfo,
+  resolveEkstreDescription,
 } from '../../../utils/cariAccountStatement';
+import { formatExtractDate } from '../../../utils/materialExtractPrint';
+import { CariEkstrePrintModal } from './CariEkstrePrintModal';
 import {
   SUPPLIER_LIST_COLUMN_META,
   SUPPLIER_LIST_COLUMN_ORDER,
@@ -130,6 +133,7 @@ export function SupplierModule({ initialFilter = 'all' }: { initialFilter?: Cari
   const defaultEkstre = useMemo(() => defaultEkstreDateRange(), []);
   const [ekstresiStart, setEkstresiStart] = useState(defaultEkstre.start);
   const [ekstresiEnd, setEkstresiEnd] = useState(defaultEkstre.end);
+  const [showEkstrePrintModal, setShowEkstrePrintModal] = useState(false);
 
   // Form state artık SupplierEditModal içinde — parent sadece aç/sinyal.
 
@@ -1216,10 +1220,26 @@ export function SupplierModule({ initialFilter = 'all' }: { initialFilter?: Cari
                     {showReportingPrimary ? reportingCurrency : mainCurrency}
                   </button>
                 )}
-                <button type="button" onClick={() => window.print()} className="p-2 hover:bg-gray-200 rounded-lg border border-transparent hover:border-gray-300" title={tm('print')}><Printer className="w-4 h-4 text-gray-600" /></button>
                 <button
                   type="button"
-                  onClick={() => setSelectedAccount(null)}
+                  onClick={() => {
+                    if (ekstresiRows.length === 0) {
+                      toast.error(tm('extractPrintNeedRows'));
+                      return;
+                    }
+                    setShowEkstrePrintModal(true);
+                  }}
+                  className="p-2 hover:bg-gray-200 rounded-lg border border-transparent hover:border-gray-300"
+                  title={tm('print')}
+                >
+                  <Printer className="w-4 h-4 text-gray-600" />
+                </button>
+                <button
+                  type="button"
+                  onClick={() => {
+                    setShowEkstrePrintModal(false);
+                    setSelectedAccount(null);
+                  }}
                   className="flex items-center gap-1.5 px-3 py-2 bg-gray-900 hover:bg-gray-800 text-white text-xs font-bold rounded-lg"
                   title={tm('close')}
                 >
@@ -1274,7 +1294,7 @@ export function SupplierModule({ initialFilter = 'all' }: { initialFilter?: Cari
                     const rowBalDir = getCariBalanceDirection(selectedAccount?.cardType, row.balance, tm);
                     return (
                       <tr key={idx} className={`border-b border-gray-100 hover:bg-blue-50/40 ${idx % 2 ? 'bg-gray-50/50' : ''}`}>
-                        <td className="px-4 py-2 font-mono text-gray-600">{row.date ? String(row.date).split('T')[0] : '-'}</td>
+                        <td className="px-4 py-2 font-mono text-gray-600">{row.date ? formatExtractDate(String(row.date)) : '-'}</td>
                         <td className="px-4 py-2">
                           {row.fiche_no ? (
                             <button
@@ -1290,7 +1310,15 @@ export function SupplierModule({ initialFilter = 'all' }: { initialFilter?: Cari
                           )}
                         </td>
                         <td className="px-4 py-2"><span className={`px-2 py-0.5 rounded-full text-[10px] font-black uppercase ${color}`}>{label}</span></td>
-                        <td className="px-4 py-2 text-gray-700 max-w-md break-words align-top">{row.notes || ''}</td>
+                        <td className="px-4 py-2 text-gray-700 max-w-md break-words align-top">
+                          {resolveEkstreDescription(
+                            row.notes,
+                            row.fiche_type,
+                            Number(row.trcode) || 0,
+                            row.is_cancelled === true,
+                            tm,
+                          )}
+                        </td>
                         <td className="px-4 py-2 text-right font-bold text-red-600 whitespace-nowrap">
                           {borcD ? (
                             <div className="flex flex-col items-end">
@@ -1326,6 +1354,20 @@ export function SupplierModule({ initialFilter = 'all' }: { initialFilter?: Cari
               </table>
             )}
           </div>
+
+          {showEkstrePrintModal && selectedAccount ? (
+            <CariEkstrePrintModal
+              account={selectedAccount}
+              rows={ekstresiRows}
+              dateFrom={ekstresiStart}
+              dateTo={ekstresiEnd}
+              currency={mainCurrency}
+              totalDebit={totalBorc}
+              totalCredit={totalAlacak}
+              netBalance={netBalance}
+              onClose={() => setShowEkstrePrintModal(false)}
+            />
+          ) : null}
         </FullscreenBodyPortal>
       )}
 

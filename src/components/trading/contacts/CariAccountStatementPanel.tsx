@@ -21,6 +21,8 @@ import {
   resolveEkstreDescription,
   type EkstreRow,
 } from '../../../utils/cariAccountStatement';
+import { formatExtractDate } from '../../../utils/materialExtractPrint';
+import { CariEkstrePrintModal } from './CariEkstrePrintModal';
 
 export interface CariAccountStatementPanelProps {
   account: Supplier;
@@ -47,6 +49,7 @@ export function CariAccountStatementPanel({ account, onClose }: CariAccountState
   const [ekstresiLoading, setEkstresiLoading] = useState(false);
   const [ekstresiStart, setEkstresiStart] = useState(defaultEkstre.start);
   const [ekstresiEnd, setEkstresiEnd] = useState(defaultEkstre.end);
+  const [showPrintModal, setShowPrintModal] = useState(false);
 
   const mainDec = preferIntegerAmountDisplay(mainCurrency) ? 0 : 2;
   const mainShowDec = !preferIntegerAmountDisplay(mainCurrency);
@@ -256,7 +259,18 @@ export function CariAccountStatementPanel({ account, onClose }: CariAccountState
                 {showReportingPrimary ? reportingCurrency : mainCurrency}
               </button>
             ) : null}
-            <button type="button" onClick={() => window.print()} className="rounded-lg border border-transparent p-2 hover:border-gray-300 hover:bg-gray-200" title={tm('print')}>
+            <button
+              type="button"
+              onClick={() => {
+                if (ekstresiRows.length === 0) {
+                  toast.error(tm('extractPrintNeedRows'));
+                  return;
+                }
+                setShowPrintModal(true);
+              }}
+              className="rounded-lg border border-transparent p-2 hover:border-gray-300 hover:bg-gray-200"
+              title={tm('print')}
+            >
               <Printer className="h-4 w-4 text-gray-600" />
             </button>
             <button
@@ -316,7 +330,7 @@ export function CariAccountStatementPanel({ account, onClose }: CariAccountState
                 const rowBalDir = getCariBalanceDirection(account.cardType, row.balance, tm);
                 return (
                   <tr key={idx} className={`border-b border-gray-100 hover:bg-blue-50/40 ${idx % 2 ? 'bg-gray-50/50' : ''}`}>
-                    <td className="px-4 py-2 font-mono text-gray-600">{row.date ? String(row.date).split('T')[0] : '-'}</td>
+                    <td className="px-4 py-2 font-mono text-gray-600">{row.date ? formatExtractDate(String(row.date)) : '-'}</td>
                     <td className="px-4 py-2">
                       {row.fiche_no ? (
                         <button
@@ -382,6 +396,20 @@ export function CariAccountStatementPanel({ account, onClose }: CariAccountState
           </table>
         )}
       </div>
+
+      {showPrintModal ? (
+        <CariEkstrePrintModal
+          account={account}
+          rows={ekstresiRows}
+          dateFrom={ekstresiStart}
+          dateTo={ekstresiEnd}
+          currency={mainCurrency}
+          totalDebit={totalBorc}
+          totalCredit={totalAlacak}
+          netBalance={netBalance}
+          onClose={() => setShowPrintModal(false)}
+        />
+      ) : null}
     </FullscreenBodyPortal>
   );
 }

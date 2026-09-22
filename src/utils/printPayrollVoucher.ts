@@ -1,6 +1,7 @@
 import { ERP_SETTINGS, PostgresConnection } from '../services/postgres';
 import { getReceiptSettings } from '../services/receiptSettingsService';
 import { printReportHtml } from './reportHtmlPrint';
+import { receiptNotesForDisplay } from './receiptNotes';
 import type { PartyStatement, PartyStatementLine } from '../services/api/partyStatements';
 
 function esc(s: string): string {
@@ -136,40 +137,62 @@ export async function printPartyStatementDoc(opts: {
 }): Promise<void> {
   const firm = await firmHeader();
   const rows = opts.statement.rows || [];
+  const printedAt = `${fmtDate(new Date().toISOString().slice(0, 10))} ${new Date().toLocaleTimeString('tr-TR', { hour: '2-digit', minute: '2-digit' })}`;
   const body = rows.map((r: PartyStatementLine) => `
     <tr>
-      <td>${esc(fmtDate(r.date))}</td>
-      <td>${esc(r.fiche_no || '—')}</td>
+      <td class="mono">${esc(fmtDate(r.date))}</td>
+      <td class="mono">${esc(r.fiche_no || '—')}</td>
       <td>${esc(txLabel(r.transaction_type))}</td>
-      <td>${esc(r.definition || '')}</td>
-      <td class="num">${r.debit ? esc(fmtMoney(r.debit)) : ''}</td>
-      <td class="num">${r.credit ? esc(fmtMoney(r.credit)) : ''}</td>
-      <td class="num">${esc(fmtMoney(r.balance_after))}</td>
+      <td class="desc">${esc(receiptNotesForDisplay(r.definition) || '')}</td>
+      <td class="num debit">${r.debit ? esc(fmtMoney(r.debit)) : ''}</td>
+      <td class="num credit">${r.credit ? esc(fmtMoney(r.credit)) : ''}</td>
+      <td class="num bal">${esc(fmtMoney(r.balance_after))}</td>
     </tr>`).join('');
 
   const html = `<!DOCTYPE html>
-<html>
+<html lang="tr">
 <head>
   <meta charset="utf-8" />
   <title>${esc(opts.title)} — ${esc(opts.partyName)}</title>
   <style>
-    @page { size: A4 landscape; margin: 12mm; }
-    body { font-family: system-ui, -apple-system, sans-serif; color: #0f172a; margin: 0; font-size: 12px; }
-    h1 { font-size: 18px; margin: 0 0 2px; }
-    .muted { color: #64748b; font-size: 11px; }
-    table { width: 100%; border-collapse: collapse; margin-top: 12px; }
-    th, td { border-bottom: 1px solid #e2e8f0; padding: 6px 8px; text-align: left; }
-    th { font-size: 10px; text-transform: uppercase; letter-spacing: 0.04em; color: #475569; }
-    td.num, th.num { text-align: right; font-variant-numeric: tabular-nums; }
-    .sum { display: flex; gap: 16px; margin-top: 12px; font-weight: 700; }
+    @page { size: A4 landscape; margin: 12mm 10mm 14mm; }
+    * { box-sizing: border-box; }
+    body { font-family: "Segoe UI", Arial, Helvetica, sans-serif; color: #0f172a; margin: 0; font-size: 10.5px; }
+    .letterhead { display: flex; justify-content: space-between; gap: 16px; border-bottom: 2.5px solid #1e3a5f; padding-bottom: 10px; margin-bottom: 10px; }
+    .co-name { font-size: 17px; font-weight: 800; }
+    .muted { color: #64748b; font-size: 10px; line-height: 1.45; }
+    .title { text-align: center; font-size: 15px; font-weight: 800; text-transform: uppercase; letter-spacing: 0.12em; color: #1e3a5f; margin: 8px 0 12px; }
+    .party { background: #f8fafc; border: 1px solid #e2e8f0; border-radius: 4px; padding: 8px 12px; margin-bottom: 12px; }
+    table { width: 100%; border-collapse: collapse; }
+    th, td { border: 1px solid #cbd5e1; padding: 4px 6px; text-align: left; vertical-align: top; }
+    th { background: #1e3a5f; color: #fff; font-size: 8.5px; text-transform: uppercase; letter-spacing: 0.05em; }
+    td.num, th.num { text-align: right; font-variant-numeric: tabular-nums; white-space: nowrap; }
+    td.mono { font-family: ui-monospace, "Courier New", monospace; }
+    td.desc { word-break: break-word; }
+    td.debit { color: #b91c1c; font-weight: 600; }
+    td.credit { color: #047857; font-weight: 600; }
+    td.bal { font-weight: 700; }
+    tbody tr:nth-child(even) td { background: #f8fafc; }
+    .sum { display: flex; flex-wrap: wrap; gap: 16px; margin-top: 12px; font-weight: 700; font-size: 11px; }
+    .doc-footer { margin-top: 14px; padding-top: 8px; border-top: 1px solid #94a3b8; display: flex; justify-content: space-between; color: #64748b; font-size: 9px; }
+    @media print { html, body { -webkit-print-color-adjust: exact; print-color-adjust: exact; } thead { display: table-header-group; } }
   </style>
 </head>
 <body>
-  <h1>${esc(firm.name)}</h1>
-  <div class="muted">${esc(firm.address)}</div>
-  <h1 style="margin-top:12px">${esc(opts.title)}</h1>
-  <div class="muted">${esc(opts.partyName)}${opts.partyCode ? ` · ${esc(opts.partyCode)}` : ''} · ${esc(opts.cardTypeLabel)}</div>
-  <div class="muted">${esc(fmtDate(opts.start))} — ${esc(fmtDate(opts.end))}</div>
+  <div class="letterhead">
+    <div>
+      <div class="co-name">${esc(firm.name)}</div>
+      <div class="muted">${esc(firm.address)}${firm.phone ? `<br/>${esc(firm.phone)}` : ''}${firm.tax ? `<br/>${esc(firm.tax)}` : ''}</div>
+    </div>
+    <div class="muted" style="text-align:right">
+      ${esc(fmtDate(opts.start))} → ${esc(fmtDate(opts.end))}
+    </div>
+  </div>
+  <div class="title">${esc(opts.title)}</div>
+  <div class="party">
+    <strong>${esc(opts.partyName)}</strong>${opts.partyCode ? ` · ${esc(opts.partyCode)}` : ''}
+    <span class="muted"> · ${esc(opts.cardTypeLabel)}</span>
+  </div>
   <table>
     <thead>
       <tr>
@@ -183,6 +206,10 @@ export async function printPartyStatementDoc(opts: {
     <span>${esc(opts.openingLabel)}: ${esc(fmtMoney(opts.statement.opening_balance))}</span>
     <span>${esc(opts.closingLabel)}: ${esc(fmtMoney(opts.statement.closing_balance))}</span>
     <span>${esc(opts.cardBalanceLabel)}: ${esc(fmtMoney(opts.statement.card_balance))}</span>
+  </div>
+  <div class="doc-footer">
+    <span>Yazdırma tarihi: ${esc(printedAt)}</span>
+    <span>${esc(firm.name)}</span>
   </div>
 </body>
 </html>`;
