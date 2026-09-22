@@ -12,6 +12,7 @@ import {
   ColumnDef,
   SortingState,
   ColumnFiltersState,
+  ColumnSizingState,
   PaginationState,
   Column,
   FilterFn,
@@ -32,13 +33,18 @@ import {
   useSortable,
 } from '@dnd-kit/sortable';
 import { CSS } from '@dnd-kit/utilities';
-import { ChevronDown, ChevronUp, Filter, Download, Printer, Layers, GripVertical, BarChart3 } from 'lucide-react';
+import { ChevronDown, ChevronUp, Filter, Download, Printer, Layers, GripVertical, BarChart3, RefreshCw } from 'lucide-react';
 import { useResponsive } from '../../hooks/useResponsive';
 import { useLanguage } from '../../contexts/LanguageContext';
 import { useTheme } from '../../contexts/ThemeContext';
 import { ColumnVisibilityMenu } from './ColumnVisibilityMenu';
 import { DevExGroupPivotChartModal } from './DevExGroupPivotChartModal';
 import { exportDataGridToExcel, printDataGridHtml } from '../../utils/gridExcelExport';
+import {
+  isDatagridRefreshing,
+  requestDatagridRefresh,
+  subscribeDatagridRefreshing,
+} from '../../utils/datagridRefreshBus';
 import { ActiveFiltersBar, filterOperatorI18nKey, type ActiveFilterChip } from './ActiveFiltersBar';
 import { GRID_POPOVER_Z } from './FullscreenBodyPortal';
 import { resolveReportDateRange, type ReportDatePreset } from '../../utils/reportDatePresets';
@@ -196,6 +202,68 @@ export function saveColumnOrderToStorage(storageKey: string, order: string[]): v
   }
 }
 
+/**
+ * Sıra key’inden genişlik key’i: `…_columnOrder_v1` / `retailex_colOrder_v1_…`
+ * → `…_columnSizing_v1` / `retailex_colSize_v1_…`
+ */
+export function toColumnSizingStorageKey(orderOrVisibilityKey: string): string {
+  const k = String(orderOrVisibilityKey || '');
+  if (k.includes('_columnOrder_')) {
+    return k.replace('_columnOrder_', '_columnSizing_');
+  }
+  if (k.includes('_columnVisibility_')) {
+    return k.replace('_columnVisibility_', '_columnSizing_');
+  }
+  if (k.includes('retailex_colOrder_v1_')) {
+    return k.replace('retailex_colOrder_v1_', 'retailex_colSize_v1_');
+  }
+  return `${k}_columnSizing`;
+}
+
+export function buildAutoColumnSizingStorageKey(
+  storageNamespace: string | undefined,
+  columnIds: string[],
+  pathname?: string,
+): string {
+  return toColumnSizingStorageKey(
+    buildAutoColumnOrderStorageKey(storageNamespace, columnIds, pathname),
+  );
+}
+
+export function loadColumnSizingFromStorage(storageKey: string): ColumnSizingState | null {
+  if (typeof window === 'undefined' || !storageKey) return null;
+  try {
+    const raw = localStorage.getItem(storageKey);
+    if (!raw) return null;
+    const parsed = JSON.parse(raw) as unknown;
+    if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) return null;
+    const out: ColumnSizingState = {};
+    for (const [id, size] of Object.entries(parsed as Record<string, unknown>)) {
+      const n = Number(size);
+      if (!id || PINNED_COLUMN_IDS.has(id) || !Number.isFinite(n) || n < 24) continue;
+      out[id] = Math.round(n);
+    }
+    return Object.keys(out).length > 0 ? out : null;
+  } catch {
+    return null;
+  }
+}
+
+export function saveColumnSizingToStorage(storageKey: string, sizing: ColumnSizingState): void {
+  if (typeof window === 'undefined' || !storageKey) return;
+  try {
+    const persistable: ColumnSizingState = {};
+    for (const [id, size] of Object.entries(sizing)) {
+      const n = Number(size);
+      if (!id || PINNED_COLUMN_IDS.has(id) || !Number.isFinite(n) || n < 24) continue;
+      persistable[id] = Math.round(n);
+    }
+    localStorage.setItem(storageKey, JSON.stringify(persistable));
+  } catch {
+    /* quota / private mode */
+  }
+}
+
 function resolveInitialColumnOrder(opts: {
   columnOrderProp?: string[];
   columnOrderStorageKey?: string;
@@ -275,6 +343,11 @@ export interface DevExDataGridProps<T> {
    */
   columnOrderStorageKey?: string;
   /**
+   * Kolon genişliği localStorage anahtarı.
+   * Verilmezse `toColumnSizingStorageKey(columnOrderStorageKey | otomatik sıra key)`.
+   */
+  columnSizingStorageKey?: string;
+  /**
    * Otomatik persist anahtarı için sabit ad alanı (aynı path’te birden fazla grid).
    * Örn. `materialExtract`, `customerList`. Verilmezse `location.pathname` kullanılır.
    */
@@ -298,6 +371,16 @@ export interface DevExDataGridProps<T> {
   /** Verilirse yerleşik tablo yazdırma yerine bu çağrılır */
   onPrint?: () => void;
   printDisabled?: boolean;
+  /**
+   * Tablo toolbar «Yenile» — veri yeniden yükleme.
+   * Verilmezse `requestDatagridRefresh()` (sayfanın kayıtlı load handler’ları) çalışır.
+   * `enableRefresh={false}` ile gizlenir.
+   */
+  onRefresh?: () => void | Promise<void>;
+  /** Yenileme sırasında spin / disable */
+  refreshing?: boolean;
+  /** Varsayılan: true — tüm tablolarda yenile butonu */
+  enableRefresh?: boolean;
   /**
    * Sayısal kolonlarda otomatik dip toplam (miktar/tutar).
    * Birim fiyat ve yüzde toplanmaz. Varsayılan: açık.
@@ -1790,6 +1873,7 @@ function withCompactNumericColumnSizing<T>(cols: ColumnDef<T, any>[]): ColumnDef
 type SortableHeaderThProps<T> = {
   header: Header<T, unknown>;
   enableReorder: boolean;
+  enableResize: boolean;
   headerClassName: string;
   headerStyle: CSSProperties;
   darkMode: boolean;
@@ -1800,6 +1884,7 @@ type SortableHeaderThProps<T> = {
   filterTitle: string;
   groupByTitle: string;
   groupClearTitle: string;
+  resizeTitle: string;
   onContextMenu: (e: ReactMouseEvent) => void;
   onGroupToggle: (columnId: string) => void;
   onOpenFilter: (headerId: string, anchorEl: HTMLElement, column: Column<T, unknown>) => void;
@@ -1808,6 +1893,7 @@ type SortableHeaderThProps<T> = {
 function SortableHeaderTh<T>({
   header,
   enableReorder,
+  enableResize,
   headerClassName,
   headerStyle,
   darkMode,
@@ -1818,12 +1904,14 @@ function SortableHeaderTh<T>({
   filterTitle,
   groupByTitle,
   groupClearTitle,
+  resizeTitle,
   onContextMenu,
   onGroupToggle,
   onOpenFilter,
 }: SortableHeaderThProps<T>) {
   const columnId = header.column.id;
   const canReorder = enableReorder && isColumnReorderable(columnId);
+  const canResize = enableResize && header.column.getCanResize();
   const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({
     id: columnId,
     disabled: !canReorder,
@@ -1845,7 +1933,7 @@ function SortableHeaderTh<T>({
       style={style}
       onContextMenu={onContextMenu}
     >
-      <div className="flex items-center gap-1">
+      <div className="flex items-center gap-1 pr-1">
         <div
           className={`flex items-center gap-1 flex-1 min-w-0 select-none ${
             canReorder ? 'cursor-grab active:cursor-grabbing' : 'cursor-pointer'
@@ -1911,6 +1999,29 @@ function SortableHeaderTh<T>({
           </button>
         )}
       </div>
+      {canResize ? (
+        <div
+          role="separator"
+          aria-orientation="vertical"
+          aria-label={resizeTitle}
+          title={`${resizeTitle} — çift tık: varsayılan`}
+          onMouseDown={header.getResizeHandler()}
+          onTouchStart={header.getResizeHandler()}
+          onClick={(e) => e.stopPropagation()}
+          onDoubleClick={(e) => {
+            e.stopPropagation();
+            e.preventDefault();
+            header.column.resetSize();
+          }}
+          className={`absolute right-0 top-0 h-full w-1.5 cursor-col-resize select-none touch-none z-[3] ${
+            header.column.getIsResizing()
+              ? 'bg-blue-500/70'
+              : darkMode
+                ? 'hover:bg-blue-400/50 bg-transparent'
+                : 'hover:bg-blue-500/40 bg-transparent'
+          }`}
+        />
+      ) : null}
     </th>
   );
 }
@@ -1932,6 +2043,7 @@ export function DevExDataGrid<T>({
   columnOrder: columnOrderProp,
   onColumnOrderChange,
   columnOrderStorageKey,
+  columnSizingStorageKey,
   storageNamespace,
   pageSize = 20,
   onRowClick,
@@ -1948,6 +2060,9 @@ export function DevExDataGrid<T>({
   printTitle,
   onPrint,
   printDisabled,
+  onRefresh,
+  refreshing: refreshingProp,
+  enableRefresh = true,
   autoFooterSums = true,
   footerSumColumns,
   footerLabel,
@@ -1979,6 +2094,9 @@ export function DevExDataGrid<T>({
     }),
   );
   const columnOrderLoadedKeyRef = useRef<string | null>(null);
+  const [columnSizing, setColumnSizing] = useState<ColumnSizingState>({});
+  const columnSizingLoadedKeyRef = useRef<string | null>(null);
+  const columnSizingSaveTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const [openFilterColumn, setOpenFilterColumn] = useState<string | null>(null);
   const [filterMenuAnchor, setFilterMenuAnchor] = useState<{ top: number; left: number } | null>(null);
   const [internalGroupByColumnId, setInternalGroupByColumnId] = useState<string | null>(
@@ -2108,6 +2226,22 @@ export function DevExDataGrid<T>({
     propColumnIdsFingerprint,
   ]);
 
+  /** Genişlik LS anahtarı — sıra key’inden veya namespace’ten türetilir. */
+  const resolvedColumnSizingStorageKey = useMemo(() => {
+    if (!enableColumnResizing) return undefined;
+    if (columnSizingStorageKey) return columnSizingStorageKey;
+    if (columnOrderStorageKey) return toColumnSizingStorageKey(columnOrderStorageKey);
+    if (typeof window === 'undefined') return undefined;
+    if (propColumnIdsFingerprint.length === 0) return undefined;
+    return buildAutoColumnSizingStorageKey(storageNamespace, propColumnIdsFingerprint);
+  }, [
+    enableColumnResizing,
+    columnSizingStorageKey,
+    columnOrderStorageKey,
+    storageNamespace,
+    propColumnIdsFingerprint,
+  ]);
+
   /** Kolonlar geç gelirse / key değişirse kayıtlı sırayı yükle; şema değişiminde mevcut sırayı yeni key’e taşı. */
   useEffect(() => {
     if (columnOrderProp != null) return;
@@ -2129,6 +2263,59 @@ export function DevExDataGrid<T>({
       });
     }
   }, [resolvedColumnOrderStorageKey, columnOrderProp]);
+
+  /** Kayıtlı kolon genişliklerini yükle */
+  useEffect(() => {
+    if (!resolvedColumnSizingStorageKey) return;
+    if (columnSizingLoadedKeyRef.current === resolvedColumnSizingStorageKey) return;
+    const prevKey = columnSizingLoadedKeyRef.current;
+    columnSizingLoadedKeyRef.current = resolvedColumnSizingStorageKey;
+    const stored = loadColumnSizingFromStorage(resolvedColumnSizingStorageKey);
+    if (stored) {
+      setColumnSizing(stored);
+      return;
+    }
+    if (prevKey) {
+      setColumnSizing((current) => {
+        if (Object.keys(current).length > 0) {
+          saveColumnSizingToStorage(resolvedColumnSizingStorageKey, current);
+        }
+        return current;
+      });
+    }
+  }, [resolvedColumnSizingStorageKey]);
+
+  useEffect(() => {
+    return () => {
+      if (columnSizingSaveTimerRef.current) {
+        clearTimeout(columnSizingSaveTimerRef.current);
+      }
+    };
+  }, []);
+
+  const persistColumnSizing = useCallback(
+    (next: ColumnSizingState) => {
+      if (!resolvedColumnSizingStorageKey) return;
+      if (columnSizingSaveTimerRef.current) {
+        clearTimeout(columnSizingSaveTimerRef.current);
+      }
+      columnSizingSaveTimerRef.current = setTimeout(() => {
+        saveColumnSizingToStorage(resolvedColumnSizingStorageKey, next);
+      }, 200);
+    },
+    [resolvedColumnSizingStorageKey],
+  );
+
+  const handleColumnSizingChange = useCallback(
+    (updater: ColumnSizingState | ((old: ColumnSizingState) => ColumnSizingState)) => {
+      setColumnSizing((prev) => {
+        const next = typeof updater === 'function' ? updater(prev) : updater;
+        persistColumnSizing(next);
+        return next;
+      });
+    },
+    [persistColumnSizing],
+  );
 
   const resolvedPageSizeOptions = useMemo(() => {
     const total = data.length;
@@ -2296,6 +2483,29 @@ export function DevExDataGrid<T>({
   }, [resolvedGroupByColumnId, codedColumns]);
 
   const printEnabled = enablePrint ?? (onPrint != null || enableExcelExport);
+  const [busRefreshing, setBusRefreshing] = useState(() => isDatagridRefreshing());
+  useEffect(() => subscribeDatagridRefreshing(setBusRefreshing), []);
+  const isRefreshing = Boolean(refreshingProp) || busRefreshing;
+
+  const handleToolbarRefresh = useCallback(async () => {
+    if (isRefreshing) return;
+    try {
+      if (onRefresh) {
+        await Promise.resolve(onRefresh());
+      } else {
+        await requestDatagridRefresh();
+      }
+    } catch (err) {
+      console.warn('[DevExDataGrid] refresh failed', err);
+    }
+  }, [isRefreshing, onRefresh]);
+
+  const showGridToolbar =
+    enableRefresh ||
+    (enableColumnVisibility && showColumnVisibilityToolbar) ||
+    enableExcelExport ||
+    printEnabled ||
+    Boolean(resolvedGroupByColumnId);
 
   const footerSumFormats = useMemo(() => {
     const map = new Map<string, (sum: number, rows: T[]) => ReactNode>();
@@ -2381,6 +2591,10 @@ export function DevExDataGrid<T>({
         </div>
       ),
       size: 40,
+      minSize: 40,
+      maxSize: 48,
+      enableResizing: false,
+      enableSorting: false,
     };
 
     return [selectionColumn, ...groupingDecoratedColumns];
@@ -2444,6 +2658,7 @@ export function DevExDataGrid<T>({
       rowSelection,
       columnVisibility: resolvedColumnVisibility,
       columnOrder: resolvedColumnOrder,
+      columnSizing,
       pagination,
     },
     onSortingChange: setSorting,
@@ -2455,7 +2670,10 @@ export function DevExDataGrid<T>({
         typeof updater === 'function' ? updater(resolvedColumnOrder) : updater;
       applyColumnOrder(next);
     },
+    onColumnSizingChange: handleColumnSizingChange,
     onPaginationChange: setPagination,
+    columnResizeMode: 'onChange',
+    enableColumnResizing,
     getCoreRowModel: getCoreRowModel(),
     getSortedRowModel: getSortedRowModel(),
     getFilteredRowModel: getFilteredRowModel(),
@@ -2477,6 +2695,9 @@ export function DevExDataGrid<T>({
     defaultColumn: {
       filterFn: 'gridColumnFilter',
       enableColumnFilter: enableFiltering,
+      enableResizing: enableColumnResizing,
+      minSize: 48,
+      maxSize: 720,
     },
   });
 
@@ -2592,6 +2813,20 @@ export function DevExDataGrid<T>({
   if (isMobile) {
     return (
       <div className={`flex flex-col h-full ${darkMode ? 'bg-gray-900' : 'bg-gray-50'}`}>
+        {enableRefresh && (
+          <div className={`shrink-0 flex justify-end px-3 py-2 border-b ${darkMode ? 'border-gray-700 bg-gray-800' : 'border-gray-200 bg-white'}`}>
+            <button
+              type="button"
+              onClick={() => void handleToolbarRefresh()}
+              disabled={isRefreshing}
+              className="inline-flex items-center gap-1.5 px-3 py-2 text-xs font-semibold rounded-lg border border-slate-300 bg-white text-slate-800 disabled:opacity-40 min-h-[40px]"
+              title={tm('filterRefresh') || 'Yenile'}
+            >
+              <RefreshCw className={`w-3.5 h-3.5 ${isRefreshing ? 'animate-spin' : ''}`} />
+              {tm('filterRefresh') || 'Yenile'}
+            </button>
+          </div>
+        )}
         {enableFiltering && activeFilterChips.length > 0 && (
           <div className={`shrink-0 px-3 py-2 border-b ${darkMode ? 'border-gray-700 bg-gray-800' : 'border-gray-200 bg-white'}`}>
             {renderActiveFilterChips()}
@@ -2713,8 +2948,20 @@ export function DevExDataGrid<T>({
           : undefined
       }
     >
-      {((enableColumnVisibility && showColumnVisibilityToolbar) || enableExcelExport || printEnabled || Boolean(resolvedGroupByColumnId)) && (
+      {showGridToolbar && (
         <div className="flex items-center justify-end gap-1.5 px-3 py-1.5 bg-gray-50 border border-gray-300 border-b-0 shrink-0">
+          {enableRefresh && (
+            <button
+              type="button"
+              onClick={() => void handleToolbarRefresh()}
+              disabled={isRefreshing}
+              className="inline-flex items-center gap-1 px-2 py-1 text-[10px] font-medium text-slate-800 bg-white border border-slate-300 rounded hover:bg-slate-100 disabled:opacity-40"
+              title={tm('filterRefresh') || 'Yenile'}
+            >
+              <RefreshCw className={`w-3 h-3 ${isRefreshing ? 'animate-spin' : ''}`} />
+              {tm('filterRefresh') || 'Yenile'}
+            </button>
+          )}
           {resolvedGroupByColumnId && (
             <button
               type="button"
@@ -2832,6 +3079,7 @@ export function DevExDataGrid<T>({
                     key={header.id}
                     header={header}
                     enableReorder={columnReorderEnabled}
+                    enableResize={enableColumnResizing}
                     headerClassName={`px-2 py-1 text-left border-r last:border-r-0 relative box-border ${headerBg} ${darkMode ? 'text-gray-100 border-gray-600' : 'text-gray-800 border-gray-300'} ${density === 'comfortable' ? 'text-xs font-semibold py-1.5' : 'text-[10px] font-medium'}`}
                     headerStyle={gridColumnWidthStyle(header.getSize())}
                     darkMode={darkMode}
@@ -2842,6 +3090,7 @@ export function DevExDataGrid<T>({
                     filterTitle={tm('filterType')}
                     groupByTitle={tm('gridGroupByThisColumn') || 'Bu kolona göre grupla'}
                     groupClearTitle={tm('gridGroupClear') || 'Gruplamayı kaldır'}
+                    resizeTitle={tm('gridResizeColumn') || 'Kolon genişliğini ayarla'}
                     onContextMenu={(e) => {
                       if (!groupingEnabled) return;
                       if (header.id === 'select' || header.id === 'actions') return;

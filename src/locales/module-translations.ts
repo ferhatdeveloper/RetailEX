@@ -11662,6 +11662,14 @@ export const excelModuleTranslations = {
 
   // Fatura listesi — Excel'e Aktar modalı (gruplama tercihi)
   exportExcel: { tr: 'Excel', en: 'Excel', ar: 'إكسل', ku: 'ئێکسڵ' },
+  filterRefresh: { tr: 'Yenile', en: 'Refresh', ar: 'تحديث', ku: 'نوێکردنەوە' },
+  filterLoading: { tr: 'Yükleniyor...', en: 'Loading...', ar: 'جار التحميل...', ku: 'بارکردن...' },
+  gridResizeColumn: {
+    tr: 'Kolon genişliğini ayarla',
+    en: 'Resize column',
+    ar: 'تغيير عرض العمود',
+    ku: 'پانیی ستون بگۆڕە',
+  },
   invoiceExcelExportTitle: {
     tr: 'Excel\'e Aktar',
     en: 'Export to Excel',
@@ -13118,6 +13126,7 @@ export const excelModuleTranslations = {
   pohRecentMovements: { tr: 'Son Hareketler', en: 'Recent movements', ar: 'آخر الحركات', ku: 'دوایین جووڵەکان' },
   pohNoMovementsYet: { tr: 'Henüz hareket yok', en: 'No movements yet', ar: 'لا حركات بعد', ku: 'هێشتا جووڵە نییە' },
   pohNoMovements: { tr: 'Hareket bulunamadı', en: 'No movements found', ar: 'لا توجد حركات', ku: 'جووڵە نەدۆزرایەوە' },
+  pohMovNet: { tr: 'Net', en: 'Net', ar: 'صافي', ku: 'خالص' },
 };
 
 Object.assign(moduleTranslations, rbacUiTranslations);

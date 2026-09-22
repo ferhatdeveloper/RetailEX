@@ -1122,6 +1122,8 @@ export function SupplierModule({ initialFilter = 'all' }: { initialFilter?: Cari
               columnVisibility={columnVisibility}
               onColumnVisibilityChange={setColumnVisibility}
               columnOrderStorageKey={SUPPLIER_LIST_COLUMN_ORDER_KEY}
+              onRefresh={() => void loadSuppliers()}
+              refreshing={loading}
               onSelectionChange={(rows) => {
                 if (rows.length > 2) {
                   toast.error('Birleştirme için en fazla 2 cari işaretleyin');

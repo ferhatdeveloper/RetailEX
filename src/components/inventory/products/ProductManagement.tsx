@@ -946,6 +946,7 @@ export function ProductManagement({ products, setProducts }: ProductManagementPr
               columnVisibility={columnVisibility}
               onColumnVisibilityChange={setColumnVisibility}
               columnOrderStorageKey={PRODUCT_COLUMN_ORDER_KEY}
+              onRefresh={() => loadProducts(true)}
               onRowContextMenu={(e, product) => {
                 e.preventDefault();
                 setContextMenu({ x: e.clientX, y: e.clientY, product });

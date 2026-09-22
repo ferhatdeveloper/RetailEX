@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useMemo } from 'react';
+import React, { useState, useEffect, useMemo, useCallback } from 'react';
 import { productAPI } from '../../../services/api/products';
 import type { Product } from '../../../core/types';
 import { DevExDataGrid } from '../../shared/DevExDataGrid';
@@ -7,6 +7,7 @@ import { createColumnHelper, ColumnDef } from '@tanstack/react-table';
 import { Banknote } from 'lucide-react';
 import { useLanguage } from '../../../contexts/LanguageContext';
 import { useFirmaDonem } from '../../../contexts/FirmaDonemContext';
+import { useRegisterDatagridRefresh } from '../../../hooks/useRegisterDatagridRefresh';
 import { formatNumber } from '../../../utils/formatNumber';
 import { formatLedgerAmount, getFirmLedgerCurrency, getGlobalCurrency } from '../../../utils/currency';
 import { getAppDefaultCurrency } from '../../../services/postgres';
@@ -39,37 +40,35 @@ export function MaterialValueReport() {
         getAppDefaultCurrency() || getGlobalCurrency(),
     );
 
-    useEffect(() => {
-        let cancelled = false;
-        async function loadData() {
-            setLoading(true);
-            try {
-                const data = await productAPI.getAllForReports({ firmNr: selectedFirm?.firm_nr });
-                if (cancelled) return;
-                setProducts(data);
-                const { fetchWeightedAverageUnitCosts } = await import(
-                    '../../../services/weightedAverageUnitCost'
-                );
-                const maps = await fetchWeightedAverageUnitCosts({
-                    firmNr: selectedFirm?.firm_nr,
-                    periodNr: selectedPeriod?.nr,
-                }).catch((err) => {
-                    console.error('[MaterialValueReport] weighted avg failed', err);
-                    return { byProductId: new Map<string, number>(), byCode: new Map<string, number>() };
-                });
-                if (!cancelled) {
-                    setAvgByProduct(maps.byProductId);
-                    setAvgByCode(maps.byCode);
-                }
-            } catch (err) {
-                console.error('[MaterialValueReport] load failed', err);
-            } finally {
-                if (!cancelled) setLoading(false);
-            }
+    const loadData = useCallback(async () => {
+        setLoading(true);
+        try {
+            const data = await productAPI.getAllForReports({ firmNr: selectedFirm?.firm_nr });
+            setProducts(data);
+            const { fetchWeightedAverageUnitCosts } = await import(
+                '../../../services/weightedAverageUnitCost'
+            );
+            const maps = await fetchWeightedAverageUnitCosts({
+                firmNr: selectedFirm?.firm_nr,
+                periodNr: selectedPeriod?.nr,
+            }).catch((err) => {
+                console.error('[MaterialValueReport] weighted avg failed', err);
+                return { byProductId: new Map<string, number>(), byCode: new Map<string, number>() };
+            });
+            setAvgByProduct(maps.byProductId);
+            setAvgByCode(maps.byCode);
+        } catch (err) {
+            console.error('[MaterialValueReport] load failed', err);
+        } finally {
+            setLoading(false);
         }
-        loadData();
-        return () => { cancelled = true; };
     }, [selectedFirm?.firm_nr, selectedPeriod?.nr]);
+
+    useRegisterDatagridRefresh(loadData);
+
+    useEffect(() => {
+        void loadData();
+    }, [loadData]);
 
     const rows = useMemo<ValuationRow[]>(() => {
         return products

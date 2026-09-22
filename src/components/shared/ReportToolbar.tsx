@@ -20,6 +20,7 @@ import { Select, Switch } from 'antd';
 import { RefreshCw, RotateCcw, Search } from 'lucide-react';
 import { useLanguage } from '../../contexts/LanguageContext';
 import { useTheme } from '../../contexts/ThemeContext';
+import { useRegisterDatagridRefresh } from '../../hooks/useRegisterDatagridRefresh';
 import { cn } from '../ui/utils';
 import { ReportDateRangePresets, ReportYmdDatePicker } from './ReportDateRangePresets';
 import {
@@ -278,6 +279,7 @@ export function ReportToolbar({
 }: ReportToolbarProps) {
   const { tm } = useLanguage();
   const { darkMode } = useTheme();
+  useRegisterDatagridRefresh(onRefresh);
 
   // dateRange alanları için default üretimde ReportDateRangeValue gerekir;
   // state boş string ise default month ver.

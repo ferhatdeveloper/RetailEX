@@ -17,6 +17,7 @@ import { InputNumber, Select } from 'antd';
 import { useLanguage } from '../../contexts/LanguageContext';
 import { useTheme } from '../../contexts/ThemeContext';
 import { useFirmaDonem } from '../../contexts/FirmaDonemContext';
+import { useRegisterDatagridRefresh } from '../../hooks/useRegisterDatagridRefresh';
 import { formatNumber } from '../../utils/formatNumber';
 import { getReportingCurrency } from '../../utils/currency';
 import {
@@ -81,6 +82,7 @@ function ReportShell({
 }) {
   const { darkMode } = useTheme();
   const { tm } = useLanguage();
+  useRegisterDatagridRefresh(onRefresh);
   const panel = darkMode ? 'bg-gray-800 border-gray-700 text-gray-100' : 'bg-white border-gray-200 text-gray-900';
   const muted = darkMode ? 'text-gray-400' : 'text-gray-500';
 

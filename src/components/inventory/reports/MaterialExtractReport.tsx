@@ -45,6 +45,7 @@ import {
 } from '../../../services/unifiedPrintQueueService';
 import { printReportHtml, shouldPreviewReportPrint } from '../../../utils/reportHtmlPrint';
 import { useResponsive } from '../../../hooks/useResponsive';
+import { useRegisterDatagridRefresh } from '../../../hooks/useRegisterDatagridRefresh';
 import {
     MATERIAL_EXTRACT_BUILTIN_ID,
     MATERIAL_EXTRACT_PRINT_SCOPE,
@@ -345,6 +346,8 @@ export function MaterialExtractReport() {
             setLoading(false);
         }
     };
+
+    useRegisterDatagridRefresh(loadReport);
 
     // Tek malzeme seçiliyken ürün/tarih değişince otomatik yükle (tümü için yalnızca buton)
     useEffect(() => {

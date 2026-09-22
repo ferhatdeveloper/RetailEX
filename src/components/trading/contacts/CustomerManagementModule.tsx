@@ -704,6 +704,10 @@ export function CustomerManagementModule({ customers, setCustomers, sales }: Cus
             enableFiltering
             enableColumnResizing={true}
             storageNamespace="customerManagementList"
+            onRefresh={async () => {
+              await useCustomerStore.getState().loadCustomers();
+              setCustomers(useCustomerStore.getState().customers);
+            }}
             onRowContextMenu={handleRowRightClick}
             onRowDoubleClick={handleViewDetails}
           />

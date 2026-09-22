@@ -1,12 +1,13 @@
 /**
  * ERP çekirdek raporları — cari yaşlandırma, cari özet, kasa/banka, alış özeti, vade/tahsilat.
  */
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { Loader2, RefreshCw } from 'lucide-react';
 import { toast } from 'sonner';
 import { useLanguage } from '../../contexts/LanguageContext';
 import { useTheme } from '../../contexts/ThemeContext';
 import { useFirmaDonem } from '../../contexts/FirmaDonemContext';
+import { useRegisterDatagridRefresh } from '../../hooks/useRegisterDatagridRefresh';
 import { formatNumber } from '../../utils/formatNumber';
 import { looksLikeUuid } from '../../utils/pgUuid';
 import { getGlobalCurrency, getFirmLedgerCurrency, formatLedgerAmount, getCurrencyDecimalPlaces } from '../../utils/currency';
@@ -93,11 +94,13 @@ function ReportShell({
 }) {
   const { darkMode } = useTheme();
   const { tm } = useLanguage();
+  const rootRef = useRef<HTMLDivElement>(null);
+  useRegisterDatagridRefresh(onRefresh, rootRef);
   const panel = darkMode ? 'bg-gray-800 border-gray-700 text-gray-100' : 'bg-white border-gray-200 text-gray-900';
   const muted = darkMode ? 'text-gray-400' : 'text-gray-500';
 
   return (
-    <div className="space-y-4">
+    <div ref={rootRef} className="space-y-4">
       <div className={`rounded-lg border p-4 ${panel}`}>
         <div className="flex flex-wrap items-start justify-between gap-3">
           <div>

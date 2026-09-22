@@ -1537,6 +1537,7 @@ export function InvoiceListModule({
               enablePagination={false}
               enableSelection={defaultCategory === 'Alis' && !isMobile}
               enableExcelExport={false}
+              onRefresh={() => void loadInvoices()}
               onSelectionChange={(rows) => setBulkSelectedInvoices(rows as ListInvoice[])}
               onRowDoubleClick={(invoice) => handleEditInvoice(invoice)}
               onRowContextMenu={handleRowRightClick}
