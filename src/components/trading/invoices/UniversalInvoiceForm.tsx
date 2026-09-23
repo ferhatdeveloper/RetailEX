@@ -4481,6 +4481,34 @@ export function UniversalInvoiceForm({
                   setCustomerCode={setCustomerCode}
                   supplierTitle={supplierTitle}
                   customerTitle={customerTitle}
+                  setCustomerTitle={setCustomerTitle}
+                  setSupplierTitle={setSupplierTitle}
+                  cariItems={(isInvoicePurchaseSide(invoiceType) ? suppliers : customers).map((c: any) => ({
+                    id: String(c.id),
+                    code: c.code,
+                    name: c.name,
+                    phone: c.phone,
+                    email: c.email,
+                  }))}
+                  onSelectCari={(item) => {
+                    if (isInvoicePurchaseSide(invoiceType)) {
+                      setSupplierId(item.id);
+                      setSupplierCode(item.code || '');
+                      setSupplierTitle(item.name);
+                      const found = suppliers.find((s) => String(s.id) === String(item.id));
+                      setSelectedCariBalance(found ? Number((found as any).balance ?? 0) : 0);
+                      setSelectedCariPhone(String(item.phone || (found as any)?.phone || '').trim() || null);
+                    } else {
+                      setCustomerId(item.id);
+                      setCustomerCode(item.code || '');
+                      setCustomerTitle(item.name);
+                      const found = customers.find((c) => String(c.id) === String(item.id));
+                      setSelectedCariBalance(found ? Number(found.balance ?? 0) : 0);
+                      setSelectedCariPhone(
+                        String(item.phone || (found as any)?.phone || (found as any)?.phone2 || '').trim() || null,
+                      );
+                    }
+                  }}
 
                   paymentMethod={paymentMethod}
                   paymentMethodLabel={paymentMethodLabel}

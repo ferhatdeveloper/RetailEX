@@ -1,9 +1,10 @@
 
-import React from 'react';
+import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { MoreVertical, Barcode, History, ChevronDown, ChevronRight } from 'lucide-react';
 import { useLanguage } from '../../../contexts/LanguageContext';
 import { isInvoicePurchaseSide } from '../../../utils/invoiceLineType';
 import { CodeFormatFieldButton } from '../../shared/CodeFormatFieldButton';
+import type { InvoiceCariItem } from './InvoiceCariSelectModal';
 
 interface InvoiceType {
     code: number;
@@ -42,6 +43,11 @@ interface InvoiceHeaderProps {
     setCustomerCode: (val: string) => void;
     supplierTitle: string;
     customerTitle: string;
+    setCustomerTitle?: (val: string) => void;
+    setSupplierTitle?: (val: string) => void;
+    /** Yazarak cari seçmek için öneri listesi */
+    cariItems?: InvoiceCariItem[];
+    onSelectCari?: (item: InvoiceCariItem) => void;
 
     paymentMethod: string;
     /** Gösterim etiketi (çevrilmiş); yoksa paymentMethod ham değeri kullanılır */
@@ -123,6 +129,10 @@ export const InvoiceHeader: React.FC<InvoiceHeaderProps> = ({
     setCustomerCode,
     supplierTitle,
     customerTitle,
+    setCustomerTitle,
+    setSupplierTitle,
+    cariItems = [],
+    onSelectCari,
     paymentMethod,
     paymentMethodLabel,
     cashRegisters = [],
@@ -186,16 +196,17 @@ export const InvoiceHeader: React.FC<InvoiceHeaderProps> = ({
         (resolvedPaymentCode === 'ACIK_CARI' ? tm('paymentOpenAccount') : paymentMethod);
 
     /**
-     * Collapsed: sola yaslı 3 satır × 2 kolon (minimal, etiket+input+buton bitişik).
+     * Collapsed: 3 satır × 2 kolon + açıklama altta hizalı.
      * 1: Fatura No | Cari hesap kodu
      * 2: Tarih | Cari hesap unvanı
-     * 3: Belge No | Açıklama
+     * 3: Belge No | Ödeme şekli
+     * 4: Açıklama (tam genişlik)
      */
     const compactStackStyle: React.CSSProperties = {
         display: 'flex',
         flexDirection: 'column',
         gap: '0.35rem',
-        width: 'min(100%, 42rem)',
+        width: 'min(100%, 44rem)',
         maxWidth: '100%',
         boxSizing: 'border-box',
     };
@@ -204,27 +215,30 @@ export const InvoiceHeader: React.FC<InvoiceHeaderProps> = ({
         gridTemplateColumns: '1fr 1fr',
         gap: '0.5rem',
         width: '100%',
+        alignItems: 'stretch',
         boxSizing: 'border-box',
     };
     const compactCellStyle: React.CSSProperties = {
         minWidth: 0,
         display: 'flex',
         flexDirection: 'column',
+        position: 'relative',
     };
     const compactCellClass = 'min-w-0';
-    /** Tek yükseklik + birleşik etiket+input+(...) kontrol */
+    /** Tek yükseklik + birleşik etiket+input+(...) — sabit etiket genişliği hiza için */
     const fieldInputClass =
         'min-w-0 h-8 px-2 border border-gray-300 dark:border-gray-600 text-sm leading-none bg-white dark:bg-gray-800 focus:outline-none focus:ring-1 focus:ring-blue-500';
-    const inputGroupClass = 'flex items-stretch w-full min-w-0';
+    const inputGroupClass = 'flex items-stretch w-full min-w-0 h-8';
     const inputGroupLabelClass =
-        'shrink-0 inline-flex items-center max-w-[42%] px-2 h-8 border border-r-0 border-gray-300 dark:border-gray-600 rounded-l bg-slate-50 dark:bg-gray-700/80 text-[10px] font-bold uppercase tracking-wide text-slate-600 dark:text-gray-300 truncate';
+        'shrink-0 inline-flex items-center w-[8.25rem] px-2 h-8 border border-r-0 border-gray-300 dark:border-gray-600 rounded-l bg-slate-50 dark:bg-gray-700/80 text-[10px] font-bold uppercase tracking-wide text-slate-600 dark:text-gray-300 truncate';
     const inputGroupFieldClass = `${fieldInputClass} flex-1 rounded-none border-r-0`;
     const inputGroupFieldStartClass = `${fieldInputClass} flex-1 rounded-l rounded-r-none border-r-0`;
-    const inputGroupFieldEndClass = `${fieldInputClass} flex-1 rounded-r rounded-l-none`;
     const inputGroupBtnClass =
         'shrink-0 inline-flex items-center justify-center w-8 h-8 border border-gray-300 dark:border-gray-600 rounded-r rounded-l-none bg-white dark:bg-gray-800 hover:bg-gray-50 dark:hover:bg-gray-700';
     const inputGroupBtnMidClass =
         'shrink-0 inline-flex items-center justify-center w-8 h-8 border border-r-0 border-gray-300 dark:border-gray-600 rounded-none bg-white dark:bg-gray-800 hover:bg-gray-50 dark:hover:bg-gray-700';
+    /** Butonsuz alanlarda sağ kolonu hizalı tut */
+    const inputGroupTrailSpacer = 'shrink-0 w-8 h-8 border border-transparent';
 
     const paymentModalTriggerEl = (
         <div className={inputGroupClass}>
@@ -233,29 +247,6 @@ export const InvoiceHeader: React.FC<InvoiceHeaderProps> = ({
                 readOnly
                 value={paymentDisplayLabel}
                 className={`${inputGroupFieldStartClass} cursor-pointer truncate`}
-                onClick={() => setShowPaymentInfoModal(true)}
-            />
-            <button
-                type="button"
-                onClick={() => setShowPaymentInfoModal(true)}
-                className={inputGroupBtnClass}
-                title={tm('paymentInfo')}
-            >
-                <MoreVertical className="w-3.5 h-3.5 text-gray-600 dark:text-gray-300" />
-            </button>
-        </div>
-    );
-
-    const paymentModalTriggerCompactEl = (
-        <div className={inputGroupClass}>
-            <span className={inputGroupLabelClass} title={tm('paymentMethodLabel')}>
-                {tm('paymentMethodLabel')}
-            </span>
-            <input
-                type="text"
-                readOnly
-                value={paymentDisplayLabel}
-                className={`${inputGroupFieldClass} cursor-pointer truncate`}
                 onClick={() => setShowPaymentInfoModal(true)}
             />
             <button
@@ -289,6 +280,92 @@ export const InvoiceHeader: React.FC<InvoiceHeaderProps> = ({
 
     const cariCodeValue = isPurchaseSide ? supplierCode : customerCode || '';
     const cariTitleValue = isPurchaseSide ? supplierTitle : customerTitle;
+
+    type CariSuggestField = 'code' | 'title' | null;
+    const [cariSuggestField, setCariSuggestField] = useState<CariSuggestField>(null);
+    const [cariSuggestQuery, setCariSuggestQuery] = useState('');
+    const cariSuggestRef = useRef<HTMLDivElement | null>(null);
+
+    const cariSuggestions = useMemo(() => {
+        const term = cariSuggestQuery.trim().toLocaleLowerCase('tr-TR');
+        if (!term || term.length < 1) return cariItems.slice(0, 12);
+        return cariItems
+            .filter((item) => {
+                const code = (item.code || '').toLocaleLowerCase('tr-TR');
+                const name = (item.name || '').toLocaleLowerCase('tr-TR');
+                const phone = (item.phone || '').toLocaleLowerCase('tr-TR');
+                return code.includes(term) || name.includes(term) || phone.includes(term);
+            })
+            .slice(0, 12);
+    }, [cariItems, cariSuggestQuery]);
+
+    useEffect(() => {
+        if (!cariSuggestField) return;
+        const onDoc = (e: MouseEvent) => {
+            if (!cariSuggestRef.current) return;
+            if (!cariSuggestRef.current.contains(e.target as Node)) {
+                setCariSuggestField(null);
+            }
+        };
+        document.addEventListener('mousedown', onDoc);
+        return () => document.removeEventListener('mousedown', onDoc);
+    }, [cariSuggestField]);
+
+    const pickCari = (item: InvoiceCariItem) => {
+        onSelectCari?.(item);
+        setCariSuggestField(null);
+        setCariSuggestQuery('');
+    };
+
+    const onCariCodeChange = (raw: string) => {
+        if (isPurchaseSide) setSupplierCode?.(raw);
+        else setCustomerCode(raw);
+        setCariSuggestQuery(raw);
+        setCariSuggestField('code');
+    };
+
+    const onCariTitleChange = (raw: string) => {
+        if (isPurchaseSide) setSupplierTitle?.(raw);
+        else setCustomerTitle?.(raw);
+        setCariSuggestQuery(raw);
+        setCariSuggestField('title');
+    };
+
+    const renderCariSuggestList = (field: 'code' | 'title') => {
+        if (cariSuggestField !== field || !onSelectCari) return null;
+        if (cariSuggestions.length === 0) {
+            return (
+                <div
+                    className="absolute left-0 right-0 top-full z-30 mt-0.5 rounded-md border border-gray-200 dark:border-gray-600 bg-white dark:bg-gray-800 shadow-lg px-3 py-2 text-xs text-gray-500"
+                    role="listbox"
+                >
+                    {tm('noRecordFound')}
+                </div>
+            );
+        }
+        return (
+            <div
+                className="absolute left-0 right-0 top-full z-30 mt-0.5 max-h-52 overflow-y-auto rounded-md border border-gray-200 dark:border-gray-600 bg-white dark:bg-gray-800 shadow-lg"
+                role="listbox"
+            >
+                {cariSuggestions.map((item) => (
+                    <button
+                        key={item.id}
+                        type="button"
+                        role="option"
+                        className="flex w-full items-center gap-2 px-3 py-1.5 text-left text-sm hover:bg-emerald-50 dark:hover:bg-emerald-900/30 border-b border-gray-100 dark:border-gray-700 last:border-0"
+                        onMouseDown={(e) => {
+                            e.preventDefault();
+                            pickCari(item);
+                        }}
+                    >
+                        <span className="font-mono text-xs text-gray-500 shrink-0 w-20 truncate">{item.code || '—'}</span>
+                        <span className="font-medium text-gray-900 dark:text-gray-100 truncate">{item.name}</span>
+                    </button>
+                ))}
+            </div>
+        );
+    };
 
     const cariMetaBadges = showCariMeta ? (
         <div className="flex flex-wrap items-center gap-2">
@@ -706,12 +783,12 @@ export const InvoiceHeader: React.FC<InvoiceHeaderProps> = ({
                     </div>
                 </div>
             ) : (
-                <div>
+                <div ref={cariSuggestRef}>
                     {/*
-                      Minimal kompakt — 3 satır × 2 kolon, etiket+input+buton bitişik:
                       1: Fatura No | Cari hesap kodu
                       2: Tarih | Cari hesap unvanı
-                      3: Belge No | Açıklama
+                      3: Belge No | Ödeme şekli
+                      4: Açıklama (tam genişlik, aynı hiza)
                     */}
                     <div style={compactStackStyle}>
                         <div style={compactRowStyle}>
@@ -728,7 +805,7 @@ export const InvoiceHeader: React.FC<InvoiceHeaderProps> = ({
                                         className={`min-w-0 h-8 px-2 border border-gray-300 dark:border-gray-600 text-sm leading-none font-mono tabular-nums truncate ${
                                             invoiceNoEditable
                                                 ? 'flex-1 rounded-none border-r-0 bg-white dark:bg-gray-800 focus:outline-none focus:ring-1 focus:ring-blue-500'
-                                                : 'flex-1 rounded-r rounded-l-none bg-gray-50 dark:bg-gray-700 text-gray-800 dark:text-gray-100'
+                                                : 'flex-1 rounded-none border-r-0 bg-gray-50 dark:bg-gray-700 text-gray-800 dark:text-gray-100'
                                         }`}
                                         title={invoiceNo}
                                     />
@@ -739,7 +816,9 @@ export const InvoiceHeader: React.FC<InvoiceHeaderProps> = ({
                                             onApply={(code) => setInvoiceNo?.(code)}
                                             className="!rounded-l-none !rounded-r !w-8 !h-8 !min-h-0 !p-0 inline-flex items-center justify-center border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-800 hover:bg-gray-50 dark:hover:bg-gray-700"
                                         />
-                                    ) : null}
+                                    ) : (
+                                        <span className={inputGroupTrailSpacer} aria-hidden />
+                                    )}
                                 </div>
                             </div>
 
@@ -751,16 +830,14 @@ export const InvoiceHeader: React.FC<InvoiceHeaderProps> = ({
                                     <input
                                         type="text"
                                         value={cariCodeValue}
-                                        onChange={(e) => {
-                                            if (isPurchaseSide) {
-                                                setSupplierCode?.(e.target.value);
-                                            } else {
-                                                setCustomerCode(e.target.value);
-                                            }
+                                        onChange={(e) => onCariCodeChange(e.target.value)}
+                                        onFocus={() => {
+                                            setCariSuggestQuery(cariCodeValue);
+                                            setCariSuggestField('code');
                                         }}
                                         placeholder={tm('selectOrEnterPlaceholder')}
                                         className={`${inputGroupFieldClass} font-mono truncate`}
-                                        onClick={openCariModal}
+                                        autoComplete="off"
                                     />
                                     <button
                                         type="button"
@@ -771,6 +848,7 @@ export const InvoiceHeader: React.FC<InvoiceHeaderProps> = ({
                                         <MoreVertical className="w-3.5 h-3.5 text-gray-600 dark:text-gray-300" />
                                     </button>
                                 </div>
+                                {renderCariSuggestList('code')}
                             </div>
                         </div>
 
@@ -805,10 +883,14 @@ export const InvoiceHeader: React.FC<InvoiceHeaderProps> = ({
                                     <input
                                         type="text"
                                         value={cariTitleValue}
-                                        readOnly
+                                        onChange={(e) => onCariTitleChange(e.target.value)}
+                                        onFocus={() => {
+                                            setCariSuggestQuery(cariTitleValue);
+                                            setCariSuggestField('title');
+                                        }}
                                         placeholder={tm('selectShortPlaceholder')}
-                                        className={`${inputGroupFieldClass} cursor-pointer font-medium truncate`}
-                                        onClick={openCariModal}
+                                        className={`${inputGroupFieldClass} font-medium truncate`}
+                                        autoComplete="off"
                                     />
                                     <button
                                         type="button"
@@ -849,6 +931,7 @@ export const InvoiceHeader: React.FC<InvoiceHeaderProps> = ({
                                         </button>
                                     ) : null}
                                 </div>
+                                {renderCariSuggestList('title')}
                             </div>
                         </div>
 
@@ -862,40 +945,60 @@ export const InvoiceHeader: React.FC<InvoiceHeaderProps> = ({
                                         type="text"
                                         value={documentNo}
                                         onChange={(e) => setDocumentNo(e.target.value)}
-                                        className={inputGroupFieldEndClass}
+                                        className={`${inputGroupFieldClass}`}
                                         placeholder="..."
                                     />
+                                    <span className={inputGroupTrailSpacer} aria-hidden />
                                 </div>
                             </div>
 
                             <div className={compactCellClass} style={compactCellStyle}>
                                 <div className={inputGroupClass}>
-                                    <span className={inputGroupLabelClass} title={tm('description')}>
-                                        {tm('description')}
+                                    <span className={inputGroupLabelClass} title={tm('paymentMethodLabel')}>
+                                        {tm('paymentMethodLabel')}
                                     </span>
                                     <input
                                         type="text"
-                                        value={description ?? ''}
-                                        onChange={(e) => setDescription?.(e.target.value)}
-                                        readOnly={!setDescription}
-                                        placeholder={`${tm('description')}...`}
-                                        className={inputGroupFieldEndClass}
+                                        readOnly
+                                        value={paymentDisplayLabel}
+                                        className={`${inputGroupFieldClass} cursor-pointer truncate`}
+                                        onClick={() => setShowPaymentInfoModal(true)}
                                     />
+                                    <button
+                                        type="button"
+                                        onClick={() => setShowPaymentInfoModal(true)}
+                                        className={inputGroupBtnClass}
+                                        title={tm('paymentInfo')}
+                                    >
+                                        <MoreVertical className="w-3.5 h-3.5 text-gray-600 dark:text-gray-300" />
+                                    </button>
                                 </div>
+                                {paymentExtraLabel ? (
+                                    <p className="mt-0.5 text-[10px] text-blue-600 dark:text-blue-400 font-medium truncate pl-1">
+                                        {paymentExtraLabel}
+                                    </p>
+                                ) : null}
                             </div>
                         </div>
 
-                        <div className="flex flex-wrap items-center gap-2 pt-0.5">
-                            <div className="min-w-0 flex-1" style={{ maxWidth: '20rem' }}>
-                                {paymentModalTriggerCompactEl}
+                        <div className={compactCellClass} style={compactCellStyle}>
+                            <div className={inputGroupClass}>
+                                <span className={inputGroupLabelClass} title={tm('description')}>
+                                    {tm('description')}
+                                </span>
+                                <input
+                                    type="text"
+                                    value={description ?? ''}
+                                    onChange={(e) => setDescription?.(e.target.value)}
+                                    readOnly={!setDescription}
+                                    placeholder={`${tm('description')}...`}
+                                    className={`${inputGroupFieldClass}`}
+                                />
+                                <span className={inputGroupTrailSpacer} aria-hidden />
                             </div>
-                            {paymentExtraLabel ? (
-                                <p className="text-[11px] text-blue-600 dark:text-blue-400 font-medium truncate">
-                                    {paymentExtraLabel}
-                                </p>
-                            ) : null}
-                            {cariMetaBadges}
                         </div>
+
+                        {cariMetaBadges ? <div className="pt-0.5">{cariMetaBadges}</div> : null}
                     </div>
                 </div>
             )}
