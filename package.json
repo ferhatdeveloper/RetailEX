@@ -2,7 +2,7 @@
   "name": "retailex",
   "description": "RetailEX Next-Gen ERP OS",
   "type": "module",
-  "version": "0.1.269",
+  "version": "0.1.270",
   "private": true,
   "dependencies": {
     "@ant-design/icons": "^6.1.0",
