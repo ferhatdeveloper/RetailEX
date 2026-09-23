@@ -9826,6 +9826,12 @@ export const excelModuleTranslations = {
     ar: 'سندات المصروف والراتب والسلف ومدفوعات الحساب (لا تُحتسب سطور الصندوق المرتبطة مرتين).',
     ku: 'پسوڵەی خەرجی، مووچە، پێشەکی و پارەدانی حساب (هێڵی سندووقی پەیوەندیدار دووجار نادرێت).',
   },
+  dailyExpenseClickToDeleteHint: {
+    tr: 'Satıra tıklayın veya çöp ikonuna basın — onay sonrası kayıt silinir (kasa bakiyesi geri alınır).',
+    en: 'Click a row or the trash icon — after confirmation the record is deleted (cash balance is reversed).',
+    ar: 'انقر على صف أو أيقونة الحذف — بعد التأكيد يُحذف السجل (يُعكس رصيد الصندوق).',
+    ku: 'سەر ڕیز یان ئایکۆنی سڕینەوە کلیک بکە — دوای پشتڕاستکردنەوە تۆمار دەسڕدرێتەوە (باڵانسی سندووق دەگەڕێتەوە).',
+  },
   dailyNetAfterExpense: { tr: 'Net (ciro - gider)', en: 'Net (revenue - expense)', ar: 'صافي (الإيراد - المصروف)', ku: 'خاوێن (داهات - خەرجی)' },
   dailyExpenseTypeVoucher: { tr: 'Gider pusulası', en: 'Expense voucher', ar: 'سند مصروف', ku: 'پسوڵەی خەرجی' },
   dailyExpenseTypeSalary: { tr: 'Maaş ödemesi', en: 'Salary payment', ar: 'دفع راتب', ku: 'پارەدانی مووچە' },

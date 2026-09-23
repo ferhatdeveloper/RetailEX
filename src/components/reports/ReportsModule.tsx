@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useCallback, useMemo, useRef } from 'react';
-import { BarChart3, TrendingUp, Banknote, ShoppingCart, Calendar, Download, FileText, Clock, User, Package, TrendingDown, Award, PieChart as PieChartIcon, CreditCard, AlertCircle, Percent, AlertTriangle, ClipboardList, MessageSquare, LineChart as LineChartLucide, Users, Scissors, ThumbsUp, PhoneMissed, Wallet, X } from 'lucide-react';
+import { BarChart3, TrendingUp, Banknote, ShoppingCart, Calendar, Download, FileText, Clock, User, Package, TrendingDown, Award, PieChart as PieChartIcon, CreditCard, AlertCircle, Percent, AlertTriangle, ClipboardList, MessageSquare, LineChart as LineChartLucide, Users, Scissors, ThumbsUp, PhoneMissed, Wallet, X, Trash2 } from 'lucide-react';
 import type { Sale, Product } from '../../App';
 import { MaterialMovementReport } from './MaterialMovementReport';
 import { ProfitLossReport } from './ProfitLossReport';
@@ -24,7 +24,7 @@ import {
 import { RestaurantService } from '../../services/restaurant';
 import { beautyService } from '../../services/beautyService';
 import { expenseAPI } from '../../services/api/expenses';
-import { fetchKasaIslemleri, type KasaIslemi } from '../../services/api/kasa';
+import { fetchKasaIslemleri, deleteKasaIslemi, type KasaIslemi } from '../../services/api/kasa';
 import { userAPI } from '../../services/api/users';
 import { ReportColumnTable, type ReportColumnTableCol } from './shared/ReportDataGrid';
 import { ReportKpiStrip } from './shared/ReportKpiStrip';
@@ -758,6 +758,9 @@ function kindFieldsFromItems(
 /** Günlük rapor gider satırı: gider pusulası + kasa çıkışları (maaş/avans/cari). */
 type DailyExpenseRow = {
   key: string;
+  /** Silme hedefi: gider tablosu veya kasa satırı */
+  sourceKind: 'expense' | 'cash';
+  sourceId: string;
   date: string;
   ficheNo: string;
   typeCode: string;
@@ -1193,12 +1196,19 @@ export function ReportsModule({
         const method = String(e.payment_method ?? '').trim();
         const methodLc = method.toLowerCase();
         const isCash = methodLc === 'cash' || methodLc === 'nakit';
-        const isCashOut = String(e.id || '').startsWith('cash-');
+        const rawId = String(e.id || '').trim();
+        const isCashOut = rawId.startsWith('cash-');
+        const cashLineId = String(e.cash_line_id || '').trim();
+        const sourceId = isCashOut
+          ? (cashLineId || rawId.replace(/^cash-/, ''))
+          : rawId;
         const typeCode = isCashOut
           ? String(e.notes || '').trim().toUpperCase() || 'KASA_CIKIS'
           : 'GIDER_PUSULASI';
         return {
-          key: isCashOut ? String(e.id) : `exp-${e.id}`,
+          key: isCashOut ? rawId : `exp-${rawId}`,
+          sourceKind: isCashOut ? 'cash' : 'expense',
+          sourceId,
           date: String(e.expense_date || e.created_at || ''),
           ficheNo: String(e.document_number || '').trim() || '—',
           typeCode,
@@ -1219,6 +1229,47 @@ export function ReportsModule({
       setKasaLinesForSelectedDate([]);
     }
   }, [selectedDateFrom, selectedDateTo]);
+
+  const [deletingExpenseKey, setDeletingExpenseKey] = useState<string | null>(null);
+
+  const deleteDailyExpenseRow = useCallback(
+    async (row: DailyExpenseRow) => {
+      const id = String(row.sourceId || '').trim();
+      if (!id) {
+        toast.error(tm('deleteError') || 'Silinemedi');
+        return;
+      }
+      const ok = await new Promise<boolean>((resolve) => {
+        Modal.confirm({
+          title: tm('expenseDeleteConfirm'),
+          content: `${row.ficheNo} · ${formatLedgerAmount(row.amount, reportCurrency)}`,
+          okText: tm('delete') || 'Sil',
+          cancelText: tm('cancel') || 'İptal',
+          okButtonProps: { danger: true },
+          onOk: () => resolve(true),
+          onCancel: () => resolve(false),
+        });
+      });
+      if (!ok) return;
+      setDeletingExpenseKey(row.key);
+      try {
+        if (row.sourceKind === 'cash') {
+          await deleteKasaIslemi(id);
+        } else {
+          const deleted = await expenseAPI.delete(id);
+          if (!deleted) throw new Error('expense delete failed');
+        }
+        toast.success(tm('transactionDeleted'));
+        await loadCashExpenses();
+      } catch (err) {
+        console.error('[ReportsModule] Gider satırı silinemedi:', err);
+        toast.error(tm('deleteError') || 'Silinemedi');
+      } finally {
+        setDeletingExpenseKey(null);
+      }
+    },
+    [loadCashExpenses, reportCurrency, tm],
+  );
 
   /** ERP satışları: DB aralığı esas; yükleme bitince boş dizi de geçerli (bellek yedeği yalnızca yükleme sırasında) */
   const erpSalesForReportPeriod = useMemo(() => {
@@ -5977,12 +6028,17 @@ export function ReportsModule({
                   <div className="p-4 border-b">
                     <h3 className="text-lg">{tm('expenseDetails')}</h3>
                     <p className="text-xs text-slate-500 mt-1">{tm('dailyExpenseDetailsHint')}</p>
+                    <p className="text-xs text-amber-700 mt-1">{tm('dailyExpenseClickToDeleteHint')}</p>
                   </div>
                   <div className="p-2">
                     <ReportColumnTable
                       data={dailyExpenseGridRows}
                       height={480}
                       footerLabel={tm('totalExpense')}
+                      onRowClick={(row) => {
+                        if (deletingExpenseKey) return;
+                        void deleteDailyExpenseRow(row);
+                      }}
                       columns={[
                         { key: 'ficheNo', header: tm('receiptFicheNo'), size: 140 },
                         { key: 'timeLabel', header: tm('hourLabel'), size: 120 },
@@ -6017,6 +6073,27 @@ export function ReportsModule({
                                   : 'bg-slate-100 text-slate-700';
                             return <span className={`px-2 py-1 rounded text-xs ${cls}`}>{row.payLabel}</span>;
                           },
+                        },
+                        {
+                          key: 'actions',
+                          header: tm('actions') || '',
+                          size: 72,
+                          enableColumnFilter: false,
+                          cell: (row) => (
+                            <button
+                              type="button"
+                              title={tm('delete') || 'Sil'}
+                              aria-label={tm('delete') || 'Sil'}
+                              disabled={deletingExpenseKey === row.key}
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                void deleteDailyExpenseRow(row);
+                              }}
+                              className="inline-flex h-8 w-8 items-center justify-center rounded-md text-rose-600 hover:bg-rose-50 disabled:opacity-50"
+                            >
+                              <Trash2 className="h-4 w-4" />
+                            </button>
+                          ),
                         },
                       ]}
                     />
