@@ -204,7 +204,7 @@ export const InvoiceHeader: React.FC<InvoiceHeaderProps> = ({
         display: 'flex',
         flexDirection: 'column',
         gap: '0.35rem',
-        width: 'min(100%, 62rem)',
+        width: 'min(100%, 72rem)',
         maxWidth: '100%',
         boxSizing: 'border-box',
         position: 'relative',
@@ -213,8 +213,9 @@ export const InvoiceHeader: React.FC<InvoiceHeaderProps> = ({
     };
     const compactRow4Style: React.CSSProperties = {
         display: 'grid',
-        gridTemplateColumns: 'repeat(4, minmax(0, 1fr))',
-        gap: '0.4rem',
+        /* Fatura/Tarih biraz dar; Ödeme/Unvan/Açıklama/Bakiye daha geniş */
+        gridTemplateColumns: 'minmax(0, 0.9fr) minmax(0, 1.1fr) minmax(0, 1.15fr) minmax(0, 1.25fr)',
+        gap: '0.45rem',
         width: '100%',
         alignItems: 'stretch',
         boxSizing: 'border-box',
