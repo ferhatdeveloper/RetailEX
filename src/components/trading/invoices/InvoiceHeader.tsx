@@ -205,7 +205,8 @@ export const InvoiceHeader: React.FC<InvoiceHeaderProps> = ({
         display: 'flex',
         flexDirection: 'column',
         gap: '0.35rem',
-        width: 'min(100%, 52rem)',
+        /* 4 kolon okunaklı kalsın; tam ekranı doldurmasın */
+        width: 'min(100%, 66rem)',
         maxWidth: '100%',
         boxSizing: 'border-box',
         position: 'relative',
@@ -222,10 +223,11 @@ export const InvoiceHeader: React.FC<InvoiceHeaderProps> = ({
         overflow: 'visible',
         position: 'relative',
     };
-    /** Üst satır: 4 alan yan yana (sağ boşluğu kullanır) */
+    /** Üst satır: Fatura | Cari kod | Ödeme | Açıklama — min genişlik + orantı */
     const compactRow4Style: React.CSSProperties = {
         ...compactRowStyle,
-        gridTemplateColumns: 'minmax(0, 1fr) minmax(0, 1fr) minmax(0, 1fr) minmax(0, 1.2fr)',
+        gridTemplateColumns:
+            'minmax(11.5rem, 0.95fr) minmax(12.5rem, 1.05fr) minmax(12.5rem, 1.1fr) minmax(14rem, 1.35fr)',
     };
     const compactCellStyle: React.CSSProperties = {
         minWidth: 0,
@@ -240,7 +242,7 @@ export const InvoiceHeader: React.FC<InvoiceHeaderProps> = ({
         'min-w-0 h-8 px-2 border border-gray-300 dark:border-gray-600 text-sm leading-none bg-white dark:bg-gray-800 focus:outline-none focus:ring-1 focus:ring-blue-500';
     const inputGroupClass = 'flex items-stretch w-full min-w-0 h-8';
     /** İçerik ne olursa olsun etiketler aynı genişlik (inline — Tailwind purge’a güvenilmez) */
-    const COMPACT_LABEL_WIDTH = '8.25rem';
+    const COMPACT_LABEL_WIDTH = '8.75rem';
     const inputGroupLabelStyle: React.CSSProperties = {
         width: COMPACT_LABEL_WIDTH,
         minWidth: COMPACT_LABEL_WIDTH,
