@@ -205,7 +205,7 @@ export const InvoiceHeader: React.FC<InvoiceHeaderProps> = ({
         display: 'flex',
         flexDirection: 'column',
         gap: '0.35rem',
-        width: '100%',
+        width: 'min(100%, 52rem)',
         maxWidth: '100%',
         boxSizing: 'border-box',
         position: 'relative',
