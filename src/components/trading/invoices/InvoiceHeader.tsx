@@ -209,6 +209,9 @@ export const InvoiceHeader: React.FC<InvoiceHeaderProps> = ({
         width: 'min(100%, 44rem)',
         maxWidth: '100%',
         boxSizing: 'border-box',
+        position: 'relative',
+        zIndex: 1,
+        overflow: 'visible',
     };
     const compactRowStyle: React.CSSProperties = {
         display: 'grid',
@@ -217,12 +220,15 @@ export const InvoiceHeader: React.FC<InvoiceHeaderProps> = ({
         width: '100%',
         alignItems: 'stretch',
         boxSizing: 'border-box',
+        overflow: 'visible',
+        position: 'relative',
     };
     const compactCellStyle: React.CSSProperties = {
         minWidth: 0,
         display: 'flex',
         flexDirection: 'column',
         position: 'relative',
+        overflow: 'visible',
     };
     const compactCellClass = 'min-w-0';
     /** Tek yükseklik + birleşik etiket+input+(...) — sabit etiket genişliği hiza için */
@@ -348,34 +354,42 @@ export const InvoiceHeader: React.FC<InvoiceHeaderProps> = ({
 
     const renderCariSuggestList = (field: 'code' | 'title') => {
         if (cariSuggestField !== field || !onSelectCari) return null;
+        const panelStyle: React.CSSProperties = {
+            position: 'absolute',
+            left: 0,
+            right: 0,
+            top: 'calc(100% + 2px)',
+            zIndex: 80,
+            maxHeight: '13rem',
+            overflowY: 'auto',
+            borderRadius: '0.375rem',
+            border: '1px solid #cbd5e1',
+            backgroundColor: '#ffffff',
+            boxShadow: '0 10px 25px rgba(15, 23, 42, 0.18)',
+        };
         if (cariSuggestions.length === 0) {
             return (
-                <div
-                    className="absolute left-0 right-0 top-full z-30 mt-0.5 rounded-md border border-gray-200 dark:border-gray-600 bg-white dark:bg-gray-800 shadow-lg px-3 py-2 text-xs text-gray-500"
-                    role="listbox"
-                >
+                <div style={{ ...panelStyle, padding: '0.5rem 0.75rem', fontSize: '0.75rem', color: '#64748b' }} role="listbox">
                     {tm('noRecordFound')}
                 </div>
             );
         }
         return (
-            <div
-                className="absolute left-0 right-0 top-full z-30 mt-0.5 max-h-52 overflow-y-auto rounded-md border border-gray-200 dark:border-gray-600 bg-white dark:bg-gray-800 shadow-lg"
-                role="listbox"
-            >
+            <div style={panelStyle} role="listbox">
                 {cariSuggestions.map((item) => (
                     <button
                         key={item.id}
                         type="button"
                         role="option"
-                        className="flex w-full items-center gap-2 px-3 py-1.5 text-left text-sm hover:bg-emerald-50 dark:hover:bg-emerald-900/30 border-b border-gray-100 dark:border-gray-700 last:border-0"
+                        className="flex w-full items-center gap-2 px-3 py-1.5 text-left text-sm border-b border-gray-100 last:border-0 hover:bg-emerald-50"
+                        style={{ backgroundColor: '#ffffff' }}
                         onMouseDown={(e) => {
                             e.preventDefault();
                             pickCari(item);
                         }}
                     >
                         <span className="font-mono text-xs text-gray-500 shrink-0 w-20 truncate">{item.code || '—'}</span>
-                        <span className="font-medium text-gray-900 dark:text-gray-100 truncate">{item.name}</span>
+                        <span className="font-medium text-gray-900 truncate">{item.name}</span>
                     </button>
                 ))}
             </div>
@@ -806,7 +820,7 @@ export const InvoiceHeader: React.FC<InvoiceHeaderProps> = ({
                       Alt: Ödeme + bakiye
                     */}
                     <div style={compactStackStyle}>
-                        <div style={compactRowStyle}>
+                        <div style={{ ...compactRowStyle, zIndex: cariSuggestField === 'code' ? 45 : undefined }}>
                             <div className={compactCellClass} style={compactCellStyle}>
                                 <div className={inputGroupClass}>
                                     <span className={inputGroupLabelClass} style={inputGroupLabelStyle} title={tm('invoiceNo')}>
@@ -837,7 +851,13 @@ export const InvoiceHeader: React.FC<InvoiceHeaderProps> = ({
                                 </div>
                             </div>
 
-                            <div className={compactCellClass} style={compactCellStyle}>
+                            <div
+                                className={compactCellClass}
+                                style={{
+                                    ...compactCellStyle,
+                                    zIndex: cariSuggestField === 'code' ? 40 : undefined,
+                                }}
+                            >
                                 <div className={inputGroupClass}>
                                     <span className={`${inputGroupLabelClass} ${cariTextColor}`} style={inputGroupLabelStyle} title={tm('cariAccountCodeLabel')}>
                                         {tm('cariAccountCodeLabel')}
@@ -867,7 +887,7 @@ export const InvoiceHeader: React.FC<InvoiceHeaderProps> = ({
                             </div>
                         </div>
 
-                        <div style={compactRowStyle}>
+                        <div style={{ ...compactRowStyle, zIndex: cariSuggestField === 'title' ? 45 : undefined }}>
                             <div className={compactCellClass} style={compactCellStyle}>
                                 <div className={inputGroupClass}>
                                     <span className={inputGroupLabelClass} style={inputGroupLabelStyle} title={tm('date')}>
@@ -890,7 +910,13 @@ export const InvoiceHeader: React.FC<InvoiceHeaderProps> = ({
                                 </div>
                             </div>
 
-                            <div className={compactCellClass} style={compactCellStyle}>
+                            <div
+                                className={compactCellClass}
+                                style={{
+                                    ...compactCellStyle,
+                                    zIndex: cariSuggestField === 'title' ? 40 : undefined,
+                                }}
+                            >
                                 <div className={inputGroupClass}>
                                     <span className={`${inputGroupLabelClass} ${cariTextColor}`} style={inputGroupLabelStyle} title={tm('cariAccountTitleLabel')}>
                                         {tm('cariAccountTitleLabel')}
