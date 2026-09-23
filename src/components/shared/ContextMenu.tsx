@@ -26,7 +26,8 @@ interface ContextMenuProps {
 }
 
 const SUBMENU_GAP = 4;
-const MENU_Z = 2147483640;
+/** Tam ekran ekstre (MODAL_OVERLAY_Z) üstünde; grid popover altında */
+const MENU_Z = 2147483646;
 
 function pathKey(path: string[]): string {
     return path.join('›');
