@@ -197,7 +197,7 @@ export function SmartScheduler() {
             default: return 'tr-TR';
         }
     }, [language]);
-    const { isAdmin } = usePermission();
+    const { canEditBeautyAppointmentPrice } = usePermission();
     const { isMobile } = useResponsive();
     const clinicSpec = useClinicErpSpecialtyOptional()?.specialty ?? 'beauty_default';
     const isDentalMode = clinicSpec === 'dental';
@@ -1110,7 +1110,7 @@ export function SmartScheduler() {
     }, [selectedApt, aptTimeDraft, updateAppointment]);
 
     const saveAppointmentPriceFromCard = useCallback(async () => {
-        if (!isAdmin()) return;
+        if (!canEditBeautyAppointmentPrice()) return;
         if (!priceEditApt) return;
         const oldPrice = Number(priceEditApt.total_price ?? 0);
         const raw = String(priceEditDraft).replace(/\s/g, '').replace(',', '.');
@@ -1141,7 +1141,7 @@ export function SmartScheduler() {
         } finally {
             setPriceEditSaving(false);
         }
-    }, [isAdmin, priceEditApt, priceEditDraft, updateAppointment]);
+    }, [canEditBeautyAppointmentPrice, priceEditApt, priceEditDraft, updateAppointment]);
 
     const customerPhoneLine = (apt: BeautyAppointment) =>
         String(apt.customer_phone ?? '').trim();
@@ -1248,7 +1248,7 @@ export function SmartScheduler() {
                             <User size={10} style={{ flexShrink: 0 }} />
                             <span style={{ fontSize: 10, fontWeight: 600, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{apt.specialist_name ?? apt.staff_name ?? '—'}</span>
                         </div>
-                        {isAdmin() ? (
+                        {canEditBeautyAppointmentPrice() ? (
                         <button
                             type="button"
                             title={tm('bAppointmentEditPriceTitleBtn')}
@@ -3000,7 +3000,7 @@ export function SmartScheduler() {
             )}
 
             <RetailExFlatModal
-                open={!!priceEditApt && isAdmin()}
+                open={!!priceEditApt && canEditBeautyAppointmentPrice()}
                 onClose={() => {
                     if (!priceEditSaving) setPriceEditApt(null);
                 }}

@@ -73,6 +73,30 @@ export const usePermission = () => {
   const isManager = useCallback(() => isRole(USER_ROLES.MANAGER), [isRole]);
   const isAdmin = useCallback(() => isRole(USER_ROLES.ADMIN), [isRole]);
 
+  /** Resepsiyon / reception rol adı (özel tenant rolleri dahil) */
+  const isReception = useCallback((): boolean => {
+    return (
+      user?.roles?.some((r) => {
+        const raw = `${r.name ?? ''} ${r.id ?? ''}`.toLocaleLowerCase('tr');
+        return (
+          raw.includes('resepsiyon') ||
+          raw.includes('reception') ||
+          raw.includes('receptionist')
+        );
+      }) ?? false
+    );
+  }, [user]);
+
+  /**
+   * Güzellik randevu işlem tutarı / sepet hizmet fiyatı düzenleme.
+   * Admin + resepsiyon; POS fiyat yetkisi olanlar da (MarketPOS ile hizalı).
+   */
+  const canEditBeautyAppointmentPrice = useCallback((): boolean => {
+    if (isAdmin() || isManager() || isReception()) return true;
+    if (hasPermission('pos.change_price')) return true;
+    return false;
+  }, [isAdmin, isManager, isReception, hasPermission]);
+
   /** Alış maliyeti, birim alış, satır kârı / marj */
   const canViewPurchasePricing = useCallback(
     () => hasPermission('purchase-pricing', 'READ'),
@@ -101,6 +125,8 @@ export const usePermission = () => {
     isCashier,
     isManager,
     isAdmin,
+    isReception,
+    canEditBeautyAppointmentPrice,
     canViewPurchasePricing,
     canViewProductListSalesPurchaseTotals,
     needsManagerAuth,
@@ -113,6 +139,8 @@ export const usePermission = () => {
     isCashier,
     isManager,
     isAdmin,
+    isReception,
+    canEditBeautyAppointmentPrice,
     canViewPurchasePricing,
     canViewProductListSalesPurchaseTotals,
     needsManagerAuth

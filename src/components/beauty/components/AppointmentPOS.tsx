@@ -321,7 +321,7 @@ export function AppointmentPOS({
     const { tm, language: uiLanguage } = useLanguage();
     const { isMobile } = useResponsive();
     const { selectedFirm } = useFirmaDonem();
-    const { isAdmin } = usePermission();
+    const { canEditBeautyAppointmentPrice } = usePermission();
     const clinicSpec = useClinicErpSpecialtyOptional()?.specialty ?? 'beauty_default';
     const isDentalMode = clinicSpec === 'dental';
     const isStandaloneProductSales = salesMode === 'products_only';
@@ -1158,16 +1158,16 @@ export function AppointmentPOS({
         }
     }, [existingAppointment, aptDate, updateAppointment, activeSpecialists, specialists, tm]);
     const openCartLinePriceEditor = useCallback((line: CartLine) => {
-        if (!isAdmin()) return;
+        if (!canEditBeautyAppointmentPrice()) return;
         if (line.type !== 'service' && line.type !== 'product') return;
         queueMicrotask(() => {
             setCartLinePriceUid(line.uid);
             setCartLinePriceDraft(String(line.unit_price ?? 0));
         });
-    }, [isAdmin]);
+    }, [canEditBeautyAppointmentPrice]);
 
     const saveCartLineUnitPrice = useCallback(async () => {
-        if (!isAdmin()) {
+        if (!canEditBeautyAppointmentPrice()) {
             setCartLinePriceUid(null);
             return;
         }
@@ -1253,7 +1253,7 @@ export function AppointmentPOS({
             qty: line.qty,
         });
         setCartLinePriceUid(null);
-    }, [cart, cartLinePriceUid, cartLinePriceDraft, isAdmin, existingAppointment, aptDate, updateAppointment, tm]);
+    }, [cart, cartLinePriceUid, cartLinePriceDraft, canEditBeautyAppointmentPrice, existingAppointment, aptDate, updateAppointment, tm]);
     const pickDefaultSpecialist = (id: string) => {
         setDefaultSpecialistId(id);
         setCart(c =>
@@ -3635,7 +3635,7 @@ export function AppointmentPOS({
                                                         >
                                                             <Users size={18} />
                                                         </button>
-                                                        {line.type === 'service' && isAdmin() ? (
+                                                        {line.type === 'service' && canEditBeautyAppointmentPrice() ? (
                                                         <button
                                                             type="button"
                                                             title={tm('bAppointmentEditPriceTitleBtn')}
@@ -4323,7 +4323,7 @@ export function AppointmentPOS({
             </RetailExFlatModal>
 
             <RetailExFlatModal
-                open={!!cartLinePriceUid && isAdmin()}
+                open={!!cartLinePriceUid && canEditBeautyAppointmentPrice()}
                 onClose={() => setCartLinePriceUid(null)}
                 title={tm('bAppointmentEditPriceTitle')}
                 subtitle={
