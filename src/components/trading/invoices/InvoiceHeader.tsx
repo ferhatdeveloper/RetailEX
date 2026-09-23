@@ -196,11 +196,11 @@ export const InvoiceHeader: React.FC<InvoiceHeaderProps> = ({
         (resolvedPaymentCode === 'ACIK_CARI' ? tm('paymentOpenAccount') : paymentMethod);
 
     /**
-     * Collapsed: 3 satır × 2 kolon (açıklama cari kolonunda).
+     * Collapsed: 4 satır × 2 kolon.
      * 1: Fatura No | Cari hesap kodu
      * 2: Tarih | Cari hesap unvanı
-     * 3: Belge No | Açıklama
-     * Alt: Ödeme + bakiye
+     * 3: Belge No | Bakiye
+     * 4: Ödeme şekli | Açıklama
      */
     const compactStackStyle: React.CSSProperties = {
         display: 'flex',
@@ -816,8 +816,8 @@ export const InvoiceHeader: React.FC<InvoiceHeaderProps> = ({
                     {/*
                       1: Fatura No | Cari hesap kodu
                       2: Tarih | Cari hesap unvanı
-                      3: Belge No | Açıklama
-                      Alt: Ödeme + bakiye
+                      3: Belge No | Bakiye
+                      4: Ödeme şekli | Açıklama
                     */}
                     <div style={compactStackStyle}>
                         <div style={{ ...compactRowStyle, zIndex: cariSuggestField === 'code' ? 45 : undefined }}>
@@ -992,22 +992,8 @@ export const InvoiceHeader: React.FC<InvoiceHeaderProps> = ({
                                     <span style={inputGroupTrailSpacerStyle} aria-hidden />
                                 </div>
                             </div>
-
-                            <div className={compactCellClass} style={compactCellStyle}>
-                                <div className={inputGroupClass}>
-                                    <span className={inputGroupLabelClass} style={inputGroupLabelStyle} title={tm('description')}>
-                                        {tm('description')}
-                                    </span>
-                                    <input
-                                        type="text"
-                                        value={description ?? ''}
-                                        onChange={(e) => setDescription?.(e.target.value)}
-                                        readOnly={!setDescription}
-                                        placeholder={`${tm('description')}...`}
-                                        className={`${inputGroupFieldClass}`}
-                                    />
-                                    <span style={inputGroupTrailSpacerStyle} aria-hidden />
-                                </div>
+                            <div className={compactCellClass} style={{ ...compactCellStyle, justifyContent: 'center' }}>
+                                {cariMetaBadges}
                             </div>
                         </div>
 
@@ -1039,8 +1025,21 @@ export const InvoiceHeader: React.FC<InvoiceHeaderProps> = ({
                                     </p>
                                 ) : null}
                             </div>
-                            <div className={compactCellClass} style={{ ...compactCellStyle, justifyContent: 'center' }}>
-                                {cariMetaBadges}
+                            <div className={compactCellClass} style={compactCellStyle}>
+                                <div className={inputGroupClass}>
+                                    <span className={inputGroupLabelClass} style={inputGroupLabelStyle} title={tm('description')}>
+                                        {tm('description')}
+                                    </span>
+                                    <input
+                                        type="text"
+                                        value={description ?? ''}
+                                        onChange={(e) => setDescription?.(e.target.value)}
+                                        readOnly={!setDescription}
+                                        placeholder={`${tm('description')}...`}
+                                        className={`${inputGroupFieldClass}`}
+                                    />
+                                    <span style={inputGroupTrailSpacerStyle} aria-hidden />
+                                </div>
                             </div>
                         </div>
                     </div>
