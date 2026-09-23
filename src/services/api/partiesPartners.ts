@@ -19,6 +19,8 @@ import { localTodayDateKey } from '../../utils/localCalendarDate';
 import type { PartyLedgerMovement, PartyPartner } from '../../core/types/models';
 
 const PERIOD_SHARE_MODULE = 'period_net_share';
+/** Kullanıcının ekstreden sildiği dönem payı — sync yeniden yazmasın */
+export const PERIOD_SHARE_REMOVED_MODULE = 'period_net_share_removed';
 
 const MONTH_TR = [
   'Ocak',
@@ -47,7 +49,7 @@ function yearNetSyncCacheKey(year: number): string {
   return `${normalizeFirmTableNr(ERP_SETTINGS.firmNr)}:${ERP_SETTINGS.periodNr || '01'}:${year}`;
 }
 
-function invalidateYearNetSyncCache(): void {
+export function invalidateYearNetSyncCache(): void {
   yearNetSyncCache = null;
 }
 
@@ -242,6 +244,18 @@ export const partnerAPI = {
       );
       const distMonths = new Set((distRows || []).map((r: { party_id: string; ym: string }) => `${r.party_id}|${r.ym}`));
 
+      const { rows: removedRows } = await postgres.query(
+        `SELECT party_id::text AS party_id, to_char(date, 'YYYY-MM') AS ym
+         FROM ${ledgerTable()}
+         WHERE party_id = ANY($1::text::uuid[])
+           AND source_module = $2::text
+           AND date >= $3::date AND date <= $4::date`,
+        [ids, PERIOD_SHARE_REMOVED_MODULE, `${year}-01-01`, `${year}-12-31`],
+      );
+      const removedMonths = new Set(
+        (removedRows || []).map((r: { party_id: string; ym: string }) => `${r.party_id}|${r.ym}`),
+      );
+
       for (const month of months) {
         if (!month.hasActivity) continue;
         const shares = splitAmountByPartners(month.netRemaining, slices);
@@ -261,6 +275,7 @@ export const partnerAPI = {
           const key = `${share.id}|${month.monthKey}`;
           const foundId = existing.get(key);
           if (!foundId && distMonths.has(key)) continue;
+          if (!foundId && removedMonths.has(key)) continue;
           const dateIso = `${month.lastDay}T12:00:00`;
           if (foundId) {
             await postgres.query(

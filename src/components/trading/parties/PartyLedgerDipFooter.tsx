@@ -7,6 +7,7 @@ export function PartyLedgerDipFooter({
   balance,
   label,
   leadColSpan = 4,
+  trailColSpan = 0,
 }: {
   count: number;
   debit: number;
@@ -14,6 +15,8 @@ export function PartyLedgerDipFooter({
   balance: number;
   label: string;
   leadColSpan?: number;
+  /** Sil gibi ekstra sağ kolonlar */
+  trailColSpan?: number;
 }) {
   const money = (n: number) => formatNumber(n, 2, true);
   return (
@@ -29,6 +32,7 @@ export function PartyLedgerDipFooter({
         <td className="px-3 py-2 text-right text-sm font-bold tabular-nums text-blue-900">{money(debit)}</td>
         <td className="px-3 py-2 text-right text-sm font-bold tabular-nums text-blue-900">{money(credit)}</td>
         <td className="px-3 py-2 text-right text-sm font-bold tabular-nums text-blue-900">{money(balance)}</td>
+        {trailColSpan > 0 ? <td colSpan={trailColSpan} /> : null}
       </tr>
     </tfoot>
   );

@@ -1,9 +1,15 @@
 import { useEffect, useMemo, useState } from 'react';
-import { FileText, Loader2, Printer, X } from 'lucide-react';
+import { FileText, Loader2, Printer, Trash2, X } from 'lucide-react';
 import { toast } from 'sonner';
 import { FullscreenBodyPortal, MODAL_OVERLAY_Z } from '../../shared/FullscreenBodyPortal';
 import { ContextMenu } from '../../shared/ContextMenu';
-import { getPartyStatement, type PartyStatement } from '../../../services/api/partyStatements';
+import { confirm as confirmDialog } from '../../shared/ConfirmDialog';
+import {
+  deletePartyStatementLine,
+  getPartyStatement,
+  type PartyStatement,
+  type PartyStatementLine,
+} from '../../../services/api/partyStatements';
 import { partnerAPI } from '../../../services/api/partiesPartners';
 import { printPartyStatementDoc, printPayrollVoucher } from '../../../utils/printPayrollVoucher';
 import { defaultEkstreDateRange, ficheTypeToInfo } from '../../../utils/cariAccountStatement';
@@ -43,6 +49,7 @@ export function PartyStatementPanel({ party, onClose }: PartyStatementPanelProps
   const [printing, setPrinting] = useState(false);
   const [data, setData] = useState<PartyStatement | null>(null);
   const [contextMenu, setContextMenu] = useState<{ x: number; y: number; row: PartyStatement['rows'][number] } | null>(null);
+  const [deletingKey, setDeletingKey] = useState<string | null>(null);
 
   const load = async (s: string, e: string, showCancelledArg = showCancelled, excludeCompanyDebtsArg = excludeCompanyDebts) => {
     setLoading(true);
@@ -134,6 +141,31 @@ export function PartyStatementPanel({ party, onClose }: PartyStatementPanelProps
     }
   };
 
+  const deleteRow = async (row: PartyStatementLine) => {
+    const isCancelled = String(row.transaction_type || '').toUpperCase().startsWith('CANCELLED_');
+    if (isCancelled || !row.id) return;
+    const amt = row.debit || row.credit;
+    const ok = await confirmDialog({
+      title: t('party.statement.deleteRowTitle'),
+      description: t('party.statement.deleteRowHint'),
+      meta: `${row.date ? String(row.date).split('T')[0] : ''} · ${formatMoney(amt)}`,
+      variant: 'danger',
+      confirmLabel: t('common.delete', 'Sil'),
+    });
+    if (!ok) return;
+    const key = String(row.id);
+    setDeletingKey(key);
+    try {
+      await deletePartyStatementLine(row);
+      toast.success(t('party.statement.deleteRowSuccess'));
+      await load(start, end, showCancelled, excludeCompanyDebts);
+    } catch (err: unknown) {
+      toast.error(err instanceof Error ? err.message : t('party.statement.deleteRowError'));
+    } finally {
+      setDeletingKey(null);
+    }
+  };
+
   const rows = data?.rows || [];
   const cardBal = data?.card_balance ?? party.balance ?? 0;
   const dip = useMemo(() => {
@@ -157,7 +189,9 @@ export function PartyStatementPanel({ party, onClose }: PartyStatementPanelProps
           <div className="flex min-w-0 flex-wrap items-center gap-2" id="party-ekstre-title">
             <FileText className="h-5 w-5 shrink-0 text-emerald-700" />
             <div className="min-w-0">
-              <p className="text-[10px] font-bold uppercase tracking-wider text-gray-500">{t('party.statement.title')}</p>
+              <p className="text-[10px] font-bold uppercase tracking-wider text-gray-500">
+                {party.card_type === 'partner' ? t('party.partnerCash.statementTitle') : t('party.statement.title')}
+              </p>
               <p className="truncate text-base font-bold text-gray-900">{party.name}</p>
             </div>
             <span className="shrink-0 rounded-full bg-emerald-100 px-2 py-0.5 text-[9px] font-black uppercase text-emerald-800">
@@ -281,11 +315,11 @@ export function PartyStatementPanel({ party, onClose }: PartyStatementPanelProps
           <table className="w-full text-sm">
             <thead className="sticky top-0 z-[1] border-b border-gray-200 bg-gray-100">
               <tr>
-                {[tm('dateLabel'), tm('ficheNo'), tm('type'), tm('description'), tm('debtor'), tm('creditor'), tm('balance')].map((h) => (
+                {[tm('dateLabel'), tm('ficheNo'), tm('type'), tm('description'), tm('debtor'), tm('creditor'), tm('balance'), ''].map((h, hi) => (
                   <th
-                    key={h}
+                    key={h || `act-${hi}`}
                     className={`px-4 py-3 text-[11px] font-black uppercase tracking-wider text-gray-600 ${
-                      [tm('debtor'), tm('creditor'), tm('balance')].includes(h) ? 'text-right' : 'text-left'
+                      [tm('debtor'), tm('creditor'), tm('balance')].includes(h) ? 'text-right' : h === '' ? 'text-center w-12' : 'text-left'
                     }`}
                   >
                     {h}
@@ -298,14 +332,23 @@ export function PartyStatementPanel({ party, onClose }: PartyStatementPanelProps
                 const isCancelled = String(row.transaction_type || '').toUpperCase().startsWith('CANCELLED_');
                 const { label, color } = ficheTypeToInfo(row.transaction_type, 0, isCancelled, tm);
                 const amt = row.debit || row.credit;
+                const rowKey = String(row.id || idx);
+                const busy = deletingKey === rowKey;
                 return (
                   <tr
-                    key={row.id || idx}
-                    className={`border-b border-gray-100 hover:bg-emerald-50/40 cursor-context-menu ${idx % 2 ? 'bg-gray-50/50' : ''} ${isCancelled ? 'opacity-60' : ''}`}
+                    key={rowKey}
+                    className={`border-b border-gray-100 hover:bg-emerald-50/40 cursor-context-menu ${idx % 2 ? 'bg-gray-50/50' : ''} ${isCancelled ? 'opacity-60' : ''} ${busy ? 'opacity-50' : ''}`}
                     onContextMenu={(e) => {
                       e.preventDefault();
                       setContextMenu({ x: e.clientX, y: e.clientY, row });
                     }}
+                    onClick={(e) => {
+                      if (isCancelled || busy) return;
+                      const el = e.target as HTMLElement;
+                      if (el.closest('button')) return;
+                      void deleteRow(row);
+                    }}
+                    title={isCancelled ? undefined : t('party.statement.deleteRowClickHint')}
                   >
                     <td className="px-4 py-2 font-mono text-gray-600">{row.date ? String(row.date).split('T')[0] : '—'}</td>
                     <td className="px-4 py-2">
@@ -343,6 +386,22 @@ export function PartyStatementPanel({ party, onClose }: PartyStatementPanelProps
                     <td className={`whitespace-nowrap px-4 py-2 text-right font-black ${row.balance_after > 0 ? 'text-red-600' : row.balance_after < 0 ? 'text-green-600' : 'text-gray-400'}`}>
                       {formatMoney(row.balance_after)}
                     </td>
+                    <td className="px-2 py-2 text-center">
+                      {!isCancelled && row.id ? (
+                        <button
+                          type="button"
+                          disabled={busy}
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            void deleteRow(row);
+                          }}
+                          className="inline-flex rounded-lg p-1.5 text-rose-600 hover:bg-rose-50 disabled:opacity-40"
+                          title={t('common.delete', 'Sil')}
+                        >
+                          {busy ? <Loader2 className="h-4 w-4 animate-spin" /> : <Trash2 className="h-4 w-4" />}
+                        </button>
+                      ) : null}
+                    </td>
                   </tr>
                 );
               })}
@@ -353,6 +412,7 @@ export function PartyStatementPanel({ party, onClose }: PartyStatementPanelProps
               credit={dip.credit}
               balance={dip.last}
               label={tm('invoiceListDipTotal')}
+              trailColSpan={1}
             />
           </table>
         )}
@@ -374,6 +434,21 @@ export function PartyStatementPanel({ party, onClose }: PartyStatementPanelProps
                 setContextMenu(null);
               },
             },
+            ...(!String(contextMenu.row.transaction_type || '').toUpperCase().startsWith('CANCELLED_') && contextMenu.row.id
+              ? [
+                  {
+                    id: 'delete',
+                    label: t('common.delete', 'Sil'),
+                    icon: Trash2,
+                    variant: 'danger' as const,
+                    onClick: () => {
+                      const r = contextMenu.row;
+                      setContextMenu(null);
+                      void deleteRow(r);
+                    },
+                  },
+                ]
+              : []),
           ]}
         />
       )}
