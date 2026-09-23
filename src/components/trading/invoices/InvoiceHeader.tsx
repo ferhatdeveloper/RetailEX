@@ -196,38 +196,30 @@ export const InvoiceHeader: React.FC<InvoiceHeaderProps> = ({
         (resolvedPaymentCode === 'ACIK_CARI' ? tm('paymentOpenAccount') : paymentMethod);
 
     /**
-     * Collapsed:
-     * 1: Fatura No | Cari hesap kodu | Ödeme şekli | Açıklama
-     * 2: Tarih | Cari hesap unvanı
-     * 3: Belge No | Bakiye
+     * Collapsed — 2 satır × 4 kolon (hizalı, okunaklı):
+     * 1: Fatura No | Cari kod | Ödeme | Açıklama
+     * 2: Tarih | Cari unvan | Belge No | Bakiye
      */
     const compactStackStyle: React.CSSProperties = {
         display: 'flex',
         flexDirection: 'column',
         gap: '0.35rem',
-        /* 4 kolon okunaklı kalsın; tam ekranı doldurmasın */
-        width: 'min(100%, 66rem)',
+        width: 'min(100%, 62rem)',
         maxWidth: '100%',
         boxSizing: 'border-box',
         position: 'relative',
         zIndex: 1,
         overflow: 'visible',
     };
-    const compactRowStyle: React.CSSProperties = {
+    const compactRow4Style: React.CSSProperties = {
         display: 'grid',
-        gridTemplateColumns: '1fr 1fr',
-        gap: '0.5rem',
+        gridTemplateColumns: 'repeat(4, minmax(0, 1fr))',
+        gap: '0.4rem',
         width: '100%',
         alignItems: 'stretch',
         boxSizing: 'border-box',
         overflow: 'visible',
         position: 'relative',
-    };
-    /** Üst satır: Fatura | Cari kod | Ödeme | Açıklama — min genişlik + orantı */
-    const compactRow4Style: React.CSSProperties = {
-        ...compactRowStyle,
-        gridTemplateColumns:
-            'minmax(11.5rem, 0.95fr) minmax(12.5rem, 1.05fr) minmax(12.5rem, 1.1fr) minmax(14rem, 1.35fr)',
     };
     const compactCellStyle: React.CSSProperties = {
         minWidth: 0,
@@ -237,12 +229,12 @@ export const InvoiceHeader: React.FC<InvoiceHeaderProps> = ({
         overflow: 'visible',
     };
     const compactCellClass = 'min-w-0';
-    /** Tek yükseklik + birleşik etiket+input+(...) — sabit etiket genişliği hiza için */
+    /** Tek yükseklik + birleşik etiket+input+(...) — kısa etiket; input görünür kalsın */
     const fieldInputClass =
         'min-w-0 h-8 px-2 border border-gray-300 dark:border-gray-600 text-sm leading-none bg-white dark:bg-gray-800 focus:outline-none focus:ring-1 focus:ring-blue-500';
     const inputGroupClass = 'flex items-stretch w-full min-w-0 h-8';
-    /** İçerik ne olursa olsun etiketler aynı genişlik (inline — Tailwind purge’a güvenilmez) */
-    const COMPACT_LABEL_WIDTH = '8.75rem';
+    /** 4 kolonda uzun etiket input’u ezmesin (title ile tam metin) */
+    const COMPACT_LABEL_WIDTH = '5.5rem';
     const inputGroupLabelStyle: React.CSSProperties = {
         width: COMPACT_LABEL_WIDTH,
         minWidth: COMPACT_LABEL_WIDTH,
@@ -820,9 +812,8 @@ export const InvoiceHeader: React.FC<InvoiceHeaderProps> = ({
             ) : (
                 <div ref={cariSuggestRef}>
                     {/*
-                      1: Fatura No | Cari hesap kodu | Ödeme şekli | Açıklama
-                      2: Tarih | Cari hesap unvanı
-                      3: Belge No | Bakiye
+                      1: Fatura No | Cari kod | Ödeme | Açıklama
+                      2: Tarih | Cari unvan | Belge No | Bakiye
                     */}
                     <div style={compactStackStyle}>
                         <div style={{ ...compactRow4Style, zIndex: cariSuggestField === 'code' ? 45 : undefined }}>
@@ -948,6 +939,7 @@ export const InvoiceHeader: React.FC<InvoiceHeaderProps> = ({
                                         value={transactionDate}
                                         onChange={(e) => setTransactionDate(e.target.value)}
                                         className={`${inputGroupFieldClass} tabular-nums`}
+                                        title={transactionDate}
                                     />
                                     <button
                                         type="button"
@@ -965,7 +957,6 @@ export const InvoiceHeader: React.FC<InvoiceHeaderProps> = ({
                                 style={{
                                     ...compactCellStyle,
                                     zIndex: cariSuggestField === 'title' ? 40 : undefined,
-                                    gridColumn: '2 / 4',
                                 }}
                             >
                                 <div className={inputGroupClass}>
@@ -983,6 +974,7 @@ export const InvoiceHeader: React.FC<InvoiceHeaderProps> = ({
                                         placeholder={tm('selectShortPlaceholder')}
                                         className={`${inputGroupFieldClass} font-medium truncate`}
                                         autoComplete="off"
+                                        title={cariTitleValue}
                                     />
                                     <button
                                         type="button"
@@ -1025,9 +1017,7 @@ export const InvoiceHeader: React.FC<InvoiceHeaderProps> = ({
                                 </div>
                                 {renderCariSuggestList('title')}
                             </div>
-                        </div>
 
-                        <div style={compactRow4Style}>
                             <div className={compactCellClass} style={compactCellStyle}>
                                 <div className={inputGroupClass}>
                                     <span className={inputGroupLabelClass} style={inputGroupLabelStyle} title={tm('documentNo')}>
@@ -1043,10 +1033,8 @@ export const InvoiceHeader: React.FC<InvoiceHeaderProps> = ({
                                     <span style={inputGroupTrailSpacerStyle} aria-hidden />
                                 </div>
                             </div>
-                            <div
-                                className={compactCellClass}
-                                style={{ ...compactCellStyle, justifyContent: 'center', gridColumn: '2 / 4' }}
-                            >
+
+                            <div className={compactCellClass} style={{ ...compactCellStyle, justifyContent: 'center' }}>
                                 {cariMetaBadges}
                             </div>
                         </div>
