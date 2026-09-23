@@ -7,6 +7,7 @@ import { confirm as confirmDialog } from '../../shared/ConfirmDialog';
 import {
   deletePartyStatementLine,
   getPartyStatement,
+  isUserAddedPartyStatementLine,
   type PartyStatement,
   type PartyStatementLine,
 } from '../../../services/api/partyStatements';
@@ -142,8 +143,10 @@ export function PartyStatementPanel({ party, onClose }: PartyStatementPanelProps
   };
 
   const deleteRow = async (row: PartyStatementLine) => {
-    const isCancelled = String(row.transaction_type || '').toUpperCase().startsWith('CANCELLED_');
-    if (isCancelled || !row.id) return;
+    if (!isUserAddedPartyStatementLine(row)) {
+      toast.error(t('party.statement.deleteRowOnlyUserAdded'));
+      return;
+    }
     const amt = row.debit || row.credit;
     const ok = await confirmDialog({
       title: t('party.statement.deleteRowTitle'),
@@ -293,6 +296,11 @@ export function PartyStatementPanel({ party, onClose }: PartyStatementPanelProps
             <span className="rounded border border-slate-200 bg-white px-2 py-0.5 text-slate-700">
               {t('party.statement.closing')}: {formatMoney(data.closing_balance)}
             </span>
+            {(party.card_type === 'partner' || party.card_type === 'employee') && (
+              <span className="rounded border border-amber-200 bg-amber-50 px-2 py-0.5 font-semibold text-amber-800">
+                {t('party.statement.deleteRowOnlyUserAdded')}
+              </span>
+            )}
           </div>
         )}
       </div>
@@ -330,6 +338,7 @@ export function PartyStatementPanel({ party, onClose }: PartyStatementPanelProps
             <tbody>
               {rows.map((row, idx) => {
                 const isCancelled = String(row.transaction_type || '').toUpperCase().startsWith('CANCELLED_');
+                const canDelete = isUserAddedPartyStatementLine(row);
                 const { label, color } = ficheTypeToInfo(row.transaction_type, 0, isCancelled, tm);
                 const amt = row.debit || row.credit;
                 const rowKey = String(row.id || idx);
@@ -337,18 +346,18 @@ export function PartyStatementPanel({ party, onClose }: PartyStatementPanelProps
                 return (
                   <tr
                     key={rowKey}
-                    className={`border-b border-gray-100 hover:bg-emerald-50/40 cursor-context-menu ${idx % 2 ? 'bg-gray-50/50' : ''} ${isCancelled ? 'opacity-60' : ''} ${busy ? 'opacity-50' : ''}`}
+                    className={`border-b border-gray-100 hover:bg-emerald-50/40 cursor-context-menu ${idx % 2 ? 'bg-gray-50/50' : ''} ${isCancelled ? 'opacity-60' : ''} ${busy ? 'opacity-50' : ''} ${canDelete ? 'cursor-pointer' : ''}`}
                     onContextMenu={(e) => {
                       e.preventDefault();
                       setContextMenu({ x: e.clientX, y: e.clientY, row });
                     }}
                     onClick={(e) => {
-                      if (isCancelled || busy) return;
+                      if (!canDelete || busy) return;
                       const el = e.target as HTMLElement;
                       if (el.closest('button')) return;
                       void deleteRow(row);
                     }}
-                    title={isCancelled ? undefined : t('party.statement.deleteRowClickHint')}
+                    title={canDelete ? t('party.statement.deleteRowClickHint') : t('party.statement.deleteRowOnlyUserAdded')}
                   >
                     <td className="px-4 py-2 font-mono text-gray-600">{row.date ? String(row.date).split('T')[0] : '—'}</td>
                     <td className="px-4 py-2">
@@ -387,7 +396,7 @@ export function PartyStatementPanel({ party, onClose }: PartyStatementPanelProps
                       {formatMoney(row.balance_after)}
                     </td>
                     <td className="px-2 py-2 text-center">
-                      {!isCancelled && row.id ? (
+                      {canDelete ? (
                         <button
                           type="button"
                           disabled={busy}
@@ -434,7 +443,7 @@ export function PartyStatementPanel({ party, onClose }: PartyStatementPanelProps
                 setContextMenu(null);
               },
             },
-            ...(!String(contextMenu.row.transaction_type || '').toUpperCase().startsWith('CANCELLED_') && contextMenu.row.id
+            ...(isUserAddedPartyStatementLine(contextMenu.row)
               ? [
                   {
                     id: 'delete',

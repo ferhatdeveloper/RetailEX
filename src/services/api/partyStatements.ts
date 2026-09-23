@@ -21,7 +21,6 @@ import { employeeStatementSides } from './partyEmployeeBalance';
 import { deleteKasaIslemi } from './kasa';
 import {
   invalidateYearNetSyncCache,
-  PERIOD_SHARE_REMOVED_MODULE,
 } from './partiesPartners';
 import type { PartyCardType } from '../../core/types/models';
 
@@ -37,7 +36,43 @@ export interface PartyStatementLine {
   id?: string | null;
   /** Kasa satırı varsa silmede deleteKasaIslemi için */
   cash_line_id?: string | null;
+  /** party_ledger.source_module — otomatik dönem payı vs elle eklenen */
+  source_module?: string | null;
 }
+
+/** Elle / sonradan eklenen hareketler (para giriş-çıkış, kasa bağlı ödeme). Otomatik kâr payı silinemez. */
+const USER_ADDED_LEDGER_MODULES = new Set([
+  'partner_cash',
+  'cash_create',
+  'payroll',
+]);
+
+export function isUserAddedPartyStatementLine(line: PartyStatementLine): boolean {
+  const tx = String(line.transaction_type || '').toUpperCase();
+  if (!line.id || tx.startsWith('CANCELLED_')) return false;
+  if (line.source === 'opening' || line.source === 'sale') return false;
+
+  const mod = String(line.source_module || '').trim().toLowerCase();
+  if (mod === 'period_net_share' || mod === 'period_net_share_removed' || mod === 'partner_distribution') {
+    return false;
+  }
+  if (mod === 'payroll_accrual' || mod === 'cash_delete') return false;
+
+  // Kasa bağlı veya doğrudan kasa satırı = kullanıcı ekledi
+  if (String(line.cash_line_id || '').trim()) return true;
+  if (line.source === 'cash_line') return true;
+  if (USER_ADDED_LEDGER_MODULES.has(mod)) return true;
+
+  // SERMAYE / PARA giriş-çıkış tipi ama mod boş (eski kayıt) — kasa yoksa otomatik pay say
+  const cashLike =
+    tx.includes('SERMAYE') ||
+    tx.includes('PARA_GIRIS') ||
+    tx.includes('PARA_CIKIS') ||
+    tx === 'MAAS_ODEME' ||
+    tx === 'AVANS_ODEME';
+  return cashLike && !!String(line.cash_line_id || '').trim();
+}
+
 
 export interface PartyStatement {
   party_id: string;
@@ -199,7 +234,8 @@ export async function getPartyStatement(
         pl.amount,
         COALESCE(pl.sign, 0) AS sign,
         pl.id,
-        pl.cash_line_id
+        pl.cash_line_id,
+        pl.source_module
       FROM ${partyLedgerTable()} pl
       LEFT JOIN ${cashLinesTable()} cl ON cl.id = pl.cash_line_id
       WHERE pl.party_id = $1::text::uuid${dateCond('pl.date')}
@@ -219,7 +255,8 @@ export async function getPartyStatement(
           ELSE 0
         END AS sign,
         cl.id,
-        cl.id AS cash_line_id
+        cl.id AS cash_line_id,
+        NULL::text AS source_module
       FROM ${cashLinesTable()} cl
       WHERE cl.party_id = $1::text::uuid${dateCond('cl.date')}
         AND NOT EXISTS (
@@ -235,6 +272,7 @@ export async function getPartyStatement(
     const amount = parseFloat(r.amount || 0);
     const type = String(r.transaction_type || '');
     const cashLineId = r.cash_line_id != null ? String(r.cash_line_id) : null;
+    const sourceModule = r.source_module != null ? String(r.source_module) : null;
     if (resolvedType === 'employee') {
       const sides = employeeStatementSides(type, amount);
       return {
@@ -248,6 +286,7 @@ export async function getPartyStatement(
         balance_after: 0,
         id: r.id,
         cash_line_id: cashLineId,
+        source_module: sourceModule,
       };
     }
     const sign = parseInt(r.sign || 0, 10);
@@ -264,6 +303,7 @@ export async function getPartyStatement(
       balance_after: 0,
       id: r.id,
       cash_line_id: cashLineId,
+      source_module: sourceModule,
     };
   });
 
@@ -346,13 +386,15 @@ export async function getPartyStatement(
 }
 
 /**
- * Ekstre satırını siler.
+ * Ekstre satırını siler — yalnızca sonradan / elle eklenenler
+ * (`isUserAddedPartyStatementLine`).
  * - Kasa bağlıysa: kasa bakiyesi + party bakiyesi deleteKasaIslemi ile geri alınır;
- *   bağlı party_ledger satırları da temizlenir (hayalet ekstre satırı kalmasın).
- * - Yalnızca ledger (kâr dağıtımı vb.): party bakiyesi amount×sign tersine çevrilir;
- *   dönem payı satırları sync’in yeniden yazmaması için tombstone bırakılır.
+ *   bağlı party_ledger satırları da temizlenir.
  */
 export async function deletePartyStatementLine(line: PartyStatementLine): Promise<void> {
+  if (!isUserAddedPartyStatementLine(line)) {
+    throw new Error('Yalnızca sonradan eklenen para giriş/çıkış silinebilir');
+  }
   const tx = String(line.transaction_type || '').toUpperCase();
   if (tx.startsWith('CANCELLED_')) {
     throw new Error('İptal kaydı silinemez');
@@ -361,10 +403,7 @@ export async function deletePartyStatementLine(line: PartyStatementLine): Promis
   if (!rowId) throw new Error('Satır kimliği yok');
 
   await ensurePartyPeriodTables();
-  const firmNr = firm();
-  const partiesTbl = `rex_${firmNr}_parties`;
   const ledgerTbl = partyLedgerTable();
-  const distItemsTbl = `rex_${firmNr}_${period()}_partner_distribution_items`;
 
   let cashLineId = String(line.cash_line_id || '').trim();
   let ledgerId = line.source === 'party_ledger' ? rowId : '';
@@ -375,108 +414,38 @@ export async function deletePartyStatementLine(line: PartyStatementLine): Promis
 
   if (ledgerId && !cashLineId) {
     const { rows } = await postgres.query(
-      `SELECT id, cash_line_id, amount, sign, party_id, transaction_type, source_module, source_id, definition, date
+      `SELECT id, cash_line_id, source_module
        FROM ${ledgerTbl} WHERE id = $1::text::uuid LIMIT 1`,
       [ledgerId],
     );
     const led = rows?.[0];
     if (!led) throw new Error('Hareket bulunamadı');
+    const mod = String(led.source_module || '').trim().toLowerCase();
+    if (mod === 'period_net_share' || mod === 'partner_distribution' || mod === 'payroll_accrual') {
+      throw new Error('Yalnızca sonradan eklenen para giriş/çıkış silinebilir');
+    }
     cashLineId = String(led.cash_line_id || '').trim();
   }
 
-  if (cashLineId) {
-    const { rows: cashRows } = await postgres.query(
-      `SELECT id FROM ${cashLinesTable()} WHERE id = $1::text::uuid LIMIT 1`,
-      [cashLineId],
-    );
-    if (cashRows?.[0]?.id) {
-      await deleteKasaIslemi(cashLineId);
-      await postgres.query(`DELETE FROM ${ledgerTbl} WHERE cash_line_id = $1::text::uuid`, [cashLineId]);
-      invalidateYearNetSyncCache();
-      return;
-    }
-    // Kasa satırı yok (önceden silinmiş): hayalet ledger’ı temizle, bakiyeyi tekrar çevirme
-    await postgres.query(
-      `DELETE FROM ${ledgerTbl}
-       WHERE cash_line_id = $1::text::uuid OR id = $2::text::uuid`,
-      [cashLineId, rowId],
-    );
+  if (!cashLineId) {
+    throw new Error('Yalnızca sonradan eklenen para giriş/çıkış silinebilir');
+  }
+
+  const { rows: cashRows } = await postgres.query(
+    `SELECT id FROM ${cashLinesTable()} WHERE id = $1::text::uuid LIMIT 1`,
+    [cashLineId],
+  );
+  if (cashRows?.[0]?.id) {
+    await deleteKasaIslemi(cashLineId);
+    await postgres.query(`DELETE FROM ${ledgerTbl} WHERE cash_line_id = $1::text::uuid`, [cashLineId]);
     invalidateYearNetSyncCache();
     return;
   }
-
-  // Ledger-only (KAR_DAGITIMI / ZARAR_DAGITIMI / hakkediş vb.)
-  const { rows: ledRows } = await postgres.query(
-    `SELECT id, amount, sign, party_id, transaction_type, source_module, source_id, definition, date
-     FROM ${ledgerTbl} WHERE id = $1::text::uuid LIMIT 1`,
-    [rowId],
+  // Kasa satırı yok (önceden silinmiş): hayalet ledger’ı temizle, bakiyeyi tekrar çevirme
+  await postgres.query(
+    `DELETE FROM ${ledgerTbl}
+     WHERE cash_line_id = $1::text::uuid OR id = $2::text::uuid`,
+    [cashLineId, rowId],
   );
-  const led = ledRows?.[0];
-  if (!led) throw new Error('Hareket bulunamadı');
-  const ledTx = String(led.transaction_type || '').toUpperCase();
-  if (ledTx.startsWith('CANCELLED_') || String(led.source_module || '') === 'cash_delete') {
-    throw new Error('İptal kaydı silinemez');
-  }
-
-  const amt = Math.abs(parseFloat(String(led.amount || 0)) || 0);
-  const sign = parseInt(String(led.sign || 0), 10) || 0;
-  const partyId = String(led.party_id || '');
-  const sourceModule = String(led.source_module || '');
-  const balanceDelta = -(amt * sign);
-
-  await postgres.query('BEGIN');
-  try {
-    if (partyId && balanceDelta !== 0) {
-      await postgres.query(
-        `UPDATE ${partiesTbl}
-         SET balance = COALESCE(balance, 0) + $1::text::numeric, updated_at = NOW()
-         WHERE id = $2::text::uuid`,
-        [balanceDelta.toString(), partyId],
-      );
-    }
-
-    // Dağıtım kalemi bağlantısını temizle (tüm dağıtımı ters çevirme — yalnızca bu satır)
-    try {
-      await postgres.query(
-        `UPDATE ${distItemsTbl}
-         SET party_ledger_movement_id = NULL
-         WHERE party_ledger_movement_id = $1::text::uuid`,
-        [rowId],
-      );
-    } catch {
-      /* tablo yoksa yoksay */
-    }
-
-    if (sourceModule === 'period_net_share') {
-      // Tombstone: sync aynı ayı yeniden yazmasın; tutar 0 — bakiye/ekstre etkilemesin
-      await postgres.query(
-        `UPDATE ${ledgerTbl}
-         SET transaction_type = $1::text,
-             source_module = $2::text,
-             definition = $3::text,
-             amount = 0,
-             sign = 0
-         WHERE id = $4::text::uuid`,
-        [
-          `CANCELLED_${ledTx || 'KAR_DAGITIMI'}`,
-          PERIOD_SHARE_REMOVED_MODULE,
-          `İptal: ${led.definition || ''}`.trim(),
-          rowId,
-        ],
-      );
-    } else {
-      await postgres.query(`DELETE FROM ${ledgerTbl} WHERE id = $1::text::uuid`, [rowId]);
-    }
-
-    await postgres.query('COMMIT');
-  } catch (err) {
-    try {
-      await postgres.query('ROLLBACK');
-    } catch {
-      /* ignore */
-    }
-    throw err;
-  }
-
   invalidateYearNetSyncCache();
 }
