@@ -3852,6 +3852,31 @@ export const moduleTranslations: Record<string, Record<Language, string>> = {
     ar: 'عنوان الحساب الجاري',
     ku: 'ناونیشانی هەژماری جاری',
   },
+  /** Kompakt fatura başlığı — kesilmeyen kısa etiket */
+  cariCodeCompactLabel: {
+    tr: 'Cari Kod',
+    en: 'Acct Code',
+    ar: 'رمز الحساب',
+    ku: 'کۆدی جاری',
+  },
+  cariTitleCompactLabel: {
+    tr: 'Cari Unvan',
+    en: 'Acct Title',
+    ar: 'عنوان الحساب',
+    ku: 'ناونیشانی جاری',
+  },
+  paymentCompactLabel: {
+    tr: 'Ödeme',
+    en: 'Payment',
+    ar: 'الدفع',
+    ku: 'پارەدان',
+  },
+  balanceEmptyPlaceholder: {
+    tr: '—',
+    en: '—',
+    ar: '—',
+    ku: '—',
+  },
   warehouseField: { tr: 'Ambar', en: 'Warehouse', ar: 'المستودع', ku: 'ئەمبار' },
   salespersonLabel: { tr: 'Satış Elemanı', en: 'Salesperson', ar: 'مندوب المبيعات', ku: 'فرۆشیار' },
   scanBarcodePlaceholder: { tr: 'Barkod okutun...', en: 'Scan barcode...', ar: 'امسح الباركود...', ku: 'بارکۆد بخوێنەوە...' },

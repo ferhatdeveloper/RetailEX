@@ -233,8 +233,8 @@ export const InvoiceHeader: React.FC<InvoiceHeaderProps> = ({
     const fieldInputClass =
         'min-w-0 h-8 px-2 border border-gray-300 dark:border-gray-600 text-sm leading-none bg-white dark:bg-gray-800 focus:outline-none focus:ring-1 focus:ring-blue-500';
     const inputGroupClass = 'flex items-stretch w-full min-w-0 h-8';
-    /** 4 kolonda uzun etiket input’u ezmesin (title ile tam metin) */
-    const COMPACT_LABEL_WIDTH = '5.5rem';
+    /** 4 kolonda kısa etiket okunur kalsın */
+    const COMPACT_LABEL_WIDTH = '6.25rem';
     const inputGroupLabelStyle: React.CSSProperties = {
         width: COMPACT_LABEL_WIDTH,
         minWidth: COMPACT_LABEL_WIDTH,
@@ -413,6 +413,31 @@ export const InvoiceHeader: React.FC<InvoiceHeaderProps> = ({
             ) : null}
         </div>
     ) : null;
+
+    /** Kompakt satırda açıklama altı — boş hücre bırakma */
+    const compactBalanceCell = (
+        <div className={inputGroupClass}>
+            <span className={inputGroupLabelClass} style={inputGroupLabelStyle} title={tm('balanceShort')}>
+                {tm('balanceShort')}
+            </span>
+            {showCariMeta && selectedCariBalance != null ? (
+                <div
+                    className={`${inputGroupFieldClass} flex items-center font-semibold tabular-nums ${
+                        (selectedCariBalance || 0) >= 0 ? 'text-teal-700 dark:text-teal-300' : 'text-red-600'
+                    }`}
+                    title={`${tm('balanceShort')}: ${new Intl.NumberFormat('tr-TR', { minimumFractionDigits: 2 }).format(selectedCariBalance ?? 0)} ${selectedCariCurrency}`}
+                >
+                    {new Intl.NumberFormat('tr-TR', { minimumFractionDigits: 2 }).format(selectedCariBalance ?? 0)}{' '}
+                    <span className="ml-1 text-[10px] font-medium opacity-70">{selectedCariCurrency}</span>
+                </div>
+            ) : (
+                <div className={`${inputGroupFieldClass} flex items-center text-gray-400 dark:text-gray-500`}>
+                    {tm('balanceEmptyPlaceholder')}
+                </div>
+            )}
+            <span style={inputGroupTrailSpacerStyle} aria-hidden />
+        </div>
+    );
 
     return (
         <div className="bg-white dark:bg-gray-800 rounded border border-gray-200 dark:border-gray-600 px-3 py-2 mb-3">
@@ -856,7 +881,7 @@ export const InvoiceHeader: React.FC<InvoiceHeaderProps> = ({
                             >
                                 <div className={inputGroupClass}>
                                     <span className={`${inputGroupLabelClass} ${cariTextColor}`} style={inputGroupLabelStyle} title={tm('cariAccountCodeLabel')}>
-                                        {tm('cariAccountCodeLabel')}
+                                        {tm('cariCodeCompactLabel')}
                                     </span>
                                     <input
                                         type="text"
@@ -866,7 +891,7 @@ export const InvoiceHeader: React.FC<InvoiceHeaderProps> = ({
                                             setCariSuggestQuery(cariCodeValue);
                                             setCariSuggestField('code');
                                         }}
-                                        placeholder={tm('selectOrEnterPlaceholder')}
+                                        placeholder={tm('selectShortPlaceholder')}
                                         className={`${inputGroupFieldClass} font-mono truncate`}
                                         autoComplete="off"
                                     />
@@ -885,7 +910,7 @@ export const InvoiceHeader: React.FC<InvoiceHeaderProps> = ({
                             <div className={compactCellClass} style={compactCellStyle}>
                                 <div className={inputGroupClass}>
                                     <span className={inputGroupLabelClass} style={inputGroupLabelStyle} title={tm('paymentMethodLabel')}>
-                                        {tm('paymentMethodLabel')}
+                                        {tm('paymentCompactLabel')}
                                     </span>
                                     <input
                                         type="text"
@@ -961,7 +986,7 @@ export const InvoiceHeader: React.FC<InvoiceHeaderProps> = ({
                             >
                                 <div className={inputGroupClass}>
                                     <span className={`${inputGroupLabelClass} ${cariTextColor}`} style={inputGroupLabelStyle} title={tm('cariAccountTitleLabel')}>
-                                        {tm('cariAccountTitleLabel')}
+                                        {tm('cariTitleCompactLabel')}
                                     </span>
                                     <input
                                         type="text"
@@ -1034,8 +1059,8 @@ export const InvoiceHeader: React.FC<InvoiceHeaderProps> = ({
                                 </div>
                             </div>
 
-                            <div className={compactCellClass} style={{ ...compactCellStyle, justifyContent: 'center' }}>
-                                {cariMetaBadges}
+                            <div className={compactCellClass} style={compactCellStyle}>
+                                {compactBalanceCell}
                             </div>
                         </div>
                     </div>
