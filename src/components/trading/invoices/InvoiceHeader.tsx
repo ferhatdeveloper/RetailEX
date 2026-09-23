@@ -185,25 +185,24 @@ export const InvoiceHeader: React.FC<InvoiceHeaderProps> = ({
         paymentMethodLabel ||
         (resolvedPaymentCode === 'ACIK_CARI' ? tm('paymentOpenAccount') : paymentMethod);
 
-    const fieldLabelClass =
-        'block mb-1 text-[11px] font-semibold text-gray-500 dark:text-gray-300 uppercase tracking-wide';
     /**
-     * Collapsed: sola yaslı 2 satır × her satırda 3 alan.
-     * Kök neden: statik Tailwind’de `grid-cols-3` / `inline-grid` yok veya eksik;
-     * her satır kendi inline 3-col grid’inde — Tailwind’e güvenilmez.
+     * Collapsed: sola yaslı 3 satır × 2 kolon (minimal, etiket+input+buton bitişik).
+     * 1: Fatura No | Cari hesap kodu
+     * 2: Tarih | Cari hesap unvanı
+     * 3: Belge No | Açıklama
      */
     const compactStackStyle: React.CSSProperties = {
         display: 'flex',
         flexDirection: 'column',
-        gap: '0.5rem',
-        width: 'min(100%, 48rem)',
+        gap: '0.35rem',
+        width: 'min(100%, 42rem)',
         maxWidth: '100%',
         boxSizing: 'border-box',
     };
     const compactRowStyle: React.CSSProperties = {
         display: 'grid',
-        gridTemplateColumns: '1fr 1fr 1fr',
-        gap: '0.75rem',
+        gridTemplateColumns: '1fr 1fr',
+        gap: '0.5rem',
         width: '100%',
         boxSizing: 'border-box',
     };
@@ -213,17 +212,45 @@ export const InvoiceHeader: React.FC<InvoiceHeaderProps> = ({
         flexDirection: 'column',
     };
     const compactCellClass = 'min-w-0';
-    /** Tek yükseklik + birleşik input+(...) kontrol */
+    /** Tek yükseklik + birleşik etiket+input+(...) kontrol */
     const fieldInputClass =
         'min-w-0 h-8 px-2 border border-gray-300 dark:border-gray-600 text-sm leading-none bg-white dark:bg-gray-800 focus:outline-none focus:ring-1 focus:ring-blue-500';
-    const fieldInputSoloClass = `${fieldInputClass} w-full rounded`;
     const inputGroupClass = 'flex items-stretch w-full min-w-0';
-    const inputGroupFieldClass = `${fieldInputClass} flex-1 rounded-l rounded-r-none border-r-0`;
+    const inputGroupLabelClass =
+        'shrink-0 inline-flex items-center max-w-[42%] px-2 h-8 border border-r-0 border-gray-300 dark:border-gray-600 rounded-l bg-slate-50 dark:bg-gray-700/80 text-[10px] font-bold uppercase tracking-wide text-slate-600 dark:text-gray-300 truncate';
+    const inputGroupFieldClass = `${fieldInputClass} flex-1 rounded-none border-r-0`;
+    const inputGroupFieldStartClass = `${fieldInputClass} flex-1 rounded-l rounded-r-none border-r-0`;
+    const inputGroupFieldEndClass = `${fieldInputClass} flex-1 rounded-r rounded-l-none`;
     const inputGroupBtnClass =
         'shrink-0 inline-flex items-center justify-center w-8 h-8 border border-gray-300 dark:border-gray-600 rounded-r rounded-l-none bg-white dark:bg-gray-800 hover:bg-gray-50 dark:hover:bg-gray-700';
+    const inputGroupBtnMidClass =
+        'shrink-0 inline-flex items-center justify-center w-8 h-8 border border-r-0 border-gray-300 dark:border-gray-600 rounded-none bg-white dark:bg-gray-800 hover:bg-gray-50 dark:hover:bg-gray-700';
 
     const paymentModalTriggerEl = (
         <div className={inputGroupClass}>
+            <input
+                type="text"
+                readOnly
+                value={paymentDisplayLabel}
+                className={`${inputGroupFieldStartClass} cursor-pointer truncate`}
+                onClick={() => setShowPaymentInfoModal(true)}
+            />
+            <button
+                type="button"
+                onClick={() => setShowPaymentInfoModal(true)}
+                className={inputGroupBtnClass}
+                title={tm('paymentInfo')}
+            >
+                <MoreVertical className="w-3.5 h-3.5 text-gray-600 dark:text-gray-300" />
+            </button>
+        </div>
+    );
+
+    const paymentModalTriggerCompactEl = (
+        <div className={inputGroupClass}>
+            <span className={inputGroupLabelClass} title={tm('paymentMethodLabel')}>
+                {tm('paymentMethodLabel')}
+            </span>
             <input
                 type="text"
                 readOnly
@@ -260,58 +287,8 @@ export const InvoiceHeader: React.FC<InvoiceHeaderProps> = ({
         (isPurchaseSide && Boolean(supplierCode || supplierTitle)) ||
         (!isPurchaseSide && Boolean(customerCode || customerTitle));
 
-    const cariSummaryEl = (
-        <div className={compactCellClass} style={compactCellStyle}>
-            <label className={`${fieldLabelClass} ${cariTextColor}`}>
-                {isPurchaseSide ? tm('supplier') : tm('customer')}
-            </label>
-            <div className="flex items-stretch gap-1 w-full min-w-0">
-                <div className={inputGroupClass}>
-                    <input
-                        type="text"
-                        value={isPurchaseSide ? supplierTitle : customerTitle}
-                        readOnly
-                        placeholder={`${tm('selectCurrent')}...`}
-                        className={`flex-1 min-w-0 h-8 px-2 border-2 border-r-0 rounded-l rounded-r-none text-sm leading-none bg-white dark:bg-gray-800 cursor-pointer font-medium hover:border-gray-400 transition-colors truncate ${cariBorderColor}`}
-                        onClick={openCariModal}
-                    />
-                    <button
-                        type="button"
-                        onClick={openCariModal}
-                        className={`shrink-0 inline-flex items-center justify-center w-8 h-8 border-2 rounded-r rounded-l-none bg-white dark:bg-gray-800 hover:bg-gray-50 dark:hover:bg-gray-700 ${cariBorderColor}`}
-                    >
-                        <MoreVertical className="w-3.5 h-3.5 text-gray-600 dark:text-gray-300" />
-                    </button>
-                </div>
-                {showCariHistory && isPurchaseSide ? (
-                    <button
-                        type="button"
-                        onClick={() => {
-                            setSelectedSupplierHistory({ id: supplierCode, name: supplierTitle });
-                            setShowSupplierHistory(true);
-                        }}
-                        className="shrink-0 inline-flex items-center justify-center w-8 h-8 border border-blue-200 dark:border-blue-700 bg-blue-50 dark:bg-blue-900/40 hover:bg-blue-100 dark:hover:bg-blue-900/60 text-blue-600 dark:text-blue-300 rounded transition-colors"
-                        title={tm('supplierHistoryTitle')}
-                    >
-                        <History className="w-3.5 h-3.5" />
-                    </button>
-                ) : null}
-                {showCariHistory && !isPurchaseSide ? (
-                    <button
-                        type="button"
-                        onClick={() => {
-                            setSelectedCustomerHistory({ id: customerCode, name: customerTitle, uuid: customerId || customerCode });
-                            setShowCustomerHistory(true);
-                        }}
-                        className="shrink-0 inline-flex items-center justify-center w-8 h-8 border border-blue-200 dark:border-blue-700 bg-blue-50 dark:bg-blue-900/40 hover:bg-blue-100 dark:hover:bg-blue-900/60 text-blue-600 dark:text-blue-300 rounded transition-colors"
-                        title={tm('customerHistoryTitle')}
-                    >
-                        <History className="w-3.5 h-3.5" />
-                    </button>
-                ) : null}
-            </div>
-        </div>
-    );
+    const cariCodeValue = isPurchaseSide ? supplierCode : customerCode || '';
+    const cariTitleValue = isPurchaseSide ? supplierTitle : customerTitle;
 
     const cariMetaBadges = showCariMeta ? (
         <div className="flex flex-wrap items-center gap-2">
@@ -731,16 +708,18 @@ export const InvoiceHeader: React.FC<InvoiceHeaderProps> = ({
             ) : (
                 <div>
                     {/*
-                      Sola yaslı kompakt — her satır kendi 3-col inline grid:
-                      1: Fatura No | Tarih | Belge No
-                      2: Ödeme Şekli | Müşteri | Açıklama
+                      Minimal kompakt — 3 satır × 2 kolon, etiket+input+buton bitişik:
+                      1: Fatura No | Cari hesap kodu
+                      2: Tarih | Cari hesap unvanı
+                      3: Belge No | Açıklama
                     */}
                     <div style={compactStackStyle}>
-                        {/* Satır 1: FATURA NO | TARİH | BELGE NO */}
                         <div style={compactRowStyle}>
                             <div className={compactCellClass} style={compactCellStyle}>
-                                <label className={fieldLabelClass}>{tm('invoiceNo')}</label>
                                 <div className={inputGroupClass}>
+                                    <span className={inputGroupLabelClass} title={tm('invoiceNo')}>
+                                        {tm('invoiceNo')}
+                                    </span>
                                     <input
                                         type="text"
                                         value={invoiceNo}
@@ -748,8 +727,8 @@ export const InvoiceHeader: React.FC<InvoiceHeaderProps> = ({
                                         onChange={(e) => setInvoiceNo?.(e.target.value)}
                                         className={`min-w-0 h-8 px-2 border border-gray-300 dark:border-gray-600 text-sm leading-none font-mono tabular-nums truncate ${
                                             invoiceNoEditable
-                                                ? 'flex-1 rounded-l rounded-r-none border-r-0 bg-white dark:bg-gray-800 focus:outline-none focus:ring-1 focus:ring-blue-500'
-                                                : 'w-full rounded bg-gray-50 dark:bg-gray-700 text-gray-800 dark:text-gray-100'
+                                                ? 'flex-1 rounded-none border-r-0 bg-white dark:bg-gray-800 focus:outline-none focus:ring-1 focus:ring-blue-500'
+                                                : 'flex-1 rounded-r rounded-l-none bg-gray-50 dark:bg-gray-700 text-gray-800 dark:text-gray-100'
                                         }`}
                                         title={invoiceNo}
                                     />
@@ -765,8 +744,42 @@ export const InvoiceHeader: React.FC<InvoiceHeaderProps> = ({
                             </div>
 
                             <div className={compactCellClass} style={compactCellStyle}>
-                                <label className={fieldLabelClass}>{tm('date')}</label>
                                 <div className={inputGroupClass}>
+                                    <span className={`${inputGroupLabelClass} ${cariTextColor}`} title={tm('cariAccountCodeLabel')}>
+                                        {tm('cariAccountCodeLabel')}
+                                    </span>
+                                    <input
+                                        type="text"
+                                        value={cariCodeValue}
+                                        onChange={(e) => {
+                                            if (isPurchaseSide) {
+                                                setSupplierCode?.(e.target.value);
+                                            } else {
+                                                setCustomerCode(e.target.value);
+                                            }
+                                        }}
+                                        placeholder={tm('selectOrEnterPlaceholder')}
+                                        className={`${inputGroupFieldClass} font-mono truncate`}
+                                        onClick={openCariModal}
+                                    />
+                                    <button
+                                        type="button"
+                                        onClick={openCariModal}
+                                        className={inputGroupBtnClass}
+                                        title={tm('cariAccountCodeLabel')}
+                                    >
+                                        <MoreVertical className="w-3.5 h-3.5 text-gray-600 dark:text-gray-300" />
+                                    </button>
+                                </div>
+                            </div>
+                        </div>
+
+                        <div style={compactRowStyle}>
+                            <div className={compactCellClass} style={compactCellStyle}>
+                                <div className={inputGroupClass}>
+                                    <span className={inputGroupLabelClass} title={tm('date')}>
+                                        {tm('date')}
+                                    </span>
                                     <input
                                         type="text"
                                         value={transactionDate}
@@ -785,46 +798,105 @@ export const InvoiceHeader: React.FC<InvoiceHeaderProps> = ({
                             </div>
 
                             <div className={compactCellClass} style={compactCellStyle}>
-                                <label className={fieldLabelClass}>{tm('documentNo')}</label>
-                                <input
-                                    type="text"
-                                    value={documentNo}
-                                    onChange={(e) => setDocumentNo(e.target.value)}
-                                    className={fieldInputSoloClass}
-                                    placeholder="..."
-                                />
+                                <div className={inputGroupClass}>
+                                    <span className={`${inputGroupLabelClass} ${cariTextColor}`} title={tm('cariAccountTitleLabel')}>
+                                        {tm('cariAccountTitleLabel')}
+                                    </span>
+                                    <input
+                                        type="text"
+                                        value={cariTitleValue}
+                                        readOnly
+                                        placeholder={tm('selectShortPlaceholder')}
+                                        className={`${inputGroupFieldClass} cursor-pointer font-medium truncate`}
+                                        onClick={openCariModal}
+                                    />
+                                    <button
+                                        type="button"
+                                        onClick={openCariModal}
+                                        className={showCariHistory ? inputGroupBtnMidClass : inputGroupBtnClass}
+                                        title={tm('cariAccountTitleLabel')}
+                                    >
+                                        <MoreVertical className="w-3.5 h-3.5 text-gray-600 dark:text-gray-300" />
+                                    </button>
+                                    {showCariHistory && isPurchaseSide ? (
+                                        <button
+                                            type="button"
+                                            onClick={() => {
+                                                setSelectedSupplierHistory({ id: supplierCode, name: supplierTitle });
+                                                setShowSupplierHistory(true);
+                                            }}
+                                            className={`${inputGroupBtnClass} border-blue-200 dark:border-blue-700 bg-blue-50 dark:bg-blue-900/40 text-blue-600 dark:text-blue-300 hover:bg-blue-100 dark:hover:bg-blue-900/60`}
+                                            title={tm('supplierHistoryTitle')}
+                                        >
+                                            <History className="w-3.5 h-3.5" />
+                                        </button>
+                                    ) : null}
+                                    {showCariHistory && !isPurchaseSide ? (
+                                        <button
+                                            type="button"
+                                            onClick={() => {
+                                                setSelectedCustomerHistory({
+                                                    id: customerCode,
+                                                    name: customerTitle,
+                                                    uuid: customerId || customerCode,
+                                                });
+                                                setShowCustomerHistory(true);
+                                            }}
+                                            className={`${inputGroupBtnClass} border-blue-200 dark:border-blue-700 bg-blue-50 dark:bg-blue-900/40 text-blue-600 dark:text-blue-300 hover:bg-blue-100 dark:hover:bg-blue-900/60`}
+                                            title={tm('customerHistoryTitle')}
+                                        >
+                                            <History className="w-3.5 h-3.5" />
+                                        </button>
+                                    ) : null}
+                                </div>
                             </div>
                         </div>
 
-                        {/* Satır 2: ÖDEME ŞEKLİ | MÜŞTERİ | AÇIKLAMA */}
                         <div style={compactRowStyle}>
                             <div className={compactCellClass} style={compactCellStyle}>
-                                <label className={fieldLabelClass}>{tm('paymentMethodLabel')}</label>
-                                {paymentModalTriggerEl}
-                                {paymentExtraLabel ? (
-                                    <p className="mt-1 text-[11px] text-blue-600 dark:text-blue-400 font-medium truncate">
-                                        {paymentExtraLabel}
-                                    </p>
-                                ) : null}
+                                <div className={inputGroupClass}>
+                                    <span className={inputGroupLabelClass} title={tm('documentNo')}>
+                                        {tm('documentNo')}
+                                    </span>
+                                    <input
+                                        type="text"
+                                        value={documentNo}
+                                        onChange={(e) => setDocumentNo(e.target.value)}
+                                        className={inputGroupFieldEndClass}
+                                        placeholder="..."
+                                    />
+                                </div>
                             </div>
-
-                            {cariSummaryEl}
 
                             <div className={compactCellClass} style={compactCellStyle}>
-                                <label className={fieldLabelClass}>{tm('description')}</label>
-                                <input
-                                    type="text"
-                                    value={description ?? ''}
-                                    onChange={(e) => setDescription?.(e.target.value)}
-                                    readOnly={!setDescription}
-                                    placeholder={`${tm('description')}...`}
-                                    className={fieldInputSoloClass}
-                                />
+                                <div className={inputGroupClass}>
+                                    <span className={inputGroupLabelClass} title={tm('description')}>
+                                        {tm('description')}
+                                    </span>
+                                    <input
+                                        type="text"
+                                        value={description ?? ''}
+                                        onChange={(e) => setDescription?.(e.target.value)}
+                                        readOnly={!setDescription}
+                                        placeholder={`${tm('description')}...`}
+                                        className={inputGroupFieldEndClass}
+                                    />
+                                </div>
                             </div>
                         </div>
-                    </div>
 
-                    {cariMetaBadges ? <div className="pt-2">{cariMetaBadges}</div> : null}
+                        <div className="flex flex-wrap items-center gap-2 pt-0.5">
+                            <div className="min-w-0 flex-1" style={{ maxWidth: '20rem' }}>
+                                {paymentModalTriggerCompactEl}
+                            </div>
+                            {paymentExtraLabel ? (
+                                <p className="text-[11px] text-blue-600 dark:text-blue-400 font-medium truncate">
+                                    {paymentExtraLabel}
+                                </p>
+                            ) : null}
+                            {cariMetaBadges}
+                        </div>
+                    </div>
                 </div>
             )}
         </div>

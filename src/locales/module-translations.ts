@@ -3840,6 +3840,18 @@ export const moduleTranslations: Record<string, Record<Language, string>> = {
   authorization: { tr: 'Yetki', en: 'Authorization', ar: 'الصلاحية', ku: 'دەسەڵات' },
   accountCodeLabel: { tr: 'Kodu', en: 'Code', ar: 'الرمز', ku: 'کۆد' },
   accountTitleLabel: { tr: 'Unvanı', en: 'Title', ar: 'العنوان', ku: 'ناونیشان' },
+  cariAccountCodeLabel: {
+    tr: 'Cari hesap kodu',
+    en: 'Account code',
+    ar: 'رمز الحساب الجاري',
+    ku: 'کۆدی هەژماری جاری',
+  },
+  cariAccountTitleLabel: {
+    tr: 'Cari hesap unvanı',
+    en: 'Account title',
+    ar: 'عنوان الحساب الجاري',
+    ku: 'ناونیشانی هەژماری جاری',
+  },
   warehouseField: { tr: 'Ambar', en: 'Warehouse', ar: 'المستودع', ku: 'ئەمبار' },
   salespersonLabel: { tr: 'Satış Elemanı', en: 'Salesperson', ar: 'مندوب المبيعات', ku: 'فرۆشیار' },
   scanBarcodePlaceholder: { tr: 'Barkod okutun...', en: 'Scan barcode...', ar: 'امسح الباركود...', ku: 'بارکۆد بخوێنەوە...' },
