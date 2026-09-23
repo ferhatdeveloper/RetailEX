@@ -89,13 +89,12 @@ export const usePermission = () => {
 
   /**
    * Güzellik randevu işlem tutarı / sepet hizmet fiyatı düzenleme.
-   * Admin + resepsiyon; POS fiyat yetkisi olanlar da (MarketPOS ile hizalı).
+   * Randevu & ödeme ekranında varsayılan: herkese açık (ekran zaten beauty yetkisiyle açılır).
+   * Admin / resepsiyon / manager / pos.change_price — hepsi true; aksi halde de true.
    */
   const canEditBeautyAppointmentPrice = useCallback((): boolean => {
-    if (isAdmin() || isManager() || isReception()) return true;
-    if (hasPermission('pos.change_price')) return true;
-    return false;
-  }, [isAdmin, isManager, isReception, hasPermission]);
+    return true;
+  }, []);
 
   /** Alış maliyeti, birim alış, satır kârı / marj */
   const canViewPurchasePricing = useCallback(
