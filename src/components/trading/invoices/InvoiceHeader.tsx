@@ -196,11 +196,11 @@ export const InvoiceHeader: React.FC<InvoiceHeaderProps> = ({
         (resolvedPaymentCode === 'ACIK_CARI' ? tm('paymentOpenAccount') : paymentMethod);
 
     /**
-     * Collapsed: 3 satır × 2 kolon + açıklama altta hizalı.
+     * Collapsed: 3 satır × 2 kolon (açıklama cari kolonunda).
      * 1: Fatura No | Cari hesap kodu
      * 2: Tarih | Cari hesap unvanı
-     * 3: Belge No | Ödeme şekli
-     * 4: Açıklama (tam genişlik)
+     * 3: Belge No | Açıklama
+     * Alt: Ödeme + bakiye
      */
     const compactStackStyle: React.CSSProperties = {
         display: 'flex',
@@ -229,16 +229,31 @@ export const InvoiceHeader: React.FC<InvoiceHeaderProps> = ({
     const fieldInputClass =
         'min-w-0 h-8 px-2 border border-gray-300 dark:border-gray-600 text-sm leading-none bg-white dark:bg-gray-800 focus:outline-none focus:ring-1 focus:ring-blue-500';
     const inputGroupClass = 'flex items-stretch w-full min-w-0 h-8';
+    /** İçerik ne olursa olsun etiketler aynı genişlik (inline — Tailwind purge’a güvenilmez) */
+    const COMPACT_LABEL_WIDTH = '9.5rem';
+    const inputGroupLabelStyle: React.CSSProperties = {
+        width: COMPACT_LABEL_WIDTH,
+        minWidth: COMPACT_LABEL_WIDTH,
+        maxWidth: COMPACT_LABEL_WIDTH,
+        boxSizing: 'border-box',
+    };
     const inputGroupLabelClass =
-        'shrink-0 inline-flex items-center w-[8.25rem] px-2 h-8 border border-r-0 border-gray-300 dark:border-gray-600 rounded-l bg-slate-50 dark:bg-gray-700/80 text-[10px] font-bold uppercase tracking-wide text-slate-600 dark:text-gray-300 truncate';
+        'shrink-0 inline-flex items-center justify-start px-2 h-8 border border-r-0 border-gray-300 dark:border-gray-600 rounded-l bg-slate-50 dark:bg-gray-700/80 text-[10px] font-bold uppercase tracking-wide text-slate-600 dark:text-gray-300 truncate overflow-hidden';
     const inputGroupFieldClass = `${fieldInputClass} flex-1 rounded-none border-r-0`;
     const inputGroupFieldStartClass = `${fieldInputClass} flex-1 rounded-l rounded-r-none border-r-0`;
     const inputGroupBtnClass =
         'shrink-0 inline-flex items-center justify-center w-8 h-8 border border-gray-300 dark:border-gray-600 rounded-r rounded-l-none bg-white dark:bg-gray-800 hover:bg-gray-50 dark:hover:bg-gray-700';
     const inputGroupBtnMidClass =
         'shrink-0 inline-flex items-center justify-center w-8 h-8 border border-r-0 border-gray-300 dark:border-gray-600 rounded-none bg-white dark:bg-gray-800 hover:bg-gray-50 dark:hover:bg-gray-700';
-    /** Butonsuz alanlarda sağ kolonu hizalı tut */
-    const inputGroupTrailSpacer = 'shrink-0 w-8 h-8 border border-transparent';
+    /** Butonsuz alanlarda sağ kolonu hizalı tut (⋮ ile aynı 2rem) */
+    const inputGroupTrailSpacerStyle: React.CSSProperties = {
+        width: '2rem',
+        minWidth: '2rem',
+        height: '2rem',
+        boxSizing: 'border-box',
+        border: '1px solid transparent',
+        flexShrink: 0,
+    };
 
     const paymentModalTriggerEl = (
         <div className={inputGroupClass}>
@@ -787,14 +802,14 @@ export const InvoiceHeader: React.FC<InvoiceHeaderProps> = ({
                     {/*
                       1: Fatura No | Cari hesap kodu
                       2: Tarih | Cari hesap unvanı
-                      3: Belge No | Ödeme şekli
-                      4: Açıklama (tam genişlik, aynı hiza)
+                      3: Belge No | Açıklama
+                      Alt: Ödeme + bakiye
                     */}
                     <div style={compactStackStyle}>
                         <div style={compactRowStyle}>
                             <div className={compactCellClass} style={compactCellStyle}>
                                 <div className={inputGroupClass}>
-                                    <span className={inputGroupLabelClass} title={tm('invoiceNo')}>
+                                    <span className={inputGroupLabelClass} style={inputGroupLabelStyle} title={tm('invoiceNo')}>
                                         {tm('invoiceNo')}
                                     </span>
                                     <input
@@ -817,14 +832,14 @@ export const InvoiceHeader: React.FC<InvoiceHeaderProps> = ({
                                             className="!rounded-l-none !rounded-r !w-8 !h-8 !min-h-0 !p-0 inline-flex items-center justify-center border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-800 hover:bg-gray-50 dark:hover:bg-gray-700"
                                         />
                                     ) : (
-                                        <span className={inputGroupTrailSpacer} aria-hidden />
+                                        <span style={inputGroupTrailSpacerStyle} aria-hidden />
                                     )}
                                 </div>
                             </div>
 
                             <div className={compactCellClass} style={compactCellStyle}>
                                 <div className={inputGroupClass}>
-                                    <span className={`${inputGroupLabelClass} ${cariTextColor}`} title={tm('cariAccountCodeLabel')}>
+                                    <span className={`${inputGroupLabelClass} ${cariTextColor}`} style={inputGroupLabelStyle} title={tm('cariAccountCodeLabel')}>
                                         {tm('cariAccountCodeLabel')}
                                     </span>
                                     <input
@@ -855,7 +870,7 @@ export const InvoiceHeader: React.FC<InvoiceHeaderProps> = ({
                         <div style={compactRowStyle}>
                             <div className={compactCellClass} style={compactCellStyle}>
                                 <div className={inputGroupClass}>
-                                    <span className={inputGroupLabelClass} title={tm('date')}>
+                                    <span className={inputGroupLabelClass} style={inputGroupLabelStyle} title={tm('date')}>
                                         {tm('date')}
                                     </span>
                                     <input
@@ -877,7 +892,7 @@ export const InvoiceHeader: React.FC<InvoiceHeaderProps> = ({
 
                             <div className={compactCellClass} style={compactCellStyle}>
                                 <div className={inputGroupClass}>
-                                    <span className={`${inputGroupLabelClass} ${cariTextColor}`} title={tm('cariAccountTitleLabel')}>
+                                    <span className={`${inputGroupLabelClass} ${cariTextColor}`} style={inputGroupLabelStyle} title={tm('cariAccountTitleLabel')}>
                                         {tm('cariAccountTitleLabel')}
                                     </span>
                                     <input
@@ -938,7 +953,7 @@ export const InvoiceHeader: React.FC<InvoiceHeaderProps> = ({
                         <div style={compactRowStyle}>
                             <div className={compactCellClass} style={compactCellStyle}>
                                 <div className={inputGroupClass}>
-                                    <span className={inputGroupLabelClass} title={tm('documentNo')}>
+                                    <span className={inputGroupLabelClass} style={inputGroupLabelStyle} title={tm('documentNo')}>
                                         {tm('documentNo')}
                                     </span>
                                     <input
@@ -948,13 +963,32 @@ export const InvoiceHeader: React.FC<InvoiceHeaderProps> = ({
                                         className={`${inputGroupFieldClass}`}
                                         placeholder="..."
                                     />
-                                    <span className={inputGroupTrailSpacer} aria-hidden />
+                                    <span style={inputGroupTrailSpacerStyle} aria-hidden />
                                 </div>
                             </div>
 
                             <div className={compactCellClass} style={compactCellStyle}>
                                 <div className={inputGroupClass}>
-                                    <span className={inputGroupLabelClass} title={tm('paymentMethodLabel')}>
+                                    <span className={inputGroupLabelClass} style={inputGroupLabelStyle} title={tm('description')}>
+                                        {tm('description')}
+                                    </span>
+                                    <input
+                                        type="text"
+                                        value={description ?? ''}
+                                        onChange={(e) => setDescription?.(e.target.value)}
+                                        readOnly={!setDescription}
+                                        placeholder={`${tm('description')}...`}
+                                        className={`${inputGroupFieldClass}`}
+                                    />
+                                    <span style={inputGroupTrailSpacerStyle} aria-hidden />
+                                </div>
+                            </div>
+                        </div>
+
+                        <div style={compactRowStyle}>
+                            <div className={compactCellClass} style={compactCellStyle}>
+                                <div className={inputGroupClass}>
+                                    <span className={inputGroupLabelClass} style={inputGroupLabelStyle} title={tm('paymentMethodLabel')}>
                                         {tm('paymentMethodLabel')}
                                     </span>
                                     <input
@@ -979,26 +1013,10 @@ export const InvoiceHeader: React.FC<InvoiceHeaderProps> = ({
                                     </p>
                                 ) : null}
                             </div>
-                        </div>
-
-                        <div className={compactCellClass} style={compactCellStyle}>
-                            <div className={inputGroupClass}>
-                                <span className={inputGroupLabelClass} title={tm('description')}>
-                                    {tm('description')}
-                                </span>
-                                <input
-                                    type="text"
-                                    value={description ?? ''}
-                                    onChange={(e) => setDescription?.(e.target.value)}
-                                    readOnly={!setDescription}
-                                    placeholder={`${tm('description')}...`}
-                                    className={`${inputGroupFieldClass}`}
-                                />
-                                <span className={inputGroupTrailSpacer} aria-hidden />
+                            <div className={compactCellClass} style={{ ...compactCellStyle, justifyContent: 'center' }}>
+                                {cariMetaBadges}
                             </div>
                         </div>
-
-                        {cariMetaBadges ? <div className="pt-0.5">{cariMetaBadges}</div> : null}
                     </div>
                 </div>
             )}
