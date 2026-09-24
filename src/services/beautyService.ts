@@ -1759,6 +1759,10 @@ export const beautyService = {
             const { assertFileIdAvailable } = await import('./api/customerMerge');
             await assertFileIdAvailable(fileIdVal);
         }
+        {
+            const { assertPhonesAvailable } = await import('../utils/customerPhoneDuplicate');
+            await assertPhonesAvailable([data.phone, data.phone2]);
+        }
         const g = String(data.gender ?? '').trim().toLowerCase();
         const genderVal = g === 'female' || g === 'male' || g === 'other' ? g : null;
         const tierRaw = String(data.customer_tier ?? 'normal').trim().toLowerCase();
@@ -1824,6 +1828,25 @@ export const beautyService = {
     async updateCustomer(id: string, data: Partial<BeautyCustomer>): Promise<void> {
         const t = postgres.getCardTableName('customers');
         const fn = erpFirmNrForRow();
+        if (data.phone !== undefined || data.phone2 !== undefined) {
+            const { assertPhonesAvailable } = await import('../utils/customerPhoneDuplicate');
+            let phoneVal: string | null | undefined = data.phone;
+            let phone2Val: string | null | undefined = data.phone2;
+            if (phoneVal === undefined || phone2Val === undefined) {
+                try {
+                    const { rows } = await postgres.query(
+                        `SELECT phone, phone2 FROM ${t} WHERE id = $1::uuid LIMIT 1`,
+                        [id],
+                    );
+                    const cur = rows?.[0] as { phone?: string | null; phone2?: string | null } | undefined;
+                    if (phoneVal === undefined) phoneVal = cur?.phone;
+                    if (phone2Val === undefined) phone2Val = cur?.phone2;
+                } catch {
+                    /* yalnızca gönderilen alanlarla kontrol */
+                }
+            }
+            await assertPhonesAvailable([phoneVal, phone2Val], id);
+        }
         if (shouldUseTenantPostgrestApi()) {
             const { postgrest } = await import('./api/postgrestClient');
             const patchBody = stripUndefinedFields({

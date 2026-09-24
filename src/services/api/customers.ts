@@ -291,6 +291,9 @@ export const customerAPI = {
    */
   async create(customer: Omit<Customer, 'id'>): Promise<Customer | null> {
     try {
+      const { assertPhonesAvailable } = await import('../../utils/customerPhoneDuplicate');
+      await assertPhonesAvailable([customer.phone, customer.phone2]);
+
       const tableName = `rex_${ERP_SETTINGS.firmNr}_customers`;
       let ageSafe: number | null = null;
       if (customer.age !== undefined && customer.age !== null) {
@@ -459,6 +462,17 @@ export const customerAPI = {
    */
   async update(id: string, updates: Partial<Customer>): Promise<Customer | null> {
     try {
+      if (updates.phone !== undefined || updates.phone2 !== undefined) {
+        const { assertPhonesAvailable } = await import('../../utils/customerPhoneDuplicate');
+        let phoneVal: string | null | undefined = updates.phone;
+        let phone2Val: string | null | undefined = updates.phone2;
+        if (phoneVal === undefined || phone2Val === undefined) {
+          const cur = await this.getById(id);
+          if (phoneVal === undefined) phoneVal = cur?.phone;
+          if (phone2Val === undefined) phone2Val = cur?.phone2;
+        }
+        await assertPhonesAvailable([phoneVal, phone2Val], id);
+      }
       const fields: string[] = [];
       const values: any[] = [];
       let i = 1;

@@ -11,6 +11,7 @@ import { phoneMatchesQuery } from '../../../shared/utils/validators';
 import { PlusOutlined, UserOutlined } from '@ant-design/icons';
 import { Edit, Phone, Mail, Search, User } from 'lucide-react';
 import { RetailExFlatModal } from '../../shared/RetailExFlatModal';
+import { PercentBodyModal, PercentBodyModalScrollBody } from '../../shared/PercentBodyModal';
 import { DevExDataGrid } from '../../shared/DevExDataGrid';
 import { useBeautyStore } from '../store/useBeautyStore';
 import { useLanguage } from '../../../contexts/LanguageContext';
@@ -26,6 +27,7 @@ import {
     BeautyCustomerEditFormFields,
 } from './BeautyCustomerEditFormFields';
 import { CustomerFileIdDuplicatesPanel } from './CustomerFileIdDuplicatesPanel';
+import { CustomerPhoneDuplicatesPanel } from './CustomerPhoneDuplicatesPanel';
 import {
     buildFileIdRangeOptions,
     compareFileIdAsc,
@@ -34,6 +36,12 @@ import {
     sortByFileIdAsc,
     type FileIdRangeKey,
 } from '../../../utils/customerFileIdSort';
+import {
+    findActiveCustomersByPhones,
+    PhoneAlreadyRegisteredError,
+    type PhoneMatchCustomer,
+} from '../../../utils/customerPhoneDuplicate';
+import { phoneQueryDigits } from '../../../shared/utils/validators';
 
 export type ClientCRMProps = { onOpenCustomer: (customerId: string) => void };
 
@@ -48,6 +56,7 @@ export function ClientCRM({ onOpenCustomer }: ClientCRMProps) {
     const [editing, setEditing] = useState<Partial<BeautyCustomer>>(BEAUTY_CUSTOMER_EMPTY_FORM);
     const [isEdit, setIsEdit] = useState(false);
     const [saving, setSaving] = useState(false);
+    const [phoneDupMatches, setPhoneDupMatches] = useState<PhoneMatchCustomer[] | null>(null);
     const [currentAccountCustomers, setCurrentAccountCustomers] = useState<BeautyCustomer[]>([]);
 
     useEffect(() => {
@@ -165,6 +174,29 @@ export function ClientCRM({ onOpenCustomer }: ClientCRMProps) {
             toast.error(tm('bFillNameToSave'));
             throw new Error('validation');
         }
+        const phones = [editing.phone, editing.phone2];
+        const hasPhone = phones.some(p => phoneQueryDigits(p).length >= 7);
+        if (hasPhone) {
+            try {
+                const matches = await findActiveCustomersByPhones(
+                    phones,
+                    isEdit && editing.id ? editing.id : null,
+                );
+                if (matches.length > 0) {
+                    setPhoneDupMatches(matches);
+                    toast.error(tm('bPhoneAlreadyRegistered'));
+                    throw new Error('validation');
+                }
+            } catch (e) {
+                if (e instanceof Error && e.message === 'validation') throw e;
+                if (e instanceof PhoneAlreadyRegisteredError) {
+                    setPhoneDupMatches(e.matches);
+                    toast.error(tm('bPhoneAlreadyRegistered'));
+                    throw new Error('validation');
+                }
+                throw e;
+            }
+        }
         setSaving(true);
         try {
             if (isEdit && editing.id) {
@@ -177,8 +209,13 @@ export function ClientCRM({ onOpenCustomer }: ClientCRMProps) {
         } catch (e: unknown) {
             const msg = e instanceof Error ? e.message : String(e);
             if (msg !== 'validation') {
-                logger.error('ClientCRM', 'handleSave failed', e);
-                toast.error(tm('bSaveCustomerFailed'), { description: msg, duration: 8000 });
+                if (e instanceof PhoneAlreadyRegisteredError) {
+                    setPhoneDupMatches(e.matches);
+                    toast.error(tm('bPhoneAlreadyRegistered'));
+                } else {
+                    logger.error('ClientCRM', 'handleSave failed', e);
+                    toast.error(tm('bSaveCustomerFailed'), { description: msg, duration: 8000 });
+                }
             }
             throw e;
         } finally {
@@ -389,6 +426,13 @@ export function ClientCRM({ onOpenCustomer }: ClientCRMProps) {
                             await loadCustomers();
                         }}
                     />
+                    <CustomerPhoneDuplicatesPanel
+                        customers={mergedCustomers}
+                        onChanged={async () => {
+                            await loadCustomers();
+                        }}
+                        onOpenCustomer={onOpenCustomer}
+                    />
 
                     <div
                         className="border-b px-4 py-3 shrink-0 flex flex-col gap-2 sm:flex-row sm:items-center"
@@ -433,6 +477,7 @@ export function ClientCRM({ onOpenCustomer }: ClientCRMProps) {
                             pageSize={100}
                             pageSizeOptions={[50, 100, 200]}
                             enableColumnResizing
+                            enableExcelExport={false}
                             storageNamespace="beautyClientCrmList"
                             height="calc(100vh - 240px)"
                             onRefresh={() => loadCustomers()}
@@ -450,36 +495,82 @@ export function ClientCRM({ onOpenCustomer }: ClientCRMProps) {
                 </Card>
             </div>
 
-            <RetailExFlatModal
-                open={showModal}
-                onClose={() => setShowModal(false)}
-                title={isEdit ? tm('bEditCustomer') : tm('bNewCustomer')}
-                headerIcon={<User className="h-5 w-5" aria-hidden />}
-                cancelLabel={tm('cancel')}
-                confirmLabel={saving ? tm('bSaving') : tm('save')}
-                confirmLoading={saving}
-                onConfirm={async () => {
-                    try {
-                        await handleSave();
-                    } catch {
-                        /* toast / validation */
-                    }
-                }}
-            >
-                <BeautyCustomerEditFormFields
-                    value={editing}
-                    onChange={setEditing}
-                    summary={
-                        isEdit
-                            ? {
-                                  appointmentCount: editing.appointment_count ?? 0,
-                                  lastServiceName: editing.last_service_name,
-                                  lastAppointmentDate: editing.last_appointment_date,
-                              }
-                            : undefined
-                    }
-                />
-            </RetailExFlatModal>
-        </div>
+                <RetailExFlatModal
+                    open={showModal}
+                    onClose={() => setShowModal(false)}
+                    title={isEdit ? tm('bEditCustomer') : tm('bNewCustomer')}
+                    headerIcon={<User className="h-5 w-5" aria-hidden />}
+                    cancelLabel={tm('cancel')}
+                    confirmLabel={saving ? tm('bSaving') : tm('save')}
+                    confirmLoading={saving}
+                    onConfirm={async () => {
+                        try {
+                            await handleSave();
+                        } catch {
+                            /* toast / validation */
+                        }
+                    }}
+                >
+                    <BeautyCustomerEditFormFields
+                        value={editing}
+                        onChange={setEditing}
+                        summary={
+                            isEdit
+                                ? {
+                                      appointmentCount: editing.appointment_count ?? 0,
+                                      lastServiceName: editing.last_service_name,
+                                      lastAppointmentDate: editing.last_appointment_date,
+                                  }
+                                : undefined
+                        }
+                    />
+                </RetailExFlatModal>
+
+                {phoneDupMatches && phoneDupMatches.length > 0 && (
+                    <PercentBodyModal
+                        onClose={() => setPhoneDupMatches(null)}
+                        size="list"
+                        ariaLabel={tm('bPhoneAlreadyRegistered')}
+                    >
+                        <div className="bg-gradient-to-r from-amber-600 to-orange-600 px-6 py-4 text-white shrink-0">
+                            <h3 className="text-lg font-bold">{tm('bPhoneAlreadyRegistered')}</h3>
+                            <p className="text-sm text-amber-100 mt-1">{tm('bPhoneAlreadyRegisteredHint')}</p>
+                        </div>
+                        <PercentBodyModalScrollBody className="p-4 space-y-2">
+                            {phoneDupMatches.map(m => (
+                                <button
+                                    key={m.id}
+                                    type="button"
+                                    className="w-full text-left rounded-xl border border-gray-200 px-4 py-3 hover:border-violet-400 hover:bg-violet-50 transition-colors"
+                                    onClick={() => {
+                                        setPhoneDupMatches(null);
+                                        setShowModal(false);
+                                        onOpenCustomer(m.id);
+                                    }}
+                                >
+                                    <div className="font-semibold text-gray-900">{m.name}</div>
+                                    <div className="text-xs text-gray-500 mt-0.5">
+                                        {m.file_id ? `${tm('custColFileNo')}: ${m.file_id}` : null}
+                                        {m.file_id && m.phone ? ' · ' : null}
+                                        {m.phone || m.phone2 || ''}
+                                    </div>
+                                    <div className="text-[11px] font-bold uppercase tracking-wide text-violet-700 mt-2">
+                                        {tm('bPhoneSelectExisting')}
+                                    </div>
+                                </button>
+                            ))}
+                        </PercentBodyModalScrollBody>
+                        <div className="p-4 border-t border-slate-100 bg-slate-50/50 shrink-0">
+                            <button
+                                type="button"
+                                onClick={() => setPhoneDupMatches(null)}
+                                className="w-full rounded-2xl border-2 border-slate-200 py-2.5 text-sm font-bold uppercase tracking-wider text-slate-600 hover:bg-slate-100"
+                            >
+                                {tm('cancel')}
+                            </button>
+                        </div>
+                    </PercentBodyModal>
+                )}
+            </div>
     );
 }

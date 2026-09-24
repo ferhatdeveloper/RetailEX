@@ -940,6 +940,33 @@ export function AppointmentPOS({
         if (!newCust.name.trim()) return;
         setSavingCust(true);
         try {
+            const { findActiveCustomersByPhones } = await import(
+                '../../../utils/customerPhoneDuplicate'
+            );
+            const matches = await findActiveCustomersByPhones([newCust.phone, newCust.phone2]);
+            if (matches.length > 0) {
+                const m = matches[0];
+                toast.error(tm('bPhoneAlreadyRegistered'), {
+                    description: `${m.name}${m.file_id ? ` · ${tm('custColFileNo')} ${m.file_id}` : ''} — ${tm('bPhoneAlreadyRegisteredHint')}`,
+                    duration: 10000,
+                });
+                const existing =
+                    mergedCustomers.find(c => c.id === m.id) ||
+                    ({
+                        id: m.id,
+                        name: m.name,
+                        phone: m.phone ?? undefined,
+                        phone2: m.phone2 ?? undefined,
+                        file_id: m.file_id ?? undefined,
+                        code: m.code ?? undefined,
+                        is_active: true,
+                    } as BeautyCustomer);
+                setCustomer(existing);
+                setShowAddForm(false);
+                setShowCustModal(false);
+                setCustModalQ(m.phone || m.phone2 || newCust.phone || '');
+                return;
+            }
             const birthTrim = newCust.birth_date.trim();
             const g = String(newCust.gender ?? '').trim().toLowerCase();
             const genderVal =
@@ -997,11 +1024,15 @@ export function AppointmentPOS({
             toast.success(tm('bSaveCustomerOk'));
         } catch (e: unknown) {
             logger.error('AppointmentPOS', 'createCustomer failed', e);
-            const msg = e instanceof Error ? e.message : String(e);
-            toast.error(tm('bSaveCustomerFailed'), {
-                description: msg,
-                duration: 8000,
-            });
+            const { PhoneAlreadyRegisteredError } = await import('../../../utils/customerPhoneDuplicate');
+            if (e instanceof PhoneAlreadyRegisteredError) {
+                toast.error(tm('bPhoneAlreadyRegistered'), { description: e.message, duration: 10000 });
+            } else {
+                toast.error(tm('bSaveCustomerFailed'), {
+                    description: e instanceof Error ? e.message : String(e),
+                    duration: 8000,
+                });
+            }
         } finally {
             setSavingCust(false);
         }
