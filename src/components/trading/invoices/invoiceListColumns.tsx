@@ -7,6 +7,7 @@ import { formatShortDate } from '../../../utils/dateLocale';
 import { invoiceLineMixLabelKey, type InvoiceLineMix } from '../../../utils/invoiceLineMix';
 import { paymentFormCodeTranslationKey } from '../../../utils/paymentMethodUtils';
 import { getInvoiceHeaderField } from '../../../utils/invoiceHeaderFields';
+import { formatInvoiceDualAmountLines } from '../../../utils/invoiceFxDisplay';
 import { Eye, Edit, FileText } from 'lucide-react';
 
 /** v3: Durum/İşlem varsayılan gizli — eski v2 tercihlerinde status:true kalmasın */
@@ -143,6 +144,8 @@ export type BuildInvoiceListColumnsOptions = {
   getIcon: (iconName: string) => ComponentType<{ className?: string }>;
   returnProcessorColumnLabel: string;
   resolveListRowCurrency: (inv: ListInvoice) => string;
+  /** Firma defter dövizi — çift tutar için */
+  ledgerCurrency: string;
   onViewDetail: (inv: ListInvoice) => void;
   onEdit: (inv: ListInvoice) => void;
 };
@@ -167,6 +170,7 @@ export function buildInvoiceListColumns(options: BuildInvoiceListColumnsOptions)
     getIcon,
     returnProcessorColumnLabel,
     resolveListRowCurrency,
+    ledgerCurrency,
     onViewDetail,
     onEdit,
   } = options;
@@ -370,6 +374,7 @@ export function buildInvoiceListColumns(options: BuildInvoiceListColumnsOptions)
     bold = false,
   ) => {
     if (!isVisible(id)) return;
+    const dualEligible = id === 'subtotal' || id === 'discount' || id === 'tax' || id === 'total';
     defs.push(
       columnHelper.display({
         id,
@@ -378,10 +383,25 @@ export function buildInvoiceListColumns(options: BuildInvoiceListColumnsOptions)
         cell: ({ row }) => {
           const inv = row.original;
           const value = pick(inv);
-          const cur = resolveListRowCurrency(inv);
+          if (!dualEligible) {
+            return (
+              <span className={`tabular-nums text-right ${bold ? 'font-bold text-gray-900' : 'text-gray-800'}`}>
+                {formatNumber(value, 2, true)} {ledgerCurrency}
+              </span>
+            );
+          }
+          const dual = formatInvoiceDualAmountLines({
+            ledgerAmount: value,
+            docCurrency: resolveListRowCurrency(inv),
+            currencyRate: Number(inv.currency_rate || 1),
+            ledgerCurrency,
+          });
           return (
-            <span className={`tabular-nums text-right ${bold ? 'font-bold text-gray-900' : 'text-gray-800'}`}>
-              {formatNumber(value, 2, true)} {cur}
+            <span className={`tabular-nums text-right inline-flex flex-col items-end leading-tight ${bold ? 'font-bold text-gray-900' : 'text-gray-800'}`}>
+              <span>{dual.primary}</span>
+              {dual.secondary ? (
+                <span className={`text-[10px] font-medium ${bold ? 'text-teal-700' : 'text-gray-500'}`}>{dual.secondary}</span>
+              ) : null}
             </span>
           );
         },

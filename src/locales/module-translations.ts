@@ -8006,6 +8006,31 @@ export const supplierTranslations = {
   edit: { tr: 'Düzenle', en: 'Edit', ar: 'تعديل', ku: 'دەستکاریکردن' },
   deleteAction: { tr: 'Sil', en: 'Delete', ar: 'حذف', ku: 'سڕینەوە' },
   accountStatement: { tr: 'Ekstre', en: 'Account Statement', ar: 'كشف حساب', ku: 'کەشف حساب' },
+  accountStatementLedger: {
+    tr: 'Defter ekstresi',
+    en: 'Ledger statement',
+    ar: 'كشف دفتر',
+    ku: 'کەشفی دەفتەر',
+  },
+  accountStatementFx: {
+    tr: 'Dövizli ekstre',
+    en: 'FX statement',
+    ar: 'كشف بالعملة',
+    ku: 'کەشفی دراو',
+  },
+  accountStatementFxHint: {
+    tr: 'Belge dövizi + defter tutarı. Filtre ile döviz seçin; yürüyen bakiye ana paradadır.',
+    en: 'Document currency + ledger amount. Filter by currency; running balance is in base currency.',
+    ar: 'عملة المستند + مبلغ الدفتر. صفّ حسب العملة؛ الرصيد الجاري بالعملة الأساسية.',
+    ku: 'دراوی بەڵگە + بڕی دەفتەر. بە دراو فلتەر بکە؛ باڵانسی ڕێڕەو بە دراوی سەرەکییە.',
+  },
+  allCurrenciesFilter: {
+    tr: 'Tüm dövizler',
+    en: 'All currencies',
+    ar: 'كل العملات',
+    ku: 'هەموو دراوەکان',
+  },
+  currencyCol: { tr: 'Döviz', en: 'Currency', ar: 'العملة', ku: 'دراو' },
   accountStatementEmptyHint: {
     tr: 'Seçili tarih aralığında fatura veya kasa hareketi yok. Bitiş tarihini ileri alın (ör. yıl sonu) ve «Getir»e basın. Varsayılan aralık yıl başı–yıl sonudur.',
     en: 'No invoice or cash movement in this date range. Move the end date forward (e.g. end of year) and click Fetch. Default range is Jan 1 – Dec 31.',

@@ -243,6 +243,10 @@ export type EkstreRow = {
   is_cancelled?: boolean;
   notes?: string;
   total_amount?: number | string;
+  /** Belge / kasa döviz kodu */
+  currency?: string;
+  /** Belge→defter kuru (sales.currency_rate / cash_lines.exchange_rate) */
+  currency_rate?: number;
   borcAmount: number;
   alacakAmount: number;
   balance: number;

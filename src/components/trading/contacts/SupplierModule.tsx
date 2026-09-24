@@ -33,6 +33,7 @@ import {
   customerCallWeekdaysLabel,
 } from '../../../utils/customerCallPlan';
 import { consumeOpenSupplierEkstreRequest } from '../../../utils/openSupplierEkstre';
+import { formatInvoiceDualAmountLines } from '../../../utils/invoiceFxDisplay';
 import {
   buildEkstreRows,
   defaultEkstreDateRange,
@@ -78,6 +79,9 @@ export function SupplierModule({ initialFilter = 'all' }: { initialFilter?: Cari
   const [latestRates, setLatestRates] = useState<ExchangeRate[]>([]);
   /** Ekstre tablosunda birincil sütunları raporlama dövizinde göster */
   const [showReportingPrimary, setShowReportingPrimary] = useState(false);
+  /** Dövizli ekstre: belge dövizi + defter tutarı, isteğe döviz filtresi */
+  const [ekstreFxMode, setEkstreFxMode] = useState(false);
+  const [ekstreCurrencyFilter, setEkstreCurrencyFilter] = useState<string>('ALL');
   const [exportingExcel, setExportingExcel] = useState(false);
   /** Liste filtresi: tümü / müşteri / tedarikçi / personel / ortak / mükerrer */
   const [accountTypeFilter, setAccountTypeFilter] = useState<CariListFilter>(initialFilter);
@@ -244,7 +248,10 @@ export function SupplierModule({ initialFilter = 'all' }: { initialFilter?: Cari
     }
   };
 
-  const selectAccount = async (supplier: Supplier) => {
+  const selectAccount = async (
+    supplier: Supplier,
+    opts?: { fxMode?: boolean },
+  ) => {
     let fresh = supplier;
     try {
       const all = await supplierAPI.getAll();
@@ -252,6 +259,8 @@ export function SupplierModule({ initialFilter = 'all' }: { initialFilter?: Cari
     } catch {
       /* listedeki bakiye ile devam */
     }
+    setEkstreFxMode(Boolean(opts?.fxMode));
+    setEkstreCurrencyFilter('ALL');
     setSelectedAccount(fresh);
     setEkstresiData([]);
     loadEkstresi(fresh, ekstresiStart, ekstresiEnd);
@@ -408,8 +417,21 @@ export function SupplierModule({ initialFilter = 'all' }: { initialFilter?: Cari
   const toReporting = (amountMain: number) =>
     convertAmountMainToReporting(amountMain, mainCurrency, reportingCurrency, latestRates);
 
-  /** Ekstre: varsayılan ana para; isteğe raporlama birimine geçiş */
-  const fmtEkstreAmount = (amountMain: number) => {
+  /** Ekstre: varsayılan ana para; isteğe raporlama birimine geçiş; dövizli modda belge+defter */
+  const fmtEkstreAmount = (amountMain: number, row?: { currency?: string; currency_rate?: number }) => {
+    if (ekstreFxMode) {
+      const dual = formatInvoiceDualAmountLines({
+        ledgerAmount: amountMain,
+        docCurrency: row?.currency || mainCurrency,
+        currencyRate: Number(row?.currency_rate || 1),
+        ledgerCurrency: mainCurrency,
+      });
+      return {
+        primary: dual.primary,
+        code: '',
+        secondary: dual.secondary ?? null,
+      };
+    }
     const rep = reportingCurrency !== mainCurrency ? toReporting(amountMain) : null;
     if (rep == null || reportingCurrency === mainCurrency) {
       return {
@@ -886,7 +908,27 @@ export function SupplierModule({ initialFilter = 'all' }: { initialFilter?: Cari
 
   // Ekstresi — ortak yardımcı (CH_TAHSILAT/CH_ODEME alacak; satış gibi borç yazılmaz)
   const isSupplierAccount = selectedAccount?.cardType === 'supplier';
-  const ekstresiRows = buildEkstreRows(ekstresiData, selectedAccount?.cardType);
+  const ekstresiRowsAll = buildEkstreRows(ekstresiData, selectedAccount?.cardType);
+  const ekstreCurrencyOptions = useMemo(() => {
+    const set = new Set<string>();
+    for (const r of ekstresiRowsAll) {
+      const c = String(r.currency || '').trim().toUpperCase();
+      if (c) set.add(c);
+    }
+    return [...set].sort((a, b) => a.localeCompare(b));
+  }, [ekstresiRowsAll]);
+  const ekstresiRows = useMemo(() => {
+    if (!ekstreFxMode || ekstreCurrencyFilter === 'ALL') return ekstresiRowsAll;
+    const want = ekstreCurrencyFilter.toUpperCase();
+    let running = 0;
+    return ekstresiRowsAll
+      .filter((r) => String(r.currency || '').trim().toUpperCase() === want)
+      .map((r) => {
+        const delta = (r.borcAmount || 0) - (r.alacakAmount || 0);
+        running += delta;
+        return { ...r, balance: running };
+      });
+  }, [ekstresiRowsAll, ekstreFxMode, ekstreCurrencyFilter]);
   const totalBorc = ekstresiRows.reduce((s, r) => s + r.borcAmount, 0);
   const totalAlacak = ekstresiRows.reduce((s, r) => s + r.alacakAmount, 0);
   const netBalance = isSupplierAccount ? totalAlacak - totalBorc : totalBorc - totalAlacak;
@@ -1169,7 +1211,12 @@ export function SupplierModule({ initialFilter = 'all' }: { initialFilter?: Cari
               <div className="flex flex-wrap items-center gap-2 min-w-0" id="supplier-ekstre-title">
                 <FileText className="w-5 h-5 text-indigo-600 shrink-0" />
                 <div className="min-w-0">
-                  <p className="text-[10px] font-bold text-gray-500 uppercase tracking-wider">{tm('accountStatement')}</p>
+                  <p className="text-[10px] font-bold text-gray-500 uppercase tracking-wider">
+                    {ekstreFxMode ? tm('accountStatementFx') : tm('accountStatement')}
+                  </p>
+                  {ekstreFxMode ? (
+                    <p className="text-[9px] text-teal-700 font-medium max-w-md">{tm('accountStatementFxHint')}</p>
+                  ) : null}
                   <p className="text-base font-bold text-gray-900 truncate">{selectedAccount.name}</p>
                 </div>
                 <span className={`px-2 py-0.5 rounded-full text-[9px] font-black uppercase shrink-0 ${selectedAccount.cardType === 'customer' ? 'bg-blue-100 text-blue-700' : 'bg-orange-100 text-orange-700'}`}>
@@ -1213,7 +1260,22 @@ export function SupplierModule({ initialFilter = 'all' }: { initialFilter?: Cari
                     );
                   })()}
                 </div>
-                {reportingCurrency !== mainCurrency && (
+                {ekstreFxMode ? (
+                  <select
+                    value={ekstreCurrencyFilter}
+                    onChange={(e) => setEkstreCurrencyFilter(e.target.value)}
+                    className="px-2 py-1.5 border border-teal-300 rounded text-xs font-bold text-teal-800 bg-teal-50 focus:outline-none focus:ring-2 focus:ring-teal-500"
+                    title={tm('accountStatementFx')}
+                  >
+                    <option value="ALL">{tm('allCurrenciesFilter')}</option>
+                    {ekstreCurrencyOptions.map((c) => (
+                      <option key={c} value={c}>
+                        {c}
+                      </option>
+                    ))}
+                  </select>
+                ) : null}
+                {reportingCurrency !== mainCurrency && !ekstreFxMode && (
                   <button
                     type="button"
                     onClick={() => setShowReportingPrimary(!showReportingPrimary)}
@@ -1222,6 +1284,19 @@ export function SupplierModule({ initialFilter = 'all' }: { initialFilter?: Cari
                     {showReportingPrimary ? reportingCurrency : mainCurrency}
                   </button>
                 )}
+                {ekstreFxMode ? (
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setEkstreFxMode(false);
+                      setEkstreCurrencyFilter('ALL');
+                    }}
+                    className="px-2 py-1.5 rounded text-[10px] font-black uppercase bg-teal-600 text-white"
+                    title={tm('accountStatementLedger')}
+                  >
+                    {tm('accountStatementLedger')}
+                  </button>
+                ) : null}
                 <button
                   type="button"
                   onClick={() => {
@@ -1282,17 +1357,33 @@ export function SupplierModule({ initialFilter = 'all' }: { initialFilter?: Cari
               <table className="w-full text-sm">
                 <thead className="sticky top-0 z-[1] bg-gray-100 border-b border-gray-200">
                   <tr>
-                    {[tm('dateLabel'), tm('ficheNo'), tm('type'), tm('description'), tm('debtor'), tm('creditor'), tm('balance')].map(h => (
-                      <th key={h} className={`px-4 py-3 text-[11px] font-black text-gray-600 uppercase tracking-wider ${[tm('debtor'), tm('creditor'), tm('balance')].includes(h) ? 'text-right' : 'text-left'}`}>{h}</th>
+                    {[
+                      tm('dateLabel'),
+                      tm('ficheNo'),
+                      tm('type'),
+                      ...(ekstreFxMode ? [tm('currencyCol')] : []),
+                      tm('description'),
+                      tm('debtor'),
+                      tm('creditor'),
+                      tm('balance'),
+                    ].map((h) => (
+                      <th
+                        key={h}
+                        className={`px-4 py-3 text-[11px] font-black text-gray-600 uppercase tracking-wider ${
+                          [tm('debtor'), tm('creditor'), tm('balance')].includes(h) ? 'text-right' : 'text-left'
+                        }`}
+                      >
+                        {h}
+                      </th>
                     ))}
                   </tr>
                 </thead>
                 <tbody>
                   {ekstresiRows.map((row, idx) => {
                     const { label, color } = typeInfo(row);
-                    const borcD = row.borcAmount > 0 ? fmtEkstreAmount(row.borcAmount) : null;
-                    const alacD = row.alacakAmount > 0 ? fmtEkstreAmount(row.alacakAmount) : null;
-                    const balD = row.balance !== 0 ? fmtEkstreAmount(Math.abs(row.balance)) : null;
+                    const borcD = row.borcAmount > 0 ? fmtEkstreAmount(row.borcAmount, row) : null;
+                    const alacD = row.alacakAmount > 0 ? fmtEkstreAmount(row.alacakAmount, row) : null;
+                    const balD = row.balance !== 0 ? fmtEkstreAmount(Math.abs(row.balance), row) : null;
                     const rowBalDir = getCariBalanceDirection(selectedAccount?.cardType, row.balance, tm);
                     return (
                       <tr key={idx} className={`border-b border-gray-100 hover:bg-blue-50/40 ${idx % 2 ? 'bg-gray-50/50' : ''}`}>
@@ -1312,6 +1403,14 @@ export function SupplierModule({ initialFilter = 'all' }: { initialFilter?: Cari
                           )}
                         </td>
                         <td className="px-4 py-2"><span className={`px-2 py-0.5 rounded-full text-[10px] font-black uppercase ${color}`}>{label}</span></td>
+                        {ekstreFxMode ? (
+                          <td className="px-4 py-2 font-mono text-xs font-bold text-teal-700">
+                            {String(row.currency || mainCurrency).toUpperCase()}
+                            {Number(row.currency_rate) > 0 && Math.abs(Number(row.currency_rate) - 1) > 1e-9
+                              ? ` · ${formatNumber(Number(row.currency_rate), 4, true)}`
+                              : ''}
+                          </td>
+                        ) : null}
                         <td className="px-4 py-2 text-gray-700 max-w-md break-words align-top">
                           {resolveEkstreDescription(
                             row.notes,
@@ -1324,30 +1423,35 @@ export function SupplierModule({ initialFilter = 'all' }: { initialFilter?: Cari
                         <td className="px-4 py-2 text-right font-bold text-red-600 whitespace-nowrap">
                           {borcD ? (
                             <div className="flex flex-col items-end">
-                              <span>{borcD.primary} {borcD.code}</span>
-                              {borcD.secondary ? <span className="text-[10px] opacity-50 font-normal">{borcD.secondary}</span> : null}
+                              <span>{borcD.primary}{borcD.code ? ` ${borcD.code}` : ''}</span>
+                              {borcD.secondary ? <span className="text-[10px] opacity-70 font-normal text-teal-700">{borcD.secondary}</span> : null}
                             </div>
-                          ) : ''}
+                          ) : (
+                            '-'
+                          )}
                         </td>
-                        <td className="px-4 py-2 text-right font-bold text-green-600 whitespace-nowrap">
+                        <td className="px-4 py-2 text-right font-bold text-orange-600 whitespace-nowrap">
                           {alacD ? (
                             <div className="flex flex-col items-end">
-                              <span>{alacD.primary} {alacD.code}</span>
-                              {alacD.secondary ? <span className="text-[10px] opacity-50 font-normal">{alacD.secondary}</span> : null}
+                              <span>{alacD.primary}{alacD.code ? ` ${alacD.code}` : ''}</span>
+                              {alacD.secondary ? <span className="text-[10px] opacity-70 font-normal text-teal-700">{alacD.secondary}</span> : null}
                             </div>
-                          ) : ''}
+                          ) : (
+                            '-'
+                          )}
                         </td>
-                        <td className={`px-4 py-2 text-right font-black whitespace-nowrap ${row.balance > 0 ? 'text-red-600' : row.balance < 0 ? 'text-green-600' : 'text-gray-400'}`}>
-                          <div className="flex flex-col items-end">
-                            {balD ? (
-                              <>
-                                <span>{balD.primary} {balD.code}{rowBalDir.sideLabel ? <span className="ml-1 text-[9px] font-black whitespace-nowrap" title={rowBalDir.hint}>{rowBalDir.sideLabel}</span> : null}</span>
-                                {balD.secondary ? <span className="text-[10px] opacity-50 font-normal">{balD.secondary}</span> : null}
-                              </>
-                            ) : (
-                              <span className="text-gray-400">{formatNumber(0, mainDec, mainShowDec)} {mainCurrency}</span>
-                            )}
-                          </div>
+                        <td className="px-4 py-2 text-right font-black whitespace-nowrap" title={rowBalDir.hint}>
+                          {balD ? (
+                            <div className="flex flex-col items-end">
+                              <span className={rowBalDir.side === 'B' ? 'text-red-700' : rowBalDir.side === 'A' ? 'text-emerald-700' : 'text-gray-700'}>
+                                {balD.primary}{balD.code ? ` ${balD.code}` : ''}
+                                {rowBalDir.sideLabel ? ` · ${rowBalDir.sideLabel}` : ''}
+                              </span>
+                              {balD.secondary ? <span className="text-[10px] opacity-70 font-normal text-teal-700">{balD.secondary}</span> : null}
+                            </div>
+                          ) : (
+                            '-'
+                          )}
                         </td>
                       </tr>
                     );
@@ -1427,7 +1531,31 @@ export function SupplierModule({ initialFilter = 'all' }: { initialFilter?: Cari
               },
             },
             { id: 'edit', label: tm('edit'), icon: Edit, onClick: () => { if (contextMenu.supplier) handleEditClick(contextMenu.supplier); setContextMenu(null); } },
-            { id: 'extract', label: tm('accountStatement'), icon: FileText, onClick: () => { if (contextMenu.supplier) selectAccount(contextMenu.supplier); setContextMenu(null); } },
+            {
+              id: 'extract',
+              label: tm('accountStatement'),
+              icon: FileText,
+              items: [
+                {
+                  id: 'extract-ledger',
+                  label: tm('accountStatementLedger'),
+                  icon: FileText,
+                  onClick: () => {
+                    if (contextMenu.supplier) void selectAccount(contextMenu.supplier, { fxMode: false });
+                    setContextMenu(null);
+                  },
+                },
+                {
+                  id: 'extract-fx',
+                  label: tm('accountStatementFx'),
+                  icon: ArrowRightLeft,
+                  onClick: () => {
+                    if (contextMenu.supplier) void selectAccount(contextMenu.supplier, { fxMode: true });
+                    setContextMenu(null);
+                  },
+                },
+              ],
+            },
             {
               id: 'delete',
               label: tm('deleteAction'),

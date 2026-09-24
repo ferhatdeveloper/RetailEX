@@ -7,6 +7,9 @@ import { TemplateManager } from '../../modules/TemplateManager';
 import type { Sale, Invoice } from '../../../core/types';
 import { formatNumber } from '../../../utils/formatNumber';
 import { formatDateTimeShort, formatShortDate } from '../../../utils/dateLocale';
+import { getFirmLedgerCurrency, getGlobalCurrency } from '../../../utils/currency';
+import { formatInvoiceDualAmountLines } from '../../../utils/invoiceFxDisplay';
+import { getAppDefaultCurrency } from '../../../services/postgres';
 import { invoiceLineMixLabelKey, type InvoiceLineMix } from '../../../utils/invoiceLineMix';
 import { DevExDataGrid } from '../../shared/DevExDataGrid';
 import { ColumnVisibilityMenu } from '../../shared/ColumnVisibilityMenu';
@@ -983,6 +986,19 @@ export function InvoiceListModule({
     return firm || 'IQD';
   };
 
+  const listLedgerCurrency = useMemo(
+    () => getFirmLedgerCurrency(selectedFirm, getAppDefaultCurrency() || getGlobalCurrency() || 'IQD'),
+    [selectedFirm],
+  );
+
+  const formatListDual = (ledgerAmount: number, inv: ListInvoice) =>
+    formatInvoiceDualAmountLines({
+      ledgerAmount,
+      docCurrency: resolveListRowCurrency(inv),
+      currencyRate: Number(inv.currency_rate || 1),
+      ledgerCurrency: listLedgerCurrency,
+    });
+
   const headerTotalsCurrency = useMemo(() => {
     const codes = invoices.map((i) => String(i.currency ?? '').trim().toUpperCase()).filter(Boolean);
     const uniq = new Set(codes);
@@ -1011,6 +1027,7 @@ export function InvoiceListModule({
         getIcon,
         returnProcessorColumnLabel,
         resolveListRowCurrency,
+        ledgerCurrency: listLedgerCurrency,
         onViewDetail: handleViewDetail,
         onEdit: (inv) => void handleEditInvoice(inv),
       }),
@@ -1019,6 +1036,7 @@ export function InvoiceListModule({
       tm,
       returnProcessorColumnLabel,
       selectedFirm,
+      listLedgerCurrency,
       INVOICE_TYPES,
       handleViewDetail,
       handleEditInvoice,
@@ -1360,7 +1378,6 @@ export function InvoiceListModule({
                   const meta = getInvoiceTypeMeta(inv);
                   const TypeIcon = meta.Icon;
                   const totalVal = inv.total_amount ?? inv.total ?? 0;
-                  const rowCur = resolveListRowCurrency(inv);
                   const rowKey = String(inv.id ?? inv.invoice_no);
                   const st = inv.status || '';
                   return (
@@ -1428,9 +1445,17 @@ export function InvoiceListModule({
                         </div>
                         <div className="flex justify-between gap-2">
                           <span className="text-gray-500 shrink-0">{tm('total')}</span>
-                          <span className="font-semibold tabular-nums">
-                            {totalVal > 0 ? `${formatNumber(totalVal, 2, true)} ${rowCur}` : `0 ${rowCur}`}
-                          </span>
+                          {(() => {
+                            const dual = formatListDual(totalVal, inv);
+                            return (
+                              <span className="font-semibold tabular-nums text-right inline-flex flex-col items-end leading-tight">
+                                <span>{dual.primary}</span>
+                                {dual.secondary ? (
+                                  <span className="text-[10px] font-medium text-teal-700">{dual.secondary}</span>
+                                ) : null}
+                              </span>
+                            );
+                          })()}
                         </div>
                         <div className="flex justify-between gap-2 items-center">
                           <span className="text-gray-500 shrink-0">{tm('status')}</span>
@@ -2060,25 +2085,62 @@ export function InvoiceListModule({
                   {/* Toplamlar */}
                   <div className="border-t-2 border-gray-300 pt-6 mt-8">
                     <div className="space-y-3 max-w-md ml-auto">
-                      <div className="flex justify-between text-sm">
-                        <span className="text-gray-600">{tm('subtotal')}:</span>
-                        <span className="font-semibold text-gray-900">{formatNumber(selectedInvoice.subtotal || 0, 2, true)} {resolveListRowCurrency(selectedInvoice)}</span>
+                      <div className="flex justify-between text-sm gap-4">
+                        <span className="text-gray-600 shrink-0">{tm('subtotal')}:</span>
+                        {(() => {
+                          const dual = formatListDual(selectedInvoice.subtotal || 0, selectedInvoice);
+                          return (
+                            <span className="font-semibold text-gray-900 text-right inline-flex flex-col items-end leading-tight">
+                              <span>{dual.primary}</span>
+                              {dual.secondary ? <span className="text-[10px] text-teal-700 font-medium">{dual.secondary}</span> : null}
+                            </span>
+                          );
+                        })()}
                       </div>
                       {selectedInvoice.discount > 0 && (
-                        <div className="flex justify-between text-sm text-red-600">
-                          <span>{tm('discount')}:</span>
-                          <span className="font-semibold">-{formatNumber(selectedInvoice.discount, 2, true)} {resolveListRowCurrency(selectedInvoice)}</span>
+                        <div className="flex justify-between text-sm text-red-600 gap-4">
+                          <span className="shrink-0">{tm('discount')}:</span>
+                          {(() => {
+                            const dual = formatListDual(selectedInvoice.discount, selectedInvoice);
+                            return (
+                              <span className="font-semibold text-right inline-flex flex-col items-end leading-tight">
+                                <span>-{dual.primary}</span>
+                                {dual.secondary ? <span className="text-[10px] font-medium">-{dual.secondary}</span> : null}
+                              </span>
+                            );
+                          })()}
                         </div>
                       )}
                       {selectedInvoice.tax > 0 && (
-                        <div className="flex justify-between text-sm">
-                          <span className="text-gray-600">{tm('tax')}:</span>
-                          <span className="font-semibold text-gray-900">{formatNumber(selectedInvoice.tax, 2, true)} {resolveListRowCurrency(selectedInvoice)}</span>
+                        <div className="flex justify-between text-sm gap-4">
+                          <span className="text-gray-600 shrink-0">{tm('tax')}:</span>
+                          {(() => {
+                            const dual = formatListDual(selectedInvoice.tax, selectedInvoice);
+                            return (
+                              <span className="font-semibold text-gray-900 text-right inline-flex flex-col items-end leading-tight">
+                                <span>{dual.primary}</span>
+                                {dual.secondary ? <span className="text-[10px] text-teal-700 font-medium">{dual.secondary}</span> : null}
+                              </span>
+                            );
+                          })()}
                         </div>
                       )}
-                      <div className="flex justify-between text-2xl font-bold border-t-2 border-blue-600 pt-4 mt-4">
-                        <span className="text-gray-900">{tm('grandTotal')}:</span>
-                        <span className="text-blue-600">{formatNumber(selectedInvoice.total || selectedInvoice.total_amount || 0, 2, true)} {resolveListRowCurrency(selectedInvoice)}</span>
+                      <div className="flex justify-between text-2xl font-bold border-t-2 border-blue-600 pt-4 mt-4 gap-4">
+                        <span className="text-gray-900 shrink-0">{tm('grandTotal')}:</span>
+                        {(() => {
+                          const dual = formatListDual(
+                            selectedInvoice.total || selectedInvoice.total_amount || 0,
+                            selectedInvoice,
+                          );
+                          return (
+                            <span className="text-blue-600 text-right inline-flex flex-col items-end leading-tight">
+                              <span>{dual.primary}</span>
+                              {dual.secondary ? (
+                                <span className="text-sm font-semibold text-teal-700">{dual.secondary}</span>
+                              ) : null}
+                            </span>
+                          );
+                        })()}
                       </div>
                     </div>
                   </div>

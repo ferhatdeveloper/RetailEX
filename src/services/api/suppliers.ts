@@ -55,6 +55,7 @@ function mapSalesRowToEkstre(r: any) {
     fiche_type: r.fiche_type,
     total_amount: r.net_amount,
     currency: r.currency,
+    currency_rate: r.currency_rate != null ? Number(r.currency_rate) : 1,
     notes: r.notes,
     is_cancelled: cancelled,
     payment_method: r.payment_method,
@@ -69,7 +70,9 @@ function mapCashRowToEkstre(r: any) {
     fiche_type: String(r.transaction_type || '').trim().toUpperCase(),
     total_amount: Math.abs(parseFloat(String(r.amount ?? 0)) || 0),
     currency: r.currency_code,
+    currency_rate: r.exchange_rate != null ? Number(r.exchange_rate) : 1,
     notes: r.definition,
+    f_amount: r.f_amount != null ? Number(r.f_amount) : undefined,
   };
 }
 
@@ -673,7 +676,7 @@ export const supplierAPI = {
         const cashPath = `/rex_${fn}_${pn}_cash_lines`;
 
         const salesByIdQuery: Record<string, string> = {
-          select: 'fiche_no,date,trcode,fiche_type,net_amount,currency,notes,is_cancelled,customer_id,customer_name,payment_method,status',
+          select: 'fiche_no,date,trcode,fiche_type,net_amount,currency,currency_rate,notes,is_cancelled,customer_id,customer_name,payment_method,status',
           customer_id: `eq.${accountId}`,
           is_cancelled: 'eq.false',
           order: 'date.asc',
@@ -687,7 +690,7 @@ export const supplierAPI = {
         }
 
         const cashByIdQuery: Record<string, string> = {
-          select: 'fiche_no,date,transaction_type,amount,currency_code,definition,customer_id,party_id',
+          select: 'fiche_no,date,transaction_type,amount,currency_code,exchange_rate,f_amount,definition,customer_id,party_id',
           // Tedarikçi ödemeleri party_id ile yazılır; eski müşteri tarafı verileri için customer_id fallback.
           or: `(customer_id.eq.${accountId},party_id.eq.${accountId})`,
           transaction_type: 'in.(CH_ODEME,CH_TAHSILAT)',
@@ -704,7 +707,7 @@ export const supplierAPI = {
         const nameTrim = String(accountName || '').trim();
         const nameSalesQuery: Record<string, string> | null = nameTrim
           ? {
-              select: 'fiche_no,date,trcode,fiche_type,net_amount,currency,notes,customer_id,customer_name,is_cancelled,payment_method',
+              select: 'fiche_no,date,trcode,fiche_type,net_amount,currency,currency_rate,notes,customer_id,customer_name,is_cancelled,payment_method',
               customer_name: `not.is.null`,
               order: 'date.asc',
               limit: '5000',
@@ -794,7 +797,8 @@ export const supplierAPI = {
             : '';
 
       const sql = `
-        SELECT fiche_no, date, trcode, fiche_type, net_amount AS total_amount, currency, notes,
+        SELECT fiche_no, date, trcode, fiche_type, net_amount AS total_amount, currency,
+               COALESCE(currency_rate, 1) AS currency_rate, notes,
                COALESCE(is_cancelled, false) AS is_cancelled, payment_method
         FROM sales t
         WHERE ${accountMatchSales}${ledgerFicheFilter}${dateFilter}
@@ -802,7 +806,8 @@ export const supplierAPI = {
           AND LOWER(TRIM(COALESCE(t.status, ''))) NOT IN ('iptal', 'silindi', 'cancelled', 'canceled', 'deleted', 'refunded')
         UNION ALL
         SELECT fiche_no, date, 0 AS trcode, transaction_type AS fiche_type,
-               ABS(amount) AS total_amount, currency_code AS currency, definition AS notes,
+               ABS(amount) AS total_amount, currency_code AS currency,
+               COALESCE(exchange_rate, 1) AS currency_rate, definition AS notes,
                false AS is_cancelled, NULL::text AS payment_method
         FROM cash_lines t
         WHERE (t.customer_id::text = $1::text OR t.party_id::text = $1::text)${dateFilter}

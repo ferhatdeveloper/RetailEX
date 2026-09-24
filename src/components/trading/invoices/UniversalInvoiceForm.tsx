@@ -210,10 +210,12 @@ const mockProducts = [
 function invoiceEditLineToFormAmounts(
   item: any,
   headerCurrency: string,
-  headerRate: number
+  headerRate: number,
+  ledgerCurrency: string = 'IQD'
 ): { unitPrice: number; amount: number; netAmount: number } {
-  const hdrCur = String(headerCurrency || 'IQD').trim().toUpperCase();
-  const rowCur = String(item.currency || hdrCur || 'IQD').trim().toUpperCase();
+  const hdrCur = String(headerCurrency || ledgerCurrency || 'IQD').trim().toUpperCase();
+  const ledCur = String(ledgerCurrency || 'IQD').trim().toUpperCase();
+  const rowCur = String(item.currency || hdrCur || ledCur).trim().toUpperCase();
   const rate = headerRate > 0 ? headerRate : 1;
   const uFCraw = item.unit_price_fc ?? item.unitPriceFC;
   const uFC =
@@ -221,10 +223,33 @@ function invoiceEditLineToFormAmounts(
       ? parseFloat(String(uFCraw))
       : NaN;
   const uLoc = parseFloat(String(item.unitPrice ?? item.unit_price ?? item.price ?? 0));
+  const isFxDoc = rowCur !== ledCur && hdrCur !== ledCur;
   /** Döviz satırında `unit_price_fc` bazen 0 kayıtlı; yerel `unit_price` doluysa FC sıfırını yok say. */
   const useFc =
-    Number.isFinite(uFC) && rowCur !== 'IQD' && !(uFC === 0 && uLoc > 0);
-  const unitPrice = useFc ? uFC : uLoc;
+    isFxDoc &&
+    ((Number.isFinite(uFC) && !(uFC === 0 && uLoc > 0)) || (rate > 0 && uLoc > 0));
+  const unitPrice = useFc
+    ? Number.isFinite(uFC) && !(uFC === 0 && uLoc > 0)
+      ? uFC
+      : rate > 0
+        ? uLoc / rate
+        : uLoc
+    : uLoc;
+
+  const qty = parseFloat(String(item.quantity ?? item.qty ?? 0)) || 0;
+  const discPct = parseFloat(String(item.discount_percent ?? item.discountPercent ?? item.discount ?? 0)) || 0;
+  const discFix = parseFloat(String(item.discount_amount ?? item.discountAmount ?? 0)) || 0;
+
+  /**
+   * Düzenlemede tutar kaymasın: form dövizinde birim × miktar ile türet.
+   * Eski kayıtlarda net FC/ledger karışık olabilir; birim fiyat (FC) kaynak kabul edilir.
+   */
+  let amount = qty > 0 && unitPrice > 0 ? qty * unitPrice : 0;
+  let netAmount = amount;
+  if (amount > 0) {
+    const d = discFix > 0 ? discFix : amount * (discPct / 100);
+    netAmount = amount - d;
+  }
 
   const hasLedgerGross =
     item.total_amount != null &&
@@ -235,34 +260,37 @@ function invoiceEditLineToFormAmounts(
     item.net_amount !== '' &&
     !Number.isNaN(parseFloat(String(item.net_amount)));
 
-  let amount: number;
-  if (useFc && rate !== 0 && hasLedgerGross) {
-    amount = parseFloat(String(item.total_amount)) / rate;
-  } else {
-    amount = parseFloat(
-      String(item.amount ?? item.gross_amount ?? item.total ?? item.total_amount ?? 0)
-    );
+  if (!(amount > 0)) {
+    if (useFc && rate !== 0 && hasLedgerGross) {
+      amount = parseFloat(String(item.total_amount)) / rate;
+    } else {
+      amount = parseFloat(
+        String(item.amount ?? item.gross_amount ?? item.total ?? item.total_amount ?? 0)
+      );
+    }
+  }
+  if (!(netAmount > 0)) {
+    if (useFc && rate !== 0 && hasLedgerNet) {
+      const rawNet = parseFloat(String(item.net_amount));
+      /** Ham net birim×adet FC’ye yakınsa zaten FC saklanmış demektir — tekrar bölme. */
+      const asFc = rawNet;
+      const asLedgerDiv = rawNet / rate;
+      const target = qty > 0 && unitPrice > 0 ? qty * unitPrice : asLedgerDiv;
+      netAmount =
+        Math.abs(asFc - target) <= Math.abs(asLedgerDiv - target) ? asFc : asLedgerDiv;
+    } else {
+      netAmount = parseFloat(
+        String(item.netAmount ?? item.net_amount ?? item.amount ?? item.total ?? 0)
+      );
+    }
   }
 
-  let netAmount: number;
-  if (useFc && rate !== 0 && hasLedgerNet) {
-    netAmount = parseFloat(String(item.net_amount)) / rate;
-  } else {
-    netAmount = parseFloat(
-      String(item.netAmount ?? item.net_amount ?? item.amount ?? item.total ?? 0)
-    );
-  }
-
-  /** Taslak satırlarda (sayım → alış) total alanları boş/0 olabilir; brüt = miktar × birim fiyat */
-  const qty = parseFloat(String(item.quantity ?? item.qty ?? 0)) || 0;
   if (!Number.isFinite(amount)) amount = 0;
   if (!Number.isFinite(netAmount)) netAmount = 0;
   if (Math.abs(amount) < 1e-9 && qty > 0 && unitPrice > 0) {
     amount = qty * unitPrice;
   }
   if (Math.abs(netAmount) < 1e-9 && amount > 0) {
-    const discPct = parseFloat(String(item.discount_percent ?? item.discountPercent ?? item.discount ?? 0)) || 0;
-    const discFix = parseFloat(String(item.discount_amount ?? item.discountAmount ?? 0)) || 0;
     const d = discFix > 0 ? discFix : amount * (discPct / 100);
     netAmount = amount - d;
   }
@@ -758,7 +786,7 @@ export function UniversalInvoiceForm({
       const hdrCur = String((editData as any)?.currency || 'IQD');
       const hdrRate = parseFloat(String((editData as any)?.currency_rate)) || 1;
       return editData.items.map((item: any, index: number) => {
-        const fc = invoiceEditLineToFormAmounts(item, hdrCur, hdrRate);
+        const fc = invoiceEditLineToFormAmounts(item, hdrCur, hdrRate, ledgerCurrency);
         const hydrated = hydrateWeightLineFromDb({
           quantity: item.quantity || 0,
           baseQuantity: item.baseQuantity || item.base_quantity,
@@ -1022,10 +1050,12 @@ export function UniversalInvoiceForm({
     currencyRateUserTouchedRef.current = false;
   }, [(editData as any)?.id]);
 
-  /** İşlem tarihi değişince master kur yeniden yüklensin; eski elle/yanlış metin kur alanında kalmasın */
+  /** İşlem tarihi değişince master kur yeniden yüklensin; eski elle/yanlış metin kur alanında kalmasın.
+   * Düzenlemede kayıtlı kuru koru — tarih hydrate sırasında dokunulmuş bayrağı sıfırlanmasın. */
   useEffect(() => {
+    if ((editData as any)?.id) return;
     currencyRateUserTouchedRef.current = false;
-  }, [transactionDate]);
+  }, [transactionDate, (editData as any)?.id]);
 
   // Düzenleme: belge dövizi = seçim → DB’deki kayıtlı kur; farklı döviz → işlem tarihine göre kur
   useEffect(() => {
@@ -1083,7 +1113,8 @@ export function UniversalInvoiceForm({
     transactionDate,
     ledgerCurrency,
     currencyRateType,
-    latestRates
+    // latestRates edit’te kayıtlı kuru ezmesin — yalnızca kullanıcı döviz değiştirdiğinde (loc !== docCur) gerekir;
+    // aynı belge dövizinde bağımlılıktan çıkarıldı.
   ]);
 
   // Yeni fatura: işlem tarihine göre exchange_rates’ten kur; yoksa son bilinen master kur
@@ -3175,7 +3206,7 @@ export function UniversalInvoiceForm({
             );
           }
 
-          const fc = invoiceEditLineToFormAmounts(item, hdrCur, hdrRate);
+          const fc = invoiceEditLineToFormAmounts(item, hdrCur, hdrRate, ledgerCurrency);
           const q = item.quantity || 0;
           return {
             id: item.id || `item-${index}`,
@@ -3993,28 +4024,43 @@ export function UniversalInvoiceForm({
           const unitPriceIQD = unitPriceFC * rateToIQD;
           const baseQty = item.baseQuantity ?? (item.quantity * (item.multiplier || 1));
           const netAmountIQD = item.netAmount * rateToIQD;
+          const amountIQD = (item.amount ?? item.netAmount) * rateToIQD;
           calculatedGrossProfit += (netAmountIQD - totalItemCost);
 
           return {
             ...item,
             unitPriceFC,
             unitPrice: unitPriceIQD,
+            amount: amountIQD,
+            netAmount: netAmountIQD,
+            total: netAmountIQD,
             baseQuantity: baseQty,
             unitCost,
             totalCost: totalItemCost,
-            grossProfit: netAmountIQD - totalItemCost
+            grossProfit: netAmountIQD - totalItemCost,
+            currency: currency || ledgerCurrency,
           };
         });
       }
 
       // itemsWithCost yoksa (Iade, Irsaliye vb.) döviz dönüşümünü uygula
       if (itemsWithCost.length === 0 && validItems.length > 0) {
-        itemsWithCost = validItems.map(item => ({
-          ...item,
-          unitPriceFC: item.unitPrice,
-          unitPrice: item.unitPrice * rateToIQD,
-          baseQuantity: item.baseQuantity ?? (item.quantity * (item.multiplier || 1))
-        }));
+        itemsWithCost = validItems.map(item => {
+          const unitPriceFC = item.unitPrice;
+          const unitPriceIQD = unitPriceFC * rateToIQD;
+          const netAmountIQD = (item.netAmount || 0) * rateToIQD;
+          const amountIQD = (item.amount ?? item.netAmount ?? 0) * rateToIQD;
+          return {
+            ...item,
+            unitPriceFC,
+            unitPrice: unitPriceIQD,
+            amount: amountIQD,
+            netAmount: netAmountIQD,
+            total: netAmountIQD,
+            baseQuantity: item.baseQuantity ?? (item.quantity * (item.multiplier || 1)),
+            currency: currency || ledgerCurrency,
+          };
+        });
       }
 
       // ===== 2. VERİTABANINA KAYDET =====

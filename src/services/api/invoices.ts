@@ -44,6 +44,8 @@ import {
   stockSaleTmFallback,
   type InsufficientStockHit,
 } from '../../utils/stockSaleGuard';
+import { getFirmLedgerCurrency, getGlobalCurrency } from '../../utils/currency';
+import { invoiceIsForeignCurrency } from '../../utils/invoiceFxDisplay';
 export type { Invoice };
 export type { InvoiceCashLineWriter } from '../../utils/invoiceCashPosting';
 export {
@@ -1932,8 +1934,9 @@ export function invoiceMatchesModuleCategory(
 export function mapSaleItemRowToInvoiceLine(item: any, inv: Invoice) {
   const identity = splitInvoiceLineIdentity(item);
   const code = identity.code;
-  const hdrCur = String(inv.currency || 'IQD').trim().toUpperCase();
-  const rowCur = String(item.currency || hdrCur || 'IQD').trim().toUpperCase();
+  const ledgerCur = getFirmLedgerCurrency(null, getGlobalCurrency() || 'IQD');
+  const hdrCur = String(inv.currency || ledgerCur).trim().toUpperCase();
+  const rowCur = String(item.currency || hdrCur || ledgerCur).trim().toUpperCase();
   const rate = Number(inv.currency_rate) > 0 ? Number(inv.currency_rate) : 1;
   const uFCraw = item.unit_price_fc;
   const uFC =
@@ -1943,11 +1946,31 @@ export function mapSaleItemRowToInvoiceLine(item: any, inv: Invoice) {
   const uLoc = parseFloat(item.unit_price || 0);
   const grossIQD = parseFloat(item.total_amount || 0);
   const netIQD = parseFloat(item.net_amount || 0);
+  const isFx = invoiceIsForeignCurrency(hdrCur, ledgerCur) || invoiceIsForeignCurrency(rowCur, ledgerCur);
   const useFc =
-    Number.isFinite(uFC) && rowCur !== 'IQD' && !(uFC === 0 && uLoc > 0);
-  const unitPrice = useFc ? uFC : uLoc;
-  const netAmount = useFc ? netIQD / rate : netIQD;
-  const total = useFc ? grossIQD / rate : grossIQD;
+    isFx && ((Number.isFinite(uFC) && !(uFC === 0 && uLoc > 0)) || (rate > 0 && uLoc > 0));
+  const unitPrice = useFc
+    ? Number.isFinite(uFC) && !(uFC === 0 && uLoc > 0)
+      ? uFC
+      : rate > 0
+        ? uLoc / rate
+        : uLoc
+    : uLoc;
+  const qty = parseFloat(item.quantity) || 0;
+  const discPct = parseFloat(item.discount_rate || 0) || 0;
+  /** Form tutarı: birim(FC) × miktar — düzenlemede kaymasın */
+  let netAmount: number;
+  let total: number;
+  if (useFc && unitPrice > 0 && qty > 0) {
+    total = qty * unitPrice;
+    netAmount = total - total * (discPct / 100);
+  } else if (useFc && rate > 0) {
+    total = grossIQD / rate;
+    netAmount = netIQD / rate;
+  } else {
+    total = grossIQD;
+    netAmount = netIQD;
+  }
   const unit = item.unit || 'Adet';
   const multiplier = parseFloat(item.unit_multiplier || 1);
   const hydrated = hydrateWeightLineFromDb({
@@ -1966,7 +1989,7 @@ export function mapSaleItemRowToInvoiceLine(item: any, inv: Invoice) {
     unit,
     unitPrice,
     price: unitPrice,
-    discount: parseFloat(item.discount_rate || 0),
+    discount: discPct,
     tax: 0,
     netAmount,
     total,
@@ -1975,8 +1998,8 @@ export function mapSaleItemRowToInvoiceLine(item: any, inv: Invoice) {
     grossProfit: parseFloat(item.gross_profit || 0),
     multiplier,
     baseQuantity: hydrated.baseQuantity,
-    unitPriceFC: Number.isFinite(uFC) ? uFC : uLoc,
-    currency: item.currency || inv.currency || 'IQD',
+    unitPriceFC: Number.isFinite(uFC) ? uFC : useFc ? unitPrice : uLoc,
+    currency: item.currency || inv.currency || ledgerCur,
     expiryDate: invoiceLineDateOrNull(item.expiry_date),
     batchNo: item.batch_no || undefined,
     type: canonicalInvoiceLineType(item.item_type ?? item.type),
