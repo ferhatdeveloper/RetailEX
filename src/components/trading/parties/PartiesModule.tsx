@@ -4,6 +4,7 @@ import { partnerAPI } from '../../../services/api/partiesPartners';
 import { employeeAPI } from '../../../services/api/partiesEmployees';
 import { PartnerDistributionModal } from './PartnerDistributionModal';
 import { PartnerCashModal } from './PartnerCashModal';
+import { PartnerBalanceGuideModal } from './PartnerBalanceGuideModal';
 import { EmployeePayrollModal } from './EmployeePayrollModal';
 import { PartyEditModal } from './PartyEditModal';
 import { PartyMergeModal } from './PartyMergeModal';
@@ -29,6 +30,7 @@ import {
   GitMerge,
   FileText,
   CalendarPlus,
+  HelpCircle,
 } from 'lucide-react';
 import type { Party, PartyCardType } from '../../../core/types/models';
 import { shortUuid } from './PartyMergeModal';
@@ -67,6 +69,7 @@ export function PartiesModule({
   const [cashPartner, setCashPartner] = useState<Party | null>(null);
   const [statementParty, setStatementParty] = useState<Party | null>(null);
   const [distributionOpen, setDistributionOpen] = useState(false);
+  const [partnerGuideOpen, setPartnerGuideOpen] = useState(false);
   const [validationWarning, setValidationWarning] = useState<string | null>(null);
   const [mergeOpen, setMergeOpen] = useState(false);
   const [copiedId, setCopiedId] = useState<string | null>(null);
@@ -303,14 +306,25 @@ export function PartiesModule({
             </button>
           )}
           {tab === 'partner' && (
-            <button
-              type="button"
-              onClick={() => setDistributionOpen(true)}
-              className="px-4 py-2.5 rounded-2xl bg-purple-600 text-white text-xs font-bold uppercase tracking-wider hover:bg-purple-700 active:scale-[0.98] flex items-center gap-2"
-            >
-              <HandCoins className="w-4 h-4" />
-              {t('party.distribution.openDistribution')}
-            </button>
+            <>
+              <button
+                type="button"
+                onClick={() => setPartnerGuideOpen(true)}
+                className="px-4 py-2.5 rounded-2xl bg-white text-purple-800 text-xs font-bold uppercase tracking-wider hover:bg-purple-50 active:scale-[0.98] flex items-center gap-2 border-2 border-purple-200"
+                title={t('party.partnerGuide.openButton')}
+              >
+                <HelpCircle className="w-4 h-4" />
+                {t('party.partnerGuide.openButton')}
+              </button>
+              <button
+                type="button"
+                onClick={() => setDistributionOpen(true)}
+                className="px-4 py-2.5 rounded-2xl bg-purple-600 text-white text-xs font-bold uppercase tracking-wider hover:bg-purple-700 active:scale-[0.98] flex items-center gap-2"
+              >
+                <HandCoins className="w-4 h-4" />
+                {t('party.distribution.openDistribution')}
+              </button>
+            </>
           )}
           <button
             type="button"
@@ -575,6 +589,13 @@ export function PartiesModule({
             setDistributionOpen(false);
             load();
           }}
+        />
+      )}
+
+      {partnerGuideOpen && (
+        <PartnerBalanceGuideModal
+          partners={items.filter((p) => p.card_type === 'partner')}
+          onClose={() => setPartnerGuideOpen(false)}
         />
       )}
 

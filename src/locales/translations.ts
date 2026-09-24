@@ -2961,6 +2961,48 @@ export const translations: any = {
         balanceHintReceivable: 'İşletmeden alacağı',
         balanceHintPayable: 'İşletmeye borcu',
       },
+      partnerGuide: {
+        openButton: 'Nasıl Hesaplanır?',
+        title: 'Şirket ortağı bakiyesi — basit anlatım',
+        subtitle: 'Müşteri borcu değil; ortağın işletmeyle hesabı',
+        step1Badge: '1 · Tek cümle',
+        step1Body:
+          'Bu sayı, ortağın işletmeye ne kadar borçlu veya işletmeden ne kadar alacaklı olduğunu gösterir. Dışarıdaki müşteri/tedarikçi borcu değildir.',
+        step2Title: '2 · Nasıl hesaplanır?',
+        step2Intro:
+          'Her ay sistem önce işletmenin o aydaki sonucunu bulur, sonra her ortağa payı oranında yazar:',
+        formula: 'Satış cirosu − Giderler = Net  →  Net × Pay % = Ortak payı',
+        step2Expenses:
+          'Evet, giderler de alınır. Satışların tamamı değil; giderler düşüldükten sonra kalan (kâr veya zarar) paylaştırılır.',
+        step2Share:
+          'Pay % sadece bu bölüşüm içindir. Listedeki bakiye, o ortağın kendi hareketlerinin toplamıdır; pay ile çarpılmış bir “genel borç” değildir.',
+        positiveTitle: 'Artı bakiye (yeşil)',
+        positiveBody:
+          '“Dağıtılmamış Kâr Payı” = işletme ortağa borçlu. Ortak henüz çekmemiş kâr veya koyduğu sermaye.',
+        negativeTitle: 'Eksi bakiye (kırmızı)',
+        negativeBody:
+          '“Sermaye Borcu” = ortak işletmeye borçlu. Çektiği para, zarar payı veya kendi adına yapılan ödemeler, alacağından fazla demektir.',
+        step4Title: '3 · Bakiyeye neler girer?',
+        itemNetShare: 'Aylık otomatik pay: (ciro − gider) × pay %',
+        itemProfitDist: 'Elle yapılan kâr / zarar dağıtımı (Kâr Dağıt butonu)',
+        itemCapitalIn: 'Ortağın kasaya koyduğu para (sermaye girişi) → bakiye artar',
+        itemCapitalOut: 'Ortağın kasadan çektiği para → bakiye azalır',
+        itemSupplierPay: 'Ortak adına yapılan tedarikçi ödemesi → bakiye azalır',
+        notCustomerDebt:
+          'Özet: Bu, “dışarıya satış borcu” listesi değildir. Ortak–işletme cari hesabıdır; giderler net kâr/zarar hesabına dahildir.',
+        liveTitle: '4 · Bu listedeki ortaklar',
+        liveIntro: 'Şu an ekrandaki rakamlar (anlamak için örnek):',
+        liveEmpty: 'Aktif şirket ortağı yok.',
+        meaningCol: 'Anlamı',
+        zeroMeaning: 'Bakiye yok',
+        dipLabel: 'Dip toplam ({n})',
+        dipHint: 'Sadece ortak bakiyelerinin toplamı',
+        whatNextTitle: 'Ne yapmalıyım?',
+        whatNext1: 'Bir ortağın satırındaki ekstre / dosya ikonuna basıp hareketleri tek tek görün.',
+        whatNext2: 'Kâr dağıtmak için “Kâr Dağıt”; para koymak/çekmek için satırdaki cüzdan (para girişi/çıkışı) kullanın.',
+        whatNext3: 'Dip toplam, müşteri borçlarının değil; bu ortak bakiyelerinin toplamıdır.',
+        gotIt: 'Anladım',
+      },
       partnerCash: {
         title: 'Ortak Para İşlemi',
         openCash: 'Para girişi / çıkışı',
@@ -4571,6 +4613,48 @@ export const translations: any = {
         balanceHintReceivable: 'Receivable from company',
         balanceHintPayable: 'Owes to company',
       },
+      partnerGuide: {
+        openButton: 'How is it calculated?',
+        title: 'Partner balance — plain English',
+        subtitle: 'Not customer debt; the partner’s account with the business',
+        step1Badge: '1 · One sentence',
+        step1Body:
+          'This number shows how much the partner owes the business, or how much the business owes the partner. It is not external customer/supplier debt.',
+        step2Title: '2 · How is it calculated?',
+        step2Intro:
+          'Each month the system finds the business result for that month, then writes each partner’s share:',
+        formula: 'Sales − Expenses = Net  →  Net × Share % = Partner share',
+        step2Expenses:
+          'Yes, expenses are included. Not all sales — only what remains after expenses (profit or loss) is shared.',
+        step2Share:
+          'Share % is only for that split. The listed balance is the sum of that partner’s own movements — not a “global debt” multiplied by share.',
+        positiveTitle: 'Positive balance (green)',
+        positiveBody:
+          '“Undistributed Profit Share” = the business owes the partner. Unwithdrawn profit or capital put in.',
+        negativeTitle: 'Negative balance (red)',
+        negativeBody:
+          '“Capital Debt” = the partner owes the business. Withdrawals, loss share, or payments made on their behalf exceed what they are owed.',
+        step4Title: '3 · What affects the balance?',
+        itemNetShare: 'Automatic monthly share: (sales − expenses) × share %',
+        itemProfitDist: 'Manual profit / loss distribution (Distribute button)',
+        itemCapitalIn: 'Partner puts cash in → balance increases',
+        itemCapitalOut: 'Partner withdraws cash → balance decreases',
+        itemSupplierPay: 'Supplier payment on behalf of partner → balance decreases',
+        notCustomerDebt:
+          'Summary: This is not an “external sales debt” list. It is the partner–business current account; expenses are included in the net profit/loss.',
+        liveTitle: '4 · Partners on this list',
+        liveIntro: 'Current figures (for understanding):',
+        liveEmpty: 'No active partners.',
+        meaningCol: 'Meaning',
+        zeroMeaning: 'No balance',
+        dipLabel: 'Footer total ({n})',
+        dipHint: 'Sum of partner balances only',
+        whatNextTitle: 'What should I do?',
+        whatNext1: 'Open a partner’s statement to see each movement.',
+        whatNext2: 'Use “Distribute” for profit share; use the wallet action for cash in/out.',
+        whatNext3: 'The footer total is the sum of these partner balances — not customer debts.',
+        gotIt: 'Got it',
+      },
       partnerCash: {
         title: 'Partner Cash',
         openCash: 'Cash in / cash out',
@@ -6169,6 +6253,47 @@ export const translations: any = {
         balanceLabelNegative: 'دين رأسمالي',
         balanceHintReceivable: 'مستحق من الشركة',
         balanceHintPayable: 'مستحق للشركة',
+      },
+      partnerGuide: {
+        openButton: 'كيف يُحسب؟',
+        title: 'رصيد الشريك — شرح بسيط',
+        subtitle: 'ليس دين عميل؛ حساب الشريك مع المنشأة',
+        step1Badge: '1 · جملة واحدة',
+        step1Body:
+          'هذا الرقم يوضح كم يدين الشريك للمنشأة أو كم تستحق المنشأة له. ليس دين عملاء/موردين خارجيين.',
+        step2Title: '2 · كيف يُحسب؟',
+        step2Intro: 'كل شهر يجد النظام نتيجة الشهر ثم يكتب حصة كل شريك:',
+        formula: 'المبيعات − المصروفات = الصافي  →  الصافي × نسبة الحصة = حصة الشريك',
+        step2Expenses:
+          'نعم، المصروفات مشمولة. ليست كل المبيعات — فقط ما يبقى بعد المصروفات (ربح أو خسارة) يُوزّع.',
+        step2Share:
+          'نسبة الحصة للتقسيم فقط. الرصيد في القائمة هو مجموع حركات ذلك الشريك — وليس «ديناً عاماً» مضروباً بالحصة.',
+        positiveTitle: 'رصيد موجب (أخضر)',
+        positiveBody:
+          '«حصة أرباح غير موزعة» = المنشأة مدينة للشريك. ربح لم يُسحب أو رأس مال أُدخل.',
+        negativeTitle: 'رصيد سالب (أحمر)',
+        negativeBody:
+          '«دين رأسمالي» = الشريك مدين للمنشأة. السحوبات أو حصة الخسارة أو المدفوعات باسمه تفوق مستحقاته.',
+        step4Title: '3 · ما الذي يؤثر على الرصيد؟',
+        itemNetShare: 'الحصة الشهرية التلقائية: (مبيعات − مصروفات) × نسبة الحصة',
+        itemProfitDist: 'توزيع ربح / خسارة يدوي (زر التوزيع)',
+        itemCapitalIn: 'الشريك يودع نقداً → يزيد الرصيد',
+        itemCapitalOut: 'الشريك يسحب نقداً → ينقص الرصيد',
+        itemSupplierPay: 'دفع لمورد باسم الشريك → ينقص الرصيد',
+        notCustomerDebt:
+          'خلاصة: هذه ليست قائمة «دين مبيعات خارجي». حساب جاري شريك–منشأة؛ المصروفات ضمن صافي الربح/الخسارة.',
+        liveTitle: '4 · الشركاء في هذه القائمة',
+        liveIntro: 'الأرقام الحالية (للتوضيح):',
+        liveEmpty: 'لا يوجد شركاء نشطون.',
+        meaningCol: 'المعنى',
+        zeroMeaning: 'لا رصيد',
+        dipLabel: 'الإجمالي ({n})',
+        dipHint: 'مجموع أرصدة الشركاء فقط',
+        whatNextTitle: 'ماذا أفعل؟',
+        whatNext1: 'افتح كشف الشريك لرؤية كل حركة.',
+        whatNext2: 'للتوزيع استخدم «توزيع»؛ للإيداع/السحب استخدم أيقونة المحفظة.',
+        whatNext3: 'إجمالي التذييل هو مجموع أرصدة الشركاء — وليس ديون العملاء.',
+        gotIt: 'فهمت',
       },
       partnerCash: {
         title: 'حركة نقد الشريك',
@@ -7818,6 +7943,47 @@ export const translations: any = {
         balanceLabelNegative: 'قەرزی سەرمایە',
         balanceHintReceivable: 'لە کۆمپانیاوە وەرگیراوە',
         balanceHintPayable: 'بۆ کۆمپانیا قەرزە',
+      },
+      partnerGuide: {
+        openButton: 'چۆن حساب دەکرێت؟',
+        title: 'باڵانسی هاوبەش — ڕوونکردنەوەی سادە',
+        subtitle: 'قەرزی کڕیار نییە؛ حیسابی هاوبەش لەگەڵ کاروبار',
+        step1Badge: '1 · یەک ڕستە',
+        step1Body:
+          'ئەم ژمارەیە پیشان دەدات هاوبەش چەند بۆ کاروبار قەرزدارە یان کاروبار چەند بۆی قەرزدارە. قەرزی دەرەوەی کڕیار/دابینکەر نییە.',
+        step2Title: '2 · چۆن حساب دەکرێت؟',
+        step2Intro: 'هەر مانگ سیستەم ئەنجامی مانگەکە دەدۆزێتەوە پاشان پشکی هەر هاوبەش دەنووسێت:',
+        formula: 'فرۆشتن − خەرجی = پوختە  →  پوختە × پشک % = پشکی هاوبەش',
+        step2Expenses:
+          'بەڵێ، خەرجییەکانیش دەگیرێن. هەموو فرۆشتن نا — تەنها ئەوەی دوای خەرجی دەمێنێتەوە (قازانج یان زەرەر) دابەش دەکرێت.',
+        step2Share:
+          'پشک % تەنها بۆ ئەو دابەشکردنەیە. باڵانسی لیست کۆی جووڵەکانی ئەو هاوبەشە — «قەرزی گشتی» نییە کە بە پشک لێبدرێت.',
+        positiveTitle: 'باڵانسی ئەرێنی (سەوز)',
+        positiveBody:
+          '«پشکی قازانجی دابەش نەکراو» = کاروبار بۆ هاوبەش قەرزدارە. قازانجی نەکێشراو یان سەرمایەی دانراو.',
+        negativeTitle: 'باڵانسی نەرێنی (سور)',
+        negativeBody:
+          '«قەرزی سەرمایە» = هاوبەش بۆ کاروبار قەرزدارە. پارەی کێشراو، پشکی زەرەر یان پارەدانی بە ناوی ئەو لە وەرگیراوەکەی زیاترە.',
+        step4Title: '3 · چی کاریگەری لەسەر باڵانس هەیە؟',
+        itemNetShare: 'پشکی خۆکاری مانگانە: (فرۆشتن − خەرجی) × پشک %',
+        itemProfitDist: 'دابەشکردنی قازانج / زەرەری دەستی (دوگمەی دابەش)',
+        itemCapitalIn: 'هاوبەش پارە دەخاتە ناو → باڵانس زیاد دەبێت',
+        itemCapitalOut: 'هاوبەش پارە دەکێشێت → باڵانس کەم دەبێت',
+        itemSupplierPay: 'پارەدانی دابینکەر بە ناوی هاوبەش → باڵانس کەم دەبێت',
+        notCustomerDebt:
+          'کورتە: ئەمە لیستی «قەرزی فرۆشتنی دەرەوە» نییە. حیسابی جاریی هاوبەش–کاروبارە؛ خەرجییەکان لە پوختەی قازانج/زەرەردان.',
+        liveTitle: '4 · هاوبەشەکانی ئەم لیستە',
+        liveIntro: 'ژمارەکانی ئێستا (بۆ تێگەیشتن):',
+        liveEmpty: 'هاوبەشی چالاک نییە.',
+        meaningCol: 'واتا',
+        zeroMeaning: 'باڵانس نییە',
+        dipLabel: 'کۆی خوارەوە ({n})',
+        dipHint: 'تەنها کۆی باڵانسی هاوبەشەکان',
+        whatNextTitle: 'چی بکەم؟',
+        whatNext1: 'ئێکسترای هاوبەش بکەرەوە بۆ بینینی هەر جووڵەیەک.',
+        whatNext2: 'بۆ دابەش «دابەشکردن»؛ بۆ هاتن/چوونی پارە جزدانەکە بەکاربهێنە.',
+        whatNext3: 'کۆی خوارەوە کۆی باڵانسی هاوبەشەکانە — قەرزی کڕیاران نییە.',
+        gotIt: 'تێگەیشتم',
       },
       partnerCash: {
         title: 'مەعاملەی پارەی هاوبەش',
