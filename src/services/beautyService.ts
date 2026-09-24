@@ -1434,6 +1434,7 @@ export const beautyService = {
                     {
                         select:
                             'id,code,name,phone,phone2,age,birth_date,file_id,occupation,gender,customer_tier,heard_from,email,address,city,points,total_spent,balance,is_active,merged_into_id,notes,created_at',
+                        is_active: 'eq.true',
                         firm_nr: `eq.${fn}`,
                         order: 'file_id.asc.nullslast,name.asc',
                         limit: 5000,
@@ -1559,7 +1560,8 @@ export const beautyService = {
                  LIMIT 1)              AS last_service_name
             FROM ${t} c
             LEFT JOIN ${apt} a ON a.client_id = c.id
-            WHERE lpad(trim(c.firm_nr::text), 3, '0') = $2
+            WHERE COALESCE(c.is_active, true) = true
+              AND lpad(trim(c.firm_nr::text), 3, '0') = $2
             GROUP BY c.id
             ORDER BY
               CASE WHEN NULLIF(BTRIM(COALESCE(c.file_id, '')), '') ~ '^[0-9]+$'
@@ -1588,7 +1590,8 @@ export const beautyService = {
                  LIMIT 1)              AS last_service_name
             FROM ${t} c
             LEFT JOIN ${apt} a ON a.client_id = c.id
-            WHERE lpad(trim(c.firm_nr::text), 3, '0') = $2
+            WHERE COALESCE(c.is_active, true) = true
+              AND lpad(trim(c.firm_nr::text), 3, '0') = $2
             GROUP BY c.id
             ORDER BY
               CASE WHEN NULLIF(BTRIM(COALESCE(c.file_id, '')), '') ~ '^[0-9]+$'
