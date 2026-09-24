@@ -78,8 +78,99 @@ export function ReportViewerModule({
         }
     };
 
+    /** Toplu sayfa: ana pencerede fixed/flex kırılması Chrome’da tek sayfa gösteriyor — iframe ile yazdır. */
     const handlePrint = () => {
-        window.print();
+        if (!isMultiPage) {
+            window.print();
+            return;
+        }
+        const papers = Array.from(
+            document.querySelectorAll<HTMLElement>('.report-viewer-shell--multi .report-viewer-paper'),
+        );
+        if (papers.length <= 1) {
+            window.print();
+            return;
+        }
+
+        const iframe = document.createElement('iframe');
+        iframe.setAttribute('aria-hidden', 'true');
+        iframe.style.cssText =
+            'position:fixed;right:0;bottom:0;width:0;height:0;border:0;opacity:0;pointer-events:none;';
+        document.body.appendChild(iframe);
+
+        const doc = iframe.contentDocument;
+        const win = iframe.contentWindow;
+        if (!doc || !win) {
+            iframe.remove();
+            window.print();
+            return;
+        }
+
+        // Ana sayfadaki @media print kuralları (shell dışı gizleme) iframe’de içeriği siler —
+        // yalnızca global stylesheet link’lerini al.
+        const styleHtml = Array.from(document.querySelectorAll('link[rel="stylesheet"]'))
+            .map((el) => el.outerHTML)
+            .join('\n');
+
+        doc.open();
+        doc.write(`<!DOCTYPE html><html><head><meta charset="utf-8"/><title>${String(template.name || 'Print').replace(/</g, '')}</title>
+${styleHtml}
+<style>
+  @page { size: ${pageWPrint}mm ${pageHPrint}mm; margin: 0; }
+  html, body { margin: 0 !important; padding: 0 !important; background: #fff !important; }
+  .page {
+    width: ${pageWPrint}mm;
+    height: ${pageHPrint}mm;
+    margin: 0;
+    padding: 0;
+    overflow: hidden;
+    position: relative;
+    box-sizing: border-box;
+    page-break-after: always;
+    break-after: page;
+    page-break-inside: avoid;
+    break-inside: avoid;
+    box-shadow: none !important;
+  }
+  .page:last-child {
+    page-break-after: auto;
+    break-after: auto;
+  }
+  .report-viewer-paper {
+    box-shadow: none !important;
+    margin: 0 !important;
+  }
+</style></head><body></body></html>`);
+        doc.close();
+
+        for (const paper of papers) {
+            const page = doc.createElement('div');
+            page.className = 'page';
+            page.appendChild(paper.cloneNode(true));
+            doc.body.appendChild(page);
+        }
+
+        const cleanup = () => {
+            try {
+                iframe.remove();
+            } catch {
+                /* ignore */
+            }
+        };
+
+        const runPrint = () => {
+            try {
+                win.focus();
+                win.print();
+            } finally {
+                // Yazdır diyaloğu kapandıktan sonra temizle
+                win.addEventListener('afterprint', cleanup, { once: true });
+                setTimeout(cleanup, 60_000);
+            }
+        };
+
+        // SVG barkod / font yerleşimi için kısa gecikme
+        setTimeout(runPrint, 300);
     };
 
     const rotationOptions: { value: EtiketPrintRotation; label: string; hint: string }[] = [
@@ -233,12 +324,34 @@ export function ReportViewerModule({
 
     const multiShellCss = isMultiPage
         ? `
+    /* fixed / flex / filter = Chrome’da sayfa kırılması çalışmaz */
+    position: static !important;
+    inset: auto !important;
+    top: auto !important;
+    left: auto !important;
+    right: auto !important;
+    bottom: auto !important;
     width: ${pageWPrint}mm !important;
     height: auto !important;
-    max-width: ${pageWPrint}mm !important;
+    min-height: auto !important;
+    max-width: none !important;
     max-height: none !important;
-    overflow: visible !important;`
+    overflow: visible !important;
+    display: block !important;
+    flex: none !important;
+    flex-direction: unset !important;
+    isolation: auto !important;
+    transform: none !important;
+    filter: none !important;
+    -webkit-backdrop-filter: none !important;
+    backdrop-filter: none !important;`
         : `
+    position: fixed !important;
+    top: 0 !important;
+    left: 0 !important;
+    right: auto !important;
+    bottom: auto !important;
+    inset: auto !important;
     width: ${pageWPrint}mm !important;
     height: ${pageHPrint}mm !important;
     max-width: ${pageWPrint}mm !important;
@@ -247,11 +360,18 @@ export function ReportViewerModule({
 
     const multiStageCss = isMultiPage
         ? `
+    position: static !important;
     width: ${pageWPrint}mm !important;
     height: auto !important;
-    max-width: ${pageWPrint}mm !important;
+    min-height: auto !important;
+    max-width: none !important;
     max-height: none !important;
-    overflow: visible !important;`
+    overflow: visible !important;
+    display: block !important;
+    gap: 0 !important;
+    padding: 0 !important;
+    margin: 0 !important;
+    flex: none !important;`
         : `
     width: ${pageWPrint}mm !important;
     height: ${pageHPrint}mm !important;
@@ -262,7 +382,8 @@ export function ReportViewerModule({
     const paperBreakCss = isMultiPage
         ? `
     page-break-after: always !important;
-    break-after: page !important;`
+    break-after: page !important;
+    display: block !important;`
         : `
     page-break-after: avoid !important;
     break-after: avoid !important;`;
@@ -272,8 +393,17 @@ export function ReportViewerModule({
   html, body {
     margin: 0 !important;
     padding: 0 !important;
-    ${labelHtmlBody || `width: 100% !important;
-    height: auto !important;`}
+    ${
+      isMultiPage
+        ? `width: auto !important;
+    height: auto !important;
+    max-width: none !important;
+    max-height: none !important;
+    overflow: visible !important;`
+        : labelHtmlBody ||
+          `width: 100% !important;
+    height: auto !important;`
+    }
     min-height: 0 !important;
     background: #fff !important;
   }
@@ -296,12 +426,6 @@ export function ReportViewerModule({
     display: none !important;
   }
   .report-viewer-shell {
-    position: fixed !important;
-    top: 0 !important;
-    left: 0 !important;
-    right: auto !important;
-    bottom: auto !important;
-    inset: auto !important;
     margin: 0 !important;
     padding: 0 !important;
     min-height: 0 !important;
@@ -320,7 +444,6 @@ export function ReportViewerModule({
     flex: none !important;
     padding: 0 !important;
     margin: 0 !important;
-    display: block !important;
     box-sizing: border-box !important;
     ${multiStageCss}
   }
@@ -340,8 +463,8 @@ export function ReportViewerModule({
     ${paperBreakCss}
   }
   .report-viewer-paper:last-child {
-    page-break-after: avoid !important;
-    break-after: avoid !important;
+    page-break-after: auto !important;
+    break-after: auto !important;
   }
   @page {
     size: ${pageWPrint}mm ${pageHPrint}mm;
@@ -354,8 +477,12 @@ export function ReportViewerModule({
 
     const node = (
         <div
-            className="report-viewer-shell fixed inset-0 flex flex-col w-full min-h-0 bg-gray-900/40 backdrop-blur-sm"
+            className={`report-viewer-shell flex flex-col w-full min-h-0 bg-gray-900/40 backdrop-blur-sm ${
+                isMultiPage ? 'report-viewer-shell--multi fixed inset-0' : 'fixed inset-0'
+            }`}
             style={{ zIndex: overlayZ, isolation: 'isolate' }}
+            data-multipage={isMultiPage ? '1' : '0'}
+            data-page-count={pages.length}
         >
             <style>{printCss}</style>
             {/* Araç çubuğu — yazdırmada gizli */}
