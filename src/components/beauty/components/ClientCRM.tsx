@@ -8,6 +8,7 @@ import {
     Typography,
     Avatar,
     Tag,
+    Select,
 } from 'antd';
 import {
     RETAILEX_BORDER_SUBTLE,
@@ -39,6 +40,13 @@ import {
     BEAUTY_CUSTOMER_EMPTY_FORM,
     BeautyCustomerEditFormFields,
 } from './BeautyCustomerEditFormFields';
+import {
+    buildFileIdRangeOptions,
+    fileIdInRange,
+    parseFileIdNumber,
+    sortByFileIdAsc,
+    type FileIdRangeKey,
+} from '../../../utils/customerFileIdSort';
 
 export type ClientCRMProps = { onOpenCustomer: (customerId: string) => void };
 
@@ -46,6 +54,7 @@ export function ClientCRM({ onOpenCustomer }: ClientCRMProps) {
     const { customers, isLoading, loadCustomers, createCustomer, updateCustomer } = useBeautyStore();
     const { tm } = useLanguage();
     const [search, setSearch] = useState('');
+    const [fileIdRange, setFileIdRange] = useState<FileIdRangeKey>('all');
     const [showModal, setShowModal] = useState(false);
     const [editing, setEditing] = useState<Partial<BeautyCustomer>>(BEAUTY_CUSTOMER_EMPTY_FORM);
     const [isEdit, setIsEdit] = useState(false);
@@ -96,14 +105,37 @@ export function ClientCRM({ onOpenCustomer }: ClientCRMProps) {
                 map.set(c.id, c);
             }
         }
-        return Array.from(map.values()).sort((a, b) => (a.name ?? '').localeCompare(b.name ?? '', 'tr'));
+        return sortByFileIdAsc(Array.from(map.values()));
     }, [customers, currentAccountCustomers]);
+
+    const fileIdRangeOptions = useMemo(() => {
+        let max = 0;
+        for (const c of mergedCustomers) {
+            const n = parseFileIdNumber(c.file_id);
+            if (n != null && n > max) max = n;
+        }
+        return buildFileIdRangeOptions(max, 100, tm('bFileIdRangeAll'));
+    }, [mergedCustomers, tm]);
+
+    useEffect(() => {
+        if (!fileIdRangeOptions.some(o => o.key === fileIdRange)) {
+            setFileIdRange('all');
+        }
+    }, [fileIdRangeOptions, fileIdRange]);
+
+    const activeFileRange = useMemo(
+        () => fileIdRangeOptions.find(o => o.key === fileIdRange) ?? fileIdRangeOptions[0],
+        [fileIdRangeOptions, fileIdRange],
+    );
 
     const filtered = useMemo(() => {
         const q = search.trim().toLowerCase();
-        if (!q) return mergedCustomers;
         const trimmed = search.trim();
         return mergedCustomers.filter(c => {
+            if (!fileIdInRange(c.file_id, activeFileRange?.from ?? null, activeFileRange?.to ?? null)) {
+                return false;
+            }
+            if (!q) return true;
             const textHit =
                 c.name?.toLowerCase().includes(q) ||
                 c.email?.toLowerCase().includes(q) ||
@@ -115,7 +147,7 @@ export function ClientCRM({ onOpenCustomer }: ClientCRMProps) {
                 phoneMatchesQuery(c.phone2, trimmed)
             );
         });
-    }, [mergedCustomers, search]);
+    }, [mergedCustomers, search, activeFileRange]);
 
     const openCreate = () => {
         setEditing(BEAUTY_CUSTOMER_EMPTY_FORM);
@@ -344,14 +376,28 @@ export function ClientCRM({ onOpenCustomer }: ClientCRMProps) {
                         </div>
 
                         <div className="border-b px-4 py-3" style={{ borderColor: RETAILEX_BORDER_SUBTLE }}>
-                            <Input.Search
-                                allowClear
-                                value={search}
-                                onChange={e => setSearch(e.target.value)}
-                                placeholder={tm('bSearchPlaceholderCustomer')}
-                                className="w-full"
-                                size="middle"
-                            />
+                            <div className="flex flex-col gap-3 sm:flex-row sm:items-center">
+                                <Input.Search
+                                    allowClear
+                                    value={search}
+                                    onChange={e => setSearch(e.target.value)}
+                                    placeholder={tm('bSearchPlaceholderCustomer')}
+                                    className="w-full flex-1"
+                                    size="middle"
+                                />
+                                <Select
+                                    value={fileIdRange}
+                                    onChange={(v: FileIdRangeKey) => setFileIdRange(v)}
+                                    options={fileIdRangeOptions.map(o => ({
+                                        value: o.key,
+                                        label: o.label,
+                                    }))}
+                                    className="w-full sm:w-52"
+                                    size="middle"
+                                    aria-label={tm('bFileIdRangeLabel')}
+                                    placeholder={tm('bFileIdRangeLabel')}
+                                />
+                            </div>
                         </div>
 
                         <Table<BeautyCustomer>
@@ -362,15 +408,17 @@ export function ClientCRM({ onOpenCustomer }: ClientCRMProps) {
                             columns={columns}
                             dataSource={filtered}
                             pagination={{
-                                defaultPageSize: 20,
+                                defaultPageSize: 100,
+                                pageSizeOptions: [50, 100, 200],
                                 showSizeChanger: true,
-                                pageSizeOptions: [10, 20, 50, 100],
                                 showTotal: (total, range) =>
                                     `${range[0]}-${range[1]} / ${total}`,
                                 className: 'px-4 py-3',
                             }}
                             locale={{
-                                emptyText: search ? tm('bNoCustomerResults') : tm('bNoCustomers'),
+                                emptyText: search || fileIdRange !== 'all'
+                                    ? tm('bNoCustomerResults')
+                                    : tm('bNoCustomers'),
                             }}
                             onRow={record => ({
                                 onClick: () => onOpenCustomer(record.id),

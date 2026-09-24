@@ -6742,6 +6742,13 @@ export const moduleTranslations: Record<string, Record<Language, string>> = {
     ar: 'ابحث بالاسم أو الهاتف أو البريد أو رقم الملف...',
     ku: 'بگەڕێ بە ناو، تەلەفۆن، ئیمەیل یان ژ. فایل...',
   },
+  bFileIdRangeAll: { tr: 'Tümü', en: 'All', ar: 'الكل', ku: 'هەموو' },
+  bFileIdRangeLabel: {
+    tr: 'Dosya no aralığı',
+    en: 'File no range',
+    ar: 'نطاق رقم الملف',
+    ku: 'مەودای ژ. فایل',
+  },
   bCustomerHeader: { tr: 'Müşteri', en: 'Customer', ar: 'العميل', ku: 'کڕیار' },
   bContactHeader: { tr: 'İletişim', en: 'Contact', ar: 'التواصل', ku: 'پەیوەندی' },
   bLastServiceHeader: { tr: 'Son İşlem', en: 'Last Service', ar: 'آخر خدمة', ku: 'کاری دوایین' },

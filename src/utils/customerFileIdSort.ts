@@ -1,5 +1,50 @@
 /** Dosya no (file_id) sayısal sıralama — 1, 2, 10… (metin sıralaması değil). */
 
+/** Dosya no aralığı (ör. 1–100, 101–200). `all` = filtre yok. */
+export type FileIdRangeKey = 'all' | `${number}-${number}`;
+
+export type FileIdRangeOption = {
+  key: FileIdRangeKey;
+  from: number | null;
+  to: number | null;
+  label: string;
+};
+
+/** Maks. dosya no’ya göre 100’lük aralık seçenekleri üretir. */
+export function buildFileIdRangeOptions(
+  maxFileId: number,
+  size = 100,
+  allLabel = 'Tümü',
+): FileIdRangeOption[] {
+  const opts: FileIdRangeOption[] = [
+    { key: 'all', from: null, to: null, label: allLabel },
+  ];
+  const max = Math.max(0, Math.floor(maxFileId));
+  if (max <= 0) return opts;
+  const step = Math.max(1, Math.floor(size));
+  for (let from = 1; from <= max; from += step) {
+    const to = Math.min(from + step - 1, max);
+    opts.push({
+      key: `${from}-${to}`,
+      from,
+      to,
+      label: `${from} – ${to}`,
+    });
+  }
+  return opts;
+}
+
+export function fileIdInRange(
+  fileId: unknown,
+  from: number | null,
+  to: number | null,
+): boolean {
+  if (from == null || to == null) return true;
+  const n = parseFileIdNumber(fileId);
+  if (n == null) return false;
+  return n >= from && n <= to;
+}
+
 export function parseFileIdNumber(value: unknown): number | null {
   const raw = String(value ?? '').trim();
   if (!raw) return null;
