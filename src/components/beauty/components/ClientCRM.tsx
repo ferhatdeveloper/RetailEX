@@ -1,32 +1,17 @@
 import React, { useEffect, useMemo, useState } from 'react';
-import {
-    Table,
-    Input,
-    Button,
-    Card,
-    Space,
-    Typography,
-    Avatar,
-    Tag,
-    Select,
-} from 'antd';
+import { Button, Card, Space, Typography, Avatar, Tag } from 'antd';
 import {
     RETAILEX_BORDER_SUBTLE,
     RETAILEX_PAGE_BG,
     RETAILEX_PRIMARY,
     RETAILEX_TEXT_PRIMARY,
 } from '../../../theme/retailexAntdTheme';
-import type { ColumnsType } from 'antd/es/table';
+import { ColumnDef, createColumnHelper } from '@tanstack/react-table';
 import { phoneMatchesQuery } from '../../../shared/utils/validators';
-import {
-    PlusOutlined,
-    EditOutlined,
-    PhoneOutlined,
-    MailOutlined,
-    UserOutlined,
-} from '@ant-design/icons';
-import { User } from 'lucide-react';
+import { PlusOutlined, UserOutlined } from '@ant-design/icons';
+import { Edit, Phone, Mail, Search, User } from 'lucide-react';
 import { RetailExFlatModal } from '../../shared/RetailExFlatModal';
+import { DevExDataGrid } from '../../shared/DevExDataGrid';
 import { useBeautyStore } from '../store/useBeautyStore';
 import { useLanguage } from '../../../contexts/LanguageContext';
 import { logger } from '../../../services/loggingService';
@@ -42,6 +27,7 @@ import {
 } from './BeautyCustomerEditFormFields';
 import {
     buildFileIdRangeOptions,
+    compareFileIdAsc,
     fileIdInRange,
     parseFileIdNumber,
     sortByFileIdAsc,
@@ -49,6 +35,8 @@ import {
 } from '../../../utils/customerFileIdSort';
 
 export type ClientCRMProps = { onOpenCustomer: (customerId: string) => void };
+
+const columnHelper = createColumnHelper<BeautyCustomer>();
 
 export function ClientCRM({ onOpenCustomer }: ClientCRMProps) {
     const { customers, isLoading, loadCustomers, createCustomer, updateCustomer } = useBeautyStore();
@@ -99,7 +87,6 @@ export function ClientCRM({ onOpenCustomer }: ClientCRMProps) {
         for (const c of currentAccountCustomers) {
             const existing = map.get(c.id);
             if (existing) {
-                // ERP cari defter bakiyesi güzellik kartındaki stale balance'ı ezer
                 map.set(c.id, { ...existing, balance: c.balance });
             } else {
                 map.set(c.id, c);
@@ -198,267 +185,260 @@ export function ClientCRM({ onOpenCustomer }: ClientCRMProps) {
         }
     };
 
-    const initials = (name: string) =>
-        name.split(' ').slice(0, 2).map(w => w[0]).join('').toUpperCase();
-
     const formatDate = (d?: string) =>
         d ? new Date(d).toLocaleDateString(tm('localeCode') || 'tr-TR') : '-';
 
     const formatCurrency = (n?: number) =>
         formatMoneyAmount(n ?? 0, { minFrac: 0, maxFrac: 0 });
 
-    const columns: ColumnsType<BeautyCustomer> = useMemo(
+    const columns: ColumnDef<BeautyCustomer, any>[] = useMemo(
         () => [
-            {
-                title: tm('custColFileNo'),
-                key: 'file_id',
-                width: 100,
-                sorter: (a, b) => {
-                    const na = Number(String(a.file_id ?? '').trim());
-                    const nb = Number(String(b.file_id ?? '').trim());
-                    if (Number.isFinite(na) && Number.isFinite(nb)) return na - nb;
-                    return String(a.file_id ?? '').localeCompare(String(b.file_id ?? ''), 'tr');
+            columnHelper.accessor('file_id', {
+                header: tm('custColFileNo'),
+                cell: info => {
+                    const v = String(info.getValue() ?? '').trim();
+                    return v
+                        ? <span className="font-mono text-xs font-semibold tabular-nums text-violet-700">{v}</span>
+                        : <span className="text-gray-300 text-xs">—</span>;
                 },
-                defaultSortOrder: 'ascend',
-                render: (_, c) => (
-                    <Typography.Text strong className="tabular-nums text-[#262626]">
-                        {String(c.file_id ?? '').trim() || '—'}
-                    </Typography.Text>
-                ),
-            },
-            {
-                title: tm('bCustomerHeader'),
-                key: 'customer',
-                ellipsis: true,
-                render: (_, c) => (
-                    <Space size={12}>
-                        <Avatar
-                            size={40}
-                            style={{
-                                background: '#fafafa',
-                                color: '#595959',
-                                border: '1px solid #d9d9d9',
-                                fontWeight: 600,
-                            }}
-                        >
-                            {initials(c.name ?? '?')}
-                        </Avatar>
-                        <div>
-                            <Typography.Text strong className="block text-[#262626]">
+                sortingFn: (rowA, rowB) =>
+                    compareFileIdAsc(rowA.original.file_id, rowB.original.file_id),
+                size: 110,
+            }),
+            columnHelper.accessor('name', {
+                header: tm('bCustomerHeader'),
+                cell: info => {
+                    const c = info.row.original;
+                    const vip = c.customer_tier === 'vip' || Number(c.points ?? 0) >= 1000;
+                    return (
+                        <div className="flex flex-col min-w-0">
+                            <span className="font-medium text-gray-900 truncate">
                                 {c.name}
-                                {(c.customer_tier === 'vip' || Number(c.points ?? 0) >= 1000) && (
+                                {vip ? (
                                     <Tag color="gold" className="ml-1 align-middle text-[10px] leading-tight">
                                         {tm('bCustomerTierVip')}
                                     </Tag>
-                                )}
-                            </Typography.Text>
-                            {c.balance != null && Number(c.balance) !== 0 && (
-                                <Typography.Text type="secondary" className="text-xs">
+                                ) : null}
+                            </span>
+                            {c.balance != null && Number(c.balance) !== 0 ? (
+                                <span className="text-xs text-gray-500">
                                     {tm('bBalance')}: {formatCurrency(c.balance)}
-                                </Typography.Text>
-                            )}
+                                </span>
+                            ) : null}
                         </div>
-                    </Space>
-                ),
-            },
-            {
-                title: tm('bContactHeader'),
-                key: 'contact',
-                width: 220,
-                render: (_, c) => (
-                    <Space direction="vertical" size={4} className="w-full">
-                        {c.phone ? (
-                            <Space size={6} className="text-sm text-[#595959]">
-                                <PhoneOutlined className="text-[#bfbfbf]" />
-                                <span>{c.phone}</span>
-                            </Space>
-                        ) : null}
-                        {c.email ? (
-                            <Space size={6} className="text-sm text-[#595959]">
-                                <MailOutlined className="text-[#bfbfbf]" />
-                                <span className="break-all">{c.email}</span>
-                            </Space>
-                        ) : null}
-                        {!c.phone && !c.email ? (
-                            <Typography.Text type="secondary">—</Typography.Text>
-                        ) : null}
-                    </Space>
-                ),
-            },
-            {
-                title: tm('bLastServiceHeader'),
-                key: 'last',
-                width: 200,
-                render: (_, c) => (
-                    <Space direction="vertical" size={2}>
-                        <Typography.Text className="text-sm text-[#262626]">
-                            {c.last_service_name ?? '—'}
-                        </Typography.Text>
-                        <Typography.Text type="secondary" className="text-xs">
-                            {formatDate(c.last_appointment_date)}
-                        </Typography.Text>
-                    </Space>
-                ),
-            },
-            {
-                title: tm('bVisitsHeader'),
-                key: 'visits',
-                width: 140,
-                align: 'center',
-                render: (_, c) => (
-                    <Tag color={(c.appointment_count ?? 0) > 0 ? 'success' : 'default'} className="m-0">
-                        {c.appointment_count ?? 0} {tm('bAppointmentWord')}
-                    </Tag>
-                ),
-            },
-            {
-                title: '',
-                key: 'actions',
-                width: 52,
-                fixed: 'right',
-                align: 'center',
-                render: (_, c) => (
-                    <Button
-                        type="text"
-                        size="small"
-                        icon={<EditOutlined />}
-                        className="text-[#bfbfbf] hover:text-[#722ed1]"
+                    );
+                },
+            }),
+            columnHelper.display({
+                id: 'contact',
+                header: tm('bContactHeader'),
+                cell: ({ row }) => {
+                    const c = row.original;
+                    return (
+                        <div className="flex flex-col gap-0.5 text-sm text-gray-700">
+                            {c.phone ? (
+                                <span className="flex items-center gap-1">
+                                    <Phone className="w-3 h-3 text-gray-400 shrink-0" />
+                                    {c.phone}
+                                </span>
+                            ) : null}
+                            {c.email ? (
+                                <span className="flex items-center gap-1 text-xs text-gray-500">
+                                    <Mail className="w-3 h-3 text-gray-400 shrink-0" />
+                                    <span className="truncate">{c.email}</span>
+                                </span>
+                            ) : null}
+                            {!c.phone && !c.email ? <span className="text-gray-300 text-xs">—</span> : null}
+                        </div>
+                    );
+                },
+                size: 200,
+                enableColumnFilter: false,
+            }),
+            columnHelper.accessor('last_service_name', {
+                header: tm('bLastServiceHeader'),
+                cell: info => {
+                    const c = info.row.original;
+                    return (
+                        <div className="flex flex-col text-sm">
+                            <span className="text-gray-800">{c.last_service_name ?? '—'}</span>
+                            <span className="text-xs text-gray-500">{formatDate(c.last_appointment_date)}</span>
+                        </div>
+                    );
+                },
+                size: 180,
+            }),
+            columnHelper.accessor('appointment_count', {
+                header: tm('bVisitsHeader'),
+                cell: info => {
+                    const n = Number(info.getValue() ?? 0);
+                    return (
+                        <span
+                            className={`inline-flex px-2 py-0.5 rounded text-xs font-semibold ${
+                                n > 0 ? 'bg-emerald-100 text-emerald-700' : 'bg-gray-100 text-gray-500'
+                            }`}
+                        >
+                            {n} {tm('bAppointmentWord')}
+                        </span>
+                    );
+                },
+                size: 130,
+                meta: { align: 'center' },
+            }),
+            columnHelper.display({
+                id: 'actions',
+                header: '',
+                cell: ({ row }) => (
+                    <button
+                        type="button"
+                        className="p-1.5 text-gray-400 hover:text-violet-700 hover:bg-violet-50 rounded transition-colors"
                         onClick={e => {
                             e.stopPropagation();
-                            openEdit(c);
+                            openEdit(row.original);
                         }}
                         aria-label={tm('bEditCustomer')}
-                    />
+                        title={tm('bEditCustomer')}
+                    >
+                        <Edit className="w-4 h-4" />
+                    </button>
                 ),
-            },
+                size: 56,
+                enableColumnFilter: false,
+                enableSorting: false,
+            }),
         ],
         [tm],
     );
 
     return (
-            <div className="flex min-h-0 w-full flex-col" style={{ backgroundColor: RETAILEX_PAGE_BG }}>
-                <div className="w-full px-4 pb-4 pt-2">
-                    <Card
-                        bordered
-                        className="!shadow-none"
-                        styles={{ body: { padding: 0 } }}
-                    >
-                        <div
-                            className="flex flex-wrap items-center justify-between gap-3 border-b px-4 py-3"
-                            style={{ borderColor: RETAILEX_BORDER_SUBTLE }}
-                        >
-                            <Space align="start" size={12}>
-                                <Avatar
-                                    size={48}
-                                    icon={<UserOutlined />}
-                                    style={{
-                                        background: RETAILEX_PAGE_BG,
-                                        color: RETAILEX_PRIMARY,
-                                        border: `1px solid ${RETAILEX_BORDER_SUBTLE}`,
-                                    }}
-                                />
-                                <div>
-                                    <Typography.Title
-                                        level={5}
-                                        className="!mb-0.5 !text-base !font-semibold"
-                                        style={{ color: RETAILEX_TEXT_PRIMARY }}
-                                    >
-                                        {tm('bClientCRM')}
-                                    </Typography.Title>
-                                    <Typography.Text type="secondary" className="text-xs">
-                                        {isLoading ? tm('bLoading') : `${mergedCustomers.length} ${tm('bRegisteredCustomers')}`}
-                                    </Typography.Text>
-                                </div>
-                            </Space>
-                            <Button type="primary" icon={<PlusOutlined />} onClick={openCreate}>
-                                {tm('bNewCustomer')}
-                            </Button>
-                        </div>
-
-                        <div className="border-b px-4 py-3" style={{ borderColor: RETAILEX_BORDER_SUBTLE }}>
-                            <div className="flex flex-col gap-3 sm:flex-row sm:items-center">
-                                <Input.Search
-                                    allowClear
-                                    value={search}
-                                    onChange={e => setSearch(e.target.value)}
-                                    placeholder={tm('bSearchPlaceholderCustomer')}
-                                    className="w-full flex-1"
-                                    size="middle"
-                                />
-                                <Select
-                                    value={fileIdRange}
-                                    onChange={(v: FileIdRangeKey) => setFileIdRange(v)}
-                                    options={fileIdRangeOptions.map(o => ({
-                                        value: o.key,
-                                        label: o.label,
-                                    }))}
-                                    className="w-full sm:w-52"
-                                    size="middle"
-                                    aria-label={tm('bFileIdRangeLabel')}
-                                    placeholder={tm('bFileIdRangeLabel')}
-                                />
-                            </div>
-                        </div>
-
-                        <Table<BeautyCustomer>
-                            rowKey="id"
-                            size="middle"
-                            bordered
-                            loading={isLoading}
-                            columns={columns}
-                            dataSource={filtered}
-                            pagination={{
-                                defaultPageSize: 100,
-                                pageSizeOptions: [50, 100, 200],
-                                showSizeChanger: true,
-                                showTotal: (total, range) =>
-                                    `${range[0]}-${range[1]} / ${total}`,
-                                className: 'px-4 py-3',
-                            }}
-                            locale={{
-                                emptyText: search || fileIdRange !== 'all'
-                                    ? tm('bNoCustomerResults')
-                                    : tm('bNoCustomers'),
-                            }}
-                            onRow={record => ({
-                                onClick: () => onOpenCustomer(record.id),
-                                style: { cursor: 'pointer' },
-                            })}
-                            scroll={{ x: 980 }}
-                        />
-                    </Card>
-                </div>
-
-                <RetailExFlatModal
-                    open={showModal}
-                    onClose={() => setShowModal(false)}
-                    title={isEdit ? tm('bEditCustomer') : tm('bNewCustomer')}
-                    headerIcon={<User className="h-5 w-5" aria-hidden />}
-                    cancelLabel={tm('cancel')}
-                    confirmLabel={saving ? tm('bSaving') : tm('save')}
-                    confirmLoading={saving}
-                    onConfirm={async () => {
-                        try {
-                            await handleSave();
-                        } catch {
-                            /* toast / validation */
-                        }
-                    }}
+        <div className="flex min-h-0 w-full flex-col" style={{ backgroundColor: RETAILEX_PAGE_BG }}>
+            <div className="w-full px-4 pb-4 pt-2 flex flex-col min-h-0">
+                <Card
+                    bordered
+                    className="!shadow-none flex flex-col min-h-0"
+                    styles={{ body: { padding: 0, display: 'flex', flexDirection: 'column', minHeight: 0 } }}
                 >
-                    <BeautyCustomerEditFormFields
-                        value={editing}
-                        onChange={setEditing}
-                        summary={
-                            isEdit
-                                ? {
-                                      appointmentCount: editing.appointment_count ?? 0,
-                                      lastServiceName: editing.last_service_name,
-                                      lastAppointmentDate: editing.last_appointment_date,
-                                  }
-                                : undefined
-                        }
-                    />
-                </RetailExFlatModal>
+                    <div
+                        className="flex flex-wrap items-center justify-between gap-3 border-b px-4 py-3 shrink-0"
+                        style={{ borderColor: RETAILEX_BORDER_SUBTLE }}
+                    >
+                        <Space align="start" size={12}>
+                            <Avatar
+                                size={48}
+                                icon={<UserOutlined />}
+                                style={{
+                                    background: RETAILEX_PAGE_BG,
+                                    color: RETAILEX_PRIMARY,
+                                    border: `1px solid ${RETAILEX_BORDER_SUBTLE}`,
+                                }}
+                            />
+                            <div>
+                                <Typography.Title
+                                    level={5}
+                                    className="!mb-0.5 !text-base !font-semibold"
+                                    style={{ color: RETAILEX_TEXT_PRIMARY }}
+                                >
+                                    {tm('bClientCRM')}
+                                </Typography.Title>
+                                <Typography.Text type="secondary" className="text-xs">
+                                    {isLoading
+                                        ? tm('bLoading')
+                                        : `${mergedCustomers.length} ${tm('bRegisteredCustomers')}`}
+                                </Typography.Text>
+                            </div>
+                        </Space>
+                        <Button type="primary" icon={<PlusOutlined />} onClick={openCreate}>
+                            {tm('bNewCustomer')}
+                        </Button>
+                    </div>
+
+                    <div
+                        className="border-b px-4 py-3 shrink-0 flex flex-col gap-2 sm:flex-row sm:items-center"
+                        style={{ borderColor: RETAILEX_BORDER_SUBTLE }}
+                    >
+                        <div className="relative flex-1 min-w-0">
+                            <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-gray-400" />
+                            <input
+                                type="search"
+                                value={search}
+                                onChange={e => setSearch(e.target.value)}
+                                placeholder={tm('bSearchPlaceholderCustomer')}
+                                className="w-full rounded-lg border border-gray-200 bg-white py-2 pl-10 pr-3 text-sm text-gray-800 shadow-sm outline-none focus:border-violet-500 focus:ring-2 focus:ring-violet-200"
+                                aria-label={tm('bSearchPlaceholderCustomer')}
+                            />
+                        </div>
+                        <label className="flex items-center gap-2 shrink-0 text-xs text-gray-600">
+                            <span className="whitespace-nowrap font-medium">{tm('bFileIdRangeLabel')}</span>
+                            <select
+                                value={fileIdRange}
+                                onChange={e => setFileIdRange(e.target.value as FileIdRangeKey)}
+                                className="min-w-[9.5rem] rounded-lg border border-gray-200 bg-white px-3 py-2 text-sm text-gray-800 shadow-sm outline-none focus:border-violet-500 focus:ring-2 focus:ring-violet-200"
+                                aria-label={tm('bFileIdRangeLabel')}
+                            >
+                                {fileIdRangeOptions.map(o => (
+                                    <option key={o.key} value={o.key}>
+                                        {o.label}
+                                    </option>
+                                ))}
+                            </select>
+                        </label>
+                    </div>
+
+                    <div className="flex-1 min-h-0 px-2 pb-2 pt-1" style={{ minHeight: '28rem' }}>
+                        <DevExDataGrid
+                            data={filtered}
+                            columns={columns}
+                            enableSorting
+                            initialSorting={[{ id: 'file_id', desc: false }]}
+                            enableFiltering
+                            enablePagination
+                            pageSize={100}
+                            pageSizeOptions={[50, 100, 200]}
+                            enableColumnResizing
+                            storageNamespace="beautyClientCrmList"
+                            height="calc(100vh - 240px)"
+                            onRefresh={() => loadCustomers()}
+                            onRowClick={row => {
+                                if (row.id) onOpenCustomer(row.id);
+                            }}
+                            onRowDoubleClick={row => {
+                                if (row.id) onOpenCustomer(row.id);
+                            }}
+                        />
+                    </div>
+                </Card>
             </div>
+
+            <RetailExFlatModal
+                open={showModal}
+                onClose={() => setShowModal(false)}
+                title={isEdit ? tm('bEditCustomer') : tm('bNewCustomer')}
+                headerIcon={<User className="h-5 w-5" aria-hidden />}
+                cancelLabel={tm('cancel')}
+                confirmLabel={saving ? tm('bSaving') : tm('save')}
+                confirmLoading={saving}
+                onConfirm={async () => {
+                    try {
+                        await handleSave();
+                    } catch {
+                        /* toast / validation */
+                    }
+                }}
+            >
+                <BeautyCustomerEditFormFields
+                    value={editing}
+                    onChange={setEditing}
+                    summary={
+                        isEdit
+                            ? {
+                                  appointmentCount: editing.appointment_count ?? 0,
+                                  lastServiceName: editing.last_service_name,
+                                  lastAppointmentDate: editing.last_appointment_date,
+                              }
+                            : undefined
+                    }
+                />
+            </RetailExFlatModal>
+        </div>
     );
 }
