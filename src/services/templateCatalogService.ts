@@ -14,14 +14,16 @@ function normalizeTemplate(template: Template): Template {
   };
 }
 
-/** Kayıtlı katalogda eksik varsayılan şablonları (ör. Hasta Dosya) ekler */
+/** Kayıtlı katalogda eksik varsayılan şablonları ekler; antetli hasta dosya gibi seed’leri yeniler */
+const FORCE_REFRESH_DEFAULT_TEMPLATE_IDS = new Set(['default-a4-patient-file']);
+
 export function mergeMissingDefaultTemplates(templates: Template[]): Template[] {
   const byId = new Map<string, Template>();
   for (const t of templates.map(normalizeTemplate)) {
     if (t?.id) byId.set(t.id, t);
   }
   for (const def of DEFAULT_TEMPLATES) {
-    if (!byId.has(def.id)) {
+    if (!byId.has(def.id) || FORCE_REFRESH_DEFAULT_TEMPLATE_IDS.has(def.id)) {
       byId.set(def.id, normalizeTemplate(def));
     }
   }
