@@ -299,11 +299,12 @@ export type PatientFileCustomerLike = {
   created_at?: string | null;
 };
 
+/** Yazdırma / şablon: cinsiyet her zaman İngilizce (Female / Male / Other). */
 function formatGenderLabel(gender: string | null | undefined): string {
   const g = String(gender || '').trim().toLowerCase();
-  if (g === 'female' || g === 'kadın' || g === 'kadin') return 'Kadın';
-  if (g === 'male' || g === 'erkek') return 'Erkek';
-  if (g === 'other' || g === 'diğer' || g === 'diger') return 'Diğer';
+  if (g === 'female' || g === 'kadın' || g === 'kadin' || g === 'f') return 'Female';
+  if (g === 'male' || g === 'erkek' || g === 'm') return 'Male';
+  if (g === 'other' || g === 'diğer' || g === 'diger') return 'Other';
   return gender ? String(gender) : '';
 }
 

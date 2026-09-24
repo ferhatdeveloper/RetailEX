@@ -36,7 +36,7 @@ describe('buildPatientFilePrintContext', () => {
     expect(ctx.customerName).toBe('Ayşe Yılmaz');
     expect(ctx.customerPhone).toBe('0532 111 22 33');
     expect(ctx.customerEmail).toBe('ayse@ornek.com');
-    expect(ctx.customerGender).toBe('Kadın');
+    expect(ctx.customerGender).toBe('Female');
     expect(ctx.customerTier).toBe('VIP');
     expect(ctx.customerBirthDate).toBe('12.03.1992');
     expect(ctx.storeName).toBe('Demo Klinik');
