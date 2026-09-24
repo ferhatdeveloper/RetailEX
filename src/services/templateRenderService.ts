@@ -248,6 +248,11 @@ export function buildInvoicePrintContext(invoice: Invoice): Record<string, unkno
     customerName: normalizeValue(customerName),
     customerAddress: invoiceRecord.customer_address || invoiceRecord.address || '',
     customerTaxNo: invoiceRecord.customer_tax_no || invoiceRecord.tax_nr || '',
+    customerPhone: invoiceRecord.customer_phone || invoiceRecord.phone || '',
+    customerEmail: invoiceRecord.customer_email || invoiceRecord.email || '',
+    customerCode: invoiceRecord.customer_code || invoiceRecord.code || '',
+    customerFileNo: invoiceRecord.file_id || invoiceRecord.customer_file_id || '',
+    fileId: invoiceRecord.file_id || invoiceRecord.customer_file_id || '',
     storeName: invoiceRecord.store_name || 'RetailEX',
     storeAddress: invoiceRecord.store_address || '',
     storeTaxNo: invoiceRecord.store_tax_no || invoiceRecord.storeTaxNo || '',
@@ -267,5 +272,111 @@ export function buildInvoicePrintContext(invoice: Invoice): Record<string, unkno
     notes: invoiceRecord.notes || '',
     barcode: String(invoiceRecord.barcode || invoiceRecord.invoice_no || ''),
     price: formatNumber(invoice.total || Number(invoiceRecord.totalAmount || 0), 2, true),
+  });
+}
+
+export type PatientFileCustomerLike = {
+  id?: string;
+  code?: string | null;
+  name?: string | null;
+  phone?: string | null;
+  phone2?: string | null;
+  email?: string | null;
+  address?: string | null;
+  city?: string | null;
+  file_id?: string | null;
+  age?: number | null;
+  birth_date?: string | null;
+  occupation?: string | null;
+  gender?: string | null;
+  customer_tier?: string | null;
+  heard_from?: string | null;
+  notes?: string | null;
+  balance?: number | null;
+  points?: number | null;
+  tax_nr?: string | null;
+  created_at?: string | null;
+};
+
+function formatGenderLabel(gender: string | null | undefined): string {
+  const g = String(gender || '').trim().toLowerCase();
+  if (g === 'female' || g === 'kadın' || g === 'kadin') return 'Kadın';
+  if (g === 'male' || g === 'erkek') return 'Erkek';
+  if (g === 'other' || g === 'diğer' || g === 'diger') return 'Diğer';
+  return gender ? String(gender) : '';
+}
+
+function formatTierLabel(tier: string | null | undefined): string {
+  const t = String(tier || '').trim().toLowerCase();
+  if (t === 'vip') return 'VIP';
+  if (t === 'normal' || t === 'standard') return 'Standart';
+  return tier ? String(tier) : '';
+}
+
+function formatBirthDate(value: unknown): string {
+  const raw = value != null ? String(value).trim() : '';
+  if (!raw) return '';
+  const dt = new Date(raw);
+  if (!Number.isNaN(dt.getTime())) return dt.toLocaleDateString('tr-TR');
+  if (/^\d{4}-\d{2}-\d{2}/.test(raw)) {
+    const [y, m, d] = raw.slice(0, 10).split('-');
+    return `${d}.${m}.${y}`;
+  }
+  return raw;
+}
+
+/** Müşteri / hasta kartı yazdırma context — Dizayn Merkezi {{customer*}} alanları */
+export function buildPatientFilePrintContext(
+  customer: PatientFileCustomerLike,
+  store?: {
+    storeName?: string;
+    storeAddress?: string;
+    storePhone?: string;
+    storeTaxNo?: string;
+  },
+): Record<string, unknown> {
+  const record = customer as unknown as Record<string, unknown>;
+  const now = new Date();
+  const fileNo = customer.file_id != null && String(customer.file_id).trim() !== ''
+    ? String(customer.file_id).trim()
+    : '';
+  const customerFlat = flattenDbRecord(record, {
+    prefix: 'customers',
+    namespaces: ['customers', 'customer'],
+  });
+
+  return mergeTemplateContexts(customerFlat, {
+    customer: record,
+    customers: record,
+    reportTitle: 'Hasta Dosyası',
+    date: now.toLocaleDateString('tr-TR'),
+    time: now.toLocaleTimeString('tr-TR', { hour: '2-digit', minute: '2-digit' }),
+    storeName: store?.storeName || 'RetailEX',
+    storeAddress: store?.storeAddress || '',
+    storePhone: store?.storePhone || '',
+    storeTaxNo: store?.storeTaxNo || '',
+    customerName: normalizeValue(customer.name || ''),
+    customerPhone: normalizeValue(customer.phone || ''),
+    customerPhone2: normalizeValue(customer.phone2 || ''),
+    customerEmail: normalizeValue(customer.email || ''),
+    customerAddress: normalizeValue(customer.address || ''),
+    customerCity: normalizeValue(customer.city || ''),
+    customerCode: normalizeValue(customer.code || ''),
+    customerTaxNo: normalizeValue(customer.tax_nr || ''),
+    customerFileNo: fileNo,
+    fileId: fileNo,
+    customerAge: customer.age != null && Number.isFinite(Number(customer.age))
+      ? String(Math.round(Number(customer.age)))
+      : '',
+    customerBirthDate: formatBirthDate(customer.birth_date),
+    customerOccupation: normalizeValue(customer.occupation || ''),
+    customerGender: formatGenderLabel(customer.gender),
+    customerTier: formatTierLabel(customer.customer_tier),
+    customerNotes: normalizeValue(customer.notes || ''),
+    customerBalance: formatNumber(Number(customer.balance || 0), 2, true),
+    customerPoints: customer.points != null ? String(customer.points) : '0',
+    heardFrom: normalizeValue(customer.heard_from || ''),
+    notes: normalizeValue(customer.notes || ''),
+    barcode: fileNo || String(customer.code || customer.id || ''),
   });
 }

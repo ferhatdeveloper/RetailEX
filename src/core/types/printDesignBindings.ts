@@ -39,6 +39,7 @@ export const PRINT_DESIGN_SCOPES: { scope: PrintDesignScope; label: string; grou
   { scope: 'shelf_label', label: 'Raf Etiketi', group: 'Etiket' },
   { scope: 'warehouse_label', label: 'Depo Etiketi', group: 'Etiket' },
   { scope: 'material_extract', label: 'Malzeme Ekstresi', group: 'Rapor' },
+  { scope: 'patient_file', label: 'Hasta Dosya', group: 'Güzellik / Klinik' },
   { scope: 'kitchen_ticket', label: 'Mutfak Fişi', group: 'Restoran' },
   { scope: 'account_receipt', label: 'Hesap / Adisyon Fişi', group: 'Restoran' },
   { scope: 'cash_voucher', label: 'Kasa Fişi', group: 'Kasa' },

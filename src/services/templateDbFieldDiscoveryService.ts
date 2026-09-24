@@ -233,7 +233,9 @@ function buildFallbackSchema(type: TemplateType): DbTableMeta[] {
       'special_code_1', 'special_code_2', 'purchase_price', 'price_list_1', 'price_list_2',
     ],
     customers: [
-      'code', 'name', 'phone', 'email', 'tax_nr', 'tax_office', 'address', 'city', 'balance', 'notes',
+      'code', 'name', 'phone', 'phone2', 'email', 'tax_nr', 'tax_office', 'address', 'city',
+      'balance', 'notes', 'file_id', 'age', 'birth_date', 'occupation', 'gender',
+      'customer_tier', 'points', 'heard_from',
     ],
     suppliers: ['code', 'name', 'phone', 'email', 'tax_nr', 'tax_office', 'address', 'city'],
     stores: ['code', 'name', 'address', 'phone'],

@@ -6,7 +6,7 @@ import type {
   TemplateUsageScope,
 } from '../core/types/templates';
 import { DEFAULT_TEMPLATES } from '../core/types/templates';
-import { loadTemplateCatalog, saveTemplateCatalog } from '../services/templateCatalogService';
+import { loadTemplateCatalog, mergeMissingDefaultTemplates, saveTemplateCatalog } from '../services/templateCatalogService';
 
 interface TemplateState {
   templates: Template[];
@@ -87,7 +87,7 @@ export const useTemplateStore = create<TemplateState>()(
         if (!force && get().loadedFromDatabase) return;
         const fromDb = await loadTemplateCatalog();
         set({
-          templates: fromDb.map(normalizeTemplate),
+          templates: mergeMissingDefaultTemplates(fromDb.map(normalizeTemplate)),
           loadedFromDatabase: true,
         });
       },
@@ -155,8 +155,12 @@ export const useTemplateStore = create<TemplateState>()(
       }),
       merge: (persistedState, currentState) => {
         const persisted = persistedState as Partial<TemplateState> | undefined;
-        const templates = persisted?.templates?.map(normalizeTemplate) ?? currentState.templates;
-        const activeTemplate = persisted?.activeTemplate ? normalizeTemplate(persisted.activeTemplate) : currentState.activeTemplate;
+        const templates = mergeMissingDefaultTemplates(
+          persisted?.templates?.map(normalizeTemplate) ?? currentState.templates,
+        );
+        const activeTemplate = persisted?.activeTemplate
+          ? normalizeTemplate(persisted.activeTemplate)
+          : currentState.activeTemplate;
         return {
           ...currentState,
           ...persisted,

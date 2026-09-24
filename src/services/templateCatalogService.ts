@@ -14,6 +14,20 @@ function normalizeTemplate(template: Template): Template {
   };
 }
 
+/** Kayıtlı katalogda eksik varsayılan şablonları (ör. Hasta Dosya) ekler */
+export function mergeMissingDefaultTemplates(templates: Template[]): Template[] {
+  const byId = new Map<string, Template>();
+  for (const t of templates.map(normalizeTemplate)) {
+    if (t?.id) byId.set(t.id, t);
+  }
+  for (const def of DEFAULT_TEMPLATES) {
+    if (!byId.has(def.id)) {
+      byId.set(def.id, normalizeTemplate(def));
+    }
+  }
+  return Array.from(byId.values());
+}
+
 function defaultTemplateCatalog(): Template[] {
   return DEFAULT_TEMPLATES.map(normalizeTemplate);
 }
@@ -25,10 +39,10 @@ function currentFirmNr(): string {
 function parseTemplateCatalog(content: unknown): Template[] {
   if (!content) return defaultTemplateCatalog();
   if (Array.isArray(content)) {
-    return (content as Template[]).map(normalizeTemplate);
+    return mergeMissingDefaultTemplates(content as Template[]);
   }
   if (typeof content === 'object' && content !== null && Array.isArray((content as { templates?: unknown }).templates)) {
-    return ((content as { templates: Template[] }).templates || []).map(normalizeTemplate);
+    return mergeMissingDefaultTemplates((content as { templates: Template[] }).templates || []);
   }
   return defaultTemplateCatalog();
 }
