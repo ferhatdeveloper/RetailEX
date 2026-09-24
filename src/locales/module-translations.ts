@@ -6783,6 +6783,18 @@ export const moduleTranslations: Record<string, Record<Language, string>> = {
     ar: 'تم حفظ التصميم الافتراضي',
     ku: 'دیزاینی بنەڕەتی پاشەکەوت کرا',
   },
+  bPatientFileDesignSaved: {
+    tr: 'Hasta dosya tasarımı kaydedildi',
+    en: 'Patient file design saved',
+    ar: 'تم حفظ تصميم ملف المريض',
+    ku: 'دیزاینی فایلی نەخۆش پاشەکەوت کرا',
+  },
+  bPatientFileSaveError: {
+    tr: 'Tasarım kaydedilemedi',
+    en: 'Could not save design',
+    ar: 'تعذر حفظ التصميم',
+    ku: 'دیزاین پاشەکەوت نەبوو',
+  },
   bPatientFileDesignName: {
     tr: 'Hasta Dosya Tasarımı',
     en: 'Patient File Design',

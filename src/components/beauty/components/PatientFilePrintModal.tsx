@@ -15,6 +15,7 @@ import type { PatientFileCustomerLike } from '../../../services/templateRenderSe
 import { logger } from '../../../services/loggingService';
 import type { Template, TemplateUsageScope } from '../../../core/types/templates';
 import { TEMPLATE_FORMATS } from '../../../core/types/templates';
+import { customerAPI } from '../../../services/api/customers';
 import {
   getPreferredPatientFileTemplateId,
   listPatientFileTemplates,
@@ -24,13 +25,49 @@ import {
 } from '../../../utils/patientFilePrint';
 
 export type PatientFilePrintModalProps = {
-  customer: PatientFileCustomerLike & { name?: string | null };
+  customer: PatientFileCustomerLike & { name?: string | null; id?: string };
   onClose: () => void;
 };
 
+async function loadLiveCustomer(
+  fallback: PatientFileCustomerLike & { id?: string },
+): Promise<PatientFileCustomerLike> {
+  const id = fallback.id != null ? String(fallback.id).trim() : '';
+  if (!id) return fallback;
+  try {
+    const fresh = await customerAPI.getById(id);
+    if (!fresh) return fallback;
+    return {
+      id: fresh.id,
+      code: fresh.code ?? fallback.code,
+      name: fresh.name ?? fallback.name,
+      phone: fresh.phone ?? fallback.phone,
+      phone2: fresh.phone2 ?? fallback.phone2,
+      email: fresh.email ?? fallback.email,
+      address: fresh.address ?? fallback.address,
+      city: fresh.city ?? fallback.city,
+      file_id: fresh.file_id ?? fallback.file_id,
+      age: fresh.age ?? fallback.age,
+      birth_date: fresh.birth_date ?? fallback.birth_date,
+      occupation: fresh.occupation ?? fallback.occupation,
+      gender: fresh.gender ?? fallback.gender,
+      customer_tier: fresh.customer_tier ?? fallback.customer_tier,
+      heard_from: fresh.heard_from ?? fallback.heard_from,
+      notes: fresh.notes ?? fallback.notes,
+      balance: fresh.balance ?? fallback.balance,
+      points: fresh.points ?? fallback.points,
+      tax_nr: fresh.tax_number ?? fresh.taxNumber ?? fallback.tax_nr,
+      created_at: fresh.created_at ?? fallback.created_at,
+    };
+  } catch (e) {
+    logger.warn('PatientFilePrintModal', 'live customer refresh failed, using list row', e);
+    return fallback;
+  }
+}
+
 /**
- * Hasta dosyası yazdırma ekranı: her zaman önizleme gösterir;
- * şablon seçilebilir, istenirse Dizayn Merkezi düzenleyicisi açılır.
+ * Hasta dosyası yazdırma ekranı: her zaman canlı müşteri verisi ile önizleme;
+ * şablon seçilebilir / düzenlenebilir; kayıt kalıcıdır.
  */
 export function PatientFilePrintModal({ customer, onClose }: PatientFilePrintModalProps) {
   const { tm } = useLanguage();
@@ -46,6 +83,7 @@ export function PatientFilePrintModal({ customer, onClose }: PatientFilePrintMod
   } = useTemplateStore();
 
   const [loading, setLoading] = useState(true);
+  const [liveCustomer, setLiveCustomer] = useState<PatientFileCustomerLike>(customer);
   const [context, setContext] = useState<Record<string, unknown> | null>(null);
   const [selectedTemplateId, setSelectedTemplateId] = useState<string | null>(null);
   const [editingDesign, setEditingDesign] = useState(false);
@@ -61,6 +99,16 @@ export function PatientFilePrintModal({ customer, onClose }: PatientFilePrintMod
     [scopedTemplates, selectedTemplateId],
   );
 
+  const templateForPrint = useMemo(() => {
+    if (!selectedTemplate) return null;
+    return templates.find((t) => t.id === selectedTemplate.id) ?? selectedTemplate;
+  }, [templates, selectedTemplate]);
+
+  const reportTemplate = useMemo(
+    () => (templateForPrint ? convertTemplateToReportTemplate(templateForPrint) : null),
+    [templateForPrint],
+  );
+
   const ensurePatientFileScope = (tpl: Template): Template => {
     const scopes = new Set<TemplateUsageScope>(
       tpl.usageScopes?.length ? tpl.usageScopes : ['global'],
@@ -69,12 +117,19 @@ export function PatientFilePrintModal({ customer, onClose }: PatientFilePrintMod
     return { ...tpl, usageScopes: Array.from(scopes) };
   };
 
+  const refreshLiveContext = useCallback(async () => {
+    const live = await loadLiveCustomer(customer);
+    setLiveCustomer(live);
+    const ctx = await preparePatientFilePrintContext(live, ERP_SETTINGS.firmNr);
+    setContext(ctx);
+    return ctx;
+  }, [customer]);
+
   const bootstrap = useCallback(async () => {
     setLoading(true);
     try {
       await loadTemplatesFromDatabase(true);
-      const ctx = await preparePatientFilePrintContext(customer, ERP_SETTINGS.firmNr);
-      setContext(ctx);
+      await refreshLiveContext();
       const preferred = await getPreferredPatientFileTemplateId(ERP_SETTINGS.firmNr);
       const list = listPatientFileTemplates(
         useTemplateStore.getState().getTemplatesForScope,
@@ -97,7 +152,7 @@ export function PatientFilePrintModal({ customer, onClose }: PatientFilePrintMod
     } finally {
       setLoading(false);
     }
-  }, [customer, loadTemplatesFromDatabase, onClose, tm]);
+  }, [loadTemplatesFromDatabase, onClose, refreshLiveContext, tm]);
 
   useEffect(() => {
     void bootstrap();
@@ -131,28 +186,34 @@ export function PatientFilePrintModal({ customer, onClose }: PatientFilePrintMod
       setEditingDesign(true);
       return;
     }
-    const patched = ensurePatientFileScope(target);
+    // Store’daki güncel şablonu aç (liste snapshot’ı eski olabilir)
+    const fromStore =
+      useTemplateStore.getState().templates.find((t) => t.id === target.id) ?? target;
+    const patched = ensurePatientFileScope(fromStore);
     updateTemplate(patched.id, { usageScopes: patched.usageScopes });
-    setActiveTemplate(patched);
+    setActiveTemplate({ ...patched });
     setEditingDesign(true);
   };
 
   const closeDesigner = async () => {
-    setEditingDesign(false);
     try {
       await persistTemplatesToDatabase();
-    } catch {
-      /* localStorage yine güncel */
+    } catch (e) {
+      logger.error('PatientFilePrintModal', 'persist after design failed', e);
+      toast.error(tm('bPatientFileSaveError'));
     }
-    await loadTemplatesFromDatabase(true);
+    // DB’den zorla yeniden yükleme yapma — seed ezmesi ve kayıt kaybını önler
+    const id = selectedTemplateId;
     const list = listPatientFileTemplates(
       useTemplateStore.getState().getTemplatesForScope,
       useTemplateStore.getState().templates,
     );
-    const stillThere = list.some((t) => t.id === selectedTemplateId);
-    if (!stillThere) {
+    if (id && !list.some((t) => t.id === id)) {
       setSelectedTemplateId(list[0]?.id ?? null);
     }
+    await refreshLiveContext();
+    setEditingDesign(false);
+    toast.success(tm('bPatientFileDesignSaved'));
   };
 
   const onToggleMakeDefault = async (checked: boolean) => {
@@ -176,7 +237,11 @@ export function PatientFilePrintModal({ customer, onClose }: PatientFilePrintMod
         aria-label={tm('bEditPatientFileDesign')}
       >
         <div className="h-[100dvh] w-full min-h-0 flex flex-col overflow-hidden">
-          <TemplateDesigner type="invoice" onClose={() => void closeDesigner()} />
+          <TemplateDesigner
+            type="invoice"
+            livePreviewData={context}
+            onClose={() => void closeDesigner()}
+          />
         </div>
       </FullscreenBodyPortal>
     );
@@ -197,7 +262,7 @@ export function PatientFilePrintModal({ customer, onClose }: PatientFilePrintMod
     );
   }
 
-  if (!selectedTemplate) {
+  if (!selectedTemplate || !reportTemplate) {
     return (
       <FullscreenBodyPortal
         className="bg-gray-900/40 backdrop-blur-sm flex items-center justify-center p-4"
@@ -232,14 +297,12 @@ export function PatientFilePrintModal({ customer, onClose }: PatientFilePrintMod
     );
   }
 
-  const reportTemplate = convertTemplateToReportTemplate(selectedTemplate);
-
   return (
     <ReportViewerModule
       template={reportTemplate}
       data={context}
       onClose={onClose}
-      subtitle={String(customer.name || tm('bPrintPatientFile'))}
+      subtitle={String(liveCustomer.name || customer.name || tm('bPrintPatientFile'))}
       chromeExtra={
         <div className="flex items-center gap-2 flex-wrap">
           <div className="relative min-w-[10rem] max-w-[14rem]">

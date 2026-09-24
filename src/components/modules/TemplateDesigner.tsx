@@ -26,9 +26,11 @@ import {
 interface TemplateDesignerProps {
   type: 'invoice' | 'label';
   onClose?: () => void;
+  /** Canlı önizleme verisi (ör. seçili müşteri) — demo yerine kullanılır */
+  livePreviewData?: Record<string, unknown> | null;
 }
 
-export function TemplateDesigner({ type, onClose }: TemplateDesignerProps) {
+export function TemplateDesigner({ type, onClose, livePreviewData }: TemplateDesignerProps) {
   const {
     templates,
     activeTemplate,
@@ -63,13 +65,18 @@ export function TemplateDesigner({ type, onClose }: TemplateDesignerProps) {
   const refreshPreviewContext = useCallback(async () => {
     setPreviewLoading(true);
     try {
+      if (livePreviewData && Object.keys(livePreviewData).length > 0) {
+        setPreviewContext(livePreviewData);
+        setPreviewMeta({ loadedFromDb: true });
+        return;
+      }
       const result = await loadDesignerPreviewContext(type, previewSource);
       setPreviewContext(result.context);
       setPreviewMeta({ loadedFromDb: result.loadedFromDb, error: result.error });
     } finally {
       setPreviewLoading(false);
     }
-  }, [type, previewSource]);
+  }, [type, previewSource, livePreviewData]);
 
   useEffect(() => {
     void refreshPreviewContext();
@@ -233,10 +240,37 @@ export function TemplateDesigner({ type, onClose }: TemplateDesignerProps) {
     setIsDragging(false);
   };
   
-  const saveTemplate = async () => {
-    updateTemplate(activeTemplate.id, activeTemplate);
+  const saveTemplate = async (opts?: { silent?: boolean }) => {
+    if (!activeTemplate) return;
+    // Tam şablon gövdesini yaz — kısmi merge kayıp eleman bırakmasın
+    updateTemplate(activeTemplate.id, {
+      name: activeTemplate.name,
+      description: activeTemplate.description,
+      type: activeTemplate.type,
+      format: activeTemplate.format,
+      width: activeTemplate.width,
+      height: activeTemplate.height,
+      orientation: activeTemplate.orientation,
+      engine: activeTemplate.engine,
+      usageScopes: activeTemplate.usageScopes,
+      defaultScopes: activeTemplate.defaultScopes,
+      margin: activeTemplate.margin,
+      elements: activeTemplate.elements,
+      isDefault: activeTemplate.isDefault,
+    });
     await persistTemplatesToDatabase();
-    alert('Şablon kaydedildi!');
+    if (!opts?.silent) {
+      alert('Şablon kaydedildi!');
+    }
+  };
+
+  const handleClose = async () => {
+    try {
+      await saveTemplate({ silent: true });
+    } catch {
+      /* yine de kapat */
+    }
+    onClose?.();
   };
   
   const exportTemplate = () => {
@@ -356,7 +390,7 @@ export function TemplateDesigner({ type, onClose }: TemplateDesignerProps) {
               <Grid3x3 className="w-4 h-4" />
             </button>
             <button
-              onClick={saveTemplate}
+              onClick={() => void saveTemplate()}
               className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 flex items-center gap-2"
             >
               <Save className="w-4 h-4" />
@@ -371,7 +405,7 @@ export function TemplateDesigner({ type, onClose }: TemplateDesignerProps) {
             </button>
             {onClose && (
               <button
-                onClick={onClose}
+                onClick={() => void handleClose()}
                 className="px-4 py-2 border border-gray-300 rounded-lg hover:bg-gray-50"
               >
                 Kapat
