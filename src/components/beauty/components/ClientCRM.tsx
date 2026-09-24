@@ -197,10 +197,24 @@ export function ClientCRM({ onOpenCustomer }: ClientCRMProps) {
             columnHelper.accessor('file_id', {
                 header: tm('custColFileNo'),
                 cell: info => {
+                    const c = info.row.original;
                     const v = String(info.getValue() ?? '').trim();
-                    return v
-                        ? <span className="font-mono text-xs font-semibold tabular-nums text-violet-700">{v}</span>
-                        : <span className="text-gray-300 text-xs">—</span>;
+                    const inactive = c.is_active === false;
+                    return (
+                        <span className="inline-flex items-center gap-1">
+                            {v
+                                ? (
+                                    <span
+                                        className={`font-mono text-xs font-semibold tabular-nums ${
+                                            inactive ? 'text-gray-400' : 'text-violet-700'
+                                        }`}
+                                    >
+                                        {v}
+                                    </span>
+                                )
+                                : <span className="text-gray-300 text-xs">—</span>}
+                        </span>
+                    );
                 },
                 sortingFn: (rowA, rowB) =>
                     compareFileIdAsc(rowA.original.file_id, rowB.original.file_id),
@@ -211,13 +225,23 @@ export function ClientCRM({ onOpenCustomer }: ClientCRMProps) {
                 cell: info => {
                     const c = info.row.original;
                     const vip = c.customer_tier === 'vip' || Number(c.points ?? 0) >= 1000;
+                    const inactive = c.is_active === false;
+                    const merged = Boolean(c.merged_into_id);
                     return (
-                        <div className="flex flex-col min-w-0">
-                            <span className="font-medium text-gray-900 truncate">
+                        <div className={`flex flex-col min-w-0 ${inactive ? 'opacity-80' : ''}`}>
+                            <span className={`font-medium truncate ${inactive ? 'text-gray-500' : 'text-gray-900'}`}>
                                 {c.name}
-                                {vip ? (
+                                {vip && !inactive ? (
                                     <Tag color="gold" className="ml-1 align-middle text-[10px] leading-tight">
                                         {tm('bCustomerTierVip')}
+                                    </Tag>
+                                ) : null}
+                                {inactive ? (
+                                    <Tag
+                                        color={merged ? 'purple' : 'default'}
+                                        className="ml-1 align-middle text-[10px] leading-tight"
+                                    >
+                                        {merged ? tm('bCustomerMerged') : tm('bCustomerPassive')}
                                     </Tag>
                                 ) : null}
                             </span>
@@ -344,7 +368,13 @@ export function ClientCRM({ onOpenCustomer }: ClientCRMProps) {
                                 <Typography.Text type="secondary" className="text-xs">
                                     {isLoading
                                         ? tm('bLoading')
-                                        : `${mergedCustomers.length} ${tm('bRegisteredCustomers')}`}
+                                        : (() => {
+                                              const passive = mergedCustomers.filter(c => c.is_active === false).length;
+                                              const active = mergedCustomers.length - passive;
+                                              return passive > 0
+                                                  ? `${active} ${tm('bRegisteredCustomers')} · ${passive} ${tm('bCustomerPassiveCount')}`
+                                                  : `${mergedCustomers.length} ${tm('bRegisteredCustomers')}`;
+                                          })()}
                                 </Typography.Text>
                             </div>
                         </Space>
@@ -406,6 +436,9 @@ export function ClientCRM({ onOpenCustomer }: ClientCRMProps) {
                             storageNamespace="beautyClientCrmList"
                             height="calc(100vh - 240px)"
                             onRefresh={() => loadCustomers()}
+                            getRowClassName={row =>
+                                row.is_active === false ? 'opacity-70 bg-gray-50' : undefined
+                            }
                             onRowClick={row => {
                                 if (row.id) onOpenCustomer(row.id);
                             }}

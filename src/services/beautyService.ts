@@ -1423,6 +1423,7 @@ export const beautyService = {
     // CUSTOMERS  (general rex_{firm}_customers table)
     // =========================================================================
     async getCustomers(): Promise<BeautyCustomer[]> {
+        const { sortByFileIdAsc } = await import('../utils/customerFileIdSort');
         if (shouldUseTenantPostgrestApi()) {
             try {
                 const { postgrest } = await import('./api/postgrestClient');
@@ -1432,10 +1433,9 @@ export const beautyService = {
                     `/rex_${fn}_customers`,
                     {
                         select:
-                            'id,code,name,phone,phone2,age,birth_date,file_id,occupation,gender,customer_tier,heard_from,email,address,city,points,total_spent,balance,is_active,notes,created_at',
-                        is_active: 'eq.true',
+                            'id,code,name,phone,phone2,age,birth_date,file_id,occupation,gender,customer_tier,heard_from,email,address,city,points,total_spent,balance,is_active,merged_into_id,notes,created_at',
                         firm_nr: `eq.${fn}`,
-                        order: 'name.asc',
+                        order: 'file_id.asc.nullslast,name.asc',
                         limit: 5000,
                     },
                     { schema: 'public' }
@@ -1517,17 +1517,19 @@ export const beautyService = {
                     /* */
                 }
 
-                return list.map((c: BeautyCustomer): BeautyCustomer => {
-                    const a = byClient.get(String(c.id));
-                    return {
-                        ...c,
-                        appointment_count: a?.appointment_count ?? 0,
-                        last_appointment_date: a?.last_appointment_date,
-                        last_service_name: a?.last_service_id
-                            ? nameBySvc.get(a.last_service_id)
-                            : undefined,
-                    };
-                });
+                return sortByFileIdAsc(
+                    list.map((c: BeautyCustomer): BeautyCustomer => {
+                        const a = byClient.get(String(c.id));
+                        return {
+                            ...c,
+                            appointment_count: a?.appointment_count ?? 0,
+                            last_appointment_date: a?.last_appointment_date,
+                            last_service_name: a?.last_service_id
+                                ? nameBySvc.get(a.last_service_id)
+                                : undefined,
+                        };
+                    }),
+                );
             } catch (e) {
                 console.warn('[beautyService] getCustomers PostgREST (basit liste, randevu sayıları yok):', e);
             }
@@ -1538,7 +1540,37 @@ export const beautyService = {
         const svcFirm = postgres.getCardTableName('services');
         const prodTbl = postgres.getCardTableName('products');
         const fn = erpFirmNrForRow();
-        const { rows } = await postgres.query(`
+        try {
+            const { rows } = await postgres.query(`
+            SELECT
+                c.id, c.code, c.name, c.phone, c.phone2, c.age, c.birth_date, c.file_id, c.occupation,
+                c.gender, c.customer_tier, c.heard_from, c.email,
+                c.address, c.city, c.points, c.total_spent, c.balance,
+                c.is_active, c.merged_into_id, c.notes, c.created_at,
+                COUNT(a.id)::int          AS appointment_count,
+                MAX(a.appointment_date)   AS last_appointment_date,
+                (SELECT COALESCE(sb.name, sf.name, pr.name)
+                 FROM ${apt} la
+                 LEFT JOIN ${svc} sb ON sb.id = la.service_id
+                 LEFT JOIN ${svcFirm} sf ON sf.id = la.service_id AND sf.firm_nr = $1
+                 LEFT JOIN ${prodTbl} pr ON pr.id = la.service_id AND pr.firm_nr = $1
+                 WHERE la.client_id = c.id
+                 ORDER BY la.appointment_date DESC NULLS LAST, la.appointment_time DESC NULLS LAST
+                 LIMIT 1)              AS last_service_name
+            FROM ${t} c
+            LEFT JOIN ${apt} a ON a.client_id = c.id
+            WHERE lpad(trim(c.firm_nr::text), 3, '0') = $2
+            GROUP BY c.id
+            ORDER BY
+              CASE WHEN NULLIF(BTRIM(COALESCE(c.file_id, '')), '') ~ '^[0-9]+$'
+                THEN NULLIF(BTRIM(c.file_id), '')::bigint ELSE NULL END ASC NULLS LAST,
+              NULLIF(BTRIM(COALESCE(c.file_id, '')), '') ASC NULLS LAST,
+              c.name ASC
+        `, [fn, fn]);
+            return sortByFileIdAsc(rows as BeautyCustomer[]);
+        } catch (e) {
+            console.warn('[beautyService] getCustomers with merged_into_id failed, fallback:', e);
+            const { rows } = await postgres.query(`
             SELECT
                 c.id, c.code, c.name, c.phone, c.phone2, c.age, c.birth_date, c.file_id, c.occupation,
                 c.gender, c.customer_tier, c.heard_from, c.email,
@@ -1556,7 +1588,7 @@ export const beautyService = {
                  LIMIT 1)              AS last_service_name
             FROM ${t} c
             LEFT JOIN ${apt} a ON a.client_id = c.id
-            WHERE c.is_active = true AND lpad(trim(c.firm_nr::text), 3, '0') = $2
+            WHERE lpad(trim(c.firm_nr::text), 3, '0') = $2
             GROUP BY c.id
             ORDER BY
               CASE WHEN NULLIF(BTRIM(COALESCE(c.file_id, '')), '') ~ '^[0-9]+$'
@@ -1564,7 +1596,8 @@ export const beautyService = {
               NULLIF(BTRIM(COALESCE(c.file_id, '')), '') ASC NULLS LAST,
               c.name ASC
         `, [fn, fn]);
-        return rows;
+            return sortByFileIdAsc(rows as BeautyCustomer[]);
+        }
     },
 
     async searchCustomers(term: string): Promise<BeautyCustomer[]> {

@@ -786,6 +786,8 @@ export interface BeautyCustomer {
     total_spent?: number;
     balance?: number;
     is_active: boolean;
+    /** Birleştirildiyse hedef müşteri id */
+    merged_into_id?: string | null;
     notes?: string;
     created_at?: string;
     // computed: last appointment
