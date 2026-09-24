@@ -42,6 +42,7 @@ import {
     isStockExemptFromSaleGuard,
 } from '../../../utils/stockSaleGuard';
 import { getPosNow, notifyPosSaleSuccess } from '../../../store/usePosDateOverrideStore';
+import { PartialDateFields } from '../../shared/PartialDateFields';
 import { phoneMatchesQuery } from '../../../shared/utils/validators';
 import {
     buildRestaurantAdisyonHtml,
@@ -3341,7 +3342,21 @@ export function AppointmentPOS({
                                                     </div>
                                                     <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))', gap: 8 }}>
                                                         <Field label={tm('custLabelBirthDate')}>
-                                                            <input type="date" value={newCust.birth_date} onChange={e => setNewCust(p => ({ ...p, birth_date: e.target.value }))} placeholder={tm('custPhBirthDate')} style={{ ...iStyle, borderRadius: 10, height: 40 }} />
+                                                            <PartialDateFields
+                                                                value={newCust.birth_date || null}
+                                                                onChange={iso =>
+                                                                    setNewCust(p => ({
+                                                                        ...p,
+                                                                        birth_date: iso || '',
+                                                                    }))
+                                                                }
+                                                                labels={{
+                                                                    day: tm('partialDateDay'),
+                                                                    month: tm('partialDateMonth'),
+                                                                    year: tm('partialDateYear'),
+                                                                }}
+                                                                yearPlaceholder={tm('partialDateYearPh')}
+                                                            />
                                                         </Field>
                                                         <Field label={tm('custLabelFileId')}>
                                                             <input

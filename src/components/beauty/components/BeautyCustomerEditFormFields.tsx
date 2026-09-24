@@ -1,6 +1,7 @@
 import React from 'react';
 import { Input, Select, Segmented } from 'antd';
 import { RetailExFlatFieldLabel } from '../../shared/RetailExFlatModal';
+import { PartialDateFields } from '../../shared/PartialDateFields';
 import { useLanguage } from '../../../contexts/LanguageContext';
 import type { BeautyCustomer } from '../../../types/beauty';
 
@@ -139,18 +140,22 @@ export function BeautyCustomerEditFormFields({
             <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
                 <div>
                     <RetailExFlatFieldLabel>{tm('custLabelBirthDate')}</RetailExFlatFieldLabel>
-                    <Input
-                        className="!rounded-2xl !px-4 !py-2.5"
-                        type="date"
-                        value={value.birth_date ? String(value.birth_date).slice(0, 10) : ''}
-                        onChange={e =>
+                    <PartialDateFields
+                        value={value.birth_date ? String(value.birth_date).slice(0, 10) : null}
+                        onChange={iso =>
                             set({
-                                birth_date: e.target.value === '' ? null : e.target.value,
+                                birth_date: iso,
                                 age: null,
                             })
                         }
-                        placeholder={tm('custPhBirthDate')}
+                        labels={{
+                            day: tm('partialDateDay'),
+                            month: tm('partialDateMonth'),
+                            year: tm('partialDateYear'),
+                        }}
+                        yearPlaceholder={tm('partialDateYearPh')}
                     />
+                    <p className="mt-1 text-[10px] text-slate-400">{tm('partialDateHint')}</p>
                 </div>
                 <div>
                     <RetailExFlatFieldLabel>{tm('custLabelFileId')}</RetailExFlatFieldLabel>

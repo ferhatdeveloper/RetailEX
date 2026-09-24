@@ -1323,6 +1323,16 @@ export const moduleTranslations: Record<string, Record<Language, string>> = {
   custPhAge: { tr: 'Örn. 35', en: 'e.g. 35', ar: 'مثلاً 35', ku: 'وەک 35' },
   custLabelBirthDate: { tr: 'Doğum tarihi', en: 'Date of birth', ar: 'تاريخ الميلاد', ku: 'بەرواری لەدایکبوون' },
   custPhBirthDate: { tr: 'gg.aa.yyyy', en: 'yyyy-mm-dd', ar: 'yyyy-mm-dd', ku: 'yyyy-mm-dd' },
+  partialDateDay: { tr: 'Gün', en: 'Day', ar: 'يوم', ku: 'ڕۆژ' },
+  partialDateMonth: { tr: 'Ay', en: 'Month', ar: 'شهر', ku: 'مانگ' },
+  partialDateYear: { tr: 'Yıl', en: 'Year', ar: 'سنة', ku: 'ساڵ' },
+  partialDateYearPh: { tr: 'yy', en: 'yy', ar: 'yy', ku: 'yy' },
+  partialDateHint: {
+    tr: 'Gün / Ay / Yıl (yılın son 2 hanesi yeterli, örn. 92)',
+    en: 'Day / Month / Year (last 2 digits of year OK, e.g. 92)',
+    ar: 'يوم / شهر / سنة (رقمان أخيران كافيان)',
+    ku: 'ڕۆژ / مانگ / ساڵ (٢ ژمارەی کۆتایی بەسە)',
+  },
   custLabelFileId: { tr: 'Dosya no', en: 'File ID', ar: 'رقم الملف', ku: 'ژ. فایل' },
   custPhFileId: { tr: 'Dosya / kart no', en: 'File or chart no.', ar: 'رقم الملف', ku: 'ژمارەی فایل' },
   custPhFileIdAuto: {

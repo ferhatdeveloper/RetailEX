@@ -3,6 +3,7 @@ import type { Template, TemplateElement, TemplateUsageScope } from '../core/type
 import type { ReportComponent, ReportTemplate } from '../components/reports/designerUtils';
 import { formatNumber } from '../utils/formatNumber';
 import { flattenDbRecord, mergeTemplateContexts } from './templateRecordContext';
+import { birthDatePrintParts } from '../utils/partialDateInput';
 
 const TEMPLATE_TOKEN_REGEX = /\{\{\s*([^}]+)\s*\}\}/g;
 
@@ -345,6 +346,8 @@ export function buildPatientFilePrintContext(
     namespaces: ['customers', 'customer'],
   });
 
+  const birthParts = birthDatePrintParts(customer.birth_date);
+
   return mergeTemplateContexts(customerFlat, {
     customer: record,
     customers: record,
@@ -369,6 +372,10 @@ export function buildPatientFilePrintContext(
       ? String(Math.round(Number(customer.age)))
       : '',
     customerBirthDate: formatBirthDate(customer.birth_date),
+    customerBirthDay: birthParts.customerBirthDay,
+    customerBirthMonth: birthParts.customerBirthMonth,
+    customerBirthYear: birthParts.customerBirthYear,
+    customerBirthYear2: birthParts.customerBirthYear2,
     customerOccupation: normalizeValue(customer.occupation || ''),
     customerGender: formatGenderLabel(customer.gender),
     customerTier: formatTierLabel(customer.customer_tier),
