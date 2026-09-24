@@ -19,8 +19,7 @@ export const isValidPhone = (phone: string): boolean => {
 /**
  * Telefon numarasını arama için normalleştirir.
  * Boşluk, tire, parantez, nokta, slash, + işareti gibi tüm rakam dışı karakterleri
- * kaldırır. Ülke kodu (örn. +90, 90, 0090) kaldırılmaz; eşleşme için
- * `phoneMatchesQuery` yardımcısını kullanın.
+ * kaldırır. Ülke kodu / baştaki 0 farkı için `phoneMatchesQuery` kullanın.
  */
 export const normalizePhoneDigits = (phone: unknown): string => {
   return String(phone ?? '').replace(/\D/g, '');
@@ -34,24 +33,92 @@ export const phoneQueryDigits = (query: unknown): string => {
   return String(query ?? '').replace(/\D/g, '');
 };
 
+/** Sık kullanılan ülke kodları (IQ +964, TR +90). */
+const PHONE_COUNTRY_CODES = ['964', '90'] as const;
+
 /**
- * Telefon esnek araması: sorgu teriminin rakamlarını, telefon(lar)ın
- * rakamları içinde sıralı olarak arar. Tek başına ülke kodu (örn. "90" veya
- * "090") yazılırsa yanlışlıkla tüm numaralarla eşleşmesin diye sorgu en az
- * 3 hane olmalıdır (aksi takdirde `false` döner).
+ * Biçim / ülke kodu / baştaki 0 farklarını yok saymak için rakam çekirdekleri.
+ * Örn. "+964 750 123 4567", "07501234567", "7501234567" → ortak çekirdekler.
+ */
+export const phoneDigitCores = (digits: string): string[] => {
+  const raw = String(digits ?? '').replace(/\D/g, '');
+  if (!raw) return [];
+  const out = new Set<string>();
+  const seed = raw.replace(/^00+/, '');
+  if (!seed) return [];
+
+  const add = (v: string) => {
+    const s = String(v ?? '').replace(/\D/g, '');
+    if (s) out.add(s);
+  };
+
+  add(seed);
+  add(seed.replace(/^0+/, '') || seed);
+
+  for (const cc of PHONE_COUNTRY_CODES) {
+    if (seed.startsWith(cc) && seed.length > cc.length + 2) {
+      const rest = seed.slice(cc.length);
+      add(rest);
+      add(rest.replace(/^0+/, '') || rest);
+      if (!rest.startsWith('0')) add(`0${rest}`);
+    }
+  }
+
+  if (seed.startsWith('0') && seed.length > 1) {
+    add(seed.slice(1));
+  } else if (!seed.startsWith('0')) {
+    add(`0${seed}`);
+  }
+
+  // Son 10 / 9 hane (ulusal mobil gövde)
+  for (const v of [...out]) {
+    if (v.length >= 10) add(v.slice(-10));
+    if (v.length >= 9) add(v.slice(-9));
+    if (v.startsWith('0') && v.length > 1) add(v.slice(1));
+  }
+
+  return [...out];
+};
+
+/**
+ * Telefon esnek araması: boşluk/tire/+ /ülke kodu / baştaki 0 fark etmez.
+ * Sorgu en az 3 hane (ülke kodu tek başına tümünü eşleştirmesin).
  *
  * Örnekler:
+ *   - DB: "+964 750 123 4567", sorgu: "0750 123 4567" → eşleşir
+ *   - DB: "07501234567", sorgu: "9647501234567" → eşleşir
  *   - DB: "+90 555 123 4567", sorgu: "5551234" → eşleşir
  *   - DB: "0555 123 45 67", sorgu: "555 123 45" → eşleşir
- *   - DB: "5551234567", sorgu: "555" → eşleşir
  */
 export const phoneMatchesQuery = (phone: unknown, query: unknown): boolean => {
-  const digits = phoneQueryDigits(query);
-  if (digits.length < 3) return false;
-  if (!digits) return false;
+  const qDigits = phoneQueryDigits(query);
+  if (qDigits.length < 3) return false;
   const target = normalizePhoneDigits(phone);
   if (!target) return false;
-  return target.includes(digits);
+
+  // Hızlı yol: ham rakam alt dizesi
+  if (target.includes(qDigits)) return true;
+
+  const haystacks = phoneDigitCores(target);
+  const needles = new Set<string>(
+    [qDigits, ...phoneDigitCores(qDigits)].filter(n => n.length >= 3),
+  );
+
+  for (const needle of needles) {
+    for (const hay of haystacks) {
+      if (hay.includes(needle)) return true;
+    }
+  }
+
+  // Kayıt kısa, sorgu ülke kodlu uzun: anlamlı çekirdek (7+) sorgu içinde
+  for (const hay of haystacks) {
+    if (hay.length < 7) continue;
+    for (const needle of needles) {
+      if (needle.includes(hay)) return true;
+    }
+  }
+
+  return false;
 };
 
 /**
@@ -64,7 +131,7 @@ export const phonesMatchQuery = (
 ): boolean => {
   const digits = phoneQueryDigits(query);
   if (digits.length < 3) return false;
-  return phones.some((p) => normalizePhoneDigits(p).includes(digits));
+  return phones.some(p => phoneMatchesQuery(p, query));
 };
 
 /**
