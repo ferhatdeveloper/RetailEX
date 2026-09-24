@@ -163,3 +163,5 @@ Restoran sohbetinde eklenen tek yeni tablo: **rest.return_log**. Diğer özellik
 - `162_report_menu_params_stock_aging.sql` — `report_menu_params` içine `stock-aging: false` (yoksa ekler); Stok Yaşlandırma varsayılan kapalı.
 - `163_menu_hide_finance_definitions.sql` — `finance-definitions` (Finans → Tanımlar) tüm menü preset’lerinde varsayılan gizli; boş üst grup orphan kalmasın (Menü Yönetimi’nden açılır).
 - `164_report_menu_params_block_negative_stock_sale.sql` — `block-negative-stock-sale: false` (yoksa ekler); negatif/sıfır stok satış engeli varsayılan kapalı (= satılabilir).
+- `165_report_menu_params_allow_pos_payment_back_to_sale.sql` — POS ödeme ekranından satışa dönüş parametresi.
+- `166_customers_file_id_merge_unique.sql` — `rex_*_customers` birleştirme kolonları (`merged_into_*`); mükerrer sayısal `file_id` ayırma + aktif kartlarda UNIQUE.

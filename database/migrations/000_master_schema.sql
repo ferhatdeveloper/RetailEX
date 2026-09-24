@@ -2371,6 +2371,10 @@ BEGIN
       call_last_note TEXT,
       call_last_at TIMESTAMPTZ,
       is_active    BOOLEAN DEFAULT true,
+      merged_into_id UUID,
+      merged_at    TIMESTAMPTZ,
+      merged_by    TEXT,
+      merge_notes  TEXT,
       logo_sync_status VARCHAR(20),
       logo_sync_error  TEXT,
       logo_sync_date   TIMESTAMPTZ,
@@ -2378,6 +2382,19 @@ BEGIN
       updated_at   TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP
     );
   ', v_prefix || '_customers');
+  EXECUTE format(
+    'CREATE INDEX IF NOT EXISTS %I ON %I (merged_into_id) WHERE merged_into_id IS NOT NULL',
+    v_prefix || '_customers_merged_into_idx', v_prefix || '_customers'
+  );
+  EXECUTE format(
+    'CREATE UNIQUE INDEX IF NOT EXISTS %I ON %I (
+       (NULLIF(BTRIM(file_id), '''')::bigint)
+     )
+     WHERE COALESCE(is_active, true) = true
+       AND merged_into_id IS NULL
+       AND NULLIF(BTRIM(COALESCE(file_id, '''')), '''') ~ ''^[0-9]+$''',
+    v_prefix || '_customers_file_id_num_uniq', v_prefix || '_customers'
+  );
 
   -- 3. Suppliers
   EXECUTE format('

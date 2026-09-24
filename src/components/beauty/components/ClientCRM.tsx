@@ -25,6 +25,7 @@ import {
     BEAUTY_CUSTOMER_EMPTY_FORM,
     BeautyCustomerEditFormFields,
 } from './BeautyCustomerEditFormFields';
+import { CustomerFileIdDuplicatesPanel } from './CustomerFileIdDuplicatesPanel';
 import {
     buildFileIdRangeOptions,
     compareFileIdAsc,
@@ -351,6 +352,13 @@ export function ClientCRM({ onOpenCustomer }: ClientCRMProps) {
                             {tm('bNewCustomer')}
                         </Button>
                     </div>
+
+                    <CustomerFileIdDuplicatesPanel
+                        customers={mergedCustomers}
+                        onChanged={async () => {
+                            await loadCustomers();
+                        }}
+                    />
 
                     <div
                         className="border-b px-4 py-3 shrink-0 flex flex-col gap-2 sm:flex-row sm:items-center"

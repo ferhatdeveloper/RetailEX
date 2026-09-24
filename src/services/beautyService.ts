@@ -1719,6 +1719,10 @@ export const beautyService = {
                 fileIdVal = null;
             }
         }
+        if (fileIdVal) {
+            const { assertFileIdAvailable } = await import('./api/customerMerge');
+            await assertFileIdAvailable(fileIdVal);
+        }
         const g = String(data.gender ?? '').trim().toLowerCase();
         const genderVal = g === 'female' || g === 'male' || g === 'other' ? g : null;
         const tierRaw = String(data.customer_tier ?? 'normal').trim().toLowerCase();
@@ -1845,6 +1849,10 @@ export const beautyService = {
                                 })(),
             });
             if (Object.keys(patchBody).length === 0) return;
+            if (patchBody.file_id != null && String(patchBody.file_id).trim() !== '') {
+                const { assertFileIdAvailable } = await import('./api/customerMerge');
+                await assertFileIdAvailable(String(patchBody.file_id), id);
+            }
             const { stripPostgrestOpPrefix } = await import('./api/postgrestClient');
             const rawId = stripPostgrestOpPrefix(String(id));
             await postgrest.patch(
@@ -1869,12 +1877,15 @@ export const beautyService = {
         if (data.city !== undefined) push('city', data.city ?? null);
         if (data.notes !== undefined) push('notes', data.notes ?? null);
         if (data.file_id !== undefined) {
-            push(
-                'file_id',
+            const fid =
                 data.file_id != null && String(data.file_id).trim() !== ''
                     ? String(data.file_id).trim()
-                    : null
-            );
+                    : null;
+            if (fid) {
+                const { assertFileIdAvailable } = await import('./api/customerMerge');
+                await assertFileIdAvailable(fid, id);
+            }
+            push('file_id', fid);
         }
         if (data.occupation !== undefined) push('occupation', data.occupation?.trim() || null);
         if (data.gender !== undefined) {
