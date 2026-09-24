@@ -6745,6 +6745,30 @@ export const moduleTranslations: Record<string, Record<Language, string>> = {
     ar: 'طباعة ملف المريض',
     ku: 'فایلی نەخۆش چاپ بکە',
   },
+  bBulkPrintPatientFile: {
+    tr: 'Toplu yazdır ({count})',
+    en: 'Bulk print ({count})',
+    ar: 'طباعة جماعية ({count})',
+    ku: 'چاپکردنی کۆمەڵ ({count})',
+  },
+  bBulkPrintPatientFileCount: {
+    tr: '{count} hasta dosyası',
+    en: '{count} patient files',
+    ar: '{count} ملفات مرضى',
+    ku: '{count} فایلی نەخۆش',
+  },
+  bBulkSelectedCount: {
+    tr: '{count} seçili',
+    en: '{count} selected',
+    ar: '{count} محدد',
+    ku: '{count} هەڵبژێردراو',
+  },
+  bClearSelection: {
+    tr: 'Seçimi temizle',
+    en: 'Clear selection',
+    ar: 'مسح التحديد',
+    ku: 'هەڵبژاردن بسڕەوە',
+  },
   bPatientFilePrintQueued: {
     tr: 'Hasta dosyası yazıcı kuyruğuna eklendi',
     en: 'Patient file queued for printer',

@@ -24,13 +24,21 @@ import {
   resolvePatientFileTemplateId,
 } from '../../../utils/patientFilePrint';
 
+export type PatientFilePrintCustomer = PatientFileCustomerLike & {
+  name?: string | null;
+  id?: string;
+};
+
 export type PatientFilePrintModalProps = {
-  customer: PatientFileCustomerLike & { name?: string | null; id?: string };
+  /** Tek müşteri (geriye dönük) */
+  customer?: PatientFilePrintCustomer;
+  /** Toplu yazdırma kuyruğu — verilirse `customer` yok sayılır */
+  customers?: PatientFilePrintCustomer[];
   onClose: () => void;
 };
 
 async function loadLiveCustomer(
-  fallback: PatientFileCustomerLike & { id?: string },
+  fallback: PatientFilePrintCustomer,
 ): Promise<PatientFileCustomerLike> {
   const id = fallback.id != null ? String(fallback.id).trim() : '';
   if (!id) return fallback;
@@ -67,9 +75,9 @@ async function loadLiveCustomer(
 
 /**
  * Hasta dosyası yazdırma ekranı: her zaman canlı müşteri verisi ile önizleme;
- * şablon seçilebilir / düzenlenebilir; kayıt kalıcıdır.
+ * tek veya toplu kuyruk; şablon seçilebilir / düzenlenebilir.
  */
-export function PatientFilePrintModal({ customer, onClose }: PatientFilePrintModalProps) {
+export function PatientFilePrintModal({ customer, customers, onClose }: PatientFilePrintModalProps) {
   const { tm } = useLanguage();
   const {
     templates,
@@ -82,9 +90,15 @@ export function PatientFilePrintModal({ customer, onClose }: PatientFilePrintMod
     persistTemplatesToDatabase,
   } = useTemplateStore();
 
+  const queue = useMemo((): PatientFilePrintCustomer[] => {
+    if (customers && customers.length > 0) return customers;
+    if (customer) return [customer];
+    return [];
+  }, [customer, customers]);
+
   const [loading, setLoading] = useState(true);
-  const [liveCustomer, setLiveCustomer] = useState<PatientFileCustomerLike>(customer);
-  const [context, setContext] = useState<Record<string, unknown> | null>(null);
+  const [liveCustomers, setLiveCustomers] = useState<PatientFileCustomerLike[]>([]);
+  const [contexts, setContexts] = useState<Record<string, unknown>[]>([]);
   const [selectedTemplateId, setSelectedTemplateId] = useState<string | null>(null);
   const [editingDesign, setEditingDesign] = useState(false);
   const [makeDefault, setMakeDefault] = useState(false);
@@ -117,15 +131,32 @@ export function PatientFilePrintModal({ customer, onClose }: PatientFilePrintMod
     return { ...tpl, usageScopes: Array.from(scopes) };
   };
 
+  const queueKey = useMemo(
+    () => queue.map((c) => String(c.id ?? c.name ?? '')).join('|'),
+    [queue],
+  );
+
   const refreshLiveContext = useCallback(async () => {
-    const live = await loadLiveCustomer(customer);
-    setLiveCustomer(live);
-    const ctx = await preparePatientFilePrintContext(live, ERP_SETTINGS.firmNr);
-    setContext(ctx);
-    return ctx;
-  }, [customer]);
+    if (queue.length === 0) {
+      setLiveCustomers([]);
+      setContexts([]);
+      return [];
+    }
+    const lives = await Promise.all(queue.map((c) => loadLiveCustomer(c)));
+    const ctxs = await Promise.all(
+      lives.map((live) => preparePatientFilePrintContext(live, ERP_SETTINGS.firmNr)),
+    );
+    setLiveCustomers(lives);
+    setContexts(ctxs);
+    return ctxs;
+  }, [queue]);
 
   const bootstrap = useCallback(async () => {
+    if (queue.length === 0) {
+      toast.error(tm('bPatientFilePrintError'));
+      onClose();
+      return;
+    }
     setLoading(true);
     try {
       await loadTemplatesFromDatabase(true);
@@ -152,11 +183,13 @@ export function PatientFilePrintModal({ customer, onClose }: PatientFilePrintMod
     } finally {
       setLoading(false);
     }
-  }, [loadTemplatesFromDatabase, onClose, refreshLiveContext, tm]);
+  }, [loadTemplatesFromDatabase, onClose, queue.length, refreshLiveContext, tm]);
 
   useEffect(() => {
     void bootstrap();
-  }, [bootstrap]);
+    // queueKey değişince yeniden yükle
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- bootstrap zaten queue’a bağlı
+  }, [bootstrap, queueKey]);
 
   const openDesigner = (tpl?: Template | null) => {
     const target = tpl ?? selectedTemplate;
@@ -186,7 +219,6 @@ export function PatientFilePrintModal({ customer, onClose }: PatientFilePrintMod
       setEditingDesign(true);
       return;
     }
-    // Store’daki güncel şablonu aç (liste snapshot’ı eski olabilir)
     const fromStore =
       useTemplateStore.getState().templates.find((t) => t.id === target.id) ?? target;
     const patched = ensurePatientFileScope(fromStore);
@@ -202,7 +234,6 @@ export function PatientFilePrintModal({ customer, onClose }: PatientFilePrintMod
       logger.error('PatientFilePrintModal', 'persist after design failed', e);
       toast.error(tm('bPatientFileSaveError'));
     }
-    // DB’den zorla yeniden yükleme yapma — seed ezmesi ve kayıt kaybını önler
     const id = selectedTemplateId;
     const list = listPatientFileTemplates(
       useTemplateStore.getState().getTemplatesForScope,
@@ -227,6 +258,13 @@ export function PatientFilePrintModal({ customer, onClose }: PatientFilePrintMod
     }
   };
 
+  const firstLive = liveCustomers[0];
+  const firstContext = contexts[0] ?? null;
+  const subtitle =
+    contexts.length > 1
+      ? tm('bBulkPrintPatientFileCount').replace('{count}', String(contexts.length))
+      : String(firstLive?.name || queue[0]?.name || tm('bPrintPatientFile'));
+
   if (editingDesign) {
     return (
       <FullscreenBodyPortal
@@ -239,7 +277,7 @@ export function PatientFilePrintModal({ customer, onClose }: PatientFilePrintMod
         <div className="h-[100dvh] w-full min-h-0 flex flex-col overflow-hidden">
           <TemplateDesigner
             type="invoice"
-            livePreviewData={context}
+            livePreviewData={firstContext}
             onClose={() => void closeDesigner()}
           />
         </div>
@@ -247,7 +285,7 @@ export function PatientFilePrintModal({ customer, onClose }: PatientFilePrintMod
     );
   }
 
-  if (loading || !context) {
+  if (loading || contexts.length === 0) {
     return (
       <FullscreenBodyPortal
         className="bg-gray-900/40 backdrop-blur-sm flex items-center justify-center"
@@ -300,9 +338,10 @@ export function PatientFilePrintModal({ customer, onClose }: PatientFilePrintMod
   return (
     <ReportViewerModule
       template={reportTemplate}
-      data={context}
+      data={firstContext}
+      dataPages={contexts.length > 1 ? contexts : undefined}
       onClose={onClose}
-      subtitle={String(liveCustomer.name || customer.name || tm('bPrintPatientFile'))}
+      subtitle={subtitle}
       chromeExtra={
         <div className="flex items-center gap-2 flex-wrap">
           <div className="relative min-w-[10rem] max-w-[14rem]">

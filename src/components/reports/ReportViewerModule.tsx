@@ -1,4 +1,4 @@
-import React, { useEffect, useRef, useState, type ReactNode } from 'react';
+import React, { useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
 import { createPortal } from 'react-dom';
 import { DEFAULT_A4, ReportTemplate, getBoundValue, exportToPDF } from './designerUtils';
 import { Download, Printer, X, RotateCw } from 'lucide-react';
@@ -12,6 +12,8 @@ type EtiketPrintRotation = 0 | 90 | 180 | 270;
 interface ReportViewerProps {
     template: ReportTemplate;
     data: any;
+    /** Toplu yazdırma: her öğe ayrı kağıt sayfası (verilirse `data` yok sayılır) */
+    dataPages?: any[];
     onClose: () => void;
     /** Araç çubuğu alt başlık (örn. müşteri adı) */
     subtitle?: string;
@@ -25,7 +27,14 @@ function clampPageMm(n: unknown, fallback: number): number {
     return Math.min(1200, Math.max(8, x));
 }
 
-export function ReportViewerModule({ template, data, onClose, subtitle, chromeExtra }: ReportViewerProps) {
+export function ReportViewerModule({
+    template,
+    data,
+    dataPages,
+    onClose,
+    subtitle,
+    chromeExtra,
+}: ReportViewerProps) {
     const { tm } = useLanguage();
     const paperRef = useRef<HTMLDivElement>(null);
     const pw = template.pageSize?.width || DEFAULT_A4.width;
@@ -33,6 +42,12 @@ export function ReportViewerModule({ template, data, onClose, subtitle, chromeEx
     /** @page ve baskı için güvenli mm — geçersiz / çok küçük değerler önizlemeyi kilitleyebilir */
     const pwPrint = clampPageMm(pw, DEFAULT_A4.width);
     const phPrint = clampPageMm(ph, DEFAULT_A4.height);
+
+    const pages = useMemo(() => {
+        if (Array.isArray(dataPages) && dataPages.length > 0) return dataPages;
+        return [data];
+    }, [data, dataPages]);
+    const isMultiPage = pages.length > 1;
 
     const isLabelTemplate = template.category === 'etiket';
     const [printRotation, setPrintRotation] = useState<EtiketPrintRotation>(() => {
@@ -74,99 +89,111 @@ export function ReportViewerModule({ template, data, onClose, subtitle, chromeEx
         { value: 270, label: '270°', hint: tm('rotationLeft') },
     ];
 
-    const paperLayers = template.components.map((comp) => (
-        <div
-            key={comp.id}
-            className="absolute overflow-hidden box-border"
-            style={{
-                left: `${comp.x}mm`,
-                top: `${comp.y}mm`,
-                width: `${comp.width}mm`,
-                height: `${comp.height}mm`,
-                ...comp.style,
-                background: comp.type === 'rect' ? (comp.style?.background || '#f3f4f6') : 'transparent',
-            }}
-        >
-            {comp.type === 'text' && (
-                <div className="w-full h-full p-0.5">
-                    {(() => {
-                        const raw = comp.binding ? getBoundValue(comp.binding, data) : comp.content;
-                        return interpolateTemplateText(String(raw ?? ''), data || {});
-                    })()}
-                </div>
-            )}
-            {comp.type === 'line' && (
-                <div className="w-full h-full">
-                    <div style={{ borderTop: comp.style?.borderTop || '1px solid #111827', width: '100%', height: '0px' }} />
-                </div>
-            )}
-            {comp.type === 'barcode' && (() => {
-                const raw = comp.binding ? getBoundValue(comp.binding, data) : comp.content;
-                const barcodeValue = String(raw ?? '').trim();
-                if (!barcodeValue) {
-                    return (
-                        <div className="w-full h-full bg-slate-50 flex items-center justify-center p-1 text-[8px] text-slate-400 text-center">
-                            Barkod alanı: veri veya içerik yok
-                        </div>
-                    );
-                }
-                return (
-                    <div className="w-full h-full min-h-0 min-w-0 bg-white flex items-center justify-center overflow-hidden box-border">
-                        <ReportBarcodePreview svgId={`report-barcode-${comp.id}`} value={barcodeValue} />
-                    </div>
-                );
-            })()}
-            {comp.type === 'table' && comp.columns && (
-                <div className="w-full h-full text-[10px]">
-                    <div className="flex bg-gray-100 border-b border-gray-800 font-bold" style={comp.style}>
-                        {comp.columns.map((col, i) => (
-                            <div key={i} style={{ width: `${col.width}%` }} className="p-1.5 border-r border-gray-300 last:border-0 truncate">
-                                {col.header}
-                            </div>
-                        ))}
-                    </div>
-                    {(data?.items || []).map((item: any, rowIndex: number) => (
-                        <div key={rowIndex} className="flex border-b border-gray-100 hover:bg-gray-50">
-                            {comp.columns?.map((col, colIndex) => {
-                                let val = item[col.field];
-                                if (typeof val === 'number') val = formatNumber(val, 2, true);
-                                return (
-                                    <div
-                                        key={colIndex}
-                                        style={{ width: `${col.width}%` }}
-                                        className={`p-1.5 border-r border-gray-100 last:border-0 truncate ${typeof item[col.field] === 'number' ? 'text-right' : ''}`}
-                                    >
-                                        {val}
-                                    </div>
-                                );
-                            })}
-                        </div>
-                    ))}
-                    {(!data?.items || data.items.length === 0) && (
-                        <div className="p-2 text-center text-gray-400 italic">Veri yok</div>
-                    )}
-                </div>
-            )}
-        </div>
-    ));
-
-    const paperInner = <div className="relative box-border" style={{ width: `${pwPrint}mm`, height: `${phPrint}mm` }}>{paperLayers}</div>;
-
-    const paperBlock =
-        effectiveRotation === 0 ? (
+    const renderPaperLayers = (pageData: any, pageKey: string | number) =>
+        template.components.map((comp) => (
             <div
-                ref={paperRef}
-                className="report-viewer-paper bg-white shadow-2xl relative flex-shrink-0 print:m-0 print:shadow-none box-border"
+                key={`${pageKey}-${comp.id}`}
+                className="absolute overflow-hidden box-border"
                 style={{
-                    width: `${pwPrint}mm`,
-                    height: `${phPrint}mm`,
+                    left: `${comp.x}mm`,
+                    top: `${comp.y}mm`,
+                    width: `${comp.width}mm`,
+                    height: `${comp.height}mm`,
+                    ...comp.style,
+                    background: comp.type === 'rect' ? (comp.style?.background || '#f3f4f6') : 'transparent',
                 }}
             >
-                {paperInner}
+                {comp.type === 'text' && (
+                    <div className="w-full h-full p-0.5">
+                        {(() => {
+                            const raw = comp.binding ? getBoundValue(comp.binding, pageData) : comp.content;
+                            return interpolateTemplateText(String(raw ?? ''), pageData || {});
+                        })()}
+                    </div>
+                )}
+                {comp.type === 'line' && (
+                    <div className="w-full h-full">
+                        <div style={{ borderTop: comp.style?.borderTop || '1px solid #111827', width: '100%', height: '0px' }} />
+                    </div>
+                )}
+                {comp.type === 'barcode' && (() => {
+                    const raw = comp.binding ? getBoundValue(comp.binding, pageData) : comp.content;
+                    const barcodeValue = String(raw ?? '').trim();
+                    if (!barcodeValue) {
+                        return (
+                            <div className="w-full h-full bg-slate-50 flex items-center justify-center p-1 text-[8px] text-slate-400 text-center">
+                                Barkod alanı: veri veya içerik yok
+                            </div>
+                        );
+                    }
+                    return (
+                        <div className="w-full h-full min-h-0 min-w-0 bg-white flex items-center justify-center overflow-hidden box-border">
+                            <ReportBarcodePreview svgId={`report-barcode-${pageKey}-${comp.id}`} value={barcodeValue} />
+                        </div>
+                    );
+                })()}
+                {comp.type === 'table' && comp.columns && (
+                    <div className="w-full h-full text-[10px]">
+                        <div className="flex bg-gray-100 border-b border-gray-800 font-bold" style={comp.style}>
+                            {comp.columns.map((col, i) => (
+                                <div key={i} style={{ width: `${col.width}%` }} className="p-1.5 border-r border-gray-300 last:border-0 truncate">
+                                    {col.header}
+                                </div>
+                            ))}
+                        </div>
+                        {(pageData?.items || []).map((item: any, rowIndex: number) => (
+                            <div key={rowIndex} className="flex border-b border-gray-100 hover:bg-gray-50">
+                                {comp.columns?.map((col, colIndex) => {
+                                    let val = item[col.field];
+                                    if (typeof val === 'number') val = formatNumber(val, 2, true);
+                                    return (
+                                        <div
+                                            key={colIndex}
+                                            style={{ width: `${col.width}%` }}
+                                            className={`p-1.5 border-r border-gray-100 last:border-0 truncate ${typeof item[col.field] === 'number' ? 'text-right' : ''}`}
+                                        >
+                                            {val}
+                                        </div>
+                                    );
+                                })}
+                            </div>
+                        ))}
+                        {(!pageData?.items || pageData.items.length === 0) && (
+                            <div className="p-2 text-center text-gray-400 italic">Veri yok</div>
+                        )}
+                    </div>
+                )}
             </div>
-        ) : (
+        ));
+
+    const renderPaperBlock = (pageData: any, pageIndex: number) => {
+        const paperInner = (
+            <div className="relative box-border" style={{ width: `${pwPrint}mm`, height: `${phPrint}mm` }}>
+                {renderPaperLayers(pageData, pageIndex)}
+            </div>
+        );
+        const attachRef = (el: HTMLDivElement | null) => {
+            if (pageIndex === 0) paperRef.current = el;
+        };
+        if (effectiveRotation === 0) {
+            return (
+                <div
+                    key={`paper-${pageIndex}`}
+                    ref={attachRef}
+                    className="report-viewer-paper bg-white shadow-2xl relative flex-shrink-0 print:m-0 print:shadow-none box-border"
+                    style={{
+                        width: `${pwPrint}mm`,
+                        height: `${phPrint}mm`,
+                    }}
+                >
+                    {paperInner}
+                </div>
+            );
+        }
+        return (
             <div
-                ref={paperRef}
+                key={`paper-${pageIndex}`}
+                ref={attachRef}
                 className="report-viewer-paper bg-white shadow-2xl relative flex-shrink-0 print:m-0 print:shadow-none box-border"
                 style={{
                     width: `${pageWPrint}mm`,
@@ -188,6 +215,7 @@ export function ReportViewerModule({ template, data, onClose, subtitle, chromeEx
                 </div>
             </div>
         );
+    };
 
     /**
      * Tüm body kardeşlerini display:none yapmak bazı Chromium sürümlerinde yazdır önizlemesini
@@ -196,11 +224,48 @@ export function ReportViewerModule({ template, data, onClose, subtitle, chromeEx
     /** Termal etikette: tam sayfa mm + sol üst sabit; aksi halde tarayıcı/sürücü içeriği ortalayıp sağa kaydırabiliyor. */
     const labelHtmlBody =
         isLabelTemplate &&
+        !isMultiPage &&
         `width: ${pageWPrint}mm !important;
     height: ${pageHPrint}mm !important;
     max-width: ${pageWPrint}mm !important;
     max-height: ${pageHPrint}mm !important;
     overflow: hidden !important;`;
+
+    const multiShellCss = isMultiPage
+        ? `
+    width: ${pageWPrint}mm !important;
+    height: auto !important;
+    max-width: ${pageWPrint}mm !important;
+    max-height: none !important;
+    overflow: visible !important;`
+        : `
+    width: ${pageWPrint}mm !important;
+    height: ${pageHPrint}mm !important;
+    max-width: ${pageWPrint}mm !important;
+    max-height: ${pageHPrint}mm !important;
+    overflow: hidden !important;`;
+
+    const multiStageCss = isMultiPage
+        ? `
+    width: ${pageWPrint}mm !important;
+    height: auto !important;
+    max-width: ${pageWPrint}mm !important;
+    max-height: none !important;
+    overflow: visible !important;`
+        : `
+    width: ${pageWPrint}mm !important;
+    height: ${pageHPrint}mm !important;
+    max-width: ${pageWPrint}mm !important;
+    max-height: ${pageHPrint}mm !important;
+    overflow: hidden !important;`;
+
+    const paperBreakCss = isMultiPage
+        ? `
+    page-break-after: always !important;
+    break-after: page !important;`
+        : `
+    page-break-after: avoid !important;
+    break-after: avoid !important;`;
 
     const printCss = `
 @media print {
@@ -237,19 +302,15 @@ export function ReportViewerModule({ template, data, onClose, subtitle, chromeEx
     right: auto !important;
     bottom: auto !important;
     inset: auto !important;
-    width: ${pageWPrint}mm !important;
-    height: ${pageHPrint}mm !important;
     margin: 0 !important;
     padding: 0 !important;
     min-height: 0 !important;
-    max-width: ${pageWPrint}mm !important;
-    max-height: ${pageHPrint}mm !important;
-    overflow: hidden !important;
     background: #fff !important;
     backdrop-filter: none !important;
     -webkit-print-color-adjust: exact !important;
     print-color-adjust: exact !important;
     visibility: visible !important;
+    ${multiShellCss}
   }
   .report-viewer-shell * {
     visibility: visible !important;
@@ -259,14 +320,9 @@ export function ReportViewerModule({ template, data, onClose, subtitle, chromeEx
     flex: none !important;
     padding: 0 !important;
     margin: 0 !important;
-    overflow: hidden !important;
-    width: ${pageWPrint}mm !important;
-    height: ${pageHPrint}mm !important;
-    min-height: 0 !important;
-    max-width: ${pageWPrint}mm !important;
-    max-height: ${pageHPrint}mm !important;
     display: block !important;
     box-sizing: border-box !important;
+    ${multiStageCss}
   }
   .report-viewer-paper {
     position: relative !important;
@@ -281,6 +337,9 @@ export function ReportViewerModule({ template, data, onClose, subtitle, chromeEx
     box-shadow: none !important;
     page-break-inside: avoid !important;
     break-inside: avoid !important;
+    ${paperBreakCss}
+  }
+  .report-viewer-paper:last-child {
     page-break-after: avoid !important;
     break-after: avoid !important;
   }
@@ -382,8 +441,12 @@ export function ReportViewerModule({ template, data, onClose, subtitle, chromeEx
             </div>
 
             {/* Önizleme — yazdırmada yalnızca kağıt */}
-            <div className="report-viewer-stage flex-1 w-full min-h-0 min-w-0 overflow-auto p-6 sm:p-12 print:p-0 flex justify-center print:justify-start">
-                {paperBlock}
+            <div
+                className={`report-viewer-stage flex-1 w-full min-h-0 min-w-0 overflow-auto p-6 sm:p-12 print:p-0 flex print:justify-start ${
+                    isMultiPage ? 'flex-col items-center gap-8' : 'justify-center'
+                }`}
+            >
+                {pages.map((pageData, idx) => renderPaperBlock(pageData, idx))}
             </div>
         </div>
     );

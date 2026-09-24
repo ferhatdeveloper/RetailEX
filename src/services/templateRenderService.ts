@@ -4,6 +4,7 @@ import type { ReportComponent, ReportTemplate } from '../components/reports/desi
 import { formatNumber } from '../utils/formatNumber';
 import { flattenDbRecord, mergeTemplateContexts } from './templateRecordContext';
 import { birthDatePrintParts } from '../utils/partialDateInput';
+import { beautyGenderLabelEn } from '../utils/beautyGenderLabel';
 
 const TEMPLATE_TOKEN_REGEX = /\{\{\s*([^}]+)\s*\}\}/g;
 
@@ -301,11 +302,7 @@ export type PatientFileCustomerLike = {
 
 /** Yazdırma / şablon: cinsiyet her zaman İngilizce (Female / Male / Other). */
 function formatGenderLabel(gender: string | null | undefined): string {
-  const g = String(gender || '').trim().toLowerCase();
-  if (g === 'female' || g === 'kadın' || g === 'kadin' || g === 'f') return 'Female';
-  if (g === 'male' || g === 'erkek' || g === 'm') return 'Male';
-  if (g === 'other' || g === 'diğer' || g === 'diger') return 'Other';
-  return gender ? String(gender) : '';
+  return beautyGenderLabelEn(gender);
 }
 
 function formatTierLabel(tier: string | null | undefined): string {

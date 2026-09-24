@@ -4,6 +4,7 @@ import { RetailExFlatFieldLabel } from '../../shared/RetailExFlatModal';
 import { PartialDateFields } from '../../shared/PartialDateFields';
 import { useLanguage } from '../../../contexts/LanguageContext';
 import type { BeautyCustomer } from '../../../types/beauty';
+import { BEAUTY_GENDER_OPTIONS_EN } from '../../../utils/beautyGenderLabel';
 
 /** RetailExFlatModal (body portal) içindeki Select dropdown z-index */
 const ANT_SELECT_POPUP_Z = 2147483647;
@@ -175,18 +176,17 @@ export function BeautyCustomerEditFormFields({
                         {...beautyCustomerFormSelectProps}
                         className="w-full [&_.ant-select-selector]:!rounded-2xl [&_.ant-select-selector]:!py-1"
                         allowClear
-                        placeholder={tm('bGenderPlaceholder')}
+                        placeholder="Select"
                         value={normalizeBeautyCustomerGender(value.gender) ?? undefined}
                         onChange={v =>
                             set({
                                 gender: (v as BeautyCustomer['gender']) ?? null,
                             })
                         }
-                        options={[
-                            { value: 'female', label: tm('bGenderFemale') },
-                            { value: 'male', label: tm('bGenderMale') },
-                            { value: 'other', label: tm('bGenderOther') },
-                        ]}
+                        options={BEAUTY_GENDER_OPTIONS_EN.map(o => ({
+                            value: o.value,
+                            label: o.label,
+                        }))}
                     />
                     {genderRawLabel(value.gender) &&
                         normalizeBeautyCustomerGender(value.gender) === null && (

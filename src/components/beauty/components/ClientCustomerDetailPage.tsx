@@ -57,6 +57,7 @@ import type {
     BeautyCustomerHealth,
 } from '../../../types/beauty';
 import { formatMoneyAmount } from '../../../utils/formatMoney';
+import { beautyGenderLabelEn } from '../../../utils/beautyGenderLabel';
 import { beautySalePocketCollected, beautySaleRemainingCari } from '../../../utils/saleCollectedAmounts';
 import { fetchCurrentAccounts } from '../../../services/api/currentAccounts';
 import { ERP_SETTINGS, getAppDefaultCurrency } from '../../../services/postgres';
@@ -1733,10 +1734,8 @@ export function ClientCustomerDetailPage({ customerId, onBack }: ClientCustomerD
                                             children: (() => {
                                                 const g = selected.gender;
                                                 if (!g) return '—';
-                                                if (g === 'female') return tm('bGenderFemale');
-                                                if (g === 'male') return tm('bGenderMale');
-                                                if (g === 'other') return tm('bGenderOther');
-                                                return String(g);
+                                                const label = beautyGenderLabelEn(g);
+                                                return label || String(g);
                                             })(),
                                         },
                                         {

@@ -59,7 +59,8 @@ export function ClientCRM({ onOpenCustomer }: ClientCRMProps) {
     const [saving, setSaving] = useState(false);
     const [phoneDupMatches, setPhoneDupMatches] = useState<PhoneMatchCustomer[] | null>(null);
     const [currentAccountCustomers, setCurrentAccountCustomers] = useState<BeautyCustomer[]>([]);
-    const [printCustomer, setPrintCustomer] = useState<BeautyCustomer | null>(null);
+    const [selectedCustomers, setSelectedCustomers] = useState<BeautyCustomer[]>([]);
+    const [printTargets, setPrintTargets] = useState<BeautyCustomer[] | null>(null);
 
     useEffect(() => {
         void (async () => {
@@ -359,7 +360,7 @@ export function ClientCRM({ onOpenCustomer }: ClientCRMProps) {
                             className="p-1.5 text-gray-400 hover:text-violet-700 hover:bg-violet-50 rounded transition-colors"
                             onClick={e => {
                                 e.stopPropagation();
-                                setPrintCustomer(row.original);
+                                setPrintTargets([row.original]);
                             }}
                             aria-label={tm('bPrintPatientFile')}
                             title={tm('bPrintPatientFile')}
@@ -436,6 +437,34 @@ export function ClientCRM({ onOpenCustomer }: ClientCRMProps) {
                         </Button>
                     </div>
 
+                    {selectedCustomers.length > 0 && (
+                        <div
+                            className="flex flex-wrap items-center gap-2 border-b px-4 py-2 shrink-0 bg-violet-50/80"
+                            style={{ borderColor: RETAILEX_BORDER_SUBTLE }}
+                        >
+                            <span className="text-xs font-semibold text-violet-800">
+                                {tm('bBulkSelectedCount').replace(
+                                    '{count}',
+                                    String(selectedCustomers.length),
+                                )}
+                            </span>
+                            <Button
+                                type="primary"
+                                size="small"
+                                icon={<Printer className="w-3.5 h-3.5" />}
+                                onClick={() => setPrintTargets([...selectedCustomers])}
+                            >
+                                {tm('bBulkPrintPatientFile').replace(
+                                    '{count}',
+                                    String(selectedCustomers.length),
+                                )}
+                            </Button>
+                            <Button size="small" onClick={() => setSelectedCustomers([])}>
+                                {tm('bClearSelection')}
+                            </Button>
+                        </div>
+                    )}
+
                     <CustomerFileIdDuplicatesPanel
                         customers={mergedCustomers}
                         onChanged={async () => {
@@ -494,6 +523,8 @@ export function ClientCRM({ onOpenCustomer }: ClientCRMProps) {
                             pageSizeOptions={[50, 100, 200]}
                             enableColumnResizing
                             enableExcelExport={false}
+                            enableSelection
+                            onSelectionChange={setSelectedCustomers}
                             storageNamespace="beautyClientCrmList"
                             height="calc(100vh - 240px)"
                             onRefresh={() => loadCustomers()}
@@ -588,10 +619,10 @@ export function ClientCRM({ onOpenCustomer }: ClientCRMProps) {
                     </PercentBodyModal>
                 )}
 
-                {printCustomer && (
+                {printTargets && printTargets.length > 0 && (
                     <PatientFilePrintModal
-                        customer={printCustomer}
-                        onClose={() => setPrintCustomer(null)}
+                        customers={printTargets}
+                        onClose={() => setPrintTargets(null)}
                     />
                 )}
             </div>

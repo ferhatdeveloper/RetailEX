@@ -3380,10 +3380,10 @@ export function AppointmentPOS({
                                                                 }
                                                                 style={{ ...selStyle, borderRadius: 10, height: 40 }}
                                                             >
-                                                                <option value="">{tm('bGenderPlaceholder')}</option>
-                                                                <option value="female">{tm('bGenderFemale')}</option>
-                                                                <option value="male">{tm('bGenderMale')}</option>
-                                                                <option value="other">{tm('bGenderOther')}</option>
+                                                                <option value="">Select</option>
+                                                                <option value="female">Female</option>
+                                                                <option value="male">Male</option>
+                                                                <option value="other">Other</option>
                                                             </select>
                                                         </Field>
                                                         <Field label={tm('bCustomerTier')}>
