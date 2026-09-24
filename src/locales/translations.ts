@@ -3023,6 +3023,8 @@ export const translations: any = {
         shareHint: 'Cari karttaki pay',
         statementTitle: 'Ortak Hesap Ekstresi',
         statementEmpty: 'Bu tarih aralığında ortak hesap hareketi yok.',
+        colDebit: 'Para girişi / Hak ediş',
+        colCredit: 'Para çıkışı / Yapılan ödeme',
       },
       payroll: {
         title: 'Maaş / Avans',
@@ -4675,6 +4677,8 @@ export const translations: any = {
         shareHint: 'Share on partner card',
         statementTitle: 'Partner Account Statement',
         statementEmpty: 'No partner account movements in this date range.',
+        colDebit: 'Money in / Entitlement',
+        colCredit: 'Money out / Payment made',
       },
       payroll: {
         title: 'Salary / Advance',
@@ -6315,6 +6319,8 @@ export const translations: any = {
         shareHint: 'نسبة الحصة في بطاقة الشريك',
         statementTitle: 'كشف حساب الشريك',
         statementEmpty: 'لا توجد حركات حساب شريك في هذا النطاق.',
+        colDebit: 'دخول المال / الاستحقاق',
+        colCredit: 'خروج المال / الدفع',
       },
       payroll: {
         title: 'الراتب / السلفة',
@@ -8005,6 +8011,8 @@ export const translations: any = {
         shareHint: 'ڕێژەی هاوبەشی لەسەر کارت',
         statementTitle: 'کەشفی حسابی هاوبەش',
         statementEmpty: 'لەم ماوەیەدا جووڵەی حسابی هاوبەش نییە.',
+        colDebit: 'هاتنی پارە / ماف',
+        colCredit: 'دەرچوونی پارە / پارەدان',
       },
       payroll: {
         title: 'مووچە / پێشەکی',

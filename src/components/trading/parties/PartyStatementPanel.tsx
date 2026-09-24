@@ -42,6 +42,10 @@ export function PartyStatementPanel({ party, onClose }: PartyStatementPanelProps
   const t = useNestedT();
   const { tm } = useLanguage();
   const defaultRange = useMemo(() => defaultEkstreDateRange(party.card_type), [party.card_type]);
+  const isPartner = party.card_type === 'partner';
+  const debitColLabel = isPartner ? t('party.partnerCash.colDebit') : tm('debtor');
+  const creditColLabel = isPartner ? t('party.partnerCash.colCredit') : tm('creditor');
+  const balanceColLabel = tm('balance');
   const [start, setStart] = useState(defaultRange.start);
   const [end, setEnd] = useState(defaultRange.end);
   const [showCancelled, setShowCancelled] = useState(false);
@@ -104,6 +108,9 @@ export function PartyStatementPanel({ party, onClose }: PartyStatementPanelProps
         openingLabel: t('party.statement.opening'),
         closingLabel: t('party.statement.closing'),
         cardBalanceLabel: t('party.fields.balance'),
+        debitLabel: debitColLabel,
+        creditLabel: creditColLabel,
+        balanceLabel: balanceColLabel,
       });
     } catch (err: unknown) {
       toast.error(err instanceof Error ? err.message : t('party.statement.printError'));
@@ -323,11 +330,11 @@ export function PartyStatementPanel({ party, onClose }: PartyStatementPanelProps
           <table className="w-full text-sm">
             <thead className="sticky top-0 z-[1] border-b border-gray-200 bg-gray-100">
               <tr>
-                {[tm('dateLabel'), tm('ficheNo'), tm('type'), tm('description'), tm('debtor'), tm('creditor'), tm('balance'), ''].map((h, hi) => (
+                {[tm('dateLabel'), tm('ficheNo'), tm('type'), tm('description'), debitColLabel, creditColLabel, balanceColLabel, ''].map((h, hi) => (
                   <th
                     key={h || `act-${hi}`}
                     className={`px-4 py-3 text-[11px] font-black uppercase tracking-wider text-gray-600 ${
-                      [tm('debtor'), tm('creditor'), tm('balance')].includes(h) ? 'text-right' : h === '' ? 'text-center w-12' : 'text-left'
+                      [debitColLabel, creditColLabel, balanceColLabel].includes(h) ? 'text-right' : h === '' ? 'text-center w-12' : 'text-left'
                     }`}
                   >
                     {h}

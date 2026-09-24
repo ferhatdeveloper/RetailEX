@@ -134,10 +134,16 @@ export async function printPartyStatementDoc(opts: {
   openingLabel: string;
   closingLabel: string;
   cardBalanceLabel: string;
+  debitLabel?: string;
+  creditLabel?: string;
+  balanceLabel?: string;
 }): Promise<void> {
   const firm = await firmHeader();
   const rows = opts.statement.rows || [];
   const printedAt = `${fmtDate(new Date().toISOString().slice(0, 10))} ${new Date().toLocaleTimeString('tr-TR', { hour: '2-digit', minute: '2-digit' })}`;
+  const debitHdr = opts.debitLabel || 'Borç';
+  const creditHdr = opts.creditLabel || 'Alacak';
+  const balanceHdr = opts.balanceLabel || 'Bakiye';
   const body = rows.map((r: PartyStatementLine) => `
     <tr>
       <td class="mono">${esc(fmtDate(r.date))}</td>
@@ -206,7 +212,7 @@ export async function printPartyStatementDoc(opts: {
     <thead>
       <tr>
         <th>Tarih</th><th>Fiş No</th><th>Tür</th><th>Açıklama</th>
-        <th class="num">Borç</th><th class="num">Alacak</th><th class="num">Bakiye</th>
+        <th class="num">${esc(debitHdr)}</th><th class="num">${esc(creditHdr)}</th><th class="num">${esc(balanceHdr)}</th>
       </tr>
     </thead>
     <tbody>${body}</tbody>
