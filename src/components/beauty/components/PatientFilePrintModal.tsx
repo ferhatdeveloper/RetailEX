@@ -339,7 +339,7 @@ export function PatientFilePrintModal({ customer, customers, onClose }: PatientF
     <ReportViewerModule
       template={reportTemplate}
       data={firstContext}
-      dataPages={contexts.length > 1 ? contexts : undefined}
+      dataPages={contexts}
       onClose={onClose}
       subtitle={subtitle}
       chromeExtra={

@@ -37,6 +37,7 @@ export function ReportViewerModule({
 }: ReportViewerProps) {
     const { tm } = useLanguage();
     const paperRef = useRef<HTMLDivElement>(null);
+    const paperElsRef = useRef<(HTMLDivElement | null)[]>([]);
     const pw = template.pageSize?.width || DEFAULT_A4.width;
     const ph = template.pageSize?.height || DEFAULT_A4.height;
     /** @page ve baskı için güvenli mm — geçersiz / çok küçük değerler önizlemeyi kilitleyebilir */
@@ -48,6 +49,10 @@ export function ReportViewerModule({
         return [data];
     }, [data, dataPages]);
     const isMultiPage = pages.length > 1;
+
+    useEffect(() => {
+        paperElsRef.current = paperElsRef.current.slice(0, pages.length);
+    }, [pages.length]);
 
     const isLabelTemplate = template.category === 'etiket';
     const [printRotation, setPrintRotation] = useState<EtiketPrintRotation>(() => {
@@ -78,99 +83,133 @@ export function ReportViewerModule({
         }
     };
 
-    /** Toplu sayfa: ana pencerede fixed/flex kırılması Chrome’da tek sayfa gösteriyor — iframe ile yazdır. */
+    /**
+     * Toplu yazdırma: fixed overlay / 0-boyutlu iframe Chrome’da tek sayfa basıyor.
+     * Kağıtları body altında normal akıştaki bir köke klonlayıp window.print() çağır.
+     */
     const handlePrint = () => {
         if (!isMultiPage) {
             window.print();
             return;
         }
-        const papers = Array.from(
-            document.querySelectorAll<HTMLElement>('.report-viewer-shell--multi .report-viewer-paper'),
-        );
+
+        const ROOT_ID = 'retailex-bulk-print-root';
+        const STYLE_ID = 'retailex-bulk-print-style';
+        document.getElementById(ROOT_ID)?.remove();
+        document.getElementById(STYLE_ID)?.remove();
+
+        let papers = paperElsRef.current.filter((el): el is HTMLDivElement => !!el);
         if (papers.length <= 1) {
+            papers = Array.from(
+                document.querySelectorAll<HTMLElement>('.report-viewer-shell--multi .report-viewer-paper'),
+            );
+        }
+        if (papers.length <= 1) {
+            // Yine tek sayfa — yine de dene (önizleme kaydırılmamış olabilir)
             window.print();
             return;
         }
 
-        const iframe = document.createElement('iframe');
-        iframe.setAttribute('aria-hidden', 'true');
-        iframe.style.cssText =
-            'position:fixed;right:0;bottom:0;width:0;height:0;border:0;opacity:0;pointer-events:none;';
-        document.body.appendChild(iframe);
-
-        const doc = iframe.contentDocument;
-        const win = iframe.contentWindow;
-        if (!doc || !win) {
-            iframe.remove();
-            window.print();
-            return;
-        }
-
-        // Ana sayfadaki @media print kuralları (shell dışı gizleme) iframe’de içeriği siler —
-        // yalnızca global stylesheet link’lerini al.
-        const styleHtml = Array.from(document.querySelectorAll('link[rel="stylesheet"]'))
-            .map((el) => el.outerHTML)
-            .join('\n');
-
-        doc.open();
-        doc.write(`<!DOCTYPE html><html><head><meta charset="utf-8"/><title>${String(template.name || 'Print').replace(/</g, '')}</title>
-${styleHtml}
-<style>
-  @page { size: ${pageWPrint}mm ${pageHPrint}mm; margin: 0; }
-  html, body { margin: 0 !important; padding: 0 !important; background: #fff !important; }
-  .page {
-    width: ${pageWPrint}mm;
-    height: ${pageHPrint}mm;
-    margin: 0;
-    padding: 0;
-    overflow: hidden;
-    position: relative;
-    box-sizing: border-box;
-    page-break-after: always;
-    break-after: page;
-    page-break-inside: avoid;
-    break-inside: avoid;
-    box-shadow: none !important;
+        const style = document.createElement('style');
+        style.id = STYLE_ID;
+        style.textContent = `
+@media screen {
+  #${ROOT_ID} {
+    position: fixed !important;
+    left: -12000px !important;
+    top: 0 !important;
+    width: ${pageWPrint}mm !important;
+    opacity: 0 !important;
+    pointer-events: none !important;
+    z-index: -1 !important;
   }
-  .page:last-child {
-    page-break-after: auto;
-    break-after: auto;
+}
+@media print {
+  html, body {
+    margin: 0 !important;
+    padding: 0 !important;
+    width: auto !important;
+    height: auto !important;
+    overflow: visible !important;
+    background: #fff !important;
   }
-  .report-viewer-paper {
+  body.retailex-bulk-printing > *:not(#${ROOT_ID}) {
+    display: none !important;
+  }
+  #${ROOT_ID} {
+    display: block !important;
+    position: static !important;
+    left: auto !important;
+    top: auto !important;
+    width: ${pageWPrint}mm !important;
+    height: auto !important;
+    margin: 0 !important;
+    padding: 0 !important;
+    opacity: 1 !important;
+    overflow: visible !important;
+    background: #fff !important;
+  }
+  #${ROOT_ID} .retailex-bulk-print-page {
+    display: block !important;
+    width: ${pageWPrint}mm !important;
+    height: ${pageHPrint}mm !important;
+    margin: 0 !important;
+    padding: 0 !important;
+    overflow: hidden !important;
+    box-sizing: border-box !important;
+    page-break-after: always !important;
+    break-after: page !important;
+    page-break-inside: avoid !important;
+    break-inside: avoid !important;
+  }
+  #${ROOT_ID} .retailex-bulk-print-page:last-child {
+    page-break-after: auto !important;
+    break-after: auto !important;
+  }
+  #${ROOT_ID} .report-viewer-paper {
     box-shadow: none !important;
     margin: 0 !important;
   }
-</style></head><body></body></html>`);
-        doc.close();
+  @page {
+    size: ${pageWPrint}mm ${pageHPrint}mm;
+    margin: 0 !important;
+  }
+}`;
+        document.head.appendChild(style);
 
+        const root = document.createElement('div');
+        root.id = ROOT_ID;
+        root.setAttribute('data-page-count', String(papers.length));
         for (const paper of papers) {
-            const page = doc.createElement('div');
-            page.className = 'page';
+            const page = document.createElement('div');
+            page.className = 'retailex-bulk-print-page';
             page.appendChild(paper.cloneNode(true));
-            doc.body.appendChild(page);
+            root.appendChild(page);
         }
+        document.body.appendChild(root);
+        document.body.classList.add('retailex-bulk-printing');
 
+        let cleaned = false;
         const cleanup = () => {
-            try {
-                iframe.remove();
-            } catch {
-                /* ignore */
-            }
+            if (cleaned) return;
+            cleaned = true;
+            document.body.classList.remove('retailex-bulk-printing');
+            root.remove();
+            style.remove();
+            window.removeEventListener('afterprint', cleanup);
         };
+        window.addEventListener('afterprint', cleanup);
 
-        const runPrint = () => {
-            try {
-                win.focus();
-                win.print();
-            } finally {
-                // Yazdır diyaloğu kapandıktan sonra temizle
-                win.addEventListener('afterprint', cleanup, { once: true });
-                setTimeout(cleanup, 60_000);
-            }
-        };
-
-        // SVG barkod / font yerleşimi için kısa gecikme
-        setTimeout(runPrint, 300);
+        // Layout + fontlar için bir kare bekle
+        requestAnimationFrame(() => {
+            requestAnimationFrame(() => {
+                try {
+                    window.print();
+                } finally {
+                    setTimeout(cleanup, 120_000);
+                }
+            });
+        });
     };
 
     const rotationOptions: { value: EtiketPrintRotation; label: string; hint: string }[] = [
@@ -264,6 +303,7 @@ ${styleHtml}
             </div>
         );
         const attachRef = (el: HTMLDivElement | null) => {
+            paperElsRef.current[pageIndex] = el;
             if (pageIndex === 0) paperRef.current = el;
         };
         if (effectiveRotation === 0) {
@@ -272,6 +312,7 @@ ${styleHtml}
                     key={`paper-${pageIndex}`}
                     ref={attachRef}
                     className="report-viewer-paper bg-white shadow-2xl relative flex-shrink-0 print:m-0 print:shadow-none box-border"
+                    data-print-page={pageIndex + 1}
                     style={{
                         width: `${pwPrint}mm`,
                         height: `${phPrint}mm`,
@@ -286,6 +327,7 @@ ${styleHtml}
                 key={`paper-${pageIndex}`}
                 ref={attachRef}
                 className="report-viewer-paper bg-white shadow-2xl relative flex-shrink-0 print:m-0 print:shadow-none box-border"
+                data-print-page={pageIndex + 1}
                 style={{
                     width: `${pageWPrint}mm`,
                     height: `${pageHPrint}mm`,
@@ -308,10 +350,6 @@ ${styleHtml}
         );
     };
 
-    /**
-     * Tüm body kardeşlerini display:none yapmak bazı Chromium sürümlerinde yazdır önizlemesini
-     * “Önizleme yükleniyor”da bırakır. #root ve diğer portal kardeşleri yükseklik 0 + gizle ile akıştan düşürülür.
-     */
     /** Termal etikette: tam sayfa mm + sol üst sabit; aksi halde tarayıcı/sürücü içeriği ortalayıp sağa kaydırabiliyor. */
     const labelHtmlBody =
         isLabelTemplate &&
@@ -322,88 +360,25 @@ ${styleHtml}
     max-height: ${pageHPrint}mm !important;
     overflow: hidden !important;`;
 
-    const multiShellCss = isMultiPage
+    /**
+     * Tek sayfa: shell üzerinden yazdır.
+     * Çok sayfa: Yazdır butonu #retailex-bulk-print-root kullanır — shell @media print’te gizlenir
+     * (aksi halde body>*:not(.report-viewer-shell) kuralı toplu kökü siler / tek sayfaya kırpar).
+     */
+    const printCss = isMultiPage
         ? `
-    /* fixed / flex / filter = Chrome’da sayfa kırılması çalışmaz */
-    position: static !important;
-    inset: auto !important;
-    top: auto !important;
-    left: auto !important;
-    right: auto !important;
-    bottom: auto !important;
-    width: ${pageWPrint}mm !important;
-    height: auto !important;
-    min-height: auto !important;
-    max-width: none !important;
-    max-height: none !important;
-    overflow: visible !important;
-    display: block !important;
-    flex: none !important;
-    flex-direction: unset !important;
-    isolation: auto !important;
-    transform: none !important;
-    filter: none !important;
-    -webkit-backdrop-filter: none !important;
-    backdrop-filter: none !important;`
+@media print {
+  .report-viewer-shell--multi {
+    display: none !important;
+  }
+}`
         : `
-    position: fixed !important;
-    top: 0 !important;
-    left: 0 !important;
-    right: auto !important;
-    bottom: auto !important;
-    inset: auto !important;
-    width: ${pageWPrint}mm !important;
-    height: ${pageHPrint}mm !important;
-    max-width: ${pageWPrint}mm !important;
-    max-height: ${pageHPrint}mm !important;
-    overflow: hidden !important;`;
-
-    const multiStageCss = isMultiPage
-        ? `
-    position: static !important;
-    width: ${pageWPrint}mm !important;
-    height: auto !important;
-    min-height: auto !important;
-    max-width: none !important;
-    max-height: none !important;
-    overflow: visible !important;
-    display: block !important;
-    gap: 0 !important;
-    padding: 0 !important;
-    margin: 0 !important;
-    flex: none !important;`
-        : `
-    width: ${pageWPrint}mm !important;
-    height: ${pageHPrint}mm !important;
-    max-width: ${pageWPrint}mm !important;
-    max-height: ${pageHPrint}mm !important;
-    overflow: hidden !important;`;
-
-    const paperBreakCss = isMultiPage
-        ? `
-    page-break-after: always !important;
-    break-after: page !important;
-    display: block !important;`
-        : `
-    page-break-after: avoid !important;
-    break-after: avoid !important;`;
-
-    const printCss = `
 @media print {
   html, body {
     margin: 0 !important;
     padding: 0 !important;
-    ${
-      isMultiPage
-        ? `width: auto !important;
-    height: auto !important;
-    max-width: none !important;
-    max-height: none !important;
-    overflow: visible !important;`
-        : labelHtmlBody ||
-          `width: 100% !important;
-    height: auto !important;`
-    }
+    ${labelHtmlBody || `width: 100% !important;
+    height: auto !important;`}
     min-height: 0 !important;
     background: #fff !important;
   }
@@ -426,6 +401,12 @@ ${styleHtml}
     display: none !important;
   }
   .report-viewer-shell {
+    position: fixed !important;
+    top: 0 !important;
+    left: 0 !important;
+    right: auto !important;
+    bottom: auto !important;
+    inset: auto !important;
     margin: 0 !important;
     padding: 0 !important;
     min-height: 0 !important;
@@ -434,7 +415,11 @@ ${styleHtml}
     -webkit-print-color-adjust: exact !important;
     print-color-adjust: exact !important;
     visibility: visible !important;
-    ${multiShellCss}
+    width: ${pageWPrint}mm !important;
+    height: ${pageHPrint}mm !important;
+    max-width: ${pageWPrint}mm !important;
+    max-height: ${pageHPrint}mm !important;
+    overflow: hidden !important;
   }
   .report-viewer-shell * {
     visibility: visible !important;
@@ -445,7 +430,11 @@ ${styleHtml}
     padding: 0 !important;
     margin: 0 !important;
     box-sizing: border-box !important;
-    ${multiStageCss}
+    width: ${pageWPrint}mm !important;
+    height: ${pageHPrint}mm !important;
+    max-width: ${pageWPrint}mm !important;
+    max-height: ${pageHPrint}mm !important;
+    overflow: hidden !important;
   }
   .report-viewer-paper {
     position: relative !important;
@@ -460,11 +449,8 @@ ${styleHtml}
     box-shadow: none !important;
     page-break-inside: avoid !important;
     break-inside: avoid !important;
-    ${paperBreakCss}
-  }
-  .report-viewer-paper:last-child {
-    page-break-after: auto !important;
-    break-after: auto !important;
+    page-break-after: avoid !important;
+    break-after: avoid !important;
   }
   @page {
     size: ${pageWPrint}mm ${pageHPrint}mm;
