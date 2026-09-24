@@ -1,4 +1,4 @@
-import React, { useEffect, useRef, useState } from 'react';
+import React, { useEffect, useRef, useState, type ReactNode } from 'react';
 import { createPortal } from 'react-dom';
 import { DEFAULT_A4, ReportTemplate, getBoundValue, exportToPDF } from './designerUtils';
 import { Download, Printer, X, RotateCw } from 'lucide-react';
@@ -13,6 +13,10 @@ interface ReportViewerProps {
     template: ReportTemplate;
     data: any;
     onClose: () => void;
+    /** Araç çubuğu alt başlık (örn. müşteri adı) */
+    subtitle?: string;
+    /** Yazdır / PDF soluna ek kontroller (şablon seçimi, tasarım düzenle) */
+    chromeExtra?: ReactNode;
 }
 
 function clampPageMm(n: unknown, fallback: number): number {
@@ -21,7 +25,7 @@ function clampPageMm(n: unknown, fallback: number): number {
     return Math.min(1200, Math.max(8, x));
 }
 
-export function ReportViewerModule({ template, data, onClose }: ReportViewerProps) {
+export function ReportViewerModule({ template, data, onClose, subtitle, chromeExtra }: ReportViewerProps) {
     const { tm } = useLanguage();
     const paperRef = useRef<HTMLDivElement>(null);
     const pw = template.pageSize?.width || DEFAULT_A4.width;
@@ -301,11 +305,14 @@ export function ReportViewerModule({ template, data, onClose }: ReportViewerProp
                     <div className="flex items-center gap-4 min-w-0">
                         <div className="flex flex-col min-w-0">
                             <h2 className="text-sm font-bold text-gray-900 truncate">{template.name}</h2>
-                            <p className="text-[10px] text-gray-500 font-medium uppercase tracking-wider">Rapor Önizleme</p>
+                            <p className="text-[10px] text-gray-500 font-medium uppercase tracking-wider truncate">
+                                {subtitle?.trim() || 'Rapor Önizleme'}
+                            </p>
                         </div>
                     </div>
 
-                    <div className="flex items-center gap-2 shrink-0">
+                    <div className="flex items-center gap-2 shrink-0 flex-wrap justify-end">
+                    {chromeExtra}
                     <button
                         type="button"
                         onClick={handleDownload}

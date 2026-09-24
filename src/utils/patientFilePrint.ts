@@ -1,131 +1,92 @@
 /**
  * Hasta dosya yazdırma — Dizayn Merkezi `patient_file` scope.
+ * Önizleme ekranı her zaman gösterilir; sessiz kuyruk yok.
  */
 import type { Template } from '../core/types/templates';
 import { DEFAULT_TEMPLATES } from '../core/types/templates';
-import type { ReportTemplate } from '../components/reports/designerUtils';
 import { getBindingForScope } from '../services/printDesignBindingService';
 import { getReceiptSettings } from '../services/receiptSettingsService';
 import {
   buildPatientFilePrintContext,
-  convertTemplateToReportTemplate,
   type PatientFileCustomerLike,
 } from '../services/templateRenderService';
-import {
-  enqueueFastReportFrxJob,
-  enqueueFastReportTemplateJob,
-  isWindowsPrinterServiceEnabled,
-} from '../services/unifiedPrintQueueService';
 import { companyHeaderFromReceiptSettings } from './materialExtractPrint';
 import { ERP_SETTINGS } from '../services/postgres';
 
 export const PATIENT_FILE_PRINT_SCOPE = 'patient_file' as const;
 export const PATIENT_FILE_DEFAULT_TEMPLATE_ID = 'default-a4-patient-file';
 
-export type PatientFilePrintResult =
-  | { mode: 'viewer'; reportTemplate: ReportTemplate; context: Record<string, unknown> }
-  | { mode: 'queued' };
-
-function resolvePatientFileTemplate(
-  resolveTemplateForScope: (type: 'invoice', scope: typeof PATIENT_FILE_PRINT_SCOPE) => Template | null,
+export function listPatientFileTemplates(
   getTemplatesForScope: (type: 'invoice', scope: typeof PATIENT_FILE_PRINT_SCOPE) => Template[],
   designTemplates: Template[],
-  preferredId?: string | null,
-): Template | null {
-  if (preferredId) {
-    const hit = designTemplates.find((t) => t.id === preferredId);
-    if (hit) return hit;
+): Template[] {
+  const map = new Map<string, Template>();
+  for (const t of getTemplatesForScope('invoice', PATIENT_FILE_PRINT_SCOPE)) {
+    if (t?.id) map.set(t.id, t);
   }
-  const resolved = resolveTemplateForScope('invoice', PATIENT_FILE_PRINT_SCOPE);
-  if (resolved) return resolved;
-  const scoped = getTemplatesForScope('invoice', PATIENT_FILE_PRINT_SCOPE);
-  if (scoped[0]) return scoped[0];
-  return (
-    DEFAULT_TEMPLATES.find((t) => t.id === PATIENT_FILE_DEFAULT_TEMPLATE_ID) ??
-    DEFAULT_TEMPLATES.find((t) => (t.usageScopes ?? []).includes(PATIENT_FILE_PRINT_SCOPE)) ??
-    null
-  );
+  for (const t of designTemplates) {
+    if (
+      t?.id &&
+      t.type === 'invoice' &&
+      (t.usageScopes ?? []).includes(PATIENT_FILE_PRINT_SCOPE) &&
+      !map.has(t.id)
+    ) {
+      map.set(t.id, t);
+    }
+  }
+  for (const t of DEFAULT_TEMPLATES) {
+    if (
+      t.id &&
+      (t.usageScopes ?? []).includes(PATIENT_FILE_PRINT_SCOPE) &&
+      !map.has(t.id)
+    ) {
+      map.set(t.id, t);
+    }
+  }
+  return Array.from(map.values());
 }
 
-/** Müşteri kartını Hasta Dosya şablonu ile yazdır / önizle */
-export async function printPatientFileForCustomer(params: {
-  customer: PatientFileCustomerLike;
-  resolveTemplateForScope: (type: 'invoice', scope: typeof PATIENT_FILE_PRINT_SCOPE) => Template | null;
-  getTemplatesForScope: (type: 'invoice', scope: typeof PATIENT_FILE_PRINT_SCOPE) => Template[];
-  designTemplates: Template[];
-  firmNr?: string;
-}): Promise<PatientFilePrintResult> {
-  const firmNr = String(params.firmNr || ERP_SETTINGS.firmNr || '001').trim().padStart(3, '0');
-  const receipt = await getReceiptSettings(firmNr).catch(() => ({}));
+export function resolvePatientFileTemplateId(
+  templates: Template[],
+  resolveTemplateForScope: (type: 'invoice', scope: typeof PATIENT_FILE_PRINT_SCOPE) => Template | null,
+  preferredId?: string | null,
+): string | null {
+  if (preferredId && templates.some((t) => t.id === preferredId)) return preferredId;
+  const resolved = resolveTemplateForScope('invoice', PATIENT_FILE_PRINT_SCOPE);
+  if (resolved && templates.some((t) => t.id === resolved.id)) return resolved.id;
+  const defaultHit = templates.find((t) => t.id === PATIENT_FILE_DEFAULT_TEMPLATE_ID);
+  if (defaultHit) return defaultHit.id;
+  return templates[0]?.id ?? null;
+}
+
+/** Müşteri verisi + mağaza başlığı → şablon context (yazdırma önizlemesi) */
+export async function preparePatientFilePrintContext(
+  customer: PatientFileCustomerLike,
+  firmNr?: string,
+): Promise<Record<string, unknown>> {
+  const fn = String(firmNr || ERP_SETTINGS.firmNr || '001').trim().padStart(3, '0');
+  const receipt = await getReceiptSettings(fn).catch(() => ({}));
   const header = companyHeaderFromReceiptSettings(receipt, 'RetailEX');
-  const context = buildPatientFilePrintContext(params.customer, {
+  return buildPatientFilePrintContext(customer, {
     storeName: header.companyName,
     storeAddress: header.companyAddress,
     storePhone: header.companyPhone,
     storeTaxNo: header.companyTaxNumber,
   });
+}
 
-  let preferredId: string | null = null;
-  let designKind: 'fastreport_frx' | 'design_center' | 'builtin' | null = null;
-  let designName: string | null = null;
+/** Yazdırma Seçenekleri bağından tercih edilen Dizayn Merkezi şablon id */
+export async function getPreferredPatientFileTemplateId(
+  firmNr?: string,
+): Promise<string | null> {
+  const fn = String(firmNr || ERP_SETTINGS.firmNr || '001').trim().padStart(3, '0');
   try {
-    const binding = await getBindingForScope(firmNr, PATIENT_FILE_PRINT_SCOPE);
-    if (binding?.designId) {
-      preferredId = binding.designId;
-      designKind = binding.designKind;
-      designName = binding.designName;
+    const binding = await getBindingForScope(fn, PATIENT_FILE_PRINT_SCOPE);
+    if (binding?.designKind === 'design_center' && binding.designId) {
+      return binding.designId;
     }
   } catch {
-    /* binding yoksa şablon çözümleyiciye düş */
+    /* yok */
   }
-
-  if (designKind === 'fastreport_frx' && preferredId) {
-    if (!(await isWindowsPrinterServiceEnabled())) {
-      throw new Error('FastReport .frx yazdırma için Windows yazıcı servisi açık olmalı.');
-    }
-    await enqueueFastReportFrxJob({
-      designId: preferredId,
-      designName,
-      scope: PATIENT_FILE_PRINT_SCOPE,
-      data: context,
-      connection: 'system',
-      refType: 'customer',
-      refId: params.customer.id ?? null,
-      sourceSystem: 'web',
-      priority: 80,
-    });
-    return { mode: 'queued' };
-  }
-
-  const template = resolvePatientFileTemplate(
-    params.resolveTemplateForScope,
-    params.getTemplatesForScope,
-    params.designTemplates,
-    preferredId,
-  );
-  if (!template) {
-    throw new Error(
-      'Hasta dosya şablonu bulunamadı. Dizayn Merkezi’nde «Hasta Dosya» kapsamlı bir şablon ekleyin.',
-    );
-  }
-
-  if (await isWindowsPrinterServiceEnabled()) {
-    await enqueueFastReportTemplateJob({
-      templateId: template.id,
-      type: 'invoice',
-      data: context,
-      connection: 'system',
-      refType: 'customer',
-      refId: params.customer.id ?? null,
-      sourceSystem: 'web',
-      priority: 80,
-    });
-    return { mode: 'queued' };
-  }
-
-  return {
-    mode: 'viewer',
-    reportTemplate: convertTemplateToReportTemplate(template),
-    context,
-  };
+  return null;
 }

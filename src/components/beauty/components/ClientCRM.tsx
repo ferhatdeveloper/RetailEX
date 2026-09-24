@@ -1,4 +1,4 @@
-import React, { useCallback, useEffect, useMemo, useState } from 'react';
+import React, { useEffect, useMemo, useState } from 'react';
 import { Button, Card, Space, Typography, Avatar, Tag } from 'antd';
 import {
     RETAILEX_BORDER_SUBTLE,
@@ -13,8 +13,6 @@ import { Edit, Phone, Mail, Search, User, Printer } from 'lucide-react';
 import { RetailExFlatModal } from '../../shared/RetailExFlatModal';
 import { PercentBodyModal, PercentBodyModalScrollBody } from '../../shared/PercentBodyModal';
 import { DevExDataGrid } from '../../shared/DevExDataGrid';
-import { ReportViewerModule } from '../../reports/ReportViewerModule';
-import type { ReportTemplate } from '../../reports/designerUtils';
 import { useBeautyStore } from '../store/useBeautyStore';
 import { useLanguage } from '../../../contexts/LanguageContext';
 import { logger } from '../../../services/loggingService';
@@ -24,14 +22,13 @@ import { fetchCurrentAccounts } from '../../../services/api/currentAccounts';
 import { ERP_SETTINGS } from '../../../services/postgres';
 import { beautyService } from '../../../services/beautyService';
 import { toast } from 'sonner';
-import { useTemplateStore } from '../../../store/useTemplateStore';
-import { printPatientFileForCustomer } from '../../../utils/patientFilePrint';
 import {
     BEAUTY_CUSTOMER_EMPTY_FORM,
     BeautyCustomerEditFormFields,
 } from './BeautyCustomerEditFormFields';
 import { CustomerFileIdDuplicatesPanel } from './CustomerFileIdDuplicatesPanel';
 import { CustomerPhoneDuplicatesPanel } from './CustomerPhoneDuplicatesPanel';
+import { PatientFilePrintModal } from './PatientFilePrintModal';
 import {
     buildFileIdRangeOptions,
     compareFileIdAsc,
@@ -62,41 +59,7 @@ export function ClientCRM({ onOpenCustomer }: ClientCRMProps) {
     const [saving, setSaving] = useState(false);
     const [phoneDupMatches, setPhoneDupMatches] = useState<PhoneMatchCustomer[] | null>(null);
     const [currentAccountCustomers, setCurrentAccountCustomers] = useState<BeautyCustomer[]>([]);
-    const [printViewer, setPrintViewer] = useState<{
-        template: ReportTemplate;
-        data: Record<string, unknown>;
-    } | null>(null);
-    const [printingId, setPrintingId] = useState<string | null>(null);
-    const {
-        loadTemplatesFromDatabase,
-        resolveTemplateForScope,
-        getTemplatesForScope,
-    } = useTemplateStore();
-
-    const handlePrintPatientFile = useCallback(async (customer: BeautyCustomer) => {
-        setPrintingId(customer.id);
-        try {
-            await loadTemplatesFromDatabase();
-            const result = await printPatientFileForCustomer({
-                customer,
-                resolveTemplateForScope,
-                getTemplatesForScope,
-                designTemplates: useTemplateStore.getState().templates,
-                firmNr: ERP_SETTINGS.firmNr,
-            });
-            if (result.mode === 'queued') {
-                toast.success(tm('bPatientFilePrintQueued'));
-                return;
-            }
-            setPrintViewer({ template: result.reportTemplate, data: result.context });
-        } catch (e) {
-            const msg = e instanceof Error ? e.message : String(e);
-            toast.error(msg || tm('bPatientFilePrintError'));
-            logger.error('ClientCRM', 'patient file print failed', e);
-        } finally {
-            setPrintingId(null);
-        }
-    }, [getTemplatesForScope, loadTemplatesFromDatabase, resolveTemplateForScope, tm]);
+    const [printCustomer, setPrintCustomer] = useState<BeautyCustomer | null>(null);
 
     useEffect(() => {
         void (async () => {
@@ -393,12 +356,11 @@ export function ClientCRM({ onOpenCustomer }: ClientCRMProps) {
                     <div className="flex items-center gap-0.5">
                         <button
                             type="button"
-                            className="p-1.5 text-gray-400 hover:text-violet-700 hover:bg-violet-50 rounded transition-colors disabled:opacity-50"
+                            className="p-1.5 text-gray-400 hover:text-violet-700 hover:bg-violet-50 rounded transition-colors"
                             onClick={e => {
                                 e.stopPropagation();
-                                void handlePrintPatientFile(row.original);
+                                setPrintCustomer(row.original);
                             }}
-                            disabled={printingId === row.original.id}
                             aria-label={tm('bPrintPatientFile')}
                             title={tm('bPrintPatientFile')}
                         >
@@ -423,7 +385,7 @@ export function ClientCRM({ onOpenCustomer }: ClientCRMProps) {
                 enableSorting: false,
             }),
         ],
-        [tm, printingId, handlePrintPatientFile],
+        [tm],
     );
 
     return (
@@ -626,11 +588,10 @@ export function ClientCRM({ onOpenCustomer }: ClientCRMProps) {
                     </PercentBodyModal>
                 )}
 
-                {printViewer && (
-                    <ReportViewerModule
-                        template={printViewer.template}
-                        data={printViewer.data}
-                        onClose={() => setPrintViewer(null)}
+                {printCustomer && (
+                    <PatientFilePrintModal
+                        customer={printCustomer}
+                        onClose={() => setPrintCustomer(null)}
                     />
                 )}
             </div>

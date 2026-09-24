@@ -74,10 +74,7 @@ import {
     RETAILEX_PRIMARY,
     RETAILEX_TEXT_PRIMARY,
 } from '../../../theme/retailexAntdTheme';
-import { ReportViewerModule } from '../../reports/ReportViewerModule';
-import type { ReportTemplate } from '../../reports/designerUtils';
-import { useTemplateStore } from '../../../store/useTemplateStore';
-import { printPatientFileForCustomer } from '../../../utils/patientFilePrint';
+import { PatientFilePrintModal } from './PatientFilePrintModal';
 
 /** Ant Design AccountBookOutlined üzerinde ¥ (yen/yuan) vardır — para birimi için kullanma. */
 function CurrencyBadge({ code, className }: { code: string; className?: string }) {
@@ -257,16 +254,7 @@ export function ClientCustomerDetailPage({ customerId, onBack }: ClientCustomerD
     const [historyKindFilter, setHistoryKindFilter] = useState<
         'all' | 'appointment' | 'service_fee' | 'sale' | 'package'
     >('all');
-    const [printViewer, setPrintViewer] = useState<{
-        template: ReportTemplate;
-        data: Record<string, unknown>;
-    } | null>(null);
-    const [printingFile, setPrintingFile] = useState(false);
-    const {
-        loadTemplatesFromDatabase,
-        resolveTemplateForScope,
-        getTemplatesForScope,
-    } = useTemplateStore();
+    const [showPatientFilePrint, setShowPatientFilePrint] = useState(false);
 
     useEffect(() => {
         loadPackages();
@@ -1696,39 +1684,7 @@ export function ClientCustomerDetailPage({ customerId, onBack }: ClientCustomerD
                                         <Button
                                             type="default"
                                             icon={<PrinterOutlined />}
-                                            loading={printingFile}
-                                            onClick={async () => {
-                                                if (!selected) return;
-                                                setPrintingFile(true);
-                                                try {
-                                                    await loadTemplatesFromDatabase();
-                                                    const result = await printPatientFileForCustomer({
-                                                        customer: selected,
-                                                        resolveTemplateForScope,
-                                                        getTemplatesForScope,
-                                                        designTemplates: useTemplateStore.getState().templates,
-                                                        firmNr: ERP_SETTINGS.firmNr,
-                                                    });
-                                                    if (result.mode === 'queued') {
-                                                        toast.success(tm('bPatientFilePrintQueued'));
-                                                        return;
-                                                    }
-                                                    setPrintViewer({
-                                                        template: result.reportTemplate,
-                                                        data: result.context,
-                                                    });
-                                                } catch (e) {
-                                                    const msg = e instanceof Error ? e.message : String(e);
-                                                    toast.error(msg || tm('bPatientFilePrintError'));
-                                                    logger.error(
-                                                        'ClientCustomerDetailPage',
-                                                        'patient file print failed',
-                                                        e,
-                                                    );
-                                                } finally {
-                                                    setPrintingFile(false);
-                                                }
-                                            }}
+                                            onClick={() => setShowPatientFilePrint(true)}
                                         >
                                             {tm('bPrintPatientFile')}
                                         </Button>
@@ -2034,11 +1990,10 @@ export function ClientCustomerDetailPage({ customerId, onBack }: ClientCustomerD
                         variant="standalone"
                     />
                 ) : null}
-                {printViewer && (
-                    <ReportViewerModule
-                        template={printViewer.template}
-                        data={printViewer.data}
-                        onClose={() => setPrintViewer(null)}
+                {showPatientFilePrint && selected && (
+                    <PatientFilePrintModal
+                        customer={selected}
+                        onClose={() => setShowPatientFilePrint(false)}
                     />
                 )}
             </div>
