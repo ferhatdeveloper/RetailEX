@@ -273,6 +273,8 @@ function buildSupplierPatchBody(input: Partial<SupplierInput>): Record<string, u
     tax_nr: 'tax_nr',
     tax_office: 'tax_office',
     notes: 'notes',
+    file_id: 'file_id',
+    birth_date: 'birth_date',
   };
   const body: Record<string, unknown> = {};
   for (const [key, col] of Object.entries(map) as [keyof CustomerInput, string][]) {

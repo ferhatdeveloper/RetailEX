@@ -176,6 +176,18 @@ export function beautySpecialistsTable(fn = firmNr()): string {
   return `beauty.rex_${fn}_beauty_specialists`;
 }
 
+export function beautySatisfactionSurveysTable(fn = firmNr()): string {
+  return `beauty.rex_${fn}_beauty_satisfaction_surveys`;
+}
+
+export function beautySatisfactionQuestionsTable(fn = firmNr()): string {
+  return `beauty.rex_${fn}_beauty_satisfaction_questions`;
+}
+
+export function beautyCustomerFeedbackTable(fn = firmNr(), pn = periodNr()): string {
+  return `beauty.rex_${fn}_${pn}_beauty_customer_feedback`;
+}
+
 export function brandsTable(fn = firmNr()): string {
   return `rex_${fn}_brands`;
 }

@@ -12,6 +12,10 @@ export type CustomerInput = {
   tax_nr?: string;
   tax_office?: string;
   notes?: string;
+  /** Dosya / kart no */
+  file_id?: string;
+  /** Doğum tarihi YYYY-MM-DD */
+  birth_date?: string;
 };
 
 /** POS sepet satırı — offline fiş kuyruğu */

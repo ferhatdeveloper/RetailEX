@@ -290,6 +290,7 @@ export const MENU_SECTIONS: MenuSection[] = [
       { id: 'beauty-services', label: 'Hizmetler', screen: 'beauty-services' },
       { id: 'beauty-specialists', label: 'Uzmanlar', screen: 'beauty-specialists' },
       { id: 'beauty-sales', label: 'Güzellik Satış POS', screen: 'beauty-sales' },
+      { id: 'beauty-surveys', label: 'Memnuniyet Anketi', screen: 'beauty-surveys' },
     ],
   },
   {
@@ -363,6 +364,7 @@ export type LiveRoute =
   | 'ReportProductSales'
   | 'ReportCash'
   | 'Beauty'
+  | 'BeautySurvey'
   | 'Wms'
   | 'WmsCount'
   | 'WmsTransfer'
@@ -523,6 +525,7 @@ const LIVE_MAP: Record<string, LiveRoute> = {
   'beauty-services': 'Beauty',
   'beauty-specialists': 'Beauty',
   'beauty-sales': 'Beauty',
+  'beauty-surveys': 'BeautySurvey',
   'wms-hub': 'Wms',
   stockcounting: 'WmsCount',
   'wave-picking': 'WmsWavePicking',

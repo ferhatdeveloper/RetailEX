@@ -36,6 +36,8 @@ const EMPTY: CustomerInput = {
   tax_nr: '',
   tax_office: '',
   notes: '',
+  file_id: '',
+  birth_date: '',
 };
 
 export function CustomerFormScreen() {
@@ -84,6 +86,8 @@ export function CustomerFormScreen() {
         tax_nr: row.tax_no || '',
         tax_office: row.tax_office || '',
         notes: '',
+        file_id: row.file_id || '',
+        birth_date: row.birth_date || '',
       });
     } catch (e) {
       setError(e instanceof Error ? e.message : String(e));
@@ -150,6 +154,18 @@ export function CustomerFormScreen() {
               value={form.phone || ''}
               onChangeText={(t) => setField('phone', t)}
               keyboardType="phone-pad"
+            />
+            <FormField
+              label="Dosya no"
+              value={form.file_id || ''}
+              onChangeText={(t) => setField('file_id', t)}
+              placeholder="Opsiyonel"
+            />
+            <FormField
+              label="Doğum tarihi"
+              value={form.birth_date || ''}
+              onChangeText={(t) => setField('birth_date', t)}
+              placeholder="YYYY-MM-DD"
             />
             <FormField
               label="E-posta"

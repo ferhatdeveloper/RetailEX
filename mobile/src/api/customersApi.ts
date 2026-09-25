@@ -31,6 +31,8 @@ export type CustomerRow = {
   city: string | null;
   balance: number;
   is_active: boolean;
+  /** Dosya / kart no (opsiyonel) */
+  file_id?: string | null;
 };
 
 export type CustomerWriteOptions = {
@@ -42,7 +44,7 @@ export type CustomerWriteOptions = {
   id?: string;
 };
 
-const REST_SELECT = 'id,code,name,phone,email,city,balance,is_active';
+const REST_SELECT = 'id,code,name,phone,email,city,balance,is_active,file_id';
 
 function mapCustomerRow(r: Record<string, unknown>): CustomerRow {
   return {
@@ -54,6 +56,7 @@ function mapCustomerRow(r: Record<string, unknown>): CustomerRow {
     city: r.city != null ? String(r.city) : null,
     balance: Number(r.balance) || 0,
     is_active: !(r.is_active === false || r.is_active === 0 || String(r.is_active).toLowerCase() === 'false'),
+    file_id: r.file_id != null && String(r.file_id).trim() !== '' ? String(r.file_id).trim() : null,
   };
 }
 
@@ -100,7 +103,8 @@ async function fetchCustomersLiveBridge(search = '', limit = 200): Promise<Custo
   const baseSelect = `
     SELECT id, code, name, phone, email, city,
            COALESCE(balance, 0)::float8 AS balance,
-           COALESCE(is_active, true) AS is_active
+           COALESCE(is_active, true) AS is_active,
+           NULLIF(BTRIM(COALESCE(file_id::text, '')), '') AS file_id
     FROM ${table}
   `;
 
@@ -195,6 +199,7 @@ export type CustomerDetail = CustomerRow & {
   tax_no?: string | null;
   tax_office?: string | null;
   district?: string | null;
+  birth_date?: string | null;
   call_plan_enabled?: boolean;
   call_plan_weekdays?: number[];
   call_plan_note?: string | null;
@@ -214,6 +219,10 @@ function mapCustomerDetailExtras(r: Record<string, unknown>): Partial<CustomerDe
           : null,
     tax_office: r.tax_office != null ? String(r.tax_office) : null,
     district: r.district != null ? String(r.district) : null,
+    birth_date:
+      r.birth_date != null && String(r.birth_date).trim() !== ''
+        ? String(r.birth_date).slice(0, 10)
+        : null,
   };
   if ('call_plan_enabled' in r) {
     extras.call_plan_enabled =
@@ -243,9 +252,9 @@ function mapCustomerDetailExtras(r: Record<string, unknown>): Partial<CustomerDe
 }
 
 const DETAIL_SELECT_WITH_CALL =
-  'id,code,name,phone,email,city,balance,is_active,address,tax_nr,tax_office,district,call_plan_enabled,call_plan_weekdays,call_plan_note,call_last_status,call_last_note,call_last_at';
+  'id,code,name,phone,email,city,balance,is_active,address,tax_nr,tax_office,district,file_id,birth_date,call_plan_enabled,call_plan_weekdays,call_plan_note,call_last_status,call_last_note,call_last_at';
 const DETAIL_SELECT_BASIC =
-  'id,code,name,phone,email,city,balance,is_active,address,tax_nr,tax_office,district';
+  'id,code,name,phone,email,city,balance,is_active,address,tax_nr,tax_office,district,file_id,birth_date';
 
 export async function fetchCustomerById(id: string): Promise<CustomerDetail | null> {
   if (!id) return null;
@@ -306,6 +315,8 @@ export async function fetchCustomerById(id: string): Promise<CustomerDetail | nu
                 COALESCE(balance, 0)::float8 AS balance,
                 COALESCE(is_active, true) AS is_active,
                 address, tax_nr AS tax_no, tax_office, district,
+                NULLIF(BTRIM(COALESCE(file_id::text, '')), '') AS file_id,
+                birth_date::text AS birth_date,
                 COALESCE(call_plan_enabled, false) AS call_plan_enabled,
                 COALESCE(call_plan_weekdays, ARRAY[]::int[]) AS call_plan_weekdays,
                 call_plan_note, call_last_status, call_last_note,
@@ -329,7 +340,9 @@ export async function fetchCustomerById(id: string): Promise<CustomerDetail | nu
           `SELECT id, code, name, phone, email, city,
                   COALESCE(balance, 0)::float8 AS balance,
                   COALESCE(is_active, true) AS is_active,
-                  address, tax_nr AS tax_no, tax_office, district
+                  address, tax_nr AS tax_no, tax_office, district,
+                  NULLIF(BTRIM(COALESCE(file_id::text, '')), '') AS file_id,
+                  birth_date::text AS birth_date
            FROM ${table}
            WHERE id::text = $1
            LIMIT 1`,
@@ -456,6 +469,8 @@ async function createCustomerViaPostgrest(input: CustomerInput, id: string): Pro
     tax_nr: input.tax_nr?.trim() || null,
     tax_office: input.tax_office?.trim() || null,
     notes: input.notes?.trim() || null,
+    file_id: input.file_id?.trim() || null,
+    birth_date: input.birth_date?.trim() || null,
     is_active: true,
     balance: 0,
     points: 0,
@@ -477,10 +492,10 @@ async function createCustomerViaBridge(input: CustomerInput, id: string): Promis
   await pgQuery(
     `INSERT INTO ${table} (
        id, firm_nr, code, name, phone, email, address, city, district,
-       tax_nr, tax_office, notes, is_active, balance, points, total_spent
+       tax_nr, tax_office, notes, file_id, birth_date, is_active, balance, points, total_spent
      ) VALUES (
        $1::uuid, $2, $3, $4, $5, $6, $7, $8, $9,
-       $10, $11, $12, true, 0, 0, 0
+       $10, $11, $12, $13, $14::date, true, 0, 0, 0
      )`,
     [
       id,
@@ -495,6 +510,8 @@ async function createCustomerViaBridge(input: CustomerInput, id: string): Promis
       input.tax_nr?.trim() || null,
       input.tax_office?.trim() || null,
       input.notes?.trim() || null,
+      input.file_id?.trim() || null,
+      input.birth_date?.trim() || null,
     ],
   );
   return id;
@@ -545,6 +562,7 @@ export async function createCustomer(
       city: input.city?.trim() || null,
       balance: 0,
       is_active: true,
+      file_id: input.file_id?.trim() || null,
     });
     await useConnectivityStore.getState().refreshPendingCount();
     return id;
@@ -560,6 +578,7 @@ export async function createCustomer(
     city: input.city?.trim() || null,
     balance: 0,
     is_active: true,
+    file_id: input.file_id?.trim() || null,
   });
   return savedId;
 }
@@ -576,6 +595,8 @@ function buildCustomerPatchBody(input: Partial<CustomerInput>): Record<string, u
     tax_nr: 'tax_nr',
     tax_office: 'tax_office',
     notes: 'notes',
+    file_id: 'file_id',
+    birth_date: 'birth_date',
   };
   const body: Record<string, unknown> = {};
   for (const [key, col] of Object.entries(map) as [keyof CustomerInput, string][]) {
@@ -656,6 +677,10 @@ export async function updateCustomer(
       city: input.city !== undefined ? input.city.trim() || null : existing?.city ?? null,
       balance: existing?.balance ?? 0,
       is_active: existing?.is_active ?? true,
+      file_id:
+        input.file_id !== undefined
+          ? input.file_id.trim() || null
+          : existing?.file_id ?? null,
     });
     await useConnectivityStore.getState().refreshPendingCount();
     return;
@@ -672,6 +697,8 @@ export async function updateCustomer(
     city: input.city !== undefined ? input.city.trim() || null : existing?.city ?? null,
     balance: existing?.balance ?? 0,
     is_active: existing?.is_active ?? true,
+    file_id:
+      input.file_id !== undefined ? input.file_id.trim() || null : existing?.file_id ?? null,
   });
 }
 

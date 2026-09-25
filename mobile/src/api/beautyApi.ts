@@ -63,10 +63,17 @@ export type BeautyAppointment = {
   status: string | null;
   total_price: number;
   notes: string | null;
+  /** Cari (müşteri) UUID — anket / CRM */
+  client_id?: string | null;
   service_id?: string | null;
   specialist_id?: string | null;
   appointment_date?: string | null;
   appointment_time?: string | null;
+  /** Dakika — create sırasında hizmet süresinden yazılır */
+  duration?: number | null;
+  customer_phone?: string | null;
+  /** Hizmet rengi (takvim kartı sol kenar) */
+  service_color?: string | null;
 };
 
 export type BeautyService = {
@@ -84,6 +91,8 @@ export type BeautySpecialist = {
 
 export type CreateBeautyAppointmentInput = {
   customerName: string;
+  /** Cari UUID — anket / CRM için zorunlu önerilir */
+  customerId?: string | null;
   serviceId: string;
   specialistId?: string | null;
   appointmentDate: string;
@@ -100,6 +109,9 @@ export type UpdateBeautyAppointmentInput = {
   notes?: string | null;
   totalPrice?: number;
   clearSpecialist?: boolean;
+  /** Cari bağla / güncelle */
+  customerId?: string | null;
+  clearCustomer?: boolean;
 };
 
 export type BeautyPaymentMethod = 'cash' | 'card' | 'transfer';
@@ -375,31 +387,93 @@ export async function fetchBeautyAppointments(limit = 80): Promise<BeautyAppoint
   });
 }
 
-async function fetchBeautyAppointmentsViaRest(limit = 80): Promise<BeautyAppointment[]> {
-  const rows = await postgrestGet<Record<string, unknown>[]>(
-    apptTablePath(),
-    {
-      select:
-        'id,service_id,specialist_id,appointment_date,appointment_time,status,total_price,notes',
-      order: 'appointment_date.desc,appointment_time.desc',
-      limit,
-    },
-    BEAUTY_SCHEMA,
-  );
-  const list = Array.isArray(rows) ? rows : [];
-  const serviceIds = Array.from(new Set(list.map((r) => String(r.service_id || '')).filter(Boolean)));
-  const specialistIds = Array.from(new Set(list.map((r) => String(r.specialist_id || '')).filter(Boolean)));
+/** Mobil create: notes = "Müşteri — not"; web client_id join öncelikli. */
+function parseBeautyNotesCustomer(notes: unknown): { nameFromNotes: string | null; displayNote: string | null } {
+  const raw = notes != null ? String(notes).trim() : '';
+  if (!raw) return { nameFromNotes: null, displayNote: null };
+  const sep = ' — ';
+  const i = raw.indexOf(sep);
+  if (i >= 0) {
+    const name = raw.slice(0, i).trim();
+    const note = raw.slice(i + sep.length).trim();
+    return { nameFromNotes: name || null, displayNote: note || null };
+  }
+  return { nameFromNotes: raw, displayNote: null };
+}
 
-  const serviceMap = new Map<string, string>();
-  if (serviceIds.length) {
+async function fetchBeautyAppointmentsViaRest(limit = 80): Promise<BeautyAppointment[]> {
+  const selectWithClient =
+    'id,client_id,service_id,specialist_id,appointment_date,appointment_time,duration,status,total_price,notes';
+  const selectBare =
+    'id,service_id,specialist_id,appointment_date,appointment_time,status,total_price,notes';
+  let list: Record<string, unknown>[] = [];
+  try {
+    const rows = await postgrestGet<Record<string, unknown>[]>(
+      apptTablePath(),
+      {
+        select: selectWithClient,
+        order: 'appointment_date.desc,appointment_time.desc',
+        limit,
+      },
+      BEAUTY_SCHEMA,
+    );
+    list = Array.isArray(rows) ? rows : [];
+  } catch (e) {
+    rethrowTransportInfra(e, 'fetchBeautyAppointments.durationSelect');
     try {
-      const svcs = await postgrestGet<Record<string, unknown>[]>(
-        beautyServicesPath(),
-        { id: `in.(${serviceIds.join(',')})`, select: 'id,name' },
+      const rows = await postgrestGet<Record<string, unknown>[]>(
+        apptTablePath(),
+        {
+          select:
+            'id,client_id,service_id,specialist_id,appointment_date,appointment_time,status,total_price,notes',
+          order: 'appointment_date.desc,appointment_time.desc',
+          limit,
+        },
         BEAUTY_SCHEMA,
       );
-      for (const s of Array.isArray(svcs) ? svcs : []) {
-        serviceMap.set(String(s.id), String(s.name ?? ''));
+      list = Array.isArray(rows) ? rows : [];
+    } catch (e2) {
+      rethrowTransportInfra(e2, 'fetchBeautyAppointments.clientSelect');
+      const rows = await postgrestGet<Record<string, unknown>[]>(
+        apptTablePath(),
+        {
+          select: selectBare,
+          order: 'appointment_date.desc,appointment_time.desc',
+          limit,
+        },
+        BEAUTY_SCHEMA,
+      );
+      list = Array.isArray(rows) ? rows : [];
+    }
+  }
+  const serviceIds = Array.from(new Set(list.map((r) => String(r.service_id || '')).filter(Boolean)));
+  const specialistIds = Array.from(new Set(list.map((r) => String(r.specialist_id || '')).filter(Boolean)));
+  const clientIds = Array.from(new Set(list.map((r) => String(r.client_id || '')).filter(Boolean)));
+
+  const serviceMap = new Map<string, { name: string; color: string }>();
+  if (serviceIds.length) {
+    try {
+      let svcs: Record<string, unknown>[] = [];
+      try {
+        const withColor = await postgrestGet<Record<string, unknown>[]>(
+          beautyServicesPath(),
+          { id: `in.(${serviceIds.join(',')})`, select: 'id,name,color' },
+          BEAUTY_SCHEMA,
+        );
+        svcs = Array.isArray(withColor) ? withColor : [];
+      } catch {
+        const bare = await postgrestGet<Record<string, unknown>[]>(
+          beautyServicesPath(),
+          { id: `in.(${serviceIds.join(',')})`, select: 'id,name' },
+          BEAUTY_SCHEMA,
+        );
+        svcs = Array.isArray(bare) ? bare : [];
+      }
+      for (const s of svcs) {
+        serviceMap.set(String(s.id), {
+          name: String(s.name ?? ''),
+          color: s.color != null ? String(s.color) : '#7c3aed',
+        });
       }
     } catch (e) {
       rethrowTransportInfra(e, 'fetchBeautyAppointments.services');
@@ -422,23 +496,59 @@ async function fetchBeautyAppointmentsViaRest(limit = 80): Promise<BeautyAppoint
     }
   }
 
+  const customerMap = new Map<string, { name: string; phone: string | null }>();
+  if (clientIds.length) {
+    try {
+      const custTable = customersTable().replace(/^public\./, '');
+      const custs = await postgrestGet<Record<string, unknown>[]>(
+        `/${custTable}`,
+        {
+          id: `in.(${clientIds.join(',')})`,
+          select: 'id,name,phone',
+        },
+        { schema: 'public' },
+      );
+      for (const c of Array.isArray(custs) ? custs : []) {
+        customerMap.set(String(c.id), {
+          name: String(c.name ?? ''),
+          phone: c.phone != null ? String(c.phone) : null,
+        });
+      }
+    } catch (e) {
+      rethrowTransportInfra(e, 'fetchBeautyAppointments.customers');
+    }
+  }
+
   return list.map((a) => {
     const date = a.appointment_date != null ? String(a.appointment_date) : '';
     const timeRaw = a.appointment_time != null ? String(a.appointment_time) : '';
     const time = timeRaw.slice(0, 5);
+    const svc = a.service_id ? serviceMap.get(String(a.service_id)) : undefined;
+    const durRaw = a.duration;
+    const duration =
+      durRaw == null || durRaw === ''
+        ? null
+        : Math.max(1, Math.round(Number(durRaw)) || 30);
+    const parsed = parseBeautyNotesCustomer(a.notes);
+    const clientId = a.client_id != null ? String(a.client_id) : '';
+    const cust = clientId ? customerMap.get(clientId) : undefined;
     return {
       id: String(a.id ?? ''),
-      customer_name: a.notes != null ? String(a.notes).split(' — ')[0] || 'Müşteri' : 'Müşteri',
-      service_name: a.service_id ? serviceMap.get(String(a.service_id)) ?? null : null,
+      client_id: clientId || null,
+      customer_name: cust?.name || parsed.nameFromNotes || 'Müşteri',
+      service_name: svc?.name ?? null,
       specialist_name: a.specialist_id ? specialistMap.get(String(a.specialist_id)) ?? null : null,
       starts_at: `${date} ${timeRaw}`.trim() || null,
       status: a.status != null ? String(a.status) : null,
       total_price: Number(a.total_price) || 0,
-      notes: a.notes != null ? String(a.notes) : null,
+      notes: parsed.displayNote,
       service_id: a.service_id != null ? String(a.service_id) : null,
       specialist_id: a.specialist_id != null ? String(a.specialist_id) : null,
       appointment_date: date || null,
       appointment_time: time || null,
+      duration,
+      customer_phone: cust?.phone ?? null,
+      service_color: svc?.color ?? '#7c3aed',
     };
   });
 }
@@ -454,6 +564,7 @@ async function fetchBeautyAppointmentsViaBridge(limit = 80): Promise<BeautyAppoi
   return tryQueries<BeautyAppointment>([
     {
       sql: `SELECT a.id,
+              a.client_id::text AS client_id,
               COALESCE(c.name, NULLIF(TRIM(a.notes), ''), 'Müşteri') AS customer_name,
               s.name AS service_name,
               sp.name AS specialist_name,
@@ -464,7 +575,35 @@ async function fetchBeautyAppointmentsViaBridge(limit = 80): Promise<BeautyAppoi
               a.service_id::text AS service_id,
               a.specialist_id::text AS specialist_id,
               a.appointment_date::text AS appointment_date,
-              COALESCE(to_char(a.appointment_time, 'HH24:MI'), '') AS appointment_time
+              COALESCE(to_char(a.appointment_time, 'HH24:MI'), '') AS appointment_time,
+              COALESCE(a.duration, 30)::int AS duration,
+              COALESCE(s.color, '#7c3aed') AS service_color,
+              COALESCE(NULLIF(TRIM(c.phone::text), ''), NULLIF(TRIM(c.phone2::text), '')) AS customer_phone
+       FROM ${appt} a
+       LEFT JOIN ${cust} c ON c.id = a.client_id
+       LEFT JOIN ${svc} s ON s.id = a.service_id
+       LEFT JOIN ${sp} sp ON sp.id = a.specialist_id
+       ORDER BY a.appointment_date DESC, a.appointment_time DESC NULLS LAST
+       LIMIT $1`,
+      params: [limit],
+    },
+    {
+      sql: `SELECT a.id,
+              a.client_id::text AS client_id,
+              COALESCE(c.name, NULLIF(TRIM(a.notes), ''), 'Müşteri') AS customer_name,
+              s.name AS service_name,
+              sp.name AS specialist_name,
+              (a.appointment_date::text || ' ' || COALESCE(a.appointment_time::text, '')) AS starts_at,
+              a.status,
+              COALESCE(a.total_price, 0)::float8 AS total_price,
+              a.notes,
+              a.service_id::text AS service_id,
+              a.specialist_id::text AS specialist_id,
+              a.appointment_date::text AS appointment_date,
+              COALESCE(to_char(a.appointment_time, 'HH24:MI'), '') AS appointment_time,
+              30 AS duration,
+              '#7c3aed' AS service_color,
+              NULL::text AS customer_phone
        FROM ${appt} a
        LEFT JOIN ${cust} c ON c.id = a.client_id
        LEFT JOIN ${svc} s ON s.id = a.service_id
@@ -616,6 +755,7 @@ async function createBeautyAppointmentViaRest(input: CreateBeautyAppointmentInpu
     apptTablePath(),
     {
       id,
+      client_id: pgUuidOrNull(input.customerId),
       service_id: input.serviceId,
       specialist_id: pgUuidOrNull(input.specialistId),
       appointment_date: input.appointmentDate,
@@ -651,16 +791,17 @@ async function createBeautyAppointmentViaBridge(input: CreateBeautyAppointmentIn
 
   await pgQuery(
     `INSERT INTO ${appt} (
-       id, service_id, specialist_id,
+       id, client_id, service_id, specialist_id,
        appointment_date, appointment_time, duration,
        status, type, notes, total_price, booking_channel
      ) VALUES (
-       $1::uuid, $2::uuid, $3::uuid,
-       $4::date, $5::time, $6,
-       'scheduled', 'regular', $7, $8, 'mobile'
+       $1::uuid, $2::uuid, $3::uuid, $4::uuid,
+       $5::date, $6::time, $7,
+       'scheduled', 'regular', $8, $9, 'mobile'
      )`,
     [
       id,
+      input.customerId || null,
       input.serviceId,
       input.specialistId || null,
       input.appointmentDate,
@@ -721,6 +862,11 @@ async function updateBeautyAppointmentViaRest(
   if (input.status !== undefined) patch.status = input.status;
   if (input.notes !== undefined) patch.notes = input.notes?.trim() || null;
   if (input.totalPrice !== undefined) patch.total_price = input.totalPrice;
+  if (input.clearCustomer) {
+    patch.client_id = null;
+  } else if (input.customerId !== undefined) {
+    patch.client_id = input.customerId ? input.customerId : null;
+  }
 
   if (Object.keys(patch).length <= 1) return;
 
@@ -786,6 +932,16 @@ async function updateBeautyAppointmentViaBridge(
   if (input.totalPrice !== undefined) {
     sets.push(`total_price = $${i++}`);
     vals.push(input.totalPrice);
+  }
+  if (input.clearCustomer) {
+    sets.push('client_id = NULL');
+  } else if (input.customerId !== undefined) {
+    if (input.customerId) {
+      sets.push(`client_id = $${i++}::uuid`);
+      vals.push(input.customerId);
+    } else {
+      sets.push('client_id = NULL');
+    }
   }
 
   if (sets.length <= 1) return;

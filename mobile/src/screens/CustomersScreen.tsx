@@ -120,7 +120,9 @@ export function CustomersScreen() {
                     {item.name}
                   </Text>
                   <Text style={{ color: colors.textMuted, fontSize: 11 }}>
-                    {[item.code, item.phone, item.city].filter(Boolean).join(' · ') || '—'}
+                    {[item.file_id ? `#${item.file_id}` : null, item.code, item.phone, item.city]
+                      .filter(Boolean)
+                      .join(' · ') || '—'}
                   </Text>
                   <Text
                     style={{

@@ -24,6 +24,7 @@ import { StockMovementsScreen } from '../screens/StockMovementsScreen';
 import { StockMovementDetailScreen } from '../screens/StockMovementDetailScreen';
 import { ProductionRecipeDetailScreen } from '../screens/ProductionRecipeDetailScreen';
 import { BeautyScreen } from '../screens/BeautyScreen';
+import { BeautySurveyScreen } from '../screens/BeautySurveyScreen';
 import { WmsScreen } from '../screens/WmsScreen';
 import { WmsCountScreen } from '../screens/WmsCountScreen';
 import { WmsCountSlipScreen } from '../screens/WmsCountSlipScreen';
@@ -120,6 +121,7 @@ export function MainStackNavigator() {
       <Stack.Screen name="StockMovements" component={StockMovementsScreen} />
       <Stack.Screen name="StockMovementDetail" component={StockMovementDetailScreen} />
       <Stack.Screen name="Beauty" component={BeautyScreen} />
+      <Stack.Screen name="BeautySurvey" component={BeautySurveyScreen} />
       <Stack.Screen name="Wms" component={WmsScreen} />
       <Stack.Screen name="WmsCount" component={WmsCountScreen} />
       <Stack.Screen name="WmsCountSlip" component={WmsCountSlipScreen} />

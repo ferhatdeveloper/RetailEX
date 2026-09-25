@@ -289,6 +289,9 @@ export function navigateToModule(
     case 'Beauty':
       nav.navigate('Beauty', beautyRouteParams(screen));
       return;
+    case 'BeautySurvey':
+      nav.navigate('BeautySurvey');
+      return;
     case 'Wms':
       nav.navigate('Wms');
       return;

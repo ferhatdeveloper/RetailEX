@@ -8,14 +8,19 @@ import {
   RefreshControl,
   Pressable,
   ScrollView,
+  Alert,
 } from 'react-native';
 import type { NativeStackScreenProps } from '@react-navigation/native-stack';
-import { Plus } from 'lucide-react-native';
+import { useNavigation } from '@react-navigation/native';
+import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
+import { ClipboardList, Plus } from 'lucide-react-native';
 import { ScreenHeader, EmptyState, ErrorBanner } from '../components/ScreenChrome';
+import { HeaderIconButton } from '../components/GradientHeader';
 import { SegmentTabBar } from '../components/SegmentTabBar';
 import { FormField } from '../components/FormField';
 import { PrimaryButton } from '../components/PrimaryButton';
 import { PercentBodySheet } from '../components/PercentBodySheet';
+import { BeautySurveyRespondSheet } from '../components/BeautySurveyRespondSheet';
 import {
   BeautyCalendarPanel,
   type CalView,
@@ -35,11 +40,13 @@ import {
   type BeautyService,
   type BeautySpecialist,
 } from '../api/beautyApi';
+import { fetchCustomers, type CustomerRow } from '../api/customersApi';
 import { BeautySalesPanel } from '../components/BeautySalesPanel';
 import { formatMoney } from '../api/erpTables';
 import { useThemeStore } from '../store/themeStore';
 import { useOrgEpoch } from '../hooks/useOrgEpoch';
 import { palette } from '../theme/colors';
+import { CLINIC, clinicColorsForMode } from '../theme/clinicTokens';
 import type { MainStackParamList } from '../navigation/types';
 
 type Tab = 'appointments' | 'services' | 'specialists' | 'sales';
@@ -79,13 +86,16 @@ function normalizeTimeInput(raw: string): string {
 }
 
 export function BeautyScreen({ route }: Props) {
-  const { colors } = useThemeStore();
+  const { colors, darkMode } = useThemeStore();
+  const clinic = useMemo(() => clinicColorsForMode(darkMode, colors), [darkMode, colors]);
+  const navigation = useNavigation<NativeStackNavigationProp<MainStackParamList>>();
   const initialTab = route.params?.initialTab ?? 'appointments';
   const [tab, setTab] = useState<Tab>(initialTab);
   const [apptMode, setApptMode] = useState<ApptMode>('calendar');
   const [calView, setCalView] = useState<CalView>('day');
   const [calDate, setCalDate] = useState(() => new Date());
   const [apptFilter, setApptFilter] = useState<ApptFilter>('all');
+  const [surveyTarget, setSurveyTarget] = useState<BeautyAppointment | null>(null);
   const [appointments, setAppointments] = useState<BeautyAppointment[]>([]);
   const [sales, setSales] = useState<BeautySale[]>([]);
   const [services, setServices] = useState<BeautyService[]>([]);
@@ -96,6 +106,8 @@ export function BeautyScreen({ route }: Props) {
   const [createOpen, setCreateOpen] = useState(false);
   const [editAppt, setEditAppt] = useState<BeautyAppointment | null>(null);
   const [customerName, setCustomerName] = useState('');
+  const [selectedCustomerId, setSelectedCustomerId] = useState<string | null>(null);
+  const [customerHits, setCustomerHits] = useState<CustomerRow[]>([]);
   const [appointmentDate, setAppointmentDate] = useState(todayYmd());
   const [appointmentTime, setAppointmentTime] = useState('10:00');
   const [notes, setNotes] = useState('');
@@ -112,7 +124,7 @@ export function BeautyScreen({ route }: Props) {
     try {
       // TODO(beauty-mobile): tarih aralığına göre sayfalı yükleme (web loadAppointmentsInRange)
       const [a, sal, s, sp] = await Promise.all([
-        fetchBeautyAppointments(200),
+        fetchBeautyAppointments(400),
         fetchBeautySales(),
         fetchBeautyServices(),
         fetchBeautySpecialists(),
@@ -145,10 +157,47 @@ export function BeautyScreen({ route }: Props) {
       if (phone || name) {
         setCustomerName(name || phone);
         setNotes(phone ? `Tel: ${phone}` : '');
+        void (async () => {
+          try {
+            const rows = await fetchCustomers(phone || name, 8);
+            setCustomerHits(rows);
+            if (rows.length === 1) {
+              setSelectedCustomerId(rows[0].id);
+              setCustomerName(rows[0].name);
+            }
+          } catch {
+            /* arama opsiyonel */
+          }
+        })();
       }
       setCreateOpen(true);
     }
   }, [route.params?.openCreate, route.params?.callerPhone, route.params?.callerName]);
+
+  useEffect(() => {
+    if (!createOpen) return;
+    const q = customerName.trim();
+    if (q.length < 2) {
+      setCustomerHits([]);
+      return;
+    }
+    if (selectedCustomerId) {
+      const hit = customerHits.find((c) => c.id === selectedCustomerId);
+      if (hit && hit.name === q) return;
+    }
+    const tmr = setTimeout(() => {
+      void (async () => {
+        try {
+          setCustomerHits(await fetchCustomers(q, 8));
+        } catch {
+          setCustomerHits([]);
+        }
+      })();
+    }, 280);
+    return () => clearTimeout(tmr);
+    // customerHits bilerek bağımlılıkta yok — seçim kilidi
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [customerName, createOpen, selectedCustomerId]);
 
   const filteredAppointments = useMemo(() => {
     if (apptFilter === 'all') return appointments;
@@ -169,6 +218,8 @@ export function BeautyScreen({ route }: Props) {
 
   const resetForm = (dateYmd?: string, timeHHmm?: string) => {
     setCustomerName('');
+    setSelectedCustomerId(null);
+    setCustomerHits([]);
     setAppointmentDate(dateYmd || todayYmd());
     setAppointmentTime(normalizeTimeInput(timeHHmm || '10:00'));
     setNotes('');
@@ -186,6 +237,8 @@ export function BeautyScreen({ route }: Props) {
   const openEdit = (item: BeautyAppointment) => {
     const parsed = parseStartsAt(item.starts_at);
     setEditAppt(item);
+    setSelectedCustomerId(item.client_id || null);
+    setCustomerName(item.customer_name || '');
     setAppointmentDate(item.appointment_date || parsed.date);
     setAppointmentTime(
       normalizeTimeInput((item.appointment_time || parsed.time).toString().slice(0, 5) || '10:00'),
@@ -213,8 +266,17 @@ export function BeautyScreen({ route }: Props) {
     setSaving(true);
     setFormError(null);
     try {
+      let customerId = selectedCustomerId;
+      if (!customerId) {
+        const hits = await fetchCustomers(customerName.trim(), 5);
+        const exact = hits.find(
+          (h) => h.name.trim().toLocaleLowerCase('tr-TR') === customerName.trim().toLocaleLowerCase('tr-TR'),
+        );
+        customerId = exact?.id ?? (hits.length === 1 ? hits[0].id : null);
+      }
       await createBeautyAppointment({
         customerName: customerName.trim(),
+        customerId,
         serviceId: selectedServiceId,
         specialistId: selectedSpecialistId,
         appointmentDate: appointmentDate.trim(),
@@ -243,18 +305,55 @@ export function BeautyScreen({ route }: Props) {
     }
     setSaving(true);
     setFormError(null);
+    const nextStatus = forceStatus || editStatus;
+    const becameCompleted =
+      String(nextStatus).toLowerCase() === 'completed' &&
+      String(editAppt.status || '').toLowerCase() !== 'completed';
+    let clientId = selectedCustomerId || editAppt.client_id || null;
     try {
+      if (!clientId && becameCompleted) {
+        const hits = await fetchCustomers(editAppt.customer_name || customerName, 5);
+        const exact = hits.find(
+          (h) =>
+            h.name.trim().toLocaleLowerCase('tr-TR') ===
+            String(editAppt.customer_name || customerName)
+              .trim()
+              .toLocaleLowerCase('tr-TR'),
+        );
+        clientId = exact?.id ?? (hits.length === 1 ? hits[0].id : null);
+      }
       await updateBeautyAppointment(editAppt.id, {
         serviceId: selectedServiceId,
         specialistId: selectedSpecialistId,
         clearSpecialist: !selectedSpecialistId,
         appointmentDate: appointmentDate.trim(),
         appointmentTime: normalizeTimeInput(appointmentTime),
-        status: forceStatus || editStatus,
+        status: nextStatus,
         notes: notes.trim() || null,
+        customerId: clientId || undefined,
       });
+      const snapshot: BeautyAppointment = {
+        ...editAppt,
+        status: nextStatus,
+        client_id: clientId,
+        customer_name: editAppt.customer_name || customerName,
+      };
       setEditAppt(null);
       await load();
+      if (becameCompleted && clientId) {
+        Alert.alert('Anket', 'Memnuniyet anketi doldurulsun mu?', [
+          { text: 'Sonra', style: 'cancel' },
+          {
+            text: 'Anket aç',
+            onPress: () => setSurveyTarget(snapshot),
+          },
+        ]);
+      } else if (becameCompleted && !clientId) {
+        Alert.alert(
+          'Anket',
+          'Bu randevuya cari bağlı değil. Anket için önce cari kartı oluşturup randevuya bağlayın.',
+        );
+      }
     } catch (e) {
       setFormError(e instanceof Error ? e.message : String(e));
     } finally {
@@ -355,18 +454,78 @@ export function BeautyScreen({ route }: Props) {
       <View style={styles.formSection}>
         <Text style={[styles.sectionTitle, { color: colors.textMuted }]}>Müşteri & hizmet</Text>
         {mode === 'create' ? (
-          <FormField
-            label="Müşteri adı"
-            value={customerName}
-            onChangeText={setCustomerName}
-            placeholder="Ad soyad"
-          />
+          <>
+            <FormField
+              label="Müşteri adı"
+              value={customerName}
+              onChangeText={(t) => {
+                setCustomerName(t);
+                setSelectedCustomerId(null);
+              }}
+              placeholder="Ad soyad veya telefon"
+            />
+            {selectedCustomerId ? (
+              <Text style={{ color: CLINIC.violet, fontSize: 11, fontWeight: '700', marginTop: 4 }}>
+                Cari bağlı · anket için hazır
+              </Text>
+            ) : null}
+            {customerHits.length > 0 ? (
+              <ScrollView
+                horizontal
+                showsHorizontalScrollIndicator={false}
+                contentContainerStyle={styles.pickRow}
+                style={{ marginTop: 6 }}
+              >
+                {customerHits.map((c) => {
+                  const active = selectedCustomerId === c.id;
+                  return (
+                    <Pressable
+                      key={c.id}
+                      onPress={() => {
+                        setSelectedCustomerId(c.id);
+                        setCustomerName(c.name);
+                      }}
+                      style={[
+                        styles.pickChip,
+                        {
+                          backgroundColor: active ? CLINIC.violet : colors.card,
+                          borderColor: active ? CLINIC.violet : colors.cardBorder,
+                        },
+                      ]}
+                    >
+                      <Text
+                        style={{
+                          color: active ? palette.white : colors.text,
+                          fontSize: 11,
+                          fontWeight: '700',
+                        }}
+                        numberOfLines={1}
+                      >
+                        {c.file_id ? `#${c.file_id} ` : ''}
+                        {c.name}
+                        {c.phone ? ` · ${c.phone}` : ''}
+                      </Text>
+                    </Pressable>
+                  );
+                })}
+              </ScrollView>
+            ) : null}
+          </>
         ) : (
           <View style={[styles.readOnlyBox, { backgroundColor: colors.backgroundAlt, borderColor: colors.cardBorder }]}>
             <Text style={[styles.pickLabel, { color: colors.textMuted, marginTop: 0 }]}>Müşteri</Text>
             <Text style={{ color: colors.text, fontWeight: '700' }}>
               {editAppt?.customer_name || 'Müşteri'}
             </Text>
+            {editAppt?.client_id || selectedCustomerId ? (
+              <Text style={{ color: CLINIC.violet, fontSize: 10, fontWeight: '700', marginTop: 4 }}>
+                Cari bağlı
+              </Text>
+            ) : (
+              <Text style={{ color: colors.textSubtle, fontSize: 10, marginTop: 4 }}>
+                Cari yok — tamamlanınca anket için cari aranır
+              </Text>
+            )}
           </View>
         )}
         {renderChipRow(
@@ -405,7 +564,15 @@ export function BeautyScreen({ route }: Props) {
 
   return (
     <View style={[styles.root, { backgroundColor: colors.background }]}>
-      <ScreenHeader title="Güzellik Merkezi" subtitle="Takvim · Randevu · Satış · Hizmet · Uzman" />
+      <ScreenHeader
+        title="Güzellik Merkezi"
+        subtitle="Takvim · Randevu · Satış · Hizmet · Uzman"
+        right={
+          <HeaderIconButton onPress={() => navigation.navigate('BeautySurvey')}>
+            <ClipboardList size={18} color={palette.white} />
+          </HeaderIconButton>
+        }
+      />
       <SegmentTabBar
         layout="scroll"
         value={tab}
@@ -416,36 +583,36 @@ export function BeautyScreen({ route }: Props) {
       {loading ? (
         <ActivityIndicator style={{ marginTop: 40 }} color={palette.blue600} />
       ) : tab === 'appointments' ? (
-        <>
-          <View style={styles.modeRow}>
+        <View style={[styles.apptRoot, { backgroundColor: clinic.bg }]}>
+          <View style={[styles.modeSegTrack, { backgroundColor: clinic.segmentBg }]}>
             {(
               [
                 { id: 'calendar' as const, label: 'Takvim' },
                 { id: 'list' as const, label: 'Liste' },
               ] as const
-            ).map((m) => (
-              <Pressable
-                key={m.id}
-                onPress={() => setApptMode(m.id)}
-                style={[
-                  styles.modeChip,
-                  {
-                    backgroundColor: apptMode === m.id ? palette.indigo600 : colors.card,
-                    borderColor: colors.cardBorder,
-                  },
-                ]}
-              >
-                <Text
-                  style={{
-                    color: apptMode === m.id ? palette.white : colors.text,
-                    fontSize: 11,
-                    fontWeight: '800',
-                  }}
+            ).map((m) => {
+              const active = apptMode === m.id;
+              return (
+                <Pressable
+                  key={m.id}
+                  onPress={() => setApptMode(m.id)}
+                  style={[
+                    styles.modeSegTab,
+                    active && { backgroundColor: clinic.surface },
+                  ]}
                 >
-                  {m.label}
-                </Text>
-              </Pressable>
-            ))}
+                  <Text
+                    style={{
+                      color: active ? clinic.violet : clinic.textSub,
+                      fontSize: 11,
+                      fontWeight: '700',
+                    }}
+                  >
+                    {m.label}
+                  </Text>
+                </Pressable>
+              );
+            })}
           </View>
 
           {apptMode === 'calendar' ? (
@@ -467,58 +634,75 @@ export function BeautyScreen({ route }: Props) {
           ) : (
             <>
               <View style={styles.filters}>
-                {(['all', 'scheduled', 'completed'] as ApptFilter[]).map((f) => (
-                  <Pressable
-                    key={f}
-                    onPress={() => setApptFilter(f)}
-                    style={[
-                      styles.filterChip,
-                      {
-                        backgroundColor: apptFilter === f ? palette.blue600 : colors.card,
-                        borderColor: colors.cardBorder,
-                      },
-                    ]}
-                  >
-                    <Text
-                      style={{
-                        color: apptFilter === f ? palette.white : colors.text,
-                        fontSize: 11,
-                        fontWeight: '700',
-                      }}
+                {(['all', 'scheduled', 'completed'] as ApptFilter[]).map((f) => {
+                  const active = apptFilter === f;
+                  return (
+                    <Pressable
+                      key={f}
+                      onPress={() => setApptFilter(f)}
+                      style={[
+                        styles.filterChip,
+                        {
+                          backgroundColor: active ? clinic.violetLight : clinic.surface,
+                          borderColor: active ? clinic.violet : clinic.borderMuted,
+                        },
+                      ]}
                     >
-                      {f === 'all' ? 'Tümü' : f === 'scheduled' ? 'Planlı' : 'Tamamlanan'}
-                    </Text>
-                  </Pressable>
-                ))}
+                      <Text
+                        style={{
+                          color: active ? clinic.violet : clinic.textSub,
+                          fontSize: 11,
+                          fontWeight: '700',
+                        }}
+                      >
+                        {f === 'all' ? 'Tümü' : f === 'scheduled' ? 'Planlı' : 'Tamamlanan'}
+                      </Text>
+                    </Pressable>
+                  );
+                })}
               </View>
               <FlatList
                 data={filteredAppointments}
                 keyExtractor={(item) => String(item.id)}
-                refreshControl={<RefreshControl refreshing={loading} onRefresh={() => void load()} />}
+                refreshControl={
+                  <RefreshControl
+                    refreshing={loading}
+                    onRefresh={() => void load()}
+                    tintColor={CLINIC.violet}
+                  />
+                }
                 ListEmptyComponent={<EmptyState message="Randevu kaydı yok (şema/veri kontrol)" />}
                 contentContainerStyle={styles.list}
                 renderItem={({ item }) => (
                   <Pressable
                     onPress={() => openEdit(item)}
-                    style={[styles.card, { backgroundColor: colors.card, borderColor: colors.cardBorder }]}
+                    style={[
+                      styles.card,
+                      {
+                        backgroundColor: clinic.surface,
+                        borderColor: clinic.border,
+                        borderLeftColor: item.service_color || CLINIC.violet,
+                        borderLeftWidth: 3,
+                      },
+                    ]}
                   >
                     <View style={styles.cardTop}>
-                      <Text style={{ color: colors.text, fontWeight: '700', flex: 1 }}>
+                      <Text style={{ color: clinic.textPrimary, fontWeight: '700', flex: 1 }}>
                         {item.customer_name || 'Müşteri'}
                       </Text>
-                      <View style={[styles.badge, { backgroundColor: palette.blue100 }]}>
-                        <Text style={{ color: palette.blue700, fontSize: 10, fontWeight: '800' }}>
+                      <View style={[styles.badge, { backgroundColor: CLINIC.violetLight }]}>
+                        <Text style={{ color: CLINIC.violet, fontSize: 10, fontWeight: '800' }}>
                           {statusLabel(item.status)}
                         </Text>
                       </View>
                     </View>
-                    <Text style={{ color: colors.textMuted, fontSize: 12 }}>{item.service_name || '—'}</Text>
-                    <Text style={{ color: colors.textSubtle, fontSize: 11, marginTop: 4 }}>
+                    <Text style={{ color: clinic.textSub, fontSize: 12 }}>{item.service_name || '—'}</Text>
+                    <Text style={{ color: clinic.textMuted, fontSize: 11, marginTop: 4 }}>
                       {item.starts_at?.slice(0, 16) || '—'}
                       {item.specialist_name ? ` · ${item.specialist_name}` : ''}
                     </Text>
                     {item.total_price > 0 ? (
-                      <Text style={{ color: palette.blue600, fontWeight: '700', marginTop: 4 }}>
+                      <Text style={{ color: CLINIC.violet, fontWeight: '700', marginTop: 4 }}>
                         {formatMoney(item.total_price)}
                       </Text>
                     ) : null}
@@ -529,12 +713,12 @@ export function BeautyScreen({ route }: Props) {
           )}
 
           <Pressable
-            style={[styles.fab, { backgroundColor: palette.purple500 }]}
+            style={[styles.fab, { backgroundColor: CLINIC.violet }]}
             onPress={() => openCreate(formatLocalYmd(calDate))}
           >
             <Plus color={palette.white} size={22} />
           </Pressable>
-        </>
+        </View>
       ) : tab === 'sales' ? (
         <BeautySalesPanel
           colors={colors}
@@ -626,21 +810,44 @@ export function BeautyScreen({ route }: Props) {
           />
         ) : null}
       </PercentBodySheet>
+
+      <BeautySurveyRespondSheet
+        visible={!!surveyTarget}
+        onClose={() => setSurveyTarget(null)}
+        onSaved={() => void load()}
+        customerId={surveyTarget?.client_id || ''}
+        customerName={surveyTarget?.customer_name}
+        appointmentId={surveyTarget?.id}
+        appointmentSubtitle={
+          surveyTarget
+            ? `${surveyTarget.customer_name || 'Müşteri'} — ${surveyTarget.service_name || 'Hizmet'}`
+            : null
+        }
+      />
     </View>
   );
 }
 
 const styles = StyleSheet.create({
   root: { flex: 1 },
-  modeRow: { flexDirection: 'row', gap: 8, paddingHorizontal: 12, paddingBottom: 6 },
-  modeChip: {
-    paddingHorizontal: 14,
-    paddingVertical: 7,
-    borderRadius: 16,
-    borderWidth: 1,
+  apptRoot: { flex: 1 },
+  modeSegTrack: {
+    flexDirection: 'row',
+    marginHorizontal: 12,
+    marginTop: 4,
+    marginBottom: 6,
+    borderRadius: 7,
+    padding: 3,
+    gap: 2,
+  },
+  modeSegTab: {
+    flex: 1,
+    paddingVertical: 6,
+    borderRadius: 5,
+    alignItems: 'center',
   },
   filters: { flexDirection: 'row', gap: 8, paddingHorizontal: 12, paddingBottom: 4 },
-  filterChip: { paddingHorizontal: 12, paddingVertical: 6, borderRadius: 16, borderWidth: 1 },
+  filterChip: { paddingHorizontal: 12, paddingVertical: 6, borderRadius: 6, borderWidth: 1 },
   list: { padding: 12, gap: 8, paddingBottom: 88 },
   card: { borderWidth: 1, borderRadius: 10, padding: 12 },
   cardTop: { flexDirection: 'row', alignItems: 'center', gap: 8 },

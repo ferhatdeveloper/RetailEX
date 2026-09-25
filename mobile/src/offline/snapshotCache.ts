@@ -34,6 +34,7 @@ export type CachedCustomer = {
   city: string | null;
   balance: number;
   is_active: boolean;
+  file_id?: string | null;
 };
 
 export type CachedCountingLine = {

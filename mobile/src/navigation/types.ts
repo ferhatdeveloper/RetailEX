@@ -97,6 +97,8 @@ export type MainStackParamList = {
         callerName?: string;
       }
     | undefined;
+  /** Güzellik memnuniyet anketi */
+  BeautySurvey: undefined;
   Wms: undefined;
   WmsCount: { autoCreate?: boolean } | undefined;
   WmsCountSlip: { slipId: string };
