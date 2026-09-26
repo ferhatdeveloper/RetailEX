@@ -1,7 +1,6 @@
 import React from 'react';
 import { Input, Select, Segmented } from 'antd';
 import { RetailExFlatFieldLabel } from '../../shared/RetailExFlatModal';
-import { PartialDateFields } from '../../shared/PartialDateFields';
 import { useLanguage } from '../../../contexts/LanguageContext';
 import type { BeautyCustomer } from '../../../types/beauty';
 import { BEAUTY_GENDER_OPTIONS_EN } from '../../../utils/beautyGenderLabel';
@@ -141,22 +140,18 @@ export function BeautyCustomerEditFormFields({
             <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
                 <div>
                     <RetailExFlatFieldLabel>{tm('custLabelBirthDate')}</RetailExFlatFieldLabel>
-                    <PartialDateFields
-                        value={value.birth_date ? String(value.birth_date).slice(0, 10) : null}
-                        onChange={iso =>
+                    <Input
+                        className="!rounded-2xl !px-4 !py-2.5"
+                        type="date"
+                        value={value.birth_date ? String(value.birth_date).slice(0, 10) : ''}
+                        onChange={e =>
                             set({
-                                birth_date: iso,
+                                birth_date: e.target.value === '' ? null : e.target.value,
                                 age: null,
                             })
                         }
-                        labels={{
-                            day: tm('partialDateDay'),
-                            month: tm('partialDateMonth'),
-                            year: tm('partialDateYear'),
-                        }}
-                        yearPlaceholder={tm('partialDateYearPh')}
+                        placeholder={tm('custPhBirthDate')}
                     />
-                    <p className="mt-1 text-[10px] text-slate-400">{tm('partialDateHint')}</p>
                 </div>
                 <div>
                     <RetailExFlatFieldLabel>{tm('custLabelFileId')}</RetailExFlatFieldLabel>

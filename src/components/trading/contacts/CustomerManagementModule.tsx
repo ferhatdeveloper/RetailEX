@@ -15,7 +15,6 @@ import { DEMO_CUSTOMER_CODES } from '../../../utils/demoSeedCodes';
 import { phoneMatchesQuery } from '../../../shared/utils/validators';
 import { SupplierModule } from './SupplierModule';
 import { compareFileIdAsc, sortByFileIdAsc } from '../../../utils/customerFileIdSort';
-import { PartialDateFields } from '../../shared/PartialDateFields';
 import { useRetailexInvalidateRefresh } from '../../../hooks/useRetailexInvalidateRefresh';
 
 interface CustomerManagementModuleProps {
@@ -875,17 +874,13 @@ export function CustomerManagementModule({ customers, setCustomers, sales }: Cus
             <div className="grid grid-cols-2 gap-4">
               <div>
                 <label className="block text-sm font-medium text-gray-700 mb-1">{tm('custLabelBirthDate')}</label>
-                <PartialDateFields
-                  value={formData.birth_date || null}
-                  onChange={(iso) => setFormData({ ...formData, birth_date: iso || '' })}
-                  labels={{
-                    day: tm('partialDateDay'),
-                    month: tm('partialDateMonth'),
-                    year: tm('partialDateYear'),
-                  }}
-                  yearPlaceholder={tm('partialDateYearPh')}
+                <input
+                  type="date"
+                  value={formData.birth_date}
+                  onChange={(e) => setFormData({ ...formData, birth_date: e.target.value })}
+                  className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+                  placeholder={tm('custPhBirthDate')}
                 />
-                <p className="mt-1 text-[10px] text-gray-400">{tm('partialDateHint')}</p>
               </div>
               <div>
                 <label className="block text-sm font-medium text-gray-700 mb-1">{tm('custLabelFileId')}</label>
