@@ -12,8 +12,14 @@ import { formatNumber } from '../../../utils/formatNumber';
 import {
     fetchLayeredInventoryValuation,
     layeredCostForProduct,
+    layeredAvgForProduct,
     type LayeredInventoryValuation,
 } from '../../../services/layeredInventoryCost';
+import { productCardUnitCost } from '../../../utils/productCardUnitCost';
+import {
+    fetchWeightedAverageUnitCosts,
+    lookupWeightedAvgUnitCost,
+} from '../../../services/weightedAverageUnitCost';
 
 /** Envanter satırı + ambar stok klon alanları (wh_{id}) */
 type InventoryRow = Product & Record<string, unknown>;
@@ -25,6 +31,8 @@ export function InventoryReport() {
     const [products, setProducts] = useState<Product[]>([]);
     const [warehouses, setWarehouses] = useState<Warehouse[]>([]);
     const [valuation, setValuation] = useState<LayeredInventoryValuation | null>(null);
+    const [avgByProduct, setAvgByProduct] = useState<Map<string, number>>(new Map());
+    const [avgByCode, setAvgByCode] = useState<Map<string, number>>(new Map());
     const [loading, setLoading] = useState(true);
     /** Malzeme listesi ile aynı: Özel Kod 2 varsayılan açık; diğerleri Kolonlar’dan seçilir */
     const [columnVisibility, setColumnVisibility] = useState<Record<string, boolean>>({
@@ -81,6 +89,16 @@ export function InventoryReport() {
                 });
                 if (cancelled) return;
                 setValuation(layered);
+                const avgMaps = await fetchWeightedAverageUnitCosts({
+                    firmNr: selectedFirm?.firm_nr,
+                    periodNr: selectedPeriod?.nr,
+                }).catch((err) => {
+                    console.error('Failed to load weighted avg unit cost', err);
+                    return { byProductId: new Map<string, number>(), byCode: new Map<string, number>() };
+                });
+                if (cancelled) return;
+                setAvgByProduct(avgMaps.byProductId);
+                setAvgByCode(avgMaps.byCode);
             } catch (error) {
                 console.error('Failed to load inventory', error);
             } finally {
@@ -191,7 +209,19 @@ export function InventoryReport() {
                 cell: info => specialCodeCell(info.getValue()),
                 size: 100,
             }),
-            columnHelper.accessor('cost', {
+            columnHelper.accessor((row) => {
+                const fromAvg = lookupWeightedAvgUnitCost(
+                    { byProductId: avgByProduct, byCode: avgByCode },
+                    row,
+                );
+                if (fromAvg > 0) return fromAvg;
+                const layered = layeredAvgForProduct(valuation, row);
+                if (layered > 0) return layered;
+                return productCardUnitCost(
+                    row as Product & { cost?: number; purchase_price?: number },
+                );
+            }, {
+                id: 'unit_purchase_cost',
                 header: tm('purchasePrice') || 'Alış Fiyatı',
                 cell: info => `${(Number(info.getValue()) || 0).toLocaleString()} ${currency}`,
                 size: 140
@@ -201,7 +231,19 @@ export function InventoryReport() {
                 cell: info => `${(Number(info.getValue()) || 0).toLocaleString()} ${currency}`,
                 size: 140
             }),
-            columnHelper.accessor(row => layeredCostForProduct(valuation, row), {
+            columnHelper.accessor(row => {
+                const qty = Number(row.stock) || 0;
+                const layeredTotal = layeredCostForProduct(valuation, row);
+                if (layeredTotal > 0) return layeredTotal;
+                const fromAvg = lookupWeightedAvgUnitCost(
+                    { byProductId: avgByProduct, byCode: avgByCode },
+                    row,
+                );
+                if (fromAvg > 0) return qty * fromAvg;
+                return qty * productCardUnitCost(
+                    row as Product & { cost?: number; purchase_price?: number },
+                );
+            }, {
                 id: 'total_cost',
                 header: tm('totalValue') || 'Toplam Değer',
                 cell: info => `${(Number(info.getValue()) || 0).toLocaleString()} ${currency}`,
@@ -215,7 +257,7 @@ export function InventoryReport() {
             }),
         ];
         return base;
-    }, [tm, currency, valuation, t, warehouses]);
+    }, [tm, currency, valuation, avgByProduct, avgByCode, t, warehouses]);
 
     return (
         <div className="h-full flex flex-col bg-white rounded-lg shadow-sm border border-gray-200">

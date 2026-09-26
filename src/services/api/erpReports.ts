@@ -40,9 +40,9 @@ import {
 } from '../../utils/lastPurchaseCostSql';
 import {
   productCardUnitCost,
-  stockValueAtCardCost,
   SQL_PRODUCT_CARD_UNIT_COST,
 } from '../../utils/productCardUnitCost';
+import { lookupWeightedAvgUnitCost } from '../weightedAverageUnitCost';
 import { inferQtyFromRevenue } from '../../utils/lineGrossProfit';
 
 const ROW_LIMIT = 3000;
@@ -227,6 +227,43 @@ async function applyWeightedAvgCostToGrossProfit(
     console.warn('[erpReports] weighted avg cost overlay failed:', e);
     return rows;
   }
+}
+
+/**
+ * Stok değerleme birim maliyeti — Malzeme Değer / Stok Durumu ile aynı öncelik:
+ * 1) ağırlıklı ort. alış (Σ tutar / Σ miktar)
+ * 2) kart cost → purchase_price
+ * Satış fiyatına düşülmez.
+ */
+async function loadStockValuationUnitCostMaps(firmNr?: string | number | null) {
+  try {
+    const { fetchWeightedAverageUnitCosts } = await import('../weightedAverageUnitCost');
+    return await fetchWeightedAverageUnitCosts({
+      firmNr: firmNr ?? ERP_SETTINGS.firmNr,
+      periodNr: ERP_SETTINGS.periodNr,
+    });
+  } catch (e) {
+    console.warn('[erpReports] weighted avg maps for stock value failed:', e);
+    return { byProductId: new Map<string, number>(), byCode: new Map<string, number>() };
+  }
+}
+
+function resolveStockValuationUnitCost(
+  maps: { byProductId: Map<string, number>; byCode: Map<string, number> } | null | undefined,
+  product: {
+    id?: string | null;
+    code?: string | null;
+    cost?: number | null;
+    purchase_price?: number | null;
+    purchasePrice?: number | null;
+  },
+  cardFallback = 0,
+): number {
+  const fromAvg = lookupWeightedAvgUnitCost(maps, product);
+  if (fromAvg > 0) return fromAvg;
+  const card = productCardUnitCost(product);
+  if (card > 0) return card;
+  return Number(cardFallback) > 0 ? Number(cardFallback) : 0;
 }
 
 /** Aynı ürünü (id/kod) birleştir — item_name / kod-id sapmasıyla bölünen SABUN satırlarını topla. */
@@ -1901,6 +1938,8 @@ export const erpReportsAPI = {
   },
 
   async getCriticalStock(): Promise<CriticalStockRow[]> {
+    const avgMaps = await loadStockValuationUnitCostMaps();
+
     if (DB_SETTINGS.connectionProvider === 'rest_api') {
       const { postgrest } = await import('./postgrestClient');
       const fn = padFirm();
@@ -1922,7 +1961,12 @@ export const erpReportsAPI = {
           const stock = Number(p.stock ?? 0);
           const minStock = Number(p.min_stock ?? 0);
           const criticalStock = Number(p.critical_stock ?? 0);
-          const unitCost = productCardUnitCost(p);
+          const unitCost = resolveStockValuationUnitCost(avgMaps, {
+            id: String(p.id ?? ''),
+            code: String(p.code ?? ''),
+            cost: Number(p.cost ?? 0) || 0,
+            purchase_price: Number(p.purchase_price ?? 0) || 0,
+          });
           let status: CriticalStockRow['status'] = 'ok';
           if (criticalStock > 0 && stock <= criticalStock) status = 'critical';
           else if (minStock > 0 && stock <= minStock) status = 'below_min';
@@ -1935,7 +1979,7 @@ export const erpReportsAPI = {
             minStock,
             criticalStock,
             unitCost,
-            stockValue: stockValueAtCardCost(stock, p),
+            stockValue: stock * unitCost,
             status,
           };
         })
@@ -1954,7 +1998,9 @@ export const erpReportsAPI = {
         COALESCE(p.stock, 0) AS stock,
         COALESCE(p.min_stock, 0) AS min_stock,
         COALESCE(p.critical_stock, 0) AS critical_stock,
-        ${SQL_PRODUCT_CARD_UNIT_COST} AS unit_cost
+        ${SQL_PRODUCT_CARD_UNIT_COST} AS unit_cost,
+        COALESCE(p.cost, 0) AS cost,
+        COALESCE(p.purchase_price, 0) AS purchase_price
       FROM products p
       WHERE COALESCE(p.is_active, true) = true
         AND (
@@ -1970,7 +2016,16 @@ export const erpReportsAPI = {
       const stock = Number(r.stock ?? 0);
       const minStock = Number(r.min_stock ?? 0);
       const criticalStock = Number(r.critical_stock ?? 0);
-      const unitCost = Number(r.unit_cost ?? 0);
+      const unitCost = resolveStockValuationUnitCost(
+        avgMaps,
+        {
+          id: String(r.product_id ?? ''),
+          code: String(r.product_code ?? ''),
+          cost: Number(r.cost ?? 0) || 0,
+          purchase_price: Number(r.purchase_price ?? 0) || 0,
+        },
+        Number(r.unit_cost ?? 0),
+      );
       let status: CriticalStockRow['status'] = 'below_min';
       if (criticalStock > 0 && stock <= criticalStock) status = 'critical';
       return {
@@ -1990,10 +2045,12 @@ export const erpReportsAPI = {
 
   /**
    * Depo Stok Özeti — depo koduna göre SKU / miktar / stok değeri.
-   * Değer: Σ(stok × kart birim maliyet); birim = cost → purchase_price (satış fiyatı değil).
-   * warehouse_code boşsa grup '—' (filtre değil, eksik depo etiketi).
+   * Değer: Σ(stok × birim maliyet); birim = ağırlıklı ort. alış → kart cost/purchase_price
+   * (satış fiyatı değil). warehouse_code boşsa grup '—' (filtre değil, eksik depo etiketi).
    */
   async getWarehouseStock(): Promise<WarehouseStockRow[]> {
+    const avgMaps = await loadStockValuationUnitCostMaps();
+
     if (DB_SETTINGS.connectionProvider === 'rest_api') {
       const { postgrest } = await import('./postgrestClient');
       const fn = padFirm();
@@ -2001,7 +2058,7 @@ export const erpReportsAPI = {
         .get<Record<string, unknown>[]>(
           `/rex_${fn}_products`,
           {
-            select: 'stock,cost,purchase_price,warehouse_code,min_stock,critical_stock,is_active',
+            select: 'id,code,stock,cost,purchase_price,warehouse_code,min_stock,critical_stock,is_active',
             is_active: 'eq.true',
             limit: '5000',
           },
@@ -2014,6 +2071,12 @@ export const erpReportsAPI = {
         const stock = Number(p.stock ?? 0);
         const minStock = Number(p.min_stock ?? 0);
         const criticalStock = Number(p.critical_stock ?? 0);
+        const unitCost = resolveStockValuationUnitCost(avgMaps, {
+          id: String(p.id ?? ''),
+          code: String(p.code ?? ''),
+          cost: Number(p.cost ?? 0) || 0,
+          purchase_price: Number(p.purchase_price ?? 0) || 0,
+        });
         const cur = map.get(wh) || {
           warehouseCode: wh,
           skuCount: 0,
@@ -2023,7 +2086,7 @@ export const erpReportsAPI = {
         };
         cur.skuCount += 1;
         cur.totalQty += stock;
-        cur.totalValue += stockValueAtCardCost(stock, p);
+        cur.totalValue += stock * unitCost;
         if (
           (criticalStock > 0 && stock <= criticalStock) ||
           (minStock > 0 && stock <= minStock)
@@ -2035,32 +2098,59 @@ export const erpReportsAPI = {
       return Array.from(map.values()).sort((a, b) => b.totalValue - a.totalValue).slice(0, 500);
     }
 
+    // SQL yolu: ürün satırlarını çekip ağırlıklı ort. ile değerle (kart cost 0 olsa bile alıştan gelir)
     const { rows } = await postgres.query(
       `
       SELECT
+        p.id::text AS product_id,
+        COALESCE(p.code, '') AS product_code,
         COALESCE(NULLIF(TRIM(p.warehouse_code), ''), '—') AS warehouse_code,
-        COUNT(*)::int AS sku_count,
-        COALESCE(SUM(COALESCE(p.stock, 0)), 0) AS total_qty,
-        COALESCE(SUM(COALESCE(p.stock, 0) * (${SQL_PRODUCT_CARD_UNIT_COST})), 0) AS total_value,
-        COUNT(*) FILTER (
-          WHERE (COALESCE(p.critical_stock, 0) > 0 AND COALESCE(p.stock, 0) <= p.critical_stock)
-             OR (COALESCE(p.min_stock, 0) > 0 AND COALESCE(p.stock, 0) <= p.min_stock)
-        )::int AS critical_count
+        COALESCE(p.stock, 0) AS stock,
+        COALESCE(p.min_stock, 0) AS min_stock,
+        COALESCE(p.critical_stock, 0) AS critical_stock,
+        COALESCE(p.cost, 0) AS cost,
+        COALESCE(p.purchase_price, 0) AS purchase_price,
+        ${SQL_PRODUCT_CARD_UNIT_COST} AS unit_cost
       FROM products p
       WHERE COALESCE(p.is_active, true) = true
-      GROUP BY 1
-      ORDER BY total_value DESC
-      LIMIT 500
       `,
       [],
     );
-    return (rows || []).map((r: any) => ({
-      warehouseCode: String(r.warehouse_code ?? '—'),
-      skuCount: Number(r.sku_count ?? 0),
-      totalQty: Number(r.total_qty ?? 0),
-      totalValue: Number(r.total_value ?? 0),
-      criticalCount: Number(r.critical_count ?? 0),
-    }));
+    const map = new Map<string, WarehouseStockRow>();
+    for (const r of rows || []) {
+      const wh = String(r.warehouse_code ?? '—');
+      const stock = Number(r.stock ?? 0);
+      const minStock = Number(r.min_stock ?? 0);
+      const criticalStock = Number(r.critical_stock ?? 0);
+      const unitCost = resolveStockValuationUnitCost(
+        avgMaps,
+        {
+          id: String(r.product_id ?? ''),
+          code: String(r.product_code ?? ''),
+          cost: Number(r.cost ?? 0) || 0,
+          purchase_price: Number(r.purchase_price ?? 0) || 0,
+        },
+        Number(r.unit_cost ?? 0),
+      );
+      const cur = map.get(wh) || {
+        warehouseCode: wh,
+        skuCount: 0,
+        totalQty: 0,
+        totalValue: 0,
+        criticalCount: 0,
+      };
+      cur.skuCount += 1;
+      cur.totalQty += stock;
+      cur.totalValue += stock * unitCost;
+      if (
+        (criticalStock > 0 && stock <= criticalStock) ||
+        (minStock > 0 && stock <= minStock)
+      ) {
+        cur.criticalCount += 1;
+      }
+      map.set(wh, cur);
+    }
+    return Array.from(map.values()).sort((a, b) => b.totalValue - a.totalValue).slice(0, 500);
   },
 
   /* ========================================================================== */
