@@ -84,6 +84,8 @@ interface InvoiceHeaderProps {
     // Supplier History
     setSelectedSupplierHistory: (val: { id: string, name: string } | null) => void;
     setShowSupplierHistory: (val: boolean) => void;
+    /** Tedarikçi UUID — geçmiş sorgusu için (kod değil) */
+    supplierId?: string;
 
     // Customer History
     setSelectedCustomerHistory: (val: { id: string; name: string; uuid: string } | null) => void;
@@ -163,6 +165,7 @@ export const InvoiceHeader: React.FC<InvoiceHeaderProps> = ({
 
     setSelectedSupplierHistory,
     setShowSupplierHistory,
+    supplierId,
     setSelectedCustomerHistory,
     setShowCustomerHistory,
     customerId,
@@ -691,7 +694,10 @@ export const InvoiceHeader: React.FC<InvoiceHeaderProps> = ({
                                 {isPurchaseSide && (supplierCode || supplierTitle) && (
                                     <button
                                         onClick={() => {
-                                            setSelectedSupplierHistory({ id: supplierCode, name: supplierTitle });
+                                            setSelectedSupplierHistory({
+                                                id: String(supplierId || '').trim(),
+                                                name: supplierTitle,
+                                            });
                                             setShowSupplierHistory(true);
                                         }}
                                         className="px-2 py-1 border border-blue-200 bg-blue-50 hover:bg-blue-100 text-blue-600 rounded transition-colors"
@@ -1014,7 +1020,10 @@ export const InvoiceHeader: React.FC<InvoiceHeaderProps> = ({
                                         <button
                                             type="button"
                                             onClick={() => {
-                                                setSelectedSupplierHistory({ id: supplierCode, name: supplierTitle });
+                                                setSelectedSupplierHistory({
+                                                    id: String(supplierId || '').trim(),
+                                                    name: supplierTitle,
+                                                });
                                                 setShowSupplierHistory(true);
                                             }}
                                             className={`${inputGroupBtnClass} border-blue-200 dark:border-blue-700 bg-blue-50 dark:bg-blue-900/40 text-blue-600 dark:text-blue-300 hover:bg-blue-100 dark:hover:bg-blue-900/60`}

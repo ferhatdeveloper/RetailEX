@@ -12,7 +12,7 @@ import { formatNumber } from '../../utils/formatNumber';
 import { getCurrencyDecimalPlaces, getFirmLedgerCurrency, formatLedgerAmount } from '../../utils/currency';
 import { getAppDefaultCurrency } from '../../services/postgres';
 import { useProductStore, useCustomerStore } from '../../store';
-import { fetchExpiringSoonLots } from '../../services/api/lots';
+import { expiryReportsAPI, type ExpiringPurchaseItem } from '../../services/api/expiryReports';
 import { useFirmaDonem } from '../../contexts/FirmaDonemContext';
 import { useLanguage } from '../../contexts/LanguageContext';
 import { useTheme } from '../../contexts/ThemeContext';
@@ -37,6 +37,7 @@ import {
   resolveWriteCashierName,
 } from '../../utils/loginCashierName';
 import { mergeExpensesWithCashOuts } from '../../utils/reportUnifiedExpenses';
+import { productCardUnitCost } from '../../utils/productCardUnitCost';
 import type { BeautyAppointment, BeautySale, BeautyService, BeautyStaffTreatmentReport } from '../../types/beauty';
 import { beautyServiceMainKey, beautyServiceSubKey } from '../beauty/beautyServiceCategoryUtils';
 import { localCalendarDateKey, localTodayDateKey, formatIsoDateTr } from '../../utils/localCalendarDate';
@@ -1021,10 +1022,14 @@ export function ReportsModule({
   const { hasPermission } = usePermission();
   const canDeleteErpSale = hasPermission('sales-invoices', 'DELETE');
 
-  const { selectedFirm } = useFirmaDonem();
+  const { selectedFirm, selectedPeriod } = useFirmaDonem();
   /** Defter tutarı — firma ana para (IQD); raporlama USD yok, kur çevrimi yok. */
   const amountCurrency = getFirmLedgerCurrency(selectedFirm, getAppDefaultCurrency());
   const reportCurrency = amountCurrency;
+  /** Stok değeri: ağırlıklı ort. alış (Malzeme Değer ile aynı kaynak) */
+  const [avgCostByProductId, setAvgCostByProductId] = useState<Map<string, number>>(() => new Map());
+  const [avgCostByCode, setAvgCostByCode] = useState<Map<string, number>>(() => new Map());
+  const [avgCostLoading, setAvgCostLoading] = useState(false);
   const enabledBusinessTypes = useMemo(
     () => resolveEnabledReportBusinessTypes(selectedFirm),
     [selectedFirm?.enabled_modules, selectedFirm?.firm_nr],
@@ -1720,6 +1725,36 @@ export function ReportsModule({
     }
   }, [selectedTab, loadProducts]);
 
+  // Stok değeri — alış satırlarından ağırlıklı ortalama birim maliyet (satış fiyatı değil)
+  useEffect(() => {
+    if (selectedTab !== 'stock-status' && selectedTab !== 'stock-abc') return;
+    let cancelled = false;
+    setAvgCostLoading(true);
+    void (async () => {
+      try {
+        const { fetchWeightedAverageUnitCosts } = await import('../../services/weightedAverageUnitCost');
+        const maps = await fetchWeightedAverageUnitCosts({
+          firmNr: selectedFirm?.firm_nr,
+          periodNr: selectedPeriod?.nr,
+        });
+        if (cancelled) return;
+        setAvgCostByProductId(maps.byProductId);
+        setAvgCostByCode(maps.byCode);
+      } catch (err) {
+        console.error('[ReportsModule] weighted avg unit cost failed', err);
+        if (!cancelled) {
+          setAvgCostByProductId(new Map());
+          setAvgCostByCode(new Map());
+        }
+      } finally {
+        if (!cancelled) setAvgCostLoading(false);
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [selectedTab, selectedFirm?.firm_nr, selectedPeriod?.nr]);
+
   // Müşteri satış: kart adı / telefon eşlemesi için store listesini bir kez yükle
   useEffect(() => {
     if (selectedTab !== 'customer-sales' || customerSalesLoadedRef.current) return;
@@ -1727,22 +1762,35 @@ export function ReportsModule({
     void loadCustomers();
   }, [selectedTab, loadCustomers]);
 
-  // Fetch expiring products
+  const mapExpiringPurchaseToReportRow = useCallback((item: ExpiringPurchaseItem) => ({
+    id: `${item.productId || item.itemCode}|${item.expiryDate}|${item.batchNo || ''}|${item.saleItemId || item.invoiceId || ''}`,
+    product_code: item.itemCode || '-',
+    product_name: item.itemName || '-',
+    lot_no: item.batchNo || '',
+    serial_no: '',
+    warehouse_name: '-',
+    available_quantity: Number(item.quantity) || 0,
+    expiry_date: item.expiryDate,
+    unit_cost: Number(item.unitPrice) || 0,
+  }), []);
+
+  // SKT Yaklaşanlar: ürün kartı + alış satırı + lot (süresi geçmiş + sonraki N gün)
   useEffect(() => {
     if (selectedTab === 'expiring-products' && selectedFirm?.id) {
       setLoadingExpiring(true);
-      fetchExpiringSoonLots(selectedFirm.id.toString(), expiringDays)
-        .then((data: any) => {
-          setExpiringProducts(data);
+      expiryReportsAPI
+        .getExpiringPurchaseItems(expiringDays, { includeExpired: true })
+        .then((data) => {
+          setExpiringProducts(Array.isArray(data) ? data.map(mapExpiringPurchaseToReportRow) : []);
           setLoadingExpiring(false);
         })
-        .catch((error: any) => {
+        .catch((error: unknown) => {
           console.error('Error fetching expiring products:', error);
           setExpiringProducts([]);
           setLoadingExpiring(false);
         });
     }
-  }, [selectedTab, selectedFirm, expiringDays, selectedFirm?.id]);
+  }, [selectedTab, selectedFirm, expiringDays, selectedFirm?.id, mapExpiringPurchaseToReportRow]);
 
   const loadRestOrdersForSelectedDate = useCallback(() => {
     if (businessType !== 'restaurant' || !selectedFirm) {
@@ -1833,8 +1881,11 @@ export function ReportsModule({
       }
       if (selectedTab === 'expiring-products' && selectedFirm?.id) {
         tasks.push(
-          fetchExpiringSoonLots(selectedFirm.id.toString(), expiringDays)
-            .then((data: any) => setExpiringProducts(Array.isArray(data) ? data : []))
+          expiryReportsAPI
+            .getExpiringPurchaseItems(expiringDays, { includeExpired: true })
+            .then((data) =>
+              setExpiringProducts(Array.isArray(data) ? data.map(mapExpiringPurchaseToReportRow) : []),
+            )
             .catch(() => setExpiringProducts([])),
         );
       }
@@ -1857,6 +1908,7 @@ export function ReportsModule({
     loadProducts,
     loadReportRangeSales,
     loadRestOrdersForSelectedDate,
+    mapExpiringPurchaseToReportRow,
     reloadBeautyServiceReport,
     reloadPurchasePromoReport,
     selectedFirm?.id,
@@ -3771,16 +3823,21 @@ export function ReportsModule({
     });
     const normalStock = products.filter(p => stockOf(p) > minLevelFor(p));
 
-    // B5: Bilanço ile uyumlu stok değeri — alış fiyatı (maliyet) üzerinden.
-    // Backend `erpReports.ts` zaten `stock * cost` kullanıyor; UI da maliyet üzerinden
-    // hesaplanmalı, aksi halde mali tablo (bilanço) ile rapor arasında tutarsızlık olur.
-    const costOf = (p: Product): number => {
-      const c = safeNumber((p as Product & { cost?: number }).cost);
-      return c > 0 ? c : safeNumber(p.price);
+    // Envanter stok değeri = qty × ort. alış (ağırlıklı ort. → kart cost/purchase_price).
+    // Satış fiyatına ASLA düşülmez — aksi halde bilanço/malzeme değer şişer.
+    const unitCostOf = (p: Product): number => {
+      const id = String(p.id || '');
+      const code = String((p as Product & { code?: string }).code || '').trim();
+      const fromAvg =
+        (id && avgCostByProductId.get(id)) ||
+        (code && avgCostByCode.get(code)) ||
+        0;
+      if (fromAvg > 0) return fromAvg;
+      return productCardUnitCost(p as Product & { cost?: number; purchase_price?: number });
     };
     const totalStockValue = products.reduce((sum, p) => {
       const s = stockOf(p);
-      const unitCost = costOf(p);
+      const unitCost = unitCostOf(p);
       // Negatif stok izinliyken eksi miktar eksi değere yansır (sıfırlama yok)
       return sum + s * unitCost;
     }, 0);
@@ -3788,7 +3845,7 @@ export function ReportsModule({
     const lowStockItems = lowStock.slice(0, 20).map(p => {
       const s = stockOf(p);
       const price = safeNumber(p.price);
-      const unitCost = costOf(p);
+      const unitCost = unitCostOf(p);
       const minStock = minLevelFor(p);
       return {
         name: productLabelForReport(p, tm('reportsUnnamedProduct')),
@@ -4054,13 +4111,23 @@ export function ReportsModule({
       abc: 'A' | 'B' | 'C';
     };
 
+    const unitCostOf = (p: Product): number => {
+      const id = String(p.id || '');
+      const code = String((p as Product & { code?: string }).code || '').trim();
+      const fromAvg =
+        (id && avgCostByProductId.get(id)) ||
+        (code && avgCostByCode.get(code)) ||
+        0;
+      if (fromAvg > 0) return fromAvg;
+      return productCardUnitCost(p as Product & { cost?: number; purchase_price?: number });
+    };
+
     const rowsRaw = products
       .filter(p => !(p as any).isService && !(p as any).is_service)
       .map(p => {
         const revenue = revenueById.get(p.id) || 0;
         const stk = stockOf(p);
-        const price = safeNumber(p.price);
-        const stockValue = stk * price;
+        const stockValue = stk * unitCostOf(p);
         const metric = revenue > 0 ? revenue : stockValue;
         return {
           id: p.id,
@@ -7149,10 +7216,12 @@ export function ReportsModule({
               const stockStatus = getStockStatus();
               return (
                 <div className="space-y-4">
-                  {stockReportLoading && (
+                  {(stockReportLoading || avgCostLoading) && (
                     <div className="flex items-center gap-2 text-sm text-gray-600 bg-amber-50 border border-amber-100 rounded-lg px-3 py-2">
                       <Spin size="small" />
-                      {tm('reportsStockLoadingProducts')}
+                      {stockReportLoading
+                        ? tm('reportsStockLoadingProducts')
+                        : tm('reportsStockLoadingAvgCost')}
                     </div>
                   )}
                   <div className="grid grid-cols-4 gap-4">
@@ -7186,7 +7255,7 @@ export function ReportsModule({
                     <div className="bg-white rounded-lg border-2 border-green-200 p-4">
                       <div className="flex items-center justify-between">
                         <div>
-                          <p className="text-sm text-gray-600">{tm('reportsStockValue')}</p>
+                          <p className="text-sm text-gray-600">{tm('stockValueCost') || tm('reportsStockValue')}</p>
                           <p className="text-xl text-green-600 mt-1 font-bold">{formatNumber(stockStatus.totalStockValue, 2, false)} {reportCurrency}</p>
                         </div>
                         <Banknote className="w-12 h-12 text-green-600 opacity-20" />
@@ -7211,6 +7280,7 @@ export function ReportsModule({
                         stock: it.stock,
                         minStock: it.minStock,
                         price: it.price,
+                        unitCost: it.unitCost,
                         value: it.value,
                         status: it.stock <= 0 ? tm('reportsOutOfStock') : tm('reportsLowBadge'),
                       }));
@@ -7255,11 +7325,19 @@ export function ReportsModule({
                               },
                               {
                                 key: 'price',
-                                header: tm('reportsPriceCol'),
+                                header: tm('salePrice') || tm('reportsPriceCol'),
                                 type: 'number',
                                 align: 'right',
                                 size: 120,
                                 cell: (row) => `${formatNumber(row.price, 2, false)} ${reportCurrency}`,
+                              },
+                              {
+                                key: 'unitCost',
+                                header: tm('avgUnitCost') || tm('unitCost'),
+                                type: 'number',
+                                align: 'right',
+                                size: 130,
+                                cell: (row) => `${formatNumber(row.unitCost, 2, false)} ${reportCurrency}`,
                               },
                               {
                                 key: 'value',

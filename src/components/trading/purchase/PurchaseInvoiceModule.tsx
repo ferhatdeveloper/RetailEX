@@ -10,6 +10,7 @@ import { invoicesAPI, Invoice } from '../../../services/api/invoices';
 import { UniversalInvoiceForm } from '../invoices/UniversalInvoiceForm';
 import { ContextMenu } from '../../shared/ContextMenu';
 import { ColumnVisibilityMenu } from '../../shared/ColumnVisibilityMenu';
+import { useRetailexInvalidateRefresh } from '../../../hooks/useRetailexInvalidateRefresh';
 
 interface InvoiceItem {
   id: string;
@@ -138,6 +139,10 @@ export function PurchaseInvoiceModule({ onCreateInvoice, onSwitchTab, activeTab:
       setIsLoading(false);
     }
   };
+
+  useRetailexInvalidateRefresh(['invoices', 'sales'], () => {
+    void loadInvoices();
+  });
 
   useEffect(() => {
     if (selectedFirm && selectedPeriod) {

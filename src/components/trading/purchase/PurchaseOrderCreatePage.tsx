@@ -217,14 +217,14 @@ export function PurchaseOrderCreatePage({ products, onBack, onSuccess }: Purchas
   const handleAddFromHistory = (historyItems: any[]) => {
     const newItems = historyItems.map(hItem => ({
       id: Date.now().toString() + Math.random().toString().slice(2, 5),
-      productId: '', // History item doesn't always map to a product ID directly in this mock
-      code: '',
+      productId: String(hItem.productId || '').trim(),
+      code: String(hItem.productCode || '').trim(),
       name: hItem.product,
       quantity: hItem.quantity,
       unit: hItem.unit,
       price: hItem.price,
       total: hItem.total,
-      supplierId: selectedSupplierHistory?.id || '', // Assign selected supplier
+      supplierId: selectedSupplierHistory?.id || '',
     }));
     setOrderItems(prev => [...prev, ...newItems]);
   };
@@ -680,6 +680,7 @@ export function PurchaseOrderCreatePage({ products, onBack, onSuccess }: Purchas
           <SupplierHistoryModal
             isOpen={showSupplierHistory}
             onClose={() => setShowSupplierHistory(false)}
+            supplierId={selectedSupplierHistory?.id || ''}
             supplierName={selectedSupplierHistory?.name || ''}
             onAddItems={handleAddFromHistory}
           />

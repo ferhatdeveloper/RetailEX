@@ -10,7 +10,13 @@ import {
     type StockInOutLine,
 } from '../utils/stockInOutTotals';
 import { resolveExtractSourceMeta } from '../utils/materialExtractLabels';
-import { displayItemCode, isUuidText, SQL_NON_UUID_ITEM_CODE } from '../utils/lastPurchaseCostSql';
+import {
+    classifyProductHistoryType,
+    displayItemCode,
+    isUuidText,
+    SQL_NON_UUID_ITEM_CODE,
+} from '../utils/lastPurchaseCostSql';
+import { resolveLineGrossProfit } from '../utils/lineGrossProfit';
 import {
     computePriceDriftCandidates,
     latestSlipPriceByProduct,
@@ -936,27 +942,51 @@ class StockMovementAPI {
             cost_price?: number;
             unit_cost?: number;
             quantity?: number;
+            total_amount?: number;
+            net_amount?: number;
             fiche_type?: string;
             trcode?: number;
             movement_type?: string;
             source_type?: string;
+            /** Ağırlıklı ort. / son alış birim maliyet (unit_cost yoksa) */
+            avg_unit_cost?: number;
         }): number => {
-            const stored = Number(row.gross_profit ?? 0);
-            if (Number.isFinite(stored) && Math.abs(stored) > 0.0000001) return stored;
-            const qty = Math.abs(Number(row.quantity) || 0);
-            const unitPrice = Number(row.unit_price) || 0;
-            const unitCost = Number(row.unit_cost ?? row.cost_price ?? 0) || 0;
-            if (!qty || !unitPrice || !unitCost) return 0;
             const fiche = String(row.fiche_type || '').toLowerCase();
             const tr = Number(row.trcode ?? 0);
             const mt = String(row.movement_type || '');
-            // Alış / alış iadesi: brüt kâr yok
-            if (fiche === 'purchase_invoice' || (fiche === 'return_invoice' && (tr === 2 || tr === 6))) return 0;
+            const kind = classifyProductHistoryType(fiche, tr);
+            // Alış / alış iadesi / ambar giriş: brüt kâr yok
+            if (kind === 'purchase' || kind === 'purchase_return') return 0;
             if (row.source_type === 'slip' && mt !== 'out') return 0;
-            const line = (unitPrice - unitCost) * qty;
-            if (fiche === 'return_invoice' && tr === 3) return -Math.abs(line);
-            if (mt === 'out' || fiche === 'sales_invoice' || tr === 7 || tr === 8) return line;
-            return 0;
+
+            const qty = Math.abs(Number(row.quantity) || 0);
+            const unitPrice = Number(row.unit_price) || 0;
+            const lineUnitCost = Number(row.unit_cost ?? row.cost_price ?? 0) || 0;
+            const avgCost = Number(row.avg_unit_cost ?? 0) || 0;
+            // Satış fiyatına eşit “maliyet” güvenilmez (eski kayıt hatası)
+            const unitCost =
+                lineUnitCost > 0 && !(unitPrice > 0 && Math.abs(lineUnitCost - unitPrice) < 0.02)
+                    ? lineUnitCost
+                    : avgCost > 0
+                      ? avgCost
+                      : lineUnitCost;
+            const revenue =
+                Number(row.net_amount ?? 0) ||
+                Number(row.total_amount ?? 0) ||
+                unitPrice * qty;
+            const gp = resolveLineGrossProfit({
+                kind: kind === 'sales_return' || (fiche === 'return_invoice' && (tr === 2 || tr === 3))
+                    ? 'sales_return'
+                    : mt === 'out' || fiche === 'sales_invoice' || tr === 7 || tr === 8 || kind === 'sales'
+                      ? 'sales'
+                      : 'other',
+                storedGrossProfit: Number(row.gross_profit ?? 0) || 0,
+                revenue,
+                quantity: qty,
+                unitCost,
+                unitPrice,
+            });
+            return gp ?? 0;
         };
 
         const mapRow = (r: any) => {
@@ -979,6 +1009,36 @@ class StockMovementAPI {
                 }
             };
         };
+
+        // Ağırlıklı ort. birim maliyet — unit_cost=0 / ciro=kâr kayıtlarını düzeltmek için
+        let avgUnitCost = 0;
+        try {
+            const {
+                fetchWeightedAverageUnitCosts,
+                lookupWeightedAvgUnitCost,
+            } = await import('./weightedAverageUnitCost');
+            const maps = await fetchWeightedAverageUnitCosts({
+                firmNr: ERP_SETTINGS.firmNr,
+            });
+            avgUnitCost = lookupWeightedAvgUnitCost(maps, {
+                id: String(productId || '').trim(),
+                code: String(hint?.code || '').trim(),
+                barcode: String(hint?.barcode || '').trim(),
+            });
+            // productId kod ise
+            if (!(avgUnitCost > 0) && productId && !UUID_RE.test(String(productId))) {
+                avgUnitCost = lookupWeightedAvgUnitCost(maps, { code: String(productId).trim() });
+            }
+        } catch (e) {
+            console.warn('[StockMovementAPI] weighted avg for movements failed:', e);
+        }
+
+        const mapRowWithCost = (r: any) =>
+            mapRow({
+                ...r,
+                avg_unit_cost:
+                    Number(r.avg_unit_cost) > 0 ? Number(r.avg_unit_cost) : avgUnitCost,
+            });
 
         if (shouldUseTenantPostgrestApi()) {
             try {
@@ -1112,12 +1172,12 @@ class StockMovementAPI {
                     if (kind === 'purchase' || ficheType === 'purchase_invoice') {
                         movementType = 'in';
                         trcode = 1;
-                    } else if (kind === 'sales_return' || (ficheType === 'return_invoice' && Number(h.trcode) === 3)) {
+                    } else if (kind === 'sales_return' || (ficheType === 'return_invoice' && [2, 3].includes(Number(h.trcode)))) {
                         movementType = 'in';
-                        trcode = 3;
+                        trcode = Number(h.trcode) || 3;
                     } else if (
                         kind === 'purchase_return' ||
-                        (ficheType === 'return_invoice' && [2, 6].includes(Number(h.trcode)))
+                        (ficheType === 'return_invoice' && Number(h.trcode) === 6)
                     ) {
                         movementType = 'out';
                         trcode = Number(h.trcode) || 6;
@@ -1159,7 +1219,7 @@ class StockMovementAPI {
                     const db = new Date(b.movement_date || b.created_at).getTime();
                     return db - da;
                 });
-                const mappedPgrest = combinedRaw.map(mapRow);
+                const mappedPgrest = combinedRaw.map(mapRowWithCost);
                 // PostgREST boş döndüyse (yanlış server / eşleme) postgres yoluna düş.
                 if (mappedPgrest.length > 0) return mappedPgrest;
             } catch (e) {
@@ -1227,8 +1287,8 @@ class StockMovementAPI {
                     CASE
                         WHEN sl.fiche_type = 'purchase_invoice' THEN 'in'
                         WHEN sl.fiche_type = 'sales_invoice'    THEN 'out'
-                        WHEN sl.fiche_type = 'return_invoice' AND sl.trcode = 3         THEN 'in'
-                        WHEN sl.fiche_type = 'return_invoice' AND sl.trcode IN (2, 6)   THEN 'out'
+                        WHEN sl.fiche_type = 'return_invoice' AND sl.trcode IN (2, 3) THEN 'in'
+                        WHEN sl.fiche_type = 'return_invoice' AND sl.trcode = 6         THEN 'out'
                         ELSE 'out'
                     END as movement_type,
                     sl.date as movement_date,
@@ -1293,7 +1353,7 @@ class StockMovementAPI {
         });
 
         console.log(`[StockMovementAPI] getProductMovements(${productId}): slips=${slipRows.length}, invoices=${invoiceRows.length}`);
-        return combined.map(mapRow);
+        return combined.map(mapRowWithCost);
     }
 
     /**
@@ -1306,6 +1366,8 @@ class StockMovementAPI {
         limit?: number;
         firmNr?: string | number;
         periodNr?: string | number;
+        /** stores.id — ambar fişinde kaynak/hedef, faturada store_id */
+        warehouseId?: string | null;
     }): Promise<{ rows: any[]; truncated: boolean; limit: number }> {
         const start = toSqlDateInputString(options.startDate);
         const end = toSqlDateInputString(options.endDate);
@@ -1316,6 +1378,8 @@ class StockMovementAPI {
         const periodNr = String(options.periodNr ?? ERP_SETTINGS.periodNr ?? '01').padStart(2, '0').slice(0, 10);
         const fp = { firmNr, periodNr };
         const fetchCap = limit + 1;
+        const warehouseId = String(options.warehouseId || '').trim();
+        const hasWarehouse = warehouseId !== '' && warehouseId !== 'all';
 
         const mapExtractRow = (r: any) => {
             const classified = resolveExtractSourceMeta(r);
@@ -1328,6 +1392,9 @@ class StockMovementAPI {
                 product_id: String(r.product_id || '').trim(),
                 product_code: productCode,
                 product_name: String(r.product_name || r.item_name || '').trim(),
+                warehouse_id: r.warehouse_id != null ? String(r.warehouse_id) : '',
+                target_warehouse_id: r.target_warehouse_id != null ? String(r.target_warehouse_id) : '',
+                unit_name: String(r.unit_name || r.unit || '').trim() || 'Adet',
                 source_type: classified.source_type,
                 fiche_type: classified.fiche_type,
                 movement: {
@@ -1347,14 +1414,24 @@ class StockMovementAPI {
         let invoiceRows: any[] = [];
 
         try {
+            const slipParams: any[] = [start, end, fetchCap];
+            let slipWarehouseSql = '';
+            if (hasWarehouse) {
+                slipParams.push(warehouseId);
+                slipWarehouseSql = ` AND (m.warehouse_id::text = $${slipParams.length} OR m.target_warehouse_id::text = $${slipParams.length})`;
+            }
             const { rows } = await postgres.query(
                 `SELECT
                     i.id, i.movement_id, i.product_id::text AS product_id,
                     COALESCE(p.code, '') AS product_code,
                     COALESCE(p.name, '') AS product_name,
                     i.quantity, i.unit_price, i.cost_price,
+                    COALESCE(NULLIF(TRIM(i.unit_name), ''), p.unit, 'Adet') AS unit_name,
                     i.notes, i.created_at,
                     m.document_no, m.movement_type, m.movement_date, m.status, m.trcode,
+                    m.warehouse_id::text AS warehouse_id,
+                    m.target_warehouse_id::text AS target_warehouse_id,
+                    m.description AS slip_description,
                     COALESCE(s.name, '') AS warehouse_name,
                     'slip' AS source_type,
                     '' AS fiche_type,
@@ -1367,9 +1444,10 @@ class StockMovementAPI {
                  WHERE m.movement_date::date >= $1::date
                    AND m.movement_date::date <= $2::date
                    AND LOWER(COALESCE(m.movement_type, '')) <> 'price_change'
+                   ${slipWarehouseSql}
                  ORDER BY m.movement_date ASC NULLS LAST, m.created_at ASC NULLS LAST, i.id ASC
                  LIMIT $3`,
-                [start, end, fetchCap],
+                slipParams,
                 fp,
             );
             slipRows = rows || [];
@@ -1378,6 +1456,12 @@ class StockMovementAPI {
         }
 
         try {
+            const invParams: any[] = [start, end, fetchCap];
+            let invWarehouseSql = '';
+            if (hasWarehouse) {
+                invParams.push(warehouseId);
+                invWarehouseSql = ` AND sl.store_id::text = $${invParams.length}`;
+            }
             const { rows } = await postgres.query(
                 `SELECT
                     si.id,
@@ -1396,6 +1480,7 @@ class StockMovementAPI {
                       END
                     ) AS unit_price,
                     COALESCE(si.unit_cost, 0) AS cost_price,
+                    COALESCE(NULLIF(TRIM(si.unit), ''), p.unit, 'Adet') AS unit_name,
                     COALESCE(NULLIF(TRIM(sl.customer_name), ''), sl.notes, '') AS notes,
                     sl.date AS created_at,
                     sl.fiche_no AS document_no,
@@ -1410,6 +1495,8 @@ class StockMovementAPI {
                     sl.status,
                     sl.trcode,
                     sl.fiche_type,
+                    sl.store_id::text AS warehouse_id,
+                    NULL::text AS target_warehouse_id,
                     COALESCE(st.name, 'Merkez Ambar') AS warehouse_name,
                     'invoice' AS source_type,
                     COALESCE(sl.currency_rate, 1.0) AS currency_rate,
@@ -1430,9 +1517,10 @@ class StockMovementAPI {
                    AND LOWER(TRIM(COALESCE(sl.status, ''))) NOT IN ('iptal', 'silindi', 'cancelled', 'canceled', 'deleted')
                    AND LOWER(TRIM(COALESCE(si.item_type, 'Malzeme'))) NOT IN ('hizmet', 'service', 'package', 'paket')
                    AND LOWER(TRIM(COALESCE(p.material_type, ''))) IS DISTINCT FROM 'service'
+                   ${invWarehouseSql}
                  ORDER BY sl.date ASC NULLS LAST, sl.created_at ASC NULLS LAST, si.id ASC
                  LIMIT $3`,
-                [start, end, fetchCap],
+                invParams,
                 fp,
             );
             invoiceRows = rows || [];

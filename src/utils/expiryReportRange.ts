@@ -27,17 +27,32 @@ export function addDaysYmd(ymd: string, days: number): string {
   return `${yy}-${mm}-${dd}`;
 }
 
+export interface ExpiryRangeOptions {
+  /**
+   * true: süresi geçmiş + bugünden itibaren N gün içinde dolacak SKT.
+   * Stok «SKT Yaklaşanlar» raporu için (Süresi Geçmiş kartı).
+   * false/undefined: yalnızca [today, today+N] (alış SKT iade raporu varsayılanı).
+   */
+  includeExpired?: boolean;
+}
+
 /**
  * SKT aralık sınırı (takvim günü, dahil).
- * Sonraki N gün / Bugün: [today, today+N]
+ * Sonraki N gün / Bugün: [today, today+N] (veya includeExpired → (-∞, today+N])
  * Tüm gelecek: [today, ∞)
  * Tüm SKT: (-∞, ∞)
  */
-export function expiryRangeBounds(daysAhead: number, todayYmd: string): ExpiryRangeBounds {
+export function expiryRangeBounds(
+  daysAhead: number,
+  todayYmd: string,
+  opts?: ExpiryRangeOptions,
+): ExpiryRangeBounds {
   const n = normalizeExpiryLimitDays(daysAhead);
   if (n === EXPIRY_REPORT_ALL_RECORDED) return { fromYmd: null, toYmd: null };
   if (n === EXPIRY_REPORT_ALL_FUTURE) return { fromYmd: todayYmd, toYmd: null };
-  return { fromYmd: todayYmd, toYmd: addDaysYmd(todayYmd, n) };
+  const toYmd = addDaysYmd(todayYmd, n);
+  if (opts?.includeExpired) return { fromYmd: null, toYmd };
+  return { fromYmd: todayYmd, toYmd };
 }
 
 /** YYYY-MM-DD string karşılaştırma; sınırlar dahil. */

@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import {
   buildProfitCostCtes,
+  classifyProductHistoryType,
   displayItemCode,
   isPlSalesOrReturnFiche,
   isPurchaseFiche,
@@ -166,5 +167,12 @@ describe('lastPurchaseCostSql — muhasebe yardımcıları', () => {
         lastPurchaseUnit: 999,
       }),
     ).toBe(16000);
+  });
+
+  it('return_invoice + trcode 0 → satış iadesi (isSalesReturnFiche ile uyumlu)', () => {
+    expect(classifyProductHistoryType('return_invoice', 0)).toBe('sales_return');
+    expect(classifyProductHistoryType('return_invoice', 3)).toBe('sales_return');
+    expect(classifyProductHistoryType('return_invoice', 2)).toBe('sales_return');
+    expect(classifyProductHistoryType('return_invoice', 6)).toBe('purchase_return');
   });
 });

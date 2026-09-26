@@ -2,9 +2,9 @@
 
 import { useState, useEffect, useRef, useCallback } from 'react';
 import {
-  Settings, Users, Shield, Database, Radio, HardDrive,
-  Activity, Bell, Key, FileText, AlertCircle, Download, Loader2,
-  Upload, CheckCircle, Clock, User, Lock, Trash2, Edit, Plus, Save, X, Receipt, Image, Printer,
+  Settings, Shield, Database, Radio, HardDrive,
+  Activity, FileText, AlertCircle, Download, Loader2,
+  Upload, Save, Receipt, Image, Printer,
   Phone, Menu, PanelLeftClose, Monitor,
 } from 'lucide-react';
 import { useTheme } from '../../contexts/ThemeContext';
@@ -37,7 +37,6 @@ import { getGrafanaBaseUrl, getGrafanaSystemHealthEmbedUrl } from '../../utils/g
 import { RoleManagement } from './RoleManagement';
 
 type SystemView =
-  | 'userManagement'
   | 'roleAuthorization'
   | 'definitionsParameters'
   | 'receiptSettings'
@@ -64,7 +63,7 @@ function readSidebarVisiblePreference(): boolean {
 }
 
 const ROUTE_HINT_TO_VIEW: Partial<Record<string, SystemView>> = {
-  settings: 'userManagement',
+  settings: 'definitionsParameters',
   generalsettings: 'definitionsParameters',
   definitions: 'definitionsParameters',
   'parameter-settings': 'definitionsParameters',
@@ -83,7 +82,7 @@ const ROUTE_HINT_TO_VIEW: Partial<Record<string, SystemView>> = {
 };
 
 export function SystemManagementModule({ routeHint }: SystemManagementModuleProps) {
-  const [currentView, setCurrentView] = useState<SystemView>('userManagement');
+  const [currentView, setCurrentView] = useState<SystemView>('definitionsParameters');
   const { tm, t } = useLanguage();
   const { darkMode } = useTheme();
   const { isMobile } = useResponsive();
@@ -128,26 +127,25 @@ export function SystemManagementModule({ routeHint }: SystemManagementModuleProp
 
   useEffect(() => {
     if (!showVirtualPbx && currentView === 'callerIdVirtualPbx') {
-      setCurrentView('userManagement');
+      setCurrentView('definitionsParameters');
     }
   }, [showVirtualPbx, currentView]);
 
   const menuItems = [
-    { id: 'userManagement' as const, label: 'Kullanıcı Yönetimi', icon: Users, color: 'blue' },
-    { id: 'roleAuthorization' as const, label: 'Rol & Yetkilendirme', icon: Shield, color: 'purple' },
+    { id: 'roleAuthorization' as const, label: tm('roleAuthorization'), icon: Shield, color: 'purple' },
     { id: 'definitionsParameters' as const, label: tm('definitionsParameters'), icon: Settings, color: 'green' },
-    { id: 'receiptSettings' as const, label: 'Fiş / Firma Bilgisi', icon: Receipt, color: 'amber' },
+    { id: 'receiptSettings' as const, label: tm('receiptCompanyInfo'), icon: Receipt, color: 'amber' },
     { id: 'invoiceLabelDesigner' as const, label: tm('invoiceLabelDesigner'), icon: FileText, color: 'indigo' },
-    { id: 'printerSettings' as const, label: 'Yazıcı Ayarları', icon: Printer, color: 'slate' },
-    { id: 'printOptions' as const, label: 'Yazdırma Seçenekleri', icon: Printer, color: 'blue' },
+    { id: 'printerSettings' as const, label: tm('printerTitle'), icon: Printer, color: 'slate' },
+    { id: 'printOptions' as const, label: tm('printOptions'), icon: Printer, color: 'blue' },
     ...(showVirtualPbx
       ? [{ id: 'callerIdVirtualPbx' as const, label: tm('menuParamVirtualPbx'), icon: Phone, color: 'violet' }]
       : []),
-    { id: 'dataBroadcast' as const, label: 'Bilgi Gönder/AI Merkezi', icon: Radio, color: 'orange' },
-    { id: 'pendingPosDevices' as const, label: 'Kasa Cihazları', icon: Monitor, color: 'amber' },
-    { id: 'backupRestore' as const, label: 'Yedekleme/Geri Yükleme', icon: HardDrive, color: 'indigo' },
-    { id: 'logAudit' as const, label: 'Log/Denetim', icon: FileText, color: 'red' },
-    { id: 'systemHealth' as const, label: 'Sistem Sağlığı', icon: Activity, color: 'teal' },
+    { id: 'dataBroadcast' as const, label: tm('infoSendAiCenter'), icon: Radio, color: 'orange' },
+    { id: 'pendingPosDevices' as const, label: tm('pendingPosDevices'), icon: Monitor, color: 'amber' },
+    { id: 'backupRestore' as const, label: tm('backupRestore'), icon: HardDrive, color: 'indigo' },
+    { id: 'logAudit' as const, label: tm('logAudit'), icon: FileText, color: 'red' },
+    { id: 'systemHealth' as const, label: tm('systemHealth'), icon: Activity, color: 'teal' },
   ];
 
   const activeMenuItem = menuItems.find((item) => item.id === currentView);
@@ -254,7 +252,6 @@ export function SystemManagementModule({ routeHint }: SystemManagementModuleProp
           </span>
         </div>
         <div className="flex-1 min-h-0 overflow-auto">
-        {currentView === 'userManagement' && <UserManagementView />}
         {currentView === 'roleAuthorization' && <RoleAuthorizationView />}
         {currentView === 'definitionsParameters' && <DefinitionsParametersView />}
         {currentView === 'receiptSettings' && <ReceiptSettingsView />}
@@ -285,208 +282,6 @@ export function SystemManagementModule({ routeHint }: SystemManagementModuleProp
             <SystemHealthView />
           </div>
         )}
-        </div>
-      </div>
-    </div>
-  );
-}
-
-// User Management View
-function UserManagementView() {
-  const [view, setView] = useState<'list' | 'create' | 'edit'>('list');
-  const [selectedUser, setSelectedUser] = useState<any>(null);
-
-  const users = [
-    { id: 1, username: 'ahmed.maliki', fullName: 'Ahmed Al-Maliki', email: 'ahmed@exretailos.iq', role: 'Yönetici', store: 'Baghdad Merkez', status: 'Aktif', lastLogin: '2025-01-18 14:30' },
-    { id: 2, username: 'mohammed.hassan', fullName: 'Mohammed Hassan', email: 'mohammed@exretailos.iq', role: 'Mağaza Müdürü', store: 'Erbil Merkez', status: 'Aktif', lastLogin: '2025-01-18 13:15' },
-    { id: 3, username: 'ali.sadr', fullName: 'Ali Al-Sadr', email: 'ali@exretailos.iq', role: 'Kasiyer', store: 'Basra Merkez', status: 'Aktif', lastLogin: '2025-01-18 12:00' },
-    { id: 4, username: 'hussein.najjar', fullName: 'Hussein Al-Najjar', email: 'hussein@exretailos.iq', role: 'Depo Sorumlusu', store: 'Mosul Sanayi', status: 'Pasif', lastLogin: '2025-01-15 09:45' },
-  ];
-
-  if (view === 'create' || view === 'edit') {
-    return (
-      <div className="p-6">
-        <div className="bg-white rounded-lg shadow-sm border">
-          {/* Header */}
-          <div className="p-4 border-b flex items-center justify-between">
-            <h3 className="font-semibold text-gray-900 flex items-center gap-2">
-              <User className="h-5 w-5 text-blue-600" />
-              {view === 'create' ? 'Yeni Kullanıcı Ekle' : 'Kullanıcı Düzenle'}
-            </h3>
-            <button onClick={() => setView('list')} className="text-gray-400 hover:text-gray-600">
-              <X className="h-5 w-5" />
-            </button>
-          </div>
-
-          {/* Form */}
-          <div className="p-6 space-y-4">
-            <div className="grid grid-cols-2 gap-4">
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-2">Kullanıcı Adı *</label>
-                <input type="text" defaultValue={selectedUser?.username} className="w-full px-3 py-2 border border-gray-300 rounded-lg" placeholder="ornek.kullanici" />
-              </div>
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-2">Tam Ad *</label>
-                <input type="text" defaultValue={selectedUser?.fullName} className="w-full px-3 py-2 border border-gray-300 rounded-lg" placeholder="Ahmed Al-Maliki" />
-              </div>
-            </div>
-
-            <div className="grid grid-cols-2 gap-4">
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-2">E-posta *</label>
-                <input type="email" defaultValue={selectedUser?.email} className="w-full px-3 py-2 border border-gray-300 rounded-lg" placeholder="kullanici@exretailos.iq" />
-              </div>
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-2">Telefon</label>
-                <input type="tel" className="w-full px-3 py-2 border border-gray-300 rounded-lg" placeholder="+964 770 123 4567" />
-              </div>
-            </div>
-
-            <div className="grid grid-cols-2 gap-4">
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-2">Rol *</label>
-                <select defaultValue={selectedUser?.role} className="w-full px-3 py-2 border border-gray-300 rounded-lg">
-                  <option>Yönetici</option>
-                  <option>Mağaza Müdürü</option>
-                  <option>Kasiyer</option>
-                  <option>Depo Sorumlusu</option>
-                  <option>Muhasebe</option>
-                </select>
-              </div>
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-2">Mağaza *</label>
-                <select defaultValue={selectedUser?.store} className="w-full px-3 py-2 border border-gray-300 rounded-lg">
-                  <option>Baghdad Merkez Mağazası</option>
-                  <option>Erbil Merkez Çarşı</option>
-                  <option>Basra Merkez AVM</option>
-                  <option>Mosul Sanayi Mağazası</option>
-                </select>
-              </div>
-            </div>
-
-            {view === 'create' && (
-              <div className="grid grid-cols-2 gap-4">
-                <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-2">Şifre *</label>
-                  <input type="password" className="w-full px-3 py-2 border border-gray-300 rounded-lg" />
-                </div>
-                <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-2">Şifre Tekrar *</label>
-                  <input type="password" className="w-full px-3 py-2 border border-gray-300 rounded-lg" />
-                </div>
-              </div>
-            )}
-
-            <div>
-              <label className="block text-sm font-medium text-gray-700 mb-2">Durum</label>
-              <select defaultValue={selectedUser?.status || 'Aktif'} className="w-full px-3 py-2 border border-gray-300 rounded-lg">
-                <option>Aktif</option>
-                <option>Pasif</option>
-              </select>
-            </div>
-
-            {/* Action Buttons */}
-            <div className="flex items-center justify-end gap-3 pt-4 border-t">
-              <button
-                onClick={() => setView('list')}
-                className="px-6 py-2 border border-gray-300 rounded-lg hover:bg-gray-50"
-              >
-                İptal
-              </button>
-              <button
-                onClick={() => {
-                  alert(view === 'create' ? 'Kullanıcı eklendi!' : 'Kullanıcı güncellendi!');
-                  setView('list');
-                }}
-                className="px-6 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 flex items-center gap-2"
-              >
-                <Save className="h-4 w-4" />
-                Kaydet
-              </button>
-            </div>
-          </div>
-        </div>
-      </div>
-    );
-  }
-
-  return (
-    <div className="p-6">
-      <div className="bg-white rounded-lg shadow-sm border">
-        {/* Header */}
-        <div className="p-4 border-b flex items-center justify-between">
-          <div>
-            <h3 className="font-semibold text-gray-900">Kullanıcı Yönetimi</h3>
-            <p className="text-sm text-gray-600 mt-1">{users.length} kullanıcı kayıtlı</p>
-          </div>
-          <button
-            onClick={() => setView('create')}
-            className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 flex items-center gap-2"
-          >
-            <Plus className="h-4 w-4" />
-            Yeni Kullanıcı
-          </button>
-        </div>
-
-        {/* Users Table */}
-        <div className="overflow-x-auto">
-          <table className="w-full">
-            <thead className="bg-gray-50 border-b">
-              <tr>
-                <th className="text-left p-3 text-sm font-medium text-gray-700">Kullanıcı Adı</th>
-                <th className="text-left p-3 text-sm font-medium text-gray-700">Tam Ad</th>
-                <th className="text-left p-3 text-sm font-medium text-gray-700">E-posta</th>
-                <th className="text-left p-3 text-sm font-medium text-gray-700">Rol</th>
-                <th className="text-left p-3 text-sm font-medium text-gray-700">Mağaza</th>
-                <th className="text-left p-3 text-sm font-medium text-gray-700">Durum</th>
-                <th className="text-left p-3 text-sm font-medium text-gray-700">Son Giriş</th>
-                <th className="text-right p-3 text-sm font-medium text-gray-700">İşlemler</th>
-              </tr>
-            </thead>
-            <tbody>
-              {users.map(user => (
-                <tr key={user.id} className="border-b hover:bg-gray-50">
-                  <td className="p-3 text-sm font-medium text-gray-800">{user.username}</td>
-                  <td className="p-3 text-sm text-gray-700">{user.fullName}</td>
-                  <td className="p-3 text-sm text-gray-600">{user.email}</td>
-                  <td className="p-3">
-                    <span className="px-2 py-1 bg-blue-100 text-blue-700 text-xs rounded">{user.role}</span>
-                  </td>
-                  <td className="p-3 text-sm text-gray-700">{user.store}</td>
-                  <td className="p-3">
-                    <span className={`px-2 py-1 text-xs rounded ${user.status === 'Aktif' ? 'bg-green-100 text-green-700' : 'bg-gray-100 text-gray-700'
-                      }`}>
-                      {user.status}
-                    </span>
-                  </td>
-                  <td className="p-3 text-sm text-gray-600">{user.lastLogin}</td>
-                  <td className="p-3 text-right">
-                    <div className="flex items-center justify-end gap-2">
-                      <button
-                        onClick={() => {
-                          setSelectedUser(user);
-                          setView('edit');
-                        }}
-                        className="p-1 text-blue-600 hover:bg-blue-50 rounded"
-                      >
-                        <Edit className="h-4 w-4" />
-                      </button>
-                      <button
-                        onClick={() => {
-                          if (confirm(`${user.fullName} kullanıcısını silmek istediğinize emin misiniz?`)) {
-                            alert('Kullanıcı silindi!');
-                          }
-                        }}
-                        className="p-1 text-red-600 hover:bg-red-50 rounded"
-                      >
-                        <Trash2 className="h-4 w-4" />
-                      </button>
-                    </div>
-                  </td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
         </div>
       </div>
     </div>
@@ -715,6 +510,7 @@ function DefinitionsParametersView() {
 
 // Fiş / Firma Bilgisi View — fişte gösterilecek logo ve firma bilgileri
 function ReceiptSettingsView() {
+  const { tm } = useLanguage();
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [toast, setToast] = useState<string | null>(null);
@@ -819,7 +615,7 @@ function ReceiptSettingsView() {
       <div className="bg-white rounded-lg shadow-sm border p-6">
         <h3 className="font-semibold text-gray-900 mb-2 flex items-center gap-2">
           <Receipt className="h-5 w-5 text-amber-600" />
-          Fiş / Firma Bilgisi
+          {tm('receiptCompanyInfo')}
         </h3>
         <p className="text-gray-600 mb-6 text-sm">
           Hesap (adisyon), mutfak fişi, ödeme ekranı fişi ve 80 mm önizlemede kullanılacak firma bilgisi, logo, varsayılan fiş dili ve ürün adı alanları.
@@ -988,17 +784,18 @@ function ReceiptSettingsView() {
 
 // Data Broadcast View
 function DataBroadcastView() {
+  const { tm } = useLanguage();
   return (
     <div className="p-6">
       <div className="bg-white rounded-lg shadow-sm border p-6">
         <h3 className="font-semibold text-gray-900 mb-4 flex items-center gap-2">
           <Radio className="h-5 w-5 text-orange-600" />
-          Bilgi Gönder / AI Merkezi
+          {tm('infoSendAiCenter')}
         </h3>
-        <p className="text-gray-600 mb-4">Merkezi veri yayını ve AI entegrasyonu</p>
+        <p className="text-gray-600 mb-4">{tm('infoSendAiCenterDesc')}</p>
         <div className="text-center py-8">
           <Radio className="h-16 w-16 text-gray-300 mx-auto mb-3" />
-          <p className="text-gray-500">Veri yayını ekranı hazırlanıyor...</p>
+          <p className="text-gray-500">{tm('infoSendAiCenterComingSoon')}</p>
         </div>
       </div>
     </div>
@@ -1245,6 +1042,7 @@ function BackupRestoreView() {
 
 // Log Audit View
 function LogAuditView() {
+  const { tm } = useLanguage();
   const logs = [
     { id: 1, user: 'Ahmed Al-Maliki', action: 'Kullanıcı Girişi', module: 'Sistem', details: 'Başarılı giriş', timestamp: '2025-01-18 14:30:15', ip: '192.168.1.100' },
     { id: 2, user: 'Mohammed Hassan', action: 'Ürün Ekleme', module: 'Stok', details: 'Yeni ürün eklendi: iPhone 15 Pro', timestamp: '2025-01-18 13:15:42', ip: '192.168.1.101' },
@@ -1257,7 +1055,7 @@ function LogAuditView() {
         <div className="p-4 border-b">
           <h3 className="font-semibold text-gray-900 flex items-center gap-2">
             <FileText className="h-5 w-5 text-red-600" />
-            Log ve Denetim Kayıtları
+            {tm('logAudit')}
           </h3>
           <p className="text-sm text-gray-600 mt-1">{logs.length} kayıt listeleniyor</p>
         </div>
@@ -1298,6 +1096,7 @@ function LogAuditView() {
 // System Health View — Grafana panosu (Dokploy: /__grafana → grafana:3000)
 function SystemHealthView() {
   const { darkMode } = useTheme();
+  const { tm } = useLanguage();
   const embedUrl = getGrafanaSystemHealthEmbedUrl({ dark: darkMode });
   const baseUrl = getGrafanaBaseUrl();
   const [iframeError, setIframeError] = useState(false);
@@ -1313,7 +1112,7 @@ function SystemHealthView() {
           <Activity className={`h-5 w-5 shrink-0 ${darkMode ? 'text-teal-400' : 'text-teal-600'}`} />
           <div className="min-w-0">
             <h3 className={`font-semibold text-sm truncate ${darkMode ? 'text-gray-100' : 'text-gray-900'}`}>
-              Sistem Sağlığı — Grafana
+              {tm('systemHealth')} — Grafana
             </h3>
             <p className={`text-xs truncate ${darkMode ? 'text-gray-400' : 'text-gray-500'}`}>
               Konteyner CPU / RAM (Prometheus + cAdvisor)

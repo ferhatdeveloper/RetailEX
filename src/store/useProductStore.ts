@@ -3,6 +3,11 @@ import { create } from 'zustand';
 import { persist } from 'zustand/middleware';
 import type { Product } from '../core/types';
 import { productAPI } from '../services/api/index';
+import { emitInvalidate } from '../services/retailexDataSync';
+
+function notifyProductsChanged() {
+  emitInvalidate('products');
+}
 
 interface ProductState {
   products: Product[];
@@ -51,6 +56,7 @@ export const useProductStore = create<ProductState>()(
         if (UUID_RE.test(existingId)) {
           // onSave geri çağrısı veya eski sürüm çift INSERT — zaten kayıtlı ürünü tekrar oluşturma
           await get().loadProducts(true);
+          notifyProductsChanged();
           return product;
         }
 
@@ -62,6 +68,7 @@ export const useProductStore = create<ProductState>()(
             console.log('[ProductStore] Product created successfully:', newProduct);
             // Reload all products to get proper ordering from database
             await get().loadProducts();
+            notifyProductsChanged();
             return newProduct;
           } else {
             throw new Error('Failed to create product');
@@ -85,6 +92,7 @@ export const useProductStore = create<ProductState>()(
               isLoading: false,
               lastSync: Date.now()
             }));
+            notifyProductsChanged();
             return updatedProduct;
           }
           throw new Error('Ürün güncellenemedi — kayıt bulunamadı veya firma eşleşmesi hatalı.');
@@ -106,6 +114,7 @@ export const useProductStore = create<ProductState>()(
               isLoading: false,
               lastSync: Date.now()
             }));
+            notifyProductsChanged();
           } else {
             throw new Error('Ürün silinemedi.');
           }
@@ -128,6 +137,7 @@ export const useProductStore = create<ProductState>()(
               isLoading: false,
               lastSync: Date.now()
             }));
+            notifyProductsChanged();
           } else {
             throw new Error('Failed to update stock');
           }
@@ -188,6 +198,7 @@ export const useProductStore = create<ProductState>()(
             isLoading: false,
             lastSync: Date.now(),
           }));
+          notifyProductsChanged();
         } catch (error) {
           console.error('[ProductStore] Error batch updating stock:', error);
           set({ isLoading: false, error: 'Failed to update stock' });

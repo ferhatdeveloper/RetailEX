@@ -57,6 +57,7 @@ import {
     beautySchedulerResourceDragStartHandler,
 } from '../../../utils/beautySchedulerDragDrop';
 import { RetailExFlatModal } from '../../shared/RetailExFlatModal';
+import { PercentBodyModal, PercentBodyModalScrollBody } from '../../shared/PercentBodyModal';
 import { BeautyFeedbackSurveyModal } from './BeautyFeedbackSurveyModal';
 import { usePermission } from '../../../shared/hooks/usePermission';
 import { ClinicDetailClinicalEmbed } from '../specialty/ClinicDetailClinicalEmbed';
@@ -299,6 +300,13 @@ export function SmartScheduler() {
     const [priceEditDraft, setPriceEditDraft] = useState('');
     const [priceEditSaving, setPriceEditSaving] = useState(false);
     const [selectedApt, setSelectedApt] = useState<BeautyAppointment | null>(null);
+    /** Durum güncellemeden önce onay (Confirm / Started / Cancel / No Show) */
+    const [statusConfirm, setStatusConfirm] = useState<{
+        apt: BeautyAppointment;
+        status: AppointmentStatus;
+        label: string;
+    } | null>(null);
+    const [statusConfirmSaving, setStatusConfirmSaving] = useState(false);
     /** Randevu yan paneli: özet alanları vs. uzmanlık şeması */
     const [aptDetailTab, setAptDetailTab] = useState<'summary' | 'clinical'>('summary');
 
@@ -854,6 +862,29 @@ export function SmartScheduler() {
             )
         ) {
             await reloadFollowUpReminders();
+        }
+    };
+
+    const requestStatusChange = (
+        apt: BeautyAppointment,
+        newStatus: AppointmentStatus,
+        label: string,
+    ) => {
+        if (appointmentStatusMatches(apt.status, newStatus)) return;
+        setStatusConfirm({ apt, status: newStatus, label });
+    };
+
+    const confirmPendingStatusChange = async () => {
+        if (!statusConfirm || statusConfirmSaving) return;
+        setStatusConfirmSaving(true);
+        try {
+            await handleStatusChange(statusConfirm.apt, statusConfirm.status);
+            setStatusConfirm(null);
+        } catch (err) {
+            logger.error('SmartScheduler', 'Status change confirm failed', err);
+            toast.error(err instanceof Error ? err.message : String(err));
+        } finally {
+            setStatusConfirmSaving(false);
         }
     };
 
@@ -2867,12 +2898,13 @@ export function SmartScheduler() {
                                         { status: AppointmentStatus.CANCELLED,   label: tm('bStatusCancel'),  color: '#dc2626', bg: '#fee2e2' },
                                         { status: AppointmentStatus.NO_SHOW,     label: tm('bStatusNoShow'),  color: '#9ca3af', bg: '#f3f4f6' },
                                     ] as { status: AppointmentStatus; label: string; color: string; bg: string }[]).map(opt => {
-                                        const isCurrent = selectedApt.status === opt.status;
+                                        const isCurrent = appointmentStatusMatches(selectedApt.status, opt.status);
                                         return (
                                             <button
                                                 key={opt.status}
-                                                onClick={() => handleStatusChange(selectedApt, opt.status)}
-                                                disabled={isCurrent}
+                                                type="button"
+                                                onClick={() => requestStatusChange(selectedApt, opt.status, opt.label)}
+                                                disabled={isCurrent || statusConfirmSaving}
                                                 style={{
                                                     width: '100%', padding: '9px 14px', borderRadius: 6,
                                                     background: isCurrent ? opt.bg : '#fff',
@@ -2998,6 +3030,68 @@ export function SmartScheduler() {
                     </div>
                 </div>
             )}
+
+            {statusConfirm ? (
+                <PercentBodyModal
+                    onClose={() => {
+                        if (!statusConfirmSaving) setStatusConfirm(null);
+                    }}
+                    size="compact"
+                    ariaLabel={tm('bStatusChangeConfirmTitle')}
+                >
+                    <div className="bg-gradient-to-r from-blue-600 to-indigo-600 px-6 py-5 text-white shrink-0 flex items-center gap-3">
+                        <div className="flex-1 min-w-0">
+                            <h3 className="text-base font-black uppercase tracking-tight">
+                                {tm('bStatusChangeConfirmTitle')}
+                            </h3>
+                            <p className="text-[10px] text-blue-100 font-bold uppercase tracking-widest mt-1 opacity-90">
+                                {tm('bUpdateStatus')}
+                            </p>
+                        </div>
+                        <button
+                            type="button"
+                            onClick={() => {
+                                if (!statusConfirmSaving) setStatusConfirm(null);
+                            }}
+                            disabled={statusConfirmSaving}
+                            aria-label={tm('close')}
+                            className="w-9 h-9 rounded-xl bg-white/15 hover:bg-white/25 active:scale-95 flex items-center justify-center shrink-0 disabled:opacity-50"
+                        >
+                            <X className="w-4 h-4" />
+                        </button>
+                    </div>
+                    <PercentBodyModalScrollBody className="p-6 bg-white">
+                        <p className="text-sm font-semibold text-slate-700 leading-relaxed">
+                            {tm('bStatusChangeConfirmMsg').replace('{status}', statusConfirm.label)}
+                        </p>
+                        {(statusConfirm.apt.customer_name || statusConfirm.apt.service_name) && (
+                            <p className="mt-3 text-xs text-slate-500">
+                                {[statusConfirm.apt.customer_name, statusConfirm.apt.service_name]
+                                    .filter(Boolean)
+                                    .join(' · ')}
+                            </p>
+                        )}
+                    </PercentBodyModalScrollBody>
+                    <div className="p-4 border-t border-slate-100 bg-slate-50/50 flex gap-3 shrink-0 justify-end">
+                        <button
+                            type="button"
+                            disabled={statusConfirmSaving}
+                            onClick={() => setStatusConfirm(null)}
+                            className="rounded-2xl border-2 border-slate-200 px-4 py-2 text-sm font-bold uppercase tracking-wider text-slate-600 hover:bg-slate-100 active:scale-[0.98] disabled:opacity-50"
+                        >
+                            {tm('cancel')}
+                        </button>
+                        <button
+                            type="button"
+                            disabled={statusConfirmSaving}
+                            onClick={() => void confirmPendingStatusChange()}
+                            className="rounded-2xl bg-blue-600 px-4 py-2 text-sm font-bold uppercase tracking-wider text-white shadow-lg shadow-blue-200/50 hover:bg-blue-700 active:scale-[0.98] disabled:opacity-50"
+                        >
+                            {statusConfirmSaving ? tm('bSaving') : tm('confirm')}
+                        </button>
+                    </div>
+                </PercentBodyModal>
+            ) : null}
 
             <RetailExFlatModal
                 open={!!priceEditApt && canEditBeautyAppointmentPrice()}

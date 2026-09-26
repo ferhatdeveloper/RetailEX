@@ -69,6 +69,7 @@ import {
   buildPurchaseEditDataFromProductsForPurchaseWithStock,
   productNeedPurchaseDraftMaxLines,
 } from '../../../utils/productNeedPurchaseDraft';
+import { useRetailexInvalidateRefresh } from '../../../hooks/useRetailexInvalidateRefresh';
 
 const NEW_PRODUCT_PURCHASE_DRAFT_DAYS = 30;
 
@@ -149,6 +150,9 @@ export function ProductManagement({ products, setProducts }: ProductManagementPr
 
     return () => clearInterval(interval);
   }, [loadProducts, storeProducts.length]);
+
+  // Açık Malzemeler tab’ı: başka ekranda malzeme/fatura mutasyonu → anında yenile
+  useRetailexInvalidateRefresh(['products'], () => loadProducts(true));
 
   useEffect(() => {
     let alive = true;

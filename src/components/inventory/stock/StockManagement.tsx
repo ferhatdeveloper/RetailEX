@@ -1,6 +1,7 @@
 ﻿import { useState } from 'react';
 import { Package, TrendingDown, AlertTriangle, Search, Download, Upload, BarChart3, Eye, Plus, Edit, FileText } from 'lucide-react';
 import type { Product } from '../../../App';
+import { productCardUnitCost, stockValueAtCardCost } from '../../../utils/productCardUnitCost';
 
 interface StockManagementProps {
   products: Product[];
@@ -33,11 +34,14 @@ export function StockManagement({ products, setProducts }: StockManagementProps)
     { id: '3', productId: '3', productName: 'Klavye Mekanik', type: 'adjustment', quantity: -2, date: new Date().toISOString(), reason: 'Fire', user: 'Admin' },
   ]);
   
-  // Calculate statistics
+  // Calculate statistics — stok değeri kart maliyeti (satış fiyatı değil)
   const totalProducts = products.length;
   const lowStockProducts = products.filter(p => p.stock <= 10);
   const outOfStockProducts = products.filter(p => p.stock === 0);
-  const totalStockValue = products.reduce((sum, p) => sum + (p.stock * p.price), 0);
+  const totalStockValue = products.reduce(
+    (sum, p) => sum + stockValueAtCardCost(p.stock, p as Product & { cost?: number; purchase_price?: number }),
+    0,
+  );
   
   // Filter products
   const filteredProducts = products.filter(p =>
@@ -107,7 +111,7 @@ export function StockManagement({ products, setProducts }: StockManagementProps)
         <div className="bg-white rounded-lg p-4 border-2 border-green-200">
           <div className="flex items-center justify-between">
             <div>
-              <p className="text-sm text-gray-600">Stok Değeri</p>
+              <p className="text-sm text-gray-600">Stok Değeri (Maliyet)</p>
               <p className="text-2xl text-green-600 mt-1">{totalStockValue.toFixed(2)}</p>
             </div>
             <BarChart3 className="w-12 h-12 text-green-600 opacity-20" />
@@ -163,15 +167,22 @@ export function StockManagement({ products, setProducts }: StockManagementProps)
                     <th className="px-4 py-3 text-left text-sm">Ürün Adı</th>
                     <th className="px-4 py-3 text-left text-sm">Barkod</th>
                     <th className="px-4 py-3 text-right text-sm">Stok</th>
-                    <th className="px-4 py-3 text-right text-sm">Fiyat</th>
-                    <th className="px-4 py-3 text-right text-sm">Değer</th>
+                    <th className="px-4 py-3 text-right text-sm">Satış Fiyatı</th>
+                    <th className="px-4 py-3 text-right text-sm">Ort. Maliyet</th>
+                    <th className="px-4 py-3 text-right text-sm">Stok Değeri</th>
                     <th className="px-4 py-3 text-left text-sm">Durum</th>
                     <th className="px-4 py-3 text-center text-sm">İşlem</th>
                   </tr>
                 </thead>
                 <tbody className="divide-y">
                   {filteredProducts.map(product => {
-                    const stockValue = product.stock * product.price;
+                    const unitCost = productCardUnitCost(
+                      product as Product & { cost?: number; purchase_price?: number },
+                    );
+                    const stockValue = stockValueAtCardCost(
+                      product.stock,
+                      product as Product & { cost?: number; purchase_price?: number },
+                    );
                     const stockStatus = product.stock === 0 ? 'out' : product.stock <= 10 ? 'low' : 'ok';
                     
                     return (
@@ -193,6 +204,7 @@ export function StockManagement({ products, setProducts }: StockManagementProps)
                           </span>
                         </td>
                         <td className="px-4 py-3 text-right text-sm">{product.price.toFixed(2)}</td>
+                        <td className="px-4 py-3 text-right text-sm">{unitCost.toFixed(2)}</td>
                         <td className="px-4 py-3 text-right text-sm">{stockValue.toFixed(2)}</td>
                         <td className="px-4 py-3">
                           <span className={`inline-flex items-center gap-1 px-2 py-1 rounded text-xs ${

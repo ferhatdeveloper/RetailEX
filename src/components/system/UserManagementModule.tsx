@@ -4,6 +4,7 @@ import { DevExDataGrid } from '../shared/DevExDataGrid';
 import { PinNumpadInput } from '../shared/PinNumpadInput';
 import { createColumnHelper, ColumnDef } from '@tanstack/react-table';
 import { useLanguage } from '../../contexts/LanguageContext';
+import { useAuth } from '../../contexts/AuthContext';
 
 import { userAPI, roleAPI, User, Role, UserAllowedPeriod } from '../../services/api';
 import { organizationAPI } from '../../services/api/organization';
@@ -11,6 +12,7 @@ import { logger } from '../../services/loggingService';
 
 export function UserManagementModule() {
   const { tm } = useLanguage();
+  const { user: sessionUser } = useAuth();
   const [users, setUsers] = useState<User[]>([]);
   const [roles, setRoles] = useState<Role[]>([]);
   const [loading, setLoading] = useState(true);
@@ -139,23 +141,31 @@ export function UserManagementModule() {
     setShowUserModal(true);
   };
 
-  const handleDeleteUser = async (userId: string) => {
-    if (!confirm('Bu kullanıcıyı silmek istediğinizden emin misiniz?')) return;
+  const handleDeleteUser = async (user: User) => {
+    if (sessionUser?.id && sessionUser.id === user.id) {
+      alert('Kendi hesabınızı silemezsiniz.');
+      return;
+    }
+    if (!confirm(`"${user.username}" kullanıcısını kalıcı olarak silmek istediğinizden emin misiniz?`)) return;
 
     try {
-      await userAPI.delete(userId);
+      await userAPI.delete(user.id, sessionUser?.id);
       await loadData();
-    } catch (error) {
+    } catch (error: any) {
       logger.crudError('UserManagement', 'deleteUser', error);
+      const msg = error?.message || error?.toString?.() || 'Kullanıcı silinemedi.';
+      alert(msg);
     }
   };
 
-  const handleToggleActive = async (userId: string, currentStatus: boolean) => {
+  const handleToggleActive = async (user: User) => {
     try {
-      await userAPI.update(userId, { is_active: !currentStatus });
+      await userAPI.update(user.id, { is_active: !user.is_active });
       await loadData();
-    } catch (error) {
+    } catch (error: any) {
       logger.crudError('UserManagement', 'toggleUserStatus', error);
+      const msg = error?.message || error?.toString?.() || 'Kullanıcı durumu güncellenemedi.';
+      alert(msg);
     }
   };
 
@@ -232,35 +242,43 @@ export function UserManagementModule() {
     columnHelper.display({
       id: 'actions',
       header: tm('actions'),
-      cell: ({ row }: { row: { original: User } }) => (
+      cell: ({ row }: { row: { original: User } }) => {
+        const u = row.original;
+        const isSelf = !!(sessionUser?.id && sessionUser.id === u.id);
+        return (
         <div className="flex items-center gap-2">
           <button
-            onClick={() => handleEditUser(row.original)}
+            type="button"
+            onClick={(e) => { e.stopPropagation(); handleEditUser(u); }}
             className="p-2 hover:bg-blue-50 rounded transition-colors"
             title={tm('edit')}
           >
             <Edit className="w-4 h-4 text-blue-600" />
           </button>
           <button
-            onClick={() => handleToggleActive(row.original.id, row.original.is_active)}
+            type="button"
+            onClick={(e) => { e.stopPropagation(); void handleToggleActive(u); }}
             className="p-2 hover:bg-orange-50 rounded transition-colors"
-            title={row.original.is_active ? tm('makePassive') : tm('makeActive')}
+            title={u.is_active ? tm('makePassive') : tm('makeActive')}
           >
-            {row.original.is_active ? (
+            {u.is_active ? (
               <UserX className="w-4 h-4 text-orange-600" />
             ) : (
               <UserCheck className="w-4 h-4 text-green-600" />
             )}
           </button>
           <button
-            onClick={() => handleDeleteUser(row.original.id)}
-            className="p-2 hover:bg-red-50 rounded transition-colors"
-            title={tm('delete')}
+            type="button"
+            onClick={(e) => { e.stopPropagation(); void handleDeleteUser(u); }}
+            disabled={isSelf}
+            className={`p-2 rounded transition-colors ${isSelf ? 'opacity-40 cursor-not-allowed' : 'hover:bg-red-50'}`}
+            title={isSelf ? 'Kendi hesabınızı silemezsiniz' : tm('delete')}
           >
-            <Trash2 className="w-4 h-4 text-red-600" />
+            <Trash2 className={`w-4 h-4 ${isSelf ? 'text-gray-400' : 'text-red-600'}`} />
           </button>
         </div>
-      ),
+        );
+      },
       size: 150
     }),
   ];
@@ -371,6 +389,8 @@ export function UserManagementModule() {
             enableSorting={true}
             enableFiltering
             pageSize={20}
+            columnVisibility={{ actions: true, is_active: true }}
+            onRowDoubleClick={handleEditUser}
           />
         )}
       </div>

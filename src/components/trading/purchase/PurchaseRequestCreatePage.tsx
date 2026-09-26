@@ -759,11 +759,12 @@ export function PurchaseRequestCreatePage({
             <SupplierHistoryModal
                 isOpen={showSupplierHistory}
                 onClose={() => setShowSupplierHistory(false)}
+                supplierId={selectedSupplierHistory?.id || ''}
                 supplierName={selectedSupplierHistory?.name || ''}
                 onAddItems={(historyItems) => {
                     const newItems = historyItems.map(hItem => ({
                         id: Date.now().toString() + Math.random().toString().slice(2, 5),
-                        productCode: '', // Mock data doesn't have code yet
+                        productCode: String(hItem.productCode || '').trim(),
                         productName: hItem.product,
                         variantCode: '',
                         quantity: hItem.quantity,

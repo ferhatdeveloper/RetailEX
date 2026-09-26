@@ -3,6 +3,11 @@ import { create } from 'zustand';
 import { persist } from 'zustand/middleware';
 import type { Customer } from '../core/types';
 import { customerAPI } from '../services/api/index';
+import { emitInvalidate } from '../services/retailexDataSync';
+
+function notifyCustomersChanged() {
+  emitInvalidate('customers');
+}
 
 interface CustomerState {
   customers: Customer[];
@@ -54,6 +59,7 @@ export const useCustomerStore = create<CustomerState>()(
               isLoading: false,
               lastSync: Date.now()
             }));
+            notifyCustomersChanged();
           } else {
             throw new Error('Failed to create customer');
           }
@@ -75,6 +81,7 @@ export const useCustomerStore = create<CustomerState>()(
               isLoading: false,
               lastSync: Date.now()
             }));
+            notifyCustomersChanged();
           } else {
             throw new Error('Failed to update customer');
           }
@@ -94,6 +101,7 @@ export const useCustomerStore = create<CustomerState>()(
               isLoading: false,
               lastSync: Date.now()
             }));
+            notifyCustomersChanged();
           } else {
             throw new Error('Failed to delete customer');
           }

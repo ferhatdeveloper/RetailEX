@@ -2924,37 +2924,69 @@ export function AppointmentPOS({
                         )}
                     {/* Grid */}
                     <div style={{ flex: 1, minWidth: 0, overflowY: 'auto', padding: '10px 12px', display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(min(100%, 148px), 1fr))', gap: 8, alignContent: 'start' }} className="custom-scrollbar">
-                        {tab === 'services' && filteredSvcs.map(svc => (
+                        {tab === 'services' && filteredSvcs.map(svc => {
+                            const catPath = String(svc.parent_category ?? '').trim()
+                                ? `${posServiceCategoryLabels[String(svc.parent_category)] ?? svc.parent_category} › ${posServiceCategoryLabels[svc.category] ?? svc.category}`
+                                : (posServiceCategoryLabels[svc.category] ?? svc.category);
+                            const pathLine = `${catPath} · ${svc.duration_min}${tm('bDkSuffix')}`;
+                            return (
                             <button key={svc.id} onClick={() => addService(svc)} style={{
                                 background: '#fff', border: '1px solid #e8e4f0',
                                 borderTop: `3px solid ${svc.color ?? '#7c3aed'}`,
                                 borderRadius: 7, padding: '10px', textAlign: 'left', cursor: 'pointer',
                                 transition: 'box-shadow 0.1s',
+                                overflow: 'hidden', minWidth: 0, maxWidth: '100%',
                             }}
                                 onMouseEnter={e => (e.currentTarget.style.boxShadow = '0 0 0 2px rgba(124,58,237,0.15)')}
                                 onMouseLeave={e => (e.currentTarget.style.boxShadow = 'none')}
                             >
-                                <p style={{ fontSize: 12, fontWeight: 700, color: '#111827', marginBottom: 3, lineHeight: 1.3 }}>{svc.name}</p>
-                                <p style={{ fontSize: 10, fontWeight: 600, color: '#9ca3af', marginBottom: 6, textTransform: 'uppercase' }}>
-                                    {String(svc.parent_category ?? '').trim()
-                                        ? `${posServiceCategoryLabels[String(svc.parent_category)] ?? svc.parent_category} › ${posServiceCategoryLabels[svc.category] ?? svc.category}`
-                                        : (posServiceCategoryLabels[svc.category] ?? svc.category)}{' '}
-                                    · {svc.duration_min}{tm('bDkSuffix')}
+                                <p
+                                    title={svc.name}
+                                    style={{
+                                        fontSize: 12, fontWeight: 700, color: '#111827', marginBottom: 3, lineHeight: 1.3,
+                                        overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
+                                    }}
+                                >{svc.name}</p>
+                                <p
+                                    title={pathLine}
+                                    style={{
+                                        fontSize: 10, fontWeight: 600, color: '#9ca3af', marginBottom: 6, textTransform: 'uppercase',
+                                        overflow: 'hidden', display: '-webkit-box', WebkitLineClamp: 2, WebkitBoxOrient: 'vertical',
+                                        overflowWrap: 'anywhere', wordBreak: 'break-word', lineHeight: 1.35,
+                                    }}
+                                >
+                                    {pathLine}
                                 </p>
                                 <p style={{ fontSize: 13, fontWeight: 800, color: svc.color ?? '#7c3aed' }}>{fmt(svc.price)}</p>
                             </button>
-                        ))}
+                            );
+                        })}
                         {tab === 'packages' && packages.filter(pkg => !svcQ.trim() || pkg.name.toLowerCase().includes(svcQ.toLowerCase())).map(pkg => {
                             const fp = pkg.price * (1 - (pkg.discount_pct ?? 0) / 100);
+                            const pkgMeta = tm('bPackageSessionsDays').replace('{sessions}', String(pkg.total_sessions)).replace('{days}', String(pkg.validity_days));
                             return (
                                 <button key={pkg.id} onClick={() => addPackage(pkg)} style={{
                                     background: '#fff', border: '1px solid #e8e4f0',
                                     borderTop: `3px solid ${pkg.color ?? '#7c3aed'}`,
                                     borderRadius: 7, padding: '10px', textAlign: 'left', cursor: 'pointer',
+                                    overflow: 'hidden', minWidth: 0, maxWidth: '100%',
                                 }}>
-                                    <p style={{ fontSize: 12, fontWeight: 700, color: '#111827', marginBottom: 3 }}>{pkg.name}</p>
-                                    <p style={{ fontSize: 10, fontWeight: 600, color: '#9ca3af', marginBottom: 6 }}>
-                                        {tm('bPackageSessionsDays').replace('{sessions}', String(pkg.total_sessions)).replace('{days}', String(pkg.validity_days))}
+                                    <p
+                                        title={pkg.name}
+                                        style={{
+                                            fontSize: 12, fontWeight: 700, color: '#111827', marginBottom: 3,
+                                            overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
+                                        }}
+                                    >{pkg.name}</p>
+                                    <p
+                                        title={pkgMeta}
+                                        style={{
+                                            fontSize: 10, fontWeight: 600, color: '#9ca3af', marginBottom: 6,
+                                            overflow: 'hidden', display: '-webkit-box', WebkitLineClamp: 2, WebkitBoxOrient: 'vertical',
+                                            overflowWrap: 'anywhere', wordBreak: 'break-word', lineHeight: 1.35,
+                                        }}
+                                    >
+                                        {pkgMeta}
                                     </p>
                                     <div style={{ display: 'flex', alignItems: 'baseline', gap: 5 }}>
                                         <span style={{ fontSize: 13, fontWeight: 800, color: pkg.color ?? '#7c3aed' }}>{fmt(fp)}</span>
@@ -2963,28 +2995,45 @@ export function AppointmentPOS({
                                 </button>
                             );
                         })}
-                        {tab === 'products' && filteredRetailProducts.map(p => (
+                        {tab === 'products' && filteredRetailProducts.map(p => {
+                            const prodMeta = `${p.category || tm('bCategoryGeneral')}${p.barcode ? ` · ${p.barcode}` : ''}`;
+                            return (
                             <button key={p.id} onClick={() => addRetailProduct(p)} style={{
                                 background: '#fff', border: '1px solid #e8e4f0',
                                 borderTop: '3px solid #0d9488',
                                 borderRadius: 7, padding: '10px', textAlign: 'left', cursor: 'pointer',
                                 transition: 'box-shadow 0.1s',
+                                overflow: 'hidden', minWidth: 0, maxWidth: '100%',
                             }}
                                 onMouseEnter={e => (e.currentTarget.style.boxShadow = '0 0 0 2px rgba(13,148,136,0.2)')}
                                 onMouseLeave={e => (e.currentTarget.style.boxShadow = 'none')}
                             >
-                                <p style={{ fontSize: 12, fontWeight: 700, color: '#111827', marginBottom: 3, lineHeight: 1.3 }}>{p.name}</p>
-                                <p style={{ fontSize: 10, fontWeight: 600, color: '#9ca3af', marginBottom: 6 }}>
-                                    {(p.category || tm('bCategoryGeneral'))}{(p.barcode ? ` · ${p.barcode}` : '')}
+                                <p
+                                    title={p.name}
+                                    style={{
+                                        fontSize: 12, fontWeight: 700, color: '#111827', marginBottom: 3, lineHeight: 1.3,
+                                        overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
+                                    }}
+                                >{p.name}</p>
+                                <p
+                                    title={prodMeta}
+                                    style={{
+                                        fontSize: 10, fontWeight: 600, color: '#9ca3af', marginBottom: 6,
+                                        overflow: 'hidden', display: '-webkit-box', WebkitLineClamp: 2, WebkitBoxOrient: 'vertical',
+                                        overflowWrap: 'anywhere', wordBreak: 'break-word', lineHeight: 1.35,
+                                    }}
+                                >
+                                    {prodMeta}
                                 </p>
-                                <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 6 }}>
-                                    <span style={{ fontSize: 13, fontWeight: 800, color: '#0d9488' }}>{fmt(p.price)}</span>
-                                    <span style={{ fontSize: 10, fontWeight: 600, color: (p.stock ?? 0) <= 0 ? '#ef4444' : '#6b7280' }}>
+                                <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 6, minWidth: 0 }}>
+                                    <span style={{ fontSize: 13, fontWeight: 800, color: '#0d9488', flexShrink: 0 }}>{fmt(p.price)}</span>
+                                    <span style={{ fontSize: 10, fontWeight: 600, color: (p.stock ?? 0) <= 0 ? '#ef4444' : '#6b7280', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
                                         {tm('stockLabel')}: {p.stock ?? 0}
                                     </span>
                                 </div>
                             </button>
-                        ))}
+                            );
+                        })}
                         {tab === 'services' && filteredSvcs.length === 0 && (
                             <div style={{ gridColumn: '1/-1', display: 'flex', flexDirection: 'column', alignItems: 'center', padding: '40px 0', color: '#d1d5db', gap: 8 }}>
                                 <Scissors size={28} />

@@ -469,7 +469,12 @@ export function BeautyPOS() {
                     )}
                 {/* Grid */}
                 <div style={{ flex: 1, minWidth: 0, overflowY: 'auto', padding: 16, display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(160px, 1fr))', gap: 10, alignContent: 'start' }} className="custom-scrollbar">
-                    {tab === 'services' && filteredSvcs.map(svc => (
+                    {tab === 'services' && filteredSvcs.map(svc => {
+                        const catPath = String(svc.parent_category ?? '').trim()
+                            ? `${CATEGORY_TR[String(svc.parent_category)] ?? svc.parent_category} › ${CATEGORY_TR[svc.category] ?? svc.category}`
+                            : (CATEGORY_TR[svc.category] ?? svc.category);
+                        const pathLine = `${catPath} · ${svc.duration_min}dk`;
+                        return (
                         <button
                             key={svc.id}
                             onClick={() => addService(svc)}
@@ -478,23 +483,37 @@ export function BeautyPOS() {
                                 borderTop: `3px solid ${svc.color ?? '#7c3aed'}`,
                                 borderRadius: 8, padding: '12px', textAlign: 'left',
                                 cursor: 'pointer', transition: 'border-color 0.1s, box-shadow 0.1s',
+                                overflow: 'hidden', minWidth: 0, maxWidth: '100%',
                             }}
                             onMouseEnter={e => { e.currentTarget.style.borderColor = svc.color ?? '#7c3aed'; e.currentTarget.style.boxShadow = `0 0 0 2px ${svc.color ?? '#7c3aed'}20`; }}
                             onMouseLeave={e => { e.currentTarget.style.borderColor = '#e8e4f0'; e.currentTarget.style.boxShadow = 'none'; }}
                         >
-                            <p style={{ fontSize: 12, fontWeight: 700, color: '#111827', marginBottom: 4, lineHeight: 1.3 }}>{svc.name}</p>
-                            <p style={{ fontSize: 10, fontWeight: 600, color: '#9ca3af', textTransform: 'uppercase', letterSpacing: '0.06em', marginBottom: 8 }}>
-                                {String(svc.parent_category ?? '').trim()
-                                    ? `${CATEGORY_TR[String(svc.parent_category)] ?? svc.parent_category} › ${CATEGORY_TR[svc.category] ?? svc.category}`
-                                    : (CATEGORY_TR[svc.category] ?? svc.category)}{' '}
-                                · {svc.duration_min}dk
+                            <p
+                                title={svc.name}
+                                style={{
+                                    fontSize: 12, fontWeight: 700, color: '#111827', marginBottom: 4, lineHeight: 1.3,
+                                    overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
+                                }}
+                            >{svc.name}</p>
+                            <p
+                                title={pathLine}
+                                style={{
+                                    fontSize: 10, fontWeight: 600, color: '#9ca3af', textTransform: 'uppercase',
+                                    letterSpacing: '0.06em', marginBottom: 8,
+                                    overflow: 'hidden', display: '-webkit-box', WebkitLineClamp: 2, WebkitBoxOrient: 'vertical',
+                                    overflowWrap: 'anywhere', wordBreak: 'break-word', lineHeight: 1.35,
+                                }}
+                            >
+                                {pathLine}
                             </p>
                             <p style={{ fontSize: 14, fontWeight: 800, color: svc.color ?? '#7c3aed' }}>{fmt(svc.price)}</p>
                         </button>
-                    ))}
+                        );
+                    })}
 
                     {tab === 'packages' && packages.map(pkg => {
                         const fp = pkg.price * (1 - (pkg.discount_pct ?? 0) / 100);
+                        const pkgMeta = `${pkg.total_sessions} seans · ${pkg.validity_days}gün geçerli`;
                         return (
                             <button
                                 key={pkg.id}
@@ -504,10 +523,24 @@ export function BeautyPOS() {
                                     borderTop: `3px solid ${pkg.color ?? '#7c3aed'}`,
                                     borderRadius: 8, padding: '12px', textAlign: 'left',
                                     cursor: 'pointer',
+                                    overflow: 'hidden', minWidth: 0, maxWidth: '100%',
                                 }}
                             >
-                                <p style={{ fontSize: 12, fontWeight: 700, color: '#111827', marginBottom: 4 }}>{pkg.name}</p>
-                                <p style={{ fontSize: 10, fontWeight: 600, color: '#9ca3af', marginBottom: 8 }}>{pkg.total_sessions} seans · {pkg.validity_days}gün geçerli</p>
+                                <p
+                                    title={pkg.name}
+                                    style={{
+                                        fontSize: 12, fontWeight: 700, color: '#111827', marginBottom: 4,
+                                        overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
+                                    }}
+                                >{pkg.name}</p>
+                                <p
+                                    title={pkgMeta}
+                                    style={{
+                                        fontSize: 10, fontWeight: 600, color: '#9ca3af', marginBottom: 8,
+                                        overflow: 'hidden', display: '-webkit-box', WebkitLineClamp: 2, WebkitBoxOrient: 'vertical',
+                                        overflowWrap: 'anywhere', wordBreak: 'break-word', lineHeight: 1.35,
+                                    }}
+                                >{pkgMeta}</p>
                                 <div style={{ display: 'flex', alignItems: 'baseline', gap: 6 }}>
                                     <span style={{ fontSize: 14, fontWeight: 800, color: pkg.color ?? '#7c3aed' }}>{fmt(fp)}</span>
                                     {(pkg.discount_pct ?? 0) > 0 && (

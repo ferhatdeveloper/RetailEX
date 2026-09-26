@@ -1,12 +1,18 @@
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect, useCallback, useMemo } from 'react';
 import { Package, TrendingUp, TrendingDown, ArrowRight, Filter, Calendar, Loader2 } from 'lucide-react';
+import { format } from 'date-fns';
 import { formatNumber } from '../../utils/formatNumber';
-import { postgres } from '../../services/postgres';
+import { postgres, getAppDefaultCurrency } from '../../services/postgres';
+import { stockMovementAPI } from '../../services/stockMovementAPI';
 import { useLanguage } from '../../contexts/LanguageContext';
+import { useFirmaDonem } from '../../contexts/FirmaDonemContext';
 import { displayItemCode } from '../../utils/lastPurchaseCostSql';
 import { formatReportDateCell } from '../../utils/dateLocale';
 import { ReportYmdDatePicker } from '../shared/ReportDateRangePresets';
 import { ReportColumnTable } from './shared/ReportDataGrid';
+import { useRegisterDatagridRefresh } from '../../hooks/useRegisterDatagridRefresh';
+import { getFirmLedgerCurrency, getGlobalCurrency } from '../../utils/currency';
+import { receiptNotesForDisplay } from '../../utils/receiptNotes';
 
 interface Movement {
   id: string;
@@ -28,11 +34,17 @@ interface Warehouse {
   name: string;
 }
 
-function dbTypeToUiType(dbType: string): Movement['type'] {
-  switch (dbType) {
+const REPORT_ROW_LIMIT = 5_000;
+
+function dbTypeToUiType(dbType: string, ficheType?: string): Movement['type'] {
+  const fiche = String(ficheType || '').trim().toLowerCase();
+  if (fiche === 'return_invoice') return 'return';
+  switch (String(dbType || '').toLowerCase()) {
     case 'in':
+    case 'purchase':
       return 'purchase';
     case 'out':
+    case 'sale':
       return 'sale';
     case 'transfer':
       return 'transfer';
@@ -53,6 +65,8 @@ function uiTypeToDbType(uiType: string): string | null {
       return 'transfer';
     case 'adjustment':
       return 'adjustment';
+    case 'return':
+      return 'return';
     default:
       return null;
   }
@@ -63,10 +77,65 @@ function displayUnit(unit: string | undefined): string {
   return u || 'Adet';
 }
 
+/** Giriş +, çıkış − — Malzeme ekstresi / stok in-out ile aynı yön. */
+function signedQuantity(opts: {
+  qty: number;
+  dbType: string;
+  selectedWarehouse: string;
+  sourceWh: string;
+  targetWh: string;
+}): number {
+  const absQty = Math.abs(opts.qty);
+  const dbType = String(opts.dbType || '').toLowerCase();
+  if (dbType === 'in' || dbType === 'purchase') return absQty;
+  if (dbType === 'out' || dbType === 'sale') return -absQty;
+  if (dbType === 'transfer') {
+    if (opts.selectedWarehouse === 'all') return -absQty;
+    if (opts.sourceWh && opts.sourceWh === opts.selectedWarehouse) return -absQty;
+    if (opts.targetWh && opts.targetWh === opts.selectedWarehouse) return absQty;
+    return -absQty;
+  }
+  if (dbType === 'adjustment') {
+    // Sayım farkı DB'de işaretli gelebilir; olduğu gibi bırak.
+    return opts.qty;
+  }
+  return opts.qty;
+}
+
+function matchesMovementTypeFilter(
+  filter: string,
+  dbType: string,
+  ficheType: string,
+): boolean {
+  if (filter === 'all') return true;
+  if (filter === 'return') {
+    return String(ficheType || '').toLowerCase() === 'return_invoice';
+  }
+  const dbWanted = uiTypeToDbType(filter);
+  if (!dbWanted) return true;
+  const mt = String(dbType || '').toLowerCase();
+  if (filter === 'purchase') return mt === 'in' || mt === 'purchase';
+  if (filter === 'sale') return mt === 'out' || mt === 'sale';
+  return mt === dbWanted;
+}
+
 export function MaterialMovementReport() {
   const { tm } = useLanguage();
-  const [startDate, setStartDate] = useState('');
-  const [endDate, setEndDate] = useState('');
+  const { selectedFirm } = useFirmaDonem();
+  const currency = getFirmLedgerCurrency(
+    selectedFirm,
+    getAppDefaultCurrency() || getGlobalCurrency(),
+  );
+
+  const today = useMemo(() => new Date(), []);
+  const defaultStart = useMemo(() => {
+    const d = new Date(today);
+    d.setDate(d.getDate() - 30);
+    return format(d, 'yyyy-MM-dd');
+  }, [today]);
+
+  const [startDate, setStartDate] = useState(defaultStart);
+  const [endDate, setEndDate] = useState(format(today, 'yyyy-MM-dd'));
   const [movementType, setMovementType] = useState<string>('all');
   const [selectedWarehouse, setSelectedWarehouse] = useState<string>('all');
   const [movements, setMovements] = useState<Movement[]>([]);
@@ -104,122 +173,78 @@ export function MaterialMovementReport() {
   };
 
   const loadMovements = useCallback(async () => {
+    if (!startDate || !endDate) {
+      setMovements([]);
+      return;
+    }
     setLoading(true);
     try {
-      // direction kolonu yoksa transfer için kaynak/hedef ambar karşılaştırması yapacağız;
-      // SELECT'te target_warehouse_id ve seçilen ambarı da çekiyoruz.
-      let sql = `
-        SELECT
-          mi.id,
-          m.movement_date  AS date,
-          p.code           AS product_code,
-          p.name           AS product_name,
-          m.movement_type  AS type,
-          m.warehouse_id   AS warehouse_id,
-          m.target_warehouse_id AS target_warehouse_id,
-          mi.quantity,
-          COALESCE(p.unit, 'Adet') AS unit,
-          COALESCE(mi.unit_price, 0) AS unit_cost,
-          m.document_no    AS reference,
-          m.description    AS note,
-          s.name           AS warehouse
-        FROM stock_movement_items mi
-        JOIN stock_movements m ON mi.movement_id = m.id
-        JOIN products p        ON mi.product_id  = p.id
-        LEFT JOIN stores s     ON m.warehouse_id  = s.id
-        WHERE 1=1
-      `;
-      const params: any[] = [];
+      const result = await stockMovementAPI.getExtractMovementsInDateRange({
+        startDate,
+        endDate,
+        limit: REPORT_ROW_LIMIT,
+        firmNr: selectedFirm?.firm_nr,
+        warehouseId: selectedWarehouse === 'all' ? null : selectedWarehouse,
+      });
 
-      if (startDate) {
-        params.push(startDate);
-        sql += ` AND m.movement_date >= $${params.length}`;
+      const mapped: Movement[] = [];
+      for (const r of result.rows) {
+        const dbTypeRow = String(r.movement_type || r.movement?.movement_type || 'in');
+        const ficheType = String(r.fiche_type || r.movement?.fiche_type || '');
+        if (!matchesMovementTypeFilter(movementType, dbTypeRow, ficheType)) continue;
+
+        const qty = parseFloat(String(r.quantity)) || 0;
+        const sourceWh = r.warehouse_id != null ? String(r.warehouse_id) : '';
+        const targetWh = r.target_warehouse_id != null ? String(r.target_warehouse_id) : '';
+        const displayQty = signedQuantity({
+          qty,
+          dbType: dbTypeRow,
+          selectedWarehouse,
+          sourceWh,
+          targetWh,
+        });
+        // Birim tutar: satışta unit_price, yoksa cost_price (giriş maliyet)
+        const unitCost =
+          parseFloat(String(r.unit_price)) ||
+          parseFloat(String(r.cost_price)) ||
+          0;
+        const totalCost = displayQty * unitCost;
+        const noteRaw = receiptNotesForDisplay(
+          r.notes || r.slip_description || r.description || '',
+        );
+
+        mapped.push({
+          id: String(r.id || `${r.movement_id}-${mapped.length}`),
+          date: formatReportDateCell(r.movement_date || r.created_at || r.movement?.movement_date),
+          productCode: displayItemCode(r.product_code),
+          productName: r.product_name || '',
+          type: dbTypeToUiType(dbTypeRow, ficheType),
+          quantity: displayQty,
+          unit: displayUnit(r.unit_name || r.unit),
+          unitCost,
+          totalCost,
+          warehouse: r.warehouse_name || r.movement?.warehouses?.name || '-',
+          reference: r.document_no || r.movement?.document_no || '',
+          note: noteRaw || undefined,
+        });
       }
-      if (endDate) {
-        params.push(endDate + ' 23:59:59');
-        sql += ` AND m.movement_date <= $${params.length}`;
-      }
 
-      const dbType = uiTypeToDbType(movementType);
-      if (dbType) {
-        params.push(dbType);
-        sql += ` AND m.movement_type = $${params.length}`;
-      }
-
-      if (selectedWarehouse !== 'all') {
-        params.push(selectedWarehouse);
-        // Transfer için hem kaynak hem hedef ambarı eşleştir; böylece her iki taraf da görünür.
-        sql += ` AND (m.warehouse_id = $${params.length} OR m.target_warehouse_id = $${params.length})`;
-      }
-
-      sql += ` ORDER BY m.movement_date DESC, m.created_at DESC LIMIT 500`;
-
-      const { rows } = await postgres.query(sql, params);
-
-      setMovements(
-        rows.map((r) => {
-          const qty = parseFloat(r.quantity) || 0;
-          const dbTypeRow = (r.type as string) || 'in';
-          const sourceWh = r.warehouse_id != null ? String(r.warehouse_id) : '';
-          const targetWh = r.target_warehouse_id != null ? String(r.target_warehouse_id) : '';
-          // İşaret kuralları (muhasebeci gözü):
-          //  - 'in'         => +qty
-          //  - 'out'        => -qty
-          //  - 'transfer'   => kaynak ambar için -qty, hedef ambar için +qty (seçili ambar üzerinden)
-          //  - 'adjustment' => sayım farkı kendi işaretini taşır; negatifse olduğu gibi, pozitifse +qty
-          let displayQty = qty;
-          if (dbTypeRow === 'in') {
-            displayQty = qty;
-          } else if (dbTypeRow === 'out') {
-            displayQty = -qty;
-          } else if (dbTypeRow === 'transfer') {
-            // selectedWarehouse 'all' ise: kaynak tarafını (negatif) göster, hedefi ayrı satır olarak bırak.
-            if (selectedWarehouse === 'all') {
-              displayQty = -qty;
-            } else if (sourceWh && sourceWh === selectedWarehouse) {
-              // Bu satır seçili ambar için kaynak (çıkış)
-              displayQty = -qty;
-            } else if (targetWh && targetWh === selectedWarehouse) {
-              // Bu satır seçili ambar için hedef (giriş)
-              displayQty = qty;
-            } else {
-              displayQty = -qty;
-            }
-          } else if (dbTypeRow === 'adjustment') {
-            // adjustment: DB'deki miktar zaten işaretli (+ fazla, − eksik); olduğu gibi bırak.
-            displayQty = qty;
-          } else {
-            displayQty = qty;
-          }
-          const unitCost = parseFloat(r.unit_cost) || 0;
-          const totalCost = displayQty * unitCost;
-          const rawUnit = r.unit || 'Adet';
-          return {
-            id: r.id,
-            date: r.date ? formatReportDateCell(r.date) : '',
-            productCode: displayItemCode(r.product_code),
-            productName: r.product_name || '',
-            type: dbTypeToUiType(dbTypeRow),
-            quantity: displayQty,
-            unit: rawUnit,
-            unitCost,
-            totalCost,
-            warehouse: r.warehouse || '-',
-            reference: r.reference || '',
-            note: r.note || undefined,
-          };
-        })
-      );
+      // API ASC döner; rapor yeniden eskiye
+      mapped.reverse();
+      setMovements(mapped);
     } catch (err) {
       console.error('[MaterialMovementReport] loadMovements failed:', err);
+      setMovements([]);
     } finally {
       setLoading(false);
     }
-  }, [startDate, endDate, movementType, selectedWarehouse]);
+  }, [startDate, endDate, movementType, selectedWarehouse, selectedFirm?.firm_nr]);
 
   useEffect(() => {
     loadMovements();
   }, [loadMovements]);
+
+  useRegisterDatagridRefresh(loadMovements);
 
   const getTypeColor = (type: string) => {
     switch (type) {
@@ -239,7 +264,6 @@ export function MaterialMovementReport() {
   };
 
   // displayQty zaten işaretli (+ giriş, − çıkış); totalCost = displayQty * unitCost yine işaretli.
-  // Bu yüzden Math.abs gerekmez; toplamlar zaten doğru yönde birikiyor.
   const totalInflow = movements.filter((m) => m.quantity > 0).reduce((sum, m) => sum + m.totalCost, 0);
 
   const totalOutflow = movements.filter((m) => m.quantity < 0).reduce((sum, m) => sum + Math.abs(m.totalCost), 0);
@@ -279,6 +303,7 @@ export function MaterialMovementReport() {
               <option value="sale">{tm('mmMovTypeSale')}</option>
               <option value="transfer">{tm('mmMovTypeTransfer')}</option>
               <option value="adjustment">{tm('mmMovTypeAdjustment')}</option>
+              <option value="return">{tm('mmMovTypeReturn')}</option>
             </select>
           </div>
           <div>
@@ -307,7 +332,9 @@ export function MaterialMovementReport() {
           <div className="flex items-center justify-between">
             <div>
               <p className="text-sm text-gray-600">{tm('totalIn')}</p>
-              <p className="text-2xl font-bold text-green-600">{formatNumber(totalInflow, 2, false)} IQD</p>
+              <p className="text-2xl font-bold text-green-600">
+                {formatNumber(totalInflow, 2, false)} {currency}
+              </p>
             </div>
             <div className="bg-green-100 rounded-full p-3">
               <TrendingUp className="w-6 h-6 text-green-600" />
@@ -319,7 +346,9 @@ export function MaterialMovementReport() {
           <div className="flex items-center justify-between">
             <div>
               <p className="text-sm text-gray-600">{tm('totalOut')}</p>
-              <p className="text-2xl font-bold text-red-600">{formatNumber(totalOutflow, 2, false)} IQD</p>
+              <p className="text-2xl font-bold text-red-600">
+                {formatNumber(totalOutflow, 2, false)} {currency}
+              </p>
             </div>
             <div className="bg-red-100 rounded-full p-3">
               <TrendingDown className="w-6 h-6 text-red-600" />
@@ -332,7 +361,7 @@ export function MaterialMovementReport() {
             <div>
               <p className="text-sm text-gray-600">{tm('mmNetMovement')}</p>
               <p className={`text-2xl font-bold ${netMovement >= 0 ? 'text-green-600' : 'text-red-600'}`}>
-                {formatNumber(netMovement, 2, false)} IQD
+                {formatNumber(netMovement, 2, false)} {currency}
               </p>
             </div>
             <div className={`${netMovement >= 0 ? 'bg-green-100' : 'bg-red-100'} rounded-full p-3`}>
@@ -402,7 +431,7 @@ export function MaterialMovementReport() {
                   header: tm('reportsColUnitCost'),
                   type: 'number',
                   align: 'right',
-                  cell: (movement) => `${formatNumber(movement.unitCost, 2, false)} IQD`,
+                  cell: (movement) => `${formatNumber(movement.unitCost, 2, false)} ${currency}`,
                 },
                 {
                   key: 'totalCost',
@@ -410,11 +439,11 @@ export function MaterialMovementReport() {
                   type: 'number',
                   align: 'right',
                   footerSum: true,
-                  footerFormat: (n) => `${formatNumber(n, 2, false)} IQD`,
+                  footerFormat: (n) => `${formatNumber(n, 2, false)} ${currency}`,
                   cell: (movement) => (
                     <span className={`text-sm font-medium ${movement.totalCost > 0 ? 'text-green-600' : 'text-red-600'}`}>
                       {movement.totalCost > 0 ? '+' : ''}
-                      {formatNumber(movement.totalCost, 2, false)} IQD
+                      {formatNumber(movement.totalCost, 2, false)} {currency}
                     </span>
                   ),
                 },

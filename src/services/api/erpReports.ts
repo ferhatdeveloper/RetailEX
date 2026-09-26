@@ -38,6 +38,12 @@ import {
   SQL_PL_SALES_OR_RETURN,
   unitCostFromPurchaseLine,
 } from '../../utils/lastPurchaseCostSql';
+import {
+  productCardUnitCost,
+  stockValueAtCardCost,
+  SQL_PRODUCT_CARD_UNIT_COST,
+} from '../../utils/productCardUnitCost';
+import { inferQtyFromRevenue } from '../../utils/lineGrossProfit';
 
 const ROW_LIMIT = 3000;
 
@@ -183,6 +189,7 @@ export interface ProductGrossProfitRow {
  * Malzeme satırlarında maliyet = ağırlıklı ortalama birim maliyet × miktar.
  * Ortalama = Σ(alış tutarı) / Σ(alış miktarı); alış iadesi düşülür; satış ortalamaya girmez.
  * Hizmet satırları ve ortalaması 0 olanlar önceki maliyeti korur.
+ * Miktar işaretli (satış +, iade −) — COGS iadede geri alınır.
  */
 async function applyWeightedAvgCostToGrossProfit(
   rows: ProductGrossProfitRow[],
@@ -206,6 +213,7 @@ async function applyWeightedAvgCostToGrossProfit(
         code: r.productCode,
       });
       if (!(avg > 0)) return r;
+      // İşaretli miktar × ortalama = işaretli COGS (iade negatif)
       const cost = avg * r.quantity;
       const grossProfit = r.revenue - cost;
       return {
@@ -219,6 +227,39 @@ async function applyWeightedAvgCostToGrossProfit(
     console.warn('[erpReports] weighted avg cost overlay failed:', e);
     return rows;
   }
+}
+
+/** Aynı ürünü (id/kod) birleştir — item_name / kod-id sapmasıyla bölünen SABUN satırlarını topla. */
+function mergeProductGrossProfitRows(rows: ProductGrossProfitRow[]): ProductGrossProfitRow[] {
+  const map = new Map<string, ProductGrossProfitRow>();
+  for (const r of rows) {
+    const kind = r.lineKind === 'service' ? 'S' : 'P';
+    const id = String(r.productId || '').trim();
+    const code = String(r.productCode || '').trim();
+    const name = String(r.productName || '').trim().toLocaleLowerCase('tr-TR');
+    const key =
+      id
+        ? `${kind}|id:${id}`
+        : code && code !== '—'
+          ? `${kind}|code:${code}`
+          : `${kind}|name:${name}`;
+    const cur = map.get(key);
+    if (!cur) {
+      map.set(key, { ...r });
+      continue;
+    }
+    cur.quantity += r.quantity;
+    cur.revenue += r.revenue;
+    cur.cost += r.cost;
+    cur.grossProfit += r.grossProfit;
+    if (!cur.productId && r.productId) cur.productId = r.productId;
+    if ((!cur.productCode || cur.productCode === '—') && r.productCode) cur.productCode = r.productCode;
+    if (!cur.productName && r.productName) cur.productName = r.productName;
+  }
+  return Array.from(map.values()).map((r) => ({
+    ...r,
+    marginPct: Math.abs(r.revenue) > 0.009 ? (r.grossProfit / r.revenue) * 100 : 0,
+  }));
 }
 
 export interface CariExtractRow {
@@ -1589,8 +1630,15 @@ export const erpReportsAPI = {
         if (!inv) continue;
         const sgn = isSalesReturnFiche(inv) ? -1 : 1;
         const code = displayItemCode(prod?.code, svc?.code, it.item_code);
-        const qty = sgn * (Number(it.quantity ?? 0) || 0);
         const rawLineNet = Number(it.net_amount ?? 0) || 0;
+        const unitPrice = Number(it.unit_price ?? 0) || 0;
+        // qty=0 ama tutar var (hatalı iade) → ciro/fiyattan miktar tahmin
+        const absQty = inferQtyFromRevenue(
+          Number(it.quantity ?? 0) || 0,
+          rawLineNet,
+          unitPrice,
+        );
+        const qty = sgn * absQty;
         const revenue =
           sgn *
           scaleLineRevenueToInvoiceNet(
@@ -1598,7 +1646,17 @@ export const erpReportsAPI = {
             linesNetByInvoice.get(String(it.invoice_id)) || 0,
             Number(inv.net_amount ?? 0) || 0,
           );
+        const resolvedPid =
+          pid ||
+          (String(it.item_code || '').trim() &&
+            productIdByCode.get(String(it.item_code || '').trim())) ||
+          (String(it.item_code || '').trim() &&
+            productIdByBarcode.get(String(it.item_code || '').trim())) ||
+          (String(prod?.code || '').trim() &&
+            productIdByCode.get(String(prod?.code || '').trim())) ||
+          '';
         const lpc =
+          (resolvedPid && lastById.get(resolvedPid)?.unitCost) ||
           (pid && lastById.get(pid)?.unitCost) ||
           (String(it.item_code || '').trim() &&
             lastByCode.get(String(it.item_code || '').trim())?.unitCost) ||
@@ -1606,6 +1664,7 @@ export const erpReportsAPI = {
             lastByCode.get(String(prod?.code || '').trim())?.unitCost) ||
           0;
         const recipeUnit =
+          (resolvedPid && recipeByService.get(resolvedPid)) ||
           (pid && recipeByService.get(pid)) ||
           (svc && recipeByService.get(String(svc.id))) ||
           0;
@@ -1615,7 +1674,6 @@ export const erpReportsAPI = {
           beautyCostPrice: beauty?.cost_price,
           recipeUnitCost: recipeUnit,
         });
-        const absQty = Number(it.quantity ?? 0) || 0;
         const cost =
           sgn *
           lineCostAmount({
@@ -1626,9 +1684,9 @@ export const erpReportsAPI = {
             isService,
           });
         const gp = revenue - cost;
-        const mapKey = `${isService ? 'S' : 'P'}|${pid || code}`;
+        const mapKey = `${isService ? 'S' : 'P'}|${resolvedPid || pid || code}`;
         const cur = map.get(mapKey) || {
-          productId: pid,
+          productId: resolvedPid || pid,
           productCode: code,
           productName: String(it.item_name ?? prod?.name ?? svc?.name ?? beauty?.name ?? ''),
           quantity: 0,
@@ -1643,15 +1701,18 @@ export const erpReportsAPI = {
         cur.cost += cost;
         cur.grossProfit += gp;
         if (!cur.productName && it.item_name) cur.productName = String(it.item_name);
+        if (!cur.productId && (resolvedPid || pid)) cur.productId = resolvedPid || pid;
         map.set(mapKey, cur);
       }
-      const baseRows = Array.from(map.values())
-        .map((r) => ({
-          ...r,
-          marginPct: Math.abs(r.revenue) > 0.009 ? (r.grossProfit / r.revenue) * 100 : 0,
-        }))
-        .sort((a, b) => b.grossProfit - a.grossProfit)
-        .slice(0, ROW_LIMIT);
+      const baseRows = mergeProductGrossProfitRows(
+        Array.from(map.values())
+          .map((r) => ({
+            ...r,
+            marginPct: Math.abs(r.revenue) > 0.009 ? (r.grossProfit / r.revenue) * 100 : 0,
+          }))
+          .sort((a, b) => b.grossProfit - a.grossProfit)
+          .slice(0, ROW_LIMIT),
+      );
       return applyWeightedAvgCostToGrossProfit(baseRows, firmNr, end);
     }
 
@@ -1662,13 +1723,13 @@ export const erpReportsAPI = {
       SELECT
         COALESCE((${SQL_LINE_RESOLVED_PRODUCT_ID})::text, '') AS product_id,
         ${SQL_DISPLAY_ITEM_CODE} AS product_code,
-        COALESCE(
+        MAX(COALESCE(
           NULLIF(TRIM(si.item_name), ''),
           p.name,
           svc.name,
           bsvc.name,
           '—'
-        ) AS product_name,
+        )) AS product_name,
         CASE WHEN ${SQL_IS_SERVICE_LINE} THEN 'service' ELSE 'product' END AS line_kind,
         COALESCE(SUM(${SIGNED_LINE_QTY_EXPR}), 0) AS quantity,
         COALESCE(SUM(${SIGNED_LINE_REVENUE_EXPR}), 0) AS revenue,
@@ -1688,7 +1749,7 @@ export const erpReportsAPI = {
         ${lineKindSql}
         AND ${sqlUtcDate('s.date')} >= $2::date
         AND ${sqlUtcDate('s.date')} <= $3::date
-      GROUP BY 1, 2, 3, 4
+      GROUP BY 1, 2, 4
       HAVING ABS(COALESCE(SUM(${SIGNED_LINE_REVENUE_EXPR}), 0)) > 0.009
          OR ABS(COALESCE(SUM(${SIGNED_LINE_QTY_EXPR}), 0)) > 0.0001
       ORDER BY gross_profit DESC
@@ -1697,22 +1758,24 @@ export const erpReportsAPI = {
       [firmNr, start, end],
     );
     return applyWeightedAvgCostToGrossProfit(
-      (rows || []).map((r: any) => {
-        const revenue = Number(r.revenue ?? 0);
-        const cost = Number(r.cost ?? 0);
-        const grossProfit = Number(r.gross_profit ?? revenue - cost);
-        return {
-          productId: String(r.product_id ?? ''),
-          productCode: displayItemCode(r.product_code),
-          productName: String(r.product_name ?? ''),
-          quantity: Number(r.quantity ?? 0),
-          revenue,
-          cost,
-          grossProfit,
-          marginPct: Math.abs(revenue) > 0.009 ? (grossProfit / revenue) * 100 : 0,
-          lineKind: r.line_kind === 'service' ? 'service' : 'product',
-        };
-      }),
+      mergeProductGrossProfitRows(
+        (rows || []).map((r: any) => {
+          const revenue = Number(r.revenue ?? 0);
+          const cost = Number(r.cost ?? 0);
+          const grossProfit = Number(r.gross_profit ?? revenue - cost);
+          return {
+            productId: String(r.product_id ?? ''),
+            productCode: displayItemCode(r.product_code),
+            productName: String(r.product_name ?? ''),
+            quantity: Number(r.quantity ?? 0),
+            revenue,
+            cost,
+            grossProfit,
+            marginPct: Math.abs(revenue) > 0.009 ? (grossProfit / revenue) * 100 : 0,
+            lineKind: r.line_kind === 'service' ? 'service' : 'product',
+          };
+        }),
+      ),
       firmNr,
       end,
     );
@@ -1845,7 +1908,8 @@ export const erpReportsAPI = {
         .get<Record<string, unknown>[]>(
           `/rex_${fn}_products`,
           {
-            select: 'id,code,name,stock,min_stock,critical_stock,cost,warehouse_code,is_active',
+            select:
+              'id,code,name,stock,min_stock,critical_stock,cost,purchase_price,warehouse_code,is_active',
             is_active: 'eq.true',
             order: 'name.asc',
             limit: '4000',
@@ -1858,7 +1922,7 @@ export const erpReportsAPI = {
           const stock = Number(p.stock ?? 0);
           const minStock = Number(p.min_stock ?? 0);
           const criticalStock = Number(p.critical_stock ?? 0);
-          const unitCost = Number(p.cost ?? 0);
+          const unitCost = productCardUnitCost(p);
           let status: CriticalStockRow['status'] = 'ok';
           if (criticalStock > 0 && stock <= criticalStock) status = 'critical';
           else if (minStock > 0 && stock <= minStock) status = 'below_min';
@@ -1871,7 +1935,7 @@ export const erpReportsAPI = {
             minStock,
             criticalStock,
             unitCost,
-            stockValue: stock * unitCost,
+            stockValue: stockValueAtCardCost(stock, p),
             status,
           };
         })
@@ -1890,7 +1954,7 @@ export const erpReportsAPI = {
         COALESCE(p.stock, 0) AS stock,
         COALESCE(p.min_stock, 0) AS min_stock,
         COALESCE(p.critical_stock, 0) AS critical_stock,
-        COALESCE(p.cost, 0) AS unit_cost
+        ${SQL_PRODUCT_CARD_UNIT_COST} AS unit_cost
       FROM products p
       WHERE COALESCE(p.is_active, true) = true
         AND (
@@ -1924,6 +1988,11 @@ export const erpReportsAPI = {
     });
   },
 
+  /**
+   * Depo Stok Özeti — depo koduna göre SKU / miktar / stok değeri.
+   * Değer: Σ(stok × kart birim maliyet); birim = cost → purchase_price (satış fiyatı değil).
+   * warehouse_code boşsa grup '—' (filtre değil, eksik depo etiketi).
+   */
   async getWarehouseStock(): Promise<WarehouseStockRow[]> {
     if (DB_SETTINGS.connectionProvider === 'rest_api') {
       const { postgrest } = await import('./postgrestClient');
@@ -1932,7 +2001,7 @@ export const erpReportsAPI = {
         .get<Record<string, unknown>[]>(
           `/rex_${fn}_products`,
           {
-            select: 'stock,cost,warehouse_code,min_stock,critical_stock,is_active',
+            select: 'stock,cost,purchase_price,warehouse_code,min_stock,critical_stock,is_active',
             is_active: 'eq.true',
             limit: '5000',
           },
@@ -1943,7 +2012,6 @@ export const erpReportsAPI = {
       for (const p of products || []) {
         const wh = String(p.warehouse_code || '').trim() || '—';
         const stock = Number(p.stock ?? 0);
-        const cost = Number(p.cost ?? 0);
         const minStock = Number(p.min_stock ?? 0);
         const criticalStock = Number(p.critical_stock ?? 0);
         const cur = map.get(wh) || {
@@ -1955,7 +2023,7 @@ export const erpReportsAPI = {
         };
         cur.skuCount += 1;
         cur.totalQty += stock;
-        cur.totalValue += stock * cost;
+        cur.totalValue += stockValueAtCardCost(stock, p);
         if (
           (criticalStock > 0 && stock <= criticalStock) ||
           (minStock > 0 && stock <= minStock)
@@ -1973,7 +2041,7 @@ export const erpReportsAPI = {
         COALESCE(NULLIF(TRIM(p.warehouse_code), ''), '—') AS warehouse_code,
         COUNT(*)::int AS sku_count,
         COALESCE(SUM(COALESCE(p.stock, 0)), 0) AS total_qty,
-        COALESCE(SUM(COALESCE(p.stock, 0) * COALESCE(p.cost, 0)), 0) AS total_value,
+        COALESCE(SUM(COALESCE(p.stock, 0) * (${SQL_PRODUCT_CARD_UNIT_COST})), 0) AS total_value,
         COUNT(*) FILTER (
           WHERE (COALESCE(p.critical_stock, 0) > 0 AND COALESCE(p.stock, 0) <= p.critical_stock)
              OR (COALESCE(p.min_stock, 0) > 0 AND COALESCE(p.stock, 0) <= p.min_stock)

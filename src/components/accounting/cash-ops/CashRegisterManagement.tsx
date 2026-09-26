@@ -30,6 +30,7 @@ import { useLanguage } from '../../../contexts/LanguageContext';
 import { useFirmaDonem } from '../../../contexts/FirmaDonemContext';
 import { getAppDefaultCurrency } from '../../../services/postgres';
 import { getPosNow, toLocalDateInputValue } from '../../../store/usePosDateOverrideStore';
+import { useRetailexInvalidateRefresh } from '../../../hooks/useRetailexInvalidateRefresh';
 
 type KpiDetailKind = 'collection' | 'payment' | 'balance';
 
@@ -81,6 +82,10 @@ export function CashRegisterManagement({ onEnterKasa, initialTab = 'sessions' }:
   useEffect(() => {
     loadData();
   }, [selectedFirm, selectedPeriod]);
+
+  useRetailexInvalidateRefresh(['invoices', 'sales', 'customers'], () => {
+    void loadData();
+  });
 
   const handleRowDoubleClick = async (kasa: Kasa) => {
     setSelectedKasa(kasa);

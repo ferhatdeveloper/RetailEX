@@ -16,6 +16,7 @@ import { phoneMatchesQuery } from '../../../shared/utils/validators';
 import { SupplierModule } from './SupplierModule';
 import { compareFileIdAsc, sortByFileIdAsc } from '../../../utils/customerFileIdSort';
 import { PartialDateFields } from '../../shared/PartialDateFields';
+import { useRetailexInvalidateRefresh } from '../../../hooks/useRetailexInvalidateRefresh';
 
 interface CustomerManagementModuleProps {
   customers: Customer[];
@@ -132,6 +133,20 @@ export function CustomerManagementModule({ customers, setCustomers, sales }: Cus
       if (rows.length > 0) setCustomers(rows);
     })();
   }, [setCustomers]);
+
+  useRetailexInvalidateRefresh(['customers', 'invoices', 'sales'], async () => {
+    try {
+      await useCustomerStore.getState().loadCustomers();
+      const rows = useCustomerStore.getState().customers;
+      if (rows.length > 0) setCustomers(rows);
+      else {
+        const fresh = await customerAPI.getAll();
+        setCustomers(fresh);
+      }
+    } catch {
+      /* sessiz */
+    }
+  });
 
   // Beauty (güzellik) randevu sayıları: müşteri ID → randevu sayısı.
   // Trading ekranı genel ERP bağlamında olduğu için randevuları ayrı bir

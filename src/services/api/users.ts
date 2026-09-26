@@ -33,6 +33,20 @@ export interface User {
     allowed_store_ids?: string[];
 }
 
+/** PG / bridge boolean (true|false|'t'|'f'|0|1) → net boolean */
+function normalizeIsActive(value: unknown): boolean {
+    if (value === false || value === 0 || value === '0') return false;
+    if (typeof value === 'string') {
+        const v = value.trim().toLowerCase();
+        if (v === 'false' || v === 'f' || v === 'n' || v === 'no' || v === 'off') return false;
+    }
+    return value == null ? true : Boolean(value);
+}
+
+function isAdminUser(u: Pick<User, 'role' | 'role_name'> | null | undefined): boolean {
+    return (u?.role_name || u?.role || '').toLowerCase() === 'admin';
+}
+
 export const userAPI = {
     /**
      * Get all users
@@ -119,7 +133,52 @@ export const userAPI = {
         const allowedFirmNrs = r.allowed_firm_nrs != null ? (typeof r.allowed_firm_nrs === 'string' ? JSON.parse(r.allowed_firm_nrs || '[]') : r.allowed_firm_nrs) : [];
         const allowedPeriods = r.allowed_periods != null ? (typeof r.allowed_periods === 'string' ? JSON.parse(r.allowed_periods || '[]') : r.allowed_periods) : [];
         const allowedStoreIds = r.allowed_store_ids != null ? (typeof r.allowed_store_ids === 'string' ? JSON.parse(r.allowed_store_ids || '[]') : r.allowed_store_ids) : [];
-        return { ...r, allowed_firm_nrs: allowedFirmNrs, allowed_periods: allowedPeriods, allowed_store_ids: allowedStoreIds };
+        return {
+            ...r,
+            is_active: normalizeIsActive(r.is_active),
+            allowed_firm_nrs: allowedFirmNrs,
+            allowed_periods: allowedPeriods,
+            allowed_store_ids: allowedStoreIds,
+        };
+    },
+
+    /** Firmadaki diğer admin sayısı (hedef hariç; aktif/pasif fark etmez) */
+    async countOtherAdmins(excludeUserId: string): Promise<number> {
+        try {
+            const { rows } = await postgres.query(
+                `SELECT COUNT(*)::int AS cnt
+         FROM users u
+         LEFT JOIN roles r ON u.role_id = r.id
+         WHERE u.firm_nr = $1
+           AND u.id <> $2
+           AND LOWER(COALESCE(NULLIF(TRIM(r.name), ''), NULLIF(TRIM(u.role), ''), '')) = 'admin'`,
+                [ERP_SETTINGS.firmNr, excludeUserId]
+            );
+            return Number(rows?.[0]?.cnt ?? 0);
+        } catch (error) {
+            console.error('[UserAPI] countOtherAdmins failed:', error);
+            return 0;
+        }
+    },
+
+    /** Firmadaki diğer aktif admin sayısı (hedef hariç) */
+    async countOtherActiveAdmins(excludeUserId: string): Promise<number> {
+        try {
+            const { rows } = await postgres.query(
+                `SELECT COUNT(*)::int AS cnt
+         FROM users u
+         LEFT JOIN roles r ON u.role_id = r.id
+         WHERE u.firm_nr = $1
+           AND u.id <> $2
+           AND u.is_active = true
+           AND LOWER(COALESCE(NULLIF(TRIM(r.name), ''), NULLIF(TRIM(u.role), ''), '')) = 'admin'`,
+                [ERP_SETTINGS.firmNr, excludeUserId]
+            );
+            return Number(rows?.[0]?.cnt ?? 0);
+        } catch (error) {
+            console.error('[UserAPI] countOtherActiveAdmins failed:', error);
+            return 0;
+        }
     },
 
     /**
@@ -132,12 +191,26 @@ export const userAPI = {
             let i = 1;
             const uuidKeys = ['store_id', 'role_id'];
 
+            // Son aktif admin'i pasifleştirmeyi engelle
+            if (updates.is_active === false || updates.is_active === 0 || updates.is_active === 'false') {
+                const current = await this.getById(id);
+                if (current && isAdminUser(current) && normalizeIsActive(current.is_active)) {
+                    const others = await this.countOtherActiveAdmins(id);
+                    if (others < 1) {
+                        throw new Error('Son aktif admin kullanıcı pasif yapılamaz.');
+                    }
+                }
+            }
+
             const jsonbKeys = ['allowed_firm_nrs', 'allowed_periods', 'allowed_store_ids'];
             Object.entries(updates).forEach(([key, value]) => {
                 if (key !== 'id' && key !== 'password' && key !== 'role_name' && key !== 'store_name' && value !== undefined) {
                     if (jsonbKeys.includes(key)) {
                         fields.push(`${key} = $${i++}::jsonb`);
                         values.push(JSON.stringify(Array.isArray(value) ? value : value));
+                    } else if (key === 'is_active') {
+                        fields.push(`${key} = $${i++}`);
+                        values.push(normalizeIsActive(value));
                     } else {
                         const normalized = (uuidKeys.includes(key) && (value === '' || value == null)) ? null : value;
                         fields.push(`${key} = $${i++}`);
@@ -169,18 +242,43 @@ export const userAPI = {
     },
 
     /**
-     * Delete user (soft delete)
+     * Delete user (hard delete). Soft-delete (is_active=false) pasifleştirme ile karışmasın;
+     * pasif kullanıcılar da listeden gerçekten silinebilsin.
+     * @param actingUserId — kendi hesabını silmeyi engellemek için oturum kullanıcı id
      */
-    async delete(id: string): Promise<boolean> {
+    async delete(id: string, actingUserId?: string | null): Promise<boolean> {
         try {
+            if (actingUserId && actingUserId === id) {
+                throw new Error('Kendi hesabınızı silemezsiniz.');
+            }
+
+            const target = await this.getById(id);
+            if (!target) {
+                throw new Error('Kullanıcı bulunamadı.');
+            }
+
+            if (isAdminUser(target)) {
+                const otherAdmins = await this.countOtherAdmins(id);
+                if (otherAdmins < 1) {
+                    throw new Error('Sistemdeki son admin kullanıcı silinemez.');
+                }
+            }
+
             const { rowCount } = await postgres.query(
-                `UPDATE users SET is_active = false WHERE id = $1 AND firm_nr = $2`,
+                `DELETE FROM users WHERE id = $1 AND firm_nr = $2`,
                 [id, ERP_SETTINGS.firmNr]
             );
             return rowCount > 0;
-        } catch (error) {
+        } catch (error: any) {
             console.error('[UserAPI] delete failed:', error);
-            return false;
+            const msg = String(error?.message || error || '');
+            // FK kısıtı (bağlı kayıtlar)
+            if (/foreign key|violates foreign key|23503/i.test(msg)) {
+                throw new Error(
+                    'Bu kullanıcıya bağlı kayıtlar var; silinemez. Pasif bırakabilirsiniz.'
+                );
+            }
+            throw error instanceof Error ? error : new Error(msg || 'Kullanıcı silinemedi.');
         }
     }
 };

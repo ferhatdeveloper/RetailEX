@@ -2138,7 +2138,8 @@ export function UniversalInvoiceForm({
     const newItems = historyItems.map((hItem, index) => ({
       id: Date.now().toString() + Math.random().toString().slice(2, 5) + index,
       type: 'Malzeme',
-      code: '',
+      code: String(hItem.productCode || hItem.code || '').trim(),
+      product_id: String(hItem.productId || '').trim() || undefined,
       description: hItem.product,
       description2: '',
       quantity: hItem.quantity,
@@ -4398,6 +4399,9 @@ export function UniversalInvoiceForm({
         phone: payload.phone,
         cardType,
       } as Omit<Supplier, 'id'>);
+      void import('../../../services/retailexDataSync').then(({ emitInvalidate }) => {
+        emitInvalidate('customers');
+      });
       const item: InvoiceCariItem = {
         id: created.id,
         code: created.code,
@@ -4589,6 +4593,7 @@ export function UniversalInvoiceForm({
 
                   setSelectedSupplierHistory={setSelectedSupplierHistory}
                   setShowSupplierHistory={setShowSupplierHistory}
+                  supplierId={supplierId}
                   setSelectedCustomerHistory={setSelectedCustomerHistory}
                   setShowCustomerHistory={setShowCustomerHistory}
                   customerId={customerId}
@@ -5266,6 +5271,7 @@ export function UniversalInvoiceForm({
             <SupplierHistoryModal
               isOpen={showSupplierHistory}
               onClose={() => setShowSupplierHistory(false)}
+              supplierId={selectedSupplierHistory?.id || supplierId || ''}
               supplierName={selectedSupplierHistory?.name || ''}
               onAddItems={handleInvoiceAddFromHistory}
             />

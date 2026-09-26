@@ -103,6 +103,10 @@ export interface MenuTranslations {
   orders: string;
   other: string;
   paymentPlans: string;
+  /** Sistem Yönetimi hub / menü: yazdırma seçenekleri */
+  printOptions: string;
+  /** Sistem Yönetimi: onay bekleyen / kasa cihazları */
+  pendingPosDevices: string;
   priceAndCampaign: string;
   productCategories: string;
   profitabilityAnalyticsDashboard: string;
@@ -1968,6 +1972,8 @@ export const translations: any = {
       menuManagement: 'Menü Yönetimi',
       supabaseDataTransfer: 'Supabase Veri Aktarımı',
       virtualPbxCallerId: 'Sanal santral (Caller ID)',
+      printOptions: 'Yazdırma Seçenekleri',
+      pendingPosDevices: 'Kasa Cihazları',
       minMaxStock: 'Minimum Maksimum Stok',
       inventoryCountOps: 'Sayım İşlemleri',
       mobileCount: 'Mobil Sayım / Fiş Oluştur',
@@ -3800,6 +3806,8 @@ export const translations: any = {
       menuManagement: 'Menu Management',
       supabaseDataTransfer: 'Supabase Data Transfer',
       virtualPbxCallerId: 'Virtual PBX (Caller ID)',
+      printOptions: 'Print Options',
+      pendingPosDevices: 'POS Devices',
       movements: 'Movements',
       multiStoreManagement: 'Multi-Store Management',
       newBadge: 'NEW',
@@ -5449,6 +5457,8 @@ export const translations: any = {
       menuManagement: 'إدارة القوائم',
       supabaseDataTransfer: 'نقل بيانات Supabase',
       virtualPbxCallerId: 'المقسم الافتراضي (معرف المتصل)',
+      printOptions: 'خيارات الطباعة',
+      pendingPosDevices: 'أجهزة نقاط البيع',
       minMaxStock: 'الحد الأدنى/الأقصى للمخزون',
       movements: 'الحركات',
       multiCurrency: 'متعدد العملات',
@@ -7091,6 +7101,8 @@ export const translations: any = {
       menuManagement: 'بەڕێوەبردنی مێنۆ',
       supabaseDataTransfer: 'گواستنەوەی داتای Supabase',
       virtualPbxCallerId: 'سنۆری مەزنی (پەیوەندی ناسنامەی پەیوەندیکەر)',
+      printOptions: 'هەڵبژاردەکانی چاپ',
+      pendingPosDevices: 'ئامێرەکانی کاسە',
       minMaxStock: 'الحد الأدنى/الأقصى للمخزون',
       movements: 'الحركات',
       multiCurrency: 'متعدد العملات',

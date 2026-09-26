@@ -11,7 +11,8 @@ import { useLanguage } from '../../contexts/LanguageContext';
 import { useTheme } from '../../contexts/ThemeContext';
 import { getAppDefaultCurrency } from '../../services/postgres';
 import { toast } from 'sonner';
-import { displayItemCode } from '../../utils/lastPurchaseCostSql';
+import { displayItemCode, classifyProductHistoryType } from '../../utils/lastPurchaseCostSql';
+import { resolveLineGrossProfit } from '../../utils/lineGrossProfit';
 import { ReportColumnTable } from './shared/ReportDataGrid';
 
 export type ProductMovementTarget = {
@@ -93,28 +94,44 @@ function resolveAmount(m: any, qty: number, unitPrice: number): number {
 
 /** API gross_profit veya (birim fiyat − maliyet) × |miktar|; yoksa / sıfırsa null (—). */
 function resolveGrossProfit(m: any, qty: number): number | null {
-  const stored = Number(m.gross_profit);
-  if (Number.isFinite(stored) && Math.abs(stored) > 0.0000001) return stored;
-
-  const fiche = String(m.fiche_type || '').toLowerCase();
+  const fiche = String(m.fiche_type || m.movement?.fiche_type || '').toLowerCase();
   const tr = Number(m.trcode ?? m.movement?.trcode ?? 0);
   const mt = String(m.movement?.movement_type || m.movement_type || '');
+  const kind = classifyProductHistoryType(fiche, tr);
+
   // Alış / alış iadesi: brüt kâr yok
-  if (fiche === 'purchase_invoice' || (fiche === 'return_invoice' && (tr === 2 || tr === 6))) return null;
+  if (kind === 'purchase' || kind === 'purchase_return') return null;
   if (m.source_type === 'slip' && mt !== 'out') return null;
 
   const unitPrice = Number(m.unit_price ?? m.unitPrice ?? 0) || 0;
-  const unitCost = Number(m.unit_cost ?? m.cost_price ?? m.unitCost ?? m.costPrice ?? 0) || 0;
-  if (!unitPrice || !unitCost || !qty) return null;
-  const line = (unitPrice - unitCost) * Math.abs(qty);
-  if (fiche === 'return_invoice' && tr === 3) {
-    const v = -Math.abs(line);
-    return Math.abs(v) > 0.0000001 ? v : null;
-  }
-  if (mt === 'out' || fiche === 'sales_invoice' || tr === 7 || tr === 8 || !fiche) {
-    return Math.abs(line) > 0.0000001 ? line : null;
-  }
-  return null;
+  const lineUnitCost = Number(m.unit_cost ?? m.cost_price ?? m.unitCost ?? m.costPrice ?? 0) || 0;
+  const avgCost = Number(m.avg_unit_cost ?? 0) || 0;
+  const unitCost =
+    lineUnitCost > 0 && !(unitPrice > 0 && Math.abs(lineUnitCost - unitPrice) < 0.02)
+      ? lineUnitCost
+      : avgCost > 0
+        ? avgCost
+        : lineUnitCost;
+  const revenue =
+    Number(m.net_amount ?? 0) ||
+    Number(m.total_amount ?? m.total ?? 0) ||
+    unitPrice * Math.abs(qty);
+
+  const salesKind =
+    kind === 'sales_return' || (fiche === 'return_invoice' && (tr === 2 || tr === 3))
+      ? 'sales_return'
+      : mt === 'out' || fiche === 'sales_invoice' || tr === 7 || tr === 8 || kind === 'sales'
+        ? 'sales'
+        : 'other';
+
+  return resolveLineGrossProfit({
+    kind: salesKind,
+    storedGrossProfit: Number(m.gross_profit) || 0,
+    revenue,
+    quantity: qty,
+    unitCost,
+    unitPrice,
+  });
 }
 
 function resolveTypeLabel(
@@ -132,10 +149,10 @@ function resolveTypeLabel(
   if (fiche === 'sales_invoice' || (src === 'invoice' && (tr === 7 || tr === 8))) {
     return { label: tm('salesInvoice'), tone: 'bg-blue-100 text-blue-800 dark:bg-blue-900/40 dark:text-blue-300' };
   }
-  if (fiche === 'return_invoice' && (tr === 3 || mt === 'in')) {
+  if (fiche === 'return_invoice' && (tr === 2 || tr === 3 || mt === 'in')) {
     return { label: tm('salesReturn'), tone: 'bg-amber-100 text-amber-900 dark:bg-amber-900/40 dark:text-amber-200' };
   }
-  if (fiche === 'return_invoice' || (src === 'invoice' && (tr === 2 || tr === 6) && mt === 'out')) {
+  if (fiche === 'return_invoice' || (src === 'invoice' && tr === 6 && mt === 'out')) {
     return { label: tm('purchaseReturn'), tone: 'bg-orange-100 text-orange-900 dark:bg-orange-900/40 dark:text-orange-200' };
   }
   if (tr === 78 || mt === 'price_change') {

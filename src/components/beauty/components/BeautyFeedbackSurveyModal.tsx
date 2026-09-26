@@ -1,10 +1,10 @@
 import React, { useEffect, useState, useCallback } from 'react';
-import { createPortal } from 'react-dom';
 import { CheckCircle2, X } from 'lucide-react';
 import { toast } from 'sonner';
 import { beautyService } from '../../../services/beautyService';
 import { useLanguage } from '../../../contexts/LanguageContext';
 import { InlineLanguageSwitcher } from '../../shared/InlineLanguageSwitcher';
+import { FullscreenBodyPortal } from '../../shared/FullscreenBodyPortal';
 import { logger } from '../../../services/loggingService';
 import type { Language } from '../../../locales/translations';
 import type {
@@ -54,6 +54,21 @@ const SURVEY_TEXTAREA_PROPS = {
     },
     onPointerDown: (e: React.PointerEvent<HTMLTextAreaElement>) => e.stopPropagation(),
     onClick: (e: React.MouseEvent<HTMLTextAreaElement>) => e.stopPropagation(),
+};
+
+const FOOTER_BTN_BASE: React.CSSProperties = {
+    padding: '14px 16px',
+    borderRadius: 16,
+    fontWeight: 800,
+    fontSize: 13,
+    textTransform: 'uppercase',
+    letterSpacing: '0.05em',
+    cursor: 'pointer',
+    minHeight: 52,
+    display: 'inline-flex',
+    alignItems: 'center',
+    justifyContent: 'center',
+    touchAction: 'manipulation',
 };
 
 /** Tailwind preflight button reset (transparent bg + color:inherit) ile uyumlu, dokunmatik dostu puan seçici */
@@ -183,6 +198,24 @@ export function BeautyFeedbackSurveyModal({
         };
     }, [open]);
 
+    /** Esc / opsiyonel anket: kayıt yapmadan scheduler’a dön */
+    const handleSkipOrClose = useCallback(() => {
+        if (feedbackSaving) return;
+        onClose();
+    }, [feedbackSaving, onClose]);
+
+    useEffect(() => {
+        if (!open) return;
+        const onKey = (e: KeyboardEvent) => {
+            if (e.key === 'Escape') {
+                e.preventDefault();
+                handleSkipOrClose();
+            }
+        };
+        window.addEventListener('keydown', onKey);
+        return () => window.removeEventListener('keydown', onKey);
+    }, [open, handleSkipOrClose]);
+
     const handleSubmit = useCallback(async () => {
         if (!customerId) return;
         setFeedbackSaving(true);
@@ -276,7 +309,7 @@ export function BeautyFeedbackSurveyModal({
         tm,
     ]);
 
-    if (!open || !customerId || typeof document === 'undefined') return null;
+    if (!open || !customerId) return null;
 
     const headerTitle =
         variant === 'appointment_completed' ? tm('bAppointmentCompletedTitle') : tm('bSurveyStandaloneTitle');
@@ -287,27 +320,30 @@ export function BeautyFeedbackSurveyModal({
 
     const isRtl = language === 'ar' || language === 'ku';
 
-    return createPortal(
-        <div
-            className="fixed inset-0 z-[2147483646] flex flex-col bg-white min-h-0 overflow-hidden"
+    return (
+        <FullscreenBodyPortal
+            className="flex flex-col bg-white min-h-0 overflow-hidden"
             style={{
                 color: '#0f172a',
-                top: 0,
-                left: 0,
-                right: 0,
-                bottom: 0,
-                width: '100vw',
-                height: '100dvh',
-                maxWidth: '100vw',
+                /* inset:0 (portal) — 100dvh kullanma: Tauri/masaüstünde footer kesilir */
+                maxHeight: '100%',
             }}
+            zIndex={2147483646}
             dir={isRtl ? 'rtl' : 'ltr'}
             role="dialog"
             aria-modal="true"
+            aria-label={headerTitle}
         >
-            <div className="bg-gradient-to-r from-emerald-600 to-green-600 px-6 py-5 text-white shrink-0 sm:px-8">
+            <div
+                className="px-4 py-4 text-white shrink-0 sm:px-6"
+                style={{
+                    background: 'linear-gradient(90deg, #059669 0%, #16a34a 100%)',
+                    borderBottom: '1px solid rgba(255,255,255,0.12)',
+                }}
+            >
                 <div className="flex flex-wrap items-center justify-between gap-3">
                     <div className="flex items-center gap-3 min-w-0 flex-1">
-                        <CheckCircle2 className="w-6 h-6 shrink-0" />
+                        <CheckCircle2 className="w-6 h-6 shrink-0" aria-hidden />
                         <div className="min-w-0">
                             <h2 className="text-xl font-black uppercase tracking-tight truncate">{headerTitle}</h2>
                             {headerSubtitle ? (
@@ -317,22 +353,40 @@ export function BeautyFeedbackSurveyModal({
                             ) : null}
                         </div>
                     </div>
-                    <div className="flex items-center gap-2 shrink-0">
-                        <InlineLanguageSwitcher variant="onColor" />
+                    <div className="flex items-center gap-2 shrink-0 flex-wrap justify-end">
+                        <InlineLanguageSwitcher variant="onColor" showIcon={false} />
                         <button
                             type="button"
-                            onClick={onClose}
-                            className="w-12 h-12 rounded-2xl bg-white/20 hover:bg-white/30 flex items-center justify-center transition-colors"
+                            onClick={handleSkipOrClose}
+                            disabled={feedbackSaving}
                             aria-label={tm('close')}
+                            style={{
+                                display: 'inline-flex',
+                                alignItems: 'center',
+                                gap: 8,
+                                minHeight: 48,
+                                padding: '0 16px',
+                                borderRadius: 14,
+                                border: '2px solid rgba(255,255,255,0.45)',
+                                backgroundColor: 'rgba(255,255,255,0.22)',
+                                color: '#ffffff',
+                                fontWeight: 800,
+                                fontSize: 13,
+                                textTransform: 'uppercase',
+                                letterSpacing: '0.04em',
+                                cursor: feedbackSaving ? 'not-allowed' : 'pointer',
+                                touchAction: 'manipulation',
+                            }}
                         >
-                            <X className="w-5 h-5" />
+                            <X className="w-5 h-5" aria-hidden />
+                            {tm('close')}
                         </button>
                     </div>
                 </div>
             </div>
 
-            <div className="flex-1 min-h-0 overflow-y-auto overscroll-contain p-6 sm:p-8 pb-28 relative z-[1]">
-                <div className="mx-auto w-full max-w-3xl">
+            <div className="flex-1 min-h-0 overflow-y-auto overscroll-contain p-6 sm:p-8 relative z-[1]">
+                <div className="mx-auto w-full max-w-3xl pb-4">
                     <p className="text-sm font-bold mb-6" style={{ color: '#334155' }}>
                         {questionsLoading
                             ? tm('loading')
@@ -495,22 +549,30 @@ export function BeautyFeedbackSurveyModal({
                 </div>
             </div>
 
-            <div className="p-6 border-t border-slate-100 bg-slate-50/50 flex gap-4 shrink-0 relative z-[2]">
+            {/* Sabit alt aksiyonlar — viewport içinde kalır; Atla kaydetmeden kapatır */}
+            <div
+                className="shrink-0 relative z-[2]"
+                style={{
+                    padding: '16px 20px',
+                    paddingBottom: 'max(16px, env(safe-area-inset-bottom, 0px))',
+                    borderTop: '1px solid #e2e8f0',
+                    backgroundColor: '#f8fafc',
+                    display: 'flex',
+                    gap: 12,
+                    flexWrap: 'wrap',
+                }}
+            >
                 <button
                     type="button"
-                    onClick={onClose}
+                    onClick={handleSkipOrClose}
+                    disabled={feedbackSaving}
                     style={{
-                        flex: 1,
-                        padding: '12px 16px',
-                        borderRadius: 16,
+                        ...FOOTER_BTN_BASE,
+                        flex: '1 1 160px',
                         border: '2px solid #cbd5e1',
                         backgroundColor: '#ffffff',
                         color: '#475569',
-                        fontWeight: 700,
-                        fontSize: 13,
-                        textTransform: 'uppercase',
-                        letterSpacing: '0.05em',
-                        cursor: 'pointer',
+                        opacity: feedbackSaving ? 0.6 : 1,
                     }}
                 >
                     {tm('bFeedbackSkip')}
@@ -520,24 +582,18 @@ export function BeautyFeedbackSurveyModal({
                     onClick={() => void handleSubmit()}
                     disabled={feedbackSaving || questionsLoading}
                     style={{
-                        flex: 2,
-                        padding: '12px 16px',
-                        borderRadius: 16,
+                        ...FOOTER_BTN_BASE,
+                        flex: '2 1 200px',
                         border: 'none',
                         backgroundColor: feedbackSaving || questionsLoading ? '#86efac' : '#059669',
                         color: '#ffffff',
-                        fontWeight: 700,
-                        fontSize: 13,
-                        textTransform: 'uppercase',
-                        letterSpacing: '0.05em',
                         cursor: feedbackSaving || questionsLoading ? 'not-allowed' : 'pointer',
                         boxShadow: '0 8px 20px rgba(5, 150, 105, 0.25)',
                     }}
                 >
-                    {feedbackSaving ? tm('bSaving') : tm('bSaveFeedback')}
+                    {feedbackSaving ? tm('bSaving') : tm('bFeedbackSubmit')}
                 </button>
             </div>
-        </div>,
-        document.body
+        </FullscreenBodyPortal>
     );
 }

@@ -51,6 +51,7 @@ import {
 } from '../../../utils/invoiceListPrefs';
 import { PercentBodyModal, PercentBodyModalScrollBody } from '../../shared/PercentBodyModal';
 import { InvoiceExcelExportModal } from './InvoiceExcelExportModal';
+import { useRetailexInvalidateRefresh } from '../../../hooks/useRetailexInvalidateRefresh';
 
 export type CountPurchaseDraftPrefill = {
   editData: Record<string, unknown>;
@@ -718,6 +719,11 @@ export function InvoiceListModule({
       }
     }
   };
+
+  // Açık fatura listesi tab’ı: başka ekranda fatura kaydı/silme → anında yenile
+  useRetailexInvalidateRefresh(['invoices', 'sales'], () => {
+    void loadInvoices();
+  });
 
   const handleViewDetail = (invoice: ListInvoice) => {
     setSelectedInvoice(invoice);

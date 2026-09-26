@@ -11,6 +11,7 @@ import { useRegisterDatagridRefresh } from '../../../hooks/useRegisterDatagridRe
 import { formatNumber } from '../../../utils/formatNumber';
 import { formatLedgerAmount, getFirmLedgerCurrency, getGlobalCurrency } from '../../../utils/currency';
 import { getAppDefaultCurrency } from '../../../services/postgres';
+import { productCardUnitCost } from '../../../utils/productCardUnitCost';
 
 interface ValuationRow {
     product_id: string;
@@ -82,9 +83,9 @@ export function MaterialValueReport() {
                     (code && avgByCode.get(code)) ||
                     0;
                 if (!(average_unit_cost > 0)) {
-                    const pAny = p as Product & { cost?: number; purchase_price?: number };
-                    average_unit_cost =
-                        Number(pAny.cost || pAny.purchase_price || p.price) || 0;
+                    average_unit_cost = productCardUnitCost(
+                        p as Product & { cost?: number; purchase_price?: number },
+                    );
                 }
                 const total_cost = qty * average_unit_cost;
                 return {

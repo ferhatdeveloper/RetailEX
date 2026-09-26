@@ -907,18 +907,25 @@ export function ServiceManagement() {
                 title: tm('bServiceLabel'),
                 key: 'name',
                 ellipsis: true,
-                render: (_, s) => (
+                render: (_, s) => {
+                    const catPath = String(s.parent_category ?? '').trim()
+                        ? `${categoryDisplayLabel(String(s.parent_category), masterLabelByKey)} › ${categoryDisplayLabel(s.category, masterLabelByKey)}`
+                        : categoryDisplayLabel(s.category, masterLabelByKey);
+                    return (
                     <Space direction="vertical" size={0}>
                         <Typography.Text strong className={!s.is_active ? 'text-[#bfbfbf]' : 'text-[#262626]'}>
                             {s.name}
                         </Typography.Text>
-                        <Typography.Text type="secondary" className="text-xs">
-                            {String(s.parent_category ?? '').trim()
-                                ? `${categoryDisplayLabel(String(s.parent_category), masterLabelByKey)} › ${categoryDisplayLabel(s.category, masterLabelByKey)}`
-                                : categoryDisplayLabel(s.category, masterLabelByKey)}
+                        <Typography.Text
+                            type="secondary"
+                            className="text-xs break-words [overflow-wrap:anywhere] line-clamp-2"
+                            title={catPath}
+                        >
+                            {catPath}
                         </Typography.Text>
                     </Space>
-                ),
+                    );
+                },
             },
             {
                 title: tm('bDurationHeader'),

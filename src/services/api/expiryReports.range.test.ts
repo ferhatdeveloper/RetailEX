@@ -61,4 +61,15 @@ describe('expiryRangeBounds', () => {
     expect(EXPIRY_REPORT_DEFAULT_DAYS).toBe(30);
     expect(normalizeExpiryLimitDays(Number.NaN)).toBe(30);
   });
+
+  it('includeExpired: geçmiş + today…today+N (stok SKT raporu)', () => {
+    const b = expiryRangeBounds(90, today, { includeExpired: true });
+    expect(b.fromYmd).toBeNull();
+    expect(b.toYmd).toBe(addDaysYmd(today, 90));
+    expect(isExpiryYmdInRange('2020-01-01', b)).toBe(true);
+    expect(isExpiryYmdInRange('2026-09-17', b)).toBe(true);
+    expect(isExpiryYmdInRange('2026-09-18', b)).toBe(true);
+    expect(isExpiryYmdInRange(addDaysYmd(today, 90), b)).toBe(true);
+    expect(isExpiryYmdInRange(addDaysYmd(today, 91), b)).toBe(false);
+  });
 });

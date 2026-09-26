@@ -53,6 +53,7 @@ import {
   supplierListColumnVisibilityMenuItems,
   type SupplierListColumnId,
 } from './supplierListColumns';
+import { useRetailexInvalidateRefresh } from '../../../hooks/useRetailexInvalidateRefresh';
 
 type CariListFilter = 'all' | 'customer' | 'supplier' | 'duplicates' | 'employee' | 'partner';
 
@@ -227,6 +228,10 @@ export function SupplierModule({ initialFilter = 'all' }: { initialFilter?: Cari
       setLoading(false);
     }
   };
+
+  useRetailexInvalidateRefresh(['customers', 'invoices', 'sales'], () => {
+    void loadSuppliers();
+  });
 
   const loadEkstresi = async (supplier: Supplier, start: string, end: string) => {
     setEkstresiLoading(true);

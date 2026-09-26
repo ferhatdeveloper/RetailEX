@@ -16,6 +16,8 @@ export type RealtimeInvalidateScope =
   | 'products'
   | 'customers'
   | 'sales'
+  /** Alış/satış/iade fatura listeleri (sales ile birlikte dinlenebilir) */
+  | 'invoices'
   | 'beauty'
   | 'restaurant'
   | 'all';
@@ -31,6 +33,7 @@ const ALL_SCOPES: RealtimeInvalidateScope[] = [
   'products',
   'customers',
   'sales',
+  'invoices',
   'beauty',
   'restaurant',
   'all',
@@ -97,24 +100,51 @@ export function emitInvalidate(scope: RealtimeInvalidateScope, source: Invalidat
   }
 }
 
+/** Birden fazla kapsamı sırayla yayınla (ör. fatura → invoices + products). */
+export function emitInvalidateScopes(
+  scopes: readonly RealtimeInvalidateScope[],
+  source: InvalidateSource = 'local'
+) {
+  const unique = Array.from(new Set(scopes));
+  for (const scope of unique) {
+    emitInvalidate(scope, source);
+  }
+}
+
+/**
+ * Fatura kaydı / silme sonrası açık tab listelerini ve stok/cariyi yenile.
+ * `invoiceCreated` — eski PurchaseInvoiceModule dinleyicileri için.
+ */
+export function broadcastInvoiceMutation(options?: {
+  skipProducts?: boolean;
+  skipCustomers?: boolean;
+  detail?: unknown;
+}) {
+  const scopes: RealtimeInvalidateScope[] = ['invoices', 'sales'];
+  if (!options?.skipProducts) scopes.push('products');
+  if (!options?.skipCustomers) scopes.push('customers');
+  emitInvalidateScopes(scopes);
+
+  if (typeof window !== 'undefined') {
+    try {
+      window.dispatchEvent(
+        new CustomEvent('invoiceCreated', {
+          detail: options?.detail ?? { t: Date.now() },
+        })
+      );
+    } catch {
+      /* ignore */
+    }
+  }
+}
+
 export function subscribeInvalidate(
   callback: (scope: RealtimeInvalidateScope, source: InvalidateSource) => void
 ): () => void {
+  // Yalnızca handlers — emitInvalidate zaten notifyLocal + DOM; DOM’u tekrar dinlemek çift tetikler.
   handlers.add(callback);
-
-  const onDom = (e: Event) => {
-    const d = (e as CustomEvent<{ scope?: RealtimeInvalidateScope; source?: InvalidateSource }>).detail;
-    if (d?.scope) callback(d.scope, d.source || 'local');
-  };
-  if (typeof window !== 'undefined') {
-    window.addEventListener(DOM_EVENT, onDom as EventListener);
-  }
-
   return () => {
     handlers.delete(callback);
-    if (typeof window !== 'undefined') {
-      window.removeEventListener(DOM_EVENT, onDom as EventListener);
-    }
   };
 }
 
@@ -126,7 +156,10 @@ export function mapWsEventTypeToScope(type: string): RealtimeInvalidateScope | n
     case 'PRICE_CHANGED':
       return 'products';
     case 'SALE_COMPLETED':
-      return 'sales';
+    case 'INVOICE_CREATED':
+    case 'INVOICE_UPDATED':
+    case 'INVOICE_DELETED':
+      return 'invoices';
     case 'CUSTOMER_UPDATED':
       return 'customers';
     case 'CAMPAIGN_UPDATED':

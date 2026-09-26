@@ -25,6 +25,7 @@ import { generateDefaultInvoiceStamp } from '../../utils/invoiceCodeFormat';
 import { saleItemVisibleCode, splitInvoiceLineIdentity } from '../../utils/invoiceLineDisplayCode';
 import type { PurchasePromotionReportLine } from '../../utils/purchasePromotionReport';
 import { classifyProductHistoryType } from '../../utils/lastPurchaseCostSql';
+import { resolveLineGrossProfit } from '../../utils/lineGrossProfit';
 import {
   paymentMethodImpliesCustomerDebt,
   paymentMethodImpliesPaidNow,
@@ -46,6 +47,7 @@ import {
 } from '../../utils/stockSaleGuard';
 import { getFirmLedgerCurrency, getGlobalCurrency } from '../../utils/currency';
 import { invoiceIsForeignCurrency } from '../../utils/invoiceFxDisplay';
+import { broadcastInvoiceMutation } from '../retailexDataSync';
 export type { Invoice };
 export type { InvoiceCashLineWriter } from '../../utils/invoiceCashPosting';
 export {
@@ -95,6 +97,23 @@ export interface CustomerPurchaseHistory {
   invoices: CustomerRecentInvoice[];
   products: CustomerPurchaseProduct[];
   forecast: CustomerPurchaseProduct[];
+}
+
+/**
+ * Tedarikçiden yapılan alış satırları — SupplierHistoryModal için.
+ * sales.customer_id alışta tedarikçi UUID'sini tutar.
+ */
+export interface SupplierHistoryLine {
+  id: string;
+  date: string;
+  productId: string;
+  productCode: string;
+  product: string;
+  quantity: number;
+  unit: string;
+  price: number;
+  total: number;
+  stockStatus: 'normal' | 'low';
 }
 
 export {
@@ -2231,6 +2250,10 @@ export const invoicesAPI = {
         void import('../messaging/messagingService').then(({ messagingService }) =>
           messagingService.maybeEnqueueInvoiceNotification(invoice, saved.id!, firmNr, periodNr)
         ).catch((e) => console.warn('[InvoicesAPI] WhatsApp kuyruk:', e));
+        broadcastInvoiceMutation({
+          skipProducts: Boolean(createOptions?.skipProductStockUpdate),
+          detail: saved,
+        });
         return saved;
       }
 
@@ -2566,11 +2589,16 @@ export const invoicesAPI = {
         messagingService.maybeEnqueueInvoiceNotification(invoice, invoiceId, firmNr, periodNr)
       ).catch((e) => console.warn('[InvoicesAPI] WhatsApp kuyruk:', e));
 
-      return {
+      const createdResult = {
         ...invoice,
         id: invoiceId,
         created_at: new Date().toISOString()
       };
+      broadcastInvoiceMutation({
+        skipProducts: Boolean(createOptions?.skipProductStockUpdate),
+        detail: createdResult,
+      });
+      return createdResult;
     } catch (error: any) {
       console.error('[InvoicesAPI] create failed:', error);
       console.error('[InvoicesAPI] Failed Invoice Data:', JSON.stringify(invoice, null, 2));
@@ -2601,6 +2629,10 @@ export const invoicesAPI = {
             void import('../messaging/messagingService').then(({ messagingService }) =>
               messagingService.maybeEnqueueInvoiceNotification(invoice, saved.id!, firmNr, periodNr)
             ).catch((e) => console.warn('[InvoicesAPI] WhatsApp kuyruk:', e));
+            broadcastInvoiceMutation({
+              skipProducts: Boolean(createOptions?.skipProductStockUpdate),
+              detail: saved,
+            });
             return saved;
           }
         } catch (fallbackErr: any) {
@@ -3402,6 +3434,7 @@ export const invoicesAPI = {
             console.warn('[InvoicesAPI] update ledger apply:', e);
           }
         }
+        if (mergedRest) broadcastInvoiceMutation({ detail: mergedRest });
         return mergedRest;
       }
 
@@ -3504,6 +3537,7 @@ export const invoicesAPI = {
           console.warn('[InvoicesAPI] update ledger apply (SQL):', e);
         }
       }
+      if (mergedSql) broadcastInvoiceMutation({ detail: mergedSql });
       return mergedSql;
     } catch (error: any) {
       console.error('[InvoicesAPI] update failed:', error);
@@ -3691,16 +3725,15 @@ export const invoicesAPI = {
               unitPrice = (net || total) / qty;
             }
             const unitCost = parseFloat(String(it.unit_cost ?? 0)) || 0;
-            let grossProfit = parseFloat(String(it.gross_profit ?? 0)) || 0;
-            if (!grossProfit && unitCost > 0 && unitPrice > 0 && qty > 0) {
-              const line = (unitPrice - unitCost) * qty;
-              // Satış iadesi: kârı tersine çevir
-              grossProfit = type === 'sales_return' ? -Math.abs(line) : type === 'purchase' || type === 'purchase_return' ? 0 : line;
-            } else if (type === 'sales_return' && grossProfit > 0) {
-              grossProfit = -grossProfit;
-            } else if (type === 'purchase' || type === 'purchase_return') {
-              grossProfit = grossProfit || 0;
-            }
+            const revenue = net || total || unitPrice * qty;
+            const resolvedGp = resolveLineGrossProfit({
+              kind: type,
+              storedGrossProfit: parseFloat(String(it.gross_profit ?? 0)) || 0,
+              revenue,
+              quantity: qty,
+              unitCost,
+              unitPrice,
+            });
             return {
               date: hd.date,
               documentNo: hd.fiche_no,
@@ -3708,7 +3741,7 @@ export const invoicesAPI = {
               quantity: it.quantity,
               unitPrice,
               unitCost,
-              grossProfit,
+              grossProfit: resolvedGp ?? 0,
               total: total || net || unitPrice * qty,
               type,
               ficheType,
@@ -3781,13 +3814,15 @@ export const invoicesAPI = {
           unitPrice = (net || total) / qty;
         }
         const unitCost = parseFloat(String(r.unit_cost ?? 0)) || 0;
-        let grossProfit = parseFloat(String(r.gross_profit ?? 0)) || 0;
-        if (!grossProfit && unitCost > 0 && unitPrice > 0 && qty > 0) {
-          const line = (unitPrice - unitCost) * qty;
-          grossProfit = type === 'sales_return' ? -Math.abs(line) : type === 'purchase' || type === 'purchase_return' ? 0 : line;
-        } else if (type === 'sales_return' && grossProfit > 0) {
-          grossProfit = -grossProfit;
-        }
+        const revenue = net || total || unitPrice * qty;
+        const resolvedGp = resolveLineGrossProfit({
+          kind: type,
+          storedGrossProfit: parseFloat(String(r.gross_profit ?? 0)) || 0,
+          revenue,
+          quantity: qty,
+          unitCost,
+          unitPrice,
+        });
         return {
           date: r.date,
           documentNo: r.fiche_no,
@@ -3795,7 +3830,7 @@ export const invoicesAPI = {
           quantity: r.quantity,
           unitPrice,
           unitCost,
-          grossProfit,
+          grossProfit: resolvedGp ?? 0,
           total: total || net || unitPrice * qty,
           type,
           ficheType,
@@ -4326,6 +4361,7 @@ export const invoicesAPI = {
         } catch (e) {
           console.warn('[InvoicesAPI] Cari bakiye onarımı atlandı:', e);
         }
+        broadcastInvoiceMutation({ detail: { id, deleted: true } });
         return true;
       }
 
@@ -4522,6 +4558,7 @@ export const invoicesAPI = {
         console.warn('[InvoicesAPI] Cari bakiye onarımı atlandı:', e);
       }
 
+      broadcastInvoiceMutation({ detail: { id, deleted: true } });
       return true;
     } catch (error) {
       console.error('[InvoicesAPI] delete failed:', error);
@@ -4741,7 +4778,72 @@ export const invoicesAPI = {
       console.error('[InvoicesAPI] getCustomerPurchaseFullHistory failed:', error);
       return empty;
     }
-  }
+  },
+
+  /**
+   * Seçili tedarikçiye ait alış fatura satırları.
+   * Yeni / hareketsiz tedarikçide boş dizi döner — global/demo veri yok.
+   */
+  async getSupplierPurchaseHistory(supplierId: string): Promise<SupplierHistoryLine[]> {
+    const firmNr = ERP_SETTINGS.firmNr;
+    const periodNr = ERP_SETTINGS.periodNr;
+    const sid = String(supplierId || '').trim();
+    if (!sid || !isValidUuid(sid)) return [];
+
+    const itemsTable = `rex_${String(firmNr).padStart(3, '0')}_${String(periodNr).padStart(2, '0')}_sale_items`;
+    const salesTable = `rex_${String(firmNr).padStart(3, '0')}_${String(periodNr).padStart(2, '0')}_sales`;
+
+    try {
+      const { rows } = await postgres.query(
+        `SELECT si.id,
+                s.date,
+                COALESCE(si.product_id::text, '') AS product_id,
+                COALESCE(si.item_code, '') AS item_code,
+                COALESCE(NULLIF(TRIM(si.item_name), ''), si.item_code, '') AS product_name,
+                COALESCE(si.quantity, 0)::numeric AS quantity,
+                COALESCE(si.unit, '') AS unit,
+                COALESCE(si.unit_price, 0)::numeric AS unit_price,
+                COALESCE(p.stock, 0)::numeric AS stock,
+                COALESCE(NULLIF(p.critical_stock, 0), NULLIF(p.min_stock, 0), 0)::numeric AS stock_threshold
+           FROM ${itemsTable} si
+           JOIN ${salesTable} s ON s.id::text = si.invoice_id::text
+           LEFT JOIN products p ON p.id::text = si.product_id::text
+          WHERE s.customer_id::text = $1::text
+            AND COALESCE(s.is_cancelled, false) = false
+            AND (
+              LOWER(COALESCE(s.fiche_type, '')) IN ('purchase_invoice', 'a', 'purchase')
+              OR COALESCE(s.trcode, 0) IN (1, 4, 5, 13, 26, 41, 42)
+            )
+          ORDER BY s.date DESC, si.id DESC
+          LIMIT 300`,
+        [sid]
+      );
+
+      return (rows || []).map((r: any) => {
+        const qty = Math.abs(parseFloat(r.quantity ?? 0) || 0);
+        const price = Math.abs(parseFloat(r.unit_price ?? 0) || 0);
+        const stock = parseFloat(r.stock ?? 0) || 0;
+        const threshold = parseFloat(r.stock_threshold ?? 0) || 0;
+        const low =
+          threshold > 0 ? stock <= threshold : stock > 0 && stock <= 10;
+        return {
+          id: String(r.id ?? ''),
+          date: r.date ? new Date(r.date).toISOString().slice(0, 10) : '',
+          productId: String(r.product_id ?? '').trim(),
+          productCode: String(r.item_code ?? '').trim(),
+          product: String(r.product_name ?? '').trim() || String(r.item_code ?? '').trim() || '—',
+          quantity: qty,
+          unit: String(r.unit ?? '').trim() || 'Adet',
+          price,
+          total: qty * price,
+          stockStatus: (low ? 'low' : 'normal') as 'normal' | 'low',
+        };
+      });
+    } catch (error) {
+      console.error('[InvoicesAPI] getSupplierPurchaseHistory failed:', error);
+      return [];
+    }
+  },
 };
 
 /**

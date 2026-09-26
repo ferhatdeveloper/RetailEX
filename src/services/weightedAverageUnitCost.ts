@@ -25,11 +25,14 @@ function padPeriod(raw?: string | number | null): string {
 
 function isPurchaseReturnRow(row: { fiche_type?: unknown; trcode?: unknown }): boolean {
   const tc = Number(row.trcode ?? 0);
+  // trcode 2/3 = satış iadesi — alış ortalamasına girmez
+  if (tc === 2 || tc === 3) return false;
   if (tc === PURCHASE_RETURN_TRCODE) return true;
   const ft = String(row.fiche_type || '')
     .trim()
     .toLowerCase();
-  return ft === 'return_invoice' && (tc === 2 || tc === 6 || tc === PURCHASE_RETURN_TRCODE);
+  // Yalnızca açık alış iadesi (trcode 6); belirsiz return_invoice satış iadesi sayılır
+  return ft === 'return_invoice' && tc === PURCHASE_RETURN_TRCODE;
 }
 
 function isOpeningOrPurchase(row: { fiche_type?: unknown; trcode?: unknown }): boolean {
@@ -178,7 +181,7 @@ export async function fetchWeightedAverageUnitCosts(opts?: {
           s.fiche_type IN ('purchase_invoice', 'a', 'opening_balance')
           OR COALESCE(s.trcode, 0) IN (1, 4, 5, 13, 26, 41, 42)
           OR COALESCE(s.trcode, 0) = ${PURCHASE_RETURN_TRCODE}
-          OR (s.fiche_type = 'return_invoice' AND COALESCE(s.trcode, 0) IN (2, 6, ${PURCHASE_RETURN_TRCODE}))
+          OR (s.fiche_type = 'return_invoice' AND COALESCE(s.trcode, 0) = ${PURCHASE_RETURN_TRCODE})
         )
         AND COALESCE(si.item_type, 'Malzeme') NOT IN ('Promosyon', 'İndirim', 'Hizmet', 'Service')
         ${asOfClause}

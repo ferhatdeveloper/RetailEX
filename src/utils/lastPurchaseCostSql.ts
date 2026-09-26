@@ -46,8 +46,11 @@ export function classifyProductHistoryType(
   if (tc === PURCHASE_RETURN_TRCODE) return 'purchase_return';
   if ((SALES_RETURN_TRCODES as readonly number[]).includes(tc)) return 'sales_return';
 
+  // return_invoice + belirsiz trcode: isSalesReturnFiche ile aynı — satış iadesi
+  // (alış iadesi yalnızca trcode 6 veya alış trcode’ları)
   if (ft === 'return_invoice') {
-    return 'purchase_return';
+    if ((PURCHASE_ONLY_TRCODES as readonly number[]).includes(tc)) return 'purchase_return';
+    return 'sales_return';
   }
 
   if (

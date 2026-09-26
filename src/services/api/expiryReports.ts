@@ -281,12 +281,22 @@ async function fetchProductStockMap(
   return map;
 }
 
+export type GetExpiringPurchaseItemsOptions = {
+  /** Stok SKT raporu: süresi geçmiş + sonraki N gün */
+  includeExpired?: boolean;
+};
+
 export const expiryReportsAPI = {
-  async getExpiringPurchaseItems(daysAhead = EXPIRY_REPORT_DEFAULT_DAYS): Promise<ExpiringPurchaseItem[]> {
+  async getExpiringPurchaseItems(
+    daysAhead = EXPIRY_REPORT_DEFAULT_DAYS,
+    options?: GetExpiringPurchaseItemsOptions,
+  ): Promise<ExpiringPurchaseItem[]> {
     const fn = normalizeFirmTableNr(ERP_SETTINGS.firmNr);
     const pn = String(ERP_SETTINGS.periodNr ?? '01').padStart(2, '0');
     const todayYmd = localTodayDateKey();
-    const bounds = expiryRangeBounds(daysAhead, todayYmd);
+    const bounds = expiryRangeBounds(daysAhead, todayYmd, {
+      includeExpired: options?.includeExpired === true,
+    });
 
     const settled = DB_SETTINGS.connectionProvider === 'rest_api'
       ? await Promise.allSettled([

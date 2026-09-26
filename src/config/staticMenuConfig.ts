@@ -223,7 +223,6 @@ export const getStaticMenuSections = (t: Translations) => [
                 icon: BarChart3,
                 children: [
                     { label: t.menu.currentAccountReports, screen: 'financereports', icon: BarChart3 },
-                    { label: t.menu.cashReports, screen: 'financereports', icon: BarChart3 },
                     { label: t.menu.bankReports, screen: 'financereports', icon: BarChart3 },
                     { label: t.menu.cariExtractReport, screen: 'customer-extract', icon: FileText },
                     { label: t.menu.trialBalanceReport, screen: 'mizan', icon: BarChart3 }
@@ -335,12 +334,12 @@ export const getStaticMenuSections = (t: Translations) => [
             { label: t.menu.firmPeriodDefinitions, screen: 'firm-period-definitions', icon: Building },
             { label: t.menu.userManagement, screen: 'usermanagement', icon: UserCheck },
             { label: t.menu.invoiceLabelDesigner, screen: 'invoice-label-designer', icon: FileText },
-            { label: 'Yazdırma Seçenekleri', screen: 'print-options', icon: Printer },
+            { label: t.menu.printOptions, screen: 'print-options', icon: Printer },
             { label: t.menu.roleAndAuthorization, screen: 'roleauth', icon: Shield },
             { label: t.menu.menuManagement, screen: 'menumanagement', icon: Menu },
             { label: t.menu.definitionsParameters, screen: 'generalsettings', icon: Settings },
             { label: t.menu.virtualPbxCallerId, screen: 'virtual-pbx-caller-id', icon: Phone },
-            { label: 'Kasa Cihazları', screen: 'pendingposdevices', icon: Monitor },
+            { label: t.menu.pendingPosDevices, screen: 'pendingposdevices', icon: Monitor },
             { label: t.menu.supabaseDataTransfer, screen: 'supabase-migration', icon: Database },
             { label: t.menu.postgresBackup, screen: 'backuprestore', icon: HardDrive },
             { label: t.menu.logAudit, screen: 'logaudit', icon: Clock }
@@ -487,6 +486,8 @@ export const staticMenuSections = getStaticMenuSections({
         postgresBackup: 'Yedekleme',
         logAudit: 'Log/Denetim',
         virtualPbxCallerId: 'Sanal santral (Caller ID)',
+        printOptions: 'Yazdırma Seçenekleri',
+        pendingPosDevices: 'Kasa Cihazları',
         supabaseDataTransfer: 'Supabase Veri Aktarımı',
         systemHealth: 'Sistem Sağlığı',
         inventoryCountOps: 'Sayım İşlemleri',
