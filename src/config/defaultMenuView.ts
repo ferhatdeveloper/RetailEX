@@ -55,6 +55,16 @@ export const DEFAULT_MENU_HIDDEN_MODULES: readonly string[] = [
   'finance-definitions',
   'payment-plans',
   'cost-centers',
+  // Malzeme Yönetimi + stok (bölüm + ana girişler): varsayılan gizli; Menü Yönetimi’nden açılır
+  'material-management',
+  'products',
+  'material-definitions',
+  'material-movements',
+  'stockmovements',
+  'stock-price-change-slips',
+  'material-reports',
+  'inventory',
+  'excel',
 ] as const;
 
 /**
@@ -62,11 +72,22 @@ export const DEFAULT_MENU_HIDDEN_MODULES: readonly string[] = [
  * `MENU_HIDDEN_UPGRADE_VERSION` artınca sync tüm preset’lere yeni maddeleri ekler;
  * sonra Menü Yönetimi’nden tekrar açılabilir (sürekli zorlama yok).
  */
-export const MENU_HIDDEN_UPGRADE_VERSION = 2;
+export const MENU_HIDDEN_UPGRADE_VERSION = 3;
 
 export const MENU_HIDDEN_UPGRADE_ADDITIONS: Readonly<Record<number, readonly string[]>> = {
   1: ['payment-plans', 'cost-centers'],
   2: ['finance-definitions'],
+  3: [
+    'material-management',
+    'products',
+    'material-definitions',
+    'material-movements',
+    'stockmovements',
+    'stock-price-change-slips',
+    'material-reports',
+    'inventory',
+    'excel',
+  ],
 };
 
 /** `fromVersion` (hariç) → `toVersion` (dahil) arası eklenen screen_id’ler */

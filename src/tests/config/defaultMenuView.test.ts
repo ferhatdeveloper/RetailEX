@@ -18,18 +18,42 @@ describe('defaultMenuView', () => {
     expect(prefs.hidden_modules).toContain('finance-definitions');
     expect(prefs.hidden_modules).toContain('payment-plans');
     expect(prefs.hidden_modules).toContain('cost-centers');
+    expect(prefs.hidden_modules).toContain('material-management');
+    expect(prefs.hidden_modules).toContain('products');
+    expect(prefs.hidden_modules).toContain('stockmovements');
+    expect(prefs.hidden_modules).toContain('inventory');
   });
 
-  it('upgrade v1 Ödeme Planları + Masraf Merkezleri, v2 Tanımlar üst grubu ekler', () => {
-    expect(MENU_HIDDEN_UPGRADE_VERSION).toBe(2);
+  it('upgrade v1–v3: finans tanımları + malzeme/stok gizlemeleri', () => {
+    expect(MENU_HIDDEN_UPGRADE_VERSION).toBe(3);
     expect(hiddenModulesForUpgradeVersion(0, 1)).toEqual(['payment-plans', 'cost-centers']);
     expect(hiddenModulesForUpgradeVersion(1, 2)).toEqual(['finance-definitions']);
-    expect(hiddenModulesForUpgradeVersion(0, 2)).toEqual([
+    expect(hiddenModulesForUpgradeVersion(2, 3)).toEqual([
+      'material-management',
+      'products',
+      'material-definitions',
+      'material-movements',
+      'stockmovements',
+      'stock-price-change-slips',
+      'material-reports',
+      'inventory',
+      'excel',
+    ]);
+    expect(hiddenModulesForUpgradeVersion(0, 3)).toEqual([
       'payment-plans',
       'cost-centers',
       'finance-definitions',
+      'material-management',
+      'products',
+      'material-definitions',
+      'material-movements',
+      'stockmovements',
+      'stock-price-change-slips',
+      'material-reports',
+      'inventory',
+      'excel',
     ]);
-    expect(hiddenModulesForUpgradeVersion(2, 2)).toEqual([]);
+    expect(hiddenModulesForUpgradeVersion(3, 3)).toEqual([]);
   });
 
   it('applyMenuHiddenUpgrades eski custom preset’e bir kerelik ekler', () => {
@@ -52,7 +76,43 @@ describe('defaultMenuView', () => {
     expect(store.presets[0].hidden_modules).toContain('payment-plans');
     expect(store.presets[0].hidden_modules).toContain('cost-centers');
     expect(store.presets[0].hidden_modules).toContain('finance-definitions');
+    expect(store.presets[0].hidden_modules).toContain('material-management');
+    expect(store.presets[0].hidden_modules).toContain('products');
+    expect(store.presets[0].hidden_modules).toContain('stockmovements');
     expect(store.presets[0].hidden_modules).toContain('logaudit');
+  });
+
+  it('applyMenuHiddenUpgrades v2→v3 malzeme/stok gizlemelerini ekler', () => {
+    const { store, changed } = applyMenuHiddenUpgrades({
+      version: 2,
+      hidden_upgrade_version: 2,
+      active_preset_id: 'custom-1',
+      presets: [
+        {
+          id: 'custom-1',
+          name: 'Özel',
+          saved_by: 'admin',
+          saved_at: '2026-01-01T00:00:00.000Z',
+          hidden_modules: ['logaudit', 'payment-plans', 'cost-centers', 'finance-definitions'],
+        },
+      ],
+    });
+    expect(changed).toBe(true);
+    expect(store.hidden_upgrade_version).toBe(3);
+    expect(store.presets[0].hidden_modules).toContain('material-management');
+    expect(store.presets[0].hidden_modules).toContain('products');
+    expect(store.presets[0].hidden_modules).toEqual(
+      expect.arrayContaining([
+        'logaudit',
+        'payment-plans',
+        'cost-centers',
+        'finance-definitions',
+        'material-management',
+        'products',
+        'stockmovements',
+        'inventory',
+      ]),
+    );
   });
 
   it('applyMenuHiddenUpgrades v1→v2 yalnızca finance-definitions ekler', () => {
@@ -71,10 +131,18 @@ describe('defaultMenuView', () => {
       ],
     });
     expect(changed).toBe(true);
-    expect(store.hidden_upgrade_version).toBe(2);
+    expect(store.hidden_upgrade_version).toBe(3);
     expect(store.presets[0].hidden_modules).toContain('finance-definitions');
+    expect(store.presets[0].hidden_modules).toContain('material-management');
     expect(store.presets[0].hidden_modules).toEqual(
-      expect.arrayContaining(['logaudit', 'payment-plans', 'cost-centers', 'finance-definitions']),
+      expect.arrayContaining([
+        'logaudit',
+        'payment-plans',
+        'cost-centers',
+        'finance-definitions',
+        'material-management',
+        'products',
+      ]),
     );
   });
 
@@ -125,5 +193,8 @@ describe('defaultMenuView', () => {
     expect(merged).toContain('payment-plans');
     expect(merged).toContain('cost-centers');
     expect(merged).toContain('finance-definitions');
+    expect(merged).toContain('material-management');
+    expect(merged).toContain('products');
+    expect(merged).toContain('stockmovements');
   });
 });

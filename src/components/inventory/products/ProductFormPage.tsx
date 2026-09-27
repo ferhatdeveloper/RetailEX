@@ -1921,16 +1921,20 @@ export const ProductFormPage = React.memo(({ productId, onClose, onSave }: Produ
   const { canViewPurchasePricing } = usePermission();
   const showPurchasePricing = canViewPurchasePricing();
 
+  // Stok sekmesi UI’da gizli (menü: Malzeme/Stok varsayılan kapalı); form alanları/API korunur
   const tabs = [
     { id: 'genel' as TabType, label: tm('general'), icon: Package },
     { id: 'fiyat' as TabType, label: tm('price'), icon: Calculator },
-    { id: 'stok' as TabType, label: tm('stock'), icon: Layers },
     { id: 'birim-barkod' as TabType, label: tm('unitBarcode'), icon: BarcodeIcon },
     { id: 'varyant' as TabType, label: tm('variant'), icon: Tag },
     { id: 'muhasebe' as TabType, label: tm('accounting'), icon: FileText },
     { id: 'ek-bilgi' as TabType, label: tm('additionalInfo'), icon: Globe },
     { id: 'resim' as TabType, label: tm('image'), icon: ImageIcon },
   ];
+
+  useEffect(() => {
+    if (activeTab === 'stok') setActiveTab('genel');
+  }, [activeTab]);
 
   return (
     <div className="h-full flex flex-col bg-gray-50">
