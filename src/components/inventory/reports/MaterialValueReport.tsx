@@ -25,7 +25,9 @@ interface ValuationRow {
 
 /**
  * Malzeme Değer Raporu — tenant-aware (rex_{firmNr}_products).
- * Ort. birim maliyet = Σ alış tutarı / Σ alış miktarı (ağırlıklı ortalama).
+ * Miktar = products.stock (yüklemede aktif fatura/ambar hareketlerine hizalanır;
+ * iptal/Silindi belgeler nete yazılmaz).
+ * Ort. birim maliyet = Σ aktif alış tutarı / Σ aktif alış miktarı (ağırlıklı ortalama).
  * Toplam değer = eldeki miktar × ort. birim maliyet.
  * Para birimi firmanın ana_para_birimi (IQD vb.).
  */
@@ -44,11 +46,19 @@ export function MaterialValueReport() {
     const loadData = useCallback(async () => {
         setLoading(true);
         try {
+            // Soft-delete sonrası stale products.stock (hayalet miktar) olmasın:
+            // miktar kart stoğundan gelir; önce aktif belgelere hizala.
+            try {
+                await productAPI.recomputeStocksFromActiveDocuments();
+            } catch (alignErr) {
+                console.warn('[MaterialValueReport] stock align skipped', alignErr);
+            }
             const data = await productAPI.getAllForReports({ firmNr: selectedFirm?.firm_nr });
             setProducts(data);
             const { fetchWeightedAverageUnitCosts } = await import(
                 '../../../services/weightedAverageUnitCost'
             );
+            // Ağırlıklı ort. maliyet zaten is_cancelled / Silindi faturaları hariç tutar.
             const maps = await fetchWeightedAverageUnitCosts({
                 firmNr: selectedFirm?.firm_nr,
                 periodNr: selectedPeriod?.nr,

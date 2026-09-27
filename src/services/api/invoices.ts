@@ -4381,15 +4381,17 @@ export const invoicesAPI = {
         }
         await voidBeautySalesForDeletedInvoice({ invoiceNo: ficheNo, notes });
 
-        if (!invoiceStockAlreadyReverted(header)) {
-          try {
-            let invForStock = header;
-            if (!invForStock.items?.length) {
-              const full = await this.getById(String(id).trim());
-              if (full?.items?.length) invForStock = full;
-            }
-            const fnS = normalizeFirmNrForRow(saleFirmNr ?? ERP_SETTINGS.firmNr);
-            const pnS = normalizePeriodNrForRow(salePeriodNr ?? ERP_SETTINGS.periodNr);
+        // stock_reverted=true olsa bile kart stoğu sapmış olabilir (kısmi reverse /
+        // bayrak erken yazımı). Delta reverse yalnızca bayrak yokken; mutlak hizalama her zaman.
+        let invForStock = header;
+        try {
+          if (!invForStock.items?.length) {
+            const full = await this.getById(String(id).trim());
+            if (full?.items?.length) invForStock = full;
+          }
+          const fnS = normalizeFirmNrForRow(saleFirmNr ?? ERP_SETTINGS.firmNr);
+          const pnS = normalizePeriodNrForRow(salePeriodNr ?? ERP_SETTINGS.periodNr);
+          if (!invoiceStockAlreadyReverted(header)) {
             await revertInvoiceStockSideEffects(invForStock, fnS, pnS);
             await markInvoiceStockReverted(
               String(id).trim(),
@@ -4397,19 +4399,21 @@ export const invoicesAPI = {
               pnS,
               invoiceHeaderFieldsRecord(invForStock)
             );
-            const repairIds = (invForStock.items || [])
-              .map(
-                (it) =>
-                  resolveSaleItemProductUuid(it as { productId?: unknown; code?: unknown }) ||
-                  String((it as { productId?: string }).productId || '').trim()
-              )
-              .filter((pid) => isValidUuid(pid));
-            if (repairIds.length) {
-              await productAPI.recomputeStocksFromActiveDocuments({ productIds: repairIds });
-            }
-          } catch (e) {
-            console.warn('[InvoicesAPI] delete repair stock reverse:', e);
           }
+          const repairIds = (invForStock.items || [])
+            .map(
+              (it) =>
+                resolveSaleItemProductUuid(it as { productId?: unknown; code?: unknown }) ||
+                String((it as { productId?: string }).productId || '').trim()
+            )
+            .filter((pid) => isValidUuid(pid));
+          if (repairIds.length) {
+            await productAPI.recomputeStocksFromActiveDocuments({ productIds: repairIds });
+          } else {
+            await productAPI.recomputeStocksFromActiveDocuments();
+          }
+        } catch (e) {
+          console.warn('[InvoicesAPI] delete repair stock reverse/recompute:', e);
         }
 
         try {
