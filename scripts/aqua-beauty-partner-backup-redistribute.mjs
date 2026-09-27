@@ -456,15 +456,35 @@ async function main() {
 
     if (doRedistribute) {
       console.log('\n⚠️  period_net_share silinip güncel netten yeniden yazılacak…');
+      // Geri yükleme koruması: yazım sırasında kilidi aç, sonra tekrar kapat
+      await c.query(
+        `ALTER TABLE ${LEDGER} DISABLE TRIGGER trg_lock_partner_period_net_share`,
+      );
       await c.query('BEGIN');
       try {
         await redistribute(c, partners);
+        // App otomatik sync yanlış pay yazmasın — manual kalır; bakiye = ledger Σ
+        await c.query(
+          `UPDATE ${SETTINGS}
+           SET distribution_mode = 'manual',
+               distribution_base = COALESCE(distribution_base, 'manual'),
+               updated_at = NOW()
+           WHERE firm_nr = $1`,
+          [FIRM],
+        ).catch(() => {});
         await c.query('COMMIT');
-        console.log('\n✅ Dağıtımlar sıfırdan yazıldı. Geri almak için:');
+        console.log('\n✅ Dağıtımlar sıfırdan yazıldı (ciro − birleşik masraf × pay%).');
+        console.log('   Cari bakiye = ledger Σ (pay + sermaye ± − CH_ODEME_PARTNER − çekim).');
+        console.log('   distribution_mode=manual (çift sayım / otomatik overwrite yok).');
+        console.log('Geri almak için:');
         console.log(`   node scripts/aqua-beauty-partner-backup-redistribute.mjs --restore=${sqlPath}`);
       } catch (e) {
         await c.query('ROLLBACK');
         throw e;
+      } finally {
+        await c.query(
+          `ALTER TABLE ${LEDGER} ENABLE TRIGGER trg_lock_partner_period_net_share`,
+        ).catch((err) => console.warn('⚠️  Kilit tetikleyici yeniden açılamadı:', err.message));
       }
     }
   } finally {
