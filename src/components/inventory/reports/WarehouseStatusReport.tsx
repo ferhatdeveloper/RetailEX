@@ -12,6 +12,7 @@ import { formatNumber } from '../../../utils/formatNumber';
 import { useFirmaDonem } from '../../../contexts/FirmaDonemContext';
 import { useRegisterDatagridRefresh } from '../../../hooks/useRegisterDatagridRefresh';
 import { useRetailexInvalidateRefresh } from '../../../hooks/useRetailexInvalidateRefresh';
+import { productCardReportFields } from '../../../utils/productCardReportFields';
 
 interface WarehouseStockRow {
     productCode: string;
@@ -37,11 +38,11 @@ export function WarehouseStatusReport() {
     const [warehouses, setWarehouses] = useState<Warehouse[]>([]);
     const [products, setProducts] = useState<Product[]>([]);
     const [loading, setLoading] = useState(true);
-    /** Malzeme listesi / Envanter ile aynı: Özel Kod 2 varsayılan açık; diğerleri Kolonlar’dan seçilir */
+    /** Özel Kod 1 + marka + kategori varsayılan açık; diğer özel kodlar Kolonlar’dan */
     const [columnVisibility, setColumnVisibility] = useState<Record<string, boolean>>({
         category: true,
         brand: true,
-        specialCode1: false,
+        specialCode1: true,
         specialCode2: true,
         specialCode3: false,
         specialCode4: false,
@@ -86,12 +87,13 @@ export function WarehouseStatusReport() {
             v != null && String(v).trim() !== '' ? String(v).trim() : '';
         return products.map(p => {
             const total = Number(p.stock) || 0;
+            const card = productCardReportFields(p);
             const row: WarehouseStockRow = {
                 productCode: p.code || '',
                 productName: p.name || '',
-                category: trimOrEmpty(p.category),
-                brand: trimOrEmpty(p.brand),
-                specialCode1: trimOrEmpty(p.specialCode1),
+                category: card.category || trimOrEmpty(p.category),
+                brand: card.brand || trimOrEmpty(p.brand),
+                specialCode1: card.specialCode || trimOrEmpty(p.specialCode1),
                 specialCode2: trimOrEmpty(p.specialCode2),
                 specialCode3: trimOrEmpty(p.specialCode3),
                 specialCode4: trimOrEmpty(p.specialCode4),
@@ -116,21 +118,21 @@ export function WarehouseStatusReport() {
         const base: ColumnDef<WarehouseStockRow, any>[] = [
             columnHelper.accessor('productCode', { header: tm('materialCode') }),
             columnHelper.accessor('productName', { header: tm('materialName') }),
-            columnHelper.accessor('category', {
-                id: 'category',
-                header: tm('category'),
+            columnHelper.accessor('specialCode1', {
+                id: 'specialCode1',
+                header: specialCodeHeader(1),
                 cell: info => specialCodeCell(info.getValue()),
+                size: 100,
             }),
             columnHelper.accessor('brand', {
                 id: 'brand',
                 header: tm('brand'),
                 cell: info => specialCodeCell(info.getValue()),
             }),
-            columnHelper.accessor('specialCode1', {
-                id: 'specialCode1',
-                header: specialCodeHeader(1),
+            columnHelper.accessor('category', {
+                id: 'category',
+                header: tm('category'),
                 cell: info => specialCodeCell(info.getValue()),
-                size: 100,
             }),
             columnHelper.accessor('specialCode2', {
                 id: 'specialCode2',

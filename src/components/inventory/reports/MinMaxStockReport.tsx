@@ -10,12 +10,16 @@ import { useLanguage } from '../../../contexts/LanguageContext';
 import { useFirmaDonem } from '../../../contexts/FirmaDonemContext';
 import { useRegisterDatagridRefresh } from '../../../hooks/useRegisterDatagridRefresh';
 import { useRetailexInvalidateRefresh } from '../../../hooks/useRetailexInvalidateRefresh';
+import { productCardReportFields } from '../../../utils/productCardReportFields';
 
 /** Min/Max satırı — ürün × depo (mümkünse depo bazlı stok). */
 export interface MinMaxStockRow {
     id: string;
     code: string;
     name: string;
+    special_code: string;
+    brand: string;
+    category: string;
     warehouse_id: string;
     warehouse_name: string;
     stock: number;
@@ -134,6 +138,7 @@ export function MinMaxStockReport() {
                 const pid = String(p.id || '');
                 const code = p.code || '';
                 const name = p.name || '';
+                const card = productCardReportFields(p);
                 const minStock = Number(p.min_stock) || 0;
                 const maxStock =
                     p.max_stock != null && p.max_stock !== undefined
@@ -151,6 +156,9 @@ export function MinMaxStockReport() {
                             id: `${pid}::${b.warehouseId || 'none'}`,
                             code,
                             name,
+                            special_code: card.specialCode,
+                            brand: card.brand,
+                            category: card.category,
                             warehouse_id: b.warehouseId || defaultWhId,
                             warehouse_name: whName,
                             stock: b.qty,
@@ -163,6 +171,9 @@ export function MinMaxStockReport() {
                         id: `${pid}::${defaultWhId || 'default'}`,
                         code,
                         name,
+                        special_code: card.specialCode,
+                        brand: card.brand,
+                        category: card.category,
                         warehouse_id: defaultWhId,
                         warehouse_name: defaultWhName,
                         stock: cardStock,
@@ -217,6 +228,15 @@ export function MinMaxStockReport() {
             }),
             columnHelper.accessor('name', {
                 header: tm('materialName'),
+            }),
+            columnHelper.accessor('special_code', {
+                header: tm('specialCode') || 'Özel Kod',
+            }),
+            columnHelper.accessor('brand', {
+                header: tm('brand') || 'Marka',
+            }),
+            columnHelper.accessor('category', {
+                header: tm('category') || 'Kategori',
             }),
             columnHelper.accessor('stock', {
                 header: tm('currentStock'),

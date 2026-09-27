@@ -6,6 +6,12 @@ export interface InOutTotalsRow {
     productId: string;
     productCode: string;
     productName: string;
+    /** Ürün kartı special_code_1 */
+    specialCode?: string;
+    /** Ürün kartı brand */
+    brand?: string;
+    /** Ürün kartı category_code */
+    category?: string;
     inQty: number;
     inAmount: number;
     outQty: number;
@@ -292,6 +298,9 @@ export function collapseInOutTotalsRows(rows: InOutTotalsRow[]): InOutTotalsRow[
             prev.outAmount += r.outAmount;
             if (!prev.productCode && r.productCode) prev.productCode = r.productCode;
             if (!prev.productName && r.productName) prev.productName = r.productName;
+            if (!prev.specialCode && r.specialCode) prev.specialCode = r.specialCode;
+            if (!prev.brand && r.brand) prev.brand = r.brand;
+            if (!prev.category && r.category) prev.category = r.category;
             if (r.isService) prev.isService = true;
         }
     }

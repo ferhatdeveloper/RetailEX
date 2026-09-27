@@ -14,11 +14,15 @@ import { formatNumber } from '../../../utils/formatNumber';
 import { formatLedgerAmount, getFirmLedgerCurrency, getGlobalCurrency } from '../../../utils/currency';
 import { getAppDefaultCurrency } from '../../../services/postgres';
 import { productCardUnitCost } from '../../../utils/productCardUnitCost';
+import { productCardReportFields } from '../../../utils/productCardReportFields';
 
 interface ValuationRow {
     product_id: string;
     product_code: string;
     product_name: string;
+    special_code: string;
+    brand: string;
+    category: string;
     unit: string;
     quantity: number;
     average_unit_cost: number;
@@ -105,10 +109,14 @@ export function MaterialValueReport() {
                     );
                 }
                 const total_cost = qty * average_unit_cost;
+                const card = productCardReportFields(p);
                 return {
                     product_id: p.id,
                     product_code: p.code || '',
                     product_name: p.name || '',
+                    special_code: card.specialCode,
+                    brand: card.brand,
+                    category: card.category,
                     unit: p.unit || '',
                     quantity: qty,
                     average_unit_cost,
@@ -121,6 +129,9 @@ export function MaterialValueReport() {
     const columns = useMemo<ColumnDef<ValuationRow, any>[]>(() => [
         columnHelper.accessor('product_code', { header: tm('materialCode') }),
         columnHelper.accessor('product_name', { header: tm('materialDescription') }),
+        columnHelper.accessor('special_code', { header: tm('specialCode') || 'Özel Kod' }),
+        columnHelper.accessor('brand', { header: tm('brand') || 'Marka' }),
+        columnHelper.accessor('category', { header: tm('category') || 'Kategori' }),
         columnHelper.accessor('unit', { header: tm('unit'), size: 80 }),
         columnHelper.accessor('quantity', {
             header: tm('quantity'),

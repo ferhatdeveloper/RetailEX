@@ -13,6 +13,8 @@ import { getCurrencyDecimalPlaces, getFirmLedgerCurrency, formatLedgerAmount } f
 import { getAppDefaultCurrency } from '../../services/postgres';
 import { useProductStore, useCustomerStore } from '../../store';
 import { expiryReportsAPI, type ExpiringPurchaseItem } from '../../services/api/expiryReports';
+import { productAPI } from '../../services/api/products';
+import { productCardReportFields } from '../../utils/productCardReportFields';
 import { useFirmaDonem } from '../../contexts/FirmaDonemContext';
 import { useLanguage } from '../../contexts/LanguageContext';
 import { useTheme } from '../../contexts/ThemeContext';
@@ -1763,10 +1765,16 @@ export function ReportsModule({
     void loadCustomers();
   }, [selectedTab, loadCustomers]);
 
-  const mapExpiringPurchaseToReportRow = useCallback((item: ExpiringPurchaseItem) => ({
+  const mapExpiringPurchaseToReportRow = useCallback((
+    item: ExpiringPurchaseItem,
+    card?: { specialCode?: string; brand?: string; category?: string },
+  ) => ({
     id: `${item.productId || item.itemCode}|${item.expiryDate}|${item.batchNo || ''}|${item.saleItemId || item.invoiceId || ''}`,
     product_code: item.itemCode || '-',
     product_name: item.itemName || '-',
+    special_code: card?.specialCode || '',
+    brand: card?.brand || '',
+    category: card?.category || '',
     lot_no: item.batchNo || '',
     serial_no: '',
     warehouse_name: '-',
@@ -1779,10 +1787,25 @@ export function ReportsModule({
   useEffect(() => {
     if (selectedTab === 'expiring-products' && selectedFirm?.id) {
       setLoadingExpiring(true);
-      expiryReportsAPI
-        .getExpiringPurchaseItems(expiringDays, { includeExpired: true })
-        .then((data) => {
-          setExpiringProducts(Array.isArray(data) ? data.map(mapExpiringPurchaseToReportRow) : []);
+      Promise.all([
+        expiryReportsAPI.getExpiringPurchaseItems(expiringDays, { includeExpired: true }),
+        productAPI.getAllForReports({ firmNr: selectedFirm?.firm_nr }).catch(() => []),
+      ])
+        .then(([data, products]) => {
+          const byId = new Map(products.map((p) => [String(p.id), p]));
+          const byCode = new Map(
+            products.filter((p) => p.code).map((p) => [String(p.code), p]),
+          );
+          setExpiringProducts(
+            Array.isArray(data)
+              ? data.map((item) => {
+                  const p =
+                    byId.get(String(item.productId || '')) ||
+                    byCode.get(String(item.itemCode || ''));
+                  return mapExpiringPurchaseToReportRow(item, productCardReportFields(p));
+                })
+              : [],
+          );
           setLoadingExpiring(false);
         })
         .catch((error: unknown) => {
@@ -1791,7 +1814,7 @@ export function ReportsModule({
           setLoadingExpiring(false);
         });
     }
-  }, [selectedTab, selectedFirm, expiringDays, selectedFirm?.id, mapExpiringPurchaseToReportRow]);
+  }, [selectedTab, selectedFirm, expiringDays, selectedFirm?.id, selectedFirm?.firm_nr, mapExpiringPurchaseToReportRow]);
 
   const loadRestOrdersForSelectedDate = useCallback(() => {
     if (businessType !== 'restaurant' || !selectedFirm) {
@@ -1882,11 +1905,26 @@ export function ReportsModule({
       }
       if (selectedTab === 'expiring-products' && selectedFirm?.id) {
         tasks.push(
-          expiryReportsAPI
-            .getExpiringPurchaseItems(expiringDays, { includeExpired: true })
-            .then((data) =>
-              setExpiringProducts(Array.isArray(data) ? data.map(mapExpiringPurchaseToReportRow) : []),
-            )
+          Promise.all([
+            expiryReportsAPI.getExpiringPurchaseItems(expiringDays, { includeExpired: true }),
+            productAPI.getAllForReports({ firmNr: selectedFirm?.firm_nr }).catch(() => []),
+          ])
+            .then(([data, products]) => {
+              const byId = new Map(products.map((p) => [String(p.id), p]));
+              const byCode = new Map(
+                products.filter((p) => p.code).map((p) => [String(p.code), p]),
+              );
+              setExpiringProducts(
+                Array.isArray(data)
+                  ? data.map((item) => {
+                      const p =
+                        byId.get(String(item.productId || '')) ||
+                        byCode.get(String(item.itemCode || ''));
+                      return mapExpiringPurchaseToReportRow(item, productCardReportFields(p));
+                    })
+                  : [],
+              );
+            })
             .catch(() => setExpiringProducts([])),
         );
       }
@@ -7873,6 +7911,9 @@ export function ReportsModule({
                                 id: product.id,
                                 product_code: product.product_code || '-',
                                 product_name: product.product_name || '-',
+                                special_code: product.special_code || '',
+                                brand: product.brand || '',
+                                category: product.category || '',
                                 lot_no: product.lot_no || '',
                                 serial_no: product.serial_no || '',
                                 warehouse: product.warehouse_name || '-',
@@ -7896,6 +7937,9 @@ export function ReportsModule({
                                 columns={[
                                   { key: 'product_code', header: tm('reportsExpiringThProductCode'), size: 140 },
                                   { key: 'product_name', header: tm('reportsThProductName'), size: 180 },
+                                  { key: 'special_code', header: tm('specialCode') || 'Özel Kod', size: 110 },
+                                  { key: 'brand', header: tm('brand') || 'Marka', size: 110 },
+                                  { key: 'category', header: tm('category') || 'Kategori', size: 120 },
                                   {
                                     key: 'lot_no',
                                     header: tm('reportsExpiringThLotSerial'),

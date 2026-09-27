@@ -12,15 +12,25 @@ import {
   expiryReportsAPI,
   type ExpiringPurchaseItem,
 } from '../../services/api/expiryReports';
+import { productAPI } from '../../services/api/products';
 import { useLanguage } from '../../contexts/LanguageContext';
+import { useFirmaDonem } from '../../contexts/FirmaDonemContext';
 import { displayItemCode } from '../../utils/lastPurchaseCostSql';
 import { formatNumber } from '../../utils/formatNumber';
 import { formatReportDateCell } from '../../utils/dateLocale';
 import { expiryReturnLineAmounts } from '../../utils/expiryPurchaseReturn';
+import { productCardReportFields } from '../../utils/productCardReportFields';
+
+type ExpiryGridRow = ExpiringPurchaseItem & {
+  specialCode: string;
+  brand: string;
+  category: string;
+};
 
 export function PurchaseExpiryReport() {
   const { tm } = useLanguage();
-  const [rows, setRows] = useState<ExpiringPurchaseItem[]>([]);
+  const { selectedFirm } = useFirmaDonem();
+  const [rows, setRows] = useState<ExpiryGridRow[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [daysAhead, setDaysAhead] = useState(EXPIRY_REPORT_DEFAULT_DAYS);
@@ -33,7 +43,28 @@ export function PurchaseExpiryReport() {
     setLoading(true);
     setError(null);
     try {
-      setRows(await expiryReportsAPI.getExpiringPurchaseItems(daysAhead));
+      const [items, products] = await Promise.all([
+        expiryReportsAPI.getExpiringPurchaseItems(daysAhead),
+        productAPI.getAllForReports({ firmNr: selectedFirm?.firm_nr }).catch(() => []),
+      ]);
+      const byId = new Map(products.map((p) => [String(p.id), p]));
+      const byCode = new Map(
+        products.filter((p) => p.code).map((p) => [String(p.code), p]),
+      );
+      setRows(
+        items.map((item) => {
+          const p =
+            byId.get(String(item.productId || '')) ||
+            byCode.get(String(item.itemCode || ''));
+          const card = productCardReportFields(p);
+          return {
+            ...item,
+            specialCode: card.specialCode,
+            brand: card.brand,
+            category: card.category,
+          };
+        }),
+      );
     } catch (e: unknown) {
       setRows([]);
       setError(e instanceof Error ? e.message : String(e));
@@ -44,7 +75,7 @@ export function PurchaseExpiryReport() {
 
   useEffect(() => {
     void load();
-  }, [daysAhead]);
+  }, [daysAhead, selectedFirm?.firm_nr]);
 
   const rowKey = (row: ExpiringPurchaseItem) =>
     `${row.invoiceId}|${row.saleItemId || ''}|${row.itemCode}|${row.expiryDate}|${row.batchNo || ''}`;
@@ -115,7 +146,7 @@ export function PurchaseExpiryReport() {
     return `${formatReportDateCell(row.expiryDate)} - ${label}`;
   };
 
-  const columnHelper = createColumnHelper<ExpiringPurchaseItem>();
+  const columnHelper = createColumnHelper<ExpiryGridRow>();
   const columns = [
     columnHelper.accessor(row => formatExpiryCell(row), {
       id: 'expiryDate',
@@ -145,6 +176,21 @@ export function PurchaseExpiryReport() {
           </div>
         );
       },
+    }),
+    columnHelper.accessor('specialCode', {
+      header: tm('specialCode') || 'Özel Kod',
+      cell: info => info.getValue() || '',
+      size: 110,
+    }),
+    columnHelper.accessor('brand', {
+      header: tm('brand') || 'Marka',
+      cell: info => info.getValue() || '',
+      size: 110,
+    }),
+    columnHelper.accessor('category', {
+      header: tm('category') || 'Kategori',
+      cell: info => info.getValue() || '',
+      size: 120,
     }),
     columnHelper.accessor('quantity', {
       header: tm('quantity'),

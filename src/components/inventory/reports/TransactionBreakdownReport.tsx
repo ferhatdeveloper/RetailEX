@@ -13,10 +13,15 @@ interface TxRow {
     movement_date: string;
     product_code: string;
     product_name: string;
+    special_code: string;
+    brand: string;
+    category: string;
     line_kind: 'service' | 'product';
     line_kind_label: string;
     in_qty: number;
+    in_amount: number;
     out_qty: number;
+    out_amount: number;
     warehouse_name: string;
     unit_price: number;
     document_no: string;
@@ -28,26 +33,35 @@ function lineToRow(
     labels: { service: string; material: string },
 ): TxRow {
     const qty = Number(line.quantity) || 0;
+    const unitPrice = Number(line.unit_price) || 0;
     const isIn = line.movement_type === 'in';
     const lineKind = line.line_kind === 'service' ? 'service' : 'product';
+    const inQty = isIn ? qty : 0;
+    const outQty = isIn ? 0 : qty;
     return {
         id: line.id,
         movement_date: line.movement_date || line.created_at,
         product_code: line.product_code || '',
         product_name: line.product_name || '',
+        special_code: line.special_code || '',
+        brand: line.brand || '',
+        category: line.category || '',
         line_kind: lineKind,
         line_kind_label: lineKind === 'service' ? labels.service : labels.material,
-        in_qty: isIn ? qty : 0,
-        out_qty: isIn ? 0 : qty,
+        in_qty: inQty,
+        in_amount: inQty * unitPrice,
+        out_qty: outQty,
+        out_amount: outQty * unitPrice,
         warehouse_name: line.warehouse_name || '',
-        unit_price: Number(line.unit_price) || 0,
+        unit_price: unitPrice,
         document_no: line.document_no || '',
         customer_name: line.customer_name || '',
     };
 }
 
 /**
- * Hareket Dökümü — kalem satırı (ürün, miktar giriş/çıkış, depo, fiyat).
+ * Hareket Dökümü — kalem satırı (ürün, miktar/tutar giriş/çıkış, depo, fiyat).
+ * Giriş/çıkış tutar = ilgili miktar × birim fiyat. Footer autoFooterSums ile toplanır.
  * Fiş Listesi belge başlığıdır; bu ekran aynı belgelerin stok dökümüdür.
  */
 export function TransactionBreakdownReport() {
@@ -100,6 +114,9 @@ export function TransactionBreakdownReport() {
         }),
         columnHelper.accessor('product_code', { header: tm('materialCode') || 'Malzeme Kodu' }),
         columnHelper.accessor('product_name', { header: tm('materialName') || 'Malzeme Adı' }),
+        columnHelper.accessor('special_code', { header: tm('specialCode') || 'Özel Kod' }),
+        columnHelper.accessor('brand', { header: tm('brand') || 'Marka' }),
+        columnHelper.accessor('category', { header: tm('category') || 'Kategori' }),
         columnHelper.accessor('in_qty', {
             header: tm('inQuantity') || 'Giriş Miktar',
             cell: info => {
@@ -108,12 +125,28 @@ export function TransactionBreakdownReport() {
                 return <span className="text-green-600 font-medium">{formatNumber(v, 2)}</span>;
             },
         }),
+        columnHelper.accessor('in_amount', {
+            header: tm('extractInAmount') || 'Giriş tutar',
+            cell: info => {
+                const v = Number(info.getValue()) || 0;
+                if (!v) return '';
+                return <span className="text-green-700 font-medium">{formatNumber(v, 2)}</span>;
+            },
+        }),
         columnHelper.accessor('out_qty', {
             header: tm('outQuantity') || 'Çıkış Miktar',
             cell: info => {
                 const v = Number(info.getValue()) || 0;
                 if (!v) return '';
                 return <span className="text-red-600 font-medium">{formatNumber(v, 2)}</span>;
+            },
+        }),
+        columnHelper.accessor('out_amount', {
+            header: tm('extractOutAmount') || 'Çıkış tutar',
+            cell: info => {
+                const v = Number(info.getValue()) || 0;
+                if (!v) return '';
+                return <span className="text-red-700 font-medium">{formatNumber(v, 2)}</span>;
             },
         }),
         columnHelper.accessor('warehouse_name', {
@@ -146,7 +179,15 @@ export function TransactionBreakdownReport() {
                         </div>
                     </div>
                 ) : (
-                    <DevExDataGrid data={rows} columns={columns} {...REPORT_GRID_DEFAULTS} height="100%" />
+                    <DevExDataGrid
+                        data={rows}
+                        columns={columns}
+                        {...REPORT_GRID_DEFAULTS}
+                        storageNamespace="report-transaction-breakdown"
+                        excelFileName={tm('transactionBreakdown') || 'hareket_dokumu'}
+                        printTitle={tm('transactionBreakdown') || 'Hareket Dökümü'}
+                        height="100%"
+                    />
                 )}
             </div>
         </div>

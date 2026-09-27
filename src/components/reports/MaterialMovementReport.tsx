@@ -13,12 +13,16 @@ import { ReportColumnTable } from './shared/ReportDataGrid';
 import { useRegisterDatagridRefresh } from '../../hooks/useRegisterDatagridRefresh';
 import { getFirmLedgerCurrency, getGlobalCurrency } from '../../utils/currency';
 import { receiptNotesForDisplay } from '../../utils/receiptNotes';
+import { productCardReportFields } from '../../utils/productCardReportFields';
 
 interface Movement {
   id: string;
   date: string;
   productCode: string;
   productName: string;
+  specialCode: string;
+  brand: string;
+  category: string;
   type: 'purchase' | 'sale' | 'transfer' | 'adjustment' | 'return';
   quantity: number;
   unit: string;
@@ -213,11 +217,15 @@ export function MaterialMovementReport() {
           r.notes || r.slip_description || r.description || '',
         );
 
+        const card = productCardReportFields(r);
         mapped.push({
           id: String(r.id || `${r.movement_id}-${mapped.length}`),
           date: formatReportDateCell(r.movement_date || r.created_at || r.movement?.movement_date),
           productCode: displayItemCode(r.product_code),
           productName: r.product_name || '',
+          specialCode: card.specialCode,
+          brand: card.brand,
+          category: card.category,
           type: dbTypeToUiType(dbTypeRow, ficheType),
           quantity: displayQty,
           unit: displayUnit(r.unit_name || r.unit),
@@ -401,6 +409,21 @@ export function MaterialMovementReport() {
                       ) : null}
                     </div>
                   ),
+                },
+                {
+                  key: 'specialCode',
+                  header: tm('specialCode') || 'Özel Kod',
+                  size: 110,
+                },
+                {
+                  key: 'brand',
+                  header: tm('brand') || 'Marka',
+                  size: 110,
+                },
+                {
+                  key: 'category',
+                  header: tm('category') || 'Kategori',
+                  size: 120,
                 },
                 {
                   key: 'type',

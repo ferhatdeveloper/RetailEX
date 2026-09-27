@@ -12,6 +12,7 @@ import { useFirmaDonem } from '../../../contexts/FirmaDonemContext';
 import { formatNumber } from '../../../utils/formatNumber';
 import { formatLedgerAmount, getFirmLedgerCurrency, getGlobalCurrency } from '../../../utils/currency';
 import { getAppDefaultCurrency } from '../../../services/postgres';
+import { productCardReportFields } from '../../../utils/productCardReportFields';
 
 const INCLUDE_SERVICES_KEY = 'retailex_inOutTotals_includeServices_v1';
 const columnHelper = createColumnHelper<InOutTotalsRow>();
@@ -86,6 +87,7 @@ export function InOutTotalsReport() {
                         .map((r) => {
                             const p = byId.get(r.productId) || byCode.get(r.productCode);
                             if (!p) return r;
+                            const card = productCardReportFields(p);
                             const isService =
                                 r.isService === true ||
                                 p.isService === true ||
@@ -95,6 +97,9 @@ export function InOutTotalsReport() {
                                 productId: r.productId || p.id || r.productCode,
                                 productCode: r.productCode || p.code || '',
                                 productName: r.productName || p.name || '',
+                                specialCode: r.specialCode || card.specialCode,
+                                brand: r.brand || card.brand,
+                                category: r.category || card.category,
                                 isService,
                             };
                         })
@@ -125,6 +130,9 @@ export function InOutTotalsReport() {
         const cols: ColumnDef<InOutTotalsRow, any>[] = [
             columnHelper.accessor('productCode', { header: tm('materialCode') }),
             columnHelper.accessor('productName', { header: tm('materialName') }),
+            columnHelper.accessor('specialCode', { header: tm('specialCode') || 'Özel Kod' }),
+            columnHelper.accessor('brand', { header: tm('brand') || 'Marka' }),
+            columnHelper.accessor('category', { header: tm('category') || 'Kategori' }),
         ];
         if (includeServices) {
             cols.push(

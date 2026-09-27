@@ -1,6 +1,7 @@
 import { shouldUseTenantPostgrestApi } from '../config/postgrest.config';
 import { postgres, ERP_SETTINGS } from './postgres';
 import { toSqlDateInputString } from '../utils/localCalendarDate';
+import { SQL_PRODUCT_CARD_REPORT_FIELDS } from '../utils/productCardReportFields';
 import {
     aggregateInOutTotals,
     classifyStockLineDirection,
@@ -66,6 +67,12 @@ export interface StockMovementLine {
     source_kind: 'slip' | 'invoice';
     product_code: string;
     product_name: string;
+    /** Ürün kartı: special_code_1 */
+    special_code: string;
+    /** Ürün kartı: brand */
+    brand: string;
+    /** Ürün kartı: category_code */
+    category: string;
     quantity: number;
     unit_price: number;
     warehouse_name: string;
@@ -470,6 +477,7 @@ class StockMovementAPI {
                         m.movement_type,
                         COALESCE(p.code, '') AS product_code,
                         COALESCE(p.name, '') AS product_name,
+                        ${SQL_PRODUCT_CARD_REPORT_FIELDS},
                         i.quantity,
                         i.unit_price,
                         COALESCE(NULLIF(TRIM(s.code), ''), '') AS warehouse_code,
@@ -509,6 +517,7 @@ class StockMovementAPI {
                         END AS movement_type,
                         COALESCE(NULLIF(TRIM(p.code), ''), ${SQL_NON_UUID_ITEM_CODE}, '—') AS product_code,
                         COALESCE(p.name, si.item_name, '') AS product_name,
+                        ${SQL_PRODUCT_CARD_REPORT_FIELDS},
                         si.quantity,
                         COALESCE(
                           NULLIF(si.unit_price, 0),
@@ -553,6 +562,12 @@ class StockMovementAPI {
                 console.warn('[StockMovementAPI] getAllLines invoices failed:', err);
             }
 
+            const mapCardFields = (r: any) => ({
+                special_code: String(r.special_code || '').trim(),
+                brand: String(r.brand || '').trim(),
+                category: String(r.category || '').trim(),
+            });
+
             const slips: StockMovementLine[] = slipRows.map((r: any) => ({
                 id: String(r.id),
                 document_no: String(r.document_no || ''),
@@ -562,6 +577,7 @@ class StockMovementAPI {
                 source_kind: 'slip' as const,
                 product_code: String(r.product_code || ''),
                 product_name: String(r.product_name || ''),
+                ...mapCardFields(r),
                 quantity: Number(r.quantity) || 0,
                 unit_price: Number(r.unit_price) || 0,
                 warehouse_name:
@@ -583,6 +599,7 @@ class StockMovementAPI {
                     source_kind: 'invoice' as const,
                     product_code: String(r.product_code || ''),
                     product_name: String(r.product_name || ''),
+                    ...mapCardFields(r),
                     quantity: Number(r.quantity) || 0,
                     unit_price: Number(r.unit_price) || 0,
                     warehouse_name: fromStore || fromHeader || defaultWarehouse,
@@ -1416,6 +1433,9 @@ class StockMovementAPI {
                 product_id: String(r.product_id || '').trim(),
                 product_code: productCode,
                 product_name: String(r.product_name || r.item_name || '').trim(),
+                special_code: String(r.special_code || '').trim(),
+                brand: String(r.brand || '').trim(),
+                category: String(r.category || '').trim(),
                 warehouse_id: r.warehouse_id != null ? String(r.warehouse_id) : '',
                 target_warehouse_id: r.target_warehouse_id != null ? String(r.target_warehouse_id) : '',
                 unit_name: String(r.unit_name || r.unit || '').trim() || 'Adet',
@@ -1449,6 +1469,7 @@ class StockMovementAPI {
                     i.id, i.movement_id, i.product_id::text AS product_id,
                     COALESCE(p.code, '') AS product_code,
                     COALESCE(p.name, '') AS product_name,
+                    ${SQL_PRODUCT_CARD_REPORT_FIELDS},
                     i.quantity, i.unit_price, i.cost_price,
                     COALESCE(NULLIF(TRIM(i.unit_name), ''), p.unit, 'Adet') AS unit_name,
                     i.notes, i.created_at,
@@ -1494,6 +1515,7 @@ class StockMovementAPI {
                     COALESCE(si.product_id::text, p.id::text, si.item_code) AS product_id,
                     COALESCE(NULLIF(TRIM(p.code), ''), ${SQL_NON_UUID_ITEM_CODE}, '—') AS product_code,
                     COALESCE(p.name, si.item_name, '') AS product_name,
+                    ${SQL_PRODUCT_CARD_REPORT_FIELDS},
                     si.quantity,
                     COALESCE(
                       NULLIF(si.unit_price, 0),

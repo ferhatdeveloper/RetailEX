@@ -24,6 +24,7 @@ import {
 import { displayItemCode } from '../../../utils/lastPurchaseCostSql';
 import { formatReportDateCell } from '../../../utils/dateLocale';
 import { receiptNotesForDisplay } from '../../../utils/receiptNotes';
+import { productCardReportFields } from '../../../utils/productCardReportFields';
 import { PercentBodyModal, PercentBodyModalScrollBody } from '../../shared/PercentBodyModal';
 import { ReportHtmlPrintPreviewModal } from '../../reports/ReportHtmlPrintPreviewModal';
 import { ReportViewerModule } from '../../reports/ReportViewerModule';
@@ -81,12 +82,18 @@ interface ExtractRow {
     product_id?: string;
     product_code?: string;
     product_name?: string;
+    special_code?: string;
+    brand?: string;
+    category?: string;
 }
 
 type ExtractGridRow = ExtractRow & {
     dateLabel: string;
     productCodeLabel: string;
     productNameLabel: string;
+    specialCodeLabel: string;
+    brandLabel: string;
+    categoryLabel: string;
     typeLabel: string;
     descLabel: string;
     inQty: number | null;
@@ -218,7 +225,14 @@ export function MaterialExtractReport() {
         m: any,
         idx: number,
         balance: number,
-        productMeta?: { id?: string; code?: string; name?: string },
+        productMeta?: {
+            id?: string;
+            code?: string;
+            name?: string;
+            special_code?: string;
+            brand?: string;
+            category?: string;
+        },
     ): ExtractRow => {
         const qty = Number(m.quantity) || 0;
         const unitPrice = Number(m.unit_price) || 0;
@@ -245,6 +259,8 @@ export function MaterialExtractReport() {
         const code =
             productMeta?.code ||
             displayItemCode(m.product_code, m.productCode, selectedProduct?.code, selectedProduct?.barcode);
+        const fromMove = productCardReportFields(m);
+        const fromSelected = productCardReportFields(selectedProduct);
         return {
             id: `${m.id || idx}`,
             date: m.movement?.movement_date || m.movement_date || m.created_at,
@@ -264,6 +280,10 @@ export function MaterialExtractReport() {
             product_id: productMeta?.id || String(m.product_id || '').trim() || undefined,
             product_code: code === '—' ? '' : code,
             product_name: productMeta?.name || String(m.product_name || '').trim() || selectedProduct?.name || '',
+            special_code:
+                productMeta?.special_code || fromMove.specialCode || fromSelected.specialCode || '',
+            brand: productMeta?.brand || fromMove.brand || fromSelected.brand || '',
+            category: productMeta?.category || fromMove.category || fromSelected.category || '',
         };
     };
 
@@ -296,10 +316,14 @@ export function MaterialExtractReport() {
                     const movType = m.movement?.movement_type || m.movement_type || '';
                     if (movType === 'in') balance += qty;
                     else if (movType === 'out') balance -= qty;
+                    const card = productCardReportFields(selectedProduct);
                     return mapMovementToExtractRow(m, idx, balance, {
                         id: selectedProduct.id,
                         code: displayItemCode(selectedProduct.code, selectedProduct.barcode),
                         name: selectedProduct.name || '',
+                        special_code: card.specialCode,
+                        brand: card.brand,
+                        category: card.category,
                     });
                 });
                 setRows(mapped);
@@ -324,10 +348,14 @@ export function MaterialExtractReport() {
                     if (movType === 'in') bal += qty;
                     else if (movType === 'out') bal -= qty;
                     balances.set(key, bal);
+                    const card = productCardReportFields(m);
                     return mapMovementToExtractRow(m, idx, bal, {
                         id: String(m.product_id || '').trim(),
                         code: displayItemCode(m.product_code),
                         name: String(m.product_name || '').trim(),
+                        special_code: card.specialCode,
+                        brand: card.brand,
+                        category: card.category,
                     });
                 });
                 setRows(mapped);
@@ -397,6 +425,9 @@ export function MaterialExtractReport() {
                 dateLabel: row.date ? formatReportDateCell(row.date) : '',
                 productCodeLabel: displayItemCode(row.product_code) === '—' ? '' : displayItemCode(row.product_code),
                 productNameLabel: row.product_name || '',
+                specialCodeLabel: row.special_code || '',
+                brandLabel: row.brand || '',
+                categoryLabel: row.category || '',
                 typeLabel: labelTrcode(row.trcode, row.movement_type, row.source_type, row.fiche_type),
                 descLabel: row.description || row.warehouse_name || '',
                 inQty: inbound ? row.quantity : null,
@@ -435,6 +466,24 @@ export function MaterialExtractReport() {
                               header: tm('materialName') || 'Malzeme Adı',
                               size: 180,
                               cell: (r: ExtractGridRow) => r.productNameLabel || '',
+                          },
+                          {
+                              id: 'specialCodeLabel' as const,
+                              header: tm('specialCode') || 'Özel Kod',
+                              size: 110,
+                              cell: (r: ExtractGridRow) => r.specialCodeLabel || '',
+                          },
+                          {
+                              id: 'brandLabel' as const,
+                              header: tm('brand') || 'Marka',
+                              size: 110,
+                              cell: (r: ExtractGridRow) => r.brandLabel || '',
+                          },
+                          {
+                              id: 'categoryLabel' as const,
+                              header: tm('category') || 'Kategori',
+                              size: 120,
+                              cell: (r: ExtractGridRow) => r.categoryLabel || '',
                           },
                       ]
                     : []),

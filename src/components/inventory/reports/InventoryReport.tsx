@@ -37,9 +37,9 @@ export function InventoryReport() {
     const [avgByProduct, setAvgByProduct] = useState<Map<string, number>>(new Map());
     const [avgByCode, setAvgByCode] = useState<Map<string, number>>(new Map());
     const [loading, setLoading] = useState(true);
-    /** Malzeme listesi ile aynı: Özel Kod 2 varsayılan açık; diğerleri Kolonlar’dan seçilir */
+    /** Özel Kod 1 + 2 varsayılan açık; diğerleri Kolonlar’dan seçilir */
     const [columnVisibility, setColumnVisibility] = useState<Record<string, boolean>>({
-        specialCode1: false,
+        specialCode1: true,
         specialCode2: true,
         specialCode3: false,
         specialCode4: false,
@@ -146,6 +146,16 @@ export function InventoryReport() {
                 header: tm('materialDescription'),
                 cell: info => info.getValue() || '',
             }),
+            columnHelper.accessor('specialCode1', {
+                id: 'specialCode1',
+                header: specialCodeHeader(1),
+                cell: info => specialCodeCell(info.getValue()),
+                size: 100,
+            }),
+            columnHelper.accessor('brand', {
+                header: tm('brand'),
+                cell: info => info.getValue() || '-',
+            }),
             columnHelper.accessor('category', {
                 header: tm('category'),
                 cell: info => info.getValue() || '',
@@ -173,16 +183,6 @@ export function InventoryReport() {
             columnHelper.accessor('min_stock', {
                 header: tm('minStock'),
                 cell: info => info.getValue() || 0,
-            }),
-            columnHelper.accessor('brand', {
-                header: tm('brand'),
-                cell: info => info.getValue() || '-',
-            }),
-            columnHelper.accessor('specialCode1', {
-                id: 'specialCode1',
-                header: specialCodeHeader(1),
-                cell: info => specialCodeCell(info.getValue()),
-                size: 100,
             }),
             columnHelper.accessor('specialCode2', {
                 id: 'specialCode2',

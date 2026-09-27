@@ -1,5 +1,6 @@
 import React, { useState, useEffect, useMemo } from 'react';
 import { getCostProfitAnalysis, type CostProfitRow } from '../../../services/layeredInventoryCost';
+import { productAPI } from '../../../services/api/products';
 import { DevExDataGrid } from '../../shared/DevExDataGrid';
 import { REPORT_GRID_DEFAULTS } from '../../reports/shared/ReportDataGrid';
 import { createColumnHelper, ColumnDef } from '@tanstack/react-table';
@@ -11,11 +12,15 @@ import { formatLedgerAmount, getFirmLedgerCurrency, getGlobalCurrency } from '..
 import { getAppDefaultCurrency } from '../../../services/postgres';
 import { format } from 'date-fns';
 import { toSqlDateInputString } from '../../../utils/localCalendarDate';
+import { productCardReportFields } from '../../../utils/productCardReportFields';
 
 interface CostRow {
     product_id: string;
     product_code: string;
     product_name: string;
+    special_code: string;
+    brand: string;
+    category: string;
     line_kind: 'service' | 'product';
     line_kind_label: string;
     quantity_sold: number;
@@ -29,12 +34,16 @@ interface CostRow {
 function mapAnalysisRow(
     r: CostProfitRow,
     labels: { service: string; material: string },
+    card?: { specialCode: string; brand: string; category: string },
 ): CostRow {
     const lineKind = r.lineKind === 'service' ? 'service' : 'product';
     return {
         product_id: r.productId,
         product_code: r.productCode,
         product_name: r.productName,
+        special_code: card?.specialCode || '',
+        brand: card?.brand || '',
+        category: card?.category || '',
         line_kind: lineKind,
         line_kind_label: lineKind === 'service' ? labels.service : labels.material,
         quantity_sold: r.quantity,
@@ -86,13 +95,27 @@ export function CostReport() {
             try {
                 const start = toSqlDateInputString(startDate) || startDate;
                 const end = toSqlDateInputString(endDate) || endDate;
-                const list = await getCostProfitAnalysis({
-                    startDate: start,
-                    endDate: end,
-                    firmNr: selectedFirm?.firm_nr,
-                    periodNr: selectedPeriod?.nr,
-                });
-                if (!cancelled) setRows(list.map((r) => mapAnalysisRow(r, kindLabels)));
+                const [list, products] = await Promise.all([
+                    getCostProfitAnalysis({
+                        startDate: start,
+                        endDate: end,
+                        firmNr: selectedFirm?.firm_nr,
+                        periodNr: selectedPeriod?.nr,
+                    }),
+                    productAPI.getAllForReports({ firmNr: selectedFirm?.firm_nr }).catch(() => []),
+                ]);
+                const byId = new Map(products.map((p) => [String(p.id), p]));
+                const byCode = new Map(
+                    products.filter((p) => p.code).map((p) => [String(p.code), p]),
+                );
+                if (!cancelled) {
+                    setRows(
+                        list.map((r) => {
+                            const p = byId.get(r.productId) || byCode.get(r.productCode);
+                            return mapAnalysisRow(r, kindLabels, productCardReportFields(p));
+                        }),
+                    );
+                }
             } catch (err) {
                 console.error('[CostReport] load failed', err);
                 if (!cancelled) setRows([]);
@@ -135,6 +158,9 @@ export function CostReport() {
         }),
         columnHelper.accessor('product_code', { header: tm('materialCode') }),
         columnHelper.accessor('product_name', { header: tm('materialName') }),
+        columnHelper.accessor('special_code', { header: tm('specialCode') || 'Özel Kod' }),
+        columnHelper.accessor('brand', { header: tm('brand') || 'Marka' }),
+        columnHelper.accessor('category', { header: tm('category') || 'Kategori' }),
         columnHelper.accessor('quantity_sold', {
             header: tm('soldQuantity'),
             cell: info => formatNumber(Number(info.getValue()) || 0, 2),
