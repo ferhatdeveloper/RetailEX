@@ -55,16 +55,9 @@ export const DEFAULT_MENU_HIDDEN_MODULES: readonly string[] = [
   'finance-definitions',
   'payment-plans',
   'cost-centers',
-  // Malzeme Yönetimi + stok (bölüm + ana girişler): varsayılan gizli; Menü Yönetimi’nden açılır
-  'material-management',
-  'products',
+  // Malzeme alt tanımları / fiyat fişi: varsayılan gizli; ana Malzemeler + stok açık
   'material-definitions',
-  'material-movements',
-  'stockmovements',
   'stock-price-change-slips',
-  'material-reports',
-  'inventory',
-  'excel',
 ] as const;
 
 /**
@@ -72,7 +65,7 @@ export const DEFAULT_MENU_HIDDEN_MODULES: readonly string[] = [
  * `MENU_HIDDEN_UPGRADE_VERSION` artınca sync tüm preset’lere yeni maddeleri ekler;
  * sonra Menü Yönetimi’nden tekrar açılabilir (sürekli zorlama yok).
  */
-export const MENU_HIDDEN_UPGRADE_VERSION = 3;
+export const MENU_HIDDEN_UPGRADE_VERSION = 4;
 
 export const MENU_HIDDEN_UPGRADE_ADDITIONS: Readonly<Record<number, readonly string[]>> = {
   1: ['payment-plans', 'cost-centers'],
@@ -88,6 +81,21 @@ export const MENU_HIDDEN_UPGRADE_ADDITIONS: Readonly<Record<number, readonly str
     'inventory',
     'excel',
   ],
+  // v4: ana Malzemeler / stok menüsünü tekrar görünür yap (v3 ile yanlışlıkla kapanmıştı)
+  4: [],
+};
+
+/** Upgrade sürümünde gizlilikten çıkarılacak ekranlar */
+export const MENU_HIDDEN_UPGRADE_REMOVALS: Readonly<Record<number, readonly string[]>> = {
+  4: [
+    'material-management',
+    'products',
+    'material-movements',
+    'stockmovements',
+    'material-reports',
+    'inventory',
+    'excel',
+  ],
 };
 
 /** `fromVersion` (hariç) → `toVersion` (dahil) arası eklenen screen_id’ler */
@@ -99,6 +107,19 @@ export function hiddenModulesForUpgradeVersion(fromVersion: number, toVersion: n
   for (let v = from + 1; v <= to; v++) {
     const add = MENU_HIDDEN_UPGRADE_ADDITIONS[v];
     if (add?.length) out.push(...add);
+  }
+  return out;
+}
+
+/** Upgrade ile gizlilikten çıkarılacak id’ler */
+export function hiddenModulesRemovalsForUpgradeVersion(fromVersion: number, toVersion: number): string[] {
+  const from = Number.isFinite(fromVersion) ? Math.max(0, Math.floor(fromVersion)) : 0;
+  const to = Number.isFinite(toVersion) ? Math.max(0, Math.floor(toVersion)) : 0;
+  if (to <= from) return [];
+  const out: string[] = [];
+  for (let v = from + 1; v <= to; v++) {
+    const rem = MENU_HIDDEN_UPGRADE_REMOVALS[v];
+    if (rem?.length) out.push(...rem);
   }
   return out;
 }

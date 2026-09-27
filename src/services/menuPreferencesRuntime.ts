@@ -8,6 +8,7 @@ import {
   MENU_HIDDEN_UPGRADE_VERSION,
   buildFactoryMenuPreferences,
   hiddenModulesForUpgradeVersion,
+  hiddenModulesRemovalsForUpgradeVersion,
 } from '../config/defaultMenuView';
 
 export interface MenuPreferencesLite {
@@ -78,7 +79,11 @@ export function mergePendingHiddenUpgrades(
     return normalizeHiddenModules(hidden);
   }
   const additions = hiddenModulesForUpgradeVersion(fromVer, MENU_HIDDEN_UPGRADE_VERSION);
-  return normalizeHiddenModules([...hidden, ...additions]);
+  const removals = new Set(
+    hiddenModulesRemovalsForUpgradeVersion(fromVer, MENU_HIDDEN_UPGRADE_VERSION),
+  );
+  const merged = normalizeHiddenModules([...hidden, ...additions]).filter((id) => !removals.has(id));
+  return merged;
 }
 
 type HiddenModulesListener = (hidden: string[]) => void;

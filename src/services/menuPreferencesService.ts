@@ -20,6 +20,7 @@ import {
   MENU_HIDDEN_UPGRADE_VERSION,
   buildFactoryMenuPreferences,
   hiddenModulesForUpgradeVersion,
+  hiddenModulesRemovalsForUpgradeVersion,
 } from '../config/defaultMenuView';
 
 export {
@@ -129,6 +130,7 @@ function refreshFactoryPresetHidden(preset: MenuPreferencePreset): MenuPreferenc
 /**
  * 1) Fabrika preset → güncel DEFAULT
  * 2) hidden_upgrade_version gerideyse tüm preset’lere yeni gizlemeleri bir kerelik ekle
+ *    ve (v4+) kaldırılacakları gizlilikten çıkar
  */
 export function applyMenuHiddenUpgrades(store: MenuPreferencesStore): {
   store: MenuPreferencesStore;
@@ -139,14 +141,20 @@ export function applyMenuHiddenUpgrades(store: MenuPreferencesStore): {
     fromVer < MENU_HIDDEN_UPGRADE_VERSION
       ? hiddenModulesForUpgradeVersion(fromVer, MENU_HIDDEN_UPGRADE_VERSION)
       : [];
+  const removals =
+    fromVer < MENU_HIDDEN_UPGRADE_VERSION
+      ? new Set(hiddenModulesRemovalsForUpgradeVersion(fromVer, MENU_HIDDEN_UPGRADE_VERSION))
+      : new Set<string>();
 
   let changed = fromVer < MENU_HIDDEN_UPGRADE_VERSION;
   const presets = store.presets.map((preset) => {
     let next = refreshFactoryPresetHidden(preset);
     if (next !== preset) changed = true;
 
-    if (additions.length > 0 && next.id !== FACTORY_MENU_PRESET_ID) {
-      const merged = normalizeHiddenModules([...(next.hidden_modules ?? []), ...additions]);
+    if (next.id !== FACTORY_MENU_PRESET_ID && (additions.length > 0 || removals.size > 0)) {
+      const merged = normalizeHiddenModules([...(next.hidden_modules ?? []), ...additions]).filter(
+        (id) => !removals.has(id),
+      );
       if (!sameHiddenList(next.hidden_modules ?? [], merged)) {
         next = { ...next, hidden_modules: merged };
         changed = true;
