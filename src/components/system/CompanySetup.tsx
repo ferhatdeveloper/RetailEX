@@ -102,6 +102,7 @@ const TreeItem = ({ node, level = 0, onToggle, onSelect, onAdd, selectedId, acti
   selectedId: string | null,
   activeId?: string | null
 }) => {
+  const { tm } = useLanguage();
   const Icon = node.icon || Building2;
   const isSelected = selectedId === node.id;
   const isActive = activeId === node.id;
@@ -133,7 +134,7 @@ const TreeItem = ({ node, level = 0, onToggle, onSelect, onAdd, selectedId, acti
         <Icon className={`w-4 h-4 ${isSelected ? 'text-blue-600' : 'text-gray-500'}`} />
         <span className="text-sm truncate flex-1">{node.label}</span>
         {isActive && (
-          <span className="text-[10px] bg-green-100 text-green-700 px-1.5 py-0.5 rounded font-bold uppercase tracking-wider">AKTİF</span>
+          <span className="text-[10px] bg-green-100 text-green-700 px-1.5 py-0.5 rounded font-bold uppercase tracking-wider">{tm('active')}</span>
         )}
         {node.type.startsWith('folder') && (
           <button
@@ -142,7 +143,7 @@ const TreeItem = ({ node, level = 0, onToggle, onSelect, onAdd, selectedId, acti
               onAdd(node);
             }}
             className="p-1 hover:bg-blue-100 rounded text-blue-600 opacity-0 group-hover:opacity-100 transition-opacity"
-            title="Yeni Ekle"
+            title={tm('coSetupAddNew')}
           >
             <Plus className="w-3.5 h-3.5" />
           </button>
@@ -622,25 +623,25 @@ export function CompanySetup() {
                   className="inline-flex items-center gap-2 px-4 py-2 rounded-lg border border-slate-300 bg-slate-50 text-slate-800 text-sm font-medium hover:bg-slate-100"
                 >
                   <Database className="h-4 w-4" />
-                  Logo&apos;dan firma çek (MSSQL)
+                  {tm('coSetupLogoImportBtn')}
                 </button>
                 <p className="text-xs text-gray-500 mt-1">
-                  Kurulumdaki Logo MSSQL bağlantısı ile firma, dönem ve kart/hareket verilerini içe aktarır.
+                  {tm('coSetupLogoImportHint')}
                 </p>
               </div>
             )}
-            <div className="col-span-2"><h3 className="text-sm font-bold text-gray-500 border-b pb-1 mb-2">Temel Bilgiler</h3></div>
-            <div><label className="block text-sm mb-1">Firma Adı</label><input className="w-full border p-2 rounded" value={formData.firma_adi || ''} onChange={e => setFormData({ ...formData, firma_adi: e.target.value })} disabled={mode === 'view'} /></div>
-            <div><label className="block text-sm mb-1">Firma Kodu</label><input className="w-full border p-2 rounded" value={formData.firma_kodu || ''} onChange={e => setFormData({ ...formData, firma_kodu: e.target.value })} disabled={mode === 'view'} /></div>
+            <div className="col-span-2"><h3 className="text-sm font-bold text-gray-500 border-b pb-1 mb-2">{tm('basicInformation')}</h3></div>
+            <div><label className="block text-sm mb-1">{tm('coSetupFirmName')}</label><input className="w-full border p-2 rounded" value={formData.firma_adi || ''} onChange={e => setFormData({ ...formData, firma_adi: e.target.value })} disabled={mode === 'view'} /></div>
+            <div><label className="block text-sm mb-1">{tm('coSetupFirmCode')}</label><input className="w-full border p-2 rounded" value={formData.firma_kodu || ''} onChange={e => setFormData({ ...formData, firma_kodu: e.target.value })} disabled={mode === 'view'} /></div>
 
-            <div className="col-span-2 mt-4"><h3 className="text-sm font-bold text-gray-500 border-b pb-1 mb-2">Vergi Bilgileri</h3></div>
-            <div><label className="block text-sm mb-1">Vergi No</label><input className="w-full border p-2 rounded" value={formData.vergi_no || ''} onChange={e => setFormData({ ...formData, vergi_no: e.target.value })} disabled={mode === 'view'} /></div>
-            <div><label className="block text-sm mb-1">Vergi Dairesi</label><input className="w-full border p-2 rounded" value={formData.vergi_dairesi || ''} onChange={e => setFormData({ ...formData, vergi_dairesi: e.target.value })} disabled={mode === 'view'} /></div>
+            <div className="col-span-2 mt-4"><h3 className="text-sm font-bold text-gray-500 border-b pb-1 mb-2">{tm('coSetupTaxInfo')}</h3></div>
+            <div><label className="block text-sm mb-1">{tm('coSetupTaxNo')}</label><input className="w-full border p-2 rounded" value={formData.vergi_no || ''} onChange={e => setFormData({ ...formData, vergi_no: e.target.value })} disabled={mode === 'view'} /></div>
+            <div><label className="block text-sm mb-1">{tm('coSetupTaxOffice')}</label><input className="w-full border p-2 rounded" value={formData.vergi_dairesi || ''} onChange={e => setFormData({ ...formData, vergi_dairesi: e.target.value })} disabled={mode === 'view'} /></div>
 
-            <div className="col-span-2 mt-4"><h3 className="text-sm font-bold text-gray-500 border-b pb-1 mb-2">İletişim</h3></div>
-            <div className="col-span-2"><label className="block text-sm mb-1">Adres</label><input className="w-full border p-2 rounded" value={formData.adres || ''} onChange={e => setFormData({ ...formData, adres: e.target.value })} disabled={mode === 'view'} /></div>
-            <div><label className="block text-sm mb-1">Şehir</label><input className="w-full border p-2 rounded" value={formData.il || ''} onChange={e => setFormData({ ...formData, il: e.target.value })} disabled={mode === 'view'} /></div>
-            <div><label className="block text-sm mb-1">İlçe</label><input className="w-full border p-2 rounded" value={formData.ilce || ''} onChange={e => setFormData({ ...formData, ilce: e.target.value })} disabled={mode === 'view'} /></div>
+            <div className="col-span-2 mt-4"><h3 className="text-sm font-bold text-gray-500 border-b pb-1 mb-2">{tm('coSetupContact')}</h3></div>
+            <div className="col-span-2"><label className="block text-sm mb-1">{tm('address')}</label><input className="w-full border p-2 rounded" value={formData.adres || ''} onChange={e => setFormData({ ...formData, adres: e.target.value })} disabled={mode === 'view'} /></div>
+            <div><label className="block text-sm mb-1">{tm('city')}</label><input className="w-full border p-2 rounded" value={formData.il || ''} onChange={e => setFormData({ ...formData, il: e.target.value })} disabled={mode === 'view'} /></div>
+            <div><label className="block text-sm mb-1">{tm('coSetupDistrict')}</label><input className="w-full border p-2 rounded" value={formData.ilce || ''} onChange={e => setFormData({ ...formData, ilce: e.target.value })} disabled={mode === 'view'} /></div>
 
             <div className="col-span-2 mt-4"><h3 className="text-sm font-bold text-gray-500 border-b pb-1 mb-2">Supabase</h3></div>
             <div className="col-span-2">
@@ -850,15 +851,15 @@ export function CompanySetup() {
       if (selectedNode.type === 'period' || selectedNode.type === 'folder-period') {
         return (
           <>
-            <div><label className="block text-sm mb-1">Dönem Adı</label><input className="w-full border p-2 rounded" value={formData.donem_adi || ''} onChange={e => setFormData({ ...formData, donem_adi: e.target.value })} disabled={mode === 'view'} /></div>
-            <div><label className="block text-sm mb-1">Durum</label>
+            <div><label className="block text-sm mb-1">{tm('coSetupPeriodName')}</label><input className="w-full border p-2 rounded" value={formData.donem_adi || ''} onChange={e => setFormData({ ...formData, donem_adi: e.target.value })} disabled={mode === 'view'} /></div>
+            <div><label className="block text-sm mb-1">{tm('status')}</label>
               <select className="w-full border p-2 rounded" value={formData.durum || 'acik'} onChange={e => setFormData({ ...formData, durum: e.target.value })} disabled={mode === 'view'}>
-                <option value="acik">Açık</option>
-                <option value="kapali">Kapalı</option>
+                <option value="acik">{tm('open')}</option>
+                <option value="kapali">{tm('closed')}</option>
               </select>
             </div>
-            <div><label className="block text-sm mb-1">Başlangıç</label><input type="date" className="w-full border p-2 rounded" value={formData.baslangic_tarihi || ''} onChange={e => setFormData({ ...formData, baslangic_tarihi: e.target.value })} disabled={mode === 'view'} /></div>
-            <div><label className="block text-sm mb-1">Bitiş</label><input type="date" className="w-full border p-2 rounded" value={formData.bitis_tarihi || ''} onChange={e => setFormData({ ...formData, bitis_tarihi: e.target.value })} disabled={mode === 'view'} /></div>
+            <div><label className="block text-sm mb-1">{tm('startDate')}</label><input type="date" className="w-full border p-2 rounded" value={formData.baslangic_tarihi || ''} onChange={e => setFormData({ ...formData, baslangic_tarihi: e.target.value })} disabled={mode === 'view'} /></div>
+            <div><label className="block text-sm mb-1">{tm('endDate')}</label><input type="date" className="w-full border p-2 rounded" value={formData.bitis_tarihi || ''} onChange={e => setFormData({ ...formData, bitis_tarihi: e.target.value })} disabled={mode === 'view'} /></div>
           </>
         )
       }
@@ -866,9 +867,9 @@ export function CompanySetup() {
       if (selectedNode.type === 'warehouse' || selectedNode.type === 'folder-warehouse') {
         return (
           <>
-            <div><label className="block text-sm mb-1">Depo Adı</label><input className="w-full border p-2 rounded" value={formData.name || ''} onChange={e => setFormData({ ...formData, name: e.target.value })} disabled={mode === 'view'} /></div>
-            <div><label className="block text-sm mb-1">Kod</label><input className="w-full border p-2 rounded" value={formData.code || ''} onChange={e => setFormData({ ...formData, code: e.target.value })} disabled={mode === 'view'} /></div>
-            <div className="col-span-2"><label className="block text-sm mb-1">Şehir</label><input className="w-full border p-2 rounded" value={formData.city || ''} onChange={e => setFormData({ ...formData, city: e.target.value })} disabled={mode === 'view'} /></div>
+            <div><label className="block text-sm mb-1">{tm('coSetupWarehouseName')}</label><input className="w-full border p-2 rounded" value={formData.name || ''} onChange={e => setFormData({ ...formData, name: e.target.value })} disabled={mode === 'view'} /></div>
+            <div><label className="block text-sm mb-1">{tm('code')}</label><input className="w-full border p-2 rounded" value={formData.code || ''} onChange={e => setFormData({ ...formData, code: e.target.value })} disabled={mode === 'view'} /></div>
+            <div className="col-span-2"><label className="block text-sm mb-1">{tm('city')}</label><input className="w-full border p-2 rounded" value={formData.city || ''} onChange={e => setFormData({ ...formData, city: e.target.value })} disabled={mode === 'view'} /></div>
           </>
         )
       }
@@ -876,13 +877,13 @@ export function CompanySetup() {
       if (selectedNode.type === 'branch' || selectedNode.type === 'folder-branch') {
         return (
           <>
-            <div><label className="block text-sm mb-1">Şube Adı</label><input className="w-full border p-2 rounded" value={formData.name || ''} onChange={e => setFormData({ ...formData, name: e.target.value })} disabled={mode === 'view'} /></div>
-            <div><label className="block text-sm mb-1">Şube Kodu</label><input className="w-full border p-2 rounded" value={formData.code || ''} onChange={e => setFormData({ ...formData, code: e.target.value })} disabled={mode === 'view'} /></div>
-            <div><label className="block text-sm mb-1">Şehir</label><input className="w-full border p-2 rounded" value={formData.city || ''} onChange={e => setFormData({ ...formData, city: e.target.value })} disabled={mode === 'view'} /></div>
-            <div><label className="block text-sm mb-1">Durum</label>
+            <div><label className="block text-sm mb-1">{tm('branchName')}</label><input className="w-full border p-2 rounded" value={formData.name || ''} onChange={e => setFormData({ ...formData, name: e.target.value })} disabled={mode === 'view'} /></div>
+            <div><label className="block text-sm mb-1">{tm('coSetupBranchCode')}</label><input className="w-full border p-2 rounded" value={formData.code || ''} onChange={e => setFormData({ ...formData, code: e.target.value })} disabled={mode === 'view'} /></div>
+            <div><label className="block text-sm mb-1">{tm('city')}</label><input className="w-full border p-2 rounded" value={formData.city || ''} onChange={e => setFormData({ ...formData, city: e.target.value })} disabled={mode === 'view'} /></div>
+            <div><label className="block text-sm mb-1">{tm('status')}</label>
               <select className="w-full border p-2 rounded" value={formData.status || 'active'} onChange={e => setFormData({ ...formData, status: e.target.value })} disabled={mode === 'view'}>
-                <option value="active">Aktif</option>
-                <option value="inactive">Pasif</option>
+                <option value="active">{tm('active')}</option>
+                <option value="inactive">{tm('inactive')}</option>
               </select>
             </div>
           </>
@@ -955,13 +956,26 @@ export function CompanySetup() {
       );
     };
 
+    const createTitleKey = (() => {
+      const typeKey = selectedNode.type.replace('folder-', '');
+      const titleMap: Record<string, string> = {
+        branch: 'coSetupNewBranch',
+        warehouse: 'coSetupNewWarehouse',
+        period: 'coSetupNewPeriod',
+        company: 'coSetupNewFirm',
+      };
+      return titleMap[typeKey] || 'coSetupAddNew';
+    })();
+
     return (
       <div className="p-6 max-w-4xl mx-auto">
         <div className="flex items-center justify-between mb-6 pb-4 border-b">
           <div className="flex items-center gap-3">
             {selectedNode.icon && <selectedNode.icon className="w-6 h-6 text-gray-400" />}
             <h2 className="text-xl font-bold text-gray-800">
-              {mode === 'create' ? tm('coSetupNewRecord').replace('{type}', selectedNode.type.replace('folder-', '')) : (formData.name || formData.title || formData.firma_adi || selectedNode.label)}
+              {mode === 'create'
+                ? tm(createTitleKey)
+                : (formData.name || formData.title || formData.firma_adi || selectedNode.label)}
             </h2>
           </div>
           <div className="flex gap-2">
@@ -996,9 +1010,9 @@ export function CompanySetup() {
               </>
             ) : (
               <>
-                <button onClick={() => setMode('view')} className="px-3 py-1.5 border hover:bg-gray-50 rounded-lg text-sm">İptal</button>
+                <button onClick={() => setMode('view')} className="px-3 py-1.5 border hover:bg-gray-50 rounded-lg text-sm">{tm('cancel')}</button>
                 <button onClick={handleSave} className="px-3 py-1.5 bg-blue-600 text-white hover:bg-blue-700 rounded-lg flex items-center gap-2 text-sm">
-                  <Save className="w-4 h-4" /> Kaydet
+                  <Save className="w-4 h-4" /> {tm('save')}
                 </button>
               </>
             )}
@@ -1013,17 +1027,17 @@ export function CompanySetup() {
         {showCopyModal && (
           <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50">
             <div className="bg-white rounded-lg p-6 w-96 shadow-xl">
-              <h3 className="text-lg font-bold mb-4 flex items-center gap-2"><Copy className="w-5 h-5 text-blue-600" /> Firma Kopyala</h3>
+              <h3 className="text-lg font-bold mb-4 flex items-center gap-2"><Copy className="w-5 h-5 text-blue-600" /> {tm('coSetupCopyFirmTitle')}</h3>
               <div className="space-y-3 mb-6">
-                <p className="text-sm text-gray-500 mb-2">Verileri aktar:</p>
+                <p className="text-sm text-gray-500 mb-2">{tm('coSetupTransferData')}</p>
                 <div className="flex items-center gap-2 cursor-pointer p-2 hover:bg-gray-50 rounded" onClick={() => setCopyOptions({ ...copyOptions, accounts: !copyOptions.accounts })}>
                   {copyOptions.accounts ? <CheckSquare className="w-5 h-5 text-blue-600" /> : <Square className="w-5 h-5 text-gray-400" />}
-                  <span className="text-sm">Cari Hesaplar</span>
+                  <span className="text-sm">{tm('currentAccounts')}</span>
                 </div>
               </div>
               <div className="flex justify-end gap-2">
-                <button onClick={() => setShowCopyModal(false)} className="px-4 py-2 text-sm text-gray-600 hover:bg-gray-100 rounded">İptal</button>
-                <button onClick={handleCopyCompany} className="px-4 py-2 text-sm bg-blue-600 text-white hover:bg-blue-700 rounded">Kopyala</button>
+                <button onClick={() => setShowCopyModal(false)} className="px-4 py-2 text-sm text-gray-600 hover:bg-gray-100 rounded">{tm('cancel')}</button>
+                <button onClick={handleCopyCompany} className="px-4 py-2 text-sm bg-blue-600 text-white hover:bg-blue-700 rounded">{tm('coSetupCopy')}</button>
               </div>
             </div>
           </div>

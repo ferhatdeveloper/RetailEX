@@ -168,6 +168,12 @@ const ReconciliationDashboard = lazyWithChunkRecovery(() => import('../accountin
 const AIStockPredictionModule = lazyWithChunkRecovery(() => import('../inventory/ai/AIStockPredictionModule').then(m => ({ default: m.AIStockPredictionModule })));
 const GeneralLedgerMizan = lazyWithChunkRecovery(() => import('../accounting/reports/GeneralLedgerMizan').then(m => ({ default: m.GeneralLedgerMizan })));
 const CariExtractReport = lazyWithChunkRecovery(() => import('../reports/ErpCoreReports').then(m => ({ default: m.CariExtractReport })));
+const CariDebtorsReport = lazyWithChunkRecovery(() =>
+  import('../reports/CariDebtorCreditorReport').then((m) => ({ default: m.CariDebtorsReport })),
+);
+const CariCreditorsReport = lazyWithChunkRecovery(() =>
+  import('../reports/CariDebtorCreditorReport').then((m) => ({ default: m.CariCreditorsReport })),
+);
 const StorePerformanceAnalysis = lazyWithChunkRecovery(() => import('../sales/reports/StorePerformanceAnalysis').then(m => ({ default: m.StorePerformanceAnalysis })));
 const InventoryAgingReport = lazyWithChunkRecovery(() => import('../inventory/reports/InventoryAgingReport').then(m => ({ default: m.InventoryAgingReport })));
 const UniversalReportHub = lazyWithChunkRecovery(() => import('../analytics/UniversalReportHub').then(m => ({ default: m.UniversalReportHub })));
@@ -245,7 +251,7 @@ type ExtendedScreen = ManagementScreen | 'dashboard' | 'finance' | 'stock' | 'pu
   'financereports' | 'generalsettings' | 'definitions' | 'parameter-settings' | 'parameters' | 'parametre' | 'backuprestore' | 'systemhealth' | 'pendingposdevices' | 'smsmanage' | 'emailcamp' | 'logaudit' | 'databroadcast' |
   'modulemanagement' | 'menumanagement' | 'onlineorders' | 'productsync' | 'price-change-vouchers' | 'new-modules' | 'accounting-mgmt' | 'workflow-automation' | 'voice-assistant' | 'cashier-scale' | 'scale-management' | 'db-migrations' | 'hybrid-sync' | 'store-management' | 'security-modules' | 'demo-data' |
   'product-analytics' | 'profit-dashboard' | 'graphanalysis' | 'reconciliation' | 'wave-picking' | 'ai-stock-prediction' | 'material-extract' | 'cost-centers' |
-  'universal-report-hub' | 'customer-extract' | 'store-performance' | 'inventory-aging' | 'nebim-migration' |
+  'universal-report-hub' | 'customer-extract' | 'cari-debtors' | 'cari-creditors' | 'store-performance' | 'inventory-aging' | 'nebim-migration' |
   'cash-slips' | 'bank-slips' | 'pos-slips' | 'current-slips' | 'cari-devir' | 'cari-devir-excel' | 'stockcounting' | 'stockcounting-mobile' |
   'salesreports' | 'stockreports' | 'customeranalysis' | 'mizan' | 'income-statement' | 'balance-sheet' | 'advanced-reports' | 'reports' | 'customreports' | 'grafana-report-builder' | 'category-group-profit-report' | 'materials' | 'MYFisleri' |
   'stockmovements-deficit' | 'stockmovements-surplus' | 'stock-price-change-slips' |
@@ -1420,6 +1426,10 @@ export function ManagementModule({
           return <UniversalReportHub onNavigate={(s) => setCurrentScreen(s as ExtendedScreen)} />;
         case 'customer-extract':
           return <CariExtractReport />;
+        case 'cari-debtors':
+          return <CariDebtorsReport />;
+        case 'cari-creditors':
+          return <CariCreditorsReport />;
         case 'store-performance':
           return <StorePerformanceAnalysis />;
         case 'inventory-aging':

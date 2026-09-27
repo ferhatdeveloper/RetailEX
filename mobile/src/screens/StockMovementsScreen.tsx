@@ -164,7 +164,6 @@ export function StockMovementsScreen() {
               </View>
               <Text style={{ color: palette.blue600, fontWeight: '700', fontSize: 12, marginTop: 4 }}>
                 {stockMovementLabel(item)}
-                {item.source_kind === 'invoice' ? ' · Fatura' : ''}
               </Text>
               {item.warehouse_name ? (
                 <Text style={{ color: colors.textMuted, fontSize: 11, marginTop: 2 }}>

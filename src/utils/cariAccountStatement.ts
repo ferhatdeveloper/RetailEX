@@ -33,6 +33,33 @@ export function preferIntegerAmountDisplay(code: string): boolean {
   return c === 'IQD' || c === 'JPY' || c === 'VND' || c === 'KHR' || c === 'UZS';
 }
 
+/**
+ * Cari bakiye yönü — ABS kullanmadan, cardType simetrisi korunarak.
+ * Müşteri/partner: + = borçlu (B), − = alacaklı (A).
+ * Tedarikçi: + = alacaklı (A, bizim borcumuz), − = borçlu (B).
+ * Personel: + = A, − = B (getCariBalanceDirection ile aynı).
+ */
+export function resolveCariBalanceSide(
+  cardType: ExtCardType,
+  balance: number,
+): 'B' | 'A' | '' {
+  if (!balance || Math.abs(balance) <= 0.009) return '';
+  if (cardType === 'supplier') return balance > 0 ? 'A' : 'B';
+  if (cardType === 'employee') return balance > 0 ? 'A' : 'B';
+  // customer | partner | undefined → müşteri mantığı
+  return balance > 0 ? 'B' : 'A';
+}
+
+/** Borçlu cariler: bizim alacağımız / onlar borçlu (side B). */
+export function isCariDebtorBalance(cardType: ExtCardType, balance: number): boolean {
+  return resolveCariBalanceSide(cardType, balance) === 'B';
+}
+
+/** Alacaklı cariler: bizim borcumuz / onlar alacaklı (side A). */
+export function isCariCreditorBalance(cardType: ExtCardType, balance: number): boolean {
+  return resolveCariBalanceSide(cardType, balance) === 'A';
+}
+
 export function getCariBalanceDirection(
   cardType: ExtCardType,
   balance: number,

@@ -1,5 +1,9 @@
 import React, { useState, useEffect, useMemo } from 'react';
-import { stockMovementAPI, type StockMovement } from '../../../services/stockMovementAPI';
+import {
+    stockMovementAPI,
+    labelStockSlipDocumentType,
+    type StockMovement,
+} from '../../../services/stockMovementAPI';
 import { DevExDataGrid } from '../../shared/DevExDataGrid';
 import { REPORT_GRID_DEFAULTS } from '../../reports/shared/ReportDataGrid';
 import { createColumnHelper, ColumnDef } from '@tanstack/react-table';
@@ -37,9 +41,10 @@ export function SlipListReport() {
                     id: m.id,
                     documentNo: m.document_no || '',
                     date: m.movement_date || m.created_at,
-                    type: m.source_kind === 'invoice'
-                        ? (m.movement_type === 'in' ? (tm('purchaseInvoice') || 'Alış Faturası') : (tm('salesInvoice') || 'Satış Faturası'))
-                        : (tm('warehouseSlip') || 'Ambar Fişi'),
+                    type:
+                        m.source_kind === 'invoice'
+                            ? labelStockSlipDocumentType(tm, m.trcode, m.movement_type, 'invoice')
+                            : tm('warehouseSlip') || 'Ambar Fişi',
                     customer_name: m.customer_name || '',
                     movement_type: m.movement_type || '',
                     description: receiptNotesForDisplay(m.description),

@@ -1,4 +1,4 @@
-﻿import { useState } from 'react';
+﻿import { useState, useRef } from 'react';
 import { FileText, FileCheck, FileMinus, Truck, ShoppingBag, FileSignature, Plus, X } from 'lucide-react';
 import { toast } from 'sonner';
 import { SalesInvoiceModule } from '../sales/SalesInvoiceModule';
@@ -6,6 +6,7 @@ import { PurchaseInvoiceModule } from '../purchase/PurchaseInvoiceModule';
 import { UniversalInvoiceForm } from './UniversalInvoiceForm';
 import { InvoiceActionsModal } from './InvoiceActionsModal';
 import { PercentBodyModal, PercentBodyModalScrollBody } from '../../shared/PercentBodyModal';
+import { FullscreenBodyPortal } from '../../shared/FullscreenBodyPortal';
 import type { Customer, Product } from '../../../App';
 
 interface UnifiedInvoiceModuleProps {
@@ -104,6 +105,8 @@ export function UnifiedInvoiceModule({ customers = [], products = [], defaultCat
   const [selectedCategory, setSelectedCategory] = useState<string>(defaultCategory || 'all');
   const [hoveredInvoiceType, setHoveredInvoiceType] = useState<InvoiceType | null>(null);
   const [selectedInvoiceForAction, setSelectedInvoiceForAction] = useState<any | null>(null);
+  const [deletingInvoiceId, setDeletingInvoiceId] = useState<string | null>(null);
+  const deletingInvoiceRef = useRef(false);
 
   // Yeni fatura oluşturma - modal aç (direkt fatura tipi seçimi yapılmaz)
   const handleCreateInvoice = (invoiceTypeCode?: number) => {
@@ -196,21 +199,32 @@ export function UnifiedInvoiceModule({ customers = [], products = [], defaultCat
       setSelectedInvoiceForAction(null);
     },
     delete: async (invoice: any) => {
+      if (deletingInvoiceRef.current) return;
       if (!confirm(tm('confirmDeleteInvoiceShort'))) {
         setSelectedInvoiceForAction(null);
         return;
       }
+      const id = String(invoice?.id || '').trim();
+      if (!id) {
+        setSelectedInvoiceForAction(null);
+        return;
+      }
+      deletingInvoiceRef.current = true;
+      setDeletingInvoiceId(id);
+      setSelectedInvoiceForAction(null);
       try {
         const { postgres } = await import('../../../services/postgres');
         await postgres.query(
           `UPDATE invoices SET is_deleted = true, updated_at = NOW() WHERE id = $1`,
-          [invoice.id]
+          [id]
         );
         toast.success(tm('invoiceDeleteSuccess'));
       } catch (err: any) {
         toast.error(`${tm('invoiceDeleteError')}: ${err?.message || String(err)}`);
+      } finally {
+        deletingInvoiceRef.current = false;
+        setDeletingInvoiceId(null);
       }
-      setSelectedInvoiceForAction(null);
     },
     print: async (invoice: any) => {
       if (import.meta.env.DEV) console.log('Print invoice:', invoice);
@@ -429,6 +443,22 @@ export function UnifiedInvoiceModule({ customers = [], products = [], defaultCat
               )}
             </div>
         </PercentBodyModal>
+      )}
+
+      {deletingInvoiceId && (
+        <FullscreenBodyPortal
+          className="flex items-center justify-center bg-black/40 backdrop-blur-sm"
+          role="alertdialog"
+          aria-busy="true"
+          aria-label={tm('deleting') || 'Siliniyor...'}
+        >
+          <div className="bg-white dark:bg-gray-800 rounded-xl px-8 py-6 shadow-xl flex flex-col items-center gap-3 min-w-[12rem]">
+            <div className="w-12 h-12 border-4 border-blue-600 border-t-transparent rounded-full animate-spin" />
+            <p className="text-sm font-medium text-gray-700 dark:text-gray-200">
+              {tm('deleting') || 'Siliniyor...'}
+            </p>
+          </div>
+        </FullscreenBodyPortal>
       )}
     </div>
   );

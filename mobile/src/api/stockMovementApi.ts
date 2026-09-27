@@ -68,7 +68,13 @@ const TRCODE_LABEL: Record<number, string> = {
   78: 'Fiyat Değişimi',
 };
 
-export function stockMovementLabel(row: Pick<StockMovementRow, 'trcode' | 'movement_type'>): string {
+export function stockMovementLabel(
+  row: Pick<StockMovementRow, 'trcode' | 'movement_type' | 'source_kind'>,
+): string {
+  // Logo alış faturası trcode=1 ambar Sarf ile çakışır — kaynak fatura ise alış/satış etiketi
+  if (row.source_kind === 'invoice') {
+    return row.movement_type === 'in' ? 'Alış Faturası' : 'Satış Faturası';
+  }
   return TRCODE_LABEL[row.trcode] || MOVEMENT_TYPE_LABEL[row.movement_type] || row.movement_type || '—';
 }
 

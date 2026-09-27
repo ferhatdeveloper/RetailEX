@@ -1096,11 +1096,11 @@ export function SupplierModule({ initialFilter = 'all' }: { initialFilter?: Cari
             {(
               [
                 { key: 'all' as const, label: tm('all') },
-                { key: 'customer' as const, label: tm('buyersLabel') || `${tm('customer')} (Alıcı)` },
-                { key: 'duplicates' as const, label: 'Mükerrerler' },
-                { key: 'supplier' as const, label: tm('sellersLabel') || `${tm('supplierLabel')} (Satıcı)` },
-                { key: 'employee' as const, label: (t as { party?: { cardType?: { employee?: string } } }).party?.cardType?.employee || 'Personel' },
-                { key: 'partner' as const, label: (t as { party?: { cardType?: { partner?: string } } }).party?.cardType?.partner || 'Şirket Ortağı' },
+                { key: 'customer' as const, label: tm('buyersLabel') },
+                { key: 'duplicates' as const, label: tm('duplicatesLabel') },
+                { key: 'supplier' as const, label: tm('sellersLabel') },
+                { key: 'employee' as const, label: tm('employeeFilterLabel') },
+                { key: 'partner' as const, label: tm('partnerFilterLabel') },
               ] as const
             ).map((tab) => (
               <button

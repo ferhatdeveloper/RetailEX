@@ -225,6 +225,8 @@ export const getStaticMenuSections = (t: Translations) => [
                     { label: t.menu.currentAccountReports, screen: 'financereports', icon: BarChart3 },
                     { label: t.menu.bankReports, screen: 'financereports', icon: BarChart3 },
                     { label: t.menu.cariExtractReport, screen: 'customer-extract', icon: FileText },
+                    { label: t.menu.cariDebtorsReport, screen: 'cari-debtors', icon: FileText },
+                    { label: t.menu.cariCreditorsReport, screen: 'cari-creditors', icon: FileText },
                     { label: t.menu.trialBalanceReport, screen: 'mizan', icon: BarChart3 }
                 ]
             },
@@ -440,6 +442,8 @@ export const staticMenuSections = getStaticMenuSections({
         journalAndSlips: 'Yevmiye Defteri & Fişler',
         currentAccountReports: 'Cari Hesap Raporları',
         cariExtractReport: 'Cari Ekstre',
+        cariDebtorsReport: 'Borçlu Cariler',
+        cariCreditorsReport: 'Alacaklı Cariler',
         cashReports: 'Kasa Raporları',
         bankReports: 'Banka Raporları',
         trialBalanceReport: 'Mizan Raporu',

@@ -186,11 +186,20 @@ export function InvoiceListModule({
     y: number;
     invoice: ListInvoice | null;
   } | null>(null);
+  /** Silme sırasında overlay + çift tıklama engeli */
+  const [deletingInvoiceId, setDeletingInvoiceId] = useState<string | null>(null);
+  const deletingInvoiceRef = useRef(false);
 
   const handleDeleteInvoice = async (id: string, invoiceNo: string) => {
+    if (deletingInvoiceRef.current) return;
     if (!confirm(tm('confirmDeleteInvoice').replace('{invoiceNo}', invoiceNo))) {
       return;
     }
+
+    deletingInvoiceRef.current = true;
+    setDeletingInvoiceId(id);
+    setContextMenu(null);
+    setMobileActionInvoice(null);
 
     try {
       const { invoicesAPI } = await import('../../../services/api/invoices');
@@ -199,10 +208,13 @@ export function InvoiceListModule({
       useSaleStore.getState().removeSaleById(id);
       void useSaleStore.getState().loadSales(500);
       toast.success(tm('invoiceDeleteSuccess'));
-      loadInvoices();
+      await loadInvoices();
     } catch (error: any) {
       console.error('Fatura silinirken hata:', error);
       toast.error(tm('invoiceDeleteError') + ': ' + (error.message || 'Bilinmeyen hata'));
+    } finally {
+      deletingInvoiceRef.current = false;
+      setDeletingInvoiceId(null);
     }
   };
 
@@ -1141,12 +1153,31 @@ export function InvoiceListModule({
 
   if (isLoading) {
     return (
-      <div className="h-full flex items-center justify-center">
-        <div className="text-center">
-          <div className="w-12 h-12 border-4 border-blue-600 border-t-transparent rounded-full animate-spin mx-auto mb-3"></div>
-          <p className="text-gray-600 dark:text-gray-300">{tm('loadingInvoices')}</p>
+      <>
+        <div className="h-full flex items-center justify-center">
+          <div className="text-center">
+            <div className="w-12 h-12 border-4 border-blue-600 border-t-transparent rounded-full animate-spin mx-auto mb-3"></div>
+            <p className="text-gray-600 dark:text-gray-300">
+              {deletingInvoiceId ? (tm('deleting') || 'Siliniyor...') : tm('loadingInvoices')}
+            </p>
+          </div>
         </div>
-      </div>
+        {deletingInvoiceId && (
+          <FullscreenBodyPortal
+            className="flex items-center justify-center bg-black/40 backdrop-blur-sm"
+            role="alertdialog"
+            aria-busy="true"
+            aria-label={tm('deleting') || 'Siliniyor...'}
+          >
+            <div className="bg-white dark:bg-gray-800 rounded-xl px-8 py-6 shadow-xl flex flex-col items-center gap-3 min-w-[12rem]">
+              <div className="w-12 h-12 border-4 border-blue-600 border-t-transparent rounded-full animate-spin" />
+              <p className="text-sm font-medium text-gray-700 dark:text-gray-200">
+                {tm('deleting') || 'Siliniyor...'}
+              </p>
+            </div>
+          </FullscreenBodyPortal>
+        )}
+      </>
     );
   }
 
@@ -1739,15 +1770,16 @@ export function InvoiceListModule({
                 ) : null}
                 <button
                   type="button"
-                  className="py-2.5 px-2 text-xs font-semibold rounded-lg bg-red-600 text-white col-span-2"
+                  disabled={!!deletingInvoiceId}
+                  className="py-2.5 px-2 text-xs font-semibold rounded-lg bg-red-600 text-white col-span-2 disabled:opacity-50 disabled:cursor-not-allowed"
                   onClick={() => {
+                    if (deletingInvoiceId) return;
                     const inv = mobileActionInvoice;
                     if (!inv?.id) return;
-                    setMobileActionInvoice(null);
                     void handleDeleteInvoice(inv.id, inv.invoice_no);
                   }}
                 >
-                  {tm('deleteAction')}
+                  {deletingInvoiceId ? (tm('deleting') || 'Siliniyor...') : tm('deleteAction')}
                 </button>
               </div>
             </div>
@@ -1827,11 +1859,12 @@ export function InvoiceListModule({
             },
             {
               id: 'delete',
-              label: tm('deleteAction'),
+              label: deletingInvoiceId ? (tm('deleting') || 'Siliniyor...') : tm('deleteAction'),
               icon: Trash2,
               onClick: () => {
+                if (deletingInvoiceId) return;
                 if (contextMenu.invoice?.id) {
-                  handleDeleteInvoice(contextMenu.invoice.id, contextMenu.invoice.invoice_no);
+                  void handleDeleteInvoice(contextMenu.invoice.id, contextMenu.invoice.invoice_no);
                 }
               },
               variant: 'danger'
@@ -2340,6 +2373,22 @@ export function InvoiceListModule({
         title={title || tm('invoices')}
         fileNameBase={title || tm('invoices')}
       />
+
+      {deletingInvoiceId && (
+        <FullscreenBodyPortal
+          className="flex items-center justify-center bg-black/40 backdrop-blur-sm"
+          role="alertdialog"
+          aria-busy="true"
+          aria-label={tm('deleting') || 'Siliniyor...'}
+        >
+          <div className="bg-white dark:bg-gray-800 rounded-xl px-8 py-6 shadow-xl flex flex-col items-center gap-3 min-w-[12rem]">
+            <div className="w-12 h-12 border-4 border-blue-600 border-t-transparent rounded-full animate-spin" />
+            <p className="text-sm font-medium text-gray-700 dark:text-gray-200">
+              {tm('deleting') || 'Siliniyor...'}
+            </p>
+          </div>
+        </FullscreenBodyPortal>
+      )}
     </div>
   );
 }

@@ -30,6 +30,8 @@ const EXACT_SCREENS = new Set<string>([
   'balance-sheet',
   'reconciliation',
   'customer-extract',
+  'cari-debtors',
+  'cari-creditors',
   'store-performance',
   'inventory-aging',
   'material-extract',

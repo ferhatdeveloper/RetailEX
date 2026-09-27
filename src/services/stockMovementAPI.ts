@@ -293,12 +293,23 @@ export const MATERIAL_SLIP_ADD_MENU = [
 
 export type MaterialSlipAddMenuItem = (typeof MATERIAL_SLIP_ADD_MENU)[number];
 
-/** Liste / modal Belge Türü etiketi (tm anahtarları) */
+/**
+ * Liste / modal Belge Türü etiketi (tm anahtarları).
+ * Fatura satırlarında Logo trcode (alış=1) ambar Sarf (CONSUMPTION=1) ile çakışır;
+ * bu yüzden `sourceKind === 'invoice'` iken Fiş Listesi ile aynı alış/satış etiketi kullanılır.
+ */
 export function labelStockSlipDocumentType(
     tm: (key: string) => string,
     trcode: number | null | undefined,
     movementType?: string,
+    sourceKind?: 'slip' | 'invoice' | null,
 ): string {
+    if (sourceKind === 'invoice') {
+        const mt = String(movementType || '').toLowerCase();
+        if (mt === 'in') return tm('purchaseInvoice') || 'Alış Faturası';
+        return tm('salesInvoice') || 'Satış Faturası';
+    }
+
     const code = Number(trcode ?? 0);
     switch (code) {
         case STOCK_SLIP_TRCODES.TRANSFER:

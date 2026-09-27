@@ -88,6 +88,7 @@ import {
   CriticalStockReport,
   WarehouseStockReport,
 } from './ErpCoreReports';
+import { CariDebtorsReport, CariCreditorsReport } from './CariDebtorCreditorReport';
 import { EarningsByProjectReport } from './EarningsByProjectReport';
 import { CashLedgerReport } from './CashLedgerReport';
 import { ContactAccountLegacyReport } from './ContactAccountLegacyReport';
@@ -844,7 +845,7 @@ type ReportTab =
   // Satış Raporları
   'top-products' | 'category-analysis' | 'hourly-analysis' | 'cashiers' | 'customer-sales' | 'sales-trend' | 'sales-target' | 'sales-returns' | 'product-gross-profit' |
   // Finansal Raporlar
-  'profit-loss' | 'cash-flow' | 'debt-aging' | 'check-tracking' | 'current-account' | 'purchase-summary' | 'supplier-purchase-returns' | 'collection-due' | 'cari-extract' |
+  'profit-loss' | 'cash-flow' | 'debt-aging' | 'check-tracking' | 'current-account' | 'cari-debtors' | 'cari-creditors' | 'purchase-summary' | 'supplier-purchase-returns' | 'collection-due' | 'cari-extract' |
   // VIVA SOLAR — yeni ERP raporları
   'earnings-by-project' | 'cash-ledger' | 'contact-account-legacy' | 'staff-attendance' | 'invoice-items-detail' |
   // Stok Raporları
@@ -5439,6 +5440,8 @@ export function ReportsModule({
           { key: 'cash-flow', label: tm('nakitAkisRaporu'), icon: <TransactionOutlined /> },
           { key: 'debt-aging', label: tm('borcAlacakYaslandirma'), icon: <HistoryOutlined /> },
           { key: 'current-account', label: tm('cariHesapOzeti'), icon: <BankOutlined /> },
+          { key: 'cari-debtors', label: tm('cariDebtorsReportTitle'), icon: <BankOutlined /> },
+          { key: 'cari-creditors', label: tm('cariCreditorsReportTitle'), icon: <BankOutlined /> },
           { key: 'cari-extract', label: tm('erpCariExtractTitle'), icon: <AuditOutlined /> },
           { key: 'collection-due', label: tm('erpCollectionDueTitle'), icon: <HourglassOutlined /> },
           { key: 'check-tracking', label: tm('cekSenetTakibi'), icon: <AuditOutlined /> },
@@ -8035,6 +8038,8 @@ export function ReportsModule({
 
             {selectedTab === 'debt-aging' && <CariAgingReport />}
             {selectedTab === 'current-account' && <CariBalanceSummaryReport />}
+            {selectedTab === 'cari-debtors' && <CariDebtorsReport />}
+            {selectedTab === 'cari-creditors' && <CariCreditorsReport />}
             {selectedTab === 'cash-flow' && <CashBankMovementReport />}
             {selectedTab === 'purchase-summary' && <PurchaseSummaryReport />}
             {selectedTab === 'supplier-purchase-returns' && <SupplierPurchaseReturnsReport />}

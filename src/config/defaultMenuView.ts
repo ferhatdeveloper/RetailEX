@@ -178,6 +178,8 @@ export const DEFAULT_MENU_ITEM_ORDERS: Readonly<Record<string, number>> = {
   purchaseinvoice: 47,
   purchaserequest: 48,
   'customer-extract': 81,
+  'cari-debtors': 82,
+  'cari-creditors': 83,
   'material-classes': 20,
   'material-reports': 33,
   'profit-dashboard': 111,

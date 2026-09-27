@@ -1,4 +1,4 @@
-﻿import { useState, useEffect } from 'react';
+﻿import { useState, useEffect, useRef } from 'react';
 import { FileText, Plus, Edit, Trash2, RefreshCw, Archive } from 'lucide-react';
 import { DevExDataGrid } from '../../shared/DevExDataGrid';
 import { createColumnHelper, ColumnDef } from '@tanstack/react-table';
@@ -11,6 +11,7 @@ import { UniversalInvoiceForm } from '../invoices/UniversalInvoiceForm';
 import { ContextMenu } from '../../shared/ContextMenu';
 import { ColumnVisibilityMenu } from '../../shared/ColumnVisibilityMenu';
 import { useRetailexInvalidateRefresh } from '../../../hooks/useRetailexInvalidateRefresh';
+import { FullscreenBodyPortal } from '../../shared/FullscreenBodyPortal';
 
 interface InvoiceItem {
   id: string;
@@ -57,6 +58,8 @@ export function PurchaseInvoiceModule({ onCreateInvoice, onSwitchTab, activeTab:
     y: number;
     invoice: Invoice | null;
   } | null>(null);
+  const [deletingInvoiceId, setDeletingInvoiceId] = useState<string | null>(null);
+  const deletingInvoiceRef = useRef(false);
 
   // Column visibility state
   const [columnVisibility, setColumnVisibility] = useState(() => {
@@ -182,20 +185,30 @@ export function PurchaseInvoiceModule({ onCreateInvoice, onSwitchTab, activeTab:
 
 
   const handleDeleteInvoice = async (invoiceId: string) => {
-    if (confirm(tm('deleteInvoiceConfirm') || 'Bu faturayı silmek istediğinizden emin misiniz?')) {
-      try {
-        const ok = await invoicesAPI.delete(invoiceId);
-        if (!ok) {
-          toast.error(tm('deleteError') || 'Silme işleminde hata oluştu');
-          return;
-        }
-        toast.success(tm('invoiceSoftDeletedToast') || 'Fatura silindi. «Silinen» sekmesinden görebilirsiniz.');
-        setListFilter('deleted');
-        loadInvoices();
-      } catch (error) {
-        console.error('Silme hatası:', error);
+    if (deletingInvoiceRef.current) return;
+    if (!confirm(tm('deleteInvoiceConfirm') || 'Bu faturayı silmek istediğinizden emin misiniz?')) {
+      return;
+    }
+
+    deletingInvoiceRef.current = true;
+    setDeletingInvoiceId(invoiceId);
+    setContextMenu(null);
+
+    try {
+      const ok = await invoicesAPI.delete(invoiceId);
+      if (!ok) {
         toast.error(tm('deleteError') || 'Silme işleminde hata oluştu');
+        return;
       }
+      toast.success(tm('invoiceSoftDeletedToast') || 'Fatura silindi. «Silinen» sekmesinden görebilirsiniz.');
+      setListFilter('deleted');
+      await loadInvoices();
+    } catch (error) {
+      console.error('Silme hatası:', error);
+      toast.error(tm('deleteError') || 'Silme işleminde hata oluştu');
+    } finally {
+      deletingInvoiceRef.current = false;
+      setDeletingInvoiceId(null);
     }
   };
 
@@ -492,10 +505,27 @@ export function PurchaseInvoiceModule({ onCreateInvoice, onSwitchTab, activeTab:
           onClose={() => setContextMenu(null)}
           onEdit={() => contextMenu.invoice && !contextMenu.invoice.is_cancelled && handleEditInvoice(contextMenu.invoice)}
           onDelete={() => {
+            if (deletingInvoiceId) return;
             if (contextMenu.invoice?.is_cancelled) return;
-            if (contextMenu.invoice?.id) handleDeleteInvoice(contextMenu.invoice.id);
+            if (contextMenu.invoice?.id) void handleDeleteInvoice(contextMenu.invoice.id);
           }}
         />
+      )}
+
+      {deletingInvoiceId && (
+        <FullscreenBodyPortal
+          className="flex items-center justify-center bg-black/40 backdrop-blur-sm"
+          role="alertdialog"
+          aria-busy="true"
+          aria-label={tm('deleting') || 'Siliniyor...'}
+        >
+          <div className="bg-white dark:bg-gray-800 rounded-xl px-8 py-6 shadow-xl flex flex-col items-center gap-3 min-w-[12rem]">
+            <div className="w-12 h-12 border-4 border-teal-600 border-t-transparent rounded-full animate-spin" />
+            <p className="text-sm font-medium text-gray-700 dark:text-gray-200">
+              {tm('deleting') || 'Siliniyor...'}
+            </p>
+          </div>
+        </FullscreenBodyPortal>
       )}
     </div>
   );

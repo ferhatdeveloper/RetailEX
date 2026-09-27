@@ -10,7 +10,12 @@ import {
   sqlFirmScopedCardMatch,
 } from './accountBalance';
 import { supplierAPI } from './suppliers';
-import { buildEkstreRows, resolveEkstreDescription } from '../../utils/cariAccountStatement';
+import {
+  buildEkstreRows,
+  isCariCreditorBalance,
+  isCariDebtorBalance,
+  resolveEkstreDescription,
+} from '../../utils/cariAccountStatement';
 import { SQL_COUNTABLE_SALE_STATUS } from '../../utils/saleInvoiceStatus';
 import { localTodayDateKey } from '../../utils/localCalendarDate';
 import {
@@ -78,6 +83,8 @@ export interface CariBalanceRow {
   balance: number;
   creditLimit: number;
   paymentTerms: string;
+  /** Cari kart telefonu (varsa) */
+  phone?: string;
 }
 
 export interface CashBankMovementRow {
@@ -668,20 +675,34 @@ export const erpReportsAPI = {
   async getCariBalances(opts?: {
     cardType?: 'customer' | 'supplier' | 'employee' | 'all';
     onlyNonZero?: boolean;
-    /** true ise yalnızca borç bakiyeli (balance > 0) cariler — muhasebe denetimi */
+    /**
+     * @deprecated ABS/yalın balance>0 kullanır; tedarikçi simetrisini bozar.
+     * Yerine `balanceSide: 'debtor' | 'creditor'` kullanın.
+     */
     onlyDebit?: boolean;
+    /**
+     * Borçlu / alacaklı — cardType simetrisi korunur (`getCariBalanceDirection` /
+     * `isCariDebtorBalance` / `isCariCreditorBalance`). Sıfır bakiyeler hariç.
+     */
+    balanceSide?: 'debtor' | 'creditor';
     cariFilter?: string;
   }): Promise<CariBalanceRow[]> {
     const want = opts?.cardType ?? 'all';
     const onlyNonZero = opts?.onlyNonZero !== false;
     const onlyDebit = opts?.onlyDebit === true;
+    const balanceSide = opts?.balanceSide;
     const rawFilter = String(opts?.cariFilter ?? '').trim();
     const filterKey = normalizeTrText(rawFilter);
     const filterExactCode = rawFilter;
     const hasFilter = filterKey.length > 0;
     const firmNr = padFirm();
 
-    const passBalance = (balance: number) => {
+    const passBalance = (
+      balance: number,
+      cardType: CariBalanceRow['cardType'],
+    ) => {
+      if (balanceSide === 'debtor') return isCariDebtorBalance(cardType, balance);
+      if (balanceSide === 'creditor') return isCariCreditorBalance(cardType, balance);
       if (onlyDebit) return balance > 0.009;
       if (onlyNonZero) return Math.abs(balance) > 0.009;
       return true;
@@ -709,16 +730,19 @@ export const erpReportsAPI = {
           const code = String(a.code ?? '');
           const name = String(a.name ?? '');
           if (!matchFilter(code, name)) continue;
+          const cardType: CariBalanceRow['cardType'] =
+            a.cardType === 'supplier' ? 'supplier' : 'customer';
           const balance = Number(a.balance ?? 0) || 0;
-          if (!passBalance(balance)) continue;
+          if (!passBalance(balance, cardType)) continue;
           out.push({
             accountId: String(a.id ?? ''),
             accountCode: code,
             accountName: name,
-            cardType: a.cardType === 'supplier' ? 'supplier' : 'customer',
+            cardType,
             balance,
             creditLimit: Number(a.credit_limit ?? 0) || 0,
             paymentTerms: String(a.payment_terms ?? ''),
+            phone: String(a.phone ?? '').trim() || undefined,
           });
         }
       } catch (err) {
@@ -736,7 +760,7 @@ export const erpReportsAPI = {
             .get<Record<string, unknown>[]>(
               `/rex_${firmNr}_parties`,
               {
-                select: 'id,code,name,balance,card_type,is_active,firm_nr',
+                select: 'id,code,name,balance,card_type,is_active,firm_nr,phone',
                 is_active: 'eq.true',
                 order: 'name.asc',
                 limit: '2000',
@@ -752,7 +776,7 @@ export const erpReportsAPI = {
             const name = String(r.name ?? '');
             if (!matchFilter(code, name)) continue;
             const balance = Number(r.balance ?? 0) || 0;
-            if (!passBalance(balance)) continue;
+            if (!passBalance(balance, ct)) continue;
             out.push({
               accountId: String(r.id ?? ''),
               accountCode: code,
@@ -761,6 +785,7 @@ export const erpReportsAPI = {
               balance,
               creditLimit: 0,
               paymentTerms: '',
+              phone: String(r.phone ?? '').trim() || undefined,
             });
           }
         } else {
@@ -782,7 +807,8 @@ export const erpReportsAPI = {
               COALESCE(p.code,'') AS account_code,
               COALESCE(p.name,'') AS account_name,
               LOWER(TRIM(COALESCE(p.card_type, ''))) AS card_type,
-              COALESCE(p.balance, 0) AS balance
+              COALESCE(p.balance, 0) AS balance,
+              COALESCE(p.phone, '') AS phone
             FROM rex_${firmNr}_parties p
             WHERE COALESCE(p.is_active, true) = true
               AND LOWER(TRIM(COALESCE(p.card_type, ''))) IN (${typeList})
@@ -793,16 +819,18 @@ export const erpReportsAPI = {
             { firmNr, periodNr: ERP_SETTINGS.periodNr },
           );
           for (const r of partySqlRows || []) {
+            const ct = mapCariCardType(r.card_type);
             const balance = Number(r.balance ?? 0);
-            if (!passBalance(balance)) continue;
+            if (!passBalance(balance, ct)) continue;
             out.push({
               accountId: String(r.account_id ?? ''),
               accountCode: String(r.account_code ?? ''),
               accountName: String(r.account_name ?? ''),
-              cardType: mapCariCardType(r.card_type),
+              cardType: ct,
               balance,
               creditLimit: 0,
               paymentTerms: '',
+              phone: String(r.phone ?? '').trim() || undefined,
             });
           }
         }
@@ -811,7 +839,12 @@ export const erpReportsAPI = {
       }
     }
 
-    return out.sort((a, b) => b.balance - a.balance).slice(0, ROW_LIMIT);
+    return out
+      .sort((a, b) => {
+        if (balanceSide) return Math.abs(b.balance) - Math.abs(a.balance);
+        return b.balance - a.balance;
+      })
+      .slice(0, ROW_LIMIT);
   },
 
   async getCashBankMovements(opts: {

@@ -249,7 +249,9 @@ export function StockMovementsModule({ defaultFilter = 'all' }: StockMovementsMo
                 (m as StockMovement & { warehouses?: { name?: string } }).warehouses?.name
                     ?.toLowerCase()
                     .includes(q) ||
-                labelStockSlipDocumentType(tm, m.trcode, m.movement_type).toLowerCase().includes(q) ||
+                labelStockSlipDocumentType(tm, m.trcode, m.movement_type, m.source_kind)
+                    .toLowerCase()
+                    .includes(q) ||
                 (m.description || '').toLowerCase().includes(q);
             return tabOk && matchesSearch;
         });

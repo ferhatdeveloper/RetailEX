@@ -140,7 +140,7 @@ export function buildStockMovementsListColumns(options: {
 
   return [
     columnHelper.accessor(
-      (row) => labelStockSlipDocumentType(tm, row.trcode, row.movement_type),
+      (row) => labelStockSlipDocumentType(tm, row.trcode, row.movement_type, row.source_kind),
       {
         id: 'document_type',
         header: label('document_type'),

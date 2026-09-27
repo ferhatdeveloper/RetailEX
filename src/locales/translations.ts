@@ -32,6 +32,10 @@ export interface MenuTranslations {
   creditCardPosSlips: string;
   currentAccountReports: string;
   cariExtractReport: string;
+  /** Finans > Raporlar — Borçlu Cariler */
+  cariDebtorsReport: string;
+  /** Finans > Raporlar — Alacaklı Cariler */
+  cariCreditorsReport: string;
   currentAccountSlips: string;
   currentAccounts: string;
   customReports: string;
@@ -1917,6 +1921,8 @@ export const translations: any = {
       creditCardPosSlips: 'Kredi Kartı Pos Fişleri',
       currentAccountReports: 'Cari Hesap Raporları',
       cariExtractReport: 'Cari Ekstre',
+      cariDebtorsReport: 'Borçlu Cariler',
+      cariCreditorsReport: 'Alacaklı Cariler',
       currentAccountSlips: 'Cari Hesap Fişleri',
       currentAccounts: 'Cari Hesaplar',
       customReports: 'Özel Raporlar',
@@ -3701,6 +3707,8 @@ export const translations: any = {
       creditCardPosSlips: 'Credit Card POS Slips',
       currentAccountReports: 'Current Account Reports',
       cariExtractReport: 'Account statement',
+      cariDebtorsReport: 'Debtor Accounts',
+      cariCreditorsReport: 'Creditor Accounts',
       currentAccountSlips: 'Current Account Slips',
       currentAccounts: 'Current Accounts',
       customReports: 'Custom Reports',
@@ -5352,6 +5360,8 @@ export const translations: any = {
       creditCardPosSlips: 'سندات نقاط البيع (POS)',
       currentAccountReports: 'تقارير الحسابات الجارية',
       cariExtractReport: 'كشف حساب',
+      cariDebtorsReport: 'الحسابات المدينة',
+      cariCreditorsReport: 'الحسابات الدائنة',
       currentAccountSlips: 'سندات الحسابات الجارية',
       currentAccounts: 'الحسابات الجارية',
       customReports: 'تقارير مخصصة',
@@ -6996,6 +7006,8 @@ export const translations: any = {
       creditCardPosSlips: 'پسوڵەکانی پۆس',
       currentAccountReports: 'ڕاپۆرتەکانی حیسابی جاری',
       cariExtractReport: 'پوختەی هەژمار',
+      cariDebtorsReport: 'هەژمارە قەرزدارەکان',
+      cariCreditorsReport: 'هەژمارە خاوەن قەرزەکان',
       currentAccountSlips: 'پسوڵەکانی حیسابی جاری',
       currentAccounts: 'حیسابە جارییەکان',
       customReports: 'ڕاپۆرتە تایبەتەکان',
