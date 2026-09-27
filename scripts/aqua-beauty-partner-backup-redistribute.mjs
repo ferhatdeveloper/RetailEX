@@ -225,6 +225,10 @@ async function backup(c) {
   return { sqlPath, jsonPath, partners, partnerIds, beforeBalances: snap.partners };
 }
 
+/**
+ * Aylık Gün Özeti ile aynı net:
+ * ciro (normalizeSalesHeaderNetAmount) − birleşik masraf (gider + kasa çıkış).
+ */
 async function monthlyNets(c) {
   const { rows } = await c.query(
     `
@@ -232,32 +236,69 @@ async function monthlyNets(c) {
       SELECT to_char((date AT TIME ZONE 'Asia/Baghdad'), 'YYYY-MM') AS ym,
              SUM(
                CASE
-                 WHEN fiche_type = 'sales_invoice' THEN COALESCE(net_amount, 0)
+                 WHEN fiche_type NOT IN ('sales_invoice', 'S') THEN 0
+                 /* invoices.normalizeSalesHeaderNetAmount */
+                 WHEN NOT (COALESCE(net_amount, 0) > 0) AND COALESCE(total_gross, 0) > 0
+                   THEN total_gross
+                 WHEN COALESCE(total_discount, 0) > 0.001
+                  AND COALESCE(total_net, 0) > 0
+                  AND COALESCE(net_amount, 0) + 0.02 >= COALESCE(total_net, 0)
+                  AND (COALESCE(total_net, 0) - COALESCE(total_discount, 0) + COALESCE(total_vat, 0)) + 0.02
+                      < COALESCE(net_amount, 0)
+                   THEN GREATEST(0, COALESCE(total_net, 0) - COALESCE(total_discount, 0) + COALESCE(total_vat, 0))
                  WHEN fiche_type = 'S' THEN COALESCE(NULLIF(net_amount, 0), total_net, 0)
-                 ELSE 0
+                 ELSE COALESCE(net_amount, 0)
                END
              )::float AS rev
       FROM ${SALES}
       WHERE date >= $1::date AND date < ($2::text || '-01-01')::date
         AND COALESCE(is_cancelled, false) = false
-        AND LOWER(COALESCE(status, '')) NOT IN ('cancelled', 'canceled', 'refunded')
+        AND LOWER(COALESCE(status, '')) NOT IN ('cancelled', 'canceled', 'refunded', 'silindi', 'iptal')
         AND fiche_type IN ('sales_invoice', 'S')
       GROUP BY 1
     ),
-    exp AS (
+    exp_cards AS (
       SELECT to_char(expense_date::date, 'YYYY-MM') AS ym,
              SUM(amount)::float AS e
       FROM ${EXPENSES}
       WHERE expense_date >= $1::date AND expense_date < ($2::text || '-01-01')::date
         AND COALESCE(LOWER(status), '') NOT IN ('cancelled', 'canceled', 'iptal')
       GROUP BY 1
+    ),
+    cash_out AS (
+      SELECT to_char((cl.date AT TIME ZONE 'Asia/Baghdad'), 'YYYY-MM') AS ym,
+             SUM(cl.amount)::float AS e
+      FROM ${CASH} cl
+      WHERE cl.date >= $1::date AND cl.date < ($2::text || '-01-01')::date
+        AND cl.sign < 0
+        AND UPPER(COALESCE(cl.transaction_type, '')) IN (
+          'GIDER_PUSULASI', 'MAAS_ODEME', 'AVANS_ODEME', 'CH_ODEME',
+          'KASA_CIKIS', 'ORTAK_DAGITIM_KAR', 'ORTAK_SERMAYE_ODEME'
+        )
+        AND NOT EXISTS (
+          SELECT 1 FROM ${EXPENSES} e
+          WHERE e.cash_line_id = cl.id
+            AND COALESCE(LOWER(e.status), '') NOT IN ('cancelled', 'canceled', 'iptal')
+        )
+        AND NOT (
+          UPPER(COALESCE(cl.transaction_type, '')) IN ('GIDER_PUSULASI', 'KASA_CIKIS')
+          AND EXISTS (
+            SELECT 1 FROM ${EXPENSES} e
+            WHERE e.expense_date::date = (cl.date AT TIME ZONE 'Asia/Baghdad')::date
+              AND lower(trim(COALESCE(e.description, '')))
+                  = lower(trim(COALESCE(cl.definition, '')))
+              AND COALESCE(LOWER(e.status), '') NOT IN ('cancelled', 'canceled', 'iptal')
+          )
+        )
+      GROUP BY 1
     )
-    SELECT COALESCE(s.ym, e.ym) AS ym,
+    SELECT COALESCE(s.ym, ec.ym, co.ym) AS ym,
            COALESCE(s.rev, 0)::float AS revenue,
-           COALESCE(e.e, 0)::float AS expenses,
-           (COALESCE(s.rev, 0) - COALESCE(e.e, 0))::float AS net
+           (COALESCE(ec.e, 0) + COALESCE(co.e, 0))::float AS expenses,
+           (COALESCE(s.rev, 0) - COALESCE(ec.e, 0) - COALESCE(co.e, 0))::float AS net
     FROM sales s
-    FULL OUTER JOIN exp e ON e.ym = s.ym
+    FULL OUTER JOIN exp_cards ec ON ec.ym = s.ym
+    FULL OUTER JOIN cash_out co ON co.ym = COALESCE(s.ym, ec.ym)
     ORDER BY 1
     `,
     [`${YEAR}-01-01`, String(YEAR + 1)],
