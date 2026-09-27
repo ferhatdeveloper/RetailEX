@@ -56,6 +56,7 @@ async function ensureWhatsAppReady(): Promise<{ ok: true } | { ok: false; error:
 async function enqueuePreviewItems(
   items: WhatsAppBulkPreviewItem[],
   onProgress?: (p: WhatsAppBulkSendProgress) => void,
+  scheduledAt?: string | null,
 ): Promise<{ queued: number; skipped: number; errors: string[] }> {
   const errors: string[] = [];
   let queued = 0;
@@ -65,7 +66,7 @@ async function enqueuePreviewItems(
     const item = items[i];
     onProgress?.({ phase: 'enqueue', done: i, total, currentName: item.name });
     try {
-      await messagingService.enqueueNotification({
+      const id = await messagingService.enqueueNotification({
         event_type: item.event_type ?? 'customer_broadcast',
         channel: 'whatsapp',
         recipient_phone: item.phone,
@@ -74,8 +75,10 @@ async function enqueuePreviewItems(
         reference_type: item.reference_type,
         reference_id: item.reference_id,
         payload_json: item.payload_json,
+        scheduled_at: scheduledAt ?? null,
       });
-      queued++;
+      if (id) queued++;
+      else skipped++;
     } catch (e: unknown) {
       skipped++;
       errors.push(`${item.name}: ${e instanceof Error ? e.message : String(e)}`);
@@ -93,6 +96,8 @@ export async function runWhatsAppBulkCampaign(
     onProgress?: (p: WhatsAppBulkSendProgress) => void;
     shouldAbort?: () => boolean;
     enqueueOnly?: boolean;
+    /** ISO — gelecekteyse yalnızca kuyruğa yazılır, vadesi gelince gönderilir */
+    scheduledAt?: string | null;
   },
 ): Promise<{ queued: number; sent: number; skipped: number; errors: string[] }> {
   const ready = await ensureWhatsAppReady();
@@ -103,11 +108,15 @@ export async function runWhatsAppBulkCampaign(
     return { queued: 0, sent: 0, skipped: 0, errors: [] };
   }
 
-  const enq = await enqueuePreviewItems(items, options?.onProgress);
+  const scheduledAt = options?.scheduledAt?.trim() || null;
+  const isFuture =
+    !!scheduledAt && !Number.isNaN(new Date(scheduledAt).getTime()) && new Date(scheduledAt).getTime() > Date.now() + 30_000;
+
+  const enq = await enqueuePreviewItems(items, options?.onProgress, scheduledAt);
   if (enq.queued === 0) {
     return { queued: 0, sent: 0, skipped: items.length, errors: enq.errors };
   }
-  if (options?.enqueueOnly) {
+  if (options?.enqueueOnly || isFuture) {
     return { queued: enq.queued, sent: 0, skipped: enq.skipped, errors: enq.errors };
   }
 

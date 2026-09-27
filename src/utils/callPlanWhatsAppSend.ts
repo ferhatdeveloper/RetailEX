@@ -42,7 +42,7 @@ function replaceCallPlanPlaceholders(
   extra?: Record<string, string>,
 ): string {
   const name = String(customer.name ?? '').trim() || 'Müşteri';
-  const callDays = customerCallWeekdaysLabel(customer.call_plan_weekdays, true);
+  const callDays = customerCallWeekdaysLabel(customer.call_plan_weekdays, 'tr-TR', true);
   const today = new Date().toISOString().slice(0, 10);
   const vars: Record<string, string> = {
     customer_name: name,
@@ -104,7 +104,7 @@ export async function buildCallPlanWhatsAppPayload(
   let payload_json: Record<string, unknown> | null = null;
 
   if (provider === 'META' && settings && preset !== 'custom') {
-    const callDays = customerCallWeekdaysLabel(customer.call_plan_weekdays, true) || '—';
+    const callDays = customerCallWeekdaysLabel(customer.call_plan_weekdays, 'tr-TR', true) || '—';
     const payload = buildMetaAppointmentQueuePayload(
       settings,
       {
@@ -229,7 +229,7 @@ export async function buildCallPlanBulkPreviewList(
       name: built.name,
       phone: built.phone,
       messageText: built.messageText,
-      contextLine: customerCallWeekdaysLabel(customer.call_plan_weekdays, true) || undefined,
+      contextLine: customerCallWeekdaysLabel(customer.call_plan_weekdays, 'tr-TR', true) || undefined,
       reference_type: 'customer_call_plan',
       reference_id: built.reference_id,
       payload_json: built.payload_json,

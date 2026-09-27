@@ -18,6 +18,12 @@ import {
   CheckCircle2,
   ExternalLink,
   CalendarRange,
+  Cake,
+  PartyPopper,
+  Settings2,
+  FileText,
+  CalendarDays,
+  ListOrdered,
 } from 'lucide-react';
 import { toast } from 'sonner';
 import { useTheme } from '../../contexts/ThemeContext';
@@ -53,6 +59,13 @@ import {
   type WhatsAppFreeTextPresetId,
   type WhatsAppMessageLang,
 } from '../../services/messaging/whatsappMessageLang';
+import { messageTemplateService, type MessageTemplateRow } from '../../services/messaging/messageTemplateService';
+import {
+  MsgAutomationPanel,
+  MsgQueueLogPanel,
+  MsgSpecialDaysPanel,
+  MsgTemplatesPanel,
+} from './MesajBildirimCampaignPanels';
 
 export interface MesajBildirimModuleProps {
   embedded?: boolean;
@@ -63,6 +76,7 @@ export interface MesajBildirimModuleProps {
 }
 
 type NotifyMode = CustomerNotifyAudience | 'follow_up_range';
+type MainTab = 'send' | 'templates' | 'special' | 'auto' | 'queue';
 
 const BASE_AUDIENCE_MODES: Array<{
   id: CustomerNotifyAudience;
@@ -74,6 +88,8 @@ const BASE_AUDIENCE_MODES: Array<{
   { id: 'bulk_all', icon: Users, labelKey: 'msgNotifyModeBulk' },
   { id: 'group_include', icon: Filter, labelKey: 'msgNotifyModeGroup' },
   { id: 'group_exclude', icon: FilterX, labelKey: 'msgNotifyModeGroupExclude' },
+  { id: 'birthday_today', icon: Cake, labelKey: 'msgNotifyModeBirthdayToday' },
+  { id: 'birthday_upcoming', icon: PartyPopper, labelKey: 'msgNotifyModeBirthdayUpcoming' },
 ];
 
 export function MesajBildirimModule({
@@ -120,6 +136,10 @@ export function MesajBildirimModule({
   const [bulkPreviewOpen, setBulkPreviewOpen] = useState(false);
   const [bulkPreviewItems, setBulkPreviewItems] = useState<WhatsAppBulkPreviewItem[]>([]);
   const [bulkPreviewTitle, setBulkPreviewTitle] = useState('');
+  const [mainTab, setMainTab] = useState<MainTab>('send');
+  const [customTemplates, setCustomTemplates] = useState<MessageTemplateRow[]>([]);
+  const [selectedCustomTplId, setSelectedCustomTplId] = useState('');
+  const [upcomingDays, setUpcomingDays] = useState(7);
 
   const panel = darkMode ? 'bg-gray-800 border-gray-700' : 'bg-white border-gray-200';
   const inputCls = darkMode
@@ -138,14 +158,19 @@ export function MesajBildirimModule({
   const loadAll = useCallback(async () => {
     setLoading(true);
     try {
-      const [list, settings, queueStats] = await Promise.all([
+      const [list, settings, queueStats, tpls] = await Promise.all([
         customerNotificationService.listActiveCustomers(),
         customerNotificationService.getMessagingSettings(),
         messagingService.getQueueStats(),
+        messageTemplateService.list(true),
       ]);
       setCustomers(list);
       setProvider((settings?.whatsapp_provider || 'NONE').toString().toUpperCase());
       setStats(queueStats);
+      setCustomTemplates(tpls);
+      if (settings?.birthday_upcoming_days) {
+        setUpcomingDays(Number(settings.birthday_upcoming_days) || 7);
+      }
       if (settings?.meta_appointment_template_name) {
         setMetaTemplateId(settings.meta_appointment_template_name);
       }
@@ -233,14 +258,19 @@ export function MesajBildirimModule({
     }
     let cancelled = false;
     void customerNotificationService
-      .resolveRecipients({ mode, customerIds: selectedIds, groupFilter })
+      .resolveRecipients({
+        mode,
+        customerIds: selectedIds,
+        groupFilter,
+        upcomingDays,
+      })
       .then((rows) => {
         if (!cancelled) setResolvedCount(rows.length);
       });
     return () => {
       cancelled = true;
     };
-  }, [mode, selectedIds, groupFilter, customers, selectedFollowUpRows.length]);
+  }, [mode, selectedIds, groupFilter, customers, selectedFollowUpRows.length, upcomingDays]);
 
   const previewMessage = useMemo(() => {
     if (mode === 'follow_up_range' && followUpBulkRows[0]) {
@@ -348,17 +378,22 @@ export function MesajBildirimModule({
           mode: mode as CustomerNotifyAudience,
           customerIds: selectedIds,
           groupFilter,
+          upcomingDays,
         });
         if (recipients.length === 0) {
           toast.warning(tm('msgNotifyNoRecipients'));
           return;
         }
+        const eventType =
+          mode === 'birthday_today' || mode === 'birthday_upcoming'
+            ? mode
+            : 'customer_broadcast';
         items = await customerNotificationService.buildBulkPreviewItems({
           recipients,
           messageTemplate: messageText,
           metaTemplateId: isMeta ? metaTemplateId : undefined,
           metaManualParameters: isMeta ? metaParams : undefined,
-          eventType: 'customer_broadcast',
+          eventType,
         });
         setBulkPreviewTitle(tm('msgNotifyBulkPreviewSubtitle'));
       }
@@ -389,6 +424,7 @@ export function MesajBildirimModule({
         mode: mode as CustomerNotifyAudience,
         customerIds: selectedIds,
         groupFilter,
+        upcomingDays,
       });
       if (isMeta) {
         const family = metaPresetFamilyForFreeTextPreset(freeTextPreset);
@@ -410,7 +446,7 @@ export function MesajBildirimModule({
         eventType: 'customer_broadcast',
       });
     },
-    [mode, followUpReminders, selectedFollowUpRows, selectedIds, groupFilter, isMeta, metaParams, freeTextPreset, messageText],
+    [mode, followUpReminders, selectedFollowUpRows, selectedIds, groupFilter, isMeta, metaParams, freeTextPreset, messageText, upcomingDays],
   );
 
   const handleProcessQueue = async () => {
@@ -512,6 +548,53 @@ export function MesajBildirimModule({
         </div>
       )}
 
+      <div className="flex flex-wrap gap-2">
+        {(
+          [
+            { id: 'send' as const, icon: Send, labelKey: 'msgNotifyTabSend' },
+            { id: 'templates' as const, icon: FileText, labelKey: 'msgNotifyTabTemplates' },
+            { id: 'special' as const, icon: CalendarDays, labelKey: 'msgNotifyTabSpecial' },
+            { id: 'auto' as const, icon: Settings2, labelKey: 'msgNotifyTabAuto' },
+            { id: 'queue' as const, icon: ListOrdered, labelKey: 'msgNotifyTabQueue' },
+          ] as const
+        ).map((tab) => {
+          const Icon = tab.icon;
+          const active = mainTab === tab.id;
+          return (
+            <button
+              key={tab.id}
+              type="button"
+              onClick={() => setMainTab(tab.id)}
+              className={`inline-flex items-center gap-2 rounded-lg border px-3 py-2 text-sm font-semibold transition ${
+                active
+                  ? 'border-emerald-500 bg-emerald-50 text-emerald-800'
+                  : darkMode
+                    ? 'border-gray-600 text-gray-300'
+                    : 'border-gray-200 text-gray-700'
+              }`}
+            >
+              <Icon className="h-4 w-4" />
+              {tm(tab.labelKey)}
+            </button>
+          );
+        })}
+      </div>
+
+      {mainTab === 'templates' ? (
+        <MsgTemplatesPanel panel={panel} inputCls={inputCls} labelCls={labelCls} />
+      ) : null}
+      {mainTab === 'special' ? (
+        <MsgSpecialDaysPanel panel={panel} inputCls={inputCls} labelCls={labelCls} />
+      ) : null}
+      {mainTab === 'auto' ? (
+        <MsgAutomationPanel panel={panel} inputCls={inputCls} labelCls={labelCls} />
+      ) : null}
+      {mainTab === 'queue' ? (
+        <MsgQueueLogPanel panel={panel} inputCls={inputCls} labelCls={labelCls} />
+      ) : null}
+
+      {mainTab === 'send' ? (
+      <>
       <div className="grid grid-cols-1 xl:grid-cols-2 gap-5">
         <div className={`rounded-xl border p-4 space-y-4 ${panel}`}>
           <h2 className={`font-bold text-sm uppercase tracking-wide ${darkMode ? 'text-gray-300' : 'text-gray-600'}`}>
@@ -545,6 +628,20 @@ export function MesajBildirimModule({
               );
             })}
           </div>
+
+          {mode === 'birthday_upcoming' ? (
+            <div>
+              <label className={labelCls}>{tm('msgNotifyBirthdayUpcomingDays')}</label>
+              <input
+                type="number"
+                min={1}
+                max={60}
+                className={inputCls}
+                value={upcomingDays}
+                onChange={(e) => setUpcomingDays(Number(e.target.value) || 7)}
+              />
+            </div>
+          ) : null}
 
           {(mode === 'group_include' || mode === 'group_exclude') && (
             <div className="grid grid-cols-2 gap-3 pt-2 border-t border-dashed border-gray-200">
@@ -802,10 +899,36 @@ export function MesajBildirimModule({
             ) : (
               <div>
                 <label className={labelCls}>{tm('msgNotifyFreeText')}</label>
+                {customTemplates.length > 0 ? (
+                  <div className="mb-2">
+                    <label className={labelCls}>{tm('msgNotifyCustomTplPick')}</label>
+                    <select
+                      className={inputCls}
+                      value={selectedCustomTplId}
+                      onChange={(e) => {
+                        const id = e.target.value;
+                        setSelectedCustomTplId(id);
+                        const tpl = customTemplates.find((t) => t.id === id);
+                        if (tpl) {
+                          setFreeTextPreset('custom');
+                          setMessageText(tpl.body_text);
+                        }
+                      }}
+                    >
+                      <option value="">{tm('msgNotifyCustomTplNone')}</option>
+                      {customTemplates.map((t) => (
+                        <option key={t.id} value={t.id}>
+                          {t.name}
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+                ) : null}
                 <textarea
                   value={messageText}
                   onChange={(e) => {
                     setFreeTextPreset('custom');
+                    setSelectedCustomTplId('');
                     setMessageText(e.target.value);
                   }}
                   rows={5}
@@ -839,6 +962,8 @@ export function MesajBildirimModule({
           {tm('msgNotifyFooterHint')}
         </p>
       </div>
+      </>
+      ) : null}
 
       <WhatsAppBulkSendPreviewModal
         open={bulkPreviewOpen}

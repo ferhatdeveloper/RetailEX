@@ -23,7 +23,9 @@ export type CustomerNotifyAudience =
   | 'multiple'
   | 'bulk_all'
   | 'group_include'
-  | 'group_exclude';
+  | 'group_exclude'
+  | 'birthday_today'
+  | 'birthday_upcoming';
 
 export type CustomerGroupFilter = {
   customer_tier?: string;
@@ -40,6 +42,7 @@ export interface NotifyCustomerRow {
   city?: string;
   district?: string;
   heard_from?: string;
+  birth_date?: string | null;
 }
 
 function firmNrRow(): string {
@@ -50,14 +53,13 @@ function customersTable(): string {
   return postgres.getCardTableName('customers', 'public');
 }
 
-function normalizePhone(raw: string | undefined | null): string {
-  const digits = normalizePhoneDigits(String(raw ?? ''));
-  return digits.length >= 10 ? digits : '';
-}
-
-function mapCustomerRow(r: Record<string, unknown>): NotifyCustomerRow | null {
-  const phone = normalizePhone(r.phone != null ? String(r.phone) : '');
-  if (!phone) return null;
+function mapCustomerRow(
+  r: Record<string, unknown>,
+  countryCode = '90',
+): NotifyCustomerRow | null {
+  const phone = normalizePhoneDigits(String(r.phone ?? ''), countryCode);
+  if (!phone || phone.length < 10) return null;
+  const birthRaw = r.birth_date != null ? String(r.birth_date).slice(0, 10) : null;
   return {
     id: String(r.id ?? ''),
     name: String(r.name ?? '').trim() || '—',
@@ -66,7 +68,45 @@ function mapCustomerRow(r: Record<string, unknown>): NotifyCustomerRow | null {
     city: r.city != null ? String(r.city) : undefined,
     district: r.district != null ? String(r.district) : undefined,
     heard_from: r.heard_from != null ? String(r.heard_from) : undefined,
+    birth_date: birthRaw && birthRaw.length >= 10 ? birthRaw : null,
   };
+}
+
+/** Ay-gün eşleşmesi (yıl bağımsız). */
+function birthMonthDay(isoDate: string): { m: number; d: number } | null {
+  const parts = isoDate.slice(0, 10).split('-');
+  if (parts.length < 3) return null;
+  const m = Number(parts[1]);
+  const d = Number(parts[2]);
+  if (!m || !d) return null;
+  return { m, d };
+}
+
+function isBirthdayToday(birthDate: string | null | undefined, now = new Date()): boolean {
+  if (!birthDate) return false;
+  const bd = birthMonthDay(birthDate);
+  if (!bd) return false;
+  return bd.m === now.getMonth() + 1 && bd.d === now.getDate();
+}
+
+function isBirthdayUpcoming(
+  birthDate: string | null | undefined,
+  withinDays: number,
+  now = new Date(),
+): boolean {
+  if (!birthDate || withinDays <= 0) return false;
+  const bd = birthMonthDay(birthDate);
+  if (!bd) return false;
+  const thisYear = new Date(now.getFullYear(), bd.m - 1, bd.d);
+  let next = thisYear;
+  const todayStart = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+  if (next < todayStart) {
+    next = new Date(now.getFullYear() + 1, bd.m - 1, bd.d);
+  }
+  const diffMs = next.getTime() - todayStart.getTime();
+  const diffDays = Math.round(diffMs / 86_400_000);
+  // Yaklaşan: bugün hariç 1..N gün içinde
+  return diffDays >= 1 && diffDays <= withinDays;
 }
 
 function matchesGroupFilter(row: NotifyCustomerRow, filter: CustomerGroupFilter): boolean {
@@ -102,6 +142,7 @@ export function replaceMessagePlaceholders(
     city: customer.city ?? '',
     district: customer.district ?? '',
     customer_tier: customer.customer_tier ?? 'normal',
+    birth_date: customer.birth_date ?? '',
     date: today,
     ...extra,
   };
@@ -134,8 +175,10 @@ export function buildMetaParametersForCustomer(
 export const customerNotificationService = {
   async listActiveCustomers(limit = 5000): Promise<NotifyCustomerRow[]> {
     const fn = firmNrRow();
+    const settings = await messagingService.getSettings();
+    const cc = String(settings?.default_country_code || '90').replace(/\D/g, '') || '90';
     const select =
-      'id,name,phone,customer_tier,city,district,heard_from,is_active';
+      'id,name,phone,customer_tier,city,district,heard_from,birth_date,is_active';
 
     if (shouldUseTenantPostgrestApi()) {
       const { postgrest } = await import('../api/postgrestClient');
@@ -145,18 +188,18 @@ export const customerNotificationService = {
           select,
           is_active: 'eq.true',
           order: 'name.asc',
-          limit: String(limit),
+          limit: limit,
         },
         { schema: 'public' },
       );
       return (Array.isArray(rows) ? rows : [])
-        .map(mapCustomerRow)
+        .map((r) => mapCustomerRow(r, cc))
         .filter((r): r is NotifyCustomerRow => r != null);
     }
 
     const t = customersTable();
     const { rows } = await postgres.query(
-      `SELECT id, name, phone, customer_tier, city, district, heard_from
+      `SELECT id, name, phone, customer_tier, city, district, heard_from, birth_date
        FROM ${t}
        WHERE firm_nr = $1 AND COALESCE(is_active, true) = true
        ORDER BY name
@@ -165,7 +208,7 @@ export const customerNotificationService = {
       { firmNr: fn },
     );
     return (rows as Record<string, unknown>[])
-      .map(mapCustomerRow)
+      .map((r) => mapCustomerRow(r, cc))
       .filter((r): r is NotifyCustomerRow => r != null);
   },
 
@@ -173,9 +216,11 @@ export const customerNotificationService = {
     mode: CustomerNotifyAudience;
     customerIds?: string[];
     groupFilter?: CustomerGroupFilter;
+    upcomingDays?: number;
   }): Promise<NotifyCustomerRow[]> {
     const all = await customerNotificationService.listActiveCustomers();
     const ids = new Set((params.customerIds ?? []).map(String));
+    const upcomingDays = Math.max(1, Number(params.upcomingDays) || 7);
 
     switch (params.mode) {
       case 'single':
@@ -196,6 +241,10 @@ export const customerNotificationService = {
         if (!hasFilter) return all;
         return all.filter((c) => !matchesGroupFilter(c, f));
       }
+      case 'birthday_today':
+        return all.filter((c) => isBirthdayToday(c.birth_date));
+      case 'birthday_upcoming':
+        return all.filter((c) => isBirthdayUpcoming(c.birth_date, upcomingDays));
       default:
         return [];
     }

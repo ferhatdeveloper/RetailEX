@@ -22,6 +22,15 @@ export interface MessagingSettings extends ClinicMessagingPortalConfig {
   meta_invoice_template_language?: string | null;
   meta_appointment_template_name?: string | null;
   meta_appointment_template_language?: string | null;
+  /** Ülke kodu yoksa eklenecek (90, 964, …) */
+  default_country_code?: string | null;
+  birthday_enabled?: boolean;
+  /** today | upcoming | both */
+  birthday_mode?: string | null;
+  birthday_upcoming_days?: number | null;
+  birthday_send_time?: string | null;
+  birthday_template_id?: string | null;
+  auto_campaign_enabled?: boolean;
   created_at?: string;
   updated_at?: string;
 }

@@ -350,9 +350,29 @@ function App() {
   }, [addSale, products, sales, updateStocksBatch, updateCustomerPurchaseHistory]);
 
   const handleLogout = useCallback(() => {
+    void import('./services/messaging/messagingCampaignScheduler')
+      .then(({ stopMessagingCampaignScheduler }) => stopMessagingCampaignScheduler())
+      .catch(() => {});
     logout();
     localStorage.removeItem('exretail_firma_donem_configured');
   }, [logout]);
+
+  useEffect(() => {
+    if (!isAuthenticated || !isConfigured) {
+      void import('./services/messaging/messagingCampaignScheduler')
+        .then(({ stopMessagingCampaignScheduler }) => stopMessagingCampaignScheduler())
+        .catch(() => {});
+      return;
+    }
+    void import('./services/messaging/messagingCampaignScheduler')
+      .then(({ startMessagingCampaignScheduler }) => startMessagingCampaignScheduler())
+      .catch(() => {});
+    return () => {
+      void import('./services/messaging/messagingCampaignScheduler')
+        .then(({ stopMessagingCampaignScheduler }) => stopMessagingCampaignScheduler())
+        .catch(() => {});
+    };
+  }, [isAuthenticated, isConfigured]);
 
   // Yükleme ekranı: siyah yerine gradient arka plan, böylece ekran boş görünmez
   if (isConfigured === null || !isPgReady || installingPg) {

@@ -48,10 +48,24 @@ export function buildReminderText(
     });
 }
 
-/** Uluslararası format: 90XXXXXXXXXX (rakam) */
-export function normalizePhoneDigits(raw: string): string {
-    let p = raw.replace(/\D/g, '');
-    if (p.length === 10) p = '90' + p;
+/**
+ * Uluslararası rakam formatı.
+ * @param defaultCountryCode — ülke kodu yoksa eklenir (ör. 90, 964). Zaten kodlu numaraya dokunulmaz.
+ */
+export function normalizePhoneDigits(raw: string, defaultCountryCode = '90'): string {
+    let p = String(raw || '').replace(/\D/g, '');
+    if (!p) return '';
+    const cc = String(defaultCountryCode || '90').replace(/\D/g, '') || '90';
+    // Zaten ülke kodu ile başlıyorsa (ve yerel kısımdan uzunsa) bırak
+    if (p.startsWith(cc) && p.length >= cc.length + 7) return p;
+    // Yaygın uluslararası kodlar (TR/IQ/…) — yanlışlıkla yeniden prefix ekleme
+    if (/^(90|964|971|966|1|44|49|33|39)\d{7,}$/.test(p) && !p.startsWith(cc)) {
+        return p;
+    }
+    // 0 ile başlayan yerel (05xx…)
+    if (p.length === 11 && p.startsWith('0')) return cc + p.slice(1);
+    // 10 haneli yerel
+    if (p.length === 10) return cc + p;
     return p;
 }
 

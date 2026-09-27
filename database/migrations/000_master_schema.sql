@@ -2820,10 +2820,81 @@ BEGIN
       meta_invoice_template_language VARCHAR(10),
       meta_appointment_template_name VARCHAR(120),
       meta_appointment_template_language VARCHAR(10),
+      default_country_code VARCHAR(8) DEFAULT '90',
+      birthday_enabled BOOLEAN DEFAULT false,
+      birthday_mode VARCHAR(20) DEFAULT 'today',
+      birthday_upcoming_days INTEGER DEFAULT 7,
+      birthday_send_time VARCHAR(8) DEFAULT '10:00',
+      birthday_template_id UUID,
+      auto_campaign_enabled BOOLEAN DEFAULT false,
       created_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP,
       updated_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP
     )
   $f$, v_prefix || '_messaging_settings');
+
+  -- Kullanıcı mesaj şablonları
+  EXECUTE format($f$
+    CREATE TABLE IF NOT EXISTS %I (
+      id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+      firm_nr VARCHAR(10) NOT NULL,
+      name VARCHAR(200) NOT NULL,
+      body_text TEXT NOT NULL,
+      category VARCHAR(40) NOT NULL DEFAULT 'general',
+      is_active BOOLEAN DEFAULT true,
+      created_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP,
+      updated_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP
+    )
+  $f$, v_prefix || '_message_templates');
+  EXECUTE format(
+    'CREATE INDEX IF NOT EXISTS %I ON %I (firm_nr, category, is_active)',
+    v_prefix || '_message_templates_cat_idx',
+    v_prefix || '_message_templates'
+  );
+
+  -- Özel günler (bayram vb.)
+  EXECUTE format($f$
+    CREATE TABLE IF NOT EXISTS %I (
+      id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+      firm_nr VARCHAR(10) NOT NULL,
+      name VARCHAR(200) NOT NULL,
+      month SMALLINT NOT NULL CHECK (month BETWEEN 1 AND 12),
+      day SMALLINT NOT NULL CHECK (day BETWEEN 1 AND 31),
+      fixed_date DATE,
+      days_before INTEGER NOT NULL DEFAULT 0,
+      send_time VARCHAR(8) NOT NULL DEFAULT '10:00',
+      template_id UUID,
+      is_active BOOLEAN DEFAULT true,
+      created_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP,
+      updated_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP
+    )
+  $f$, v_prefix || '_special_days');
+  EXECUTE format(
+    'CREATE INDEX IF NOT EXISTS %I ON %I (firm_nr, is_active, month, day)',
+    v_prefix || '_special_days_active_idx',
+    v_prefix || '_special_days'
+  );
+
+  -- Kampanya gönderim kaydı (çift gönderim engeli)
+  EXECUTE format($f$
+    CREATE TABLE IF NOT EXISTS %I (
+      id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+      firm_nr VARCHAR(10) NOT NULL,
+      campaign_key VARCHAR(120) NOT NULL,
+      customer_id UUID,
+      phone VARCHAR(30) NOT NULL,
+      queue_id UUID,
+      status VARCHAR(20) NOT NULL DEFAULT 'sent',
+      message_text TEXT,
+      sent_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP,
+      created_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP,
+      UNIQUE (campaign_key, phone)
+    )
+  $f$, v_prefix || '_notification_send_log');
+  EXECUTE format(
+    'CREATE INDEX IF NOT EXISTS %I ON %I (campaign_key, status)',
+    v_prefix || '_notification_send_log_key_idx',
+    v_prefix || '_notification_send_log'
+  );
 
   -- Varsayılan Kasa
   EXECUTE format('INSERT INTO %I (id, firm_nr, code, name, is_active) VALUES (''00000000-0000-0000-0000-000000000001'', %L, ''KASA.001'', ''MERKEZ KASA'', true) ON CONFLICT DO NOTHING;', v_prefix || '_cash_registers', p_firm_nr);

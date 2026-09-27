@@ -70,6 +70,13 @@ export function WhatsAppBulkSendPreviewModal({
   const [intervalMs, setIntervalMs] = useState(DEFAULT_WHATSAPP_BULK_INTERVAL_MS);
   const [running, setRunning] = useState(false);
   const [progress, setProgress] = useState<WhatsAppBulkSendProgress | null>(null);
+  const [scheduleMode, setScheduleMode] = useState<'now' | 'planned'>('now');
+  const [scheduleLocal, setScheduleLocal] = useState(() => {
+    const d = new Date();
+    d.setHours(d.getHours() + 1, 0, 0, 0);
+    const pad = (n: number) => String(n).padStart(2, '0');
+    return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}`;
+  });
   const [waConn, setWaConn] = useState<WaConnectionState>({
     provider: 'NONE',
     status: '',
@@ -79,6 +86,18 @@ export function WhatsAppBulkSendPreviewModal({
   });
   const [waLoading, setWaLoading] = useState(false);
   const abortRef = useRef(false);
+
+  const resolvedScheduledAt = useMemo(() => {
+    if (scheduleMode !== 'planned') return null;
+    const t = new Date(scheduleLocal).getTime();
+    if (Number.isNaN(t)) return null;
+    return new Date(t).toISOString();
+  }, [scheduleMode, scheduleLocal]);
+
+  const isPlannedFuture = useMemo(() => {
+    if (!resolvedScheduledAt) return false;
+    return new Date(resolvedScheduledAt).getTime() > Date.now() + 30_000;
+  }, [resolvedScheduledAt]);
 
   const refreshConnection = useCallback(async () => {
     setWaLoading(true);
@@ -151,6 +170,7 @@ export function WhatsAppBulkSendPreviewModal({
     setLocalItems(items);
     setSelectedIds(items.map((i) => i.id));
     setMessageLang(initialMessageLang ?? normalizeWhatsAppMessageLang(language));
+    setScheduleMode('now');
     void refreshConnection();
   }, [open, items, initialMessageLang, language, refreshConnection]);
 
@@ -208,15 +228,29 @@ export function WhatsAppBulkSendPreviewModal({
 
   const handleEnqueueOnly = async () => {
     if (!selectedItems.length || running) return;
+    if (scheduleMode === 'planned' && !resolvedScheduledAt) {
+      toast.error(tm('msgNotifyScheduleInvalid'));
+      return;
+    }
     setRunning(true);
     abortRef.current = false;
     try {
       const result = await runWhatsAppBulkCampaign(selectedItems, {
         enqueueOnly: true,
+        scheduledAt: resolvedScheduledAt,
         onProgress: setProgress,
       });
       if (result.queued > 0) {
-        toast.success(tm('msgNotifyBulkQueuedOnly').replace('{n}', String(result.queued)));
+        toast.success(
+          isPlannedFuture
+            ? tm('msgNotifyScheduleQueued')
+                .replace('{n}', String(result.queued))
+                .replace(
+                  '{when}',
+                  new Date(resolvedScheduledAt!).toLocaleString(),
+                )
+            : tm('msgNotifyBulkQueuedOnly').replace('{n}', String(result.queued)),
+        );
       }
       if (result.errors.length) toast.error(result.errors.slice(0, 2).join(' · '));
       onComplete?.({ queued: result.queued, sent: 0, errors: result.errors });
@@ -229,6 +263,15 @@ export function WhatsAppBulkSendPreviewModal({
 
   const handleAutoSend = async () => {
     if (!selectedItems.length || running) return;
+    if (scheduleMode === 'planned' && !resolvedScheduledAt) {
+      toast.error(tm('msgNotifyScheduleInvalid'));
+      return;
+    }
+    // Planlı gelecek → yalnızca kuyruğa yaz (vadesinde otomatik gönderilir)
+    if (isPlannedFuture) {
+      await handleEnqueueOnly();
+      return;
+    }
     if (!waConn.connected && waConn.provider === 'EMBEDDED') {
       toast.error(tm('msgNotifyBulkWaNeedQr'));
       setActiveTab('connection');
@@ -241,6 +284,7 @@ export function WhatsAppBulkSendPreviewModal({
         intervalMs,
         shouldAbort: () => abortRef.current,
         onProgress: setProgress,
+        scheduledAt: resolvedScheduledAt,
       });
       if (result.sent > 0) {
         toast.success(
@@ -435,7 +479,7 @@ export function WhatsAppBulkSendPreviewModal({
                 {tm('msgNotifyBulkInterval')}
                 <select
                   value={intervalMs}
-                  disabled={running}
+                  disabled={running || isPlannedFuture}
                   onChange={(e) => setIntervalMs(Number(e.target.value))}
                   className="h-8 rounded-lg border border-gray-200 px-2 text-xs font-bold bg-white"
                 >
@@ -449,6 +493,59 @@ export function WhatsAppBulkSendPreviewModal({
               <span className="text-[11px] text-gray-500">
                 {tm('msgNotifyBulkEstDuration').replace('{sec}', String(estSec))}
               </span>
+            </div>
+
+            <div className="flex flex-wrap items-end gap-3 rounded-lg border border-emerald-100 bg-white/80 p-3">
+              <div className="flex flex-col gap-1.5">
+                <span className="text-[10px] font-black uppercase tracking-wider text-gray-400">
+                  {tm('msgNotifyScheduleTitle')}
+                </span>
+                <div className="flex flex-wrap gap-2">
+                  <button
+                    type="button"
+                    disabled={running}
+                    onClick={() => setScheduleMode('now')}
+                    className={`rounded-lg border px-3 py-1.5 text-xs font-bold ${
+                      scheduleMode === 'now'
+                        ? 'border-emerald-500 bg-emerald-50 text-emerald-800'
+                        : 'border-gray-200 text-gray-600'
+                    }`}
+                  >
+                    {tm('msgNotifyScheduleNow')}
+                  </button>
+                  <button
+                    type="button"
+                    disabled={running}
+                    onClick={() => setScheduleMode('planned')}
+                    className={`rounded-lg border px-3 py-1.5 text-xs font-bold ${
+                      scheduleMode === 'planned'
+                        ? 'border-emerald-500 bg-emerald-50 text-emerald-800'
+                        : 'border-gray-200 text-gray-600'
+                    }`}
+                  >
+                    {tm('msgNotifyScheduleLater')}
+                  </button>
+                </div>
+              </div>
+              {scheduleMode === 'planned' ? (
+                <div className="flex flex-col gap-1 min-w-[12rem]">
+                  <label className="text-[10px] font-bold text-gray-500">
+                    {tm('msgNotifyScheduleWhen')}
+                  </label>
+                  <input
+                    type="datetime-local"
+                    disabled={running}
+                    value={scheduleLocal}
+                    onChange={(e) => setScheduleLocal(e.target.value)}
+                    className="h-8 rounded-lg border border-gray-200 px-2 text-xs font-semibold bg-white"
+                  />
+                </div>
+              ) : null}
+              {isPlannedFuture ? (
+                <p className="text-[11px] text-emerald-800 max-w-sm">
+                  {tm('msgNotifyScheduleHint')}
+                </p>
+              ) : null}
             </div>
             {running && progress ? (
               <div className="space-y-1">
@@ -560,7 +657,7 @@ export function WhatsAppBulkSendPreviewModal({
                   onClick={() => void handleEnqueueOnly()}
                   className="inline-flex items-center gap-2 rounded-xl border border-gray-200 bg-white text-gray-700 font-bold px-4 py-2.5 text-sm disabled:opacity-50"
                 >
-                  {tm('msgNotifyBulkQueueOnly')}
+                  {isPlannedFuture ? tm('msgNotifySchedulePlanButton') : tm('msgNotifyBulkQueueOnly')}
                 </button>
                 <button
                   type="button"
@@ -569,7 +666,9 @@ export function WhatsAppBulkSendPreviewModal({
                   className="inline-flex items-center gap-2 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white font-bold px-4 py-2.5 text-sm disabled:opacity-50"
                 >
                   <Play size={16} />
-                  {tm('msgNotifyBulkAutoSend')}
+                  {isPlannedFuture
+                    ? tm('msgNotifySchedulePlanButton')
+                    : tm('msgNotifyBulkAutoSend')}
                 </button>
               </>
             )}

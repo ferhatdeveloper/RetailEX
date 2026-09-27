@@ -63,9 +63,14 @@ function authOk(req) {
   return h === `Bearer ${TOKEN}`;
 }
 
-function normalizeDigits(raw) {
+function normalizeDigits(raw, countryCodeHint = '90') {
   let p = String(raw || '').replace(/\D/g, '');
-  if (p.length === 10) p = `90${p}`;
+  if (!p) return '';
+  const cc = String(countryCodeHint || '90').replace(/\D/g, '') || '90';
+  if (p.startsWith(cc) && p.length >= cc.length + 7) return p;
+  if (/^(90|964|971|966|1|44|49|33|39)\d{7,}$/.test(p) && !p.startsWith(cc)) return p;
+  if (p.length === 11 && p.startsWith('0')) return cc + p.slice(1);
+  if (p.length === 10) p = `${cc}${p}`;
   return p;
 }
 
@@ -235,7 +240,7 @@ async function handleSend(req, res) {
     json(res, 400, { success: false, error: 'Geçersiz JSON gövdesi.' });
     return;
   }
-  const digits = normalizeDigits(body.to);
+  const digits = normalizeDigits(body.to, body.countryCode || body.country_code || '90');
   const text = String(body.text || '').trim();
   if (!digits || digits.length < 10) {
     json(res, 400, { success: false, error: 'Geçerli telefon numarası gerekli (to).' });

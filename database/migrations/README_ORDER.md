@@ -165,3 +165,4 @@ Restoran sohbetinde eklenen tek yeni tablo: **rest.return_log**. Diğer özellik
 - `164_report_menu_params_block_negative_stock_sale.sql` — `block-negative-stock-sale: false` (yoksa ekler); negatif/sıfır stok satış engeli varsayılan kapalı (= satılabilir).
 - `165_report_menu_params_allow_pos_payment_back_to_sale.sql` — POS ödeme ekranından satışa dönüş parametresi.
 - `166_customers_file_id_merge_unique.sql` — `rex_*_customers` birleştirme kolonları (`merged_into_*`); mükerrer sayısal `file_id` ayırma + aktif kartlarda UNIQUE.
+- `167_messaging_campaign_templates.sql` — mesaj şablonları, özel günler, `notification_send_log`, `messaging_settings` ülke kodu + doğum günü/otomasyon kolonları.

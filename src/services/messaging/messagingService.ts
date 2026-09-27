@@ -7,11 +7,16 @@ import { shouldUseTenantPostgrestApi } from '../../config/postgrest.config';
 import { postgres, ERP_SETTINGS, DB_SETTINGS } from '../postgres';
 import {
   buildReminderText,
+  normalizePhoneDigits,
   sendAtakSms,
   sendWhatsAppNotification,
   sendWhatsAppText,
   type ClinicMessagingPortalConfig,
 } from './clinicMessaging';
+import {
+  hasSendLogEntry,
+  recordSendLog,
+} from './notificationSendLogService';
 import {
   buildMetaInvoiceQueuePayload,
   parseMetaTemplateQueuePayload,
@@ -35,6 +40,11 @@ function periodNrRow(): string {
 
 function isRestApi(): boolean {
   return shouldUseTenantPostgrestApi();
+}
+
+function countryCodeFromSettings(s: MessagingSettings | null | undefined): string {
+  const cc = String(s?.default_country_code || '90').replace(/\D/g, '');
+  return cc || '90';
 }
 
 const MESSAGING_TABLE_MISSING_HINT =
@@ -106,7 +116,7 @@ export const messagingService = {
         const { postgrest } = await import('../api/postgrestClient');
         const rows = await postgrest.get<MessagingSettings[]>(
           `/rex_${fn}_messaging_settings`,
-          { select: '*', order: 'created_at.asc', limit: '1' },
+          { select: '*', order: 'created_at.asc', limit: 1 },
           { schema: 'public' }
         );
         if (!rows[0]) {
@@ -117,7 +127,7 @@ export const messagingService = {
           );
           const refreshed = await postgrest.get<MessagingSettings[]>(
             `/rex_${fn}_messaging_settings`,
-            { select: '*', limit: '1' },
+            { select: '*', limit: 1 },
             { schema: 'public' }
           );
           return refreshed[0] ?? null;
@@ -168,6 +178,13 @@ export const messagingService = {
           meta_invoice_template_language: merged.meta_invoice_template_language ?? null,
           meta_appointment_template_name: merged.meta_appointment_template_name ?? null,
           meta_appointment_template_language: merged.meta_appointment_template_language ?? null,
+          default_country_code: (merged.default_country_code || '90').toString().replace(/\D/g, '') || '90',
+          birthday_enabled: merged.birthday_enabled === true,
+          birthday_mode: (merged.birthday_mode || 'today').toString(),
+          birthday_upcoming_days: Number(merged.birthday_upcoming_days ?? 7) || 7,
+          birthday_send_time: (merged.birthday_send_time || '10:00').toString().slice(0, 8),
+          birthday_template_id: merged.birthday_template_id ?? null,
+          auto_campaign_enabled: merged.auto_campaign_enabled === true,
           updated_at: new Date().toISOString(),
         },
         { schema: 'public', prefer: 'return=minimal' }
@@ -184,6 +201,9 @@ export const messagingService = {
         invoice_whatsapp_template = $14, notify_sale_categories = $15,
         meta_invoice_template_name = $16, meta_invoice_template_language = $17,
         meta_appointment_template_name = $18, meta_appointment_template_language = $19,
+        default_country_code = $20, birthday_enabled = $21, birthday_mode = $22,
+        birthday_upcoming_days = $23, birthday_send_time = $24, birthday_template_id = $25,
+        auto_campaign_enabled = $26,
         updated_at = CURRENT_TIMESTAMP
        WHERE id = $1`,
       [
@@ -206,6 +226,13 @@ export const messagingService = {
         merged.meta_invoice_template_language ?? null,
         merged.meta_appointment_template_name ?? null,
         merged.meta_appointment_template_language ?? null,
+        (merged.default_country_code || '90').toString().replace(/\D/g, '') || '90',
+        merged.birthday_enabled === true,
+        (merged.birthday_mode || 'today').toString(),
+        Number(merged.birthday_upcoming_days ?? 7) || 7,
+        (merged.birthday_send_time || '10:00').toString().slice(0, 8),
+        merged.birthday_template_id ?? null,
+        merged.auto_campaign_enabled === true,
       ]
     );
   },
@@ -304,9 +331,23 @@ export const messagingService = {
     reference_type?: string;
     reference_id?: string;
     payload_json?: Record<string, unknown> | null;
+    scheduled_at?: string | null;
     firmNr?: string;
     periodNr?: string;
   }): Promise<string | null> {
+    const settings = await messagingService.getSettings();
+    const cc = countryCodeFromSettings(settings);
+    const phone = normalizePhoneDigits(params.recipient_phone, cc);
+    if (!phone || phone.length < 10) return null;
+
+    const campaignKey =
+      params.payload_json && typeof params.payload_json.campaign_key === 'string'
+        ? params.payload_json.campaign_key.trim()
+        : '';
+    if (campaignKey && (await hasSendLogEntry(campaignKey, phone))) {
+      return null;
+    }
+
     const fn = String(params.firmNr ?? firmNrRow()).padStart(3, '0').slice(0, 10);
     const pn = String(params.periodNr ?? periodNrRow()).padStart(2, '0').slice(0, 10);
     const id = uuidv4();
@@ -316,13 +357,14 @@ export const messagingService = {
       period_nr: pn,
       event_type: params.event_type,
       channel: params.channel || 'whatsapp',
-      recipient_phone: params.recipient_phone,
+      recipient_phone: phone,
       recipient_name: params.recipient_name ?? null,
       message_text: params.message_text,
       reference_type: params.reference_type ?? null,
       reference_id: params.reference_id ?? null,
       payload_json: params.payload_json ?? {},
       status: 'pending',
+      scheduled_at: params.scheduled_at ?? null,
     };
     if (isRestApi()) {
       const { postgrest } = await import('../api/postgrestClient');
@@ -337,17 +379,64 @@ export const messagingService = {
     await postgres.query(
       `INSERT INTO ${t} (
         id, firm_nr, period_nr, event_type, channel, recipient_phone, recipient_name,
-        message_text, reference_type, reference_id, payload_json, status
-      ) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11::jsonb,'pending')`,
+        message_text, reference_type, reference_id, payload_json, status, scheduled_at
+      ) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11::jsonb,'pending',$12)`,
       [
         id, fn, pn, params.event_type, params.channel || 'whatsapp',
-        params.recipient_phone, params.recipient_name ?? null, params.message_text,
+        phone, params.recipient_name ?? null, params.message_text,
         params.reference_type ?? null, params.reference_id ?? null,
         JSON.stringify(params.payload_json ?? {}),
+        params.scheduled_at ?? null,
       ],
       { firmNr: fn, periodNr: pn }
     );
     return id;
+  },
+
+  async retryFailedNotifications(ids?: string[]): Promise<number> {
+    const fn = firmNrRow();
+    const pn = periodNrRow();
+    if (isRestApi()) {
+      const { postgrest } = await import('../api/postgrestClient');
+      if (ids?.length) {
+        for (const id of ids) {
+          await postgrest.patch(
+            `/rex_${fn}_${pn}_notification_queue?id=eq.${encodeURIComponent(id)}`,
+            { status: 'pending', error_text: null },
+            { schema: 'public', prefer: 'return=minimal' },
+          );
+        }
+        return ids.length;
+      }
+      const failed = await postgrest.get<NotificationQueueRow[]>(
+        `/rex_${fn}_${pn}_notification_queue`,
+        { select: 'id', status: 'eq.failed', limit: 100 },
+        { schema: 'public' },
+      );
+      for (const row of failed) {
+        await postgrest.patch(
+          `/rex_${fn}_${pn}_notification_queue?id=eq.${encodeURIComponent(String(row.id))}`,
+          { status: 'pending', error_text: null },
+          { schema: 'public', prefer: 'return=minimal' },
+        );
+      }
+      return failed.length;
+    }
+    const t = queueTable();
+    if (ids?.length) {
+      await postgres.query(
+        `UPDATE ${t} SET status = 'pending', error_text = NULL WHERE id = ANY($1::uuid[])`,
+        [ids],
+        { firmNr: fn, periodNr: pn },
+      );
+      return ids.length;
+    }
+    const { rowCount } = await postgres.query(
+      `UPDATE ${t} SET status = 'pending', error_text = NULL WHERE status = 'failed'`,
+      [],
+      { firmNr: fn, periodNr: pn },
+    );
+    return Number(rowCount) || 0;
   },
 
   async listQueue(limit = 30): Promise<NotificationQueueRow[]> {
@@ -358,7 +447,7 @@ export const messagingService = {
         const { postgrest } = await import('../api/postgrestClient');
         const rows = await postgrest.get<NotificationQueueRow[]>(
           `/rex_${fn}_${pn}_notification_queue`,
-          { select: '*', order: 'created_at.desc', limit: String(limit) },
+          { select: '*', order: 'created_at.desc', limit },
           { schema: 'public' }
         );
         return Array.isArray(rows) ? rows : [];
@@ -405,6 +494,7 @@ export const messagingService = {
   async processPendingQueue(limit = 20): Promise<{ processed: number; errors: string[] }> {
     const settings = await messagingService.getSettings();
     const portal = settingsToPortalConfig(settings);
+    const cc = countryCodeFromSettings(settings);
     const fn = firmNrRow();
     const pn = periodNrRow();
     const errors: string[] = [];
@@ -431,15 +521,25 @@ export const messagingService = {
     let pending: NotificationQueueRow[] = [];
     if (isRestApi()) {
       const { postgrest } = await import('../api/postgrestClient');
-      pending = await postgrest.get<NotificationQueueRow[]>(
+      const allPending = await postgrest.get<NotificationQueueRow[]>(
         `/rex_${fn}_${pn}_notification_queue`,
-        { select: '*', status: 'eq.pending', order: 'created_at.asc', limit: String(limit) },
+        { select: '*', status: 'eq.pending', order: 'created_at.asc', limit: Math.max(limit * 3, 60) },
         { schema: 'public' }
       );
+      const now = Date.now();
+      pending = (Array.isArray(allPending) ? allPending : [])
+        .filter((r) => {
+          if (!r.scheduled_at) return true;
+          return new Date(r.scheduled_at).getTime() <= now;
+        })
+        .slice(0, limit);
     } else {
       const t = queueTable();
       const { rows } = await postgres.query(
-        `SELECT * FROM ${t} WHERE status = 'pending' ORDER BY created_at ASC LIMIT $1`,
+        `SELECT * FROM ${t}
+         WHERE status = 'pending'
+           AND (scheduled_at IS NULL OR scheduled_at <= CURRENT_TIMESTAMP)
+         ORDER BY created_at ASC LIMIT $1`,
         [limit],
         { firmNr: fn, periodNr: pn }
       );
@@ -450,7 +550,7 @@ export const messagingService = {
 
     for (const row of pending) {
       const qid = String(row.id || '');
-      const phone = String(row.recipient_phone || '').trim();
+      const phone = normalizePhoneDigits(String(row.recipient_phone || '').trim(), cc);
       const text = String(row.message_text || '').trim();
       const channel = String(row.channel || 'whatsapp').toLowerCase();
       const metaPayload = parseMetaTemplateQueuePayload(
@@ -478,6 +578,19 @@ export const messagingService = {
               });
         if (!result.success) throw new Error(result.error || 'Gönderilemedi');
         await markRow(qid, { status: 'sent', error_text: null, sent_at: new Date().toISOString() });
+        const payload = (row.payload_json || {}) as Record<string, unknown>;
+        const campaignKey =
+          typeof payload.campaign_key === 'string' ? payload.campaign_key.trim() : '';
+        if (campaignKey) {
+          await recordSendLog({
+            campaign_key: campaignKey,
+            phone,
+            customer_id: row.reference_type === 'customer' ? row.reference_id : null,
+            queue_id: qid,
+            status: 'sent',
+            message_text: text,
+          });
+        }
         processed++;
       } catch (e: unknown) {
         const msg = e instanceof Error ? e.message : String(e);
@@ -501,6 +614,7 @@ export const messagingService = {
     const limit = Math.max(1, Number(options?.limit) || 100);
     const settings = await messagingService.getSettings();
     const portal = settingsToPortalConfig(settings);
+    const cc = countryCodeFromSettings(settings);
     const fn = firmNrRow();
     const pn = periodNrRow();
     const errors: string[] = [];
@@ -527,15 +641,25 @@ export const messagingService = {
     let pending: NotificationQueueRow[] = [];
     if (isRestApi()) {
       const { postgrest } = await import('../api/postgrestClient');
-      pending = await postgrest.get<NotificationQueueRow[]>(
+      const allPending = await postgrest.get<NotificationQueueRow[]>(
         `/rex_${fn}_${pn}_notification_queue`,
-        { select: '*', status: 'eq.pending', order: 'created_at.asc', limit: String(limit) },
+        { select: '*', status: 'eq.pending', order: 'created_at.asc', limit: Math.max(limit * 3, 60) },
         { schema: 'public' }
       );
+      const now = Date.now();
+      pending = (Array.isArray(allPending) ? allPending : [])
+        .filter((r) => {
+          if (!r.scheduled_at) return true;
+          return new Date(r.scheduled_at).getTime() <= now;
+        })
+        .slice(0, limit);
     } else {
       const t = queueTable();
       const { rows } = await postgres.query(
-        `SELECT * FROM ${t} WHERE status = 'pending' ORDER BY created_at ASC LIMIT $1`,
+        `SELECT * FROM ${t}
+         WHERE status = 'pending'
+           AND (scheduled_at IS NULL OR scheduled_at <= CURRENT_TIMESTAMP)
+         ORDER BY created_at ASC LIMIT $1`,
         [limit],
         { firmNr: fn, periodNr: pn }
       );
@@ -550,7 +674,7 @@ export const messagingService = {
 
       const row = pending[i];
       const qid = String(row.id || '');
-      const phone = String(row.recipient_phone || '').trim();
+      const phone = normalizePhoneDigits(String(row.recipient_phone || '').trim(), cc);
       const text = String(row.message_text || '').trim();
       const channel = String(row.channel || 'whatsapp').toLowerCase();
       const metaPayload = parseMetaTemplateQueuePayload(
@@ -586,6 +710,19 @@ export const messagingService = {
               });
         if (!result.success) throw new Error(result.error || 'Gönderilemedi');
         await markRow(qid, { status: 'sent', error_text: null, sent_at: new Date().toISOString() });
+        const payload = (row.payload_json || {}) as Record<string, unknown>;
+        const campaignKey =
+          typeof payload.campaign_key === 'string' ? payload.campaign_key.trim() : '';
+        if (campaignKey) {
+          await recordSendLog({
+            campaign_key: campaignKey,
+            phone,
+            customer_id: row.reference_type === 'customer' ? row.reference_id : null,
+            queue_id: qid,
+            status: 'sent',
+            message_text: text,
+          });
+        }
         processed++;
         options?.onProgress?.({
           sent: processed,
@@ -653,7 +790,7 @@ export const messagingService = {
       const { postgrest } = await import('../api/postgrestClient');
       const cust = await postgrest.get<{ phone?: string; name?: string }[]>(
         `/rex_${fn}_customers`,
-        { select: 'phone,name', id: `eq.${accountId}`, limit: '1' },
+        { select: 'phone,name', id: `eq.${accountId}`, limit: 1 },
         { schema: 'public' }
       ).catch(() => []);
       if (cust[0]?.phone) {
@@ -662,7 +799,7 @@ export const messagingService = {
       } else {
         const sup = await postgrest.get<{ phone?: string; name?: string }[]>(
           `/rex_${fn}_suppliers`,
-          { select: 'phone,name', id: `eq.${accountId}`, limit: '1' },
+          { select: 'phone,name', id: `eq.${accountId}`, limit: 1 },
           { schema: 'public' }
         ).catch(() => []);
         if (sup[0]?.phone) {
