@@ -66,6 +66,7 @@ import {
   MsgSpecialDaysPanel,
   MsgTemplatesPanel,
 } from './MesajBildirimCampaignPanels';
+import { sanitizeCountryCode } from '../../services/messaging/messagingCountryCodes';
 
 export interface MesajBildirimModuleProps {
   embedded?: boolean;
@@ -117,6 +118,7 @@ export function MesajBildirimModule({
   const [processing, setProcessing] = useState(false);
   const [customers, setCustomers] = useState<NotifyCustomerRow[]>([]);
   const [provider, setProvider] = useState('NONE');
+  const [defaultCountryCode, setDefaultCountryCode] = useState('90');
   const [stats, setStats] = useState({ pending: 0, sent: 0, failed: 0 });
 
   const [mode, setMode] = useState<NotifyMode>(hasFollowUpContext ? 'follow_up_range' : 'multiple');
@@ -166,6 +168,7 @@ export function MesajBildirimModule({
       ]);
       setCustomers(list);
       setProvider((settings?.whatsapp_provider || 'NONE').toString().toUpperCase());
+      setDefaultCountryCode(sanitizeCountryCode(settings?.default_country_code, '90'));
       setStats(queueStats);
       setCustomTemplates(tpls);
       if (settings?.birthday_upcoming_days) {
@@ -810,6 +813,9 @@ export function MesajBildirimModule({
 
           <p className={`text-sm font-semibold ${darkMode ? 'text-emerald-300' : 'text-emerald-700'}`}>
             {tm('msgNotifyRecipientCount').replace('{n}', String(resolvedCount))}
+          </p>
+          <p className={`text-[11px] ${darkMode ? 'text-gray-500' : 'text-gray-400'}`}>
+            {tm('msgNotifyCountryCodePrefixHint').replace('{code}', defaultCountryCode)}
           </p>
         </div>
 

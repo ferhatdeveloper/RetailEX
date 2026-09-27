@@ -37,7 +37,9 @@ import {
 import { WhatsAppQrConnectPanel } from '../shared/WhatsAppQrConnectPanel';
 import { WhatsAppSessionResetButton } from '../shared/WhatsAppSessionResetButton';
 import { WhatsAppTestSendCard } from '../shared/WhatsAppTestSendCard';
+import { MessagingCountryCodeSelect } from '../shared/MessagingCountryCodeSelect';
 import { isStaleEmbeddedBridgeUrl } from '../../services/messaging/whatsappEmbeddedBridge';
+import { sanitizeCountryCode } from '../../services/messaging/messagingCountryCodes';
 
 const DEFAULT_INVOICE_TEMPLATE =
   'Sayın {customer_name}, {date} tarihli {fiche_no} numaralı {category} faturanız: {amount} {currency}. RetailEX';
@@ -136,9 +138,7 @@ export function WhatsAppIntegrationModule() {
         setInvoiceTemplate(s.invoice_whatsapp_template || DEFAULT_INVOICE_TEMPLATE);
         setNotifyInvoice(s.notify_invoice_whatsapp === true);
         setNotifyCategories(s.notify_sale_categories || 'Satis,Hizmet');
-        setDefaultCountryCode(
-          String(s.default_country_code || '90').replace(/\D/g, '') || '90',
-        );
+        setDefaultCountryCode(sanitizeCountryCode(s.default_country_code, '90'));
         setMetaInvoiceTplId(s.meta_invoice_template_name || 'retailex_invoice_tr');
         setMetaAppointmentTplId(s.meta_appointment_template_name || 'retailex_appointment_tr');
       }
@@ -169,7 +169,7 @@ export function WhatsAppIntegrationModule() {
         invoice_whatsapp_template: invoiceTemplate || null,
         notify_invoice_whatsapp: notifyInvoice,
         notify_sale_categories: notifyCategories || 'Satis,Hizmet',
-        default_country_code: defaultCountryCode || '90',
+        default_country_code: sanitizeCountryCode(defaultCountryCode, '90'),
         meta_invoice_template_name: metaInvoiceTplId || 'retailex_invoice_tr',
         meta_invoice_template_language:
           META_INVOICE_TEMPLATES.find((t) => t.id === metaInvoiceTplId)?.language || 'tr',
@@ -604,18 +604,12 @@ export function WhatsAppIntegrationModule() {
                   placeholder="Satis,Hizmet"
                 />
               </div>
-              <div>
-                <label className={labelCls}>Varsayılan ülke kodu (ülke kodu yoksa eklenir)</label>
-                <input
-                  className={`${inputCls} mt-1`}
-                  value={defaultCountryCode}
-                  onChange={(e) => setDefaultCountryCode(e.target.value.replace(/\D/g, '') || '')}
-                  placeholder="90 / 964"
-                />
-                <p className={`mt-1 text-xs ${mutedCls}`}>
-                  Örn. Türkiye 90, Irak 964. Numarada zaten kod varsa değiştirilmez.
-                </p>
-              </div>
+              <MessagingCountryCodeSelect
+                value={defaultCountryCode}
+                onChange={setDefaultCountryCode}
+                inputCls={inputCls}
+                labelCls={labelCls}
+              />
               {waProvider === 'META' ? (
                 <div
                   className={`space-y-4 rounded-lg border p-4 ${

@@ -20,6 +20,8 @@ import {
   type NotificationSendLogRow,
 } from '../../services/messaging/notificationSendLogService';
 import type { MessagingSettings, NotificationQueueRow } from '../../services/messaging/messagingTypes';
+import { MessagingCountryCodeSelect } from '../shared/MessagingCountryCodeSelect';
+import { sanitizeCountryCode } from '../../services/messaging/messagingCountryCodes';
 
 type PanelProps = {
   panel: string;
@@ -458,7 +460,7 @@ export function MsgAutomationPanel({ panel, inputCls, labelCls }: PanelProps) {
     setSaving(true);
     try {
       await messagingService.updateSettings({
-        default_country_code: settings.default_country_code || '90',
+        default_country_code: sanitizeCountryCode(settings.default_country_code, '90'),
         birthday_enabled: settings.birthday_enabled === true,
         birthday_mode: settings.birthday_mode || 'today',
         birthday_upcoming_days: Number(settings.birthday_upcoming_days ?? 7) || 7,
@@ -491,16 +493,12 @@ export function MsgAutomationPanel({ panel, inputCls, labelCls }: PanelProps) {
       </h3>
       <p className="text-xs text-gray-500">{tm('msgNotifyAutoHint')}</p>
 
-      <div>
-        <label className={labelCls}>{tm('msgNotifyCountryCode')}</label>
-        <input
-          className={inputCls}
-          value={settings.default_country_code || '90'}
-          onChange={(e) => patch({ default_country_code: e.target.value.replace(/\D/g, '') })}
-          placeholder="90 / 964"
-        />
-        <p className="text-xs text-gray-500 mt-1">{tm('msgNotifyCountryCodeHint')}</p>
-      </div>
+      <MessagingCountryCodeSelect
+        value={settings.default_country_code || '90'}
+        onChange={(code) => patch({ default_country_code: sanitizeCountryCode(code, '90') })}
+        inputCls={inputCls}
+        labelCls={labelCls}
+      />
 
       <label className="flex items-center gap-2 text-sm">
         <input
