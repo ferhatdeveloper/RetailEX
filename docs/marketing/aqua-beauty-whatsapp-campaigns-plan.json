@@ -1,0 +1,29 @@
+{
+  "brand": "Aqua Beauty Center / ئەکوا بیوتی سەنتەر / أكوا بيوتي سنتر",
+  "channel": "whatsapp",
+  "status": "draft",
+  "note_tr": "Özel günler is_active=false (Taslak). Otomatik gönderim YOK — kullanıcı Mesaj Bildirim → Özel Günler'den aktif eder. Birthday: birthday_enabled=false; hediye = birthday_gift_text ({gift}/{service}), Hydrafacial sabit değil. Migrate: 169→170→171→172→173.",
+  "no_duplicates": ["gregorian_new_year (171 tek)", "ramadan_eid (172 tek)"],
+  "campaigns": [
+    { "id": "valentine", "event": "02-14", "offer": "%30", "audience": "bulk_all", "send": [{ "lang": "ku", "date": "01-30", "days_before": 15 }, { "lang": "ar", "date": "01-31", "days_before": 14 }], "preset": "aqua_valentine" },
+    { "id": "student_day", "event": "02-18", "offer": "%50+kart", "audience": "bulk_all", "send": [{ "lang": "ku", "date": "02-14", "days_before": 4, "time": "10:00" }, { "lang": "ar", "date": "02-14", "days_before": 4, "time": "11:00" }], "preset": "aqua_student_day" },
+    { "id": "womens_day", "event": "03-08", "offer": "%30", "audience": "female", "send": [{ "lang": "ku", "date": "03-05", "days_before": 3 }, { "lang": "ar", "date": "03-05", "days_before": 3 }], "preset": "aqua_womens_day" },
+    { "id": "nevruz", "event": "03-21", "offer": "%30", "audience": "bulk_all", "send": [{ "lang": "ku", "date": "03-09", "days_before": 12 }, { "lang": "ar", "date": "03-09", "days_before": 12 }], "preset": "aqua_nevruz" },
+    { "id": "health_day", "event": "04-07", "offer": "%25", "audience": "bulk_all", "send": [{ "lang": "ku", "date": "04-05", "days_before": 2 }, { "lang": "ar", "date": "04-05", "days_before": 2 }], "preset": "aqua_health_day" },
+    { "id": "ghadir", "event": "05-31", "offer": "%25", "audience": "bulk_all", "send": [{ "lang": "ku", "date": "05-31", "days_before": 0 }, { "lang": "ar", "date": "05-31", "days_before": 0 }], "preset": "aqua_ghadir" },
+    { "id": "kurban_eid", "event": "05-16", "offer": "%30", "audience": "bulk_all", "send": [{ "lang": "ku", "date": "05-01", "days_before": 15 }, { "lang": "ar", "date": "05-01", "days_before": 15 }], "preset": "aqua_kurban_eid" },
+    { "id": "hijri_new_year", "event": "06-16", "offer": "%25", "audience": "bulk_all", "send": [{ "lang": "ku", "date": "06-14", "days_before": 2 }, { "lang": "ar", "date": "06-14", "days_before": 2 }], "preset": "aqua_hijri_new_year" },
+    { "id": "mawlid", "event": "08-25", "offer": "%40", "audience": "bulk_all", "send": [{ "lang": "ku", "date": "08-20", "days_before": 5 }, { "lang": "ar", "date": "08-20", "days_before": 5 }], "preset": "aqua_mawlid" },
+    { "id": "ramadan_eid", "event": "03-09", "offer": "%30", "audience": "bulk_all", "send": [{ "lang": "ku", "date": "03-01", "days_before": 8 }, { "lang": "ar", "date": "03-01", "days_before": 8 }], "preset": "aqua_ramadan_eid" },
+    { "id": "gregorian_new_year", "event": "01-01", "offer": "%25", "audience": "bulk_all", "send": [{ "lang": "ku", "date": "12-15", "days_before": 17 }, { "lang": "ar", "date": "12-15", "days_before": 17 }], "preset": "aqua_gregorian_new_year", "note": "Tek kayıt — 171; tekrar seed yok" },
+    { "id": "birthday", "trigger": "exact 2 days before", "audience": "birthday_upcoming", "placeholders": ["{customer_name}", "{gift}", "{service}"], "gift": "configurable birthday_gift_text", "preset": "aqua_birthday", "enabled_default": false }
+  ],
+  "tables": [
+    "rex_*_message_templates",
+    "rex_*_special_days (is_active=false = taslak)",
+    "rex_*_messaging_settings (birthday_*)"
+  ],
+  "migrations": ["169", "170", "171", "172", "173"],
+  "ui": "Mesaj Bildirim → Şablonlar / Özel Günler (Taslak) / Otomasyon (doğum günü hediye alanı)",
+  "migrate_cmd": "npm run db:migrate  (veya PGDATABASE=aqua_beauty npm run db:migrate:env)"
+}

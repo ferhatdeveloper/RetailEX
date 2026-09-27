@@ -184,6 +184,8 @@ export const messagingService = {
           birthday_upcoming_days: Number(merged.birthday_upcoming_days ?? 7) || 7,
           birthday_send_time: (merged.birthday_send_time || '10:00').toString().slice(0, 8),
           birthday_template_id: merged.birthday_template_id ?? null,
+          birthday_gift_text: merged.birthday_gift_text ?? null,
+          birthday_upcoming_exact: merged.birthday_upcoming_exact === true,
           auto_campaign_enabled: merged.auto_campaign_enabled === true,
           updated_at: new Date().toISOString(),
         },
@@ -204,6 +206,7 @@ export const messagingService = {
         default_country_code = $20, birthday_enabled = $21, birthday_mode = $22,
         birthday_upcoming_days = $23, birthday_send_time = $24, birthday_template_id = $25,
         auto_campaign_enabled = $26,
+        birthday_gift_text = $27, birthday_upcoming_exact = $28,
         updated_at = CURRENT_TIMESTAMP
        WHERE id = $1`,
       [
@@ -233,6 +236,8 @@ export const messagingService = {
         (merged.birthday_send_time || '10:00').toString().slice(0, 8),
         merged.birthday_template_id ?? null,
         merged.auto_campaign_enabled === true,
+        merged.birthday_gift_text ?? null,
+        merged.birthday_upcoming_exact === true,
       ]
     );
   },

@@ -891,6 +891,21 @@ export function MesajBildirimModule({
                   className={inputCls}
                 />
               </div>
+              <div>
+                <label className={labelCls}>{tm('msgNotifyFilterGender')}</label>
+                <select
+                  value={groupFilter.gender ?? ''}
+                  onChange={(e) =>
+                    setGroupFilter((f) => ({ ...f, gender: e.target.value || undefined }))
+                  }
+                  className={inputCls}
+                >
+                  <option value="">{tm('msgNotifyFilterAny')}</option>
+                  <option value="female">{tm('msgNotifyFilterGenderFemale')}</option>
+                  <option value="male">{tm('msgNotifyFilterGenderMale')}</option>
+                  <option value="other">{tm('msgNotifyFilterGenderOther')}</option>
+                </select>
+              </div>
             </div>
           )}
 

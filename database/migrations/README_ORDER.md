@@ -167,3 +167,8 @@ Restoran sohbetinde eklenen tek yeni tablo: **rest.return_log**. Diğer özellik
 - `166_customers_file_id_merge_unique.sql` — `rex_*_customers` birleştirme kolonları (`merged_into_*`); mükerrer sayısal `file_id` ayırma + aktif kartlarda UNIQUE.
 - `167_messaging_campaign_templates.sql` — mesaj şablonları, özel günler, `notification_send_log`, `messaging_settings` ülke kodu + doğum günü/otomasyon kolonları.
 - `168_report_menu_params_invoice_auto_print_after_save.sql` — `invoice-auto-print-after-save: true` (yoksa ekler); backoffice fatura kaydı sonrası yazdır (varsayılan açık = eski davranış).
+- `169_special_days_gender_filter.sql` — `rex_*_special_days.gender_filter` (female/male/other/NULL=tümü); Kadınlar Günü vb. özel gün kampanyaları.
+- `170_birthday_gift_configurable.sql` — `messaging_settings.birthday_gift_text` + `birthday_upcoming_exact` (doğum günü hediyesi / tam N gün önce).
+- `171_whatsapp_campaign_drafts_seed.sql` — beauty WhatsApp kampanya taslakları (Valentine…Miladi yılbaşı + birthday şablonları); özel günler `is_active=false`.
+- `172_ramadan_eid_whatsapp_draft.sql` — Ramazan Bayramı 9/3 taslak (gönderim 1/3, −8g, KU+AR).
+- `173_kurban_eid_whatsapp_draft.sql` — Kurban Bayramı 16/5 taslak (gönderim 1/5, −15g, KU+AR).

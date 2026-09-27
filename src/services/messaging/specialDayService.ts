@@ -15,6 +15,8 @@ export interface SpecialDayRow {
   days_before: number;
   send_time: string;
   template_id?: string | null;
+  /** null/boş = tüm müşteriler; female | male | other */
+  gender_filter?: string | null;
   is_active?: boolean;
   created_at?: string;
   updated_at?: string;
@@ -39,6 +41,7 @@ function mapRow(r: Record<string, unknown>): SpecialDayRow {
     days_before: Number(r.days_before) || 0,
     send_time: String(r.send_time || '10:00').slice(0, 8),
     template_id: r.template_id != null ? String(r.template_id) : null,
+    gender_filter: r.gender_filter != null ? String(r.gender_filter).trim().toLowerCase() || null : null,
     is_active: r.is_active !== false,
     created_at: r.created_at != null ? String(r.created_at) : undefined,
     updated_at: r.updated_at != null ? String(r.updated_at) : undefined,
@@ -53,17 +56,22 @@ export function specialDayOccurrenceDate(day: SpecialDayRow, year: number): stri
   return `${year}-${m}-${d}`;
 }
 
-/** Bugün, özel günün (event - days_before) gönderim günü mü? */
+/** Bugün, özel günün (event - days_before) gönderim günü mü?
+ * Yılbaşı gibi yıl aşan gönderimler için hem bu yıl hem gelecek yıl kontrol edilir.
+ */
 export function isSpecialDaySendDue(day: SpecialDayRow, now = new Date()): boolean {
-  const y = now.getFullYear();
-  const occ = specialDayOccurrenceDate(day, y);
-  const occDate = new Date(`${occ}T12:00:00`);
-  if (Number.isNaN(occDate.getTime())) return false;
-  const sendDate = new Date(occDate);
-  sendDate.setDate(sendDate.getDate() - Math.max(0, day.days_before || 0));
   const today = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')}`;
-  const sendYmd = `${sendDate.getFullYear()}-${String(sendDate.getMonth() + 1).padStart(2, '0')}-${String(sendDate.getDate()).padStart(2, '0')}`;
-  return today === sendYmd;
+  const years = [now.getFullYear(), now.getFullYear() + 1];
+  for (const y of years) {
+    const occ = specialDayOccurrenceDate(day, y);
+    const occDate = new Date(`${occ}T12:00:00`);
+    if (Number.isNaN(occDate.getTime())) continue;
+    const sendDate = new Date(occDate);
+    sendDate.setDate(sendDate.getDate() - Math.max(0, day.days_before || 0));
+    const sendYmd = `${sendDate.getFullYear()}-${String(sendDate.getMonth() + 1).padStart(2, '0')}-${String(sendDate.getDate()).padStart(2, '0')}`;
+    if (today === sendYmd) return true;
+  }
+  return false;
 }
 
 export function timeMatchesNow(sendTime: string, now = new Date(), toleranceMinutes = 1): boolean {
@@ -116,9 +124,13 @@ export const specialDayService = {
     days_before?: number;
     send_time?: string;
     template_id?: string | null;
+    gender_filter?: string | null;
     is_active?: boolean;
   }): Promise<SpecialDayRow> {
     const fn = firmNrRow();
+    const genderRaw = (data.gender_filter ?? '').trim().toLowerCase();
+    const genderFilter =
+      genderRaw === 'female' || genderRaw === 'male' || genderRaw === 'other' ? genderRaw : null;
     const row = {
       id: uuidv4(),
       firm_nr: fn,
@@ -129,6 +141,7 @@ export const specialDayService = {
       days_before: Math.max(0, Number(data.days_before) || 0),
       send_time: (data.send_time || '10:00').slice(0, 8),
       template_id: data.template_id || null,
+      gender_filter: genderFilter,
       is_active: data.is_active !== false,
     };
     if (shouldUseTenantPostgrestApi()) {
@@ -141,8 +154,8 @@ export const specialDayService = {
     }
     const t = specialDaysTable();
     await postgres.query(
-      `INSERT INTO ${t} (id, firm_nr, name, month, day, fixed_date, days_before, send_time, template_id, is_active)
-       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10)`,
+      `INSERT INTO ${t} (id, firm_nr, name, month, day, fixed_date, days_before, send_time, template_id, gender_filter, is_active)
+       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11)`,
       [
         row.id,
         fn,
@@ -153,6 +166,7 @@ export const specialDayService = {
         row.days_before,
         row.send_time,
         row.template_id,
+        row.gender_filter,
         row.is_active,
       ],
       { firmNr: fn },
@@ -170,6 +184,7 @@ export const specialDayService = {
       days_before: number;
       send_time: string;
       template_id: string | null;
+      gender_filter: string | null;
       is_active: boolean;
     }>,
   ): Promise<void> {
@@ -177,6 +192,11 @@ export const specialDayService = {
     const list = await specialDayService.list(false);
     const cur = list.find((r) => r.id === id);
     if (!cur) return;
+    const genderIn =
+      data.gender_filter !== undefined ? data.gender_filter : cur.gender_filter;
+    const genderRaw = (genderIn ?? '').trim().toLowerCase();
+    const genderFilter =
+      genderRaw === 'female' || genderRaw === 'male' || genderRaw === 'other' ? genderRaw : null;
     const merged = {
       name: data.name?.trim() ?? cur.name,
       month: data.month ?? cur.month,
@@ -185,6 +205,7 @@ export const specialDayService = {
       days_before: data.days_before ?? cur.days_before,
       send_time: data.send_time ?? cur.send_time,
       template_id: data.template_id !== undefined ? data.template_id : cur.template_id,
+      gender_filter: genderFilter,
       is_active: data.is_active ?? cur.is_active !== false,
     };
     if (shouldUseTenantPostgrestApi()) {
@@ -199,7 +220,7 @@ export const specialDayService = {
     const t = specialDaysTable();
     await postgres.query(
       `UPDATE ${t} SET name=$2, month=$3, day=$4, fixed_date=$5, days_before=$6,
-        send_time=$7, template_id=$8, is_active=$9, updated_at=CURRENT_TIMESTAMP
+        send_time=$7, template_id=$8, gender_filter=$9, is_active=$10, updated_at=CURRENT_TIMESTAMP
        WHERE id=$1`,
       [
         id,
@@ -210,6 +231,7 @@ export const specialDayService = {
         merged.days_before,
         merged.send_time,
         merged.template_id,
+        merged.gender_filter,
         merged.is_active,
       ],
       { firmNr: fn },

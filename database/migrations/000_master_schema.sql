@@ -2827,6 +2827,8 @@ BEGIN
       birthday_upcoming_days INTEGER DEFAULT 7,
       birthday_send_time VARCHAR(8) DEFAULT '10:00',
       birthday_template_id UUID,
+      birthday_gift_text TEXT,
+      birthday_upcoming_exact BOOLEAN DEFAULT false,
       auto_campaign_enabled BOOLEAN DEFAULT false,
       created_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP,
       updated_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP
@@ -2864,6 +2866,7 @@ BEGIN
       days_before INTEGER NOT NULL DEFAULT 0,
       send_time VARCHAR(8) NOT NULL DEFAULT '10:00',
       template_id UUID,
+      gender_filter VARCHAR(20),
       is_active BOOLEAN DEFAULT true,
       created_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP,
       updated_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP

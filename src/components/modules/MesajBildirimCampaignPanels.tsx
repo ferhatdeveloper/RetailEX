@@ -218,6 +218,7 @@ export function MsgSpecialDaysPanel({ panel, inputCls, labelCls }: PanelProps) {
     days_before: 0,
     send_time: '10:00',
     template_id: '',
+    gender_filter: '',
   });
   const [editId, setEditId] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
@@ -244,7 +245,7 @@ export function MsgSpecialDaysPanel({ panel, inputCls, labelCls }: PanelProps) {
 
   const resetForm = () => {
     setEditId(null);
-    setForm({ name: '', month: 1, day: 1, days_before: 0, send_time: '10:00', template_id: '' });
+    setForm({ name: '', month: 1, day: 1, days_before: 0, send_time: '10:00', template_id: '', gender_filter: '' });
   };
 
   const handleSave = async () => {
@@ -261,6 +262,7 @@ export function MsgSpecialDaysPanel({ panel, inputCls, labelCls }: PanelProps) {
         days_before: form.days_before,
         send_time: form.send_time,
         template_id: form.template_id || null,
+        gender_filter: form.gender_filter || null,
       };
       if (editId) {
         await specialDayService.update(editId, payload);
@@ -361,6 +363,19 @@ export function MsgSpecialDaysPanel({ panel, inputCls, labelCls }: PanelProps) {
             ))}
           </select>
         </div>
+        <div>
+          <label className={labelCls}>{tm('msgNotifyFilterGender')}</label>
+          <select
+            className={inputCls}
+            value={form.gender_filter}
+            onChange={(e) => setForm((f) => ({ ...f, gender_filter: e.target.value }))}
+          >
+            <option value="">{tm('msgNotifyFilterAny')}</option>
+            <option value="female">{tm('msgNotifyFilterGenderFemale')}</option>
+            <option value="male">{tm('msgNotifyFilterGenderMale')}</option>
+            <option value="other">{tm('msgNotifyFilterGenderOther')}</option>
+          </select>
+        </div>
         <button
           type="button"
           disabled={saving}
@@ -393,6 +408,7 @@ export function MsgSpecialDaysPanel({ panel, inputCls, labelCls }: PanelProps) {
                       days_before: r.days_before,
                       send_time: r.send_time || '10:00',
                       template_id: r.template_id || '',
+                      gender_filter: r.gender_filter || '',
                     });
                   }}
                 >
@@ -400,7 +416,8 @@ export function MsgSpecialDaysPanel({ panel, inputCls, labelCls }: PanelProps) {
                   <div className="text-xs text-gray-500">
                     {String(r.month).padStart(2, '0')}/{String(r.day).padStart(2, '0')} · −
                     {r.days_before}g · {r.send_time}
-                    {r.is_active === false ? ` · ${tm('msgNotifyInactive')}` : ''}
+                    {r.gender_filter ? ` · ${r.gender_filter}` : ''}
+                    {r.is_active === false ? ` · ${tm('msgNotifyDraft')}` : ''}
                   </div>
                 </button>
                 <button
@@ -466,6 +483,8 @@ export function MsgAutomationPanel({ panel, inputCls, labelCls }: PanelProps) {
         birthday_upcoming_days: Number(settings.birthday_upcoming_days ?? 7) || 7,
         birthday_send_time: settings.birthday_send_time || '10:00',
         birthday_template_id: settings.birthday_template_id || null,
+        birthday_gift_text: settings.birthday_gift_text ?? null,
+        birthday_upcoming_exact: settings.birthday_upcoming_exact === true,
         auto_campaign_enabled: settings.auto_campaign_enabled === true,
       });
       toast.success(tm('msgNotifyAutoSaved'));
@@ -568,6 +587,26 @@ export function MsgAutomationPanel({ panel, inputCls, labelCls }: PanelProps) {
           ))}
         </select>
       </div>
+
+      <div>
+        <label className={labelCls}>{tm('msgNotifyBirthdayGift')}</label>
+        <input
+          className={inputCls}
+          value={settings.birthday_gift_text ?? ''}
+          onChange={(e) => patch({ birthday_gift_text: e.target.value || null })}
+          placeholder={tm('msgNotifyBirthdayGiftPh')}
+        />
+        <p className="text-xs text-gray-500 mt-1">{tm('msgNotifyBirthdayGiftHint')}</p>
+      </div>
+
+      <label className="flex items-center gap-2 text-sm">
+        <input
+          type="checkbox"
+          checked={settings.birthday_upcoming_exact === true}
+          onChange={(e) => patch({ birthday_upcoming_exact: e.target.checked })}
+        />
+        {tm('msgNotifyBirthdayExactDays')}
+      </label>
 
       <button
         type="button"

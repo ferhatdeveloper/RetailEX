@@ -76,7 +76,9 @@ async function tick(): Promise<void> {
     if (settings.birthday_enabled && timeMatchesNow(settings.birthday_send_time || '10:00', now, 1)) {
       const mode = (settings.birthday_mode || 'today').toString();
       const upcomingDays = Number(settings.birthday_upcoming_days ?? 7) || 7;
-      let tplBody = 'Sayın {customer_name}, doğum gününüzü kutlarız! RetailEX';
+      const exactUpcoming = settings.birthday_upcoming_exact === true;
+      const giftText = String(settings.birthday_gift_text ?? '').trim();
+      let tplBody = 'Sayın {customer_name}, doğum gününüzü kutlarız! {gift}';
       if (settings.birthday_template_id) {
         const tpl = await messageTemplateService.getById(settings.birthday_template_id);
         if (tpl?.body_text?.trim()) tplBody = tpl.body_text;
@@ -90,6 +92,7 @@ async function tick(): Promise<void> {
         const recipients = await customerNotificationService.resolveRecipients({
           mode: m,
           upcomingDays,
+          exactUpcoming: m === 'birthday_upcoming' ? exactUpcoming : false,
         });
         const campaignKey =
           m === 'birthday_today'
@@ -100,6 +103,7 @@ async function tick(): Promise<void> {
           eventType: m,
           templateBody: tplBody,
           recipients,
+          extraPlaceholders: { gift: giftText, service: giftText },
         });
       }
     }
@@ -113,9 +117,16 @@ async function tick(): Promise<void> {
         const tpl = await messageTemplateService.getById(day.template_id);
         if (tpl?.body_text?.trim()) body = tpl.body_text;
       }
-      const recipients = await customerNotificationService.resolveRecipients({
-        mode: 'bulk_all',
-      });
+      const gender = (day.gender_filter ?? '').trim().toLowerCase();
+      const recipients =
+        gender === 'female' || gender === 'male' || gender === 'other'
+          ? await customerNotificationService.resolveRecipients({
+              mode: 'group_include',
+              groupFilter: { gender },
+            })
+          : await customerNotificationService.resolveRecipients({
+              mode: 'bulk_all',
+            });
       const campaignKey = `special:${day.id}:${now.getFullYear()}`;
       await enqueueCampaignBatch({
         campaignKey,

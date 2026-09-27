@@ -32,6 +32,8 @@ export type CustomerGroupFilter = {
   city?: string;
   district?: string;
   heard_from?: string;
+  /** Müşteri cinsiyeti: female | male | other */
+  gender?: string;
 };
 
 export interface NotifyCustomerRow {
@@ -43,6 +45,7 @@ export interface NotifyCustomerRow {
   district?: string;
   heard_from?: string;
   birth_date?: string | null;
+  gender?: string | null;
 }
 
 function firmNrRow(): string {
@@ -69,6 +72,7 @@ function mapCustomerRow(
     district: r.district != null ? String(r.district) : undefined,
     heard_from: r.heard_from != null ? String(r.heard_from) : undefined,
     birth_date: birthRaw && birthRaw.length >= 10 ? birthRaw : null,
+    gender: r.gender != null ? String(r.gender).trim().toLowerCase() || null : null,
   };
 }
 
@@ -109,10 +113,12 @@ function isBirthdayUpcoming(
   birthDate: string | null | undefined,
   withinDays: number,
   now = new Date(),
+  exact = false,
 ): boolean {
   if (!birthDate || withinDays <= 0) return false;
   const diffDays = daysUntilBirthday(birthDate, now);
   if (diffDays == null) return false;
+  if (exact) return diffDays === withinDays;
   // Yaklaşan: bugün hariç 1..N gün içinde
   return diffDays >= 1 && diffDays <= withinDays;
 }
@@ -134,6 +140,10 @@ function matchesGroupFilter(row: NotifyCustomerRow, filter: CustomerGroupFilter)
     const hf = (row.heard_from ?? '').trim().toLowerCase();
     if (!hf.includes(filter.heard_from.trim().toLowerCase())) return false;
   }
+  if (filter.gender?.trim()) {
+    const g = (row.gender ?? '').trim().toLowerCase();
+    if (g !== filter.gender.trim().toLowerCase()) return false;
+  }
   return true;
 }
 
@@ -152,8 +162,13 @@ export function replaceMessagePlaceholders(
     customer_tier: customer.customer_tier ?? 'normal',
     birth_date: customer.birth_date ?? '',
     date: today,
+    gift: '',
+    service: '',
     ...extra,
   };
+  // gift/service eşanlamlı
+  if (vars.gift && !vars.service) vars.service = vars.gift;
+  if (vars.service && !vars.gift) vars.gift = vars.service;
   return template.replace(/\{(\w+)\}/g, (_, key: string) => vars[key] ?? '');
 }
 
@@ -186,7 +201,7 @@ export const customerNotificationService = {
     const settings = await messagingService.getSettings();
     const cc = String(settings?.default_country_code || '90').replace(/\D/g, '') || '90';
     const select =
-      'id,name,phone,customer_tier,city,district,heard_from,birth_date,is_active';
+      'id,name,phone,customer_tier,city,district,heard_from,birth_date,gender,is_active';
 
     if (shouldUseTenantPostgrestApi()) {
       const { postgrest } = await import('../api/postgrestClient');
@@ -207,7 +222,7 @@ export const customerNotificationService = {
 
     const t = customersTable();
     const { rows } = await postgres.query(
-      `SELECT id, name, phone, customer_tier, city, district, heard_from, birth_date
+      `SELECT id, name, phone, customer_tier, city, district, heard_from, birth_date, gender
        FROM ${t}
        WHERE firm_nr = $1 AND COALESCE(is_active, true) = true
        ORDER BY name
@@ -225,6 +240,8 @@ export const customerNotificationService = {
     customerIds?: string[];
     groupFilter?: CustomerGroupFilter;
     upcomingDays?: number;
+    /** true: yalnızca tam upcomingDays gün önce */
+    exactUpcoming?: boolean;
   }): Promise<NotifyCustomerRow[]> {
     const all = await customerNotificationService.listActiveCustomers();
     const ids = new Set((params.customerIds ?? []).map(String));
@@ -252,7 +269,9 @@ export const customerNotificationService = {
       case 'birthday_today':
         return all.filter((c) => isBirthdayToday(c.birth_date));
       case 'birthday_upcoming':
-        return all.filter((c) => isBirthdayUpcoming(c.birth_date, upcomingDays));
+        return all.filter((c) =>
+          isBirthdayUpcoming(c.birth_date, upcomingDays, undefined, params.exactUpcoming === true),
+        );
       default:
         return [];
     }

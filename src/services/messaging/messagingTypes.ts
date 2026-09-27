@@ -30,6 +30,10 @@ export interface MessagingSettings extends ClinicMessagingPortalConfig {
   birthday_upcoming_days?: number | null;
   birthday_send_time?: string | null;
   birthday_template_id?: string | null;
+  /** Doğum günü hediyesi / yapılacak iş — şablonda {gift} veya {service} */
+  birthday_gift_text?: string | null;
+  /** true ise yalnızca tam birthday_upcoming_days gün önce (örn. 2 = tam 2 gün önce) */
+  birthday_upcoming_exact?: boolean;
   auto_campaign_enabled?: boolean;
   created_at?: string;
   updated_at?: string;
