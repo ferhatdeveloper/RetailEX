@@ -1,7 +1,14 @@
 import type { TemplateType } from '../core/types/templates';
 import { INVOICE_FIELDS, LABEL_FIELDS } from '../core/types/templates';
 import { formatNumber } from '../utils/formatNumber';
+import { formatShortDate, formatTimeShort } from '../utils/dateLocale';
 import { loadCustomTemplateFields } from './templateCustomFieldsStorage';
+import {
+  buildInvoicePrintLabelContext,
+  getAppLanguage,
+  localizePaymentMethodForPrint,
+} from '../utils/invoicePrintI18n';
+import { translate } from '../locales/module-translations';
 
 export type TemplateFieldCategory =
   | 'store'
@@ -117,6 +124,20 @@ const INVOICE_FIELD_META: Record<string, { category: TemplateFieldCategory; samp
 };
 
 const INVOICE_EXTENDED: TemplateFieldDef[] = [
+  field('{{lblDocument}}', 'Etiket: Belge / Document', 'document', 'Document'),
+  field('{{lblInvoiceNo}}', 'Etiket: Fatura No', 'document', 'Invoice No'),
+  field('{{lblDate}}', 'Etiket: Tarih', 'document', 'Date'),
+  field('{{lblCustomer}}', 'Etiket: Müşteri', 'customer', 'Customer / Dear'),
+  field('{{lblSupplier}}', 'Etiket: Tedarikçi', 'customer', 'Supplier'),
+  field('{{lblPaymentMethod}}', 'Etiket: Ödeme Yöntemi', 'payment', 'Payment Method'),
+  field('{{lblCashier}}', 'Etiket: Kasiyer', 'payment', 'Cashier'),
+  field('{{lblSubTotal}}', 'Etiket: Ara Toplam', 'totals', 'Sub Total'),
+  field('{{lblDiscount}}', 'Etiket: İndirim', 'totals', 'Discount'),
+  field('{{lblTax}}', 'Etiket: Vergi', 'totals', 'Tax / VAT'),
+  field('{{lblTotal}}', 'Etiket: Toplam', 'totals', 'Total Amount'),
+  field('{{lblReceivedBy}}', 'Etiket: Teslim Alan', 'document', 'Received By'),
+  field('{{lblDeliveredBy}}', 'Etiket: Teslim Eden', 'document', 'Delivered By'),
+  field('{{lblElectronicNote}}', 'Etiket: Elektronik belge notu', 'document', 'Generated electronically'),
   field('{{ficheNo}}', 'Fiş no (fiche_no)', 'document', 'A00000042'),
   field('{{documentNo}}', 'Belge no', 'document', 'BLG-2026-12'),
   field('{{ficheType}}', 'Fiş tipi', 'document', 'sales_invoice'),
@@ -267,6 +288,11 @@ export function getTemplateFieldCatalog(type: TemplateType): TemplateFieldDef[] 
 }
 
 export function buildDemoInvoicePreviewContext(): Record<string, unknown> {
+  const lang = getAppLanguage();
+  const localeCode = translate('localeCode', lang);
+  const now = new Date();
+  const demoDate = formatShortDate(now, localeCode);
+  const demoTime = formatTimeShort(now, localeCode);
   const items = [
     {
       productName: 'Kablosuz Mouse',
@@ -332,6 +358,7 @@ export function buildDemoInvoicePreviewContext(): Record<string, unknown> {
     heard_from: 'Instagram',
   };
   return {
+    ...buildInvoicePrintLabelContext(lang),
     storeName: 'RetailEX Demo Mağaza',
     storeAddress: 'Atatürk Cad. No:12, Kadıköy / İstanbul',
     storeTaxNo: '1234567890',
@@ -340,8 +367,8 @@ export function buildDemoInvoicePreviewContext(): Record<string, unknown> {
     ficheNo: 'A00000042',
     documentNo: 'BLG-2026-12',
     receiptNumber: 'A00000042',
-    date: new Date().toLocaleDateString('tr-TR'),
-    time: new Date().toLocaleTimeString('tr-TR', { hour: '2-digit', minute: '2-digit' }),
+    date: demoDate,
+    time: demoTime,
     customerName: 'Örnek Müşteri A.Ş.',
     customerPhone: '+90 532 000 00 00',
     customerPhone2: '+90 533 000 00 00',
@@ -373,7 +400,7 @@ export function buildDemoInvoicePreviewContext(): Record<string, unknown> {
     totalNet: formatNumber(1180, 2, true),
     totalVat: formatNumber(212.4, 2, true),
     netAmount: formatNumber(1312.4, 2, true),
-    paymentMethod: 'Nakit',
+    paymentMethod: localizePaymentMethodForPrint('Nakit', lang),
     cashier: 'Admin',
     currency: 'TRY',
     firmNr: '001',

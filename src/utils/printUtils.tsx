@@ -7,11 +7,20 @@ import { getBindingForScope } from '../services/printDesignBindingService';
 import { buildInvoicePrintContext, invoiceScopeFromTrcode } from '../services/templateRenderService';
 import { enqueueFastReportFrxJob, enqueueFastReportTemplateJob, enqueuePrintJob, isWindowsPrinterServiceEnabled } from '../services/unifiedPrintQueueService';
 import { getStoredWindowsPrinterNameForPrint } from './tauriPrintSettings';
+import {
+  getAppLanguage,
+  getInvoicePrintLabels,
+} from './invoicePrintI18n';
+import { translate } from '../locales/module-translations';
 
 export const printInvoice = async (invoice: Invoice, typeLabel: string = 'FATURA') => {
   try {
     // Dynamic import to avoid SSR issues
     const ReactDOMServer = (await import('react-dom/server')).default;
+    const lang = getAppLanguage();
+    const printLabels = getInvoicePrintLabels(lang);
+    const resolvedTypeLabel =
+      typeLabel && typeLabel !== 'FATURA' ? typeLabel : printLabels.invoiceFallback;
 
     // Use an iframe instead of window.open to avoid popup blockers
     const iframe = document.createElement('iframe');
@@ -45,25 +54,30 @@ export const printInvoice = async (invoice: Invoice, typeLabel: string = 'FATURA
       logoUrl: receiptSettings.logoDataUrl || undefined,
       showQRCode: true,
       companyName: receiptSettings.companyName || firmDetails?.title || firmDetails?.name || 'RetailEX ERP',
-      companyAddress: receiptSettings.companyAddress || firmDetails?.address || 'Adres tanımlanmamış.',
+      companyAddress:
+        receiptSettings.companyAddress ||
+        firmDetails?.address ||
+        printLabels.addressUndefined,
       companyPhone: receiptSettings.companyPhone || firmDetails?.phone || '',
       companyTaxNo: receiptSettings.companyTaxNumber || firmDetails?.tax_nr || '',
       companyTaxOffice: receiptSettings.companyTaxOffice || undefined,
-      footerText: 'Bizi tercih ettiğiniz için teşekkür ederiz.'
+      footerText: translate('invPrintThanksPreference', lang),
     };
 
     const htmlContent = ReactDOMServer.renderToStaticMarkup(
       <CorporateInvoiceTemplate
         invoice={invoice}
         config={companyConfig}
-        typeLabel={typeLabel}
+        typeLabel={resolvedTypeLabel}
+        language={lang}
+        labels={printLabels}
       />
     );
     const fullHtml = `
       <!DOCTYPE html>
       <html>
         <head>
-          <title>${typeLabel} - ${invoice.invoice_no}</title>
+          <title>${resolvedTypeLabel} - ${invoice.invoice_no}</title>
           <script src="https://cdn.tailwindcss.com"></script>
           <style>
             @page { size: A4; margin: 0; }
@@ -125,7 +139,7 @@ export const printInvoice = async (invoice: Invoice, typeLabel: string = 'FATURA
             html: fullHtml,
             paperHint: 'A4',
             invoiceNo: invoice.invoice_no ?? null,
-            typeLabel,
+            typeLabel: resolvedTypeLabel,
           },
         });
         document.body.removeChild(iframe);

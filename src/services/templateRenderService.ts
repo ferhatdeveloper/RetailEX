@@ -2,9 +2,17 @@ import type { Invoice } from '../core/types';
 import type { Template, TemplateElement, TemplateUsageScope } from '../core/types/templates';
 import type { ReportComponent, ReportTemplate } from '../components/reports/designerUtils';
 import { formatNumber } from '../utils/formatNumber';
+import { formatDateTimeShort, formatShortDate, formatTimeShort } from '../utils/dateLocale';
 import { flattenDbRecord, mergeTemplateContexts } from './templateRecordContext';
 import { birthDatePrintParts } from '../utils/partialDateInput';
 import { beautyGenderLabelEn } from '../utils/beautyGenderLabel';
+import {
+  buildInvoicePrintLabelContext,
+  getAppLanguage,
+  localizePaymentMethodForPrint,
+  localizeUnitForPrint,
+} from '../utils/invoicePrintI18n';
+import { translate } from '../locales/module-translations';
 
 const TEMPLATE_TOKEN_REGEX = /\{\{\s*([^}]+)\s*\}\}/g;
 
@@ -188,17 +196,26 @@ export function invoiceScopeFromTrcode(trcode?: number | null): TemplateUsageSco
 }
 
 function parseDateParts(value: unknown): { date: string; time: string } {
-  const raw = value ? String(value) : '';
-  if (!raw) return { date: '', time: '' };
-  const dt = new Date(raw);
-  if (Number.isNaN(dt.getTime())) return { date: raw.slice(0, 10), time: raw.slice(11, 16) };
-  return {
-    date: dt.toLocaleDateString('tr-TR'),
-    time: dt.toLocaleTimeString('tr-TR', { hour: '2-digit', minute: '2-digit' }),
-  };
+  const raw = value ? String(value).trim() : '';
+  if (!raw || raw === 'Invalid Date') return { date: '', time: '' };
+  const lang = getAppLanguage();
+  const localeCode = translate('localeCode', lang);
+  const date = formatShortDate(raw, localeCode, { fallback: '' });
+  if (!date) {
+    // Son çare: ham YYYY-MM-DD dilimi
+    if (/^\d{4}-\d{2}-\d{2}/.test(raw)) return { date: raw.slice(0, 10), time: '' };
+    return { date: '', time: '' };
+  }
+  const full = formatDateTimeShort(raw, localeCode, { fallback: date });
+  const time =
+    full.startsWith(date) && full.length > date.length
+      ? full.slice(date.length).trim()
+      : formatTimeShort(raw, localeCode, { fallback: '' });
+  return { date, time };
 }
 
 export function buildInvoicePrintContext(invoice: Invoice): Record<string, unknown> {
+  const lang = getAppLanguage();
   const invoiceRecord = invoice as unknown as Record<string, unknown>;
   const dateSource =
     invoiceRecord.invoice_date ||
@@ -209,6 +226,7 @@ export function buildInvoicePrintContext(invoice: Invoice): Record<string, unkno
   const customerName = invoiceRecord.customer_name || invoiceRecord.customerName || '';
   const items = (invoice.items || []).map((item) => {
     const row = item as unknown as Record<string, unknown>;
+    const unitRaw = item.unit || row.unit || '';
     return {
       ...item,
       name: item.productName || item.description || item.code || row.item_name || '',
@@ -216,6 +234,7 @@ export function buildInvoicePrintContext(invoice: Invoice): Record<string, unkno
       itemName: row.item_name || item.productName || '',
       itemCode: row.item_code || item.code || '',
       quantity: item.quantity ?? 0,
+      unit: localizeUnitForPrint(unitRaw, lang) || unitRaw,
       unitPrice: item.unitPrice ?? item.price ?? row.unit_price ?? 0,
       unit_price: item.unitPrice ?? item.price ?? row.unit_price ?? 0,
       total: item.total ?? item.netAmount ?? row.net_amount ?? 0,
@@ -231,7 +250,9 @@ export function buildInvoicePrintContext(invoice: Invoice): Record<string, unkno
     ? flattenDbRecord(firstLine, { prefix: 'line', namespaces: ['line', 'item'] })
     : {};
 
-  return mergeTemplateContexts(headerFlat, lineFlat, {
+  const paymentRaw = invoiceRecord.paymentMethod || invoiceRecord.payment_method || '';
+
+  return mergeTemplateContexts(headerFlat, lineFlat, buildInvoicePrintLabelContext(lang), {
     invoice: invoiceRecord,
     sales: invoiceRecord,
     items,
@@ -266,7 +287,7 @@ export function buildInvoicePrintContext(invoice: Invoice): Record<string, unkno
     totalNet: formatNumber(Number(invoiceRecord.total_net || invoice.subtotal || 0), 2, true),
     totalVat: formatNumber(Number(invoiceRecord.total_vat || invoice.tax || 0), 2, true),
     netAmount: formatNumber(Number(invoiceRecord.net_amount || invoice.total || 0), 2, true),
-    paymentMethod: invoiceRecord.paymentMethod || invoiceRecord.payment_method || '',
+    paymentMethod: localizePaymentMethodForPrint(paymentRaw, lang),
     cashier: invoiceRecord.cashier || '',
     currency: invoiceRecord.currency || '',
     firmNr: invoiceRecord.firm_nr || invoiceRecord.firma_id || '',

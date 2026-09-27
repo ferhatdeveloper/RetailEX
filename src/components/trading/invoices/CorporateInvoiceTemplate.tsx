@@ -1,5 +1,14 @@
 import React from 'react';
 import { formatNumber } from '../../../utils/formatNumber';
+import { formatDateTimeShort, formatShortDate } from '../../../utils/dateLocale';
+import {
+  getAppLanguage,
+  getInvoicePrintLabels,
+  localizePaymentMethodForPrint,
+  localizeUnitForPrint,
+  type InvoicePrintLabels,
+} from '../../../utils/invoicePrintI18n';
+import { translate, type Language } from '../../../locales/module-translations';
 import type { Invoice } from '../../../core/types';
 
 export interface PrintConfig {
@@ -18,19 +27,54 @@ interface CorporateInvoiceTemplateProps {
     invoice: Invoice;
     config: PrintConfig;
     typeLabel?: string; // E.g. "SATIŞ FATURASI", "İRSALİYE"
+    /** Yoksa localStorage / varsayılan dil */
+    language?: Language;
+    labels?: InvoicePrintLabels;
 }
 
-export const CorporateInvoiceTemplate: React.FC<CorporateInvoiceTemplateProps> = ({ invoice, config, typeLabel }) => {
-    const invoiceDate = new Date(invoice.invoice_date || '').toLocaleDateString('tr-TR', {
-        day: '2-digit',
-        month: '2-digit',
-        year: 'numeric'
-    });
+function resolveInvoiceDateRaw(invoice: Invoice): string {
+    const rec = invoice as unknown as Record<string, unknown>;
+    const candidates = [rec.invoice_date, rec.date, rec.created_at, rec.transaction_date];
+    for (const c of candidates) {
+        if (c == null) continue;
+        const s = String(c).trim();
+        if (s && s !== 'Invalid Date') return s;
+    }
+    return '';
+}
 
-    const invoiceTime = new Date(invoice.invoice_date || '').toLocaleTimeString('tr-TR', {
-        hour: '2-digit',
-        minute: '2-digit'
-    });
+export const CorporateInvoiceTemplate: React.FC<CorporateInvoiceTemplateProps> = ({
+    invoice,
+    config,
+    typeLabel,
+    language,
+    labels: labelsProp,
+}) => {
+    const lang = language || getAppLanguage();
+    const L = labelsProp || getInvoicePrintLabels(lang);
+    const localeCode = translate('localeCode', lang);
+
+    const rawDate = resolveInvoiceDateRaw(invoice);
+    const datePart = formatShortDate(rawDate, localeCode, { fallback: '' });
+    const fullDate = formatDateTimeShort(rawDate, localeCode, { fallback: '—' });
+    const timePart =
+        datePart && fullDate.startsWith(datePart) && fullDate.length > datePart.length
+            ? fullDate.slice(datePart.length).trim()
+            : '';
+
+    const isPurchase =
+        invoice.invoice_category === 'Alis' ||
+        Number(invoice.invoice_type) === 1 ||
+        Number((invoice as { trcode?: number }).trcode) === 1;
+
+    const partnerName =
+        (isPurchase
+            ? invoice.supplier_name || invoice.customer_name
+            : invoice.customer_name || invoice.supplier_name) || L.noCustomer;
+    const partnerLabel = isPurchase ? L.supplierDear : L.customerDear;
+
+    const paymentLabel = localizePaymentMethodForPrint(invoice.payment_method, lang);
+    const currency = String((invoice as { currency?: string }).currency || 'IQD').trim() || 'IQD';
 
     // Calculate totals
     const subtotal = invoice.subtotal || 0;
@@ -59,17 +103,17 @@ export const CorporateInvoiceTemplate: React.FC<CorporateInvoiceTemplateProps> =
                         <p>{config.companyAddress}</p>
                         {config.companyPhone && (
                             <div className="flex items-center gap-2 mt-1">
-                                <span className="font-semibold text-slate-700">Tel:</span> {config.companyPhone}
+                                <span className="font-semibold text-slate-700">{L.phone}:</span> {config.companyPhone}
                             </div>
                         )}
                         {config.companyTaxOffice && (
                             <div className="flex items-center gap-2 mt-0.5">
-                                <span className="font-semibold text-slate-700">Vergi Dairesi:</span> {config.companyTaxOffice}
+                                <span className="font-semibold text-slate-700">{L.taxOffice}:</span> {config.companyTaxOffice}
                             </div>
                         )}
                         {config.companyTaxNo && (
                             <div className="flex items-center gap-2 mt-0.5">
-                                <span className="font-semibold text-slate-700">Vergi No:</span> {config.companyTaxNo}
+                                <span className="font-semibold text-slate-700">{L.taxNo}:</span> {config.companyTaxNo}
                             </div>
                         )}
                     </div>
@@ -77,17 +121,24 @@ export const CorporateInvoiceTemplate: React.FC<CorporateInvoiceTemplateProps> =
 
                 {/* Invoice Title & Meta */}
                 <div className="text-right">
-                    <h2 className="text-4xl font-extrabold text-slate-900 tracking-tight uppercase mb-1">{typeLabel || 'FATURA'}</h2>
-                    <p className="text-slate-400 text-sm font-medium tracking-wide mb-6">BELGE</p>
+                    <h2 className="text-4xl font-extrabold text-slate-900 tracking-tight uppercase mb-1">
+                        {typeLabel || L.invoiceFallback}
+                    </h2>
+                    <p className="text-slate-400 text-sm font-medium tracking-wide mb-6 uppercase">{L.document}</p>
 
                     <div className="flex flex-col gap-1 items-end">
                         <div className="flex items-center gap-3">
-                            <span className="text-sm font-semibold text-slate-500 uppercase">Fatura No</span>
+                            <span className="text-sm font-semibold text-slate-500 uppercase">{L.invoiceNo}</span>
                             <span className="text-lg font-bold text-slate-900">{invoice.invoice_no}</span>
                         </div>
                         <div className="flex items-center gap-3">
-                            <span className="text-sm font-semibold text-slate-500 uppercase">Tarih</span>
-                            <span className="text-base font-medium text-slate-900">{invoiceDate} <span className="text-xs text-slate-400 ml-1">{invoiceTime}</span></span>
+                            <span className="text-sm font-semibold text-slate-500 uppercase">{L.date}</span>
+                            <span className="text-base font-medium text-slate-900">
+                                {datePart || fullDate}
+                                {timePart ? (
+                                    <span className="text-xs text-slate-400 ml-1">{timePart}</span>
+                                ) : null}
+                            </span>
                         </div>
                     </div>
                 </div>
@@ -95,25 +146,27 @@ export const CorporateInvoiceTemplate: React.FC<CorporateInvoiceTemplateProps> =
 
             {/* Info Grid */}
             <div className="grid grid-cols-2 gap-12 mb-8">
-                {/* Customer Section */}
+                {/* Customer / Supplier Section */}
                 <div>
-                    <h3 className="text-xs font-bold text-slate-400 uppercase tracking-wider mb-2 border-b border-slate-200 pb-1">Müşteri / Sayın</h3>
-                    <div className="text-base font-semibold text-slate-800 mb-1">
-                        {invoice.customer_name || 'Müşterisiz İşlem'}
-                    </div>
-                    {/* If we had customer address/details in invoice object, we would map them here */}
-                    {/* <p className="text-sm text-slate-600">...</p> */}
+                    <h3 className="text-xs font-bold text-slate-400 uppercase tracking-wider mb-2 border-b border-slate-200 pb-1">
+                        {partnerLabel}
+                    </h3>
+                    <div className="text-base font-semibold text-slate-800 mb-1">{partnerName}</div>
                 </div>
 
                 {/* Details Section */}
                 <div className="grid grid-cols-2 gap-4">
                     <div>
-                        <h3 className="text-xs font-bold text-slate-400 uppercase tracking-wider mb-2 border-b border-slate-200 pb-1">Ödeme Yöntemi</h3>
-                        <p className="text-sm font-medium text-slate-800">{invoice.payment_method || 'Nakit / Diğer'}</p>
+                        <h3 className="text-xs font-bold text-slate-400 uppercase tracking-wider mb-2 border-b border-slate-200 pb-1">
+                            {L.paymentMethod}
+                        </h3>
+                        <p className="text-sm font-medium text-slate-800">{paymentLabel}</p>
                     </div>
                     {invoice.cashier && (
                         <div>
-                            <h3 className="text-xs font-bold text-slate-400 uppercase tracking-wider mb-2 border-b border-slate-200 pb-1">Kasiyer / Plasiyer</h3>
+                            <h3 className="text-xs font-bold text-slate-400 uppercase tracking-wider mb-2 border-b border-slate-200 pb-1">
+                                {L.cashierSalesperson}
+                            </h3>
                             <p className="text-sm font-medium text-slate-800">{invoice.cashier}</p>
                         </div>
                     )}
@@ -125,11 +178,11 @@ export const CorporateInvoiceTemplate: React.FC<CorporateInvoiceTemplateProps> =
                 <table className="w-full text-left border-collapse">
                     <thead>
                         <tr className="border-b-2 border-slate-800 text-slate-800 text-xs uppercase tracking-wider">
-                            <th className="py-3 pr-4 font-bold">Ürün / Hizmet</th>
-                            <th className="py-3 px-4 text-right font-bold w-24">Miktar</th>
-                            <th className="py-3 px-4 text-right font-bold w-32">Birim Fiyat</th>
-                            <th className="py-3 px-4 text-right font-bold w-24">İndirim</th>
-                            <th className="py-3 pl-4 text-right font-bold w-32">Tutar</th>
+                            <th className="py-3 pr-4 font-bold">{L.productService}</th>
+                            <th className="py-3 px-4 text-right font-bold w-24">{L.quantity}</th>
+                            <th className="py-3 px-4 text-right font-bold w-32">{L.unitPrice}</th>
+                            <th className="py-3 px-4 text-right font-bold w-24">{L.discount}</th>
+                            <th className="py-3 pl-4 text-right font-bold w-32">{L.amount}</th>
                         </tr>
                     </thead>
                     <tbody className="text-sm">
@@ -137,12 +190,18 @@ export const CorporateInvoiceTemplate: React.FC<CorporateInvoiceTemplateProps> =
                             invoice.items.map((item: any, index: number) => (
                                 <tr key={index} className="border-b border-slate-100 hover:bg-slate-50 transition-colors">
                                     <td className="py-3 pr-4">
-                                        <span className="font-semibold text-slate-700 block">{item.productName || item.description || '-'}</span>
-                                        {item.code && <span className="text-xs text-slate-400 font-mono">{item.code}</span>}
+                                        <span className="font-semibold text-slate-700 block">
+                                            {item.productName || item.description || '-'}
+                                        </span>
+                                        {item.code && (
+                                            <span className="text-xs text-slate-400 font-mono">{item.code}</span>
+                                        )}
                                     </td>
                                     <td className="py-3 px-4 text-right text-slate-600">
                                         {item.quantity}
-                                        <span className="ml-1 text-xs text-slate-400">{item.unit || ''}</span>
+                                        <span className="ml-1 text-xs text-slate-400">
+                                            {localizeUnitForPrint(item.unit, lang)}
+                                        </span>
                                     </td>
                                     <td className="py-3 px-4 text-right font-medium text-slate-700 tabular-nums">
                                         {formatNumber(item.price || item.unitPrice || 0, 2, true)}
@@ -162,7 +221,7 @@ export const CorporateInvoiceTemplate: React.FC<CorporateInvoiceTemplateProps> =
                         ) : (
                             <tr>
                                 <td colSpan={5} className="py-8 text-center text-slate-400 italic">
-                                    Bu faturada kalem bulunmamaktadır.
+                                    {L.noLineItems}
                                 </td>
                             </tr>
                         )}
@@ -174,27 +233,35 @@ export const CorporateInvoiceTemplate: React.FC<CorporateInvoiceTemplateProps> =
             <div className="flex justify-end mb-12">
                 <div className="w-1/2 bg-slate-50 rounded-lg p-6 border border-slate-100">
                     <div className="flex justify-between items-center mb-3">
-                        <span className="text-slate-500 font-medium text-sm">Ara Toplam</span>
-                        <span className="text-slate-800 font-bold text-base tabular-nums">{formatNumber(subtotal, 2, true)} IQD</span>
+                        <span className="text-slate-500 font-medium text-sm">{L.subTotal}</span>
+                        <span className="text-slate-800 font-bold text-base tabular-nums">
+                            {formatNumber(subtotal, 2, true)} {currency}
+                        </span>
                     </div>
                     {discount > 0 && (
                         <div className="flex justify-between items-center mb-3">
-                            <span className="text-red-500 font-medium text-sm">İndirim</span>
-                            <span className="text-red-600 font-bold text-base tabular-nums">-{formatNumber(discount, 2, true)} IQD</span>
+                            <span className="text-red-500 font-medium text-sm">{L.discountLine}</span>
+                            <span className="text-red-600 font-bold text-base tabular-nums">
+                                -{formatNumber(discount, 2, true)} {currency}
+                            </span>
                         </div>
                     )}
                     {tax > 0 && (
                         <div className="flex justify-between items-center mb-3">
-                            <span className="text-slate-500 font-medium text-sm">Vergi / KDV</span>
-                            <span className="text-slate-800 font-bold text-base tabular-nums">{formatNumber(tax, 2, true)} IQD</span>
+                            <span className="text-slate-500 font-medium text-sm">{L.taxVat}</span>
+                            <span className="text-slate-800 font-bold text-base tabular-nums">
+                                {formatNumber(tax, 2, true)} {currency}
+                            </span>
                         </div>
                     )}
 
                     <div className="h-px bg-slate-300 my-4"></div>
 
                     <div className="flex justify-between items-center">
-                        <span className="text-slate-900 font-bold text-lg">TOPLAM Tutar</span>
-                        <span className="text-blue-700 font-extrabold text-2xl tabular-nums tracking-tight">{formatNumber(total, 2, true)} IQD</span>
+                        <span className="text-slate-900 font-bold text-lg">{L.totalAmount}</span>
+                        <span className="text-blue-700 font-extrabold text-2xl tabular-nums tracking-tight">
+                            {formatNumber(total, 2, true)} {currency}
+                        </span>
                     </div>
                 </div>
             </div>
@@ -210,7 +277,7 @@ export const CorporateInvoiceTemplate: React.FC<CorporateInvoiceTemplateProps> =
                                 className="w-20 h-20 opacity-80"
                             />
                             <div className="text-xs text-slate-400">
-                                <p className="mb-1">Bu belge elektronik olarak üretilmiştir.</p>
+                                <p className="mb-1">{L.electronicNote}</p>
                                 <p className="font-mono">{invoice.id?.substring(0, 8) || ''}</p>
                             </div>
                         </div>
@@ -219,17 +286,17 @@ export const CorporateInvoiceTemplate: React.FC<CorporateInvoiceTemplateProps> =
 
                 <div className="flex justify-between gap-4">
                     <div className="text-center pt-8 border-t border-dashed border-slate-300 w-32">
-                        <p className="text-xs font-bold text-slate-400 uppercase">Teslim Alan</p>
+                        <p className="text-xs font-bold text-slate-400 uppercase">{L.receivedBy}</p>
                     </div>
                     <div className="text-center pt-8 border-t border-dashed border-slate-300 w-32">
-                        <p className="text-xs font-bold text-slate-400 uppercase">Teslim Eden</p>
+                        <p className="text-xs font-bold text-slate-400 uppercase">{L.deliveredBy}</p>
                     </div>
                 </div>
             </div>
 
             {/* Disclaimer / Footer Text */}
             <div className="mt-8 text-center">
-                <p className="text-xs text-slate-400">{config.footerText || 'İşbirliğiniz için teşekkür ederiz.'}</p>
+                <p className="text-xs text-slate-400">{config.footerText || L.thanksFooter}</p>
                 <p className="text-[10px] text-slate-300 mt-1">Generated by RetailEX Platform</p>
             </div>
 
@@ -256,5 +323,3 @@ export const CorporateInvoiceTemplate: React.FC<CorporateInvoiceTemplateProps> =
         </div>
     );
 };
-
-

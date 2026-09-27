@@ -3742,11 +3742,13 @@ export function UniversalInvoiceForm({
     // Construct invoice object for printing
     const currentInvoice: any = {
       invoice_no: invoiceNo,
-      invoice_date: transactionDate,
+      // Corporate şablon gg.aa.yyyy'yi native Date ile parse edemez → ISO
+      invoice_date: transactionDateToIsoDateString(transactionDate) || transactionDate,
       invoice_type: invoiceType.code,
       trcode: invoiceType.code,
       invoice_category: invoiceType.category as any,
       customer_name: customerTitle || supplierTitle || '',
+      supplier_name: supplierTitle || customerTitle || '',
       payment_method: resolvePaymentMethodForDb(),
       cashier: cashierName,
       subtotal: totals.subtotalIQD,
@@ -3754,6 +3756,7 @@ export function UniversalInvoiceForm({
       discount: totals.totalDiscountIQD,
       total: totals.netIQD,
       total_amount: totals.netIQD,
+      currency: currency || 'IQD',
       items: items.map(item => ({
         productName: item.description,
         code: item.code,

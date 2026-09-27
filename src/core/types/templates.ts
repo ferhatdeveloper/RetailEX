@@ -285,7 +285,7 @@ export const DEFAULT_TEMPLATES: Template[] = [
         y: 160,
         width: 60,
         height: 8,
-        content: 'TOPLAM: {{total}}',
+        content: '{{lblTotal}}: {{total}}',
         fontSize: 14,
         fontWeight: 'bold',
         textAlign: 'right'
@@ -318,7 +318,7 @@ export const DEFAULT_TEMPLATES: Template[] = [
         y: 20,
         width: 80,
         height: 30,
-        content: '{{storeName}}\n{{storeAddress}}\nVergi No: {{storeTaxNo}}',
+        content: '{{storeName}}\n{{storeAddress}}\n{{storeTaxNo}}',
         fontSize: 12,
         textAlign: 'left'
       },
@@ -329,7 +329,7 @@ export const DEFAULT_TEMPLATES: Template[] = [
         y: 30,
         width: 80,
         height: 12,
-        content: 'FATURA',
+        content: '{{lblInvoiceNo}}',
         fontSize: 24,
         fontWeight: 'bold',
         textAlign: 'center'
@@ -341,7 +341,7 @@ export const DEFAULT_TEMPLATES: Template[] = [
         y: 20,
         width: 60,
         height: 20,
-        content: 'Fatura No: {{invoiceNo}}\nTarih: {{date}}',
+        content: '{{lblInvoiceNo}}: {{invoiceNo}}\n{{lblDate}}: {{date}}',
         fontSize: 10,
         textAlign: 'right'
       },
@@ -362,7 +362,7 @@ export const DEFAULT_TEMPLATES: Template[] = [
         y: 65,
         width: 70,
         height: 20,
-        content: 'Müşteri:\n{{customerName}}\n{{customerAddress}}',
+        content: '{{lblCustomer}}:\n{{customerName}}\n{{customerAddress}}',
         fontSize: 10
       },
       {
@@ -391,7 +391,7 @@ export const DEFAULT_TEMPLATES: Template[] = [
         y: 235,
         width: 40,
         height: 20,
-        content: 'Ara Toplam: {{subtotal}}\nTAX: {{tax}}\nTOPLAM: {{total}}',
+        content: '{{lblSubTotal}}: {{subtotal}}\n{{lblTax}}: {{tax}}\n{{lblTotal}}: {{total}}',
         fontSize: 10,
         fontWeight: 'bold',
         textAlign: 'right'
@@ -470,16 +470,16 @@ export const DEFAULT_TEMPLATES: Template[] = [
     updatedAt: new Date().toISOString(),
     elements: [
       { id: 'msi-logo', type: 'image', x: 15, y: 12, width: 30, height: 16 },
-      { id: 'msi-title', type: 'text', x: 130, y: 12, width: 65, height: 12, content: 'SATIŞ FATURASI', fontSize: 18, fontWeight: 'bold', textAlign: 'right' },
+      { id: 'msi-title', type: 'text', x: 130, y: 12, width: 65, height: 12, content: '{{lblInvoiceNo}}', fontSize: 18, fontWeight: 'bold', textAlign: 'right' },
       { id: 'msi-headline', type: 'line', x: 15, y: 30, width: 180, height: 1, borderWidth: 1, borderColor: '#111827' },
       { id: 'msi-store', type: 'text', x: 15, y: 34, width: 90, height: 18, content: '{{storeName}}\n{{storeAddress}}\n{{storePhone}}', fontSize: 10 },
-      { id: 'msi-meta', type: 'text', x: 120, y: 34, width: 75, height: 18, content: 'Belge No: {{invoiceNo}}\nTarih: {{date}} {{time}}\nKasiyer: {{cashier}}', fontSize: 10, textAlign: 'right' },
+      { id: 'msi-meta', type: 'text', x: 120, y: 34, width: 75, height: 18, content: '{{lblDocument}}: {{invoiceNo}}\n{{lblDate}}: {{date}} {{time}}\n{{lblCashier}}: {{cashier}}', fontSize: 10, textAlign: 'right' },
       { id: 'msi-customer-box', type: 'box', x: 15, y: 58, width: 180, height: 24, borderWidth: 1, borderColor: '#D1D5DB' },
-      { id: 'msi-customer', type: 'text', x: 18, y: 62, width: 170, height: 16, content: 'Müşteri: {{customerName}}\nAdres: {{customerAddress}}', fontSize: 10 },
+      { id: 'msi-customer', type: 'text', x: 18, y: 62, width: 170, height: 16, content: '{{lblCustomer}}: {{customerName}}\n{{customerAddress}}', fontSize: 10 },
       { id: 'msi-items', type: 'table', x: 15, y: 88, width: 180, height: 130, field: '{{items}}' },
       { id: 'msi-totals-box', type: 'box', x: 118, y: 224, width: 77, height: 44, borderWidth: 1, borderColor: '#D1D5DB' },
-      { id: 'msi-totals', type: 'text', x: 122, y: 228, width: 68, height: 36, content: 'Ara Toplam: {{subtotal}}\nİndirim: {{discount}}\nVergi: {{tax}}\nGenel Toplam: {{total}}', fontSize: 10, fontWeight: 'bold', textAlign: 'right' },
-      { id: 'msi-footer', type: 'text', x: 15, y: 275, width: 180, height: 8, content: 'Bu belge RetailEX Dizayn Merkezi ile oluşturulmuştur.', fontSize: 9, textAlign: 'center' }
+      { id: 'msi-totals', type: 'text', x: 122, y: 228, width: 68, height: 36, content: '{{lblSubTotal}}: {{subtotal}}\n{{lblDiscount}}: {{discount}}\n{{lblTax}}: {{tax}}\n{{lblTotal}}: {{total}}', fontSize: 10, fontWeight: 'bold', textAlign: 'right' },
+      { id: 'msi-footer', type: 'text', x: 15, y: 275, width: 180, height: 8, content: '{{lblElectronicNote}}', fontSize: 9, textAlign: 'center' }
     ]
   },
   {
@@ -499,13 +499,13 @@ export const DEFAULT_TEMPLATES: Template[] = [
     createdAt: new Date().toISOString(),
     updatedAt: new Date().toISOString(),
     elements: [
-      { id: 'pvi-title', type: 'text', x: 15, y: 12, width: 180, height: 12, content: 'ALIŞ FATURASI', fontSize: 18, fontWeight: 'bold', textAlign: 'left' },
-      { id: 'pvi-doc', type: 'text', x: 15, y: 28, width: 180, height: 10, content: 'Belge: {{invoiceNo}} · Tarih: {{date}}', fontSize: 11 },
+      { id: 'pvi-title', type: 'text', x: 15, y: 12, width: 180, height: 12, content: '{{lblInvoiceNo}}', fontSize: 18, fontWeight: 'bold', textAlign: 'left' },
+      { id: 'pvi-doc', type: 'text', x: 15, y: 28, width: 180, height: 10, content: '{{lblDocument}}: {{invoiceNo}} · {{lblDate}}: {{date}}', fontSize: 11 },
       { id: 'pvi-supplier-box', type: 'box', x: 15, y: 42, width: 180, height: 26, borderWidth: 1, borderColor: '#D1D5DB' },
-      { id: 'pvi-supplier', type: 'text', x: 18, y: 46, width: 170, height: 16, content: 'Tedarikçi: {{customerName}}\nVergi No: {{customerTaxNo}}', fontSize: 10 },
+      { id: 'pvi-supplier', type: 'text', x: 18, y: 46, width: 170, height: 16, content: '{{lblSupplier}}: {{customerName}}\n{{customerTaxNo}}', fontSize: 10 },
       { id: 'pvi-items', type: 'table', x: 15, y: 74, width: 180, height: 146, field: '{{items}}' },
       { id: 'pvi-total-line', type: 'line', x: 120, y: 226, width: 75, height: 1, borderWidth: 1, borderColor: '#111827' },
-      { id: 'pvi-total', type: 'text', x: 120, y: 230, width: 75, height: 24, content: 'Toplam: {{total}}\nÖdeme: {{paymentMethod}}', fontSize: 12, fontWeight: 'bold', textAlign: 'right' }
+      { id: 'pvi-total', type: 'text', x: 120, y: 230, width: 75, height: 24, content: '{{lblTotal}}: {{total}}\n{{lblPaymentMethod}}: {{paymentMethod}}', fontSize: 12, fontWeight: 'bold', textAlign: 'right' }
     ]
   },
   {
@@ -525,12 +525,12 @@ export const DEFAULT_TEMPLATES: Template[] = [
     createdAt: new Date().toISOString(),
     updatedAt: new Date().toISOString(),
     elements: [
-      { id: 'dwc-title', type: 'text', x: 10, y: 8, width: 128, height: 10, content: 'SEVK / İRSALİYE BELGESİ', fontSize: 14, fontWeight: 'bold', textAlign: 'center' },
-      { id: 'dwc-no', type: 'text', x: 10, y: 22, width: 128, height: 8, content: 'Belge No: {{invoiceNo}} · {{date}}', fontSize: 10, textAlign: 'center' },
-      { id: 'dwc-customer', type: 'text', x: 10, y: 34, width: 128, height: 14, content: 'Firma: {{customerName}}\nAdres: {{customerAddress}}', fontSize: 9 },
+      { id: 'dwc-title', type: 'text', x: 10, y: 8, width: 128, height: 10, content: '{{lblDocument}}', fontSize: 14, fontWeight: 'bold', textAlign: 'center' },
+      { id: 'dwc-no', type: 'text', x: 10, y: 22, width: 128, height: 8, content: '{{lblInvoiceNo}}: {{invoiceNo}} · {{date}}', fontSize: 10, textAlign: 'center' },
+      { id: 'dwc-customer', type: 'text', x: 10, y: 34, width: 128, height: 14, content: '{{lblCustomer}}: {{customerName}}\n{{customerAddress}}', fontSize: 9 },
       { id: 'dwc-items', type: 'table', x: 10, y: 52, width: 128, height: 110, field: '{{items}}' },
       { id: 'dwc-signature-line', type: 'line', x: 78, y: 182, width: 60, height: 1, borderWidth: 1, borderColor: '#111827' },
-      { id: 'dwc-signature', type: 'text', x: 78, y: 185, width: 60, height: 8, content: 'Teslim Alan İmza', fontSize: 8, textAlign: 'center' }
+      { id: 'dwc-signature', type: 'text', x: 78, y: 185, width: 60, height: 8, content: '{{lblReceivedBy}}', fontSize: 8, textAlign: 'center' }
     ]
   },
   {
