@@ -1,5 +1,6 @@
 import React, { useState, useEffect, useMemo, useCallback } from 'react';
 import { productAPI } from '../../../services/api/products';
+import { hardRefreshProductsAndStock } from '../../../services/hardRefreshProducts';
 import type { Product } from '../../../core/types';
 import { DevExDataGrid } from '../../shared/DevExDataGrid';
 import { REPORT_GRID_DEFAULTS } from '../../reports/shared/ReportDataGrid';
@@ -8,6 +9,7 @@ import { Banknote } from 'lucide-react';
 import { useLanguage } from '../../../contexts/LanguageContext';
 import { useFirmaDonem } from '../../../contexts/FirmaDonemContext';
 import { useRegisterDatagridRefresh } from '../../../hooks/useRegisterDatagridRefresh';
+import { useRetailexInvalidateRefresh } from '../../../hooks/useRetailexInvalidateRefresh';
 import { formatNumber } from '../../../utils/formatNumber';
 import { formatLedgerAmount, getFirmLedgerCurrency, getGlobalCurrency } from '../../../utils/currency';
 import { getAppDefaultCurrency } from '../../../services/postgres';
@@ -43,22 +45,22 @@ export function MaterialValueReport() {
         getAppDefaultCurrency() || getGlobalCurrency(),
     );
 
-    const loadData = useCallback(async () => {
+    const loadData = useCallback(async (opts?: { recompute?: boolean }) => {
+        const doRecompute = opts?.recompute === true;
         setLoading(true);
+        setProducts([]);
+        setAvgByProduct(new Map());
+        setAvgByCode(new Map());
         try {
-            // Soft-delete sonrası stale products.stock (hayalet miktar) olmasın:
-            // miktar kart stoğundan gelir; önce aktif belgelere hizala.
-            try {
-                await productAPI.recomputeStocksFromActiveDocuments();
-            } catch (alignErr) {
-                console.warn('[MaterialValueReport] stock align skipped', alignErr);
+            if (doRecompute) {
+                // Yenile = Ctrl+R: store temizle + kart stoğu hizala + DB (emit yok → invalidate döngüsü yok)
+                await hardRefreshProductsAndStock({ recompute: true, emit: false });
             }
             const data = await productAPI.getAllForReports({ firmNr: selectedFirm?.firm_nr });
             setProducts(data);
             const { fetchWeightedAverageUnitCosts } = await import(
                 '../../../services/weightedAverageUnitCost'
             );
-            // Ağırlıklı ort. maliyet zaten is_cancelled / Silindi faturaları hariç tutar.
             const maps = await fetchWeightedAverageUnitCosts({
                 firmNr: selectedFirm?.firm_nr,
                 periodNr: selectedPeriod?.nr,
@@ -75,12 +77,17 @@ export function MaterialValueReport() {
         }
     }, [selectedFirm?.firm_nr, selectedPeriod?.nr]);
 
-    useRegisterDatagridRefresh(loadData);
+    // Tablo Yenile butonu → hard refresh
+    useRegisterDatagridRefresh(() => loadData({ recompute: true }));
 
     useEffect(() => {
-        void loadData();
+        void loadData({ recompute: true });
     }, [loadData]);
 
+    // Alış silme vb. → local satırları DB’den yenile (recompute silmede zaten yapıldı)
+    useRetailexInvalidateRefresh(['products', 'invoices', 'sales'], () =>
+        loadData({ recompute: false }),
+    );
     const rows = useMemo<ValuationRow[]>(() => {
         return products
             .filter(p => (Number(p.stock) || 0) !== 0)

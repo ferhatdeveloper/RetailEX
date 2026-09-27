@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import { Package, TrendingDown, AlertTriangle, ArrowLeftRight, Download, Upload, Printer } from 'lucide-react';
 import type { Product } from '../../../App';
 import { formatNumber } from '../../../utils/formatNumber';
@@ -8,16 +8,23 @@ import { WavePickingModule } from '../../wms/WavePickingModule';
 import { StockCountModule as WmsStockCountModule } from '../../wms/components/StockCountModule';
 import { useLanguage } from '../../../contexts/LanguageContext';
 import { useTheme } from '../../../contexts/ThemeContext';
+import { useProductStore } from '../../../store/useProductStore';
+import { useRetailexInvalidateRefresh } from '../../../hooks/useRetailexInvalidateRefresh';
+import { hardRefreshProductsAndStock } from '../../../services/hardRefreshProducts';
 
 interface StockModuleProps {
   products: Product[];
   setProducts: (products: Product[]) => void;
 }
 
-export function StockModule({ products, setProducts }: StockModuleProps) {
+export function StockModule({ products: productsProp, setProducts }: StockModuleProps) {
   const { tm } = useLanguage();
   const { darkMode } = useTheme();
   const dateLocale = tm('localeCode');
+  const storeProducts = useProductStore((s) => s.products);
+  const loadProducts = useProductStore((s) => s.loadProducts);
+  // App props = aynı Zustand; hard refresh sırasında [] flash = Ctrl+R hissi
+  const products = storeProducts.length > 0 ? storeProducts : productsProp;
   const [selectedTab, setSelectedTab] = useState<'overview' | 'movements' | 'count' | 'transfer' | 'picking'>('overview');
   const [showStockUpdateModal, setShowStockUpdateModal] = useState(false);
   const [selectedProduct, setSelectedProduct] = useState<Product | null>(null);
@@ -35,6 +42,27 @@ export function StockModule({ products, setProducts }: StockModuleProps) {
   // Movement filtering states
   const [movementFilter, setMovementFilter] = useState('all');
   const [searchQuery, setSearchQuery] = useState('');
+  const [stockMovements, setStockMovements] = useState<any[]>([]);
+
+  const refreshStockUi = useCallback(async (hard: boolean) => {
+    if (hard) {
+      await hardRefreshProductsAndStock({ recompute: true, emit: true });
+    } else {
+      await loadProducts(true);
+    }
+    const next = useProductStore.getState().products;
+    setProducts(next);
+    try {
+      const data = await stockMovementAPI.getAll();
+      setStockMovements(data);
+    } catch (error) {
+      console.error('Error loading movements:', error);
+    }
+  }, [loadProducts, setProducts]);
+
+  useRetailexInvalidateRefresh(['products', 'invoices', 'sales'], () => {
+    void refreshStockUi(false);
+  });
 
   // Calculate stock statistics
   const totalItems = products.reduce((sum, p) => sum + p.stock, 0);
@@ -63,12 +91,8 @@ export function StockModule({ products, setProducts }: StockModuleProps) {
       .slice(0, 4);
   })();
 
-  // Stock movements (mock data for demo)
-  // Stock movements
-  const [stockMovements, setStockMovements] = useState<any[]>([]);
-
   useEffect(() => {
-    loadRecentMovements();
+    void loadRecentMovements();
   }, []);
 
   const loadRecentMovements = async () => {

@@ -6,6 +6,7 @@ import { ColumnVisibilityMenu } from '../../shared/ColumnVisibilityMenu';
 import type { Product } from '../../../App';
 import { useProductStore } from '../../../store';
 import { productAPI } from '../../../services/api/products';
+import { hardRefreshProductsAndStock } from '../../../services/hardRefreshProducts';
 import { ProductFormPage } from './ProductFormPage';
 import { ProductOperationHub, HubTab } from './ProductOperationHub';
 import {
@@ -133,26 +134,28 @@ export function ProductManagement({ products, setProducts }: ProductManagementPr
     });
   }, [hasLoadedFromStore, storeProducts, products, docTotals]);
 
-  // Sayfa yüklendiğinde ve periyodik olarak ürünleri yenile
+  // Mount: store dolu olsa bile DB’den sessiz çek (alış silme sonrası stale cache kalmasın)
   useEffect(() => {
-    // İlk yükleme
-    if (storeProducts.length === 0) {
-      loadProducts().finally(() => setHasLoadedFromStore(true));
-    } else {
-      setHasLoadedFromStore(true);
-    }
+    void loadProducts(storeProducts.length === 0 ? false : true).finally(() =>
+      setHasLoadedFromStore(true),
+    );
 
-    // Her 30 saniyede bir stokları güncelle (alış/satış sonrası güncellemeler için)
     const interval = setInterval(() => {
       if (typeof document !== 'undefined' && document.visibilityState !== 'visible') return;
       loadProducts(true);
     }, PRODUCT_STOCK_REFRESH_MS);
 
     return () => clearInterval(interval);
-  }, [loadProducts, storeProducts.length]);
+    // Yalnızca mount — storeProducts.length değişince tekrar tetikleme
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [loadProducts]);
 
-  // Açık Malzemeler tab’ı: başka ekranda malzeme/fatura mutasyonu → anında yenile
-  useRetailexInvalidateRefresh(['products'], () => loadProducts(true));
+  // Açık Malzemeler tab’ı: fatura/malzeme mutasyonu → store + alış/satış toplamları
+  useRetailexInvalidateRefresh(['products', 'invoices', 'sales'], () => {
+    void loadProducts(true);
+    setDocTotals({});
+    void productAPI.getListDocumentTotals().then(setDocTotals);
+  });
 
   useEffect(() => {
     let alive = true;
@@ -166,23 +169,23 @@ export function ProductManagement({ products, setProducts }: ProductManagementPr
 
   useEffect(() => subscribeReportMenuParams(setReportMenuParams), []);
 
-  // Manuel yenileme — kart stoğunu aktif belgelerle hizala, sonra liste + alış/satış toplamları
+  // Yenile = Ctrl+R hissi: store/local totals temizle → recompute → DB → açık sekmeler invalidate
   const handleRefresh = async () => {
     const toastId = 'product-stock-recompute';
     try {
       toast.loading(tm('stockRecomputeInProgress') || 'Stoklar hizalanıyor…', { id: toastId });
-      const align = await productAPI.recomputeStocksFromActiveDocuments();
-      await loadProducts(true);
+      setDocTotals({});
+      const align = await hardRefreshProductsAndStock({ recompute: true, emit: true });
       const totals = await productAPI.getListDocumentTotals();
       setDocTotals(totals);
       toast.dismiss(toastId);
-      if (align.errors.length && align.updated === 0) {
-        toast.error(align.errors[0] || tm('stockRecomputeFailed'));
-      } else if (align.updated > 0) {
+      if (align.recomputeErrors.length && align.recomputeUpdated === 0) {
+        toast.error(align.recomputeErrors[0] || tm('stockRecomputeFailed'));
+      } else if (align.recomputeUpdated > 0) {
         toast.success(
           (tm('stockRecomputeDone') || '{count} ürün stoğu aktif hareketlere göre hizalandı').replace(
             '{count}',
-            String(align.updated)
+            String(align.recomputeUpdated)
           )
         );
       } else {
@@ -975,7 +978,7 @@ export function ProductManagement({ products, setProducts }: ProductManagementPr
               columnVisibility={columnVisibility}
               onColumnVisibilityChange={setColumnVisibility}
               columnOrderStorageKey={PRODUCT_COLUMN_ORDER_KEY}
-              onRefresh={() => loadProducts(true)}
+              onRefresh={() => void handleRefresh()}
               onRowContextMenu={(e, product) => {
                 e.preventDefault();
                 setContextMenu({ x: e.clientX, y: e.clientY, product });

@@ -1,5 +1,6 @@
-import React, { useState, useEffect, useMemo } from 'react';
+import React, { useState, useEffect, useMemo, useCallback } from 'react';
 import { productAPI } from '../../../services/api/products';
+import { hardRefreshProductsAndStock } from '../../../services/hardRefreshProducts';
 import { warehouseAPI, type Warehouse } from '../../../services/warehouseAPI';
 import { Product } from '../../../core/types';
 import { DevExDataGrid } from '../../shared/DevExDataGrid';
@@ -8,6 +9,8 @@ import { createColumnHelper, ColumnDef } from '@tanstack/react-table';
 import { Package } from 'lucide-react';
 import { useLanguage } from '../../../contexts/LanguageContext';
 import { useFirmaDonem } from '../../../contexts/FirmaDonemContext';
+import { useRegisterDatagridRefresh } from '../../../hooks/useRegisterDatagridRefresh';
+import { useRetailexInvalidateRefresh } from '../../../hooks/useRetailexInvalidateRefresh';
 import { formatNumber } from '../../../utils/formatNumber';
 import {
     fetchLayeredInventoryValuation,
@@ -52,65 +55,67 @@ export function InventoryReport() {
         return value;
     };
 
-    useEffect(() => {
-        let cancelled = false;
-        async function loadData() {
-            setLoading(true);
-            try {
-                const [data, whs] = await Promise.all([
-                    productAPI.getAllForReports({ firmNr: selectedFirm?.firm_nr }),
-                    warehouseAPI.getActive().catch((err) => {
-                        console.error('Failed to load warehouses', err);
-                        return [] as Warehouse[];
-                    }),
-                ]);
-                if (cancelled) return;
-                setProducts(data);
-                setWarehouses(whs);
-                // Ambar kolon görünürlüğü: az depo → hepsi açık; çok → yalnız ilk (klon alanlar)
-                setColumnVisibility((prev) => {
-                    const next = { ...prev };
-                    const showAll = whs.length <= WAREHOUSE_COLS_DEFAULT_VISIBLE_MAX;
-                    whs.forEach((w, idx) => {
-                        const id = `wh_${w.id}`;
-                        if (next[id] === undefined) {
-                            next[id] = showAll || idx === 0;
-                        }
-                    });
-                    return next;
-                });
-                const layered = await fetchLayeredInventoryValuation({
-                    firmNr: selectedFirm?.firm_nr,
-                    periodNr: selectedPeriod?.nr,
-                    onHandProducts: data,
-                }).catch((err) => {
-                    console.error('Failed to load layered inventory cost', err);
-                    return null;
-                });
-                if (cancelled) return;
-                setValuation(layered);
-                const avgMaps = await fetchWeightedAverageUnitCosts({
-                    firmNr: selectedFirm?.firm_nr,
-                    periodNr: selectedPeriod?.nr,
-                }).catch((err) => {
-                    console.error('Failed to load weighted avg unit cost', err);
-                    return { byProductId: new Map<string, number>(), byCode: new Map<string, number>() };
-                });
-                if (cancelled) return;
-                setAvgByProduct(avgMaps.byProductId);
-                setAvgByCode(avgMaps.byCode);
-            } catch (error) {
-                console.error('Failed to load inventory', error);
-            } finally {
-                if (cancelled) return;
-                setLoading(false);
+    const loadData = useCallback(async (opts?: { recompute?: boolean }) => {
+        const doRecompute = opts?.recompute === true;
+        setLoading(true);
+        setProducts([]);
+        try {
+            if (doRecompute) {
+                await hardRefreshProductsAndStock({ recompute: true, emit: false });
             }
+            const [data, whs] = await Promise.all([
+                productAPI.getAllForReports({ firmNr: selectedFirm?.firm_nr }),
+                warehouseAPI.getActive().catch((err) => {
+                    console.error('Failed to load warehouses', err);
+                    return [] as Warehouse[];
+                }),
+            ]);
+            setProducts(data);
+            setWarehouses(whs);
+            setColumnVisibility((prev) => {
+                const next = { ...prev };
+                const showAll = whs.length <= WAREHOUSE_COLS_DEFAULT_VISIBLE_MAX;
+                whs.forEach((w, idx) => {
+                    const id = `wh_${w.id}`;
+                    if (next[id] === undefined) {
+                        next[id] = showAll || idx === 0;
+                    }
+                });
+                return next;
+            });
+            const layered = await fetchLayeredInventoryValuation({
+                firmNr: selectedFirm?.firm_nr,
+                periodNr: selectedPeriod?.nr,
+                onHandProducts: data,
+            }).catch((err) => {
+                console.error('Failed to load layered inventory cost', err);
+                return null;
+            });
+            setValuation(layered);
+            const avgMaps = await fetchWeightedAverageUnitCosts({
+                firmNr: selectedFirm?.firm_nr,
+                periodNr: selectedPeriod?.nr,
+            }).catch((err) => {
+                console.error('Failed to load weighted avg unit cost', err);
+                return { byProductId: new Map<string, number>(), byCode: new Map<string, number>() };
+            });
+            setAvgByProduct(avgMaps.byProductId);
+            setAvgByCode(avgMaps.byCode);
+        } catch (error) {
+            console.error('Failed to load inventory', error);
+        } finally {
+            setLoading(false);
         }
-        loadData();
-        return () => {
-            cancelled = true;
-        };
     }, [selectedFirm?.firm_nr, selectedPeriod?.nr]);
+
+    useRegisterDatagridRefresh(() => loadData({ recompute: true }));
+    useRetailexInvalidateRefresh(['products', 'invoices', 'sales'], () =>
+        loadData({ recompute: false }),
+    );
+
+    useEffect(() => {
+        void loadData({ recompute: false });
+    }, [loadData]);
 
     /**
      * Malzeme Ambar Durum ile aynı: çoklu depo şeması yokken tüm stok ilk aktif depoya atanır.

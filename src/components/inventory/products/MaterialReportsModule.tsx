@@ -7,6 +7,7 @@ import { formatNumber } from '../../../utils/formatNumber';
 import { productAPI } from '../../../services/api/products';
 import type { Product } from '../../../core/types';
 import { localTodayDateKey, toSqlDateInputString } from '../../../utils/localCalendarDate';
+import { useRetailexInvalidateRefresh } from '../../../hooks/useRetailexInvalidateRefresh';
 
 type ReportType = 'stock-balance' | 'purchase-sales' | 'detailed-list' | 'transfer';
 
@@ -262,9 +263,16 @@ function StockBalanceReport({
     const [rows, setRows] = useState<StockBalanceRow[]>([]);
     const [loading, setLoading] = useState(false);
 
-    const load = async () => {
+    const load = async (opts?: { hard?: boolean }) => {
         setLoading(true);
+        if (opts?.hard) setRows([]);
         try {
+            if (opts?.hard) {
+                const { hardRefreshProductsAndStock } = await import(
+                    '../../../services/hardRefreshProducts'
+                );
+                await hardRefreshProductsAndStock({ recompute: true, emit: true });
+            }
             const filterWarehouse = warehouseId !== 'all';
             // Tüm dönemlerin stok_movement_items üzerinden ambar bazlı kümülatif miktarı.
             // firmNr filtresi yok (tüm dönem); sadece seçili depo için filtre uygulanır.
@@ -326,6 +334,10 @@ function StockBalanceReport({
         // eslint-disable-next-line react-hooks/exhaustive-deps
     }, [warehouseId, firmNr]);
 
+    useRetailexInvalidateRefresh(['products', 'invoices', 'sales'], () => {
+        void load();
+    });
+
     const totals = useMemo(() => {
         return rows.reduce(
             (acc, r) => {
@@ -366,7 +378,7 @@ function StockBalanceReport({
                 <div className="flex items-center gap-2">
                     <button
                         type="button"
-                        onClick={() => void load()}
+                        onClick={() => void load({ hard: true })}
                         className="flex items-center gap-2 px-3 py-2 border border-gray-300 rounded-lg hover:bg-gray-50 text-sm"
                     >
                         {loading ? <Loader2 className="w-4 h-4 animate-spin" /> : <RefreshCw className="w-4 h-4" />}
@@ -499,12 +511,19 @@ function DetailedMaterialListReport({
             .slice(0, 50);
     }, [products, searchText]);
 
-    const loadReport = async () => {
+    const loadReport = async (opts?: { hard?: boolean }) => {
         if (!selectedProduct?.id) {
             return;
         }
         setLoading(true);
+        if (opts?.hard) setRows([]);
         try {
+            if (opts?.hard) {
+                const { hardRefreshProductsAndStock } = await import(
+                    '../../../services/hardRefreshProducts'
+                );
+                await hardRefreshProductsAndStock({ recompute: true, emit: true });
+            }
             // Ambar fişleri + satış/alış faturaları üzerinden hareket listesi.
             // Ürün tablosu firmNr-prefixli (`rex_${firmNr}_products`); seçili firmaya göre dinamik.
             const productsTable = `rex_${firmNr || '001'}_products`;
@@ -636,7 +655,7 @@ function DetailedMaterialListReport({
             <div className="flex items-center justify-end gap-2 px-4 py-3 border-b border-gray-200">
                 <button
                     type="button"
-                    onClick={() => void loadReport()}
+                    onClick={() => void loadReport({ hard: true })}
                     disabled={!selectedProduct}
                     className="flex items-center gap-2 px-3 py-2 border border-gray-300 rounded-lg hover:bg-gray-50 text-sm disabled:opacity-50"
                 >

@@ -211,8 +211,30 @@ function connectCloudRealtimeOnce() {
   }
 }
 
+let productStoreUnsub: (() => void) | null = null;
+let productStoreReloadTimer: ReturnType<typeof setTimeout> | null = null;
+
+/**
+ * Fatura silme vb. `products` invalidate → Zustand store her zaman DB’den yenilensin.
+ * Bileşen mount olmasa da (Malzemeler kapalı) cache stale kalmaz; açık sekmeler store’dan güncellenir.
+ */
+function ensureProductStoreInvalidateBridge() {
+  if (productStoreUnsub) return;
+  productStoreUnsub = subscribeInvalidate((scope) => {
+    if (scope !== 'products' && scope !== 'all') return;
+    if (productStoreReloadTimer) clearTimeout(productStoreReloadTimer);
+    productStoreReloadTimer = setTimeout(() => {
+      productStoreReloadTimer = null;
+      void import('../store/useProductStore')
+        .then(({ useProductStore }) => useProductStore.getState().loadProducts(true))
+        .catch((e) => console.warn('[retailexDataSync] product store reload:', e));
+    }, 120);
+  });
+}
+
 /** Uygulama açılışında bir kez çağrın (App veya kök provider). */
 export function initRetailexDataSync() {
   ensureBroadcastChannel();
   connectCloudRealtimeOnce();
+  ensureProductStoreInvalidateBridge();
 }

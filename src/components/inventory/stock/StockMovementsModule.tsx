@@ -24,6 +24,8 @@ import {
     loadStockMovementsColumnVisibility,
     saveStockMovementsColumnVisibility,
 } from './stockMovementsListColumns';
+import { useRetailexInvalidateRefresh } from '../../../hooks/useRetailexInvalidateRefresh';
+import { hardRefreshProductsAndStock } from '../../../services/hardRefreshProducts';
 
 /** jRetail materialReceiptList + Ekle menü yedek etiketleri (tm boşsa) */
 const SLIP_TYPE_FALLBACK: Record<string, string> = {
@@ -114,6 +116,10 @@ export function StockMovementsModule({ defaultFilter = 'all' }: StockMovementsMo
         loadWarehouses();
     }, [defaultFilter]);
 
+    useRetailexInvalidateRefresh(['products', 'invoices', 'sales'], () => {
+        void loadMovements();
+    });
+
     const loadWarehouses = async () => {
         try {
             const { rows } = await postgres.query('SELECT id, name FROM stores WHERE is_active = true');
@@ -126,9 +132,13 @@ export function StockMovementsModule({ defaultFilter = 'all' }: StockMovementsMo
         }
     };
 
-    const loadMovements = async () => {
+    const loadMovements = async (opts?: { hard?: boolean }) => {
         try {
             setLoading(true);
+            if (opts?.hard) {
+                setMovements([]);
+                await hardRefreshProductsAndStock({ recompute: true, emit: true });
+            }
             let data = await stockMovementAPI.getAll();
 
             if (defaultFilter === 'shortage') {
@@ -311,7 +321,7 @@ export function StockMovementsModule({ defaultFilter = 'all' }: StockMovementsMo
                         <Button
                             variant="ghost"
                             size="sm"
-                            onClick={loadMovements}
+                            onClick={() => void loadMovements({ hard: true })}
                             className="h-7 px-2 gap-1 text-white hover:bg-white/10 transition-colors text-[10px] border-none"
                         >
                             <RefreshCw className={`w-3 h-3 ${loading ? 'animate-spin' : ''}`} />

@@ -1,5 +1,6 @@
-﻿import React, { useState, useEffect, useMemo } from 'react';
+﻿import React, { useState, useEffect, useMemo, useCallback } from 'react';
 import { productAPI } from '../../../services/api/products';
+import { hardRefreshProductsAndStock } from '../../../services/hardRefreshProducts';
 import { warehouseAPI, type Warehouse } from '../../../services/warehouseAPI';
 import { postgres } from '../../../services/postgres';
 import { DevExDataGrid } from '../../shared/DevExDataGrid';
@@ -7,6 +8,8 @@ import { REPORT_GRID_DEFAULTS } from '../../reports/shared/ReportDataGrid';
 import { createColumnHelper, ColumnDef } from '@tanstack/react-table';
 import { useLanguage } from '../../../contexts/LanguageContext';
 import { useFirmaDonem } from '../../../contexts/FirmaDonemContext';
+import { useRegisterDatagridRefresh } from '../../../hooks/useRegisterDatagridRefresh';
+import { useRetailexInvalidateRefresh } from '../../../hooks/useRetailexInvalidateRefresh';
 
 /** Min/Max satırı — ürün × depo (mümkünse depo bazlı stok). */
 export interface MinMaxStockRow {
@@ -95,92 +98,97 @@ export function MinMaxStockReport() {
 
     const warehouseHeader = `${tm('warehouse') || 'Depo'} / ${tm('warehouseField') || 'Ambar'}`;
 
-    useEffect(() => {
-        let cancelled = false;
-        async function loadData() {
-            setLoading(true);
-            try {
-                const [allProducts, whs, balances] = await Promise.all([
-                    productAPI.getAllForReports({ firmNr: selectedFirm?.firm_nr }),
-                    warehouseAPI.getActive().catch((err) => {
-                        console.error('[MinMaxStockReport] warehouses failed', err);
-                        return [] as Warehouse[];
-                    }),
-                    fetchWarehouseBalances(),
-                ]);
-                if (cancelled) return;
+    const loadData = useCallback(async (opts?: { recompute?: boolean }) => {
+        const doRecompute = opts?.recompute === true;
+        setLoading(true);
+        setRows([]);
+        try {
+            if (doRecompute) {
+                await hardRefreshProductsAndStock({ recompute: true, emit: false });
+            }
+            const [allProducts, whs, balances] = await Promise.all([
+                productAPI.getAllForReports({ firmNr: selectedFirm?.firm_nr }),
+                warehouseAPI.getActive().catch((err) => {
+                    console.error('[MinMaxStockReport] warehouses failed', err);
+                    return [] as Warehouse[];
+                }),
+                fetchWarehouseBalances(),
+            ]);
 
-                setWarehouses(whs);
-                const defaultWh = pickDefaultWarehouse(whs);
-                const defaultWhId = defaultWh?.id ? String(defaultWh.id) : '';
-                const defaultWhName =
-                    formatWarehouseLabel(defaultWh?.code, defaultWh?.name) || 'Merkez Ambar';
+            setWarehouses(whs);
+            const defaultWh = pickDefaultWarehouse(whs);
+            const defaultWhId = defaultWh?.id ? String(defaultWh.id) : '';
+            const defaultWhName =
+                formatWarehouseLabel(defaultWh?.code, defaultWh?.name) || 'Merkez Ambar';
 
-                const byProduct = new Map<string, WarehouseBalance[]>();
-                for (const b of balances) {
-                    if (!b.productId) continue;
-                    const list = byProduct.get(b.productId) || [];
-                    list.push(b);
-                    byProduct.set(b.productId, list);
-                }
+            const byProduct = new Map<string, WarehouseBalance[]>();
+            for (const b of balances) {
+                if (!b.productId) continue;
+                const list = byProduct.get(b.productId) || [];
+                list.push(b);
+                byProduct.set(b.productId, list);
+            }
 
-                const built: MinMaxStockRow[] = [];
-                for (const p of allProducts) {
-                    const pid = String(p.id || '');
-                    const code = p.code || '';
-                    const name = p.name || '';
-                    const minStock = Number(p.min_stock) || 0;
-                    const maxStock =
-                        p.max_stock != null && p.max_stock !== undefined
-                            ? Number(p.max_stock)
-                            : null;
-                    const cardStock = Number(p.stock) || 0;
-                    const whBalances = byProduct.get(pid) || [];
+            const built: MinMaxStockRow[] = [];
+            for (const p of allProducts) {
+                const pid = String(p.id || '');
+                const code = p.code || '';
+                const name = p.name || '';
+                const minStock = Number(p.min_stock) || 0;
+                const maxStock =
+                    p.max_stock != null && p.max_stock !== undefined
+                        ? Number(p.max_stock)
+                        : null;
+                const cardStock = Number(p.stock) || 0;
+                const whBalances = byProduct.get(pid) || [];
 
-                    if (whBalances.length > 0) {
-                        for (const b of whBalances) {
-                            const whName =
-                                formatWarehouseLabel(b.warehouseCode, b.warehouseNameRaw) ||
-                                defaultWhName;
-                            built.push({
-                                id: `${pid}::${b.warehouseId || 'none'}`,
-                                code,
-                                name,
-                                warehouse_id: b.warehouseId || defaultWhId,
-                                warehouse_name: whName,
-                                stock: b.qty,
-                                min_stock: minStock,
-                                max_stock: maxStock,
-                            });
-                        }
-                    } else {
-                        // Çoklu depo hareketi yok — kart stoğu varsayılan depoya (WarehouseStatus ile uyumlu)
+                if (whBalances.length > 0) {
+                    for (const b of whBalances) {
+                        const whName =
+                            formatWarehouseLabel(b.warehouseCode, b.warehouseNameRaw) ||
+                            defaultWhName;
                         built.push({
-                            id: `${pid}::${defaultWhId || 'default'}`,
+                            id: `${pid}::${b.warehouseId || 'none'}`,
                             code,
                             name,
-                            warehouse_id: defaultWhId,
-                            warehouse_name: defaultWhName,
-                            stock: cardStock,
+                            warehouse_id: b.warehouseId || defaultWhId,
+                            warehouse_name: whName,
+                            stock: b.qty,
                             min_stock: minStock,
                             max_stock: maxStock,
                         });
                     }
+                } else {
+                    built.push({
+                        id: `${pid}::${defaultWhId || 'default'}`,
+                        code,
+                        name,
+                        warehouse_id: defaultWhId,
+                        warehouse_name: defaultWhName,
+                        stock: cardStock,
+                        min_stock: minStock,
+                        max_stock: maxStock,
+                    });
                 }
-
-                setRows(built);
-            } catch (error) {
-                console.error('Failed to load stock data', error);
-                if (!cancelled) setRows([]);
-            } finally {
-                if (!cancelled) setLoading(false);
             }
+
+            setRows(built);
+        } catch (error) {
+            console.error('Failed to load stock data', error);
+            setRows([]);
+        } finally {
+            setLoading(false);
         }
-        loadData();
-        return () => {
-            cancelled = true;
-        };
     }, [selectedFirm?.firm_nr]);
+
+    useRegisterDatagridRefresh(() => loadData({ recompute: true }));
+    useRetailexInvalidateRefresh(['products', 'invoices', 'sales'], () =>
+        loadData({ recompute: false }),
+    );
+
+    useEffect(() => {
+        void loadData({ recompute: false });
+    }, [loadData]);
 
     const filteredRows = useMemo(() => {
         let list = rows;

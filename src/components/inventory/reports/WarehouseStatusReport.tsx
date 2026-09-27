@@ -1,6 +1,7 @@
-import React, { useState, useEffect, useMemo } from 'react';
+import React, { useState, useEffect, useMemo, useCallback } from 'react';
 import { warehouseAPI, type Warehouse } from '../../../services/warehouseAPI';
 import { productAPI } from '../../../services/api/products';
+import { hardRefreshProductsAndStock } from '../../../services/hardRefreshProducts';
 import type { Product } from '../../../core/types';
 import { DevExDataGrid } from '../../shared/DevExDataGrid';
 import { REPORT_GRID_DEFAULTS } from '../../reports/shared/ReportDataGrid';
@@ -9,6 +10,8 @@ import { Building2 } from 'lucide-react';
 import { useLanguage } from '../../../contexts/LanguageContext';
 import { formatNumber } from '../../../utils/formatNumber';
 import { useFirmaDonem } from '../../../contexts/FirmaDonemContext';
+import { useRegisterDatagridRefresh } from '../../../hooks/useRegisterDatagridRefresh';
+import { useRetailexInvalidateRefresh } from '../../../hooks/useRetailexInvalidateRefresh';
 
 interface WarehouseStockRow {
     productCode: string;
@@ -48,27 +51,35 @@ export function WarehouseStatusReport() {
     const { tm } = useLanguage();
     const { selectedFirm } = useFirmaDonem();
 
-    useEffect(() => {
-        let cancelled = false;
-        async function load() {
-            setLoading(true);
-            try {
-                const [whs, prods] = await Promise.all([
-                    warehouseAPI.getActive(),
-                    productAPI.getAllForReports({ firmNr: selectedFirm?.firm_nr }),
-                ]);
-                if (cancelled) return;
-                setWarehouses(whs);
-                setProducts(prods);
-            } catch (err) {
-                console.error('[WarehouseStatusReport] load failed', err);
-            } finally {
-                if (!cancelled) setLoading(false);
+    const loadData = useCallback(async (opts?: { recompute?: boolean }) => {
+        const doRecompute = opts?.recompute === true;
+        setLoading(true);
+        setProducts([]);
+        try {
+            if (doRecompute) {
+                await hardRefreshProductsAndStock({ recompute: true, emit: false });
             }
+            const [whs, prods] = await Promise.all([
+                warehouseAPI.getActive(),
+                productAPI.getAllForReports({ firmNr: selectedFirm?.firm_nr }),
+            ]);
+            setWarehouses(whs);
+            setProducts(prods);
+        } catch (err) {
+            console.error('[WarehouseStatusReport] load failed', err);
+        } finally {
+            setLoading(false);
         }
-        load();
-        return () => { cancelled = true; };
     }, [selectedFirm?.firm_nr]);
+
+    useRegisterDatagridRefresh(() => loadData({ recompute: true }));
+    useRetailexInvalidateRefresh(['products', 'invoices', 'sales'], () =>
+        loadData({ recompute: false }),
+    );
+
+    useEffect(() => {
+        void loadData({ recompute: false });
+    }, [loadData]);
 
     const rows = useMemo<WarehouseStockRow[]>(() => {
         const trimOrEmpty = (v: unknown) =>

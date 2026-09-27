@@ -11,7 +11,9 @@ import { FileText } from 'lucide-react';
 import { format } from 'date-fns';
 import { useLanguage } from '../../../contexts/LanguageContext';
 import { receiptNotesForDisplay } from '../../../utils/receiptNotes';
+import { useRegisterDatagridRefresh } from '../../../hooks/useRegisterDatagridRefresh';
 import { useRetailexInvalidateRefresh } from '../../../hooks/useRetailexInvalidateRefresh';
+import { hardRefreshProductsAndStock } from '../../../services/hardRefreshProducts';
 
 interface SlipRow {
     id: string;
@@ -32,9 +34,13 @@ export function SlipListReport() {
     const [rows, setRows] = useState<SlipRow[]>([]);
     const [loading, setLoading] = useState(true);
 
-    const load = useCallback(async () => {
+    const load = useCallback(async (opts?: { hard?: boolean }) => {
         setLoading(true);
+        if (opts?.hard) setRows([]);
         try {
+            if (opts?.hard) {
+                await hardRefreshProductsAndStock({ recompute: true, emit: false });
+            }
             const movements: StockMovement[] = await stockMovementAPI.getAll();
             const mapped: SlipRow[] = movements.map(m => ({
                 id: m.id,
@@ -60,8 +66,10 @@ export function SlipListReport() {
         void load();
     }, [load]);
 
+    useRegisterDatagridRefresh(() => load({ hard: true }));
+
     // Soft-delete sonrası açık sekme (Fiş Listesi) yenilensin
-    useRetailexInvalidateRefresh(['invoices', 'sales', 'products'], load);
+    useRetailexInvalidateRefresh(['invoices', 'sales', 'products'], () => load());
 
     const columnHelper = createColumnHelper<SlipRow>();
     const columns = useMemo<ColumnDef<SlipRow, any>[]>(() => [
