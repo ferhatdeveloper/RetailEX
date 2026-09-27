@@ -89,22 +89,30 @@ function isBirthdayToday(birthDate: string | null | undefined, now = new Date())
   return bd.m === now.getMonth() + 1 && bd.d === now.getDate();
 }
 
+/** Sonraki doğum gününe kalan gün (0 = bugün). Yoksa null. */
+export function daysUntilBirthday(
+  birthDate: string | null | undefined,
+  now = new Date(),
+): number | null {
+  if (!birthDate) return null;
+  const bd = birthMonthDay(birthDate);
+  if (!bd) return null;
+  const todayStart = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+  let next = new Date(now.getFullYear(), bd.m - 1, bd.d);
+  if (next < todayStart) {
+    next = new Date(now.getFullYear() + 1, bd.m - 1, bd.d);
+  }
+  return Math.round((next.getTime() - todayStart.getTime()) / 86_400_000);
+}
+
 function isBirthdayUpcoming(
   birthDate: string | null | undefined,
   withinDays: number,
   now = new Date(),
 ): boolean {
   if (!birthDate || withinDays <= 0) return false;
-  const bd = birthMonthDay(birthDate);
-  if (!bd) return false;
-  const thisYear = new Date(now.getFullYear(), bd.m - 1, bd.d);
-  let next = thisYear;
-  const todayStart = new Date(now.getFullYear(), now.getMonth(), now.getDate());
-  if (next < todayStart) {
-    next = new Date(now.getFullYear() + 1, bd.m - 1, bd.d);
-  }
-  const diffMs = next.getTime() - todayStart.getTime();
-  const diffDays = Math.round(diffMs / 86_400_000);
+  const diffDays = daysUntilBirthday(birthDate, now);
+  if (diffDays == null) return false;
   // Yaklaşan: bugün hariç 1..N gün içinde
   return diffDays >= 1 && diffDays <= withinDays;
 }

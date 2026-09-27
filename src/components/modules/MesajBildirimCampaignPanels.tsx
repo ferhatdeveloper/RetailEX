@@ -582,18 +582,52 @@ export function MsgAutomationPanel({ panel, inputCls, labelCls }: PanelProps) {
   );
 }
 
-export function MsgQueueLogPanel({ panel, inputCls: _inputCls, labelCls: _labelCls }: PanelProps) {
+type QueueStatusFilter = 'all' | 'failed' | 'pending' | 'sent';
+
+function queueStatusLabel(
+  status: string,
+  tm: (key: string) => string,
+  scheduledFuture: boolean,
+): string {
+  if (scheduledFuture) return tm('msgNotifyScheduleLater');
+  if (status === 'failed') return tm('msgNotifyQueueStatusFailed');
+  if (status === 'pending') return tm('msgNotifyQueueStatusPending');
+  if (status === 'sent') return tm('msgNotifyQueueStatusSent');
+  return status;
+}
+
+function queueRowTime(r: NotificationQueueRow): string {
+  const raw = r.sent_at || r.created_at;
+  if (!raw) return '';
+  try {
+    return new Date(raw).toLocaleString();
+  } catch {
+    return String(raw);
+  }
+}
+
+export function MsgQueueLogPanel({
+  panel,
+  inputCls: _inputCls,
+  labelCls: _labelCls,
+  initialFilter = 'all',
+}: PanelProps & { initialFilter?: QueueStatusFilter }) {
   const { darkMode } = useTheme();
   const { tm } = useLanguage();
   const [queue, setQueue] = useState<NotificationQueueRow[]>([]);
   const [logs, setLogs] = useState<NotificationSendLogRow[]>([]);
   const [loading, setLoading] = useState(true);
   const [busy, setBusy] = useState(false);
+  const [statusFilter, setStatusFilter] = useState<QueueStatusFilter>(initialFilter);
+
+  useEffect(() => {
+    setStatusFilter(initialFilter);
+  }, [initialFilter]);
 
   const load = useCallback(async () => {
     setLoading(true);
     try {
-      const [q, l] = await Promise.all([messagingService.listQueue(80), listSendLog(50)]);
+      const [q, l] = await Promise.all([messagingService.listQueue(120), listSendLog(50)]);
       setQueue(q);
       setLogs(l);
     } catch (e: unknown) {
@@ -606,6 +640,10 @@ export function MsgQueueLogPanel({ panel, inputCls: _inputCls, labelCls: _labelC
   useEffect(() => {
     void load();
   }, [load]);
+
+  const failedRows = queue.filter((r) => r.status === 'failed');
+  const filteredQueue =
+    statusFilter === 'all' ? queue : queue.filter((r) => r.status === statusFilter);
 
   const handleProcess = async () => {
     setBusy(true);
@@ -624,12 +662,62 @@ export function MsgQueueLogPanel({ panel, inputCls: _inputCls, labelCls: _labelC
     try {
       const n = await messagingService.retryFailedNotifications();
       toast.success(tm('msgNotifyRetryDone').replace('{n}', String(n)));
+      setStatusFilter('pending');
       await load();
     } catch (e: unknown) {
       toast.error(e instanceof Error ? e.message : String(e));
     } finally {
       setBusy(false);
     }
+  };
+
+  const renderQueueRow = (r: NotificationQueueRow, emphasizeFailed = false) => {
+    const scheduledFuture =
+      r.status === 'pending' &&
+      r.scheduled_at &&
+      new Date(r.scheduled_at).getTime() > Date.now();
+    const timeLabel = queueRowTime(r);
+    return (
+      <div
+        key={r.id}
+        className={`py-2 ${emphasizeFailed || r.status === 'failed' ? (darkMode ? 'bg-red-950/40 px-2 rounded-lg' : 'bg-red-50 px-2 rounded-lg') : ''}`}
+      >
+        <div className="flex flex-wrap gap-2 items-center">
+          <span
+            className={`text-xs font-bold px-2 py-0.5 rounded ${
+              r.status === 'sent'
+                ? 'bg-emerald-100 text-emerald-800'
+                : r.status === 'failed'
+                  ? 'bg-red-100 text-red-800'
+                  : scheduledFuture
+                    ? 'bg-violet-100 text-violet-800'
+                    : 'bg-amber-100 text-amber-800'
+            }`}
+          >
+            {queueStatusLabel(String(r.status), tm, Boolean(scheduledFuture))}
+          </span>
+          <span className={`font-medium ${darkMode ? 'text-gray-100' : 'text-gray-900'}`}>
+            {r.recipient_name || '—'}
+          </span>
+          <span className="text-gray-500">{r.recipient_phone || '—'}</span>
+          {timeLabel ? (
+            <span className="text-xs text-gray-400 shrink-0">{timeLabel}</span>
+          ) : null}
+          <span className="text-xs text-gray-400 ml-auto">{r.event_type}</span>
+        </div>
+        {r.scheduled_at ? (
+          <p className="text-xs text-violet-700 mt-0.5">
+            {tm('msgNotifyScheduleAt').replace('{when}', new Date(r.scheduled_at).toLocaleString())}
+          </p>
+        ) : null}
+        {r.error_text ? (
+          <p className={`text-xs mt-1 break-words font-medium ${darkMode ? 'text-red-300' : 'text-red-700'}`}>
+            {r.error_text}
+          </p>
+        ) : null}
+        <p className="text-xs text-gray-500 line-clamp-2 mt-0.5">{r.message_text}</p>
+      </div>
+    );
   };
 
   if (loading) {
@@ -640,6 +728,21 @@ export function MsgQueueLogPanel({ panel, inputCls: _inputCls, labelCls: _labelC
       </div>
     );
   }
+
+  const filterBtns: Array<{ id: QueueStatusFilter; labelKey: string; count?: number }> = [
+    { id: 'all', labelKey: 'msgNotifyQueueFilterAll', count: queue.length },
+    { id: 'failed', labelKey: 'msgNotifyQueueFilterFailed', count: failedRows.length },
+    {
+      id: 'pending',
+      labelKey: 'msgNotifyQueueFilterPending',
+      count: queue.filter((r) => r.status === 'pending').length,
+    },
+    {
+      id: 'sent',
+      labelKey: 'msgNotifyQueueFilterSent',
+      count: queue.filter((r) => r.status === 'sent').length,
+    },
+  ];
 
   return (
     <div className="space-y-4">
@@ -655,12 +758,17 @@ export function MsgQueueLogPanel({ panel, inputCls: _inputCls, labelCls: _labelC
         </button>
         <button
           type="button"
-          disabled={busy}
+          disabled={busy || failedRows.length === 0}
           onClick={() => void handleRetryFailed()}
-          className="inline-flex items-center gap-2 rounded-lg border px-3 py-2 text-sm font-semibold disabled:opacity-50"
+          className={`inline-flex items-center gap-2 rounded-lg px-3 py-2 text-sm font-semibold disabled:opacity-50 ${
+            failedRows.length > 0
+              ? 'bg-red-600 text-white shadow-sm ring-2 ring-red-300'
+              : 'border'
+          }`}
         >
           <RotateCcw className="h-4 w-4" />
           {tm('msgNotifyRetryFailed')}
+          {failedRows.length > 0 ? ` (${failedRows.length})` : ''}
         </button>
         <button
           type="button"
@@ -671,54 +779,75 @@ export function MsgQueueLogPanel({ panel, inputCls: _inputCls, labelCls: _labelC
         </button>
       </div>
 
+      {failedRows.length > 0 ? (
+        <div
+          className={`rounded-xl border-2 p-4 ${
+            darkMode ? 'border-red-700 bg-red-950/30' : 'border-red-300 bg-red-50'
+          }`}
+        >
+          <div className="flex flex-wrap items-start justify-between gap-2 mb-2">
+            <div>
+              <h3 className={`text-sm font-bold uppercase ${darkMode ? 'text-red-200' : 'text-red-800'}`}>
+                {tm('msgNotifyFailedSectionTitle').replace('{n}', String(failedRows.length))}
+              </h3>
+              <p className={`text-xs mt-1 ${darkMode ? 'text-red-300/80' : 'text-red-700'}`}>
+                {tm('msgNotifyFailedSectionHint')}
+              </p>
+            </div>
+            <button
+              type="button"
+              disabled={busy}
+              onClick={() => void handleRetryFailed()}
+              className="inline-flex items-center gap-2 rounded-lg bg-red-600 text-white px-3 py-2 text-sm font-bold disabled:opacity-50"
+            >
+              <RotateCcw className="h-4 w-4" />
+              {tm('msgNotifyRetryFailed')}
+            </button>
+          </div>
+          <div className="max-h-64 overflow-y-auto divide-y divide-red-200/60 text-sm">
+            {failedRows.map((r) => renderQueueRow(r, true))}
+          </div>
+        </div>
+      ) : null}
+
       <div className={`rounded-xl border p-4 ${panel}`}>
-        <h3 className={`text-sm font-bold uppercase mb-2 ${darkMode ? 'text-gray-300' : 'text-gray-600'}`}>
-          {tm('msgNotifyQueueTitle')}
-        </h3>
-        <div className="max-h-72 overflow-y-auto divide-y text-sm">
-          {queue.length === 0 ? (
-            <p className="text-gray-500 py-2">{tm('msgNotifyQueueEmpty')}</p>
-          ) : (
-            queue.map((r) => {
-              const scheduledFuture =
-                r.status === 'pending' &&
-                r.scheduled_at &&
-                new Date(r.scheduled_at).getTime() > Date.now();
+        <div className="flex flex-wrap items-center justify-between gap-2 mb-3">
+          <h3 className={`text-sm font-bold uppercase ${darkMode ? 'text-gray-300' : 'text-gray-600'}`}>
+            {tm('msgNotifyQueueTitle')}
+          </h3>
+          <div className="flex flex-wrap gap-1">
+            {filterBtns.map((f) => {
+              const active = statusFilter === f.id;
+              const isFailed = f.id === 'failed';
               return (
-              <div key={r.id} className="py-2">
-                <div className="flex flex-wrap gap-2 items-center">
-                  <span
-                    className={`text-xs font-bold px-2 py-0.5 rounded ${
-                      r.status === 'sent'
-                        ? 'bg-emerald-100 text-emerald-800'
-                        : r.status === 'failed'
-                          ? 'bg-red-100 text-red-800'
-                          : scheduledFuture
-                            ? 'bg-violet-100 text-violet-800'
-                            : 'bg-amber-100 text-amber-800'
-                    }`}
-                  >
-                    {scheduledFuture ? tm('msgNotifyScheduleLater') : r.status}
-                  </span>
-                  <span className="font-medium">{r.recipient_name || '—'}</span>
-                  <span className="text-gray-500">{r.recipient_phone}</span>
-                  <span className="text-xs text-gray-400 ml-auto">{r.event_type}</span>
-                </div>
-                {r.scheduled_at ? (
-                  <p className="text-xs text-violet-700 mt-0.5">
-                    {tm('msgNotifyScheduleAt').replace(
-                      '{when}',
-                      new Date(r.scheduled_at).toLocaleString(),
-                    )}
-                  </p>
-                ) : null}
-                {r.error_text ? (
-                  <p className="text-xs text-red-600 mt-1 break-words">{r.error_text}</p>
-                ) : null}
-                <p className="text-xs text-gray-500 line-clamp-2 mt-0.5">{r.message_text}</p>
-              </div>
+                <button
+                  key={f.id}
+                  type="button"
+                  onClick={() => setStatusFilter(f.id)}
+                  className={`rounded-md px-2.5 py-1 text-xs font-semibold border transition ${
+                    active
+                      ? isFailed
+                        ? 'border-red-500 bg-red-100 text-red-800'
+                        : 'border-emerald-500 bg-emerald-50 text-emerald-800'
+                      : darkMode
+                        ? 'border-gray-600 text-gray-300'
+                        : 'border-gray-200 text-gray-600'
+                  }`}
+                >
+                  {tm(f.labelKey)}
+                  {typeof f.count === 'number' ? ` (${f.count})` : ''}
+                </button>
               );
-            })
+            })}
+          </div>
+        </div>
+        <div className="max-h-72 overflow-y-auto divide-y text-sm">
+          {filteredQueue.length === 0 ? (
+            <p className="text-gray-500 py-2">
+              {statusFilter === 'failed' ? tm('msgNotifyFailedEmpty') : tm('msgNotifyQueueEmpty')}
+            </p>
+          ) : (
+            filteredQueue.map((r) => renderQueueRow(r))
           )}
         </div>
       </div>

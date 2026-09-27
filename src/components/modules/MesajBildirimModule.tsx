@@ -24,6 +24,7 @@ import {
   FileText,
   CalendarDays,
   ListOrdered,
+  RotateCcw,
 } from 'lucide-react';
 import { toast } from 'sonner';
 import { useTheme } from '../../contexts/ThemeContext';
@@ -31,6 +32,7 @@ import { useLanguage } from '../../contexts/LanguageContext';
 import { messagingService } from '../../services/messaging/messagingService';
 import {
   customerNotificationService,
+  daysUntilBirthday,
   type CustomerGroupFilter,
   type CustomerNotifyAudience,
   type NotifyCustomerRow,
@@ -139,9 +141,11 @@ export function MesajBildirimModule({
   const [bulkPreviewItems, setBulkPreviewItems] = useState<WhatsAppBulkPreviewItem[]>([]);
   const [bulkPreviewTitle, setBulkPreviewTitle] = useState('');
   const [mainTab, setMainTab] = useState<MainTab>('send');
+  const [queueInitialFilter, setQueueInitialFilter] = useState<'all' | 'failed'>('all');
   const [customTemplates, setCustomTemplates] = useState<MessageTemplateRow[]>([]);
   const [selectedCustomTplId, setSelectedCustomTplId] = useState('');
   const [upcomingDays, setUpcomingDays] = useState(7);
+  const [retryingFailed, setRetryingFailed] = useState(false);
 
   const panel = darkMode ? 'bg-gray-800 border-gray-700' : 'bg-white border-gray-200';
   const inputCls = darkMode
@@ -253,10 +257,12 @@ export function MesajBildirimModule({
   );
 
   const [resolvedCount, setResolvedCount] = useState(0);
+  const [resolvedRecipients, setResolvedRecipients] = useState<NotifyCustomerRow[]>([]);
 
   useEffect(() => {
     if (mode === 'follow_up_range') {
       setResolvedCount(selectedFollowUpRows.length);
+      setResolvedRecipients([]);
       return;
     }
     let cancelled = false;
@@ -268,12 +274,33 @@ export function MesajBildirimModule({
         upcomingDays,
       })
       .then((rows) => {
-        if (!cancelled) setResolvedCount(rows.length);
+        if (!cancelled) {
+          setResolvedCount(rows.length);
+          setResolvedRecipients(rows);
+        }
       });
     return () => {
       cancelled = true;
     };
   }, [mode, selectedIds, groupFilter, customers, selectedFollowUpRows.length, upcomingDays]);
+
+  const birthdayAudienceList = useMemo(() => {
+    if (mode !== 'birthday_today' && mode !== 'birthday_upcoming') return [];
+    return [...resolvedRecipients].sort((a, b) => {
+      const da = daysUntilBirthday(a.birth_date) ?? 999;
+      const db = daysUntilBirthday(b.birth_date) ?? 999;
+      return da - db || a.name.localeCompare(b.name, 'tr');
+    });
+  }, [mode, resolvedRecipients]);
+
+  const upcomingBirthdayAll = useMemo(() => {
+    return customers
+      .map((c) => ({ c, days: daysUntilBirthday(c.birth_date) }))
+      .filter((x): x is { c: NotifyCustomerRow; days: number } => x.days != null && x.days >= 1 && x.days <= upcomingDays)
+      .sort((a, b) => a.days - b.days || a.c.name.localeCompare(b.c.name, 'tr'));
+  }, [customers, upcomingDays]);
+
+  const upcomingBirthdayPreview = upcomingBirthdayAll.slice(0, 12);
 
   const previewMessage = useMemo(() => {
     if (mode === 'follow_up_range' && followUpBulkRows[0]) {
@@ -465,6 +492,31 @@ export function MesajBildirimModule({
     }
   };
 
+  const handleRetryFailedFromSend = async () => {
+    setRetryingFailed(true);
+    try {
+      const n = await messagingService.retryFailedNotifications();
+      const statsNow = await messagingService.getQueueStats();
+      setStats(statsNow);
+      toast.success(tm('msgNotifyRetryDone').replace('{n}', String(n)));
+    } catch (e: unknown) {
+      toast.error(e instanceof Error ? e.message : String(e));
+    } finally {
+      setRetryingFailed(false);
+    }
+  };
+
+  const openFailedQueueTab = () => {
+    setQueueInitialFilter('failed');
+    setMainTab('queue');
+  };
+
+  const formatBirthdayDaysLabel = (days: number | null) => {
+    if (days == null) return '—';
+    if (days === 0) return tm('msgNotifyBirthdayDaysToday');
+    return tm('msgNotifyBirthdayDaysLeft').replace('{n}', String(days));
+  };
+
   const openWhatsAppSettings = () => {
     window.dispatchEvent(new CustomEvent('navigateToScreen', { detail: 'whatsapp' }));
   };
@@ -539,6 +591,15 @@ export function MesajBildirimModule({
               .replace('{sent}', String(stats.sent))
               .replace('{failed}', String(stats.failed))}
           </span>
+          {stats.failed > 0 ? (
+            <button
+              type="button"
+              onClick={openFailedQueueTab}
+              className="inline-flex items-center gap-1 rounded-md bg-red-100 text-red-800 px-2 py-1 text-xs font-bold"
+            >
+              {tm('msgNotifyQueueFilterFailed')} ({stats.failed})
+            </button>
+          ) : null}
           <button
             type="button"
             disabled={processing || stats.pending === 0}
@@ -550,6 +611,36 @@ export function MesajBildirimModule({
           </button>
         </div>
       )}
+
+      {stats.failed > 0 ? (
+        <div
+          className={`rounded-xl border-2 p-4 flex flex-wrap items-center gap-3 ${
+            darkMode ? 'border-red-700 bg-red-950/40 text-red-100' : 'border-red-300 bg-red-50 text-red-900'
+          }`}
+        >
+          <AlertTriangle className="h-5 w-5 shrink-0 text-red-600" />
+          <p className="text-sm font-semibold flex-1 min-w-[12rem]">
+            {tm('msgNotifyFailedBanner').replace('{n}', String(stats.failed))}
+          </p>
+          <button
+            type="button"
+            onClick={openFailedQueueTab}
+            className="inline-flex items-center gap-2 rounded-lg border border-red-400 px-3 py-2 text-sm font-bold"
+          >
+            <ListOrdered className="h-4 w-4" />
+            {tm('msgNotifyFailedViewQueue')}
+          </button>
+          <button
+            type="button"
+            disabled={retryingFailed}
+            onClick={() => void handleRetryFailedFromSend()}
+            className="inline-flex items-center gap-2 rounded-lg bg-red-600 text-white px-3 py-2 text-sm font-bold disabled:opacity-50"
+          >
+            {retryingFailed ? <Loader2 className="h-4 w-4 animate-spin" /> : <RotateCcw className="h-4 w-4" />}
+            {tm('msgNotifyRetryFailed')}
+          </button>
+        </div>
+      ) : null}
 
       <div className="flex flex-wrap gap-2">
         {(
@@ -563,14 +654,21 @@ export function MesajBildirimModule({
         ).map((tab) => {
           const Icon = tab.icon;
           const active = mainTab === tab.id;
+          const failedBadge = tab.id === 'queue' && stats.failed > 0;
           return (
             <button
               key={tab.id}
               type="button"
-              onClick={() => setMainTab(tab.id)}
+              onClick={() => {
+                if (tab.id === 'queue' && stats.failed > 0) setQueueInitialFilter('failed');
+                else if (tab.id === 'queue') setQueueInitialFilter('all');
+                setMainTab(tab.id);
+              }}
               className={`inline-flex items-center gap-2 rounded-lg border px-3 py-2 text-sm font-semibold transition ${
                 active
-                  ? 'border-emerald-500 bg-emerald-50 text-emerald-800'
+                  ? failedBadge
+                    ? 'border-red-500 bg-red-50 text-red-800'
+                    : 'border-emerald-500 bg-emerald-50 text-emerald-800'
                   : darkMode
                     ? 'border-gray-600 text-gray-300'
                     : 'border-gray-200 text-gray-700'
@@ -578,6 +676,11 @@ export function MesajBildirimModule({
             >
               <Icon className="h-4 w-4" />
               {tm(tab.labelKey)}
+              {failedBadge ? (
+                <span className="rounded-full bg-red-600 text-white text-[10px] font-bold px-1.5 py-0.5 leading-none">
+                  {stats.failed}
+                </span>
+              ) : null}
             </button>
           );
         })}
@@ -593,7 +696,12 @@ export function MesajBildirimModule({
         <MsgAutomationPanel panel={panel} inputCls={inputCls} labelCls={labelCls} />
       ) : null}
       {mainTab === 'queue' ? (
-        <MsgQueueLogPanel panel={panel} inputCls={inputCls} labelCls={labelCls} />
+        <MsgQueueLogPanel
+          panel={panel}
+          inputCls={inputCls}
+          labelCls={labelCls}
+          initialFilter={queueInitialFilter}
+        />
       ) : null}
 
       {mainTab === 'send' ? (
@@ -643,6 +751,98 @@ export function MesajBildirimModule({
                 value={upcomingDays}
                 onChange={(e) => setUpcomingDays(Number(e.target.value) || 7)}
               />
+            </div>
+          ) : null}
+
+          {(mode === 'birthday_today' || mode === 'birthday_upcoming') && (
+            <div className="space-y-2">
+              <h3 className={`text-xs font-bold uppercase tracking-wide ${darkMode ? 'text-gray-300' : 'text-gray-600'}`}>
+                {tm('msgNotifyBirthdayListTitle').replace('{n}', String(birthdayAudienceList.length))}
+              </h3>
+              <div
+                className={`max-h-64 overflow-y-auto rounded-lg border divide-y ${
+                  darkMode ? 'border-gray-600 divide-gray-700' : 'border-gray-200 divide-gray-100'
+                }`}
+              >
+                {birthdayAudienceList.length === 0 ? (
+                  <p className={`text-sm px-3 py-3 ${darkMode ? 'text-gray-400' : 'text-gray-500'}`}>
+                    {tm('msgNotifyBirthdayListEmpty')}
+                  </p>
+                ) : (
+                  birthdayAudienceList.map((c) => {
+                    const days = daysUntilBirthday(c.birth_date);
+                    return (
+                      <div
+                        key={c.id}
+                        className={`flex flex-wrap items-center gap-2 px-3 py-2 text-sm ${
+                          darkMode ? 'text-gray-100' : 'text-gray-800'
+                        }`}
+                      >
+                        <Cake className="h-3.5 w-3.5 text-pink-500 shrink-0" />
+                        <span className="font-medium truncate">{c.name}</span>
+                        <span className="text-xs text-gray-500 shrink-0">{c.phone}</span>
+                        <span className="text-xs text-gray-400 shrink-0">
+                          {c.birth_date ? c.birth_date.slice(5) : '—'}
+                        </span>
+                        <span
+                          className={`text-xs font-semibold ml-auto shrink-0 ${
+                            days === 0
+                              ? 'text-pink-600'
+                              : darkMode
+                                ? 'text-amber-300'
+                                : 'text-amber-700'
+                          }`}
+                        >
+                          {formatBirthdayDaysLabel(days)}
+                        </span>
+                      </div>
+                    );
+                  })
+                )}
+              </div>
+            </div>
+          )}
+
+          {mode !== 'birthday_today' &&
+          mode !== 'birthday_upcoming' &&
+          upcomingBirthdayAll.length > 0 ? (
+            <div
+              className={`rounded-lg border p-3 space-y-2 ${
+                darkMode ? 'border-pink-800/60 bg-pink-950/20' : 'border-pink-200 bg-pink-50/80'
+              }`}
+            >
+              <div className="flex flex-wrap items-center justify-between gap-2">
+                <h3 className={`text-xs font-bold uppercase tracking-wide ${darkMode ? 'text-pink-200' : 'text-pink-800'}`}>
+                  {tm('msgNotifyBirthdayUpcomingPreview').replace(
+                    '{n}',
+                    String(upcomingBirthdayAll.length),
+                  )}
+                </h3>
+                <button
+                  type="button"
+                  onClick={() => setMode('birthday_upcoming')}
+                  className="text-xs font-bold text-pink-700 hover:underline"
+                >
+                  {tm('msgNotifyBirthdayShowAsAudience')}
+                </button>
+              </div>
+              <div className="max-h-36 overflow-y-auto space-y-1">
+                {upcomingBirthdayPreview.map(({ c, days }) => (
+                  <div
+                    key={c.id}
+                    className={`flex flex-wrap items-center gap-2 text-xs ${
+                      darkMode ? 'text-gray-200' : 'text-gray-700'
+                    }`}
+                  >
+                    <span className="font-medium truncate">{c.name}</span>
+                    <span className="text-gray-500">{c.phone}</span>
+                    <span className="text-gray-400">{c.birth_date ? c.birth_date.slice(5) : ''}</span>
+                    <span className="ml-auto font-semibold text-amber-700">
+                      {formatBirthdayDaysLabel(days)}
+                    </span>
+                  </div>
+                ))}
+              </div>
             </div>
           ) : null}
 

@@ -63,14 +63,27 @@ function authOk(req) {
   return h === `Bearer ${TOKEN}`;
 }
 
+/** TR=5xx, IQ=7xx yerel örüntü — messagingCountryCodes.resolveCountryCodeForLocalDigits ile aynı. */
+function resolveCountryCodeForLocalDigits(local10, defaultCc) {
+  const local = String(local10 || '').replace(/\D/g, '');
+  const fallback = String(defaultCc || '90').replace(/\D/g, '') || '90';
+  if (local.length !== 10) return fallback;
+  const lead = local.charAt(0);
+  if (lead === '7') return '964';
+  if (lead === '5') return '90';
+  return fallback;
+}
+
 function normalizeDigits(raw, countryCodeHint = '90') {
   let p = String(raw || '').replace(/\D/g, '');
   if (!p) return '';
+  // Yanlış 90+7xxxxxxxxx → 964…
+  const misIq = /^90(7\d{9})$/.exec(p);
+  if (misIq) p = `964${misIq[1]}`;
   const cc = String(countryCodeHint || '90').replace(/\D/g, '') || '90';
-  if (p.startsWith(cc) && p.length >= cc.length + 7) return p;
-  if (/^(90|964|971|966|1|44|49|33|39)\d{7,}$/.test(p) && !p.startsWith(cc)) return p;
-  if (p.length === 11 && p.startsWith('0')) return cc + p.slice(1);
-  if (p.length === 10) p = `${cc}${p}`;
+  if (/^(90|964|971|966|1|44|49|33|39)\d{7,}$/.test(p)) return p;
+  if (p.length === 11 && p.startsWith('0')) p = p.slice(1);
+  if (p.length === 10) return `${resolveCountryCodeForLocalDigits(p, cc)}${p}`;
   return p;
 }
 

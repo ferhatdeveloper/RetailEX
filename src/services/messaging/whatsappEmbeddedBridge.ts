@@ -1,4 +1,5 @@
 import { IS_TAURI } from '../../utils/env';
+import { normalizePhoneDigits } from './messagingCountryCodes';
 
 /**
  * Doğrudan WhatsApp (QR / Baileys) — tarayıcıda Baileys çalışmaz; yerel HTTP köprüsü gerekir.
@@ -75,17 +76,6 @@ async function bridgeFetch(url: string, init?: RequestInit): Promise<Response> {
         }
     }
     return fetch(url, init);
-}
-
-function normalizePhoneDigits(raw: string, defaultCountryCode = '90'): string {
-    let p = String(raw || '').replace(/\D/g, '');
-    if (!p) return '';
-    const cc = String(defaultCountryCode || '90').replace(/\D/g, '') || '90';
-    if (p.startsWith(cc) && p.length >= cc.length + 7) return p;
-    if (/^(90|964|971|966|1|44|49|33|39)\d{7,}$/.test(p) && !p.startsWith(cc)) return p;
-    if (p.length === 11 && p.startsWith('0')) return cc + p.slice(1);
-    if (p.length === 10) return cc + p;
-    return p;
 }
 
 export type EmbeddedBridgeStatus = 'scanning' | 'connected' | 'disconnected' | string;
