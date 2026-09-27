@@ -4,7 +4,7 @@ import {
   ShoppingCart, TrendingUp, Wallet, Users, Settings, Tag, Scale,
   Boxes, FileSignature, Truck, BarChart3, Receipt, Warehouse,
   FileCheck, Target, GitBranch, Building2, Store, PackagePlus,
-  ShoppingBag, Wrench, Search, X, Languages, Moon, Sun, Star
+  ShoppingBag, Wrench, Search, X, Languages, Moon, Sun, Star, Pin
 } from 'lucide-react';
 import { useTheme } from '../../contexts/ThemeContext';
 import type { Language } from '../../locales/module-translations';
@@ -46,6 +46,9 @@ interface ModernSidebarProps {
   languages: { code: Language; name: string; flag: string; }[];
   APP_VERSION: { full: string };
   t: Translations;
+  /** Masaüstü: rapor ekranlarında menünün auto-hide olmaması */
+  sidebarPinned?: boolean;
+  onToggleSidebarPin?: () => void;
 }
 
 export function ModernSidebar({
@@ -65,6 +68,8 @@ export function ModernSidebar({
   languages,
   APP_VERSION,
   t,
+  sidebarPinned = false,
+  onToggleSidebarPin,
 }: ModernSidebarProps) {
   const { darkMode, toggleDarkMode } = useTheme();
   const { isMobile } = useResponsive();
@@ -231,33 +236,58 @@ export function ModernSidebar({
   return (
     <div className={`h-full overflow-y-auto overscroll-contain touch-pan-y ${darkMode ? 'bg-gray-900' : 'bg-white'} border-r ${darkMode ? 'border-gray-700' : 'border-gray-200'}`}>
       {/* Search Box - Enhanced */}
-      <div className={`p-3 sm:p-4 border-b ${darkMode ? 'border-gray-700 bg-gray-800/50' : 'border-gray-200 bg-gradient-to-br from-blue-50/50 to-white'}`}>
-        <div className="relative">
-          <div className={`absolute left-3 sm:left-4 top-1/2 -translate-y-1/2 flex items-center gap-2 ${darkMode ? 'text-gray-400' : 'text-gray-500'
-            }`}>
-            <Search className="w-4 h-4 sm:w-5 sm:h-5" />
-          </div>
-          <input
-            type="text"
-            placeholder={isMobile ? t.sidebar.searchPlaceholderShort : t.sidebar.searchPlaceholderFull}
-            value={menuSearchQuery}
-            onChange={(e) => setMenuSearchQuery(e.target.value)}
-            className={`w-full pl-10 sm:pl-12 pr-10 sm:pr-12 py-2.5 sm:py-3.5 border-2 rounded-lg sm:rounded-xl text-sm sm:text-base font-medium shadow-sm transition-all duration-200 focus:outline-none focus:ring-2 sm:focus:ring-4 focus:ring-blue-500/20 focus:border-blue-500 min-h-[44px] ${darkMode
-              ? 'bg-gray-800/80 border-gray-600 text-white placeholder-gray-400 focus:bg-gray-800 focus:shadow-lg'
-              : 'bg-white border-gray-300 text-gray-900 placeholder-gray-500 focus:bg-white focus:shadow-lg focus:border-blue-500'
-              }`}
-            autoComplete="off"
-          />
-          {menuSearchQuery && (
-            <button
-              onClick={() => setMenuSearchQuery('')}
-              className={`absolute right-3 top-1/2 -translate-y-1/2 p-1.5 rounded-lg transition-all duration-200 ${darkMode
-                ? 'hover:bg-gray-700 text-gray-400 hover:text-gray-200'
-                : 'hover:bg-gray-100 text-gray-400 hover:text-gray-600'
+      <div className={`relative p-3 sm:p-4 border-b ${darkMode ? 'border-gray-700 bg-gray-800/50' : 'border-gray-200 bg-gradient-to-br from-blue-50/50 to-white'}`}>
+        <div className="flex items-center gap-2">
+          <div className="relative flex-1 min-w-0">
+            <div className={`absolute left-3 sm:left-4 top-1/2 -translate-y-1/2 flex items-center gap-2 ${darkMode ? 'text-gray-400' : 'text-gray-500'
+              }`}>
+              <Search className="w-4 h-4 sm:w-5 sm:h-5" />
+            </div>
+            <input
+              type="text"
+              placeholder={isMobile ? t.sidebar.searchPlaceholderShort : t.sidebar.searchPlaceholderFull}
+              value={menuSearchQuery}
+              onChange={(e) => setMenuSearchQuery(e.target.value)}
+              className={`w-full pl-10 sm:pl-12 pr-10 sm:pr-12 py-2.5 sm:py-3.5 border-2 rounded-lg sm:rounded-xl text-sm sm:text-base font-medium shadow-sm transition-all duration-200 focus:outline-none focus:ring-2 sm:focus:ring-4 focus:ring-blue-500/20 focus:border-blue-500 min-h-[44px] ${darkMode
+                ? 'bg-gray-800/80 border-gray-600 text-white placeholder-gray-400 focus:bg-gray-800 focus:shadow-lg'
+                : 'bg-white border-gray-300 text-gray-900 placeholder-gray-500 focus:bg-white focus:shadow-lg focus:border-blue-500'
                 }`}
-              title={t.sidebar.clearSearch}
+              autoComplete="off"
+            />
+            {menuSearchQuery && (
+              <button
+                onClick={() => setMenuSearchQuery('')}
+                className={`absolute right-3 top-1/2 -translate-y-1/2 p-1.5 rounded-lg transition-all duration-200 ${darkMode
+                  ? 'hover:bg-gray-700 text-gray-400 hover:text-gray-200'
+                  : 'hover:bg-gray-100 text-gray-400 hover:text-gray-600'
+                  }`}
+                title={t.sidebar.clearSearch}
+              >
+                <X className="w-4 h-4" />
+              </button>
+            )}
+          </div>
+          {!isMobile && onToggleSidebarPin && (
+            <button
+              type="button"
+              onClick={onToggleSidebarPin}
+              className={`shrink-0 p-2.5 rounded-lg sm:rounded-xl border-2 min-h-[44px] min-w-[44px] flex items-center justify-center transition-all duration-200 active:scale-[0.96] ${
+                sidebarPinned
+                  ? darkMode
+                    ? 'border-blue-500 bg-blue-600/30 text-blue-300 hover:bg-blue-600/40'
+                    : 'border-blue-500 bg-blue-50 text-blue-600 hover:bg-blue-100'
+                  : darkMode
+                    ? 'border-gray-600 bg-gray-800/80 text-gray-400 hover:bg-gray-700 hover:text-gray-200'
+                    : 'border-gray-300 bg-white text-gray-500 hover:bg-gray-100 hover:text-gray-700'
+              }`}
+              title={sidebarPinned ? t.sidebar.unpinMenu : t.sidebar.pinMenu}
+              aria-label={sidebarPinned ? t.sidebar.unpinMenu : t.sidebar.pinMenu}
+              aria-pressed={sidebarPinned}
             >
-              <X className="w-4 h-4" />
+              <Pin
+                className={`w-4 h-4 ${sidebarPinned ? 'fill-current' : ''}`}
+                style={sidebarPinned ? { transform: 'rotate(-45deg)' } : undefined}
+              />
             </button>
           )}
         </div>

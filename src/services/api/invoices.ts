@@ -3435,7 +3435,23 @@ export const invoicesAPI = {
             console.warn('[InvoicesAPI] update ledger apply:', e);
           }
         }
-        if (mergedRest) broadcastInvoiceMutation({ detail: mergedRest });
+        if (mergedRest) {
+          if (isNewCancel) {
+            try {
+              const cancelIds = (existingFull.items || [])
+                .map((it) =>
+                  resolveSaleItemProductUuid(it as { productId?: unknown; code?: unknown })
+                )
+                .filter((x): x is string => Boolean(x && isValidUuid(x)));
+              await productAPI.recomputeStocksFromActiveDocuments(
+                cancelIds.length ? { productIds: cancelIds } : undefined
+              );
+            } catch (e) {
+              console.warn('[InvoicesAPI] cancel stock recompute (REST):', e);
+            }
+          }
+          broadcastInvoiceMutation({ detail: mergedRest });
+        }
         return mergedRest;
       }
 
@@ -3538,7 +3554,23 @@ export const invoicesAPI = {
           console.warn('[InvoicesAPI] update ledger apply (SQL):', e);
         }
       }
-      if (mergedSql) broadcastInvoiceMutation({ detail: mergedSql });
+      if (mergedSql) {
+        if (isNewCancel) {
+          try {
+            const cancelIds = (existingFull.items || [])
+              .map((it) =>
+                resolveSaleItemProductUuid(it as { productId?: unknown; code?: unknown })
+              )
+              .filter((x): x is string => Boolean(x && isValidUuid(x)));
+            await productAPI.recomputeStocksFromActiveDocuments(
+              cancelIds.length ? { productIds: cancelIds } : undefined
+            );
+          } catch (e) {
+            console.warn('[InvoicesAPI] cancel stock recompute (SQL):', e);
+          }
+        }
+        broadcastInvoiceMutation({ detail: mergedSql });
+      }
       return mergedSql;
     } catch (error: any) {
       console.error('[InvoicesAPI] update failed:', error);
@@ -4365,6 +4397,16 @@ export const invoicesAPI = {
               pnS,
               invoiceHeaderFieldsRecord(invForStock)
             );
+            const repairIds = (invForStock.items || [])
+              .map(
+                (it) =>
+                  resolveSaleItemProductUuid(it as { productId?: unknown; code?: unknown }) ||
+                  String((it as { productId?: string }).productId || '').trim()
+              )
+              .filter((pid) => isValidUuid(pid));
+            if (repairIds.length) {
+              await productAPI.recomputeStocksFromActiveDocuments({ productIds: repairIds });
+            }
           } catch (e) {
             console.warn('[InvoicesAPI] delete repair stock reverse:', e);
           }
@@ -4443,6 +4485,7 @@ export const invoicesAPI = {
 
       const fnR = normalizeFirmNrForRow(saleFirmNr ?? ERP_SETTINGS.firmNr);
       const pnR = normalizePeriodNrForRow(salePeriodNr ?? ERP_SETTINGS.periodNr);
+      const stockProductIds: string[] = [];
 
       if (invoiceForRevert) {
         let invRevert: Invoice = invoiceForRevert;
@@ -4466,6 +4509,24 @@ export const invoicesAPI = {
           }
         }
         invoiceForRevert = invRevert;
+
+        for (const it of invRevert.items || []) {
+          const raw =
+            resolveSaleItemProductUuid(it as { productId?: unknown; code?: unknown }) ||
+            String((it as { productId?: string; code?: string }).productId || '').trim() ||
+            String((it as { code?: string }).code || '').trim();
+          if (!raw) continue;
+          if (isValidUuid(raw)) {
+            stockProductIds.push(raw);
+            continue;
+          }
+          try {
+            const prod = await resolveProductForStockLine(raw);
+            if (prod?.id) stockProductIds.push(prod.id);
+          } catch {
+            /* satır eşleşmezse recompute tüm drift ile yedeklenir */
+          }
+        }
 
         // Stok reverse zorunlu — başarısızsa soft-delete yapma (hayalet stok kalmasın)
         try {
@@ -4566,6 +4627,19 @@ export const invoicesAPI = {
       // 4) Güzellik satışı (beauty_sales) — ERP soft-delete ile orphan KPI/geçmiş kalmasın
       await voidBeautySalesForDeletedInvoice({ invoiceNo: ficheNo, notes });
 
+      // Soft-delete sonrası kart stoğunu aktif belgelerle mutlak hizala
+      // (delta reverse boş satır / stock_reverted erken bayrak yüzünden atlanmış olabilir)
+      try {
+        if (stockProductIds.length > 0) {
+          await productAPI.recomputeStocksFromActiveDocuments({ productIds: stockProductIds });
+        } else {
+          // Satır ürün id'si çözülemediyse firma/dönem drift taraması
+          await productAPI.recomputeStocksFromActiveDocuments();
+        }
+      } catch (e) {
+        console.warn('[InvoicesAPI] delete stock recompute:', e);
+      }
+
       try {
         const { repairCariLedgerConsistency } = await import('./accountLedgerRepair');
         await repairCariLedgerConsistency();
@@ -4583,8 +4657,8 @@ export const invoicesAPI = {
 
   /**
    * İptal/silinmiş ama stock_reverted olmayan faturalar için stok onarımı (mevcut firma/dönem).
-   * Kör reverse yerine: soft-delete satırında bayrak yoksa reverse dener; ardından
-   * tutarsızlık kalırsa aktif hareketlerden kart stoğunu hizalar.
+   * 1) Orphan reverse (bayraksız iptaller)
+   * 2) Tüm kart stoklarını aktif fatura + ambar hareketlerinden yeniden hesapla
    * Çok kiracılı toplu onarım: `npm run db:repair:orphan-stocks -- --apply`
    */
   async repairOrphanInvoiceStocks(opts?: {
@@ -4592,12 +4666,13 @@ export const invoicesAPI = {
   }): Promise<{
     reversed: number;
     flagged: number;
+    realigned: number;
     errors: string[];
   }> {
     const dryRun = opts?.dryRun === true;
     const firmNr = normalizeFirmNrForRow(ERP_SETTINGS.firmNr);
     const periodNr = normalizePeriodNrForRow(ERP_SETTINGS.periodNr);
-    const result = { reversed: 0, flagged: 0, errors: [] as string[] };
+    const result = { reversed: 0, flagged: 0, realigned: 0, errors: [] as string[] };
 
     try {
       let orphanIds: string[] = [];
@@ -4645,22 +4720,31 @@ export const invoicesAPI = {
         orphanIds = (rows || []).map((r: { id: string }) => String(r.id));
       }
 
-      for (const id of orphanIds) {
+      for (const oid of orphanIds) {
         try {
           if (dryRun) {
             result.reversed += 1;
             continue;
           }
-          const inv = await this.getById(id);
+          const inv = await this.getById(oid);
           if (!inv) continue;
           if (invoiceStockAlreadyReverted(inv)) continue;
           await revertInvoiceStockSideEffects(inv, firmNr, periodNr);
-          await markInvoiceStockReverted(id, firmNr, periodNr, invoiceHeaderFieldsRecord(inv));
+          await markInvoiceStockReverted(oid, firmNr, periodNr, invoiceHeaderFieldsRecord(inv));
           result.reversed += 1;
           result.flagged += 1;
         } catch (e) {
-          result.errors.push(`${id}: ${e instanceof Error ? e.message : String(e)}`);
+          result.errors.push(`${oid}: ${e instanceof Error ? e.message : String(e)}`);
         }
+      }
+
+      // Delta reverse yetmez / bayrak yanlış konmuş olabilir → mutlak hizalama
+      try {
+        const align = await productAPI.recomputeStocksFromActiveDocuments({ dryRun });
+        result.realigned = dryRun ? align.drifts.length : align.updated;
+        result.errors.push(...align.errors);
+      } catch (e) {
+        result.errors.push(e instanceof Error ? e.message : String(e));
       }
     } catch (e) {
       result.errors.push(e instanceof Error ? e.message : String(e));

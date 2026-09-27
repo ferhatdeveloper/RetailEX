@@ -266,7 +266,12 @@ import { useAuth } from '../../contexts/AuthContext';
 import { useFirmaDonem } from '../../contexts/FirmaDonemContext';
 import { GIB_EDOCUMENT_SCREEN_IDS, isGibEdocumentUiEnabled } from '../../config/eInvoice.config';
 import { isIntegrationsAccessGranted } from '../../utils/integrationsAccess';
-import { shouldAutoHideManagementSidebar } from '../../utils/managementSidebarAutoHide';
+import {
+  readManagementSidebarPinned,
+  shouldCollapseManagementSidebarOnNavigate,
+  shouldAutoHideManagementSidebar,
+  writeManagementSidebarPinned,
+} from '../../utils/managementSidebarAutoHide';
 
 /** Grup menü id → gerçek ekran */
 const GROUP_SCREEN_REDIRECTS: Record<string, string> = {
@@ -469,6 +474,25 @@ export function ManagementModule({
   const { isMobile, isTablet } = useResponsive();
   const { darkMode } = useTheme();
   const { language: currentLanguage, setLanguage, t } = useLanguage(); // Use global language context
+
+  // Pin: rapor ekranlarında auto-hide'ı kapatır; tercih oturumlar arası kalır.
+  const [sidebarPinned, setSidebarPinned] = useState(() => readManagementSidebarPinned());
+  const setSidebarPinnedPersisted = useCallback(
+    (pinned: boolean) => {
+      setSidebarPinned(pinned);
+      writeManagementSidebarPinned(pinned);
+      if (pinned) {
+        effectiveSetSidebarOpen(true);
+        return;
+      }
+      // Pin kapatılınca mevcut ekran auto-hide kapsamındaysa menüyü gizle
+      if (!isMobile && shouldAutoHideManagementSidebar(currentScreen)) {
+        _setSidebarOpenRaw(false);
+      }
+    },
+    [effectiveSetSidebarOpen, isMobile, currentScreen]
+  );
+
   const [selectedKasaId, setSelectedKasaId] = useState<string | null>(null);
   const [expandedSections, setExpandedSections] = useState<string[]>([]);
   // Initialize expanded sections with translated mainMenu
@@ -586,11 +610,11 @@ export function ManagementModule({
   }, [isMobile, effectiveSetSidebarOpen]);
 
   useLayoutEffect(() => {
-    if (shouldAutoHideManagementSidebar(currentScreen)) {
+    if (shouldCollapseManagementSidebarOnNavigate(currentScreen, sidebarPinned)) {
       _setSidebarOpenRaw(false);
       return;
     }
-    if (!isMobile && sidebarOpen === undefined) {
+    if (!isMobile && sidebarOpen === undefined && !shouldAutoHideManagementSidebar(currentScreen)) {
       try {
         const saved = localStorage.getItem(SIDEBAR_PREF_KEY);
         _setSidebarOpenRaw(saved !== '0');
@@ -598,7 +622,7 @@ export function ManagementModule({
         _setSidebarOpenRaw(true);
       }
     }
-  }, [currentScreen, isMobile, sidebarOpen]);
+  }, [currentScreen, isMobile, sidebarOpen, sidebarPinned]);
 
   // Listen for WMS navigation event
   useEffect(() => {
@@ -860,12 +884,12 @@ export function ManagementModule({
     }
     const normalized = resolveManagementScreenId(String(item.id));
     setCurrentScreen(normalized);
-    if (isMobile || shouldAutoHideManagementSidebar(normalized)) {
+    if (isMobile || shouldCollapseManagementSidebarOnNavigate(normalized, sidebarPinned)) {
       _setSidebarOpenRaw(false);
     }
     setMenuSearchQuery('');
     setSearchResults([]);
-  }, [isMobile, selectedFirm, setCurrentScreen]);
+  }, [isMobile, selectedFirm, setCurrentScreen, sidebarPinned]);
 
   /** Mobilde menüden ekran seçilince drawer kapanır; kapalı drawer z-index ile içeriğin altında kalmalıdır. */
   const setScreenFromSidebar = useCallback(
@@ -879,18 +903,18 @@ export function ManagementModule({
       }
       const normalized = resolveManagementScreenId(String(s ?? ''));
       setCurrentScreen(normalized);
-      if (isMobile || shouldAutoHideManagementSidebar(normalized)) {
+      if (isMobile || shouldCollapseManagementSidebarOnNavigate(normalized, sidebarPinned)) {
         _setSidebarOpenRaw(false);
       }
     },
-    [isMobile, selectedFirm, setCurrentScreen]
+    [isMobile, selectedFirm, setCurrentScreen, sidebarPinned]
   );
 
   const handleActivateTab = useCallback(
     (screenId: string) => {
       const id = resolveManagementScreenId(screenId);
       setActiveTab(id);
-      if (isMobile || shouldAutoHideManagementSidebar(id)) {
+      if (isMobile || shouldCollapseManagementSidebarOnNavigate(id, sidebarPinned)) {
         _setSidebarOpenRaw(false);
       }
       try {
@@ -900,7 +924,7 @@ export function ManagementModule({
         /* ignore */
       }
     },
-    [isMobile, setActiveTab, user]
+    [isMobile, setActiveTab, user, sidebarPinned]
   );
 
   const handleCloseTab = useCallback(
@@ -1844,6 +1868,8 @@ export function ManagementModule({
               languages={languages}
               APP_VERSION={APP_VERSION}
               t={t}
+              sidebarPinned={sidebarPinned}
+              onToggleSidebarPin={() => setSidebarPinnedPersisted(!sidebarPinned)}
             />
           </div>
         </div>
@@ -1866,6 +1892,8 @@ export function ManagementModule({
             languages={languages}
             APP_VERSION={APP_VERSION}
             t={t}
+            sidebarPinned={sidebarPinned}
+            onToggleSidebarPin={() => setSidebarPinnedPersisted(!sidebarPinned)}
           />
         </div>
       ) : null}

@@ -3,12 +3,14 @@
  * + vade/tahsilat takibi + stok yaşlandırma + sanal santral + fiyat değişimi
  * + ürün listesi satış/alış dip toplamları + günlük/dönem rapor özet kartları
  * + günlük rapor tedarikçi ödemeleri + Windows yazıcı servisi
+ * + backoffice fatura kaydı sonrası yazdır (`invoice-auto-print-after-save`, varsayılan açık)
  * + negatif stok satış engeli (`block-negative-stock-sale`, varsayılan kapalı = satılabilir)
  * + POS ödeme→satış geri dönüş (`allow-pos-payment-back-to-sale`, varsayılan açık).
  * Kaynak: PostgreSQL `system_settings.report_menu_params` ↔ localStorage önbellek.
  * Varsayılan: çoğu menü/özellik kapalı; rapor kartları ve `daily-report-supplier-payments`
  * varsayılan açık; `block-negative-stock-sale` varsayılan kapalı (eski davranış);
- * `allow-pos-payment-back-to-sale` varsayılan açık (eski davranış).
+ * `allow-pos-payment-back-to-sale` varsayılan açık (eski davranış);
+ * `invoice-auto-print-after-save` varsayılan açık (eski UniversalInvoiceForm davranışı).
  */
 import { postgres, DB_SETTINGS } from './postgres';
 
@@ -39,6 +41,12 @@ export const REPORT_MENU_PARAM_KEYS = [
    * Açık: unified print queue → Windows yazıcı servisi.
    */
   'print-use-windows-printer-service',
+  /**
+   * Backoffice fatura kaydı sonrası otomatik yazdır — varsayılan açık.
+   * Açık: UniversalInvoiceForm kayıt sonrası yazdırır (eski davranış).
+   * Kapalı: kayıt biter, yazdırma açılmaz (POS ayrı).
+   */
+  'invoice-auto-print-after-save',
   /**
    * Negatif / sıfır stokla satış engeli — varsayılan kapalı (satılabilir).
    * Açık: stok 0 veya satış sonrası negatif olacaksa POS / fatura satışı engellenir.
@@ -95,6 +103,7 @@ const DEFAULT_PARAMS: ReportMenuParams = {
   'product-list-sales-purchase-totals': false,
   'daily-report-supplier-payments': true,
   'print-use-windows-printer-service': false,
+  'invoice-auto-print-after-save': true,
   'block-negative-stock-sale': false,
   'allow-pos-payment-back-to-sale': true,
   'daily-report-card-total-sales': true,

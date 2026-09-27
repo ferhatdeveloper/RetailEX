@@ -220,7 +220,7 @@ export const MENU_SECTIONS: MenuSection[] = [
         label: 'Hareketler',
         screen: 'finance-movements',
         children: [
-          { id: 'cari-devir', label: 'Cari Devir Fişi', screen: 'cari-devir' },
+          { id: 'cari-devir', label: 'Açılış Fişi', screen: 'cari-devir' },
           { id: 'kasalar', label: 'Kasa İşlemleri', screen: 'kasalar' },
           { id: 'cash-slips', label: 'Kasa Fişleri', screen: 'cash-slips' },
           { id: 'virman', label: 'Kasa Virman', screen: 'virman' },

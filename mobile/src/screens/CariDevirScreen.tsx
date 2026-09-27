@@ -547,7 +547,7 @@ export function CariDevirScreen() {
   return (
     <View style={[styles.root, { backgroundColor: colors.background }]}>
       <ScreenHeader
-        title="Cari Devir Fişi"
+        title="Açılış Fişi"
         subtitle="Açılış bakiyesi / eski program devri"
         right={<ArrowRightLeft size={20} color={palette.white} />}
       />

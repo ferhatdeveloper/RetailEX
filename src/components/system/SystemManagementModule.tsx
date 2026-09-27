@@ -342,6 +342,7 @@ function DefinitionsParametersView() {
     { key: 'product-list-sales-purchase-totals', labelKey: 'menuParamProductListSalesPurchaseTotals' },
     { key: 'daily-report-supplier-payments', labelKey: 'menuParamDailyReportSupplierPayments' },
     { key: 'print-use-windows-printer-service', labelKey: 'menuParamPrintUseWindowsPrinterService' },
+    { key: 'invoice-auto-print-after-save', labelKey: 'menuParamInvoiceAutoPrintAfterSave' },
   ];
 
   const stockSaleParamRows: { key: ReportMenuParamKey; labelKey: string }[] = [

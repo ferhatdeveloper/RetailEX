@@ -3320,6 +3320,12 @@ export const moduleTranslations: Record<string, Record<Language, string>> = {
     ar: 'استخدام خدمة طابعة ويندوز (الافتراضي مغلق → طباعة المتصفح)',
     ku: 'خزمەتگوزاری چاپکەری ویندۆز بەکاربهێنە (بنەڕەت داخراو → چاپکردنی وێبگەڕ)',
   },
+  menuParamInvoiceAutoPrintAfterSave: {
+    tr: 'Fatura kaydı sonrası yazdır (backoffice; varsayılan açık)',
+    en: 'Print after invoice save (backoffice; default on)',
+    ar: 'طباعة بعد حفظ الفاتورة (المكتب الخلفي؛ الافتراضي مفعّل)',
+    ku: 'پاش پاشەکەوتکردنی وەسڵ چاپ بکە (باکئۆفیس؛ بنەڕەت کراوە)',
+  },
   menuParamBlockNegativeStockSale: {
     tr: 'Negatif / sıfır stokla satışı engelle (varsayılan kapalı)',
     en: 'Block sales when stock is zero or would go negative (default off)',
@@ -3809,6 +3815,24 @@ export const moduleTranslations: Record<string, Record<Language, string>> = {
   useRecommended: { tr: 'Öneriyi kullan', en: 'Use recommended', ar: 'استخدم الموصى به', ku: 'پێشنیارکراو بەکاربهێنە' },
   preview: { tr: 'Önizleme', en: 'Preview', ar: 'معاينة', ku: 'پێشبینین' },
   refreshStocks: { tr: 'Stokları Yenile', en: 'Refresh Stocks', ar: 'تحديث المخزون', ku: 'نوێکردنەوەی کۆگا' },
+  stockRecomputeInProgress: {
+    tr: 'Stoklar aktif hareketlere göre hizalanıyor…',
+    en: 'Aligning stocks to active movements…',
+    ar: 'جاري مواءمة المخزون مع الحركات النشطة…',
+    ku: 'کۆگا لەگەڵ جووڵە چالاکەکان تەبا دەکرێت…',
+  },
+  stockRecomputeDone: {
+    tr: '{count} ürün stoğu aktif hareketlere göre hizalandı',
+    en: '{count} product stock(s) aligned to active movements',
+    ar: 'تمت مواءمة مخزون {count} منتج مع الحركات النشطة',
+    ku: '{count} بەرهەم کۆگا لەگەڵ جووڵە چالاکەکان تەبا کرا',
+  },
+  stockRecomputeFailed: {
+    tr: 'Stok hizalama başarısız',
+    en: 'Stock realignment failed',
+    ar: 'فشل مواءمة المخزون',
+    ku: 'تەباکردنی کۆگا سەرنەکەوت',
+  },
   newProduct: { tr: 'Yeni Ürün', en: 'New Product', ar: 'منتج جديد', ku: 'بەرهەمی نوێ' },
   productSearchPlaceholder: { tr: 'Ürün adı, barkod veya kategori ara...', en: 'Search product name, barcode or category...', ar: 'بحث عن اسم المنتج أو الباركود أو الفئة...', ku: 'گەڕان بۆ ناوی بەرهەم، بارکۆد یان هاوپۆل...' },
 
@@ -4113,7 +4137,7 @@ export const moduleTranslations: Record<string, Record<Language, string>> = {
   minOneCariRequired: { tr: 'En az bir cari için devir tutarı girin ve satırı işaretleyin', en: 'Enter opening amount for at least one account and check the row', ar: 'أدخل مبلغ افتتاح لحساب واحد على الأقل وحدد الصف', ku: 'لەلایەنی کەم بۆ یەک هەژمار بڕی گواستنەوە بنووسە و هێڵەکە نیشان بکە' },
   minOneProductRequired: { tr: 'En az bir ürün için devir stok miktarı girin ve satırı işaretleyin', en: 'Enter opening stock for at least one product and check the row', ar: 'أدخل مخزون افتتاح لمنتج واحد على الأقل وحدد الصف', ku: 'لەلایەنی کەم بۆ یەک بەرهەم بڕی گواستنەوە بنووسە' },
   rowsSaveFailed: { tr: 'satır kaydedilemedi', en: 'rows could not be saved', ar: 'صفوف لم تُحفظ', ku: 'هێڵ پاشەکەوت نەکرا' },
-  cariOpeningTitle: { tr: 'Cari Devir Fişi', en: 'Current Account Opening Balance', ar: 'سند رصيد افتتاحي للحساب الجاري', ku: 'پسوولەی گواستنەوەی هەژماری جاری' },
+  cariOpeningTitle: { tr: 'Açılış Fişi', en: 'Opening Voucher', ar: 'سند افتتاح', ku: 'پسوڵەی کردنەوە' },
   cariOpeningSubtitle: { tr: 'Eski programdan geçiş — müşteri/tedarikçi açılış borç ve alacak bakiyeleri', en: 'Legacy migration — customer/supplier opening debit and credit balances', ar: 'ترحيل من النظام القديم — أرصدة مدين ودائن للعملاء/الموردين', ku: 'گواستنەوە لە سیستەمی کۆن — باڵانسی قەرز و قەرزداری کڕیار/دابینکەر' },
   stockOpeningTitle: { tr: 'Stok Devir Fişi', en: 'Stock Opening Balance', ar: 'سند افتتاح المخزون', ku: 'پسوولەی گواستنەوەی کۆگا' },
   stockOpeningSubtitle: { tr: 'Eski programdan geçiş — ürün açılış stok miktarları', en: 'Legacy migration — product opening stock quantities', ar: 'ترحيل من النظام القديم — كميات مخزون افتتاحية للمنتجات', ku: 'گواستنەوە لە سیستەمی کۆن — بڕی کۆگای سەرەتایی بەرهەم' },
@@ -8769,7 +8793,7 @@ export const supplierTranslations = {
   refreshData: { tr: 'Yenile', en: 'Refresh', ar: 'تحديث', ku: 'نوێکردنەوە' },
   newCustomer: { tr: 'Yeni Müşteri', en: 'New Customer', ar: 'عميل جديد', ku: 'کڕیاری نوێ' },
   /** Cari listesi toolbar — kısa etiket (cariOpeningTitle daha uzun) */
-  devirFisi: { tr: 'Devir Fişi', en: 'Opening Slip', ar: 'سند افتتاح', ku: 'پسوولەی گواستنەوە' },
+  devirFisi: { tr: 'Açılış Fişi', en: 'Opening Slip', ar: 'سند افتتاح', ku: 'پسوڵەی کردنەوە' },
   partyMergeOpenButton: { tr: 'Birleştir', en: 'Merge', ar: 'دمج', ku: 'یەکخستنەوە' },
   exportToExcel: {
     tr: "Excel'e Aktar",

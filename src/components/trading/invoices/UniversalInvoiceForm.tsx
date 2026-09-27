@@ -31,6 +31,7 @@ import {
   formatInsufficientStockMessage,
   isBlockNegativeStockSaleEnabled,
 } from '../../../utils/stockSaleGuard';
+import { isReportMenuParamEnabled } from '../../../services/reportMenuParamsService';
 import { allocatePurchaseInvoiceLineCosts } from '../../../utils/purchasePromoCost';
 import { DocumentManager } from '../../shared/DocumentManager';
 import { printInvoice } from '../../../utils/printUtils';
@@ -4336,6 +4337,12 @@ export function UniversalInvoiceForm({
       };
 
       const runPrintIfNeeded = async () => {
+        // Backoffice: Sistem Yönetimi → Parametreler → invoice-auto-print-after-save
+        // POS otomatik yazdırma (retailos-printer-settings.autoPrint) burayı etkilemez.
+        if (!isReportMenuParamEnabled('invoice-auto-print-after-save')) {
+          return;
+        }
+
         const printData = {
           storeName: selectedFirm?.name || '',
           storeAddress: '',

@@ -166,9 +166,34 @@ export function ProductManagement({ products, setProducts }: ProductManagementPr
 
   useEffect(() => subscribeReportMenuParams(setReportMenuParams), []);
 
-  // Manuel yenileme fonksiyonu
+  // Manuel yenileme — kart stoğunu aktif belgelerle hizala, sonra liste + alış/satış toplamları
   const handleRefresh = async () => {
-    await loadProducts();
+    const toastId = 'product-stock-recompute';
+    try {
+      toast.loading(tm('stockRecomputeInProgress') || 'Stoklar hizalanıyor…', { id: toastId });
+      const align = await productAPI.recomputeStocksFromActiveDocuments();
+      await loadProducts(true);
+      const totals = await productAPI.getListDocumentTotals();
+      setDocTotals(totals);
+      toast.dismiss(toastId);
+      if (align.errors.length && align.updated === 0) {
+        toast.error(align.errors[0] || tm('stockRecomputeFailed'));
+      } else if (align.updated > 0) {
+        toast.success(
+          (tm('stockRecomputeDone') || '{count} ürün stoğu aktif hareketlere göre hizalandı').replace(
+            '{count}',
+            String(align.updated)
+          )
+        );
+      } else {
+        toast.success(tm('refresh') || 'Yenilendi');
+      }
+    } catch (err: unknown) {
+      toast.dismiss(toastId);
+      const msg = err instanceof Error ? err.message : String(err);
+      toast.error(msg || tm('stockRecomputeFailed'));
+      await loadProducts(true);
+    }
   };
 
   const [searchQuery, setSearchQuery] = useState('');

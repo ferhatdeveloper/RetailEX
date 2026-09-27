@@ -42,7 +42,7 @@ export interface MenuTranslations {
   customerAnalysis: string;
   /** Finans > Kartlar — Müşteri Arama Planı menü öğesi */
   customerCallPlan: string;
-  /** Finans > Hareketler — Cari Devir Fişi menü öğesi */
+  /** Finans > Hareketler — Açılış Fişi menü öğesi */
   cariDevirVoucher: string;
   dashboard: string;
   dataBroadcast: string;
@@ -199,6 +199,8 @@ export interface SidebarTranslations {
   tryDifferentSearch: string;
   hideMenu: string;
   showMenu: string;
+  pinMenu: string;
+  unpinMenu: string;
 }
 
 export interface Translations {
@@ -1928,7 +1930,7 @@ export const translations: any = {
       customReports: 'Özel Raporlar',
       customerAnalysis: 'Müşteri Analizi',
       customerCallPlan: 'Müşteri Arama Planı',
-      cariDevirVoucher: 'Cari Devir Fişi',
+      cariDevirVoucher: 'Açılış Fişi',
       dashboard: 'Dashboard',
       dataBroadcast: 'Bilgi Gönder/Al',
       databaseInfrastructure: 'Database Altyapısı',
@@ -2709,6 +2711,8 @@ export const translations: any = {
       tryDifferentSearch: 'Farklı bir arama terimi deneyin',
       hideMenu: 'Menüyü gizle',
       showMenu: 'Menüyü göster',
+      pinMenu: 'Menüyü sabitle',
+      unpinMenu: 'Sabitlemeyi kaldır',
       unitAndMultiplierMgmt: 'إدارة الوحدات والمضاعفات',
       unitCodeLabel: 'رمز الوحدة',
       unitDefinitions: 'تعريفات الوحدات',
@@ -3714,7 +3718,7 @@ export const translations: any = {
       customReports: 'Custom Reports',
       customerAnalysis: 'Customer Analysis',
       customerCallPlan: 'Customer Call Plan',
-      cariDevirVoucher: 'Account Carry-Over Voucher',
+      cariDevirVoucher: 'Opening Voucher',
       dashboard: 'Dashboard',
       dataBroadcast: 'Data Broadcast',
       databaseInfrastructure: 'Database Infrastructure',
@@ -4341,6 +4345,8 @@ export const translations: any = {
       tryDifferentSearch: 'Try a different search term',
       hideMenu: 'Hide menu',
       showMenu: 'Show menu',
+      pinMenu: 'Pin menu',
+      unpinMenu: 'Unpin menu',
     },
     sizeColorChange: 'Size/Color Change',
     slipList: 'Slip List',
@@ -5367,7 +5373,7 @@ export const translations: any = {
       customReports: 'تقارير مخصصة',
       customerAnalysis: 'تحليل العملاء',
       customerCallPlan: 'خطة اتصال العملاء',
-      cariDevirVoucher: 'سند ترحيل الحساب',
+      cariDevirVoucher: 'سند افتتاح',
       dashboard: 'لوحة التحكم',
       dataBroadcast: 'بث البيانات',
       databaseInfrastructure: 'بنية قاعدة البيانات',
@@ -5986,6 +5992,8 @@ export const translations: any = {
       tryDifferentSearch: 'جرب مصطلح بحث مختلف',
       hideMenu: 'إخفاء القائمة',
       showMenu: 'إظهار القائمة',
+      pinMenu: 'تثبيت القائمة',
+      unpinMenu: 'إلغاء التثبيت',
     },
     sizeColorChange: 'تغيير الحجم/اللون',
     slipList: 'قائمة السندات',
@@ -7013,7 +7021,7 @@ export const translations: any = {
       customReports: 'ڕاپۆرتە تایبەتەکان',
       customerAnalysis: 'شیکاری کڕیار',
       customerCallPlan: 'پلانی پەیوەندی کڕیار',
-      cariDevirVoucher: 'پسوڵەی گواستنەوەی حیساب',
+      cariDevirVoucher: 'پسوڵەی کردنەوە',
       dashboard: 'داشبۆرد',
       dataBroadcast: 'ناردن/وەرگرتنی زانیاری',
       databaseInfrastructure: 'بنیاتنانی بنکەدراوە',
@@ -7629,6 +7637,8 @@ export const translations: any = {
       tryDifferentSearch: 'زاراوەیەکی تری گەڕان تاقیبکەرەوە',
       hideMenu: 'شاردنەوەی لیستەکە',
       showMenu: 'پیشاندانی لیستەکە',
+      pinMenu: 'لیستەکە جێگیر بکە',
+      unpinMenu: 'جێگیرکردن لابەرە',
       lastRate: 'دوایین نرخ',
       change: 'گۆڕانکاری',
       baseCurrency: 'دراوی سەرەکی',

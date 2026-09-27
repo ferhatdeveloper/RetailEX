@@ -1993,6 +1993,211 @@ export const productAPI = {
   },
 
   /**
+   * Kart stoğunu iptal edilmemiş fatura satırları + ambar fişlerinden yeniden hesapla.
+   * Soft-delete sonrası `products.stock` stale kalınca (hayalet stok) listede
+   * STOK ≠ 0 ama ALIŞ TOPLAMI = 0 görünür; bu metot kartı net aktif harekete hizalar.
+   * Alış/satış para toplamlarına dokunmaz (`getListDocumentTotals` zaten iptalleri hariç tutar).
+   */
+  async recomputeStocksFromActiveDocuments(opts?: {
+    productIds?: string[];
+    dryRun?: boolean;
+  }): Promise<{
+    updated: number;
+    drifts: Array<{ id: string; code: string; name: string; from: number; to: number }>;
+    errors: string[];
+  }> {
+    const dryRun = opts?.dryRun === true;
+    const idFilter = [...new Set((opts?.productIds || []).map((x) => String(x || '').trim()).filter(Boolean))];
+    const result: {
+      updated: number;
+      drifts: Array<{ id: string; code: string; name: string; from: number; to: number }>;
+      errors: string[];
+    } = { updated: 0, drifts: [], errors: [] };
+
+    const PURCHASE_TRCODES = '1,4,5,13,26,41,42';
+    const SALES_TRCODES = '7,8,9,14,29,30,31,32';
+    const RETURN_TRCODES = '2,3,6';
+
+    const buildSql = (qtyExpr: string, withSlips: boolean) => `
+WITH line_qty AS (
+  SELECT
+    si.product_id,
+    si.item_code,
+    s.trcode,
+    s.fiche_type,
+    (${qtyExpr}) AS base_qty,
+    LOWER(TRIM(COALESCE(si.item_type, 'Malzeme'))) AS item_type
+  FROM sale_items si
+  JOIN sales s ON s.id = si.invoice_id
+  WHERE COALESCE(s.is_cancelled, false) = false
+    AND LOWER(TRIM(COALESCE(s.status, ''))) NOT IN ('iptal', 'silindi', 'cancelled', 'canceled', 'deleted')
+),
+stock_lines AS (
+  SELECT * FROM line_qty
+  WHERE item_type NOT IN ('hizmet', 'service', 'indirim', 'discount', 'promosyon')
+),
+invoice_delta AS (
+  SELECT p.id AS product_id,
+    SUM(
+      CASE
+        WHEN l.trcode IN (${RETURN_TRCODES}) OR l.fiche_type = 'return_invoice' THEN
+          CASE WHEN l.trcode IN (2, 6) THEN -l.base_qty ELSE l.base_qty END
+        WHEN l.trcode IN (${PURCHASE_TRCODES})
+          OR (l.fiche_type = 'purchase_invoice' AND COALESCE(l.trcode, 0) NOT IN (${RETURN_TRCODES})) THEN
+          l.base_qty
+        WHEN l.trcode IN (${SALES_TRCODES}) OR l.fiche_type = 'sales_invoice' THEN
+          -l.base_qty
+        ELSE 0
+      END
+    ) AS delta
+  FROM stock_lines l
+  JOIN products p ON (
+    p.id = l.product_id OR p.code = l.item_code OR p.id::text = l.item_code
+  )
+  GROUP BY p.id
+),
+slip_delta AS (
+  ${
+    withSlips
+      ? `SELECT p.id AS product_id,
+    SUM(
+      CASE
+        WHEN sm.movement_type = 'in' THEN smi.quantity
+        WHEN sm.movement_type IN ('out', 'adjustment') THEN -smi.quantity
+        ELSE 0
+      END
+    ) AS delta
+  FROM stock_movement_items smi
+  JOIN stock_movements sm ON sm.id = smi.movement_id
+  JOIN products p ON p.id = smi.product_id
+  WHERE LOWER(TRIM(COALESCE(sm.status, 'completed'))) NOT IN ('cancelled', 'iptal', 'silindi', 'deleted')
+    AND sm.movement_type NOT IN ('transfer', 'price_change')
+  GROUP BY p.id`
+      : `SELECT NULL::uuid AS product_id, 0::numeric AS delta WHERE false`
+  }
+),
+combined AS (
+  SELECT product_id, SUM(delta) AS delta
+  FROM (
+    SELECT product_id, delta FROM invoice_delta
+    UNION ALL
+    SELECT product_id, delta FROM slip_delta
+  ) u
+  GROUP BY product_id
+)
+SELECT p.id::text AS id, p.code, p.name,
+  ROUND(COALESCE(p.stock, 0)::numeric, 6) AS card_stock,
+  ROUND(COALESCE(c.delta, 0)::numeric, 6) AS expected_stock
+FROM products p
+LEFT JOIN combined c ON c.product_id = p.id
+WHERE COALESCE(p.is_active, true) = true
+  AND (
+    $1::uuid[] IS NULL
+    OR p.id = ANY($1::uuid[])
+  )
+  AND (
+    $1::uuid[] IS NOT NULL
+    OR ABS(COALESCE(p.stock, 0) - COALESCE(c.delta, 0)) >= 0.0001
+  )
+ORDER BY ABS(COALESCE(p.stock, 0) - COALESCE(c.delta, 0)) DESC
+LIMIT 5000`;
+
+    try {
+      // null = tüm drift ürünler; uuid[] = yalnızca bu ürünler (beklenen 0 dahil)
+      const paramIds: string[] | null = idFilter.length ? idFilter : null;
+
+      let rows: Array<{
+        id: string;
+        code: string;
+        name: string;
+        card_stock: number | string;
+        expected_stock: number | string;
+      }> = [];
+
+      const attempts: Array<{ qty: string; slips: boolean }> = [
+        {
+          qty: 'COALESCE(NULLIF(si.base_quantity, 0), si.quantity * COALESCE(si.unit_multiplier, 1), si.quantity)',
+          slips: true,
+        },
+        {
+          qty: 'si.quantity * COALESCE(si.unit_multiplier, 1)',
+          slips: true,
+        },
+        {
+          qty: 'si.quantity',
+          slips: true,
+        },
+        {
+          qty: 'si.quantity',
+          slips: false,
+        },
+      ];
+
+      let lastErr: unknown;
+      for (const attempt of attempts) {
+        try {
+          const { rows: r } = await postgres.query<{
+            id: string;
+            code: string;
+            name: string;
+            card_stock: number | string;
+            expected_stock: number | string;
+          }>(buildSql(attempt.qty, attempt.slips), [paramIds]);
+          rows = r || [];
+          lastErr = undefined;
+          break;
+        } catch (e) {
+          lastErr = e;
+        }
+      }
+      if (lastErr && !rows.length) {
+        throw lastErr;
+      }
+
+      for (const row of rows) {
+        const from = Number(row.card_stock) || 0;
+        const to = Number(row.expected_stock) || 0;
+        if (Math.abs(from - to) < 0.0001 && idFilter.length === 0) continue;
+        result.drifts.push({
+          id: String(row.id),
+          code: String(row.code || ''),
+          name: String(row.name || ''),
+          from,
+          to,
+        });
+        if (dryRun) continue;
+        const ok = await this.updateStock(String(row.id), to);
+        if (ok) result.updated += 1;
+        else result.errors.push(`${row.code || row.id}: stok güncellenemedi`);
+      }
+
+      // İptal faturalarda stock_reverted yoksa bayrakla (çift reverse önle)
+      if (!dryRun) {
+        try {
+          await postgres.query(
+            `UPDATE sales s
+             SET header_fields = COALESCE(s.header_fields, '{}'::jsonb) || '{"stock_reverted":true}'::jsonb,
+                 updated_at = NOW()
+             WHERE (
+                 COALESCE(s.is_cancelled, false) = true
+                 OR LOWER(TRIM(COALESCE(s.status, ''))) IN ('iptal', 'silindi', 'cancelled', 'canceled', 'deleted')
+               )
+               AND COALESCE((s.header_fields->>'stock_reverted')::boolean, false) = false`
+          );
+        } catch (e) {
+          console.warn('[ProductAPI] stock_reverted bayraklama atlandı:', e);
+        }
+      }
+    } catch (error) {
+      const msg = error instanceof Error ? error.message : String(error);
+      console.warn('[ProductAPI] recomputeStocksFromActiveDocuments failed:', error);
+      result.errors.push(msg);
+    }
+
+    return result;
+  },
+
+  /**
    * Update product stock
    */
   async updateStock(id: string, quantity: number): Promise<boolean> {

@@ -1,7 +1,10 @@
 /**
  * Yönetim modülünde tam genişlik içerik (Genel Rapor, raporlar) açıkken
  * sol menü varsayılan olarak gizlenir; üst çubuk / Ctrl+B ile gösterilebilir.
+ * Pin açıkken auto-hide uygulanmaz (localStorage tercihi).
  */
+
+export const MANAGEMENT_SIDEBAR_PIN_KEY = 'retailex-management-sidebar-pinned';
 
 const EXACT_SCREENS = new Set<string>([
   // Raporlar & Analiz
@@ -72,4 +75,31 @@ export function shouldAutoHideManagementSidebar(screen: string | null | undefine
   if (id.endsWith('reports')) return true;
   if (id.includes('-report')) return true;
   return false;
+}
+
+export function readManagementSidebarPinned(): boolean {
+  if (typeof window === 'undefined') return false;
+  try {
+    return localStorage.getItem(MANAGEMENT_SIDEBAR_PIN_KEY) === '1';
+  } catch {
+    return false;
+  }
+}
+
+export function writeManagementSidebarPinned(pinned: boolean): void {
+  if (typeof window === 'undefined') return;
+  try {
+    localStorage.setItem(MANAGEMENT_SIDEBAR_PIN_KEY, pinned ? '1' : '0');
+  } catch {
+    /* sessizce yoksay */
+  }
+}
+
+/** Masaüstünde rapor ekranına geçerken menü kapanmalı mı? Pin açıksa hayır. */
+export function shouldCollapseManagementSidebarOnNavigate(
+  screen: string | null | undefined,
+  pinned: boolean
+): boolean {
+  if (pinned) return false;
+  return shouldAutoHideManagementSidebar(screen);
 }

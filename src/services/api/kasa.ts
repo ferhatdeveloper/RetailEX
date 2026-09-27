@@ -3069,21 +3069,21 @@ export async function updateKasaIslemi(id: string, islem: KasaIslemi): Promise<K
  * Kasa bakiye breakdown — kart üzerinde hover'da gösterilecek matematik özeti.
  *
  * 50 yıllık muhasebeci gözüyle: "Bu kasa neden bu kadar?" sorusuna tek bakışta yanıt verir.
- * - Açılış bakiyesi (legacy register_id NULL olan kayıtların toplamı)
- * - Toplam giriş / çıkış (tüm zaman)
- * - Aylık net
- * - En büyük gider kalemleri (son 5)
- * - Negatif bakiye uyarısı
+ * - Açılış (devir) = ACILIS / ACILIS_BORC / ACILIS_ALACAK neti (bu kasa)
+ * - Toplam giriş / çıkış = açılış hariç operasyonel hareketler
+ * - Hesaplanan = açılış + giriş − çıkış
+ * - register_id NULL orphan'lar açılış sayılmaz; yalnızca uyarı
  */
 export interface CashBreakdown {
   registerId: string;
   registerName: string;
   registerCode: string;
   currentBalance: number;
-  openingBalance: number; // legacy kayıtlardan hesaplanan gerçek açılış
+  /** Bu kasadaki açılış fişleri neti (ACILIS*) */
+  openingBalance: number;
   totalIn: number;
   totalOut: number;
-  netMovement: number; // totalIn - totalOut (legacy hariç)
+  netMovement: number; // totalIn - totalOut (açılış hariç)
   transactionCount: number;
   monthlyBreakdown: Array<{
     month: string;
@@ -3099,6 +3099,9 @@ export interface CashBreakdown {
   }>;
   warnings: string[];
 }
+
+/** Açılış / devir fiş tipleri — giriş-çıkış toplamlarına karışmamalı */
+const CASH_OPENING_TYPES_SQL = `UPPER(TRIM(COALESCE(transaction_type, ''))) IN ('ACILIS', 'ACILIS_BORC', 'ACILIS_ALACAK')`;
 
 export async function fetchCashBreakdown(registerId: string): Promise<CashBreakdown> {
   const table = 'cash_registers';
@@ -3116,7 +3119,20 @@ export async function fetchCashBreakdown(registerId: string): Promise<CashBreakd
     throw new Error('Kasa bulunamadı');
   }
 
-  // Legacy açılış (register_id NULL olanlar)
+  // Bu kasanın açılış / devir fişleri
+  const openingRes = await postgres.query(
+    `SELECT COALESCE(SUM(amount * sign), 0) AS opening_net,
+            COUNT(*) AS opening_count
+       FROM ${linesTable}
+      WHERE register_id = $1::text::uuid
+        AND firm_nr = $2::text
+        AND period_nr = $3::text
+        AND ${CASH_OPENING_TYPES_SQL}`,
+    [registerId, firm, period]
+  );
+  const openingBalance = Number(openingRes.rows?.[0]?.opening_net || 0);
+
+  // Legacy orphan (register_id NULL) — firma geneli; açılış değil, yalnızca uyarı
   const legacyRes = await postgres.query(
     `SELECT COALESCE(SUM(amount * sign), 0) AS legacy_net,
             COUNT(*) AS legacy_count
@@ -3128,11 +3144,11 @@ export async function fetchCashBreakdown(registerId: string): Promise<CashBreakd
   );
   const legacyNet = Number(legacyRes.rows?.[0]?.legacy_net || 0);
 
-  // Toplam giriş / çıkış (bu kasa için)
+  // Toplam giriş / çıkış — açılış fişleri hariç; işlem sayısı tüm satırlar
   const totalsRes = await postgres.query(
     `SELECT
-       COALESCE(SUM(CASE WHEN sign = 1 THEN amount ELSE 0 END), 0) AS total_in,
-       COALESCE(SUM(CASE WHEN sign = -1 THEN amount ELSE 0 END), 0) AS total_out,
+       COALESCE(SUM(CASE WHEN sign = 1 AND NOT (${CASH_OPENING_TYPES_SQL}) THEN amount ELSE 0 END), 0) AS total_in,
+       COALESCE(SUM(CASE WHEN sign = -1 AND NOT (${CASH_OPENING_TYPES_SQL}) THEN amount ELSE 0 END), 0) AS total_out,
        COUNT(*) AS tx_count
      FROM ${linesTable}
      WHERE register_id = $1::text::uuid
@@ -3144,7 +3160,7 @@ export async function fetchCashBreakdown(registerId: string): Promise<CashBreakd
   const totalOut = Number(totalsRes.rows?.[0]?.total_out || 0);
   const txCount = Number(totalsRes.rows?.[0]?.tx_count || 0);
 
-  // Aylık breakdown (son 6 ay)
+  // Aylık breakdown (son 6 ay) — açılış hariç
   const monthlyRes = await postgres.query(
     `SELECT
        TO_CHAR(date, 'YYYY-MM') AS month,
@@ -3155,6 +3171,7 @@ export async function fetchCashBreakdown(registerId: string): Promise<CashBreakd
        AND firm_nr = $2::text
        AND period_nr = $3::text
        AND date >= (CURRENT_DATE - INTERVAL '6 months')
+       AND NOT (${CASH_OPENING_TYPES_SQL})
      GROUP BY 1
      ORDER BY 1 DESC`,
     [registerId, firm, period]
@@ -3166,7 +3183,7 @@ export async function fetchCashBreakdown(registerId: string): Promise<CashBreakd
     net: Number(r.in_amount) - Number(r.out_amount),
   }));
 
-  // En büyük 5 gider
+  // En büyük 5 gider — açılış hariç
   const topRes = await postgres.query(
     `SELECT
        TO_CHAR(date, 'YYYY-MM-DD') AS date,
@@ -3178,6 +3195,7 @@ export async function fetchCashBreakdown(registerId: string): Promise<CashBreakd
        AND firm_nr = $2::text
        AND period_nr = $3::text
        AND sign = -1
+       AND NOT (${CASH_OPENING_TYPES_SQL})
      ORDER BY amount DESC
      LIMIT 5`,
     [registerId, firm, period]
@@ -3202,7 +3220,12 @@ export async function fetchCashBreakdown(registerId: string): Promise<CashBreakd
       `📋 ${legacyRes.rows?.[0]?.legacy_count || 0} adet açılış öncesi kayıt (${legacyNet.toLocaleString('tr-TR')} IQD) register_id NULL olarak duruyor. Devir için düzeltme önerilir.`,
     );
   }
-  // Negatif aylık net kontrolü
+  const calculated = openingBalance + totalIn - totalOut;
+  if (Math.abs(calculated - currentBalance) > 0.5) {
+    warnings.push(
+      `⚠️ Hesaplanan (${calculated.toLocaleString('tr-TR')}) ile kasa bakiyesi (${currentBalance.toLocaleString('tr-TR')}) uyuşmuyor.`,
+    );
+  }
   const negativeMonths = monthlyBreakdown.filter((m) => m.net < 0);
   if (negativeMonths.length >= 3) {
     warnings.push(
@@ -3215,7 +3238,7 @@ export async function fetchCashBreakdown(registerId: string): Promise<CashBreakd
     registerName: reg.name,
     registerCode: reg.code,
     currentBalance,
-    openingBalance: legacyNet,
+    openingBalance,
     totalIn,
     totalOut,
     netMovement: totalIn - totalOut,
