@@ -46,6 +46,7 @@ import {
 import { printReportHtml, shouldPreviewReportPrint } from '../../../utils/reportHtmlPrint';
 import { useResponsive } from '../../../hooks/useResponsive';
 import { useRegisterDatagridRefresh } from '../../../hooks/useRegisterDatagridRefresh';
+import { useRetailexInvalidateRefresh } from '../../../hooks/useRetailexInvalidateRefresh';
 import {
     MATERIAL_EXTRACT_BUILTIN_ID,
     MATERIAL_EXTRACT_PRINT_SCOPE,
@@ -348,6 +349,15 @@ export function MaterialExtractReport() {
     };
 
     useRegisterDatagridRefresh(loadReport);
+
+    // Fatura soft-delete sonrası hazır rapor yenilensin (açık sekme)
+    useRetailexInvalidateRefresh(
+        ['invoices', 'sales', 'products'],
+        () => {
+            if (reportReady) void loadReport();
+        },
+        reportReady,
+    );
 
     // Tek malzeme seçiliyken ürün/tarih değişince otomatik yükle (tümü için yalnızca buton)
     useEffect(() => {

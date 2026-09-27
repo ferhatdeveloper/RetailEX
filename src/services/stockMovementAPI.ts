@@ -22,6 +22,7 @@ import {
     latestSlipPriceByProduct,
     type PriceDriftCandidate as ComputedPriceDriftCandidate,
 } from '../utils/priceChangeSlipDrift';
+import { sqlSaleNotCancelled } from '../utils/saleInvoiceStatus';
 
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
@@ -359,6 +360,7 @@ class StockMovementAPI {
                     s.name AS warehouse_name
                  FROM stock_movements m
                  LEFT JOIN stores s ON m.warehouse_id = s.id
+                 WHERE LOWER(TRIM(COALESCE(m.status, ''))) NOT IN ('cancelled', 'canceled', 'iptal', 'silindi', 'deleted')
                  ORDER BY m.movement_date DESC NULLS LAST, m.created_at DESC NULLS LAST
                  LIMIT ${SLIP_LIST_CAP}`
             );
@@ -405,6 +407,7 @@ class StockMovementAPI {
                         'purchase_invoice', 'sales_invoice', 'return_invoice',
                         'service', 'hizmet', 'beauty', 'beauty_sale', 'pos', 'retail'
                     )
+                      AND ${sqlSaleNotCancelled('s')}
                     ORDER BY s.date DESC NULLS LAST, s.created_at DESC NULLS LAST
                     LIMIT 500`
                 );
@@ -480,6 +483,7 @@ class StockMovementAPI {
                      LEFT JOIN products p ON p.id = i.product_id
                      LEFT JOIN stores s ON m.warehouse_id = s.id
                      WHERE LOWER(COALESCE(m.movement_type, '')) <> 'price_change'
+                       AND LOWER(TRIM(COALESCE(m.status, ''))) NOT IN ('cancelled', 'canceled', 'iptal', 'silindi', 'deleted')
                      ORDER BY m.movement_date DESC NULLS LAST, m.created_at DESC NULLS LAST
                      LIMIT ${LINE_CAP}`
                 );
@@ -540,6 +544,7 @@ class StockMovementAPI {
                          'purchase_invoice', 'sales_invoice', 'return_invoice',
                          'service', 'hizmet', 'beauty', 'beauty_sale', 'pos', 'retail'
                        )
+                       AND ${sqlSaleNotCancelled('sl')}
                      ORDER BY sl.date DESC NULLS LAST, sl.created_at DESC NULLS LAST
                      LIMIT ${LINE_CAP}`
                 );
@@ -1141,6 +1146,8 @@ class StockMovementAPI {
                     for (const row of smi) {
                         const m = movById.get(String(row.movement_id));
                         if (!m) continue;
+                        const mStatus = String(m.status || '').trim().toLowerCase();
+                        if (['cancelled', 'canceled', 'iptal', 'silindi', 'deleted'].includes(mStatus)) continue;
                         const wname =
                             (m.warehouse_id && storeNameById.get(String(m.warehouse_id))) || 'Merkez Ambar';
                         combinedRaw.push({
@@ -1258,12 +1265,15 @@ class StockMovementAPI {
                  JOIN stock_movements m ON i.movement_id = m.id
                  LEFT JOIN products p ON p.id = i.product_id
                  LEFT JOIN stores s ON m.warehouse_id = s.id
-                 WHERE i.product_id::text = $1
+                 WHERE LOWER(TRIM(COALESCE(m.status, ''))) NOT IN ('cancelled', 'canceled', 'iptal', 'silindi', 'deleted')
+                   AND (
+                    i.product_id::text = $1
                     OR i.product_id IN (
                          SELECT id FROM products
                          WHERE code = $1 OR id::text = $1 OR barcode = $1
                             OR ($2::text <> '' AND (code = $2 OR barcode = $2))
-                       )`,
+                       )
+                   )`,
                 [productId, String(hint?.code || '').trim()]
             );
             slipRows = rows;
@@ -1317,7 +1327,9 @@ class StockMovementAPI {
                  FROM sale_items si
                  JOIN sales sl ON si.invoice_id = sl.id
                  LEFT JOIN stores st ON sl.store_id = st.id
-                 WHERE si.item_code = $1
+                 WHERE ${sqlSaleNotCancelled('sl')}
+                   AND (
+                    si.item_code = $1
                     OR si.product_id::text = $1
                     OR si.item_code IN (
                          SELECT code FROM products WHERE id::text = $1 OR code = $1 OR barcode = $1
@@ -1348,7 +1360,8 @@ class StockMovementAPI {
                              SELECT id FROM products WHERE barcode = TRIM($3::text) OR code = TRIM($3::text)
                            )
                          )
-                       )`,
+                       )
+                   )`,
                 [productId, hintCode, hintBarcode]
             );
             invoiceRows = rows;
@@ -1455,6 +1468,7 @@ class StockMovementAPI {
                  WHERE m.movement_date::date >= $1::date
                    AND m.movement_date::date <= $2::date
                    AND LOWER(COALESCE(m.movement_type, '')) <> 'price_change'
+                   AND LOWER(TRIM(COALESCE(m.status, ''))) NOT IN ('cancelled', 'canceled', 'iptal', 'silindi', 'deleted')
                    ${slipWarehouseSql}
                  ORDER BY m.movement_date ASC NULLS LAST, m.created_at ASC NULLS LAST, i.id ASC
                  LIMIT $3`,
@@ -1524,8 +1538,7 @@ class StockMovementAPI {
                      'purchase_invoice', 'sales_invoice', 'return_invoice',
                      'service', 'hizmet', 'beauty', 'beauty_sale', 'pos', 'retail'
                    )
-                   AND COALESCE(sl.is_cancelled, false) = false
-                   AND LOWER(TRIM(COALESCE(sl.status, ''))) NOT IN ('iptal', 'silindi', 'cancelled', 'canceled', 'deleted')
+                   AND ${sqlSaleNotCancelled('sl')}
                    AND LOWER(TRIM(COALESCE(si.item_type, 'Malzeme'))) NOT IN ('hizmet', 'service', 'package', 'paket')
                    AND LOWER(TRIM(COALESCE(p.material_type, ''))) IS DISTINCT FROM 'service'
                    ${invWarehouseSql}
@@ -1950,8 +1963,7 @@ class StockMovementAPI {
                      'purchase_invoice', 'sales_invoice', 'return_invoice',
                      'service', 'hizmet', 'beauty', 'beauty_sale', 'pos', 'retail'
                    )
-                   AND COALESCE(sl.is_cancelled, false) = false
-                   AND LOWER(TRIM(COALESCE(sl.status, ''))) NOT IN ('iptal', 'silindi', 'cancelled', 'canceled', 'deleted')
+                   AND ${sqlSaleNotCancelled('sl')}
                    ${serviceExcludeSql}`,
                 [start, end],
                 fp,

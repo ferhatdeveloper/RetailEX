@@ -203,7 +203,11 @@ export function InvoiceListModule({
 
     try {
       const { invoicesAPI } = await import('../../../services/api/invoices');
-      await invoicesAPI.delete(id);
+      const ok = await invoicesAPI.delete(id);
+      if (!ok) {
+        toast.error(tm('invoiceDeleteError') || 'Fatura silinemedi');
+        return;
+      }
       const { useSaleStore } = await import('../../../store');
       useSaleStore.getState().removeSaleById(id);
       void useSaleStore.getState().loadSales(500);

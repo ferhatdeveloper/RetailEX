@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useMemo } from 'react';
+import React, { useState, useEffect, useMemo, useCallback } from 'react';
 import {
     stockMovementAPI,
     labelStockSlipDocumentType,
@@ -11,6 +11,7 @@ import { FileText } from 'lucide-react';
 import { format } from 'date-fns';
 import { useLanguage } from '../../../contexts/LanguageContext';
 import { receiptNotesForDisplay } from '../../../utils/receiptNotes';
+import { useRetailexInvalidateRefresh } from '../../../hooks/useRetailexInvalidateRefresh';
 
 interface SlipRow {
     id: string;
@@ -31,34 +32,36 @@ export function SlipListReport() {
     const [rows, setRows] = useState<SlipRow[]>([]);
     const [loading, setLoading] = useState(true);
 
-    useEffect(() => {
-        let cancelled = false;
-        async function load() {
-            setLoading(true);
-            try {
-                const movements: StockMovement[] = await stockMovementAPI.getAll();
-                const mapped: SlipRow[] = movements.map(m => ({
-                    id: m.id,
-                    documentNo: m.document_no || '',
-                    date: m.movement_date || m.created_at,
-                    type:
-                        m.source_kind === 'invoice'
-                            ? labelStockSlipDocumentType(tm, m.trcode, m.movement_type, 'invoice')
-                            : tm('warehouseSlip') || 'Ambar Fişi',
-                    customer_name: m.customer_name || '',
-                    movement_type: m.movement_type || '',
-                    description: receiptNotesForDisplay(m.description),
-                }));
-                if (!cancelled) setRows(mapped);
-            } catch (err) {
-                console.error('[SlipListReport] load failed', err);
-            } finally {
-                if (!cancelled) setLoading(false);
-            }
+    const load = useCallback(async () => {
+        setLoading(true);
+        try {
+            const movements: StockMovement[] = await stockMovementAPI.getAll();
+            const mapped: SlipRow[] = movements.map(m => ({
+                id: m.id,
+                documentNo: m.document_no || '',
+                date: m.movement_date || m.created_at,
+                type:
+                    m.source_kind === 'invoice'
+                        ? labelStockSlipDocumentType(tm, m.trcode, m.movement_type, 'invoice')
+                        : tm('warehouseSlip') || 'Ambar Fişi',
+                customer_name: m.customer_name || '',
+                movement_type: m.movement_type || '',
+                description: receiptNotesForDisplay(m.description),
+            }));
+            setRows(mapped);
+        } catch (err) {
+            console.error('[SlipListReport] load failed', err);
+        } finally {
+            setLoading(false);
         }
-        load();
-        return () => { cancelled = true; };
     }, [tm]);
+
+    useEffect(() => {
+        void load();
+    }, [load]);
+
+    // Soft-delete sonrası açık sekme (Fiş Listesi) yenilensin
+    useRetailexInvalidateRefresh(['invoices', 'sales', 'products'], load);
 
     const columnHelper = createColumnHelper<SlipRow>();
     const columns = useMemo<ColumnDef<SlipRow, any>[]>(() => [

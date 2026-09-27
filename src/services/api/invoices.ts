@@ -26,6 +26,7 @@ import { saleItemVisibleCode, splitInvoiceLineIdentity } from '../../utils/invoi
 import type { PurchasePromotionReportLine } from '../../utils/purchasePromotionReport';
 import { classifyProductHistoryType } from '../../utils/lastPurchaseCostSql';
 import { resolveLineGrossProfit } from '../../utils/lineGrossProfit';
+import { isRemovedSaleRow, sqlSaleNotCancelled } from '../../utils/saleInvoiceStatus';
 import {
   paymentMethodImpliesCustomerDebt,
   paymentMethodImpliesPaidNow,
@@ -3656,7 +3657,15 @@ export const invoicesAPI = {
 
         const headersById = new Map<
           string,
-          { fiche_no?: string; date?: string; fiche_type?: string; customer_id?: string; trcode?: number }
+          {
+            fiche_no?: string;
+            date?: string;
+            fiche_type?: string;
+            customer_id?: string;
+            trcode?: number;
+            status?: string;
+            is_cancelled?: boolean;
+          }
         >();
         for (let i = 0; i < invIds.length; i += chunkSize) {
           const chunk = invIds.slice(i, i + chunkSize);
@@ -3665,7 +3674,7 @@ export const invoicesAPI = {
             .get<any[]>(
               salesPath,
               {
-                select: 'id,fiche_no,date,fiche_type,customer_id,trcode',
+                select: 'id,fiche_no,date,fiche_type,customer_id,trcode,status,is_cancelled',
                 id: `in.(${inList})`,
                 limit: chunk.length,
               },
@@ -3673,7 +3682,10 @@ export const invoicesAPI = {
             )
             .catch(() => [] as any[]);
           (Array.isArray(rows) ? rows : []).forEach((r) => {
-            if (r?.id) headersById.set(String(r.id), r);
+            if (!r?.id) return;
+            // Soft-delete (InvoicesAPI.delete → is_cancelled + Silindi) ekstrede görünmesin
+            if (isRemovedSaleRow(r)) return;
+            headersById.set(String(r.id), r);
           });
         }
 
@@ -3766,7 +3778,9 @@ export const invoicesAPI = {
          JOIN sales s ON it.invoice_id = s.id 
          LEFT JOIN customers c ON s.customer_id = c.id 
          LEFT JOIN suppliers sup ON s.customer_id = sup.id
-         WHERE it.item_code = $1 
+         WHERE ${sqlSaleNotCancelled('s')}
+           AND (
+            it.item_code = $1 
             OR it.product_id::text = $1
             OR it.item_code IN (
                  SELECT code FROM products WHERE id::text = $1 OR code = $1 OR barcode = $1
@@ -3798,6 +3812,7 @@ export const invoicesAPI = {
                    )
                  )
                )
+           )
          ORDER BY s.date DESC`,
         [pid, hintCode, hintBarcode]
       );

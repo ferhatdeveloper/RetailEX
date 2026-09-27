@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useMemo } from 'react';
+import React, { useState, useEffect, useMemo, useCallback } from 'react';
 import { stockMovementAPI, type StockMovementLine } from '../../../services/stockMovementAPI';
 import { DevExDataGrid } from '../../shared/DevExDataGrid';
 import { REPORT_GRID_DEFAULTS } from '../../reports/shared/ReportDataGrid';
@@ -6,6 +6,7 @@ import { createColumnHelper, ColumnDef } from '@tanstack/react-table';
 import { format } from 'date-fns';
 import { useLanguage } from '../../../contexts/LanguageContext';
 import { formatNumber } from '../../../utils/formatNumber';
+import { useRetailexInvalidateRefresh } from '../../../hooks/useRetailexInvalidateRefresh';
 
 interface TxRow {
     id: string;
@@ -62,22 +63,23 @@ export function TransactionBreakdownReport() {
         [tm],
     );
 
-    useEffect(() => {
-        let cancelled = false;
-        async function load() {
-            setLoading(true);
-            try {
-                const lines = await stockMovementAPI.getAllLines();
-                if (!cancelled) setRows(lines.map((line) => lineToRow(line, kindLabels)));
-            } catch (err) {
-                console.error('[TransactionBreakdownReport] load failed', err);
-            } finally {
-                if (!cancelled) setLoading(false);
-            }
+    const load = useCallback(async () => {
+        setLoading(true);
+        try {
+            const lines = await stockMovementAPI.getAllLines();
+            setRows(lines.map((line) => lineToRow(line, kindLabels)));
+        } catch (err) {
+            console.error('[TransactionBreakdownReport] load failed', err);
+        } finally {
+            setLoading(false);
         }
-        load();
-        return () => { cancelled = true; };
     }, [kindLabels]);
+
+    useEffect(() => {
+        void load();
+    }, [load]);
+
+    useRetailexInvalidateRefresh(['invoices', 'sales', 'products'], load);
 
     const columnHelper = createColumnHelper<TxRow>();
     const columns = useMemo<ColumnDef<TxRow, any>[]>(() => [
